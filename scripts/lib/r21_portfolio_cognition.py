@@ -61,6 +61,53 @@ def portfolio_cognition(
             })
 
     gaps = [s for s in held if not (get_symbol(manifest, s) or {}).get("catalyst_guids")]
+    findings = []
+    for sector, names in concentrated_sectors.items():
+        findings.append({
+            "kind": "FACT",
+            "claim": "duplicate_sector_exposure",
+            "sector": sector,
+            "symbols": names,
+            "investment_recommendation": None,
+        })
+    for industry, names in concentrated_industries.items():
+        findings.append({
+            "kind": "FACT",
+            "claim": "duplicate_industry_exposure",
+            "industry": industry,
+            "symbols": names,
+            "investment_recommendation": None,
+        })
+    for guid, names in shared_catalysts.items():
+        findings.append({
+            "kind": "DERIVED_RELATIONSHIP",
+            "claim": "shared_catalyst_exposure",
+            "catalyst_guid": guid,
+            "symbols": names,
+            "not_supply_chain": True,
+            "investment_recommendation": None,
+        })
+    if concentrated_industries:
+        findings.append({
+            "kind": "HYPOTHESIS",
+            "claim": "thesis_correlation",
+            "note": "shared industry among holdings may imply correlated invalidation; not a trade",
+            "investment_recommendation": None,
+        })
+        findings.append({
+            "kind": "HYPOTHESIS",
+            "claim": "common_invalidation_exposure",
+            "note": "a sector shock could invalidate multiple holdings together",
+            "investment_recommendation": None,
+        })
+    for sub in substitutes[:12]:
+        findings.append({
+            "kind": "HYPOTHESIS",
+            "claim": "substitute_opportunity",
+            "held": sub["held"],
+            "alternatives": sub["alternatives"],
+            "investment_recommendation": None,
+        })
     return {
         "schema": SCHEMA,
         "evidence_class": cls,
@@ -71,6 +118,7 @@ def portfolio_cognition(
         "shared_catalyst_dependency": shared_catalysts,
         "substitutes": substitutes[:12],
         "portfolio_research_gaps": gaps,
+        "findings": findings,
         "graph_proximity_is_not_an_action": True,
         "advisory_only": True,
         "authority": AUTHORITY,

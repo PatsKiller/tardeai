@@ -1,0 +1,62 @@
+{
+  "schema": "ForwardImplementationDepth@v1",
+  "branch": "chore/r18-r22-institutional-intelligence",
+  "authority": "READ_ONLY_ADVISORY",
+  "activation_all_off": true,
+  "rounds": {
+    "R18": {
+      "capability": "Calibration engine over OutcomeObservation jsonl",
+      "depth": "IMPLEMENTED_EXECUTABLE",
+      "replay": "HISTORICAL_REPLAY of 25 outcome_ids + 18 checkpoint_ids; join=0; sector/confidence cohorts empty because subject_guid is null; hit_rate uses realized_state.linked not PnL",
+      "wired": "callable replay_calibration(root); not on crontab",
+      "evidence_class": "HISTORICAL_REPLAY",
+      "blocker_to_LIVE": "natural R17 outcomes with identity + directional quality + joined checkpoints",
+      "activation": "OFF"
+    },
+    "R19": {
+      "capability": "Learning pipeline with preregistration, holdout, registry hash, REVIEW_READY ceiling",
+      "depth": "IMPLEMENTED_EXECUTABLE",
+      "replay": "25 historical observations all before cutoff → INSUFFICIENT_EVIDENCE/NO_HOLDOUT_WINDOW; lesson candidate retained at SHADOW; registries unchanged; zero-support cannot mint a lesson",
+      "wired": "callable replay_learning_pipeline; not attached to persist_checkpoint/scan",
+      "evidence_class": "HISTORICAL_REPLAY + UNIT_TEST + GOLDEN_SHADOW",
+      "blocker_to_LIVE": "elapsed holdout outcomes with identity; R17 due processor",
+      "activation": "OFF"
+    },
+    "R20": {
+      "capability": "Canonical-universe impact candidate set",
+      "depth": "IMPLEMENTED_EXECUTABLE",
+      "replay": "propagate_from_canonical_root(CURRENT, NOC) related_n=384 kept=8 on 5409-member union; starting TickerKnowledgeProfile; CURRENT graph edges lack producer/observed_at (provenance_complete=0/15)",
+      "wired": "IMPLEMENTED_NOT_WIRED to research dispatch (by design)",
+      "evidence_class": "HISTORICAL_REPLAY",
+      "blocker_to_LIVE": "graph re-seed with provenance; bounded commission still OFF",
+      "activation": "OFF"
+    },
+    "R21": {
+      "capability": "Portfolio cognition FACT/DERIVED/HYPOTHESIS over live holdings",
+      "depth": "IMPLEMENTED_EXECUTABLE",
+      "replay": "19 held names; findings labeled; no investment_recommendation",
+      "wired": "IMPLEMENTED_NOT_WIRED to CC/Advisory",
+      "evidence_class": "HISTORICAL_REPLAY",
+      "blocker_to_LIVE": "thesis-text contradiction needs richer thesis store; operator surface",
+      "activation": "OFF"
+    },
+    "R22": {
+      "capability": "Callable CIO loop with trace_id through 8 steps",
+      "depth": "IMPLEMENTED_EXECUTABLE",
+      "replay": "run_cycle(NOC) lineage change→…→advisory_synthesis; free-first inspect read-only wrote=false",
+      "wired": "IMPLEMENTED_NOT_WIRED to timers",
+      "evidence_class": "HISTORICAL_REPLAY",
+      "blocker_to_LIVE": "must not be a crontab until R17/universe post-deploy PASS and separate activation",
+      "activation": "OFF"
+    },
+    "R23+": {
+      "capability": "Only real later boundaries: causal tests, cross-regime, decay rates, source reliability, counterfactuals, opportunity-cost, operator-authorized policy recs",
+      "depth": "DESIGN_ONLY",
+      "replay": false,
+      "wired": "none",
+      "evidence_class": "SOURCE_ONLY",
+      "blocker_to_LIVE": "each needs a new evidence kind beyond R18–R22",
+      "activation": "OFF"
+    }
+  }
+}

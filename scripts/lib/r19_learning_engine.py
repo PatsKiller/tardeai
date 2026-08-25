@@ -17,7 +17,11 @@ from scripts.lib.cio_forward_program import (
     gated_live_run,
     require_evidence_class,
 )
+import hashlib
+from pathlib import Path
+
 from scripts.lib.cio_institutional_learning import (
+    MIN_LESSON_SAMPLES,
     hypothesis_from_lesson,
     identity_safe_subject,
     lesson_candidate_v2,
@@ -25,6 +29,7 @@ from scripts.lib.cio_institutional_learning import (
     promotion_advance,
     shadow_experiment,
 )
+from scripts.lib.cio_model_learning import snapshot_registries
 
 SCHEMA = "InstitutionalLearningRecord@v1"
 STAGES = (
@@ -68,6 +73,20 @@ def build_learning_record(
     if not gate["ok"]:
         return {**gate, "schema": SCHEMA}
     subject = identity_safe_subject(outcome) or identity_safe_subject(decision)
+    if len(supporting_outcome_ids) < MIN_LESSON_SAMPLES:
+        return {
+            "schema": SCHEMA,
+            "evidence_class": cls,
+            "status": "INSUFFICIENT_EVIDENCE",
+            "stage": None,
+            "lesson": None,
+            "hypothesis": None,
+            "supporting_outcome_ids": list(supporting_outcome_ids),
+            "auto_policy": False,
+            "authority": AUTHORITY,
+            "memory_behavior_influence": MBI,
+            "financial_action": False,
+        }
     lesson = lesson_candidate_v2(
         scope="security" if subject else "unresolved_identity",
         task_class=str(decision.get("recommendation") or "UNKNOWN"),
@@ -153,3 +172,111 @@ def advance_learning_stage(
     out["auto_policy"] = False
     out["authority"] = AUTHORITY
     return out
+
+
+def registry_fingerprint(root: Path | str) -> dict[str, str]:
+    snap = snapshot_registries(root)
+    return {k: hashlib.sha256(v.encode("utf-8")).hexdigest() for k, v in snap.items()}
+
+
+def replay_learning_pipeline(
+    *,
+    outcomes: list[dict[str, Any]],
+    evidence_class: str,
+    statement: str,
+    train_cutoff: str,
+    repo_root: Path | str,
+    recommendation: str | None = None,
+) -> dict[str, Any]:
+    """Train/eval split by observed_at. Preregister before evaluation. No registry writes."""
+    cls = require_evidence_class(evidence_class)
+    gate = gated_live_run("R19", evidence_class=cls)
+    if not gate["ok"]:
+        return {**gate, "schema": SCHEMA}
+    from scripts.lib.cio_institutional_learning import _parse_ts
+    cutoff = _parse_ts(train_cutoff)
+    train, evaluate = [], []
+    for row in outcomes:
+        ts = _parse_ts(row.get("observed_at") or row.get("source_as_of"))
+        rec = str(row.get("recommendation") or (row.get("original_decision_state") or {}).get("recommendation") or recommendation or "")
+        item = dict(row)
+        item["_recommendation"] = rec
+        if cutoff and ts and ts < cutoff:
+            train.append(item)
+        else:
+            evaluate.append(item)
+    support = [str(r.get("outcome_id")) for r in train if r.get("outcome_id")]
+    contra = [str(r.get("outcome_id")) for r in train if r.get("counterexample")]
+    before = registry_fingerprint(repo_root)
+    if len(support) < MIN_LESSON_SAMPLES:
+        after = registry_fingerprint(repo_root)
+        return {
+            "schema": SCHEMA,
+            "evidence_class": cls,
+            "status": "INSUFFICIENT_EVIDENCE",
+            "lesson": None,
+            "hypothesis": None,
+            "supporting_outcome_ids": support,
+            "train_n": len(train),
+            "eval_n": len(evaluate),
+            "train_cutoff": train_cutoff,
+            "windows_overlap": False,
+            "registry_hash_before": before,
+            "registry_hash_after": after,
+            "registry_unchanged": before == after,
+            "auto_policy": False,
+            "authority": AUTHORITY,
+            "memory_behavior_influence": MBI,
+            "financial_action": False,
+        }
+    decision = {
+        "decision_id": train[0].get("decision_id"),
+        "recommendation": train[0].get("_recommendation") or "UNKNOWN",
+        "security_guid": identity_safe_subject(train[0]),
+        "runtime_source_sha": train[0].get("runtime_source_sha"),
+    }
+    rec = build_learning_record(
+        decision=decision,
+        outcome=train[0],
+        statement=statement,
+        supporting_outcome_ids=support,
+        counterexamples=contra,
+        searched_counterexamples=True,
+        evidence_class=cls,
+    )
+    rec = advance_learning_stage(rec, "SHADOW")
+    if not evaluate:
+        after = registry_fingerprint(repo_root)
+        rec["status"] = "INSUFFICIENT_EVIDENCE"
+        rec["stage"] = "SHADOW"
+        rec["reason"] = "NO_HOLDOUT_WINDOW"
+        rec["lesson"] = rec.get("lesson")
+        rec["supporting_outcome_ids"] = support
+        rec["train_n"] = len(train)
+        rec["eval_n"] = 0
+        rec["train_cutoff"] = train_cutoff
+        rec["windows_overlap"] = False
+        rec["registry_hash_before"] = before
+        rec["registry_hash_after"] = after
+        rec["registry_unchanged"] = before == after
+        rec["auto_policy"] = False
+        return rec
+    control = [{"observed_quality": float(r.get("observed_quality") or (1.0 if (r.get("realized_state") or {}).get("linked") else 0.0))} for r in train]
+    candidate = [{"observed_quality": float(r.get("observed_quality") or (1.0 if (r.get("realized_state") or {}).get("linked") else 0.0))} for r in evaluate]
+    rec = advance_learning_stage(rec, "EVALUATED", control=control, candidate=candidate)
+    rec = advance_learning_stage(rec, "REVIEW_READY", control=control, candidate=candidate)
+    after = registry_fingerprint(repo_root)
+    rec["status"] = "REVIEW_READY"
+    rec["supporting_outcome_ids"] = support
+    rec["contradictory_visible"] = bool(contra)
+    rec["train_n"] = len(train)
+    rec["eval_n"] = len(evaluate)
+    rec["train_cutoff"] = train_cutoff
+    rec["windows_overlap"] = False
+    rec["registry_hash_before"] = before
+    rec["registry_hash_after"] = after
+    rec["registry_unchanged"] = before == after
+    rec["auto_policy"] = False
+    blocked = advance_learning_stage(rec, "OPERATOR_AUTHORIZED")
+    rec["self_authorize_blocked"] = blocked.get("ok") is False
+    return rec

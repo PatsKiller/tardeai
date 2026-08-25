@@ -80,15 +80,19 @@ The last step requires a **separate operator authorization**. The engine cannot 
 
 ## R23+ only where there is a capability boundary
 
-Not invented R-numbers. Real next layers, each needing a new kind of evidence or control:
+Not invented R-numbers. These cannot be folded into R18–R22 without lying about the contract:
 
-1. Causal-hypothesis testing (preregistered experiments + LIVE outcomes)
-2. Cross-regime learning
-3. Temporal knowledge decay
-4. Evidence-source reliability learning
-5. Counterfactual decision evaluation
-6. Opportunity-cost learning
-7. Institutional policy recommendation (still REVIEW_READY until operator-authorized)
+| Stage | Boundary | Input | Output | Prerequisite | Why not R18–R22 | Activation evidence |
+|---|---|---|---|---|---|---|
+| Causal-hypothesis testing | intervention vs correlation | preregistered experiment + outcomes | causal estimate | R19 REVIEW_READY + LIVE outcomes | R19 is associative/shadow | LIVE experiments |
+| Cross-regime learning | parameters must change with regime | regime-tagged outcomes | regime-conditional profile | R18 + regime taxonomy | R18 is pooled | multi-regime LIVE |
+| Temporal knowledge decay | validity interval on facts | as_of beliefs + later contradictions | decay function | bitemporal store | R18 cutoff ≠ decay model | elapsed LIVE |
+| Evidence-source reliability | source_refs → quality | outcome-linked sources | source weights (candidate) | R18 lane cohorts | lane ≠ source reliability | LIVE source_refs |
+| Counterfactual evaluation | what would baseline have done | twin decisions | delta vs actual | R19 holdout | holdout ≠ counterfactual twin | replay + LIVE |
+| Opportunity-cost learning | substitution outcomes | R21 substitutes + later results | cost of not rotating | R21 + R17 | cognition ≠ measured cost | LIVE substitution |
+| Institutional policy recommendation | operator-authorized policy text | REVIEW_READY record | policy draft | R19 ceiling | engine must not self-authorize | separate operator grant |
+
+No other R-numbers in this tranche.
 
 ---
 

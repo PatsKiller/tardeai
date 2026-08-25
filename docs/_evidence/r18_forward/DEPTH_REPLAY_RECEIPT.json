@@ -1,0 +1,60 @@
+{
+  "schema": "ForwardDepthReceipt@v1",
+  "evidence_class": "HISTORICAL_REPLAY",
+  "r18": {
+    "observation_n": 25,
+    "joined_n": 0,
+    "hit_rate": [
+      {
+        "horizon": "event-relative",
+        "n": 25,
+        "hit_rate": 1.0,
+        "se": 0.0,
+        "sufficient_for_truth": true,
+        "uncertainty": "BOUNDED"
+      }
+    ],
+    "not_pnl": true,
+    "sector_cohorts_n": 0,
+    "confidence_cohorts_n": 0
+  },
+  "r19": {
+    "status": "INSUFFICIENT_EVIDENCE",
+    "reason": "NO_HOLDOUT_WINDOW",
+    "train_n": 25,
+    "eval_n": 0,
+    "registry_unchanged": true,
+    "supporting_n": 25
+  },
+  "r20": {
+    "canonical_universe_count": 5409,
+    "related_n": 384,
+    "kept": [
+      "RTX",
+      "SPCX",
+      "BAH",
+      "CSWC",
+      "LDOS",
+      "PFLT",
+      "V",
+      "AVAV"
+    ],
+    "edge_n": 15,
+    "provenance_complete_n": 0
+  },
+  "r22": {
+    "trace_id": "99bcb00e-3ee5-49c1-a596-98d85e17300a",
+    "lineage": [
+      "change",
+      "identity",
+      "materiality",
+      "prior_cognition",
+      "graph_impact",
+      "gap",
+      "free_first_inspect",
+      "advisory_synthesis"
+    ],
+    "wrote": false
+  },
+  "authority": "READ_ONLY_ADVISORY"
+}
