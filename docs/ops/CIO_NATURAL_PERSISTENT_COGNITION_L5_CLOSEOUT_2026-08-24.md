@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-24  
 **Authority:** `READ_ONLY_ADVISORY` · `MEMORY_BEHAVIOR_INFLUENCE=0`  
-**Status:** SOURCE + TESTED. Natural L5 is awarded only after scheduled material_scan on exact-main.
+**Status:** SOURCE + TESTED + MERGED (#502 `1afb1479`) + DEPLOYED (`1afb1479-main-exact-phase2-20260824-230917`) + **NATURALLY_PROVEN** (23:17:23–23:17:37 ET material_scan, SCHD).
 
 ## Root cause
 
@@ -27,6 +27,23 @@ That is why live SCHD traces showed `DATA_CONFLICT` with `notification.sent=fals
 
 `tests/test_r10_8_cio_l5.py`: payload refs, stale re-resolve, NO_PORTFOLIO_CHANGE replay, material delta, NEED_DATA, CONFLICTED, PRSO not fabricated, same-brain, membership skip.
 
-## Not claimed until natural tick
+## Natural tick (not `systemctl start`)
 
-`CIO_PERSISTENT_COGNITION_L5` and `M4_NATURAL_SAME_BRAIN_PROVEN` remain false until a genuine `tradeai-cio-material-scan.timer` fire on the deployed SHA shows refs in the DecisionPayload trace.
+`tradeai-cio-material-scan.timer` LastTrigger **2026-08-24 23:17:23 EDT**, finished 23:17:37, WorkingDirectory CURRENT `1afb1479`, authority READ_ONLY_ADVISORY, dry_run/interdicted delivery.
+
+SCHD DecisionPayload@v1:
+
+- `security_guid` `a29dd6b6-9f88-5f8c-a372-f88786851a76`
+- TickerResearchState version `2026-08-25T02:26:31+00:00`
+- curation `…:v0:BASELINE` version 0
+- SymbolThesis `symbol_schd@v9`
+- ResearchGap IDs `[]`
+- `ContextUseReceipt@v1`
+- `portfolio_delta=NO_PORTFOLIO_CHANGE`
+- `question=WHAT_MATERIAL_THING_CHANGED_FOR_THE_PORTFOLIO`
+- `paid_dispatch=0` · `notification.sent=false` · `financial_action=false`
+
+CASH/REENTRY membership labels correctly skipped (`DATA_UNAVAILABLE` + skipped cognition).
+
+`CIO_PERSISTENT_COGNITION_L5=true`  
+`M4_NATURAL_SAME_BRAIN_PROVEN=true` (SCHD refs match Hermes/CIO/Advisory/Telegram diagnostic matrix)

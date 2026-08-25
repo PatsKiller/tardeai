@@ -67,8 +67,8 @@ Required properties: database-owned, caller cannot backdate `tx_period`, replay 
 |---|---|
 | 1k versions | MEASURED (~5.8s write, ~4.8ms current read) |
 | 10k versions | MEASURED (~56s write, ~45ms current read) |
-| 100k | **NOT_RUN** |
-| 1M | **NOT_RUN** |
+| 100k | **MEASURED** isolated 2026-08-24 (~628s write, ~197ms current read; n=100000) |
+| 1M | **NOT_RUN** (deferred; do not block CIO L5) |
 
 EXPLAIN (ANALYZE, BUFFERS) on isolated data: Index Scan on `fact_current_idx` / `fact_valid_spgist` / `fact_tx_gist`. Shared hits, 0 disk reads at this volume. **Do not claim a winner from trivial volume for 100k/1M — those were not run.**
 
