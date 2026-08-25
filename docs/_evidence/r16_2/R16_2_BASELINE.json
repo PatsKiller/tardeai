@@ -1,0 +1,32 @@
+{
+  "schema": "R16_2Baseline@v1",
+  "as_of": "2026-08-25T18:42:21+00:00",
+  "repository_head_sha": "eff5aa63400cec68d96d7a518406b318513ee18f",
+  "runtime_source_sha": "55520666b4a742b9ed893c3231b414d089312363",
+  "CURRENT_release": "/home/johnclaw/trade-ai-releases/portfolio-server/55520666-main-exact-phase2-20260825-125124",
+  "docs_on_main_vs_runtime": true,
+  "r16_schema_versions": {
+    "OutcomeObservation": "OutcomeObservation@v1",
+    "LessonCandidate": "LessonCandidate@v2",
+    "HypothesisCandidate": "HypothesisCandidate@v1",
+    "ShadowExperiment": "ShadowExperiment@v1"
+  },
+  "decision_count_inventory_r16_1": 38,
+  "natural_scan_cycles_post_deploy": 11,
+  "natural_unique_decision_ids": 25,
+  "checkpoint_count": 18,
+  "outcome_count": 25,
+  "lesson_count": 2,
+  "hypothesis_count": 1,
+  "experiment_count": 3,
+  "maturity_start": 88,
+  "MEMORY_BEHAVIOR_INFLUENCE": 0,
+  "promotion_ceiling": "REVIEW_READY",
+  "canary": false,
+  "cash_target_range_pct": "unconfirmed",
+  "policy_status": "POLICY_GAP",
+  "pr505_merged": false,
+  "model_registry_sha256": "3f76b56466b29c3f0514dbbce3f2dd14ec9ed0908cb3debb191c83d8bbd191ca",
+  "process_registry_sha256": "1a699bbc238cb964199c891d54ac476dcff7871c3d06c8cbafaaf6d40a2f73d3",
+  "authority": "READ_ONLY_ADVISORY"
+}

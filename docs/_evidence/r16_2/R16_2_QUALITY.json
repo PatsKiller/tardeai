@@ -1,0 +1,7 @@
+{
+  "schema": "R16_2ReasoningQuality@v1",
+  "completed_natural_outcomes": 0,
+  "pnl_is_not_the_grade": true,
+  "note": "No natural checkpoint completed, so axes not scored as NATURAL_LONGITUDINAL.",
+  "authority": "READ_ONLY_ADVISORY"
+}

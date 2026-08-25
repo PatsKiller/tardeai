@@ -1,0 +1,18 @@
+{
+  "schema": "R16_2Immutability@v1",
+  "latest_scan_decision_hashes_before": [
+    "da221e32c0306a62fac87bbb25e350dd044bcede667b754b087112e2d3c80e9b",
+    "cf74ec21fa636362aa8e47a4c2a354857db568fdaf3aad48b13faf10a2b31fc7",
+    "4661c9b7cfe78af35e947db40f5f78daae998092cf80472bf0bb16679ecd818a"
+  ],
+  "latest_scan_decision_hashes_after": [
+    "da221e32c0306a62fac87bbb25e350dd044bcede667b754b087112e2d3c80e9b",
+    "cf74ec21fa636362aa8e47a4c2a354857db568fdaf3aad48b13faf10a2b31fc7",
+    "4661c9b7cfe78af35e947db40f5f78daae998092cf80472bf0bb16679ecd818a"
+  ],
+  "decision_hash_before_equals_after": true,
+  "outcome_appended": false,
+  "note": "No natural outcome processed; hashes unchanged because nothing was rewritten.",
+  "historical_r16_1_outcome_append_rewrote_decisions": false,
+  "authority": "READ_ONLY_ADVISORY"
+}

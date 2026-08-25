@@ -1,0 +1,9 @@
+{
+  "schema": "R16_2LessonHypothesisGate@v1",
+  "new_supported_from_soak": false,
+  "new_hypothesis_from_one_outcome": false,
+  "one_natural_event_lesson_status": "PROVISIONAL",
+  "existing_lessons_unchanged": 2,
+  "existing_hypotheses_unchanged": 1,
+  "authority": "READ_ONLY_ADVISORY"
+}

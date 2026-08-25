@@ -1,0 +1,22 @@
+{
+  "schema": "R16_2RestartDurability@v1",
+  "restarted_at": "2026-08-25T18:42:21+00:00",
+  "service": "portfolio-server.service",
+  "health_ok": true,
+  "pin_match": true,
+  "checkpoint_sha256_before": "faeae77611c3e1633105b672441e0e0ef2457bce1564b51f6eaeefab2a73a223",
+  "checkpoint_sha256_after": "faeae77611c3e1633105b672441e0e0ef2457bce1564b51f6eaeefab2a73a223",
+  "observation_sha256_before": "134dc8dd8703b51274d41e72c89612571f5e4726b90ea40721de4d9bed69fa3b",
+  "observation_sha256_after": "134dc8dd8703b51274d41e72c89612571f5e4726b90ea40721de4d9bed69fa3b",
+  "checkpoint_loss": false,
+  "duplicate_registration": false,
+  "rows_before": {
+    "checkpoints": 18,
+    "observations": 25
+  },
+  "rows_after": {
+    "checkpoints": 18,
+    "observations": 25
+  },
+  "authority": "READ_ONLY_ADVISORY"
+}

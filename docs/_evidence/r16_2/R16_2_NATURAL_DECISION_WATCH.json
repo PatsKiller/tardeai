@@ -1,0 +1,248 @@
+{
+  "schema": "R16_2NaturalDecisionWatch@v1",
+  "evidence_class": "LIVE",
+  "timer": "tradeai-cio-material-scan.timer",
+  "manually_started": false,
+  "cycles": [
+    {
+      "at_et": "12:58:05",
+      "at": "2026-08-25T16:58:08Z",
+      "ids": [
+        "dec_cash_a7b0352ebbae0cc2",
+        "dec_reentry_9815cb00f0238ccd",
+        "dec_babcd8d893e1adcb"
+      ]
+    },
+    {
+      "at_et": "13:08:07",
+      "at": "2026-08-25T17:08:11Z",
+      "ids": [
+        "dec_cash_d4c7e94290b91103",
+        "dec_reentry_178d6998b639e04c",
+        "dec_babcd8d893e1adcb"
+      ]
+    },
+    {
+      "at_et": "13:18:07",
+      "at": "2026-08-25T17:18:11Z",
+      "ids": [
+        "dec_cash_949939c95b70c225",
+        "dec_reentry_178d6998b639e04c",
+        "dec_d3bd7eff88da6955"
+      ]
+    },
+    {
+      "at_et": "13:28:16",
+      "at": "2026-08-25T17:28:20Z",
+      "ids": [
+        "dec_cash_67dd06368ac77ce3",
+        "dec_reentry_97307dfa76a143b2",
+        "dec_94324b6a030069c6"
+      ]
+    },
+    {
+      "at_et": "13:38:16",
+      "at": "2026-08-25T17:38:20Z",
+      "ids": [
+        "dec_cash_8775f2d5f9e95636",
+        "dec_reentry_b2eecbff1fbbdac7",
+        "dec_4896480281b69fea"
+      ]
+    },
+    {
+      "at_et": "13:48:33",
+      "at": "2026-08-25T17:48:37Z",
+      "ids": [
+        "dec_cash_ec93e17fec86a242",
+        "dec_reentry_b2eecbff1fbbdac7",
+        "dec_c1cec3c99d978b9d"
+      ]
+    },
+    {
+      "at_et": "13:58:33",
+      "at": "2026-08-25T17:58:37Z",
+      "ids": [
+        "dec_cash_d5fbc05879f9e152",
+        "dec_reentry_b2eecbff1fbbdac7",
+        "dec_7d7e6c7d61b3d683"
+      ]
+    },
+    {
+      "at_et": "14:09:03",
+      "at": "2026-08-25T18:09:07Z",
+      "ids": [
+        "dec_cash_28fc9402053c382b",
+        "dec_reentry_8943c8a144ae80d6",
+        "dec_5fc1656ebc2eac50"
+      ]
+    },
+    {
+      "at_et": "14:19:04",
+      "at": "2026-08-25T18:19:07Z",
+      "ids": [
+        "dec_cash_caf7d66a914c22e3",
+        "dec_reentry_8943c8a144ae80d6",
+        "dec_c1cec3c99d978b9d"
+      ]
+    },
+    {
+      "at_et": "14:29:33",
+      "at": "2026-08-25T18:29:37Z",
+      "ids": [
+        "dec_cash_0d1f5bd07cf3ba70",
+        "dec_reentry_b2eecbff1fbbdac7",
+        "dec_4cbc5cbf3e582e0e"
+      ]
+    },
+    {
+      "at_et": "14:39:33",
+      "at": "2026-08-25T18:39:36Z",
+      "ids": [
+        "dec_cash_745b342cd1e09632",
+        "dec_reentry_b2eecbff1fbbdac7",
+        "dec_68f3ab3e53d5a1ee"
+      ]
+    }
+  ],
+  "unique_decision_ids": [
+    "dec_4896480281b69fea",
+    "dec_4cbc5cbf3e582e0e",
+    "dec_5fc1656ebc2eac50",
+    "dec_68f3ab3e53d5a1ee",
+    "dec_7d7e6c7d61b3d683",
+    "dec_94324b6a030069c6",
+    "dec_babcd8d893e1adcb",
+    "dec_c1cec3c99d978b9d",
+    "dec_cash_0d1f5bd07cf3ba70",
+    "dec_cash_28fc9402053c382b",
+    "dec_cash_67dd06368ac77ce3",
+    "dec_cash_745b342cd1e09632",
+    "dec_cash_8775f2d5f9e95636",
+    "dec_cash_949939c95b70c225",
+    "dec_cash_a7b0352ebbae0cc2",
+    "dec_cash_caf7d66a914c22e3",
+    "dec_cash_d4c7e94290b91103",
+    "dec_cash_d5fbc05879f9e152",
+    "dec_cash_ec93e17fec86a242",
+    "dec_d3bd7eff88da6955",
+    "dec_reentry_178d6998b639e04c",
+    "dec_reentry_8943c8a144ae80d6",
+    "dec_reentry_97307dfa76a143b2",
+    "dec_reentry_9815cb00f0238ccd",
+    "dec_reentry_b2eecbff1fbbdac7"
+  ],
+  "checkpoint_auto_created_ids": [],
+  "operator_persisted_ids_not_auto": [
+    "dec_babcd8d893e1adcb",
+    "dec_cash_a7b0352ebbae0cc2",
+    "dec_cash_d4c7e94290b91103",
+    "dec_reentry_178d6998b639e04c",
+    "dec_reentry_9815cb00f0238ccd"
+  ],
+  "checkpoint_created_false_ids": [
+    "dec_4896480281b69fea",
+    "dec_4cbc5cbf3e582e0e",
+    "dec_5fc1656ebc2eac50",
+    "dec_68f3ab3e53d5a1ee",
+    "dec_7d7e6c7d61b3d683",
+    "dec_94324b6a030069c6",
+    "dec_babcd8d893e1adcb",
+    "dec_c1cec3c99d978b9d",
+    "dec_cash_0d1f5bd07cf3ba70",
+    "dec_cash_28fc9402053c382b",
+    "dec_cash_67dd06368ac77ce3",
+    "dec_cash_745b342cd1e09632",
+    "dec_cash_8775f2d5f9e95636",
+    "dec_cash_949939c95b70c225",
+    "dec_cash_a7b0352ebbae0cc2",
+    "dec_cash_caf7d66a914c22e3",
+    "dec_cash_d4c7e94290b91103",
+    "dec_cash_d5fbc05879f9e152",
+    "dec_cash_ec93e17fec86a242",
+    "dec_d3bd7eff88da6955",
+    "dec_reentry_178d6998b639e04c",
+    "dec_reentry_8943c8a144ae80d6",
+    "dec_reentry_97307dfa76a143b2",
+    "dec_reentry_9815cb00f0238ccd",
+    "dec_reentry_b2eecbff1fbbdac7"
+  ],
+  "latest_scan_at": "2026-08-25T18:39:36.942907+00:00",
+  "latest_rows": [
+    {
+      "decision_id": "dec_cash_745b342cd1e09632",
+      "decision_type": "HOLD_CASH",
+      "security_guid": null,
+      "symbol": null,
+      "created_at": "2026-08-25T18:39:36.402809+00:00",
+      "source_sha": "55520666b4a742b9ed893c3231b414d089312363",
+      "thesis_version": null,
+      "curation_version": null,
+      "evidence_refs": [
+        "e7f06d4475c9cd83179da43ccdd3a50d"
+      ],
+      "specialist_refs": [],
+      "confidence": null,
+      "invalidation_conditions": null,
+      "next_review_condition": null,
+      "notification_class": "SUPPRESSED",
+      "suppressed_reason": "unchanged_replay",
+      "material": true,
+      "checkpoint_created": false,
+      "minted_from_ticker": false,
+      "manually_invoked": false
+    },
+    {
+      "decision_id": "dec_reentry_b2eecbff1fbbdac7",
+      "decision_type": "WAIT",
+      "security_guid": null,
+      "symbol": null,
+      "created_at": "2026-08-25T18:39:36.411758+00:00",
+      "source_sha": "55520666b4a742b9ed893c3231b414d089312363",
+      "thesis_version": null,
+      "curation_version": null,
+      "evidence_refs": [
+        "ff0fcb31190a0954e7f3378d2d080824"
+      ],
+      "specialist_refs": [],
+      "confidence": null,
+      "invalidation_conditions": null,
+      "next_review_condition": null,
+      "notification_class": "SUPPRESSED",
+      "suppressed_reason": "unchanged_replay",
+      "material": true,
+      "checkpoint_created": false,
+      "minted_from_ticker": false,
+      "manually_invoked": false
+    },
+    {
+      "decision_id": "dec_68f3ab3e53d5a1ee",
+      "decision_type": "TRIM",
+      "security_guid": "a29dd6b6-9f88-5f8c-a372-f88786851a76",
+      "symbol": "SCHD",
+      "created_at": "2026-08-25T18:39:36.420270+00:00",
+      "source_sha": "55520666b4a742b9ed893c3231b414d089312363",
+      "thesis_version": null,
+      "curation_version": null,
+      "evidence_refs": [
+        "334cebf488d17b4ef625e4527af49a64"
+      ],
+      "specialist_refs": [],
+      "confidence": null,
+      "invalidation_conditions": "DATA_CONFLICT",
+      "next_review_condition": null,
+      "notification_class": "SUPPRESSED",
+      "suppressed_reason": "unchanged_replay",
+      "material": true,
+      "checkpoint_created": false,
+      "minted_from_ticker": false,
+      "manually_invoked": false
+    }
+  ],
+  "expected_current_behavior": "checkpoint_created=false for new scan IDs",
+  "observed_behavior": "checkpoint_created=false for latest 3; only 5 IDs ever entered jsonl via R16.1 operator persist",
+  "this_is_evidence_not_failure": true,
+  "paid_dispatch": 0,
+  "llm_calls": 0,
+  "authority": "READ_ONLY_ADVISORY",
+  "memory_behavior_influence": 0
+}
