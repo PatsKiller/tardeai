@@ -686,7 +686,7 @@ def build_cio_cognition(
     task: str = "cio_reassessment",
     limit: int = 12,
 ) -> dict[str, Any]:
-    """Bounded CIO cognition pack. Does not inject all 120 names."""
+    """Bounded CIO cognition pack. Injects a ranked subset, not the canonical universe."""
     held_s = {normalize_symbol(s) for s in (held or [])}
     watch_s = {normalize_symbol(s) for s in (watch or [])}
     reentry_s = {normalize_symbol(s) for s in (reentry or [])}

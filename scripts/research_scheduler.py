@@ -265,88 +265,18 @@ def load_reentry_ready_near_symbols(*, root: Path | None = None) -> list[str]:
 
 # ── universe assembly ────────────────────────────────────────────────────────
 def load_universe(*, root: Path | None = None) -> dict:
-    """symbol -> {'tier': str, 'rank': int|None}. Highest tier wins."""
+    """Research-priority index from the canonical Transferson universe.
+
+    Membership (including WAIT/sold history) lives in
+    scripts.lib.transferson_universe. This function remains the scheduler's
+    highest-tier view and must not treat graph-profile count as the universe.
+    """
     root = root or ROOT
-    uni: dict[str, dict] = {}
-
-    def add(sym, tier, rank=None, **meta):
-        sym = str(sym or "").upper().strip()
-        if not _is_symbol(sym):
-            return
-        cur = uni.get(sym)
-        if cur is None or _tier_order(tier) < _tier_order(cur["tier"]):
-            row = {"tier": tier, "rank": rank}
-            row.update(meta)
-            uni[sym] = row
-        else:
-            if rank is not None and uni[sym].get("rank") is None:
-                uni[sym]["rank"] = rank
-            if meta.get("reentry_ready_near"):
-                uni[sym]["reentry_ready_near"] = True
-            for key, value in meta.items():
-                if value is not None and uni[sym].get(key) is None:
-                    uni[sym][key] = value
-
-    # T0-HOLD — unique held equity tickers (CASH / CUSIP out)
-    try:
-        try:
-            from scripts.lib.holdings_universe import held_equity_tickers
-        except Exception:
-            from lib.holdings_universe import held_equity_tickers  # type: ignore
-        for sym in held_equity_tickers(root=root):
-            add(sym, "T0-HOLD")
-    except Exception:
-        pass
-    # T0-PROP
-    for r in _q("""SELECT DISTINCT symbol FROM paper_trade_proposals
-                   WHERE status IN ('PENDING','APPROVED','APPROVED_FOR_PAPER_TEST')"""):
-        add(dict(r)["symbol"], "T0-PROP")
-    # T1-WATCH: top-N Hermes rank + operator watch directives
-    for r in _q("""SELECT DISTINCT ON (symbol) symbol, rank FROM hermes_score_history
-                   ORDER BY symbol, scored_at DESC"""):
-        d = dict(r)
-        if d.get("rank") is not None and d["rank"] <= TOP_RANK_N:
-            add(d["symbol"], "T1-WATCH", d["rank"])
-    for r in _q("""SELECT spec->>'symbol' AS s FROM watch_directives
-                   WHERE kind='ticker' AND status='active' AND spec ? 'symbol'"""):
-        if dict(r).get("s"):
-            add(dict(r)["s"], "T1-WATCH")
-    # T1-WATCH: reentry READY/NEAR (existing tier — do not invent a new one)
-    try:
-        for sym in load_reentry_ready_near_symbols(root=root):
-            add(sym, "T1-WATCH", reentry_ready_near=True)
-    except Exception:
-        pass
-    # T2-INCUB: recently-proposed names + active incubator members (incl. claude_challenger cohort)
-    for r in _q("""SELECT DISTINCT symbol FROM paper_trade_proposals
-                   WHERE created_at > NOW() - INTERVAL '21 days'"""):
-        add(dict(r)["symbol"], "T2-INCUB")
-    for r in _q("""SELECT DISTINCT symbol FROM incubator_universe
-                   WHERE status='active' AND symbol IS NOT NULL"""):
-        add(dict(r)["symbol"], "T2-INCUB")
-    # T3-COLD: the rest of the profiled universe
-    for r in _q("SELECT DISTINCT ON (symbol) symbol, sector, industry FROM symbol_profiles ORDER BY symbol"):
-        d = dict(r)
-        add(d["symbol"], "T3-COLD", sector=d.get("sector"), industry=d.get("industry"))
-
-    # attach latest rank for everyone (for scoring) if missing
-    ranks = {dict(r)["symbol"]: dict(r)["rank"] for r in _q(
-        "SELECT DISTINCT ON (symbol) symbol, rank FROM hermes_score_history ORDER BY symbol, scored_at DESC")}
-    for s in uni:
-        if uni[s].get("rank") is None:
-            uni[s]["rank"] = ranks.get(s)
-
-    # Scope-governor binding (Phase 1 §1.3): one governor owns research scope too. A symbol the
-    # governor archived (scope_tier S3) never holds a T1/T2 research slot — it drops to T3-COLD
-    # (metadata-only under the budget guard) until an event or the governor reactivates it.
-    # T0 (capital exposed) is never downgraded. Reentry READY/NEAR stay T1 (not S3-archived).
-    s3 = {dict(r)["symbol"].upper() for r in _q(
-        """SELECT DISTINCT UPPER(symbol) AS symbol FROM watchlist_items
-           WHERE scope_tier='S3' AND status IN ('active','researched')""")}
-    for s, info in uni.items():
-        if s in s3 and info["tier"] in ("T1-WATCH", "T2-INCUB") and not info.get("reentry_ready_near"):
-            info["tier"] = "T3-COLD"
-    return uni
+    from scripts.lib.transferson_universe import collect_live_sources
+    from scripts.lib.transferson_universe import load_universe as load_manifest
+    from scripts.lib.transferson_universe import research_tier_index
+    sources = collect_live_sources(root=root, top_rank_n=int(TOP_RANK_N))
+    return research_tier_index(load_manifest(root=root, sources=sources))
 
 
 def _tier_order(t: str) -> int:

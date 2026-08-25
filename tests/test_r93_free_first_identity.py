@@ -53,7 +53,10 @@ def test_no_invented_cik():
     p = build_profile("GOVX")
     p = attach_identity_v2(p)
     assert p.get("cik") in (None, "")
-    assert p["identity_status"] == "CANDIDATE"
+    # No issuer/instrument identifiers → not a fabricated security identity from ticker text.
+    assert p.get("security_guid") in (None, "")
+    assert p["identity_status"] == "UNRESOLVED_WITH_REASON"
+    assert p.get("ticker_guid_is_not_security") is True
 
 
 def test_seed_profiles_still_idempotent(tmp_path):

@@ -22,6 +22,20 @@ from scripts.lib.symbol_thesis_review import daily_thesis_changes
 from scripts.lib.research_prompt_context import latest_delta
 from scripts.lib.symbol_universe import reconcile_universe
 
+
+def _transferson_denominators(root: Path) -> dict[str, Any]:
+    try:
+        from scripts.lib.transferson_universe import load_universe, operator_denominators
+        return operator_denominators(load_universe(root=root))
+    except Exception as exc:
+        return {
+            "schema": "TransfersonOperatorDenominators@v1",
+            "ok": False,
+            "error": f"{type(exc).__name__}:{exc}",
+            "not_the_canonical_universe": True,
+            "authority": AUTHORITY,
+        }
+
 AUTHORITY = "READ_ONLY_ADVISORY"
 
 # Category / aggregate labels that leaked into the symbol column. Not tickers —
@@ -193,9 +207,13 @@ def build_universe_theses_projection(
         "as_of": _now(),
         "authority": AUTHORITY,
         "financial_action": False,
+        "not_the_canonical_universe": True,
+        "canonical_contract": "TransfersonUniverseManifest@v1",
+        "transferson_denominators": _transferson_denominators(root),
         "metrics": {
             "material_universe": metrics.get("material"),
             "universe_union": metrics.get("universe_union"),
+            "thesis_covered_label": "thesis-covered = current+thin / eligible material subset; not Transferson universe",
             "current_thesis": metrics.get("current"),
             "research_required": metrics.get("research_required"),
             "stale": metrics.get("stale"),

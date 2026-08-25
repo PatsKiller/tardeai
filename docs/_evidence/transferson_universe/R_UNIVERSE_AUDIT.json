@@ -1,0 +1,71 @@
+{
+  "schema": "TransfersonUniverseAudit@v1",
+  "authority": "READ_ONLY_ADVISORY",
+  "as_of": "2026-08-25T19:20:00+00:00",
+  "count_120": {
+    "provenance": "ticker_research_graph.jsonl TickerKnowledgeProfile@v1 rows via free_first_refresh.load_profiles()",
+    "live_n": 120,
+    "is_whole_universe": false,
+    "is_graph_profile_cohort": true,
+    "consumers_that_used_it_as_denominator": [
+      "scripts/lib/free_first_circulation.py total_symbols",
+      "docs/_evidence/r15_2, r16_1, hermes_r93 closeouts"
+    ]
+  },
+  "count_126": {
+    "status": "UNRESOLVED_WITH_REASON",
+    "reason": "No authoritative code path, live receipt, or current document defines 126 as a universe denominator. Not 120+holdings CUSIPs (that is 123). Treat as a view-specific/unexplained count. Forbidden as a universe denominator.",
+    "not_found_in": [
+      "research_scheduler.load_universe",
+      "free_first_refresh.load_profiles",
+      "holdings_universe.held_equity_tickers"
+    ],
+    "coincidences_not_producers": {
+      "holdings_equity_plus_reentry_naive_sum": {
+        "value": 126,
+        "parts": {
+          "holdings_equity": 19,
+          "reentry_all": 107,
+          "overlap": 10,
+          "unique_union": 116
+        },
+        "why_not_producer": "No code path adds holdings+reentry without unique-union. Unique union is 116, not 126."
+      },
+      "watch_directives_active_sql_distinct_unnormalized": {
+        "value": 120,
+        "normalized_unique": 119,
+        "why_not_producer": "SQL COUNT DISTINCT on raw spec.symbol is 120; after ticker normalize unique is 119. This is 120, not 126."
+      },
+      "research_quality_T0_126": {
+        "file": "docs/ops/RESEARCH_QUALITY_AND_THESIS_GAP_2026-08-22.md",
+        "meaning": "T0 research-due arithmetic in a 545-call day (T3 181 + T1 189 + T0 126), not a universe denominator",
+        "why_not_producer": "Research-load count, not membership count."
+      }
+    }
+  },
+  "count_3061": {
+    "status": "HISTORICAL_VALIDATED",
+    "as_of": "2026-08-22",
+    "source": "docs/RESEARCH_PRIORITIZATION.md live split of research_scheduler.load_universe()",
+    "split": {
+      "T0-HOLD": 22,
+      "T0-PROP": 30,
+      "T1-WATCH": 331,
+      "T2-INCUB": 141,
+      "T3-COLD": 2537
+    },
+    "not_configuration": true,
+    "requires_DB": true
+  },
+  "this_host_live_validation": {
+    "source_pin": "55520666b4a742b9ed893c3231b414d089312363",
+    "db": "trade_ai",
+    "canonical_universe_count": 4153,
+    "graph_profiled_count": 120,
+    "graph_coverage": "120 graph-profiled / 4153 universe",
+    "scheduler_index_n": 3105,
+    "holdings_equity": 19,
+    "missing_current_holdings": 0,
+    "verdict": "LIVE_ACCEPTANCE_BLOCKED"
+  }
+}

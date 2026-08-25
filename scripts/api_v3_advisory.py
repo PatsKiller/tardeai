@@ -56,6 +56,9 @@ def _watch_hub_counts() -> dict[str, Any]:
         return {
             "active": int(active.get("n") or 0),
             "universe": int(universe.get("n") or 0),
+            "universe_is_not_canonical": True,
+            "cohort": "watchlist_items_active_plus_researched",
+            "canonical_contract": "TransfersonUniverseManifest@v1",
         }
     except Exception:
         return {"active": None, "universe": None}
@@ -597,6 +600,11 @@ def get_advisory_desk(*, force: bool = False, row_class: str | None = None) -> d
         "watchlist_personal_shown": by_class.get("watchlist", 0),
         "watch_hub_active": _watch_hub_counts().get("active"),
         "watch_hub_universe": _watch_hub_counts().get("universe"),
+        "watch_hub_universe_is_not_canonical": True,
+        "watch_hub_cohort": "watchlist_items_active_plus_researched",
+        "reentry_universe_is_not_canonical": True,
+        "reentry_cohort": "reentry_decision_desk",
+        "canonical_contract": "TransfersonUniverseManifest@v1",
         "watch_hub_total": meta.get("hub_watch_total"),
         "watch_hub_shown": by_class.get("watchlist_hub", 0),
         "reentry_universe": meta.get("reentry_universe_count"),

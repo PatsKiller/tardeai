@@ -29,6 +29,24 @@ from scripts.lib.ticker_knowledge_graph import (
 )
 from scripts.lib.ticker_research_state import build_state, upsert_state
 
+
+def _canonical_coverage_labels(root: Path | str, *, circulated: int) -> dict[str, Any]:
+    """Fail-soft: free-first is a graph-profile cohort, never Universe."""
+    out: dict[str, Any] = {
+        "cohort": "graph_profiled_free_first",
+        "canonical_universe_count": None,
+        "graph_coverage": None,
+    }
+    try:
+        from scripts.lib.transferson_universe import load_universe, metrics as uni_metrics
+        met = uni_metrics(load_universe(root=root))
+        n = met.get("canonical_universe_count")
+        out["canonical_universe_count"] = n
+        out["graph_coverage"] = f"{circulated} free-first circulated / {n} universe"
+    except Exception:
+        pass
+    return out
+
 AUTHORITY = "READ_ONLY_ADVISORY"
 SCHEMA = "FreeFirstCirculationReport@v1"
 
@@ -391,6 +409,11 @@ def circulate_universe(
         "mode": "FREE_FIRST_ONLY",
         "as_of": _now(),
         "total_symbols": len(rows),
+        "persistent_graph_profiled": len(rows),
+        "graph_profiled_count": len(rows),
+        "free_first_circulated_count": len(rows),
+        "not_the_canonical_universe": True,
+        **_canonical_coverage_labels(root, circulated=len(rows)),
         "Hermes_resolved": len(buckets.get("Hermes_resolved") or []),
         "RAG_resolved": len(buckets.get("RAG_resolved") or []),
         "structured_resolved": len(buckets.get("structured_resolved") or []),
