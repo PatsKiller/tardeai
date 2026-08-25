@@ -2027,6 +2027,14 @@ def get_learning_cockpit_v1() -> dict[str, Any]:
             "max_unattended_stage": "REVIEW_READY",
             "gui_cannot_self_promote": True,
             "provisional_not_displayed_as_rule": True,
+            "evidence_classes": [
+                "LIVE",
+                "NATURAL_LONGITUDINAL",
+                "HISTORICAL_VALIDATED",
+                "HISTORICAL_REPLAY",
+                "GOLDEN_SHADOW",
+            ],
+            "why_not_promoted": "PROMOTION_REQUIRES_SEPARATE_AUTHORITY",
             "sample_lesson": lesson_candidate_v2(
                 scope="office", task_class="research_curation", statement="insufficient sample",
                 supporting_outcome_ids=["o1"], counterexamples=[], searched_counterexamples=False,

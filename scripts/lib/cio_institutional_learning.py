@@ -542,6 +542,40 @@ def notification_learning(rows: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+CHECKPOINT_PATH = "data/cio/outcome_checkpoints.jsonl"
+OBSERVATION_PATH = "data/cio/outcome_observations.jsonl"
+
+
+def _jsonl(path: Path) -> list[dict[str, Any]]:
+    if not path.is_file():
+        return []
+    rows = []
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        if not line.strip():
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(row, dict):
+            rows.append(row)
+    return rows
+
+
+def _append(path: Path, row: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(row, sort_keys=True, default=str) + "\n")
+
+
+def identity_safe_subject(row: dict[str, Any]) -> str | None:
+    """Never mint a security_guid from ticker text."""
+    guid = row.get("security_guid") or row.get("subject_guid")
+    if guid:
+        return str(guid)
+    return None
+
+
 def schedule_outcome_checkpoint(decision_id: str, horizon: str, existing: list[str] | None = None) -> dict[str, Any]:
     key = _sha({"decision_id": decision_id, "horizon": horizon})[:20]
     dup = key in set(existing or [])
@@ -550,12 +584,70 @@ def schedule_outcome_checkpoint(decision_id: str, horizon: str, existing: list[s
         "checkpoint_id": key,
         "decision_id": decision_id,
         "horizon": horizon,
+        "due_at": None,
+        "status": "SCHEDULED",
         "duplicate": dup,
         "observational_only": True,
         "trading": False,
         "authority": AUTHORITY,
         "memory_behavior_influence": MBI,
     }
+
+
+def persist_checkpoint(root: Path | str, checkpoint: dict[str, Any]) -> dict[str, Any]:
+    path = Path(root) / CHECKPOINT_PATH
+    cid = checkpoint.get("checkpoint_id")
+    for row in _jsonl(path):
+        if row.get("checkpoint_id") == cid:
+            return {"wrote": False, "duplicate": True, "checkpoint": row}
+    _append(path, checkpoint)
+    return {"wrote": True, "duplicate": False, "checkpoint": checkpoint}
+
+
+def process_due_checkpoint(
+    *,
+    checkpoint: dict[str, Any],
+    source_available: bool,
+    realized_state: dict[str, Any] | None = None,
+    source_refs: list[str] | None = None,
+    source_as_of: str | None = None,
+) -> dict[str, Any]:
+    if not source_available:
+        return {
+            "schema": "DueOutcomeProcessor@v1",
+            "status": "OUTCOME_PENDING_DATA",
+            "invented": False,
+            "checkpoint_id": checkpoint.get("checkpoint_id"),
+            "authority": AUTHORITY,
+            "memory_behavior_influence": MBI,
+        }
+    obs = build_outcome_observation(
+        decision_id=str(checkpoint.get("decision_id")),
+        subject_guid=identity_safe_subject(checkpoint),
+        horizon=str(checkpoint.get("horizon") or "event-relative"),
+        original_decision_state=checkpoint.get("original_decision_state") or {},
+        realized_state=realized_state or {},
+        source_refs=list(source_refs or []),
+        source_as_of=source_as_of or _now(),
+    )
+    return {
+        "schema": "DueOutcomeProcessor@v1",
+        "status": "OBSERVED",
+        "invented": False,
+        "observation": obs,
+        "authority": AUTHORITY,
+        "memory_behavior_influence": MBI,
+    }
+
+
+def persist_observation(root: Path | str, observation: dict[str, Any]) -> dict[str, Any]:
+    path = Path(root) / OBSERVATION_PATH
+    oid = observation.get("outcome_id")
+    for row in _jsonl(path):
+        if row.get("outcome_id") == oid:
+            return {"wrote": False, "duplicate": True, "crash_idempotent": True}
+    _append(path, observation)
+    return {"wrote": True, "duplicate": False, "crash_idempotent": True}
 
 
 def similar_setup(*, current: dict[str, Any], history: list[dict[str, Any]], limit: int = 5) -> dict[str, Any]:

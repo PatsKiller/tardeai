@@ -312,7 +312,11 @@ export default function CioBrainPanel() {
           <span>Self-promote<strong>false</strong></span>
           <span>Provisional as rule<strong>false</strong></span>
         </div>
-        <p className="cio-brain__muted">Lessons stay candidates. Promotion requires separate authority. Behavior influence 0.</p>
+        <List
+          rows={brain.learning_cockpit?.evidence_classes || ['LIVE', 'NATURAL_LONGITUDINAL', 'HISTORICAL_VALIDATED', 'HISTORICAL_REPLAY', 'GOLDEN_SHADOW']}
+          empty="No evidence classes"
+        />
+        <p className="cio-brain__muted">Lessons stay candidates. Promotion requires separate authority. Behavior influence 0. Evidence classes are not mixed.</p>
       </Band>
       <Band title="Knowledge gaps" testId="cio-brain-knowledge-gaps">
         <List

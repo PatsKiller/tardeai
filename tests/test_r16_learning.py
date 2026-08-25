@@ -14,6 +14,10 @@ from scripts.lib.cio_institutional_learning import (
     PROMOTION_STAGES,
     QUALITY_AXES,
     append_outcome,
+    identity_safe_subject,
+    persist_checkpoint,
+    persist_observation,
+    process_due_checkpoint,
     bitemporal_view,
     build_outcome_observation,
     calibrate_confidence,
@@ -222,6 +226,32 @@ def test_checkpoint_idempotent() -> None:
     assert a["duplicate"] is False
     assert b["duplicate"] is True
     assert a["trading"] is False
+
+
+def test_durable_checkpoint_and_pending_data(tmp_path) -> None:
+    ck = schedule_outcome_checkpoint("dec_live", "1_session")
+    first = persist_checkpoint(tmp_path, ck)
+    second = persist_checkpoint(tmp_path, ck)
+    assert first["wrote"] is True
+    assert second["duplicate"] is True
+    pending = process_due_checkpoint(checkpoint=ck, source_available=False)
+    assert pending["status"] == "OUTCOME_PENDING_DATA"
+    assert pending["invented"] is False
+    obs = process_due_checkpoint(
+        checkpoint=ck, source_available=True, realized_state={"cash_posture": "POLICY_GAP"},
+        source_refs=["scan"], source_as_of="2026-08-25T16:00:00+00:00",
+    )
+    assert obs["status"] == "OBSERVED"
+    w1 = persist_observation(tmp_path, obs["observation"])
+    w2 = persist_observation(tmp_path, obs["observation"])
+    assert w1["wrote"] is True
+    assert w2["duplicate"] is True
+    assert w2["crash_idempotent"] is True
+
+
+def test_never_mint_guid_from_ticker() -> None:
+    assert identity_safe_subject({"symbol": "NVDA"}) is None
+    assert identity_safe_subject({"security_guid": "sec-1", "symbol": "NVDA"}) == "sec-1"
 
 
 def test_similar_setup_is_bounded() -> None:
