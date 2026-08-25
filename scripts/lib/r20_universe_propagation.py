@@ -6,9 +6,11 @@ Activation default OFF.
 """
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any
 
 from scripts.lib.cio_forward_program import AUTHORITY, MBI, gated_live_run, require_evidence_class
+from scripts.lib.ticker_knowledge_graph import entity_guid, relationship_guid
 from scripts.lib.cio_institutional_learning import identity_safe_subject
 from scripts.lib.security_identity import normalize_symbol
 from scripts.lib.transferson_universe import (
@@ -40,6 +42,58 @@ def _score(rec: dict[str, Any], *, path: str, materiality: float) -> float:
     return round(materiality * tw * held * ident * path_w, 4)
 
 
+def _now() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+
+
+REQUIRED_EDGE_FIELDS = (
+    "relationship_guid", "source_entity_guid", "target_entity_guid",
+    "relationship_type", "relationship_class", "source_type", "source_id",
+    "observed_at", "recorded_at", "confidence", "status", "producer",
+    "derivation_method",
+)
+
+
+def _complete(edge: dict[str, Any]) -> bool:
+    return all(edge.get(k) not in (None, "", []) for k in REQUIRED_EDGE_FIELDS)
+
+
+def classification_edge(origin: dict[str, Any], target: dict[str, Any], field: str) -> dict[str, Any] | None:
+    value = target.get(field)
+    if not value:
+        return None
+    src = origin.get("security_guid") or origin.get("ticker_guid")
+    tgt = entity_guid(field, value)
+    producer = target.get("classification_source") or origin.get("classification_source")
+    observed = str(target.get("classification_observed_at") or origin.get("classification_observed_at") or "")
+    if not src or not tgt:
+        return None
+    rel = "VERTICAL" if field == "industry" else "LATERAL"
+    guid = relationship_guid(str(src), str(tgt), f"CLASSIFICATION:{field}")
+    edge = {
+        "relationship_guid": guid,
+        "source_entity_guid": src,
+        "target_entity_guid": tgt,
+        "relationship_type": "CLASSIFICATION",
+        "relationship_class": field,
+        "source_type": "symbol_profiles",
+        "source_id": producer,
+        "source_url": None,
+        "evidence_artifact_guid": None,
+        "derivation_method": f"symbol_profiles.{field}",
+        "observed_at": observed or None,
+        "recorded_at": _now(),
+        "valid_from": observed or None,
+        "valid_to": None,
+        "confidence": 0.7 if producer else None,
+        "status": "CANDIDATE" if producer else None,
+        "producer": producer,
+        "producer_version": None,
+    }
+    edge["provenance_complete"] = _complete(edge)
+    return edge
+
+
 def _edge_for_path(profile: dict[str, Any] | None, path: str) -> dict[str, Any] | None:
     if not profile:
         return None
@@ -54,20 +108,28 @@ def _edge_for_path(profile: dict[str, Any] | None, path: str) -> dict[str, Any] 
         if not isinstance(edge, dict):
             continue
         if want and edge.get("target_kind") == want:
-            return {
+            out = {
                 "relationship_guid": edge.get("relationship_guid"),
-                "source_guid": edge.get("source_guid"),
-                "target_guid": edge.get("target_guid"),
-                "relationship": edge.get("relationship"),
-                "target_kind": edge.get("target_kind"),
-                "producer": edge.get("producer"),
+                "source_entity_guid": edge.get("source_entity_guid") or edge.get("source_guid"),
+                "target_entity_guid": edge.get("target_entity_guid") or edge.get("target_guid"),
+                "relationship_type": edge.get("relationship_type") or edge.get("relationship"),
+                "relationship_class": edge.get("relationship_class") or edge.get("target_kind"),
                 "source_type": edge.get("source_type"),
+                "source_id": edge.get("source_id"),
+                "source_url": edge.get("source_url"),
+                "evidence_artifact_guid": edge.get("evidence_artifact_guid"),
+                "derivation_method": edge.get("derivation_method") or "ticker_research_graph.jsonl",
                 "observed_at": edge.get("observed_at"),
                 "recorded_at": edge.get("recorded_at"),
-                "status": edge.get("status"),
+                "valid_from": edge.get("valid_from"),
+                "valid_to": edge.get("valid_to"),
                 "confidence": edge.get("confidence"),
-                "provenance_complete": bool(edge.get("producer") and edge.get("source_type") and edge.get("observed_at")),
+                "status": edge.get("status"),
+                "producer": edge.get("producer"),
+                "producer_version": edge.get("producer_version"),
             }
+            out["provenance_complete"] = _complete(out)
+            return out
     return None
 
 
@@ -102,10 +164,41 @@ def impact_candidates(
         "catalyst_guids": origin.get("catalyst_guids") or (origin_profile or {}).get("catalyst_guids") or [],
     }
     scored: dict[str, dict[str, Any]] = {}
+    incomplete: dict[str, dict[str, Any]] = {}
+    edges_complete = 0
+    edges_incomplete = 0
+    edges_disputed = 0
 
     def add(sym: str, path: str) -> None:
+        nonlocal edges_complete, edges_incomplete, edges_disputed
         rec = get_symbol(manifest, sym) or {}
         if not rec or rec.get("symbol") == origin.get("symbol"):
+            return
+        if path in {"industry", "sector"}:
+            edge = classification_edge(origin, rec, path)
+        elif path == "sourced_economic":
+            return
+        else:
+            edge = _edge_for_path(origin_profile, path)
+        if edge is None:
+            return
+        if not edge.get("provenance_complete"):
+            edges_incomplete += 1
+            inc = incomplete.setdefault(rec["symbol"], {
+                "symbol": rec["symbol"],
+                "subject_guid": identity_safe_subject(rec),
+                "paths": [],
+                "status": "PROVENANCE_INCOMPLETE",
+                "edges": [],
+                "not_supply_chain": True,
+            })
+            if path not in inc["paths"]:
+                inc["paths"].append(path)
+            inc["edges"].append(edge)
+            return
+        edges_complete += 1
+        if edge.get("status") in {"DISPUTED", "EXPIRED", "SUPERSEDED"}:
+            edges_disputed += 1
             return
         row = scored.setdefault(rec["symbol"], {
             "symbol": rec["symbol"],
@@ -117,14 +210,14 @@ def impact_candidates(
             "score": 0.0,
             "why_included": [],
             "edges": [],
+            "status": "PROVENANCE_COMPLETE",
             "not_supply_chain": True,
         })
         if path not in row["paths"]:
             row["paths"].append(path)
-            row["why_included"].append(f"path={path}")
+            row["why_included"].append(f"path={path};provenance_complete")
         row["score"] = round(row["score"] + _score(rec, path=path, materiality=materiality), 4)
-        edge = _edge_for_path(origin_profile, path)
-        if edge and edge.get("relationship_guid") not in {e.get("relationship_guid") for e in row["edges"]}:
+        if edge.get("relationship_guid") not in {e.get("relationship_guid") for e in row["edges"]}:
             row["edges"].append(edge)
 
     for sym in (get_related_by_industry(manifest, origin_symbol).get("related_symbols") or []):
@@ -134,10 +227,11 @@ def impact_candidates(
     for sym in (get_related_by_catalyst(manifest, origin_symbol).get("related_symbols") or []):
         add(sym, "catalyst")
         add(sym, "mention")
-    for edge in sourced_economic or []:
-        if edge.get("kind") in {"peer", "competitor", "customer", "supplier"} and edge.get("evidence"):
-            add(str(edge.get("symbol")), "sourced_economic")
+    for econ in sourced_economic or []:
+        if econ.get("kind") in {"peer", "competitor", "customer", "supplier"} and econ.get("evidence"):
+            add(str(econ.get("symbol")), "sourced_economic")
 
+    used = edges_complete + edges_incomplete
     cap = max(1, int(max_n))
     ranked_all = sorted(scored.values(), key=lambda r: (-r["score"], r["symbol"]))
     kept = ranked_all[:cap]
@@ -145,6 +239,17 @@ def impact_candidates(
         {"symbol": r["symbol"], "score": r["score"], "paths": r["paths"], "why_excluded": "RANK_BELOW_CUTOFF"}
         for r in ranked_all[cap:cap + 20]
     ]
+    coverage = {
+        "securities_in_universe": manifest.get("canonical_universe_count"),
+        "graph_profiled_securities": sum(1 for r in (manifest.get("securities") or []) if "GRAPH_PROFILE" in (r.get("membership_reasons") or [])),
+        "identity_resolved_securities": sum(1 for r in (manifest.get("securities") or []) if r.get("security_guid")),
+        "edges_total": used,
+        "fully_provenance_complete_edges": edges_complete,
+        "candidate_incomplete_edges": edges_incomplete,
+        "disputed_edges": edges_disputed,
+        "expired_superseded_edges": 0,
+        "provenance_complete_ratio": round(edges_complete / used, 4) if used else None,
+    }
     return {
         "schema": SCHEMA,
         "evidence_class": cls,
@@ -157,11 +262,14 @@ def impact_candidates(
         },
         "starting_evidence_artifact": artifact,
         "candidates": kept,
+        "incomplete_candidates": list(incomplete.values())[:20],
         "excluded_sample": excluded,
         "related_n": len(ranked_all),
         "n": len(kept),
         "canonical_universe_count": manifest.get("canonical_universe_count"),
         "truncated": len(ranked_all) > len(kept),
+        "provenance_coverage": coverage,
+        "silent_incomplete_edges_used_for_score": False,
         "auto_research_entire_universe": False,
         "not_supply_chain_from_shared_sector": True,
         "canonical_contract": manifest.get("schema"),

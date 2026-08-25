@@ -302,7 +302,7 @@ def collect_live_sources(*, root: Path | str | None = None, top_rank_n: int = 20
            WHERE status='active' AND symbol IS NOT NULL""")]
     symbol_profiles = [dict(r) for r in q(
         """SELECT DISTINCT ON (symbol) symbol, sector, industry, description_1s,
-                  instrument_type, quote_type, source
+                  instrument_type, quote_type, source, updated_at
            FROM symbol_profiles ORDER BY symbol""")]
     scope_s3 = {str(dict(r).get("symbol") or "").upper() for r in q(
         """SELECT DISTINCT UPPER(symbol) AS symbol FROM watchlist_items
@@ -483,6 +483,10 @@ def build_universe(*, sources: dict[str, Any], as_of: str | None = None, pin: st
                 rec["company"] = row.get("company") or row.get("description_1s")
             if not rec.get("classification"):
                 rec["classification"] = row.get("instrument_type") or row.get("quote_type")
+            if row.get("source") and not rec.get("classification_source"):
+                rec["classification_source"] = row.get("source")
+            if row.get("updated_at") and not rec.get("classification_observed_at"):
+                rec["classification_observed_at"] = str(row.get("updated_at"))
             if row.get("cik"):
                 rec["cik"] = row.get("cik")
             ids = rec.get("identifiers") if isinstance(rec.get("identifiers"), dict) else {}

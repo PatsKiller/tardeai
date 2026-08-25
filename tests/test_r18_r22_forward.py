@@ -24,10 +24,14 @@ def _manifest():
     return build_universe(sources={
         "holdings": ["NOC", "RTX"],
         "symbol_profiles": [
-            {"symbol": "NOC", "sector": "Industrials", "industry": "Aerospace", "company": "Northrop"},
-            {"symbol": "RTX", "sector": "Industrials", "industry": "Aerospace", "company": "RTX Corp"},
-            {"symbol": "LMT", "sector": "Industrials", "industry": "Aerospace", "company": "Lockheed"},
-            {"symbol": "AAPL", "sector": "Technology", "industry": "Consumer Electronics", "company": "Apple"},
+            {"symbol": "NOC", "sector": "Industrials", "industry": "Aerospace", "company": "Northrop",
+             "source": "yfinance", "updated_at": "2026-08-20T00:00:00+00:00"},
+            {"symbol": "RTX", "sector": "Industrials", "industry": "Aerospace", "company": "RTX Corp",
+             "source": "yfinance", "updated_at": "2026-08-20T00:00:00+00:00"},
+            {"symbol": "LMT", "sector": "Industrials", "industry": "Aerospace", "company": "Lockheed",
+             "source": "yfinance", "updated_at": "2026-08-20T00:00:00+00:00"},
+            {"symbol": "AAPL", "sector": "Technology", "industry": "Consumer Electronics", "company": "Apple",
+             "source": "yfinance", "updated_at": "2026-08-20T00:00:00+00:00"},
         ],
         "graph_profiles": [
             {"symbol": "NOC", "catalyst_guids": ["cat-e"], "security_guid": "sec-noc"},

@@ -1,0 +1,110 @@
+{
+  "schema": "R19R20HardeningReceipt@v1",
+  "evidence_class": "HISTORICAL_REPLAY",
+  "spine_counts": {
+    "DETERMINISTICALLY_JOINABLE": 90,
+    "CANDIDATE_JOIN": 911,
+    "UNRESOLVED_WITH_REASON": 43,
+    "scored_learning_eligible": 90
+  },
+  "unresolved_reasons": {
+    "observation_decision_id_not_in_checkpoints": 25,
+    "checkpoint_without_matching_observation": 18
+  },
+  "r19_attempt": {
+    "status": "NO_HYPOTHESIS_EARNED_REVIEW_READY",
+    "reason": "no_temporal_holdout_in_deterministically_joinable_set",
+    "eligible_n": 90,
+    "unique_timestamps": 1,
+    "train_n": null,
+    "holdout_n": null
+  },
+  "r20_coverage": {
+    "securities_in_universe": 5409,
+    "graph_profiled_securities": 120,
+    "identity_resolved_securities": 2774,
+    "edges_total": 491,
+    "fully_provenance_complete_edges": 407,
+    "candidate_incomplete_edges": 84,
+    "disputed_edges": 0,
+    "expired_superseded_edges": 0,
+    "provenance_complete_ratio": 0.8289
+  },
+  "r20_candidates": [
+    {
+      "symbol": "RTX",
+      "paths": [
+        "industry",
+        "sector"
+      ],
+      "status": "PROVENANCE_COMPLETE",
+      "score": 0.594
+    },
+    {
+      "symbol": "SPCX",
+      "paths": [
+        "industry",
+        "sector"
+      ],
+      "status": "PROVENANCE_COMPLETE",
+      "score": 0.594
+    },
+    {
+      "symbol": "ACHR",
+      "paths": [
+        "industry",
+        "sector"
+      ],
+      "status": "PROVENANCE_COMPLETE",
+      "score": 0.297
+    },
+    {
+      "symbol": "AVAV",
+      "paths": [
+        "industry",
+        "sector"
+      ],
+      "status": "PROVENANCE_COMPLETE",
+      "score": 0.297
+    },
+    {
+      "symbol": "AVEX",
+      "paths": [
+        "industry",
+        "sector"
+      ],
+      "status": "PROVENANCE_COMPLETE",
+      "score": 0.297
+    },
+    {
+      "symbol": "AXON",
+      "paths": [
+        "industry",
+        "sector"
+      ],
+      "status": "PROVENANCE_COMPLETE",
+      "score": 0.297
+    },
+    {
+      "symbol": "BWXT",
+      "paths": [
+        "industry",
+        "sector"
+      ],
+      "status": "PROVENANCE_COMPLETE",
+      "score": 0.297
+    },
+    {
+      "symbol": "BYRN",
+      "paths": [
+        "industry",
+        "sector"
+      ],
+      "status": "PROVENANCE_COMPLETE",
+      "score": 0.297
+    }
+  ],
+  "r20_incomplete_n": 20,
+  "silent_incomplete": false,
+  "authority": "READ_ONLY_ADVISORY"
+}

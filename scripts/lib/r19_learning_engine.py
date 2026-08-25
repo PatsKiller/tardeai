@@ -280,3 +280,91 @@ def replay_learning_pipeline(
     blocked = advance_learning_stage(rec, "OPERATOR_AUTHORIZED")
     rec["self_authorize_blocked"] = blocked.get("ok") is False
     return rec
+
+
+def attempt_historical_review_ready(
+    root: Path | str,
+    *,
+    source_sha: str,
+    evidence_class: str,
+) -> dict[str, Any]:
+    """Honest pass over durable stores. Does not invent lineage or relax thresholds."""
+    from scripts.lib.r19_evidence_spine import project_joins
+    from scripts.lib.r19_experiment_registry import evaluate_registration, register_hypothesis
+
+    cls = require_evidence_class(evidence_class)
+    spine = project_joins(root)
+    eligible = [
+        r for r in spine.get("rows") or []
+        if r.get("join_class") == "DETERMINISTICALLY_JOINABLE"
+        and r.get("join_reason") == "self_identified_performance_event"
+    ]
+    # Temporal split of self-identified performance events.
+    times = sorted({r.get("decision_timestamp") for r in eligible if r.get("decision_timestamp")})
+    if len(times) < 2:
+        return {
+            "schema": SCHEMA,
+            "status": "NO_HYPOTHESIS_EARNED_REVIEW_READY",
+            "reason": "no_temporal_holdout_in_deterministically_joinable_set",
+            "spine_counts": spine.get("counts"),
+            "unresolved_reasons": spine.get("unresolved_reasons"),
+            "eligible_n": len(eligible),
+            "unique_timestamps": len(times),
+            "registry_unchanged": True,
+            "authority": AUTHORITY,
+            "evidence_class": cls,
+            "financial_action": False,
+        }
+    cut = times[len(times) // 2]
+    train = [r for r in eligible if str(r.get("decision_timestamp")) < str(cut)]
+    hold = [r for r in eligible if str(r.get("decision_timestamp")) >= str(cut)]
+    spec = {
+        "statement": "FAST policy objective_score holds out of sample on joinable performance events",
+        "source_lesson_ids": [],
+        "cohort_definition": {"join_reason": "self_identified_performance_event"},
+        "metric": "objective_score",
+        "expected_direction": "improve",
+        "minimum_sample_size": 8,
+        "training_cutoff": cut,
+        "holdout_start": cut,
+        "holdout_end": times[-1],
+        "acceptance_criteria": {"min_delta": 0.03},
+    }
+    # Attach objective_score from performance store via decision_id key — caller must load scores.
+    # Without scores on the projection rows, evaluation is insufficient.
+    if not any(r.get("objective_score") is not None for r in hold):
+        return {
+            "schema": SCHEMA,
+            "status": "NO_HYPOTHESIS_EARNED_REVIEW_READY",
+            "reason": "joinable_events_lack_scored_metric_on_projection",
+            "spine_counts": spine.get("counts"),
+            "train_n": len(train),
+            "holdout_n": len(hold),
+            "authority": AUTHORITY,
+            "evidence_class": cls,
+            "financial_action": False,
+        }
+    before = registry_fingerprint(root)
+    reg = register_hypothesis(
+        root, spec, evidence_class=cls, source_sha=source_sha,
+        registered_at=cut, mode="RECONSTRUCTED_AS_OF",
+    )
+    if not reg.get("ok"):
+        return {
+            "schema": SCHEMA,
+            "status": "NO_HYPOTHESIS_EARNED_REVIEW_READY",
+            "reason": reg.get("reason"),
+            "spine_counts": spine.get("counts"),
+            "authority": AUTHORITY,
+            "evidence_class": cls,
+        }
+    ev = evaluate_registration(reg["registration"], train_rows=train, holdout_rows=hold, spec=spec)
+    after = registry_fingerprint(root)
+    ev["spine_counts"] = spine.get("counts")
+    ev["unresolved_reasons"] = spine.get("unresolved_reasons")
+    ev["registry_hash_before"] = before
+    ev["registry_hash_after"] = after
+    ev["registry_unchanged"] = before == after
+    if ev.get("status") != "REVIEW_READY":
+        ev["status"] = "NO_HYPOTHESIS_EARNED_REVIEW_READY"
+    return ev
