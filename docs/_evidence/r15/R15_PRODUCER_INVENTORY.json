@@ -1,0 +1,704 @@
+{
+  "schema": "IntelligenceProducerInventory@v1",
+  "as_of": "2026-08-25T15:04:26+00:00",
+  "producers": [
+    {
+      "producer_id": "holdings",
+      "canonical_source": "data/portfolios/state/holdings.json",
+      "schema": "HoldingsSnapshot",
+      "entity_scope": "security",
+      "as_of": "2026-08-25T15:04:26+00:00",
+      "freshness": "LIVE_SOURCE_DECLARED",
+      "authority_class": "AUTHORITATIVE_FINANCIAL_TRUTH",
+      "subject_identity": "security",
+      "consumer_paths": [
+        "cio_intelligence_fabric.process_observation",
+        "GET /api/v3/cio/brain"
+      ],
+      "memory_eligible": false,
+      "research_trigger_eligible": true,
+      "current_wiring": "PARTIAL",
+      "missing_wiring": [
+        "OUTCOME_LINKED"
+      ],
+      "gui_is_producer": false
+    },
+    {
+      "producer_id": "positions",
+      "canonical_source": "scripts/lib/cio_office_state.py",
+      "schema": "PositionRow",
+      "entity_scope": "security",
+      "as_of": "2026-08-25T15:04:26+00:00",
+      "freshness": "LIVE_SOURCE_DECLARED",
+      "authority_class": "AUTHORITATIVE_FINANCIAL_TRUTH",
+      "subject_identity": "security",
+      "consumer_paths": [
+        "cio_intelligence_fabric.process_observation",
+        "GET /api/v3/cio/brain"
+      ],
+      "memory_eligible": false,
+      "research_trigger_eligible": true,
+      "current_wiring": "PARTIAL",
+      "missing_wiring": [
+        "OUTCOME_LINKED"
+      ],
+      "gui_is_producer": false
+    },
+    {
+      "producer_id": "cash",
+      "canonical_source": "scripts/lib/cio_cash_capital_v1.py",
+      "schema": "CashDeploymentSituation@v1",
+      "entity_scope": "portfolio",
+      "as_of": "2026-08-25T15:04:26+00:00",
+      "freshness": "LIVE_SOURCE_DECLARED",
+      "authority_class": "AUTHORITATIVE_FINANCIAL_TRUTH",
+      "subject_identity": "portfolio",
+      "consumer_paths": [
+        "cio_intelligence_fabric.process_observation",
+        "GET /api/v3/cio/brain"
+      ],
+      "memory_eligible": false,
+      "research_trigger_eligible": true,
+      "current_wiring": "PARTIAL",
+      "missing_wiring": [
+        "IDENTITY_RESOLVED",
+        "OUTCOME_LINKED"
+      ],
+      "gui_is_producer": false
+    },
+    {
+      "producer_id": "portfolio_allocation",
+      "canonical_source": "scripts/lib/cio_portfolio_state_v1.py",
+      "schema": "PortfolioState@v1",
+      "entity_scope": "portfolio",
+      "as_of": "2026-08-25T15:04:26+00:00",
+      "freshness": "LIVE_SOURCE_DECLARED",
+      "authority_class": "AUTHORITATIVE_FINANCIAL_TRUTH",
+      "subject_identity": "portfolio",
+      "consumer_paths": [
+        "cio_intelligence_fabric.process_observation",
+        "GET /api/v3/cio/brain"
+      ],
+      "memory_eligible": false,
+      "research_trigger_eligible": false,
+      "current_wiring": "PARTIAL",
+      "missing_wiring": [
+        "IDENTITY_RESOLVED",
+        "RESEARCH_TRIGGER_SUPPORTED",
+        "OUTCOME_LINKED"
+      ],
+      "gui_is_producer": false
+    },
+    {
+      "producer_id": "risk",
+      "canonical_source": "scripts/lib/cio_situation_state.py",
+      "schema": "CIOSituationState@v1",
+      "entity_scope": "portfolio",
+      "as_of": "2026-08-25T15:04:26+00:00",
+      "freshness": "LIVE_SOURCE_DECLARED",
+      "authority_class": "DETERMINISTIC_POLICY",
+      "subject_identity": "portfolio",
+      "consumer_paths": [
+        "cio_intelligence_fabric.process_observation",
+        "GET /api/v3/cio/brain"
+      ],
+      "memory_eligible": false,
+      "research_trigger_eligible": true,
+      "current_wiring": "PARTIAL",
+      "missing_wiring": [
+        "IDENTITY_RESOLVED",
+        "CONTEXT_ENVELOPE_SUPPORTED",
+        "OUTCOME_LINKED"
+      ],
+      "gui_is_producer": false
+    },
+    {
+      "producer_id": "stop_advisory",
+      "canonical_source": "scripts/lib/cio_advisory_synthesis.py",
+      "schema": "AdvisoryStopState",
+      "entity_scope": "security",
+      "as_of": "2026-08-25T15:04:26+00:00",
+      "freshness": "LIVE_SOURCE_DECLARED",
+      "authority_class": "READ_ONLY_ADVISORY",
+      "subject_identity": "security",
+      "consumer_paths": [
+        "cio_intelligence_fabric.process_observation",
+        "GET /api/v3/cio/brain"
+      ],
+      "memory_eligible": false,
+      "research_trigger_eligible": true,
+      "current_wiring": "PARTIAL",
+      "missing_wiring": [
+        "CONTEXT_ENVELOPE_SUPPORTED",
+        "GUI_VISIBLE",
+        "OUTCOME_LINKED"
+      ],
+      "gui_is_producer": false
+    },
+    {
+      "producer_id": "watch_reentry",
+      "canonical_source": "scripts/lib/cio_office_state.py",
+      "schema": "ReentryClassification",
+      "entity_scope": "security",
+      "as_of": "2026-08-25T15:04:26+00:00",
+      "freshness": "LIVE_SOURCE_DECLARED",
+      "authority_class": "READ_ONLY_ADVISORY",
+      "subject_identity": "security",
+      "consumer_paths": [
+        "cio_intelligence_fabric.process_observation",
+        "GET /api/v3/cio/brain"
+      ],
+      "memory_eligible": false,
+      "research_trigger_eligible": true,
+      "current_wiring": "PARTIAL",
+      "missing_wiring": [
+        "CONTEXT_ENVELOPE_SUPPORTED",
+        "GUI_VISIBLE",
+        "OUTCOME_LINKED"
+      ],
+      "gui_is_producer": false
+    },
+    {
+      "producer_id": "symbol_thesis",
+      "canonical_source": "data/cio/cio_theses.jsonl",
+      "schema": "SymbolThesis",
+      "entity_scope": "security",
+      "as_of": "2026-08-25T15:04:26+00:00",
+      "freshness": "LIVE_SOURCE_DECLARED",
+      "authority_class": "DURABLE_INVESTMENT_BELIEF",
+      "subject_identity": "security",
+      "consumer_paths": [
+        "cio_intelligence_fabric.process_observation",
+        "GET /api/v3/cio/brain"
+      ],
+      "memory_eligible": true,
+      "research_trigger_eligible": true,
+      "current_wiring": "FULL",
+      "missing_wiring": [],
+      "gui_is_producer": false
+    },
+    {
+      "producer_id": "portfolio_thesis",
+      "canonical_source": "scripts/lib/cio_portfolio_thesis_v1.py",
+      "schema": "PortfolioThesis@v1",
+      "entity_scope": "portfolio",
+      "as_of": "2026-08-25T15:04:26+00:00",
+      "freshness": "LIVE_SOURCE_DECLARED",
+      "authority_class": "DURABLE_INVESTMENT_BELIEF",
+      "subject_identity": "portfolio",
+      "consumer_paths": [
+        "cio_intelligence_fabric.process_observation",
+        "GET /api/v3/cio/brain"
+      ],
+      "memory_eligible": true,
+      "research_trigger_eligible": false,
+      "current_wiring": "PARTIAL",
+      "missing_wiring": [
+        "IDENTITY_RESOLVED",
+        "RESEARCH_TRIGGER_SUPPORTED"
+      ],
+      "gui_is_producer": false
+    },
+    {
+      "producer_id": "sector_rotation",
+      "canonical_source": "scripts/lib/cio_sector_opportunity.py",
+      "schema": "SectorOpportunity",
+      "entity_scope": "sector",
+      "as_of": "2026-08-25T15:04:26+00:00",
+      "freshness": "LIVE_SOURCE_DECLARED",
+      "authority_class": "RESEARCH_CONTEXT",
+      "subject_identity": "sector",
+      "consumer_paths": [
+        "cio_intelligence_fabric.process_observation",
+        "GET /api/v3/cio/brain"
+      ],
+      "memory_eligible": true,
+      "research_trigger_eligible": true,
+      "current_wiring": "PARTIAL",
+      "missing_wiring": [
+        "PERSISTENT_STATE_SUPPORTED",
+        "CONTEXT_ENVELOPE_SUPPORTED",
+        "GUI_VISIBLE",
+        "RESEARCH_TRIGGER_SUPPORTED",
+        "OUTCOME_LINKED"
+      ],
+      "gui_is_producer": false
+    },
+    {
+      "producer_id": "industry",
+      "canonical_source": "scripts/lib/industry_momentum.py",
+      "schema": "IndustryMomentum",
+      "entity_scope": "industry",
+      "as_of": "2026-08-25T15:04:26+00:00",
+      "freshness": "LIVE_SOURCE_DECLARED",
+      "authority_class": "RESEARCH_CONTEXT",
+      "subject_identity": "industry",
+      "consumer_paths": [
+        "cio_intelligence_fabric.process_observation",
+        "GET /api/v3/cio/brain"
+      ],
+      "memory_eligible": true,
+      "research_trigger_eligible": true,
+      "current_wiring": "PARTIAL",
+      "missing_wiring": [
+        "PERSISTENT_STATE_SUPPORTED",
+        "CONTEXT_ENVELOPE_SUPPORTED",
+        "GUI_VISIBLE",
+        "RESEARCH_TRIGGER_SUPPORTED",
+        "OUTCOME_LINKED"
+      ],
+      "gui_is_producer": false
+    },
+    {
+      "producer_id": "macro_regime",
+      "canonical_source": "scripts/lib/cio_market_context_state.py",
+      "schema": "MarketContextState@v1",
+      "entity_scope": "macro",
+      "as_of": "2026-08-25T15:04:26+00:00",
+      "freshness": "LIVE_SOURCE_DECLARED",
+      "authority_class": "RESEARCH_CONTEXT",
+      "subject_identity": "macro",
+      "consumer_paths": [
+        "cio_intelligence_fabric.process_observation",
+        "GET /api/v3/cio/brain"
+      ],
+      "memory_eligible": true,
+      "research_trigger_eligible": true,
+      "current_wiring": "PARTIAL",
+      "missing_wiring": [
+        "IDENTITY_RESOLVED",
+        "RESEARCH_TRIGGER_SUPPORTED",
+        "OUTCOME_LINKED"
+      ],
+      "gui_is_producer": false
+    },
+    {
+      "producer_id": "breadth",
+      "canonical_source": "scripts/lib/cio_market_context_state.py",
+      "schema": "MarketContextState@v1",
+      "entity_scope": "macro",
+      "as_of": "2026-08-25T15:04:26+00:00",
+      "freshness": "LIVE_SOURCE_DECLARED",
+      "authority_class": "RESEARCH_CONTEXT",
+      "subject_identity": "macro",
+      "consumer_paths": [
+        "cio_intelligence_fabric.process_observation",
+        "GET /api/v3/cio/brain"
+      ],
+      "memory_eligible": false,
+      "research_trigger_eligible": false,
+      "current_wiring": "PARTIAL",
+      "missing_wiring": [
+        "IDENTITY_RESOLVED",
+        "RESEARCH_TRIGGER_SUPPORTED",
+        "OUTCOME_LINKED"
+      ],
+      "gui_is_producer": false
+    },
+    {
+      "producer_id": "rates",
+      "canonical_source": "scripts/lib/cio_market_context_state.py",
+      "schema": "MarketContextState@v1",
+      "entity_scope": "macro",
+      "as_of": "2026-08-25T15:04:26+00:00",
+      "freshness": "LIVE_SOURCE_DECLARED",
+      "authority_class": "RESEARCH_CONTEXT",
+      "subject_identity": "macro",
+      "consumer_paths": [
+        "cio_intelligence_fabric.process_observation",
+        "GET /api/v3/cio/brain"
+      ],
+      "memory_eligible": false,
+      "research_trigger_eligible": false,
+      "current_wiring": "PARTIAL",
+      "missing_wiring": [
+        "IDENTITY_RESOLVED",
+        "RESEARCH_TRIGGER_SUPPORTED",
+        "OUTCOME_LINKED"
+      ],
+      "gui_is_producer": false
+    },
+    {
+      "producer_id": "volatility",
+      "canonical_source": "scripts/lib/cio_market_context_state.py",
+      "schema": "MarketContextState@v1",
+      "entity_scope": "macro",
+      "as_of": "2026-08-25T15:04:26+00:00",
+      "freshness": "LIVE_SOURCE_DECLARED",
+      "authority_class": "RESEARCH_CONTEXT",
+      "subject_identity": "macro",
+      "consumer_paths": [
+        "cio_intelligence_fabric.process_observation",
+        "GET /api/v3/cio/brain"
+      ],
+      "memory_eligible": false,
+      "research_trigger_eligible": false,
+      "current_wiring": "PARTIAL",
+      "missing_wiring": [
+        "IDENTITY_RESOLVED",
+        "RESEARCH_TRIGGER_SUPPORTED",
+        "OUTCOME_LINKED"
+      ],
+      "gui_is_producer": false
+    },
+    {
+      "producer_id": "seasonality",
+      "canonical_source": "scripts/lib/cio_seasonality_state.py",
+      "schema": "SeasonalityState@v1",
+      "entity_scope": "calendar",
+      "as_of": "2026-08-25T15:04:26+00:00",
+      "freshness": "LIVE_SOURCE_DECLARED",
+      "authority_class": "RESEARCH_CONTEXT",
+      "subject_identity": "calendar",
+      "consumer_paths": [
+        "cio_intelligence_fabric.process_observation",
+        "GET /api/v3/cio/brain"
+      ],
+      "memory_eligible": true,
+      "research_trigger_eligible": false,
+      "current_wiring": "PARTIAL",
+      "missing_wiring": [
+        "IDENTITY_RESOLVED",
+        "RESEARCH_TRIGGER_SUPPORTED",
+        "OUTCOME_LINKED"
+      ],
+      "gui_is_producer": false
+    },
+    {
+      "producer_id": "catalysts",
+      "canonical_source": "scripts/lib/catalyst_domain.py",
+      "schema": "CatalystEvent",
+      "entity_scope": "catalyst",
+      "as_of": "2026-08-25T15:04:26+00:00",
+      "freshness": "LIVE_SOURCE_DECLARED",
+      "authority_class": "RESEARCH_CONTEXT",
+      "subject_identity": "catalyst",
+      "consumer_paths": [
+        "cio_intelligence_fabric.process_observation",
+        "GET /api/v3/cio/brain"
+      ],
+      "memory_eligible": true,
+      "research_trigger_eligible": true,
+      "current_wiring": "PARTIAL",
+      "missing_wiring": [
+        "GUI_VISIBLE",
+        "OUTCOME_LINKED"
+      ],
+      "gui_is_producer": false
+    },
+    {
+      "producer_id": "earnings",
+      "canonical_source": "scripts/lib/catalyst_domain.py",
+      "schema": "CatalystEvent",
+      "entity_scope": "catalyst",
+      "as_of": "2026-08-25T15:04:26+00:00",
+      "freshness": "LIVE_SOURCE_DECLARED",
+      "authority_class": "RESEARCH_CONTEXT",
+      "subject_identity": "catalyst",
+      "consumer_paths": [
+        "cio_intelligence_fabric.process_observation",
+        "GET /api/v3/cio/brain"
+      ],
+      "memory_eligible": true,
+      "research_trigger_eligible": true,
+      "current_wiring": "PARTIAL",
+      "missing_wiring": [
+        "GUI_VISIBLE",
+        "OUTCOME_LINKED"
+      ],
+      "gui_is_producer": false
+    },
+    {
+      "producer_id": "sec_primary",
+      "canonical_source": "hermes_research_intelligence",
+      "schema": "HermesResearchRow",
+      "entity_scope": "security",
+      "as_of": "2026-08-25T15:04:26+00:00",
+      "freshness": "LIVE_SOURCE_DECLARED",
+      "authority_class": "RESEARCH_CONTEXT",
+      "subject_identity": "security",
+      "consumer_paths": [
+        "cio_intelligence_fabric.process_observation",
+        "GET /api/v3/cio/brain"
+      ],
+      "memory_eligible": true,
+      "research_trigger_eligible": true,
+      "current_wiring": "PARTIAL",
+      "missing_wiring": [
+        "CONTEXT_ENVELOPE_SUPPORTED",
+        "GUI_VISIBLE",
+        "OUTCOME_LINKED"
+      ],
+      "gui_is_producer": false
+    },
+    {
+      "producer_id": "news",
+      "canonical_source": "scripts/lib/free_first_circulation.py",
+      "schema": "StructuredEvidence",
+      "entity_scope": "security",
+      "as_of": "2026-08-25T15:04:26+00:00",
+      "freshness": "LIVE_SOURCE_DECLARED",
+      "authority_class": "RESEARCH_CONTEXT",
+      "subject_identity": "security",
+      "consumer_paths": [
+        "cio_intelligence_fabric.process_observation",
+        "GET /api/v3/cio/brain"
+      ],
+      "memory_eligible": true,
+      "research_trigger_eligible": true,
+      "current_wiring": "PARTIAL",
+      "missing_wiring": [
+        "CONTEXT_ENVELOPE_SUPPORTED",
+        "GUI_VISIBLE",
+        "OUTCOME_LINKED"
+      ],
+      "gui_is_producer": false
+    },
+    {
+      "producer_id": "hermes_research",
+      "canonical_source": "data/cio/hermes_research_results.jsonl",
+      "schema": "HermesResearchResult",
+      "entity_scope": "security",
+      "as_of": "2026-08-25T15:04:26+00:00",
+      "freshness": "LIVE_SOURCE_DECLARED",
+      "authority_class": "RESEARCH_CONTEXT",
+      "subject_identity": "security",
+      "consumer_paths": [
+        "cio_intelligence_fabric.process_observation",
+        "GET /api/v3/cio/brain"
+      ],
+      "memory_eligible": true,
+      "research_trigger_eligible": true,
+      "current_wiring": "FULL",
+      "missing_wiring": [],
+      "gui_is_producer": false
+    },
+    {
+      "producer_id": "rag",
+      "canonical_source": "scripts/lib/artifact_embed.py",
+      "schema": "TickerResearchArtifact@v1",
+      "entity_scope": "security",
+      "as_of": "2026-08-25T15:04:26+00:00",
+      "freshness": "LIVE_SOURCE_DECLARED",
+      "authority_class": "RESEARCH_CONTEXT",
+      "subject_identity": "security",
+      "consumer_paths": [
+        "cio_intelligence_fabric.process_observation",
+        "GET /api/v3/cio/brain"
+      ],
+      "memory_eligible": true,
+      "research_trigger_eligible": true,
+      "current_wiring": "PARTIAL",
+      "missing_wiring": [
+        "GUI_VISIBLE",
+        "OUTCOME_LINKED"
+      ],
+      "gui_is_producer": false
+    },
+    {
+      "producer_id": "operator_policy",
+      "canonical_source": "scripts/lib/cio_operator_investment_policy.py",
+      "schema": "OperatorInvestmentPolicy@v1",
+      "entity_scope": "portfolio",
+      "as_of": "2026-08-25T15:04:26+00:00",
+      "freshness": "LIVE_SOURCE_DECLARED",
+      "authority_class": "DETERMINISTIC_POLICY",
+      "subject_identity": "portfolio",
+      "consumer_paths": [
+        "cio_intelligence_fabric.process_observation",
+        "GET /api/v3/cio/brain"
+      ],
+      "memory_eligible": false,
+      "research_trigger_eligible": false,
+      "current_wiring": "PARTIAL",
+      "missing_wiring": [
+        "IDENTITY_RESOLVED",
+        "RESEARCH_TRIGGER_SUPPORTED",
+        "OUTCOME_LINKED"
+      ],
+      "gui_is_producer": false
+    },
+    {
+      "producer_id": "operator_feedback",
+      "canonical_source": "data/cio/operator_ticker_feedback.jsonl",
+      "schema": "OperatorTickerFeedback@v1",
+      "entity_scope": "security",
+      "as_of": "2026-08-25T15:04:26+00:00",
+      "freshness": "LIVE_SOURCE_DECLARED",
+      "authority_class": "OPERATOR_CONTEXT",
+      "subject_identity": "security",
+      "consumer_paths": [
+        "cio_intelligence_fabric.process_observation",
+        "GET /api/v3/cio/brain"
+      ],
+      "memory_eligible": true,
+      "research_trigger_eligible": true,
+      "current_wiring": "FULL",
+      "missing_wiring": [],
+      "gui_is_producer": false
+    },
+    {
+      "producer_id": "notifications",
+      "canonical_source": "scripts/lib/cio_notification_signal.py",
+      "schema": "NotificationDecision",
+      "entity_scope": "portfolio",
+      "as_of": "2026-08-25T15:04:26+00:00",
+      "freshness": "LIVE_SOURCE_DECLARED",
+      "authority_class": "ORCHESTRATION",
+      "subject_identity": "portfolio",
+      "consumer_paths": [
+        "cio_intelligence_fabric.process_observation",
+        "GET /api/v3/cio/brain"
+      ],
+      "memory_eligible": false,
+      "research_trigger_eligible": false,
+      "current_wiring": "PARTIAL",
+      "missing_wiring": [
+        "IDENTITY_RESOLVED",
+        "CONTEXT_ENVELOPE_SUPPORTED",
+        "RESEARCH_TRIGGER_SUPPORTED"
+      ],
+      "gui_is_producer": false
+    },
+    {
+      "producer_id": "specialist_artifacts",
+      "canonical_source": "scripts/lib/cio_r13_institution.py",
+      "schema": "SpecialistArtifact@v1",
+      "entity_scope": "security",
+      "as_of": "2026-08-25T15:04:26+00:00",
+      "freshness": "LIVE_SOURCE_DECLARED",
+      "authority_class": "RESEARCH_CONTEXT",
+      "subject_identity": "security",
+      "consumer_paths": [
+        "cio_intelligence_fabric.process_observation",
+        "GET /api/v3/cio/brain"
+      ],
+      "memory_eligible": true,
+      "research_trigger_eligible": false,
+      "current_wiring": "PARTIAL",
+      "missing_wiring": [
+        "MATERIALITY_SUPPORTED",
+        "CONTEXT_ENVELOPE_SUPPORTED",
+        "GUI_VISIBLE",
+        "RESEARCH_TRIGGER_SUPPORTED"
+      ],
+      "gui_is_producer": false
+    },
+    {
+      "producer_id": "action_ledger",
+      "canonical_source": "scripts/lib/cio_action_ledger.py",
+      "schema": "CIOAction",
+      "entity_scope": "portfolio",
+      "as_of": "2026-08-25T15:04:26+00:00",
+      "freshness": "LIVE_SOURCE_DECLARED",
+      "authority_class": "ORCHESTRATION",
+      "subject_identity": "portfolio",
+      "consumer_paths": [
+        "cio_intelligence_fabric.process_observation",
+        "GET /api/v3/cio/brain"
+      ],
+      "memory_eligible": false,
+      "research_trigger_eligible": false,
+      "current_wiring": "PARTIAL",
+      "missing_wiring": [
+        "IDENTITY_RESOLVED",
+        "CONTEXT_ENVELOPE_SUPPORTED",
+        "RESEARCH_TRIGGER_SUPPORTED"
+      ],
+      "gui_is_producer": false
+    },
+    {
+      "producer_id": "plans",
+      "canonical_source": "scripts/lib/cio_plans.py",
+      "schema": "CIOPlan",
+      "entity_scope": "security",
+      "as_of": "2026-08-25T15:04:26+00:00",
+      "freshness": "LIVE_SOURCE_DECLARED",
+      "authority_class": "DURABLE_INVESTMENT_BELIEF",
+      "subject_identity": "security",
+      "consumer_paths": [
+        "cio_intelligence_fabric.process_observation",
+        "GET /api/v3/cio/brain"
+      ],
+      "memory_eligible": true,
+      "research_trigger_eligible": true,
+      "current_wiring": "PARTIAL",
+      "missing_wiring": [
+        "CONTEXT_ENVELOPE_SUPPORTED"
+      ],
+      "gui_is_producer": false
+    },
+    {
+      "producer_id": "research_challenges",
+      "canonical_source": "data/cio/hermes_challenge_queue.jsonl",
+      "schema": "HermesChallenge",
+      "entity_scope": "security",
+      "as_of": "2026-08-25T15:04:26+00:00",
+      "freshness": "LIVE_SOURCE_DECLARED",
+      "authority_class": "RESEARCH_CONTEXT",
+      "subject_identity": "security",
+      "consumer_paths": [
+        "cio_intelligence_fabric.process_observation",
+        "GET /api/v3/cio/brain"
+      ],
+      "memory_eligible": true,
+      "research_trigger_eligible": true,
+      "current_wiring": "PARTIAL",
+      "missing_wiring": [
+        "CONTEXT_ENVELOPE_SUPPORTED",
+        "GUI_VISIBLE",
+        "OUTCOME_LINKED"
+      ],
+      "gui_is_producer": false
+    },
+    {
+      "producer_id": "outcomes",
+      "canonical_source": "scripts/lib/cio_outcome_store.py",
+      "schema": "CIOOutcome",
+      "entity_scope": "decision",
+      "as_of": "2026-08-25T15:04:26+00:00",
+      "freshness": "LIVE_SOURCE_DECLARED",
+      "authority_class": "HISTORICAL_CONTEXT",
+      "subject_identity": "decision",
+      "consumer_paths": [
+        "cio_intelligence_fabric.process_observation",
+        "GET /api/v3/cio/brain"
+      ],
+      "memory_eligible": true,
+      "research_trigger_eligible": false,
+      "current_wiring": "PARTIAL",
+      "missing_wiring": [
+        "MATERIALITY_SUPPORTED",
+        "RESEARCH_TRIGGER_SUPPORTED"
+      ],
+      "gui_is_producer": false
+    },
+    {
+      "producer_id": "lessons",
+      "canonical_source": "scripts/lib/memory_consolidator.py",
+      "schema": "LessonCandidate@v1",
+      "entity_scope": "decision",
+      "as_of": "2026-08-25T15:04:26+00:00",
+      "freshness": "LIVE_SOURCE_DECLARED",
+      "authority_class": "HISTORICAL_CONTEXT",
+      "subject_identity": "decision",
+      "consumer_paths": [
+        "cio_intelligence_fabric.process_observation",
+        "GET /api/v3/cio/brain"
+      ],
+      "memory_eligible": true,
+      "research_trigger_eligible": false,
+      "current_wiring": "PARTIAL",
+      "missing_wiring": [
+        "MATERIALITY_SUPPORTED",
+        "RESEARCH_TRIGGER_SUPPORTED"
+      ],
+      "gui_is_producer": false
+    }
+  ],
+  "source_domains_total": 31,
+  "ui_is_producer": false,
+  "authority": "READ_ONLY_ADVISORY",
+  "memory_behavior_influence": 0,
+  "financial_action": false
+}

@@ -1,0 +1,17 @@
+{
+  "schema": "R15DeltaLifecycle@v1",
+  "contract": "IntelligenceDeltaReceipt@v1",
+  "materiality": [
+    "NO_CHANGE",
+    "NON_MATERIAL_CHANGE",
+    "MATERIAL_CHANGE",
+    "CONFLICT",
+    "STALE",
+    "DATA_UNAVAILABLE"
+  ],
+  "idempotent": true,
+  "second_portfolio_truth": false,
+  "forbidden_truth_keys_stripped": true,
+  "proven": "UNIT",
+  "authority": "READ_ONLY_ADVISORY"
+}

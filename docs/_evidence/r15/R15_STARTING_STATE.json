@@ -1,0 +1,69 @@
+{
+  "schema": "R15StartingState@v1",
+  "as_of": "2026-08-25T15:04:26+00:00",
+  "overall_maturity": 80,
+  "tests_passed_handoff": 440,
+  "tests_failed_handoff": 0,
+  "deployment_green": true,
+  "post_deploy_smoke": true,
+  "natural_timer_proven": true,
+  "same_brain_live": true,
+  "MEMORY_BEHAVIOR_INFLUENCE": 0,
+  "CIO_MATERIAL_FINANCIAL_NOTIFY_CANARY": "unset",
+  "cash_target_range_pct": "unconfirmed",
+  "protected_main_sha": "4d0859a5a18e5e64f9ebacae19f53c82e290a9d2",
+  "current_sha": "4d0859a5a18e5e64f9ebacae19f53c82e290a9d2",
+  "SOURCE_COMMIT": "4d0859a5a18e5e64f9ebacae19f53c82e290a9d2",
+  "exact_main": true,
+  "worktree_head": "4d0859a5a18e5e64f9ebacae19f53c82e290a9d2",
+  "r14a_receipts": [
+    "docs/_evidence/r14/R14A_DEPLOYMENT.json",
+    "docs/_evidence/r14/R14A_POST_DEPLOY_SMOKE.json",
+    "docs/_evidence/r14/R14A_NATURAL_CURRENT_PROOF.json",
+    "docs/_evidence/r14/R14A_SAME_BRAIN_LIVE.json"
+  ],
+  "timers_excerpt": "Tue 2026-08-25 11:06:34 EDT        2min 7s Tue 2026-08-25 10:56:34 EDT      7min ago tradeai-cio-material-scan.timer               tradeai-cio-material-scan.service\nTue 2026-08-25 11:15:37 EDT          11min Tue 2026-08-25 11:00:26 EDT   4min 0s ago tradeai-hermes-cio-worker.timer               tradeai-hermes-cio-worker.service\nTue 2026-08-25 11:23:07 EDT          18min Tue 2026-08-25 10:24:46 EDT     39min ago tradeai-free-first-circulation.timer          tradeai-free-first-circulation.service\nWed 2026-08-26 06:20:00 EDT            19h Tue 2026-08-25 06:20:00 EDT  4h 44min ago tradeai-cio-memory-shadow-measure.timer       tradeai-cio-memory-shadow-measure.service\n",
+  "operator_profile": "ABSENT",
+  "policy_status_live": "POLICY_REQUIRED",
+  "brain_api": {
+    "port": 7777,
+    "schema": "CIOBrainSnapshot@v1",
+    "state": "BLOCKED",
+    "memory_behavior_influence": 0
+  },
+  "cash_live": {
+    "observed_cash_usd": 981234.82,
+    "cash_pct": 76.2699,
+    "note": "authoritative portfolio state, not memory"
+  },
+  "memory_stores": {
+    "ticker_research_state_rows": 120,
+    "hermes_curation_summary_rows": 120,
+    "research_gaps": 68,
+    "ticker_research_graph_rows": 2274,
+    "hermes_challenge_queue": 604,
+    "hermes_research_requests": 3330
+  },
+  "unresolved_security_guids": 17,
+  "free_first_last": {
+    "as_of": "2026-08-25T14:28:29+00:00",
+    "total_symbols": 120,
+    "fresh_no_change": 120,
+    "paid_dispatch_entered": 0,
+    "LLM_eligible_not_authorized": 0
+  },
+  "model_registry_policies": [
+    "FAST",
+    "FAST_THINK",
+    "PRO",
+    "PRO_THINK",
+    "PRO_MAX"
+  ],
+  "process_registry_count": 56,
+  "pr_505": {
+    "state": "OPEN",
+    "head": "cc0dd4f14c6b3eef03a3ab095ee6ba1f59fc69ca"
+  },
+  "authority": "READ_ONLY_ADVISORY",
+  "reality_wins": true
+}

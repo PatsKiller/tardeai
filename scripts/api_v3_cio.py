@@ -36,6 +36,8 @@ Routes:
   GET /api/v3/cio/brain/capital-plan — CashDeploymentSituation@v1 + CapitalDeploymentPlan@v1
   GET /api/v3/cio/brain/methodology — canon maturity + ratified-only methodology policy
   GET /api/v3/cio/brain/learning-review — feedback patterns, outcomes, weekly review
+  GET /api/v3/cio/brain/intelligence-lifecycle — projection of the persistent intelligence lifecycle
+  GET /api/v3/cio/brain/model-performance — observational task→model metrics (no self-promotion)
   POST /api/v3/cio/brain/feedback — linked operator feedback; no policy promotion
 """
 from __future__ import annotations
@@ -1933,6 +1935,80 @@ def get_policy_provenance_v1() -> dict[str, Any]:
     }
 
 
+def get_intelligence_lifecycle_v1(symbol: str | None = None) -> dict[str, Any]:
+    """GUI projection of the fabric. Not an ingestion bus."""
+    try:
+        from scripts.lib.cio_intelligence_fabric import (
+            coverage_matrix,
+            knowledge_gaps,
+            lifecycle_projection,
+            live_envelope_statuses,
+            producer_inventory,
+        )
+        from scripts.lib.cio_model_learning import model_selection_explanation
+        cov = coverage_matrix()
+        inv = producer_inventory()
+        env = live_envelope_statuses(PROJECT_ROOT)
+        projection = lifecycle_projection(
+            symbol=symbol or "PORTFOLIO",
+            unwired=list(cov.get("not_connected") or [])[:24],
+        )
+        gaps = knowledge_gaps(
+            envelope=env,
+            unresolved_identities=1,
+            model_samples=0,
+            outcomes=0,
+        )
+        return {
+            "ok": True,
+            "schema": "IntelligenceLifecycleProjection@v1",
+            "projection": projection,
+            "coverage": cov.get("counts"),
+            "unwired_providers": cov.get("not_connected"),
+            "knowledge_gaps": gaps,
+            "envelope": env,
+            "inventory_total": inv.get("source_domains_total"),
+            "model_reason": model_selection_explanation(
+                executed_policy="DETERMINISTIC",
+                requested_policy="DETERMINISTIC",
+                task_class="research_curation",
+            ),
+            "ingestion_bus": False,
+            "gui_cannot_self_promote": True,
+            "authority": AUTHORITY_ADVISORY,
+            "memory_behavior_influence": 0,
+            "financial_action": False,
+        }
+    except Exception as exc:
+        return {
+            "ok": False,
+            "error": type(exc).__name__,
+            "ingestion_bus": False,
+            "authority": AUTHORITY_ADVISORY,
+            "memory_behavior_influence": 0,
+        }
+
+
+def get_model_performance_v1() -> dict[str, Any]:
+    try:
+        from scripts.lib.cio_model_learning import TASK_COHORTS, DEFAULT_MIN_SAMPLES
+        return {
+            "ok": True,
+            "schema": "ModelTaskPerformanceView@v1",
+            "cohorts": list(TASK_COHORTS),
+            "min_samples": DEFAULT_MIN_SAMPLES,
+            "automatic_promotion": False,
+            "gui_cannot_self_promote": True,
+            "records": 0,
+            "note": "observational ledger; live samples accumulate after governed calls",
+            "authority": AUTHORITY_ADVISORY,
+            "memory_behavior_influence": 0,
+            "financial_action": False,
+        }
+    except Exception as exc:
+        return {"ok": False, "error": type(exc).__name__, "authority": AUTHORITY_ADVISORY}
+
+
 def get_cio_brain_v1() -> dict[str, Any]:
     """Build one derived operator projection from canonical versioned planes."""
     policy = get_operator_investment_policy()
@@ -2077,6 +2153,8 @@ def get_cio_brain_v1() -> dict[str, Any]:
         },
         "financial_action": False,
         "executable_order": None,
+        "intelligence_lifecycle": get_intelligence_lifecycle_v1(),
+        "model_performance": get_model_performance_v1(),
     }
 
 

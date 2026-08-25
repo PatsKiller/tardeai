@@ -28,7 +28,19 @@ except Exception:  # pragma: no cover
 
 AUTHORITY = "READ_ONLY_ADVISORY"
 SCHEMA = "CIOContextEnvelope@v2"
-AGENTS = ("hermes", "alex", "advisory", "telegram", "maria", "steph", "aegis", "weekly_cio_learning")
+AGENTS = (
+    "hermes",
+    "alex",
+    "advisory",
+    "telegram",
+    "maria",
+    "steph",
+    "guardian",
+    "ledger",
+    "command_center",
+    "aegis",
+    "weekly_cio_learning",
+)
 SECTIONS = (
     "OFFICE_TRUTH",
     "POLICY",

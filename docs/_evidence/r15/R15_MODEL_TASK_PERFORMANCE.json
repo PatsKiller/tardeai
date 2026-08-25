@@ -1,0 +1,20 @@
+{
+  "schema": "R15ModelTaskPerformance@v1",
+  "cohorts": [
+    "extraction",
+    "classification",
+    "research_curation",
+    "contradiction_reconciliation",
+    "risk_critique",
+    "tax_critique",
+    "portfolio_synthesis",
+    "operator_explanation",
+    "notification_rendering",
+    "deep_invalidation_review"
+  ],
+  "min_samples": 30,
+  "self_assessment_ignored": true,
+  "automatic_route_changes": 0,
+  "performance_records_live": 0,
+  "proven": "UNIT"
+}

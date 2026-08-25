@@ -1,0 +1,18 @@
+{
+  "schema": "R15GuiLifecycle@v1",
+  "testids": [
+    "cio-brain-intelligence-lifecycle",
+    "cio-brain-graph-context",
+    "cio-brain-curation-history",
+    "cio-brain-model-performance",
+    "cio-brain-unwired"
+  ],
+  "ingestion_bus": false,
+  "gui_cannot_self_promote": true,
+  "api": [
+    "/api/v3/cio/brain",
+    "/api/v3/cio/brain/intelligence-lifecycle",
+    "/api/v3/cio/brain/model-performance"
+  ],
+  "live_on_current": false
+}

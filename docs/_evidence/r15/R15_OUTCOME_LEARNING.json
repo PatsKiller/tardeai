@@ -1,0 +1,18 @@
+{
+  "schema": "R15OutcomeLearning@v1",
+  "axes": [
+    "direction",
+    "timing",
+    "risk",
+    "opportunity_cost",
+    "thesis_quality",
+    "evidence_quality",
+    "notification_quality",
+    "research_quality",
+    "model_efficiency"
+  ],
+  "one_trade_not_methodology": true,
+  "history_rewritten": false,
+  "MEMORY_BEHAVIOR_INFLUENCE": 0,
+  "proven": "UNIT"
+}
