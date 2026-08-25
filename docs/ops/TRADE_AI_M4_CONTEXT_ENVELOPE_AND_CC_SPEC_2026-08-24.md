@@ -1,8 +1,10 @@
-# M4 ContextEnvelope@v2 + Command Center spec (source)
+# M4 ContextEnvelope@v2 + Command Center spec
 
 **Date:** 2026-08-24  
-**Status:** SOURCE + TESTED. Not MERGED. Not LIVE. Full PR E UI is **not** implemented.  
+**Status:** SOURCE + TESTED + MERGED (#500) + DEPLOYED (`15ab2362`). Full PR E UI is **not** implemented.  
 **Authority:** `READ_ONLY_ADVISORY`
+
+Canonical ops write-up: `docs/ops/TRADE_AI_M4_CONTEXT_ENVELOPE_V2_2026-08-24.md`.
 
 ## Same-brain agents
 

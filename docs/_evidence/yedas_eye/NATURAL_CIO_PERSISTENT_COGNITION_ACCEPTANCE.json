@@ -1,11 +1,12 @@
 {
   "schema": "NaturalCIOPersistentCognitionAcceptance@v1",
   "authority": "READ_ONLY_ADVISORY",
-  "as_of": "2026-08-24T23:51:00+00:00",
-  "CURRENT": "0a0e19bf-main-exact-phase2-20260824-153802",
-  "source_sha": "0a0e19bf76e8566e6bf1741f121081d1b4ff3dd4",
+  "as_of": "2026-08-25T00:28:00+00:00",
+  "CURRENT": "15ab2362-main-exact-phase2-20260824-200105",
+  "source_sha": "15ab2362361cbd8e0ded3d0c2ce2b83f7e8bacc7",
   "pr497_merged_head": "069d11c48b8e29a5a72174c218bf932061e6c7d4",
-  "hermes_free_first": {
+  "pr497_merge": "0a0e19bf76e8566e6bf1741f121081d1b4ff3dd4",
+  "hermes_free_first_on_497": {
     "scheduler": "tradeai-free-first-circulation.timer",
     "OnCalendar": "*-*-* *:23:00 America/New_York",
     "LastTrigger": "2026-08-24 19:23:55 EDT",
@@ -19,23 +20,77 @@
     "new_material_curation": 0,
     "kinds": {"BASELINE_PROJECTION": 120},
     "versions": {"0": 120},
-    "manual_trigger": false
+    "manual_trigger": false,
+    "shape": "117/2/1/0/120/0"
   },
-  "alex_material_scan": {
-    "scheduler": "tradeai-agent-runtime@alex.timer",
-    "observed_after_deploy": true,
+  "hermes_free_first_on_15ab2362": {
+    "scheduler": "tradeai-free-first-circulation.timer",
+    "LastTrigger": "2026-08-24 20:23:47 EDT",
+    "finished": "2026-08-24 20:27:24 EDT",
+    "run_id": "019117db-e364-4668-a96f-a453f0f1bf16",
+    "source_sha": "15ab2362361cbd8e0ded3d0c2ce2b83f7e8bacc7",
+    "WorkingDirectory": "/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT",
+    "resolved_cwd": "15ab2362-main-exact-phase2-20260824-200105",
+    "exit": 0,
+    "Result": "success",
+    "fresh_no_change": 120,
+    "paid_dispatch_entered": 0,
+    "searx_queries": 0,
+    "LLM_eligible_not_authorized": 0,
+    "Flash_eligible_count": 0,
+    "total_symbols": 120,
+    "Hermes_resolved": 117,
+    "RAG_resolved": 2,
+    "structured_resolved": 1,
+    "kinds": {"BASELINE_PROJECTION": 120},
+    "manual_trigger": false,
+    "financial_action": false,
+    "memory_behavior_influence": 0
+  },
+  "hermes_cio_worker_on_15ab2362": {
+    "scheduler": "tradeai-hermes-cio-worker.timer",
+    "LastTrigger": "2026-08-24 20:15:46 EDT",
+    "claimed": 0,
+    "completed": 0,
+    "failed": 0,
+    "manual_trigger": false,
+    "note": "Prior 20:01:57 tick failed 209/STDOUT because release logs/ was missing; directory exists after promote. This tick succeeded with empty drain."
+  },
+  "alex_material_scan_on_15ab2362": {
+    "scheduler": "tradeai-cio-material-scan.timer",
+    "ticks": [
+      "2026-08-24 20:06:16 EDT",
+      "2026-08-24 20:26:16 EDT"
+    ],
+    "authority": "READ_ONLY_ADVISORY",
+    "dry_run": true,
     "symbol_example": "SCHD",
     "notification_sent": false,
     "financial_action": false,
     "cognition_pack_in_trace": false,
-    "note": "Natural wakes exist; DecisionPayload has SCHD but does not embed TickerResearchState pack (envelope flag not on that path)."
+    "manual_trigger": false,
+    "note": "Natural wakes exist; DecisionPayload has SCHD but does not embed TickerResearchState pack."
+  },
+  "telegram_cio": {
+    "unit": "tradeai-cio-telegram.service",
+    "restarted_read_only_at": "2026-08-24 20:08:24 EDT",
+    "cwd_before": "b935076f-main-exact-phase2-20260823-161632",
+    "cwd_after": "15ab2362-main-exact-phase2-20260824-200105",
+    "MEMORY_BEHAVIOR_INFLUENCE": 0
   },
   "same_brain_diagnostic": {
-    "loader": "cio_persistent_cognition.cognition_for_symbol",
+    "loader": "cio_persistent_cognition.cognition_for_symbol + cio_context_envelope_v2.same_brain",
+    "sha": "15ab2362361cbd8e0ded3d0c2ce2b83f7e8bacc7",
     "consistent": true,
     "paid_dispatch": 0,
-    "portfolio_call": "NO_PORTFOLIO_CHANGE"
+    "portfolio_call": "NO_PORTFOLIO_CHANGE",
+    "PRSO_security_guid": null,
+    "identity_gap_not_fork": true,
+    "post_20_23_tick": true
   },
   "CIO_PERSISTENT_COGNITION_NATURALLY_PROVEN": false,
-  "HERMES_FREE_FIRST_NATURALLY_PROVEN_ON_497_SHA": true
+  "HERMES_FREE_FIRST_NATURALLY_PROVEN_ON_497_SHA": true,
+  "HERMES_FREE_FIRST_NATURALLY_PROVEN_ON_15AB2362": true,
+  "NATURAL_M4_HERMES_ON_15AB2362": true,
+  "NATURAL_M4_CIO_PACK_IN_TRACE": false
 }

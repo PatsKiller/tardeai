@@ -1,6 +1,6 @@
 {
   "schema": "YedasEyeMaturity@v1",
-  "as_of": "2026-08-24T15:30:00+00:00",
+  "as_of": "2026-08-25T00:11:00+00:00",
   "authority": "READ_ONLY_ADVISORY",
   "memory_behavior_influence": 0,
   "YEDAS_EYE_AUTHORIZED_TO_BEGIN": true,
@@ -21,20 +21,33 @@
     "watcher_false_negative": "paid_dispatch_entered=0 treated as missing"
   },
   "singleton": "SINGLETON_PROVEN",
-  "aif_classes": {"RESEARCH_POINTER": 345},
-  "cio_consumes_ticker_research_state": false,
+  "aif_classes": {
+    "RESEARCH_REFERENCE": 345,
+    "PROCEDURAL_HINT": 5,
+    "OPERATOR_EXPLICIT_PREFERENCE": 4
+  },
+  "cio_consumes_ticker_research_state": true,
+  "cio_pack_in_trace_naturally_proven": false,
   "postgres_shadow_applied": false,
-  "neo4j_decision": "INSUFFICIENT_DATA",
-  "vector_recommendation": "INSUFFICIENT_DATA",
+  "neo4j_decision": "POSTGRES_SUFFICIENT",
+  "vector_recommendation": "POSTGRES_PGVECTOR",
+  "pgmnemo_status": "MEASURED",
+  "storage_decision": "POSTGRES_PGVECTOR",
+  "provisional": false,
   "golden_cases_tested": 200,
-  "next_pr": "CIO consume TickerResearchState + BASELINE_PROJECTION (read-only)",
+  "scale_10k": "MEASURED",
+  "scale_100k": "NOT_RUN",
+  "protected_main": "15ab2362361cbd8e0ded3d0c2ce2b83f7e8bacc7",
+  "CURRENT": "15ab2362-main-exact-phase2-20260824-200105",
+  "next_pr": "M2 production shadow/parity/rollback design (separately gated); natural same-brain on 15ab2362",
   "maturity": {
     "before": 65,
     "after_M1": 68,
+    "after_R10_7": "PARTIAL_not_80plus",
     "baseline_L": "L5",
-    "bitemporal_L": "L3",
-    "semantic_memory_L": "L1",
-    "cross_agent_L": "L1",
-    "CIO_L": "L3_other_L1_ticker_intel"
+    "CIO_consumption_L": "L4_deployed_L5_pack_in_trace_pending",
+    "bitemporal_L": "L3_benchmarked",
+    "semantic_memory_L": "L3_source_test_merged",
+    "cross_agent_L": "L3_source_test_merged_deployed"
   }
 }

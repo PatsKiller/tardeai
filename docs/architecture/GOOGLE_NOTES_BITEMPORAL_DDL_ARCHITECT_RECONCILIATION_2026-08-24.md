@@ -13,7 +13,7 @@ Google Notes DDL is **design input only**. Isolated schema: `sql/r10_m2_isolated
 | Composite tenant FK `(tenant_id, identity_guid)` | **ACCEPTED** | RLS is defense in depth, not a substitute |
 | Hash unique UUID as logical dedupe | **REJECTED** | Unique `(tenant_id, canonical_key)` from semantic fields |
 | Reuse issuer/security/listing GUIDs | **ACCEPTED** | Columns on `memory_identity`; ticker remains alias |
-| Callers author `tx_from` | **REJECTED** | `write_fact_version()` assigns `clock_timestamp()` |
+| Callers author `tx_from` | **REJECTED** | `write_fact_version()` assigns **`statement_timestamp()`**; `version_seq` is the collision-safe order key. `clock_timestamp()` rejected as sole order (NTP/jitter). `transaction_timestamp()` rejected for multi-write txs. |
 | Direct historical DELETE by agents | **REJECTED** | Agent has no DELETE; tx close is interval shrink |
 | Mutable `row_kind=current` | **REJECTED** | `CURRENT := upper_inf(tx_period)` |
 | Universal overlap/continuity trigger | **REJECTED** | `PredicateTemporalPolicy@v1` |
@@ -31,7 +31,7 @@ Google Notes DDL is **design input only**. Isolated schema: `sql/r10_m2_isolated
 | Titan / 1024-d cloud embed | **REJECTED** | LOCAL_ONLY, model-agnostic `vector(768)` optional |
 | HNSW / 10× overfetch as architecture | **REJECTED** | Indexes created for measurement only |
 | Neo4j required | **REJECTED** unless Postgres fails graph queries | `POSTGRES_SUFFICIENT` this round |
-| pgmnemo as default | **MODIFIED** | v0.20.0 **MEASURED** isolated (ingest/BM25). Disqualified as *canonical fact store* (1024-d lessons, no security_guid spine). Winner remains POSTGRES_PGVECTOR. |
+| pgmnemo as default | **MODIFIED** | v0.20.0 **MEASURED** isolated (ingest/BM25). Not FORMALLY_DISQUALIFIED as an install; **not viable** as canonical MemoryFact@v2 store (1024-d lessons, no security_guid spine). Winner **POSTGRES_PGVECTOR** (`provisional=false`). |
 
 ## Isolated measurements (this host)
 
@@ -40,5 +40,7 @@ Google Notes DDL is **design input only**. Isolated schema: `sql/r10_m2_isolated
 - SINGLE_VALUED_CURRENT overlap rejected by exclusion
 - MULTI_VALUED opinions allowed
 - EXPLAIN: Index Scan on current/valid/tx queries
-- Storage decision remains **POSTGRES_PGVECTOR**
+- Storage decision remains **POSTGRES_PGVECTOR** (`provisional=false`; Lane C MEASURED)
+- Scale 10k MEASURED; 100k/1M NOT_RUN
+- Tx-time: `statement_timestamp()+version_seq`
 - Production SQL: **not applied**
