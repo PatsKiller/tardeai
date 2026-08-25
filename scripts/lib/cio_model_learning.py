@@ -317,7 +317,7 @@ def _cohort_from_producer(producer: str, lane: str, source: str) -> str:
         return "extraction"
     if "classif" in blob:
         return "classification"
-    if "invalid" in blob or "deep" in blob:
+    if "invalidation" in blob or "deep_review" in blob or "deep-review" in blob:
         return "deep_invalidation_review"
     if "portfolio" in blob or "thesis" in blob or "synthesis" in blob:
         return "portfolio_synthesis"
@@ -372,9 +372,11 @@ def mine_historical_performance(root: Path | str, *, limit: int = 400) -> dict[s
         base / "data/cio/cio_llm_enrich_log.jsonl",
         base / "data/cio/research_call_accounting.jsonl",
     ]
+    per_source = max(1, int(limit) // max(len(sources), 1))
     for path in sources:
         if not path.is_file():
             continue
+        taken = 0
         for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
             if not line.strip():
                 continue
@@ -387,8 +389,13 @@ def mine_historical_performance(root: Path | str, *, limit: int = 400) -> dict[s
             event = str(raw.get("event") or "")
             if path.name == "research_call_accounting.jsonl" and event not in {"COMPLETED", "ERROR", "SKIP_GATED"}:
                 continue
+            if path.name == "cio_prompt_evals.jsonl":
+                raw = dict(raw, source="operator_explanation", producer="cio_prompt_eval", prompt_version=raw.get("prompt_version") or "cio_alex_enrich")
+            elif path.name == "cio_llm_enrich_log.jsonl":
+                raw = dict(raw, source="portfolio_synthesis", producer="cio_llm_enrich")
             rows.append(historical_receipt_to_performance(raw, evidence_class="HISTORICAL_REPLAY"))
-            if len(rows) >= int(limit):
+            taken += 1
+            if taken >= per_source or len(rows) >= int(limit):
                 break
         if len(rows) >= int(limit):
             break
