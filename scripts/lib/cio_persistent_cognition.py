@@ -811,3 +811,140 @@ def cross_agent_row(root: Path | str, symbol: str, *, held: set[str] | None = No
         "telegram": telegram_fields(row),
         "consistent": True,
     }
+
+
+def cognition_refs_from_row(row: dict[str, Any]) -> dict[str, Any]:
+    """Bounded IDs/versions only — never the full cognition blob."""
+    refs = row.get("canonical_refs") or {}
+    watermark = row.get("evidence_watermark")
+    if isinstance(watermark, list):
+        watermark = {"count": len(watermark), "head": list(watermark)[:5]}
+    gaps = row.get("open_gaps") or refs.get("gap_ids") or []
+    if gaps and isinstance(gaps[0], dict):
+        gap_ids = [g.get("gap_id") or g.get("id") for g in gaps if isinstance(g, dict)]
+    else:
+        gap_ids = list(gaps)
+    contradictions = []
+    for item in (row.get("counter_evidence") or []):
+        if isinstance(item, dict):
+            contradictions.append(item.get("id") or item.get("guid") or item.get("evidence_guid"))
+        elif item:
+            contradictions.append(str(item)[:80])
+    ident = row.get("identity") if isinstance(row.get("identity"), dict) else {}
+    return {
+        "schema": "CIOCognitionRefs@v1",
+        "question": "WHAT_MATERIAL_THING_CHANGED_FOR_THE_PORTFOLIO",
+        "portfolio_delta": row.get("portfolio_delta"),
+        "security_guid": row.get("security_guid"),
+        "issuer_guid": row.get("issuer_guid"),
+        "listing_guid": row.get("listing_guid"),
+        "ticker_guid": row.get("ticker_guid") or ident.get("ticker_guid"),
+        "ticker_research_state_version": refs.get("state_updated_at") or (row.get("view") or {}).get("updated_at"),
+        "curation_id": row.get("curation_id"),
+        "curation_version": row.get("curation_version"),
+        "curation_kind": row.get("curation_kind"),
+        "symbol_thesis_id": row.get("symbol_thesis_id"),
+        "symbol_thesis_version": row.get("symbol_thesis_version"),
+        "research_gap_ids": gap_ids[:20],
+        "evidence_contradiction_ids": [c for c in contradictions if c][:20],
+        "evidence_watermark": watermark,
+        "semantic_memory_ids": list(row.get("semantic_memory_ids") or [])[:20],
+        "operator_policy_version": None,
+        "portfolio_thesis_version": None,
+        "conflicted": bool(row.get("conflicted")),
+        "recommendation_suppressed": bool(row.get("recommendation_suppressed")),
+        "envelope_schema": ENVELOPE_V2,
+        "authority": AUTHORITY,
+        "financial_action": False,
+        "paid_dispatch": 0,
+    }
+
+
+def persist_context_receipt(root: Path | str, rec: dict[str, Any]) -> Path:
+    path = Path(root) / "data" / "cio" / "context_use_receipts.jsonl"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(rec, default=str) + "\n")
+    return path
+
+
+def resolve_decision_cognition(
+    symbol: str,
+    *,
+    decision_id: str,
+    wake_id: str,
+    task: str = "material_scan",
+    agent: str = "alex",
+    root: Path | str | None = None,
+    held: set[str] | None = None,
+) -> dict[str, Any]:
+    """Live-resolve canonical cognition at the decision boundary. Fail-soft.
+
+    Event carries IDs/expected versions; this always re-reads canonical JSONL
+    rather than trusting a previously serialized pack.
+    """
+    base = resolve_cognition_root(root)
+    row = cognition_for_symbol(base, symbol, held=held or set())
+    source_sha = ""
+    for name in ("SOURCE_COMMIT", "BUILD_SHA"):
+        p = Path(base) / name
+        if p.is_file():
+            source_sha = p.read_text(encoding="utf-8").strip().split()[0]
+            break
+    rec = receipt(
+        run_id=str(wake_id or decision_id or "cio-decision"),
+        agent=agent,
+        task=task,
+        row=row,
+        why=row.get("portfolio_role") or task,
+        source_sha=source_sha,
+    )
+    rec["decision_id"] = decision_id
+    rec["wake_id"] = wake_id
+    rec["recorded_at"] = _now()
+    rec["envelope_schema"] = ENVELOPE_V2
+    persist_context_receipt(base, rec)
+    refs = cognition_refs_from_row(row)
+    refs["context_receipt_id"] = rec.get("run_id")
+    refs["source_sha"] = source_sha
+    return {
+        "refs": refs,
+        "receipt": rec,
+        "portfolio_delta": row.get("portfolio_delta"),
+        "security_guid": row.get("security_guid"),
+        "row": row,
+    }
+
+
+def audit_unresolved_identity(root: Path | str, symbol: str) -> dict[str, Any]:
+    """Classify an identity gap without minting GUIDs from ticker hash."""
+    from scripts.lib.security_identity import classify_unresolved_symbol
+
+    base = resolve_cognition_root(root)
+    row = cognition_for_symbol(base, symbol)
+    cls = classify_unresolved_symbol(symbol)
+    guid = row.get("security_guid")
+    if guid:
+        result = "RESOLVED_CANONICAL"
+        reason = "security_guid_present"
+    elif cls.get("kind") == "cusip_or_fixed_income":
+        result = "NON_SECURITY_IDENTIFIER"
+        reason = cls.get("reason")
+    elif (row.get("ticker_guid") or (row.get("identity") or {}).get("ticker_guid")) and not guid:
+        result = "UNRESOLVED_WITH_REASON"
+        reason = cls.get("reason") or "no_canonical_symbol_card"
+    else:
+        result = "UNRESOLVED_WITH_REASON"
+        reason = cls.get("reason") or "no_canonical_symbol_card"
+    return {
+        "symbol": normalize_symbol(symbol),
+        "result": result,
+        "reason": reason,
+        "kind": cls.get("kind"),
+        "security_guid": guid,
+        "ticker_guid": row.get("ticker_guid") or (row.get("identity") or {}).get("ticker_guid"),
+        "issuer_guid": row.get("issuer_guid"),
+        "listing_guid": row.get("listing_guid"),
+        "fabricated_relationships": 0,
+        "authority": AUTHORITY,
+    }

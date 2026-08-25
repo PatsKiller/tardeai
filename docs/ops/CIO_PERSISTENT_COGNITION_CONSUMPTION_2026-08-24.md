@@ -1,7 +1,7 @@
 # CIO persistent cognition consumption
 
 **Date:** 2026-08-24  
-**Status:** MERGED (#497) + DEPLOYED (`0a0e19bf` then exact-main `15ab2362` after #498–#500). Hermes free-first NATURALLY_PROVEN on the #497 SHA. CIO pack-in-trace **not** yet (DecisionPayload material-scan path does not embed the TickerResearchState pack).  
+**Status:** MERGED (#497) + DEPLOYED (`15ab2362`). Hermes free-first NATURALLY_PROVEN. CIO pack-in-trace **source-fixed in R10.8** (`fix/cio-natural-cognition-pack`); L5 natural award waits for scheduled material_scan on that exact-main.  
 **Authority:** `READ_ONLY_ADVISORY`  
 **MEMORY_BEHAVIOR_INFLUENCE:** 0  
 

@@ -1,0 +1,106 @@
+{
+  "n": 357,
+  "types": {
+    "OPERATOR_EXPLICIT_PREFERENCE": 4,
+    "RESEARCH_REFERENCE": 347,
+    "PROCEDURAL_HINT": 6
+  },
+  "destinations": {
+    "PREFERENCE_CANDIDATE": 4,
+    "RAG_EVIDENCE": 347,
+    "EPISODIC_OR_TTL": 6
+  },
+  "deleted": 0,
+  "candidates": [
+    {
+      "memory_id": "mem_d00f5067563bf5e77d95b3849ce0d426",
+      "type": "OPERATOR_EXPLICIT_PREFERENCE",
+      "dest": "PREFERENCE_CANDIDATE"
+    },
+    {
+      "memory_id": "mem_5989433c2194182282b6e49bedb19cde",
+      "type": "OPERATOR_EXPLICIT_PREFERENCE",
+      "dest": "PREFERENCE_CANDIDATE"
+    },
+    {
+      "memory_id": "mem_5989433c2194182282b6e49bedb19cde",
+      "type": "OPERATOR_EXPLICIT_PREFERENCE",
+      "dest": "PREFERENCE_CANDIDATE"
+    },
+    {
+      "memory_id": "mem_12ab1b21ba5055a7aebfeb4365cf070e",
+      "type": "RESEARCH_REFERENCE",
+      "dest": "RAG_EVIDENCE",
+      "symbols": [
+        "SCHD"
+      ]
+    },
+    {
+      "memory_id": "mem_b91739ce0729a3944f090d613ba8718a",
+      "type": "RESEARCH_REFERENCE",
+      "dest": "RAG_EVIDENCE",
+      "symbols": [
+        "XLI"
+      ]
+    },
+    {
+      "memory_id": "mem_3ec086deb2513db0720c628b4e8f10ba",
+      "type": "RESEARCH_REFERENCE",
+      "dest": "RAG_EVIDENCE",
+      "symbols": [
+        "SCHD"
+      ]
+    },
+    {
+      "memory_id": "mem_2b0c1a651c510ba99bce306b99b74e7e",
+      "type": "RESEARCH_REFERENCE",
+      "dest": "RAG_EVIDENCE",
+      "symbols": [
+        "DIVI"
+      ]
+    },
+    {
+      "memory_id": "mem_8d9c6322e347756dd11927da55a7763f",
+      "type": "RESEARCH_REFERENCE",
+      "dest": "RAG_EVIDENCE",
+      "symbols": [
+        "DIVI"
+      ]
+    },
+    {
+      "memory_id": "mem_a6129d741261bc91b3088b811858998b",
+      "type": "PROCEDURAL_HINT",
+      "dest": "EPISODIC_OR_TTL"
+    },
+    {
+      "memory_id": "mem_a6129d741261bc91b3088b811858998b",
+      "type": "PROCEDURAL_HINT",
+      "dest": "EPISODIC_OR_TTL"
+    },
+    {
+      "memory_id": "mem_5989433c2194182282b6e49bedb19cde",
+      "type": "OPERATOR_EXPLICIT_PREFERENCE",
+      "dest": "PREFERENCE_CANDIDATE"
+    },
+    {
+      "memory_id": "mem_a6129d741261bc91b3088b811858998b",
+      "type": "PROCEDURAL_HINT",
+      "dest": "EPISODIC_OR_TTL"
+    },
+    {
+      "memory_id": "mem_a6129d741261bc91b3088b811858998b",
+      "type": "PROCEDURAL_HINT",
+      "dest": "EPISODIC_OR_TTL"
+    },
+    {
+      "memory_id": "mem_a6129d741261bc91b3088b811858998b",
+      "type": "PROCEDURAL_HINT",
+      "dest": "EPISODIC_OR_TTL"
+    },
+    {
+      "memory_id": "mem_a6129d741261bc91b3088b811858998b",
+      "type": "PROCEDURAL_HINT",
+      "dest": "EPISODIC_OR_TTL"
+    }
+  ]
+}

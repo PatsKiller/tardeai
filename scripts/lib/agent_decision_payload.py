@@ -239,6 +239,58 @@ def build_decision_payload(
     return payload
 
 
+def enrich_payload_with_cognition(
+    payload: dict[str, Any],
+    *,
+    cognition_root: Path | str | None = None,
+    held: Optional[set[str]] = None,
+) -> dict[str, Any]:
+    """Attach bounded cognition refs + receipt. Never copies the brain blob.
+
+    Fail-soft: DecisionPayload remains valid if resolution fails.
+    Does not mutate current_action (financial-lane action stays as emitted).
+    """
+    out = dict(payload) if isinstance(payload, dict) else {}
+    ticker = ticker_or_unavailable(out.get("symbol"))
+    if ticker == "DATA_UNAVAILABLE":
+        out["cognition_refs"] = {"skipped": "non_security_symbol", "schema": "CIOCognitionRefs@v1"}
+        out["question"] = "WHAT_MATERIAL_THING_CHANGED_FOR_THE_PORTFOLIO"
+        return out
+    try:
+        from scripts.lib.cio_persistent_cognition import resolve_decision_cognition
+
+        resolved = resolve_decision_cognition(
+            ticker,
+            decision_id=str(out.get("decision_id") or ""),
+            wake_id=str(out.get("wake_id") or ""),
+            task=str(out.get("surface") or "material_scan"),
+            root=cognition_root,
+            held=held,
+        )
+        refs = resolved.get("refs") or {}
+        rec = resolved.get("receipt") or {}
+        out["cognition_refs"] = refs
+        out["context_receipt"] = {
+            "schema": rec.get("schema"),
+            "run_id": rec.get("run_id"),
+            "decision_id": rec.get("decision_id"),
+            "recorded_at": rec.get("recorded_at"),
+            "source_sha": rec.get("source_sha"),
+        }
+        out["security_guid"] = resolved.get("security_guid")
+        out["portfolio_delta"] = resolved.get("portfolio_delta")
+        out["question"] = "WHAT_MATERIAL_THING_CHANGED_FOR_THE_PORTFOLIO"
+        out["ticker_research_state_version"] = refs.get("ticker_research_state_version")
+        out["curation_version"] = refs.get("curation_version")
+        out["curation_id"] = refs.get("curation_id")
+        out["symbol_thesis_version"] = refs.get("symbol_thesis_version")
+        out["research_gap_ids"] = refs.get("research_gap_ids")
+    except Exception as exc:  # noqa: BLE001 — fail-soft
+        out["cognition_refs"] = {"error": type(exc).__name__, "schema": "CIOCognitionRefs@v1"}
+        out["question"] = "WHAT_MATERIAL_THING_CHANGED_FOR_THE_PORTFOLIO"
+    return out
+
+
 def payload_from_material_decision(
     decision: dict[str, Any],
     *,
@@ -503,8 +555,13 @@ def emit_payloads_for_decisions(
     surface: str = "material_scan",
     flags: Optional[dict[str, Any]] = None,
     path: Path | str | None = None,
+    cognition_root: Path | str | None = None,
+    held: Optional[set[str]] = None,
 ) -> dict[str, Any]:
-    """Emit one payload per decision dict. Fail-soft aggregate."""
+    """Emit one payload per decision dict. Fail-soft aggregate.
+
+    Resolves canonical CIO cognition at emit time (IDs/versions + receipt).
+    """
     flags = flags if flags is not None else load_feature_flags()
     if not decision_payload_enabled(flags):
         return {"emitted": 0, "attempted": 0, "errors": [], "enabled": False}
@@ -517,6 +574,7 @@ def emit_payloads_for_decisions(
         attempted += 1
         try:
             pl = payload_from_material_decision(d, wake_id=wake_id, surface=surface)
+            pl = enrich_payload_with_cognition(pl, cognition_root=cognition_root, held=held)
             res = emit_decision_payload(pl, flags=flags, path=path, role=surface)
             if res.get("emitted"):
                 emitted += 1

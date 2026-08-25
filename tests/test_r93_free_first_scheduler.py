@@ -44,8 +44,11 @@ def test_service_is_oneshot_current_pinned_circulate():
     assert "--backend" not in WRAPPER
     assert "deepseek" not in SERVICE.lower()
     assert "MEMORY_BEHAVIOR_INFLUENCE=0" in SERVICE
-    assert "/tmp/tradeai_free_first_circulation.lock" in SERVICE
-    assert "flock -n -E 75" in SERVICE
+    # Host-proven singleton: Python fcntl in free_first_refresh.py + Type=oneshot.
+    # Outer systemd flock on the same path double-locks and exits 75 — do not reintroduce.
+    assert "flock -n -E 75" not in SERVICE
+    assert "Do not wrap ExecStart in flock" in SERVICE
+    assert "/tmp/tradeai_free_first_circulation.lock" in (ROOT / "scripts/free_first_refresh.py").read_text()
     assert "Restart=always" not in SERVICE
 
 

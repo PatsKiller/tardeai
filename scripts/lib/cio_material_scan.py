@@ -435,9 +435,18 @@ def _instrument_scan(
 
     decision_ids = [str(d.get("decision_id") or "") for d in selected]
     decision_ids = [d for d in decision_ids if d]
+    symbols = [
+        str(d.get("symbol") or "").strip().upper()
+        for d in selected
+        if str(d.get("symbol") or "").strip()
+    ]
     wake_id = f"wake_scan_{at}"
     result = instrument_material_wake(
-        {"wake_id": wake_id, "selected_decision_ids": decision_ids},
+        {
+            "wake_id": wake_id,
+            "selected_decision_ids": decision_ids,
+            "symbols": symbols,
+        },
         decision_ids=decision_ids,
         trace_path=default_trace_path(),
     )

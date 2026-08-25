@@ -25,7 +25,7 @@ This is the source-controlled production timer that #489 lacked.
 | timer | `config/systemd/user/tradeai-free-first-circulation.timer` |
 | wrapper | `scripts/run_free_first_circulation.sh` |
 | installer | `scripts/install_free_first_circulation_timer.sh` |
-| lock | `/tmp/tradeai_free_first_circulation.lock` (`flock -n -E 75` + python fcntl) |
+| lock | `/tmp/tradeai_free_first_circulation.lock` (Python `fcntl` in `free_first_refresh.py`; systemd `Type=oneshot`. **No** outer ExecStart flock — double-lock exits 75.) |
 | log | `CURRENT/logs/free_first_circulation.log` |
 | receipt | `CURRENT/data/cio/free_first_last_run.json` |
 
@@ -34,9 +34,9 @@ This is the source-controlled production timer that #489 lacked.
 WorkingDirectory = `~/trade-ai-releases/portfolio-server/CURRENT`
 
 ```
-flock -n -E 75 /tmp/tradeai_free_first_circulation.lock
 bash CURRENT/scripts/run_free_first_circulation.sh
   → python scripts/free_first_refresh.py --root CURRENT --circulate --json --max-searx 1
+     (fcntl LOCK_EX|LOCK_NB on /tmp/tradeai_free_first_circulation.lock; overlap exit 75)
 ```
 
 `--max-searx 1` **enables residual SearXNG only**. `circulate_symbol` still skips names already resolved by Hermes/RAG/structured. It is not a 120-symbol search.
