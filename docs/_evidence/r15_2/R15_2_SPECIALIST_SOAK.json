@@ -1,0 +1,12 @@
+{
+  "schema": "R15_2SpecialistSoak@v1",
+  "evidence_class": "CURRENT_SMOKE",
+  "not_live_agent_runtime_ticks": true,
+  "maria": {"same_brain": true, "artifact": true, "hidden_research_store": false},
+  "steph": {"same_brain": true, "artifact": true, "hidden_research_store": false},
+  "guardian": {"same_brain": true, "artifact": true, "risk_authority": false},
+  "ledger": {"same_brain": true, "artifact": true, "execution_authority": false},
+  "disagreement_preserved": true,
+  "failure_degradation": "SPECIALIST_UNAVAILABLE",
+  "invented_opinion": false
+}

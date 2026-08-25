@@ -1,0 +1,8 @@
+{
+  "schema": "R15_2Restart@v1",
+  "evidence_class": "NATURAL_CURRENT",
+  "fresh_process_loaded_durable_scan_receipt": true,
+  "intelligence_fabric_reconstructed": true,
+  "paid_dispatch": 0,
+  "did_not_rerun_scan": true
+}

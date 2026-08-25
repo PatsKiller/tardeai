@@ -1,0 +1,26 @@
+{
+  "schema": "R15_2MaterialScanNatural@v1",
+  "evidence_class": "NATURAL_CURRENT",
+  "manually_started": false,
+  "source_commit": "d72ecdd13d4fad1e7551597634f326aeb6a03353",
+  "at": "2026-08-25T16:07:28.243490+00:00",
+  "timer": "tradeai-cio-material-scan.timer",
+  "auditable_result": "NOTIFICATION_SUPPRESSED",
+  "durable_overlay_present": true,
+  "intelligence_fabric": {
+    "schema": "ScanFabricOverlay@v1",
+    "observations": 1,
+    "lifecycle_receipts": 1,
+    "paid_dispatch": 0,
+    "llm_calls": 0,
+    "authority": "READ_ONLY_ADVISORY",
+    "memory_behavior_influence": 0,
+    "financial_action": false
+  },
+  "journal_compact_overlay": {"observations": 1, "paid_dispatch": 0, "llm_calls": 0},
+  "critical_fields_match": true,
+  "full_object_hash_equal": false,
+  "note": "Journal prints compact overlay; durable last.json stores full ScanFabricOverlay@v1. paid/llm/observations match.",
+  "restart_readable": true,
+  "canary": false
+}

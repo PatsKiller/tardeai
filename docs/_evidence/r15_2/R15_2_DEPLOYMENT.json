@@ -1,0 +1,22 @@
+{
+  "schema": "R15_2Deployment@v1",
+  "evidence_class": "CURRENT_SMOKE",
+  "pr508_merged": true,
+  "pr509_merged": true,
+  "pr509_deployed": true,
+  "main_sha": "d72ecdd13d4fad1e7551597634f326aeb6a03353",
+  "current_sha": "d72ecdd13d4fad1e7551597634f326aeb6a03353",
+  "SOURCE_COMMIT": "d72ecdd13d4fad1e7551597634f326aeb6a03353",
+  "BUILD_SHA": "d72ecdd13d4fad1e7551597634f326aeb6a03353",
+  "GIT_SHA": "d72ecdd13d4fad1e7551597634f326aeb6a03353",
+  "current_exact_main": true,
+  "pin_match": true,
+  "release_dir": "/home/johnclaw/trade-ai-releases/portfolio-server/d72ecdd1-main-exact-phase2-20260825-120222",
+  "prev_release": "/home/johnclaw/trade-ai-releases/portfolio-server/b1295931-main-exact-phase2-20260825-113136",
+  "rollback": "bash scripts/cio_phase2_exact_main_deploy.sh rollback",
+  "promoted_at": "2026-08-25T16:03:12Z",
+  "health": "ok",
+  "cio_http": 200,
+  "MEMORY_BEHAVIOR_INFLUENCE": 0,
+  "canary": false
+}

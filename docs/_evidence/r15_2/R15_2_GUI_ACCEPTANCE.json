@@ -1,0 +1,13 @@
+{
+  "schema": "R15_2GuiAcceptance@v1",
+  "evidence_class": "CURRENT_SMOKE",
+  "lifecycle_visible": true,
+  "knowledge_gaps_visible": true,
+  "model_reason_visible": true,
+  "pin_visible": true,
+  "pin_match": true,
+  "ingestion_bus": false,
+  "gui_cannot_self_promote": true,
+  "automatic_promotion": false,
+  "loaded_pin": "d72ecdd13d4fad1e7551597634f326aeb6a03353"
+}
