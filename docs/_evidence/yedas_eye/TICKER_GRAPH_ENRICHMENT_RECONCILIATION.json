@@ -1,0 +1,22 @@
+{
+  "schema": "TickerGraphEnrichmentReconciliation@v1",
+  "as_of": "2026-08-25T03:29:08+00:00",
+  "receipt_path": "data/cio/ticker_graph_enrichment_receipt.json",
+  "receipt_completed_at": "2026-08-23T23:56:50.223496+00:00",
+  "receipt_graph_path": "/home/johnclaw/trade-ai-releases/portfolio-server/0b7bc9eb-main-exact-phase2-20260823-185856/data/cio/ticker_research_graph.jsonl",
+  "receipt_runtime_sha_inferred": "0b7bc9eb",
+  "current_runtime_sha": "1afb1479676aeb67b64791e58e946753a2854ddf",
+  "live_graph": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/data/cio/ticker_research_graph.jsonl",
+  "jsonl_sha256": "18ca7373198d88f54de54cb75ef44820fb989e19b772b6eef999d5ad8ded9c98",
+  "classification": "VALID_CURRENT_DATA",
+  "note": "Receipt records 0b7bc9eb path (2026-08-23 23:56Z). Live CURRENT/data/cio is a symlink to the same JSONL. Profile enrichment still matches: 120 profiles, 103 ENRICHED, 17 UNRESOLVED identical set. Do not rerun. Runtime SHA on receipt is historical; data is current.",
+  "profiles": 120,
+  "artifacts": 2077,
+  "enriched": 103,
+  "unresolved": 17,
+  "sector_guid_rows": 99,
+  "industry_guid_rows": 99,
+  "unresolved_set_unchanged": true,
+  "fabricated_relationships": 0,
+  "authority": "READ_ONLY_ADVISORY"
+}

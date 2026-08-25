@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-24  
 **Authority:** `READ_ONLY_ADVISORY` · `MEMORY_BEHAVIOR_INFLUENCE=0`  
-**Status:** SOURCE + TESTED + MERGED (#502 `1afb1479`) + DEPLOYED (`1afb1479-main-exact-phase2-20260824-230917`) + **NATURALLY_PROVEN** (23:17:23–23:17:37 ET material_scan, SCHD).
+**Status:** SOURCE + TESTED + MERGED (#502 `1afb1479`) + DEPLOYED (`1afb1479-main-exact-phase2-20260824-230917`) + **NATURALLY_PROVEN** (23:17 and **23:27** ET scheduled `material_scan`, SCHD). Screenshot runtime `0b7bc9eb` is stale.
 
 ## Root cause
 
@@ -44,6 +44,10 @@ SCHD DecisionPayload@v1:
 - `paid_dispatch=0` · `notification.sent=false` · `financial_action=false`
 
 CASH/REENTRY membership labels correctly skipped (`DATA_UNAVAILABLE` + skipped cognition).
+
+Second genuine tick **23:27:47–23:27:50 EDT** PID 1619702, SOURCE `1afb1479`, exit 0, SCHD same refs + `CIOCognitionRefs@v1` + `ContextUseReceipt@v1`. Membership labels CASH/REENTRY skipped. KTOS/VIVS/OLOX reentry-surface payloads are a separate emitter (not the material_scan SCHD canary).
+
+Ticker graph enrichment receipt (2026-08-23 23:56Z, path names `0b7bc9eb`) is **VALID_CURRENT_DATA**: live JSONL still 120 profiles / 103 ENRICHED / 17 UNRESOLVED identical set. Do not rerun. PRSO remains `UNRESOLVED_WITH_REASON` / `no_canonical_symbol_card`.
 
 `CIO_PERSISTENT_COGNITION_L5=true`  
 `M4_NATURAL_SAME_BRAIN_PROVEN=true` (SCHD refs match Hermes/CIO/Advisory/Telegram diagnostic matrix)

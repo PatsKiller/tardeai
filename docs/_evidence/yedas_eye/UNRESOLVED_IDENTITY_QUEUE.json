@@ -1,0 +1,317 @@
+{
+  "schema": "UnresolvedIdentityQueue@v1",
+  "authority": "READ_ONLY_ADVISORY",
+  "fabricated_relationships": 0,
+  "counts": {
+    "NON_SECURITY_IDENTIFIER": 3,
+    "UNRESOLVED_WITH_REASON": 14
+  },
+  "queue": [
+    {
+      "symbol": "12507E201",
+      "kind": "cusip_or_fixed_income",
+      "result": "NON_SECURITY_IDENTIFIER",
+      "reason": "nine_char_cusip_like",
+      "security_guid": null,
+      "ticker_guid": "120be879-9bb5-55a2-bef8-3e7e6c440dda",
+      "issuer_guid": null,
+      "listing_guid": null,
+      "memberships": [
+        "HELD"
+      ],
+      "priority": "HELD",
+      "enrichment_status": "UNRESOLVED",
+      "enrichment_reason": "no_canonical_symbol_card",
+      "fabricated_relationships": 0,
+      "cusip_like": true
+    },
+    {
+      "symbol": "543354104",
+      "kind": "cusip_or_fixed_income",
+      "result": "NON_SECURITY_IDENTIFIER",
+      "reason": "nine_char_cusip_like",
+      "security_guid": null,
+      "ticker_guid": "75bd60b9-9c97-562b-935e-9d3649dab9c4",
+      "issuer_guid": null,
+      "listing_guid": null,
+      "memberships": [
+        "HELD"
+      ],
+      "priority": "HELD",
+      "enrichment_status": "UNRESOLVED",
+      "enrichment_reason": "no_canonical_symbol_card",
+      "fabricated_relationships": 0,
+      "cusip_like": true
+    },
+    {
+      "symbol": "628518102",
+      "kind": "cusip_or_fixed_income",
+      "result": "NON_SECURITY_IDENTIFIER",
+      "reason": "nine_char_cusip_like",
+      "security_guid": null,
+      "ticker_guid": "5a08f960-2cc4-5d5d-9cf9-1454381c70df",
+      "issuer_guid": null,
+      "listing_guid": null,
+      "memberships": [
+        "HELD"
+      ],
+      "priority": "HELD",
+      "enrichment_status": "UNRESOLVED",
+      "enrichment_reason": "no_canonical_symbol_card",
+      "fabricated_relationships": 0,
+      "cusip_like": true
+    },
+    {
+      "symbol": "AMAGX",
+      "kind": "fund",
+      "result": "UNRESOLVED_WITH_REASON",
+      "reason": "five_letter_x_fund_convention",
+      "security_guid": null,
+      "ticker_guid": "3b4a3bec-9f5c-57fe-8a8e-c4eb131a7f50",
+      "issuer_guid": null,
+      "listing_guid": null,
+      "memberships": [
+        "REENTRY"
+      ],
+      "priority": "REENTRY",
+      "enrichment_status": "UNRESOLVED",
+      "enrichment_reason": "no_canonical_symbol_card",
+      "fabricated_relationships": 0,
+      "cusip_like": false
+    },
+    {
+      "symbol": "CTXR",
+      "kind": "equity_unresolved",
+      "result": "UNRESOLVED_WITH_REASON",
+      "reason": "no_canonical_symbol_card",
+      "security_guid": null,
+      "ticker_guid": "8552faf5-5f99-5d08-86cd-fab6152c169c",
+      "issuer_guid": null,
+      "listing_guid": null,
+      "memberships": [
+        "REENTRY"
+      ],
+      "priority": "REENTRY",
+      "enrichment_status": "UNRESOLVED",
+      "enrichment_reason": "no_canonical_symbol_card",
+      "fabricated_relationships": 0,
+      "cusip_like": false
+    },
+    {
+      "symbol": "EKSO",
+      "kind": "equity_unresolved",
+      "result": "UNRESOLVED_WITH_REASON",
+      "reason": "no_canonical_symbol_card",
+      "security_guid": null,
+      "ticker_guid": "82162ae5-7da5-5e36-80a2-12dd81d6441c",
+      "issuer_guid": null,
+      "listing_guid": null,
+      "memberships": [
+        "REENTRY"
+      ],
+      "priority": "REENTRY",
+      "enrichment_status": "UNRESOLVED",
+      "enrichment_reason": "no_canonical_symbol_card",
+      "fabricated_relationships": 0,
+      "cusip_like": false
+    },
+    {
+      "symbol": "FSELX",
+      "kind": "fund",
+      "result": "UNRESOLVED_WITH_REASON",
+      "reason": "five_letter_x_fund_convention",
+      "security_guid": null,
+      "ticker_guid": "9cd4755d-693d-59ae-b64d-39fc42769fba",
+      "issuer_guid": null,
+      "listing_guid": null,
+      "memberships": [
+        "REENTRY"
+      ],
+      "priority": "REENTRY",
+      "enrichment_status": "UNRESOLVED",
+      "enrichment_reason": "no_canonical_symbol_card",
+      "fabricated_relationships": 0,
+      "cusip_like": false
+    },
+    {
+      "symbol": "GOVX",
+      "kind": "equity_unresolved",
+      "result": "UNRESOLVED_WITH_REASON",
+      "reason": "no_canonical_symbol_card",
+      "security_guid": null,
+      "ticker_guid": "86f78d2b-5de9-512b-9fbb-50558636c8ae",
+      "issuer_guid": null,
+      "listing_guid": null,
+      "memberships": [
+        "REENTRY"
+      ],
+      "priority": "REENTRY",
+      "enrichment_status": "UNRESOLVED",
+      "enrichment_reason": "no_canonical_symbol_card",
+      "fabricated_relationships": 0,
+      "cusip_like": false
+    },
+    {
+      "symbol": "LAC",
+      "kind": "equity_unresolved",
+      "result": "UNRESOLVED_WITH_REASON",
+      "reason": "no_canonical_symbol_card",
+      "security_guid": null,
+      "ticker_guid": "00cd999b-fa5f-526a-9fb6-36ef8691e288",
+      "issuer_guid": null,
+      "listing_guid": null,
+      "memberships": [
+        "REENTRY"
+      ],
+      "priority": "REENTRY",
+      "enrichment_status": "UNRESOLVED",
+      "enrichment_reason": "no_canonical_symbol_card",
+      "fabricated_relationships": 0,
+      "cusip_like": false
+    },
+    {
+      "symbol": "MSGM",
+      "kind": "equity_unresolved",
+      "result": "UNRESOLVED_WITH_REASON",
+      "reason": "no_canonical_symbol_card",
+      "security_guid": null,
+      "ticker_guid": "8bb5c71e-2035-57c3-8c59-403934948a15",
+      "issuer_guid": null,
+      "listing_guid": null,
+      "memberships": [
+        "REENTRY"
+      ],
+      "priority": "REENTRY",
+      "enrichment_status": "UNRESOLVED",
+      "enrichment_reason": "no_canonical_symbol_card",
+      "fabricated_relationships": 0,
+      "cusip_like": false
+    },
+    {
+      "symbol": "PRSO",
+      "kind": "equity_unresolved",
+      "result": "UNRESOLVED_WITH_REASON",
+      "reason": "no_canonical_symbol_card",
+      "security_guid": null,
+      "ticker_guid": "a3b37413-8555-5822-9259-a8d9effe9608",
+      "issuer_guid": null,
+      "listing_guid": null,
+      "memberships": [
+        "REENTRY"
+      ],
+      "priority": "REENTRY",
+      "enrichment_status": "UNRESOLVED",
+      "enrichment_reason": "no_canonical_symbol_card",
+      "fabricated_relationships": 0,
+      "cusip_like": false
+    },
+    {
+      "symbol": "RANI",
+      "kind": "equity_unresolved",
+      "result": "UNRESOLVED_WITH_REASON",
+      "reason": "no_canonical_symbol_card",
+      "security_guid": null,
+      "ticker_guid": "71ca25b4-2f68-5d43-8ad3-2f25f1e6dc8d",
+      "issuer_guid": null,
+      "listing_guid": null,
+      "memberships": [
+        "REENTRY"
+      ],
+      "priority": "REENTRY",
+      "enrichment_status": "UNRESOLVED",
+      "enrichment_reason": "no_canonical_symbol_card",
+      "fabricated_relationships": 0,
+      "cusip_like": false
+    },
+    {
+      "symbol": "RDHL",
+      "kind": "equity_unresolved",
+      "result": "UNRESOLVED_WITH_REASON",
+      "reason": "no_canonical_symbol_card",
+      "security_guid": null,
+      "ticker_guid": "28b1cdf2-b622-5c41-89e3-072e69ba5ff4",
+      "issuer_guid": null,
+      "listing_guid": null,
+      "memberships": [
+        "REENTRY"
+      ],
+      "priority": "REENTRY",
+      "enrichment_status": "UNRESOLVED",
+      "enrichment_reason": "no_canonical_symbol_card",
+      "fabricated_relationships": 0,
+      "cusip_like": false
+    },
+    {
+      "symbol": "SIBN",
+      "kind": "equity_unresolved",
+      "result": "UNRESOLVED_WITH_REASON",
+      "reason": "no_canonical_symbol_card",
+      "security_guid": null,
+      "ticker_guid": "db3b8982-5b02-5d68-8a24-db3f8688728b",
+      "issuer_guid": null,
+      "listing_guid": null,
+      "memberships": [
+        "REENTRY"
+      ],
+      "priority": "REENTRY",
+      "enrichment_status": "UNRESOLVED",
+      "enrichment_reason": "no_canonical_symbol_card",
+      "fabricated_relationships": 0,
+      "cusip_like": false
+    },
+    {
+      "symbol": "SOPAQ",
+      "kind": "equity_unresolved",
+      "result": "UNRESOLVED_WITH_REASON",
+      "reason": "no_canonical_symbol_card",
+      "security_guid": null,
+      "ticker_guid": "3e7aec2f-7b70-508e-be37-99452e74fdda",
+      "issuer_guid": null,
+      "listing_guid": null,
+      "memberships": [
+        "REENTRY"
+      ],
+      "priority": "REENTRY",
+      "enrichment_status": "UNRESOLVED",
+      "enrichment_reason": "no_canonical_symbol_card",
+      "fabricated_relationships": 0,
+      "cusip_like": false
+    },
+    {
+      "symbol": "WRD",
+      "kind": "equity_unresolved",
+      "result": "UNRESOLVED_WITH_REASON",
+      "reason": "no_canonical_symbol_card",
+      "security_guid": null,
+      "ticker_guid": "267e5ee9-173a-53b2-a8be-cc7f7f418483",
+      "issuer_guid": null,
+      "listing_guid": null,
+      "memberships": [
+        "REENTRY"
+      ],
+      "priority": "REENTRY",
+      "enrichment_status": "UNRESOLVED",
+      "enrichment_reason": "no_canonical_symbol_card",
+      "fabricated_relationships": 0,
+      "cusip_like": false
+    },
+    {
+      "symbol": "ZSL",
+      "kind": "equity_unresolved",
+      "result": "UNRESOLVED_WITH_REASON",
+      "reason": "no_canonical_symbol_card",
+      "security_guid": null,
+      "ticker_guid": "d4b0b925-b3a9-5c52-a1dc-221269736618",
+      "issuer_guid": null,
+      "listing_guid": null,
+      "memberships": [
+        "REENTRY"
+      ],
+      "priority": "REENTRY",
+      "enrichment_status": "UNRESOLVED",
+      "enrichment_reason": "no_canonical_symbol_card",
+      "fabricated_relationships": 0,
+      "cusip_like": false
+    }
+  ]
+}
