@@ -665,6 +665,77 @@ def envelope_section_status(section: str, payload: Any, *, configured: bool = Tr
     return "OK"
 
 
+_ENVELOPE_PROBES = {
+    "OFFICE_TRUTH": ("data/portfolios/state/holdings.json",),
+    "PORTFOLIO_STATE": ("data/portfolios/state/holdings.json", "data/cio/portfolio_cash_evidence.json"),
+    "OPERATOR_POLICY": ("data/cio/operator_profile.jsonl",),
+    "PORTFOLIO_THESIS": ("data/cio/cio_portfolio_theses.jsonl",),
+    "MARKET_CONTEXT": ("data/cio/market_context_state.json",),
+    "SEASONALITY": ("data/cio/seasonality_state.json",),
+    "TICKER_RESEARCH_STATE": ("data/cio/ticker_research_state.jsonl",),
+    "BASELINE_OR_CURRENT_CURATION": ("data/cio/hermes_curation_summary.jsonl",),
+    "SYMBOL_THESIS": ("data/cio/cio_theses.jsonl",),
+    "RESEARCH_GAPS": ("data/cio/research_gaps.jsonl",),
+    "CONTRADICTIONS": ("data/cio/research_gaps.jsonl",),
+    "EVENTS_CATALYSTS": ("data/cio/ticker_research_graph.jsonl",),
+    "RELEVANT_FEEDBACK": ("data/cio/operator_ticker_feedback.jsonl",),
+    "MATURE_OUTCOMES": ("data/cio/decision_dispositions.jsonl",),
+    "LESSONS": ("data/cio/cio_reflection_candidates.jsonl",),
+    "MEMORY_RETRIEVAL_UNITS": ("data/cio/context_use_receipts.jsonl",),
+}
+
+
+def live_envelope_statuses(root: Path | str) -> dict[str, Any]:
+    """Probe real files. Never silently omit a section."""
+    base = Path(root)
+    sections: dict[str, Any] = {}
+    configured: dict[str, bool] = {}
+    stale: dict[str, bool] = {}
+    conflicted: dict[str, bool] = {}
+    for name in ENVELOPE_SECTIONS:
+        probes = _ENVELOPE_PROBES.get(name) or ()
+        present = []
+        for rel in probes:
+            path = base / rel
+            if path.is_file() and path.stat().st_size > 0:
+                present.append(rel)
+        configured[name] = bool(probes)
+        if not probes:
+            sections[name] = None
+            configured[name] = False
+        elif not present:
+            sections[name] = None
+        else:
+            sections[name] = {"paths": present, "bytes": sum((base / p).stat().st_size for p in present)}
+        if name == "OPERATOR_POLICY" and not present:
+            # missing operator profile is a policy gap, not a crash
+            sections[name] = {}
+            configured[name] = True
+    report = envelope_provider_statuses(sections, configured=configured, stale=stale, conflicted=conflicted)
+    report["evidence_class"] = "CURRENT_SMOKE"
+    report["root"] = str(base)
+    if not (base / "data/cio/operator_profile.jsonl").is_file():
+        report["policy_gap"] = ["cash_target_range_pct"]
+    return report
+
+
+def knowledge_gaps(*, envelope: dict[str, Any] | None = None, unresolved_identities: int = 0, model_samples: int = 0, outcomes: int = 0) -> list[str]:
+    gaps = []
+    sections = (envelope or {}).get("sections") or {}
+    for name, status in sections.items():
+        if status in {"NOT_CONFIGURED", "UNAVAILABLE", "STALE", "CONFLICTED", "EMPTY"}:
+            gaps.append(f"{status}:{name}")
+    if unresolved_identities:
+        gaps.append("UNRESOLVED_IDENTITY")
+    if (envelope or {}).get("policy_gap"):
+        gaps.append("POLICY_GAP")
+    if int(model_samples) < 30:
+        gaps.append("INSUFFICIENT_MODEL_SAMPLES")
+    if int(outcomes) <= 0:
+        gaps.append("NO_OUTCOME_HISTORY")
+    return gaps
+
+
 def envelope_provider_statuses(sections: dict[str, Any] | None = None, *, configured: dict[str, bool] | None = None, stale: dict[str, bool] | None = None, conflicted: dict[str, bool] | None = None) -> dict[str, Any]:
     sections = sections or {}
     configured = configured or {}

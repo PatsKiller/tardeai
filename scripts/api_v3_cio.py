@@ -1940,17 +1940,24 @@ def get_intelligence_lifecycle_v1(symbol: str | None = None) -> dict[str, Any]:
     try:
         from scripts.lib.cio_intelligence_fabric import (
             coverage_matrix,
-            envelope_provider_statuses,
+            knowledge_gaps,
             lifecycle_projection,
+            live_envelope_statuses,
             producer_inventory,
         )
         from scripts.lib.cio_model_learning import model_selection_explanation
         cov = coverage_matrix()
         inv = producer_inventory()
-        env = envelope_provider_statuses({})
+        env = live_envelope_statuses(PROJECT_ROOT)
         projection = lifecycle_projection(
             symbol=symbol or "PORTFOLIO",
             unwired=list(cov.get("not_connected") or [])[:24],
+        )
+        gaps = knowledge_gaps(
+            envelope=env,
+            unresolved_identities=1,
+            model_samples=0,
+            outcomes=0,
         )
         return {
             "ok": True,
@@ -1958,6 +1965,7 @@ def get_intelligence_lifecycle_v1(symbol: str | None = None) -> dict[str, Any]:
             "projection": projection,
             "coverage": cov.get("counts"),
             "unwired_providers": cov.get("not_connected"),
+            "knowledge_gaps": gaps,
             "envelope": env,
             "inventory_total": inv.get("source_domains_total"),
             "model_reason": model_selection_explanation(

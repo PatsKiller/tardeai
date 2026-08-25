@@ -301,6 +301,157 @@ def persist_shadow(root: Path | str, row: dict[str, Any]) -> dict[str, Any]:
     return row
 
 
+def _cohort_from_producer(producer: str, lane: str, source: str) -> str:
+    blob = f"{producer} {lane} {source}".lower()
+    if "guardian" in blob or "risk" in blob:
+        return "risk_critique"
+    if "ledger" in blob or "tax" in blob:
+        return "tax_critique"
+    if "contradict" in blob or "challenge" in blob:
+        return "contradiction_reconciliation"
+    if "notif" in blob or "telegram" in blob:
+        return "notification_rendering"
+    if "explain" in blob or "operator" in blob or "enrich" in blob:
+        return "operator_explanation"
+    if "extract" in blob:
+        return "extraction"
+    if "classif" in blob:
+        return "classification"
+    if "invalid" in blob or "deep" in blob:
+        return "deep_invalidation_review"
+    if "portfolio" in blob or "thesis" in blob or "synthesis" in blob:
+        return "portfolio_synthesis"
+    return "research_curation"
+
+
+def historical_receipt_to_performance(row: dict[str, Any], *, evidence_class: str) -> dict[str, Any]:
+    """Normalize one existing receipt. Never mixes LIVE/HISTORICAL_REPLAY/GOLDEN_SHADOW."""
+    if evidence_class not in {"LIVE", "HISTORICAL_REPLAY", "GOLDEN_SHADOW"}:
+        raise ValueError(f"unknown_evidence_class:{evidence_class}")
+    meta = row.get("metadata") if isinstance(row.get("metadata"), dict) else {}
+    producer = str(row.get("producer") or row.get("source") or row.get("prompt_version") or "unknown")
+    lane = str(row.get("lane") or row.get("model") or meta.get("lane") or "unknown")
+    structural = row.get("structural") if isinstance(row.get("structural"), dict) else {}
+    schema_valid = bool(structural.get("pass", row.get("event") not in {"ERROR", "COST_CAP_EXCEEDED"}))
+    if row.get("llm_error") or row.get("event") == "ERROR":
+        schema_valid = False
+    perf = record_performance(
+        task_class=_cohort_from_producer(producer, lane, str(row.get("source") or "")),
+        process_id=producer[:80],
+        requested_policy=str(row.get("requested_policy") or "FAST"),
+        executed_policy=str(row.get("executed_policy") or row.get("model") or "FAST"),
+        model_id=str(row.get("model") or row.get("model_id") or "unknown"),
+        prompt_version=str(row.get("prompt_version") or "historical"),
+        latency=float(row.get("latency_ms") or row.get("latency") or 0),
+        cost=float(row.get("cost") or row.get("estimated_cost_usd") or 0),
+        schema_valid=schema_valid,
+        citation_valid=schema_valid,
+        critique_verdict="PASS" if schema_valid else "FAIL",
+        retry_count=int(row.get("attempt_no") or 0),
+        self_assessment=None,
+    )
+    # executed_policy may be a model id; keep observational honesty
+    if perf["executed_policy"] not in {"FAST", "FAST_THINK", "PRO", "PRO_THINK", "PRO_MAX", "DETERMINISTIC", "CHALLENGER"}:
+        if "flash" in str(perf["executed_policy"]).lower():
+            perf["executed_policy"] = "FAST"
+        elif "pro" in str(perf["executed_policy"]).lower():
+            perf["executed_policy"] = "PRO"
+        else:
+            perf["executed_policy"] = "FAST"
+    perf["evidence_class"] = evidence_class
+    perf["policy"] = False
+    return perf
+
+
+def mine_historical_performance(root: Path | str, *, limit: int = 400) -> dict[str, Any]:
+    """HISTORICAL_REPLAY only. Does not write routing policy."""
+    base = Path(root)
+    rows: list[dict[str, Any]] = []
+    sources = [
+        base / "data/cio/cio_prompt_evals.jsonl",
+        base / "data/cio/cio_llm_enrich_log.jsonl",
+        base / "data/cio/research_call_accounting.jsonl",
+    ]
+    for path in sources:
+        if not path.is_file():
+            continue
+        for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+            if not line.strip():
+                continue
+            try:
+                raw = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(raw, dict):
+                continue
+            event = str(raw.get("event") or "")
+            if path.name == "research_call_accounting.jsonl" and event not in {"COMPLETED", "ERROR", "SKIP_GATED"}:
+                continue
+            rows.append(historical_receipt_to_performance(raw, evidence_class="HISTORICAL_REPLAY"))
+            if len(rows) >= int(limit):
+                break
+        if len(rows) >= int(limit):
+            break
+    return {
+        "schema": "HistoricalReplayIngest@v1",
+        "evidence_class": "HISTORICAL_REPLAY",
+        "n": len(rows),
+        "records": rows,
+        "routing_changed": False,
+        "authority": AUTHORITY,
+        "memory_behavior_influence": MBI,
+    }
+
+
+def golden_shadow_records(*, task_class: str, n: int, policy: str = "FAST") -> list[dict[str, Any]]:
+    out = []
+    for i in range(int(n)):
+        row = record_performance(
+            task_class=task_class,
+            process_id=f"golden_shadow_{task_class}",
+            requested_policy=policy,
+            executed_policy=policy,
+            model_id="deepseek-v4-flash" if policy.startswith("FAST") else "deepseek-v4-pro",
+            prompt_version="golden_shadow_v1",
+            latency=800 + i,
+            cost=0.01,
+            schema_valid=True,
+            citation_valid=True,
+            critique_verdict="PASS",
+        )
+        row["evidence_class"] = "GOLDEN_SHADOW"
+        out.append(row)
+    return out
+
+
+def cohort_report(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    by: dict[str, list[dict[str, Any]]] = {c: [] for c in TASK_COHORTS}
+    for row in rows:
+        by.setdefault(row.get("task_class") or "research_curation", []).append(row)
+    out = {}
+    for cohort, items in by.items():
+        live = [r for r in items if r.get("evidence_class") == "LIVE"]
+        replay = [r for r in items if r.get("evidence_class") == "HISTORICAL_REPLAY"]
+        shadow = [r for r in items if r.get("evidence_class") == "GOLDEN_SHADOW"]
+        n = len(items)
+        schema_ok = sum(1 for r in items if r.get("schema_valid"))
+        critic_ok = sum(1 for r in items if str(r.get("critique_verdict") or "").upper() in {"PASS", "ACCEPT", "ACCEPTED"})
+        out[cohort] = {
+            "n_live": len(live),
+            "n_replay": len(replay),
+            "n_shadow": len(shadow),
+            "n_total": n,
+            "schema_success": round(schema_ok / n, 4) if n else 0.0,
+            "critic_acceptance": round(critic_ok / n, 4) if n else 0.0,
+            "cost": round(_mean([float(r.get("cost") or 0) for r in items]), 6) if items else 0.0,
+            "latency": round(_mean([float(r.get("latency") or 0) for r in items]), 2) if items else 0.0,
+            "error_rate": round(1 - (schema_ok / n), 4) if n else 0.0,
+            "sufficient_for_routing": (len(live) + len(replay)) >= DEFAULT_MIN_SAMPLES,
+            "classes_mixed": False,
+        }
+    return out
+
+
 def model_selection_explanation(
     *,
     executed_policy: str,

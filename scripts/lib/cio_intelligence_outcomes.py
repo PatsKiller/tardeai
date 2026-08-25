@@ -116,6 +116,46 @@ def specialist_disagreement_memory(artifacts: list[dict[str, Any]]) -> dict[str,
     }
 
 
+def specialist_unavailable(agent: str, *, error: str = "timeout") -> dict[str, Any]:
+    """CIO must not invent a missing specialist opinion."""
+    return {
+        "schema": "SpecialistRuntimeResult@v1",
+        "agent": agent,
+        "status": "SPECIALIST_UNAVAILABLE",
+        "error": error,
+        "invented_opinion": False,
+        "authority": AUTHORITY,
+        "memory_behavior_influence": MBI,
+        "financial_action": False,
+    }
+
+
+def specialist_runtime_artifact(
+    *,
+    agent: str,
+    claim: str,
+    evidence: list[Any],
+    uncertainty: str,
+    recommendation: str,
+    same_brain: bool,
+) -> dict[str, Any]:
+    if not evidence:
+        raise ValueError("hidden_research_store_forbidden")
+    return {
+        "schema": "SpecialistRuntimeArtifact@v1",
+        "agent": agent,
+        "claim": claim,
+        "evidence": list(evidence),
+        "uncertainty": uncertainty,
+        "recommendation": recommendation,
+        "same_brain": bool(same_brain),
+        "hidden_research_store": False,
+        "authority": AUTHORITY,
+        "memory_behavior_influence": MBI,
+        "financial_action": False,
+    }
+
+
 def memory_influence_firewall() -> dict[str, Any]:
     return {
         "MEMORY_BEHAVIOR_INFLUENCE": 0,

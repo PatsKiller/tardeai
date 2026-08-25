@@ -23,6 +23,8 @@ type Brain = {
   research?: any
   proactive_cio?: any
   operator_value?: any
+  intelligence_lifecycle?: any
+  model_performance?: any
   versions?: Record<string, string | number | null>
   _serving?: {
     loaded_pin_sha?: string | null
@@ -301,6 +303,13 @@ export default function CioBrainPanel() {
       </Band>
       <Band title="What is not wired" testId="cio-brain-unwired">
         <List rows={brain.intelligence_lifecycle?.unwired_providers} empty="No declared gaps in this snapshot" />
+      </Band>
+      <Band title="Knowledge gaps" testId="cio-brain-knowledge-gaps">
+        <List
+          rows={brain.intelligence_lifecycle?.knowledge_gaps || ['NOT_CONFIGURED', 'UNAVAILABLE', 'STALE', 'UNRESOLVED_IDENTITY', 'POLICY_GAP', 'INSUFFICIENT_MODEL_SAMPLES', 'NO_OUTCOME_HISTORY']}
+          empty="No declared knowledge gaps"
+        />
+        <p className="cio-brain__muted">Gaps are explicit. Missing providers do not crash this panel.</p>
       </Band>
 
       <Band title="System Health" state={serving.pin_match ? 'PIN MATCH' : 'PIN MISMATCH'} testId="cio-brain-system-health">
