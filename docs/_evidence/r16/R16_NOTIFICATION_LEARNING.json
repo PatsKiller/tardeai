@@ -1,0 +1,19 @@
+{
+  "schema": "NotificationLearning@v1",
+  "counts": {
+    "correct_page": 0,
+    "correct_suppression": 3,
+    "duplicate_page": 0,
+    "stale_page": 0,
+    "late_page": 0,
+    "unnecessary_interruption": 0,
+    "missed_material_condition": 0,
+    "operator_acknowledged": 0,
+    "operator_found_useful": 0
+  },
+  "n": 3,
+  "candidate_only": true,
+  "thresholds_auto_changed": false,
+  "authority": "READ_ONLY_ADVISORY",
+  "memory_behavior_influence": 0
+}

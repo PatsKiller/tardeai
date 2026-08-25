@@ -1,0 +1,15 @@
+{
+  "schema": "ShadowExperiment@v1",
+  "control_n": 5,
+  "candidate_n": 5,
+  "metric": "paid",
+  "control_mean": 0.0,
+  "candidate_mean": 0.0,
+  "delta": 0.0,
+  "finding": "inconclusive",
+  "operator_notified": false,
+  "trading": false,
+  "policy_mutated": false,
+  "authority": "READ_ONLY_ADVISORY",
+  "memory_behavior_influence": 0
+}

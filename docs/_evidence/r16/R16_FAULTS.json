@@ -1,0 +1,5 @@
+{
+  "lookahead_leaks_zero_tolerance": true,
+  "promotion_blocked": true,
+  "registry_mutation_blocked": true
+}

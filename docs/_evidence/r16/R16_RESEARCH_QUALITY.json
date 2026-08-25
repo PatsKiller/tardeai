@@ -1,0 +1,8 @@
+{
+  "schema": "R16ResearchQuality@v1",
+  "evidence_class": "NATURAL_CURRENT",
+  "free_first_fresh_no_change": 120,
+  "searx_queries": 0,
+  "paid": 0,
+  "source_strategy_candidates": 0
+}

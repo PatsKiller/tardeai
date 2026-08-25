@@ -1,0 +1,19 @@
+{
+  "schema": "R16OutcomeLinkage@v1",
+  "evidence_class": "HISTORICAL_VALIDATED",
+  "outcome_recorded_events": 25,
+  "linked_via_cio_action_id": 25,
+  "fully_linked_to_security_guid": 0,
+  "partial": 25,
+  "unresolved": 0,
+  "coverage_pct_fully_traceable": 0.0,
+  "horizons": [
+    "event-relative",
+    "1_session",
+    "5_sessions",
+    "20_sessions",
+    "quarterly",
+    "thesis-review"
+  ],
+  "fabricated_joins": false
+}
