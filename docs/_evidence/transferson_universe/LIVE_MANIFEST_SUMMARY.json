@@ -24,7 +24,7 @@
   },
   "holdings_in_universe": 19,
   "unresolved_identity_n": 17,
-  "note": "Counts are observations. Graph-profiled is coverage, not the universe.",
+  "note": "HISTORICAL. File-union while DB collectors failed-soft. Not the live universe. Graph-profiled 120 / file-union 120. Live DB-backed count is 4153.",
   "scheduler_index_n": 41,
   "sample": [
     {
@@ -107,5 +107,7 @@
         "ticker_research_graph.jsonl"
       ]
     }
-  ]
+  ],
+  "historical_file_union_only": true,
+  "superseded_by": "LIVE_ACCEPTANCE.json"
 }

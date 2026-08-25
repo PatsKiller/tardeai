@@ -50,11 +50,21 @@ def _root(root: Path | str | None) -> Path:
 
 
 def _q(sql: str, params: tuple = ()) -> list:
+    """Fail-soft SQL. Import the same adapter the live scheduler uses."""
     try:
-        from db_adapter import _execute  # type: ignore
-        return _execute(sql, params, fetch="all") or []
+        from scripts.db_adapter import _execute
+    except Exception:
+        try:
+            from db_adapter import _execute  # type: ignore
+        except Exception:
+            return []
+    try:
+        rows = _execute(sql, params, fetch="all")
     except Exception:
         return []
+    if not rows:
+        return []
+    return list(rows)
 
 
 def _tier_order(tier: str) -> int:

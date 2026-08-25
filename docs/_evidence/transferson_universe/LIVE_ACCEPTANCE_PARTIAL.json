@@ -1,0 +1,79 @@
+{
+  "schema": "TransfersonLiveAcceptance@v1",
+  "pin": "55520666b4a742b9ed893c3231b414d089312363",
+  "canonical_universe_count": 4153,
+  "union_n": 4154,
+  "union_equals_canonical": false,
+  "only_in_union": [
+    "CASH"
+  ],
+  "only_in_canonical": [],
+  "only_in_union_n": 1,
+  "only_in_canonical_n": 0,
+  "metrics": {
+    "schema": "TransfersonUniverseMetrics@v1",
+    "canonical_universe_count": 4153,
+    "graph_profiled_count": 120,
+    "persistent_graph_profiled": 120,
+    "free_first_circulated_count": 120,
+    "research_due_count": 0,
+    "research_executed_count": 0,
+    "t0_hold": 19,
+    "t0_prop": 32,
+    "t1_watch": 321,
+    "t2_incub": 148,
+    "t3_cold": 3633,
+    "graph_coverage": "120 graph-profiled / 4153 universe",
+    "ticker_guid_is_not_security": true,
+    "authority": "READ_ONLY_ADVISORY"
+  },
+  "coverage": {
+    "schema": "GraphCoverageReport@v1",
+    "canonical_universe_count": 4153,
+    "graph_profiled_count": 120,
+    "persistent_graph_profiled": 120,
+    "graph_coverage": "120 / 4153",
+    "missing_n": 4033,
+    "direction": "canonical_universe \u2192 identity \u2192 graph/profile \u2192 research/free-first",
+    "authority": "READ_ONLY_ADVISORY"
+  },
+  "missing_graph_n": 4033,
+  "source_unique": {
+    "holdings": 19,
+    "cusips": 3,
+    "reentry_all": 107,
+    "reentry_ready_near": 22,
+    "reentry_wait_retained": 75,
+    "proposals_active": 32,
+    "proposals_recent": 99,
+    "watch_directives": 119,
+    "hermes_rank_t1": 689,
+    "hermes_rank_all": 2928,
+    "incubator": 405,
+    "scope_s3": 4472,
+    "symbol_profiles": 2822,
+    "graph_profiles": 120
+  },
+  "missing": {
+    "holdings": [],
+    "proposals_active": [],
+    "watch": [],
+    "rank_t1": [
+      "CASH"
+    ],
+    "incubator": []
+  },
+  "identity": {
+    "UNRESOLVED_WITH_REASON": 4050,
+    "CONFIRMED": 103
+  },
+  "identity_resolved": {
+    "issuer_guid": 0,
+    "security_guid": 103,
+    "listing_guid": 103,
+    "ticker_alias_only": 17,
+    "security_equals_ticker_guid": 0
+  },
+  "scheduler_index_n": 3105,
+  "only_in_canonical_not_scheduler": 1048
+}

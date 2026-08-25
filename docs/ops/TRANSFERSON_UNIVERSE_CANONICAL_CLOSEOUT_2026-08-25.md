@@ -27,9 +27,7 @@ Historical **2026-08-22** `research_scheduler.load_universe()` split (22/30/331/
 
 ## Live validation (this host)
 
-DB collectors returned empty. File-union canonical count = **120**, of which **120 graph-profiled**. That is **not** a declaration that the universe is 120; it is the file-derived union while `symbol_profiles` / proposals are unavailable in-process.
-
-Scheduler index: 41 (holdings 19 + READY/NEAR 22). WAIT names in universe, not scheduler: 55.
+**Superseded.** File-union 120/120 was the fail-soft DB miss. Live CURRENT+DB gate: `docs/ops/TRANSFERSON_UNIVERSE_LIVE_ACCEPTANCE_GATE_2026-08-25.md` — **4153** canonical, **120 graph-profiled**, verdict **LIVE_ACCEPTANCE_BLOCKED**.
 
 ## Tests
 
