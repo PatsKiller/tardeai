@@ -1,0 +1,19 @@
+{
+  "schema": "R16_1Gui@v1",
+  "learning_cockpit": true,
+  "testid": "cio-brain-learning-cockpit",
+  "evidence_classes_visible": [
+    "LIVE",
+    "NATURAL_LONGITUDINAL",
+    "HISTORICAL_VALIDATED",
+    "HISTORICAL_REPLAY",
+    "GOLDEN_SHADOW"
+  ],
+  "outcomes_due_visible": "ON_HORIZON",
+  "promotion_state_visible": "REVIEW_READY",
+  "why_not_promoted_visible": true,
+  "cannot_self_promote": true,
+  "checkpoint_counts_bound_to_jsonl": false,
+  "note": "Cockpit is a live governance projection on 55520666. Durable checkpoint counts are on disk; GUI does not mix evidence classes.",
+  "authority": "READ_ONLY_ADVISORY"
+}

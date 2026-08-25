@@ -1,0 +1,22 @@
+{
+  "schema": "R16_1ModelQuality@v1",
+  "cohorts_not_collapsed": true,
+  "LIVE": {
+    "n": 0,
+    "note": "ModelTaskPerformance live samples still 0"
+  },
+  "HISTORICAL_VALIDATED": {
+    "n": 0
+  },
+  "HISTORICAL_REPLAY": {
+    "n": 300,
+    "research_curation": 100,
+    "operator_explanation": 200
+  },
+  "GOLDEN_SHADOW": {
+    "n": 240
+  },
+  "prompt_confounding": "CONFOUNDED unless task_class+prompt_version+process_version+evidence profile controlled",
+  "auto_promoted": false,
+  "authority": "READ_ONLY_ADVISORY"
+}

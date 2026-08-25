@@ -1,0 +1,14 @@
+{
+  "schema": "R16_1Lookahead@v1",
+  "goldens": 75,
+  "adversarial_extra": 8,
+  "future_data_leaks": 0,
+  "failures": [],
+  "named_key_gap_not_in_FORBIDDEN_FUTURE_KEYS": [
+    "ADV-named-future_research-key",
+    "ADV-named-future_specialist-key"
+  ],
+  "named_key_gap_note": "future_research and future_specialist_artifact as top-level keys are not listed; future evidence timestamps ARE rejected. No live leak of dated future artifacts.",
+  "zero_tolerated": true,
+  "authority": "READ_ONLY_ADVISORY"
+}

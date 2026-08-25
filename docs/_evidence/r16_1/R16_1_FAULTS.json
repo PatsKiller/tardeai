@@ -1,0 +1,14 @@
+{
+  "duplicate_outcome_blocked": true,
+  "crash_idempotent_checkpoint": true,
+  "crash_idempotent_observation": true,
+  "future_data_rejected": true,
+  "bad_operator_feedback_no_policy": true,
+  "missing_decision_append_fails": true,
+  "lookahead_leaks": 0,
+  "named_key_gap": [
+    "ADV-named-future_research-key",
+    "ADV-named-future_specialist-key"
+  ],
+  "authority": "READ_ONLY_ADVISORY"
+}

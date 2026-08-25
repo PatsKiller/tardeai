@@ -1,0 +1,32 @@
+{
+  "schema": "R16_1PromotionFirewall@v1",
+  "max_unattended": "REVIEW_READY",
+  "self_approve": {
+    "ok": false,
+    "reason": "PROMOTION_REQUIRES_SEPARATE_AUTHORITY",
+    "stage": "REVIEW_READY",
+    "max_unattended": "REVIEW_READY",
+    "authority": "READ_ONLY_ADVISORY"
+  },
+  "promote_denied": {
+    "ok": false,
+    "reason": "PROMOTION_REQUIRES_SEPARATE_AUTHORITY",
+    "stage": "REVIEW_READY",
+    "max_unattended": "REVIEW_READY",
+    "authority": "READ_ONLY_ADVISORY"
+  },
+  "rollback": {
+    "ok": true,
+    "stage": "REVERTED",
+    "rollback": true,
+    "authority": "READ_ONLY_ADVISORY"
+  },
+  "unauthorized_promotions": 0,
+  "registry_mutation_denied": true,
+  "registries_unchanged": true,
+  "feedback_injection_normalized": "NOT_USEFUL",
+  "memory_override_blocked": true,
+  "notification_threshold_auto_changed": false,
+  "research_source_order_auto_changed": false,
+  "authority": "READ_ONLY_ADVISORY"
+}

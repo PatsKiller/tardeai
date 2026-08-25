@@ -1,0 +1,59 @@
+{
+  "schema": "R16_1ResearchQuality@v1",
+  "cohorts": {
+    "NATURAL_CURRENT_pre_deploy": {
+      "source_commit": "d72ecdd13d4fad1e7551597634f326aeb6a03353",
+      "as_of": "2026-08-25T16:28:08+00:00",
+      "evaluated": 120,
+      "fresh_no_change": 120,
+      "Hermes": 117,
+      "RAG": 2,
+      "structured": 1,
+      "SearXNG": 0,
+      "paid": 0,
+      "gap_closure_rate": 0.0,
+      "duplicate_evidence": 120,
+      "novel_evidence": 0
+    },
+    "LIVE_post_deploy_scan": {
+      "source_commit": "55520666b4a742b9ed893c3231b414d089312363",
+      "as_of": "2026-08-25T16:58:08.876402+00:00",
+      "paid_dispatch": 0,
+      "llm_calls": 0
+    },
+    "NATURAL_CURRENT_post_deploy": {
+      "evidence_class": "LIVE",
+      "timer": "tradeai-free-first-circulation.timer",
+      "manually_started": false,
+      "source_commit": "55520666b4a742b9ed893c3231b414d089312363",
+      "as_of": "2026-08-25T17:27:06+00:00",
+      "mode": "FREE_FIRST_ONLY",
+      "evaluated": 120,
+      "fresh_no_change": 120,
+      "Hermes": 117,
+      "RAG": 2,
+      "structured": 1,
+      "SearXNG": 0,
+      "searx_queries": 0,
+      "paid": 0,
+      "LLM_eligible_not_authorized": 0,
+      "gap_closure_rate": 0.0,
+      "memory_behavior_influence": 0
+    }
+  },
+  "source_strategy_candidates": [
+    {
+      "schema": "SourceStrategyCandidate@v1",
+      "current": "Hermes\u2192RAG\u2192structured\u2192SearXNG",
+      "candidate": "KEEP",
+      "reason": "FRESH_NO_CHANGE 120/120 paid=0 on both d72ecdd1 and 55520666; no quality delta to justify reorder",
+      "n_live": 120,
+      "n_historical": 120,
+      "n_shadow": 0,
+      "promoted": false,
+      "registry_or_source_order_mutated": false
+    }
+  ],
+  "route_changed": false,
+  "authority": "READ_ONLY_ADVISORY"
+}

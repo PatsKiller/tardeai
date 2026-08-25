@@ -1,0 +1,77 @@
+{
+  "schema": "R16_1OutcomeBackfill@v1",
+  "evidence_class": "HISTORICAL_VALIDATED",
+  "linked": 25,
+  "historical_validated": 25,
+  "natural_longitudinal": 0,
+  "coverage_pct_of_outcome_events": 100.0,
+  "fully_linked_to_security_guid": 0,
+  "identity_safe": true,
+  "minted_from_ticker": false,
+  "history_rewritten": false,
+  "hashes_unchanged": true,
+  "duplicate_blocked": true,
+  "horizons": [
+    "event-relative",
+    "1_session",
+    "5_sessions",
+    "20_sessions",
+    "quarterly",
+    "thesis-review"
+  ],
+  "sample": [
+    {
+      "decision_id": "act-830c7ee8",
+      "outcome_id": "e81cb746d77b1fbb650dd05e",
+      "appended": true,
+      "history_rewritten": false,
+      "decision_unchanged": true,
+      "hash_unchanged": true,
+      "subject_guid": null,
+      "evidence_class": "HISTORICAL_VALIDATED"
+    },
+    {
+      "decision_id": "act-79d2307d",
+      "outcome_id": "4f57d06b27b9fa906df9d09a",
+      "appended": true,
+      "history_rewritten": false,
+      "decision_unchanged": true,
+      "hash_unchanged": true,
+      "subject_guid": null,
+      "evidence_class": "HISTORICAL_VALIDATED"
+    },
+    {
+      "decision_id": "act-66b1d4d1",
+      "outcome_id": "502c5cab9f1866ebd0e75ed3",
+      "appended": true,
+      "history_rewritten": false,
+      "decision_unchanged": true,
+      "hash_unchanged": true,
+      "subject_guid": null,
+      "evidence_class": "HISTORICAL_VALIDATED"
+    },
+    {
+      "decision_id": "act-c6e37a0f",
+      "outcome_id": "34265fbd0f24f586bac25595",
+      "appended": true,
+      "history_rewritten": false,
+      "decision_unchanged": true,
+      "hash_unchanged": true,
+      "subject_guid": null,
+      "evidence_class": "HISTORICAL_VALIDATED"
+    },
+    {
+      "decision_id": "act-38b9c322",
+      "outcome_id": "d1f4d99d835b6ca6eece70dc",
+      "appended": true,
+      "history_rewritten": false,
+      "decision_unchanged": true,
+      "hash_unchanged": true,
+      "subject_guid": null,
+      "evidence_class": "HISTORICAL_VALIDATED"
+    }
+  ],
+  "note": "cio_outcomes.jsonl rows have cio_action_id, not security_guid. PARTIAL identity. Outcomes append; decisions not rewritten.",
+  "authority": "READ_ONLY_ADVISORY",
+  "memory_behavior_influence": 0
+}

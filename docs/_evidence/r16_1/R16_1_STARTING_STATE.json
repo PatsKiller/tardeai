@@ -1,0 +1,44 @@
+{
+  "schema": "R16_1StartingState@v1",
+  "as_of": "2026-08-25T16:49:30+00:00",
+  "verified_at": "2026-08-25T17:03:10+00:00",
+  "repository": "PatsKiller/tardeai",
+  "pr510": {
+    "merged": true,
+    "merge_sha": "ce105e65cbaca23f839f95a7540f93f8033745ae",
+    "kind": "evidence-only R15.2 closeout",
+    "redeployed": false
+  },
+  "pr511_handoff": {
+    "title": "feat(cio): R16 institutional learning contracts",
+    "state_at_handoff": "open",
+    "mergeable_at_handoff": true,
+    "head_handoff": "164bcf0fb94983515236c955d3a8f4850b6b5e8f",
+    "head_before_merge": "6000153206568c5e2d3ba96e9e5c8b17baf58914",
+    "base": "ce105e65cbaca23f839f95a7540f93f8033745ae",
+    "changed_files": 29,
+    "additions_handoff": 1538,
+    "additions_merged": 1674,
+    "reported_tests": 1661,
+    "note": "60001532 added durable checkpoint persist after handoff 164bcf0f"
+  },
+  "repository_head_sha_at_start": "ce105e65cbaca23f839f95a7540f93f8033745ae",
+  "runtime_source_sha_at_start": "d72ecdd13d4fad1e7551597634f326aeb6a03353",
+  "live_maturity_at_start": 86,
+  "docs_only_main_vs_runtime_at_start": true,
+  "r16_source_promises": [
+    "OutcomeObservation@v1",
+    "multi-horizon outcomes",
+    "quality axes independent of P&L",
+    "counterexample-gated lessons",
+    "preregistered hypotheses",
+    "lookahead firewall",
+    "promotion ceiling REVIEW_READY",
+    "learning cockpit",
+    "no automatic promotion"
+  ],
+  "MEMORY_BEHAVIOR_INFLUENCE": 0,
+  "canary": "unset",
+  "cash_target_range_pct": "unconfirmed",
+  "policy_status": "POLICY_GAP"
+}

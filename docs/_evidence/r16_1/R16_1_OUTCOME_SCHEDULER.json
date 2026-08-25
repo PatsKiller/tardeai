@@ -1,0 +1,139 @@
+{
+  "schema": "R16_1OutcomeScheduler@v1",
+  "evidence_class": "LIVE",
+  "checkpoints_scheduled": 18,
+  "idempotent": true,
+  "trading": false,
+  "observational_only": true,
+  "checkpoints_due": 12,
+  "observations_completed_historical": 25,
+  "pending_data": 18,
+  "pending_not_invented": true,
+  "path": "data/cio/outcome_checkpoints.jsonl",
+  "observation_path": "data/cio/outcome_observations.jsonl",
+  "live_material_decisions": [
+    "dec_cash_a7b0352ebbae0cc2",
+    "dec_reentry_9815cb00f0238ccd",
+    "dec_babcd8d893e1adcb",
+    "dec_cash_d4c7e94290b91103",
+    "dec_reentry_178d6998b639e04c"
+  ],
+  "second_scan_new_writes": 7,
+  "second_scan_trim_duplicates": 4,
+  "longitudinal_seed": true,
+  "elapsed_time_fabricated": false,
+  "sample": [
+    {
+      "decision_id": "dec_cash_a7b0352ebbae0cc2",
+      "horizon": "event-relative",
+      "checkpoint_id": "0a44066730dd97777ea0",
+      "wrote": true,
+      "duplicate_second": true,
+      "due_at": null,
+      "observational_only": true,
+      "trading": false
+    },
+    {
+      "decision_id": "dec_cash_a7b0352ebbae0cc2",
+      "horizon": "1_session",
+      "checkpoint_id": "b284486ba8481c17adb9",
+      "wrote": true,
+      "duplicate_second": true,
+      "due_at": "2026-08-26T17:03:10+00:00",
+      "observational_only": true,
+      "trading": false
+    },
+    {
+      "decision_id": "dec_cash_a7b0352ebbae0cc2",
+      "horizon": "20_sessions",
+      "checkpoint_id": "8293920c631ded96d212",
+      "wrote": true,
+      "duplicate_second": true,
+      "due_at": "2026-09-14T17:03:10+00:00",
+      "observational_only": true,
+      "trading": false
+    },
+    {
+      "decision_id": "dec_cash_a7b0352ebbae0cc2",
+      "horizon": "quarterly",
+      "checkpoint_id": "0abc9479e4b39f80848c",
+      "wrote": true,
+      "duplicate_second": true,
+      "due_at": "2026-11-23T17:03:10+00:00",
+      "observational_only": true,
+      "trading": false
+    },
+    {
+      "decision_id": "dec_reentry_9815cb00f0238ccd",
+      "horizon": "event-relative",
+      "checkpoint_id": "910a28a3cac074645eb7",
+      "wrote": true,
+      "duplicate_second": true,
+      "due_at": null,
+      "observational_only": true,
+      "trading": false
+    },
+    {
+      "decision_id": "dec_reentry_9815cb00f0238ccd",
+      "horizon": "1_session",
+      "checkpoint_id": "3847fce0fc26d304e95a",
+      "wrote": true,
+      "duplicate_second": true,
+      "due_at": "2026-08-26T17:03:10+00:00",
+      "observational_only": true,
+      "trading": false
+    },
+    {
+      "decision_id": "dec_reentry_9815cb00f0238ccd",
+      "horizon": "5_sessions",
+      "checkpoint_id": "cfcd98305065e016b48c",
+      "wrote": true,
+      "duplicate_second": true,
+      "due_at": "2026-08-30T17:03:10+00:00",
+      "observational_only": true,
+      "trading": false
+    },
+    {
+      "decision_id": "dec_babcd8d893e1adcb",
+      "horizon": "event-relative",
+      "checkpoint_id": "efcb6867d54beb4397b6",
+      "wrote": true,
+      "duplicate_second": true,
+      "due_at": null,
+      "observational_only": true,
+      "trading": false
+    },
+    {
+      "decision_id": "dec_babcd8d893e1adcb",
+      "horizon": "1_session",
+      "checkpoint_id": "6c433d300e34c772dd0c",
+      "wrote": true,
+      "duplicate_second": true,
+      "due_at": "2026-08-26T17:03:10+00:00",
+      "observational_only": true,
+      "trading": false
+    },
+    {
+      "decision_id": "dec_babcd8d893e1adcb",
+      "horizon": "5_sessions",
+      "checkpoint_id": "fe7d9aa199840b8cacc1",
+      "wrote": true,
+      "duplicate_second": true,
+      "due_at": "2026-08-30T17:03:10+00:00",
+      "observational_only": true,
+      "trading": false
+    },
+    {
+      "decision_id": "dec_babcd8d893e1adcb",
+      "horizon": "thesis-review",
+      "checkpoint_id": "3be007492757299e0f3e",
+      "wrote": true,
+      "duplicate_second": true,
+      "due_at": null,
+      "observational_only": true,
+      "trading": false
+    }
+  ],
+  "authority": "READ_ONLY_ADVISORY",
+  "memory_behavior_influence": 0
+}
