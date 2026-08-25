@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-08-24 — M4 ContextEnvelope@v2 same-brain (source)
+
+MATURITY_IMPACT: NONE live. SOURCE + TESTED. PR E UI not implemented.
+
+- Shared CIOContextEnvelope@v2 overlay for Hermes/CIO/Advisory/Telegram/Maria/Steph.
+- Proactive CIO situation detector emits notification candidates only. No trading.
+- Consumes M3 AgentEpisode/MemoryConsolidator contracts (no duplicate brain).
+
 ## 2026-08-24 — M3 memory consolidator (source)
 
 MATURITY_IMPACT: NONE live. SOURCE + TESTED only until this PR merges.
