@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# Trade AI tracked pre-push: remote-sync authorization, then secrets tree scan.
+set -euo pipefail
+
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root"
+
+echo
+echo "Trade AI Remote Sync Gate"
+echo "========================="
+echo
+
+if [[ "${TRADEAI_REMOTE_PUSH_AUTHORIZED:-0}" != "1" ]]; then
+  cat >&2 <<'EOF'
+REMOTE PUSH BLOCKED.
+
+Trade AI uses LOCAL-FIRST development. See AI_WORK_POLICY.md.
+
+A local checkpoint is:
+    git commit
+
+not:
+    git push
+
+Before synchronizing remotely, complete local acceptance and explicitly authorize
+this one synchronization event:
+
+    TRADEAI_REMOTE_PUSH_AUTHORIZED=1 git push ...
+
+Do not set that flag merely to bypass this policy.
+EOF
+  exit 1
+fi
+
+echo "Remote synchronization explicitly authorized for this command."
+echo "Running secrets tree scan..."
+exec python3 "$repo_root/scripts/check_no_secrets.py" --tree

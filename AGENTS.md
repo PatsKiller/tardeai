@@ -1,4 +1,22 @@
-# AGENTS.md
+# Trade AI Agent Instructions
+
+Before performing any work in this repository, read and obey:
+
+`./AI_WORK_POLICY.md`
+
+It is the canonical engineering, Git, CI-cost, deployment-boundary and
+remote-synchronization policy for this repository.
+
+A local checkpoint means `git commit`, not `git push`.
+
+Do not remotely push, open/update PRs, or trigger GitHub CI merely as part of
+ordinary iteration.
+
+If there is a conflict, use the safer/more restrictive instruction.
+
+---
+
+# AGENTS.md — runtime notes
 
 Authoritative human/agent docs live in `README.txt`, `ARCHITECTURE.md`, `OPERATIONS.md`, and `docs/`.
 This file only adds durable operating notes for automated (cloud) agents.
