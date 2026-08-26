@@ -55,9 +55,30 @@ def morning_text(product: dict[str, Any]) -> str:
     if reentry.get("count"):
         counts = reentry.get("counts") or {}
         lines.append(f"Re-entry book: {reentry.get('count')} names {counts}".strip())
-    for sec in product.get("sector") or []:
-        if isinstance(sec, dict) and sec.get("prose"):
-            lines.append(sec["prose"])
+    secs = product.get("sector") or []
+    if secs:
+        lines.append("Sector")
+        for sec in secs[:6]:
+            if isinstance(sec, dict) and sec.get("prose"):
+                lines.append(sec["prose"])
+    elif product.get("sector_reason"):
+        lines.append(f"Sector: {product.get('sector_reason')}")
+    inds = product.get("industry") or []
+    if inds:
+        lines.append("Industry")
+        for ind in inds[:4]:
+            if isinstance(ind, dict) and ind.get("prose"):
+                lines.append(ind["prose"])
+    cats = product.get("catalysts") or []
+    if cats:
+        lines.append("Catalysts")
+        for c in cats[:4]:
+            if isinstance(c, dict):
+                lines.append(
+                    f"- {c.get('entity') or ''} {c.get('catalyst')}: {c.get('why_relevant') or c.get('when') or ''}".strip()
+                )
+    elif product.get("catalysts_reason"):
+        lines.append(f"Catalysts: {product.get('catalysts_reason')}")
     lines.append("Open: Command Center → CIO. READ_ONLY_ADVISORY.")
     return "\n".join(lines).strip()
 
@@ -111,15 +132,18 @@ def command_center_view(product: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(e, dict):
             continue
         decisions.append({
-            "decision": e.get("cio_decision"),
-            "urgency": e.get("what_should_i_do"),
+            "decision_id": e.get("decision_id"),
+            "decision": e.get("decision") or e.get("cio_decision"),
+            "urgency": e.get("urgency") or e.get("what_should_i_do"),
             "reason": e.get("why_it_matters") or e.get("why"),
             "confidence": e.get("confidence"),
+            "confidence_status": e.get("confidence_status"),
             "counter_evidence": e.get("counter_evidence"),
             "research_provenance": e.get("source"),
-            "entity_identity": e.get("symbol"),
+            "entity_identity": e.get("entity") or e.get("symbol"),
             "data_quality": e.get("data_quality"),
-            "next_review": e.get("next_review"),
+            "next_review": e.get("next_review_at") or e.get("next_review"),
+            "generation_id": e.get("generation_id") or product.get("generation_id"),
         })
     return {
         "source": "cio.operator_product.current",

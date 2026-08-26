@@ -19,6 +19,17 @@ OVERLAY_RELS = (
     "data/portfolios/state",
 )
 
+
+def overlay_data_source(*, canonical_source: Path | str | None = None) -> Path:
+    """Prefer GOOD_PERSISTENT_ROOT when provisioned; else legacy source tree."""
+    env = os.environ.get("TRADEAI_PERSISTENT_STATE_ROOT")
+    preferred = Path(env) if env else Path.home() / "trade-ai-releases" / "persistent-state"
+    if (preferred / "PERSISTENT_STATE_ROOT.json").is_file():
+        return preferred
+    if canonical_source:
+        return Path(canonical_source)
+    return Path("/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild")
+
 # Files that mean "this persistent store is not empty".
 SENTINELS = {
     "data/cio": ("cio_investment_brief.json", "outcome_checkpoints.jsonl", "aif_memory.json"),

@@ -30,25 +30,31 @@ def _decision(entry: dict[str, Any]) -> str:
 
 def render_decision(entry: dict[str, Any]) -> str:
     entity = entry.get("symbol") or entry.get("entity") or "PORTFOLIO"
+    conf = entry.get("confidence_text")
+    if conf is None:
+        conf = entry.get("confidence")
+        conf = str(conf) if conf is not None else "not provided — no numeric score this generation (not fabricated)"
+    counter = entry.get("counter_evidence") or "none cited — invalidation condition not in producer payload"
+    nxt = entry.get("next_review_at") or entry.get("next_review") or "not provided — standing cadence (next material generation or next session)"
     lines = [
         f"[CIO DECISION] {entity}",
         "",
         f"Decision: {_decision(entry)}",
         f"Urgency: {_urgency(entry)}",
         "",
-        f"What changed: {entry.get('what_changed') or '—'}",
+        f"What changed: {entry.get('what_changed') or 'not provided'}",
         "",
-        f"Why it matters: {entry.get('why_it_matters') or entry.get('why') or '—'}",
+        f"Why it matters: {entry.get('why_it_matters') or entry.get('why') or 'not provided'}",
         "",
-        f"Operator action: {entry.get('operator_action') or entry.get('what_should_i_do') or 'NONE'}",
+        f"Your action: {entry.get('operator_action') or entry.get('what_should_i_do') or 'NONE'}",
         "",
-        f"Confidence: {entry.get('confidence') if entry.get('confidence') is not None else '—'}",
+        f"Confidence: {conf}",
         "",
-        f"Counter-evidence: {entry.get('counter_evidence') or 'none cited'}",
+        f"Counterpoint: {counter}",
         "",
         f"Data quality: {entry.get('data_quality') or 'OK'}",
         "",
-        f"Next review: {entry.get('next_review') or 'unscheduled'}",
+        f"Next review: {nxt}",
         "",
         "READ_ONLY_ADVISORY — no order is being placed.",
     ]

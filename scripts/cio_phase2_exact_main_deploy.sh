@@ -168,9 +168,23 @@ PY
 
 link_pipeline_data() {
   local dest="$1"
+  local overlay_src
+  overlay_src="$(python3 - "$ROOT" "$CANONICAL_SOURCE" <<'PY'
+import os, sys
+from pathlib import Path
+repo, canonical = Path(sys.argv[1]), Path(sys.argv[2])
+sys.path.insert(0, str(repo / "scripts"))
+try:
+    from lib.persistent_overlay import overlay_data_source
+    print(overlay_data_source(canonical_source=canonical))
+except Exception:
+    print(canonical)
+PY
+)"
+  log "  overlay data source → $overlay_src"
   # Refuse to overlay populated persistent stores onto an empty source-tree
   # data directory (SOURCE_TREE_COUPLED must not silently become empty).
-  if ! python3 - "$CANONICAL_SOURCE" "$dest" "$ROOT" <<'PY'
+  if ! python3 - "$overlay_src" "$dest" "$ROOT" <<'PY'
 import sys
 from pathlib import Path
 src, dest, repo = Path(sys.argv[1]), Path(sys.argv[2]), Path(sys.argv[3])
@@ -196,7 +210,7 @@ PY
   )
   for rel in "${dirs[@]}"; do
     local target="${dest}/${rel}"
-    local source="${CANONICAL_SOURCE}/${rel}"
+    local source="${overlay_src}/${rel}"
     if [[ -e "$source" ]]; then
       rm -rf "$target"
       mkdir -p "$(dirname "$target")"

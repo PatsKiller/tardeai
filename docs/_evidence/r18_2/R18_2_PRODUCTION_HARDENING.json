@@ -1,0 +1,52 @@
+{
+  "schema": "R18_2_PRODUCTION_HARDENING@v1",
+  "state_root": {
+    "old": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild",
+    "new": "/home/johnclaw/trade-ai-releases/persistent-state",
+    "source_tree_coupled": false,
+    "backup": "/home/johnclaw/trade-ai-releases/persistent-state",
+    "hashes_match": true,
+    "copied_n": 16734,
+    "deploy_survival": true,
+    "rollback": "revert overlay_data_source / remove PERSISTENT_STATE_ROOT.json",
+    "legacy_not_deleted": true
+  },
+  "product": {
+    "sector": true,
+    "industry": true,
+    "catalysts": "NO_RELEVANT_CURRENT_EVENTS when none for held names (binding present)",
+    "standing_decisions_complete": true,
+    "completeness_live_replica": "OPERATOR_PRODUCT_PARTIAL (confidence NOT_PROVIDED, not fabricated)"
+  },
+  "consumers": {
+    "morning": "cio.operator_product.current",
+    "eod": "cio.operator_product.current",
+    "telegram": "cio.operator_product.current",
+    "aegis": "cio.operator_product.current",
+    "command_center": "cio.operator_product.current"
+  },
+  "notification": {
+    "authorize_p2": "unset",
+    "interdict": "unset",
+    "canary": "0",
+    "test_sink": true,
+    "canary_changed": false,
+    "live_delivery_authorization_required": true,
+    "authorization_one_liner": "I authorize enabling CIO_MATERIAL_FINANCIAL_NOTIFY_CANARY=1 for READ_ONLY_ADVISORY CIO material-financial Telegram notifications. This authorization is notification-only and does not authorize orders, broker actions, stops, risk changes, or trading."
+  },
+  "data": {
+    "bug_duplicates": 108,
+    "active_learning_influence": 0,
+    "destructive_cleanup": false
+  },
+  "tests": {
+    "passed": "r18.2 + r18 + r17 cash + hardening + adversarial + release-equivalent 17/17 + ai_local_acceptance GREEN",
+    "failed": []
+  },
+  "github": {
+    "pushes": 0,
+    "ci_cycles": 0
+  },
+  "LOCAL_R18_2_PRODUCTION_HARDENING_READY": true,
+  "exact_one_sync_command": "TRADEAI_REMOTE_PUSH_AUTHORIZED=1 git push -u origin feat/r18-2-production-hardening && gh pr create --base main --head feat/r18-2-production-hardening --title \"feat(r18.2): persistent-state root, product completeness, delivery audit\" --body \"R18.2 production hardening. One PR, one CI. Canary unchanged.\""
+}
