@@ -1139,6 +1139,12 @@ def get_cio_home() -> dict[str, Any]:
             "ts": handoff["latest"].get("timestamp"),
         })
 
+    operator_product = None
+    try:
+        from scripts.lib.cio_operator_product import build_operator_product
+        operator_product = build_operator_product(root=PROJECT_ROOT, persist=False)
+    except Exception:
+        operator_product = None
     home = build_office_home(
         capital_plan=capital_plan,
         sector_opportunities=sector_opportunities,
@@ -1152,6 +1158,7 @@ def get_cio_home() -> dict[str, Any]:
         source_refs=source_refs,
         validator_states=validator_states,
         run_ids=run_ids,
+        operator_product=operator_product,
     )
     home["ok"] = True
     stamp_decision_identity(home, capital_plan)

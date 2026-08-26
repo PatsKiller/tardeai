@@ -47,6 +47,7 @@ def inventory(*, root: Path | str | None = None) -> dict[str, Any]:
             "readers": spec.get("readers") or [],
             "schema": spec.get("schema"),
             "authority": spec.get("authority"),
+            "ownership_class": spec.get("ownership_class"),
             "append_only": spec.get("append_only"),
             "rebuildable": spec.get("rebuildable"),
             "used_alias": loc.get("used_alias"),

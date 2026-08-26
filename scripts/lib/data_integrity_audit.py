@@ -68,6 +68,14 @@ def audit(*, root: Path | str | None = None) -> dict[str, Any]:
     holds = list((holdings_doc or {}).get("holdings") or [])
     ck = reconcile_store(root or ".")
     cash_dupes = int((ck.get("counts") or {}).get("SEMANTIC_DUPLICATE") or 0)
+    learning = {"eligible_n": 0, "excluded_n": 0, "active_learning_influence_from_duplicates": 0}
+    try:
+        from scripts.lib.checkpoint_learning_filter import filter_learning_rows
+        from scripts.lib.cio_institutional_learning import CHECKPOINT_PATH, _jsonl
+        rows = _jsonl(Path(root or ".") / CHECKPOINT_PATH)
+        learning = filter_learning_rows(rows)
+    except Exception:
+        pass
     return {
         "schema": "DataIntegrityAudit@v1",
         "holdings": holdings_freshness(holdings_doc if isinstance(holdings_doc, dict) else {}),
@@ -77,6 +85,9 @@ def audit(*, root: Path | str | None = None) -> dict[str, Any]:
             "counts": ck.get("counts"),
             "bug_duplicates": cash_dupes,
             "deleted": 0,
+            "active_learning_influence_from_duplicates": int(
+                learning.get("active_learning_influence_from_duplicates") or 0
+            ),
         },
         "purge_plan": {
             "destructive_changes_applied": False,

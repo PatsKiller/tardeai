@@ -1,0 +1,110 @@
+{
+  "schema": "R18DataOperatorConvergence@v1",
+  "roots": {
+    "persistent_root": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/data",
+    "release_root": "/home/johnclaw/trade-ai-releases/portfolio-server/1e4daa5f-main-exact-phase2-20260826-082534",
+    "source_root": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild",
+    "unknown_root_drift": 0,
+    "classes": {
+      "persistent_root": "SOURCE_TREE_COUPLED",
+      "preferred_persistent_root": "GOOD_PERSISTENT_ROOT",
+      "release_root": "RELEASE_LOCAL_DERIVED",
+      "source_root": "SOURCE_TREE_COUPLED",
+      "current_data_root": "RELEASE_LOCAL_DERIVED",
+      "cio_root": "SOURCE_TREE_COUPLED",
+      "runtime_root": "SOURCE_TREE_COUPLED",
+      "portfolio_state_root": "SOURCE_TREE_COUPLED",
+      "research_root": "RELEASE_LOCAL_DERIVED",
+      "memory_root": "SOURCE_TREE_COUPLED",
+      "health_root": "SOURCE_TREE_COUPLED",
+      "source_data_root": "SOURCE_TREE_COUPLED",
+      "source_cio_root": "SOURCE_TREE_COUPLED"
+    }
+  },
+  "stores": {
+    "registered": 15,
+    "ownership_complete": true,
+    "stale_readers": 0,
+    "stale_writers": 0
+  },
+  "identity": {
+    "confirmed": true,
+    "candidate": false,
+    "unresolved": 0
+  },
+  "integrity": {
+    "checkpoint_bug_duplicates": 108,
+    "active_learning_influence_from_duplicates": 0,
+    "orphans": 0,
+    "invalid_schema": 0
+  },
+  "cio_product": {
+    "canonical": true,
+    "schema": "CIOOperatorProduct@v1",
+    "current_available": true,
+    "history_available": true,
+    "status": "AVAILABLE",
+    "missing_sections": []
+  },
+  "consumers": {
+    "morning": "cio.operator_product.current",
+    "eod": "cio.operator_product.current",
+    "aegis": "cio.operator_product.current",
+    "command_center": "cio.operator_product.current",
+    "telegram": "cio.operator_product.current"
+  },
+  "notifications": {
+    "competing_morning_products": 0,
+    "duplicate_morning_test": "PASS",
+    "raw_ops_json_to_operator": "classified_P3",
+    "human_research_renderer": true
+  },
+  "purge": {
+    "candidates": 108,
+    "backup_complete": false,
+    "quarantine_ready": true,
+    "destructive_applied": false
+  },
+  "github": {
+    "pushes": 0,
+    "ci_cycles": 0
+  },
+  "LOCAL_DATA_AND_OPERATOR_CONVERGENCE_READY_FOR_SYNC": true,
+  "exact_one_sync_command": "TRADEAI_REMOTE_PUSH_AUTHORIZED=1 git push -u origin feat/r18-data-canonical-store && gh pr create --base main --head feat/r18-data-canonical-store --title \"feat(r18-data): canonical store + operator product convergence\" --body \"R18-DATA.1: registry, CIOOperatorProduct consumers, overlay guard. One PR, one CI.\"",
+  "authority": "READ_ONLY_ADVISORY",
+  "financial_action": false,
+  "filename_audit": {
+    "stale_reader_n": 0,
+    "stale_scripts": []
+  },
+  "registry_store_ids": [
+    "advisory.current",
+    "cio.checkpoints",
+    "cio.decisions",
+    "cio.operator_product.current",
+    "cio.operator_product.history",
+    "cio.outcomes",
+    "cio.product.current",
+    "cio.product.history",
+    "memory.canonical",
+    "notifications.outbox",
+    "ops.health",
+    "portfolio.holdings.current",
+    "research.current",
+    "research.hermes",
+    "research.raw"
+  ],
+  "tests": {
+    "targeted": "PASS",
+    "r17_cash_feedback": "PASS",
+    "r18_data_operator": "PASS",
+    "human_goldens_108": "PASS",
+    "hardening": "ALL GATES PASS",
+    "adversarial": "PASS",
+    "release_equivalent": "PASS 17/17",
+    "failed": [
+      "tests/test_cio_raw_product_dump_suppress.py::test_enqueue_book_fallback_html_subject (pre-existing unrelated_rebuild_churn; not this tranche)",
+      "tests/test_cio_raw_product_dump_suppress.py::test_enqueue_card_sets_html_parse_mode (pre-existing unrelated_rebuild_churn; not this tranche)"
+    ]
+  }
+}

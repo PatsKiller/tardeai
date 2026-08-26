@@ -868,6 +868,7 @@ def build_office_home(
     validator_states: Optional[list[dict[str, Any]]] = None,
     run_ids: Optional[list[dict[str, Any]]] = None,
     now: Optional[datetime] = None,
+    operator_product: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
     now = now or datetime.now(timezone.utc)
     plan = capital_plan or {}
@@ -950,6 +951,20 @@ def build_office_home(
             "ok": False, "error": str(exc)[:160],
         }
     home["operator_trust"] = build_operator_trust()
+    # Composition does not hunt files. API wrapper injects the canonical product.
+    if operator_product is None:
+        home["operator_product"] = {
+            "source": "cio.operator_product.current",
+            "loaded": False,
+            "note": "injected by API wrapper; composition itself does not hunt files",
+        }
+    else:
+        try:
+            from scripts.lib.cio_operator_renderers import command_center_view
+            home["operator_product"] = command_center_view(operator_product)
+        except Exception:
+            home["operator_product"] = operator_product
+    home["canonical_cio_source"] = "cio.operator_product.current"
     return home
 
 
