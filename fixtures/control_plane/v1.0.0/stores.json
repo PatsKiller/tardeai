@@ -1,0 +1,23 @@
+{
+  "schema": "ControlPlane@v1.0.0",
+  "page": "stores",
+  "as_of": "2026-08-26T00:00:00+00:00",
+  "evidence_class": "DRY_RUN",
+  "source_sha": "fixture",
+  "data_quality": "DEGRADED",
+  "authority": "READ_ONLY_ADVISORY",
+  "memory_behavior_influence": 0,
+  "computes_cio_decisions": false,
+  "computes_agent_state": false,
+  "computes_maturity": false,
+  "computes_notification_eligibility": false,
+  "financial_action": false,
+  "payload": {
+    "persistent_root": "/home/johnclaw/trade-ai-releases/persistent-state",
+    "legacy_root": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild",
+    "stores": [
+      {"logical_store": "cio.operator_product.current", "physical_root": "data/cio/cio_operator_product.json", "writer": "scripts.lib.cio_operator_product", "readers": ["telegram", "command_center"], "schema_version": "CIOOperatorProduct@v1", "last_write": "2026-08-26T00:00:00+00:00", "freshness": "current", "record_count": 1, "duplicate_count": 0, "quarantine_count": 0, "orphan_count": 0, "source_sha": "fixture", "authority": "READ_ONLY_ADVISORY"},
+      {"logical_store": "cio.checkpoints", "physical_root": "data/cio/outcome_checkpoints.jsonl", "writer": "scripts.lib.r17_checkpoint_binding", "readers": ["learning"], "schema_version": "OutcomeCheckpoint@v1", "last_write": "2026-08-26T00:00:00+00:00", "freshness": "current", "record_count": 153, "duplicate_count": 108, "quarantine_count": 0, "orphan_count": 15, "source_sha": "fixture", "authority": "READ_ONLY_ADVISORY"}
+    ]
+  }
+}

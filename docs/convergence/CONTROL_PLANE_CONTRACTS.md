@@ -1,5 +1,9 @@
 # Control-Plane Contracts v1
 
+**Frozen version: ControlPlane@v1.0.0**
+See `docs/convergence/CONTROL_PLANE_CONTRACT_VERSION` and `CONTRACT_CHANGE_LOG.md`.
+Machine-readable schema: `schemas/control_plane/v1.0.0/envelope.json`.
+
 The Command Center control plane is a read-only projection of canonical Trade AI state.
 Every response carries `evidence_class`, `source_sha`, `as_of`, and `data_quality`.
 

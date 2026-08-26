@@ -1,0 +1,19 @@
+{
+  "program": "R20-R24",
+  "role": "PRINCIPAL_INTEGRATOR",
+  "status": "NOT_READY",
+  "classification": "ARCHITECTURE_BASELINE_ONLY",
+  "control_plane_contract_version": "ControlPlane@v1.0.0",
+  "r21_owner": "CODEX",
+  "r21_implemented": false,
+  "local_ready_for_sync": false,
+  "github_pushes": 0,
+  "ci_cycles": 0,
+  "authority": "READ_ONLY_ADVISORY",
+  "memory_behavior_influence": 0,
+  "notes": [
+    "Integrator branch is not origin/main (production CURRENT is 6088254e).",
+    "R19.1 control-plane code exists on feat/r19-specialist-office-activation; it is optional later consume, not this program's live implementation.",
+    "R22/R23/R24 launch against frozen fixtures; they must not wait for R21 HTTP."
+  ]
+}
