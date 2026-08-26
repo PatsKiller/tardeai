@@ -1,0 +1,34 @@
+{
+  "control_plane_contract_version": "ControlPlane@v1.0.0",
+  "integrator_head": "4ded43dcc5fb23ca896750dc07e446350a69cf59",
+  "workers": {
+    "R21": {
+      "owner": "CODEX",
+      "worktree": "external Codex session",
+      "branch": "TBD by Codex",
+      "status": "ASSIGNED_NOT_IMPLEMENTED"
+    },
+    "R22": {
+      "owner": "subagent",
+      "subagent_id": "01a03ef6-5020-7d43-9edf-2e3bd5f262eb",
+      "worktree": "/home/johnclaw/trade-ai-v12-rebuild/wt-r22-agent-office",
+      "branch": "feat/r22-agent-office-workflow",
+      "status": "RUNNING"
+    },
+    "R23": {
+      "owner": "subagent",
+      "subagent_id": "01a03ef6-5020-7d43-9edf-2e4f92658cbc",
+      "worktree": "/home/johnclaw/trade-ai-v12-rebuild/wt-r23-admin-observability",
+      "branch": "feat/r23-admin-observability",
+      "status": "RUNNING"
+    },
+    "R24": {
+      "owner": "subagent",
+      "subagent_id": "01a03ef6-5020-7d43-9edf-2e5665758f13",
+      "worktree": "/home/johnclaw/trade-ai-v12-rebuild/wt-r24-learning-maturity",
+      "branch": "feat/r24-learning-maturity-ui",
+      "status": "RUNNING"
+    }
+  },
+  "github_pushes": 0
+}
