@@ -58,3 +58,9 @@ This workstream made no runtime or database changes. Proposed control-plane rout
 This documentation-only handoff is ready for integration review. R22/R23/R24 may build typed mocks directly from the frozen contract. The Integrator owns route registration and any shared schema implementation; this workstream intentionally does not edit shared application files.
 
 **Known limitation:** the proposed routes and schemas are not yet implemented. Status remains `CONTRACT_FROZEN_SOURCE_AUDIT_ONLY`.
+
+## Implementation Addendum (R21 backend tranche)
+
+The read-only projection implementation is now present in `scripts/control_plane_api.py`, with additive dispatch from `scripts/portfolio_server.py` for `/api/v3/control-plane/*`. Responses carry `as_of`, source SHA, freshness, data quality, and evidence class. Collection responses are bounded to 200 records. Missing or malformed canonical metadata is surfaced as `UNAVAILABLE` or `INVALID_SCHEMA`; no intelligence is fabricated.
+
+Validation: `pytest -q tests/test_control_plane_api.py` -> 6 passed. Evidence: `docs/_evidence/r21/R21_ENDPOINTS.json` and `R21_FINAL_ACCEPTANCE.json`. This branch remains local and is not deployed; Integrator must wire canonical service readers and detail lineage routes during integration.

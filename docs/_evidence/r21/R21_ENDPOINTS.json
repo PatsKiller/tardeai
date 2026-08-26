@@ -1,0 +1,18 @@
+{
+  "contract_version": "control-plane-contracts-v1",
+  "read_only": true,
+  "routes": [
+    "/api/v3/control-plane/system",
+    "/api/v3/control-plane/agents",
+    "/api/v3/control-plane/workflows",
+    "/api/v3/control-plane/research",
+    "/api/v3/control-plane/stores",
+    "/api/v3/control-plane/identity",
+    "/api/v3/control-plane/notifications",
+    "/api/v3/control-plane/learning",
+    "/api/v3/control-plane/maturity",
+    "/api/v3/control-plane/audit"
+  ],
+  "evidence_class": "UNIT",
+  "limitations": ["projections return UNAVAILABLE when canonical runtime metadata files are absent"]
+}
