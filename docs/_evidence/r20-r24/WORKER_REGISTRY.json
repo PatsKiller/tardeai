@@ -1,33 +1,44 @@
 {
-  "control_plane_contract_version": "ControlPlane@v1.0.0",
-  "integrator_head": "4ded43dcc5fb23ca896750dc07e446350a69cf59",
+  "http_freeze": "CONTROL_PLANE_API_V1_BASELINE",
+  "integrator_head_at_relaunch": "pending_commit",
   "workers": {
     "R21": {
       "owner": "CODEX",
-      "worktree": "external Codex session",
-      "branch": "TBD by Codex",
-      "status": "ASSIGNED_NOT_IMPLEMENTED"
+      "worktree": "/home/johnclaw/worktree-r21",
+      "branch": "feat/r21-control-plane-backend",
+      "status": "BASELINE_ACCEPTED",
+      "baseline_commit": "084674c560abd7bb910726f62e41508703c07e40"
+    },
+    "R21.1": {
+      "owner": "CODEX",
+      "worktree": "/home/johnclaw/r21-1-detail",
+      "branch": "feat/r21.1-detail-lineage",
+      "status": "PENDING_FORMAL_HANDOFF",
+      "local_preview": "c3b105a73301e50b0155b49bf6f6f775ab936af6"
     },
     "R22": {
       "owner": "subagent",
-      "subagent_id": "01a03ef6-5020-7d43-9edf-2e3bd5f262eb",
       "worktree": "/home/johnclaw/trade-ai-v12-rebuild/wt-r22-agent-office",
       "branch": "feat/r22-agent-office-workflow",
-      "status": "RUNNING"
+      "status": "RELAUNCH_SUMMARY_APIS"
     },
     "R23": {
       "owner": "subagent",
-      "subagent_id": "01a03ef6-5020-7d43-9edf-2e4f92658cbc",
       "worktree": "/home/johnclaw/trade-ai-v12-rebuild/wt-r23-admin-observability",
       "branch": "feat/r23-admin-observability",
-      "status": "RUNNING"
+      "status": "RELAUNCH_SUMMARY_APIS"
     },
     "R24": {
       "owner": "subagent",
-      "subagent_id": "01a03ef6-5020-7d43-9edf-2e5665758f13",
       "worktree": "/home/johnclaw/trade-ai-v12-rebuild/wt-r24-learning-maturity",
       "branch": "feat/r24-learning-maturity-ui",
-      "status": "RUNNING"
+      "status": "RELAUNCH_SUMMARY_APIS"
+    },
+    "QA": {
+      "owner": "subagent",
+      "worktree": "spawn isolation",
+      "branch": "feat/r20-r24-qa",
+      "status": "LAUNCHED"
     }
   },
   "github_pushes": 0

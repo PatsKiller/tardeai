@@ -1,0 +1,39 @@
+{
+  "schema": "RemainingMocks@v1",
+  "http_freeze": "CONTROL_PLANE_API_V1_BASELINE",
+  "rule": "Any frontend mock must exactly match frozen backend schema, be labeled FIXTURE/MOCK, live under fixtures/ or pages/control-plane/{mocks,preview,frozen}/, be deleted after R21.1 integration, and never become production data.",
+  "remaining": [
+    {
+      "id": "r22-agents-v1.0.0-payload",
+      "owner": "R22",
+      "path": "apps/command-center-v3/src/pages/control-plane/mocks/agents.json",
+      "schema": "ControlPlane@v1.0.0 payload (NOT HTTP freeze)",
+      "allowed_for": "agent detail until R21.1; tests",
+      "forbidden_for": "list view live data; production"
+    },
+    {
+      "id": "r22-workflows-v1.0.0-payload",
+      "owner": "R22",
+      "path": "apps/command-center-v3/src/pages/control-plane/mocks/workflows.json",
+      "schema": "ControlPlane@v1.0.0 payload (NOT HTTP freeze)",
+      "allowed_for": "workflow trace graph until R21.1; tests",
+      "forbidden_for": "list view live data; production"
+    },
+    {
+      "id": "r23-preview-json",
+      "owner": "R23",
+      "path": "apps/command-center-v3/src/pages/control-plane/preview/*.json",
+      "schema": "ControlPlane@v1.0.0 payload",
+      "allowed_for": "tests / explicitly labeled FIXTURE panel",
+      "forbidden_for": "live page data when API returns UNAVAILABLE"
+    },
+    {
+      "id": "r24-frozen-json",
+      "owner": "R24",
+      "path": "apps/command-center-v3/src/pages/control-plane/frozen/*.json",
+      "schema": "ControlPlane@v1.0.0 payload",
+      "allowed_for": "tests / explicitly labeled FIXTURE panel",
+      "forbidden_for": "live maturity/learning/audit data"
+    }
+  ]
+}

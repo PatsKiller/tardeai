@@ -1611,7 +1611,7 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
         if path.startswith("/api/v3/control-plane"):
             try:
                 from control_plane_api import handle as _control_plane_handle
-                _cp = _control_plane_handle(path, method="GET", query=parse_qs(parsed.query))
+                _cp = _control_plane_handle(path, method=self.command, query=parse_qs(parsed.query))
                 if _cp is not None:
                     json_response(self, _cp[0], _cp[1])
                     return
@@ -2096,6 +2096,19 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
 
         parsed = urlparse(self.path)
         path = parsed.path
+
+        # CONTROL_PLANE_API_V1_BASELINE is GET-only. Intercept before v2 POST dispatch
+        # so /api/v3/control-plane/* cannot mutate through the generic router.
+        if path.startswith("/api/v3/control-plane"):
+            try:
+                from control_plane_api import handle as _control_plane_handle
+                _cp = _control_plane_handle(path, method="POST", query=parse_qs(parsed.query))
+                if _cp is not None:
+                    json_response(self, _cp[0], _cp[1])
+                    return
+            except Exception:
+                json_response(self, 500, {"ok": False, "error": "control-plane projection failed"})
+                return
 
         # Agent-runtime read surface is GET-only: any POST here is 405, never a write.
         _ar_path = path.rstrip("/") or "/"

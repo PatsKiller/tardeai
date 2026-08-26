@@ -2,26 +2,36 @@
   "stream": "R21",
   "owner": "CODEX",
   "reviewer": "PRINCIPAL_INTEGRATOR",
-  "status": "INCOMPATIBLE_WITH_FROZEN_CONTRACT",
-  "ready_for_local_integration": false,
-  "commits": ["084674c5", "c3b105a7", "b5f55339"],
-  "contract_consumed_by_codex": "control-plane-contracts-v1 (pre-freeze name)",
-  "frozen_contract": "ControlPlane@v1.0.0",
-  "incompatibilities": [
-    "Envelope uses data instead of payload",
-    "Missing schema, page, authority, memory_behavior_influence, computes_* flags",
-    "Agent field runtime_state vs frozen state",
-    "Workflow node_type vs frozen kind; node kinds UPPER_SNAKE vs lowercase lineage names",
-    "Registered via scripts/portfolio_server.py (integrator-owned) not a dedicated api_v3 module + integrator registration"
-  ],
-  "what_is_acceptable": [
-    "GET-only, POST 405",
-    "no broker/order/stop mutations",
-    "explicit UNAVAILABLE / INVALID_SCHEMA / UNKNOWN_AGENT",
+  "status": "R21_BASELINE_ACCEPTED",
+  "r21_baseline_accepted": true,
+  "ready_for_local_integration": true,
+  "baseline_commit": "084674c560abd7bb910726f62e41508703c07e40",
+  "http_freeze": "CONTROL_PLANE_API_V1_BASELINE",
+  "prior_hold": {
+    "status": "SUPERSEDED_BY_CONTRACT_CHANGE_002",
+    "reason": "Operator accepted implemented 084674c5 envelope as V1 consumption freeze instead of requiring ControlPlane@v1.0.0 payload envelopes."
+  },
+  "accepted": [
+    "GET-only summary routes under /api/v3/control-plane/*",
+    "envelope keys ok/as_of/source_sha/freshness/data_quality/evidence_class/data",
     "bounded pagination",
-    "UNIT tests pass on Codex envelope"
+    "explicit UNAVAILABLE / INVALID_SCHEMA",
+    "POST 405 at handle()",
+    "no secret exposure",
+    "no competing canonical stores",
+    "no frontend business logic",
+    "tests/test_control_plane_api.py pass"
   ],
-  "required_before_wiring_R22_R23_R24": "R21 must emit ControlPlane@v1.0.0 envelopes matching fixtures/control_plane/v1.0.0, OR Integrator adds a mapping adapter that does not change semantics. Do not change v1.0.0 to match Codex convenience.",
+  "not_rejection_gaps": [
+    "detail /{id} incomplete at 084674c5 — R21.1",
+    "full workflow lineage adapters incomplete — R21.1",
+    "canonical stores missing in this tree — legitimate UNAVAILABLE",
+    "R22/R23/R24 UI not wired at accept time — this launch",
+    "portfolio_server previously hardcoded method=GET — integrator fix in this cycle"
+  ],
+  "r21_1_pending": true,
+  "r21_1_local_preview": "c3b105a73301e50b0155b49bf6f6f775ab936af6",
   "live_claim": false,
-  "authority": "READ_ONLY_ADVISORY"
+  "authority": "READ_ONLY_ADVISORY",
+  "github_pushes": 0
 }

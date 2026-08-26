@@ -1,11 +1,15 @@
 # Control-Plane Contracts v1
 
-**Frozen version: ControlPlane@v1.0.0**
+**HTTP freeze (consume this): CONTROL_PLANE_API_V1_BASELINE** (`084674c5`)
+See `CONTROL_PLANE_API_V1_BASELINE.md` / `.json`. Envelope key is `data`.
+
+**Field vocabulary (do not infer; render if present): ControlPlane@v1.0.0**
 See `docs/convergence/CONTROL_PLANE_CONTRACT_VERSION` and `CONTRACT_CHANGE_LOG.md`.
 Machine-readable schema: `schemas/control_plane/v1.0.0/envelope.json`.
 
 The Command Center control plane is a read-only projection of canonical Trade AI state.
-Every response carries `evidence_class`, `source_sha`, `as_of`, and `data_quality`.
+Every HTTP response carries `ok`, `as_of`, `source_sha`, `freshness`, `data_quality`,
+`evidence_class`, and `data`. API existence is not a LIVE claim.
 
 Core shared concepts:
 

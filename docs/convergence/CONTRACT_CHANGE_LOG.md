@@ -22,3 +22,24 @@ Canonical artifacts:
 - `apps/command-center-v3/src/control-plane/contractV1.ts`
 
 Do not bump this version to make frontend coding easier.
+
+## 2026-08-26 — CONTRACT_CHANGE-002 freeze CONTROL_PLANE_API_V1_BASELINE
+
+| Field | Value |
+|---|---|
+| old version | ControlPlane@v1.0.0 HTTP envelope (`payload`, `schema`, `page`, `computes_*`) as the consumption target |
+| new version | **CONTROL_PLANE_API_V1_BASELINE** (`084674c5`) HTTP envelope (`ok`, `as_of`, `source_sha`, `freshness`, `data_quality`, `evidence_class`, `data`) |
+| reason | Operator accepted implemented R21 summary APIs as the V1 consumption freeze so R22–R24 can wire now. ControlPlane@v1.0.0 remains field vocabulary (RuntimeStatus, EvidenceClass, lineage names), not the HTTP shape. |
+| affected streams | R21, R22, R23, R24, QA |
+| compatibility impact | Formal contract change. Pages that required `payload`/`schema=ControlPlane@v1.0.0` must consume `data` + `items`/`pagination`. Do not silently map missing fields. |
+| migration requirement | R22 list views, R23, R24 GET `/api/v3/control-plane/*` summary routes. R22 detail/trace keep labeled fixtures until R21.1. Populated ControlPlane@v1.0.0 fixtures are MOCK only — never production data. |
+
+Canonical artifacts:
+
+- `docs/convergence/CONTROL_PLANE_API_V1_BASELINE.md`
+- `docs/convergence/CONTROL_PLANE_API_V1_BASELINE.json`
+- `fixtures/control_plane/api_v1_baseline/`
+- `apps/command-center-v3/src/control-plane/apiV1Baseline.ts`
+- `tests/test_control_plane_api_v1_baseline.py`
+
+R21.1 (detail / lineage) must be additive. Do not rename frozen summary keys to match frontend convenience.

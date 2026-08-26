@@ -1,45 +1,47 @@
 {
   "integrator": "PRINCIPAL_INTEGRATOR",
-  "frozen_contract": "ControlPlane@v1.0.0",
-  "as_of": "2026-08-26T17:00:00+00:00",
+  "http_freeze": "CONTROL_PLANE_API_V1_BASELINE",
+  "vocabulary_contract": "ControlPlane@v1.0.0",
+  "as_of": "2026-08-26T18:00:00+00:00",
   "reviews": {
     "R21": {
       "owner": "CODEX",
-      "decision": "HOLD",
-      "ready_for_local_integration": false,
-      "reason": "Envelope and field names do not match ControlPlane@v1.0.0. GET-only is acceptable. Must adapt before replacing R22-R24 mocks."
+      "decision": "ACCEPT_BASELINE",
+      "ready_for_local_integration": true,
+      "baseline_commit": "084674c560abd7bb910726f62e41508703c07e40",
+      "reason": "GET-only summary projections match handoff. CONTRACT_CHANGE-002 freezes the implemented envelope as CONTROL_PLANE_API_V1_BASELINE."
     },
     "R22": {
       "owner": "subagent",
-      "decision": "ACCEPT_PAGES",
+      "decision": "ACCEPT_PAGES_PENDING_API_WIRE",
       "ready_for_local_integration": true,
       "forbidden_paths_touched": [],
-      "tests": "12 passed",
+      "tests": "12 passed (fixture pages)",
       "head": "7bc2ba55 (handoff) / a5b2044b (impl)",
-      "note": "Fixture pages only. Integrator has not registered App.tsx routes. Do not replace live /agents."
+      "note": "List views unblocked on /agents /workflows. Detail/trace remain labeled mocks until R21.1. Integrator has not registered App.tsx routes."
     },
     "R23": {
       "owner": "subagent",
-      "decision": "ACCEPT_PAGES",
+      "decision": "ACCEPT_PAGES_PENDING_API_WIRE",
       "ready_for_local_integration": true,
       "forbidden_paths_touched": [],
-      "tests": "20 passed",
+      "tests": "20 passed (preview pages)",
       "head": "207ec856",
-      "note": "Preview JSON byte-locked to frozen fixtures. No mint control."
+      "note": "Relaunch to consume real summary GET. UNAVAILABLE must not look like empty-valid."
     },
     "R24": {
       "owner": "subagent",
-      "decision": "ACCEPT_PAGES",
+      "decision": "ACCEPT_PAGES_PENDING_API_WIRE",
       "ready_for_local_integration": true,
       "forbidden_paths_touched": [],
-      "tests": "22 passed",
+      "tests": "22 passed (fixture-first)",
       "head": "0333be0b / 49b96b38",
-      "note": "No certification score. auto_promotions=0. Readiness NOT_READY in fixture."
+      "note": "Must stop treating ControlPlane@v1.0.0 payload as the live accept path. Do not fake maturity."
     }
   },
   "not_done": [
-    "R21 ControlPlane@v1.0.0 envelope",
-    "mock replacement with real APIs",
+    "R21.1 Codex detail/lineage handoff",
+    "R22 mock removal after R21.1",
     "App.tsx / NavRail wiring",
     "cross-stream dry run",
     "historical replay >=100",

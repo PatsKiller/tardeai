@@ -1,10 +1,14 @@
 # R21 Codex brief — CONTROL_PLANE_BACKEND
 
-**Contract:** ControlPlane@v1.0.0
-**Version file:** `docs/convergence/CONTROL_PLANE_CONTRACT_VERSION`
-**Schema:** `schemas/control_plane/v1.0.0/envelope.json`
-**Fixtures:** `fixtures/control_plane/v1.0.0/*.json` (response shape to match)
-**Python types:** `scripts/lib/control_plane_contract_v1.py` (do not modify; consume)
+**Summary freeze (accepted):** CONTROL_PLANE_API_V1_BASELINE @ `084674c5`
+**Do not rename** summary routes or envelope keys (`ok/as_of/source_sha/freshness/data_quality/evidence_class/data`).
+
+**R21.1 (open, additive):** detail routes, lineage adapters, extra contract/fault proof.
+Do not break summary consumers. Field vocabulary remains ControlPlane@v1.0.0.
+
+**Prior brief (superseded for HTTP shape):** ControlPlane@v1.0.0 envelope (`payload`).
+**Version file:** `docs/convergence/CONTROL_PLANE_CONTRACT_VERSION` (vocabulary)
+**HTTP freeze:** `docs/convergence/CONTROL_PLANE_API_V1_BASELINE.md`
 
 ## Implement
 

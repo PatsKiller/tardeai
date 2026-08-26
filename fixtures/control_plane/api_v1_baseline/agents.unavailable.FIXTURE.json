@@ -1,0 +1,22 @@
+{
+  "label": "FIXTURE",
+  "not_production_data": true,
+  "replace_after": "R21.1",
+  "http_status": 200,
+  "body": {
+    "ok": true,
+    "as_of": "FROZEN",
+    "source_sha": null,
+    "freshness": "CURRENT_SMOKE",
+    "data_quality": "UNAVAILABLE",
+    "evidence_class": "CURRENT_SMOKE",
+    "data": {
+      "items": [],
+      "pagination": {
+        "limit": 50,
+        "offset": 0,
+        "total": 0
+      }
+    }
+  }
+}

@@ -1,0 +1,46 @@
+{
+  "freeze": "CONTROL_PLANE_API_V1_BASELINE",
+  "baseline_commit": "084674c560abd7bb910726f62e41508703c07e40",
+  "envelope_required": [
+    "ok",
+    "as_of",
+    "source_sha",
+    "freshness",
+    "data_quality",
+    "evidence_class",
+    "data"
+  ],
+  "collection_data_required": [
+    "items",
+    "pagination"
+  ],
+  "pagination_required": [
+    "limit",
+    "offset",
+    "total"
+  ],
+  "methods": [
+    "GET"
+  ],
+  "mutation_status": 405,
+  "routes": [
+    "/api/v3/control-plane/system",
+    "/api/v3/control-plane/agents",
+    "/api/v3/control-plane/workflows",
+    "/api/v3/control-plane/research",
+    "/api/v3/control-plane/stores",
+    "/api/v3/control-plane/identity",
+    "/api/v3/control-plane/notifications",
+    "/api/v3/control-plane/learning",
+    "/api/v3/control-plane/maturity",
+    "/api/v3/control-plane/audit"
+  ],
+  "data_quality_observed": [
+    "AVAILABLE",
+    "UNAVAILABLE",
+    "INVALID_SCHEMA",
+    "BROKEN",
+    "NO_RELEVANT_EVENTS"
+  ],
+  "note": "Summary routes only. Detail /{id} and lineage adapters are R21.1 additive."
+}

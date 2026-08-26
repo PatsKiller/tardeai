@@ -9,7 +9,9 @@ Workers must not modify these files. Handoffs that touch them are rejected.
 - `fixtures/control_plane/**`
 - `scripts/lib/control_plane_contract_v1.py`
 - `apps/command-center-v3/src/control-plane/contractV1.ts`
+- `apps/command-center-v3/src/control-plane/apiV1Baseline.ts`
 - `tests/test_control_plane_contract_v1.py`
+- `tests/test_control_plane_api_v1_baseline.py`
 - `AI_WORK_POLICY.md`
 
 ## Central registration / shell (wired only after handoff review)

@@ -1,0 +1,203 @@
+{
+  "system": {
+    "http_status": 200,
+    "body": {
+      "ok": true,
+      "as_of": "FROZEN",
+      "source_sha": null,
+      "freshness": "CURRENT_SMOKE",
+      "data_quality": "AVAILABLE",
+      "evidence_class": "CURRENT_SMOKE",
+      "data": {
+        "authority": "READ_ONLY_ADVISORY",
+        "memory_behavior_influence": 0,
+        "runtime": {
+          "source_sha": null,
+          "state": "UNKNOWN",
+          "persistent_state": "UNKNOWN"
+        },
+        "services": [],
+        "timers": [],
+        "workers": [],
+        "queues": [],
+        "research": {
+          "state": "UNKNOWN"
+        },
+        "notifications": {
+          "state": "UNKNOWN"
+        }
+      }
+    }
+  },
+  "agents": {
+    "http_status": 200,
+    "body": {
+      "ok": true,
+      "as_of": "FROZEN",
+      "source_sha": null,
+      "freshness": "CURRENT_SMOKE",
+      "data_quality": "UNAVAILABLE",
+      "evidence_class": "CURRENT_SMOKE",
+      "data": {
+        "items": [],
+        "pagination": {
+          "limit": 50,
+          "offset": 0,
+          "total": 0
+        }
+      }
+    }
+  },
+  "workflows": {
+    "http_status": 200,
+    "body": {
+      "ok": true,
+      "as_of": "FROZEN",
+      "source_sha": null,
+      "freshness": "CURRENT_SMOKE",
+      "data_quality": "UNAVAILABLE",
+      "evidence_class": "CURRENT_SMOKE",
+      "data": {
+        "items": [],
+        "pagination": {
+          "limit": 50,
+          "offset": 0,
+          "total": 0
+        }
+      }
+    }
+  },
+  "research": {
+    "http_status": 200,
+    "body": {
+      "ok": true,
+      "as_of": "FROZEN",
+      "source_sha": null,
+      "freshness": "CURRENT_SMOKE",
+      "data_quality": "UNAVAILABLE",
+      "evidence_class": "CURRENT_SMOKE",
+      "data": {
+        "items": [],
+        "pagination": {
+          "limit": 50,
+          "offset": 0,
+          "total": 0
+        }
+      }
+    }
+  },
+  "stores": {
+    "http_status": 200,
+    "body": {
+      "ok": true,
+      "as_of": "FROZEN",
+      "source_sha": null,
+      "freshness": "CURRENT_SMOKE",
+      "data_quality": "UNAVAILABLE",
+      "evidence_class": "CURRENT_SMOKE",
+      "data": {
+        "items": [],
+        "pagination": {
+          "limit": 50,
+          "offset": 0,
+          "total": 0
+        }
+      }
+    }
+  },
+  "identity": {
+    "http_status": 200,
+    "body": {
+      "ok": true,
+      "as_of": "FROZEN",
+      "source_sha": null,
+      "freshness": "CURRENT_SMOKE",
+      "data_quality": "UNAVAILABLE",
+      "evidence_class": "CURRENT_SMOKE",
+      "data": {
+        "items": [],
+        "pagination": {
+          "limit": 50,
+          "offset": 0,
+          "total": 0
+        }
+      }
+    }
+  },
+  "notifications": {
+    "http_status": 200,
+    "body": {
+      "ok": true,
+      "as_of": "FROZEN",
+      "source_sha": null,
+      "freshness": "CURRENT_SMOKE",
+      "data_quality": "UNAVAILABLE",
+      "evidence_class": "CURRENT_SMOKE",
+      "data": {
+        "items": [],
+        "pagination": {
+          "limit": 50,
+          "offset": 0,
+          "total": 0
+        }
+      }
+    }
+  },
+  "learning": {
+    "http_status": 200,
+    "body": {
+      "ok": true,
+      "as_of": "FROZEN",
+      "source_sha": null,
+      "freshness": "CURRENT_SMOKE",
+      "data_quality": "UNAVAILABLE",
+      "evidence_class": "CURRENT_SMOKE",
+      "data": {
+        "items": [],
+        "pagination": {
+          "limit": 50,
+          "offset": 0,
+          "total": 0
+        }
+      }
+    }
+  },
+  "maturity": {
+    "http_status": 200,
+    "body": {
+      "ok": true,
+      "as_of": "FROZEN",
+      "source_sha": null,
+      "freshness": "CURRENT_SMOKE",
+      "data_quality": "UNAVAILABLE",
+      "evidence_class": "CURRENT_SMOKE",
+      "data": {
+        "items": [],
+        "pagination": {
+          "limit": 50,
+          "offset": 0,
+          "total": 0
+        }
+      }
+    }
+  },
+  "audit": {
+    "http_status": 200,
+    "body": {
+      "ok": true,
+      "as_of": "FROZEN",
+      "source_sha": null,
+      "freshness": "CURRENT_SMOKE",
+      "data_quality": "UNAVAILABLE",
+      "evidence_class": "CURRENT_SMOKE",
+      "data": {
+        "items": [],
+        "pagination": {
+          "limit": 50,
+          "offset": 0,
+          "total": 0
+        }
+      }
+    }
+  }
+}
