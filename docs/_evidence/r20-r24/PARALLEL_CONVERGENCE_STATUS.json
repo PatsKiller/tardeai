@@ -1,0 +1,39 @@
+{
+  "PARALLEL_CONVERGENCE_STATUS": {
+    "integration_head": "4e62ee22809cca92d01c45da184dc18f04adf8ac",
+    "r21": {
+      "baseline_commit": "084674c560abd7bb910726f62e41508703c07e40",
+      "accepted": true,
+      "r21_1_pending": true,
+      "http_freeze": "CONTROL_PLANE_API_V1_BASELINE"
+    },
+    "r22": {
+      "agent": "01a03f0f-4e63-7ea2-a7c2-638e960f769a",
+      "branch": "feat/r22-agent-office-workflow",
+      "status": "RELAUNCH_SUMMARY_APIS",
+      "mocks_remaining": ["agents.json detail", "workflows.json lineage"]
+    },
+    "r23": {
+      "agent": "01a03f0f-4e64-7ab3-b827-4277cbba1340",
+      "branch": "feat/r23-admin-observability",
+      "status": "RELAUNCH_SUMMARY_APIS"
+    },
+    "r24": {
+      "agent": "01a03f0f-4e64-7ab3-b827-4281b102c753",
+      "branch": "feat/r24-learning-maturity-ui",
+      "status": "RELAUNCH_SUMMARY_APIS"
+    },
+    "qa": {
+      "agent": "01a03f0f-4e64-7ab3-b827-429aa3559b83",
+      "status": "LAUNCHED"
+    },
+    "untracked_files": {
+      "classified": true,
+      "unknown": []
+    },
+    "github": {
+      "pushes": 0,
+      "ci_cycles": 0
+    }
+  }
+}
