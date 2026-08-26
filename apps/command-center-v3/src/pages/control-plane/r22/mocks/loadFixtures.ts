@@ -10,7 +10,7 @@ import type {
   AgentRuntimeStatus,
   ControlPlaneEnvelope,
   WorkflowTrace,
-} from '../../../control-plane/contractV1'
+} from '../../../../control-plane/contractV1'
 import agentsJson from './agents.json'
 import workflowsJson from './workflows.json'
 

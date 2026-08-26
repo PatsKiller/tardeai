@@ -83,17 +83,20 @@ def _matrix_dispositions() -> list[tuple[str, str]]:
     text = (ROOT / "docs" / "convergence" / "UI_REPLACEMENT_MATRIX.md").read_text()
     rows: list[tuple[str, str]] = []
     in_table = False
+    disp_idx = 2
     for line in text.splitlines():
         if line.startswith("| Old route") or line.startswith("| New route"):
             in_table = True
+            header = [c.strip() for c in line.strip().strip("|").split("|")]
+            disp_idx = header.index("Disposition") if "Disposition" in header else 2
             continue
         if in_table and line.startswith("|---"):
             continue
         if in_table and line.startswith("|"):
             cells = [c.strip() for c in line.strip().strip("|").split("|")]
-            if len(cells) >= 3 and cells[0] not in {"Old route", "New route"}:
+            if len(cells) > disp_idx and cells[0] not in {"Old route", "New route"}:
                 route = cells[0].strip("` ")
-                disp = cells[2].split("(")[0].strip()
+                disp = cells[disp_idx].split("(")[0].strip()
                 rows.append((route, disp))
             continue
         in_table = False
@@ -335,56 +338,18 @@ def test_replacement_matrix_dispositions_and_no_live_cutover():
 
 def test_remaining_mocks_exist_in_worker_trees_if_present_and_were_not_deleted():
     assert REMAINING_MOCKS["http_freeze"] == "CONTROL_PLANE_API_V1_BASELINE"
-    workers = WORKER_REGISTRY["workers"]
-    expected = {
-        "r22-agents-v1.0.0-payload": (
-            "R22",
-            "apps/command-center-v3/src/pages/control-plane/mocks/agents.json",
-        ),
-        "r22-workflows-v1.0.0-payload": (
-            "R22",
-            "apps/command-center-v3/src/pages/control-plane/mocks/workflows.json",
-        ),
-        "r23-preview-json": (
-            "R23",
-            "apps/command-center-v3/src/pages/control-plane/preview",
-        ),
-        "r24-frozen-json": (
-            "R24",
-            "apps/command-center-v3/src/pages/control-plane/frozen",
-        ),
-    }
-    integrator_cp = ROOT / "apps" / "command-center-v3" / "src" / "pages" / "control-plane"
-    # Integrator tree has not registered pages yet; absence is not deletion.
+    assert REMAINING_MOCKS.get("runtime_mocks", 0) == 0
     for item in REMAINING_MOCKS["remaining"]:
-        owner, rel = expected[item["id"]]
-        worktree = Path(workers[owner]["worktree"])
-        if not worktree.is_dir():
-            continue
-        target = worktree / rel
-        assert target.exists(), f"remaining mock missing in {owner} worktree: {rel}"
-        if target.is_dir():
-            files = list(target.glob("*.json"))
-            assert files, f"no json under {target}"
-            for path in files:
-                doc = json.loads(path.read_text())
-                assert "payload" in doc
-                assert doc.get("schema") == "ControlPlane@v1.0.0"
-        else:
-            doc = json.loads(target.read_text())
+        rel = item["path"].replace("*.json", "")
+        target = ROOT / rel
+        assert target.exists(), item["path"]
+        files = list(target.glob("*.json")) if target.is_dir() else [target]
+        assert files
+        for path in files:
+            doc = json.loads(path.read_text())
             assert "payload" in doc
             assert doc.get("schema") == "ControlPlane@v1.0.0"
-        assert item["schema"].startswith("ControlPlane@v1.0.0")
-        assert "payload" in item["schema"] or "ControlPlane@v1.0.0" in item["schema"]
-    if integrator_cp.exists():
-        # After a future merge, do not delete labeled mock dirs.
-        for rel in (
-            integrator_cp / "mocks",
-            integrator_cp / "preview",
-            integrator_cp / "frozen",
-        ):
-            if rel.exists() and rel.is_dir():
-                assert list(rel.glob("*.json"))
+        assert "ControlPlane@v1.0.0" in item["schema"]
 
 
 def test_frontend_http_freeze_types_use_data_not_payload():

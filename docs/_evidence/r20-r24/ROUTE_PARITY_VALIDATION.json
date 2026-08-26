@@ -1,6 +1,13 @@
 {
-  "mappings": 31,
-  "reason": "Preview routes are not registered; old routes remain live",
+  "result": "MEASURED",
+  "mappings": 39,
+  "preview_routes": 11,
   "regressions": [],
-  "result": "UNMEASURED"
+  "classes": {
+    "PARITY": "KEEP and REDIRECT live pages unchanged",
+    "NEW_SUPERSET": "additive /control-plane pages plus /health and /system DEFER",
+    "INTENTIONAL_SEMANTIC_REPLACEMENT": "/agents and /research-intelligence vs control-plane counterparts; old pages remain live",
+    "REGRESSION": 0
+  },
+  "cutover": false
 }

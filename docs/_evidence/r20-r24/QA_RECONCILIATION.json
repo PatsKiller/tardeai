@@ -1,0 +1,35 @@
+{
+  "prior_qa_head": "cd7d54eb9fa01c945a316681a4689cf0fb21bb6e",
+  "prior_blockers_file": "docs/_evidence/r20-r24/QA_REGRESSION_BLOCKERS.json",
+  "rerun_required_against": "HEAD after this local-convergence commit",
+  "old_high_blockers": [
+    {
+      "id": "QA-HIGH-001",
+      "was": "R22/R23/R24 pages absent, App.tsx unregistered",
+      "mark": "STALE_FIXED",
+      "evidence": "apps/command-center-v3/src/pages/control-plane/** and App.tsx /control-plane/* routes committed"
+    },
+    {
+      "id": "QA-HIGH-002",
+      "was": "no integrated dry-run lineage fixture",
+      "mark": "STALE_FIXED",
+      "evidence": "fixtures/control_plane/dry_run + tests/test_r20_r24_convergence.py"
+    },
+    {
+      "id": "QA-HIGH-003",
+      "was": "historical replay coverage zero",
+      "mark": "STILL_PRESENT_RECLASSIFIED",
+      "evidence": "120 synthetic GOLDEN_FIXTURE HISTORICAL_REPLAY scenarios; REAL_HISTORICAL_CONTROL_PLANE_TRACE=NOT_AVAILABLE_PRE_DEPLOY. Not a local-sync blocker after gate split."
+    },
+    {
+      "id": "QA-HIGH-004",
+      "was": "route parity unmeasured",
+      "mark": "STALE_FIXED",
+      "evidence": "UI_REPLACEMENT_MATRIX.md measured; REGRESSION=0"
+    }
+  ],
+  "medium": [
+    {"id": "QA-MED-001", "mark": "NOT_APPLICABLE", "note": "EXPECTED_LOCAL_UNAVAILABLE; pages render UNAVAILABLE; live proof is LIVE_R20_R24_ACCEPTANCE"},
+    {"id": "QA-MED-002", "mark": "STALE_FIXED", "note": "adapter benchmark in PERFORMANCE_SMOKE.json"}
+  ]
+}

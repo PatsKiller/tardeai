@@ -1,5 +1,11 @@
 {
-  "reason": "No trustworthy historical workflow traces available",
-  "result": "BLOCKED",
-  "workflows": 0
+  "result": "CLASSIFIED",
+  "workflows_fixture": 120,
+  "historical_source_derived": 0,
+  "historical_validated": 0,
+  "synthetic_scenario": 120,
+  "golden_fixture": 120,
+  "REAL_HISTORICAL_CONTROL_PLANE_TRACE": "NOT_AVAILABLE_PRE_DEPLOY",
+  "reason": "Control-plane traces did not exist historically. 120 files are synthetic timestamp-safe mechanism fixtures, not source-derived history.",
+  "lookahead_leaks": 0
 }

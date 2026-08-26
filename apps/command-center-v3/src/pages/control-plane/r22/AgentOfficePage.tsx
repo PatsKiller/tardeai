@@ -126,16 +126,6 @@ function presentId(item: Record<string, unknown> | null): string {
   return ''
 }
 
-function presentId(item: Record<string, unknown> | null): string {
-  if (!item) return ''
-  for (const key of ['agent_id', 'agent', 'id'] as const) {
-    if (Object.prototype.hasOwnProperty.call(item, key) && item[key] != null && item[key] !== '') {
-      return String(item[key])
-    }
-  }
-  return ''
-}
-
 function itemRowKey(item: Record<string, unknown>, index: number): string {
   for (const key of ['agent_id', 'agent', 'id'] as const) {
     if (Object.prototype.hasOwnProperty.call(item, key) && item[key] != null && item[key] !== '') {

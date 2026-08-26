@@ -23,7 +23,7 @@ export default function ControlPlaneSystemPage() {
         MEMORY_BEHAVIOR_INFLUENCE={String(data.memory_behavior_influence ?? 'absent')} ·
         runtime.state={String(runtime.state ?? 'UNKNOWN')} · not a LIVE claim
       </div>
-      {error ? <div style={{ color: 'var(--red, #f66)' }}>{error}</div> : null}
+      {error ? <div style={{ color: 'var(--red)' }}>{error}</div> : null}
       <pre style={{ fontSize: 11, overflow: 'auto', background: 'var(--bg1)', padding: 12 }}>
         {JSON.stringify(body, null, 2)}
       </pre>

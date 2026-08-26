@@ -165,7 +165,7 @@ const VIEW_STATE_COPY: Record<string, string> = {
 
 function bannerBorder(viewState: string): string {
   if (viewState === 'UNAVAILABLE' || viewState === 'INVALID_SCHEMA' || viewState === 'BROKEN') {
-    return '1px solid var(--red, #b45309)'
+    return '1px solid var(--red)'
   }
   if (viewState === 'STALE' || viewState === 'DEGRADED') {
     return '1px solid var(--amber)'
