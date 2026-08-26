@@ -1,0 +1,19 @@
+---
+description: Trade AI canonical engineering policy
+alwaysApply: true
+---
+
+Before editing, testing, committing, pushing, opening a PR, merging or deploying,
+read and obey `/AI_WORK_POLICY.md`.
+
+The repository uses LOCAL-FIRST development.
+
+Local commits are checkpoints.
+GitHub pushes are expensive release-verification events.
+
+Do not push intermediate work.
+
+A local checkpoint is `git commit`, not `git push`.
+Remote sync requires `TRADEAI_REMOTE_PUSH_AUTHORIZED=1` plus operator intent.
+
+Runtime notes: `AGENTS.md`. Do not duplicate the policy here.
