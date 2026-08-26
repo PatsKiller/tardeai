@@ -1,6 +1,6 @@
 {
   "PARALLEL_CONVERGENCE_STATUS": {
-    "integration_head": "bd0f43f5 plus pending review commit",
+    "integration_head": "e462a7c4e56e2cf079199893cd4408baffe78c34",
     "r21": {
       "baseline_commit": "084674c560abd7bb910726f62e41508703c07e40",
       "accepted": true,

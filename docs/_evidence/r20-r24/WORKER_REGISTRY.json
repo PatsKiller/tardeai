@@ -1,6 +1,6 @@
 {
   "http_freeze": "CONTROL_PLANE_API_V1_BASELINE",
-  "integrator_head": "pending_after_this_commit",
+  "integrator_head": "e462a7c4e56e2cf079199893cd4408baffe78c34",
   "workers": {
     "R21": {
       "owner": "CODEX",
