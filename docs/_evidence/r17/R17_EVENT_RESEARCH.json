@@ -1,0 +1,24 @@
+{
+  "schema": "R17EventResearch@v1",
+  "path": {
+    "ok": true,
+    "status": "PATH_ARMED",
+    "steps": [
+      "MATERIAL_CHANGE",
+      "ResearchGap",
+      "FREE_FIRST_PENDING",
+      "TickerResearchState",
+      "HERMES",
+      "RAG",
+      "STRUCTURED",
+      "SEARXNG_RESIDUAL"
+    ],
+    "searx_residual_only": true,
+    "paid_dispatch": false,
+    "authority": "READ_ONLY_ADVISORY"
+  },
+  "natural_market_event": "BLOCKED_REAL_WORLD_EVENT",
+  "fabricated": false,
+  "free_first_natural_hourly": true,
+  "note": "Hourly free-first remains natural on CURRENT; event-driven material LLM path not naturally observed."
+}

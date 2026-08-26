@@ -1,0 +1,14 @@
+[Unit]
+Description=Trade AI observational due-checkpoint processor (R17)
+# Not installed/enabled by this tranche. Requires separate operator authorization.
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/trade-ai-releases/portfolio-server/CURRENT
+ExecStart=/usr/bin/python3 %h/trade-ai-releases/portfolio-server/CURRENT/scripts/process_due_checkpoints.py --root %h/trade-ai-releases/portfolio-server/CURRENT --source-available --persist
+Environment=MEMORY_BEHAVIOR_INFLUENCE=0
+Environment=TRADEAI_READ_ONLY_ADVISORY=1
+# No broker, orders, stops, or 2FA.
+
+[Install]
+WantedBy=default.target

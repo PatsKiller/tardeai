@@ -1,0 +1,15 @@
+{
+  "schema": "R17StartingState@v1",
+  "as_of": "2026-08-26T01:26:24+00:00",
+  "starting_live_maturity": 88,
+  "target_maturity": 89,
+  "ninety_gated": true,
+  "current_pin": "2d988c766db3e591dbaa9951f1f441513cf1193a",
+  "branch": "feat/r17-natural-feedback-closure",
+  "authority": "READ_ONLY_ADVISORY",
+  "memory_behavior_influence": 0,
+  "pr_505_unmerged": true,
+  "telegram_canary": false,
+  "cash_target_range_pct_invented": false,
+  "do_not_push_while_implementing": true
+}

@@ -1,0 +1,7 @@
+{
+  "schema": "R17Gui@v1",
+  "projection_only": true,
+  "cockpit_bound_to_jsonl": true,
+  "in_memory_only": false,
+  "pane_schema": "TickerIntelligencePane@v1"
+}

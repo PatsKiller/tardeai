@@ -1,0 +1,27 @@
+{
+  "schema": "R17SectorIndustry@v1",
+  "bounded_wake": true,
+  "shared_industry_text_wakes_universe": false,
+  "coverage": {
+    "sector_rotation": {
+      "SOURCE": "SUPPORTED",
+      "IDENTITY": "SUPPORTED",
+      "MATERIALITY": "SUPPORTED",
+      "PERSISTENCE": "SUPPORTED",
+      "CONTEXT_ENVELOPE": "SUPPORTED",
+      "GUI": "SUPPORTED",
+      "RESEARCH_TRIGGER": "SUPPORTED",
+      "OUTCOME_LINKAGE": "SUPPORTED"
+    },
+    "industry": {
+      "SOURCE": "SUPPORTED",
+      "IDENTITY": "SUPPORTED",
+      "MATERIALITY": "SUPPORTED",
+      "PERSISTENCE": "SUPPORTED",
+      "CONTEXT_ENVELOPE": "SUPPORTED",
+      "GUI": "SUPPORTED",
+      "RESEARCH_TRIGGER": "SUPPORTED",
+      "OUTCOME_LINKAGE": "SUPPORTED"
+    }
+  }
+}

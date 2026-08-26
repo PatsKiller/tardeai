@@ -1,0 +1,8 @@
+{
+  "schema": "R17OperatorFeedback@v1",
+  "redesigned": false,
+  "policy_effect": false,
+  "MEMORY_BEHAVIOR_INFLUENCE": 0,
+  "path": "explicit feedback \u2192 AgentEpisode \u2192 PreferenceCandidate \u2192 context \u2192 research trigger \u2192 later outcome evidence",
+  "regression": "not_redesigned"
+}

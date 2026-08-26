@@ -2017,10 +2017,22 @@ def get_learning_cockpit_v1() -> dict[str, Any]:
             QUALITY_AXES,
             lesson_candidate_v2,
         )
+        from scripts.lib.r17_checkpoint_binding import learning_cockpit_from_store
+        store = learning_cockpit_from_store(PROJECT_ROOT)
         return {
             "ok": True,
             "schema": "LearningCockpit@v1",
-            "outcomes_due": "ON_HORIZON",
+            "outcomes_due": store.get("due"),
+            "checkpoint_counts": store.get("checkpoint_counts"),
+            "pending": store.get("pending"),
+            "due": store.get("due"),
+            "completed": store.get("completed"),
+            "blocked_data": store.get("blocked_data"),
+            "observations_n": store.get("observations_n"),
+            "lessons_n": store.get("lessons_n"),
+            "hypotheses_n": store.get("hypotheses_n"),
+            "experiments_n": store.get("experiments_n"),
+            "in_memory_only": False,
             "quality_axes": list(QUALITY_AXES),
             "lesson_status_allowed": ["PROVISIONAL", "SUPPORTED", "CONTRADICTED", "EXPIRED"],
             "promotion_stages": list(PROMOTION_STAGES),

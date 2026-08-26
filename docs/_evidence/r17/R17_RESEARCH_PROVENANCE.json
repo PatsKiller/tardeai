@@ -1,0 +1,8 @@
+{
+  "schema": "R17ResearchProvenance@v1",
+  "news_not_truth": true,
+  "sec_not_truth": true,
+  "rag_not_truth": true,
+  "envelope": true,
+  "gui": true
+}

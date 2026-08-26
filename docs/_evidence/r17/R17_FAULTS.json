@@ -1,0 +1,9 @@
+{
+  "schema": "R17Faults@v1",
+  "duplicate_scan_no_duplicate_checkpoint": true,
+  "unchanged_replay_no_spam": true,
+  "missing_source_OUTCOME_PENDING_DATA": true,
+  "unavailable_providers_do_not_invent": true,
+  "observation_append_idempotent": true,
+  "model_routing_no_registry_write": true
+}

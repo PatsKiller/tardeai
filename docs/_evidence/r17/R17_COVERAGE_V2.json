@@ -1,0 +1,554 @@
+{
+  "schema": "IntelligenceCoverageMatrix@v2",
+  "dimensions": [
+    "SOURCE",
+    "IDENTITY",
+    "MATERIALITY",
+    "PERSISTENCE",
+    "CONTEXT_ENVELOPE",
+    "GUI",
+    "RESEARCH_TRIGGER",
+    "OUTCOME_LINKAGE"
+  ],
+  "states": [
+    "SUPPORTED",
+    "MISSING",
+    "NOT_APPLICABLE"
+  ],
+  "rows": [
+    {
+      "producer_id": "holdings",
+      "entity_scope": "security",
+      "dimensions": {
+        "SOURCE": "SUPPORTED",
+        "IDENTITY": "SUPPORTED",
+        "MATERIALITY": "SUPPORTED",
+        "PERSISTENCE": "SUPPORTED",
+        "CONTEXT_ENVELOPE": "SUPPORTED",
+        "GUI": "SUPPORTED",
+        "RESEARCH_TRIGGER": "SUPPORTED",
+        "OUTCOME_LINKAGE": "SUPPORTED"
+      },
+      "missing": [],
+      "supported_n": 8,
+      "na_n": 0
+    },
+    {
+      "producer_id": "positions",
+      "entity_scope": "security",
+      "dimensions": {
+        "SOURCE": "SUPPORTED",
+        "IDENTITY": "SUPPORTED",
+        "MATERIALITY": "SUPPORTED",
+        "PERSISTENCE": "SUPPORTED",
+        "CONTEXT_ENVELOPE": "SUPPORTED",
+        "GUI": "SUPPORTED",
+        "RESEARCH_TRIGGER": "SUPPORTED",
+        "OUTCOME_LINKAGE": "SUPPORTED"
+      },
+      "missing": [],
+      "supported_n": 8,
+      "na_n": 0
+    },
+    {
+      "producer_id": "cash",
+      "entity_scope": "portfolio",
+      "dimensions": {
+        "SOURCE": "SUPPORTED",
+        "IDENTITY": "NOT_APPLICABLE",
+        "MATERIALITY": "SUPPORTED",
+        "PERSISTENCE": "SUPPORTED",
+        "CONTEXT_ENVELOPE": "SUPPORTED",
+        "GUI": "SUPPORTED",
+        "RESEARCH_TRIGGER": "SUPPORTED",
+        "OUTCOME_LINKAGE": "SUPPORTED"
+      },
+      "missing": [],
+      "supported_n": 7,
+      "na_n": 1
+    },
+    {
+      "producer_id": "portfolio_allocation",
+      "entity_scope": "portfolio",
+      "dimensions": {
+        "SOURCE": "SUPPORTED",
+        "IDENTITY": "NOT_APPLICABLE",
+        "MATERIALITY": "SUPPORTED",
+        "PERSISTENCE": "SUPPORTED",
+        "CONTEXT_ENVELOPE": "SUPPORTED",
+        "GUI": "SUPPORTED",
+        "RESEARCH_TRIGGER": "NOT_APPLICABLE",
+        "OUTCOME_LINKAGE": "SUPPORTED"
+      },
+      "missing": [],
+      "supported_n": 6,
+      "na_n": 2
+    },
+    {
+      "producer_id": "risk",
+      "entity_scope": "portfolio",
+      "dimensions": {
+        "SOURCE": "SUPPORTED",
+        "IDENTITY": "NOT_APPLICABLE",
+        "MATERIALITY": "SUPPORTED",
+        "PERSISTENCE": "SUPPORTED",
+        "CONTEXT_ENVELOPE": "SUPPORTED",
+        "GUI": "SUPPORTED",
+        "RESEARCH_TRIGGER": "SUPPORTED",
+        "OUTCOME_LINKAGE": "SUPPORTED"
+      },
+      "missing": [],
+      "supported_n": 7,
+      "na_n": 1
+    },
+    {
+      "producer_id": "stop_advisory",
+      "entity_scope": "security",
+      "dimensions": {
+        "SOURCE": "SUPPORTED",
+        "IDENTITY": "SUPPORTED",
+        "MATERIALITY": "SUPPORTED",
+        "PERSISTENCE": "SUPPORTED",
+        "CONTEXT_ENVELOPE": "SUPPORTED",
+        "GUI": "SUPPORTED",
+        "RESEARCH_TRIGGER": "SUPPORTED",
+        "OUTCOME_LINKAGE": "SUPPORTED"
+      },
+      "missing": [],
+      "supported_n": 8,
+      "na_n": 0
+    },
+    {
+      "producer_id": "watch_reentry",
+      "entity_scope": "security",
+      "dimensions": {
+        "SOURCE": "SUPPORTED",
+        "IDENTITY": "SUPPORTED",
+        "MATERIALITY": "SUPPORTED",
+        "PERSISTENCE": "SUPPORTED",
+        "CONTEXT_ENVELOPE": "SUPPORTED",
+        "GUI": "SUPPORTED",
+        "RESEARCH_TRIGGER": "SUPPORTED",
+        "OUTCOME_LINKAGE": "SUPPORTED"
+      },
+      "missing": [],
+      "supported_n": 8,
+      "na_n": 0
+    },
+    {
+      "producer_id": "symbol_thesis",
+      "entity_scope": "security",
+      "dimensions": {
+        "SOURCE": "SUPPORTED",
+        "IDENTITY": "SUPPORTED",
+        "MATERIALITY": "SUPPORTED",
+        "PERSISTENCE": "SUPPORTED",
+        "CONTEXT_ENVELOPE": "SUPPORTED",
+        "GUI": "SUPPORTED",
+        "RESEARCH_TRIGGER": "SUPPORTED",
+        "OUTCOME_LINKAGE": "SUPPORTED"
+      },
+      "missing": [],
+      "supported_n": 8,
+      "na_n": 0
+    },
+    {
+      "producer_id": "portfolio_thesis",
+      "entity_scope": "portfolio",
+      "dimensions": {
+        "SOURCE": "SUPPORTED",
+        "IDENTITY": "NOT_APPLICABLE",
+        "MATERIALITY": "SUPPORTED",
+        "PERSISTENCE": "SUPPORTED",
+        "CONTEXT_ENVELOPE": "SUPPORTED",
+        "GUI": "SUPPORTED",
+        "RESEARCH_TRIGGER": "NOT_APPLICABLE",
+        "OUTCOME_LINKAGE": "SUPPORTED"
+      },
+      "missing": [],
+      "supported_n": 6,
+      "na_n": 2
+    },
+    {
+      "producer_id": "sector_rotation",
+      "entity_scope": "sector",
+      "dimensions": {
+        "SOURCE": "SUPPORTED",
+        "IDENTITY": "SUPPORTED",
+        "MATERIALITY": "SUPPORTED",
+        "PERSISTENCE": "SUPPORTED",
+        "CONTEXT_ENVELOPE": "SUPPORTED",
+        "GUI": "SUPPORTED",
+        "RESEARCH_TRIGGER": "SUPPORTED",
+        "OUTCOME_LINKAGE": "SUPPORTED"
+      },
+      "missing": [],
+      "supported_n": 8,
+      "na_n": 0
+    },
+    {
+      "producer_id": "industry",
+      "entity_scope": "industry",
+      "dimensions": {
+        "SOURCE": "SUPPORTED",
+        "IDENTITY": "SUPPORTED",
+        "MATERIALITY": "SUPPORTED",
+        "PERSISTENCE": "SUPPORTED",
+        "CONTEXT_ENVELOPE": "SUPPORTED",
+        "GUI": "SUPPORTED",
+        "RESEARCH_TRIGGER": "SUPPORTED",
+        "OUTCOME_LINKAGE": "SUPPORTED"
+      },
+      "missing": [],
+      "supported_n": 8,
+      "na_n": 0
+    },
+    {
+      "producer_id": "macro_regime",
+      "entity_scope": "macro",
+      "dimensions": {
+        "SOURCE": "SUPPORTED",
+        "IDENTITY": "NOT_APPLICABLE",
+        "MATERIALITY": "SUPPORTED",
+        "PERSISTENCE": "SUPPORTED",
+        "CONTEXT_ENVELOPE": "SUPPORTED",
+        "GUI": "SUPPORTED",
+        "RESEARCH_TRIGGER": "SUPPORTED",
+        "OUTCOME_LINKAGE": "NOT_APPLICABLE"
+      },
+      "missing": [],
+      "supported_n": 6,
+      "na_n": 2
+    },
+    {
+      "producer_id": "breadth",
+      "entity_scope": "macro",
+      "dimensions": {
+        "SOURCE": "SUPPORTED",
+        "IDENTITY": "NOT_APPLICABLE",
+        "MATERIALITY": "SUPPORTED",
+        "PERSISTENCE": "SUPPORTED",
+        "CONTEXT_ENVELOPE": "SUPPORTED",
+        "GUI": "SUPPORTED",
+        "RESEARCH_TRIGGER": "NOT_APPLICABLE",
+        "OUTCOME_LINKAGE": "NOT_APPLICABLE"
+      },
+      "missing": [],
+      "supported_n": 5,
+      "na_n": 3
+    },
+    {
+      "producer_id": "rates",
+      "entity_scope": "macro",
+      "dimensions": {
+        "SOURCE": "SUPPORTED",
+        "IDENTITY": "NOT_APPLICABLE",
+        "MATERIALITY": "SUPPORTED",
+        "PERSISTENCE": "SUPPORTED",
+        "CONTEXT_ENVELOPE": "SUPPORTED",
+        "GUI": "SUPPORTED",
+        "RESEARCH_TRIGGER": "NOT_APPLICABLE",
+        "OUTCOME_LINKAGE": "NOT_APPLICABLE"
+      },
+      "missing": [],
+      "supported_n": 5,
+      "na_n": 3
+    },
+    {
+      "producer_id": "volatility",
+      "entity_scope": "macro",
+      "dimensions": {
+        "SOURCE": "SUPPORTED",
+        "IDENTITY": "NOT_APPLICABLE",
+        "MATERIALITY": "SUPPORTED",
+        "PERSISTENCE": "SUPPORTED",
+        "CONTEXT_ENVELOPE": "SUPPORTED",
+        "GUI": "SUPPORTED",
+        "RESEARCH_TRIGGER": "NOT_APPLICABLE",
+        "OUTCOME_LINKAGE": "NOT_APPLICABLE"
+      },
+      "missing": [],
+      "supported_n": 5,
+      "na_n": 3
+    },
+    {
+      "producer_id": "seasonality",
+      "entity_scope": "calendar",
+      "dimensions": {
+        "SOURCE": "SUPPORTED",
+        "IDENTITY": "NOT_APPLICABLE",
+        "MATERIALITY": "SUPPORTED",
+        "PERSISTENCE": "SUPPORTED",
+        "CONTEXT_ENVELOPE": "SUPPORTED",
+        "GUI": "SUPPORTED",
+        "RESEARCH_TRIGGER": "NOT_APPLICABLE",
+        "OUTCOME_LINKAGE": "NOT_APPLICABLE"
+      },
+      "missing": [],
+      "supported_n": 5,
+      "na_n": 3
+    },
+    {
+      "producer_id": "catalysts",
+      "entity_scope": "catalyst",
+      "dimensions": {
+        "SOURCE": "SUPPORTED",
+        "IDENTITY": "SUPPORTED",
+        "MATERIALITY": "SUPPORTED",
+        "PERSISTENCE": "SUPPORTED",
+        "CONTEXT_ENVELOPE": "SUPPORTED",
+        "GUI": "SUPPORTED",
+        "RESEARCH_TRIGGER": "SUPPORTED",
+        "OUTCOME_LINKAGE": "SUPPORTED"
+      },
+      "missing": [],
+      "supported_n": 8,
+      "na_n": 0
+    },
+    {
+      "producer_id": "earnings",
+      "entity_scope": "catalyst",
+      "dimensions": {
+        "SOURCE": "SUPPORTED",
+        "IDENTITY": "SUPPORTED",
+        "MATERIALITY": "SUPPORTED",
+        "PERSISTENCE": "SUPPORTED",
+        "CONTEXT_ENVELOPE": "SUPPORTED",
+        "GUI": "SUPPORTED",
+        "RESEARCH_TRIGGER": "SUPPORTED",
+        "OUTCOME_LINKAGE": "SUPPORTED"
+      },
+      "missing": [],
+      "supported_n": 8,
+      "na_n": 0
+    },
+    {
+      "producer_id": "sec_primary",
+      "entity_scope": "security",
+      "dimensions": {
+        "SOURCE": "SUPPORTED",
+        "IDENTITY": "SUPPORTED",
+        "MATERIALITY": "SUPPORTED",
+        "PERSISTENCE": "SUPPORTED",
+        "CONTEXT_ENVELOPE": "SUPPORTED",
+        "GUI": "SUPPORTED",
+        "RESEARCH_TRIGGER": "SUPPORTED",
+        "OUTCOME_LINKAGE": "SUPPORTED"
+      },
+      "missing": [],
+      "supported_n": 8,
+      "na_n": 0
+    },
+    {
+      "producer_id": "news",
+      "entity_scope": "security",
+      "dimensions": {
+        "SOURCE": "SUPPORTED",
+        "IDENTITY": "SUPPORTED",
+        "MATERIALITY": "SUPPORTED",
+        "PERSISTENCE": "SUPPORTED",
+        "CONTEXT_ENVELOPE": "SUPPORTED",
+        "GUI": "SUPPORTED",
+        "RESEARCH_TRIGGER": "SUPPORTED",
+        "OUTCOME_LINKAGE": "SUPPORTED"
+      },
+      "missing": [],
+      "supported_n": 8,
+      "na_n": 0
+    },
+    {
+      "producer_id": "hermes_research",
+      "entity_scope": "security",
+      "dimensions": {
+        "SOURCE": "SUPPORTED",
+        "IDENTITY": "SUPPORTED",
+        "MATERIALITY": "SUPPORTED",
+        "PERSISTENCE": "SUPPORTED",
+        "CONTEXT_ENVELOPE": "SUPPORTED",
+        "GUI": "SUPPORTED",
+        "RESEARCH_TRIGGER": "SUPPORTED",
+        "OUTCOME_LINKAGE": "SUPPORTED"
+      },
+      "missing": [],
+      "supported_n": 8,
+      "na_n": 0
+    },
+    {
+      "producer_id": "rag",
+      "entity_scope": "security",
+      "dimensions": {
+        "SOURCE": "SUPPORTED",
+        "IDENTITY": "SUPPORTED",
+        "MATERIALITY": "SUPPORTED",
+        "PERSISTENCE": "SUPPORTED",
+        "CONTEXT_ENVELOPE": "SUPPORTED",
+        "GUI": "SUPPORTED",
+        "RESEARCH_TRIGGER": "SUPPORTED",
+        "OUTCOME_LINKAGE": "SUPPORTED"
+      },
+      "missing": [],
+      "supported_n": 8,
+      "na_n": 0
+    },
+    {
+      "producer_id": "operator_policy",
+      "entity_scope": "portfolio",
+      "dimensions": {
+        "SOURCE": "SUPPORTED",
+        "IDENTITY": "NOT_APPLICABLE",
+        "MATERIALITY": "SUPPORTED",
+        "PERSISTENCE": "SUPPORTED",
+        "CONTEXT_ENVELOPE": "SUPPORTED",
+        "GUI": "SUPPORTED",
+        "RESEARCH_TRIGGER": "NOT_APPLICABLE",
+        "OUTCOME_LINKAGE": "NOT_APPLICABLE"
+      },
+      "missing": [],
+      "supported_n": 5,
+      "na_n": 3
+    },
+    {
+      "producer_id": "operator_feedback",
+      "entity_scope": "security",
+      "dimensions": {
+        "SOURCE": "SUPPORTED",
+        "IDENTITY": "SUPPORTED",
+        "MATERIALITY": "SUPPORTED",
+        "PERSISTENCE": "SUPPORTED",
+        "CONTEXT_ENVELOPE": "SUPPORTED",
+        "GUI": "SUPPORTED",
+        "RESEARCH_TRIGGER": "SUPPORTED",
+        "OUTCOME_LINKAGE": "SUPPORTED"
+      },
+      "missing": [],
+      "supported_n": 8,
+      "na_n": 0
+    },
+    {
+      "producer_id": "notifications",
+      "entity_scope": "portfolio",
+      "dimensions": {
+        "SOURCE": "SUPPORTED",
+        "IDENTITY": "NOT_APPLICABLE",
+        "MATERIALITY": "SUPPORTED",
+        "PERSISTENCE": "SUPPORTED",
+        "CONTEXT_ENVELOPE": "SUPPORTED",
+        "GUI": "SUPPORTED",
+        "RESEARCH_TRIGGER": "NOT_APPLICABLE",
+        "OUTCOME_LINKAGE": "SUPPORTED"
+      },
+      "missing": [],
+      "supported_n": 6,
+      "na_n": 2
+    },
+    {
+      "producer_id": "specialist_artifacts",
+      "entity_scope": "security",
+      "dimensions": {
+        "SOURCE": "SUPPORTED",
+        "IDENTITY": "SUPPORTED",
+        "MATERIALITY": "SUPPORTED",
+        "PERSISTENCE": "SUPPORTED",
+        "CONTEXT_ENVELOPE": "SUPPORTED",
+        "GUI": "SUPPORTED",
+        "RESEARCH_TRIGGER": "NOT_APPLICABLE",
+        "OUTCOME_LINKAGE": "SUPPORTED"
+      },
+      "missing": [],
+      "supported_n": 7,
+      "na_n": 1
+    },
+    {
+      "producer_id": "action_ledger",
+      "entity_scope": "portfolio",
+      "dimensions": {
+        "SOURCE": "SUPPORTED",
+        "IDENTITY": "NOT_APPLICABLE",
+        "MATERIALITY": "SUPPORTED",
+        "PERSISTENCE": "SUPPORTED",
+        "CONTEXT_ENVELOPE": "SUPPORTED",
+        "GUI": "SUPPORTED",
+        "RESEARCH_TRIGGER": "NOT_APPLICABLE",
+        "OUTCOME_LINKAGE": "SUPPORTED"
+      },
+      "missing": [],
+      "supported_n": 6,
+      "na_n": 2
+    },
+    {
+      "producer_id": "plans",
+      "entity_scope": "security",
+      "dimensions": {
+        "SOURCE": "SUPPORTED",
+        "IDENTITY": "SUPPORTED",
+        "MATERIALITY": "SUPPORTED",
+        "PERSISTENCE": "SUPPORTED",
+        "CONTEXT_ENVELOPE": "SUPPORTED",
+        "GUI": "SUPPORTED",
+        "RESEARCH_TRIGGER": "SUPPORTED",
+        "OUTCOME_LINKAGE": "SUPPORTED"
+      },
+      "missing": [],
+      "supported_n": 8,
+      "na_n": 0
+    },
+    {
+      "producer_id": "research_challenges",
+      "entity_scope": "security",
+      "dimensions": {
+        "SOURCE": "SUPPORTED",
+        "IDENTITY": "SUPPORTED",
+        "MATERIALITY": "SUPPORTED",
+        "PERSISTENCE": "SUPPORTED",
+        "CONTEXT_ENVELOPE": "SUPPORTED",
+        "GUI": "SUPPORTED",
+        "RESEARCH_TRIGGER": "SUPPORTED",
+        "OUTCOME_LINKAGE": "SUPPORTED"
+      },
+      "missing": [],
+      "supported_n": 8,
+      "na_n": 0
+    },
+    {
+      "producer_id": "outcomes",
+      "entity_scope": "decision",
+      "dimensions": {
+        "SOURCE": "SUPPORTED",
+        "IDENTITY": "NOT_APPLICABLE",
+        "MATERIALITY": "NOT_APPLICABLE",
+        "PERSISTENCE": "SUPPORTED",
+        "CONTEXT_ENVELOPE": "SUPPORTED",
+        "GUI": "SUPPORTED",
+        "RESEARCH_TRIGGER": "NOT_APPLICABLE",
+        "OUTCOME_LINKAGE": "SUPPORTED"
+      },
+      "missing": [],
+      "supported_n": 5,
+      "na_n": 3
+    },
+    {
+      "producer_id": "lessons",
+      "entity_scope": "decision",
+      "dimensions": {
+        "SOURCE": "SUPPORTED",
+        "IDENTITY": "NOT_APPLICABLE",
+        "MATERIALITY": "NOT_APPLICABLE",
+        "PERSISTENCE": "SUPPORTED",
+        "CONTEXT_ENVELOPE": "SUPPORTED",
+        "GUI": "SUPPORTED",
+        "RESEARCH_TRIGGER": "NOT_APPLICABLE",
+        "OUTCOME_LINKAGE": "SUPPORTED"
+      },
+      "missing": [],
+      "supported_n": 5,
+      "na_n": 3
+    }
+  ],
+  "producer_n": 31,
+  "unexplained_missing": [],
+  "unexplained_missing_n": 0,
+  "not_optimized_for_full": true,
+  "authority": "READ_ONLY_ADVISORY",
+  "memory_behavior_influence": 0,
+  "financial_action": false
+}

@@ -1,0 +1,8 @@
+{
+  "schema": "R17NaturalOutcome@v1",
+  "NATURAL_LONGITUDINAL": 0,
+  "elapsed_observation_completed": false,
+  "fabricated": false,
+  "reason": "Binding not on CURRENT; existing checkpoints were operator-persisted in R16.1; due processor not live.",
+  "evidence_class": "UNIT/INTEGRATION only so far"
+}

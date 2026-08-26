@@ -1,0 +1,8 @@
+{
+  "schema": "R17LlmPerformance@v1",
+  "records_only_when_legitimately_LLM_ELIGIBLE": true,
+  "did_not_call_llm_to_create_sample": true,
+  "LIVE": 0,
+  "HISTORICAL_REPLAY_separate": true,
+  "registry_writes": false
+}

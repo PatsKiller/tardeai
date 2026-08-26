@@ -1,0 +1,6 @@
+{
+  "schema": "R17RiskReentry@v1",
+  "execution_authority": false,
+  "envelope_extras": true,
+  "stop_advisory_execution": false
+}
