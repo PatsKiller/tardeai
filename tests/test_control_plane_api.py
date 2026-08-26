@@ -52,3 +52,33 @@ def test_invalid_json_is_explicit_invalid_schema(tmp_path, monkeypatch):
 
 def test_non_control_plane_path_returns_none():
     assert api.handle("/api/v3/advisory") is None
+
+
+def test_agent_detail_and_unknown_states(tmp_path, monkeypatch):
+    root = tmp_path / "data" / "runtime"; root.mkdir(parents=True)
+    (root / "agent_registry.json").write_text(json.dumps([{
+        "agent_id": "hermes", "role": "research", "runtime_state": "EXPECTED_IDLE",
+        "recent_artifacts": [{"id": "a1"}, {"id": "a2"}], "evidence_class": "SHADOW"
+    }]))
+    monkeypatch.setattr(api, "PROJECT_ROOT", tmp_path)
+    status, body = api.handle("/api/v3/control-plane/agents/hermes", query={"limit": "1"})
+    assert status == 200 and body["data"]["runtime_state"] == "EXPECTED_IDLE"
+    assert body["data"]["recent_artifacts"]["pagination"]["total"] == 2
+    _, unknown = api.handle("/api/v3/control-plane/agents/nope")
+    assert unknown["data"]["status"] == "UNKNOWN_AGENT"
+
+
+def test_workflow_cross_id_partial_and_cutoff(tmp_path, monkeypatch):
+    root = tmp_path / "data" / "runtime"; root.mkdir(parents=True)
+    payload = [{"workflow_id": "w1", "decision_id": "d1", "generation_id": "g1",
+                "nodes": [{"id": "e", "node_type": "source_event", "timestamp": "2026-01-01T00:00:00Z"},
+                          {"id": "c", "node_type": "cio_product", "timestamp": "2026-01-02T00:00:00Z"}],
+                "edges": [{"from": "e", "to": "missing", "relationship": "TRIGGERED"}]}]
+    (root / "workflow_traces.json").write_text(json.dumps(payload))
+    monkeypatch.setattr(api, "PROJECT_ROOT", tmp_path)
+    status, body = api.handle("/api/v3/control-plane/workflows/d1")
+    assert status == 200 and body["data"]["workflow_id"] == "w1"
+    assert len(body["data"]["nodes"]) == 2
+    assert body["data"]["unresolved_links"]
+    _, cutoff = api.handle("/api/v3/control-plane/workflows/w1", query={"until": "2026-01-01T12:00:00Z"})
+    assert len(cutoff["data"]["nodes"]) == 1
