@@ -1,0 +1,24 @@
+{
+  "cases": [
+    {
+      "expected": "UNAVAILABLE",
+      "fault": "persistent_root_unavailable",
+      "quality": "UNAVAILABLE",
+      "status": 200
+    },
+    {
+      "expected": "INVALID_SCHEMA",
+      "fault": "invalid_schema",
+      "quality": "INVALID_SCHEMA",
+      "status": 200
+    },
+    {
+      "expected": "AVAILABLE",
+      "fault": "empty_valid",
+      "quality": "AVAILABLE",
+      "status": 200
+    }
+  ],
+  "result": "PASS",
+  "unexpected_failures": []
+}

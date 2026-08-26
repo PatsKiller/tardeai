@@ -1,0 +1,6 @@
+{
+  "note": "Unit-level adapter smoke; no live server benchmark",
+  "payloads_unbounded": [],
+  "result": "PASS",
+  "routes": 12
+}

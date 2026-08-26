@@ -1,0 +1,19 @@
+{
+  "drift": [],
+  "endpoints_checked": [
+    "/api/v3/control-plane/system",
+    "/api/v3/control-plane/agents",
+    "/api/v3/control-plane/workflows",
+    "/api/v3/control-plane/research",
+    "/api/v3/control-plane/stores",
+    "/api/v3/control-plane/identity",
+    "/api/v3/control-plane/notifications",
+    "/api/v3/control-plane/learning",
+    "/api/v3/control-plane/maturity",
+    "/api/v3/control-plane/audit",
+    "/api/v3/control-plane/agents/example",
+    "/api/v3/control-plane/workflows/example"
+  ],
+  "failures": [],
+  "result": "PASS"
+}
