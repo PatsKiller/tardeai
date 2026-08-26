@@ -139,6 +139,35 @@ def main():
     parser.add_argument("--chat-id", type=str, default=None, help="Send to specific chat ID only")
     args = parser.parse_args()
 
+    # R18-DATA.1: Trade AI Brief is not a competing CIO product. Fold paper /
+    # overnight / strategy facts into the canonical morning renderer.
+    if os.getenv("CANONICAL_OPERATOR_BRIEF", "1").strip() != "0":
+        try:
+            from lib.cio_operator_renderers import deliver_morning
+        except ImportError:
+            from scripts.lib.cio_operator_renderers import deliver_morning  # type: ignore
+        api_brief = fetch_brief() or {}
+        supplemental = {
+            "paper": api_brief.get("paper_account"),
+            "overnight": api_brief.get("overnight_activity"),
+            "closed_trades": api_brief.get("closed_trades_24h"),
+            "health": api_brief.get("strategy_health"),
+        }
+        result = deliver_morning(
+            root=PROJECT_ROOT,
+            supplemental_bundle=supplemental,
+            send=not args.dry_run,
+        )
+        text = result.get("text") or ""
+        if args.dry_run:
+            print(text)
+        log_path = PROJECT_ROOT / "logs" / "morning_brief.log"
+        with open(log_path, "a") as f:
+            f.write(f"\n{'='*60}\n{time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+            f.write("CANONICAL_MORNING\n")
+            f.write(text + "\n")
+        sys.exit(0 if result.get("ok") else 1)
+
     brief = fetch_brief()
     text = format_telegram(brief)
 

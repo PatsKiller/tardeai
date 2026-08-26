@@ -1139,6 +1139,12 @@ def get_cio_home() -> dict[str, Any]:
             "ts": handoff["latest"].get("timestamp"),
         })
 
+    operator_product = None
+    try:
+        from scripts.lib.cio_operator_product import build_operator_product
+        operator_product = build_operator_product(root=PROJECT_ROOT, persist=False)
+    except Exception:
+        operator_product = None
     home = build_office_home(
         capital_plan=capital_plan,
         sector_opportunities=sector_opportunities,
@@ -1152,6 +1158,7 @@ def get_cio_home() -> dict[str, Any]:
         source_refs=source_refs,
         validator_states=validator_states,
         run_ids=run_ids,
+        operator_product=operator_product,
     )
     home["ok"] = True
     stamp_decision_identity(home, capital_plan)
@@ -2059,6 +2066,27 @@ def get_learning_cockpit_v1() -> dict[str, Any]:
         return {"ok": False, "error": type(exc).__name__, "authority": AUTHORITY_ADVISORY}
 
 
+def get_data_health_v1() -> dict[str, Any]:
+    """GUI projection of canonical store health. No ingestion."""
+    try:
+        from scripts.lib.canonical_store_registry import resolve_store, STORES
+        from scripts.lib.data_store_inventory import inventory, writer_reader_graph
+        inv = inventory(root=PROJECT_ROOT)
+        graph = writer_reader_graph()
+        return {
+            "ok": True,
+            "schema": "DataHealthDashboard@v1",
+            "inventory": inv,
+            "graph_flags": graph.get("flags"),
+            "gui_is_projection": True,
+            "authority": AUTHORITY_ADVISORY,
+            "memory_behavior_influence": 0,
+            "financial_action": False,
+        }
+    except Exception as exc:
+        return {"ok": False, "error": type(exc).__name__, "authority": AUTHORITY_ADVISORY}
+
+
 def get_cio_brain_v1() -> dict[str, Any]:
     """Build one derived operator projection from canonical versioned planes."""
     policy = get_operator_investment_policy()
@@ -2206,6 +2234,7 @@ def get_cio_brain_v1() -> dict[str, Any]:
         "intelligence_lifecycle": get_intelligence_lifecycle_v1(),
         "model_performance": get_model_performance_v1(),
         "learning_cockpit": get_learning_cockpit_v1(),
+        "data_health": get_data_health_v1(),
     }
 
 

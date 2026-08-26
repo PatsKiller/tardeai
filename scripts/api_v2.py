@@ -40355,6 +40355,8 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     return 200, _cio.get_model_performance_v1()
                 if p in ("brain/learning-cockpit", "brain/learning_cockpit"):
                     return 200, _cio.get_learning_cockpit_v1()
+                if p in ("brain/data-health", "brain/data_health"):
+                    return 200, _cio.get_data_health_v1()
                 if p in ("investment-product", "investment-books", "books"):
                     return 200, _cio.get_investment_product()
                 if p == "dispositions":

@@ -148,6 +148,17 @@ def classify_alert(message: str) -> str:
     if not message:
         return "P3_LOG_ONLY"
 
+    # R18-DATA.1: raw machine JSON is never an operator investment page.
+    try:
+        try:
+            from scripts.lib.ops_health_routing import looks_like_raw_json
+        except ImportError:
+            from lib.ops_health_routing import looks_like_raw_json  # type: ignore
+        if looks_like_raw_json(message):
+            return "P3_LOG_ONLY"
+    except Exception:
+        pass
+
     try:
         from operator_alert_policy_v2 import classify_legacy_message, route_event
         _ev = classify_legacy_message(message, source_producer="telegram_alert_router")

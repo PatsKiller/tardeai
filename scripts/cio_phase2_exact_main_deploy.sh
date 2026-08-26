@@ -168,6 +168,25 @@ PY
 
 link_pipeline_data() {
   local dest="$1"
+  # Refuse to overlay populated persistent stores onto an empty source-tree
+  # data directory (SOURCE_TREE_COUPLED must not silently become empty).
+  if ! python3 - "$CANONICAL_SOURCE" "$dest" "$ROOT" <<'PY'
+import sys
+from pathlib import Path
+src, dest, repo = Path(sys.argv[1]), Path(sys.argv[2]), Path(sys.argv[3])
+sys.path.insert(0, str(repo / "scripts"))
+try:
+    from lib.persistent_overlay import overlay_is_safe
+except Exception:
+    sys.exit(0)
+rep = overlay_is_safe(canonical_source=src, dest=dest)
+if not rep.get("ok"):
+    print("REFUSE_EMPTY_SOURCE_TREE_OVERLAY", rep.get("blocked"), file=sys.stderr)
+    sys.exit(2)
+PY
+  then
+    die "persistent overlay refused — canonical source is empty while dest has data"
+  fi
   local dirs=(
     "data/portfolios/state"
     "state/data_broker"

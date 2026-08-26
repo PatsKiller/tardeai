@@ -38,7 +38,10 @@ def append_jsonl(path: Path, rec: dict[str, Any]) -> None:
 def atomic_write_json(path: Path, rec: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(json.dumps(rec, indent=2, default=str) + "\n", encoding="utf-8")
+    with tmp.open("w", encoding="utf-8") as fh:
+        fh.write(json.dumps(rec, indent=2, default=str) + "\n")
+        fh.flush()
+        os.fsync(fh.fileno())
     os.replace(tmp, path)
 
 

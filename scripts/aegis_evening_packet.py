@@ -43,45 +43,36 @@ def _trim(obj, n=800):
 
 
 def _cio_product() -> dict:
-    """Current canonical CIO product — never the retired cio_decisions file."""
-    candidates = [
-        ROOT / "data" / "cio" / "cio_investment_product_latest.json",
-        ROOT / "data" / "cio" / "CURRENT" / "cio_investment_product_latest.json",
-    ]
-    # TRADEAI_CIO_DIR / live CURRENT tree
-    cio_dir = os.environ.get("TRADEAI_CIO_DIR")
-    if cio_dir:
-        candidates.insert(0, Path(cio_dir) / "cio_investment_product_latest.json")
-    for p in candidates:
-        if p.exists():
-            data = _read_json(p) or {}
-            if isinstance(data, dict) and data:
-                return {
-                    "source": "cio_investment_product",
-                    "path": str(p),
-                    "product_id": data.get("product_id"),
-                    "as_of": data.get("as_of") or data.get("generated_at"),
-                    "trigger": data.get("trigger"),
-                    "what_changed_material": data.get("what_changed_material"),
-                    "desk": _trim(data.get("desk") or data.get("memo") or data.get("summary"), 1200),
-                    "reentry": _trim(data.get("reentry") or data.get("re_entry"), 800),
-                }
-    # Fallback: latest persist via library if present
+    """Current canonical CIO product via store registry — never a remembered filename."""
     try:
-        try:
-            from cio_investment_product import load_brief, load_current_production_product
-        except ImportError:
-            from scripts.lib.cio_investment_product import load_brief, load_current_production_product
-        brief = load_current_production_product() or load_brief()
-        if brief:
-            return {
-                "source": "cio_investment_product.load_current_production_product",
-                "product_id": getattr(brief, "product_id", None) or (brief.get("product_id") if isinstance(brief, dict) else None),
-                "brief": _trim(brief if isinstance(brief, dict) else getattr(brief, "__dict__", str(brief)), 1600),
-            }
-    except Exception:
-        pass
-    return {"source": "cio_investment_product", "available": False, "note": "no current product on disk"}
+        from scripts.lib.canonical_store_registry import load_json_store
+        from scripts.lib.cio_operator_product import build_operator_product
+    except ImportError:
+        from canonical_store_registry import load_json_store  # type: ignore
+        from cio_operator_product import build_operator_product  # type: ignore
+    loc = load_json_store("cio.product.current", root=ROOT)
+    if loc.get("available") and isinstance(loc.get("data"), dict):
+        data = loc["data"]
+        op = build_operator_product(root=ROOT, persist=False)
+        return {
+            "source": "cio.product.current",
+            "path": loc.get("path"),
+            "used_alias": loc.get("used_alias"),
+            "available": True,
+            "product_id": data.get("product_id") or data.get("decision_id"),
+            "as_of": data.get("as_of") or data.get("generated_at"),
+            "operator_product": _trim(op, 1600),
+            "desk": _trim(data.get("desk") or data.get("memo") or data.get("summary"), 1200),
+            "reentry": _trim(data.get("reentry_book") or data.get("reentry") or data.get("re_entry"), 800),
+        }
+    return {
+        "source": "cio.product.current",
+        "available": False,
+        "reason": "PRODUCER_NOT_RUN",
+        "detail": loc.get("reason") or "canonical cio.product.current missing",
+        "path": loc.get("path"),
+        "note": "CIO_PRODUCT_UNAVAILABLE — not an inference that intelligence does not exist elsewhere.",
+    }
 
 
 def _holdings_protection() -> dict:
@@ -141,17 +132,33 @@ def _health() -> dict:
 
 
 def _advisory() -> dict:
-    p = ROOT / "data" / "runtime" / "advisory_latest.json"
-    if p.exists():
-        return {"source": "advisory_latest", "body": _trim(_read_json(p), 800)}
-    return {"source": "advisory", "available": False}
+    try:
+        from scripts.lib.canonical_store_registry import load_json_store
+    except ImportError:
+        from canonical_store_registry import load_json_store  # type: ignore
+    loc = load_json_store("advisory.current", root=ROOT)
+    if loc.get("available"):
+        return {
+            "source": "advisory.current",
+            "path": loc.get("path"),
+            "used_alias": loc.get("used_alias"),
+            "available": True,
+            "body": _trim(loc.get("data"), 800),
+        }
+    return {
+        "source": "advisory.current",
+        "available": False,
+        "reason": "PRODUCER_NOT_RUN",
+        "detail": loc.get("reason"),
+        "path": loc.get("path"),
+    }
 
 
 def build_packet() -> dict:
     packet = {
         "schema": "aegis_evening_packet@v1",
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "canonical_cio_source": "cio_investment_product",
+        "canonical_cio_source": "cio.product.current",
         "retired_artifacts_forbidden": ["cio_decisions"],
         "command_center": "https://tradeai.jwwhiting.com/v3/",
         "max_findings": MAX_FINDINGS,
