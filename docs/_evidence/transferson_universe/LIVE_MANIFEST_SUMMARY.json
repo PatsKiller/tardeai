@@ -1,0 +1,113 @@
+{
+  "schema": "TransfersonUniverseManifest@v1",
+  "authority": "READ_ONLY_ADVISORY",
+  "memory_behavior_influence": 0,
+  "financial_action": false,
+  "as_of": "2026-08-25T19:46:03+00:00",
+  "source_pin": "55520666b4a742b9ed893c3231b414d089312363",
+  "canonical_universe_count": 120,
+  "graph_profiled_count": 120,
+  "graph_coverage": "120 graph-profiled / 120 universe",
+  "tier_counts": {
+    "T0-HOLD": 19,
+    "T0-PROP": 0,
+    "T1-WATCH": 22,
+    "T2-INCUB": 0,
+    "T3-COLD": 79
+  },
+  "membership_reason_counts": {
+    "GRAPH_PROFILE": 120,
+    "UNRESOLVED_IDENTITY": 3,
+    "REENTRY_HISTORY": 107,
+    "REENTRY_READY_NEAR": 22,
+    "CURRENTLY_HELD": 19
+  },
+  "holdings_in_universe": 19,
+  "unresolved_identity_n": 17,
+  "note": "HISTORICAL. File-union while DB collectors failed-soft. Not the live universe. Graph-profiled 120 / file-union 120. Live DB-backed count is 4153.",
+  "scheduler_index_n": 41,
+  "sample": [
+    {
+      "symbol": "NOC",
+      "ticker_guid": "4d011103-85a2-5a9c-ad05-f58f4cd2ec39",
+      "issuer_guid": null,
+      "security_guid": "b359a240-b8f4-54c5-bd70-0dfdb0c17c55",
+      "listing_guid": null,
+      "current_research_tier": "T0-HOLD",
+      "membership_reasons": [
+        "CURRENTLY_HELD",
+        "GRAPH_PROFILE",
+        "REENTRY_HISTORY"
+      ],
+      "membership_sources": [
+        "holdings.json",
+        "reentry_decision_desk_latest.json",
+        "ticker_research_graph.jsonl"
+      ],
+      "first_seen_at": null,
+      "last_seen_at": null,
+      "currently_held": true,
+      "historically_held": true,
+      "sold_history_present": false,
+      "reentry_status": "CURRENTLY HELD",
+      "active_proposal": false,
+      "watch_directive_active": false,
+      "hermes_rank": null,
+      "incubator_status": null,
+      "scope_governor_status": null,
+      "sector": "Industrials",
+      "industry": "Aerospace & Defense",
+      "subindustry": null,
+      "catalyst_guids": [
+        "d9fe76a8-d3bd-5928-85f8-4ce7dc2b075d"
+      ],
+      "unresolved_identity": null,
+      "source_provenance": [
+        "holdings.json",
+        "reentry_decision_desk_latest.json",
+        "ticker_research_graph.jsonl"
+      ]
+    },
+    {
+      "symbol": "SCHD",
+      "ticker_guid": "461e8849-dd63-5ef9-bbac-2d251b67208d",
+      "issuer_guid": null,
+      "security_guid": "a29dd6b6-9f88-5f8c-a372-f88786851a76",
+      "listing_guid": null,
+      "current_research_tier": "T0-HOLD",
+      "membership_reasons": [
+        "CURRENTLY_HELD",
+        "GRAPH_PROFILE",
+        "REENTRY_HISTORY"
+      ],
+      "membership_sources": [
+        "holdings.json",
+        "reentry_decision_desk_latest.json",
+        "ticker_research_graph.jsonl"
+      ],
+      "first_seen_at": null,
+      "last_seen_at": null,
+      "currently_held": true,
+      "historically_held": true,
+      "sold_history_present": false,
+      "reentry_status": "CURRENTLY HELD",
+      "active_proposal": false,
+      "watch_directive_active": false,
+      "hermes_rank": null,
+      "incubator_status": null,
+      "scope_governor_status": null,
+      "sector": "Dividend Equity",
+      "industry": "Exchange Traded Fund",
+      "subindustry": null,
+      "catalyst_guids": [],
+      "unresolved_identity": null,
+      "source_provenance": [
+        "holdings.json",
+        "reentry_decision_desk_latest.json",
+        "ticker_research_graph.jsonl"
+      ]
+    }
+  ],
+  "historical_file_union_only": true,
+  "superseded_by": "LIVE_ACCEPTANCE.json"
+}

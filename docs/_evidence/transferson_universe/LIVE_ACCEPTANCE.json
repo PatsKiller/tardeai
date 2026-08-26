@@ -1,0 +1,3558 @@
+{
+  "schema": "TransfersonLiveAcceptance@v1",
+  "authority": "READ_ONLY_ADVISORY",
+  "memory_behavior_influence": 0,
+  "financial_action": false,
+  "as_of": "2026-08-25T20:05:22+00:00",
+  "source_pin": "55520666b4a742b9ed893c3231b414d089312363",
+  "current_path": "/home/johnclaw/trade-ai-releases/portfolio-server/55520666-main-exact-phase2-20260825-125124",
+  "worktree": "/home/johnclaw/trade-ai-v12-rebuild/wt-r16-learning",
+  "top_rank_n": 200,
+  "r17_auto_checkpoint": "blocked until this identity/universe contract is accepted",
+  "section_1_counts": {
+    "canonical_universe_count": 4153,
+    "graph_profiled_count": 120,
+    "graph_coverage_pct": 2.8895,
+    "graph_coverage": "120 graph-profiled / 4153 universe",
+    "identity_resolved_count": 103,
+    "identity_unresolved_count": 4050,
+    "tier_counts": {
+      "T0-HOLD": 19,
+      "T0-PROP": 31,
+      "T1-WATCH": 323,
+      "T2-INCUB": 148,
+      "T3-COLD": 3632
+    },
+    "metrics": {
+      "schema": "TransfersonUniverseMetrics@v1",
+      "canonical_universe_count": 4153,
+      "graph_profiled_count": 120,
+      "persistent_graph_profiled": 120,
+      "free_first_circulated_count": 120,
+      "research_due_count": 0,
+      "research_executed_count": 0,
+      "t0_hold": 19,
+      "t0_prop": 31,
+      "t1_watch": 323,
+      "t2_incub": 148,
+      "t3_cold": 3632,
+      "graph_coverage": "120 graph-profiled / 4153 universe",
+      "ticker_guid_is_not_security": true,
+      "authority": "READ_ONLY_ADVISORY"
+    }
+  },
+  "section_2_source_reconciliation": {
+    "raw_unique_counts": {
+      "holdings": 19,
+      "cusips": 3,
+      "reentry_all": 107,
+      "reentry_ready_near": 21,
+      "reentry_wait_retained": 76,
+      "proposals_active": 31,
+      "proposals_recent": 99,
+      "watch_directives": 119,
+      "hermes_rank_t1": 688,
+      "hermes_rank_all": 2926,
+      "incubator": 405,
+      "symbol_profiles": 2822,
+      "graph_profiles": 120
+    },
+    "scope_s3_overlay_n": 4472,
+    "scope_s3_in_canonical": 3024,
+    "scope_s3_not_in_canonical": 1448,
+    "scope_note": "scope_s3 is a research-priority overlay/demotion, not a membership add",
+    "authorized_union_n": 4153,
+    "canonical_n": 4153,
+    "union_equals_canonical": true,
+    "only_in_union": [],
+    "only_in_union_n": 0,
+    "only_in_canonical": [],
+    "only_in_canonical_n": 0,
+    "overlaps": {
+      "holdings_and_reentry": 10,
+      "holdings_and_graph": 19,
+      "watch_and_hermes_t1": 84,
+      "incubator_and_profiles": 234,
+      "proposals_active_and_recent": 15
+    },
+    "naive_sum_all_membership_sources": 6651,
+    "discovery": {
+      "wired_as_membership_source": false,
+      "tables": [
+        "screener_symbol_membership",
+        "hermes_discovery_candidates",
+        "finviz_screeners",
+        "screener_config"
+      ],
+      "screener_symbol_membership": {
+        "distinct_all": 11195,
+        "active_or_present_this_run_tickers": 3119,
+        "missing_from_canonical": 1383,
+        "note": "Not wired into collect_live_sources. Expired rows dominate (11056)."
+      },
+      "hermes_discovery_candidates": {
+        "READY_FOR_REVIEW_or_APPROVED_RESEARCH_ONLY_tickers": 97,
+        "missing_from_canonical": 0,
+        "DISCOVERED_plus_validated_ish_tickers": 389,
+        "missing_sample": [
+          "OSBC"
+        ]
+      }
+    },
+    "reentry_states": {
+      "READY TO REVIEW": 3,
+      "NEAR ENTRY": 18,
+      "WAIT": 57,
+      "OVERBOUGHT WAIT": 3,
+      "MISSING PLAN": 6,
+      "MISSING MARKET": 10,
+      "CURRENTLY HELD": 10
+    }
+  },
+  "section_3_holdings": {
+    "held_equity_n": 19,
+    "missing_current_holdings": [],
+    "missing_n": 0,
+    "cusips": [
+      "12507E201",
+      "543354104",
+      "628518102"
+    ],
+    "cusips_in_universe": [
+      "12507E201",
+      "543354104",
+      "628518102"
+    ],
+    "rows": [
+      {
+        "symbol": "AMANX",
+        "tier": "T0-HOLD",
+        "reasons": [
+          "CURRENTLY_HELD",
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "SYMBOL_PROFILE",
+          "WATCH_DIRECTIVE"
+        ],
+        "sources": [
+          "hermes_score_history",
+          "holdings.json",
+          "symbol_profiles",
+          "ticker_research_graph.jsonl",
+          "watch_directives"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": null,
+        "security_guid": "8713b858-f6c3-5b90-8022-3d1f2f05faff",
+        "listing_guid": "5a07308b-d100-5505-a8ae-ce6d3644a3e3",
+        "ticker_guid": "d871464c-08be-5037-a1bb-6cdbb7025e0c",
+        "currently_held": true,
+        "historically_held": true,
+        "sold_history_present": false,
+        "reentry_status": null,
+        "active_proposal": false,
+        "watch_directive_active": true,
+        "hermes_rank": 222,
+        "incubator_status": null,
+        "scope_governor_status": null,
+        "sector": "Equity Income Fund",
+        "industry": "Mutual Fund",
+        "catalyst_n": 0,
+        "unresolved_identity": null
+      },
+      {
+        "symbol": "ARKX",
+        "tier": "T0-HOLD",
+        "reasons": [
+          "CURRENTLY_HELD",
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "HERMES_RANK_T1",
+          "SYMBOL_PROFILE"
+        ],
+        "sources": [
+          "hermes_score_history",
+          "holdings.json",
+          "symbol_profiles",
+          "ticker_research_graph.jsonl"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": null,
+        "security_guid": "3e5ce7ad-b05b-53b4-9e40-1234f8be84e1",
+        "listing_guid": "c12eb2bd-7d25-5846-83a9-2fb04a2597f2",
+        "ticker_guid": "357dfe6f-4d8d-519f-96c4-0197ae9c3266",
+        "currently_held": true,
+        "historically_held": true,
+        "sold_history_present": false,
+        "reentry_status": null,
+        "active_proposal": false,
+        "watch_directive_active": false,
+        "hermes_rank": 90,
+        "incubator_status": null,
+        "scope_governor_status": null,
+        "sector": null,
+        "industry": null,
+        "catalyst_n": 0,
+        "unresolved_identity": null
+      },
+      {
+        "symbol": "BAH",
+        "tier": "T0-HOLD",
+        "reasons": [
+          "CURRENTLY_HELD",
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "HERMES_RANK_T1",
+          "SYMBOL_PROFILE",
+          "WATCH_DIRECTIVE"
+        ],
+        "sources": [
+          "hermes_score_history",
+          "holdings.json",
+          "symbol_profiles",
+          "ticker_research_graph.jsonl",
+          "watch_directives"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": null,
+        "security_guid": "52ff2d19-adca-5fb9-a425-8aa9b36d20e5",
+        "listing_guid": "be9bec38-4277-5e84-90d8-5b2ddb9fcba5",
+        "ticker_guid": "2221fc8d-e4c2-555e-af1d-3a89dd7bc5cf",
+        "currently_held": true,
+        "historically_held": true,
+        "sold_history_present": false,
+        "reentry_status": null,
+        "active_proposal": false,
+        "watch_directive_active": true,
+        "hermes_rank": 130,
+        "incubator_status": null,
+        "scope_governor_status": null,
+        "sector": "Industrials",
+        "industry": "Consulting Services",
+        "catalyst_n": 1,
+        "unresolved_identity": null
+      },
+      {
+        "symbol": "BND",
+        "tier": "T0-HOLD",
+        "reasons": [
+          "CURRENTLY_HELD",
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "HERMES_RANK_T1",
+          "REENTRY_HISTORY",
+          "SYMBOL_PROFILE"
+        ],
+        "sources": [
+          "hermes_score_history",
+          "holdings.json",
+          "reentry_decision_desk_latest.json",
+          "symbol_profiles",
+          "ticker_research_graph.jsonl"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": null,
+        "security_guid": "2f82f3e7-2156-554f-b70d-0f5cd20834e2",
+        "listing_guid": "448f1179-0573-52fa-a0a0-6ee33453aaf2",
+        "ticker_guid": "068c8583-d699-5016-bdcc-6a1b56ca11cf",
+        "currently_held": true,
+        "historically_held": true,
+        "sold_history_present": false,
+        "reentry_status": "CURRENTLY HELD",
+        "active_proposal": false,
+        "watch_directive_active": false,
+        "hermes_rank": 147,
+        "incubator_status": null,
+        "scope_governor_status": null,
+        "sector": "Fixed Income",
+        "industry": "Exchange Traded Fund",
+        "catalyst_n": 0,
+        "unresolved_identity": null
+      },
+      {
+        "symbol": "CSWC",
+        "tier": "T0-HOLD",
+        "reasons": [
+          "CURRENTLY_HELD",
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "HERMES_RANK_T1",
+          "REENTRY_HISTORY",
+          "SYMBOL_PROFILE"
+        ],
+        "sources": [
+          "hermes_score_history",
+          "holdings.json",
+          "reentry_decision_desk_latest.json",
+          "symbol_profiles",
+          "ticker_research_graph.jsonl"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": null,
+        "security_guid": "57d468bc-fc11-506f-957b-326beaaca051",
+        "listing_guid": "bd4ff26b-40f3-56c6-b5a1-c248280c0b49",
+        "ticker_guid": "b282e676-9ee7-5474-819d-22f78cc36316",
+        "currently_held": true,
+        "historically_held": true,
+        "sold_history_present": false,
+        "reentry_status": "CURRENTLY HELD",
+        "active_proposal": false,
+        "watch_directive_active": false,
+        "hermes_rank": 112,
+        "incubator_status": null,
+        "scope_governor_status": null,
+        "sector": "Financial Services",
+        "industry": "Asset Management",
+        "catalyst_n": 1,
+        "unresolved_identity": null
+      },
+      {
+        "symbol": "DIV",
+        "tier": "T0-HOLD",
+        "reasons": [
+          "CURRENTLY_HELD",
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "SYMBOL_PROFILE"
+        ],
+        "sources": [
+          "hermes_score_history",
+          "holdings.json",
+          "symbol_profiles",
+          "ticker_research_graph.jsonl"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": null,
+        "security_guid": "7adcfc22-2714-58f1-a632-cd58753b2355",
+        "listing_guid": "8f96b0f7-b76e-5f5e-879c-cce7fc0e144b",
+        "ticker_guid": "5f3e4580-8942-5d0d-860a-27590f8d7ff4",
+        "currently_held": true,
+        "historically_held": true,
+        "sold_history_present": false,
+        "reentry_status": null,
+        "active_proposal": false,
+        "watch_directive_active": false,
+        "hermes_rank": 214,
+        "incubator_status": null,
+        "scope_governor_status": null,
+        "sector": "Dividend Equity",
+        "industry": "Exchange Traded Fund",
+        "catalyst_n": 0,
+        "unresolved_identity": null
+      },
+      {
+        "symbol": "JEPI",
+        "tier": "T0-HOLD",
+        "reasons": [
+          "CURRENTLY_HELD",
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "REENTRY_HISTORY",
+          "SYMBOL_PROFILE"
+        ],
+        "sources": [
+          "hermes_score_history",
+          "holdings.json",
+          "reentry_decision_desk_latest.json",
+          "symbol_profiles",
+          "ticker_research_graph.jsonl"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": null,
+        "security_guid": "76d7a480-9c64-5959-8728-dba958d8dbc3",
+        "listing_guid": "a7d28247-9d06-56dd-ab7f-f475fa2678b1",
+        "ticker_guid": "82d0b284-49f3-5215-a32d-85c7932ea429",
+        "currently_held": true,
+        "historically_held": true,
+        "sold_history_present": false,
+        "reentry_status": "CURRENTLY HELD",
+        "active_proposal": false,
+        "watch_directive_active": false,
+        "hermes_rank": 201,
+        "incubator_status": null,
+        "scope_governor_status": null,
+        "sector": "Income / Covered Call",
+        "industry": "Exchange Traded Fund",
+        "catalyst_n": 0,
+        "unresolved_identity": null
+      },
+      {
+        "symbol": "LDOS",
+        "tier": "T0-HOLD",
+        "reasons": [
+          "CURRENTLY_HELD",
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "HERMES_RANK_T1",
+          "INCUBATOR",
+          "REENTRY_HISTORY",
+          "SYMBOL_PROFILE",
+          "WATCH_DIRECTIVE"
+        ],
+        "sources": [
+          "hermes_score_history",
+          "holdings.json",
+          "incubator_universe",
+          "reentry_decision_desk_latest.json",
+          "symbol_profiles",
+          "ticker_research_graph.jsonl",
+          "watch_directives"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": null,
+        "security_guid": "1735f839-e2a1-5f59-a014-bee36d3a66da",
+        "listing_guid": "d636fce8-0828-52ce-8c2d-4485318f0758",
+        "ticker_guid": "ebc5e5a8-0d70-5d7d-8073-cc92a8d8830b",
+        "currently_held": true,
+        "historically_held": true,
+        "sold_history_present": false,
+        "reentry_status": "CURRENTLY HELD",
+        "active_proposal": false,
+        "watch_directive_active": true,
+        "hermes_rank": 119,
+        "incubator_status": "active",
+        "scope_governor_status": null,
+        "sector": "Technology",
+        "industry": "Information Technology Services",
+        "catalyst_n": 1,
+        "unresolved_identity": null
+      },
+      {
+        "symbol": "NOC",
+        "tier": "T0-HOLD",
+        "reasons": [
+          "CURRENTLY_HELD",
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "HERMES_RANK_T1",
+          "REENTRY_HISTORY",
+          "SYMBOL_PROFILE",
+          "WATCH_DIRECTIVE"
+        ],
+        "sources": [
+          "hermes_score_history",
+          "holdings.json",
+          "reentry_decision_desk_latest.json",
+          "symbol_profiles",
+          "ticker_research_graph.jsonl",
+          "watch_directives"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": null,
+        "security_guid": "b359a240-b8f4-54c5-bd70-0dfdb0c17c55",
+        "listing_guid": "7c5eebd7-a69e-5bd7-8608-83de515b3e88",
+        "ticker_guid": "4d011103-85a2-5a9c-ad05-f58f4cd2ec39",
+        "currently_held": true,
+        "historically_held": true,
+        "sold_history_present": false,
+        "reentry_status": "CURRENTLY HELD",
+        "active_proposal": false,
+        "watch_directive_active": true,
+        "hermes_rank": 43,
+        "incubator_status": null,
+        "scope_governor_status": null,
+        "sector": "Industrials",
+        "industry": "Aerospace & Defense",
+        "catalyst_n": 1,
+        "unresolved_identity": null
+      },
+      {
+        "symbol": "PFLT",
+        "tier": "T0-HOLD",
+        "reasons": [
+          "CURRENTLY_HELD",
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "HERMES_RANK_T1",
+          "REENTRY_HISTORY",
+          "SYMBOL_PROFILE",
+          "WATCH_DIRECTIVE"
+        ],
+        "sources": [
+          "hermes_score_history",
+          "holdings.json",
+          "reentry_decision_desk_latest.json",
+          "symbol_profiles",
+          "ticker_research_graph.jsonl",
+          "watch_directives"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": null,
+        "security_guid": "e93ed74d-cd67-55a6-b0c0-e60eebbadf89",
+        "listing_guid": "2abe0719-c6ba-509b-b253-be560666617d",
+        "ticker_guid": "a9d159ff-fdcc-5634-96a9-dcab59449eec",
+        "currently_held": true,
+        "historically_held": true,
+        "sold_history_present": false,
+        "reentry_status": "CURRENTLY HELD",
+        "active_proposal": false,
+        "watch_directive_active": true,
+        "hermes_rank": 30,
+        "incubator_status": null,
+        "scope_governor_status": null,
+        "sector": "Financial Services",
+        "industry": "Asset Management",
+        "catalyst_n": 1,
+        "unresolved_identity": null
+      },
+      {
+        "symbol": "RTX",
+        "tier": "T0-HOLD",
+        "reasons": [
+          "CURRENTLY_HELD",
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "HERMES_RANK_T1",
+          "REENTRY_HISTORY",
+          "SYMBOL_PROFILE"
+        ],
+        "sources": [
+          "hermes_score_history",
+          "holdings.json",
+          "reentry_decision_desk_latest.json",
+          "symbol_profiles",
+          "ticker_research_graph.jsonl"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": null,
+        "security_guid": "0d1c46d0-4461-557c-b02e-b52c857ce4f7",
+        "listing_guid": "aa7b28db-47cf-5326-80a7-443d5fa23566",
+        "ticker_guid": "def71fa3-ec3b-5e05-a37c-395db3be1641",
+        "currently_held": true,
+        "historically_held": true,
+        "sold_history_present": false,
+        "reentry_status": "CURRENTLY HELD",
+        "active_proposal": false,
+        "watch_directive_active": false,
+        "hermes_rank": 39,
+        "incubator_status": null,
+        "scope_governor_status": null,
+        "sector": "Industrials",
+        "industry": "Aerospace & Defense",
+        "catalyst_n": 1,
+        "unresolved_identity": null
+      },
+      {
+        "symbol": "SCHD",
+        "tier": "T0-HOLD",
+        "reasons": [
+          "CURRENTLY_HELD",
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "HERMES_RANK_T1",
+          "REENTRY_HISTORY",
+          "SYMBOL_PROFILE",
+          "WATCH_DIRECTIVE"
+        ],
+        "sources": [
+          "hermes_score_history",
+          "holdings.json",
+          "reentry_decision_desk_latest.json",
+          "symbol_profiles",
+          "ticker_research_graph.jsonl",
+          "watch_directives"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": null,
+        "security_guid": "a29dd6b6-9f88-5f8c-a372-f88786851a76",
+        "listing_guid": "f6ce2604-91da-5087-a34c-a97ea560ce9e",
+        "ticker_guid": "461e8849-dd63-5ef9-bbac-2d251b67208d",
+        "currently_held": true,
+        "historically_held": true,
+        "sold_history_present": false,
+        "reentry_status": "CURRENTLY HELD",
+        "active_proposal": false,
+        "watch_directive_active": true,
+        "hermes_rank": 173,
+        "incubator_status": null,
+        "scope_governor_status": null,
+        "sector": "Dividend Equity",
+        "industry": "Exchange Traded Fund",
+        "catalyst_n": 0,
+        "unresolved_identity": null
+      },
+      {
+        "symbol": "SCHG",
+        "tier": "T0-HOLD",
+        "reasons": [
+          "CURRENTLY_HELD",
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "HERMES_RANK_T1",
+          "REENTRY_HISTORY",
+          "SYMBOL_PROFILE"
+        ],
+        "sources": [
+          "hermes_score_history",
+          "holdings.json",
+          "reentry_decision_desk_latest.json",
+          "symbol_profiles",
+          "ticker_research_graph.jsonl"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": null,
+        "security_guid": "33891f18-2159-5631-943f-11e80252c888",
+        "listing_guid": "4e3d7246-a5b0-5230-a517-1165a280656a",
+        "ticker_guid": "8e71e73c-d509-5c54-b777-18023c54bbd3",
+        "currently_held": true,
+        "historically_held": true,
+        "sold_history_present": false,
+        "reentry_status": "CURRENTLY HELD",
+        "active_proposal": false,
+        "watch_directive_active": false,
+        "hermes_rank": 73,
+        "incubator_status": null,
+        "scope_governor_status": null,
+        "sector": "Growth Equity",
+        "industry": "Exchange Traded Fund",
+        "catalyst_n": 0,
+        "unresolved_identity": null
+      },
+      {
+        "symbol": "SPCX",
+        "tier": "T0-HOLD",
+        "reasons": [
+          "CURRENTLY_HELD",
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "HERMES_RANK_T1",
+          "SYMBOL_PROFILE",
+          "WATCH_DIRECTIVE"
+        ],
+        "sources": [
+          "hermes_score_history",
+          "holdings.json",
+          "symbol_profiles",
+          "ticker_research_graph.jsonl",
+          "watch_directives"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": null,
+        "security_guid": "b155296f-f592-5410-9fe5-fa4336233223",
+        "listing_guid": "ffbcaf44-1335-576d-b203-e717383ecdba",
+        "ticker_guid": "6b721045-09bf-5147-ba3e-114454ecdbd3",
+        "currently_held": true,
+        "historically_held": true,
+        "sold_history_present": false,
+        "reentry_status": null,
+        "active_proposal": false,
+        "watch_directive_active": true,
+        "hermes_rank": 62,
+        "incubator_status": null,
+        "scope_governor_status": null,
+        "sector": "Industrials",
+        "industry": "Aerospace & Defense",
+        "catalyst_n": 1,
+        "unresolved_identity": null
+      },
+      {
+        "symbol": "SRNE",
+        "tier": "T0-HOLD",
+        "reasons": [
+          "CURRENTLY_HELD",
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "SYMBOL_PROFILE"
+        ],
+        "sources": [
+          "hermes_score_history",
+          "holdings.json",
+          "symbol_profiles",
+          "ticker_research_graph.jsonl"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": null,
+        "security_guid": "975c7420-a433-5004-97b0-dbf4c61a30dc",
+        "listing_guid": "0b6cf297-f9bd-5aff-9b73-4160a8c3aa3a",
+        "ticker_guid": "06b4ec08-29a8-5f26-bef8-a965a5175fc6",
+        "currently_held": true,
+        "historically_held": true,
+        "sold_history_present": false,
+        "reentry_status": null,
+        "active_proposal": false,
+        "watch_directive_active": false,
+        "hermes_rank": 333,
+        "incubator_status": null,
+        "scope_governor_status": null,
+        "sector": "Healthcare",
+        "industry": "Biotechnology",
+        "catalyst_n": 0,
+        "unresolved_identity": null
+      },
+      {
+        "symbol": "V",
+        "tier": "T0-HOLD",
+        "reasons": [
+          "CURRENTLY_HELD",
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "HERMES_RANK_T1",
+          "REENTRY_HISTORY",
+          "SYMBOL_PROFILE",
+          "WATCH_DIRECTIVE"
+        ],
+        "sources": [
+          "hermes_score_history",
+          "holdings.json",
+          "reentry_decision_desk_latest.json",
+          "symbol_profiles",
+          "ticker_research_graph.jsonl",
+          "watch_directives"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": null,
+        "security_guid": "c8e55e81-be4e-567f-9d13-c6d79436d8d6",
+        "listing_guid": "3f185a99-a0a5-5fa4-a0f4-0feaa58423fe",
+        "ticker_guid": "fb748f76-b409-5e49-9522-e9fdb5d823cd",
+        "currently_held": true,
+        "historically_held": true,
+        "sold_history_present": false,
+        "reentry_status": "CURRENTLY HELD",
+        "active_proposal": false,
+        "watch_directive_active": true,
+        "hermes_rank": 41,
+        "incubator_status": null,
+        "scope_governor_status": null,
+        "sector": "Financial Services",
+        "industry": "Credit Services",
+        "catalyst_n": 1,
+        "unresolved_identity": null
+      },
+      {
+        "symbol": "XAR",
+        "tier": "T0-HOLD",
+        "reasons": [
+          "CURRENTLY_HELD",
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "HERMES_RANK_T1",
+          "SYMBOL_PROFILE",
+          "WATCH_DIRECTIVE"
+        ],
+        "sources": [
+          "hermes_score_history",
+          "holdings.json",
+          "symbol_profiles",
+          "ticker_research_graph.jsonl",
+          "watch_directives"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": null,
+        "security_guid": "8758e0ce-bf27-5f6a-9af6-3646134d7057",
+        "listing_guid": "5ebed781-9728-5005-85fd-da0e73d253ac",
+        "ticker_guid": "76f11cba-13be-5bda-b7d8-5ee339ada438",
+        "currently_held": true,
+        "historically_held": true,
+        "sold_history_present": false,
+        "reentry_status": null,
+        "active_proposal": false,
+        "watch_directive_active": true,
+        "hermes_rank": 152,
+        "incubator_status": null,
+        "scope_governor_status": null,
+        "sector": null,
+        "industry": null,
+        "catalyst_n": 0,
+        "unresolved_identity": null
+      },
+      {
+        "symbol": "XLB",
+        "tier": "T0-HOLD",
+        "reasons": [
+          "CURRENTLY_HELD",
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "HERMES_RANK_T1",
+          "SYMBOL_PROFILE",
+          "WATCH_DIRECTIVE"
+        ],
+        "sources": [
+          "hermes_score_history",
+          "holdings.json",
+          "symbol_profiles",
+          "ticker_research_graph.jsonl",
+          "watch_directives"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": null,
+        "security_guid": "7a8ba23c-8ca5-5437-a8e6-dd09df017bdc",
+        "listing_guid": "60e96f4c-eac6-5cac-b92a-9b57efa0e269",
+        "ticker_guid": "b36315f5-fb9b-5133-a9e4-ee34220767f2",
+        "currently_held": true,
+        "historically_held": true,
+        "sold_history_present": false,
+        "reentry_status": null,
+        "active_proposal": false,
+        "watch_directive_active": true,
+        "hermes_rank": 171,
+        "incubator_status": null,
+        "scope_governor_status": null,
+        "sector": "Materials",
+        "industry": "Exchange Traded Fund",
+        "catalyst_n": 0,
+        "unresolved_identity": null
+      },
+      {
+        "symbol": "XLI",
+        "tier": "T0-HOLD",
+        "reasons": [
+          "CURRENTLY_HELD",
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "HERMES_RANK_T1",
+          "SYMBOL_PROFILE",
+          "WATCH_DIRECTIVE"
+        ],
+        "sources": [
+          "hermes_score_history",
+          "holdings.json",
+          "symbol_profiles",
+          "ticker_research_graph.jsonl",
+          "watch_directives"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": null,
+        "security_guid": "ee07fb94-21e0-5ab7-9b05-202177a4eff6",
+        "listing_guid": "d12b8c6d-36c1-59a8-a827-577ddc8f3af9",
+        "ticker_guid": "c9f0d87c-e723-5540-a7bb-b8603943fa89",
+        "currently_held": true,
+        "historically_held": true,
+        "sold_history_present": false,
+        "reentry_status": null,
+        "active_proposal": false,
+        "watch_directive_active": true,
+        "hermes_rank": 153,
+        "incubator_status": null,
+        "scope_governor_status": null,
+        "sector": "Industrials",
+        "industry": "Exchange Traded Fund",
+        "catalyst_n": 0,
+        "unresolved_identity": null
+      }
+    ]
+  },
+  "section_4_sold_reentry": {
+    "reentry_all_n": 107,
+    "reentry_all_missing": [],
+    "reentry_all_missing_n": 0,
+    "ready_near_n": 21,
+    "wait_retained_n": 76,
+    "sold_examples": [
+      {
+        "symbol": "ACHV",
+        "tier": "T1-WATCH",
+        "reasons": [
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "HERMES_RANK_T1",
+          "REENTRY_HISTORY",
+          "SYMBOL_PROFILE"
+        ],
+        "sources": [
+          "hermes_score_history",
+          "reentry_decision_desk_latest.json",
+          "symbol_profiles",
+          "ticker_research_graph.jsonl"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": null,
+        "security_guid": "73c6ce37-38fd-53b5-aaa1-88760ecc517a",
+        "listing_guid": "c21af68b-2655-5e01-8cd9-8fbee2906ada",
+        "ticker_guid": "b3dc2ddd-caa9-51eb-8834-b938c6cfd1df",
+        "currently_held": false,
+        "historically_held": true,
+        "sold_history_present": true,
+        "reentry_status": "WAIT",
+        "active_proposal": false,
+        "watch_directive_active": false,
+        "hermes_rank": 128,
+        "incubator_status": null,
+        "scope_governor_status": null,
+        "sector": "Healthcare",
+        "industry": "Biotechnology",
+        "catalyst_n": 1,
+        "unresolved_identity": null
+      },
+      {
+        "symbol": "ADBE",
+        "tier": "T3-COLD",
+        "reasons": [
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "HERMES_RANK_T1",
+          "INCUBATOR",
+          "REENTRY_HISTORY",
+          "SCOPE_S3",
+          "SYMBOL_PROFILE",
+          "WATCH_DIRECTIVE"
+        ],
+        "sources": [
+          "hermes_score_history",
+          "incubator_universe",
+          "reentry_decision_desk_latest.json",
+          "symbol_profiles",
+          "ticker_research_graph.jsonl",
+          "watch_directives",
+          "watchlist_items"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": null,
+        "security_guid": "17be460d-3077-5edf-a62b-e95797044dc7",
+        "listing_guid": "ecea9491-3f87-5fab-bf11-320cf0f24198",
+        "ticker_guid": "8d69a696-8971-50b3-b406-9f0cf1f6e71d",
+        "currently_held": false,
+        "historically_held": true,
+        "sold_history_present": true,
+        "reentry_status": "WAIT",
+        "active_proposal": false,
+        "watch_directive_active": true,
+        "hermes_rank": 185,
+        "incubator_status": "active",
+        "scope_governor_status": "S3",
+        "sector": "Technology",
+        "industry": "Software - Application",
+        "catalyst_n": 1,
+        "unresolved_identity": null
+      },
+      {
+        "symbol": "AGMH",
+        "tier": "T1-WATCH",
+        "reasons": [
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "REENTRY_HISTORY",
+          "SYMBOL_PROFILE",
+          "WATCH_DIRECTIVE"
+        ],
+        "sources": [
+          "hermes_score_history",
+          "reentry_decision_desk_latest.json",
+          "symbol_profiles",
+          "ticker_research_graph.jsonl",
+          "watch_directives"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": null,
+        "security_guid": "cb4b49fa-d27a-53cc-b4db-95b71c078a6f",
+        "listing_guid": "e03445bc-273d-567f-83f3-6954d4e7aa4c",
+        "ticker_guid": "950da573-c382-5188-86be-9ffca964b351",
+        "currently_held": false,
+        "historically_held": true,
+        "sold_history_present": true,
+        "reentry_status": "WAIT",
+        "active_proposal": false,
+        "watch_directive_active": true,
+        "hermes_rank": 612,
+        "incubator_status": null,
+        "scope_governor_status": null,
+        "sector": "Technology",
+        "industry": "Computer Hardware",
+        "catalyst_n": 0,
+        "unresolved_identity": null
+      },
+      {
+        "symbol": "AIRE",
+        "tier": "T3-COLD",
+        "reasons": [
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "REENTRY_HISTORY",
+          "SYMBOL_PROFILE"
+        ],
+        "sources": [
+          "hermes_score_history",
+          "reentry_decision_desk_latest.json",
+          "symbol_profiles",
+          "ticker_research_graph.jsonl"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": null,
+        "security_guid": "effcead8-e7f9-55a3-b518-78f736ca59c9",
+        "listing_guid": "edf41e60-8d61-57a7-ba63-c35f7e8f5ccc",
+        "ticker_guid": "3d7005d6-a090-5b48-9ffe-1d2b61230b4f",
+        "currently_held": false,
+        "historically_held": true,
+        "sold_history_present": true,
+        "reentry_status": "WAIT",
+        "active_proposal": false,
+        "watch_directive_active": false,
+        "hermes_rank": 328,
+        "incubator_status": null,
+        "scope_governor_status": null,
+        "sector": "Real Estate",
+        "industry": "Real Estate Services",
+        "catalyst_n": 0,
+        "unresolved_identity": null
+      },
+      {
+        "symbol": "AMAGX",
+        "tier": "T3-COLD",
+        "reasons": [
+          "GRAPH_PROFILE",
+          "REENTRY_HISTORY"
+        ],
+        "sources": [
+          "reentry_decision_desk_latest.json",
+          "ticker_research_graph.jsonl"
+        ],
+        "identity_status": "UNRESOLVED_WITH_REASON",
+        "issuer_guid": null,
+        "security_guid": null,
+        "listing_guid": null,
+        "ticker_guid": "3b4a3bec-9f5c-57fe-8a8e-c4eb131a7f50",
+        "currently_held": false,
+        "historically_held": true,
+        "sold_history_present": true,
+        "reentry_status": "MISSING MARKET",
+        "active_proposal": false,
+        "watch_directive_active": false,
+        "hermes_rank": null,
+        "incubator_status": null,
+        "scope_governor_status": null,
+        "sector": null,
+        "industry": null,
+        "catalyst_n": 0,
+        "unresolved_identity": {
+          "symbol": "AMAGX",
+          "kind": "fund",
+          "reason": "five_letter_x_fund_convention"
+        }
+      },
+      {
+        "symbol": "AMC",
+        "tier": "T1-WATCH",
+        "reasons": [
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "HERMES_RANK_T1",
+          "REENTRY_HISTORY",
+          "SYMBOL_PROFILE",
+          "WATCH_DIRECTIVE"
+        ],
+        "sources": [
+          "hermes_score_history",
+          "reentry_decision_desk_latest.json",
+          "symbol_profiles",
+          "ticker_research_graph.jsonl",
+          "watch_directives"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": null,
+        "security_guid": "e45cbeb3-69ad-5c2e-9a3e-08643e9e2f01",
+        "listing_guid": "678c4aa5-56ca-5876-9a8e-7dd1980b5681",
+        "ticker_guid": "0a679fb4-b7fc-500d-a6d7-f459ec2b5774",
+        "currently_held": false,
+        "historically_held": true,
+        "sold_history_present": true,
+        "reentry_status": "WAIT",
+        "active_proposal": false,
+        "watch_directive_active": true,
+        "hermes_rank": 182,
+        "incubator_status": null,
+        "scope_governor_status": null,
+        "sector": "Communication Services",
+        "industry": "Entertainment",
+        "catalyst_n": 1,
+        "unresolved_identity": null
+      },
+      {
+        "symbol": "AMD",
+        "tier": "T1-WATCH",
+        "reasons": [
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "HERMES_RANK_T1",
+          "RECENT_PROPOSAL",
+          "REENTRY_HISTORY",
+          "SYMBOL_PROFILE",
+          "WATCH_DIRECTIVE"
+        ],
+        "sources": [
+          "hermes_score_history",
+          "paper_trade_proposals",
+          "reentry_decision_desk_latest.json",
+          "symbol_profiles",
+          "ticker_research_graph.jsonl",
+          "watch_directives"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": null,
+        "security_guid": "4b5583c5-7d6b-548c-b5af-c339c6846f1d",
+        "listing_guid": "cdb83cf0-25eb-5b3e-a9d5-f69aaf2200ab",
+        "ticker_guid": "ab67df7e-5200-5754-a4f8-7a60839cac7d",
+        "currently_held": false,
+        "historically_held": true,
+        "sold_history_present": true,
+        "reentry_status": "WAIT",
+        "active_proposal": false,
+        "watch_directive_active": true,
+        "hermes_rank": 32,
+        "incubator_status": null,
+        "scope_governor_status": null,
+        "sector": "Technology",
+        "industry": "Semiconductors",
+        "catalyst_n": 1,
+        "unresolved_identity": null
+      },
+      {
+        "symbol": "ANET",
+        "tier": "T1-WATCH",
+        "reasons": [
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "HERMES_RANK_T1",
+          "INCUBATOR",
+          "REENTRY_HISTORY",
+          "SYMBOL_PROFILE",
+          "WATCH_DIRECTIVE"
+        ],
+        "sources": [
+          "hermes_score_history",
+          "incubator_universe",
+          "reentry_decision_desk_latest.json",
+          "symbol_profiles",
+          "ticker_research_graph.jsonl",
+          "watch_directives"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": null,
+        "security_guid": "fc83568a-8bfa-55dd-998c-43010730b247",
+        "listing_guid": "1b0bfc05-7c35-5505-8ccc-7e1f948cf01f",
+        "ticker_guid": "a147dc63-2327-5cee-8071-3447300ced0a",
+        "currently_held": false,
+        "historically_held": true,
+        "sold_history_present": true,
+        "reentry_status": "WAIT",
+        "active_proposal": false,
+        "watch_directive_active": true,
+        "hermes_rank": 33,
+        "incubator_status": "active",
+        "scope_governor_status": null,
+        "sector": "Technology",
+        "industry": "Computer Hardware",
+        "catalyst_n": 1,
+        "unresolved_identity": null
+      },
+      {
+        "symbol": "APAM",
+        "tier": "T3-COLD",
+        "reasons": [
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "REENTRY_HISTORY",
+          "SYMBOL_PROFILE"
+        ],
+        "sources": [
+          "hermes_score_history",
+          "reentry_decision_desk_latest.json",
+          "symbol_profiles",
+          "ticker_research_graph.jsonl"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": null,
+        "security_guid": "b1f52a7a-1965-5bba-b1f3-846414c20163",
+        "listing_guid": "75859d7b-ab78-5729-a989-38231ec4d2be",
+        "ticker_guid": "3ab49dbe-38c3-5e00-b92f-2019a4f038e2",
+        "currently_held": false,
+        "historically_held": true,
+        "sold_history_present": true,
+        "reentry_status": "WAIT",
+        "active_proposal": false,
+        "watch_directive_active": false,
+        "hermes_rank": 264,
+        "incubator_status": null,
+        "scope_governor_status": null,
+        "sector": "Financial Services",
+        "industry": "Asset Management",
+        "catalyst_n": 0,
+        "unresolved_identity": null
+      },
+      {
+        "symbol": "ARKG",
+        "tier": "T1-WATCH",
+        "reasons": [
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "REENTRY_HISTORY",
+          "SYMBOL_PROFILE",
+          "WATCH_DIRECTIVE"
+        ],
+        "sources": [
+          "hermes_score_history",
+          "reentry_decision_desk_latest.json",
+          "symbol_profiles",
+          "ticker_research_graph.jsonl",
+          "watch_directives"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": null,
+        "security_guid": "b93bcac4-f467-5d1a-8b45-0ffbc745b6c9",
+        "listing_guid": "fa06f512-0005-51ee-997d-5ac2e643e034",
+        "ticker_guid": "34b6a850-da34-547f-8ac6-27944bda9d52",
+        "currently_held": false,
+        "historically_held": true,
+        "sold_history_present": true,
+        "reentry_status": "OVERBOUGHT WAIT",
+        "active_proposal": false,
+        "watch_directive_active": true,
+        "hermes_rank": 207,
+        "incubator_status": null,
+        "scope_governor_status": null,
+        "sector": "Healthcare",
+        "industry": "Exchange Traded Fund",
+        "catalyst_n": 0,
+        "unresolved_identity": null
+      },
+      {
+        "symbol": "ARKQ",
+        "tier": "T1-WATCH",
+        "reasons": [
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "HERMES_RANK_T1",
+          "REENTRY_HISTORY",
+          "SYMBOL_PROFILE"
+        ],
+        "sources": [
+          "hermes_score_history",
+          "reentry_decision_desk_latest.json",
+          "symbol_profiles",
+          "ticker_research_graph.jsonl"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": null,
+        "security_guid": "8f700edd-341f-5ca4-acbe-bd810e9ba94d",
+        "listing_guid": "0bcae22b-0a65-5ad1-8cdc-e65eabc3ae78",
+        "ticker_guid": "22b6fc73-d2ca-51ce-b990-a76b99918104",
+        "currently_held": false,
+        "historically_held": true,
+        "sold_history_present": true,
+        "reentry_status": "WAIT",
+        "active_proposal": false,
+        "watch_directive_active": false,
+        "hermes_rank": 165,
+        "incubator_status": null,
+        "scope_governor_status": null,
+        "sector": "Innovation",
+        "industry": "Exchange Traded Fund",
+        "catalyst_n": 0,
+        "unresolved_identity": null
+      },
+      {
+        "symbol": "ATAI",
+        "tier": "T3-COLD",
+        "reasons": [
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "REENTRY_HISTORY",
+          "SYMBOL_PROFILE"
+        ],
+        "sources": [
+          "hermes_score_history",
+          "reentry_decision_desk_latest.json",
+          "symbol_profiles",
+          "ticker_research_graph.jsonl"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": null,
+        "security_guid": "f09770ce-8138-5c7e-a59c-d9e1181e6cfd",
+        "listing_guid": "02d005a1-01a8-5b9e-8424-72c5dfe0e277",
+        "ticker_guid": "08fb8b44-c62b-5bc7-91e2-3bcc5696405c",
+        "currently_held": false,
+        "historically_held": true,
+        "sold_history_present": true,
+        "reentry_status": "OVERBOUGHT WAIT",
+        "active_proposal": false,
+        "watch_directive_active": false,
+        "hermes_rank": 698,
+        "incubator_status": null,
+        "scope_governor_status": null,
+        "sector": "Healthcare",
+        "industry": "Biotechnology",
+        "catalyst_n": 0,
+        "unresolved_identity": null
+      }
+    ],
+    "ready_examples": [
+      {
+        "symbol": "ALXO",
+        "tier": "T1-WATCH",
+        "reasons": [
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "HERMES_RANK_T1",
+          "REENTRY_HISTORY",
+          "REENTRY_READY_NEAR",
+          "SYMBOL_PROFILE",
+          "WATCH_DIRECTIVE"
+        ],
+        "sources": [
+          "hermes_score_history",
+          "reentry_decision_desk_latest.json",
+          "symbol_profiles",
+          "ticker_research_graph.jsonl",
+          "watch_directives"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": null,
+        "security_guid": "b9ead346-2003-5202-8e2d-2c1841488c37",
+        "listing_guid": "a1f2f35f-bf43-5e83-af2c-96ce96e366d3",
+        "ticker_guid": "5251f8d0-df2d-5e95-9acd-d5fd0e37a978",
+        "currently_held": false,
+        "historically_held": true,
+        "sold_history_present": false,
+        "reentry_status": "NEAR ENTRY",
+        "active_proposal": false,
+        "watch_directive_active": true,
+        "hermes_rank": 99,
+        "incubator_status": null,
+        "scope_governor_status": null,
+        "sector": "Healthcare",
+        "industry": "Biotechnology",
+        "catalyst_n": 1,
+        "unresolved_identity": null
+      },
+      {
+        "symbol": "AUUD",
+        "tier": "T1-WATCH",
+        "reasons": [
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "REENTRY_HISTORY",
+          "REENTRY_READY_NEAR",
+          "SYMBOL_PROFILE",
+          "WATCH_DIRECTIVE"
+        ],
+        "sources": [
+          "hermes_score_history",
+          "reentry_decision_desk_latest.json",
+          "symbol_profiles",
+          "ticker_research_graph.jsonl",
+          "watch_directives"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": null,
+        "security_guid": "8ac5ccda-18be-57fe-a587-2c13e64c6701",
+        "listing_guid": "687c5456-e32a-5347-b6bc-f43989f05b8c",
+        "ticker_guid": "37560deb-fc18-54c3-b708-2f0b0a31b681",
+        "currently_held": false,
+        "historically_held": true,
+        "sold_history_present": false,
+        "reentry_status": "NEAR ENTRY",
+        "active_proposal": false,
+        "watch_directive_active": true,
+        "hermes_rank": 749,
+        "incubator_status": null,
+        "scope_governor_status": null,
+        "sector": "Technology",
+        "industry": "Software - Application",
+        "catalyst_n": 0,
+        "unresolved_identity": null
+      },
+      {
+        "symbol": "AXTI",
+        "tier": "T1-WATCH",
+        "reasons": [
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "HERMES_RANK_T1",
+          "REENTRY_HISTORY",
+          "REENTRY_READY_NEAR",
+          "SYMBOL_PROFILE",
+          "WATCH_DIRECTIVE"
+        ],
+        "sources": [
+          "hermes_score_history",
+          "reentry_decision_desk_latest.json",
+          "symbol_profiles",
+          "ticker_research_graph.jsonl",
+          "watch_directives"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": null,
+        "security_guid": "733a0398-d2f5-517f-91bd-5f048c597020",
+        "listing_guid": "7ccedc55-8cc8-5784-8fee-ab9ec445a30f",
+        "ticker_guid": "222c2c46-6d49-5de8-88ec-64f5974bfaae",
+        "currently_held": false,
+        "historically_held": true,
+        "sold_history_present": false,
+        "reentry_status": "NEAR ENTRY",
+        "active_proposal": false,
+        "watch_directive_active": true,
+        "hermes_rank": 22,
+        "incubator_status": null,
+        "scope_governor_status": null,
+        "sector": "Technology",
+        "industry": "Semiconductor Equipment & Materials",
+        "catalyst_n": 1,
+        "unresolved_identity": null
+      },
+      {
+        "symbol": "CAST",
+        "tier": "T1-WATCH",
+        "reasons": [
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "HERMES_RANK_T1",
+          "REENTRY_HISTORY",
+          "REENTRY_READY_NEAR",
+          "SYMBOL_PROFILE",
+          "WATCH_DIRECTIVE"
+        ],
+        "sources": [
+          "hermes_score_history",
+          "reentry_decision_desk_latest.json",
+          "symbol_profiles",
+          "ticker_research_graph.jsonl",
+          "watch_directives"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": null,
+        "security_guid": "d7d0bd82-d1f7-5949-85ad-744ac2450c0e",
+        "listing_guid": "1c663f27-b0ff-5b49-80be-fe88aaa68f17",
+        "ticker_guid": "dbeb4131-011b-5290-acd0-d2d199483e77",
+        "currently_held": false,
+        "historically_held": true,
+        "sold_history_present": false,
+        "reentry_status": "NEAR ENTRY",
+        "active_proposal": false,
+        "watch_directive_active": true,
+        "hermes_rank": 2,
+        "incubator_status": null,
+        "scope_governor_status": null,
+        "sector": "Communication Services",
+        "industry": "Broadcasting",
+        "catalyst_n": 0,
+        "unresolved_identity": null
+      },
+      {
+        "symbol": "CSCO",
+        "tier": "T0-PROP",
+        "reasons": [
+          "ACTIVE_PROPOSAL",
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "HERMES_RANK_T1",
+          "REENTRY_HISTORY",
+          "REENTRY_READY_NEAR",
+          "SYMBOL_PROFILE",
+          "WATCH_DIRECTIVE"
+        ],
+        "sources": [
+          "hermes_score_history",
+          "paper_trade_proposals",
+          "reentry_decision_desk_latest.json",
+          "symbol_profiles",
+          "ticker_research_graph.jsonl",
+          "watch_directives"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": null,
+        "security_guid": "bf227236-414b-5159-8809-5a96eb2a5a60",
+        "listing_guid": "b44ace01-7942-5bb3-b53f-6ce26b00bced",
+        "ticker_guid": "da879cae-3150-55d4-b530-e56f41bb6355",
+        "currently_held": false,
+        "historically_held": true,
+        "sold_history_present": false,
+        "reentry_status": "NEAR ENTRY",
+        "active_proposal": true,
+        "watch_directive_active": true,
+        "hermes_rank": 66,
+        "incubator_status": null,
+        "scope_governor_status": null,
+        "sector": "Technology",
+        "industry": "Communication Equipment",
+        "catalyst_n": 1,
+        "unresolved_identity": null
+      },
+      {
+        "symbol": "DIVI",
+        "tier": "T1-WATCH",
+        "reasons": [
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "HERMES_RANK_T1",
+          "REENTRY_HISTORY",
+          "REENTRY_READY_NEAR",
+          "SYMBOL_PROFILE",
+          "WATCH_DIRECTIVE"
+        ],
+        "sources": [
+          "hermes_score_history",
+          "reentry_decision_desk_latest.json",
+          "symbol_profiles",
+          "ticker_research_graph.jsonl",
+          "watch_directives"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": null,
+        "security_guid": "93138f95-eafd-58ee-866d-bdce8e14a031",
+        "listing_guid": "c0f652a5-c58c-51fe-9603-24634bb0df80",
+        "ticker_guid": "3bc3161e-5c97-5f9f-815d-4eb1daa0717f",
+        "currently_held": false,
+        "historically_held": true,
+        "sold_history_present": false,
+        "reentry_status": "NEAR ENTRY",
+        "active_proposal": false,
+        "watch_directive_active": true,
+        "hermes_rank": 183,
+        "incubator_status": null,
+        "scope_governor_status": null,
+        "sector": null,
+        "industry": null,
+        "catalyst_n": 0,
+        "unresolved_identity": null
+      },
+      {
+        "symbol": "FATN",
+        "tier": "T1-WATCH",
+        "reasons": [
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "HERMES_RANK_T1",
+          "REENTRY_HISTORY",
+          "REENTRY_READY_NEAR",
+          "SYMBOL_PROFILE",
+          "WATCH_DIRECTIVE"
+        ],
+        "sources": [
+          "hermes_score_history",
+          "reentry_decision_desk_latest.json",
+          "symbol_profiles",
+          "ticker_research_graph.jsonl",
+          "watch_directives"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": null,
+        "security_guid": "777fd457-fefe-5976-af20-0bd1f71a8872",
+        "listing_guid": "507a145e-1ff8-5369-9259-b0b4588ec6b1",
+        "ticker_guid": "6a06ee7e-3e29-50f8-acaa-cc64420e5a86",
+        "currently_held": false,
+        "historically_held": true,
+        "sold_history_present": false,
+        "reentry_status": "NEAR ENTRY",
+        "active_proposal": false,
+        "watch_directive_active": true,
+        "hermes_rank": 6,
+        "incubator_status": null,
+        "scope_governor_status": null,
+        "sector": "Technology",
+        "industry": "Software - Infrastructure",
+        "catalyst_n": 1,
+        "unresolved_identity": null
+      },
+      {
+        "symbol": "FCNTX",
+        "tier": "T1-WATCH",
+        "reasons": [
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "REENTRY_HISTORY",
+          "REENTRY_READY_NEAR",
+          "SYMBOL_PROFILE",
+          "WATCH_DIRECTIVE"
+        ],
+        "sources": [
+          "hermes_score_history",
+          "reentry_decision_desk_latest.json",
+          "symbol_profiles",
+          "ticker_research_graph.jsonl",
+          "watch_directives"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": null,
+        "security_guid": "39b437f4-608d-5f9f-ba0b-f6131eac73a5",
+        "listing_guid": "b54628e0-6ced-5e0f-8cc4-ca76aab830e1",
+        "ticker_guid": "4015288d-8dc8-5ed5-bddc-b631c8fec470",
+        "currently_held": false,
+        "historically_held": true,
+        "sold_history_present": false,
+        "reentry_status": "NEAR ENTRY",
+        "active_proposal": false,
+        "watch_directive_active": true,
+        "hermes_rank": 334,
+        "incubator_status": null,
+        "scope_governor_status": null,
+        "sector": "Large-Cap Growth Fund",
+        "industry": "Mutual Fund",
+        "catalyst_n": 0,
+        "unresolved_identity": null
+      },
+      {
+        "symbol": "FUSE",
+        "tier": "T1-WATCH",
+        "reasons": [
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "RECENT_PROPOSAL",
+          "REENTRY_HISTORY",
+          "REENTRY_READY_NEAR",
+          "SYMBOL_PROFILE",
+          "WATCH_DIRECTIVE"
+        ],
+        "sources": [
+          "hermes_score_history",
+          "paper_trade_proposals",
+          "reentry_decision_desk_latest.json",
+          "symbol_profiles",
+          "ticker_research_graph.jsonl",
+          "watch_directives"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": null,
+        "security_guid": "8bbb8572-b8fc-5d61-b8ad-2303a7c373ff",
+        "listing_guid": "476c8cd2-1c7f-5836-aee4-9131a116d28f",
+        "ticker_guid": "398d17e8-9239-5c32-aaae-0fd82997d8f9",
+        "currently_held": false,
+        "historically_held": true,
+        "sold_history_present": false,
+        "reentry_status": "NEAR ENTRY",
+        "active_proposal": false,
+        "watch_directive_active": true,
+        "hermes_rank": 217,
+        "incubator_status": null,
+        "scope_governor_status": null,
+        "sector": "Technology",
+        "industry": "Software - Application",
+        "catalyst_n": 0,
+        "unresolved_identity": null
+      },
+      {
+        "symbol": "GCTS",
+        "tier": "T1-WATCH",
+        "reasons": [
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "HERMES_RANK_T1",
+          "REENTRY_HISTORY",
+          "REENTRY_READY_NEAR",
+          "SYMBOL_PROFILE",
+          "WATCH_DIRECTIVE"
+        ],
+        "sources": [
+          "hermes_score_history",
+          "reentry_decision_desk_latest.json",
+          "symbol_profiles",
+          "ticker_research_graph.jsonl",
+          "watch_directives"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": null,
+        "security_guid": "7311506c-8d6f-5762-889e-4cbfe317a022",
+        "listing_guid": "de3a291e-c69f-56c2-bf82-443220d4493b",
+        "ticker_guid": "69fcf4a0-fb03-5cb6-bfb5-7db650662c88",
+        "currently_held": false,
+        "historically_held": true,
+        "sold_history_present": false,
+        "reentry_status": "NEAR ENTRY",
+        "active_proposal": false,
+        "watch_directive_active": true,
+        "hermes_rank": 1,
+        "incubator_status": null,
+        "scope_governor_status": null,
+        "sector": "Technology",
+        "industry": "Semiconductors",
+        "catalyst_n": 1,
+        "unresolved_identity": null
+      },
+      {
+        "symbol": "GXAI",
+        "tier": "T1-WATCH",
+        "reasons": [
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "HERMES_RANK_T1",
+          "REENTRY_HISTORY",
+          "REENTRY_READY_NEAR",
+          "SYMBOL_PROFILE",
+          "WATCH_DIRECTIVE"
+        ],
+        "sources": [
+          "hermes_score_history",
+          "reentry_decision_desk_latest.json",
+          "symbol_profiles",
+          "ticker_research_graph.jsonl",
+          "watch_directives"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": null,
+        "security_guid": "5dedac81-4a5f-5ffd-ae0b-7de19dcfa141",
+        "listing_guid": "c5ce92a0-478f-5897-9560-509fbbf0aa85",
+        "ticker_guid": "829202c8-0d72-526b-889b-15d28d0786a2",
+        "currently_held": false,
+        "historically_held": true,
+        "sold_history_present": false,
+        "reentry_status": "NEAR ENTRY",
+        "active_proposal": false,
+        "watch_directive_active": true,
+        "hermes_rank": 3,
+        "incubator_status": null,
+        "scope_governor_status": null,
+        "sector": "Communication Services",
+        "industry": "Electronic Gaming & Multimedia",
+        "catalyst_n": 0,
+        "unresolved_identity": null
+      },
+      {
+        "symbol": "KTOS",
+        "tier": "T1-WATCH",
+        "reasons": [
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "HERMES_RANK_T1",
+          "INCUBATOR",
+          "REENTRY_HISTORY",
+          "REENTRY_READY_NEAR",
+          "SYMBOL_PROFILE",
+          "WATCH_DIRECTIVE"
+        ],
+        "sources": [
+          "hermes_score_history",
+          "incubator_universe",
+          "reentry_decision_desk_latest.json",
+          "symbol_profiles",
+          "ticker_research_graph.jsonl",
+          "watch_directives"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": null,
+        "security_guid": "576a9dda-5071-51ee-9757-05c515939ef5",
+        "listing_guid": "4118fe84-85a8-5c27-83b4-8fed8499dfcd",
+        "ticker_guid": "1393f6d1-4a19-5cd0-87ae-671a363f3bda",
+        "currently_held": false,
+        "historically_held": true,
+        "sold_history_present": false,
+        "reentry_status": "READY TO REVIEW",
+        "active_proposal": false,
+        "watch_directive_active": true,
+        "hermes_rank": 16,
+        "incubator_status": "active",
+        "scope_governor_status": null,
+        "sector": "Industrials",
+        "industry": "Aerospace & Defense",
+        "catalyst_n": 1,
+        "unresolved_identity": null
+      }
+    ],
+    "wait_examples": [
+      {
+        "symbol": "ACHV",
+        "tier": "T1-WATCH",
+        "reasons": [
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "HERMES_RANK_T1",
+          "REENTRY_HISTORY",
+          "SYMBOL_PROFILE"
+        ],
+        "sources": [
+          "hermes_score_history",
+          "reentry_decision_desk_latest.json",
+          "symbol_profiles",
+          "ticker_research_graph.jsonl"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": null,
+        "security_guid": "73c6ce37-38fd-53b5-aaa1-88760ecc517a",
+        "listing_guid": "c21af68b-2655-5e01-8cd9-8fbee2906ada",
+        "ticker_guid": "b3dc2ddd-caa9-51eb-8834-b938c6cfd1df",
+        "currently_held": false,
+        "historically_held": true,
+        "sold_history_present": true,
+        "reentry_status": "WAIT",
+        "active_proposal": false,
+        "watch_directive_active": false,
+        "hermes_rank": 128,
+        "incubator_status": null,
+        "scope_governor_status": null,
+        "sector": "Healthcare",
+        "industry": "Biotechnology",
+        "catalyst_n": 1,
+        "unresolved_identity": null
+      },
+      {
+        "symbol": "ADBE",
+        "tier": "T3-COLD",
+        "reasons": [
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "HERMES_RANK_T1",
+          "INCUBATOR",
+          "REENTRY_HISTORY",
+          "SCOPE_S3",
+          "SYMBOL_PROFILE",
+          "WATCH_DIRECTIVE"
+        ],
+        "sources": [
+          "hermes_score_history",
+          "incubator_universe",
+          "reentry_decision_desk_latest.json",
+          "symbol_profiles",
+          "ticker_research_graph.jsonl",
+          "watch_directives",
+          "watchlist_items"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": null,
+        "security_guid": "17be460d-3077-5edf-a62b-e95797044dc7",
+        "listing_guid": "ecea9491-3f87-5fab-bf11-320cf0f24198",
+        "ticker_guid": "8d69a696-8971-50b3-b406-9f0cf1f6e71d",
+        "currently_held": false,
+        "historically_held": true,
+        "sold_history_present": true,
+        "reentry_status": "WAIT",
+        "active_proposal": false,
+        "watch_directive_active": true,
+        "hermes_rank": 185,
+        "incubator_status": "active",
+        "scope_governor_status": "S3",
+        "sector": "Technology",
+        "industry": "Software - Application",
+        "catalyst_n": 1,
+        "unresolved_identity": null
+      },
+      {
+        "symbol": "AGMH",
+        "tier": "T1-WATCH",
+        "reasons": [
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "REENTRY_HISTORY",
+          "SYMBOL_PROFILE",
+          "WATCH_DIRECTIVE"
+        ],
+        "sources": [
+          "hermes_score_history",
+          "reentry_decision_desk_latest.json",
+          "symbol_profiles",
+          "ticker_research_graph.jsonl",
+          "watch_directives"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": null,
+        "security_guid": "cb4b49fa-d27a-53cc-b4db-95b71c078a6f",
+        "listing_guid": "e03445bc-273d-567f-83f3-6954d4e7aa4c",
+        "ticker_guid": "950da573-c382-5188-86be-9ffca964b351",
+        "currently_held": false,
+        "historically_held": true,
+        "sold_history_present": true,
+        "reentry_status": "WAIT",
+        "active_proposal": false,
+        "watch_directive_active": true,
+        "hermes_rank": 612,
+        "incubator_status": null,
+        "scope_governor_status": null,
+        "sector": "Technology",
+        "industry": "Computer Hardware",
+        "catalyst_n": 0,
+        "unresolved_identity": null
+      },
+      {
+        "symbol": "AIRE",
+        "tier": "T3-COLD",
+        "reasons": [
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "REENTRY_HISTORY",
+          "SYMBOL_PROFILE"
+        ],
+        "sources": [
+          "hermes_score_history",
+          "reentry_decision_desk_latest.json",
+          "symbol_profiles",
+          "ticker_research_graph.jsonl"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": null,
+        "security_guid": "effcead8-e7f9-55a3-b518-78f736ca59c9",
+        "listing_guid": "edf41e60-8d61-57a7-ba63-c35f7e8f5ccc",
+        "ticker_guid": "3d7005d6-a090-5b48-9ffe-1d2b61230b4f",
+        "currently_held": false,
+        "historically_held": true,
+        "sold_history_present": true,
+        "reentry_status": "WAIT",
+        "active_proposal": false,
+        "watch_directive_active": false,
+        "hermes_rank": 328,
+        "incubator_status": null,
+        "scope_governor_status": null,
+        "sector": "Real Estate",
+        "industry": "Real Estate Services",
+        "catalyst_n": 0,
+        "unresolved_identity": null
+      },
+      {
+        "symbol": "AMAGX",
+        "tier": "T3-COLD",
+        "reasons": [
+          "GRAPH_PROFILE",
+          "REENTRY_HISTORY"
+        ],
+        "sources": [
+          "reentry_decision_desk_latest.json",
+          "ticker_research_graph.jsonl"
+        ],
+        "identity_status": "UNRESOLVED_WITH_REASON",
+        "issuer_guid": null,
+        "security_guid": null,
+        "listing_guid": null,
+        "ticker_guid": "3b4a3bec-9f5c-57fe-8a8e-c4eb131a7f50",
+        "currently_held": false,
+        "historically_held": true,
+        "sold_history_present": true,
+        "reentry_status": "MISSING MARKET",
+        "active_proposal": false,
+        "watch_directive_active": false,
+        "hermes_rank": null,
+        "incubator_status": null,
+        "scope_governor_status": null,
+        "sector": null,
+        "industry": null,
+        "catalyst_n": 0,
+        "unresolved_identity": {
+          "symbol": "AMAGX",
+          "kind": "fund",
+          "reason": "five_letter_x_fund_convention"
+        }
+      },
+      {
+        "symbol": "AMC",
+        "tier": "T1-WATCH",
+        "reasons": [
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "HERMES_RANK_T1",
+          "REENTRY_HISTORY",
+          "SYMBOL_PROFILE",
+          "WATCH_DIRECTIVE"
+        ],
+        "sources": [
+          "hermes_score_history",
+          "reentry_decision_desk_latest.json",
+          "symbol_profiles",
+          "ticker_research_graph.jsonl",
+          "watch_directives"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": null,
+        "security_guid": "e45cbeb3-69ad-5c2e-9a3e-08643e9e2f01",
+        "listing_guid": "678c4aa5-56ca-5876-9a8e-7dd1980b5681",
+        "ticker_guid": "0a679fb4-b7fc-500d-a6d7-f459ec2b5774",
+        "currently_held": false,
+        "historically_held": true,
+        "sold_history_present": true,
+        "reentry_status": "WAIT",
+        "active_proposal": false,
+        "watch_directive_active": true,
+        "hermes_rank": 182,
+        "incubator_status": null,
+        "scope_governor_status": null,
+        "sector": "Communication Services",
+        "industry": "Entertainment",
+        "catalyst_n": 1,
+        "unresolved_identity": null
+      },
+      {
+        "symbol": "AMD",
+        "tier": "T1-WATCH",
+        "reasons": [
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "HERMES_RANK_T1",
+          "RECENT_PROPOSAL",
+          "REENTRY_HISTORY",
+          "SYMBOL_PROFILE",
+          "WATCH_DIRECTIVE"
+        ],
+        "sources": [
+          "hermes_score_history",
+          "paper_trade_proposals",
+          "reentry_decision_desk_latest.json",
+          "symbol_profiles",
+          "ticker_research_graph.jsonl",
+          "watch_directives"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": null,
+        "security_guid": "4b5583c5-7d6b-548c-b5af-c339c6846f1d",
+        "listing_guid": "cdb83cf0-25eb-5b3e-a9d5-f69aaf2200ab",
+        "ticker_guid": "ab67df7e-5200-5754-a4f8-7a60839cac7d",
+        "currently_held": false,
+        "historically_held": true,
+        "sold_history_present": true,
+        "reentry_status": "WAIT",
+        "active_proposal": false,
+        "watch_directive_active": true,
+        "hermes_rank": 32,
+        "incubator_status": null,
+        "scope_governor_status": null,
+        "sector": "Technology",
+        "industry": "Semiconductors",
+        "catalyst_n": 1,
+        "unresolved_identity": null
+      },
+      {
+        "symbol": "ANET",
+        "tier": "T1-WATCH",
+        "reasons": [
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "HERMES_RANK_T1",
+          "INCUBATOR",
+          "REENTRY_HISTORY",
+          "SYMBOL_PROFILE",
+          "WATCH_DIRECTIVE"
+        ],
+        "sources": [
+          "hermes_score_history",
+          "incubator_universe",
+          "reentry_decision_desk_latest.json",
+          "symbol_profiles",
+          "ticker_research_graph.jsonl",
+          "watch_directives"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": null,
+        "security_guid": "fc83568a-8bfa-55dd-998c-43010730b247",
+        "listing_guid": "1b0bfc05-7c35-5505-8ccc-7e1f948cf01f",
+        "ticker_guid": "a147dc63-2327-5cee-8071-3447300ced0a",
+        "currently_held": false,
+        "historically_held": true,
+        "sold_history_present": true,
+        "reentry_status": "WAIT",
+        "active_proposal": false,
+        "watch_directive_active": true,
+        "hermes_rank": 33,
+        "incubator_status": "active",
+        "scope_governor_status": null,
+        "sector": "Technology",
+        "industry": "Computer Hardware",
+        "catalyst_n": 1,
+        "unresolved_identity": null
+      },
+      {
+        "symbol": "APAM",
+        "tier": "T3-COLD",
+        "reasons": [
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "REENTRY_HISTORY",
+          "SYMBOL_PROFILE"
+        ],
+        "sources": [
+          "hermes_score_history",
+          "reentry_decision_desk_latest.json",
+          "symbol_profiles",
+          "ticker_research_graph.jsonl"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": null,
+        "security_guid": "b1f52a7a-1965-5bba-b1f3-846414c20163",
+        "listing_guid": "75859d7b-ab78-5729-a989-38231ec4d2be",
+        "ticker_guid": "3ab49dbe-38c3-5e00-b92f-2019a4f038e2",
+        "currently_held": false,
+        "historically_held": true,
+        "sold_history_present": true,
+        "reentry_status": "WAIT",
+        "active_proposal": false,
+        "watch_directive_active": false,
+        "hermes_rank": 264,
+        "incubator_status": null,
+        "scope_governor_status": null,
+        "sector": "Financial Services",
+        "industry": "Asset Management",
+        "catalyst_n": 0,
+        "unresolved_identity": null
+      },
+      {
+        "symbol": "ARKG",
+        "tier": "T1-WATCH",
+        "reasons": [
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "REENTRY_HISTORY",
+          "SYMBOL_PROFILE",
+          "WATCH_DIRECTIVE"
+        ],
+        "sources": [
+          "hermes_score_history",
+          "reentry_decision_desk_latest.json",
+          "symbol_profiles",
+          "ticker_research_graph.jsonl",
+          "watch_directives"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": null,
+        "security_guid": "b93bcac4-f467-5d1a-8b45-0ffbc745b6c9",
+        "listing_guid": "fa06f512-0005-51ee-997d-5ac2e643e034",
+        "ticker_guid": "34b6a850-da34-547f-8ac6-27944bda9d52",
+        "currently_held": false,
+        "historically_held": true,
+        "sold_history_present": true,
+        "reentry_status": "OVERBOUGHT WAIT",
+        "active_proposal": false,
+        "watch_directive_active": true,
+        "hermes_rank": 207,
+        "incubator_status": null,
+        "scope_governor_status": null,
+        "sector": "Healthcare",
+        "industry": "Exchange Traded Fund",
+        "catalyst_n": 0,
+        "unresolved_identity": null
+      },
+      {
+        "symbol": "ARKQ",
+        "tier": "T1-WATCH",
+        "reasons": [
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "HERMES_RANK_T1",
+          "REENTRY_HISTORY",
+          "SYMBOL_PROFILE"
+        ],
+        "sources": [
+          "hermes_score_history",
+          "reentry_decision_desk_latest.json",
+          "symbol_profiles",
+          "ticker_research_graph.jsonl"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": null,
+        "security_guid": "8f700edd-341f-5ca4-acbe-bd810e9ba94d",
+        "listing_guid": "0bcae22b-0a65-5ad1-8cdc-e65eabc3ae78",
+        "ticker_guid": "22b6fc73-d2ca-51ce-b990-a76b99918104",
+        "currently_held": false,
+        "historically_held": true,
+        "sold_history_present": true,
+        "reentry_status": "WAIT",
+        "active_proposal": false,
+        "watch_directive_active": false,
+        "hermes_rank": 165,
+        "incubator_status": null,
+        "scope_governor_status": null,
+        "sector": "Innovation",
+        "industry": "Exchange Traded Fund",
+        "catalyst_n": 0,
+        "unresolved_identity": null
+      },
+      {
+        "symbol": "ATAI",
+        "tier": "T3-COLD",
+        "reasons": [
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "REENTRY_HISTORY",
+          "SYMBOL_PROFILE"
+        ],
+        "sources": [
+          "hermes_score_history",
+          "reentry_decision_desk_latest.json",
+          "symbol_profiles",
+          "ticker_research_graph.jsonl"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": null,
+        "security_guid": "f09770ce-8138-5c7e-a59c-d9e1181e6cfd",
+        "listing_guid": "02d005a1-01a8-5b9e-8424-72c5dfe0e277",
+        "ticker_guid": "08fb8b44-c62b-5bc7-91e2-3bcc5696405c",
+        "currently_held": false,
+        "historically_held": true,
+        "sold_history_present": true,
+        "reentry_status": "OVERBOUGHT WAIT",
+        "active_proposal": false,
+        "watch_directive_active": false,
+        "hermes_rank": 698,
+        "incubator_status": null,
+        "scope_governor_status": null,
+        "sector": "Healthcare",
+        "industry": "Biotechnology",
+        "catalyst_n": 0,
+        "unresolved_identity": null
+      }
+    ],
+    "rule": "SOLD remains member; READY/NEAR may promote to T1; WAIT/OVERSOLD may demote but does not disappear; tier change is not add/remove"
+  },
+  "section_5_proposal_watch_incubator": {
+    "proposals_active_missing": [],
+    "watch_missing": [],
+    "hermes_rank_t1_missing": [],
+    "incubator_missing": [],
+    "counts": {
+      "proposals_active": 31,
+      "watch": 119,
+      "hermes_t1": 688,
+      "incubator": 405
+    }
+  },
+  "section_6_scheduler": {
+    "canonical_n": 4153,
+    "scheduler_n": 3105,
+    "only_in_canonical_n": 1048,
+    "only_in_scheduler_n": 0,
+    "only_in_scheduler": [],
+    "tier_disagreement_n": 0,
+    "tier_disagreement_sample": [],
+    "only_in_canonical_reason_counts": {
+      "GRAPH_PROFILE": 15,
+      "UNRESOLVED_IDENTITY": 3,
+      "NO_SCHEDULER_REASON": 1038,
+      "HERMES_RANK": 1026,
+      "SYMBOL_PROFILE": 10,
+      "REENTRY_HISTORY": 12
+    },
+    "distinction": {
+      "institutional_universe_membership": "TransfersonUniverseManifest@v1 securities",
+      "active_research_scheduler_membership": "research_tier_index over SCHEDULER_REASONS"
+    }
+  },
+  "section_7_graph_coverage": {
+    "graph_profiled_count": 120,
+    "canonical_universe_count": 4153,
+    "ratio": "120 / 4153",
+    "not_yet_graph_profiled_n": 4033,
+    "identity_resolved_but_not_graph_profiled_n": 0,
+    "unresolved_identity_n": 4050,
+    "graph_profiled_sample": [
+      "12507E201",
+      "543354104",
+      "628518102",
+      "ACHV",
+      "ADBE",
+      "AGMH",
+      "AIRE",
+      "ALXO",
+      "AMAGX",
+      "AMANX",
+      "AMC",
+      "AMD",
+      "ANET",
+      "APAM",
+      "ARKG"
+    ],
+    "not_graph_sample": [
+      "A",
+      "AA",
+      "AAA",
+      "AAAA",
+      "AAAC",
+      "AAAD",
+      "AAAU",
+      "AACB",
+      "AACG",
+      "AACPU",
+      "AADR",
+      "AADX",
+      "AAEQ",
+      "AAL",
+      "AALG"
+    ],
+    "coverage_report": {
+      "schema": "GraphCoverageReport@v1",
+      "canonical_universe_count": 4153,
+      "graph_profiled_count": 120,
+      "persistent_graph_profiled": 120,
+      "graph_coverage": "120 / 4153",
+      "missing": 4033,
+      "missing_n": 4033,
+      "direction": "canonical_universe \u2192 identity \u2192 graph/profile \u2192 research/free-first",
+      "authority": "READ_ONLY_ADVISORY"
+    },
+    "seed_graph_from_universe_applied_to_CURRENT": false
+  },
+  "section_8_126": {
+    "status": "UNRESOLVED_WITH_REASON",
+    "equals_126_live_counts": {
+      "holdings_plus_reentry_naive_sum": 126
+    },
+    "all_live_counts": {
+      "canonical": 4153,
+      "graph_profiles": 120,
+      "trs_lines": 120,
+      "holdings_equity": 19,
+      "cusips": 3,
+      "holdings_plus_cusips": 22,
+      "reentry_all": 107,
+      "holdings_plus_reentry_naive_sum": 126,
+      "holdings_union_reentry": 116,
+      "reentry_ready": 21,
+      "reentry_wait": 76,
+      "watch": 119,
+      "proposals_active": 31,
+      "incubator": 405,
+      "scheduler": 3105,
+      "hermes_t1": 688,
+      "t0_hold_plus_t0_prop": 50,
+      "graph_plus_cusips": 123,
+      "graph_plus_holdings_not_in_graph": 120,
+      "ticker_alias_only": 17,
+      "confirmed": 103,
+      "unresolved": 4050
+    },
+    "db_counts": [
+      {
+        "k": "symbol_profiles",
+        "n": 2823
+      },
+      {
+        "k": "incubator_all_status",
+        "n": 1997
+      },
+      {
+        "k": "watch_directives_active",
+        "n": 120
+      },
+      {
+        "k": "watch_directives_all",
+        "n": 140
+      },
+      {
+        "k": "paper_trade_proposals_distinct",
+        "n": 698
+      },
+      {
+        "k": "hermes_symbols",
+        "n": 2928
+      }
+    ],
+    "note": "126 = UNRESOLVED_WITH_REASON. No authoritative code path, live receipt, or current document defines 126 as a Transferson universe denominator. Coincidences listed above are not producers.",
+    "exact_producer": null,
+    "exact_query_or_function": null,
+    "exact_meaning": null,
+    "coincidences_not_producers": {
+      "holdings_equity_plus_reentry_naive_sum": {
+        "value": 126,
+        "parts": {
+          "holdings_equity": 19,
+          "reentry_all": 107,
+          "overlap": 10,
+          "unique_union": 116
+        },
+        "why_not_producer": "No code path adds holdings+reentry without unique-union. Unique union is 116, not 126."
+      },
+      "watch_directives_active_sql_distinct_unnormalized": {
+        "value": 120,
+        "normalized_unique": 119,
+        "why_not_producer": "SQL COUNT DISTINCT on raw spec.symbol is 120; after ticker normalize unique is 119. This is 120, not 126."
+      },
+      "research_quality_T0_126": {
+        "file": "docs/ops/RESEARCH_QUALITY_AND_THESIS_GAP_2026-08-22.md",
+        "meaning": "T0 research-due arithmetic in a 545-call day (T3 181 + T1 189 + T0 126), not a universe denominator",
+        "why_not_producer": "Research-load count, not membership count."
+      }
+    }
+  },
+  "section_9_identity": {
+    "by_status": {
+      "UNRESOLVED_WITH_REASON": 4050,
+      "CONFIRMED": 103
+    },
+    "issuer_guid_resolved": 0,
+    "security_guid_resolved": 103,
+    "listing_guid_resolved": 103,
+    "ticker_alias_only_n": 17,
+    "ticker_alias_only_sample": [
+      "12507E201",
+      "543354104",
+      "628518102",
+      "AMAGX",
+      "CTXR",
+      "EKSO",
+      "FSELX",
+      "GOVX",
+      "LAC",
+      "MSGM",
+      "PRSO",
+      "RANI",
+      "RDHL",
+      "SIBN",
+      "SOPAQ",
+      "WRD",
+      "ZSL"
+    ],
+    "UNRESOLVED_WITH_REASON": 4050,
+    "CANDIDATE": 0,
+    "CONFIRMED": 103,
+    "security_guid_equals_ticker_guid": [],
+    "security_guid_fabricated_from_ticker_n": 0,
+    "security_guid_fabricated_from_ticker_sample": [],
+    "duplicate_security_identities": {},
+    "share_class_pairs": [
+      {
+        "a": "GOOG",
+        "b": "GOOGL",
+        "security_guid_a": null,
+        "security_guid_b": null,
+        "collapsed": false
+      }
+    ],
+    "graph_file_issuer_guid_n": 103,
+    "graph_file_security_guid_n": 0,
+    "graph_file_company_n": 103,
+    "identity_wiring_note": "CURRENT graph profiles carry issuer_guid on company-bearing rows; universe loader copies TRS security_guid but does not copy graph issuer_guid/company onto the manifest."
+  },
+  "section_10_lineage": [
+    {
+      "symbol": "NOC",
+      "sector": "Industrials",
+      "industry": "Aerospace & Defense",
+      "A_identity": {
+        "schema": "IdentityLineage@v1",
+        "symbol": "NOC",
+        "issuer_guid": null,
+        "security_guid": "b359a240-b8f4-54c5-bd70-0dfdb0c17c55",
+        "listing_guid": "7c5eebd7-a69e-5bd7-8608-83de515b3e88",
+        "ticker_guid": "4d011103-85a2-5a9c-ad05-f58f4cd2ec39",
+        "ticker_alias": "NOC",
+        "ticker_guid_is_not_security": true,
+        "identity_status": "CONFIRMED",
+        "unresolved_identity": null,
+        "industry": "Aerospace & Defense",
+        "sector": "Industrials",
+        "catalyst_guids": [
+          "d9fe76a8-d3bd-5928-85f8-4ce7dc2b075d"
+        ],
+        "authority": "READ_ONLY_ADVISORY"
+      },
+      "A_graph_edges": {
+        "n": 6,
+        "kinds": {
+          "issuer": 1,
+          "sector": 1,
+          "industry": 1,
+          "theme": 1,
+          "catalyst": 1,
+          "calendar": 1
+        },
+        "with_provenance_n": 0,
+        "sample": [
+          {
+            "relationship": "LINEAR",
+            "relationship_guid": "d7621915-63ef-566b-89d5-04964ce6e6d2",
+            "source_guid": "4d011103-85a2-5a9c-ad05-f58f4cd2ec39",
+            "target_guid": "14afbd76-91dc-50e1-a32a-e58a2cd2acbe",
+            "target_kind": "issuer"
+          },
+          {
+            "relationship": "LATERAL",
+            "relationship_guid": "83e17e03-e596-5edd-a0cc-cbcb17f9e631",
+            "source_guid": "4d011103-85a2-5a9c-ad05-f58f4cd2ec39",
+            "target_guid": "063d8ce4-05cc-5f36-a919-ae543a38113f",
+            "target_kind": "sector"
+          },
+          {
+            "relationship": "VERTICAL",
+            "relationship_guid": "a2d8082e-7f6a-5865-a7a7-07c362378554",
+            "source_guid": "4d011103-85a2-5a9c-ad05-f58f4cd2ec39",
+            "target_guid": "31054181-344a-5576-bbc7-29c2c10f51e1",
+            "target_kind": "industry"
+          },
+          {
+            "relationship": "MACRO",
+            "relationship_guid": "cab07495-d5c3-508a-b86c-b4c3ceadb5be",
+            "source_guid": "4d011103-85a2-5a9c-ad05-f58f4cd2ec39",
+            "target_guid": "884a1cf5-248b-5a5a-a5d8-c2f299b41bbd",
+            "target_kind": "theme"
+          },
+          {
+            "relationship": "MACRO",
+            "relationship_guid": "def4c779-1665-508d-abb8-54ac073a6c89",
+            "source_guid": "4d011103-85a2-5a9c-ad05-f58f4cd2ec39",
+            "target_guid": "d9fe76a8-d3bd-5928-85f8-4ce7dc2b075d",
+            "target_kind": "catalyst"
+          },
+          {
+            "relationship": "CALENDAR",
+            "relationship_guid": "baa8d3c3-2a9e-5377-a6bb-f33987c7fe25",
+            "source_guid": "4d011103-85a2-5a9c-ad05-f58f4cd2ec39",
+            "target_guid": "756c10d2-4140-5c33-8c79-c6b58f3e7258",
+            "target_kind": "calendar"
+          }
+        ]
+      },
+      "B_industry": {
+        "industry": "Aerospace & Defense",
+        "related_n": 52,
+        "related_sample": [
+          "ACHR",
+          "AIR",
+          "AIRI",
+          "AIRO",
+          "ARXS",
+          "AVAV",
+          "AVEX",
+          "AXON"
+        ],
+        "not_supply_chain": true
+      },
+      "C_sector": {
+        "sector": "Industrials",
+        "related_n": 355,
+        "related_sample": [
+          "AAL",
+          "AAON",
+          "ABAT",
+          "ABM",
+          "ACA",
+          "ACCL",
+          "ACCO",
+          "ACHR"
+        ],
+        "not_supply_chain": true
+      },
+      "D_catalyst": {
+        "catalyst_guids": [
+          "d9fe76a8-d3bd-5928-85f8-4ce7dc2b075d"
+        ],
+        "related_n": 42,
+        "related_sample": [
+          "ACHV",
+          "ADBE",
+          "ALXO",
+          "AMC",
+          "AMD",
+          "ANET",
+          "AVAV",
+          "AXTI"
+        ],
+        "reverse": [
+          {
+            "catalyst_guid": "d9fe76a8-d3bd-5928-85f8-4ce7dc2b075d",
+            "related_n": 43,
+            "related_sample": [
+              "ACHV",
+              "ADBE",
+              "ALXO",
+              "AMC",
+              "AMD",
+              "ANET",
+              "AVAV",
+              "AXTI"
+            ]
+          }
+        ]
+      },
+      "peers_on_graph": []
+    },
+    {
+      "symbol": "SCHD",
+      "sector": "Dividend Equity",
+      "industry": "Exchange Traded Fund",
+      "A_identity": {
+        "schema": "IdentityLineage@v1",
+        "symbol": "SCHD",
+        "issuer_guid": null,
+        "security_guid": "a29dd6b6-9f88-5f8c-a372-f88786851a76",
+        "listing_guid": "f6ce2604-91da-5087-a34c-a97ea560ce9e",
+        "ticker_guid": "461e8849-dd63-5ef9-bbac-2d251b67208d",
+        "ticker_alias": "SCHD",
+        "ticker_guid_is_not_security": true,
+        "identity_status": "CONFIRMED",
+        "unresolved_identity": null,
+        "industry": "Exchange Traded Fund",
+        "sector": "Dividend Equity",
+        "catalyst_guids": [],
+        "authority": "READ_ONLY_ADVISORY"
+      },
+      "A_graph_edges": {
+        "n": 4,
+        "kinds": {
+          "issuer": 1,
+          "sector": 1,
+          "industry": 1,
+          "theme": 1
+        },
+        "with_provenance_n": 0,
+        "sample": [
+          {
+            "relationship": "LINEAR",
+            "relationship_guid": "b4ddcfdd-88b7-5244-9888-124366cbb006",
+            "source_guid": "461e8849-dd63-5ef9-bbac-2d251b67208d",
+            "target_guid": "411e8286-1cdc-5d19-bd3d-e51ef2452d25",
+            "target_kind": "issuer"
+          },
+          {
+            "relationship": "LATERAL",
+            "relationship_guid": "989a8d85-5f86-569a-b298-bb7a72ac5393",
+            "source_guid": "461e8849-dd63-5ef9-bbac-2d251b67208d",
+            "target_guid": "947c82ee-0904-5d9d-abf9-fef5c16d7513",
+            "target_kind": "sector"
+          },
+          {
+            "relationship": "VERTICAL",
+            "relationship_guid": "df4c0836-c6eb-5547-9324-40a096693f83",
+            "source_guid": "461e8849-dd63-5ef9-bbac-2d251b67208d",
+            "target_guid": "861150c5-e2c0-5034-9e45-3f15c4ddcf62",
+            "target_kind": "industry"
+          },
+          {
+            "relationship": "MACRO",
+            "relationship_guid": "943d90d5-16eb-5c40-a49a-b05245b63bee",
+            "source_guid": "461e8849-dd63-5ef9-bbac-2d251b67208d",
+            "target_guid": "3967fd31-25ac-5018-bd5c-4e818488a403",
+            "target_kind": "theme"
+          }
+        ]
+      },
+      "B_industry": {
+        "industry": "Exchange Traded Fund",
+        "related_n": 183,
+        "related_sample": [
+          "AAAD",
+          "AAOZ",
+          "ACHX",
+          "ACII",
+          "ACLC",
+          "ACWX",
+          "ACYQ",
+          "ADBU"
+        ],
+        "not_supply_chain": true
+      },
+      "C_sector": {
+        "sector": "Dividend Equity",
+        "related_n": 1,
+        "related_sample": [
+          "DIV"
+        ],
+        "not_supply_chain": true
+      },
+      "D_catalyst": {
+        "catalyst_guids": [],
+        "related_n": 0,
+        "related_sample": [],
+        "reverse": []
+      },
+      "peers_on_graph": []
+    },
+    {
+      "symbol": "ADBE",
+      "sector": "Technology",
+      "industry": "Software - Application",
+      "A_identity": {
+        "schema": "IdentityLineage@v1",
+        "symbol": "ADBE",
+        "issuer_guid": null,
+        "security_guid": "17be460d-3077-5edf-a62b-e95797044dc7",
+        "listing_guid": "ecea9491-3f87-5fab-bf11-320cf0f24198",
+        "ticker_guid": "8d69a696-8971-50b3-b406-9f0cf1f6e71d",
+        "ticker_alias": "ADBE",
+        "ticker_guid_is_not_security": true,
+        "identity_status": "CONFIRMED",
+        "unresolved_identity": null,
+        "industry": "Software - Application",
+        "sector": "Technology",
+        "catalyst_guids": [
+          "d9fe76a8-d3bd-5928-85f8-4ce7dc2b075d"
+        ],
+        "authority": "READ_ONLY_ADVISORY"
+      },
+      "A_graph_edges": {
+        "n": 6,
+        "kinds": {
+          "issuer": 1,
+          "sector": 1,
+          "industry": 1,
+          "theme": 1,
+          "catalyst": 1,
+          "calendar": 1
+        },
+        "with_provenance_n": 0,
+        "sample": [
+          {
+            "relationship": "LINEAR",
+            "relationship_guid": "e3caeb0b-0f71-53fc-b73c-b6b425150b35",
+            "source_guid": "8d69a696-8971-50b3-b406-9f0cf1f6e71d",
+            "target_guid": "e2ad4c2b-90f7-5a96-9673-12989af516b1",
+            "target_kind": "issuer"
+          },
+          {
+            "relationship": "LATERAL",
+            "relationship_guid": "9b27913b-88f7-5b6f-8bef-e51e0fc6482e",
+            "source_guid": "8d69a696-8971-50b3-b406-9f0cf1f6e71d",
+            "target_guid": "5529d179-8883-5a2a-85d4-3f8a8d09a917",
+            "target_kind": "sector"
+          },
+          {
+            "relationship": "VERTICAL",
+            "relationship_guid": "8eb7b136-30cc-5de9-9118-e6d0ebfdea27",
+            "source_guid": "8d69a696-8971-50b3-b406-9f0cf1f6e71d",
+            "target_guid": "5ea6187f-e160-580a-b9b8-a24e8ce0b4d9",
+            "target_kind": "industry"
+          },
+          {
+            "relationship": "MACRO",
+            "relationship_guid": "e8997ffc-ccc2-5052-8f5c-a1b09acef778",
+            "source_guid": "8d69a696-8971-50b3-b406-9f0cf1f6e71d",
+            "target_guid": "6575d4fc-d20b-53c6-a8c1-2880716b46c3",
+            "target_kind": "theme"
+          },
+          {
+            "relationship": "MACRO",
+            "relationship_guid": "0deb161c-11f7-5354-95fd-f70082fd812c",
+            "source_guid": "8d69a696-8971-50b3-b406-9f0cf1f6e71d",
+            "target_guid": "d9fe76a8-d3bd-5928-85f8-4ce7dc2b075d",
+            "target_kind": "catalyst"
+          },
+          {
+            "relationship": "CALENDAR",
+            "relationship_guid": "1de25003-0e51-5ab6-83a6-04477bea3967",
+            "source_guid": "8d69a696-8971-50b3-b406-9f0cf1f6e71d",
+            "target_guid": "2bdf1b09-4a8f-5ce5-96cc-558a9864bb6e",
+            "target_kind": "calendar"
+          }
+        ]
+      },
+      "B_industry": {
+        "industry": "Software - Application",
+        "related_n": 88,
+        "related_sample": [
+          "ADEA",
+          "ADP",
+          "ADSK",
+          "AEYE",
+          "AIXI",
+          "ALIT",
+          "ALKT",
+          "ALRM"
+        ],
+        "not_supply_chain": true
+      },
+      "C_sector": {
+        "sector": "Technology",
+        "related_n": 379,
+        "related_sample": [
+          "AAOI",
+          "AAPL",
+          "ACLS",
+          "ACMR",
+          "ACN",
+          "ADEA",
+          "ADI",
+          "ADIG"
+        ],
+        "not_supply_chain": true
+      },
+      "D_catalyst": {
+        "catalyst_guids": [
+          "d9fe76a8-d3bd-5928-85f8-4ce7dc2b075d"
+        ],
+        "related_n": 42,
+        "related_sample": [
+          "ACHV",
+          "ALXO",
+          "AMC",
+          "AMD",
+          "ANET",
+          "AVAV",
+          "AXTI",
+          "BAH"
+        ],
+        "reverse": [
+          {
+            "catalyst_guid": "d9fe76a8-d3bd-5928-85f8-4ce7dc2b075d",
+            "related_n": 43,
+            "related_sample": [
+              "ACHV",
+              "ADBE",
+              "ALXO",
+              "AMC",
+              "AMD",
+              "ANET",
+              "AVAV",
+              "AXTI"
+            ]
+          }
+        ]
+      },
+      "peers_on_graph": []
+    },
+    {
+      "symbol": "ALXO",
+      "sector": "Healthcare",
+      "industry": "Biotechnology",
+      "A_identity": {
+        "schema": "IdentityLineage@v1",
+        "symbol": "ALXO",
+        "issuer_guid": null,
+        "security_guid": "b9ead346-2003-5202-8e2d-2c1841488c37",
+        "listing_guid": "a1f2f35f-bf43-5e83-af2c-96ce96e366d3",
+        "ticker_guid": "5251f8d0-df2d-5e95-9acd-d5fd0e37a978",
+        "ticker_alias": "ALXO",
+        "ticker_guid_is_not_security": true,
+        "identity_status": "CONFIRMED",
+        "unresolved_identity": null,
+        "industry": "Biotechnology",
+        "sector": "Healthcare",
+        "catalyst_guids": [
+          "d9fe76a8-d3bd-5928-85f8-4ce7dc2b075d"
+        ],
+        "authority": "READ_ONLY_ADVISORY"
+      },
+      "A_graph_edges": {
+        "n": 6,
+        "kinds": {
+          "issuer": 1,
+          "sector": 1,
+          "industry": 1,
+          "theme": 1,
+          "catalyst": 1,
+          "calendar": 1
+        },
+        "with_provenance_n": 0,
+        "sample": [
+          {
+            "relationship": "LINEAR",
+            "relationship_guid": "464b852c-02e6-562c-b1df-5ebc41914cf3",
+            "source_guid": "5251f8d0-df2d-5e95-9acd-d5fd0e37a978",
+            "target_guid": "48846caf-8b50-5d34-90eb-709638cc3fa2",
+            "target_kind": "issuer"
+          },
+          {
+            "relationship": "LATERAL",
+            "relationship_guid": "3ecad84c-1ca2-551b-a3b1-6c143b0cc0cf",
+            "source_guid": "5251f8d0-df2d-5e95-9acd-d5fd0e37a978",
+            "target_guid": "dd46cc9d-267c-53f1-9e39-6df6adc94462",
+            "target_kind": "sector"
+          },
+          {
+            "relationship": "VERTICAL",
+            "relationship_guid": "cb8793da-af00-55eb-8341-0ef9abc49dec",
+            "source_guid": "5251f8d0-df2d-5e95-9acd-d5fd0e37a978",
+            "target_guid": "2aa38ed1-d11d-5a81-8386-9af387870890",
+            "target_kind": "industry"
+          },
+          {
+            "relationship": "MACRO",
+            "relationship_guid": "71bcfd8f-9255-512d-b1af-b6780cef1571",
+            "source_guid": "5251f8d0-df2d-5e95-9acd-d5fd0e37a978",
+            "target_guid": "3a405200-5018-5666-864f-90a5ab515828",
+            "target_kind": "theme"
+          },
+          {
+            "relationship": "MACRO",
+            "relationship_guid": "49148819-e979-5da2-8cd4-83d076165ef8",
+            "source_guid": "5251f8d0-df2d-5e95-9acd-d5fd0e37a978",
+            "target_guid": "d9fe76a8-d3bd-5928-85f8-4ce7dc2b075d",
+            "target_kind": "catalyst"
+          },
+          {
+            "relationship": "CALENDAR",
+            "relationship_guid": "0df5b0ff-05a2-54cd-be7e-3dc2311fa205",
+            "source_guid": "5251f8d0-df2d-5e95-9acd-d5fd0e37a978",
+            "target_guid": "35b9e0f2-24fb-5562-9065-9a8ec97005fa",
+            "target_kind": "calendar"
+          }
+        ]
+      },
+      "B_industry": {
+        "industry": "Biotechnology",
+        "related_n": 245,
+        "related_sample": [
+          "AARD",
+          "ABCL",
+          "ABEO",
+          "ABSI",
+          "ABUS",
+          "ABVC",
+          "ABVX",
+          "ACAD"
+        ],
+        "not_supply_chain": true
+      },
+      "C_sector": {
+        "sector": "Healthcare",
+        "related_n": 457,
+        "related_sample": [
+          "A",
+          "AARD",
+          "ABBV",
+          "ABCL",
+          "ABEO",
+          "ABSI",
+          "ABT",
+          "ABUS"
+        ],
+        "not_supply_chain": true
+      },
+      "D_catalyst": {
+        "catalyst_guids": [
+          "d9fe76a8-d3bd-5928-85f8-4ce7dc2b075d"
+        ],
+        "related_n": 42,
+        "related_sample": [
+          "ACHV",
+          "ADBE",
+          "AMC",
+          "AMD",
+          "ANET",
+          "AVAV",
+          "AXTI",
+          "BAH"
+        ],
+        "reverse": [
+          {
+            "catalyst_guid": "d9fe76a8-d3bd-5928-85f8-4ce7dc2b075d",
+            "related_n": 43,
+            "related_sample": [
+              "ACHV",
+              "ADBE",
+              "ALXO",
+              "AMC",
+              "AMD",
+              "ANET",
+              "AVAV",
+              "AXTI"
+            ]
+          }
+        ]
+      },
+      "peers_on_graph": []
+    },
+    {
+      "symbol": "ANET",
+      "sector": "Technology",
+      "industry": "Computer Hardware",
+      "A_identity": {
+        "schema": "IdentityLineage@v1",
+        "symbol": "ANET",
+        "issuer_guid": null,
+        "security_guid": "fc83568a-8bfa-55dd-998c-43010730b247",
+        "listing_guid": "1b0bfc05-7c35-5505-8ccc-7e1f948cf01f",
+        "ticker_guid": "a147dc63-2327-5cee-8071-3447300ced0a",
+        "ticker_alias": "ANET",
+        "ticker_guid_is_not_security": true,
+        "identity_status": "CONFIRMED",
+        "unresolved_identity": null,
+        "industry": "Computer Hardware",
+        "sector": "Technology",
+        "catalyst_guids": [
+          "d9fe76a8-d3bd-5928-85f8-4ce7dc2b075d"
+        ],
+        "authority": "READ_ONLY_ADVISORY"
+      },
+      "A_graph_edges": {
+        "n": 6,
+        "kinds": {
+          "issuer": 1,
+          "sector": 1,
+          "industry": 1,
+          "theme": 1,
+          "catalyst": 1,
+          "calendar": 1
+        },
+        "with_provenance_n": 0,
+        "sample": [
+          {
+            "relationship": "LINEAR",
+            "relationship_guid": "6e97de3c-ef57-508a-85ee-9e7f752fcc74",
+            "source_guid": "a147dc63-2327-5cee-8071-3447300ced0a",
+            "target_guid": "dcbd649c-f3e3-57be-9c2c-40b272d03a8d",
+            "target_kind": "issuer"
+          },
+          {
+            "relationship": "LATERAL",
+            "relationship_guid": "b5d48937-c941-5cf7-b132-4e4caccaffdb",
+            "source_guid": "a147dc63-2327-5cee-8071-3447300ced0a",
+            "target_guid": "5529d179-8883-5a2a-85d4-3f8a8d09a917",
+            "target_kind": "sector"
+          },
+          {
+            "relationship": "VERTICAL",
+            "relationship_guid": "966ca0dd-a122-51bd-99f6-d62072b45495",
+            "source_guid": "a147dc63-2327-5cee-8071-3447300ced0a",
+            "target_guid": "e26e8214-00c6-5a61-8cb5-f7572f8d37be",
+            "target_kind": "industry"
+          },
+          {
+            "relationship": "MACRO",
+            "relationship_guid": "e48129c4-b1f3-5744-97a5-a8b03f887b05",
+            "source_guid": "a147dc63-2327-5cee-8071-3447300ced0a",
+            "target_guid": "6575d4fc-d20b-53c6-a8c1-2880716b46c3",
+            "target_kind": "theme"
+          },
+          {
+            "relationship": "MACRO",
+            "relationship_guid": "d2e6a987-a8e3-506f-bbe9-da25a3556457",
+            "source_guid": "a147dc63-2327-5cee-8071-3447300ced0a",
+            "target_guid": "d9fe76a8-d3bd-5928-85f8-4ce7dc2b075d",
+            "target_kind": "catalyst"
+          },
+          {
+            "relationship": "CALENDAR",
+            "relationship_guid": "c3b214ed-a7a7-5fe1-bc48-8f33b9a9f2be",
+            "source_guid": "a147dc63-2327-5cee-8071-3447300ced0a",
+            "target_guid": "13aa5a79-01cc-5682-8391-4567284fd618",
+            "target_kind": "calendar"
+          }
+        ]
+      },
+      "B_industry": {
+        "industry": "Computer Hardware",
+        "related_n": 26,
+        "related_sample": [
+          "ADIG",
+          "AGMH",
+          "BRAI",
+          "BTCT",
+          "CRCT",
+          "CRSR",
+          "DELL",
+          "DPRO"
+        ],
+        "not_supply_chain": true
+      },
+      "C_sector": {
+        "sector": "Technology",
+        "related_n": 379,
+        "related_sample": [
+          "AAOI",
+          "AAPL",
+          "ACLS",
+          "ACMR",
+          "ACN",
+          "ADBE",
+          "ADEA",
+          "ADI"
+        ],
+        "not_supply_chain": true
+      },
+      "D_catalyst": {
+        "catalyst_guids": [
+          "d9fe76a8-d3bd-5928-85f8-4ce7dc2b075d"
+        ],
+        "related_n": 42,
+        "related_sample": [
+          "ACHV",
+          "ADBE",
+          "ALXO",
+          "AMC",
+          "AMD",
+          "AVAV",
+          "AXTI",
+          "BAH"
+        ],
+        "reverse": [
+          {
+            "catalyst_guid": "d9fe76a8-d3bd-5928-85f8-4ce7dc2b075d",
+            "related_n": 43,
+            "related_sample": [
+              "ACHV",
+              "ADBE",
+              "ALXO",
+              "AMC",
+              "AMD",
+              "ANET",
+              "AVAV",
+              "AXTI"
+            ]
+          }
+        ]
+      },
+      "peers_on_graph": []
+    },
+    {
+      "symbol": "NVDA",
+      "sector": "Technology",
+      "industry": "Semiconductors",
+      "A_identity": {
+        "schema": "IdentityLineage@v1",
+        "symbol": "NVDA",
+        "issuer_guid": null,
+        "security_guid": null,
+        "listing_guid": null,
+        "ticker_guid": null,
+        "ticker_alias": "NVDA",
+        "ticker_guid_is_not_security": true,
+        "identity_status": "UNRESOLVED_WITH_REASON",
+        "unresolved_identity": {
+          "symbol": "NVDA",
+          "kind": "equity_unresolved",
+          "reason": "no_canonical_symbol_card"
+        },
+        "industry": "Semiconductors",
+        "sector": "Technology",
+        "catalyst_guids": [],
+        "authority": "READ_ONLY_ADVISORY"
+      },
+      "A_graph_edges": {
+        "n": 0,
+        "kinds": {},
+        "with_provenance_n": 0,
+        "sample": []
+      },
+      "B_industry": {
+        "industry": "Semiconductors",
+        "related_n": 43,
+        "related_sample": [
+          "ADI",
+          "AIP",
+          "ALAB",
+          "ALGM",
+          "ALMU",
+          "AMBQ",
+          "AMD",
+          "AOSL"
+        ],
+        "not_supply_chain": true
+      },
+      "C_sector": {
+        "sector": "Technology",
+        "related_n": 379,
+        "related_sample": [
+          "AAOI",
+          "AAPL",
+          "ACLS",
+          "ACMR",
+          "ACN",
+          "ADBE",
+          "ADEA",
+          "ADI"
+        ],
+        "not_supply_chain": true
+      },
+      "D_catalyst": {
+        "catalyst_guids": [],
+        "related_n": 0,
+        "related_sample": [],
+        "reverse": []
+      },
+      "peers_on_graph": []
+    },
+    {
+      "symbol": "AAPL",
+      "sector": "Technology",
+      "industry": "Consumer Electronics",
+      "A_identity": {
+        "schema": "IdentityLineage@v1",
+        "symbol": "AAPL",
+        "issuer_guid": null,
+        "security_guid": null,
+        "listing_guid": null,
+        "ticker_guid": null,
+        "ticker_alias": "AAPL",
+        "ticker_guid_is_not_security": true,
+        "identity_status": "UNRESOLVED_WITH_REASON",
+        "unresolved_identity": {
+          "symbol": "AAPL",
+          "kind": "equity_unresolved",
+          "reason": "no_canonical_symbol_card"
+        },
+        "industry": "Consumer Electronics",
+        "sector": "Technology",
+        "catalyst_guids": [],
+        "authority": "READ_ONLY_ADVISORY"
+      },
+      "A_graph_edges": {
+        "n": 0,
+        "kinds": {},
+        "with_provenance_n": 0,
+        "sample": []
+      },
+      "B_industry": {
+        "industry": "Consumer Electronics",
+        "related_n": 7,
+        "related_sample": [
+          "BOXL",
+          "FXHO",
+          "GMEX",
+          "GPRO",
+          "TBCH",
+          "WLDS",
+          "ZEPP"
+        ],
+        "not_supply_chain": true
+      },
+      "C_sector": {
+        "sector": "Technology",
+        "related_n": 379,
+        "related_sample": [
+          "AAOI",
+          "ACLS",
+          "ACMR",
+          "ACN",
+          "ADBE",
+          "ADEA",
+          "ADI",
+          "ADIG"
+        ],
+        "not_supply_chain": true
+      },
+      "D_catalyst": {
+        "catalyst_guids": [],
+        "related_n": 0,
+        "related_sample": [],
+        "reverse": []
+      },
+      "peers_on_graph": []
+    },
+    {
+      "symbol": "MSFT",
+      "sector": "Technology",
+      "industry": "Software - Infrastructure",
+      "A_identity": {
+        "schema": "IdentityLineage@v1",
+        "symbol": "MSFT",
+        "issuer_guid": null,
+        "security_guid": null,
+        "listing_guid": null,
+        "ticker_guid": null,
+        "ticker_alias": "MSFT",
+        "ticker_guid_is_not_security": true,
+        "identity_status": "UNRESOLVED_WITH_REASON",
+        "unresolved_identity": {
+          "symbol": "MSFT",
+          "kind": "equity_unresolved",
+          "reason": "no_canonical_symbol_card"
+        },
+        "industry": "Software - Infrastructure",
+        "sector": "Technology",
+        "catalyst_guids": [],
+        "authority": "READ_ONLY_ADVISORY"
+      },
+      "A_graph_edges": {
+        "n": 0,
+        "kinds": {},
+        "with_provenance_n": 0,
+        "sample": []
+      },
+      "B_industry": {
+        "industry": "Software - Infrastructure",
+        "related_n": 75,
+        "related_sample": [
+          "AEVA",
+          "AI",
+          "AIB",
+          "AIBZ",
+          "AIFA",
+          "AIXC",
+          "AKAM",
+          "ALAR"
+        ],
+        "not_supply_chain": true
+      },
+      "C_sector": {
+        "sector": "Technology",
+        "related_n": 379,
+        "related_sample": [
+          "AAOI",
+          "AAPL",
+          "ACLS",
+          "ACMR",
+          "ACN",
+          "ADBE",
+          "ADEA",
+          "ADI"
+        ],
+        "not_supply_chain": true
+      },
+      "D_catalyst": {
+        "catalyst_guids": [],
+        "related_n": 0,
+        "related_sample": [],
+        "reverse": []
+      },
+      "peers_on_graph": []
+    }
+  ],
+  "section_11_diff": {
+    "schd_sell_sim": {
+      "before": {
+        "symbol": "SCHD",
+        "tier": "T0-HOLD",
+        "reasons": [
+          "CURRENTLY_HELD",
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "HERMES_RANK_T1",
+          "REENTRY_HISTORY",
+          "SYMBOL_PROFILE",
+          "WATCH_DIRECTIVE"
+        ],
+        "sources": [
+          "hermes_score_history",
+          "holdings.json",
+          "reentry_decision_desk_latest.json",
+          "symbol_profiles",
+          "ticker_research_graph.jsonl",
+          "watch_directives"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": null,
+        "security_guid": "a29dd6b6-9f88-5f8c-a372-f88786851a76",
+        "listing_guid": "f6ce2604-91da-5087-a34c-a97ea560ce9e",
+        "ticker_guid": "461e8849-dd63-5ef9-bbac-2d251b67208d",
+        "currently_held": true,
+        "historically_held": true,
+        "sold_history_present": false,
+        "reentry_status": "CURRENTLY HELD",
+        "active_proposal": false,
+        "watch_directive_active": true,
+        "hermes_rank": 173,
+        "incubator_status": null,
+        "scope_governor_status": null,
+        "sector": "Dividend Equity",
+        "industry": "Exchange Traded Fund",
+        "catalyst_n": 0,
+        "unresolved_identity": null
+      },
+      "after": {
+        "symbol": "SCHD",
+        "tier": "T1-WATCH",
+        "reasons": [
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "HERMES_RANK_T1",
+          "REENTRY_HISTORY",
+          "SYMBOL_PROFILE",
+          "WATCH_DIRECTIVE"
+        ],
+        "sources": [
+          "hermes_score_history",
+          "reentry_decision_desk_latest.json",
+          "symbol_profiles",
+          "ticker_research_graph.jsonl",
+          "watch_directives"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": null,
+        "security_guid": "a29dd6b6-9f88-5f8c-a372-f88786851a76",
+        "listing_guid": "f6ce2604-91da-5087-a34c-a97ea560ce9e",
+        "ticker_guid": "461e8849-dd63-5ef9-bbac-2d251b67208d",
+        "currently_held": false,
+        "historically_held": true,
+        "sold_history_present": false,
+        "reentry_status": "CURRENTLY HELD",
+        "active_proposal": false,
+        "watch_directive_active": true,
+        "hermes_rank": 173,
+        "incubator_status": null,
+        "scope_governor_status": null,
+        "sector": "Dividend Equity",
+        "industry": "Exchange Traded Fund",
+        "catalyst_n": 0,
+        "unresolved_identity": null
+      },
+      "added": [],
+      "removed": [],
+      "tier_changed_schd": [
+        {
+          "symbol": "SCHD",
+          "from": "T0-HOLD",
+          "to": "T1-WATCH",
+          "event": "TIER_CHANGED"
+        }
+      ],
+      "false_remove_add": false,
+      "diff_counts": {
+        "added_n": 0,
+        "removed_n": 0,
+        "tier_changed_n": 1
+      }
+    },
+    "as_of": "2026-08-25T20:05:21+00:00",
+    "source_pin": "55520666b4a742b9ed893c3231b414d089312363",
+    "tier_counts": {
+      "T0-HOLD": 19,
+      "T0-PROP": 31,
+      "T1-WATCH": 323,
+      "T2-INCUB": 148,
+      "T3-COLD": 3632
+    },
+    "membership_reason_counts": {
+      "GRAPH_PROFILE": 120,
+      "UNRESOLVED_IDENTITY": 3,
+      "HERMES_RANK": 2926,
+      "SYMBOL_PROFILE": 2822,
+      "HERMES_RANK_T1": 688,
+      "SCOPE_S3": 564,
+      "INCUBATOR": 405,
+      "WATCH_DIRECTIVE": 119,
+      "REENTRY_HISTORY": 107,
+      "ACTIVE_PROPOSAL": 31,
+      "RECENT_PROPOSAL": 99,
+      "REENTRY_READY_NEAR": 21,
+      "CURRENTLY_HELD": 19
+    },
+    "graph_coverage": "120 graph-profiled / 4153 universe"
+  },
+  "section_12_consumers": {
+    "research_scheduler": {
+      "label": "CANONICAL-ADAPTER",
+      "detail": "load_universe() returns research_tier_index over TransfersonUniverseManifest@v1. Scheduler membership is a subset (SCHEDULER_REASONS), not the institutional universe."
+    },
+    "free_first": {
+      "label": "ADAPTER",
+      "detail": "Still circulates graph-profile cohort (120). Labeled not_the_canonical_universe=true, persistent_graph_profiled, free_first_circulated_count."
+    },
+    "ticker_graph_profile_seeding": {
+      "label": "NOT_MIGRATED",
+      "detail": "seed_graph_from_universe() exists and is tested. Not applied to CURRENT. CURRENT graph remains 120 TickerKnowledgeProfile@v1 rows. Live edges lack producer/source_type provenance."
+    },
+    "cio_intelligence_fabric": {
+      "label": "LEGACY_PARTIAL",
+      "detail": "cio_persistent_cognition.bounded pack comment still says 'Do not inject all 120 names.' Does not import transferson_universe."
+    },
+    "advisory": {
+      "label": "NOT_MIGRATED",
+      "detail": "api_v3_advisory / advisory_desk use private watch-hub DB universe and reentry_universe_count (~105 desk rows). Not TransfersonUniverseManifest@v1."
+    },
+    "hermes": {
+      "label": "NOT_MIGRATED",
+      "detail": "hermes_scope_governor.universe is a scope-trend series. Rank history is a membership SOURCE, not a consumer of the canonical manifest."
+    },
+    "reentry_watch": {
+      "label": "SOURCE",
+      "detail": "reentry_decision_desk_latest.json and watch_directives feed membership. They do not read the canonical manifest."
+    },
+    "proposal_research": {
+      "label": "CANONICAL-ADAPTER",
+      "detail": "thesis_mint_from_research / research_quality_sample call research_scheduler.load_universe, which is now the adapter."
+    },
+    "command_center": {
+      "label": "NOT_MIGRATED",
+      "detail": "CC v3 theses/CIO path uses symbol_thesis_cc.build_universe_theses_projection \u2192 UniverseProjection@v1 / reconcile_universe, not TransfersonUniverseManifest@v1."
+    },
+    "thesis_coverage_metrics": {
+      "label": "LEGACY_PARTIAL",
+      "detail": "Holdings coverage correctly uses held_equity_tickers(). Universe & Theses projection still uses the older UniverseProjection@v1."
+    },
+    "complete": false,
+    "reason": "Important operator-facing denominators (Command Center, Advisory, CIO 120-name comment, Hermes scope universe, thesis projection) still use private universes."
+  },
+  "db_probe": {
+    "db_enabled": true,
+    "db_name": "trade_ai",
+    "symbol_profiles_n": 2823,
+    "proposals_active_n": 31,
+    "scope_status": [
+      {
+        "status": "active",
+        "scope_tier": "S0",
+        "n": 32
+      },
+      {
+        "status": "active",
+        "scope_tier": "S1",
+        "n": 191
+      },
+      {
+        "status": "active",
+        "scope_tier": "S3",
+        "n": 38
+      },
+      {
+        "status": "active",
+        "scope_tier": null,
+        "n": 75
+      },
+      {
+        "status": "removed",
+        "scope_tier": "S0",
+        "n": 24
+      },
+      {
+        "status": "removed",
+        "scope_tier": "S1",
+        "n": 396
+      },
+      {
+        "status": "removed",
+        "scope_tier": "S3",
+        "n": 252
+      },
+      {
+        "status": "removed",
+        "scope_tier": null,
+        "n": 6631
+      },
+      {
+        "status": "researched",
+        "scope_tier": "S0",
+        "n": 320
+      },
+      {
+        "status": "researched",
+        "scope_tier": "S1",
+        "n": 306
+      },
+      {
+        "status": "researched",
+        "scope_tier": "S2",
+        "n": 23
+      },
+      {
+        "status": "researched",
+        "scope_tier": "S3",
+        "n": 4455
+      },
+      {
+        "status": "researched",
+        "scope_tier": null,
+        "n": 148
+      }
+    ]
+  },
+  "coverage": {
+    "schema": "GraphCoverageReport@v1",
+    "canonical_universe_count": 4153,
+    "graph_profiled_count": 120,
+    "persistent_graph_profiled": 120,
+    "graph_coverage": "120 / 4153",
+    "missing": 4033,
+    "missing_n": 4033,
+    "direction": "canonical_universe \u2192 identity \u2192 graph/profile \u2192 research/free-first",
+    "authority": "READ_ONLY_ADVISORY"
+  },
+  "section_13_decision": {
+    "verdict": "LIVE_ACCEPTANCE_BLOCKED",
+    "r17_auto_checkpoint": "blocked",
+    "remote_push": "not authorized",
+    "deploy": "not authorized",
+    "blockers": [
+      {
+        "id": "B1",
+        "item": "Operator-facing denominators not on canonical contract",
+        "detail": "Command Center theses, Advisory watch-hub, CIO cognition (120-name comment), Hermes scope-governor universe, UniverseProjection@v1. Gate forbids calling this complete while those remain private."
+      },
+      {
+        "id": "B2",
+        "item": "Live identity spine not populated",
+        "detail": "issuer_guid_resolved=0 on the manifest (graph file has 103 issuer_guids that the loader does not copy). security_guid_resolved=103/4153. UNRESOLVED_WITH_REASON=4050. CANDIDATE=0. Identity semantics pass (no ticker-minted security_guid, no sg==tg, no duplicate sg), but R17 cannot attach a populated spine for most names."
+      },
+      {
+        "id": "B3",
+        "item": "Graph coverage is 120/4153 and CURRENT was not seeded",
+        "detail": "Correctly measured as coverage, not universe. seed_graph_from_universe not applied (CURRENT not mutated). Live edges have relationship_guid but zero producer/source_type provenance."
+      },
+      {
+        "id": "B4",
+        "item": "126 remains UNRESOLVED_WITH_REASON",
+        "detail": "Original acceptance requirement. Coincidences (19+107 naive sum; watch DISTINCT 120; T0 research-due 126) are not producers."
+      },
+      {
+        "id": "B5",
+        "item": "Active screener membership not in the authorized union",
+        "detail": "screener_symbol_membership present_this_run=3119 unique tickers; 1383 missing from canonical. Hermes discovery READY/APPROVED=97 missing 0. Screener is not wired in collect_live_sources."
+      },
+      {
+        "id": "B6",
+        "item": "Canonical loader is not on the CURRENT pin",
+        "detail": "Measurement used worktree chore/transferson-canonical-universe against CURRENT files + live DB. CURRENT remains 55520666 exact-main. Not deployed. Correct for this gate; still not production."
+      }
+    ],
+    "passes": [
+      "Architecture: membership reasons vs research tier",
+      "Identity source semantics: ticker-only does not mint security_guid",
+      "120 is graph-profile coverage, not universe",
+      "canonical_universe_count=4153 equals unique union of wired membership sources",
+      "missing_current_holdings=0 (19/19 equity CONFIRMED)",
+      "CUSIPs 12507E201/543354104/628518102 explicit UNRESOLVED_IDENTITY in universe",
+      "proposals_active/watch/hermes_rank_t1/incubator missing=0",
+      "SOLD/WAIT retained (ADBE T3-COLD WAIT remains member via SCOPE_S3 demotion)",
+      "READY/NEAR may be T1 (ALXO); proposal can outrank (CSCO T0-PROP)",
+      "SCHD sell-sim: TIER_CHANGED T0-HOLD\u2192T1-WATCH; added=0 removed=0",
+      "Scheduler 3105 is a subset; 1048 only_in_canonical explained (mostly HERMES_RANK rank>200)",
+      "R17 auto-checkpoint remains blocked"
+    ]
+  }
+}

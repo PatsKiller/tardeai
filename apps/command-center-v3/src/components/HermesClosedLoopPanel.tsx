@@ -1668,7 +1668,7 @@ export default function HermesClosedLoopPanel({ onDrill }: Props) {
                 </div>
               ))}
               <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 6 }}>
-                Live universe: {gov.live_universe ?? '—'} / cap {govData?.config_total_cap ?? 800}
+                Scope-scored S0–S2 (not Transferson universe): {gov.live_universe ?? '—'} / cap {govData?.config_total_cap ?? 800}
               </div>
             </>
           )}
@@ -1699,7 +1699,7 @@ export default function HermesClosedLoopPanel({ onDrill }: Props) {
                 { label: 'Research rows / outcome', value: num(scoreComponents.research_rows_per_positive_outcome ?? resource.research_rows_per_positive_outcome), color: 'var(--text0)' },
                 { label: 'LLM calls / outcome', value: num(resource.llm_calls_per_positive_outcome), color: 'var(--text0)' },
                 { label: 'Hermes API calls (7d)', value: num(resource.hermes_api_calls_7d), color: 'var(--text0)' },
-                { label: 'Live universe / baseline', value: pct(resource.live_universe_vs_baseline_pct), color: '#a855f7' },
+                { label: 'Scope-scored / baseline (not Transferson universe)', value: pct(resource.live_universe_vs_baseline_pct), color: '#a855f7' },
               ].map(c => (
                 <div key={c.label} style={{ padding: '8px 10px', background: 'var(--bg2)', borderRadius: 8, textAlign: 'center' }}>
                   <div style={{ fontSize: 16, fontWeight: 800, color: c.color }}>{c.value}</div>

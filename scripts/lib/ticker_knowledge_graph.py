@@ -82,7 +82,19 @@ def _entity_refs(kind: str, values: Any) -> list[dict[str, str]]:
     return refs
 
 
-def _edge(source: str, target: str, rel: str, kind: str, *, confirmed: bool) -> dict[str, Any]:
+def _edge(
+    source: str,
+    target: str,
+    rel: str,
+    kind: str,
+    *,
+    confirmed: bool,
+    producer: str = "ticker_knowledge_graph",
+    source_type: str = "ticker_knowledge_profile",
+    source_id: str | None = None,
+    evidence_artifact_guid: str | None = None,
+    source_refs: list | None = None,
+) -> dict[str, Any]:
     now = _now()
     return {
         "relationship_guid": relationship_guid(source, target, rel),
@@ -97,13 +109,30 @@ def _edge(source: str, target: str, rel: str, kind: str, *, confirmed: bool) -> 
         "last_confirmed_at": now if confirmed else None,
         "status": "CONFIRMED" if confirmed else "CANDIDATE",
         "confidence": 0.8 if confirmed else 0.3,
-        "source_refs": [],
+        "source_entity_guid": source,
+        "target_entity_guid": target,
+        "relationship_type": rel,
+        "relationship_class": kind,
+        "source_id": source_id,
+        "source_type": source_type,
+        "producer": producer,
+        "evidence_artifact_guid": evidence_artifact_guid,
+        "source_refs": list(source_refs or []),
     }
 
 
 def _profile_edges(profile: dict[str, Any]) -> list[dict[str, Any]]:
     source = profile["ticker_guid"]
     confirmed = bool(profile.get("company"))
+    prov = profile.get("edge_provenance") if isinstance(profile.get("edge_provenance"), dict) else {}
+    kw = {
+        "confirmed": confirmed,
+        "producer": str(prov.get("producer") or "ticker_knowledge_graph"),
+        "source_type": str(prov.get("source_type") or "ticker_knowledge_profile"),
+        "source_id": prov.get("source_id"),
+        "evidence_artifact_guid": prov.get("evidence_artifact_guid"),
+        "source_refs": list(prov.get("source_refs") or []),
+    }
     edges: list[dict[str, Any]] = []
     for kind, field, rel in (
         ("issuer", "issuer_guid", "LINEAR"),
@@ -113,15 +142,15 @@ def _profile_edges(profile: dict[str, Any]) -> list[dict[str, Any]]:
     ):
         target = profile.get(field)
         if target:
-            edges.append(_edge(source, target, rel, kind, confirmed=confirmed))
+            edges.append(_edge(source, target, rel, kind, **kw))
     for ref in profile.get("theme_refs") or []:
-        edges.append(_edge(source, ref["guid"], "MACRO", "theme", confirmed=confirmed))
+        edges.append(_edge(source, ref["guid"], "MACRO", "theme", **kw))
     for ref in profile.get("peer_refs") or []:
-        edges.append(_edge(source, ref["guid"], "LATERAL", "ticker", confirmed=confirmed))
+        edges.append(_edge(source, ref["guid"], "LATERAL", "ticker", **kw))
     for ref in profile.get("catalyst_refs") or []:
-        edges.append(_edge(source, ref["guid"], "MACRO", "catalyst", confirmed=confirmed))
+        edges.append(_edge(source, ref["guid"], "MACRO", "catalyst", **kw))
     for ref in profile.get("calendar_event_refs") or []:
-        edges.append(_edge(source, ref["guid"], "CALENDAR", "calendar", confirmed=confirmed))
+        edges.append(_edge(source, ref["guid"], "CALENDAR", "calendar", **kw))
     return edges
 
 
@@ -152,7 +181,7 @@ def build_profile(symbol: str, *, metadata: dict[str, Any] | None = None) -> dic
         "symbol": sym,
         "classification": meta.get("classification") or meta.get("asset_type") or "UNKNOWN",
         "company": company,
-        "issuer_guid": entity_guid("issuer", company),
+        "issuer_guid": meta.get("issuer_guid") or entity_guid("issuer", company),
         "sector": sector,
         "sector_guid": entity_guid("sector", sector),
         "industry": industry,
@@ -178,6 +207,12 @@ def build_profile(symbol: str, *, metadata: dict[str, Any] | None = None) -> dic
         "authority": AUTHORITY,
         "financial_action": False,
     }
+    if meta.get("security_guid"):
+        profile["security_guid"] = meta.get("security_guid")
+    if meta.get("listing_guid"):
+        profile["listing_guid"] = meta.get("listing_guid")
+    if meta.get("edge_provenance"):
+        profile["edge_provenance"] = meta.get("edge_provenance")
     profile["relationships"] = _profile_edges(profile)
     profile["relationship_guids"] = [x["relationship_guid"] for x in profile["relationships"]]
     return attach_identity_v2(profile)
@@ -455,16 +490,17 @@ def retrieve_context(root: Path | str, symbol: str, *, limit: int = 50) -> dict[
 
 def seed_profiles(root: Path | str, rows: Iterable[dict[str, Any]]) -> dict[str, Any]:
     """Persist ticker profiles for every tracked universe row."""
-    profiles = 0
     path = graph_path(root)
+    path.parent.mkdir(parents=True, exist_ok=True)
     existing = set()
     if path.exists():
         for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
             try:
                 row = json.loads(line)
-                existing.add(row.get("ticker_id"))
+                existing.add(row.get("ticker_id") or row.get("ticker_guid"))
             except json.JSONDecodeError:
                 continue
+    created: list[dict[str, Any]] = []
     for row in rows:
         sym = normalize_symbol(row.get("symbol") or row.get("ticker"))
         if not sym:
@@ -472,7 +508,13 @@ def seed_profiles(root: Path | str, rows: Iterable[dict[str, Any]]) -> dict[str,
         profile = build_profile(sym, metadata=row)
         if profile["ticker_id"] in existing:
             continue
-        append_record(root, profile)
+        created.append(profile)
         existing.add(profile["ticker_id"])
-        profiles += 1
-    return {"profiles_created": profiles, "path": str(path), "authority": AUTHORITY}
+    if created:
+        with path.open("a", encoding="utf-8") as fh:
+            fcntl.flock(fh, fcntl.LOCK_EX)
+            for profile in created:
+                fh.write(json.dumps(profile, sort_keys=True, default=str) + "\n")
+            fh.flush()
+            fcntl.flock(fh, fcntl.LOCK_UN)
+    return {"profiles_created": len(created), "path": str(path), "authority": AUTHORITY}

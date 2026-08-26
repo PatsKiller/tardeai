@@ -82,6 +82,65 @@ def listing_guid(*, security: str | None, exchange: str = "UNKNOWN", symbol: str
     return _uuid("listing", payload)
 
 
+def instrument_guid_from_identifiers(ids: dict[str, Any] | None) -> str | None:
+    """Durable instrument id from CUSIP/ISIN/FIGI — never from ticker text."""
+    ids = ids or {}
+    for key in ("figi", "isin", "cusip"):
+        val = str(ids.get(key) or "").strip()
+        if val:
+            return _uuid("security:id", f"{key}:{val.upper()}")
+    return None
+
+
+def resolve_identity_spine(row: dict[str, Any] | None) -> dict[str, Any]:
+    """Issuer → security → listing → ticker alias. Ticker is never the security key."""
+    src = dict(row or {})
+    sym = normalize_symbol(src.get("symbol"))
+    ids = src.get("identifiers") if isinstance(src.get("identifiers"), dict) else {}
+    cik = src.get("cik") or ids.get("cik")
+    company = src.get("company")
+    ig = src.get("issuer_guid") or issuer_guid(cik=cik, company=company)
+    sg = src.get("security_guid") or instrument_guid_from_identifiers(ids)
+    if not sg and ig:
+        instrument = str(src.get("classification") or "equity").lower()
+        if instrument in ("unknown", "", "stock", "equity_unresolved"):
+            instrument = "equity"
+        sg = security_guid(
+            issuer=ig,
+            share_class=str(src.get("share_class") or "common"),
+            instrument=instrument,
+        )
+        status = "CANDIDATE"
+        reason = None
+    elif sg and (ids.get("figi") or ids.get("isin") or ids.get("cusip") or src.get("security_guid")):
+        status = "CONFIRMED"
+        reason = None
+    elif sg:
+        status = "CANDIDATE"
+        reason = None
+    else:
+        status = "UNRESOLVED_WITH_REASON"
+        reason = (classify_unresolved_symbol(sym) or {}).get("reason") or "no_issuer_or_instrument_id"
+    lg = src.get("listing_guid") or listing_guid(
+        security=sg,
+        exchange=str(src.get("exchange") or "UNKNOWN"),
+        symbol=sym,
+    ) if sg else None
+    return {
+        "schema": "SecurityIdentitySpine@v1",
+        "issuer_guid": ig,
+        "security_guid": sg,
+        "listing_guid": lg,
+        "ticker_guid": src.get("ticker_guid"),
+        "ticker_alias": sym,
+        "ticker_guid_is_not_security": True,
+        "identity_status": status,
+        "unresolved_reason": reason,
+        "authority": AUTHORITY,
+        "financial_action": False,
+    }
+
+
 def attach_identity_v2(profile: dict[str, Any], *, observed_at: str | None = None) -> dict[str, Any]:
     """Add issuer/security/listing GUIDs onto an existing ticker profile. Non-destructive."""
     row = dict(profile or {})
@@ -89,26 +148,8 @@ def attach_identity_v2(profile: dict[str, Any], *, observed_at: str | None = Non
     if not sym:
         return row
     as_of = observed_at or _now()
-    cik = row.get("cik") or (row.get("identifiers") or {}).get("cik")
-    company = row.get("company")
-    ig = row.get("issuer_guid") or issuer_guid(cik=cik, company=company)
-    instrument = str(row.get("classification") or "equity").lower()
-    if instrument in ("unknown", "", "stock", "equity_unresolved"):
-        instrument = "equity"
-    elif instrument == "etf":
-        instrument = "etf"
-    elif instrument == "fund":
-        instrument = "fund"
-    sg = row.get("security_guid") or security_guid(
-        issuer=ig,
-        share_class=str(row.get("share_class") or "common"),
-        instrument=instrument,
-    )
-    lg = row.get("listing_guid") or listing_guid(
-        security=sg,
-        exchange=str(row.get("exchange") or "UNKNOWN"),
-        symbol=sym,
-    )
+    spine = resolve_identity_spine(row)
+    ig, sg, lg = spine["issuer_guid"], spine["security_guid"], spine["listing_guid"]
     alias = {
         "schema": ALIAS_SCHEMA,
         "ticker_guid": row.get("ticker_guid"),
@@ -127,6 +168,8 @@ def attach_identity_v2(profile: dict[str, Any], *, observed_at: str | None = Non
     row.setdefault("security_guid", sg)
     row.setdefault("listing_guid", lg)
     row.setdefault("ticker_alias", alias)
-    row.setdefault("identity_status", "CONFIRMED" if company else "CANDIDATE")
+    row.setdefault("identity_status", spine["identity_status"])
+    row.setdefault("unresolved_reason", spine["unresolved_reason"])
+    row.setdefault("ticker_guid_is_not_security", True)
     row.setdefault("identity_schema", "SecurityIdentityBundle@v1")
     return row
