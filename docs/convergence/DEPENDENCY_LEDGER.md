@@ -8,11 +8,11 @@ Field vocabulary: ControlPlane@v1.0.0.
 | R21 summary APIs | AVAILABLE |
 | R21 detail APIs | R21.1_PENDING (local preview `c3b105a7`; Codex handoff not accepted) |
 | R21 lineage adapters | R21.1_PENDING |
-| R22 list views | UNBLOCKED |
+| R22 list views | SUMMARY_APIS_CONSUMED (`50f2a5c6`) |
 | R22 detail/trace | MOCK_BLOCKED_UNTIL_R21_1 |
-| R23 | UNBLOCKED |
-| R24 | UNBLOCKED |
-| QA | LAUNCHED_OPTIONAL |
+| R23 | SUMMARY_APIS_CONSUMED (`c76088d3`) |
+| R24 | SUMMARY_APIS_CONSUMED (`52b0ae64`) |
+| QA | PASS (33 probes) |
 
 Rules:
 

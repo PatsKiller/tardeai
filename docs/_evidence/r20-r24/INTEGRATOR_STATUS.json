@@ -1,8 +1,8 @@
 {
   "program": "R20-R24",
   "role": "PRINCIPAL_INTEGRATOR",
-  "status": "R21_BASELINE_ACCEPTED_PARALLEL_UI_IN_FLIGHT",
-  "classification": "ARCHITECTURE_PLUS_LOCAL_BACKEND",
+  "status": "R21_BASELINE_ACCEPTED_UI_SUMMARY_APIS_CONSUMED",
+  "classification": "ARCHITECTURE_PLUS_LOCAL_BACKEND_PLUS_SIDE_BY_SIDE_PAGES",
   "http_freeze": "CONTROL_PLANE_API_V1_BASELINE",
   "control_plane_contract_version": "ControlPlane@v1.0.0",
   "r21_owner": "CODEX",
@@ -10,6 +10,8 @@
   "r21_baseline_accepted": true,
   "r21_baseline_commit": "084674c560abd7bb910726f62e41508703c07e40",
   "r21_1_pending": true,
+  "app_tsx_registered": false,
+  "live_cutover": false,
   "local_ready_for_sync": false,
   "github_pushes": 0,
   "ci_cycles": 0,
@@ -17,8 +19,9 @@
   "memory_behavior_influence": 0,
   "notes": [
     "Integrator branch is not origin/main (production CURRENT is 6088254e).",
-    "R21 summary APIs are the consumption freeze. R22-R24 must not wait for R21.1.",
+    "R21 summary APIs are the consumption freeze. R22 list / R23 / R24 consume them in isolated worktrees.",
     "R21 admin visibility is not R20 specialist-office LIVE.",
-    "Do not declare LOCAL_R20_R24_CONVERGENCE_READY_FOR_SYNC."
+    "App.tsx / NavRail not wired. Do not declare LOCAL_R20_R24_CONVERGENCE_READY_FOR_SYNC.",
+    "Next: accept Codex R21.1, replace R22 detail mocks, then isolated dry-run / replay / fault. No push."
   ]
 }

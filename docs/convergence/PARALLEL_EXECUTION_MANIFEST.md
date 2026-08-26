@@ -14,10 +14,10 @@
 | R20 | Integrator | runtime/specialist evidence | AUDIT_COMPLETE — not office LIVE | docs/_evidence/r20 |
 | R21 | CODEX / integrated | CONTROL_PLANE_BACKEND summary GET | BASELINE_ACCEPTED | 084674c5 |
 | R21.1 | CODEX (later) | detail + lineage + extra proof | PENDING (local preview c3b105a7) | additive only |
-| R22 | worker `r22` | Agent Office + Workflow Trace | RELAUNCH_SUMMARY_APIS | feat/r22-agent-office-workflow |
-| R23 | worker `r23` | Research/Data/Identity/Notifications | RELAUNCH_SUMMARY_APIS | feat/r23-admin-observability |
-| R24 | worker `r24` | Learning/Maturity/Audit | RELAUNCH_SUMMARY_APIS | feat/r24-learning-maturity-ui |
-| QA | worker `qa` | fixtures/compat/authority/secrets/routes | LAUNCHED | optional |
+| R22 | worker `r22` | Agent Office + Workflow Trace | SUMMARY_APIS_CONSUMED | feat/r22-agent-office-workflow @ d10247b9 |
+| R23 | worker `r23` | Research/Data/Identity/Notifications | SUMMARY_APIS_CONSUMED | feat/r23-admin-observability @ be18e724 |
+| R24 | worker `r24` | Learning/Maturity/Audit | SUMMARY_APIS_CONSUMED | feat/r24-learning-maturity-ui @ 52c11090 |
+| QA | worker `qa` | fixtures/compat/authority/secrets/routes | PASS | docs/_evidence/qa |
 
 ## Untracked-file classification (do not git clean / rm)
 

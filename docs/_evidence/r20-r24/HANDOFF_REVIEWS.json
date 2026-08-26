@@ -2,7 +2,7 @@
   "integrator": "PRINCIPAL_INTEGRATOR",
   "http_freeze": "CONTROL_PLANE_API_V1_BASELINE",
   "vocabulary_contract": "ControlPlane@v1.0.0",
-  "as_of": "2026-08-26T18:00:00+00:00",
+  "as_of": "2026-08-26T18:30:00+00:00",
   "reviews": {
     "R21": {
       "owner": "CODEX",
@@ -13,34 +13,41 @@
     },
     "R22": {
       "owner": "subagent",
-      "decision": "ACCEPT_PAGES_PENDING_API_WIRE",
+      "decision": "ACCEPT_API_WIRE_LIST",
       "ready_for_local_integration": true,
       "forbidden_paths_touched": [],
-      "tests": "12 passed (fixture pages)",
-      "head": "7bc2ba55 (handoff) / a5b2044b (impl)",
-      "note": "List views unblocked on /agents /workflows. Detail/trace remain labeled mocks until R21.1. Integrator has not registered App.tsx routes."
+      "tests": "17 passed",
+      "head": "d10247b9 (handoff) / 50f2a5c6 (impl)",
+      "note": "List views consume GET /agents and /workflows. Detail and lineage remain labeled FIXTURE until R21.1. App.tsx not registered. live_claim=false."
     },
     "R23": {
       "owner": "subagent",
-      "decision": "ACCEPT_PAGES_PENDING_API_WIRE",
+      "decision": "ACCEPT_API_WIRE",
       "ready_for_local_integration": true,
       "forbidden_paths_touched": [],
-      "tests": "20 passed (preview pages)",
-      "head": "207ec856",
-      "note": "Relaunch to consume real summary GET. UNAVAILABLE must not look like empty-valid."
+      "tests": "26 passed",
+      "head": "be18e724 (handoff) / c76088d3 (impl)",
+      "note": "All four pages GET summary APIs. Preview JSON is FIXTURE only, not live fallback. UNAVAILABLE vs EMPTY_VALID distinguished."
     },
     "R24": {
       "owner": "subagent",
-      "decision": "ACCEPT_PAGES_PENDING_API_WIRE",
+      "decision": "ACCEPT_API_WIRE",
       "ready_for_local_integration": true,
       "forbidden_paths_touched": [],
-      "tests": "22 passed (fixture-first)",
-      "head": "0333be0b / 49b96b38",
-      "note": "Must stop treating ControlPlane@v1.0.0 payload as the live accept path. Do not fake maturity."
+      "tests": "23 passed",
+      "head": "52c11090 (handoff) / 52b0ae64 (impl)",
+      "note": "Stopped requiring ControlPlane@v1.0.0 payload as live accept path. UNAVAILABLE is page truth. No fake maturity. No promote control."
+    },
+    "QA": {
+      "owner": "subagent",
+      "decision": "PASS",
+      "tests": "33 passed",
+      "head": "bd0f43f5",
+      "note": "Contract/authority/secret/route probes. Cutover false. Secret scan CLEAN."
     }
   },
   "not_done": [
-    "R21.1 Codex detail/lineage handoff",
+    "R21.1 Codex detail/lineage formal handoff",
     "R22 mock removal after R21.1",
     "App.tsx / NavRail wiring",
     "cross-stream dry run",
