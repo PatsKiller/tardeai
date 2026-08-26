@@ -18,7 +18,11 @@ def test_packet_bounded_and_canonical(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     packet = pkt.build_packet()
     raw = json.dumps(packet)
-    assert packet["canonical_cio_source"] == "cio_investment_product"
+    assert packet["canonical_cio_source"] == "cio.product.current"
+    cio = packet.get("cio") or {}
+    if cio.get("available") is False:
+        assert cio.get("reason") == "PRODUCER_NOT_RUN"
+        assert "CIO_PRODUCT_UNAVAILABLE" in str(cio.get("note") or "")
     assert "cio_decisions" in packet["retired_artifacts_forbidden"]
     assert "telegram history" not in raw.lower()
     assert len(raw) < 80_000

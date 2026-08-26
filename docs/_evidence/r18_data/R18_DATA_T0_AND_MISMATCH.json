@@ -1,0 +1,84 @@
+{
+  "T0": {
+    "schema": "R18DataT0@v1",
+    "as_of": "2026-08-26T12:56:46+00:00",
+    "main_sha": "1e4daa5f6a1e0cfcd3a9c85ebcf5af47e5786bef",
+    "current_realpath": "/home/johnclaw/trade-ai-releases/portfolio-server/1e4daa5f-main-exact-phase2-20260826-082534",
+    "SOURCE_COMMIT": "1e4daa5f6a1e0cfcd3a9c85ebcf5af47e5786bef",
+    "BUILD_SHA": "1e4daa5f6a1e0cfcd3a9c85ebcf5af47e5786bef",
+    "GIT_SHA": "1e4daa5f6a1e0cfcd3a9c85ebcf5af47e5786bef",
+    "state_root": "/home/johnclaw/trade-ai-releases/portfolio-server/1e4daa5f-main-exact-phase2-20260826-082534"
+  },
+  "mismatches": {
+    "cio_product": {
+      "writer": "data/cio/cio_investment_brief.json",
+      "stale_aegis_filename": "cio_investment_product_latest.json",
+      "stale_exists": false,
+      "canonical_exists": true,
+      "canonical_path": "/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/data/cio/cio_investment_brief.json"
+    },
+    "advisory": {
+      "writer": "data/runtime/advisory_desk_latest.json",
+      "stale_aegis_filename": "advisory_latest.json",
+      "stale_exists": false,
+      "canonical_exists": true,
+      "canonical_path": "/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/data/runtime/advisory_desk_latest.json"
+    }
+  },
+  "inventory_n": 9,
+  "inventory_present": 7,
+  "graph_flags": [
+    {
+      "store_id": "cio.product.current",
+      "flag": "STALE_READER",
+      "filenames": [
+        "cio_investment_product_latest.json"
+      ]
+    },
+    {
+      "store_id": "cio.product.current",
+      "flag": "DUPLICATE_CURRENT_PROJECTION_ALIASES"
+    },
+    {
+      "store_id": "advisory.current",
+      "flag": "STALE_READER",
+      "filenames": [
+        "advisory_latest.json"
+      ]
+    },
+    {
+      "store_id": "advisory.current",
+      "flag": "DUPLICATE_CURRENT_PROJECTION_ALIASES"
+    }
+  ],
+  "integrity": {
+    "holdings_state": "CURRENT",
+    "instruments": {
+      "CASH": 5,
+      "EQUITY": 25
+    },
+    "checkpoint": {
+      "total": 147,
+      "counts": {
+        "VALID_UNIQUE": 6,
+        "SEMANTIC_DUPLICATE": 108,
+        "ORPHANED": 0,
+        "UNRESOLVED_SUBJECT": 15,
+        "LEGACY": 18
+      },
+      "bug_duplicates": 108,
+      "deleted": 0
+    },
+    "purge": {
+      "destructive_changes_applied": false,
+      "approval_required": true,
+      "note": "SNAPSHOT\u2192INVENTORY\u2192CLASSIFY\u2192QUARANTINE\u2192REBUILD. No delete in this tranche."
+    }
+  },
+  "operator_product": {
+    "available": true,
+    "reason": null,
+    "entries_n": 20,
+    "human_head": "CIO OPERATOR PRODUCT\n\nCIO DECISION \u2014  HOLD\nWhat changed: Market temperament \u2014 RISK ON TREND \u2014 SELECTIVE RISK\nWhy it matters: Preserve quality growth exposure, keep cash for dislocations, and do not force lower-quality replacements. Re-entries need candidate-specific governed verdicts \u2014 desk zone marks are not authorization.\nYour action: NOTHING\nWhy: Temperament RISK ON TREND \u2014 SELECTIVE RISK. Regime source as-of 2026-08-26 06:35:01.637751-04:00. FS receipts in store: 11. Ratified lessons available: 12.\n\nCIO DECISION \u2014 GERN WATCH\nWhat changed: WATCH GERN\nWhy it matters: Zone 1.34\u20131.6; desk IN_Z"
+  }
+}
