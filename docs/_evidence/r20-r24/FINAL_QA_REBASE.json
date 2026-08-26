@@ -1,0 +1,39 @@
+{
+  "head": "f834ac4982b16cc1897212ac65e50ea055e1cb95",
+  "timestamp": "2026-08-26",
+  "prior_blockers": {
+    "pages_absent": "STALE_FIXED",
+    "dry_run_absent": "STALE_FIXED",
+    "historical_replay_untrusted": "STILL_PRESENT",
+    "route_parity_unmeasured": "PARTIALLY_FIXED",
+    "runtime_store_unavailable": "EXPECTED_PRE_DEPLOY_LIMITATION",
+    "performance_unmeasured": "PARTIALLY_FIXED"
+  },
+  "contracts": {"routes": 12, "failures": 0, "tests_passed": 58},
+  "frontend": {
+    "pages": ["agent_office", "workflow_trace", "research_attention", "data_integrity", "identity", "notifications", "learning", "maturity", "audit"],
+    "runtime_mocks": 0,
+    "test_fixtures": 2,
+    "typecheck": "BLOCKED_TOOLCHAIN_NOT_INSTALLED",
+    "build": "BLOCKED_DESIGN_GUARD",
+    "design_guard_failures": ["pages/control-plane/SystemPage.tsx", "pages/control-plane/r23/ControlPlaneFrame.tsx"]
+  },
+  "dry_run": {"complete": true, "workflow_rows": 2, "id_mismatches": 0, "semantic_mismatches": 0, "evidence_class": "DRY_RUN"},
+  "replay": {"total": 120, "historical_source_derived": 0, "historical_validated": 0, "synthetic": 120, "golden": 0, "unknown": 0, "lookahead_leaks": 0, "classification_note": "Replay fixtures use dryrun-source-sha and are mechanism fixtures, not historical production telemetry."},
+  "parity": {"old_routes": 31, "mapped": 31, "regressions": 0, "status": "DEFERRED_UNMEASURED"},
+  "runtime_stores": {"expected_predeploy_unavailable": true, "broken": 0},
+  "performance": {"measured": "UNIT_ADAPTER_ONLY", "representative_server_benchmark": false, "blockers": 1},
+  "faults": {"cases": 25, "failures": 0, "typed_degradation_cases": 4, "note": "25 fault scenarios exercised; missing/invalid stores and unauthorized methods returned typed responses. Remaining domain faults use unavailable-store behavior in isolated fixtures."},
+  "authority": {"probes": 40, "unauthorized_successes": 0},
+  "privacy": {"secrets_found": 0, "personal_data_flags": 0},
+  "evidence": {"class_mismatches": 0},
+  "blockers": {
+    "critical": 0,
+    "high": 3,
+    "medium": 2,
+    "low": 0,
+    "high_detail": ["frontend design guard failure", "frontend TypeScript toolchain unavailable", "no source-derived historical replay"],
+    "medium_detail": ["route parity remains deferred/unmeasured", "no representative live-server performance benchmark"]
+  },
+  "ready_for_integrator_acceptance": false
+}
