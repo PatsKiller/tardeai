@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Hermes Cross-Source Synthesis — generate novel insight briefs (Phase 4).
 
-Collects signal bundles from 6+ sources, asks gemma3:12b to synthesize
-cross-source insights, stages them as research_type='emerging_theme_synthesis'.
+Collects signal bundles from 6+ sources, asks a governed cloud lane to synthesize
+cross-source insights, and stages them as research_type='emerging_theme_synthesis'.
 
 Safety:
   - dry-run by default, --apply to commit
@@ -13,7 +13,7 @@ Safety:
 Usage:
   python scripts/hermes_cross_source_synthesizer.py [--apply] [--dry-run]
 """
-import argparse, json, os, sys, time, urllib.request
+import argparse, json, os, sys, time
 from datetime import datetime, timezone, date
 from pathlib import Path
 from collections import Counter
@@ -23,9 +23,7 @@ sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 KILL_HERMES = PROJECT_ROOT / "data" / "runtime" / "HERMES_DISABLED"
 KILL_SYNTH = PROJECT_ROOT / "data" / "runtime" / "HERMES_SYNTHESIZER_DISABLED"
-OLLAMA_URL = "http://localhost:11434"
-SYNTH_MODEL = os.environ.get("HERMES_SYNTH_MODEL", "gemma3:12b")
-OLLAMA_TIMEOUT = 300  # 12b needs more time
+SYNTH_TIMEOUT = 300
 
 BUNDLE_HOURS = 168  # 7-day signal window
 MAX_BRIEFS = 5
@@ -148,8 +146,8 @@ def collect_signal_bundle(conn, *, hours: int = BUNDLE_HOURS) -> dict:
     return bundle
 
 
-def synthesize(bundle: dict, *, lanes=("local",)) -> list[dict]:
-    """Synthesize cross-source briefs using gemma3:12b.
+def synthesize(bundle: dict) -> list[dict]:
+    """Synthesize cross-source briefs using governed cloud lanes.
 
     Returns list of brief payloads ready for hermes_research_intelligence.
     """
@@ -180,21 +178,18 @@ Identify the top 3-5 emerging themes that span MULTIPLE signal sources. For each
 Output format: a JSON array of theme objects. Respond ONLY with valid JSON (no markdown preamble)."""
 
     try:
-        payload_data = json.dumps({
-            "model": SYNTH_MODEL,
-            "messages": [{"role": "user", "content": prompt}],
-            "stream": False,
-            "options": {"num_ctx": 8192, "num_predict": 3000, "temperature": 0.3},
-            "format": "json",
-        }).encode()
-        req = urllib.request.Request(f"{OLLAMA_URL}/api/chat",
-                                     data=payload_data, headers={"Content-Type": "application/json"})
-        resp = urllib.request.urlopen(req, timeout=OLLAMA_TIMEOUT)
-        result = json.loads(resp.read())
-        content = result.get("message", {}).get("content", "[]")
+        from lib.governed_cloud_generation import generate_cloud
+        content, _lane = generate_cloud(
+            prompt, process_id="hermes_cross_source_synthesizer",
+            task_summary="Hermes cross-source synthesis", timeout=SYNTH_TIMEOUT,
+            max_tokens=3000, response_json=True,
+        )
         briefs = json.loads(content)
         if isinstance(briefs, dict):
             briefs = briefs.get("themes", briefs.get("briefs", [briefs]))
+        for brief in briefs:
+            if isinstance(brief, dict):
+                brief["_source_lane"] = _lane
         return briefs[:MAX_BRIEFS]
     except Exception as e:
         print(f"  Synthesis FAILED: {e}")
@@ -216,7 +211,7 @@ def persist_briefs(conn, briefs: list[dict], *, apply: bool = False) -> dict:
             "thesis_type": brief.get("thesis_type", "neutral"),
             "confidence_score": brief.get("confidence", 0.5),
             "freshness_date": date.today().isoformat(),
-            "model_used": SYNTH_MODEL,
+            "model_used": brief.get("_source_lane", "governed-cloud"),
             "status": "staged",
             "tags": brief.get("keywords", []) + ["emerging_theme_synthesis", "cross_source", "phase_4"],
             "evidence_json": {
@@ -272,7 +267,7 @@ def main():
         sys.exit(1)
 
     print(f"[{'APPLY' if apply else 'DRY-RUN'}] Cross-Source Synthesis")
-    print(f"  Model: {SYNTH_MODEL}, window: {BUNDLE_HOURS}h, timeout: {OLLAMA_TIMEOUT}s")
+    print(f"  Model: governed-cloud, window: {BUNDLE_HOURS}h, timeout: {SYNTH_TIMEOUT}s")
 
     conn = get_db()
     try:

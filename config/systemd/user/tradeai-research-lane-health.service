@@ -1,0 +1,11 @@
+[Unit]
+Description=Trade AI research lane RAW-store health alarm (READ_ONLY_ADVISORY)
+After=network.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT
+Environment=PYTHONPATH=/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT:/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/scripts
+EnvironmentFile=-/run/user/%U/tradeai/env
+ExecStart=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/research_lane_health.py --alert
+Nice=10

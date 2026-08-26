@@ -919,7 +919,14 @@ def gate_and_generate(
         proc_out = cfg.get("max_output_tokens")
         proc_in = cfg.get("max_input_tokens")
         req_out = int(max_tokens or (proc_out or 2048))
-        if proc_out is not None:
+        # Sandbox-only: allow a one-shot ceiling above the process cap.
+        # Cron never sets HERMES_SANDBOX_OUTPUT_CEILING. Production stays min(req, proc).
+        sandbox_ceil = os.environ.get("HERMES_SANDBOX_OUTPUT_CEILING", "").strip().lower() in {
+            "1", "true", "yes", "on",
+        }
+        if sandbox_ceil:
+            effective_out = req_out
+        elif proc_out is not None:
             effective_out = min(req_out, int(proc_out))
         else:
             effective_out = req_out
@@ -957,6 +964,12 @@ def gate_and_generate(
                 "lane": lane, "policy": policy,
                 "effective_max_tokens": effective_out,
                 "effective_max_input_tokens": effective_in,
+                **{
+                    key: meta[key] for key in (
+                        "research_run_id", "research_call_id", "research_producer", "research_family",
+                        "symbol", "trigger",
+                    ) if meta.get(key)
+                },
             },
         )
     else:
@@ -978,13 +991,43 @@ def gate_and_generate(
     # Billable only if DeepSeek client reports request_sent / possibly_billable
     billable_attempt = False
     try:
-        result = llm_lane.generate(
-            prompt, lane=lane, timeout=timeout, model=model, _skip_consumption=True,
-            operator_confirmed=operator_confirmed or bool(meta.get("operator_cost_confirmed")),
-            response_json=response_json or bool(output_schema_id),
-            metadata=meta, return_provenance=True,
-            max_tokens=effective_out,
-        )
+        try:
+            from lib.provider_cost.context import cost_attribution
+        except Exception:  # pragma: no cover
+            from contextlib import contextmanager as _cm
+
+            @_cm
+            def cost_attribution(**_kw):
+                yield {}
+        with cost_attribution(
+            source_service="llm_consumption.gate_and_generate",
+            source_process=process_id,
+            source_lane=lane,
+            reservation_id=str(reservation_id) if reservation_id is not None else None,
+        ):
+            if meta.get("research_run_id") and meta.get("research_call_id"):
+                try:
+                    from lib.research_call_accounting import append_event as _append_research_call_event
+                    _append_research_call_event(
+                        "ATTEMPTED",
+                        producer=str(meta.get("research_producer") or process_id),
+                        family=str(meta.get("research_family") or "REGISTERED"),
+                        run_id=str(meta["research_run_id"]),
+                        call_id=str(meta["research_call_id"]),
+                        symbol=meta.get("symbol"), lane=lane,
+                        trigger=str(meta.get("trigger") or "governed_cloud"),
+                        reason="llm_lane.generate", attempt_no=1, apply=True,
+                    )
+                except Exception:
+                    pass
+            result = llm_lane.generate(
+                prompt, lane=lane, timeout=timeout, model=model, _skip_consumption=True,
+                operator_confirmed=operator_confirmed or bool(meta.get("operator_cost_confirmed")),
+                response_json=response_json or bool(output_schema_id),
+                metadata=meta, return_provenance=True,
+                max_tokens=effective_out,
+                process_id=process_id,
+            )
         if isinstance(result, tuple):
             text, prov = result[0], (result[1] or {})
         else:

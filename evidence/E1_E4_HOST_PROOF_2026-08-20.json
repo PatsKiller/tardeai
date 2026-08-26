@@ -1,0 +1,80 @@
+{
+  "CURRENT": "c5a6de188dfaabf856eeba6aa2cc18ba0699c095",
+  "E1": {
+    "symbol": "SCHD",
+    "plan_id": "plan_43043a4ccdbe",
+    "research_id": "res_da001ade8459",
+    "result_id": "rr_a5131352ef0f",
+    "lineage_id": "lin_4c9d72b25d58f05a6170",
+    "status": "ADVISORY_USED"
+  },
+  "E2": {
+    "chat_id": "6993102664",
+    "probe": {
+      "ok": false,
+      "message_id": null,
+      "raw": {
+        "ok": false,
+        "status_code": 400,
+        "response": {
+          "ok": false,
+          "error_code": 400,
+          "description": "Bad Request: chat not found"
+        }
+      }
+    },
+    "maybe_notify": true,
+    "fingerprint": "0a9546edf706438d",
+    "plan_id": "plan_43043a4ccdbe",
+    "lineage_id": "lin_4c9d72b25d58f05a6170",
+    "research_id": "res_da001ade8459",
+    "result_id": "rr_a5131352ef0f"
+  },
+  "E3": {
+    "timer_enabled": true,
+    "next": "2026-08-20 17:45:00 EDT",
+    "oneshot": "SUCCESS"
+  },
+  "E4": {
+    "ok": true,
+    "schema": "CIOOutcomeMaturity@v1",
+    "matured_count": 2,
+    "total_recorded": 3,
+    "items": [
+      {
+        "authority": "READ_ONLY_ADVISORY",
+        "disposition": "ACKNOWLEDGED",
+        "event_id": "2d16aef8-7973-42eb-b57d-5c552ff37556",
+        "lineage_id": null,
+        "matured": true,
+        "matured_at": "2026-08-20T18:30:54.590419+00:00",
+        "rating": 3
+      },
+      {
+        "authority": "READ_ONLY_ADVISORY",
+        "disposition": "DONE",
+        "event_id": "3fc87660-fc53-4925-b2ad-5641d101e90f",
+        "lineage_id": "lin_4c9d72b25d58f05a6170",
+        "matured": true,
+        "matured_at": "2026-08-20T18:30:54.585053+00:00",
+        "rating": 4
+      },
+      {
+        "authority": "READ_ONLY_ADVISORY",
+        "disposition": "DEFERRED",
+        "event_id": "031134bf-fce2-4a13-b5ac-cef961a03f61",
+        "lineage_id": null,
+        "matured": false,
+        "matured_at": null,
+        "rating": null
+      }
+    ],
+    "eligible_runs": 0,
+    "memory_behavior_influence": 0,
+    "authority": "READ_ONLY_ADVISORY",
+    "updated_at": "2026-08-20T18:30:54.595765+00:00",
+    "note": "MBI remains 0 until eligible_runs proven non-zero under gate."
+  },
+  "authority": "READ_ONLY_ADVISORY",
+  "MBI": 0
+}

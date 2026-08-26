@@ -1,0 +1,48 @@
+{
+  "schema": "NaturalCIOPersistentCognitionAcceptance@v1",
+  "as_of": "2026-08-25T03:28:30+00:00",
+  "CURRENT": "1afb1479-main-exact-phase2-20260824-230917",
+  "source_sha": "1afb1479676aeb67b64791e58e946753a2854ddf",
+  "protected_main": "f127cbd708dd0b5ce759635548290ed3fe1c1d3a",
+  "scheduler": "tradeai-cio-material-scan.timer",
+  "manual_trigger": false,
+  "authority": "READ_ONLY_ADVISORY",
+  "memory_behavior_influence": 0,
+  "ticks": [
+    {
+      "LastTrigger": "2026-08-24 23:17:33 EDT",
+      "finished": "2026-08-24 23:17:37 EDT",
+      "pid": null,
+      "exit": 0,
+      "wake_id": "wake_scan_2026-08-25T03:17:36.921541+00:00"
+    },
+    {
+      "LastTrigger": "2026-08-24 23:27:47 EDT",
+      "finished": "2026-08-24 23:27:50 EDT",
+      "pid": 1619702,
+      "exit": 0,
+      "wake_id": "wake_scan_2026-08-25T03:27:50.096917+00:00",
+      "decision_id": "dec_1365848446e78aee"
+    }
+  ],
+  "SCHD": {
+    "security_guid": "a29dd6b6-9f88-5f8c-a372-f88786851a76",
+    "ticker_research_state_version": "2026-08-25T02:26:31+00:00",
+    "curation_id": "a29dd6b6-9f88-5f8c-a372-f88786851a76:v0:BASELINE",
+    "curation_version": 0,
+    "curation_kind": "BASELINE_PROJECTION",
+    "symbol_thesis_version": "symbol_schd@v9",
+    "research_gap_ids": [],
+    "cognition_refs": "CIOCognitionRefs@v1",
+    "context_receipt": "ContextUseReceipt@v1",
+    "portfolio_delta": "NO_PORTFOLIO_CHANGE",
+    "question": "WHAT_MATERIAL_THING_CHANGED_FOR_THE_PORTFOLIO",
+    "notification_sent": false,
+    "financial_action": false,
+    "paid_dispatch": 0,
+    "current_action": "DATA_CONFLICT"
+  },
+  "CIO_PERSISTENT_COGNITION_L5": true,
+  "M4_NATURAL_SAME_BRAIN_PROVEN": true,
+  "screenshot_0b7bc9eb": "STALE_NOT_LIVE"
+}

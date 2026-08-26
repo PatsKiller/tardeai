@@ -25,6 +25,27 @@ def _log_incident(kind, etype, retries, outcome):
                                 "error_type": etype, "retries": retries, "outcome": outcome}) + "\n")
     except Exception:
         pass
+    # Correlate transport retries with the producer/run when called through the
+    # governed research choke point. Legacy callers without identities retain
+    # the existing retry incident file and are not assigned fake provenance.
+    try:
+        run_id = os.getenv("TRADEAI_LLM_RUN_ID", "").strip()
+        call_id = os.getenv("TRADEAI_LLM_CALL_ID", "").strip()
+        producer = os.getenv("TRADEAI_LLM_PRODUCER", "").strip()
+        if run_id and call_id and producer:
+            from lib.research_call_accounting import append_event
+            append_event(
+                "RETRY", producer=producer,
+                family=os.getenv("TRADEAI_LLM_FAMILY", "REGISTERED"),
+                run_id=run_id, call_id=call_id,
+                symbol=os.getenv("TRADEAI_LLM_SYMBOL") or None,
+                lane=os.getenv("TRADEAI_LLM_LANE", "unknown"),
+                trigger=os.getenv("TRADEAI_LLM_TRIGGER", "unknown"),
+                reason=f"{kind}:{etype}:{outcome}", attempt_no=max(2, int(retries) + 1),
+                apply=True, metadata={"retry_count": int(retries), "outcome": outcome},
+            )
+    except Exception:
+        pass
 
 
 def urlopen_retry(req, timeout=120, attempts=3, base=1.0):

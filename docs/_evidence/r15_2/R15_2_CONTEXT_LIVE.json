@@ -1,0 +1,28 @@
+{
+  "schema": "R15_2ContextLive@v1",
+  "evidence_class": "CURRENT_SMOKE",
+  "source_commit": "d72ecdd13d4fad1e7551597634f326aeb6a03353",
+  "sections": {
+    "OFFICE_TRUTH": "OK",
+    "PORTFOLIO_STATE": "OK",
+    "OPERATOR_POLICY": "EMPTY",
+    "PORTFOLIO_THESIS": "UNAVAILABLE",
+    "MARKET_CONTEXT": "UNAVAILABLE",
+    "SEASONALITY": "UNAVAILABLE",
+    "TICKER_RESEARCH_STATE": "OK",
+    "BASELINE_OR_CURRENT_CURATION": "OK",
+    "SYMBOL_THESIS": "OK",
+    "RESEARCH_GAPS": "OK",
+    "CONTRADICTIONS": "OK",
+    "EVENTS_CATALYSTS": "OK",
+    "RELEVANT_FEEDBACK": "OK",
+    "MATURE_OUTCOMES": "OK",
+    "LESSONS": "OK",
+    "MEMORY_RETRIEVAL_UNITS": "OK"
+  },
+  "sections_total": 16,
+  "sections_live": 12,
+  "live_pct": 75.0,
+  "never_silently_omitted": true,
+  "same_brain": {"consistent": true, "telegram_fork": false, "divergences": []}
+}

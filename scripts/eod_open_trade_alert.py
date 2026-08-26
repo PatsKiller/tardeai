@@ -19,6 +19,27 @@ from db_adapter import get_connection
 
 log = logging.getLogger(__name__)
 
+
+def _fmt_signed_money(n: float) -> str:
+    """Always show the sign. Never abs() a loss and then omit the minus."""
+    n = float(n or 0)
+    sign = "+" if n >= 0 else "-"
+    return f"{sign}${abs(n):.2f}"
+
+
+def _fmt_signed_pct(n: float) -> str:
+    n = float(n or 0)
+    return f"{n:+.1f}%"
+
+
+def _fmt_signed_r(n: float) -> str:
+    n = float(n or 0)
+    return f"{n:+.2f}R"
+
+
+def _fmt_abs(n: float) -> str:
+    return f"{abs(float(n or 0)):.0f}"
+
 BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN', '')
 CHAT_IDS = [c.strip() for c in os.environ.get('TELEGRAM_CHAT_ID', '').split(',') if c.strip()]
 
@@ -68,8 +89,6 @@ def format_message(rows, trail_map) -> str:
         return (f"EOD TRADE REPORT - {today} {now}\n\n"
                 "No open paper trades at market close.")
 
-    def sign(n): return '+' if n >= 0 else ''
-
     total_pnl = 0
     lines = [
         f"EOD OPEN TRADE REPORT - {today}",
@@ -80,21 +99,27 @@ def format_message(rows, trail_map) -> str:
     for t in rows:
         entry = float(t['entry_price'] or 0)
         cur = float(t['current_price'] or entry)
-        stop = float(t['stop_loss'] or 0)
-        tgt = float(t['target_1'] or 0)
+        stop_raw = t.get('stop_loss')
+        tgt_raw = t.get('target_1')
+        stop = float(stop_raw or 0)
+        tgt = float(tgt_raw or 0)
         shares = int(t['shares'] or 0)
         pnl = float(t['unrealized_pnl'] or 0)
         total_pnl += pnl
         pnl_pct = round((cur - entry) / entry * 100, 2) if entry else 0
-        risk = abs(entry - stop) if entry and stop else 1
+        has_stop = stop_raw not in (None, "", 0, 0.0)
+        has_tgt = tgt_raw not in (None, "", 0, 0.0)
+        risk = abs(entry - stop) if entry and has_stop else 1
         r_m = round((cur - entry) / risk, 2) if risk else 0
-        dist_stop = round((stop - cur) / cur * 100, 1) if cur else 0
-        dist_stop_usd = round((stop - cur) * shares, 2)
-        dist_tgt = round((tgt - cur) / cur * 100, 1) if cur and tgt else 0
-        dist_tgt_usd = round((tgt - cur) * shares, 2) if tgt else 0
+        dist_stop = round((stop - cur) / cur * 100, 1) if cur and has_stop else 0
+        dist_stop_usd = round((stop - cur) * shares, 2) if has_stop else 0
+        dist_tgt = round((tgt - cur) / cur * 100, 1) if cur and has_tgt else 0
+        dist_tgt_usd = round((tgt - cur) * shares, 2) if has_tgt else 0
 
         strat = (t.get('strategy_id') or 'unknown').replace('_', ' ')
-        arrow = '+' if pnl >= 0 else ''
+        optionish = bool(t.get('asset_type') == 'option' or t.get('option_type')
+                         or str(t.get('symbol') or '').rstrip().endswith(('C', 'P'))
+                         and any(ch.isdigit() for ch in str(t.get('symbol') or '')))
 
         tr = trail_map.get(t.get('strategy_id'), {})
         rec = tr.get('rec', 'keep_fixed') or 'keep_fixed'
@@ -103,18 +128,31 @@ def format_message(rows, trail_map) -> str:
         else:
             trail_msg = f"Keep fixed stop (avg max potential +{float(tr.get('max_pot', 0)):.1f}%)"
 
+        kind = "option" if optionish else f"{shares}sh"
         lines += [
-            f"{'UP' if pnl >= 0 else 'DOWN'} {t['symbol']} - {strat} - {shares}sh",
+            f"{'UP' if pnl >= 0 else 'DOWN'} {t['symbol']} - {strat} - {kind}",
             f"  Entry: ${entry:.2f} -> Current: ${cur:.3f}",
-            f"  P&L: {arrow}${abs(pnl):.2f} ({sign(pnl_pct)}{abs(pnl_pct):.1f}%) | R: {sign(r_m)}{abs(r_m):.2f}R",
-            f"  Stop: ${stop:.2f} ({sign(dist_stop)}{abs(dist_stop):.1f}%) max loss: ${abs(dist_stop_usd):.0f}",
-            f"  Target: ${tgt:.2f} ({sign(dist_tgt)}{abs(dist_tgt):.1f}%) if hit: +${abs(dist_tgt_usd):.0f}",
+            f"  P&L: {_fmt_signed_money(pnl)} ({_fmt_signed_pct(pnl_pct)}) | R: {_fmt_signed_r(r_m)}",
+        ]
+        if has_stop:
+            lines.append(
+                f"  Stop: ${stop:.2f} ({_fmt_signed_pct(dist_stop)}) max loss: ${_fmt_abs(dist_stop_usd)}"
+            )
+        else:
+            lines.append("  Stop: not set")
+        if has_tgt:
+            lines.append(
+                f"  Target: ${tgt:.2f} ({_fmt_signed_pct(dist_tgt)}) if hit: {_fmt_signed_money(dist_tgt_usd)}"
+            )
+        else:
+            lines.append("  Target: not set")
+        lines += [
             f"  Trail: {trail_msg}",
             "",
         ]
 
     if len(rows) > 1:
-        lines.append(f"Total unrealized P&L: {sign(total_pnl)}${abs(total_pnl):.2f}")
+        lines.append(f"Total unrealized P&L: {_fmt_signed_money(total_pnl)}")
         lines.append("")
 
     lines.append("Alpaca paper mode | Simulated positions")

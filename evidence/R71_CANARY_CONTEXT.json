@@ -1,0 +1,87 @@
+{
+  "dependency_sha": "e683e90f9a24b9cd56399054da33cc6c3b4ba8bb",
+  "canaries": {
+    "SCHG": {
+      "memberships": [
+        "HELD",
+        "REENTRY",
+        "WATCHLIST"
+      ],
+      "role": "GROWTH",
+      "thesis_state": "RESEARCH_REQUIRED",
+      "thesis_evidence_state": "OK",
+      "origin_system": "agent_discovery",
+      "materiality": "T0_CURRENT_HOLDING",
+      "expensive": true,
+      "rag_sufficiency": false,
+      "acq": "ACQUISITION_PLANNED",
+      "hermes_gate": "BLOCKED_PENDING_ACQUISITION_AND_CURATION",
+      "question": "Is large-cap growth leadership still supported under current rates/breadth?",
+      "distinctions": {
+        "watchlist_answers": "WHAT_DESERVES_ATTENTION",
+        "thesis_answers": "WHAT_DO_WE_BELIEVE_AND_WHY",
+        "cio_answers": "WHAT_SHOULD_WE_DO",
+        "membership_is_not_evidence": true,
+        "social_score_is_derived_only": true,
+        "auto_apply_is_not_research_confidence": true,
+        "bootstrap_floor_0_65_is_not_measured_alpha": true
+      }
+    },
+    "CSCO": {
+      "memberships": [
+        "REENTRY",
+        "WATCHLIST",
+        "OPPORTUNITY"
+      ],
+      "role": "UNKNOWN",
+      "thesis_state": "RESEARCH_REQUIRED",
+      "thesis_evidence_state": "OK",
+      "origin_system": "operator",
+      "materiality": "T1_REENTRY_NEAR",
+      "expensive": true,
+      "rag_sufficiency": false,
+      "acq": "ACQUISITION_PLANNED",
+      "hermes_gate": "BLOCKED_PENDING_ACQUISITION_AND_CURATION",
+      "question": "Has current fundamental/catalyst evidence improved enough to justify re-entry?",
+      "distinctions": {
+        "watchlist_answers": "WHAT_DESERVES_ATTENTION",
+        "thesis_answers": "WHAT_DO_WE_BELIEVE_AND_WHY",
+        "cio_answers": "WHAT_SHOULD_WE_DO",
+        "membership_is_not_evidence": true,
+        "social_score_is_derived_only": true,
+        "auto_apply_is_not_research_confidence": true,
+        "bootstrap_floor_0_65_is_not_measured_alpha": true
+      }
+    },
+    "ANET": {
+      "memberships": [
+        "REENTRY",
+        "WATCHLIST"
+      ],
+      "role": "UNKNOWN",
+      "thesis_state": "RESEARCH_REQUIRED",
+      "thesis_evidence_state": "OK",
+      "origin_system": "hermes",
+      "materiality": "T2_MATERIAL_WATCH",
+      "expensive": true,
+      "rag_sufficiency": true,
+      "acq": "SKIP_ACQUISITION",
+      "hermes_gate": "READY_FOR_SYNTHESIS",
+      "question": "Does current growth/network demand evidence offset valuation/extension risk?",
+      "distinctions": {
+        "watchlist_answers": "WHAT_DESERVES_ATTENTION",
+        "thesis_answers": "WHAT_DO_WE_BELIEVE_AND_WHY",
+        "cio_answers": "WHAT_SHOULD_WE_DO",
+        "membership_is_not_evidence": true,
+        "social_score_is_derived_only": true,
+        "auto_apply_is_not_research_confidence": true,
+        "bootstrap_floor_0_65_is_not_measured_alpha": true
+      }
+    }
+  },
+  "discovery": {
+    "new_candidates": 30,
+    "material_for_expensive_thesis": 0,
+    "ignored_low_priority": 30
+  }
+}

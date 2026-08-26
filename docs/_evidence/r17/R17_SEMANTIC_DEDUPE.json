@@ -1,0 +1,15 @@
+{
+  "schema": "R17SemanticDedupe@v1",
+  "key": [
+    "subject_guid",
+    "recommendation",
+    "material_generation",
+    "thesis_version",
+    "curation_version",
+    "horizon"
+  ],
+  "not_used": [
+    "technical_decision_id"
+  ],
+  "unit_proven": true
+}

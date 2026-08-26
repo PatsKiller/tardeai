@@ -2,7 +2,7 @@
 """holdings_llm_refresh.py — Dedicated LLM health check for portfolio holdings.
 
 Enriches each holding with latest news, social, technical, and agent data,
-then runs qwen3:14b for a consolidated health assessment.
+then uses a governed cloud lane for a consolidated health assessment.
 
 Usage:
     .venv/bin/python3 scripts/holdings_llm_refresh.py --dry-run
@@ -31,6 +31,10 @@ if os.environ["DOTENV_LOADED"] == "0":
         os.environ["DOTENV_LOADED"] = "1"
     except Exception:
         pass
+
+# Schema JSON + G1–G10 preamble does not fit the default 300-token cap
+# (2026-08-21: 7/26 parse_error, gemma3:4b num_predict=300). Process-local only.
+os.environ.setdefault("LOCAL_LLM_NUM_PREDICT", "900")
 
 log = logging.getLogger("holdings_llm")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(message)s")
@@ -226,23 +230,23 @@ def refresh_one(conn, holding, dry_run=False):
     prompt = build_holdings_prompt(holding, news, social, agents, technical)
 
     try:
-        from local_llm import generate
-        raw = generate(prompt, timeout=300, fallback=True, fast=False)
+        from lib.governed_cloud_generation import generate_cloud
+        raw, lane = generate_cloud(
+            prompt, process_id="holdings_llm_refresh",
+            task_summary=f"holdings health {symbol}", timeout=300,
+        )
         if not raw:
             return {'symbol': symbol, 'status': 'empty'}
 
         result = parse_holdings_health_result(raw)
         if not result:
+            log.warning(f"  {symbol}: parse_error raw[:400]={raw[:400]!r}")
             return {'symbol': symbol, 'status': 'parse_error'}
         health = result.get('health', 'STABLE')
         action = result.get('action', 'HOLD')
         confidence = min(100, max(0, int(result.get('confidence', 50))))
 
-        try:
-            from local_llm import model_used
-            model = model_used or 'local_llm'
-        except Exception:
-            model = 'local_llm'
+        model = "grok-3-mini" if lane == "grok" else "gpt-5.4"
 
         # Validate
         if health not in ('STRONG', 'STABLE', 'WATCH', 'CONCERN', 'EXIT'):
@@ -270,8 +274,18 @@ def refresh_one(conn, holding, dry_run=False):
         conn.commit()
 
         log.info(f"  {symbol}: health={health} action={action} conf={confidence} model={model}")
-        return {'symbol': symbol, 'status': 'refreshed', 'health': health,
+        out = {'symbol': symbol, 'status': 'refreshed', 'health': health,
                 'action': action, 'confidence': confidence, 'model': model}
+        try:
+            from lib.agent_decision_payload import emit_holdings_health_payload
+            emit_holdings_health_payload(out)
+        except Exception:
+            try:
+                from scripts.lib.agent_decision_payload import emit_holdings_health_payload
+                emit_holdings_health_payload(out)
+            except Exception:
+                pass
+        return out
 
     except Exception as e:
         log.warning(f"  {symbol}: refresh failed — {e}")
@@ -300,18 +314,13 @@ def main():
             conn, holdings, limit=args.limit, symbol=args.symbol)
         log.info(f"{len(candidates)} need LLM refresh")
 
-        if candidates and args.run:
-            from local_llm import warmup_ollama
-            log.info("Warming up Ollama...")
-            warmup_ollama()
-
         results = []
         for h in candidates:
             r = refresh_one(conn, h, dry_run=args.dry_run)
             results.append(r)
 
         refreshed = sum(1 for r in results if r.get('status') == 'refreshed')
-        errors = sum(1 for r in results if r.get('status') == 'error')
+        errors = sum(1 for r in results if r.get('status') in ('error', 'parse_error', 'empty'))
 
         print(f"\nHoldings LLM Refresh")
         print(f"{'=' * 40}")

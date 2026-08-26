@@ -18,18 +18,56 @@ from datetime import datetime, timezone, date
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+if str(PROJECT_ROOT / "scripts") not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+if str(PROJECT_ROOT / "scripts" / "lib") not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
 LOCKFILE = Path("/tmp/hermes_autonomous_loop.lock")
 KILL_FILE = PROJECT_ROOT / "data" / "runtime" / "HERMES_DISABLED"
 MAX_RUNTIME = 600  # seconds
 DAILY_ROW_CAP = 10
 DAILY_MODEL_CAP = 15
-# Default gemma3:12b — gemma3:4b is fast but routinely fails the summary/evidence quality gate
-# (MISSING summary, evidence_json < 2 keys). Override: HERMES_LOOP_MODEL=gemma3:4b for speed tests.
-LOOP_MODEL = os.environ.get("HERMES_LOOP_MODEL", "gemma3:12b")
-# Host 2026-07-26: gemma3:12b thesis-challenge ~198s warm; 180s was too tight. Allow 300s default.
-OLLAMA_TIMEOUT = int(os.environ.get("HERMES_LOOP_OLLAMA_TIMEOUT", "300"))
+CLOUD_TIMEOUT = int(os.environ.get("HERMES_LOOP_CLOUD_TIMEOUT", "90"))
+LOOP_MODEL = "deepseek-v4-flash"
 
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+
+
+def _cio_wake_after_flash(symbol, row_id, output=None):
+    """Fail-soft: persist a new CIO product after Flash commit. Never calls a paid LLM."""
+    try:
+        _cur = Path.home() / "trade-ai-releases" / "portfolio-server" / "CURRENT"
+        if _cur.is_dir() and str(_cur) not in sys.path:
+            sys.path.insert(0, str(_cur))
+        from cio_product_reassessment import notify_from_flash_row
+    except Exception:
+        try:
+            from scripts.lib.cio_product_reassessment import notify_from_flash_row
+        except Exception:
+            return
+    try:
+        pack = output if isinstance(output, dict) else {}
+        notify_from_flash_row(
+            symbol=str(symbol or pack.get("symbol") or ""),
+            row_id=row_id,
+            summary=str(pack.get("summary") or "")[:240],
+            model=str(pack.get("model_used") or ""),
+            research_type=str(pack.get("research_type") or "ticker_thesis_challenge"),
+        )
+    except Exception:
+        return
+
+
+def _llm_json(prompt: str) -> tuple[dict, dict]:
+    """Use the governed cloud bridge; provider failure remains a hard failure."""
+    from hermes_llm_failover import chat_json
+    pack = chat_json(prompt, cloud_timeout_s=float(CLOUD_TIMEOUT))
+    parsed = json.loads(pack["content"])
+    if not isinstance(parsed, dict):
+        raise ValueError("llm_json_root_not_object")
+    return parsed, pack
 
 
 def check_kill_switch():
@@ -253,13 +291,26 @@ def run_ticker_challenger(args):
     run_id = f"auto_ticker_challenger_{datetime.now().strftime('%Y%m%d_%H%M')}"
     print(f"Run ID: {run_id}")
     print(f"Targets: {[t['symbol'] for t in targets]}")
-    print(f"Ollama timeout: {OLLAMA_TIMEOUT}s · model: {LOOP_MODEL}")
+    print(f"Governed cloud timeout: {CLOUD_TIMEOUT}s · provider: bridge_flash")
 
     results = []
     outdir = PROJECT_ROOT / "docs" / "hermes" / "phase3b_dryrun"
     outdir.mkdir(parents=True, exist_ok=True)
+    run_started = time.time()
+    # Leave 20s for process teardown so systemd TimeoutStartSec is not the failure mode.
+    budget_s = max(60, int(os.environ.get("HERMES_LOOP_BUDGET_SEC", str(MAX_RUNTIME))) - 20)
 
     for i, target in enumerate(targets):
+        remaining = budget_s - (time.time() - run_started)
+        if remaining < min(float(CLOUD_TIMEOUT), 90.0):
+            left = [t["symbol"] for t in targets[i:]]
+            print(f"    BUDGET: skip remaining {left} (remain={remaining:.0f}s < cloud_timeout)")
+            for t in targets[i:]:
+                results.append({
+                    "symbol": t["symbol"], "status": "deferred_budget",
+                    "error": f"unit_budget_remain={remaining:.0f}s",
+                })
+            break
         sym = target["symbol"]
         print(f"\n  [{i+1}/{len(targets)}] {sym} ({target.get('src','target')})")
 
@@ -283,19 +334,7 @@ def run_ticker_challenger(args):
             )
 
             try:
-                payload = json.dumps({
-                    "model": LOOP_MODEL,
-                    "messages": [{"role": "user", "content": prompt}],
-                    "stream": False,
-                    "options": {"num_ctx": 8192, "num_predict": 2000, "temperature": 0.3},
-                    "format": "json"
-                }).encode()
-                req = urllib.request.Request("http://localhost:11434/api/chat",
-                                             data=payload, headers={"Content-Type": "application/json"})
-                resp = urllib.request.urlopen(req, timeout=OLLAMA_TIMEOUT)
-                result = json.loads(resp.read())
-                content = result.get("message", {}).get("content", "")
-                output = json.loads(content)
+                output, llm_meta = _llm_json(prompt)
             except Exception as e:
                 print(f"    FAILED: {e}")
                 results.append({"symbol": sym, "status": "failed", "error": str(e)[:200]})
@@ -305,13 +344,18 @@ def run_ticker_challenger(args):
                     pass
                 conn = None
                 continue
+            if llm_meta.get("failover"):
+                print(f"    FAILOVER {llm_meta.get('model')} ({llm_meta.get('reason')})")
 
             output["hermes_agent_name"] = "ticker_research_agent"
             output["research_type"] = "ticker_thesis_challenge"
             output.setdefault("topic", f"{sym} autonomous thesis challenge — {target.get('trade_count', 0)} trades")
             output.setdefault("confidence_score", 0.5)
             output.setdefault("freshness_date", date.today().isoformat())
-            output.setdefault("model_used", LOOP_MODEL)
+            output["model_used"] = llm_meta.get("model") or LOOP_MODEL
+            output["llm_provider"] = llm_meta.get("provider")
+            if llm_meta.get("failover"):
+                output["llm_failover_reason"] = llm_meta.get("reason")
             output["symbol"] = sym
             if target.get("trade_instance_id") is not None:
                 output["trade_instance_id"] = target["trade_instance_id"]
@@ -333,8 +377,7 @@ def run_ticker_challenger(args):
             if not ok and any("MISSING required column: summary" in e for e in errors) and not output.get("summary"):
                 try:
                     from hermes_output_recovery import recover_summary_from_output
-                    rec = recover_summary_from_output(output if isinstance(output, dict) else content,
-                                                      symbol=sym)
+                    rec = recover_summary_from_output(output, symbol=sym)
                 except Exception as _re:
                     rec = {"recovered": False, "rejection_reason": f"recover error: {_re}"}
                 if rec.get("recovered"):
@@ -372,6 +415,7 @@ def run_ticker_challenger(args):
                     print(f"    COMMITTED: id={row[0]}")
                     results[-1]["row_id"] = row[0]
                     results[-1]["status"] = "applied"
+                    _cio_wake_after_flash(sym, row[0], output)
                 except Exception as e:
                     iconn.rollback()
                     print(f"    APPLY ERROR: {e}")
@@ -504,30 +548,21 @@ Respond ONLY with valid JSON (no markdown, no preamble)."""
     outdir.mkdir(parents=True, exist_ok=True)
 
     try:
-        payload_data = json.dumps({
-            "model": LOOP_MODEL,
-            "messages": [{"role": "user", "content": prompt}],
-            "stream": False,
-            "options": {"num_ctx": 8192, "num_predict": 2000, "temperature": 0.3},
-            "format": "json"
-        }).encode()
-        req = urllib.request.Request("http://localhost:11434/api/chat",
-                                     data=payload_data, headers={"Content-Type": "application/json"})
-        resp = urllib.request.urlopen(req, timeout=OLLAMA_TIMEOUT)
-        result = json.loads(resp.read())
-        content = result.get("message", {}).get("content", "")
-        output = json.loads(content)
+        output, llm_meta = _llm_json(prompt)
     except Exception as e:
-        print(f"  Ollama call failed: {e}")
+        print(f"  LLM call failed: {e}")
         cur.close(); conn.close()
         return [{"status": "failed", "error": str(e)[:200]}]
+    if llm_meta.get("failover"):
+        print(f"  FAILOVER {llm_meta.get('model')} ({llm_meta.get('reason')})")
 
     output["hermes_agent_name"] = "portfolio_reflection_agent"
     output["research_type"] = "portfolio_reflection"
     output.setdefault("topic", f"Portfolio Reflection — {month_label}")
     output.setdefault("confidence_score", 0.5)
     output.setdefault("freshness_date", date.today().isoformat())
-    output.setdefault("model_used", LOOP_MODEL)
+    output.setdefault("model_used", llm_meta.get("model") or LOOP_MODEL)
+    output["llm_provider"] = llm_meta.get("provider")
     output["status"] = "staged"
     # tags omitted — build_insert handles NULL/absent gracefully
 
@@ -585,6 +620,7 @@ Respond ONLY with valid JSON (no markdown, no preamble)."""
             print(f"    COMMITTED: id={row[0]}")
             results[-1]["row_id"] = row[0]
             results[-1]["status"] = "applied"
+            _cio_wake_after_flash(output.get("symbol"), row[0], output)
         except Exception as e:
             iconn.rollback()
             print(f"    APPLY ERROR: {e}")
@@ -725,30 +761,22 @@ Respond ONLY with valid JSON (no markdown, no preamble)."""
     outdir.mkdir(parents=True, exist_ok=True)
 
     try:
-        payload_data = json.dumps({
-            "model": LOOP_MODEL,
-            "messages": [{"role": "user", "content": prompt}],
-            "stream": False,
-            "options": {"num_ctx": 8192, "num_predict": 2000, "temperature": 0.3},
-            "format": "json"
-        }).encode()
-        req = urllib.request.Request("http://localhost:11434/api/chat",
-                                     data=payload_data, headers={"Content-Type": "application/json"})
-        resp = urllib.request.urlopen(req, timeout=OLLAMA_TIMEOUT)
-        result = json.loads(resp.read())
-        content = result.get("message", {}).get("content", "")
-        output = json.loads(content)
+        output, llm_meta = _llm_json(prompt)
     except Exception as e:
-        print(f"  Ollama call failed: {e}")
+        print(f"  LLM call failed: {e}")
         cur.close(); conn.close()
         return [{"status": "failed", "error": str(e)[:200]}]
+    if llm_meta.get("failover"):
+        print(f"  FAILOVER {llm_meta.get('model')} ({llm_meta.get('reason')})")
+    output["model_used"] = llm_meta.get("model") or LOOP_MODEL
+    output["llm_provider"] = llm_meta.get("provider")
 
     output["hermes_agent_name"] = "pipeline_quality_agent"
     output["research_type"] = "pipeline_quality"
     output.setdefault("topic", f"Pipeline Quality Assessment — {date_label}")
     output.setdefault("confidence_score", 0.5)
     output.setdefault("freshness_date", date.today().isoformat())
-    output.setdefault("model_used", LOOP_MODEL)
+    output.setdefault("model_used", llm_meta.get("model") or LOOP_MODEL)
     output["status"] = "staged"
     # tags omitted — build_insert handles NULL/absent gracefully
 
@@ -802,6 +830,7 @@ Respond ONLY with valid JSON (no markdown, no preamble)."""
             print(f"    COMMITTED: id={row[0]}")
             results[-1]["row_id"] = row[0]
             results[-1]["status"] = "applied"
+            _cio_wake_after_flash(output.get("symbol"), row[0], output)
         except Exception as e:
             iconn.rollback()
             print(f"    APPLY ERROR: {e}")
@@ -821,9 +850,35 @@ def main():
     parser.add_argument("--drain-closed-trades", action="store_true",
                         help="Manual DRAIN MODE: prioritize closed_trade_needing_reflection over held-position "
                              "monitoring for THIS RUN ONLY (off by default; normal cron priority unchanged).")
+    parser.add_argument(
+        "--allow-peak",
+        action="store_true",
+        help="allow DeepSeek Flash apply during official peak (01-04 and 06-10 UTC)",
+    )
     args = parser.parse_args()
 
     check_kill_switch()
+    try:
+        from hermes_llm_failover import (
+            allow_deepseek_peak,
+            deepseek_window_label,
+            is_deepseek_offpeak,
+            primary_provider,
+        )
+        if (
+            args.apply
+            and primary_provider() == "bridge_flash"
+            and not is_deepseek_offpeak()
+            and not (args.allow_peak or allow_deepseek_peak())
+        ):
+            print(
+                f"SKIPPED_DEEPSEEK_PEAK: window={deepseek_window_label()} "
+                "bulk Flash/Pro is 10:00-21:00 America/New_York; outside that is as-needed only. "
+                "Pass --allow-peak to override."
+            )
+            return
+    except Exception as exc:
+        print(f"off-peak gate unavailable ({exc}); continuing")
     lock_fd = acquire_lock()
     start = time.time()
 
@@ -841,9 +896,15 @@ def main():
             results = []
 
         elapsed = time.time() - start
+        ok_st = {"validated", "applied", "deferred_budget"}
         validated = sum(1 for r in results if r["status"] in ("validated", "applied"))
-        failed = sum(1 for r in results if r["status"] not in ("validated", "applied"))
-        print(f"\nDone in {elapsed:.1f}s: {validated} validated, {failed} failed/rejected")
+        deferred = sum(1 for r in results if r["status"] == "deferred_budget")
+        failed = sum(1 for r in results if r["status"] not in ok_st)
+        print(
+            f"\nDone in {elapsed:.1f}s: {validated} validated, "
+            f"{deferred} deferred_budget, {failed} failed/rejected"
+        )
+        # Unit budget skip is a legitimate stop, not a red unit.
         if results and validated == 0 and failed == len(results):
             sys.exit(1)
 

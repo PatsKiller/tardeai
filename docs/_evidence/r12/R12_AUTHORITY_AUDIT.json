@@ -1,0 +1,14 @@
+{
+  "schema": "R12AuthorityAudit@v1",
+  "READ_ONLY_ADVISORY": true,
+  "MEMORY_BEHAVIOR_INFLUENCE": 0,
+  "broker_authority_changed": false,
+  "risk_authority_changed": false,
+  "two_factor_authority_changed": false,
+  "production_sql_changed": false,
+  "pr505_merged": false,
+  "gpu_uninstalled": false,
+  "live_trading_changed": false,
+  "canary_enabled": false,
+  "status": "PASS"
+}

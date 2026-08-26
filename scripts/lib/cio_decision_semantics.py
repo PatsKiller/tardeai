@@ -1,0 +1,1035 @@
+"""cio_decision_semantics.py — Phase 3 decision hygiene + Phase 8 identity (READ_ONLY_ADVISORY).
+
+Canonical operator-facing decision semantics for Alex / Command Center / reports:
+
+  * One stance per symbol (no HOLD + "Advisory TRIM" contradiction)
+  * Aggregate split-account rows into one decision per symbol
+  * Reject pseudo-sectors (e.g. Iwm−Spy spread pairs) outside GICS
+  * Map internal enums to professional prose
+  * Require ticker identity proof before a symbol enters CIO output
+  * Stable decision_id so CIO NOW / report / Telegram share one identity
+
+Pure and deterministic. No broker / order / stop / 2FA / Telegram side effects.
+"""
+from __future__ import annotations
+
+import hashlib
+import json
+import re
+from typing import Any, Optional
+# ── Stance taxonomy (aligned with capital plan / opportunity queue) ──────────
+
+STANCE_EXIT = "EXIT"
+STANCE_TRIM = "TRIM"
+STANCE_RE_ENTER = "RE_ENTER"
+STANCE_ADD = "ADD"
+STANCE_HOLD = "HOLD"
+STANCE_REVIEW = "REVIEW"
+
+ACTIONABLE_STANCES = frozenset({
+    STANCE_EXIT, STANCE_TRIM, STANCE_RE_ENTER, STANCE_ADD,
+})
+
+# Higher = more decisive / overrides weaker desk noise.
+STANCE_PRECEDENCE: dict[str, int] = {
+    STANCE_EXIT: 50,
+    STANCE_TRIM: 40,
+    STANCE_RE_ENTER: 30,
+    STANCE_ADD: 20,
+    STANCE_REVIEW: 10,
+    STANCE_HOLD: 0,
+}
+
+# Canonical re-entry lifecycle. Desk readiness states are NOT re-entry authority.
+# Only an explicit RE_ENTER verdict — passing the governed-eligibility ladder —
+# may become STANCE_RE_ENTER on an operator surface.
+REENTRY_LIFECYCLE = (
+    "WATCH_REENTRY",
+    "DESK_READY_TO_REVIEW",
+    "NEAR_TRIGGER",
+    "GOVERNED_ELIGIBLE",
+    "RE_ENTER",
+)
+
+# Professional labels for operator surfaces (never leak SCREAMING_SNAKE enums).
+STANCE_PROSE: dict[str, str] = {
+    STANCE_EXIT: "Exit",
+    STANCE_TRIM: "Trim",
+    STANCE_RE_ENTER: "Re-enter",
+    STANCE_ADD: "Add",
+    STANCE_HOLD: "Hold",
+    STANCE_REVIEW: "Review",
+    "BUY": "Buy",
+    "SELL": "Sell",
+    "NO_ACTION": "No action",
+    "DEFER": "Defer",
+}
+
+RECOMMENDATION_PROSE: dict[str, str] = {
+    "NO_DEPLOYMENT": "No deployment",
+    "STAGED_DEPLOYMENT": "Staged deployment",
+    "RESEARCH_FIRST": "Research first",
+    "WATCH_READY": "Watch ready",
+    "NEEDS_RESEARCH": "Needs research",
+    "TOO_EXTENDED": "Too extended",
+    "UNKNOWN": "Unknown",
+    "LEADING": "Leading",
+    "IMPROVING": "Improving",
+    "WEAKENING": "Weakening",
+    "LAGGING": "Lagging",
+}
+
+# Canonical GICS set used by sector opportunity (import-safe duplicate for purity).
+CANONICAL_GICS = frozenset({
+    "Technology", "Financials", "Healthcare", "Energy", "Industrials",
+    "Consumer Discretionary", "Consumer Staples", "Utilities", "Materials",
+    "Real Estate", "Communications",
+})
+
+# Pseudo-sector patterns: relative-strength pairs, free-text spreads, non-GICS noise.
+_PSEUDO_SECTOR_RE = re.compile(
+    r"(?:"
+    r"\b(?:iwm|spy|qqq|dia|rut|vix)\b"  # index/ETF pair tokens
+    r"|[−\-–—/\\|]+"                   # dash/slash joiners in pair names
+    r")",
+    re.IGNORECASE,
+)
+
+# CUSIP-like / non-ticker identity (digits + alnum, length 8–9) needs a name proof.
+_CUSIP_LIKE_RE = re.compile(r"^[0-9]{3}[A-Z0-9]{5,6}$", re.IGNORECASE)
+
+# Tokens that are real tickers but easily confused with English — require name.
+_AMBIGUOUS_TICKERS = frozenset({
+    "YOU", "ALL", "NOW", "FOR", "ARE", "THE", "CAN", "OUT", "NEW", "ONE",
+    "TWO", "BIG", "LOW", "USA", "CEO", "CFO", "GDP", "AI", "IT", "ON", "BE",
+    "SO", "OR", "AN", "AT", "BY", "IF", "IN", "IS", "TO", "UP", "WE",
+})
+
+_NEUTRAL_WHY = "no new desk signal; hold"
+
+
+def make_decision_id(
+    symbol: Any,
+    stance_code: Any,
+    recommended_delta_usd: Any = 0.0,
+    why_now: Any = None,
+) -> str:
+    """Stable, content-addressed decision id shared by CC / report / Telegram.
+
+    Material fields only — not timestamps. Format: `dec_<16 hex>`.
+    """
+    body = {
+        "symbol": str(symbol or "").upper().strip(),
+        "stance": str(stance_code or "").upper().strip(),
+        "delta": round(float(recommended_delta_usd or 0.0), 2),
+        "why": str(why_now or "").strip()[:200],
+    }
+    raw = json.dumps(body, sort_keys=True, separators=(",", ":"))
+    return "dec_" + hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
+
+
+def decision_content_digest(
+    symbol: Any,
+    stance: Any,
+    delta: Any,
+    row: Optional[dict[str, Any]] = None,
+    extra: str = "",
+) -> str:
+    """32-hex sha256 of the capital-plan decision identity payload.
+
+    Recipe is the single source of truth (copied from the original
+    ``cio_capital_plan._decision_digest``). Do not invent a second hash.
+    """
+    pos = row if isinstance(row, dict) else {}
+    raw = json.dumps({
+        "symbol": symbol,
+        "stance": stance,
+        "delta": round(float(delta or 0), 2),
+        "mv": pos.get("market_value_usd") or pos.get("current_value_usd"),
+        "mark": pos.get("canonical_mark") or pos.get("current_price"),
+        "mark_as_of": pos.get("canonical_mark_as_of") or pos.get("source_as_of"),
+        "broker_mv": pos.get("broker_market_value"),
+        "extra": extra,
+    }, sort_keys=True, default=str)
+    return hashlib.sha256(raw.encode()).hexdigest()[:32]
+
+
+def canonical_decision_digests(
+    symbol: Any,
+    stance: Any,
+    delta: Any,
+    row: Optional[dict[str, Any]] = None,
+) -> dict[str, str]:
+    """Return ``{input, evidence}`` 32-hex digests for one decision row."""
+    pos = row if isinstance(row, dict) else {}
+    return {
+        "input": decision_content_digest(symbol, stance, delta, pos, extra=""),
+        "evidence": decision_content_digest(symbol, stance, delta, pos, extra="evidence"),
+    }
+
+
+def assert_digest_capable(row: Any) -> dict[str, Any]:
+    """FAIL if a new aggregated decision is missing either digest.
+
+    Used by tests (and any fail-closed caller). Does not invent digests.
+    """
+    if not isinstance(row, dict):
+        raise AssertionError("digest_capable_row_missing: row is not a dict")
+    inp = str(row.get("decision_input_digest") or "").strip()
+    ev = str(row.get("decision_evidence_digest") or "").strip()
+    if not inp or not ev:
+        raise AssertionError(
+            "digest_capable_row_missing_digests: "
+            f"symbol={row.get('symbol')!r} "
+            f"decision_input_digest={inp!r} "
+            f"decision_evidence_digest={ev!r}"
+        )
+    return row
+
+
+# Phase 7 — required fields shared by capital plan / CIO NOW / report / Telegram
+REQUIRED_DECISION_FIELDS = (
+    "decision_id",
+    "symbol",
+    "stance_code",
+    "recommended_delta_usd",
+    "why_now",
+    "current_value_usd",
+    "current_weight_pct",
+)
+
+OPTIONAL_SIZING_FIELDS = (
+    "sizing_method",
+    "sizing_objective",
+    "sizing_why_not_min",
+    "sizing_why_not_max",
+    "trim_to_clear_fire_usd",
+    "trim_to_policy_usd",
+    "fallback_candidate_only",
+    "candidates",
+    "sizing_quality",
+    "selected_candidate",
+    "selection_rationale",
+    "tranches",
+    "action_label",
+    "action_label_display",
+    "act_now",
+    "financial_truth_quality",
+    "freshness",
+)
+
+
+def decision_field_parity(
+    *surfaces: Optional[list[dict[str, Any]]],
+    require_sizing_on_actionable: bool = True,
+) -> dict[str, Any]:
+    """Phase 7: assert the same decision_id carries the same material fields.
+
+    Surfaces are lists of decision dicts (capital plan rows, CIO NOW cards,
+    report Part A decisions, Telegram prepare payloads). Returns a parity report
+    — never raises; consumers decide whether to hard-fail.
+    """
+    by_id: dict[str, list[dict[str, Any]]] = {}
+    for surface_idx, rows in enumerate(surfaces):
+        for r in rows or []:
+            if not isinstance(r, dict):
+                continue
+            did = str(r.get("decision_id") or "").strip()
+            if not did:
+                # Attempt reconstruct
+                did = make_decision_id(
+                    r.get("symbol"),
+                    r.get("stance_code") or r.get("cio_stance") or r.get("action"),
+                    r.get("recommended_delta_usd"),
+                    r.get("why_now"),
+                )
+            by_id.setdefault(did, []).append({"surface": surface_idx, "row": r})
+
+    missing_required: list[dict[str, Any]] = []
+    field_mismatches: list[dict[str, Any]] = []
+    missing_sizing: list[str] = []
+    for did, entries in by_id.items():
+        # Required presence on every surface entry
+        for e in entries:
+            row = e["row"]
+            miss = [f for f in REQUIRED_DECISION_FIELDS if row.get(f) is None and f != "why_now"]
+            # why_now may be empty string but key should exist ideally — allow missing with note
+            if miss:
+                missing_required.append({"decision_id": did, "surface": e["surface"], "missing": miss})
+        # Cross-surface material equality for delta + symbol + stance
+        if len(entries) < 2:
+            continue
+        base = entries[0]["row"]
+        for e in entries[1:]:
+            row = e["row"]
+            for fld in ("symbol", "recommended_delta_usd", "stance_code"):
+                bv = base.get(fld)
+                rv = row.get(fld)
+                if bv is None or rv is None:
+                    continue
+                if fld == "recommended_delta_usd":
+                    try:
+                        if abs(float(bv) - float(rv)) > 0.02:
+                            field_mismatches.append({
+                                "decision_id": did, "field": fld,
+                                "values": [bv, rv],
+                            })
+                    except (TypeError, ValueError):
+                        field_mismatches.append({
+                            "decision_id": did, "field": fld, "values": [bv, rv],
+                        })
+                elif str(bv).upper() != str(rv).upper():
+                    field_mismatches.append({
+                        "decision_id": did, "field": fld, "values": [bv, rv],
+                    })
+        # Sizing on actionable stances
+        if require_sizing_on_actionable:
+            for e in entries:
+                row = e["row"]
+                code = str(row.get("stance_code") or row.get("cio_stance") or "").upper()
+                if code in ACTIONABLE_STANCES and row.get("sizing_method") is None:
+                    missing_sizing.append(did)
+
+    ok = not missing_required and not field_mismatches
+    return {
+        "version": "decision_field_parity_1.0.0",
+        "ok": ok,
+        "decision_count": len(by_id),
+        "surfaces_checked": len(surfaces),
+        "missing_required": missing_required[:20],
+        "field_mismatches": field_mismatches[:20],
+        "missing_sizing_on_actionable": sorted(set(missing_sizing))[:20],
+        "required_fields": list(REQUIRED_DECISION_FIELDS),
+        "authority": "READ_ONLY_ADVISORY",
+    }
+
+
+def ensure_decision_fields(row: dict[str, Any]) -> dict[str, Any]:
+    """Fill stable identity fields so parity checks pass across surfaces."""
+    out = dict(row)
+    stance = out.get("stance_code") or out.get("cio_stance") or out.get("action")
+    out.setdefault("stance_code", str(stance or "HOLD").upper() if stance else "HOLD")
+    if out.get("decision_id") is None:
+        out["decision_id"] = make_decision_id(
+            out.get("symbol"),
+            out.get("stance_code"),
+            out.get("recommended_delta_usd"),
+            out.get("why_now"),
+        )
+    if out.get("stance") is None:
+        out["stance"] = professional_stance(out.get("stance_code"))
+    return out
+
+
+def capital_plan_surface_digest(plan: Optional[dict[str, Any]]) -> str:
+    """Digest of capital-plan dollars that must match across office home + report."""
+    p = plan or {}
+    src = p.get("capital_sources") or {}
+    key = {
+        "cash": round(float(p.get("cash_total_usd") or 0.0), 2),
+        "reserve": round(float(p.get("cash_reserved_usd") or 0.0), 2),
+        "investable": round(float(p.get("cash_investable_usd") or 0.0), 2),
+        "earmark": round(float(
+            p.get("cash_earmarked_redeploy_usd")
+            or src.get("earmarked_redeploy_usd")
+            or src.get("maturities_usd")
+            or 0.0
+        ), 2),
+        "raise": round(float(
+            p.get("net_recommended_raise_usd")
+            or src.get("total_prospective_raise_usd")
+            or src.get("total_raise_usd")
+            or 0.0
+        ), 2),
+        "deploy": round(float(p.get("net_recommended_deploy_usd") or 0.0), 2),
+        "post": round(float(p.get("post_plan_cash_usd") or 0.0), 2),
+        "v": str(p.get("plan_version") or p.get("digest") or "")[:32],
+    }
+    # Prefer engine digest when present (stronger consistency)
+    if p.get("digest"):
+        return str(p["digest"])
+    raw = json.dumps(key, sort_keys=True, separators=(",", ":"))
+    return "cp_" + hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
+
+
+def what_changes_the_call(stance_code: str, risk: Any = None, counter_thesis: Any = None) -> str:
+    """CIO-speak condition that would reverse the call (not a state-machine code)."""
+    stance = str(stance_code or "").upper()
+    risk_s = str(risk or "")
+    if "concentration" in risk_s.lower():
+        return "Single-name weight falls back under the concentration cap, or the desk thesis invalidates the trim."
+    if stance in ("TRIM", "EXIT"):
+        return "Thesis re-validates on multi-desk evidence, or risk/reward reopens above the policy hurdle."
+    if stance in ("ADD", "RE_ENTER", "BUY"):
+        return "Setup breaks (price/structure), evidence quality drops below the gate, or cash policy requires reserve."
+    if counter_thesis and "no Street" not in str(counter_thesis):
+        return f"Counter-thesis resolves: {str(counter_thesis)[:120]}"
+    return "Material new evidence arrives from multiple desks, or the cash/risk band forces a review."
+
+
+def operator_action_affordances() -> list[dict[str, str]]:
+    """Client-facing actions available on a CIO NOW card (no execution authority)."""
+    return [
+        {"code": "AGREE", "label": "Agree"},
+        {"code": "DISAGREE", "label": "Disagree"},
+        {"code": "DEFER", "label": "Defer"},
+        {"code": "NEED_DATA", "label": "Need data"},
+        {"code": "NO_LONGER_RELEVANT", "label": "No longer relevant"},
+    ]
+
+
+def professional_stance(stance: Any) -> str:
+    """Map internal stance/enum to professional Title Case prose."""
+    key = str(stance or "").strip().upper().replace("-", "_").replace(" ", "_")
+    if key in STANCE_PROSE:
+        return STANCE_PROSE[key]
+    if not key:
+        return "—"
+    return key.replace("_", " ").title()
+
+
+def professional_label(value: Any) -> str:
+    """Map internal recommendation/state enums to professional prose."""
+    key = str(value or "").strip().upper()
+    if not key:
+        return "—"
+    if key in RECOMMENDATION_PROSE:
+        return RECOMMENDATION_PROSE[key]
+    if key in STANCE_PROSE:
+        return STANCE_PROSE[key]
+    # Already human prose?
+    if " " in str(value) and str(value) == str(value).title():
+        return str(value)
+    return key.replace("_", " ").title()
+
+
+def infer_stance_from_text(text: Any) -> Optional[str]:
+    """Extract the strongest actionable stance keyword from free text / labels.
+
+    RE_ENTER is deliberately absent: free text saying "re-enter" is
+    non-authoritative. Only an explicit governed ``verdict="RE_ENTER"`` may
+    create STANCE_RE_ENTER (see stance_from_queue_item). This prevents a
+    "READY TO REVIEW" readiness item with a "Re-enter ADBE" label/note from
+    being promoted to a buy.
+    """
+    raw = str(text or "")
+    if not raw:
+        return None
+    upper = raw.upper()
+    # Order: most decisive first. EXIT before TRIM.
+    checks: list[tuple[str, str]] = [
+        ("EXIT", STANCE_EXIT),
+        ("SELL", STANCE_EXIT),
+        ("TRIM", STANCE_TRIM),
+        ("ADD", STANCE_ADD),
+        ("BUY", STANCE_ADD),
+        ("DEPLOY", STANCE_ADD),
+    ]
+    best: Optional[str] = None
+    best_rank = -1
+    for needle, stance in checks:
+        if needle in upper:
+            rank = STANCE_PRECEDENCE.get(stance, 0)
+            if rank > best_rank:
+                best, best_rank = stance, rank
+    return best
+
+
+def merge_stances(*stances: Optional[str]) -> str:
+    """Pick highest-precedence non-empty stance; default HOLD."""
+    best = STANCE_HOLD
+    best_rank = STANCE_PRECEDENCE[STANCE_HOLD]
+    for s in stances:
+        if not s:
+            continue
+        key = str(s).strip().upper().replace("-", "_")
+        if key == "REENTER":
+            key = STANCE_RE_ENTER
+        if key == "SELL":
+            key = STANCE_EXIT
+        if key == "BUY":
+            key = STANCE_ADD
+        rank = STANCE_PRECEDENCE.get(key, -1)
+        if rank > best_rank:
+            best, best_rank = key, rank
+    return best
+
+
+# ── Canonical current-action semantics (single source of truth) ─────────────
+# Shared by Command Center (urgency/ranking) and Alex Telegram (MY CALL), so a
+# decision can never render ACT NOW on one surface and WAIT on another.
+
+BLOCKING_ACTIONABILITY = frozenset({
+    "DATA_CONFLICT",
+    "STALE_REFRESH_REQUIRED",
+    "REVALIDATE",
+    "STALE",
+    "EXPIRED",
+})
+
+
+def freshness_flag(decision: Any) -> str:
+    """Upper-case freshness state from a plain string or {state,label,status} dict."""
+    if not isinstance(decision, dict):
+        return ""
+    f = decision.get("freshness")
+    if isinstance(f, dict):
+        return str(f.get("state") or f.get("label") or f.get("status") or "").upper()
+    return str(f or "").upper()
+
+
+def actionability_blocking_state(decision: Any) -> Optional[str]:
+    """The blocking state that overrides ACT_NOW, or None when unblocked.
+
+    Honors every canonical representation of the same state — ``action_label``,
+    ``actionability``, and ``freshness`` — so the result is
+    representation-independent. Exact membership only (no substring guesses):
+
+      DATA_CONFLICT / STALE_REFRESH_REQUIRED / REVALIDATE / STALE / EXPIRED
+    """
+    if not isinstance(decision, dict):
+        return None
+    label = str(decision.get("action_label") or "").upper()
+    ability = str(decision.get("actionability") or "").upper()
+    freshness = freshness_flag(decision)
+    for value in (label, ability, freshness):
+        if value in BLOCKING_ACTIONABILITY:
+            return value
+    return None
+
+
+def canonical_act_now(decision: Any) -> tuple[bool, Optional[str]]:
+    """(effective_act_now, blocking_state).
+
+    A blocking freshness/conflict state overrides any raw ``act_now=True`` or
+    ``ACT_NOW`` label. Standing RE_ENTER / DEPLOY_CASH alone never implies
+    ACT_NOW — only explicit, non-blocked actionability does.
+    """
+    if not isinstance(decision, dict):
+        return False, None
+    blocking = actionability_blocking_state(decision)
+    if blocking:
+        return False, blocking
+    label = str(decision.get("action_label") or "").upper()
+    raw = decision.get("act_now")
+    truthy = (
+        raw is True
+        or (isinstance(raw, str) and raw.strip().lower() in {"1", "true", "yes", "on"})
+        or (isinstance(raw, (int, float)) and not isinstance(raw, bool) and raw > 0)
+    )
+    return (truthy or label == "ACT_NOW"), None
+
+
+def _reentry_token(state: Any) -> str:
+    return re.sub(r"[^A-Z0-9]+", "_", str(state or "").upper().strip())
+
+
+def reentry_state_from_desk(state: Any = None, verdict: Any = None) -> Optional[str]:
+    """Map raw desk readiness (or a canonical lifecycle token) to a lifecycle state.
+
+    Idempotent over its own canonical states: WATCH_REENTRY,
+    DESK_READY_TO_REVIEW, NEAR_TRIGGER, GOVERNED_ELIGIBLE. Only an explicit
+    governed ``verdict=RE_ENTER`` returns RE_ENTER; a bare state claiming
+    RE_ENTER is downgraded to GOVERNED_ELIGIBLE (non-actionable).
+    """
+    v = str(verdict or "").upper().strip()
+    if v == "RE_ENTER":
+        return "RE_ENTER"
+    key = _reentry_token(state)
+    if key == "RE_ENTER":
+        # State claiming RE_ENTER without a governed verdict is non-authoritative.
+        return "GOVERNED_ELIGIBLE"
+    mapping = {
+        "READY_TO_REVIEW": "DESK_READY_TO_REVIEW",
+        "DESK_READY_TO_REVIEW": "DESK_READY_TO_REVIEW",
+        "NEAR_ENTRY": "NEAR_TRIGGER",
+        "NEAR_TRIGGER": "NEAR_TRIGGER",
+        "OVERSOLD_REVIEW": "NEAR_TRIGGER",
+        "WATCH_REENTRY": "WATCH_REENTRY",
+        "WATCH": "WATCH_REENTRY",
+        "GOVERNED_ELIGIBLE": "GOVERNED_ELIGIBLE",
+        "WAIT": "WAIT",
+        "BLOCKED": "BLOCKED",
+        "STALE": "STALE",
+        "INVALIDATED": "INVALIDATED",
+        "DATA_UNAVAILABLE": "DATA_UNAVAILABLE",
+    }
+    return mapping.get(key)
+
+
+def stance_from_queue_item(item: Optional[dict[str, Any]]) -> str:
+    """Stance for one queue item: explicit verdict > state > directive label.
+
+    Desk readiness states (READY TO REVIEW / NEAR ENTRY / OVERSOLD REVIEW) map to
+    REVIEW — ready to review is not ready to buy. Only an explicit RE_ENTER
+    verdict produces STANCE_RE_ENTER.
+    """
+    if not item:
+        return STANCE_HOLD
+    verdict = str(item.get("verdict") or "").upper().strip() or None
+    state = str(item.get("state") or "").upper().strip() or None
+    label = item.get("directive_label") or item.get("label") or item.get("note")
+    from_verdict = verdict if verdict in ACTIONABLE_STANCES else None
+    from_state = None
+    reentry = reentry_state_from_desk(state, verdict)
+    if reentry == "RE_ENTER":
+        from_state = STANCE_RE_ENTER
+    elif reentry:
+        from_state = STANCE_REVIEW
+    from_label = infer_stance_from_text(label)
+    return merge_stances(from_verdict, from_state, from_label)
+
+
+def stance_for_symbol(symbol: str, queue: Optional[dict[str, Any]]) -> str:
+    """Canonical stance across *all* queue items for a symbol (multi-desk).
+
+    Precedence: EXIT > TRIM > RE_ENTER > ADD > HOLD. Labels like
+    "Advisory TRIM — SCHD" count even when verdict is null.
+    """
+    sym = str(symbol or "").upper().strip()
+    if not sym:
+        return STANCE_HOLD
+    items = (queue or {}).get("items") or (queue or {}).get("top") or []
+    stances: list[str] = []
+    for it in items:
+        if not isinstance(it, dict):
+            continue
+        if str(it.get("symbol") or "").upper().strip() != sym:
+            continue
+        stances.append(stance_from_queue_item(it))
+    return merge_stances(*stances) if stances else STANCE_HOLD
+
+
+def resolve_display_stance(cio_stance: Any, why_now: Any = None) -> str:
+    """Eliminate HOLD + TRIM contradictions for operator-facing stance.
+
+    Prefer the more decisive of formal stance and stance inferred from why_now.
+    """
+    formal = str(cio_stance or "").upper().strip() or STANCE_HOLD
+    from_why = infer_stance_from_text(why_now)
+    return merge_stances(formal, from_why)
+
+
+def is_pseudo_sector(name: Any) -> bool:
+    """True when a sector label is a spread pair / non-GICS pseudo-sector."""
+    raw = str(name or "").strip()
+    if not raw:
+        return True
+    # Exact canonical GICS is fine
+    if raw in CANONICAL_GICS:
+        return False
+    title = raw.title()
+    if title in CANONICAL_GICS:
+        return False
+    # Pair / relative-strength pseudo-sectors: "Iwm−Spy", "IWM-SPY", "Spy/Qqq"
+    compact = re.sub(r"\s+", "", raw)
+    if re.search(r"[−\-–—/\\|]", compact) and _PSEUDO_SECTOR_RE.search(raw):
+        return True
+    # Two short ticker-like tokens joined
+    if re.match(r"^[A-Za-z]{1,5}[−\-–—/\\|][A-Za-z]{1,5}$", raw):
+        return True
+    return False
+
+
+def is_canonical_gics_sector(name: Any) -> bool:
+    raw = str(name or "").strip()
+    return raw in CANONICAL_GICS or raw.title() in CANONICAL_GICS
+
+
+def filter_sector_opportunities(
+    sectors: Optional[list[dict[str, Any]]],
+    *,
+    require_canonical_gics: bool = True,
+    professionalize: bool = True,
+) -> list[dict[str, Any]]:
+    """Drop pseudo-sectors; optionally require GICS; map enums to prose."""
+    out: list[dict[str, Any]] = []
+    for o in sectors or []:
+        if not isinstance(o, dict):
+            continue
+        sector = o.get("sector")
+        if is_pseudo_sector(sector):
+            continue
+        if require_canonical_gics and not is_canonical_gics_sector(sector):
+            continue
+        row = dict(o)
+        if professionalize:
+            if row.get("recommendation") is not None:
+                row["recommendation_code"] = row.get("recommendation")
+                row["recommendation"] = professional_label(row.get("recommendation"))
+            if row.get("state") is not None:
+                row["state_code"] = row.get("state")
+                row["state_display"] = professional_label(row.get("state"))
+        out.append(row)
+    return out
+
+
+def symbol_identity_status(
+    symbol: Any,
+    *,
+    name: Any = None,
+    instrument_type: Any = None,
+    exchange: Any = None,
+) -> dict[str, Any]:
+    """Prove (or refuse) that a ticker is a known security for CIO output.
+
+    Returns:
+      ok: bool — allowed into CIO operator surfaces
+      reason: short code
+      display_name: human name if known
+    """
+    sym = str(symbol or "").upper().strip()
+    nm = str(name or "").strip()
+    if not sym:
+        return {"ok": False, "reason": "empty_symbol", "display_name": None, "symbol": sym}
+    if sym in {"CASH", "USD", "USD$", "MONEYMARKET"}:
+        return {"ok": False, "reason": "cash_not_security", "display_name": nm or None, "symbol": sym}
+    # Pure CUSIP / SEDOL-like without a name: refuse
+    if _CUSIP_LIKE_RE.match(sym) and not nm:
+        return {"ok": False, "reason": "cusip_unproven", "display_name": None, "symbol": sym}
+    if _CUSIP_LIKE_RE.match(sym) and nm:
+        return {
+            "ok": True, "reason": "cusip_named", "display_name": nm, "symbol": sym,
+            "identity_note": f"{sym} is CUSIP/identifier for {nm}",
+        }
+    if sym in _AMBIGUOUS_TICKERS and not nm:
+        return {"ok": False, "reason": "ambiguous_ticker_unproven", "display_name": None, "symbol": sym}
+    if sym in _AMBIGUOUS_TICKERS and nm:
+        return {
+            "ok": True, "reason": "ambiguous_ticker_named", "display_name": nm, "symbol": sym,
+            "identity_note": f"{sym} = {nm}",
+        }
+    # Ordinary ticker
+    return {
+        "ok": True,
+        "reason": "ticker",
+        "display_name": nm or None,
+        "symbol": sym,
+        "instrument_type": instrument_type,
+        "exchange": exchange,
+    }
+
+
+def aggregate_position_decisions(
+    rows: Optional[list[dict[str, Any]]],
+    *,
+    portfolio_value: float = 0.0,
+) -> list[dict[str, Any]]:
+    """Collapse split-account rows into one decision per symbol.
+
+    Sums values, recomputes weight, keeps the decisive stance, joins accounts,
+    and surfaces professional stance labels. Drops rows that fail identity proof
+    unless they already carry a name.
+    """
+    by: dict[str, dict[str, Any]] = {}
+    # Phase 5 sizing / Phase 3 freshness annotations to preserve on aggregate
+    _size_keys = (
+        "sizing", "sizing_method", "sizing_objective", "sizing_why_not_min",
+        "sizing_why_not_max", "trim_to_clear_fire_usd", "trim_to_policy_usd",
+        "fallback_candidate_only", "target_weight_pct", "scenario_trim_usd",
+        "target_status",
+        "candidates", "sizing_quality", "selected_candidate",
+        "selection_rationale", "tranches", "tax_class",
+        "action_label", "action_label_display", "act_now", "actionable",
+        "freshness", "financial_truth_quality",
+        "generated_at", "revalidated_at",
+    )
+    # P0-3: keep source identity through the merge; recomputed after sizing.
+    _identity_keys = (
+        "decision_input_digest",
+        "decision_evidence_digest",
+        "decision_id",
+    )
+    _preserve_keys = _size_keys + _identity_keys
+    for r in rows or []:
+        if not isinstance(r, dict):
+            continue
+        sym = str(r.get("symbol") or "").upper().strip()
+        if not sym:
+            continue
+        ident = symbol_identity_status(sym, name=r.get("name"))
+        if not ident["ok"]:
+            # Still allow if we have material book value and a name-like field
+            if not r.get("name"):
+                continue
+        why = r.get("why_now")
+        stance = resolve_display_stance(r.get("cio_stance"), why)
+        value = float(r.get("current_value_usd") or 0.0)
+        delta = float(r.get("recommended_delta_usd") or 0.0)
+        acct = r.get("account")
+        if sym not in by:
+            by[sym] = {
+                "symbol": sym,
+                "name": r.get("name") or ident.get("display_name"),
+                "accounts": [acct] if acct else [],
+                "account": acct,  # primary (largest) filled later
+                "current_value_usd": value,
+                "recommended_delta_usd": delta,
+                "cio_stance": stance,
+                "why_now": why,
+                "risk": r.get("risk"),
+                "funding": r.get("funding"),
+                "tax_account_constraint": r.get("tax_account_constraint"),
+                "counter_thesis": r.get("counter_thesis"),
+                "next_review": r.get("next_review"),
+                "target_range_pct": r.get("target_range_pct"),
+                "identity": ident,
+                "_acct_values": {acct: value} if acct else {},
+            }
+            for k in _preserve_keys:
+                if r.get(k) is not None:
+                    by[sym][k] = r.get(k)
+            continue
+        agg = by[sym]
+        agg["current_value_usd"] = round(float(agg["current_value_usd"]) + value, 2)
+        # Sum deltas when same direction; prefer larger-magnitude if conflicting
+        prev_d = float(agg["recommended_delta_usd"] or 0.0)
+        if (prev_d >= 0 and delta >= 0) or (prev_d <= 0 and delta <= 0):
+            agg["recommended_delta_usd"] = round(prev_d + delta, 2)
+        else:
+            agg["recommended_delta_usd"] = prev_d if abs(prev_d) >= abs(delta) else delta
+        agg["cio_stance"] = merge_stances(agg.get("cio_stance"), stance)
+        if acct and acct not in agg["accounts"]:
+            agg["accounts"].append(acct)
+        if acct:
+            agg["_acct_values"][acct] = round(
+                float(agg["_acct_values"].get(acct, 0.0)) + value, 2)
+        # Prefer non-neutral why_now
+        if why and _NEUTRAL_WHY not in str(why).lower():
+            if not agg.get("why_now") or _NEUTRAL_WHY in str(agg.get("why_now")).lower():
+                agg["why_now"] = why
+        if r.get("name") and not agg.get("name"):
+            agg["name"] = r.get("name")
+        # Escalate risk if any lot is over cap
+        if "concentration >" in str(r.get("risk") or "").lower() or "fire" in str(r.get("risk") or "").lower():
+            agg["risk"] = r.get("risk")
+        # Prefer richer sizing annotation (non-fallback wins)
+        for k in _preserve_keys:
+            if r.get(k) is None:
+                continue
+            if k not in agg or agg.get(k) is None:
+                agg[k] = r.get(k)
+            elif k == "fallback_candidate_only" and r.get(k) is False:
+                agg[k] = False
+                for sk in ("sizing", "sizing_method", "sizing_objective",
+                           "trim_to_clear_fire_usd", "trim_to_policy_usd",
+                           "candidates", "sizing_quality", "selected_candidate",
+                           "selection_rationale", "tranches"):
+                    if r.get(sk) is not None:
+                        agg[sk] = r.get(sk)
+
+    pv = max(0.0, float(portfolio_value or 0.0))
+    out: list[dict[str, Any]] = []
+    for sym, agg in by.items():
+        # Primary account = largest value share
+        acct_vals = agg.pop("_acct_values", {}) or {}
+        if acct_vals:
+            primary = max(acct_vals.items(), key=lambda kv: kv[1])[0]
+            agg["account"] = primary
+        value = float(agg["current_value_usd"] or 0.0)
+        weight = round(value / pv * 100.0, 2) if pv > 0 else float(agg.get("current_weight_pct") or 0.0)
+        stance = resolve_display_stance(agg.get("cio_stance"), agg.get("why_now"))
+        # Re-size at symbol aggregate when portfolio value known (Phase 5)
+        if stance in ("TRIM", "EXIT", "ADD", "RE_ENTER") and pv > 0:
+            try:
+                from scripts.lib.cio_institutional_sizing import (
+                    FALLBACK_TRIM_FRACTION,
+                    extract_sizing_inputs,
+                    size_decision,
+                )
+                tr = agg.get("target_range_pct") or {}
+                cap = float(tr.get("max") or 12.0) if isinstance(tr, dict) else 12.0
+                fire = 16.5
+                if "fire" in str(agg.get("risk") or "").lower():
+                    fire = 16.5
+                extras = extract_sizing_inputs(agg)
+                sz = size_decision(
+                    stance=stance,
+                    market_value_usd=value,
+                    weight_pct=weight,
+                    portfolio_value_usd=pv,
+                    policy_cap_pct=cap,
+                    fire_pct=fire,
+                    tax_class=str(
+                        agg.get("tax_class")
+                        or agg.get("tax_account_constraint")
+                        or "TAXABLE"
+                    ),
+                    **extras,
+                )
+                agg["recommended_delta_usd"] = float(sz.get("recommended_delta_usd") or 0.0)
+                agg["sizing"] = sz
+                agg["sizing_method"] = sz.get("method")
+                agg["sizing_objective"] = sz.get("objective_summary")
+                agg["sizing_why_not_min"] = sz.get("why_not_min")
+                agg["sizing_why_not_max"] = sz.get("why_not_max")
+                agg["trim_to_clear_fire_usd"] = sz.get("trim_to_clear_fire_usd")
+                agg["trim_to_policy_usd"] = sz.get("trim_to_policy_usd")
+                agg["scenario_trim_usd"] = sz.get("scenario_trim_usd")
+                agg["fallback_candidate_only"] = bool(sz.get("fallback_candidate_only"))
+                agg["candidates"] = sz.get("candidates")
+                agg["sizing_quality"] = sz.get("sizing_quality")
+                agg["selected_candidate"] = sz.get("selected_candidate")
+                agg["selection_rationale"] = sz.get("selection_rationale")
+                agg["tranches"] = sz.get("tranches")
+                agg["target_status"] = None
+                if sz.get("target_weight_pct") is not None:
+                    agg["target_weight_pct"] = sz.get("target_weight_pct")
+            except Exception:
+                # Sizing failure is fail-closed: never resurrect a heuristic
+                # dollar (e.g. a -10% TRIM). Downgrade to REVIEW with $0, but
+                # keep the hypothetical 10% as scenario-only metadata.
+                scenario_trim_usd = (
+                    round(value * FALLBACK_TRIM_FRACTION, 2)
+                    if stance == "TRIM" else None
+                )
+                stance = STANCE_REVIEW
+                agg["recommended_delta_usd"] = 0.0
+                agg["sizing_method"] = "SIZING_UNAVAILABLE"
+                agg["sizing_quality"] = "UNAVAILABLE"
+                agg["fallback_candidate_only"] = True
+                agg["target_weight_pct"] = None
+                agg["target_status"] = "UNAVAILABLE"
+                agg["scenario_trim_usd"] = scenario_trim_usd
+                agg["sizing_objective"] = (
+                    "Sizing unavailable — recommendation downgraded to REVIEW "
+                    "(no verified dollar delta)."
+                )
+        agg["cio_stance"] = stance
+        agg["stance"] = professional_stance(stance)  # operator-facing
+        agg["stance_code"] = stance
+        agg["current_weight_pct"] = weight
+        agg["current_value_usd"] = round(value, 2)
+        agg["recommended_delta_usd"] = round(float(agg.get("recommended_delta_usd") or 0.0), 2)
+        agg["account_count"] = len(agg.get("accounts") or [])
+        tr = agg.get("target_range_pct") or {}
+        if agg.get("target_weight_pct") is None and agg.get("target_status") != "UNAVAILABLE":
+            agg["target_weight_pct"] = tr.get("max") if isinstance(tr, dict) else None
+        agg["decision_id"] = make_decision_id(
+            sym, stance, agg["recommended_delta_usd"], agg.get("why_now"),
+        )
+        # P0-3: recompute after aggregate + sizing — delta/mv may have changed.
+        # Never leave a new row digestless. Do not invent in scanners.
+        digests = canonical_decision_digests(
+            sym, stance, agg["recommended_delta_usd"], agg,
+        )
+        agg["decision_input_digest"] = digests["input"]
+        agg["decision_evidence_digest"] = digests["evidence"]
+        agg["what_changes_call"] = what_changes_the_call(
+            stance, agg.get("risk"), agg.get("counter_thesis"),
+        )
+        out.append(agg)
+
+    out.sort(key=lambda r: (-abs(float(r.get("recommended_delta_usd") or 0.0)),
+                            -float(r.get("current_value_usd") or 0.0)))
+    return out
+
+
+def sanitize_decisions_now(
+    rows: Optional[list[dict[str, Any]]],
+    *,
+    portfolio_value: float = 0.0,
+    limit: int = 8,
+) -> list[dict[str, Any]]:
+    """Operator-facing decisions: aggregate, resolve stance, professional labels + IDs.
+
+    Phase 8: every card carries a stable `decision_id` shared with CIO NOW / report.
+    """
+    aggregated = aggregate_position_decisions(rows, portfolio_value=portfolio_value)
+    neutral = _NEUTRAL_WHY
+    decisions: list[dict[str, Any]] = []
+    for d in aggregated:
+        why = d.get("why_now") or ""
+        risk = d.get("risk") or ""
+        delta = d.get("recommended_delta_usd") or 0.0
+        has_delta = abs(float(delta)) > 0.005
+        has_signal = bool(why) and neutral not in str(why).lower()
+        has_breach = (
+            "concentration >" in str(risk).lower()
+            or "fire" in str(risk).lower()
+            or "breach" in str(risk).lower()
+        )
+        if not (has_delta or has_signal or has_breach):
+            continue
+        stance_code = d.get("stance_code") or d.get("cio_stance")
+        did = d.get("decision_id") or make_decision_id(
+            d.get("symbol"), stance_code, delta, why,
+        )
+        tr = d.get("target_range_pct") or {}
+        target_w = d.get("target_weight_pct")
+        if target_w is None and isinstance(tr, dict) and d.get("target_status") != "UNAVAILABLE":
+            target_w = tr.get("max")
+        row = {
+            "decision_id": did,
+            "symbol": d.get("symbol"),
+            "name": d.get("name"),
+            "action": d.get("stance") or professional_stance(stance_code),
+            "stance": d.get("stance") or professional_stance(stance_code),
+            "stance_code": stance_code,
+            "current_value_usd": d.get("current_value_usd"),
+            "current_weight_pct": d.get("current_weight_pct"),
+            "target_weight_pct": target_w,
+            "recommended_delta_usd": d.get("recommended_delta_usd"),
+            "why_now": why,
+            "counter_thesis": d.get("counter_thesis") or "no Street/desk disagreement on record",
+            "what_changes_call": d.get("what_changes_call") or what_changes_the_call(
+                str(stance_code or ""), risk, d.get("counter_thesis"),
+            ),
+            "risk": risk,
+            "next_review": d.get("next_review"),
+            "accounts": d.get("accounts"),
+            "account_count": d.get("account_count"),
+            "operator_actions": operator_action_affordances(),
+            "decision_input_digest": d.get("decision_input_digest") or "",
+            "decision_evidence_digest": d.get("decision_evidence_digest") or "",
+        }
+        for k in (
+            "sizing", "sizing_method", "sizing_objective", "sizing_why_not_min",
+            "sizing_why_not_max", "trim_to_clear_fire_usd", "trim_to_policy_usd",
+            "scenario_trim_usd", "target_status",
+            "fallback_candidate_only", "candidates", "sizing_quality",
+            "selected_candidate", "selection_rationale", "tranches",
+            "action_label", "action_label_display",
+            "act_now", "actionable", "freshness", "financial_truth_quality",
+        ):
+            if d.get(k) is not None:
+                row[k] = d.get(k)
+        decisions.append(row)
+    decisions.sort(
+        key=lambda d: (
+            -1 if (
+                "concentration >" in str(d.get("risk") or "").lower()
+                or "fire" in str(d.get("risk") or "").lower()
+            ) else 0,
+            -abs(float(d.get("recommended_delta_usd") or 0.0)),
+            -float(d.get("current_value_usd") or 0.0),
+        )
+    )
+    return decisions[:limit]
+
+
+def allocation_weights_from_usd(
+    allocation_usd: dict[str, Any],
+) -> dict[str, float]:
+    """Convert a class→USD map into class→weight_pct (sums to ~100)."""
+    cleaned: dict[str, float] = {}
+    for k, v in (allocation_usd or {}).items():
+        try:
+            cleaned[str(k)] = float(v)
+        except (TypeError, ValueError):
+            continue
+    total = sum(max(0.0, v) for v in cleaned.values())
+    if total <= 0:
+        return {k: 0.0 for k in cleaned}
+    return {k: round(max(0.0, v) / total * 100.0, 2) for k, v in cleaned.items()}
+
+
+def looks_like_dollar_allocation(allocation: dict[str, Any]) -> bool:
+    """Heuristic: any class value > 100 implies USD dollars, not weight %."""
+    for v in (allocation or {}).values():
+        try:
+            if float(v) > 100.0:
+                return True
+        except (TypeError, ValueError):
+            continue
+    return False

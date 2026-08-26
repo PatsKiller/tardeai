@@ -209,3 +209,74 @@ def test_messages_include_question_ids():
     user = msgs[1]["content"]
     assert "q1" in user and "q2" in user
     assert "READ_ONLY" in msgs[0]["content"] or "read_only" in user.lower() or "no_order" in user
+
+
+def _req_with_catalyst():
+    req = _req()
+    req["known_catalyst_event_ids"] = ["cat_schd_2026-08-18_analyst_upgrade_a05f99"]
+    req["catalyst"] = {
+        "as_of": "2026-08-18T15:19:19+00:00",
+        "symbol": "SCHD",
+        "open_count": 1,
+        "quality_state": "OK",
+        "events": [{
+            "event_id": "cat_schd_2026-08-18_analyst_upgrade_a05f99",
+            "title": "The 3% ETF Outperforming 11% Competitors: How SCHD Keeps Beating Covered-Call ETFs",
+            "kind": "analyst_upgrade",
+            "severity": "medium",
+            "session_date": "2026-08-18",
+            "source": "catalyst_events",
+            "confirmed": True,
+            "symbol": "SCHD",
+        }],
+    }
+    return req
+
+
+def test_messages_include_catalyst_events():
+    be = BridgeHermesResearchBackend()
+    req = _req_with_catalyst()
+    qs = [{"id": "q1", "text": "Catalysts next 10 sessions?", "intent": "catalyst_map"}]
+    user = be._build_messages(req, qs)[1]["content"]
+    assert "cat_schd_2026-08-18_analyst_upgrade_a05f99" in user
+    assert "analyst_upgrade" in user
+
+
+def test_canary_shaped_empty_context_gets_summary_and_sources(monkeypatch):
+    """R6.1 canary: model had answer text but no top-level summary/sources; as_of was 2025-07-11."""
+    be = BridgeHermesResearchBackend()
+    raw = {
+        "as_of": "2025-07-11",
+        "answers": [
+            {
+                "question_id": "q1",
+                "status": "unanswered",
+                "summary": "No specific catalysts identified within the next 10 sessions for SCHD.",
+                "detail": "No scheduled events or data releases found in the provided context.",
+                "confidence": 0.2,
+                "citations": [],
+            },
+            {
+                "question_id": "q2",
+                "status": "unanswered",
+                "summary": "No high-impact catalysts identified that would alter hold vs size-review language.",
+                "confidence": 0.2,
+                "citations": [],
+            },
+        ],
+        "findings": [],
+        "desk_implications": {
+            "suggestion_bias": "hold_with_thesis",
+            "changes_materiality": False,
+            "notes": "No material catalysts or risks identified; maintain current thesis.",
+        },
+        "limitations": ["No forward-looking data or event calendar provided in context."],
+    }
+    monkeypatch.setattr(
+        "urllib.request.urlopen",
+        lambda req, timeout=None: _FakeResp(_openai_wrap(json.dumps(raw)).encode()),
+    )
+    body = be.run(_req_with_catalyst())
+    assert "2025-07-11" not in str(body.get("as_of"))
+    assert "SCHD" in (body.get("summary") or "")
+    assert "cat_schd_2026-08-18_analyst_upgrade_a05f99" in (body.get("sources") or [])

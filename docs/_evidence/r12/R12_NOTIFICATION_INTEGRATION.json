@@ -1,0 +1,11 @@
+{
+  "schema": "R12NotificationIntegration@v1",
+  "iteration": "14-16",
+  "path": "situation → situation_to_decision → decide_notification → scan_office receipt + outbox enqueue (test) → FakeDeliveryAdapter",
+  "scan_office_policy_status_on_default_band": "POLICY_GAP",
+  "masquerades_as_operator_policy": true,
+  "financial_lane_without_canary": "OFF_BY_POLICY",
+  "test_sink_receipt_fields": ["notification_id", "situation_id", "trace_id", "sender_attribution", "delivery_receipt", "live"],
+  "live_send_refused_without_flag": true,
+  "status": "PASS"
+}

@@ -1,0 +1,63 @@
+{
+  "schema": "R15_1ContextLive@v1",
+  "evidence_class": "INTEGRATION",
+  "note": "Worktree functions probing CURRENT stores. CURRENT_SMOKE of R15 code requires post-promote import.",
+  "envelope": {
+    "schema": "EnvelopeProviderStatus@v1",
+    "sections": {
+      "OFFICE_TRUTH": "OK",
+      "PORTFOLIO_STATE": "OK",
+      "OPERATOR_POLICY": "EMPTY",
+      "PORTFOLIO_THESIS": "UNAVAILABLE",
+      "MARKET_CONTEXT": "UNAVAILABLE",
+      "SEASONALITY": "UNAVAILABLE",
+      "TICKER_RESEARCH_STATE": "OK",
+      "BASELINE_OR_CURRENT_CURATION": "OK",
+      "SYMBOL_THESIS": "OK",
+      "RESEARCH_GAPS": "OK",
+      "CONTRADICTIONS": "OK",
+      "EVENTS_CATALYSTS": "OK",
+      "RELEVANT_FEEDBACK": "OK",
+      "MATURE_OUTCOMES": "OK",
+      "LESSONS": "OK",
+      "MEMORY_RETRIEVAL_UNITS": "OK"
+    },
+    "sections_total": 16,
+    "sections_live": 12,
+    "sections_not_configured": 0,
+    "never_silently_omitted": true,
+    "authority": "READ_ONLY_ADVISORY",
+    "memory_behavior_influence": 0,
+    "evidence_class": "CURRENT_SMOKE",
+    "root": "/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT",
+    "policy_gap": [
+      "cash_target_range_pct"
+    ]
+  },
+  "knowledge_gaps": [
+    "EMPTY:OPERATOR_POLICY",
+    "UNAVAILABLE:PORTFOLIO_THESIS",
+    "UNAVAILABLE:MARKET_CONTEXT",
+    "UNAVAILABLE:SEASONALITY",
+    "UNRESOLVED_IDENTITY",
+    "POLICY_GAP",
+    "INSUFFICIENT_MODEL_SAMPLES",
+    "NO_OUTCOME_HISTORY"
+  ],
+  "same_brain": {
+    "consistent": true,
+    "telegram_fork": false,
+    "agents": [
+      "alex",
+      "hermes",
+      "advisory",
+      "telegram",
+      "maria",
+      "steph",
+      "guardian",
+      "ledger",
+      "command_center"
+    ],
+    "divergences": []
+  }
+}

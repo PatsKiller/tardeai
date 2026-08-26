@@ -1,0 +1,5 @@
+{
+  "schema": "R16ThesisEvolution@v1",
+  "evidence_class": "HISTORICAL_VALIDATED",
+  "note": "cio_theses.jsonl is event-sourced THESIS_CREATED; latency metrics UNIT-ready not backfilled"
+}

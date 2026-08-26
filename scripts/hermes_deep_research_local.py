@@ -1,25 +1,27 @@
 #!/usr/bin/env python3
-"""hermes_deep_research_local.py — Hermes Deep Research (Local) — BATCH_OVERNIGHT internal deep-research lane.
+"""hermes_deep_research_local.py — governed Hermes deep research lane.
 
-MANUAL / operator-run (NOT auto-wired into cron/systemd). Advisory + staging only: writes
-hermes_research_intelligence rows (research_type='deep_research_local') via the validated build_insert path.
-NEVER touches broker/order/stop/proposal/holdings/trading. Uses local Ollama gemma3:27b / gemma3-overnight.
+Advisory + staging only: writes hermes_research_intelligence rows
+(research_type='deep_research_local') via the validated build_insert path. The
+historical filename and research type remain for lineage; local generation does not.
+NEVER touches broker/order/stop/proposal/holdings/trading.
 
-Design: docs/hermes/PHASE210C_INTERNAL_DEEP_RESEARCH_AGENT_DESIGN.md.
+US overnight (22:00–06:00 ET): ChatGPT OAuth (:8646). Otherwise the governed
+DeepSeek bridge is used subject to its bulk window.
 
-  python3 scripts/hermes_deep_research_local.py                 # dry-run, gemma3:27b, 3 targets
+  python3 scripts/hermes_deep_research_local.py                 # dry-run
   python3 scripts/hermes_deep_research_local.py --apply --max-rows 3
-  python3 scripts/hermes_deep_research_local.py --model gemma3-overnight:latest --apply
 Safety:
   - singleton lockfile; honors live kill-switch data/runtime/HERMES_DISABLED
-  - Ollama health gate (skips cleanly when unhealthy — no flood)
+  - no local generative provider or fallback
   - deterministic fields stamped from code; bounded summary recovery; never fabricates content
 """
-import os, sys, json, time, hashlib, argparse, urllib.request
+import os, sys, json, argparse
 from datetime import date, datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(0, str(ROOT / "scripts" / "lib"))
 from cio_agent_contract import AGENT_JSON_CONTRACT_VERSION, build_deep_research_json_schema, merge_structured_into_result
@@ -27,7 +29,6 @@ LOCK = Path("/tmp/hermes_deep_research_local.lock")
 KILL = ROOT / "data" / "runtime" / "HERMES_DISABLED"   # live kill-switch (NOT the retired sidecar path)
 AGENT = "deep_research_local"
 RTYPE = "deep_research_local"
-OLLAMA = "http://localhost:11434/api/chat"
 
 
 def db():
@@ -69,7 +70,7 @@ def gather_context(conn, sym):
     return ctx
 
 
-PROMPT = """You are Hermes Deep Research (Local), an advisory research analyst for a paper-trading system.
+PROMPT = """You are Hermes Deep Research, an advisory research analyst for a paper-trading system.
 Produce a DEEP research report on the ticker below for the operator. You do not trade; this is advisory only.
 
 Ticker: {sym}
@@ -88,13 +89,36 @@ def run_one(conn, sym, model, apply):
     schema = build_deep_research_json_schema(sym)
     prompt = PROMPT.format(sym=sym, trades=json.dumps(ctx["recent_trades"]),
                            research=json.dumps(ctx["prior_research"]), schema=schema)
-    payload = json.dumps({"model": model, "messages": [{"role": "user", "content": prompt}], "stream": False,
-                          "options": {"num_ctx": 16384, "num_predict": 3000, "temperature": 0.3}, "format": "json"}).encode()
     try:
-        req = urllib.request.Request(OLLAMA, data=payload, headers={"Content-Type": "application/json"})
-        from llm_net import urlopen_retry
-        content = json.loads(urlopen_retry(req, timeout=600, attempts=2, base=2.0)).get("message", {}).get("content", "")
-        out = merge_structured_into_result(json.loads(content))
+        if str(model).startswith("chatgpt"):
+            from hermes_external_researcher import call_codex_cli
+            content = call_codex_cli("gpt-5.4", prompt)
+            if not content:
+                print(f"  {sym}: FAILED chatgpt oauth empty"); return "failed"
+            pack = {"content": content, "model": "chatgpt-oauth", "provider": "chatgpt_oauth"}
+            try:
+                parsed = json.loads(content)
+            except Exception:
+                parsed = {"summary": content[:2000]}
+            out = merge_structured_into_result(parsed if isinstance(parsed, dict) else {"summary": str(parsed)})
+            model = "chatgpt-oauth"
+            out["llm_provider"] = "chatgpt_oauth"
+            print(f"  {sym}: LLM chatgpt_oauth")
+        elif model == "deepseek-v4-flash":
+            from hermes_llm_failover import chat_json
+            pack = chat_json(prompt, cloud_timeout_s=180)
+            content = pack["content"]
+            out = merge_structured_into_result(json.loads(pack["content"]))
+            model = pack.get("model") or model
+            out["llm_provider"] = pack.get("provider")
+            if pack.get("failover"):
+                print(f"  {sym}: BACKUP {pack.get('model')} ({pack.get('reason')})")
+                out["llm_failover_reason"] = pack.get("reason")
+            else:
+                print(f"  {sym}: LLM {pack.get('provider')} {pack.get('model')}")
+        else:
+            print(f"  {sym}: FAILED forbidden_model={model}")
+            return "failed"
     except Exception as e:
         print(f"  {sym}: FAILED ({str(e)[:80]})"); return "failed"
     # deterministic fields stamped from code (never rely on LLM to echo)
@@ -110,14 +134,15 @@ def run_one(conn, sym, model, apply):
     except Exception:
         out["confidence_score"] = 0.5
     ej = {k: out.pop(k) for k in ("thesis", "risks") if k in out}
-    ej["context_recent_trades"] = ctx["recent_trades"]; ej["lane"] = "internal_deep_research_local"
+    ej["context_recent_trades"] = ctx["recent_trades"]
+    ej["lane"] = "governed_deep_research"
     ej["cio_evidence"] = out.pop("evidence", [])
     ej["data_i_doubt"] = out.pop("data_i_doubt", "none")
     ej["agent_contract"] = out.pop("agent_contract", AGENT_JSON_CONTRACT_VERSION)
     # required by validate_payload: non-empty limitations + source_views
     lims = out.pop("limitations", None)
     ej["limitations"] = lims if (isinstance(lims, list) and lims) else \
-        ["Local-model synthesis (advisory only); not independently verified; based on staged data above."]
+        ["Advisory synthesis; not independently verified; based on staged data above."]
     ej["source_views"] = ["trade_instances", "hermes_research_intelligence"]
     out["evidence_json"] = ej
     ok, errors = validate_payload(out, "hermes_research_intelligence")
@@ -135,46 +160,135 @@ def run_one(conn, sym, model, apply):
     if not apply:
         print(f"  {sym}: VALIDATED (dry-run, conf={out.get('confidence_score')})"); return "validated"
     sql, vals = build_insert("hermes_research_intelligence", out)
-    cur = conn.cursor(); cur.execute(sql, vals); rid = cur.fetchone()[0]; conn.commit()
-    print(f"  {sym}: COMMITTED id={rid}"); return "applied"
+    # Long LLM calls leave the SSL session dead. Fresh write connection;
+    # do not close the caller's conn in a way that leaves them holding a dead handle.
+    wconn = db()
+    try:
+        cur = wconn.cursor(); cur.execute(sql, vals); rid = cur.fetchone()[0]; wconn.commit()
+    finally:
+        try:
+            wconn.close()
+        except Exception:
+            pass
+    print(f"  {sym}: COMMITTED id={rid}")
+    try:
+        _cur = Path.home() / "trade-ai-releases" / "portfolio-server" / "CURRENT"
+        if _cur.is_dir() and str(_cur) not in sys.path:
+            sys.path.insert(0, str(_cur))
+        from cio_product_reassessment import notify_from_flash_row
+    except Exception:
+        try:
+            from scripts.lib.cio_product_reassessment import notify_from_flash_row
+        except Exception:
+            notify_from_flash_row = None
+    if notify_from_flash_row:
+        try:
+            notify_from_flash_row(
+                symbol=sym, row_id=rid,
+                summary=str((out or {}).get("summary") or "")[:240],
+                model=str((out or {}).get("model_used") or ""),
+                research_type="deep_research_local",
+            )
+        except Exception:
+            pass
+    return "applied"
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--apply", action="store_true")
     ap.add_argument("--max-rows", type=int, default=3)
-    ap.add_argument("--model", default="gemma3:27b")
+    ap.add_argument("--model", default="deepseek-v4-flash")
     ap.add_argument("--allow-daytime", action="store_true", help="run outside the overnight window (manual)")
+    ap.add_argument(
+        "--allow-peak",
+        action="store_true",
+        help="allow DeepSeek Flash apply during official peak (01-04 and 06-10 UTC)",
+    )
     args = ap.parse_args()
 
     if KILL.exists():
         print("ABORT: kill-switch present (data/runtime/HERMES_DISABLED)"); sys.exit(2)
     if LOCK.exists():
         print("ABORT: another deep-research run holds the lockfile"); sys.exit(1)
+    try:
+        from hermes_llm_failover import (
+            allow_deepseek_peak,
+            deepseek_window_label,
+            is_deepseek_offpeak,
+            primary_provider,
+        )
+        flash = primary_provider() == "bridge_flash"
+    except Exception:
+        flash = False
+        is_deepseek_offpeak = None  # type: ignore
     hour = datetime.now().hour
-    if not (hour >= 22 or hour < 6) and not args.allow_daytime:
+    try:
+        from lib.overnight_llm_policy import (
+            LANE_CHATGPT,
+            LANE_NONE,
+            is_us_overnight,
+            overnight_llm_lane,
+        )
+    except Exception:
+        from scripts.lib.overnight_llm_policy import (  # type: ignore
+            LANE_CHATGPT,
+            LANE_NONE,
+            is_us_overnight,
+            overnight_llm_lane,
+        )
+    if is_us_overnight():
+        lane = overnight_llm_lane()
+        if lane == LANE_CHATGPT:
+            args.model = "chatgpt"
+        elif lane == LANE_NONE:
+            print("US_OVERNIGHT: skipping judgmental LLM (US_OVERNIGHT_LLM=off)")
+            return
+    if flash and is_deepseek_offpeak is not None:
+        if (
+            args.apply
+            and not is_deepseek_offpeak()
+            and not (args.allow_peak or args.allow_daytime or allow_deepseek_peak())
+        ):
+            print(
+                f"SKIPPED_DEEPSEEK_PEAK: window={deepseek_window_label()} "
+                "bulk Flash/Pro is 10:00-21:00 America/New_York; outside that is as-needed only. "
+                "Pass --allow-peak to override."
+            )
+            return
+    elif not (hour >= 22 or hour < 6) and not args.allow_daytime:
         print(f"NOTE: outside overnight window (hour={hour}); pass --allow-daytime to run manually. Proceeding dry-run only.")
         args.apply = False
     LOCK.write_text(str(os.getpid()))
     try:
-        # health gate
-        try:
-            from llm_health_gate import check_ollama_health
-            # deep model (27b) is slow to cold-load; check reachability+availability only (the deep call
-            # below has its own 600s timeout), so we don't false-skip on a cold 17GB model.
-            h = check_ollama_health(model=args.model, generate_probe=False, timeout_sec=20)
-            if not h.get("healthy"):
-                print(f"SKIPPED_LLM_UNHEALTHY: {h.get('failure_class')}"); return
-        except Exception as e:
-            print(f"health gate unavailable ({e}); continuing cautiously")
+        if not (str(args.model).startswith("chatgpt") or args.model == "deepseek-v4-flash"):
+            print(f"REFUSED_LOCAL_GENERATIVE_MODEL: {args.model}")
+            return
         conn = db()
         targets = pick_targets(conn, args.max_rows)
-        print(f"Hermes Deep Research (Local) — model={args.model} apply={args.apply} targets={targets}")
+        print(f"Hermes Deep Research — model={args.model} apply={args.apply} targets={targets}")
         counts = {}
         for sym in targets:
-            r = run_one(conn, sym, args.model, args.apply)
+            try:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+                conn = db()
+                r = run_one(conn, sym, args.model, args.apply)
+            except Exception as exc:
+                print(f"  {sym}: FAILED_RETRYABLE {type(exc).__name__}: {exc}")
+                r = "failed_retryable"
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+                conn = db()
             counts[r] = counts.get(r, 0) + 1
-        conn.close()
+        try:
+            conn.close()
+        except Exception:
+            pass
         print("RESULT:", json.dumps(counts))
     finally:
         LOCK.unlink(missing_ok=True)

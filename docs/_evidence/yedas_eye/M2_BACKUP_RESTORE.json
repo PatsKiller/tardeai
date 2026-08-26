@@ -1,0 +1,12 @@
+{
+  "backup": "PASS",
+  "restore": "PASS",
+  "point_in_time": "SCHEMA_AND_ROWS_RESTORED",
+  "dump_bytes": 30663,
+  "tables": "6",
+  "create_db": 0,
+  "RPO": "dump_file_as_of_backup",
+  "RTO_s": 0.843,
+  "backup_s": 0.113,
+  "restore_stderr": "pg_restore: error: could not execute query: ERROR:  unrecognized configuration parameter \"transaction_timeout\"\nCommand was: SET transaction_timeout = 0;\npg_restore: warning: errors ignored on restore:"
+}

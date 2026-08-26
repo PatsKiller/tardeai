@@ -116,14 +116,34 @@ def main() -> int:
     args = ap.parse_args()
 
     if args.loop:
+        from scripts.lib.cio_telegram_converse import send_cio_message
+        from scripts.lib.cio_operator_desk_loop import try_fulfill_pending_replies
+        _fulfill_every = 0
         while True:
             res = process_once(timeout=args.timeout, dry_run=args.dry_run)
+            # Periodically fulfill deferred operator asks when Trade-AI data lands
+            _fulfill_every += 1
+            if not args.dry_run and _fulfill_every % 3 == 0:
+                try:
+                    def _send(cid, body, reply_to=None):
+                        return send_cio_message(str(cid), str(body), reply_to=reply_to)
+                    fr = try_fulfill_pending_replies(_send, limit=8)
+                    res["pending_fulfilled"] = fr.get("fulfilled")
+                except Exception as exc:
+                    res.setdefault("errors", []).append(
+                        f"pending_fulfill:{type(exc).__name__}:{exc}"
+                    )
             if args.json:
                 print(json.dumps(res, default=str))
             else:
                 print(
                     f"[cio-tg] processed={res['processed']} "
                     f"errors={len(res['errors'])} enabled={res['enabled']}"
+                    + (
+                        f" fulfilled={res.get('pending_fulfilled')}"
+                        if res.get("pending_fulfilled")
+                        else ""
+                    )
                 )
                 for e in res["errors"][:3]:
                     print(f"  ERR {e}")

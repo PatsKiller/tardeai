@@ -1,0 +1,73 @@
+name: financial-senses-ci
+
+# Read-only financial-senses provider-layer proof. No broker writes, no DB
+# writes, no network in unit tests. This is NOT a branch-protection gate yet;
+# it only proves the reviewed head passes the suite in the repository.
+
+on:
+  push:
+    branches: ["feature/financial-senses-parallel-v1", "main"]
+  pull_request:
+    paths:
+      - "scripts/lib/financial_senses/**"
+      - "scripts/lib/financial_senses_aif.py"
+      - "scripts/lib/aif_financial_senses_replay.py"
+      - "tests/financial_senses/**"
+      - "tests/test_aif_financial_senses_*.py"
+      - "config/financial_senses/**"
+      - ".github/workflows/financial-senses-ci.yml"
+  workflow_dispatch:
+
+jobs:
+  financial-senses:
+    runs-on: ubuntu-latest
+    env:
+      TRADE_AI_CI: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install pytest
+        run: |
+          python3 -m pip install --upgrade pip
+          pip install pytest
+
+      - name: Run financial-senses unit suite
+        run: python3 -m pytest tests/financial_senses/ -q
+
+      - name: Run existing SEC regression
+        run: python3 tests/test_sec_form4_momentum_context.py
+
+  broader-regression:
+    # Deterministic, offline representative cross-system regression (CIO
+    # decision semantics/quality + research governance/empirical). No live
+    # network, no broker writes, no DB writes. This reproduces the exact
+    # "81 passed" broader regression proof on the PR head.
+    runs-on: ubuntu-latest
+    env:
+      TRADE_AI_CI: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install pytest
+        run: |
+          python3 -m pip install --upgrade pip
+          pip install pytest
+
+      - name: Run broader CIO/research representative regression
+        run: >
+          python3 -m pytest
+          tests/test_cio_decision_semantics.py
+          tests/test_cio_decision_quality_pr1.py
+          tests/test_research_governance_promotion_gate.py
+          tests/test_research_empirical.py
+          -q

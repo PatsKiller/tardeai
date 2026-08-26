@@ -1,0 +1,6 @@
+{
+  "schema": "R15_2EventDrivenResearch@v1",
+  "fixture_integration": "UNIT",
+  "natural": "BLOCKED_REAL_WORLD_EVENT",
+  "paid_provider": 0
+}

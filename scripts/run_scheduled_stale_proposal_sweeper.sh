@@ -32,7 +32,7 @@ if [ "$LLM_DISABLE" != "true" ]; then
 fi
 
 # Holdings guard
-HOLDINGS_OK=$($PY -c 'import json; d=json.load(open("'"$PROJ"'/data/portfolios/state/holdings.json")); v=d["portfolio_totals"]["total_value"]; print("OK" if v > 1000000 else "FAIL")' 2>/dev/null || echo "FAIL")
+HOLDINGS_OK=$($PY -c 'import sys; sys.path[:0]=["'"$PROJ"'/scripts","'"$PROJ"'/scripts/lib"]; from holdings_sanity import file_is_intact; print("OK" if file_is_intact("'"$PROJ"'/data/portfolios/state/holdings.json") else "FAIL")' 2>/dev/null || echo "FAIL")
 if [ "$HOLDINGS_OK" != "OK" ]; then
     log "ABORT: holdings guard failed"
     exit 1

@@ -1,0 +1,15 @@
+[Unit]
+Description=Trade AI R9.3 FREE_FIRST_ONLY circulation timer (hourly :23 ET)
+Documentation=file:docs/ops/HERMES_FREE_FIRST_NATURAL_SCHEDULER_2026-08-23.md
+
+[Timer]
+# Hourly, not a 15m price loop. Manual 120-symbol circulate was ~2.5–5 min.
+# :23 ET sits between hermes-cio-worker :00/:15/:30/:45 ticks and librarian :45.
+OnCalendar=*-*-* *:23:00 America/New_York
+Persistent=true
+RandomizedDelaySec=90
+AccuracySec=1min
+Unit=tradeai-free-first-circulation.service
+
+[Install]
+WantedBy=timers.target

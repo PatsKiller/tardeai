@@ -1,11 +1,10 @@
-"""llm_lane.py — unified LLM lanes: Grok OAuth (xAI proxy :8645), ChatGPT OAuth (codex proxy :8646),
-DeepSeek V4 (paid API: exact models deepseek-v4-flash / deepseek-v4-pro), or local gemma.
+"""Unified governed cloud LLM lanes for advisory work.
 
 DeepSeek:
   - Exact provider model IDs only (verified via /v1/models).
   - Logical policies: FAST, FAST_THINK, PRO, PRO_THINK, PRO_MAX (see config/llm_model_registry.json).
   - Legacy IDs deepseek-chat / deepseek-reasoner are REJECTED (provider silently remaps them to Flash).
-  - No silent fallback to Gemma when DeepSeek is requested.
+  - No local generative lane or silent local fallback.
 
 Grok/ChatGPT remain free OAuth via local proxies. Pass process_id for consumption gating.
 """
@@ -18,6 +17,23 @@ from pathlib import Path
 _SCRIPTS = Path(__file__).resolve().parent
 if str(_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS))
+
+
+def _load_repo_env() -> None:
+    """Cron does not source .env. Without this, DeepSeek fail-closes
+    COST_CONFIGURATION_INVALID: LLM_GLOBAL_DAILY_USD_CAP required. override=False
+    so systemd Environment= wins when set."""
+    path = _SCRIPTS.parent / ".env"
+    if not path.is_file():
+        return
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(path, override=False)
+    except Exception:
+        pass
+
+
+_load_repo_env()
 
 _GROK_URL = os.environ.get("HERMES_XAI_PROXY_URL", "http://127.0.0.1:8645/v1/chat/completions")
 _CHATGPT_URL = os.environ.get("CHATGPT_PROXY_URL", "http://127.0.0.1:8646").rstrip("/")
@@ -88,11 +104,7 @@ def available(lane):
     if not lane:
         return False
     if lane == "local":
-        try:
-            import requests
-            return bool(requests.get("http://127.0.0.1:11434/api/tags", timeout=4).ok)
-        except Exception:
-            return False
+        return False
     if lane in ("grok", "chatgpt"):
         try:
             from lib.oauth_lane_status import lane_available
@@ -144,23 +156,41 @@ def _deepseek_generate(
     operator_confirmed: bool = False,
     response_json: bool = False,
     max_tokens: int = 2048,
+    process_id: str | None = None,
 ):
     """Call exact DeepSeek V4 models via canonical client. Raises on failure — no Gemma fallback."""
     from lib.deepseek_client import DeepSeekError, chat
     from lib.llm_model_registry import RegistryError
 
     try:
+        from lib.provider_cost.context import cost_attribution
+    except Exception:  # pragma: no cover — fail-soft if FinOps module absent
+        from contextlib import contextmanager as _cm
+
+        @_cm
+        def cost_attribution(**_kw):
+            yield {}
+
+    try:
         policy = _resolve_deepseek_policy(lane, model)
         # max_tokens must be the process-capped effective limit from the caller
         mt = max(1, int(max_tokens or 2048))
-        resp = chat(
-            policy=policy,
-            prompt=prompt,
-            timeout=timeout,
-            operator_confirmed=operator_confirmed,
-            response_json=response_json,
-            max_tokens=mt,
-        )
+        with cost_attribution(
+            source_service="llm_lane",
+            source_lane=str(lane),
+            source_process=process_id,
+        ):
+            resp = chat(
+                policy=policy,
+                prompt=prompt,
+                timeout=timeout,
+                operator_confirmed=operator_confirmed,
+                response_json=response_json,
+                max_tokens=mt,
+                source_service="llm_lane",
+                source_lane=str(lane),
+                source_process=process_id,
+            )
     except (RegistryError, DeepSeekError) as e:
         code = getattr(e, "code", "POLICY_BLOCKED")
         raise RuntimeError(f"{code}: {e}") from e
@@ -253,6 +283,7 @@ def generate(
             operator_confirmed=operator_confirmed or bool((metadata or {}).get("operator_cost_confirmed")),
             response_json=response_json,
             max_tokens=max_tokens,
+            process_id=process_id,
         )
         provenance = {
             "usage": {k: v for k, v in usage.items() if k != "_tradeai"},
@@ -332,11 +363,10 @@ def generate(
         return body["choices"][0]["message"]["content"]
 
     if lane_l == "local":
-        import local_llm
-        return local_llm.generate(prompt, timeout=timeout)
+        raise RuntimeError("POLICY_LOCAL_GENERATIVE_FORBIDDEN")
 
     # Unknown lane — fail closed (do NOT fall through to Gemma while claiming another provider)
     raise RuntimeError(
         f"UNKNOWN_LANE: lane={lane!r} is not registered; "
-        "refusing silent local-Gemma fallback"
+        "refusing an unregistered provider fallback"
     )

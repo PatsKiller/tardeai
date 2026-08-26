@@ -1,0 +1,16 @@
+{
+  "max_unattended": "REVIEW_READY",
+  "self_approve": {
+    "ok": false,
+    "reason": "PROMOTION_REQUIRES_SEPARATE_AUTHORITY",
+    "stage": "REVIEW_READY",
+    "max_unattended": "REVIEW_READY",
+    "authority": "READ_ONLY_ADVISORY"
+  },
+  "rollback": {
+    "ok": true,
+    "stage": "REVERTED",
+    "rollback": true,
+    "authority": "READ_ONLY_ADVISORY"
+  }
+}

@@ -1,0 +1,18 @@
+[Unit]
+Description=Trade AI Agent Runtime read-only health monitor
+After=network-online.target portfolio-server.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/trade-ai-releases/portfolio-server/CURRENT
+Environment=PYTHONPATH=%h/trade-ai-releases/portfolio-server/CURRENT:%h/trade-ai-releases/portfolio-server/CURRENT/scripts
+ExecStart=%h/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python -m scripts.agent_runtime.health_monitor
+NoNewPrivileges=true
+PrivateTmp=true
+# Observation file lives under ~/.local/state/tradeai
+ReadWritePaths=%h/.local/state/tradeai
+StandardOutput=append:%h/trade-ai-releases/portfolio-server/CURRENT/logs/agent_runtime_health.log
+StandardError=append:%h/trade-ai-releases/portfolio-server/CURRENT/logs/agent_runtime_health.log
+
+[Install]
+WantedBy=default.target

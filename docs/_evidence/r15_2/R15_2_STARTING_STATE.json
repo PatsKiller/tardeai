@@ -1,0 +1,13 @@
+{
+  "schema": "R15_2StartingState@v1",
+  "as_of": "2026-08-25T16:00:58Z",
+  "origin_main": "d72ecdd13d4fad1e7551597634f326aeb6a03353",
+  "current_sha_at_start": "b1295931f9b5e026df4a7017b7b4347640736b86",
+  "divergence": "main=d72ecdd1 CURRENT=b1295931 (#509 merged, not yet promoted)",
+  "pr508_merged": true,
+  "pr509_merged": true,
+  "pr509_deployed_at_start": false,
+  "MEMORY_BEHAVIOR_INFLUENCE": 0,
+  "CIO_MATERIAL_FINANCIAL_NOTIFY_CANARY": "unset",
+  "cash_target_range_pct": "unconfirmed"
+}

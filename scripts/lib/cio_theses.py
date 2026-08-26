@@ -79,24 +79,24 @@ def _normalize_thesis_id(thesis_id: str) -> str:
 
 
 def _notify_thesis_publish(thesis_id: str, version: int, summary: str) -> None:
-    """Best-effort: emit ONE concise Telegram when a CIO thesis version is published.
+    """Phase 1: NO general-Telegram side effect on thesis persistence.
 
-    2026-08-13 (telegram noise suppression): a thesis version bump is the *signal*
-    that replaces the raw research-update spam. It is material and low-frequency
-    (agent/operator-gated, monotonic version), so it is surfaced as a short text via
-    the central chokepoint (`send_telegram` classifies it `thesis_update` → immediate).
+    Default: silent (CIO_THESIS_TELEGRAM unset/0). When explicitly enabled,
+    routes ONLY through CIO-only transport (TELEGRAM_CIO_BOT_TOKEN + allowlist),
+    with materiality + semantic dedupe + pytest interdiction.
+
+    Never calls telegram_alert.send_telegram (general Maria channel).
     Never blocks the store write; any failure is swallowed.
     """
     try:
-        import sys as _sys
-        _scripts = str(Path(__file__).resolve().parents[1])
-        if _scripts not in _sys.path:
-            _sys.path.insert(0, _scripts)
-        from telegram_alert import send_telegram
-        body = (summary or "").strip().replace("\n", " ")[:240]
-        send_telegram(f"\U0001f9e0 CIO thesis updated \u2014 {thesis_id}@v{version}\n{body}")
+        from scripts.lib.cio_telegram_transport import notify_thesis_published
+        notify_thesis_published(thesis_id, version, summary)
     except Exception:
-        pass
+        try:
+            from lib.cio_telegram_transport import notify_thesis_published  # type: ignore
+            notify_thesis_published(thesis_id, version, summary)
+        except Exception:
+            pass
 
 
 class CIOThesisStore:
@@ -318,11 +318,13 @@ class CIOThesisStore:
         change_note: str = "",
         actor_id: str = "cio_theses",
         extra: Optional[dict[str, Any]] = None,
+        notify: bool = True,
     ) -> dict[str, Any]:
         """Publish a new version of a thesis (creates thesis_id on first publish).
 
         desk@v2+ fields: principles, risk_posture, escalation_rules, learning_log (seed).
         Ongoing operator learning also lands in cio_operator_learning.jsonl.
+        notify=False suppresses Telegram (bulk symbol backfills / tests).
         """
         tid = _normalize_thesis_id(thesis_id)
         summary = (summary or "").strip()
@@ -385,7 +387,8 @@ class CIOThesisStore:
                     payload[k] = v
         et = "THESIS_CREATED" if next_ver == 1 else "THESIS_VERSION_PUBLISHED"
         self._append_event(et, tid, payload, actor_id=actor_id)
-        _notify_thesis_publish(tid, next_ver, summary)
+        if notify:
+            _notify_thesis_publish(tid, next_ver, summary)
         return dict(self._current[tid])
 
     def get_current(self, thesis_id: str = DEFAULT_THESIS_ID) -> Optional[dict[str, Any]]:

@@ -497,6 +497,20 @@ def validate_opinion_output(
     return opinion, errors
 
 
+def _emit_advisory_decision_payload(row: dict[str, Any], opinion: dict[str, Any]) -> None:
+    """Flag-gated DecisionPayload@v1 when an opinion closes a recommendation. Fail-soft."""
+    try:
+        if not isinstance(opinion, dict) or opinion.get("cache_hit"):
+            return
+        try:
+            from lib.agent_decision_payload import emit_advisory_opinion_payload
+        except ImportError:
+            from scripts.lib.agent_decision_payload import emit_advisory_opinion_payload
+        emit_advisory_opinion_payload(row, opinion)
+    except Exception:
+        pass
+
+
 def emit_watchlist_feedback(
     row: dict[str, Any],
     evidence_bundle: dict[str, Any],
@@ -594,7 +608,7 @@ def generate_row_opinion(
             row, evidence_bundle, deterministic_verdict,
             int((row.get("confidence") or 0.5) * 100),
         )
-        return {
+        fallback = {
             "verdict": deterministic_verdict,
             "conviction": int((row.get("confidence") or 0.5) * 100),
             "what_changed": "No change — model unavailable.",
@@ -615,6 +629,8 @@ def generate_row_opinion(
             "cache_hit": False,
             "usage": {},
         }
+        _emit_advisory_decision_payload(row, fallback)
+        return fallback
 
     content = result.get("content", "")
     opinion = _extract_json_from_response(content)
@@ -624,7 +640,7 @@ def generate_row_opinion(
             row, evidence_bundle, deterministic_verdict,
             int((row.get("confidence") or 0.5) * 100),
         )
-        return {
+        fallback = {
             "verdict": deterministic_verdict,
             "conviction": int((row.get("confidence") or 0.5) * 100),
             "what_changed": "No change — model response unparseable.",
@@ -639,6 +655,8 @@ def generate_row_opinion(
             "cache_hit": False,
             "usage": result.get("usage") or {},
         }
+        _emit_advisory_decision_payload(row, fallback)
+        return fallback
 
     validated, validation_errors = validate_opinion_output(
         opinion, evidence_bundle, deterministic_verdict
@@ -663,6 +681,7 @@ def generate_row_opinion(
         }
         _save_opinion_cache(opinion_cache)
 
+    _emit_advisory_decision_payload(row, validated)
     return validated
 
 
@@ -679,6 +698,26 @@ def _verdict_str(row: dict[str, Any]) -> str:
     if hasattr(v, "value"):
         return str(v.value)
     return str(v or "?")
+
+
+def _row_data_conflict(row: dict[str, Any]) -> bool:
+    """True when a row's canonical financial facts are CONFLICTED/stale.
+
+    Honors every representation of the same state (verdict_suppressed,
+    data_quality.action_suppressed, canonical_financial_facts conflicts, and
+    financial_truth_quality CONFLICTED) so a conflicted sell can never be
+    surfaced by synthesis as an actionable funding source.
+    """
+    dq = row.get("data_quality") or {}
+    facts = row.get("canonical_financial_facts") or {}
+    ftq = str(row.get("financial_truth_quality") or "").upper()
+    return bool(
+        row.get("verdict_suppressed")
+        or dq.get("action_suppressed")
+        or facts.get("action_suppressed")
+        or facts.get("conflicts")
+        or ftq == "CONFLICTED"
+    )
 
 
 def rank_rows_dollars_first(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -728,7 +767,28 @@ def generate_desk_synthesis(
             "rationale": str(r.get("rationale") or "")[:150],
             "evidence_count": (r.get("evidence_bundle") or {}).get("evidence_count", 0),
             "evidence_gaps": (r.get("evidence_bundle") or {}).get("evidence_gaps", []),
+            "data_conflict": _row_data_conflict(r),
         })
+
+    # Phase 4 — synthesis fail-closed on CONFLICTED: a row whose mark is
+    # DATA_CONFLICT/stale must never be named as a sell / a funding source.
+    conflicted_actionable = [
+        r for r in summary_rows
+        if r.get("data_conflict")
+        and str(r.get("verdict") or "").upper() in {"TRIM", "EXIT", "ADD", "RE_ENTER"}
+    ]
+    conflict_names = ", ".join(sorted({str(r["symbol"]) for r in conflicted_actionable}))
+    fail_closed_prefix = (
+        f"[DATA CONFLICT — sells suppressed for {conflict_names}] "
+        if conflicted_actionable else ""
+    )
+    conflict_note = (
+        f"\n\nIMPORTANT — DATA CONFLICT: the following actionable names carry "
+        f"CONFLICTED/stale marks and their sells are SUPPRESSED: {conflict_names}. "
+        f"Do NOT recommend trimming or selling these names, and do NOT propose "
+        f"funding other positions by selling them."
+        if conflicted_actionable else ""
+    )
 
     # Local synthesis cache: content hash of ranked material fields
     synth_key = hashlib.sha256(
@@ -739,13 +799,15 @@ def generate_desk_synthesis(
             sc = json.loads(SYNTHESIS_CACHE_PATH.read_text(encoding="utf-8"))
             if sc.get("key") == synth_key and sc.get("text"):
                 return {
-                    "text": sc["text"],
+                    "text": fail_closed_prefix + sc["text"],
                     "cache_hit": True,
                     "model": sc.get("model", "cache"),
                     "usage": {},
                     "degraded": False,
                     "lead_symbol": (summary_rows[0]["symbol"] if summary_rows else None),
                     "lead_dollars": (summary_rows[0]["dollars_at_stake"] if summary_rows else None),
+                    "data_conflict": bool(conflicted_actionable),
+                    "conflicted_symbols": conflict_names.split(", ") if conflicted_actionable else [],
                 }
     except Exception:
         pass
@@ -755,12 +817,13 @@ def generate_desk_synthesis(
         user_body = template.replace(
             "{rows_json}",
             json.dumps(summary_rows, indent=2, default=str),
-        )
+        ) + conflict_note
     else:
         user_body = (
             "Rows ranked by dollars_at_stake (largest first):\n"
             + json.dumps(summary_rows, indent=2, default=str)
             + "\n\nLead with the largest dollar item. Name three things for today."
+            + conflict_note
         )
 
     system = (routing.get("stable_synthesis_system_prompt") or "").strip() or _DEFAULT_SYNTHESIS_SYSTEM
@@ -800,7 +863,7 @@ def generate_desk_synthesis(
             except Exception:
                 pass
             return {
-                "text": text,
+                "text": fail_closed_prefix + text,
                 "cache_hit": False,
                 "model": result.get("model"),
                 "lane": result.get("lane"),
@@ -809,6 +872,8 @@ def generate_desk_synthesis(
                 "via_bridge": bool(result.get("via_bridge")),
                 "lead_symbol": (summary_rows[0]["symbol"] if summary_rows else None),
                 "lead_dollars": (summary_rows[0]["dollars_at_stake"] if summary_rows else None),
+                "data_conflict": bool(conflicted_actionable),
+                "conflicted_symbols": conflict_names.split(", ") if conflicted_actionable else [],
             }
         # Empty provider content → fall through to degraded dollars-first text
 
@@ -825,13 +890,15 @@ def generate_desk_synthesis(
         f"Review allocation drift and any TRIM/EXIT above the materiality floor."
     )
     return {
-        "text": text,
+        "text": fail_closed_prefix + text,
         "cache_hit": False,
         "model": "deterministic_degraded",
         "usage": {},
         "degraded": True,
         "lead_symbol": lead.get("symbol"),
         "lead_dollars": lead.get("dollars_at_stake"),
+        "data_conflict": bool(conflicted_actionable),
+        "conflicted_symbols": conflict_names.split(", ") if conflicted_actionable else [],
     }
 
 

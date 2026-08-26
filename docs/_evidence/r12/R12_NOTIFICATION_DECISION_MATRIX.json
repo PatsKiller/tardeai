@@ -1,0 +1,11 @@
+{
+  "schema": "R12NotificationDecisionMatrix@v1",
+  "iteration": 5,
+  "chokepoint": "decide_notification",
+  "classes": ["IMMEDIATE", "DIGEST", "COMMAND_CENTER_ONLY", "SUPPRESSED"],
+  "auditable_results": ["NOTIFICATION_DELIVERED", "NOTIFICATION_QUEUED", "NOTIFICATION_DIGESTED", "COMMAND_CENTER_ONLY", "NOTIFICATION_SUPPRESSED", "POLICY_GAP_QUESTION", "NO_MATERIAL_CHANGE", "DELIVERY_FAILED_RETRYING", "DEAD_LETTERED", "DRY_RUN_INTERDICTED"],
+  "hold_cash_not_immediate": true,
+  "situation_classes_positive_tested": 14,
+  "situation_classes_negative_tested": 14,
+  "status": "PASS"
+}

@@ -1,0 +1,28 @@
+{
+  "candidates": [
+    {
+      "schema": "LessonCandidate@v2",
+      "lesson_id": "6f6ee51217e9f447dc7a",
+      "scope": "office",
+      "task_class": "research_curation",
+      "statement": "FRESH_NO_CHANGE should not spend",
+      "supporting_outcome_ids": [
+        "o1"
+      ],
+      "counterexamples": [],
+      "sample_size": 1,
+      "confidence": 0.5,
+      "limitations": "one outcome is not methodology",
+      "review_at": null,
+      "status": "PROVISIONAL",
+      "counterexample_search": false,
+      "methodology_effect": false,
+      "policy_effect": false,
+      "authority": "READ_ONLY_ADVISORY",
+      "memory_behavior_influence": 0,
+      "financial_action": false
+    }
+  ],
+  "supported": 0,
+  "note": "single-cycle not methodology"
+}

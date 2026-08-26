@@ -1,0 +1,13 @@
+{
+  "schema": "R17DueProcessor@v1",
+  "script": "scripts/process_due_checkpoints.py",
+  "systemd_unit": "config/systemd/tradeai-due-checkpoints.timer",
+  "enabled_on_current": false,
+  "current_run_persist_false": {
+    "observed": 0,
+    "pending_data": 1,
+    "no_action": 17,
+    "invented": false
+  },
+  "note": "Timer files exist; not installed. Do not label a manual start as natural."
+}

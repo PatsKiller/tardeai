@@ -1,0 +1,12 @@
+{
+  "symbol": "PRSO",
+  "result": "UNRESOLVED_WITH_REASON",
+  "reason": "no_canonical_symbol_card",
+  "kind": "equity_unresolved",
+  "security_guid": null,
+  "ticker_guid": "a3b37413-8555-5822-9259-a8d9effe9608",
+  "issuer_guid": null,
+  "listing_guid": null,
+  "fabricated_relationships": 0,
+  "note": "Ticker GUID is alias history only. Do not mint security_guid from ticker hash."
+}

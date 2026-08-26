@@ -27,6 +27,28 @@ IN_FLIGHT = frozenset({"queued", "running", "started"})
 TERMINAL = frozenset({"completed", "failed", "cancelled", "superseded"})
 
 
+def _ledger_queue_skip(reason: str, request: dict[str, Any], fingerprint: str) -> None:
+    """Optional skip-ledger hook. No-op unless RESEARCH_SKIP_GATE=1. Fail-soft."""
+    try:
+        from scripts.lib.research_skip_ledger import log_mapped_reason
+    except Exception:
+        try:
+            from lib.research_skip_ledger import log_mapped_reason  # type: ignore
+        except Exception:
+            return
+    try:
+        subject = request.get("subject") if isinstance(request.get("subject"), dict) else {}
+        symbol = str(request.get("symbol") or (subject or {}).get("symbol") or "")
+        log_mapped_reason(
+            reason,
+            symbol=symbol,
+            lane="hermes_queue",
+            content_hash=fingerprint or "",
+        )
+    except Exception:
+        return
+
+
 @dataclass
 class EnqueueResult:
     created: bool
@@ -149,6 +171,8 @@ def enqueue_research_request(
             bumped = True
             priority = str(new_p).lower()
         reason = "priority_bumped" if bumped else "duplicate_in_flight"
+        if reason == "duplicate_in_flight":
+            _ledger_queue_skip(reason, request, fp)
         log_event = _log(
             created=False,
             reason=reason,
@@ -207,6 +231,7 @@ def enqueue_research_request(
                 ttl_seconds=decision.ttl_seconds,
                 reuse_miss_reason=None,
             )
+            _ledger_queue_skip("reused_fresh_result", request, fp)
             return EnqueueResult(
                 created=False,
                 research_id=rid,

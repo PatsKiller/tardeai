@@ -1,0 +1,9 @@
+{
+  "schema": "R16_2Calibration@v1",
+  "historical_validated_n": 25,
+  "natural_longitudinal_n": 0,
+  "mixed": false,
+  "updated_from_natural_close": false,
+  "minimum_sample_warning_natural": true,
+  "authority": "READ_ONLY_ADVISORY"
+}

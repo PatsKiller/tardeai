@@ -1,0 +1,58 @@
+{
+  "schema": "R16_1Experiments@v1",
+  "preregistration_hash_unchanged": true,
+  "positive": {
+    "schema": "ShadowExperiment@v1",
+    "control_n": 10,
+    "candidate_n": 10,
+    "metric": "quality",
+    "control_mean": 0.8,
+    "candidate_mean": 0.9,
+    "delta": 0.1,
+    "finding": "positive",
+    "operator_notified": false,
+    "trading": false,
+    "policy_mutated": false,
+    "authority": "READ_ONLY_ADVISORY",
+    "memory_behavior_influence": 0
+  },
+  "negative": {
+    "schema": "ShadowExperiment@v1",
+    "control_n": 10,
+    "candidate_n": 10,
+    "metric": "quality",
+    "control_mean": 0.9,
+    "candidate_mean": 0.8,
+    "delta": -0.1,
+    "finding": "negative",
+    "operator_notified": false,
+    "trading": false,
+    "policy_mutated": false,
+    "authority": "READ_ONLY_ADVISORY",
+    "memory_behavior_influence": 0
+  },
+  "inconclusive": {
+    "schema": "ShadowExperiment@v1",
+    "control_n": 5,
+    "candidate_n": 5,
+    "metric": "paid",
+    "control_mean": 0.0,
+    "candidate_mean": 0.0,
+    "delta": 0.0,
+    "finding": "inconclusive",
+    "operator_notified": false,
+    "trading": false,
+    "policy_mutated": false,
+    "authority": "READ_ONLY_ADVISORY",
+    "memory_behavior_influence": 0
+  },
+  "findings": [
+    "positive",
+    "negative",
+    "inconclusive"
+  ],
+  "operator_side_effect": false,
+  "trading": false,
+  "policy_mutated": false,
+  "authority": "READ_ONLY_ADVISORY"
+}

@@ -30,10 +30,11 @@ SCOPE_CAPS = {
     "retention": 100,
     "rag_health": 10,
     "backlog": 10,
+    "epistemic": 50,
 }
 
 SCOPE_LIGHT = {"freshness", "retention"}  # every 15-min tick
-SCOPE_DEEP = {"taxonomy", "graph", "rag_health"}  # nightly deep pass
+SCOPE_DEEP = {"taxonomy", "graph", "rag_health", "epistemic"}  # nightly deep pass
 SCOPE_ALL = set(SCOPE_CAPS.keys())
 
 
@@ -106,6 +107,9 @@ def run_librarian(*, apply: bool = False, scope: str = "all",
             elif s == "backlog":
                 # Run legacy backlog loop logic (inline here or call the existing script)
                 r = _run_backlog_scope(conn, cur, apply=apply, max_rows=cap)
+            elif s == "epistemic":
+                from scripts.lib.librarian_assessment import assess_artifact
+                r = {"status": "ok", "note": "LibrarianAssessment@v1 available; batch artifact critique is dry by default", "assess_fn": assess_artifact.__name__, "dry_run": dry_run}
             else:
                 r = {"error": f"unknown scope: {s}"}
 

@@ -87,8 +87,19 @@ def _iron_rule() -> tuple[float, int]:
     d = json.loads(HOLDINGS_PATH.read_text(encoding="utf-8"))
     total = float((d.get("portfolio_totals") or {}).get("total_value") or 0)
     n = len([h for h in d.get("holdings") or [] if not h.get("is_cash")])
-    if not (1_000_000 <= total <= 1_400_000) or n <= 0:
-        raise SystemExit(f"IRON RULE FAIL: total_value={total} holdings={n} — refusing to run")
+    try:
+        import sys
+        from pathlib import Path
+        sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+        from holdings_sanity import validate_payload
+        v = validate_payload(d, None)
+        if not v.ok or n <= 0:
+            raise SystemExit(f"IRON RULE FAIL: {v.reason_code} total_value={total} holdings={n} — refusing to run")
+    except SystemExit:
+        raise
+    except Exception:
+        if n <= 0:
+            raise SystemExit(f"IRON RULE FAIL: total_value={total} holdings={n} — refusing to run")
     return total, n
 
 

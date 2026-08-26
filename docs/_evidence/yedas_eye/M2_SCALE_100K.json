@@ -1,0 +1,8 @@
+{
+  "n": 100000,
+  "write_s": 628.306,
+  "write_p50_est_ms": 6.283,
+  "read_ms": 197.163,
+  "current_rows": 75824,
+  "wall_s": 628.654
+}

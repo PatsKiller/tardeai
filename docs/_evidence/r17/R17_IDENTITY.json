@@ -1,0 +1,10 @@
+{
+  "schema": "R17Identity@v1",
+  "canonical_universe_count": 5407,
+  "identity_resolved": 2775,
+  "unresolved": 2632,
+  "never_mint_from_ticker": true,
+  "ticker_guid_is_not_security": true,
+  "closed_only_with_canonical_source": true,
+  "remaining_unresolved_explicit": true
+}

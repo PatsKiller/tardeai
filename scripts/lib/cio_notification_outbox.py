@@ -130,8 +130,27 @@ ALLOWED_DEEP_LINK_SCHEMES = frozenset({"http", "https", "cmd-center", ""})
 
 
 def build_dedupe_key(notification: dict[str, Any]) -> str:
-    """Build semantic dedupe key from source references."""
+    """Build semantic dedupe key from source references.
+
+    Phase 9: prefer InvestmentDecision / CIO decision_id + material state so the
+    same unchanged decision does not re-page; notification_id alone is not enough.
+    """
     parts: list[str] = []
+    # Phase 8/9 decision identity (preferred)
+    did = (
+        notification.get("decision_id")
+        or notification.get("investment_decision_id")
+        or (notification.get("payload") or {}).get("decision_id")
+    )
+    if did:
+        parts.append(f"decision:{did}")
+        state = (
+            notification.get("material_state")
+            or (notification.get("payload") or {}).get("material_state")
+            or ""
+        )
+        if state:
+            parts.append(f"state:{state}")
     if notification.get("cio_action_id"):
         parts.append(f"action:{notification['cio_action_id']}")
     if notification.get("wake_job_id"):
@@ -497,6 +516,11 @@ class NotificationOutbox:
                     "handoff_id": payload.get("handoff_id"),
                     "health_decision_id": payload.get("health_decision_id"),
                     "deep_link": payload.get("deep_link"),
+                    "reply_markup": payload.get("reply_markup"),
+                    "object_id": payload.get("object_id"),
+                    "symbol": payload.get("symbol"),
+                    "card_schema": payload.get("card_schema"),
+                    "parse_mode": payload.get("parse_mode"),
                     "claim_token": None,
                     "claim_worker_id": None,
                     "lease_expires_at": None,
@@ -663,7 +687,9 @@ class NotificationOutbox:
         Optional fields:
           - severity (auto-determined if absent), created_at, expires_at,
             dedupe_key, cio_action_id, wake_job_id, handoff_id,
-            health_decision_id, deep_link, idempotency_key, priority
+            health_decision_id, deep_link, idempotency_key, priority,
+            reply_markup (Telegram inline keyboard), object_id, symbol, card_schema,
+            parse_mode (optional Telegram parse mode, e.g. ``HTML``)
         """
         # Guard: validate dict shape before accessing fields to avoid KeyErrors
         if not isinstance(notification, dict):
@@ -728,6 +754,18 @@ class NotificationOutbox:
             "deep_link": notification.get("deep_link"),
             "idempotency_key": idempotency_key,
         }
+        # Optional Telegram inline keyboard (IIC / decision URL buttons).
+        if notification.get("reply_markup") is not None:
+            payload["reply_markup"] = notification.get("reply_markup")
+        if notification.get("object_id") is not None:
+            payload["object_id"] = notification.get("object_id")
+        if notification.get("symbol") is not None:
+            payload["symbol"] = notification.get("symbol")
+        if notification.get("card_schema") is not None:
+            payload["card_schema"] = notification.get("card_schema")
+        # Optional Telegram parse_mode (IIC HTML cards / book digest).
+        if notification.get("parse_mode") is not None:
+            payload["parse_mode"] = notification.get("parse_mode")
 
         event = build_event(
             event_type="NOTIFICATION_ENQUEUED",

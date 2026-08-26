@@ -110,26 +110,79 @@ def test_cio_now_surfaces_signal_and_breach_but_not_neutral():
     assert "AAA" not in symbols       # neutral hold — omitted
 
 
-def test_cio_now_orders_breach_first():
+def test_cio_now_breach_not_high_without_action():
     now = c.build_cio_now(position_decisions=_plan()["position_decisions"])
-    assert now["decisions"][0]["symbol"] == "SCHD"
-    assert now["decisions"][0]["urgency"] == "high"
+    by_symbol = {d["symbol"]: d for d in now["decisions"]}
+    # Concentration breach is a risk fact, never actionability: without an
+    # explicit ACT_NOW it must not surface as "high" / "Act now".
+    assert by_symbol["SCHD"]["urgency"] != "high"
+    assert by_symbol["SCHD"].get("action_label") != "ACT_NOW"
+
+
+def test_actionability_urgency_act_now_only_when_explicit():
+    assert c._actionability_urgency({"act_now": True}) == "high"
+    assert c._actionability_urgency({"action_label": "ACT_NOW"}) == "high"
+    assert c._actionability_urgency({"risk": "concentration > fire"}) == "low"
+    assert c._actionability_urgency({"action_label": "STALE_REFRESH_REQUIRED"}) == "medium"
+    assert c._actionability_urgency({"action_label": "REVIEW"}) == "medium"
+    assert c._actionability_urgency({}) == "low"
+
+
+def test_actionability_urgency_stale_overrides_act_now():
+    # P0-3 fail-closed: stale/conflict overrides act_now=True and stale ACT_NOW.
+    assert c._actionability_urgency({"act_now": True, "action_label": "STALE_REFRESH_REQUIRED"}) == "medium"
+    assert c._actionability_urgency({"act_now": True, "freshness": "STALE"}) == "medium"
+    assert c._actionability_urgency({"act_now": True, "action_label": "DATA_CONFLICT"}) == "medium"
+    assert c._actionability_urgency({"action_label": "ACT_NOW", "freshness": "EXPIRED"}) == "medium"
 
 
 def test_cio_now_caps_at_five():
     decs = [{"symbol": f"S{i}", "cio_stance": "TRIM", "recommended_delta_usd": 1.0,
-             "why_now": "signal", "risk": "within single-name cap"} for i in range(12)]
+             "why_now": f"Advisory TRIM — S{i}", "risk": "within single-name cap",
+             "action_label": "REVIEW"} for i in range(12)]
     now = c.build_cio_now(position_decisions=decs)
     assert len(now["decisions"]) == 5
+    # Phase 4: decision_count = investment decisions needing attention (all 12)
     assert now["decision_count"] == 12
+    assert now["attention"]["investment_decisions"] == 12
 
 
-def test_cio_now_includes_actions():
+def test_cio_now_actions_are_disjoint_kpi_not_decision_cards():
+    """Phase 4: workflow actions count separately; not mixed into decision cards."""
     actions = [{"cio_action_id": "A1", "why_now": "cash deployment", "notification_priority": "Critical"}]
     now = c.build_cio_now(actions=actions)
     assert now["open_actions_count"] == 1
-    assert any(d["kind"] == "action" and d["action_id"] == "A1" for d in now["decisions"])
+    assert now["attention"]["workflow_actions"] == 1
+    assert not any(d.get("kind") == "action" for d in now["decisions"])
 
+
+def test_cio_now_attention_kpis_disjoint():
+    decs = [
+        {"symbol": "SCHD", "cio_stance": "TRIM", "recommended_delta_usd": -20000,
+         "why_now": "Advisory TRIM — SCHD", "risk": "concentration > fire",
+         "action_label": "ACT_NOW", "act_now": True, "current_weight_pct": 17.5},
+        {"symbol": "AAA", "cio_stance": "HOLD", "recommended_delta_usd": 0,
+         "why_now": "no new desk signal; hold", "risk": "within single-name cap",
+         "action_label": "WATCH"},
+    ]
+    actions = [
+        {"cio_action_id": "A1", "status": "open", "notification_priority": "High", "symbol": "BBB"},
+        {"cio_action_id": "A2", "status": "done"},
+    ]
+    plans = [
+        {"plan_id": "p1", "status": "proposed"},
+        {"plan_id": "p2", "status": "cancelled"},
+    ]
+    now = c.build_cio_now(position_decisions=decs, actions=actions, plans=plans)
+    att = now["attention"]
+    assert att["investment_decisions"] == 1  # SCHD only
+    assert att["workflow_actions"] == 1  # A1 only
+    assert att["open_plans"] == 1  # p1 only
+    assert att["material_today"] >= 1
+    # Material today is not the arithmetic sum of the three buckets
+    assert att["material_today"] != (
+        att["investment_decisions"] + att["workflow_actions"] + att["open_plans"]
+    )
 
 # ── Capital Plan ─────────────────────────────────────────────────────────────
 
@@ -138,10 +191,19 @@ def test_capital_plan_projection():
     assert cp["cash_total_usd"] == 578107.5
     assert cp["cash_band"]["min_pct"] == 20.0
     assert cp["recommended_deploy_usd"] == 603114.7
+    # Phase 8 / Phase 2: recommended raise is prospective; earmark is labeled separately
     assert cp["recommended_raise_usd"] == 623009.02
     assert cp["cash_posture"] == "above policy band"
-    assert any(s["label"] == "Total raise" and s["usd"] == 623009.02 for s in cp["sources"])
-    assert any(u["label"] == "Total deploy request" and u["usd"] == 603114.7 for u in cp["uses"])
+    assert any("Prospective raise" in s["label"] and s["usd"] == 623009.02 for s in cp["sources"])
+    assert any("Earmarked" in s["label"] and s["usd"] == 560009.02 for s in cp["sources"])
+    assert any(
+        "Total deploy request" in u["label"] and u["usd"] == 603114.7 for u in cp["uses"]
+    )
+    assert any("notional" in u["label"].lower() or "Reserve (held" in u["label"] for u in cp["uses"])
+    assert cp.get("plan_digest")
+    assert cp.get("deploy_funding") is not None
+    assert cp["deploy_funding"]["deploy_exceeds_investable_cash"] is True
+    assert cp["deploy_funding"]["gap_vs_investable_cash_usd"] == round(603114.7 - 321622.3, 2)
 
 
 def test_capital_plan_empty_fail_soft():
@@ -161,6 +223,10 @@ def test_posture_concentration_and_heat():
     assert p["concentration"]["fire_pct"] == 12.0
     assert p["risk_heat"]["max_drawdown_pct"] == -21.2
     assert p["performance"]["benchmark_label"].startswith("55% SPY")
+    assert "20% ITA" in p["performance"]["benchmark_label"]
+    assert p["performance"]["benchmark_source"]
+    assert "blended" in p["performance"]["benchmark_source"].lower()
+    assert "defense sleeve" in p["performance"]["benchmark_source"].lower()
     assert p["thesis"]["stance"] == "Neutral · hold"
     assert p["sector_tilts"][0]["sector"] == "Energy"
 
@@ -181,6 +247,36 @@ def test_opportunities_buckets():
     assert [r["symbol"] for r in o["reentry"]] == ["ADBE"]
     assert [g["symbol"] for g in o["research_gaps"]] == ["CVX"]
     assert o["rotation"][0]["sector"] == "Energy"
+    assert o["watch_total"] == 2
+    assert o["reentry_total"] == 1
+
+
+def test_opportunities_reentry_not_mislabeled_as_watch():
+    # Re-entry rows that carry a readiness label (no RE_ENTER token) must bucket
+    # under re-entry, not the staged watch queue.
+    q = {"items": [
+        {"symbol": "FATN", "verdict": None, "source": "advisory",
+         "directive_label": "Re-entry NEAR ENTRY — FATN"},
+        {"symbol": "GXAI", "verdict": None, "source": "advisory",
+         "directive_label": "Re-entry READY TO REVIEW — GXAI"},
+        {"symbol": "PLTR", "verdict": None, "source": "advisory",
+         "directive_label": "Watchlist NEW — PLTR"},
+    ]}
+    o = c.build_opportunities(queue=q)
+    assert [w["symbol"] for w in o["watch"]] == ["PLTR"]
+    assert [r["symbol"] for r in o["reentry"]] == ["FATN", "GXAI"]
+    assert o["reentry_total"] == 2
+
+
+def test_opportunities_source_reentry_wins():
+    q = {"items": [
+        {"symbol": "IPM", "verdict": None, "source": "reentry", "directive_label": "MISSING PLAN — IPM"},
+        {"symbol": "AMC", "verdict": "RE_ENTER", "source": "advisory", "directive_label": "Advisory RE_ENTER — AMC"},
+    ]}
+    o = c.build_opportunities(queue=q)
+    assert [r["symbol"] for r in o["reentry"]] == ["IPM", "AMC"]
+    assert o["watch"] == []
+
 
 
 # ── Report / Evidence ────────────────────────────────────────────────────────
@@ -211,9 +307,12 @@ def test_build_office_home_has_six_sections():
         report=_report(), thesis=_thesis(), attribution=_attribution(),
         income={"grand_total_income": 10543.13},
     )
-    for k in ("cio_now", "capital_plan", "posture", "opportunities", "report", "evidence"):
+    for k in ("cio_now", "capital_plan", "posture", "opportunities", "report", "evidence", "operator_trust"):
         assert k in home, k
     assert home["authority"] == "READ_ONLY_ADVISORY"
+    assert "aegis_last_run" in home["operator_trust"]
+    assert "holdings" in home["operator_trust"]
+    assert "notification" in home["operator_trust"]
     assert home["posture"]["income"]["total_usd"] == 10543.13
 
 
@@ -234,3 +333,4 @@ def test_build_office_home_empty_fail_soft():
     assert home["capital_plan"]["cash_total_usd"] is None
     assert home["report"]["source_sha"] is None
     assert home["evidence"]["authority"] == "READ_ONLY_ADVISORY"
+    assert home["operator_trust"]["holdings"]["reason_code"]

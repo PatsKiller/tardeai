@@ -1,0 +1,36 @@
+{
+  "schema": "R16_1SpecialistQuality@v1",
+  "maria": {
+    "n": 25,
+    "unique": 9,
+    "agreement_not_rewarded": true,
+    "evidence_class": "GOLDEN_SHADOW",
+    "live_ticks": 0
+  },
+  "steph": {
+    "n": 25,
+    "unique": 8,
+    "agreement_not_rewarded": true,
+    "evidence_class": "GOLDEN_SHADOW",
+    "live_ticks": 0
+  },
+  "guardian": {
+    "n": 25,
+    "unique": 8,
+    "agreement_not_rewarded": true,
+    "evidence_class": "GOLDEN_SHADOW",
+    "live_ticks": 0,
+    "risk_authority": false
+  },
+  "ledger": {
+    "n": 25,
+    "unique": 9,
+    "agreement_not_rewarded": true,
+    "evidence_class": "GOLDEN_SHADOW",
+    "live_ticks": 0,
+    "execution_authority": false
+  },
+  "not_scored_on_cio_agreement": true,
+  "r15_2_same_brain_smoke": true,
+  "authority": "READ_ONLY_ADVISORY"
+}

@@ -1,0 +1,7 @@
+{
+  "schema": "R15FaultCampaign@v1",
+  "cases": 30,
+  "silent_loss": false,
+  "fabricated_certainty": false,
+  "proven": "UNIT"
+}

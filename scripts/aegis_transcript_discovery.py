@@ -2,8 +2,9 @@
 aegis_transcript_discovery.py — Aegis Tier 1D: Transcript intelligence + bounded web discovery.
 
 Sources:
+- Existing youtube_transcripts DB (preferred — already ingested, no network)
 - YouTube transcript API (earnings calls, finance commentary for tracked symbols)
-- Brave Search API (bounded article/transcript discovery)
+- Brave Search API (bounded article/transcript discovery; degrades on network failure)
 - Existing article_index from pipeline (internal enrichment)
 
 All outputs marked model='aegis', source='aegis:transcript' or 'aegis:discovery'.
@@ -45,6 +46,23 @@ PORTFOLIO_THEMES = [
     {"theme": "dividend-income", "query": "dividend income portfolio strategy SCHD"},
 ]
 
+# Network-class errors that should not zero the entire discovery path.
+_NETWORK_ERROR_MARKERS = (
+    "Network is unreachable",
+    "Failed to establish a new connection",
+    "Name or service not known",
+    "Connection refused",
+    "Temporary failure in name resolution",
+    "Max retries exceeded",
+    "ConnectTimeout",
+    "ConnectionError",
+)
+
+
+def _is_network_error(exc: BaseException) -> bool:
+    msg = f"{type(exc).__name__}: {exc}"
+    return any(m in msg for m in _NETWORK_ERROR_MARKERS)
+
 
 def _db_write(sql, params=None):
     try:
@@ -70,29 +88,103 @@ def _db_query(sql, params=None, fetch="all"):
         return None
 
 
-# ── D1: YouTube transcript ingestion ─────────────────────────────────────
+def _stance_and_themes(title: str, description: str, body: str = "") -> tuple[str, list]:
+    text_lower = (title + " " + description + " " + body[:500]).lower()
+    bullish = sum(1 for w in ("bull", "buy", "upside", "breakout", "growth") if w in text_lower)
+    bearish = sum(1 for w in ("bear", "sell", "downside", "crash", "risk") if w in text_lower)
+    stance = "bullish" if bullish > bearish else "bearish" if bearish > bullish else "neutral"
+    themes = []
+    for t_word in ("earnings", "dividend", "covered call", "options", "growth", "value", "defense", "AI", "tech"):
+        if t_word.lower() in text_lower:
+            themes.append(t_word)
+    return stance, themes[:5]
+
+
+# ── D0: Prefer existing youtube_transcripts DB ────────────────────────────
+
+def fetch_db_youtube_transcripts(symbols: list[str], max_per_symbol: int = 2,
+                                 lookback_days: int = 14) -> list[dict]:
+    """Query already-ingested youtube_transcripts related to symbols. No network."""
+    records = []
+    if not symbols:
+        return records
+
+    for sym in symbols[:20]:
+        rows = _db_query(
+            """SELECT video_id, title, channel_name, url, summary, transcript_text,
+                      quality_score, strategy_tags, ingested_at
+               FROM youtube_transcripts
+               WHERE ingested_at > NOW() - make_interval(days => %s)
+                 AND (
+                      title ILIKE %s
+                   OR COALESCE(summary, '') ILIKE %s
+                   OR COALESCE(transcript_text, '') ILIKE %s
+                   OR COALESCE(strategy_tags::text, '') ILIKE %s
+                 )
+               ORDER BY quality_score DESC NULLS LAST, ingested_at DESC
+               LIMIT %s""",
+            (lookback_days, f"%{sym}%", f"%{sym}%", f"%{sym}%", f"%{sym}%", max_per_symbol),
+        ) or []
+
+        for r in rows:
+            title = (r.get("title") or "")[:120]
+            summary = (r.get("summary") or "")[:300]
+            body = (r.get("transcript_text") or "")[:500]
+            if not title and not summary and not body:
+                continue  # never invent
+            stance, themes = _stance_and_themes(title, summary, body)
+            records.append({
+                "symbol": sym,
+                "theme": None,
+                "source_family": "youtube",
+                "source_name": "youtube_transcripts_db",
+                "channel": (r.get("url") or r.get("channel_name") or "")[:80],
+                "title": title,
+                "summary": summary or body[:300],
+                "stance": stance,
+                "notable_themes": themes,
+                "confidence": 0.55,
+                "video_id": r.get("video_id"),
+                "quality_score": r.get("quality_score"),
+            })
+    return records
+
+
+# ── D1: YouTube transcript ingestion (Brave-assisted, DB-first) ───────────
 
 def fetch_youtube_transcripts(symbols: list[str], max_per_symbol: int = 1) -> list[dict]:
-    """Search YouTube for earnings/analysis videos and extract transcript summaries."""
-    records = []
+    """Prefer DB transcripts; optionally enrich via Brave + youtube_transcript_api.
+
+    Brave network failures are logged and skipped — never invents rows.
+    """
+    # Preferred path: already-ingested corpus
+    records = fetch_db_youtube_transcripts(symbols, max_per_symbol=max(max_per_symbol, 2))
+    if records:
+        print(f"  [youtube] DB corpus: {len(records)} symbol-related transcripts")
+
     try:
         from youtube_transcript_api import YouTubeTranscriptApi
     except ImportError:
-        print("  [youtube] youtube_transcript_api not available — using Brave fallback")
+        print("  [youtube] youtube_transcript_api not available — using DB/article fallback only")
         return records
 
-    # Use Brave to find relevant YouTube videos for top symbols
     if not BRAVE_KEY:
-        print("  [youtube] No Brave key for YouTube discovery — skipping")
+        print("  [youtube] No Brave key — skipping live YouTube discovery (DB path retained)")
         return records
 
-    for sym in symbols[:12]:  # Budget: 12 symbols
+    seen_ids = {r.get("video_id") for r in records if r.get("video_id")}
+    brave_ok = True
+
+    for sym in symbols[:12]:
+        if not brave_ok:
+            break
         try:
             url = "https://api.search.brave.com/res/v1/web/search"
             params = {"q": f"{sym} stock analysis earnings 2026 site:youtube.com", "count": 3, "freshness": "pw"}
             resp = requests.get(url, params=params, timeout=10,
                                headers={"X-Subscription-Token": BRAVE_KEY, "Accept": "application/json"})
             if resp.status_code != 200:
+                print(f"  [youtube] Brave HTTP {resp.status_code} for {sym} — continuing with DB")
                 continue
             results = resp.json().get("web", {}).get("results", [])
 
@@ -102,34 +194,25 @@ def fetch_youtube_transcripts(symbols: list[str], max_per_symbol: int = 1) -> li
                 m = re.search(r'(?:v=|youtu\.be/)([a-zA-Z0-9_-]{11})', video_url)
                 if m:
                     video_id = m.group(1)
+                if video_id and video_id in seen_ids:
+                    continue
 
                 title = r.get("title", "")[:120]
                 description = (r.get("description") or "")[:200]
 
-                # Try to get transcript
                 transcript_text = ""
                 if video_id:
                     try:
                         transcript = YouTubeTranscriptApi.get_transcript(video_id, languages=['en'])
-                        # Take first ~2000 chars for summary
                         full = " ".join(t["text"] for t in transcript)
                         transcript_text = full[:2000]
                     except Exception:
-                        pass  # Many videos don't have transcripts
+                        pass
 
-                # Determine stance from title/description
-                text_lower = (title + " " + description + " " + transcript_text[:500]).lower()
-                bullish = sum(1 for w in ("bull", "buy", "upside", "breakout", "growth") if w in text_lower)
-                bearish = sum(1 for w in ("bear", "sell", "downside", "crash", "risk") if w in text_lower)
-                stance = "bullish" if bullish > bearish else "bearish" if bearish > bullish else "neutral"
-
-                # Extract themes
-                themes = []
-                for t_word in ("earnings", "dividend", "covered call", "options", "growth", "value", "defense", "AI", "tech"):
-                    if t_word.lower() in text_lower:
-                        themes.append(t_word)
-
+                stance, themes = _stance_and_themes(title, description, transcript_text)
                 summary = transcript_text[:300] if transcript_text else description
+                if not title and not summary:
+                    continue
                 records.append({
                     "symbol": sym,
                     "source_family": "youtube",
@@ -138,12 +221,20 @@ def fetch_youtube_transcripts(symbols: list[str], max_per_symbol: int = 1) -> li
                     "title": title,
                     "summary": summary,
                     "stance": stance,
-                    "notable_themes": themes[:5],
+                    "notable_themes": themes,
                     "confidence": 0.45 if transcript_text else 0.30,
+                    "video_id": video_id,
                 })
+                if video_id:
+                    seen_ids.add(video_id)
 
             time.sleep(0.5)
         except Exception as e:
+            if _is_network_error(e):
+                print(f"  [youtube] Brave unreachable ({e}) — continuing with DB/Hermes-style fallback "
+                      f"({len(records)} records so far)")
+                brave_ok = False
+                break
             print(f"  [youtube] {sym} error: {e}")
 
     return records
@@ -152,14 +243,17 @@ def fetch_youtube_transcripts(symbols: list[str], max_per_symbol: int = 1) -> li
 # ── D2: Brave bounded discovery ──────────────────────────────────────────
 
 def fetch_brave_discovery(symbols: list[str], themes: list[dict]) -> list[dict]:
-    """Bounded Brave discovery for articles, transcripts, commentary."""
+    """Bounded Brave discovery for articles, transcripts, commentary.
+
+    On network failure: log clearly and return whatever was collected (often []).
+    Callers should still run DB/article enrichment — this never invents data.
+    """
     if not BRAVE_KEY:
-        print("  [brave-disc] No Brave key — skipping")
+        print("  [brave-disc] No Brave key — skipping live discovery")
         return []
 
     discovery_records = []
 
-    # Symbol-level discovery (top 10)
     for sym in symbols[:10]:
         try:
             url = "https://api.search.brave.com/res/v1/web/search"
@@ -169,20 +263,27 @@ def fetch_brave_discovery(symbols: list[str], themes: list[dict]) -> list[dict]:
             if resp.status_code != 200:
                 continue
             for r in resp.json().get("web", {}).get("results", [])[:3]:
+                title = r.get("title", "")[:120]
+                src_url = r.get("url", "")
+                if not title and not src_url:
+                    continue
                 discovery_records.append({
                     "symbol": sym, "theme": None,
                     "query": f"{sym} stock analysis",
-                    "source_url": r.get("url", ""),
-                    "source_title": r.get("title", "")[:120],
+                    "source_url": src_url,
+                    "source_title": title,
                     "source_description": (r.get("description") or "")[:200],
-                    "source_family": _classify_source(r.get("url", "")),
-                    "trust_tier": _tier_source(r.get("url", "")),
+                    "source_family": _classify_source(src_url),
+                    "trust_tier": _tier_source(src_url),
                 })
             time.sleep(0.4)
         except Exception as e:
+            if _is_network_error(e):
+                print(f"  [brave-disc] Network unreachable ({e}) — aborting Brave symbol scan; "
+                      f"DB/article fallback remains available")
+                return discovery_records
             print(f"  [brave-disc] {sym} error: {e}")
 
-    # Theme-level discovery
     for t in themes:
         try:
             url = "https://api.search.brave.com/res/v1/web/search"
@@ -192,17 +293,24 @@ def fetch_brave_discovery(symbols: list[str], themes: list[dict]) -> list[dict]:
             if resp.status_code != 200:
                 continue
             for r in resp.json().get("web", {}).get("results", [])[:3]:
+                title = r.get("title", "")[:120]
+                src_url = r.get("url", "")
+                if not title and not src_url:
+                    continue
                 discovery_records.append({
                     "symbol": None, "theme": t["theme"],
                     "query": t["query"],
-                    "source_url": r.get("url", ""),
-                    "source_title": r.get("title", "")[:120],
+                    "source_url": src_url,
+                    "source_title": title,
                     "source_description": (r.get("description") or "")[:200],
-                    "source_family": _classify_source(r.get("url", "")),
-                    "trust_tier": _tier_source(r.get("url", "")),
+                    "source_family": _classify_source(src_url),
+                    "trust_tier": _tier_source(src_url),
                 })
             time.sleep(0.4)
         except Exception as e:
+            if _is_network_error(e):
+                print(f"  [brave-disc] Network unreachable on theme scan ({e}) — stopping Brave themes")
+                return discovery_records
             print(f"  [brave-disc] theme {t['theme']} error: {e}")
 
     return discovery_records
@@ -309,18 +417,17 @@ def main():
     from aegis_nightly_ingestion import resolve_universe
     universe = resolve_universe()
     symbols = [u["symbol"] for u in universe]
-    # Priority: recovery > watchlist > holdings
     priority = sorted(symbols, key=lambda s: (
         0 if any("recovery" in u["reasons"] for u in universe if u["symbol"] == s) else
         1 if any("watchlist" in u["reasons"] for u in universe if u["symbol"] == s) else 2
     ))
     print(f"  Universe: {len(symbols)} symbols")
 
-    # D1: YouTube transcripts
+    # D1: YouTube transcripts (DB preferred, Brave optional)
     yt_records = fetch_youtube_transcripts(priority)
     print(f"  YouTube: {len(yt_records)} transcript records")
 
-    # Internal article enrichment
+    # Internal article enrichment (Hermes-style local fallback)
     article_records = enrich_from_article_index(symbols)
     print(f"  Article index: {len(article_records)} records")
 
@@ -328,13 +435,18 @@ def main():
     t_written = persist_transcripts(all_transcripts)
     print(f"  Transcripts persisted: {t_written}")
 
-    # D2: Brave bounded discovery
+    # D2: Brave bounded discovery (degrades gracefully on network failure)
     discovery = fetch_brave_discovery(priority, PORTFOLIO_THEMES)
     d_written = persist_discovery(discovery)
     print(f"  Discovery: {len(discovery)} found, {d_written} persisted")
 
     print(f"[aegis-transcript] Complete — {datetime.now().isoformat()}")
-    return {"transcripts": t_written, "discovery": d_written, "youtube": len(yt_records), "articles": len(article_records)}
+    return {
+        "transcripts": t_written,
+        "discovery": d_written,
+        "youtube": len(yt_records),
+        "articles": len(article_records),
+    }
 
 
 if __name__ == "__main__":

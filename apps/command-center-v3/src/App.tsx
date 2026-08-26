@@ -176,6 +176,7 @@ function Shell() {
             <Route path="strategy" element={<StrategyHub onDrill={setDrill} />} />
             <Route path="agents" element={<AgentRuntimeHub onDrill={setDrill} />} />
             <Route path="intelligence" element={<IntelligenceHub onDrill={setDrill} />} />
+            <Route path="closed-loop" element={<Navigate to="/intelligence?tab=closed-loop" replace />} />
             <Route path="research-intelligence" element={<ResearchIntelligenceHub onDrill={setDrill} />} />
             <Route path="research" element={<Navigate to="/research-intelligence" replace />} />
             <Route path="hermes" element={<HermesHub onDrill={setDrill} />} />

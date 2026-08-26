@@ -1,0 +1,21 @@
+{
+  "schema": "R16_1MergeReadiness@v1",
+  "pr": 511,
+  "tests_green": true,
+  "tests_passed": 1939,
+  "tests_failed": 0,
+  "lookahead_green": true,
+  "lookahead_leaks": 0,
+  "authority_green": true,
+  "schema_green": true,
+  "frontend_green": true,
+  "mergeable": true,
+  "merged": true,
+  "merged_at": "2026-08-25T16:51:18Z",
+  "merge_sha": "55520666b4a742b9ed893c3231b414d089312363",
+  "head_before_merge": "6000153206568c5e2d3ba96e9e5c8b17baf58914",
+  "handoff_head": "164bcf0fb94983515236c955d3a8f4850b6b5e8f",
+  "protected_main_process": true,
+  "feature_branch_not_deployed": true,
+  "note": "Handoff reported 1661 PASS on 164bcf0f; 60001532 added durable checkpoints; local R11–R16 suite after merge is 1939 PASS."
+}

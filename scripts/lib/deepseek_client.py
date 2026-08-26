@@ -148,6 +148,78 @@ def list_models(*, timeout: float = 15.0) -> dict[str, Any]:
     }
 
 
+def _emit_chat_event(
+    *,
+    outcome: str,
+    model_id: str | None,
+    request_id: str | None,
+    client_rid: str | None,
+    raw_key: str | None,
+    usage: dict | None = None,
+    request_sent: bool = False,
+    possibly_billable: bool = False,
+    error_class: str | None = None,
+    source_service: str | None = None,
+    source_process: str | None = None,
+    source_lane: str | None = None,
+    agent: str | None = None,
+    run_id: str | None = None,
+    reservation_id: str | None = None,
+    environment: str | None = None,
+) -> None:
+    """Fail-soft FinOps emit. Never invents tokens/USD. Never raises."""
+    try:
+        try:
+            from scripts.lib.provider_cost.emit import (
+                OUTCOME_ATTEMPT,
+                OUTCOME_PRE_SEND,
+                OUTCOME_SUCCESS,
+                emit_cost_event,
+            )
+        except ImportError:
+            from lib.provider_cost.emit import (  # type: ignore
+                OUTCOME_ATTEMPT,
+                OUTCOME_PRE_SEND,
+                OUTCOME_SUCCESS,
+                emit_cost_event,
+            )
+        usage = usage or {}
+        pt = usage.get("prompt_tokens")
+        ct = usage.get("completion_tokens")
+        hit = usage.get("prompt_cache_hit_tokens") or usage.get("cache_hit_tokens")
+        miss = usage.get("prompt_cache_miss_tokens") or usage.get("cache_miss_tokens")
+        if outcome == OUTCOME_SUCCESS:
+            pt = int(pt or 0)
+            ct = int(ct or 0)
+            hit = int(hit or 0)
+        emit_cost_event(
+            provider="deepseek",
+            model=str(model_id or ""),
+            outcome=outcome,
+            request_id=request_id,
+            client_request_id=client_rid,
+            prompt_tokens=pt,
+            completion_tokens=ct,
+            cache_hit_tokens=hit,
+            cache_miss_tokens=miss,
+            raw_key=raw_key,
+            request_sent=request_sent,
+            possibly_billable=possibly_billable,
+            error_class=error_class,
+            source_service=source_service,
+            source_process=source_process,
+            source_lane=source_lane,
+            agent=agent,
+            run_id=run_id,
+            reservation_id=reservation_id,
+            environment=environment,
+            evidence_refs=["deepseek_client.chat"],
+        )
+        _ = (OUTCOME_ATTEMPT, OUTCOME_PRE_SEND, OUTCOME_SUCCESS)
+    except Exception:
+        return
+
+
 def chat(
     *,
     policy: str | None = None,
@@ -161,6 +233,13 @@ def chat(
     operator_confirmed: bool = False,
     messages: list[dict] | None = None,
     temperature: float | None = 0.3,
+    source_service: str | None = None,
+    source_process: str | None = None,
+    source_lane: str | None = None,
+    agent: str | None = None,
+    run_id: str | None = None,
+    reservation_id: str | None = None,
+    environment: str | None = None,
 ) -> DeepSeekResponse:
     """Execute one chat completion with exact model + full provenance."""
     client_rid = str(uuid.uuid4())
@@ -189,6 +268,23 @@ def chat(
 
     key, env_name, legacy = get_deepseek_api_key()
     if not key:
+        _emit_chat_event(
+            outcome="pre_send_failure",
+            model_id=model_id,
+            request_id=None,
+            client_rid=client_rid,
+            raw_key=None,
+            request_sent=False,
+            possibly_billable=False,
+            error_class=AUTH_MISSING,
+            source_service=source_service,
+            source_process=source_process,
+            source_lane=source_lane,
+            agent=agent,
+            run_id=run_id,
+            reservation_id=reservation_id,
+            environment=environment,
+        )
         return DeepSeekResponse(
             ok=False,
             requested_policy=requested_policy,
@@ -246,6 +342,23 @@ def chat(
         request_sent = True
     except requests.Timeout:
         # Timeout after send attempt — treat as possibly billable
+        _emit_chat_event(
+            outcome="possibly_billable_attempt",
+            model_id=model_id,
+            request_id=None,
+            client_rid=client_rid,
+            raw_key=key,
+            request_sent=True,
+            possibly_billable=True,
+            error_class=TIMEOUT,
+            source_service=source_service,
+            source_process=source_process,
+            source_lane=source_lane,
+            agent=agent,
+            run_id=run_id,
+            reservation_id=reservation_id,
+            environment=environment,
+        )
         return DeepSeekResponse(
             ok=False,
             requested_policy=requested_policy,
@@ -267,6 +380,23 @@ def chat(
         )
     except requests.RequestException as e:
         # May or may not have left the host; treat as possibly billable conservatively
+        _emit_chat_event(
+            outcome="possibly_billable_attempt",
+            model_id=model_id,
+            request_id=None,
+            client_rid=client_rid,
+            raw_key=key,
+            request_sent=True,
+            possibly_billable=True,
+            error_class=NETWORK_ERROR,
+            source_service=source_service,
+            source_process=source_process,
+            source_lane=source_lane,
+            agent=agent,
+            run_id=run_id,
+            reservation_id=reservation_id,
+            environment=environment,
+        )
         return DeepSeekResponse(
             ok=False,
             requested_policy=requested_policy,
@@ -290,6 +420,23 @@ def chat(
     latency = int((time.time() - t0) * 1000)
     req_id = r.headers.get("x-request-id")
     if r.status_code != 200:
+        _emit_chat_event(
+            outcome="possibly_billable_attempt",
+            model_id=model_id,
+            request_id=req_id,
+            client_rid=client_rid,
+            raw_key=key,
+            request_sent=True,
+            possibly_billable=True,
+            error_class=_classify_http(r.status_code),
+            source_service=source_service,
+            source_process=source_process,
+            source_lane=source_lane,
+            agent=agent,
+            run_id=run_id,
+            reservation_id=reservation_id,
+            environment=environment,
+        )
         return DeepSeekResponse(
             ok=False,
             requested_policy=requested_policy,
@@ -315,6 +462,23 @@ def chat(
     try:
         payload = r.json()
     except Exception:
+        _emit_chat_event(
+            outcome="possibly_billable_attempt",
+            model_id=model_id,
+            request_id=req_id,
+            client_rid=client_rid,
+            raw_key=key,
+            request_sent=True,
+            possibly_billable=True,
+            error_class=JSON_INVALID,
+            source_service=source_service,
+            source_process=source_process,
+            source_lane=source_lane,
+            agent=agent,
+            run_id=run_id,
+            reservation_id=reservation_id,
+            environment=environment,
+        )
         return DeepSeekResponse(
             ok=False,
             requested_policy=requested_policy,
@@ -350,6 +514,24 @@ def chat(
 
     if returned and returned != model_id:
         # Provider silent remap (e.g. legacy ids) — treat as hard failure for exact-ID contract
+        _emit_chat_event(
+            outcome="possibly_billable_attempt",
+            model_id=model_id,
+            request_id=req_id,
+            client_rid=client_rid,
+            raw_key=key,
+            usage=usage,
+            request_sent=True,
+            possibly_billable=True,
+            error_class=MISMATCHED_RETURNED_MODEL,
+            source_service=source_service,
+            source_process=source_process,
+            source_lane=source_lane,
+            agent=agent,
+            run_id=run_id,
+            reservation_id=reservation_id,
+            environment=environment,
+        )
         return DeepSeekResponse(
             ok=False,
             requested_policy=requested_policy,
@@ -376,7 +558,7 @@ def chat(
 
     truncated = finish == "length"
     if truncated:
-        err = None  # partial content is still billable and may be useful
+        err = OUTPUT_TRUNCATED  # partial content remains usable (ok=True)
     elif not (content or reasoning_content or msg.get("tool_calls")):
         err = EMPTY_CONTENT
     else:
@@ -390,8 +572,26 @@ def chat(
         cache_miss_tokens=(usage.get("prompt_cache_miss_tokens") or usage.get("cache_miss_tokens")),
     )
 
+    _emit_chat_event(
+        outcome="success",
+        model_id=model_id,
+        request_id=req_id,
+        client_rid=client_rid,
+        raw_key=key,
+        usage=usage,
+        request_sent=True,
+        possibly_billable=True,
+        source_service=source_service,
+        source_process=source_process,
+        source_lane=source_lane,
+        agent=agent,
+        run_id=run_id,
+        reservation_id=reservation_id,
+        environment=environment,
+    )
+
     return DeepSeekResponse(
-        ok=err is None,
+        ok=err is None or err == OUTPUT_TRUNCATED,
         requested_policy=requested_policy,
         executed_policy=executed_policy if err is None else executed_policy,
         requested_model_id=model_id,

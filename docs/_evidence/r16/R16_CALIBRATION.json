@@ -1,0 +1,25 @@
+{
+  "schema": "ConfidenceCalibration@v1",
+  "cohorts": {
+    "high": {
+      "n": 3,
+      "mean_quality": 0.55
+    },
+    "medium": {
+      "n": 3,
+      "mean_quality": 0.59
+    },
+    "low": {
+      "n": 3,
+      "mean_quality": 0.4233
+    }
+  },
+  "calibration_error": 0.2833,
+  "overconfidence": true,
+  "underconfidence": false,
+  "self_assessment_ignored": true,
+  "authority": "READ_ONLY_ADVISORY",
+  "memory_behavior_influence": 0,
+  "evidence_class": "GOLDEN_SHADOW",
+  "note": "Live confidence buckets not populated on CURRENT decisions"
+}

@@ -1,58 +1,16 @@
-# Phase 3C: Media/Prose Routing Policy
-# gemma3:4b for approved read-only content workflows only.
-# qwen3:14b remains STANDARD/REALTIME. nomic remains production embedding.
-
-phase: phase3c_media_prose_routing
-enabled: true
-candidate_model: gemma3:4b
-baseline_model: qwen3:14b
-fallback_model: qwen3:14b
-production_standard_model: qwen3:14b
+# Retired local media/prose experiment. Retained as a tombstone for config readers.
+phase: retired_local_media_prose
+enabled: false
+candidate_model: null
+baseline_model: null
+fallback_model: null
+production_standard_model: null
 production_embedding_model: nomic-embed-text
-global_rag_default: unchanged
-
-approved_workflows:
-  - youtube_transcript_summary
-  - transcript_cleanup
-  - content_digest
-  - report_prose_polish
-  - article_summary
-  - news_summary
-  - media_metadata_enrichment
-  - documentation_summary
-  - post_market_narrative_draft
-  - weekly_summary_draft
-  - source_note_cleanup
-  - content_classification
-  - neutral_market_digest
-  - non_trading_social_draft
-  # Phase 3D additions
-  - markdown_cleanup
-  - plain_language_rewrite
-  - meeting_note_summary
-  - newsletter_digest
-
-blocked_workflows:
-  - broker_execution
-  - risk_gate
-  - order_placement
-  - active_stop_target_execution
-  - paper_trade_monitor
-  - market_hours_trade_decision
-  - telegram_realtime_trading
-  - openclaw_interactive_trading
-  - portfolio_allocation_decision
-  - stop_target_override
-  - global_rag_embedding
-  - deep_overnight_reasoning
-
+global_rag_default: content_embeddings
+approved_workflows: []
+blocked_workflows: [all_local_generation]
 safety:
   no_trade_recommendations: true
   no_execution: true
-  fallback_to_qwen3: true
+  fallback_to_local: false
   unknown_workflows_blocked: true
-
-limits:
-  max_output_tokens: 400
-  timeout_sec: 90
-  temperature: 0.2

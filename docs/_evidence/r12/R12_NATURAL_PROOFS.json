@@ -1,0 +1,29 @@
+{
+  "schema": "R12NaturalProofs@v1",
+  "as_of": "2026-08-25T12:50:00Z",
+  "manual_systemctl_start": false,
+  "proof_a_unchanged_cognition": {
+    "source": "tradeai-free-first-circulation.timer",
+    "at": "2026-08-25T12:27:23+00:00",
+    "fresh_no_change": 120,
+    "paid": 0,
+    "status": "PASS"
+  },
+  "proof_b_scheduled_scan": {
+    "source": "tradeai-cio-material-scan.timer LastTrigger 2026-08-25 08:45:24 EDT",
+    "receipt_at": "2026-08-25T12:45:27.748014+00:00",
+    "invoked_manually": false,
+    "cash_posture_status": "ABOVE_BAND",
+    "band_source": "CASH_BAND_DEFAULT 20-25 not operator-confirmed",
+    "notification_counts": {"SUPPRESSED": 3},
+    "suppressed_by_reason": {"unchanged_replay": 3},
+    "materiality_reason_cash": "non_action_state",
+    "delivery_reason": "dry_run_or_interdicted",
+    "financial_lane": "OFF_BY_POLICY",
+    "canary": false,
+    "auditable_result_on_CURRENT_code": "NOTIFICATION_SUPPRESSED + DRY_RUN_INTERDICTED (CURRENT lacks R12 auditable_result field)",
+    "status": "PASS_INTELLIGENT_SILENCE"
+  },
+  "live_delivery": false,
+  "note": "CURRENT is 1afb1479 pre-R11. Situation engine not live. Canary not enabled."
+}

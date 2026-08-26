@@ -1,0 +1,17 @@
+{
+  "schema": "R16_1RoutingCandidates@v1",
+  "candidates": 0,
+  "reason": "insufficient live samples (MIN_ROUTING_SAMPLES=30); historical replay not mixed into LIVE",
+  "current_route": "KEEP",
+  "n_live": 0,
+  "n_historical": 300,
+  "n_shadow": 240,
+  "registry_changes": 0,
+  "model_registry_sha256": "3f76b56466b29c3f0514dbbce3f2dd14ec9ed0908cb3debb191c83d8bbd191ca",
+  "process_registry_sha256": "1a699bbc238cb964199c891d54ac476dcff7871c3d06c8cbafaaf6d40a2f73d3",
+  "expected_model": "3f76b56466b29c3f0514dbbce3f2dd14ec9ed0908cb3debb191c83d8bbd191ca",
+  "expected_process": "1a699bbc238cb964199c891d54ac476dcff7871c3d06c8cbafaaf6d40a2f73d3",
+  "unchanged": true,
+  "auto_promoted": false,
+  "authority": "READ_ONLY_ADVISORY"
+}

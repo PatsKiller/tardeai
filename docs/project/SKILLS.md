@@ -1,5 +1,5 @@
 # Trade AI v12 — Skills & Agent Capabilities Reference
-**Last updated:** 2026-05-31 (A1A hygiene pass)
+**Last updated:** 2026-08-22 (local-generation retirement)
 
 ---
 
@@ -9,18 +9,19 @@
 
 | Agent | Role | LLM Config | Key Capabilities |
 |-------|------|------------|------------------|
-| **Maria** | Risk assessment & primary analyst | qwen3:14b (config) | Position sizing, portfolio impact, exposure analysis, correlation checks, 2-pass analysis (sentiment + fundamentals) |
-| **Steph** | Technical analysis & wealth advisory | qwen3:14b (config) | Entry/exit timing, chart patterns, indicator confluence, income strategy, allocation review |
-| **Alex** | Income & retirement strategy | qwen3:14b (config) + Claude (complex) | Roth conversion planning, SSDI/IRMAA impact, dividend analysis, covered call evaluation, monthly research |
-| **Aegis** | Synthesis & surveillance | qwen3:14b (config) | Morning briefs, overnight synthesis, cross-agent coordination, event intelligence |
-| **Risk Agent** | Portfolio risk monitoring | qwen3:14b (config) | Stop coverage, heat monitoring, concentration alerts, risk gate evaluation |
-| **Tax Agent** | Tax optimization | qwen3:14b (config) | Tax-loss harvesting, lot selection, bracket analysis, IRMAA threshold monitoring |
+| **Maria** | Risk assessment & primary analyst | governed cloud only | Position sizing, portfolio impact, exposure analysis, correlation checks, 2-pass analysis (sentiment + fundamentals) |
+| **Steph** | Technical analysis & wealth advisory | governed cloud only | Entry/exit timing, chart patterns, indicator confluence, income strategy, allocation review |
+| **Alex** | Income & retirement strategy | governed cloud only | Roth conversion planning, SSDI/IRMAA impact, dividend analysis, covered call evaluation, monthly research |
+| **Aegis** | Synthesis & surveillance | governed cloud only | Morning briefs, overnight synthesis, cross-agent coordination, event intelligence |
+| **Risk Agent** | Portfolio risk monitoring | deterministic/governed cloud | Stop coverage, heat monitoring, concentration alerts, risk gate evaluation |
+| **Tax Agent** | Tax optimization | deterministic/governed cloud | Tax-loss harvesting, lot selection, bracket analysis, IRMAA threshold monitoring |
 
-> **NOTE (2026-05-31):** OpenClaw agent configs (`~/.openclaw/agents/*/models.json`) still reference
-> `qwen3:14b`, but this model is DISABLED in `.env` and uninstalled from Ollama. These chat agents
-> would fail if invoked. The backend pipeline (classifier, enrichment, intelligence) uses
-> gemma3:12b (primary) / gemma3:4b (fallback) via `.env` `LOCAL_LLM_MODEL`. Hermes uses gemma3:12b.
-> To restore OpenClaw agents, either reinstall qwen3:14b or update their models.json to gemma3:12b.
+> **Policy:** OpenClaw and Trade AI production may not use local generation. Host
+> OpenClaw references discovered on 2026-08-22 are removal prerequisites, not
+> available capabilities. Do not install or substitute another local chat model.
+> The 2026-08-23 active-config audit found 24 local-generative references in
+> `~/.openclaw/openclaw.json`; therefore OpenClaw is not yet physically clean.
+> Pending source migrations do not change that live fact.
 
 ### Backend Automation Agents
 
@@ -92,10 +93,10 @@ Located in `~/.openclaw/skills/`
 ### Intelligence & Enrichment
 | Skill | Script | Schedule |
 |-------|--------|----------|
-| LLM intelligence (5 sections) | `llm_intelligence_enrichment.py` | 7:20 AM daily |
+| LLM intelligence (5 sections) | `llm_intelligence_enrichment.py` | 7:20 AM daily; governed cloud only after pending cutover |
 | News ingestion (7 sources) | `news_ingestion.py` | 6:30 AM + 12:30 PM |
 | Social ingestion | `social_ingest.py` | 6:30 AM + 12:35 PM |
-| Topic curation (LLM-powered) | `topic_curator.py` | 7:00 AM daily |
+| Topic curation (LLM-powered) | `topic_curator.py` | governed cloud only after pending cutover |
 | RAG indexing (11 sources incl. research) | `rag_indexer.py` | 4x daily |
 | Research topic iteration | `iterate_research_topics.py` | Daily (overnight batch) |
 | Sentiment processing | `sentiment_processor.py` | 7:00 AM + 12:00 PM |
@@ -147,7 +148,7 @@ Advisory-only. Full design: `docs/project/INFERENCE_LAYERS.md`.
 | L3 Regional | `inference_layers.RegionalLayer` | Asia/Europe/EM → US ETF/CEF transmission (e.g. PTY) |
 | L4 Higher-order | `inference_layers.HigherOrderLayer` | journal patterns, NAV premium/discount, opportunity/risk, **risk-appropriate sizing**, proactive Hermes queries |
 
-- Substrate: `inference_hermes_query` (local gemma3 first → grok/chatgpt escalation,
+- Substrate: `inference_hermes_query` (governed cloud provider, no local fallback,
   RAG injection, `proactive_query` autonomy). Reuses `account_policy.compute_sizing`
   + `risk_gate` (sizing never escapes the risk envelope), `journal_analytics_engine`,
   `rag_retrieval`, `telegram_alert`.
@@ -161,20 +162,15 @@ Advisory-only. Full design: `docs/project/INFERENCE_LAYERS.md`.
 ```
 Request arrives
     ↓
-local_llm.py acquires toll gate lock (/tmp/ollama_llm_gate.lock)
-    ↓
-Try gemma3:12b via Ollama (:11434, Intel Arc B50 GPU)
-    ↓ (fail/timeout)
-Fallback: gemma3:4b
-    ↓ (fail)
-Return empty (caller handles gracefully)
+governed cloud routing and provider-cost gate
+    ↓ (provider failure)
+hard labeled failure; no local fallback
 ```
 
-**Model policy (2026-05-31):** gemma3:12b primary, gemma3:4b fallback.
-qwen3:14b, gemma4 e2b/e4b DISABLED. gemma3:27b available but not production.
-Gemma4 31B via llama.cpp for offline deep analysis only.
-Cloud LLM calls (OpenAI/Anthropic) removed from production routing.
-All model references via `local_llm_config.py` and `.env` — zero hardcoded model names.
+**Model policy (2026-08-22):** zero local generative paths. Math is deterministic.
+The only candidate local model is pinned `nomic-embed-text` for the existing
+`content_embeddings` store, subject to embedding acceptance. Runtime flags cannot
+restore local judgment.
 
 ---
 

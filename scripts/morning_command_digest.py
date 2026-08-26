@@ -63,7 +63,25 @@ def archive_sections(bundle: Dict[str, str]) -> None:
 
 
 def send_morning_command_bundle(bundle: Dict[str, str], project_root: Path | None = None) -> bool:
-    """Send one morning digest; archive sections individually."""
+    """Send one morning digest via the canonical CIO operator product.
+
+    Bundle sections (portfolio/technicals/...) are no longer an independent
+    investment product. Useful ops facts are folded into the product as
+    supplemental_ops; investment truth comes only from CIOOperatorProduct@v1.
+    """
+    root = project_root or PROJECT_ROOT
+    if os.getenv("CANONICAL_OPERATOR_BRIEF", "1").strip() != "0":
+        try:
+            from lib.cio_operator_renderers import deliver_morning
+        except ImportError:
+            from scripts.lib.cio_operator_renderers import deliver_morning  # type: ignore
+        result = deliver_morning(root=root, supplemental_bundle=bundle, send=True)
+        if result.get("handled"):
+            if result.get("published"):
+                print(f"  [morning-command] canonical brief published key={result.get('key')}")
+            else:
+                print(f"  [morning-command] semantic_duplicate key={result.get('key')}")
+            return bool(result.get("published") or result.get("reason") == "semantic_duplicate")
     if not bundle:
         return False
     msg = build_message(bundle)

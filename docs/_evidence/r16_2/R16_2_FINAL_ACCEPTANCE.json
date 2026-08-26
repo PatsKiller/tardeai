@@ -1,0 +1,15 @@
+{
+  "schema": "R16_2FinalAcceptance@v1",
+  "result": "SOAK_BASELINE_RECORDED",
+  "maturity_start": 88,
+  "maturity_end": 88,
+  "89_earned": false,
+  "90_earned": false,
+  "A_auto_register": false,
+  "B_elapsed_natural_complete": false,
+  "wiring_added": false,
+  "time_fabricated": false,
+  "outcomes_fabricated": false,
+  "r17_not_started": true,
+  "authority": "READ_ONLY_ADVISORY"
+}

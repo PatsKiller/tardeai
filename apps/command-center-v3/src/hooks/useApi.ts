@@ -180,6 +180,9 @@ export function useApi<T>(path: string, intervalMs?: number, options?: UseApiOpt
           slowRetryRef = setTimeout(() => { slowRetryRef = undefined; retries = 0; load() }, 30_000)
         }
       } finally {
+        // Abandoned effects must not settle loading=false with data=null.
+        // That is how Trade AI painted "No scanner data yet" after a tab
+        // remount cancelled a still-in-flight 200.
         if (!cancelled) {
           setLoading(false)
           clearManual()

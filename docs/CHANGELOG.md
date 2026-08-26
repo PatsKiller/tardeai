@@ -1,5 +1,244 @@
 # Changelog
 
+## 2026-08-24 — M4 ContextEnvelope@v2 same-brain (source)
+
+MATURITY_IMPACT: NONE live. SOURCE + TESTED. PR E UI not implemented.
+
+- Shared CIOContextEnvelope@v2 overlay for Hermes/CIO/Advisory/Telegram/Maria/Steph.
+- Proactive CIO situation detector emits notification candidates only. No trading.
+- Consumes M3 AgentEpisode/MemoryConsolidator contracts (no duplicate brain).
+
+## 2026-08-24 — M3 memory consolidator (source)
+
+MATURITY_IMPACT: NONE live. SOURCE + TESTED only until this PR merges.
+
+- AgentEpisode@v1, MemoryConsolidator@v1, PreferenceCandidate@v1, SemanticOperatorMemory@v1.
+- Injection quarantined. Dedupe. Preferences/lessons have no policy effect. MEMORY_BEHAVIOR_INFLUENCE=0.
+
+## 2026-08-24 — M2 isolated memory substrate benchmark (source)
+
+MATURITY_IMPACT: NONE live. Isolated Docker `:55432` only. Production SQL not applied.
+
+v2: `tstzrange`, DB-owned transaction time, exclusion limited to SINGLE_VALUED_CURRENT, FORCE RLS + `m2_agent`, normalized provenance/adjudication. Google Notes reconciliation documented.
+
+- Lanes A (native bitemporal) and B (pgvector 0.8.6) MEASURED. Lane C pgmnemo v0.20.0 MEASURED as lesson corpus (not MemoryFact@v2).
+- Tenant leakage 0 with FORCE RLS + composite FK. Exclusive CURRENT + AdjudicationReceipt@v1.
+- Storage decision: **POSTGRES_PGVECTOR**. Neo4j: POSTGRES_SUFFICIENT.
+- 200 in-process golden cases TESTED (not live retrieval quality). Titan/HNSW/0.75 not mandated.
+
+## 2026-08-24 — CIO persistent ticker cognition consumption (source)
+
+MATURITY_IMPACT: NONE live until merge + exact-main + natural CIO cycle. Official live remains **68/100**. CURRENT stays `5c0a993a` until an explicit promote.
+
+- Shared `cio_persistent_cognition.cognition_for_symbol` for CIO worker, envelope, Advisory, Telegram (security_guid, not ticker lane).
+- Nested `CIOContextEnvelope@v2` inside ContextEnvelope@v1. Research is `RESEARCH_CONTEXT` and cannot override office truth.
+- Baseline v0 is legitimate prior cognition. Live `NO_NEW_INFO` ≠ material delta even if RAG watermarks grow. `NO_PORTFOLIO_CHANGE` needs no model.
+- NEED_DATA writes a ResearchGap; CONFLICTED suppresses recommendations.
+- M2 benchmark plan adds Lane C pgmnemo; SQL shadow still unapplied.
+- No `cio_ticker_memory.jsonl`. No paid dispatch. No producer retirement.
+
+## 2026-08-24 — R10 M1 naturally proven + Yeda's Eye first audit
+
+MATURITY_IMPACT: official live **68/100** (was 65). Baseline cognition L5 on CURRENT `5c0a993a`. Natural timer 11:23:44 ET run_id `5e9028fb`: 117/2/1/0/120/0 paid; 120×`BASELINE_PROJECTION` v0 SHA unchanged; WHAT_CHANGED. SQL shadow not applied. Yeda first audit: CIO does not consume TickerResearchState (PERSISTED_BUT_NOT_COGNITIVE). Next PR: read-only CIO consumption. 200 in-process golden cases TESTED (not live retrieval quality).
+
+## 2026-08-24 — R10 memory architecture: six spec-defect corrections (source)
+
+MATURITY_IMPACT: NONE live until this PR is merged + one exact-main CURRENT with #494. Official live score stays **65/100**. Reconciled onto post-#494 main `e390c574`. Preserves BASELINE_PROJECTION.
+
+- LOCAL_ONLY embedding policy; Amazon Titan/cloud embeddings DISABLED_BY_DEFAULT; generative models forbidden on the memory path.
+- Neo4j not installed. Postgres SHADOW DDL only. `NEO4J_SHADOW_POC_DECISION=INSUFFICIENT_DATA`.
+- Vector index recommendation INSUFFICIENT_DATA (no HNSW mandate). LongMemEval numbers tagged REFERENCE_TARGET_NOT_MEASURED.
+- SimilarityCandidate cannot self-ratify.
+- Logical tenant isolation (not hardware isolation); unscoped queries fail closed.
+- DecisionRationale@v1; chain-of-thought rejected from durable writes.
+- MemoryFact@v2 bitemporal closed-open queries (in-memory SHADOW).
+
+Canonical: `docs/architecture/TRADE_AI_BITEMPORAL_MEMORY_DATA_MODEL_2026-08-24.md`. Closeout: `docs/ops/TRADE_AI_MEMORY_ARCHITECTURE_CORRECTION_CLOSEOUT_2026-08-24.md`.
+
+## 2026-08-24 — R10 M1 baseline curation snapshot (source)
+
+MATURITY_IMPACT: NONE live until merge + exact-main CURRENT + `--project-baseline` replay + natural tick. Official live score stays **65/100**. Merged as PR #494 → `e390c574`. Application CURRENT remains `bc6ff5c6` until the combined exact-main promote.
+
+- `HermesCurationSummary.kind=BASELINE_PROJECTION` version 0: first durable cognitive state. Not a material version.
+- Subsequent `NO_NEW_INFO` still writes 0 versions.
+- `TradeAIMemoryTaxonomy@v2` seven planes. AIF research rows classify as `RESEARCH_POINTER`.
+- CLI: `scripts/free_first_refresh.py --project-baseline` (no research, no paid). Receipt `data/cio/baseline_curation_last_run.json` (does not clobber timer receipt).
+- Canonical: `docs/architecture/TRADE_AI_INSTITUTIONAL_MEMORY_AND_AUTONOMOUS_AGENT_ARCHITECTURE_2026-08-24.md`.
+- PR D/E, Postgres, pgvector, Mem0, Redis, paid Flash: not in this PR.
+
+## 2026-08-24 — R9.3 post-#492 natural tick (WHAT_CHANGED)
+
+MATURITY_IMPACT: official live score **65/100**. Two independent systemd FREE_FIRST_ONLY cycles on `3dd6f8d5`, then #492 exact-main `bc6ff5c6` CURRENT, then first natural post-C tick `62652d0c` 00:23:52–00:26:51 ET: 117/2/1/0 SearXNG / 120 FRESH_NO_CHANGE / 0 paid. Graph+state+gaps+memory SHA unchanged. `TickerResearchState` loaded; context question WHAT_CHANGED; new curation/thesis/memory/notifications 0. `hermes_curation_summary.jsonl` still empty (NO_NEW_INFO does not version). PR D/E not started.
+
+Evidence: `docs/_evidence/hermes_r93/POST_C_NATURAL_TICK.json`.
+
+## 2026-08-23 — R9.3 Librarian epistemic + durable curation (source)
+
+MATURITY_IMPACT: NONE live until merged + exact-main + natural. Official live score is the natural-tick 62/100; this PR is source-only.
+
+- HermesCurationSummary@v1 versioned only on material watermark change.
+- LibrarianAssessment epistemic fields; ResearchGap; contradiction lineage; event-specific GUIDs.
+- HermesResearchContext@v2 starts from WHAT_CHANGED. Zero paid.
+
+## 2026-08-23 — R9.3 CURRENT-pinned FREE_FIRST_ONLY systemd timer
+
+MATURITY_IMPACT: NONE until the timer fires naturally on CURRENT. Official score stays 59/100 until that proof.
+
+- Source-controlled `tradeai-free-first-circulation.{service,timer}`: hourly :23 ET, WorkingDirectory=CURRENT, `free_first_refresh.py --circulate --json --max-searx 1`.
+- `flock -n -E 75` singleton. Paid dispatch forbidden. Does not replace `tradeai-hermes-cio-worker`.
+- Canonical: `docs/ops/HERMES_FREE_FIRST_NATURAL_SCHEDULER_2026-08-23.md`.
+
+## 2026-08-23 — R9.3 free-first + identity v2 (source, not live)
+
+MATURITY_IMPACT: NONE live. Official score stays 59/100. FREE_FIRST_ONLY: 105/120 no_new_info from graph cards, 15 Flash-eligible, **0 paid calls**. ticker artifacts still **0**.
+
+- Ticker GUID remains symbol alias (#488). Issuer/security/listing GUIDs additive.
+- Evidence-class freshness vs 365d retention. LibrarianAssessment@v1.
+- Canonical: `docs/architecture/HERMES_PERSISTENT_TICKER_INTELLIGENCE_ARCHITECTURE_2026-08-23.md`. Closeout: `docs/ops/HERMES_FREE_FIRST_MEMORY_GRAPH_CONVERGENCE_2026-08-23.md`.
+- Do not merge/promote without operator grant.
+
+## 2026-08-23 — CIO/Advisory UI audit (every tab) + thesis-honesty code
+
+MATURITY_IMPACT: `Command Center universe-theses shows coverage+substantive+THIN, proven by GET /api/v3/cio/universe-theses metrics.substantive_pct and thesis_state=THIN`. CURRENT pin `5e91225a` **not promoted** (scripts/+docs/ must match SOURCE_COMMIT). Live `:7777` remains the audited pin.
+
+- Canonical results: `docs/ops/CIO_UI_AUDIT_2026-08-22.md`. Raw JSON dump Drive `1pPqmKAfV9da93Q69i_ieERYdu27wlKoo`.
+- Pin integrity: restored 13 overlaid scripts + removed 2 unpinned extras (Telegram T1/T2). Backup `~/archives/current-pin-overlay-2026-08-22/`.
+- origin/main: invalidate attach `_CACHE` on jsonl mtime; stop `[:400]`/`[:300]` stubs; emit `substantive_pct` + THIN; never render `DATA_UNAVAILABLE` as a thesis body; render `daily_thesis_changes`.
+- L2: live `coverage_pct 2.4` = **3 CURRENT / 124 material** (stale process cache), not 22 held. `/v3/advisory` does not produce that number.
+- L4: `/api/v3` `_serving` stamp (process start, loaded pin, disk pin) + `process-freshness` alarm.
+- L5: lane health fires `error_rate_24h` even when streak is 0 (DeepSeek 441/1336 COST_CAP).
+- L1: #460 CI 0-step / no runner — same on main since 2026-08-21 18:21Z. Not a #460 test regression. No merge while red.
+- Cap 2026-08-22: bind **11:31 ET after 120 sends** (soft cap still 120). 441 rejections = T1 250 + **all 141 T2** + T3 42 + T0-PROP 8. Extra vs ~312 is skip-gate not live on rebuild crontab tree + retry-on-cap (427 doubles) + Saturday 544-symbol walk + evening `high_rank_watchlist` 349. Do not raise the cap. `COST_CAP` now `SKIPPED_BUDGET` (this branch). `docs/ops/COST_CAP_EXCEEDED_2026-08-22.md`.
+
+## 2026-08-22 — Lifecycle as-of (ingest, mint, what agents actually do)
+
+MATURITY_IMPACT: `Portfolio mgmt held SLA true — coverage 100 / fresh 100 / substantive 77.27 (17/22 CURRENT), proven by data/cio/held_thesis_coverage_latest.json`. CURRENT pin `5e91225a` not promoted.
+
+- Canonical current-state: `docs/ops/RESEARCH_LIFECYCLE_AS_OF_2026-08-22.md`.
+- Holdings reminted from untruncated DeepSeek: 17 CURRENT / 5 THIN / SLA true. Reentry 24/25 CURRENT. T1 292/299 CURRENT (299/299 have raw tonight).
+- Agents **pull**. Telegram thesis notify off. Live reactive cycle on CURRENT pin **ignores `thesis.changed`** (type not on `5e91225a`). Memory CANDIDATE only; `MEMORY_BEHAVIOR_INFLUENCE=0`.
+- Caps restored 600 / $0.30 after operator ignore-cap finish (process $0.340 / 916 calls today).
+
+## 2026-08-22 — T3 catalyst-only + S7 retention snapshot
+
+MATURITY_IMPACT: `Research cadence T3 14d sweep → catalyst-only, proven by crontab cold-floor commented and TIER_SLA T3 includes deepseek gated by catalyst`. CURRENT pin not promoted.
+
+- S7: `hermes_external_research` DELETE at 180d via daily 17:00 self-tune. Oldest 2026-06-07 (76d). `llm_consumption_log` has **no** rotation. Nothing under 90d. Snapshot `/home/johnclaw/archives/research-corpus-2026-08-22/`.
+- 94 thesis.changed cards = 47 symbols × 2 mint batches. STRENGTHENS/WEAKENS/INVALIDATES/CONFIRMS = **0**. Mint artifact.
+- T3: add deepseek to lanes; keep catalyst gate; disable cold-floor cron. Projected clock ~312/day vs 545 confirm-run. 50–80 still needs R3.
+- R1 post-#457 QCOM prompt: OUTPUT contract is the thesis; INPUT still has no standing `symbol_thesis`, no what-changed, no operator feedback. Temperature 0.3.
+
+## 2026-08-22 — Recover the research we already paid for
+
+MATURITY_IMPACT: `Portfolio mgmt substantive_pct 0/22 → joined mint on disk (projected ~12/19 CURRENT of RESEARCH_REQUIRED), proven by data/cio/held_thesis_coverage_latest.json after --apply-live`. Freeze lifted by operator (payload window invalid). CURRENT pin `5e91225a` **not promoted**.
+
+- S1: columns are TEXT. recommendation p50=230/p90=500/max=4000. No VARCHAR(500). `data_i_doubt` never stored. Parser slices were the loss, not the schema.
+- S2: `raw_response TEXT` migrated, 0 historical rows. #449 fallback put 50 raw dumps into `recommendation` (first 2026-08-22 11:05).
+- S3: today 545 — (a) join-recoverable **545/545**, (b) raw-in-rec 50, (c) gone **0**. Joined CURRENT 474/545 vs rec-only 111. 30d n=546.
+- S4: parser 4000, raw always, ceiling 4096, recommendation IS the thesis. Overlay onto rebuild `$PROJ` still required for crontab.
+- S5: mint reads rec+dissent+evidence. Rec-only 2/19 CURRENT; joined 12/19. No grandfather DIV/DIVI/JEPI.
+- S6: do not re-call. Re-parse 50 dumps for free.
+- S7: retention 180 days.
+- R1: QCOM prompt has no `symbol_thesis`, no what-changed, no trend, no operator feedback. Temperature 0.3. Amnesiac re-ask.
+- R2: trigger was SLA due. Live crontab now `RESEARCH_SKIP_GATE=1` (code default still 0). Ledger empty until Mon 08:00 ET.
+- P4: `thesis.changed` CIO Desk card (`thesis_change_cards.jsonl` + event bus). Telegram still default off.
+- R3/R4/G2–G6: not built. T3 14-day SLA is what makes 545/day; 50–80/day needs operator OK to drop it.
+
+## 2026-08-22 — Burn-in is four surfaces or it is not a burn-in
+
+MATURITY_IMPACT: `Reasoning payload-coverage → four-surface emit + change-gated reentry, proven by agent_run_traces.jsonl DecisionPayload@v1 by surface` (watch/holdings/advisory/opportunity no longer structurally zero). Freeze-safe: write-only traces, flag-gated, no decision semantics.
+
+- N1 traced, not inferred. holdings/opportunity: emit **absent**. advisory 09:15: emit present, **dry-run never calls it**. watch_alerts: emit present, crontab flag was 0 and 0 fires 8/21–22. Wired emit + `env AGENT_DECISION_PAYLOAD=1` on those producers. Keep 8/27.
+- N2: 8/22 reentry 3175 rows / 25 names = 127 each. **1 action change, 3149 unchanged re-emits (0.03%)**. Now change-or-4h-heartbeat.
+- N3: sweep `source_status=DEGRADED_STALE_SOURCE` when CURRENT pin ≠ origin/main. Targeted replace until D4 8/27.
+- Q1: rec-only 2 CURRENT / 15 THIN / 2 STUB (NOC, PFLT). No unlabeled 5.
+- Q2: post-mint CURRENT 2/22 not 5/22 (existing 3 stay THIN on read). Not 19/19.
+
+## 2026-08-22 — M1 substantiveness gate (THIN ≠ CURRENT)
+
+MATURITY_IMPACT: `Portfolio mgmt coverage+fresh → coverage+fresh+substantive, proven by data/cio/held_thesis_coverage_latest.json substantive_pct` (target ≥70; THIN excluded). Freeze: no live mint, no CURRENT promote, production `max_output_tokens` still 1024.
+
+- Living thesis `CURRENT` is PASS-grade (Q1 survivable). Grade B/C mint as `THIN`.
+- Three numbers: `coverage_pct` (THIN counts), `fresh_pct` (age; THIN can be fresh), `substantive_pct` (PASS only). Targets 100 / ≥90 / ≥70. `sla_met` requires all three.
+- Projected split of the 19: rec-only **2/19 CURRENT**, joined **12/19 CURRENT**. Existing DIV/DIVI/JEPI re-grade **THIN**. Live `substantive_pct=0.0`.
+- Coverage-stall fires on PASS < 70% of held, not row-exists.
+- M2 report: stored rec p50=230 because `recommendation[:500]`; tokens_out p50=824; 11.4% at 1024 cap. Sandbox 20 at 4096: raw PASS 100%, joined 90%, rec-only 40%. Propose parser/prompt/4096 — **not applied**.
+- M3 Drive sweep (CURRENT overlay): uploaded=26 failed=0 exit 0. Excludes `_archive`, dated dumps, `_findings`, `ui_review`.
+- M4: payload v1 8/21=268 (reentry 165, material_scan 102) → 8/22=3500 (reentry 3125, material_scan 375). No producer diff vs #453. Pin `5e91225a` not promoted.
+
+## 2026-08-22 — Session closeout (findings + fixes index)
+
+MATURITY_IMPACT: NONE (docs). Pointer: `docs/ops/SESSION_CLOSEOUT_2026-08-22.md`.
+Lane-health overnight section rewritten: timer is US ChatGPT 22:00–06:00 ET (#453), not China-night gemma.
+
+## 2026-08-22 — Research quality sample + thesis-mint dry-run + alarm holes
+
+MATURITY_IMPACT: live metric `data/runtime/research_lane_health.json` `firing` includes `coverage-stall`; systemd lane-health **exit 0** when the check ran. Freeze: staging mint only, no live `cio_theses.jsonl`.
+
+- Q1 sample n=40: median 320 chars, 45% <300, 15% generic, 0% cross-ticker dupes, 27.5% thesis-survivable.
+- Q2 dry-run: **19/19** RESEARCH_REQUIRED holdings mintable from disk. Coverage was a join gap.
+- Q3: DeepSeek always watched in Telegram; exit 0 on alarm; coverage-stall lane.
+- Q4: overnight timer retarget US 22:00–06:00 ET ChatGPT; autonomous-loop refuses gemma when local-LLM off.
+- Q5: process call cap 120→600; cold-floor 20→180; dollar cap $0.50 unchanged.
+
+## 2026-08-22 — Telegram P0 card gates (T1/T2)
+
+MATURITY_IMPACT: live metric `data/cio/telegram_p0_suppress.jsonl` count by `rule` (quote_fail, invalidation_contradicts_price). Freeze-safe: **suppression only**, no new feeds/producers. CURRENT not promoted.
+
+- T1: R:R from entry/stop/target (never `0.0:1`); quote-fail withholds proposal; inverted invalidation suppresses IIC.
+- T2: transport retries **edit** the original (`idempotency_key`); no markdown→plaintext second send.
+- T3–T7 (join, IDs, four-feed split, 30/day) queued after 8/27. `docs/ops/TELEGRAM_FEED_REMEDIATION_2026-08-22.md`.
+
+## 2026-08-22 — Watchlist/research tiers + LLM cadence (confirm-run)
+
+MATURITY_IMPACT: NONE (docs). Live metric n/a. Freeze 8/21–8/27: no CURRENT promote, no flag flips.
+
+- **One** watchlist *research* tier: `T1-WATCH`. Five universe tiers total (T0-HOLD / T0-PROP / T1-WATCH / T2-INCUB / T3-COLD). Reentry READY/NEAR joins T1. Hermes S0–S3 and directive hygiene 1–3 are **not** LLM queues.
+- Confirm-run (manual Saturday, ignore standing $0.50 in-process; process cap restored 120 / $0.30): T0-HOLD **22/22**, T0-PROP **30/30**, T1 **331/331** (reentry **25/25**), T2 **141/141** (forced vs production catalyst-only), T3 **20/20** slice not 2537. `hermes_external_research` **$0.168934**.
+- Canonical: `docs/ops/RESEARCH_TIER_LLM_CADENCE.md`.
+
+## 2026-08-21 — DecisionPayload landing + Drive silent-shape + post-window cutover plan
+
+MATURITY_IMPACT: measurement. Live metric = `data/cio/agent_run_traces.jsonl`
+DecisionPayload@v1 count since pin `cf5768a6` 19:20:47 ET, and
+`drive-sync` RAW last-result. No flags, no routing, no new producers.
+
+- **D1** 213 v1 rows all-time. First = 2026-08-21T18:15:38Z (today). Since pin:
+  27 (24 reentry + 3 material_scan). Watch/advisory/holdings/opportunity = 0
+  (wiring, queued). Watch cron pointed at CURRENT (emit-only diff).
+- **D2** Hourly 23:05–23:30Z: **0 uploaded, 1982 unchanged, 1230 FAILED 404s**.
+  Rebuild script did not write last-result. Backfilled RAW file; alarm fired
+  `zero_uploaded_with_failures:1230`. Next :05 uses CURRENT script (writes JSON).
+- **D3** Freeze 8/21–8/27 close. Skip gate 0, influence 0.
+- **D4** `docs/ops/CURRENT_CUTOVER_AFTER_2026-08-27.md` — execute after window.
+
+## 2026-08-21 — CURRENT pin + Drive RAW health + bake-off sheet rescue
+
+MATURITY_IMPACT: live metric path `scripts/research_lane_health.py` now includes
+`current-pin` (CURRENT scripts/+docs/ vs SOURCE_COMMIT) and `drive-sync` (RAW
+`~/.local/state/drive-sync-last-result.json`, fire if no success in 24h or
+0-uploaded-with-404s). Operator-blind bake-off sheet rescued off `/tmp`.
+
+- **P0** `docs/ops/LANE_QUALITY_BAKEOFF_OPERATOR_BLIND_2026-08-21.md` (+ keys under
+  `docs/ops/bakeoff-2026-08-21/DO_NOT_OPEN_UNTIL_SCORED/`).
+- **P1** `a7f30d89` **does** contain #437/#438/#440 (all ancestors). Overlay was
+  #441 docs on that pin. Deploy `cio_phase2_exact_main_deploy.sh` now refuses
+  HEAD≠origin/main, dirty tree, and pin mismatch; rsyncs full `scripts/`+`docs/`.
+- **P2** gemma default-off is **recommendation-only** until the blind sheet is
+  scored. Flash is **not** the workhorse until 5-day burn-in (start 19:10 ET
+  2026-08-21). Flag `RESEARCH_ALLOW_LOCAL_LLM` stays 0.
+- **P3** Drive canonical `docs/` folder `1BMxbxU9c9rF3NBvXVQtVEewdvkifVkwP`.
+  Duplicate `1Rb6qcu…` deprecated. gog alias `default` = john@jwwhiting.com.
+- **TSLA** `mem_5989433c…` latest-wins **RETRACTED** `p0_adversarial_quarantine_2026-08-21`;
+  search does not return it. JSONL keeps historical ACTIVE as audit.
+- `RESEARCH_SKIP_GATE` stays 0. `MEMORY_BEHAVIOR_INFLUENCE` stays 0.
+- `AGENT_DECISION_PAYLOAD=1` already on producer drop-ins (B.1); 5-trading-day
+  window starts after this lands — nothing else flipped with it.
+
+## 2026-08-21 — Research P0–P4 closeout (docs)
+
+Merged #440 (llm_lane import + RAW-store lane health), #437 (22-ticker denominator), #438 (R1–R5 flags default 0), #439 (bake-off). CURRENT `a7f30d89`. Scheduler-path DeepSeek proof id=45900. `$0.42/14d` spend void (crash loop). 27b is CPU, not GPU deep. Overnight *policy* ChatGPT; *live timer* still China-night gemma. `RESEARCH_SKIP_GATE` unset. Influence 0.
+
 ## 2026-08-18 — Header STALE badge rebased on journal-rebuild freshness
 
 The TRADING / REALIZED header tiles were flagging `⚠ STALE` because staleness was computed from

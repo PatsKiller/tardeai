@@ -1,0 +1,10 @@
+[Unit]
+Description=Trade AI M3 MemoryConsolidator SHADOW-ONLY (influence=0, isolated JSONL)
+# SOURCE ONLY — do not install without operator authorization.
+# Never points at production Postgres :5432.
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/trade-ai-releases/portfolio-server/CURRENT
+Environment=MEMORY_BEHAVIOR_INFLUENCE=0
+ExecStart=/usr/bin/python3 scripts/memory_consolidator_shadow.py --isolated-root /tmp/tradeai-memory-shadow --json

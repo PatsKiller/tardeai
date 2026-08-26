@@ -1,0 +1,19 @@
+{
+  "schema": "R16_2DailyLearningReceipt@v1",
+  "window": "2026-08-25T16:55:26Z promote \u2192 2026-08-25T18:42:21+00:00",
+  "new_decisions": 25,
+  "new_checkpoints": 0,
+  "due_checkpoints": 0,
+  "completed_outcomes": 0,
+  "blocked_outcomes": 0,
+  "natural_longitudinal_n": 0,
+  "lessons_updated": 0,
+  "hypotheses_updated": 0,
+  "registry_changes": 0,
+  "policy_changes": 0,
+  "memory_behavior_influence": 0,
+  "canary": false,
+  "cash_policy_invented": false,
+  "pr505_merged": false,
+  "authority": "READ_ONLY_ADVISORY"
+}

@@ -1,0 +1,25 @@
+{
+  "description": "Garbage llm_consumption_log estimator: k-chars treated as USD + stale Aug-3 prices. ~$12k/14d. Do not publish as truth.",
+  "events": [
+    {
+      "created_at": "2026-08-10T00:00:00+00:00",
+      "provider": "deepseek",
+      "model": "deepseek-v4-flash",
+      "estimated_cost_usd": 8065.40,
+      "cost_basis": "oauth_free_or_unset",
+      "prompt_chars": 8065400,
+      "source": "llm_consumption_log",
+      "price_schedule_id": "deepseek-v4-flat-2026-08-03"
+    },
+    {
+      "created_at": "2026-08-18T00:00:00+00:00",
+      "provider": "deepseek",
+      "model": "deepseek-v4-flash",
+      "estimated_cost_usd": 4200.00,
+      "cost_basis": "",
+      "prompt_chars": 4200000,
+      "source": "llm_consumption_log",
+      "price_schedule_id": "deepseek-v4-flat-2026-08-03"
+    }
+  ]
+}

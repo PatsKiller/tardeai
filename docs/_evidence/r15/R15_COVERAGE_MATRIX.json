@@ -1,0 +1,549 @@
+{
+  "schema": "IntelligenceCoverageMatrix@v1",
+  "rows": [
+    {
+      "producer_id": "holdings",
+      "wiring": "PARTIAL",
+      "SOURCE_EXISTS": true,
+      "IDENTITY_RESOLVED": true,
+      "MATERIALITY_SUPPORTED": true,
+      "PERSISTENT_STATE_SUPPORTED": true,
+      "CONTEXT_ENVELOPE_SUPPORTED": true,
+      "GUI_VISIBLE": true,
+      "RESEARCH_TRIGGER_SUPPORTED": true,
+      "OUTCOME_LINKED": false,
+      "missing": [
+        "OUTCOME_LINKED"
+      ]
+    },
+    {
+      "producer_id": "positions",
+      "wiring": "PARTIAL",
+      "SOURCE_EXISTS": true,
+      "IDENTITY_RESOLVED": true,
+      "MATERIALITY_SUPPORTED": true,
+      "PERSISTENT_STATE_SUPPORTED": true,
+      "CONTEXT_ENVELOPE_SUPPORTED": true,
+      "GUI_VISIBLE": true,
+      "RESEARCH_TRIGGER_SUPPORTED": true,
+      "OUTCOME_LINKED": false,
+      "missing": [
+        "OUTCOME_LINKED"
+      ]
+    },
+    {
+      "producer_id": "cash",
+      "wiring": "PARTIAL",
+      "SOURCE_EXISTS": true,
+      "IDENTITY_RESOLVED": false,
+      "MATERIALITY_SUPPORTED": true,
+      "PERSISTENT_STATE_SUPPORTED": true,
+      "CONTEXT_ENVELOPE_SUPPORTED": true,
+      "GUI_VISIBLE": true,
+      "RESEARCH_TRIGGER_SUPPORTED": true,
+      "OUTCOME_LINKED": false,
+      "missing": [
+        "IDENTITY_RESOLVED",
+        "OUTCOME_LINKED"
+      ]
+    },
+    {
+      "producer_id": "portfolio_allocation",
+      "wiring": "PARTIAL",
+      "SOURCE_EXISTS": true,
+      "IDENTITY_RESOLVED": false,
+      "MATERIALITY_SUPPORTED": true,
+      "PERSISTENT_STATE_SUPPORTED": true,
+      "CONTEXT_ENVELOPE_SUPPORTED": true,
+      "GUI_VISIBLE": true,
+      "RESEARCH_TRIGGER_SUPPORTED": false,
+      "OUTCOME_LINKED": false,
+      "missing": [
+        "IDENTITY_RESOLVED",
+        "RESEARCH_TRIGGER_SUPPORTED",
+        "OUTCOME_LINKED"
+      ]
+    },
+    {
+      "producer_id": "risk",
+      "wiring": "PARTIAL",
+      "SOURCE_EXISTS": true,
+      "IDENTITY_RESOLVED": false,
+      "MATERIALITY_SUPPORTED": true,
+      "PERSISTENT_STATE_SUPPORTED": true,
+      "CONTEXT_ENVELOPE_SUPPORTED": false,
+      "GUI_VISIBLE": true,
+      "RESEARCH_TRIGGER_SUPPORTED": true,
+      "OUTCOME_LINKED": false,
+      "missing": [
+        "IDENTITY_RESOLVED",
+        "CONTEXT_ENVELOPE_SUPPORTED",
+        "OUTCOME_LINKED"
+      ]
+    },
+    {
+      "producer_id": "stop_advisory",
+      "wiring": "PARTIAL",
+      "SOURCE_EXISTS": true,
+      "IDENTITY_RESOLVED": true,
+      "MATERIALITY_SUPPORTED": true,
+      "PERSISTENT_STATE_SUPPORTED": true,
+      "CONTEXT_ENVELOPE_SUPPORTED": false,
+      "GUI_VISIBLE": false,
+      "RESEARCH_TRIGGER_SUPPORTED": true,
+      "OUTCOME_LINKED": false,
+      "missing": [
+        "CONTEXT_ENVELOPE_SUPPORTED",
+        "GUI_VISIBLE",
+        "OUTCOME_LINKED"
+      ]
+    },
+    {
+      "producer_id": "watch_reentry",
+      "wiring": "PARTIAL",
+      "SOURCE_EXISTS": true,
+      "IDENTITY_RESOLVED": true,
+      "MATERIALITY_SUPPORTED": true,
+      "PERSISTENT_STATE_SUPPORTED": true,
+      "CONTEXT_ENVELOPE_SUPPORTED": false,
+      "GUI_VISIBLE": false,
+      "RESEARCH_TRIGGER_SUPPORTED": true,
+      "OUTCOME_LINKED": false,
+      "missing": [
+        "CONTEXT_ENVELOPE_SUPPORTED",
+        "GUI_VISIBLE",
+        "OUTCOME_LINKED"
+      ]
+    },
+    {
+      "producer_id": "symbol_thesis",
+      "wiring": "FULL",
+      "SOURCE_EXISTS": true,
+      "IDENTITY_RESOLVED": true,
+      "MATERIALITY_SUPPORTED": true,
+      "PERSISTENT_STATE_SUPPORTED": true,
+      "CONTEXT_ENVELOPE_SUPPORTED": true,
+      "GUI_VISIBLE": true,
+      "RESEARCH_TRIGGER_SUPPORTED": true,
+      "OUTCOME_LINKED": true,
+      "missing": []
+    },
+    {
+      "producer_id": "portfolio_thesis",
+      "wiring": "PARTIAL",
+      "SOURCE_EXISTS": true,
+      "IDENTITY_RESOLVED": false,
+      "MATERIALITY_SUPPORTED": true,
+      "PERSISTENT_STATE_SUPPORTED": true,
+      "CONTEXT_ENVELOPE_SUPPORTED": true,
+      "GUI_VISIBLE": true,
+      "RESEARCH_TRIGGER_SUPPORTED": false,
+      "OUTCOME_LINKED": true,
+      "missing": [
+        "IDENTITY_RESOLVED",
+        "RESEARCH_TRIGGER_SUPPORTED"
+      ]
+    },
+    {
+      "producer_id": "sector_rotation",
+      "wiring": "PARTIAL",
+      "SOURCE_EXISTS": true,
+      "IDENTITY_RESOLVED": true,
+      "MATERIALITY_SUPPORTED": true,
+      "PERSISTENT_STATE_SUPPORTED": false,
+      "CONTEXT_ENVELOPE_SUPPORTED": false,
+      "GUI_VISIBLE": false,
+      "RESEARCH_TRIGGER_SUPPORTED": false,
+      "OUTCOME_LINKED": false,
+      "missing": [
+        "PERSISTENT_STATE_SUPPORTED",
+        "CONTEXT_ENVELOPE_SUPPORTED",
+        "GUI_VISIBLE",
+        "RESEARCH_TRIGGER_SUPPORTED",
+        "OUTCOME_LINKED"
+      ]
+    },
+    {
+      "producer_id": "industry",
+      "wiring": "PARTIAL",
+      "SOURCE_EXISTS": true,
+      "IDENTITY_RESOLVED": true,
+      "MATERIALITY_SUPPORTED": true,
+      "PERSISTENT_STATE_SUPPORTED": false,
+      "CONTEXT_ENVELOPE_SUPPORTED": false,
+      "GUI_VISIBLE": false,
+      "RESEARCH_TRIGGER_SUPPORTED": false,
+      "OUTCOME_LINKED": false,
+      "missing": [
+        "PERSISTENT_STATE_SUPPORTED",
+        "CONTEXT_ENVELOPE_SUPPORTED",
+        "GUI_VISIBLE",
+        "RESEARCH_TRIGGER_SUPPORTED",
+        "OUTCOME_LINKED"
+      ]
+    },
+    {
+      "producer_id": "macro_regime",
+      "wiring": "PARTIAL",
+      "SOURCE_EXISTS": true,
+      "IDENTITY_RESOLVED": false,
+      "MATERIALITY_SUPPORTED": true,
+      "PERSISTENT_STATE_SUPPORTED": true,
+      "CONTEXT_ENVELOPE_SUPPORTED": true,
+      "GUI_VISIBLE": true,
+      "RESEARCH_TRIGGER_SUPPORTED": false,
+      "OUTCOME_LINKED": false,
+      "missing": [
+        "IDENTITY_RESOLVED",
+        "RESEARCH_TRIGGER_SUPPORTED",
+        "OUTCOME_LINKED"
+      ]
+    },
+    {
+      "producer_id": "breadth",
+      "wiring": "PARTIAL",
+      "SOURCE_EXISTS": true,
+      "IDENTITY_RESOLVED": false,
+      "MATERIALITY_SUPPORTED": true,
+      "PERSISTENT_STATE_SUPPORTED": true,
+      "CONTEXT_ENVELOPE_SUPPORTED": true,
+      "GUI_VISIBLE": true,
+      "RESEARCH_TRIGGER_SUPPORTED": false,
+      "OUTCOME_LINKED": false,
+      "missing": [
+        "IDENTITY_RESOLVED",
+        "RESEARCH_TRIGGER_SUPPORTED",
+        "OUTCOME_LINKED"
+      ]
+    },
+    {
+      "producer_id": "rates",
+      "wiring": "PARTIAL",
+      "SOURCE_EXISTS": true,
+      "IDENTITY_RESOLVED": false,
+      "MATERIALITY_SUPPORTED": true,
+      "PERSISTENT_STATE_SUPPORTED": true,
+      "CONTEXT_ENVELOPE_SUPPORTED": true,
+      "GUI_VISIBLE": true,
+      "RESEARCH_TRIGGER_SUPPORTED": false,
+      "OUTCOME_LINKED": false,
+      "missing": [
+        "IDENTITY_RESOLVED",
+        "RESEARCH_TRIGGER_SUPPORTED",
+        "OUTCOME_LINKED"
+      ]
+    },
+    {
+      "producer_id": "volatility",
+      "wiring": "PARTIAL",
+      "SOURCE_EXISTS": true,
+      "IDENTITY_RESOLVED": false,
+      "MATERIALITY_SUPPORTED": true,
+      "PERSISTENT_STATE_SUPPORTED": true,
+      "CONTEXT_ENVELOPE_SUPPORTED": true,
+      "GUI_VISIBLE": true,
+      "RESEARCH_TRIGGER_SUPPORTED": false,
+      "OUTCOME_LINKED": false,
+      "missing": [
+        "IDENTITY_RESOLVED",
+        "RESEARCH_TRIGGER_SUPPORTED",
+        "OUTCOME_LINKED"
+      ]
+    },
+    {
+      "producer_id": "seasonality",
+      "wiring": "PARTIAL",
+      "SOURCE_EXISTS": true,
+      "IDENTITY_RESOLVED": false,
+      "MATERIALITY_SUPPORTED": true,
+      "PERSISTENT_STATE_SUPPORTED": true,
+      "CONTEXT_ENVELOPE_SUPPORTED": true,
+      "GUI_VISIBLE": true,
+      "RESEARCH_TRIGGER_SUPPORTED": false,
+      "OUTCOME_LINKED": false,
+      "missing": [
+        "IDENTITY_RESOLVED",
+        "RESEARCH_TRIGGER_SUPPORTED",
+        "OUTCOME_LINKED"
+      ]
+    },
+    {
+      "producer_id": "catalysts",
+      "wiring": "PARTIAL",
+      "SOURCE_EXISTS": true,
+      "IDENTITY_RESOLVED": true,
+      "MATERIALITY_SUPPORTED": true,
+      "PERSISTENT_STATE_SUPPORTED": true,
+      "CONTEXT_ENVELOPE_SUPPORTED": true,
+      "GUI_VISIBLE": false,
+      "RESEARCH_TRIGGER_SUPPORTED": true,
+      "OUTCOME_LINKED": false,
+      "missing": [
+        "GUI_VISIBLE",
+        "OUTCOME_LINKED"
+      ]
+    },
+    {
+      "producer_id": "earnings",
+      "wiring": "PARTIAL",
+      "SOURCE_EXISTS": true,
+      "IDENTITY_RESOLVED": true,
+      "MATERIALITY_SUPPORTED": true,
+      "PERSISTENT_STATE_SUPPORTED": true,
+      "CONTEXT_ENVELOPE_SUPPORTED": true,
+      "GUI_VISIBLE": false,
+      "RESEARCH_TRIGGER_SUPPORTED": true,
+      "OUTCOME_LINKED": false,
+      "missing": [
+        "GUI_VISIBLE",
+        "OUTCOME_LINKED"
+      ]
+    },
+    {
+      "producer_id": "sec_primary",
+      "wiring": "PARTIAL",
+      "SOURCE_EXISTS": true,
+      "IDENTITY_RESOLVED": true,
+      "MATERIALITY_SUPPORTED": true,
+      "PERSISTENT_STATE_SUPPORTED": true,
+      "CONTEXT_ENVELOPE_SUPPORTED": false,
+      "GUI_VISIBLE": false,
+      "RESEARCH_TRIGGER_SUPPORTED": true,
+      "OUTCOME_LINKED": false,
+      "missing": [
+        "CONTEXT_ENVELOPE_SUPPORTED",
+        "GUI_VISIBLE",
+        "OUTCOME_LINKED"
+      ]
+    },
+    {
+      "producer_id": "news",
+      "wiring": "PARTIAL",
+      "SOURCE_EXISTS": true,
+      "IDENTITY_RESOLVED": true,
+      "MATERIALITY_SUPPORTED": true,
+      "PERSISTENT_STATE_SUPPORTED": true,
+      "CONTEXT_ENVELOPE_SUPPORTED": false,
+      "GUI_VISIBLE": false,
+      "RESEARCH_TRIGGER_SUPPORTED": true,
+      "OUTCOME_LINKED": false,
+      "missing": [
+        "CONTEXT_ENVELOPE_SUPPORTED",
+        "GUI_VISIBLE",
+        "OUTCOME_LINKED"
+      ]
+    },
+    {
+      "producer_id": "hermes_research",
+      "wiring": "FULL",
+      "SOURCE_EXISTS": true,
+      "IDENTITY_RESOLVED": true,
+      "MATERIALITY_SUPPORTED": true,
+      "PERSISTENT_STATE_SUPPORTED": true,
+      "CONTEXT_ENVELOPE_SUPPORTED": true,
+      "GUI_VISIBLE": true,
+      "RESEARCH_TRIGGER_SUPPORTED": true,
+      "OUTCOME_LINKED": true,
+      "missing": []
+    },
+    {
+      "producer_id": "rag",
+      "wiring": "PARTIAL",
+      "SOURCE_EXISTS": true,
+      "IDENTITY_RESOLVED": true,
+      "MATERIALITY_SUPPORTED": true,
+      "PERSISTENT_STATE_SUPPORTED": true,
+      "CONTEXT_ENVELOPE_SUPPORTED": true,
+      "GUI_VISIBLE": false,
+      "RESEARCH_TRIGGER_SUPPORTED": true,
+      "OUTCOME_LINKED": false,
+      "missing": [
+        "GUI_VISIBLE",
+        "OUTCOME_LINKED"
+      ]
+    },
+    {
+      "producer_id": "operator_policy",
+      "wiring": "PARTIAL",
+      "SOURCE_EXISTS": true,
+      "IDENTITY_RESOLVED": false,
+      "MATERIALITY_SUPPORTED": true,
+      "PERSISTENT_STATE_SUPPORTED": true,
+      "CONTEXT_ENVELOPE_SUPPORTED": true,
+      "GUI_VISIBLE": true,
+      "RESEARCH_TRIGGER_SUPPORTED": false,
+      "OUTCOME_LINKED": false,
+      "missing": [
+        "IDENTITY_RESOLVED",
+        "RESEARCH_TRIGGER_SUPPORTED",
+        "OUTCOME_LINKED"
+      ]
+    },
+    {
+      "producer_id": "operator_feedback",
+      "wiring": "FULL",
+      "SOURCE_EXISTS": true,
+      "IDENTITY_RESOLVED": true,
+      "MATERIALITY_SUPPORTED": true,
+      "PERSISTENT_STATE_SUPPORTED": true,
+      "CONTEXT_ENVELOPE_SUPPORTED": true,
+      "GUI_VISIBLE": true,
+      "RESEARCH_TRIGGER_SUPPORTED": true,
+      "OUTCOME_LINKED": true,
+      "missing": []
+    },
+    {
+      "producer_id": "notifications",
+      "wiring": "PARTIAL",
+      "SOURCE_EXISTS": true,
+      "IDENTITY_RESOLVED": false,
+      "MATERIALITY_SUPPORTED": true,
+      "PERSISTENT_STATE_SUPPORTED": true,
+      "CONTEXT_ENVELOPE_SUPPORTED": false,
+      "GUI_VISIBLE": true,
+      "RESEARCH_TRIGGER_SUPPORTED": false,
+      "OUTCOME_LINKED": true,
+      "missing": [
+        "IDENTITY_RESOLVED",
+        "CONTEXT_ENVELOPE_SUPPORTED",
+        "RESEARCH_TRIGGER_SUPPORTED"
+      ]
+    },
+    {
+      "producer_id": "specialist_artifacts",
+      "wiring": "PARTIAL",
+      "SOURCE_EXISTS": true,
+      "IDENTITY_RESOLVED": true,
+      "MATERIALITY_SUPPORTED": false,
+      "PERSISTENT_STATE_SUPPORTED": true,
+      "CONTEXT_ENVELOPE_SUPPORTED": false,
+      "GUI_VISIBLE": false,
+      "RESEARCH_TRIGGER_SUPPORTED": false,
+      "OUTCOME_LINKED": true,
+      "missing": [
+        "MATERIALITY_SUPPORTED",
+        "CONTEXT_ENVELOPE_SUPPORTED",
+        "GUI_VISIBLE",
+        "RESEARCH_TRIGGER_SUPPORTED"
+      ]
+    },
+    {
+      "producer_id": "action_ledger",
+      "wiring": "PARTIAL",
+      "SOURCE_EXISTS": true,
+      "IDENTITY_RESOLVED": false,
+      "MATERIALITY_SUPPORTED": true,
+      "PERSISTENT_STATE_SUPPORTED": true,
+      "CONTEXT_ENVELOPE_SUPPORTED": false,
+      "GUI_VISIBLE": true,
+      "RESEARCH_TRIGGER_SUPPORTED": false,
+      "OUTCOME_LINKED": true,
+      "missing": [
+        "IDENTITY_RESOLVED",
+        "CONTEXT_ENVELOPE_SUPPORTED",
+        "RESEARCH_TRIGGER_SUPPORTED"
+      ]
+    },
+    {
+      "producer_id": "plans",
+      "wiring": "PARTIAL",
+      "SOURCE_EXISTS": true,
+      "IDENTITY_RESOLVED": true,
+      "MATERIALITY_SUPPORTED": true,
+      "PERSISTENT_STATE_SUPPORTED": true,
+      "CONTEXT_ENVELOPE_SUPPORTED": false,
+      "GUI_VISIBLE": true,
+      "RESEARCH_TRIGGER_SUPPORTED": true,
+      "OUTCOME_LINKED": true,
+      "missing": [
+        "CONTEXT_ENVELOPE_SUPPORTED"
+      ]
+    },
+    {
+      "producer_id": "research_challenges",
+      "wiring": "PARTIAL",
+      "SOURCE_EXISTS": true,
+      "IDENTITY_RESOLVED": true,
+      "MATERIALITY_SUPPORTED": true,
+      "PERSISTENT_STATE_SUPPORTED": true,
+      "CONTEXT_ENVELOPE_SUPPORTED": false,
+      "GUI_VISIBLE": false,
+      "RESEARCH_TRIGGER_SUPPORTED": true,
+      "OUTCOME_LINKED": false,
+      "missing": [
+        "CONTEXT_ENVELOPE_SUPPORTED",
+        "GUI_VISIBLE",
+        "OUTCOME_LINKED"
+      ]
+    },
+    {
+      "producer_id": "outcomes",
+      "wiring": "PARTIAL",
+      "SOURCE_EXISTS": true,
+      "IDENTITY_RESOLVED": true,
+      "MATERIALITY_SUPPORTED": false,
+      "PERSISTENT_STATE_SUPPORTED": true,
+      "CONTEXT_ENVELOPE_SUPPORTED": true,
+      "GUI_VISIBLE": true,
+      "RESEARCH_TRIGGER_SUPPORTED": false,
+      "OUTCOME_LINKED": true,
+      "missing": [
+        "MATERIALITY_SUPPORTED",
+        "RESEARCH_TRIGGER_SUPPORTED"
+      ]
+    },
+    {
+      "producer_id": "lessons",
+      "wiring": "PARTIAL",
+      "SOURCE_EXISTS": true,
+      "IDENTITY_RESOLVED": true,
+      "MATERIALITY_SUPPORTED": false,
+      "PERSISTENT_STATE_SUPPORTED": true,
+      "CONTEXT_ENVELOPE_SUPPORTED": true,
+      "GUI_VISIBLE": true,
+      "RESEARCH_TRIGGER_SUPPORTED": false,
+      "OUTCOME_LINKED": true,
+      "missing": [
+        "MATERIALITY_SUPPORTED",
+        "RESEARCH_TRIGGER_SUPPORTED"
+      ]
+    }
+  ],
+  "counts": {
+    "FULL": 3,
+    "PARTIAL": 28,
+    "UNWIRED": 0
+  },
+  "not_connected": [
+    "holdings",
+    "positions",
+    "cash",
+    "portfolio_allocation",
+    "risk",
+    "stop_advisory",
+    "watch_reentry",
+    "portfolio_thesis",
+    "sector_rotation",
+    "industry",
+    "macro_regime",
+    "breadth",
+    "rates",
+    "volatility",
+    "seasonality",
+    "catalysts",
+    "earnings",
+    "sec_primary",
+    "news",
+    "rag",
+    "operator_policy",
+    "notifications",
+    "specialist_artifacts",
+    "action_ledger",
+    "plans",
+    "research_challenges",
+    "outcomes",
+    "lessons"
+  ],
+  "authority": "READ_ONLY_ADVISORY",
+  "memory_behavior_influence": 0
+}

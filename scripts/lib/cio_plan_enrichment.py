@@ -61,9 +61,18 @@ def load_llm_policy(path: Path | str | None = None) -> dict[str, Any]:
     # env overrides
     if os.environ.get("CIO_LLM_ENRICH", "").strip().lower() in ("0", "false", "off", "no"):
         cfg.setdefault("llm", {})["enabled"] = False
-    if os.environ.get("CIO_SITUATION_NOTIFY", "").strip() in ("1", "true", "on", "yes"):
+    # Accept CIO_SITUATION_NOTIFY (canonical) OR CIO_SITUATIONS_NOTIFY (yaml alias).
+    if _notify_env_on():
         cfg["situation_notify_telegram"] = True
     return cfg
+
+
+def _notify_env_on() -> bool:
+    """True when either notify env name is truthy. Default false when both unset."""
+    for key in ("CIO_SITUATION_NOTIFY", "CIO_SITUATIONS_NOTIFY"):
+        if os.environ.get(key, "").strip().lower() in ("1", "true", "on", "yes"):
+            return True
+    return False
 
 
 def is_material_source(source: str, policy: Optional[dict[str, Any]] = None) -> bool:
@@ -129,6 +138,10 @@ def is_material_plan(plan: dict[str, Any]) -> bool:
         "S8_DEFENSIVE_REGIME",
     ):
         return True
+    # S3 only material when capital-plan ACT_NOW / governed RE_ENTER is attached
+    # (bare READY/NEAR is desk surface only — not execute-now).
+    if st == "S3_REENTRY_CANDIDATE":
+        return s3_capital_act_now(plan)
     if st == "S1_POSITION_LIFECYCLE":
         if any(
             x.startswith("deep_drawdown") or x.startswith("partial_recovery") or "catalyst" in x
@@ -143,6 +156,58 @@ def is_material_plan(plan: dict[str, Any]) -> bool:
         return False  # routine card unless flagged critical in fire
     if plan.get("force_material"):
         return True
+    return False
+
+
+def s3_capital_act_now(plan: dict[str, Any]) -> bool:
+    """True only when an S3 plan is backed by governed capital ACT_NOW / RE_ENTER.
+
+    Bare reentry desk READY/NEAR must NOT authorize Telegram or material depth.
+    Accepts plan.act_now, fire_reasons containing act_now/re_enter, or a live
+    capital-plan row for the plan's symbols with act_now + RE_ENTER stance.
+    """
+    if not isinstance(plan, dict):
+        return False
+    if plan.get("act_now") is True or plan.get("capital_act_now") is True:
+        return True
+    fire = [
+        str(x).lower()
+        for x in (
+            plan.get("fire_reasons")
+            or (plan.get("extra") or {}).get("fire_reasons")
+            or []
+        )
+    ]
+    if any("act_now" in x or x in ("re_enter", "reentry_re_enter", "governed_re_enter") for x in fire):
+        return True
+    symbols = {
+        str(s).upper()
+        for s in (plan.get("symbols") or [])
+        if str(s or "").strip()
+    }
+    if not symbols:
+        return False
+    try:
+        try:
+            from scripts.lib.cio_office_state import fetch_capital_plan
+        except Exception:
+            from lib.cio_office_state import fetch_capital_plan  # type: ignore
+        cap = fetch_capital_plan() or {}
+        for row in cap.get("position_decisions") or []:
+            if not isinstance(row, dict):
+                continue
+            sym = str(row.get("symbol") or "").upper()
+            if sym not in symbols:
+                continue
+            stance = str(
+                row.get("stance") or row.get("stance_code") or row.get("action") or ""
+            ).upper()
+            if stance != "RE_ENTER":
+                continue
+            if row.get("act_now") is True or str(row.get("action_label") or "").upper() == "ACT_NOW":
+                return True
+    except Exception:
+        return False
     return False
 
 
@@ -2212,15 +2277,16 @@ def maybe_notify_plan(
 ) -> bool:
     """Optional Telegram notify via dedicated CIO bot. Default off.
 
-    Requires CIO_SITUATION_NOTIFY=1 (or policy situation_notify_telegram) and
-    TELEGRAM_CIO_BOT_TOKEN + allowlist. Never uses OpenClaw main bot.
+    Requires CIO_SITUATION_NOTIFY=1 (or alias CIO_SITUATIONS_NOTIFY=1, or policy
+    situation_notify_telegram) and TELEGRAM_CIO_BOT_TOKEN + allowlist.
+    Never uses OpenClaw main bot.
 
     Re-notify guard: same plan_id + same fingerprint is notified at most once
     (unless force=True / CIO_SITUATION_NOTIFY_FORCE=1, or evidence/fire_reasons change).
     Re-enrichment alone must not re-push.
     """
     pol = policy or load_llm_policy()
-    env_on = os.environ.get("CIO_SITUATION_NOTIFY", "0").strip().lower() in ("1", "true", "yes", "on")
+    env_on = _notify_env_on()
     # Fail-closed: need env OR policy flag (prefer env for host ops)
     if not env_on and not pol.get("situation_notify_telegram"):
         return False
@@ -2250,7 +2316,9 @@ def maybe_notify_plan(
                 return False
         except Exception:
             pass
-    # Prefer high-value situation types for notify (S1/S2/S5/S6/S8)
+    # Prefer high-value situation types for notify (S1/S2/S5/S6/S8).
+    # S3 is NOT on the static allowlist — bare READY/NEAR must stay quiet.
+    # S3 notifies only when s3_capital_act_now(plan) (governed RE_ENTER + ACT_NOW).
     st = str(plan.get("situation_type") or "")
     allow_types = set(pol.get("notify_situation_types") or [
         "S1_POSITION_LIFECYCLE",
@@ -2260,7 +2328,10 @@ def maybe_notify_plan(
         "S8_DEFENSIVE_REGIME",
         "S0_OPERATOR_CONVERSE",
     ])
-    if st and allow_types and st not in allow_types:
+    if st == "S3_REENTRY_CANDIDATE":
+        if not force and not s3_capital_act_now(plan):
+            return False
+    elif st and allow_types and st not in allow_types:
         return False
 
     # Multi-domain synthesis required for notified material plans (desk@v2+)

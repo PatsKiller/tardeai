@@ -1,0 +1,25 @@
+{
+  "schema": "R13StartingState@v1",
+  "as_of": "2026-08-25T13:05:00Z",
+  "authority": "READ_ONLY_ADVISORY",
+  "memory_behavior_influence": 0,
+  "pr506": {
+    "state": "OPEN",
+    "head": "5947d8015c0ea6029d1c4cec2c57b7dae3ead88c",
+    "mergeable": "MERGEABLE",
+    "mergeStateStatus": "CLEAN",
+    "commits": 2,
+    "ci": "GREEN"
+  },
+  "main": "9a1e2da51c2a37b4cc6a45d5f96c15207158203f",
+  "current": "1afb1479676aeb67b64791e58e946753a2854ddf",
+  "current_has_r11_r12": false,
+  "r12_maturity": 76,
+  "canary": false,
+  "AUTHORIZE_P2_LIVE_OPERATOR_DELIVERY": true,
+  "CIO_TELEGRAM_INTERDICT": "0",
+  "delivery_mode_last_scan": "CIO_ONLY_LIVE",
+  "cash_target_confirmed": false,
+  "pr505_open": true,
+  "regression_r11_r12": {"passed": 172, "failed": 0}
+}

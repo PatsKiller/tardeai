@@ -317,6 +317,18 @@ def _morning_brief(portfolio: Dict, market_data: Dict[str, Dict], root: Path) ->
     ])
 
 def _eod_summary(portfolio: Dict, market_data: Dict[str, Dict], alerts_fired: List[str], root: Path) -> str:
+    if os.getenv("CANONICAL_OPERATOR_BRIEF", "1").strip() != "0":
+        try:
+            from lib.cio_operator_renderers import deliver_eod
+        except ImportError:
+            try:
+                from scripts.lib.cio_operator_renderers import deliver_eod  # type: ignore
+            except Exception:
+                deliver_eod = None  # type: ignore
+        if deliver_eod is not None:
+            result = deliver_eod(root=root, send=False)
+            if result.get("handled") and result.get("text"):
+                return result["text"]
     totals   = portfolio.get("portfolio_totals", {})
     total_mv = totals.get("total_value", 0)
     day_chg  = totals.get("day_change", 0) or 0

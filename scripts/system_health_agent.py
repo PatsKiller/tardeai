@@ -293,6 +293,13 @@ MONITORED_COMPONENTS = [
      "max_age_min": 10080, "max_runtime_sec": 7200, "critical": False,
      "retry_cmd": ".venv/bin/python scripts/trade_close_llm_analyzer.py --source backtest --limit 50 --apply --confirm-llm-review-write --allow-local-llm",
      "downstream": "trade_llm_reviews, backtest learning"},
+
+    # ── YouTube transcript ingest (weekday 19:00) ──
+    {"component": "youtube_transcript_ingest", "display": "YouTube Transcript Ingest",
+     "schedule": "0 19 * * 1-5", "log_file": "youtube_ingest.log",
+     "max_age_min": 1500, "max_runtime_sec": 1800, "critical": False,
+     "retry_cmd": ".venv/bin/python scripts/youtube_transcript_ingest.py --all-channels",
+     "downstream": "youtube_transcripts, intelligence_whiteboard, CIO research queue"},
 ]
 
 MAX_RETRIES = 2
@@ -642,6 +649,89 @@ def _check_log_freshness(log_file, max_age_min, prev_fire=None, now=None, grace_
         return {"status": "OK", "age_min": round(age_min, 1), "last_line": last_line}
     except Exception as e:
         return {"status": "ERROR", "age_min": None, "last_line": str(e)[:100]}
+
+
+def check_youtube_transcript_freshness(conn=None, *, now=None, max_db_age_hours: float = 36.0,
+                                       log_file: str = "youtube_ingest.log"):
+    """YouTube transcripts freshness: log mtime + optional DB latest ingest / daily count.
+
+    Returns status CURRENT / STALE / MISSING with a clear reason. Pure enough for unit tests
+    when conn/log path are mocked. Does not invent data.
+    """
+    now = now or datetime.now(timezone.utc)
+    log_path = PROJECT_ROOT / "logs" / log_file
+    result = {
+        "component": "youtube_transcripts",
+        "status": "MISSING",
+        "reason": "",
+        "latest_ingest_at": None,
+        "daily_ingested_count": None,
+        "log_age_hours": None,
+        "db_age_hours": None,
+    }
+
+    log_mtime = None
+    if log_path.exists():
+        try:
+            log_mtime = datetime.fromtimestamp(log_path.stat().st_mtime, tz=timezone.utc)
+            result["log_age_hours"] = round((now - log_mtime).total_seconds() / 3600, 2)
+        except Exception as e:
+            result["reason"] = f"log_stat_error: {e}"
+    else:
+        result["reason"] = f"log_missing:{log_file}"
+
+    latest = None
+    daily_count = None
+    if conn is not None:
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT MAX(ingested_at) FROM youtube_transcripts")
+            row = cur.fetchone()
+            latest = row[0] if row else None
+            cur.execute(
+                "SELECT COUNT(*) FROM youtube_transcripts WHERE ingested_at::date = CURRENT_DATE")
+            crow = cur.fetchone()
+            daily_count = int(crow[0] or 0) if crow else 0
+        except Exception as e:
+            # DB optional for log-only judgment
+            if not result["reason"]:
+                result["reason"] = f"db_query_error: {e}"
+
+    if latest is not None:
+        if getattr(latest, "tzinfo", None) is None:
+            latest = latest.replace(tzinfo=timezone.utc)
+        result["latest_ingest_at"] = latest.isoformat()
+        result["db_age_hours"] = round((now - latest).total_seconds() / 3600, 2)
+    result["daily_ingested_count"] = daily_count
+
+    # Prefer DB age when available; else log age; else MISSING.
+    if result["db_age_hours"] is not None:
+        if result["db_age_hours"] <= max_db_age_hours:
+            result["status"] = "CURRENT"
+            result["reason"] = (
+                f"latest_ingest {result['db_age_hours']}h ago; "
+                f"today_count={daily_count if daily_count is not None else 'n/a'}"
+            )
+        else:
+            result["status"] = "STALE"
+            result["reason"] = (
+                f"latest_ingest {result['db_age_hours']}h ago "
+                f"(threshold {max_db_age_hours}h); today_count={daily_count}"
+            )
+    elif result["log_age_hours"] is not None:
+        # Weekday ingest ~24h cadence; treat >36h log silence as STALE
+        if result["log_age_hours"] <= max_db_age_hours:
+            result["status"] = "CURRENT"
+            result["reason"] = f"log fresh ({result['log_age_hours']}h); DB unavailable"
+        else:
+            result["status"] = "STALE"
+            result["reason"] = f"log stale ({result['log_age_hours']}h); DB unavailable"
+    else:
+        result["status"] = "MISSING"
+        if not result["reason"]:
+            result["reason"] = "no youtube_ingest.log and no youtube_transcripts rows"
+
+    return result
 
 
 def _check_lock_contention(lock_file):
@@ -1052,6 +1142,38 @@ def run_health_check(dry_run=True, verbose=False):
             log.info(f"  {icon} {comp['display']:30s} status={check['status']:15s} age={check.get('age_min', '?')}min lock={check['lock']}")
 
         report["checks"].append(check)
+
+    # ── YouTube transcripts freshness (log + DB ingest age / daily count) ──
+    try:
+        yt_fresh = check_youtube_transcript_freshness(conn, now=now)
+        report["youtube_transcripts_freshness"] = yt_fresh
+        _yt_status = yt_fresh.get("status") or "MISSING"
+        _mapped = {"CURRENT": "OK", "STALE": "STALE", "MISSING": "MISSING"}.get(_yt_status, _yt_status)
+        report["checks"].append({
+            "component": "youtube_transcripts_freshness",
+            "display": "YouTube Transcripts Freshness",
+            "critical": False,
+            "schedule": "0 19 * * 1-5",
+            "status": _mapped,
+            "age_min": (
+                round((yt_fresh.get("db_age_hours") or yt_fresh.get("log_age_hours") or 0) * 60, 1)
+                if (yt_fresh.get("db_age_hours") is not None or yt_fresh.get("log_age_hours") is not None)
+                else None
+            ),
+            "last_line": (yt_fresh.get("reason") or "")[:100],
+            "downstream": "youtube_transcripts, CIO research queue",
+            "daily_ingested_count": yt_fresh.get("daily_ingested_count"),
+            "latest_ingest_at": yt_fresh.get("latest_ingest_at"),
+        })
+        if _mapped == "OK":
+            report["summary"]["ok"] += 1
+        elif _mapped == "STALE":
+            report["summary"]["stale"] += 1
+        elif _mapped == "MISSING":
+            report["summary"]["missing"] += 1
+        log.info(f"  YouTube freshness: {_yt_status} — {yt_fresh.get('reason')}")
+    except Exception as e:
+        log.warning(f"YouTube transcripts freshness check failed: {e}")
 
     # ── safe_flock event analysis ──
     sf_summary = _analyze_safe_flock(conn, dry_run=dry_run, verbose=verbose)

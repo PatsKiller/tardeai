@@ -38,12 +38,60 @@ import os
 import subprocess
 import sys
 import threading
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 
 PORT = 7777
 PROJECT_ROOT = Path(__file__).parent.parent.resolve()
+PROCESS_STARTED_AT = datetime.now().astimezone().isoformat(timespec="seconds")
+
+
+def _read_pin_sha(root: Path) -> str:
+    for name in ("SOURCE_COMMIT", "BUILD_SHA", "GIT_SHA"):
+        p = root / name
+        try:
+            sha = p.read_text(encoding="utf-8").strip().split()[0]
+        except OSError:
+            continue
+        if sha:
+            return sha
+    return ""
+
+
+LOADED_PIN_SHA = _read_pin_sha(PROJECT_ROOT)
+
+
+def _boot_stamp_path() -> Path:
+    override = os.getenv("PORTFOLIO_SERVER_BOOT_STAMP_PATH")
+    if override:
+        return Path(override).expanduser()
+    return Path.home() / ".local" / "state" / "tradeai" / "portfolio_server_boot.json"
+
+
+def _data_as_of(data: dict) -> str | None:
+    for candidate in (
+        data.get("data_as_of"),
+        data.get("source_as_of"),
+        data.get("as_of"),
+        (data.get("data") or {}).get("data_as_of") if isinstance(data.get("data"), dict) else None,
+        (data.get("data") or {}).get("as_of") if isinstance(data.get("data"), dict) else None,
+    ):
+        if candidate:
+            return str(candidate)
+    return None
+
+
+def _age_seconds(as_of: str | None) -> float | None:
+    if not as_of:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(as_of).replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return round(max(0.0, (datetime.now(timezone.utc) - parsed).total_seconds()), 3)
+    except (TypeError, ValueError):
+        return None
 
 # Make the repo ROOT importable so `from scripts.lib.X` resolves alongside the
 # existing `from lib.X` convention (scripts/ and scripts/lib are also on sys.path).
@@ -651,6 +699,37 @@ _JSON_BODY_CACHE_LOCK = threading.Lock()
 _JSON_BODY_CACHE_MAX = 8
 
 
+def _stamp_serving(handler, data):
+    """Class guard: every /api/v3 JSON names the process, the loaded pin, and disk pin.
+
+    Stops a 2-day in-memory overlay being served as current with no indicator.
+    """
+    if not isinstance(data, dict):
+        return data
+    path = str(getattr(handler, "path", "") or "")
+    if "?" in path:
+        path = path.split("?", 1)[0]
+    if not path.startswith("/api/v3/"):
+        return data
+    if isinstance(data.get("_serving"), dict):
+        return data
+    disk = _read_pin_sha(Path.home() / "trade-ai-releases" / "portfolio-server" / "CURRENT")
+    data_as_of = _data_as_of(data)
+    data["_serving"] = {
+        "schema": "ServingFreshness@v1",
+        "authority": "READ_ONLY_ADVISORY",
+        "process_started_at": PROCESS_STARTED_AT,
+        "source_pin": disk or None,
+        "loaded_pin": LOADED_PIN_SHA or None,
+        "loaded_pin_sha": LOADED_PIN_SHA or None,
+        "current_pin_sha": disk or None,
+        "data_as_of": data_as_of,
+        "cache_age": _age_seconds(data_as_of),
+        "pin_match": bool(LOADED_PIN_SHA) and LOADED_PIN_SHA == disk,
+    }
+    return data
+
+
 def json_response(handler, status: int, data: dict) -> None:
     # Phase 203 fix: never emit bare NaN/Infinity — Python json allows them by default but they are
     # INVALID JSON and browser JSON.parse() rejects the whole payload (was blanking the v3 scanner).
@@ -658,12 +737,20 @@ def json_response(handler, status: int, data: dict) -> None:
     # RI v3.1 (WS-A): routes may attach "__etag__" (top level or inside data["data"]). If the client
     # sent a matching If-None-Match we answer 304 BEFORE any json.dumps/gzip — that serialize+compress
     # of MB-scale payloads on every poll was the real CPU cost behind the server_busy storms.
+    data = _stamp_serving(handler, data)
     etag = None
     if isinstance(data, dict):
         if "__etag__" in data:
             etag = data.pop("__etag__")
         elif isinstance(data.get("data"), dict) and "__etag__" in data["data"]:
             etag = data["data"].pop("__etag__")
+    serving = data.get("_serving") if isinstance(data, dict) else None
+    cache_key = etag
+    if etag and isinstance(serving, dict):
+        # A pin change must never reuse a body serialized under the old pin.
+        # Age is intentionally bucketed so the large-body cache remains useful.
+        age_bucket = int(float(serving.get("cache_age") or 0) // 60)
+        cache_key = f"{etag}|{serving.get('source_pin')}|{age_bucket}"
     if etag and status == 200:
         try:
             inm = (handler.headers.get("If-None-Match") or "") if getattr(handler, "headers", None) else ""
@@ -688,7 +775,7 @@ def json_response(handler, status: int, data: dict) -> None:
     # Reuse pre-serialized body when ETag is known (trade-ai multi-MB path).
     if etag and status == 200:
         with _JSON_BODY_CACHE_LOCK:
-            cached = _JSON_BODY_CACHE.get(etag)
+            cached = _JSON_BODY_CACHE.get(cache_key)
         if cached:
             if want_gzip and cached.get("gz") is not None:
                 body, use_gzip = cached["gz"], True
@@ -713,13 +800,13 @@ def json_response(handler, status: int, data: dict) -> None:
                 gz_body = None
         if etag and status == 200:
             with _JSON_BODY_CACHE_LOCK:
-                if etag not in _JSON_BODY_CACHE and len(_JSON_BODY_CACHE) >= _JSON_BODY_CACHE_MAX:
+                if cache_key not in _JSON_BODY_CACHE and len(_JSON_BODY_CACHE) >= _JSON_BODY_CACHE_MAX:
                     # drop an arbitrary oldest-ish entry
                     try:
                         _JSON_BODY_CACHE.pop(next(iter(_JSON_BODY_CACHE)))
                     except Exception:
                         _JSON_BODY_CACHE.clear()
-                _JSON_BODY_CACHE[etag] = {"raw": raw_body, "gz": gz_body}
+                _JSON_BODY_CACHE[cache_key] = {"raw": raw_body, "gz": gz_body}
         if want_gzip and gz_body is not None:
             body, use_gzip = gz_body, True
         else:
@@ -775,6 +862,34 @@ def _agent_runtime_read_handle(method: str, path: str, raw_query):
         query = {}
         if raw_query:
             query = {k: (v[0] if isinstance(v, list) and len(v) == 1 else v) for k, v in raw_query.items()}
+        # agent-maturity first paint must not wait on a hung Postgres connect.
+        if str(path or "").startswith("/api/v3/agent-maturity"):
+            from lib.cc_request_bound import run_bounded
+            try:
+                return run_bounded(_ar_boot.handle, method, path, query, timeout_s=3.0)
+            except TimeoutError:
+                # Live connect/read hung. Repo evidence is ~20ms — serve that
+                # instead of an empty 503 so the maturity board still paints.
+                try:
+                    from agent_runtime.read_http import _dispatch_maturity
+                    status, body = _dispatch_maturity(method, path, None)
+                    if isinstance(body, dict):
+                        body = dict(body)
+                        body["degraded"] = True
+                        body["detail"] = "live maturity reader exceeded 3s bound; repository evidence only"
+                    return status, body
+                except Exception:
+                    return 503, {
+                        "contract": "agent-maturity-read-api-v1",
+                        "read_only": True,
+                        "kind": "timeout",
+                        "data": None,
+                        "authority": {
+                            "mutation": False, "provider_call": False, "service_control": False,
+                            "schedule_change": False, "financial_action": False,
+                        },
+                        "detail": "agent-maturity exceeded 3s connect/read bound",
+                    }
         return _ar_boot.handle(method, path, query)
     except Exception:
         # Honest zero-authority 503; never surface an exception to the client.
@@ -1766,6 +1881,36 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
                 self.end_headers()
             return
 
+        # Signed CIO action links — must run BEFORE the SPA catch-all.
+        if path.startswith("/v3/go/cio/"):
+            try:
+                from scripts.lib.cio_go_handler import handle_cio_go
+                qs = parse_qs(urlparse(self.path).query)
+                body = None
+                if self.command == "POST":
+                    ln = int(self.headers.get("Content-Length") or 0)
+                    raw = self.rfile.read(ln) if ln else b""
+                    ctype = (self.headers.get("Content-Type") or "")
+                    if "json" in ctype:
+                        body = json.loads(raw.decode() or "{}")
+                    else:
+                        body = {k: v[0] if v else "" for k, v in parse_qs(raw.decode()).items()}
+                status, ctype, payload = handle_cio_go(self.command, path, qs, body)
+                self.send_response(status)
+                self.send_header("Content-Type", ctype)
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("Content-Length", str(len(payload)))
+                self.end_headers()
+                self.wfile.write(payload)
+            except Exception as exc:
+                msg = f"cio go handler failed: {type(exc).__name__}".encode()
+                self.send_response(500)
+                self.send_header("Content-Type", "text/plain")
+                self.send_header("Content-Length", str(len(msg)))
+                self.end_headers()
+                self.wfile.write(msg)
+            return
+
         # Command Center v3 — serve built app at /v3/
         if path == "/v3" or path.startswith("/v3/"):
             _v3_dist = PROJECT_ROOT / "apps" / "command-center-v3" / "dist"
@@ -2109,6 +2254,34 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
             except Exception:
                 json_response(self, 500, {"ok": False, "error": "control-plane projection failed"})
                 return
+
+        # Signed CIO action links from main. Distinct path from control-plane.
+        if path.startswith("/v3/go/cio/"):
+            try:
+                from scripts.lib.cio_go_handler import handle_cio_go
+                qs = parse_qs(parsed.query)
+                ln = int(self.headers.get("Content-Length") or 0)
+                raw = self.rfile.read(ln) if ln else b""
+                ctype = (self.headers.get("Content-Type") or "")
+                if "json" in ctype:
+                    body = json.loads(raw.decode() or "{}")
+                else:
+                    body = {k: v[0] if v else "" for k, v in parse_qs(raw.decode()).items()}
+                status, ctype, payload = handle_cio_go("POST", path, qs, body)
+                self.send_response(status)
+                self.send_header("Content-Type", ctype)
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("Content-Length", str(len(payload)))
+                self.end_headers()
+                self.wfile.write(payload)
+            except Exception as exc:
+                msg = f"cio go handler failed: {type(exc).__name__}".encode()
+                self.send_response(500)
+                self.send_header("Content-Type", "text/plain")
+                self.send_header("Content-Length", str(len(msg)))
+                self.end_headers()
+                self.wfile.write(msg)
+            return
 
         # Agent-runtime read surface is GET-only: any POST here is 405, never a write.
         _ar_path = path.rstrip("/") or "/"
@@ -2552,7 +2725,10 @@ def _sem_exempt_path(path: str) -> bool:
         "/api/v2/risk-regime/latest",
         "/api/v2/live-trading-gate",
         "/api/v2/paper-trade-readiness",
+        "/api/v3/agent-maturity",
     ):
+        return True
+    if p.startswith("/api/v3/agent-maturity/"):
         return True
     # Static SPA/assets — cheap, high volume
     if p.startswith("/v3/") or p.startswith("/v2/") or p.startswith("/assets/"):
@@ -2642,6 +2818,21 @@ if __name__ == "__main__":
         print(f"[fatal] Cannot bind port {PORT}: {e}")
         print("Another portfolio_server may already be listening. Check: ss -tlnp | grep 7777")
         sys.exit(1)
+    try:
+        _boot = _boot_stamp_path()
+        _boot.parent.mkdir(parents=True, exist_ok=True)
+        _disk = _read_pin_sha(Path.home() / "trade-ai-releases" / "portfolio-server" / "CURRENT")
+        _boot.write_text(json.dumps({
+            "schema": "PortfolioServerBoot@v1",
+            "authority": "READ_ONLY_ADVISORY",
+            "process_started_at": PROCESS_STARTED_AT,
+            "loaded_pin_sha": LOADED_PIN_SHA,
+            "current_pin_sha": _disk,
+            "pid": os.getpid(),
+            "port": PORT,
+        }, indent=2) + "\n", encoding="utf-8")
+    except OSError as _be:
+        print(f"[warn] could not write boot stamp: {_be}")
     threading.Thread(target=_compute_watchdog, daemon=True,
                      name="engine-room-compute-watchdog").start()
     # ── Startup data freshness check ──────────────────────────────────────

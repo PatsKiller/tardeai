@@ -46,7 +46,11 @@ SCAN_DIRS = ("scripts", "apps", "tests")
 SCAN_SUFFIXES = {".py", ".sh", ".ts", ".tsx", ".js", ".mjs"}
 
 # Only these may speak the Bot API. Outbound and inbound are separated on purpose.
-APPROVED_OUTBOUND = {"scripts/telegram_transport.py"}
+APPROVED_OUTBOUND = {
+    "scripts/telegram_transport.py",
+    # CIO-only wrapper — never reads general bot; calls telegram_transport.send_message.
+    "scripts/lib/cio_telegram_transport.py",
+}
 APPROVED_DELIVERY = {"scripts/alert_outbox.py", "scripts/telegram_alert.py"}
 # Inbound polling/command handling is a different concern from outbound delivery;
 # it is allowed to talk to getUpdates/answerCallbackQuery but not to send alerts.

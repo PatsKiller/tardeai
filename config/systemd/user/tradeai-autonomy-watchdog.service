@@ -1,0 +1,20 @@
+[Unit]
+Description=Trade AI autonomous intelligence watchdog (observe/classify/record/alert)
+After=network.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/trade-ai-releases/portfolio-server/CURRENT
+Environment=MEMORY_BEHAVIOR_INFLUENCE=0
+Environment=MEMORY_PROVIDER=durable
+Environment=MEMORY_SHADOW=1
+Environment=GOVERNED_MEMORY_ADVISORY_INFLUENCE=SHADOW
+Environment=SYSTEM_TELEGRAM_ENABLED=1
+# Financial CIO interdict stays on for CIO path; SYSTEM telegram uses generic ops bot.
+Environment=CIO_TELEGRAM_INTERDICT=1
+ExecStart=/usr/bin/flock -n /tmp/tradeai-autonomy-watchdog.lock /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python %h/trade-ai-releases/portfolio-server/CURRENT/scripts/autonomy_watchdog.py --once
+Nice=10
+TimeoutStartSec=90
+
+[Install]
+WantedBy=default.target

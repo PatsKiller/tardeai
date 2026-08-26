@@ -1,0 +1,133 @@
+{
+  "schema": "R16_1RuntimeSmoke@v1",
+  "evidence_class": "LIVE",
+  "pin_match": true,
+  "SOURCE_COMMIT": "55520666b4a742b9ed893c3231b414d089312363",
+  "loaded_pin": "55520666b4a742b9ed893c3231b414d089312363",
+  "health": true,
+  "cio_http": 200,
+  "learning_cockpit_ok": true,
+  "brain_has_learning_cockpit": true,
+  "model_performance_ok": true,
+  "intelligence_lifecycle_ok": true,
+  "canary": false,
+  "MEMORY_BEHAVIOR_INFLUENCE": 0,
+  "financial_action": false,
+  "restart_recovery": {
+    "restarted_at": "2026-08-25T17:03:33Z",
+    "service_active": true,
+    "health_ok": true,
+    "pin_match_after_restart": true,
+    "loaded_pin_sha": "55520666b4a742b9ed893c3231b414d089312363",
+    "learning_cockpit_ok": true,
+    "max_unattended_stage": "REVIEW_READY",
+    "checkpoints_survived": 11,
+    "observations_survived": 25,
+    "checkpoints_after_second_scan": 18
+  },
+  "natural_material_scan": {
+    "timer": "tradeai-cio-material-scan.timer",
+    "manually_started": false,
+    "cycles_on_55520666": 2,
+    "at": "2026-08-25T16:58:08.876402+00:00",
+    "at_second": "2026-08-25T17:08:11.315801+00:00",
+    "receipt_path": "/home/johnclaw/trade-ai-releases/portfolio-server/55520666-main-exact-phase2-20260825-125124/data/audit/cio_material_scan_last.json",
+    "source_release": "55520666b4a742b9ed893c3231b414d089312363",
+    "paid_dispatch": 0,
+    "llm_calls": 0,
+    "authority": "READ_ONLY_ADVISORY",
+    "mbi": 0,
+    "dry_run": true,
+    "notification_counts": {
+      "DIGEST": 2,
+      "SUPPRESSED": 2
+    },
+    "situation_classes": [
+      "POLICY_GAP"
+    ],
+    "policy_status": "POLICY_GAP",
+    "results": [
+      "HOLD_CASH",
+      "WAIT",
+      "TRIM"
+    ],
+    "r16_altered_materiality": false,
+    "r16_altered_notification_safety": false,
+    "zero_cost": true
+  },
+  "natural_free_first": {
+    "timer": "tradeai-free-first-circulation.timer",
+    "manually_started": false,
+    "as_of": "2026-08-25T17:27:06+00:00",
+    "source_sha": "55520666b4a742b9ed893c3231b414d089312363",
+    "mode": "FREE_FIRST_ONLY",
+    "total_symbols": 120,
+    "fresh_no_change": 120,
+    "Hermes_resolved": 117,
+    "RAG_resolved": 2,
+    "structured_resolved": 1,
+    "SearXNG_resolved": 0,
+    "searx_queries": 0,
+    "paid_dispatch_entered": 0,
+    "LLM_eligible_not_authorized": 0,
+    "memory_behavior_influence": 0,
+    "r16_altered_zero_cost_invariant": false
+  },
+  "similar_setup": {
+    "schema": "HaveWeSeenThis@v1",
+    "matches": [
+      {
+        "decision_id": "dec_cash_a7b0352ebbae0cc2",
+        "outcome_id": null
+      },
+      {
+        "decision_id": "dec_reentry_9815cb00f0238ccd",
+        "outcome_id": null
+      },
+      {
+        "decision_id": "dec_babcd8d893e1adcb",
+        "outcome_id": null
+      }
+    ],
+    "why_may_differ": "POLICY_GAP",
+    "evidence_linked_only": true,
+    "dumped_all_memory": false,
+    "authority": "READ_ONLY_ADVISORY",
+    "memory_behavior_influence": 0
+  },
+  "bitemporal": {
+    "schema": "BitemporalEvaluation@v1",
+    "what_we_believed_then": "TRIM SCHD",
+    "what_we_knew_then": "DATA_CONFLICT; cash POLICY_GAP; canary unset",
+    "outcome_then": null,
+    "available_later": "post-deploy 55520666 scan 2026-08-25T16:58:08Z still DATA_CONFLICT",
+    "what_we_know_now": "still TRIM blocked; no hindsight rewrite",
+    "future_not_leaked_into_then": true,
+    "authority": "READ_ONLY_ADVISORY",
+    "memory_behavior_influence": 0
+  },
+  "notification_learning": {
+    "schema": "NotificationLearning@v1",
+    "counts": {
+      "correct_page": 1,
+      "correct_suppression": 2,
+      "duplicate_page": 0,
+      "stale_page": 0,
+      "late_page": 0,
+      "unnecessary_interruption": 0,
+      "missed_material_condition": 0,
+      "operator_acknowledged": 0,
+      "operator_found_useful": 0
+    },
+    "n": 3,
+    "candidate_only": true,
+    "thresholds_auto_changed": false,
+    "authority": "READ_ONLY_ADVISORY",
+    "memory_behavior_influence": 0
+  },
+  "operator_feedback_normalized": "NOT_USEFUL",
+  "operator_feedback_policy_effect": false,
+  "new_material_decision_checkpoints": true,
+  "BLOCKED_REAL_WORLD_EVENT_for_90": true,
+  "authority": "READ_ONLY_ADVISORY"
+}

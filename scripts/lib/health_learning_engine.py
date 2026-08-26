@@ -7,14 +7,22 @@ Three learning dimensions:
 3. PATTERN DISCOVERY: Detects new staleness patterns not in the runbook
 """
 
+import hashlib
 import json
 import os
 import sys
 from datetime import datetime, timedelta, timezone
 from collections import defaultdict
+from pathlib import Path
 
-TRADEAI_ROOT = "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild"
+TRADEAI_ROOT = os.environ.get(
+    "TRADEAI_ROOT", str(Path(__file__).resolve().parents[2])
+)
 sys.path.insert(0, os.path.join(TRADEAI_ROOT, "scripts"))
+
+MIN_CADENCE_SAMPLES = 20
+THRESHOLD_PROPOSAL_DEDUPE_DAYS = 7
+MAX_THRESHOLD_PROPOSALS_PER_CYCLE = 3
 
 
 class HealthLearningEngine:
@@ -39,6 +47,11 @@ class HealthLearningEngine:
                 FROM hermes_research_intelligence
                 WHERE (topic ILIKE %s OR summary ILIKE %s)
                   AND created_at > now() - interval '%s days'
+                  AND COALESCE(hermes_agent_name, '') <> 'hermes_health_inspector'
+                  AND COALESCE(research_type, '') NOT IN (
+                      'threshold_tuning', 'health_inspection',
+                      'pattern_discovery', 'agent_liveness'
+                  )
                 WINDOW w AS (ORDER BY created_at)
             )
             SELECT
@@ -53,7 +66,7 @@ class HealthLearningEngine:
         row = cur.fetchone()
         cur.close()
 
-        if row and row[0]:
+        if row and row[0] and int(row[2] or 0) >= MIN_CADENCE_SAMPLES:
             return {
                 "producer": producer_name,
                 "avg_gap_h": round(row[0], 1),
@@ -71,20 +84,38 @@ class HealthLearningEngine:
     def stage_threshold_adjustment(
         self, producer_name, old_threshold_h, new_threshold_h, confidence
     ):
-        """Stage a threshold adjustment finding."""
+        """Stage one deduped proposal; this never mutates runtime thresholds."""
         cur = self.conn.cursor()
         confidence_pct = int(confidence * 100)
+        rounded_new = round(float(new_threshold_h), 1)
+        signature_payload = f"{producer_name}|{float(old_threshold_h):.1f}|{rounded_new:.1f}"
+        pattern_signature = "threshold_proposal::" + hashlib.sha256(
+            signature_payload.encode("utf-8")
+        ).hexdigest()[:24]
         summary = (
-            f"Threshold adjusted: {producer_name} {old_threshold_h}h -> {new_threshold_h}h "
+            f"Threshold proposal: {producer_name} {old_threshold_h}h -> {rounded_new}h "
             f"(confidence: {confidence_pct}%)"
         )
+        cur.execute(
+            """SELECT id FROM hermes_research_intelligence
+               WHERE pattern_signature=%s
+                 AND created_at > now() - (%s || ' days')::interval
+               ORDER BY created_at DESC LIMIT 1""",
+            (pattern_signature, THRESHOLD_PROPOSAL_DEDUPE_DAYS),
+        )
+        existing = cur.fetchone()
+        if existing:
+            cur.close()
+            return None
         cur.execute(
             """
             INSERT INTO hermes_research_intelligence
                 (source, hermes_agent_name, research_type, topic, summary, thesis,
                  confidence_score, status, tags, threshold_adjusted,
-                 freshness_date, model_used, created_at, updated_at)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, true, CURRENT_DATE, %s, NOW(), NOW())
+                 freshness_date, model_used, pattern_signature, evidence_json,
+                 created_at, updated_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, false,
+                    CURRENT_DATE, %s, %s, %s::jsonb, NOW(), NOW())
         """,
             (
                 "hermes",
@@ -97,11 +128,22 @@ class HealthLearningEngine:
                 "staged",
                 '{"health_inspection","threshold_tuning","P3"}',
                 "learning_engine",
+                pattern_signature,
+                json.dumps({
+                    "schema": "HealthThresholdProposal@v1",
+                    "producer": producer_name,
+                    "current_threshold_h": float(old_threshold_h),
+                    "proposed_threshold_h": rounded_new,
+                    "confidence": float(confidence),
+                    "proposal_only": True,
+                    "config_mutated": False,
+                    "authority": "OPERATIONS_REVIEW_REQUIRED",
+                }),
             ),
         )
         self.conn.commit()
         cur.close()
-        return new_threshold_h
+        return rounded_new
 
     # ── REMEDIATION PRIORITY LEARNING ──
 
@@ -290,6 +332,8 @@ Respond in JSON:
 
         # 1. THRESHOLD SELF-TUNING
         for producer_name, config in producers_config.items():
+            if len(results["threshold_adjustments"]) >= MAX_THRESHOLD_PROPOSALS_PER_CYCLE:
+                break
             cadence = self.analyze_pipeline_cadence(producer_name)
             if (
                 cadence
@@ -298,11 +342,11 @@ Respond in JSON:
             ):
                 old_h = config.get("max_age_h", 24)
                 recommended_h = cadence["recommended_threshold_h"]
-                # GUARDRAIL: cap recommended threshold at 4x the current
-                # threshold to prevent sparse-data inflation (e.g. 8h -> 242.4h
-                # when only 3 samples exist at 50-80% confidence)
+                # Proposals are bounded in both directions. A cadence learner may
+                # suggest review, but it cannot collapse a 48h SLO to 2h in one pass.
                 max_allowed_h = old_h * 4
-                recommended_h = min(recommended_h, max_allowed_h)
+                min_allowed_h = max(2, old_h * 0.5)
+                recommended_h = min(max(recommended_h, min_allowed_h), max_allowed_h)
                 if (
                     abs(recommended_h - old_h) / old_h
                     > 0.2
@@ -313,14 +357,16 @@ Respond in JSON:
                         recommended_h,
                         cadence["confidence"],
                     )
-                    results["threshold_adjustments"].append(
-                        {
-                            "producer": producer_name,
-                            "old_h": old_h,
-                            "new_h": new_h,
-                            "confidence": cadence["confidence"],
-                        }
-                    )
+                    if new_h is not None:
+                        results["threshold_adjustments"].append(
+                            {
+                                "producer": producer_name,
+                                "old_h": old_h,
+                                "new_h": new_h,
+                                "confidence": cadence["confidence"],
+                                "proposal_only": True,
+                            }
+                        )
 
         # 2. REMEDIATION PRIORITY LEARNING
         results["remediation_priorities"] = (

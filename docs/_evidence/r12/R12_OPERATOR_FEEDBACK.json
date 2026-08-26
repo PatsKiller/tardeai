@@ -1,0 +1,8 @@
+{
+  "schema": "R12OperatorFeedback@v1",
+  "iteration": 22,
+  "memory_behavior_influence": 0,
+  "policy_effect": false,
+  "phrases_tested": ["useful", "not relevant", "too noisy", "too late", "wrong reason", "already knew", "notify me sooner", "do not page", "correction", "retraction", "injection"],
+  "status": "PASS"
+}

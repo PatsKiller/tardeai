@@ -1,0 +1,11 @@
+[Unit]
+Description=Trade AI observational due-checkpoint timer (R17)
+# Safe observational cadence. Not enabled in this tranche.
+
+[Timer]
+OnCalendar=*-*-* 17:10:00
+Persistent=true
+Unit=tradeai-due-checkpoints.service
+
+[Install]
+WantedBy=timers.target

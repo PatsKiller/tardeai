@@ -1,556 +1,131 @@
+"""Compatibility facade for callers that historically imported ``local_llm``.
+
+Local generative inference is retired. ``generate`` uses the governed DeepSeek
+Flash lane only; functions that explicitly request local generation fail closed.
+The module name remains temporarily so existing advisory jobs can migrate without
+restoring hidden Ollama chat capability.
 """
-local_llm.py — Local Ollama LLM with cloud fallback + toll gate queue.
-Use for non-time-sensitive narrative generation to save API costs.
+from __future__ import annotations
 
-All callers go through generate() which acquires a file lock before
-hitting Ollama, preventing concurrent GPU contention.
-
-Safety router (2026-05-28):
-- Blocks disabled models (DISABLED_LOCAL_LLM_MODELS)
-- Forces CPU mode when FORCE_LOCAL_LLM_CPU=true
-- Pre-call cleanup: unloads blocked/stale models
-- JSONL safety audit log
-
-Usage:
-    from local_llm import generate
-
-    text = generate(prompt, timeout=300)
-    # Returns text from Ollama if available, falls back to Claude Sonnet
-"""
-import fcntl
-import json
 import os
-import sys
-import time
-import urllib.request
-import urllib.error
-from pathlib import Path
+from contextlib import contextmanager
 
-from local_llm_config import get_local_llm_model, get_local_llm_base_url, apply_ollama_runtime_env
-
-apply_ollama_runtime_env()
-
-OLLAMA_BASE = get_local_llm_base_url().rstrip("/")
-OLLAMA_URL = OLLAMA_BASE + "/api/chat"
-OLLAMA_MODEL_FAST = get_local_llm_model()
-OLLAMA_MODEL = get_local_llm_model()
-# Fallback models — centralized from .env, live-discovered defaults
 FALLBACK_DEEPSEEK = os.getenv("LLM_FALLBACK_DEEPSEEK", "deepseek-v4-flash").strip()
 FALLBACK_DEEPSEEK_PRO = os.getenv("LLM_FALLBACK_DEEPSEEK_PRO", "deepseek-v4-pro").strip()
+FALLBACK_OPENAI = os.getenv("LLM_FALLBACK_OPENAI", "gpt-4o-mini").strip()
 FALLBACK_ANTHROPIC = os.getenv("LLM_FALLBACK_ANTHROPIC", "claude-sonnet-4-6").strip()
-DEFAULT_TIMEOUT = 300
-LOCK_FILE = Path("/tmp/tradeai_local_llm_single_job.lock")
-LOCK_WAIT_TIMEOUT = 600  # max seconds to wait for lock
 
-model_used = None  # tracks which model last responded
-
-# ── Safety: disabled models & CPU enforcement ────────────────────────────
-DISABLED_MODELS = set(
-    m.strip() for m in os.getenv("DISABLED_LOCAL_LLM_MODELS", "").split(",") if m.strip()
-)
-SAFE_MODEL = os.getenv("LOCAL_LLM_SAFE_MODEL", "gemma3:4b").strip()
-FORCE_CPU = os.getenv("FORCE_LOCAL_LLM_CPU", "false").strip().lower() in {"1", "true", "yes", "on"}
-FORCE_NUM_GPU = int(os.getenv("LOCAL_LLM_NUM_GPU", "99"))  # 99 = use default
-
-# ── LLM Fleet v4.1 — JSONL Audit Logging ─────────────────────────────────
-_AUDIT_LOG = Path(__file__).resolve().parent.parent / "logs" / "llm_routing_audit.jsonl"
-_SAFETY_LOG = Path(__file__).resolve().parent.parent / "logs" / "llm_router_safety.jsonl"
+OLLAMA_MODEL = "LOCAL_GENERATIVE_RETIRED"
+OLLAMA_MODEL_FAST = OLLAMA_MODEL
+OLLAMA_URL = "LOCAL_GENERATIVE_ENDPOINT_RETIRED"
+DISABLED_MODELS = {"*"}
+SAFE_MODEL = OLLAMA_MODEL
+model_used: str | None = None
 
 
-def _log_audit(caller: str, process_type: str, model: str, provider: str,
-               latency_ms: int, status: str, fallback_used: bool = False):
-    """Append one audit line to JSONL. Non-blocking, never raises."""
-    try:
-        entry = {
-            "ts": time.strftime("%Y-%m-%dT%H:%M:%S"),
-            "caller": caller,
-            "process_type": process_type,
-            "model": model,
-            "provider": provider,
-            "latency_ms": latency_ms,
-            "status": status,
-            "fallback": fallback_used,
-            "phase": os.getenv("LLM_DEPLOYMENT_PHASE", ""),
-        }
-        _AUDIT_LOG.parent.mkdir(parents=True, exist_ok=True)
-        with open(_AUDIT_LOG, "a") as f:
-            f.write(json.dumps(entry) + "\n")
-    except Exception:
-        pass  # audit must never break callers
+class LocalGenerativeForbidden(RuntimeError):
+    pass
 
 
-def _log_safety(caller: str, requested_model: str, resolved_model: str,
-                disabled_blocked: bool, force_cpu: bool, num_gpu: int,
-                duration_ms: int, status: str, error: str = "",
-                loaded_before: list = None, loaded_after: list = None):
-    """Append one safety audit line. Non-blocking, never raises."""
-    try:
-        entry = {
-            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
-            "caller": caller,
-            "requested_model": requested_model,
-            "resolved_model": resolved_model,
-            "disabled_model_blocked": disabled_blocked,
-            "force_cpu": force_cpu,
-            "num_gpu": num_gpu,
-            "duration_ms": duration_ms,
-            "status": status,
-            "error": error,
-            "loaded_models_before": loaded_before or [],
-            "loaded_models_after": loaded_after or [],
-        }
-        _SAFETY_LOG.parent.mkdir(parents=True, exist_ok=True)
-        with open(_SAFETY_LOG, "a") as f:
-            f.write(json.dumps(entry) + "\n")
-    except Exception:
-        pass
+class _RetiredGate:
+    def acquire(self, *args, **kwargs) -> bool:
+        return False
+
+    def release(self) -> None:
+        return None
+
+
+_gate = _RetiredGate()
 
 
 def _resolve_model(requested: str) -> tuple[str, bool]:
-    """Resolve model, blocking disabled models. Returns (model, was_blocked)."""
-    if requested in DISABLED_MODELS:
-        print(f"  [local-llm] BLOCKED disabled model {requested} → substituting {SAFE_MODEL}")
-        return SAFE_MODEL, True
-    return requested, False
+    return OLLAMA_MODEL, True
 
 
 def _get_loaded_models() -> list[str]:
-    """Query Ollama /api/ps for currently loaded model names."""
-    try:
-        ps_url = OLLAMA_BASE + "/api/ps"
-        req = urllib.request.Request(ps_url, method="GET")
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            data = json.loads(resp.read())
-            return [m.get("name", "") for m in data.get("models", [])]
-    except Exception:
-        return []
+    return []
 
 
-def _unload_model(name: str) -> bool:
-    """Unload a specific model via /api/generate keep_alive=0."""
-    try:
-        gen_url = OLLAMA_BASE + "/api/generate"
-        payload = json.dumps({"model": name, "keep_alive": 0, "prompt": ""}).encode()
-        req = urllib.request.Request(gen_url, data=payload,
-                                     headers={"Content-Type": "application/json"}, method="POST")
-        urllib.request.urlopen(req, timeout=10)
-        print(f"  [local-llm] Unloaded {name}")
-        return True
-    except Exception as e:
-        print(f"  [local-llm] Failed to unload {name}: {e}")
-        return False
+def _try_ollama(*args, **kwargs):
+    raise LocalGenerativeForbidden("POLICY_LOCAL_GENERATIVE_FORBIDDEN")
 
 
-def _pre_call_cleanup(target_model: str):
-    """Unload disabled models and non-target generation models before calling."""
-    loaded = _get_loaded_models()
-    for m in loaded:
-        if m in DISABLED_MODELS:
-            _unload_model(m)
-        elif m != target_model and "embed" not in m.lower():
-            _unload_model(m)
-    # Verify disabled models are gone
-    still_loaded = _get_loaded_models()
-    for m in still_loaded:
-        if m in DISABLED_MODELS:
-            print(f"  [local-llm] FAIL CLOSED: disabled model {m} still loaded after cleanup")
-            return False
-    return True
-
-
-# ── Toll gate: file-based lock so only one caller uses Ollama at a time ──
-
-class _OllamaGate:
-    """File lock that serializes all Ollama access across processes."""
-
-    def __init__(self):
-        self._fd = None
-
-    def acquire(self, wait_timeout: int = LOCK_WAIT_TIMEOUT) -> bool:
-        """Acquire exclusive lock. Blocks up to wait_timeout seconds."""
-        try:
-            self._fd = open(LOCK_FILE, "w")
-            deadline = time.monotonic() + wait_timeout
-            while True:
-                try:
-                    fcntl.flock(self._fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                    # Write PID for debugging
-                    self._fd.seek(0)
-                    self._fd.truncate()
-                    self._fd.write(f"{os.getpid()} {time.strftime('%H:%M:%S')}\n")
-                    self._fd.flush()
-                    return True
-                except (IOError, OSError):
-                    if time.monotonic() >= deadline:
-                        print(f"  [local-llm] Gate timeout — waited {wait_timeout}s for lock")
-                        self._fd.close()
-                        self._fd = None
-                        return False
-                    time.sleep(2)
-        except Exception as e:
-            print(f"  [local-llm] Gate error: {e}")
-            return False
-
-    def release(self):
-        """Release the lock."""
-        if self._fd:
-            try:
-                fcntl.flock(self._fd, fcntl.LOCK_UN)
-                self._fd.close()
-            except Exception:
-                pass
-            self._fd = None
-
-
-_gate = _OllamaGate()
-
-
-def warmup_ollama(model: str = None, timeout: int = 480) -> bool:
-    """Ping Ollama to ensure model is loaded before batch analysis.
-    Default 480s (8 min) to handle cold GPU model load.
-    Acquires the gate lock to prevent contention.
-    Respects disabled model list and CPU enforcement."""
-    model = model or OLLAMA_MODEL
-    resolved, was_blocked = _resolve_model(model)
-    if not _gate.acquire():
-        print("  [local-llm] Warmup skipped — could not acquire gate")
-        return False
-    try:
-        _pre_call_cleanup(resolved)
-        options = {"num_predict": 5}
-        if FORCE_CPU:
-            options["num_gpu"] = 0
-        payload = json.dumps({
-            "model": resolved,
-            "stream": False,
-            "messages": [{"role": "user", "content": "ready"}],
-            "think": False,
-            "options": options
-        }).encode()
-        req = urllib.request.Request(
-            OLLAMA_URL, data=payload,
-            headers={"Content-Type": "application/json"}, method="POST"
-        )
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            data = json.loads(resp.read())
-            print(f"  [local-llm] Ollama warmup OK — model {resolved} loaded"
-                  + (f" (blocked {model})" if was_blocked else ""))
-            return True
-    except Exception as e:
-        print(f"  [local-llm] Ollama warmup failed: {e}")
-        return False
-    finally:
-        _gate.release()
-
-
-def _ensure_vram_clear(keep_model: str = None):
-    """Unload all models except the one we're about to use. Prevents VRAM overcommit.
-    Uses safety-aware _pre_call_cleanup."""
-    _pre_call_cleanup(keep_model or OLLAMA_MODEL)
-
-
-def _try_ollama(prompt: str, timeout: int, model: str = OLLAMA_MODEL,
-                retries: int = 1, caller: str = "") -> str | None:
-    """Try Ollama with retry logic and safety router.
-    Blocks disabled models, forces CPU when configured.
-    Caller must hold the gate lock."""
-    t0 = time.time()
-    loaded_before = _get_loaded_models()
-
-    # Resolve model — block disabled
-    resolved, was_blocked = _resolve_model(model)
-
-    # Pre-call cleanup
-    if not _pre_call_cleanup(resolved):
-        _log_safety(caller, model, resolved, was_blocked, FORCE_CPU,
-                     0, int((time.time() - t0) * 1000), "fail_closed_disabled_loaded",
-                     loaded_before=loaded_before, loaded_after=_get_loaded_models())
-        return None
-
-    # Build options with CPU enforcement. num_predict env-overridable (2026-06-12: the 300 cap
-    # truncated strict-JSON outputs like entry plans mid-object — callers needing longer output set
-    # LOCAL_LLM_NUM_PREDICT for their process; default unchanged for all existing callers).
-    options = {"temperature": 0.3, "num_predict": int(os.getenv("LOCAL_LLM_NUM_PREDICT", "300"))}
-    if FORCE_CPU:
-        options["num_gpu"] = 0
-    elif FORCE_NUM_GPU != 99:
-        options["num_gpu"] = FORCE_NUM_GPU
-
-    payload = json.dumps({
-        "model": resolved,
-        "stream": False,
-        "messages": [{"role": "user", "content": prompt}],
-        "think": False,
-        "options": options
-    }).encode()
-
-    for attempt in range(retries + 1):
-        try:
-            req = urllib.request.Request(
-                OLLAMA_URL,
-                data=payload,
-                headers={"Content-Type": "application/json"},
-                method="POST"
-            )
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
-                data = json.loads(resp.read())
-                text = data.get("message", {}).get("content", "").strip()
-                duration = round(data.get("total_duration", 0) / 1e9, 1)
-                tokens = data.get("eval_count", 0)
-                print(f"  [local-llm] Ollama OK — {resolved} {duration}s, {tokens} tokens"
-                      + (f" (blocked {model})" if was_blocked else ""))
-                _log_safety(caller, model, resolved, was_blocked, FORCE_CPU,
-                             options.get("num_gpu", -1),
-                             int((time.time() - t0) * 1000), "ok",
-                             loaded_before=loaded_before, loaded_after=_get_loaded_models())
-                return text if text else None
-        except urllib.error.URLError as e:
-            print(f"  [local-llm] Ollama unavailable: {e}")
-            _log_safety(caller, model, resolved, was_blocked, FORCE_CPU,
-                         options.get("num_gpu", -1),
-                         int((time.time() - t0) * 1000), "unavailable", str(e),
-                         loaded_before=loaded_before, loaded_after=_get_loaded_models())
-            return None
-        except TimeoutError:
-            print(f"  [local-llm] Ollama timeout after {timeout}s "
-                  f"(attempt {attempt+1}/{retries+1})")
-            if attempt < retries:
-                time.sleep(5)
-                continue
-            _log_safety(caller, model, resolved, was_blocked, FORCE_CPU,
-                         options.get("num_gpu", -1),
-                         int((time.time() - t0) * 1000), "timeout", f"{timeout}s",
-                         loaded_before=loaded_before, loaded_after=_get_loaded_models())
-            return None
-        except Exception as e:
-            print(f"  [local-llm] Ollama error: {e} "
-                  f"(attempt {attempt+1}/{retries+1})")
-            if attempt < retries:
-                time.sleep(3)
-                continue
-            _log_safety(caller, model, resolved, was_blocked, FORCE_CPU,
-                         options.get("num_gpu", -1),
-                         int((time.time() - t0) * 1000), "error", str(e),
-                         loaded_before=loaded_before, loaded_after=_get_loaded_models())
-            return None
-    return None
+def warmup_ollama(*args, **kwargs) -> bool:
+    """Compatibility function. A generative warmup is never attempted."""
+    return False
 
 
 def _try_deepseek(prompt: str, timeout: int = 120) -> str | None:
-    """Try DeepSeek Flash via the llm_lane router. First cloud fallback after local Ollama."""
     try:
-        sys.path.insert(0, str(Path(__file__).resolve().parent))
-        from llm_lane import available, generate as ds_generate
-        lane = "deepseek-flash"
-        if not available(lane):
-            print(f"  [local-llm] DeepSeek Flash not available — skipping")
+        from llm_lane import available, generate as lane_generate
+        if not available("deepseek-flash"):
             return None
-        result = ds_generate(prompt, lane=lane, timeout=timeout)
-        if result and len(result.strip()) > 10:
-            print(f"  [local-llm] DeepSeek Flash OK — {len(result)} chars")
-            return result.strip()
-        return None
-    except Exception as e:
-        print(f"  [local-llm] DeepSeek Flash error: {e}")
+        try:
+            from lib.provider_cost.context import cost_attribution
+        except Exception:
+            @contextmanager
+            def cost_attribution(**_kwargs):
+                yield {}
+        with cost_attribution(
+            source_service="local_llm_compat.cloud",
+            source_process="local_llm_compat",
+            source_lane="deepseek-flash",
+        ):
+            result = lane_generate(
+                prompt,
+                lane="deepseek-flash",
+                timeout=timeout,
+                process_id="local_llm_compat",
+            )
+        return result.strip() if result and result.strip() else None
+    except Exception:
         return None
 
 
 def _try_openai(prompt: str) -> str | None:
-    """Fallback to OpenAI gpt-4o-mini."""
-    try:
-        api_key = os.getenv("OPENAI_API_KEY", "")
-        if not api_key:
-            env_path = Path(__file__).parent.parent / ".env"
-            if env_path.exists():
-                for line in env_path.read_text().splitlines():
-                    if line.startswith("OPENAI_API_KEY="):
-                        api_key = line.split("=", 1)[1].strip().strip('"')
-                        break
-        if not api_key:
-            return None
-        payload = json.dumps({
-            "model": FALLBACK_OPENAI,
-            "messages": [{"role": "user", "content": prompt}],
-            "max_tokens": 500
-        }).encode()
-        req = urllib.request.Request(
-            "https://api.openai.com/v1/chat/completions",
-            data=payload,
-            headers={"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"},
-            method="POST"
-        )
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            data = json.loads(resp.read())
-            text = data["choices"][0]["message"]["content"].strip()
-            print(f"  [local-llm] OpenAI fallback OK — {len(text)} chars")
-            return text
-    except Exception as e:
-        print(f"  [local-llm] OpenAI fallback error: {e}")
-        return None
+    """Legacy name; use the governed router instead of direct provider access."""
+    return _try_deepseek(prompt)
 
 
 def _try_anthropic(prompt: str) -> str | None:
-    """Final fallback to Claude Sonnet via Anthropic API."""
-    try:
-        import anthropic
-        api_key = os.getenv("ANTHROPIC_API_KEY", "")
-        if not api_key:
-            env_path = Path(__file__).parent.parent / ".env"
-            if env_path.exists():
-                for line in env_path.read_text().splitlines():
-                    if line.startswith("ANTHROPIC_API_KEY="):
-                        api_key = line.split("=", 1)[1].strip().strip('"')
-                        break
-        if not api_key:
-            print("  [local-llm] No Anthropic key found")
-            return None
-
-        client = anthropic.Anthropic(api_key=api_key)
-        msg = client.messages.create(
-            model=FALLBACK_ANTHROPIC,
-            max_tokens=1024,
-            messages=[{"role": "user", "content": prompt}]
-        )
-        text = msg.content[0].text.strip()
-        print(f"  [local-llm] Anthropic fallback OK — {len(text)} chars")
-        return text
-    except Exception as e:
-        print(f"  [local-llm] Anthropic fallback error: {e}")
-        return None
+    """Legacy name; use the governed router instead of direct provider access."""
+    return _try_deepseek(prompt)
 
 
-def generate(prompt: str, timeout: int = DEFAULT_TIMEOUT,
-             fallback: bool = True, fast: bool = True,
-             caller: str = "", process_type: str = "STANDARD") -> str:
-    """4-tier chain with toll gate: local model -> OpenAI -> Anthropic.
-    Acquires file lock before Ollama calls to prevent GPU contention.
+def generate(
+    prompt: str,
+    timeout: int = 300,
+    fallback: bool = True,
+    fast: bool = True,
+    caller: str = "",
+    process_type: str = "STANDARD",
+) -> str:
+    """Generate through the governed cloud lane only.
 
-    Args:
-        caller: script name for audit logging (optional)
-        process_type: LLM fleet process type for audit (optional)
+    ``fast`` is retained for signature compatibility. ``fallback=False`` meant
+    local-only to historical callers and therefore now fails closed.
     """
+    del fast, caller, process_type
     global model_used
     model_used = None
-    t0 = time.time()
-
-    # Acquire toll gate — only one process hits Ollama at a time
-    if not _gate.acquire():
-        print("  [local-llm] Could not acquire gate — skipping Ollama, trying fallbacks")
-        _log_audit(caller, process_type, OLLAMA_MODEL, "ollama", 0, "gate_timeout")
-        if fallback:
-            print(f"  [local-llm] DeepSeek Flash primary cloud fallback ({FALLBACK_DEEPSEEK})")
-            result = _try_deepseek(prompt)
-            if result:
-                model_used = FALLBACK_DEEPSEEK
-                _log_audit(caller, process_type, FALLBACK_DEEPSEEK, "deepseek",
-                           int((time.time()-t0)*1000), "ok", fallback_used=True)
-                return result
-            result = _try_openai(prompt)
-            if result:
-                model_used = FALLBACK_OPENAI
-                _log_audit(caller, process_type, FALLBACK_OPENAI, "openai",
-                           int((time.time()-t0)*1000), "ok", fallback_used=True)
-                return result
-            result = _try_anthropic(prompt)
-            if result:
-                model_used = FALLBACK_ANTHROPIC
-                _log_audit(caller, process_type, FALLBACK_ANTHROPIC, "anthropic",
-                           int((time.time()-t0)*1000), "ok", fallback_used=True)
-                return result
-        _log_audit(caller, process_type, "", "none", int((time.time()-t0)*1000), "all_failed")
+    if not fallback:
         return ""
-
-    try:
-        # Tier 1: local model (fast)
-        if fast:
-            result = _try_ollama(prompt, min(timeout, 30), model=OLLAMA_MODEL_FAST)
-            if result:
-                model_used = OLLAMA_MODEL_FAST
-                _log_audit(caller, process_type, OLLAMA_MODEL_FAST, "ollama",
-                           int((time.time()-t0)*1000), "ok")
-                return result
-        # Tier 2: local model (full) with retry
-        result = _try_ollama(prompt, timeout, model=OLLAMA_MODEL, retries=1)
-        if result:
-            model_used = OLLAMA_MODEL
-            _log_audit(caller, process_type, OLLAMA_MODEL, "ollama",
-                       int((time.time()-t0)*1000), "ok")
-            return result
-    finally:
-        _gate.release()
-
-    # Local failed — log it
-    _log_audit(caller, process_type, OLLAMA_MODEL, "ollama",
-               int((time.time()-t0)*1000), "local_failed")
-
-    # Cloud fallbacks don't need the gate
-    if fallback:
-        print(f"  [local-llm] DeepSeek Flash primary cloud fallback ({FALLBACK_DEEPSEEK})")
-        result = _try_deepseek(prompt)
-        if result:
-            model_used = FALLBACK_DEEPSEEK
-            _log_audit(caller, process_type, FALLBACK_DEEPSEEK, "deepseek",
-                       int((time.time()-t0)*1000), "ok", fallback_used=True)
-            return result
-
-        print(f"  [local-llm] Using OpenAI fallback ({FALLBACK_OPENAI})")
-        result = _try_openai(prompt)
-        if result:
-            model_used = FALLBACK_OPENAI
-            _log_audit(caller, process_type, FALLBACK_OPENAI, "openai",
-                       int((time.time()-t0)*1000), "ok", fallback_used=True)
-            return result
-
-    if fallback:
-        print(f"  [local-llm] Using Anthropic fallback ({FALLBACK_ANTHROPIC})")
-        result = _try_anthropic(prompt)
-        if result:
-            model_used = FALLBACK_ANTHROPIC
-            _log_audit(caller, process_type, FALLBACK_ANTHROPIC, "anthropic",
-                       int((time.time()-t0)*1000), "ok", fallback_used=True)
-            return result
-
-    _log_audit(caller, process_type, "", "none", int((time.time()-t0)*1000), "all_failed")
-    print("  [local-llm] All LLM attempts failed — returning empty")
+    result = _try_deepseek(prompt, timeout=min(timeout, 120))
+    if result:
+        model_used = FALLBACK_DEEPSEEK
+        return result
     return ""
 
 
-if __name__ == "__main__":
-    # Quick test
-    test = generate(
-        "Say 'local LLM working' and nothing else.",
-        timeout=30
-    )
-    print(f"Test result: {test}")
-
-
-# ── V6 TICKET OVERSIGHT (2026-07-22): LOCAL-ONLY generation — cloud fallback
-#    is STRUCTURALLY IMPOSSIBLE here. This function talks to the local Ollama
-#    socket and nothing else: no OpenAI, no Anthropic, no OAuth proxy, no retry
-#    into cloud. On failure the caller gets ok=False and must report
-#    UNAVAILABLE — never a substituted cloud answer still labelled LOCAL.
-def generate_local_only(prompt: str, *, system: str = "",
-                        timeout_s: int | None = None) -> dict:
-    import json as _json
-    import urllib.request as _rq
-    models = [m.strip() for m in os.getenv(
-        "LOCAL_TICKET_CRITIC_MODELS", "gemma3:12b,gemma3:4b").split(",") if m.strip()]
-    timeout_s = timeout_s or int(os.getenv("LOCAL_TICKET_CRITIC_TIMEOUT_S", "90"))
-    last_err = "no local models configured"
-    for model in models:
-        body = _json.dumps({"model": model, "prompt": prompt, "system": system,
-                            "stream": False,
-                            "options": {"temperature": 0.1, "num_predict": 900}}).encode()
-        req = _rq.Request(OLLAMA_BASE + "/api/generate", data=body,
-                          headers={"Content-Type": "application/json"})
-        try:
-            with _rq.urlopen(req, timeout=timeout_s) as r:
-                out = _json.loads(r.read())
-            text = out.get("response") or ""
-            if text.strip():
-                return {"ok": True, "model": model,
-                        "provider_family": "LOCAL_OLLAMA", "text": text}
-            last_err = f"{model}: empty response"
-        except Exception as e:
-            last_err = f"{model}: {type(e).__name__}: {str(e)[:120]}"
-    return {"ok": False, "error": last_err, "provider_family": "LOCAL_OLLAMA"}
+def generate_local_only(
+    prompt: str,
+    *,
+    system: str = "",
+    timeout_s: int | None = None,
+) -> dict:
+    del prompt, system, timeout_s
+    return {
+        "ok": False,
+        "error": "POLICY_LOCAL_GENERATIVE_FORBIDDEN",
+        "provider_family": "LOCAL_GENERATIVE_RETIRED",
+    }

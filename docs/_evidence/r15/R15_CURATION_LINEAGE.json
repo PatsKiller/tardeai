@@ -1,0 +1,12 @@
+{
+  "schema": "R15CurationLineage@v1",
+  "contract": "CurationRun@v1",
+  "dedupe": true,
+  "critique_before_memory": true,
+  "no_new_info_no_fake_progress": true,
+  "rejected_retained": true,
+  "challenger_not_flattened": true,
+  "private_cot_stripped": true,
+  "proven": "UNIT",
+  "live_natural_llm_curation": "BLOCKED_REAL_WORLD_EVENT"
+}

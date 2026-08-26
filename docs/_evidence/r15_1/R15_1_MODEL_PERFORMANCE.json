@@ -1,0 +1,106 @@
+{
+  "schema": "R15_1ModelPerformance@v1",
+  "evidence_classes_separated": true,
+  "replay_n": 450,
+  "shadow_n": 240,
+  "live_n": 0,
+  "routing_changed": false,
+  "registries_auto_modified": false,
+  "cohorts": {
+    "extraction": {
+      "n_live": 0,
+      "n_replay": 0,
+      "n_shadow": 30,
+      "schema_success": 1.0,
+      "critic_acceptance": 1.0,
+      "sufficient_for_routing": false
+    },
+    "classification": {
+      "n_live": 0,
+      "n_replay": 0,
+      "n_shadow": 30,
+      "schema_success": 1.0,
+      "critic_acceptance": 1.0,
+      "sufficient_for_routing": false
+    },
+    "research_curation": {
+      "n_live": 0,
+      "n_replay": 150,
+      "n_shadow": 0,
+      "schema_success": 0.5867,
+      "critic_acceptance": 0.5867,
+      "sufficient_for_routing": true
+    },
+    "contradiction_reconciliation": {
+      "n_live": 0,
+      "n_replay": 0,
+      "n_shadow": 30,
+      "schema_success": 1.0,
+      "critic_acceptance": 1.0,
+      "sufficient_for_routing": false
+    },
+    "risk_critique": {
+      "n_live": 0,
+      "n_replay": 0,
+      "n_shadow": 30,
+      "schema_success": 1.0,
+      "critic_acceptance": 1.0,
+      "sufficient_for_routing": false
+    },
+    "tax_critique": {
+      "n_live": 0,
+      "n_replay": 0,
+      "n_shadow": 30,
+      "schema_success": 1.0,
+      "critic_acceptance": 1.0,
+      "sufficient_for_routing": false
+    },
+    "portfolio_synthesis": {
+      "n_live": 0,
+      "n_replay": 0,
+      "n_shadow": 30,
+      "schema_success": 1.0,
+      "critic_acceptance": 1.0,
+      "sufficient_for_routing": false
+    },
+    "operator_explanation": {
+      "n_live": 0,
+      "n_replay": 300,
+      "n_shadow": 0,
+      "schema_success": 0.8667,
+      "critic_acceptance": 0.8667,
+      "sufficient_for_routing": true
+    },
+    "notification_rendering": {
+      "n_live": 0,
+      "n_replay": 0,
+      "n_shadow": 30,
+      "schema_success": 1.0,
+      "critic_acceptance": 1.0,
+      "sufficient_for_routing": false
+    },
+    "deep_invalidation_review": {
+      "n_live": 0,
+      "n_replay": 0,
+      "n_shadow": 30,
+      "schema_success": 1.0,
+      "critic_acceptance": 1.0,
+      "sufficient_for_routing": false
+    }
+  },
+  "insufficient_sample_cohorts": [
+    "extraction",
+    "classification",
+    "contradiction_reconciliation",
+    "risk_critique",
+    "tax_critique",
+    "portfolio_synthesis",
+    "notification_rendering",
+    "deep_invalidation_review"
+  ],
+  "routing_candidates": 0,
+  "registry_hashes": {
+    "llm_model_registry.json": "3f76b56466b29c3f0514dbbce3f2dd14ec9ed0908cb3debb191c83d8bbd191ca",
+    "llm_process_registry.json": "1a699bbc238cb964199c891d54ac476dcff7871c3d06c8cbafaaf6d40a2f73d3"
+  }
+}

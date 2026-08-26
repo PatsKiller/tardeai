@@ -172,6 +172,12 @@ def _norm_symbol(s: str) -> str:
     return str(s).strip().upper()
 
 
+def _lot_key(symbol: str, account: str | None) -> str:
+    """Composite tax-lot key. File keys are SYMBOL:account; never lot.account."""
+    acct = str(account or "").strip()
+    return f"{symbol}:{acct}" if acct else symbol
+
+
 # FIX-1: CUSIP / non-ticker detection
 _CUSIP_RE = re.compile(r"^[A-Z0-9]{6,9}$")  # 6-9 alphanumeric: typical CUSIP length
 _ALL_DIGITS_RE = re.compile(r"^\d+$")          # all-digits: bond/treasury identifier
@@ -226,14 +232,19 @@ def _load_holdings() -> dict[str, Any]:
         mv = _f(h.get("market_value")) or 0
         # FIX-6: Consume the canonical gain_loss_pct from holdings.json
         canonical_gl = _f(h.get("gain_loss_pct"))
+        raw_price = _f(h.get("price"))
+        raw_current = _f(h.get("current_price"))
         pos = {
             "symbol": symbol,
             "shares": _f(h.get("shares")) or 0,
             "market_value": mv,
-            "price": _f(h.get("price")) or _f(h.get("current_price")),
+            # Keep both prints so dual-price conflicts are visible (DXCM).
+            "price": raw_price or raw_current,
+            "current_price": raw_current or raw_price,
             "account": str(h.get("account", "")),
             "portfolio_pct": _f(h.get("portfolio_pct")),
             "cost_basis": _f(h.get("cost_basis")),
+            "average_cost": _f(h.get("average_cost") or h.get("avg_cost")),
             "day_change_pct": _f(h.get("day_change_pct")),
             "bucket": str(h.get("bucket", "")),
             "name": str(h.get("name", "")),
@@ -242,6 +253,23 @@ def _load_holdings() -> dict[str, Any]:
             "cost_basis_source": str(h.get("cost_basis_source", "")),
             "basis_partial": bool(h.get("basis_partial")),
             "cost_basis_note": str(h.get("cost_basis_note", "")),
+            "as_of": h.get("as_of") or h.get("price_as_of") or h.get("canonical_mark_as_of") or raw.get("as_of"),
+            "updated_at": h.get("updated_at") or h.get("as_of") or raw.get("updated_at"),
+            "price_as_of": h.get("price_as_of") or h.get("canonical_mark_as_of") or h.get("as_of"),
+            "price_source": str(h.get("price_source") or h.get("canonical_mark_source") or h.get("source") or "holdings.json"),
+            # CIO financial-truth fields — required so Advisory can distinguish
+            # a canonical mark from a Finviz reference snapshot.
+            "canonical_mark": _f(h.get("canonical_mark")),
+            "canonical_mark_as_of": h.get("canonical_mark_as_of"),
+            "canonical_mark_source": h.get("canonical_mark_source"),
+            "canonical_mark_type": h.get("canonical_mark_type"),
+            "implied_price_from_mv": _f(h.get("implied_price_from_mv")),
+            "official_close": _f(h.get("official_close")),
+            "official_close_as_of": h.get("official_close_as_of"),
+            "broker_position_price": _f(h.get("broker_position_price")),
+            "broker_position_as_of": h.get("broker_position_as_of"),
+            "broker_market_value": _f(h.get("broker_market_value")),
+            "price_field_role": h.get("price_field_role"),
         }
         positions.append(pos)
         total_value += mv
@@ -307,6 +335,51 @@ def _load_watchlist() -> dict[str, Any]:
     }
 
 
+def _load_hub_opportunity_names(
+    holdings_symbols: set[str],
+    personal_symbols: set[str],
+    extra_exclude: set[str] | frozenset[str] = frozenset(),
+    limit: int = 50,
+) -> tuple[list[dict[str, Any]], int]:
+    """Material Watch Hub names that are neither held nor on the personal watch.
+
+    The personal ``watchlist.json`` is the operator's curated watch (12 names);
+    the Hub is the broader DB universe (thousands of rows). A bounded slice of
+    active Hub names (AXTI/ADBE/AMD-class tickers) is surfaced as a distinct
+    ``watchlist_hub`` class so the desk is not a silent 12-name subset — without
+    dumping the whole universe. Returns ``(capped_names, total_count)``. Never
+    raises.
+    """
+    try:
+        from db_adapter import _execute
+        rows = _execute(
+            "SELECT upper(symbol) AS symbol, asset_type, source, score, source_tier "
+            "FROM watchlist_items WHERE status = 'active'",
+            fetch="all",
+        ) or []
+    except Exception:
+        return [], 0
+
+    seen: set[str] = set()
+    out: list[dict[str, Any]] = []
+    for r in rows:
+        sym = _norm_symbol(str((r.get("symbol") or "")))
+        if not sym or sym in holdings_symbols or sym in personal_symbols or sym in extra_exclude or sym in seen:
+            continue
+        seen.add(sym)
+        score = r.get("score")
+        out.append({
+            "symbol": sym,
+            "asset_type": r.get("asset_type"),
+            "hub_source": r.get("source"),
+            "source_tier": r.get("source_tier"),
+            "score": score,
+        })
+    total = len(out)
+    out.sort(key=lambda x: (x["score"] is None, -(float(x["score"]) if x["score"] is not None else 0.0)))
+    return out[:limit], total
+
+
 def _load_trade_journal() -> dict[str, Any]:
     raw = _load_json(STATE_DIR / "trade_journal.json")
     if raw.get("state"):
@@ -353,6 +426,7 @@ def _load_tax_lots() -> dict[str, Any]:
         return raw
 
     by_symbol: dict[str, list[dict[str, Any]]] = {}
+    by_account: dict[str, list[dict[str, Any]]] = {}
     lot_count = 0
     for key, lots in raw.items():
         if not isinstance(lots, list):
@@ -361,14 +435,20 @@ def _load_tax_lots() -> dict[str, Any]:
         sym = _norm_symbol(parts[0]) if parts else ""
         if not sym:
             continue
+        bucket_acct = parts[1] if len(parts) > 1 else ""
+        bucket_key = f"{sym}:{bucket_acct}" if bucket_acct else sym
         for lot in lots:
             if isinstance(lot, dict):
-                by_symbol.setdefault(sym, []).append(lot)
+                rec = dict(lot)
+                rec["_bucket_account"] = bucket_acct
+                by_symbol.setdefault(sym, []).append(rec)
+                by_account.setdefault(bucket_key, []).append(rec)
                 lot_count += 1
 
     return {
         "state": "AVAILABLE",
         "by_symbol": by_symbol,
+        "by_account": by_account,
         "count": lot_count,
     }
 
@@ -558,6 +638,9 @@ def _derive_holding_opinion(
 
     # ── Verdict selection ──
     verdict = AdvisoryVerdict.HOLD
+    # Phase 4: label the *kind* of TRIM so concentration (policy), gain (rule),
+    # and remnant (housekeeping) sells are never presented as the same call.
+    trim_kind: str | None = None
 
     if "material_loss" in signals and "overweight" in signals:
         verdict = AdvisoryVerdict.EXIT
@@ -567,8 +650,10 @@ def _derive_holding_opinion(
         verdict = AdvisoryVerdict.TRIM
     elif "overweight" in signals:
         verdict = AdvisoryVerdict.TRIM
+        trim_kind = "policy"
     elif "large_gain" in signals:
         verdict = AdvisoryVerdict.TRIM
+        trim_kind = "rule"
         reasons.append("Consider taking partial profits")
     elif "sharp_drop" in signals:
         verdict = AdvisoryVerdict.WAIT
@@ -580,12 +665,18 @@ def _derive_holding_opinion(
         verdict = AdvisoryVerdict.HOLD
         reasons.append("Position within normal parameters — no advisory signal triggered")
 
-    # B2: Materiality floor — below $500, suppress all actionable verdicts.
+    # Phase 4: housekeeping remnants (sub-threshold weight OR sub-$500) never
+    # become a book TRIM/EXIT/ADD. They are HOUSEKEEPING, not a sell decision.
     housekeeping_reason = ""
-    if housekeeping_flag and mv < MATERIALITY_FLOOR_USD:
+    if housekeeping_flag:
         if verdict.value in ("EXIT", "TRIM", "ADD"):
-            housekeeping_reason = "close_out_remnant"
-            reasons.append(f"Dollar value ${mv:.0f} below materiality floor (${MATERIALITY_FLOOR_USD:.0f}) — verdict suppressed")
+            trim_kind = "housekeeping"
+            if mv < MATERIALITY_FLOOR_USD:
+                housekeeping_reason = "close_out_remnant"
+                reasons.append(f"Dollar value ${mv:.0f} below materiality floor (${MATERIALITY_FLOOR_USD:.0f}) — verdict suppressed")
+            else:
+                housekeeping_reason = "sub_threshold_weight"
+                reasons.append(f"Sub-threshold weight {pct:.2f}% — housekeeping, not a book sell")
         verdict = AdvisoryVerdict.HOLD
 
     # FIX-4: Confidence varies with evidence quality
@@ -600,6 +691,7 @@ def _derive_holding_opinion(
     return {
         "symbol": symbol,
         "verdict": verdict,
+        "trim_kind": trim_kind,
         "confidence": round(confidence, 2),
         "rationale": " | ".join(reasons) if reasons else "No material signals detected.",
         "weight_pct": round(pct, 2),
@@ -732,6 +824,149 @@ def _derive_watchlist_opinion(
     }
 
 
+def _derive_hub_opinion(
+    symbol: str,
+    meta: dict[str, Any],
+    holdings_symbols: set[str],
+) -> dict[str, Any] | None:
+    """Advisory opinion for a material Watch Hub name (not held, not personal watch).
+
+    These are Hub-tracked opportunities, not the operator's curated intent list.
+    Like the personal watch, they are non-held, so the honest deterministic
+    verdict is WAIT; the Hub is surfaced as an additional context signal, never
+    a directional call.
+    """
+    if symbol in holdings_symbols:
+        return None
+
+    reasons: list[str] = ["Watch Hub opportunity — not on personal operator watch"]
+    if meta.get("asset_type"):
+        reasons.append(f"asset_type: {meta['asset_type']}")
+    if meta.get("source_tier"):
+        reasons.append(f"source_tier: {meta['source_tier']}")
+
+    return {
+        "symbol": symbol,
+        "verdict": AdvisoryVerdict.WAIT,
+        "confidence": 0.20,
+        "rationale": " | ".join(reasons),
+        "weight_pct": None,
+        "market_value": None,
+        "gain_loss_pct": None,
+        "days_held": None,
+        "risk_signals": [],
+        "source": "watch_hub",
+        "watching_since": None,
+        "hub_score": meta.get("score"),
+        "hub_source": meta.get("hub_source"),
+        "housekeeping_flag": False,
+    }
+
+
+_REENTRY_ROWS_CACHE: list[dict[str, Any]] | None = None
+
+
+def _reentry_rows_once() -> list[dict[str, Any]]:
+    """Load the canonical Re-Entry projection once per desk build.
+
+    Prefer the latest artifact (fresh within 10 minutes) over rebuilding
+    the decision desk once per closed symbol.
+    """
+    global _REENTRY_ROWS_CACHE
+    if _REENTRY_ROWS_CACHE is not None:
+        return _REENTRY_ROWS_CACHE
+    latest = CACHE_DIR / "reentry_decision_desk_latest.json"
+    try:
+        if latest.exists() and (_time.time() - latest.stat().st_mtime) < 600:
+            blob = json.loads(latest.read_text(encoding="utf-8"))
+            rows = blob.get("rows") if isinstance(blob, dict) else None
+            if not rows and isinstance(blob, dict) and isinstance(blob.get("data"), dict):
+                rows = blob["data"].get("rows")
+            if isinstance(rows, list):
+                _REENTRY_ROWS_CACHE = rows
+                return rows
+    except Exception:
+        pass
+    try:
+        from lib.data_broker.reentry_decision_desk import build_decision_desk
+        from db_adapter import _execute as _db_exec
+
+        def _db_wrapper(sql: str, params=None, *, fetch: str = "all"):
+            return _db_exec(sql, params, fetch=fetch)
+
+        result = build_decision_desk(_db_wrapper)
+        rows = result.get("rows", []) if isinstance(result, dict) else []
+        _REENTRY_ROWS_CACHE = rows if isinstance(rows, list) else []
+        return _REENTRY_ROWS_CACHE
+    except Exception:
+        _REENTRY_ROWS_CACHE = []
+        return _REENTRY_ROWS_CACHE
+
+
+def _reentry_row_to_opinion(
+    row: dict[str, Any],
+    holdings_symbols: set[str],
+) -> dict[str, Any] | None:
+    """Map a single decision-desk row into an advisory closed_journal opinion.
+
+    READY/NEAR map to RE_ENTER; everything else is an honest WAIT carrying the
+    operator state so the desk noise filter can decide what to surface.
+    """
+    symbol = _norm_symbol(row.get("symbol", ""))
+    if not symbol or symbol in holdings_symbols:
+        return None
+    intel = row.get("intel", {}) if isinstance(row.get("intel"), dict) else {}
+    state = intel.get("state", "WAIT") or "WAIT"
+    price = row.get("price")
+    entry_low = row.get("entry_low")
+    entry_high = row.get("entry_high")
+    rsi = row.get("rsi") if row.get("rsi") is not None else intel.get("rsi")
+    extra = {
+        "reentry_state": state,
+        "reentry_entry_low": entry_low,
+        "reentry_entry_high": entry_high,
+        "reentry_price": price,
+        "reentry_rsi": rsi,
+        "reentry_reason": intel.get("reason") or "",
+        "reentry_next_action": intel.get("action") or "",
+        "reentry_distance_pct": intel.get("distance_pct"),
+        "reentry_wash_blocked": bool(intel.get("wash_blocked")),
+    }
+    if state in ("READY TO REVIEW", "NEAR ENTRY"):
+        return {
+            "symbol": symbol,
+            "verdict": AdvisoryVerdict.RE_ENTER,
+            "confidence": 0.55,
+            "rationale": (
+                f"Re-entry desk: {state}. "
+                f"Price ${price} in zone ${entry_low}–${entry_high}. "
+                f"{intel.get('reason', '')}"
+            ),
+            "weight_pct": None,
+            "market_value": None,
+            "gain_loss_pct": None,
+            "days_held": None,
+            "risk_signals": [],
+            "source": "reentry_decision_desk",
+            "housekeeping_flag": False,
+            **extra,
+        }
+    return {
+        "symbol": symbol,
+        "verdict": AdvisoryVerdict.WAIT,
+        "confidence": 0.30,
+        "rationale": f"Re-entry desk: {state} — {intel.get('reason', 'Not yet ready for review.')}",
+        "weight_pct": None,
+        "market_value": None,
+        "gain_loss_pct": None,
+        "days_held": None,
+        "risk_signals": [],
+        "source": "reentry_decision_desk",
+        "housekeeping_flag": False,
+        **extra,
+    }
+
+
 def _derive_closed_opinion(
     symbol: str,
     trades: list[dict[str, Any]],
@@ -746,59 +981,10 @@ def _derive_closed_opinion(
 
     _scripts_path()
     try:
-        from lib.data_broker.reentry_decision_desk import build_decision_desk
-        from db_adapter import _execute as _db_exec
-        def _db_wrapper(sql: str, params=None, *, fetch: str = "all"):
-            """Thin wrapper matching the re-entry desk's db_query signature.
-            Defaults to fetch='all' since most callers expect a list.
-            """
-            return _db_exec(sql, params, fetch=fetch)
-        reentry_result = build_decision_desk(_db_wrapper)
-        # Rows are at top level, not nested inside data
-        rows = reentry_result.get("rows", []) if isinstance(reentry_result, dict) else []
+        rows = _reentry_rows_once()
         for row in rows:
             if _norm_symbol(row.get("symbol", "")) == symbol:
-                intel = row.get("intel", {})
-                state = intel.get("state", "WAIT")
-                if state in ("READY TO REVIEW", "NEAR ENTRY"):
-                    price = row.get("price", "?")
-                    entry_low = row.get("entry_low", "?")
-                    entry_high = row.get("entry_high", "?")
-                    return {
-                        "symbol": symbol,
-                        "verdict": AdvisoryVerdict.RE_ENTER,
-                        "confidence": 0.55,
-                        "rationale": (
-                            f"Re-entry desk: {state}. "
-                            f"Price ${price} in zone ${entry_low}–${entry_high}. "
-                            f"{intel.get('reason', '')}"
-                        ),
-                        "weight_pct": None,
-                        "market_value": None,
-                        "gain_loss_pct": None,
-                        "days_held": None,
-                        "risk_signals": [],
-                        "source": "reentry_decision_desk",
-                        "reentry_state": state,
-                        "reentry_entry_low": entry_low,
-                        "reentry_entry_high": entry_high,
-                        "housekeeping_flag": False,
-                    }
-                else:
-                    return {
-                        "symbol": symbol,
-                        "verdict": AdvisoryVerdict.WAIT,
-                        "confidence": 0.30,
-                        "rationale": f"Re-entry desk: {state} — {intel.get('reason', 'Not yet ready for review.')}",
-                        "weight_pct": None,
-                        "market_value": None,
-                        "gain_loss_pct": None,
-                        "days_held": None,
-                        "reentry_state": state,
-                        "risk_signals": [],
-                        "source": "reentry_decision_desk",
-                        "housekeeping_flag": False,
-                    }
+                return _reentry_row_to_opinion(row, holdings_symbols)
     except Exception:
         pass
 
@@ -857,6 +1043,84 @@ def _bucket_mv(mv: float | None, pct_step: float = _HASH_MV_BUCKET_PCT) -> float
     r = 1.0 + max(pct_step, 0.01) / 100.0
     n = round(math.log(v) / math.log(r))
     return round(r ** n, 2)
+
+
+def attach_advisory_row_provenance(
+    row: dict[str, Any],
+    *,
+    holdings: dict[str, Any] | None = None,
+    analyst: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Attach expand.canonical_financial_facts + expand.advisory_provenance.
+
+    Also rewrites expand.analyst so a stale provider snapshot is never labeled
+    "vs current". Mutates and returns ``row``. Safe on incomplete mock rows.
+    """
+    _scripts_path()
+    try:
+        from lib.cio_advisory_provenance import attach_expand_provenance
+    except ImportError:  # pragma: no cover
+        from scripts.lib.cio_advisory_provenance import attach_expand_provenance
+    analyst_in = analyst if analyst is not None else (row.get("analyst") or None)
+    if isinstance(analyst_in, dict) and analyst_in.get("type") == "analyst_context":
+        # evidence-item shape is fine — attach_expand_provenance reads target fields
+        pass
+    out = attach_expand_provenance(row, holdings=holdings, analyst=analyst_in)
+    # Keep evidence-bundle analyst item honest after attach
+    an = (out.get("expand") or {}).get("analyst") or {}
+    eb = out.get("evidence_bundle")
+    if isinstance(eb, dict) and an:
+        for item in eb.get("evidence_items") or []:
+            if not isinstance(item, dict) or item.get("type") != "analyst_context":
+                continue
+            item["target"] = an.get("target") or item.get("target")
+            item["target_as_of"] = an.get("target_as_of") or item.get("target_as_of")
+            item["target_upside_vs_current"] = an.get("target_upside_vs_current")
+            item["target_upside_vs_provider_snapshot"] = an.get(
+                "target_upside_vs_provider_snapshot"
+            )
+            item["denominator_price"] = an.get("denominator_price")
+            item["denominator_as_of"] = an.get("denominator_as_of")
+            item["denominator_is_canonical_current"] = bool(
+                an.get("denominator_is_canonical_current")
+            )
+            item["target_vs_current_pct"] = (
+                an.get("target_vs_current_pct")
+                if an.get("denominator_is_canonical_current")
+                else None
+            )
+            item["provider_snapshot_price"] = an.get("provider_snapshot_price")
+    return out
+
+
+def stamp_conflicted_verdict_suppression(rows: list[dict[str, Any]]) -> None:
+    """Phase 0 — fail-closed on conflicted marks.
+
+    An actionable verdict (ADD/TRIM/EXIT/RE_ENTER) attached to a row whose
+    canonical financial facts are CONFLICTED must not read as executable.
+    Keep the numeric verdict + reason and stamp ``verdict_suppressed`` so the
+    UI can render "SUPPRESSED" without mutating the underlying call.
+    """
+    actionable = {
+        AdvisoryVerdict.ADD.value, AdvisoryVerdict.TRIM.value,
+        AdvisoryVerdict.EXIT.value, AdvisoryVerdict.RE_ENTER.value,
+    }
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        dq = row.get("data_quality") or {}
+        facts = row.get("canonical_financial_facts") or {}
+        conflicted = bool(
+            dq.get("action_suppressed")
+            or facts.get("action_suppressed")
+            or facts.get("conflicts")
+        )
+        if not conflicted:
+            continue
+        v = row["verdict"].value if isinstance(row.get("verdict"), AdvisoryVerdict) else str(row.get("verdict"))
+        if v in actionable:
+            row["verdict_suppressed"] = True
+            row["verdict_suppressed_reason"] = "DATA CONFLICT — ACTION SUPPRESSED"
 
 
 def _row_hash(row: dict[str, Any]) -> str:
@@ -1558,7 +1822,9 @@ def _load_price_action(
                 "trend_direction": "rising" if (perf_week or 0) > 2 else ("falling" if (perf_week or 0) < -2 else "flat"),
                 "data_window_days": 0,
                 "last_close": current_price,
+                "current_mark": current_price,
                 "source": "finviz_snapshot",
+                "as_of": str(finviz.get("as_of") or finviz.get("updated") or ""),
             }
             if vol_w is not None:
                 result["volatility_w_pct"] = vol_w
@@ -1636,6 +1902,9 @@ def _load_price_action(
         "trend_direction": trend,
         "data_window_days": data_window_days,
         "last_close": current,
+        "current_mark": last_price if last_price is not None else current,
+        "as_of": dates[-1] if dates else None,
+        "source": "price_ohlc_cache",
     }
 
 
@@ -1646,6 +1915,7 @@ def _load_lot_basis(
     tax_lots: dict,
     current_price: float | None,
     listing_date_str: str | None,
+    account: str | None = None,
 ) -> dict[str, Any]:
     """Expose per-lot cost basis with profit/underwater breakdown.
 
@@ -1657,7 +1927,18 @@ def _load_lot_basis(
         lots_in_profit, lots_underwater, weighted_avg_basis,
         oldest_open_lot_date, lot_data_status, lots[]
     """
-    all_lots = tax_lots.get("by_symbol", {}).get(symbol, [])
+    acct = str(account or "").strip()
+    if acct:
+        by_account = tax_lots.get("by_account", {}) or {}
+        all_lots = by_account.get(_lot_key(symbol, acct), [])
+        if not all_lots:
+            want = _lot_key(symbol, acct).lower()
+            for key, lots in by_account.items():
+                if str(key).lower() == want:
+                    all_lots = lots
+                    break
+    else:
+        all_lots = tax_lots.get("by_symbol", {}).get(symbol, [])
 
     # Filter open lots
     open_lots = [
@@ -1843,21 +2124,34 @@ def _load_analyst_context(holdings_symbols: set[str]) -> dict[str, dict[str, Any
             if not sym:
                 continue
             mean_t = _f(t.get("target_mean_price"))
-            cp = _f(t.get("current_price"))
-            target_vs_current = (
-                round((mean_t / cp - 1) * 100, 2)
-                if mean_t and cp and cp > 0 else None
+            # Yahoo `current_price` is the provider snapshot print, NOT the
+            # holdings canonical mark. Never label upside vs this as "vs current".
+            provider_px = _f(t.get("current_price"))
+            snapshot_date = str(t.get("snapshot_date", "") or "")[:10]
+            vs_provider = (
+                round((mean_t / provider_px - 1) * 100, 2)
+                if mean_t and provider_px and provider_px > 0 else None
             )
             rec_mean = _f(t.get("recommendation_mean"))
             result[sym] = {
                 "analyst_count": t.get("number_of_analyst_opinions"),
                 "price_target_mean": mean_t,
+                "target": mean_t,
                 "price_target_high": _f(t.get("target_high_price")),
                 "price_target_low": _f(t.get("target_low_price")),
-                "target_vs_current_pct": target_vs_current,
+                "target_as_of": snapshot_date or None,
+                "provider_snapshot_price": provider_px,
+                "provider_snapshot_as_of": snapshot_date or None,
+                "analyst_snapshot_price": provider_px,
+                "denominator_price": provider_px,
+                "denominator_as_of": snapshot_date or None,
+                "target_upside_vs_provider_snapshot": vs_provider,
+                "target_upside_vs_current": None,  # filled when canonical mark is known
+                "target_vs_current_pct": None,  # never set from a stale snapshot
+                "denominator_is_canonical_current": False,
                 "recommendation_mean": rec_mean,
                 "consensus_rating": _recommendation_mean_label(rec_mean),
-                "as_of": str(t.get("snapshot_date", ""))[:10],
+                "as_of": snapshot_date,
                 "source": "yahoo_analyst_targets_history",
             }
 
@@ -1899,6 +2193,7 @@ def _build_evidence_bundle(
     symbol: str,
     row_class: str,
     all_data: dict[str, Any],
+    account: str | None = None,
 ) -> dict[str, Any]:
     """Assemble all available evidence for one row into a deterministic bundle.
 
@@ -1947,7 +2242,7 @@ def _build_evidence_bundle(
                 "title": c.get("title", ""),
                 "quality": str(c.get("quality", "")),
             })
-    elif row_class in ("holding", "watchlist"):
+    elif row_class in ("holding", "watchlist", "watchlist_hub"):
         gaps.append("catalysts")
 
     # ── 3. Earnings ──
@@ -1960,7 +2255,7 @@ def _build_evidence_bundle(
             "staleness_days": earn.get("staleness_days"),
             "next_earnings_date": earn["next_earnings_date"],
         })
-    elif row_class in ("holding", "watchlist"):
+    elif row_class in ("holding", "watchlist", "watchlist_hub"):
         gaps.append("earnings_calendar")
 
     # ── 4. Technical indicators (native snapshot, else price-action derived) ──
@@ -2000,7 +2295,7 @@ def _build_evidence_bundle(
                 "derived": True,
                 **derived,
             })
-        elif row_class in ("holding", "watchlist"):
+        elif row_class in ("holding", "watchlist", "watchlist_hub"):
             gaps.append("technicals")
 
     # ── 5. Risk / stop posture ──
@@ -2073,7 +2368,7 @@ def _build_evidence_bundle(
                 "confidence": a.get("confidence"),
                 "narrative": a.get("narrative","")[:120],
             })
-    elif row_class in ("holding", "watchlist"):
+    elif row_class in ("holding", "watchlist", "watchlist_hub"):
         gaps.append("agent_opinions")
 
     # ── 9b. External research (governed DeepSeek challenge) ──
@@ -2088,7 +2383,7 @@ def _build_evidence_bundle(
                 "recommendation": e.get("recommendation","")[:240],
                 "confidence": e.get("confidence"),
             })
-    elif row_class in ("holding", "watchlist"):
+    elif row_class in ("holding", "watchlist", "watchlist_hub"):
         gaps.append("external_research")
 
     # ── S4/10. Instrument identity ──
@@ -2104,7 +2399,7 @@ def _build_evidence_bundle(
             "market_cap": inst_data.get("market_cap"),
             "is_recent_ipo": inst_data.get("is_recent_ipo", False),
         })
-    elif row_class in ("holding", "watchlist"):
+    elif row_class in ("holding", "watchlist", "watchlist_hub"):
         gaps.append("instrument_identity")
 
     # ── S4/11. Price action ──
@@ -2133,11 +2428,12 @@ def _build_evidence_bundle(
         if pa.get("volatility_w_pct") is not None:
             item["volatility_w_pct"] = pa["volatility_w_pct"]
         items.append(item)
-    elif row_class in ("holding", "watchlist"):
+    elif row_class in ("holding", "watchlist", "watchlist_hub"):
         gaps.append("price_action")
 
-    # ── S4/12. Lot-level basis ──
-    lb = all_data.get("lot_basis", {}).get(symbol, {})
+    # ── S4/12. Lot-level basis (account-scoped; file key is SYMBOL:account) ──
+    lb_map = all_data.get("lot_basis", {}) or {}
+    lb = lb_map.get(_lot_key(symbol, account), {}) or lb_map.get(symbol, {})
     if lb and isinstance(lb, dict) and lb.get("lot_count"):
         item = {
             "type": "lot_basis",
@@ -2172,14 +2468,27 @@ def _build_evidence_bundle(
             "source": an.get("source") or "yahoo_analyst_targets_history",
             "as_of": str(an.get("as_of", "") or "")[:19],
             "analyst_count": an.get("analyst_count"),
-            "price_target_mean": an.get("price_target_mean"),
+            "price_target_mean": an.get("price_target_mean") or an.get("target"),
+            "target": an.get("target") or an.get("price_target_mean"),
+            "target_as_of": an.get("target_as_of") or an.get("as_of"),
             "price_target_high": an.get("price_target_high"),
             "price_target_low": an.get("price_target_low"),
-            "target_vs_current_pct": an.get("target_vs_current_pct"),
+            # Honest fields — never a stale "vs current"
+            "target_upside_vs_current": an.get("target_upside_vs_current"),
+            "target_upside_vs_provider_snapshot": an.get("target_upside_vs_provider_snapshot"),
+            "denominator_price": an.get("denominator_price") or an.get("provider_snapshot_price"),
+            "denominator_as_of": an.get("denominator_as_of") or an.get("provider_snapshot_as_of"),
+            "denominator_is_canonical_current": bool(an.get("denominator_is_canonical_current")),
+            "target_vs_current_pct": (
+                an.get("target_vs_current_pct")
+                if an.get("denominator_is_canonical_current")
+                else None
+            ),
+            "provider_snapshot_price": an.get("provider_snapshot_price"),
             "recommendation_mean": an.get("recommendation_mean"),
             "consensus_rating": an.get("consensus_rating"),
         })
-    elif row_class in ("holding", "watchlist"):
+    elif row_class in ("holding", "watchlist", "watchlist_hub"):
         gaps.append("analyst_context")
 
     # Evidence count is *symbol-specific* only. Portfolio-level items (rotation,
@@ -2602,6 +2911,8 @@ def build_advisory_desk(*, max_age_s: float = DEFAULT_MAX_AGE_S, force: bool = F
             pass
 
     t0 = datetime.now(timezone.utc)
+    global _REENTRY_ROWS_CACHE
+    _REENTRY_ROWS_CACHE = None
 
     # Load all data domains
     holdings = _load_holdings()
@@ -2639,6 +2950,8 @@ def build_advisory_desk(*, max_age_s: float = DEFAULT_MAX_AGE_S, force: bool = F
 
     for pos in holdings.get("positions", []):
         sym = pos["symbol"]
+        acct = str(pos.get("account") or "")
+        lot_key = _lot_key(sym, acct)
         inst = instrument_data.get(sym, {})
         ld_str = inst.get("listing_date")
         price = _f(pos.get("price"))
@@ -2649,9 +2962,9 @@ def build_advisory_desk(*, max_age_s: float = DEFAULT_MAX_AGE_S, force: bool = F
         pa = _load_price_action(sym, price, cb, shares, ohlcv_data, ld_str)
         price_actions[sym] = pa
 
-        # Lot basis
-        lb = _load_lot_basis(sym, tax_lots, price, ld_str)
-        lot_basis_data[sym] = lb
+        # Lot basis — account-scoped so taxable SCHD does not inherit IRA lots.
+        lb = _load_lot_basis(sym, tax_lots, price, ld_str, account=acct or None)
+        lot_basis_data[lot_key] = lb
 
     # Watchlist + closed symbols also get price action (OHLCV or Finviz fallback).
     # No cost basis / shares — these are not held positions, so the
@@ -2666,7 +2979,8 @@ def build_advisory_desk(*, max_age_s: float = DEFAULT_MAX_AGE_S, force: bool = F
         sym = pos["symbol"]
         pos_with_lots = dict(pos)
         pos_with_lots["days_held"] = _compute_days_held(sym, tax_lots)
-        pos_with_lots["lot_basis"] = lot_basis_data.get(sym, {})
+        _lk = _lot_key(sym, pos.get("account"))
+        pos_with_lots["lot_basis"] = lot_basis_data.get(_lk, lot_basis_data.get(sym, {}))
 
         inv = _validate_external_invariants(pos_with_lots, listing_dates, ohlcv_data)
         invariant_results[sym] = inv
@@ -2686,7 +3000,8 @@ def build_advisory_desk(*, max_age_s: float = DEFAULT_MAX_AGE_S, force: bool = F
             # ── S4: Add price action, lot basis, instrument data to opinion row ──
             sym = pos["symbol"]
             opinion["price_action"] = price_actions.get(sym, {})
-            opinion["lot_basis"] = lot_basis_data.get(sym, {})
+            _lk = _lot_key(sym, pos.get("account"))
+            opinion["lot_basis"] = lot_basis_data.get(_lk, lot_basis_data.get(sym, {}))
             opinion["instrument"] = instrument_data.get(sym, {})
             opinion["invariant_violations"] = invariant_results.get(sym, {}).get("violations", [])
             opinion["lot_data_status"] = invariant_results.get(sym, {}).get("lot_data_status", "")
@@ -2694,7 +3009,28 @@ def build_advisory_desk(*, max_age_s: float = DEFAULT_MAX_AGE_S, force: bool = F
             opinion["adjusted_cost"] = _f(pos.get("cost_basis"))
             opinion["cost_basis_source"] = pos.get("cost_basis_source", "")
             opinion["basis_partial"] = bool(pos.get("basis_partial"))
-            opinion["holding_period"] = lot_basis_data.get(sym, {}).get("holding_period")
+            opinion["holding_period"] = lot_basis_data.get(_lk, lot_basis_data.get(sym, {})).get("holding_period")
+            # Holdings arithmetic needed for canonical mark / dual-price detection
+            opinion["shares"] = pos.get("shares")
+            opinion["price"] = pos.get("price")
+            opinion["current_price"] = pos.get("current_price")
+            opinion["cost_basis"] = pos.get("cost_basis")
+            opinion["average_cost"] = pos.get("average_cost")
+            opinion["as_of"] = pos.get("as_of") or holdings.get("as_of")
+            opinion["updated_at"] = pos.get("updated_at")
+            opinion["price_as_of"] = pos.get("price_as_of")
+            opinion["price_source"] = pos.get("price_source") or "holdings.json"
+            opinion["canonical_mark"] = pos.get("canonical_mark")
+            opinion["canonical_mark_as_of"] = pos.get("canonical_mark_as_of")
+            opinion["canonical_mark_source"] = pos.get("canonical_mark_source")
+            opinion["canonical_mark_type"] = pos.get("canonical_mark_type")
+            opinion["implied_price_from_mv"] = pos.get("implied_price_from_mv")
+            opinion["official_close"] = pos.get("official_close")
+            opinion["official_close_as_of"] = pos.get("official_close_as_of")
+            opinion["broker_position_price"] = pos.get("broker_position_price")
+            opinion["broker_position_as_of"] = pos.get("broker_position_as_of")
+            opinion["broker_market_value"] = pos.get("broker_market_value")
+            opinion["price_field_role"] = pos.get("price_field_role")
 
             # S4: is_recent_ipo limitation — indicate unreliable technicals
             if instrument_data.get(sym, {}).get("is_recent_ipo"):
@@ -2713,14 +3049,42 @@ def build_advisory_desk(*, max_age_s: float = DEFAULT_MAX_AGE_S, force: bool = F
         if opinion:
             rows.append(opinion)
 
-    # 3. Closed-position opinions (RE_ENTER via reentry decision desk)
+    # 2b. Watch Hub opportunity slice (material active names not held / not personal)
+    personal_symbols = set(watchlist.get("items", {}).keys())
+
+    # 3. Closed-position opinions (RE_ENTER via reentry decision desk).
+    # Join the *full* decision-desk universe (105), not the journal's
+    # closed_by_symbol subset capped at 20 — that cap silently dropped names
+    # like ADBE/AMD/AVAV/RKLB that ARE on the Portfolio Re-Entry ledger.
+    # Loaded before the Hub slice so a symbol that is both an active Hub name
+    # and a re-entry candidate is listed once (as re-entry), not twice.
+    reentry_universe = _reentry_rows_once()
+    reentry_symbols = {str(r.get("symbol") or "").upper() for r in reentry_universe}
+
+    # 2b. Watch Hub opportunity slice (material active names not held / personal / re-entry)
+    hub_opportunity, hub_watch_total = _load_hub_opportunity_names(
+        holdings_symbols, personal_symbols, extra_exclude=reentry_symbols
+    )
+    hub_shown = 0
+    for hub_meta in hub_opportunity:
+        hub_opinion = _derive_hub_opinion(hub_meta["symbol"], hub_meta, holdings_symbols)
+        if hub_opinion:
+            rows.append(hub_opinion)
+            hub_shown += 1
+
+    # NEAR / READY first, then the rest; the noise filter below still keeps
+    # only operator states worth surfacing.
+    _reentry_priority = {
+        "READY TO REVIEW": 0, "NEAR ENTRY": 0, "OVERSOLD REVIEW": 1,
+        "WASH BLOCK": 2, "OVERBOUGHT WAIT": 3, "STALE": 4,
+        "MISSING MARKET": 5, "MISSING PLAN": 5,
+    }
+    reentry_universe.sort(key=lambda r: _reentry_priority.get(
+        str(((r.get("intel") or {}).get("state")) or "WAIT"), 9
+    ))
     closed_count = 0
-    for symbol, trades in closed.get("closed_by_symbol", {}).items():
-        if symbol in holdings_symbols:
-            continue
-        if closed_count >= 20:
-            break
-        opinion = _derive_closed_opinion(symbol, trades, holdings_symbols)
+    for re_row in reentry_universe:
+        opinion = _reentry_row_to_opinion(re_row, holdings_symbols)
         if opinion:
             rows.append(opinion)
             closed_count += 1
@@ -2776,6 +3140,7 @@ def build_advisory_desk(*, max_age_s: float = DEFAULT_MAX_AGE_S, force: bool = F
     source_to_class = {
         "holdings": "holding",
         "watchlist": "watchlist",
+        "watch_hub": "watchlist_hub",
         "reentry_decision_desk": "closed_journal",
         "closed_journal": "closed_journal",
         "allocation": "allocation",
@@ -2784,18 +3149,36 @@ def build_advisory_desk(*, max_age_s: float = DEFAULT_MAX_AGE_S, force: bool = F
         if not row.get("row_class"):
             row["row_class"] = source_to_class.get(row.get("source", ""), "unknown")
 
+    # Holdings lookup for provenance (canonical mark / dual price).
+    # Must be account-scoped — last-write-wins on symbol alone paints IRA
+    # shares/MV onto the taxable row and forges a DATA CONFLICT.
+    pos_by_key: dict[tuple[str, str], dict[str, Any]] = {
+        (p["symbol"], str(p.get("account") or "")): p
+        for p in holdings.get("positions", []) if p.get("symbol")
+    }
+
     # Attach evidence bundles to each row
     for row in rows:
         sym = row.get("symbol", "")
         rcls = row.get("row_class", "unknown")
-        bundle = _build_evidence_bundle(sym, rcls, evidence_data)
+        bundle = _build_evidence_bundle(sym, rcls, evidence_data, account=row.get("account"))
         row["evidence_bundle"] = bundle
+
+        # Phase 7: attach canonical mark + honest analyst denominators
+        try:
+            attach_advisory_row_provenance(
+                row,
+                holdings=pos_by_key.get((sym, str(row.get("account") or ""))) if rcls == "holding" else None,
+                analyst=analyst_data.get(sym),
+            )
+        except Exception:
+            pass
 
         # A2: Sufficiency gate — insufficient evidence → INSUFFICIENT_DATA
         # Applies to security-like rows (holding + watchlist). Allocation rows
         # are exempt: their evidence is the target/actual drift arithmetic in
         # the row fields, not the symbol evidence bundle.
-        if rcls in ("holding", "watchlist"):
+        if rcls in ("holding", "watchlist", "watchlist_hub"):
             actionable_verdicts = {AdvisoryVerdict.ADD.value, AdvisoryVerdict.TRIM.value,
                                    AdvisoryVerdict.EXIT.value, AdvisoryVerdict.RE_ENTER.value}
             v_val = row["verdict"].value if isinstance(row["verdict"], AdvisoryVerdict) else str(row["verdict"])
@@ -2807,6 +3190,11 @@ def build_advisory_desk(*, max_age_s: float = DEFAULT_MAX_AGE_S, force: bool = F
                 )
                 row["confidence"] = 0.20
 
+    # Phase 0 — truth clocks: an actionable verdict on a CONFLICTED mark must
+    # not read as executable. Keep the numeric reason and stamp SUPPRESSED so
+    # the desk stays fail-closed instead of silently green-lighting TRIM/ADD.
+    stamp_conflicted_verdict_suppression(rows)
+
     # Add row_class to all rows (redundant safety — already done above)
     for row in rows:
         if not row.get("row_class"):
@@ -2817,6 +3205,7 @@ def build_advisory_desk(*, max_age_s: float = DEFAULT_MAX_AGE_S, force: bool = F
             row["row_class"] = {
                 "holdings": "holding",
                 "watchlist": "watchlist",
+                "watch_hub": "watchlist_hub",
                 "reentry_decision_desk": "closed_journal",
                 "closed_journal": "closed_journal",
                 "allocation": "allocation",
@@ -2826,15 +3215,22 @@ def build_advisory_desk(*, max_age_s: float = DEFAULT_MAX_AGE_S, force: bool = F
     for row in rows:
         row["advisory_row_hash"] = _row_hash(row)
 
-    # A3: Suppress noise — closed-journal rows hidden except RE_ENTER
-    # RE_ENTER is the meaningful signal from closed positions; WAIT on 20/20 rows is noise.
+    # A3: Suppress noise — closed-journal WAIT with no desk state is hidden.
+    # Keep RE_ENTER plus any row whose Re-Entry engine produced an operator
+    # state (READY / NEAR / WASH / OVERBOUGHT / STALE / MISSING).
+    _keep_reentry = {
+        "READY TO REVIEW", "NEAR ENTRY", "OVERSOLD REVIEW",
+        "WASH BLOCK", "OVERBOUGHT WAIT", "STALE",
+        "MISSING MARKET", "MISSING PLAN",
+    }
     closed_rows_suppressed: list[dict[str, Any]] = [
         r for r in rows if r.get("row_class") == "closed_journal"
     ]
     rows = [
         r for r in rows
         if r.get("row_class") != "closed_journal"
-        or str(r["verdict"].value) == "RE_ENTER"  # keep RE_ENTER rows visible
+        or str(r["verdict"].value if hasattr(r["verdict"], "value") else r["verdict"]) == "RE_ENTER"
+        or str(r.get("reentry_state") or "") in _keep_reentry
     ]
 
     # Detect degenerate classes (every row in a class shares the same verdict)
@@ -2900,6 +3296,10 @@ def build_advisory_desk(*, max_age_s: float = DEFAULT_MAX_AGE_S, force: bool = F
                 "watchlist_rows": sum(1 for r in rows if r.get("source") == "watchlist"),
                 "closed_rows": sum(1 for r in rows if r.get("source") in ("reentry_decision_desk", "closed_journal")),
                 "closed_rows_suppressed": len(closed_rows_suppressed),
+                "reentry_universe_count": len(reentry_universe),
+                "personal_watchlist_count": watchlist.get("count", 0),
+                "hub_watch_total": hub_watch_total,
+                "hub_watch_shown": hub_shown,
                 "degenerate_classes": degenerate_report,
                 "verdict_counts": verdict_counts,
                 "invariant_violation_count": sum(
@@ -2909,6 +3309,16 @@ def build_advisory_desk(*, max_age_s: float = DEFAULT_MAX_AGE_S, force: bool = F
                 "untrusted_lot_count": sum(
                     1 for r in rows
                     if r.get("lot_data_status") == "UNTRUSTED"
+                ),
+                "conflicted_symbols": [
+                    r.get("symbol") for r in rows
+                    if (r.get("canonical_financial_facts") or {}).get("conflicts")
+                    or (r.get("data_quality") or {}).get("action_suppressed")
+                ],
+                "conflicted_count": sum(
+                    1 for r in rows
+                    if (r.get("canonical_financial_facts") or {}).get("conflicts")
+                    or (r.get("data_quality") or {}).get("action_suppressed")
                 ),
                 "listing_date_coverage": len(listing_dates),
                 "instrument_identity_coverage": len(instrument_data),
@@ -3065,7 +3475,7 @@ def validate_advisory_output(output: dict[str, Any]) -> list[str]:
 
         # Source
         src = row.get("source", "")
-        if src not in ("holdings", "watchlist", "reentry_decision_desk", "closed_journal", "allocation"):
+        if src not in ("holdings", "watchlist", "watch_hub", "reentry_decision_desk", "closed_journal", "allocation"):
             errors.append(f"{symbol}: unknown source '{src}'")
 
         # Per-row hash
@@ -3251,6 +3661,10 @@ def enrich_advisory_with_opinions(
         mv = float(row.get("market_value") or 0)
         if row.get("row_class") == "holding" and mv < MATERIALITY_FLOOR_USD:
             return False, "materiality"
+        # Phase 4: housekeeping remnants (sub-threshold weight above $500) are
+        # consolidation, not a decision — never Flash-opinion a remnant.
+        if row.get("row_class") == "holding" and row.get("housekeeping_flag"):
+            return False, "housekeeping"
         return True, "ok"
 
     # Partition: actionable first (must cover), then other eligible by $ × severity.
@@ -3259,7 +3673,7 @@ def enrich_advisory_with_opinions(
     actionable: list[dict[str, Any]] = []
     rest: list[dict[str, Any]] = []
     watchlist_rows: list[dict[str, Any]] = []
-    skipped_untrusted = skipped_materiality = 0
+    skipped_untrusted = skipped_materiality = skipped_housekeeping = 0
     for row in rows:
         ok, why = _eligible(row)
         if not ok:
@@ -3267,8 +3681,10 @@ def enrich_advisory_with_opinions(
                 skipped_untrusted += 1
             elif why == "materiality":
                 skipped_materiality += 1
+            elif why == "housekeeping":
+                skipped_housekeeping += 1
             continue
-        if row.get("row_class") == "watchlist":
+        if row.get("row_class") in ("watchlist", "watchlist_hub"):
             watchlist_rows.append(row)
         elif _is_actionable(row):
             actionable.append(row)
@@ -3391,6 +3807,13 @@ def enrich_advisory_with_opinions(
                 "memory_injected": bool(memory_block),
                 "lessons_injected": [L.get("id") for L in (mem.get("lessons") or [])],
             }
+            # Dry-run still produces operator-visible verdicts. Emit so advisory
+            # is not a silent surface while ADVISORY_DESK_V1 is off.
+            try:
+                from lib.advisory.advisory_opinion_engine import _emit_advisory_decision_payload
+                _emit_advisory_decision_payload(row, opinion)
+            except Exception:
+                pass
         else:
             opinion = generate_row_opinion(
                 row, evidence, det_verdict,
@@ -3459,7 +3882,7 @@ def enrich_advisory_with_opinions(
         # model may reason about the watch thesis, but cannot recommend a buy/sell
         # on something the operator does not own. Coerce any actionable verdict
         # back to WAIT (mirrors the deterministic A2 gate philosophy).
-        if row.get("row_class") == "watchlist":
+        if row.get("row_class") in ("watchlist", "watchlist_hub"):
             wv = str(opinion.get("verdict") or "").upper()
             if wv in ACTIONABLE:
                 opinion["verdict"] = "WAIT"
@@ -3534,6 +3957,7 @@ def enrich_advisory_with_opinions(
         "synthesis_lead_dollars": synthesis_meta.get("lead_dollars"),
         "skipped_untrusted": skipped_untrusted,
         "skipped_materiality": skipped_materiality,
+        "skipped_housekeeping": skipped_housekeeping,
         "memory_prior_hits": memory_hits,
         "memory_prior_hit_pct": (
             round(100.0 * memory_hits / rows_enriched, 1) if rows_enriched else 0.0
@@ -3570,6 +3994,7 @@ def enrich_advisory_with_opinions(
     desk_result["opinions"]["max_rows"] = max_rows
     desk_result["opinions"]["skipped_untrusted"] = skipped_untrusted
     desk_result["opinions"]["skipped_materiality"] = skipped_materiality
+    desk_result["opinions"]["skipped_housekeeping"] = skipped_housekeeping
     desk_result["opinions"]["telemetry"] = telemetry
     desk_result["opinions"]["memory"] = {
         "prior_hits": memory_hits,

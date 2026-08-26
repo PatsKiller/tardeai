@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily Trade AI provider-spend reconciliation
+
+[Timer]
+OnCalendar=*-*-* 06:40:00
+Persistent=true
+Unit=tradeai-provider-cost-reconcile.service
+
+[Install]
+WantedBy=timers.target

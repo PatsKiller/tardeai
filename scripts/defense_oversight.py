@@ -171,8 +171,15 @@ def _parse_strict(raw: str):
         return None
 
 
-def run_free_critiques(cur, force: bool = False) -> dict:
-    """Tier 1 — both free seats critique the current build. Cached by build_hash."""
+FREE_SEATS = (("chatgpt", "chatgpt"), ("grok", "grok"), ("deepseek", "deepseek-flash"))
+
+
+def run_free_critiques(cur, force: bool = False, seats=None) -> dict:
+    """Tier 1 — free OAuth seats critique the current build. Cached by build_hash.
+
+    seats=None runs all FREE_SEATS (ChatGPT + Grok + DeepSeek Flash). Pass
+    seats=['chatgpt'] for the Friday auto weekly (OAuth only, never paid).
+    """
     ensure_tables(cur)
     cur.connection.commit()
     art = build_oversight_brief()
@@ -183,7 +190,10 @@ def run_free_critiques(cur, force: bool = False) -> dict:
     prompt = ("You are an independent risk overseer for a retirement-scale defensive trading desk. "
               "Judge WITHIN the constitution. Be adversarial where warranted.\n\n"
               + art["markdown"] + "\n\n" + CONTRACT)
-    for seat, lane in (("chatgpt", "chatgpt"), ("grok", "grok"), ("deepseek", "deepseek-flash")):
+    wanted = {s.lower() for s in seats} if seats else None
+    for seat, lane in FREE_SEATS:
+        if wanted is not None and seat not in wanted:
+            continue
         cur.execute("SELECT status FROM oversight_reviews WHERE build_hash=%s AND seat=%s", (bh, seat))
         if cur.fetchone() and not force:
             out["seats"][seat] = "cached"
@@ -297,6 +307,41 @@ def paid_preview(cur, seats=None) -> dict:
             "weekly_paid_review": pc.get("weekly_paid_review", False)}
 
 
+def _emit_oversight_cost(
+    *,
+    outcome: str,
+    model: str,
+    usage: dict | None = None,
+    raw_key: str | None = None,
+    request_sent: bool = False,
+    possibly_billable: bool = False,
+    error_class: str | None = None,
+) -> None:
+    """Direct DeepSeek urllib bypass — emit once; do not invent USD."""
+    try:
+        from lib.provider_cost.emit import emit_cost_event
+        usage = usage or {}
+        emit_cost_event(
+            provider="deepseek",
+            model=str(model or ""),
+            outcome=outcome,
+            prompt_tokens=usage.get("prompt_tokens"),
+            completion_tokens=usage.get("completion_tokens"),
+            cache_hit_tokens=usage.get("prompt_cache_hit_tokens") or usage.get("cache_hit_tokens"),
+            cache_miss_tokens=usage.get("prompt_cache_miss_tokens") or usage.get("cache_miss_tokens"),
+            raw_key=raw_key,
+            request_sent=request_sent,
+            possibly_billable=possibly_billable,
+            error_class=error_class,
+            source_service="defense_oversight",
+            source_process="defense_oversight",
+            source_lane="oversight_paid",
+            evidence_refs=["defense_oversight._call_provider"],
+        )
+    except Exception:
+        return
+
+
 def _call_provider(provider: str, model: str, prompt: str, key_env: dict) -> str:
     import urllib.request
     import urllib.error
@@ -316,9 +361,39 @@ def _call_provider(provider: str, model: str, prompt: str, key_env: dict) -> str
                                "messages": [{"role": "user", "content": prompt}]}).encode()
             req = urllib.request.Request("https://api.deepseek.com/v1/chat/completions", data=body, headers={
                 "Authorization": f"Bearer {key}", "content-type": "application/json"})
-            with urllib.request.urlopen(req, timeout=180) as r:
-                resp = json.loads(r.read().decode())
-            return resp["choices"][0]["message"]["content"]
+            try:
+                with urllib.request.urlopen(req, timeout=180) as r:
+                    resp = json.loads(r.read().decode())
+                usage = resp.get("usage") or {}
+                _emit_oversight_cost(
+                    outcome="success",
+                    model=model,
+                    usage=usage,
+                    raw_key=key,
+                    request_sent=True,
+                    possibly_billable=True,
+                )
+                return resp["choices"][0]["message"]["content"]
+            except urllib.error.HTTPError as e:
+                _emit_oversight_cost(
+                    outcome="possibly_billable_attempt",
+                    model=model,
+                    raw_key=key,
+                    request_sent=True,
+                    possibly_billable=True,
+                    error_class=f"HTTP_{e.code}",
+                )
+                return f"__error__ HTTP {e.code}: {e.read().decode()[:250]}"
+            except Exception as e:
+                _emit_oversight_cost(
+                    outcome="possibly_billable_attempt",
+                    model=model,
+                    raw_key=key,
+                    request_sent=True,
+                    possibly_billable=True,
+                    error_class=type(e).__name__,
+                )
+                return f"__error__ {e}"
         url = ("https://api.openai.com/v1/chat/completions" if provider == "openai"
                else "https://api.x.ai/v1/chat/completions")
         key = key_env["openai" if provider == "openai" else "xai"]

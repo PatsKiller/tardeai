@@ -1,0 +1,11 @@
+{
+  "schema": "R16FinalAcceptance@v1",
+  "before": 86,
+  "after_runtime": 86,
+  "after_r16_source": 87,
+  "highest_evidence_class": "HISTORICAL_VALIDATED+GOLDEN_SHADOW",
+  "88_not_awarded": "shadow lifecycle exists in tests but not deployed as a live scheduler",
+  "90_not_awarded": "no NATURAL_LONGITUDINAL improvement evidence",
+  "MEMORY_BEHAVIOR_INFLUENCE": 0,
+  "auto_promoted": false
+}

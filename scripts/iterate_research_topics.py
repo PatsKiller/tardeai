@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """iterate_research_topics.py — Re-research active user topics and send updates.
 
-Acts as a certified retirement planner: finds new articles, updated advice,
-new options for each saved research interest.
+Acts as a full CIO research analyst across all asset classes (equities, ETFs,
+bonds, options income, macro, crypto/commodities, retirement), grounded in
+portfolio context. Finds new articles, updated advice, and actionable options
+for each saved research interest.
 
 Usage:
     python3 scripts/iterate_research_topics.py [--telegram] [--json]
@@ -72,7 +74,9 @@ def iterate_topics(send_telegram: bool = False) -> list:
         except Exception as _e:
             print(f"[iterate] {topic}: web grounding unavailable: {_e}")
 
-        prompt = f"""/no_think You are a certified retirement planner providing an updated advisory.
+        prompt = f"""/no_think You are a CIO research analyst covering all asset classes
+(equities, ETFs, bonds, covered-call/put-selling income, macro/Fed, international,
+crypto/commodities, and retirement planning). Provide an updated research advisory.
 
 ONGOING RESEARCH TOPIC: {topic}
 {web_block}
@@ -82,14 +86,16 @@ PORTFOLIO CONTEXT:
 - Income target: $55K/yr. Current: $14,342/yr. Gap: $40,658.
 - Income generators at 9.2% (target 25-40%). Core compounders at 42%.
 - Timeline: 4-8 years to retirement income goal.
+- Mandate: multi-asset CIO book — growth/value/small-cap, broad+sector+thematic ETFs,
+  bonds (agg/corp/muni/Treasury), options-income ETFs, hedges, macro, international.
 
 This is research iteration #{count + 1}. {"Previous findings: " + prev[:300] + "..." if prev else "First research on this topic."}
 
 Provide:
-1. What's new or changed since last advisory
-2. Specific actionable recommendations
-3. Account-specific placement advice (IRA vs Roth vs Taxable)
-4. Risk considerations
+1. What's new or changed since last advisory (across relevant asset classes)
+2. Specific actionable recommendations (symbols/ETFs/strategies when evidence-backed)
+3. Account-specific placement advice (IRA vs Roth vs Taxable) when tax-relevant
+4. Risk considerations and portfolio fit
 5. Next steps to investigate
 
 Keep it concise (3-4 paragraphs) and actionable."""

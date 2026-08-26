@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """llm_intelligence_enrichment.py — Scheduled LLM enrichment for dashboard surfaces.
 
-Uses FREE local Ollama lanes (gemma via local_llm.generate) first; cloud only as
-last-resort fallback inside local_llm. Results land in llm_intelligence_cache.
+Uses governed cloud lanes only. Results land in llm_intelligence_cache.
 
 Fail-closed content quality (llm_content_quality.is_valid_prose): corrupt or
 empty generations do NOT overwrite a prior good cache entry — Home shows the
@@ -42,17 +41,14 @@ def _get_conn():
 
 
 def _llm_generate(prompt: str, timeout: int = 120) -> str:
-    """Prefer free local Ollama; local_llm handles optional cloud fallback."""
-    from local_llm import generate
-    no_cloud = os.getenv("LOCAL_LLM_NO_CLOUD", "").strip().lower() in {"1", "true", "yes", "on"}
-    return generate(
-        prompt,
+    """Generate through governed cloud lanes, failing closed if unavailable."""
+    from lib.governed_cloud_generation import generate_cloud
+    text, _lane = generate_cloud(
+        prompt, process_id="llm_intelligence_enrichment",
+        task_summary="scheduled dashboard intelligence enrichment",
         timeout=timeout,
-        fallback=not no_cloud,
-        fast=True,
-        caller="llm_intelligence_enrichment",
-        process_type="HOME_BRIEFING",
-    ) or ""
+    )
+    return text
 
 
 def _load_prior(conn, section: str) -> str:

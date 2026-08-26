@@ -75,7 +75,8 @@ def send_reply(chat_id, reply_to_message_id, text):
         "text": text,
         "parse_mode": "Markdown",
     })
-    # Retry without Markdown if parse failed
+    # T2: if Markdown parse failed the first message was NOT posted.
+    # Send plaintext once. Do not send a second copy when the first succeeded.
     if not result.get("ok"):
         _tg_post("sendMessage", {
             "chat_id": chat_id,

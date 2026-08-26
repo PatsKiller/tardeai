@@ -1,0 +1,20 @@
+{
+  "schema": "R15_2FinalAcceptance@v1",
+  "result": "PASS_WITH_HONEST_CEILING",
+  "before": 80,
+  "after": 86,
+  "highest_natural_evidence_level": 84,
+  "gates": {
+    "82": "PR 508+509 merged; exact-main CURRENT=d72ecdd1; post-deploy smoke green",
+    "83": "natural free-first + natural material-scan on d72ecdd1; same-brain consistent",
+    "84": "durable overlay across multiple scans; cross-entity on deployed code; zero-cost FRESH_NO_CHANGE",
+    "85": "specialist same-brain + SPECIALIST_UNAVAILABLE CURRENT_SMOKE; not live agent-runtime ticks",
+    "86": "ModelTaskPerformance ledger live as API+module; HISTORICAL_REPLAY+GOLDEN_SHADOW populated; no auto-promotion; live_n=0",
+    "87": "NOT_AWARDED BLOCKED_REAL_WORLD_EVENT"
+  },
+  "genuine_material_lifecycles": 0,
+  "MEMORY_BEHAVIOR_INFLUENCE": 0,
+  "canary_enabled": false,
+  "pr505_merged": false,
+  "registries_changed": false
+}

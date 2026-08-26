@@ -311,3 +311,75 @@ def test_build_synthesis_from_executor():
     result = so.build_synthesis_from_executor(fake_exec, capital_usd=20000.0)
     assert result["opportunity_count"] == 1
     assert result["opportunities"][0]["sector"] == "Energy"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# P3.16 — sector target honesty (placeholder vs model portfolio)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_p316_unconfigured_target_labeled_placeholder():
+    opp = so.build_sector_opportunity(
+        {"sector": "Technology", "state": "LEADING", "book_pct": 7.0},
+        capital_usd=10_000,
+    )
+    assert opp["target_posture_pct"] == so.DEFAULT_SECTOR_TARGET_PCT
+    assert opp["target_is_placeholder"] is True
+    assert opp["target_source"] == so.TARGET_SOURCE_PLACEHOLDER
+    assert "placeholder" in opp["target_label"].lower()
+    assert "placeholder" in opp["statement"].lower()
+
+
+def test_p316_model_portfolio_target_not_placeholder():
+    opp = so.build_sector_opportunity(
+        {"sector": "Energy", "state": "IMPROVING", "book_pct": 2.0},
+        target_pct=5.0,
+        target_source=so.TARGET_SOURCE_MODEL_PORTFOLIO,
+        capital_usd=10_000,
+    )
+    assert opp["target_posture_pct"] == 5.0
+    assert opp["target_is_placeholder"] is False
+    assert opp["target_source"] == so.TARGET_SOURCE_MODEL_PORTFOLIO
+    assert "placeholder" not in opp["statement"].lower()
+
+
+def test_p316_identical_18pct_targets_flagged_as_placeholder_set():
+    rows = [
+        {"sector": "Energy", "state": "IMPROVING", "rs20": 1.0},
+        {"sector": "Technology", "state": "LEADING", "rs20": 2.0},
+        {"sector": "Materials", "state": "IMPROVING", "rs20": 0.5},
+    ]
+    result = so.synthesize_sector_opportunities(rows, capital_usd=10_000)
+    honesty = result["sector_target_honesty"]
+    assert honesty["all_targets_identical"] is True
+    assert honesty["all_targets_placeholder"] is True
+    assert honesty["identical_target_pct"] == 18.0
+    assert all(o["target_is_placeholder"] for o in result["opportunities"])
+
+
+def test_p316_load_sector_target_map_from_model_portfolio():
+    loaded = so.load_sector_target_map()
+    targets = loaded["targets"]
+    sources = loaded["sources"]
+    assert "config/model_portfolio.json" in loaded["configs_loaded"]
+    # Existing Model Portfolio numbers — do not invent.
+    assert targets["Technology"] == 28.0
+    assert targets["Energy"] == 5.0
+    assert targets["Financials"] == 12.0
+    assert sources["Technology"] == so.TARGET_SOURCE_MODEL_PORTFOLIO
+    assert sources["Energy"] == so.TARGET_SOURCE_MODEL_PORTFOLIO
+    # Synthesis with loaded map must not label configured sectors as placeholder.
+    rows = [
+        {"sector": "Energy", "state": "IMPROVING", "book_pct": 2.0, "rs20": 1.0},
+        {"sector": "Technology", "state": "LEADING", "book_pct": 20.0, "rs20": 3.0},
+    ]
+    result = so.synthesize_sector_opportunities(
+        rows,
+        sector_targets=targets,
+        sector_target_sources=sources,
+        capital_usd=10_000,
+    )
+    by = {o["sector"]: o for o in result["opportunities"]}
+    assert by["Energy"]["target_posture_pct"] == 5.0
+    assert by["Energy"]["target_is_placeholder"] is False
+    assert by["Technology"]["target_posture_pct"] == 28.0
+    assert result["sector_target_honesty"]["all_targets_placeholder"] is False

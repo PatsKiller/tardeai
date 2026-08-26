@@ -1,0 +1,22 @@
+{
+  "schema": "R15SpecialistSameBrain@v1",
+  "agents": [
+    "alex",
+    "hermes",
+    "advisory",
+    "telegram",
+    "maria",
+    "steph",
+    "guardian",
+    "ledger",
+    "command_center"
+  ],
+  "disagreement_preserved": true,
+  "live_same_brain_r14a": true,
+  "r15_agents_extended": [
+    "guardian",
+    "ledger",
+    "command_center"
+  ],
+  "natural_multi_agent_orchestration": "UNIT_PROVEN"
+}

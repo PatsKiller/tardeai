@@ -104,14 +104,20 @@ def bootstrap(portfolio_only: bool = True, all_watchlist: bool = False,
             job_id = f"v8-{sym.lower()}-{agent_key}-{ts}"
 
             if not dry_run:
-                cur.execute("""
-                    INSERT INTO watchlist_agent_jobs
-                        (id, symbol, requested_agent, request_type, note, status, payload)
-                    VALUES (%s, %s, %s, 'research', %s, 'queued', %s)
-                    ON CONFLICT (id) DO NOTHING
-                """, (job_id, sym, agent_key, f"V8 bootstrap: {strategy_type}",
-                      json.dumps({"source": "v8_bootstrap", "strategy_type": strategy_type})))
-
+                sys.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
+                from agent_job_enqueue_governance import EnqueueRequest, governed_enqueue
+                governed_enqueue(cur, EnqueueRequest(
+                    symbol=sym,
+                    requested_agent=agent_key,
+                    request_type="research",
+                    submitted_from="v8_bootstrap",
+                    priority=2,
+                    note=f"V8 bootstrap: {strategy_type}",
+                    job_id=job_id,
+                    payload={"source": "v8_bootstrap", "strategy_type": strategy_type},
+                    universe_tier="T1",
+                    material=True,
+                ))
                 cur.execute("""
                     INSERT INTO watchlist_events (event_type, symbol, agent, status, message)
                     VALUES ('v8_bootstrap', %s, %s, 'queued', %s)

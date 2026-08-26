@@ -1,0 +1,88 @@
+name: research-governance
+
+on:
+  pull_request:
+    paths:
+      - "scripts/lib/research_governance/**"
+      - "tests/test_research_governance*"
+      - ".github/workflows/research-governance-ci.yml"
+      - "config/cio_research_source_catalog.json"
+      - "scripts/run_research_governance_acceptance.py"
+      - "docs/investment-office/RESEARCH_GOVERNANCE*"
+      - "docs/investment-office/BOOK_KNOWLEDGE_INVENTORY.md"
+      - "docs/investment-office/R1_FORMULA_AND_REFERENCE_AUDIT.md"
+      - "docs/investment-office/R2_*"
+      - "docs/investment-office/R3_*"
+      - "docs/investment-office/R4_*"
+      - "docs/investment-office/R5_*"
+      - "docs/investment-office/R6_*"
+      - "docs/investment-office/R7_*"
+      - "docs/investment-office/R8_*"
+      - "tests/test_research_mechanics*"
+      - "tests/test_research_almanac*"
+      - "tests/test_research_r3*"
+      - "tests/test_research_r4*"
+      - "tests/test_research_cpcv*"
+      - "tests/test_research_durable*"
+      - "tests/test_research_policy*"
+      - "tests/test_research_empirical*"
+  push:
+    branches:
+      - "feature/research-governance-v1"
+      - "main"
+
+permissions:
+  contents: read
+
+jobs:
+  research-governance:
+    runs-on: ubuntu-latest
+    env:
+      READ_ONLY_ADVISORY: "1"
+      ENABLE_TELEGRAM: "0"
+      CIO_TELEGRAM_INTERDICT: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # The research-governance package is pure stdlib; only pytest is needed.
+          python -m pip install pytest
+
+      - name: PR scope guard
+        run: python scripts/lib/research_governance/pr_scope_guard.py
+
+      - name: Research governance tests
+        run: |
+          python -m pytest tests/test_research_governance* tests/test_research_mechanics* tests/test_research_almanac* tests/test_research_r4* tests/test_research_cpcv* tests/test_research_durable* tests/test_research_policy* tests/test_research_empirical* -q
+
+      - name: RGA acceptance (R1_foundation)
+        run: python scripts/run_research_governance_acceptance.py R1_foundation
+
+      - name: R2 mechanics acceptance
+        run: python scripts/run_research_governance_acceptance.py R2_mechanics
+
+      - name: R3 Almanac acceptance
+        run: python scripts/run_research_governance_acceptance.py R3_almanac
+
+      - name: R4 integration acceptance
+        run: python scripts/run_research_governance_acceptance.py R4_integration
+
+      - name: R5 CPCV paths acceptance
+        run: python scripts/run_research_governance_acceptance.py R5_cpcv
+
+      - name: R6 durable store acceptance
+        run: python scripts/run_research_governance_acceptance.py R6_durable
+
+      - name: R7 policy/behavioral acceptance
+        run: python scripts/run_research_governance_acceptance.py R7_policy
+
+      - name: R8 empirical family acceptance
+        run: python scripts/run_research_governance_acceptance.py R8_empirical

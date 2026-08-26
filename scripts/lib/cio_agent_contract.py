@@ -394,12 +394,24 @@ def build_proposal_quality_json_schema() -> str:
 def build_external_research_json_schema() -> str:
     return (
         f"{contract_header()}\n"
+        "The recommendation field IS the living thesis: must include ticker, one numbered/"
+        "symbol-specific fact, invalidation, role, and at least 8 sentences. "
+        "Do not hide the thesis in evidence[].\n"
         "Return ONLY valid JSON:\n"
-        '{"recommendation":"...", "evidence":[{"tag":"fact|technical|risk","text":"..."}], '
+        '{"recommendation":"<living thesis: ticker, numbered/symbol-specific fact, invalidation, role, >=8 sentences>", '
+        '"evidence":[{"tag":"fact|technical|risk","text":"..."}], '
         '"dissent":"the strongest counter-view", "confidence":0.0-1.0, '
         '"risk_flags":["..."], "learning_candidate":"what the system should learn", '
         '"operator_action":"what the human operator should consider", '
-        '"data_i_doubt":"none or specific stale/missing inputs"}'
+        '"data_i_doubt":"none or specific stale/missing inputs", '
+        '"classification":"CONFIRMS|STRENGTHENS|WEAKENS|INVALIDATES|NO_NEW_INFO|CONFLICTED|INSUFFICIENT_DATA", '
+        '"evidence_as_of":"ISO-8601 timestamp", "new_evidence_ids":["..."], '
+        '"supporting_evidence_ids":["..."], "contradictory_evidence_ids":["..."], '
+        '"deterministic_changes":[{"field":"...","before":"...","after":"..."}], '
+        '"reason_summary":"concise rationale", "what_changed":["..."], '
+        '"what_did_not_change":["..."], "research_gaps_remaining":["..."], '
+        '"invalidation_triggered":false, "source_quality":{"grade":"..."}, '
+        '"freshness":{"state":"CURRENT|STALE|UNKNOWN"}, "source_refs":["..."]}'
     )
 
 
@@ -522,8 +534,36 @@ def parse_synthesis_result(raw: str) -> dict:
     })
 
 
+_HEALTH_RE = re.compile(r'"health"\s*:\s*"?(STRONG|STABLE|WATCH|CONCERN|EXIT)', re.I)
+_ACTION_RE = re.compile(r'"action"\s*:\s*"?(HOLD|ADD|TRIM|EXIT)', re.I)
+
+
+def salvage_holdings_health_fields(raw: str) -> Optional[dict]:
+    """Best-effort fields when gemma hits LOCAL_LLM_NUM_PREDICT and truncates JSON.
+
+    Only used by holdings_llm_refresh. Returns None unless health is present.
+    """
+    if not raw:
+        return None
+    h = _HEALTH_RE.search(raw)
+    if not h:
+        return None
+    a = _ACTION_RE.search(raw)
+    return {
+        "health": h.group(1).upper(),
+        "action": a.group(1).upper() if a else "HOLD",
+        "confidence": 50,
+        "reasoning": "salvaged_truncated_json",
+        "thesis_intact": "yes",
+        "catalyst_outlook": "neutral",
+        "risk_flag": "none",
+    }
+
+
 def parse_holdings_health_result(raw: str) -> Optional[dict]:
     parsed = extract_json_object(raw)
+    if not parsed:
+        parsed = salvage_holdings_health_fields(raw)
     if not parsed:
         return None
     return merge_structured_into_result({
@@ -551,15 +591,39 @@ def parse_external_research_result(raw: str) -> Optional[dict]:
         flags = parsed.get("risk_flags")
         if isinstance(flags, list) and flags:
             doubt = "; ".join(str(x) for x in flags[:3])[:500]
+    try:
+        confidence = min(1.0, max(0.0, float(parsed.get("confidence", 0.5))))
+    except (TypeError, ValueError):
+        confidence = 0.0
+    classification = str(parsed.get("classification") or "").upper()
+    if classification not in {
+        "CONFIRMS", "STRENGTHENS", "WEAKENS", "INVALIDATES", "NO_NEW_INFO",
+        "CONFLICTED", "INSUFFICIENT_DATA",
+    }:
+        classification = ""
     return merge_structured_into_result({
-        "recommendation": str(parsed.get("recommendation", ""))[:500],
-        "dissent": str(parsed.get("dissent", ""))[:500],
-        "confidence": min(1.0, max(0.0, float(parsed.get("confidence", 0.5)))),
+        "recommendation": str(parsed.get("recommendation", ""))[:4000],
+        "dissent": str(parsed.get("dissent", ""))[:4000],
+        "confidence": confidence,
         "risk_flags": parsed.get("risk_flags", []) if isinstance(parsed.get("risk_flags"), list) else [],
-        "learning_candidate": str(parsed.get("learning_candidate", ""))[:300],
-        "operator_action": str(parsed.get("operator_action", ""))[:300],
+        "learning_candidate": str(parsed.get("learning_candidate", ""))[:800],
+        "operator_action": str(parsed.get("operator_action", ""))[:800],
         "evidence": ev,
         "data_i_doubt": doubt,
+        "classification": classification,
+        "evidence_as_of": str(parsed.get("evidence_as_of") or "")[:80],
+        "new_evidence_ids": parsed.get("new_evidence_ids", []) if isinstance(parsed.get("new_evidence_ids"), list) else [],
+        "supporting_evidence_ids": parsed.get("supporting_evidence_ids", []) if isinstance(parsed.get("supporting_evidence_ids"), list) else [],
+        "contradictory_evidence_ids": parsed.get("contradictory_evidence_ids", []) if isinstance(parsed.get("contradictory_evidence_ids"), list) else [],
+        "deterministic_changes": parsed.get("deterministic_changes", []) if isinstance(parsed.get("deterministic_changes"), list) else [],
+        "reason_summary": str(parsed.get("reason_summary") or "")[:800],
+        "what_changed": parsed.get("what_changed", []) if isinstance(parsed.get("what_changed"), list) else [],
+        "what_did_not_change": parsed.get("what_did_not_change", []) if isinstance(parsed.get("what_did_not_change"), list) else [],
+        "research_gaps_remaining": parsed.get("research_gaps_remaining", []) if isinstance(parsed.get("research_gaps_remaining"), list) else [],
+        "invalidation_triggered": bool(parsed.get("invalidation_triggered")),
+        "source_quality": parsed.get("source_quality", {}) if isinstance(parsed.get("source_quality"), dict) else {},
+        "freshness": parsed.get("freshness", {}) if isinstance(parsed.get("freshness"), dict) else {},
+        "source_refs": parsed.get("source_refs", []) if isinstance(parsed.get("source_refs"), list) else [],
     })
 
 

@@ -379,6 +379,11 @@ def compute_attribution(portfolio: Dict, state_dir: Path) -> Dict:
         "has_data":        True,
         "benchmark":       BENCHMARK_WEIGHTS,
         "benchmark_label": "55% SPY / 20% ITA / 25% AGG",
+        "benchmark_source": (
+            "portfolio_performance_attribution blended policy "
+            "(55% SPY / 20% ITA / 25% AGG); ITA is the 20% defense sleeve of the blend, "
+            "not a standalone portfolio target"
+        ),
         # Metrics
         "port_cagr":         port_cagr,
         "bench_cagr":        bench_cagr,

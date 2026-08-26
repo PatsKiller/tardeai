@@ -1,0 +1,28 @@
+{
+  "schema": "TradeAIMemoryTaxonomy@v2",
+  "authority": "READ_ONLY_ADVISORY",
+  "memory_behavior_influence": 0,
+  "financial_action": false,
+  "planes": [
+    "WORKING_SESSION",
+    "EPISODIC",
+    "SEMANTIC_OPERATOR",
+    "CANONICAL_POLICY_BELIEF",
+    "DOCUMENT_EVIDENCE_RAG",
+    "PROCEDURAL_LESSON",
+    "ORCHESTRATION_HISTORY"
+  ],
+  "aif_classes": [
+    "RESEARCH_POINTER",
+    "EPISODIC",
+    "SEMANTIC_OPERATOR",
+    "POLICY_POINTER",
+    "LESSON_POINTER",
+    "QUARANTINED"
+  ],
+  "baseline_curation": {
+    "kind": "BASELINE_PROJECTION",
+    "version": 0,
+    "counts_as_material_version": false
+  }
+}

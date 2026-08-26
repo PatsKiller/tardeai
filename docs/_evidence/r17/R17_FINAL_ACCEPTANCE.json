@@ -1,0 +1,37 @@
+{
+  "schema": "R17FinalAcceptance@v1",
+  "starting_maturity": 88,
+  "awarded_maturity": 88,
+  "award_89": false,
+  "award_90": false,
+  "LOCAL_R17_READY_FOR_SYNC": true,
+  "pushed": false,
+  "deployed": false,
+  "criteria_89": {
+    "1_auto_register_on_natural_decision": "CODE_READY_NOT_ON_CURRENT",
+    "2_unchanged_replay_no_spam": "UNIT_PASS",
+    "3_checkpoint_survives_restart": "UNIT_PASS",
+    "4_due_processor_live": false,
+    "5_cockpit_reads_durable_stores": true,
+    "6_elapsed_observation_end_to_end": false,
+    "7_no_safety_authority_changes": true
+  },
+  "why_not_89": [
+    "auto-register not live on CURRENT pin (code on branch only)",
+    "due processor timer not enabled",
+    "no genuinely elapsed NATURAL_LONGITUDINAL observation on this pin from auto-bind"
+  ],
+  "safety": {
+    "READ_ONLY_ADVISORY": true,
+    "MEMORY_BEHAVIOR_INFLUENCE": 0,
+    "promotion_ceiling": "REVIEW_READY",
+    "no_trading": true,
+    "no_registry_writes": true,
+    "no_telegram_canary": true,
+    "no_production_sql": true,
+    "pr_505_unmerged": true
+  },
+  "loop": "site \u2192 graph \u2192 cognition \u2192 research \u2192 curation \u2192 decision \u2192 checkpoint \u2192 outcome \u2192 learning",
+  "learning_autonomous": true,
+  "behavioral_promotion_governed": true
+}

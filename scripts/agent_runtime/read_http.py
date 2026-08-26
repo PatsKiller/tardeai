@@ -89,6 +89,40 @@ def _is_agent_maturity_path(path: str) -> bool:
     return path == AGENT_MATURITY_READ_PREFIX or path.startswith(AGENT_MATURITY_READ_PREFIX + "/")
 
 
+MATURITY_BOUND_S = 3.0
+
+
+def _dispatch_maturity_bounded(
+    method: str, path: str, api: Optional[ReadOnlyAgentRuntimeAPI] = None,
+    *, timeout_s: float = MATURITY_BOUND_S,
+) -> Tuple[int, dict]:
+    """Never hold a dashboard semaphore slot while Postgres/repo scan hangs."""
+    from lib.cc_request_bound import run_bounded
+
+    try:
+        return run_bounded(_dispatch_maturity, method, path, api, timeout_s=timeout_s)
+    except TimeoutError:
+        timeout_body = zero_authority_envelope(
+            "timeout",
+            f"agent-maturity exceeded {timeout_s:.0f}s bound",
+        )
+        if api is None:
+            return 503, timeout_body
+        # Live reader hung — fail-soft to repository evidence, also bounded.
+        try:
+            status, body = run_bounded(
+                _dispatch_maturity, method, path, None,
+                timeout_s=min(1.5, timeout_s),
+            )
+        except (TimeoutError, Exception):
+            return 503, timeout_body
+        if isinstance(body, dict):
+            body = dict(body)
+            body["degraded"] = True
+            body["detail"] = "live maturity reader exceeded bound; repository evidence only"
+        return status, body
+
+
 def _dispatch_maturity(method: str, path: str, api: Optional[ReadOnlyAgentRuntimeAPI] = None) -> Tuple[int, dict]:
     from .maturity_observability import maturity_agent_payload, maturity_payload, maturity_summary_payload
 
@@ -161,7 +195,7 @@ def dispatch(
 
     if _is_agent_maturity_path(path):
         try:
-            return _dispatch_maturity(method, path, api)
+            return _dispatch_maturity_bounded(method, path, api)
         except Exception:
             return 503, zero_authority_envelope("not_connected", "agent-maturity read API is unavailable")
 

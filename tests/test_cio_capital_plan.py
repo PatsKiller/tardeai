@@ -124,7 +124,7 @@ def test_stance_precedence():
     assert cp.stance_for("B", queue) == "EXIT"
     assert cp.stance_for("A", queue) == "TRIM"
     assert cp.stance_for("D", queue) == "ADD"
-    assert cp.stance_for("C", queue) == "RE_ENTER"  # reentry state
+    assert cp.stance_for("C", queue) == "REVIEW"  # readiness ≠ re-entry authority
     assert cp.stance_for("ZZZ", queue) == "HOLD"
 
 
@@ -150,11 +150,12 @@ def test_sources_trims_and_exits():
         {"symbol": "NVDA", "verdict": "EXIT", "source": "advisory"},
     ]}
     src = cp.build_capital_sources(_positions(), queue=queue)
-    # V trim 10% of 40k = 4k; NVDA exit = full 60k
-    assert src["trims_usd"] == 4_000.0
+    # Advisory TRIM with no verified objective => $0 (scenario-only).
+    # NVDA exit = full 60k.
+    assert src["trims_usd"] == 0.0
     assert src["exits_usd"] == 60_000.0
-    assert src["total_raise_usd"] == 64_000.0
-    assert len(src["trims"]) == 1 and src["trims"][0]["symbol"] == "V"
+    assert src["total_raise_usd"] == 60_000.0
+    assert src["trims"] == []
     assert len(src["exits"]) == 1 and src["exits"][0]["symbol"] == "NVDA"
 
 
@@ -167,12 +168,45 @@ def test_sources_maturities_positive_only():
     src = cp.build_capital_sources(_positions(), redeploy_open_events=events)
     assert src["maturities_usd"] == 5_000.0
     assert len(src["maturities_distributions"]) == 1
+    # Phase 2: earmarked redeploy is NOT part of total_raise
+    assert src["earmarked_redeploy_usd"] == 5_000.0
+    assert src["total_raise_usd"] == 0.0
+    assert src["total_prospective_raise_usd"] == 0.0
+    assert src["double_count_guard"] == "earmarked_redeploy_excluded_from_raise"
+    assert src["maturities_distributions"][0]["already_in_cash"] is True
 
 
 def test_sources_empty():
     src = cp.build_capital_sources(_positions())
     assert src["total_raise_usd"] == 0.0
     assert src["trims"] == [] and src["exits"] == [] and src["maturities_distributions"] == []
+
+
+def test_sources_maturities_excluded_from_raise_even_with_trims():
+    """Phase 2 double-count fix: total_raise = trims+exits only."""
+    queue = {"items": [{"symbol": "V", "verdict": "TRIM", "source": "cio"}]}
+    events = [{"event_id": 9, "symbol": "AAPL", "remaining_usd": 50_000.0}]
+    src = cp.build_capital_sources(
+        _positions(), queue=queue, redeploy_open_events=events, cash_total=100_000.0,
+    )
+    # Advisory TRIM with no objective => $0; maturity is excluded from raise.
+    assert src["trims_usd"] == 0.0
+    assert src["maturities_usd"] == 50_000.0
+    assert src["earmarked_redeploy_usd"] == 50_000.0
+    assert src["total_prospective_raise_usd"] == 0.0
+    assert src["total_raise_usd"] == 0.0  # NOT 54_000 and NOT 4_000
+    assert src["double_count_guard"] == "earmarked_redeploy_excluded_from_raise"
+
+
+def test_sources_earmark_capped_to_cash():
+    events = [{"event_id": 1, "symbol": "X", "remaining_usd": 200_000.0}]
+    src = cp.build_capital_sources(
+        _positions(), redeploy_open_events=events, cash_total=50_000.0,
+    )
+    assert src["maturities_raw_usd"] == 200_000.0
+    assert src["maturities_usd"] == 50_000.0
+    assert src["maturities_capped_to_cash"] is True
+    assert src["total_raise_usd"] == 0.0
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -199,7 +233,8 @@ def test_uses_reentry_and_new_positions():
     ]}
     posture = cp.cash_posture(100_000.0, 500_000.0, min_pct=20.0)
     uses = cp.build_capital_uses(queue, [], [], posture, 500_000.0)
-    assert uses["reentry_usd"] == cp.NEW_POSITION_DEFAULT_USD * 2  # AA + CC
+    # READY TO REVIEW is not re-entry authority: only explicit RE_ENTER deploys.
+    assert uses["reentry_usd"] == cp.NEW_POSITION_DEFAULT_USD * 1  # CC only
     assert uses["new_positions_usd"] == cp.NEW_POSITION_DEFAULT_USD  # BB
 
 
@@ -264,10 +299,11 @@ def test_build_capital_plan_arithmetic_sums():
         queue={"items": [{"symbol": "V", "verdict": "TRIM", "source": "cio"},
                          {"symbol": "TSLA", "verdict": "ADD", "source": "advisory"}]},
     )
-    # trim V = 4k; add TSLA = 5k; deploy = min(5k, investable 0 + raise 4k) = 4k
-    assert plan["capital_sources"]["total_raise_usd"] == 4_000.0
-    assert plan["net_recommended_raise_usd"] == 4_000.0
-    assert plan["net_recommended_deploy_usd"] == 4_000.0
+    # advisory TRIM with no objective => $0; add TSLA = 5k; deploy = min(5k,
+    # investable 0 + raise 0) = 0 (cash at floor is not force-deployed).
+    assert plan["capital_sources"]["total_raise_usd"] == 0.0
+    assert plan["net_recommended_raise_usd"] == 0.0
+    assert plan["net_recommended_deploy_usd"] == 0.0
     assert plan["post_plan_cash_usd"] == 100_000.0
     assert plan["post_plan_cash_pct"] == 20.0
 
@@ -369,7 +405,8 @@ def test_position_decisions_trim_delta():
     rows = cp.build_position_decisions(
         _positions(), queue=queue, portfolio_value=500_000.0)
     v = next(r for r in rows if r["symbol"] == "V")
-    assert v["recommended_delta_usd"] == -4_000.0  # 10% of 40k
+    # V is 8% (below policy/fire): no objective => $0, scenario-only.
+    assert v["recommended_delta_usd"] == 0.0
 
 
 def test_position_decisions_hold_default():
@@ -431,3 +468,320 @@ def test_build_capital_plan_from_sources_fails_soft():
     assert plan["cash_total_usd"] == 0.0
     assert plan["net_recommended_deploy_usd"] == 0.0
     assert plan["digest"]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Phase 2 — double-count guard + cash ledger invariants
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_phase2_redeploy_not_double_counted_in_deployable():
+    """Open redeploy remaining is already in cash; must not inflate deployable twice.
+
+    Scenario mirrors Phase 0 live bug shape:
+      cash 578k, earmark ~560k (inside cash), trim/exit raise ~63k
+    Old: total_raise = 623k, deployable = investable + 623k  (double-count)
+    New: total_raise = 63k,  deployable = investable + 63k
+    """
+    cash = 578_107.50
+    value = 1_282_425.99
+    # reserve at ~20% default ≈ 256485.20; investable ≈ 321622.30
+    earmark = 560_009.02
+    prospective = 63_000.0  # trims+exits only
+    events = [{"event_id": 1, "symbol": "MATURE", "remaining_usd": earmark}]
+    # One EXIT of 63k to create prospective raise without relying on trim math
+    positions = [
+        {"symbol": "EXITME", "market_value": prospective, "account": "schwab_rollover_ira"},
+        {"symbol": "HOLD", "market_value": 100_000.0, "account": "schwab_taxable"},
+    ]
+    queue = {"items": [{"symbol": "EXITME", "verdict": "EXIT", "source": "cio"}]}
+    plan = cp.build_capital_plan(
+        portfolio_value=value, cash_total=cash,
+        positions=positions, queue=queue, redeploy_open_events=events,
+    )
+    assert plan["plan_version"].startswith("capital_plan_1.")
+    assert plan["capital_sources"]["maturities_usd"] == earmark
+    assert plan["capital_sources"]["earmarked_redeploy_usd"] == earmark
+    assert plan["capital_sources"]["total_raise_usd"] == prospective
+    assert plan["capital_sources"]["total_prospective_raise_usd"] == prospective
+    assert plan["net_recommended_raise_usd"] == prospective
+    # deployable must NOT be investable + earmark + prospective
+    investable = plan["cash_investable_usd"]
+    assert plan["deployable_usd"] == round(investable + prospective, 2)
+    # Old buggy formula would have been investable + earmark + prospective
+    old_buggy = round(investable + earmark + prospective, 2)
+    assert plan["deployable_usd"] < old_buggy
+    assert plan["cash_ledger"]["invariants_ok"] is True
+    assert all(i["ok"] for i in plan["ledger_invariants"])
+
+
+def test_phase2_cash_ledger_invariants():
+    plan = cp.build_capital_plan(
+        portfolio_value=500_000.0, cash_total=150_000.0,
+        positions=[{"symbol": "V", "market_value": 40_000.0, "account": "schwab_rollover_ira"}],
+        queue={"items": [{"symbol": "V", "verdict": "TRIM", "source": "cio"},
+                         {"symbol": "TSLA", "verdict": "ADD", "source": "advisory"}]},
+        redeploy_open_events=[{"event_id": 1, "remaining_usd": 40_000.0}],
+    )
+    ledger = plan["cash_ledger"]
+    assert ledger["settled_cash_usd"] == 150_000.0
+    assert ledger["earmarked_redeploy_usd"] == 40_000.0
+    assert ledger["free_unearmarked_usd"] == 110_000.0
+    assert ledger["prospective_raise_usd"] == 0.0
+    assert ledger["invariants_ok"] is True
+    names = {i["name"] for i in ledger["invariants"]}
+    assert names == {
+        "earmark_le_cash",
+        "investable_eq_cash_minus_reserve",
+        "post_cash_identity",
+        "deploy_le_investable_plus_prospective",
+    }
+    # post cash identity: cash + prospective - deploy
+    assert abs(
+        plan["post_plan_cash_usd"]
+        - (plan["cash_total_usd"] + plan["net_recommended_raise_usd"]
+           - plan["net_recommended_deploy_usd"])
+    ) < 0.02
+
+
+def test_phase2_account_cash_breakdown():
+    rows = [
+        {"symbol": "CASH", "is_cash": True, "market_value": 500.0, "account": "moomoo"},
+        {"symbol": "CASH", "is_cash": True, "market_value": 37_894.31, "account": "schwab_taxable"},
+        {"symbol": "NVDA", "market_value": 10_000.0, "account": "schwab_taxable"},
+    ]
+    ac = cp.account_cash_breakdown(rows)
+    assert ac == [
+        {"account": "moomoo", "settled_cash_usd": 500.0},
+        {"account": "schwab_taxable", "settled_cash_usd": 37_894.31},
+    ]
+
+
+def test_phase2_live_shape_578k_regeneration():
+    """First-principles regen of Phase 0 reported cash layers (no DB).
+
+    Phase 0 live report (buggy v1.0.0):
+      cash 578107.50, reserved 256485.20, investable 321622.30,
+      raise 623009.02 (included maturities), deploy 603114.70
+
+    Correct v1.1.0 with earmark 560009.02 and prospective 63000:
+      raise = 63000 only; deployable = investable + 63000 (not +560k again)
+    """
+    cash = 578_107.50
+    value = 1_282_425.99  # cash + equities shape from Phase 0
+    reserved = round(value * 20.0 / 100.0, 2)  # default 20% band
+    investable = round(max(0.0, cash - reserved), 2)
+    assert reserved == 256_485.20
+    assert investable == 321_622.30
+
+    earmark = 560_009.02
+    prospective = 63_000.0  # 623009.02 - 560009.02 from Phase 0 fixtures
+    events = [{"event_id": 1, "symbol": "REDEPLOY", "remaining_usd": earmark}]
+    positions = [
+        {"symbol": "EXITME", "market_value": prospective, "account": "schwab_rollover_ira"},
+    ]
+    # Large deploy request to surface deployable cap (not force-deploy)
+    queue = {"items": [
+        {"symbol": "EXITME", "verdict": "EXIT", "source": "cio"},
+        *[{"symbol": f"ADD{i}", "verdict": "ADD", "source": "advisory"} for i in range(80)],
+    ]}
+    plan = cp.build_capital_plan(
+        portfolio_value=value, cash_total=cash,
+        positions=positions, queue=queue, redeploy_open_events=events,
+        account_cash=[
+            {"account": "moomoo_taxable_live", "settled_cash_usd": 500.0},
+            {"account": "alpaca_taxable_live", "settled_cash_usd": 5_000.0},
+            {"account": "schwab_taxable", "settled_cash_usd": 37_894.31},
+            {"account": "schwab_roth", "settled_cash_usd": 1_469.22},
+            {"account": "schwab_rollover_ira", "settled_cash_usd": 533_243.97},
+        ],
+    )
+    assert plan["cash_total_usd"] == cash
+    assert plan["cash_reserved_usd"] == reserved
+    assert plan["cash_investable_usd"] == investable
+    assert plan["cash_earmarked_redeploy_usd"] == earmark
+    assert plan["net_recommended_raise_usd"] == prospective
+    # Correct deployable (NOT 321622 + 623009)
+    assert plan["deployable_usd"] == round(investable + prospective, 2)
+    assert plan["deployable_usd"] == 384_622.30
+    # Old buggy deployable would be ~944k
+    old_buggy_deployable = round(investable + earmark + prospective, 2)
+    assert old_buggy_deployable == 944_631.32
+    assert plan["net_recommended_deploy_usd"] <= plan["deployable_usd"] + 0.02
+    assert plan["cash_ledger"]["invariants_ok"] is True
+    # Account cash sums to settled cash
+    assert abs(sum(a["settled_cash_usd"] for a in plan["cash_ledger"]["account_cash"]) - cash) < 0.02
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# G7 — full ledger identities
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_g7_required_invariants_missing_operands_fail():
+    from scripts.lib.cio_capital_invariants import (
+        REQUIRED_CAPITAL_INVARIANTS,
+        evaluate_capital_invariants,
+    )
+    assert len(REQUIRED_CAPITAL_INVARIANTS) == 14
+    assert REQUIRED_CAPITAL_INVARIANTS[0] == "sum_account_cash_eq_portfolio_cash"
+    assert "authority_read_only_advisory" in REQUIRED_CAPITAL_INVARIANTS
+    recs = evaluate_capital_invariants({})
+    assert [r["name"] for r in recs] == list(REQUIRED_CAPITAL_INVARIANTS)
+    assert all(r["pass"] is False for r in recs)
+    for r in recs:
+        for key in ("name", "lhs", "rhs", "residual", "tolerance", "pass"):
+            assert key in r
+
+
+def test_g7_consistent_full_book_passes():
+    from scripts.lib.cio_capital_invariants import (
+        capital_invariants_ok,
+        evaluate_capital_invariants,
+    )
+    plan = cp.build_capital_plan(
+        portfolio_value=200_000.0,
+        cash_total=50_000.0,
+        positions=[{"symbol": "AAA", "market_value": 150_000.0, "account": "ira"}],
+        account_cash=[{"account": "ira", "settled_cash_usd": 50_000.0}],
+        queue=None,
+    )
+    recs = evaluate_capital_invariants(plan)
+    failed = [r["name"] for r in recs if not r["pass"]]
+    assert failed == []
+    assert capital_invariants_ok(plan) is True
+    assert plan.get("capital_invariants_ok") is True
+    ops = cp.capital_invariant_operands(plan)
+    assert ops["cash"] == 50_000.0
+    assert ops["reserve"] == 40_000.0
+
+
+def test_g7_earmark_over_cash_fails():
+    from scripts.lib.cio_capital_invariants import evaluate_capital_invariants
+    recs = evaluate_capital_invariants({
+        "authority": "READ_ONLY_ADVISORY",
+        "portfolio_value_usd": 1000.0,
+        "cash_total_usd": 100.0,
+        "cash_reserved_usd": 20.0,
+        "cash_investable_usd": 80.0,
+        "cash_earmarked_redeploy_usd": 500.0,
+        "net_recommended_deploy_usd": 0.0,
+        "net_recommended_raise_usd": 0.0,
+        "deployable_usd": 80.0,
+        "post_plan_cash_usd": 100.0,
+        "capital_sources": {
+            "trims_usd": 0.0,
+            "exits_usd": 0.0,
+            "maturities_usd": 500.0,
+            "earmarked_redeploy_usd": 500.0,
+            "total_prospective_raise_usd": 0.0,
+            "total_raise_usd": 0.0,
+        },
+        "account_capital_ledger": {
+            "accounts": [{
+                "account": "a",
+                "settled_cash_usd": 100.0,
+                "positions_mv_usd": 900.0,
+                "post_plan_cash_usd": 100.0,
+            }],
+        },
+    })
+    by = {r["name"]: r for r in recs}
+    assert by["earmark_le_settled_cash"]["pass"] is False
+    assert by["authority_read_only_advisory"]["pass"] is True
+
+
+def test_g7_double_count_and_prospective_inclusion_fail():
+    from scripts.lib.cio_capital_invariants import evaluate_capital_invariants
+    recs = evaluate_capital_invariants({
+        "authority": "READ_ONLY_ADVISORY",
+        "portfolio_value_usd": 200.0,
+        "cash_total_usd": 100.0,
+        "cash_reserved_usd": 20.0,
+        "cash_investable_usd": 80.0,
+        "cash_earmarked_redeploy_usd": 50.0,
+        "net_recommended_deploy_usd": 0.0,
+        "net_recommended_raise_usd": 60.0,
+        "deployable_usd": 190.0,  # investable + earmark + inflated prospective
+        "post_plan_cash_usd": 160.0,
+        "capital_sources": {
+            "trims_usd": 10.0,
+            "exits_usd": 0.0,
+            "maturities_usd": 50.0,
+            "earmarked_redeploy_usd": 50.0,
+            "total_prospective_raise_usd": 60.0,  # includes earmark
+            "total_raise_usd": 60.0,
+        },
+        "account_capital_ledger": {
+            "accounts": [{
+                "account": "a",
+                "settled_cash_usd": 100.0,
+                "positions_mv_usd": 100.0,
+                "post_plan_cash_usd": 160.0,
+            }],
+        },
+    })
+    by = {r["name"]: r for r in recs}
+    assert by["no_capital_source_double_count"]["pass"] is False
+    assert by["prospective_raise_excludes_earmarked_existing_cash"]["pass"] is False
+    assert by["prospective_raise_excludes_realized_historical_proceeds"]["pass"] is False
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# P3.15 — deploy request labeling / reconciliation
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_p315_deploy_request_reconciles_and_labels_notional_rotation():
+    posture = cp.cash_posture(100_000.0, 500_000.0, min_pct=20.0)
+    opps = [
+        {"sector": "Energy", "state": "IMPROVING", "opportunity": True,
+         "current_exposure_pct": 4.0, "target_posture_pct": 5.0,
+         "recommendation": "STAGED_DEPLOYMENT"},
+    ]
+    queue = {"items": [{"symbol": "TSLA", "verdict": "ADD", "source": "advisory"}]}
+    uses = cp.build_capital_uses(queue, [], opps, posture, 500_000.0)
+    assert uses["adds_usd"] == cp.NEW_POSITION_DEFAULT_USD
+    assert uses["sector_rotation_usd"] == 5_000.0
+    assert uses["fundable_deploy_request_usd"] == uses["adds_usd"]
+    assert uses["notional_sector_rotation_usd"] == 5_000.0
+    assert uses["total_deploy_request_usd"] == round(
+        uses["fundable_deploy_request_usd"] + uses["notional_sector_rotation_usd"], 2
+    )
+    assert uses["deploy_request_reconciled"] is True
+    assert uses["reserve_excluded_from_deploy_request"] is True
+    assert uses["reserve"] == posture["reserve_usd"]
+    # Reserve must NOT be inside the total.
+    assert uses["total_deploy_request_usd"] != round(
+        uses["total_deploy_request_usd"] + uses["reserve"], 2
+    )
+    assert "notional" in uses["component_labels"]["sector_rotation_usd"].lower()
+    assert uses["sector_rotation"][0]["notional"] is True
+
+
+def test_p315_deploy_vs_investable_cash_gap_labeled():
+    # Large raise + large deploy request → recommended deploy can exceed investable.
+    plan = cp.build_capital_plan(
+        portfolio_value=500_000.0,
+        cash_total=110_000.0,  # investable = 10k (reserve 100k)
+        positions=[
+            {"symbol": "EXITME", "market_value": 40_000.0, "account": "schwab_rollover_ira"},
+        ],
+        queue={"items": [
+            {"symbol": "EXITME", "verdict": "EXIT", "source": "cio"},
+            {"symbol": "TSLA", "verdict": "ADD", "source": "advisory"},
+            {"symbol": "NVDA", "verdict": "ADD", "source": "advisory"},
+            {"symbol": "AAPL", "verdict": "ADD", "source": "advisory"},
+        ]},
+    )
+    funding = plan["deploy_funding"]
+    assert funding["investable_cash_usd"] == 10_000.0
+    assert funding["prospective_raise_usd"] == 40_000.0
+    assert funding["recommended_deploy_usd"] > funding["investable_cash_usd"]
+    assert funding["deploy_exceeds_investable_cash"] is True
+    assert funding["gap_vs_investable_cash_usd"] == round(
+        funding["recommended_deploy_usd"] - funding["investable_cash_usd"], 2
+    )
+    assert funding["gap_covered_by_prospective_raise"] is True
+    assert "exceeds investable cash" in funding["note"].lower()
+    # Surface labels for command center
+    uses = plan["capital_uses"]
+    assert "notional" in uses["component_labels"]["sector_rotation_usd"].lower()
+    assert "held" in uses["component_labels"]["reserve"].lower()

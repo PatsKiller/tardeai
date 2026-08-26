@@ -1,5 +1,9 @@
 # Advisory Desk v1 — Documentation Index
 
+**CURRENT OPERATOR TRUTH (living sheet, R6.8 — not R7):**  
+[`docs/investment-office/CIO_AND_ADVISORY_LIVING_STATUS.md`](../../investment-office/CIO_AND_ADVISORY_LIVING_STATUS.md)  
+This sheet overrides older Advisory phase write-ups when they disagree. Drive: same filename, replaced in place.
+
 **Branch:** `feature/advisory-desk-v1`  
 **Flag:** `ADVISORY_DESK_V1` (enabled 2026-08-12 in `config/advisory_desk.yaml`; systemd timer live via drop-in)  
 **Authority:** READ_ONLY_ADVISORY throughout  

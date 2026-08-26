@@ -26,6 +26,14 @@ from .definitions import FLEET
 BANNER = "AGENT RUNTIME BOUNDED RUNNER — PREPARE-ONLY / DEFAULT-DISABLED"
 EX_CONFIG = 78
 EX_NOPERM = 77
+EX_OK = 0
+
+# Timer inventory historically used watch-pipeline aliases. Map them to fleet ids
+# so a scheduled oneshot is no-work rather than CONFIG failure.
+AGENT_ALIASES = {
+    "tax_agent": "ledger",
+    "guardian": "risk_agent",
+}
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -39,11 +47,22 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     print(BANNER)
-    if args.agent not in FLEET:
-        print(f"unknown agent: {args.agent}", file=sys.stderr)
-        return EX_CONFIG
-    spec = FLEET[args.agent]
-    print(f"agent={spec.agent_id} state={spec.definition.deployment_state.value} enabled={spec.definition.enabled}")
+    requested = str(args.agent or "").strip()
+    resolved = AGENT_ALIASES.get(requested, requested)
+    if resolved not in FLEET:
+        # Timer fired for a name that is not in the governed fleet. That is
+        # no-work, not a crash — systemd must not enter failed.
+        print(
+            f"no-work: unknown agent {requested!r} (not in fleet). "
+            "Timer inventory exceeds FLEET; exit 0.",
+            file=sys.stderr,
+        )
+        return EX_OK
+    spec = FLEET[resolved]
+    print(
+        f"agent={spec.agent_id} requested={requested} "
+        f"state={spec.definition.deployment_state.value} enabled={spec.definition.enabled}"
+    )
 
     if os.environ.get("AGENT_RUNTIME_OPERATOR_AUTH") != "1":
         print(
@@ -52,8 +71,13 @@ def main(argv: list[str] | None = None) -> int:
         )
         return EX_NOPERM
     if not spec.is_operable_now:
-        print(f"refusing to run: {spec.agent_id} is disabled / not SHADOW-operable.", file=sys.stderr)
-        return EX_NOPERM
+        # DESIGNED / disabled wave-2 agents have timers. Expected no-work.
+        print(
+            f"no-work: {spec.agent_id} is disabled / not SHADOW-operable "
+            f"(state={spec.definition.deployment_state.value}).",
+            file=sys.stderr,
+        )
+        return EX_OK
 
     queue_backend = os.environ.get("AGENT_RUNTIME_QUEUE_MODULE")
     if not queue_backend:

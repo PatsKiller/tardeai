@@ -1,0 +1,151 @@
+{
+  "schema": "M2SubstrateBenchmark@v2",
+  "authority": "READ_ONLY_ADVISORY",
+  "production_sql_applied": false,
+  "isolated_dsn_port": 55432,
+  "built_in_tstzrange": true,
+  "transaction_time_db_owned": true,
+  "row_kind": "DERIVED_FROM_upper_inf(tx_period)",
+  "predicate_temporal_policy": true,
+  "exclusion_scope": "SINGLE_VALUED_CURRENT_only",
+  "golden": {
+    "cases": 200,
+    "hits": 200,
+    "Recall@1": 1.0,
+    "Recall@5": 1.0,
+    "Recall@10": 1.0,
+    "MRR": 1.0,
+    "nDCG": 1.0,
+    "note": "in-process oracle; not LongMemEval live retrieval quality"
+  },
+  "titan": "DISABLED_BY_DEFAULT",
+  "financial_action": false,
+  "lanes": {
+    "A_native_postgres": {
+      "status": "MEASURED",
+      "schema": "memory_r10_m2_v2"
+    },
+    "B_pgvector": {
+      "status": "MEASURED",
+      "HNSW": "INDEX_CREATED",
+      "IVFFLAT": "INDEX_CREATED",
+      "exact_vector": "synthetic-local",
+      "overfetch_10x": false,
+      "threshold_0_75": false,
+      "titan": "DISABLED"
+    },
+    "C_pgmnemo": {
+      "target_stable": "0.20.0",
+      "source": "https://github.com/pgmnemo/pgmnemo/releases/tag/v0.20.0",
+      "official_ci": "PostgreSQL 17 blocking; 14-16 aspirational",
+      "isolated_pg": "16.15",
+      "installed": true,
+      "status": "MEASURED",
+      "reason": "Installs and BM25-recalls as a lesson corpus. Not Trade AI MemoryFact@v2: vector(1024) vs LOCAL_ONLY nomic 768; project_id int / topic text vs issuer/security/listing GUIDs; t_valid_from/to vs tstzrange; no composite tenant FK.",
+      "ingest_recall": {
+        "lesson_id": 4,
+        "recall_rows": 3
+      },
+      "embedding_dim": "vector(1024)",
+      "implements_memory_fact_v2": false,
+      "security_guid_spine": false,
+      "composite_tenant_fk": false,
+      "tstzrange": false,
+      "version": "0.20.0",
+      "viable_as_canonical_fact_store": false
+    }
+  },
+  "tenant": {
+    "leakage_count": 0,
+    "leaks": [],
+    "cross_tenant_read": 0,
+    "missing_tenant_fail_closed": true,
+    "pool_reuse_isolated": true,
+    "rls_force": true,
+    "composite_fk": true,
+    "owner_bypass": "FORCE_RLS_ON",
+    "agent_bypassrls": false,
+    "security_definer": "write_fact_version_only"
+  },
+  "agent_role": {
+    "connected": true,
+    "wrote_via_function": true,
+    "direct_insert_blocked": true,
+    "bypassrls": false,
+    "superuser": false
+  },
+  "exclusion": {
+    "overlap_rejected": true,
+    "open_current_single_valued": 1,
+    "exclusive_ok": true,
+    "multi_valued_allowed": true,
+    "concurrency_winner": "exclusion_constraint+db_owned_tx",
+    "adjudication_normalized": true,
+    "provenance_normalized": true
+  },
+  "plans": {
+    "as_known_now": {
+      "node_type": "Index Scan",
+      "index_name": "fact_current_idx",
+      "actual_ms": 0.008,
+      "shared_hits": 3,
+      "plan_snippet": "{\"Node Type\": \"Index Scan\", \"Parallel Aware\": false, \"Async Capable\": false, \"Scan Direction\": \"Forward\", \"Index Name\": \"fact_current_idx\", \"Relation Name\": \"memory_fact_version\", \"Alias\": \"memory_fact_version\", \"Startup Cost\": 0.14, \"Total Cost\": 8.17, \"Plan Rows\": 1, \"Plan Width\": 16, \"Actual Startup Time\": 0.005, \"Actual Total Time\": 0.008, \"Actual Rows\": 3, \"Actual Loops\": 1, \"Index Cond\": \"(tenant_id = 'tradeai:tenant:primary'::text)\", \"Rows Removed by Index Recheck\": 0, \"Filter\": \"(valid_period @> clock_timestamp())\", \"Rows Removed by Filter\": 0, \"Shared Hit Blocks\": 3, \"Shared Read Blocks\": 0, \"Shared Dirtied Blocks\": 0, \"Shared Written Blocks\": 0, \"Local Hit Blocks\": 0, \"Local Read Blocks\": 0, \"Local Dirtied Blocks\": 0, \"Local Written Blocks\": 0, \"Temp Read Blocks\": 0, \"Temp Writte"
+    },
+    "valid_overlap": {
+      "node_type": "Index Scan",
+      "index_name": "fact_valid_spgist",
+      "actual_ms": 0.008,
+      "shared_hits": 2,
+      "plan_snippet": "{\"Node Type\": \"Index Scan\", \"Parallel Aware\": false, \"Async Capable\": false, \"Scan Direction\": \"Forward\", \"Index Name\": \"fact_valid_spgist\", \"Relation Name\": \"memory_fact_version\", \"Alias\": \"memory_fact_version\", \"Startup Cost\": 0.14, \"Total Cost\": 8.16, \"Plan Rows\": 1, \"Plan Width\": 16, \"Actual Startup Time\": 0.006, \"Actual Total Time\": 0.008, \"Actual Rows\": 4, \"Actual Loops\": 1, \"Index Cond\": \"(valid_period && '[\\\"2026-01-01 00:00:00+00\\\",\\\"2026-12-01 00:00:00+00\\\")'::tstzrange)\", \"Rows Removed by Index Recheck\": 0, \"Filter\": \"(tenant_id = 'tradeai:tenant:primary'::text)\", \"Rows Removed by Filter\": 1, \"Shared Hit Blocks\": 2, \"Shared Read Blocks\": 0, \"Shared Dirtied Blocks\": 0, \"Shared Written Blocks\": 0, \"Local Hit Blocks\": 0, \"Local Read Blocks\": 0, \"Local Dirtied Blocks\": 0, \"Local Wri"
+    },
+    "tx_contains": {
+      "node_type": "Index Scan",
+      "index_name": "fact_tx_gist",
+      "actual_ms": 0.004,
+      "shared_hits": 1,
+      "plan_snippet": "{\"Node Type\": \"Index Scan\", \"Parallel Aware\": false, \"Async Capable\": false, \"Scan Direction\": \"Forward\", \"Index Name\": \"fact_tx_gist\", \"Relation Name\": \"memory_fact_version\", \"Alias\": \"memory_fact_version\", \"Startup Cost\": 0.14, \"Total Cost\": 8.16, \"Plan Rows\": 1, \"Plan Width\": 16, \"Actual Startup Time\": 0.004, \"Actual Total Time\": 0.004, \"Actual Rows\": 0, \"Actual Loops\": 1, \"Index Cond\": \"(tx_period @> '2026-06-01 00:00:00+00'::timestamp with time zone)\", \"Rows Removed by Index Recheck\": 0, \"Filter\": \"(tenant_id = 'tradeai:tenant:primary'::text)\", \"Rows Removed by Filter\": 0, \"Shared Hit Blocks\": 1, \"Shared Read Blocks\": 0, \"Shared Dirtied Blocks\": 0, \"Shared Written Blocks\": 0, \"Local Hit Blocks\": 0, \"Local Read Blocks\": 0, \"Local Dirtied Blocks\": 0, \"Local Written Blocks\": 0, \"Temp Rea"
+    },
+    "gist_valid": true,
+    "gist_tx": true,
+    "spgist_valid": true,
+    "btree_metadata": true,
+    "claim_temporal_before_vector": "NOT_CLAIMED_WITHOUT_PLAN"
+  },
+  "scale_1k": {
+    "n": 1000,
+    "write_s": 5.77,
+    "write_p50_est_ms": 5.77,
+    "read_ms": 4.782,
+    "current_rows": 1000
+  },
+  "scale_10k": {
+    "n": 10000,
+    "write_s": 56.468,
+    "write_p50_est_ms": 5.647,
+    "read_ms": 45.238,
+    "current_rows": 10000
+  },
+  "scale_100k": "NOT_RUN",
+  "scale_1M": "NOT_RUN",
+  "retrieval": {
+    "HNSW": "INDEX_CREATED",
+    "IVFFLAT": "INDEX_CREATED",
+    "exact_vector": "synthetic-local",
+    "overfetch_10x": false,
+    "threshold_0_75": false,
+    "titan": "DISABLED"
+  },
+  "tx_time_semantics": {
+    "selected": "statement_timestamp()+version_seq",
+    "rejected": [
+      "caller_tx_from",
+      "transaction_timestamp_for_multi_write_tx",
+      "clock_timestamp_as_sole_order"
+    ],
+    "reason": "one client statement = one version event; version_seq is collision-safe"
+  },
+  "storage_decision": "POSTGRES_PGVECTOR",
+  "provisional": false,
+  "neo4j_decision": "POSTGRES_SUFFICIENT",
+  "similarity_candidate_only": true
+}

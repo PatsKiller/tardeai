@@ -1,0 +1,7 @@
+{
+  "schema": "R15_2OpenPrReconciliation@v1",
+  "pr505": {"state": "OPEN", "title": "feat(memory): non-authoritative Postgres/pgvector production shadow", "merged": false, "note": "production SQL not authorized"},
+  "pr507": {"state": "OPEN", "title": "docs(ops): R14A source-to-live evidence", "mergeable": true, "changed_files": 6, "note": "stale R14A docs-only; does not block R15.2; not merged here"},
+  "pr508": {"state": "MERGED", "sha": "b1295931f9b5e026df4a7017b7b4347640736b86"},
+  "pr509": {"state": "MERGED", "sha": "d72ecdd13d4fad1e7551597634f326aeb6a03353", "deployed": true}
+}

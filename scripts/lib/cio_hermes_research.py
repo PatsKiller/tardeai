@@ -15,6 +15,7 @@ Storage:
 from __future__ import annotations
 
 import json
+import os
 import re
 import uuid
 from datetime import datetime, timezone
@@ -430,6 +431,7 @@ def enqueue_research_request(
             "symbols": syms[:4],
             "situation_type": st,
             "thesis_version": thesis,
+            "trace_id": str(plan.get("trace_id") or "") or None,
             "priority": pri,
             "reason": (reason or f"Material {st} on {symbol}")[:400],
             "questions": q_norm,
@@ -449,6 +451,18 @@ def enqueue_research_request(
             },
             "provenance": {"operator_forced": bool(operator_forced), "actor_id": actor_id},
         }
+        if symbol and symbol != "BOOK":
+            try:
+                from scripts.lib.research_prompt_context import build_research_prompt_context
+                prompt_context = build_research_prompt_context(
+                    symbol,
+                    question="\n".join(q["text"] for q in q_norm),
+                    root=Path(os.getenv("TRADEAI_ROOT") or Path(__file__).resolve().parents[2]),
+                )
+                request["prompt_context"] = prompt_context
+                request["prompt_context_hash"] = prompt_context.get("prompt_context_hash")
+            except Exception as context_exc:
+                request["prompt_context_status"] = f"UNAVAILABLE:{type(context_exc).__name__}"
         if isinstance(cat_pack, dict):
             request["catalyst"] = cat_pack
             request["catalyst_pack"] = cat_pack
@@ -475,6 +489,19 @@ def enqueue_research_request(
             replace_open=bool(replace_open and operator_forced),
             list_open_by_plan=_list_open_by_plan if replace_open else None,
         )
+        # Backfill the stable trace on older in-flight requests created before
+        # trace propagation existed. This updates the projection and appends an
+        # audit event without creating a duplicate research job.
+        if result.existing is not None and request.get("trace_id") and not result.existing.get("trace_id"):
+            _patch_request(result.research_id, {"trace_id": request["trace_id"]})
+            _append_jsonl(REQUEST_PATH, {
+                "event": "HERMES_RESEARCH_TRACE_ATTACHED",
+                "research_id": result.research_id,
+                "plan_id": pid,
+                "trace_id": request["trace_id"],
+                "symbol": symbol,
+                "authority": AUTHORITY,
+            })
         _log_enqueue(result, pid, pri)
 
         out: dict[str, Any] = {
@@ -509,6 +536,23 @@ def enqueue_research_request(
             out["ttl_seconds"] = result.ttl_seconds
         if result.reuse_miss_reason:
             out["reuse_miss_reason"] = result.reuse_miss_reason
+        # Live-forward IntelligenceLineage@v1 (fail-soft)
+        if result.research_id:
+            try:
+                try:
+                    from lib.intelligence_lineage import attach_research_requested
+                except Exception:
+                    from scripts.lib.intelligence_lineage import attach_research_requested  # type: ignore
+                lin = attach_research_requested(
+                    research_id=str(result.research_id),
+                    symbol=str(request.get("symbol") or symbol),
+                    plan_id=pid,
+                    thesis_version=thesis or None,
+                    fingerprint=str(result.fingerprint or "") or None,
+                )
+                out["lineage_id"] = lin.get("lineage_id")
+            except Exception as lin_exc:
+                out["lineage_error"] = f"{type(lin_exc).__name__}:{lin_exc}"
         return out
     except ValueError as e:
         return {"ok": False, "error": str(e)}
@@ -748,16 +792,17 @@ def _persist_stamped_result(research_id: str, result: dict[str, Any]) -> dict[st
             mark_failed(research_id, "execution_language_in_result")
             return {"ok": False, "error": "execution_language_in_result"}
 
-        as_of = str(result.get("as_of") or result.get("completed_ts") or _now())
         result = dict(result)
+        completed_ts = str(result.get("completed_ts") or _now())
+        as_of = str(result.get("as_of") or completed_ts)
         result.setdefault("schema_version", SCHEMA_RESULT)
         result.setdefault("research_id", research_id)
         result.setdefault("plan_id", req_meta.get("plan_id"))
         result.setdefault("fingerprint", req_meta.get("fingerprint"))
         result.setdefault("status", "completed")
         result.setdefault("authority", AUTHORITY)
+        result["completed_ts"] = completed_ts
         result["as_of"] = as_of
-        result["completed_ts"] = as_of
 
         _append_jsonl(RESULT_PATH, {"event": "HERMES_RESEARCH_COMPLETED", **result})
 
@@ -811,7 +856,28 @@ def _persist_stamped_result(research_id: str, result: dict[str, Any]) -> dict[st
             "status": "completed",
             "updated_ts": as_of,
         })
-        return {"ok": True, "result_id": result.get("result_id"), "result": result}
+        lineage_id = None
+        try:
+            try:
+                from lib.intelligence_lineage import attach_research_completed
+            except Exception:
+                from scripts.lib.intelligence_lineage import attach_research_completed  # type: ignore
+            lin = attach_research_completed(
+                research_id=research_id,
+                result_id=str(result.get("result_id") or ""),
+                symbol=str(result.get("symbol") or req_meta.get("symbol") or ""),
+                plan_id=str(pid or "") or None,
+            )
+            lineage_id = lin.get("lineage_id")
+            if lineage_id:
+                result = dict(result)
+                result["lineage_id"] = lineage_id
+        except Exception:
+            lineage_id = None
+        out_ok = {"ok": True, "result_id": result.get("result_id"), "result": result}
+        if lineage_id:
+            out_ok["lineage_id"] = lineage_id
+        return out_ok
     except Exception as e:
         return {"ok": False, "error": f"{type(e).__name__}:{e}"}
 

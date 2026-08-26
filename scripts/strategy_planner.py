@@ -222,7 +222,9 @@ def advise(intent: dict, impact: dict, lane: str | None = None) -> dict:
     cands = _candidates()
     try:
         import llm_lane
-        use = lane or ("grok" if llm_lane.available("grok") else "local")
+        use = lane or ("grok" if llm_lane.available("grok") else "deepseek-flash")
+        if use == "local":
+            raise RuntimeError("POLICY_LOCAL_GENERATIVE_FORBIDDEN")
         prompt = (
             "You are the portfolio CIO/retirement strategist for a disability-optimized book. The operator is "
             "planning a portfolio move and needs a concrete redeploy plan ALIGNED TO GOALS.\n"
@@ -238,7 +240,7 @@ def advise(intent: dict, impact: dict, lane: str | None = None) -> dict:
             "look-through gaps this move opens, and tax/benefit constraints. Be concrete and decision-useful, "
             "8-12 sentences. End with the single highest-priority next action.")
         text = llm_lane.generate(prompt, lane=use, timeout=120)
-        return {"provider": "grok-3-mini" if use == "grok" else "local-gemma", "advice": str(text).strip(),
+        return {"provider": "grok-3-mini" if use == "grok" else "deepseek-v4-flash", "advice": str(text).strip(),
                 "candidates": cands}
     except Exception as e:
         return {"provider": "none", "advice": f"(advisor unavailable: {str(e)[:120]})", "candidates": cands}

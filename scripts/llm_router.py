@@ -1,40 +1,9 @@
 #!/usr/bin/env python3
-"""llm_router.py — Smart LLM routing with fallback hierarchy.
+"""Governed cloud LLM routing for Trade AI production.
 
-Routes requests through provider chain. Task-aware routing.
-Logs everything for cost/quality tracking.
-
-═══ PROVIDER CHAIN (May 2026 — GPU testing phase) ═══════════════════════════
-
-  LOCAL qwen3:1.7b  →  GROK (xAI)  →  CLAUDE (Anthropic)  →  OPENAI
-
-Provider   Speed      Cost/1K   Quality    Best For
-─────────  ─────────  ────────  ─────────  ────────────────────────────────
-Local      Fast       Free      Medium     Routine batch, overnight, tagging
-Grok       Very fast  ~$0.01    Good       Agent analyses, debates, sector alerts
-                                           *** PRIMARY TESTING PROVIDER ***
-Claude     Medium     ~$1.00    Best       Retirement, disability, Roth, CIO synthesis
-OpenAI     Fast       ~$0.50    Good       Last resort only
-
-═══ GPU UPGRADE FAILBACK PLAN ════════════════════════════════════════════════
-
-When qwen3:14b is installed on GPU:
-  1. Set LOCAL_MODEL = "qwen3:14b" in this file OR set in .env:
-       echo "LOCAL_MODEL=qwen3:14b" >> .env
-  2. Grok auto-demotes from primary testing → fallback (code below handles this)
-  3. Local handles: agent_narrative, agent_debate, sector_correlation, sentiment
-  4. Claude remains for: cio_synthesis, retirement, disability (always best)
-  5. Verify: python3 scripts/llm_router.py --test
-
-  REVERT if GPU fails: set LOCAL_MODEL=qwen3:1.7b — Grok auto-promotes back.
-  No other changes needed. Single-line failback.
-
-═══ TASK ROUTING ════════════════════════════════════════════════════════════
-
-  Pre-GPU (qwen3:1.7b):          local → grok → claude
-  Post-GPU (qwen3:14b):          local → claude → grok
-  Retirement/disability:         claude → grok → local (always Claude-first)
-  Sector correlation/debate:     grok → local → claude (Grok fast + good reasoning)
+The production graph contains no local generative provider or fallback. Local
+Ollama is outside this router and may serve only the separately enforced pinned
+nomic embedding contract. Math remains deterministic Python.
 
 Usage:
     from llm_router import get_llm_response
@@ -49,22 +18,15 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 # ── Configuration ──────────────────────────────────────────────────────────
 
-LOCAL_TIMEOUT = 90      # seconds — qwen3:14b agent prompts with RAG context need 60-90s on Intel Arc B580
 CONFIDENCE_THRESHOLD = 0.65
-
-from local_llm_config import get_local_llm_model, get_local_llm_base_url, apply_ollama_runtime_env
-
-apply_ollama_runtime_env()
-
-LOCAL_MODEL = get_local_llm_model()
-
-LOCAL_URL = get_local_llm_base_url().rstrip("/") + "/api/chat"
 DAILY_BUDGET_LIMIT = 1.50  # USD/day — allows cloud fallback when Ollama offline (typical spend ~$0.02/day)
 
-# ── Task routing — auto-adjusts based on LOCAL_MODEL ─────────────────────
+# ── Task routing ─────────────────────────────────────────────────────────
 
 # Governed DeepSeek Flash only for agent watchlist workloads (issue #283 / PR #284).
 # No silent local/Grok/Claude/OpenAI fallback on paid agent tasks.
+# Live chains below never include "local". filter_local_providers is a guardrail
+# if a future table edit tries to add a local generative provider.
 _TASK_ROUTING_PRE_GPU = {
     "agent_narrative":          ["deepseek-flash"],
     "agent_debate":             ["deepseek-flash"],
@@ -98,12 +60,7 @@ _HIGH_IMPACT_ROUTING = {
     "default":              ["deepseek-flash"],
 }
 
-# Select routing table based on current model
-_IS_GPU = LOCAL_MODEL != "qwen3:1.7b" and "1.7b" not in LOCAL_MODEL  # GPU mode if model upgraded from 1.7b
-_TASK_ROUTING = _TASK_ROUTING_POST_GPU if _IS_GPU else _TASK_ROUTING_PRE_GPU
-
-if _IS_GPU:
-    print(f"[llm_router] GPU mode: {LOCAL_MODEL} — Grok demoted to fallback, local is primary")
+_TASK_ROUTING = _TASK_ROUTING_POST_GPU
 
 
 def _load_env():
@@ -118,52 +75,6 @@ def _load_env():
                 if v:
                     keys[k] = v
     return keys
-
-
-def _call_local(prompt: str, max_tokens: int = 800, timeout: int = None) -> dict:
-    """Call local Ollama."""
-    t0 = time.time()
-    _timeout = timeout or LOCAL_TIMEOUT
-    try:
-        # num_ctx: without an explicit value Ollama allocated the model's FULL 131k context
-        # (7.2 GB KV cache for gemma3:4b) — observed 16-25 tok/s on 2026-07-03. Agent prompts
-        # run 0.5-3k tokens; 8k leaves ample headroom at a fraction of the VRAM and prefill
-        # cost. keep_alive pins the model resident between the worker's back-to-back calls
-        # instead of load/unload churn. Both env-tunable.
-        payload = json.dumps({
-            "model": LOCAL_MODEL, "stream": False, "think": False,
-            "messages": [{"role": "user", "content": prompt}],
-            "keep_alive": os.getenv("OLLAMA_KEEP_ALIVE", "30m"),
-            "options": {"temperature": 0.3, "num_predict": max(500, max_tokens),
-                        "num_ctx": int(os.getenv("OLLAMA_NUM_CTX", "8192"))}
-        }).encode()
-        req = urllib.request.Request(LOCAL_URL, data=payload,
-                                     headers={"Content-Type": "application/json"}, method="POST")
-        with urllib.request.urlopen(req, timeout=max(30, _timeout + 20)) as resp:
-            result = json.loads(resp.read())
-            text = result.get("message", {}).get("content", "").strip()
-            latency = round(time.time() - t0, 2)
-            # Diagnostic: capture Ollama internals for Phase 0B analysis
-            eval_count = result.get("eval_count", 0)
-            prompt_eval_count = result.get("prompt_eval_count", 0)
-            eval_dur_s = round(result.get("eval_duration", 0) / 1e9, 2)
-            prompt_eval_dur_s = round(result.get("prompt_eval_duration", 0) / 1e9, 2)
-            total_dur_s = round(result.get("total_duration", 0) / 1e9, 2)
-            tok_per_s = round(eval_count / eval_dur_s, 1) if eval_dur_s > 0 else 0
-            return {
-                "model_used": LOCAL_MODEL, "provider": "local",
-                "response": text, "latency": latency,
-                "success": bool(text and len(text) > 20),
-                "cost_estimate": 0.0,
-                # Phase 0B diagnostics (backward-compatible, ignored by consumers)
-                "eval_count": eval_count, "prompt_eval_count": prompt_eval_count,
-                "eval_duration_s": eval_dur_s, "prompt_eval_duration_s": prompt_eval_dur_s,
-                "total_duration_s": total_dur_s, "tok_per_s": tok_per_s,
-            }
-    except Exception as e:
-        return {"model_used": LOCAL_MODEL, "provider": "local",
-                "response": "", "latency": round(time.time() - t0, 2),
-                "success": False, "error": str(e), "cost_estimate": 0.0}
 
 
 def _call_anthropic(prompt: str, max_tokens: int = 2000) -> dict:
@@ -265,7 +176,6 @@ def _call_grok(prompt: str, max_tokens: int = 2000) -> dict:
 
 
 _PROVIDERS = {
-    "local": _call_local,
     "deepseek-flash": _call_openai,  # → governed deepseek-v4-flash (issue #283)
     "deepseek-v4": _call_deepseek_v4_legacy_rejected,
     "grok": _call_grok,
@@ -306,12 +216,26 @@ def get_llm_response(
 
     # Determine provider order
     if high_impact:
-        providers = _HIGH_IMPACT_ROUTING.get(task_type, _HIGH_IMPACT_ROUTING["default"])
+        providers = list(_HIGH_IMPACT_ROUTING.get(task_type, _HIGH_IMPACT_ROUTING["default"]))
     else:
-        providers = _TASK_ROUTING.get(task_type, _TASK_ROUTING["default"])
+        providers = list(_TASK_ROUTING.get(task_type, _TASK_ROUTING["default"]))
 
     fallback_reasons = []
     total_cost = 0.0
+
+    # Defense in depth: strip any future local-provider table edit.
+    try:
+        from lib.llm_task_policy import filter_local_providers
+        providers, local_skip = filter_local_providers(task_type or "default", providers)
+        if local_skip:
+            fallback_reasons.append(local_skip)
+    except Exception:
+        # Fail closed if policy import fails.
+        if "local" in providers:
+            fallback_reasons.append(
+                "local: POLICY_LOCAL_JUDGMENT_FORBIDDEN (policy module unavailable)"
+            )
+            providers = [p for p in providers if p != "local"]
 
     for provider_name in providers:
         caller = _PROVIDERS.get(provider_name)
@@ -360,10 +284,7 @@ def get_llm_response(
                 fallback_reasons.append(f"{provider_name}: daily budget exceeded (${daily_spend:.2f}/${DAILY_BUDGET_LIMIT:.2f})")
                 continue
 
-        if provider_name == "local":
-            result = caller(prompt, max_tokens=max_tokens, timeout=local_timeout)
-        else:
-            result = caller(prompt, max_tokens=max_tokens)
+        result = caller(prompt, max_tokens=max_tokens)
 
         total_cost += result.get("cost_estimate", 0)
 
@@ -414,19 +335,11 @@ def health_check() -> dict:
     """Test all providers and return availability status."""
     results = {}
 
-    # Local — check model residency via /api/ps (fast, <100ms).
-    # A full generate probe is too slow (~50-60s with qwen3 thinking) for a health endpoint.
-    try:
-        t0 = time.time()
-        ps_req = urllib.request.urlopen("http://localhost:11434/api/ps", timeout=5)
-        ps_data = json.loads(ps_req.read())
-        latency = round(time.time() - t0, 3)
-        resident = [m["name"] for m in ps_data.get("models", [])]
-        alive = LOCAL_MODEL in resident or any(LOCAL_MODEL.split(":")[0] in m for m in resident)
-        results["local"] = {"available": alive, "latency": latency, "model": LOCAL_MODEL,
-                            "resident_models": resident}
-    except Exception as e:
-        results["local"] = {"available": False, "error": str(e)}
+    results["local_generative"] = {
+        "available": False,
+        "policy": "FORBIDDEN",
+        "gpu_mode": "EMBEDDINGS_ONLY_OR_DISABLED",
+    }
 
     # External providers
     keys = _load_env()
@@ -476,15 +389,6 @@ def _log_call(task_type: str, result: dict):
         "fallbacks": fallbacks,
         "high_impact": hi,
     }
-    # Phase 0B: include Ollama diagnostics when available
-    if result.get("eval_count"):
-        entry["ollama_eval_count"] = result["eval_count"]
-        entry["ollama_prompt_eval_count"] = result.get("prompt_eval_count", 0)
-        entry["ollama_eval_duration_s"] = result.get("eval_duration_s", 0)
-        entry["ollama_prompt_eval_dur_s"] = result.get("prompt_eval_duration_s", 0)
-        entry["ollama_total_dur_s"] = result.get("total_duration_s", 0)
-        entry["ollama_tok_per_s"] = result.get("tok_per_s", 0)
-
     try:
         with open(log_file, "a") as f:
             f.write(json.dumps(entry) + "\n")
@@ -497,12 +401,11 @@ def _log_call(task_type: str, result: dict):
 if __name__ == "__main__":
     if "--test" in sys.argv or "--test-grok" in sys.argv:
         print("=== LLM Router Test ===")
-        print(f"LOCAL_MODEL: {LOCAL_MODEL} ({'GPU mode' if _IS_GPU else 'pre-GPU mode'})")
+        print("LOCAL_GENERATIVE: FORBIDDEN")
         print(f"DAILY_BUDGET_LIMIT: ${DAILY_BUDGET_LIMIT:.2f}")
         print()
 
-        # Test 1: Local
-        print("1. Testing local (agent_narrative)...")
+        print("1. Testing governed cloud (agent_narrative)...")
         r = get_llm_response("agent_narrative", "Summarize SCHD as a dividend growth ETF in 2 sentences.", max_tokens=200)
         print(f"   Provider: {r['provider']} | Model: {r['model_used']} | Latency: {r['latency']}s | Cost: ${r.get('cost_estimate',0)}")
         print(f"   Response: {r['response'][:100]}...")
@@ -532,27 +435,21 @@ if __name__ == "__main__":
 
         print("=== Provider Availability ===")
         keys = _load_env()
-        for name, key_name in [("Local Ollama", None), ("Grok (xAI)", "XAI_API_KEY"),
+        for name, key_name in [("Grok (xAI)", "XAI_API_KEY"),
                                 ("Claude", "ANTHROPIC_API_KEY"), ("OpenAI", "OPENAI_API_KEY")]:
-            if key_name is None:
-                print(f"  {name}: AVAILABLE (localhost:{LOCAL_MODEL})")
-            elif keys.get(key_name):
+            if keys.get(key_name):
                 print(f"  {name}: CONFIGURED ✓")
             else:
                 print(f"  {name}: NOT CONFIGURED")
 
         print()
-        print(f"=== GPU Upgrade Status ===")
-        print(f"  Current model: {LOCAL_MODEL}")
-        if _IS_GPU:
-            print(f"  Mode: POST-GPU — local is primary, Grok is fallback")
-        else:
-            print(f"  Mode: PRE-GPU — Grok is primary cloud testing provider")
-            print(f"  To activate GPU: echo 'LOCAL_LLM_MODEL=qwen3:14b' >> .env")
+        print("=== GPU Policy ===")
+        print("  Local generative: FORBIDDEN")
+        print("  Candidate local workload: pinned nomic embeddings only")
 
     elif "--routing" in sys.argv:
         print("=== Current Task Routing ===")
-        print(f"Mode: {'POST-GPU' if _IS_GPU else 'PRE-GPU'} | LOCAL_MODEL: {LOCAL_MODEL}")
+        print("Mode: CLOUD_GENERATIVE_ONLY")
         print()
         for task, chain in _TASK_ROUTING.items():
             print(f"  {task:30} {' → '.join(chain)}")

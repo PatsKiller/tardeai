@@ -13,12 +13,13 @@ section is a RECOMMENDATION tag (WAIT / READY / NEEDS_CONFIRMATION) for the oper
 Alerting: urgency near_entry/ready, or price already inside the entry zone, sends a Telegram alert
 (ticker, zone, limit, reason, urgency). One alert per symbol per day (dedup on alerted_at).
 
-  python3 scripts/watchlist_entry_planner.py [--lane local|grok] [--symbols CIFR,DLR] [--limit 25]
+  python3 scripts/watchlist_entry_planner.py [--lane grok|chatgpt] [--symbols CIFR,DLR] [--limit 25]
 """
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -26,10 +27,8 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
-import os
-os.environ.setdefault("LOCAL_LLM_NUM_PREDICT", "700")   # strict-JSON plans need more than the 300 default
-
 PROMPT_VERSION = "entry_planner_v1"
+CLOUD_LANES = ("grok", "chatgpt")
 
 # ── CURATED PROMPT — same discipline as protection_advisor_v1: role → hard rules → labeled
 # inputs → exact output contract. Identical across lanes so plans are comparable.
@@ -407,37 +406,22 @@ def _live(conn, cur):
         return conn, conn.cursor()
 
 
-def run(lane="local", symbols=None, limit=25, alert=True, scope="watchlist", buy_rated_cap=20):
+def run(lane="grok", symbols=None, limit=25, alert=True, scope="watchlist", buy_rated_cap=20):
     import llm_lane
     from db_adapter import _get_conn
     conn = _get_conn(); cur = conn.cursor()
-    base_lane = lane if llm_lane.available(lane) else "local"
-    # STANDING BEHAVIOR (operator 2026-07-01): buy/strong-conviction names get the OAuth review lane
-    # (Grok) instead of the weak local model — "need oauth review not local". Only kicks in when running
-    # in the default local mode (an explicit --lane grok already routes everything through OAuth); the
-    # low-conviction tail stays local to conserve the OAuth lane. Falls back to local if OAuth is down.
-    oauth_lane = "grok" if llm_lane.available("grok") else None
-    upgrade_conviction = base_lane == "local" and oauth_lane is not None
-    buy_strong_syms = set()
-    if upgrade_conviction:
-        cur.execute("""SELECT DISTINCT upper(symbol) FROM (
-                         SELECT symbol FROM watchlist_research_cards
-                           WHERE upper(latest_recommendation) IN ('BUY','STRONG_BUY','ADD','ADD_ON_PULLBACK')
-                         UNION
-                         SELECT symbol FROM watchlist_final_synthesis
-                           WHERE upper(recommendation) IN ('BUY','STRONG_BUY','ADD','ADD_ON_PULLBACK')
-                         UNION
-                         SELECT symbol FROM (
-                           SELECT DISTINCT ON (symbol) symbol, lower(recommendation_key) rk
-                           FROM yahoo_analyst_targets_history ORDER BY symbol, created_at DESC
-                         ) a WHERE rk IN ('strong_buy','buy')
-                       ) x""")
-        buy_strong_syms = {r[0] for r in cur.fetchall()}
-    done = failed = alerts = oauth_used = 0
+    requested = str(lane or "grok").lower()
+    if requested not in CLOUD_LANES:
+        raise RuntimeError("POLICY_LOCAL_GENERATIVE_FORBIDDEN: use grok or chatgpt")
+    available = [name for name in CLOUD_LANES if llm_lane.available(name)]
+    if not available:
+        raise RuntimeError("CLOUD_LANES_UNAVAILABLE: entry planning failed closed")
+    base_lane = requested if requested in available else available[0]
+    fallback_lane = next((name for name in available if name != base_lane), None)
+    done = failed = alerts = cloud_used = 0
     for c in _candidates(cur, limit, symbols, scope, buy_rated_cap):
         sym = c["symbol"]
-        # per-symbol lane: buy/strong (P2 tags _buy_rated; P1/on-demand resolved via the set) → OAuth
-        eff_lane = oauth_lane if (upgrade_conviction and (c.get("_buy_rated") or sym.upper() in buy_strong_syms)) else base_lane
+        eff_lane = base_lane
         bars = _bars(sym)
         if not bars:
             failed += 1; continue
@@ -457,14 +441,21 @@ def run(lane="local", symbols=None, limit=25, alert=True, scope="watchlist", buy
                        "your zone/limit may agree or amend it — say which in entry_thesis. The proposal "
                        "stays untouched; this is advisory.")
         try:
-            out = llm_lane.generate(prompt, lane=eff_lane, timeout=120)
+            out = llm_lane.generate(
+                prompt, lane=eff_lane, timeout=120,
+                process_id="watchlist_entry_planner",
+                task_summary=f"entry plan {sym}",
+            )
         except Exception as e:
-            # completeness > lane (operator 2026-07-01: "no info should be missing on buy/strong/wait"):
-            # if the OAuth lane errors/rate-limits, fall back to local so the card is never left blank.
-            if eff_lane != base_lane:
+            # One explicitly governed cloud fallback is allowed. Local generation is not.
+            if fallback_lane:
                 try:
-                    out = llm_lane.generate(prompt, lane=base_lane, timeout=120)
-                    eff_lane = base_lane
+                    out = llm_lane.generate(
+                        prompt, lane=fallback_lane, timeout=120,
+                        process_id="watchlist_entry_planner",
+                        task_summary=f"entry plan {sym} cloud fallback",
+                    )
+                    eff_lane = fallback_lane
                 except Exception as e2:
                     print(f"  {sym}: lane error {str(e2)[:60]}"); failed += 1; continue
             else:
@@ -472,9 +463,8 @@ def run(lane="local", symbols=None, limit=25, alert=True, scope="watchlist", buy
         p = _parse(out)
         if not p:
             print(f"  {sym}: unparseable"); failed += 1; continue
-        model = "grok-3-mini" if eff_lane == "grok" else getattr(__import__("local_llm"), "model_used", None) or "local"
-        if eff_lane == "grok":
-            oauth_used += 1
+        model = "grok-3-mini" if eff_lane == "grok" else "gpt-5.4"
+        cloud_used += 1
         # ── DETERMINISTIC R:R AND URGENCY (2026-07-20) ──────────────────────────
         # Both were taken from the model. Neither survived checking.
         #
@@ -576,8 +566,8 @@ def run(lane="local", symbols=None, limit=25, alert=True, scope="watchlist", buy
                 if _alert(sym, p, urg, t["price"]):
                     cur.execute("UPDATE watchlist_entry_plans SET alerted_at=now() WHERE id=%s", (plan_id,))
                     conn.commit(); alerts += 1
-    print(json.dumps({"lane": base_lane, "oauth_upgraded": upgrade_conviction, "planned": done,
-                      "via_oauth": oauth_used, "failed": failed, "alerts": alerts,
+    print(json.dumps({"lane": base_lane, "fallback_lane": fallback_lane, "planned": done,
+                      "via_cloud": cloud_used, "failed": failed, "alerts": alerts,
                       "note": "ADVISORY ONLY — no orders, no proposal-state changes, no execution"}))
 
 
@@ -611,7 +601,7 @@ def _alert(sym, p, urg, price) -> bool:
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("--lane", default="local", choices=["local", "grok"])
+    ap.add_argument("--lane", default="grok", choices=list(CLOUD_LANES))
     ap.add_argument("--symbols")
     ap.add_argument("--limit", type=int, default=25)
     ap.add_argument("--scope", default="watchlist", choices=["watchlist", "proposals"])

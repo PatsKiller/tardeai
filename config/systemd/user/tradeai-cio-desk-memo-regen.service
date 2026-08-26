@@ -1,0 +1,22 @@
+[Unit]
+Description=Trade AI CIO desk memo regen (READ_ONLY_ADVISORY → cio_desk_note_latest.md)
+After=network-online.target
+
+[Service]
+Type=oneshot
+# Canonical source tree; pin TRADEAI_PROJECT_ROOT so CLI persist hits this data/cio/.
+WorkingDirectory=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild
+Environment=PATH=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin:/usr/bin
+Environment=HOME=/home/johnclaw
+Environment=TRADEAI_PROJECT_ROOT=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild
+Environment=PYTHONPATH=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts
+EnvironmentFile=-%t/tradeai/env
+# CLI __main__ persists data/cio/cio_desk_note_latest.md (+ memo spine).
+ExecStart=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/lib/cio_desk_synthesis.py
+Nice=10
+StandardOutput=append:/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/cio_desk_memo_regen.log
+StandardError=append:/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/cio_desk_memo_regen.log
+
+[Install]
+# DISABLED by default — do not enable until operator ack.
+# WantedBy=default.target

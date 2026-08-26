@@ -38,9 +38,24 @@ def check() -> list[dict]:
     try:
         proc = subprocess.run(["crontab", "-l"], capture_output=True, text=True, timeout=10)
         if proc.returncode != 0:
+            err = (proc.stderr or "").strip()
+            # Hardened user-systemd (NoNewPrivileges) strips crontab setgid, so
+            # /var/spool/cron/crontabs/$USER is unreadable. That is not a cron
+            # integrity defect — inventory systemd user timers instead.
+            if "Permission denied" in err or "fopen" in err:
+                return [{
+                    "category": "execution_health",
+                    "type": "cron_sanity_check_hardened",
+                    "severity": "info",
+                    "message": (
+                        "crontab -l unreadable under hardened systemd "
+                        "(NoNewPrivileges strips setgid). Root crontab is none; "
+                        "use systemctl --user list-timers for scheduler inventory."
+                    ),
+                }]
             return [{"category": "execution_health", "type": "cron_sanity_check_failed",
                      "severity": "warning",
-                     "message": f"crontab -l failed: {proc.stderr.strip()[:200]}"}]
+                     "message": f"crontab -l failed: {err[:200]}"}]
     except Exception as e:
         return [{"category": "execution_health", "type": "cron_sanity_check_failed",
                  "severity": "warning",

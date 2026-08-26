@@ -1,0 +1,24 @@
+[Unit]
+Description=Trade AI R9.3 FREE_FIRST_ONLY Hermes circulation (READ_ONLY_ADVISORY, zero paid)
+After=network-online.target
+Documentation=file:docs/ops/HERMES_FREE_FIRST_NATURAL_SCHEDULER_2026-08-23.md
+
+[Service]
+Type=oneshot
+# Pin through the established CURRENT symlink — never rebuild / dirty worktree.
+WorkingDirectory=/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT
+Environment=PYTHONPATH=/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT:/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/scripts
+Environment=PATH=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin:/usr/bin
+Environment=HOME=/home/johnclaw
+Environment=MEMORY_BEHAVIOR_INFLUENCE=0
+# Do NOT set the paid CIO-drain backend. This is FREE_FIRST_ONLY.
+Nice=10
+TimeoutStartSec=900
+# Singleton lock is taken inside free_first_refresh.py (fcntl, exit 75).
+# Do not wrap ExecStart in flock on the same path — the child cannot re-lock it.
+ExecStart=/usr/bin/bash /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/scripts/run_free_first_circulation.sh
+StandardOutput=append:/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/logs/free_first_circulation.log
+StandardError=append:/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/logs/free_first_circulation.log
+
+[Install]
+WantedBy=default.target

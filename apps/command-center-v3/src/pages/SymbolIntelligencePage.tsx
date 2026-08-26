@@ -1,6 +1,6 @@
 /**
- * Full Symbol Intelligence page (shadow) — hierarchy from prototype v1.
- * Zero provider calls. COMPLETE reviews require full provenance.
+ * Symbol Intelligence dossier — watch-intelligence detail + CIO journal / queue / timeline.
+ * READ_ONLY_ADVISORY. Zero new provider calls beyond existing APIs.
  */
 import { Link, useParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
@@ -16,6 +16,85 @@ function pct(n?: number | null) {
   return `${v >= 0 ? '+' : ''}${v.toFixed(2)}%`
 }
 
+function formatWaitHuman(seconds: number): string {
+  const s = Math.max(0, Math.floor(seconds))
+  if (s < 60) return `${s}s`
+  if (s < 3600) return `${Math.floor(s / 60)}m`
+  if (s < 86400) {
+    const h = Math.floor(s / 3600)
+    const m = Math.floor((s % 3600) / 60)
+    return m > 0 ? `${h}h ${m}m` : `${h}h`
+  }
+  const d = Math.floor(s / 86400)
+  const h = Math.floor((s % 86400) / 3600)
+  return h > 0 ? `${d}d ${h}h` : `${d}d`
+}
+
+/** Prefer API research_queue summary; else derive from active_research[].created_at. */
+function deriveResearchQueue(cioBody: any): {
+  open_count: number
+  oldest_wait_seconds: number | null
+  oldest_wait_human: string
+  source: 'summary' | 'active_research' | 'empty'
+} {
+  const rq = cioBody?.research_queue && typeof cioBody.research_queue === 'object'
+    ? cioBody.research_queue
+    : null
+  if (rq != null && rq.open_count != null && Number.isFinite(Number(rq.open_count))) {
+    const open = Math.max(0, Math.floor(Number(rq.open_count)))
+    let oldestSec: number | null = null
+    if (rq.oldest_wait_seconds != null && Number.isFinite(Number(rq.oldest_wait_seconds))) {
+      oldestSec = Math.max(0, Math.floor(Number(rq.oldest_wait_seconds)))
+    }
+    const human = (rq.oldest_wait_human != null && String(rq.oldest_wait_human).trim())
+      ? String(rq.oldest_wait_human).trim()
+      : (oldestSec != null ? formatWaitHuman(oldestSec) : '')
+    return {
+      open_count: open,
+      oldest_wait_seconds: oldestSec,
+      oldest_wait_human: human,
+      source: 'summary',
+    }
+  }
+
+  const activeRaw =
+    (Array.isArray(rq?.active_research) && rq.active_research)
+    || (Array.isArray(cioBody?.active_research) && cioBody.active_research)
+    || (Array.isArray(cioBody?.intelligence?.active_research) && cioBody.intelligence.active_research)
+    || []
+  const now = Date.now()
+  let oldestSec: number | null = null
+  for (const item of activeRaw) {
+    if (!item || typeof item !== 'object') continue
+    const ca = (item as any).created_at
+    if (ca == null) continue
+    const t = Date.parse(String(ca))
+    if (!Number.isFinite(t)) continue
+    const age = Math.max(0, Math.floor((now - t) / 1000))
+    if (oldestSec == null || age > oldestSec) oldestSec = age
+  }
+  return {
+    open_count: activeRaw.length,
+    oldest_wait_seconds: oldestSec,
+    oldest_wait_human: oldestSec != null ? formatWaitHuman(oldestSec) : '',
+    source: activeRaw.length ? 'active_research' : 'empty',
+  }
+}
+
+function formatHistoryRow(row: unknown): string {
+  if (row == null) return ''
+  if (typeof row === 'string') return row
+  if (typeof row !== 'object') return String(row)
+  const o = row as Record<string, unknown>
+  const ver = o.thesis_version != null ? `v${o.thesis_version}`
+    : (o.version != null ? `v${o.version}` : null)
+  const when = o.published_at != null
+    ? String(o.published_at).slice(0, 10)
+    : (o.ts != null ? String(o.ts).slice(0, 10) : (o.as_of != null ? String(o.as_of).slice(0, 10) : null))
+  const reason = o.reason_for_change || o.summary || o.stance || o.state
+  return [ver, when, reason != null ? String(reason) : null].filter(Boolean).join(' · ')
+}
+
 export default function SymbolIntelligencePage() {
   const { symbol = '' } = useParams()
   const sym = symbol.toUpperCase()
@@ -24,6 +103,16 @@ export default function SymbolIntelligencePage() {
     sym ? `/api/v3/data-broker/watch-intelligence/${sym}` : '',
     120_000,
   )
+  // CIO dossier extras (journal / queue / timeline) — fail-soft; never blocks watch detail
+  const {
+    data: cioRaw,
+    loading: cioLoading,
+    error: cioError,
+  } = useApi<any>(
+    sym ? `/api/v3/cio/intelligence/${encodeURIComponent(sym)}` : '',
+    120_000,
+  )
+
   const body = data?.data && data.data.ok != null ? data.data : data
   const detail = body?.detail || body || {}
   const card = body?.card || detail.card || {}
@@ -42,6 +131,32 @@ export default function SymbolIntelligencePage() {
   const lineage = detail.evidence_lineage || {}
   const mechanics = detail.mechanics
 
+  const cioBody = (() => {
+    if (!cioRaw || typeof cioRaw !== 'object') return null
+    const wrapped = (cioRaw as any).data && (cioRaw as any).data.ok != null ? (cioRaw as any).data : cioRaw
+    if ((cioRaw as any).ok === false && !wrapped?.intelligence && !wrapped?.journal) return null
+    return wrapped
+  })()
+  const intelObj = (cioBody?.intelligence && typeof cioBody.intelligence === 'object')
+    ? cioBody.intelligence
+    : null
+  const journal: any[] = Array.isArray(cioBody?.journal) ? cioBody.journal : []
+  const latestFeedback = cioBody?.latest_feedback && typeof cioBody.latest_feedback === 'object'
+    ? cioBody.latest_feedback
+    : null
+  const queue = cioBody ? deriveResearchQueue(cioBody) : null
+  const thesisBlock = (intelObj?.thesis && typeof intelObj.thesis === 'object') ? intelObj.thesis : null
+  const thesisHistory: unknown[] = Array.isArray(cioBody?.thesis_history)
+    ? cioBody.thesis_history
+    : (Array.isArray(intelObj?.thesis_history) ? intelObj.thesis_history : [])
+  const conviction =
+    thesisBlock?.confidence_0_10
+    ?? thesisBlock?.conviction
+    ?? thesisBlock?.confidence
+    ?? intelObj?.confidence_0_10
+    ?? intelObj?.conviction
+    ?? null
+
   if (!sym) return <div style={{ color: BB.red }}>Missing symbol</div>
   if (loading) return <div style={{ color: BB.text3, fontSize: TYPE.sm }}>Loading {sym}…</div>
   if (error || body?.ok === false) {
@@ -50,11 +165,30 @@ export default function SymbolIntelligencePage() {
 
   const periods = rel.periods || {}
 
+  const queueChipLabel = (() => {
+    if (cioLoading && !cioBody) return 'RESEARCH QUEUE …'
+    if (!queue) return 'RESEARCH QUEUE —'
+    if (queue.open_count <= 0) return 'RESEARCH QUEUE idle'
+    const wait = queue.oldest_wait_human || (queue.oldest_wait_seconds != null ? formatWaitHuman(queue.oldest_wait_seconds) : '')
+    return wait
+      ? `RESEARCH QUEUE ${queue.open_count} open · oldest ${wait}`
+      : `RESEARCH QUEUE ${queue.open_count} open`
+  })()
+  const queueChipAttr = (() => {
+    if (cioLoading && !cioBody) return 'loading'
+    if (!queue) return cioError ? 'unavailable' : 'idle'
+    if (queue.open_count <= 0) return 'idle'
+    return String(queue.open_count)
+  })()
+
   return (
     <div data-symbol-intelligence-page data-symbol={sym} data-provider-calls={String(body?.provider_calls ?? 0)}>
-      <div style={{ marginBottom: 10 }}>
+      <div style={{ marginBottom: 10, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
         <Link to="/watch?tab=intelligence" style={{ color: BB.text3, fontSize: TYPE.xs, textDecoration: 'none' }}>
           ← Intelligence Board
+        </Link>
+        <Link to="/cio" style={{ color: BB.text3, fontSize: TYPE.xs, textDecoration: 'none' }}>
+          CIO hub
         </Link>
       </div>
 
@@ -62,15 +196,16 @@ export default function SymbolIntelligencePage() {
         style={{
           border: `1px solid ${BB.border}`,
           background: BB.bgShift,
-          color: BB.amber,
+          color: BB.text2,
           borderRadius: 8,
           padding: '8px 10px',
           fontSize: TYPE.xs,
           marginBottom: 12,
         }}
+        data-si-advisory-banner
       >
-        <b>SHADOW Symbol Intelligence.</b> Street rating is primary research evidence; Trade AI owns actionability.
-        Provider calls on this load: {body?.provider_calls ?? 0}.
+        Symbol Intelligence dossier · READ_ONLY_ADVISORY · Street is evidence; Trade AI owns actionability.
+        {' '}Provider calls on this load: {body?.provider_calls ?? 0}.
       </div>
 
       <section
@@ -114,6 +249,12 @@ export default function SymbolIntelligencePage() {
           </Pill>
           <Pill>
             Maria {maria.status === 'COMPLETE' ? (maria.verdict || 'COMPLETE') : `NOT RUN${maria.reason_code ? ` · ${maria.reason_code}` : ''}`}
+          </Pill>
+          <Pill
+            tone={queue && queue.open_count > 0 ? 'queue' : undefined}
+            dataAttr={{ 'data-research-queue': queueChipAttr }}
+          >
+            {queueChipLabel}
           </Pill>
         </div>
         {card.decision_input_price != null && card.current_quote != null && Number(card.decision_input_price) !== Number(card.current_quote) ? (
@@ -184,6 +325,74 @@ export default function SymbolIntelligencePage() {
             </details>
           </Panel>
 
+          <Panel title="Operator journal" sub="Feedback intents from Command Center / Telegram" style={{ marginTop: 12 }} dataAttr={{ 'data-operator-journal': '1' }}>
+            {cioLoading && !cioBody && (
+              <div style={{ fontSize: TYPE.sm, color: BB.text3 }}>Loading journal…</div>
+            )}
+            {!cioLoading && !cioBody && (
+              <div style={{ fontSize: TYPE.sm, color: BB.text3 }}>
+                {cioError ? 'CIO intelligence unavailable — journal not loaded.' : 'No operator feedback yet.'}
+              </div>
+            )}
+            {cioBody && journal.length === 0 && !latestFeedback && (
+              <div style={{ fontSize: TYPE.sm, color: BB.text3 }}>No operator feedback yet.</div>
+            )}
+            {latestFeedback?.intent && (
+              <div
+                style={{
+                  background: BB.bgShift,
+                  border: `1px solid ${BB.amber}`,
+                  borderRadius: 8,
+                  padding: 10,
+                  marginBottom: journal.length ? 10 : 0,
+                }}
+                data-latest-feedback
+              >
+                <div style={{ fontSize: TYPE.xs, color: BB.amber, fontWeight: 900, textTransform: 'uppercase' }}>
+                  Latest feedback
+                </div>
+                <div style={{ fontSize: TYPE.sm, color: BB.text1, marginTop: 4 }}>
+                  <b>{String(latestFeedback.intent)}</b>
+                  {latestFeedback.stance ? ` · ${latestFeedback.stance}` : ''}
+                  {latestFeedback.ts ? ` · ${String(latestFeedback.ts).slice(0, 19)}` : ''}
+                </div>
+                {latestFeedback.free_text ? (
+                  <div style={{ fontSize: TYPE.xs, color: BB.text2, marginTop: 4 }}>{String(latestFeedback.free_text)}</div>
+                ) : null}
+              </div>
+            )}
+            {journal.length > 0 && (
+              <div style={{ display: 'grid', gap: 8 }}>
+                {[...journal].reverse().map((row: any, i: number) => {
+                  const isLatest = latestFeedback
+                    && row?.intent === latestFeedback.intent
+                    && String(row?.ts || '') === String(latestFeedback.ts || '')
+                  return (
+                    <div
+                      key={row?.id || `${row?.ts || i}-${row?.intent || i}`}
+                      style={{
+                        background: BB.bgShift,
+                        border: `1px solid ${isLatest ? BB.amber : BB.border}`,
+                        borderRadius: 8,
+                        padding: 8,
+                      }}
+                      data-journal-entry
+                    >
+                      <div style={{ fontSize: TYPE.sm, color: BB.text1 }}>
+                        <b>{String(row?.intent || '—')}</b>
+                        {row?.stance ? ` · ${row.stance}` : ''}
+                        {row?.ts ? ` · ${String(row.ts).slice(0, 19)}` : ''}
+                      </div>
+                      {row?.free_text ? (
+                        <div style={{ fontSize: TYPE.xs, color: BB.text2, marginTop: 3 }}>{String(row.free_text)}</div>
+                      ) : null}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </Panel>
+
           <Panel title="Fundamentals and valuation" sub="Company fields; industry medians may be missing" style={{ marginTop: 12 }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
@@ -210,7 +419,62 @@ export default function SymbolIntelligencePage() {
         </div>
 
         <div>
-          <Panel title="Catalyst versus industry" sub="Company drivers vs backdrop">
+          <Panel title="Thesis timeline" sub="Conviction / history from CIO intelligence when present" dataAttr={{ 'data-thesis-timeline': '1' }}>
+            {cioLoading && !cioBody && (
+              <div style={{ fontSize: TYPE.sm, color: BB.text3 }}>Loading thesis timeline…</div>
+            )}
+            {!cioLoading && !cioBody && (
+              <div style={{ fontSize: TYPE.sm, color: BB.text3 }}>
+                {cioError
+                  ? 'CIO intelligence unavailable — thesis timeline not loaded.'
+                  : 'No thesis timeline artifact yet (typed gap).'}
+              </div>
+            )}
+            {cioBody && (
+              <>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  <Fact
+                    k="Thesis state"
+                    v={String(thesisBlock?.state || intelObj?.thesis_state || '—')}
+                  />
+                  <Fact
+                    k="Conviction / confidence"
+                    v={
+                      conviction == null || conviction === ''
+                        ? 'Not on intelligence payload (typed gap)'
+                        : (typeof conviction === 'number'
+                          ? (conviction <= 10 ? `${Number(conviction).toFixed(1)}/10` : String(conviction))
+                          : String(conviction))
+                    }
+                  />
+                </div>
+                {(thesisBlock?.summary || intelObj?.headline) && (
+                  <div style={{ fontSize: TYPE.sm, color: BB.text1, marginTop: 10, lineHeight: 1.45 }}>
+                    {String(thesisBlock?.summary || intelObj?.headline)}
+                  </div>
+                )}
+                {thesisBlock?.version != null && (
+                  <div style={{ fontSize: TYPE.xs, color: BB.text3, marginTop: 6 }}>
+                    Version {String(thesisBlock.version)}
+                    {thesisBlock.role ? ` · role ${String(thesisBlock.role)}` : ''}
+                  </div>
+                )}
+                {thesisHistory.length > 0 ? (
+                  <ul style={{ margin: '10px 0 0', paddingLeft: 16, fontSize: TYPE.sm, color: BB.text1 }}>
+                    {thesisHistory.slice(0, 8).map((row, i) => (
+                      <li key={i} style={{ marginBottom: 4 }}>{formatHistoryRow(row) || '—'}</li>
+                    ))}
+                  </ul>
+                ) : (
+                  <div style={{ fontSize: TYPE.sm, color: BB.text3, marginTop: 10 }}>
+                    No thesis history rows on intelligence payload (typed gap).
+                  </div>
+                )}
+              </>
+            )}
+          </Panel>
+
+          <Panel title="Catalyst versus industry" sub="Company drivers vs backdrop" style={{ marginTop: 12 }}>
             {(cats as any[]).length === 0 && <div style={{ fontSize: TYPE.sm, color: BB.text3 }}>No recent catalyst_events</div>}
             {(cats as any[]).map((c, i) => (
               <div key={i} style={{ display: 'grid', gridTemplateColumns: '72px 1fr', gap: 8, marginBottom: 8 }}>
@@ -277,9 +541,24 @@ const td: React.CSSProperties = {
   color: BB.text1,
 }
 
-function Panel({ title, sub, children, style }: { title: string; sub?: string; children: React.ReactNode; style?: React.CSSProperties }) {
+function Panel({
+  title,
+  sub,
+  children,
+  style,
+  dataAttr,
+}: {
+  title: string
+  sub?: string
+  children: React.ReactNode
+  style?: React.CSSProperties
+  dataAttr?: Record<string, string>
+}) {
   return (
-    <section style={{ background: BB.bgPanel, border: `1px solid ${BB.border}`, borderRadius: 12, overflow: 'hidden', ...style }}>
+    <section
+      style={{ background: BB.bgPanel, border: `1px solid ${BB.border}`, borderRadius: 12, overflow: 'hidden', ...style }}
+      {...dataAttr}
+    >
       <div style={{ padding: '10px 12px', borderBottom: `1px solid ${BB.border}` }}>
         <div style={{ fontSize: TYPE.base, fontWeight: 900 }}>{title}</div>
         {sub && <div style={{ fontSize: TYPE.xs, color: BB.text3, marginTop: 2 }}>{sub}</div>}
@@ -288,7 +567,15 @@ function Panel({ title, sub, children, style }: { title: string; sub?: string; c
     </section>
   )
 }
-function Pill({ children, tone }: { children: React.ReactNode; tone?: string }) {
+function Pill({
+  children,
+  tone,
+  dataAttr,
+}: {
+  children: React.ReactNode
+  tone?: string
+  dataAttr?: Record<string, string>
+}) {
   return (
     <span
       style={{
@@ -297,8 +584,9 @@ function Pill({ children, tone }: { children: React.ReactNode; tone?: string }) 
         padding: '5px 9px',
         fontSize: TYPE.xs,
         fontWeight: 900,
-        color: tone === 'street' ? BB.green : BB.text2,
+        color: tone === 'street' ? BB.green : tone === 'queue' ? BB.amber : BB.text2,
       }}
+      {...dataAttr}
     >
       {children}
     </span>

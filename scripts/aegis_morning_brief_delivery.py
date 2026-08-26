@@ -535,6 +535,20 @@ def deliver(force: bool = False) -> dict:
     """Deliver the morning brief via all channels."""
     print(f"[aegis-brief] Morning brief delivery starting — {datetime.now().isoformat()}")
 
+    if os.getenv("CANONICAL_OPERATOR_BRIEF", "1").strip() != "0":
+        try:
+            from lib.cio_operator_renderers import deliver_morning
+        except ImportError:
+            from scripts.lib.cio_operator_renderers import deliver_morning  # type: ignore
+        result = deliver_morning(root=PROJECT_ROOT, send=True)
+        print(f"  [aegis-brief] canonical morning published={result.get('published')} reason={result.get('reason')}")
+        return {
+            "delivered": bool(result.get("published")),
+            "reason": result.get("reason") or "canonical_cio_operator_product",
+            "key": result.get("key"),
+            "source": "cio.operator_product.current",
+        }
+
     brief, summary = _get_morning_brief()
     if not brief.get("has_findings") and not force:
         print("  [aegis-brief] No findings in brief — skipping delivery")

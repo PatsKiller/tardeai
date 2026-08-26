@@ -1,0 +1,10 @@
+{
+  "schema": "R15_2CurationLineage@v1",
+  "evidence_class": "UNIT",
+  "lineage_complete": true,
+  "dedupe": true,
+  "rejected_retained": true,
+  "natural_MATERIAL_versions_this_window": 0,
+  "baseline_rows_live": 120,
+  "latest_curation_at": "2026-08-24T15:09:05+00:00"
+}

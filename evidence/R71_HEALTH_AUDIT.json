@@ -1,0 +1,237 @@
+{
+  "schema": "R71HealthAudit@v1",
+  "as_of": "2026-08-19T15:41:53.146457+00:00",
+  "dependency": {
+    "schema": "R71CursorDependency@v1",
+    "as_of": "2026-08-19",
+    "protected_main": "ff2037d45c582fa164fc6cb1136088fc80d8edcd",
+    "pr_397_branch": "wt/symbol-thesis-universe",
+    "cursor_branch": "feat/two-way-watchlist-curation",
+    "cursor_head": "e683e90f9a24b9cd56399054da33cc6c3b4ba8bb",
+    "cursor_commit_subject": "fix(watchlist): close six lifecycle gaps + self-healing cron lanes",
+    "cursor_pr": null,
+    "cursor_remediation_versioned": true,
+    "on_main": false,
+    "dependency_strategy": "DECLARE_SHA_CONSUME_DATA_PLANE_NO_WHOLESALE_MERGE",
+    "notes": [
+      "Gap A-F is COMMITTED and PUSHED on feat/two-way-watchlist-curation.",
+      "Live checkout currently tracks that branch; protected main does not yet include it.",
+      "No open GitHub PR for the Cursor branch at handoff \u2014 preferred: land via its own reviewed PR.",
+      "#397 consumes DB/event data plane + declares this SHA; does not merge the divergent branch.",
+      "Do not recreate sync_social / research_watchlist_discovery / candidate_discovery / cron_self_heal inside #397."
+    ],
+    "consume_directly_data_plane": [
+      "candidate_discovery_events",
+      "watchlist_items (origin_system/origin_detail/bucket/source_tier/scope_tier)",
+      "social_sentiment_history",
+      "intelligence_entities.social_score (DERIVED only)",
+      "content_embeddings / rag_indexer schedule"
+    ],
+    "shared_dependencies": [
+      "scripts/rag_indexer.py",
+      "scripts/rag_retrieval.py",
+      "research_sources",
+      "rag_status governance",
+      "scripts/lib/cio_theses.py",
+      "scripts/lib/cio_event_bus.py"
+    ],
+    "do_not_import_into_397": [
+      "scripts/install_watchlist_remediation_cron.py",
+      "scripts/cron_self_heal.py",
+      "scripts/candidate_discovery_orchestrator.py",
+      "scripts/research_watchlist_discovery.py",
+      "scripts/sync_social_to_intelligence.py"
+    ],
+    "known_detection_defects_owned_by_cursor": [
+      {
+        "job": "rag_embeddings",
+        "issue": "schedule_match='embedding' does not match crontab 'rag_indexer.py' \u2192 false NOT_SCHEDULED",
+        "actual": "crontab '0 */4 * * * ... rag_indexer.py' present; embeddings fresh",
+        "fix_owner": "feat/two-way-watchlist-curation job_coverage_monitor.py"
+      }
+    ],
+    "authority": "READ_ONLY_ADVISORY"
+  },
+  "fabric_map": {
+    "schema": "R71CursorFabricMap@v1",
+    "dependency": {
+      "cursor_branch": "feat/two-way-watchlist-curation",
+      "cursor_head": "e683e90f9a24b9cd56399054da33cc6c3b4ba8bb",
+      "cursor_remediation_versioned": true,
+      "cursor_pr": null,
+      "dependency_strategy": "DECLARE_SHA_CONSUME_DATA_PLANE_NO_WHOLESALE_MERGE",
+      "on_main": false
+    },
+    "map": [
+      {
+        "component": "sync_social_to_intelligence.py",
+        "class": "CONSUME_DIRECTLY",
+        "via": "intelligence_entities.social_score (DERIVED) + social_sentiment_history rows (primary evidence)",
+        "note": "Membership/score \u2260 thesis evidence. Thesis cites history rows + provenance."
+      },
+      {
+        "component": "hermes_social_sentiment.py",
+        "class": "CONSUME_DIRECTLY",
+        "via": "social_sentiment_history",
+        "note": "Producer already live; thesis reads artifacts, does not re-ingest."
+      },
+      {
+        "component": "research_watchlist_discovery.py",
+        "class": "CONSUME_DIRECTLY",
+        "via": "watchlist_items bucket=research_discovery status=researched source_tier=candidate",
+        "note": "Universe signal only. Requires origin_system/origin_detail or PROVENANCE_INCOMPLETE."
+      },
+      {
+        "component": "candidate_discovery_orchestrator.py",
+        "class": "CONSUME_DIRECTLY",
+        "via": "candidate_discovery_events",
+        "note": "May wake coverage/materiality/RAG check \u2014 never auto thesis version."
+      },
+      {
+        "component": "drain_discovery_backlog.py",
+        "class": "DO_NOT_IMPORT",
+        "via": null,
+        "note": "Cursor cron lane; #397 does not drain discovery backlog."
+      },
+      {
+        "component": "desk_suggestions_digest.py",
+        "class": "NEEDS_INTERFACE_ADAPTER",
+        "via": "optional read of digest artifacts for CC discovery surface",
+        "note": "Operator transparency only; not thesis evidence."
+      },
+      {
+        "component": "install_watchlist_remediation_cron.py",
+        "class": "DO_NOT_IMPORT",
+        "via": null,
+        "note": "Do not install duplicate R7 crons."
+      },
+      {
+        "component": "cron_self_heal.py",
+        "class": "SHARED_DEPENDENCY",
+        "via": "idempotent consumers must tolerate replay",
+        "note": "Preserve; thesis pipeline must be replay-safe."
+      },
+      {
+        "component": "job_coverage_monitor.py",
+        "class": "SHARED_DEPENDENCY",
+        "via": "health signals",
+        "note": "rag_embeddings schedule_match bug is Cursor-owned false NOT_SCHEDULED."
+      },
+      {
+        "component": "health_agent_policy",
+        "class": "SHARED_DEPENDENCY",
+        "via": "source-aware remediation model",
+        "note": "Producer health \u2260 evidence trustworthiness."
+      },
+      {
+        "component": "watchlist provenance (origin_system/origin_detail)",
+        "class": "CONSUME_DIRECTLY",
+        "via": "watchlist_items columns",
+        "note": "null origin \u2192 LEGACY_UNATTRIBUTED; do not invent writer."
+      },
+      {
+        "component": "source-health migration",
+        "class": "CONSUME_DIRECTLY",
+        "via": "migrations/2026-08-19_watchlist_source_health.sql + report_source()",
+        "note": "Expose HEALTHY/DEGRADED/AUTH_REQUIRED/STALE/UNKNOWN before acquisition."
+      },
+      {
+        "component": "SearXNG",
+        "class": "SHARED_DEPENDENCY",
+        "via": "scripts/lib/searxng_client.py thin shared wrapper",
+        "note": "One client; used by Cursor discovery and #397 acquisition plan."
+      },
+      {
+        "component": "rag_indexer / content_embeddings",
+        "class": "SHARED_DEPENDENCY",
+        "via": "existing cron 0 */4 rag_indexer.py",
+        "note": "Do not create duplicate embedding cron. Detection fix belongs on Cursor branch."
+      },
+      {
+        "component": "CURATION_AUTO_APPLY=1",
+        "class": "CONSUME_DIRECTLY",
+        "via": "existing governor; observe soak metrics only",
+        "note": "Promotion \u2260 research confidence. Bootstrap floor 0.65 \u2260 measured alpha."
+      },
+      {
+        "component": "two_way_curation",
+        "class": "DO_NOT_IMPORT",
+        "via": null,
+        "note": "Already live; #397 does not rebuild curation."
+      },
+      {
+        "component": "options_monitor / options_paper_lifecycle / protection_pipeline",
+        "class": "ACTIVE_TRADER_ONLY",
+        "via": null,
+        "note": "Not blockers for symbol-thesis PR unless release gates require."
+      }
+    ],
+    "by_class": {
+      "CONSUME_DIRECTLY": [
+        "sync_social_to_intelligence.py",
+        "hermes_social_sentiment.py",
+        "research_watchlist_discovery.py",
+        "candidate_discovery_orchestrator.py",
+        "watchlist provenance (origin_system/origin_detail)",
+        "source-health migration",
+        "CURATION_AUTO_APPLY=1"
+      ],
+      "DO_NOT_IMPORT": [
+        "drain_discovery_backlog.py",
+        "install_watchlist_remediation_cron.py",
+        "two_way_curation"
+      ],
+      "NEEDS_INTERFACE_ADAPTER": [
+        "desk_suggestions_digest.py"
+      ],
+      "SHARED_DEPENDENCY": [
+        "cron_self_heal.py",
+        "job_coverage_monitor.py",
+        "health_agent_policy",
+        "SearXNG",
+        "rag_indexer / content_embeddings"
+      ],
+      "ACTIVE_TRADER_ONLY": [
+        "options_monitor / options_paper_lifecycle / protection_pipeline"
+      ]
+    },
+    "hold_on_unversioned": false,
+    "authority": "READ_ONLY_ADVISORY"
+  },
+  "rag": {
+    "job": "rag_embeddings",
+    "canonical_owner": "scripts/rag_indexer.py",
+    "crontab_scheduled": true,
+    "crontab_line_present": "0 */4",
+    "job_coverage_schedule_match_bug": "schedule_match='embedding' misses 'rag_indexer.py'",
+    "detection_class": "FALSE_POSITIVE_NOT_SCHEDULED",
+    "log_age_hours": 7.7,
+    "duplicate_cron_created": false,
+    "action": "fix_job_coverage_detection_on_cursor_branch",
+    "embeddings": {
+      "last": "2026-08-19T11:10:16.999965-04:00",
+      "n24": 20493
+    }
+  },
+  "hermes": {
+    "hermes_coordinator": {
+      "crontab_scheduled": true,
+      "log_age_hours": 5.93,
+      "class": "EXPECTED_IDLE_OR_STALE_FALSE_POSITIVE",
+      "note": "Do not merely reset timestamps; investigate if orphaned jobs exist."
+    },
+    "process_watchlist_agent_jobs": {
+      "crontab_scheduled": true,
+      "log_age_hours": 0.2,
+      "class": "OK"
+    }
+  },
+  "unrelated_job_coverage": {
+    "options_monitor": "ACTIVE_TRADER_ONLY \u2014 not #397 blocker",
+    "options_paper_lifecycle": "ACTIVE_TRADER_ONLY \u2014 not #397 blocker",
+    "protection_pipeline": "ACTIVE_TRADER_ONLY \u2014 not #397 blocker"
+  },
+  "cursor_remediation_versioned": true,
+  "hold_on_unversioned_live_dependency": false,
+  "authority": "READ_ONLY_ADVISORY"
+}

@@ -15,8 +15,8 @@
       "name": "Holding Protection Advisor",
       "category": "Portfolio",
       "lane_policy": "grok_only",
-      "default_mode": "manual",
-      "description": "Per-holding stop/trail via Grok \u2014 use batch for periodic top-N runs"
+      "default_mode": "automated",
+      "description": "Scheduled advisory-only stop/trail review through governed OAuth; no local generation"
     },
     {
       "id": "holding_protection_advisor_batch",
@@ -91,12 +91,13 @@
       ],
       "max_input_tokens": 4000,
       "max_output_tokens": 800,
-      "daily_soft_cap": 120,
+      "daily_soft_cap": 240,
       "daily_cost_cap_usd": 2.0,
       "tools_allowed": false,
       "fallback_allowed": false,
       "advisory_only": true,
-      "output_schema": "watch_narrative.v1"
+      "output_schema": "watch_narrative.v1",
+      "notes": " | 2026-08-20: daily_soft_cap 120→240 after overnight request-cap exhaustion; containment re-armed + offpeak wrapper now overrides containment (issue #283). cost cap unchanged 2.0."
     },
     {
       "id": "watchlist_risk_flash_narrative",
@@ -139,13 +140,14 @@
         "FAST"
       ],
       "max_input_tokens": 4000,
-      "max_output_tokens": 800,
+      "max_output_tokens": 1600,
       "daily_soft_cap": 40,
       "daily_cost_cap_usd": 1.0,
       "tools_allowed": false,
       "fallback_allowed": false,
       "advisory_only": true,
-      "output_schema": "cio_synthesis.v1"
+      "output_schema": "cio_synthesis.v1",
+      "notes": "2026-08-20: max_output_tokens 800→1600 — living-thesis synthesis JSON (11 keys + cited evidence lists) was being truncated mid-object at 800 tokens, causing parse:no_json_object. Cost cap unchanged 1.0."
     },
     {
       "id": "watchlist_agent_debate_flash",
@@ -270,8 +272,8 @@
         "FAST"
       ],
       "max_input_tokens": 8000,
-      "max_output_tokens": 1024,
-      "daily_soft_cap": 120,
+      "max_output_tokens": 4096,
+      "daily_soft_cap": 600,
       "daily_cost_cap_usd": 0.30,
       "tools_allowed": false,
       "fallback_allowed": false,
@@ -280,7 +282,7 @@
       "circuit_breaker": true,
       "registered_by": "telegram-noise-suppression",
       "registered_at": "2026-08-13T12:00:00Z",
-      "notes": "2026-08-13: research lane migrated from free ChatGPT OAuth (gpt-5.4) to governed DeepSeek V4 Flash. Small payloads (~8000 in x ~512-1024 out, ~$0.0015/call). Holdings (T0) refresh several times/day, so a 120-call soft cap / $0.30 daily cap is ample and bounds the daily desk cross-check cost."
+      "notes": "2026-08-13: research lane migrated from free ChatGPT OAuth (gpt-5.4) to governed DeepSeek V4 Flash. Small payloads (~8000 in x ~512-1024 out, ~$0.0015/call). Holdings (T0) refresh several times/day, so a 120-call soft cap / $0.30 daily cap is ample and bounds the daily desk cross-check cost. | 2026-08-22 P1: max_output_tokens 1024->4096 so living theses survive write-path slices; dollar caps unchanged $0.30 / $0.50. daily_soft_cap stays 600."
     },
     {
       "id": "multi_tier_trade_reviewer",
@@ -329,7 +331,88 @@
       "name": "Directive Keyword Enhancer",
       "category": "Intel",
       "lane_policy": "ensemble",
-      "description": "Merges keywords from grok + chatgpt + local"
+      "default_mode": "automated",
+      "description": "Merges keywords from governed Grok + ChatGPT OAuth; no local generation"
+    },
+    {
+      "id": "aegis_synthesis",
+      "name": "Aegis Synthesis",
+      "category": "Research",
+      "lane_policy": "either",
+      "default_mode": "automated",
+      "description": "Scheduled advisory synthesis through governed OAuth; no local generation"
+    },
+    {
+      "id": "aegis_steph_review",
+      "name": "Aegis Steph Review",
+      "category": "Research",
+      "lane_policy": "either",
+      "default_mode": "automated",
+      "description": "Evidence challenge review through governed OAuth; no local generation"
+    },
+    {
+      "id": "hermes_cross_source_synthesizer",
+      "name": "Hermes Cross Source Synthesizer",
+      "category": "Hermes",
+      "lane_policy": "either",
+      "default_mode": "automated",
+      "description": "Cross-source research synthesis through governed OAuth; no local generation"
+    },
+    {
+      "id": "hermes_tag_engine",
+      "name": "Hermes Tag Engine",
+      "category": "Hermes",
+      "lane_policy": "either",
+      "default_mode": "automated",
+      "description": "Controlled-vocabulary judgment tags through governed OAuth; no local generation"
+    },
+    {
+      "id": "holdings_llm_refresh",
+      "name": "Holdings Health Refresh",
+      "category": "Portfolio",
+      "lane_policy": "either",
+      "default_mode": "automated",
+      "description": "Scheduled holdings health advisory through governed OAuth; no local generation"
+    },
+    {
+      "id": "iris_taxonomy_agent",
+      "name": "Iris Taxonomy Agent",
+      "category": "Intel",
+      "lane_policy": "either",
+      "default_mode": "automated",
+      "description": "Taxonomy classification through governed OAuth; no local generation"
+    },
+    {
+      "id": "llm_intelligence_enrichment",
+      "name": "Dashboard Intelligence Enrichment",
+      "category": "Intel",
+      "lane_policy": "either",
+      "default_mode": "automated",
+      "description": "Scheduled dashboard narratives through governed OAuth; no local generation"
+    },
+    {
+      "id": "portfolio_orchestrator",
+      "name": "Portfolio Orchestrator Summary",
+      "category": "Portfolio",
+      "lane_policy": "either",
+      "default_mode": "automated",
+      "description": "Factual surveillance summary through governed OAuth; no local generation"
+    },
+    {
+      "id": "topic_curator",
+      "name": "Topic Curator",
+      "category": "Research",
+      "lane_policy": "either",
+      "default_mode": "automated",
+      "description": "Research entity and query curation through governed OAuth; no local generation"
+    },
+    {
+      "id": "topic_ingestion",
+      "name": "Topic Ingestion",
+      "category": "Research",
+      "lane_policy": "either",
+      "default_mode": "automated",
+      "description": "Research query, quality, and normalization through governed OAuth; no local generation"
     },
     {
       "id": "think_tank_signal_miner",
@@ -426,7 +509,8 @@
       "name": "Watchlist Entry Planner",
       "category": "Watch",
       "lane_policy": "either",
-      "description": "Entry planning context"
+      "default_mode": "automated",
+      "description": "Advisory entry-plan narratives through governed OAuth; no local generation"
     },
     {
       "id": "grok_execution_review",

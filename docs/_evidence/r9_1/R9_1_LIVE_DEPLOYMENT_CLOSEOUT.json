@@ -1,0 +1,48 @@
+{
+  "schema": "R9.1LiveDeploymentCloseout@v1",
+  "as_of": "2026-08-23T13:40:00-04:00",
+  "authority": "READ_ONLY_ADVISORY",
+  "source": {
+    "starting_main": "9dfe437f6e161cb2b6c9ed2c983e23b9fa9de1b7",
+    "deployed_main": "09b5ec3d48fb1afd5c9db4a1f9f12b405cadb525",
+    "current_release": "09b5ec3d-r9-autonomous-advisory-20260823-132303",
+    "portfolio_process_started_at": "2026-08-23T13:24:16-04:00",
+    "source_pin": "09b5ec3d48fb1afd5c9db4a1f9f12b405cadb525",
+    "loaded_pin": "09b5ec3d48fb1afd5c9db4a1f9f12b405cadb525",
+    "current_pin": "09b5ec3d48fb1afd5c9db4a1f9f12b405cadb525",
+    "pin_match": true
+  },
+  "ci": {"infrastructure": "RESTORED", "required_workflows_executed": true, "required_workflows_green": true},
+  "merged_prs": [461, 462, 464, 465, 466, 467, 468, 469, 470, 471, 472, 474],
+  "superseded_prs": [463],
+  "temporal": {"production_choice": "NO_TEMPORAL", "t1": "NOT_STARTED", "cloud_provisioned": false},
+  "natural_runs": {
+    "cio_delivery": {"started_at": "2026-08-23T13:31:16-04:00", "result": "success", "exit_status": 0},
+    "cio_material_scan": {"started_at": "2026-08-23T13:35:03-04:00", "result": "success", "exit_status": 0},
+    "research_to_thesis": "NOT_YET_OBSERVED"
+  },
+  "symbol_theses": {
+    "NOC": {"state": "CURRENT", "version": "symbol_noc@v5"},
+    "SCHG": {"state": "THIN", "version": "symbol_schg@v3"},
+    "CSCO": {"state": "CURRENT", "version": "symbol_csco@v3"},
+    "ANET": {"state": "CURRENT", "version": "symbol_anet@v2"}
+  },
+  "runtime_roots": {
+    "systemd": {"current": 1, "rebuild": 40, "hybrid": 34, "other": 86, "drift": 74},
+    "cron": {"current": 15, "rebuild": 135, "hybrid": 10, "other": 330, "drift": 145},
+    "combined_drift": 219
+  },
+  "gpu": {
+    "mode": "UNRESOLVED_HOLD",
+    "installed_generative": 6,
+    "active_generative": 1,
+    "active_state": "Stopping...",
+    "source_callers_broad_scan": 171,
+    "cron_callers": 12,
+    "systemd_callers": 4,
+    "openclaw_callers": 24,
+    "zero_call_gate_passed": false,
+    "physical_removal_ready": false
+  },
+  "mutations": {"broker": 0, "orders": 0, "stops": 0, "risk": 0, "two_factor_auth": 0}
+}

@@ -1,5 +1,5 @@
 # Trade AI v12 — Documentation Index
-**Updated:** 2026-08-09 (CIO Phase 3 delivery · CIO architecture docs indexed · Steph Wealth Advisor docs · AGENT_ROSTER refreshed · model policy updated)
+**Updated:** 2026-08-24 (R10.3 CIO persistent-cognition consumption source PR)
 **Protocol:** All doc changes follow `docs/A1A.md`. Do not add a doc without updating this index.
 **Scope:** Project root = `/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild`
 
@@ -7,6 +7,53 @@
 > the source draft had drifted, and docs that are actually in `docs/_archive/` are listed as archived
 > rather than active (see **Index Corrections** at the bottom). This is an A1A requirement — the index
 > must not point at phantom or mislocated files.
+
+---
+
+## Autonomy & system state (2026-08-20) — read first for recovery
+
+| Document | Purpose | Status |
+|----------|---------|--------|
+| `docs/architecture/TRADEAI_SYSTEM_STATE_AND_AUTONOMY_2026-08-20.md` | **Master record** — LIVE architecture, timers, notify gates, freeform/desk loop, thesis SLA, autonomy directive gap matrix, roadmap | Active |
+| `docs/_findings/ALEX_AUTONOMY_GROUND_TRUTH_2026-08-21.md` | Phase 0 closed snapshot (2414 wakes / 0 payloads at `b04f0016`) | Active (do not rewrite) |
+| `docs/ops/MATURATION_G1_I0_A1_B1_2026-08-21.md` | G.1 quarantine + I.0 tree-pin audit + A.1 off-peak retarget + B.1 producer payload flags | Active |
+| `docs/ops/CIO_UI_AUDIT_2026-08-22.md` | **Canonical per-tab UI audit** of `/v3/advisory` + CIO Office (A–E). Live `:7777` is pin `5e91225a`. Raw dump on Drive. | Active |
+| `docs/ops/RESEARCH_LIFECYCLE_AS_OF_2026-08-22.md` | **Current-state lifecycle** — trigger → DeepSeek → parser/raw → mint → who consumes; holdings 17/22 CURRENT, SLA true; agents pull, not push | Active |
+| `docs/ops/SESSION_CLOSEOUT_2026-08-22.md` | **Index of 2026-08-22 findings + fixes** (parser/join, mint, skip-gate, T3, ingest) | Active |
+| `docs/ops/COST_CAP_EXCEEDED_2026-08-22.md` | 441 COST_CAP rows: bind 11:31 ET, tiers, 895 vs ~312, skip-gate not live on crontab tree | Active |
+| `docs/ops/RESEARCH_LIFECYCLE_STANDARD.md` | Intended methodology (incremental / skip unchanged). Live measured state is the as-of file | Active |
+| `docs/RESEARCH_PRIORITIZATION.md` | Hermes lane/tier SLA (who/when). Execute set = due ∩ lifecycle gate | Active |
+| `docs/ops/RESEARCH_TIER_LLM_CADENCE.md` | **Canonical** five universe tiers, one watchlist research tier (T1-WATCH), S0–S3 vs hygiene 1–3, cron + confirm-run | Active |
+| `docs/ops/TELEGRAM_FEED_REMEDIATION_2026-08-22.md` | Telegram audit 18,130 msgs — P0 T1/T2 shipped; T3–T7 after 8/27 | Active |
+| `docs/ops/RESEARCH_QUALITY_AND_THESIS_GAP_2026-08-22.md` | Parser `[:500]` diagnosis, S1–S7, sandbox, mint; night numbers in the as-of file | Active |
+| `docs/ops/LLM_ROUTING_AND_DATA_LAYERS.md` | Two LLM families (scheduler DeepSeek vs 2h OAuth); Telegram DATA_UNAVAILABLE is thesis-slot join | Active |
+| `docs/ops/CIO_PHASE1_2_MEASURE_CLOSEOUT_2026-08-21.md` | Phase 1–2 measure closeout; evening note: 5-day window false start | Active |
+| `docs/ops/AUTONOMOUS_ADVISOR_SESSION_CLOSEOUT_2026-08-20.md` | Session closeout — PR #414–#420 deploys, host proofs, commands, Drive sync notes | Active |
+| `docs/ops/CIO_REENTRY_S3_WIRE_2026-08-20.md` | Reentry → S3 evidence wire (#414) | Active |
+| `docs/ops/CIO_WATCH_S7_WIRE_2026-08-20.md` | Watch → S7 evidence wire (#415) | Active |
+| `docs/ops/CIO_OPERATOR_DESK_LOOP_P0_2026-08-20.md` | Desk loop P0 meta_system (#418) | Active |
+| `docs/ops/CIO_OPERATOR_FREEFORM_AGENT_2026-08-20.md` | Freeform Flash agent (#419) | Active |
+| `docs/ops/CIO_HELD_THESIS_COVERAGE_2026-08-20.md` | Held-book thesis coverage SLA (#420) | Active |
+| `docs/architecture/TRADE_AI_INSTITUTIONAL_MEMORY_AND_AUTONOMOUS_AGENT_ARCHITECTURE_2026-08-24.md` | **Canonical R10** — taxonomy, BASELINE_PROJECTION vs material, PR sequence, constitution | Active |
+| `docs/ops/TRADE_AI_R10_MEMORY_AUTONOMOUS_AGENT_CLOSEOUT_2026-08-24.md` | R10.2 closeout — M1 LIVE naturally proven on `5c0a993a` | Active |
+| `docs/ops/YEDAS_EYE_INSTITUTIONAL_BRAIN_MATURITY_2026-08-24.md` | Yeda's Eye first audit after M1 natural PASS | Active |
+| `docs/ops/CIO_PERSISTENT_COGNITION_CONSUMPTION_2026-08-24.md` | CIO read-only consumption of TickerResearchState + baseline | Active |
+| `docs/ops/TRADE_AI_M2_MEMORY_SUBSTRATE_BENCHMARK_2026-08-24.md` | Isolated A/B/C substrate benchmark; POSTGRES_PGVECTOR decision | Active |
+| `docs/architecture/GOOGLE_NOTES_BITEMPORAL_DDL_ARCHITECT_RECONCILIATION_2026-08-24.md` | Google Notes DDL: accepted / modified / rejected / benchmark-required | Active |
+| `docs/ops/TRADE_AI_M3_MEMORY_CONSOLIDATION_2026-08-24.md` | M3 consolidator / episodes / preference candidates (source) | Active |
+| `docs/ops/TRADE_AI_M4_CONTEXT_ENVELOPE_AND_CC_SPEC_2026-08-24.md` | M4 same-brain envelope + Command Center spec | Active |
+| `docs/architecture/TRADE_AI_BITEMPORAL_MEMORY_DATA_MODEL_2026-08-24.md` | R10 MemoryFact@v2 + six architectural corrections (source/tested, not live) | Active |
+| `docs/architecture/TRADE_AI_MEMORY_RETRIEVAL_AND_INDEX_STRATEGY_2026-08-24.md` | MemoryRetrievalUnit + index strategy; HNSW/Neo4j UNMEASURED | Active |
+| `docs/ops/TRADE_AI_MEMORY_ARCHITECTURE_CORRECTION_CLOSEOUT_2026-08-24.md` | Six-defect closeout; reconciled onto post-#494 main | Active |
+| `docs/architecture/HERMES_PERSISTENT_TICKER_INTELLIGENCE_ARCHITECTURE_2026-08-23.md` | **Canonical** identity v2 (issuer/security/listing), free-first, Librarian critique, LLM escalation | Active |
+| `docs/ops/HERMES_FREE_FIRST_MEMORY_GRAPH_CONVERGENCE_2026-08-23.md` | R9.3 operational closeout — measured 120/0 artifacts, FREE_FIRST_ONLY | Active |
+| `docs/ops/HERMES_FREE_FIRST_NATURAL_SCHEDULER_2026-08-23.md` | CURRENT-pinned FREE_FIRST_ONLY systemd timer (hourly :23 ET, zero paid) | Active |
+| `docs/ops/HERMES_LIBRARIAN_CURATION_MATURITY_2026-08-23.md` | PR C Librarian epistemic + HermesCurationSummary — **live on `bc6ff5c6`**, first natural post-C tick 00:23 ET | Active |
+| `docs/_evidence/hermes_r93/POST_C_NATURAL_TICK.json` | Two natural ticks + post-#492 00:23 ET receipt (117/2/1/0/120/0, SHA-unchanged graph/state) | Active |
+| `docs/_evidence/memory_r10/` | R10 inventory, taxonomy, provider-convergence (M1) | Active |
+| `docs/architecture/TICKER_KNOWLEDGE_GRAPH_GUID_LINEAGE.md` | v1 ticker GUID lineage (#487/#488). Ticker is alias, not security identity | Active (partially superseded) |
+
+Drive mirror: **Trade_AI_Docs_v2** (`1Zxc20B5Xo24RGZ1Pow1-uW6ldASQJHiR`) via `scripts/sync-docs-to-drive.sh`.
 
 ---
 

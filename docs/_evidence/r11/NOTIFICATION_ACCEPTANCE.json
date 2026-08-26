@@ -1,0 +1,24 @@
+{
+  "schema": "NotificationAcceptance@v1",
+  "as_of": "2026-08-25T12:40:00+00:00",
+  "authority": "READ_ONLY_ADVISORY",
+  "prepared": true,
+  "delivered_fixture": true,
+  "delivered_live": false,
+  "receipts_fixture": true,
+  "receipts_live": false,
+  "suppressed": ["NO_MATERIAL_CHANGE", "SEMANTIC_DEDUPE", "CASH_WITHIN_POLICY", "POLICY_REQUIRED_IMMATERIAL", "NEED_DATA", "STALE_FINANCIAL_TRUTH", "LESSON_CANDIDATE_NOT_POLICY"],
+  "semantic_dedupe": true,
+  "sender_attribution": "alex_cio",
+  "human_readable": true,
+  "raw_json_forbidden": true,
+  "live_material_scan": {
+    "at": "2026-08-25T08:25:02-04:00",
+    "cash_posture_status": "ABOVE_BAND",
+    "published": 3,
+    "delivered": false,
+    "reason": "dry_run_or_interdicted"
+  },
+  "operator_message_example": "Alex · CIO NOW\n\nHEADLINE\nCash posture: Deploy Staged.\n\nWHY NOW\nYou currently have approximately $X of verified cash...",
+  "natural_notification": "PENDING"
+}

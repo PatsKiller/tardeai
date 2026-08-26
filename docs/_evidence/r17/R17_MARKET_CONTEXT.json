@@ -1,0 +1,12 @@
+{
+  "schema": "R17MarketContext@v1",
+  "wake_entire_universe": false,
+  "bounded_to_held_and_thesis": true,
+  "domains": [
+    "macro_regime",
+    "breadth",
+    "rates",
+    "volatility",
+    "seasonality"
+  ]
+}

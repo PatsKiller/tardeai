@@ -1,0 +1,13 @@
+[Unit]
+Description=Trade AI CIO defer/revisit worker (reopen + revalidate + publish-if-material)
+After=network.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT
+Environment=PYTHONPATH=/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT:/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/scripts
+EnvironmentFile=-/run/user/%U/tradeai/env
+EnvironmentFile=-%h/.config/tradeai/cio-telegram.env
+EnvironmentFile=-%h/.config/tradeai/cio-operator-live.env
+ExecStart=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/cio_defer_revisit.py --live
+Nice=10

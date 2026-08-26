@@ -1,0 +1,9 @@
+{
+  "schema": "R15NaturalProofs@v1",
+  "r15_deployed": false,
+  "scheduled_cycles_after_r15_deploy": 0,
+  "hourly_free_first_already_live_on_current": true,
+  "zero_cost_no_change_cycles_preexisting": true,
+  "real_llm_curation_cycles": "BLOCKED_REAL_WORLD_EVENT",
+  "note": "Do not synthesize a material event. Exact-main deploy is a separate operator decision."
+}

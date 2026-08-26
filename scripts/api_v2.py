@@ -6469,8 +6469,7 @@ def _build_tlh_summary():
 
 
 def ai_ask(body: dict):
-    """POST /api/v2/ai-ask — live AI query via local Ollama."""
-    _local_model = get_local_llm_model()
+    """POST /api/v2/ai-ask — live query via the governed advisory lane."""
     question = (body.get("question") or "").strip()
     if not question:
         return 400, {"ok": False, "error": "question required"}
@@ -6481,16 +6480,12 @@ def ai_ask(body: dict):
     portfolio_ctx = f"Portfolio: ${totals.get('total_value',0):,.0f}. Heat: {totals.get('day_change_pct',0):.2f}%. "
     prompt = f"You are a portfolio analyst. Answer concisely based on this context:\n{portfolio_ctx}{context}\n\nQuestion: {question}"
     try:
-        import urllib.request
-        payload = json.dumps({"model": _local_model, "stream": False,
-                              "messages": [{"role": "user", "content": prompt}], "think": False,
-                              "options": {"temperature": 0.2, "num_predict": 500}}).encode()
-        _base = get_local_llm_base_url().rstrip("/")
-        req = urllib.request.Request(f"{_base}/api/chat",
-                                     data=payload, headers={"Content-Type": "application/json"}, method="POST")
-        with urllib.request.urlopen(req, timeout=90) as resp:
-            raw = json.loads(resp.read()).get("message", {}).get("content", "").strip()
-            return 200, {"ok": True, "answer": raw, "model": _local_model, "question": question}
+        import llm_lane
+        raw = llm_lane.generate(
+            prompt, lane="deepseek-flash", timeout=90, process_id="api_v2_ai_ask"
+        )
+        return 200, {"ok": True, "answer": str(raw or "").strip(),
+                     "model": "deepseek-v4-flash", "question": question}
     except Exception as e:
         return 500, {"ok": False, "error": f"LLM unavailable: {e}"}
 
@@ -22045,8 +22040,33 @@ def _research_topics_unified():
         "gaps_escalated": len(gaps) > 0,
         "auto_research_briefs": auto_briefs_out,
         "auto_research_count": len(auto_briefs_out),
+        "youtube_research_queue": _cio_youtube_research_queue_summary(),
         "note": "User Research Topics are operator-initiated advisories. Auto-research briefs come from auto_research.py (Trade AI LLM router, not Hermes). Topic Monitor Library tracks automated intelligence gathering. Gaps escalated to Iris agent for investigation.",
     }
+
+
+def _cio_youtube_research_queue_summary():
+    """Thin read of material-only CIO YouTube queue (file or empty)."""
+    try:
+        from cio_youtube_research_queue import load_queue
+        q = load_queue()
+        return {
+            "count": q.get("count", 0),
+            "built_at": q.get("built_at"),
+            "min_quality": q.get("min_quality", 70),
+            "items": (q.get("items") or [])[:12],
+        }
+    except Exception:
+        return {"count": 0, "items": [], "note": "queue unavailable"}
+
+
+def _cio_youtube_research_queue():
+    """GET /api/v2/cio/youtube-research-queue — material-only promoted YT (Q>=70)."""
+    try:
+        from cio_youtube_research_queue import load_queue
+        return load_queue()
+    except Exception as e:
+        return {"count": 0, "items": [], "error": str(e)[:160]}
 
 
 def _report_catalog_cached():
@@ -24643,20 +24663,20 @@ def _queue_control_tower():
 
     # ── Metadata for known jobs ──
     JOB_META = {
-        "hermes-autonomous-loop": {"cat": "hermes_advisory", "llm": True, "model": "gemma3:12b", "writes": "hermes_research_intelligence", "telegram": False, "why": "Autonomous ticker challenger — stages research rows"},
-        "hermes-advisory-cache-worker": {"cat": "hermes_advisory", "llm": True, "model": "gemma3:12b", "writes": "llm_intelligence_cache", "telegram": False, "why": "Promotes advisory cache from staged research"},
+        "hermes-autonomous-loop": {"cat": "hermes_advisory", "llm": True, "model": "deepseek-v4-flash", "writes": "hermes_research_intelligence", "telegram": False, "why": "Autonomous ticker challenger — stages research rows"},
+        "hermes-advisory-cache-worker": {"cat": "hermes_advisory", "llm": True, "model": "deepseek-v4-flash", "writes": "llm_intelligence_cache", "telegram": False, "why": "Promotes advisory cache from staged research"},
         "hermes-observation-check": {"cat": "hermes_advisory", "llm": False, "model": None, "writes": "observation report", "telegram": False, "why": "Checks Hermes research quality/drift"},
         "hermes-backlog-health-check": {"cat": "hermes_advisory", "llm": False, "model": None, "writes": "backlog health report", "telegram": False, "why": "Monitors research backlog staleness"},
         "hermes-embedding-promotion-review": {"cat": "hermes_advisory", "llm": False, "model": None, "writes": "promotion audit", "telegram": False, "why": "Reviews embeddings for promotion eligibility"},
-        "hermes-librarian-backlog-loop": {"cat": "hermes_advisory", "llm": True, "model": "gemma3:12b", "writes": "hermes_research_intelligence", "telegram": False, "why": "Librarian researches backlog items"},
-        "hermes-source-discovery-dryrun": {"cat": "hermes_research", "llm": True, "model": "gemma3:12b", "writes": "hermes_research_intelligence (dry-run)", "telegram": False, "why": "Discovers new research sources"},
+        "hermes-librarian-backlog-loop": {"cat": "hermes_advisory", "llm": True, "model": "deepseek-v4-flash", "writes": "hermes_research_intelligence", "telegram": False, "why": "Librarian researches backlog items"},
+        "hermes-source-discovery-dryrun": {"cat": "hermes_research", "llm": True, "model": "deepseek-v4-flash", "writes": "hermes_research_intelligence (dry-run)", "telegram": False, "why": "Discovers new research sources"},
         "hermes-momentum-catalyst-morning": {"cat": "market_morning", "llm": False, "model": None, "writes": "momentum catalyst JSONL", "telegram": False, "why": "SearXNG catalyst research for momentum candidates"},
         "hermes-shadow-scorer": {"cat": "hermes_research", "llm": False, "model": None, "writes": "shadow scores JSONL", "telegram": False, "why": "Shadow scoring — learning vs live comparison"},
-        "high-llm-execution-worker": {"cat": "llm_queue", "llm": True, "model": "gemma3:12b/Gemma4 31B", "writes": "escalation results", "telegram": False, "why": "Executes high-priority LLM review jobs"},
+        "high-llm-execution-worker": {"cat": "llm_queue", "llm": True, "model": "governed cloud", "writes": "escalation results", "telegram": False, "why": "Executes high-priority LLM review jobs"},
         "tradeai-continuous": {"cat": "market_morning", "llm": False, "model": None, "writes": "trade_ai_scans", "telegram": False, "why": "Daily pipeline launcher — screener + enrichment + scoring"},
         "tradeai-reprice": {"cat": "market_hours", "llm": False, "model": None, "writes": "portfolio prices", "telegram": False, "why": "Market-hours portfolio repricing every 15 min"},
         "aegis-surveillance": {"cat": "portfolio", "llm": False, "model": None, "writes": "agent results", "telegram": True, "why": "Morning surveillance sweep"},
-        "aegis-overnight": {"cat": "overnight", "llm": True, "model": "gemma3:12b", "writes": "agent results", "telegram": False, "why": "Overnight intelligence synthesis"},
+        "aegis-overnight": {"cat": "overnight", "llm": True, "model": "deepseek-v4-flash", "writes": "agent results", "telegram": False, "why": "Overnight intelligence synthesis"},
         "portfolio-daily": {"cat": "portfolio", "llm": False, "model": None, "writes": "portfolio snapshots", "telegram": False, "why": "Daily portfolio pipeline"},
         "portfolio-backup": {"cat": "overnight", "llm": False, "model": None, "writes": "backup files", "telegram": False, "why": "Nightly portfolio backup"},
         "recovery-watch": {"cat": "portfolio", "llm": False, "model": None, "writes": "stopped_out_watch", "telegram": False, "why": "Check stopped-out positions for re-entry"},
@@ -25545,7 +25565,7 @@ def _high_llm_queue():
         "by_status": by_status,
         "results_count": rc,
         "kill_switch": ks.exists(),
-        "default_model": "gemma3:12b",
+        "default_model": "deepseek-v4-flash",
     }
 
 
@@ -26680,8 +26700,8 @@ def _hermes_legacy_agents(query=None):
     }
 
 
-HERMES_LOCAL_ONLY = ("default", "tradeai", "tradeai12b")  # must stay on local Ollama
-HERMES_PROVIDERS = ["custom", "openai-codex", "xai-oauth", "nous"]  # custom = local Ollama
+HERMES_LOCAL_ONLY = ()
+HERMES_PROVIDERS = ["openai-codex", "xai-oauth", "nous"]
 
 
 def _hermes_identity_meta_path(profile):
@@ -26698,13 +26718,7 @@ def _hermes_identity_meta(profile):
 
 
 def _hermes_available_models():
-    out = _hermes_run(["ollama", "list"], timeout=8) or ""
-    models = []
-    for ln in out.splitlines()[1:]:
-        nm = ln.split()[0] if ln.split() else ""
-        if nm and "embed" not in nm.lower():
-            models.append(nm)
-    return models
+    return []
 
 
 # Curated model menus per provider (free/OAuth lanes). Exact cloud IDs resolve via `hermes model` after
@@ -26744,15 +26758,9 @@ def _hermes_identity_detail(query=None):
                 "tools": _hermes_profile_tools(name), "soul_hash": _hermes_soul_hash(name),
                 "local_only": local,
                 "available_models": avail_models,
-                "available_providers": (["custom"] if local else HERMES_PROVIDERS),
-                # provider -> selectable models (custom=live ollama; cloud/OAuth=curated free-lane menus).
-                # local-only profiles only get custom (cloud is guard-blocked there).
-                "model_options": ({"custom": avail_models} if local else
-                                  {"custom": avail_models, **HERMES_PROVIDER_MODELS}),
-                "policy_note": ("This profile must stay on local Ollama (provider=custom). Cloud providers, "
-                                "gemma3:12b (unconstrained), and qwen3:14b are blocked." if local
-                                else "dev/serverops may use free OAuth lanes: openai-codex (ChatGPT), "
-                                     "xai-oauth (Grok), nous. Complete the OAuth login before use.")}
+                "available_providers": HERMES_PROVIDERS,
+                "model_options": HERMES_PROVIDER_MODELS,
+                "policy_note": "Local generative providers are retired. Complete OAuth login before use."}
 
     if profile == "__all__":
         return {"ok": True, "identities": [one(n) for n in HERMES_PROFILES]}
@@ -26768,13 +26776,10 @@ def _hermes_validate_identity(profile, model, provider):
     errs = []
     m = (model or "").strip().lower()
     p = (provider or "").strip().lower()
-    if m:
-        if "qwen3:14b" in m or m == "qwen3":
-            errs.append("qwen3:14b must not be reintroduced as a Hermes model")
-        if m == "gemma3:12b" and profile in ("default", "tradeai"):
-            errs.append("gemma3:12b (unconstrained) is not approved for default/tradeai — use gemma3:12b-ctx4k on tradeai12b")
-    if p and profile in HERMES_LOCAL_ONLY and p not in ("custom",):
-        errs.append(f"{profile} must stay on local Ollama (provider=custom); cloud providers are blocked here")
+    if m and any(token in m for token in ("gemma", "qwen", "ollama")):
+        errs.append("local generative models are retired")
+    if p == "custom":
+        errs.append("local custom provider is retired")
     return errs
 
 
@@ -26921,11 +26926,11 @@ def _tradeai_fleet(query=None):
     for name, role in TRADEAI_ROLES.items():
         soul_agent = TRADEAI_SOUL_AGENT.get(name)
         editable = bool(soul_agent and soul_agent in oc_ids and _openclaw_agent_soul_path(soul_agent).exists())
-        rows.append({"agent": name, "role": role, "runtime_model": "gemma3:12b",
+        rows.append({"agent": name, "role": role, "runtime_model": "deepseek-v4-flash",
                      "type": "advisory" if soul_agent else "algorithmic",
                      "soul_agent": soul_agent if editable else None, "soul_editable": editable,
                      "calibration": (cal.get(name) or {}).get("status") or (cal.get(name) or {}).get("recommendation")})
-    return {"ok": True, "read_only_fleet": True, "runtime_model": "gemma3:12b",
+    return {"ok": True, "read_only_fleet": True, "runtime_model": "deepseek-v4-flash",
             "agents": rows,
             "note": "Advisory personas (alex/aegis/steph/maria/iris) have editable SOULs (shared with "
                     "OpenClaw). Algorithmic agents (risk/tax/scalp/social) are config-driven; their "
@@ -26984,15 +26989,15 @@ def _hermes_workflow_matrix(query=None):
         "safe_views_count": len(lineage.get("safe_views", [])),
         "chat_usage": {
             "default": "general non-trading help (tools off)",
-            "tradeai": "Trade AI advisory/review — stable (gemma3:4b, tool-less)",
-            "tradeai12b": "deeper/experimental Trade AI analysis (gemma3:12b-ctx4k, tool-less, manual-only)",
+            "tradeai": "Trade AI advisory/review — governed cloud, tool-less",
+            "tradeai12b": "retired local profile",
             "dev": "engineering/Codex (future, human-invoked)",
             "serverops": "future server-ops (advisory until hardened)",
         },
         "quick_answers": {
             "who_owns_librarian": "hermes_autonomous_librarian_backlog_loop.py via hermes-librarian-backlog-loop.timer",
-            "tradeai_vs_tradeai12b": "Same advisory role; tradeai=stable 4b default, tradeai12b=experimental 12B for deeper analysis (not used by automation).",
-            "tradeai12b_automated": "No — no automated job uses any chat profile; fleet scripts call Ollama directly.",
+            "tradeai_vs_tradeai12b": "tradeai is governed cloud; the local tradeai12b profile is retired.",
+            "tradeai12b_automated": "No. Local generative automation is forbidden.",
         },
         "note": "Regenerate the underlying JSON with scripts/audit_hermes_workflow_owners.py + audit_hermes_db_lineage.py.",
     }
@@ -27411,26 +27416,26 @@ def _opportunity_queue_summary():
 
 
 def _sector_target_map() -> dict:
-    """Read config/rotation_sector_targets.json themes → GICS target map (fail-soft).
+    """GICS sector targets from existing configs (fail-soft).
 
-    Only theme names that canonicalize to one of the 11 canonical GICS sectors
-    contribute a sector target; thematic sleeves (Magnificent 7, AI mega-cap,
-    Semiconductors, etc.) are skipped because they are not sector-level targets.
-    Returns {} on any error.
+    Prefers ``config/model_portfolio.json`` sector_targets, then GICS-canonical
+    themes from ``config/rotation_sector_targets.json``. Does not invent numbers;
+    missing sectors fall through to the model-default placeholder in synthesis.
     """
     try:
-        from scripts.lib.cio_sector_opportunity import CANONICAL_SECTORS, canonical_sector
-        raw = _load_json(PROJECT_ROOT / "config" / "rotation_sector_targets.json") or {}
-        themes = raw.get("themes") or {}
-        out: dict[str, float] = {}
-        for theme, cfg in themes.items():
-            target = (cfg or {}).get("target")
-            if target is None:
-                continue
-            canon = canonical_sector(theme)
-            if canon in CANONICAL_SECTORS:
-                out[canon] = float(target)
-        return out
+        from scripts.lib.cio_sector_opportunity import load_sector_target_map
+        loaded = load_sector_target_map(project_root=PROJECT_ROOT)
+        return dict(loaded.get("targets") or {})
+    except Exception:
+        return {}
+
+
+def _sector_target_sources() -> dict:
+    """Parallel source labels for ``_sector_target_map`` (fail-soft)."""
+    try:
+        from scripts.lib.cio_sector_opportunity import load_sector_target_map
+        loaded = load_sector_target_map(project_root=PROJECT_ROOT)
+        return dict(loaded.get("sources") or {})
     except Exception:
         return {}
 
@@ -27448,7 +27453,11 @@ def _cio_sector_opportunities(query=None):
             "ok": True,
             "authority": "READ_ONLY_ADVISORY",
             **build_synthesis_from_executor(
-                _db_query, sector_targets=_sector_target_map(), capital_usd=capital
+                _db_query,
+                sector_targets=_sector_target_map(),
+                sector_target_sources=_sector_target_sources(),
+                capital_usd=capital,
+                project_root=PROJECT_ROOT,
             ),
         }
     except Exception as exc:
@@ -27511,6 +27520,11 @@ def _cio_capital_plan(query=None):
             PROJECT_ROOT / "data" / "portfolios" / "state" / "holdings.json"
         ) or {}
         queue = build_queue_from_executor(_db_query)
+        try:
+            from scripts.lib.cio_investment_product import merge_queue_with_stored_verdicts
+            queue = merge_queue_with_stored_verdicts(queue)
+        except Exception:
+            pass
         redeploy = _redeploy_opportunity_set() or {}
         open_events = redeploy.get("open_events") or []
         sectors = (_cio_sector_opportunities() or {}).get("opportunities") or []
@@ -27536,20 +27550,34 @@ def _capital_plan_compact():
             "cash_total_usd": full.get("cash_total_usd"),
             "cash_reserved_usd": full.get("cash_reserved_usd"),
             "cash_investable_usd": full.get("cash_investable_usd"),
+            "cash_earmarked_redeploy_usd": full.get("cash_earmarked_redeploy_usd"),
             "cash_posture_status": full.get("cash_posture_status"),
+            "plan_version": full.get("plan_version"),
             "total_raise_usd": (full.get("capital_sources") or {}).get("total_raise_usd"),
+            "earmarked_redeploy_usd": (full.get("capital_sources") or {}).get("earmarked_redeploy_usd"),
+            "double_count_guard": (full.get("capital_sources") or {}).get("double_count_guard"),
+            "deployable_usd": full.get("deployable_usd"),
             "deploy_request_usd": (full.get("capital_uses") or {}).get("total_deploy_request_usd"),
             "net_recommended_deploy_usd": full.get("net_recommended_deploy_usd"),
             "net_recommended_raise_usd": full.get("net_recommended_raise_usd"),
             "post_plan_cash_usd": full.get("post_plan_cash_usd"),
             "post_plan_cash_pct": full.get("post_plan_cash_pct"),
+            "ledger_invariants_ok": (full.get("cash_ledger") or {}).get("invariants_ok"),
             "decision_count": len(full.get("position_decisions") or []),
+            "financial_truth_gate": full.get("financial_truth_gate"),
+            "freshness_materiality_gate": full.get("freshness_materiality_gate"),
             "top_decisions": [
                 {
                     "symbol": d.get("symbol"),
                     "stance": d.get("cio_stance"),
                     "recommended_delta_usd": d.get("recommended_delta_usd"),
                     "tax_account_constraint": d.get("tax_account_constraint"),
+                    "actionable": d.get("actionable"),
+                    "act_now": d.get("act_now"),
+                    "action_label": d.get("action_label"),
+                    "action_label_display": d.get("action_label_display"),
+                    "act_now_suppressed": d.get("act_now_suppressed"),
+                    "financial_truth_quality": d.get("financial_truth_quality"),
                 }
                 for d in (full.get("position_decisions") or [])[:8]
             ],
@@ -27559,7 +27587,37 @@ def _capital_plan_compact():
 
 
 def _source_sha() -> Optional[str]:
-    """Current git HEAD SHA (fail-soft; used in the report manifest)."""
+    """Instance release SHA for report stamps (prefer BUILD_SHA, else git HEAD).
+
+    Phase report acceptance: operators must see the *running* instance SHA,
+    not a silent UNKNOWN. Order: env → release BUILD_SHA → git HEAD.
+    """
+    import os as _os
+    for key in ("BUILD_SHA", "CIO_SOURCE_SHA", "SOURCE_SHA", "GIT_SHA"):
+        v = (_os.environ.get(key) or "").strip()
+        if v:
+            return v
+    for rel in (
+        Path("/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/BUILD_SHA"),
+        PROJECT_ROOT / "BUILD_SHA",
+        PROJECT_ROOT / "BUILD_STAMP.json",
+    ):
+        try:
+            p = Path(rel) if not isinstance(rel, Path) else rel
+            if not p.is_file():
+                continue
+            if p.name.endswith(".json"):
+                import json as _json
+                blob = _json.loads(p.read_text(encoding="utf-8"))
+                for k in ("build_sha", "source_sha", "git_sha", "sha"):
+                    if blob.get(k):
+                        return str(blob[k]).strip()
+            else:
+                txt = p.read_text(encoding="utf-8").strip().splitlines()[0].strip()
+                if txt:
+                    return txt
+        except Exception:
+            continue
     try:
         import subprocess
         out = subprocess.run(
@@ -29571,7 +29629,8 @@ def _symbol_cards(query=None):
         c["ts"] = _t.time()
     out = dict(c["payload"])  # shallow copy: json_response pops __etag__, must not mutate cache
     out["__etag__"] = c["etag"]
-    return out
+    from lib.cc_symbol_cards import apply_symbol_cards_query
+    return apply_symbol_cards_query(out, query)
 
 
 def _symbol_cards_build():
@@ -30441,8 +30500,7 @@ def _broker_orders_explain(body=None):
     """POST /api/v2/broker-orders/explain — ADVISORY-ONLY AI helper for the ToS-style order panel.
     Explains order-type/field MECHANICS and how the canonical intent translates to Schwab. It can
     never submit/approve (pure text; no DB writes) and never gives security-selection advice.
-    Routing (operator-confirmed 2026-06-12): local model by default; Claude ONLY on explicit
-    escalate=true — never auto-cloud."""
+    Routing: governed DeepSeek by default; Claude only on explicit operator escalation."""
     b = body or {}
     topic = str(b.get("topic") or "order basics")[:120]
     question = str(b.get("question") or "")[:600]
@@ -30466,9 +30524,11 @@ def _broker_orders_explain(body=None):
             text = _try_anthropic(prompt)
             provider = "anthropic (explicit operator escalation)"
         else:
-            from local_llm import generate as _gen
-            text = _gen(prompt, timeout=60, fallback=False, caller="broker_orders_explain")
-            provider = "local model"
+            import llm_lane
+            text = llm_lane.generate(
+                prompt, lane="deepseek-flash", timeout=60,
+                process_id="broker_orders_explain")
+            provider = "deepseek-v4-flash"
     except Exception as e:
         text, provider = None, f"unavailable ({str(e)[:60]})"
     return {"answer": (text or "").strip() or "(model unavailable — static tooltips still apply)",
@@ -33318,11 +33378,11 @@ def _hermes_researcher_matrix(query=None):
                    if dr.get("timer_enabled") else "designed (runner built)")
     return {
         "generated_note": "read-only researcher matrix; lane statuses from canonical snapshot (Phase 217)",
-        "internal_deep_research_lane": {"name": "Hermes Deep Research — Local",
-            "model": dr.get("model", "gemma3:27b / gemma3-overnight"), "process": "BATCH_OVERNIGHT",
+        "internal_deep_research_lane": {"name": "Hermes Deep Research — Governed Cloud",
+            "model": dr.get("model", "deepseek-v4-flash"), "process": "BATCH_OVERNIGHT",
             "design_status": "designed", "runner_built": dr.get("runner_built", True),
             "timer_enabled": dr.get("timer_enabled"), "next_run": dr.get("next_run"),
-            "status": deep_status, "gemma4": "deferred — not installed"},
+            "status": deep_status, "local_generation": "retired"},
         "external_lanes": [
             {"lane": "Claude (Anthropic)", "role": "high-stakes: retirement/tax/SSDI/IRMAA, risk synthesis, final challenge", "status": lane_status("anthropic"), "advisory_only": True},
             {"lane": "ChatGPT (Codex)", "role": "second opinion, code/design review, synthesis", "status": lane_status("openai-codex"), "advisory_only": True},
@@ -33330,8 +33390,8 @@ def _hermes_researcher_matrix(query=None):
             {"lane": "Consensus Panel", "role": "run when internal vs TradeAI disagree sharply + high importance", "status": "designed", "advisory_only": True},
         ],
         "chat_profiles": {
-            "tradeai": "stable Trade AI advisory (gemma3:4b, tool-less)",
-            "tradeai12b": "experimental deep advisory (gemma3:12b-ctx4k, tool-less, manual-only)",
+            "tradeai": "Trade AI advisory (governed cloud, tool-less)",
+            "tradeai12b": "retired local profile",
             "default": "general (tool-less)", "dev": "engineering/Codex (interactive)",
             "serverops": "server-ops (HOLD — P1: 18 tools enabled, hardening required)"},
         "canonical_docs": canon.get("canonical_docs"),
@@ -35669,6 +35729,7 @@ ROUTES = {
     "/api/v2/sec/form4/symbol": lambda: {"error": "Use /api/v2/sec/form4?symbol=V"},
     "/api/v2/research-topics": lambda: _research_topics_unified(),
     "/api/v2/research-topics/registry": lambda: _research_topics_registry(),
+    "/api/v2/cio/youtube-research-queue": lambda: _cio_youtube_research_queue(),
     "/api/v2/research-intelligence": lambda: _research_intelligence_feed(_current_query),
     "/api/v2/research-intelligence/taxonomy": lambda: _research_intelligence_taxonomy(),
     "/api/v2/research-intelligence/freshness": lambda: _research_intelligence_freshness(),
@@ -36415,7 +36476,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 content = result.get("content", "")
                 return 200, {"ok": True, "data": {
                     "choices": [{"message": {"role": "assistant", "content": content}}],
-                    "model": "gemma3:12b",
+                    "model": "deepseek-v4-flash",
                     "browsed": result.get("browsed", False),
                     "search_query": result.get("search_query"),
                 }}
@@ -37256,8 +37317,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
 
         if base_path == "/api/v2/agents/intelligence-feedback":
             # Operator → agents/LM critique on Central Intelligence signals.
-            # Runs the LOCAL LLM (free gemma) by default and returns the review synchronously;
-            # operator may opt into the GROK lane too (use_grok=true). Everything is persisted AND
+            # Runs governed DeepSeek and optionally Grok (use_grok=true). Everything is persisted AND
             # recorded as a learning observation so it feeds back into the self-learning loop.
             try:
                 import json as _json, time as _t
@@ -37288,11 +37348,13 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 import llm_lane
 
                 reviews, t0 = {}, _t.time()
-                # Local lane (always — primary, free)
+                # Governed advisory lane (always primary).
                 try:
-                    reviews["local"] = {"provider": "local-gemma", "text": llm_lane.generate(prompt, lane="local", timeout=120)}
+                    reviews["deepseek"] = {"provider": "deepseek-v4-flash", "text": llm_lane.generate(
+                        prompt, lane="deepseek-flash", timeout=120,
+                        process_id="api_v2_intelligence_feedback")}
                 except Exception as le:
-                    reviews["local"] = {"provider": "local-gemma", "error": str(le)[:160]}
+                    reviews["deepseek"] = {"provider": "deepseek-v4-flash", "error": str(le)[:160]}
                 # Grok lane (operator option; only if proxy authenticated)
                 if use_grok:
                     try:
@@ -38642,12 +38704,14 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                            "research": "Expand this into a research question. Under 60 words.",
                            "retirement": "Expand this retirement question. Under 60 words."}
                 prompt_text = PROMPTS.get(page_type, PROMPTS["approval"])
-                provider = "local"
-                # Try local LLM first
+                provider = "deepseek-v4-flash"
                 rewritten = ""
                 try:
-                    from local_llm import generate
-                    rewritten = (generate(f"{prompt_text}\n\nOriginal: {text}\n\nRewritten (concise, clear):", timeout=30, fast=True) or "").strip()
+                    import llm_lane
+                    rewritten = (llm_lane.generate(
+                        f"{prompt_text}\n\nOriginal: {text}\n\nRewritten (concise, clear):",
+                        lane="deepseek-flash", timeout=30,
+                        process_id="api_v2_rewrite_note") or "").strip()
                 except Exception:
                     pass
                 # Fallback to Claude Haiku if local failed
@@ -38663,7 +38727,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                         rewritten = msg.content[0].text.strip()
                         provider = "claude-haiku"
                     except Exception as e2:
-                        return 200, {"ok": False, "error": f"Both local LLM and Claude failed: {e2}"}
+                        return 200, {"ok": False, "error": f"Governed providers failed: {e2}"}
                 return 200, {"ok": True, "rewritten": rewritten, "provider": provider}
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)}
@@ -40241,16 +40305,60 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 500, {"ok": False, "error": type(e).__name__, "detail": str(e)[:200]}
 
+    # ── /v3/intelligence — IntelligenceLineage@v1 closed-loop (GET only) ─
+    if base_path.startswith("/api/v3/intelligence"):
+        try:
+            import api_v3_intelligence as _intel
+            p = base_path[len("/api/v3/intelligence"):].strip("/")
+            if method != "GET":
+                return 405, {"ok": False, "error": "method_not_allowed",
+                             "message": "intelligence lineage API is GET-only"}
+            return _intel.handle_get(p, query if isinstance(query, dict) else None)
+        except Exception as e:
+            return 500, {"ok": False, "error": type(e).__name__, "detail": str(e)[:200]}
+
     # ── /v3/cio — CIO Command Center dashboard + plan deep links ──────────
     if base_path.startswith("/api/v3/cio"):
         try:
             import api_v3_cio as _cio
             p = base_path[len("/api/v3/cio"):].strip("/")
             if method == "GET":
+                if p == "brain":
+                    return 200, _cio.get_cio_brain_v1()
                 if p in ("", "dashboard"):
                     return 200, _cio.get_cio_dashboard()
                 if p == "home":
                     return 200, _cio.get_cio_home()
+                if p in ("brain/maturity-contract", "brain/maturity_contract"):
+                    return 200, _cio.get_brain_maturity_contract()
+                if p == "brain/policy":
+                    return 200, _cio.get_operator_investment_policy()
+                if p in ("brain/policy-provenance", "brain/policy_provenance"):
+                    return 200, _cio.get_policy_provenance_v1()
+                if p in ("brain/portfolio-state", "brain/portfolio_state"):
+                    return 200, _cio.get_portfolio_state_v1()
+                if p in ("brain/market-context", "brain/market_context"):
+                    return 200, _cio.get_market_context_state_v1()
+                if p == "brain/seasonality":
+                    return 200, _cio.get_seasonality_state_v1()
+                if p in ("brain/portfolio-thesis", "brain/portfolio_thesis"):
+                    return 200, _cio.get_portfolio_thesis_v1()
+                if p in ("brain/capital-plan", "brain/capital_plan"):
+                    return 200, _cio.get_capital_plan_v1()
+                if p == "brain/methodology":
+                    return 200, _cio.get_methodology_policy_v1()
+                if p in ("brain/learning-review", "brain/learning_review"):
+                    return 200, _cio.get_learning_review_v1()
+                if p in ("brain/intelligence-lifecycle", "brain/intelligence_lifecycle"):
+                    return 200, _cio.get_intelligence_lifecycle_v1((query or {}).get("symbol") if isinstance(query, dict) else None)
+                if p in ("brain/model-performance", "brain/model_performance"):
+                    return 200, _cio.get_model_performance_v1()
+                if p in ("brain/learning-cockpit", "brain/learning_cockpit"):
+                    return 200, _cio.get_learning_cockpit_v1()
+                if p in ("brain/data-health", "brain/data_health"):
+                    return 200, _cio.get_data_health_v1()
+                if p in ("investment-product", "investment-books", "books"):
+                    return 200, _cio.get_investment_product()
                 if p == "dispositions":
                     return 200, _cio.get_decision_dispositions()
                 if p.startswith("decision/"):
@@ -40266,6 +40374,50 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     return 200, _cio.get_cio_delegation()
                 if p == "thesis":
                     return 200, _cio.get_cio_thesis()
+                if p in ("universe-theses", "universe_theses", "theses-universe"):
+                    return 200, _cio.get_universe_theses()
+                if p in ("agent-research-ops", "agent_research_ops", "research-ops"):
+                    return 200, _cio.get_agent_research_ops()
+                if p in ("thesis-research-proposal", "thesis_research_proposal", "research-proposal"):
+                    return 200, _cio.get_thesis_research_proposal()
+                if p.startswith("thesis-ri-pipeline/") or p.startswith("thesis_ri_pipeline/"):
+                    prefix = "thesis-ri-pipeline/" if p.startswith("thesis-ri-pipeline/") else "thesis_ri_pipeline/"
+                    sym = p[len(prefix):].strip("/").split("/")[0]
+                    if not sym:
+                        return 400, {"ok": False, "error": "symbol required"}
+                    return 200, _cio.get_thesis_ri_pipeline(sym)
+                if p.startswith("thesis-research-context/") or p.startswith("thesis_research_context/"):
+                    prefix = (
+                        "thesis-research-context/"
+                        if p.startswith("thesis-research-context/")
+                        else "thesis_research_context/"
+                    )
+                    sym = p[len(prefix):].strip("/").split("/")[0]
+                    if not sym:
+                        return 400, {"ok": False, "error": "symbol required"}
+                    return 200, _cio.get_thesis_research_context(sym)
+                if p in ("r71-fabric-map", "r71_fabric_map", "fabric-map"):
+                    return 200, _cio.get_r71_fabric_map()
+                if p.startswith("symbol-thesis/") or p.startswith("symbol_thesis/"):
+                    prefix = "symbol-thesis/" if p.startswith("symbol-thesis/") else "symbol_thesis/"
+                    sym = p[len(prefix):].strip("/").split("/")[0]
+                    if not sym:
+                        return 400, {"ok": False, "error": "symbol required"}
+                    return 200, _cio.get_symbol_thesis_card(sym)
+                if p.startswith("intelligence/"):
+                    rest = p[len("intelligence/"):].strip("/")
+                    parts = [x for x in rest.split("/") if x]
+                    if not parts:
+                        return 400, {"ok": False, "error": "symbol required"}
+                    if len(parts) == 1:
+                        return 200, _cio.get_symbol_intelligence(parts[0])
+                    return 404, {"ok": False, "error": f"unknown_cio_path: {p}"}
+                if p.startswith("ask-thesis/") or p.startswith("ask_thesis/"):
+                    prefix = "ask-thesis/" if p.startswith("ask-thesis/") else "ask_thesis/"
+                    sym = p[len(prefix):].strip("/").split("/")[0]
+                    if not sym:
+                        return 400, {"ok": False, "error": "symbol required"}
+                    return 200, _cio.get_ask_thesis_context(sym)
                 if p in ("desk-note", "desk_note", "synthesis"):
                     return 200, _cio.get_cio_desk_note()
                 if p == "plans":
@@ -40288,6 +40440,16 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     return (200 if res.get("ok") else 404), res
                 return 404, {"ok": False, "error": f"unknown_cio_path: {p}"}
             if method == "POST":
+                if p == "brain/feedback":
+                    result = _cio.post_linked_operator_feedback(body if isinstance(body, dict) else {})
+                    return (200 if result.get("ok") else 400), result
+                if p.startswith("brain/preferences/") and p.endswith("/confirm"):
+                    candidate_id = p[len("brain/preferences/"): -len("/confirm")].strip("/")
+                    result = _cio.post_confirm_preference_candidate(candidate_id, body if isinstance(body, dict) else {})
+                    return (200 if result.get("ok") else 400), result
+                if p == "brain/policy/ratify":
+                    res = _cio.post_operator_investment_policy_ratification(body or {})
+                    return (200 if res.get("ok") else 400), res
                 # POST /api/v3/cio/decision/{key}/disposition — operator ACK/DEFER/DONE/REJECT/RATE
                 if p.startswith("decision/") and p.endswith("/disposition"):
                     mid = p[len("decision/"):]
@@ -40295,6 +40457,15 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     if not key:
                         return 400, {"ok": False, "error": "decision_key required"}
                     res = _cio.post_decision_disposition(key, body or {})
+                    code = 200 if res.get("ok") else 400
+                    return code, res
+                # POST /api/v3/cio/intelligence/{SYM}/feedback — OperatorTickerFeedback@v1
+                if p.startswith("intelligence/") and p.endswith("/feedback"):
+                    mid = p[len("intelligence/"):]
+                    sym = mid[: -len("/feedback")].strip("/").split("/")[0]
+                    if not sym:
+                        return 400, {"ok": False, "error": "symbol required"}
+                    res = _cio.post_symbol_intelligence_feedback(sym, body or {})
                     code = 200 if res.get("ok") else 400
                     return code, res
                 # POST /api/v3/cio/plans/{id}/disposition  — status only (READ_ONLY)
@@ -40308,6 +40479,29 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     return code, res
                 return 404, {"ok": False, "error": f"unknown_cio_post: {p}"}
             return 405, {"ok": False, "error": "method_not_allowed"}
+        except Exception as e:
+            return 500, {"ok": False, "error": type(e).__name__, "detail": str(e)[:200]}
+
+    # ── /v3/maturity — Command Center learning / promotion / notification GET ─
+    if base_path.startswith("/api/v3/maturity-control"):
+        try:
+            import api_v3_maturity as _mat
+            p = base_path[len("/api/v3/maturity-control"):].strip("/")
+            if method != "POST":
+                return 405, {"ok": False, "error": "method_not_allowed",
+                             "message": "maturity-control is POST-only; dashboard stays GET"}
+            return _mat.handle_control_post(p, body or {})
+        except Exception as e:
+            return 500, {"ok": False, "error": type(e).__name__, "detail": str(e)[:200]}
+
+    if base_path.startswith("/api/v3/maturity"):
+        try:
+            import api_v3_maturity as _mat
+            p = base_path[len("/api/v3/maturity"):].strip("/")
+            if method != "GET":
+                return 405, {"ok": False, "error": "method_not_allowed",
+                             "message": "maturity dashboard API is GET-only"}
+            return _mat.handle_get(p, query if isinstance(query, dict) else None)
         except Exception as e:
             return 500, {"ok": False, "error": type(e).__name__, "detail": str(e)[:200]}
 
@@ -40333,6 +40527,8 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     return 200, _adv.get_advisory_brief()
                 if p == "calibration":
                     return 200, _adv.get_calibration()
+                if p in ("run-status", "run_status"):
+                    return 200, _adv.get_run_status()
                 if p == "promotion":
                     try:
                         from lib.advisory.promotion_gate import evaluate_promotion, load_promotion_state
@@ -40363,6 +40559,10 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     return 200, _adv.post_feedback(body or {}, kind="ack")
                 if p == "snooze":
                     return 200, _adv.post_feedback(body or {}, kind="snooze")
+                if p in ("run-now", "run_now"):
+                    result = _adv.post_run_now(body or {})
+                    code = 202 if result.get("accepted") else 409
+                    return code, result
                 return 404, {"ok": False, "error": f"unknown_advisory_post: {p}"}
             return 405, {"ok": False, "error": "method_not_allowed"}
         except Exception as e:
@@ -46155,7 +46355,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 return 400, {"ok": False, "error": "agent parameter required"}
 
             # Agent identity
-            _llm_model = os.getenv("LOCAL_LLM_MODEL", "gemma3:4b")
+            _llm_model = "deepseek-v4-flash"
             AGENT_IDENTITIES = {
                 "steph": {"display": "Steph", "emoji": "📊", "role": "Income guardian / allocation strategist", "model": _llm_model},
                 "maria": {"display": "Maria", "emoji": "🔬", "role": "Research analyst / catalyst verification", "model": _llm_model},
@@ -49580,7 +49780,16 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             import json as _json
             result = {
                 "ok": True,
+                "gpu_mode": "POLICY_VIOLATION",
                 "ollama_alive": False,
+                "embedding_model": "nomic-embed-text",
+                "embedding_expected_dimension": 768,
+                "embedding_digest_match": False,
+                "embedding_acceptance": {
+                    "status": "UNMEASURED",
+                    "source": None,
+                },
+                "forbidden_installed_models": [],
                 "resident_models": [],
                 "vram_used_gb": 0,
                 "vram_free_gb": 16.0,
@@ -49602,6 +49811,57 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 result["resident_models"] = models
                 result["vram_used_gb"] = round(total_vram, 2)
                 result["vram_free_gb"] = round(16.0 - total_vram, 2)
+                tags_resp = _ur.urlopen("http://localhost:11434/api/tags", timeout=3)
+                tags_data = _json.loads(tags_resp.read())
+                allowed = {"nomic-embed-text", "nomic-embed-text:latest"}
+                installed = tags_data.get("models", []) or []
+                result["forbidden_installed_models"] = sorted(
+                    str(item.get("name") or "") for item in installed
+                    if str(item.get("name") or "") not in allowed
+                )
+                expected_digest = (
+                    "0a109f422b47e3a30ba2b10eca18548e944e8a23073ee3f3e947efcf3c45e59f"
+                )
+                approved = next(
+                    (item for item in installed if str(item.get("name") or "") in allowed),
+                    None,
+                )
+                result["embedding_digest_match"] = bool(
+                    approved and str(approved.get("digest") or "") == expected_digest
+                )
+                resident_names = {item["name"] for item in models}
+                if (
+                    result["embedding_digest_match"]
+                    and not result["forbidden_installed_models"]
+                    and resident_names.issubset(allowed)
+                ):
+                    result["gpu_mode"] = "UNMEASURED"
+                    acceptance_path = __import__("pathlib").Path(
+                        __import__("os").environ.get(
+                            "TRADEAI_EMBEDDING_ACCEPTANCE_PATH",
+                            str(STATE_DIR / "embedding_gpu_acceptance_latest.json"),
+                        )
+                    )
+                    acceptance = _load_json(acceptance_path) or {}
+                    required_gates = (
+                        "digest_match",
+                        "dimension_match",
+                        "reproducibility_pass",
+                        "gpu_utilization_observed",
+                        "no_generative_resident",
+                        "rag_search_pass",
+                    )
+                    acceptance_passed = (
+                        acceptance.get("status") == "PASS"
+                        and all(acceptance.get(gate) is True for gate in required_gates)
+                    )
+                    result["embedding_acceptance"] = {
+                        "status": "PASS" if acceptance_passed else "UNMEASURED",
+                        "source": str(acceptance_path),
+                        "measured_at": acceptance.get("measured_at"),
+                    }
+                    if acceptance_passed:
+                        result["gpu_mode"] = "EMBEDDINGS_ONLY"
             except Exception:
                 result["ollama_alive"] = False
 

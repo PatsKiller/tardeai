@@ -153,7 +153,15 @@ def collect_facts():
         h = json.loads((PROJECT_ROOT / "data/portfolios/state/holdings.json").read_text())
         v = h.get("portfolio_totals", {}).get("total_value", 0)
         facts["safety"]["holdings_value"] = v
-        facts["safety"]["holdings_guard_passed"] = v > 1_000_000
+        try:
+            import sys
+            sys.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
+            from holdings_sanity import validate_payload
+            _hv = validate_payload(h, None)
+            facts["safety"]["holdings_guard_passed"] = _hv.ok
+            facts["safety"]["holdings_reason_code"] = _hv.reason_code
+        except Exception:
+            facts["safety"]["holdings_guard_passed"] = bool(v) and len(h.get("holdings") or []) > 0
     except Exception:
         facts["safety"]["holdings_value"] = 0
         facts["safety"]["holdings_guard_passed"] = False

@@ -27,6 +27,18 @@ except Exception:
 CFG_PATH = ROOT / "config" / "watch_alerts.json"
 
 
+def _emit_watch_alert_payload(alert: dict, message: str | None = None) -> None:
+    """Flag-gated DecisionPayload@v1 when a watch alert fires. Fail-soft. Never raises."""
+    try:
+        try:
+            from lib.agent_decision_payload import emit_watch_alert_payload
+        except ImportError:
+            from scripts.lib.agent_decision_payload import emit_watch_alert_payload
+        emit_watch_alert_payload(alert, message=message)
+    except Exception:
+        pass
+
+
 def _cfg():
     try:
         return json.loads(CFG_PATH.read_text())
@@ -101,6 +113,7 @@ def _evaluate_single_condition_alerts(ex, alerts, today: str) -> tuple[list[str]
         )
         lines.append(message)
         fired_ids.append(alert["id"])
+        _emit_watch_alert_payload(alert, message=message)
     return lines, fired_ids
 
 

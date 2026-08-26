@@ -2,6 +2,8 @@
 
 _Last updated: 2026-06-20_
 
+**SUPERSEDED AS OF 2026-08-23** for the routing line “Free LLM lanes only (grok → chatgpt → local gemma)”. Local generative advisory routing was retired; Flash is the default paid curator **only after free-first**. Canonical: `docs/architecture/HERMES_PERSISTENT_TICKER_INTELLIGENCE_ARCHITECTURE_2026-08-23.md`. This file remains historical evidence of topic/source lifecycle, not current model policy.
+
 How an operator research interest becomes **vetted, web-grounded, continuously-refreshed** intelligence —
 and how the sites that feed it are **discovered, cataloged, rated, and retired**. Advisory only; never a
 trade. Free LLM lanes only (grok :8645 → chatgpt :8646 → local gemma) — never a metered key.

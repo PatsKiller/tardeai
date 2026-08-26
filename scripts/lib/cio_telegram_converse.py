@@ -34,8 +34,34 @@ FOOTER_RE = re.compile(
     r"|(?:goal_id|goal)\s*[:=]\s*`?(goal_[a-z0-9_\-]+)`?",
     re.I,
 )
+DECISION_ID_RE = re.compile(
+    r"(?:Decision|decision_id)\s*[:=]\s*`?(dec_[A-Za-z0-9._:-]{8,80})`?"
+    r"|\b(dec_[A-Za-z0-9._:-]{8,80})\b",
+    re.I,
+)
 SYMBOL_RE = re.compile(r"\b([A-Z]{1,5})\b")
 ACK_RE = re.compile(r"^\s*(ack|acknowledge)\s*(plan_[a-z0-9_\-]+|plan-[a-z0-9_\-]+)?\s*$", re.I)
+
+REENTRY_QUERY_RE = re.compile(
+    r"(?is)\b("
+    r"re[\s\-]?(?:entr(?:y|ies)|enter(?:ing|ed)?)|"  # reentry, re-enter, reenter…
+    r"rentr(?:y|ies|e)|"                             # typo: rentry
+    r"ready\s+(?:to\s+)?(?:review|buy|purchase)|"
+    r"(?:buy|purchase).{0,40}ready|"
+    r"ready.{0,40}(?:buy|purchase)|"
+    r"can\s+i\s+(?:re[\s\-]?(?:enter|entry)|buy\s+back)|"
+    r"what\s+can\s+i\s+re[\s\-]?(?:enter|entry)"
+    r")\b"
+)
+
+REENTRY_LEVELS_QUERY_RE = re.compile(
+    r"(?is)\b("
+    r"support|resistance|s/?r\b|50[\s\-]?day|sma\s*50|sma50|"
+    r"sma\s*20|sma20|200[\s\-]?day|levels?|stop"
+    r")\b"
+)
+
+
 
 
 def _now() -> str:
@@ -59,7 +85,8 @@ def cio_bot_token() -> str:
 
 
 def allowlist_chat_ids() -> set[str]:
-    raw = _env("TELEGRAM_CIO_CHAT_IDS") or _env("TELEGRAM_CIO_ALLOWLIST") or _env("TELEGRAM_CHAT_ID")
+    # Phase 1: never fall back to general TELEGRAM_CHAT_ID (Maria channel).
+    raw = _env("TELEGRAM_CIO_CHAT_IDS") or _env("TELEGRAM_CIO_ALLOWLIST")
     return {c.strip() for c in raw.split(",") if c.strip()}
 
 
@@ -314,7 +341,7 @@ def mark_wake_rate(chat_id: str, *, path: Path = DEFAULT_RATE) -> None:
 
 
 def parse_ids_from_text(text: str) -> dict[str, Optional[str]]:
-    out = {"plan_id": None, "action_id": None, "goal_id": None}
+    out = {"plan_id": None, "action_id": None, "goal_id": None, "decision_id": None}
     for m in FOOTER_RE.finditer(text or ""):
         if m.group(1):
             out["plan_id"] = m.group(1)
@@ -322,13 +349,20 @@ def parse_ids_from_text(text: str) -> dict[str, Optional[str]]:
             out["action_id"] = m.group(2)
         if m.group(3):
             out["goal_id"] = m.group(3)
-    # re: PLAN-… patterns
+    # re: PLAN-… patterns and bare `plan_…` footers
     m = re.search(r"re:\s*(plan_[a-z0-9_\-]+)", text or "", re.I)
     if m:
         out["plan_id"] = m.group(1)
+    if not out["plan_id"]:
+        m = re.search(r"`?(plan_[a-z0-9_\-]{6,})`?", text or "", re.I)
+        if m:
+            out["plan_id"] = m.group(1)
     m = re.search(r"\bgoal\s+(goal_[a-z0-9_\-]+)", text or "", re.I)
     if m:
         out["goal_id"] = m.group(1)
+    dm = DECISION_ID_RE.search(text or "")
+    if dm:
+        out["decision_id"] = dm.group(1) or dm.group(2)
     return out
 
 
@@ -352,6 +386,249 @@ def extract_symbols(text: str) -> list[str]:
 
 def parse_reply_footer(bot_text: str) -> dict[str, Optional[str]]:
     return parse_ids_from_text(bot_text or "")
+
+
+def load_decision_thread_context(decision_id: str) -> dict[str, Any]:
+    """Live catalog + latest operator disposition for a decision-card thread."""
+    did = str(decision_id or "").strip()
+    ctx: dict[str, Any] = {
+        "decision_id": did,
+        "symbol": "",
+        "stance": "",
+        "disposition": None,
+        "why_now": "",
+        "delta_usd": None,
+        "authority": "READ_ONLY_ADVISORY",
+    }
+    if not did:
+        return ctx
+    try:
+        from scripts.api_v3_cio import load_known_decision_catalog, get_decision_dispositions
+        known = (load_known_decision_catalog() or {}).get(did) or {}
+        ctx["symbol"] = str(known.get("symbol") or "")
+        ctx["stance"] = str(known.get("action") or known.get("stance") or "")
+        disp = ((get_decision_dispositions() or {}).get("dispositions") or {}).get(did)
+        if isinstance(disp, dict):
+            ctx["disposition"] = str(disp.get("disposition") or "")
+            ctx["operator_disposition"] = ctx["disposition"]
+            ctx["disposition_at"] = disp.get("occurred_at")
+            ctx["operator_note"] = str(disp.get("note") or "")
+            ctx["decision_input_digest"] = str(disp.get("decision_input_digest") or "")
+            ctx["decision_evidence_digest"] = str(disp.get("decision_evidence_digest") or "")
+            if str(ctx["disposition"] or "").upper() == "REJECT":
+                ctx["operator_challenge_status"] = "OPEN"
+                ctx["challenge_review"] = "DATA_UNAVAILABLE"
+            else:
+                ctx["operator_challenge_status"] = "none"
+    except Exception as exc:
+        ctx["catalog_error"] = f"{type(exc).__name__}"
+    # Prefer capital-plan row facts when the catalog is thin
+    try:
+        from scripts.lib.cio_office_state import fetch_capital_plan
+        plan = fetch_capital_plan()
+        for row in plan.get("position_decisions") or []:
+            if not isinstance(row, dict):
+                continue
+            if str(row.get("decision_id") or "") != did:
+                continue
+            ctx["symbol"] = ctx["symbol"] or str(row.get("symbol") or "")
+            ctx["stance"] = ctx["stance"] or str(row.get("stance") or row.get("stance_code") or "")
+            ctx["why_now"] = str(row.get("why_now") or "")
+            ctx["delta_usd"] = row.get("recommended_delta_usd")
+            ctx["weight_pct"] = row.get("current_weight_pct") or row.get("weight_pct")
+            ctx["action_label"] = row.get("action_label")
+            ctx["act_now"] = row.get("act_now")
+            break
+    except Exception:
+        pass
+    return ctx
+
+
+_REJECT_RE = re.compile(r"\breject(?:ed|ing)?\b", re.I)
+
+
+def _looks_like_reject(text: str) -> bool:
+    return bool(_REJECT_RE.search(text or ""))
+
+
+def persist_operator_challenge(decision_id: str, note: str, disposition: str) -> dict[str, Any]:
+    """Persist the exact operator free-text note as a governed challenge.
+
+    Prefers append_case_event when the case store exposes it; else append_case
+    with case_id_for (same decision_id); else record_disposition. Never rewrites
+    the note into a canned staple phrase.
+    """
+    did = str(decision_id or "").strip()
+    note_s = str(note or "")
+    disp = str(disposition or "").strip()
+    challenge = "OPEN" if disp.upper() == "REJECT" else "none"
+    out: dict[str, Any] = {
+        "ok": False,
+        "decision_id": did,
+        "note": note_s,
+        "disposition": disp,
+        "operator_challenge_status": challenge,
+        "challenge_review": "DATA_UNAVAILABLE" if challenge == "OPEN" else None,
+        "via": None,
+    }
+    if not did:
+        out["reason"] = "missing_decision_id"
+        return out
+    payload = {
+        "decision_id": did,
+        "status": "OPERATOR_CHALLENGE" if challenge == "OPEN" else "OPERATOR_NOTE",
+        "operator_challenge_status": challenge,
+        "challenge_review": "DATA_UNAVAILABLE" if challenge == "OPEN" else None,
+        "operator_disposition": {
+            "disposition": disp or None,
+            "note": note_s,
+            "source": "persist_operator_challenge",
+        },
+    }
+    try:
+        from scripts.lib.cio_production_case import append_case_event
+        rec = append_case_event(did, payload)
+        out["ok"] = True
+        out["via"] = "append_case_event"
+        out["record"] = rec
+        return out
+    except Exception:
+        pass
+    try:
+        from scripts.lib.cio_production_case import append_case, case_id_for
+        rec = append_case({
+            "case_id": case_id_for(did, "", ""),
+            **payload,
+        })
+        out["ok"] = True
+        out["via"] = "append_case"
+        out["record"] = rec
+        return out
+    except Exception:
+        pass
+    try:
+        from scripts.lib.cio_production_case import record_disposition
+        rec = record_disposition(did, payload["operator_disposition"])
+        out["ok"] = True
+        out["via"] = "record_disposition"
+        out["record"] = rec
+        return out
+    except Exception as exc:
+        out["reason"] = f"{type(exc).__name__}"
+        return out
+
+
+def open_thesis_challenge(decision: dict[str, Any], note: str) -> dict[str, Any]:
+    """Open a REJECT challenge. Desks are not called here — review is honest."""
+    d = dict(decision or {})
+    did = str(d.get("decision_id") or "").strip()
+    d["operator_challenge_status"] = "OPEN"
+    d["challenge_review"] = "DATA_UNAVAILABLE"
+    d["operator_disposition"] = d.get("operator_disposition") or "REJECT"
+    persisted = persist_operator_challenge(did, note, "REJECT")
+    return {
+        "ok": bool(persisted.get("ok")),
+        "decision_id": did,
+        "operator_challenge_status": "OPEN",
+        "challenge_review": "DATA_UNAVAILABLE",
+        "note": str(note or ""),
+        "persist": persisted,
+        "decision": d,
+    }
+
+
+def format_decision_thread_reply(
+    *,
+    decision_id: str,
+    operator_text: str,
+    thread: Optional[dict[str, Any]] = None,
+) -> str:
+    """CIO-speak reply that keeps the same decision_id. Not a new S0 plan.
+
+    Uses the actual operator free-text note. Does not invent a staple phrase.
+    """
+    thread = thread or load_decision_thread_context(decision_id)
+    did = thread.get("decision_id") or decision_id
+    sym = thread.get("symbol") or "this name"
+    stance = (
+        thread.get("standing_recommendation")
+        or thread.get("stance")
+        or thread.get("stance_code")
+        or "the standing call"
+    )
+    stance = str(stance).upper()
+    disp = str(
+        thread.get("disposition")
+        or thread.get("operator_disposition")
+        or ""
+    ).upper() or "NONE"
+    why = (thread.get("why_now") or "").strip()
+    label = thread.get("action_label") or ""
+    note = (operator_text or "").strip()
+    if not note:
+        note = str(thread.get("operator_note") or "").strip()
+    note_show = note[:400] if note else "(no note)"
+    act_now = thread.get("act_now")
+    if disp != "REJECT" and _looks_like_reject(note):
+        disp = "REJECT"
+    lines = [
+        "Alex · CIO NOW",
+        "",
+        "THREAD",
+        f"Same decision {did} · {sym} · standing {stance}.",
+        f"Latest disposition on record: {disp}.",
+        "",
+        "I HEARD YOU",
+        note_show,
+        "",
+        "WHAT THAT MEANS",
+    ]
+    if disp == "REJECT":
+        lines.append(
+            f"REJECT is recorded. I will not keep asking you to take the {stance} "
+            f"on {sym}. The book fact is unchanged: {why or 'see capital plan'}."
+        )
+        if label:
+            lines.append(f"Freshness={label}; ACT_NOW={act_now}.")
+        if note:
+            lines.append(f"Your counter-thesis is now on the case: {note[:400]}")
+        else:
+            lines.append("Your counter-thesis is now on the case.")
+        lines.append("It does not clear a concentration fire by itself.")
+        lines.append("operator_challenge_status=OPEN")
+        lines.append("challenge_review=DATA_UNAVAILABLE")
+    else:
+        lines.append(
+            f"Standing call remains {stance} on {sym}. "
+            f"{why or 'See capital plan.'}"
+        )
+    lines.extend([
+        "",
+        "WHAT I WILL NOT DO",
+        "Place, cancel, or change any order or stop. Invent ACT_NOW. Open a new S0 chat plan.",
+        "",
+        "NEXT",
+        "TRIM/HOLD stays the office call until weight or thesis changes. "
+        "Reply here to add evidence; I will stay on this decision_id.",
+        "",
+        f"Decision: {did}",
+    ])
+    return "\n".join(lines)
+
+
+def record_decision_thread_note(decision_id: str, note: str, *, disposition: str = "") -> None:
+    """Append the exact operator free-text onto the production case. Fail-soft."""
+    text = str(note or "")
+    disp = str(disposition or "")
+    if not disp and _looks_like_reject(text):
+        disp = "REJECT"
+    try:
+        if str(disp).upper() == "REJECT":
+            open_thesis_challenge({"decision_id": decision_id}, text)
+        else:
+            persist_operator_challenge(decision_id, text, disp)
+    except Exception:
+        pass
 
 
 # ── Structured reply formatter ──────────────────────────────────────────────
@@ -645,6 +922,27 @@ def assemble_context(
                 })
     except Exception as exc:
         ctx["data_notes"].append(f"holdings:DATA_UNAVAILABLE:{type(exc).__name__}")
+
+    # Same-brain ticker cognition as CIO worker / envelope (read-only).
+    if symbols:
+        try:
+            from scripts.lib.cio_persistent_cognition import (
+                cognition_for_symbol,
+                resolve_cognition_root,
+                telegram_fields,
+            )
+
+            root = resolve_cognition_root()
+            rows = [cognition_for_symbol(root, s) for s in symbols[:8]]
+            ctx["ticker_cognition"] = [telegram_fields(r) for r in rows]
+            ctx["security_guids"] = [r.get("security_guid") for r in rows]
+            ctx["evidence_refs"].append({
+                "domain": "persistent_ticker_cognition",
+                "as_of": rows[0].get("freshness") if rows else "DATA_UNAVAILABLE",
+                "fields_used": ["security_guid", "curation_id", "curation_version", "symbol_thesis_id"],
+            })
+        except Exception as exc:
+            ctx["data_notes"].append(f"cognition:DATA_UNAVAILABLE:{type(exc).__name__}")
 
     if action_id:
         ctx["action_id"] = action_id
@@ -1050,3 +1348,494 @@ def process_telegram_message(
         wakes_limit=wakes_per_hour(),
         actor_id="cio_telegram_bot",
     )
+
+# ── Re-entry purchase desk answers (Trade-AI truth) ──────────────────────
+
+def looks_like_reentry_purchase_query(text: str) -> bool:
+    """True when operator asks which names are re-entry ready to buy/review."""
+    t = (text or "").strip()
+    if not t or len(t) > 500:
+        return False
+    # Slash commands are handled elsewhere
+    if t.lower().startswith("/cio"):
+        return False
+    return bool(REENTRY_QUERY_RE.search(t))
+
+
+def wants_reentry_levels(text: str) -> bool:
+    """Operator asked for S/R, SMA50, stops, etc."""
+    return bool(REENTRY_LEVELS_QUERY_RE.search(text or ""))
+
+
+def _row_levels(r: dict[str, Any]) -> dict[str, Any]:
+    """Extract desk levels — never invent; missing stays None."""
+    resist = r.get("resistance") if isinstance(r.get("resistance"), dict) else {}
+    return {
+        "stop": r.get("stop"),
+        "target": r.get("target"),
+        "rsi": r.get("rsi"),
+        "sma_20": r.get("sma_20"),
+        "sma_50": r.get("sma_50"),
+        "sma_200": r.get("sma_200"),
+        "resistance_level": resist.get("level"),
+        "resistance_state": resist.get("state"),
+        "atr": r.get("atr"),
+    }
+
+
+def _fmt_levels_line(it: dict[str, Any]) -> str:
+    bits: list[str] = []
+    if it.get("stop") is not None:
+        bits.append(f"stop {_fmt_money(it['stop'])}")
+    if it.get("resistance_level") is not None:
+        st = it.get("resistance_state") or ""
+        bits.append(
+            f"resist {_fmt_money(it['resistance_level'])}"
+            + (f" ({st})" if st else "")
+        )
+    if it.get("sma_50") is not None:
+        bits.append(f"SMA50 {_fmt_money(it['sma_50'])}")
+    if it.get("sma_20") is not None:
+        bits.append(f"SMA20 {_fmt_money(it['sma_20'])}")
+    if it.get("sma_200") is not None:
+        bits.append(f"SMA200 {_fmt_money(it['sma_200'])}")
+    if it.get("rsi") is not None:
+        try:
+            bits.append(f"RSI {float(it['rsi']):.1f}")
+        except (TypeError, ValueError):
+            pass
+    if it.get("target") is not None:
+        bits.append(f"tgt {_fmt_money(it['target'])}")
+    return " · ".join(bits)
+
+def _reentry_desk_json_paths() -> list[Path]:
+    """Candidate paths for reentry_decision_desk_latest.json (worktree + live)."""
+    rel = Path("data") / "runtime" / "reentry_decision_desk_latest.json"
+    out: list[Path] = [PROJECT_ROOT / rel]
+    data_root = (_env("TRADEAI_DATA_ROOT") or "").strip()
+    if data_root:
+        out.append(Path(data_root) / "runtime" / "reentry_decision_desk_latest.json")
+    src = (_env("TRADEAI_SRC") or "").strip()
+    if src:
+        out.append(Path(src) / rel)
+    # Canonical live tree (release CURRENT often symlinks here)
+    out.append(
+        Path("/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild") / rel
+    )
+    # Dedupe while preserving order
+    seen: set[str] = set()
+    uniq: list[Path] = []
+    for p in out:
+        key = str(p)
+        if key in seen:
+            continue
+        seen.add(key)
+        uniq.append(p)
+    return uniq
+
+
+def load_reentry_desk_rows() -> tuple[list[dict[str, Any]], Optional[str], Optional[Path]]:
+    """Load desk rows from latest artifact. Returns (rows, computed_at, path)."""
+    for path in _reentry_desk_json_paths():
+        try:
+            if not path.is_file():
+                continue
+            raw = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(raw, dict):
+                continue
+            rows = raw.get("rows") or raw.get("candidates") or []
+            if isinstance(raw.get("data"), dict) and not rows:
+                rows = raw["data"].get("rows") or []
+            if not isinstance(rows, list):
+                continue
+            as_of = (
+                raw.get("computed_at")
+                or raw.get("generated_at")
+                or raw.get("as_of")
+            )
+            return rows, (str(as_of) if as_of else None), path
+        except Exception:
+            continue
+    return [], None, None
+
+
+def _fmt_money(v: Any) -> str:
+    try:
+        x = float(v)
+    except (TypeError, ValueError):
+        return "—"
+    if x >= 100:
+        return f"${x:,.2f}"
+    if x >= 1:
+        return f"${x:.2f}"
+    return f"${x:.4f}".rstrip("0").rstrip(".")
+
+
+def format_reentry_purchase_reply(
+    *,
+    desk_rows: Optional[list[dict[str, Any]]] = None,
+    computed_at: Optional[str] = None,
+    near_limit: int = 8,
+    include_levels: bool = True,
+    operator_text: str = "",
+) -> str:
+    """Short actionable Telegram reply for re-entry readiness (READ_ONLY).
+
+    Answers 'what's ready to buy?' with READY TO REVIEW names + zone —
+    not the S0 template / thesis wall. Levels (stop/resist/SMA50) from desk only.
+    """
+    rows = desk_rows
+    as_of = computed_at
+    if rows is None:
+        rows, as_of, _path = load_reentry_desk_rows()
+
+    detail = include_levels or wants_reentry_levels(operator_text)
+
+    ready: list[dict[str, Any]] = []
+    near: list[dict[str, Any]] = []
+    for r in rows or []:
+        if not isinstance(r, dict):
+            continue
+        intel = r.get("intel") if isinstance(r.get("intel"), dict) else {}
+        state = str(intel.get("state") or r.get("status") or "").strip()
+        sym = str(r.get("symbol") or r.get("ticker") or "").upper()
+        if not sym:
+            continue
+        item = {
+            "symbol": sym,
+            "state": state,
+            "price": r.get("price"),
+            "entry_low": r.get("entry_low"),
+            "entry_high": r.get("entry_high"),
+            "held": bool(r.get("held")),
+            "action": (r.get("advisory") or {}).get("action")
+            if isinstance(r.get("advisory"), dict)
+            else None,
+        }
+        item.update(_row_levels(r))
+        if state == "READY TO REVIEW":
+            ready.append(item)
+        elif state == "NEAR ENTRY":
+            near.append(item)
+
+    lines: list[str] = [
+        "🎯 *Re-entry — purchase candidates*",
+        "_Exited names · not current holdings · READ_ONLY_",
+    ]
+    if as_of:
+        lines.append(f"as_of `{str(as_of)[:19]}`")
+    lines.append("")
+
+    if not rows:
+        lines.append("No re-entry desk artifact found — rebuild desk / check Data Broker.")
+        lines.append("")
+        lines.append("CC: `/v3/portfolio/re-entry` · `/cio reentry`")
+        lines.append("No orders/stops from chat · READ_ONLY_ADVISORY")
+        return "\n".join(lines)
+
+    if ready:
+        lines.append(f"✅ *READY TO REVIEW* ({len(ready)}) — buy-limit candidates")
+        for it in ready:
+            zone = ""
+            if it.get("entry_low") is not None and it.get("entry_high") is not None:
+                zone = f" zone {_fmt_money(it['entry_low'])}–{_fmt_money(it['entry_high'])}"
+            px = _fmt_money(it.get("price"))
+            held_tag = " · *held*" if it.get("held") else ""
+            lines.append(f"• *{it['symbol']}* {px}{zone}{held_tag}")
+            if it.get("action"):
+                lines.append(f"  _{it['action']}_")
+            if detail:
+                lvl = _fmt_levels_line(it)
+                if lvl:
+                    lines.append(f"  {lvl}")
+                else:
+                    lines.append("  _levels: DATA_UNAVAILABLE on desk row_")
+    else:
+        lines.append("✅ *READY TO REVIEW* — none right now")
+
+    lines.append("")
+    if near:
+        if detail:
+            # When operator asked for levels, show top NEAR with SMA/stop too
+            show_n = min(5, max(1, int(near_limit)))
+            lines.append(f"👀 *NEAR ENTRY* ({len(near)}) — top {show_n} w/ levels")
+            for it in near[:show_n]:
+                zone = ""
+                if it.get("entry_low") is not None and it.get("entry_high") is not None:
+                    zone = f" zone {_fmt_money(it['entry_low'])}–{_fmt_money(it['entry_high'])}"
+                lines.append(f"• `{it['symbol']}` {_fmt_money(it.get('price'))}{zone}")
+                lvl = _fmt_levels_line(it)
+                if lvl:
+                    lines.append(f"  {lvl}")
+            extra = len(near) - show_n
+            if extra > 0:
+                lines.append(f"_+{extra} more NEAR — `/v3/portfolio/re-entry`_")
+        else:
+            show = near[: max(1, int(near_limit))]
+            names = ", ".join(f"`{it['symbol']}`" for it in show)
+            extra = len(near) - len(show)
+            near_line = f"👀 *NEAR ENTRY* ({len(near)}): {names}"
+            if extra > 0:
+                near_line += f" +{extra} more"
+            lines.append(near_line)
+            lines.append("_Near = watch/prepare — not purchase-ready yet_")
+    else:
+        lines.append("👀 *NEAR ENTRY* — none")
+
+    lines.append("")
+    if detail:
+        lines.append(
+            "_Levels from re-entry desk (stop / resist / SMAs). "
+            "No separate ‘support’ field — use stop + entry zone._"
+        )
+    lines.append(
+        "Note: current *holdings* are not re-entry targets; "
+        "this book is for names you already exited."
+    )
+    lines.append("CC: `/v3/portfolio/re-entry` · cmd: `/cio reentry`")
+    lines.append("No orders/stops from chat · READ_ONLY_ADVISORY")
+    return "\n".join(lines)
+
+
+def _reentry_flash_enabled() -> bool:
+    raw = (_env("CIO_REENTRY_FLASH") or "1").lower()
+    return raw not in ("0", "false", "off", "no")
+
+
+def _validate_flash_reentry_reply(
+    curated: str,
+    *,
+    ready_symbols: list[str],
+    near_symbols: list[str],
+) -> bool:
+    """Fail-closed: Flash may rewrite tone, not drop READY names or claim fills."""
+    text = (curated or "").strip()
+    if not text or len(text) < 40 or len(text) > 3500:
+        return False
+    upper = text.upper()
+    for sym in ready_symbols:
+        if sym.upper() not in upper:
+            return False
+    banned = (
+        "ORDER PLACED",
+        "BUYING NOW",
+        "SUBMITTED",
+        "FILLED",
+        "I WILL BUY",
+        "EXECUTING",
+        "BROKER ORDER",
+    )
+    if any(b in upper for b in banned):
+        return False
+    # Soft invent check: reject ONLY if Flash adds many tickers outside ready+near
+    allowed = {s.upper() for s in ready_symbols} | {s.upper() for s in near_symbols}
+    # Tokens that look like tickers but are English/labels in this card
+    stop = {
+        "READY", "NEAR", "ENTRY", "REVIEW", "ZONE", "CC", "CIO", "READ", "ONLY",
+        "ADVISORY", "HOLDINGS", "LIMIT", "BUY", "WATCH", "THE", "AND", "NOT",
+        "YET", "MORE", "AS", "OF", "USD", "UTC", "CMD", "NOTE", "NONE", "THIS",
+        "THAT", "FROM", "WITH", "FOR", "DESK", "BOOK", "CASH", "FLASH", "LLM",
+        "PRICE", "RANGE", "NAMES", "NAME", "LIST", "NEXT", "STEP", "STEPS",
+        "ACTION", "ACTIONS", "CANDIDATE", "CANDIDATES", "EXITED", "CURRENT",
+        "TARGET", "TARGETS", "TACTICAL", "PREPARE", "PURCHASE", "REENTRY",
+        "HTTP", "HTTPS", "PORTFOLIO", "TELEGRAM", "OPERATOR", "ALEX",
+    }
+    invented = []
+    for tok in re.findall(r"\b([A-Z]{2,5})\b", text):
+        if tok in allowed or tok in stop:
+            continue
+        if tok.isalpha():
+            invented.append(tok)
+    # Allow a couple of unknown ALLCAPS words (Flash vocabulary); block a pile of new tickers
+    if len(set(invented)) > 3:
+        return False
+    return True
+
+
+def curate_reentry_reply_with_flash(
+    *,
+    operator_text: str,
+    deterministic_reply: str,
+    ready_symbols: list[str],
+    near_symbols: list[str],
+) -> dict[str, Any]:
+    """DeepSeek Flash polish for Telegram — numbers/symbols stay desk-grounded.
+
+    Fail-soft to deterministic_reply on any governance/validation miss.
+    """
+    out: dict[str, Any] = {
+        "ok": False,
+        "text": deterministic_reply,
+        "source": "deterministic",
+        "model": None,
+        "error": None,
+    }
+    if not _reentry_flash_enabled():
+        out["error"] = "flash_disabled"
+        return out
+    if not (deterministic_reply or "").strip():
+        out["error"] = "empty_facts"
+        return out
+
+    system = (
+        "You are Alex, CIO desk Telegram assistant. Authority: READ_ONLY_ADVISORY. "
+        "Rewrite the FACTS card into a clear, scannable Telegram message using *bold* "
+        "and short bullets. Keep EVERY READY symbol and its price, zone, stop, resist, "
+        "SMA20/SMA50/SMA200, RSI, and target exactly as given — do not invent or round away. "
+        "You may shorten the NEAR list. Do not invent symbols, prices, zones, or urgency. "
+        "Do not place orders or claim execution. End with READ_ONLY_ADVISORY. "
+        "No thesis essays. Max ~22 lines."
+    )
+    user = (
+        f"Operator asked: {(operator_text or '')[:300]}\n\n"
+        f"FACTS (ground truth — do not change numbers/symbols):\n"
+        f"{deterministic_reply}\n\n"
+        f"READY symbols that MUST appear: {', '.join(ready_symbols) or '(none)'}\n"
+        f"NEAR symbols allowed: {', '.join(near_symbols[:20]) or '(none)'}"
+    )
+    try:
+        from scripts.lib.cio_plan_enrichment import call_governed_llm, load_llm_policy
+        policy = load_llm_policy()
+        # Force Flash (deepseek-v4-flash) — not Pro — for this short polish
+        llm = call_governed_llm(
+            [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            policy,
+            use_pro=False,
+        )
+    except Exception as exc:
+        out["error"] = f"flash_call:{type(exc).__name__}:{exc}"
+        return out
+
+    if not llm.get("ok"):
+        out["error"] = str(llm.get("error") or llm.get("governance_code") or "flash_failed")
+        out["model"] = llm.get("model")
+        return out
+
+    curated = str(llm.get("content") or "").strip()
+    # Strip accidental code fences
+    if curated.startswith("```"):
+        curated = re.sub(r"^```(?:markdown|md|text)?\s*", "", curated)
+        curated = re.sub(r"\s*```$", "", curated).strip()
+    if "READ_ONLY" not in curated.upper():
+        curated = curated.rstrip() + "\nNo orders/stops from chat · READ_ONLY_ADVISORY"
+
+    if not _validate_flash_reentry_reply(
+        curated,
+        ready_symbols=ready_symbols,
+        near_symbols=near_symbols,
+    ):
+        out["error"] = "flash_validation_rejected"
+        out["model"] = llm.get("model")
+        return out
+
+    out.update({
+        "ok": True,
+        "text": curated,
+        "source": "deepseek_flash",
+        "model": llm.get("model") or "deepseek-v4-flash",
+        "error": None,
+    })
+    return out
+
+
+def answer_reentry_purchase_query(
+    operator_text: str = "",
+    *,
+    use_flash: bool = True,
+) -> dict[str, Any]:
+    """Facts-first re-entry answer; optional DeepSeek Flash Telegram polish."""
+    rows, as_of, path = load_reentry_desk_rows()
+    ready_syms: list[str] = []
+    near_syms: list[str] = []
+    for r in rows or []:
+        if not isinstance(r, dict):
+            continue
+        intel = r.get("intel") if isinstance(r.get("intel"), dict) else {}
+        state = str(intel.get("state") or r.get("status") or "").strip()
+        sym = str(r.get("symbol") or "").upper()
+        if not sym:
+            continue
+        if state == "READY TO REVIEW":
+            ready_syms.append(sym)
+        elif state == "NEAR ENTRY":
+            near_syms.append(sym)
+
+    deterministic = format_reentry_purchase_reply(
+        desk_rows=rows,
+        computed_at=as_of,
+        operator_text=operator_text,
+        include_levels=True,
+    )
+    result: dict[str, Any] = {
+        "text": deterministic,
+        "source": "deterministic",
+        "model": None,
+        "ready_symbols": ready_syms,
+        "near_symbols": near_syms,
+        "as_of": as_of,
+        "desk_path": str(path) if path else None,
+        "flash_error": None,
+    }
+    if use_flash and _reentry_flash_enabled():
+        flash = curate_reentry_reply_with_flash(
+            operator_text=operator_text,
+            deterministic_reply=deterministic,
+            ready_symbols=ready_syms,
+            near_symbols=near_syms,
+        )
+        if flash.get("ok"):
+            result["text"] = flash["text"]
+            result["source"] = "deepseek_flash"
+            result["model"] = flash.get("model")
+        else:
+            result["flash_error"] = flash.get("error")
+    _emit_reentry_reply_payload(ready_syms, near_syms)
+    return result
+
+
+def _emit_reentry_reply_payload(ready_syms: list[str], near_syms: list[str]) -> None:
+    """DecisionPayload@v1 for a Telegram re-entry facts reply. Fail-soft."""
+    try:
+        from scripts.lib.agent_decision_payload import emit_telegram_decision_payload
+        emit_telegram_decision_payload(
+            symbol=ready_syms[0] if ready_syms else (near_syms[0] if near_syms else None),
+            action="READY" if ready_syms else ("NEAR" if near_syms else "WAIT"),
+            surface="reentry",
+            origin="OPERATOR_ASK",
+            extra={"ready_n": len(ready_syms), "near_n": len(near_syms)},
+        )
+    except Exception:
+        pass
+
+
+def _portfolio_cash_fact_lines() -> list[str]:
+    """One-line book facts for Flash context (fail-soft)."""
+    lines: list[str] = []
+    try:
+        holdings_path = PROJECT_ROOT / "data" / "portfolios" / "state" / "holdings.json"
+        # Fall back to canonical live tree
+        if not holdings_path.is_file():
+            holdings_path = Path(
+                "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild"
+                "/data/portfolios/state/holdings.json"
+            )
+        if not holdings_path.is_file():
+            return lines
+        data = json.loads(holdings_path.read_text(encoding="utf-8"))
+        total = data.get("total_value") or data.get("portfolio_value")
+        cash = data.get("cash") or data.get("total_cash")
+        as_of = data.get("as_of") or data.get("generated_at")
+        if total is not None:
+            lines.append(f"portfolio_total≈{_fmt_money(total)}")
+        if cash is not None:
+            lines.append(f"cash≈{_fmt_money(cash)}")
+        if as_of:
+            lines.append(f"holdings_as_of={str(as_of)[:19]}")
+    except Exception:
+        pass
+    return lines
+
+

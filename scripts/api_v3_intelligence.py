@@ -1,0 +1,99 @@
+"""GET-only Command Center APIs for IntelligenceLineage@v1.
+
+READ_ONLY_ADVISORY. No broker/order/stop/risk/2FA mutation.
+Never invents POSITIVE/NEGATIVE outcomes. Never deletes challenge history.
+"""
+from __future__ import annotations
+
+from datetime import datetime, timedelta, timezone
+from typing import Any
+
+try:
+    from lib import intelligence_lineage as L
+except ImportError:
+    from scripts.lib import intelligence_lineage as L  # type: ignore
+
+AUTHORITY = {
+    "authority": "READ_ONLY_ADVISORY",
+    "mutation": False,
+    "financial_action": False,
+    "service_control": False,
+    "provider_call": False,
+    "auto_promotion_to_trading": False,
+    "schema": L.SCHEMA,
+}
+
+
+def handle_get(path: str, query: dict | None = None) -> tuple[int, dict[str, Any]]:
+    p = (path or "").strip("/")
+    if p in ("", "closed-loop", "dashboard", "authority"):
+        payload = {**AUTHORITY, **L.summary()}
+        try:
+            from lib.cio_product_reassessment import latest_reassessments
+        except ImportError:
+            from scripts.lib.cio_product_reassessment import latest_reassessments  # type: ignore
+        payload["reassessments"] = latest_reassessments(n=8)
+        return 200, payload
+    if p == "challenges":
+        return 200, {"ok": True, **AUTHORITY, **L.challenge_view()}
+    if p in ("queue", "queue-health"):
+        try:
+            from lib.hermes_queue_health import build as queue_health
+        except ImportError:
+            from scripts.lib.hermes_queue_health import build as queue_health  # type: ignore
+        return 200, {"ok": True, **AUTHORITY, **queue_health()}
+    if p in ("circuit", "backend"):
+        try:
+            from lib.research_circuit import load as circuit_load
+        except ImportError:
+            from scripts.lib.research_circuit import load as circuit_load  # type: ignore
+        return 200, {"ok": True, **AUTHORITY, **circuit_load()}
+    if p == "reconciliation":
+        try:
+            from lib.cio_reconciliation import build as rec_build
+        except ImportError:
+            from scripts.lib.cio_reconciliation import build as rec_build  # type: ignore
+        return 200, {"ok": True, **AUTHORITY, **rec_build()}
+    if p in ("lineage", "lineages"):
+        snap = L.load_snapshot()
+        lineages = list(snap.get("lineages") or [])
+        live = [r for r in lineages if str(r.get("origin") or "") == "live_forward"]
+        now = datetime.now(timezone.utc)
+
+        def _parse(ts: Any):
+            try:
+                return datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+            except Exception:
+                return None
+
+        today_n = 0
+        week_n = 0
+        for r in live:
+            dt = _parse(r.get("updated_at") or r.get("created_at"))
+            if not dt:
+                continue
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            age = now - dt
+            if age <= timedelta(days=1):
+                today_n += 1
+            if age <= timedelta(days=7):
+                week_n += 1
+        return 200, {
+            "ok": True,
+            **AUTHORITY,
+            "count": snap.get("count") or 0,
+            "live_forward_count": snap.get("live_forward_count") or len(live),
+            "live_forward_today": today_n,
+            "live_forward_7d": week_n,
+            "by_status": snap.get("by_status") or {},
+            "generated_at": snap.get("generated_at"),
+            "lineages": lineages,
+        }
+    if p.startswith("lineage/"):
+        lid = p.split("/", 1)[1].strip()
+        rec = L.get_lineage(lid)
+        if not rec:
+            return 404, {"ok": False, **AUTHORITY, "error": "lineage_not_found", "lineage_id": lid}
+        return 200, {"ok": True, **AUTHORITY, "lineage": rec}
+    return 404, {"ok": False, **AUTHORITY, "error": f"unknown_intelligence_path: {p}"}

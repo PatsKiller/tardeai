@@ -1,0 +1,71 @@
+{
+  "schema_version": "ProviderSpendReconciliation@v1",
+  "CONSOLE_TOTAL": 60.94,
+  "ATTRIBUTED_TOTAL": 0.8673,
+  "UNATTRIBUTED_GAP": 60.0727,
+  "LEDGER_ATTRIBUTED": 0.8673,
+  "HOST_ATTRIBUTED": 11.1673,
+  "LEDGER_GAP": 60.0727,
+  "HOST_GAP": 49.7727,
+  "EXACT_ATTRIBUTED": 0.0014,
+  "STRONG_ATTRIBUTED": 16.0159,
+  "INFERRED_ATTRIBUTED": 0.0,
+  "UNKNOWN": 0.0,
+  "TEST_ONLY_COST": 4.85,
+  "CLAUDE_CODE": 10.3,
+  "OPENCLAW": 0.2475,
+  "TRADE_AI_PRODUCTION": 0.2449,
+  "KNOWN_BYPASS": 0.3749,
+  "by_class": {
+    "CLAUDE_CODE": 10.3,
+    "KNOWN_BYPASS": 0.3749,
+    "OPENCLAW": 0.2475,
+    "TRADE_AI_PRODUCTION": 0.2449,
+    "TRADE_AI_TEST": 4.85
+  },
+  "by_model": {
+    "deepseek-v4-flash": 5.4698,
+    "deepseek-v4-pro": 0.2475,
+    "deepseek-v4-pro[1m]": 10.3
+  },
+  "by_service": {
+    "cio_governed_bridge": 5.0949,
+    "claude_code": 10.3,
+    "llm_router+ticket_review": 0.3735,
+    "openclaw": 0.2475,
+    "ticket_review": 0.0014
+  },
+  "double_count_prevented": 0,
+  "event_count": 10,
+  "residual_unattributable_usd": 49.7727,
+  "residual_disposition": "UNATTRIBUTABLE_WITH_CURRENT_PROVIDER_DATA",
+  "supplied_baseline": {
+    "period_a_console": 48.32,
+    "period_a_attributed_local": 0.833,
+    "period_a_gap": 47.49,
+    "period_b_console": 12.62,
+    "period_b_attributed_local": 0.034,
+    "period_b_gap": 12.59,
+    "ab_console": 60.94,
+    "ab_attributed": 0.867,
+    "LEDGER_GAP": 60.07,
+    "HOST_GAP": 49.77,
+    "corrections": {
+      "trade_ai_period_a_billing_matched": 0.53,
+      "not_retroactive_new_table": 1.17,
+      "openclaw": 0.25,
+      "not_openclaw_30d": 1.46,
+      "test_star_fake": 4.85,
+      "kchar_not_usd": 8065,
+      "claude_code_linux": 10.3
+    }
+  },
+  "notes": [
+    "LEDGER_GAP excludes Claude Code (outside Trade AI ledger).",
+    "HOST_GAP includes Claude Code on this host.",
+    "test_* reservations are TEST_ONLY_COST and excluded from production.",
+    "Character counts are never treated as USD.",
+    "INFERRED is not presented as EXACT."
+  ],
+  "report_hash": "9387fe930cb29f1c194bf5ccf66bfb4162e4236cbc87fb7d205411ccbd3e4e86"
+}

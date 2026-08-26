@@ -25,6 +25,11 @@ sys.path.insert(0, str(ROOT / "scripts"))
 # script and the wrong thing to have pytest trigger on collection. Run them
 # directly: `.venv/bin/python tests/test_canary_gate.py`.
 # (found 2026-07-20 while wiring the decision-packet suite)
+def pytest_configure(config) -> None:
+    config.addinivalue_line("markers", "tier0: R11 fast unit + contracts (<5 min)")
+    config.addinivalue_line("markers", "tier1: R11 integration fixtures (<15 min)")
+
+
 collect_ignore = [
     "test_broker_scaffold.py",
     "test_canary_exclusion.py",
@@ -39,6 +44,32 @@ def _block_options_monitor_live_telegram(monkeypatch):
     from lib.options_pipeline import paper_position_alerts as ppa
 
     monkeypatch.setattr(ppa, "send_telegram", lambda _message: False)
+
+
+@pytest.fixture(autouse=True)
+def _block_all_telegram_http(monkeypatch):
+    """Phase 1: hard-interdict telegram_transport.send_message for entire suite.
+
+    No unit test may open api.telegram.org. Returns a structured blocked result.
+    """
+    def _blocked(**kwargs):
+        return {
+            "ok": False,
+            "status_code": 0,
+            "response": {"ok": False, "description": "PYTEST_INTERDICTED"},
+            "interdicted": True,
+        }
+
+    try:
+        import telegram_transport as tt
+        monkeypatch.setattr(tt, "send_message", _blocked)
+    except Exception:
+        pass
+    try:
+        import scripts.telegram_transport as tt2  # type: ignore
+        monkeypatch.setattr(tt2, "send_message", _blocked)
+    except Exception:
+        pass
 
 @pytest.fixture(autouse=True)
 def _block_alert_outbox_production_writes(monkeypatch):

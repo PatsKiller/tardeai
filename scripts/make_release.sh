@@ -54,6 +54,15 @@ mkdir -p "$RELEASE_DIR/logs"
 mkdir -p "$RELEASE_DIR/data/portfolios/state"
 mkdir -p "$RELEASE_DIR/state"
 
+# Stamp git pins for release-manifest / deploy truth (Phase 10–11)
+FULL_SHA=$(git -C "$PROJ" rev-parse HEAD)
+BRANCH=$(git -C "$PROJ" rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)
+printf '%s\n' "$FULL_SHA" > "$RELEASE_DIR/BUILD_SHA"
+printf '%s\n' "$FULL_SHA" > "$RELEASE_DIR/GIT_SHA"
+printf '%s\n' "$BRANCH" > "$RELEASE_DIR/BUILD_BRANCH"
+printf '%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$RELEASE_DIR/BUILD_STAMPED_AT"
+printf '%s\n' "stamped_by=make_release.sh" > "$RELEASE_DIR/BUILD_STAMP_NOTE"
+
 echo ""
 echo "=== Release created ==="
 echo "Files: $(find "$RELEASE_DIR" -type f | wc -l)"

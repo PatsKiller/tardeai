@@ -152,18 +152,50 @@ def _fetch_timedtext(video_id: str) -> dict:
     except urllib.error.HTTPError as e:
         if e.code == 429:
             cookie_hint = " (cookies loaded)" if COOKIE_PATH.exists() else " — add cookies: config/youtube_cookies.txt"
-            return {"error": f"Rate limited (429){cookie_hint}", "text": "", "segments": 0, "duration_seconds": 0}
+            return {"error": f"Rate limited (429){cookie_hint}", "text": "", "segments": 0,
+                    "duration_seconds": 0, "rate_limited": True}
         return {"error": f"HTTP {e.code}", "text": "", "segments": 0, "duration_seconds": 0}
     except Exception as e:
         return {"error": f"timedtext: {e}", "text": "", "segments": 0, "duration_seconds": 0}
 
 
+_YT_COOLDOWN = Path(__file__).resolve().parent.parent / "data" / "runtime" / "youtube_429_cooldown.json"
+
+
+def _yt_cooldown_active() -> bool:
+    try:
+        import time
+        data = json.loads(_YT_COOLDOWN.read_text())
+        return float(data.get("until", 0)) > time.time()
+    except Exception:
+        return False
+
+
+def _yt_trip_cooldown(seconds: int = 1800) -> None:
+    import time
+    try:
+        _YT_COOLDOWN.parent.mkdir(parents=True, exist_ok=True)
+        _YT_COOLDOWN.write_text(json.dumps({"until": time.time() + seconds, "reason": "429"}))
+    except Exception:
+        pass
+
+
+def _is_429(exc_or_result) -> bool:
+    s = str(exc_or_result or "").lower()
+    return "429" in s or "too many requests" in s or "rate limited" in s
+
+
 def fetch_transcript(video_id: str) -> dict:
-    """Fetch transcript with 3-method fallback chain:
-    1. youtube-transcript-api with cookies (if config/youtube_cookies.txt exists)
-    2. youtube-transcript-api without cookies
-    3. Direct timedtext HTML scraping with cookies
-    """
+    """Fetch transcript with bounded fallback. A 429 stops the chain and the loop."""
+    if _yt_cooldown_active():
+        return {"error": "Rate limited (429) cooldown — skipping", "text": "", "segments": 0,
+                "duration_seconds": 0, "rate_limited": True}
+
+    def _fail_429(src: str) -> dict:
+        _yt_trip_cooldown()
+        return {"error": f"Rate limited (429) via {src}", "text": "", "segments": 0,
+                "duration_seconds": 0, "rate_limited": True}
+
     # Method 1: youtube-transcript-api with cookie session
     session = _load_cookie_session()
     if session:
@@ -181,6 +213,8 @@ def fetch_transcript(video_id: str) -> dict:
                 transcript = ytt_api.fetch(video_id)
             return _parse_transcript_entries(transcript)
         except Exception as e:
+            if _is_429(e):
+                return _fail_429("youtube-transcript-api+cookies")
             pass  # Fall through to method 2
 
     # Method 2: youtube-transcript-api without cookies
@@ -192,16 +226,21 @@ def fetch_transcript(video_id: str) -> dict:
             try:
                 transcript = ytt_api.fetch(video_id, languages=langs)
                 break
-            except Exception:
+            except Exception as e:
+                if _is_429(e):
+                    return _fail_429("youtube-transcript-api")
                 continue
         if transcript is None:
             transcript = ytt_api.fetch(video_id)
         return _parse_transcript_entries(transcript)
-    except Exception:
-        pass
+    except Exception as e:
+        if _is_429(e):
+            return _fail_429("youtube-transcript-api")
 
     # Method 3: Direct timedtext scraping with cookies
     result = _fetch_timedtext(video_id)
+    if result.get("rate_limited") or _is_429(result.get("error")):
+        return _fail_429("timedtext")
     if result.get("text"):
         return result
 
@@ -302,7 +341,8 @@ def ingest_video(video_url: str, added_by: str = "user", *, publish_date: str | 
     result = fetch_transcript(video_id)
     if result.get("error"):
         conn.close()
-        return {"error": result["error"], "video_id": video_id}
+        return {"error": result["error"], "video_id": video_id,
+                "rate_limited": bool(result.get("rate_limited"))}
 
     # Get metadata
     meta = get_video_metadata(video_id)
@@ -380,6 +420,53 @@ def _get_youtube_api_key() -> str:
     return key
 
 
+# YouTube Data API v3 estimated quota costs (shared project daily ceiling ≈ 10_000).
+DEFAULT_YT_DAILY_QUOTA_BUDGET = 9000  # leave headroom under 10_000
+COST_CHANNELS_LIST = 1
+COST_PLAYLIST_ITEMS_PAGE = 1
+COST_SEARCH_LIST = 100
+
+
+class QuotaBudget:
+    """In-run estimated YouTube Data API quota tracker.
+
+    Charges before each API call; if the next call would exceed the budget,
+    marks exhausted and refuses the charge so callers can stop cleanly.
+    """
+
+    def __init__(self, limit: int = DEFAULT_YT_DAILY_QUOTA_BUDGET):
+        self.limit = int(limit)
+        self.spent = 0
+        self.exhausted = False
+
+    def would_exceed(self, units: int) -> bool:
+        return (self.spent + int(units)) > self.limit
+
+    def charge(self, units: int) -> bool:
+        """Reserve ``units`` if affordable. On failure sets exhausted and returns False."""
+        units = int(units)
+        if self.would_exceed(units):
+            self.exhausted = True
+            return False
+        self.spent += units
+        return True
+
+    def summary(self) -> dict:
+        return {
+            "quota_spent": self.spent,
+            "quota_budget": self.limit,
+            "quota_exhausted": self.exhausted,
+            "quota_remaining": max(0, self.limit - self.spent),
+        }
+
+
+def _is_usable_channel_id(channel_id: str | None) -> bool:
+    """True when ``channel_id`` looks like a real YouTube channel id (UC...)."""
+    if not channel_id:
+        return False
+    return str(channel_id).startswith("UC") and len(str(channel_id)) >= 24
+
+
 def extract_channel_id(url_or_id: str) -> str:
     """Extract channel ID from various URL formats or return as-is if already an ID."""
     import re
@@ -429,10 +516,22 @@ def get_channel_info(channel_id: str) -> dict:
     return {"error": "Channel not found"}
 
 
-def list_channel_videos(channel_id: str, max_results: int = 50) -> list:
-    """List videos from a channel's uploads playlist (reliable, ordered by date)."""
+def list_channel_videos(
+    channel_id: str,
+    max_results: int = 50,
+    *,
+    quota: QuotaBudget | None = None,
+) -> list:
+    """List videos from a channel's uploads playlist (reliable, ordered by date).
+
+    Quota: channels.list ≈ 1 unit + playlistItems.list ≈ 1 unit/page.
+    """
     api_key = _get_youtube_api_key()
     if not api_key:
+        return []
+
+    if quota is not None and not quota.charge(COST_CHANNELS_LIST):
+        print("[yt] Quota budget exhausted before channels.list — stopping")
         return []
 
     info = get_channel_info(channel_id)
@@ -445,6 +544,10 @@ def list_channel_videos(channel_id: str, max_results: int = 50) -> list:
     next_page = None
 
     while len(videos) < max_results:
+        if quota is not None and not quota.charge(COST_PLAYLIST_ITEMS_PAGE):
+            print("[yt] Quota budget exhausted before playlistItems — stopping")
+            break
+
         page_size = min(50, max_results - len(videos))
         url = (f"https://www.googleapis.com/youtube/v3/playlistItems"
                f"?part=snippet&playlistId={playlist_id}&maxResults={page_size}&key={api_key}")
@@ -474,10 +577,22 @@ def list_channel_videos(channel_id: str, max_results: int = 50) -> list:
     return videos
 
 
-def search_channel_videos(channel_name: str, max_results: int = 5) -> list:
-    """Search YouTube for recent videos from a channel (fallback if no channel ID)."""
+def search_channel_videos(
+    channel_name: str,
+    max_results: int = 5,
+    *,
+    quota: QuotaBudget | None = None,
+) -> list:
+    """Search YouTube for recent videos from a channel (fallback if no channel ID).
+
+    Quota: search.list ≈ 100 units/call — avoid for daily multi-channel ingest.
+    """
     api_key = _get_youtube_api_key()
     if not api_key:
+        return []
+
+    if quota is not None and not quota.charge(COST_SEARCH_LIST):
+        print("[yt] Quota budget exhausted before search.list — stopping")
         return []
 
     import urllib.parse
@@ -557,6 +672,9 @@ def import_channel(channel_url: str, max_videos: int = 20, strategy_focus: str =
             errors += 1
             if i < 5:  # Only print first few errors
                 print(f"  [{i+1}/{len(videos)}] SKIP: {v['title'][:40]} — {str(result.get('error',''))[:40]}")
+            if result.get("rate_limited") or _is_429(result.get("error")):
+                print("[yt] 429 — stopping channel ingest for this run (cooldown armed)")
+                break
 
     # Update last_checked
     conn = _get_conn()
@@ -575,74 +693,205 @@ def import_channel(channel_url: str, max_videos: int = 20, strategy_focus: str =
     }
 
 
-def fetch_channel_videos(channel_id_or_name: str, max_videos: int = 3) -> dict:
-    """Discover and ingest recent videos from a channel."""
+def fetch_channel_videos(
+    channel_id_or_name: str,
+    max_videos: int = 3,
+    *,
+    quota: QuotaBudget | None = None,
+) -> dict:
+    """Discover and ingest recent videos from a channel.
+
+    Prefers uploads-playlist listing (``list_channel_videos``, ~1–2 quota units)
+    when a real ``UC...`` channel_id is available. Falls back to
+    ``search_channel_videos`` (~100 units) only when no usable channel_id exists.
+    """
+    quota = quota if quota is not None else QuotaBudget()
+
     # Look up channel in DB
     import psycopg2.extras
     conn = _get_conn()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur.execute("SELECT channel_name, channel_url FROM youtube_channels WHERE channel_id=%s OR channel_name ILIKE %s",
-                (channel_id_or_name, f"%{channel_id_or_name}%"))
+    cur.execute(
+        "SELECT channel_id, channel_name, channel_url FROM youtube_channels "
+        "WHERE channel_id=%s OR channel_name ILIKE %s",
+        (channel_id_or_name, f"%{channel_id_or_name}%"),
+    )
     ch = cur.fetchone()
     conn.close()
 
     channel_name = ch["channel_name"] if ch else channel_id_or_name
-    print(f"[yt] Searching for recent videos from: {channel_name}")
+    db_channel_id = (ch.get("channel_id") if ch else "") or ""
+    if _is_usable_channel_id(db_channel_id):
+        usable_channel_id = db_channel_id
+    elif _is_usable_channel_id(channel_id_or_name):
+        usable_channel_id = channel_id_or_name
+    else:
+        usable_channel_id = ""
 
-    videos = search_channel_videos(channel_name, max_results=max_videos)
+    if quota.exhausted:
+        return {
+            "channel": channel_name,
+            "channel_id": usable_channel_id or db_channel_id or channel_id_or_name,
+            "found": 0,
+            "ingested": 0,
+            "discovery": "skipped",
+            "quota_exhausted": True,
+            **quota.summary(),
+            "message": (
+                f"Quota budget exhausted ({quota.spent}/{quota.limit} units) — "
+                f"skipping channel {channel_name}"
+            ),
+        }
+
+    videos: list = []
+    discovery = "none"
+
+    if usable_channel_id:
+        print(f"[yt] Listing uploads playlist for: {channel_name} ({usable_channel_id})")
+        videos = list_channel_videos(usable_channel_id, max_results=max_videos, quota=quota)
+        discovery = "uploads_playlist"
+    else:
+        print(f"[yt] No usable channel_id — search fallback for: {channel_name}")
+        videos = search_channel_videos(channel_name, max_results=max_videos, quota=quota)
+        discovery = "search"
+
+    if quota.exhausted and not videos:
+        return {
+            "channel": channel_name,
+            "channel_id": usable_channel_id or db_channel_id or channel_id_or_name,
+            "found": 0,
+            "ingested": 0,
+            "discovery": discovery,
+            "quota_exhausted": True,
+            **quota.summary(),
+            "message": (
+                f"Quota budget exhausted ({quota.spent}/{quota.limit} units) — "
+                f"stopped before/during discovery for {channel_name}"
+            ),
+            "videos": [],
+        }
+
     if not videos:
-        return {"channel": channel_name, "found": 0, "ingested": 0}
+        return {
+            "channel": channel_name,
+            "channel_id": usable_channel_id or db_channel_id or channel_id_or_name,
+            "found": 0,
+            "ingested": 0,
+            "discovery": discovery,
+            "quota_exhausted": quota.exhausted,
+            **quota.summary(),
+        }
 
-    print(f"[yt] Found {len(videos)} videos")
+    print(f"[yt] Found {len(videos)} videos via {discovery}")
     ingested = 0
     results = []
     for v in videos:
         print(f"  → {v['title'][:60]}")
-        result = ingest_video(v["url"], added_by="ai")
+        result = ingest_video(v["url"], added_by="ai", publish_date=v.get("published"))
         results.append(result)
         if result.get("status") == "ingested":
             ingested += 1
+        if result.get("rate_limited") or _is_429(result.get("error")):
+            print("[yt] 429 — stopping channel ingest for this run (cooldown armed)")
+            break
 
     # Update last_checked
     try:
         conn = _get_conn()
         cur = conn.cursor()
         if ch:
-            cur.execute("UPDATE youtube_channels SET last_checked=NOW() WHERE channel_name=%s", (channel_name,))
+            if usable_channel_id:
+                cur.execute(
+                    "UPDATE youtube_channels SET last_checked=NOW() WHERE channel_id=%s",
+                    (usable_channel_id,),
+                )
+            else:
+                cur.execute(
+                    "UPDATE youtube_channels SET last_checked=NOW() WHERE channel_name=%s",
+                    (channel_name,),
+                )
             conn.commit()
         conn.close()
     except Exception:
         pass
 
-    return {"channel": channel_name, "found": len(videos), "ingested": ingested, "videos": results}
+    out = {
+        "channel": channel_name,
+        "channel_id": usable_channel_id or db_channel_id or channel_id_or_name,
+        "found": len(videos),
+        "ingested": ingested,
+        "discovery": discovery,
+        "quota_exhausted": quota.exhausted,
+        "videos": results,
+        **quota.summary(),
+    }
+    return out
 
 
-def ingest_all_channels(max_per_channel: int = 3) -> dict:
+def ingest_all_channels(
+    max_per_channel: int = 3,
+    *,
+    quota_budget: int = DEFAULT_YT_DAILY_QUOTA_BUDGET,
+) -> dict:
     """Ingest videos from all tracked channels.
 
     Args:
         max_per_channel: Videos to fetch per channel (3 = daily, 50 = backfill 12 months)
+        quota_budget: Estimated YouTube Data API units allowed for this run (~9000 default)
     """
     import psycopg2.extras
     conn = _get_conn()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur.execute("SELECT channel_id, channel_name FROM youtube_channels WHERE active=TRUE ORDER BY last_checked ASC NULLS FIRST")
+    cur.execute(
+        "SELECT channel_id, channel_name FROM youtube_channels "
+        "WHERE active=TRUE ORDER BY last_checked ASC NULLS FIRST"
+    )
     channels = cur.fetchall()
     conn.close()
 
-    print(f"[yt] Processing {len(channels)} tracked channels (max {max_per_channel} videos each)")
+    quota = QuotaBudget(limit=quota_budget)
+    print(
+        f"[yt] Processing {len(channels)} tracked channels "
+        f"(max {max_per_channel} videos each, quota budget {quota.limit})"
+    )
     total_found = 0
     total_ingested = 0
     channel_results = []
+    stopped_early = False
 
     for ch in channels:
-        result = fetch_channel_videos(ch["channel_id"], max_videos=max_per_channel)
+        if quota.exhausted:
+            stopped_early = True
+            break
+        channel_id = ch.get("channel_id") or ""
+        result = fetch_channel_videos(channel_id, max_videos=max_per_channel, quota=quota)
         total_found += result.get("found", 0)
         total_ingested += result.get("ingested", 0)
         channel_results.append(result)
+        if result.get("quota_exhausted"):
+            stopped_early = True
+            break
 
-    print(f"[yt] All channels done: {total_found} found, {total_ingested} ingested")
-    return {"channels": len(channels), "total_found": total_found, "total_ingested": total_ingested, "results": channel_results}
+    summary = {
+        "channels": len(channels),
+        "channels_processed": len(channel_results),
+        "total_found": total_found,
+        "total_ingested": total_ingested,
+        "quota_exhausted": quota.exhausted,
+        "stopped_early": stopped_early,
+        "results": channel_results,
+        **quota.summary(),
+    }
+    if quota.exhausted:
+        summary["message"] = (
+            f"Quota budget exhausted after {quota.spent}/{quota.limit} estimated units — "
+            f"processed {len(channel_results)}/{len(channels)} channels"
+        )
+        print(f"[yt] {summary['message']}")
+    else:
+        print(f"[yt] All channels done: {total_found} found, {total_ingested} ingested "
+              f"(quota ~{quota.spent}/{quota.limit})")
+    return summary
 
 
 def backfill_all_channels(max_per_channel: int = 50) -> dict:

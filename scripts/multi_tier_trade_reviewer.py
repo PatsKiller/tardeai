@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""multi_tier_trade_reviewer.py — Multi-LLM trade review system.
+"""multi_tier_trade_reviewer.py — Governed cloud trade review system.
 
 Tier schedule:
-  - REALTIME (qwen3:14b): Runs on every trade close. Fast, local.
-  - OVERNIGHT (gemma3:27b): Runs nightly on all trades closed that day. Deeper analysis.
+  - REALTIME (DeepSeek Flash): Runs on every trade close.
+  - OVERNIGHT (DeepSeek Flash): Runs nightly on all trades closed that day.
   - WEEKLY (OpenAI gpt-4o): Runs Sunday. Reviews all trades from the week. Pattern detection.
   - MONTHLY (Anthropic Claude): Runs 1st of month. Reviews all weekly summaries + flagged trades.
 
@@ -42,15 +42,15 @@ _cloud_review_count = 0
 
 TIER_CONFIG = {
     "realtime": {
-        "model": os.getenv("LOCAL_LLM_MODEL", "gemma3:4b"),
-        "provider": "ollama",
+        "model": "deepseek-v4-flash",
+        "provider": "deepseek-flash",
         "max_tokens": 400,
         "temperature": 0.3,
-        "description": "Fast local review on trade close",
+        "description": "Governed advisory review on trade close",
     },
     "overnight": {
-        "model": "gemma3:27b",
-        "provider": "ollama",
+        "model": "deepseek-v4-flash",
+        "provider": "deepseek-flash",
         "max_tokens": 800,
         "temperature": 0.4,
         "description": "Deeper overnight analysis with larger model",
@@ -84,28 +84,20 @@ def _get_conn():
     return get_conn()
 
 
-def _generate_ollama(prompt, model, max_tokens=400, temperature=0.3):
-    """Call Ollama directly. Handles qwen3 thinking mode."""
-    import requests
+def _generate_deepseek(prompt, max_tokens=800, temperature=0.3):
+    """Call the governed DeepSeek lane; failure remains a hard empty result."""
+    del max_tokens, temperature
     try:
-        # Use /no_think prefix for qwen3 to get direct output, and increase token budget
-        effective_prompt = f"/no_think\n{prompt}" if "qwen" in model.lower() else prompt
-        effective_tokens = max_tokens * 3 if "qwen" in model.lower() else max_tokens
-
-        resp = requests.post("http://localhost:11434/api/generate", json={
-            "model": model, "prompt": effective_prompt, "stream": False,
-            "options": {"temperature": temperature, "num_predict": effective_tokens},
-        }, timeout=300)
-        if resp.ok:
-            data = resp.json()
-            # Qwen3 may put content in 'thinking' field instead of 'response'
-            result = data.get("response", "")
-            if not result and data.get("thinking"):
-                result = data["thinking"]
-            return result
-    except Exception as e:
-        log.warning(f"Ollama {model} failed: {e}")
-    return None
+        from llm_lane import generate
+        return generate(
+            prompt,
+            lane="deepseek-flash",
+            timeout=120,
+            process_id="multi_tier_trade_reviewer",
+        )
+    except Exception as exc:
+        log.warning("Governed DeepSeek review failed: %s", exc)
+        return None
 
 
 def _generate_openai(prompt, model, max_tokens=1500, temperature=0.5):
@@ -150,8 +142,8 @@ def _generate_anthropic(prompt, model, max_tokens=2000, temperature=0.5):
 def _generate(prompt, tier):
     """Route to correct provider."""
     cfg = TIER_CONFIG[tier]
-    if cfg["provider"] == "ollama":
-        return _generate_ollama(prompt, cfg["model"], cfg["max_tokens"], cfg["temperature"])
+    if cfg["provider"] == "deepseek-flash":
+        return _generate_deepseek(prompt, cfg["max_tokens"], cfg["temperature"])
     elif cfg["provider"] == "openai":
         return _generate_openai(prompt, cfg["model"], cfg["max_tokens"], cfg["temperature"])
     elif cfg["provider"] == "anthropic":
@@ -368,7 +360,7 @@ def _save_weekly_summary(conn, tier, model, summary_text, trades_reviewed, raw_r
 
 
 def _cloud_review_trade(trade, summary, parsed):
-    """ADVISORY ONLY: free-OAuth ChatGPT+Grok review of the LOCAL model's trade-review
+    """ADVISORY ONLY: free-OAuth ChatGPT+Grok review of the primary trade-review
     conclusion. Additive — never affects tier scores or any decision. Gated by
     CLOUD_REVIEW=1, guarded by availability, capped per run, and never raises."""
     global _cloud_review_count

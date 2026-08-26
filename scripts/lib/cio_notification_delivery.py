@@ -13,6 +13,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import re
 import time
 import uuid
 from datetime import datetime, timezone
@@ -20,6 +21,24 @@ from pathlib import Path
 from typing import Any, Optional, Protocol
 
 log = logging.getLogger("tradeai.cio_notification_delivery")
+
+# Legacy raw product dump: "Material CIO product change · …" plus bullet lines
+# like "- reentry_added …" / "- opportunity_…" / "- action_…".
+_RAW_DUMP_PREFIX = "Material CIO product change ·"
+_RAW_DUMP_BULLET_RE = re.compile(r"^-\s*(reentry_|opportunity_|action_)")
+
+
+def is_raw_product_dump_body(text: str) -> bool:
+    """True when body looks like the pre-IIC raw product what_changed dump.
+
+    Detects either the historical subject/title prefix, or ≥2 legacy bullet
+    lines of the form ``- reentry_*`` / ``- opportunity_*`` / ``- action_*``.
+    """
+    body = text or ""
+    if _RAW_DUMP_PREFIX in body:
+        return True
+    hits = sum(1 for line in body.splitlines() if _RAW_DUMP_BULLET_RE.match(line))
+    return hits >= 2
 
 
 class DeliveryAdapter(Protocol):
@@ -55,101 +74,122 @@ class FakeDeliveryAdapter:
 
 
 class RealTelegramAdapter:
-    """Live Telegram adapter — sends real messages. Requires authorization.
+    """Live CIO Telegram adapter — CIO-only credentials, never Maria/general bot.
 
+    Phase 1: reads TELEGRAM_CIO_BOT_TOKEN + TELEGRAM_CIO_CHAT_IDS only.
     When credentials are missing, delivery is blocked — no silent fallback
-    to FakeDeliveryAdapter.  FakeDeliveryAdapter exists only for explicit
-    shadow/test mode (set mode="shadow" on CIONotificationDeliveryWorker).
+    to FakeDeliveryAdapter or general TELEGRAM_BOT_TOKEN.
     """
 
     def __init__(self, bot_token: Optional[str] = None, chat_id: Optional[str] = None):
+        # Prefer explicit args; else CIO-only env (never general token/chat)
+        if bot_token is None or chat_id is None:
+            try:
+                from scripts.lib.cio_telegram_transport import cio_bot_token, cio_chat_ids
+            except ImportError:
+                from lib.cio_telegram_transport import cio_bot_token, cio_chat_ids  # type: ignore
+            bot_token = bot_token if bot_token is not None else cio_bot_token()
+            if chat_id is None:
+                chats = cio_chat_ids()
+                chat_id = chats[0] if chats else ""
+                self.chat_ids = chats
+            else:
+                self.chat_ids = [chat_id] if chat_id else []
+        else:
+            self.chat_ids = [chat_id] if chat_id else []
         self.bot_token = bot_token or ""
-        self.chat_id = chat_id or ""
-        self._live = bool(bot_token and chat_id)
+        self.chat_id = (self.chat_ids[0] if self.chat_ids else "") or (chat_id or "")
+        self._live = bool(self.bot_token and self.chat_ids)
 
     def send(self, notification: dict[str, Any]) -> dict[str, Any]:
-        """Send a notification via Telegram.
-
-        Returns `delivered=False` with `DELIVERY_BLOCKED_CREDENTIALS` when
-        bot_token or chat_id is missing.  Never silently falls back to fake
-        delivery.
-        """
+        """Send a notification via CIO-only Telegram transport."""
         nid = notification.get("notification_id", "unknown")
+        body = notification.get("body", "")
+        subject = notification.get("subject", "")
+        message = f"{subject}\n\n{body}" if subject else body
+
+        # Belt-and-suspenders: never deliver pre-IIC raw product dumps.
+        if is_raw_product_dump_body(message) or is_raw_product_dump_body(str(body or "")):
+            log.warning(
+                "SUPPRESSED_RAW_PRODUCT_DUMP notification_id=%s subject=%s",
+                nid,
+                (subject or "")[:80],
+            )
+            return {
+                "delivered": False,
+                "error": "SUPPRESSED_RAW_PRODUCT_DUMP",
+                "reason": "raw_product_dump_body",
+                "notification_id": nid,
+                "delivery_method": "telegram_cio",
+            }
+
+        try:
+            from scripts.lib.cio_telegram_transport import send_cio_message, network_interdicted
+        except ImportError:
+            from lib.cio_telegram_transport import send_cio_message, network_interdicted  # type: ignore
+
+        if network_interdicted():
+            return {
+                "delivered": False,
+                "error": "DELIVERY_INTERDICTED",
+                "reason": "pytest_or_CIO_TELEGRAM_INTERDICT",
+                "notification_id": nid,
+                "delivery_method": "telegram_cio",
+            }
 
         if not self._live:
             log.error(
-                "Telegram delivery blocked for %s: credentials not configured "
-                "(token=%s, chat_id=%s)",
+                "CIO Telegram delivery blocked for %s: CIO credentials not configured "
+                "(token=%s, chat_ids=%s)",
                 nid,
                 "SET" if self.bot_token else "MISSING",
-                "SET" if self.chat_id else "MISSING",
+                "SET" if self.chat_ids else "MISSING",
             )
             return {
                 "delivered": False,
                 "error": "DELIVERY_BLOCKED_CREDENTIALS",
-                "reason": "Telegram bot_token or chat_id not configured",
+                "reason": "TELEGRAM_CIO_BOT_TOKEN or TELEGRAM_CIO_CHAT_IDS not configured",
                 "notification_id": nid,
-                "delivery_method": "telegram",
+                "delivery_method": "telegram_cio",
             }
 
-        # Construct and send message via Telegram Bot API
-        body = notification.get("body", "")
-        subject = notification.get("subject", "")
-
-        try:
-            import urllib.request
-            import urllib.error
-
-            message = f"{subject}\n\n{body}" if subject else body
-            url = f"https://api.telegram.org/bot{self.bot_token}/sendMessage"
-            data = json.dumps({
-                "chat_id": self.chat_id,
-                "text": message[:4096],  # Telegram limit
-                "parse_mode": "HTML",
-            }).encode("utf-8")
-
-            req = urllib.request.Request(
-                url,
-                data=data,
-                headers={"Content-Type": "application/json"},
+        reply_markup = notification.get("reply_markup")
+        if reply_markup is not None and not isinstance(reply_markup, dict):
+            reply_markup = None
+        raw_parse = notification.get("parse_mode")
+        parse_mode = raw_parse if raw_parse in ("HTML", None) else None
+        if raw_parse not in ("HTML", None):
+            log.warning(
+                "Ignoring unsupported parse_mode=%r for notification %s",
+                raw_parse,
+                nid,
             )
-            with urllib.request.urlopen(req, timeout=10) as resp:
-                resp_data = json.loads(resp.read().decode())
-                if resp_data.get("ok"):
-                    return {
-                        "delivered": True,
-                        "delivery_method": "telegram",
-                        "message_id": resp_data.get("result", {}).get("message_id"),
-                        "delivered_at": datetime.now(timezone.utc).isoformat(),
-                        "notification_id": nid,
-                    }
-                else:
-                    error_msg = resp_data.get("description", str(resp_data))
-                    log.error("Telegram API error for %s: %s", nid, error_msg)
-                    return {
-                        "delivered": False,
-                        "delivery_method": "telegram",
-                        "error": error_msg,
-                        "notification_id": nid,
-                        "telegram_ok": False,
-                    }
-
-        except urllib.error.HTTPError as e:
-            log.error("Telegram HTTP %s for %s: %s", e.code, nid, e.reason)
+        res = send_cio_message(
+            message,
+            kind=str(notification.get("message_class") or "cio_advisory"),
+            require_live_auth=True,
+            reply_markup=reply_markup,
+            decision_id=(
+                str(notification.get("object_id") or notification.get("decision_id") or "")
+                or None
+            ),
+            parse_mode=parse_mode,
+        )
+        if res.get("delivered"):
             return {
-                "delivered": False,
-                "delivery_method": "telegram",
-                "error": f"HTTP {e.code}: {e.reason}",
+                "delivered": True,
+                "delivery_method": "telegram_cio",
+                "message_id": (res.get("message_ids") or [None])[0],
+                "delivered_at": datetime.now(timezone.utc).isoformat(),
                 "notification_id": nid,
             }
-        except Exception as e:
-            log.exception("Telegram delivery error for %s", nid)
-            return {
-                "delivered": False,
-                "delivery_method": "telegram",
-                "error": str(e),
-                "notification_id": nid,
-            }
+        return {
+            "delivered": False,
+            "delivery_method": "telegram_cio",
+            "error": res.get("reason") or "send_failed",
+            "notification_id": nid,
+            "telegram_ok": False,
+        }
 
     @property
     def is_live(self) -> bool:
@@ -183,13 +223,22 @@ class CIONotificationDeliveryWorker:
 
     @staticmethod
     def _read_token_from_env() -> Optional[str]:
-        import os
-        return os.environ.get("TELEGRAM_BOT_TOKEN") or os.environ.get("TRADE_AI_TELEGRAM_TOKEN")
+        """CIO-only token — never general TELEGRAM_BOT_TOKEN (Phase 1)."""
+        try:
+            from scripts.lib.cio_telegram_transport import cio_bot_token
+        except ImportError:
+            from lib.cio_telegram_transport import cio_bot_token  # type: ignore
+        return cio_bot_token() or None
 
     @staticmethod
     def _read_chat_id_from_env() -> Optional[str]:
-        import os
-        return os.environ.get("TELEGRAM_CHAT_ID") or os.environ.get("TRADE_AI_CHAT_ID")
+        """CIO allowlist first chat — never general TELEGRAM_CHAT_ID (Phase 1)."""
+        try:
+            from scripts.lib.cio_telegram_transport import cio_chat_ids
+        except ImportError:
+            from lib.cio_telegram_transport import cio_chat_ids  # type: ignore
+        chats = cio_chat_ids()
+        return chats[0] if chats else None
 
     def poll_and_deliver(self, max_deliveries: int = 10) -> dict[str, Any]:
         """Poll for pending notifications and deliver them.

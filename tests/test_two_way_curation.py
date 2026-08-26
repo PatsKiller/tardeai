@@ -438,6 +438,23 @@ def test_auto_apply_gate_blocks_low_hitrate():
     assert tc.auto_apply_gate("trusted", "aligned", 0.4)["auto_apply"] is False
 
 
+def test_auto_apply_gate_requires_measured_hitrate():
+    # No measured trailing hit-rate → the gate must stage, not auto-apply.
+    # The bootstrap assumption (0.65) is a caller-side fallback, NOT measured evidence,
+    # and is never substituted inside the gate itself.
+    g = tc.auto_apply_gate("trusted", "aligned", None)
+    assert g["auto_apply"] is False and g["hit_rate_ok"] is False
+
+
+def test_bootstrap_assumption_is_distinct_from_measured():
+    # The bootstrap soak value is exposed as a named constant and sits above the gate
+    # floor but below "trusted evidence"; it must not be conflated with a measured rate.
+    assert tc.BOOTSTRAP_ASSUMPTION == 0.65
+    assert tc.BOOTSTRAP_ASSUMPTION >= tc.auto_apply_gate("trusted", "aligned", 0.9)["min_hit_rate"]
+    # The gate itself only accepts a real (non-None) number as evidence.
+    assert tc.auto_apply_gate("trusted", "aligned", tc.BOOTSTRAP_ASSUMPTION)["auto_apply"] is True
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # P3 — instrument class resolution
 # ─────────────────────────────────────────────────────────────────────────────

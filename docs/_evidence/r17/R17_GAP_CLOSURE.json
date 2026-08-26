@@ -1,0 +1,78 @@
+{
+  "schema": "R17GapClosure@v1",
+  "unexplained_missing_n": 0,
+  "unexplained_missing": [
+    {
+      "producer_id": "macro_regime",
+      "missing": [
+        "OUTCOME_LINKAGE"
+      ]
+    },
+    {
+      "producer_id": "breadth",
+      "missing": [
+        "OUTCOME_LINKAGE"
+      ]
+    },
+    {
+      "producer_id": "rates",
+      "missing": [
+        "OUTCOME_LINKAGE"
+      ]
+    },
+    {
+      "producer_id": "volatility",
+      "missing": [
+        "OUTCOME_LINKAGE"
+      ]
+    },
+    {
+      "producer_id": "seasonality",
+      "missing": [
+        "OUTCOME_LINKAGE"
+      ]
+    },
+    {
+      "producer_id": "notifications",
+      "missing": [
+        "CONTEXT_ENVELOPE"
+      ]
+    },
+    {
+      "producer_id": "action_ledger",
+      "missing": [
+        "CONTEXT_ENVELOPE"
+      ]
+    },
+    {
+      "producer_id": "plans",
+      "missing": [
+        "CONTEXT_ENVELOPE"
+      ]
+    },
+    {
+      "producer_id": "outcomes",
+      "missing": [
+        "MATERIALITY"
+      ]
+    },
+    {
+      "producer_id": "lessons",
+      "missing": [
+        "MATERIALITY"
+      ]
+    }
+  ],
+  "closures": [
+    "natural decision \u2192 semantic checkpoint bind",
+    "semantic dedupe against decision_id churn",
+    "due processor NO_ACTION / OUTCOME_PENDING_DATA / OBSERVED",
+    "cockpit bound to jsonl",
+    "bounded sector/industry wake",
+    "catalyst GUI+outcome trace contract",
+    "envelope extras for risk/stop/reentry/news/sec/rag/specialists"
+  ],
+  "not_a_new_brain": true,
+  "not_a_new_memory_store": true,
+  "not_a_new_event_bus": true
+}

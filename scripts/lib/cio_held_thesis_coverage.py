@@ -1,0 +1,560 @@
+"""Held-book living thesis coverage SLA (READ_ONLY_ADVISORY).
+
+Phase 1 spine: every held ticker should be CURRENT (or an explicit gap).
+Reuses symbol_thesis_attach / acquisition — does not invent theses.
+"""
+from __future__ import annotations
+
+import json
+import os
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Optional
+
+AUTHORITY = "READ_ONLY_ADVISORY"
+SCHEMA = "HeldBookThesisCoverage@v1"
+REVISION_SCHEMA = "ThesisRevisionLedger@v1"
+SLA_TARGET_PCT = 100.0
+SLA_TARGET_FRESH_PCT = 90.0
+SLA_TARGET_SUBSTANTIVE_PCT = 70.0
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+
+
+def _project_root() -> Path:
+    return Path(__file__).resolve().parents[2]
+
+
+def _is_ticker(sym: str) -> bool:
+    from scripts.lib.holdings_universe import is_held_equity_ticker
+
+    return is_held_equity_ticker(sym)
+
+
+def list_held_tickers(*, root: Path | None = None) -> list[str]:
+    """Held equity tickers — authoritative coverage denominator.
+
+    Delegates to holdings_universe.held_equity_tickers (CASH/CUSIP out).
+    """
+    from scripts.lib.holdings_universe import held_equity_tickers
+
+    root = root or _project_root()
+    out = held_equity_tickers(root=root)
+    if out:
+        return out
+    # Fail-soft CIO snapshot if holdings.json empty
+    try:
+        from scripts.lib.data_broker.cio_portfolio import get_cio_snapshot
+        from scripts.lib.holdings_universe import is_held_equity_ticker
+
+        snap = get_cio_snapshot(max_age_s=60) or {}
+        hd = (snap.get("domains") or {}).get("holdings_detail") or {}
+        positions = hd.get("positions")
+        if positions is None and isinstance(hd.get("data"), dict):
+            positions = hd["data"].get("positions")
+        tickers = []
+        for p in positions or []:
+            if isinstance(p, dict):
+                sym = str(p.get("symbol") or "").upper()
+                if is_held_equity_ticker(sym):
+                    tickers.append(sym)
+        return sorted(set(tickers))
+    except Exception:
+        return []
+
+
+def coverage_row_for_symbol(symbol: str, *, root: Path | None = None) -> dict[str, Any]:
+    root = root or _project_root()
+    try:
+        from scripts.lib.symbol_thesis_attach import thesis_fields_for_symbol
+
+        fields = thesis_fields_for_symbol(symbol, root=root) or {}
+    except Exception as exc:
+        fields = {"thesis_state": "INSUFFICIENT_DATA", "error": type(exc).__name__}
+    state = str(fields.get("thesis_state") or "INSUFFICIENT_DATA")
+    current = bool(fields.get("has_current_symbol_thesis")) or state in {
+        "CURRENT", "THIN", "STALE", "CONFLICTED",
+    }
+    try:
+        from scripts.lib.symbol_thesis_coverage import stale_days_for, row_is_fresh
+
+        memberships = list(fields.get("memberships") or [])
+        rec = {"memberships": memberships or ["HELD"], "held": True}
+        if "HELD" not in rec["memberships"]:
+            rec["memberships"] = ["HELD"] + rec["memberships"]
+        sla_days = fields.get("sla_days")
+        if sla_days is None:
+            sla_days = stale_days_for(symbol, rec, root=root)
+        age = fields.get("thesis_age_days")
+        fresh = bool(fields.get("fresh")) if "fresh" in fields else row_is_fresh(
+            {
+                "coverage_state": state,
+                "has_current_symbol_thesis": current,
+                "thesis_age_days": age,
+                "sla_days": sla_days,
+            }
+        )
+        cov_class = fields.get("coverage_class")
+    except Exception:
+        sla_days = fields.get("sla_days")
+        age = fields.get("thesis_age_days")
+        fresh = bool(fields.get("fresh")) if "fresh" in fields else (
+            state in {"CURRENT", "THIN"} and current and age is not None and sla_days is not None
+            and float(age) <= float(sla_days)
+        )
+        cov_class = fields.get("coverage_class")
+    return {
+        "symbol": symbol.upper(),
+        "thesis_state": state,
+        "coverage_state": state,
+        "has_current_symbol_thesis": current,
+        "portfolio_role": fields.get("portfolio_role"),
+        "symbol_thesis_version": fields.get("symbol_thesis_version"),
+        "research_gaps": list(fields.get("research_gaps") or [])[:5],
+        "thesis_age_days": fields.get("thesis_age_days"),
+        "sla_days": sla_days,
+        "coverage_class": cov_class,
+        "fresh": bool(fresh),
+        "age_gate_short_circuit": fields.get("age_gate_short_circuit"),
+        "thesis_summary": fields.get("thesis_summary"),
+        "substantiveness_grade": fields.get("substantiveness_grade"),
+        "substantiveness_bucket": fields.get("substantiveness_bucket"),
+        "needs_coverage": not current and state in {
+            "RESEARCH_REQUIRED", "INSUFFICIENT_DATA", "NONE", ""
+        },
+        "needs_substance": state == "THIN",
+    }
+
+
+def build_held_coverage_report(*, root: Path | None = None) -> dict[str, Any]:
+    """SLA report for held book only (held_equity_tickers denominator)."""
+    root = root or _project_root()
+    held = list_held_tickers(root=root)
+    rows = [coverage_row_for_symbol(s, root=root) for s in held]
+    from scripts.lib.thesis_substantiveness import (
+        coverage_fresh_substantive_pcts,
+        row_is_covered,
+    )
+
+    pcts = coverage_fresh_substantive_pcts(rows)
+    # Recompute fresh from row.fresh (already set) — helper uses the same flag.
+    current_n = sum(1 for r in rows if row_is_covered(r))
+    fresh_n = pcts["fresh_n"]
+    substantive_n = pcts["substantive_n"]
+    thin_n = pcts["thin_n"]
+    need = [r for r in rows if r.get("needs_coverage")]
+    need_sub = [r for r in rows if r.get("needs_substance")]
+    by_state: dict[str, int] = {}
+    for r in rows:
+        st = str(r.get("thesis_state") or "NONE")
+        by_state[st] = by_state.get(st, 0) + 1
+    n = len(rows)
+    coverage_pct = pcts["coverage_pct"]
+    fresh_pct = pcts["fresh_pct"]
+    substantive_pct = pcts["substantive_pct"]
+    held_equity_ticker_n = n
+    try:
+        from scripts.lib.holdings_universe import snapshot as hu_snapshot
+
+        hu = hu_snapshot(root=root)
+        snap_n = int(hu.get("held_equity_ticker_n") or 0)
+        if snap_n:
+            held_equity_ticker_n = snap_n
+    except Exception:
+        pass
+    sla_met = (
+        coverage_pct >= SLA_TARGET_PCT
+        and fresh_pct >= SLA_TARGET_FRESH_PCT
+        and substantive_pct >= SLA_TARGET_SUBSTANTIVE_PCT
+    )
+    return {
+        "schema": SCHEMA,
+        "as_of": _now(),
+        "authority": AUTHORITY,
+        "held_count": len(rows),
+        "held_equity_ticker_n": held_equity_ticker_n,
+        "current_count": current_n,
+        "coverage_count": current_n,
+        "fresh_count": fresh_n,
+        "substantive_count": substantive_n,
+        "thin_count": thin_n,
+        "held_current_pct": coverage_pct,
+        "coverage_pct": coverage_pct,
+        "fresh_pct": fresh_pct,
+        "substantive_pct": substantive_pct,
+        "sla_target_pct": SLA_TARGET_PCT,
+        "sla_target_coverage_pct": SLA_TARGET_PCT,
+        "sla_target_fresh_pct": SLA_TARGET_FRESH_PCT,
+        "sla_target_substantive_pct": SLA_TARGET_SUBSTANTIVE_PCT,
+        "sla_met": sla_met,
+        "by_state": by_state,
+        "needs_coverage": [r["symbol"] for r in need],
+        "needs_coverage_n": len(need),
+        "needs_substance": [r["symbol"] for r in need_sub],
+        "needs_substance_n": len(need_sub),
+        "rows": rows,
+        "root": str(root),
+    }
+
+
+def write_coverage_report(
+    report: dict[str, Any],
+    *,
+    root: Path | None = None,
+) -> Path:
+    root = root or _project_root()
+    path = root / "data" / "cio" / "held_thesis_coverage_latest.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        from scripts.lib.holdings_universe import write_snapshot, snapshot as hu_snapshot
+
+        write_snapshot(root=root)
+        if report.get("held_equity_ticker_n") is None:
+            report["held_equity_ticker_n"] = hu_snapshot(root=root).get("held_equity_ticker_n")
+    except Exception:
+        if report.get("held_equity_ticker_n") is None:
+            report["held_equity_ticker_n"] = report.get("held_count")
+    if report.get("coverage_pct") is None and report.get("held_current_pct") is not None:
+        report["coverage_pct"] = report.get("held_current_pct")
+    if report.get("sla_target_pct") is None:
+        report["sla_target_pct"] = SLA_TARGET_PCT
+    path.write_text(json.dumps(report, indent=2, default=str), encoding="utf-8")
+    # append history line
+    hist = root / "data" / "cio" / "held_thesis_coverage_history.jsonl"
+    with hist.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps({
+            "as_of": report.get("as_of"),
+            "held_count": report.get("held_count"),
+            "held_equity_ticker_n": report.get("held_equity_ticker_n"),
+            "current_count": report.get("current_count"),
+            "held_current_pct": report.get("held_current_pct"),
+            "coverage_pct": report.get("coverage_pct"),
+            "fresh_pct": report.get("fresh_pct"),
+            "substantive_pct": report.get("substantive_pct"),
+            "thin_count": report.get("thin_count"),
+            "substantive_count": report.get("substantive_count"),
+            "needs_coverage_n": report.get("needs_coverage_n"),
+            "needs_substance_n": report.get("needs_substance_n"),
+            "sla_target_pct": report.get("sla_target_pct"),
+            "sla_target_fresh_pct": report.get("sla_target_fresh_pct"),
+            "sla_target_substantive_pct": report.get("sla_target_substantive_pct"),
+            "sla_met": report.get("sla_met"),
+        }, sort_keys=True) + "\n")
+    # Sibling READY/NEAR report — fail-soft, never mixes into held_count.
+    try:
+        from scripts.lib.symbol_thesis_coverage import build_actionable_coverage_report
+
+        act = build_actionable_coverage_report(root=root)
+        ap = root / "data" / "cio" / "actionable_thesis_coverage_latest.json"
+        ap.write_text(json.dumps(act, indent=2, default=str), encoding="utf-8")
+    except Exception:
+        pass
+    return path
+
+
+def run_held_coverage_acquire(
+    *,
+    root: Path | None = None,
+    limit: int = 5,
+    max_llm: int = 3,
+    apply: bool = False,
+    symbols: Optional[list[str]] = None,
+) -> dict[str, Any]:
+    """Enqueue/run acquisition for held gaps via existing acquisition runner."""
+    root = root or _project_root()
+    report = build_held_coverage_report(root=root)
+    write_coverage_report(report, root=root)
+    targets = symbols or list(report.get("needs_coverage") or [])
+    targets = [s.upper() for s in targets if _is_ticker(s)][: max(0, int(limit))]
+    if not targets:
+        return {
+            "ok": True,
+            "authority": AUTHORITY,
+            "mode": "apply" if apply else "dry",
+            "targets": [],
+            "skipped": "no_held_gaps",
+            "report": {
+                "held_current_pct": report.get("held_current_pct"),
+                "coverage_pct": report.get("coverage_pct"),
+                "fresh_pct": report.get("fresh_pct"),
+                "sla_met": report.get("sla_met"),
+                "needs_coverage_n": report.get("needs_coverage_n"),
+            },
+        }
+
+    from scripts.run_symbol_thesis_acquisition import run as run_acquisition_batch
+
+    result = run_acquisition_batch(
+        root=root,
+        symbols=targets,
+        limit=len(targets),
+        max_llm=max_llm,
+        apply=apply,
+        canary=False,
+    )
+    # Refresh report after attempt
+    after = build_held_coverage_report(root=root)
+    write_coverage_report(after, root=root)
+    return {
+        "ok": True,
+        "authority": AUTHORITY,
+        "mode": "apply" if apply else "dry",
+        "targets": targets,
+        "acquisition": result,
+        "report_before": {
+            "held_current_pct": report.get("held_current_pct"),
+            "coverage_pct": report.get("coverage_pct"),
+            "fresh_pct": report.get("fresh_pct"),
+            "needs_coverage_n": report.get("needs_coverage_n"),
+        },
+        "report_after": {
+            "held_current_pct": after.get("held_current_pct"),
+            "coverage_pct": after.get("coverage_pct"),
+            "fresh_pct": after.get("fresh_pct"),
+            "needs_coverage_n": after.get("needs_coverage_n"),
+            "sla_met": after.get("sla_met"),
+        },
+    }
+
+
+# ── Thesis revision ledger (Phase 1 stub for Phase 2 catalyst loop) ─────────
+
+
+LIVE_CIO = Path("/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT") / "data" / "cio"
+THESIS_CHANGE_SCHEMA = "ThesisChangeCard@v1"
+
+
+def thesis_change_card_path(root: Path | None = None) -> Path:
+    env = (os.getenv("THESIS_CHANGE_CARDS_PATH") or "").strip()
+    if env:
+        return Path(env)
+    if root is not None:
+        return Path(root) / "data" / "cio" / "thesis_change_cards.jsonl"
+    if os.getenv("PYTEST_CURRENT_TEST"):
+        return _project_root() / "data" / "cio" / "thesis_change_cards.jsonl"
+    return LIVE_CIO / "thesis_change_cards.jsonl"
+
+
+def write_thesis_change_card(
+    *,
+    symbol: str,
+    thesis_id: str,
+    version: int,
+    kind: str,
+    summary: str,
+    mint_state: str | None = None,
+    grade: str | None = None,
+    root: Path | None = None,
+    emit_bus: bool = True,
+) -> dict[str, Any]:
+    """Operator-visible CIO Desk card for a thesis mint/upgrade/downgrade/invalidate.
+
+    Always appends thesis_change_cards.jsonl. Event-bus emit is skipped under
+    pytest unless CIO_THESIS_BUS=1. Telegram stays on CIOThesisStore.notify
+    (CIO_THESIS_TELEGRAM default off).
+    """
+    kind = (kind or "revised").lower()
+    if kind not in ("minted", "upgraded", "downgraded", "invalidated", "revised"):
+        kind = "revised"
+    card = {
+        "schema": THESIS_CHANGE_SCHEMA,
+        "ts": _now(),
+        "kind": kind,
+        "symbol": (symbol or "").upper(),
+        "thesis_id": thesis_id,
+        "version": int(version or 1),
+        "mint_state": mint_state,
+        "grade": grade,
+        "summary": (summary or "").strip().replace("\n", " ")[:400],
+        "authority": AUTHORITY,
+        "notify": {
+            "desk_card": True,
+            "telegram": "CIO_THESIS_TELEGRAM (default off)",
+        },
+    }
+    path = thesis_change_card_path(root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(card, sort_keys=True, default=str) + "\n")
+    if emit_bus and (
+        os.getenv("CIO_THESIS_BUS") == "1" or not os.getenv("PYTEST_CURRENT_TEST")
+    ):
+        try:
+            from scripts.lib.cio_event_bus import CIOEventBus
+
+            bus_root = path.parent
+            bus = CIOEventBus(
+                bus_path=str(bus_root / "cio_events.jsonl"),
+                cursor_path=str(bus_root / "cio_event_cursors.jsonl"),
+            )
+            bus.emit(
+                "thesis.changed",
+                {
+                    "symbol": card["symbol"],
+                    "thesis_id": thesis_id,
+                    "version": card["version"],
+                    "kind": kind,
+                    "mint_state": mint_state,
+                },
+                source="thesis_mint_from_research",
+                semantic_event_key=f"thesis.changed|{thesis_id}|v{card['version']}|{kind}",
+            )
+        except Exception:
+            pass
+    return card
+
+
+def revision_ledger_path(root: Path | None = None) -> Path:
+    root = root or _project_root()
+    return root / "data" / "cio" / "thesis_revision_ledger.jsonl"
+
+
+def append_thesis_revision(
+    *,
+    symbol: str,
+    reason: str,
+    catalyst_id: str | None = None,
+    severity: str | None = None,
+    thesis_version_before: str | None = None,
+    thesis_version_after: str | None = None,
+    impact: str | None = None,
+    recommendation: str | None = None,
+    confidence: float | None = None,
+    evidence_refs: Optional[list[dict[str, Any]]] = None,
+    root: Path | None = None,
+    dry_notify: bool = True,
+) -> dict[str, Any]:
+    """Append a revision ledger row (READ_ONLY). Notify always dry in Phase 1."""
+    root = root or _project_root()
+    row = {
+        "schema": REVISION_SCHEMA,
+        "ts": _now(),
+        "symbol": symbol.upper(),
+        "reason": reason,
+        "catalyst_id": catalyst_id,
+        "severity": severity,
+        "thesis_version_before": thesis_version_before,
+        "thesis_version_after": thesis_version_after,
+        "impact": impact or "DATA_UNAVAILABLE",
+        "recommendation": recommendation or "REVIEW",
+        "confidence": confidence,
+        "evidence_refs": evidence_refs or [],
+        "notify": {"dry": True, "sent": False} if dry_notify else {"dry": False},
+        "authority": AUTHORITY,
+    }
+    path = revision_ledger_path(root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(row, sort_keys=True, default=str) + "\n")
+    return row
+
+
+def reassess_held_from_catalysts(
+    *,
+    root: Path | None = None,
+    limit: int = 20,
+    min_severity: str = "medium",
+) -> dict[str, Any]:
+    """Phase 1/2 skeleton: held symbols with medium+ catalysts → revision ledger.
+
+    Does not auto-publish thesis versions. Notify remains dry.
+    """
+    root = root or _project_root()
+    held = list_held_tickers(root=root)
+    rank = {"low": 0, "medium": 1, "high": 2, "critical": 3}
+    min_r = rank.get(str(min_severity).lower(), 1)
+    written: list[dict[str, Any]] = []
+    scanned = 0
+    try:
+        from scripts.db_adapter import _execute as _db
+    except Exception:
+        try:
+            from db_adapter import _execute as _db  # type: ignore
+        except Exception as exc:
+            return {
+                "ok": False,
+                "error": f"db:{type(exc).__name__}",
+                "authority": AUTHORITY,
+                "written": [],
+            }
+
+    try:
+        from scripts.lib.data_broker.catalyst_record import get_catalyst_record
+    except Exception:
+        from lib.data_broker.catalyst_record import get_catalyst_record  # type: ignore
+
+    for sym in held[: max(1, int(limit) * 2)]:
+        if len(written) >= limit:
+            break
+        scanned += 1
+        try:
+            rec = get_catalyst_record(lambda sql, params=None, fetch="all": _db(sql, params, fetch=fetch), sym)
+        except Exception:
+            continue
+        if not isinstance(rec, dict) or not rec:
+            continue
+        # Normalize severity from pack or fields
+        sev = str(
+            rec.get("severity")
+            or (rec.get("primary") or {}).get("severity")
+            or rec.get("max_severity")
+            or "low"
+        ).lower()
+        if rank.get(sev, 0) < min_r:
+            # Also accept verified medium+ lists
+            items = rec.get("catalysts") or rec.get("items") or []
+            hit = None
+            if isinstance(items, list):
+                for it in items:
+                    if not isinstance(it, dict):
+                        continue
+                    s2 = str(it.get("severity") or "low").lower()
+                    if rank.get(s2, 0) >= min_r:
+                        hit = it
+                        sev = s2
+                        break
+            if not hit and rank.get(sev, 0) < min_r:
+                continue
+        else:
+            hit = rec.get("primary") if isinstance(rec.get("primary"), dict) else rec
+
+        cov = coverage_row_for_symbol(sym, root=root)
+        cat_id = None
+        headline = None
+        if isinstance(hit, dict):
+            cat_id = str(hit.get("catalyst_id") or hit.get("id") or hit.get("event_id") or "") or None
+            headline = hit.get("headline") or hit.get("title")
+        row = append_thesis_revision(
+            symbol=sym,
+            reason="catalyst_medium_plus",
+            catalyst_id=cat_id,
+            severity=sev,
+            thesis_version_before=cov.get("symbol_thesis_version"),
+            impact=f"Held name has {sev} catalyst; thesis should be reassessed",
+            recommendation="REASSESS_THESIS" if cov.get("needs_coverage") else "MONITOR_THESIS",
+            confidence=0.55,
+            evidence_refs=[{
+                "domain": "catalyst",
+                "symbol": sym,
+                "severity": sev,
+                "headline": (str(headline)[:160] if headline else None),
+                "catalyst_id": cat_id,
+            }],
+            root=root,
+            dry_notify=True,
+        )
+        written.append(row)
+
+    return {
+        "ok": True,
+        "authority": AUTHORITY,
+        "scanned_held": scanned,
+        "held_total": len(held),
+        "min_severity": min_severity,
+        "revisions_written": len(written),
+        "symbols": [w["symbol"] for w in written],
+        "notify": "dry",
+        "ledger": str(revision_ledger_path(root)),
+    }
