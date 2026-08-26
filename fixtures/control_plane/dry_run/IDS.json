@@ -1,0 +1,20 @@
+{
+  "evidence_class": "DRY_RUN",
+  "source_sha": "dryrun-source-sha-084674c5",
+  "ids": {
+    "workflow_id": "dryrun.workflow.001",
+    "event_id": "dryrun.event.20260826.001",
+    "entity_guid": "dryrun.entity.guid.001",
+    "research_id": "dryrun.research.001",
+    "artifact_id": "dryrun.artifact.001",
+    "council_id": "dryrun.council.001",
+    "decision_id": "dryrun.decision.001",
+    "generation_id": "dryrun.generation.001",
+    "notification_id": "dryrun.notification.001",
+    "checkpoint_id": "dryrun.checkpoint.001",
+    "outcome_id": "dryrun.outcome.001"
+  },
+  "not_production": true,
+  "live_telegram": false,
+  "broker": false
+}

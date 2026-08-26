@@ -43,3 +43,13 @@ Canonical artifacts:
 - `tests/test_control_plane_api_v1_baseline.py`
 
 R21.1 (detail / lineage) must be additive. Do not rename frozen summary keys to match frontend convenience.
+
+## 2026-08-26 — CONTRACT_CHANGE-003 freeze CONTROL_PLANE_API_V1.1 detail/lineage
+
+| Field | Value |
+|---|---|
+| old version | CONTROL_PLANE_API_V1_BASELINE summary-only |
+| new version | **CONTROL_PLANE_API_V1.1** (summary + detail + lineage) |
+| reason | Operator accepted c3b105a7 / b5f55339. Outer envelope keys unchanged. |
+| compatibility impact | Additive routes `/agents/{id}` and `/workflows/{id}`. Summary keys frozen. |
+| migration requirement | R22 runtime mocks removed. Cross-ID lookup uses the same detail GET. |

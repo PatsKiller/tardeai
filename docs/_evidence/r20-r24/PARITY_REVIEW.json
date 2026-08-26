@@ -1,0 +1,16 @@
+{
+  "cutover": false,
+  "classifications": [
+    {"old": "/agents", "new": "/control-plane/agents", "class": "NEW_SUPERSET"},
+    {"old": "/research-intelligence", "new": "/control-plane/research", "class": "INTENTIONAL_SEMANTIC_REPLACEMENT", "note": "admin attention vs RI desk; not cut over"},
+    {"old": "/system", "new": "/control-plane/system", "class": "NEW_SUPERSET"},
+    {"old": "/health", "new": "/control-plane/data", "class": "NEW_SUPERSET"},
+    {"old": null, "new": "/control-plane/workflows", "class": "NEW_SUPERSET"},
+    {"old": null, "new": "/control-plane/identity", "class": "NEW_SUPERSET"},
+    {"old": null, "new": "/control-plane/notifications", "class": "NEW_SUPERSET"},
+    {"old": null, "new": "/control-plane/learning", "class": "NEW_SUPERSET"},
+    {"old": null, "new": "/control-plane/maturity", "class": "NEW_SUPERSET"},
+    {"old": null, "new": "/control-plane/audit", "class": "NEW_SUPERSET"}
+  ],
+  "regressions": []
+}

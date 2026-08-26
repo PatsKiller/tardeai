@@ -1,0 +1,372 @@
+[
+  {
+    "workflow_id": "dryrun.workflow.001",
+    "event_id": "dryrun.event.20260826.001",
+    "entity_guid": "dryrun.entity.guid.001",
+    "research_id": "dryrun.research.001",
+    "artifact_id": "dryrun.artifact.001",
+    "council_id": "dryrun.council.001",
+    "decision_id": "dryrun.decision.001",
+    "generation_id": "dryrun.generation.001",
+    "notification_id": "dryrun.notification.001",
+    "checkpoint_id": "dryrun.checkpoint.001",
+    "outcome_id": "dryrun.outcome.001",
+    "identifiers": {
+      "workflow_id": "dryrun.workflow.001",
+      "event_id": "dryrun.event.20260826.001",
+      "entity_guid": "dryrun.entity.guid.001",
+      "research_id": "dryrun.research.001",
+      "artifact_id": "dryrun.artifact.001",
+      "council_id": "dryrun.council.001",
+      "decision_id": "dryrun.decision.001",
+      "generation_id": "dryrun.generation.001",
+      "notification_id": "dryrun.notification.001",
+      "checkpoint_id": "dryrun.checkpoint.001",
+      "outcome_id": "dryrun.outcome.001"
+    },
+    "evidence_class": "DRY_RUN",
+    "source_sha": "dryrun-source-sha-084674c5",
+    "data_quality": "AVAILABLE",
+    "status": "AVAILABLE",
+    "nodes": [
+      {
+        "node_id": "n_event",
+        "node_type": "material_event",
+        "timestamp": "2026-08-26T12:00:00Z",
+        "status": "AVAILABLE",
+        "evidence_class": "DRY_RUN",
+        "source_sha": "dryrun-source-sha-084674c5",
+        "entity_refs": [
+          "dryrun.entity.guid.001"
+        ],
+        "summary": "MATERIAL_EVENT",
+        "data_quality": "AVAILABLE"
+      },
+      {
+        "node_id": "n_entity",
+        "node_type": "entity",
+        "timestamp": "2026-08-26T12:01:00Z",
+        "status": "AVAILABLE",
+        "evidence_class": "DRY_RUN",
+        "source_sha": "dryrun-source-sha-084674c5",
+        "entity_refs": [
+          "dryrun.entity.guid.001"
+        ],
+        "summary": "ENTITY",
+        "data_quality": "AVAILABLE"
+      },
+      {
+        "node_id": "n_materiality",
+        "node_type": "materiality",
+        "timestamp": "2026-08-26T12:02:00Z",
+        "status": "AVAILABLE",
+        "evidence_class": "DRY_RUN",
+        "source_sha": "dryrun-source-sha-084674c5",
+        "entity_refs": [
+          "dryrun.entity.guid.001"
+        ],
+        "summary": "MATERIALITY",
+        "data_quality": "AVAILABLE"
+      },
+      {
+        "node_id": "n_graph",
+        "node_type": "graph",
+        "timestamp": "2026-08-26T12:03:00Z",
+        "status": "AVAILABLE",
+        "evidence_class": "DRY_RUN",
+        "source_sha": "dryrun-source-sha-084674c5",
+        "entity_refs": [
+          "dryrun.entity.guid.001"
+        ],
+        "summary": "GRAPH_IMPACT",
+        "data_quality": "AVAILABLE"
+      },
+      {
+        "node_id": "n_gap",
+        "node_type": "research_gap",
+        "timestamp": "2026-08-26T12:04:00Z",
+        "status": "AVAILABLE",
+        "evidence_class": "DRY_RUN",
+        "source_sha": "dryrun-source-sha-084674c5",
+        "entity_refs": [
+          "dryrun.entity.guid.001"
+        ],
+        "summary": "RESEARCH_GAP",
+        "data_quality": "AVAILABLE"
+      },
+      {
+        "node_id": "n_free",
+        "node_type": "free_first",
+        "timestamp": "2026-08-26T12:05:00Z",
+        "status": "AVAILABLE",
+        "evidence_class": "DRY_RUN",
+        "source_sha": "dryrun-source-sha-084674c5",
+        "entity_refs": [
+          "dryrun.entity.guid.001"
+        ],
+        "summary": "FREE_FIRST",
+        "data_quality": "AVAILABLE"
+      },
+      {
+        "node_id": "n_dispatch",
+        "node_type": "specialist_dispatch",
+        "timestamp": "2026-08-26T12:06:00Z",
+        "status": "AVAILABLE",
+        "evidence_class": "DRY_RUN",
+        "source_sha": "dryrun-source-sha-084674c5",
+        "entity_refs": [
+          "dryrun.entity.guid.001"
+        ],
+        "summary": "SPECIALIST_DISPATCH",
+        "data_quality": "AVAILABLE"
+      },
+      {
+        "node_id": "n_artifact",
+        "node_type": "specialist_artifact",
+        "timestamp": "2026-08-26T12:07:00Z",
+        "status": "AVAILABLE",
+        "evidence_class": "DRY_RUN",
+        "source_sha": "dryrun-source-sha-084674c5",
+        "entity_refs": [
+          "dryrun.entity.guid.001"
+        ],
+        "summary": "SPECIALIST_ARTIFACT",
+        "data_quality": "AVAILABLE"
+      },
+      {
+        "node_id": "n_council",
+        "node_type": "council",
+        "timestamp": "2026-08-26T12:08:00Z",
+        "status": "AVAILABLE",
+        "evidence_class": "DRY_RUN",
+        "source_sha": "dryrun-source-sha-084674c5",
+        "entity_refs": [
+          "dryrun.entity.guid.001"
+        ],
+        "summary": "COUNCIL",
+        "data_quality": "AVAILABLE"
+      },
+      {
+        "node_id": "n_cio",
+        "node_type": "cio_product",
+        "timestamp": "2026-08-26T12:09:00Z",
+        "status": "AVAILABLE",
+        "evidence_class": "DRY_RUN",
+        "source_sha": "dryrun-source-sha-084674c5",
+        "entity_refs": [
+          "dryrun.entity.guid.001"
+        ],
+        "summary": "CIO_PRODUCT",
+        "data_quality": "AVAILABLE"
+      },
+      {
+        "node_id": "n_notify",
+        "node_type": "notification",
+        "timestamp": "2026-08-26T12:10:00Z",
+        "status": "AVAILABLE",
+        "evidence_class": "DRY_RUN",
+        "source_sha": "dryrun-source-sha-084674c5",
+        "entity_refs": [
+          "dryrun.entity.guid.001"
+        ],
+        "summary": "NOTIFICATION",
+        "data_quality": "AVAILABLE"
+      },
+      {
+        "node_id": "n_check",
+        "node_type": "checkpoint",
+        "timestamp": "2026-08-26T12:11:00Z",
+        "status": "AVAILABLE",
+        "evidence_class": "DRY_RUN",
+        "source_sha": "dryrun-source-sha-084674c5",
+        "entity_refs": [
+          "dryrun.entity.guid.001"
+        ],
+        "summary": "CHECKPOINT",
+        "data_quality": "AVAILABLE"
+      },
+      {
+        "node_id": "n_outcome",
+        "node_type": "outcome",
+        "timestamp": "2026-08-26T12:12:00Z",
+        "status": "AVAILABLE",
+        "evidence_class": "DRY_RUN",
+        "source_sha": "dryrun-source-sha-084674c5",
+        "entity_refs": [
+          "dryrun.entity.guid.001"
+        ],
+        "summary": "OUTCOME",
+        "data_quality": "AVAILABLE"
+      },
+      {
+        "node_id": "n_learn",
+        "node_type": "learning",
+        "timestamp": "2026-08-26T12:13:00Z",
+        "status": "AVAILABLE",
+        "evidence_class": "DRY_RUN",
+        "source_sha": "dryrun-source-sha-084674c5",
+        "entity_refs": [
+          "dryrun.entity.guid.001"
+        ],
+        "summary": "LEARNING",
+        "data_quality": "AVAILABLE"
+      }
+    ],
+    "edges": [
+      {
+        "from": "n_event",
+        "to": "n_entity",
+        "relationship": "NEXT",
+        "certainty": "SUPPORTED",
+        "status": "AVAILABLE"
+      },
+      {
+        "from": "n_entity",
+        "to": "n_materiality",
+        "relationship": "NEXT",
+        "certainty": "SUPPORTED",
+        "status": "AVAILABLE"
+      },
+      {
+        "from": "n_materiality",
+        "to": "n_graph",
+        "relationship": "NEXT",
+        "certainty": "SUPPORTED",
+        "status": "AVAILABLE"
+      },
+      {
+        "from": "n_graph",
+        "to": "n_gap",
+        "relationship": "NEXT",
+        "certainty": "SUPPORTED",
+        "status": "AVAILABLE"
+      },
+      {
+        "from": "n_gap",
+        "to": "n_free",
+        "relationship": "NEXT",
+        "certainty": "SUPPORTED",
+        "status": "AVAILABLE"
+      },
+      {
+        "from": "n_free",
+        "to": "n_dispatch",
+        "relationship": "NEXT",
+        "certainty": "SUPPORTED",
+        "status": "AVAILABLE"
+      },
+      {
+        "from": "n_dispatch",
+        "to": "n_artifact",
+        "relationship": "NEXT",
+        "certainty": "SUPPORTED",
+        "status": "AVAILABLE"
+      },
+      {
+        "from": "n_artifact",
+        "to": "n_council",
+        "relationship": "NEXT",
+        "certainty": "SUPPORTED",
+        "status": "AVAILABLE"
+      },
+      {
+        "from": "n_council",
+        "to": "n_cio",
+        "relationship": "NEXT",
+        "certainty": "SUPPORTED",
+        "status": "AVAILABLE"
+      },
+      {
+        "from": "n_cio",
+        "to": "n_notify",
+        "relationship": "NEXT",
+        "certainty": "SUPPORTED",
+        "status": "AVAILABLE"
+      },
+      {
+        "from": "n_notify",
+        "to": "n_check",
+        "relationship": "NEXT",
+        "certainty": "SUPPORTED",
+        "status": "AVAILABLE"
+      },
+      {
+        "from": "n_check",
+        "to": "n_outcome",
+        "relationship": "NEXT",
+        "certainty": "SUPPORTED",
+        "status": "AVAILABLE"
+      },
+      {
+        "from": "n_outcome",
+        "to": "n_learn",
+        "relationship": "NEXT",
+        "certainty": "SUPPORTED",
+        "status": "AVAILABLE"
+      }
+    ]
+  },
+  {
+    "workflow_id": "partial.workflow.001",
+    "event_id": "partial.event.001",
+    "evidence_class": "DRY_RUN",
+    "source_sha": "dryrun-source-sha-084674c5",
+    "nodes": [
+      {
+        "id": "p_event",
+        "node_type": "source_event",
+        "timestamp": "2026-08-26T12:00:00Z",
+        "status": "AVAILABLE",
+        "evidence_class": "DRY_RUN"
+      },
+      {
+        "id": "p_cio",
+        "node_type": "cio_product",
+        "timestamp": "2026-08-26T12:02:00Z",
+        "status": "STALE",
+        "lineage_status": "STALE",
+        "evidence_class": "DRY_RUN"
+      },
+      {
+        "id": "p_quarantine",
+        "node_type": "outcome",
+        "timestamp": "2026-08-26T12:03:00Z",
+        "status": "QUARANTINED_RECORD",
+        "data_quality": "DEGRADED",
+        "evidence_class": "DRY_RUN"
+      }
+    ],
+    "edges": [
+      {
+        "from": "p_event",
+        "to": "p_cio",
+        "certainty": "SUPPORTED"
+      },
+      {
+        "from": "p_cio",
+        "to": "missing_parent",
+        "certainty": "MISSING_PARENT"
+      },
+      {
+        "from": "legacy_node",
+        "to": "p_event",
+        "certainty": "LEGACY_REFERENCE"
+      },
+      {
+        "from": "p_cio",
+        "to": "unavailable",
+        "certainty": "UNAVAILABLE_STORE"
+      },
+      {
+        "from": "p_cio",
+        "to": "p_quarantine",
+        "certainty": "QUARANTINED_RECORD"
+      },
+      {
+        "from": "p_event",
+        "to": "ghost",
+        "relationship": "TRIGGERED"
+      }
+    ]
+  }
+]

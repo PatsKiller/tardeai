@@ -1,6 +1,11 @@
 {
-  "paths_scanned": "apps/command-center-v3/src",
+  "paths_scanned": "apps/command-center-v3/src/pages/control-plane",
   "result": "PASS",
   "runtime": 0,
-  "test_only": 0
+  "test_only": 2,
+  "notes": [
+    "R22 mocks/ are TEST_FIXTURE only",
+    "R23 preview/ and R24 frozen/ are TEST_FIXTURE only",
+    "Live pages GET CONTROL_PLANE_API_V1.1"
+  ]
 }

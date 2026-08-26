@@ -1,0 +1,68 @@
+{
+  "stream": "R23",
+  "worktree": "/home/johnclaw/trade-ai-v12-rebuild/wt-r23-admin-observability",
+  "branch": "feat/r23-admin-observability",
+  "contracts_consumed": [
+    "CONTROL_PLANE_API_V1_BASELINE"
+  ],
+  "contracts_modified": [],
+  "ready_for_local_integration": true,
+  "authority": "READ_ONLY_ADVISORY",
+  "memory_behavior_influence": 0,
+  "financial_action": false,
+  "live_claim": false,
+  "live_route_replacement": false,
+  "route_registration": "NOT_REGISTERED",
+  "http_apis_implemented": false,
+  "github_pushes": 0,
+  "forbidden_paths_touched": [],
+  "intended_routes": [
+    "/control-plane/research",
+    "/control-plane/data",
+    "/control-plane/identity",
+    "/control-plane/notifications"
+  ],
+  "summary_get_consumed": [
+    "/api/v3/control-plane/research",
+    "/api/v3/control-plane/stores",
+    "/api/v3/control-plane/identity",
+    "/api/v3/control-plane/notifications"
+  ],
+  "pages": [
+    "apps/command-center-v3/src/pages/control-plane/ResearchAttentionPage.tsx",
+    "apps/command-center-v3/src/pages/control-plane/DataIntegrityPage.tsx",
+    "apps/command-center-v3/src/pages/control-plane/IdentityPage.tsx",
+    "apps/command-center-v3/src/pages/control-plane/NotificationsPage.tsx"
+  ],
+  "fetch_helper": "apps/command-center-v3/src/pages/control-plane/fetchControlPlaneSummary.ts",
+  "remaining_labeled_fixtures": [
+    "apps/command-center-v3/src/pages/control-plane/preview/research.json",
+    "apps/command-center-v3/src/pages/control-plane/preview/stores.json",
+    "apps/command-center-v3/src/pages/control-plane/preview/identity.json",
+    "apps/command-center-v3/src/pages/control-plane/preview/notifications.json"
+  ],
+  "tests": [
+    "tests/test_r23_control_plane_pages.py",
+    "tests/test_r23_side_by_side_boundary.py"
+  ],
+  "reproduction_command": "python3 -m pytest tests/test_r23_control_plane_pages.py tests/test_r23_side_by_side_boundary.py -q",
+  "targeted_tests": {
+    "command": "python3 -m pytest tests/test_r23_control_plane_pages.py tests/test_r23_side_by_side_boundary.py -q",
+    "result": "26 passed"
+  },
+  "evidence_class": "UNIT",
+  "head_sha": "c76088d3f1a80cf1913f9c694bb24deea816eb06",
+  "local_head": "c76088d3f1a80cf1913f9c694bb24deea816eb06",
+  "integrator_notes": [
+    "Pages GET CONTROL_PLANE_API_V1_BASELINE summary routes and render data.items.",
+    "Envelope is { ok, as_of, source_sha, freshness, data_quality, evidence_class, data }.",
+    "Banner states: UNAVAILABLE | INVALID_SCHEMA | STALE | DEGRADED | EMPTY_VALID | AVAILABLE.",
+    "EMPTY_VALID = AVAILABLE and pagination.total===0. UNAVAILABLE empty items are not EMPTY_VALID.",
+    "Preview JSON remains labeled FIXTURE for tests/layout only and is not the live fallback.",
+    "App.tsx and NavRail.tsx are untouched; Integrator registers routes after handoff review.",
+    "GUI has no identity mint control and never mints security_guid from ticker.",
+    "UI does not compute notification eligibility, CIO decisions, runtime state, or maturity.",
+    "live_claim=false — API existence is not a LIVE claim.",
+    "No HTTP APIs were implemented by R23; R21 summary GET is consumed only."
+  ]
+}

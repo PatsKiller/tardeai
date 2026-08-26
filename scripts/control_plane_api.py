@@ -146,22 +146,55 @@ def _agent_detail(agent_id: str, query: dict[str, Any]) -> tuple[dict[str, Any],
 
 
 NODE_TYPES = {
-    "event": "SOURCE_EVENT", "source_event": "SOURCE_EVENT", "entity": "ENTITY",
-    "materiality": "MATERIALITY", "graph_impact": "GRAPH_IMPACT", "research_gap": "RESEARCH_GAP",
-    "research": "RESEARCH", "specialist": "SPECIALIST_DISPATCH", "specialist_dispatch": "SPECIALIST_DISPATCH",
-    "artifact": "SPECIALIST_ARTIFACT", "specialist_artifact": "SPECIALIST_ARTIFACT", "council": "COUNCIL",
-    "cio": "CIO_PRODUCT", "cio_product": "CIO_PRODUCT", "notification": "NOTIFICATION",
-    "checkpoint": "CHECKPOINT", "outcome": "OUTCOME", "lesson": "LESSON", "hypothesis": "HYPOTHESIS",
+    "event": "SOURCE_EVENT", "source_event": "SOURCE_EVENT", "material_event": "SOURCE_EVENT",
+    "entity": "ENTITY",
+    "materiality": "MATERIALITY", "graph": "GRAPH_IMPACT", "graph_impact": "GRAPH_IMPACT",
+    "research_gap": "RESEARCH_GAP", "research": "RESEARCH", "free_first": "FREE_FIRST",
+    "specialist": "SPECIALIST_DISPATCH", "specialist_dispatch": "SPECIALIST_DISPATCH",
+    "artifact": "SPECIALIST_ARTIFACT", "specialist_artifact": "SPECIALIST_ARTIFACT",
+    "council": "COUNCIL", "cio": "CIO_PRODUCT", "cio_product": "CIO_PRODUCT",
+    "notification": "NOTIFICATION", "checkpoint": "CHECKPOINT", "outcome": "OUTCOME",
+    "lesson": "LESSON", "learning": "LEARNING", "hypothesis": "HYPOTHESIS",
 }
+
+WORKFLOW_ID_ALIASES = (
+    "workflow_id", "event_id", "decision_id", "generation_id", "artifact_id",
+    "notification_id", "checkpoint_id", "outcome_id", "research_id", "council_id",
+    "entity_guid",
+)
+
+PARTIAL_CERTAINTY = {
+    "UNRESOLVED_LINK", "LEGACY_REFERENCE", "MISSING_PARENT", "UNAVAILABLE_STORE", "QUARANTINED_RECORD",
+}
+
+
+def _identifiers(row: dict[str, Any]) -> dict[str, str]:
+    out: dict[str, str] = {}
+    nested = row.get("identifiers")
+    if isinstance(nested, dict):
+        for key, value in nested.items():
+            if value is not None and str(value):
+                out[str(key)] = str(value)
+    for key in WORKFLOW_ID_ALIASES:
+        value = row.get(key)
+        if value is not None and str(value):
+            out[key] = str(value)
+    return out
+
+
+def _row_matches_workflow(row: dict[str, Any], workflow_id: str) -> bool:
+    ids = _identifiers(row)
+    return any(value == workflow_id for value in ids.values())
 
 
 def _workflow_detail(workflow_id: str, query: dict[str, Any]) -> tuple[dict[str, Any], str]:
     rows, quality = _load_rows((PROJECT_ROOT / "data" / "runtime" / "workflow_traces.json",))
-    aliases = {"workflow_id", "event_id", "decision_id", "generation_id", "artifact_id", "notification_id", "checkpoint_id", "outcome_id"}
-    matches = [r for r in rows if any(str(r.get(k)) == workflow_id for k in aliases)]
+    matches = [r for r in rows if _row_matches_workflow(r, workflow_id)]
     if not matches:
-        return {"workflow_id": workflow_id, "status": "UNAVAILABLE" if quality == "UNAVAILABLE" else "NO_RELEVANT_EVENTS", "nodes": [], "edges": []}, quality
+        status = "UNAVAILABLE" if quality == "UNAVAILABLE" else "NO_RELEVANT_EVENTS"
+        return {"workflow_id": workflow_id, "status": status, "nodes": [], "edges": [], "identifiers": {}}, quality
     row = matches[0]
+    identifiers = _identifiers(row)
     raw_nodes = row.get("nodes", [])
     nodes: list[dict[str, Any]] = []
     seen: set[str] = set()
@@ -172,11 +205,20 @@ def _workflow_detail(workflow_id: str, query: dict[str, Any]) -> tuple[dict[str,
         if nid in seen:
             continue
         seen.add(nid)
-        nodes.append({"node_id": nid, "node_type": NODE_TYPES.get(str(n.get("node_type", "")).lower(), n.get("node_type", "UNKNOWN")),
-                      "entity_refs": n.get("entity_refs", []), "timestamp": n.get("timestamp") or n.get("ts"),
-                      "status": n.get("status", "UNKNOWN"), "evidence_class": n.get("evidence_class", "HISTORICAL_REPLAY"),
-                      "source_ref": n.get("source_ref"), "source_sha": n.get("source_sha", _sha()),
-                      "data_quality": n.get("data_quality", "AVAILABLE"), "summary": n.get("summary")})
+        raw_type = str(n.get("node_type") or n.get("kind") or "")
+        nodes.append({
+            "node_id": nid,
+            "node_type": NODE_TYPES.get(raw_type.lower(), n.get("node_type") or n.get("kind") or "UNKNOWN"),
+            "entity_refs": n.get("entity_refs", []),
+            "timestamp": n.get("timestamp") or n.get("ts"),
+            "status": n.get("status", "UNKNOWN"),
+            "evidence_class": n.get("evidence_class", row.get("evidence_class", "HISTORICAL_REPLAY")),
+            "source_ref": n.get("source_ref"),
+            "source_sha": n.get("source_sha", row.get("source_sha", _sha())),
+            "data_quality": n.get("data_quality", "AVAILABLE"),
+            "summary": n.get("summary"),
+            "lineage_status": n.get("lineage_status") or n.get("status"),
+        })
     raw_edges = row.get("edges", [])
     edges = []
     for e in raw_edges if isinstance(raw_edges, list) else []:
@@ -185,23 +227,46 @@ def _workflow_detail(workflow_id: str, query: dict[str, Any]) -> tuple[dict[str,
         frm, to = str(e.get("from") or e.get("source") or ""), str(e.get("to") or e.get("target") or "")
         if not frm or not to:
             continue
-        certainty = e.get("certainty", "SUPPORTED" if frm in seen and to in seen else "UNRESOLVED_LINK")
-        edges.append({"from": frm, "to": to, "relationship": e.get("relationship", "RELATED"), "evidence": e.get("evidence"), "certainty": certainty, "status": e.get("status", "AVAILABLE")})
-    missing = []
-    for edge in edges:
-        if edge["from"] not in seen or edge["to"] not in seen:
-            edge["certainty"] = "UNRESOLVED_LINK"
-            missing.append(edge)
+        provided = str(e.get("certainty") or "")
+        if provided in PARTIAL_CERTAINTY:
+            certainty = provided
+        elif provided:
+            certainty = provided
+        else:
+            certainty = "SUPPORTED" if frm in seen and to in seen else "UNRESOLVED_LINK"
+        if (frm not in seen or to not in seen) and provided not in PARTIAL_CERTAINTY:
+            certainty = "UNRESOLVED_LINK"
+        edges.append({
+            "from": frm, "to": to,
+            "relationship": e.get("relationship", "RELATED"),
+            "evidence": e.get("evidence"),
+            "certainty": certainty,
+            "status": e.get("status", "AVAILABLE"),
+        })
+    missing = [edge for edge in edges if edge["certainty"] in PARTIAL_CERTAINTY or edge["from"] not in seen or edge["to"] not in seen]
     cutoff = query.get("as_of") or query.get("until")
     if cutoff:
         nodes = [n for n in nodes if not n.get("timestamp") or str(n["timestamp"]) <= str(cutoff)]
         allowed = {n["node_id"] for n in nodes}
         edges = [e for e in edges if e["from"] in allowed and e["to"] in allowed]
+        missing = [edge for edge in edges if edge["certainty"] in PARTIAL_CERTAINTY or edge["from"] not in allowed or edge["to"] not in allowed]
     dq = "AVAILABLE" if not missing else "PARTIAL"
-    canonical_id = str(row.get("workflow_id") or workflow_id)
-    return {"workflow_id": canonical_id, "resolved_from": workflow_id if canonical_id != workflow_id else None,
-            "status": "AVAILABLE", "nodes": nodes, "edges": edges,
-            "unresolved_links": missing, "pagination": {"nodes": _bounded(query)[0], "edges": _bounded(query)[0]}}, dq if quality == "AVAILABLE" else quality
+    row_quality = str(row.get("data_quality") or quality)
+    if row_quality in {"STALE", "DEGRADED", "UNAVAILABLE", "INVALID_SCHEMA", "BROKEN"}:
+        dq = row_quality
+    canonical_id = str(identifiers.get("workflow_id") or row.get("workflow_id") or workflow_id)
+    return {
+        "workflow_id": canonical_id,
+        "resolved_from": workflow_id if canonical_id != workflow_id else None,
+        "status": "AVAILABLE",
+        "evidence_class": row.get("evidence_class", "HISTORICAL_REPLAY"),
+        "source_sha": row.get("source_sha", _sha()),
+        "identifiers": identifiers,
+        "nodes": nodes,
+        "edges": edges,
+        "unresolved_links": missing,
+        "pagination": {"nodes": _bounded(query)[0], "edges": _bounded(query)[0]},
+    }, dq if quality == "AVAILABLE" else quality
 
 
 def _system() -> dict[str, Any]:

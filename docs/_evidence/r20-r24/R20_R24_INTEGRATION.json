@@ -1,0 +1,63 @@
+{
+  "R20_R24_INTEGRATION": {
+    "integration": {
+      "head_pending_commit": true,
+      "r21_1_commits": ["c3b105a7", "b5f55339"],
+      "accepted": true
+    },
+    "contracts": {
+      "summary_frozen": true,
+      "detail_frozen": true,
+      "lineage_frozen": true,
+      "version": "CONTROL_PLANE_API_V1.1"
+    },
+    "r22": {
+      "runtime_mocks": 0,
+      "agent_office": "GET /agents + GET /agents/{id}",
+      "workflow_trace": "GET /workflows + GET /workflows/{id}",
+      "cross_id": "PASS (dry-run fixture)"
+    },
+    "r23": {
+      "runtime_mocks": 0,
+      "research": "GET /research",
+      "data": "GET /stores",
+      "identity": "GET /identity",
+      "notifications": "GET /notifications"
+    },
+    "r24": {
+      "runtime_mocks": 0,
+      "learning": "GET /learning",
+      "maturity": "GET /maturity",
+      "audit": "GET /audit"
+    },
+    "routes": {
+      "shadow_registered": true,
+      "live_cutover": false
+    },
+    "dry_run": {
+      "result": "PASS",
+      "ids_consistent": true,
+      "evidence_class": "DRY_RUN"
+    },
+    "replay": {
+      "canonical_historical_workflows": 0,
+      "labeled_historical_replay_fixtures": 120,
+      "lookahead_leaks": 0
+    },
+    "fault": {
+      "cases": ["store missing", "invalid schema", "unknown agent", "stale cio product", "partial lineage"],
+      "failed": []
+    },
+    "authority": {
+      "mutation_routes": 0,
+      "violations": 0
+    },
+    "privacy": {
+      "secrets_found": 0
+    },
+    "github": {
+      "pushes": 0,
+      "ci_cycles": 0
+    }
+  }
+}

@@ -26,11 +26,19 @@
     "/api/v3/control-plane/maturity",
     "/api/v3/control-plane/audit"
   ],
-  "r21_1_pending_routes": [
+  "contract_version": "CONTROL_PLANE_API_V1.1",
+  "r21_summary": "FROZEN",
+  "r21_detail": "FROZEN",
+  "r21_lineage": "FROZEN",
+  "r21_1_accepted": true,
+  "r21_1_commits": [
+    "c3b105a73301e50b0155b49bf6f6f775ab936af6",
+    "b5f55339cd77bc4196158d81c44ffdd67cfd698e"
+  ],
+  "detail_routes": [
     "/api/v3/control-plane/agents/{id}",
     "/api/v3/control-plane/workflows/{id}"
   ],
-  "r21_1_local_preview_commit": "c3b105a73301e50b0155b49bf6f6f775ab936af6",
   "vocabulary_contract": "ControlPlane@v1.0.0",
   "live_claim_from_api_existence": false,
   "notes": [

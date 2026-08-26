@@ -1,0 +1,167 @@
+{
+  "schema": "R24WorkstreamHandoff@v1",
+  "stream": "R24",
+  "owner": "worker r24",
+  "worktree": "/home/johnclaw/trade-ai-v12-rebuild/wt-r24-learning-maturity",
+  "local_branch": "feat/r24-learning-maturity-ui",
+  "contracts_consumed": ["CONTROL_PLANE_API_V1_BASELINE"],
+  "http_freeze": "CONTROL_PLANE_API_V1_BASELINE",
+  "http_freeze_commit": "084674c560abd7bb910726f62e41508703c07e40",
+  "vocabulary_contract": "ControlPlane@v1.0.0",
+  "authority": "READ_ONLY_ADVISORY",
+  "memory_behavior_influence": 0,
+  "financial_action": false,
+  "live_claim": false,
+  "implementation_claim": true,
+  "ui_live_cutover": false,
+  "routes_registered": false,
+  "github_pushes": 0,
+  "remote_pushes_this_tranche": 0,
+  "github_ci_cycles_this_tranche": 0,
+  "ready_to_sync": false,
+  "as_of": "2026-08-26",
+  "evidence_class": "UNIT",
+  "status": "SUMMARY_APIS_CONSUMED_AWAITING_INTEGRATOR_WIRE",
+  "pages": {
+    "learning": {
+      "file": "apps/command-center-v3/src/pages/control-plane/LearningPage.tsx",
+      "preview_route": "/control-plane/learning",
+      "get": "/api/v3/control-plane/learning",
+      "live_path": "CONTROL_PLANE_API_V1_BASELINE data.items",
+      "kinds_rendered": [
+        "decision",
+        "checkpoint",
+        "outcome",
+        "lesson",
+        "hypothesis",
+        "experiment",
+        "specialist_performance",
+        "model_performance",
+        "routing_candidate"
+      ],
+      "auto_promotions": "absent unless present on API item/envelope; never invented",
+      "auto_promote_policy": false,
+      "promote_control": false
+    },
+    "maturity": {
+      "file": "apps/command-center-v3/src/pages/control-plane/MaturityPage.tsx",
+      "preview_route": "/control-plane/maturity",
+      "get": "/api/v3/control-plane/maturity",
+      "live_path": "CONTROL_PLANE_API_V1_BASELINE data.items",
+      "renders": "data.items",
+      "overall_is_not_a_certification": "absent unless present on envelope; never invented",
+      "limiting_dimension": "absent unless present on envelope; not argmin(score)",
+      "client_side_score_computation": false,
+      "certification_score_in_ui": false
+    },
+    "audit": {
+      "file": "apps/command-center-v3/src/pages/control-plane/AuditPage.tsx",
+      "preview_route": "/control-plane/audit",
+      "get": "/api/v3/control-plane/audit",
+      "live_path": "CONTROL_PLANE_API_V1_BASELINE data.items",
+      "sections": [
+        "architecture",
+        "authority",
+        "runtime",
+        "stores",
+        "agent roster",
+        "research routes",
+        "model routes",
+        "evidence",
+        "known gaps",
+        "reproduction commands"
+      ],
+      "source": "data.items + extras.known_gaps when present + claim.reproduction_command",
+      "marketing_claims": false,
+      "claims_r20_r24_live": false
+    }
+  },
+  "files_added": [
+    "apps/command-center-v3/src/pages/control-plane/LearningPage.tsx",
+    "apps/command-center-v3/src/pages/control-plane/MaturityPage.tsx",
+    "apps/command-center-v3/src/pages/control-plane/AuditPage.tsx",
+    "apps/command-center-v3/src/pages/control-plane/controlPlaneChrome.tsx",
+    "apps/command-center-v3/src/pages/control-plane/frozenEnvelope.ts",
+    "apps/command-center-v3/src/pages/control-plane/httpEnvelope.ts",
+    "apps/command-center-v3/src/pages/control-plane/payloadTypes.ts",
+    "apps/command-center-v3/src/pages/control-plane/useControlPlaneEnvelope.ts",
+    "apps/command-center-v3/src/pages/control-plane/index.ts",
+    "apps/command-center-v3/src/pages/control-plane/frozen/learning.json",
+    "apps/command-center-v3/src/pages/control-plane/frozen/maturity.json",
+    "apps/command-center-v3/src/pages/control-plane/frozen/audit.json",
+    "tests/test_r24_learning_page.py",
+    "tests/test_r24_maturity_page.py",
+    "tests/test_r24_audit_page.py",
+    "tests/test_r24_control_plane_guards.py",
+    "docs/_evidence/r24/WORKSTREAM_HANDOFF.json"
+  ],
+  "integrator_owned_paths_modified": [],
+  "not_modified": [
+    "docs/convergence/**",
+    "schemas/control_plane/**",
+    "fixtures/control_plane/**",
+    "scripts/lib/control_plane_contract_v1.py",
+    "apps/command-center-v3/src/control-plane/**",
+    "apps/command-center-v3/src/App.tsx",
+    "apps/command-center-v3/src/components/NavRail.tsx",
+    "scripts/api_v2.py",
+    "scripts/portfolio_server.py",
+    "scripts/control_plane_api.py",
+    "AI_WORK_POLICY.md",
+    "docs/_evidence/r20-r24/**"
+  ],
+  "data_source": {
+    "live_path": "GET /api/v3/control-plane/{learning,maturity,audit} CONTROL_PLANE_API_V1_BASELINE envelope (`data`, not `payload`)",
+    "collection": "{ items, pagination: {limit, offset, total} }",
+    "unavailable": "fetch failure or data_quality UNAVAILABLE/INVALID_SCHEMA is the page truth; populated fixtures are not kept",
+    "empty_valid": "AVAILABLE + pagination.total 0",
+    "http_200_is_not_live": true,
+    "does_not_wait_for_r21": false
+  },
+  "remaining_fixtures": [
+    {
+      "path": "apps/command-center-v3/src/pages/control-plane/frozen/learning.json",
+      "label": "FIXTURE",
+      "use": "tests only; not the live view"
+    },
+    {
+      "path": "apps/command-center-v3/src/pages/control-plane/frozen/maturity.json",
+      "label": "FIXTURE",
+      "use": "tests only; not the live view"
+    },
+    {
+      "path": "apps/command-center-v3/src/pages/control-plane/frozen/audit.json",
+      "label": "FIXTURE",
+      "use": "tests only; not the live view"
+    }
+  ],
+  "targeted_tests": {
+    "command": "python3 -m pytest tests/test_r24_audit_page.py tests/test_r24_control_plane_guards.py tests/test_r24_learning_page.py tests/test_r24_maturity_page.py -q",
+    "result": "23 passed",
+    "LOCAL_TARGETED_GREEN": true
+  },
+  "typescript": {
+    "command": "npx tsc --noEmit (apps/command-center-v3)",
+    "result": "pass"
+  },
+  "regression_tests": "not run (R24 page-only tranche; no live route cutover)",
+  "release_equivalent": "not run (pages unregistered; integrator gate)",
+  "safety": {
+    "orders": 0,
+    "broker_mutations": 0,
+    "stop_mutations": 0,
+    "risk_policy_mutations": 0,
+    "two_fa_mutations": 0,
+    "policy_promotions": 0,
+    "MEMORY_BEHAVIOR_INFLUENCE": 0
+  },
+  "remaining_local_work": [
+    "Integrator registers /control-plane/learning, /control-plane/maturity, /control-plane/audit in App.tsx and NavRail after handoff review",
+    "Canonical runtime stores data/runtime/{learning_evidence,maturity,audit_capability_claims}.json remain absent on this host; pages must render UNAVAILABLE until those stores exist",
+    "Ready-for-sync remains false until all R20-R24 streams + dry-run + replay + fault + acceptance"
+  ],
+  "local_head": "52b0ae6443dd34bdb7eb0365491843335a570bf7",
+  "local_commits_ahead": 4,
+  "implementation_commit": "52b0ae6443dd34bdb7eb0365491843335a570bf7",
+  "note": "Pinned implementation SHA is 52b0ae64. Branch tip after this evidence checkpoint is git rev-parse HEAD on feat/r24-learning-maturity-ui. No remote push. Live path is CONTROL_PLANE_API_V1_BASELINE. live_claim=false."
+}

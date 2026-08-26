@@ -1,0 +1,14 @@
+[
+  {
+    "claim_id": "dryrun.audit.001",
+    "claim": "R21 projects dry-run workflow identifiers",
+    "implementation_ref": "scripts/control_plane_api.py",
+    "test_ref": "tests/test_r20_r24_convergence.py",
+    "evidence_ref": "fixtures/control_plane/dry_run",
+    "evidence_class": "DRY_RUN",
+    "limitations": [
+      "not production"
+    ],
+    "reproduction_command": "python3 -m pytest tests/test_r20_r24_convergence.py -q"
+  }
+]

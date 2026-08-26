@@ -1,0 +1,12 @@
+[
+  {
+    "subject_id": "dryrun.entity.guid.001",
+    "research_id": "dryrun.research.001",
+    "state": "completed",
+    "why_now": "dry-run material event",
+    "evidence_class": "DRY_RUN",
+    "source_sha": "dryrun-source-sha-084674c5",
+    "universe": "dry_run",
+    "workflow_id": "dryrun.workflow.001"
+  }
+]

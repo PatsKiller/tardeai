@@ -1,0 +1,12 @@
+[
+  {
+    "logical_store": "workflow_traces",
+    "physical_root": "fixtures/control_plane/dry_run/data/runtime",
+    "writer": "integrator_dry_run",
+    "schema_version": "CONTROL_PLANE_API_V1.1",
+    "freshness": "DRY_RUN",
+    "record_count": 1,
+    "authority": "READ_ONLY_ADVISORY",
+    "evidence_class": "DRY_RUN"
+  }
+]

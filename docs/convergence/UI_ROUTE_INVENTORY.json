@@ -5,6 +5,8 @@
   "http_freeze": "CONTROL_PLANE_API_V1_BASELINE",
   "note": "Live routes KEEP/DEFER. New control-plane routes are side-by-side only. No replacement until parity+audit+rollback.",
   "new_preview_routes": [
+    {"new_route": "/control-plane", "owner": "INTEGRATOR", "contract": "CONTROL_PLANE_API_V1_BASELINE", "disposition": "KEEP", "parity": "NEW_SUPERSET"},
+    {"new_route": "/control-plane/system", "owner": "INTEGRATOR", "contract": "CONTROL_PLANE_API_V1_BASELINE", "disposition": "KEEP", "parity": "NEW_SUPERSET"},
     {"new_route": "/control-plane/agents", "owner": "R22", "contract": "CONTROL_PLANE_API_V1_BASELINE", "disposition": "KEEP", "parity": "UNMEASURED"},
     {"new_route": "/control-plane/workflows", "owner": "R22", "contract": "CONTROL_PLANE_API_V1_BASELINE", "disposition": "KEEP", "parity": "UNMEASURED"},
     {"new_route": "/control-plane/research", "owner": "R23", "contract": "CONTROL_PLANE_API_V1_BASELINE", "disposition": "KEEP", "parity": "UNMEASURED"},

@@ -283,11 +283,12 @@ def test_route_inventory_matches_app_tsx_and_cutover_false():
     assert INVENTORY["http_freeze"] == "CONTROL_PLANE_API_V1_BASELINE"
     app_paths = _app_route_paths()
     inventory_live = {row["old_route"] for row in INVENTORY["existing_live_routes"]}
-    assert app_paths == inventory_live
     preview = {row["new_route"] for row in INVENTORY["new_preview_routes"]}
-    assert app_paths.isdisjoint(preview)
-    nav = (ROOT / "apps" / "command-center-v3" / "src" / "components" / "NavRail.tsx").read_text()
-    assert "/control-plane" not in nav
+    assert inventory_live <= app_paths
+    assert preview <= app_paths
+    app = _app_tsx()
+    assert 'path="agents"' in app
+    assert 'Navigate to="/control-plane' not in app
 
 
 def test_redirect_rows_match_navigate_elements():
