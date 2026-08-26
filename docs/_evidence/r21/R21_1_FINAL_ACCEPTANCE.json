@@ -1,0 +1,14 @@
+{
+  "stream": "R21.1",
+  "base_sha": "084674c5",
+  "head_sha": "848287de",
+  "evidence_class": "UNIT",
+  "tests": {"test_control_plane_api.py": {"passed": 8, "failed": 0}},
+  "detail_routes": ["/api/v3/control-plane/agents/{agent_id}", "/api/v3/control-plane/workflows/{workflow_id}"],
+  "cross_id": ["workflow_id", "event_id", "decision_id", "generation_id", "artifact_id", "notification_id", "checkpoint_id", "outcome_id"],
+  "partial_lineage": true,
+  "temporal_cutoff": true,
+  "read_only": true,
+  "secrets_exposed": false,
+  "known_limitations": ["JSON-backed trace lookup; no new database/index introduced", "canonical stores absent return typed UNAVAILABLE"]
+}

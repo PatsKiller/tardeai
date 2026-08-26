@@ -64,3 +64,10 @@ This documentation-only handoff is ready for integration review. R22/R23/R24 may
 The read-only projection implementation is now present in `scripts/control_plane_api.py`, with additive dispatch from `scripts/portfolio_server.py` for `/api/v3/control-plane/*`. Responses carry `as_of`, source SHA, freshness, data quality, and evidence class. Collection responses are bounded to 200 records. Missing or malformed canonical metadata is surfaced as `UNAVAILABLE` or `INVALID_SCHEMA`; no intelligence is fabricated.
 
 Validation: `pytest -q tests/test_control_plane_api.py` -> 6 passed. Evidence: `docs/_evidence/r21/R21_ENDPOINTS.json` and `R21_FINAL_ACCEPTANCE.json`. This branch remains local and is not deployed; Integrator must wire canonical service readers and detail lineage routes during integration.
+# R21.1 Detail and Lineage Completion
+
+Base `084674c5`; local head `848287de` on `feat/r21.1-detail-lineage`.
+
+Added agent detail and workflow detail GET projections without changing R21 summary routes. Workflow lookup accepts canonical identifier aliases and normalizes nodes/edges, preserving partial lineage and unresolved links. Bounded artifact pagination and `until`/`as_of` cutoff filters are supported. Missing stores return typed `UNAVAILABLE`; malformed stores return `INVALID_SCHEMA`.
+
+Verification: `PYTHONPATH=. python3 -m pytest -q tests/test_control_plane_api.py` -> 8 passed. Mutation methods remain rejected (405); no secrets are projected. JSON-backed trace lookup is intentionally bounded and does not replay workflows or invoke providers.
