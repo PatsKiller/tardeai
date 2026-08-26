@@ -1,0 +1,18 @@
+{
+  "schema": "R17CheckpointBinding@v1",
+  "wired_in": "scripts/lib/cio_material_scan.py scan_office persist path",
+  "semantic_dedupe": true,
+  "ignores_decision_id_churn": true,
+  "current_auto_registered_on_deployed_pin": 0,
+  "reason": "binding is on feat/r17 branch, not yet on CURRENT 2d988c76",
+  "cockpit_from_current": {
+    "checkpoints_n": 18,
+    "observations_n": 25,
+    "pending": 18,
+    "due": 0,
+    "completed": 0,
+    "blocked_data": 0,
+    "in_memory_only": false
+  },
+  "authority": "READ_ONLY_ADVISORY"
+}

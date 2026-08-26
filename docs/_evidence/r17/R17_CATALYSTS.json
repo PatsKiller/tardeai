@@ -1,0 +1,7 @@
+{
+  "schema": "R17Catalysts@v1",
+  "trace_contract": "source \u2192 catalyst_guid \u2192 security \u2192 cognition \u2192 research \u2192 decision \u2192 outcome",
+  "gui_visible": true,
+  "outcome_linkage_supported": true,
+  "natural_event_observed": false
+}

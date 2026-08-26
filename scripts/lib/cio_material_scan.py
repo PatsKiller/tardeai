@@ -787,6 +787,19 @@ def scan_office(
     aif = _instrument_scan(selected, at=receipt["at"])
     if aif:
         receipt["aif_observability"] = aif
+    if persist and selected:
+        try:
+            from scripts.lib.r17_checkpoint_binding import bind_scan_decisions
+            sha_path = PROJECT_ROOT / "SOURCE_COMMIT"
+            sha = sha_path.read_text(encoding="utf-8").strip()[:40] if sha_path.is_file() else "unknown"
+            receipt["checkpoint_binding"] = bind_scan_decisions(
+                PROJECT_ROOT, selected, source_sha=sha, persist=True,
+            )
+        except Exception as exc:
+            receipt["checkpoint_binding"] = {
+                "ok": False, "reason": type(exc).__name__,
+                "authority": AUTHORITY, "financial_action": False,
+            }
     if persist:
         RECEIPT_PATH.parent.mkdir(parents=True, exist_ok=True)
         RECEIPT_PATH.write_text(json.dumps(receipt, indent=2, default=str) + "\n", encoding="utf-8")

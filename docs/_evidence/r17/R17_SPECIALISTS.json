@@ -1,0 +1,12 @@
+{
+  "schema": "R17Specialists@v1",
+  "agents": [
+    "maria",
+    "steph",
+    "guardian",
+    "ledger"
+  ],
+  "disagreement_preserved": true,
+  "envelope": true,
+  "gui": true
+}
