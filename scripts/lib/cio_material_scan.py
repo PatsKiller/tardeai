@@ -80,7 +80,15 @@ def _decision(
     body.setdefault("decision_input_digest", _digest({
         "id": decision_id, "action": action, "why": why, "delta": delta,
     }))
-    body.setdefault("decision_evidence_digest", _digest(extra or {"symbol": symbol}))
+    if str(body.get("entity_type") or "").upper() == "PORTFOLIO_CASH" or str(symbol).upper() == "CASH":
+        posture = extra.get("cash_posture") if extra else {}
+        body.setdefault("decision_evidence_digest", _digest({
+            "cash": True,
+            "action": action,
+            "status": (posture or {}).get("cash_posture_status"),
+        }))
+    else:
+        body.setdefault("decision_evidence_digest", _digest(extra or {"symbol": symbol}))
     apply_actionability(body)
     return body
 
@@ -203,6 +211,8 @@ def _cash_decision(plan: dict[str, Any], reclass: dict[str, Any]) -> dict[str, A
             "action_label": "ACT_NOW" if act_now_flag else "NO_ACTION",
             "standing_recommendation": action,
             "current_action": action,
+            "entity_type": "PORTFOLIO_CASH",
+            "account_id": str((plan or {}).get("account_id") or (plan or {}).get("account") or "CONSOLIDATED"),
         },
     )
 
