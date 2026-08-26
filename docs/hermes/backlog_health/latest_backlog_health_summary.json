@@ -1,6 +1,6 @@
 {
-  "date": "2026-08-24",
-  "timestamp": "2026-08-24T06:45:47.457121+00:00",
+  "date": "2026-08-25",
+  "timestamp": "2026-08-25T06:45:04.445085+00:00",
   "checks": {
     "total_backlog": 30,
     "open_count": 0,
@@ -35,12 +35,17 @@
         "key": "NULL:unknown"
       },
       {
+        "id": 3726,
+        "duplicate_of": 33,
+        "key": "NULL:unknown"
+      },
+      {
         "id": 3727,
         "duplicate_of": 33,
         "key": "NULL:unknown"
       },
       {
-        "id": 3726,
+        "id": 5329,
         "duplicate_of": 33,
         "key": "NULL:unknown"
       },
@@ -51,11 +56,6 @@
       },
       {
         "id": 5330,
-        "duplicate_of": 33,
-        "key": "NULL:unknown"
-      },
-      {
-        "id": 5329,
         "duplicate_of": 33,
         "key": "NULL:unknown"
       },
@@ -126,12 +126,12 @@
     "oldest_item": {
       "id": 21,
       "created": "2026-05-31 21:36:31",
-      "age_days": 84
+      "age_days": 85
     },
     "newest_item": {
       "id": 9666,
       "created": "2026-07-14 12:03:57",
-      "age_days": 40
+      "age_days": 41
     },
     "ready_for_discovery": 0,
     "not_ready_for_discovery": 0,
