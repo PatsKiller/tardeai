@@ -1,0 +1,108 @@
+{
+  "schema": "QaFinalHead@v1",
+  "role": "QA",
+  "program": "R20-R24",
+  "generated_at": "2026-08-26T18:15:29Z",
+  "repo": "/home/johnclaw/trade-ai-v12-rebuild/wt-r20-r24",
+  "branch": "convergence/r20-r24",
+  "required_head": "90c1ca94d2a4d0d47ae31d2ed782120c85bca25c",
+  "exact_head": "90c1ca94d2a4d0d47ae31d2ed782120c85bca25c",
+  "head_match": true,
+  "head_subject": "docs(convergence): record QA rerun, local acceptance PASS, and split gates",
+  "parent_accepted": "9c89a21b3515929c0122d47349c48b066996ac9f",
+  "parent_accepted_short": "9c89a21b",
+  "parent_subject": "fix(convergence): restore CC-v3 toolchain, measure parity, split local/live gates",
+  "prior_qa_file": "docs/_evidence/qa/QA_HEAD_RERUN.json",
+  "prior_qa_head": "9c89a21b3515929c0122d47349c48b066996ac9f",
+  "prior_qa_ready_for_integrator_acceptance": true,
+  "gate": "LOCAL_R20_R24_READY_FOR_SYNC",
+  "deployed_CURRENT_required": false,
+  "github_pushes": 0,
+  "product_code_edited": false,
+  "product_pages_changed": false,
+  "new_pages": [],
+  "ready_for_integrator_acceptance": true,
+  "local_sync_high_blockers_remaining": 0,
+  "new_regressions": [],
+  "git_log_2": [
+    {
+      "sha": "90c1ca94d2a4d0d47ae31d2ed782120c85bca25c",
+      "subject": "docs(convergence): record QA rerun, local acceptance PASS, and split gates"
+    },
+    {
+      "sha": "9c89a21b3515929c0122d47349c48b066996ac9f",
+      "subject": "fix(convergence): restore CC-v3 toolchain, measure parity, split local/live gates"
+    }
+  ],
+  "follow_up_commit": {
+    "sha": "90c1ca94d2a4d0d47ae31d2ed782120c85bca25c",
+    "vs_parent": "9c89a21b3515929c0122d47349c48b066996ac9f",
+    "classification": "docs + ai_local_acceptance.sh exists-guard + evidence",
+    "files": [
+      "docs/_evidence/qa/QA_HEAD_RERUN.json",
+      "docs/_evidence/r20-r24/CROSS_ID_RESULT.json",
+      "docs/_evidence/r20-r24/DRY_RUN_RESULT.json",
+      "docs/_evidence/r20-r24/INTEGRATOR_STATUS.json",
+      "docs/_evidence/r20-r24/PAGE_PROOF.json",
+      "docs/diligence/current/OPTIONS_RISK_BLOCK_MATRIX.md",
+      "docs/project/CI_EVIDENCE_LATEST.md",
+      "docs/project/RELEASE_MANIFEST_LATEST.md",
+      "scripts/ai_local_acceptance.sh"
+    ],
+    "apps_command_center_v3_diff": [],
+    "App.tsx_changed": false,
+    "exists_guard": {
+      "path": "scripts/ai_local_acceptance.sh",
+      "change": "if [[ \"$tests\" == \"1\" && -f tests/test_ai_work_policy_hooks.py ]]; then",
+      "reason": "tests/test_ai_work_policy_hooks.py is absent in this worktree; skip rather than fail pytest",
+      "missing_file": "tests/test_ai_work_policy_hooks.py"
+    }
+  },
+  "confirmations": {
+    "app_tsx": {
+      "basename": "/v3",
+      "cutover": false,
+      "navigate_to_control_plane_from_live": false,
+      "control_plane_routes_registered": [
+        "/control-plane",
+        "/control-plane/system",
+        "/control-plane/agents",
+        "/control-plane/workflows",
+        "/control-plane/research",
+        "/control-plane/data",
+        "/control-plane/identity",
+        "/control-plane/notifications",
+        "/control-plane/learning",
+        "/control-plane/maturity",
+        "/control-plane/audit"
+      ]
+    },
+    "working_tree": {
+      "untracked": [".githooks/"],
+      "note": ".githooks/pre-push left untracked on purpose (parent commit message)."
+    }
+  },
+  "pytest": {
+    "python": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python",
+    "python_version": "3.14.4",
+    "cwd": "/home/johnclaw/trade-ai-v12-rebuild/wt-r20-r24",
+    "env": "TRADE_AI_CI=1",
+    "command": "TRADE_AI_CI=1 python -m pytest -q --tb=short tests/test_r20_r24_qa_probes.py tests/test_r20_r24_local_gates.py",
+    "collected": 30,
+    "passed": 30,
+    "failed": 0,
+    "skipped": 0,
+    "duration_s": 0.26,
+    "files": {
+      "tests/test_r20_r24_qa_probes.py": {"passed": 20, "failed": 0, "skipped": 0},
+      "tests/test_r20_r24_local_gates.py": {"passed": 10, "failed": 0, "skipped": 0}
+    },
+    "note": "test_control_plane_read_benchmark_is_bounded rewrites docs/_evidence/r20-r24/PERFORMANCE_SMOKE.json; that rewrite was reverted so this QA file is the only new artifact."
+  },
+  "notes": [
+    "HEAD matched required_head 90c1ca94d2a4d0d47ae31d2ed782120c85bca25c.",
+    "Parent 9c89a21b was already QA-accepted with ready_for_integrator_acceptance=true (docs/_evidence/qa/QA_HEAD_RERUN.json).",
+    "Follow-up is docs + exists-guard; no new pages; App.tsx control-plane shadow routes unchanged.",
+    "No push. No product-page edits. Only this QA evidence file written."
+  ]
+}

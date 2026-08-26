@@ -1,0 +1,54 @@
+{
+  "schema": "QaCompatibilityNotes@v1",
+  "http_freeze": "CONTROL_PLANE_API_V1_BASELINE",
+  "result": "PASS_WITH_NOTES",
+  "rule": "Older ControlPlane@v1.0.0 fixtures use payload and are MOCK only. HTTP freeze uses data. Do not treat payload fixtures as live accept bodies.",
+  "http_envelope": {
+    "shape": ["ok", "as_of", "source_sha", "freshness", "data_quality", "evidence_class", "data"],
+    "collection_data": ["items", "pagination"],
+    "source": [
+      "docs/convergence/CONTROL_PLANE_API_V1_BASELINE.json",
+      "fixtures/control_plane/api_v1_baseline/",
+      "apps/command-center-v3/src/control-plane/apiV1Baseline.ts"
+    ]
+  },
+  "vocabulary_envelope_MOCK_ONLY": {
+    "schema": "ControlPlane@v1.0.0",
+    "shape_includes": ["schema", "page", "payload", "computes_*", "authority"],
+    "payload_key": "payload",
+    "data_quality_example": "OK",
+    "source": "fixtures/control_plane/v1.0.0/",
+    "not_the_http_consumption_contract": true,
+    "must_not_become_production_data": true
+  },
+  "frontend_integrator_types": {
+    "apiV1Baseline.ts": "data envelope — matches freeze",
+    "contractV1.ts": "ControlPlane@v1.0.0 vocabulary — not HTTP shape"
+  },
+  "worker_consumption_at_qa_time": {
+    "R22": {
+      "head": "7bc2ba55",
+      "list_views": "still render ControlPlane@v1.0.0 payload fixtures",
+      "ui_label": "FIXTURE chip in controlPlaneChrome.tsx",
+      "relaunch_status": "RELAUNCH_SUMMARY_APIS (no new worker commit yet)"
+    },
+    "R23": {
+      "head": "207ec856",
+      "preview_envelopes": "byte copies of fixtures/control_plane/v1.0.0 with payload",
+      "relaunch_status": "RELAUNCH_SUMMARY_APIS (no new worker commit yet)"
+    },
+    "R24": {
+      "head": "0333be0b",
+      "accept_path": "isControlPlaneEnvelope requires payload + schema=ControlPlane@v1.0.0",
+      "behavior": "GET HTTP freeze body is rejected; FIXTURE kept",
+      "relaunch_status": "RELAUNCH_SUMMARY_APIS (no new worker commit yet)",
+      "note": "Do not treat that keep-FIXTURE path as live maturity."
+    }
+  },
+  "forbidden": [
+    "Silently mapping payload -> data",
+    "Treating HTTP 200 / API existence as LIVE",
+    "Using UNAVAILABLE empty items as EMPTY_VALID",
+    "Deleting remaining mocks before R21.1 integration"
+  ]
+}

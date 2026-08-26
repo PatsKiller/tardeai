@@ -1,0 +1,12 @@
+[
+  {
+    "dimension": "control_plane_projection",
+    "score": null,
+    "evidence_class": "DRY_RUN",
+    "proof_refs": [
+      "dryrun.workflow.001"
+    ],
+    "limiting_factor": "local dry-run only",
+    "next_proof": "deployed acceptance"
+  }
+]

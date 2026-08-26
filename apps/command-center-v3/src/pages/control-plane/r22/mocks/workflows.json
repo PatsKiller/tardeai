@@ -1,0 +1,55 @@
+{
+  "schema": "ControlPlane@v1.0.0",
+  "page": "workflows",
+  "as_of": "2026-08-26T00:00:00+00:00",
+  "evidence_class": "DRY_RUN",
+  "source_sha": "fixture",
+  "data_quality": "OK",
+  "authority": "READ_ONLY_ADVISORY",
+  "memory_behavior_influence": 0,
+  "computes_cio_decisions": false,
+  "computes_agent_state": false,
+  "computes_maturity": false,
+  "computes_notification_eligibility": false,
+  "financial_action": false,
+  "payload": {
+    "traces": [
+      {
+        "trace_id": "trace-dry-001",
+        "status": "COMPLETE",
+        "evidence_class": "DRY_RUN",
+        "source_sha": "fixture",
+        "started_at": "2026-08-26T00:00:00+00:00",
+        "updated_at": "2026-08-26T00:01:00+00:00",
+        "failure_reason": null,
+        "nodes": [
+          {"node_id": "n1", "kind": "event", "label": "MATERIAL_SECURITY_CHANGE SCHD", "status": "PRESENT", "entity_refs": ["SCHD"], "artifact_refs": [], "started_at": "2026-08-26T00:00:00+00:00", "ended_at": "2026-08-26T00:00:01+00:00", "evidence_class": "DRY_RUN"},
+          {"node_id": "n2", "kind": "entity", "label": "UNRESOLVED ticker alias SCHD", "status": "UNRESOLVED", "entity_refs": ["SCHD"], "artifact_refs": [], "started_at": "2026-08-26T00:00:01+00:00", "ended_at": "2026-08-26T00:00:01+00:00", "evidence_class": "DRY_RUN"},
+          {"node_id": "n3", "kind": "materiality", "label": "material to book", "status": "PRESENT", "entity_refs": ["SCHD"], "artifact_refs": [], "started_at": "2026-08-26T00:00:02+00:00", "ended_at": "2026-08-26T00:00:02+00:00", "evidence_class": "DRY_RUN"},
+          {"node_id": "n4", "kind": "graph", "label": "sector Industrials", "status": "PRESENT", "entity_refs": ["SCHD"], "artifact_refs": [], "started_at": "2026-08-26T00:00:03+00:00", "ended_at": "2026-08-26T00:00:03+00:00", "evidence_class": "DRY_RUN"},
+          {"node_id": "n5", "kind": "research", "label": "gap g1 OPEN", "status": "PRESENT", "entity_refs": ["SCHD"], "artifact_refs": ["gap-g1"], "started_at": "2026-08-26T00:00:04+00:00", "ended_at": "2026-08-26T00:00:04+00:00", "evidence_class": "DRY_RUN"},
+          {"node_id": "n6", "kind": "specialist", "label": "maria REQUEST_MORE_DATA; guardian CHALLENGE", "status": "PRESENT", "entity_refs": ["SCHD"], "artifact_refs": ["sart_maria", "sart_guardian"], "started_at": "2026-08-26T00:00:05+00:00", "ended_at": "2026-08-26T00:00:10+00:00", "evidence_class": "DRY_RUN"},
+          {"node_id": "n7", "kind": "council", "label": "disagreement preserved", "status": "PRESENT", "entity_refs": ["SCHD"], "artifact_refs": ["ccs_1"], "started_at": "2026-08-26T00:00:10+00:00", "ended_at": "2026-08-26T00:00:11+00:00", "evidence_class": "DRY_RUN"},
+          {"node_id": "n8", "kind": "cio", "label": "HOLD standing", "status": "PRESENT", "entity_refs": ["SCHD"], "artifact_refs": ["op_gen1"], "started_at": "2026-08-26T00:00:11+00:00", "ended_at": "2026-08-26T00:00:12+00:00", "evidence_class": "DRY_RUN"},
+          {"node_id": "n9", "kind": "notification", "label": "SUPPRESSED unchanged_replay", "status": "PRESENT", "entity_refs": ["SCHD"], "artifact_refs": ["notif_1"], "started_at": "2026-08-26T00:00:12+00:00", "ended_at": "2026-08-26T00:00:12+00:00", "evidence_class": "DRY_RUN"},
+          {"node_id": "n10", "kind": "checkpoint", "label": "SCHEDULED not due", "status": "PRESENT", "entity_refs": ["SCHD"], "artifact_refs": ["ckpt_1"], "started_at": "2026-08-26T00:00:13+00:00", "ended_at": null, "evidence_class": "DRY_RUN"},
+          {"node_id": "n11", "kind": "outcome", "label": "not due", "status": "PENDING", "entity_refs": ["SCHD"], "artifact_refs": [], "started_at": null, "ended_at": null, "evidence_class": "DRY_RUN"},
+          {"node_id": "n12", "kind": "learning", "label": "MBI=0 no auto promotion", "status": "PARTIAL", "entity_refs": ["SCHD"], "artifact_refs": [], "started_at": null, "ended_at": null, "evidence_class": "SHADOW"}
+        ],
+        "edges": [
+          {"edge_id": "e1", "from_node": "n1", "to_node": "n2", "event_id": "ev-1", "causal_reason": "event binds entity"},
+          {"edge_id": "e2", "from_node": "n2", "to_node": "n3", "event_id": "ev-1", "causal_reason": "identity to materiality"},
+          {"edge_id": "e3", "from_node": "n3", "to_node": "n4", "event_id": "ev-1", "causal_reason": "graph impact"},
+          {"edge_id": "e4", "from_node": "n4", "to_node": "n5", "event_id": "ev-1", "causal_reason": "research gap"},
+          {"edge_id": "e5", "from_node": "n5", "to_node": "n6", "event_id": "ev-1", "causal_reason": "specialist dispatch"},
+          {"edge_id": "e6", "from_node": "n6", "to_node": "n7", "event_id": "ev-1", "causal_reason": "council synthesis"},
+          {"edge_id": "e7", "from_node": "n7", "to_node": "n8", "event_id": "ev-1", "causal_reason": "CIO product"},
+          {"edge_id": "e8", "from_node": "n8", "to_node": "n9", "event_id": "ev-1", "causal_reason": "notification policy"},
+          {"edge_id": "e9", "from_node": "n8", "to_node": "n10", "event_id": "ev-1", "causal_reason": "checkpoint bind"},
+          {"edge_id": "e10", "from_node": "n10", "to_node": "n11", "event_id": "ev-1", "causal_reason": "outcome pending"},
+          {"edge_id": "e11", "from_node": "n11", "to_node": "n12", "event_id": "ev-1", "causal_reason": "learning observational"}
+        ]
+      }
+    ]
+  }
+}

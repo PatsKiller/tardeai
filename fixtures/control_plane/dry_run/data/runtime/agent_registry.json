@@ -1,0 +1,63 @@
+[
+  {
+    "agent_id": "maria",
+    "role": "Research Director",
+    "runtime_state": "LIVE_EVENT_DRIVEN",
+    "evidence_class": "DRY_RUN",
+    "source_sha": "dryrun-source-sha-084674c5",
+    "current_task": "dryrun_research",
+    "entity_refs": [
+      "dryrun.entity.guid.001"
+    ],
+    "last_artifact": "dryrun.artifact.001",
+    "research_route": "free_first",
+    "model_route": "deterministic",
+    "queue_depth": 1,
+    "last_success": "2026-08-26T12:05:00Z",
+    "last_failure": null,
+    "latency": 12,
+    "cost": 0,
+    "next_eligible_wake": "dry-run only",
+    "wake_reason": "MATERIAL_EVENT",
+    "last_wake": "2026-08-26T12:00:00Z",
+    "on_current_runtime": false
+  },
+  {
+    "agent_id": "ledger",
+    "role": "Tax specialist",
+    "runtime_state": "EXPECTED_IDLE",
+    "evidence_class": "DRY_RUN",
+    "source_sha": "dryrun-source-sha-084674c5",
+    "current_task": null,
+    "entity_refs": [],
+    "queue_depth": 0,
+    "on_current_runtime": false
+  },
+  {
+    "agent_id": "aegis",
+    "role": "Protection critic",
+    "runtime_state": "BROKEN",
+    "evidence_class": "DRY_RUN",
+    "source_sha": "dryrun-source-sha-084674c5",
+    "last_failure": "timeout",
+    "queue_depth": 2,
+    "data_quality": "DEGRADED",
+    "on_current_runtime": false
+  },
+  {
+    "agent_id": "vega",
+    "role": "Technical critic",
+    "runtime_state": "CALLABLE_ONLY",
+    "evidence_class": "DRY_RUN",
+    "source_sha": "dryrun-source-sha-084674c5",
+    "on_current_runtime": false
+  },
+  {
+    "agent_id": "pulse",
+    "role": "not configured",
+    "runtime_state": "DISABLED",
+    "evidence_class": "DRY_RUN",
+    "source_sha": "dryrun-source-sha-084674c5",
+    "on_current_runtime": false
+  }
+]

@@ -1,0 +1,10 @@
+{
+  "head": "f834ac4982b16cc1897212ac65e50ea055e1cb95",
+  "routes_registered": 11,
+  "preview_flag": "CC_CONTROL_PLANE_PREVIEW",
+  "legacy_routes_replaced": 0,
+  "runtime_mock_references": 0,
+  "test_fixture_references": 2,
+  "pages_present": 9,
+  "notes": ["R23 source comments still say routes are not registered; App.tsx registers them. Documentation/comment drift only."]
+}

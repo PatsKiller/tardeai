@@ -1,0 +1,7 @@
+{
+  "result": "PASS",
+  "evidence_class": "DRY_RUN",
+  "ids_consistent": true,
+  "fixture": "fixtures/control_plane/dry_run",
+  "workflow_id": "dryrun.workflow.001"
+}

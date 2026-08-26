@@ -1,0 +1,27 @@
+{
+  "schema": "RemainingMocks@v1",
+  "owner": "R22",
+  "http_freeze": "CONTROL_PLANE_API_V1_BASELINE",
+  "runtime_mocks": 0,
+  "rule": "TEST_FIXTURE only. Runtime detail uses GET /api/v3/control-plane/agents/{id} and /workflows/{id}.",
+  "remaining": [
+    {
+      "id": "r22-agents-v1.0.0-payload",
+      "owner": "R22",
+      "path": "apps/command-center-v3/src/pages/control-plane/r22/mocks/agents.json",
+      "label": "TEST_FIXTURE — not production data",
+      "schema": "ControlPlane@v1.0.0 payload (NOT HTTP freeze)",
+      "allowed_for": "tests / labeled TEST_FIXTURE accordion",
+      "forbidden_for": "runtime list or detail"
+    },
+    {
+      "id": "r22-workflows-v1.0.0-payload",
+      "owner": "R22",
+      "path": "apps/command-center-v3/src/pages/control-plane/r22/mocks/workflows.json",
+      "label": "TEST_FIXTURE — not production data",
+      "schema": "ControlPlane@v1.0.0 payload (NOT HTTP freeze)",
+      "allowed_for": "tests / labeled TEST_FIXTURE accordion",
+      "forbidden_for": "runtime list or lineage"
+    }
+  ]
+}

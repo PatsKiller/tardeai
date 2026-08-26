@@ -1,9 +1,0 @@
-      strategy_id       | signals_7d | unique_symbols 
-------------------------+------------+----------------
- earnings_post_momentum |          2 |              2
- fib_retracement_bounce |          2 |              2
- recovery_watch         |         18 |             14
- swing_breakout         |          4 |              3
- swing_trade            |          4 |              3
-(5 rows)
-

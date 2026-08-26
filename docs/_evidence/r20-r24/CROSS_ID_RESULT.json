@@ -1,0 +1,8 @@
+{
+  "result": "PASS",
+  "aliases": [
+    "workflow_id", "event_id", "decision_id", "generation_id", "artifact_id",
+    "notification_id", "checkpoint_id", "outcome_id", "research_id", "council_id"
+  ],
+  "canonical_workflow_id": "dryrun.workflow.001"
+}

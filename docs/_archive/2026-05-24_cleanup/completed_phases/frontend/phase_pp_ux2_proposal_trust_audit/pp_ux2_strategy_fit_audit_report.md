@@ -1,1 +1,0 @@
-# Strategy Fit Audit

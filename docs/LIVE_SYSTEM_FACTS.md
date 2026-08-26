@@ -33,7 +33,7 @@ Outputs:
 ## What does NOT drift-check
 
 - `docs/CHANGELOG.md` — historical record; past counts are intentional
-- `docs/_archive/**` — point-in-time snapshots
+- *(no `docs/_archive/` — purged 2026-08-16; historical snapshots live in git history / Drive)*
 - `docs/project/PHASE*_CLOSEOUT.md` — phase evidence at closeout date
 
 ## Canonical docs using live facts

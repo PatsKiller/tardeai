@@ -34,6 +34,19 @@ import SchwabReauthHub from './pages/SchwabReauthHub'
 import SchwabReauthBanner from './components/SchwabReauthBanner'
 import AdvisoryDeskHub from './pages/AdvisoryDeskHub'
 import CioHub from './pages/CioHub'
+import {
+  ControlPlaneHub,
+  ControlPlaneSystemPage,
+  AgentOfficePage,
+  WorkflowTracePage,
+  ResearchAttentionPage,
+  DataIntegrityPage,
+  IdentityPage,
+  NotificationsPage,
+  LearningPage,
+  MaturityPage,
+  AuditPage,
+} from './pages/control-plane'
 
 
 declare const __ANALYST_UI_VERSION__: string
@@ -191,6 +204,18 @@ function Shell() {
             <Route path="consumption" element={<ConsumptionHub />} />
             <Route path="system" element={<SystemHub onDrill={setDrill} />} />
             <Route path="system/schwab-reauth" element={<SchwabReauthHub />} />
+            {/* Shadow control-plane namespace. Does not replace live routes. */}
+            <Route path="control-plane" element={<ControlPlaneHub />} />
+            <Route path="control-plane/system" element={<ControlPlaneSystemPage />} />
+            <Route path="control-plane/agents" element={<AgentOfficePage />} />
+            <Route path="control-plane/workflows" element={<WorkflowTracePage />} />
+            <Route path="control-plane/research" element={<ResearchAttentionPage />} />
+            <Route path="control-plane/data" element={<DataIntegrityPage />} />
+            <Route path="control-plane/identity" element={<IdentityPage />} />
+            <Route path="control-plane/notifications" element={<NotificationsPage />} />
+            <Route path="control-plane/learning" element={<LearningPage />} />
+            <Route path="control-plane/maturity" element={<MaturityPage />} />
+            <Route path="control-plane/audit" element={<AuditPage />} />
           </Routes>
           <div style={{ marginTop: 18, paddingTop: 8, borderTop: '1px solid rgba(148,163,184,.16)', fontSize: 11, color: 'var(--text3)' }}>
             <BuildMarker />

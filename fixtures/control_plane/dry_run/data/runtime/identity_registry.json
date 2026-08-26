@@ -1,0 +1,11 @@
+[
+  {
+    "entity_id": "dryrun.entity.guid.001",
+    "state": "CONFIRMED",
+    "issuer": "dry_run",
+    "security": "DRYRUN",
+    "evidence_class": "DRY_RUN",
+    "source_sha": "dryrun-source-sha-084674c5",
+    "as_of": "2026-08-26T12:01:00Z"
+  }
+]

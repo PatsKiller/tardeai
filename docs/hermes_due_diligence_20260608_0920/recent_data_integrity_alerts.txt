@@ -1,8 +1,0 @@
-          created_at           | severity |              alert_uid              |                          left                           
--------------------------------+----------+-------------------------------------+---------------------------------------------------------
- 2026-06-08 00:00:01.847357-04 | warning  | freshness:cio_decisions             | cio_decisions last row 39.8h ago (max 30h)
- 2026-06-08 00:00:01.846938-04 | urgent   | freshness:fused_signals_vs_catalyst | fused_signals 0 rows in 30h while catalyst_events got 3
- 2026-06-08 00:00:01.84631-04  | urgent   | freshness:fused_signals             | fused_signals last row 59.0h ago (max 30h)
- 2026-06-04 15:13:44.260822-04 | warning  | freshness:topic_ingestion           | topic_monitor last row 630.2h ago (max 72h)
-(4 rows)
-

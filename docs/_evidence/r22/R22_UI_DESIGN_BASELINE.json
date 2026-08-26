@@ -1,0 +1,9 @@
+{
+  "status": "DESIGN_BASELINE_ONLY",
+  "evidence_class": "SOURCE_ONLY",
+  "authority": "READ_ONLY_ADVISORY",
+  "routes": ["/control-plane/agents", "/control-plane/workflows"],
+  "source_of_truth": "R21 typed control-plane contracts",
+  "required_lineage": ["source_event", "entity", "materiality", "research_gap", "specialist_artifact", "cio_product", "notification", "checkpoint", "outcome", "learning"],
+  "live_claim": false
+}

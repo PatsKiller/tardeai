@@ -1,0 +1,15 @@
+{
+  "worktree_data_runtime_present": ["file_integrity_manifest.json", "hermes_llm_capabilities.json"],
+  "control_plane_stores": [
+    {"logical_store": "agent_registry.json", "why": "never written in this worktree", "class": "EXPECTED_LOCAL_UNAVAILABLE", "local_fixture": "fixtures/control_plane/dry_run/data/runtime/agent_registry.json", "production_only": true, "page_renders": "UNAVAILABLE", "needs_deploy_to_prove": true},
+    {"logical_store": "workflow_traces.json", "why": "control plane did not exist historically", "class": "EXPECTED_LOCAL_UNAVAILABLE", "local_fixture": "fixtures/control_plane/dry_run + replay", "production_only": true, "page_renders": "UNAVAILABLE", "needs_deploy_to_prove": true},
+    {"logical_store": "research_attention.json", "why": "no R21 production writer on this branch", "class": "EXPECTED_LOCAL_UNAVAILABLE", "local_fixture": "dry_run", "production_only": true, "page_renders": "UNAVAILABLE", "needs_deploy_to_prove": true},
+    {"logical_store": "canonical_store_registry.json", "why": "absent locally", "class": "EXPECTED_LOCAL_UNAVAILABLE", "local_fixture": "dry_run", "production_only": true, "page_renders": "UNAVAILABLE", "needs_deploy_to_prove": true},
+    {"logical_store": "identity_registry.json", "why": "absent locally", "class": "EXPECTED_LOCAL_UNAVAILABLE", "local_fixture": "dry_run", "production_only": true, "page_renders": "UNAVAILABLE", "needs_deploy_to_prove": true},
+    {"logical_store": "notification_receipts.json", "why": "absent locally", "class": "EXPECTED_LOCAL_UNAVAILABLE", "local_fixture": "dry_run", "production_only": true, "page_renders": "UNAVAILABLE", "needs_deploy_to_prove": true},
+    {"logical_store": "learning_evidence.json", "why": "absent locally", "class": "EXPECTED_LOCAL_UNAVAILABLE", "local_fixture": "dry_run", "production_only": true, "page_renders": "UNAVAILABLE", "needs_deploy_to_prove": true},
+    {"logical_store": "maturity.json", "why": "absent locally", "class": "EXPECTED_LOCAL_UNAVAILABLE", "local_fixture": "dry_run", "production_only": true, "page_renders": "UNAVAILABLE", "needs_deploy_to_prove": true},
+    {"logical_store": "audit_capability_claims.json", "why": "absent locally", "class": "EXPECTED_LOCAL_UNAVAILABLE", "local_fixture": "dry_run", "production_only": true, "page_renders": "UNAVAILABLE", "needs_deploy_to_prove": true}
+  ],
+  "broken_configuration": []
+}

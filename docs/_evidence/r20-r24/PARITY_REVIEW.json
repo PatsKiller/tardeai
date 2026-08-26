@@ -1,0 +1,12 @@
+{
+  "cutover": false,
+  "measured": true,
+  "regressions": [],
+  "classifications": [
+    {"old": "/agents", "new": "/control-plane/agents", "class": "INTENTIONAL_SEMANTIC_REPLACEMENT", "note": "legacy runtime hub vs R21 envelope; old route remains live"},
+    {"old": "/research-intelligence", "new": "/control-plane/research", "class": "INTENTIONAL_SEMANTIC_REPLACEMENT", "note": "RI desk vs admin attention"},
+    {"old": "/system", "new": "/control-plane/system", "class": "NEW_SUPERSET"},
+    {"old": "/health", "new": "/control-plane/data", "class": "NEW_SUPERSET"},
+    {"old": null, "new": "/control-plane/workflows", "class": "NEW_SUPERSET"}
+  ]
+}

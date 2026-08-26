@@ -289,6 +289,51 @@ except: print('')
   echo "$current_parent"
 }
 
+# ── Folder resolution (find-only, no create) for the cleanup pass ──
+# The cleanup pass removes Drive files whose LOCAL source was deleted. Those folders
+# are never visited by this run's upload pass (so resolve_folder doesn't cache them)
+# and may have been evicted from FOLDER_CACHE by a prior root reset. Walking the path
+# with `gog drive ls` (no mkdir) resolves the real Drive parent instead of silently
+# defaulting to the sync root and orphaning the file. Returns the folder id, or a
+# nonzero status when a path component no longer exists on Drive (the whole subtree
+# is already gone — nothing left to prune).
+resolve_existing_folder() {
+  local dir_path="$1"
+  local current_parent="$DRIVE_FOLDER_ID"
+  local built_path=""
+  local mid_cached found_id
+  IFS='/' read -ra PARTS <<< "$dir_path"
+  for part in "${PARTS[@]}"; do
+    built_path="${built_path:+$built_path/}$part"
+
+    mid_cached=$(grep "^${built_path}|" "$FOLDER_CACHE" 2>/dev/null | head -1 | cut -d'|' -f2 || true)
+    if [ -n "$mid_cached" ]; then
+      current_parent="$mid_cached"
+      continue
+    fi
+
+    found_id=$(gog drive ls --account "$GOG_ACCOUNT" --parent "$current_parent" --max=1000 --json --no-input 2>/dev/null \
+      | python3 -c "
+import sys,json
+try:
+    fs=json.load(sys.stdin).get('files',[])
+    matches=[f['id'] for f in fs if f.get('name')=='$part' and 'folder' in f.get('mimeType','')]
+    print(matches[0] if matches else '')
+except: print('')
+" 2>/dev/null || echo "")
+
+    if [ -n "$found_id" ]; then
+      current_parent="$found_id"
+      echo "${built_path}|${current_parent}" >> "$FOLDER_CACHE"
+    else
+      return 1
+    fi
+  done
+
+  echo "$current_parent"
+  return 0
+}
+
 # ── Build file list ──
 CANDIDATES=$(mktemp)
 find "$SRC/docs" -type f \
@@ -418,17 +463,23 @@ if [ -s "$MANIFEST" ]; then
     else
       continue
     fi
-    # Find the file on Drive by searching the target folder
+    # Resolve the file's parent folder on Drive via the find-only resolver, so a
+    # folder that fell out of FOLDER_CACHE (or was never cached) still resolves to
+    # its real Drive parent. Previously this only checked the cache and defaulted to
+    # the sync root — orphaning any file whose parent was uncached.
     dir_path=$(dirname "$relpath")
     filename=$(basename "$relpath")
     target_parent="$DRIVE_FOLDER_ID"
     if [ "$dir_path" != "." ]; then
-      cached_parent=$(grep "^${dir_path}|" "$FOLDER_CACHE" 2>/dev/null | head -1 | cut -d'|' -f2)
-      [ -n "$cached_parent" ] && target_parent="$cached_parent"
+      if ! target_parent=$(resolve_existing_folder "$dir_path"); then
+        target_parent=""   # parent subtree already gone on Drive → children gone too
+      fi
     fi
-    # Search for file in target folder
-    drive_file_id=$(gog drive ls --account "$GOG_ACCOUNT" --parent "$target_parent" --json --no-input 2>/dev/null \
-      | python3 -c "
+    # Search for file in target folder (skip if the parent folder is already gone)
+    drive_file_id=""
+    if [ -n "$target_parent" ]; then
+      drive_file_id=$(gog drive ls --account "$GOG_ACCOUNT" --parent "$target_parent" --json --no-input 2>/dev/null \
+        | python3 -c "
 import sys,json
 try:
     files=json.load(sys.stdin).get('files',[])
@@ -436,6 +487,7 @@ try:
     print(matches[0] if matches else '')
 except: print('')
 " 2>/dev/null || echo "")
+    fi
     if [ -n "$drive_file_id" ]; then
       if gog drive rm "$drive_file_id" --account "$GOG_ACCOUNT" --force --no-input 2>>"$LOG"; then
         log "DELETED from Drive: $relpath ($drive_file_id)"

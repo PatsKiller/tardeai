@@ -1,0 +1,16 @@
+[
+  {
+    "item_id": "dryrun.lesson.001",
+    "kind": "outcome",
+    "status": "candidate",
+    "score": null,
+    "evidence_class": "DRY_RUN",
+    "proof_refs": [
+      "dryrun.outcome.001",
+      "dryrun.checkpoint.001"
+    ],
+    "limiting_factor": "dry-run not promoted",
+    "next_proof": "operator review",
+    "workflow_id": "dryrun.workflow.001"
+  }
+]

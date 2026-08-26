@@ -1,0 +1,23 @@
+{
+  "schema": "HostRuntimeChecklist@v1",
+  "live_claim_from_source": false,
+  "local_can_prove": [
+    "GET control-plane projections from fixture PROJECT_ROOT",
+    "CURRENT SHA of this branch (not production CURRENT)",
+    "absence of canonical runtime JSON in this worktree data/runtime",
+    "READ_ONLY_ADVISORY and MEMORY_BEHAVIOR_INFLUENCE=0 in /system"
+  ],
+  "requires_deployed_acceptance": [
+    "production service process",
+    "timer/cron presence",
+    "queue consumers",
+    "production CURRENT SHA 6088254e vs this branch",
+    "GOOD_PERSISTENT_ROOT mount",
+    "live agent registry on CURRENT",
+    "R20 specialist-office activation"
+  ],
+  "r20": {
+    "office_live_on_current": false,
+    "display": "CALLABLE_ONLY / UNKNOWN / NOT_DEPLOYED are accurate; do not claim LIVE_EVENT_DRIVEN as production"
+  }
+}

@@ -1,0 +1,14 @@
+[
+  {
+    "notification_id": "dryrun.notification.001",
+    "class": "CIO_MATERIAL_FINANCIAL",
+    "decision": "rendered",
+    "workflow_id": "dryrun.workflow.001",
+    "generation_id": "dryrun.generation.001",
+    "decision_id": "dryrun.decision.001",
+    "evidence_class": "DRY_RUN",
+    "source_sha": "dryrun-source-sha-084674c5",
+    "delivered_at": null,
+    "suppression_reason": "DRY_RUN_NO_TELEGRAM"
+  }
+]

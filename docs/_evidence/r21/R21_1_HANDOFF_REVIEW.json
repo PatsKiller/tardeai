@@ -1,0 +1,15 @@
+{
+  "stream": "R21.1",
+  "r21_1_accepted": true,
+  "commits": [
+    "c3b105a73301e50b0155b49bf6f6f775ab936af6",
+    "b5f55339cd77bc4196158d81c44ffdd67cfd698e"
+  ],
+  "additive": true,
+  "summary_envelope_unchanged": true,
+  "mutation_authority": false,
+  "secrets": false,
+  "duplicate_canonical_lineage_model": false,
+  "unrelated_source": false,
+  "integrator_head_at_accept": "local convergence/r20-r24"
+}

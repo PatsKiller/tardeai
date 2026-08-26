@@ -1,0 +1,56 @@
+{
+  "schema": "QaAuthorityProbes@v1",
+  "result": "PASS",
+  "authority": "READ_ONLY_ADVISORY",
+  "memory_behavior_influence": 0,
+  "probes": [
+    {
+      "id": "handle_non_get_405",
+      "target": "scripts/control_plane_api.py handle()",
+      "methods": ["POST", "PUT", "PATCH", "DELETE"],
+      "expected": 405,
+      "observed": 405,
+      "body_error": "control-plane is read-only",
+      "status": "passed"
+    },
+    {
+      "id": "portfolio_server_GET_passes_self_command",
+      "target": "scripts/portfolio_server.py _do_GET_inner",
+      "observed": "_control_plane_handle(path, method=self.command, query=parse_qs(parsed.query))",
+      "status": "passed"
+    },
+    {
+      "id": "portfolio_server_POST_intercepts_control_plane",
+      "target": "scripts/portfolio_server.py _do_POST_inner",
+      "observed": "path.startswith('/api/v3/control-plane') then handle(..., method='POST') -> 405",
+      "status": "passed"
+    },
+    {
+      "id": "portfolio_server_PUT_PATCH_DELETE",
+      "target": "scripts/portfolio_server.py do_PUT/do_PATCH/do_DELETE",
+      "observed": "generic send_error(405) after agent-runtime and active-trader rejects; no control-plane writer path",
+      "note": "Not routed through handle(); still HTTP 405. POST is the dedicated intercept.",
+      "status": "passed"
+    },
+    {
+      "id": "no_writers_in_control_plane_api",
+      "target": "scripts/control_plane_api.py",
+      "forbidden": [
+        "broker",
+        "place_order",
+        "submit_order",
+        "order writers",
+        "stop writers",
+        "risk-policy writers",
+        "2FA",
+        "totp",
+        "json.dump",
+        "write_text",
+        "subprocess",
+        "mode=w"
+      ],
+      "hits": [],
+      "status": "passed"
+    }
+  ]
+}

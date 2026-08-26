@@ -1,0 +1,9 @@
+{
+  "branch": "convergence/r20-r24",
+  "head_at_snapshot_start": "f834ac4982b16cc1897212ac65e50ea055e1cb95",
+  "uncommitted_at_start": [],
+  "untracked_at_start": [
+    { "path": ".githooks/pre-push", "owner": "INTEGRATOR", "disposition": "EXCLUDE", "reason": "copied hook leftover; .githooks not tracked on this branch" }
+  ],
+  "node_modules": "gitignored; populated by npm ci in apps/command-center-v3 (CI-equivalent)"
+}

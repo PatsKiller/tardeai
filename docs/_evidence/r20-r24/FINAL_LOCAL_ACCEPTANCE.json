@@ -1,0 +1,15 @@
+{
+  "status": "NOT_READY",
+  "evidence_class": "SOURCE_ONLY",
+  "tests": {
+    "json_schema_parse": "PASS",
+    "cross_stream_contract_tests": "NOT_RUN",
+    "frontend_tests": "NOT_RUN",
+    "dry_run": "NOT_RUN",
+    "historical_replay": "NOT_RUN",
+    "fault_campaign": "NOT_RUN",
+    "authority_tests": "NOT_RUN",
+    "full_local_acceptance": "NOT_RUN"
+  },
+  "reason": "This tranche freezes contracts and integrates evidence-only audits; no application routes were implemented."
+}

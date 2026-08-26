@@ -1,0 +1,43 @@
+{
+  "schema": "QaFaultFixtures@v1",
+  "http_freeze": "CONTROL_PLANE_API_V1_BASELINE",
+  "result": "PASS",
+  "cases": [
+    {
+      "id": "UNAVAILABLE",
+      "when": "canonical store file missing",
+      "http_status": 200,
+      "ok": true,
+      "data_quality": "UNAVAILABLE",
+      "data": {"items": [], "pagination": {"limit": 50, "offset": 0, "total": 0}},
+      "must_not_render_as": "EMPTY_VALID",
+      "fixture": "fixtures/control_plane/api_v1_baseline/agents.unavailable.FIXTURE.json",
+      "probe": "test_missing_store_unavailable_ok_true",
+      "status": "passed"
+    },
+    {
+      "id": "INVALID_SCHEMA",
+      "when": "store present but not JSON / not a row list",
+      "http_status": 200,
+      "ok": false,
+      "data_quality": "INVALID_SCHEMA",
+      "ok_false_qualities": ["BROKEN", "INVALID_SCHEMA"],
+      "probe": "test_invalid_schema_ok_false",
+      "status": "passed"
+    },
+    {
+      "id": "EMPTY_VALID",
+      "when": "store present, valid JSON, zero rows",
+      "http_status": 200,
+      "ok": true,
+      "data_quality": "AVAILABLE",
+      "data": {"items": [], "pagination": {"total": 0}},
+      "conceptual": "AVAILABLE with items=[] and pagination.total=0",
+      "distinct_from_unavailable": true,
+      "probe": "test_empty_valid_available_total_zero",
+      "status": "passed"
+    }
+  ],
+  "pages_must_read": "data_quality, not ok",
+  "note": "UNAVAILABLE still has ok=true and HTTP 200. EMPTY_VALID is not a data_quality enum; it is AVAILABLE+total=0."
+}

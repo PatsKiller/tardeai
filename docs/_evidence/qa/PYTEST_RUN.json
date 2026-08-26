@@ -1,0 +1,16 @@
+{
+  "schema": "QaPytestRun@v1",
+  "as_of": "2026-08-26",
+  "cwd": "/home/johnclaw/trade-ai-v12-rebuild/wt-r20-r24",
+  "python": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python",
+  "python_version": "3.14.4",
+  "note": "This worktree has no local .venv; probes used the canonical source-tree venv.",
+  "command": "TRADE_AI_CI=1 python -m pytest tests/test_control_plane_api.py tests/test_control_plane_api_v1_baseline.py tests/test_r20_r24_qa_probes.py -q",
+  "passed": 33,
+  "failed": 0,
+  "files": {
+    "tests/test_control_plane_api.py": 8,
+    "tests/test_control_plane_api_v1_baseline.py": 5,
+    "tests/test_r20_r24_qa_probes.py": 20
+  }
+}

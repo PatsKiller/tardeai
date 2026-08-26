@@ -1,0 +1,51 @@
+{
+  "schema": "R24LearningMaturityAudit@v1",
+  "as_of": "2026-08-26",
+  "authority": "READ_ONLY_ADVISORY",
+  "memory_behavior_influence": 0,
+  "evidence_policy": "Implementation and replay do not receive natural-current or longitudinal credit.",
+  "sources": [
+    "docs/ops/R16_2_OBSERVATIONAL_SOAK_CLOSEOUT_2026-08-25.md",
+    "docs/ops/R17_NATURAL_FEEDBACK_AND_COVERAGE_CLOSEOUT.md",
+    "docs/ops/R13_INSTITUTIONAL_MATURITY_CLOSEOUT_2026-08-25.md",
+    "docs/_evidence/r17/R17_NATURAL_OUTCOME.json",
+    "docs/_evidence/r17/R17_SPECIALISTS.json",
+    "docs/_evidence/r11/MEMORY_LEARNING_ACCEPTANCE.json",
+    "docs/_evidence/r16/R16_NOTIFICATION_LEARNING.json",
+    "docs/_evidence/r18_data/R18_DATA_T0_AND_MISMATCH.json",
+    "docs/_evidence/yedas_eye/YEDAS_EYE_MATURITY_2026-08-24.json"
+  ],
+  "dimensions": {
+    "architecture": {"level": 5, "evidence_class": "UNIT/INTEGRATION", "limiting_factor": "No complete integrated control-plane proof."},
+    "runtime": {"level": 4, "evidence_class": "CURRENT_SMOKE", "limiting_factor": "Current/release pin convergence is not proven estate-wide."},
+    "data_integrity": {"level": 4, "evidence_class": "INTEGRATION", "limiting_factor": "108 semantic duplicates and 15 unresolved subjects remain in checkpoint inventory."},
+    "identity": {"level": 3, "evidence_class": "INTEGRATION", "limiting_factor": "Unresolved security identities remain; ticker text cannot mint identity."},
+    "research": {"level": 5, "evidence_class": "NATURAL_CURRENT", "limiting_factor": "Longitudinal research-to-thesis evidence is incomplete."},
+    "research_attention": {"level": 3, "evidence_class": "SOURCE_ONLY", "limiting_factor": "Adaptive attention and due-state proof are not complete."},
+    "specialist_office": {"level": 3, "evidence_class": "UNIT/INTEGRATION", "limiting_factor": "Roster/artifact contracts exist, but natural runtime coverage is not proven."},
+    "cio_product": {"level": 4, "evidence_class": "CURRENT_SMOKE", "limiting_factor": "Current product is available, but portfolio learning linkage is incomplete."},
+    "notifications": {"level": 4, "evidence_class": "NATURAL_CURRENT", "limiting_factor": "Only suppression learning is measured; delivery/usefulness history is immature."},
+    "learning": {"level": 3, "evidence_class": "UNIT/INTEGRATION", "limiting_factor": "Candidates and lessons exist; no autonomous promotion is allowed or proven."},
+    "self_maintenance": {"level": 3, "evidence_class": "SOURCE_ONLY", "limiting_factor": "Due processor/timers are not proven naturally live."},
+    "model_specialist_learning": {"level": 2, "evidence_class": "UNIT", "limiting_factor": "Performance artifacts exist, but no longitudinal promoted evidence."},
+    "auditability": {"level": 5, "evidence_class": "INTEGRATION", "limiting_factor": "Audit package is strong but needs a unified control-plane projection."},
+    "natural_current": {"level": 3, "evidence_class": "NATURAL_CURRENT", "limiting_factor": "Natural scans exist; natural decision-to-outcome completion is not proven."},
+    "longitudinal": {"level": 1, "evidence_class": "SOURCE_ONLY", "limiting_factor": "R17 explicitly records zero completed natural longitudinal outcomes."}
+  },
+  "known_gaps": [
+    {"id": "R24-P0-1", "gap": "Auto-registration of material decisions into outcome checkpoints is not proven on CURRENT.", "proof": "docs/ops/R16_2_OBSERVATIONAL_SOAK_CLOSEOUT_2026-08-25.md"},
+    {"id": "R24-P0-2", "gap": "No genuinely elapsed natural outcome has completed end-to-end.", "proof": "docs/_evidence/r17/R17_NATURAL_OUTCOME.json"},
+    {"id": "R24-P1-1", "gap": "CIO pack consumption in trace is pending.", "proof": "docs/_evidence/yedas_eye/YEDAS_EYE_MATURITY_2026-08-24.json"},
+    {"id": "R24-P1-2", "gap": "Canonical production SQL memory writer is not live; consolidation is isolated.", "proof": "docs/_evidence/r11/MEMORY_LEARNING_ACCEPTANCE.json"},
+    {"id": "R24-P1-3", "gap": "Checkpoint inventory contains semantic duplicates and unresolved subjects.", "proof": "docs/_evidence/r18_data/R18_DATA_T0_AND_MISMATCH.json"}
+  ],
+  "required_next_proofs": [
+    "CURRENT natural material decision -> idempotent checkpoint",
+    "genuinely elapsed due processor -> OutcomeObservation -> calibration",
+    "CIO/specialist disagreement and notification lineage in one integrated trace",
+    "estate-wide source SHA and process pin parity",
+    "longitudinal outcome sample with benchmark and no hindsight rewrite"
+  ],
+  "outside_audit_classification": "NOT_READY",
+  "final_status": "R24_AUDIT_BASELINE_ONLY"
+}

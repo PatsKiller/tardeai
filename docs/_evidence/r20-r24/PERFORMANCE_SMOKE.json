@@ -1,0 +1,18 @@
+{
+  "method": "scripts.control_plane_api.handle x20 mean seconds",
+  "n_workflows": 120,
+  "measurements_seconds": {
+    "system": 2.686964871827513e-05,
+    "agents": 3.200744977220893e-05,
+    "workflows_list": 0.0005471740005305037,
+    "workflow_detail": 0.0007274386996868997,
+    "notifications": 3.128019743598997e-05,
+    "learning": 0.00010760175064206123
+  },
+  "notes": [
+    "Each GET reads at most one JSON file; no JSONL scan.",
+    "Pagination bounded 1..200.",
+    "No invented SLO; values are local adapter measurements."
+  ],
+  "regressions": []
+}

@@ -1,0 +1,8 @@
+{
+  "status": "DESIGN_BASELINE_ONLY",
+  "evidence_class": "SOURCE_ONLY",
+  "authority": "READ_ONLY_ADVISORY",
+  "routes": ["/control-plane/research", "/control-plane/data", "/control-plane/identity", "/control-plane/notifications"],
+  "required_sources": ["research state", "CanonicalStoreRegistry", "identity spine", "notification receipts"],
+  "live_claim": false
+}

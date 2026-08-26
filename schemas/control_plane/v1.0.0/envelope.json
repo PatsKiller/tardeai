@@ -1,0 +1,96 @@
+{
+  "schema": "ControlPlane@v1.0.0",
+  "authority": "READ_ONLY_ADVISORY",
+  "memory_behavior_influence": 0,
+  "methods": ["GET"],
+  "enums": {
+    "RuntimeStatus": [
+      "LIVE_EVENT_DRIVEN",
+      "LIVE_SCHEDULED",
+      "CALLABLE_ONLY",
+      "EXPECTED_IDLE",
+      "SHADOW",
+      "DISABLED",
+      "BROKEN"
+    ],
+    "EvidenceClass": [
+      "SOURCE_ONLY",
+      "UNIT",
+      "INTEGRATION",
+      "HISTORICAL_REPLAY",
+      "GOLDEN_SHADOW",
+      "SHADOW",
+      "DRY_RUN",
+      "OPERATOR_REQUESTED_LIVE",
+      "CURRENT_SMOKE",
+      "NATURAL_CURRENT",
+      "NATURAL_LONGITUDINAL"
+    ],
+    "DataQuality": ["OK", "STALE", "DEGRADED", "BROKEN", "UNAVAILABLE", "UNRESOLVED", "INVALID_SCHEMA"],
+    "WorkflowNodeKind": [
+      "event",
+      "entity",
+      "materiality",
+      "graph",
+      "research",
+      "specialist",
+      "council",
+      "cio",
+      "notification",
+      "checkpoint",
+      "outcome",
+      "learning"
+    ]
+  },
+  "envelope_required": [
+    "schema",
+    "page",
+    "as_of",
+    "evidence_class",
+    "source_sha",
+    "data_quality",
+    "authority",
+    "memory_behavior_influence",
+    "computes_cio_decisions",
+    "computes_agent_state",
+    "computes_maturity",
+    "computes_notification_eligibility",
+    "payload"
+  ],
+  "types": {
+    "RuntimeStatusRecord": ["state", "source_sha", "configured_sha", "loaded_sha", "last_observed_at", "evidence_class", "freshness", "reason"],
+    "AgentRuntimeStatus": ["agent_id", "role", "state", "trigger_classes", "last_wake", "wake_reason", "current_task", "queue", "last_artifact_id", "last_success", "last_failure", "route", "model", "cost", "next_eligible_wake", "evidence_class"],
+    "AgentTaskStatus": ["task_id", "agent_id", "status", "priority", "created_at", "started_at", "completed_at", "attempts", "error_code", "evidence_class"],
+    "WorkflowTrace": ["trace_id", "status", "evidence_class", "source_sha", "nodes", "edges", "started_at", "updated_at", "failure_reason"],
+    "WorkflowNode": ["node_id", "kind", "label", "status", "entity_refs", "artifact_refs", "started_at", "ended_at", "evidence_class"],
+    "WorkflowEdge": ["edge_id", "from_node", "to_node", "event_id", "causal_reason"],
+    "ResearchAttentionStatus": ["subject_id", "state", "why_now", "why_not_now", "freshness", "research_gap_id", "cadence", "route", "cost", "yield", "universe", "active_set", "due", "event_woken", "source_usage", "llm_eligibility", "evidence_class"],
+    "CanonicalStoreStatus": ["logical_store", "physical_root", "writer", "readers", "schema_version", "last_write", "freshness", "record_count", "duplicate_count", "quarantine_count", "orphan_count", "source_sha", "authority"],
+    "IdentityStatus": ["entity_id", "issuer", "security", "listing", "aliases", "identifiers", "state", "unresolved_reason", "source", "as_of"],
+    "NotificationStatus": ["notification_id", "class", "decision", "canary", "interdict", "renderer", "rendered_at", "delivered_at", "receipt_at", "dedupe_key", "suppression_reason", "evidence_class"],
+    "NotificationReceipt": ["notification_id", "class", "decision", "rendered_at", "delivered_at", "receipt_at", "dedupe_key", "suppression_reason", "evidence_class"],
+    "LearningEvidenceStatus": ["item_id", "kind", "status", "score", "evidence_class", "proof_refs", "limiting_factor", "next_proof"],
+    "MaturityDimension": ["dimension", "score", "evidence_class", "proof_refs", "limiting_factor", "next_proof"],
+    "AuditCapabilityClaim": ["claim_id", "claim", "implementation_ref", "test_ref", "evidence_ref", "evidence_class", "limitations", "reproduction_command"]
+  },
+  "routes": [
+    "GET /api/v3/control-plane/system",
+    "GET /api/v3/control-plane/agents",
+    "GET /api/v3/control-plane/agents/{agent_id}",
+    "GET /api/v3/control-plane/workflows",
+    "GET /api/v3/control-plane/workflows/{trace_id}",
+    "GET /api/v3/control-plane/research",
+    "GET /api/v3/control-plane/stores",
+    "GET /api/v3/control-plane/identity",
+    "GET /api/v3/control-plane/notifications",
+    "GET /api/v3/control-plane/learning",
+    "GET /api/v3/control-plane/maturity",
+    "GET /api/v3/control-plane/audit"
+  ],
+  "notes": {
+    "NotificationStatus": "Funnel row shown on the Notifications page. NotificationReceipt is the same item type for persistence.",
+    "LearningEvidenceStatus.kind": "decision|checkpoint|outcome|lesson|hypothesis|experiment|specialist_performance|model_performance|routing_candidate",
+    "IdentityStatus.state": "CONFIRMED|CANDIDATE|UNRESOLVED_WITH_REASON",
+    "frontend": "Pages render these fields. They must not infer RuntimeStatus, EvidenceClass, notification class, or maturity scores."
+  }
+}

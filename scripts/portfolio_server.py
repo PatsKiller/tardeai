@@ -1720,6 +1720,20 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
                 return
 
         # v2/v3 API dispatch
+        # R21 control-plane is an additive, GET-only projection surface.  Keep
+        # it ahead of the legacy API router so unknown/invalid control-plane
+        # requests receive typed degradation envelopes.
+        if path.startswith("/api/v3/control-plane"):
+            try:
+                from control_plane_api import handle as _control_plane_handle
+                _cp = _control_plane_handle(path, method=self.command, query=parse_qs(parsed.query))
+                if _cp is not None:
+                    json_response(self, _cp[0], _cp[1])
+                    return
+            except Exception as _cpe:
+                json_response(self, 500, {"ok": False, "error": "control-plane projection failed"})
+                return
+
         # /api/v3/ added 2026-07-29: the Telegram-normalization work registered
         # /api/v3/alerts/{active,settings,settings/preview} in api_v2.ROUTES, but this
         # dispatcher only ever matched /api/v2/, so all three 404'd over HTTP while
@@ -2228,6 +2242,20 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         path = parsed.path
 
+        # CONTROL_PLANE_API_V1_BASELINE is GET-only. Intercept before v2 POST dispatch
+        # so /api/v3/control-plane/* cannot mutate through the generic router.
+        if path.startswith("/api/v3/control-plane"):
+            try:
+                from control_plane_api import handle as _control_plane_handle
+                _cp = _control_plane_handle(path, method="POST", query=parse_qs(parsed.query))
+                if _cp is not None:
+                    json_response(self, _cp[0], _cp[1])
+                    return
+            except Exception:
+                json_response(self, 500, {"ok": False, "error": "control-plane projection failed"})
+                return
+
+        # Signed CIO action links from main. Distinct path from control-plane.
         if path.startswith("/v3/go/cio/"):
             try:
                 from scripts.lib.cio_go_handler import handle_cio_go

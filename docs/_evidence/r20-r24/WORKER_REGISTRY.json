@@ -1,0 +1,60 @@
+{
+  "http_freeze": "CONTROL_PLANE_API_V1_BASELINE",
+  "integrator_head": "e462a7c4e56e2cf079199893cd4408baffe78c34",
+  "workers": {
+    "R21": {
+      "owner": "CODEX",
+      "worktree": "/home/johnclaw/worktree-r21",
+      "branch": "feat/r21-control-plane-backend",
+      "status": "BASELINE_ACCEPTED",
+      "baseline_commit": "084674c560abd7bb910726f62e41508703c07e40"
+    },
+    "R21.1": {
+      "owner": "CODEX",
+      "worktree": "/home/johnclaw/r21-1-detail",
+      "branch": "feat/r21.1-detail-lineage",
+      "status": "PENDING_FORMAL_HANDOFF",
+      "local_preview": "c3b105a73301e50b0155b49bf6f6f775ab936af6"
+    },
+    "R22": {
+      "owner": "subagent",
+      "subagent_id": "01a03f0f-4e63-7ea2-a7c2-638e960f769a",
+      "worktree": "/home/johnclaw/trade-ai-v12-rebuild/wt-r22-agent-office",
+      "branch": "feat/r22-agent-office-workflow",
+      "status": "SUMMARY_APIS_CONSUMED",
+      "head": "d10247b92d6890bc6b7bdf313365f60eb018d798",
+      "impl": "50f2a5c6fcee546021d06661be26ca02251c45b2",
+      "mocks_remaining": [
+        "mocks/agents.json",
+        "mocks/workflows.json"
+      ]
+    },
+    "R23": {
+      "owner": "subagent",
+      "subagent_id": "01a03f0f-4e64-7ab3-b827-4277cbba1340",
+      "worktree": "/home/johnclaw/trade-ai-v12-rebuild/wt-r23-admin-observability",
+      "branch": "feat/r23-admin-observability",
+      "status": "SUMMARY_APIS_CONSUMED",
+      "head": "be18e724",
+      "impl": "c76088d3f1a80cf1913f9c694bb24deea816eb06"
+    },
+    "R24": {
+      "owner": "subagent",
+      "subagent_id": "01a03f0f-4e64-7ab3-b827-4281b102c753",
+      "worktree": "/home/johnclaw/trade-ai-v12-rebuild/wt-r24-learning-maturity",
+      "branch": "feat/r24-learning-maturity-ui",
+      "status": "SUMMARY_APIS_CONSUMED",
+      "head": "52c110902475ea57d7cd728fbde7bce11c189eef",
+      "impl": "52b0ae6443dd34bdb7eb0365491843335a570bf7"
+    },
+    "QA": {
+      "owner": "subagent",
+      "subagent_id": "01a03f0f-4e64-7ab3-b827-429aa3559b83",
+      "worktree": "/home/johnclaw/trade-ai-v12-rebuild/wt-r20-r24",
+      "branch": "convergence/r20-r24",
+      "status": "PASS",
+      "head": "bd0f43f5"
+    }
+  },
+  "github_pushes": 0
+}

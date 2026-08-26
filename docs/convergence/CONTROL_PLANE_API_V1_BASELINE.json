@@ -1,0 +1,50 @@
+{
+  "freeze": "CONTROL_PLANE_API_V1_BASELINE",
+  "r21_baseline_accepted": true,
+  "baseline_commit": "084674c560abd7bb910726f62e41508703c07e40",
+  "authority": "READ_ONLY_ADVISORY",
+  "memory_behavior_influence": 0,
+  "methods": ["GET"],
+  "mutation_http_status": 405,
+  "envelope_required": ["ok", "as_of", "source_sha", "freshness", "data_quality", "evidence_class", "data"],
+  "collection_data_required": ["items", "pagination"],
+  "pagination_required": ["limit", "offset", "total"],
+  "pagination_limit_bounds": [1, 200],
+  "pagination_limit_default": 50,
+  "ok_false_qualities": ["BROKEN", "INVALID_SCHEMA"],
+  "data_quality": ["AVAILABLE", "UNAVAILABLE", "INVALID_SCHEMA", "BROKEN", "NO_RELEVANT_EVENTS", "STALE", "DEGRADED"],
+  "empty_valid": "AVAILABLE with items=[] and pagination.total=0",
+  "summary_routes": [
+    "/api/v3/control-plane/system",
+    "/api/v3/control-plane/agents",
+    "/api/v3/control-plane/workflows",
+    "/api/v3/control-plane/research",
+    "/api/v3/control-plane/stores",
+    "/api/v3/control-plane/identity",
+    "/api/v3/control-plane/notifications",
+    "/api/v3/control-plane/learning",
+    "/api/v3/control-plane/maturity",
+    "/api/v3/control-plane/audit"
+  ],
+  "contract_version": "CONTROL_PLANE_API_V1.1",
+  "r21_summary": "FROZEN",
+  "r21_detail": "FROZEN",
+  "r21_lineage": "FROZEN",
+  "r21_1_accepted": true,
+  "r21_1_commits": [
+    "c3b105a73301e50b0155b49bf6f6f775ab936af6",
+    "b5f55339cd77bc4196158d81c44ffdd67cfd698e"
+  ],
+  "detail_routes": [
+    "/api/v3/control-plane/agents/{id}",
+    "/api/v3/control-plane/workflows/{id}"
+  ],
+  "vocabulary_contract": "ControlPlane@v1.0.0",
+  "live_claim_from_api_existence": false,
+  "notes": [
+    "HTTP envelope uses data, not payload.",
+    "Do not rename these keys while R22-R24 consume the freeze.",
+    "R21.1 must be additive.",
+    "Missing canonical stores are UNAVAILABLE, not empty-state UI."
+  ]
+}

@@ -1,0 +1,47 @@
+{
+  "PARALLEL_CONVERGENCE_STATUS": {
+    "integration_head": "e462a7c4e56e2cf079199893cd4408baffe78c34",
+    "r21": {
+      "baseline_commit": "084674c560abd7bb910726f62e41508703c07e40",
+      "accepted": true,
+      "r21_1_pending": true,
+      "http_freeze": "CONTROL_PLANE_API_V1_BASELINE"
+    },
+    "r22": {
+      "agent": "01a03f0f-4e63-7ea2-a7c2-638e960f769a",
+      "branch": "feat/r22-agent-office-workflow",
+      "status": "SUMMARY_APIS_CONSUMED",
+      "head": "d10247b9",
+      "mocks_remaining": [
+        "apps/command-center-v3/src/pages/control-plane/mocks/agents.json",
+        "apps/command-center-v3/src/pages/control-plane/mocks/workflows.json"
+      ]
+    },
+    "r23": {
+      "agent": "01a03f0f-4e64-7ab3-b827-4277cbba1340",
+      "branch": "feat/r23-admin-observability",
+      "status": "SUMMARY_APIS_CONSUMED",
+      "head": "be18e724"
+    },
+    "r24": {
+      "agent": "01a03f0f-4e64-7ab3-b827-4281b102c753",
+      "branch": "feat/r24-learning-maturity-ui",
+      "status": "SUMMARY_APIS_CONSUMED",
+      "head": "52c11090"
+    },
+    "qa": {
+      "agent": "01a03f0f-4e64-7ab3-b827-429aa3559b83",
+      "status": "PASS",
+      "tests": 33
+    },
+    "untracked_files": {
+      "classified": true,
+      "unknown": []
+    },
+    "github": {
+      "pushes": 0,
+      "ci_cycles": 0
+    },
+    "LOCAL_R20_R24_CONVERGENCE_READY_FOR_SYNC": false
+  }
+}

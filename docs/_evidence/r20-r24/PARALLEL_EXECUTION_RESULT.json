@@ -1,0 +1,33 @@
+{
+  "program": "R20-R24",
+  "base_sha": "e683e90f9a24b9cd56399054da33cc6c3b4ba8bb",
+  "integrator_head": "ca3c0397",
+  "authority": "READ_ONLY_ADVISORY",
+  "memory_behavior_influence": 0,
+  "agents_used": ["r20_runtime_audit", "r21_contract_audit", "r24_audit", "integrator"],
+  "streams": {
+    "r20": "AUDIT_COMPLETE",
+    "r21": "CONTRACT_AUDIT_COMPLETE",
+    "r22": "DESIGN_BASELINE_ONLY",
+    "r23": "DESIGN_BASELINE_ONLY",
+    "r24": "AUDIT_BASELINE_ONLY"
+  },
+  "contracts_frozen": true,
+  "implementation_claim": false,
+  "live_claim": false,
+  "external_audit_classification": "NOT_READY",
+  "blocking_gaps": [
+    "control-plane endpoints not implemented",
+    "natural longitudinal checkpoint/outcome proof absent",
+    "host-level process and systemd proof unavailable in sandbox",
+    "old-to-new route parity not measured",
+    "full cross-stream UI integration not started"
+  ],
+  "safety": {
+    "orders": 0,
+    "broker_mutations": 0,
+    "stop_mutations": 0,
+    "risk_policy_mutations": 0,
+    "two_fa_mutations": 0
+  }
+}

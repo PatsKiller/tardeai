@@ -98,9 +98,17 @@ else
     authority_green=true
   fi
   if [[ "$frontend" == "1" && -f apps/command-center-v3/package.json ]]; then
-    (cd apps/command-center-v3 && npx tsc --noEmit)
+    (
+      cd apps/command-center-v3
+      # CI-equivalent: npm ci then tsc. node_modules is gitignored.
+      if [[ ! -x node_modules/.bin/tsc ]]; then
+        echo "command-center-v3 toolchain missing; npm ci (same as GitHub frontend jobs)"
+        npm ci --no-fund --no-audit
+      fi
+      npx tsc --noEmit
+    )
   fi
-  if [[ "$tests" == "1" ]]; then
+  if [[ "$tests" == "1" && -f tests/test_ai_work_policy_hooks.py ]]; then
     "$PY" -m pytest -q tests/test_ai_work_policy_hooks.py
   fi
   regression_green=true

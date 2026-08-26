@@ -1,0 +1,12 @@
+{
+  "total": 120,
+  "historical_source_derived": 0,
+  "historical_validated": 0,
+  "synthetic_scenario": 120,
+  "golden_fixture": 120,
+  "classification": "SYNTHETIC_SCENARIO + GOLDEN_FIXTURE",
+  "not": "historical evidence",
+  "provenance": "generated 2026-08-26 as labeled HISTORICAL_REPLAY mechanism fixtures; IDs replay.workflow.NNN; source_sha dryrun-source-sha-084674c5; no source_ref",
+  "REAL_HISTORICAL_CONTROL_PLANE_TRACE": "NOT_AVAILABLE_PRE_DEPLOY",
+  "lookahead_leaks": 0
+}

@@ -1,0 +1,17 @@
+{
+  "schema": "R20-R24-QA-Blockers@v1",
+  "generated_at": "2026-08-26T00:00:00-04:00",
+  "blockers": [
+    {"id":"QA-HIGH-001","severity":"HIGH","stream":"R22","description":"Agent Office and Workflow Trace preview pages are absent and no control-plane UI routes are registered in App.tsx.","reproduction":"find apps/command-center-v3/src/pages/control-plane -type f; inspect App.tsx routes","expected":"new preview pages consume R21 APIs","actual":"no pages/routes present","owner":"R22/UI Integrator","blocks_sync":true},
+    {"id":"QA-HIGH-002","severity":"HIGH","stream":"R20-R24","description":"No integrated canonical dry-run workflow fixture exists, so cross-page lineage and ID consistency cannot be validated.","reproduction":"inspect docs/_evidence/r20-r24/DRY_RUN_RESULT.json","expected":"complete event-to-learning fixture","actual":"blocked; fixture absent","owner":"Integrator/QA","blocks_sync":true},
+    {"id":"QA-HIGH-003","severity":"HIGH","stream":"R20-R24","description":"Historical replay coverage is zero; no trustworthy workflow traces are available for timestamp-safe replay.","reproduction":"inspect docs/_evidence/r20-r24/HISTORICAL_REPLAY_VALIDATION.json","expected":">=100 where evidence permits","actual":"0","owner":"R24/QA","blocks_sync":true},
+    {"id":"QA-HIGH-004","severity":"HIGH","stream":"R22-R24","description":"Old-to-new route parity is unmeasured because preview routes are not registered and consumers are absent.","reproduction":"inspect docs/_evidence/r20-r24/ROUTE_PARITY_VALIDATION.json","expected":"machine-checkable parity","actual":"UNMEASURED","owner":"UI Integrator","blocks_sync":true},
+    {"id":"QA-MED-001","severity":"MEDIUM","stream":"R21","description":"Canonical runtime projection stores are unavailable in this source snapshot; summary/detail endpoints correctly degrade but cannot prove live lineage.","reproduction":"GET /api/v3/control-plane/{agents,workflows,stores}","expected":"AVAILABLE or explicit live evidence","actual":"UNAVAILABLE/NO_RELEVANT_EVENTS","owner":"R20/R21","blocks_sync":false},
+    {"id":"QA-MED-002","severity":"MEDIUM","stream":"QA","description":"Performance smoke is adapter-level only; no running portfolio-server benchmark or large-data pagination test was possible.","reproduction":"inspect docs/_evidence/r20-r24/PERFORMANCE_SMOKE.json","expected":"live representative benchmark","actual":"unit-level smoke","owner":"QA","blocks_sync":false}
+  ],
+  "critical": 0,
+  "high": 4,
+  "medium": 2,
+  "low": 0,
+  "ready_for_integrator_acceptance": false
+}

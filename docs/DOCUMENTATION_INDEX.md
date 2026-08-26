@@ -99,7 +99,7 @@ Drive mirror: **Trade_AI_Docs_v2** (`1Zxc20B5Xo24RGZ1Pow1-uW6ldASQJHiR`) via `sc
 | `docs/runbooks/post-sale-redeploy-sync-2026-07-14.md` | **Post-sale redeploy sync** — `deploy_detect` / `deploy_backfill` / `deploy_recompute`, intelligence engine, FCNTX example, Phase A–E infrastructure ops, PR-5 cron installer | Active (2026-07-13) — desk itself REOPENED, see design doc §0 |
 | `docs/runbooks/PLAYWRIGHT_ARTIFACTS_POLICY.md` | **Ephemeral artifact policy** — Playwright/visual captures go to `artifacts/playwright/<run_id>/` (gitignored, Drive-excluded, 7-day retention via `scripts/artifacts_retention.sh`); never under `docs/`, never to canonical Drive | Active (2026-07-14) |
 | `docs/v4_1_deployment_log.md` | **Living deployment log** — fleet state, phase completions, 2026-08-11 gemma4 eval gate | Active — created 2026-06-19 (d09a653c) |
-| `docs/_archive/prompts/CLAUDE_CODE_EXECUTION_PROMPT_LLM_v4_1_FINAL.md` | CC execution prompt for fleet deploy | **Archived** *(was listed active; lives in _archive)* |
+| ~~CLAUDE_CODE_EXECUTION_PROMPT_LLM_v4_1_FINAL~~ | CC execution prompt for fleet deploy | **Purged** (2026-08-16 docs cleanup — recoverable via git history) |
 
 ### Portfolio truth & performance
 | Document | Purpose | Status |
@@ -213,8 +213,8 @@ Drive mirror: **Trade_AI_Docs_v2** (`1Zxc20B5Xo24RGZ1Pow1-uW6ldASQJHiR`) via `sc
 | `config/strategies/*.yaml` | **Live strategy definitions** (entry/exit, screeners, TTLs) — the authoritative source | Active (live) |
 | `docs/project/SKILLS.md` | All agents, OpenClaw skills, system pipelines, LLM routing reference | Active |
 | `docs/project/project_openclaw.md` | OpenClaw gateway config, bot settings, skill manifest | Active |
-| `docs/_archive/2026-05-24_cleanup/old_versions/TRADE_AI_STRATEGY_PLAYBOOK_v1.0.md` | 23-strategy narrative playbook | **Archived** — superseded by live YAML config |
-| `docs/_archive/2026-05-24_cleanup/old_versions/agents_bible.md` | Agent behavior rules, G1–G10, RACI | **Archived** — current rules live in agent configs |
+| ~~TRADE_AI_STRATEGY_PLAYBOOK_v1.0~~ | 23-strategy narrative playbook | **Purged** — superseded by live YAML config |
+| ~~agents_bible~~ | Agent behavior rules, G1–G10, RACI | **Purged** — current rules live in agent configs |
 
 ### CIO & Wealth Advisory Agents (Alex & Steph)
 | Document | Purpose | Status |
@@ -245,8 +245,8 @@ Drive mirror: **Trade_AI_Docs_v2** (`1Zxc20B5Xo24RGZ1Pow1-uW6ldASQJHiR`) via `sc
 ### Improvement Plans & Assessments *(both archived)*
 | Document | Purpose | Status |
 |----------|---------|--------|
-| `docs/_archive/2026-05-24_cleanup/old_versions/VERIFIED_MATURITY_ASSESSMENT_2026-05-12.md` | Maturity scorecard 7.51/10 baseline | **Archived** — historical baseline (current ≈7.7) |
-| `docs/_archive/2026-05-24_cleanup/old_versions/FOCUSED_IMPROVEMENT_PLAN.md` | 7 verified gaps | **Archived** — see Open Items below |
+| ~~VERIFIED_MATURITY_ASSESSMENT_2026-05-12~~ | Maturity scorecard 7.51/10 baseline | **Purged** — historical baseline (current ≈7.7) |
+| ~~FOCUSED_IMPROVEMENT_PLAN~~ | 7 verified gaps | **Purged** — see Open Items below |
 
 ---
 
@@ -262,7 +262,7 @@ Drive mirror: **Trade_AI_Docs_v2** (`1Zxc20B5Xo24RGZ1Pow1-uW6ldASQJHiR`) via `sc
 
 | Document | Disposition |
 |----------|-------------|
-| `docs/_archive/2026-05-31_master_rewrite/ARCHITECTURE_OVERVIEW.md` | Already archived (superseded by SYSTEM_ARCHITECTURE_COMPLETE) |
+| ~~ARCHITECTURE_OVERVIEW.md~~ | **Purged** (was archived; superseded by SYSTEM_ARCHITECTURE_COMPLETE) |
 | `llm_fleet_strategy_v3_4_1.md` | **Purged** — no longer in tree; superseded by v4.1 FINAL |
 | `IMPROVEMENT_PLAN_2026-05-11.md` | **Purged** — no longer in tree |
 | `SYSTEM_AUDIT_2026-05-11.md` | **Purged** — no longer in tree |
@@ -275,7 +275,7 @@ Drive mirror: **Trade_AI_Docs_v2** (`1Zxc20B5Xo24RGZ1Pow1-uW6ldASQJHiR`) via `sc
 **Policy (2026-06-22):** Active canonical docs use `docs/LIVE_SYSTEM_FACTS.md` — not hard-coded counts.
 Run `.venv/bin/python3 scripts/generate_system_facts.py` to regenerate and check `data/system_fact_drift.json`.
 
-Exempt from drift checks: `CHANGELOG.md` (historical), `_archive/` (snapshots), `PHASE*_CLOSEOUT.md` (evidence).
+Exempt from drift checks: `CHANGELOG.md` (historical), `PHASE*_CLOSEOUT.md` (evidence). *(Note: `docs/_archive/` was removed in the 2026-08-16 docs cleanup — superseded docs now live in git history / Google Drive, not in-repo.)*
 
 ---
 

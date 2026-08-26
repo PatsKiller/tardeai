@@ -46,10 +46,27 @@ const SECTIONS: { label: string; hubs: Hub[] }[] = [
   },
 ]
 
+const CONTROL_PLANE_PREVIEW: { label: string; hubs: Hub[] } = {
+  label: 'Control Plane (preview)',
+  hubs: [
+    { to: '/control-plane', label: 'Hub', exact: true },
+    { to: '/control-plane/system', label: 'System' },
+    { to: '/control-plane/agents', label: 'Agent Office' },
+    { to: '/control-plane/workflows', label: 'Workflow Trace' },
+    { to: '/control-plane/research', label: 'Research' },
+    { to: '/control-plane/data', label: 'Data' },
+    { to: '/control-plane/identity', label: 'Identity' },
+    { to: '/control-plane/notifications', label: 'Notifications' },
+    { to: '/control-plane/learning', label: 'Learning' },
+    { to: '/control-plane/maturity', label: 'Maturity' },
+    { to: '/control-plane/audit', label: 'Audit' },
+  ],
+}
+
 /** Longest-prefix match so /portfolio/re-entry resolves to Re-Entry, not Portfolio. */
 function locate(pathname: string): { section: string; page: string } {
   let best: { section: string; page: string; len: number } | null = null
-  for (const sec of SECTIONS) {
+  for (const sec of [...SECTIONS, CONTROL_PLANE_PREVIEW]) {
     for (const h of sec.hubs) {
       const hit = h.exact ? pathname === h.to : pathname === h.to || pathname.startsWith(h.to + '/')
       if (hit && (!best || h.to.length > best.len)) {
@@ -63,6 +80,12 @@ function locate(pathname: string): { section: string; page: string } {
 export default function NavRail() {
   const { pathname } = useLocation()
   const [open, setOpen] = useState(false)
+  const [previewFlag, setPreviewFlag] = useState(false)
+  useEffect(() => {
+    try { setPreviewFlag(localStorage.getItem('CC_CONTROL_PLANE_PREVIEW') === '1') } catch { /* private mode */ }
+  }, [pathname])
+  const showControlPlane = previewFlag || pathname.startsWith('/control-plane')
+  const sections = showControlPlane ? [...SECTIONS, CONTROL_PLANE_PREVIEW] : SECTIONS
   const here = locate(pathname)
   const panelRef = useRef<HTMLDivElement | null>(null)
 
@@ -89,7 +112,7 @@ export default function NavRail() {
 
   const items = (
     <>
-      {SECTIONS.map(sec => (
+      {sections.map(sec => (
         <div key={sec.label} className="nav-group">
           <div className="nav-eyebrow">{sec.label}</div>
           {sec.hubs.map(h =>

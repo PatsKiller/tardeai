@@ -1,0 +1,76 @@
+{
+  "schema": "QaRemainingMocksVerify@v1",
+  "result": "PASS",
+  "inventory": "docs/_evidence/r20-r24/REMAINING_MOCKS.json",
+  "rule": "verify paths exist in worker trees if present; do not delete them",
+  "deleted": false,
+  "http_freeze": "CONTROL_PLANE_API_V1_BASELINE",
+  "integrator_tree": {
+    "path": "apps/command-center-v3/src/pages/control-plane",
+    "present": false,
+    "note": "Expected. Integrator has not registered App.tsx / NavRail routes or merged worker pages."
+  },
+  "items": [
+    {
+      "id": "r22-agents-v1.0.0-payload",
+      "owner": "R22",
+      "worktree": "/home/johnclaw/trade-ai-v12-rebuild/wt-r22-agent-office",
+      "path": "apps/command-center-v3/src/pages/control-plane/mocks/agents.json",
+      "present": true,
+      "schema": "ControlPlane@v1.0.0",
+      "uses_payload": true,
+      "labeled": "directory mocks/ + UI Chip FIXTURE",
+      "allowed_for": "agent detail until R21.1; tests",
+      "forbidden_for": "list view live data; production"
+    },
+    {
+      "id": "r22-workflows-v1.0.0-payload",
+      "owner": "R22",
+      "worktree": "/home/johnclaw/trade-ai-v12-rebuild/wt-r22-agent-office",
+      "path": "apps/command-center-v3/src/pages/control-plane/mocks/workflows.json",
+      "present": true,
+      "schema": "ControlPlane@v1.0.0",
+      "uses_payload": true,
+      "labeled": "directory mocks/ + UI Chip FIXTURE",
+      "allowed_for": "workflow trace graph until R21.1; tests",
+      "forbidden_for": "list view live data; production"
+    },
+    {
+      "id": "r23-preview-json",
+      "owner": "R23",
+      "worktree": "/home/johnclaw/trade-ai-v12-rebuild/wt-r23-admin-observability",
+      "path": "apps/command-center-v3/src/pages/control-plane/preview/*.json",
+      "present": true,
+      "files": [
+        "identity.json",
+        "notifications.json",
+        "research.json",
+        "stores.json"
+      ],
+      "schema": "ControlPlane@v1.0.0",
+      "uses_payload": true,
+      "labeled": "directory preview/",
+      "allowed_for": "tests / explicitly labeled FIXTURE panel",
+      "forbidden_for": "live page data when API returns UNAVAILABLE"
+    },
+    {
+      "id": "r24-frozen-json",
+      "owner": "R24",
+      "worktree": "/home/johnclaw/trade-ai-v12-rebuild/wt-r24-learning-maturity",
+      "path": "apps/command-center-v3/src/pages/control-plane/frozen/*.json",
+      "present": true,
+      "files": [
+        "audit.json",
+        "learning.json",
+        "maturity.json"
+      ],
+      "schema": "ControlPlane@v1.0.0",
+      "uses_payload": true,
+      "labeled": "directory frozen/ + dataSource FIXTURE",
+      "allowed_for": "tests / explicitly labeled FIXTURE panel",
+      "forbidden_for": "live maturity/learning/audit data"
+    }
+  ],
+  "json_bodies_are_not_HTTP_freeze": true,
+  "action": "LEFT_IN_PLACE"
+}

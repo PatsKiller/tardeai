@@ -1,3 +1,0 @@
-419a420,421
-> # ── signal_fusion intraday cadence (audit gate 2026-06-08): fuse active decision set (GO/WAIT scalp + open proposals + open paper + active watchlist, ~67 syms, <1s) every 30m premarket-close so scalp/watchlist names have fresh fusion before decisions. --full baseline stays at 7,13. ──
-> */30 4-16 * * 1-5 cd $PROJ && flock -n /tmp/signal_fusion_active.lock $PY scripts/signal_fusion.py --active >> logs/signal_fusion.log 2>&1

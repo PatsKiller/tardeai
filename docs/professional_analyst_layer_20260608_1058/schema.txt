@@ -1,2 +1,0 @@
-analyst_consensus_history: id,snapshot_date,symbol,recom_raw,recom_score,analyst_rating,target_price,source,data,created_at
-yahoo_analyst_targets_history: id,snapshot_date,symbol,current_price,target_mean_price,target_high_price,target_low_price,target_median_price,recommendation_mean,recommendation_key,number_of_analyst_opinions,source,data,created_at

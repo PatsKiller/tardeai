@@ -1,0 +1,8 @@
+{
+  "contract_version": "control-plane-contracts-v1",
+  "tests": {"command": "pytest -q tests/test_control_plane_api.py", "passed": 6, "failed": 0},
+  "read_only": true,
+  "secrets_exposed": false,
+  "production_deployed": false,
+  "evidence_class": "UNIT"
+}

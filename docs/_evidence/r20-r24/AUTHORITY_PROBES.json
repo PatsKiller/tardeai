@@ -1,0 +1,246 @@
+{
+  "mutation_probes": [
+    {
+      "accepted": false,
+      "method": "POST",
+      "route": "/api/v3/control-plane/system",
+      "status": 405
+    },
+    {
+      "accepted": false,
+      "method": "PUT",
+      "route": "/api/v3/control-plane/system",
+      "status": 405
+    },
+    {
+      "accepted": false,
+      "method": "PATCH",
+      "route": "/api/v3/control-plane/system",
+      "status": 405
+    },
+    {
+      "accepted": false,
+      "method": "DELETE",
+      "route": "/api/v3/control-plane/system",
+      "status": 405
+    },
+    {
+      "accepted": false,
+      "method": "POST",
+      "route": "/api/v3/control-plane/agents",
+      "status": 405
+    },
+    {
+      "accepted": false,
+      "method": "PUT",
+      "route": "/api/v3/control-plane/agents",
+      "status": 405
+    },
+    {
+      "accepted": false,
+      "method": "PATCH",
+      "route": "/api/v3/control-plane/agents",
+      "status": 405
+    },
+    {
+      "accepted": false,
+      "method": "DELETE",
+      "route": "/api/v3/control-plane/agents",
+      "status": 405
+    },
+    {
+      "accepted": false,
+      "method": "POST",
+      "route": "/api/v3/control-plane/workflows",
+      "status": 405
+    },
+    {
+      "accepted": false,
+      "method": "PUT",
+      "route": "/api/v3/control-plane/workflows",
+      "status": 405
+    },
+    {
+      "accepted": false,
+      "method": "PATCH",
+      "route": "/api/v3/control-plane/workflows",
+      "status": 405
+    },
+    {
+      "accepted": false,
+      "method": "DELETE",
+      "route": "/api/v3/control-plane/workflows",
+      "status": 405
+    },
+    {
+      "accepted": false,
+      "method": "POST",
+      "route": "/api/v3/control-plane/research",
+      "status": 405
+    },
+    {
+      "accepted": false,
+      "method": "PUT",
+      "route": "/api/v3/control-plane/research",
+      "status": 405
+    },
+    {
+      "accepted": false,
+      "method": "PATCH",
+      "route": "/api/v3/control-plane/research",
+      "status": 405
+    },
+    {
+      "accepted": false,
+      "method": "DELETE",
+      "route": "/api/v3/control-plane/research",
+      "status": 405
+    },
+    {
+      "accepted": false,
+      "method": "POST",
+      "route": "/api/v3/control-plane/stores",
+      "status": 405
+    },
+    {
+      "accepted": false,
+      "method": "PUT",
+      "route": "/api/v3/control-plane/stores",
+      "status": 405
+    },
+    {
+      "accepted": false,
+      "method": "PATCH",
+      "route": "/api/v3/control-plane/stores",
+      "status": 405
+    },
+    {
+      "accepted": false,
+      "method": "DELETE",
+      "route": "/api/v3/control-plane/stores",
+      "status": 405
+    },
+    {
+      "accepted": false,
+      "method": "POST",
+      "route": "/api/v3/control-plane/identity",
+      "status": 405
+    },
+    {
+      "accepted": false,
+      "method": "PUT",
+      "route": "/api/v3/control-plane/identity",
+      "status": 405
+    },
+    {
+      "accepted": false,
+      "method": "PATCH",
+      "route": "/api/v3/control-plane/identity",
+      "status": 405
+    },
+    {
+      "accepted": false,
+      "method": "DELETE",
+      "route": "/api/v3/control-plane/identity",
+      "status": 405
+    },
+    {
+      "accepted": false,
+      "method": "POST",
+      "route": "/api/v3/control-plane/notifications",
+      "status": 405
+    },
+    {
+      "accepted": false,
+      "method": "PUT",
+      "route": "/api/v3/control-plane/notifications",
+      "status": 405
+    },
+    {
+      "accepted": false,
+      "method": "PATCH",
+      "route": "/api/v3/control-plane/notifications",
+      "status": 405
+    },
+    {
+      "accepted": false,
+      "method": "DELETE",
+      "route": "/api/v3/control-plane/notifications",
+      "status": 405
+    },
+    {
+      "accepted": false,
+      "method": "POST",
+      "route": "/api/v3/control-plane/learning",
+      "status": 405
+    },
+    {
+      "accepted": false,
+      "method": "PUT",
+      "route": "/api/v3/control-plane/learning",
+      "status": 405
+    },
+    {
+      "accepted": false,
+      "method": "PATCH",
+      "route": "/api/v3/control-plane/learning",
+      "status": 405
+    },
+    {
+      "accepted": false,
+      "method": "DELETE",
+      "route": "/api/v3/control-plane/learning",
+      "status": 405
+    },
+    {
+      "accepted": false,
+      "method": "POST",
+      "route": "/api/v3/control-plane/maturity",
+      "status": 405
+    },
+    {
+      "accepted": false,
+      "method": "PUT",
+      "route": "/api/v3/control-plane/maturity",
+      "status": 405
+    },
+    {
+      "accepted": false,
+      "method": "PATCH",
+      "route": "/api/v3/control-plane/maturity",
+      "status": 405
+    },
+    {
+      "accepted": false,
+      "method": "DELETE",
+      "route": "/api/v3/control-plane/maturity",
+      "status": 405
+    },
+    {
+      "accepted": false,
+      "method": "POST",
+      "route": "/api/v3/control-plane/audit",
+      "status": 405
+    },
+    {
+      "accepted": false,
+      "method": "PUT",
+      "route": "/api/v3/control-plane/audit",
+      "status": 405
+    },
+    {
+      "accepted": false,
+      "method": "PATCH",
+      "route": "/api/v3/control-plane/audit",
+      "status": 405
+    },
+    {
+      "accepted": false,
+      "method": "DELETE",
+      "route": "/api/v3/control-plane/audit",
+      "status": 405
+    }
+  ],
+  "result": "PASS",
+  "unauthorized_successes": []
+}

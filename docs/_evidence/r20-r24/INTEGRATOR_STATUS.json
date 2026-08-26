@@ -1,0 +1,19 @@
+{
+  "program": "R20-R24",
+  "role": "PRINCIPAL_INTEGRATOR",
+  "branch": "convergence/r20-r24",
+  "qa_exact_head": "9c89a21b3515929c0122d47349c48b066996ac9f",
+  "LOCAL_R20_R24_READY_FOR_SYNC": true,
+  "LIVE_R20_R24_ACCEPTANCE": "NOT_APPLICABLE_PRE_DEPLOY",
+  "LOCAL_R20_R24_CONVERGENCE_READY_FOR_SYNC": true,
+  "qa_ready_for_integrator_acceptance": true,
+  "ai_local_acceptance": "PASS",
+  "tsc": "PASS",
+  "vite_build": "PASS",
+  "github_pushes": 0,
+  "ci_cycles": 0,
+  "live_cutover": false,
+  "one_sync_command": "TRADEAI_REMOTE_PUSH_AUTHORIZED=1 git push -u origin convergence/r20-r24",
+  "do_not_deploy": true,
+  "authority": "READ_ONLY_ADVISORY"
+}

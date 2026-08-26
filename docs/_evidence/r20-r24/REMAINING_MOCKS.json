@@ -1,0 +1,40 @@
+{
+  "schema": "RemainingMocks@v1",
+  "http_freeze": "CONTROL_PLANE_API_V1_BASELINE",
+  "runtime_mocks": 0,
+  "rule": "TEST_FIXTURE only. Runtime pages GET CONTROL_PLANE_API_V1.1.",
+  "remaining": [
+    {
+      "id": "r22-agents-v1.0.0-payload",
+      "owner": "R22",
+      "path": "apps/command-center-v3/src/pages/control-plane/r22/mocks/agents.json",
+      "schema": "ControlPlane@v1.0.0 payload (NOT HTTP freeze)",
+      "allowed_for": "tests / labeled TEST_FIXTURE accordion",
+      "forbidden_for": "runtime list or detail"
+    },
+    {
+      "id": "r22-workflows-v1.0.0-payload",
+      "owner": "R22",
+      "path": "apps/command-center-v3/src/pages/control-plane/r22/mocks/workflows.json",
+      "schema": "ControlPlane@v1.0.0 payload (NOT HTTP freeze)",
+      "allowed_for": "tests / labeled TEST_FIXTURE accordion",
+      "forbidden_for": "runtime list or lineage"
+    },
+    {
+      "id": "r23-preview-json",
+      "owner": "R23",
+      "path": "apps/command-center-v3/src/pages/control-plane/r23/preview/*.json",
+      "schema": "ControlPlane@v1.0.0 payload",
+      "allowed_for": "tests / explicitly labeled FIXTURE panel",
+      "forbidden_for": "live page data when API returns UNAVAILABLE"
+    },
+    {
+      "id": "r24-frozen-json",
+      "owner": "R24",
+      "path": "apps/command-center-v3/src/pages/control-plane/r24/frozen/*.json",
+      "schema": "ControlPlane@v1.0.0 payload",
+      "allowed_for": "tests / explicitly labeled FIXTURE panel",
+      "forbidden_for": "live maturity/learning/audit data"
+    }
+  ]
+}

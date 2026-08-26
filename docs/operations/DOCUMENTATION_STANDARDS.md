@@ -63,8 +63,8 @@ Session NN — <description>
 
 ## 4. Forbidden Actions
 
-- **Never delete documentation files** — always archive to `docs/_archive/`
-- **Never edit `_archive/` content** — historical record is immutable
+- **Never delete documentation files** — superseded docs go to git history + Google Drive (in-repo `docs/_archive/` purged 2026-08-16)
+- **Never edit archived content** — historical record is immutable
 - **Never edit SYSTEM_FACTS_LATEST.md by hand** — regenerate with script
 - **Never copy-paste numbers from memory** — always introspect live
 - **Never skip PROJECT_DOC_INDEX.md changelog entry**
@@ -81,7 +81,7 @@ Session NN — <description>
 
 When superseding a document:
 1. Create new doc
-2. `git mv` the old doc to `docs/_archive/superseded/`
+2. Remove the old doc from the tree (its content is retained in git history / Drive)
 3. Add a one-line note at the top of the old doc: `> Superseded by [new doc path] on YYYY-MM-DD`
 4. Commit with message: `docs: supersede [old] with [new]`
 
@@ -91,7 +91,7 @@ When superseding a document:
 bash scripts/export_doc_backup.sh
 ```
 
-Produces a timestamped zip in `backups/doc_exports/` containing all current docs (excluding _archive/) plus a manifest with live system facts.
+Produces a timestamped zip in `backups/doc_exports/` containing all current docs plus a manifest with live system facts.
 
 ## 8. Drift Detection
 
@@ -119,6 +119,6 @@ Before ending any documentation session:
 - [ ] All applicable canonical files updated
 - [ ] PROJECT_DOC_INDEX.md changelog entry added
 - [ ] SYSTEM_FACTS_LATEST.md regenerated if counts changed
-- [ ] No edits to _archive/ content
+- [ ] No edits to archived content
 - [ ] Numeric facts verified via introspection
 - [ ] `git status` clean after commit

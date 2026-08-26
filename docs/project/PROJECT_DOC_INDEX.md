@@ -375,8 +375,8 @@
 | `docs/A1A.md` | **Documentation due-diligence protocol** — non-negotiable |
 | `docs/MASTER_SYSTEM_DOCUMENTATION.md` | **Authoritative TECHNICAL reference (architects)** — 22 §, counts validated vs live DB/cron/config 2026-06-02 (426 tables+23 views, 184 crons, 26 strategies) |
 | `docs/EXECUTIVE_ARCHITECTURE_OVERVIEW.md` | **High-level overview (app owners)** — non-technical capabilities/workflows/reference architecture (NEW 2026-06-02) |
-| `docs/_archive/2026-06-02_doc_consolidation/ARCHITECTURE_OVERVIEW.md` | ARCHIVED + moved 2026-06-02 — superseded by MASTER + Executive overview |
-| `docs/_archive/2026-06-02_doc_consolidation/SYSTEM_ARCHITECTURE_COMPLETE.md` | ARCHIVED + moved 2026-06-02 — consolidated into MASTER |
+| ~~ARCHITECTURE_OVERVIEW.md~~ | **Purged** — superseded by MASTER + Executive overview |
+| ~~SYSTEM_ARCHITECTURE_COMPLETE.md~~ | **Purged** — consolidated into MASTER |
 | `docs/project/MASTER_REWRITE_AND_ARCHIVE_REPORT_2026_05_31.md` | Master rewrite report — 50+ corrections, 2 docs archived |
 
 ### Operational Guides
@@ -443,7 +443,7 @@
 | `docs/project/MEMORY_NOTES_FOR_NEXT_SESSION_2026_05_29_FINAL.md` | Durable memory notes |
 | `docs/project/NEXT_SESSION_RUNBOOK_2026_05_29_FINAL.md` | Runbook — preflight, visual check, remaining work |
 | `docs/project/SYSTEM_HEALTH_AGENT_ARCHITECTURE.md` | System health agent architecture with Claude Code escalation |
-| `docs/atm_lifecycle_v1_2026_05_29/` | Classifier completion, SHFS 860, proposal fixes, backtesting UI, ATM audit (46 files) |
+| ~~docs/atm_lifecycle_v1_2026_05_29/~~ | **Purged 2026-08-16** — v1 lifecycle snapshot (Classifier completion, SHFS 860, proposal fixes, backtesting UI, ATM audit) |
 
 ### Hermes Sidecar (v4)
 | Document | Purpose |
@@ -904,19 +904,15 @@
 | Path | Content |
 |------|---------|
 | `docs/_generated/` | Governance reports, maturity snapshots, brief archive |
-| `docs/playwright/` | Playwright screenshot archives |
+| ~~docs/playwright/~~ | **Purged 2026-08-16** (Playwright screenshot archives) |
 
 ---
 
 ## Archived (docs/_archive/)
 
-1,276 files. Includes superseded versions, dated audits, executed prompts, session tarballs.
-Archived this pass (2026-05-31):
-- 4 top-level .tgz → `_archive/tarballs/`
-- 2 session files (2026-05-27/28) → `_archive/reports/`
-- 1 CC execution prompt → `_archive/prompts/`
-- 1 ATM build prompt → `_archive/prompts/`
-- 4 one-off dirs (drive_cleanup, cleanup, sessions) → `_archive/reports/`
+> **Purged 2026-08-16** — the in-repo `docs/_archive/` (1,276 files incl. superseded versions,
+> dated audits, executed prompts, session tarballs) was removed in the deep docs cleanup.
+> Superseded docs now live in git history + Google Drive.
 
 ## Trashed (docs/_trash/)
 
