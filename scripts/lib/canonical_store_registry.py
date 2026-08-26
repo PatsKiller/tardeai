@@ -198,6 +198,52 @@ STORES: dict[str, dict[str, Any]] = {
         "rebuildable": True,
         "not_cio_intelligence": True,
     },
+    "sector.momentum.current": {
+        "path": "data/runtime/sector_momentum_latest.json",
+        "format": "json",
+        "schema": "SectorMomentum",
+        "authority": AUTHORITY,
+        "writer": "sector_momentum_engine",
+        "readers": ["cio.operator_product"],
+        "kind": "current",
+        "ownership_class": "DERIVED_CURRENT_PROJECTION",
+        "append_only": False,
+        "rebuildable": True,
+    },
+    "industry.momentum.current": {
+        "path": "data/runtime/industry_momentum_latest.json",
+        "format": "json",
+        "schema": "IndustryMomentum",
+        "authority": AUTHORITY,
+        "writer": "industry_momentum",
+        "readers": ["cio.operator_product"],
+        "kind": "current",
+        "ownership_class": "DERIVED_CURRENT_PROJECTION",
+        "append_only": False,
+        "rebuildable": True,
+    },
+    "cio.theses": {
+        "path": "data/cio/cio_theses_projection.json",
+        "format": "json",
+        "schema": "CIOTheses",
+        "authority": AUTHORITY,
+        "writer": "cio_theses",
+        "kind": "current",
+        "ownership_class": "CANONICAL_PERSISTENT_STATE",
+        "append_only": False,
+        "rebuildable": True,
+    },
+    "cio.feedback": {
+        "path": "data/cio/decision_dispositions.jsonl",
+        "format": "jsonl",
+        "schema": "DecisionDisposition",
+        "authority": AUTHORITY,
+        "writer": "api_v3_cio",
+        "kind": "history",
+        "ownership_class": "APPEND_ONLY_EVIDENCE",
+        "append_only": True,
+        "rebuildable": False,
+    },
     "notifications.outbox": {
         "path": "data/cio/cio_notification_outbox.jsonl",
         "format": "jsonl",
@@ -226,6 +272,9 @@ def production_state_root(root: Path | str | None = None) -> Path:
     persistent = os.environ.get("TRADEAI_PERSISTENT_STATE_ROOT")
     if persistent:
         return Path(persistent)
+    preferred = Path.home() / "trade-ai-releases" / "persistent-state"
+    if (preferred / "PERSISTENT_STATE_ROOT.json").is_file():
+        return preferred
     current = Path.home() / "trade-ai-releases" / "portfolio-server" / "CURRENT"
     if current.is_dir():
         return current.resolve()

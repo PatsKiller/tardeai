@@ -8,13 +8,15 @@ from pathlib import Path
 from typing import Any
 
 from scripts.lib.atomic_json_store import append_jsonl, atomic_write_json
+from scripts.lib.canonical_cognition_bind import bind_market_context
 from scripts.lib.canonical_store_registry import load_json_store, resolve_store
+from scripts.lib.operator_decision_contract import completeness, normalize_decision
 from scripts.lib.product_availability import AVAILABLE, UNAVAILABLE_REASONS, availability_payload, canonicalize_reason
 
 AUTHORITY = "READ_ONLY_ADVISORY"
 MBI = 0
 SCHEMA = "CIOOperatorProduct@v1"
-ACTIONS = ("HOLD", "WATCH", "REVIEW", "TRIM", "REENTER", "AVOID", "NO_ACTION", "HOLD_CASH", "WAIT")
+ACTIONS = ("HOLD", "WATCH", "REVIEW", "TRIM", "REENTER", "AVOID", "NO_ACTION", "HOLD_CASH", "WAIT", "INSUFFICIENT_DATA")
 WHEN = ("NOW", "TODAY", "NEXT_SESSION", "WATCH_ONLY", "NOTHING", "NONE")
 REQUIRED_SECTIONS = (
     "product_id",
@@ -59,30 +61,8 @@ def _map_action(raw: str) -> str:
     return a if a in ACTIONS else "REVIEW"
 
 
-def _entry_from_rec(row: dict[str, Any]) -> dict[str, Any]:
-    action = _map_action(row.get("recommended_action") or row.get("action") or row.get("title"))
-    when = "NOW" if str(row.get("priority") or "").upper() == "HIGH" else "NEXT_SESSION"
-    if action in {"HOLD", "HOLD_CASH", "NO_ACTION"}:
-        when = "NOTHING"
-    if action in {"WATCH", "WAIT"}:
-        when = "WATCH_ONLY"
-    return {
-        "what_changed": row.get("title") or row.get("action") or "CIO observation",
-        "why_it_matters": row.get("description") or row.get("rationale") or "",
-        "cio_decision": action,
-        "what_should_i_do": when,
-        "operator_action": when,
-        "why": row.get("rationale") or row.get("description") or "",
-        "confidence": row.get("confidence"),
-        "counter_evidence": row.get("counter") or row.get("counterpoint"),
-        "data_quality": row.get("data_quality") or "OK",
-        "blockers": row.get("blockers") or [],
-        "next_review": row.get("next_review"),
-        "source": "cio.product.current",
-        "symbol": row.get("symbol"),
-        "authority": AUTHORITY,
-        "financial_action": False,
-    }
+def _entry_from_rec(row: dict[str, Any], *, generation_id: str | None = None, as_of: str | None = None) -> dict[str, Any]:
+    return normalize_decision(row, generation_id=generation_id, as_of=as_of)
 
 
 def _last_valid_ref(root: Path | str | None) -> dict[str, Any] | None:
@@ -199,7 +179,10 @@ def build_operator_product(*, root: Path | str | None = None, persist: bool = Fa
                            last_valid_product=last_valid)
     brief = loc["data"] if isinstance(loc.get("data"), dict) else {}
     recs = list(brief.get("recommendations") or [])
-    entries = [_entry_from_rec(r) for r in recs if isinstance(r, dict)]
+    as_of = brief.get("as_of") or _now()
+    proto = [_map_action(r.get("recommended_action") or r.get("action") or r.get("title")) for r in recs if isinstance(r, dict)]
+    gen = _generation_id(brief, [{"symbol": r.get("symbol"), "cio_decision": a, "what_should_i_do": ""} for r, a in zip((x for x in recs if isinstance(x, dict)), proto)])
+    entries = [_entry_from_rec(r, generation_id=gen, as_of=as_of) for r in recs if isinstance(r, dict)]
     if not entries:
         summary = brief.get("summary")
         if isinstance(summary, dict):
@@ -207,17 +190,18 @@ def build_operator_product(*, root: Path | str | None = None, persist: bool = Fa
                 "title": summary.get("headline") or "CIO posture",
                 "description": summary.get("narrative") or json.dumps(summary, default=str)[:240],
                 "recommended_action": brief.get("final_position") or "HOLD",
-            }))
+            }, generation_id=gen, as_of=as_of))
         elif summary:
             entries.append(_entry_from_rec({
                 "title": "CIO posture",
                 "description": str(summary),
                 "recommended_action": brief.get("final_position") or "HOLD",
-            }))
+            }, generation_id=gen, as_of=as_of))
 
     holdings = _holdings_sections(root)
-    action_now = [e for e in entries if e.get("what_should_i_do") == "NOW"]
-    standing = [e for e in entries if e.get("cio_decision") in {"HOLD", "HOLD_CASH", "WATCH", "WAIT", "NO_ACTION"}]
+    ctx = bind_market_context(root=Path(root) if root else Path("."))
+    action_now = [e for e in entries if e.get("urgency") == "NOW"]
+    standing = [e for e in entries if e.get("decision") in {"HOLD", "HOLD_CASH", "WATCH", "WAIT", "NO_ACTION"}]
     exec_summary = brief.get("summary")
     if isinstance(exec_summary, dict):
         exec_summary = exec_summary.get("headline") or exec_summary.get("narrative") or json.dumps(exec_summary)[:280]
@@ -244,7 +228,6 @@ def build_operator_product(*, root: Path | str | None = None, persist: bool = Fa
         if extra_ops:
             data_quality["supplemental_ops"] = extra_ops
 
-    gen = _generation_id(brief, entries)
     product = {
         "schema": SCHEMA,
         "available": True,
@@ -268,10 +251,13 @@ def build_operator_product(*, root: Path | str | None = None, persist: bool = Fa
             "counts": reentry.get("counts"),
             "note": reentry.get("note"),
         },
-        "sector": [],
-        "industry": [],
+        "sector": ctx.get("sector") or [],
+        "industry": ctx.get("industry") or [],
+        "sector_reason": ctx.get("sector_reason"),
+        "industry_reason": ctx.get("industry_reason"),
+        "catalysts_reason": ctx.get("catalysts_reason"),
         "themes": list(brief.get("themes") or []),
-        "catalysts": list(brief.get("catalysts") or []),
+        "catalysts": ctx.get("catalysts") or list(brief.get("catalysts") or []),
         "earnings": list(brief.get("earnings") or []),
         "macro": brief.get("macro") or brief.get("temperament"),
         "research_changes": thesis_changes if isinstance(thesis_changes, list) else [],
@@ -280,7 +266,7 @@ def build_operator_product(*, root: Path | str | None = None, persist: bool = Fa
         "outcomes_learning": {"source": "cio.outcomes", "influence_from_bug_duplicates": 0},
         "data_quality": data_quality,
         "policy_gaps": policy_gaps,
-        "next_reviews": [e.get("next_review") for e in entries if e.get("next_review")],
+        "next_reviews": [e.get("next_review_at") or e.get("next_review") for e in entries],
         "entries": entries[:20],
         "competing_products": [],
         "competing_products_removed": True,
@@ -293,7 +279,12 @@ def build_operator_product(*, root: Path | str | None = None, persist: bool = Fa
         "financial_action": False,
         "gui_is_projection": True,
         "operator_data_quality": data_quality.get("state") or "OK",
+        "standing_decisions_complete": True,
     }
+    product["completeness"] = completeness(product)
+    product["standing_decisions_complete"] = product["completeness"]["grade"] in {
+        "OPERATOR_PRODUCT_COMPLETE", "OPERATOR_PRODUCT_PARTIAL",
+    } and not any(f.startswith("decisions") and f.endswith("decision_id") for f in product["completeness"].get("missing") or [])
     if persist:
         out = resolve_store("cio.operator_product.current", root=root)
         path = Path(out["primary_path"])
