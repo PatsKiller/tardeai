@@ -1,0 +1,46 @@
+{
+  "evidence_class": "SHADOW",
+  "captured_at": "2026-08-26",
+  "source_root": "/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT -> 6088254e-main-exact-phase2-20260826-103201",
+  "source_sha": "0e9dbee3e5137c6dd2533f74270dc32162ab7787",
+  "authority": "READ_ONLY_ADVISORY",
+  "agents": [
+    {"agent_id":"hermes","role":"research/intelligence","state":"LIVE_SCHEDULED_OR_EVENT_DRIVEN","evidence":"data/runtime/hermes_worker_pool_state.json; hermes_event_feeder_heartbeat.json","last_observed":"2026-08-26T14:30:03+00:00","limitations":"systemd active state could not be queried from sandbox"},
+    {"agent_id":"maria","role":"market research","state":"CALLABLE_ONLY_OR_TIMER_DEPENDENT","evidence":"config/agents.yaml; no natural-run receipt located in this audit"},
+    {"agent_id":"steph","role":"portfolio allocation","state":"CALLABLE_ONLY_OR_TIMER_DEPENDENT","evidence":"config/agents.yaml; no natural-run receipt located in this audit"},
+    {"agent_id":"risk_agent","role":"risk and stops","state":"CALLABLE_ONLY_OR_TIMER_DEPENDENT","evidence":"config/agents.yaml; execution authority excluded"},
+    {"agent_id":"tax_agent","role":"tax/roth","state":"CALLABLE_ONLY_OR_TIMER_DEPENDENT","evidence":"config/agents.yaml"},
+    {"agent_id":"orchestrator","role":"routing/final synthesis","state":"CALLABLE_ONLY","evidence":"config/agents.yaml"}
+  ],
+  "scheduled_units": [
+    "hermes-autonomous-loop.timer",
+    "hermes-deep-research-local.timer",
+    "hermes-librarian-backlog-loop.timer",
+    "hermes-backlog-health-check.timer",
+    "hermes-external-feedback.timer",
+    "hermes-observation-check.timer",
+    "hermes-source-discovery-dryrun.timer",
+    "hermes-update-check.timer",
+    "tradeai-agent-runtime-producer.timer",
+    "tradeai-cio-reactive.timer"
+  ],
+  "prepare_only_units": [
+    "tradeai-agent-runtime@.service",
+    "tradeai-agent-runtime@hermes.timer",
+    "tradeai-hermes-cio-worker.path"
+  ],
+  "runtime_observations": {
+    "hermes_lanes": {"strategy":"2026-08-26T09:05:01Z","watchlist":"2026-08-26T11:05:01Z","holdings":"2026-08-26T11:05:01Z","white_space":"2026-08-26T11:05:01Z","private_proxy":"2026-08-26T12:05:02Z","legal_domain":"2026-08-26T13:05:03Z"},
+    "event_feeder": {"run_id":"ev_65fe0785a8","events_found":5,"enqueued":4},
+    "scope_governor": {"run_id":"sg_cd5d2628c4","live_universe":800,"changes":350},
+    "holdings_lifecycle": {"run_id":"sg_cd5d2628c4","position_count":22,"watch":12,"healthy":9,"trim_candidate":1},
+    "watchlist_lifecycle": {"run_id":"sg_cd5d2628c4","promoted":703,"watch":3530,"blocked_promotion":"ANGO: health=56<62"}
+  },
+  "known_gaps": [
+    "No sandbox proof of systemd active/enabled state.",
+    "Prepare-only agent-runtime template has AGENT_RUNTIME_OPERATOR_AUTH=0 and no queue module; it is not live.",
+    "No single roster receipt joins every specialist to last wake, task, artifact, latency, and cost.",
+    "Natural current research-to-CIO lineage remains unproven by this read-only audit.",
+    "Runtime source SHA for every worker must be captured from process metadata on the host."
+  ]
+}
