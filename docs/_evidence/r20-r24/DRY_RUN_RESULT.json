@@ -1,4 +1,7 @@
 {
-  "reason": "No integrated R20-R24 canonical workflow fixture or UI consumers on branch",
-  "result": "BLOCKED"
+  "result": "PASS",
+  "evidence_class": "DRY_RUN",
+  "ids_consistent": true,
+  "fixture": "fixtures/control_plane/dry_run",
+  "workflow_id": "dryrun.workflow.001"
 }

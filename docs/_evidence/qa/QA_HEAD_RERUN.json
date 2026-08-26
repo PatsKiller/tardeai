@@ -1,0 +1,203 @@
+{
+  "schema": "QaHeadRerun@v1",
+  "role": "QA",
+  "program": "R20-R24",
+  "generated_at": "2026-08-26T18:12:25Z",
+  "repo": "/home/johnclaw/trade-ai-v12-rebuild/wt-r20-r24",
+  "branch": "convergence/r20-r24",
+  "required_head": "9c89a21b3515929c0122d47349c48b066996ac9f",
+  "exact_head": "9c89a21b3515929c0122d47349c48b066996ac9f",
+  "head_match": true,
+  "head_subject": "fix(convergence): restore CC-v3 toolchain, measure parity, split local/live gates",
+  "prior_qa_head": "cd7d54eb9fa01c945a316681a4689cf0fb21bb6e",
+  "prior_blockers_file": "docs/_evidence/r20-r24/QA_REGRESSION_BLOCKERS.json",
+  "gate": "LOCAL_R20_R24_READY_FOR_SYNC",
+  "deployed_CURRENT_required": false,
+  "github_pushes": 0,
+  "product_code_edited": false,
+  "ready_for_integrator_acceptance": true,
+  "local_sync_high_blockers_remaining": 0,
+  "new_regressions": [],
+  "old_high_blockers": [
+    {
+      "id": "QA-HIGH-001",
+      "was": "R22/R23/R24 pages absent, App.tsx unregistered",
+      "mark": "STALE_FIXED",
+      "blocks_local_sync": false,
+      "evidence": [
+        "apps/command-center-v3/src/pages/control-plane/{r22,r23,r24} pages committed",
+        "App.tsx registers 11 /control-plane/* shadow routes",
+        "BrowserRouter basename=\"/v3\"",
+        "no Navigate onto /control-plane from live routes (cutover=false)"
+      ]
+    },
+    {
+      "id": "QA-HIGH-002",
+      "was": "no integrated dry-run lineage fixture",
+      "mark": "STALE_FIXED",
+      "blocks_local_sync": false,
+      "note": "docs/_evidence/r20-r24/DRY_RUN_RESULT.json still says BLOCKED (stale file from older HEAD). Live proof is fixtures/control_plane/dry_run + pytest, not that JSON.",
+      "evidence": [
+        "fixtures/control_plane/dry_run/IDS.json evidence_class=DRY_RUN",
+        "fixtures/control_plane/dry_run/data/runtime/{agent_registry,workflow_traces,research_attention,canonical_store_registry,identity_registry,notification_receipts,learning_evidence,maturity,audit_capability_claims}.json",
+        "tests/test_r20_r24_convergence.py::test_cross_id_resolves_same_workflow",
+        "tests/test_r20_r24_local_gates.py::test_dry_run_lineage_ids_across_surfaces"
+      ]
+    },
+    {
+      "id": "QA-HIGH-003",
+      "was": "historical replay coverage zero",
+      "mark": "STILL_PRESENT_RECLASSIFIED",
+      "blocks_local_sync": false,
+      "reason": "120 replay rows exist but are SYNTHETIC_SCENARIO + GOLDEN_FIXTURE, not source-derived history. REAL_HISTORICAL_CONTROL_PLANE_TRACE=NOT_AVAILABLE_PRE_DEPLOY. After gate split this is LIVE_R20_R24_ACCEPTANCE, not LOCAL.",
+      "evidence": [
+        "fixtures/control_plane/replay/data/runtime/workflow_traces.json: 120 rows replay.workflow.000..119",
+        "evidence_class=HISTORICAL_REPLAY, source_sha=dryrun-source-sha-084674c5, source_ref=null, historical_source=null",
+        "historical_source_derived=0 historical_validated=0",
+        "docs/_evidence/r20-r24/REPLAY_CLASSIFICATION.json",
+        "docs/_evidence/r20-r24/HISTORICAL_REPLAY_VALIDATION.json",
+        "docs/convergence/RELEASE_GATES.md: real historical control-plane traces not required for LOCAL"
+      ]
+    },
+    {
+      "id": "QA-HIGH-004",
+      "was": "route parity unmeasured",
+      "mark": "STALE_FIXED",
+      "blocks_local_sync": false,
+      "evidence": [
+        "docs/convergence/UI_REPLACEMENT_MATRIX.md: REGRESSION = 0; no | REGRESSION | cells",
+        "docs/_evidence/r20-r24/ROUTE_PARITY_VALIDATION.json result=MEASURED mappings=39 preview_routes=11 regressions=[]",
+        "docs/_evidence/r20-r24/PARITY_REVIEW.json measured=true cutover=false",
+        "tests/test_r20_r24_local_gates.py::test_replacement_matrix_has_no_regression_and_no_unknown"
+      ]
+    }
+  ],
+  "old_medium_blockers": [
+    {
+      "id": "QA-MED-001",
+      "was": "canonical runtime stores UNAVAILABLE",
+      "mark": "NOT_APPLICABLE",
+      "blocks_local_sync": false,
+      "note": "EXPECTED_LOCAL_UNAVAILABLE; pages render UNAVAILABLE honestly. Live store proof is LIVE_R20_R24_ACCEPTANCE.",
+      "evidence": [
+        "docs/_evidence/r20-r24/RUNTIME_STORES.json",
+        "tests/test_r20_r24_local_gates.py::test_expected_local_unavailable_is_honest"
+      ]
+    },
+    {
+      "id": "QA-MED-002",
+      "was": "no representative performance benchmark",
+      "mark": "STALE_FIXED",
+      "blocks_local_sync": false,
+      "note": "Adapter-level smoke exists (all means < 0.5s). Live portfolio-server benchmark is LIVE_R20_R24_ACCEPTANCE, not LOCAL.",
+      "evidence": [
+        "docs/_evidence/r20-r24/PERFORMANCE_SMOKE.json",
+        "tests/test_r20_r24_local_gates.py::test_control_plane_read_benchmark_is_bounded"
+      ]
+    }
+  ],
+  "confirmations": {
+    "app_tsx": {
+      "basename": "/v3",
+      "cutover": false,
+      "navigate_to_control_plane_from_live": false,
+      "control_plane_routes_registered": [
+        "/control-plane",
+        "/control-plane/system",
+        "/control-plane/agents",
+        "/control-plane/workflows",
+        "/control-plane/research",
+        "/control-plane/data",
+        "/control-plane/identity",
+        "/control-plane/notifications",
+        "/control-plane/learning",
+        "/control-plane/maturity",
+        "/control-plane/audit"
+      ]
+    },
+    "runtime_mocks": {
+      "runtime_mocks": 0,
+      "test_fixture_allowed": true,
+      "live_pages_get_CONTROL_PLANE_API_V1_1": true,
+      "inventory": "docs/_evidence/r20-r24/REMAINING_MOCKS.json"
+    },
+    "replay_fixtures": {
+      "count": 120,
+      "classification": "SYNTHETIC_SCENARIO + GOLDEN_FIXTURE",
+      "not": "historical evidence",
+      "historical_source_derived": 0,
+      "REAL_HISTORICAL_CONTROL_PLANE_TRACE": "NOT_AVAILABLE_PRE_DEPLOY",
+      "lookahead_leaks": 0
+    },
+    "ui_replacement_matrix": {
+      "path": "docs/convergence/UI_REPLACEMENT_MATRIX.md",
+      "REGRESSION": 0,
+      "regression_cells": false
+    },
+    "mutations_405": {
+      "methods": ["POST", "PUT", "PATCH", "DELETE"],
+      "summary_routes": 10,
+      "detail_routes": 2,
+      "attempts": 48,
+      "unauthorized_successes": 0
+    },
+    "secret_scan": {
+      "result": "CLEAN",
+      "targets": [
+        "scripts/control_plane_api.py",
+        "fixtures/control_plane"
+      ],
+      "files_scanned": 27,
+      "secrets_found": 0
+    }
+  },
+  "pytest": {
+    "python": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python",
+    "python_version": "3.14.4",
+    "cwd": "/home/johnclaw/trade-ai-v12-rebuild/wt-r20-r24",
+    "env": "TRADE_AI_CI=1",
+    "command": "TRADE_AI_CI=1 python -m pytest -q tests/test_control_plane_api.py tests/test_control_plane_api_v1_baseline.py tests/test_r20_r24_qa_probes.py tests/test_r20_r24_convergence.py tests/test_r20_r24_local_gates.py tests/test_r22_pages.py tests/test_r23_control_plane_pages.py tests/test_r24_control_plane_guards.py",
+    "collected": 93,
+    "passed": 91,
+    "failed": 0,
+    "skipped": 2,
+    "duration_s": 0.95,
+    "files": {
+      "tests/test_control_plane_api.py": {"passed": 8, "failed": 0, "skipped": 0},
+      "tests/test_control_plane_api_v1_baseline.py": {"passed": 5, "failed": 0, "skipped": 0},
+      "tests/test_r20_r24_qa_probes.py": {"passed": 20, "failed": 0, "skipped": 0},
+      "tests/test_r20_r24_convergence.py": {"passed": 13, "failed": 0, "skipped": 0},
+      "tests/test_r20_r24_local_gates.py": {"passed": 10, "failed": 0, "skipped": 0},
+      "tests/test_r22_pages.py": {"passed": 11, "failed": 0, "skipped": 0},
+      "tests/test_r23_control_plane_pages.py": {"passed": 16, "failed": 0, "skipped": 0},
+      "tests/test_r24_control_plane_guards.py": {"passed": 8, "failed": 0, "skipped": 2}
+    },
+    "skips": [
+      {
+        "id": "tests/test_r24_control_plane_guards.py::test_integrator_owned_paths_clean",
+        "reason": "integrator cycle owns App.tsx, NavRail, fixtures, and R21.1 API"
+      },
+      {
+        "id": "tests/test_r24_control_plane_guards.py::test_worktree_changes_stay_in_r24_allowlist",
+        "reason": "integrator cycle lands R22-R24 pages plus App.tsx shadow routes"
+      }
+    ]
+  },
+  "unauthorized_successes": 0,
+  "unauthorized_successes_list": [],
+  "secrets_found": 0,
+  "secrets_found_list": [],
+  "stale_evidence_at_head_not_current_truth": [
+    "docs/_evidence/r20-r24/DRY_RUN_RESULT.json result=BLOCKED",
+    "docs/_evidence/r20-r24/CROSS_ID_RESULT.json result=LIMITED_NO_FIXTURE",
+    "docs/_evidence/r20-r24/QA_REGRESSION_BLOCKERS.json ready_for_integrator_acceptance=false (the file this rerun supersedes)",
+    "docs/_evidence/qa/QA_HANDOFF.json head=cd7d54eb (prior QA pass)"
+  ],
+  "notes": [
+    "HEAD matched required_head; no stop-on-mismatch.",
+    "No push. No product-page or R21 API edits. Only this QA evidence file written.",
+    "test_control_plane_read_benchmark_is_bounded rewrites PERFORMANCE_SMOKE.json; that rewrite was reverted so this rerun did not leave a dirty evidence file outside docs/_evidence/qa/.",
+    "LOCAL does not require deployed CURRENT, host services, or real historical control-plane traces (docs/convergence/RELEASE_GATES.md).",
+    "tsc exists at apps/command-center-v3/node_modules/typescript/bin/tsc; this QA rerun did not execute npm ci / tsc / npm run build / scripts/ai_local_acceptance.sh."
+  ]
+}

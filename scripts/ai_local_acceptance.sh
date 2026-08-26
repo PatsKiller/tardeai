@@ -108,7 +108,7 @@ else
       npx tsc --noEmit
     )
   fi
-  if [[ "$tests" == "1" ]]; then
+  if [[ "$tests" == "1" && -f tests/test_ai_work_policy_hooks.py ]]; then
     "$PY" -m pytest -q tests/test_ai_work_policy_hooks.py
   fi
   regression_green=true

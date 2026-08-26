@@ -1,0 +1,16 @@
+{
+  "head": "9c89a21b3515929c0122d47349c48b066996ac9f",
+  "runtime_mocks": 0,
+  "basename": "/v3",
+  "pages": [
+    {"stream":"R22","name":"Agent Office","route":"/control-plane/agents","full":"/v3/control-plane/agents","component":"r22/AgentOfficePage.tsx","api":["GET /api/v3/control-plane/agents","GET /api/v3/control-plane/agents/{id}"],"runtime_mocks":0,"tests":["tests/test_r22_pages.py","tests/test_r20_r24_local_gates.py"],"status":"COMMITTED"},
+    {"stream":"R22","name":"Workflow Trace","route":"/control-plane/workflows","full":"/v3/control-plane/workflows","component":"r22/WorkflowTracePage.tsx","api":["GET /api/v3/control-plane/workflows","GET /api/v3/control-plane/workflows/{id}"],"runtime_mocks":0,"tests":["tests/test_r22_pages.py","tests/test_r20_r24_convergence.py"],"status":"COMMITTED"},
+    {"stream":"R23","name":"Research Attention","route":"/control-plane/research","full":"/v3/control-plane/research","component":"r23/ResearchAttentionPage.tsx","api":["GET /api/v3/control-plane/research"],"runtime_mocks":0,"tests":["tests/test_r23_control_plane_pages.py"],"status":"COMMITTED"},
+    {"stream":"R23","name":"Data Integrity","route":"/control-plane/data","full":"/v3/control-plane/data","component":"r23/DataIntegrityPage.tsx","api":["GET /api/v3/control-plane/stores"],"runtime_mocks":0,"tests":["tests/test_r23_control_plane_pages.py"],"status":"COMMITTED"},
+    {"stream":"R23","name":"Identity","route":"/control-plane/identity","full":"/v3/control-plane/identity","component":"r23/IdentityPage.tsx","api":["GET /api/v3/control-plane/identity"],"runtime_mocks":0,"tests":["tests/test_r23_control_plane_pages.py"],"status":"COMMITTED"},
+    {"stream":"R23","name":"Notifications","route":"/control-plane/notifications","full":"/v3/control-plane/notifications","component":"r23/NotificationsPage.tsx","api":["GET /api/v3/control-plane/notifications"],"runtime_mocks":0,"tests":["tests/test_r23_control_plane_pages.py"],"status":"COMMITTED"},
+    {"stream":"R24","name":"Learning","route":"/control-plane/learning","full":"/v3/control-plane/learning","component":"r24/LearningPage.tsx","api":["GET /api/v3/control-plane/learning"],"runtime_mocks":0,"tests":["tests/test_r24_learning_page.py"],"status":"COMMITTED"},
+    {"stream":"R24","name":"Maturity","route":"/control-plane/maturity","full":"/v3/control-plane/maturity","component":"r24/MaturityPage.tsx","api":["GET /api/v3/control-plane/maturity"],"runtime_mocks":0,"tests":["tests/test_r24_maturity_page.py"],"status":"COMMITTED"},
+    {"stream":"R24","name":"Audit","route":"/control-plane/audit","full":"/v3/control-plane/audit","component":"r24/AuditPage.tsx","api":["GET /api/v3/control-plane/audit"],"runtime_mocks":0,"tests":["tests/test_r24_audit_page.py"],"status":"COMMITTED"}
+  ]
+}

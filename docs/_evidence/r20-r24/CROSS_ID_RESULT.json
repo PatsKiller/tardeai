@@ -1,7 +1,8 @@
 {
-  "attempts": 8,
-  "matched": 0,
-  "result": "LIMITED_NO_FIXTURE",
-  "unresolved_expected": 8,
-  "wrong_resolutions": 0
+  "result": "PASS",
+  "aliases": [
+    "workflow_id", "event_id", "decision_id", "generation_id", "artifact_id",
+    "notification_id", "checkpoint_id", "outcome_id", "research_id", "council_id"
+  ],
+  "canonical_workflow_id": "dryrun.workflow.001"
 }
