@@ -1,0 +1,23 @@
+{
+  "schema": "CheckpointReconciliation@v1",
+  "as_of": "2026-08-26T12:20:27+00:00",
+  "total": 135,
+  "auto": 117,
+  "cash_n": 113,
+  "counts": {
+    "VALID_UNIQUE": 0,
+    "SEMANTIC_DUPLICATE": 102,
+    "ORPHANED": 0,
+    "UNRESOLVED_SUBJECT": 15,
+    "LEGACY": 18
+  },
+  "deleted": 0,
+  "repair_plan": {
+    "delete_historical": false,
+    "governed": true,
+    "recommended": "Keep historical rows. Future binds use PORTFOLIO_CASH subject_id + notification material_generation_id. Optional later compact of cash SEMANTIC_DUPLICATE keeping earliest per (recommendation, horizon).",
+    "cash_duplicates_n": 102
+  },
+  "destructive_cleanup_applied": false,
+  "note": "Historical rows retained. Hotfix stops future cash churn. Compact is separately governed."
+}

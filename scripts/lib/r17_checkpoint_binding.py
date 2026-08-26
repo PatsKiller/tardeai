@@ -47,22 +47,90 @@ def _iso(ts: datetime | None) -> str | None:
     return ts.isoformat()
 
 
+PORTFOLIO_CASH_ENTITY = "PORTFOLIO_CASH"
+CASH_ACTIONS = {"HOLD_CASH", "DEPLOY_CASH", "RAISE_CASH", "WAIT_CASH"}
+
+
+def is_cash_decision(decision: dict[str, Any]) -> bool:
+    sym = str(decision.get("symbol") or "").upper()
+    action = str(decision.get("action") or decision.get("recommendation") or decision.get("stance") or "").upper()
+    if sym == "CASH" or action in CASH_ACTIONS:
+        return True
+    if str(decision.get("entity_type") or "").upper() == PORTFOLIO_CASH_ENTITY:
+        return True
+    return False
+
+
+def canonical_checkpoint_subject(decision: dict[str, Any]) -> dict[str, Any]:
+    """Stable subject for checkpoint identity. Never mints a security_guid.
+
+    Cash is portfolio-level: PORTFOLIO_CASH + account/policy scope.
+    Securities use identity_safe_subject only when a real security_guid exists.
+    """
+    from scripts.lib.cio_notification_signal import LINEAGE_CASH, decision_lineage_id
+
+    if is_cash_decision(decision):
+        scope = (
+            decision.get("account_id")
+            or decision.get("account")
+            or decision.get("portfolio_scope")
+            or "CONSOLIDATED"
+        )
+        subject_id = f"{PORTFOLIO_CASH_ENTITY}:{scope}"
+        return {
+            "entity_type": PORTFOLIO_CASH_ENTITY,
+            "subject_id": subject_id,
+            "subject_guid": None,
+            "ticker_guid_is_not_security": True,
+            "lineage_id": LINEAGE_CASH,
+            "scope": str(scope),
+            "never_minted_security_guid": True,
+        }
+    guid = identity_safe_subject(decision)
+    lineage = decision_lineage_id(decision)
+    return {
+        "entity_type": "SECURITY" if guid else "UNRESOLVED",
+        "subject_id": guid or f"UNRESOLVED:{lineage}",
+        "subject_guid": guid,
+        "ticker_guid_is_not_security": not bool(guid),
+        "lineage_id": lineage,
+        "never_minted_security_guid": True,
+    }
+
+
+def checkpoint_material_generation(decision: dict[str, Any]) -> str:
+    """Operator-meaning generation. Must match notification unchanged_replay.
+
+    Cash must NOT hash rotating evidence digests, USD jitter, or decision_id.
+    """
+    from scripts.lib.cio_notification_signal import material_generation_id
+
+    explicit = decision.get("material_generation") or decision.get("material_generation_id")
+    if explicit:
+        return str(explicit)
+    # Align with the notification layer that already stayed stable overnight.
+    return material_generation_id(decision)
+
+
 def semantic_checkpoint_key(decision: dict[str, Any], horizon: str) -> str:
     """Identity for dedupe. Ignores technical decision_id churn."""
+    subject = canonical_checkpoint_subject(decision)
     payload = {
-        "subject_guid": identity_safe_subject(decision) or "UNRESOLVED",
-        "recommendation": str(decision.get("recommendation") or decision.get("action") or decision.get("stance") or ""),
-        "material_generation": str(
-            decision.get("material_generation")
-            or decision.get("decision_evidence_digest")
-            or decision.get("decision_input_digest")
+        "entity_type": subject["entity_type"],
+        "subject_id": subject["subject_id"],
+        "recommendation": str(
+            decision.get("recommendation")
+            or decision.get("action")
+            or decision.get("stance")
             or ""
-        ),
+        ).upper(),
+        "material_generation": checkpoint_material_generation(decision),
         "thesis_version": str(decision.get("thesis_version") or decision.get("symbol_thesis_version") or ""),
         "curation_version": str(decision.get("curation_version") or ""),
         "horizon": horizon,
-        "symbol_alias": str(decision.get("symbol") or ""),
+        "policy_version": str(decision.get("policy_version") or (decision.get("cash_posture") or {}).get("policy_version") or ""),
     }
+    # Do not include decision_id, evidence digest, timestamps, or raw USD.
     return _sha(payload)[:24]
 
 
@@ -85,9 +153,14 @@ def enrich_checkpoint(
     now = now or _now()
     ck = schedule_outcome_checkpoint(str(decision.get("decision_id") or ""), horizon, existing=existing_ids)
     semantic = semantic_checkpoint_key(decision, horizon)
+    subject = canonical_checkpoint_subject(decision)
+    material_gen = checkpoint_material_generation(decision)
     ck.update({
-        "subject_guid": identity_safe_subject(decision),
-        "decision_generation": str(decision.get("decision_generation") or decision.get("decision_input_digest") or ""),
+        "subject_guid": subject.get("subject_guid"),
+        "entity_type": subject.get("entity_type"),
+        "subject_id": subject.get("subject_id"),
+        "lineage_id": subject.get("lineage_id"),
+        "decision_generation": material_gen,
         "semantic_key": semantic,
         "due_at": due_at_for(horizon, now=now),
         "runtime_source_sha": source_sha,
@@ -96,8 +169,10 @@ def enrich_checkpoint(
             "recommendation": decision.get("recommendation") or decision.get("action"),
             "thesis_version": decision.get("thesis_version") or decision.get("symbol_thesis_version"),
             "curation_version": decision.get("curation_version"),
-            "material_generation": decision.get("material_generation") or decision.get("decision_evidence_digest"),
+            "material_generation": material_gen,
             "producer_id": decision.get("producer_id") or "material_scan",
+            "entity_type": subject.get("entity_type"),
+            "subject_id": subject.get("subject_id"),
         },
         "original_decision_state": {
             "as_of": _iso(now),
