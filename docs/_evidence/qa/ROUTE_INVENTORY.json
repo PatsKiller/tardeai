@@ -1,0 +1,48 @@
+{
+  "schema": "QaRouteInventory@v1",
+  "result": "PASS",
+  "cutover": false,
+  "source_inventory": "docs/convergence/UI_ROUTE_INVENTORY.json",
+  "source_app": "apps/command-center-v3/src/App.tsx",
+  "source_nav": "apps/command-center-v3/src/components/NavRail.tsx",
+  "app_route_count": 39,
+  "inventory_existing_live_count": 39,
+  "inventory_preview_count": 9,
+  "gaps": {
+    "in_app_not_in_inventory": [],
+    "in_inventory_not_in_app": [],
+    "preview_registered_in_app": [],
+    "preview_registered_in_navrail": []
+  },
+  "redirects_verified_against_Navigate": [
+    ["/trading/active-trader", "/active-trader"],
+    ["/manual-execution", "/trading?tab=Entry+Desk"],
+    ["/research", "/research-intelligence"],
+    ["/trade-in-view", "/journal"],
+    ["/watchlist", "/watch?tab=intelligence&view=top_ideas"],
+    ["/watchpool", "/watch?tab=watchpool"],
+    ["/sectors", "/watch?tab=sectors"],
+    ["/pullback-macd", "/watch?tab=pullback-macd"],
+    ["/advisor-changes", "/rotation?tab=advisor-guide"]
+  ],
+  "defer_not_cut_over": [
+    "/agents",
+    "/research-intelligence",
+    "/watch-legacy",
+    "/health",
+    "/system"
+  ],
+  "preview_routes_side_by_side_only": [
+    "/control-plane/agents",
+    "/control-plane/workflows",
+    "/control-plane/research",
+    "/control-plane/data",
+    "/control-plane/identity",
+    "/control-plane/notifications",
+    "/control-plane/learning",
+    "/control-plane/maturity",
+    "/control-plane/audit"
+  ],
+  "worker_App.tsx_also_unregistered": true,
+  "note": "Shell wrapper Route path='/*' is excluded from the live-page inventory, as intended."
+}

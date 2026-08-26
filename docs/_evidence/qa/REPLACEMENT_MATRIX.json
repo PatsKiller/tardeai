@@ -1,0 +1,19 @@
+{
+  "schema": "QaReplacementMatrix@v1",
+  "result": "PASS",
+  "source": "docs/convergence/UI_REPLACEMENT_MATRIX.md",
+  "allowed_dispositions": ["KEEP", "REPLACE", "MERGE", "SPLIT", "RETIRE", "REDIRECT", "DEFER"],
+  "observed_dispositions": ["KEEP", "REDIRECT", "DEFER"],
+  "invalid_dispositions": [],
+  "retired_old_routes": [],
+  "live_cutover_claimed": false,
+  "cutover_inventory_flag": false,
+  "quotes": [
+    "No live cutover. Existing routes KEEP or DEFER while R20–R24 pages are built side-by-side.",
+    "No old route is retired by this program's current implementation."
+  ],
+  "preview_rows_disposition": "KEEP (preview)",
+  "preview_not_registered_in_App_tsx": true,
+  "inventory_dispositions_match_matrix": true,
+  "no_REPLACE_MERGE_SPLIT_RETIRE_in_current_program": true
+}

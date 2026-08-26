@@ -1,0 +1,77 @@
+{
+  "schema": "QaHandoff@v1",
+  "role": "QA",
+  "program": "R20-R24",
+  "as_of": "2026-08-26",
+  "branch": "convergence/r20-r24",
+  "qa_worktree": "/home/johnclaw/trade-ai-v12-rebuild/wt-r20-r24",
+  "head": "cd7d54eb9fa01c945a316681a4689cf0fb21bb6e",
+  "includes": {
+    "CONTROL_PLANE_API_V1_BASELINE_freeze_commit": "4e62ee22809cca92d01c45da184dc18f04adf8ac",
+    "R21_summary_apis_commit": "084674c560abd7bb910726f62e41508703c07e40",
+    "both_are_ancestors_of_HEAD": true
+  },
+  "http_freeze": "CONTROL_PLANE_API_V1_BASELINE",
+  "vocabulary_contract": "ControlPlane@v1.0.0",
+  "authority": "READ_ONLY_ADVISORY",
+  "memory_behavior_influence": 0,
+  "result": "PASS",
+  "failed_probes": [],
+  "probes": {
+    "contract_fixtures": "passed",
+    "control_plane_api_tests": "passed",
+    "control_plane_api_v1_baseline_tests": "passed",
+    "qa_probes": "passed",
+    "compatibility_payload_vs_data": "passed_with_notes",
+    "authority_mutations_405": "passed",
+    "portfolio_server_get_self_command": "passed",
+    "portfolio_server_post_intercept": "passed",
+    "no_broker_order_stop_risk_2fa_writers": "passed",
+    "fault_unavailable": "passed",
+    "fault_invalid_schema": "passed",
+    "fault_empty_valid": "passed",
+    "secret_scan": "passed",
+    "route_inventory": "passed",
+    "replacement_matrix": "passed",
+    "cutover_false": "passed",
+    "remaining_mocks_not_deleted": "passed"
+  },
+  "pytest": {
+    "files": [
+      "tests/test_control_plane_api.py",
+      "tests/test_control_plane_api_v1_baseline.py",
+      "tests/test_r20_r24_qa_probes.py"
+    ],
+    "passed": 33,
+    "failed": 0,
+    "reproduction": "TRADE_AI_CI=1 python -m pytest tests/test_control_plane_api.py tests/test_control_plane_api_v1_baseline.py tests/test_r20_r24_qa_probes.py -q"
+  },
+  "secret_scan": {
+    "status": "CLEAN",
+    "hits": 0,
+    "targets": [
+      "scripts/control_plane_api.py",
+      "tests/test_control_plane_api.py",
+      "fixtures/control_plane/api_v1_baseline"
+    ]
+  },
+  "route_inventory_gaps": [],
+  "remaining_mocks": {
+    "deleted": false,
+    "integrator_tree": "ABSENT_EXPECTED",
+    "worker_trees": "PRESENT",
+    "schema": "ControlPlane@v1.0.0 payload (NOT HTTP freeze)",
+    "production": false
+  },
+  "github_pushes": 0,
+  "ci_cycles": 0,
+  "pr": false,
+  "product_code_edited": false,
+  "notes": [
+    "HTTP envelope is data, not payload. ControlPlane@v1.0.0 fixtures that use payload are MOCK only.",
+    "Preview /control-plane/* routes are not in App.tsx or NavRail. cutover=false.",
+    "R22/R23/R24 remaining mocks still live in worker trees and were not deleted.",
+    "R24 worker GET accept path still requires ControlPlane@v1.0.0 payload; HTTP freeze bodies are rejected and FIXTURE is kept. Expected during RELAUNCH_SUMMARY_APIS.",
+    "portfolio_server PUT/PATCH/DELETE 405 via generic send_error; POST is the dedicated control-plane intercept. handle() 405s all non-GET."
+  ]
+}

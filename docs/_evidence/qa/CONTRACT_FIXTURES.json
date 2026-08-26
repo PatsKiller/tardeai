@@ -1,0 +1,40 @@
+{
+  "schema": "QaContractFixtures@v1",
+  "http_freeze": "CONTROL_PLANE_API_V1_BASELINE",
+  "baseline_commit": "084674c560abd7bb910726f62e41508703c07e40",
+  "freeze_commit": "4e62ee22809cca92d01c45da184dc18f04adf8ac",
+  "result": "PASS",
+  "envelope_required": ["ok", "as_of", "source_sha", "freshness", "data_quality", "evidence_class", "data"],
+  "collection_data_required": ["items", "pagination"],
+  "pagination_required": ["limit", "offset", "total"],
+  "payload_key_in_http_freeze": false,
+  "summary_routes": [
+    "/api/v3/control-plane/system",
+    "/api/v3/control-plane/agents",
+    "/api/v3/control-plane/workflows",
+    "/api/v3/control-plane/research",
+    "/api/v3/control-plane/stores",
+    "/api/v3/control-plane/identity",
+    "/api/v3/control-plane/notifications",
+    "/api/v3/control-plane/learning",
+    "/api/v3/control-plane/maturity",
+    "/api/v3/control-plane/audit"
+  ],
+  "checks": {
+    "BASELINE_json_matches_api.ROUTES": true,
+    "SCHEMA_json_matches_BASELINE": true,
+    "live_handle_GET_has_envelope_keys": true,
+    "live_handle_GET_has_no_payload_key": true,
+    "collection_routes_have_items_and_pagination": true,
+    "system_is_READ_ONLY_ADVISORY": true,
+    "system_runtime_state_not_LIVE": true,
+    "agents.unavailable.FIXTURE.json_labeled_FIXTURE": true,
+    "SUMMARY_UNAVAILABLE_SNAPSHOT_covers_all_summary_routes": true
+  },
+  "r21_1_pending_routes_not_part_of_freeze": [
+    "/api/v3/control-plane/agents/{id}",
+    "/api/v3/control-plane/workflows/{id}"
+  ],
+  "r21_1_present_additively_on_this_branch": true,
+  "r21_1_note": "handle() serves detail routes; api.ROUTES remains the frozen summary tuple. Additive, not a freeze rename."
+}
