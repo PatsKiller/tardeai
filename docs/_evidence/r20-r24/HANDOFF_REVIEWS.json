@@ -1,0 +1,53 @@
+{
+  "integrator": "PRINCIPAL_INTEGRATOR",
+  "frozen_contract": "ControlPlane@v1.0.0",
+  "as_of": "2026-08-26T17:00:00+00:00",
+  "reviews": {
+    "R21": {
+      "owner": "CODEX",
+      "decision": "HOLD",
+      "ready_for_local_integration": false,
+      "reason": "Envelope and field names do not match ControlPlane@v1.0.0. GET-only is acceptable. Must adapt before replacing R22-R24 mocks."
+    },
+    "R22": {
+      "owner": "subagent",
+      "decision": "ACCEPT_PAGES",
+      "ready_for_local_integration": true,
+      "forbidden_paths_touched": [],
+      "tests": "12 passed",
+      "head": "7bc2ba55 (handoff) / a5b2044b (impl)",
+      "note": "Fixture pages only. Integrator has not registered App.tsx routes. Do not replace live /agents."
+    },
+    "R23": {
+      "owner": "subagent",
+      "decision": "ACCEPT_PAGES",
+      "ready_for_local_integration": true,
+      "forbidden_paths_touched": [],
+      "tests": "20 passed",
+      "head": "207ec856",
+      "note": "Preview JSON byte-locked to frozen fixtures. No mint control."
+    },
+    "R24": {
+      "owner": "subagent",
+      "decision": "ACCEPT_PAGES",
+      "ready_for_local_integration": true,
+      "forbidden_paths_touched": [],
+      "tests": "22 passed",
+      "head": "0333be0b / 49b96b38",
+      "note": "No certification score. auto_promotions=0. Readiness NOT_READY in fixture."
+    }
+  },
+  "not_done": [
+    "R21 ControlPlane@v1.0.0 envelope",
+    "mock replacement with real APIs",
+    "App.tsx / NavRail wiring",
+    "cross-stream dry run",
+    "historical replay >=100",
+    "fault campaign",
+    "parity/cutover",
+    "full local acceptance"
+  ],
+  "LOCAL_R20_R24_CONVERGENCE_READY_FOR_SYNC": false,
+  "github_pushes": 0,
+  "authority": "READ_ONLY_ADVISORY"
+}

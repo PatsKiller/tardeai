@@ -1,0 +1,27 @@
+{
+  "stream": "R21",
+  "owner": "CODEX",
+  "reviewer": "PRINCIPAL_INTEGRATOR",
+  "status": "INCOMPATIBLE_WITH_FROZEN_CONTRACT",
+  "ready_for_local_integration": false,
+  "commits": ["084674c5", "c3b105a7", "b5f55339"],
+  "contract_consumed_by_codex": "control-plane-contracts-v1 (pre-freeze name)",
+  "frozen_contract": "ControlPlane@v1.0.0",
+  "incompatibilities": [
+    "Envelope uses data instead of payload",
+    "Missing schema, page, authority, memory_behavior_influence, computes_* flags",
+    "Agent field runtime_state vs frozen state",
+    "Workflow node_type vs frozen kind; node kinds UPPER_SNAKE vs lowercase lineage names",
+    "Registered via scripts/portfolio_server.py (integrator-owned) not a dedicated api_v3 module + integrator registration"
+  ],
+  "what_is_acceptable": [
+    "GET-only, POST 405",
+    "no broker/order/stop mutations",
+    "explicit UNAVAILABLE / INVALID_SCHEMA / UNKNOWN_AGENT",
+    "bounded pagination",
+    "UNIT tests pass on Codex envelope"
+  ],
+  "required_before_wiring_R22_R23_R24": "R21 must emit ControlPlane@v1.0.0 envelopes matching fixtures/control_plane/v1.0.0, OR Integrator adds a mapping adapter that does not change semantics. Do not change v1.0.0 to match Codex convenience.",
+  "live_claim": false,
+  "authority": "READ_ONLY_ADVISORY"
+}

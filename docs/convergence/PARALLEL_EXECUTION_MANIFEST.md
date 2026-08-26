@@ -10,10 +10,10 @@
 | Stream | Owner | Scope | Status | Handoff |
 |---|---|---|---|---|
 | R20 | Integrator | runtime/specialist evidence | AUDIT_COMPLETE | docs/_evidence/r20 |
-| R21 | **CODEX** | CONTROL_PLANE_BACKEND — canonical read-only APIs | ASSIGNED | pending Codex |
-| R22 | worker `r22` | Agent Office + Workflow Trace pages (fixtures until R21) | LAUNCHING | pending |
-| R23 | worker `r23` | Research Attention, Data Integrity, Identity, Notifications | LAUNCHING | pending |
-| R24 | worker `r24` | Learning, Maturity, Audit pages | LAUNCHING | pending |
+| R21 | **CODEX** | CONTROL_PLANE_BACKEND — canonical read-only APIs | HOLD — envelope ≠ ControlPlane@v1.0.0 | docs/_evidence/r21/R21_HANDOFF_REVIEW.json |
+| R22 | worker `r22` | Agent Office + Workflow Trace pages (fixtures) | ACCEPT_PAGES | feat/r22-agent-office-workflow |
+| R23 | worker `r23` | Research/Data/Identity/Notifications pages | ACCEPT_PAGES | feat/r23-admin-observability |
+| R24 | worker `r24` | Learning/Maturity/Audit pages | ACCEPT_PAGES | feat/r24-learning-maturity-ui |
 | QA | Integrator (optional later) | contract/fault/replay | pending | pending |
 
 ## R21 Codex mission (do not expand)
