@@ -111,14 +111,55 @@ def _watchlist_rows() -> list[dict]:
     return rows
 
 
+def _identifier_rows() -> list[dict]:
+    """Durable identifiers the brokers already gave us and nothing consumed.
+
+    Schwab e-confirms carry a real CUSIP per traded symbol. That is exactly what
+    lifts an entity from a name-derived CANDIDATE identity to a CONFIRMED one, and
+    it has been sitting in `econfirm_evidence` unused. Read it rather than ask a
+    vendor for something we already hold.
+    """
+    try:
+        from price_db_sync import _get_conn  # type: ignore
+        conn = _get_conn()
+    except Exception:
+        return []
+    rows = []
+    try:
+        cur = conn.cursor()
+        cur.execute("""SELECT DISTINCT UPPER(symbol), cusip FROM econfirm_evidence
+                       WHERE symbol IS NOT NULL AND symbol <> ''
+                         AND cusip IS NOT NULL AND cusip <> ''""")
+        for sym, cusip in cur.fetchall():
+            rows.append({"symbol": sym, "identifiers": {"cusip": str(cusip).strip()},
+                         "source": "econfirm"})
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+    return rows
+
+
 def collect_rows() -> list[dict]:
     """Holdings first: a held position's richer row should win the merge."""
     merged: dict[str, dict] = {}
-    for row in _holdings_rows() + _watchlist_rows():
+    for row in _holdings_rows() + _watchlist_rows() + _identifier_rows():
         sym = row["symbol"]
         if sym in merged:
             for k, v in row.items():
-                if v and not merged[sym].get(k):
+                if k == "identifiers" and isinstance(v, dict):
+                    # Union, never replace: holdings supply the name, e-confirms
+                    # supply the CUSIP, and an entity needs both to reach CONFIRMED.
+                    merged[sym].setdefault("identifiers", {}).update(
+                        {ik: iv for ik, iv in v.items() if iv}
+                    )
+                elif v and not merged[sym].get(k):
                     merged[sym][k] = v
         else:
             merged[sym] = dict(row)

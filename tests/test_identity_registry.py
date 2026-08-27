@@ -159,3 +159,30 @@ def test_event_id_keys_on_the_guid_not_the_ticker(registry: Path):
 
     assert before != after   # now derived from the durable spine
     assert after.startswith("evt_")
+
+
+def test_broker_cusip_upgrades_a_named_entity():
+    """The Schwab path end to end: name → CANDIDATE, then CUSIP → CONFIRMED.
+
+    Reproduces the live PFLT upgrade. The broker hands us the CUSIP in the same
+    `instrument` dict as the symbol; capturing it is what makes an entity
+    CONFIRMED rather than name-derived.
+    """
+    doc = register(empty_registry(), {"symbol": "PFLT", "company": "PennantPark Floating Rate"})
+    assert lookup_symbol(doc, "PFLT")["identity_status"] == "CANDIDATE"
+    candidate = lookup_symbol(doc, "PFLT")["subject_guid"]
+
+    register(doc, {"symbol": "PFLT", "identifiers": {"cusip": "70806A106"}})
+    confirmed = lookup_symbol(doc, "PFLT")
+
+    assert confirmed["identity_status"] == "CONFIRMED"
+    assert confirmed["subject_guid"] != candidate
+    assert resolve_guid(doc, candidate) == confirmed["subject_guid"]
+
+
+def test_schwab_adapter_keeps_the_cusip():
+    """Guard the discard. `instrument.cusip` was dropped on every sync."""
+    src = (Path(__file__).resolve().parent.parent / "scripts" / "schwab_adapter.py").read_text()
+    block = src.split("fields=positions", 1)[1][:1200]
+
+    assert '"cusip"' in block, "Schwab positions must carry the broker-supplied CUSIP"
