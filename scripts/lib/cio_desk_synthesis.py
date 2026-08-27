@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import os
 import re
+import time
 from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -184,6 +185,34 @@ def _import_cio():
         return safe_current_pin, safe_context_block, recent_operator_learning, CIOPlanStore, is_material_plan
 
 
+STALE_SNAPSHOT_AGE_S = 60  # matches the max_age_s=60 freshness bar the live-collect fallback enforces
+
+
+def _stamp_freshness(snap: dict[str, Any], *, source: str, snap_path: Optional[Path] = None) -> dict[str, Any]:
+    """Audit finding M5 (docs/audits/CIO_PLATFORM_AUDIT_2026-08-27.md): _get_snapshot()'s
+    cache-first fast paths read cio_snapshot.json directly with no staleness check at
+    all, while the live-collect fallback enforces max_age_s=60 — so the CIO desk could
+    silently render an arbitrarily stale cached position view with nothing downstream
+    able to tell the difference. Every return path now stamps `_freshness` so a
+    consumer can see it: file-read paths get the file's real mtime age; a fresh
+    collect is stamped age_s=0 for parity, not left unmarked (an unmarked snapshot
+    would look ambiguous rather than confirmed-fresh)."""
+    if not isinstance(snap, dict):
+        return snap
+    age_s: Optional[float] = 0.0
+    if snap_path is not None:
+        try:
+            age_s = time.time() - snap_path.stat().st_mtime
+        except Exception:
+            age_s = None
+    snap["_freshness"] = {
+        "source": source,
+        "age_s": round(age_s, 1) if age_s is not None else None,
+        "stale": (age_s is None) or (age_s > STALE_SNAPSHOT_AGE_S),
+    }
+    return snap
+
+
 def _get_snapshot() -> dict[str, Any]:
     """Load CIO snapshot with root patch so API (release tree) sees live portfolio data."""
     errors: list[str] = []
@@ -208,7 +237,7 @@ def _get_snapshot() -> dict[str, Any]:
                     import json as _json
                     file_snap = _json.loads(snap_path.read_text(encoding="utf-8"))
                     if (file_snap.get("domains") or {}).get("portfolio", {}).get("total_value") is not None:
-                        return file_snap
+                        return _stamp_freshness(file_snap, source="cached_file_no_module", snap_path=snap_path)
                 except Exception as e3:
                     errors.append(f"direct_file:{e3}")
         try:
@@ -249,7 +278,8 @@ def _get_snapshot() -> dict[str, Any]:
                         fport = _body(fdom, "portfolio")
                         fcash = _body(fdom, "cash_buying_power")
                         if fport.get("total_value") is not None or fcash.get("total_cash") is not None:
-                            return file_snap if "domains" in file_snap else {"domains": fdom}
+                            result = file_snap if "domains" in file_snap else {"domains": fdom}
+                            return _stamp_freshness(result, source="cached_file", snap_path=snap_path)
                 except Exception as e:
                     errors.append(f"file_snap:{root}:{type(e).__name__}")
             # Fresh collect as fallback
@@ -260,9 +290,11 @@ def _get_snapshot() -> dict[str, Any]:
             port = _body(domains, "portfolio")
             cash = _body(domains, "cash_buying_power")
             if port.get("total_value") is not None or cash.get("total_cash") is not None:
-                return snap if "domains" in snap else {"domains": domains}
+                result = snap if "domains" in snap else {"domains": domains}
+                return _stamp_freshness(result, source="fresh_collect")
             if domains and not best:
                 best = snap if "domains" in snap else {"domains": domains}
+                _stamp_freshness(best, source="fresh_collect_partial")
         except Exception as e:
             errors.append(f"root:{root}:{type(e).__name__}:{e}")
             continue
@@ -273,7 +305,8 @@ def _get_snapshot() -> dict[str, Any]:
     if best:
         return best
     try:
-        return get_cio_snapshot(max_age_s=60) or {}
+        result = get_cio_snapshot(max_age_s=60) or {}
+        return _stamp_freshness(result, source="live_collect_60s_bar")
     except Exception as e:
         try:
             Path("/tmp/cio_desk_snap_err.txt").write_text(f"final:{type(e).__name__}:{e}")
@@ -316,6 +349,7 @@ def collect_desk_inputs() -> dict[str, Any]:
         thesis = safe_context_block("desk") or {}
 
     snap = _get_snapshot()
+    snapshot_freshness = snap.get("_freshness") or {"source": "unknown", "age_s": None, "stale": None}
     domains = snap.get("domains") or snap or {}
     if not isinstance(domains, dict):
         domains = {}
@@ -547,6 +581,7 @@ def collect_desk_inputs() -> dict[str, Any]:
         "evidence_spine": spine,
         "advisory_desk": _collect_advisory_desk(),
         "authority": "READ_ONLY_ADVISORY",
+        "snapshot_freshness": snapshot_freshness,
     }
 
 
