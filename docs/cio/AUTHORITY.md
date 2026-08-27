@@ -84,6 +84,21 @@ Plans and thesis records should carry `authority: READ_ONLY_ADVISORY` in storage
 
 ---
 
+## Scope: execution authority vs. data/decision authority
+
+Everything above governs whether the CIO Desk itself may **execute** anything
+(orders, stops, risk limits) — it does not describe whether *other platform
+systems* consult the CIO Desk's situations/plans/thesis before acting. Those
+are two different questions. As of 2026-08-27 (see
+[`docs/audits/CIO_PLATFORM_AUDIT_2026-08-27.md`](../audits/CIO_PLATFORM_AUDIT_2026-08-27.md),
+finding C1), the platform's daily mechanical rebalance-drift alert
+(`scripts/portfolio_rebalancer.py`) runs entirely independent of the CIO
+Desk — see [ARCHITECTURE.md § Where CIO Desk does not participate at all](./ARCHITECTURE.md#where-cio-desk-does-not-participate-at-all).
+Do not read `READ_ONLY_ADVISORY` as implying every recommendation surface on
+the platform is CIO-gated; it is not, today, by design.
+
+---
+
 ## Related
 
 - [ARCHITECTURE.md](./ARCHITECTURE.md) — Track A / Track B  
