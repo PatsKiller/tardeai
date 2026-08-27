@@ -126,6 +126,7 @@ def resolve_entity(payload: Mapping[str, Any] | None) -> dict[str, Any]:
     # companies could collide on one event id years apart. A registered entity
     # supplies its real GUID; an unregistered one degrades to the previous
     # behaviour rather than blocking.
+    lookup_failed: str | None = None
     if not guid_s and subject_s:
         try:
             from scripts.lib.identity_registry import load_cached, lookup_symbol
@@ -135,8 +136,15 @@ def resolve_entity(payload: Mapping[str, Any] | None) -> dict[str, Any]:
             if entity and entity.get("subject_guid"):
                 guid_s = str(entity["subject_guid"])
                 src.setdefault("entity_type", ENTITY_SECURITY)
-        except Exception:
-            pass  # registry unavailable: identity still resolves by symbol
+        except Exception as e:
+            # Degrading to the symbol is correct -- an unreadable registry must
+            # not block the write, and it must never mint a plausible GUID. But
+            # swallowing the reason made two different states identical: "the
+            # registry says this symbol is unknown" and "the registry could not
+            # be read at all" both surfaced as UNRESOLVED. The first is a fact
+            # about the entity; the second is an outage, and only one of them is
+            # fixed by registering the symbol. Record which happened.
+            lookup_failed = f"{type(e).__name__}: {e}"
 
     declared = src.get("entity_type")
     # UNRESOLVED is the absence of an answer, not an answer. Treating it as a
@@ -157,6 +165,9 @@ def resolve_entity(payload: Mapping[str, Any] | None) -> dict[str, Any]:
         "resolved": bool(subject_s),
         # Same guarantee the envelope makes: a ticker is not a security identity.
         "never_minted_security_guid": True,
+        # Present ONLY when the spine could not be consulted. Absent means the
+        # lookup ran; UNRESOLVED then means the entity is genuinely unregistered.
+        **({"identity_lookup_failed": lookup_failed} if lookup_failed else {}),
     }
 
 
@@ -241,52 +252,12 @@ def registry_path(root: Path | str | None = None) -> Path:
         return Path.home() / "trade-ai-releases" / "persistent-state" / REGISTRY_RELATIVE
 
 
-def record_identity(
-    payload: Mapping[str, Any] | None,
-    *,
-    event_kind: str = "UNSPECIFIED",
-    occurred_at: Any = None,
-    root: Path | str | None = None,
-) -> dict[str, Any] | None:
-    """Append an observability record for a derived identity.
+# `record_identity()` lived here: it wrote an event_id -> identity index into
+# the registry's `events` dict. Removed 2026-08-27 with zero production callers
+# and zero readers -- `events` was still {} while `entities` held 10,279. It
+# duplicated facts the lineage envelope already carries (event_id, subject_guid,
+# entity_type), and wiring it would have rewritten a megabytes-scale JSON on
+# every event, on the lineage write path. An observability half that has never
+# recorded anything is the dark-contract pattern, here inside the identity
+# system itself. Restore from git history if a real reader ever appears.
 
-    Best-effort by design: the id is derived, not looked up, so a failure here
-    cannot break the join. Returns None when the entity does not resolve or the
-    write fails -- callers should not branch on it.
-    """
-    eid = event_id_for(payload, event_kind=event_kind, occurred_at=occurred_at)
-    if not eid:
-        return None
-
-    entity = resolve_entity(payload)
-    record = {
-        "schema": SCHEMA,
-        "event_id": eid,
-        "workflow_id": workflow_id_for_event(eid),
-        "subject_id": entity["subject_id"],
-        "entity_type": entity["entity_type"],
-        "event_kind": str(event_kind or "UNSPECIFIED").upper(),
-        "authority": AUTHORITY,
-        "memory_behavior_influence": MBI,
-    }
-
-    try:
-        path = registry_path(root)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            doc = json.loads(path.read_text(encoding="utf-8"))
-            if not isinstance(doc, dict):
-                doc = {}
-        except (OSError, ValueError):
-            doc = {}
-        doc.setdefault("schema", REGISTRY_SCHEMA)
-        doc.setdefault("authority", AUTHORITY)
-        entries = doc.setdefault("events", {})
-        if isinstance(entries, dict):
-            entries[eid] = record
-        doc["updated_at"] = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
-        path.write_text(json.dumps(doc, indent=2, sort_keys=True), encoding="utf-8")
-    except OSError:
-        return None
-
-    return record

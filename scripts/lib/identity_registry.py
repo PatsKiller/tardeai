@@ -92,6 +92,8 @@ def empty_registry() -> dict[str, Any]:
         "memory_behavior_influence": MBI,
         "entities": {},
         "by_symbol": {},
+        # Unused since 2026-08-27: the only writer (record_identity) had zero
+        # callers and was removed. Kept so the persisted doc shape is stable.
         "events": {},
         "updated_at": None,
     }
