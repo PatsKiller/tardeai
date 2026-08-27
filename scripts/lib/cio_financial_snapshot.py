@@ -702,6 +702,13 @@ def build_canonical_snapshot(
                 # ── Freshness check ─────────────────────────────────
                 quality_state = evidence.quality_state
                 stale_since = None
+                # A domain with no stamp at all is never age-checked. That is a
+                # producer gap, not evidence of staleness, so it is flagged rather
+                # than blocked -- 12 domains are in this state today, four of them
+                # required by run purposes that currently pass. Blocking them here
+                # would be a silent gate change; the flag makes it an operator
+                # decision instead.
+                freshness_unverified = (quality_state in ("AVAILABLE", "PARTIAL") and not evidence.as_of)
                 if quality_state in ("AVAILABLE", "PARTIAL") and evidence.as_of:
                     try:
                         as_of_dt = datetime.fromisoformat(evidence.as_of)
@@ -713,7 +720,15 @@ def build_canonical_snapshot(
                             quality_state = "STALE"
                             stale_since = evidence.as_of
                     except (ValueError, TypeError):
-                        pass
+                        # FAIL-CLOSED. This used to `pass`, leaving the domain
+                        # AVAILABLE -- so an unparseable stamp marked a domain
+                        # permanently fresh. Demonstrated on `sectors`: a 6-year-old
+                        # UNPARSEABLE stamp read AVAILABLE while the same age
+                        # parseable read STALE. Not hypothetical: holdings.json
+                        # writes "%Y-%m-%d %H:%M:%S ET", which fromisoformat cannot
+                        # read. An unreadable age is not a young age.
+                        quality_state = "STALE"
+                        stale_since = str(evidence.as_of)
 
                 # ── Add domain to snapshot ──────────────────────────
                 snapshot.add_domain(
@@ -727,6 +742,10 @@ def build_canonical_snapshot(
                     reason_code=evidence.reason_code or "",
                     partial_fields=evidence.partial_fields,
                 )
+                if freshness_unverified:
+                    rec = snapshot._domains.get(domain_id)
+                    if isinstance(rec, dict):
+                        rec["freshness_unverified"] = True
                 supported.add(domain_id)
 
             elif capability.is_broken:
