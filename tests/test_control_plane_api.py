@@ -54,6 +54,26 @@ def test_non_control_plane_path_returns_none():
     assert api.handle("/api/v3/advisory") is None
 
 
+def test_canonical_jsonl_projection_is_visible(tmp_path, monkeypatch):
+    """Control-plane readers consume canonical append-only production stores."""
+    cio = tmp_path / "data" / "cio"
+    cio.mkdir(parents=True)
+    (cio / "cio_notification_outbox.jsonl").write_text(
+        json.dumps({"notification_id": "n1", "decision_id": "d1", "status": "SUPPRESSED"}) + "\n"
+    )
+    monkeypatch.setattr(api, "PROJECT_ROOT", tmp_path)
+    status, body = api.handle("/api/v3/control-plane/notifications")
+    assert status == 200
+    assert body["data_quality"] == "AVAILABLE"
+    assert body["data"]["items"][0]["notification_id"] == "n1"
+
+
+def test_canonical_watchlist_path_is_not_retired_root():
+    source = Path("scripts/lib/cio_desk_synthesis.py").read_text()
+    assert '"data" / "portfolios" / "state" / "watchlist.json"' in source
+    assert '"data" / "watchlist" / "state" / "watchlist.json"' not in source
+
+
 def test_agent_detail_and_unknown_states(tmp_path, monkeypatch):
     root = tmp_path / "data" / "runtime"; root.mkdir(parents=True)
     (root / "agent_registry.json").write_text(json.dumps([{

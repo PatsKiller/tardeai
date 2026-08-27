@@ -152,7 +152,10 @@ def _patch_broker_project_root(root: Path) -> None:
         cp.STATE_DIR = root / "data" / "portfolios" / "state"
         cp.RUNTIME_DIR = root / "data" / "runtime"
         if hasattr(cp, "WATCHLIST_PATH"):
-            cp.WATCHLIST_PATH = root / "data" / "watchlist" / "state" / "watchlist.json"
+            # Canonical watchlist lives with portfolio state.  The former
+            # data/watchlist/state path was a retired reader root and caused
+            # live CIO projections to report an empty watch universe.
+            cp.WATCHLIST_PATH = root / "data" / "portfolios" / "state" / "watchlist.json"
         if hasattr(cp, "RECONCILIATION_PATH"):
             cp.RECONCILIATION_PATH = root / "data" / "reconciliation" / "state" / "latest.json"
     except Exception:
@@ -232,7 +235,7 @@ def _get_snapshot() -> dict[str, Any]:
             if hasattr(cp, "SNAPSHOT_PATH"):
                 cp.SNAPSHOT_PATH = cp.STATE_DIR / "data_broker" / "cio_snapshot.json"
             if hasattr(cp, "WATCHLIST_PATH"):
-                cp.WATCHLIST_PATH = root / "data" / "watchlist" / "state" / "watchlist.json"
+                cp.WATCHLIST_PATH = root / "data" / "portfolios" / "state" / "watchlist.json"
             if hasattr(cp, "RECONCILIATION_PATH"):
                 cp.RECONCILIATION_PATH = root / "data" / "reconciliation" / "state" / "latest.json"
             # Prefer reading an existing good snapshot file directly first (fast + reliable)

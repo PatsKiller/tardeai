@@ -27,6 +27,43 @@ OWNERSHIP_CLASSES = (
 
 # Logical stores. Paths are relative to production state root.
 STORES: dict[str, dict[str, Any]] = {
+    "portfolio.watchlist": {
+        "path": "data/portfolios/state/watchlist.json",
+        "format": "json",
+        "schema": "Watchlist@v1",
+        "authority": AUTHORITY,
+        "writer": "portfolio_watchlist",
+        "readers": ["cio.operator_product", "control_plane"],
+        "kind": "current",
+        "ownership_class": "CANONICAL_PERSISTENT_STATE",
+        "append_only": False,
+        "rebuildable": False,
+    },
+    "reconciliation.latest": {
+        "path": "data/reconciliation/state/latest.json",
+        "format": "json",
+        "schema": "ReconciliationSnapshot@v1",
+        "authority": AUTHORITY,
+        "writer": "broker_reconciliation",
+        "readers": ["control_plane", "cio.operator_product"],
+        "kind": "current",
+        "ownership_class": "DERIVED_CURRENT_PROJECTION",
+        "append_only": False,
+        "rebuildable": True,
+    },
+    "learning.weekly": {
+        "path": "data/cio/weekly_learning.jsonl",
+        "format": "jsonl",
+        "schema": "CIOWeeklyLearningReview@v1",
+        "authority": AUTHORITY,
+        "writer": "multi_tier_trade_reviewer",
+        "readers": ["control_plane", "cio.operator_product"],
+        "kind": "history",
+        "ownership_class": "APPEND_ONLY_EVIDENCE",
+        "append_only": True,
+        "rebuildable": False,
+        "note": "Backed by paper_trade_multi_reviews when database access is available.",
+    },
     "portfolio.holdings.current": {
         "path": "data/portfolios/state/holdings.json",
         "format": "json",

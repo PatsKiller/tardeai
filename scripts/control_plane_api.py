@@ -70,6 +70,59 @@ def _read_json(path: Path) -> tuple[Any | None, str]:
         return None, "INVALID_SCHEMA"
 
 
+def _read_jsonl(path: Path) -> tuple[list[dict[str, Any]] | None, str]:
+    """Read an append-only projection without failing the whole endpoint on one bad row."""
+    try:
+        rows: list[dict[str, Any]] = []
+        for line_no, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            if not line.strip():
+                continue
+            try:
+                value = json.loads(line)
+            except ValueError:
+                return None, "INVALID_SCHEMA"
+            if not isinstance(value, dict):
+                return None, "INVALID_SCHEMA"
+            rows.append(value)
+        return rows, "AVAILABLE"
+    except FileNotFoundError:
+        return None, "UNAVAILABLE"
+    except OSError:
+        return None, "UNAVAILABLE"
+
+
+def _state_root() -> Path:
+    """Resolve the runtime state root; deployment may override the code directory."""
+    for key in ("TRADEAI_STATE_ROOT", "TRADEAI_ROOT", "TRADEAI_PERSISTENT_STATE_ROOT"):
+        value = os.environ.get(key)
+        if value:
+            return Path(value)
+    return PROJECT_ROOT
+
+
+def _canonical_paths(store_ids: tuple[str, ...], fallbacks: tuple[str, ...] = ()) -> tuple[Path, ...]:
+    """Resolve logical stores through CanonicalStoreRegistry, retaining test fallbacks."""
+    root = _state_root()
+    paths: list[Path] = []
+    try:
+        from scripts.lib.canonical_store_registry import resolve_store
+        for store_id in store_ids:
+            loc = resolve_store(store_id, root=root)
+            spec = loc.get("spec") or {}
+            path = loc.get("path") if loc.get("exists") else loc.get("primary_path")
+            if path:
+                paths.append(Path(path))
+            for alias in spec.get("aliases") or []:
+                paths.append(root / alias)
+    except Exception:
+        pass
+    paths.extend(root / p for p in fallbacks)
+    # Preserve the historical PROJECT_ROOT fixture behavior when monkeypatched.
+    if root != PROJECT_ROOT:
+        paths.extend(PROJECT_ROOT / p for p in fallbacks)
+    return tuple(dict.fromkeys(paths))
+
+
 def _bounded(query: dict[str, Any]) -> tuple[int, int]:
     def integer(key: str, default: int) -> int:
         value = query.get(key, default)
@@ -89,7 +142,7 @@ def _paged(rows: list[dict[str, Any]], query: dict[str, Any]) -> dict[str, Any]:
 
 def _rows_from_json(paths: tuple[Path, ...], query: dict[str, Any]) -> tuple[dict[str, Any], str]:
     for path in paths:
-        value, quality = _read_json(path)
+        value, quality = _read_jsonl(path) if path.suffix.lower() == ".jsonl" else _read_json(path)
         if quality == "AVAILABLE":
             if isinstance(value, list):
                 return _paged([dict(row) for row in value if isinstance(row, dict)], query), quality
@@ -106,7 +159,10 @@ def _rows_from_json(paths: tuple[Path, ...], query: dict[str, Any]) -> tuple[dic
 def _load_rows(paths: tuple[Path, ...]) -> tuple[list[dict[str, Any]], str]:
     """Load bounded projection inputs without replaying or mutating domain state."""
     for path in paths:
-        value, quality = _read_json(path)
+        if path.suffix.lower() == ".jsonl":
+            value, quality = _read_jsonl(path)
+        else:
+            value, quality = _read_json(path)
         if quality != "AVAILABLE":
             if quality == "INVALID_SCHEMA":
                 return [], quality
@@ -280,8 +336,33 @@ def _system() -> dict[str, Any]:
 
 
 def _stores() -> tuple[dict[str, Any], str]:
-    candidates = (PROJECT_ROOT / "data" / "runtime" / "canonical_store_registry.json", PROJECT_ROOT / "data" / "runtime" / "store_registry.json")
-    return _rows_from_json(candidates, {})
+    candidates = _canonical_paths((), ("data/runtime/canonical_store_registry.json", "data/runtime/store_registry.json"))
+    data, quality = _rows_from_json(candidates, {})
+    if quality == "AVAILABLE":
+        return data, quality
+    # Registry is code-canonical; expose bounded metadata when a generated
+    # registry projection has not yet been emitted, but only for a populated
+    # state root. Empty test roots remain explicitly UNAVAILABLE.
+    root = _state_root()
+    if any((root / p).exists() for p in ("data/cio", "data/portfolios", "data/reconciliation")):
+        try:
+            from scripts.lib.canonical_store_registry import registry, resolve_store
+            rows = []
+            for store_id, spec in registry()["stores"].items():
+                loc = resolve_store(store_id, root=root)
+                rows.append({
+                    "store_id": store_id,
+                    "path": str(loc.get("path") or loc.get("primary_path")),
+                    "exists": bool(loc.get("exists")),
+                    "schema": spec.get("schema"),
+                    "writer": spec.get("writer"),
+                    "ownership_class": spec.get("ownership_class"),
+                    "status": "AVAILABLE" if loc.get("exists") else "UNAVAILABLE_PRODUCER_NOT_RUN",
+                })
+            return _paged(rows, {}), "AVAILABLE"
+        except Exception:
+            pass
+    return data, quality
 
 
 def handle(path: str, *, method: str = "GET", query: dict[str, Any] | None = None) -> tuple[int, dict[str, Any]] | None:
@@ -303,14 +384,14 @@ def handle(path: str, *, method: str = "GET", query: dict[str, Any] | None = Non
         detail, quality = _workflow_detail(base.rsplit("/", 1)[-1], query)
         return 200, _envelope(detail, quality=quality)
     mapping = {
-        "/api/v3/control-plane/agents": ((PROJECT_ROOT / "data" / "runtime" / "agent_registry.json",), "agents"),
-        "/api/v3/control-plane/workflows": ((PROJECT_ROOT / "data" / "runtime" / "workflow_traces.json",), "workflows"),
-        "/api/v3/control-plane/research": ((PROJECT_ROOT / "data" / "runtime" / "research_attention.json",), "research"),
-        "/api/v3/control-plane/identity": ((PROJECT_ROOT / "data" / "runtime" / "identity_registry.json",), "identity"),
-        "/api/v3/control-plane/notifications": ((PROJECT_ROOT / "data" / "runtime" / "notification_receipts.json",), "notifications"),
-        "/api/v3/control-plane/learning": ((PROJECT_ROOT / "data" / "runtime" / "learning_evidence.json",), "learning"),
-        "/api/v3/control-plane/maturity": ((PROJECT_ROOT / "data" / "runtime" / "maturity.json",), "maturity"),
-        "/api/v3/control-plane/audit": ((PROJECT_ROOT / "data" / "runtime" / "audit_capability_claims.json",), "audit"),
+        "/api/v3/control-plane/agents": (_canonical_paths((), ("data/runtime/agent_registry.json",)), "agents"),
+        "/api/v3/control-plane/workflows": (_canonical_paths(("cio.operator_product.history", "cio.checkpoints"), ("data/runtime/workflow_traces.json",)), "workflows"),
+        "/api/v3/control-plane/research": (_canonical_paths(("research.current", "research.raw"), ("data/runtime/research_attention.json",)), "research"),
+        "/api/v3/control-plane/identity": (_canonical_paths((), ("data/runtime/identity_registry.json", "data/identity/identity_registry.json")), "identity"),
+        "/api/v3/control-plane/notifications": (_canonical_paths(("notifications.outbox",), ("data/runtime/notification_receipts.json",)), "notifications"),
+        "/api/v3/control-plane/learning": (_canonical_paths(("cio.outcomes", "cio.feedback"), ("data/runtime/learning_evidence.json",)), "learning"),
+        "/api/v3/control-plane/maturity": (_canonical_paths((), ("data/runtime/maturity.json",)), "maturity"),
+        "/api/v3/control-plane/audit": (_canonical_paths((), ("data/runtime/audit_capability_claims.json",)), "audit"),
     }
     if base in mapping:
         paths, _ = mapping[base]
