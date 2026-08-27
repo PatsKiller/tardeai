@@ -656,7 +656,13 @@ def build_canonical_snapshot(
                     )
                     continue
 
-                if isinstance(result, DomainEvidence):
+                # Duck-typed, not isinstance: `cio_portfolio` imports DomainEvidence
+                # as `lib.cio_domain_evidence` while this module imports it as
+                # `scripts.lib.cio_domain_evidence`. Both succeed, and they are two
+                # distinct class objects, so isinstance was False for every collector
+                # that returns one -- 8 of 18 -- which then reported
+                # "Unexpected collector return type: DomainEvidence" and died.
+                if isinstance(result, DomainEvidence) or hasattr(result, "quality_state"):
                     evidence = result
                 elif isinstance(result, dict):
                     r_state = result.get("quality_state") or result.get("state", "AVAILABLE")
@@ -745,7 +751,11 @@ def build_canonical_snapshot(
     # wrong thing and cost several diagnostic passes.
     known_gaps = CIO_DOMAINS - supported
     for domain in sorted(known_gaps):
-        if (snapshot._domains.get(domain) or {}).get("gap_reason"):
+        # Any domain the loop already recorded keeps its own record -- including
+        # one the collector ERRORED on, which carries error_detail rather than
+        # gap_reason. Checking only gap_reason still let those be overwritten,
+        # so an errored collector reported "not yet collected".
+        if domain in snapshot._domains:
             continue
         snapshot.add_unavailable(
             domain, gap_reason=f"{domain}_not_yet_collected_by_snapshot_builder"

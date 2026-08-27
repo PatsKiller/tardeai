@@ -133,8 +133,11 @@ def test_the_fallback_no_longer_masks_a_real_gap_reason():
     # The builder's fallback, not `from_known_gaps` — that one constructs a
     # fresh snapshot from scratch and has nothing to mask.
     tail = src.rsplit("known_gaps = CIO_DOMAINS - supported\n", 1)[1][:600]
-    assert "continue" in tail, "the fallback must skip domains that already carry a reason"
-    assert 'get("gap_reason")' in tail
+    assert "continue" in tail, "the fallback must skip domains the loop already recorded"
+    # Strengthened after this shipped: checking only `gap_reason` still let an
+    # ERRORED domain be overwritten, because add_error records `error_detail`.
+    # That is how the DomainEvidence identity clash stayed invisible.
+    assert "if domain in snapshot._domains:" in tail
 
 
 def test_the_evidence_gate_is_still_untouched():
