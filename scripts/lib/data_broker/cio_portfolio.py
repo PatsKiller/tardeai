@@ -89,6 +89,43 @@ def _load_json(path: Path) -> dict[str, Any]:
 # ── Domain collectors (deterministic, no model calls) ────────────────────────
 
 
+def _portfolio_as_of(holdings: dict[str, Any], totals: dict[str, Any]) -> str:
+    """ISO-8601 freshness stamp for the portfolio domain.
+
+    The domain reported STALE continuously while its data was minutes old,
+    because the stamp came from `as_of` -- a DATE, written by portfolio_loader
+    as `date.today()`. A date parses to midnight, so against a 12h threshold the
+    domain went stale every day at noon no matter how fresh the file was.
+
+    `generated_at` is what actually tracks the data: portfolio_repricer rewrites
+    it on every reprice and documents it in-file as "contents current as of".
+    The repricer's own comment warns about this exact trap -- "anything using the
+    obvious freshness field would call live data three days stale".
+
+    It is written as "%Y-%m-%d %H:%M:%S ET", which `datetime.fromisoformat`
+    cannot read. That matters more than it looks: the snapshot's freshness check
+    swallows a parse failure and leaves the domain AVAILABLE, so handing it an
+    unparseable stamp would mark the domain permanently fresh -- fail-open on a
+    financial gate. So it is converted to an aware ISO-8601 string here, and if
+    it cannot be converted we fall back to the old date, which blocks. The
+    failure mode stays fail-closed.
+    """
+    raw = str(holdings.get("generated_at") or "").strip()
+    if raw:
+        try:
+            if raw.upper().endswith(" ET"):
+                from zoneinfo import ZoneInfo
+                naive = datetime.strptime(raw[:-3].strip(), "%Y-%m-%d %H:%M:%S")
+                return naive.replace(tzinfo=ZoneInfo("America/New_York")).isoformat()
+            parsed = datetime.fromisoformat(raw)
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            return parsed.isoformat()
+        except (ValueError, TypeError, KeyError):
+            pass  # fall through to the conservative stamp
+    return str(totals.get("as_of", "") or "")
+
+
 def _domain_portfolio() -> dict[str, Any]:
     """Portfolio totals + holdings count from canonical state."""
     holdings = _load_json(STATE_DIR / "holdings.json")
@@ -100,7 +137,8 @@ def _domain_portfolio() -> dict[str, Any]:
         "day_change": totals.get("day_change"),
         "day_change_pct": totals.get("day_change_pct"),
         "holdings_count": len(holdings.get("holdings", [])),
-        "as_of": totals.get("as_of", ""),
+        "as_of": _portfolio_as_of(holdings, totals),
+        "positions_as_of": totals.get("as_of", ""),
     }
 
 

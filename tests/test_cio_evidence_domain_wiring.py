@@ -134,3 +134,60 @@ def test_the_gate_itself_is_untouched():
     assert 'state == "DATA_UNAVAILABLE"' in gate
     assert 'elif state == "STALE"' in gate
     assert "missing_required or stale_required or error_required" in gate
+
+
+def test_portfolio_freshness_stamp_is_parseable_and_tracks_the_data():
+    """The domain reported STALE while its data was minutes old.
+
+    The stamp came from `as_of`, a DATE written by portfolio_loader as
+    `date.today()`. A date parses to midnight, so against the 12h threshold the
+    domain went stale every day at noon regardless of how fresh the file was.
+    `generated_at` is what portfolio_repricer rewrites on every reprice.
+    """
+    from datetime import datetime
+
+    from scripts.lib.data_broker.cio_portfolio import _portfolio_as_of
+
+    stamp = _portfolio_as_of(
+        {"generated_at": "2026-08-27 14:45:02 ET"}, {"as_of": "2026-08-26"})
+
+    parsed = datetime.fromisoformat(stamp)   # must not raise: see below
+    assert parsed.tzinfo is not None, "a naive stamp is read as UTC and mis-ages the domain"
+    assert parsed.utcoffset().total_seconds() == -4 * 3600, "ET, not UTC"
+
+
+def test_an_unreadable_stamp_falls_back_to_blocking_not_to_fresh():
+    """The snapshot's freshness check swallows a parse failure.
+
+    `except (ValueError, TypeError): pass` leaves quality_state AVAILABLE, so a
+    stamp that cannot be parsed marks the domain permanently fresh — fail-OPEN
+    on a gate guarding account state. Anything unreadable must therefore fall
+    back to the conservative date, which ages out and blocks.
+    """
+    from scripts.lib.data_broker.cio_portfolio import _portfolio_as_of
+
+    assert _portfolio_as_of({"generated_at": "not a timestamp"},
+                            {"as_of": "2026-08-26"}) == "2026-08-26"
+    assert _portfolio_as_of({}, {"as_of": "2026-08-26"}) == "2026-08-26"
+    assert _portfolio_as_of({"generated_at": ""}, {"as_of": ""}) == ""
+
+
+def test_the_position_build_date_is_still_reported():
+    """Repricing refreshes prices, not the position list.
+
+    `generated_at` advances on every reprice, so the old date is kept as
+    `positions_as_of` rather than dropped — losing it would leave no signal that
+    the position list itself is old.
+    """
+    src = (ROOT / "scripts/lib/data_broker/cio_portfolio.py").read_text(encoding="utf-8")
+    block = src.split("def _domain_portfolio", 1)[1][:900]
+    assert '"positions_as_of"' in block
+
+
+def test_registry_names_the_field_the_collector_actually_stamps():
+    """Metadata that lies about its own source is how this bug hid."""
+    import json
+
+    registry = json.loads(
+        (ROOT / "config/cio_domain_capability_registry.json").read_text(encoding="utf-8"))
+    assert registry["domains"]["portfolio"]["freshness_timestamp_field"] == "generated_at"
