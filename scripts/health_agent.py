@@ -360,6 +360,8 @@ def run_auto_remediation(policy: dict, findings: list[dict]) -> list[dict]:
     and advance a strategy ladder so the same thrashing command is not re-run forever.
     """
     cfg = policy.get("auto_remediate") or {}
+    # Entries awaiting a verdict from the post-batch re-check.
+    _pending: list[dict] = []
     if not cfg.get("enabled", True):
         return []
     never = set(policy.get("never_auto_remediate") or cfg.get("never_auto_remediate") or [])
@@ -565,8 +567,12 @@ def run_auto_remediation(policy: dict, findings: list[dict]) -> list[dict]:
                     fh.write(json.dumps(entry) + "\n")
                 _record_rc_memory(ftype, f, entry)
                 continue  # next finding — don't fall through to normal rc/parse handling
-            # flock contention (rc 69/99) is not a hard failure — leave for next tick
-            ok = rc == 0
+            # flock contention (rc 69/99) is not a hard failure — leave for next tick.
+            # PROVISIONAL ONLY. The exit code says the command ran, never that the
+            # condition cleared -- the 2026-08-26 repricer exited 0 for 24h while the
+            # served numbers stayed stale. The real verdict is decided below, after
+            # the originating check is re-run. `ok` is overwritten there.
+            ok = False
             entry = {
                 "at": now.isoformat(), "type": ftype, "cmd": cmd, "ok": ok,
                 "exit_code": rc,
@@ -603,21 +609,114 @@ def run_auto_remediation(policy: dict, findings: list[dict]) -> list[dict]:
             if rc in (69, 99):
                 entry["ok"] = False
                 entry["flock_contention"] = True
+            # Queue for the re-check pass. Until then this entry claims nothing.
+            entry["_pending_verification"] = True
+            entry["_before_finding"] = {k: f.get(k) for k in
+                                        ("type", "severity", "message", "age_hours",
+                                         "age_seconds", "count", "drift_pct")}
+            _pending.append(entry)
             results.append(entry)
+            # The attempt is recorded now; the VERDICT is appended by the re-check
+            # pass as a second row (record: "verdict"). This row claims nothing.
             REMEDIATION_LOG.parent.mkdir(parents=True, exist_ok=True)
             with open(REMEDIATION_LOG, "a") as fh:
-                fh.write(json.dumps(entry) + "\n")
-            if ok:
-                st["last_success"] = now.isoformat()
-                # Ladder remediations that hold (product regime) should not inflate ineffective streak
-                if entry.get("held"):
-                    st["ineffective_streak"] = 0
-                state[ftype] = st
-                ran_cmds.add(cmd)
+                fh.write(json.dumps({**entry, "record": "attempt"}) + "\n")
+            # Dedupe on the command having RUN, not on it having worked -- this
+            # used to sit inside `if ok:`, so deferring the verdict would have let
+            # the same command run once per finding in a single batch.
+            ran_cmds.add(cmd)
+            if entry.get("held"):
+                st["ineffective_streak"] = 0
+            state[ftype] = st
             _record_rc_memory(ftype, f, entry)
         except Exception as ex:
             results.append({"at": now.isoformat(), "type": ftype, "cmd": cmd, "ok": False,
                             "error": str(ex)[:200], "trigger": f.get("message", "")[:200]})
+    # ── Verdict pass: re-run the originating check and compare ──────────────
+    # Nothing above this point is entitled to say a condition was fixed. A
+    # subprocess exit code proves the command ran; only re-observing the finding
+    # proves anything about the condition. This is one extra compute() for the
+    # whole batch, not one per finding.
+    if _pending:
+        try:
+            from scripts.lib.health_remediation_outcome import (
+                WORSENED, classify, diagnose, escalation_payload, should_stop_retrying,
+            )
+            try:
+                _, _, _, after_cat = compute(policy)
+                after_findings = [x for fs in after_cat.values() for x in fs]
+                recheck_ok = True
+            except Exception:
+                # Could not re-observe. Refuse to claim success rather than fall
+                # back to the exit code -- that fallback is the original defect.
+                after_findings, recheck_ok = [], False
+
+            breaker = int(cfg.get("max_ineffective_attempts_verified", 2))
+            for entry in _pending:
+                ftype = entry.get("type")
+                before = entry.pop("_before_finding", {}) or {}
+                entry.pop("_pending_verification", None)
+                if not recheck_ok:
+                    entry["ok"] = False
+                    entry["outcome"] = "UNVERIFIED"
+                    entry["note"] = "post-remediation re-check unavailable; no success claimed"
+                    continue
+
+                verdict = classify(
+                    finding_type=ftype, before=before, after_findings=after_findings,
+                    exit_code=entry.get("exit_code"),
+                    timed_out=bool(entry.get("error", "").startswith("timeout")),
+                )
+                entry["ok"] = verdict["ok"]
+                entry["outcome"] = verdict["outcome"]
+                entry["verified_by_recheck"] = verdict["verified_by_recheck"]
+                entry["metric_before"] = verdict["metric_before"]
+                entry["metric_after"] = verdict["metric_after"]
+
+                st2 = state.get(ftype) or _st(ftype)
+                streak = int(st2.get("ineffective_streak", 0))
+                if verdict["outcome"] == "CLEARED":
+                    st2["last_success"] = now.isoformat()
+                    st2["ineffective_streak"] = 0
+                else:
+                    # A non-CLEARED verdict must never stamp last_success. Stamping
+                    # it is what let a failing fix look recently-healthy.
+                    if verdict["outcome"] in ("INEFFECTIVE", WORSENED):
+                        streak += 1
+                        st2["ineffective_streak"] = streak
+                        cause = diagnose(verdict, evidence={
+                            "wrote_path": entry.get("wrote_path"),
+                            "read_path": entry.get("read_path"),
+                        })
+                        entry["root_cause"] = cause
+                        stop, reason = should_stop_retrying(verdict, streak, breaker=breaker)
+                        if stop:
+                            entry["escalate"] = escalation_payload(
+                                verdict, root_cause=cause,
+                                command=entry.get("cmd") or "", reason=reason)
+                            entry["ineffective"] = True
+                            entry["note"] = (
+                                f"{verdict['outcome']} — {cause}; not re-running. "
+                                f"{entry['escalate']['metric_trend']}")
+                        try:
+                            from lib import health_root_cause_memory as rcmem
+                            rcmem.record_error(ftype, entry.get("note") or entry.get("trigger") or "",
+                                               root_cause=cause)
+                        except Exception:
+                            pass
+                state[ftype] = st2
+
+                try:
+                    REMEDIATION_LOG.parent.mkdir(parents=True, exist_ok=True)
+                    with open(REMEDIATION_LOG, "a") as fh:
+                        fh.write(json.dumps({**entry, "record": "verdict"}) + "\n")
+                except Exception:
+                    pass
+        except Exception:
+            for entry in _pending:
+                entry.setdefault("ok", False)
+                entry.setdefault("outcome", "UNVERIFIED")
+
     if state:
         try:
             REMEDIATION_STATE.parent.mkdir(parents=True, exist_ok=True)
@@ -3443,13 +3542,44 @@ def alert(policy: dict, snapshot: dict):
         lines.append(f"↘ {t['message']}")
     if snapshot.get("enqueued"):
         lines.append(f"→ {snapshot['enqueued']} finding(s) queued for auto-remediation")
-    fixed = [r for r in (snapshot.get("remediated") or []) if r.get("ok")]
+    # "Auto-fixed" is claimed ONLY for a CLEARED verdict -- one where the
+    # originating check was re-run and the finding no longer fires. It used to be
+    # claimed on exit code 0, which is how a 24h stale repricer was reported fixed
+    # every cycle.
+    fixed = [r for r in (snapshot.get("remediated") or [])
+             if r.get("outcome") == "CLEARED" or (r.get("ok") and "outcome" not in r)]
     if fixed:
-        suffix = " (score is post-fix)" if snapshot.get("rescored_after_remediation") else ""
-        lines.append(f"✅ Auto-fixed: {', '.join(r.get('type', '?') for r in fixed)}{suffix}")
-    ineffective = [r for r in (snapshot.get("remediated") or []) if r.get("ineffective")]
-    if ineffective:
-        lines.append(f"🔁 Remediation ineffective (needs operator): {', '.join(r.get('type', '?') for r in ineffective)}")
+        lines.append(f"✅ Auto-fixed (re-checked): {', '.join(r.get('type', '?') for r in fixed)}")
+    worsened = [r for r in (snapshot.get("remediated") or []) if r.get("outcome") == "WORSENED"]
+    for r in worsened:
+        esc = r.get("escalate") or {}
+        lines.append(
+            f"🚨 WORSENED — {r.get('type', '?')}: {esc.get('metric_trend', 'condition regressed')}. "
+            f"Stopped retrying. Cause: {r.get('root_cause') or 'UNDIAGNOSED'}. "
+            f"Command that did not help: {esc.get('command_that_did_not_help') or r.get('cmd', '?')}")
+    # An INEFFECTIVE attempt that has not yet tripped the breaker is reported
+    # without paging. Staying silent until attempt 2 would leave the operator
+    # seeing a critical finding with no indication that a fix had been tried and
+    # had not worked -- which is the same information gap, one cycle narrower.
+    trying = [r for r in (snapshot.get("remediated") or [])
+              if r.get("outcome") == "INEFFECTIVE" and not r.get("ineffective")]
+    for r in trying:
+        lines.append(
+            f"↻ Remediation ineffective (attempt recorded, not yet escalated) — "
+            f"{r.get('type', '?')}: cause {r.get('root_cause') or 'UNDIAGNOSED'}. "
+            f"Command that did not help: {r.get('cmd', '?')}")
+    ineffective = [r for r in (snapshot.get("remediated") or [])
+                   if r.get("ineffective") and r.get("outcome") != "WORSENED"]
+    for r in ineffective:
+        esc = r.get("escalate") or {}
+        lines.append(
+            f"🔁 Remediation ineffective (needs operator) — {r.get('type', '?')}: "
+            f"cause {r.get('root_cause') or 'UNDIAGNOSED'}; {esc.get('metric_trend', '')}. "
+            f"Command that did not help: {esc.get('command_that_did_not_help') or r.get('cmd', '?')}")
+    unverified = [r for r in (snapshot.get("remediated") or []) if r.get("outcome") == "UNVERIFIED"]
+    if unverified:
+        lines.append(f"❓ Could not re-check (no success claimed): "
+                     f"{', '.join(r.get('type', '?') for r in unverified)}")
     try:
         from telegram_alert import send_telegram
         send_telegram("\n".join(lines))
