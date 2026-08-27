@@ -1411,3 +1411,32 @@ def project_watch_intelligence_for_cio(payload: dict[str, Any] | list | None) ->
         "broker_counts": meta_src.get("counts") if isinstance(meta_src.get("counts"), dict) else None,
         "summary": meta_src.get("summary"),
     }
+
+
+def get_watch_intelligence() -> dict[str, Any]:
+    """Collector the CIO snapshot resolves for the `watch_intelligence` domain.
+
+    `cio_financial_snapshot` looks this exact name up on this module. It did not
+    exist -- the module exposed `list_watch_intelligence` and
+    `project_watch_intelligence_for_cio` but never the name the snapshot asks
+    for -- so `getattr(mod, "get_watch_intelligence", None)` returned None, no
+    collector was registered, and the domain resolved DATA_UNAVAILABLE with
+    `watch_intelligence_collector_not_resolved_at_runtime` on every run. The
+    data was there the whole time: 25 live cards.
+
+    Emits `last_assessed_at`, the freshness field the domain registry declares
+    for this domain, derived from the projection's own generation time rather
+    than stamped independently -- a collector that invents its own freshness
+    would report the domain current whenever it happened to run.
+
+    Fail-soft: an empty projection is returned as empty, which the domain's
+    `on_empty_result` policy correctly reads as DATA_UNAVAILABLE. Nothing here
+    manufactures a signal.
+    """
+    projection = project_watch_intelligence_for_cio(list_watch_intelligence())
+    if not isinstance(projection, dict):
+        return {"items": [], "last_assessed_at": None}
+    generated_at = projection.get("generated_at")
+    if generated_at and not projection.get("last_assessed_at"):
+        projection["last_assessed_at"] = generated_at
+    return projection
