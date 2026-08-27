@@ -732,6 +732,28 @@ def record_hermes_completion(
         path=store.path,
     )
     cid = str(persisted.get("checkpoint_id") or "")
+
+    # Settle the notification stage. A research completion produces an
+    # observational checkpoint and delivers nothing to the operator -- the CIO
+    # arc owns operator delivery -- but nothing ever said so, so the stage sat at
+    # NOT_YET_CREATED forever and `is_complete_to_checkpoint` stayed false on 30
+    # workflows that had a real checkpoint and a real checkpoint_id.
+    #
+    # This is a decision, not a shortcut: NOT_REQUIRED is recorded with a reason
+    # and is auditable. Leaving it ambiguous is what made the workflow unable to
+    # end in either direction. If research should instead reach the operator,
+    # the fix is to wire the causal trigger so a CIO run picks it up -- which
+    # would then set this stage itself, and this call becomes a no-op.
+    if cid:
+        try:
+            finalize_notification_required(
+                wf,
+                path=store.path,
+                reason="RESEARCH_OBSERVATIONAL_NO_OPERATOR_DELIVERY",
+            )
+        except Exception:
+            pass  # lineage is an audit projection; never fail the research write
+
     return {
         "workflow_id": wf,
         "checkpoint_id": cid,

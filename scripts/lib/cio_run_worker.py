@@ -433,6 +433,41 @@ class CIORunWorker:
             except Exception:
                 log.debug("notification lineage projection unavailable", exc_info=True)
 
+            # Record the run's outcome checkpoint. The CIO arc synthesised, acted
+            # and settled a notification, then stopped -- it wrote no checkpoint on
+            # any of its envelopes, so `is_complete_to_checkpoint` could never be
+            # true for it however the notification landed. A run that produced a
+            # decision is exactly what OutcomeCheckpoint@v1 exists to make
+            # reviewable; without one the learning loop has nothing to review.
+            #
+            # Goal wakes get a checkpoint of their own rather than being joined to
+            # a research workflow: they are about the portfolio, not a security,
+            # and merging them would be a confident wrong join.
+            try:
+                from scripts.lib.cio_lineage import persist_canonical_checkpoint
+                from scripts.lib.canonical_store_registry import production_state_root
+
+                identity = _run_identity(run) or {}
+                decision = {
+                    "decision_id": str(run_id),
+                    "symbol": identity.get("subject_id") if identity.get("entity_type") != "GOAL" else None,
+                    "subject_id": identity.get("subject_id"),
+                    "entity_type": identity.get("entity_type"),
+                    "recommendation": synthesis_result.get("recommendation") or "OBSERVE",
+                    "producer_id": "cio_run_worker",
+                    "material_generation": result.get("synthesis_artifact_id"),
+                    "notification_id": (ids[0] if ids else None),
+                    "observational_only": True,
+                }
+                persist_canonical_checkpoint(
+                    production_state_root(),
+                    str(run_id),
+                    decision,
+                    str(result.get("source_sha") or "cio_run"),
+                )
+            except Exception:
+                log.debug("checkpoint lineage projection unavailable", exc_info=True)
+
             # Step 8: Complete the run
             if self.run_store:
                 try:

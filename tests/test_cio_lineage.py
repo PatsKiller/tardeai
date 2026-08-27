@@ -104,8 +104,14 @@ def test_envelope_on_hermes_request_and_completion(tmp_path: Path):
     assert env["checkpoint_id"]
     assert env["stage_status"]["checkpoint"] == STAGE_COMPLETED
     assert env["subject_guid"] is None
-    assert notification_is_ambiguous(env) is True
-    assert env["complete_to_checkpoint"] is False
+    # A research completion now settles its own notification stage: it produces
+    # an observational checkpoint and delivers nothing to the operator, and
+    # leaving that undecided is what kept 30 real workflows permanently
+    # incomplete. The decision is recorded with a reason, not flipped silently.
+    assert notification_is_ambiguous(env) is False
+    assert env["stage_status"]["notification"] == STAGE_NOT_REQUIRED
+    assert env["suppression_reason"] == "RESEARCH_OBSERVATIONAL_NO_OPERATOR_DELIVERY"
+    assert env["complete_to_checkpoint"] is True
 
 
 def test_specialist_not_completed_without_result_id(tmp_path: Path):
@@ -120,16 +126,29 @@ def test_specialist_not_completed_without_result_id(tmp_path: Path):
 
 
 def test_notification_finalize_clears_ambiguity(tmp_path: Path):
+    """A workflow that never decided about notification, then does.
+
+    The research path now settles its own stage, so the ambiguous case is
+    exercised on a request that has not completed yet — which is the state
+    finalize actually exists to resolve.
+    """
     path = tmp_path / "lineage.jsonl"
     request = {"plan_id": "plan-n", "research_id": "research-n", "symbol": "MSFT"}
     wf = record_hermes_request(request, path=path)
-    record_hermes_completion(request, {"research_id": "research-n", "result_id": "result-n"}, path=path)
     env = load_envelope(wf, path)
     assert notification_is_ambiguous(env) is True
+
     finalize_notification_required(wf, path=path)
     env = load_envelope(wf, path)
     assert env["stage_status"]["notification"] == STAGE_NOT_REQUIRED
     assert notification_is_ambiguous(env) is False
+
+    # Still incomplete: settling notification is not a substitute for a
+    # checkpoint. Only the real research completion supplies that.
+    assert env["complete_to_checkpoint"] is False
+
+    record_hermes_completion(request, {"research_id": "research-n", "result_id": "result-n"}, path=path)
+    env = load_envelope(wf, path)
     assert env["complete_to_checkpoint"] is True
 
 
