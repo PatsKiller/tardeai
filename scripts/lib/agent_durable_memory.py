@@ -117,6 +117,47 @@ def display_status(status: str | None) -> str:
     return DISPLAY_STATUS.get(str(status or ""), STATUS_CANDIDATE)
 
 
+def _resolve_subject_guids(symbols: Any) -> tuple[list[str], list[str]]:
+    """Resolve a memory's symbols against the durable entity registry.
+
+    Cognitive memory was anchored on ticker STRINGS: 441 live records carried
+    `symbols`, none carried a `subject_guid`, while a registry of 5,000+ entities
+    sat beside them. A ticker is an alias -- it is reassigned after a delisting,
+    so two companies can collide on one memory key years apart, and a memory
+    written before a symbol change becomes unfindable after it.
+
+    Returns (guids, unresolved_symbols). Both are recorded: a symbol the registry
+    does not know is named rather than dropped, so the gap stays measurable
+    instead of looking like an entity with no memories.
+
+    Read-only against the registry, and never mints an identity -- memory is not
+    an identity authority. An unregistered symbol simply has no GUID yet.
+    """
+    guids: list[str] = []
+    unresolved: list[str] = []
+    seen: set[str] = set()
+    try:
+        from scripts.lib.identity_registry import load_cached, lookup_symbol
+        registry = load_cached()
+    except Exception:
+        return [], []          # registry unavailable: record nothing, claim nothing
+    for raw in (symbols or []):
+        sym = str(raw or "").strip().upper()
+        if not sym or sym in seen:
+            continue
+        seen.add(sym)
+        try:
+            entity = lookup_symbol(registry, sym)
+        except Exception:
+            entity = None
+        guid = (entity or {}).get("subject_guid")
+        if guid:
+            guids.append(str(guid))
+        else:
+            unresolved.append(sym)
+    return guids, unresolved
+
+
 class DurableJsonlMemoryProvider(LocalTestMemoryProvider):
     """File-backed MemoryProvider with flock + atomic snapshot.
 
@@ -176,6 +217,20 @@ class DurableJsonlMemoryProvider(LocalTestMemoryProvider):
         rec.setdefault("content_hash", rec.get("content_digest"))
         rec.setdefault("as_of", rec.get("valid_from") or rec.get("created_at"))
         rec.setdefault("authority_class", MEMORY_AUTHORITY)
+
+        # Anchor the memory on the durable spine. Every durable write passes
+        # through here, so resolution happens once rather than in each producer.
+        # `subject_guid` is set only when the memory is about exactly ONE entity;
+        # a portfolio-wide observation has no single subject, and inventing one
+        # would manufacture a false join.
+        if not rec.get("subject_guid") and not rec.get("subject_guids"):
+            guids, unresolved = _resolve_subject_guids(rec.get("symbols"))
+            if guids:
+                rec["subject_guids"] = guids
+                if len(guids) == 1 and not unresolved:
+                    rec["subject_guid"] = guids[0]
+            if unresolved:
+                rec["unresolved_symbols"] = unresolved
         self.path.parent.mkdir(parents=True, exist_ok=True)
         line = json.dumps(rec, sort_keys=True, default=str) + "\n"
         with self._lock_path().open("a+") as lock:
