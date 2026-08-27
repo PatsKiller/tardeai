@@ -171,6 +171,20 @@ These are host runtime state (often gitignored). Architects use this docs packet
 
 ---
 
+## Recent development (2026-08-20 to 2026-08-22)
+
+Audit finding M9 (docs/audits/CIO_PLATFORM_AUDIT_2026-08-27.md): a cluster of
+CIO Desk reliability/product closeouts landed in this window — advisory-truth
+hardening, closed-loop lineage, held-thesis coverage, operator desk loop P0,
+outcome-learning closeout, material-notify canary, memory shadow-measure
+phase 2, and the CIO Decision Payload (Phase 1) capture going live. Full
+pointer index and artifact list: `docs/MASTER_SYSTEM_DOCUMENTATION.md` §24
+("Session — 2026-08-20 to 2026-08-22"). This is a pointer, not a re-statement
+— Track A/B above should still be read as the current structural description;
+none of this window's work changed the Track A/B split itself.
+
+---
+
 ## Related
 
 - [THESIS.md](./THESIS.md)  

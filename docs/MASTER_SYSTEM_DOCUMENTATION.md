@@ -2496,6 +2496,26 @@ actionable inferences. Advisory-only — no execution path. Full design:
 
 ## 24. Session Changelog
 
+### Session — 2026-08-20 to 2026-08-22 (CIO Decision Payload, Research Tier Consolidation, Telegram P0)
+
+Audit finding M9 (docs/audits/CIO_PLATFORM_AUDIT_2026-08-27.md): this master doc
+(§14 dated 2026-06-22) had no entry for this window's shipped work despite ~35
+closeout docs landing in `docs/ops/` over three days. Summary below is
+deliberately a pointer index, not a full technical rewrite — detail lives in
+the linked docs, and `docs/ops/SESSION_CLOSEOUT_2026-08-22.md` is the
+canonical index of the 2026-08-22 findings specifically.
+
+| Area | Summary | Key Artifacts |
+|------|---------|---------------|
+| **Research tier consolidation** | Five watchlist research tiers collapsed to one LLM-scheduled queue (T1-WATCH); Reentry READY/NEAR joins T1. Hermes S0–S3 and directive hygiene 1–3 confirmed NOT LLM queues. T3 catalyst-only cold-floor cadence fixed (was a 127-day cycle against a published 14-day SLA — root cause was a 120-call process cap, not the $0.50 dollar cap). | `docs/ops/RESEARCH_TIER_LLM_CADENCE.md`, `docs/RESEARCH_PRIORITIZATION.md`, PR #451, PR #453 |
+| **Two LLM families clarified** | Scheduler-auto research is DeepSeek only (Family A); ChatGPT/Grok every 2h is a separate path (Family B, `hermes_top20_external_intel`) — explains why held-position research looked OAuth-first. | `docs/ops/LLM_ROUTING_AND_DATA_LAYERS.md` |
+| **Telegram P0 fixes** | Never print `R:R 0.0:1`; quote-ineligible proposals withhold sizing instead of showing bad numbers; inverted invalidation (above price on a long) suppresses the card instead of publishing it; Markdown-parse-failure retries now edit the original message instead of double-sending plaintext. | `docs/ops/TELEGRAM_FEED_REMEDIATION_2026-08-22.md`, PR #452, `data/cio/telegram_p0_suppress.jsonl` |
+| **CIO Decision Payload (Phase 1)** | `AGENT_DECISION_PAYLOAD` capture enabled live. | `docs/ops/CIO_DECISION_PAYLOAD_PHASE1_2026-08-21.md`, `docs/ops/DECISION_PAYLOAD_LANDING_2026-08-21.md` |
+| **CIO advisory/thesis hardening** | Advisory-truth hardening, closed-loop lineage, held-thesis coverage, operator desk loop P0, outcome-learning closeout, material-notify canary, memory shadow-measure phase 2 — a cluster of same-window CIO Desk reliability work. | `docs/ops/CIO_ADVISORY_TRUTH_HARDENING_CLOSEOUT_2026-08-20.md`, `CIO_CLOSED_LOOP_LINEAGE_CLOSEOUT_2026-08-20.md`, `CIO_HELD_THESIS_COVERAGE_2026-08-20.md`, `CIO_OPERATOR_DESK_LOOP_P0_2026-08-20.md`, `CIO_OUTCOME_LEARNING_CLOSEOUT_2026-08-20.md`, `CIO_MATERIAL_NOTIFY_CANARY_2026-08-20.md`, `CIO_MEMORY_SHADOW_MEASURE_PHASE2_2026-08-21.md` |
+| **Symbol Thesis / Investment Intelligence Card** | Symbol thesis acquisition pipeline live (canary dry-run completed); Investment Intelligence Card feedback loop into Command Center, Telegram actionable-visual variant, Phase D symbol-intelligence queue. | `docs/ops/SYMBOL_THESIS_ACQUISITION_PIPELINE_LIVE_2026-08-20.md`, `SYMBOL_THESIS_CANARY_DRY_RUN_2026-08-20.md`, `CIO_INVESTMENT_INTELLIGENCE_CARD_2026-08-21.md`, `CIO_IIC_FEEDBACK_CC_2026-08-21.md`, `CIO_IIC_TELEGRAM_ACTIONABLE_VISUAL_2026-08-21.md`, `CIO_IIC_PHASE_D_SI_QUEUE_2026-08-21.md` |
+| **Local-model decommission (partial)** | Read-only measurement found 6 installed generative models, an active `gemma3:12b` GPU process, 241 local-generative references in live source, 45 cron and 5 systemd intersections. No model physically removed — every decommission precondition failed. Pending: migrate directly-scheduled advisory/research to governed Grok/ChatGPT lanes with hard failure, no local fallback. | `docs/ops/SESSION_CLOSEOUT_2026-08-22.md` (2026-08-23 addendum) |
+| **Known-open items after this window** | CURRENT cutover pending window close (`docs/ops/CURRENT_CUTOVER_AFTER_2026-08-27.md`); Drive sync 404s on dead parent IDs unresolved; several Telegram T3–T7 items still open. | `docs/ops/SESSION_CLOSEOUT_2026-08-22.md` § "After freeze lift" |
+
 ### Session — 2026-06-21 (Inference Layers v1)
 
 Built the modular Inference Layers system (12 new files, ~1,900 lines) — a layered
