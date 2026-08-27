@@ -124,6 +124,29 @@ Do **not** assume every Track B run has a full multi-domain `enrich_plan` payloa
 
 ---
 
+## Where CIO Desk does not participate at all
+
+Both tables above describe thesis governance *within* Track A / Track B. There is a
+third category: platform systems that are neither Track A nor Track B, and that the
+CIO Desk does not see, gate, or receive output from at all — as distinct from
+"thesis not fully injected," these paths have **no CIO involvement of any kind**.
+
+| Path | Reality | Why it matters |
+|---|---|---|
+| Daily rebalance-drift alert (`scripts/portfolio_rebalancer.py` → `scripts/portfolio_alerts.py`, cron `15 7 * * 1-5`) | Runs independently of every CIO module. Computes drift and sends a Telegram alert directly when drift exceeds $200k. No `cio_*` import anywhere in `portfolio_rebalancer.py`. | This is the platform's actual, most-frequently-seen rebalance recommendation surface — an operator reading "CIO Desk is the authoritative source" should not assume it covers this alert. It does not, today. |
+| `scripts/cio_decision_engine.py` → `cio_decisions` table → `scripts/autonomous_rebalance_planner.py` | The *intended* CIO-gated fallback for rebalance decisions. Cron entry has been `# DISABLED` since 2026-08-08; `autonomous_rebalance_planner.py` itself has no scheduled entry point at all. | Exists in code, not running. Do not assume it is live without checking the crontab first. |
+
+**This split is intentional, not a defect to silently "fix" by re-enabling the
+disabled cron entry** — the daily drift alert is deliberately kept mechanical
+(no LLM latency/cost) so it fires promptly regardless of CIO Desk availability.
+If routing daily rebalance alerts through a CIO check becomes desired, that is a
+scoped follow-up requiring its own review of why the `cio_decision_engine.py`
+cron entry was disabled in the first place — see
+[`docs/audits/CIO_PLATFORM_REMEDIATION_2026-08-27.md`](../audits/CIO_PLATFORM_REMEDIATION_2026-08-27.md)
+(Fix C1).
+
+---
+
 ## Deep links pattern (generic)
 
 - Prefer **path-based** links: `/v3/cio`, `/v3/cio?plan=<plan_id>`.  
