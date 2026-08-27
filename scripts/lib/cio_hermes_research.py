@@ -322,8 +322,8 @@ def _save_new_request(req: dict[str, Any]) -> None:
     bp["open"] = opens[-20:]
     proj.setdefault("by_fingerprint_open", {})[fp] = dict(by_rid[research_id])
     _save_projection(proj)
-    # Best-effort durable lineage projection.  The request remains canonical in
-    # this module; lineage is an audit read-model and must never break enqueue.
+    # Best-effort durable lineage + CIOWorkflowEnvelope@v1. Canonical request
+    # remains this module; lineage must never break enqueue.
     try:
         from scripts.lib.cio_lineage import record_hermes_request
         record_hermes_request(req)
@@ -886,6 +886,7 @@ def _persist_stamped_result(research_id: str, result: dict[str, Any]) -> dict[st
             out_ok["lineage_id"] = lineage_id
         try:
             from scripts.lib.cio_lineage import record_hermes_completion
+            # Upserts envelope: specialist_artifact_id = Hermes result_id (honest).
             record_hermes_completion(req_meta.get("request") or req_meta, result)
         except Exception:
             pass

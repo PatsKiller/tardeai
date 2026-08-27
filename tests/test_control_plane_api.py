@@ -104,6 +104,30 @@ def test_workflow_cross_id_partial_and_cutoff(tmp_path, monkeypatch):
     assert len(cutoff["data"]["nodes"]) == 1
 
 
+def test_control_plane_domains_cover_all_ten_routes():
+    expected = [
+        "system", "agents", "workflows", "research", "stores",
+        "identity", "notifications", "learning", "maturity", "audit",
+    ]
+    assert list(api.CONTROL_PLANE_DOMAINS) == expected
+    assert list(api.ROUTES) == [f"/api/v3/control-plane/{name}" for name in expected]
+    assert api.CONTROL_PLANE_DOMAINS["workflows"]["store_ids"] == ("cio.workflow_lineage",)
+    assert "cio.operator_product.history" not in api.CONTROL_PLANE_DOMAINS["workflows"]["store_ids"]
+    assert "cio.checkpoints" not in api.CONTROL_PLANE_DOMAINS["workflows"]["store_ids"]
+
+
+def test_empty_valid_list_is_available_total_zero(tmp_path, monkeypatch):
+    runtime = tmp_path / "data" / "runtime"
+    runtime.mkdir(parents=True)
+    (runtime / "identity_registry.json").write_text("[]")
+    monkeypatch.setattr(api, "PROJECT_ROOT", tmp_path)
+    status, body = api.handle("/api/v3/control-plane/identity")
+    assert status == 200
+    assert body["data_quality"] == "AVAILABLE"
+    assert body["data"]["items"] == []
+    assert body["data"]["pagination"]["total"] == 0
+
+
 def test_append_only_lineage_records_are_grouped_for_detail(tmp_path, monkeypatch):
     cio = tmp_path / "data" / "cio"; cio.mkdir(parents=True)
     records = [
