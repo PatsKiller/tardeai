@@ -27,7 +27,17 @@ itself dark is still dark in effect, and the census found three such chains. But
 scheduler graph and would make this gate flaky. The transitive list is reported,
 never enforced.
 
-AUTHORITY: READ_ONLY_ADVISORY. Static analysis only.
+A scheduled entrypoint has a caller without having an importer, so it may
+declare instead:
+
+    SCHEDULED_ENTRYPOINT = "cron: 40 6 * * * -- daily 06:40"
+
+That is a declaration, not a probe. An earlier version read the live crontab,
+which made the verdict depend on the machine running the gate -- it passed
+locally and failed in CI on the same commit -- and counted commented-out cron
+lines as scheduled.
+
+AUTHORITY: READ_ONLY_ADVISORY. Static analysis only, repo-only inputs.
 """
 from __future__ import annotations
 
@@ -110,17 +120,7 @@ def definers() -> dict[str, list[str]]:
 
 def declared_reason(rel: str) -> str | None:
     """A module-level NO_CONSUMER_REASON, if the author declared one."""
-    try:
-        tree = ast.parse((REPO / rel).read_text(encoding="utf-8", errors="ignore"))
-    except (OSError, SyntaxError):
-        return None
-    for node in tree.body:
-        if isinstance(node, ast.Assign):
-            for target in node.targets:
-                if isinstance(target, ast.Name) and target.id == "NO_CONSUMER_REASON":
-                    if isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
-                        return node.value.value
-    return None
+    return declared_module_string(rel, "NO_CONSUMER_REASON")
 
 
 def build_reference_index(corpus, names, literals):
@@ -141,27 +141,20 @@ def build_reference_index(corpus, names, literals):
     return index
 
 
-def scheduled_scripts() -> set[str]:
-    """Script basenames invoked by cron or a systemd unit.
-
-    An entrypoint has a caller even with zero importers. Treating a scheduled
-    script as dark would invert the gate's meaning -- and would have flagged the
-    six jobs cronned earlier today precisely because they were finally wired.
-    """
-    import subprocess
-    text = ""
+def declared_module_string(rel: str, name: str) -> str | None:
+    """A module-level string constant, if the author declared one."""
     try:
-        text += subprocess.run(["crontab", "-l"], capture_output=True,
-                               text=True, timeout=20).stdout or ""
-    except Exception:
-        pass
-    for unit_dir in (Path.home() / ".config/systemd/user", REPO / "config/systemd/user"):
-        try:
-            for unit in unit_dir.glob("*.service"):
-                text += unit.read_text(encoding="utf-8", errors="ignore")
-        except OSError:
-            continue
-    return {m for m in re.findall(r"scripts/([A-Za-z0-9_]+)\.py", text)}
+        tree = ast.parse((REPO / rel).read_text(encoding="utf-8", errors="ignore"))
+    except (OSError, SyntaxError):
+        return None
+    for node in tree.body:
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if (isinstance(target, ast.Name) and target.id == name
+                        and isinstance(node.value, ast.Constant)
+                        and isinstance(node.value.value, str)):
+                    return node.value.value
+    return None
 
 
 def audit() -> dict[str, Any]:
@@ -181,7 +174,6 @@ def audit() -> dict[str, Any]:
         except OSError:
             continue
 
-    scheduled = scheduled_scripts()
     names = {Path(rel).stem for rel in defs}
     all_lits = {lit for lits in defs.values() for lit in lits}
     index = build_reference_index(corpus, names, all_lits)
@@ -194,8 +186,13 @@ def audit() -> dict[str, Any]:
         refs.discard(rel)                      # self-reference is not a consumer
         if refs:
             continue
-        if Path(rel).stem in scheduled:
-            continue                           # scheduled entrypoint: has a caller
+        # A scheduled entrypoint has a caller even with no importer -- but it
+        # must SAY so. Reading the live crontab made the verdict depend on which
+        # machine ran the gate: locally the Phase 2 jobs were skipped, in CI
+        # (no crontab) the same commits failed. It also matched COMMENTED-OUT
+        # lines, so a switched-off job counted as scheduled. Declare it instead.
+        if declared_module_string(rel, "SCHEDULED_ENTRYPOINT"):
+            continue
         reason = declared_reason(rel)
         row = {"module": rel, "schemas": literals, "consumers": 0, "reason": reason}
         dark.append(row)

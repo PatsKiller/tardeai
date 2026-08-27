@@ -23,6 +23,10 @@ AUTHORITY: READ_ONLY_ADVISORY. Observational only; no trading, no authority.
 """
 from __future__ import annotations
 
+SCHEDULED_ENTRYPOINT = (
+    'cron: 20 * * * * -- hourly, --apply (wired 2026-08-27, Phase 2)'
+)
+
 import argparse
 import json
 import sys

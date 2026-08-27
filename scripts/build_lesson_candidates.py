@@ -18,6 +18,10 @@ AUTHORITY: READ_ONLY_ADVISORY.
 """
 from __future__ import annotations
 
+SCHEDULED_ENTRYPOINT = (
+    'cron: 40 6 * * * -- daily 06:40, --apply (wired 2026-08-27, Phase 2)'
+)
+
 import argparse
 import json
 import sys
