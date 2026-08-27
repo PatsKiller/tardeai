@@ -162,6 +162,11 @@ def main():
             x["cost_basis"] = new_basis
             x["cost_basis_source"] = new_src
             x["basis_partial"] = False
+            # `gain_loss` is the canonical, continuously-recomputed P&L (this basis, kept
+            # current by repricing elsewhere, against live market_value) — deliberately
+            # distinct from holdings.json's `unrealized_pl`, which is Schwab's own raw
+            # figure frozen at the last basis-sync timestamp (see schwab_adapter.py's
+            # get_positions for why the two aren't meant to agree; audit finding M8).
             x["gain_loss"] = round(mv - new_basis, 2)
             x["gain_loss_pct"] = round((mv - new_basis) / new_basis * 100, 4) if new_basis else None
             changes.append((ak, sym, old_src, f"{float(old_basis or 0):,.0f}", new_src, f"{new_basis:,.0f}"))
