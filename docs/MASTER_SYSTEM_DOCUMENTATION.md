@@ -1954,8 +1954,26 @@ Do NOT invent, estimate, or assume numbers not explicitly provided."*
 
 ## 14. Frontend
 
+**v3 (`apps/command-center-v3/`, served at `/v3/`) is the current, canonical frontend.**
+Audit finding H2 (docs/audits/CIO_PLATFORM_AUDIT_2026-08-27.md): this section
+described v2 as "the" frontend in present tense with zero v3 mentions —
+corrected below. A full v3 page-by-page matrix (equivalent to the v2 one
+this section originally was) does not yet exist as a doc and is a known gap,
+not something this fix invents; see `docs/COMMAND_CENTER_PAGE_MATRIX.md`
+(v2-only, dated 2026-05-27) for the shape such a doc would take if written
+for v3.
+
+- **Route:** `/v3/`, backend API `/api/v3/*` (see `scripts/api_v3_cio.py` for the CIO surface specifically)
+- **Source:** `apps/command-center-v3/` (54 page files under `src/pages/` as of this writing)
+- **Build:** `cd apps/command-center-v3 && npm run build` (see `docs/CHEAT_SHEET.md`)
+
+### v2 — frozen, not canonical, still served
+
 - **Framework:** React SPA (Next.js)
-- **Route:** served at `/v2/` via Portfolio Server (port 7777)
+- **Route:** served at `/v2/` via Portfolio Server (port 7777) — kept live intentionally as a
+  frozen fallback (the served HTML injects a "v2 is frozen — v3 is now canonical" banner,
+  `scripts/portfolio_server.py`); this is deliberate, not an oversight, so it is not being
+  removed by this fix
 - **Source:** `apps/command-center-v2/` (91 TypeScript/React files)
 - **Pages:** 61 (all fully implemented, no stubs)
 - **API hooks:** `useApi()`, `useFetch()` custom hooks for data fetching
