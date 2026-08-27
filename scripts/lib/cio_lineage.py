@@ -383,6 +383,37 @@ def record_cio_generation(
     return store.upsert_envelope(workflow_id, updates)
 
 
+def record_specialist_dispatch(
+    workflow_id: str,
+    dispatch_id: str | None,
+    *,
+    agent_id: str | None = None,
+    artifact_id: str | None = None,
+    path: Path | str | None = None,
+) -> dict[str, Any]:
+    """Persist the specialist hand-off in the same workflow envelope.
+
+    Dispatch is an explicit stage: callers must provide the producer's ID; this
+    helper never fabricates an agent or artifact identity.
+    """
+    store = LineageStore(path)
+    did = _optional_str(dispatch_id)
+    aid = _optional_str(artifact_id)
+    if did:
+        store.node(workflow=workflow_id, node_type="SPECIALIST_DISPATCH", node_id=did,
+                   summary=f"Specialist dispatch {agent_id or ''}".strip(),
+                   source_ref="specialist_dispatch", entity_refs=())
+    if did and aid:
+        store.edge(workflow=workflow_id, from_id=did, to_id=aid,
+                   relationship="DISPATCHED_TO", evidence="specialist_dispatch_id")
+    updates: dict[str, Any] = {"stage_status": {"specialist": STAGE_COMPLETED if aid else STAGE_NOT_YET_CREATED}}
+    if did:
+        updates["specialist_dispatch_id"] = did
+    if aid:
+        updates["specialist_artifact_id"] = aid
+    return store.upsert_envelope(workflow_id, updates)
+
+
 def record_notification(
     workflow_id: str,
     notification_id: str | None = None,
