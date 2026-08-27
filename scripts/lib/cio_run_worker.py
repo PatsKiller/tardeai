@@ -649,6 +649,19 @@ class CIORunWorker:
                         self.run_store.record_specialist_request(
                             run_id, hid, actor="cio_run_worker",
                         )
+                    # Keep the canonical workflow envelope connected to the
+                    # existing handoff queue. This is an audit projection and
+                    # must never affect dispatch success or financial authority.
+                    try:
+                        from scripts.lib.cio_lineage import record_specialist_dispatch
+                        record_specialist_dispatch(
+                            workflow_id=str(run_id),
+                            dispatch_id=str(hid),
+                            agent_id=str(spec),
+                            path=None,
+                        )
+                    except Exception:
+                        log.debug("lineage dispatch projection unavailable", exc_info=True)
             except Exception as e:
                 log.warning("Specialist enqueue failed for %s: %s", spec, e)
 
