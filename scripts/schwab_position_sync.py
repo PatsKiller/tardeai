@@ -158,6 +158,63 @@ def _alert(msg, source=""):
         pass
 
 
+def reconcile_totals(doc, *, source="unknown"):
+    """Make portfolio_totals.total_value agree with the positions being written.
+
+    Root fix 2026-08-27. A bulk position writer updated per-row `price` and
+    `market_value` and left `portfolio_totals.total_value` at its previous
+    figure, so the freshly-written copy was internally inconsistent by
+    $3,748.04 on $1.288M while the older copy still reconciled exactly. The
+    divergence between the two stores was the symptom; this was the defect.
+
+    Applied HERE, before validation, at the one gate every holdings writer
+    funnels through (holdings_guard re-exports it) -- the same reasoning as the
+    SSOT basis shield above. Patching the individual writer would leave the next
+    one free to reintroduce it; making the totals part of the write makes an
+    internally inconsistent holdings.json structurally impossible.
+
+    Deliberately BEFORE validate_payload, not after. holdings_sanity computes
+    `total = declared if declared > 0 else summed`, so the wipe-guard trusts the
+    declared figure -- a payload whose positions collapsed while its stated
+    total stayed healthy would pass the catastrophic-drop check on the stale
+    number. Recomputing first means the guard is evaluated on what is actually
+    being written. That is strictly stronger: the only writes whose verdict can
+    change are those where declared and summed disagree by more than
+    CATASTROPHIC_DROP_FRACTION, which is exactly the masked catastrophe.
+
+    Fail-soft: a correction is never worth blocking a write over. Returns the
+    correction applied, or None.
+    """
+    try:
+        pos = _positions_of(doc)
+        if not pos:
+            return None
+        totals = doc.get("portfolio_totals")
+        if not isinstance(totals, dict):
+            return None
+        summed = round(sum(float(p.get("market_value") or p.get("value") or 0)
+                           for p in pos), 2)
+        declared = float(totals.get("total_value") or 0)
+        if abs(summed - declared) <= 0.01:
+            return None
+        totals["total_value"] = summed
+        totals["total_value_recomputed_at_write"] = True
+        correction = {"declared": declared, "summed": summed,
+                      "delta": round(summed - declared, 2), "source": source}
+        try:
+            # Visible, not silent: a writer that keeps needing this is a bug.
+            _record(source, "totals_recomputed",
+                    f"[{source}] portfolio_totals.total_value {declared:,.2f} -> "
+                    f"{summed:,.2f} (delta {correction['delta']:,.2f}) to match "
+                    f"{len(pos)} positions being written",
+                    len(pos), summed)
+        except Exception:
+            pass
+        return correction
+    except Exception:
+        return None
+
+
 def protected_holdings_write(new_holdings, source="schwab_sync", account_key="schwab", protect_basis=False,
                             target_path=None, skip_transfer_detect=False):
     """GATE B / mandatory holdings wipe-guard. Routes EVERY holdings/current-state write so a bad payload
@@ -171,6 +228,8 @@ def protected_holdings_write(new_holdings, source="schwab_sync", account_key="sc
     """
     HP = Path(target_path).resolve() if target_path else HOLDINGS_PATH
     prior_doc = _last_good_doc(HP)
+    # Totals must describe the positions in THIS payload -- see reconcile_totals.
+    reconcile_totals(new_holdings, source=source)
     verdict = validate_payload(new_holdings, prior_doc)
     if not verdict.ok:
         status = "rejected_drop" if verdict.reason_code == "CATASTROPHIC_DROP" else "rejected_sanity"
