@@ -120,6 +120,22 @@ def resolve_entity(payload: Mapping[str, Any] | None) -> dict[str, Any]:
     )
     subject_s = str(subject).strip().upper() if subject not in (None, "") else None
 
+    # Consult the durable spine before falling back to the symbol string. Until
+    # Phase A this module keyed events on a ticker, which is an alias and not an
+    # identity -- a ticker is reassigned after delisting, so two different
+    # companies could collide on one event id years apart. A registered entity
+    # supplies its real GUID; an unregistered one degrades to the previous
+    # behaviour rather than blocking.
+    if not guid_s and subject_s:
+        try:
+            from scripts.lib.identity_registry import load as _load_registry, lookup_symbol
+            entity = lookup_symbol(_load_registry(), subject_s)
+            if entity and entity.get("subject_guid"):
+                guid_s = str(entity["subject_guid"])
+                src.setdefault("entity_type", ENTITY_SECURITY)
+        except Exception:
+            pass  # registry unavailable: identity still resolves by symbol
+
     declared = src.get("entity_type")
     if declared not in (None, ""):
         entity_type = str(declared)

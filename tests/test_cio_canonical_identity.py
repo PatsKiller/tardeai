@@ -6,6 +6,8 @@ independently derive the same id with no shared state between them.
 """
 from __future__ import annotations
 
+import pytest
+
 from scripts.lib.cio_canonical_identity import (
     ENTITY_SECURITY,
     ENTITY_UNRESOLVED,
@@ -16,6 +18,18 @@ from scripts.lib.cio_canonical_identity import (
     time_bucket,
     workflow_id_for_event,
 )
+
+
+@pytest.fixture(autouse=True)
+def _isolated_registry(tmp_path, monkeypatch):
+    """No test in this module may read the production identity registry.
+
+    Since Phase A, resolve_entity consults it — so without isolation these tests
+    pass or fail depending on which symbols happen to be minted in production.
+    Individual tests opt back in by setting the env var themselves.
+    """
+    monkeypatch.setenv("TRADEAI_IDENTITY_REGISTRY", str(tmp_path / "_isolated.json"))
+
 
 
 def test_both_arcs_derive_the_same_id():
@@ -72,8 +86,14 @@ def test_missing_timestamp_is_still_deterministic():
     assert time_bucket("not-a-date") == "unbucketed"
 
 
-def test_ticker_never_becomes_a_security_guid():
-    """A symbol is a subject_id, not a security identity."""
+def test_ticker_never_becomes_a_security_guid(tmp_path, monkeypatch):
+    """A symbol is a subject_id, not a security identity.
+
+    Pinned to an empty registry. `resolve_entity` consults the identity registry
+    since Phase A, so without this the test reads whatever production happens to
+    hold — it began failing the moment SCHD was minted for real.
+    """
+    monkeypatch.setenv("TRADEAI_IDENTITY_REGISTRY", str(tmp_path / "empty.json"))
     ent = resolve_entity({"symbol": "SCHD"})
 
     assert ent["subject_guid"] is None
@@ -83,6 +103,26 @@ def test_ticker_never_becomes_a_security_guid():
     with_guid = resolve_entity({"symbol": "SCHD", "security_guid": "sec-123"})
     assert with_guid["entity_type"] == ENTITY_SECURITY
     assert with_guid["subject_guid"] == "sec-123"
+
+
+def test_registered_entity_supplies_its_guid(tmp_path, monkeypatch):
+    """The Phase A payoff, and its boundary.
+
+    The GUID comes from the registry and is derived from the issuer, never from
+    ticker text — so registering an entity resolves it without violating the rule
+    above.
+    """
+    monkeypatch.setenv("TRADEAI_IDENTITY_REGISTRY", str(tmp_path / "r.json"))
+    from scripts.lib.identity_registry import register_all
+
+    assert resolve_entity({"symbol": "NOC"})["entity_type"] == ENTITY_UNRESOLVED
+
+    register_all([{"symbol": "NOC", "company": "Northrop Grumman"}], apply=True)
+    ent = resolve_entity({"symbol": "NOC"})
+
+    assert ent["entity_type"] == ENTITY_SECURITY
+    assert ent["subject_guid"]
+    assert ent["never_minted_security_guid"] is True
 
 
 def test_goal_wake_is_a_goal_not_a_security():
