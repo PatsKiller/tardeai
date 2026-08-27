@@ -207,6 +207,14 @@ PY
     "data/runtime"
     "data/health"
     "data/cio"
+    # logs/ is gitignored, so each release started it EMPTY. That orphaned more
+    # than logs: claude_escalation_queue.json, health_agent.jsonl,
+    # health_agent_remediation.jsonl, claude_escalation_retry_cmd.jsonl and
+    # safe_flock_events.jsonl all live here. The 2026-08-27 18:48 deploy
+    # abandoned an 18-entry escalation queue and restarted the health agent's
+    # append-only history from zero; 147 of 160 release dirs hold such a fork.
+    # It also made every "did that cron job run?" check return a false ABSENT.
+    "logs"
   )
   for rel in "${dirs[@]}"; do
     local target="${dest}/${rel}"
