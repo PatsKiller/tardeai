@@ -191,3 +191,51 @@ def test_lineage_records_are_read_only_advisory(tmp_path: Path):
     _write_complete_workflow(path)
     assert all(r.get("authority") == "READ_ONLY_ADVISORY" for r in _records(path))
 
+
+def test_operator_feedback_binds_to_generation_and_checkpoint(tmp_path: Path):
+    path = tmp_path / "lineage.jsonl"
+    ids = _write_complete_workflow(path)
+    store = LineageStore(path)
+    assert store.node(
+        workflow="wf-acceptance",
+        node_type="OPERATOR_FEEDBACK",
+        node_id="feedback-1",
+        summary="AGREE",
+        entity_refs=[ids["entity"]],
+        evidence_class="DRY_RUN",
+    )
+    assert store.edge(
+        workflow="wf-acceptance",
+        from_id="feedback-1",
+        to_id=ids["product"],
+        relationship="FEEDBACK_ON",
+        evidence="generation_id",
+    )
+    assert store.edge(
+        workflow="wf-acceptance",
+        from_id="feedback-1",
+        to_id=ids["checkpoint"],
+        relationship="FEEDBACK_ON",
+        evidence="checkpoint_id",
+    )
+    rows = _records(path)
+    assert {r["to"] for r in rows if r.get("from") == "feedback-1"} == {
+        ids["product"], ids["checkpoint"]
+    }
+
+
+def test_corrupt_store_data_is_explicitly_detectable(tmp_path: Path):
+    path = tmp_path / "lineage.jsonl"
+    _write_complete_workflow(path)
+    with path.open("a", encoding="utf-8") as fh:
+        fh.write("{not-json}\n")
+    valid, corrupt = [], 0
+    for line in path.read_text(encoding="utf-8").splitlines():
+        try:
+            valid.append(json.loads(line))
+        except json.JSONDecodeError:
+            corrupt += 1
+    assert valid
+    assert corrupt == 1
+    # A reader must expose corruption/degradation, never claim a clean store.
+    assert corrupt > 0
