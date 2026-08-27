@@ -289,10 +289,37 @@ def generate_strategic_alerts(portfolio: Dict, analysis: Dict,
     from portfolio_rebalancer import compute_rebalancing
     rebal = compute_rebalancing(portfolio)
     if rebal.get("total_to_rebalance", 0) > 200000:
-        alerts.append({"type": "REBALANCE", "severity": "WARNING",
-                        "msg": f"Rebalancing: ${rebal.get('total_to_rebalance',0):,.0f} net to move — check Rebalancing tab"})
+        alerts.append(build_rebalance_alert(rebal))
 
     return alerts
+
+
+def build_rebalance_alert(rebal: Dict) -> Dict:
+    """The daily drift-based rebalance alert, verified before it's built.
+
+    Audit finding H1: the weekly gemma3-tier verifier never covers this path
+    (different table, different cadence) — this was the platform's one
+    unverified recommendation surface an operator actually acts on. Runs the
+    same SSDI/IRMAA/tax compliance check inline via
+    rebalance_verifier.verify_daily_rebalance_orders before the alert is
+    built, not after. A failed/unavailable check (no API key, network error)
+    must never suppress the underlying drift alert — it just proceeds
+    without a compliance stamp, same as before this fix existed.
+    """
+    total = rebal.get("total_to_rebalance", 0)
+    msg = f"Rebalancing: ${total:,.0f} net to move — check Rebalancing tab"
+    severity = "WARNING"
+    try:
+        from rebalance_verifier import verify_daily_rebalance_orders
+        compliance = verify_daily_rebalance_orders(
+            rebal.get("rebalance_orders") or [], total_to_rebalance=total)
+        critical = compliance.get("critical_flags") or []
+        if critical:
+            severity = "CRITICAL"
+            msg = "⚠️ COMPLIANCE FLAG — " + "; ".join(critical) + "\n" + msg
+    except Exception as exc:
+        print(f"  [alerts] rebalance compliance check failed (alert still sent): {exc}")
+    return {"type": "REBALANCE", "severity": severity, "msg": msg}
 
 
 # ── Format Telegram Messages ──────────────────────────────────────────────────
