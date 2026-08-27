@@ -210,8 +210,11 @@ systemctl --user restart portfolio-server.service
 .venv/bin/python3 scripts/multi_strategy_classifier.py --symbol NNE
 .venv/bin/python3 scripts/multi_strategy_classifier.py --batch --limit 20 --llm
 
-# Rebuild frontend
-cd apps/command-center-v2 && npm run build && cd ../..
+# Rebuild frontend (v3 is canonical — audit finding H2, docs/audits/CIO_PLATFORM_AUDIT_2026-08-27.md)
+cd apps/command-center-v3 && npm run build && cd ../..
+# v2 is frozen (still served at /v2/ with a "v3 is now canonical" banner, portfolio_server.py) —
+# only rebuild it if you specifically need to change the frozen fallback:
+#   cd apps/command-center-v2 && npm run build && cd ../..
 
 # Run system preflight check (23 points)
 .venv/bin/python scripts/system_preflight_check.py
