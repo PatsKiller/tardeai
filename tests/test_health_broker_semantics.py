@@ -33,3 +33,24 @@ def test_dry_run_cannot_claim_current_and_missing_timestamp_is_explicit():
     missing = evaluate_broker_snapshot({"holdings": [{"symbol": "SCHD"}]}, now=now)
     assert missing["status"] == "STALE_PORTFOLIO"
     assert "missing_broker_timestamp:SCHD" in missing["reasons"]
+
+
+def test_material_broker_share_drift_fails_closed_with_audit_detail():
+    now = datetime(2026, 8, 27, 14, 0, tzinfo=timezone.utc)
+    snap = _snapshot("2026-08-27T13:55:00+00:00")
+    snap["holdings"][0].update({"shares": 10, "broker_actual_shares": 11})
+    result = evaluate_broker_snapshot(snap, now=now)
+    assert result["status"] == "STALE_PORTFOLIO"
+    assert "broker_system_mismatch" in result["reasons"]
+    assert result["reconciliation"][0]["difference"] == 1.0
+
+
+def test_material_cash_drift_fails_closed_without_using_rebalance_fields():
+    now = datetime(2026, 8, 27, 14, 0, tzinfo=timezone.utc)
+    snap = _snapshot("2026-08-27T13:55:00+00:00")
+    snap.update({"broker_cash": 1000.0, "cash_total": 900.0,
+                 "total_to_rebalance": 999999.0})
+    result = evaluate_broker_snapshot(snap, now=now)
+    assert result["status"] == "STALE_PORTFOLIO"
+    assert any(item["field"] == "cash_total" for item in result["reconciliation"])
+    assert all(item["field"] != "total_to_rebalance" for item in result["reconciliation"])

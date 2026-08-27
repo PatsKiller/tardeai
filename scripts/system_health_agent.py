@@ -972,7 +972,9 @@ def _portfolio_price_freshness_alerts(now_et, max_age_min: float = 25.0) -> list
 
 
 def evaluate_broker_snapshot(snapshot: dict, *, now: datetime | None = None,
-                             max_age_min: float = 15.0) -> dict:
+                             max_age_min: float = 15.0,
+                             share_tolerance: float = 1e-6,
+                             cash_tolerance: float = 0.01) -> dict:
     """Validate broker freshness semantically, independent of file mtime/log age.
 
     A successful repricer log is not evidence that broker positions are current.  This
@@ -983,6 +985,7 @@ def evaluate_broker_snapshot(snapshot: dict, *, now: datetime | None = None,
     rows = snapshot.get("holdings") or []
     reasons: list[str] = []
     ages: list[float] = []
+    reconciliation: list[dict] = []
     for row in rows:
         if row.get("is_cash") and not row.get("broker_position_as_of"):
             continue
@@ -992,6 +995,46 @@ def evaluate_broker_snapshot(snapshot: dict, *, now: datetime | None = None,
             reasons.append(f"missing_broker_timestamp:{row.get('symbol') or 'unknown'}")
             continue
         ages.append(max(0.0, (now - parsed).total_seconds() / 60.0))
+
+        # Broker sync deliberately stamps broker_actual_shares even when the
+        # operational share count remains sticky pending operator review.  A
+        # material difference must therefore be visible to health consumers and
+        # must not be mistaken for a current, reconciled snapshot.
+        broker_qty = row.get("broker_actual_shares")
+        system_qty = row.get("shares")
+        if broker_qty is not None and system_qty is not None:
+            try:
+                drift = float(broker_qty) - float(system_qty)
+                if abs(drift) > share_tolerance:
+                    reconciliation.append({
+                        "symbol": row.get("symbol") or "unknown",
+                        "account": row.get("account") or row.get("account_id"),
+                        "field": "shares",
+                        "broker": float(broker_qty),
+                        "system": float(system_qty),
+                        "difference": drift,
+                    })
+            except (TypeError, ValueError):
+                reasons.append(f"invalid_share_reconciliation:{row.get('symbol') or 'unknown'}")
+
+    # Optional account-level cash fields are emitted by applied broker snapshot
+    # producers.  Do not infer cash from market value or rebalance notional.
+    broker_cash = snapshot.get("broker_cash")
+    system_cash = snapshot.get("cash_total")
+    if broker_cash is not None and system_cash is not None:
+        try:
+            cash_drift = float(broker_cash) - float(system_cash)
+            if abs(cash_drift) > cash_tolerance:
+                reconciliation.append({
+                    "field": "cash_total",
+                    "broker": float(broker_cash),
+                    "system": float(system_cash),
+                    "difference": cash_drift,
+                })
+        except (TypeError, ValueError):
+            reasons.append("invalid_cash_reconciliation")
+    if reconciliation:
+        reasons.append("broker_system_mismatch")
     sync_mode = str(snapshot.get("sync_mode") or "").upper()
     if sync_mode in {"DRY_RUN", "PREVIEW"}:
         reasons.append("sync_not_applied")
@@ -1001,7 +1044,9 @@ def evaluate_broker_snapshot(snapshot: dict, *, now: datetime | None = None,
         reasons.append(f"broker_positions_stale:{max(ages):.1f}m")
     status = "CURRENT" if not reasons else "STALE_PORTFOLIO"
     return {"status": status, "ok": status == "CURRENT", "max_age_min": max(ages, default=None),
-            "reasons": reasons, "snapshot_id": snapshot.get("portfolio_snapshot_id")}
+            "reasons": reasons, "snapshot_id": snapshot.get("portfolio_snapshot_id"),
+            "reconciliation": reconciliation,
+            "data_quality": "CURRENT" if status == "CURRENT" else "DEGRADED"}
 
 
 def _escalate(comp, check_result, conn):
