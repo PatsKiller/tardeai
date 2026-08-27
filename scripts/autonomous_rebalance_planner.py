@@ -3,6 +3,19 @@
 
 Creates human-reviewable rebalance plans from CIO decisions + rotation recommendations.
 
+STATUS (audit finding M3, docs/audits/CIO_PLATFORM_AUDIT_2026-08-27.md): not
+scheduled anywhere — no cron or systemd entry exists for this script. It
+reads exclusively from the `cio_decisions` table, which is populated only by
+scripts/cio_decision_engine.py, whose own cron entry has been `# DISABLED`
+since 2026-08-08. The platform's actual daily rebalance path
+(scripts/portfolio_rebalancer.py, cron 15 7 * * 1-5) is independent of both
+by deliberate operator decision (see docs/cio/ARCHITECTURE.md "Where CIO
+Desk does not participate at all") — daily drift-alerting stays mechanical,
+not CIO-gated, for latency/cost reasons. This script is therefore currently
+dead code with no live input source, not "autonomous" in any operational
+sense. Kept for its human-review-gated plan structure in case CIO-gated
+rebalancing is revisited later; do not assume it runs.
+
 Usage:
     python3 scripts/autonomous_rebalance_planner.py --run [--json]
     python3 scripts/autonomous_rebalance_planner.py --plan latest [--json]
