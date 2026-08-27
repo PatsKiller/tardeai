@@ -122,9 +122,29 @@ def signoff_signature(*, promotion_id: str, exact_source_sha: str,
     return content_hash(payload)
 
 
+# Opaque digests and ids (promotion_id, evidence hashes, commit SHAs) are hex
+# blobs with no semantics, and they must be scrubbed before any substring scan.
+# A 16-hex promotion_id contains "2fa" ~0.35% of the time and a 40-hex commit
+# SHA ~0.9%, which otherwise raises a phantom "2FA" authority violation on a
+# fully compliant record and fails its promotion preflight.
+_OPAQUE_HEX_RE = re.compile(r"^(?:[A-Za-z]{2,8}_)?[0-9a-fA-F]{12,64}$")
+
+
+def _scrub_opaque(obj: Any) -> Any:
+    """Replace opaque hex digests/ids with a placeholder, recursively."""
+    if isinstance(obj, dict):
+        return {k: _scrub_opaque(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_scrub_opaque(v) for v in obj]
+    if isinstance(obj, str) and _OPAQUE_HEX_RE.match(obj):
+        return "<opaque>"
+    return obj
+
+
 def authority_violations(rec: dict[str, Any]) -> list[str]:
     found: list[str] = []
-    blob = canonical_json(rec).lower()
+    # The structured checks below stay exact; only the substring scan is scrubbed.
+    blob = canonical_json(_scrub_opaque(rec)).lower()
     for token in FORBIDDEN_AUTHORITIES:
         if token.lower() in blob and token.lower() not in (
             "financial_action=false",

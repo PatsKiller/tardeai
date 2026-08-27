@@ -92,6 +92,25 @@ def test_promotion_schema_and_authority(root: Path):
     assert authority_violations({"grants": ["broker_write"]})
 
 
+def test_opaque_ids_do_not_trip_authority_gate(root: Path):
+    """Hex ids/digests must not be substring-scanned for authority tokens.
+
+    A 16-hex promotion_id contains "2fa" ~0.35% of the time and a 40-hex commit
+    SHA ~0.9%, which used to raise a phantom "2FA" violation and fail preflight
+    on a compliant record. Real tokens in semantic fields must still be caught.
+    """
+    rec = _draft(root)
+    for field, value in (
+        ("promotion_id", "prm_a12fa9c3d4e5f607"),
+        ("exact_source_sha", "a12fa9c3d4e5f607" + "b" * 24),
+        ("evidence_bundle_hash", "c12fa9" + "d" * 58),
+    ):
+        assert authority_violations(dict(rec, **{field: value})) == [], field
+    # the gate still fires on forbidden authorities in semantic fields
+    assert authority_violations(dict(rec, grants=["2FA"])) == ["2FA"]
+    assert authority_violations(dict(rec, financial_action=True)) == ["financial_action"]
+
+
 def test_invalid_signature(root: Path):
     rec = _draft(root)
     rec = P.preflight(rec, live_sha=SHA, has_review=True, has_score=True, root=root)
