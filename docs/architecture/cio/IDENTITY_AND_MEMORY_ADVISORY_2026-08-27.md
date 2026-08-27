@@ -9,7 +9,8 @@
 > registry **10,279 entities, 5,014 CONFIRMED by a broker CUSIP** (was 383 entities / 0 confirmed, the store absent from disk that morning), lineage
 > `subject_guid` **58/97** (was 0), memory `subject_guid` on 436 of 441 records
 > (was 0). Implementation record, including what was deliberately not done:
-> `PERSISTENCE_WIRING_2026-08-27.md`.
+> `PERSISTENCE_WIRING_2026-08-27.md`, and the learning loop closed the same
+> evening in `LOOP_CLOSURE_2026-08-27.md`.
 
 ---
 
