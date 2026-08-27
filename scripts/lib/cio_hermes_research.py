@@ -888,11 +888,59 @@ def _persist_stamped_result(research_id: str, result: dict[str, Any]) -> dict[st
             from scripts.lib.cio_lineage import record_hermes_completion
             # Upserts envelope: specialist_artifact_id = Hermes result_id (honest).
             record_hermes_completion(req_meta.get("request") or req_meta, result)
-        except Exception:
-            pass
+        except Exception as e:
+            # This call is the ONLY thing that advances stage_status.research to
+            # COMPLETED (hermes_completion_fields), and that stage gates
+            # is_complete_to_checkpoint. Swallowing it silently meant a failure
+            # here left the envelope reading NOT_YET_CREATED forever while this
+            # function still returned ok=True -- a stalled lineage that looks
+            # exactly like research that simply has not finished yet. Those two
+            # states need different responses and were indistinguishable.
+            #
+            # Recording the result must still succeed: lineage is observability,
+            # and losing a completed research result to a bookkeeping error
+            # would be the worse failure. So the flow is unchanged and only the
+            # silence is removed.
+            out_ok["lineage_recording_failed"] = f"{type(e).__name__}: {e}"
+            try:
+                _note_lineage_stall(
+                    research_id=str(result.get("result_id") or ""),
+                    request=req_meta.get("request") or req_meta,
+                    error=e,
+                )
+            except Exception:
+                pass
         return out_ok
     except Exception as e:
         return {"ok": False, "error": f"{type(e).__name__}:{e}"}
+
+
+
+def _note_lineage_stall(*, research_id: str, request, error: Exception) -> None:
+    """Leave a durable, greppable trace when a lineage stage fails to advance.
+
+    Written to the canonical logs dir (persistent since PR #569, so a deploy no
+    longer orphans it). Deliberately append-only and best-effort: a diagnostic
+    that can break the path it observes is worse than no diagnostic.
+    """
+    import datetime
+    from pathlib import Path
+
+    rec = {
+        "schema": "LineageStallNote@v1",
+        "authority": "READ_ONLY_ADVISORY",
+        "at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "stage": "research",
+        "research_id": research_id or None,
+        "research_request_id": (request or {}).get("research_id"),
+        "plan_id": (request or {}).get("plan_id"),
+        "error": f"{type(error).__name__}: {error}",
+    }
+    root = Path(__file__).resolve().parents[2]
+    out = root / "logs" / "lineage_stalls.jsonl"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with open(out, "a", encoding="utf-8") as fh:
+        fh.write(json.dumps(rec, default=str) + "\n")
 
 
 def complete_research_result(
