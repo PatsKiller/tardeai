@@ -726,13 +726,26 @@ def _sync_ticker_prices(portfolio, root):
 
 # ── Standalone ─────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    root      = Path(__file__).parent.parent
-    state_dir = root / "data" / "portfolios" / "state"
+    root = Path(__file__).parent.parent
+    # Resolve where the LIVE server reads from, not just this checkout. Every
+    # deployed release symlinks data/portfolios/state at the persistent root,
+    # so a checkout-relative write is invisible to the served surface.
+    try:
+        from scripts.lib.persistent_state_root import portfolio_state_write_targets
+        state_dirs = portfolio_state_write_targets(root)
+    except Exception as _e:  # helper unavailable (bare-script/dev path)
+        print(f"  [repricer] WARN persistent-root helper unavailable ({_e}) — checkout only")
+        state_dirs = [root / "data" / "portfolios" / "state"]
+
+    state_dir = state_dirs[0]
     hp        = state_dir / "holdings.json"
 
     if not hp.exists():
         print("holdings.json not found — run run_portfolio.bat first")
         raise SystemExit(1)
+
+    if len(state_dirs) > 1:
+        print(f"  [repricer] state targets: {', '.join(str(d) for d in state_dirs)}")
 
     portfolio = json.loads(hp.read_text(encoding="utf-8"))
     print(f"Loaded {len(portfolio.get('holdings', []))} holdings")
@@ -741,10 +754,29 @@ if __name__ == "__main__":
 
     portfolio = reprice_portfolio(portfolio, state_dir)
 
-    hp.write_text(json.dumps(portfolio, indent=2, default=str), encoding="utf-8")
+    _payload = json.dumps(portfolio, indent=2, default=str)
+    _written, _skipped = [], []
+    for _d in state_dirs:
+        _target = _d / "holdings.json"
+        # Only refresh a copy that already exists: this writer reprices an
+        # existing book, it does not create a new one somewhere unexpected.
+        if not _target.exists():
+            _skipped.append(f"{_target} (absent)")
+            continue
+        try:
+            _target.write_text(_payload, encoding="utf-8")
+            _written.append(str(_target))
+        except OSError as _e:
+            # Never let a secondary copy failure lose the primary reprice.
+            _skipped.append(f"{_target} ({_e.__class__.__name__})")
     print(f"After:  ${portfolio['portfolio_totals']['total_value']:,.0f} | "
           f"Day: ${portfolio['portfolio_totals']['day_change']:+,.0f}")
-    print("holdings.json updated.")
+    if not _written:
+        print("ERROR: no holdings.json copy could be written")
+        raise SystemExit(1)
+    print(f"holdings.json updated ({len(_written)} copy/copies): {', '.join(_written)}")
+    for _s in _skipped:
+        print(f"  [repricer] WARN not updated: {_s}")
     try:
         from sync_portfolio_watchlist_membership import sync_portfolio_watchlist_membership
         _ms = sync_portfolio_watchlist_membership(portfolio)

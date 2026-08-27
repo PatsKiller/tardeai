@@ -57,6 +57,40 @@ def good_persistent_root() -> Path:
     return Path(env) if env else GOOD_PERSISTENT_ROOT
 
 
+def portfolio_state_write_targets(checkout_root: Path | str) -> list[Path]:
+    """State dirs a portfolio writer must update, served copy first.
+
+    Every deployed release symlinks `data/portfolios/state` at
+    GOOD_PERSISTENT_ROOT, so that copy is what the live server reads. A writer
+    that resolves its own path from `Path(__file__).parent.parent` writes only
+    the checkout it happens to live in, which the server never reads — the
+    writer then reports success while the served numbers go stale.
+
+    Returns the served copy first (when provisioned), then the checkout copy.
+    Both are written because ~1100 call sites still resolve state
+    checkout-relative; dropping that copy would starve them. De-duplicated by
+    realpath, so a checkout already symlinked at the persistent root yields one
+    target rather than two writes to the same inode.
+    """
+    targets: list[Path] = []
+    seen: set[str] = set()
+
+    def _add(path: Path) -> None:
+        try:
+            key = str(path.resolve())
+        except OSError:
+            key = str(path)
+        if key not in seen:
+            seen.add(key)
+            targets.append(path)
+
+    persistent = good_persistent_root() / "data" / "portfolios" / "state"
+    if persistent.is_dir():
+        _add(persistent)
+    _add(Path(checkout_root) / "data" / "portfolios" / "state")
+    return targets
+
+
 def stamp_path(root: Path | None = None) -> Path:
     return (root or good_persistent_root()) / STAMP_NAME
 
