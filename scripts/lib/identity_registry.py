@@ -220,6 +220,18 @@ def register(doc: dict[str, Any], row: Mapping[str, Any]) -> dict[str, Any]:
         if new_rank > STATUS_RANK.get(str(existing.get("identity_status")), 0):
             existing.update({k: v for k, v in spine.items() if v is not None})
             existing["identity_status"] = status
+        # Identifiers accumulate regardless of rank: they are evidence, and two
+        # sources of equal rank can each carry a different durable id (holdings a
+        # CUSIP, a vendor a FIGI). A plain update() would let the later source
+        # erase the earlier one's id — the same discard this record exists to stop.
+        merged_ids = dict(existing.get("identifiers") or {})
+        merged_ids.update(spine.get("identifiers") or {})
+        if merged_ids:
+            existing["identifiers"] = merged_ids
+        # An entity confirmed before this field existed carries the identifiers but
+        # not the basis; backfill it rather than leaving the status unexplained.
+        if spine.get("identity_basis") and not existing.get("identity_basis"):
+            existing["identity_basis"] = spine["identity_basis"]
         if sym and sym not in (existing.get("aliases") or []):
             existing.setdefault("aliases", []).append(sym)
     else:

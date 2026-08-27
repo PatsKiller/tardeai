@@ -186,3 +186,63 @@ def test_schwab_adapter_keeps_the_cusip():
     block = src.split("fields=positions", 1)[1][:1200]
 
     assert '"cusip"' in block, "Schwab positions must carry the broker-supplied CUSIP"
+
+
+def test_confirmed_entity_records_the_identifier_that_confirmed_it():
+    """A status you cannot audit is a status you cannot trust.
+
+    The CUSIP was consumed to derive `security_guid` and then dropped, so a
+    CONFIRMED entity carried no evidence of why it was confirmed and the GUID
+    could not be re-derived from the stored record.
+    """
+    doc = register(empty_registry(), {"symbol": "PFLT", "identifiers": {"cusip": "70806A106"}})
+    entity = lookup_symbol(doc, "PFLT")
+
+    assert entity["identity_status"] == "CONFIRMED"
+    assert entity["identifiers"] == {"cusip": "70806A106"}
+    assert entity["identity_basis"] == "cusip"
+
+
+def test_identifiers_accumulate_on_the_same_entity():
+    """A later source adds a lower-priority id without erasing what confirmed it.
+
+    The GUID is keyed off the highest-priority identifier (ISIN here), so a second
+    source carrying the same ISIN plus a CUSIP lands on the *same* entity. A plain
+    update() would replace the identifiers wholesale and drop one — the same
+    discard this record exists to prevent, one layer down.
+    """
+    doc = register(empty_registry(), {"symbol": "PFLT", "identifiers": {"isin": "US70806A1060"}})
+    guid = lookup_symbol(doc, "PFLT")["subject_guid"]
+
+    register(doc, {"symbol": "PFLT",
+                   "identifiers": {"isin": "US70806A1060", "cusip": "70806A106"}})
+    entity = lookup_symbol(doc, "PFLT")
+
+    assert entity["subject_guid"] == guid, "adding an id must not rekey the entity"
+    assert entity["identifiers"] == {"isin": "US70806A1060", "cusip": "70806A106"}
+    assert entity["identity_basis"] == "isin"
+
+
+def test_identifiers_are_normalized_and_blanks_confer_nothing():
+    """Absent stays absent: whitespace is not a durable identifier."""
+    doc = register(empty_registry(), {"symbol": "AAA", "identifiers": {"cusip": " 70806a106 "}})
+    assert lookup_symbol(doc, "AAA")["identifiers"] == {"cusip": "70806A106"}
+
+    blank = register(empty_registry(), {"symbol": "BBB", "company": "Blank Co",
+                                        "identifiers": {"cusip": "   "}})
+    assert lookup_symbol(blank, "BBB")["identity_status"] == "CANDIDATE"
+    assert not lookup_symbol(blank, "BBB").get("identifiers")
+
+
+def test_persisting_identifiers_did_not_move_any_guid():
+    """Recording the evidence must not change the id derived from it.
+
+    Pinned values: an id written before this change must still resolve after it.
+    """
+    from scripts.lib.security_identity import instrument_guid_from_identifiers
+
+    assert instrument_guid_from_identifiers({"cusip": "70806A106"}) == (
+        instrument_guid_from_identifiers({"cusip": " 70806a106 "})
+    )
+    doc = register(empty_registry(), {"symbol": "PFLT", "identifiers": {"cusip": "70806A106"}})
+    assert lookup_symbol(doc, "PFLT")["security_guid"] == "f4fdbd11-1a87-5f59-8f26-c061f7b1613d"
