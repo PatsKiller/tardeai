@@ -609,7 +609,9 @@ def build_canonical_snapshot(
     }
     _EXTERNAL_ADAPTER_FUNCTIONS: dict[str, str] = {
         "watch_intelligence": "get_watch_intelligence",
-        "catalysts": "get_catalyst_record",
+        # get_catalyst_record(db_query, symbol) requires arguments the snapshot
+        # never passes; get_catalysts() is the domain-level collector.
+        "catalysts": "get_catalysts",
         "analyst_actions": "get_analyst_detail",
         "reentry": "get_reentry_decision_desk",
     }
@@ -735,8 +737,16 @@ def build_canonical_snapshot(
                 )
 
     # ── For any remaining domains not covered by the registry ────────────
+    # A domain the registry loop already explained (collector not resolved,
+    # adapter BROKEN, collector raised) must keep that reason. This blanket
+    # pass used to overwrite it with a generic one, so the real cause was
+    # invisible: a collector that raised TypeError reported
+    # "not_yet_collected_by_snapshot_builder" instead, which points at the
+    # wrong thing and cost several diagnostic passes.
     known_gaps = CIO_DOMAINS - supported
     for domain in sorted(known_gaps):
+        if (snapshot._domains.get(domain) or {}).get("gap_reason"):
+            continue
         snapshot.add_unavailable(
             domain, gap_reason=f"{domain}_not_yet_collected_by_snapshot_builder"
         )
