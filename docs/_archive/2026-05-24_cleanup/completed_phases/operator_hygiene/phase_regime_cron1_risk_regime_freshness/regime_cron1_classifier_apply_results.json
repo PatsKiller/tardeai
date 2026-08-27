@@ -1,0 +1,30 @@
+{
+  "mode": "applied",
+  "write_ok": true,
+  "run_id": "RUN_20260520155002_e9f1ccde",
+  "snapshot_id": "RS_20260520155002_e1388e2f",
+  "market_session": "regular",
+  "regime_label": "high_volatility",
+  "regime_score": 3,
+  "confidence": 0.43,
+  "volatility_state": "high_vol",
+  "trend_state": "bearish",
+  "breadth_state": "narrow",
+  "liquidity_state": "unknown",
+  "leadership_state": "unknown",
+  "risk_appetite_state": "bearish",
+  "macro_state": "unknown",
+  "data_freshness_state": "fresh",
+  "stale_data": false,
+  "missing_data": [],
+  "inputs": {
+    "market_session": "neutral",
+    "news_sentiment_proxy": "neutral",
+    "finviz_health": "risk_on",
+    "scan_score_avg": "bearish",
+    "gap_volatility_proxy": "high_vol",
+    "vix_close": "normal",
+    "scan_breadth_24h": "narrow"
+  },
+  "summary": "Regime: high_volatility (conf=43%)"
+}

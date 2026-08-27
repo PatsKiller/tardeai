@@ -171,8 +171,15 @@ def _parse_strict(raw: str):
         return None
 
 
-def run_free_critiques(cur, force: bool = False) -> dict:
-    """Tier 1 — both free seats critique the current build. Cached by build_hash."""
+FREE_SEATS = (("chatgpt", "chatgpt"), ("grok", "grok"), ("deepseek", "deepseek-flash"))
+
+
+def run_free_critiques(cur, force: bool = False, seats=None) -> dict:
+    """Tier 1 — free OAuth seats critique the current build. Cached by build_hash.
+
+    seats=None runs all FREE_SEATS (ChatGPT + Grok + DeepSeek Flash). Pass
+    seats=['chatgpt'] for the Friday auto weekly (OAuth only, never paid).
+    """
     ensure_tables(cur)
     cur.connection.commit()
     art = build_oversight_brief()
@@ -183,7 +190,10 @@ def run_free_critiques(cur, force: bool = False) -> dict:
     prompt = ("You are an independent risk overseer for a retirement-scale defensive trading desk. "
               "Judge WITHIN the constitution. Be adversarial where warranted.\n\n"
               + art["markdown"] + "\n\n" + CONTRACT)
-    for seat, lane in (("chatgpt", "chatgpt"), ("grok", "grok"), ("deepseek", "deepseek-flash")):
+    wanted = {s.lower() for s in seats} if seats else None
+    for seat, lane in FREE_SEATS:
+        if wanted is not None and seat not in wanted:
+            continue
         cur.execute("SELECT status FROM oversight_reviews WHERE build_hash=%s AND seat=%s", (bh, seat))
         if cur.fetchone() and not force:
             out["seats"][seat] = "cached"

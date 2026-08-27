@@ -1,0 +1,60 @@
+{
+  "generated_at": "2026-05-19T19:18:22.565375+00:00",
+  "total_lessons": 10,
+  "generic_lessons_count": 0,
+  "specific_lessons_count": 10,
+  "missing_action_count": 0,
+  "missing_confidence_count": 0,
+  "by_category": {
+    "exit_discipline": 1,
+    "stop_quality": 1,
+    "holding_period": 2,
+    "manual_intervention": 1,
+    "data_quality": 3,
+    "entry_timing": 1,
+    "broker_sync": 1
+  },
+  "by_strategy": {
+    "earnings_catalyst": {
+      "count": 2,
+      "avg_r": 0.65
+    },
+    "dividend_growth_compounder": {
+      "count": 1,
+      "avg_r": 0.21
+    },
+    "momentum_scalp": {
+      "count": 3,
+      "avg_r": -0.07
+    },
+    "swing_breakout": {
+      "count": 2,
+      "avg_r": 0.23
+    },
+    "screener": {
+      "count": 1,
+      "avg_r": 0.0
+    },
+    "swing_trade": {
+      "count": 1,
+      "avg_r": -0.82
+    }
+  },
+  "top_5_actions": [
+    "Add explicit stale-exit rule to swing_breakout \u2014 define max holding period or condition-based exit trigger",
+    "Check Alpaca order history for XMTR \u2014 verify whether order was submitted, rejected, or never sent",
+    "Check Alpaca order history for FLYW \u2014 verify whether order was submitted, rejected, or never sent",
+    "Check BLBD spread at entry time, verify stop was outside bid-ask, review earnings_catalyst entry filter",
+    "Check Alpaca order history for EVC \u2014 verify whether order was submitted, rejected, or never sent"
+  ],
+  "repeated_patterns": [
+    {
+      "pattern": "time_stop_drag",
+      "count": 2
+    },
+    {
+      "pattern": "broker_sync_issue",
+      "count": 4
+    }
+  ]
+}

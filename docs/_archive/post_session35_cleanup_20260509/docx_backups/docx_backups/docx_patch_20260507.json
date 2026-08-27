@@ -1,0 +1,102 @@
+{
+  "patch_date": "2026-05-07",
+  "session": "23D",
+  "session_title": "Technical Levels, OHLCV Cache, and Paper Bracket Validation",
+  "sections": {
+    "db_tables": {
+      "count": 209,
+      "new_tables": ["market_ohlcv_bars"],
+      "new_columns": {
+        "proposal_technical_snapshots": [
+          "ema_8_distance_pct NUMERIC", "ema_21_distance_pct NUMERIC",
+          "ema_50_distance_pct NUMERIC", "ema_200_distance_pct NUMERIC",
+          "swing_high NUMERIC", "swing_low NUMERIC",
+          "swing_high_date TIMESTAMPTZ", "swing_low_date TIMESTAMPTZ",
+          "fib_236 NUMERIC", "fib_382 NUMERIC", "fib_500 NUMERIC",
+          "fib_618 NUMERIC", "fib_786 NUMERIC", "fib_1272 NUMERIC", "fib_1618 NUMERIC",
+          "nearest_fib_level TEXT", "nearest_fib_distance_pct NUMERIC",
+          "opening_range_minutes INTEGER", "opening_range_status TEXT",
+          "premarket_status TEXT", "intraday_data_source TEXT", "ohlcv_data_status TEXT"
+        ],
+        "proposal_execution_readiness": [
+          "bracket_order_supported BOOLEAN", "alpaca_account_mode TEXT",
+          "alpaca_base_url_type TEXT", "market_hours BOOLEAN",
+          "bracket_dry_run_payload JSONB", "paper_submit_tested BOOLEAN",
+          "paper_submit_test_result TEXT"
+        ],
+        "proposal_evidence_snapshots": [
+          "technical_snapshot_id INTEGER", "execution_readiness_id INTEGER",
+          "fib_context JSONB", "opening_range_status TEXT",
+          "kill_conditions JSONB", "expected_hold_window TEXT", "expected_r NUMERIC"
+        ]
+      }
+    },
+    "scripts_count": 278,
+    "api_endpoints": 108,
+    "api_lines": 10640,
+    "crontab_entries": 121,
+    "holdings_value": 1189220,
+    "holdings_positions": 47,
+    "new_scripts": [
+      "scripts/market_data_snapshot_loader.py — OHLCV bar cache loader (yfinance + Polygon fallback)",
+      "scripts/fib_swing_engine.py — Fibonacci swing high/low + retracement/extension levels",
+      "scripts/opening_range_engine.py — Opening range breakout + premarket level engine",
+      "scripts/session23d_validate.py — 50-check validation for Session 23D"
+    ],
+    "modified_scripts": [
+      "scripts/proposal_technical_snapshot.py — Added EMA extraction from OHLCV bars, Fib/ORB integration, technical grading (TECH_STRONG/OK/MIXED/WEAK/INCOMPLETE)",
+      "scripts/proposal_execution_readiness.py — Added strategy-specific technical gates (EMA alignment, ORB, VWAP extension, ATR target, Fib proximity), bracket validation fields",
+      "scripts/proposal_paper_submitter.py — Added dry-run-bracket, submit-paper-bracket, thesis snapshot fields, THESIS_SNAPSHOT_READY event",
+      "scripts/api_v2.py — 6 new endpoints (run-fib, run-opening-range, run-technical-snapshot, dry-run-alpaca-bracket, submit-alpaca-paper-bracket, technical-diagnostics)",
+      "apps/command-center-v2/src/pages/PaperProposals.tsx — Tech Map tab, bracket controls, technical grade badge"
+    ],
+    "new_api_endpoints": [
+      "POST /api/v2/paper-proposals/run-fib",
+      "POST /api/v2/paper-proposals/run-opening-range",
+      "POST /api/v2/paper-proposals/run-technical-snapshot",
+      "POST /api/v2/paper-proposals/dry-run-alpaca-bracket",
+      "POST /api/v2/paper-proposals/submit-alpaca-paper-bracket",
+      "GET /api/v2/paper-proposals/technical-diagnostics"
+    ],
+    "technical_engines": {
+      "ema": {
+        "periods": [8, 21, 50, 200],
+        "alignment_states": ["BULL_STACKED", "BULLISH", "MIXED", "BEARISH", "LONG_TERM_OVERHEAD"],
+        "source": "daily OHLCV bars via market_ohlcv_bars"
+      },
+      "fibonacci": {
+        "retracement_levels": [0.236, 0.382, 0.500, 0.618, 0.786],
+        "extension_levels": [1.272, 1.618],
+        "lookback": "60 trading days",
+        "min_swing_range": "max(2x ATR, 8%)"
+      },
+      "opening_range": {
+        "windows": [5, 15, 30],
+        "statuses": ["ORB_BREAKOUT_CONFIRMED", "ORB_BREAKOUT_FAILED", "INSIDE_OPENING_RANGE", "NO_INTRADAY_DATA", "MARKET_NOT_OPEN"],
+        "premarket_statuses": ["PREMARKET_HIGH_RECLAIM", "PREMARKET_HIGH_REJECTED", "INSIDE_PREMARKET_RANGE", "NO_INTRADAY_DATA"]
+      },
+      "technical_grading": {
+        "grades": ["TECH_STRONG (80+)", "TECH_OK (60+)", "TECH_MIXED (40+)", "TECH_WEAK (20+)", "TECH_INCOMPLETE (<20)"],
+        "scoring": "RSI valid +20, VWAP above +20, EMA bullish +20, Fib proximity +15, ATR supports target +15, ORB confirmed +10"
+      }
+    },
+    "paper_bracket_validation": {
+      "dry_run": "Constructs bracket payload, validates all gates, checks Alpaca mode",
+      "submit": "Full bracket order to Alpaca paper after all gates pass",
+      "hard_checks": ["ALPACA_MODE=paper", "LIVE_TRADING_ENABLED=false", "paper-api URL"],
+      "after_hours": "Blocked unless --allow-after-hours-paper"
+    },
+    "agents": {
+      "count": 5,
+      "list": [
+        "Maria — Market Research Agent (2-pass: news+fundamentals, RAG-enhanced)",
+        "Steph — Portfolio Allocation / Sizing Agent",
+        "Aegis — System Integrity + Improvement Agent",
+        "Alex — RAG + Peer Intelligence Agent",
+        "Iris — Taxonomy / Content Gap Agent"
+      ],
+      "model": "qwen3:14b via Ollama (Vulkan backend, Intel Arc B580)"
+    },
+    "session_summary": "Session 23D completed the six deferred items from 23C: OHLCV bar cache (55K+ bars via yfinance), EMA 8/21/50/200 extraction with alignment classification, Fibonacci swing engine with real swing detection, opening range/premarket engine, technical grading system, and Alpaca paper bracket dry-run/submit validation. All 9 pending proposals enriched with full technical data."
+  }
+}

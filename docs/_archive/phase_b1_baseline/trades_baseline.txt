@@ -1,0 +1,6 @@
+  strategy_id   | closed | win_rate | avg_pnl 
+----------------+--------+----------+---------
+ swing_breakout |      7 |     0.14 |   33.92
+ swing_trade    |      1 |     0.00 |  -15.39
+(2 rows)
+

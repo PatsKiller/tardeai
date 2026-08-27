@@ -1,0 +1,17 @@
+{
+  "generated_at": "2026-05-19T18:15:58.411023+00:00",
+  "total_memberships": 1941,
+  "by_status": [
+    {
+      "membership_status": "present",
+      "c": 1941
+    }
+  ],
+  "history_events": 1941,
+  "by_event_type": [
+    {
+      "event_type": "entered",
+      "c": 1941
+    }
+  ]
+}

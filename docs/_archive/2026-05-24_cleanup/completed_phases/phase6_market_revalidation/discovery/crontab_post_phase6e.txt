@@ -1,0 +1,232 @@
+# ════════════════════════════════════════════════════════════════════════
+# Trade AI v12 — Complete Automation Schedule
+# Updated: April 28, 2026 (v2.24)
+# ════════════════════════════════════════════════════════════════════════
+PROJ=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild
+PY=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python
+
+# ── EVERY 15 MINUTES: Agent Processing ──────────────────────────────────
+
+# ── 5:00 AM: Alex Daily Scan ───────────────────────────────────────────
+0 5 * * 1-5 cd $PROJ && $PY scripts/run_alex_daily.py --daily --telegram >> logs/alex_daily.log 2>&1
+
+# ── 6:00 AM: Smart Proactive Alerts ────────────────────────────────────
+0 6 * * 1-5 cd $PROJ && $PY scripts/telegram_smart_alerts.py --check-all --telegram >> logs/smart_alerts.log 2>&1
+
+# ── 6:15 AM: Full Agent Context Refresh (reprice, risk, signals, news) ─
+15 6 * * 1-5 $PROJ/scripts/agent_router_cron.sh full
+
+# ── 6:25 AM: Agent Intelligence (discovery, watchlist review) ──────────
+25 6 * * 1-5 $PROJ/scripts/agent_intelligence_cron.sh daily
+
+# ── 6:30 AM: News Ingestion (scored + tagged) ─────────────────────────
+30 6 * * 1-5 cd $PROJ && $PY scripts/news_ingestion.py --priority >> logs/news_ingestion.log 2>&1
+
+# ── 6:35 AM: Classify Candidates ──────────────────────────────────────
+35 6 * * 1-5 cd $PROJ && $PY scripts/classify_candidates.py >> logs/classify_candidates_cron.log 2>&1
+
+# ── 6:45 AM: Sync Watchlist to DB ─────────────────────────────────────
+45 6 * * 1-5 cd $PROJ && $PY scripts/sync_watchlist_items_to_db.py >> logs/watchlist_sync.log 2>&1
+
+# ── 6:50 AM: Materialize Strategy Cards ───────────────────────────────
+50 6 * * 1-5 cd $PROJ && $PY scripts/materialize_watchlist_strategy_cards.py >> logs/watchlist_strategy_cards.log 2>&1
+
+# ── 6:55 AM: Income Engine ────────────────────────────────────────────
+55 6 * * 1-5 cd $PROJ && $PY scripts/materialize_income_engine.py >> logs/income_engine.log 2>&1
+
+# ── 7:00 AM: CIO Decisions + Dividend Sync + Enrichment ───────────────
+0 7 * * 1-5 cd $PROJ && $PY scripts/cio_decision_engine.py --run >> logs/cio_decisions.log 2>&1
+5 7 * * 1-5 cd $PROJ && $PY scripts/sync_dividend_data.py >> logs/dividend_sync.log 2>&1
+10 7 * * 1-5 cd $PROJ && $PY scripts/finviz_enrichment.py >> logs/finviz_enrichment.log 2>&1
+
+# ── 7:15 AM: State Freshness + Price DB Sync ──────────────────────────
+15 7 * * 1-5 cd $PROJ && $PY scripts/write_state_freshness_history.py >> logs/state_freshness_db_cron.log 2>&1
+20 7 * * 1-5 cd $PROJ && $PY scripts/price_db_sync.py >> logs/price_db_sync.log 2>&1
+
+# ── 7:25 AM: System Health Alerts ─────────────────────────────────────
+25 7 * * 1-5 cd $PROJ && $PY scripts/system_health_alerts.py >> logs/system_health_alerts_cron.log 2>&1
+
+# ── 7:30 AM: Recovery Watch (stop-out detection + escalation) ─────────
+30 7 * * 1-5 cd $PROJ && $PY scripts/recovery_watch_daily.py >> logs/recovery_watch.log 2>&1
+
+# ── 7:40 AM: Portfolio Level QA ───────────────────────────────────────
+40 7 * * 1-5 cd $PROJ && $PY scripts/portfolio_level_qa.py >> logs/portfolio_qa.log 2>&1
+
+# ── 7:50 AM: Decision Outcome Tracking ────────────────────────────────
+50 7 * * 1-5 cd $PROJ && $PY scripts/record_decision_outcome.py >> logs/decision_outcomes.log 2>&1
+
+# ── 8:00 AM: Research Topics + Aegis Brief ────────────────────────────
+0 8 * * 1-5 cd $PROJ && $PY scripts/iterate_research_topics.py --telegram >> logs/research_iterate.log 2>&1
+5 8 * * 1-5 cd $PROJ && $PY scripts/aegis_morning_brief_delivery.py >> logs/aegis_brief.log 2>&1
+
+# ── 10:00 AM: Finviz Screener Discovery (market open) ─────────────────
+0 10 * * 1-5 cd $PROJ && $PY scripts/finviz_screener_runner.py --run >> logs/finviz_screener.log 2>&1
+
+# ── INTRADAY REFRESHES ─────────────────────────────────────────────────
+# Hourly: Light reprice (positions)
+0 10-15 * * 1-5 $PROJ/scripts/agent_router_cron.sh light
+# Mid-day: News + enrichment + health
+30 12 * * 1-5 cd $PROJ && $PY scripts/news_ingestion.py --priority >> logs/news_ingestion.log 2>&1
+0 13 * * 1-5 cd $PROJ && $PY scripts/finviz_enrichment.py >> logs/finviz_enrichment.log 2>&1
+10 12,15 * * 1-5 cd $PROJ && $PY scripts/system_health_alerts.py >> logs/system_health_alerts_cron.log 2>&1
+# Intraday intelligence
+30 11,14 * * 1-5 $PROJ/scripts/agent_intelligence_cron.sh intraday
+
+# ── 4:00 PM: End-of-Day Screener + News ────────────────────────────────
+0 16 * * 1-5 cd $PROJ && $PY scripts/finviz_screener_runner.py --run >> logs/finviz_screener.log 2>&1
+30 18 * * * cd $PROJ && $PY scripts/news_ingestion.py --priority >> logs/news_ingestion.log 2>&1
+
+# ── WEEKLY (Sunday) ────────────────────────────────────────────────────
+30 7 * * 0 $PROJ/scripts/agent_router_cron.sh deep
+0 8 * * 0 $PROJ/scripts/agent_intelligence_cron.sh deep
+0 8 * * 0 cd $PROJ && $PY scripts/run_alex_daily.py --weekly --telegram >> logs/alex_weekly.log 2>&1
+# ── Weekly DOCX Report (Sunday 9 PM — after all weekly jobs complete) ──
+0 21 * * 0 cd $PROJ && flock -n /tmp/weekly_docx.lock $PY scripts/generate_weekly_docx.py >> logs/weekly_docx.log 2>&1
+
+# ── MONTHLY (1st of month) ─────────────────────────────────────────────
+0 9 1 * * cd $PROJ && $PY scripts/run_alex_daily.py --monthly --telegram >> logs/alex_monthly.log 2>&1
+
+# ── 8:00 PM: Overnight Batch (metrics + stale refresh + agent perf) ──
+0 20 * * 1-5 cd $PROJ && $PY scripts/overnight_batch.py --telegram >> logs/overnight_batch.log 2>&1
+
+# ── Paper Execution Sweep: safety net for approved proposals (market hours) ──
+*/5 9-16 * * 1-5 cd $PROJ && flock -n /tmp/paper_sweep.lock $PY scripts/paper_execution_sweep.py >> logs/paper_execution.log 2>&1
+
+# ── Paper Trade Monitor: trailing stops, profit targets, position management ──
+*/5 9-16 * * 1-5 cd $PROJ && flock -n /tmp/paper_monitor.lock $PY scripts/paper_trade_monitor.py >> logs/paper_monitor.log 2>&1
+
+# ── Market Regime: collect indicators + classify regime ──────────────────
+30 6 * * 1-5 cd $PROJ && $PY scripts/market_regime_collector.py --apply >> logs/regime_collector.log 2>&1
+35 6 * * 1-5 cd $PROJ && $PY scripts/market_regime_classifier.py --apply >> logs/regime_classifier.log 2>&1
+# Also run at market close for after-hours regime snapshot
+5 16 * * 1-5 cd $PROJ && $PY scripts/market_regime_collector.py --apply >> logs/regime_collector.log 2>&1 && $PY scripts/market_regime_classifier.py --apply >> logs/regime_classifier.log 2>&1
+
+# ── Open Trade Monitor: near-stop, near-target, negative news, stale alerts ──
+*/15 9-16 * * 1-5 cd $PROJ && flock -n /tmp/open_trade_monitor.lock $PY scripts/open_trade_monitor.py >> logs/open_trade_monitor.log 2>&1
+
+# ── Agent Processing: Market hours (every 15 min, 10 jobs) ──────────────
+*/15 6-19 * * 1-5 cd $PROJ && flock -n -E 99 /tmp/tradeai_watchlist_agent_jobs.lock timeout 12m $PY scripts/process_watchlist_agent_jobs.py --limit 5 >> logs/watchlist_agent_jobs.log 2>&1; rc=$?; [ $rc -eq 99 ] && echo "$(date +\%Y-\%m-\%d\ \%H:\%M:\%S) [flock] skipped — previous instance still running" >> $PROJ/logs/watchlist_agent_jobs.log; [ $rc -eq 124 ] && echo "$(date +\%Y-\%m-\%d\ \%H:\%M:\%S) [timeout] process_watchlist_agent_jobs exceeded 12m runtime cap" >> $PROJ/logs/watchlist_agent_jobs.log
+# ── Agent Processing: Overnight (every 5 min, 25 jobs — clear backlog) ──
+*/5 20-23 * * 1-5 cd $PROJ && { [ -f /tmp/tradeai_deep_llm_window.lock ] && echo "$(date +\%Y-\%m-\%d\ \%H:\%M:\%S) [deep-llm-lock] skipped — deep overnight LLM window active" >> $PROJ/logs/watchlist_agent_jobs.log && exit 0; true; } && flock -n -E 99 /tmp/tradeai_watchlist_agent_jobs.lock timeout 12m $PY scripts/process_watchlist_agent_jobs.py --limit 5 >> logs/watchlist_agent_jobs.log 2>&1; rc=$?; [ $rc -eq 99 ] && echo "$(date +\%Y-\%m-\%d\ \%H:\%M:\%S) [flock] skipped — previous instance still running" >> $PROJ/logs/watchlist_agent_jobs.log; [ $rc -eq 124 ] && echo "$(date +\%Y-\%m-\%d\ \%H:\%M:\%S) [timeout] process_watchlist_agent_jobs exceeded 12m runtime cap" >> $PROJ/logs/watchlist_agent_jobs.log
+*/5 0-5 * * 2-6 cd $PROJ && { [ -f /tmp/tradeai_deep_llm_window.lock ] && echo "$(date +\%Y-\%m-\%d\ \%H:\%M:\%S) [deep-llm-lock] skipped — deep overnight LLM window active" >> $PROJ/logs/watchlist_agent_jobs.log && exit 0; true; } && flock -n -E 99 /tmp/tradeai_watchlist_agent_jobs.lock timeout 12m $PY scripts/process_watchlist_agent_jobs.py --limit 5 >> logs/watchlist_agent_jobs.log 2>&1; rc=$?; [ $rc -eq 99 ] && echo "$(date +\%Y-\%m-\%d\ \%H:\%M:\%S) [flock] skipped — previous instance still running" >> $PROJ/logs/watchlist_agent_jobs.log; [ $rc -eq 124 ] && echo "$(date +\%Y-\%m-\%d\ \%H:\%M:\%S) [timeout] process_watchlist_agent_jobs exceeded 12m runtime cap" >> $PROJ/logs/watchlist_agent_jobs.log
+# ── Agent Processing: Weekend (every 10 min, 15 jobs) ──
+*/10 * * * 0,6 cd $PROJ && flock -n -E 99 /tmp/tradeai_watchlist_agent_jobs.lock timeout 12m $PY scripts/process_watchlist_agent_jobs.py --limit 5 >> logs/watchlist_agent_jobs.log 2>&1; rc=$?; [ $rc -eq 99 ] && echo "$(date +\%Y-\%m-\%d\ \%H:\%M:\%S) [flock] skipped — previous instance still running" >> $PROJ/logs/watchlist_agent_jobs.log; [ $rc -eq 124 ] && echo "$(date +\%Y-\%m-\%d\ \%H:\%M:\%S) [timeout] process_watchlist_agent_jobs exceeded 12m runtime cap" >> $PROJ/logs/watchlist_agent_jobs.log
+
+# ── 7:15 AM: Portfolio orchestrator (daily digest, portfolio alerts) ──
+15 7 * * 1-5 cd $PROJ && flock -n /tmp/portfolio_orch.lock $PY scripts/portfolio_orchestrator.py >> logs/portfolio_orchestrator.log 2>&1
+
+# ── 7:20 AM: LLM intelligence enrichment (portfolio risk, rebalance, recovery, prospects) ──
+20 7 * * 1-5 cd $PROJ && flock -n /tmp/llm_enrichment.lock $PY scripts/llm_intelligence_enrichment.py >> logs/llm_enrichment.log 2>&1
+
+# ── 7:30 AM: Missing condition alerts (proposals, API credits, email, rebalance) ──
+30 7 * * 1-5 cd $PROJ && flock -n /tmp/alert_missing.lock $PY scripts/alert_missing_conditions.py >> logs/alert_missing.log 2>&1
+
+# ── 8:30 PM: Feedback loop processor (proposal chains, alert scoring, strategy snapshots) ──
+30 20 * * 1-5 cd $PROJ && flock -n /tmp/feedback_loop.lock $PY scripts/feedback_loop_processor.py >> logs/feedback_loop.log 2>&1
+
+# ── 9:00 PM: Auto-Research (triggered by agent conflicts + discoveries) ──
+0 21 * * 1-5 cd $PROJ && $PY scripts/auto_research.py --check --telegram >> logs/auto_research.log 2>&1
+
+# ── YouTube channel auto-discovery (daily, all tracked channels) ──
+0 19 * * 1-5 cd $PROJ && $PY scripts/youtube_transcript_ingest.py --all-channels >> logs/youtube_ingest.log 2>&1
+
+# ── Auto-discover new tickers from intel (after each news ingestion) ──
+40 6 * * 1-5 cd $PROJ && $PY scripts/intel_auto_discovery.py --telegram >> logs/intel_discovery.log 2>&1
+40 12 * * 1-5 cd $PROJ && $PY scripts/intel_auto_discovery.py --telegram >> logs/intel_discovery.log 2>&1
+
+# ── Watchlist hygiene (weekly Sunday — remove stale, flag negatives, rotation) ──
+30 9 * * 0 cd $PROJ && $PY scripts/watchlist_hygiene.py --telegram >> logs/watchlist_hygiene.log 2>&1
+
+# ── Trade AI scalp/swing candidates (pre-market scan) ──
+
+# ── SEC Form 4 ingestion (daily 8 PM — after market) ──
+0 20 * * 1-5 cd $PROJ && $PY scripts/sec_data_ingest.py --all >> logs/sec_ingest.log 2>&1
+
+# ── External market data (yfinance daily, Alpha Vantage weekly) ──
+15 7 * * 1-5 cd $PROJ && $PY scripts/external_market_data_ingest.py --quotes >> logs/market_data.log 2>&1
+0 8 * * 1 cd $PROJ && $PY scripts/external_market_data_ingest.py --fundamentals >> logs/market_data.log 2>&1
+
+# ── Monthly backup verification (1st of month, 6 AM) ──
+0 6 1 * * cd $PROJ && flock -n /tmp/backup_verify.lock $PY scripts/backup_verify.py >> logs/backup_verify.log 2>&1
+
+# ── YouTube channel discovery (monthly — find new relevant channels) ──
+0 10 1 * * cd $PROJ && $PY scripts/youtube_channel_discovery.py --discover --telegram >> logs/youtube_discovery.log 2>&1
+
+# ── YouTube transcript purge (monthly — remove expired low-quality) ──
+0 3 1 * * cd $PROJ && $PY -c "import sys; sys.path.insert(0,'scripts'); from transcript_processor import set_purge_dates; set_purge_dates()" && $PY -c "import psycopg2; from pathlib import Path; pw=''; [exec('pw=l.split(\"=\",1)[1].strip()') for l in Path('.env').read_text().splitlines() if l.startswith('DB_PASSWORD=')]; conn=psycopg2.connect(host='localhost',dbname='trade_ai',user='trade_ai',password=pw); cur=conn.cursor(); cur.execute('DELETE FROM youtube_transcripts WHERE purge_after IS NOT NULL AND purge_after < CURRENT_DATE'); print(f'Purged {cur.rowcount} expired transcripts'); conn.commit(); conn.close()" >> logs/transcript_purge.log 2>&1
+
+# ── Hourly: Alpaca paper position reconciliation ──
+0 10-16 * * 1-5 cd $PROJ && flock -n /tmp/alpaca_recon.lock $PY scripts/alpaca_paper_adapter.py --sync-only >> logs/alpaca_paper_adapter.log 2>&1
+
+# ── Weekly Trade Review (Sunday 10 AM — OpenAI gpt-4o reviews all week's trades) ──
+0 10 * * 0 cd $PROJ && flock -n /tmp/weekly_trade_review.lock $PY scripts/multi_tier_trade_reviewer.py --tier weekly >> logs/weekly_trade_review.log 2>&1
+
+# ── Monthly Trade Review (1st of month, 11 AM — Anthropic Claude reviews month + weeklys) ──
+0 11 1 * * cd $PROJ && flock -n /tmp/monthly_trade_review.lock $PY scripts/multi_tier_trade_reviewer.py --tier monthly >> logs/monthly_trade_review.log 2>&1
+
+# ── 11:00 PM: Deep Overnight LLM Window (Phase 1H — gemma3-overnight queue processing) ──
+0 23 * * * cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && ./scripts/run_deep_overnight_llm_window.sh --enable-hybrid-rag >> logs/deep_overnight_llm_window.log 2>&1
+
+# ── Afternoon Pipeline Refresh (Mon-Fri, keeps data fresh after continuous_runner exits at 11 AM) ──
+0 12 * * 1-5 cd $PROJ && flock -n /tmp/screener_pm.lock $PY scripts/trade_ai_orchestrator.py --run-label 1200 --no-llm --no-alerts --allow-underfilled >> logs/screener_pm.log 2>&1
+0 14 * * 1-5 cd $PROJ && flock -n /tmp/screener_pm.lock $PY scripts/trade_ai_orchestrator.py --run-label 1400 --no-llm --no-alerts --allow-underfilled >> logs/screener_pm.log 2>&1
+0 16 * * 1-5 cd $PROJ && flock -n /tmp/screener_pm.lock $PY scripts/trade_ai_orchestrator.py --run-label 1600 --no-llm --no-alerts --allow-underfilled >> logs/screener_pm.log 2>&1
+30 17 * * 1-5 cd $PROJ && flock -n /tmp/screener_pm.lock $PY scripts/trade_ai_orchestrator.py --run-label 1730 --no-alerts --allow-underfilled >> logs/screener_pm.log 2>&1
+
+# ── Sunday 10:30 AM: Rebalance verification (Anthropic Sonnet SSDI/IRMAA check) ──
+30 10 * * 0 cd $PROJ && flock -n /tmp/rebalance_verify.lock $PY scripts/rebalance_verifier.py >> logs/rebalance_verifier.log 2>&1
+
+# Friday 4PM extended deep window — clears weekly backlog
+
+# Nightly gemma3 calibration scoring — grades overnight predictions
+30 21 * * 1-5 .venv/bin/python scripts/gemma3_calibration_scorer.py >> logs/gemma3_calibration.log 2>&1
+
+# ── Increased Finviz screener frequency (7 runs/day) ──
+0 7 * * 1-5  cd $PROJ && flock -n /tmp/finviz_screener.lock $PY scripts/finviz_screener_runner.py --run >> logs/finviz_screener.log 2>&1
+0 8 * * 1-5  cd $PROJ && flock -n /tmp/finviz_screener.lock $PY scripts/finviz_screener_runner.py --run >> logs/finviz_screener.log 2>&1
+0 12 * * 1-5 cd $PROJ && flock -n /tmp/finviz_screener.lock $PY scripts/finviz_screener_runner.py --run >> logs/finviz_screener.log 2>&1
+0 14 * * 1-5 cd $PROJ && flock -n /tmp/finviz_screener.lock $PY scripts/finviz_screener_runner.py --run >> logs/finviz_screener.log 2>&1
+0 18 * * 1-5 cd $PROJ && flock -n /tmp/finviz_screener.lock $PY scripts/finviz_screener_runner.py --run >> logs/finviz_screener.log 2>&1
+
+# ── Incubator promoter runs (every 2 hours during market) ──
+0 7,8,9,10,11,12,13,14,15,16,17 * * 1-5  cd $PROJ && flock -n /tmp/incubator_promoter.lock $PY scripts/incubator_proposal_promoter.py --run >> logs/incubator_promoter.log 2>&1
+0 18 * * * cd /home/johnclaw/nyc-dof-auction && .venv/bin/python3 scripts/rescan_tickets.py >> logs/rescan.log 2>&1
+
+# Session 33: nightly refresh of strategy YAML performance_context blocks
+30 2 * * * .venv/bin/python scripts/populate_performance_context.py --apply >> logs/perf_context.log 2>&1
+# Phase 1J: Friday extended deep LLM window — operator-approved, cap 200 (400 requires future approval)
+0 16 * * 5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && flock -n /tmp/tradeai_deep_llm_window.lock bash scripts/run_deep_overnight_llm_window.sh --enable-hybrid-rag --force-window --max-jobs 200 --allow-over-hard-max >> logs/deep_llm_friday_extended.log 2>&1
+
+# ============================================================
+# Data Gap Resolver — self-healing intelligence loop
+# Added: Session 35 (May 14 2026)
+# ============================================================
+
+# Hourly resolver during market hours
+0 10-16 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && .venv/bin/python scripts/data_gap_resolver.py >> logs/data_gap_resolver.log 2>&1
+
+# Pre-overnight sweep at 6 PM ET
+0 18 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && .venv/bin/python scripts/data_gap_resolver.py --pre-overnight >> logs/data_gap_resolver_pre_overnight.log 2>&1
+
+# Weekly audit Sunday 8 AM
+0 8 * * 0 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && .venv/bin/python scripts/data_gap_resolver.py --weekly-audit >> logs/data_gap_resolver_weekly.log 2>&1
+
+# ============================================================
+# Three-Tier Alert Architecture — digest + sector detection
+# ============================================================
+# Morning digest 8 AM ET
+0 8 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && .venv/bin/python scripts/send_alert_digest.py morning >> logs/alert_digest.log 2>&1
+# Evening digest 4 PM ET
+0 16 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && .venv/bin/python scripts/send_alert_digest.py evening >> logs/alert_digest.log 2>&1
+# Alpaca reconciler — audit DB vs broker at open and close
+35 9 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && .venv/bin/python scripts/alpaca_paper_reconciler.py >> logs/alpaca_reconciler.log 2>&1
+5 16 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && .venv/bin/python scripts/alpaca_paper_reconciler.py >> logs/alpaca_reconciler.log 2>&1
+0 20 * * 6 cd /home/johnclaw/nyc-dof-auction && .venv/bin/python3 scripts/run_pipeline.py >> logs/pipeline.log 2>&1
+
+# ── Stale Proposal Cleanup (market hours — reject blocked/stale proposals) ──
+0 10 * * 1-5 cd $PROJ && $PY scripts/cleanup_stale_proposals.py --apply >> logs/cleanup_stale_proposals.log 2>&1
+0 15 * * 1-5 cd $PROJ && $PY scripts/cleanup_stale_proposals.py --apply >> logs/cleanup_stale_proposals.log 2>&1
+# ── Phase 6E: Stale Proposal Sweeper (pre-market dry-run + apply + EOD report) ──
+15 8 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && flock -n -E 99 /tmp/tradeai_stale_proposal_sweeper.lock ./scripts/run_scheduled_stale_proposal_sweeper.sh --dry-run >> logs/stale_proposal_sweeper.log 2>&1
+25 8 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && flock -n -E 99 /tmp/tradeai_stale_proposal_sweeper.lock ./scripts/run_scheduled_stale_proposal_sweeper.sh --apply >> logs/stale_proposal_sweeper.log 2>&1
+10 16 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && flock -n -E 99 /tmp/tradeai_stale_proposal_sweeper.lock ./scripts/run_scheduled_stale_proposal_sweeper.sh --report-only >> logs/stale_proposal_sweeper.log 2>&1

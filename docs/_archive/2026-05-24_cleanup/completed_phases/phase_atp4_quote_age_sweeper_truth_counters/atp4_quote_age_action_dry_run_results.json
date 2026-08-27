@@ -1,0 +1,60 @@
+{
+  "generated_at": "2026-05-20T02:41:53.044998+00:00",
+  "mode": "DRY RUN",
+  "total": 5,
+  "actions": [
+    {
+      "proposal_id": 102,
+      "symbol": "INGM",
+      "strategy_id": "dividend_growth_compounder",
+      "quote_age_hours": 8.3,
+      "quote_status": "never_checked",
+      "action": "needs_quote_refresh",
+      "reason": "quote never checked",
+      "applied": false
+    },
+    {
+      "proposal_id": 101,
+      "symbol": "SIF",
+      "strategy_id": "defense_thesis",
+      "quote_age_hours": 277.9,
+      "quote_status": "never_checked",
+      "action": "expire",
+      "reason": "quote 277.9h old (>168h hard expire)",
+      "applied": false
+    },
+    {
+      "proposal_id": 100,
+      "symbol": "NVST",
+      "strategy_id": "recovery_watch",
+      "quote_age_hours": 300.7,
+      "quote_status": "never_checked",
+      "action": "expire",
+      "reason": "quote 300.7h old (>168h hard expire)",
+      "applied": false
+    },
+    {
+      "proposal_id": 99,
+      "symbol": "CODX",
+      "strategy_id": "swing_trade",
+      "quote_age_hours": 13.0,
+      "quote_status": "never_checked",
+      "action": "needs_quote_refresh",
+      "reason": "quote never checked",
+      "applied": false
+    },
+    {
+      "proposal_id": 98,
+      "symbol": "DOC",
+      "strategy_id": "reit_income",
+      "quote_age_hours": 317.0,
+      "quote_status": "never_checked",
+      "action": "expire",
+      "reason": "quote 317.0h old (>168h hard expire)",
+      "applied": false
+    }
+  ],
+  "expire_count": 3,
+  "rebuild_count": 0,
+  "refresh_count": 2
+}

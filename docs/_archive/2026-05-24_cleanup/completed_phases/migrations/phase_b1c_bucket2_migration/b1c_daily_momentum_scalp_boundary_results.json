@@ -1,0 +1,38 @@
+{
+  "generated_at": "2026-05-18T14:13:10.730982+00:00",
+  "findings": [
+    {
+      "location": "paper_trade_proposals.momentum_scalp",
+      "indicator": "proposed_by=system, discovery=incubator",
+      "count": 3,
+      "classification": "unknown_requires_review",
+      "action": "Review source classification"
+    },
+    {
+      "location": "paper_trade_proposals.momentum_scalp",
+      "indicator": "proposed_by=incubator_promoter, discovery=incubator",
+      "count": 4,
+      "classification": "allowed_separate_workflow",
+      "action": null
+    },
+    {
+      "location": "paper_trade_proposals.momentum_scalp",
+      "indicator": "proposed_by=telegram_manual, discovery=",
+      "count": 2,
+      "classification": "unknown_requires_review",
+      "action": "Review source classification"
+    },
+    {
+      "location": "paper_trade_proposals.momentum_scalp",
+      "indicator": "proposed_by=auto_proposal_generator, discovery=screener",
+      "count": 21,
+      "classification": "allowed_separate_workflow",
+      "action": null
+    }
+  ],
+  "leakage_found": false,
+  "unknown_found": true,
+  "boundary_status": "review_needed",
+  "trade_ai_momentum_scalp_valid": true,
+  "note": "Trade AI momentum_scalp YAML strategy is valid and separate from external daily scalp workflows"
+}

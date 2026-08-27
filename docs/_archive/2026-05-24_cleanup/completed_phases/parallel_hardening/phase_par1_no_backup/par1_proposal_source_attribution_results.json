@@ -1,0 +1,47 @@
+{
+  "generated_at": "2026-05-18T14:29:25.619478+00:00",
+  "total_proposals": 83,
+  "sources": [
+    {
+      "proposed_by": "incubator_promoter",
+      "discovery_source": "incubator",
+      "count": 42,
+      "classification": "allowed"
+    },
+    {
+      "proposed_by": "auto_proposal_generator",
+      "discovery_source": "screener",
+      "count": 29,
+      "classification": "allowed"
+    },
+    {
+      "proposed_by": "system",
+      "discovery_source": "incubator",
+      "count": 10,
+      "classification": "allowed"
+    },
+    {
+      "proposed_by": "telegram_manual",
+      "discovery_source": "unknown",
+      "count": 2,
+      "classification": "allowed"
+    }
+  ],
+  "leakage_found": false,
+  "allowed_sources": [
+    "auto_proposal_generator",
+    "incubator_promoter",
+    "manual",
+    "operator_manual",
+    "paper_trade_logger",
+    "strategy_watchpool",
+    "system",
+    "telegram_manual"
+  ],
+  "blocked_sources": [
+    "daily_momentum_scalp",
+    "external_scalp",
+    "tradeai_daily_scalp",
+    "unknown_external"
+  ]
+}

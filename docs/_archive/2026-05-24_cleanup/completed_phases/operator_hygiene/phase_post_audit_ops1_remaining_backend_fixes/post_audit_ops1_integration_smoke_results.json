@@ -1,0 +1,36 @@
+{
+  "generated_at": "2026-05-20T15:22:13.978304+00:00",
+  "subsystems": {
+    "regime": {
+      "label": "Regime Cron Staleness",
+      "status": "unknown",
+      "root_cause": "unknown",
+      "recommended_fix": "snapshot is 211.1h stale (>24h)"
+    },
+    "overnight": {
+      "label": "LLM Overnight Fallback",
+      "status": "error",
+      "root_cause": "table_not_found",
+      "recommended_fix": null
+    },
+    "agent_queue": {
+      "label": "Agent Queue Health",
+      "status": "warning",
+      "root_cause": "worker process not running; queue backlog: 1121 queued jobs; oldest queued job is 25.0h old",
+      "recommended_fix": "start the agent job worker process"
+    },
+    "count_truth": {
+      "label": "Count Truth Drift",
+      "status": "error",
+      "root_cause": "1 source(s) failed to query: incubator_active; 1 source(s) returned 0: proposals_pending",
+      "recommended_fix": "investigate missing/zero sources"
+    },
+    "attribution": {
+      "label": "Attribution Benchmark",
+      "status": "warning",
+      "root_cause": "no_benchmark_tables",
+      "recommended_fix": "create attribution/benchmark tables; run the performance attribution pipeline to populate"
+    }
+  },
+  "overall_health": "degraded"
+}

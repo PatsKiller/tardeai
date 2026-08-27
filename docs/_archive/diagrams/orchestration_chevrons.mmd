@@ -1,0 +1,49 @@
+graph LR
+    subgraph G1["DATA COLLECTION<br/>6-7 AM M-F"]
+        A1[Finviz Screener] --> A2[Social Ingest]
+        A2 --> A3[News Ingestion]
+        A3 --> A4[FRED Data]
+        A4 --> A5[SEC Data]
+    end
+
+    subgraph G2["ENRICHMENT<br/>7-8 AM M-F"]
+        B1[Finviz Enrichment<br/>60+ fields] --> B2[Catalyst Enrichment<br/>7 sources]
+        B2 --> B3[Symbol Enrichment]
+        B3 --> B4[RAG Indexer]
+    end
+
+    subgraph G3["SCORING<br/>8-9 AM M-F"]
+        C1[Orchestrator<br/>23 stages] --> C2[Indicator Engine<br/>17 indicators]
+        C2 --> C3[Premarket Watcher]
+        C3 --> C4[Agent Router]
+    end
+
+    subgraph G4["INTELLIGENCE<br/>Continuous"]
+        D1[Agent Jobs] --> D2[Watchlist Engine]
+        D2 --> D3[CIO Engine]
+        D3 --> D4[Pipeline Watchdog]
+    end
+
+    subgraph G5["PROPOSALS<br/>8:20 AM + 6:10 PM"]
+        E1[Weekly Builder<br/>20 strategies] --> E2[Daily Refresh]
+        E2 --> E3[Rolloff Engine]
+        E3 --> E4[Proposal Promoter]
+        E4 --> E5[Enrichment Loop]
+        E5 --> E6[Lifecycle]
+    end
+
+    subgraph G6["EXECUTION<br/>Market Hours"]
+        F1[Risk Gate] --> F2[Paper UI]
+        F2 --> F3[Alpaca Paper]
+        F3 --> F4[Broker Recon]
+        F4 --> F5[Exec Quality]
+    end
+
+    subgraph G7["OVERNIGHT<br/>8 PM - 6 AM"]
+        H1[Overnight Batch] --> H2[Outcome Scorer]
+        H2 --> H3[Weekly Review]
+        H3 --> H4[Embeddings]
+    end
+
+    G1 --> G2 --> G3 --> G4
+    G4 --> G5 --> G6 --> G7

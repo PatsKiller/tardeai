@@ -1,0 +1,131 @@
+{
+  "generated_at": "2026-05-20T02:23:58.974170+00:00",
+  "total_proposals": 5,
+  "ready": 0,
+  "needs_review": 0,
+  "unknown_quote": 5,
+  "stale_quote": 0,
+  "entry_missed": 0,
+  "exec_missing": 0,
+  "approval_allowed_count": 0,
+  "approval_blocked_count": 5,
+  "proposals": [
+    {
+      "id": 102,
+      "symbol": "INGM",
+      "status": "PENDING",
+      "verdict": "UNKNOWN_QUOTE",
+      "verdict_reason": "Quote never checked \u2014 click Refresh Price then Check Execution",
+      "approval_allowed": false,
+      "primary_blocker": "quote_never_checked",
+      "primary_blockers": [
+        "quote_never_checked",
+        "execution_readiness_missing",
+        "ai_review_missing",
+        "backtest_missing"
+      ],
+      "rr": 2.0,
+      "high_rvol_warning": null,
+      "high_gap_warning": null,
+      "quote_provider": null,
+      "last_price_checked": null,
+      "has_execution_readiness": false,
+      "llm_review_status": "NOT_REQUESTED",
+      "backtest_status": "not run"
+    },
+    {
+      "id": 99,
+      "symbol": "CODX",
+      "status": "PENDING",
+      "verdict": "UNKNOWN_QUOTE",
+      "verdict_reason": "Quote never checked \u2014 click Refresh Price then Check Execution",
+      "approval_allowed": false,
+      "primary_blocker": "quote_never_checked",
+      "primary_blockers": [
+        "quote_never_checked",
+        "execution_readiness_missing",
+        "rr_below_minimum_1.91",
+        "ai_review_missing",
+        "backtest_missing"
+      ],
+      "rr": 1.91,
+      "high_rvol_warning": null,
+      "high_gap_warning": null,
+      "quote_provider": null,
+      "last_price_checked": null,
+      "has_execution_readiness": false,
+      "llm_review_status": "NOT_REQUESTED",
+      "backtest_status": "not run"
+    },
+    {
+      "id": 98,
+      "symbol": "DOC",
+      "status": "PENDING",
+      "verdict": "UNKNOWN_QUOTE",
+      "verdict_reason": "Quote never checked \u2014 click Refresh Price then Check Execution",
+      "approval_allowed": false,
+      "primary_blocker": "quote_never_checked",
+      "primary_blockers": [
+        "quote_never_checked",
+        "execution_readiness_missing",
+        "rr_below_minimum_1.99",
+        "ai_review_missing",
+        "backtest_missing"
+      ],
+      "rr": 1.99,
+      "high_rvol_warning": null,
+      "high_gap_warning": null,
+      "quote_provider": null,
+      "last_price_checked": null,
+      "has_execution_readiness": false,
+      "llm_review_status": "NOT_REQUESTED",
+      "backtest_status": "not run"
+    },
+    {
+      "id": 101,
+      "symbol": "SIF",
+      "status": "PENDING",
+      "verdict": "UNKNOWN_QUOTE",
+      "verdict_reason": "Quote never checked \u2014 click Refresh Price then Check Execution",
+      "approval_allowed": false,
+      "primary_blocker": "quote_never_checked",
+      "primary_blockers": [
+        "quote_never_checked",
+        "execution_readiness_missing",
+        "ai_review_missing",
+        "backtest_missing"
+      ],
+      "rr": 2.0,
+      "high_rvol_warning": null,
+      "high_gap_warning": null,
+      "quote_provider": null,
+      "last_price_checked": null,
+      "has_execution_readiness": false,
+      "llm_review_status": "NOT_REQUESTED",
+      "backtest_status": "not run"
+    },
+    {
+      "id": 100,
+      "symbol": "NVST",
+      "status": "PENDING",
+      "verdict": "UNKNOWN_QUOTE",
+      "verdict_reason": "Quote never checked \u2014 click Refresh Price then Check Execution",
+      "approval_allowed": false,
+      "primary_blocker": "quote_never_checked",
+      "primary_blockers": [
+        "quote_never_checked",
+        "execution_readiness_missing",
+        "ai_review_missing",
+        "backtest_missing"
+      ],
+      "rr": 2.01,
+      "high_rvol_warning": null,
+      "high_gap_warning": null,
+      "quote_provider": null,
+      "last_price_checked": null,
+      "has_execution_readiness": false,
+      "llm_review_status": "NOT_REQUESTED",
+      "backtest_status": "not run"
+    }
+  ]
+}

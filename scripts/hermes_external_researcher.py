@@ -27,7 +27,7 @@ HERMES_CLI = str(Path.home() / ".local" / "bin" / "hermes")
 LANE_CFG = {
     # Claude: Anthropic API (key from env). ChatGPT: FREE ChatGPT-subscription OAuth via Hermes Codex CLI
     # (provider openai-codex) — NOT the metered OpenAI API. Grok: xAI API key (or the free xai-oauth proxy).
-    # DeepSeek: governed V4 Flash via lib.llm_lane (cost-governed, no fallback) — the primary automated lane.
+    # DeepSeek: governed V4 Flash via scripts/llm_lane.py (cost-governed, no fallback).
     "claude":  {"kind": "anthropic", "url": ANTHROPIC_URL, "key_env": "ANTHROPIC_API_KEY", "default_model": "claude-sonnet-4-6"},
     "chatgpt": {"kind": "codex_cli", "provider": "openai-codex", "default_model": "gpt-5.4",
                 "auth_hint": "hermes auth add openai-codex --type oauth   (operator OAuth — free under your ChatGPT subscription)"},
@@ -35,7 +35,7 @@ LANE_CFG = {
                 "default_model": "grok-3-mini",
                 "auth_hint": "hermes auth add xai-oauth --type oauth  then  hermes proxy start --provider xai  (free xAI OAuth, no API key)"},
     "deepseek": {"kind": "governed_deepseek", "default_model": "deepseek-v4-flash",
-                 "auth_hint": "governed DeepSeek V4 Flash via lib.llm_lane (process hermes_external_research) — no OAuth"},
+                 "auth_hint": "governed DeepSeek V4 Flash via llm_lane.py (process hermes_external_research) — no OAuth"},
 }
 DEFAULT_MODEL = "claude-sonnet-4-6"
 
@@ -105,6 +105,8 @@ given a REDACTED packet (no dollar amounts, account ids, or secrets). Provide a 
 
 Question: {question}
 Redacted context (JSON): {context}
+
+The recommendation field IS the living thesis (not a one-line call). It must include the ticker, one numbered/symbol-specific fact, invalidation, role, and at least 8 sentences. Do not hide the thesis in evidence[]. JSON contract still required.
 
 """ + build_external_research_json_schema()
 
@@ -205,22 +207,34 @@ def call_xai_proxy(url, model, prompt, max_tokens=1500):
     return resp.get("choices", [{}])[0].get("message", {}).get("content", "")
 
 
-def call_governed_deepseek(model, prompt, max_tokens=1500):
-    """DeepSeek V4 Flash via the governed bridge (lib.llm_lane → gate_and_generate).
+def _import_llm_generate():
+    """scripts/llm_lane.py — never scripts/lib/llm_lane (that module does not exist).
 
-    Cost-governed, circuit-breakered, and fail-closed (no silent Ollama/Grok/ChatGPT fallback).
-    Mirrors the reflective-critic migration (scripts/agent_runtime_live_providers.py).
+    The 2026-08-13..21 DeepSeek store was 100% `[ERROR] No module named 'lib.llm_lane'`
+    because this file imported `lib.llm_lane` while sys.path has scripts/lib as `lib`.
     """
-    import sys as _sys
-    _sys.path.insert(0, str(ROOT / "scripts"))
-    from lib.llm_lane import generate
+    try:
+        from llm_lane import generate
+        return generate
+    except ImportError:
+        from scripts.llm_lane import generate  # type: ignore
+        return generate
+
+
+def call_governed_deepseek(model, prompt, max_tokens=1500):
+    """DeepSeek V4 Flash via llm_lane.generate → gate_and_generate.
+
+    This is the SCHEDULER path (research_scheduler subprocesses this file).
+    Cost-governed, circuit-breakered, fail-closed (no silent local fallback).
+    """
+    generate = _import_llm_generate()
     text = generate(
         prompt,
         lane="deepseek-flash",
         process_id="hermes_external_research",
         task_summary="hermes_external_research"[:160],
         timeout=120,
-        max_tokens=int(max_tokens or 1024),
+        max_tokens=int(max_tokens or 2048),
     )
     return str(text or "").strip()
 
@@ -324,6 +338,12 @@ def main():
     ap.add_argument("--apply", action="store_true", help="actually call the external model (default dry-run)")
     ap.add_argument("--force-retest", action="store_true",
                     help="bypass the capability cache and re-attempt a known-blocked lane (e.g. Codex headless)")
+    ap.add_argument("--max-output-tokens", type=int, default=None,
+                    help="sandbox/override only; cron does not pass this. Process registry still caps production.")
+    ap.add_argument("--prompt-file", default=None,
+                    help="sandbox only: replace PROMPT template ({question}/{context} placeholders). Cron unused.")
+    ap.add_argument("--no-store", action="store_true",
+                    help="sandbox: do not INSERT into hermes_external_research")
     args = ap.parse_args()
     if not args.model:
         args.model = LANE_CFG[args.lane]["default_model"]
@@ -354,7 +374,11 @@ def main():
     # .format() breaks on the appended JSON schema's literal {braces} — every call
     # since ~2026-07-02 died with KeyError before reaching any API (lanes "stalled").
     # Placeholder substitution must not interpret the schema as format fields.
-    prompt = PROMPT.replace("{question}", question).replace("{context}", json.dumps(ctx))
+    prompt_template = PROMPT
+    if args.prompt_file:
+        prompt_template = Path(args.prompt_file).read_text(encoding="utf-8")
+    prompt = prompt_template.replace("{question}", question).replace("{context}", json.dumps(ctx))
+    max_out = args.max_output_tokens
 
     print(f"=== Hermes External Researcher — lane={args.lane} model={args.model} apply={args.apply} ===")
     print("REDACTED packet that WOULD be sent:")
@@ -406,8 +430,12 @@ def main():
 
     status, parsed, raw = "sent", {}, ""
     try:
-        raw = call_external(args.lane, args.model, prompt)
+        raw = call_external(args.lane, args.model, prompt, max_tokens=max_out or 4096)
         parsed = parse_external_research_result(raw) or {}
+        # Truncated JSON stored status=sent with recommendation=NULL.
+        # RAW-store health treats empty as an error streak. Keep the prose.
+        if not str(parsed.get("recommendation") or "").strip() and str(raw or "").strip():
+            parsed["recommendation"] = str(raw).strip()[:4000]
     except urllib.error.HTTPError as he:
         detail = ""
         try:
@@ -420,18 +448,34 @@ def main():
         status = ("auth_pending" if "AUTH_PENDING" in msg else
                   "unavailable" if "UNAVAILABLE" in msg else "error")
         parsed = {"recommendation": f"[{status.upper()}] {msg}", "error": msg}
+    if getattr(args, "no_store", False):
+        print(json.dumps({
+            "stored": False,
+            "sandbox": True,
+            "status": status,
+            "symbol": args.symbol,
+            "max_output_tokens": max_out,
+            "recommendation": (parsed.get("recommendation") or "")[:4000],
+            "dissent": parsed.get("dissent"),
+            "evidence": parsed.get("evidence"),
+            "raw_chars": len(raw or ""),
+            "rec_chars": len(str(parsed.get("recommendation") or "")),
+            "raw": (raw or "")[:8000],
+        }, indent=2, default=str))
+        return
     c = psycopg2.connect(host=os.getenv("DB_HOST"), port=os.getenv("DB_PORT"), dbname=os.getenv("DB_NAME"),
                          user=os.getenv("DB_USER"), password=os.getenv("DB_PASSWORD")); cur = c.cursor()
     cur.execute("""INSERT INTO hermes_external_research
         (lane, trigger_reason, priority, symbol, question, redacted_context, model, status,
          recommendation, evidence_json, dissent, confidence, risk_flags, learning_candidate, operator_action,
-         trigger_source, budget_decision, lane_used)
-        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
+         trigger_source, budget_decision, lane_used, raw_response)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
         (args.lane, args.trigger, args.priority, args.symbol, question, json.dumps(ctx), args.model, status,
          parsed.get("recommendation"), json.dumps(parsed.get("evidence", [])), parsed.get("dissent"),
          parsed.get("confidence"), json.dumps(parsed.get("risk_flags")), parsed.get("learning_candidate"),
          parsed.get("operator_action"),
-         (args.trigger or "manual").split(":")[0], getattr(args, "budget_decision", "ALLOW"), args.lane))
+         (args.trigger or "manual").split(":")[0], getattr(args, "budget_decision", "ALLOW"), args.lane,
+         str(raw)[:16000]))
     rid = cur.fetchone()[0]; c.commit(); c.close()
     print(f"\nstored hermes_external_research id={rid} status={status}")
     if status == "sent":

@@ -1,0 +1,16 @@
+{
+  "total": 78,
+  "clean": 48,
+  "broken": 30,
+  "improved": [
+    "Overview",
+    "StrategyAnalytics"
+  ],
+  "regressed": [
+    "Backtesting",
+    "MorningBrief",
+    "OvernightDashboard",
+    "PipelineController",
+    "PortfolioIntelligence"
+  ]
+}

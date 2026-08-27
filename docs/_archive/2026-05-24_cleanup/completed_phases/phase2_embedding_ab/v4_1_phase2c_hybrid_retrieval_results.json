@@ -1,0 +1,4707 @@
+{
+  "timestamp": "2026-05-14T11:02:14.913531",
+  "nomic_doc_count": 14791,
+  "qwen3_doc_count": 1000,
+  "query_count": 40,
+  "top_k_baseline": 10,
+  "top_k_candidate": 10,
+  "final_k": 10,
+  "aggregate": {
+    "avg_source_diversity": 1.88,
+    "avg_hybrid_score": 0.6988,
+    "consensus_count": 10,
+    "nomic_only_count": 164,
+    "qwen3_only_count": 226,
+    "both_model_count": 10,
+    "avg_nomic_latency_ms": 19.8,
+    "avg_qwen3_latency_ms": 313.7,
+    "avg_hybrid_latency_ms": 1713.1,
+    "empty_result_count": 0,
+    "empty_result_rate": 0.0
+  },
+  "verdict": "HYBRID_MARGINAL",
+  "production_changed": false,
+  "routing_changed": false,
+  "query_results": [
+    {
+      "query": "Show current portfolio composition and allocation",
+      "nomic_latency_ms": 20.5,
+      "qwen3_latency_ms": 211.4,
+      "hybrid_latency_ms": 1830.3,
+      "source_diversity": 1,
+      "consensus_count": 0,
+      "model_distribution": {
+        "nomic": 10,
+        "qwen3": 0,
+        "both": 0
+      },
+      "avg_hybrid_score": 0.6987,
+      "hybrid_results": [
+        {
+          "source_type": "agent_result",
+          "source_id": 572863603,
+          "title": "XLB steph: HOLD",
+          "raw_sim": 0.676773,
+          "hybrid_score": 0.719286,
+          "retrieval_model": "nomic",
+          "normalized_sim": 1.0,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 459282179,
+          "title": "GLXG steph: TRIM",
+          "raw_sim": 0.67116,
+          "hybrid_score": 0.710139,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9917,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1008374104,
+          "title": "ETOR steph: RESEARCH_MORE",
+          "raw_sim": 0.666926,
+          "hybrid_score": 0.707011,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9855,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 189583865,
+          "title": "CSWC steph: HOLD",
+          "raw_sim": 0.662471,
+          "hybrid_score": 0.703719,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9789,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 763472831,
+          "title": "BND steph: HOLD",
+          "raw_sim": 0.660872,
+          "hybrid_score": 0.702538,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9765,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 823676309,
+          "title": "AWP steph: HOLD",
+          "raw_sim": 0.653903,
+          "hybrid_score": 0.697389,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9662,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1765485926,
+          "title": "DOX steph: HOLD",
+          "raw_sim": 0.6492,
+          "hybrid_score": 0.693915,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9593,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1628040969,
+          "title": "NEE steph: HOLD",
+          "raw_sim": 0.637516,
+          "hybrid_score": 0.685283,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.942,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 2142814318,
+          "title": "LCID steph: RESEARCH_MORE",
+          "raw_sim": 0.63687,
+          "hybrid_score": 0.684805,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.941,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 513623182,
+          "title": "APLY steph: RESEARCH_MORE",
+          "raw_sim": 0.634922,
+          "hybrid_score": 0.683366,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9382,
+          "recency": 1.0
+        }
+      ],
+      "empty": false
+    },
+    {
+      "query": "What are the largest positions by market value?",
+      "nomic_latency_ms": 27.9,
+      "qwen3_latency_ms": 543.7,
+      "hybrid_latency_ms": 2039.6,
+      "source_diversity": 1,
+      "consensus_count": 0,
+      "model_distribution": {
+        "nomic": 10,
+        "qwen3": 0,
+        "both": 0
+      },
+      "avg_hybrid_score": 0.6887,
+      "hybrid_results": [
+        {
+          "source_type": "agent_result",
+          "source_id": 1606140095,
+          "title": "KBR steph: SELL",
+          "raw_sim": 0.647324,
+          "hybrid_score": 0.719286,
+          "retrieval_model": "nomic",
+          "normalized_sim": 1.0,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1051353832,
+          "title": "LMT maria_research: TRIM",
+          "raw_sim": 0.624758,
+          "hybrid_score": 0.696855,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9651,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1628040969,
+          "title": "NEE steph: HOLD",
+          "raw_sim": 0.621612,
+          "hybrid_score": 0.694425,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9603,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 502272627,
+          "title": "ENPH risk_agent: TRIM",
+          "raw_sim": 0.618152,
+          "hybrid_score": 0.691753,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9549,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1567973970,
+          "title": "SCHD risk_agent: HOLD",
+          "raw_sim": 0.611603,
+          "hybrid_score": 0.686694,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9448,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 443864785,
+          "title": "ARKG risk_agent: HOLD",
+          "raw_sim": 0.60511,
+          "hybrid_score": 0.681679,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9348,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1305587180,
+          "title": "APPS risk_agent: TRIM",
+          "raw_sim": 0.603727,
+          "hybrid_score": 0.680611,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9327,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 572863603,
+          "title": "XLB steph: HOLD",
+          "raw_sim": 0.601974,
+          "hybrid_score": 0.679257,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9299,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1697275927,
+          "title": "CBRE risk_agent: TRIM",
+          "raw_sim": 0.601274,
+          "hybrid_score": 0.678716,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9289,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 2034120244,
+          "title": "BND risk_agent: HOLD",
+          "raw_sim": 0.599947,
+          "hybrid_score": 0.677691,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9268,
+          "recency": 1.0
+        }
+      ],
+      "empty": false
+    },
+    {
+      "query": "Find recent analysis for AVAV",
+      "nomic_latency_ms": 12.6,
+      "qwen3_latency_ms": 164.1,
+      "hybrid_latency_ms": 1603.9,
+      "source_diversity": 1,
+      "consensus_count": 0,
+      "model_distribution": {
+        "nomic": 10,
+        "qwen3": 0,
+        "both": 0
+      },
+      "avg_hybrid_score": 0.7053,
+      "hybrid_results": [
+        {
+          "source_type": "agent_result",
+          "source_id": 892102685,
+          "title": "GLOB maria: HOLD",
+          "raw_sim": 0.658344,
+          "hybrid_score": 0.719286,
+          "retrieval_model": "nomic",
+          "normalized_sim": 1.0,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 12698751,
+          "title": "ITGR maria: HOLD",
+          "raw_sim": 0.656419,
+          "hybrid_score": 0.712824,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9971,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 492522555,
+          "title": "BZ risk_agent: NONE",
+          "raw_sim": 0.650675,
+          "hybrid_score": 0.708461,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9884,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1239192047,
+          "title": "SHV maria: HOLD",
+          "raw_sim": 0.647249,
+          "hybrid_score": 0.705859,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9831,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1670043008,
+          "title": "FPS risk_agent: HOLD",
+          "raw_sim": 0.645959,
+          "hybrid_score": 0.70488,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9812,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1154808878,
+          "title": "NOC risk_agent: SELL",
+          "raw_sim": 0.644065,
+          "hybrid_score": 0.703441,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9783,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 824860054,
+          "title": "VNET steph: AVOID",
+          "raw_sim": 0.641903,
+          "hybrid_score": 0.701799,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.975,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1574229808,
+          "title": "SRNE steph: SKIP",
+          "raw_sim": 0.640586,
+          "hybrid_score": 0.700799,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.973,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1945515383,
+          "title": "XLI risk_agent: SKIP_DUE_TO_STALE_DATA",
+          "raw_sim": 0.637344,
+          "hybrid_score": 0.698337,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9681,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1689694993,
+          "title": "LITE risk_agent: HOLD",
+          "raw_sim": 0.635439,
+          "hybrid_score": 0.69689,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9652,
+          "recency": 1.0
+        }
+      ],
+      "empty": false
+    },
+    {
+      "query": "What is the current watchlist thesis for RKLB?",
+      "nomic_latency_ms": 21.6,
+      "qwen3_latency_ms": 455.8,
+      "hybrid_latency_ms": 1901.1,
+      "source_diversity": 1,
+      "consensus_count": 0,
+      "model_distribution": {
+        "nomic": 10,
+        "qwen3": 0,
+        "both": 0
+      },
+      "avg_hybrid_score": 0.6872,
+      "hybrid_results": [
+        {
+          "source_type": "agent_result",
+          "source_id": 726386754,
+          "title": "AJG maria: HOLD",
+          "raw_sim": 0.631709,
+          "hybrid_score": 0.719286,
+          "retrieval_model": "nomic",
+          "normalized_sim": 1.0,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 250113488,
+          "title": "NPK maria: HOLD",
+          "raw_sim": 0.597352,
+          "hybrid_score": 0.687092,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9456,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1061582367,
+          "title": "PEW maria: HOLD",
+          "raw_sim": 0.595918,
+          "hybrid_score": 0.685957,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9433,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1506857466,
+          "title": "LI maria: HOLD",
+          "raw_sim": 0.595393,
+          "hybrid_score": 0.685541,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9425,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1880044713,
+          "title": "CCK maria: HOLD",
+          "raw_sim": 0.595175,
+          "hybrid_score": 0.685369,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9422,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1703807495,
+          "title": "LPIH maria: HOLD",
+          "raw_sim": 0.595163,
+          "hybrid_score": 0.685359,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9421,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1490431201,
+          "title": "LPIH risk_agent: RESEARCH_MORE",
+          "raw_sim": 0.592808,
+          "hybrid_score": 0.683495,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9384,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 831604466,
+          "title": "BAH maria: HOLD",
+          "raw_sim": 0.591578,
+          "hybrid_score": 0.682522,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9365,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1907912652,
+          "title": "STM maria: HOLD",
+          "raw_sim": 0.587195,
+          "hybrid_score": 0.679053,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9295,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1952834254,
+          "title": "AMANX maria: HOLD",
+          "raw_sim": 0.586752,
+          "hybrid_score": 0.678702,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9288,
+          "recency": 1.0
+        }
+      ],
+      "empty": false
+    },
+    {
+      "query": "Find recovery watch evidence for TDG",
+      "nomic_latency_ms": 13.3,
+      "qwen3_latency_ms": 233.7,
+      "hybrid_latency_ms": 1688.7,
+      "source_diversity": 2,
+      "consensus_count": 0,
+      "model_distribution": {
+        "nomic": 1,
+        "qwen3": 9,
+        "both": 0
+      },
+      "avg_hybrid_score": 0.6984,
+      "hybrid_results": [
+        {
+          "source_type": "fused_signal",
+          "source_id": 1200,
+          "title": "TTD signal:",
+          "raw_sim": 0.624171,
+          "hybrid_score": 0.72254,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9779,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1644490938,
+          "title": "TDG steph: TRIM",
+          "raw_sim": 0.638253,
+          "hybrid_score": 0.714286,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 1.0,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1931408375,
+          "title": "TDG maria: HOLD",
+          "raw_sim": 0.627157,
+          "hybrid_score": 0.705593,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9826,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 2035351515,
+          "title": "TDG maria: HOLD",
+          "raw_sim": 0.627157,
+          "hybrid_score": 0.705593,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9826,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 152406386,
+          "title": "CCLD risk_agent: WAIT",
+          "raw_sim": 0.617088,
+          "hybrid_score": 0.697705,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9668,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 929,
+          "title": "GBTG signal:",
+          "raw_sim": 0.598423,
+          "hybrid_score": 0.697369,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9376,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1814727049,
+          "title": "GDS risk_agent: TRIM",
+          "raw_sim": 0.604887,
+          "hybrid_score": 0.688147,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9477,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1689694993,
+          "title": "LITE risk_agent: HOLD",
+          "raw_sim": 0.595651,
+          "hybrid_score": 0.685912,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9333,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1945515383,
+          "title": "XLI risk_agent: SKIP_DUE_TO_STALE_DATA",
+          "raw_sim": 0.599144,
+          "hybrid_score": 0.683648,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9387,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1662793186,
+          "title": "XLI steph: SKIP_DUE_TO_STALE_DATA",
+          "raw_sim": 0.598694,
+          "hybrid_score": 0.683296,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.938,
+          "recency": 1.0
+        }
+      ],
+      "empty": false
+    },
+    {
+      "query": "What changed in RTX after stop-out?",
+      "nomic_latency_ms": 22.8,
+      "qwen3_latency_ms": 394.1,
+      "hybrid_latency_ms": 1834.9,
+      "source_diversity": 2,
+      "consensus_count": 0,
+      "model_distribution": {
+        "nomic": 2,
+        "qwen3": 8,
+        "both": 0
+      },
+      "avg_hybrid_score": 0.6903,
+      "hybrid_results": [
+        {
+          "source_type": "agent_result",
+          "source_id": 684609361,
+          "title": "RTX risk_agent: TRIM",
+          "raw_sim": 0.68911,
+          "hybrid_score": 0.714286,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 1.0,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 2103814302,
+          "title": "RTX maria: HOLD",
+          "raw_sim": 0.672402,
+          "hybrid_score": 0.702163,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9758,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 1185,
+          "title": "BTG signal:",
+          "raw_sim": 0.641812,
+          "hybrid_score": 0.699253,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9314,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 894,
+          "title": "DGX signal:",
+          "raw_sim": 0.63824,
+          "hybrid_score": 0.691662,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9262,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 1056,
+          "title": "CBT signal:",
+          "raw_sim": 0.634435,
+          "hybrid_score": 0.688901,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9207,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 220443609,
+          "title": "KBR maria: AVOID",
+          "raw_sim": 0.642147,
+          "hybrid_score": 0.685211,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9318,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 1054,
+          "title": "BRKR signal:",
+          "raw_sim": 0.62613,
+          "hybrid_score": 0.682875,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9086,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 795421258,
+          "title": "MLTX risk_agent: AVOID",
+          "raw_sim": 0.6449,
+          "hybrid_score": 0.682208,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9358,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1213992893,
+          "title": "LDOS maria: AVOID",
+          "raw_sim": 0.640425,
+          "hybrid_score": 0.678961,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9294,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1945515383,
+          "title": "XLI risk_agent: SKIP_DUE_TO_STALE_DATA",
+          "raw_sim": 0.637907,
+          "hybrid_score": 0.677134,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9257,
+          "recency": 1.0
+        }
+      ],
+      "empty": false
+    },
+    {
+      "query": "Show recent closed trades with bad exits",
+      "nomic_latency_ms": 22.8,
+      "qwen3_latency_ms": 207.8,
+      "hybrid_latency_ms": 1619.3,
+      "source_diversity": 3,
+      "consensus_count": 1,
+      "model_distribution": {
+        "nomic": 5,
+        "qwen3": 4,
+        "both": 1
+      },
+      "avg_hybrid_score": 0.7202,
+      "hybrid_results": [
+        {
+          "source_type": "trade_outcome",
+          "source_id": 22,
+          "title": "GCTS trade outcome: LOSS -0.1R (momentum_scalp)",
+          "raw_sim": 0.660503,
+          "hybrid_score": 0.779387,
+          "retrieval_model": "both",
+          "normalized_sim": 0.9388,
+          "recency": 1.0
+        },
+        {
+          "source_type": "trade_outcome",
+          "source_id": 19,
+          "title": "FLYW trade outcome: UNKNOWN  (momentum_scalp)",
+          "raw_sim": 0.634887,
+          "hybrid_score": 0.751183,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9024,
+          "recency": 1.0
+        },
+        {
+          "source_type": "trade_outcome",
+          "source_id": 12,
+          "title": "FLYW trade outcome: loss (swing_trade)",
+          "raw_sim": 0.625928,
+          "hybrid_score": 0.744817,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.8896,
+          "recency": 1.0
+        },
+        {
+          "source_type": "trade_outcome",
+          "source_id": 16,
+          "title": "BLBD trade outcome: UNKNOWN  (earnings_catalyst)",
+          "raw_sim": 0.597935,
+          "hybrid_score": 0.724923,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.8498,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 867901237,
+          "title": "KBR risk_agent: SELL",
+          "raw_sim": 0.70358,
+          "hybrid_score": 0.719286,
+          "retrieval_model": "nomic",
+          "normalized_sim": 1.0,
+          "recency": 1.0
+        },
+        {
+          "source_type": "trade_outcome",
+          "source_id": 20,
+          "title": "GCTS trade outcome: LOSS -0.1R (momentum_scalp)",
+          "raw_sim": 0.589331,
+          "hybrid_score": 0.718809,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.8376,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 638451197,
+          "title": "EYE risk_agent: HOLD",
+          "raw_sim": 0.693758,
+          "hybrid_score": 0.707306,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.986,
+          "recency": 1.0
+        },
+        {
+          "source_type": "trade_review",
+          "source_id": 32,
+          "title": "XMTR overnight review: BREAKEVEN $+0.00 (swing_breakout)",
+          "raw_sim": 0.677678,
+          "hybrid_score": 0.686593,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9632,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 206995699,
+          "title": "APLY risk_agent: HOLD",
+          "raw_sim": 0.664608,
+          "hybrid_score": 0.68659,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9446,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1154808878,
+          "title": "NOC risk_agent: SELL",
+          "raw_sim": 0.659341,
+          "hybrid_score": 0.682847,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9371,
+          "recency": 1.0
+        }
+      ],
+      "empty": false
+    },
+    {
+      "query": "Find failed breakout trades in the journal",
+      "nomic_latency_ms": 27.7,
+      "qwen3_latency_ms": 286.9,
+      "hybrid_latency_ms": 1703.5,
+      "source_diversity": 4,
+      "consensus_count": 2,
+      "model_distribution": {
+        "nomic": 3,
+        "qwen3": 5,
+        "both": 2
+      },
+      "avg_hybrid_score": 0.6721,
+      "hybrid_results": [
+        {
+          "source_type": "trade_outcome",
+          "source_id": 22,
+          "title": "GCTS trade outcome: LOSS -0.1R (momentum_scalp)",
+          "raw_sim": 0.621203,
+          "hybrid_score": 0.721896,
+          "retrieval_model": "both",
+          "normalized_sim": 0.8238,
+          "recency": 1.0
+        },
+        {
+          "source_type": "trade_review",
+          "source_id": 32,
+          "title": "XMTR overnight review: BREAKEVEN $+0.00 (swing_breakout)",
+          "raw_sim": 0.754078,
+          "hybrid_score": 0.71,
+          "retrieval_model": "both",
+          "normalized_sim": 1.0,
+          "recency": 1.0
+        },
+        {
+          "source_type": "trade_outcome",
+          "source_id": 19,
+          "title": "FLYW trade outcome: UNKNOWN  (momentum_scalp)",
+          "raw_sim": 0.600246,
+          "hybrid_score": 0.698,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.796,
+          "recency": 1.0
+        },
+        {
+          "source_type": "trade_outcome",
+          "source_id": 12,
+          "title": "FLYW trade outcome: loss (swing_trade)",
+          "raw_sim": 0.582029,
+          "hybrid_score": 0.685921,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.7718,
+          "recency": 1.0
+        },
+        {
+          "source_type": "trade_review",
+          "source_id": 132,
+          "title": "INFU overnight review: WIN $+67.83 (swing_breakout)",
+          "raw_sim": 0.715131,
+          "hybrid_score": 0.674176,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9484,
+          "recency": 1.0
+        },
+        {
+          "source_type": "trade_outcome",
+          "source_id": 20,
+          "title": "GCTS trade outcome: LOSS -0.1R (momentum_scalp)",
+          "raw_sim": 0.553721,
+          "hybrid_score": 0.667151,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.7343,
+          "recency": 1.0
+        },
+        {
+          "source_type": "trade_outcome",
+          "source_id": 16,
+          "title": "BLBD trade outcome: UNKNOWN  (earnings_catalyst)",
+          "raw_sim": 0.552395,
+          "hybrid_score": 0.666272,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.7325,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 1054,
+          "title": "BRKR signal:",
+          "raw_sim": 0.604434,
+          "hybrid_score": 0.634348,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.8016,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 867901237,
+          "title": "KBR risk_agent: SELL",
+          "raw_sim": 0.625372,
+          "hybrid_score": 0.633946,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.8293,
+          "recency": 1.0
+        },
+        {
+          "source_type": "trade_review",
+          "source_id": 222,
+          "title": "GCTS overnight review: LOSS $-12.38 (momentum_scalp)",
+          "raw_sim": 0.647049,
+          "hybrid_score": 0.629033,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.8581,
+          "recency": 1.0
+        }
+      ],
+      "empty": false
+    },
+    {
+      "query": "What patterns exist in automated journal entries?",
+      "nomic_latency_ms": 28.2,
+      "qwen3_latency_ms": 550.7,
+      "hybrid_latency_ms": 1986.6,
+      "source_diversity": 2,
+      "consensus_count": 0,
+      "model_distribution": {
+        "nomic": 0,
+        "qwen3": 10,
+        "both": 0
+      },
+      "avg_hybrid_score": 0.7006,
+      "hybrid_results": [
+        {
+          "source_type": "agent_result",
+          "source_id": 1945515383,
+          "title": "XLI risk_agent: SKIP_DUE_TO_STALE_DATA",
+          "raw_sim": 0.567334,
+          "hybrid_score": 0.714286,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 1.0,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 1252,
+          "title": "AMJB signal:",
+          "raw_sim": 0.544683,
+          "hybrid_score": 0.713609,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9601,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1824404147,
+          "title": "ABUS risk_agent: LOW_CONFIDENCE_SKIP",
+          "raw_sim": 0.564798,
+          "hybrid_score": 0.712051,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9955,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 937,
+          "title": "ABEO signal:",
+          "raw_sim": 0.543571,
+          "hybrid_score": 0.707629,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9581,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 1247,
+          "title": "AGMI signal:",
+          "raw_sim": 0.538952,
+          "hybrid_score": 0.703558,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.95,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 946,
+          "title": "ANAB signal:",
+          "raw_sim": 0.537707,
+          "hybrid_score": 0.702461,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9478,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 1048,
+          "title": "AMUB signal:",
+          "raw_sim": 0.532825,
+          "hybrid_score": 0.698158,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9392,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 283036386,
+          "title": "PPC risk_agent: SKIP",
+          "raw_sim": 0.535577,
+          "hybrid_score": 0.686298,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.944,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 67394769,
+          "title": "CACI risk_agent: SKIP",
+          "raw_sim": 0.534394,
+          "hybrid_score": 0.685255,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9419,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 492522555,
+          "title": "BZ risk_agent: NONE",
+          "raw_sim": 0.53102,
+          "hybrid_score": 0.682282,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.936,
+          "recency": 1.0
+        }
+      ],
+      "empty": false
+    },
+    {
+      "query": "Show journal evidence for early exits",
+      "nomic_latency_ms": 13.5,
+      "qwen3_latency_ms": 195.6,
+      "hybrid_latency_ms": 1566.9,
+      "source_diversity": 3,
+      "consensus_count": 0,
+      "model_distribution": {
+        "nomic": 3,
+        "qwen3": 7,
+        "both": 0
+      },
+      "avg_hybrid_score": 0.6851,
+      "hybrid_results": [
+        {
+          "source_type": "fused_signal",
+          "source_id": 1168,
+          "title": "EXK signal:",
+          "raw_sim": 0.616854,
+          "hybrid_score": 0.709418,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9517,
+          "recency": 1.0
+        },
+        {
+          "source_type": "trade_review",
+          "source_id": 32,
+          "title": "XMTR overnight review: BREAKEVEN $+0.00 (swing_breakout)",
+          "raw_sim": 0.648165,
+          "hybrid_score": 0.705,
+          "retrieval_model": "nomic",
+          "normalized_sim": 1.0,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 1225,
+          "title": "ED signal:",
+          "raw_sim": 0.601658,
+          "hybrid_score": 0.692696,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9282,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 921,
+          "title": "EDBL signal:",
+          "raw_sim": 0.594052,
+          "hybrid_score": 0.686828,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9165,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 1240,
+          "title": "EOSE signal:",
+          "raw_sim": 0.591765,
+          "hybrid_score": 0.685064,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.913,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1251864077,
+          "title": "MBLY risk_agent: HOLD",
+          "raw_sim": 0.599627,
+          "hybrid_score": 0.681843,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9251,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1936826020,
+          "title": "BRCB steph: LOW_CONFIDENCE_SKIP",
+          "raw_sim": 0.598389,
+          "hybrid_score": 0.675888,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9232,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 169737314,
+          "title": "DOX risk_agent: SKIP",
+          "raw_sim": 0.593564,
+          "hybrid_score": 0.672166,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9158,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1945515383,
+          "title": "XLI risk_agent: SKIP_DUE_TO_STALE_DATA",
+          "raw_sim": 0.591967,
+          "hybrid_score": 0.670934,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9133,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 67394769,
+          "title": "CACI risk_agent: SKIP",
+          "raw_sim": 0.591723,
+          "hybrid_score": 0.670746,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9129,
+          "recency": 1.0
+        }
+      ],
+      "empty": false
+    },
+    {
+      "query": "Find latest journal review for manual trades",
+      "nomic_latency_ms": 18.5,
+      "qwen3_latency_ms": 177.3,
+      "hybrid_latency_ms": 1552.1,
+      "source_diversity": 4,
+      "consensus_count": 1,
+      "model_distribution": {
+        "nomic": 3,
+        "qwen3": 6,
+        "both": 1
+      },
+      "avg_hybrid_score": 0.7118,
+      "hybrid_results": [
+        {
+          "source_type": "trade_outcome",
+          "source_id": 19,
+          "title": "FLYW trade outcome: UNKNOWN  (momentum_scalp)",
+          "raw_sim": 0.618893,
+          "hybrid_score": 0.77521,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9504,
+          "recency": 1.0
+        },
+        {
+          "source_type": "trade_outcome",
+          "source_id": 22,
+          "title": "GCTS trade outcome: LOSS -0.1R (momentum_scalp)",
+          "raw_sim": 0.602395,
+          "hybrid_score": 0.767542,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9251,
+          "recency": 1.0
+        },
+        {
+          "source_type": "trade_outcome",
+          "source_id": 16,
+          "title": "BLBD trade outcome: UNKNOWN  (earnings_catalyst)",
+          "raw_sim": 0.589718,
+          "hybrid_score": 0.752809,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9056,
+          "recency": 1.0
+        },
+        {
+          "source_type": "trade_review",
+          "source_id": 32,
+          "title": "XMTR overnight review: BREAKEVEN $+0.00 (swing_breakout)",
+          "raw_sim": 0.651178,
+          "hybrid_score": 0.71,
+          "retrieval_model": "both",
+          "normalized_sim": 1.0,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 1090,
+          "title": "MANE signal:",
+          "raw_sim": 0.599612,
+          "hybrid_score": 0.693977,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9208,
+          "recency": 1.0
+        },
+        {
+          "source_type": "trade_review",
+          "source_id": 202,
+          "title": "GCTS overnight review: LOSS $-9.38 (momentum_scalp)",
+          "raw_sim": 0.638212,
+          "hybrid_score": 0.690044,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9801,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1945515383,
+          "title": "XLI risk_agent: SKIP_DUE_TO_STALE_DATA",
+          "raw_sim": 0.616887,
+          "hybrid_score": 0.687956,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9473,
+          "recency": 1.0
+        },
+        {
+          "source_type": "trade_review",
+          "source_id": 132,
+          "title": "INFU overnight review: WIN $+67.83 (swing_breakout)",
+          "raw_sim": 0.628661,
+          "hybrid_score": 0.682711,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9654,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 949,
+          "title": "CBOE signal:",
+          "raw_sim": 0.58703,
+          "hybrid_score": 0.679316,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9015,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 894,
+          "title": "DGX signal:",
+          "raw_sim": 0.585935,
+          "hybrid_score": 0.678475,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.8998,
+          "recency": 1.0
+        }
+      ],
+      "empty": false
+    },
+    {
+      "query": "Show journal entries mentioning stop placement",
+      "nomic_latency_ms": 16.4,
+      "qwen3_latency_ms": 168.7,
+      "hybrid_latency_ms": 1555.0,
+      "source_diversity": 2,
+      "consensus_count": 0,
+      "model_distribution": {
+        "nomic": 9,
+        "qwen3": 1,
+        "both": 0
+      },
+      "avg_hybrid_score": 0.6858,
+      "hybrid_results": [
+        {
+          "source_type": "agent_result",
+          "source_id": 1213992893,
+          "title": "LDOS maria: AVOID",
+          "raw_sim": 0.623096,
+          "hybrid_score": 0.719286,
+          "retrieval_model": "nomic",
+          "normalized_sim": 1.0,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 80193683,
+          "title": "ANV risk_agent: TRIM",
+          "raw_sim": 0.593129,
+          "hybrid_score": 0.690239,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9519,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1859319901,
+          "title": "GLXG risk_agent: TRIM",
+          "raw_sim": 0.589987,
+          "hybrid_score": 0.687718,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9469,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1006034360,
+          "title": "NOC maria: HOLD",
+          "raw_sim": 0.588506,
+          "hybrid_score": 0.686529,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9445,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1516150932,
+          "title": "VNET risk_agent: AVOID",
+          "raw_sim": 0.58745,
+          "hybrid_score": 0.685682,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9428,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 1128,
+          "title": "STILL signal:",
+          "raw_sim": 0.562106,
+          "hybrid_score": 0.68463,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9021,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1370477516,
+          "title": "NVEC risk_agent: HOLD",
+          "raw_sim": 0.578191,
+          "hybrid_score": 0.678252,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9279,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 86462119,
+          "title": "GLOB risk_agent: HOLD",
+          "raw_sim": 0.576823,
+          "hybrid_score": 0.677154,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9257,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 220443609,
+          "title": "KBR maria: AVOID",
+          "raw_sim": 0.574812,
+          "hybrid_score": 0.67554,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9225,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1994298080,
+          "title": "ITGR risk_agent: HOLD",
+          "raw_sim": 0.571774,
+          "hybrid_score": 0.673103,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9176,
+          "recency": 1.0
+        }
+      ],
+      "empty": false
+    },
+    {
+      "query": "Show risk synthesis evidence for unprotected positions",
+      "nomic_latency_ms": 17.9,
+      "qwen3_latency_ms": 175.3,
+      "hybrid_latency_ms": 1572.6,
+      "source_diversity": 1,
+      "consensus_count": 0,
+      "model_distribution": {
+        "nomic": 0,
+        "qwen3": 10,
+        "both": 0
+      },
+      "avg_hybrid_score": 0.7029,
+      "hybrid_results": [
+        {
+          "source_type": "agent_result",
+          "source_id": 1945515383,
+          "title": "XLI risk_agent: SKIP_DUE_TO_STALE_DATA",
+          "raw_sim": 0.787434,
+          "hybrid_score": 0.714286,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 1.0,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 492522555,
+          "title": "BZ risk_agent: NONE",
+          "raw_sim": 0.780463,
+          "hybrid_score": 0.709859,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9911,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 526651699,
+          "title": "ACH risk_agent: AVOID",
+          "raw_sim": 0.77507,
+          "hybrid_score": 0.706435,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9843,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1994209869,
+          "title": "LIFE risk_agent: WAIT",
+          "raw_sim": 0.772099,
+          "hybrid_score": 0.704548,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9805,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 678050797,
+          "title": "LIFE risk_agent: WAIT",
+          "raw_sim": 0.772099,
+          "hybrid_score": 0.704548,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9805,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1824404147,
+          "title": "ABUS risk_agent: LOW_CONFIDENCE_SKIP",
+          "raw_sim": 0.767173,
+          "hybrid_score": 0.701421,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9743,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1481433937,
+          "title": "P risk_agent: RESEARCH_MORE",
+          "raw_sim": 0.766462,
+          "hybrid_score": 0.700969,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9734,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 67394769,
+          "title": "CACI risk_agent: SKIP",
+          "raw_sim": 0.759958,
+          "hybrid_score": 0.696839,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9651,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 795421258,
+          "title": "MLTX risk_agent: AVOID",
+          "raw_sim": 0.757623,
+          "hybrid_score": 0.695357,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9621,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1119380906,
+          "title": "LQDA risk_agent: RESEARCH_MORE",
+          "raw_sim": 0.756353,
+          "hybrid_score": 0.69455,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9605,
+          "recency": 1.0
+        }
+      ],
+      "empty": false
+    },
+    {
+      "query": "Find portfolio concentration risk warnings",
+      "nomic_latency_ms": 14.5,
+      "qwen3_latency_ms": 205.2,
+      "hybrid_latency_ms": 1583.8,
+      "source_diversity": 1,
+      "consensus_count": 1,
+      "model_distribution": {
+        "nomic": 8,
+        "qwen3": 1,
+        "both": 1
+      },
+      "avg_hybrid_score": 0.7101,
+      "hybrid_results": [
+        {
+          "source_type": "agent_result",
+          "source_id": 1994298080,
+          "title": "ITGR risk_agent: HOLD",
+          "raw_sim": 0.751419,
+          "hybrid_score": 0.724286,
+          "retrieval_model": "both",
+          "normalized_sim": 1.0,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1838235876,
+          "title": "BLD risk_agent: HOLD",
+          "raw_sim": 0.749043,
+          "hybrid_score": 0.712705,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9968,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1251864077,
+          "title": "MBLY risk_agent: HOLD",
+          "raw_sim": 0.748933,
+          "hybrid_score": 0.712632,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9967,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1859319901,
+          "title": "GLXG risk_agent: TRIM",
+          "raw_sim": 0.748634,
+          "hybrid_score": 0.712433,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9963,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1945515383,
+          "title": "XLI risk_agent: SKIP_DUE_TO_STALE_DATA",
+          "raw_sim": 0.742653,
+          "hybrid_score": 0.708453,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9883,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 937144554,
+          "title": "ERII risk_agent: HOLD",
+          "raw_sim": 0.741561,
+          "hybrid_score": 0.707726,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9869,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 86462119,
+          "title": "GLOB risk_agent: HOLD",
+          "raw_sim": 0.739471,
+          "hybrid_score": 0.706335,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9841,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 767339986,
+          "title": "LCID risk_agent: HOLD",
+          "raw_sim": 0.738947,
+          "hybrid_score": 0.705987,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9834,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 684793092,
+          "title": "RKLB risk_agent: TRIM",
+          "raw_sim": 0.738722,
+          "hybrid_score": 0.705837,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9831,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 2081261755,
+          "title": "CELH risk_agent: HOLD",
+          "raw_sim": 0.736623,
+          "hybrid_score": 0.70444,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9803,
+          "recency": 1.0
+        }
+      ],
+      "empty": false
+    },
+    {
+      "query": "Why did BLBD become a proposal?",
+      "nomic_latency_ms": 29.9,
+      "qwen3_latency_ms": 542.5,
+      "hybrid_latency_ms": 1938.1,
+      "source_diversity": 3,
+      "consensus_count": 0,
+      "model_distribution": {
+        "nomic": 7,
+        "qwen3": 3,
+        "both": 0
+      },
+      "avg_hybrid_score": 0.6838,
+      "hybrid_results": [
+        {
+          "source_type": "trade_outcome",
+          "source_id": 16,
+          "title": "BLBD trade outcome: UNKNOWN  (earnings_catalyst)",
+          "raw_sim": 0.680051,
+          "hybrid_score": 0.805,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 1.0,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 1165,
+          "title": "BLBD signal:",
+          "raw_sim": 0.667064,
+          "hybrid_score": 0.724023,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9809,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 918,
+          "title": "BLDR signal:",
+          "raw_sim": 0.609349,
+          "hybrid_score": 0.676589,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.896,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1298480418,
+          "title": "FCX maria: HOLD",
+          "raw_sim": 0.615476,
+          "hybrid_score": 0.671808,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.905,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1144455002,
+          "title": "DRS maria: HOLD",
+          "raw_sim": 0.613254,
+          "hybrid_score": 0.665174,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9018,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 716055248,
+          "title": "TLT maria: HOLD",
+          "raw_sim": 0.609168,
+          "hybrid_score": 0.66217,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.8958,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 726386754,
+          "title": "AJG maria: HOLD",
+          "raw_sim": 0.606089,
+          "hybrid_score": 0.659906,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.8912,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1952834254,
+          "title": "AMANX maria: HOLD",
+          "raw_sim": 0.605021,
+          "hybrid_score": 0.659121,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.8897,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 831604466,
+          "title": "BAH maria: HOLD",
+          "raw_sim": 0.602955,
+          "hybrid_score": 0.657602,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.8866,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 428479364,
+          "title": "DIV maria: HOLD",
+          "raw_sim": 0.601319,
+          "hybrid_score": 0.656399,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.8842,
+          "recency": 1.0
+        }
+      ],
+      "empty": false
+    },
+    {
+      "query": "Find prior reasoning for swing trade proposals",
+      "nomic_latency_ms": 18.8,
+      "qwen3_latency_ms": 176.1,
+      "hybrid_latency_ms": 1600.5,
+      "source_diversity": 4,
+      "consensus_count": 0,
+      "model_distribution": {
+        "nomic": 2,
+        "qwen3": 8,
+        "both": 0
+      },
+      "avg_hybrid_score": 0.7288,
+      "hybrid_results": [
+        {
+          "source_type": "trade_outcome",
+          "source_id": 12,
+          "title": "FLYW trade outcome: loss (swing_trade)",
+          "raw_sim": 0.682366,
+          "hybrid_score": 0.797816,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9956,
+          "recency": 1.0
+        },
+        {
+          "source_type": "trade_outcome",
+          "source_id": 19,
+          "title": "FLYW trade outcome: UNKNOWN  (momentum_scalp)",
+          "raw_sim": 0.67558,
+          "hybrid_score": 0.792865,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9857,
+          "recency": 1.0
+        },
+        {
+          "source_type": "trade_outcome",
+          "source_id": 22,
+          "title": "GCTS trade outcome: LOSS -0.1R (momentum_scalp)",
+          "raw_sim": 0.608483,
+          "hybrid_score": 0.748915,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.8878,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 949,
+          "title": "CBOE signal:",
+          "raw_sim": 0.669712,
+          "hybrid_score": 0.722156,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9772,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1154808878,
+          "title": "NOC risk_agent: SELL",
+          "raw_sim": 0.68536,
+          "hybrid_score": 0.714286,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 1.0,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1945515383,
+          "title": "XLI risk_agent: SKIP_DUE_TO_STALE_DATA",
+          "raw_sim": 0.684142,
+          "hybrid_score": 0.713397,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9982,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 610423339,
+          "title": "PENG risk_agent: RESEARCH_MORE",
+          "raw_sim": 0.672359,
+          "hybrid_score": 0.704801,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.981,
+          "recency": 1.0
+        },
+        {
+          "source_type": "trade_review",
+          "source_id": 32,
+          "title": "XMTR overnight review: BREAKEVEN $+0.00 (swing_breakout)",
+          "raw_sim": 0.677064,
+          "hybrid_score": 0.698948,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9879,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1744313560,
+          "title": "ALAI risk_agent: HOLD",
+          "raw_sim": 0.662289,
+          "hybrid_score": 0.697454,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9663,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1119380906,
+          "title": "LQDA risk_agent: RESEARCH_MORE",
+          "raw_sim": 0.662219,
+          "hybrid_score": 0.697403,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9662,
+          "recency": 1.0
+        }
+      ],
+      "empty": false
+    },
+    {
+      "query": "Show recent RAG curation approvals",
+      "nomic_latency_ms": 20.3,
+      "qwen3_latency_ms": 200.1,
+      "hybrid_latency_ms": 1594.8,
+      "source_diversity": 1,
+      "consensus_count": 0,
+      "model_distribution": {
+        "nomic": 3,
+        "qwen3": 7,
+        "both": 0
+      },
+      "avg_hybrid_score": 0.6935,
+      "hybrid_results": [
+        {
+          "source_type": "agent_result",
+          "source_id": 1945515383,
+          "title": "XLI risk_agent: SKIP_DUE_TO_STALE_DATA",
+          "raw_sim": 0.596175,
+          "hybrid_score": 0.714286,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 1.0,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 152406386,
+          "title": "CCLD risk_agent: WAIT",
+          "raw_sim": 0.582715,
+          "hybrid_score": 0.702997,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9774,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 67394769,
+          "title": "CACI risk_agent: SKIP",
+          "raw_sim": 0.578803,
+          "hybrid_score": 0.699716,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9709,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1481433937,
+          "title": "P risk_agent: RESEARCH_MORE",
+          "raw_sim": 0.576523,
+          "hybrid_score": 0.697804,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.967,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1506857466,
+          "title": "LI maria: HOLD",
+          "raw_sim": 0.567242,
+          "hybrid_score": 0.69502,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9515,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 283036386,
+          "title": "PPC risk_agent: SKIP",
+          "raw_sim": 0.570953,
+          "hybrid_score": 0.693133,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9577,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 149302173,
+          "title": "OSS risk_agent: WAIT",
+          "raw_sim": 0.56453,
+          "hybrid_score": 0.687746,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9469,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 492522555,
+          "title": "BZ risk_agent: NONE",
+          "raw_sim": 0.558665,
+          "hybrid_score": 0.682827,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9371,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 736369456,
+          "title": "CSWC maria: HOLD",
+          "raw_sim": 0.556343,
+          "hybrid_score": 0.680879,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9332,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 428479364,
+          "title": "DIV maria: HOLD",
+          "raw_sim": 0.5558,
+          "hybrid_score": 0.680424,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9323,
+          "recency": 1.0
+        }
+      ],
+      "empty": false
+    },
+    {
+      "query": "Find defense sector rotation evidence",
+      "nomic_latency_ms": 14.5,
+      "qwen3_latency_ms": 210.1,
+      "hybrid_latency_ms": 1621.3,
+      "source_diversity": 3,
+      "consensus_count": 0,
+      "model_distribution": {
+        "nomic": 1,
+        "qwen3": 9,
+        "both": 0
+      },
+      "avg_hybrid_score": 0.7137,
+      "hybrid_results": [
+        {
+          "source_type": "fused_signal",
+          "source_id": 872,
+          "title": "SPY signal:",
+          "raw_sim": 0.559607,
+          "hybrid_score": 0.731153,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9952,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1008374104,
+          "title": "ETOR steph: RESEARCH_MORE",
+          "raw_sim": 0.560624,
+          "hybrid_score": 0.717771,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.997,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 951,
+          "title": "CMBT signal:",
+          "raw_sim": 0.549458,
+          "hybrid_score": 0.717129,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9771,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 1117,
+          "title": "DPRO signal:",
+          "raw_sim": 0.547635,
+          "hybrid_score": 0.715508,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9739,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 882,
+          "title": "USO signal:",
+          "raw_sim": 0.545752,
+          "hybrid_score": 0.713834,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9705,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 1025,
+          "title": "JAGX signal:",
+          "raw_sim": 0.544958,
+          "hybrid_score": 0.713128,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9691,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1824404147,
+          "title": "ABUS risk_agent: LOW_CONFIDENCE_SKIP",
+          "raw_sim": 0.559366,
+          "hybrid_score": 0.711653,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9947,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 67394769,
+          "title": "CACI risk_agent: SKIP",
+          "raw_sim": 0.554675,
+          "hybrid_score": 0.707482,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9864,
+          "recency": 1.0
+        },
+        {
+          "source_type": "news",
+          "source_id": 4127,
+          "title": "How Materials Select Sector Spdr (XLB) Affects Rotational Strategy Timing - Stoc",
+          "raw_sim": 0.562327,
+          "hybrid_score": 0.705,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 1.0,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 492522555,
+          "title": "BZ risk_agent: NONE",
+          "raw_sim": 0.551254,
+          "hybrid_score": 0.70444,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9803,
+          "recency": 1.0
+        }
+      ],
+      "empty": false
+    },
+    {
+      "query": "Show recent catalyst news for LMT",
+      "nomic_latency_ms": 15.2,
+      "qwen3_latency_ms": 286.1,
+      "hybrid_latency_ms": 1687.8,
+      "source_diversity": 1,
+      "consensus_count": 0,
+      "model_distribution": {
+        "nomic": 10,
+        "qwen3": 0,
+        "both": 0
+      },
+      "avg_hybrid_score": 0.7082,
+      "hybrid_results": [
+        {
+          "source_type": "agent_result",
+          "source_id": 1709478932,
+          "title": "ST maria: HOLD",
+          "raw_sim": 0.768496,
+          "hybrid_score": 0.719286,
+          "retrieval_model": "nomic",
+          "normalized_sim": 1.0,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 888135063,
+          "title": "SCHG maria: HOLD",
+          "raw_sim": 0.765847,
+          "hybrid_score": 0.712562,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9966,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 134528001,
+          "title": "JEPI maria: HOLD",
+          "raw_sim": 0.762259,
+          "hybrid_score": 0.710228,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9919,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1040683265,
+          "title": "DOX maria: HOLD",
+          "raw_sim": 0.760126,
+          "hybrid_score": 0.70884,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9891,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 802558832,
+          "title": "BLD maria: HOLD",
+          "raw_sim": 0.760126,
+          "hybrid_score": 0.70884,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9891,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1510805894,
+          "title": "SGOV maria: HOLD",
+          "raw_sim": 0.760126,
+          "hybrid_score": 0.70884,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9891,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 103443558,
+          "title": "RKLB maria: HOLD",
+          "raw_sim": 0.755693,
+          "hybrid_score": 0.705956,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9833,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 428479364,
+          "title": "DIV maria: HOLD",
+          "raw_sim": 0.752378,
+          "hybrid_score": 0.703799,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.979,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 392621488,
+          "title": "ANV maria: HOLD",
+          "raw_sim": 0.749937,
+          "hybrid_score": 0.702211,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9759,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 445719340,
+          "title": "GLXG maria: HOLD",
+          "raw_sim": 0.748524,
+          "hybrid_score": 0.701292,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.974,
+          "recency": 1.0
+        }
+      ],
+      "empty": false
+    },
+    {
+      "query": "Show prior CIO HOLD decisions with correct outcomes",
+      "nomic_latency_ms": 27.7,
+      "qwen3_latency_ms": 540.7,
+      "hybrid_latency_ms": 1941.3,
+      "source_diversity": 1,
+      "consensus_count": 1,
+      "model_distribution": {
+        "nomic": 3,
+        "qwen3": 6,
+        "both": 1
+      },
+      "avg_hybrid_score": 0.7048,
+      "hybrid_results": [
+        {
+          "source_type": "agent_result",
+          "source_id": 1158265100,
+          "title": "XLI steph: RESEARCH_MORE",
+          "raw_sim": 0.621365,
+          "hybrid_score": 0.719286,
+          "retrieval_model": "nomic",
+          "normalized_sim": 1.0,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1986479209,
+          "title": "CACI maria: HOLD",
+          "raw_sim": 0.616844,
+          "hybrid_score": 0.710648,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9927,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 290675627,
+          "title": "CACI maria: HOLD",
+          "raw_sim": 0.616844,
+          "hybrid_score": 0.710648,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9927,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1934615025,
+          "title": "CACI risk_agent: HOLD",
+          "raw_sim": 0.611363,
+          "hybrid_score": 0.706237,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9839,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1945515383,
+          "title": "XLI risk_agent: SKIP_DUE_TO_STALE_DATA",
+          "raw_sim": 0.601845,
+          "hybrid_score": 0.703578,
+          "retrieval_model": "both",
+          "normalized_sim": 0.9686,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 610423339,
+          "title": "PENG risk_agent: RESEARCH_MORE",
+          "raw_sim": 0.607975,
+          "hybrid_score": 0.703511,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9785,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 67394769,
+          "title": "CACI risk_agent: SKIP",
+          "raw_sim": 0.606657,
+          "hybrid_score": 0.70245,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9763,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 559776798,
+          "title": "CACI steph: HOLD",
+          "raw_sim": 0.603413,
+          "hybrid_score": 0.69984,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9711,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 891865039,
+          "title": "CMI maria: HOLD",
+          "raw_sim": 0.600147,
+          "hybrid_score": 0.697212,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9659,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 169737314,
+          "title": "DOX risk_agent: SKIP",
+          "raw_sim": 0.596994,
+          "hybrid_score": 0.694675,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9608,
+          "recency": 1.0
+        }
+      ],
+      "empty": false
+    },
+    {
+      "query": "What fused signals exist for SCHD?",
+      "nomic_latency_ms": 19.4,
+      "qwen3_latency_ms": 409.1,
+      "hybrid_latency_ms": 1835.2,
+      "source_diversity": 1,
+      "consensus_count": 0,
+      "model_distribution": {
+        "nomic": 0,
+        "qwen3": 10,
+        "both": 0
+      },
+      "avg_hybrid_score": 0.7204,
+      "hybrid_results": [
+        {
+          "source_type": "fused_signal",
+          "source_id": 957,
+          "title": "DRB signal:",
+          "raw_sim": 0.65923,
+          "hybrid_score": 0.733571,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 1.0,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 885,
+          "title": "CHUC signal:",
+          "raw_sim": 0.656542,
+          "hybrid_score": 0.726533,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9959,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 1176,
+          "title": "ACAD signal:",
+          "raw_sim": 0.651498,
+          "hybrid_score": 0.722707,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9883,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 999,
+          "title": "ALLR signal:",
+          "raw_sim": 0.651423,
+          "hybrid_score": 0.72265,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9882,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 1204,
+          "title": "SOME signal:",
+          "raw_sim": 0.646669,
+          "hybrid_score": 0.719044,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9809,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 1150,
+          "title": "CDW signal:",
+          "raw_sim": 0.645037,
+          "hybrid_score": 0.717807,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9785,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 1063,
+          "title": "XNDU signal:",
+          "raw_sim": 0.643498,
+          "hybrid_score": 0.716639,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9761,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 1012,
+          "title": "ZHDG signal:",
+          "raw_sim": 0.641588,
+          "hybrid_score": 0.715191,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9732,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 943,
+          "title": "ALOT signal:",
+          "raw_sim": 0.641274,
+          "hybrid_score": 0.714953,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9728,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 925,
+          "title": "FCHL signal:",
+          "raw_sim": 0.64104,
+          "hybrid_score": 0.714775,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9724,
+          "recency": 1.0
+        }
+      ],
+      "empty": false
+    },
+    {
+      "query": "Find strong convergent signals across agents",
+      "nomic_latency_ms": 22.5,
+      "qwen3_latency_ms": 215.2,
+      "hybrid_latency_ms": 1625.8,
+      "source_diversity": 1,
+      "consensus_count": 0,
+      "model_distribution": {
+        "nomic": 0,
+        "qwen3": 10,
+        "both": 0
+      },
+      "avg_hybrid_score": 0.7102,
+      "hybrid_results": [
+        {
+          "source_type": "fused_signal",
+          "source_id": 1235,
+          "title": "AGNT signal:",
+          "raw_sim": 0.706895,
+          "hybrid_score": 0.733571,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 1.0,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 1043,
+          "title": "AGEN signal:",
+          "raw_sim": 0.698388,
+          "hybrid_score": 0.722554,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.988,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 1190,
+          "title": "CON signal:",
+          "raw_sim": 0.697881,
+          "hybrid_score": 0.722196,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9872,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 1247,
+          "title": "AGMI signal:",
+          "raw_sim": 0.677415,
+          "hybrid_score": 0.70772,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9583,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 996,
+          "title": "AGRW signal:",
+          "raw_sim": 0.675697,
+          "hybrid_score": 0.706505,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9559,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 1128,
+          "title": "STILL signal:",
+          "raw_sim": 0.67486,
+          "hybrid_score": 0.705912,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9547,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 995,
+          "title": "AGIQ signal:",
+          "raw_sim": 0.670166,
+          "hybrid_score": 0.702592,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.948,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 1046,
+          "title": "AMDG signal:",
+          "raw_sim": 0.668836,
+          "hybrid_score": 0.701652,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9462,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 1204,
+          "title": "SOME signal:",
+          "raw_sim": 0.666279,
+          "hybrid_score": 0.699843,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9425,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 941,
+          "title": "AGQI signal:",
+          "raw_sim": 0.665937,
+          "hybrid_score": 0.699601,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9421,
+          "recency": 1.0
+        }
+      ],
+      "empty": false
+    },
+    {
+      "query": "Show insider or Form 4 evidence for defense stocks",
+      "nomic_latency_ms": 22.4,
+      "qwen3_latency_ms": 489.0,
+      "hybrid_latency_ms": 1857.5,
+      "source_diversity": 2,
+      "consensus_count": 0,
+      "model_distribution": {
+        "nomic": 0,
+        "qwen3": 10,
+        "both": 0
+      },
+      "avg_hybrid_score": 0.71,
+      "hybrid_results": [
+        {
+          "source_type": "fused_signal",
+          "source_id": 890,
+          "title": "XLK signal:",
+          "raw_sim": 0.635894,
+          "hybrid_score": 0.733571,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 1.0,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 872,
+          "title": "SPY signal:",
+          "raw_sim": 0.623483,
+          "hybrid_score": 0.718813,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9805,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 1198,
+          "title": "STRK signal:",
+          "raw_sim": 0.621378,
+          "hybrid_score": 0.717158,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9772,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1945515383,
+          "title": "XLI risk_agent: SKIP_DUE_TO_STALE_DATA",
+          "raw_sim": 0.631403,
+          "hybrid_score": 0.710754,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9929,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 949,
+          "title": "CBOE signal:",
+          "raw_sim": 0.610647,
+          "hybrid_score": 0.70872,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9603,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 1214,
+          "title": "XOM signal:",
+          "raw_sim": 0.609792,
+          "hybrid_score": 0.708048,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.959,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 894,
+          "title": "DGX signal:",
+          "raw_sim": 0.60891,
+          "hybrid_score": 0.707354,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9576,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 952,
+          "title": "COIN signal:",
+          "raw_sim": 0.608338,
+          "hybrid_score": 0.706904,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9567,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 136733750,
+          "title": "LQD risk_agent: NO_RECOMMENDATION",
+          "raw_sim": 0.614678,
+          "hybrid_score": 0.697604,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9666,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 529576199,
+          "title": "BSX steph: RESEARCH_MORE",
+          "raw_sim": 0.606685,
+          "hybrid_score": 0.691319,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9541,
+          "recency": 1.0
+        }
+      ],
+      "empty": false
+    },
+    {
+      "query": "Find YouTube transcript intelligence for dividend investing",
+      "nomic_latency_ms": 18.7,
+      "qwen3_latency_ms": 1533.1,
+      "hybrid_latency_ms": 2905.2,
+      "source_diversity": 3,
+      "consensus_count": 0,
+      "model_distribution": {
+        "nomic": 1,
+        "qwen3": 9,
+        "both": 0
+      },
+      "avg_hybrid_score": 0.6494,
+      "hybrid_results": [
+        {
+          "source_type": "agent_result",
+          "source_id": 382650026,
+          "title": "TOPIC:dividend_income alex: ADD",
+          "raw_sim": 0.742825,
+          "hybrid_score": 0.714286,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 1.0,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 842244107,
+          "title": "TOPIC:dividend_income steph: ADD",
+          "raw_sim": 0.736712,
+          "hybrid_score": 0.710171,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9918,
+          "recency": 1.0
+        },
+        {
+          "source_type": "news",
+          "source_id": 4125,
+          "title": "9 Highest Dividend-Paying Stocks in the S&P 500 | Investing - U.S. News Money",
+          "raw_sim": 0.655698,
+          "hybrid_score": 0.646354,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.8827,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 1060,
+          "title": "PYPL signal:",
+          "raw_sim": 0.603329,
+          "hybrid_score": 0.639676,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.8122,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 894,
+          "title": "DGX signal:",
+          "raw_sim": 0.601779,
+          "hybrid_score": 0.633633,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.8101,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 874,
+          "title": "QQQ signal:",
+          "raw_sim": 0.59967,
+          "hybrid_score": 0.632213,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.8073,
+          "recency": 1.0
+        },
+        {
+          "source_type": "news",
+          "source_id": 4122,
+          "title": "JEPQ vs. GPIQ: Top Investor Selects the Superior High-Yield Dividend ETF to Buy ",
+          "raw_sim": 0.641016,
+          "hybrid_score": 0.631472,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.8629,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 136733750,
+          "title": "LQD risk_agent: NO_RECOMMENDATION",
+          "raw_sim": 0.616422,
+          "hybrid_score": 0.629203,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.8298,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 1198,
+          "title": "STRK signal:",
+          "raw_sim": 0.593981,
+          "hybrid_score": 0.628384,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.7996,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1193857690,
+          "title": "GEO steph: HOLD",
+          "raw_sim": 0.607729,
+          "hybrid_score": 0.628352,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.8181,
+          "recency": 1.0
+        }
+      ],
+      "empty": false
+    },
+    {
+      "query": "Find strategy classifications with low confidence",
+      "nomic_latency_ms": 15.1,
+      "qwen3_latency_ms": 239.3,
+      "hybrid_latency_ms": 1591.8,
+      "source_diversity": 1,
+      "consensus_count": 0,
+      "model_distribution": {
+        "nomic": 5,
+        "qwen3": 5,
+        "both": 0
+      },
+      "avg_hybrid_score": 0.6816,
+      "hybrid_results": [
+        {
+          "source_type": "agent_result",
+          "source_id": 1494806081,
+          "title": "CFND steph: LOW_CONFIDENCE_SKIP",
+          "raw_sim": 0.696196,
+          "hybrid_score": 0.714286,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 1.0,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1235974964,
+          "title": "VNET maria: HOLD",
+          "raw_sim": 0.660292,
+          "hybrid_score": 0.6935,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9484,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 767339986,
+          "title": "LCID risk_agent: HOLD",
+          "raw_sim": 0.658439,
+          "hybrid_score": 0.687169,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9458,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 502272627,
+          "title": "ENPH risk_agent: TRIM",
+          "raw_sim": 0.646932,
+          "hybrid_score": 0.678905,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9292,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1065886213,
+          "title": "LPIH steph: LOW_CONFIDENCE_SKIP",
+          "raw_sim": 0.643437,
+          "hybrid_score": 0.676395,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9242,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 33788281,
+          "title": "LPIH steph: LOW_CONFIDENCE_SKIP",
+          "raw_sim": 0.643437,
+          "hybrid_score": 0.676395,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9242,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 2081261755,
+          "title": "CELH risk_agent: HOLD",
+          "raw_sim": 0.64058,
+          "hybrid_score": 0.674343,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9201,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1273643809,
+          "title": "BRC risk_agent: LOW_CONFIDENCE_SKIP",
+          "raw_sim": 0.638133,
+          "hybrid_score": 0.672586,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9166,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 782842248,
+          "title": "BAX steph: LOW_CONFIDENCE_SKIP",
+          "raw_sim": 0.636627,
+          "hybrid_score": 0.671504,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9144,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1595720613,
+          "title": "CCK risk_agent: RESEARCH_MORE",
+          "raw_sim": 0.636428,
+          "hybrid_score": 0.671361,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9142,
+          "recency": 1.0
+        }
+      ],
+      "empty": false
+    },
+    {
+      "query": "Show positions flagged for reclassification",
+      "nomic_latency_ms": 29.4,
+      "qwen3_latency_ms": 181.2,
+      "hybrid_latency_ms": 1543.9,
+      "source_diversity": 1,
+      "consensus_count": 0,
+      "model_distribution": {
+        "nomic": 10,
+        "qwen3": 0,
+        "both": 0
+      },
+      "avg_hybrid_score": 0.6957,
+      "hybrid_results": [
+        {
+          "source_type": "agent_result",
+          "source_id": 86462119,
+          "title": "GLOB risk_agent: HOLD",
+          "raw_sim": 0.628313,
+          "hybrid_score": 0.719286,
+          "retrieval_model": "nomic",
+          "normalized_sim": 1.0,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 946608558,
+          "title": "AQLT maria: HOLD",
+          "raw_sim": 0.60957,
+          "hybrid_score": 0.69937,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9702,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 80193683,
+          "title": "ANV risk_agent: TRIM",
+          "raw_sim": 0.609473,
+          "hybrid_score": 0.699293,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.97,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1595720613,
+          "title": "CCK risk_agent: RESEARCH_MORE",
+          "raw_sim": 0.60887,
+          "hybrid_score": 0.698813,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9691,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1516150932,
+          "title": "VNET risk_agent: AVOID",
+          "raw_sim": 0.605347,
+          "hybrid_score": 0.69601,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9634,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1697275927,
+          "title": "CBRE risk_agent: TRIM",
+          "raw_sim": 0.604318,
+          "hybrid_score": 0.695191,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9618,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1994298080,
+          "title": "ITGR risk_agent: HOLD",
+          "raw_sim": 0.599022,
+          "hybrid_score": 0.690976,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9534,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1144455002,
+          "title": "DRS maria: HOLD",
+          "raw_sim": 0.598821,
+          "hybrid_score": 0.690817,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9531,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1931408375,
+          "title": "TDG maria: HOLD",
+          "raw_sim": 0.591014,
+          "hybrid_score": 0.684604,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9406,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1838235876,
+          "title": "BLD risk_agent: HOLD",
+          "raw_sim": 0.588976,
+          "hybrid_score": 0.682982,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9374,
+          "recency": 1.0
+        }
+      ],
+      "empty": false
+    },
+    {
+      "query": "Find deep overnight results about risk management",
+      "nomic_latency_ms": 21.9,
+      "qwen3_latency_ms": 210.3,
+      "hybrid_latency_ms": 1568.0,
+      "source_diversity": 1,
+      "consensus_count": 0,
+      "model_distribution": {
+        "nomic": 9,
+        "qwen3": 1,
+        "both": 0
+      },
+      "avg_hybrid_score": 0.7026,
+      "hybrid_results": [
+        {
+          "source_type": "agent_result",
+          "source_id": 541136831,
+          "title": "LPL risk_agent: HOLD",
+          "raw_sim": 0.676906,
+          "hybrid_score": 0.719286,
+          "retrieval_model": "nomic",
+          "normalized_sim": 1.0,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1314689201,
+          "title": "IEF risk_agent: HOLD",
+          "raw_sim": 0.6685,
+          "hybrid_score": 0.708077,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9876,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 624987555,
+          "title": "SHY risk_agent: HOLD",
+          "raw_sim": 0.668334,
+          "hybrid_score": 0.707954,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9873,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 2081261755,
+          "title": "CELH risk_agent: HOLD",
+          "raw_sim": 0.663045,
+          "hybrid_score": 0.704047,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9795,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1251864077,
+          "title": "MBLY risk_agent: HOLD",
+          "raw_sim": 0.660493,
+          "hybrid_score": 0.702162,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9758,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1689694993,
+          "title": "LITE risk_agent: HOLD",
+          "raw_sim": 0.659619,
+          "hybrid_score": 0.701517,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9745,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 2088560067,
+          "title": "XLB risk_agent: HOLD",
+          "raw_sim": 0.655037,
+          "hybrid_score": 0.698132,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9677,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 684793092,
+          "title": "RKLB risk_agent: TRIM",
+          "raw_sim": 0.652621,
+          "hybrid_score": 0.696347,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9641,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1481433937,
+          "title": "P risk_agent: RESEARCH_MORE",
+          "raw_sim": 0.650205,
+          "hybrid_score": 0.694563,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9606,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 767339986,
+          "title": "LCID risk_agent: HOLD",
+          "raw_sim": 0.649484,
+          "hybrid_score": 0.69403,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9595,
+          "recency": 1.0
+        }
+      ],
+      "empty": false
+    },
+    {
+      "query": "Show gemma3 analysis of recovery watch symbols",
+      "nomic_latency_ms": 26.1,
+      "qwen3_latency_ms": 413.8,
+      "hybrid_latency_ms": 1783.3,
+      "source_diversity": 2,
+      "consensus_count": 0,
+      "model_distribution": {
+        "nomic": 0,
+        "qwen3": 10,
+        "both": 0
+      },
+      "avg_hybrid_score": 0.7165,
+      "hybrid_results": [
+        {
+          "source_type": "fused_signal",
+          "source_id": 946,
+          "title": "ANAB signal:",
+          "raw_sim": 0.656051,
+          "hybrid_score": 0.733571,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 1.0,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 1089,
+          "title": "GFS signal:",
+          "raw_sim": 0.647785,
+          "hybrid_score": 0.722272,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9874,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 1173,
+          "title": "GWW signal:",
+          "raw_sim": 0.642545,
+          "hybrid_score": 0.718278,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9794,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 1195,
+          "title": "WEN signal:",
+          "raw_sim": 0.642379,
+          "hybrid_score": 0.718152,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9792,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 1114,
+          "title": "LOOKS signal:",
+          "raw_sim": 0.639128,
+          "hybrid_score": 0.715674,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9742,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 1077,
+          "title": "YMAG signal:",
+          "raw_sim": 0.637616,
+          "hybrid_score": 0.714521,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9719,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 937,
+          "title": "ABEO signal:",
+          "raw_sim": 0.635455,
+          "hybrid_score": 0.712874,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9686,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 1034,
+          "title": "GPK signal:",
+          "raw_sim": 0.634625,
+          "hybrid_score": 0.712242,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9673,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 1204,
+          "title": "SOME signal:",
+          "raw_sim": 0.633684,
+          "hybrid_score": 0.711525,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9659,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1945515383,
+          "title": "XLI risk_agent: SKIP_DUE_TO_STALE_DATA",
+          "raw_sim": 0.644868,
+          "hybrid_score": 0.705763,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.983,
+          "recency": 1.0
+        }
+      ],
+      "empty": false
+    },
+    {
+      "query": "Find agent intelligence rules for income strategies",
+      "nomic_latency_ms": 22.0,
+      "qwen3_latency_ms": 186.3,
+      "hybrid_latency_ms": 1549.7,
+      "source_diversity": 1,
+      "consensus_count": 1,
+      "model_distribution": {
+        "nomic": 0,
+        "qwen3": 9,
+        "both": 1
+      },
+      "avg_hybrid_score": 0.6955,
+      "hybrid_results": [
+        {
+          "source_type": "agent_result",
+          "source_id": 1945515383,
+          "title": "XLI risk_agent: SKIP_DUE_TO_STALE_DATA",
+          "raw_sim": 0.681067,
+          "hybrid_score": 0.714286,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 1.0,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 610423339,
+          "title": "PENG risk_agent: RESEARCH_MORE",
+          "raw_sim": 0.665158,
+          "hybrid_score": 0.707606,
+          "retrieval_model": "both",
+          "normalized_sim": 0.9766,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1481433937,
+          "title": "P risk_agent: RESEARCH_MORE",
+          "raw_sim": 0.665551,
+          "hybrid_score": 0.702895,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9772,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 283036386,
+          "title": "PPC risk_agent: SKIP",
+          "raw_sim": 0.664915,
+          "hybrid_score": 0.702428,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9763,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 67394769,
+          "title": "CACI risk_agent: SKIP",
+          "raw_sim": 0.658603,
+          "hybrid_score": 0.697794,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.967,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 526651699,
+          "title": "ACH risk_agent: AVOID",
+          "raw_sim": 0.647172,
+          "hybrid_score": 0.689402,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9502,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1119380906,
+          "title": "LQDA risk_agent: RESEARCH_MORE",
+          "raw_sim": 0.646013,
+          "hybrid_score": 0.688551,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9485,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1629112757,
+          "title": "INFU risk_agent: WAIT",
+          "raw_sim": 0.641086,
+          "hybrid_score": 0.684934,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9413,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 131477658,
+          "title": "INFU risk_agent: WAIT",
+          "raw_sim": 0.641086,
+          "hybrid_score": 0.684934,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9413,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 382650026,
+          "title": "TOPIC:dividend_income alex: ADD",
+          "raw_sim": 0.63781,
+          "hybrid_score": 0.682529,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9365,
+          "recency": 1.0
+        }
+      ],
+      "empty": false
+    },
+    {
+      "query": "Find examples where MFE was high but realized profit was low",
+      "nomic_latency_ms": 21.9,
+      "qwen3_latency_ms": 388.9,
+      "hybrid_latency_ms": 1741.9,
+      "source_diversity": 3,
+      "consensus_count": 0,
+      "model_distribution": {
+        "nomic": 8,
+        "qwen3": 2,
+        "both": 0
+      },
+      "avg_hybrid_score": 0.7168,
+      "hybrid_results": [
+        {
+          "source_type": "trade_outcome",
+          "source_id": 19,
+          "title": "FLYW trade outcome: UNKNOWN  (momentum_scalp)",
+          "raw_sim": 0.642713,
+          "hybrid_score": 0.786253,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9625,
+          "recency": 1.0
+        },
+        {
+          "source_type": "trade_outcome",
+          "source_id": 12,
+          "title": "FLYW trade outcome: loss (swing_trade)",
+          "raw_sim": 0.578655,
+          "hybrid_score": 0.733288,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.8666,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1662695064,
+          "title": "BL maria: HOLD",
+          "raw_sim": 0.665532,
+          "hybrid_score": 0.717626,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9967,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1162805267,
+          "title": "ORA maria: HOLD",
+          "raw_sim": 0.663508,
+          "hybrid_score": 0.71111,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9936,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 840814399,
+          "title": "EYE maria: HOLD",
+          "raw_sim": 0.655504,
+          "hybrid_score": 0.705117,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9817,
+          "recency": 1.0
+        },
+        {
+          "source_type": "trade_review",
+          "source_id": 32,
+          "title": "XMTR overnight review: BREAKEVEN $+0.00 (swing_breakout)",
+          "raw_sim": 0.667749,
+          "hybrid_score": 0.705,
+          "retrieval_model": "nomic",
+          "normalized_sim": 1.0,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1861384479,
+          "title": "KLIC maria: HOLD",
+          "raw_sim": 0.654827,
+          "hybrid_score": 0.70461,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9806,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1670043008,
+          "title": "FPS risk_agent: HOLD",
+          "raw_sim": 0.651935,
+          "hybrid_score": 0.702444,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9763,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1213992893,
+          "title": "LDOS maria: AVOID",
+          "raw_sim": 0.651695,
+          "hybrid_score": 0.702265,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.976,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 937144554,
+          "title": "ERII risk_agent: HOLD",
+          "raw_sim": 0.649244,
+          "hybrid_score": 0.700429,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9723,
+          "recency": 1.0
+        }
+      ],
+      "empty": false
+    },
+    {
+      "query": "Show covered call candidates that need review",
+      "nomic_latency_ms": 24.0,
+      "qwen3_latency_ms": 189.8,
+      "hybrid_latency_ms": 1545.1,
+      "source_diversity": 2,
+      "consensus_count": 0,
+      "model_distribution": {
+        "nomic": 0,
+        "qwen3": 10,
+        "both": 0
+      },
+      "avg_hybrid_score": 0.6673,
+      "hybrid_results": [
+        {
+          "source_type": "agent_result",
+          "source_id": 345499645,
+          "title": "TOPIC:covered_call_income steph: RESEARCH_MORE",
+          "raw_sim": 0.699573,
+          "hybrid_score": 0.714286,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 1.0,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1347793820,
+          "title": "TOPIC:covered_call_income alex: RESEARCH_MORE",
+          "raw_sim": 0.67776,
+          "hybrid_score": 0.698695,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9688,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 949,
+          "title": "CBOE signal:",
+          "raw_sim": 0.624415,
+          "hybrid_score": 0.679854,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.8926,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1945515383,
+          "title": "XLI risk_agent: SKIP_DUE_TO_STALE_DATA",
+          "raw_sim": 0.650542,
+          "hybrid_score": 0.679242,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9299,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 283036386,
+          "title": "PPC risk_agent: SKIP",
+          "raw_sim": 0.622785,
+          "hybrid_score": 0.659404,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.8902,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 1197,
+          "title": "OPEN signal:",
+          "raw_sim": 0.600261,
+          "hybrid_score": 0.657591,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.858,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 152406386,
+          "title": "CCLD risk_agent: WAIT",
+          "raw_sim": 0.610438,
+          "hybrid_score": 0.650579,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.8726,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 67394769,
+          "title": "CACI risk_agent: SKIP",
+          "raw_sim": 0.602904,
+          "hybrid_score": 0.645194,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.8618,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1154808878,
+          "title": "NOC risk_agent: SELL",
+          "raw_sim": 0.60285,
+          "hybrid_score": 0.645156,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.8617,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1481433937,
+          "title": "P risk_agent: RESEARCH_MORE",
+          "raw_sim": 0.6003,
+          "hybrid_score": 0.643333,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.8581,
+          "recency": 1.0
+        }
+      ],
+      "empty": false
+    },
+    {
+      "query": "Find covered call scoring evidence for V",
+      "nomic_latency_ms": 18.2,
+      "qwen3_latency_ms": 178.2,
+      "hybrid_latency_ms": 1520.0,
+      "source_diversity": 3,
+      "consensus_count": 0,
+      "model_distribution": {
+        "nomic": 1,
+        "qwen3": 9,
+        "both": 0
+      },
+      "avg_hybrid_score": 0.6784,
+      "hybrid_results": [
+        {
+          "source_type": "trade_outcome",
+          "source_id": 4,
+          "title": "EVC trade outcome: UNKNOWN -2.0R (screener)",
+          "raw_sim": 0.597714,
+          "hybrid_score": 0.731262,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.8525,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 345499645,
+          "title": "TOPIC:covered_call_income steph: RESEARCH_MORE",
+          "raw_sim": 0.701111,
+          "hybrid_score": 0.714286,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 1.0,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 961,
+          "title": "VYM signal:",
+          "raw_sim": 0.660497,
+          "hybrid_score": 0.704607,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9421,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1347793820,
+          "title": "TOPIC:covered_call_income alex: RESEARCH_MORE",
+          "raw_sim": 0.678514,
+          "hybrid_score": 0.698171,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9678,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 966,
+          "title": "VOO signal:",
+          "raw_sim": 0.624543,
+          "hybrid_score": 0.673967,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.8908,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 949,
+          "title": "CBOE signal:",
+          "raw_sim": 0.607075,
+          "hybrid_score": 0.661509,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.8659,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 897,
+          "title": "ZVOL signal:",
+          "raw_sim": 0.595938,
+          "hybrid_score": 0.653567,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.85,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 1143,
+          "title": "FINV signal:",
+          "raw_sim": 0.593094,
+          "hybrid_score": 0.651539,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.8459,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 883,
+          "title": "VZ signal:",
+          "raw_sim": 0.592608,
+          "hybrid_score": 0.651192,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.8452,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 610423339,
+          "title": "PENG risk_agent: RESEARCH_MORE",
+          "raw_sim": 0.594778,
+          "hybrid_score": 0.643454,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.8483,
+          "recency": 1.0
+        }
+      ],
+      "empty": false
+    },
+    {
+      "query": "Find stop-triggered analysis for defense positions",
+      "nomic_latency_ms": 18.6,
+      "qwen3_latency_ms": 418.2,
+      "hybrid_latency_ms": 1767.4,
+      "source_diversity": 1,
+      "consensus_count": 0,
+      "model_distribution": {
+        "nomic": 10,
+        "qwen3": 0,
+        "both": 0
+      },
+      "avg_hybrid_score": 0.7059,
+      "hybrid_results": [
+        {
+          "source_type": "agent_result",
+          "source_id": 1213992893,
+          "title": "LDOS maria: AVOID",
+          "raw_sim": 0.646957,
+          "hybrid_score": 0.719286,
+          "retrieval_model": "nomic",
+          "normalized_sim": 1.0,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1370477516,
+          "title": "NVEC risk_agent: HOLD",
+          "raw_sim": 0.644147,
+          "hybrid_score": 0.712114,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9957,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 80193683,
+          "title": "ANV risk_agent: TRIM",
+          "raw_sim": 0.640376,
+          "hybrid_score": 0.7092,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9898,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1516150932,
+          "title": "VNET risk_agent: AVOID",
+          "raw_sim": 0.635719,
+          "hybrid_score": 0.7056,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9826,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 638451197,
+          "title": "EYE risk_agent: HOLD",
+          "raw_sim": 0.634556,
+          "hybrid_score": 0.704702,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9808,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 86462119,
+          "title": "GLOB risk_agent: HOLD",
+          "raw_sim": 0.632949,
+          "hybrid_score": 0.70346,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9783,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 220443609,
+          "title": "KBR maria: AVOID",
+          "raw_sim": 0.632432,
+          "hybrid_score": 0.70306,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9775,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1154808878,
+          "title": "NOC risk_agent: SELL",
+          "raw_sim": 0.63176,
+          "hybrid_score": 0.702541,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9765,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1180626157,
+          "title": "SRNE risk_agent: RESEARCH_MORE",
+          "raw_sim": 0.628456,
+          "hybrid_score": 0.699987,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9714,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1994298080,
+          "title": "ITGR risk_agent: HOLD",
+          "raw_sim": 0.626899,
+          "hybrid_score": 0.698784,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.969,
+          "recency": 1.0
+        }
+      ],
+      "empty": false
+    },
+    {
+      "query": "Show recovery watch evidence for IRDM",
+      "nomic_latency_ms": 14.2,
+      "qwen3_latency_ms": 185.8,
+      "hybrid_latency_ms": 1530.4,
+      "source_diversity": 2,
+      "consensus_count": 0,
+      "model_distribution": {
+        "nomic": 5,
+        "qwen3": 5,
+        "both": 0
+      },
+      "avg_hybrid_score": 0.7062,
+      "hybrid_results": [
+        {
+          "source_type": "agent_result",
+          "source_id": 1689694993,
+          "title": "LITE risk_agent: HOLD",
+          "raw_sim": 0.595651,
+          "hybrid_score": 0.718845,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9991,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 1199,
+          "title": "IREN signal:",
+          "raw_sim": 0.574615,
+          "hybrid_score": 0.715489,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9638,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 678125289,
+          "title": "IRDM steph: HOLD",
+          "raw_sim": 0.596176,
+          "hybrid_score": 0.714286,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 1.0,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 492522555,
+          "title": "BZ risk_agent: NONE",
+          "raw_sim": 0.592603,
+          "hybrid_score": 0.711289,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.994,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 169737314,
+          "title": "DOX risk_agent: SKIP",
+          "raw_sim": 0.588633,
+          "hybrid_score": 0.70796,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9873,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 930,
+          "title": "ICHR signal:",
+          "raw_sim": 0.565296,
+          "hybrid_score": 0.702673,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9482,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 136733750,
+          "title": "LQD risk_agent: NO_RECOMMENDATION",
+          "raw_sim": 0.581808,
+          "hybrid_score": 0.702236,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9759,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1430593465,
+          "title": "IRDM maria: HOLD",
+          "raw_sim": 0.575356,
+          "hybrid_score": 0.696824,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9651,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1440536696,
+          "title": "IRDM maria: HOLD",
+          "raw_sim": 0.575356,
+          "hybrid_score": 0.696824,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9651,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1670043008,
+          "title": "FPS risk_agent: HOLD",
+          "raw_sim": 0.573423,
+          "hybrid_score": 0.695203,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9618,
+          "recency": 1.0
+        }
+      ],
+      "empty": false
+    },
+    {
+      "query": "Show Maria research findings for growth stocks",
+      "nomic_latency_ms": 20.4,
+      "qwen3_latency_ms": 185.0,
+      "hybrid_latency_ms": 1533.6,
+      "source_diversity": 1,
+      "consensus_count": 0,
+      "model_distribution": {
+        "nomic": 3,
+        "qwen3": 7,
+        "both": 0
+      },
+      "avg_hybrid_score": 0.6925,
+      "hybrid_results": [
+        {
+          "source_type": "agent_result",
+          "source_id": 593981920,
+          "title": "GCTS maria: HOLD",
+          "raw_sim": 0.709859,
+          "hybrid_score": 0.714286,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 1.0,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 2104730194,
+          "title": "GCTS maria: HOLD",
+          "raw_sim": 0.709859,
+          "hybrid_score": 0.714286,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 1.0,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 888376851,
+          "title": "GCTS maria: HOLD",
+          "raw_sim": 0.709859,
+          "hybrid_score": 0.714286,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 1.0,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1193857690,
+          "title": "GEO steph: HOLD",
+          "raw_sim": 0.674185,
+          "hybrid_score": 0.694158,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9497,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1051353832,
+          "title": "LMT maria_research: TRIM",
+          "raw_sim": 0.671393,
+          "hybrid_score": 0.687192,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9458,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1572625706,
+          "title": "RKLB steph: HOLD",
+          "raw_sim": 0.664564,
+          "hybrid_score": 0.682381,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9362,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 2054184309,
+          "title": "ALGS maria: HOLD",
+          "raw_sim": 0.661989,
+          "hybrid_score": 0.680568,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9326,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 207099727,
+          "title": "AGRH maria: HOLD",
+          "raw_sim": 0.661829,
+          "hybrid_score": 0.680455,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9323,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 892102685,
+          "title": "GLOB maria: HOLD",
+          "raw_sim": 0.659921,
+          "hybrid_score": 0.679111,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9297,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1819121514,
+          "title": "BGS maria: HOLD",
+          "raw_sim": 0.658845,
+          "hybrid_score": 0.678353,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9281,
+          "recency": 1.0
+        }
+      ],
+      "empty": false
+    },
+    {
+      "query": "Show paper trades that hit targets",
+      "nomic_latency_ms": 13.7,
+      "qwen3_latency_ms": 190.6,
+      "hybrid_latency_ms": 1537.9,
+      "source_diversity": 2,
+      "consensus_count": 1,
+      "model_distribution": {
+        "nomic": 0,
+        "qwen3": 9,
+        "both": 1
+      },
+      "avg_hybrid_score": 0.7128,
+      "hybrid_results": [
+        {
+          "source_type": "trade_outcome",
+          "source_id": 22,
+          "title": "GCTS trade outcome: LOSS -0.1R (momentum_scalp)",
+          "raw_sim": 0.697932,
+          "hybrid_score": 0.81,
+          "retrieval_model": "both",
+          "normalized_sim": 1.0,
+          "recency": 1.0
+        },
+        {
+          "source_type": "trade_outcome",
+          "source_id": 19,
+          "title": "FLYW trade outcome: UNKNOWN  (momentum_scalp)",
+          "raw_sim": 0.659787,
+          "hybrid_score": 0.772673,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9453,
+          "recency": 1.0
+        },
+        {
+          "source_type": "trade_outcome",
+          "source_id": 16,
+          "title": "BLBD trade outcome: UNKNOWN  (earnings_catalyst)",
+          "raw_sim": 0.628693,
+          "hybrid_score": 0.750397,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9008,
+          "recency": 1.0
+        },
+        {
+          "source_type": "trade_outcome",
+          "source_id": 20,
+          "title": "GCTS trade outcome: LOSS -0.1R (momentum_scalp)",
+          "raw_sim": 0.613895,
+          "hybrid_score": 0.739796,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.8796,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 949,
+          "title": "CBOE signal:",
+          "raw_sim": 0.635864,
+          "hybrid_score": 0.689106,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9111,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 1197,
+          "title": "OPEN signal:",
+          "raw_sim": 0.631175,
+          "hybrid_score": 0.680747,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9044,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 1198,
+          "title": "STRK signal:",
+          "raw_sim": 0.626875,
+          "hybrid_score": 0.677666,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.8982,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 899,
+          "title": "ZTRE signal:",
+          "raw_sim": 0.616259,
+          "hybrid_score": 0.670061,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.883,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 894,
+          "title": "DGX signal:",
+          "raw_sim": 0.614562,
+          "hybrid_score": 0.668845,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.8805,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 1052,
+          "title": "ATKR signal:",
+          "raw_sim": 0.613905,
+          "hybrid_score": 0.668374,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.8796,
+          "recency": 1.0
+        }
+      ],
+      "empty": false
+    },
+    {
+      "query": "Find recent insider buying activity",
+      "nomic_latency_ms": 14.7,
+      "qwen3_latency_ms": 179.8,
+      "hybrid_latency_ms": 1585.8,
+      "source_diversity": 2,
+      "consensus_count": 0,
+      "model_distribution": {
+        "nomic": 1,
+        "qwen3": 9,
+        "both": 0
+      },
+      "avg_hybrid_score": 0.712,
+      "hybrid_results": [
+        {
+          "source_type": "fused_signal",
+          "source_id": 1138,
+          "title": "YBTC signal:",
+          "raw_sim": 0.601848,
+          "hybrid_score": 0.723459,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9798,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 1185,
+          "title": "BTG signal:",
+          "raw_sim": 0.601415,
+          "hybrid_score": 0.718107,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9791,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 949,
+          "title": "CBOE signal:",
+          "raw_sim": 0.597152,
+          "hybrid_score": 0.714637,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9721,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1945515383,
+          "title": "XLI risk_agent: SKIP_DUE_TO_STALE_DATA",
+          "raw_sim": 0.614271,
+          "hybrid_score": 0.714286,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 1.0,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 1055,
+          "title": "BULL signal:",
+          "raw_sim": 0.595567,
+          "hybrid_score": 0.713347,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9696,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 874,
+          "title": "QQQ signal:",
+          "raw_sim": 0.594468,
+          "hybrid_score": 0.712452,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9678,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1934615025,
+          "title": "CACI risk_agent: HOLD",
+          "raw_sim": 0.604369,
+          "hybrid_score": 0.711226,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9839,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 872,
+          "title": "SPY signal:",
+          "raw_sim": 0.591146,
+          "hybrid_score": 0.709748,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9624,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 877,
+          "title": "EBAY signal:",
+          "raw_sim": 0.588269,
+          "hybrid_score": 0.707407,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9577,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1841371158,
+          "title": "IONQ risk_agent: HOLD",
+          "raw_sim": 0.591509,
+          "hybrid_score": 0.695758,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9629,
+          "recency": 1.0
+        }
+      ],
+      "empty": false
+    },
+    {
+      "query": "Show YouTube evidence about market conditions",
+      "nomic_latency_ms": 14.0,
+      "qwen3_latency_ms": 233.1,
+      "hybrid_latency_ms": 1645.9,
+      "source_diversity": 2,
+      "consensus_count": 0,
+      "model_distribution": {
+        "nomic": 9,
+        "qwen3": 1,
+        "both": 0
+      },
+      "avg_hybrid_score": 0.7001,
+      "hybrid_results": [
+        {
+          "source_type": "agent_result",
+          "source_id": 1945515383,
+          "title": "XLI risk_agent: SKIP_DUE_TO_STALE_DATA",
+          "raw_sim": 0.693673,
+          "hybrid_score": 0.719286,
+          "retrieval_model": "nomic",
+          "normalized_sim": 1.0,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 1137,
+          "title": "YBTY signal:",
+          "raw_sim": 0.654516,
+          "hybrid_score": 0.705347,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9436,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1314689201,
+          "title": "IEF risk_agent: HOLD",
+          "raw_sim": 0.681221,
+          "hybrid_score": 0.70531,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.982,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1180626157,
+          "title": "SRNE risk_agent: RESEARCH_MORE",
+          "raw_sim": 0.678571,
+          "hybrid_score": 0.7034,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9782,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1416530804,
+          "title": "CBRE maria: HOLD",
+          "raw_sim": 0.671143,
+          "hybrid_score": 0.698046,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9675,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 764258530,
+          "title": "APT risk_agent: RESEARCH_MORE",
+          "raw_sim": 0.667325,
+          "hybrid_score": 0.695294,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.962,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 443864785,
+          "title": "ARKG risk_agent: HOLD",
+          "raw_sim": 0.666847,
+          "hybrid_score": 0.69495,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9613,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1867907662,
+          "title": "KTOS maria: HOLD",
+          "raw_sim": 0.665707,
+          "hybrid_score": 0.694128,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9597,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1838235876,
+          "title": "BLD risk_agent: HOLD",
+          "raw_sim": 0.664219,
+          "hybrid_score": 0.693055,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9575,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 937144554,
+          "title": "ERII risk_agent: HOLD",
+          "raw_sim": 0.663638,
+          "hybrid_score": 0.692636,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9567,
+          "recency": 1.0
+        }
+      ],
+      "empty": false
+    },
+    {
+      "query": "Find RAG content rejected with reasons",
+      "nomic_latency_ms": 15.2,
+      "qwen3_latency_ms": 296.3,
+      "hybrid_latency_ms": 1708.9,
+      "source_diversity": 1,
+      "consensus_count": 2,
+      "model_distribution": {
+        "nomic": 0,
+        "qwen3": 8,
+        "both": 2
+      },
+      "avg_hybrid_score": 0.6949,
+      "hybrid_results": [
+        {
+          "source_type": "agent_result",
+          "source_id": 67394769,
+          "title": "CACI risk_agent: SKIP",
+          "raw_sim": 0.644257,
+          "hybrid_score": 0.714286,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 1.0,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1945515383,
+          "title": "XLI risk_agent: SKIP_DUE_TO_STALE_DATA",
+          "raw_sim": 0.639826,
+          "hybrid_score": 0.710847,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9931,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1273643809,
+          "title": "BRC risk_agent: LOW_CONFIDENCE_SKIP",
+          "raw_sim": 0.628042,
+          "hybrid_score": 0.701701,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9748,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 283036386,
+          "title": "PPC risk_agent: SKIP",
+          "raw_sim": 0.620219,
+          "hybrid_score": 0.69563,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9627,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1481433937,
+          "title": "P risk_agent: RESEARCH_MORE",
+          "raw_sim": 0.61985,
+          "hybrid_score": 0.695344,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9621,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 492522555,
+          "title": "BZ risk_agent: NONE",
+          "raw_sim": 0.607438,
+          "hybrid_score": 0.690711,
+          "retrieval_model": "both",
+          "normalized_sim": 0.9429,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 169737314,
+          "title": "DOX risk_agent: SKIP",
+          "raw_sim": 0.605127,
+          "hybrid_score": 0.688917,
+          "retrieval_model": "both",
+          "normalized_sim": 0.9393,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1824404147,
+          "title": "ABUS risk_agent: LOW_CONFIDENCE_SKIP",
+          "raw_sim": 0.611248,
+          "hybrid_score": 0.688668,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9488,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1466678778,
+          "title": "GCTS risk_agent: AVOID",
+          "raw_sim": 0.603785,
+          "hybrid_score": 0.682876,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9372,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1494806081,
+          "title": "CFND steph: LOW_CONFIDENCE_SKIP",
+          "raw_sim": 0.600317,
+          "hybrid_score": 0.680184,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9318,
+          "recency": 1.0
+        }
+      ],
+      "empty": false
+    },
+    {
+      "query": "Find CIO recommendations that were wrong",
+      "nomic_latency_ms": 15.0,
+      "qwen3_latency_ms": 298.1,
+      "hybrid_latency_ms": 1722.9,
+      "source_diversity": 2,
+      "consensus_count": 0,
+      "model_distribution": {
+        "nomic": 2,
+        "qwen3": 8,
+        "both": 0
+      },
+      "avg_hybrid_score": 0.6932,
+      "hybrid_results": [
+        {
+          "source_type": "agent_result",
+          "source_id": 67394769,
+          "title": "CACI risk_agent: SKIP",
+          "raw_sim": 0.642769,
+          "hybrid_score": 0.714286,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 1.0,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 136733750,
+          "title": "LQD risk_agent: NO_RECOMMENDATION",
+          "raw_sim": 0.618658,
+          "hybrid_score": 0.70053,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9625,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1945515383,
+          "title": "XLI risk_agent: SKIP_DUE_TO_STALE_DATA",
+          "raw_sim": 0.624927,
+          "hybrid_score": 0.700407,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9722,
+          "recency": 1.0
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 1216,
+          "title": "COIO signal:",
+          "raw_sim": 0.594364,
+          "hybrid_score": 0.695918,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9247,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1158265100,
+          "title": "XLI steph: RESEARCH_MORE",
+          "raw_sim": 0.614836,
+          "hybrid_score": 0.692557,
+          "retrieval_model": "nomic",
+          "normalized_sim": 0.9565,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1595720613,
+          "title": "CCK risk_agent: RESEARCH_MORE",
+          "raw_sim": 0.611002,
+          "hybrid_score": 0.689575,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9506,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1273643809,
+          "title": "BRC risk_agent: LOW_CONFIDENCE_SKIP",
+          "raw_sim": 0.606467,
+          "hybrid_score": 0.686047,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9435,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1481433937,
+          "title": "P risk_agent: RESEARCH_MORE",
+          "raw_sim": 0.605538,
+          "hybrid_score": 0.685324,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9421,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1494806081,
+          "title": "CFND steph: LOW_CONFIDENCE_SKIP",
+          "raw_sim": 0.604777,
+          "hybrid_score": 0.684732,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9409,
+          "recency": 1.0
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 62597405,
+          "title": "CBLL risk_agent: RESEARCH_MORE",
+          "raw_sim": 0.601845,
+          "hybrid_score": 0.682452,
+          "retrieval_model": "qwen3",
+          "normalized_sim": 0.9363,
+          "recency": 1.0
+        }
+      ],
+      "empty": false
+    }
+  ]
+}

@@ -1,0 +1,33 @@
+{
+  "generated_at": "2026-05-20T15:52:59.053803+00:00",
+  "health": "healthy",
+  "snapshot": {
+    "snapshot_id": "RS_20260520155002_e1388e2f",
+    "regime": "high_volatility",
+    "confidence": 0.43,
+    "stale": false,
+    "generated_at": "2026-05-20 11:50:02.277407-04:00",
+    "summary": "Regime: high_volatility (conf=43%)",
+    "age_hours": 0.0
+  },
+  "snapshot_stale": false,
+  "stale_threshold_hours": 26,
+  "latest_run": {
+    "run_id": "RUN_20260520155002_e9f1ccde",
+    "status": "success",
+    "started_at": "2026-05-20 11:50:02.275482-04:00",
+    "finished_at": "2026-05-20 11:50:02.282033-04:00",
+    "indicators_read": 7,
+    "snapshots_created": 1,
+    "errors": []
+  },
+  "indicators_count": 20,
+  "indicators_latest": "2026-05-20 11:49:56.749514-04:00",
+  "rotation_signals_count": 0,
+  "rotation_signals_latest": null,
+  "cron_wrapper_installed": false,
+  "cron_original_installed": true,
+  "wrapper_exists": true,
+  "schema_contract_ok": true,
+  "recommended_action": "none"
+}

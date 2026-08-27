@@ -1,0 +1,7 @@
+  strategy_id   | proposals_7d 
+----------------+--------------
+ recovery_watch |            5
+ swing_breakout |            5
+ swing_trade    |            3
+(3 rows)
+

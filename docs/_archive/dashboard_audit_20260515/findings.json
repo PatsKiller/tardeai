@@ -1,0 +1,476 @@
+[
+  {
+    "page": "AIAnalyst",
+    "endpoints_found": 5,
+    "issues": [
+      "FETCH_ERROR: /api/v2/ai-ask \u2014 HTTP Error 404: Not found: /api/v2/ai-ask"
+    ]
+  },
+  {
+    "page": "ActionCenter",
+    "endpoints_found": 2,
+    "issues": []
+  },
+  {
+    "page": "AgentCalibration",
+    "endpoints_found": 0,
+    "issues": []
+  },
+  {
+    "page": "AgentPipeline",
+    "endpoints_found": 3,
+    "issues": []
+  },
+  {
+    "page": "AlertsActions",
+    "endpoints_found": 5,
+    "issues": []
+  },
+  {
+    "page": "AlertsDashboard",
+    "endpoints_found": 0,
+    "issues": []
+  },
+  {
+    "page": "Approvals",
+    "endpoints_found": 5,
+    "issues": [
+      "FETCH_ERROR: /api/v2/approvals/decision \u2014 HTTP Error 404: Not found: /api/v2/approvals/decision"
+    ]
+  },
+  {
+    "page": "Attribution",
+    "endpoints_found": 1,
+    "issues": []
+  },
+  {
+    "page": "AutomatedTradeJournal",
+    "endpoints_found": 4,
+    "issues": [
+      "DEAD_DATA: /api/v2/paper-performance-governance \u2014 10null + 18zero of 45 (62%)"
+    ]
+  },
+  {
+    "page": "Backtesting",
+    "endpoints_found": 0,
+    "issues": []
+  },
+  {
+    "page": "BrokerReconciliation",
+    "endpoints_found": 2,
+    "issues": [
+      "FETCH_ERROR: /api/v2/paper-reconciliation/run \u2014 HTTP Error 404: Not found: /api/v2/paper-reconciliation/run"
+    ]
+  },
+  {
+    "page": "CIODashboard",
+    "endpoints_found": 0,
+    "issues": []
+  },
+  {
+    "page": "Command",
+    "endpoints_found": 1,
+    "issues": []
+  },
+  {
+    "page": "ContentHealth",
+    "endpoints_found": 6,
+    "issues": [
+      "FETCH_ERROR: /api/v2/admin/rag-backfill \u2014 HTTP Error 404: Not found: /api/v2/admin/rag-backfill",
+      "FETCH_ERROR: /api/v2/admin/flag-orphan-transcripts \u2014 HTTP Error 404: Not found: /api/v2/admin/flag-orphan-transcripts",
+      "FETCH_ERROR: /api/v2/iris/hygiene-flag \u2014 HTTP Error 404: Not found: /api/v2/iris/hygiene-flag",
+      "FETCH_ERROR: /api/v2/admin/fix-channel-name-mismatches \u2014 HTTP Error 404: Not found: /api/v2/admin/fix-channel-name-mismatches"
+    ]
+  },
+  {
+    "page": "Correlation",
+    "endpoints_found": 1,
+    "issues": []
+  },
+  {
+    "page": "Dividends",
+    "endpoints_found": 1,
+    "issues": []
+  },
+  {
+    "page": "ExecutionQuality",
+    "endpoints_found": 3,
+    "issues": [
+      "FETCH_ERROR: /api/v2/execution-quality/run \u2014 HTTP Error 404: Not found: /api/v2/execution-quality/run",
+      "DEAD_DATA: /api/v2/execution-quality \u2014 44null + 8zero of 77 (68%)",
+      "DEAD_DATA: /api/v2/paper-performance-governance \u2014 10null + 18zero of 45 (62%)"
+    ]
+  },
+  {
+    "page": "Forecast",
+    "endpoints_found": 1,
+    "issues": []
+  },
+  {
+    "page": "GovernanceHub",
+    "endpoints_found": 0,
+    "issues": []
+  },
+  {
+    "page": "Inbox",
+    "endpoints_found": 0,
+    "issues": []
+  },
+  {
+    "page": "Incubator",
+    "endpoints_found": 3,
+    "issues": []
+  },
+  {
+    "page": "IntelligenceEntities",
+    "endpoints_found": 1,
+    "issues": []
+  },
+  {
+    "page": "IntelligenceHub",
+    "endpoints_found": 0,
+    "issues": []
+  },
+  {
+    "page": "IntelligenceSources",
+    "endpoints_found": 12,
+    "issues": [
+      "FETCH_ERROR: /api/v2/youtube/ingest \u2014 HTTP Error 404: Not found: /api/v2/youtube/ingest",
+      "FETCH_ERROR: /api/v2/social/ingest \u2014 HTTP Error 404: Not found: /api/v2/social/ingest",
+      "FETCH_ERROR: /api/v2/youtube/ingest-all \u2014 HTTP Error 404: Not found: /api/v2/youtube/ingest-all"
+    ]
+  },
+  {
+    "page": "IntelligenceWhiteboard",
+    "endpoints_found": 3,
+    "issues": []
+  },
+  {
+    "page": "Journal",
+    "endpoints_found": 6,
+    "issues": [
+      "FETCH_ERROR: /api/v2/journal/bulk-suggest \u2014 HTTP Error 404: Not found: /api/v2/journal/bulk-suggest",
+      "FETCH_ERROR: /api/v2/journal/review \u2014 HTTP Error 400: Bad Request",
+      "FETCH_ERROR: /api/v2/watchlist/submit \u2014 HTTP Error 404: Not found: /api/v2/watchlist/submit"
+    ]
+  },
+  {
+    "page": "JournalAnalytics",
+    "endpoints_found": 3,
+    "issues": []
+  },
+  {
+    "page": "JournalHub",
+    "endpoints_found": 0,
+    "issues": []
+  },
+  {
+    "page": "JournalReports",
+    "endpoints_found": 2,
+    "issues": [
+      "FETCH_ERROR: /api/v2/journal/agent-coaching/run \u2014 HTTP Error 404: Not found: /api/v2/journal/agent-coaching/run"
+    ]
+  },
+  {
+    "page": "LLMQueue",
+    "endpoints_found": 7,
+    "issues": [
+      "FETCH_ERROR: /api/v2/queue/retry \u2014 HTTP Error 404: Not found: /api/v2/queue/retry",
+      "FETCH_ERROR: /api/v2/queue/boost \u2014 HTTP Error 404: Not found: /api/v2/queue/boost",
+      "FETCH_ERROR: /api/v2/queue/cancel \u2014 HTTP Error 404: Not found: /api/v2/queue/cancel"
+    ]
+  },
+  {
+    "page": "LearningGovernance",
+    "endpoints_found": 0,
+    "issues": []
+  },
+  {
+    "page": "LiveGovernance",
+    "endpoints_found": 4,
+    "issues": [
+      "DEAD_DATA: /api/v2/execution-quality \u2014 44null + 8zero of 77 (68%)",
+      "DEAD_DATA: /api/v2/paper-performance-governance \u2014 10null + 18zero of 45 (62%)"
+    ]
+  },
+  {
+    "page": "MorningBrief",
+    "endpoints_found": 10,
+    "issues": []
+  },
+  {
+    "page": "MorningBriefBot",
+    "endpoints_found": 1,
+    "issues": []
+  },
+  {
+    "page": "Notifications",
+    "endpoints_found": 1,
+    "issues": []
+  },
+  {
+    "page": "Ops",
+    "endpoints_found": 5,
+    "issues": []
+  },
+  {
+    "page": "OpsHub",
+    "endpoints_found": 0,
+    "issues": []
+  },
+  {
+    "page": "Orchestration",
+    "endpoints_found": 1,
+    "issues": []
+  },
+  {
+    "page": "OvernightDashboard",
+    "endpoints_found": 0,
+    "issues": []
+  },
+  {
+    "page": "Overview",
+    "endpoints_found": 18,
+    "issues": [
+      "FETCH_ERROR: /api/v2/iris/ask \u2014 HTTP Error 404: Not found: /api/v2/iris/ask"
+    ]
+  },
+  {
+    "page": "PaperGovernance",
+    "endpoints_found": 3,
+    "issues": [
+      "FETCH_ERROR: /api/v2/paper-performance-governance/run \u2014 HTTP Error 404: Not found: /api/v2/paper-performance-governance/run",
+      "DEAD_DATA: /api/v2/paper-performance-governance \u2014 10null + 18zero of 45 (62%)"
+    ]
+  },
+  {
+    "page": "PaperJournal",
+    "endpoints_found": 7,
+    "issues": [
+      "FETCH_ERROR: /api/v2/paper-reconciliation/run \u2014 HTTP Error 404: Not found: /api/v2/paper-reconciliation/run",
+      "FETCH_ERROR: /api/v2/paper-trades/close \u2014 HTTP Error 404: Not found: /api/v2/paper-trades/close",
+      "FETCH_ERROR: /api/v2/paper-trades/monitor \u2014 HTTP Error 404: Not found: /api/v2/paper-trades/monitor"
+    ]
+  },
+  {
+    "page": "PaperOutcomes",
+    "endpoints_found": 7,
+    "issues": [
+      "DEAD_DATA: /api/v2/execution-quality \u2014 44null + 8zero of 77 (68%)",
+      "FETCH_ERROR: /api/v2/paper-outcomes/run \u2014 HTTP Error 404: Not found: /api/v2/paper-outcomes/run",
+      "DEAD_DATA: /api/v2/paper-performance-governance \u2014 10null + 18zero of 45 (62%)"
+    ]
+  },
+  {
+    "page": "PaperProposals",
+    "endpoints_found": 11,
+    "issues": [
+      "FETCH_ERROR: /api/v2/paper-proposals/refresh-data \u2014 HTTP Error 404: Not found: /api/v2/paper-proposals/refresh-data",
+      "FETCH_ERROR: /api/v2/paper-proposals/promote-from-incubator \u2014 HTTP Error 404: Not found: /api/v2/paper-proposals/promote-from-incubator",
+      "FETCH_ERROR: /api/v2/paper-proposals/check-execution-readiness \u2014 HTTP Error 404: Not found: /api/v2/paper-proposals/check-execution-readiness",
+      "FETCH_ERROR: /api/v2/paper-proposals/enrich-all \u2014 HTTP Error 404: Not found: /api/v2/paper-proposals/enrich-all",
+      "FETCH_ERROR: /api/v2/paper-proposals/run-backtest \u2014 HTTP Error 404: Not found: /api/v2/paper-proposals/run-backtest",
+      "FETCH_ERROR: /api/v2/paper-proposals/run-ai-review \u2014 HTTP Error 404: Not found: /api/v2/paper-proposals/run-ai-review"
+    ]
+  },
+  {
+    "page": "PaperReview",
+    "endpoints_found": 0,
+    "issues": []
+  },
+  {
+    "page": "PaperStatus",
+    "endpoints_found": 4,
+    "issues": []
+  },
+  {
+    "page": "PaperTradeIntelligence",
+    "endpoints_found": 8,
+    "issues": []
+  },
+  {
+    "page": "PipelineController",
+    "endpoints_found": 0,
+    "issues": []
+  },
+  {
+    "page": "PipelineHealthMaster",
+    "endpoints_found": 1,
+    "issues": []
+  },
+  {
+    "page": "PipelineHub",
+    "endpoints_found": 0,
+    "issues": []
+  },
+  {
+    "page": "PlanVsPerformance",
+    "endpoints_found": 1,
+    "issues": []
+  },
+  {
+    "page": "Portfolio",
+    "endpoints_found": 2,
+    "issues": []
+  },
+  {
+    "page": "PortfolioCommand",
+    "endpoints_found": 0,
+    "issues": []
+  },
+  {
+    "page": "PortfolioIntelligence",
+    "endpoints_found": 2,
+    "issues": []
+  },
+  {
+    "page": "PortfolioMonitor",
+    "endpoints_found": 2,
+    "issues": []
+  },
+  {
+    "page": "Prospects",
+    "endpoints_found": 2,
+    "issues": [
+      "FETCH_ERROR: /api/v2/prospects/add-to-watchlist \u2014 HTTP Error 404: Not found: /api/v2/prospects/add-to-watchlist"
+    ]
+  },
+  {
+    "page": "Rebalance",
+    "endpoints_found": 1,
+    "issues": []
+  },
+  {
+    "page": "Reports",
+    "endpoints_found": 0,
+    "issues": []
+  },
+  {
+    "page": "Research",
+    "endpoints_found": 2,
+    "issues": [
+      "FETCH_ERROR: /api/v2/watchlist/add \u2014 HTTP Error 404: Not found: /api/v2/watchlist/add"
+    ]
+  },
+  {
+    "page": "ResearchTopics",
+    "endpoints_found": 1,
+    "issues": []
+  },
+  {
+    "page": "Retirement",
+    "endpoints_found": 11,
+    "issues": [
+      "FETCH_ERROR: /api/v2/proposals/decide \u2014 HTTP Error 404: Not found: /api/v2/proposals/decide",
+      "DEAD_DATA: /api/v2/proposals/history \u2014 0null + 30zero of 41 (73%)",
+      "FETCH_ERROR: /api/v2/retirement/refresh \u2014 HTTP Error 404: Not found: /api/v2/retirement/refresh"
+    ]
+  },
+  {
+    "page": "Returns",
+    "endpoints_found": 2,
+    "issues": []
+  },
+  {
+    "page": "Risk",
+    "endpoints_found": 1,
+    "issues": []
+  },
+  {
+    "page": "RiskRegime",
+    "endpoints_found": 0,
+    "issues": []
+  },
+  {
+    "page": "SelfImprovement",
+    "endpoints_found": 0,
+    "issues": []
+  },
+  {
+    "page": "StoppedOutWatch",
+    "endpoints_found": 4,
+    "issues": [
+      "FETCH_ERROR: /api/v2/stopped-out-watch/escalate \u2014 HTTP Error 404: Not found: /api/v2/stopped-out-watch/escalate"
+    ]
+  },
+  {
+    "page": "StrategyAdmin",
+    "endpoints_found": 5,
+    "issues": [
+      "FETCH_ERROR: /api/v2/strategy-configs/validate \u2014 HTTP Error 500: Internal Server Error",
+      "DEAD_DATA: /api/v2/paper-performance-governance \u2014 10null + 18zero of 45 (62%)",
+      "FETCH_ERROR: /api/v2/strategy-configs/sync-db \u2014 HTTP Error 500: Internal Server Error"
+    ]
+  },
+  {
+    "page": "StrategyAnalytics",
+    "endpoints_found": 7,
+    "issues": [
+      "DEAD_DATA: /api/v2/strategy-analytics/inactive-strategies \u2014 0null + 19zero of 31 (61%)"
+    ]
+  },
+  {
+    "page": "StrategyDesk",
+    "endpoints_found": 4,
+    "issues": [
+      "FETCH_ERROR: /api/v2/paper-proposals/from-signal \u2014 HTTP Error 404: Not found: /api/v2/paper-proposals/from-signal"
+    ]
+  },
+  {
+    "page": "SystemHealth",
+    "endpoints_found": 0,
+    "issues": []
+  },
+  {
+    "page": "SystemHub",
+    "endpoints_found": 0,
+    "issues": []
+  },
+  {
+    "page": "TaxLots",
+    "endpoints_found": 1,
+    "issues": []
+  },
+  {
+    "page": "Technical",
+    "endpoints_found": 1,
+    "issues": []
+  },
+  {
+    "page": "TopicMonitor",
+    "endpoints_found": 6,
+    "issues": [
+      "FETCH_ERROR: /api/v2/topics/transcripts/review \u2014 HTTP Error 404: Not found: /api/v2/topics/transcripts/review",
+      "FETCH_ERROR: /api/v2/topics/run \u2014 HTTP Error 404: Not found: /api/v2/topics/run",
+      "FETCH_ERROR: /api/v2/topics/add-url \u2014 HTTP Error 404: Not found: /api/v2/topics/add-url"
+    ]
+  },
+  {
+    "page": "TradeAI",
+    "endpoints_found": 3,
+    "issues": [
+      "FETCH_ERROR: /api/v2/indicators/batch \u2014 HTTP Error 404: Not found: /api/v2/indicators/batch"
+    ]
+  },
+  {
+    "page": "Watchlist",
+    "endpoints_found": 2,
+    "issues": [
+      "FETCH_ERROR: /api/v2/watchlist/submit \u2014 HTTP Error 404: Not found: /api/v2/watchlist/submit",
+      "FETCH_ERROR: /api/v2/indicators/batch \u2014 HTTP Error 404: Not found: /api/v2/indicators/batch"
+    ]
+  },
+  {
+    "page": "WatchlistSymbolPage",
+    "endpoints_found": 2,
+    "issues": [
+      "FETCH_ERROR: /api/v2/watchlist/submit \u2014 HTTP Error 404: Not found: /api/v2/watchlist/submit",
+      "FETCH_ERROR: /api/v2/debates/trigger \u2014 HTTP Error 404: Not found: /api/v2/debates/trigger"
+    ]
+  },
+  {
+    "page": "WeeklyLearning",
+    "endpoints_found": 0,
+    "issues": []
+  }
+]

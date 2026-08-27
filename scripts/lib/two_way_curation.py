@@ -684,6 +684,22 @@ def drain_curation_sources(cur, dry: bool, report: Dict[str, Any],
                     st = res.get("status")
                     report["promoted"] = report.get("promoted", 0) + (1 if st == "PROMOTED" else 0)
                     report["staged"] = report.get("staged", 0) + (1 if st == "STAGED_FOR_REVIEW" else 0)
+                    if st in ("PROMOTED", "STAGED_FOR_REVIEW"):
+                        try:
+                            from lib.agent_decision_payload import emit_opportunity_promote_payload
+                            emit_opportunity_promote_payload(
+                                symbol=str(sym), status=str(st), source=str(source),
+                            )
+                        except Exception:
+                            try:
+                                from scripts.lib.agent_decision_payload import (
+                                    emit_opportunity_promote_payload,
+                                )
+                                emit_opportunity_promote_payload(
+                                    symbol=str(sym), status=str(st), source=str(source),
+                                )
+                            except Exception:
+                                pass
                     report["detail"].append({"source": source, "symbol": sym, "status": st,
                                              "directive": label, "surfaced_by": SURFACED_BY.get(source, source)})
                     if st not in TERMINAL_PROMOTE_STATUSES:
@@ -897,6 +913,13 @@ def audit(source: str, event: str, payload: Optional[Dict[str, Any]] = None,
 # ─────────────────────────────────────────────────────────────────────────────
 # P4 — graduated autonomy (pure gate, no I/O)
 # ─────────────────────────────────────────────────────────────────────────────
+
+# Bootstrap soak: when no MEASURED trailing hit-rate exists yet (CURATION_HIT_RATE_DEFAULT
+# unset), this is the ASSUMPTION substituted so auto-apply can soak — only while
+# CURATION_AUTO_APPLY=1. It is NOT a measured hit-rate and must never be described as one;
+# it never raises the authority ceiling on its own (the operator opted into auto-apply).
+BOOTSTRAP_ASSUMPTION = 0.65
+
 
 def auto_apply_gate(source_tier: str, divergence: str, hit_rate: Optional[float],
                     *, min_hit_rate: float = 0.6) -> Dict[str, Any]:

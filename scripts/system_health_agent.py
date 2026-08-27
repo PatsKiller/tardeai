@@ -868,6 +868,119 @@ def _portfolio_price_freshness_alerts(now_et, max_age_min: float = 25.0) -> list
     return alerts
 
 
+def _semantic_portfolio_health(now_utc=None, max_age_min: float = 15.0) -> dict:
+    """Validate portfolio *meaning*, not just repricer/log freshness.
+
+    A current quote or a successful process exit does not prove that broker
+    positions were applied.  This check is deliberately read-only and uses the
+    metadata emitted by the canonical holdings writer/sync jobs.
+    """
+    now_utc = now_utc or datetime.now(timezone.utc)
+    state_dir = PROJECT_ROOT / "data" / "portfolios" / "state"
+    path = state_dir / "holdings.json"
+    out = {"status": "UNAVAILABLE", "alerts": [], "broker_as_of": None,
+           "snapshot_id": None, "applied_sync": False, "data_quality": "UNKNOWN"}
+    if not path.exists():
+        out["alerts"].append("canonical holdings snapshot missing")
+        return out
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        out["status"] = "INVALID_SCHEMA"
+        out["alerts"].append(f"canonical holdings unreadable: {str(exc)[:100]}")
+        return out
+
+    # Writers have used a few envelope names over time; accept only explicit
+    # broker timestamps, never a repricer timestamp as broker proof.
+    candidates = [doc.get("broker_as_of"), doc.get("broker_position_as_of"),
+                  doc.get("_canonical_reconcile", {}).get("broker_as_of"),
+                  doc.get("_canonical_reconcile", {}).get("position_as_of"),
+                  doc.get("_agent_metadata", {}).get("broker_as_of")]
+    broker_ts = next((x for x in candidates if x), None)
+    out["broker_as_of"] = broker_ts
+    parsed = _parse_et_timestamp(str(broker_ts)) if broker_ts else None
+    if not parsed:
+        out["status"] = "STALE_PORTFOLIO"
+        out["alerts"].append("broker position timestamp unavailable; repricer timestamp is not broker proof")
+    else:
+        age = (now_utc - parsed).total_seconds() / 60.0
+        if age > max_age_min:
+            out["status"] = "STALE_PORTFOLIO"
+            out["alerts"].append(f"broker position snapshot stale {age:.0f}m (>{max_age_min:.0f}m)")
+        else:
+            out["status"] = "OK"
+            out["data_quality"] = "CURRENT"
+
+    # Applied sync proof is explicit and cannot be inferred from file mtime.
+    reconcile = doc.get("_canonical_reconcile") or {}
+    applied = (reconcile.get("applied") is True or reconcile.get("apply") is True or
+               str(reconcile.get("mode", "")).lower() == "apply" or
+               str(reconcile.get("sync_mode", "")).lower() == "apply")
+    out["applied_sync"] = bool(applied)
+    if not applied:
+        out["alerts"].append("no explicit applied broker-sync proof (dry-run cannot mark CURRENT)")
+        if out["status"] == "OK":
+            out["status"] = "STALE_PORTFOLIO"
+            out["data_quality"] = "UNPROVEN"
+    out["snapshot_id"] = (doc.get("portfolio_snapshot_id") or
+                           doc.get("snapshot_id") or reconcile.get("snapshot_id"))
+    if not out["snapshot_id"]:
+        out["alerts"].append("portfolio_snapshot_id missing")
+        if out["status"] == "OK":
+            out["status"] = "DATA_INTEGRITY_BLOCKED"
+    return out
+
+
+def _morning_producer_health() -> dict:
+    """Inventory Telegram-capable Morning producers without starting them."""
+    roots = [PROJECT_ROOT / "config", PROJECT_ROOT / "scripts",
+             Path.home() / ".config" / "systemd" / "user"]
+    needles = ("morning", "aegis_morning", "send_morning", "morning_command_digest",
+               "send_alert_digest")
+    found = {}
+    for root in roots:
+        if not root.exists():
+            continue
+        try:
+            files = root.rglob("*")
+        except Exception:
+            continue
+        for f in files:
+            if not f.is_file() or f.name.endswith((".pyc", ".jsonl")):
+                continue
+            try:
+                text = f.read_text(encoding="utf-8", errors="ignore")
+            except Exception:
+                continue
+            low = text.lower()
+            if "telegram" not in low and "morning" not in low:
+                continue
+            hits = [n for n in needles if n in low or n in f.name.lower()]
+            if hits:
+                found[str(f)] = sorted(set(hits))
+    producers = []
+    for path, hits in sorted(found.items()):
+        # A source file is a capability; config/systemd/crontab entries are
+        # enabled producers.  Keeping both lets operators see why duplicates exist.
+        enabled = path.endswith(("crontab", ".cron", ".service", ".timer")) or "/config/" in path
+        producers.append({"path": path, "matches": hits, "enabled": enabled,
+                          "canonical": "canonical" in path.lower() and "legacy" not in path.lower()})
+    enabled = [p for p in producers if p["enabled"]]
+    canonical = [p for p in enabled if p["canonical"]]
+    status = "OK" if len(canonical) == 1 and len(enabled) == 1 else "DUPLICATE_PRODUCER" if len(enabled) > 1 else "UNKNOWN"
+    return {"status": status, "producer_count": len(enabled), "canonical_count": len(canonical),
+            "producers": producers,
+            "alerts": [] if status == "OK" else [f"{len(enabled)} enabled Morning producer capabilities detected"]}
+
+
+def collect_semantic_health(now_utc=None) -> dict:
+    """Public, dependency-free semantic health report for tests and operators."""
+    portfolio = _semantic_portfolio_health(now_utc=now_utc)
+    morning = _morning_producer_health()
+    return {"portfolio": portfolio, "morning": morning,
+            "downstream_gate": portfolio["status"] == "OK" and morning["status"] == "OK"}
+
+
 def _escalate(comp, check_result, conn):
     """Escalate a failure to operator via central alert router. Dedup: max 1 per component per 2 hours."""
     component = comp["component"]
@@ -934,6 +1047,24 @@ def run_health_check(dry_run=True, verbose=False):
     _now_et = now.astimezone(_et)
     _current_hour = _now_et.hour
     _is_weekday = _now_et.weekday() < 5
+
+    # Semantic gates run alongside log checks.  They are intentionally
+    # read-only: downstream schedulers must not treat a fresh log as proof that
+    # broker state was applied or that Morning has a single owner.
+    try:
+        semantic = collect_semantic_health(now_utc=now)
+        report["semantic_health"] = semantic
+        for alert in semantic["portfolio"].get("alerts", []):
+            log.warning("  Portfolio semantic health: %s", alert)
+        for alert in semantic["morning"].get("alerts", []):
+            log.warning("  Morning producer health: %s", alert)
+        if not semantic["downstream_gate"]:
+            report.setdefault("portfolio_alerts", []).extend(
+                ["DATA_INTEGRITY_BLOCKED: " + a for a in semantic["portfolio"].get("alerts", [])]
+                + ["MORNING_PRODUCER_BLOCKED: " + a for a in semantic["morning"].get("alerts", [])])
+    except Exception as exc:
+        # Health reporting must never take down the rest of the agent.
+        log.warning("Semantic health check failed: %s", exc)
 
     for comp in MONITORED_COMPONENTS:
         component = comp["component"]

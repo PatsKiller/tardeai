@@ -1,0 +1,141 @@
+{
+  "generated_at": "2026-05-18T15:13:46.032220+00:00",
+  "findings": {
+    "zero_criteria_strategies": [
+      "earnings_catalyst"
+    ],
+    "low_criteria_strategies": [],
+    "unused_scoring_weights": 9,
+    "families": {
+      "POSITION": 10,
+      "CASH": 1,
+      "SHORT_SWING": 8,
+      "INTRADAY": 2,
+      "MEDIUM_SWING": 2
+    },
+    "score_ranges": {
+      "bond_income": {
+        "criteria": 4,
+        "max_possible": 75
+      },
+      "cash_or_stable": {
+        "criteria": 3,
+        "max_possible": 65
+      },
+      "core_growth_compounder": {
+        "criteria": 4,
+        "max_possible": 75
+      },
+      "core_index": {
+        "criteria": 3,
+        "max_possible": 65
+      },
+      "covered_call_income": {
+        "criteria": 4,
+        "max_possible": 75
+      },
+      "defense_thesis": {
+        "criteria": 4,
+        "max_possible": 75
+      },
+      "dividend_growth_compounder": {
+        "criteria": 4,
+        "max_possible": 75
+      },
+      "earnings_catalyst": {
+        "criteria": 0,
+        "max_possible": 35
+      },
+      "earnings_post_momentum": {
+        "criteria": 5,
+        "max_possible": 85
+      },
+      "earnings_pre_buildup": {
+        "criteria": 4,
+        "max_possible": 75
+      },
+      "fib_retracement_bounce": {
+        "criteria": 5,
+        "max_possible": 85
+      },
+      "gap_and_go": {
+        "criteria": 5,
+        "max_possible": 85
+      },
+      "high_yield_income_bdc": {
+        "criteria": 4,
+        "max_possible": 75
+      },
+      "income_add": {
+        "criteria": 5,
+        "max_possible": 85
+      },
+      "international_dividend": {
+        "criteria": 4,
+        "max_possible": 75
+      },
+      "momentum_scalp": {
+        "criteria": 5,
+        "max_possible": 85
+      },
+      "recovery_watch": {
+        "criteria": 4,
+        "max_possible": 75
+      },
+      "reit_income": {
+        "criteria": 4,
+        "max_possible": 75
+      },
+      "sector_rotation": {
+        "criteria": 4,
+        "max_possible": 75
+      },
+      "speculative_growth": {
+        "criteria": 4,
+        "max_possible": 75
+      },
+      "swing_breakout": {
+        "criteria": 5,
+        "max_possible": 85
+      },
+      "swing_trade": {
+        "criteria": 4,
+        "max_possible": 75
+      },
+      "tax_loss_harvest": {
+        "criteria": 4,
+        "max_possible": 75
+      }
+    },
+    "total_strategies": 23,
+    "gaps_identified": {
+      "Q-1": "No proactive quote refresh",
+      "Q-2": "No quote quality score",
+      "Q-3": "No provider fallback alerting",
+      "R-1": "Flat scoring without strategy specificity",
+      "R-2": "No family-level gating",
+      "R-3": "Primary strategy override hides mismatch",
+      "R-4": "No score normalization",
+      "R-5": "YAML scoring_weights unused by router",
+      "T-1": "1 strategies with zero criteria",
+      "E-1": "No pre-proposal evidence score",
+      "F-1": "Screener run health naming mismatch",
+      "F-2": "Most runs underfilled",
+      "F-3": "No screener-to-outcome tracking"
+    },
+    "p0_items": [
+      "R-5 Wire YAML weights",
+      "R-2 Family gating",
+      "Q-1 Quote refresh",
+      "F-1 Naming fix"
+    ],
+    "p1_items": [
+      "R-1 Weighted scoring",
+      "R-3 Mismatch blocker",
+      "T-1 Add criteria",
+      "E-1 Evidence score",
+      "F-3 Conversion funnel"
+    ]
+  },
+  "human_review_only": true
+}

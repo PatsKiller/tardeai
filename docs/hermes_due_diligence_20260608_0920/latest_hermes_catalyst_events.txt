@@ -1,0 +1,16 @@
+  id  | symbol | source |          created_at           | catalyst_type | impact_score |      headline       
+------+--------+--------+-------------------------------+---------------+--------------+---------------------
+ 6691 | QTEX   | hermes | 2026-06-08 09:20:01.569223-04 | other         |          3.0 | news_momentum: QTEX
+ 6686 | GRAN   | hermes | 2026-06-08 08:50:01.927768-04 | other         |          3.0 | regulatory: GRAN
+ 6685 | NEXR   | hermes | 2026-06-08 08:20:01.545591-04 | other         |          3.0 | news_momentum: NEXR
+ 6684 | ELOG   | hermes | 2026-06-08 07:50:01.406407-04 | other         |          3.0 | news_momentum: ELOG
+ 6683 | NRIX   | hermes | 2026-06-08 07:50:01.406407-04 | other         |          3.0 | earnings: NRIX
+ 6682 | NRIX   | hermes | 2026-06-08 07:20:01.427856-04 | other         |          3.0 | contract: NRIX
+ 6681 | NEXR   | hermes | 2026-06-08 06:45:01.345634-04 | other         |          3.0 | earnings: NEXR
+ 6680 | NRIX   | hermes | 2026-06-08 06:45:01.345634-04 | other         |          3.0 | analyst: NRIX
+ 6649 | ELOG   | hermes | 2026-06-08 05:50:01.895465-04 | other         |          3.0 | earnings: ELOG
+ 6648 | GLXG   | hermes | 2026-06-08 05:50:01.895465-04 | other         |          3.0 | news_momentum: GLXG
+ 6647 | GRAN   | hermes | 2026-06-08 05:50:01.895465-04 | other         |          3.0 | news_momentum: GRAN
+ 6646 | BGMS   | hermes | 2026-06-08 05:20:01.93902-04  | other         |          3.0 | news_momentum: BGMS
+(12 rows)
+

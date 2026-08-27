@@ -1,5 +1,90 @@
 # Changelog
 
+## 2026-08-22 — M1 substantiveness gate (THIN ≠ CURRENT)
+
+MATURITY_IMPACT: `Portfolio mgmt coverage+fresh → coverage+fresh+substantive, proven by data/cio/held_thesis_coverage_latest.json substantive_pct` (target ≥70; THIN excluded). Freeze: no live mint, no CURRENT promote, production `max_output_tokens` still 1024.
+
+- Living thesis `CURRENT` is PASS-grade (Q1 survivable). Grade B/C mint as `THIN`.
+- Three numbers: `coverage_pct` (THIN counts), `fresh_pct` (age; THIN can be fresh), `substantive_pct` (PASS only). Targets 100 / ≥90 / ≥70. `sla_met` requires all three.
+- Projected split of the 19: rec-only **2/19 CURRENT**, joined **12/19 CURRENT**. Existing DIV/DIVI/JEPI re-grade **THIN**. Live `substantive_pct=0.0`.
+- Coverage-stall fires on PASS < 70% of held, not row-exists.
+- M2 report: stored rec p50=230 because `recommendation[:500]`; tokens_out p50=824; 11.4% at 1024 cap. Sandbox 20 at 4096: raw PASS 100%, joined 90%, rec-only 40%. Propose parser/prompt/4096 — **not applied**.
+- M3 Drive sweep (CURRENT overlay): uploaded=26 failed=0 exit 0. Excludes `_archive`, dated dumps, `_findings`, `ui_review`.
+- M4: payload v1 8/21=268 (reentry 165, material_scan 102) → 8/22=3500 (reentry 3125, material_scan 375). No producer diff vs #453. Pin `5e91225a` not promoted.
+
+## 2026-08-22 — Session closeout (findings + fixes index)
+
+MATURITY_IMPACT: NONE (docs). Pointer: `docs/ops/SESSION_CLOSEOUT_2026-08-22.md`.
+Lane-health overnight section rewritten: timer is US ChatGPT 22:00–06:00 ET (#453), not China-night gemma.
+
+## 2026-08-22 — Research quality sample + thesis-mint dry-run + alarm holes
+
+MATURITY_IMPACT: live metric `data/runtime/research_lane_health.json` `firing` includes `coverage-stall`; systemd lane-health **exit 0** when the check ran. Freeze: staging mint only, no live `cio_theses.jsonl`.
+
+- Q1 sample n=40: median 320 chars, 45% <300, 15% generic, 0% cross-ticker dupes, 27.5% thesis-survivable.
+- Q2 dry-run: **19/19** RESEARCH_REQUIRED holdings mintable from disk. Coverage was a join gap.
+- Q3: DeepSeek always watched in Telegram; exit 0 on alarm; coverage-stall lane.
+- Q4: overnight timer retarget US 22:00–06:00 ET ChatGPT; autonomous-loop refuses gemma when local-LLM off.
+- Q5: process call cap 120→600; cold-floor 20→180; dollar cap $0.50 unchanged.
+
+## 2026-08-22 — Telegram P0 card gates (T1/T2)
+
+MATURITY_IMPACT: live metric `data/cio/telegram_p0_suppress.jsonl` count by `rule` (quote_fail, invalidation_contradicts_price). Freeze-safe: **suppression only**, no new feeds/producers. CURRENT not promoted.
+
+- T1: R:R from entry/stop/target (never `0.0:1`); quote-fail withholds proposal; inverted invalidation suppresses IIC.
+- T2: transport retries **edit** the original (`idempotency_key`); no markdown→plaintext second send.
+- T3–T7 (join, IDs, four-feed split, 30/day) queued after 8/27. `docs/ops/TELEGRAM_FEED_REMEDIATION_2026-08-22.md`.
+
+## 2026-08-22 — Watchlist/research tiers + LLM cadence (confirm-run)
+
+MATURITY_IMPACT: NONE (docs). Live metric n/a. Freeze 8/21–8/27: no CURRENT promote, no flag flips.
+
+- **One** watchlist *research* tier: `T1-WATCH`. Five universe tiers total (T0-HOLD / T0-PROP / T1-WATCH / T2-INCUB / T3-COLD). Reentry READY/NEAR joins T1. Hermes S0–S3 and directive hygiene 1–3 are **not** LLM queues.
+- Confirm-run (manual Saturday, ignore standing $0.50 in-process; process cap restored 120 / $0.30): T0-HOLD **22/22**, T0-PROP **30/30**, T1 **331/331** (reentry **25/25**), T2 **141/141** (forced vs production catalyst-only), T3 **20/20** slice not 2537. `hermes_external_research` **$0.168934**.
+- Canonical: `docs/ops/RESEARCH_TIER_LLM_CADENCE.md`.
+
+## 2026-08-21 — DecisionPayload landing + Drive silent-shape + post-window cutover plan
+
+MATURITY_IMPACT: measurement. Live metric = `data/cio/agent_run_traces.jsonl`
+DecisionPayload@v1 count since pin `cf5768a6` 19:20:47 ET, and
+`drive-sync` RAW last-result. No flags, no routing, no new producers.
+
+- **D1** 213 v1 rows all-time. First = 2026-08-21T18:15:38Z (today). Since pin:
+  27 (24 reentry + 3 material_scan). Watch/advisory/holdings/opportunity = 0
+  (wiring, queued). Watch cron pointed at CURRENT (emit-only diff).
+- **D2** Hourly 23:05–23:30Z: **0 uploaded, 1982 unchanged, 1230 FAILED 404s**.
+  Rebuild script did not write last-result. Backfilled RAW file; alarm fired
+  `zero_uploaded_with_failures:1230`. Next :05 uses CURRENT script (writes JSON).
+- **D3** Freeze 8/21–8/27 close. Skip gate 0, influence 0.
+- **D4** `docs/ops/CURRENT_CUTOVER_AFTER_2026-08-27.md` — execute after window.
+
+## 2026-08-21 — CURRENT pin + Drive RAW health + bake-off sheet rescue
+
+MATURITY_IMPACT: live metric path `scripts/research_lane_health.py` now includes
+`current-pin` (CURRENT scripts/+docs/ vs SOURCE_COMMIT) and `drive-sync` (RAW
+`~/.local/state/drive-sync-last-result.json`, fire if no success in 24h or
+0-uploaded-with-404s). Operator-blind bake-off sheet rescued off `/tmp`.
+
+- **P0** `docs/ops/LANE_QUALITY_BAKEOFF_OPERATOR_BLIND_2026-08-21.md` (+ keys under
+  `docs/ops/bakeoff-2026-08-21/DO_NOT_OPEN_UNTIL_SCORED/`).
+- **P1** `a7f30d89` **does** contain #437/#438/#440 (all ancestors). Overlay was
+  #441 docs on that pin. Deploy `cio_phase2_exact_main_deploy.sh` now refuses
+  HEAD≠origin/main, dirty tree, and pin mismatch; rsyncs full `scripts/`+`docs/`.
+- **P2** gemma default-off is **recommendation-only** until the blind sheet is
+  scored. Flash is **not** the workhorse until 5-day burn-in (start 19:10 ET
+  2026-08-21). Flag `RESEARCH_ALLOW_LOCAL_LLM` stays 0.
+- **P3** Drive canonical `docs/` folder `1BMxbxU9c9rF3NBvXVQtVEewdvkifVkwP`.
+  Duplicate `1Rb6qcu…` deprecated. gog alias `default` = john@jwwhiting.com.
+- **TSLA** `mem_5989433c…` latest-wins **RETRACTED** `p0_adversarial_quarantine_2026-08-21`;
+  search does not return it. JSONL keeps historical ACTIVE as audit.
+- `RESEARCH_SKIP_GATE` stays 0. `MEMORY_BEHAVIOR_INFLUENCE` stays 0.
+- `AGENT_DECISION_PAYLOAD=1` already on producer drop-ins (B.1); 5-trading-day
+  window starts after this lands — nothing else flipped with it.
+
+## 2026-08-21 — Research P0–P4 closeout (docs)
+
+Merged #440 (llm_lane import + RAW-store lane health), #437 (22-ticker denominator), #438 (R1–R5 flags default 0), #439 (bake-off). CURRENT `a7f30d89`. Scheduler-path DeepSeek proof id=45900. `$0.42/14d` spend void (crash loop). 27b is CPU, not GPU deep. Overnight *policy* ChatGPT; *live timer* still China-night gemma. `RESEARCH_SKIP_GATE` unset. Influence 0.
+
 ## 2026-08-18 — Header STALE badge rebased on journal-rebuild freshness
 
 The TRADING / REALIZED header tiles were flagging `⚠ STALE` because staleness was computed from

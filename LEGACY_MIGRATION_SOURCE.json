@@ -1,0 +1,8 @@
+{
+  "schema": "LegacyMigrationSource@v1",
+  "read_only": true,
+  "as_of": "2026-08-26T13:56:53+00:00",
+  "note": "No longer canonical persistent authority. Cleanup requires separate approval after soak.",
+  "destructive_cleanup": false,
+  "authority": "READ_ONLY_ADVISORY"
+}

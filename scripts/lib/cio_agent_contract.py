@@ -394,8 +394,12 @@ def build_proposal_quality_json_schema() -> str:
 def build_external_research_json_schema() -> str:
     return (
         f"{contract_header()}\n"
+        "The recommendation field IS the living thesis: must include ticker, one numbered/"
+        "symbol-specific fact, invalidation, role, and at least 8 sentences. "
+        "Do not hide the thesis in evidence[].\n"
         "Return ONLY valid JSON:\n"
-        '{"recommendation":"...", "evidence":[{"tag":"fact|technical|risk","text":"..."}], '
+        '{"recommendation":"<living thesis: ticker, numbered/symbol-specific fact, invalidation, role, >=8 sentences>", '
+        '"evidence":[{"tag":"fact|technical|risk","text":"..."}], '
         '"dissent":"the strongest counter-view", "confidence":0.0-1.0, '
         '"risk_flags":["..."], "learning_candidate":"what the system should learn", '
         '"operator_action":"what the human operator should consider", '
@@ -522,8 +526,36 @@ def parse_synthesis_result(raw: str) -> dict:
     })
 
 
+_HEALTH_RE = re.compile(r'"health"\s*:\s*"?(STRONG|STABLE|WATCH|CONCERN|EXIT)', re.I)
+_ACTION_RE = re.compile(r'"action"\s*:\s*"?(HOLD|ADD|TRIM|EXIT)', re.I)
+
+
+def salvage_holdings_health_fields(raw: str) -> Optional[dict]:
+    """Best-effort fields when gemma hits LOCAL_LLM_NUM_PREDICT and truncates JSON.
+
+    Only used by holdings_llm_refresh. Returns None unless health is present.
+    """
+    if not raw:
+        return None
+    h = _HEALTH_RE.search(raw)
+    if not h:
+        return None
+    a = _ACTION_RE.search(raw)
+    return {
+        "health": h.group(1).upper(),
+        "action": a.group(1).upper() if a else "HOLD",
+        "confidence": 50,
+        "reasoning": "salvaged_truncated_json",
+        "thesis_intact": "yes",
+        "catalyst_outlook": "neutral",
+        "risk_flag": "none",
+    }
+
+
 def parse_holdings_health_result(raw: str) -> Optional[dict]:
     parsed = extract_json_object(raw)
+    if not parsed:
+        parsed = salvage_holdings_health_fields(raw)
     if not parsed:
         return None
     return merge_structured_into_result({
@@ -552,12 +584,12 @@ def parse_external_research_result(raw: str) -> Optional[dict]:
         if isinstance(flags, list) and flags:
             doubt = "; ".join(str(x) for x in flags[:3])[:500]
     return merge_structured_into_result({
-        "recommendation": str(parsed.get("recommendation", ""))[:500],
-        "dissent": str(parsed.get("dissent", ""))[:500],
+        "recommendation": str(parsed.get("recommendation", ""))[:4000],
+        "dissent": str(parsed.get("dissent", ""))[:4000],
         "confidence": min(1.0, max(0.0, float(parsed.get("confidence", 0.5)))),
         "risk_flags": parsed.get("risk_flags", []) if isinstance(parsed.get("risk_flags"), list) else [],
-        "learning_candidate": str(parsed.get("learning_candidate", ""))[:300],
-        "operator_action": str(parsed.get("operator_action", ""))[:300],
+        "learning_candidate": str(parsed.get("learning_candidate", ""))[:800],
+        "operator_action": str(parsed.get("operator_action", ""))[:800],
         "evidence": ev,
         "data_i_doubt": doubt,
     })

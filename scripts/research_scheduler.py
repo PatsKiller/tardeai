@@ -59,7 +59,7 @@ TIER_SLA = {
     "T0-PROP":  (2, 1,  ["local-gemma", "deepseek"]),
     "T1-WATCH": (4, 7,  ["local-gemma", "deepseek"]),       # externals rotated (one per refresh)
     "T2-INCUB": (1, 7,  ["local-gemma", "deepseek"]),       # external only on catalyst
-    "T3-COLD":  (1, 14, ["local-gemma"]),                   # external only on catalyst
+    "T3-COLD":  (1, 14, ["local-gemma", "deepseek"]),       # DeepSeek ONLY on catalyst; no 14d sweep
 }
 TIER_WEIGHT = {"T0-HOLD": 1.0, "T0-PROP": 0.9, "T1-WATCH": 0.6, "T2-INCUB": 0.3, "T3-COLD": 0.1}
 EXTERNAL_LANES = {"deepseek", "claude"}

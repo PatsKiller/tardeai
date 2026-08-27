@@ -1,0 +1,635 @@
+{
+    "ok": true,
+    "data": {
+        "screeners": [
+            {
+                "id": "prime_setups",
+                "display_name": "Prime Setups (Tier 1)",
+                "description": "RVOL>5x + gap>10% + price $2-$20 + float<50M. All markets.",
+                "group_name": "core",
+                "strategy_class": "day_scalp",
+                "strategies": [
+                    "momentum_scalp",
+                    "gap_and_go"
+                ],
+                "finviz_url": "https://elite.finviz.com/export?v=152&f=cap_smallunder,sh_avgvol_o100,sh_float_u50,sh_price_2to20,sh_relvol_o5,ta_gap_u10&ft=3&o=-relativevolume&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67",
+                "run_windows": [
+                    "0400",
+                    "0700",
+                    "0900",
+                    "1000",
+                    "1730",
+                    "test-fix"
+                ],
+                "status": "active",
+                "enabled": true,
+                "quality_gates": {
+                    "rsi_max": 80,
+                    "spread_max": 3.0,
+                    "price_floor": 3.0
+                },
+                "last_run_at": null,
+                "last_result_count": null,
+                "change_log": [
+                    {
+                        "date": "2026-05-15",
+                        "note": "Seeded from screeners.yaml v12.3",
+                        "action": "created"
+                    }
+                ],
+                "created_at": "2026-05-15T15:44:43.989591-04:00",
+                "updated_at": "2026-05-15T15:44:43.989591-04:00"
+            },
+            {
+                "id": "watchlist_setups",
+                "display_name": "Watchlist Setups (Tier 2)",
+                "description": "RVOL>3x + gap>5% + price $1-$30 + float<100M. All markets.",
+                "group_name": "core",
+                "strategy_class": "day_scalp",
+                "strategies": [
+                    "momentum_scalp",
+                    "gap_and_go"
+                ],
+                "finviz_url": "https://elite.finviz.com/export?v=152&f=cap_smallunder,sh_avgvol_o100,sh_float_u100,sh_price_1to30,sh_relvol_o3,ta_gap_u5&ft=3&o=-relativevolume&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67",
+                "run_windows": [
+                    "0400",
+                    "0700",
+                    "0900",
+                    "1000",
+                    "1730",
+                    "test-fix"
+                ],
+                "status": "active",
+                "enabled": true,
+                "quality_gates": {
+                    "rsi_max": 80,
+                    "spread_max": 3.0,
+                    "price_floor": 3.0
+                },
+                "last_run_at": null,
+                "last_result_count": null,
+                "change_log": [
+                    {
+                        "date": "2026-05-15",
+                        "note": "Seeded from screeners.yaml v12.3",
+                        "action": "created"
+                    }
+                ],
+                "created_at": "2026-05-15T15:44:43.989591-04:00",
+                "updated_at": "2026-05-15T15:44:43.989591-04:00"
+            },
+            {
+                "id": "post_earnings_gappers",
+                "display_name": "Post-Earnings Gappers",
+                "description": "Stocks gapping up post-earnings with volume. Feeds earnings_post_momentum.",
+                "group_name": "event",
+                "strategy_class": "earnings_post_momentum",
+                "strategies": [
+                    "earnings_post_momentum",
+                    "swing_breakout",
+                    "earnings_catalyst"
+                ],
+                "finviz_url": "https://elite.finviz.com/export?v=152&f=earningsdate_yesterday,sh_avgvol_o500,sh_curvol_o2000,ta_gap_u5&ft=3&o=-relativevolume&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67",
+                "run_windows": [
+                    "0900"
+                ],
+                "status": "active",
+                "enabled": true,
+                "quality_gates": {
+                    "rsi_max": 80,
+                    "spread_max": 3.0,
+                    "price_floor": 3.0
+                },
+                "last_run_at": null,
+                "last_result_count": null,
+                "change_log": [
+                    {
+                        "date": "2026-05-15",
+                        "note": "Seeded from screeners.yaml v12.3",
+                        "action": "created"
+                    },
+                    {
+                        "date": "2026-05-15",
+                        "note": "Added earnings_catalyst mapping",
+                        "action": "updated"
+                    }
+                ],
+                "created_at": "2026-05-15T15:44:43.989591-04:00",
+                "updated_at": "2026-05-15T15:56:16.433239-04:00"
+            },
+            {
+                "id": "earnings_catalyst_pre",
+                "display_name": "Pre-Earnings Catalyst",
+                "description": "Upcoming earnings within 7 days, mid+ cap, RSI 40-65",
+                "group_name": "event",
+                "strategy_class": "earnings_catalyst",
+                "strategies": [
+                    "earnings_catalyst"
+                ],
+                "finviz_url": "",
+                "run_windows": [
+                    "0900",
+                    "1400"
+                ],
+                "status": "active",
+                "enabled": true,
+                "quality_gates": {},
+                "last_run_at": null,
+                "last_result_count": null,
+                "change_log": [
+                    {
+                        "date": "2026-05-15",
+                        "note": "Gap-fill screener for earnings_catalyst strategy",
+                        "action": "created"
+                    }
+                ],
+                "created_at": "2026-05-15T15:56:08.164265-04:00",
+                "updated_at": "2026-05-15T15:56:08.164265-04:00"
+            },
+            {
+                "id": "core_growth_compounders",
+                "display_name": "Core Growth Compounders",
+                "description": "Large-cap compounders. EPS growth >10%, ROE >15%",
+                "group_name": "growth",
+                "strategy_class": "core_growth_compounder",
+                "strategies": [
+                    "core_growth_compounder"
+                ],
+                "finviz_url": "",
+                "run_windows": [
+                    "1000"
+                ],
+                "status": "active",
+                "enabled": true,
+                "quality_gates": {},
+                "last_run_at": null,
+                "last_result_count": null,
+                "change_log": [
+                    {
+                        "date": "2026-05-15",
+                        "note": "Gap-fill screener for core_growth_compounder strategy",
+                        "action": "created"
+                    }
+                ],
+                "created_at": "2026-05-15T15:56:08.164265-04:00",
+                "updated_at": "2026-05-15T15:56:08.164265-04:00"
+            },
+            {
+                "id": "speculative_growth_breakouts",
+                "display_name": "Speculative Growth Breakouts",
+                "description": "Small/mid-cap revenue growers with momentum. Sales QoQ>20%, RVOL>2x, 4-week perf>20%.",
+                "group_name": "growth",
+                "strategy_class": "speculative_growth",
+                "strategies": [
+                    "speculative_growth",
+                    "swing_breakout"
+                ],
+                "finviz_url": "https://elite.finviz.com/export?v=152&f=cap_smallover,fa_salesqoq_o20,sh_relvol_o2,ta_perf_4w20o,ta_rsi_50to70&ft=3&o=-relativevolume&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67",
+                "run_windows": [
+                    "1000",
+                    "1400"
+                ],
+                "status": "active",
+                "enabled": true,
+                "quality_gates": {
+                    "rsi_max": 80,
+                    "spread_max": 3.0,
+                    "price_floor": 3.0
+                },
+                "last_run_at": null,
+                "last_result_count": null,
+                "change_log": [
+                    {
+                        "date": "2026-05-15",
+                        "note": "Seeded from screeners.yaml v12.3",
+                        "action": "created"
+                    }
+                ],
+                "created_at": "2026-05-15T15:44:43.989591-04:00",
+                "updated_at": "2026-05-15T15:44:43.989591-04:00"
+            },
+            {
+                "id": "bond_income_defensive",
+                "display_name": "Bond / Fixed Income (Defensive)",
+                "description": "Bond ETFs, low beta, yield-focused. Income/defensive bucket \u2014 NOT swing-trade",
+                "group_name": "income",
+                "strategy_class": "bond_income",
+                "strategies": [
+                    "bond_income"
+                ],
+                "finviz_url": "",
+                "run_windows": [
+                    "1200"
+                ],
+                "status": "active",
+                "enabled": true,
+                "quality_gates": {},
+                "last_run_at": null,
+                "last_result_count": null,
+                "change_log": [
+                    {
+                        "date": "2026-05-15",
+                        "note": "Gap-fill screener for bond_income strategy",
+                        "action": "created"
+                    }
+                ],
+                "created_at": "2026-05-15T15:56:08.164265-04:00",
+                "updated_at": "2026-05-15T15:56:08.164265-04:00"
+            },
+            {
+                "id": "high_yield_bdc_income",
+                "display_name": "High Yield BDC / CEF Income",
+                "description": "BDC/CEF yield >5%, mid+ cap. Income/defensive \u2014 not swing-trade",
+                "group_name": "income",
+                "strategy_class": "high_yield_income_bdc",
+                "strategies": [
+                    "high_yield_income_bdc"
+                ],
+                "finviz_url": "",
+                "run_windows": [
+                    "1200"
+                ],
+                "status": "active",
+                "enabled": true,
+                "quality_gates": {},
+                "last_run_at": null,
+                "last_result_count": null,
+                "change_log": [
+                    {
+                        "date": "2026-05-15",
+                        "note": "Gap-fill screener for high_yield_income_bdc strategy",
+                        "action": "created"
+                    }
+                ],
+                "created_at": "2026-05-15T15:56:08.164265-04:00",
+                "updated_at": "2026-05-15T15:56:08.164265-04:00"
+            },
+            {
+                "id": "core_index_etfs",
+                "display_name": "Core Index ETFs",
+                "description": "Major index ETFs: SPY, QQQ, IWM, DIA, VTI, etc.",
+                "group_name": "index",
+                "strategy_class": "core_index",
+                "strategies": [
+                    "core_index"
+                ],
+                "finviz_url": "",
+                "run_windows": [
+                    "1600"
+                ],
+                "status": "active",
+                "enabled": true,
+                "quality_gates": {},
+                "last_run_at": null,
+                "last_result_count": null,
+                "change_log": [
+                    {
+                        "date": "2026-05-15",
+                        "note": "Gap-fill screener for core_index strategy",
+                        "action": "created"
+                    }
+                ],
+                "created_at": "2026-05-15T15:56:08.164265-04:00",
+                "updated_at": "2026-05-15T15:56:08.164265-04:00"
+            },
+            {
+                "id": "covered_call_candidates",
+                "display_name": "Covered Call Candidates",
+                "description": "Established holdings with elevated IV rank \u2014 feeds covered_call_income.",
+                "group_name": "options",
+                "strategy_class": "covered_call_income",
+                "strategies": [
+                    "covered_call_income"
+                ],
+                "finviz_url": "https://elite.finviz.com/export?v=152&f=cap_midover,sh_opt_optionshort,sh_avgvol_o1000&ft=3&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67",
+                "run_windows": [],
+                "status": "active",
+                "enabled": true,
+                "quality_gates": {
+                    "rsi_max": 80,
+                    "spread_max": 3.0,
+                    "price_floor": 3.0
+                },
+                "last_run_at": null,
+                "last_result_count": null,
+                "change_log": [
+                    {
+                        "date": "2026-05-15",
+                        "note": "Seeded from screeners.yaml v12.3",
+                        "action": "created"
+                    }
+                ],
+                "created_at": "2026-05-15T15:44:43.989591-04:00",
+                "updated_at": "2026-05-15T15:44:43.989591-04:00"
+            },
+            {
+                "id": "pm_breakout_confirmation",
+                "display_name": "PM Breakout Confirmation",
+                "description": "Mid+ cap stocks breaking out of consolidation on volume. Above 20-day high, RVOL>2x. PM confirmation of AM setups.",
+                "group_name": "pm_diversity",
+                "strategy_class": "swing_breakout",
+                "strategies": [
+                    "swing_breakout"
+                ],
+                "finviz_url": "https://elite.finviz.com/export?v=152&f=cap_midover,sh_avgvol_o500,sh_relvol_o2,ta_highlow20d_nh,ta_sma50_pa&ft=3&o=-relativevolume&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67",
+                "run_windows": [
+                    "1200",
+                    "1400"
+                ],
+                "status": "active",
+                "enabled": true,
+                "quality_gates": {
+                    "rsi_max": 80,
+                    "spread_max": 3.0,
+                    "price_floor": 3.0
+                },
+                "last_run_at": null,
+                "last_result_count": null,
+                "change_log": [
+                    {
+                        "date": "2026-05-15",
+                        "note": "Seeded from screeners.yaml v12.3",
+                        "action": "created"
+                    }
+                ],
+                "created_at": "2026-05-15T15:44:43.989591-04:00",
+                "updated_at": "2026-05-15T15:44:43.989591-04:00"
+            },
+            {
+                "id": "pm_volume_continuation",
+                "display_name": "PM Volume Continuation",
+                "description": "Stocks with sustained above-average volume into afternoon. Price $5+, RVOL>1.5x, positive change. Confirms morning momentum is holding.",
+                "group_name": "pm_diversity",
+                "strategy_class": "swing_trade",
+                "strategies": [
+                    "swing_trade"
+                ],
+                "finviz_url": "https://elite.finviz.com/export?v=152&f=cap_smallover,sh_avgvol_o500,sh_price_o5,sh_relvol_o1.5,ta_change_u&ft=3&o=-relativevolume&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67",
+                "run_windows": [
+                    "1200",
+                    "1400",
+                    "1600"
+                ],
+                "status": "active",
+                "enabled": true,
+                "quality_gates": {
+                    "rsi_max": 80,
+                    "spread_max": 3.0,
+                    "price_floor": 3.0
+                },
+                "last_run_at": null,
+                "last_result_count": null,
+                "change_log": [
+                    {
+                        "date": "2026-05-15",
+                        "note": "Seeded from screeners.yaml v12.3",
+                        "action": "created"
+                    }
+                ],
+                "created_at": "2026-05-15T15:44:43.989591-04:00",
+                "updated_at": "2026-05-15T15:44:43.989591-04:00"
+            },
+            {
+                "id": "defensive_quality",
+                "display_name": "Defensive Quality (REIT / Bond / Dividend)",
+                "description": "Low-beta dividend payers. REIT, utilities, consumer defensive. Payout<85%.",
+                "group_name": "quality",
+                "strategy_class": "reit_income",
+                "strategies": [
+                    "reit_income",
+                    "international_dividend",
+                    "dividend_growth_compounder"
+                ],
+                "finviz_url": "https://elite.finviz.com/export?v=152&f=fa_div_high,fa_payoutratio_u85,ta_beta_u1,sh_avgvol_o500&ft=3&sec_realestate,sec_utilities,sec_consumerdefensive&o=dividend&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67",
+                "run_windows": [
+                    "1600"
+                ],
+                "status": "active",
+                "enabled": true,
+                "quality_gates": {
+                    "rsi_max": 80,
+                    "spread_max": 3.0,
+                    "price_floor": 3.0
+                },
+                "last_run_at": null,
+                "last_result_count": null,
+                "change_log": [
+                    {
+                        "date": "2026-05-15",
+                        "note": "Seeded from screeners.yaml v12.3",
+                        "action": "created"
+                    }
+                ],
+                "created_at": "2026-05-15T15:44:43.989591-04:00",
+                "updated_at": "2026-05-15T15:44:43.989591-04:00"
+            },
+            {
+                "id": "dividend_value_pullback",
+                "display_name": "Dividend Value Pullback",
+                "description": "Dividend growers on pullback. 5y+ div growth, payout<85%, RSI 30-50.",
+                "group_name": "quality",
+                "strategy_class": "dividend_growth_compounder",
+                "strategies": [
+                    "dividend_growth_compounder",
+                    "income_add",
+                    "international_dividend"
+                ],
+                "finviz_url": "https://elite.finviz.com/export?v=152&f=fa_div_pos,fa_payoutratio_u85,fa_divgrowth5y_o5,ta_rsi_30to50,sh_avgvol_o500&ft=3&o=relativevolume&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67",
+                "run_windows": [
+                    "1000",
+                    "1400"
+                ],
+                "status": "active",
+                "enabled": true,
+                "quality_gates": {
+                    "rsi_max": 80,
+                    "spread_max": 3.0,
+                    "price_floor": 3.0
+                },
+                "last_run_at": null,
+                "last_result_count": null,
+                "change_log": [
+                    {
+                        "date": "2026-05-15",
+                        "note": "Seeded from screeners.yaml v12.3",
+                        "action": "created"
+                    }
+                ],
+                "created_at": "2026-05-15T15:44:43.989591-04:00",
+                "updated_at": "2026-05-15T15:44:43.989591-04:00"
+            },
+            {
+                "id": "oversold_quality",
+                "display_name": "Oversold Quality (Recovery Watch)",
+                "description": "Mid+ cap with positive ROE, RSI oversold, above 200-day. Feeds recovery_watch.",
+                "group_name": "quality",
+                "strategy_class": "recovery_watch",
+                "strategies": [
+                    "recovery_watch",
+                    "tax_loss_harvest"
+                ],
+                "finviz_url": "https://elite.finviz.com/export?v=152&f=cap_midover,fa_roe_pos,ta_rsi_os30,ta_sma200_pa,sh_avgvol_o500&ft=3&o=relativevolume&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67",
+                "run_windows": [
+                    "0900",
+                    "1600"
+                ],
+                "status": "active",
+                "enabled": true,
+                "quality_gates": {
+                    "rsi_max": 80,
+                    "spread_max": 3.0,
+                    "price_floor": 3.0
+                },
+                "last_run_at": null,
+                "last_result_count": null,
+                "change_log": [
+                    {
+                        "date": "2026-05-15",
+                        "note": "Seeded from screeners.yaml v12.3",
+                        "action": "created"
+                    }
+                ],
+                "created_at": "2026-05-15T15:44:43.989591-04:00",
+                "updated_at": "2026-05-15T15:44:43.989591-04:00"
+            },
+            {
+                "id": "quality_pullback",
+                "display_name": "Quality Pullback (Fib / Income)",
+                "description": "Mid+ cap quality names pulling back to support. Feeds swing_trade, fib_retracement, income.",
+                "group_name": "quality",
+                "strategy_class": "swing_trade",
+                "strategies": [
+                    "swing_trade",
+                    "fib_retracement_bounce",
+                    "income_add"
+                ],
+                "finviz_url": "https://elite.finviz.com/export?v=152&f=cap_midover,fa_div_high,fa_payoutratio_u80,sh_avgvol_o500,ta_sma50_pa,ta_sma200_pa,ta_rsi_30to50&ft=3&o=relativevolume&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67",
+                "run_windows": [
+                    "1000",
+                    "1200",
+                    "1600"
+                ],
+                "status": "active",
+                "enabled": true,
+                "quality_gates": {
+                    "rsi_max": 80,
+                    "spread_max": 3.0,
+                    "price_floor": 3.0
+                },
+                "last_run_at": null,
+                "last_result_count": null,
+                "change_log": [
+                    {
+                        "date": "2026-05-15",
+                        "note": "Seeded from screeners.yaml v12.3",
+                        "action": "created"
+                    }
+                ],
+                "created_at": "2026-05-15T15:44:43.989591-04:00",
+                "updated_at": "2026-05-15T15:44:43.989591-04:00"
+            },
+            {
+                "id": "defense_aerospace",
+                "display_name": "Defense / Aerospace Thesis",
+                "description": "Aerospace/defense sector, mid+ cap, above SMA200",
+                "group_name": "sector",
+                "strategy_class": "defense_thesis",
+                "strategies": [
+                    "defense_thesis"
+                ],
+                "finviz_url": "",
+                "run_windows": [
+                    "1000"
+                ],
+                "status": "active",
+                "enabled": true,
+                "quality_gates": {},
+                "last_run_at": null,
+                "last_result_count": null,
+                "change_log": [
+                    {
+                        "date": "2026-05-15",
+                        "note": "Gap-fill screener for defense_thesis strategy",
+                        "action": "created"
+                    }
+                ],
+                "created_at": "2026-05-15T15:56:08.164265-04:00",
+                "updated_at": "2026-05-15T15:56:08.164265-04:00"
+            },
+            {
+                "id": "sector_leadership_rs",
+                "display_name": "Sector Leadership (Relative Strength)",
+                "description": "Sector ETFs ranked by relative strength \u2014 feeds sector_rotation.",
+                "group_name": "sector",
+                "strategy_class": "sector_rotation",
+                "strategies": [
+                    "sector_rotation"
+                ],
+                "finviz_url": "https://elite.finviz.com/export?v=152&t=XLF,XLE,XLK,XLV,XLI,XLU,XLP,XLB,XLRE,XLC,XLY&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67",
+                "run_windows": [
+                    "1000"
+                ],
+                "status": "active",
+                "enabled": true,
+                "quality_gates": {
+                    "rsi_max": 80,
+                    "spread_max": 3.0,
+                    "price_floor": 3.0
+                },
+                "last_run_at": null,
+                "last_result_count": null,
+                "change_log": [
+                    {
+                        "date": "2026-05-15",
+                        "note": "Seeded from screeners.yaml v12.3",
+                        "action": "created"
+                    }
+                ],
+                "created_at": "2026-05-15T15:44:43.989591-04:00",
+                "updated_at": "2026-05-15T15:44:43.989591-04:00"
+            }
+        ],
+        "total": 18,
+        "strategy_coverage": {
+            "total_strategies": 20,
+            "covered": 21,
+            "gaps": [],
+            "gap_count": 0,
+            "multi_mapped": {
+                "momentum_scalp": [
+                    "prime_setups",
+                    "watchlist_setups"
+                ],
+                "gap_and_go": [
+                    "prime_setups",
+                    "watchlist_setups"
+                ],
+                "swing_breakout": [
+                    "post_earnings_gappers",
+                    "speculative_growth_breakouts",
+                    "pm_breakout_confirmation"
+                ],
+                "earnings_catalyst": [
+                    "post_earnings_gappers",
+                    "earnings_catalyst_pre"
+                ],
+                "swing_trade": [
+                    "pm_volume_continuation",
+                    "quality_pullback"
+                ],
+                "international_dividend": [
+                    "defensive_quality",
+                    "dividend_value_pullback"
+                ],
+                "dividend_growth_compounder": [
+                    "defensive_quality",
+                    "dividend_value_pullback"
+                ],
+                "income_add": [
+                    "dividend_value_pullback",
+                    "quality_pullback"
+                ]
+            }
+        }
+    }
+}

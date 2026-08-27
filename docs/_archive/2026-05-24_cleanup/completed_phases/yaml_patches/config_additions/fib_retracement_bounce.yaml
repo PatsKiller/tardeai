@@ -1,0 +1,225 @@
+strategy_id: fib_retracement_bounce
+display_name: Fibonacci Retracement Bounce
+version: "1.0.0"
+status: UNVALIDATED
+purpose: "Enter pullbacks to 50% or 61.8% Fibonacci retracement of prior advance in confirmed uptrends. Risk-defined to swing low, target prior swing high. Buy weakness in strength."
+
+eligible_accounts: [taxable, rollover_ira, roth_ira]
+forbidden_accounts: [fidelity_401k]
+timeframe: swing_3_to_21d
+timeframe_class: SHORT_SWING
+
+universe:
+  price:
+    min: 5.00
+    max: 500.00
+  float_m:
+    max: 1000
+  rvol:
+    min: 1.0
+
+primary_data_sources:
+  - finviz_screener
+  - indicator_engine
+  - trade_ai_scans
+
+entry_criteria:
+  - id: UPTREND_CONFIRMED
+    description: "Price above 50-day EMA, EMA 50 above EMA 200, both rising"
+    metric: trend_state
+    operator: eq
+    value: confirmed_uptrend
+  - id: FIB_LEVEL_TOUCH
+    description: "Price within 1.5% of 50% or 61.8% Fibonacci retracement of most recent swing"
+    metric: fib_distance_pct
+    operator: lte
+    value: 0.015
+    allowed_levels: [0.50, 0.618]
+  - id: RSI_RESET
+    description: "RSI(14) between 35 and 50 (cooled but not oversold)"
+    metric: rsi_14
+    operator: between
+    value: [35, 50]
+  - id: VOLUME_PATTERN
+    description: "3+ days declining volume on pullback, then 1.3x expansion on bounce day"
+    metric: bounce_volume_ratio
+    operator: gte
+    value: 1.3
+  - id: SECTOR_HEALTHY
+    description: "Sector ranks in top 5 by relative strength"
+    metric: sector_rs_rank
+    operator: lte
+    value: 5
+
+auto_disqualifiers:
+  - id: TREND_BROKEN
+    description: "Price below EMA 50 or EMA 50 below EMA 200"
+  - id: BELOW_61_8_RETRACE
+    description: "Price retraced more than 65% — uptrend likely broken"
+  - id: EARNINGS_WITHIN_5D
+    description: "Earnings announcement within 5 trading days"
+  - id: NO_VOLUME_CONFIRMATION
+    description: "Bounce day volume below 20-day average"
+  - id: GAP_DOWN_THROUGH_FIB
+    description: "Gap down through Fibonacci level invalidates the setup"
+  - id: SECTOR_BREAKING_DOWN
+    description: "Sector index below its own 50-day EMA"
+
+exit_rules:
+  stop_method: level_based
+  stop_at: most_recent_swing_low
+  target_method: level_based
+  target_at: prior_swing_high
+  trail_method: ema_21
+  partial_exit_at_50pct_target: true
+
+risk:
+  risk_per_trade_pct: 0.005
+  max_position_size: 5000
+  max_daily_trades: 3
+  target_rr: 2.5
+
+scoring:
+  min_score_go: 40
+  min_score_wait: 28
+
+scoring_weights:
+  fib_level_precision: 20
+  trend_strength: 20
+  volume_pattern: 15
+  rsi_quality: 15
+  sector_alignment: 15
+  risk_reward: 15
+
+grade_thresholds:
+  aplus: 50
+  a: 42
+  b: 35
+  c: 28
+
+lifecycle:
+  proposal_expiry_hours: 48
+  overnight_allowed: true
+  max_hold_days: 21
+
+execution:
+  paper_allowed: true
+  live_allowed: false
+
+agent_responsibilities:
+  maria: "Verify the prior advance is fundamental (catalyst, earnings beat, analyst upgrades) not just momentum. Confirm the pullback is normal consolidation, not the start of a downtrend."
+  risk: "Validate Fibonacci levels are drawn from the correct swing points. Confirm stop placement at swing low. Verify R/R meets 2.5 minimum."
+  steph: "Confirm position sizing, account eligibility, and that this fits within swing trading allocation bucket."
+
+co_enables:
+  promotes_to: [swing_breakout]
+  strengthens: [swing_trade, speculative_growth]
+  notes: "Successful Fibonacci bounces often set up follow-on breakouts at prior swing highs."
+
+vix_rules:
+  max_vix_for_entry: 30
+  elevated_vix_band: [22, 30]
+  elevated_vix_changes:
+    position_size_multiplier: 0.75
+    require_61_8_only: true
+    require_aplus_grade: true
+  extreme_vix_threshold: 30
+  extreme_vix_action: pause_new_entries
+  exit_holdings_at_vix: null
+  notes: "Retracements often turn into breakdowns in high VIX — require deepest level only."
+
+technical_indicators_required:
+  gates:
+    - id: UPTREND_CONFIRMED
+      condition: "EMA(50) > EMA(200), both rising"
+      metric: trend_state
+      operator: eq
+      value: confirmed_uptrend
+    - id: FIB_LEVEL_TOUCH
+      condition: "within 1.5% of 50% or 61.8% retracement"
+      metric: fib_distance_pct
+      operator: lte
+      value: 0.015
+    - id: RSI_RESET
+      condition: "RSI(14) between 35 and 50"
+      metric: rsi_14
+      operator: between
+      value: [35, 50]
+    - id: BOUNCE_VOLUME
+      condition: "bounce day volume >= 1.3x 20-day avg"
+      metric: bounce_volume_ratio
+      operator: gte
+      value: 1.3
+  preferred:
+    - volume_dryup_3_days
+    - ema_50_distance
+    - atr_14_pct
+    - macd_histogram_turning_up
+  irrelevant:
+    - vwap
+    - opening_range
+    - bollinger_squeeze
+
+minimum_evidence:
+  required:
+    - price_data
+    - fib_levels_calculated
+    - swing_points_identified
+    - trend_state_confirmed
+    - volume_data
+    - trade_plan
+  preferred:
+    - sector_rank
+    - earnings_calendar
+    - analyst_revisions
+
+performance_context:
+  last_updated: null
+  closed_paper_trades: 0
+  win_rate: null
+  avg_r_realized: null
+  profit_factor: null
+  max_drawdown_pct: null
+  expectancy_per_trade: null
+  best_trade_r: null
+  worst_trade_r: null
+  current_streak: null
+  ready_for_review: false
+  review_thresholds:
+    min_trades: 30
+    min_months: 6
+    min_profit_factor: 1.25
+    min_win_rate: 0.50
+  notes: "Populated nightly by scripts/paper_performance_governance.py."
+
+validation_gate:
+  min_closed_paper_trades: 30
+  min_win_rate: 0.55
+  min_profit_factor: 1.3
+  min_calendar_months: 6
+  human_approval_required: true
+
+prompt_context:
+  summary: "Fibonacci retracement bounce strategy. Enters pullbacks to 50% or 61.8% Fib in confirmed uptrends with volume and RSI confirmation. Risk to swing low, target prior swing high. 3-21 day swing hold."
+  key_questions:
+    - "Is the prior advance fundamental or just momentum?"
+    - "Is the pullback orderly with declining volume, or accelerating with expanding volume?"
+    - "Is RSI showing a healthy reset (35-50) or true weakness (<30)?"
+
+screen_filters:
+  min_price: 5.00
+  max_price: 300.00
+  min_rvol: 0.8
+  max_float_m: 1000
+  min_score: 30
+  trend_filter: "above_sma_50_and_sma_200"
+  setup_type: "pullback_to_support"
+
+outcome_learning_fields:
+  - fib_level_entered
+  - bounce_volume_ratio
+  - rsi_at_entry
+  - sector_rank_at_entry
+  - hold_duration
+  - max_favorable_excursion
+  - r_realized

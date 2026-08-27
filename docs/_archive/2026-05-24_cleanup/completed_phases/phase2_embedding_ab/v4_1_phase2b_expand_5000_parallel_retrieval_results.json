@@ -1,0 +1,3110 @@
+{
+  "timestamp": "2026-05-14T11:56:51.029407",
+  "baseline_model": "nomic-embed-text",
+  "candidate_model": "qwen3-embedding:8b",
+  "baseline_table": "content_embeddings",
+  "candidate_table": "content_embeddings_qwen3_test",
+  "baseline_doc_count": 14797,
+  "candidate_doc_count": 4897,
+  "query_count": 40,
+  "top_k": 10,
+  "aggregate": {
+    "avg_top5_overlap": 0.0028,
+    "avg_top10_overlap": 0.0026,
+    "baseline_avg_similarity": 0.6121,
+    "candidate_avg_similarity": 0.6465,
+    "similarity_advantage": 0.0344,
+    "baseline_avg_latency_ms": 28.3,
+    "candidate_avg_latency_ms": 274.3,
+    "latency_ratio": 9.71,
+    "baseline_avg_diversity": 1.35,
+    "candidate_avg_diversity": 2.98,
+    "baseline_empty_queries": 0,
+    "candidate_empty_queries": 0
+  },
+  "verdict": "QWEN3_BETTER",
+  "production_changed": false,
+  "routing_changed": false,
+  "query_results": [
+    {
+      "query": "Show current portfolio composition and allocation",
+      "baseline_latency_ms": 22.4,
+      "candidate_latency_ms": 1492.5,
+      "baseline_results": [
+        {
+          "source_type": "agent_result",
+          "source_id": 572863603,
+          "title": "XLB steph: HOLD",
+          "score": 0.6768
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 459282179,
+          "title": "GLXG steph: TRIM",
+          "score": 0.6712
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1008374104,
+          "title": "ETOR steph: RESEARCH_MORE",
+          "score": 0.6669
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 189583865,
+          "title": "CSWC steph: HOLD",
+          "score": 0.6625
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 763472831,
+          "title": "BND steph: HOLD",
+          "score": 0.6609
+        }
+      ],
+      "candidate_results": [
+        {
+          "source_type": "youtube",
+          "source_id": 842,
+          "title": "Puzzle Wealth Streamline Your Deals with Expert Operations",
+          "score": 0.7207
+        },
+        {
+          "source_type": "youtube",
+          "source_id": 962,
+          "title": "My Portfolio Is At An ALL-TIME HIGH |\u00a0Portfolio Update May 2026",
+          "score": 0.7022
+        },
+        {
+          "source_type": "news",
+          "source_id": 4041,
+          "title": "My Portfolio Is At An ALL-TIME HIGH |\u00a0Portfolio Update May 2026",
+          "score": 0.7022
+        },
+        {
+          "source_type": "youtube",
+          "source_id": 954,
+          "title": "\ud83d\udcb9Best Dividend Portfolio Tracker 2026 - \ud83e\udee4Avoid Dividend Mistakes!",
+          "score": 0.6891
+        },
+        {
+          "source_type": "news",
+          "source_id": 4033,
+          "title": "\ud83d\udcb9Best Dividend Portfolio Tracker 2026 - \ud83e\udee4Avoid Dividend Mistakes!",
+          "score": 0.6891
+        }
+      ],
+      "top5_overlap": 0.0,
+      "top10_overlap": 0.0,
+      "baseline_avg_sim": 0.6551,
+      "candidate_avg_sim": 0.6803,
+      "baseline_diversity": 1,
+      "candidate_diversity": 3,
+      "baseline_empty": false,
+      "candidate_empty": false
+    },
+    {
+      "query": "What are the largest positions by market value?",
+      "baseline_latency_ms": 367.4,
+      "candidate_latency_ms": 422.7,
+      "baseline_results": [
+        {
+          "source_type": "agent_result",
+          "source_id": 1606140095,
+          "title": "KBR steph: SELL",
+          "score": 0.6473
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1051353832,
+          "title": "LMT maria_research: TRIM",
+          "score": 0.6248
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1628040969,
+          "title": "NEE steph: HOLD",
+          "score": 0.6216
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 502272627,
+          "title": "ENPH risk_agent: TRIM",
+          "score": 0.6182
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1567973970,
+          "title": "SCHD risk_agent: HOLD",
+          "score": 0.6116
+        }
+      ],
+      "candidate_results": [
+        {
+          "source_type": "youtube",
+          "source_id": 842,
+          "title": "Puzzle Wealth Streamline Your Deals with Expert Operations",
+          "score": 0.6002
+        },
+        {
+          "source_type": "social_post",
+          "source_id": 2130,
+          "title": "Clues for potential Stock market directions.                     \n              ",
+          "score": 0.583
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 115008672,
+          "title": "SP500-D risk_agent: SKIP",
+          "score": 0.5774
+        },
+        {
+          "source_type": "news",
+          "source_id": 3930,
+          "title": "Northrop Grumman Corporation (NOC): Among the Best Large Cap Defense Stocks to B",
+          "score": 0.5737
+        },
+        {
+          "source_type": "news",
+          "source_id": 3647,
+          "title": "Industrial Select Sector SPDR Fund(XLI) Stock Options Chain | Quotes & News - Mo",
+          "score": 0.5694
+        }
+      ],
+      "top5_overlap": 0.0,
+      "top10_overlap": 0.0,
+      "baseline_avg_sim": 0.6136,
+      "candidate_avg_sim": 0.5726,
+      "baseline_diversity": 1,
+      "candidate_diversity": 4,
+      "baseline_empty": false,
+      "candidate_empty": false
+    },
+    {
+      "query": "Find recent analysis for AVAV",
+      "baseline_latency_ms": 13.6,
+      "candidate_latency_ms": 181.1,
+      "baseline_results": [
+        {
+          "source_type": "agent_result",
+          "source_id": 892102685,
+          "title": "GLOB maria: HOLD",
+          "score": 0.6583
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 492522555,
+          "title": "BZ risk_agent: NONE",
+          "score": 0.6507
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1239192047,
+          "title": "SHV maria: HOLD",
+          "score": 0.6472
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1670043008,
+          "title": "FPS risk_agent: HOLD",
+          "score": 0.646
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1154808878,
+          "title": "NOC risk_agent: SELL",
+          "score": 0.6441
+        }
+      ],
+      "candidate_results": [
+        {
+          "source_type": "fused_signal",
+          "source_id": 535,
+          "title": "AVAL signal:",
+          "score": 0.5918
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1082930466,
+          "title": "AVAV risk_agent: HOLD",
+          "score": 0.5879
+        },
+        {
+          "source_type": "brave_cache",
+          "source_id": 0,
+          "title": "brave:AVAV",
+          "score": 0.5866
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 688,
+          "title": "AVGX signal:",
+          "score": 0.5831
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 495,
+          "title": "AVGO signal:",
+          "score": 0.5745
+        }
+      ],
+      "top5_overlap": 0.0,
+      "top10_overlap": 0.0,
+      "baseline_avg_sim": 0.6432,
+      "candidate_avg_sim": 0.57,
+      "baseline_diversity": 1,
+      "candidate_diversity": 4,
+      "baseline_empty": false,
+      "candidate_empty": false
+    },
+    {
+      "query": "What is the current watchlist thesis for RKLB?",
+      "baseline_latency_ms": 24.3,
+      "candidate_latency_ms": 399.5,
+      "baseline_results": [
+        {
+          "source_type": "agent_result",
+          "source_id": 726386754,
+          "title": "AJG maria: HOLD",
+          "score": 0.6317
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 250113488,
+          "title": "NPK maria: HOLD",
+          "score": 0.5974
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1061582367,
+          "title": "PEW maria: HOLD",
+          "score": 0.5959
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1703807495,
+          "title": "LPIH maria: HOLD",
+          "score": 0.5952
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1880044713,
+          "title": "CCK maria: HOLD",
+          "score": 0.5952
+        }
+      ],
+      "candidate_results": [
+        {
+          "source_type": "cio_decision",
+          "source_id": 386708566,
+          "title": "RKLB CIO: HOLD",
+          "score": 0.6489
+        },
+        {
+          "source_type": "cio_decision",
+          "source_id": 532644568,
+          "title": "RKLB CIO: HOLD",
+          "score": 0.6489
+        },
+        {
+          "source_type": "cio_decision",
+          "source_id": 180617163,
+          "title": "RKLB CIO: HOLD",
+          "score": 0.6489
+        },
+        {
+          "source_type": "cio_decision",
+          "source_id": 2137526963,
+          "title": "RKLB CIO: HOLD",
+          "score": 0.6489
+        },
+        {
+          "source_type": "cio_decision",
+          "source_id": 136128104,
+          "title": "RKLB CIO: HOLD",
+          "score": 0.6489
+        }
+      ],
+      "top5_overlap": 0.0,
+      "top10_overlap": 0.0,
+      "baseline_avg_sim": 0.596,
+      "candidate_avg_sim": 0.637,
+      "baseline_diversity": 1,
+      "candidate_diversity": 4,
+      "baseline_empty": false,
+      "candidate_empty": false
+    },
+    {
+      "query": "Find recovery watch evidence for TDG",
+      "baseline_latency_ms": 16.4,
+      "candidate_latency_ms": 189.3,
+      "baseline_results": [
+        {
+          "source_type": "agent_result",
+          "source_id": 1689694993,
+          "title": "LITE risk_agent: HOLD",
+          "score": 0.5957
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 492522555,
+          "title": "BZ risk_agent: NONE",
+          "score": 0.5926
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 169737314,
+          "title": "DOX risk_agent: SKIP",
+          "score": 0.5886
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 136733750,
+          "title": "LQD risk_agent: NO_RECOMMENDATION",
+          "score": 0.5818
+        },
+        {
+          "source_type": "trade_review",
+          "source_id": 32,
+          "title": "XMTR overnight review: BREAKEVEN $+0.00 (swing_breakout)",
+          "score": 0.5801
+        }
+      ],
+      "candidate_results": [
+        {
+          "source_type": "agent_result",
+          "source_id": 544054387,
+          "title": "TDG steph: HOLD",
+          "score": 0.639
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1344926865,
+          "title": "TDG steph: TRIM",
+          "score": 0.6383
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1159152436,
+          "title": "TDG steph: TRIM",
+          "score": 0.6383
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1653173325,
+          "title": "TDG steph: TRIM",
+          "score": 0.6383
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1644490938,
+          "title": "TDG steph: TRIM",
+          "score": 0.6383
+        }
+      ],
+      "top5_overlap": 0.0,
+      "top10_overlap": 0.0,
+      "baseline_avg_sim": 0.5801,
+      "candidate_avg_sim": 0.6324,
+      "baseline_diversity": 2,
+      "candidate_diversity": 2,
+      "baseline_empty": false,
+      "candidate_empty": false
+    },
+    {
+      "query": "What changed in RTX after stop-out?",
+      "baseline_latency_ms": 26.2,
+      "candidate_latency_ms": 393.5,
+      "baseline_results": [
+        {
+          "source_type": "agent_result",
+          "source_id": 220443609,
+          "title": "KBR maria: AVOID",
+          "score": 0.6421
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1213992893,
+          "title": "LDOS maria: AVOID",
+          "score": 0.6404
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1006034360,
+          "title": "NOC maria: HOLD",
+          "score": 0.6373
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 604492034,
+          "title": "LHX maria: AVOID",
+          "score": 0.6355
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1893247875,
+          "title": "LMT maria: HOLD",
+          "score": 0.6289
+        }
+      ],
+      "candidate_results": [
+        {
+          "source_type": "agent_result",
+          "source_id": 153868872,
+          "title": "RTX risk_agent: SELL",
+          "score": 0.7222
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1082763067,
+          "title": "RTX risk_agent: SELL",
+          "score": 0.7222
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1741023860,
+          "title": "RTX risk_agent: SELL",
+          "score": 0.7222
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1144929754,
+          "title": "RTX risk_agent: SELL",
+          "score": 0.7222
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1660063004,
+          "title": "RTX risk_agent: SELL",
+          "score": 0.7222
+        }
+      ],
+      "top5_overlap": 0.0,
+      "top10_overlap": 0.0,
+      "baseline_avg_sim": 0.6196,
+      "candidate_avg_sim": 0.7222,
+      "baseline_diversity": 1,
+      "candidate_diversity": 1,
+      "baseline_empty": false,
+      "candidate_empty": false
+    },
+    {
+      "query": "Show recent closed trades with bad exits",
+      "baseline_latency_ms": 23.6,
+      "candidate_latency_ms": 198.4,
+      "baseline_results": [
+        {
+          "source_type": "agent_result",
+          "source_id": 867901237,
+          "title": "KBR risk_agent: SELL",
+          "score": 0.7036
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 638451197,
+          "title": "EYE risk_agent: HOLD",
+          "score": 0.6938
+        },
+        {
+          "source_type": "trade_review",
+          "source_id": 32,
+          "title": "XMTR overnight review: BREAKEVEN $+0.00 (swing_breakout)",
+          "score": 0.6777
+        },
+        {
+          "source_type": "trade_review",
+          "source_id": 132,
+          "title": "INFU overnight review: WIN $+67.83 (swing_breakout)",
+          "score": 0.6712
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 206995699,
+          "title": "APLY risk_agent: HOLD",
+          "score": 0.6646
+        }
+      ],
+      "candidate_results": [
+        {
+          "source_type": "youtube",
+          "source_id": 842,
+          "title": "Puzzle Wealth Streamline Your Deals with Expert Operations",
+          "score": 0.6419
+        },
+        {
+          "source_type": "trade_outcome",
+          "source_id": 19,
+          "title": "FLYW trade outcome: UNKNOWN  (momentum_scalp)",
+          "score": 0.6349
+        },
+        {
+          "source_type": "trade_outcome",
+          "source_id": 12,
+          "title": "FLYW trade outcome: loss (swing_trade)",
+          "score": 0.6259
+        },
+        {
+          "source_type": "youtube",
+          "source_id": 246,
+          "title": "Bitcoin Weekly Candle Close \ud83d\udea8 Breakout or Bull Trap?",
+          "score": 0.6221
+        },
+        {
+          "source_type": "youtube",
+          "source_id": 908,
+          "title": "How new traders get humbled in 20 seconds \ud83d\ude2e\u200d\ud83d\udca8 / @PJTrades_NQ",
+          "score": 0.6087
+        }
+      ],
+      "top5_overlap": 0.0,
+      "top10_overlap": 0.0,
+      "baseline_avg_sim": 0.669,
+      "candidate_avg_sim": 0.6118,
+      "baseline_diversity": 2,
+      "candidate_diversity": 4,
+      "baseline_empty": false,
+      "candidate_empty": false
+    },
+    {
+      "query": "Find failed breakout trades in the journal",
+      "baseline_latency_ms": 25.2,
+      "candidate_latency_ms": 193.7,
+      "baseline_results": [
+        {
+          "source_type": "trade_review",
+          "source_id": 32,
+          "title": "XMTR overnight review: BREAKEVEN $+0.00 (swing_breakout)",
+          "score": 0.7541
+        },
+        {
+          "source_type": "trade_review",
+          "source_id": 132,
+          "title": "INFU overnight review: WIN $+67.83 (swing_breakout)",
+          "score": 0.7151
+        },
+        {
+          "source_type": "trade_review",
+          "source_id": 222,
+          "title": "GCTS overnight review: LOSS $-12.38 (momentum_scalp)",
+          "score": 0.647
+        },
+        {
+          "source_type": "trade_review",
+          "source_id": 202,
+          "title": "GCTS overnight review: LOSS $-9.38 (momentum_scalp)",
+          "score": 0.6437
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 867901237,
+          "title": "KBR risk_agent: SELL",
+          "score": 0.6254
+        }
+      ],
+      "candidate_results": [
+        {
+          "source_type": "news",
+          "source_id": 3607,
+          "title": "Yon Hybrid Momentum + Breakout Scanner with BB Squeeze \u2014 Indicator by ykm4evr - ",
+          "score": 0.6104
+        },
+        {
+          "source_type": "trade_review",
+          "source_id": 32,
+          "title": "XMTR overnight review: BREAKEVEN $+0.00 (swing_breakout)",
+          "score": 0.6092
+        },
+        {
+          "source_type": "youtube",
+          "source_id": 246,
+          "title": "Bitcoin Weekly Candle Close \ud83d\udea8 Breakout or Bull Trap?",
+          "score": 0.609
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 1054,
+          "title": "BRKR signal:",
+          "score": 0.6044
+        },
+        {
+          "source_type": "decision_outcome",
+          "source_id": 717,
+          "title": "BRKR outcome: RESEARCH_MORE",
+          "score": 0.6043
+        }
+      ],
+      "top5_overlap": 0.1111,
+      "top10_overlap": 0.0526,
+      "baseline_avg_sim": 0.6464,
+      "candidate_avg_sim": 0.5976,
+      "baseline_diversity": 2,
+      "candidate_diversity": 6,
+      "baseline_empty": false,
+      "candidate_empty": false
+    },
+    {
+      "query": "What patterns exist in automated journal entries?",
+      "baseline_latency_ms": 17.5,
+      "candidate_latency_ms": 386.3,
+      "baseline_results": [
+        {
+          "source_type": "trade_review",
+          "source_id": 32,
+          "title": "XMTR overnight review: BREAKEVEN $+0.00 (swing_breakout)",
+          "score": 0.5197
+        },
+        {
+          "source_type": "trade_review",
+          "source_id": 202,
+          "title": "GCTS overnight review: LOSS $-9.38 (momentum_scalp)",
+          "score": 0.5089
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1382901955,
+          "title": "APPS maria: HOLD",
+          "score": 0.5023
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1251864077,
+          "title": "MBLY risk_agent: HOLD",
+          "score": 0.5001
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1703807495,
+          "title": "LPIH maria: HOLD",
+          "score": 0.4995
+        }
+      ],
+      "candidate_results": [
+        {
+          "source_type": "news",
+          "source_id": 3729,
+          "title": "Behavioral Patterns of JEPI and Institutional Flows - Stock Traders Daily",
+          "score": 0.624
+        },
+        {
+          "source_type": "youtube",
+          "source_id": 842,
+          "title": "Puzzle Wealth Streamline Your Deals with Expert Operations",
+          "score": 0.6138
+        },
+        {
+          "source_type": "youtube",
+          "source_id": 819,
+          "title": "SSI Update: New SSA Bank Account Monitoring Rules Explained",
+          "score": 0.5796
+        },
+        {
+          "source_type": "news",
+          "source_id": 3727,
+          "title": "JEPI | JPMorgan Equity Premium Income Insider Trading - Quiver Quantitative",
+          "score": 0.5743
+        },
+        {
+          "source_type": "youtube",
+          "source_id": 851,
+          "title": "The Why Behind Our Process: The Sequoia System Explained",
+          "score": 0.5727
+        }
+      ],
+      "top5_overlap": 0.0,
+      "top10_overlap": 0.0,
+      "baseline_avg_sim": 0.5004,
+      "candidate_avg_sim": 0.5789,
+      "baseline_diversity": 2,
+      "candidate_diversity": 4,
+      "baseline_empty": false,
+      "candidate_empty": false
+    },
+    {
+      "query": "Show journal evidence for early exits",
+      "baseline_latency_ms": 12.2,
+      "candidate_latency_ms": 172.3,
+      "baseline_results": [
+        {
+          "source_type": "trade_review",
+          "source_id": 32,
+          "title": "XMTR overnight review: BREAKEVEN $+0.00 (swing_breakout)",
+          "score": 0.6482
+        },
+        {
+          "source_type": "trade_review",
+          "source_id": 132,
+          "title": "INFU overnight review: WIN $+67.83 (swing_breakout)",
+          "score": 0.6101
+        },
+        {
+          "source_type": "trade_review",
+          "source_id": 202,
+          "title": "GCTS overnight review: LOSS $-9.38 (momentum_scalp)",
+          "score": 0.6049
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1251864077,
+          "title": "MBLY risk_agent: HOLD",
+          "score": 0.5996
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 169737314,
+          "title": "DOX risk_agent: SKIP",
+          "score": 0.5936
+        }
+      ],
+      "candidate_results": [
+        {
+          "source_type": "fused_signal",
+          "source_id": 1168,
+          "title": "EXK signal:",
+          "score": 0.6169
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 659,
+          "title": "WENT signal:",
+          "score": 0.6083
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 540,
+          "title": "JUST signal:",
+          "score": 0.6033
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 1225,
+          "title": "ED signal:",
+          "score": 0.6017
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 401,
+          "title": "ABOT signal:",
+          "score": 0.6015
+        }
+      ],
+      "top5_overlap": 0.0,
+      "top10_overlap": 0.0,
+      "baseline_avg_sim": 0.5985,
+      "candidate_avg_sim": 0.6015,
+      "baseline_diversity": 2,
+      "candidate_diversity": 3,
+      "baseline_empty": false,
+      "candidate_empty": false
+    },
+    {
+      "query": "Find latest journal review for manual trades",
+      "baseline_latency_ms": 22.6,
+      "candidate_latency_ms": 187.7,
+      "baseline_results": [
+        {
+          "source_type": "trade_review",
+          "source_id": 32,
+          "title": "XMTR overnight review: BREAKEVEN $+0.00 (swing_breakout)",
+          "score": 0.6512
+        },
+        {
+          "source_type": "trade_review",
+          "source_id": 202,
+          "title": "GCTS overnight review: LOSS $-9.38 (momentum_scalp)",
+          "score": 0.6382
+        },
+        {
+          "source_type": "trade_review",
+          "source_id": 132,
+          "title": "INFU overnight review: WIN $+67.83 (swing_breakout)",
+          "score": 0.6287
+        },
+        {
+          "source_type": "trade_review",
+          "source_id": 222,
+          "title": "GCTS overnight review: LOSS $-12.38 (momentum_scalp)",
+          "score": 0.6151
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1505441790,
+          "title": "IRDM risk_agent: HOLD",
+          "score": 0.5699
+        }
+      ],
+      "candidate_results": [
+        {
+          "source_type": "youtube",
+          "source_id": 842,
+          "title": "Puzzle Wealth Streamline Your Deals with Expert Operations",
+          "score": 0.6869
+        },
+        {
+          "source_type": "news",
+          "source_id": 3727,
+          "title": "JEPI | JPMorgan Equity Premium Income Insider Trading - Quiver Quantitative",
+          "score": 0.6645
+        },
+        {
+          "source_type": "youtube",
+          "source_id": 428,
+          "title": "NEW StockCharts Scan Engine Update \u2014 Build Powerful Stock Scans Without Writing ",
+          "score": 0.6538
+        },
+        {
+          "source_type": "cio_decision",
+          "source_id": 2074023907,
+          "title": "VANG-FTSE-SOC CIO: HUMAN_REVIEW",
+          "score": 0.6535
+        },
+        {
+          "source_type": "cio_decision",
+          "source_id": 613989242,
+          "title": "VANG-FTSE-SOC CIO: HUMAN_REVIEW",
+          "score": 0.6535
+        }
+      ],
+      "top5_overlap": 0.0,
+      "top10_overlap": 0.0,
+      "baseline_avg_sim": 0.5919,
+      "candidate_avg_sim": 0.658,
+      "baseline_diversity": 2,
+      "candidate_diversity": 3,
+      "baseline_empty": false,
+      "candidate_empty": false
+    },
+    {
+      "query": "Show journal entries mentioning stop placement",
+      "baseline_latency_ms": 12.0,
+      "candidate_latency_ms": 169.9,
+      "baseline_results": [
+        {
+          "source_type": "agent_result",
+          "source_id": 1213992893,
+          "title": "LDOS maria: AVOID",
+          "score": 0.6231
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 80193683,
+          "title": "ANV risk_agent: TRIM",
+          "score": 0.5931
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1859319901,
+          "title": "GLXG risk_agent: TRIM",
+          "score": 0.59
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1006034360,
+          "title": "NOC maria: HOLD",
+          "score": 0.5885
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1516150932,
+          "title": "VNET risk_agent: AVOID",
+          "score": 0.5874
+        }
+      ],
+      "candidate_results": [
+        {
+          "source_type": "fused_signal",
+          "source_id": 1128,
+          "title": "STILL signal:",
+          "score": 0.5621
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 661,
+          "title": "WITH signal:",
+          "score": 0.5513
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 435255427,
+          "title": "ABUS steph: RESEARCH_MORE",
+          "score": 0.5474
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 513623182,
+          "title": "APLY steph: RESEARCH_MORE",
+          "score": 0.5465
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 900,
+          "title": "ZTOP signal:",
+          "score": 0.5459
+        }
+      ],
+      "top5_overlap": 0.0,
+      "top10_overlap": 0.0,
+      "baseline_avg_sim": 0.5847,
+      "candidate_avg_sim": 0.5455,
+      "baseline_diversity": 1,
+      "candidate_diversity": 2,
+      "baseline_empty": false,
+      "candidate_empty": false
+    },
+    {
+      "query": "Show risk synthesis evidence for unprotected positions",
+      "baseline_latency_ms": 21.1,
+      "candidate_latency_ms": 196.5,
+      "baseline_results": [
+        {
+          "source_type": "agent_result",
+          "source_id": 1838235876,
+          "title": "BLD risk_agent: HOLD",
+          "score": 0.743
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 767339986,
+          "title": "LCID risk_agent: HOLD",
+          "score": 0.7363
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1697275927,
+          "title": "CBRE risk_agent: TRIM",
+          "score": 0.7297
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1490431201,
+          "title": "LPIH risk_agent: RESEARCH_MORE",
+          "score": 0.7237
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1595720613,
+          "title": "CCK risk_agent: RESEARCH_MORE",
+          "score": 0.7161
+        }
+      ],
+      "candidate_results": [
+        {
+          "source_type": "agent_result",
+          "source_id": 1592326260,
+          "title": "V risk_agent: RESEARCH_MORE",
+          "score": 0.8071
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1730214473,
+          "title": "XLI risk_agent: SKIP_DUE_TO_STALE_DATA",
+          "score": 0.7874
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1945515383,
+          "title": "XLI risk_agent: SKIP_DUE_TO_STALE_DATA",
+          "score": 0.7874
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 492522555,
+          "title": "BZ risk_agent: NONE",
+          "score": 0.7805
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 526651699,
+          "title": "ACH risk_agent: AVOID",
+          "score": 0.7751
+        }
+      ],
+      "top5_overlap": 0.0,
+      "top10_overlap": 0.0,
+      "baseline_avg_sim": 0.7201,
+      "candidate_avg_sim": 0.7787,
+      "baseline_diversity": 1,
+      "candidate_diversity": 1,
+      "baseline_empty": false,
+      "candidate_empty": false
+    },
+    {
+      "query": "Find portfolio concentration risk warnings",
+      "baseline_latency_ms": 13.5,
+      "candidate_latency_ms": 159.8,
+      "baseline_results": [
+        {
+          "source_type": "agent_result",
+          "source_id": 1838235876,
+          "title": "BLD risk_agent: HOLD",
+          "score": 0.749
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1251864077,
+          "title": "MBLY risk_agent: HOLD",
+          "score": 0.7489
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1859319901,
+          "title": "GLXG risk_agent: TRIM",
+          "score": 0.7486
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 937144554,
+          "title": "ERII risk_agent: HOLD",
+          "score": 0.7416
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 86462119,
+          "title": "GLOB risk_agent: HOLD",
+          "score": 0.7395
+        }
+      ],
+      "candidate_results": [
+        {
+          "source_type": "agent_result",
+          "source_id": 1592326260,
+          "title": "V risk_agent: RESEARCH_MORE",
+          "score": 0.7457
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1730214473,
+          "title": "XLI risk_agent: SKIP_DUE_TO_STALE_DATA",
+          "score": 0.7427
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1945515383,
+          "title": "XLI risk_agent: SKIP_DUE_TO_STALE_DATA",
+          "score": 0.7427
+        },
+        {
+          "source_type": "youtube",
+          "source_id": 842,
+          "title": "Puzzle Wealth Streamline Your Deals with Expert Operations",
+          "score": 0.7152
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 972459117,
+          "title": "VANG-FTSE-SOC risk_agent: RESEARCH_MORE",
+          "score": 0.7144
+        }
+      ],
+      "top5_overlap": 0.0,
+      "top10_overlap": 0.0,
+      "baseline_avg_sim": 0.7413,
+      "candidate_avg_sim": 0.7209,
+      "baseline_diversity": 1,
+      "candidate_diversity": 2,
+      "baseline_empty": false,
+      "candidate_empty": false
+    },
+    {
+      "query": "Why did BLBD become a proposal?",
+      "baseline_latency_ms": 23.2,
+      "candidate_latency_ms": 402.0,
+      "baseline_results": [
+        {
+          "source_type": "agent_result",
+          "source_id": 1298480418,
+          "title": "FCX maria: HOLD",
+          "score": 0.6155
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1144455002,
+          "title": "DRS maria: HOLD",
+          "score": 0.6133
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 716055248,
+          "title": "TLT maria: HOLD",
+          "score": 0.6092
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 726386754,
+          "title": "AJG maria: HOLD",
+          "score": 0.6061
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1952834254,
+          "title": "AMANX maria: HOLD",
+          "score": 0.605
+        }
+      ],
+      "candidate_results": [
+        {
+          "source_type": "trade_outcome",
+          "source_id": 16,
+          "title": "BLBD trade outcome: UNKNOWN  (earnings_catalyst)",
+          "score": 0.6801
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 1165,
+          "title": "BLBD signal:",
+          "score": 0.6671
+        },
+        {
+          "source_type": "decision_outcome",
+          "source_id": 704,
+          "title": "BLDR outcome: IGNORE",
+          "score": 0.6304
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 417845974,
+          "title": "BLBD risk_agent: AVOID",
+          "score": 0.6244
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1946709988,
+          "title": "BLBD risk_agent: AVOID",
+          "score": 0.6244
+        }
+      ],
+      "top5_overlap": 0.0,
+      "top10_overlap": 0.0,
+      "baseline_avg_sim": 0.6055,
+      "candidate_avg_sim": 0.6251,
+      "baseline_diversity": 1,
+      "candidate_diversity": 5,
+      "baseline_empty": false,
+      "candidate_empty": false
+    },
+    {
+      "query": "Find prior reasoning for swing trade proposals",
+      "baseline_latency_ms": 23.1,
+      "candidate_latency_ms": 182.8,
+      "baseline_results": [
+        {
+          "source_type": "trade_review",
+          "source_id": 32,
+          "title": "XMTR overnight review: BREAKEVEN $+0.00 (swing_breakout)",
+          "score": 0.6771
+        },
+        {
+          "source_type": "trade_review",
+          "source_id": 132,
+          "title": "INFU overnight review: WIN $+67.83 (swing_breakout)",
+          "score": 0.6388
+        },
+        {
+          "source_type": "trade_review",
+          "source_id": 222,
+          "title": "GCTS overnight review: LOSS $-12.38 (momentum_scalp)",
+          "score": 0.6027
+        },
+        {
+          "source_type": "trade_review",
+          "source_id": 202,
+          "title": "GCTS overnight review: LOSS $-9.38 (momentum_scalp)",
+          "score": 0.6027
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 619421062,
+          "title": "FPS maria: HOLD",
+          "score": 0.5893
+        }
+      ],
+      "candidate_results": [
+        {
+          "source_type": "youtube",
+          "source_id": 842,
+          "title": "Puzzle Wealth Streamline Your Deals with Expert Operations",
+          "score": 0.7206
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 115008672,
+          "title": "SP500-D risk_agent: SKIP",
+          "score": 0.7005
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 413,
+          "title": "AIQ signal:",
+          "score": 0.6936
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1592326260,
+          "title": "V risk_agent: RESEARCH_MORE",
+          "score": 0.6928
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1777491736,
+          "title": "LMT risk_agent: NO_RECOMMENDATION",
+          "score": 0.6872
+        }
+      ],
+      "top5_overlap": 0.0,
+      "top10_overlap": 0.0,
+      "baseline_avg_sim": 0.5988,
+      "candidate_avg_sim": 0.6923,
+      "baseline_diversity": 2,
+      "candidate_diversity": 3,
+      "baseline_empty": false,
+      "candidate_empty": false
+    },
+    {
+      "query": "Show recent RAG curation approvals",
+      "baseline_latency_ms": 21.2,
+      "candidate_latency_ms": 184.0,
+      "baseline_results": [
+        {
+          "source_type": "agent_result",
+          "source_id": 736369456,
+          "title": "CSWC maria: HOLD",
+          "score": 0.5563
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 428479364,
+          "title": "DIV maria: HOLD",
+          "score": 0.5558
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1040683265,
+          "title": "DOX maria: HOLD",
+          "score": 0.5502
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 802558832,
+          "title": "BLD maria: HOLD",
+          "score": 0.5502
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1510805894,
+          "title": "SGOV maria: HOLD",
+          "score": 0.5502
+        }
+      ],
+      "candidate_results": [
+        {
+          "source_type": "cio_decision",
+          "source_id": 239272607,
+          "title": "ARCC CIO: HUMAN_REVIEW",
+          "score": 0.5971
+        },
+        {
+          "source_type": "cio_decision",
+          "source_id": 2109655701,
+          "title": "ARCC CIO: HUMAN_REVIEW",
+          "score": 0.5971
+        },
+        {
+          "source_type": "cio_decision",
+          "source_id": 469798623,
+          "title": "ARCC CIO: HUMAN_REVIEW",
+          "score": 0.5971
+        },
+        {
+          "source_type": "cio_decision",
+          "source_id": 2056693495,
+          "title": "ARCC CIO: HUMAN_REVIEW",
+          "score": 0.5971
+        },
+        {
+          "source_type": "cio_decision",
+          "source_id": 647879846,
+          "title": "ARCC CIO: HUMAN_REVIEW",
+          "score": 0.5971
+        }
+      ],
+      "top5_overlap": 0.0,
+      "top10_overlap": 0.0,
+      "baseline_avg_sim": 0.5501,
+      "candidate_avg_sim": 0.5968,
+      "baseline_diversity": 1,
+      "candidate_diversity": 2,
+      "baseline_empty": false,
+      "candidate_empty": false
+    },
+    {
+      "query": "Find defense sector rotation evidence",
+      "baseline_latency_ms": 12.3,
+      "candidate_latency_ms": 140.4,
+      "baseline_results": [
+        {
+          "source_type": "agent_result",
+          "source_id": 1008374104,
+          "title": "ETOR steph: RESEARCH_MORE",
+          "score": 0.5606
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1051353832,
+          "title": "LMT maria_research: TRIM",
+          "score": 0.548
+        },
+        {
+          "source_type": "trade_review",
+          "source_id": 32,
+          "title": "XMTR overnight review: BREAKEVEN $+0.00 (swing_breakout)",
+          "score": 0.5322
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 823676309,
+          "title": "AWP steph: HOLD",
+          "score": 0.5255
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1154808878,
+          "title": "NOC risk_agent: SELL",
+          "score": 0.5232
+        }
+      ],
+      "candidate_results": [
+        {
+          "source_type": "decision_outcome",
+          "source_id": 647,
+          "title": "INSW outcome: RESEARCH_MORE",
+          "score": 0.5818
+        },
+        {
+          "source_type": "news",
+          "source_id": 3900,
+          "title": "Lockheed Martin vs. Northrop Grumman: Comparing Revenue Trends",
+          "score": 0.5809
+        },
+        {
+          "source_type": "news",
+          "source_id": 3922,
+          "title": "Lockheed Martin vs. Northrop Grumman: Comparing Revenue Trends",
+          "score": 0.5809
+        },
+        {
+          "source_type": "cio_decision",
+          "source_id": 1125605775,
+          "title": "AXON CIO: RESEARCH_MORE",
+          "score": 0.5782
+        },
+        {
+          "source_type": "cio_decision",
+          "source_id": 1340295507,
+          "title": "AXON CIO: RESEARCH_MORE",
+          "score": 0.5782
+        }
+      ],
+      "top5_overlap": 0.0,
+      "top10_overlap": 0.0,
+      "baseline_avg_sim": 0.5285,
+      "candidate_avg_sim": 0.5791,
+      "baseline_diversity": 2,
+      "candidate_diversity": 3,
+      "baseline_empty": false,
+      "candidate_empty": false
+    },
+    {
+      "query": "Show recent catalyst news for LMT",
+      "baseline_latency_ms": 13.0,
+      "candidate_latency_ms": 195.1,
+      "baseline_results": [
+        {
+          "source_type": "agent_result",
+          "source_id": 1709478932,
+          "title": "ST maria: HOLD",
+          "score": 0.7685
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 888135063,
+          "title": "SCHG maria: HOLD",
+          "score": 0.7658
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 134528001,
+          "title": "JEPI maria: HOLD",
+          "score": 0.7623
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1040683265,
+          "title": "DOX maria: HOLD",
+          "score": 0.7601
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 802558832,
+          "title": "BLD maria: HOLD",
+          "score": 0.7601
+        }
+      ],
+      "candidate_results": [
+        {
+          "source_type": "agent_result",
+          "source_id": 1777491736,
+          "title": "LMT risk_agent: NO_RECOMMENDATION",
+          "score": 0.775
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1610538002,
+          "title": "LMT risk_agent: RESEARCH_MORE",
+          "score": 0.7229
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 78816904,
+          "title": "LMT risk_agent: HOLD",
+          "score": 0.7144
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 185156571,
+          "title": "LMT risk_agent: HOLD",
+          "score": 0.7144
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 543323904,
+          "title": "LMT risk_agent: SELL",
+          "score": 0.7023
+        }
+      ],
+      "top5_overlap": 0.0,
+      "top10_overlap": 0.0,
+      "baseline_avg_sim": 0.7583,
+      "candidate_avg_sim": 0.7141,
+      "baseline_diversity": 1,
+      "candidate_diversity": 1,
+      "baseline_empty": false,
+      "candidate_empty": false
+    },
+    {
+      "query": "Show prior CIO HOLD decisions with correct outcomes",
+      "baseline_latency_ms": 22.6,
+      "candidate_latency_ms": 400.7,
+      "baseline_results": [
+        {
+          "source_type": "agent_result",
+          "source_id": 1158265100,
+          "title": "XLI steph: RESEARCH_MORE",
+          "score": 0.6214
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 610423339,
+          "title": "PENG risk_agent: RESEARCH_MORE",
+          "score": 0.608
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 169737314,
+          "title": "DOX risk_agent: SKIP",
+          "score": 0.597
+        },
+        {
+          "source_type": "trade_review",
+          "source_id": 32,
+          "title": "XMTR overnight review: BREAKEVEN $+0.00 (swing_breakout)",
+          "score": 0.5938
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1945515383,
+          "title": "XLI risk_agent: SKIP_DUE_TO_STALE_DATA",
+          "score": 0.5916
+        }
+      ],
+      "candidate_results": [
+        {
+          "source_type": "cio_decision",
+          "source_id": 1412835203,
+          "title": "CACI CIO: HOLD",
+          "score": 0.6898
+        },
+        {
+          "source_type": "cio_decision",
+          "source_id": 981531163,
+          "title": "CACI CIO: HOLD",
+          "score": 0.6898
+        },
+        {
+          "source_type": "cio_decision",
+          "source_id": 392730875,
+          "title": "CACI CIO: HOLD",
+          "score": 0.6898
+        },
+        {
+          "source_type": "cio_decision",
+          "source_id": 464731750,
+          "title": "CACI CIO: HOLD",
+          "score": 0.6898
+        },
+        {
+          "source_type": "cio_decision",
+          "source_id": 150643785,
+          "title": "CACI CIO: HOLD",
+          "score": 0.6898
+        }
+      ],
+      "top5_overlap": 0.0,
+      "top10_overlap": 0.0,
+      "baseline_avg_sim": 0.5937,
+      "candidate_avg_sim": 0.6863,
+      "baseline_diversity": 2,
+      "candidate_diversity": 1,
+      "baseline_empty": false,
+      "candidate_empty": false
+    },
+    {
+      "query": "What fused signals exist for SCHD?",
+      "baseline_latency_ms": 24.5,
+      "candidate_latency_ms": 394.5,
+      "baseline_results": [
+        {
+          "source_type": "agent_result",
+          "source_id": 372476654,
+          "title": "XLB maria: HOLD",
+          "score": 0.6328
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1696967573,
+          "title": "SRNE maria: HOLD",
+          "score": 0.6265
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 129226835,
+          "title": "SHY maria: HOLD",
+          "score": 0.6206
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 201105127,
+          "title": "APLS maria: HOLD",
+          "score": 0.6192
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1162805267,
+          "title": "ORA maria: HOLD",
+          "score": 0.6171
+        }
+      ],
+      "candidate_results": [
+        {
+          "source_type": "fused_signal",
+          "source_id": 957,
+          "title": "DRB signal:",
+          "score": 0.6592
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 521,
+          "title": "CHRD signal:",
+          "score": 0.659
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 885,
+          "title": "CHUC signal:",
+          "score": 0.6565
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 661,
+          "title": "WITH signal:",
+          "score": 0.6551
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 1176,
+          "title": "ACAD signal:",
+          "score": 0.6515
+        }
+      ],
+      "top5_overlap": 0.0,
+      "top10_overlap": 0.0,
+      "baseline_avg_sim": 0.6176,
+      "candidate_avg_sim": 0.6514,
+      "baseline_diversity": 1,
+      "candidate_diversity": 1,
+      "baseline_empty": false,
+      "candidate_empty": false
+    },
+    {
+      "query": "Find strong convergent signals across agents",
+      "baseline_latency_ms": 22.2,
+      "candidate_latency_ms": 192.8,
+      "baseline_results": [
+        {
+          "source_type": "agent_result",
+          "source_id": 2081261755,
+          "title": "CELH risk_agent: HOLD",
+          "score": 0.601
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 443864785,
+          "title": "ARKG risk_agent: HOLD",
+          "score": 0.5943
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 638451197,
+          "title": "EYE risk_agent: HOLD",
+          "score": 0.5933
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1154808878,
+          "title": "NOC risk_agent: SELL",
+          "score": 0.5911
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1305587180,
+          "title": "APPS risk_agent: TRIM",
+          "score": 0.5813
+        }
+      ],
+      "candidate_results": [
+        {
+          "source_type": "fused_signal",
+          "source_id": 661,
+          "title": "WITH signal:",
+          "score": 0.7152
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 1235,
+          "title": "AGNT signal:",
+          "score": 0.7069
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 1043,
+          "title": "AGEN signal:",
+          "score": 0.6984
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 1190,
+          "title": "CON signal:",
+          "score": 0.6979
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 766,
+          "title": "AGX signal:",
+          "score": 0.6892
+        }
+      ],
+      "top5_overlap": 0.0,
+      "top10_overlap": 0.0,
+      "baseline_avg_sim": 0.5851,
+      "candidate_avg_sim": 0.6881,
+      "baseline_diversity": 1,
+      "candidate_diversity": 1,
+      "baseline_empty": false,
+      "candidate_empty": false
+    },
+    {
+      "query": "Show insider or Form 4 evidence for defense stocks",
+      "baseline_latency_ms": 23.1,
+      "candidate_latency_ms": 402.5,
+      "baseline_results": [
+        {
+          "source_type": "agent_result",
+          "source_id": 767339986,
+          "title": "LCID risk_agent: HOLD",
+          "score": 0.5969
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 2081261755,
+          "title": "CELH risk_agent: HOLD",
+          "score": 0.5896
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1193857690,
+          "title": "GEO steph: HOLD",
+          "score": 0.5866
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1572625706,
+          "title": "RKLB steph: HOLD",
+          "score": 0.5854
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1370477516,
+          "title": "NVEC risk_agent: HOLD",
+          "score": 0.5852
+        }
+      ],
+      "candidate_results": [
+        {
+          "source_type": "news",
+          "source_id": 3727,
+          "title": "JEPI | JPMorgan Equity Premium Income Insider Trading - Quiver Quantitative",
+          "score": 0.7142
+        },
+        {
+          "source_type": "news",
+          "source_id": 3647,
+          "title": "Industrial Select Sector SPDR Fund(XLI) Stock Options Chain | Quotes & News - Mo",
+          "score": 0.6918
+        },
+        {
+          "source_type": "news",
+          "source_id": 3875,
+          "title": "Industrial Select Sector SPDR Fund(XLI) Stock Options Chain | Quotes & News - Mo",
+          "score": 0.6918
+        },
+        {
+          "source_type": "news",
+          "source_id": 4086,
+          "title": "DIV | Global X SuperDividend U.S. Insider Trading - Quiver Quantitative",
+          "score": 0.6801
+        },
+        {
+          "source_type": "youtube",
+          "source_id": 842,
+          "title": "Puzzle Wealth Streamline Your Deals with Expert Operations",
+          "score": 0.6741
+        }
+      ],
+      "top5_overlap": 0.0,
+      "top10_overlap": 0.0,
+      "baseline_avg_sim": 0.5853,
+      "candidate_avg_sim": 0.6771,
+      "baseline_diversity": 1,
+      "candidate_diversity": 5,
+      "baseline_empty": false,
+      "candidate_empty": false
+    },
+    {
+      "query": "Find YouTube transcript intelligence for dividend investing",
+      "baseline_latency_ms": 21.2,
+      "candidate_latency_ms": 190.3,
+      "baseline_results": [
+        {
+          "source_type": "agent_result",
+          "source_id": 1193857690,
+          "title": "GEO steph: HOLD",
+          "score": 0.6077
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1572625706,
+          "title": "RKLB steph: HOLD",
+          "score": 0.603
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 572863603,
+          "title": "XLB steph: HOLD",
+          "score": 0.6009
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1595720613,
+          "title": "CCK risk_agent: RESEARCH_MORE",
+          "score": 0.5844
+        },
+        {
+          "source_type": "trade_outcome",
+          "source_id": 24,
+          "title": "FLYW trade outcome: LOSS +0.5R (dividend_growth_compounder)",
+          "score": 0.5778
+        }
+      ],
+      "candidate_results": [
+        {
+          "source_type": "youtube",
+          "source_id": 625,
+          "title": "15 Lessons from 15 Years of Dividend Growth Investing",
+          "score": 0.7648
+        },
+        {
+          "source_type": "youtube",
+          "source_id": 954,
+          "title": "\ud83d\udcb9Best Dividend Portfolio Tracker 2026 - \ud83e\udee4Avoid Dividend Mistakes!",
+          "score": 0.7549
+        },
+        {
+          "source_type": "news",
+          "source_id": 4033,
+          "title": "\ud83d\udcb9Best Dividend Portfolio Tracker 2026 - \ud83e\udee4Avoid Dividend Mistakes!",
+          "score": 0.7549
+        },
+        {
+          "source_type": "youtube",
+          "source_id": 922,
+          "title": "Peer Comparisons | Investing in Dividend Stocks",
+          "score": 0.754
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 382650026,
+          "title": "TOPIC:dividend_income alex: ADD",
+          "score": 0.7428
+        }
+      ],
+      "top5_overlap": 0.0,
+      "top10_overlap": 0.0,
+      "baseline_avg_sim": 0.583,
+      "candidate_avg_sim": 0.7448,
+      "baseline_diversity": 2,
+      "candidate_diversity": 3,
+      "baseline_empty": false,
+      "candidate_empty": false
+    },
+    {
+      "query": "Find strategy classifications with low confidence",
+      "baseline_latency_ms": 15.4,
+      "candidate_latency_ms": 169.1,
+      "baseline_results": [
+        {
+          "source_type": "agent_result",
+          "source_id": 1235974964,
+          "title": "VNET maria: HOLD",
+          "score": 0.6603
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 767339986,
+          "title": "LCID risk_agent: HOLD",
+          "score": 0.6584
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 502272627,
+          "title": "ENPH risk_agent: TRIM",
+          "score": 0.6469
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 2081261755,
+          "title": "CELH risk_agent: HOLD",
+          "score": 0.6406
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1595720613,
+          "title": "CCK risk_agent: RESEARCH_MORE",
+          "score": 0.6364
+        }
+      ],
+      "candidate_results": [
+        {
+          "source_type": "agent_result",
+          "source_id": 1494806081,
+          "title": "CFND steph: LOW_CONFIDENCE_SKIP",
+          "score": 0.6962
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 33788281,
+          "title": "LPIH steph: LOW_CONFIDENCE_SKIP",
+          "score": 0.6434
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1065886213,
+          "title": "LPIH steph: LOW_CONFIDENCE_SKIP",
+          "score": 0.6434
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1273643809,
+          "title": "BRC risk_agent: LOW_CONFIDENCE_SKIP",
+          "score": 0.6381
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 782842248,
+          "title": "BAX steph: LOW_CONFIDENCE_SKIP",
+          "score": 0.6366
+        }
+      ],
+      "top5_overlap": 0.0,
+      "top10_overlap": 0.0,
+      "baseline_avg_sim": 0.64,
+      "candidate_avg_sim": 0.6406,
+      "baseline_diversity": 1,
+      "candidate_diversity": 1,
+      "baseline_empty": false,
+      "candidate_empty": false
+    },
+    {
+      "query": "Show positions flagged for reclassification",
+      "baseline_latency_ms": 22.9,
+      "candidate_latency_ms": 172.1,
+      "baseline_results": [
+        {
+          "source_type": "agent_result",
+          "source_id": 86462119,
+          "title": "GLOB risk_agent: HOLD",
+          "score": 0.6283
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 946608558,
+          "title": "AQLT maria: HOLD",
+          "score": 0.6096
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 80193683,
+          "title": "ANV risk_agent: TRIM",
+          "score": 0.6095
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1595720613,
+          "title": "CCK risk_agent: RESEARCH_MORE",
+          "score": 0.6089
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1516150932,
+          "title": "VNET risk_agent: AVOID",
+          "score": 0.6053
+        }
+      ],
+      "candidate_results": [
+        {
+          "source_type": "fused_signal",
+          "source_id": 654,
+          "title": "CLS signal:",
+          "score": 0.5475
+        },
+        {
+          "source_type": "cio_decision",
+          "source_id": 1563873168,
+          "title": "MAIN CIO: HUMAN_REVIEW",
+          "score": 0.5418
+        },
+        {
+          "source_type": "cio_decision",
+          "source_id": 259876276,
+          "title": "MAIN CIO: HUMAN_REVIEW",
+          "score": 0.5418
+        },
+        {
+          "source_type": "cio_decision",
+          "source_id": 1607122076,
+          "title": "MAIN CIO: HUMAN_REVIEW",
+          "score": 0.5418
+        },
+        {
+          "source_type": "cio_decision",
+          "source_id": 506832223,
+          "title": "MAIN CIO: HUMAN_REVIEW",
+          "score": 0.5418
+        }
+      ],
+      "top5_overlap": 0.0,
+      "top10_overlap": 0.0,
+      "baseline_avg_sim": 0.6033,
+      "candidate_avg_sim": 0.5418,
+      "baseline_diversity": 1,
+      "candidate_diversity": 2,
+      "baseline_empty": false,
+      "candidate_empty": false
+    },
+    {
+      "query": "Find deep overnight results about risk management",
+      "baseline_latency_ms": 23.3,
+      "candidate_latency_ms": 191.3,
+      "baseline_results": [
+        {
+          "source_type": "agent_result",
+          "source_id": 541136831,
+          "title": "LPL risk_agent: HOLD",
+          "score": 0.6769
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1314689201,
+          "title": "IEF risk_agent: HOLD",
+          "score": 0.6685
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 624987555,
+          "title": "SHY risk_agent: HOLD",
+          "score": 0.6683
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 2081261755,
+          "title": "CELH risk_agent: HOLD",
+          "score": 0.663
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1251864077,
+          "title": "MBLY risk_agent: HOLD",
+          "score": 0.6605
+        }
+      ],
+      "candidate_results": [
+        {
+          "source_type": "agent_result",
+          "source_id": 1592326260,
+          "title": "V risk_agent: RESEARCH_MORE",
+          "score": 0.688
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1481433937,
+          "title": "P risk_agent: RESEARCH_MORE",
+          "score": 0.6502
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1839432655,
+          "title": "SS-GACEQ risk_agent: RESEARCH_MORE",
+          "score": 0.627
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1610538002,
+          "title": "LMT risk_agent: RESEARCH_MORE",
+          "score": 0.6251
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 201443577,
+          "title": "FID-DIVINTL risk_agent: RESEARCH_MORE",
+          "score": 0.6213
+        }
+      ],
+      "top5_overlap": 0.0,
+      "top10_overlap": 0.0,
+      "baseline_avg_sim": 0.6603,
+      "candidate_avg_sim": 0.6288,
+      "baseline_diversity": 1,
+      "candidate_diversity": 1,
+      "baseline_empty": false,
+      "candidate_empty": false
+    },
+    {
+      "query": "Show gemma3 analysis of recovery watch symbols",
+      "baseline_latency_ms": 21.5,
+      "candidate_latency_ms": 393.2,
+      "baseline_results": [
+        {
+          "source_type": "agent_result",
+          "source_id": 2003117443,
+          "title": "G risk_agent: HOLD",
+          "score": 0.5916
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 610423339,
+          "title": "PENG risk_agent: RESEARCH_MORE",
+          "score": 0.5756
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1239192047,
+          "title": "SHV maria: HOLD",
+          "score": 0.5695
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 892102685,
+          "title": "GLOB maria: HOLD",
+          "score": 0.5661
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1880044713,
+          "title": "CCK maria: HOLD",
+          "score": 0.563
+        }
+      ],
+      "candidate_results": [
+        {
+          "source_type": "fused_signal",
+          "source_id": 946,
+          "title": "ANAB signal:",
+          "score": 0.6561
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 707,
+          "title": "GIC signal:",
+          "score": 0.6556
+        },
+        {
+          "source_type": "youtube",
+          "source_id": 842,
+          "title": "Puzzle Wealth Streamline Your Deals with Expert Operations",
+          "score": 0.6527
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 633,
+          "title": "GKOS signal:",
+          "score": 0.6501
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 1089,
+          "title": "GFS signal:",
+          "score": 0.6478
+        }
+      ],
+      "top5_overlap": 0.0,
+      "top10_overlap": 0.0,
+      "baseline_avg_sim": 0.5653,
+      "candidate_avg_sim": 0.649,
+      "baseline_diversity": 1,
+      "candidate_diversity": 3,
+      "baseline_empty": false,
+      "candidate_empty": false
+    },
+    {
+      "query": "Find agent intelligence rules for income strategies",
+      "baseline_latency_ms": 23.3,
+      "candidate_latency_ms": 190.3,
+      "baseline_results": [
+        {
+          "source_type": "agent_result",
+          "source_id": 1385204868,
+          "title": "PEW steph: AVOID",
+          "score": 0.6305
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 918663166,
+          "title": "OPXS steph: TRIM",
+          "score": 0.6214
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 767339986,
+          "title": "LCID risk_agent: HOLD",
+          "score": 0.6152
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1079969622,
+          "title": "ARDC maria: HOLD",
+          "score": 0.6117
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1595720613,
+          "title": "CCK risk_agent: RESEARCH_MORE",
+          "score": 0.6111
+        }
+      ],
+      "candidate_results": [
+        {
+          "source_type": "youtube",
+          "source_id": 842,
+          "title": "Puzzle Wealth Streamline Your Deals with Expert Operations",
+          "score": 0.7448
+        },
+        {
+          "source_type": "agent_synthesis",
+          "source_id": 431331309,
+          "title": "AIQ synthesis: RESEARCH_MORE",
+          "score": 0.7231
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 413,
+          "title": "AIQ signal:",
+          "score": 0.6961
+        },
+        {
+          "source_type": "social_post",
+          "source_id": 2146,
+          "title": "Built a Dividend Income Roaster that judges your monthly dividend income with li",
+          "score": 0.6932
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1730214473,
+          "title": "XLI risk_agent: SKIP_DUE_TO_STALE_DATA",
+          "score": 0.6811
+        }
+      ],
+      "top5_overlap": 0.0,
+      "top10_overlap": 0.0526,
+      "baseline_avg_sim": 0.6132,
+      "candidate_avg_sim": 0.6895,
+      "baseline_diversity": 1,
+      "candidate_diversity": 6,
+      "baseline_empty": false,
+      "candidate_empty": false
+    },
+    {
+      "query": "Find examples where MFE was high but realized profit was low",
+      "baseline_latency_ms": 25.6,
+      "candidate_latency_ms": 389.5,
+      "baseline_results": [
+        {
+          "source_type": "trade_review",
+          "source_id": 32,
+          "title": "XMTR overnight review: BREAKEVEN $+0.00 (swing_breakout)",
+          "score": 0.6677
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1662695064,
+          "title": "BL maria: HOLD",
+          "score": 0.6655
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1162805267,
+          "title": "ORA maria: HOLD",
+          "score": 0.6635
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 840814399,
+          "title": "EYE maria: HOLD",
+          "score": 0.6555
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1861384479,
+          "title": "KLIC maria: HOLD",
+          "score": 0.6548
+        }
+      ],
+      "candidate_results": [
+        {
+          "source_type": "trade_outcome",
+          "source_id": 19,
+          "title": "FLYW trade outcome: UNKNOWN  (momentum_scalp)",
+          "score": 0.6427
+        },
+        {
+          "source_type": "youtube",
+          "source_id": 949,
+          "title": "You Can Lose Money Even When SPY Goes UP",
+          "score": 0.6175
+        },
+        {
+          "source_type": "news",
+          "source_id": 3998,
+          "title": "You Can Lose Money Even When SPY Goes UP",
+          "score": 0.6175
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 1143,
+          "title": "FINV signal:",
+          "score": 0.6151
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 843,
+          "title": "GME signal:",
+          "score": 0.6091
+        }
+      ],
+      "top5_overlap": 0.0,
+      "top10_overlap": 0.0,
+      "baseline_avg_sim": 0.655,
+      "candidate_avg_sim": 0.6072,
+      "baseline_diversity": 2,
+      "candidate_diversity": 7,
+      "baseline_empty": false,
+      "candidate_empty": false
+    },
+    {
+      "query": "Show covered call candidates that need review",
+      "baseline_latency_ms": 23.5,
+      "candidate_latency_ms": 194.2,
+      "baseline_results": [
+        {
+          "source_type": "agent_result",
+          "source_id": 1595720613,
+          "title": "CCK risk_agent: RESEARCH_MORE",
+          "score": 0.538
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1931408375,
+          "title": "TDG maria: HOLD",
+          "score": 0.5327
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 80193683,
+          "title": "ANV risk_agent: TRIM",
+          "score": 0.5304
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1697275927,
+          "title": "CBRE risk_agent: TRIM",
+          "score": 0.5294
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 2081261755,
+          "title": "CELH risk_agent: HOLD",
+          "score": 0.5277
+        }
+      ],
+      "candidate_results": [
+        {
+          "source_type": "agent_result",
+          "source_id": 565966942,
+          "title": "TOPIC:covered_call_income steph: RESEARCH_MORE",
+          "score": 0.6996
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 345499645,
+          "title": "TOPIC:covered_call_income steph: RESEARCH_MORE",
+          "score": 0.6996
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 200447263,
+          "title": "TOPIC:covered_call_income maria: HOLD",
+          "score": 0.6845
+        },
+        {
+          "source_type": "youtube",
+          "source_id": 842,
+          "title": "Puzzle Wealth Streamline Your Deals with Expert Operations",
+          "score": 0.6824
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 44679366,
+          "title": "TOPIC:covered_call_income alex: RESEARCH_MORE",
+          "score": 0.6778
+        }
+      ],
+      "top5_overlap": 0.0,
+      "top10_overlap": 0.0,
+      "baseline_avg_sim": 0.5283,
+      "candidate_avg_sim": 0.6811,
+      "baseline_diversity": 1,
+      "candidate_diversity": 3,
+      "baseline_empty": false,
+      "candidate_empty": false
+    },
+    {
+      "query": "Find covered call scoring evidence for V",
+      "baseline_latency_ms": 21.7,
+      "candidate_latency_ms": 191.0,
+      "baseline_results": [
+        {
+          "source_type": "agent_result",
+          "source_id": 610423339,
+          "title": "PENG risk_agent: RESEARCH_MORE",
+          "score": 0.5948
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 823676309,
+          "title": "AWP steph: HOLD",
+          "score": 0.5795
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1213992893,
+          "title": "LDOS maria: AVOID",
+          "score": 0.5735
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 67346787,
+          "title": "LUMN maria: HOLD",
+          "score": 0.5672
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1158265100,
+          "title": "XLI steph: RESEARCH_MORE",
+          "score": 0.5659
+        }
+      ],
+      "candidate_results": [
+        {
+          "source_type": "agent_result",
+          "source_id": 565966942,
+          "title": "TOPIC:covered_call_income steph: RESEARCH_MORE",
+          "score": 0.7011
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 345499645,
+          "title": "TOPIC:covered_call_income steph: RESEARCH_MORE",
+          "score": 0.7011
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 44679366,
+          "title": "TOPIC:covered_call_income alex: RESEARCH_MORE",
+          "score": 0.6785
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1347793820,
+          "title": "TOPIC:covered_call_income alex: RESEARCH_MORE",
+          "score": 0.6785
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 961,
+          "title": "VYM signal:",
+          "score": 0.6605
+        }
+      ],
+      "top5_overlap": 0.0,
+      "top10_overlap": 0.0,
+      "baseline_avg_sim": 0.5695,
+      "candidate_avg_sim": 0.6685,
+      "baseline_diversity": 1,
+      "candidate_diversity": 5,
+      "baseline_empty": false,
+      "candidate_empty": false
+    },
+    {
+      "query": "Find stop-triggered analysis for defense positions",
+      "baseline_latency_ms": 24.6,
+      "candidate_latency_ms": 408.9,
+      "baseline_results": [
+        {
+          "source_type": "agent_result",
+          "source_id": 1213992893,
+          "title": "LDOS maria: AVOID",
+          "score": 0.647
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1370477516,
+          "title": "NVEC risk_agent: HOLD",
+          "score": 0.6441
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 80193683,
+          "title": "ANV risk_agent: TRIM",
+          "score": 0.6404
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1516150932,
+          "title": "VNET risk_agent: AVOID",
+          "score": 0.6357
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 638451197,
+          "title": "EYE risk_agent: HOLD",
+          "score": 0.6346
+        }
+      ],
+      "candidate_results": [
+        {
+          "source_type": "news",
+          "source_id": 3051,
+          "title": "The $0 Defense Trap",
+          "score": 0.7185
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1824404147,
+          "title": "ABUS risk_agent: LOW_CONFIDENCE_SKIP",
+          "score": 0.6144
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 283036386,
+          "title": "PPC risk_agent: SKIP",
+          "score": 0.6104
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1730214473,
+          "title": "XLI risk_agent: SKIP_DUE_TO_STALE_DATA",
+          "score": 0.6099
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1945515383,
+          "title": "XLI risk_agent: SKIP_DUE_TO_STALE_DATA",
+          "score": 0.6099
+        }
+      ],
+      "top5_overlap": 0.0,
+      "top10_overlap": 0.0,
+      "baseline_avg_sim": 0.6351,
+      "candidate_avg_sim": 0.6158,
+      "baseline_diversity": 1,
+      "candidate_diversity": 3,
+      "baseline_empty": false,
+      "candidate_empty": false
+    },
+    {
+      "query": "Show recovery watch evidence for IRDM",
+      "baseline_latency_ms": 12.7,
+      "candidate_latency_ms": 192.9,
+      "baseline_results": [
+        {
+          "source_type": "agent_result",
+          "source_id": 1689694993,
+          "title": "LITE risk_agent: HOLD",
+          "score": 0.5957
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 492522555,
+          "title": "BZ risk_agent: NONE",
+          "score": 0.5926
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 169737314,
+          "title": "DOX risk_agent: SKIP",
+          "score": 0.5886
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 136733750,
+          "title": "LQD risk_agent: NO_RECOMMENDATION",
+          "score": 0.5818
+        },
+        {
+          "source_type": "trade_review",
+          "source_id": 32,
+          "title": "XMTR overnight review: BREAKEVEN $+0.00 (swing_breakout)",
+          "score": 0.5801
+        }
+      ],
+      "candidate_results": [
+        {
+          "source_type": "agent_result",
+          "source_id": 1080121095,
+          "title": "IRDM steph: HOLD",
+          "score": 0.5962
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 678125289,
+          "title": "IRDM steph: HOLD",
+          "score": 0.5962
+        },
+        {
+          "source_type": "decision_outcome",
+          "source_id": 638,
+          "title": "IDCC outcome: RESEARCH_MORE",
+          "score": 0.5857
+        },
+        {
+          "source_type": "cio_decision",
+          "source_id": 1108463535,
+          "title": "IRDM CIO: HOLD",
+          "score": 0.5844
+        },
+        {
+          "source_type": "cio_decision",
+          "source_id": 405331209,
+          "title": "IRDM CIO: HOLD",
+          "score": 0.5844
+        }
+      ],
+      "top5_overlap": 0.0,
+      "top10_overlap": 0.0,
+      "baseline_avg_sim": 0.5801,
+      "candidate_avg_sim": 0.5869,
+      "baseline_diversity": 2,
+      "candidate_diversity": 3,
+      "baseline_empty": false,
+      "candidate_empty": false
+    },
+    {
+      "query": "Show Maria research findings for growth stocks",
+      "baseline_latency_ms": 23.5,
+      "candidate_latency_ms": 191.5,
+      "baseline_results": [
+        {
+          "source_type": "agent_result",
+          "source_id": 1193857690,
+          "title": "GEO steph: HOLD",
+          "score": 0.6742
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1051353832,
+          "title": "LMT maria_research: TRIM",
+          "score": 0.6714
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1572625706,
+          "title": "RKLB steph: HOLD",
+          "score": 0.6646
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 103443558,
+          "title": "RKLB maria: HOLD",
+          "score": 0.6482
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 665369389,
+          "title": "ARKQ steph: HOLD",
+          "score": 0.6389
+        }
+      ],
+      "candidate_results": [
+        {
+          "source_type": "agent_result",
+          "source_id": 498212103,
+          "title": "PYPL maria: BUY",
+          "score": 0.7212
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 888376851,
+          "title": "GCTS maria: HOLD",
+          "score": 0.7099
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 2104730194,
+          "title": "GCTS maria: HOLD",
+          "score": 0.7099
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 593981920,
+          "title": "GCTS maria: HOLD",
+          "score": 0.7099
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1840120946,
+          "title": "DPRO maria: BUY",
+          "score": 0.7051
+        }
+      ],
+      "top5_overlap": 0.0,
+      "top10_overlap": 0.0,
+      "baseline_avg_sim": 0.6457,
+      "candidate_avg_sim": 0.703,
+      "baseline_diversity": 1,
+      "candidate_diversity": 2,
+      "baseline_empty": false,
+      "candidate_empty": false
+    },
+    {
+      "query": "Show paper trades that hit targets",
+      "baseline_latency_ms": 13.9,
+      "candidate_latency_ms": 170.3,
+      "baseline_results": [
+        {
+          "source_type": "trade_outcome",
+          "source_id": 24,
+          "title": "FLYW trade outcome: LOSS +0.5R (dividend_growth_compounder)",
+          "score": 0.6511
+        },
+        {
+          "source_type": "trade_review",
+          "source_id": 222,
+          "title": "GCTS overnight review: LOSS $-12.38 (momentum_scalp)",
+          "score": 0.6409
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 867901237,
+          "title": "KBR risk_agent: SELL",
+          "score": 0.6258
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1505441790,
+          "title": "IRDM risk_agent: HOLD",
+          "score": 0.6219
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 206995699,
+          "title": "APLY risk_agent: HOLD",
+          "score": 0.6197
+        }
+      ],
+      "candidate_results": [
+        {
+          "source_type": "youtube",
+          "source_id": 842,
+          "title": "Puzzle Wealth Streamline Your Deals with Expert Operations",
+          "score": 0.7326
+        },
+        {
+          "source_type": "trade_outcome",
+          "source_id": 19,
+          "title": "FLYW trade outcome: UNKNOWN  (momentum_scalp)",
+          "score": 0.6598
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 775,
+          "title": "PICKS signal:",
+          "score": 0.6535
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 371,
+          "title": "PRICE signal:",
+          "score": 0.641
+        },
+        {
+          "source_type": "news",
+          "source_id": 3727,
+          "title": "JEPI | JPMorgan Equity Premium Income Insider Trading - Quiver Quantitative",
+          "score": 0.6362
+        }
+      ],
+      "top5_overlap": 0.0,
+      "top10_overlap": 0.0,
+      "baseline_avg_sim": 0.6229,
+      "candidate_avg_sim": 0.6484,
+      "baseline_diversity": 3,
+      "candidate_diversity": 4,
+      "baseline_empty": false,
+      "candidate_empty": false
+    },
+    {
+      "query": "Find recent insider buying activity",
+      "baseline_latency_ms": 13.6,
+      "candidate_latency_ms": 152.2,
+      "baseline_results": [
+        {
+          "source_type": "agent_result",
+          "source_id": 1934615025,
+          "title": "CACI risk_agent: HOLD",
+          "score": 0.6044
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 2088560067,
+          "title": "XLB risk_agent: HOLD",
+          "score": 0.5867
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 212859713,
+          "title": "ONON maria: HOLD",
+          "score": 0.5845
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1689694993,
+          "title": "LITE risk_agent: HOLD",
+          "score": 0.5826
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 539567149,
+          "title": "BBDC risk_agent: HOLD",
+          "score": 0.5821
+        }
+      ],
+      "candidate_results": [
+        {
+          "source_type": "news",
+          "source_id": 3727,
+          "title": "JEPI | JPMorgan Equity Premium Income Insider Trading - Quiver Quantitative",
+          "score": 0.7192
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1838940252,
+          "title": "SPY maria: BUY",
+          "score": 0.6752
+        },
+        {
+          "source_type": "news",
+          "source_id": 4086,
+          "title": "DIV | Global X SuperDividend U.S. Insider Trading - Quiver Quantitative",
+          "score": 0.6588
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 450006548,
+          "title": "SKK maria: BUY",
+          "score": 0.6585
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 186581277,
+          "title": "VEEE maria: BUY",
+          "score": 0.6577
+        }
+      ],
+      "top5_overlap": 0.0,
+      "top10_overlap": 0.0,
+      "baseline_avg_sim": 0.5819,
+      "candidate_avg_sim": 0.6621,
+      "baseline_diversity": 1,
+      "candidate_diversity": 3,
+      "baseline_empty": false,
+      "candidate_empty": false
+    },
+    {
+      "query": "Show YouTube evidence about market conditions",
+      "baseline_latency_ms": 14.1,
+      "candidate_latency_ms": 166.4,
+      "baseline_results": [
+        {
+          "source_type": "agent_result",
+          "source_id": 1945515383,
+          "title": "XLI risk_agent: SKIP_DUE_TO_STALE_DATA",
+          "score": 0.6937
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1314689201,
+          "title": "IEF risk_agent: HOLD",
+          "score": 0.6812
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1180626157,
+          "title": "SRNE risk_agent: RESEARCH_MORE",
+          "score": 0.6786
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1416530804,
+          "title": "CBRE maria: HOLD",
+          "score": 0.6711
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 764258530,
+          "title": "APT risk_agent: RESEARCH_MORE",
+          "score": 0.6673
+        }
+      ],
+      "candidate_results": [
+        {
+          "source_type": "fused_signal",
+          "source_id": 1137,
+          "title": "YBTY signal:",
+          "score": 0.6545
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 548,
+          "title": "YETH signal:",
+          "score": 0.6521
+        },
+        {
+          "source_type": "youtube",
+          "source_id": 842,
+          "title": "Puzzle Wealth Streamline Your Deals with Expert Operations",
+          "score": 0.6479
+        },
+        {
+          "source_type": "youtube",
+          "source_id": 875,
+          "title": "Your Crash Comments Explain This Market!",
+          "score": 0.6474
+        },
+        {
+          "source_type": "fused_signal",
+          "source_id": 667,
+          "title": "YBIT signal:",
+          "score": 0.6456
+        }
+      ],
+      "top5_overlap": 0.0,
+      "top10_overlap": 0.0,
+      "baseline_avg_sim": 0.6715,
+      "candidate_avg_sim": 0.6441,
+      "baseline_diversity": 1,
+      "candidate_diversity": 4,
+      "baseline_empty": false,
+      "candidate_empty": false
+    },
+    {
+      "query": "Find RAG content rejected with reasons",
+      "baseline_latency_ms": 13.3,
+      "candidate_latency_ms": 186.2,
+      "baseline_results": [
+        {
+          "source_type": "agent_result",
+          "source_id": 1158265100,
+          "title": "XLI steph: RESEARCH_MORE",
+          "score": 0.591
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1776144112,
+          "title": "LQD steph: NO_RECOMMENDATION",
+          "score": 0.5842
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1574229808,
+          "title": "SRNE steph: SKIP",
+          "score": 0.5751
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 169737314,
+          "title": "DOX risk_agent: SKIP",
+          "score": 0.5715
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 492522555,
+          "title": "BZ risk_agent: NONE",
+          "score": 0.5632
+        }
+      ],
+      "candidate_results": [
+        {
+          "source_type": "agent_result",
+          "source_id": 67394769,
+          "title": "CACI risk_agent: SKIP",
+          "score": 0.6443
+        },
+        {
+          "source_type": "decision_outcome",
+          "source_id": 841,
+          "title": "AGIQ outcome: IGNORE",
+          "score": 0.6437
+        },
+        {
+          "source_type": "cio_decision",
+          "source_id": 1563873168,
+          "title": "MAIN CIO: HUMAN_REVIEW",
+          "score": 0.6433
+        },
+        {
+          "source_type": "cio_decision",
+          "source_id": 259876276,
+          "title": "MAIN CIO: HUMAN_REVIEW",
+          "score": 0.6433
+        },
+        {
+          "source_type": "cio_decision",
+          "source_id": 1607122076,
+          "title": "MAIN CIO: HUMAN_REVIEW",
+          "score": 0.6433
+        }
+      ],
+      "top5_overlap": 0.0,
+      "top10_overlap": 0.0,
+      "baseline_avg_sim": 0.5664,
+      "candidate_avg_sim": 0.6431,
+      "baseline_diversity": 1,
+      "candidate_diversity": 3,
+      "baseline_empty": false,
+      "candidate_empty": false
+    },
+    {
+      "query": "Find CIO recommendations that were wrong",
+      "baseline_latency_ms": 13.3,
+      "candidate_latency_ms": 185.8,
+      "baseline_results": [
+        {
+          "source_type": "agent_result",
+          "source_id": 136733750,
+          "title": "LQD risk_agent: NO_RECOMMENDATION",
+          "score": 0.6187
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1158265100,
+          "title": "XLI steph: RESEARCH_MORE",
+          "score": 0.6148
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1490431201,
+          "title": "LPIH risk_agent: RESEARCH_MORE",
+          "score": 0.601
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1574229808,
+          "title": "SRNE steph: SKIP",
+          "score": 0.5803
+        },
+        {
+          "source_type": "agent_result",
+          "source_id": 1776144112,
+          "title": "LQD steph: NO_RECOMMENDATION",
+          "score": 0.5791
+        }
+      ],
+      "candidate_results": [
+        {
+          "source_type": "cio_decision",
+          "source_id": 1563873168,
+          "title": "MAIN CIO: HUMAN_REVIEW",
+          "score": 0.6931
+        },
+        {
+          "source_type": "cio_decision",
+          "source_id": 259876276,
+          "title": "MAIN CIO: HUMAN_REVIEW",
+          "score": 0.6931
+        },
+        {
+          "source_type": "cio_decision",
+          "source_id": 1607122076,
+          "title": "MAIN CIO: HUMAN_REVIEW",
+          "score": 0.6931
+        },
+        {
+          "source_type": "cio_decision",
+          "source_id": 506832223,
+          "title": "MAIN CIO: HUMAN_REVIEW",
+          "score": 0.6931
+        },
+        {
+          "source_type": "cio_decision",
+          "source_id": 907758850,
+          "title": "MAIN CIO: HUMAN_REVIEW",
+          "score": 0.6931
+        }
+      ],
+      "top5_overlap": 0.0,
+      "top10_overlap": 0.0,
+      "baseline_avg_sim": 0.5793,
+      "candidate_avg_sim": 0.6871,
+      "baseline_diversity": 1,
+      "candidate_diversity": 1,
+      "baseline_empty": false,
+      "candidate_empty": false
+    }
+  ]
+}

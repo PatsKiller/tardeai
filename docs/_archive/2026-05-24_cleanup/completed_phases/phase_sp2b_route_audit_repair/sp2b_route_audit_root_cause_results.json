@@ -1,0 +1,51 @@
+{
+  "generated_at": "2026-05-18T13:24:26.670122+00:00",
+  "total_proposals": 83,
+  "with_route_audit": 9,
+  "missing_route_audit": 74,
+  "missing_pct": 89.2,
+  "by_source": [
+    {
+      "proposed_by": "incubator_promoter",
+      "c": 42
+    },
+    {
+      "proposed_by": "auto_proposal_generator",
+      "c": 29
+    },
+    {
+      "proposed_by": "system",
+      "c": 10
+    },
+    {
+      "proposed_by": "telegram_manual",
+      "c": 2
+    }
+  ],
+  "root_causes": [
+    {
+      "cause": "auto_proposal_generator does not call multi_setup_router",
+      "evidence": "auto_proposal_generator.py exists=True, calls_router=False",
+      "affected_path": "screener \u2192 signal \u2192 proposal"
+    },
+    {
+      "cause": "incubator_proposal_promoter does not call multi_setup_router",
+      "evidence": "incubator_proposal_promoter.py exists=True, calls_router=False",
+      "affected_path": "incubator \u2192 proposal"
+    },
+    {
+      "cause": "multi_setup_router.store_setup_matches only runs in manual --pending-proposals mode",
+      "evidence": "store_setup_matches is never called from proposal creation pipeline",
+      "affected_path": "all proposal creation paths"
+    }
+  ],
+  "invalid_strategy_ids": [
+    {
+      "strategy_id": "screener",
+      "c": 6
+    }
+  ],
+  "safe_to_backfill": true,
+  "unsafe_to_auto_reassign": true,
+  "recommended_fix": "Call route_symbol + store_setup_matches after proposal INSERT in both auto_proposal_generator and incubator_proposal_promoter (SP-2C)"
+}

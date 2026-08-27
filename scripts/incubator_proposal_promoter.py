@@ -657,8 +657,13 @@ def run(dry_run=True, limit=10, force_symbol=None, max_per_symbol=1):
 
         entry, stop, target, shares = compute_levels(scan_price)
 
-        # Compute R:R (BUGFIX-RR-1: was undefined, caused NameError in pre-promotion + Telegram alert)
-        rr = round((target - entry) / (entry - stop), 2) if entry > stop and target > entry else 0
+        # Compute R:R. Never persist 0.0 — that printed "R:R 0.0:1" on live cards.
+        try:
+            from lib.telegram_card_gate import compute_rr
+            _rr = compute_rr(entry, stop, target)
+            rr = _rr["rr"] if _rr.get("ok") else None
+        except Exception:
+            rr = round((target - entry) / (entry - stop), 2) if entry > stop and target > entry else None
 
         # Timeframe + strategy type stamp
         strategy_key = strategy_id if isinstance(strategy_id, str) else str(strategy_id)

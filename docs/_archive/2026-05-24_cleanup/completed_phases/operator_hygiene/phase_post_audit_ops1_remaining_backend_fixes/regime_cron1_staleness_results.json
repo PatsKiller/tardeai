@@ -1,0 +1,18 @@
+{
+  "generated_at": "2026-05-20T15:21:57.807401+00:00",
+  "latest_snapshot": {
+    "snapshot_id": "RS_20260511201338_6416b80b",
+    "regime_label": "high_volatility",
+    "confidence": 0.43,
+    "generated_at": "2026-05-11T16:13:38.454409-04:00"
+  },
+  "age_hours": 211.14,
+  "cron_found": true,
+  "cron_line": "30 6 * * 1-5 cd $PROJ && $PY scripts/market_regime_collector.py --apply >> logs/regime_collector.log 2>&1",
+  "logs_found": {
+    "regime_collector.log": true,
+    "regime_classifier.log": true
+  },
+  "recommended_fix": "snapshot is 211.1h stale (>24h)",
+  "root_cause": null
+}

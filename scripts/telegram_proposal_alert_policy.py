@@ -12,13 +12,24 @@ def classify_proposal_alert_state(proposal: dict) -> str:
     status = proposal.get("status", "")
     verdict = proposal.get("operator_verdict", "")
     blockers = proposal.get("approval_blockers") or []
-    rr = float(proposal.get("proposed_rr") or proposal.get("rr") or 0)
-    er = proposal.get("execution_readiness") or {}
+    er = proposal.get("execution_readiness") if isinstance(proposal.get("execution_readiness"), dict) else {}
+    try:
+        from lib.telegram_card_gate import proposal_send_gate
+        gate = proposal_send_gate(proposal)
+    except Exception:
+        gate = {"promote_actionable": False, "rr": {"ok": False, "rr": None}}
+    rr = (gate.get("rr") or {}).get("rr")
+    if rr is None:
+        try:
+            rr = float(proposal.get("proposed_rr") or proposal.get("rr") or 0) or None
+        except (TypeError, ValueError):
+            rr = None
     readiness = er.get("readiness_state", "")
-    approval_allowed = bool(proposal.get("approval_allowed"))
+    approval_allowed = bool(proposal.get("approval_allowed")) and bool(gate.get("promote_actionable"))
 
-    # ACTIONABLE_READY only when approval is actually allowed (not just empty blockers at promote time)
-    if approval_allowed and (verdict == "READY" or (status == "PENDING" and not blockers and rr >= 2.0)):
+    # ACTIONABLE_READY only when approval is actually allowed AND R:R is computable.
+    # Never promote a card whose headline risk metric would print 0.0:1.
+    if approval_allowed and (verdict == "READY" or (status == "PENDING" and not blockers and rr is not None and rr >= 2.0)):
         return "ACTIONABLE_READY"
     if "BLOCKED" in (readiness or "").upper() or "BLOCKED" in (verdict or "").upper():
         if any("price_moved" in str(b) or "rr_below" in str(b) for b in blockers):
@@ -86,13 +97,20 @@ def build_proposal_alert_packet(proposal: dict) -> dict:
     _meta = _strategy_meta(proposal)
     _acct = _account_meta(proposal)
     blockers = proposal.get("approval_blockers") or []
-    er = proposal.get("execution_readiness") or {}
-    rr = float(proposal.get("proposed_rr") or 0)
+    er = proposal.get("execution_readiness") if isinstance(proposal.get("execution_readiness"), dict) else {}
     entry = float(proposal.get("proposed_entry") or 0)
     stop = float(proposal.get("proposed_stop") or 0)
     target = float(proposal.get("proposed_target1") or 0)
     shares = int(proposal.get("proposed_shares") or 0)
     risk = abs(entry - stop) * shares if entry and stop and shares else 0
+    try:
+        from lib.telegram_card_gate import compute_rr, proposal_send_gate
+        rr_info = compute_rr(entry, stop, target)
+        gate = proposal_send_gate(proposal)
+    except Exception:
+        rr_info = {"ok": False, "rr": None, "display": "R:R UNAVAILABLE", "promote_actionable": False}
+        gate = {"promote_actionable": False, "quote": {"ok": True}}
+    rr = rr_info.get("rr") if rr_info.get("ok") else None
 
     # Action options
     actions = []
@@ -126,7 +144,11 @@ def build_proposal_alert_packet(proposal: dict) -> dict:
         "catalyst": proposal.get("catalyst"),
         "catalyst_verified": proposal.get("catalyst_verified"),
         "entry": entry, "stop": stop, "target": target,
-        "rr": round(rr, 2), "shares": shares, "risk_dollars": round(risk, 2),
+        "rr": rr, "rr_display": rr_info.get("display") or "R:R UNAVAILABLE",
+        "shares": shares, "risk_dollars": round(risk, 2),
+        "card_gate": {"promote_actionable": bool(gate.get("promote_actionable")),
+                      "quote_ok": bool((gate.get("quote") or {}).get("ok", True)),
+                      "rr_ok": bool(rr_info.get("ok"))},
         "quote_provider": er.get("quote_provider") or proposal.get("last_price_source"),
         "quote_age": er.get("quote_age_seconds"),
         "execution_eligible": er.get("quote_execution_eligible"),
@@ -134,7 +156,11 @@ def build_proposal_alert_packet(proposal: dict) -> dict:
         "readiness_state": er.get("readiness_state"),
         "blockers": [str(b.get("reason", b)) if isinstance(b, dict) else str(b) for b in blockers[:5]],
         "missing_evidence": proposal.get("missing_data") or [],
-        "approval_allowed": proposal.get("approval_allowed", False) and alert_state == "ACTIONABLE_READY",
+        "approval_allowed": (
+            bool(proposal.get("approval_allowed", False))
+            and bool(gate.get("promote_actionable"))
+            and alert_state == "ACTIONABLE_READY"
+        ),
         "actions": actions,
         "recommended_action": actions[0] if actions else "WATCH",
     }
@@ -170,10 +196,25 @@ def should_send_alert(proposal: dict, recent_keys: set = None) -> dict:
     key = alert_suppression_key(proposal)
     if recent_keys and key in recent_keys:
         return {"send": False, "reason": "duplicate_suppressed", "key": key}
+    try:
+        from lib.telegram_card_gate import idempotency_key, proposal_send_gate, log_suppression
+        gate = proposal_send_gate(proposal)
+        ikey = idempotency_key("proposal", proposal.get("symbol"), proposal.get("id"))
+        if not gate.get("send"):
+            log_suppression(
+                "quote_fail",
+                symbol=proposal.get("symbol"),
+                decision_id=proposal.get("id"),
+                reason=gate.get("reason") or "quote_fail",
+            )
+            return {"send": False, "reason": "PRICE_UNAVAILABLE_WITHHELD", "key": key, "idempotency_key": ikey}
+    except Exception:
+        ikey = f"proposal:{proposal.get('symbol')}:{proposal.get('id')}"
+        gate = {"send": True}
     state = classify_proposal_alert_state(proposal)
     if state == "EXPIRED_OR_STALE":
-        return {"send": False, "reason": "expired_no_alert", "key": key}
-    return {"send": True, "reason": state, "key": key}
+        return {"send": False, "reason": "expired_no_alert", "key": key, "idempotency_key": ikey}
+    return {"send": True, "reason": state, "key": key, "idempotency_key": ikey}
 
 
 def _esc_md(s: str) -> str:
@@ -251,7 +292,16 @@ def format_telegram_message(packet: dict) -> str:
 
     lines.append("")
     lines.append(f"Entry: ${packet['entry']:.2f} | Stop: ${packet['stop']:.2f} | Target: ${packet['target']:.2f}")
-    lines.append(f"R:R: {packet['rr']}:1 | Risk: ${packet['risk_dollars']:.0f} | Shares: {packet['shares']}")
+    rr_disp = packet.get("rr_display")
+    if not rr_disp:
+        try:
+            from lib.telegram_card_gate import compute_rr
+            rr_disp = compute_rr(packet.get("entry"), packet.get("stop"), packet.get("target")).get("display")
+        except Exception:
+            rr_disp = "R:R UNAVAILABLE"
+    if not rr_disp or str(rr_disp).startswith("0.0"):
+        rr_disp = "R:R UNAVAILABLE"
+    lines.append(f"R:R: {rr_disp} | Risk: ${packet['risk_dollars']:.0f} | Shares: {packet['shares']}")
 
     if packet.get("quote_provider"):
         exec_flag = "\u2705" if packet.get("execution_eligible") else "\u274c"

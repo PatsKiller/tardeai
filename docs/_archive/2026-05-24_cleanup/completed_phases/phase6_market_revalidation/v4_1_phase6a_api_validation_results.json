@@ -1,0 +1,143 @@
+{
+  "date": "2026-05-15T09:24:12.409178",
+  "total": 7,
+  "passed": 7,
+  "failed": 0,
+  "scenarios": [
+    {
+      "scenario": "valid_approval",
+      "expected_ok": true,
+      "actual_ok": true,
+      "passed": true,
+      "reason": "Market conditions confirmed: AAPL at $150.50 (drift 0.3%), R:R=2.64:1. Approved.",
+      "checks": {
+        "quote_available": true,
+        "quote_age_minutes": 0.1,
+        "quote_fresh": true,
+        "entry_drift_pct": 0.33,
+        "stop_breached": false,
+        "spread_pct": 0.05,
+        "rr": 2.64
+      },
+      "warnings": [],
+      "adjusted_entry": 150.0,
+      "live_price": 150.5
+    },
+    {
+      "scenario": "stale_quote_block",
+      "expected_ok": false,
+      "actual_ok": false,
+      "passed": true,
+      "reason": "Cannot approve: quote for AAPL is 20.0min old. Need fresh market data.",
+      "checks": {
+        "quote_available": true,
+        "quote_age_minutes": 20.0,
+        "quote_fresh": false,
+        "entry_drift_pct": null,
+        "stop_breached": false,
+        "spread_pct": null,
+        "rr": null
+      },
+      "warnings": [],
+      "adjusted_entry": null,
+      "live_price": 150.0
+    },
+    {
+      "scenario": "high_spread_block",
+      "expected_ok": false,
+      "actual_ok": false,
+      "passed": true,
+      "reason": "Not a good trade under current conditions: MSFT spread is 3.20%, too wide for safe execution. Wait for tighter liquidity.",
+      "checks": {
+        "quote_available": true,
+        "quote_age_minutes": 0.1,
+        "quote_fresh": true,
+        "entry_drift_pct": 0.0,
+        "stop_breached": false,
+        "spread_pct": 3.2,
+        "rr": null
+      },
+      "warnings": [],
+      "adjusted_entry": null,
+      "live_price": 350.0
+    },
+    {
+      "scenario": "stop_breached_block",
+      "expected_ok": false,
+      "actual_ok": false,
+      "passed": true,
+      "reason": "Not a good trade under current conditions: TSLA is at $185.00, already at or below stop loss $190.00. Would immediately stop out.",
+      "checks": {
+        "quote_available": true,
+        "quote_age_minutes": 0.1,
+        "quote_fresh": true,
+        "entry_drift_pct": null,
+        "stop_breached": true,
+        "spread_pct": null,
+        "rr": null
+      },
+      "warnings": [],
+      "adjusted_entry": null,
+      "live_price": 185.0
+    },
+    {
+      "scenario": "rr_degraded_block",
+      "expected_ok": false,
+      "actual_ok": false,
+      "passed": true,
+      "reason": "Not a good trade under current conditions: NVDA R:R has degraded from 0.8:1 to 0.5:1 at current price $101.00. Reward no longer justifies the risk.",
+      "checks": {
+        "quote_available": true,
+        "quote_age_minutes": 0.1,
+        "quote_fresh": true,
+        "entry_drift_pct": 1.0,
+        "stop_breached": false,
+        "spread_pct": 0.1,
+        "rr": 0.5
+      },
+      "warnings": [],
+      "adjusted_entry": null,
+      "live_price": 101.0
+    },
+    {
+      "scenario": "drift_warning_adjusted_entry",
+      "expected_ok": true,
+      "actual_ok": true,
+      "passed": true,
+      "reason": "Approved with adjustment: AMD moved 2.0% above proposed entry. Entry recalibrated from $100.00 to $102.00. R:R=1.65:1.",
+      "checks": {
+        "quote_available": true,
+        "quote_age_minutes": 0.1,
+        "quote_fresh": true,
+        "entry_drift_pct": 2.0,
+        "stop_breached": false,
+        "spread_pct": 0.1,
+        "rr": 1.65
+      },
+      "warnings": [
+        "price_adjusted: 2.0% above, entry recalibrated to $102.00"
+      ],
+      "adjusted_entry": 102.0,
+      "live_price": 102.0
+    },
+    {
+      "scenario": "no_quote_block",
+      "expected_ok": false,
+      "actual_ok": false,
+      "passed": true,
+      "reason": "Cannot approve: no live price available for UNKNOWN. Stale data cannot be trusted.",
+      "checks": {
+        "quote_available": false,
+        "quote_age_minutes": null,
+        "quote_fresh": false,
+        "entry_drift_pct": null,
+        "stop_breached": false,
+        "spread_pct": null,
+        "rr": null
+      },
+      "warnings": [],
+      "adjusted_entry": null,
+      "live_price": null
+    }
+  ]
+}

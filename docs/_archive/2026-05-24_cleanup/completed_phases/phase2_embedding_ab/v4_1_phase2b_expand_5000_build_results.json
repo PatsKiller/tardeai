@@ -1,0 +1,29 @@
+{
+  "timestamp": "2026-05-14T11:51:51.019713",
+  "model": "qwen3-embedding:8b",
+  "source_docs": 4897,
+  "already_indexed": 1000,
+  "pending": 3897,
+  "success": 3897,
+  "failed": 0,
+  "skipped_no_title": 0,
+  "avg_latency_ms": 267.9,
+  "total_time_s": 1066.1,
+  "final_table_count": 4897,
+  "source_distribution": {
+    "agent_result": 1500,
+    "fused_signal": 900,
+    "news": 600,
+    "decision_outcome": 500,
+    "agent_synthesis": 400,
+    "cio_decision": 400,
+    "youtube": 250,
+    "social_post": 200,
+    "sec_form4": 100,
+    "trade_review": 11,
+    "trade_outcome": 7,
+    "fred_series": 28,
+    "brave_cache": 1
+  },
+  "production_changed": false
+}

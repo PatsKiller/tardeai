@@ -1,0 +1,20 @@
+{
+  "generated_at": "2026-05-19T00:21:20.858389+00:00",
+  "total_alerts": 2,
+  "by_type": {
+    "BLOCKED_EXECUTION_FAILED": {
+      "total": 2,
+      "sent": 0,
+      "dry_run": 2,
+      "suppressed": 0
+    }
+  },
+  "sla_targets": {
+    "ACTIONABLE_READY": 60,
+    "BLOCKED_NEEDS_REBUILD": 60,
+    "BLOCKED_EXECUTION_FAILED": 120,
+    "NEEDS_OPERATOR_DECISION": 120,
+    "WATCHPOOL_READY": 300
+  },
+  "note": "SLA latency tracking requires proposal creation timestamps \u2014 full measurement available after ALERT-1 dispatcher is cron-active"
+}

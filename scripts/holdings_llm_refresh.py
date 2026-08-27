@@ -32,6 +32,10 @@ if os.environ["DOTENV_LOADED"] == "0":
     except Exception:
         pass
 
+# Schema JSON + G1–G10 preamble does not fit the default 300-token cap
+# (2026-08-21: 7/26 parse_error, gemma3:4b num_predict=300). Process-local only.
+os.environ.setdefault("LOCAL_LLM_NUM_PREDICT", "900")
+
 log = logging.getLogger("holdings_llm")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(message)s")
 
@@ -233,6 +237,7 @@ def refresh_one(conn, holding, dry_run=False):
 
         result = parse_holdings_health_result(raw)
         if not result:
+            log.warning(f"  {symbol}: parse_error raw[:400]={raw[:400]!r}")
             return {'symbol': symbol, 'status': 'parse_error'}
         health = result.get('health', 'STABLE')
         action = result.get('action', 'HOLD')
@@ -270,8 +275,18 @@ def refresh_one(conn, holding, dry_run=False):
         conn.commit()
 
         log.info(f"  {symbol}: health={health} action={action} conf={confidence} model={model}")
-        return {'symbol': symbol, 'status': 'refreshed', 'health': health,
+        out = {'symbol': symbol, 'status': 'refreshed', 'health': health,
                 'action': action, 'confidence': confidence, 'model': model}
+        try:
+            from lib.agent_decision_payload import emit_holdings_health_payload
+            emit_holdings_health_payload(out)
+        except Exception:
+            try:
+                from scripts.lib.agent_decision_payload import emit_holdings_health_payload
+                emit_holdings_health_payload(out)
+            except Exception:
+                pass
+        return out
 
     except Exception as e:
         log.warning(f"  {symbol}: refresh failed — {e}")
@@ -311,7 +326,7 @@ def main():
             results.append(r)
 
         refreshed = sum(1 for r in results if r.get('status') == 'refreshed')
-        errors = sum(1 for r in results if r.get('status') == 'error')
+        errors = sum(1 for r in results if r.get('status') in ('error', 'parse_error', 'empty'))
 
         print(f"\nHoldings LLM Refresh")
         print(f"{'=' * 40}")

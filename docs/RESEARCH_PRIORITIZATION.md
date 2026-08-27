@@ -5,6 +5,11 @@ often** — so every tracked symbol is refreshed at least *X* times per *Y* days
 event-awareness. This governs **all** research lanes (local gemma, overnight deep, external OAuth,
 web/topic, catalyst, news), not just the external skeptics.
 
+**Lifecycle gate (canonical):** `docs/ops/RESEARCH_LIFECYCLE_STANDARD.md`. Research is incremental,
+change-driven, and freshness-based. An SLA “due” symbol is a **candidate**. Execute only if the source
+changed, freshness expired, or an operator/event trigger fired. Unchanged in-date work is reused
+(`SKIP_UNCHANGED` / `SKIP_FRESH`), never re-analyzed.
+
 Implemented by `scripts/research_scheduler.py` (symbol-level fan-out) + the existing topic/source/news
 crons (subject-level), all keyed to the same tiers below.
 
@@ -12,19 +17,20 @@ crons (subject-level), all keyed to the same tiers below.
 
 | Lane | Engine | Cost | Breadth | Dispatch | Role |
 |------|--------|------|---------|----------|------|
-| **local-gemma** | gemma3:12b/4b (local) | free, fast | **all tiers, broad** | enqueue `watchlist_agent_jobs` → drained by 24/7 workers | the workhorse — every due symbol |
-| **internal-deep** | gemma3:27b (overnight window) | free, slow | T0/T1 deep dives | enqueue (full_chain) → overnight queue | deep multi-agent synthesis |
-| **deepseek** | DeepSeek V4 Flash (governed, paid) | metered, cheap | T0/T1 + catalyst | `hermes_external_researcher` (governed lane) | external skeptic — **primary auto lane** |
+| **local-gemma** | gemma3:4b / 12b (local) | free | overflow / math-adjacent | enqueue `watchlist_agent_jobs` **only if** `RESEARCH_ALLOW_LOCAL_LLM=1` (default **0**) | not the workhorse — maria queue was 28.5% fail |
+| **internal-deep** | **Policy:** ChatGPT OAuth 22:00–06:00 ET. **Live timer:** China-night gemma3:27b (empty US-day). 27b is **100% CPU** on the B50 — not a GPU deep lane | ChatGPT free; 27b CPU | T0/T1 | policy `:8646`; live timer not retargeted | do not label 27b “deep multi-agent synthesis” |
+| **deepseek** | DeepSeek V4 Flash via `scripts/llm_lane.py` | metered, cheap | T0/T1 + catalyst | `hermes_external_researcher` (`--trigger research_scheduler`) | **primary auto lane** — import fixed #440 (id=45900 sent) |
 | **grok** | xAI OAuth proxy :8645 | free, **rate-limited** | *(retained, not auto)* | — | deprecated for auto-dispatch |
-| **chatgpt** | codex OAuth proxy :8646 | free, **rate-limited** | *(retained, not auto)* | — | deprecated for auto-dispatch |
+| **chatgpt** | codex OAuth proxy :8646 | free, **rate-limited** | US overnight judgment | `hermes_deep_research_local` (overnight) | default overnight LLM — not gemma |
 | **claude** | Anthropic API | **metered $** | arbitration only | manual / on disagreement | tie-break, high-stakes only — **never auto** |
 | **web/topic** | `topic_research_synthesizer`, `hermes_research_autonomy` | free (search) | topics + T0/T1 | own cron | grounded thesis research |
 | **catalyst** | `hermes_momentum_catalyst_researcher`, social scalp | free | event-driven | own cron | detects new events → pulls symbols forward |
 | **news** | `news_ingestion`, Finviz | free | broad, continuous | own cron | event feed feeding catalyst signal |
 
-Cheap/broad lanes (local-gemma) cover everything frequently; the governed DeepSeek lane is the single
-budgeted external skeptic for high tiers and live catalysts, **budgeted per run** so it never exhausts;
-claude is metered and only used for arbitration when lanes disagree.
+The governed DeepSeek Flash lane is the auto judgment workhorse (`llm_lane.py`, not `lib.llm_lane`).
+Local gemma is not auto-enqueued unless `RESEARCH_ALLOW_LOCAL_LLM=1`. Claude is metered arbitration-only.
+RAW-store health: `scripts/research_lane_health.py` (does **not** use `last_real`). Skip gate
+`RESEARCH_SKIP_GATE` defaults **off**. `$0.42/14d` spend was a crash loop — re-baseline 7d post-#440.
 
 ## 1. Universe & tiers
 
@@ -43,13 +49,15 @@ one governor owns research scope too — a symbol the scope governor archived
 (`watchlist_items.scope_tier = 'S3'`) never holds a T1-WATCH / T2-INCUB slot; it drops to T3-COLD
 (metadata-only under the budget guard) until an event or the governor reactivates it. T0 (capital
 exposed) is never downgraded. Measured effect at cutover: T1-WATCH 469→256, T2-INCUB 390→122.
-**External lane is DeepSeek-only (2026-08-13):** the single automated external skeptic is the governed
-DeepSeek V4 Flash lane. The free OAuth `grok`/`chatgpt` lanes are retained in `LANES` but are no longer
-auto-dispatched (they were the source of hourly near-duplicate "research update" Telegram noise). Claude
-remains manual arbitration-only. T1's one-external-per-refresh pick now resolves to DeepSeek every time.
+**External lane is DeepSeek-only (2026-08-13):** the single automated *external skeptic* is the governed
+DeepSeek V4 Flash lane. Grok OAuth stays non-auto (hourly duplicate Telegram noise). ChatGPT OAuth is
+the US-overnight judgment lane (`hermes_deep_research_local`, 22:00–06:00 ET) — not a scheduler skeptic.
+Claude remains manual arbitration-only. T1's one-external-per-refresh pick still resolves to DeepSeek.
 
-Current split: ~32 holdings · 1 proposal · ~83 watchlist · ~274 incubator · ~584 cold = **974 symbols**
-*(pre-binding snapshot — see scope-governor note above for post-cutover tier sizes).*
+Live split (2026-08-21, `research_scheduler.load_universe()` after CASH excluded from T0):
+**T0-HOLD = held equity tickers (22)** · T0-PROP ~31 · **T1-WATCH ~253** (post-cutover; the old “~83 watchlist” line was pre-cutover leftover) · T2-INCUB ~167 · T3-COLD ~2587.
+
+Holdings.json has 34 rows / 26 unique symbols including 5 CASH account rows and 3 $0 CUSIPs. Coverage denominator is **22 tickers** (`holdings_universe.held_equity_tickers`). Do not count CASH as a thesis name.
 
 ## 2. Refresh SLA — "at least X times in Y days", per lane per tier
 
@@ -75,7 +83,9 @@ priority = 100·tier_weight            # HOLD 1.0 · PROP 0.9 · WATCH 0.6 · IN
          +  15·rank_score             # inverse Hermes rank (top names first)
 ```
 
-T0 symbols are candidates **every run** regardless of score; anything past SLA gets a hard overdue boost.
+T0 symbols are **candidates** every run regardless of score; anything past SLA gets a hard overdue boost.
+Candidate ≠ execute. Apply the lifecycle hash/mtime/TTL gate before a metered lane call
+(`docs/ops/RESEARCH_LIFECYCLE_STANDARD.md`).
 
 ## 4. Lane budget (never exhaust the free OAuth lanes)
 
@@ -121,9 +131,10 @@ classified `thesis_update`). No-change refreshes store silently (audit), no aler
 | 08:00, 12:30, 16:30 | `research_scheduler --mode holdings --apply` | T0-HOLD, full fleet, diff→card+desk |
 | hourly 10–16 | `research_scheduler --mode priority --apply` | T0/T1 due + catalyst, external-budgeted |
 | 20:30 | `research_scheduler --mode watchlist --apply` | T1 refresh sweep |
-| 02:00 nightly | `research_scheduler --mode cold-floor --apply` | rotating 1/14th of T3 (holds the 14-day floor) |
+| 10:00 | `research_scheduler --mode cold-floor --apply` | rotating T3 floor (retargeted off 02:00 Peak B; PEAK_SKIP wrapped) |
 | Sun | `research_scheduler --mode incubator --apply` | T2 sweep |
-| (existing) overnight 00:30–05:00 | deep gemma3:27b queue | T0/T1 deep dives |
+| US overnight 22:00–06:00 ET | **policy:** deterministic + ChatGPT OAuth (`:8646`) | **live timer still China-night gemma3:27b** (empty `RESULT: {}`). Alarm lane `overnight-deep` covers both. |
+| every 15 min | `research_lane_health.py --alert` | RAW `hermes_external_research` + overnight-deep; `[ERROR]` rows count |
 | (existing) ATP2 cycles, topic synth, news/finviz, catalyst | subject-level lanes | topics/sources/events feeding the catalyst signal |
 
 `--mode backfill` walks the **whole** universe by priority within the external budget — used to recover
