@@ -109,6 +109,28 @@ def completion_report(path: Path | str | None = None) -> dict[str, Any]:
 
     forked = arcs[ARC_RESEARCH] > 0 and arcs[ARC_CIO] > 0 and complete == 0
 
+    # Event-level view. Measured as stage coverage per event rather than "did two
+    # arcs meet", because the two topologies must both read correctly: when
+    # identity works the arcs collapse into ONE workflow, and a metric counting
+    # events-seen-by-both-arcs would then read 0 -- the same as total failure.
+    # Union of stages across an event's workflows answers the real question:
+    # did this event get all the way to a checkpoint with a settled notification?
+    by_event: dict[str, set[str]] = {}
+    entity_types: Counter[str] = Counter()
+    for env in envelopes.values():
+        entity_types[str(env.get("entity_type") or "UNRESOLVED")] += 1
+        eid = env.get("event_id")
+        if not eid:
+            continue
+        ss = _stage_status(env)
+        covered = by_event.setdefault(str(eid), set())
+        covered.update(k for k in STAGE_KEYS if ss.get(k) == STAGE_COMPLETED)
+
+    covered_events = sum(
+        1 for stages in by_event.values()
+        if {"checkpoint", "notification"} <= stages
+    )
+
     return {
         "schema": SCHEMA,
         "authority": AUTHORITY,
@@ -119,6 +141,13 @@ def completion_report(path: Path | str | None = None) -> dict[str, Any]:
         "with_checkpoint_id": with_checkpoint_id,
         "arcs": dict(arcs),
         "stalled_at": dict(stalled_at),
+        "with_event_id": len(by_event),
+        # Events reaching a checkpoint AND a settled notification, counting stages
+        # across every workflow carrying that event id. This is the number the
+        # identity work exists to move, and it reads correctly whether the arcs
+        # share one workflow or remain split.
+        "events_fully_covered": covered_events,
+        "entity_types": dict(entity_types),
         # Both arcs present, neither completing: the halves are being recorded
         # under different workflow ids and no envelope can ever satisfy the
         # predicate. This is the signature of identity fragmentation, and it is

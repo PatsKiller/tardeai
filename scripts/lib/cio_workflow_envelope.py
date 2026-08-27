@@ -346,13 +346,30 @@ def missing_required_keys(envelope: Mapping[str, Any]) -> tuple[str, ...]:
     return tuple(k for k in ENVELOPE_REQUIRED_KEYS if k not in envelope)
 
 
+def derived_event_id(payload: Mapping[str, Any] | None, *, event_kind: str) -> Any:
+    """Canonical event id for a payload, or None.
+
+    `event_id` has been read here since the envelope landed and populated by
+    nothing, which is why the research and CIO arcs have no key to join on. This
+    derives one when the caller did not supply it. Local import keeps this module
+    schema-and-merge-only, and any failure degrades to None rather than breaking
+    a lineage projection that is only ever an audit view.
+    """
+    try:
+        from scripts.lib.cio_canonical_identity import event_id_for
+        return event_id_for(payload, event_kind=event_kind)
+    except Exception:
+        return None
+
+
 def hermes_request_fields(request: Mapping[str, Any]) -> dict[str, Any]:
     ident = identity_from_payload(request)
     rid = _blank_to_none(request.get("research_id"))
     fields: dict[str, Any] = {
         "research_request_id": str(rid) if rid is not None else None,
         "specialist_dispatch_id": _blank_to_none(request.get("specialist_dispatch_id")),
-        "event_id": _blank_to_none(request.get("event_id")),
+        "event_id": _blank_to_none(request.get("event_id"))
+                    or derived_event_id(request, event_kind="RESEARCH_REQUEST"),
         "context_id": _blank_to_none(request.get("context_id")),
         "source_sha": _blank_to_none(request.get("source_sha")),
         "subject_id": ident["subject_id"],
@@ -377,7 +394,11 @@ def hermes_completion_fields(request: Mapping[str, Any], result: Mapping[str, An
         "specialist_dispatch_id": _blank_to_none(
             result.get("specialist_dispatch_id") or request.get("specialist_dispatch_id")
         ),
-        "event_id": _blank_to_none(result.get("event_id") or request.get("event_id")),
+        # Derived from the REQUEST, never the result: the completion must land on
+        # the same event as the request that opened it, and only the request is
+        # guaranteed to carry the originating timestamp.
+        "event_id": _blank_to_none(result.get("event_id") or request.get("event_id"))
+                    or derived_event_id(request, event_kind="RESEARCH_REQUEST"),
         "context_id": _blank_to_none(result.get("context_id") or request.get("context_id")),
         "source_sha": _blank_to_none(result.get("source_sha") or request.get("source_sha")),
         "subject_id": ident["subject_id"],

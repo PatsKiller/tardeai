@@ -344,14 +344,27 @@ def record_cio_generation(
     *,
     path: Path | str | None = None,
     source_sha: str | None = None,
+    identity: Any = None,
 ) -> dict[str, Any]:
-    """Persist a real CIO generation id, or a typed skip. Never mint a fake id."""
+    """Persist a real CIO generation id, or a typed skip. Never mint a fake id.
+
+    `identity` is an optional payload describing what the run is *about*, used to
+    stamp a canonical `event_id`. Without it a CIO envelope carries no entity at
+    all -- which is why every production envelope read `entity_type: UNRESOLVED`
+    and why the CIO arc had nothing to join to the research arc on.
+    """
     store = LineageStore(path)
     gid = _optional_str(generation_id)
     reason = coerce_skip_reason(skip_reason)
     updates: dict[str, Any] = {}
     if source_sha:
         updates["source_sha"] = source_sha
+    if identity:
+        try:
+            from scripts.lib.cio_canonical_identity import identity_fields
+            updates.update(identity_fields(identity, event_kind="CIO_RUN"))
+        except Exception:
+            pass  # lineage is an audit projection; identity is best-effort
     if reason:
         updates["cio_skip_reason"] = reason
         updates["stage_status"] = {"cio": cio_stage_for_skip(reason)}

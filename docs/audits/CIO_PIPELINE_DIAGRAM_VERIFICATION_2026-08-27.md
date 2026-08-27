@@ -89,6 +89,43 @@ It writes nothing and mints no identity. **Diagnosing a fork is not authority to
 
 This is the first concrete instance of the Health Agent plan's Phase 1 (consistency invariants) and is the natural thing to wire in there.
 
+## Update — identity node implemented (option 2 chosen)
+
+`scripts/lib/cio_canonical_identity.py` implements the diagram's `CANONICAL ENTITY / IDENTITY` node. Both arcs now stamp a canonical `event_id`, derived rather than minted-and-stored, so each computes the same value independently with no shared state, no lookup race and no ordering requirement:
+
+```
+arc A  {"symbol": "SCHD",     "occurred_at": "…T15:05:00Z"}  → evt_51966048b852f76be4d9
+arc B  {"subject_id": "schd", "created_at":  "…T15:52:41Z"}  → evt_51966048b852f76be4d9
+```
+
+Proven end-to-end: when both arcs carry one event, the envelope accumulates all five stages and `complete_to_checkpoint` reads **1/1 (100%)**. The loop closes.
+
+Design points worth keeping:
+
+- **`None`, never a shared placeholder,** for an unresolvable entity. A common "unknown" id would join every unresolved event to every other one and manufacture completions that never happened.
+- **A missing timestamp does not mean "key on now."** That would rehash the same event on every call and break the join silently; it buckets to a stable sentinel instead.
+- **A ticker is never promoted to a `security_guid`**, matching `identity_from_payload`'s existing guarantee.
+- **`identity_fields()` never sets `workflow_id`.** Rewriting it changes how every downstream consumer keys lineage, so that stays an explicit caller decision. Stamping is purely additive and safe to merge into a live envelope.
+
+### But identity alone does not close the production loop
+
+Two further blockers, both found while implementing this, and neither fixable by identity:
+
+**1. The two arcs are about genuinely different entities.** Production CIO runs are not security events — 42 of 49 carry `trigger_type: SYSTEM` with `trigger_ref: wake_goal_goal_<id>_<hour>`. They are portfolio-level goal wakes. Research is security-driven. The trigger types that *would* link them, `HERMES_RESOLVED` and `SPECIALIST_COMPLETION`, exist in `VALID_TRIGGER_TYPES` and have **zero occurrences**. The arcs are not merely mis-keyed, they are causally unwired.
+
+So `_run_identity` types a goal wake as `entity_type: GOAL` rather than pretending it is a security. Two arcs about different entities then correctly *fail* to join, instead of colliding on a placeholder and reporting a completion that did not happen.
+
+**2. Nearly every CIO run is evidence-blocked before synthesis.** 46 of 49 runs block at `HEALTH_CHECK`:
+
+```
+EVIDENCE_GAP: missing_required: health_data_quality, watch_intelligence, operator_profile
+              stale_required:   portfolio
+```
+
+The gate is fail-closed and behaving correctly — the required domains genuinely are unavailable. But a run that blocks at HEALTH_CHECK never reaches synthesis, so arc B produces no checkpoint regardless of identity.
+
+**Ordering follows from that:** identity (done) → wire the causal trigger → resolve the evidence gaps. Doing them in any other order produces no measurable change in completion.
+
 ## What is still open — needs an operator decision
 
 Closing the loop requires deciding **which identity wins**, and that changes how every downstream consumer keys lineage. Two coherent options:
