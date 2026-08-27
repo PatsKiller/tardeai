@@ -57,6 +57,10 @@ BASE_URL = os.getenv("SCHWAB_BASE_URL", "https://api.schwabapi.com")
 # so a sweep never competes a co-running quote refresh into a 429.
 MIN_INTERVAL = float(os.getenv("SCHWAB_INSTRUMENT_MIN_INTERVAL", "0.6"))
 ACCOUNT_KEY = os.getenv("SCHWAB_INSTRUMENT_ACCOUNT_KEY", "schwab_taxable")
+# A full sweep is ~5,200 broker calls. Saving only at the end means a token
+# expiry, a network blip or an operator Ctrl-C throws away the whole run, so the
+# store is checkpointed and every completed symbol is skipped on the next pass.
+CHECKPOINT_EVERY = int(os.getenv("SCHWAB_INSTRUMENT_CHECKPOINT_EVERY", "100"))
 # Statuses that still need a durable identifier. CONFIRMED already has one, and
 # re-asking would spend rate limit to learn nothing.
 NEEDS_IDENTIFIER = ("UNRESOLVED_WITH_REASON", "CANDIDATE")
@@ -100,7 +104,21 @@ def fetch_instrument(session: Any, token: str, symbol: str, timeout: float = 20.
     return instruments[0] or {}
 
 
-def run(limit: int | None = None, apply: bool = False) -> dict[str, Any]:
+def already_swept(doc: dict[str, Any], retry_failures: bool = True) -> set[str]:
+    """Symbols this store already answered for.
+
+    A miss the broker genuinely returned is an answer and is not re-asked. A
+    fetch that failed on our side is not an answer, so by default it is retried.
+    """
+    done = set(doc.get("instruments") or {})
+    for sym, miss in (doc.get("misses") or {}).items():
+        if retry_failures and str(miss.get("reason", "")).startswith("fetch_failed"):
+            continue
+        done.add(sym)
+    return done
+
+
+def run(limit: int | None = None, apply: bool = False, resume: bool = True) -> dict[str, Any]:
     import requests
     from schwab_token_manager import get_access_token
 
@@ -111,6 +129,13 @@ def run(limit: int | None = None, apply: bool = False) -> dict[str, Any]:
 
     doc = load_evidence() if apply else empty_evidence()
     session = requests.Session()
+
+    skipped = 0
+    if resume:
+        done = already_swept(doc)
+        before = len(targets)
+        targets = [t for t in targets if t not in done]
+        skipped = before - len(targets)
 
     confirmed = misses = errors = 0
     token = get_access_token(ACCOUNT_KEY)
@@ -146,6 +171,8 @@ def run(limit: int | None = None, apply: bool = False) -> dict[str, Any]:
         else:
             record_miss(doc, sym, "broker_returned_no_identifier")
             misses += 1
+        if apply and CHECKPOINT_EVERY and (i + 1) % CHECKPOINT_EVERY == 0:
+            save_evidence(doc)
 
     result = {
         "schema": "SchwabInstrumentSweep@v1",
@@ -155,6 +182,7 @@ def run(limit: int | None = None, apply: bool = False) -> dict[str, Any]:
         "applied": bool(apply),
         "account_key": ACCOUNT_KEY,
         "targets": len(targets),
+        "skipped_already_swept": skipped,
         "identifiers_found": confirmed,
         "no_identifier": misses,
         "errors": errors,
@@ -173,13 +201,16 @@ def main() -> int:
     ap.add_argument("--apply", action="store_true", help="write the evidence store (default: dry run)")
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--limit", type=int, default=None, help="only sweep the first N symbols")
+    ap.add_argument("--no-resume", action="store_true",
+                    help="re-ask symbols the evidence store already answered for")
     args = ap.parse_args()
 
-    result = run(limit=args.limit, apply=args.apply)
+    result = run(limit=args.limit, apply=args.apply, resume=not args.no_resume)
     if args.json:
         print(json.dumps(result, indent=2, sort_keys=True))
     else:
-        for key in ("targets", "identifiers_found", "no_identifier", "errors", "path"):
+        for key in ("targets", "skipped_already_swept", "identifiers_found",
+                    "no_identifier", "errors", "path"):
             if key in result:
                 print(f"{key:20} {result[key]}")
         if not result.get("ok"):

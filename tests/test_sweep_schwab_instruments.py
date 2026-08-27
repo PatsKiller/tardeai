@@ -65,3 +65,27 @@ def test_targets_are_deduplicated_and_ordered():
     targets = symbols_needing_identifiers(doc)
 
     assert targets == sorted(set(targets)) == ["AAPL", "MSFT", "ZTS"]
+
+
+def test_resume_skips_answered_symbols_but_retries_our_own_failures():
+    """A 5,200-call sweep must be resumable, and must not re-ask what it knows.
+
+    A miss the broker genuinely returned is an answer. A fetch that failed on our
+    side is not — treating it as one would permanently blacklist a symbol on a
+    single timeout.
+    """
+    from scripts.lib.schwab_instrument_evidence import (
+        empty_evidence, record_instrument, record_miss)
+    from scripts.sweep_schwab_instruments import already_swept
+
+    doc = empty_evidence()
+    record_instrument(doc, "ABCL", {"cusip": "00288U106"})
+    record_miss(doc, "ACLX", "broker_returned_no_identifier")
+    record_miss(doc, "ADTN", "fetch_failed:Timeout")
+
+    done = already_swept(doc)
+    assert "ABCL" in done
+    assert "ACLX" in done, "the broker answered; do not spend rate limit again"
+    assert "ADTN" not in done, "our own failure must be retried"
+
+    assert already_swept(doc, retry_failures=False) == {"ABCL", "ACLX", "ADTN"}
