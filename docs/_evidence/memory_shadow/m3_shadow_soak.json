@@ -1,0 +1,6 @@
+{
+  "enabled": true,
+  "episodes": 1,
+  "behavior_influence": 0,
+  "note": "consolidator shadow soak in tests only"
+}

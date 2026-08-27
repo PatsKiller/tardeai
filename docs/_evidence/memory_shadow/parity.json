@@ -1,0 +1,9 @@
+{
+  "schema": "ShadowParity@v1",
+  "compared": 6,
+  "matches": 6,
+  "parity_pct": 100.0,
+  "divergences": [],
+  "authority": "READ_ONLY_ADVISORY",
+  "CIO_influence": 0
+}
