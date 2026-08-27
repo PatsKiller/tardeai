@@ -50,6 +50,9 @@ APPROVED_OUTBOUND = {
     "scripts/telegram_transport.py",
     # CIO-only wrapper — never reads general bot; calls telegram_transport.send_message.
     "scripts/lib/cio_telegram_transport.py",
+    # SYSTEM ops family (heartbeat/canary). Distinct from CIO financial notifications.
+    # CI/pytest locked; tests patch _http_post. Not a CIO alert producer.
+    "scripts/lib/autonomy_watchdog/telegram_system.py",
 }
 APPROVED_DELIVERY = {"scripts/alert_outbox.py", "scripts/telegram_alert.py"}
 # Inbound polling/command handling is a different concern from outbound delivery;
@@ -73,6 +76,10 @@ APPROVED_TOOLING = {
     "scripts/secrets/rotation_probes.py",
     "tests/test_telegram_notification_normalization.py",
     "tests/test_alert_normalization_blockers.py",
+    # Tests that describe/block Bot API patterns; they must mention the tokens.
+    "tests/conftest.py",
+    "tests/test_cio_phase1_notification_containment.py",
+    "tests/test_telegram_p0_card_gate.py",
 }
 APPROVED = APPROVED_OUTBOUND | APPROVED_DELIVERY | APPROVED_INBOUND | APPROVED_TOOLING
 

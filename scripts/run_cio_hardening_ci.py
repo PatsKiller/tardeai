@@ -26,6 +26,10 @@ GATES = [
     ("notification_signal_over_spam", [
         "tests/test_cio_notification_signal.py",
     ]),
+    ("telegram_notification_normalization", [
+        "tests/test_telegram_notification_normalization.py",
+        "tests/test_r20_v2_notification_idempotency.py",
+    ]),
     ("capital_ledger", [
         "tests/test_cio_capital_plan.py",
     ]),

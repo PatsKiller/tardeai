@@ -194,3 +194,54 @@ def test_notification_id_has_no_iso_timestamp_fragment(store: NotificationStateS
     assert created[:10] not in nid
     assert ":" not in nid
     assert nid.startswith("ntf_")
+
+
+def test_restart_reload_resumes_same_durable_checkpoint(tmp_path: Path) -> None:
+    """A new store on the same files must not mint a second identity."""
+    paths = dict(
+        state_path=tmp_path / "state.jsonl",
+        audit_path=tmp_path / "audit.jsonl",
+        metrics_path=tmp_path / "metrics.jsonl",
+    )
+    first = NotificationStateStore(**paths)
+    nd1 = decide_notification(_deploy_cash(digest="reload-gen"), store=first)
+    first.record(nd1)
+    restarted = NotificationStateStore(**paths)
+    nd2 = decide_notification(_deploy_cash(digest="reload-gen"), store=restarted)
+    restarted.record(nd2)
+    assert nd2["notification_id"] == nd1["notification_id"]
+    assert nd2["notification_class"] == DELIVERY_SUPPRESSED
+    rows = [
+        json.loads(line)
+        for line in paths["audit_path"].read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert {row["notification_id"] for row in rows} == {nd1["notification_id"]}
+
+
+def test_failed_processing_does_not_advance_checkpoint(store: NotificationStateStore) -> None:
+    """decide() without record() must not persist a cursor."""
+    decision = _deploy_cash(digest="fail-gen")
+    nd = decide_notification(decision, store=store)
+    assert store.latest(nd["decision_lineage_id"]) is None
+    assert _audit_rows(store) == []
+
+
+def test_older_generation_after_newer_is_material_change_not_regression(
+    store: NotificationStateStore,
+) -> None:
+    """Older digest after newer is a material change, not a cursor rollback.
+
+    The durable index keeps the last recorded decision; it does not lose the
+    lineage or rewind to empty. A new semantic id is allowed because the
+    material generation changed.
+    """
+    newer = decide_notification(_deploy_cash(digest="gen-new"), store=store)
+    store.record(newer)
+    older = decide_notification(_hold_cash(digest="gen-old"), store=store)
+    store.record(older)
+    assert older["notification_id"] != newer["notification_id"]
+    latest = store.latest(newer["decision_lineage_id"])
+    assert latest is not None
+    assert latest["notification_id"] == older["notification_id"]
+    assert latest["material_generation_id"] == older["material_generation_id"]
