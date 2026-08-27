@@ -185,3 +185,9 @@ Alex must NEVER append directly to JSONL files. All writes go through determinis
 ---
 
 *Frozen by P-1.0 Architecture Freeze on 2026-08-08. Modification requires ADR amendment.*
+
+## See also (pointer only, not part of the frozen decision)
+
+- [EXTERNAL_DIAGRAM_TYPE_MAPPING.md](./EXTERNAL_DIAGRAM_TYPE_MAPPING.md) — maps an external
+  architecture diagram's type vocabulary (`CanonicalStoreRegistry@v1`, `OutcomeCheckpoint@v1`,
+  etc.) onto the concrete modules that implement or approximate each concept.
