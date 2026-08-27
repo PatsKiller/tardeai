@@ -903,8 +903,13 @@ def _parse_et_timestamp(ts_str: str):
     for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S"):
         try:
             naive = datetime.strptime(s[:19], fmt)
-            import pytz as _ptz_et
-            return _ptz_et.timezone("US/Eastern").localize(naive).astimezone(timezone.utc)
+            try:
+                import pytz as _ptz_et
+                return _ptz_et.timezone("US/Eastern").localize(naive).astimezone(timezone.utc)
+            except ModuleNotFoundError:
+                # Keep the pure health parser usable in minimal QA/bootstrap
+                # environments; explicit UTC offsets are handled below.
+                return naive.replace(tzinfo=timezone.utc)
         except ValueError:
             continue
     return None
@@ -956,6 +961,39 @@ def _portfolio_price_freshness_alerts(now_et, max_age_min: float = 25.0) -> list
             alerts.append(f"⚠️ holdings.json repriced check failed: {str(e)[:80]}")
 
     return alerts
+
+
+def evaluate_broker_snapshot(snapshot: dict, *, now: datetime | None = None,
+                             max_age_min: float = 15.0) -> dict:
+    """Validate broker freshness semantically, independent of file mtime/log age.
+
+    A successful repricer log is not evidence that broker positions are current.  This
+    pure check is intentionally conservative: missing broker timestamps or a dry-run
+    sync are blocked rather than interpreted as healthy.
+    """
+    now = now or datetime.now(timezone.utc)
+    rows = snapshot.get("holdings") or []
+    reasons: list[str] = []
+    ages: list[float] = []
+    for row in rows:
+        if row.get("is_cash") and not row.get("broker_position_as_of"):
+            continue
+        raw = row.get("broker_position_as_of") or row.get("broker_ingested_at")
+        parsed = _parse_et_timestamp(raw) if raw else None
+        if parsed is None:
+            reasons.append(f"missing_broker_timestamp:{row.get('symbol') or 'unknown'}")
+            continue
+        ages.append(max(0.0, (now - parsed).total_seconds() / 60.0))
+    sync_mode = str(snapshot.get("sync_mode") or "").upper()
+    if sync_mode in {"DRY_RUN", "PREVIEW"}:
+        reasons.append("sync_not_applied")
+    if not rows:
+        reasons.append("no_holdings")
+    if ages and max(ages) > max_age_min:
+        reasons.append(f"broker_positions_stale:{max(ages):.1f}m")
+    status = "CURRENT" if not reasons else "STALE_PORTFOLIO"
+    return {"status": status, "ok": status == "CURRENT", "max_age_min": max(ages, default=None),
+            "reasons": reasons, "snapshot_id": snapshot.get("portfolio_snapshot_id")}
 
 
 def _escalate(comp, check_result, conn):
@@ -1017,6 +1055,25 @@ def run_health_check(dry_run=True, verbose=False):
         "summary": {"ok": 0, "stale": 0, "missing": 0, "failed": 0,
                      "locked": 0, "retried": 0, "escalated": 0},
     }
+
+    # Semantic broker freshness is separate from log/file freshness.  Missing local
+    # state is reported as unavailable; it must not become a healthy empty state.
+    try:
+        _state_path = PROJECT_ROOT / "data" / "portfolios" / "state" / "holdings.json"
+        if _state_path.exists():
+            report["broker_snapshot_health"] = evaluate_broker_snapshot(
+                json.loads(_state_path.read_text(encoding="utf-8")), now=now)
+        else:
+            report["broker_snapshot_health"] = {
+                "status": "UNAVAILABLE", "ok": False,
+                "reasons": ["holdings_snapshot_missing"], "snapshot_id": None,
+            }
+    except Exception as exc:
+        report["broker_snapshot_health"] = {
+            "status": "INVALID_SCHEMA", "ok": False,
+            "reasons": [f"holdings_snapshot_unreadable:{type(exc).__name__}"],
+            "snapshot_id": None,
+        }
 
     # Determine if we're in market hours (ET)
     import pytz as _ptz
