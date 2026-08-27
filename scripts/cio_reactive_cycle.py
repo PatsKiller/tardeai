@@ -56,7 +56,26 @@ def _hash(s: str) -> str:
     return hashlib.sha256(s.encode()).hexdigest()[:16]
 
 
-def run_once(*, max_wakes: int = 12, dispatch: bool = True) -> dict[str, Any]:
+def run_once(*, max_wakes: int = 12, dispatch: bool = False) -> dict[str, Any]:
+    """Enqueue reactive and goal wakes. Does NOT claim them by default.
+
+    `dispatch` defaulted to True, and this cycle builds its dispatcher WITHOUT a
+    run_store -- `CIOWakeDispatcher.poll_and_dispatch` only calls
+    `run_store.create_run()` when one is injected. So every cycle claimed and
+    dispatched wakes and created nothing, while the cron entrypoint that DOES
+    carry a run_store then found an empty queue and logged `dispatched=0`.
+
+    Measured 2026-08-27: 1,282 wakes dispatched, 55 ever went in-flight -- 1,227
+    consumed and discarded. No CIO run has been created since 18:01 despite the
+    dispatcher running every 5 minutes.
+
+    That also makes the causal trigger unreachable: HERMES_RESOLVED cannot fire
+    on a run that is never created, which is why it has 0 occurrences.
+
+    `cio_wake_dispatch_entrypoint` is the documented sole claimant ("CIOWakeDispatcher
+    is the sole wake owner"). This cycle enqueues; it does not claim. Pass
+    --dispatch to opt in for manual use.
+    """
     out: dict[str, Any] = {
         "ts": _now(),
         "authority": "READ_ONLY_ADVISORY",
@@ -322,9 +341,14 @@ def main() -> int:
     ap.add_argument("--once", action="store_true", default=True)
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--max-wakes", type=int, default=12)
+    # --no-dispatch kept for compatibility; dispatching is now off by default and
+    # --dispatch opts in. See run_once.__doc__ for why.
     ap.add_argument("--no-dispatch", action="store_true")
+    ap.add_argument("--dispatch", action="store_true",
+                    help="claim and dispatch wakes (default: leave them for the sole claimant)")
     args = ap.parse_args()
-    res = run_once(max_wakes=args.max_wakes, dispatch=not args.no_dispatch)
+    res = run_once(max_wakes=args.max_wakes,
+                   dispatch=bool(args.dispatch) and not args.no_dispatch)
     if args.json:
         print(json.dumps(res, indent=2, default=str))
     else:

@@ -893,7 +893,14 @@ def _domain_holdings_detail() -> dict[str, Any]:
             for acct, d in sorted(accounts.items(), key=lambda x: -x[1]["value"])
         },
         "sector_breakdown": dict(sorted(sector_breakdown.items(), key=lambda x: -x[1])),
-        "as_of": holdings.get("as_of", ""),
+        # `as_of` in holdings.json is a DATE ("2026-08-26"), which parses to
+        # midnight -- against a 12h threshold this domain reported STALE while
+        # its data was 0.6h old. `_portfolio_as_of` was written for exactly this
+        # and applied to `_domain_portfolio` only; this is the second call site
+        # in the same file, missed at the time. `positions_as_of` keeps the
+        # original date visible, since repricing refreshes prices not positions.
+        "as_of": _portfolio_as_of(holdings, holdings.get("portfolio_totals") or {}),
+        "positions_as_of": holdings.get("as_of", ""),
     }
 
 
