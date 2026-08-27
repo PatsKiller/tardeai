@@ -8,6 +8,7 @@ while the repricer logged "holdings.json updated." every 15 minutes.
 """
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 import pytest
@@ -78,3 +79,30 @@ def test_repricer_resolves_through_the_helper():
 
     assert "portfolio_state_write_targets" in main
     assert 'state_dir = root / "data" / "portfolios" / "state"' not in main
+
+
+def test_repricer_helper_import_survives_cron_invocation():
+    """Run it the way cron does and assert the helper actually loaded.
+
+    The source-text check above is not enough: it passed while the import raised
+    "No module named 'scripts'" at runtime, because `python scripts/x.py` puts
+    scripts/ on sys.path[0], not the repo root. The guard swallowed it and the
+    repricer silently fell back to checkout-only writes -- the exact bug this
+    module exists to prevent, shipped a second time.
+    """
+    import subprocess
+
+    root = Path(__file__).resolve().parent.parent
+    proc = subprocess.run(
+        [sys.executable, "scripts/portfolio_repricer.py", "--print-targets"],
+        cwd=root, capture_output=True, text=True, timeout=120,
+    )
+
+    assert proc.returncode == 0, proc.stderr[-2000:]
+    assert "persistent-root helper unavailable" not in proc.stdout, (
+        "helper import failed at runtime; targets fell back to checkout-only:\n"
+        + proc.stdout
+    )
+    # --print-targets is a pure probe: it must not fetch quotes or write.
+    assert "[repricer] Finviz:" not in proc.stdout
+    assert proc.stdout.strip(), "probe printed no targets"
