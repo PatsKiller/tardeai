@@ -244,7 +244,24 @@ def _row_matches_workflow(row: dict[str, Any], workflow_id: str) -> bool:
 
 
 def _workflow_detail(workflow_id: str, query: dict[str, Any]) -> tuple[dict[str, Any], str]:
-    rows, quality = _load_rows((PROJECT_ROOT / "data" / "runtime" / "workflow_traces.json",))
+    rows, quality = _load_rows(_canonical_paths(("cio.workflow_lineage",), ("data/cio/cio_workflow_lineage.jsonl", "data/runtime/workflow_traces.json")))
+    # The durable lineage writer appends one node/edge per record. Normalize
+    # those records into the existing trace contract without mutating source data.
+    if rows and all(r.get("record_type") in {"node", "edge"} for r in rows):
+        grouped: dict[str, dict[str, Any]] = {}
+        for record in rows:
+            wf = str(record.get("workflow_id") or "")
+            if not wf:
+                continue
+            trace = grouped.setdefault(wf, {"workflow_id": wf, "identifiers": {}, "nodes": [], "edges": [], "evidence_class": record.get("evidence_class", "OPERATOR_REQUESTED_LIVE"), "source_sha": record.get("source_sha", _sha())})
+            if record.get("record_type") == "node":
+                trace["nodes"].append(record)
+                node_id = record.get("node_id")
+                if node_id:
+                    trace["identifiers"].setdefault(str(record.get("node_type", "")).lower() + "_id", str(node_id))
+            else:
+                trace["edges"].append(record)
+        rows = list(grouped.values())
     matches = [r for r in rows if _row_matches_workflow(r, workflow_id)]
     if not matches:
         status = "UNAVAILABLE" if quality == "UNAVAILABLE" else "NO_RELEVANT_EVENTS"
@@ -385,7 +402,7 @@ def handle(path: str, *, method: str = "GET", query: dict[str, Any] | None = Non
         return 200, _envelope(detail, quality=quality)
     mapping = {
         "/api/v3/control-plane/agents": (_canonical_paths((), ("data/runtime/agent_registry.json",)), "agents"),
-        "/api/v3/control-plane/workflows": (_canonical_paths(("cio.operator_product.history", "cio.checkpoints"), ("data/runtime/workflow_traces.json",)), "workflows"),
+        "/api/v3/control-plane/workflows": (_canonical_paths(("cio.workflow_lineage", "cio.operator_product.history", "cio.checkpoints"), ("data/cio/cio_workflow_lineage.jsonl", "data/runtime/workflow_traces.json")), "workflows"),
         "/api/v3/control-plane/research": (_canonical_paths(("research.current", "research.raw"), ("data/runtime/research_attention.json",)), "research"),
         "/api/v3/control-plane/identity": (_canonical_paths((), ("data/runtime/identity_registry.json", "data/identity/identity_registry.json")), "identity"),
         "/api/v3/control-plane/notifications": (_canonical_paths(("notifications.outbox",), ("data/runtime/notification_receipts.json",)), "notifications"),

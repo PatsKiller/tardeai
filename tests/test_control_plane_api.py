@@ -102,3 +102,19 @@ def test_workflow_cross_id_partial_and_cutoff(tmp_path, monkeypatch):
     assert body["data"]["unresolved_links"]
     _, cutoff = api.handle("/api/v3/control-plane/workflows/w1", query={"until": "2026-01-01T12:00:00Z"})
     assert len(cutoff["data"]["nodes"]) == 1
+
+
+def test_append_only_lineage_records_are_grouped_for_detail(tmp_path, monkeypatch):
+    cio = tmp_path / "data" / "cio"; cio.mkdir(parents=True)
+    records = [
+        {"record_type": "node", "workflow_id": "wf1", "node_type": "RESEARCH", "node_id": "r1", "as_of": "2026-01-01T00:00:00Z"},
+        {"record_type": "node", "workflow_id": "wf1", "node_type": "CHECKPOINT", "node_id": "cp1", "as_of": "2026-01-02T00:00:00Z"},
+        {"record_type": "edge", "workflow_id": "wf1", "from": "r1", "to": "cp1", "relationship": "CHECKPOINTED_BY"},
+    ]
+    (cio / "cio_workflow_lineage.jsonl").write_text("\n".join(json.dumps(r) for r in records) + "\n")
+    monkeypatch.setattr(api, "PROJECT_ROOT", tmp_path)
+    status, body = api.handle("/api/v3/control-plane/workflows/r1")
+    assert status == 200
+    assert body["data"]["workflow_id"] == "wf1"
+    assert {n["node_id"] for n in body["data"]["nodes"]} == {"r1", "cp1"}
+    assert body["data"]["edges"][0]["relationship"] == "CHECKPOINTED_BY"
