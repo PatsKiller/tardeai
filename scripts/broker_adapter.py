@@ -2,11 +2,14 @@
 
 This module defines the broker-agnostic interface the phantom-confirmation gate depends on.
 It names NO broker: the broker for an account comes from config, and the concrete
-implementation is discovered by name (broker_confirm_<name>.py). Adding Schwab/IBKR later is
-a drop-in file; this module and the gate never change.
+implementation is discovered by name (broker_confirm_<name>.py). Adding a new broker later
+is a drop-in file; this module and the gate never change.
 
 HARD RULE: this file contains zero vendor string literals. The only place a broker is named
-is config (the accounts table) and the per-broker implementation files.
+is config (the accounts table) and the per-broker implementation files. (Audit finding L4,
+docs/audits/CIO_PLATFORM_AUDIT_2026-08-27.md: an earlier version of this docstring named two
+real vendors as an illustrative example, one paragraph after claiming to name none — fixed for
+internal consistency; the claim was already true in the actual dispatch code, grep-verified.)
 """
 import importlib
 import os
