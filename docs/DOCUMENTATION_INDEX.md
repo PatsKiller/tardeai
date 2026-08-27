@@ -1,5 +1,5 @@
 # Trade AI v12 — Documentation Index
-**Updated:** 2026-08-24 (R10.3 CIO persistent-cognition consumption source PR)
+**Updated:** 2026-08-27 (audit finding M9 — backfilled 22 missing 2026-08-20/21/22 closeout doc entries; prior update 2026-08-24, R10.3 CIO persistent-cognition consumption source PR)
 **Protocol:** All doc changes follow `docs/A1A.md`. Do not add a doc without updating this index.
 **Scope:** Project root = `/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild`
 
@@ -34,6 +34,29 @@
 | `docs/ops/CIO_OPERATOR_DESK_LOOP_P0_2026-08-20.md` | Desk loop P0 meta_system (#418) | Active |
 | `docs/ops/CIO_OPERATOR_FREEFORM_AGENT_2026-08-20.md` | Freeform Flash agent (#419) | Active |
 | `docs/ops/CIO_HELD_THESIS_COVERAGE_2026-08-20.md` | Held-book thesis coverage SLA (#420) | Active |
+| `docs/ops/CIO_ADVISORY_TRUTH_HARDENING_CLOSEOUT_2026-08-20.md` | Advisory-truth hardening closeout | Active |
+| `docs/ops/CIO_CLOSED_LOOP_LINEAGE_CLOSEOUT_2026-08-20.md` | Closed-loop lineage closeout | Active |
+| `docs/ops/CIO_LOOP_B1_B3_D1_CLOSEOUT_2026-08-20.md` | Loop B1/B3/D1 closeout | Active |
+| `docs/ops/CIO_MATERIAL_NOTIFY_CANARY_2026-08-20.md` | Material-notify canary run | Active |
+| `docs/ops/CIO_OUTCOME_LEARNING_CLOSEOUT_2026-08-20.md` | Outcome-learning closeout | Active |
+| `docs/ops/CIO_PHASE_A_INTERDICT_NOTIFY_2026-08-20.md` | Phase A interdict-notify | Active |
+| `docs/ops/CIO_DESK_MEMO_CONTINUOUS_2026-08-20.md` | Desk memo continuous-mode | Active |
+| `docs/ops/FLASH_ACTIVATION_AND_THESIS_CANARY_2026-08-20.md` | Flash activation + thesis canary | Active |
+| `docs/ops/RESEARCH_ENGINE_FLASH_FIRST_FAILURE_2026-08-20.md` | Research engine flash-first failure analysis | Active |
+| `docs/ops/SYMBOL_THESIS_ACQUISITION_PIPELINE_LIVE_2026-08-20.md` | Symbol thesis acquisition pipeline live | Active |
+| `docs/ops/SYMBOL_THESIS_CANARY_DRY_RUN_2026-08-20.md` | Symbol thesis canary dry-run | Active |
+| `docs/ops/CIO_DECISION_PAYLOAD_PHASE1_2026-08-21.md` | CIO Decision Payload Phase 1 (`AGENT_DECISION_PAYLOAD` capture live) | Active |
+| `docs/ops/DECISION_PAYLOAD_LANDING_2026-08-21.md` | Decision payload landing detail | Active |
+| `docs/ops/CIO_MEMORY_SHADOW_MEASURE_PHASE2_2026-08-21.md` | Memory shadow-measure Phase 2 | Active |
+| `docs/ops/CIO_INVESTMENT_INTELLIGENCE_CARD_2026-08-21.md` | Investment Intelligence Card (IIC) | Active |
+| `docs/ops/CIO_IIC_FEEDBACK_CC_2026-08-21.md` | IIC feedback into Command Center | Active |
+| `docs/ops/CIO_IIC_PHASE_D_SI_QUEUE_2026-08-21.md` | IIC Phase D symbol-intelligence queue | Active |
+| `docs/ops/CIO_IIC_TELEGRAM_ACTIONABLE_VISUAL_2026-08-21.md` | IIC Telegram actionable-visual variant | Active |
+| `docs/ops/CIO_IIC_SESSION_CLOSEOUT_2026-08-21.md` | IIC session closeout | Active |
+| `docs/ops/LANE_QUALITY_BAKEOFF_2026-08-21.md` | Research lane quality bakeoff | Active |
+| `docs/ops/LANE_QUALITY_BAKEOFF_OPERATOR_BLIND_2026-08-21.md` | Lane quality bakeoff, operator-blind variant | Active |
+| `docs/ops/RESEARCH_COVERAGE_SNAPSHOT_2026-08-22.md` | 10:24 ET coverage snapshot (pre-confirm-run — not current counts, see lifecycle-as-of doc) | Active |
+| `docs/MASTER_SYSTEM_DOCUMENTATION.md` §24 "Session — 2026-08-20 to 2026-08-22" | Pointer-index summary of this whole window, folding the above into the master doc's session changelog (audit finding M9) | Active |
 | `docs/architecture/TRADE_AI_INSTITUTIONAL_MEMORY_AND_AUTONOMOUS_AGENT_ARCHITECTURE_2026-08-24.md` | **Canonical R10** — taxonomy, BASELINE_PROJECTION vs material, PR sequence, constitution | Active |
 | `docs/ops/TRADE_AI_R10_MEMORY_AUTONOMOUS_AGENT_CLOSEOUT_2026-08-24.md` | R10.2 closeout — M1 LIVE naturally proven on `5c0a993a` | Active |
 | `docs/ops/YEDAS_EYE_INSTITUTIONAL_BRAIN_MATURITY_2026-08-24.md` | Yeda's Eye first audit after M1 natural PASS | Active |
