@@ -124,6 +124,29 @@ Do **not** assume every Track B run has a full multi-domain `enrich_plan` payloa
 
 ---
 
+## Where CIO Desk does not participate at all
+
+Both tables above describe thesis governance *within* Track A / Track B. There is a
+third category: platform systems that are neither Track A nor Track B, and that the
+CIO Desk does not see, gate, or receive output from at all — as distinct from
+"thesis not fully injected," these paths have **no CIO involvement of any kind**.
+
+| Path | Reality | Why it matters |
+|---|---|---|
+| Daily rebalance-drift alert (`scripts/portfolio_rebalancer.py` → `scripts/portfolio_alerts.py`, cron `15 7 * * 1-5`) | Runs independently of every CIO module. Computes drift and sends a Telegram alert directly when drift exceeds $200k. No `cio_*` import anywhere in `portfolio_rebalancer.py`. | This is the platform's actual, most-frequently-seen rebalance recommendation surface — an operator reading "CIO Desk is the authoritative source" should not assume it covers this alert. It does not, today. |
+| `scripts/cio_decision_engine.py` → `cio_decisions` table → `scripts/autonomous_rebalance_planner.py` | The *intended* CIO-gated fallback for rebalance decisions. Cron entry has been `# DISABLED` since 2026-08-08; `autonomous_rebalance_planner.py` itself has no scheduled entry point at all. | Exists in code, not running. Do not assume it is live without checking the crontab first. |
+
+**This split is intentional, not a defect to silently "fix" by re-enabling the
+disabled cron entry** — the daily drift alert is deliberately kept mechanical
+(no LLM latency/cost) so it fires promptly regardless of CIO Desk availability.
+If routing daily rebalance alerts through a CIO check becomes desired, that is a
+scoped follow-up requiring its own review of why the `cio_decision_engine.py`
+cron entry was disabled in the first place — see
+[`docs/audits/CIO_PLATFORM_REMEDIATION_2026-08-27.md`](../audits/CIO_PLATFORM_REMEDIATION_2026-08-27.md)
+(Fix C1).
+
+---
+
 ## Deep links pattern (generic)
 
 - Prefer **path-based** links: `/v3/cio`, `/v3/cio?plan=<plan_id>`.  
@@ -145,6 +168,20 @@ Do **not** assume every Track B run has a full multi-domain `enrich_plan` payloa
 | Events | `cio_events.jsonl`, goals, outcomes |
 
 These are host runtime state (often gitignored). Architects use this docs packet + code; operators use host files + Drive operating packet.
+
+---
+
+## Recent development (2026-08-20 to 2026-08-22)
+
+Audit finding M9 (docs/audits/CIO_PLATFORM_AUDIT_2026-08-27.md): a cluster of
+CIO Desk reliability/product closeouts landed in this window — advisory-truth
+hardening, closed-loop lineage, held-thesis coverage, operator desk loop P0,
+outcome-learning closeout, material-notify canary, memory shadow-measure
+phase 2, and the CIO Decision Payload (Phase 1) capture going live. Full
+pointer index and artifact list: `docs/MASTER_SYSTEM_DOCUMENTATION.md` §24
+("Session — 2026-08-20 to 2026-08-22"). This is a pointer, not a re-statement
+— Track A/B above should still be read as the current structural description;
+none of this window's work changed the Track A/B split itself.
 
 ---
 

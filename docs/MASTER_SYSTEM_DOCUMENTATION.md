@@ -1954,8 +1954,26 @@ Do NOT invent, estimate, or assume numbers not explicitly provided."*
 
 ## 14. Frontend
 
+**v3 (`apps/command-center-v3/`, served at `/v3/`) is the current, canonical frontend.**
+Audit finding H2 (docs/audits/CIO_PLATFORM_AUDIT_2026-08-27.md): this section
+described v2 as "the" frontend in present tense with zero v3 mentions —
+corrected below. A full v3 page-by-page matrix (equivalent to the v2 one
+this section originally was) does not yet exist as a doc and is a known gap,
+not something this fix invents; see `docs/COMMAND_CENTER_PAGE_MATRIX.md`
+(v2-only, dated 2026-05-27) for the shape such a doc would take if written
+for v3.
+
+- **Route:** `/v3/`, backend API `/api/v3/*` (see `scripts/api_v3_cio.py` for the CIO surface specifically)
+- **Source:** `apps/command-center-v3/` (54 page files under `src/pages/` as of this writing)
+- **Build:** `cd apps/command-center-v3 && npm run build` (see `docs/CHEAT_SHEET.md`)
+
+### v2 — frozen, not canonical, still served
+
 - **Framework:** React SPA (Next.js)
-- **Route:** served at `/v2/` via Portfolio Server (port 7777)
+- **Route:** served at `/v2/` via Portfolio Server (port 7777) — kept live intentionally as a
+  frozen fallback (the served HTML injects a "v2 is frozen — v3 is now canonical" banner,
+  `scripts/portfolio_server.py`); this is deliberate, not an oversight, so it is not being
+  removed by this fix
 - **Source:** `apps/command-center-v2/` (91 TypeScript/React files)
 - **Pages:** 61 (all fully implemented, no stubs)
 - **API hooks:** `useApi()`, `useFetch()` custom hooks for data fetching
@@ -2495,6 +2513,56 @@ actionable inferences. Advisory-only — no execution path. Full design:
   Intelligence-hub `InferenceLayersPanel`.
 
 ## 24. Session Changelog
+
+### Session — 2026-08-27 (CIO Platform Audit Remediation — 19 PRs, `2ccee09a` → `b4b6ced7`)
+
+Audit: [`docs/audits/CIO_PLATFORM_AUDIT_2026-08-27.md`](audits/CIO_PLATFORM_AUDIT_2026-08-27.md) ·
+Closeout status (item → PR → commit): [`CIO_PLATFORM_REMEDIATION_2026-08-27.md`](audits/CIO_PLATFORM_REMEDIATION_2026-08-27.md)
+
+- **CIO authority boundary stated honestly.** Daily mechanical rebalance-drift alerting is
+  **intentionally CIO-independent** — it is a separate safety mechanism, not a CIO-gated decision.
+  "CIO Desk is the source of truth" is scoped to situations/plans/thesis (`docs/cio/AUTHORITY.md`,
+  `docs/cio/ARCHITECTURE.md`). Execution posture unchanged: `READ_ONLY_ADVISORY`, no broker authority.
+- **Data-integrity gates now actually run on live paths.** `position_truth`'s admissibility gate is called
+  from the card materializer (it was built, tested, and never invoked). `ticker_prices` ingestion has an
+  outlier guard with configurable bounds (`TICKER_PRICE_OUTLIER_MIN/MAX_RATIO`). Critical
+  `portfolio_level_qa` violations and unhandled crashes now dispatch an alert instead of logging silently.
+- **Verify-before-notify.** Daily rebalance drift suggestions are compliance-checked (SSDI/IRMAA/tax)
+  *before* the Telegram alert fires, closing the window where an operator could act on an unverified
+  suggestion. `rebalance_verifier` previously only covered the unrelated monthly tier.
+- **Command Center v2 retired.** v3 is the only current frontend in docs, routes, and the default
+  regression build (§14).
+- **Maturity-gate bugfix.** `authority_violations()` substring-scanned the entire promotion record, so an
+  opaque hex id containing `2fa` (~0.35% of 16-hex promotion ids, ~0.9% of 40-hex SHAs) raised a phantom
+  `2FA` violation and failed a compliant record's preflight. Opaque digests are now scrubbed before the
+  scan; structured checks unchanged.
+- **Known remaining gaps** (do not read this session as "all closed"): historical corrupt price rows are
+  still unscrubbed (guard stops new ones only); the hub checkout still diverges from `origin/main` and is
+  missing `canonical_store_registry.py`; the canonical quote layer is still Watch-only in practice.
+- **Ops/CI.** A repo-visibility flip to private exhausted the metered Actions quota and killed all CI for
+  68 min — 65 runs reported `failure` without ever starting. `tardeai` stays **public**; the detection
+  signature and runbook are in [`docs/ops/GITHUB_ACTIONS_QUOTA_INCIDENT_2026-08-27.md`](ops/GITHUB_ACTIONS_QUOTA_INCIDENT_2026-08-27.md),
+  and the invariant is recorded in `AGENTS.md` and `AI_WORK_POLICY.md` §13.1.
+
+### Session — 2026-08-20 to 2026-08-22 (CIO Decision Payload, Research Tier Consolidation, Telegram P0)
+
+Audit finding M9 (docs/audits/CIO_PLATFORM_AUDIT_2026-08-27.md): this master doc
+(§14 dated 2026-06-22) had no entry for this window's shipped work despite ~35
+closeout docs landing in `docs/ops/` over three days. Summary below is
+deliberately a pointer index, not a full technical rewrite — detail lives in
+the linked docs, and `docs/ops/SESSION_CLOSEOUT_2026-08-22.md` is the
+canonical index of the 2026-08-22 findings specifically.
+
+| Area | Summary | Key Artifacts |
+|------|---------|---------------|
+| **Research tier consolidation** | Five watchlist research tiers collapsed to one LLM-scheduled queue (T1-WATCH); Reentry READY/NEAR joins T1. Hermes S0–S3 and directive hygiene 1–3 confirmed NOT LLM queues. T3 catalyst-only cold-floor cadence fixed (was a 127-day cycle against a published 14-day SLA — root cause was a 120-call process cap, not the $0.50 dollar cap). | `docs/ops/RESEARCH_TIER_LLM_CADENCE.md`, `docs/RESEARCH_PRIORITIZATION.md`, PR #451, PR #453 |
+| **Two LLM families clarified** | Scheduler-auto research is DeepSeek only (Family A); ChatGPT/Grok every 2h is a separate path (Family B, `hermes_top20_external_intel`) — explains why held-position research looked OAuth-first. | `docs/ops/LLM_ROUTING_AND_DATA_LAYERS.md` |
+| **Telegram P0 fixes** | Never print `R:R 0.0:1`; quote-ineligible proposals withhold sizing instead of showing bad numbers; inverted invalidation (above price on a long) suppresses the card instead of publishing it; Markdown-parse-failure retries now edit the original message instead of double-sending plaintext. | `docs/ops/TELEGRAM_FEED_REMEDIATION_2026-08-22.md`, PR #452, `data/cio/telegram_p0_suppress.jsonl` |
+| **CIO Decision Payload (Phase 1)** | `AGENT_DECISION_PAYLOAD` capture enabled live. | `docs/ops/CIO_DECISION_PAYLOAD_PHASE1_2026-08-21.md`, `docs/ops/DECISION_PAYLOAD_LANDING_2026-08-21.md` |
+| **CIO advisory/thesis hardening** | Advisory-truth hardening, closed-loop lineage, held-thesis coverage, operator desk loop P0, outcome-learning closeout, material-notify canary, memory shadow-measure phase 2 — a cluster of same-window CIO Desk reliability work. | `docs/ops/CIO_ADVISORY_TRUTH_HARDENING_CLOSEOUT_2026-08-20.md`, `CIO_CLOSED_LOOP_LINEAGE_CLOSEOUT_2026-08-20.md`, `CIO_HELD_THESIS_COVERAGE_2026-08-20.md`, `CIO_OPERATOR_DESK_LOOP_P0_2026-08-20.md`, `CIO_OUTCOME_LEARNING_CLOSEOUT_2026-08-20.md`, `CIO_MATERIAL_NOTIFY_CANARY_2026-08-20.md`, `CIO_MEMORY_SHADOW_MEASURE_PHASE2_2026-08-21.md` |
+| **Symbol Thesis / Investment Intelligence Card** | Symbol thesis acquisition pipeline live (canary dry-run completed); Investment Intelligence Card feedback loop into Command Center, Telegram actionable-visual variant, Phase D symbol-intelligence queue. | `docs/ops/SYMBOL_THESIS_ACQUISITION_PIPELINE_LIVE_2026-08-20.md`, `SYMBOL_THESIS_CANARY_DRY_RUN_2026-08-20.md`, `CIO_INVESTMENT_INTELLIGENCE_CARD_2026-08-21.md`, `CIO_IIC_FEEDBACK_CC_2026-08-21.md`, `CIO_IIC_TELEGRAM_ACTIONABLE_VISUAL_2026-08-21.md`, `CIO_IIC_PHASE_D_SI_QUEUE_2026-08-21.md` |
+| **Local-model decommission (partial)** | Read-only measurement found 6 installed generative models, an active `gemma3:12b` GPU process, 241 local-generative references in live source, 45 cron and 5 systemd intersections. No model physically removed — every decommission precondition failed. Pending: migrate directly-scheduled advisory/research to governed Grok/ChatGPT lanes with hard failure, no local fallback. | `docs/ops/SESSION_CLOSEOUT_2026-08-22.md` (2026-08-23 addendum) |
+| **Known-open items after this window** | CURRENT cutover pending window close (`docs/ops/CURRENT_CUTOVER_AFTER_2026-08-27.md`); Drive sync 404s on dead parent IDs unresolved; several Telegram T3–T7 items still open. | `docs/ops/SESSION_CLOSEOUT_2026-08-22.md` § "After freeze lift" |
 
 ### Session — 2026-06-21 (Inference Layers v1)
 

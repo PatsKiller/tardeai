@@ -175,11 +175,61 @@ def evaluate_portfolio_qa() -> dict:
 
     conn.commit()
     conn.close()
+    alert_critical_violations(result)
     return result
 
 
+def alert_critical_violations(result: dict) -> bool:
+    """A `severity: critical` group-cap breach (hard-cap exceeded) previously
+    reached only logs/portfolio_qa.log and portfolio_intelligence_events —
+    nothing forwarded it to a human. A live core_compounders breach at
+    86.1-86.2% against a 40-60% target sat there, tagged critical, across
+    multiple consecutive daily runs with zero alert. See
+    docs/audits/CIO_PLATFORM_REMEDIATION_2026-08-27.md (Fix C5).
+
+    Returns whether an alert was sent, so callers/tests can assert on it
+    without depending on Telegram actually being configured."""
+    critical = [v for v in (result.get("group_cap_violations") or []) if v.get("severity") == "critical"]
+    if not critical:
+        return False
+    lines = [f"⚠️ Portfolio QA: {len(critical)} CRITICAL hard-cap breach(es)"]
+    for v in critical:
+        lines.append(f"  • {v['group']}: {v['actual']:.1f}% (hard cap {v['hard_cap']:.0f}%)")
+    if result.get("qa_summary"):
+        lines.append("")
+        lines.append(result["qa_summary"])
+    message = "\n".join(lines)
+    try:
+        from telegram_alert import send_telegram
+        send_telegram(message)
+        return True
+    except Exception as exc:
+        # A failed alert must not fail the QA run itself — but it must not be
+        # silent either, or this fix regresses to the exact gap it closes.
+        print(f"  [portfolio-qa] ALERT DELIVERY FAILED ({type(exc).__name__}: {exc}); "
+              f"critical violation was: {message}")
+        return False
+
+
+def _alert_crash(exc: Exception) -> None:
+    """A prior FileNotFoundError on a missing .env killed a run entirely with
+    no alert — same gap as alert_critical_violations, for the case where the
+    QA check never even got to run. Best-effort: never let alerting itself
+    mask the original failure."""
+    try:
+        from telegram_alert import send_telegram
+        send_telegram(f"\U0001f6a8 portfolio_level_qa.py CRASHED: "
+                      f"{type(exc).__name__}: {str(exc)[:300]}")
+    except Exception:
+        pass
+
+
 if __name__ == "__main__":
-    result = evaluate_portfolio_qa()
+    try:
+        result = evaluate_portfolio_qa()
+    except Exception as exc:
+        _alert_crash(exc)
+        raise
     if "--json" in sys.argv:
         print(json.dumps(result, indent=2, default=str))
     else:

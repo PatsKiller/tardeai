@@ -1,0 +1,59 @@
+name: cio-truth-gates-ui-validation
+
+on:
+  pull_request:
+    paths:
+      - 'apps/command-center-v3/e2e/cio-truth-gates.spec.ts'
+      - 'apps/command-center-v3/src/pages/CioHub.tsx'
+      - '.github/workflows/cio-truth-gates-ui-validation.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  focused-playwright:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: apps/command-center-v3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: apps/command-center-v3/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Build UI
+        run: npm run build
+      - name: Start preview
+        run: |
+          npm run preview -- --host 127.0.0.1 --port 4173 > /tmp/cio-truth-gates-ui-preview.log 2>&1 &
+          echo $! > /tmp/cio-truth-gates-ui-preview.pid
+          for i in $(seq 1 60); do
+            if curl --fail --silent http://127.0.0.1:4173/v3/ >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/cio-truth-gates-ui-preview.log
+          exit 1
+      - name: Focused CIO truth-gates Playwright
+        env:
+          PLAYWRIGHT_BASE_URL: http://127.0.0.1:4173
+          CI: 'true'
+        run: npx playwright test e2e/cio-truth-gates.spec.ts --project=chromium --reporter=line
+      - name: Upload Playwright evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cio-truth-gates-playwright
+          path: |
+            apps/command-center-v3/playwright-report
+            apps/command-center-v3/test-results
+            docs/_evidence/autonomous_advisory_loop/cio_truth_gates
+            /tmp/cio-truth-gates-ui-preview.log
+          if-no-files-found: warn

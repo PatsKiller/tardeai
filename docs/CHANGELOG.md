@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-08-27 — CIO platform audit remediation (19 PRs merged, `2ccee09a` → `b4b6ced7`)
+
+MATURITY_IMPACT: data-integrity and alerting gaps closed on live paths. Execution posture UNCHANGED (CIO Desk stays `READ_ONLY_ADVISORY`; no broker authority added).
+
+Closes the Phase 1 audit findings. Full item→PR→commit map and what remains: `docs/audits/CIO_PLATFORM_REMEDIATION_2026-08-27.md` §Closeout Status.
+
+- **Data integrity (P0).** position_truth enforcement gate now called from the live card materializer, not just unit-tested (#523). Outlier guard on `ticker_prices` ingestion with configurable bounds (#524, Stage A — historical bad rows still unscrubbed). Critical `portfolio_level_qa` violations and hard crashes now alert instead of logging silently (#525).
+- **CIO authority boundary.** Daily mechanical rebalance-drift alerting is documented as intentionally CIO-independent rather than silently implied to be CIO-gated (#526). Daily drift suggestions are now compliance-verified *before* the Telegram alert fires, not after (#527).
+- **Safety-gate bugfix.** `authority_violations()` substring-scanned the whole record JSON, so an opaque hex id containing `2fa` raised a phantom `2FA` violation and failed a compliant promotion's preflight — ~1 in 300 (#540). Structured checks unchanged; regression test added.
+- **Retirement/consistency.** Command Center v2 route + docs + regression build retired in favour of v3 (#538). CIO truth-gate spec fixed and wired into CI (#530). Finviz enrichment cron now uses the real watchlist universe instead of a dead demo-symbol fallback (#529). CIO snapshot cache-first reads carry a staleness marker (#532). Chair-override direction, `autonomous_rebalance_planner` dead status, holdings P&L field difference, broker vendor/read-only claims, and the diagram-to-code type mapping all corrected (#531, #533, #536, #534, #535). Master docs folded in the 08-20→22 closeout work (#537). Quote-pipeline unification scoped honestly — Phase 1 of 3 (#539). Dead `.bak` files removed (#528).
+- **Ops.** Repo visibility restored to public after a flip to private exhausted the metered Actions quota and killed all CI for 68 min (65 runs rejected before starting, 13 PRs misdiagnosed as failing tests; 65/65 green on rerun). Detection signature + runbook in `docs/ops/GITHUB_ACTIONS_QUOTA_INCIDENT_2026-08-27.md`; invariant recorded in `AGENTS.md` and `AI_WORK_POLICY.md` §13.1.
+
 ## 2026-08-24 — M4 ContextEnvelope@v2 same-brain (source)
 
 MATURITY_IMPACT: NONE live. SOURCE + TESTED. PR E UI not implemented.

@@ -57,6 +57,25 @@ testing, and demoing the app.
 - **`pytest` is not in `requirements.txt`** (CI installs it separately); the update script adds it to `.venv`.
 - **A minimal `.env`** (JSON-only, `ENABLE_TELEGRAM=false`) is enough for local dev; leaving `DB_*` unset
   selects JSON-only mode. Real API keys / Postgres / Ollama are only needed for background LLM + broker work.
+- **A red CI check is not always a test failure.** If a job reports `failure` with **0 steps, an empty
+  `runner_name`, a 2–5 s duration, and `--log-failed` returning nothing**, the job was *rejected before it
+  started* — a billing/quota block, never a code problem. Check with
+  `gh api "repos/PatsKiller/tardeai/actions/runs/<id>/jobs" --jq '.jobs[]|{name,conclusion,steps:(.steps|length),runner:.runner_name}'`
+  and confirm via `runs/<id>/timing` → `billable.UBUNTU.total_ms == 0`. **Do not debug the diff.** This
+  cost 68 min and 13 misdiagnosed PRs on 2026-08-27 — see
+  [`docs/ops/GITHUB_ACTIONS_QUOTA_INCIDENT_2026-08-27.md`](docs/ops/GITHUB_ACTIONS_QUOTA_INCIDENT_2026-08-27.md).
+
+### Repository visibility is a CI invariant — do not change it
+
+**`tardeai` stays public.** Public repos get unlimited free GitHub-hosted Actions minutes; a private repo on
+a personal account gets 2,000 min/month, and this repo's 14 workflows exhaust that in a single busy merge day.
+When they run out, every job fails with the misleading signature above.
+
+- Never flip visibility as a cleanup or session-close step. It is also standing operator policy (2026-07-18)
+  that this repo remains public.
+- If it must ever go private, set a non-zero Actions spending limit **first**.
+- Restore with `gh api -X PATCH repos/PatsKiller/tardeai -F private=false`, then re-trigger the rejected runs
+  (`gh run rerun <id>` per run) — rejected runs do not retry themselves.
 
 ### Deployment rules — data freshness
 

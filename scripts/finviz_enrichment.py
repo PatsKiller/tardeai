@@ -527,10 +527,73 @@ def print_enriched(symbol: str, project_root: str = ".") -> None:
     print(f"  Perf 1W: {data.get('perf_week_pct','?')}% | YTD: {data.get('perf_ytd_pct','?')}%")
 
 
+DEFAULT_UNIVERSE_CAP = 200  # matches WATCHLIST_TOP_N (scripts/lib/watchlist_priority.py)
+
+
+def default_universe_symbols(project_root: str = ".", *, cap: int = DEFAULT_UNIVERSE_CAP) -> list:
+    """Audit finding M4: the two finviz_enrichment.py cron entries (07:10,
+    formerly also 13:00) invoke this script bare, no argv — which silently
+    fell through to a hardcoded 4-symbol demo list (MAMO/ACHV/V/SCHD) every
+    single run, for months, printing "Price: $?" the whole time.
+
+    This is the real default: `status='active'` watchlist symbols
+    (stalest-enriched-first, capped) plus every current holding
+    (uncapped — a real position always gets refreshed). `status='researched'`
+    is deliberately EXCLUDED: it's a ~5,800-row discovery/history pool, not a
+    curated watchlist — an earlier version of this fix queried active+researched
+    unfiltered and returned 5,260 symbols, which at Finviz's documented
+    ~100 req/hour, 20-tickers/batch, 5-views-per-batch limit would have taken
+    over 13 hours and risked the API key getting rate-limited or blocked. The
+    cap matches WATCHLIST_TOP_N, the same number scripts/watchlist_enrichment_sweep.py
+    already uses safely for this exact API.
+
+    Best-effort: a DB error returns an empty list rather than raising, so a
+    cron failure here degrades to "nothing enriched this run," not a crash.
+    """
+    root = Path(project_root)
+    symbols: set = set()
+    try:
+        import psycopg2
+        pw = ""
+        env_path = root / ".env"
+        if env_path.exists():
+            for line in env_path.read_text().splitlines():
+                if line.startswith("DB_PASSWORD="):
+                    pw = line.split("=", 1)[1].strip()
+        conn = psycopg2.connect(host="localhost", dbname="trade_ai", user="trade_ai", password=pw)
+        cur = conn.cursor()
+        cur.execute("""SELECT symbol FROM watchlist_items
+                       WHERE status = 'active' AND symbol IS NOT NULL
+                       ORDER BY last_enriched_at ASC NULLS FIRST
+                       LIMIT %s""", (cap,))
+        symbols.update(r[0] for r in cur.fetchall() if r[0])
+        cur.close()
+        conn.close()
+    except Exception as exc:
+        print(f"  [finviz-enrich] watchlist symbol query failed (non-fatal): {exc}")
+
+    try:
+        holdings_path = root / "data" / "portfolios" / "state" / "holdings.json"
+        if holdings_path.exists():
+            holdings = json.loads(holdings_path.read_text())
+            for h in holdings.get("holdings", []):
+                sym = h.get("symbol", "")
+                if sym and not h.get("is_cash"):
+                    symbols.add(sym)
+    except Exception as exc:
+        print(f"  [finviz-enrich] holdings symbol read failed (non-fatal): {exc}")
+
+    return sorted(symbols)
+
+
 if __name__ == "__main__":
     import sys
-    symbols = sys.argv[1:] if len(sys.argv) > 1 else ["MAMO", "ACHV", "V", "SCHD"]
-    print(f"Testing finviz_enrichment.py with {symbols}")
+    symbols = sys.argv[1:] if len(sys.argv) > 1 else default_universe_symbols(".")
+    if not symbols:
+        print("No symbols to enrich (empty argv and empty default universe) — nothing to do.")
+        sys.exit(0)
+    print(f"Running finviz_enrichment.py for {len(symbols)} symbol(s)"
+          + (f": {symbols}" if len(symbols) <= 10 else f" (first 10: {symbols[:10]})"))
 
     _run_id = None
     try:

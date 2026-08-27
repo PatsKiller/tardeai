@@ -335,6 +335,27 @@ If no:
 
 DO NOT PUSH YET.
 
+## 13.1 REPOSITORY VISIBILITY IS NOT A COST LEVER
+
+`tardeai` is PUBLIC and stays PUBLIC.
+
+Public repositories get unlimited free GitHub-hosted Actions minutes. A private
+repository on a personal account gets 2,000 minutes/month, and this repo's 14
+workflows exhaust that in one busy merge day.
+
+Making the repo private does not save CI cost. It converts free CI into metered
+CI, and when the meter runs out every job fails with `conclusion: failure`, zero
+steps, no runner assigned, and an empty log — indistinguishable from a broken
+test unless you know the signature.
+
+- NEVER flip visibility to private, and never as a session-close or cleanup step.
+- If it must ever go private, set a non-zero Actions spending limit FIRST.
+- Cost control in this repository is achieved by pushing less (sections 3, 4, 17),
+  not by changing repository visibility.
+
+Incident of record: `docs/ops/GITHUB_ACTIONS_QUOTA_INCIDENT_2026-08-27.md`
+(68 min outage, 65 rejected runs, 13 PRs misdiagnosed as failing tests).
+
 ---
 
 # 14. AGENT HANDOFFS ARE LOCAL

@@ -74,8 +74,8 @@ echo "Safety: ALPACA_MODE=$ALPACA_MODE LLM_DISABLE=$LLM_DISABLE"
 
 if [ "$FRONTEND" = true ]; then
   echo
-  echo "=== Frontend Build ==="
-  cd "$PROJ/apps/command-center-v2"
+  echo "=== Frontend Build (v3 — canonical; audit finding H2, docs/audits/CIO_PLATFORM_AUDIT_2026-08-27.md) ==="
+  cd "$PROJ/apps/command-center-v3"
   npm run build 2>&1 | tail -3
   cd "$PROJ"
 fi

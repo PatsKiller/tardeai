@@ -153,3 +153,59 @@ def test_known_agents_matches_the_live_roster():
     for a in ("maria", "steph", "risk_agent"):
         assert a in mat.KNOWN_AGENTS
     assert all(a == a.lower() for a in mat.KNOWN_AGENTS), "matching is lowercased"
+
+
+# ── ground-truth gate: independent backstop to _discarded_agents ──────────────
+#
+# _discarded_agents only suppresses when the synthesis prose above happens to
+# describe the contradiction. This gate is deterministic and does not depend on
+# the synthesis mentioning anything — it re-derives the BETA case (0 shares,
+# TRIM recommended) directly from holdings.json.
+
+EMPTY_HOLDINGS = {"holdings": []}
+HELD_HOLDINGS = {"holdings": [{"symbol": "AAPL", "quantity": 10, "market_value": 1800.0}]}
+
+
+def test_disposal_rec_on_unheld_symbol_is_blocked():
+    blocked, reason = mat.ground_truth_blocks("BETA", "TRIM", EMPTY_HOLDINGS)
+    assert blocked is True
+    assert "BETA" in reason and "0 shares" in reason
+
+
+@pytest.mark.parametrize("action", ["TRIM", "EXIT", "SELL", "REDUCE", "COVERED_CALL"])
+def test_every_disposal_action_on_unheld_symbol_is_blocked(action):
+    blocked, _ = mat.ground_truth_blocks("BETA", action, EMPTY_HOLDINGS)
+    assert blocked is True
+
+
+def test_disposal_rec_on_held_symbol_is_not_blocked():
+    blocked, _ = mat.ground_truth_blocks("AAPL", "TRIM", HELD_HOLDINGS)
+    assert blocked is False
+
+
+def test_buy_rec_on_unheld_symbol_is_not_blocked():
+    """The asymmetry: a false 'you hold this' is dangerous, a false 'you do
+    not' merely suppresses an entry. BUY on an unheld symbol is the normal
+    case and must not be gated."""
+    blocked, _ = mat.ground_truth_blocks("BETA", "BUY", EMPTY_HOLDINGS)
+    assert blocked is False
+
+
+def test_no_recommendation_is_not_blocked():
+    blocked, _ = mat.ground_truth_blocks("BETA", None, EMPTY_HOLDINGS)
+    assert blocked is False
+
+
+def test_ground_truth_gate_takes_no_conflicts_argument():
+    """The BETA incident's specific failure mode: this gate has no `conflicts`
+    parameter at all, so it catches a hallucinated disposal rec even on a run
+    where the synthesis said nothing — the case _discarded_agents cannot
+    catch on its own, since that rule only fires on prose it can match."""
+    import inspect
+    assert list(inspect.signature(mat.ground_truth_blocks).parameters) == [
+        "sym", "recommendation", "holdings"]
+
+
+def test_ground_truth_gate_is_wired_into_materialize():
+    assert "ground_truth_blocks(sym, r.get(\"recommendation\"), holdings)" in SRC, \
+        "the deterministic gate must run against every surviving agent_results entry"
