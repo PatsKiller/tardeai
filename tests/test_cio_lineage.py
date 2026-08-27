@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from scripts.lib.cio_lineage import (
     LineageStore,
     default_lineage_path,
@@ -19,6 +21,21 @@ from scripts.lib.cio_workflow_envelope import (
     STAGE_NOT_YET_CREATED,
     notification_is_ambiguous,
 )
+
+
+@pytest.fixture(autouse=True)
+def _isolated_identity_registry(tmp_path_factory, monkeypatch):
+    """Pin the registry away from production for every test in this module.
+
+    Envelope writes now resolve their subject against the identity registry. With
+    the real one on PATH these tests would pass or fail depending on which
+    symbols happen to be minted on this machine -- NVDA resolving to a live GUID
+    is what first surfaced this.
+    """
+    monkeypatch.setenv(
+        "TRADEAI_IDENTITY_REGISTRY",
+        str(tmp_path_factory.mktemp("identity") / "registry.json"),
+    )
 
 
 def test_hermes_lineage_is_idempotent_and_checkpoints(tmp_path: Path):
@@ -67,6 +84,7 @@ def test_envelope_on_hermes_request_and_completion(tmp_path: Path):
     assert env["research_request_id"] == "research-env"
     assert env["stage_status"]["research"] == STAGE_NOT_YET_CREATED
     assert env["stage_status"]["specialist"] == STAGE_NOT_YET_CREATED
+    # Unregistered symbol: the envelope says so rather than inventing a GUID.
     assert env["subject_guid"] is None
     assert env["subject_id"] == "NVDA"
     assert env["entity_type"] == "UNRESOLVED"
@@ -162,3 +180,57 @@ def test_specialist_dispatch_is_explicit_stage(tmp_path: Path):
     rows = LineageStore(path)._rows()
     assert any(r.get("node_id") == "dispatch-1" for r in rows)
     assert any(r.get("from") == "dispatch-1" and r.get("to") == "artifact-1" for r in rows)
+
+
+def test_envelope_resolves_a_registered_subject_to_its_durable_guid(tmp_path: Path, monkeypatch):
+    """The wiring the registry existed for but nothing used.
+
+    0 of 97 production workflows carried a `subject_guid` and all 97 read
+    `entity_type: UNRESOLVED`, because identity was stamped only when a producer
+    passed an explicit payload and the CIO arc never did. Resolution now happens
+    on the envelope write path, so a registered subject is keyed by its durable
+    GUID rather than by a ticker string that can be reassigned after a delisting.
+    """
+    from scripts.lib.identity_registry import empty_registry, register, save
+
+    registry = tmp_path / "registry.json"
+    monkeypatch.setenv("TRADEAI_IDENTITY_REGISTRY", str(registry))
+    doc = register(empty_registry(), {"symbol": "NVDA", "identifiers": {"cusip": "67066G104"}})
+    save(doc)
+    expected = doc["by_symbol"]["NVDA"]
+
+    path = tmp_path / "lineage.jsonl"
+    wf = record_hermes_request(
+        {"plan_id": "p", "research_id": "r", "symbol": "NVDA"}, path=path)
+    env = load_envelope(wf, path)
+
+    assert env["subject_guid"] == expected
+    assert env["entity_type"] == "SECURITY"
+    assert env["subject_id"] == "NVDA"
+
+
+def test_stamping_never_overwrites_a_producer_that_knows_better(tmp_path: Path):
+    """A GOAL wake is not a security, and must not be re-typed by a guess.
+
+    42 of 49 CIO runs are portfolio goal wakes. Silently retyping one as SECURITY
+    would join it to research on an entity it has nothing to do with.
+    """
+    from scripts.lib.cio_lineage import _stamp_identity
+
+    env = {"workflow_id": "wf_x", "subject_id": "NVDA", "entity_type": "GOAL"}
+    _stamp_identity(env)
+    assert env["entity_type"] == "GOAL"
+
+
+def test_stamping_is_best_effort_and_never_fails_the_write(tmp_path: Path, monkeypatch):
+    """Lineage is an audit projection: a broken registry must not lose the record."""
+    from scripts.lib.cio_lineage import _stamp_identity
+
+    bad = tmp_path / "registry.json"
+    bad.write_text("{ not json", encoding="utf-8")
+    monkeypatch.setenv("TRADEAI_IDENTITY_REGISTRY", str(bad))
+
+    env = {"workflow_id": "wf_x", "subject_id": "NVDA"}
+    _stamp_identity(env)
+    assert env["workflow_id"] == "wf_x"
+    assert env.get("subject_guid") is None

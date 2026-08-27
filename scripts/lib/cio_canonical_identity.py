@@ -128,8 +128,10 @@ def resolve_entity(payload: Mapping[str, Any] | None) -> dict[str, Any]:
     # behaviour rather than blocking.
     if not guid_s and subject_s:
         try:
-            from scripts.lib.identity_registry import load as _load_registry, lookup_symbol
-            entity = lookup_symbol(_load_registry(), subject_s)
+            from scripts.lib.identity_registry import load_cached, lookup_symbol
+            # Cached read: this runs on the lineage write path, once per
+            # envelope, against a registry that is already megabytes.
+            entity = lookup_symbol(load_cached(), subject_s)
             if entity and entity.get("subject_guid"):
                 guid_s = str(entity["subject_guid"])
                 src.setdefault("entity_type", ENTITY_SECURITY)
@@ -137,7 +139,11 @@ def resolve_entity(payload: Mapping[str, Any] | None) -> dict[str, Any]:
             pass  # registry unavailable: identity still resolves by symbol
 
     declared = src.get("entity_type")
-    if declared not in (None, ""):
+    # UNRESOLVED is the absence of an answer, not an answer. Treating it as a
+    # declared type let a stale envelope keep reporting UNRESOLVED after the
+    # registry had resolved its GUID -- which is exactly how 97 workflows stayed
+    # UNRESOLVED while carrying a resolvable subject.
+    if declared not in (None, "", ENTITY_UNRESOLVED):
         entity_type = str(declared)
     elif guid_s:
         entity_type = ENTITY_SECURITY
