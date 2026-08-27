@@ -1125,6 +1125,9 @@ class CIORunWorker:
                     "body_hash": hashlib.sha256(summary.encode()).hexdigest(),
                     "wake_job_id": self._run_id,
                     "severity": "INFO",
+                    # Content-keyed for this class; the window keeps an
+                    # unchanged brief arriving daily instead of once, ever.
+                    "dedupe_window_hours": 6,
                 }
                 event = self.notification_outbox.enqueue(notification, actor_id="cio_run_worker")
                 if event:

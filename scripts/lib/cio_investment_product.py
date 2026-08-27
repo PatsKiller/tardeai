@@ -886,7 +886,7 @@ def build_product(
         "merged_queue": merged,
         "memory": {"provider": (mem.get("health") or {}).get("provider"), "counts": mem.get("counts")},
         "recommendations": recs,
-        "summary": _summary(temperament, reentry, actions),
+        "summary": _summary(temperament, reentry, actions, prev),
         "decision_id": "cio_books_" + _iso(now).replace(":", "").replace("-", "")[:15],
         "final_position": "HOLD",
         "requires_operator_review": True,
@@ -930,19 +930,102 @@ def _recommendations(actions: dict[str, Any], temperament: dict[str, Any]) -> li
     return recs
 
 
-def _summary(temperament: dict[str, Any], reentry: dict[str, Any], actions: dict[str, Any]) -> str:
+def _nearest_reentries(reentry: dict[str, Any], limit: int = 3) -> list[str]:
+    """The candidates closest to their trigger, named, with the distance.
+
+    `pct_above_exit` is signed against the last exit: -9.1 means 9.1% below the
+    price it was sold at. Rank by absolute distance so the ones nearest to
+    acting come first, regardless of side.
+    """
+    rows = []
+    for r in (reentry.get("names") or []):
+        if r.get("status") != "NEAR":
+            continue
+        pct = r.get("pct_above_exit")
+        sym = r.get("symbol")
+        if sym is None or not isinstance(pct, (int, float)):
+            continue
+        rows.append((abs(pct), sym, pct))
+    rows.sort()
+    return [f"{sym} {pct:+.1f}% vs exit" for _, sym, pct in rows[:limit]]
+
+
+def _do_now_lines(actions: dict[str, Any], limit: int = 4) -> list[str]:
+    out = []
+    for row in (actions.get("DO_NOW") or [])[:limit]:
+        sym, act = row.get("symbol"), row.get("action")
+        why = (row.get("why") or "").strip().rstrip(".")
+        out.append(f"{act} {sym} — {why}" if why else f"{act} {sym}")
+    return out
+
+
+def _changed_since(reentry: dict[str, Any], prev: dict[str, Any] | None) -> str | None:
+    """What moved since the previous brief, or None if this is the first."""
+    if not isinstance(prev, dict):
+        return None
+    pb = prev.get("reentry_book") or {}
+    if not pb:
+        return None
+    now_c, was_c = (reentry.get("counts") or {}), (pb.get("counts") or {})
+    moves = [f"{k} {was_c.get(k, 0)}→{now_c.get(k, 0)}"
+             for k in ("REENTER", "NEAR", "WAIT", "AVOID")
+             if now_c.get(k, 0) != was_c.get(k, 0)]
+    now_near = {r.get("symbol") for r in (reentry.get("names") or [])
+                if r.get("status") == "NEAR"}
+    was_near = {r.get("symbol") for r in (pb.get("names") or [])
+                if r.get("status") == "NEAR"}
+    entered = sorted(x for x in (now_near - was_near) if x)
+    if entered:
+        moves.append("newly NEAR: " + ", ".join(entered[:4]))
+    if not moves:
+        return "No change since the last brief."
+    return "Changed: " + "; ".join(moves) + "."
+
+
+def _summary(
+    temperament: dict[str, Any],
+    reentry: dict[str, Any],
+    actions: dict[str, Any],
+    prev: dict[str, Any] | None = None,
+) -> str:
+    """The operator-facing line. Symbols, distances, and what moved.
+
+    The previous version stated four counts and then this sentence verbatim:
+    "No material financial Telegram unless a candidate-specific governed act-now
+    exists." That is the delivery policy talking to itself -- it tells the
+    operator nothing about their portfolio, and it shipped to their phone. A
+    brief naming no security is not a brief.
+    """
     counts = reentry.get("counts") or {}
-    do_n = len(actions.get("DO_NOW") or [])
-    return (
-        f"{temperament.get('title')}. "
-        f"Re-entry book: {reentry.get('count') or 0} former names "
-        f"(REENTER={counts.get('REENTER', 0)} NEAR={counts.get('NEAR', 0)} "
-        f"WAIT={counts.get('WAIT', 0)} AVOID={counts.get('AVOID', 0)}). "
-        f"DO NOW {do_n}. "
-        "No material financial Telegram unless a candidate-specific governed act-now exists. "
-        "Advisory only."
+    parts: list[str] = [f"{temperament.get('title')}."]
+
+    do_now = _do_now_lines(actions)
+    if do_now:
+        parts.append("DO NOW: " + " · ".join(do_now) + ".")
+    else:
+        parts.append("Nothing requires action today.")
+
+    near = _nearest_reentries(reentry)
+    if near:
+        parts.append("Closest re-entries: " + ", ".join(near) + ".")
+    if counts.get("REENTER"):
+        syms = [r.get("symbol") for r in (reentry.get("names") or [])
+                if r.get("status") == "REENTER"][:4]
+        parts.append("Triggered: " + ", ".join(s for s in syms if s) + ".")
+
+    parts.append(
+        f"Tracking {reentry.get('count') or 0} former names "
+        f"({counts.get('NEAR', 0)} near, {counts.get('WAIT', 0)} waiting, "
+        f"{counts.get('AVOID', 0)} avoid); "
+        f"{len(actions.get('WATCH_CLOSELY') or [])} on close watch."
     )
 
+    changed = _changed_since(reentry, prev)
+    if changed:
+        parts.append(changed)
+
+    parts.append("Advisory only — no orders placed.")
+    return " ".join(parts)
 
 def persist_product(product: dict[str, Any], *, root: Path | str | None = None) -> dict[str, Any]:
     from scripts.lib.autonomy_watchdog.io import append_jsonl, atomic_write_json
