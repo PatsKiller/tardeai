@@ -9,6 +9,7 @@ from scripts.lib.cio_lineage import (
     record_hermes_completion,
     record_hermes_request,
     record_notification,
+    record_specialist_dispatch,
 )
 from scripts.lib.cio_workflow_envelope import (
     ENVELOPE_REQUIRED_KEYS,
@@ -149,3 +150,15 @@ def test_upsert_envelope_latest_wins(tmp_path: Path):
     upsert_envelope("wf_latest", {"event_id": "e2"}, path=path)
     envelopes_after = [r for r in LineageStore(path)._rows() if r.get("record_type") == "envelope"]
     assert len(envelopes_after) == 2
+
+
+def test_specialist_dispatch_is_explicit_stage(tmp_path: Path):
+    path = tmp_path / "lineage.jsonl"
+    wf = record_hermes_request({"plan_id": "p", "research_id": "r", "symbol": "SCHD"}, path=path)
+    env = record_specialist_dispatch(wf, "dispatch-1", agent_id="maria", artifact_id="artifact-1", path=path)
+    assert env["specialist_dispatch_id"] == "dispatch-1"
+    assert env["specialist_artifact_id"] == "artifact-1"
+    assert env["stage_status"]["specialist"] == STAGE_COMPLETED
+    rows = LineageStore(path)._rows()
+    assert any(r.get("node_id") == "dispatch-1" for r in rows)
+    assert any(r.get("from") == "dispatch-1" and r.get("to") == "artifact-1" for r in rows)

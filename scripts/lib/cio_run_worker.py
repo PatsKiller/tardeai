@@ -370,6 +370,16 @@ class CIORunWorker:
                     pass
             synthesis_result = self._cio_synthesis(run, snapshot_result, specialist_result, hermes_result)
             result["synthesis_artifact_id"] = synthesis_result.get("artifact_id")
+            # Persist the canonical CIO stage against this run before delivery.
+            # The lineage writer is an audit projection; failures never alter
+            # the governed advisory workflow.
+            try:
+                from scripts.lib.cio_lineage import record_cio_generation
+                generation_id = synthesis_result.get("generation_id") or synthesis_result.get("artifact_id")
+                if generation_id:
+                    record_cio_generation(str(run_id), generation_id=str(generation_id))
+            except Exception:
+                log.debug("CIO lineage projection unavailable", exc_info=True)
 
             # Step 6: Create/update CIO actions
             action_result = self._write_actions(synthesis_result)
@@ -378,6 +388,16 @@ class CIORunWorker:
             # Step 7: Enqueue shadow notifications
             notification_result = self._enqueue_notifications(action_result, synthesis_result)
             result["notifications_enqueued"] = notification_result.get("notification_ids", [])
+            try:
+                from scripts.lib.cio_lineage import record_notification, finalize_notification_required
+                ids = list(notification_result.get("notification_ids") or [])
+                if ids:
+                    for notification_id in ids:
+                        record_notification(str(run_id), notification_id=str(notification_id), classification="IMMEDIATE")
+                else:
+                    finalize_notification_required(str(run_id), reason="NO_NOTIFICATION_ELIGIBLE")
+            except Exception:
+                log.debug("notification lineage projection unavailable", exc_info=True)
 
             # Step 8: Complete the run
             if self.run_store:
@@ -649,6 +669,19 @@ class CIORunWorker:
                         self.run_store.record_specialist_request(
                             run_id, hid, actor="cio_run_worker",
                         )
+                    # Keep the canonical workflow envelope connected to the
+                    # existing handoff queue. This is an audit projection and
+                    # must never affect dispatch success or financial authority.
+                    try:
+                        from scripts.lib.cio_lineage import record_specialist_dispatch
+                        record_specialist_dispatch(
+                            workflow_id=str(run_id),
+                            dispatch_id=str(hid),
+                            agent_id=str(spec),
+                            path=None,
+                        )
+                    except Exception:
+                        log.debug("lineage dispatch projection unavailable", exc_info=True)
             except Exception as e:
                 log.warning("Specialist enqueue failed for %s: %s", spec, e)
 

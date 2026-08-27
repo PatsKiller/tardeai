@@ -82,23 +82,11 @@ def send_morning_command_bundle(bundle: Dict[str, str], project_root: Path | Non
             else:
                 print(f"  [morning-command] semantic_duplicate key={result.get('key')}")
             return bool(result.get("published") or result.get("reason") == "semantic_duplicate")
-    if not bundle:
-        return False
-    msg = build_message(bundle)
-    if len(msg) < 80:
-        return False
-    archive_sections(bundle)
-    try:
-        from telegram_alert import send_telegram
-        ok = send_telegram(msg, bypass_router=True)
-        if ok:
-            print(f"  [morning-command] ✅ Digest sent ({len(bundle)} sections)")
-        else:
-            print("  [morning-command] Digest not sent (router/disabled)")
-        return ok
-    except Exception as e:
-        print(f"  [morning-command] Send failed: {e}")
-        return False
+    # The legacy bundle is intentionally fail-closed.  A missing canonical
+    # renderer must never turn an operational bundle into a second investment
+    # product or an ungoverned Telegram sender.
+    print("  [morning-command] blocked: CANONICAL_OPERATOR_BRIEF is disabled")
+    return False
 
 
 def bundle_enabled(run_type: str = "daily") -> bool:
