@@ -6,7 +6,7 @@
 
 **Framing, per operator direction:** "CIO Desk as authoritative source of truth" is scoped to **data/decision authority** — the canonical context, definitions, and decisions other systems should read from. Execution posture (`READ_ONLY_ADVISORY`, no broker order/stop/risk-limit authority — [`docs/cio/AUTHORITY.md`](../cio/AUTHORITY.md)) is explicitly out of scope and unchanged by this audit.
 
-**Correction (2026-08-27, same day, before merge):** Finding C4 as originally investigated was accurate for the codebase it examined (the live hub checkout) but has since been corrected below — `scripts/lib/canonical_store_registry.py` (literal `SCHEMA = "CanonicalStoreRegistry@v1"`) already exists on `origin/main`, wired into 11 real consumers. See the corrected C4 entry for the full explanation; this is a state-reconciliation finding (M1), not a missing-feature finding.
+**Corrections (2026-08-27, same day, before merge):** three findings were revised while scoping their remediation, each following the same pattern — accurate at investigation time, but incomplete because a fix or a newer component already existed elsewhere in the codebase that the original check didn't reach. **C4**: a real `CanonicalStoreRegistry@v1` exists on `origin/main`, just missing from the hub checkout examined. **M2**: the continuous runner is live via a separate system-level systemd unit the original check didn't inspect. **H5**: the live-served journal surfaces (dashboard tiles, Journal page) were already migrated off the stale CSV file on 2026-07-21, five weeks before this audit ran. See each corrected entry below for the full evidence trail.
 
 ---
 
@@ -87,10 +87,17 @@ The only canonical-quote module found, `scripts/lib/watch_canonical_quote.py`, r
 **Evidence:** grep of 34+ direct-import sites; `watch_canonical_quote.py` scope confirmed limited to Watch-list DB tables.
 **Consequence:** the Watch UI and the trading/proposal engines can legitimately see different prices for the same symbol at the same instant.
 
-### H5 — Trade journal is stale, CSV-fed, and contradicts the documented "no CSV, API-fed only" standard
-`portfolio_trade_journal.build_trade_journal()` reads from manually-dropped Schwab/Fidelity CSVs in `data/portfolios/input/` (newest CSV dated 2026-06-05). Its output, regenerated daily, shows a most-recent `closed_trades` close date of **2026-04-30** — roughly four months stale versus today. By contrast, the live `schwab_pilot_orders` DB table (populated automatically by every real order submission) has entries through 2026-07-31. The journal does not reconcile with real order flow.
-**Evidence:** `data/portfolios/input/` newest CSV mtime 2026-06-05; `trade_journal.json` closed_trades max date 2026-04-30 vs. `schwab_pilot_orders` max date 2026-07-31.
-**Consequence:** contradicts the standing architecture principle that all pipelines are API-fed with no CSV dependency; any report or reconciliation drawing on the trade journal is working from stale data.
+### H5 — CORRECTED: the live-served surfaces already switched off the CSV journal on 2026-07-21
+**Original finding:** `portfolio_trade_journal.build_trade_journal()` reads from manually-dropped CSVs (newest 2026-06-05), producing a `trade_journal.json` with `closed_trades` roughly four months stale — flagged as contradicting the "no CSV, API-fed only" standard, with "any report or reconciliation drawing on the trade journal... working from stale data."
+
+**Correction:** the underlying file and its CSV input are exactly as stale as found — that part holds. But tracing every consumer of `trade_journal.json` (`grep -rln "trade_journal"`) found the two live-served surfaces were **already migrated away from it on 2026-07-21**, before this audit ran, per in-code comments at the change site:
+
+- `scripts/api_v2.py` `/api/v2/overview` (header "Journal" tiles): reads `trade_closed` (refreshed from `schwab_round_trips`, a broker-verified round-trips table, 198 rows through 2026-08-25 as of this writing) as primary; `trade_journal.json` is a fallback used **only if the DB table is empty** — `if j_trade_count == 0:` — which it isn't, so the fallback never fires in production.
+- `scripts/api_v2.py` `/api/v2/journal` (the actual Journal page): same pattern — `trade_closed` primary, `trade_journal.json` fallback `if not trades:`, same non-firing condition. Both endpoints explicitly label `stats_basis: "broker_round_trips"` in their response and document in-code why the two bases can legitimately show different numbers (the CSV basis includes pre-2025 history and $0 scratch trades the broker-verified basis excludes) — this was a deliberate operator decision (2026-07-21), not an accident.
+- The **only** remaining live-code reader of `trade_journal.json` as a primary (non-fallback) source is `scripts/cio_evidence_checkpoint2.py` — confirmed to be a manually-invoked, one-off "end-to-end evidence provenance proof" script with **no cron entry, no caller anywhere else in the repo**, and a hardcoded 2-symbol case set (`TSLA`, `AMD`) for its "closed/re-entry" evidence cases. Not a live production data path an operator routinely sees.
+
+**Evidence:** `api_v2.py:2364-2431` (overview endpoint, `j_basis = "broker_round_trips"`, fallback condition `if j_trade_count == 0`), `api_v2.py:5779-5832` (journal endpoint, fallback condition `if not trades:`, explicit `stats_basis_note` documenting the dual-basis design), `schwab_round_trips` table (198 rows, `max(exit_time)` = 2026-08-25), `grep` confirming `cio_evidence_checkpoint2.py` has zero callers and zero crontab entry.
+**Revised consequence:** low. The stale file and its CSV input are real, and should still eventually be modernized or retired outright — but the operator-facing surfaces this finding worried about ("any report or reconciliation... working from stale data") are not actually affected; that gap was already closed five weeks before this audit. Severity downgraded from High to Low.
 
 ---
 
@@ -169,7 +176,7 @@ At least one position (CSWC) carries two disagreeing P&L fields in the same file
 | H2 | Command Center v2 not fully retired | High |
 | H3 | "Truth gate" test doesn't test truth, doesn't run | High |
 | H4 | Canonical quote layer doesn't cover trading path | High |
-| H5 | Trade journal stale, CSV-fed, contradicts standard | High |
+| H5 | (corrected) Live-served journal surfaces already migrated off CSV on 2026-07-21; only a one-off non-live proof script still reads the stale file | Low |
 | M1 | State reconciliation: hub off-main, stale release marker | Medium |
 | M2 | (corrected) User-level tradeai-continuous unit is dormant; system-level unit is live — no real gap, doc/investigation-hygiene note only | Low |
 | M3 | autonomous_rebalance_planner never scheduled | Medium |
