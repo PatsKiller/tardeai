@@ -101,9 +101,12 @@ The canonical hub (`trade-ai-v12-rebuild/trade-ai-v12-rebuild`, shared object st
 **Evidence:** `git diff --stat` output; `ACTIVE_RELEASE` file content vs. `CURRENT` symlink target.
 **Consequence:** any future audit or debugging session that trusts the hub's own checkout, the stale pinned deploy dir, or the `ACTIVE_RELEASE` marker as "current" will be working from the wrong code.
 
-### M2 — `tradeai-continuous.service`/`.timer` disabled and inactive at the systemd level
-Both are `disabled`/`inactive` — the continuous runner is not currently systemd-managed. Whether it is covered by cron or another external invocation was not confirmed in this pass.
-**Evidence:** `systemctl is-enabled`/`is-active` output.
+### M2 — CORRECTED: the continuous runner is live via a separate system-level unit; the original check only looked at the user-level one
+**Original finding:** `tradeai-continuous.service`/`.timer` `disabled`/`inactive` — flagged as the continuous runner possibly not being systemd-managed.
+
+**Correction:** that check ran `systemctl --user ...`, which only inspects the **user-level** unit (`~/.config/systemd/user/tradeai-continuous.service`) — genuinely `disabled`/`inactive`, confirmed. But a **separate system-level unit** (`/etc/systemd/system/tradeai-continuous.service`, own drop-in at `/etc/systemd/system/tradeai-continuous.service.d/singleton.conf`) is `enabled`+`active`, confirmed running right now: `python scripts/continuous_runner.py --project-root .` (PID live, started 04:00 ET today, actively cycling Finviz screens on a ~9-minute loop per its own log). The singleton-guard drop-in comment explicitly anticipated this exact ambiguity — "enforce exactly one cross-process continuous_runner instance regardless of which timer (system or user) activates this unit" — a shared lock file makes a duplicate activation from the other unit exit 0 rather than double-run, so the two coexisting is safe, not a live risk.
+**Evidence:** `systemctl status tradeai-continuous.service` (system-level, no `--user`) shows `Active: active (running) since ... Main PID: ... python scripts/continuous_runner.py`; `ps aux` confirms the process.
+**Revised consequence:** no operational gap — the continuous runner is live. The user-level unit files are vestigial duplicates that serve no purpose and cost nothing to leave in place (the singleton lock already protects against them ever conflicting), but they're a genuine trap for a future investigator who checks `systemctl --user` alone, exactly as the original pass did. Severity downgraded from a real-gap Medium to a documentation/investigation-hygiene note — recommend `systemctl --user disable tradeai-continuous.timer` (already disabled) plus a one-line comment in the user-level unit file pointing at the system-level one, so this doesn't cost a future audit the same investigation again.
 
 ### M3 — `autonomous_rebalance_planner.py` is "autonomous" in name only
 No cron or systemd entry exists for it anywhere; its only caller besides itself is a validation test script. It writes human-review-gated DRAFT plans when manually invoked, but is never scheduled in production.
@@ -168,7 +171,7 @@ At least one position (CSWC) carries two disagreeing P&L fields in the same file
 | H4 | Canonical quote layer doesn't cover trading path | High |
 | H5 | Trade journal stale, CSV-fed, contradicts standard | High |
 | M1 | State reconciliation: hub off-main, stale release marker | Medium |
-| M2 | tradeai-continuous service/timer disabled+inactive | Medium |
+| M2 | (corrected) User-level tradeai-continuous unit is dormant; system-level unit is live — no real gap, doc/investigation-hygiene note only | Low |
 | M3 | autonomous_rebalance_planner never scheduled | Medium |
 | M4 | Two Finviz enrichment cron slots are no-ops | Medium |
 | M5 | CIO snapshot read bypasses freshness check | Medium |
