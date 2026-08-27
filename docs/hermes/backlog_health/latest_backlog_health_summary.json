@@ -1,6 +1,6 @@
 {
-  "date": "2026-08-25",
-  "timestamp": "2026-08-25T06:45:04.445085+00:00",
+  "date": "2026-08-26",
+  "timestamp": "2026-08-26T06:45:42.442993+00:00",
   "checks": {
     "total_backlog": 30,
     "open_count": 0,
@@ -16,97 +16,97 @@
       },
       {
         "id": 34,
-        "duplicate_of": 33,
+        "duplicate_of": 32,
         "key": "NULL:unknown"
       },
       {
-        "id": 32,
-        "duplicate_of": 33,
+        "id": 33,
+        "duplicate_of": 32,
         "key": "NULL:unknown"
       },
       {
         "id": 54,
-        "duplicate_of": 33,
+        "duplicate_of": 32,
         "key": "NULL:unknown"
       },
       {
         "id": 53,
-        "duplicate_of": 33,
-        "key": "NULL:unknown"
-      },
-      {
-        "id": 3726,
-        "duplicate_of": 33,
+        "duplicate_of": 32,
         "key": "NULL:unknown"
       },
       {
         "id": 3727,
-        "duplicate_of": 33,
+        "duplicate_of": 32,
         "key": "NULL:unknown"
       },
       {
-        "id": 5329,
-        "duplicate_of": 33,
-        "key": "NULL:unknown"
-      },
-      {
-        "id": 5331,
-        "duplicate_of": 33,
+        "id": 3726,
+        "duplicate_of": 32,
         "key": "NULL:unknown"
       },
       {
         "id": 5330,
-        "duplicate_of": 33,
+        "duplicate_of": 32,
+        "key": "NULL:unknown"
+      },
+      {
+        "id": 5331,
+        "duplicate_of": 32,
+        "key": "NULL:unknown"
+      },
+      {
+        "id": 5329,
+        "duplicate_of": 32,
         "key": "NULL:unknown"
       },
       {
         "id": 5478,
-        "duplicate_of": 33,
+        "duplicate_of": 32,
         "key": "NULL:unknown"
       },
       {
         "id": 6024,
-        "duplicate_of": 33,
+        "duplicate_of": 32,
         "key": "NULL:unknown"
       },
       {
         "id": 7106,
-        "duplicate_of": 33,
+        "duplicate_of": 32,
         "key": "NULL:unknown"
       },
       {
         "id": 7986,
-        "duplicate_of": 33,
-        "key": "NULL:unknown"
-      },
-      {
-        "id": 9057,
-        "duplicate_of": 33,
-        "key": "NULL:unknown"
-      },
-      {
-        "id": 9061,
-        "duplicate_of": 33,
+        "duplicate_of": 32,
         "key": "NULL:unknown"
       },
       {
         "id": 9059,
-        "duplicate_of": 33,
+        "duplicate_of": 32,
         "key": "NULL:unknown"
       },
       {
         "id": 9058,
-        "duplicate_of": 33,
+        "duplicate_of": 32,
+        "key": "NULL:unknown"
+      },
+      {
+        "id": 9057,
+        "duplicate_of": 32,
+        "key": "NULL:unknown"
+      },
+      {
+        "id": 9061,
+        "duplicate_of": 32,
         "key": "NULL:unknown"
       },
       {
         "id": 9060,
-        "duplicate_of": 33,
+        "duplicate_of": 32,
         "key": "NULL:unknown"
       },
       {
         "id": 9666,
-        "duplicate_of": 33,
+        "duplicate_of": 32,
         "key": "NULL:unknown"
       }
     ],
@@ -124,14 +124,14 @@
       "catalyst_quality": 1
     },
     "oldest_item": {
-      "id": 21,
+      "id": 19,
       "created": "2026-05-31 21:36:31",
-      "age_days": 85
+      "age_days": 86
     },
     "newest_item": {
       "id": 9666,
       "created": "2026-07-14 12:03:57",
-      "age_days": 41
+      "age_days": 42
     },
     "ready_for_discovery": 0,
     "not_ready_for_discovery": 0,
