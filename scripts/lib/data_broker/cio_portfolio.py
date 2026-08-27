@@ -961,14 +961,14 @@ def _domain_cash_buying_power() -> DomainEvidence:
         "total_buying_power_estimate": round(float(total_buying_power), 2),
         "cash_positions": cash_positions,
         "cash_position_count": len(cash_positions),
-        "as_of": totals.get("as_of", ""),
+        "as_of": _portfolio_as_of(holdings, totals),
         "source": "derived_from_holdings_NOT_verified_broker_buying_power",
     }
 
     return DomainEvidence.partial(
         "cash_buying_power", data,
         source_ref=str(holdings_path),
-        as_of=totals.get("as_of", ""),
+        as_of=_portfolio_as_of(holdings, totals),
         partial_fields=["verified_broker_buying_power"],
         gap_reason="holdings_derived_cash_not_verified_broker_buying_power",
     )
