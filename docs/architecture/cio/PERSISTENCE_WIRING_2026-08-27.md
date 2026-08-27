@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-27
 **Releases:** `6124ee46` → `5bd09f37`, each promoted and verified live
-**Companion:** `IDENTITY_AND_MEMORY_ADVISORY_2026-08-27.md`, whose Phase A this executes
+**Companion:** `IDENTITY_AND_MEMORY_ADVISORY_2026-08-27.md`, whose Phase A this executes · **Sequel:** `LOOP_CLOSURE_2026-08-27.md`, which closes the learning loop the same evening
 
 The advisory concluded the identity and memory layers were built and switched off, and that the work was **promotion and cutover, not construction**. This records what was wired, what it measured before and after, and what deliberately was not touched.
 
@@ -21,7 +21,7 @@ Every figure below was measured against live production state.
 | lineage `entity_type` | UNRESOLVED × 97 | SECURITY 58 · UNRESOLVED 39 |
 | memory records with `subject_guid` | **0 / 441** | 428 single-entity + 8 multi |
 | evidence domains AVAILABLE | 7 / 30 | **11** |
-| CIO runs reaching synthesis | 1 of 55 in 17 days | gate now fed |
+| CIO runs reaching synthesis | 1 of 55 in 17 days | gate now fed; 4 of 5 run purposes pass (see sequel) |
 
 ---
 
@@ -191,7 +191,7 @@ An id written before the upgrade still resolves after it, in both directions —
 
 ## What remains
 
-1. **The CIO arc never records a checkpoint.** Arc A (30 workflows) has checkpoint + `checkpoint_id` and never a notification; arc B (29) has the notification and never a checkpoint. **Envelope overlap is 0**, and `is_complete_to_checkpoint()` evaluates one envelope at a time — so no retry or backfill can produce a completion. Either the arcs converge on one envelope, or completion is evaluated across a join. Lineage is a JSONL file, so a relational join requires the Postgres cutover first.
+1. ~~**The CIO arc never records a checkpoint.**~~ **RESOLVED the same evening, #560.** Each arc now finishes its own record rather than the two being merged: research settles its notification stage as NOT_REQUIRED with a recorded reason, and CIO runs persist the `OutcomeCheckpoint@v1` they never wrote. The predicate is untouched. Full record: `LOOP_CLOSURE_2026-08-27.md`.
 2. **Bitemporal writers.** `MemoryFact@v2` defines `valid_from` / `valid_to` / `tx_from` / `tx_to`; live records carry `as_of` + `expires_at` and **0/441** carry the bitemporal pair.
 3. **Promotion tiers.** The ladder is `CANDIDATE / ACTIVE / DISPUTED / EXPIRED / RETRACTED / SUPERSEDED`, with no `SUPPORTED` or `RATIFIED`. Live: 437 CANDIDATE, 2 ACTIVE.
 4. **`memory_m2_v2` has zero non-test consumers.** It already carries `tstzrange` and `FORCE RLS`. The cutover delivers row-level locking and the audit partition together.
