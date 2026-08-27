@@ -4,6 +4,13 @@
 **Asked:** build a system of unique, immutable GUIDs and persistent metadata tags spanning every entity's lifecycle — securities, purchases, events, catalysts — supporting chronological and multidimensional traversal, as an agent's long-term memory. Allocate ~25% of architecture to it.
 **Advice:** **do not build it.** It is already designed, to a standard most teams never reach, and it is switched off. The work is promotion and cutover, not construction.
 
+> **STATUS — Phase A executed the same day.** The counts under *The finding* are the
+> pre-work baseline and are no longer current. Live at release `5bd09f37`:
+> registry **10,279 entities, 5,014 CONFIRMED by a broker CUSIP** (was 383 entities / 0 confirmed, the store absent from disk that morning), lineage
+> `subject_guid` **58/97** (was 0), memory `subject_guid` on 436 of 441 records
+> (was 0). Implementation record, including what was deliberately not done:
+> `PERSISTENCE_WIRING_2026-08-27.md`.
+
 ---
 
 ## The finding
@@ -59,13 +66,16 @@ A standing ~25% allocation to persistence, memory integrity and lifecycle tracki
 
 ### Sequence
 
-**A. Mint at the edge (unblocks everything else).**
+**A. Mint at the edge (unblocks everything else). — DONE 2026-08-27, PRs #550/#554/#555/#556.**
 Every symbol entering the system resolves once through `subject_from_security(symbol, cik, company, exchange)`; persist the result to the `identity.registry` store (declared in `CanonicalStoreRegistry@v1`, absent from disk until today); stamp `subject_guid` on lineage envelopes. `entity_type` moves `UNRESOLVED → SECURITY` and the 0/315 becomes a real number. **Nothing downstream can be graph-traversed until this exists**, because there is no durable node id to traverse.
 
-**B. Promote `memory_fact` from shadow to authoritative.**
+**B. Promote `memory_fact` from shadow to authoritative. — PARTIAL.** PR #505 merged (`887130f8`) but is not deployed and remains non-authoritative by design. Live memory now carries `subject_guid` (PR #558) but **0 of 441 records carry `valid_from`/`tx_from`**: `MemoryFact@v2` defines the bitemporal pair and the live writer does not emit it. `memory_m2_v2` — which holds the `tstzrange` and `FORCE RLS` work — still has **zero non-test consumers**.
+
 PR #505 (*"non-authoritative Postgres/pgvector production memory shadow"*) is the vehicle and is already open. The storage decision is made — POSTGRES_PGVECTOR, `tstzrange`, FORCE RLS, `AdjudicationReceipt@v1` — from the M2 benchmark. Bitemporality is what delivers the "move forward and backward through the lifecycle" requirement; it is written and unused.
 
-**C. Wire the catalyst graph.**
+**C. Wire the catalyst graph. — SHIPPED PR #552** (Phase C, `a86d734b`), additive only.
+
+**C-original.**
 `event_identity.py` already models exactly the lifecycle asked for, and earnings/ratings/news already flow through the research lane. Connect the producers to `CatalystBinding@v1` / `CatalystRelation@v1` / `CatalystTrace@v1` rather than defining new edges.
 
 **D. Consolidate identity, and fix what I added.**
@@ -79,9 +89,25 @@ The signal that this is working is not a dashboard, it is the number already bei
 
 ```
 python scripts/cio_lineage_completion_report.py
-    entity_types    {'UNRESOLVED': 94}     ← today
-                    {'SECURITY': n, ...}   ← Phase A landed
-    with_event_id   0                      ← today
+    entity_types    {'UNRESOLVED': 94}                     ← at time of writing
+                    {'SECURITY': 58, 'UNRESOLVED': 39}     ← after Phase A, measured
+    with_event_id   0                                      ← unchanged, and correct
+```
+
+`event_id` deliberately stays 0 from the lineage stamp: that key derives from the
+event *kind*, which only the caller knows, and minting one under a generic kind
+produces join keys that silently fail to match the real ones.
+
+The 39 still UNRESOLVED carry no subject at all — arc-B goal wakes. They are not
+a failure to resolve; there is nothing there to resolve, and giving them a
+placeholder would manufacture false joins.
+
+**A second measurement now exists**, because the gate that blocked every run for
+17 days did so silently:
+
+```
+python scripts/pipeline_liveness_report.py --fail-on-finding
+    STARVED = work entered the lane and nothing came out
 ```
 
 ## Sequencing note
