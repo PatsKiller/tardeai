@@ -19,6 +19,7 @@
 | `docs/audits/CIO_PLATFORM_REMEDIATION_2026-08-27.md` | **Phase 2 plan + closeout status** — item→PR→merge-commit map for the 19 PRs merged 2026-08-27, and the ranked list of what remains | Active |
 | `docs/ops/GITHUB_ACTIONS_QUOTA_INCIDENT_2026-08-27.md` | **CI outage runbook** — repo-visibility flip exhausted the metered Actions quota; how to tell a quota block (0 steps, no runner, 0 billable ms) from a real test failure | Active |
 | `docs/ops/HEALTH_AGENT_MATURITY_PLAN_2026-08-27.md` | **PLAN (not shipped)** — verify remediation *effect* not exit code; store-consistency invariants over the 29 canonical stores; root-cause capture. Built on the 24h/69-attempt silent sync failure | Plan |
+| `docs/audits/CIO_PIPELINE_DIAGRAM_VERIFICATION_2026-08-27.md` | **Measured** answer to "is the pipeline diagram true?" — contracts and upper pipeline yes; loop never closes (0/94 workflows). Identity fork between the research and CIO arcs; two options open for operator decision | Active |
 | `docs/_findings/ALEX_AUTONOMY_GROUND_TRUTH_2026-08-21.md` | Phase 0 closed snapshot (2414 wakes / 0 payloads at `b04f0016`) | Active (do not rewrite) |
 | `docs/ops/MATURATION_G1_I0_A1_B1_2026-08-21.md` | G.1 quarantine + I.0 tree-pin audit + A.1 off-peak retarget + B.1 producer payload flags | Active |
 | `docs/ops/CIO_UI_AUDIT_2026-08-22.md` | **Canonical per-tab UI audit** of `/v3/advisory` + CIO Office (A–E). Live `:7777` is pin `5e91225a`. Raw dump on Drive. | Active |
