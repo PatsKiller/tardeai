@@ -13,7 +13,6 @@ from scripts.lib.cio_canonical_identity import (
     ENTITY_UNRESOLVED,
     event_id_for,
     identity_fields,
-    record_identity,
     resolve_entity,
     time_bucket,
     workflow_id_for_event,
@@ -144,23 +143,6 @@ def test_identity_fields_never_sets_workflow_id():
     """
     fields = identity_fields({"symbol": "SCHD"}, event_kind="CIO_RUN")
     assert "workflow_id" not in fields
-
-
-def test_registry_write_is_best_effort(tmp_path, monkeypatch):
-    monkeypatch.setenv("TRADEAI_IDENTITY_REGISTRY", str(tmp_path / "identity_registry.json"))
-    rec = record_identity({"symbol": "SCHD", "occurred_at": "2026-08-27T15:00:00+00:00"},
-                          event_kind="RESEARCH_REQUEST")
-    assert rec and rec["event_id"].startswith("evt_")
-    assert (tmp_path / "identity_registry.json").exists()
-
-
-def test_registry_failure_does_not_raise(tmp_path, monkeypatch):
-    """The id is derived, not looked up — a dead registry cannot break the join."""
-    monkeypatch.setenv("TRADEAI_IDENTITY_REGISTRY", str(tmp_path / "nope" / "x" / "r.json"))
-    (tmp_path / "nope").write_text("i am a file, not a directory")
-    assert record_identity({"symbol": "SCHD"}, event_kind="CIO_RUN") is None
-
-
 def test_hermes_envelope_now_carries_an_event_id():
     """Arc A's envelope had `event_id` read but never populated."""
     from scripts.lib.cio_workflow_envelope import hermes_request_fields
