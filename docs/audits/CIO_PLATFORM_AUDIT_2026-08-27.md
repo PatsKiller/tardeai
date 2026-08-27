@@ -6,6 +6,8 @@
 
 **Framing, per operator direction:** "CIO Desk as authoritative source of truth" is scoped to **data/decision authority** — the canonical context, definitions, and decisions other systems should read from. Execution posture (`READ_ONLY_ADVISORY`, no broker order/stop/risk-limit authority — [`docs/cio/AUTHORITY.md`](../cio/AUTHORITY.md)) is explicitly out of scope and unchanged by this audit.
 
+**Correction (2026-08-27, same day, before merge):** Finding C4 as originally investigated was accurate for the codebase it examined (the live hub checkout) but has since been corrected below — `scripts/lib/canonical_store_registry.py` (literal `SCHEMA = "CanonicalStoreRegistry@v1"`) already exists on `origin/main`, wired into 11 real consumers. See the corrected C4 entry for the full explanation; this is a state-reconciliation finding (M1), not a missing-feature finding.
+
 ---
 
 ## Headline Answer
@@ -46,10 +48,18 @@ The 07-24-era corrupt-bar class of incident (e.g. NVDA showing $0.05) is **not f
 **Evidence:** `price_db_sync.py:147,162,243,261` (only `>0` check); direct `ticker_prices` query surfaced the unscrubbed original rows plus 59 fresh outliers.
 **Consequence if unaddressed:** implausible prices reach Watch, Hermes research, and rebalance/proposal calculations with no guard — a single bad tick can distort position sizing, drift %, or a trim/entry recommendation.
 
-### C4 — No unified canonical ID registry; state is fragmented by design, only partially mitigated
-The diagram concept of a `CanonicalStoreRegistry@v1` unifying `workflow_id/event_id/research_id/artifact_id/generation_id/notification_id/checkpoint_id/outcome_id` does not exist system-wide. [`docs/architecture/cio/ADR_DURABLE_STATE_EVENT_SOURCING.md`](../architecture/cio/ADR_DURABLE_STATE_EVENT_SOURCING.md) (frozen 2026-08-08) is a deliberate architectural choice for **multiple independent domain ledgers** (`cio_action_ledger.jsonl`, `agent_handoff_queue.jsonl`, `notification_outbox.jsonl`), joined only by shared IDs, not a single store. A new module, `scripts/lib/cio_lineage.py` (added **2026-08-26**, one day before this audit), implements a genuine analog — `LineageStore.envelope()` cross-references nearly the diagram's full ID set, and `OutcomeCheckpoint@v1` appears as a literal schema string at line 138 — but it is explicitly scoped as a read-only audit projection of the **Hermes research sub-flow only**, not the whole platform.
-**Evidence:** `scripts/lib/cio_lineage.py:89-116,138`; `docs/architecture/cio/ADR_DURABLE_STATE_EVENT_SOURCING.md`.
-**Consequence if unaddressed:** this is the direct architectural cause of the 92-file "source of truth" phrase fragmentation found across the docs tree (see M9) — every domain independently declares its own authority with no cross-domain reconciliation layer, and the one new component that does this is one day old and single-purpose.
+### C4 — CORRECTED: the canonical registry exists on `origin/main`; the gap is hub deployment lag, not a missing feature
+**Original finding (as investigated against the live hub checkout, `feat/two-way-watchlist-curation`):** no unified `CanonicalStoreRegistry@v1` existed; `scripts/lib/cio_lineage.py` (added 2026-08-26) implemented a genuine but narrow analog scoped to the Hermes research sub-flow only.
+
+**Correction:** that finding was accurate *for the hub*, but incomplete — `scripts/lib/canonical_store_registry.py` already exists on `origin/main` (last touched by commit `fd61ac46`, 2026-08-26 21:51, the same evening as `cio_lineage.py`) and is **missing from the hub's live checkout entirely** (confirmed: `test -f` on the hub path fails). It is not a stub:
+
+- Literal `SCHEMA = "CanonicalStoreRegistry@v1"`, an explicit `OWNERSHIP_CLASSES` taxonomy (`AUTHORITATIVE` / `APPEND_ONLY_EVIDENCE` / `CANONICAL_PERSISTENT_STATE` / `DERIVED_CURRENT_PROJECTION` / `CACHE` / `OPS_LOG` / `RETIRED`), and 24 registered logical stores (positions, decisions, quotes, notifications, lineage, checkpoints, learning, research, identity, maturity, etc.), each declaring its writer, readers, and whether it's rebuildable.
+- `resolve_store()`/`load_json_store()` give consumers a store-ID lookup with alias fallback for stale filenames — exactly the "one contract for persisted intelligence stores" the diagram's `CanonicalStoreRegistry@v1` implies.
+- **Genuinely wired**, not aspirational: 11 real consumer files import it, including `scripts/api_v3_cio.py` (the main CIO API), `scripts/control_plane_api.py`, `scripts/aegis_evening_packet.py`, plus dedicated integrity tooling (`filename_drift_audit.py`, `data_integrity_audit.py`, `production_root_map.py`) that specifically checks for the kind of store-fragmentation this registry exists to prevent.
+- It also **contains a literal, wired `CIOOperatorProduct@v1`** (`scripts/lib/cio_operator_product.py`, `SCHEMA = "CIOOperatorProduct@v1"`, imports `canonical_store_registry` directly) — correcting L7 below, which classified that diagram type as "renamed-equivalent, diffuse." It is not diffuse; it is a real, registry-backed module with that exact name, present on `origin/main`, absent from the hub.
+
+**Evidence:** `scripts/lib/canonical_store_registry.py` (full file read); `git log -1 -- scripts/lib/canonical_store_registry.py` → `fd61ac46530e93fde5740a98482e1ae3209adec5 2026-08-26 21:51:03`; `test -f <hub>/scripts/lib/canonical_store_registry.py` → missing; `grep -rl "canonical_store_registry\|resolve_store(" scripts/ apps/` → 11 files.
+**Revised consequence:** this is not a "never built" gap — it is an **M1 state-reconciliation consequence**. The registry that would resolve the 92-file "source of truth" fragmentation (see M9) already exists and is merged to `origin/main`, but the live hub (what cron/systemd actually run) doesn't have it yet because the hub's checkout has diverged onto an unmerged feature branch. Fixing M1 (getting the hub current with `origin/main`) is very likely the actual fix for the operator-facing part of this finding, not new registry-building work. Severity revised from Critical to **Medium** — the code risk is closed; what remains is a deployment-currency risk already covered by M1.
 
 ### C5 — A confirmed hard-cap portfolio breach went unalerted for multiple days
 `scripts/portfolio_level_qa.py` runs daily (07:40) and internally tags violations by severity, including `critical` for hard-cap breaches. A live breach — `core_compounders: 86.1–86.2%` against a `40–60%` target, explicitly tagged `[OVER_HARD_CAP]` at `critical` severity in code — was logged to `logs/portfolio_qa.log` and a DB event row across **multiple consecutive daily runs** with **no Telegram/alert call anywhere in the script** (`grep` confirms zero). A separate hard crash (`FileNotFoundError: .../.env`) also killed a run entirely with no alert.
@@ -126,7 +136,7 @@ At least one position (CSWC) carries two disagreeing P&L fields in the same file
 - **L4** — `"Zero vendor string literals"` claim on `broker_adapter.py` is technically false by grep (one docstring mention of "Schwab/IBKR") but true in functional/dispatch logic.
 - **L5** — `scripts/brokers/schwab_order_adapter.py` is a dormant stub (every mutating method unconditionally raises) — not the live order path; its name is misleading relative to `schwab_transport.py`, which is the real one.
 - **L6** — `aegis_morning_brief_2026-08-27.json` shows a small ($2,087 / 0.16%) rounding gap vs. ground-truth total portfolio value — non-material, likely LLM-summary rounding, different codepath than the audited `reporting_engine.py` output (which reconciled exactly).
-- **L7** — Diagram type reconciliation (`CIOCouncilSynthesis@v1`→`InvestmentDecision@v1`, `CIOOperatorProduct@v1`→diffuse `cio_full_cycle.py` pipeline output, `SpecialistArtifact@v2`→informal dict convention) are naming-drift-only; `OutcomeCheckpoint@v1` is a literal, freshly-built match. No file in the repo formally scoped this diagram end-to-end — it reads as an external/aspirational reference whose vocabulary partially, recently converged with real (but fragmented) implementation work rather than a superseded internal spec.
+- **L7** — Diagram type reconciliation, corrected: `CIOCouncilSynthesis@v1`→`InvestmentDecision@v1` (naming-drift-only) and `SpecialistArtifact@v2`→informal dict convention (naming-drift-only) stand as originally found. `OutcomeCheckpoint@v1` is a literal, freshly-built match (`cio_lineage.py`). `CIOOperatorProduct@v1` was originally classified "renamed-equivalent, diffuse" against `cio_full_cycle.py`'s pipeline output — **corrected**: `scripts/lib/cio_operator_product.py` on `origin/main` has that exact literal schema name, registry-backed, not diffuse (see corrected C4/M10). `CanonicalStoreRegistry@v1` was originally classified "never implemented" — **corrected**: exists on `origin/main` as `scripts/lib/canonical_store_registry.py`, wired into 11 consumers (see M10). Net: 2 of 5 diagram types are exact literal matches on `origin/main` today (`OutcomeCheckpoint@v1`, `CIOOperatorProduct@v1`), one more (`CanonicalStoreRegistry@v1`) matches by concept and near-exact by name; only `CIOCouncilSynthesis@v1` and `SpecialistArtifact@v2` remain genuine naming drift. No file in the repo formally scoped this diagram end-to-end — but its vocabulary converges with real, merged, wired implementation work far more than the original investigation (run against the lagging hub checkout) found.
 
 ---
 
@@ -151,7 +161,6 @@ At least one position (CSWC) carries two disagreeing P&L fields in the same file
 | C1 | CIO Desk bypassed by real daily rebalance path | Critical |
 | C2 | Position-hallucination enforcement gate never called | Critical |
 | C3 | Corrupt/outlier price bars live, unguarded | Critical |
-| C4 | No unified canonical ID registry; fragmented by design | Critical |
 | C5 | Hard-cap breach unalerted for multiple days | Critical |
 | H1 | Daily rebalance suggestions never verified | High |
 | H2 | Command Center v2 not fully retired | High |
@@ -167,4 +176,5 @@ At least one position (CSWC) carries two disagreeing P&L fields in the same file
 | M7 | "Alex is CHAIR" overstated vs. code | Medium |
 | M8 | holdings.json internal P&L field inconsistency | Medium |
 | M9 | Master docs lag ~2 weeks of shipped work | Medium |
+| M10 | (was C4) Canonical registry exists on origin/main, missing from hub — an M1 consequence, not a missing feature | Medium |
 | L1–L7 | Dead code, doc precision, minor drift | Low |

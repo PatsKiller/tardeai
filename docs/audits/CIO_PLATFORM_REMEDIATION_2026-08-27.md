@@ -4,13 +4,15 @@
 **Companion findings doc:** [`CIO_PLATFORM_AUDIT_2026-08-27.md`](CIO_PLATFORM_AUDIT_2026-08-27.md)
 **Scope note:** Execution posture (CIO Desk `READ_ONLY_ADVISORY`) is unchanged by this plan. Every remediation below closes a *data/decision-authority* or *data-integrity* gap, not an execution-authority change.
 
+**Correction (2026-08-27, same day):** C4 was originally scoped as "extend `cio_lineage.py`" — corrected below. `scripts/lib/canonical_store_registry.py` (the real `CanonicalStoreRegistry@v1`) already exists on `origin/main`, wired into 11 consumers; it's simply missing from the live hub checkout. The fix is now folded into M1 (state reconciliation), not separate registry-building work. C4 moves from P1 to P2 accordingly.
+
 ---
 
 ## Priority Order
 
 **P0 (data-integrity, fix independent of everything else, no dependencies):** C2, C3, C5
-**P1 (CIO-authority wiring, the core ask of this audit):** C1, C4, H1, H4
-**P2 (retirement/consistency, lower urgency, real but not financial-risk):** H2, H3, H5, M1–M9
+**P1 (CIO-authority wiring, the core ask of this audit):** C1, H1, H4
+**P2 (retirement/consistency, lower urgency, real but not financial-risk):** H2, H3, H5, M1–M9, M10 (was C4)
 **P3 (cleanup, do opportunistically):** L1–L7
 
 ---
@@ -50,15 +52,6 @@
 **Recommendation:** (b) as an immediate documentation fix, with (a) as a scoped follow-up only if the operator actually wants daily rebalance alerts CIO-gated — don't silently re-enable a disabled cron entry without understanding why it was disabled.
 **Validation:** whichever path is chosen, `InvestmentDecision@v1` consumption should show up in a repo-wide grep beyond its own module — that's the checkable signal this gap is closed.
 
-### Fix C4 — Extend the new `cio_lineage.py` registry beyond the Hermes sub-flow, or document its scope explicitly
-**Problem:** `cio_lineage.py` (added 2026-08-26) is a strong start on the `CanonicalStoreRegistry@v1` concept but only covers the Hermes research sub-flow, while the platform otherwise uses multiple independent domain ledgers per a deliberate ADR.
-**Fix:** given this module is one day old, this is naturally a phased effort, not a single fix:
-1. Immediate: document `cio_lineage.py`'s actual scope (Hermes-only) prominently in its own docstring and in `docs/architecture/cio/ADR_DURABLE_STATE_EVENT_SOURCING.md`, so nobody assumes it's system-wide.
-2. Near-term: evaluate extending `LineageStore.envelope()` to also cross-reference `cio_action_ledger.jsonl`, `agent_handoff_queue.jsonl`, and `notification_outbox.jsonl` IDs — the schema already anticipates most of these fields.
-3. This directly reduces the 92-file "source of truth" fragmentation (M9-adjacent) — track as the long-term fix for that pattern, not a doc-wording exercise.
-**Validation:** a future audit's "source of truth" grep sweep should show a declining count of independently-declared authorities as more domains register through the lineage store.
-**Risk:** low to start (additive), but don't rush a system-wide registry migration — this is exactly the kind of change that should be scoped and reviewed like the ADR that preceded it, not bolted on reactively.
-
 ### Fix H1 — Extend rebalance verification to cover the daily drift path
 **Problem:** `rebalance_verifier.py` only checks the unrelated monthly `gemma3_monthly` tier; daily drift-based suggestions that actually reach the operator are never verified.
 **Fix:** either (a) add a lightweight daily verification pass for `portfolio_rebalancer.py` output (reuse the SSDI/IRMAA/tax-compliance checks `rebalance_verifier.py` already has, applied to the daily suggestions before the Telegram alert fires — verify-before-notify, not verify-after), or (b) if Sunday-only verification is intentional for cost/complexity reasons, make that limitation visible to the operator in the Telegram alert itself ("unverified drift suggestion — full compliance check runs Sunday").
@@ -89,6 +82,7 @@
 | **M7** — Correct "Alex is the CHAIR" documentation | Update `cio_committee_synthesis.py`'s docstring and `docs/cio/ARCHITECTURE.md` to accurately describe the override direction (committee veto offices can override chair, not vice versa). | Docs match code on re-read. |
 | **M8** — Reconcile `holdings.json`'s duplicate P&L fields | Determine which of `gain_loss`/`unrealized_pl` is canonical, deprecate the other or document the difference (e.g. pre-fee vs. post-fee) if both are intentionally different metrics. | All consumers reference the same field consistently, or the difference is documented. |
 | **M9** — Refresh master docs | Fold the 08-20 through 08-22 closeout docs' "what shipped" claims into `docs/MASTER_SYSTEM_DOCUMENTATION.md` and `docs/cio/ARCHITECTURE.md`; add the missing entries to `docs/DOCUMENTATION_INDEX.md`. Given this pattern (closeout docs not folding back into master docs) is recurring, consider adding it as a checklist item to whatever process produces closeout docs. | Master docs mention the shipped features found in this audit's Brief 10. |
+| **M10** (was C4) — Get the hub current with `origin/main` so `canonical_store_registry.py` actually runs | This is the same action as fixing M1: `scripts/lib/canonical_store_registry.py` (the real `CanonicalStoreRegistry@v1`, wired into 11 consumers including `api_v3_cio.py`) exists on `origin/main` but is missing from the hub's live checkout. No new registry-building work is needed — bringing the hub current closes this. Once current, document `cio_lineage.py`'s narrower Hermes-only scope relative to the broader registry in its own docstring, so the two aren't confused. | `test -f <hub>/scripts/lib/canonical_store_registry.py` succeeds; the 92-file "source of truth" grep sweep (M9) shows a declining count as more domains resolve through the registry over time. |
 
 ---
 
@@ -105,7 +99,7 @@
 
 ## Definition of Done
 
-1. **C1/C4 resolved** — either CIO Desk is wired into the real rebalance path, or the boundary is explicitly and honestly documented; a canonical registry either extends beyond Hermes or its scope is clearly bounded in writing.
+1. **C1 resolved (done)** — the CIO/rebalance boundary is explicitly and honestly documented. **M10 (was C4) resolved** when the hub is current with `origin/main` and `canonical_store_registry.py` is actually running in production, not just merged.
 2. **All P0 items (C2, C3, C5) closed** — position-truth gate live-wired, price outlier guard in place with known-bad rows scrubbed, critical QA violations alert a human.
 3. **All Critical/High findings from Phase 1 have a closed remediation item** — fixed, or explicitly accepted-risk with operator sign-off (appropriate for a solo operator, not a team consensus process).
 4. **Safety guards remain independently testable** — every guard this audit verified as working (GATE B, kill switches, approval_service chain, HERMES_DISABLED, agent_runtime boundary, report_maturity_control_board read-only) should gain or keep a regression test that would catch a future silent regression of the kind this audit specifically looked for (cf. the stash-conflict-marker incident precedent).
@@ -116,8 +110,8 @@
 
 ## Open Items Requiring Operator Decision (not just engineering)
 
-- **C1**: should the real daily rebalance path actually be CIO-gated, or is the current mechanical-independence intentional and just needs honest documentation?
-- **C4**: how far should the new `cio_lineage.py` registry be extended, and on what timeline — this touches the same architectural territory as a frozen ADR and shouldn't be decided unilaterally by remediation work.
-- **M1**: is the hub intentionally lagging `origin/main` for canary purposes, or should it be kept in sync going forward?
+- **C1 — RESOLVED (2026-08-27):** operator decision was to document the mechanical-independence honestly rather than wire it. Shipped: `docs/cio/AUTHORITY.md` + `ARCHITECTURE.md` updated (PR #526).
+- **C4 — SUPERSEDED (2026-08-27):** the original question ("how far should `cio_lineage.py` be extended") no longer applies — the real registry already exists on `origin/main`. The remaining open item folds into M1 below.
+- **M1**: is the hub intentionally lagging `origin/main` for canary purposes, or should it be kept in sync going forward? This is now higher-stakes than originally scoped — the hub is not just stale, it's missing a wired, actively-consumed module (`canonical_store_registry.py`) that 11 other files depend on. Merging/rebasing the live hub branch affects the actively-running production system and should not happen without explicit operator sign-off on timing and rollback plan.
 
-These three are flagged separately because they're judgment calls about intended system design, not bugs with a single correct fix — surfaced here so they don't get silently resolved one way by whoever picks up the remediation work.
+These are flagged separately because they're judgment calls about intended system design, not bugs with a single correct fix — surfaced here so they don't get silently resolved one way by whoever picks up the remediation work.
