@@ -175,6 +175,15 @@ class SchwabAdapter:
             positions = acct.get("positions", [])
             return [{
                 "symbol": p.get("instrument", {}).get("symbol", ""),
+                # Schwab returns instrument = {assetType, cusip, symbol, description}.
+                # Only `symbol` was read, so the CUSIP — a durable instrument
+                # identifier the broker hands us for free — was discarded on every
+                # sync. It is what upgrades an entity from a name-derived CANDIDATE
+                # identity to a CONFIRMED one in the identity registry, and it is
+                # never invented: absent from the payload, it stays absent here.
+                "cusip": (p.get("instrument", {}).get("cusip") or "").strip() or None,
+                "asset_type": (p.get("instrument", {}).get("assetType") or "").strip() or None,
+                "description": (p.get("instrument", {}).get("description") or "").strip() or None,
                 "qty": str(p.get("longQuantity", 0)),
                 "avg_entry_price": str(p.get("averagePrice", 0)),
                 "current_price": str(p.get("marketValue", 0) / max(p.get("longQuantity", 1), 1)),
