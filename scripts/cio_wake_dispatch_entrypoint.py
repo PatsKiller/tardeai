@@ -83,11 +83,33 @@ def main():
     from scripts.lib.cio_action_ledger import CIOActionLedger
     from scripts.lib.cio_notification_outbox import NotificationOutbox
     from scripts.lib.cio_investment_product import build_investment_product_synthesis_fn
+    from scripts.lib.cio_health_boundary import CIOHealthBoundary
+    from scripts.lib.cio_operator_profile import OperatorProfile
+
+    # The snapshot collects health_data_quality and operator_profile only from
+    # the stores handed to the worker. This entrypoint passed neither, so both
+    # REQUIRED domains resolved DATA_UNAVAILABLE on every run and the evidence
+    # gate blocked before synthesis -- 54 of 55 runs, continuously since
+    # 2026-08-10. The gate was right; it was being asked about stores nobody
+    # gave it. Fail-soft: a store that cannot be built leaves its domain
+    # unavailable, which is the pre-existing behaviour, never a fabricated one.
+    try:
+        health_boundary = CIOHealthBoundary()
+    except Exception:
+        log.exception("health boundary unavailable (fail-soft)")
+        health_boundary = None
+    try:
+        operator_profile = OperatorProfile()
+    except Exception:
+        log.exception("operator profile unavailable (fail-soft)")
+        operator_profile = None
 
     worker = CIORunWorker(
         run_store=run_store,
         action_ledger=CIOActionLedger(),
         notification_outbox=NotificationOutbox(),
+        health_boundary=health_boundary,
+        operator_profile=operator_profile,
         mode="shadow",
         synthesis_fn=build_investment_product_synthesis_fn(),
     )

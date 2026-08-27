@@ -13,7 +13,7 @@
         "scripts/sync_portfolio.py (canonical writer)",
         "data/portfolios/state/holdings.json (file projection)"
       ],
-      "freshness_timestamp_field": "as_of",
+      "freshness_timestamp_field": "generated_at",
       "freshness_threshold_seconds": 43200,
       "materiality_policy": {
         "BUY": "REQUIRED",
