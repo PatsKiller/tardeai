@@ -343,11 +343,18 @@ def _workflow_detail(workflow_id: str, query: dict[str, Any]) -> tuple[dict[str,
 
 
 def _system() -> dict[str, Any]:
+    hermes: dict[str, Any] = {"mode": "EVENT_DRIVEN_QUEUE", "state": "UNKNOWN"}
+    try:
+        from scripts.lib.hermes_queue_health import build as build_hermes_health
+        health = build_hermes_health()
+        hermes.update({"state": "AVAILABLE", "queue": health})
+    except Exception as exc:
+        hermes.update({"state": "UNAVAILABLE", "reason": type(exc).__name__})
     return {
         "authority": "READ_ONLY_ADVISORY",
         "memory_behavior_influence": 0,
         "runtime": {"source_sha": _sha(), "state": "UNKNOWN", "persistent_state": "UNKNOWN"},
-        "services": [], "timers": [], "workers": [], "queues": [],
+        "services": [], "timers": [], "workers": [{"agent_id": "hermes", "runtime_state": hermes["state"], "mode": hermes["mode"]}], "queues": [hermes],
         "research": {"state": "UNKNOWN"}, "notifications": {"state": "UNKNOWN"},
     }
 
