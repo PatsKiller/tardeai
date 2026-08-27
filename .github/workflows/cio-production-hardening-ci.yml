@@ -53,6 +53,12 @@ jobs:
       - name: Phase 11 adversarial suite
         run: python3 scripts/run_cio_adversarial_suite.py
 
+      # A versioned contract with no caller is this codebase's recurring defect:
+      # the artifact passes its own tests, so nothing reports a problem. Fails
+      # only on a NEW one -- the 29 inherited are named in KNOWN_DARK.
+      - name: Dark contract guard (no new uncalled versioned schema)
+        run: python3 scripts/check_dark_contracts.py --fail-on-new
+
       - name: Report HTML export smoke
         run: |
           python3 - <<'PY'

@@ -129,6 +129,16 @@ ALLOWED_DEEP_LINK_SCHEMES = frozenset({"http", "https", "cmd-center", ""})
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
+def _parse_occurred(stamp: Any) -> "datetime | None":
+    if not isinstance(stamp, str):
+        return None
+    try:
+        dt = datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
 def build_dedupe_key(notification: dict[str, Any]) -> str:
     """Build semantic dedupe key from source references.
 
@@ -142,6 +152,17 @@ def build_dedupe_key(notification: dict[str, Any]) -> str:
         or notification.get("investment_decision_id")
         or (notification.get("payload") or {}).get("decision_id")
     )
+    # A check-in carries no decision identity, so the only distinguishing part
+    # left was `wake_job_id` -- a fresh run id every run. Three runs with a
+    # byte-identical body therefore produced three different keys and three
+    # identical Telegrams (observed 2026-08-27). For this class the semantic
+    # event is the CONTENT, not the run that emitted it. Suppression is bounded
+    # by `dedupe_window_hours`, so an unchanged daily brief still arrives daily.
+    if not did and notification.get("message_class") == "checkin" and notification.get("body_hash"):
+        return hashlib.sha256(
+            f"checkin:{notification['body_hash']}".encode()
+        ).hexdigest()[:32]
+
     if did:
         parts.append(f"decision:{did}")
         state = (
@@ -455,22 +476,38 @@ class NotificationOutbox:
         return None
 
     def _check_dedupe(
-        self, dedupe_key: str, stream_id: str | None = None
+        self, dedupe_key: str, stream_id: str | None = None,
+        window_hours: float | None = None,
     ) -> dict[str, Any] | None:
         """Check if a semantically-identical notification already exists.
 
         Searches globally across all streams (not just `stream_id`) so two
         producers that enqueue different `notification_id`s for the same semantic
         event (same `dedupe_key`) collapse to a single notification.
+
+        `window_hours` bounds how far back a match counts. Without it the search
+        is unbounded, which is right for a decision-keyed notification (the same
+        decision should never re-page) but wrong for a content-keyed check-in:
+        an unchanged daily brief would match its own first send forever and the
+        operator would hear nothing again. Absent = previous behaviour.
         """
         if not dedupe_key:
             return None
+        cutoff = None
+        if window_hours is not None:
+            cutoff = datetime.now(timezone.utc) - timedelta(hours=window_hours)
         for e in self._iter_all_events():
             payload = e.get("payload", {})
-            if payload.get("dedupe_key") == dedupe_key:
-                return e
-            if payload.get("idempotency_key") == dedupe_key:
-                return e
+            if payload.get("dedupe_key") != dedupe_key and \
+               payload.get("idempotency_key") != dedupe_key:
+                continue
+            if cutoff is not None:
+                occurred = _parse_occurred(e.get("occurred_at"))
+                # An unreadable stamp must not silently widen the window into
+                # unbounded suppression; treat it as outside and keep looking.
+                if occurred is None or occurred < cutoff:
+                    continue
+            return e
         return None
 
     # ── Projection Replay ──────────────────────────────────────────────────
@@ -720,7 +757,10 @@ class NotificationOutbox:
         # Dedupe guard — check if semantically identical notification exists
         dedupe_key = notification.get("dedupe_key", "")
         if dedupe_key:
-            existing_dedupe = self._check_dedupe(dedupe_key)
+            existing_dedupe = self._check_dedupe(
+                dedupe_key,
+                window_hours=notification.get("dedupe_window_hours"),
+            )
             if existing_dedupe is not None:
                 return existing_dedupe
 

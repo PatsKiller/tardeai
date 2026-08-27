@@ -21,6 +21,10 @@ is touched.
 """
 from __future__ import annotations
 
+NO_CONSUMER_REASON = (
+    "one-shot backfill; ran 2026-08-27 for the 58 pre-#556 envelopes. Re-run manually if lineage is ever rebuilt."
+)
+
 import argparse
 import json
 import sys

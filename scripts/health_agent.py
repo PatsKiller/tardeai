@@ -3170,7 +3170,37 @@ def collect_queue_health() -> list[dict]:
     return out
 
 
+def collect_store_consistency() -> list[dict]:
+    """Divergent or absent canonical stores. Detects only -- never repairs.
+
+    Added because the dark-contract guard flagged `store_consistency.py` as
+    having no consumer: it shipped in Phase 2 and was never called, which is the
+    exact defect that guard exists to catch, committed while building the guard.
+
+    Nothing here is auto-remediable. Two candidate truths means a machine picking
+    one destroys the other, and on 2026-08-27 the FRESHER copy of holdings.json
+    was the internally inconsistent one -- off by $3,748 against its own
+    positions -- while the staler copy the CIO reads reconciled exactly.
+    """
+    try:
+        from scripts.lib.store_consistency import check
+        from scripts.lib.canonical_store_registry import production_state_root
+    except Exception:
+        return []
+    try:
+        persist = Path(production_state_root())
+    except Exception:
+        return []
+    source = Path("/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild")
+    rel = "data/portfolios/state/holdings.json"
+    try:
+        return check([("portfolio.holdings.current", persist / rel, source / rel)])
+    except Exception:
+        return []
+
+
 COLLECTORS = [
+    collect_store_consistency,
     collect_data_quality,
     collect_trade_ai_session,
     collect_broker_token_health,
