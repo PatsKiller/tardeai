@@ -114,6 +114,36 @@ def load(root: Path | str | None = None) -> dict[str, Any]:
     return base
 
 
+# Resolution happens on the lineage write path, once per envelope. Re-reading a
+# multi-megabyte registry there costs ~18ms per call and grows with the registry,
+# so the parsed document is cached against the file's identity. Keyed on
+# (path, mtime_ns, size) rather than a TTL: a mint is picked up on its next read
+# instead of after an arbitrary delay, and a stale read is impossible.
+_CACHE: dict[str, tuple[tuple[int, int], dict[str, Any]]] = {}
+
+
+def load_cached(root: Path | str | None = None) -> dict[str, Any]:
+    """`load()` with the parse cached against the file's mtime and size.
+
+    Returns the shared document. Callers must treat it as read-only: mutating it
+    would corrupt every later reader. `load()` remains the copy-on-read path for
+    anything that writes.
+    """
+    path = registry_path(root)
+    try:
+        st = path.stat()
+        stamp = (st.st_mtime_ns, st.st_size)
+    except OSError:
+        return empty_registry()
+    key = str(path)
+    hit = _CACHE.get(key)
+    if hit and hit[0] == stamp:
+        return hit[1]
+    doc = load(root)
+    _CACHE[key] = (stamp, doc)
+    return doc
+
+
 def save(doc: Mapping[str, Any], root: Path | str | None = None) -> Path:
     path = registry_path(root)
     path.parent.mkdir(parents=True, exist_ok=True)

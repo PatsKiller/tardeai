@@ -140,6 +140,43 @@ def iter_lineage_records(path: Path | str | None = None) -> list[dict[str, Any]]
     return rows
 
 
+def _stamp_identity(envelope: dict[str, Any]) -> None:
+    """Resolve the envelope's own subject against the durable registry.
+
+    Identity was previously stamped only when a producer passed an explicit
+    `identity` payload, and the CIO arc never did -- so 0 of 97 workflows carried
+    a `subject_guid` and every one read `entity_type: UNRESOLVED`, leaving the
+    arcs with no join key. 59 of those envelopes already carried a `subject_id`
+    and 58 resolve against the registry. Doing it here means every envelope write
+    passes one resolution point instead of each producer remembering to.
+
+    Deliberately does NOT stamp `event_id`: that key is derived from the event
+    *kind*, which only the caller knows. Minting one here under a generic kind
+    would produce join keys that silently fail to match the real ones.
+    `workflow_id` is likewise never touched -- rewriting it rekeys every
+    downstream consumer.
+
+    Best-effort by design: lineage is an audit projection, and a registry that is
+    missing, locked or malformed must never fail the write it describes.
+    """
+    try:
+        declared = envelope.get("entity_type")
+        if envelope.get("subject_guid") and declared not in (None, "", "UNRESOLVED"):
+            return
+        from scripts.lib.cio_canonical_identity import resolve_entity
+        entity = resolve_entity(envelope)
+        if entity.get("subject_guid") and not envelope.get("subject_guid"):
+            envelope["subject_guid"] = entity["subject_guid"]
+        if entity.get("subject_id") and not envelope.get("subject_id"):
+            envelope["subject_id"] = entity["subject_id"]
+        # Only ever sharpen the type; an explicit GOAL or SECURITY from a
+        # producer that knows better is not overwritten with a guess.
+        if declared in (None, "", "UNRESOLVED"):
+            envelope["entity_type"] = entity["entity_type"]
+    except Exception:
+        pass
+
+
 class LineageStore:
     def __init__(self, path: Path | str | None = None) -> None:
         self.path = _lineage_path(path)
@@ -301,6 +338,7 @@ class LineageStore:
             created_at=created,
             unset=unset,
         )
+        _stamp_identity(merged)
         freeze_governance(merged)
         key = "env_" + _digest(semantic_payload(merged))
         merged["semantic_key"] = key
