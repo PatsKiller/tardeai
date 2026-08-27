@@ -3,7 +3,14 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const enabled = process.env.CIO_TRUTH_BROWSER === '1'
+// Audit finding H3 (docs/audits/CIO_PLATFORM_AUDIT_2026-08-27.md): this spec
+// was gated behind CIO_TRUTH_BROWSER=1, an env var never set anywhere — so
+// it never ran automatically, in CI or otherwise, despite the name implying
+// it's a safety gate. Runs automatically under CI (GitHub Actions sets
+// CI=true) while staying opt-in for ad hoc local runs, matching how the
+// only other Playwright CI workflow in this repo (active-trader-live-motion)
+// is invoked — always in CI, opt-in locally.
+const enabled = process.env.CIO_TRUTH_BROWSER === '1' || process.env.CI === 'true'
 const here = path.dirname(fileURLToPath(import.meta.url))
 const root = path.resolve(here, '../../..')
 const out = path.join(root, 'docs/_evidence/autonomous_advisory_loop/cio_truth_gates')
@@ -42,7 +49,12 @@ test.describe('CIO financial truth and feedback gates', () => {
       }),
     }))
 
-    await page.goto('/v3/cio')
+    // CioHub.tsx defaults to the 'cio-brain' tab when no `?tab=` param is
+    // set (CioHub.tsx:1703); the decision card only renders under 'cio-now'
+    // (CioNowSection, CioHub.tsx:1827). This spec never actually ran until
+    // Fix H3 wired it into CI — without this param it fails 100% of the
+    // time waiting on a card that's never mounted.
+    await page.goto('/v3/cio?tab=cio-now')
     const card = page.getByTestId('cio-decision-card')
     await expect(card).toBeVisible()
     await expect(card.getByTestId('cio-sizing-suppressed')).toContainText('DATA CONFLICT')
