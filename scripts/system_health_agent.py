@@ -908,8 +908,9 @@ def _parse_et_timestamp(ts_str: str):
                 return _ptz_et.timezone("US/Eastern").localize(naive).astimezone(timezone.utc)
             except ModuleNotFoundError:
                 # Keep the pure health parser usable in minimal QA/bootstrap
-                # environments; explicit UTC offsets are handled below.
-                return naive.replace(tzinfo=timezone.utc)
+                # environments while preserving ET daylight-saving semantics.
+                from zoneinfo import ZoneInfo
+                return naive.replace(tzinfo=ZoneInfo("America/New_York")).astimezone(timezone.utc)
         except ValueError:
             continue
     return None
