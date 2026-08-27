@@ -74,14 +74,18 @@ def _holdings_rows() -> list[dict]:
 
 
 def _watchlist_rows() -> list[dict]:
-    """Active watch universe. Absent Postgres this simply contributes none.
+    """Watch universe the system still reasons about. No Postgres, no rows.
 
-    Scoped to `status = 'active'` deliberately. The table holds 11,729 distinct
-    symbols, of which 7,197 are `removed` and 5,113 `researched` -- registering
-    all of them mints ~11,700 entities that carry nothing but a ticker alias and
-    buries the few hundred the system actually reasons about. A symbol that
-    becomes active later is picked up on the next run; registration is
-    incremental and idempotent, so nothing is lost by waiting.
+    Scope is every status except `removed`: 360 `active` plus 5,113
+    `researched`. Phase A took `active` only, which left a name the system had
+    researched -- and might re-enter tomorrow -- with no durable identity, and an
+    identity minted at the moment of re-entry is exactly the fragmentation the
+    registry exists to prevent.
+
+    `removed` (7,198) stays out. Those are names explicitly dropped; minting them
+    buries the working universe under twice its own volume in ticker aliases.
+    A removed symbol that returns comes back under another status and is picked
+    up on the next run -- registration is incremental and idempotent.
     """
     try:
         from price_db_sync import _get_conn  # type: ignore
@@ -93,7 +97,7 @@ def _watchlist_rows() -> list[dict]:
         cur = conn.cursor()
         cur.execute("""SELECT DISTINCT symbol FROM watchlist_items
                        WHERE symbol IS NOT NULL AND symbol <> ''
-                         AND status = 'active'""")
+                         AND COALESCE(status, '') <> 'removed'""")
         for (sym,) in cur.fetchall():
             s = normalize_symbol(sym)
             if s:
@@ -103,6 +107,54 @@ def _watchlist_rows() -> list[dict]:
             conn.rollback()
         except Exception:
             pass
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+    return rows
+
+
+def _decision_surface_rows() -> list[dict]:
+    """Symbols carried by decision surfaces other than the watchlist table.
+
+    Re-entry candidates and anything ever traded are names the system forms
+    positions about, and neither is guaranteed to hold an `active` watchlist row
+    -- 43 re-entry symbols and 117 traded symbols had no registry entry at all.
+    `watchlist_symbol_master` is the durable symbol catalogue behind the desks.
+
+    A missing table contributes nothing rather than failing the mint: these are
+    additive sources, and the registry must still build from whatever exists.
+    """
+    try:
+        from price_db_sync import _get_conn  # type: ignore
+        conn = _get_conn()
+    except Exception:
+        return []
+    sources = (
+        ("reentry_directive_hits_staging", "reentry"),
+        ("trade_transactions", "traded"),
+        ("watchlist_symbol_master", "symbol_master"),
+    )
+    rows = []
+    try:
+        for table, source in sources:
+            try:
+                cur = conn.cursor()
+                cur.execute(
+                    f"SELECT DISTINCT symbol FROM {table} "  # noqa: S608 — fixed literals above
+                    "WHERE symbol IS NOT NULL AND symbol <> ''"
+                )
+                for (sym,) in cur.fetchall():
+                    norm = normalize_symbol(sym)
+                    if norm:
+                        rows.append({"symbol": norm, "source": source})
+            except Exception:
+                # One absent table must not cost us the others.
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
     finally:
         try:
             conn.close()
@@ -146,10 +198,26 @@ def _identifier_rows() -> list[dict]:
     return rows
 
 
+def _broker_reference_rows() -> list[dict]:
+    """Durable identifiers swept from the broker's instrument reference.
+
+    E-confirms only cover symbols we have traded, which left the active watch
+    universe with no identifier at all. `sweep_schwab_instruments.py` fills that
+    from Schwab's instrument reference; this reads whatever it has written. No
+    sweep yet means no rows, never a guess.
+    """
+    try:
+        from scripts.lib.schwab_instrument_evidence import identifier_rows
+        return identifier_rows()
+    except Exception:
+        return []
+
+
 def collect_rows() -> list[dict]:
     """Holdings first: a held position's richer row should win the merge."""
     merged: dict[str, dict] = {}
-    for row in _holdings_rows() + _watchlist_rows() + _identifier_rows():
+    for row in (_holdings_rows() + _watchlist_rows() + _decision_surface_rows()
+                + _identifier_rows() + _broker_reference_rows()):
         sym = row["symbol"]
         if sym in merged:
             for k, v in row.items():
