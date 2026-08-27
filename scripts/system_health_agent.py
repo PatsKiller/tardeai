@@ -900,6 +900,13 @@ def _parse_et_timestamp(ts_str: str):
     if not ts_str:
         return None
     s = str(ts_str).strip().replace(" ET", "").replace("ET", "").strip()
+    # Preserve an explicit offset when the source supplies one.
+    try:
+        _iso = datetime.fromisoformat(s)
+        if _iso.tzinfo is not None:
+            return _iso.astimezone(timezone.utc)
+    except ValueError:
+        pass
     for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S"):
         try:
             naive = datetime.strptime(s[:19], fmt)
