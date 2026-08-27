@@ -105,6 +105,29 @@ def _digest(*parts: Any, length: int = 24) -> str:
     return hashlib.sha256(raw.encode()).hexdigest()[:length]
 
 
+def _mint_notification_id(
+    *,
+    lineage: str,
+    material_generation_id: str,
+    notification_class: str,
+    prev: Optional[dict[str, Any]] = None,
+) -> str:
+    """Deterministic notification identity for (lineage, generation, class).
+
+    Never hashes wall-clock. If a prior record exists for the same material
+    generation and class, reuse that ``notification_id``. A SUPPRESSED
+    reprocess of the same generation keeps the prior id so replay cannot mint
+    a second delivery identity.
+    """
+    prev = prev if isinstance(prev, dict) else {}
+    prev_id = _str(prev.get("notification_id"))
+    same_generation = bool(prev_id) and prev.get("material_generation_id") == material_generation_id
+    same_class = prev.get("notification_class") == notification_class
+    if same_generation and (same_class or notification_class == DELIVERY_SUPPRESSED):
+        return prev_id
+    return "ntf_" + _digest("ntf", lineage, material_generation_id, notification_class, length=24)
+
+
 def _num(v: Any) -> float:
     try:
         return float(v or 0.0)
@@ -349,14 +372,34 @@ class NotificationStateStore:
             return self._read_index().get(lineage)
 
     def record(self, nd: dict[str, Any]) -> dict[str, Any]:
-        """Persist a NotificationDecision as the latest state for its lineage."""
+        """Persist a NotificationDecision as the latest state for its lineage.
+
+        If the latest index row for this lineage already has the same
+        ``notification_id``, ``material_generation_id``, and
+        ``notification_class``, do not append another audit row — only
+        ``updated_at`` on the index is refreshed.
+        """
         lineage = str(nd.get("decision_lineage_id") or "")
         if not lineage:
             return nd
         with self.locked():
-            row = dict(nd)
-            row["updated_at"] = _now_iso()
+            now = _now_iso()
             index = self._read_index()
+            prev = index.get(lineage)
+            same_artifact = (
+                isinstance(prev, dict)
+                and prev.get("notification_id") == nd.get("notification_id")
+                and prev.get("material_generation_id") == nd.get("material_generation_id")
+                and prev.get("notification_class") == nd.get("notification_class")
+            )
+            if same_artifact:
+                refreshed = dict(prev)
+                refreshed["updated_at"] = now
+                index[lineage] = refreshed
+                self._write_index(index)
+                return nd
+            row = dict(nd)
+            row["updated_at"] = now
             index[lineage] = row
             self._write_index(index)
             self._append(self.audit_path, row, MAX_AUDIT_LINES)
@@ -409,15 +452,21 @@ def decide_notification(
     material, material_reason = semantic_materiality(d)
     prior_reject = bool(prev) and (prev.get("operator_disposition") or "").upper() in SUPPRESSING_DISPOSITIONS
     if is_forbidden_from_production(d):
+        notification_class = DELIVERY_SUPPRESSED
         return {
-            "notification_id": "ntf_" + _digest("ntf", lineage, material_gen, _now_iso(), length=24),
+            "notification_id": _mint_notification_id(
+                lineage=lineage,
+                material_generation_id=material_gen,
+                notification_class=notification_class,
+                prev=prev,
+            ),
             "decision_id": _str(d.get("decision_id")),
             "decision_lineage_id": lineage,
             "material_generation_id": material_gen,
             "evidence_generation_id": evidence_gen,
             "wake_id": _str(wake_id),
             "trace_id": _str(trace_id),
-            "notification_class": DELIVERY_SUPPRESSED,
+            "notification_class": notification_class,
             "materiality_reason": material_reason,
             "suppressed_reason": "not_production_advisory_eligible",
             "standing_recommendation": standing,
@@ -477,7 +526,12 @@ def decide_notification(
         notification_class = DELIVERY_DIGEST
 
     nd = {
-        "notification_id": "ntf_" + _digest("ntf", lineage, material_gen, _now_iso(), length=24),
+        "notification_id": _mint_notification_id(
+            lineage=lineage,
+            material_generation_id=material_gen,
+            notification_class=notification_class,
+            prev=prev,
+        ),
         "decision_id": _str(d.get("decision_id")),
         "decision_lineage_id": lineage,
         "material_generation_id": material_gen,

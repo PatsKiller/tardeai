@@ -19,7 +19,9 @@ from operator_alert_policy_v2 import (
     route_event,
 )
 
-FIXTURE = ROOT / "docs/ops/alerts/telegram_notification_normalization_2026_07_28/telegram_notification_audit_last_7_days.csv"
+# Tracked synthetic replay — never commit live Telegram audit dumps.
+# The original 7-day production CSV was never in git (operator-local evidence).
+FIXTURE = ROOT / "tests/fixtures/telegram_notification_normalization_replay.csv"
 
 
 def test_paper_proposals_never_route_to_approvals():
@@ -112,6 +114,16 @@ def test_settings_safety_invariants():
     )
 
 
+def test_csv_replay_fixture_is_tracked_synthetic():
+    """Clean-checkout replay must not depend on an operator-local 7-day dump."""
+    assert FIXTURE.is_file(), f"missing tracked synthetic fixture: {FIXTURE}"
+    body = FIXTURE.read_text(encoding="utf-8")
+    assert body.startswith("chat,text")
+    assert "intent-test-1" in body
+    assert "TELEGRAM_BOT_TOKEN" not in body
+    assert "api.telegram.org" not in body
+
+
 def test_csv_replay_acceptance_projection():
     result = evaluate(FIXTURE)
     assert result["paper_to_approvals_count"] == 0
@@ -135,13 +147,32 @@ def test_telegram_chokepoint_enforcement_ratchet():
     behaviour (transport import, endpoint constant, raw endpoint, HTTP call aimed at
     Telegram, chat-id selection, token read) and ratchets against a recorded baseline:
     a NEW bypassing file fails, an existing one may never grow. It does not claim zero
-    — 46 files currently bypass the chokepoint and that is a tracked release blocker.
+    — remaining known bypasses are tracked as a release blocker. Approved Bot API
+    speakers (transport, CIO wrapper, SYSTEM ops family) are not NEW debt.
     """
     import subprocess
     r = subprocess.run(
         [sys.executable, str(ROOT / "scripts" / "check_telegram_chokepoint.py")],
         capture_output=True, text=True)
     assert r.returncode == 0, f"chokepoint ratchet failed:\n{r.stdout}\n{r.stderr}"
+
+
+def test_telegram_chokepoint_ratchet_reload_is_monotonic():
+    """File-set ratchet is durable: a second scan on the same tree is identical.
+
+    This is NOT a Telegram update_id / getUpdates offset cursor. The durable
+    checkpoint is config/telegram_chokepoint_baseline.json. Known files may
+    shrink, never grow; NEW bypassing files fail; approved speakers are skipped.
+    """
+    import subprocess
+    cmd = [sys.executable, str(ROOT / "scripts" / "check_telegram_chokepoint.py")]
+    r1 = subprocess.run(cmd, capture_output=True, text=True)
+    r2 = subprocess.run(cmd, capture_output=True, text=True)
+    assert r1.returncode == 0, r1.stderr
+    assert r2.returncode == 0, r2.stderr
+    assert r1.stdout == r2.stdout
+    assert "NEW bypass" not in (r1.stderr + r2.stderr)
+    assert "grew " not in (r1.stderr + r2.stderr)
 
 
 def test_telegram_chokepoint_baseline_is_honest():

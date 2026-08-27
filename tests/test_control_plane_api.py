@@ -54,6 +54,26 @@ def test_non_control_plane_path_returns_none():
     assert api.handle("/api/v3/advisory") is None
 
 
+def test_canonical_jsonl_projection_is_visible(tmp_path, monkeypatch):
+    """Control-plane readers consume canonical append-only production stores."""
+    cio = tmp_path / "data" / "cio"
+    cio.mkdir(parents=True)
+    (cio / "cio_notification_outbox.jsonl").write_text(
+        json.dumps({"notification_id": "n1", "decision_id": "d1", "status": "SUPPRESSED"}) + "\n"
+    )
+    monkeypatch.setattr(api, "PROJECT_ROOT", tmp_path)
+    status, body = api.handle("/api/v3/control-plane/notifications")
+    assert status == 200
+    assert body["data_quality"] == "AVAILABLE"
+    assert body["data"]["items"][0]["notification_id"] == "n1"
+
+
+def test_canonical_watchlist_path_is_not_retired_root():
+    source = Path("scripts/lib/cio_desk_synthesis.py").read_text()
+    assert '"data" / "portfolios" / "state" / "watchlist.json"' in source
+    assert '"data" / "watchlist" / "state" / "watchlist.json"' not in source
+
+
 def test_agent_detail_and_unknown_states(tmp_path, monkeypatch):
     root = tmp_path / "data" / "runtime"; root.mkdir(parents=True)
     (root / "agent_registry.json").write_text(json.dumps([{
@@ -82,3 +102,43 @@ def test_workflow_cross_id_partial_and_cutoff(tmp_path, monkeypatch):
     assert body["data"]["unresolved_links"]
     _, cutoff = api.handle("/api/v3/control-plane/workflows/w1", query={"until": "2026-01-01T12:00:00Z"})
     assert len(cutoff["data"]["nodes"]) == 1
+
+
+def test_control_plane_domains_cover_all_ten_routes():
+    expected = [
+        "system", "agents", "workflows", "research", "stores",
+        "identity", "notifications", "learning", "maturity", "audit",
+    ]
+    assert list(api.CONTROL_PLANE_DOMAINS) == expected
+    assert list(api.ROUTES) == [f"/api/v3/control-plane/{name}" for name in expected]
+    assert api.CONTROL_PLANE_DOMAINS["workflows"]["store_ids"] == ("cio.workflow_lineage",)
+    assert "cio.operator_product.history" not in api.CONTROL_PLANE_DOMAINS["workflows"]["store_ids"]
+    assert "cio.checkpoints" not in api.CONTROL_PLANE_DOMAINS["workflows"]["store_ids"]
+
+
+def test_empty_valid_list_is_available_total_zero(tmp_path, monkeypatch):
+    runtime = tmp_path / "data" / "runtime"
+    runtime.mkdir(parents=True)
+    (runtime / "identity_registry.json").write_text("[]")
+    monkeypatch.setattr(api, "PROJECT_ROOT", tmp_path)
+    status, body = api.handle("/api/v3/control-plane/identity")
+    assert status == 200
+    assert body["data_quality"] == "AVAILABLE"
+    assert body["data"]["items"] == []
+    assert body["data"]["pagination"]["total"] == 0
+
+
+def test_append_only_lineage_records_are_grouped_for_detail(tmp_path, monkeypatch):
+    cio = tmp_path / "data" / "cio"; cio.mkdir(parents=True)
+    records = [
+        {"record_type": "node", "workflow_id": "wf1", "node_type": "RESEARCH", "node_id": "r1", "as_of": "2026-01-01T00:00:00Z"},
+        {"record_type": "node", "workflow_id": "wf1", "node_type": "CHECKPOINT", "node_id": "cp1", "as_of": "2026-01-02T00:00:00Z"},
+        {"record_type": "edge", "workflow_id": "wf1", "from": "r1", "to": "cp1", "relationship": "CHECKPOINTED_BY"},
+    ]
+    (cio / "cio_workflow_lineage.jsonl").write_text("\n".join(json.dumps(r) for r in records) + "\n")
+    monkeypatch.setattr(api, "PROJECT_ROOT", tmp_path)
+    status, body = api.handle("/api/v3/control-plane/workflows/r1")
+    assert status == 200
+    assert body["data"]["workflow_id"] == "wf1"
+    assert {n["node_id"] for n in body["data"]["nodes"]} == {"r1", "cp1"}
+    assert body["data"]["edges"][0]["relationship"] == "CHECKPOINTED_BY"

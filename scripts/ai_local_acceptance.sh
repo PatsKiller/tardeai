@@ -47,7 +47,12 @@ while IFS= read -r p; do
     .cursor/rules/*|.githooks/*) ;;
     scripts/install_ai_work_policy.sh|scripts/install_git_hooks.sh|scripts/ai_local_acceptance.sh|scripts/ai_work_status.sh|scripts/lib/tradeai_push_budget.py) ;;
     tests/test_ai_work_policy*|docs/ops/GITHUB_ACTIONS_COST_REDUCTION_PLAN.md|docs/ops/AI_WORK_POLICY*) ;;
-    scripts/lib/cio_*|scripts/cio_*|tests/test_cio_*|tests/test_r1*) cio=1; policy_only=0 ;;
+    scripts/lib/cio_*|scripts/cio_*|tests/test_cio_*|tests/test_r1*|tests/test_r20*) cio=1; policy_only=0 ;;
+    # Telegram notification regression (CSV replay + chokepoint ratchet) is
+    # part of CIO hardening. Without this, Integrator local-acceptance could
+    # skip tests/test_telegram_notification_normalization.py while independent
+    # QA ran it as the full notification suite.
+    scripts/check_telegram_chokepoint.py|scripts/evaluate_telegram*|config/telegram_chokepoint_baseline.json|tests/test_telegram*|tests/fixtures/telegram*|scripts/lib/autonomy_watchdog/telegram*|scripts/telegram_transport.py|scripts/telegram_alert.py|scripts/alert_outbox.py) cio=1; policy_only=0 ;;
     apps/command-center-v3/*) frontend=1; policy_only=0 ;;
     tests/*) tests=1; policy_only=0 ;;
     *) policy_only=0 ;;
