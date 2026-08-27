@@ -15,6 +15,9 @@
 | Document | Purpose | Status |
 |----------|---------|--------|
 | `docs/architecture/TRADEAI_SYSTEM_STATE_AND_AUTONOMY_2026-08-20.md` | **Master record** — LIVE architecture, timers, notify gates, freeform/desk loop, thesis SLA, autonomy directive gap matrix, roadmap | Active |
+| `docs/audits/CIO_PLATFORM_AUDIT_2026-08-27.md` | **Phase 1 findings** — is CIO Desk actually the authoritative data/decision source? 11 evidence-based investigations, doc claim vs code vs live state | Active (closed out) |
+| `docs/audits/CIO_PLATFORM_REMEDIATION_2026-08-27.md` | **Phase 2 plan + closeout status** — item→PR→merge-commit map for the 19 PRs merged 2026-08-27, and the ranked list of what remains | Active |
+| `docs/ops/GITHUB_ACTIONS_QUOTA_INCIDENT_2026-08-27.md` | **CI outage runbook** — repo-visibility flip exhausted the metered Actions quota; how to tell a quota block (0 steps, no runner, 0 billable ms) from a real test failure | Active |
 | `docs/_findings/ALEX_AUTONOMY_GROUND_TRUTH_2026-08-21.md` | Phase 0 closed snapshot (2414 wakes / 0 payloads at `b04f0016`) | Active (do not rewrite) |
 | `docs/ops/MATURATION_G1_I0_A1_B1_2026-08-21.md` | G.1 quarantine + I.0 tree-pin audit + A.1 off-peak retarget + B.1 producer payload flags | Active |
 | `docs/ops/CIO_UI_AUDIT_2026-08-22.md` | **Canonical per-tab UI audit** of `/v3/advisory` + CIO Office (A–E). Live `:7777` is pin `5e91225a`. Raw dump on Drive. | Active |
@@ -339,6 +342,7 @@ The source draft index drifted from the filesystem; corrected here per A1A:
 
 | Date | Change |
 |------|--------|
+| 2026-08-27 | **CIO platform audit closed out (19 PRs, `2ccee09a` → `b4b6ced7`):** indexed `docs/audits/CIO_PLATFORM_AUDIT_2026-08-27.md` (Phase 1 findings) + `CIO_PLATFORM_REMEDIATION_2026-08-27.md` (Phase 2 plan, now carrying the item→PR→commit closeout table and the ranked remainder). All P0 data-integrity items shipped; C3 Stage B (historical price scrub), M1/M10 (hub↔main divergence, needs operator sign-off), and H4 Phases 2–3 remain. New: `docs/ops/GITHUB_ACTIONS_QUOTA_INCIDENT_2026-08-27.md` (68-min CI outage from a repo-visibility flip; detection signature + runbook), with the public-repo invariant added to `AGENTS.md` and `AI_WORK_POLICY.md` §13.1. Safety-gate bugfix `#540` (phantom `2FA` authority violation from opaque hex ids) recorded in `docs/CHANGELOG.md`. |
 | 2026-08-11 | **Advisory desk CIO P1–P5 docs:** indexed `docs/cio/THESIS_STORE_P3.md`, `WAKE_TRACES_P5.md`, `P2B_PLAN_ENRICHMENT.md`, Telegram converse runbook, situation catalog; desk-v1 README + CHANGELOG updated on `feature/advisory-desk-v1`. |
 | 2026-08-09 | **CIO & Wealth docs synced:** CIO Phase 3 delivery (Alex autonomous CIOrity Officer, hybrid OpenClaw+Trade AI, 9 PRs, action ledger, heartbeat, /v3/cio); 38-file `docs/architecture/cio/` indexed; OpenClaw CIO architecture feedback (2026-08-08) synced; Steph Wealth Advisor full docs created (`docs/wealth-advisor/STEPH_WEALTH_ADVISOR.md`); AGENT_ROSTER refreshed (model policy, Wave-3 states, OpenClaw heartbeats, authority boundaries, Morgan added, all qwen3:14b→gemma3:12b/DeepSeek); DOCS_ROSTER pending regeneration. |
 | 2026-07-15 | Research Intelligence v2.5: security-level RSI/RS/valuation conviction + multi-factor sizing; `RESEARCH_INTELLIGENCE_V2_5_SECURITY_MULTIFACTOR.md`. |
