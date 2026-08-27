@@ -64,6 +64,18 @@ STORES: dict[str, dict[str, Any]] = {
         "rebuildable": False,
         "note": "Backed by paper_trade_multi_reviews when database access is available.",
     },
+    "cio.workflow_lineage": {
+        "path": "data/cio/cio_workflow_lineage.jsonl",
+        "format": "jsonl",
+        "schema": "CIOWorkflowLineage@v1",
+        "authority": AUTHORITY,
+        "writer": "scripts.lib.cio_lineage",
+        "readers": ["control_plane", "audit"],
+        "kind": "history",
+        "ownership_class": "APPEND_ONLY_EVIDENCE",
+        "append_only": True,
+        "rebuildable": False,
+    },
     "portfolio.holdings.current": {
         "path": "data/portfolios/state/holdings.json",
         "format": "json",
