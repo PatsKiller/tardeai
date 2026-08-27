@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
-"""snaptrade_activity_ingest.py — read-only Fidelity/SnapTrade activity into trade_transactions.
+"""snaptrade_activity_ingest.py — ingest read-only Fidelity/SnapTrade activity into the local trade_transactions table.
 
-SnapTrade holdings sync is positions/basis only. This script fills the missing ledger side for mapped
-Fidelity accounts: buys, sells, dividends, interest, and cash movements. It is dry-run by default and
-writes only to the local `trade_transactions` table with --apply. It never submits broker orders.
+"Read-only" describes the SnapTrade/Fidelity side only (audit finding L3, docs/audits/
+CIO_PLATFORM_AUDIT_2026-08-27.md: never confirmed as a blanket claim — this script does write
+local DB state). SnapTrade holdings sync is positions/basis only. This script fills the missing
+ledger side for mapped Fidelity accounts: buys, sells, dividends, interest, and cash movements.
+It is dry-run by default and writes only to the local `trade_transactions` table with --apply.
+It never submits broker orders and never mutates anything on the SnapTrade/Fidelity side.
 """
 from __future__ import annotations
 
