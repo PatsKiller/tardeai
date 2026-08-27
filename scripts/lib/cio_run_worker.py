@@ -34,6 +34,36 @@ from scripts.lib.cio_specialist_artifacts import resolve_run_specialist_advisori
 
 log = logging.getLogger("tradeai.cio_run_worker")
 
+
+def _run_identity(run: dict[str, Any] | None) -> dict[str, Any] | None:
+    """What this run is *about*, for canonical event identity.
+
+    A CIO run is not always about a security. In production the overwhelming
+    majority carry `trigger_type: SYSTEM` and `trigger_ref: wake_goal_goal_<id>_<hour>`
+    -- they are goal wakes at portfolio level, and calling them SECURITY events
+    would be a lie that produces a confident wrong join.
+
+    So the entity type follows the trigger: a subject-bearing run resolves to its
+    subject, and a goal wake resolves to the GOAL. Two arcs about genuinely
+    different entities then correctly fail to join, instead of silently colliding
+    on a shared placeholder.
+    """
+    if not run:
+        return None
+    subject = run.get("subject_id") or run.get("symbol") or run.get("ticker")
+    if subject:
+        return {"subject_id": subject, "occurred_at": run.get("created_at")}
+
+    trigger_ref = run.get("trigger_ref")
+    if trigger_ref:
+        return {
+            "subject_id": str(trigger_ref),
+            "entity_type": "GOAL",
+            "occurred_at": run.get("created_at"),
+        }
+    return None
+
+
 # ── Constants ────────────────────────────────────────────────────────────────
 
 ADVISORY_ONLY_TOOLS = frozenset({
@@ -377,7 +407,11 @@ class CIORunWorker:
                 from scripts.lib.cio_lineage import record_cio_generation
                 generation_id = synthesis_result.get("generation_id") or synthesis_result.get("artifact_id")
                 if generation_id:
-                    record_cio_generation(str(run_id), generation_id=str(generation_id))
+                    record_cio_generation(
+                        str(run_id),
+                        generation_id=str(generation_id),
+                        identity=_run_identity(run),
+                    )
             except Exception:
                 log.debug("CIO lineage projection unavailable", exc_info=True)
 

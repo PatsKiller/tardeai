@@ -161,3 +161,49 @@ def test_cli_can_gate(lineage: Path):
     )
     assert proc.returncode == 1
     assert "IDENTITY FORK SUSPECTED" in proc.stdout
+
+
+def test_event_coverage_separates_split_identity_from_undone_work(lineage: Path):
+    """`events_fully_covered` must read the same whether the arcs joined or not.
+
+    An earlier version counted "events seen by both arcs", which read 0 when
+    identity worked (the arcs collapse into ONE workflow) — indistinguishable
+    from total failure. Coverage answers the question that actually matters: did
+    this event reach a checkpoint with a settled notification, wherever the
+    stages were recorded?
+    """
+    from scripts.lib.cio_canonical_identity import event_id_for, workflow_id_for_event
+
+    eid = event_id_for({"symbol": "SCHD", "occurred_at": "2026-08-27T15:05:00+00:00"},
+                       event_kind="RESEARCH_REQUEST")
+    s = LineageStore(lineage)
+    # Split: the work is done, but across two workflow ids.
+    s.upsert_envelope("wf_research", {
+        "event_id": eid,
+        "stage_status": {"research": STAGE_COMPLETED, "specialist": STAGE_COMPLETED,
+                         "checkpoint": STAGE_COMPLETED},
+        "checkpoint_id": "ckpt_1"})
+    s.upsert_envelope("run-uuid-1", {
+        "event_id": eid,
+        "stage_status": {"cio": STAGE_COMPLETED, "notification": STAGE_COMPLETED}})
+
+    rep = completion_report(lineage)
+    assert rep["complete_to_checkpoint"] == 0      # no single envelope satisfies it
+    assert rep["events_fully_covered"] == 1        # but the event's work is complete
+    assert rep["with_event_id"] == 1
+
+
+def test_joined_workflow_reports_both_measures(lineage: Path):
+    from scripts.lib.cio_canonical_identity import event_id_for, workflow_id_for_event
+
+    eid = event_id_for({"symbol": "NOC", "occurred_at": "2026-08-27T15:00:00+00:00"},
+                       event_kind="RESEARCH_REQUEST")
+    LineageStore(lineage).upsert_envelope(workflow_id_for_event(eid), {
+        "event_id": eid,
+        "stage_status": {k: STAGE_COMPLETED for k in
+                         ("research", "specialist", "cio", "notification", "checkpoint")},
+        "checkpoint_id": "ckpt_joined"})
+
+    rep = completion_report(lineage)
+    assert rep["complete_to_checkpoint"] == 1
+    assert rep["events_fully_covered"] == 1
