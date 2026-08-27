@@ -8,6 +8,14 @@
 
 **Corrections (2026-08-27, same day, before merge):** three findings were revised while scoping their remediation, each following the same pattern — accurate at investigation time, but incomplete because a fix or a newer component already existed elsewhere in the codebase that the original check didn't reach. **C4**: a real `CanonicalStoreRegistry@v1` exists on `origin/main`, just missing from the hub checkout examined. **M2**: the continuous runner is live via a separate system-level systemd unit the original check didn't inspect. **H5**: the live-served journal surfaces (dashboard tiles, Journal page) were already migrated off the stale CSV file on 2026-07-21, five weeks before this audit ran. See each corrected entry below for the full evidence trail.
 
+**Status — CLOSED OUT 2026-08-27 (same day).** 19 PRs merged to `main` (`2ccee09a` → `b4b6ced7`). All P0
+data-integrity items and every Critical/High finding are shipped or explicitly phased. Item-by-item status,
+merge commits, and the ranked list of what remains: [`CIO_PLATFORM_REMEDIATION_2026-08-27.md` §Closeout
+Status](CIO_PLATFORM_REMEDIATION_2026-08-27.md#closeout-status--2026-08-27-same-day). Two things were
+learned during the merge that are not findings below: a phantom `2FA` authority violation in the maturity
+promotion gate (PR #540), and a 68-minute CI outage caused by a repo-visibility flip
+([incident + runbook](../ops/GITHUB_ACTIONS_QUOTA_INCIDENT_2026-08-27.md)).
+
 ---
 
 ## Headline Answer

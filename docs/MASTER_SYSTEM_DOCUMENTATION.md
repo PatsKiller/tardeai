@@ -2514,6 +2514,36 @@ actionable inferences. Advisory-only — no execution path. Full design:
 
 ## 24. Session Changelog
 
+### Session — 2026-08-27 (CIO Platform Audit Remediation — 19 PRs, `2ccee09a` → `b4b6ced7`)
+
+Audit: [`docs/audits/CIO_PLATFORM_AUDIT_2026-08-27.md`](audits/CIO_PLATFORM_AUDIT_2026-08-27.md) ·
+Closeout status (item → PR → commit): [`CIO_PLATFORM_REMEDIATION_2026-08-27.md`](audits/CIO_PLATFORM_REMEDIATION_2026-08-27.md)
+
+- **CIO authority boundary stated honestly.** Daily mechanical rebalance-drift alerting is
+  **intentionally CIO-independent** — it is a separate safety mechanism, not a CIO-gated decision.
+  "CIO Desk is the source of truth" is scoped to situations/plans/thesis (`docs/cio/AUTHORITY.md`,
+  `docs/cio/ARCHITECTURE.md`). Execution posture unchanged: `READ_ONLY_ADVISORY`, no broker authority.
+- **Data-integrity gates now actually run on live paths.** `position_truth`'s admissibility gate is called
+  from the card materializer (it was built, tested, and never invoked). `ticker_prices` ingestion has an
+  outlier guard with configurable bounds (`TICKER_PRICE_OUTLIER_MIN/MAX_RATIO`). Critical
+  `portfolio_level_qa` violations and unhandled crashes now dispatch an alert instead of logging silently.
+- **Verify-before-notify.** Daily rebalance drift suggestions are compliance-checked (SSDI/IRMAA/tax)
+  *before* the Telegram alert fires, closing the window where an operator could act on an unverified
+  suggestion. `rebalance_verifier` previously only covered the unrelated monthly tier.
+- **Command Center v2 retired.** v3 is the only current frontend in docs, routes, and the default
+  regression build (§14).
+- **Maturity-gate bugfix.** `authority_violations()` substring-scanned the entire promotion record, so an
+  opaque hex id containing `2fa` (~0.35% of 16-hex promotion ids, ~0.9% of 40-hex SHAs) raised a phantom
+  `2FA` violation and failed a compliant record's preflight. Opaque digests are now scrubbed before the
+  scan; structured checks unchanged.
+- **Known remaining gaps** (do not read this session as "all closed"): historical corrupt price rows are
+  still unscrubbed (guard stops new ones only); the hub checkout still diverges from `origin/main` and is
+  missing `canonical_store_registry.py`; the canonical quote layer is still Watch-only in practice.
+- **Ops/CI.** A repo-visibility flip to private exhausted the metered Actions quota and killed all CI for
+  68 min — 65 runs reported `failure` without ever starting. `tardeai` stays **public**; the detection
+  signature and runbook are in [`docs/ops/GITHUB_ACTIONS_QUOTA_INCIDENT_2026-08-27.md`](ops/GITHUB_ACTIONS_QUOTA_INCIDENT_2026-08-27.md),
+  and the invariant is recorded in `AGENTS.md` and `AI_WORK_POLICY.md` §13.1.
+
 ### Session — 2026-08-20 to 2026-08-22 (CIO Decision Payload, Research Tier Consolidation, Telegram P0)
 
 Audit finding M9 (docs/audits/CIO_PLATFORM_AUDIT_2026-08-27.md): this master doc

@@ -18,6 +18,60 @@
 
 ---
 
+## Closeout Status — 2026-08-27 (same day)
+
+**19 PRs merged to `main`** (`2ccee09a` → `b4b6ced7`). All P0 items closed. Every Critical and High
+finding is now either shipped or explicitly phased with the remaining work named below.
+
+| Item | Status | PR | Merge commit |
+|---|---|---|---|
+| **C1** — CIO/rebalance boundary | ✅ SHIPPED (operator chose option **b**: document the boundary) | #526 | `908448d3` |
+| **C2** — position-truth gate live-wired | ✅ SHIPPED | #523 | `e2cc21df` |
+| **C3** — price outlier guard | ⚠️ **Stage A SHIPPED** — ingestion guard + bounds env config (`TICKER_PRICE_OUTLIER_MIN/MAX_RATIO`). **Stage B open:** the known-bad historical rows (NVDA 2026-05-05/06 + the 59 identified outliers) are **not yet scrubbed/flagged** | #524 | `74125b5c` |
+| **C4** → M10 | superseded (see correction above) | — | — |
+| **C5** — critical QA violations alert | ✅ SHIPPED | #525 | `9d7e8a92` |
+| **H1** — verify-before-notify on daily drift | ✅ SHIPPED (option **a**) | #527 | `155aa752` |
+| **H2** — retire Command Center v2 | ✅ SHIPPED | #538 | `a79000c4` |
+| **H3** — truth-gate test fixed + wired into CI | ✅ SHIPPED | #530 | `f0254206` |
+| **H4** — canonical quote layer | ⚠️ **Phase 1 SHIPPED** (scope corrected + documented; the finding's framing was wrong). **Phases 2–3 open:** migrate the high-risk direct-import sites, then display-only consumers | #539 | `4daf25aa` |
+| **H5** — CSV journal retirement | ⛔ OPEN (P3 cleanup, non-recurring risk) | — | — |
+| **M1 / M10** — hub ↔ `origin/main` divergence | ⛔ **OPEN — requires operator sign-off.** Affects the actively-running production system; see Open Items | — | — |
+| **M2** — vestigial user-level systemd unit | ⛔ OPEN (trap for future investigators, harmless) | — | — |
+| **M3** — `autonomous_rebalance_planner.py` | ✅ SHIPPED (marked unscheduled/dead) | #533 | `92c72ae5` |
+| **M4** — dead Finviz enrichment cron | ✅ SHIPPED (real watchlist universe replaces demo-symbol fallback) | #529 | `306e43fd` |
+| **M5** — CIO snapshot staleness marker | ✅ SHIPPED | #532 | `26e9f842` |
+| **M6** — release-build content drift | ⛔ OPEN (overlaps M1) | — | — |
+| **M7** — "Alex is the CHAIR" correction | ✅ SHIPPED | #531 | `4cef24a5` |
+| **M8** — duplicate P&L fields | ✅ SHIPPED (documented as legitimately different) | #536 | `5c3c4e03` |
+| **M9** — master docs refresh (08-20→22) | ✅ SHIPPED | #537 | `54586701` |
+| **L1** — dead `.bak` files | ✅ SHIPPED | #528 | `49b6756b` |
+| **L3 + L4** — imprecise vendor/read-only claims | ✅ SHIPPED | #534 | `30510327` |
+| **L5** — `schwab_order_adapter.py` stub naming | ⛔ OPEN | — | — |
+| **L6** | no action required (confirmed non-material) | — | — |
+| **L7** — diagram-to-code type mapping | ✅ SHIPPED | #535 | `a839c25e` |
+| Audit + remediation docs themselves | ✅ SHIPPED | #522 | `9098de9b` |
+
+### Found while merging — not in the original audit
+
+| Item | Status | PR | Merge commit |
+|---|---|---|---|
+| **Phantom `2FA` authority violation** in `maturity_control/schema.py`. `authority_violations()` substring-scanned the whole canonical JSON, so an opaque hex id containing `2fa` (~0.35% of 16-hex promotion ids, ~0.9% of 40-hex commit SHAs) failed a *compliant* record's preflight — a safety gate failing closed on ~1 legitimate promotion in 300 | ✅ SHIPPED | #540 | `b4b6ced7` |
+
+This surfaced as an intermittent CI failure on #529 (a finviz-only change) and is exactly the class of
+defect item 4 of the Definition of Done asks for: a guard that looked fine because its own unit tests
+passed. It now has a regression test asserting hex ids are clean **and** that real tokens still fire.
+
+### CI incident during the merge
+
+All CI was quota-blocked for 68 minutes mid-merge (repo visibility had been flipped private, exhausting
+the metered Actions allowance). 65 runs reported `failure` having never executed; 13 PRs were briefly
+misdiagnosed as having failing tests. After restoring public visibility, **65/65 reruns passed** — zero
+real test failures. Documented with a detection runbook in
+[`docs/ops/GITHUB_ACTIONS_QUOTA_INCIDENT_2026-08-27.md`](../ops/GITHUB_ACTIONS_QUOTA_INCIDENT_2026-08-27.md);
+the invariant is now in `AGENTS.md` and `AI_WORK_POLICY.md` §13.1.
+
+---
+
 ## P0 — Data Integrity (fix first, independent of CIO-authority work)
 
 ### Fix C2 — Wire `position_truth.py`'s enforcement gate into the live decision path
@@ -116,3 +170,24 @@
 - **M1**: is the hub intentionally lagging `origin/main` for canary purposes, or should it be kept in sync going forward? This is now higher-stakes than originally scoped — the hub is not just stale, it's missing a wired, actively-consumed module (`canonical_store_registry.py`) that 11 other files depend on. Merging/rebasing the live hub branch affects the actively-running production system and should not happen without explicit operator sign-off on timing and rollback plan.
 
 These are flagged separately because they're judgment calls about intended system design, not bugs with a single correct fix — surfaced here so they don't get silently resolved one way by whoever picks up the remediation work.
+
+---
+
+## What remains after the 2026-08-27 closeout
+
+Ranked by consequence, so whoever picks this up next doesn't have to re-derive the ordering:
+
+1. **C3 Stage B — scrub/flag the known-bad price rows.** The ingestion guard now stops *new* corruption,
+   but the NVDA 2026-05-05/06 rows and the 59 identified 10x+ outliers are still in `ticker_prices` and
+   still readable by Watch, Hermes, and proposal/rebalance calcs. This is the only remaining item that
+   can still produce a wrong number on a live surface.
+2. **M1 / M10 — hub ↔ `origin/main` divergence.** Blocked on operator sign-off, not engineering. The hub
+   checkout is missing `canonical_store_registry.py`, which 11 files consume. Needs an agreed timing and
+   rollback plan because it touches the running system.
+3. **H4 Phases 2–3 — canonical quote migration.** Phase 1 only corrected the scope claim. The high-risk
+   direct-import sites (order sizing, proposal generation) still bypass the canonical layer.
+4. **M6 — release-build content drift** (overlaps M1; fix together).
+5. **M2, L5, H5** — cleanup/clarity only, no data-integrity or financial risk.
+
+Also open, and not from the original audit: **no alert distinguishes a CI quota block from a real test
+failure.** `main` was red for 68 minutes on 2026-08-27 with nothing notifying anyone.
