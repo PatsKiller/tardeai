@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import re
 import uuid
+from collections.abc import Mapping
 from datetime import datetime, timezone
 from typing import Any
 
@@ -82,14 +83,43 @@ def listing_guid(*, security: str | None, exchange: str = "UNKNOWN", symbol: str
     return _uuid("listing", payload)
 
 
+DURABLE_ID_KEYS = ("figi", "isin", "cusip")
+
+
+def normalize_identifiers(ids: Mapping[str, Any] | None) -> dict[str, str]:
+    """Durable identifiers only, upper-cased and stripped. Absent stays absent.
+
+    Nothing is invented: a key the source did not supply is not represented here,
+    and an empty string is treated as not supplied.
+    """
+    src = ids or {}
+    out: dict[str, str] = {}
+    for key in DURABLE_ID_KEYS:
+        val = str(src.get(key) or "").strip().upper()
+        if val:
+            out[key] = val
+    return out
+
+
+def instrument_guid_with_basis(
+    ids: Mapping[str, Any] | None,
+) -> tuple[str | None, str | None]:
+    """Durable instrument id plus the identifier it was derived from.
+
+    The basis is what makes a CONFIRMED status auditable: without it a reader can
+    see the GUID but cannot tell which identifier produced it, nor re-derive it.
+    """
+    norm = normalize_identifiers(ids)
+    for key in DURABLE_ID_KEYS:
+        val = norm.get(key)
+        if val:
+            return _uuid("security:id", f"{key}:{val}"), key
+    return None, None
+
+
 def instrument_guid_from_identifiers(ids: dict[str, Any] | None) -> str | None:
     """Durable instrument id from CUSIP/ISIN/FIGI — never from ticker text."""
-    ids = ids or {}
-    for key in ("figi", "isin", "cusip"):
-        val = str(ids.get(key) or "").strip()
-        if val:
-            return _uuid("security:id", f"{key}:{val.upper()}")
-    return None
+    return instrument_guid_with_basis(ids)[0]
 
 
 def resolve_identity_spine(row: dict[str, Any] | None) -> dict[str, Any]:
@@ -100,7 +130,9 @@ def resolve_identity_spine(row: dict[str, Any] | None) -> dict[str, Any]:
     cik = src.get("cik") or ids.get("cik")
     company = src.get("company")
     ig = src.get("issuer_guid") or issuer_guid(cik=cik, company=company)
-    sg = src.get("security_guid") or instrument_guid_from_identifiers(ids)
+    identifiers = normalize_identifiers(ids)
+    derived_sg, basis = instrument_guid_with_basis(ids)
+    sg = src.get("security_guid") or derived_sg
     if not sg and ig:
         instrument = str(src.get("classification") or "equity").lower()
         if instrument in ("unknown", "", "stock", "equity_unresolved"):
@@ -112,7 +144,7 @@ def resolve_identity_spine(row: dict[str, Any] | None) -> dict[str, Any]:
         )
         status = "CANDIDATE"
         reason = None
-    elif sg and (ids.get("figi") or ids.get("isin") or ids.get("cusip") or src.get("security_guid")):
+    elif sg and (identifiers or src.get("security_guid")):
         status = "CONFIRMED"
         reason = None
     elif sg:
@@ -136,6 +168,11 @@ def resolve_identity_spine(row: dict[str, Any] | None) -> dict[str, Any]:
         "ticker_guid_is_not_security": True,
         "identity_status": status,
         "unresolved_reason": reason,
+        # The evidence for the status, kept with it. A CONFIRMED entity whose
+        # identifiers were dropped cannot be audited or re-derived, and a later
+        # conflicting CUSIP cannot be detected.
+        "identifiers": identifiers,
+        "identity_basis": basis if (basis and not src.get("security_guid")) else None,
         "authority": AUTHORITY,
         "financial_action": False,
     }
