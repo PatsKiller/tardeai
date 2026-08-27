@@ -34,6 +34,96 @@ def _get_db():
     )
 
 
+SSDI_IRMAA_CONSTRAINTS = """CONSTRAINTS:
+- SSDI: earned income > $1,620/mo risks benefit review (dividends OK)
+- IRMAA: MAGI > $103,000 triggers Medicare surcharges. Current MAGI ~$23,600
+- MFS filing (married filing separately, lived apart)
+- 2026 Roth conversions done: $35,000 (soft cap $50K)
+- Age 58+ (no 10% penalty)"""
+
+
+def build_compliance_prompt(*, executive_summary: str, recs_text: str, v_plan: str = "") -> str:
+    """Shared prompt template. Used by both the weekly gemma3-tier verifier
+    (`run_verification`) and the daily drift-alert check (`verify_daily_rebalance_orders`,
+    Fix H1) — same SSDI/IRMAA/tax constraints regardless of which recommendation
+    surface produced the orders."""
+    return f"""Review these rebalance recommendations for SSDI/IRMAA/tax compliance.
+
+{SSDI_IRMAA_CONSTRAINTS}
+
+EXECUTIVE SUMMARY: {executive_summary[:500]}
+
+RECOMMENDATIONS:
+{recs_text or '  No recommendations'}
+
+VISA PLAN: {v_plan[:300]}
+
+Flag ONLY genuine compliance issues. Respond JSON:
+{{"verification_passed": true|false, "critical_flags": ["issue"], "warnings": ["concern"],
+  "irmaa_risk": "none|low|medium|high", "ssdi_risk": "none|low|medium|high",
+  "notes": "1-2 sentence assessment"}}"""
+
+
+def call_sonnet_compliance_check(prompt: str, *, dry_run: bool = False) -> dict:
+    """Shared Sonnet call + JSON-flag parsing. Fails closed on any error —
+    callers get a dict with no `critical_flags`, never an exception, so a
+    verification-plumbing failure can't itself crash the caller."""
+    if dry_run:
+        print(f"[verifier] DRY RUN — prompt ({len(prompt)} chars)")
+        return {"dry_run": True}
+
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not api_key:
+        print("[verifier] ANTHROPIC_API_KEY not set — skipping")
+        return {"skipped": True, "reason": "no_api_key"}
+
+    import anthropic
+    client = anthropic.Anthropic(api_key=api_key)
+
+    try:
+        msg = client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=400,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        text = msg.content[0].text
+        print(f"[verifier] Response: {len(text)} chars, "
+              f"in={msg.usage.input_tokens} out={msg.usage.output_tokens}")
+    except Exception as e:
+        print(f"[verifier] API error: {e}")
+        return {"error": str(e)}
+
+    try:
+        match = re.search(r"\{.+\}", text, re.DOTALL)
+        return json.loads(match.group() if match else text)
+    except Exception as e:
+        return {"verification_passed": None, "critical_flags": [],
+                "warnings": [f"Parse error: {e}"], "notes": text[:200]}
+
+
+def verify_daily_rebalance_orders(orders: list, *, total_to_rebalance: float = 0,
+                                  dry_run: bool = False) -> dict:
+    """Fix H1 (docs/audits/CIO_PLATFORM_REMEDIATION_2026-08-27.md): verify-before-notify
+    for the daily drift-based rebalance alert.
+
+    `run_verification` below only ever checks `rebalance_analysis_results` rows
+    tagged `analysis_tier='gemma3_monthly'` — a separate, monthly-cadence
+    system. It has no connection to portfolio_rebalancer.py's daily drift
+    orders, which is the surface an operator actually sees via Telegram
+    (portfolio_alerts.py, >$200k trigger). Those orders were never checked for
+    SSDI/IRMAA/tax compliance by anything. This runs the same check inline,
+    against today's actual orders, before the alert fires — not after.
+    """
+    recs_text = ""
+    for o in (orders or [])[:10]:
+        recs_text += (f"  - {o.get('account','?')}: {o.get('action','?')} "
+                      f"${o.get('amount_usd',0):,.0f} {o.get('bucket','?')} — {o.get('note','')}\n")
+    exec_summary = (f"Daily drift rebalance: ${total_to_rebalance:,.0f} net to move "
+                    f"across {len(orders or [])} order(s).")
+    prompt = build_compliance_prompt(executive_summary=exec_summary, recs_text=recs_text)
+    return call_sonnet_compliance_check(prompt, dry_run=dry_run)
+
+
 def run_verification(conn, dry_run=False):
     """Fetch latest gemma3 rebalance result and run Sonnet verification."""
     import psycopg2.extras
@@ -62,60 +152,15 @@ def run_verification(conn, dry_run=False):
     for r in (recs if isinstance(recs, list) else [])[:10]:
         recs_text += f"  - {r.get('account','?')}: {r.get('action','?')} {r.get('symbol','?')} — {r.get('rationale','')}\n"
 
-    prompt = f"""Review these rebalance recommendations for SSDI/IRMAA/tax compliance.
-
-CONSTRAINTS:
-- SSDI: earned income > $1,620/mo risks benefit review (dividends OK)
-- IRMAA: MAGI > $103,000 triggers Medicare surcharges. Current MAGI ~$23,600
-- MFS filing (married filing separately, lived apart)
-- 2026 Roth conversions done: $35,000 (soft cap $50K)
-- Age 58+ (no 10% penalty)
-
-EXECUTIVE SUMMARY: {exec_summary[:500]}
-
-RECOMMENDATIONS:
-{recs_text or '  No recommendations'}
-
-VISA PLAN: {v_plan[:300]}
-
-Flag ONLY genuine compliance issues. Respond JSON:
-{{"verification_passed": true|false, "critical_flags": ["issue"], "warnings": ["concern"],
-  "irmaa_risk": "none|low|medium|high", "ssdi_risk": "none|low|medium|high",
-  "notes": "1-2 sentence assessment"}}"""
+    prompt = build_compliance_prompt(executive_summary=exec_summary, recs_text=recs_text, v_plan=v_plan)
 
     if dry_run:
         print(f"[verifier] DRY RUN — prompt ({len(prompt)} chars)")
         return {"dry_run": True, "result_id": result_id}
 
-    api_key = os.getenv("ANTHROPIC_API_KEY")
-    if not api_key:
-        print("[verifier] ANTHROPIC_API_KEY not set — skipping")
-        return {"skipped": True, "reason": "no_api_key"}
-
-    import anthropic
-    client = anthropic.Anthropic(api_key=api_key)
-    print(f"[verifier] Calling Sonnet for verification of id={result_id}...")
-
-    try:
-        msg = client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=400,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        text = msg.content[0].text
-        print(f"[verifier] Response: {len(text)} chars, "
-              f"in={msg.usage.input_tokens} out={msg.usage.output_tokens}")
-    except Exception as e:
-        print(f"[verifier] API error: {e}")
-        return {"error": str(e), "result_id": result_id}
-
-    # Parse
-    try:
-        match = re.search(r"\{.+\}", text, re.DOTALL)
-        flags = json.loads(match.group() if match else text)
-    except Exception as e:
-        flags = {"verification_passed": None, "critical_flags": [],
-                 "warnings": [f"Parse error: {e}"], "notes": text[:200]}
+    flags = call_sonnet_compliance_check(prompt)
+    if "error" in flags or "skipped" in flags:
+        return {**flags, "result_id": result_id}
 
     # Update DB
     cur.execute("""
