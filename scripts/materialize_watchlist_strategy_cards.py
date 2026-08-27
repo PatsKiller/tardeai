@@ -11,6 +11,8 @@ import json, os, re, sys, math
 from datetime import datetime, date, timedelta
 from pathlib import Path
 
+import position_truth as pt
+
 # Agent names as written to watchlist_agent_results.agent. Used to detect which
 # agent a synthesis conflict refers to, since conflicts are free text naming the
 # agent ("Steph narrative assumes..."). Sourced from the live distinct set
@@ -73,6 +75,22 @@ def compute_support_resistance(conn, symbol: str) -> dict:
     resistance = round(high_20, 2)
 
     return {"support": support, "resistance": resistance, "latest": latest, "low_50": low_50, "high_50": high_50}
+
+
+def ground_truth_blocks(sym: str, recommendation, holdings: dict) -> tuple:
+    """(blocked, reason). Independent backstop to _discarded_agents.
+
+    _discarded_agents only catches a hallucinated disposal rec when the
+    SYNTHESIS explicitly describes the contradiction in prose the regex above
+    matches — true for the 2026-07-20 BETA case, but not guaranteed on every
+    run. This runs position_truth.is_recommendation_admissible against live
+    holdings.json directly, so a TRIM/EXIT/SELL-class rec on an unheld symbol
+    is blocked deterministically even when the synthesis never mentions it.
+    """
+    ownership = pt.ownership_from_holdings(sym, holdings)
+    admissible, reason = pt.is_recommendation_admissible(
+        ownership=ownership, recommendation=recommendation)
+    return (not admissible), reason
 
 
 def materialize(symbols: list[str] | None = None):
@@ -192,6 +210,25 @@ def materialize(symbols: list[str] | None = None):
                 _suppressed.setdefault(sym, []).append(f"{agent}:{r.get('recommendation')}")
             continue                      # the synthesis discarded this one
         agent_results[sym] = r
+
+    # ── Ground-truth gate (Stage A backstop, 2026-08-27) ──────────────────────
+    # Runs regardless of whether the synthesis above caught anything: a
+    # deterministic check against live holdings, independent of prose. See
+    # ground_truth_blocks() and docs/audits/CIO_PLATFORM_REMEDIATION_2026-08-27.md
+    # (Fix C2).
+    holdings = _load("holdings.json")
+    for sym, r in list(agent_results.items()):
+        blocked, reason = ground_truth_blocks(sym, r.get("recommendation"), holdings)
+        if not blocked:
+            continue
+        agent = str(r.get("agent") or "").lower()
+        key = (sym, agent)
+        if key not in _seen:
+            _seen.add(key)
+            _suppressed.setdefault(sym, []).append(
+                f"{agent}:{r.get('recommendation')} [GROUND_TRUTH_GATE: {reason}]")
+        del agent_results[sym]
+
     if _suppressed:
         print(f"  suppressed {sum(len(v) for v in _suppressed.values())} synthesis-discarded "
               f"agent rec(s) across {len(_suppressed)} symbol(s)")
