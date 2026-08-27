@@ -1,8 +1,17 @@
 """CIO Advisory Committee — deterministic specialist committee under a chair.
 
-Phase 4. Alex (CIO) is the CHAIR and sole producer of the final investment
-recommendation. Morgan (CWO), Steph, Maria, Guardian (risk), and Ledger (tax)
-are MEMBERS who cast advisory votes. This module computes the committee result
+Phase 4. Alex (CIO) is the CHAIR: he proposes the position and, on a MIXED
+committee, may resolve it into READY by documenting how disagreements were
+resolved. He is NOT the sole producer of the final recommendation in the
+sense of having unilateral final say — cio_committee_synthesis.reconcile_committee()
+forcibly downgrades his intended execution position to HOLD on BLOCKED_DEFENSE
+(Guardian veto) or committee OPPOSE consensus, regardless of what the chair
+proposed. The committee can override the chair; the reverse is not true. See
+docs/audits/CIO_PLATFORM_AUDIT_2026-08-27.md (finding M7) for the prior,
+overstated version of this docstring.
+
+Morgan (CWO), Steph, Maria, Guardian (risk), and Ledger (tax) are MEMBERS who
+cast advisory votes. This module computes the committee result
 deterministically: quorum, consensus direction, dissent, and the fail-closed
 defense veto.
 
