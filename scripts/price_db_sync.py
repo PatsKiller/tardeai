@@ -20,6 +20,51 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 STATE_DIR = PROJECT_ROOT / "data" / "portfolios" / "state"
 
+# Outlier guard (Stage A, 2026-08-27; audit finding C3): the only prior check
+# on a price write anywhere in this file was `price > 0`. The 2026-07-24-era
+# corrupt-bar incident (NVDA priced at $0.05) was never actually fixed — a
+# direct query found the original rows still unscrubbed plus 59 fresh 10x+
+# single-day moves in a trailing 30-day window. A single bad tick reaching
+# ticker_prices feeds Watch, Hermes research, and rebalance/proposal sizing
+# with no guard in between.
+#
+# Bounds are ratio-based, not absolute-dollar, since a $0.50 stock and a
+# $500 stock both need the same relative protection. Defaults match the
+# audit's own outlier definition (>=10x move) so this directly prevents
+# recurrence of what was found. Env-overridable without a code change, since
+# a real split or a genuine multi-bagger day is a false positive this bound
+# WILL reject — an operator who hits that should widen the ratio, not read
+# it as a bug in the guard.
+PRICE_OUTLIER_MIN_RATIO = float(os.environ.get("TICKER_PRICE_OUTLIER_MIN_RATIO", "0.1"))
+PRICE_OUTLIER_MAX_RATIO = float(os.environ.get("TICKER_PRICE_OUTLIER_MAX_RATIO", "10.0"))
+
+
+def is_price_outlier(new_price, prior_price, *,
+                     min_ratio: float = PRICE_OUTLIER_MIN_RATIO,
+                     max_ratio: float = PRICE_OUTLIER_MAX_RATIO) -> tuple:
+    """(is_outlier, reason). Pure — no DB. `prior_price` of None/0 means no
+    prior close exists for this symbol yet, which is not an outlier: it is
+    the first price on record and there is nothing to compare against."""
+    try:
+        new_price = float(new_price)
+    except (TypeError, ValueError):
+        return True, f"non-numeric price {new_price!r}"
+    if new_price <= 0:
+        return True, f"non-positive price {new_price}"
+    if not prior_price:
+        return False, ""
+    try:
+        prior_price = float(prior_price)
+    except (TypeError, ValueError):
+        return False, ""
+    if prior_price <= 0:
+        return False, ""
+    ratio = new_price / prior_price
+    if ratio < min_ratio or ratio > max_ratio:
+        return True, (f"{new_price} is {ratio:.2f}x the prior close {prior_price} "
+                      f"(bounds {min_ratio}x-{max_ratio}x)")
+    return False, ""
+
 
 def _get_conn():
     import psycopg2
@@ -135,6 +180,14 @@ def sync_daily_prices():
     cur = conn.cursor()
     today = date.today().isoformat()
     written = 0
+    rejected = []
+
+    def _prior_close(sym: str):
+        cur.execute("""SELECT close_price FROM ticker_prices
+                       WHERE symbol=%s AND price_date < %s
+                       ORDER BY price_date DESC LIMIT 1""", (sym, today))
+        row = cur.fetchone()
+        return float(row[0]) if row else None
 
     # 1. Finviz quote cache (most accurate for Schwab tickers)
     fq_path = STATE_DIR / "finviz_quote_cache.json"
@@ -145,6 +198,10 @@ def sync_daily_prices():
                 continue
             price = data.get("price")
             if isinstance(price, (int, float)) and price > 0:
+                outlier, reason = is_price_outlier(price, _prior_close(sym))
+                if outlier:
+                    rejected.append(f"{sym}(finviz):{reason}")
+                    continue
                 cur.execute("""
                     INSERT INTO ticker_prices (symbol, price_date, close_price, source)
                     VALUES (%s, %s, %s, 'finviz')
@@ -160,6 +217,10 @@ def sync_daily_prices():
             sym = holding.get("symbol", "")
             price = holding.get("price", 0)
             if sym and price and price > 0 and sym not in ("CASH", "MMKT"):
+                outlier, reason = is_price_outlier(price, _prior_close(sym))
+                if outlier:
+                    rejected.append(f"{sym}(holdings):{reason}")
+                    continue
                 cur.execute("""
                     INSERT INTO ticker_prices (symbol, price_date, close_price, source)
                     VALUES (%s, %s, %s, 'holdings')
@@ -171,6 +232,9 @@ def sync_daily_prices():
     cur.close()
     conn.close()
     print(f"  [price-db] Synced {written} prices to DB for {today}")
+    if rejected:
+        print(f"  [price-db] REJECTED {len(rejected)} outlier price(s), not written: "
+              f"{'; '.join(rejected[:10])}" + (" ..." if len(rejected) > 10 else ""))
     wl = sync_daily_watchlist_prices()
     print(f"  [price-db] Watchlist quotes→ticker_prices: {wl.get('quotes_synced', 0)} rows; "
           f"yfinance filled {wl.get('yfinance', {}).get('filled', 0)}")
@@ -230,44 +294,50 @@ def count_price_rows(symbol: str) -> int:
 
 
 def sync_quotes_to_ticker_prices(symbols: list[str] | None = None) -> int:
-    """Upsert daily closes from market_quotes (last quote per symbol per day)."""
+    """Upsert daily closes from market_quotes (last quote per symbol per day).
+
+    Bounded against the last known close per symbol (outlier guard, C3): a
+    candidate whose price is outside [MIN_RATIO, MAX_RATIO] of the most
+    recent PRIOR ticker_prices row for that symbol is dropped rather than
+    written. A symbol with no prior row (first price on record) always
+    passes — there is nothing to bound it against yet.
+    """
     conn = _get_conn()
     cur = conn.cursor()
     syms = [str(s).upper() for s in (symbols or []) if s]
-    if syms:
-        cur.execute(
-            """INSERT INTO ticker_prices (symbol, price_date, close_price, source)
+    symbol_filter = "AND UPPER(symbol) = ANY(%(syms)s)" if syms else ""
+    cur.execute(
+        f"""WITH candidates AS (
                SELECT DISTINCT ON (UPPER(symbol), fetched_at::date)
-                      UPPER(symbol), fetched_at::date, price, 'market_quotes'
+                      UPPER(symbol) AS symbol, fetched_at::date AS price_date, price
                FROM market_quotes
                WHERE price IS NOT NULL AND price > 0
-                 AND UPPER(symbol) = ANY(%s)
+                 {symbol_filter}
                ORDER BY UPPER(symbol), fetched_at::date, fetched_at DESC
-               ON CONFLICT (symbol, price_date) DO UPDATE SET
-                 close_price = EXCLUDED.close_price,
-                 source = CASE
-                   WHEN ticker_prices.source IN ('finviz', 'holdings', 'portfolio_repricer')
-                   THEN ticker_prices.source
-                   ELSE EXCLUDED.source
-                 END""",
-            (syms,),
-        )
-    else:
-        cur.execute(
-            """INSERT INTO ticker_prices (symbol, price_date, close_price, source)
-               SELECT DISTINCT ON (UPPER(symbol), fetched_at::date)
-                      UPPER(symbol), fetched_at::date, price, 'market_quotes'
-               FROM market_quotes
-               WHERE price IS NOT NULL AND price > 0
-               ORDER BY UPPER(symbol), fetched_at::date, fetched_at DESC
-               ON CONFLICT (symbol, price_date) DO UPDATE SET
-                 close_price = EXCLUDED.close_price,
-                 source = CASE
-                   WHEN ticker_prices.source IN ('finviz', 'holdings', 'portfolio_repricer')
-                   THEN ticker_prices.source
-                   ELSE EXCLUDED.source
-                 END"""
-        )
+           ),
+           bounded AS (
+               SELECT c.symbol, c.price_date, c.price, prior.close_price AS prior_price
+               FROM candidates c
+               LEFT JOIN LATERAL (
+                   SELECT tp.close_price FROM ticker_prices tp
+                   WHERE tp.symbol = c.symbol AND tp.price_date < c.price_date
+                   ORDER BY tp.price_date DESC LIMIT 1
+               ) prior ON true
+           )
+           INSERT INTO ticker_prices (symbol, price_date, close_price, source)
+           SELECT symbol, price_date, price, 'market_quotes'
+           FROM bounded
+           WHERE prior_price IS NULL
+              OR price BETWEEN prior_price * %(min_ratio)s AND prior_price * %(max_ratio)s
+           ON CONFLICT (symbol, price_date) DO UPDATE SET
+             close_price = EXCLUDED.close_price,
+             source = CASE
+               WHEN ticker_prices.source IN ('finviz', 'holdings', 'portfolio_repricer')
+               THEN ticker_prices.source
+               ELSE EXCLUDED.source
+             END""",
+        {"syms": syms, "min_ratio": PRICE_OUTLIER_MIN_RATIO, "max_ratio": PRICE_OUTLIER_MAX_RATIO},
+    )
     n = cur.rowcount
     conn.commit()
     cur.close()
