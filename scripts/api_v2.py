@@ -343,6 +343,64 @@ def _stop_row_narrative(*, sym, is_fidelity, has_active_stop, broker_stop, plann
     return narrative, next_action, projection
 
 
+def _live_policy_stop(symbol, price):
+    """Deterministic family-floor stop vs live price.
+
+    Same floor the protection advisor applies when 20d swing-low is too tight
+    (`stop_policy.yaml` / holding_family). Used only when no recent LLM
+    protection_advisory exists. Does not write research rows and is not an
+    invented one-off dollar — it is the published band applied to the live quote.
+    Returns None for cash/unstoppable funds or if the floor is not protective.
+    """
+    try:
+        px = float(price)
+    except (TypeError, ValueError):
+        return None
+    if px != px or px <= 0:
+        return None
+    sym = str(symbol or "").upper()
+    if not sym:
+        return None
+    try:
+        import holding_family as _hf
+        if _hf.is_unstoppable_fund(sym) or _hf.is_mutual_fund(sym):
+            return None
+        fam, fam_src = _hf.classify_family(sym)
+        try:
+            regime = _hf.current_regime()
+        except Exception:
+            regime = None
+        fb = _hf.protection_bounds(fam, regime=regime)
+        smin = float(fb.get("stop_min_pct") or 0)
+        if smin <= 0:
+            return None
+        stop = round(float(px) * (1.0 - smin / 100.0), 2)
+        if stop <= 0 or stop >= float(px):
+            return None
+        smax = float(fb.get("stop_max_pct") or smin)
+        label = fb.get("label") or fam
+        return {
+            "stop": stop,
+            "stop_pct_below": smin,
+            "family": fam,
+            "family_source": fam_src,
+            "family_floor_pct": smin,
+            "family_floor": f"{label} floor {smin:g}%",
+            "rec_model": "stop_policy.yaml",
+            "rec_lane": "policy",
+            "rationale": (
+                f"No recent protection advisory. {label} band {smin:.0f}–{smax:.0f}% → "
+                f"${stop:.2f} ({smin:.0f}% below live ${float(px):.2f}). Same floor the "
+                f"advisor uses when swing-low is too tight."
+            ),
+            "evidence": [{"tag": "policy",
+                          "text": f"stop_policy.yaml {fam} floor {smin:g}% via {fam_src}"}],
+            "data_i_doubt": "no recent LLM protection advisory; swing-low/ATR structure not applied",
+        }
+    except Exception:
+        return None
+
+
 def _stops_management_api(query=None):
     """GET /api/v2/stops/management — aggregation for the Portfolio → Stop Management tab. Joins broker-actual
     stops (stop_lifecycle) + holdings + advisor planned stops + portfolio heat into per-position rows with
@@ -513,6 +571,32 @@ def _stops_management_api_build(query=None):
                 "rationale": rec.get("rationale"),
                 "evidence": _aep.get("evidence") or [],
                 "data_i_doubt": _aep.get("data_i_doubt"),
+            }
+    except Exception:
+        pass
+    # 3a. Live policy-band suggestion when no 5-day LLM advisory exists (SCHD IRA had Plan —).
+    try:
+        _px_by_sym = {}
+        for _h in holds:
+            _s = str(_h.get("symbol") or "").upper()
+            if not _s or _h.get("is_cash") or _s in ("CASH", "SPAXX", "VMFXX", "USD"):
+                continue
+            _px = _f(_h.get("current_price")) or _f(_h.get("price"))
+            if _px and _px > 0:
+                _px_by_sym[_s] = _px
+        for _s, _px in _px_by_sym.items():
+            if _f((advised.get(_s) or {}).get("stop")) is not None:
+                continue
+            _pol = _live_policy_stop(_s, _px)
+            if not _pol:
+                continue
+            advised[_s] = {
+                "stop": _pol["stop"], "trail": False, "trail_offset": None,
+                "stop_pct_below": _pol["stop_pct_below"], "atr": None,
+                "family": _pol["family"], "basis": None, "sma50": None,
+                "rec_model": _pol["rec_model"], "rec_lane": _pol["rec_lane"],
+                "rec_at": None, "rationale": _pol["rationale"],
+                "evidence": _pol["evidence"], "data_i_doubt": _pol["data_i_doubt"],
             }
     except Exception:
         pass
@@ -841,6 +925,7 @@ def _stops_management_api_build(query=None):
         _rec_source = ("Grok · external LLM" if "grok" in _rm
                        else "ChatGPT · external LLM" if ("gpt" in _rm or "chatgpt" in _rm)
                        else "Claude · external LLM" if "claude" in _rm
+                       else "Stop policy · family floor" if "stop_policy" in _rm
                        else "System · local advisor" if _rm else None)
         # Plain-English narrative + single next action + 2FA trade projection (STOP_METHODOLOGY.md-aligned).
         _narr, _next, _proj = _stop_row_narrative(
@@ -29899,6 +29984,35 @@ def _portfolio_llm_coverage(query=None):
                            "family_floor": (f"{_fam} floor {_floor_pct}%" if _floor_pct is not None else _fam) or None,
                            "evidence": _pep.get("evidence") or [],
                            "data_i_doubt": _pep.get("data_i_doubt")}
+    # Held symbols with no 30-day LLM advisory still need a suggested Stop $ in the 2FA form.
+    try:
+        for _h in ((portfolio_holdings() or {}).get("holdings") or []):
+            _s = str(_h.get("symbol") or "").upper()
+            if not _s or (protection.get(_s) or {}).get("stop_price") is not None:
+                continue
+            _px = _f_or_none(_h.get("current_price")) or _f_or_none(_h.get("price"))
+            _pol = _live_policy_stop(_s, _px)
+            if not _pol:
+                continue
+            protection[_s] = {
+                "rec": f"policy floor ${_pol['stop']}",
+                "rationale": _pol["rationale"],
+                "model": _pol["rec_model"],
+                "confidence": None, "at": None,
+                "stop_price": _pol["stop"], "trail_recommended": False,
+                "trail_type": None, "trail_offset": None,
+                "suggested_trail_pct": None, "trail_matches_stop": False,
+                "price": _json_clean(_px), "stop_distance_pct": _pol["stop_pct_below"],
+                "sanity": {"verdict": "policy", "issues": ["no recent LLM advisory"]},
+                "family": _pol["family"], "family_source": _pol["family_source"],
+                "family_bounds": {}, "volatility_tier": None, "regime": None,
+                "family_floor_pct": _pol["family_floor_pct"],
+                "family_floor": _pol["family_floor"],
+                "evidence": _pol["evidence"],
+                "data_i_doubt": _pol["data_i_doubt"],
+            }
+    except Exception:
+        pass
     # monthly Claude arbitration verdicts (structured) — the tie-breaker layer for future approval flow
     cv = _db_query("""SELECT DISTINCT ON (symbol) symbol, recommendation, evidence_json, model, created_at
                       FROM hermes_external_research
@@ -29924,6 +30038,7 @@ def _portfolio_llm_coverage(query=None):
                 "grade": _ev.get("grade"),
                 "recommendation": _ev.get("recommendation"),
                 "rr_assessment": _ev.get("rr_assessment"),
+                "suggested_action": _ev.get("suggested_action"),
                 "model": _sc.get("model_used"),
                 "summary": (_sc.get("summary") or "")[:200],
                 "evidence": _sep.get("evidence") or [],

@@ -244,6 +244,17 @@ def test_32_live_stops_degraded_does_not_fall_back_to_llm_read_ok():
     assert "_brokerOkList" in src or "brokerOkList" in src or "Array.isArray(brokerStopReadOk) ? brokerStopReadOk : null" in src
 
 
+def test_34_policy_suggested_stop_wires_into_2fa_form():
+    """Naked lots with no 5-day advisory still get a Plan $ and 2FA Stop $ from stop_policy.yaml."""
+    api = read(API)
+    ui = read(STOP_MGMT)
+    assert "def _live_policy_stop" in api
+    assert "stop_policy.yaml" in api
+    assert "row.planned_stop" in ui
+    assert "Suggested:" in ui
+    assert "suggested_action" in ui
+
+
 def test_33_premarket_uses_overnight_last_print_window():
     """GTC staging at 08:50 ET must accept yesterday's 16:45 close (18h), not 60m pre-market."""
     src = read(LOGIC)
