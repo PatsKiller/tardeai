@@ -64,6 +64,11 @@ _ADMIT_ACTIVE_TYPES = (
     MEMORY_TYPE_CASE_SUMMARY,
 )
 
+# Public: which memory classes can ever be admitted ACTIVE. Consumers need this
+# to distinguish "a promotion did not happen" from "this class is never
+# promoted" -- the two states the admission receipt could not tell apart.
+ADMIT_ACTIVE_TYPES = _ADMIT_ACTIVE_TYPES
+
 # ── Forbidden authoritative fields ────────────────────────────────────────
 # A memory whose subject/field touches any of these is trying to speak about
 # canonical financial truth (which memory can never override). Substrings are

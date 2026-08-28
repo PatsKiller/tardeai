@@ -10,6 +10,7 @@ from typing import Any, Optional
 
 from scripts.lib.agent_feature_flags import load_feature_flags
 from scripts.lib.agent_memory_governance import (
+    ADMIT_ACTIVE_TYPES,
     MEMORY_TYPES,
     STATUS_DISPUTED,
     STATUS_REJECT,
@@ -170,10 +171,22 @@ def admit_candidate(
         provider._append_receipt(provider.receipts_path, receipt)
         return receipt
     stored = provider.get(mid) or rec
+    # The receipt records WHAT WAS OFFERED, not only what happened to it.
+    # Without memory_type, a receipt reading CANDIDATE is ambiguous: it may be a
+    # promotion that failed, or a class that governance never promotes. Every
+    # receipt ever written carries authority_class NON_AUTHORITATIVE_CONTEXT,
+    # which is a constant and discriminates nothing, so the audit trail could
+    # not tell those apart -- and the liveness reporter concluded STARVED for a
+    # lane that was behaving exactly as designed.
+    stored_type = str(stored.get("memory_type") or rec.get("memory_type") or "")
     receipt.update({
         "accepted": True,
         "reason": "admitted" if display_status(stored.get("status")) == STATUS_ADMITTED else "candidate",
         "memory_id": mid,
+        "memory_type": stored_type or None,
+        # Whether this class of memory can EVER reach ACTIVE. False is not a
+        # failure: research context is deliberately never policy.
+        "promotable": stored_type in ADMIT_ACTIVE_TYPES if stored_type else None,
         "expires_at": stored.get("expires_at"),
         "admitted_at": _now(),
         "display_status": display_status(stored.get("status")),
