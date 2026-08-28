@@ -400,6 +400,9 @@ class CIORunWorker:
                     pass
             synthesis_result = self._cio_synthesis(run, snapshot_result, specialist_result, hermes_result)
             result["synthesis_artifact_id"] = synthesis_result.get("artifact_id")
+            # Slice 4: keep cio.operator_product.current fresh after a successful
+            # synthesis. Refuse persist of UNAVAILABLE (preserve last-good).
+            result["operator_product_persist"] = self._persist_operator_product()
             # Persist the canonical CIO stage against this run before delivery.
             # The lineage writer is an audit projection; failures never alter
             # the governed advisory workflow.
@@ -954,6 +957,19 @@ class CIORunWorker:
             "mode": self.mode,
             "llm_dispatch": False,
         }
+
+    def _persist_operator_product(self) -> dict[str, Any]:
+        """After successful synthesis: persist AVAILABLE operator product only."""
+        try:
+            from scripts.lib.cio_operator_product import persist_operator_product_if_available
+            return persist_operator_product_if_available()
+        except Exception as exc:
+            return {
+                "persisted": False,
+                "skipped_reason": f"hook_error:{type(exc).__name__}",
+                "authority": "READ_ONLY_ADVISORY",
+                "financial_action": False,
+            }
 
     # ── Step: Write Actions ─────────────────────────────────────────────────
 
