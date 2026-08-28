@@ -32,6 +32,7 @@ AUTHORITY = "READ_ONLY_ADVISORY"
 LIVE = "LIVE"                    # produced at or above its floor
 STARVED = "STARVED"              # attempted work, produced nothing — the 17-day shape
 QUIET = "QUIET"                  # no attempts and no output; nothing to conclude
+NO_ELIGIBLE_INPUT = "NO_ELIGIBLE_INPUT"  # work arrived, but none of it could ever produce this output
 UNKNOWN = "UNKNOWN"              # source unreadable; explicitly not "healthy"
 
 
@@ -97,7 +98,11 @@ class LivenessReport:
 
     @property
     def findings(self) -> list[dict[str, Any]]:
-        return [l for l in self.lanes if l["status"] in (STARVED, UNKNOWN)]
+        # NO_ELIGIBLE_INPUT is a finding too: a lane that can never produce is
+        # still a gap the operator should see. It is reported under its own
+        # status so the ACTION differs -- wire a producer, not unblock a queue.
+        return [l for l in self.lanes
+                if l["status"] in (STARVED, UNKNOWN, NO_ELIGIBLE_INPUT)]
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -116,7 +121,15 @@ def evaluate(lanes: list[Lane], now: datetime | None = None) -> LivenessReport:
     report = LivenessReport()
     for lane in lanes:
         try:
-            produced, attempted, source = lane.probe(now - timedelta(hours=lane.window_hours))
+            result = lane.probe(now - timedelta(hours=lane.window_hours))
+            # A probe may report a fourth value: how many of those attempts were
+            # ELIGIBLE to produce this lane's output. Three-value probes keep
+            # their existing meaning -- every attempt counts as eligible.
+            if len(result) == 4:
+                produced, attempted, source, eligible = result
+            else:
+                produced, attempted, source = result
+                eligible = attempted
         except Exception as exc:  # a broken probe is UNKNOWN, never LIVE
             report.lanes.append({
                 "lane": lane.name,
@@ -129,6 +142,14 @@ def evaluate(lanes: list[Lane], now: datetime | None = None) -> LivenessReport:
 
         if produced >= lane.min_expected and produced > 0:
             status = LIVE
+        elif attempted > 0 and eligible == 0:
+            # Work arrived, but none of it was of a class this lane's output can
+            # be made from. Calling that STARVED tells the operator to go
+            # unblock a queue that is not blocked, and a standing false alarm is
+            # one that gets ignored -- this system has already produced one
+            # ("Hermes starved", 2026-07-23, false). The gap is real but
+            # different: nothing is producing eligible input.
+            status = NO_ELIGIBLE_INPUT
         elif attempted > 0:
             status = STARVED
         elif produced >= lane.min_expected:
@@ -141,6 +162,7 @@ def evaluate(lanes: list[Lane], now: datetime | None = None) -> LivenessReport:
             "status": status,
             "produced": produced,
             "attempted": attempted,
+            "eligible": eligible,
             "min_expected": lane.min_expected,
             "window_hours": lane.window_hours,
             "source": source,
@@ -198,7 +220,51 @@ def _probe_lineage_completions(since: datetime) -> tuple[int, int, str]:
     return complete, written, str(path)
 
 
-def _probe_memory_admissions(since: datetime) -> tuple[int, int, str]:
+def _receipt_is_promotable(row: dict[str, Any]) -> bool:
+    """Could THIS candidate ever have reached ADMITTED?
+
+    Governance admits only OPERATOR_EXPLICIT_PREFERENCE, AGENT_COMMITMENT and
+    CASE_SUMMARY as ACTIVE; RESEARCH_REFERENCE, EPISODIC and PROCEDURAL_HINT are
+    context and are deliberately never policy. A receipt for the latter reading
+    CANDIDATE is the system working, not a blockage.
+
+    Receipts written before this field existed carry no memory_type. They are
+    resolved against the memory store by memory_id rather than guessed at; a
+    receipt that cannot be resolved counts as NOT promotable, so an unknown can
+    never manufacture the appearance of eligible input.
+    """
+    explicit = row.get("promotable")
+    if isinstance(explicit, bool):
+        return explicit
+    mtype = str(row.get("memory_type") or "") or _store_memory_type(row.get("memory_id"))
+    if not mtype:
+        return False
+    try:
+        from scripts.lib.agent_memory_governance import ADMIT_ACTIVE_TYPES
+    except Exception:
+        return False
+    return mtype in ADMIT_ACTIVE_TYPES
+
+
+_STORE_TYPES: dict[str, str] | None = None
+
+
+def _store_memory_type(memory_id: Any) -> str:
+    """memory_id -> memory_type, folded once from the durable store."""
+    global _STORE_TYPES
+    if not memory_id:
+        return ""
+    if _STORE_TYPES is None:
+        _STORE_TYPES = {}
+        path = _state_root() / "data" / "cio" / "aif_memory.jsonl"
+        for rec in read_jsonl(path):
+            mid = rec.get("memory_id") or rec.get("id")
+            if mid:
+                _STORE_TYPES[str(mid)] = str(rec.get("memory_type") or "")
+    return _STORE_TYPES.get(str(memory_id), "")
+
+
+def _probe_memory_admissions(since: datetime) -> tuple[int, int, str, int]:
     """Memories that actually became usable, vs candidates offered.
 
     `accepted: true` only means the candidate was taken in -- 396 of 403 are
@@ -208,7 +274,7 @@ def _probe_memory_admissions(since: datetime) -> tuple[int, int, str]:
     matters: a memory stuck at CANDIDATE influences nothing.
     """
     path = _state_root() / "data" / "cio" / "aif_memory_admissions.jsonl"
-    offered = admitted = 0
+    offered = admitted = eligible = 0
     for row in read_jsonl(path):
         ts = _parse_ts(row.get("admitted_at"))
         if not ts or ts < since:
@@ -216,7 +282,9 @@ def _probe_memory_admissions(since: datetime) -> tuple[int, int, str]:
         offered += 1
         if str(row.get("display_status") or "").upper() == "ADMITTED":
             admitted += 1
-    return admitted, offered, str(path)
+        if _receipt_is_promotable(row):
+            eligible += 1
+    return admitted, offered, str(path), eligible
 
 
 def default_lanes() -> list[Lane]:

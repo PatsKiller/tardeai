@@ -29,6 +29,7 @@ if str(ROOT) not in sys.path:
 
 from scripts.lib.pipeline_liveness import (  # noqa: E402
     LIVE,
+    NO_ELIGIBLE_INPUT,
     QUIET,
     STARVED,
     UNKNOWN,
@@ -36,14 +37,15 @@ from scripts.lib.pipeline_liveness import (  # noqa: E402
     evaluate,
 )
 
-_MARK = {LIVE: "ok  ", STARVED: "STARVED", QUIET: "quiet", UNKNOWN: "UNKNOWN"}
+_MARK = {LIVE: "ok  ", STARVED: "STARVED", QUIET: "quiet", UNKNOWN: "UNKNOWN",
+         NO_ELIGIBLE_INPUT: "NO-INPUT"}
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="Pipeline liveness — detect lanes that stopped producing")
     ap.add_argument("--json", action="store_true", help="emit JSON")
     ap.add_argument("--fail-on-finding", action="store_true",
-                    help="exit 1 when a lane is STARVED or UNKNOWN, for cron/CI gating")
+                    help="exit 1 on any finding (STARVED, NO_ELIGIBLE_INPUT or UNKNOWN), for cron/CI gating")
     ap.add_argument("--window-hours", type=float, default=None,
                     help="override every lane's window (default: per-lane)")
     args = ap.parse_args()
@@ -73,6 +75,10 @@ def main() -> int:
                     print(f"FINDING  {finding['lane']}: {finding.get('attempted')} attempted, "
                           f"{finding.get('produced')} produced. Work is entering this lane "
                           f"and nothing is coming out.")
+                elif finding["status"] == NO_ELIGIBLE_INPUT:
+                    print(f"FINDING  {finding['lane']}: {finding.get('attempted')} attempted, "
+                          f"0 of them eligible to produce this output. Nothing is blocked — "
+                          f"no producer is emitting input this lane can promote.")
                 else:
                     print(f"FINDING  {finding['lane']}: {finding.get('detail', 'source unreadable')}")
 
