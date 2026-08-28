@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Optional
 
@@ -64,6 +64,21 @@ _OPP_STATUS_PREF = {
     "AVOID": 3,
     "not_former": 4,
 }
+
+# Pipeline 2B/2C surface caps. Provenance: T=template, D=deterministic, A=agent/memory.
+EARNINGS_CAP = 10
+NEW_NAME_CAP = 8
+CASE_SUMMARY_CAP = 10
+CASE_CONTENT_MAX = 400
+CASH_ATTENTION_BAND_PCT = 20.0
+NEW_NAME_SOURCE_PREFIXES = ("defense", "advisory")
+PORTFOLIO_IMPLICATION_CONSTANT = (
+    "Preserve quality growth exposure, keep cash for dislocations, "
+    "and do not force lower-quality replacements. Re-entries need "
+    "candidate-specific governed verdicts — desk zone marks are not authorization."
+)
+CASE_SUMMARY_BANNER = "A-context · NON_AUTHORITATIVE · does not change action"
+EARNINGS_REL = Path("data") / "portfolios" / "state" / "earnings_dates.json"
 
 
 def _now() -> datetime:
@@ -240,6 +255,389 @@ def collect_regime() -> dict[str, Any]:
     except Exception:
         pass
     return {"label": "UNKNOWN", "as_of": None}
+
+
+def _is_cash_holding(row: dict[str, Any]) -> bool:
+    if not isinstance(row, dict):
+        return False
+    if row.get("is_cash") or row.get("asset_type") == "cash":
+        return True
+    return str(row.get("symbol") or "").upper() == "CASH"
+
+
+def _looks_like_ticker(sym: str) -> bool:
+    s = str(sym or "").upper().strip()
+    if not s or s in NON_TICKER_SYMBOLS or s == "CASH":
+        return False
+    # Drop CUSIP-like identifiers (digits) and overlong labels.
+    if any(ch.isdigit() for ch in s):
+        return False
+    core = s.replace(".", "").replace("-", "")
+    return core.isalpha() and 1 <= len(core) <= 6
+
+
+def held_equity_symbols(holdings: dict[str, Any] | None) -> list[str]:
+    """Tradable equity tickers currently held. Skips cash and CUSIPs."""
+    held_map = holdings or {}
+    out: list[str] = []
+    rows = held_map.get("holdings")
+    if isinstance(rows, list):
+        for h in rows:
+            if not isinstance(h, dict) or _is_cash_holding(h):
+                continue
+            sym = str(h.get("symbol") or "").upper()
+            if _looks_like_ticker(sym):
+                out.append(sym)
+    elif isinstance(held_map.get("symbols"), list):
+        for s in held_map["symbols"]:
+            sym = str(s).upper()
+            if _looks_like_ticker(sym):
+                out.append(sym)
+    # unique, stable
+    seen: set[str] = set()
+    uniq: list[str] = []
+    for s in out:
+        if s not in seen:
+            seen.add(s)
+            uniq.append(s)
+    return uniq
+
+
+def _is_new_name_source(source: Any) -> bool:
+    s = str(source or "").strip().lower()
+    return any(s == p or s.startswith(p) for p in NEW_NAME_SOURCE_PREFIXES)
+
+
+def _parse_earnings_date(raw: Any) -> date | None:
+    if raw in (None, ""):
+        return None
+    text = str(raw).strip()
+    if not text:
+        return None
+    for fmt, sl in (("%Y-%m-%d", 10), ("%Y/%m/%d", 10), ("%m/%d/%Y", 10)):
+        try:
+            return datetime.strptime(text[:sl], fmt).date()
+        except ValueError:
+            continue
+    try:
+        return datetime.fromisoformat(text.replace("Z", "+00:00")).date()
+    except ValueError:
+        return None
+
+
+def extract_cash_metrics(holdings: dict[str, Any] | None) -> dict[str, Any]:
+    """Deterministic cash_pct / total_cash from holdings / portfolio_totals.
+
+    Does not call a broker. Band is the engine attention threshold unless a
+    numeric cash_target_range_pct is already on the holdings document.
+    """
+    doc = holdings if isinstance(holdings, dict) else {}
+    totals = doc.get("portfolio_totals") if isinstance(doc.get("portfolio_totals"), dict) else {}
+    total_cash = doc.get("cash")
+    if total_cash is None:
+        total_cash = doc.get("cash_value")
+    if total_cash is None:
+        total_cash = doc.get("total_cash")
+    if total_cash is None:
+        total_cash = totals.get("total_cash")
+    total_value = doc.get("total_value")
+    if total_value is None:
+        total_value = totals.get("total_value")
+    cash_pct = doc.get("cash_pct")
+    if cash_pct is None:
+        cash_pct = totals.get("cash_pct")
+    if total_cash is None:
+        rows = doc.get("holdings") if isinstance(doc.get("holdings"), list) else []
+        cash_sum = 0.0
+        found = False
+        for h in rows:
+            if isinstance(h, dict) and _is_cash_holding(h):
+                found = True
+                try:
+                    cash_sum += float(h.get("market_value") or 0)
+                except (TypeError, ValueError):
+                    pass
+        if found:
+            total_cash = cash_sum
+    try:
+        total_cash_f = float(total_cash) if total_cash is not None else None
+    except (TypeError, ValueError):
+        total_cash_f = None
+    try:
+        total_value_f = float(total_value) if total_value is not None else None
+    except (TypeError, ValueError):
+        total_value_f = None
+    try:
+        cash_pct_f = float(cash_pct) if cash_pct is not None else None
+    except (TypeError, ValueError):
+        cash_pct_f = None
+    if cash_pct_f is None and total_cash_f is not None and total_value_f not in (None, 0.0):
+        cash_pct_f = (total_cash_f / total_value_f) * 100.0
+    band_hi = CASH_ATTENTION_BAND_PCT
+    band_lo = None
+    band_source = "attention_threshold_pct"
+    raw_band = doc.get("cash_target_range_pct") or totals.get("cash_target_range_pct")
+    if isinstance(raw_band, (list, tuple)) and len(raw_band) >= 2:
+        try:
+            band_lo = float(raw_band[0])
+            band_hi = float(raw_band[1])
+            band_source = "holdings.cash_target_range_pct"
+        except (TypeError, ValueError):
+            pass
+    elif isinstance(raw_band, (int, float)):
+        band_hi = float(raw_band)
+        band_source = "holdings.cash_target_range_pct"
+    available = cash_pct_f is not None or total_cash_f is not None
+    return {
+        "total_cash": round(total_cash_f, 2) if total_cash_f is not None else None,
+        "total_value": round(total_value_f, 2) if total_value_f is not None else None,
+        "cash_pct": round(cash_pct_f, 2) if cash_pct_f is not None else None,
+        "band": {"lo": band_lo, "hi": band_hi, "source": band_source},
+        "quality": "OK" if available else "DATA_UNAVAILABLE",
+        "class": "D",
+    }
+
+
+def cash_hold_row(metrics: dict[str, Any]) -> dict[str, Any]:
+    """HOLD_CASH_FOR row from live numbers. Never the portfolio_implication constant."""
+    cash_pct = metrics.get("cash_pct")
+    total_cash = metrics.get("total_cash")
+    band = metrics.get("band") or {}
+    band_hi = band.get("hi")
+    band_lo = band.get("lo")
+    if cash_pct is None and total_cash is None:
+        why = (
+            "DATA_UNAVAILABLE — cash_pct and total_cash missing from "
+            "holdings / cash_buying_power / portfolio"
+        )
+        quality = "DATA_UNAVAILABLE"
+    elif cash_pct is not None and band_hi is not None and float(cash_pct) > float(band_hi):
+        why = (
+            f"cash_pct {_fmt_num(cash_pct)} total_cash {_fmt_num(total_cash)} "
+            f"is above band {_fmt_num(band_hi)}; staged deploy vs hold reserve"
+        )
+        quality = "OK"
+    elif cash_pct is not None and band_lo is not None and float(cash_pct) < float(band_lo):
+        why = (
+            f"cash_pct {_fmt_num(cash_pct)} total_cash {_fmt_num(total_cash)} "
+            f"is below band {_fmt_num(band_lo)}; hold reserve"
+        )
+        quality = "OK"
+    else:
+        why = (
+            f"cash_pct {_fmt_num(cash_pct)} total_cash {_fmt_num(total_cash)} "
+            f"band {_fmt_num(band_lo)}–{_fmt_num(band_hi)} ({band.get('source')})"
+        )
+        quality = str(metrics.get("quality") or "OK")
+    return {
+        "symbol": "CASH",
+        "action": "HOLD_CASH_FOR",
+        "why": why,
+        "cash_pct": cash_pct,
+        "total_cash": total_cash,
+        "band": band,
+        "quality": quality,
+        "class": "D",
+    }
+
+
+def collect_earnings_events(
+    *,
+    root: Path | str | None = None,
+    holdings: dict[str, Any] | None = None,
+    watch_symbols: list[str] | None = None,
+    now: Optional[datetime] = None,
+    cap: int = EARNINGS_CAP,
+) -> dict[str, Any]:
+    """Next dated earnings for held names first, then watch. Class D.
+
+    Empty items only when the source file is missing/unreadable (or has no
+    parseable dated events) — then quality=DATA_UNAVAILABLE, not a fake quiet night.
+    """
+    as_of = _iso(now)
+    base = resolve_root(root)
+    path = base / EARNINGS_REL
+    source = str(path)
+    if not path.is_file():
+        return {
+            "items": [],
+            "count": 0,
+            "quality": "DATA_UNAVAILABLE",
+            "reason": "earnings_dates.json missing",
+            "as_of": as_of,
+            "source": source,
+            "class": "D",
+        }
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8", errors="replace"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return {
+            "items": [],
+            "count": 0,
+            "quality": "DATA_UNAVAILABLE",
+            "reason": f"earnings_dates.json unreadable:{type(exc).__name__}",
+            "as_of": as_of,
+            "source": source,
+            "class": "D",
+        }
+    if not isinstance(raw, dict) or not raw:
+        return {
+            "items": [],
+            "count": 0,
+            "quality": "DATA_UNAVAILABLE",
+            "reason": "earnings_dates.json empty or not an object",
+            "as_of": as_of,
+            "source": source,
+            "class": "D",
+        }
+    today = (now or _now()).date()
+    held = set(held_equity_symbols(holdings))
+    watch = {str(s).upper() for s in (watch_symbols or []) if _looks_like_ticker(str(s))}
+    dated: list[dict[str, Any]] = []
+    for key, rec in raw.items():
+        sym = str(key or "").upper()
+        if not _looks_like_ticker(sym):
+            continue
+        blob = rec if isinstance(rec, dict) else {"earnings_date": rec}
+        dt = _parse_earnings_date(blob.get("earnings_date") or blob.get("date"))
+        if dt is None:
+            continue
+        dated.append({
+            "symbol": sym,
+            "earnings_date": dt.isoformat(),
+            "_date": dt,
+            "fetched_at": blob.get("fetched_at"),
+            "source": "earnings_dates.json",
+            "class": "D",
+            "as_of": as_of,
+        })
+
+    def _sk(row: dict[str, Any]) -> tuple:
+        d = row["_date"]
+        delta = (d - today).days
+        return (0 if delta >= 0 else 1, abs(delta), row["symbol"])
+
+    held_dated = sorted((r for r in dated if r["symbol"] in held), key=_sk)
+    watch_dated = sorted(
+        (r for r in dated if r["symbol"] not in held and (not watch or r["symbol"] in watch)),
+        key=_sk,
+    )
+    items: list[dict[str, Any]] = []
+    for row in held_dated:
+        row = dict(row)
+        row["scope"] = "held"
+        row.pop("_date", None)
+        items.append(row)
+        if len(items) >= cap:
+            break
+    if len(items) < cap:
+        seen = {r["symbol"] for r in items}
+        for row in watch_dated:
+            if row["symbol"] in seen:
+                continue
+            row = dict(row)
+            row["scope"] = "watch"
+            row.pop("_date", None)
+            items.append(row)
+            seen.add(row["symbol"])
+            if len(items) >= cap:
+                break
+    if not items and dated:
+        # Source present with dates — never pretend it is a quiet night.
+        for row in sorted(dated, key=_sk)[:cap]:
+            row = dict(row)
+            row["scope"] = "held" if row["symbol"] in held else "watch"
+            row.pop("_date", None)
+            items.append(row)
+    quality = "OK" if items else "DATA_UNAVAILABLE"
+    reason = None if items else "no dated events in earnings_dates.json"
+    return {
+        "items": items,
+        "count": len(items),
+        "quality": quality,
+        "reason": reason,
+        "as_of": as_of,
+        "source": source,
+        "class": "D",
+    }
+
+
+def collect_case_summaries(
+    *,
+    root: Path | str | None = None,
+    cap: int = CASE_SUMMARY_CAP,
+) -> dict[str, Any]:
+    """ACTIVE CASE_SUMMARY memories only. A-context, never action."""
+    from scripts.lib.agent_memory_governance import MEMORY_TYPE_CASE_SUMMARY, STATUS_ACTIVE
+
+    out: dict[str, Any] = {
+        "banner": CASE_SUMMARY_BANNER,
+        "authority_class": "NON_AUTHORITATIVE_CONTEXT",
+        "class": "A",
+        "source": "durable CASE_SUMMARY ACTIVE",
+        "count": 0,
+        "items": [],
+        "financial_action": False,
+        "changes_action": False,
+    }
+    try:
+        from scripts.lib.agent_durable_memory import get_durable_provider
+        provider = get_durable_provider(root)
+    except Exception as exc:
+        out["quality"] = "DATA_UNAVAILABLE"
+        out["reason"] = f"memory_provider:{type(exc).__name__}"
+        return out
+    rows: list[dict[str, Any]] = []
+    for rec in (getattr(provider, "_store", {}) or {}).values():
+        if not isinstance(rec, dict):
+            continue
+        if rec.get("memory_type") != MEMORY_TYPE_CASE_SUMMARY:
+            continue
+        st = str(rec.get("status") or "")
+        if st not in {STATUS_ACTIVE, "ADMITTED"}:
+            continue
+        rows.append(rec)
+    rows.sort(
+        key=lambda r: str(r.get("created_at") or r.get("admitted_at") or ""),
+        reverse=True,
+    )
+    items: list[dict[str, Any]] = []
+    for rec in rows[:cap]:
+        refs = [str(x) for x in (rec.get("source_refs") or rec.get("source_event_ids") or []) if x]
+        plan_ids = [str(x) for x in (rec.get("plan_ids") or []) if x]
+        plan_id = plan_ids[0] if plan_ids else (refs[0] if refs else None)
+        result_id = None
+        for ref in reversed(refs):
+            if ref and ref != plan_id and not str(ref).startswith("res_"):
+                result_id = ref
+                break
+        if not result_id and len(refs) >= 3:
+            result_id = refs[-1]
+        content = str(rec.get("content") or "")[:CASE_CONTENT_MAX]
+        items.append({
+            "memory_id": rec.get("memory_id"),
+            "subject": rec.get("subject"),
+            "symbols": list(rec.get("symbols") or []),
+            "plan_id": plan_id,
+            "hermes_result_id": result_id,
+            "content": content,
+            "created_at": rec.get("created_at") or rec.get("admitted_at"),
+            "class": "A",
+            "authority_class": "NON_AUTHORITATIVE_CONTEXT",
+        })
+    out["items"] = items
+    out["count"] = len(items)
+    return out
+
+
+def _new_if_action(row: dict[str, Any]) -> str:
+    """Decision language stays IF / WATCH / AVOID. Never invent a buy."""
+    v = str(row.get("verdict") or "").upper()
+    if v in {"EXIT", "TRIM"}:
+        return "AVOID"
+    if v == "ADD":
+        return "ADD_IF"
+    return "WATCH"
 
 
 # ── Adjudication ────────────────────────────────────────────────────────────
@@ -488,27 +886,25 @@ def build_temperament(
     infl: dict[str, Any],
 ) -> dict[str, Any]:
     label = str(regime.get("label") or "UNKNOWN").replace("_", " ")
-    cash = holdings.get("cash") or holdings.get("cash_value") or holdings.get("total_cash")
-    try:
-        cash_f = float(cash) if cash is not None else None
-    except (TypeError, ValueError):
-        cash_f = None
+    cash_metrics = extract_cash_metrics(holdings)
+    cash_f = cash_metrics.get("total_cash")
+    if cash_f is None:
+        cash_f = cash_metrics.get("cash_pct")
     fs_n = len(fs_rows)
     ratified = (lessons.get("counts") or {}).get("RATIFIED_CONTEXT") or 0
     if label.upper() in {"UNKNOWN", ""}:
         title = "CAUTIOUS / SELECTIVE — REGIME UNCONFIRMED"
     else:
         title = f"{label.upper()} — SELECTIVE RISK"
-    implication = (
-        "Preserve quality growth exposure, keep cash for dislocations, "
-        "and do not force lower-quality replacements. Re-entries need "
-        "candidate-specific governed verdicts — desk zone marks are not authorization."
-    )
     return {
         "title": title,
         "regime": label,
         "regime_as_of": regime.get("as_of"),
         "cash": cash_f,
+        "cash_pct": cash_metrics.get("cash_pct"),
+        "cash_band": cash_metrics.get("band"),
+        "cash_quality": cash_metrics.get("quality"),
+        "cash_class": "D",
         "financial_senses_receipts": fs_n,
         "ratified_lessons": ratified,
         "influence": {
@@ -521,7 +917,8 @@ def build_temperament(
             f"Temperament {title}. Regime source as-of {regime.get('as_of') or 'n/a'}. "
             f"FS receipts in store: {fs_n}. Ratified lessons available: {ratified}."
         ),
-        "portfolio_implication": implication,
+        "portfolio_implication": PORTFOLIO_IMPLICATION_CONSTANT,
+        "portfolio_implication_class": "T",
         "authority": AUTHORITY,
     }
 
@@ -659,6 +1056,7 @@ def build_opportunity_book(
             "state": it.get("state"),
             "label": it.get("directive_label"),
             "vs_former_holdings": vs_re,
+            "vs_re": vs_re,
             "status": vs_re if vs_re != "not_former" else it.get("state"),
             "thesis": thesis,
             "thesis_state": thesis.get("thesis_state"),
@@ -698,17 +1096,43 @@ def build_opportunity_book(
             best_by_sym[sym] = row
 
     ranked = sorted(best_by_sym.values(), key=_opportunity_row_pref)[:20]
+    # Bounded not_former defense/advisory slice — do not let ranking drop new names.
+    not_former_items: list[dict[str, Any]] = []
+    for row in sorted(best_by_sym.values(), key=lambda r: int(r.get("_orig_i") or 9999)):
+        if str(row.get("vs_re") or row.get("vs_former_holdings") or "") != "not_former":
+            continue
+        if not _is_new_name_source(row.get("source")):
+            continue
+        item = {k: v for k, v in row.items() if k != "_orig_i"}
+        not_former_items.append(item)
+        if len(not_former_items) >= NEW_NAME_CAP:
+            break
+    seen_top = {r["symbol"] for r in ranked}
+    for item in not_former_items:
+        if item["symbol"] not in seen_top:
+            ranked.append(dict(item))
+            seen_top.add(item["symbol"])
     for i, row in enumerate(ranked, 1):
         row["rank"] = i
         row.pop("_orig_i", None)
+        row.setdefault("vs_re", row.get("vs_former_holdings"))
+        row.setdefault("class", "D")
+    nf_reason = None
+    if not not_former_items:
+        nf_reason = "no not_former defense/advisory names in queue after held+reentry classification"
     return {
         "count": len(ranked),
         "top": ranked,
+        "not_former": not_former_items,
+        "not_former_count": len(not_former_items),
+        "not_former_reason": nf_reason,
+        "not_former_class": "D",
         "deduped_from": len(candidates),
         "note": (
             "New capital uses ranked against cash and former holdings. "
             "Unresolved material thesis gaps → RESEARCH_REQUIRED, not weak ADD/REENTER. "
-            "Duplicate symbols collapsed to best status before ranking."
+            "Duplicate symbols collapsed to best status before ranking. "
+            "not_former defense/advisory names are a bounded labeled slice, not a buy."
         ),
         "authority": AUTHORITY,
     }
@@ -724,6 +1148,11 @@ def build_action_book(
 ) -> dict[str, Any]:
     from scripts.lib.symbol_thesis_attach import thesis_fields_for_symbol
     do_now, watch, re_if, new_if, cash_for, avoid, research = [], [], [], [], [], [], []
+    reentry_syms = {
+        str(r.get("symbol") or "").upper()
+        for r in (reentry.get("names") or [])
+        if isinstance(r, dict) and r.get("symbol")
+    }
     for r in reentry.get("names") or []:
         base = {
             "symbol": r["symbol"],
@@ -757,27 +1186,20 @@ def build_action_book(
                 "research_gaps": o.get("research_gaps") or [],
             })
             continue
-        if o.get("verdict") == "ADD" and o.get("symbol") not in {x["symbol"] for x in do_now}:
-            new_if.append({
-                "symbol": o["symbol"],
-                "action": "ADD_IF",
-                "why": o["why_outranks_cash_or_reentry"],
-                "thesis_state": o.get("thesis_state"),
-                "actionability": o.get("actionability"),
-            })
         if not o.get("verdict") and o.get("actionability") != "RESEARCH_REQUIRED":
             research.append({"symbol": o["symbol"], "action": "RESEARCH", "why": o.get("label")})
 
     # Current holdings — living thesis state for Portfolio Action Book
     held_thesis = []
     held_map = holdings or {}
-    held_syms: list[str] = []
-    if isinstance(held_map.get("holdings"), list):
-        for h in held_map["holdings"]:
-            if isinstance(h, dict) and h.get("symbol"):
-                held_syms.append(str(h["symbol"]).upper())
-    elif isinstance(held_map.get("symbols"), list):
-        held_syms = [str(s).upper() for s in held_map["symbols"]]
+    held_syms: list[str] = held_equity_symbols(held_map)
+    if not held_syms:
+        if isinstance(held_map.get("holdings"), list):
+            for h in held_map["holdings"]:
+                if isinstance(h, dict) and h.get("symbol") and not _is_cash_holding(h):
+                    held_syms.append(str(h["symbol"]).upper())
+        elif isinstance(held_map.get("symbols"), list):
+            held_syms = [str(s).upper() for s in held_map["symbols"]]
     # also pull from reentry rows marked held via thesis memberships
     for r in reentry.get("names") or []:
         memb = (r.get("thesis") or {}).get("memberships") or []
@@ -806,11 +1228,40 @@ def build_action_book(
                 "research_gaps": th.get("research_gaps") or [],
             })
 
-    cash_for.append({
-        "symbol": "CASH",
-        "action": "HOLD_CASH_FOR",
-        "why": temperament.get("portfolio_implication"),
-    })
+    cash_for.append(cash_hold_row(extract_cash_metrics(held_map)))
+    # NEW_POSITION_IF: bounded not_former defense/advisory slice. Not a buy.
+    blocked = set(held_syms) | reentry_syms | {x["symbol"] for x in do_now}
+    seen_new: set[str] = set()
+    nf_pool = list(opportunities.get("not_former") or []) + list(opportunities.get("top") or [])
+    for o in nf_pool:
+        if not isinstance(o, dict):
+            continue
+        sym = str(o.get("symbol") or "").upper()
+        vs = str(o.get("vs_re") or o.get("vs_former_holdings") or "")
+        if vs != "not_former" or not _is_new_name_source(o.get("source")):
+            continue
+        if not sym or sym in blocked or sym in seen_new:
+            continue
+        seen_new.add(sym)
+        new_if.append({
+            "symbol": sym,
+            "action": _new_if_action(o),
+            "why": o.get("why_outranks_cash_or_reentry") or o.get("label") or "queue candidate",
+            "source": o.get("source"),
+            "vs_re": "not_former",
+            "vs_former_holdings": "not_former",
+            "verdict": o.get("verdict"),
+            "thesis_state": o.get("thesis_state"),
+            "actionability": o.get("actionability"),
+            "class": "D",
+        })
+        if len(new_if) >= NEW_NAME_CAP:
+            break
+    new_if_reason = None
+    if not new_if:
+        new_if_reason = (
+            "no not_former defense/advisory names in queue after held+reentry dedup"
+        )
     # de-dupe research by symbol
     seen_r = set()
     research_dedup = []
@@ -823,7 +1274,8 @@ def build_action_book(
         "DO_NOW": do_now,
         "WATCH_CLOSELY": watch,
         "RE_ENTER_IF": re_if,
-        "NEW_POSITION_IF": new_if[:8],
+        "NEW_POSITION_IF": new_if[:NEW_NAME_CAP],
+        "NEW_POSITION_IF_REASON": new_if_reason,
         "HOLD_CASH_FOR": cash_for,
         "AVOID": avoid,
         "CURRENT_HOLDINGS_THESIS": held_thesis[:40],
@@ -867,6 +1319,15 @@ def build_product(
     reentry = build_reentry_book(prev, queue, lessons, fs_rows, infl, root=root_path)
     opportunities = build_opportunity_book(queue, reentry, root=root_path)
     actions = build_action_book(reentry, opportunities, temperament, holdings=holdings, root=root_path)
+    watch_syms = [
+        str(it.get("symbol") or "").upper()
+        for it in (queue.get("items") or queue.get("top") or [])
+        if isinstance(it, dict) and it.get("symbol")
+    ]
+    earnings = collect_earnings_events(
+        root=root_path, holdings=holdings, watch_symbols=watch_syms, now=now,
+    )
+    case_summaries = collect_case_summaries(root=root_path)
     verdicts = [r for r in reentry.get("names") or [] if r.get("governed_verdict")]
     merged = apply_governed_verdicts(queue, verdicts)
     recs = _recommendations(actions, temperament)
@@ -880,6 +1341,16 @@ def build_product(
         "reentry_book": reentry,
         "opportunity_book": opportunities,
         "action_book": actions,
+        "earnings": earnings["items"],
+        "earnings_quality": {
+            "quality": earnings.get("quality"),
+            "reason": earnings.get("reason"),
+            "as_of": earnings.get("as_of"),
+            "source": earnings.get("source"),
+            "class": "D",
+        },
+        "case_summaries": case_summaries,
+        "research_cases": case_summaries,
         "thesis_universe": thesis_metrics,
         "thesis_changes_today": thesis_changes_today,
         "governed_verdicts": verdicts,
@@ -894,6 +1365,57 @@ def build_product(
     }
     stamp_advisory_origin(product, producer="cio_investment_product.build_product")
     return product
+
+
+def overlay_step2_surfaces(
+    product: dict[str, Any],
+    *,
+    root: Path | str | None = None,
+    now: Optional[datetime] = None,
+    holdings: Optional[dict[str, Any]] = None,
+) -> dict[str, Any]:
+    """Refresh 2B/2C surfaces onto a persisted brief. No persist. No DO_NOW mutation.
+
+    Cheap file/memory overlay so Command Center sees earnings, cash, and
+    CASE_SUMMARY without waiting for the next worker persist. Does not recompute
+    reentry adjudication.
+    """
+    if not isinstance(product, dict):
+        return product
+    p = dict(product)
+    root_path = Path(root) if root is not None else resolve_root()
+    holdings = holdings if holdings is not None else collect_holdings(root_path)
+    watch_syms: list[str] = []
+    for o in ((p.get("opportunity_book") or {}).get("top") or []):
+        if isinstance(o, dict) and o.get("symbol"):
+            watch_syms.append(str(o["symbol"]).upper())
+    earnings = collect_earnings_events(
+        root=root_path, holdings=holdings, watch_symbols=watch_syms, now=now,
+    )
+    p["earnings"] = earnings["items"]
+    p["earnings_quality"] = {
+        "quality": earnings.get("quality"),
+        "reason": earnings.get("reason"),
+        "as_of": earnings.get("as_of"),
+        "source": earnings.get("source"),
+        "class": "D",
+    }
+    cases = collect_case_summaries(root=root_path)
+    p["case_summaries"] = cases
+    p["research_cases"] = cases
+    temp = dict(p.get("temperament") or {})
+    metrics = extract_cash_metrics(holdings)
+    if metrics.get("total_cash") is not None or metrics.get("cash_pct") is not None:
+        temp["cash"] = metrics.get("total_cash") if metrics.get("total_cash") is not None else metrics.get("cash_pct")
+        temp["cash_pct"] = metrics.get("cash_pct")
+        temp["cash_band"] = metrics.get("band")
+        temp["cash_quality"] = metrics.get("quality")
+        temp["cash_class"] = "D"
+    p["temperament"] = temp
+    ab = dict(p.get("action_book") or {})
+    ab["HOLD_CASH_FOR"] = [cash_hold_row(metrics)]
+    p["action_book"] = ab
+    return p
 
 
 def _recommendations(actions: dict[str, Any], temperament: dict[str, Any]) -> list[dict[str, Any]]:

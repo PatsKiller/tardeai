@@ -36,6 +36,7 @@ REQUIRED_SECTIONS = (
     "themes",
     "catalysts",
     "earnings",
+    "case_summaries",
     "macro",
     "research_changes",
     "research_gaps",
@@ -92,6 +93,14 @@ def unavailable(*, reason: str, detail: str | None = None, path: str | None = No
         "entries": [],
         "decisions": [],
         "action_now": [],
+        "earnings": [],
+        "case_summaries": {
+            "banner": "A-context · NON_AUTHORITATIVE · does not change action",
+            "class": "A",
+            "count": 0,
+            "items": [],
+            "changes_action": False,
+        },
         "canonical": True,
         "gui_is_projection": True,
     })
@@ -211,6 +220,48 @@ def build_operator_product(*, root: Path | str | None = None, persist: bool = Fa
     reentry = brief.get("reentry_book") if isinstance(brief.get("reentry_book"), dict) else {}
     opportunity = brief.get("opportunity_book") if isinstance(brief.get("opportunity_book"), dict) else {}
     thesis_changes = brief.get("thesis_changes_today") or []
+    earnings = brief.get("earnings")
+    if isinstance(earnings, dict):
+        earnings_items = list(earnings.get("items") or [])
+    else:
+        earnings_items = list(earnings or [])
+    earnings_quality = brief.get("earnings_quality") if isinstance(brief.get("earnings_quality"), dict) else {}
+    if not earnings_items:
+        try:
+            from scripts.lib.cio_investment_product import collect_earnings_events
+            earn = collect_earnings_events(root=root)
+            earnings_items = list(earn.get("items") or [])
+            if not earnings_quality:
+                earnings_quality = {
+                    "quality": earn.get("quality"),
+                    "reason": earn.get("reason"),
+                    "as_of": earn.get("as_of"),
+                    "source": earn.get("source"),
+                    "class": "D",
+                }
+        except Exception:
+            if not earnings_quality:
+                earnings_quality = {
+                    "quality": "DATA_UNAVAILABLE",
+                    "reason": "earnings_collector_unavailable",
+                    "class": "D",
+                }
+    case_summaries = brief.get("case_summaries") or brief.get("research_cases")
+    if not isinstance(case_summaries, dict) or not (case_summaries.get("items") or case_summaries.get("count")):
+        try:
+            from scripts.lib.cio_investment_product import collect_case_summaries
+            case_summaries = collect_case_summaries(root=root)
+        except Exception:
+            case_summaries = {
+                "banner": "A-context · NON_AUTHORITATIVE · does not change action",
+                "authority_class": "NON_AUTHORITATIVE_CONTEXT",
+                "class": "A",
+                "source": "durable CASE_SUMMARY ACTIVE",
+                "count": 0,
+                "items": [],
+                "financial_action": False,
+                "changes_action": False,
+            }
 
     data_quality = dict(holdings["data_quality"])
     ops = _ops_degradation(root)
@@ -258,7 +309,10 @@ def build_operator_product(*, root: Path | str | None = None, persist: bool = Fa
         "catalysts_reason": ctx.get("catalysts_reason"),
         "themes": list(brief.get("themes") or []),
         "catalysts": ctx.get("catalysts") or list(brief.get("catalysts") or []),
-        "earnings": list(brief.get("earnings") or []),
+        "earnings": earnings_items,
+        "earnings_quality": earnings_quality or {"quality": "OK" if earnings_items else "DATA_UNAVAILABLE", "class": "D"},
+        "case_summaries": case_summaries,
+        "research_cases": case_summaries,
         "macro": brief.get("macro") or brief.get("temperament"),
         "research_changes": thesis_changes if isinstance(thesis_changes, list) else [],
         "research_gaps": list(brief.get("research_gaps") or []),
