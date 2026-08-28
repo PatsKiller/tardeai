@@ -389,11 +389,69 @@ def _attach_stub_to_plan(plan: dict[str, Any], research_id: str, *, status: str)
     _merge_evidence_on_plan_id(str(plan.get("plan_id") or ""), stub, research_id=research_id)
 
 
+_SUCCESS_VERDICTS = frozenset({"VALID", "PARTIAL"})
+
+
+def research_complete_is_attachable(
+    result: dict[str, Any] | None,
+    critique: dict[str, Any] | None,
+) -> bool:
+    """True when a completed Hermes job may stamp hermes_result_id on the plan.
+
+    VALID and PARTIAL are the accepted critique verdicts. Failed / truncated /
+    cost-cap jobs must not join.
+    """
+    rec = result or {}
+    status = str(rec.get("status") or "completed").lower()
+    if status in {"failed", "error", "truncated", "cost_cap", "cancelled"}:
+        return False
+    if rec.get("truncated") or rec.get("cost_capped") or rec.get("failed"):
+        return False
+    if not isinstance(critique, dict):
+        return False
+    return str(critique.get("verdict") or "").upper() in _SUCCESS_VERDICTS
+
+
+def _note_attach_stall(*, plan_id: str, research_id: str, result_id: str, error: Exception) -> None:
+    rec = {
+        "schema": "LineageStallNote@v1",
+        "authority": "READ_ONLY_ADVISORY",
+        "at": _now(),
+        "stage": "research_plan_attach",
+        "research_id": research_id or None,
+        "result_id": result_id or None,
+        "plan_id": plan_id or None,
+        "error": f"{type(error).__name__}: {error}",
+    }
+    try:
+        dest = Path("logs") / "lineage_stalls.jsonl"
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        with open(dest, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(rec, default=str) + "\n")
+    except Exception:
+        pass
+    try:
+        try:
+            from lib.cio_hermes_research import _note_lineage_stall
+        except Exception:
+            from scripts.lib.cio_hermes_research import _note_lineage_stall  # type: ignore
+        _note_lineage_stall(
+            research_id=research_id,
+            request={"plan_id": plan_id, "research_id": research_id, "result_id": result_id},
+            error=error,
+        )
+    except Exception:
+        pass
+
+
 def _merge_evidence_on_plan_id(
     plan_id: str,
     domain_ref: dict[str, Any],
     *,
     research_id: Optional[str] = None,
+    result_id: Optional[str] = None,
+    completed_ts: Optional[str] = None,
+    attach_result: bool = False,
 ) -> Optional[dict[str, Any]]:
     if not plan_id:
         return None
@@ -426,8 +484,34 @@ def _merge_evidence_on_plan_id(
     rid = domain_ref.get("research_id") or research_id
     if rid:
         patch["hermes_research_id"] = rid
+        patch["research_id"] = rid
+    # Stamp the completed result join only on successful critique. Same ids are
+    # idempotent (update in place — never fork a new plan).
+    if attach_result:
+        rsid = str(result_id or domain_ref.get("result_id") or "")
+        if rsid:
+            if plan.get("hermes_result_id") == rsid and (
+                not rid or plan.get("hermes_research_id") == rid or plan.get("research_id") == rid
+            ):
+                # already joined; still refresh evidence_refs
+                pass
+            patch["hermes_result_id"] = rsid
+            ts = completed_ts or domain_ref.get("as_of") or domain_ref.get("completed_ts") or _now()
+            patch["hermes_completed_ts"] = ts
+            patch["completed_ts"] = ts
     updated = store.update_plan(plan_id, **patch)
     return updated
+
+
+def _substantive_fingerprint(plan: dict[str, Any]) -> str:
+    """Fields that may flip material_changed. hermes_result_id is a join key, not content."""
+    blob = {
+        "rec": (plan.get("recommendation") or "")[:400],
+        "summary": (plan.get("summary") or "")[:400],
+        "fire": plan.get("fire_reasons") or (plan.get("extra") or {}).get("fire_reasons"),
+        "material": plan.get("material"),
+    }
+    return hashlib.sha256(json.dumps(blob, sort_keys=True, default=str).encode()).hexdigest()[:16]
 
 
 def _material_fingerprint(plan: dict[str, Any]) -> str:
@@ -528,19 +612,31 @@ def on_hermes_completed(
             except Exception:
                 from scripts.lib.hermes_research_schema import evidence_domain_from_result  # type: ignore
             domain = evidence_domain_from_result(result, reused=bool(result.get("reused")))
+            attach_ok = research_complete_is_attachable(result, out.get("critique") if isinstance(out.get("critique"), dict) else None)
             plan = _merge_evidence_on_plan_id(
-                plan_id, domain, research_id=str(result.get("research_id") or ""),
+                plan_id, domain,
+                research_id=str(result.get("research_id") or request.get("research_id") or ""),
+                result_id=str(result.get("result_id") or ""),
+                completed_ts=str(result.get("completed_ts") or result.get("as_of") or "") or None,
+                attach_result=attach_ok,
             )
             out["attached"] = plan is not None
+            out["result_joined"] = bool(attach_ok and plan and plan.get("hermes_result_id"))
         except Exception as e:
             out["attach_error"] = f"{type(e).__name__}:{e}"
+            _note_attach_stall(
+                plan_id=plan_id,
+                research_id=str(result.get("research_id") or request.get("research_id") or ""),
+                result_id=str(result.get("result_id") or ""),
+                error=e,
+            )
             plan = None
 
         CIOPlanStore = _import_plans()
         store = CIOPlanStore()
         plan = plan or store.get_plan(plan_id)
 
-    before_fp = _material_fingerprint(plan) if plan else ""
+    before_fp = _substantive_fingerprint(plan) if plan else ""
 
     if resynth and plan and store:
         try:
@@ -563,7 +659,7 @@ def on_hermes_completed(
                     out["enriched"] = True
             # reload after enrich writes
             plan = store.get_plan(plan_id) or plan
-            after_fp = _material_fingerprint(plan)
+            after_fp = _substantive_fingerprint(plan)
             material_changed = after_fp != before_fp
             out["material_changed"] = material_changed
             if notify and material_changed and is_material_plan(plan):
