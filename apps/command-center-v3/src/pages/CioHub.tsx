@@ -1195,9 +1195,13 @@ function InvestmentBooksPanel() {
         </div>
       )}
     </section>
-    <section style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 12 }}>
-      <div style={{ fontWeight: 800 }}>Re-Entry Book</div>
-      <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 4 }}>{re.note}</div>
+    <section style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 12 }} data-testid="cio-reentry-surface-a">
+      <div style={{ fontWeight: 800 }}>Re-Entry Book A</div>
+      <div style={{ fontSize: 12, color: 'var(--amber)', marginTop: 4 }}>
+        Surface A · {re.scope || 'former holdings vs exit trigger'}
+        {re.not_this_book ? ` (not ${re.not_this_book})` : ' (not candidates vs cash-stage R:R under desk thesis)'}
+      </div>
+      <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 4 }}>{re.question || re.precedence || re.note}</div>
       <table style={{ width: '100%', fontSize: 12, marginTop: 8, borderCollapse: 'collapse' }}>
         <thead><tr>{['symbol','status','verdict','setup','what would change'].map(h => <th key={h} style={{ textAlign: 'left', padding: '4px 6px', color: 'var(--text3)' }}>{h}</th>)}</tr></thead>
         <tbody>{reentryNames.slice(0, reentryLimit).map((r: any) => <tr key={r.symbol}>
@@ -1299,10 +1303,10 @@ function OpportunitiesSection({ opp }: { opp: Opportunities }) {
           </div>
           {list(opp.watch)}
         </div>
-        <div style={card}>
-          <SectionTitle>Re-entry</SectionTitle>
+        <div style={card} data-testid="cio-home-reentry-surface-a">
+          <SectionTitle>Re-entry A</SectionTitle>
           <div style={{ ...faint, marginBottom: 8 }}>
-            Names flagged to re-enter after an exit.
+            Surface A · former holdings vs exit trigger (not candidates vs cash-stage R:R under desk thesis).
             {opp.reentry_total != null && opp.reentry_total > opp.reentry.length ? ` · showing ${opp.reentry.length} of ${opp.reentry_total}` : ''}
           </div>
           {list(opp.reentry)}

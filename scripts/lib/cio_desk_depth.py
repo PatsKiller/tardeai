@@ -922,7 +922,7 @@ def build_reentry_book(
             "note": "watch only — not in actionable book",
         })
 
-    return {
+    out = {
         "ok": bool(raw.get("ok", True)) and not raw.get("error"),
         "error": raw.get("error"),
         "source": "data_broker.reentry_decision_desk.build_decision_desk",
@@ -973,3 +973,8 @@ def build_reentry_book(
         "as_of": raw.get("computed_at") or _now(),
         "authority": "READ_ONLY_ADVISORY",
     }
+    try:
+        from scripts.lib.cio_reentry_surface_labels import SURFACE_B, stamp as _stamp_scope
+    except Exception:
+        from lib.cio_reentry_surface_labels import SURFACE_B, stamp as _stamp_scope  # type: ignore
+    return _stamp_scope(out, SURFACE_B)

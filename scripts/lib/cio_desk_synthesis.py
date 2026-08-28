@@ -1126,7 +1126,16 @@ def render_desk_note(data: Optional[dict[str, Any]] = None, *, telegram: bool = 
             f"portfolio impact small. Options (hold / stop-above-BE once reclaimed / trim) stay operator-owned."
         )
         n += 1
-    # Re-entry brief
+    # Re-entry brief — Surface B (desk cash-stage R:R). Not the former-holdings book.
+    try:
+        from scripts.lib.cio_reentry_surface_labels import SURFACE_B, banner as _b_banner
+    except Exception:
+        from lib.cio_reentry_surface_labels import SURFACE_B, banner as _b_banner  # type: ignore
+    lines.append(
+        f"{n}. *Re-entry scope* — {_b_banner(SURFACE_B)}. "
+        "Independent of the former-holdings vs exit-trigger book."
+    )
+    n += 1
     core_cards = reentry.get("core_cards") or [
         c for c in (reentry.get("cards") or []) if c.get("tier") in (None, "core")
     ]
@@ -1412,6 +1421,11 @@ def generate_desk_synthesis_v1() -> dict[str, Any]:
         },
         "reentry_book": {
             "ok": (data.get("reentry_book") or {}).get("ok"),
+            "surface": (data.get("reentry_book") or {}).get("surface"),
+            "scope": (data.get("reentry_book") or {}).get("scope"),
+            "question": (data.get("reentry_book") or {}).get("question"),
+            "precedence": (data.get("reentry_book") or {}).get("precedence"),
+            "not_this_book": (data.get("reentry_book") or {}).get("not_this_book"),
             "stage": (data.get("reentry_book") or {}).get("stage"),
             "actionable_count": (data.get("reentry_book") or {}).get("actionable_count"),
             "core_full": (data.get("reentry_book") or {}).get("core_full"),

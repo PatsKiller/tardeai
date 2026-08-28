@@ -54,7 +54,10 @@ def morning_text(product: dict[str, Any]) -> str:
     reentry = product.get("reentry") or {}
     if reentry.get("count"):
         counts = reentry.get("counts") or {}
-        lines.append(f"Re-entry book: {reentry.get('count')} names {counts}".strip())
+        scope = reentry.get("scope") or "former holdings vs exit trigger"
+        lines.append(
+            f"Re-entry book A ({scope}): {reentry.get('count')} names {counts}".strip()
+        )
     secs = product.get("sector") or []
     if secs:
         lines.append("Sector")
