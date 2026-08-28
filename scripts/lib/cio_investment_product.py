@@ -630,6 +630,57 @@ def collect_case_summaries(
     return out
 
 
+def collect_watch_block_summary(
+    payload: dict[str, Any] | list | None = None,
+) -> dict[str, Any]:
+    """Honest BLOCK histogram for watch items. Does not map BLOCK→READY or fire S7."""
+    empty = {
+        "count": 0,
+        "by_reason": {},
+        "top": [],
+        "ready_count": 0,
+        "class": "D",
+        "fires_s7": False,
+        "note": "BLOCK is honest; not mapped to READY; does not fire S7",
+    }
+    try:
+        from scripts.lib.data_broker.watch_intelligence import (
+            list_watch_intelligence,
+            project_watch_intelligence_for_cio,
+        )
+        if payload is None:
+            payload = list_watch_intelligence({})
+        proj = project_watch_intelligence_for_cio(payload)
+    except Exception as exc:
+        empty["quality"] = "DATA_UNAVAILABLE"
+        empty["reason"] = type(exc).__name__
+        return empty
+    items = [r for r in (proj.get("items") or []) if isinstance(r, dict)]
+    blocked = [r for r in items if str(r.get("status") or "") == "BLOCK"]
+    by_reason: dict[str, int] = {}
+    top: list[dict[str, Any]] = []
+    for r in blocked:
+        reason = str(r.get("map_reason") or "unknown")
+        by_reason[reason] = by_reason.get(reason, 0) + 1
+        if len(top) < 8:
+            top.append({
+                "symbol": r.get("symbol"),
+                "reason": reason,
+                "trade_ai_state": r.get("trade_ai_state"),
+                "class": "D",
+            })
+    ready_n = sum(1 for r in items if str(r.get("status") or "") in {"READY", "GO", "NEAR"})
+    return {
+        "count": len(blocked),
+        "by_reason": by_reason,
+        "top": top,
+        "ready_count": ready_n,
+        "class": "D",
+        "fires_s7": False,
+        "note": "BLOCK is honest; not mapped to READY; does not fire S7",
+    }
+
+
 def _new_if_action(row: dict[str, Any]) -> str:
     """Decision language stays IF / WATCH / AVOID. Never invent a buy."""
     v = str(row.get("verdict") or "").upper()
@@ -1330,6 +1381,7 @@ def build_product(
         root=root_path, holdings=holdings, watch_symbols=watch_syms, now=now,
     )
     case_summaries = collect_case_summaries(root=root_path)
+    watch_block_summary = collect_watch_block_summary()
     verdicts = [r for r in reentry.get("names") or [] if r.get("governed_verdict")]
     merged = apply_governed_verdicts(queue, verdicts)
     recs = _recommendations(actions, temperament)
@@ -1353,6 +1405,7 @@ def build_product(
         },
         "case_summaries": case_summaries,
         "research_cases": case_summaries,
+        "watch_block_summary": watch_block_summary,
         "thesis_universe": thesis_metrics,
         "thesis_changes_today": thesis_changes_today,
         "governed_verdicts": verdicts,
