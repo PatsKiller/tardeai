@@ -1402,7 +1402,7 @@ def build_product(
     watch_block_summary = collect_watch_block_summary()
     verdicts = [r for r in reentry.get("names") or [] if r.get("governed_verdict")]
     merged = apply_governed_verdicts(queue, verdicts)
-    recs = _recommendations(actions, temperament)
+    recs = _recommendations(actions, temperament, holdings=holdings)
     product = {
         "schema": SCHEMA,
         "as_of": _iso(now),
@@ -1493,7 +1493,11 @@ def overlay_step2_surfaces(
     return p
 
 
-def _recommendations(actions: dict[str, Any], temperament: dict[str, Any]) -> list[dict[str, Any]]:
+def _recommendations(
+    actions: dict[str, Any],
+    temperament: dict[str, Any],
+    holdings: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
     recs = [{
         "action": "NO_ACTION",
         "action_type": "ADVISORY",
@@ -1524,7 +1528,8 @@ def _recommendations(actions: dict[str, Any], temperament: dict[str, Any]) -> li
                 "evidence_refs": [f"book:{key}:{row.get('symbol')}"],
                 "symbol": row.get("symbol"),
             })
-    return recs
+    from scripts.lib.cio_advisory_admissibility import gate_recommendation_rows
+    return gate_recommendation_rows(recs, holdings=holdings)
 
 
 def _nearest_reentries(reentry: dict[str, Any], limit: int = 3) -> list[str]:

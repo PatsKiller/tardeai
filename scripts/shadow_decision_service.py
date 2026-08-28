@@ -763,6 +763,7 @@ def evaluate(symbol: str, conn=None, *, origin="on_demand", requested_by="operat
     holdings_path = PROJECT_ROOT / "data" / "portfolios" / "state" / "holdings.json"
     holdings = json.loads(holdings_path.read_text()) if holdings_path.exists() else {}
     ownership = pt.ownership_from_holdings(sym, holdings)
+    ownership_block = ownership.to_block()
 
     dq = assess_data_quality(facts, event)
 
@@ -775,6 +776,14 @@ def evaluate(symbol: str, conn=None, *, origin="on_demand", requested_by="operat
               "confidence": float(r[1]) if r and r[1] is not None else None,
               "generated_at": str(r[2]) if r else None,
               "note": "LEGACY SUMMARY — NOT THE DECISION SOURCE OF TRUTH"}
+    legacy_ok, legacy_why = pt.is_recommendation_admissible(
+        ownership=ownership, recommendation=legacy.get("recommendation") or "")
+    if not legacy_ok:
+        legacy["blocked_original"] = legacy.get("recommendation")
+        legacy["recommendation"] = "NO_ACTION"
+        legacy["blocked"] = True
+        legacy["block_reason"] = legacy_why
+        legacy["to_block"] = ownership_block
 
     # ── BLIND MODEL PASS (Stage B) ────────────────────────────────────────────
     # The models see the facts and NO verdict from anyone — not the legacy
@@ -813,7 +822,7 @@ def evaluate(symbol: str, conn=None, *, origin="on_demand", requested_by="operat
                            for c in (facts.get("catalysts") or [])],
                 events={"earnings_state": event.state,
                         "earnings_date": event.date.isoformat() if event.date else None},
-                ownership=ownership.to_dict(),
+                ownership={**ownership.to_dict(), "to_block": ownership_block},
                 options_summary=None,
                 data_quality=dq)
             mr = brr.run_blind_pass(blind_facts)
@@ -935,7 +944,9 @@ def evaluate(symbol: str, conn=None, *, origin="on_demand", requested_by="operat
         # Fundamentals recency, carried so packet invalidation can tell when a
         # thesis rests on newer/older fundamentals than the packet was built on.
         "fundamentals_as_of": (facts.get("fundamentals") or {}).get("fundamentals_as_of"),
-        "ownership": ownership.to_dict(),
+        "ownership": {**ownership.to_dict(), "to_block": ownership_block},
+        "recommendation_admissible": bool(legacy_ok),
+        "recommendation_admissible_reason": legacy_why or "",
         "horizons": {
             "tactical": {
                 "direction": (reconciled or {}).get("direction", {}).get("tactical", "UNRESOLVED"),
