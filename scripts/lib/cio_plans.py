@@ -304,6 +304,7 @@ class CIOPlanStore:
             "material", "evidence_domains", "hermes_suggested", "hermes_challenge_id",
             "hermes_research_id", "hermes_result_id", "research_id",
             "hermes_completed_ts", "completed_ts",
+            "status_reason",
             "prompt_version", "prompt_content_hash", "prompt_alias",
             "eval_structural_score", "eval_quality_total", "eval_judge_total", "eval_judge_scores", "judge_prompt_version", "judge_scored_ts",
         }
