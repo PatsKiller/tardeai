@@ -309,6 +309,12 @@ def build_operator_product(*, root: Path | str | None = None, persist: bool = Fa
         "risk": brief.get("risk") or {"note": "risk surface is the standing decision list plus holdings last-known-good"},
         "watch": opportunity.get("watch") or brief.get("watch") or [],
         "watch_block_summary": brief.get("watch_block_summary") if isinstance(brief.get("watch_block_summary"), dict) else {},
+        "new_position_if": list(
+            ((brief.get("action_book") or {}).get("NEW_POSITION_IF") if isinstance(brief.get("action_book"), dict) else None)
+            or brief.get("new_position_if")
+            or []
+        ),
+        "temperament": brief.get("temperament") if isinstance(brief.get("temperament"), dict) else {},
         "reentry": {
             "count": reentry.get("count"),
             "counts": reentry.get("counts"),
