@@ -1071,6 +1071,29 @@ def eval_s8(evidence: dict[str, Any], cfg: dict[str, Any]) -> Optional[dict[str,
 # ── Detector orchestration ──────────────────────────────────────────────────
 
 
+def fairness_order_s3(
+    cands_sorted: list[dict[str, Any]],
+    priority: dict[str, int],
+) -> list[dict[str, Any]]:
+    """If S3 candidates exist, guarantee one S3 sits before the persist cap.
+
+    S5/S6 stay first. Does not raise notify or expand max_plans.
+    """
+    s3 = [c for c in cands_sorted if str(c.get("situation_type")) == "S3_REENTRY_CANDIDATE"]
+    if not s3:
+        return list(cands_sorted)
+    first = s3[0]
+    rest = [c for c in cands_sorted if c is not first]
+    insert_at = 0
+    for i, c in enumerate(rest):
+        pr = priority.get(str(c.get("situation_type")), 9)
+        if pr > 1:
+            insert_at = i
+            break
+        insert_at = i + 1
+    return rest[:insert_at] + [first] + rest[insert_at:]
+
+
 class CIOSituationDetector:
     """Run S1–S8 predicates and persist draft plans (SHADOW)."""
 
@@ -1184,6 +1207,10 @@ class CIOSituationDetector:
         existing = self.plans.find_recent_dedup(st, syms, within_hours=dedup_h)
         if existing:
             return None  # dedup skip
+        if st == "S1_POSITION_LIFECYCLE":
+            for s in syms:
+                if self.plans.list_open_plans(situation_type=st, symbol=s, limit=1):
+                    return None  # skip duplicate open S1 same symbol
         owner = _owner(self.cfg, st)
         # optional goal link
         linked_goals: list[str] = []
@@ -1380,6 +1407,7 @@ class CIOSituationDetector:
             cands,
             key=lambda c: (priority.get(str(c.get("situation_type")), 9), str(c.get("symbols"))),
         )
+        cands_sorted = fairness_order_s3(cands_sorted, priority)
         max_plans = int(self.cfg.get("max_plans_per_pass") or 5)
         max_notify = int(self.cfg.get("max_notify_per_pass") or 3)
         notified = 0
