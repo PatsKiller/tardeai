@@ -1,6 +1,6 @@
 # CIO Wave 2 living scoreboard
 
-GitHub is source of truth. Drive mirror: folder **TradeAI CIO Ops** `1rRSmvAeO37z2PyyrIYtd2C5ngwHsAIqH`. File upsert: **DRIVE=FAIL** (Drive MCP has folder create/search/read only; no file-write tool). Continue.
+GitHub is source of truth. Drive mirror: folder **TradeAI CIO Ops** `1rRSmvAeO37z2PyyrIYtd2C5ngwHsAIqH`. File upsert: **gog --replace** on blob IDs (MCP cannot write). Native Doc/Sheet IDs stay put.
 
 Authority: **READ_ONLY_ADVISORY**. MBI: **0**. INTERDICT: **0** (left as found).
 
@@ -12,23 +12,25 @@ Resume cursor: first slice with status != DONE.
 
 | Field | Value |
 |-------|--------|
-| CURRENT pin | `26e61633` (#612 slice 00) — Wave 1 closeout still contained |
-| origin/main | `26e61633` |
+| CURRENT pin | `6616d618` (#613 slice 01) — this slice 02 PR not promoted yet |
+| origin/main | `6616d618` |
 | `/api/v2/health` | 200 |
 | `/v3/cio` | 200 |
-| `/api/v3/cio/home` | 200 · earnings 10 · NEW_POSITION_IF 5 · telegram_sent false · delivery dashboard |
+| `/api/v3/cio/home` | 200 · earnings 10 · NEW_POSITION_IF 5 · telegram_sent false |
 | plans | draft 319 · proposed 217 · accepted 1 · cancelled 269 (hygiene 267) · with_hermes 323 |
 | CASE_SUMMARY ACTIVE | 323 |
 | RESEARCH_REFERENCE | 443 (CANDIDATE) |
 | earnings | 10 |
-| NEW_POSITION_IF | NKE/PFSI/SH/XLU CURRENT; PRIM UNAVAILABLE |
+| NEW_POSITION_IF | NKE/PFSI/PRIM/SH/XLU **CURRENT** |
 | cash | PRESENT $630,784.82 |
 | watch_block | 21 not_promotion_grade · ready 4 · fires_s7=false |
 | checkpoints | 152 (Wave 1 slice 8) |
+| holdings_thesis_coverage | held_n=19 current=19 unavail=0 |
 | exec voice | `[T]` / `[D] Nothing requires action today.` |
-| reentry | Surface A · former holdings vs exit trigger |
-| DRIVE | FAIL (no file-write tool; folder created) |
+| reentry | Surface A · 67 former names |
+| DRIVE | OK via gog (blobs `--replace`; native create-only) |
 | rails | MBI=0 · notify not enabled · no broker write · no ROTATE |
+| slice 02 would/applied | would_mint CURRENT · applied 1 `symbol_prim@v1` · telegram_sent false |
 
 ---
 
@@ -65,9 +67,9 @@ Leftovers still forbidden unless a Wave 2 slice explicitly allows a read-only st
 
 | NN | Title | Status | PR | sha | Rails | Proof |
 |----|-------|--------|----|-----|-------|-------|
-| 00 | bootstrap scoreboard + Drive | DONE | #612 | `26e61633` | MBI=0 INTERDICT=0 | scoreboard on CURRENT; Drive folder yes; file upsert FAIL |
-| 01 | held-universe thesis card | DONE | *(this PR)* | *(fill after promote)* | MBI=0 | held_n=19 current=19 unavail=0; no fake thesis |
-| 02 | PRIM thesis hole | PENDING | | | | |
+| 00 | bootstrap scoreboard + Drive | DONE | #612 | `26e61633` | MBI=0 INTERDICT=0 | scoreboard on CURRENT; Drive folder yes |
+| 01 | held-universe thesis card | DONE | #613 | `6616d618` | MBI=0 | held_n=19 current=19 unavail=0; no fake thesis |
+| 02 | PRIM thesis hole | DONE | *(this PR)* | *(fill after promote)* | MBI=0 notify off | sandbox research minted; PRIM CURRENT; applied 1 |
 | 03 | observational S1 held-without-plan | PENDING | | | | |
 | 04 | Surface A former-sold status | PENDING | | | | |
 | 05 | Watch READY/NEAR named; fires_s7=false | PENDING | | | | |
