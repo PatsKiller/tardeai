@@ -650,10 +650,12 @@ def _stops_management_api_build(query=None):
     for h in holds:
         sym = str(h.get("symbol", "")).upper()
         acct = str(h.get("account", ""))
-        if h.get("is_cash") or not sym:
+        if h.get("is_cash") or not sym or sym in ("CASH", "SPAXX", "VMFXX", "USD"):
             continue
         px = _f(h.get("current_price")) or _f(h.get("price"))
         qty = _f(h.get("shares")) or 0.0
+        if qty <= 0:
+            continue
         adv = advised.get(sym, {})
         ls = live_stops.get((sym, acct)) or {}
         broker_stop = _f(ls.get("stop_price"))
@@ -666,19 +668,24 @@ def _stops_management_api_build(query=None):
             broker_stop = round(px * (1 - broker_trail_off / 100.0), 2)
         planned_stop = adv.get("stop")
         stop = broker_stop if broker_stop is not None else planned_stop
-        if stop is None or px is None or qty <= 0:
-            continue
+        # Unprotected lots (no broker stop AND no 5-day advisory) MUST still appear as NO STOP.
+        # Dropping them hid SCHD schwab_rollover_ira (~$351k) from the desk.
+        missing_quote = px is None
+        unprotected_no_advisory = broker_stop is None and planned_stop is None
         atr = adv.get("atr")
         _cb = _f(h.get("cost_basis"))
         basis = (_cb / qty) if (_cb and qty) else adv.get("basis")
-        # distance in $, %, ATR, R
-        dist_dollars = round((px - stop) * qty, 2)
-        dist_pct = round((px - stop) / px * 100, 2) if px else None
-        dist_atr = round((px - stop) / atr, 2) if atr else None
         r_unit = (basis - planned_stop) if (basis and planned_stop and basis > planned_stop) else None
-        dist_r = round((px - stop) / r_unit, 2) if r_unit else None
-        unreal_dollars = round((px - basis) * qty, 2) if basis else None
-        unreal_r = round((px - basis) / r_unit, 2) if (basis and r_unit) else None
+        # distance in $, %, ATR, R — null-safe; never invent a stop price.
+        if stop is not None and px is not None:
+            dist_dollars = round((px - stop) * qty, 2)
+            dist_pct = round((px - stop) / px * 100, 2) if px else None
+            dist_atr = round((px - stop) / atr, 2) if atr else None
+            dist_r = round((px - stop) / r_unit, 2) if r_unit else None
+        else:
+            dist_dollars = dist_pct = dist_atr = dist_r = None
+        unreal_dollars = round((px - basis) * qty, 2) if (basis and px is not None) else None
+        unreal_r = round((px - basis) / r_unit, 2) if (basis and r_unit and px is not None) else None
         # Live P&L override (operator 2026-07-06): stale advisories miss intraday runners — re-check the
         # +9% / above-SMA rule against the current quote, not only trail_recommended from the last cron.
         should_trail = bool(adv.get("trail")) and not is_trailing
@@ -699,11 +706,18 @@ def _stops_management_api_build(query=None):
         # broker-aware wording: Fidelity has no trading API, so its stops are manual/monitored, not "at broker"
         naked_reason = ("manual/monitored stop not armed (Fidelity — no broker API)" if is_fidelity
                         else "advised stop not placed at broker")
-        divergence = ("planned only — no active stop" if naked
+        if unprotected_no_advisory:
+            naked_reason = ("no live or recorded stop (Fidelity — no broker API)" if is_fidelity
+                            else "no broker stop and no advisory")
+        divergence = ("no stop on this lot" if unprotected_no_advisory
+                      else "planned only — no active stop" if naked
                       else "broker looser than advised" if (broker_stop is not None and planned_stop is not None
                                                             and broker_stop < planned_stop - 0.01) else None)
         stop_source = ls.get("stop_source") or ("planned" if planned_stop is not None else "none")
-        heat_contrib = round((max(dist_dollars, 0) / total_risk * heat_pct), 2) if total_risk else None
+        heat_contrib = (round((max(dist_dollars, 0) / total_risk * heat_pct), 2)
+                        if (total_risk and dist_dollars is not None) else None)
+        row_at_risk = (round(max(dist_dollars, 0), 2) if dist_dollars is not None
+                       else (round(px * qty, 2) if (unprotected_no_advisory and px is not None) else 0.0))
         # Stop order qty vs shares held — GTC stops do NOT auto-resize after buys/trims.
         stop_qty = _f(ls.get("stop_qty") if ls.get("stop_qty") is not None else ls.get("qty"))
         _coverage = ls.get("coverage")
@@ -737,7 +751,7 @@ def _stops_management_api_build(query=None):
         _price_vs_cons_usd = None
         _cons = consensus_targets.get(sym) if consensus_targets else None
         _cons_mean = (_cons or {}).get("target_mean")
-        if _cons_mean:
+        if _cons_mean and px is not None:
             with_street_consensus_n += 1
             _price_vs_cons = price_vs_consensus_pct(px, _cons_mean)
             _price_vs_cons_usd = vs_consensus_dollars(px, _cons_mean)
@@ -787,6 +801,14 @@ def _stops_management_api_build(query=None):
                 pass
 
         # Hard safety overrides (never relaxed by regime — protocol §7 kill-switch / heat cap)
+        if unprotected_no_advisory:
+            reasons.append(naked_reason)
+            if missing_quote:
+                reasons.append("missing_quote")
+            level = _merge_alert_level(level, "red")
+            _policy_suggestions = list(_policy_suggestions or []) + [
+                "Review and place a protective stop via 2FA (Schwab) — no stop price was invented."
+            ]
         if naked and not is_active_trade:
             reasons.append(("core hold: " if not is_fidelity else "") + naked_reason)
             level = _merge_alert_level(level, "yellow")
@@ -807,7 +829,8 @@ def _stops_management_api_build(query=None):
 
         if level:
             counts[level] += 1
-        total_open_risk += max(dist_dollars, 0)
+        if dist_dollars is not None:
+            total_open_risk += max(dist_dollars, 0)
         # Who recommended fixed vs trailing (the advisory is produced by an LLM lane; model_used says which).
         _rm = str(adv.get("rec_model") or "").lower()
         _rec_source = ("Grok · external LLM" if "grok" in _rm
@@ -818,9 +841,15 @@ def _stops_management_api_build(query=None):
         _narr, _next, _proj = _stop_row_narrative(
             sym=sym, is_fidelity=is_fidelity, has_active_stop=(broker_stop is not None), broker_stop=broker_stop,
             planned_stop=planned_stop, current_price=px, qty=qty, distance_pct=dist_pct, distance_atr=dist_atr,
-            dollars_at_risk=round(max(dist_dollars, 0), 2), is_trailing=is_trailing,
+            dollars_at_risk=row_at_risk, is_trailing=is_trailing,
             trailing_should_be_active=should_trail, trail_pct=_trail_pct, trail_trigger=_trail_trigger,
             divergence=divergence, alert_level=level, naked=naked, unrealized_dollars=unreal_dollars)
+        if unprotected_no_advisory and not _next:
+            venue = "a Fidelity manual ticket (no broker API)" if is_fidelity else "🔒 Set 2FA"
+            _mv = f"${row_at_risk:,.0f}" if row_at_risk else "this lot"
+            _narr = (f"No live broker stop and no recent protection advisory — {_mv} is unprotected.")
+            _next = f"Place a protective stop via {venue}. Desk listed the lot; no stop price was invented."
+            _proj = None
         # Size mismatch overrides next_action — methodology "keep" is wrong when stop qty lags a size-up.
         if _coverage == "partial" and stop_qty is not None:
             _tgt = int(qty) if abs(qty - int(qty)) < 1e-6 else qty
@@ -864,7 +893,7 @@ def _stops_management_api_build(query=None):
             "current_price": px, "qty": qty, "stop_qty": stop_qty, "coverage": _coverage,
             "broker_stop": broker_stop, "planned_stop": planned_stop, "stop": stop, "divergence": divergence,
             "distance_dollars": dist_dollars, "distance_pct": dist_pct, "distance_atr": dist_atr, "distance_r": dist_r,
-            "dollars_at_risk": round(max(dist_dollars, 0), 2),
+            "dollars_at_risk": row_at_risk,
             "unrealized_dollars": unreal_dollars, "unrealized_r": unreal_r,
             # Realized P/L if this stop FILLS at its trigger — the outcome the
             # operator decides on (a near-trigger on a deep loser is capitulation;
@@ -934,6 +963,12 @@ def _stops_management_api_build(query=None):
                      "action": r.get("next_action"), "projection": r.get("projection"),
                      "dollars_at_risk": r.get("dollars_at_risk")} for r in _actionable[:3]]
     _schwab_holdings = sum(1 for h in holds if str(h.get("account", "")).startswith("schwab") and not h.get("is_cash"))
+    _non_cash = sum(
+        1 for h in holds
+        if not h.get("is_cash")
+        and str(h.get("symbol") or "").upper() not in ("", "CASH", "SPAXX", "VMFXX", "USD")
+        and ((_f(h.get("shares")) or 0.0) > 0)
+    )
     _broker_degraded = (_schwab_holdings > 0 and (not _live_read_ok or bool(_live_stops_meta.get("degraded"))))
     import datetime as _dt
     return {
@@ -945,6 +980,8 @@ def _stops_management_api_build(query=None):
         "summary": {"total_open_risk": round(total_open_risk, 2), "portfolio_heat_pct": heat_pct,
                     "heat_cap": HEAT_CAP, "yellow": counts["yellow"], "amber": counts["amber"], "red": counts["red"],
                     "trailing_not_active": trailing_not_active, "positions": len(rows),
+                    "non_cash_holdings": _non_cash,
+                    "omitted": max(0, _non_cash - len(rows)),
                     "broker_stops_active": broker_active, "no_stop": len(rows) - broker_active,
                     "stop_over_consensus": stop_over_consensus_n,
                     "with_street_consensus": with_street_consensus_n,
