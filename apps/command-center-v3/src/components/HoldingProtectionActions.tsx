@@ -285,7 +285,8 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
       </div>
     )
   }
-  if (!stop && !needsSellAll && !logic.isFundLike && logic.liveStop == null && !liveResolved.hasLiveBrokerOrder) return null
+  // Naked equity with no 5-day advisory (e.g. SCHD schwab_rollover_ira) must still show
+  // the 2FA panel. Operator types Stop $ / Trail %; we do not invent a price.
 
   // Stop qty vs held — GTC does not auto-resize after size-up (live order qty from broker).
   const stopCoverage = liveResolved.hasLiveBrokerOrder
@@ -360,6 +361,16 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
       const useQty = opts?.qtyOverride != null && Number.isFinite(opts.qtyOverride) ? opts.qtyOverride : qty
       const useStop = opts?.stopPriceOverride !== undefined ? opts.stopPriceOverride : (kind === 'MARKET' ? null : advised.advisoryStop)
       const useTrail = opts?.trailPctOverride !== undefined ? opts.trailPctOverride : advised.trailPct
+      if ((kind === 'STOP' || kind === 'STOP_LIMIT') && useStop == null) {
+        setMsg('⛔ Enter a stop $ — this lot has no advisory price (none was invented).')
+        setBusy(false)
+        return
+      }
+      if ((kind === 'TRAILING' || kind === 'TRAILING_LIMIT') && useTrail == null) {
+        setMsg('⛔ Enter a trail % — this lot has no advisory trail (none was invented).')
+        setBusy(false)
+        return
+      }
       const replaceExtra = opts?.forceReplaceId
         ? { replace_order_id: opts.forceReplaceId }
         : resolveReplaceParams(opts?.liveSnap ?? effectiveConfirmed, kind).replaceBody
@@ -539,7 +550,7 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
   const inApprove = !!intentId && !sellAllDone
   // When broker open-orders read failed for this account, never arm place/replace/2FA —
   // unknown must stay visibly unknown (no duplicate-stop permission).
-  const showProtect = stop != null && !logic.isFundLike && !(needsSellAll && isFractional && Math.floor(qty) < 1) && !brokerReadDegraded
+  const showProtect = !logic.isFundLike && !(needsSellAll && isFractional && Math.floor(qty) < 1) && !brokerReadDegraded
   // Hard backend gates surfaced from the read-only readiness snapshot. These genuinely prevent a safe live
   // request, so they ALSO disable the button (with a clear reason) — not just the data gates in buildStopLogic.
   // Preflight-not-run and active-approval are advisory (shown in the readiness panel), since the per-order 2FA
