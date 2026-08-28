@@ -449,6 +449,17 @@ function derivePrimaryCta(r: Row): PrimaryCta {
       secondary: 'Adjust stop…',
     }
   }
+  if (!r.has_active_stop && r.planned_stop == null) {
+    return {
+      label: `Set stop via ${via}`,
+      autoStage: false,
+      tone: 'red',
+      reason: r.next_action && !/^(Monitor|None|Trail)/.test(r.next_action)
+        ? r.next_action
+        : 'No live broker stop and no advisory — open adjust to choose a level. No stop price was invented.',
+      secondary: 'Adjust stop…',
+    }
+  }
   if (!r.has_active_stop && r.planned_stop != null) {
     if (r.trail_recommended || r.trailing_should_be_active) {
       const trailBit = r.trail_pct != null ? ` ${r.trail_pct}%` : ''
@@ -468,7 +479,7 @@ function derivePrimaryCta(r: Row): PrimaryCta {
       secondary: 'Adjust stop…',
     }
   }
-  if (r.trailing_should_be_active) {
+  if (r.has_active_stop && r.trailing_should_be_active) {
     const trailBit = r.trail_pct != null ? ` ${r.trail_pct}%` : ''
     return {
       label: `Trail${trailBit} via ${via}`,
