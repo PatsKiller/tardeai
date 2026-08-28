@@ -10,12 +10,14 @@ Posture: `READ_ONLY_ADVISORY`, `MBI 0`. This census changed no code.
 
 Live release measured: `9783395a-main-exact-phase2-20260828-082142`.
 
-## A note on the brief
+## Provenance of this document
 
-`DECISION_PROVENANCE_MATRIX_DRAFT.md` does not exist in this repository, at that path
-or any other, in the working tree or anywhere in git history `[VERIFIED]`. The
-vocabulary below is therefore taken from the Phase 9 brief itself, which defines it
-completely. Reported once; no further comment.
+The draft exists as an operator-held document; it is **not in this repository**, at that
+path or any other, in the working tree or anywhere in git history `[VERIFIED]`. The
+operator supplied it on 2026-08-28, after the first census pass. Its vocabulary and the
+Phase 9 brief's agree, so the classifications below are unaffected. The reconciliation
+against the draft is the final section of this document, and it resolves the one row the
+draft marked unresolved.
 
 ## Vocabulary
 
@@ -179,5 +181,122 @@ Two structural observations follow, both for the operator:
 2. **Whether there *should* be an A-class field is a scoping decision, not a defect.**
    Where the model output currently goes is the subject of P9.1 and is deliberately not
    answered here.
+
+---
+
+# Reconciliation against the operator's draft (2026-08-28)
+
+The draft was supplied after the first census pass. Its vocabulary matches, so no
+classification changed. Six rows are affected.
+
+## 1. The one row the draft marked unresolved — **RESOLVED**
+
+> *"Item 8, self-tagged `(INFERENCE)` — **M or A — unresolved** — the only
+> non-deterministic sentence emitted in 24h; subject was a `ModuleNotFoundError`"*
+
+**It is A. Genuinely agent-originated — and produced entirely outside this system**
+`[VERIFIED]`.
+
+The evening packet is not a report. **It is a prompt.** `aegis_evening_packet.py:186-198`
+builds it:
+
+```
+FRESH SESSION. Do not inherit prior conversation.
+Read ONLY this bounded packet file and reply with 'Aegis Evening Scan'.
+Rules:
+- Maximum 8 findings.
+- Sections: protection / CIO-reentry / research-news / runtime / freshness.
+```
+
+Three facts fix the identification beyond doubt:
+
+- the live packet carries `max_findings: 8` `[VERIFIED]`, matching "Items 1–7 … Item 8"
+  exactly;
+- its `instructions` name the five sections the operator saw;
+- **no `(FACT)` / `(INFERENCE)` line tagging exists anywhere in this codebase**
+  `[VERIFIED]` — grepping every script returns only unrelated matches (entity-type
+  inference, options positioning, financial-senses source types).
+
+The items are written by the OpenClaw Aegis session that reads the packet. This repository
+composes the prompt and never sees the reply.
+
+### What that does to the headline count
+
+The census counted **A = 0**, and that stands *for fields this system produces*. The
+reconciled statement is sharper and worse:
+
+> **A = 0 inside the pipeline. A = 1 arriving from outside it, ungated.**
+
+The single piece of genuine judgment the operator receives each day is produced by a
+component that none of this system's provenance, gating, persistence, or lineage
+machinery covers. It is not validated by a schema, not recorded in the run store, not
+counted in `MODEL_CALL_RECORDED`, and not reproducible from anything stored here. That
+is why P9.1 found no model call and this matrix found no A field, while the operator
+correctly observed one non-deterministic sentence: **both are true, and they are about
+different components.**
+
+It also explains the subject of that sentence. An external agent given a bounded packet
+and told to find at most 8 things will report what is visibly wrong in the packet — and
+what was visibly wrong was a `ModuleNotFoundError`. The judgment is real; the material it
+was given to judge was runtime diagnostics.
+
+## 2. `(FACT)` / `(INFERENCE)` self-tagging — worth generalising, but there is nothing yet to tag
+
+The draft calls this *"the closest thing the system has to this matrix, and worth
+generalising rather than replacing."* Agreed, with one correction: **the tagging is not
+the system's.** It is the external agent's convention, applied to its own output.
+
+Generalising it into the pipeline means adopting the vocabulary — which is what this
+matrix does. But a pipeline-side `(INFERENCE)` tag would currently have nothing to mark:
+every pipeline field is D, T, or S.
+
+## 3. Command Center `/v3/cio` — no longer unclassified
+
+The draft says *"Not yet classified. P9.0 deliverable."* It is classified above: 25
+`REQUIRED_SECTIONS`, each with a named producer.
+
+## 4. Position `as_of` lag — larger than the draft records
+
+The draft: *"`as_of` lagged the last reprice by ~3.3h at time of send."* Measured
+`[VERIFIED]`:
+
+```
+holdings.json   as_of         2026-08-26
+                generated_at  2026-08-28 06:15:01 ET
+position-level  as_of         2026-08-03, 2026-08-04, 2026-08-26
+```
+
+Two days at document level, up to **25 days** at position level. The 3.3h figure was
+`holdings_age_hours` from the packet's health block — a different quantity, and the more
+flattering one.
+
+## 5. Cross-surface disagreement — answered in P9.3
+
+The draft's open question is resolved: **two independent computations**, proven by two
+separate `build_reentry_book` definitions with disjoint signatures. But they compute
+*different quantities* under one name — see `docs/audits/P93_TWO_SURFACES_ONE_BOOK_2026-08-28.md`.
+
+## 6. Capability boundaries — deferred to P9.5, one correction
+
+The draft's four candidate boundaries are the right shape. One is already contradicted by
+evidence gathered in P9.2: the system **does** initiate research on names outside a
+schedule — 184 `S3_REENTRY_CANDIDATE` and 162 `S1_POSITION_LIFECYCLE` situations raised
+it. What it does not do is let that research change an action
+(`POSITIVE_DELTA_MAY_RAISE_COMPLETENESS_NOT_ACTION`). The distinction matters for scoping:
+the lane exists and runs; it is barred at the last step.
+
+The full sort into built-and-broken / built-and-unwired / never-built is P9.5.
+
+## 7. The maintenance proposal is feasible
+
+> *"A new operator-facing field without a row here should fail CI, in the same shape as
+> the dark-contract gate."*
+
+The dark-contract gate (#567) is the working precedent, and the shape transfers: enumerate
+fields from the known producers, diff against the rows here, fail on an unexplained new
+one, and seed today's set as inherited. The honest caveat is that "operator-facing field"
+is harder to detect statically than "versioned schema literal" — the gate would need an
+explicit producer registry rather than a regex. That is a real cost and should be scoped,
+not assumed.
 
 ## 🛑 Census complete — held for operator review before P9.1.
