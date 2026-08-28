@@ -83,6 +83,16 @@ def morning_text(product: dict[str, Any]) -> str:
                 )
     elif product.get("catalysts_reason"):
         lines.append(f"Catalysts: {product.get('catalysts_reason')}")
+    earn = product.get("earnings") or []
+    if earn:
+        lines.append(f"Earnings (D): {len(earn)} upcoming")
+    new_if = product.get("new_position_if") or []
+    if new_if:
+        nsyms = [str(x.get("symbol") or "") for x in new_if if isinstance(x, dict) and x.get("symbol")]
+        lines.append("NEW_POSITION_IF: " + ", ".join(nsyms[:5]))
+    cash = product.get("cash") or {}
+    if cash:
+        lines.append(f"Cash temperament: {cash.get('status') or cash.get('cash_pct') or cash.get('note') or 'see Command Center'}")
     cases = product.get("case_summaries") or product.get("research_cases") or {}
     case_items = cases.get("items") if isinstance(cases, dict) else cases
     if case_items:
@@ -100,7 +110,9 @@ def morning_text(product: dict[str, Any]) -> str:
         bit = f" · {', '.join(top_syms[:3])}" if top_syms else ""
         lines.append(f"Research cases (A-context, not action): {n}{bit}")
     lines.append("Open: Command Center → CIO. READ_ONLY_ADVISORY.")
-    return "\n".join(lines).strip()
+    text = "\n".join(lines).strip()
+    # Dashboard brief must never claim a Telegram send.
+    return text.replace("Telegram sent", "dashboard only")
 
 
 def eod_text(product: dict[str, Any]) -> str:
@@ -188,12 +200,17 @@ def command_center_view(product: dict[str, Any]) -> dict[str, Any]:
         "as_of": product.get("as_of"),
         "executive_summary": product.get("executive_summary"),
         "earnings": list(product.get("earnings") or [])[:12],
+        "new_position_if": list(product.get("new_position_if") or [])[:8],
+        "cash": product.get("cash") or {},
+        "temperament": product.get("temperament") or product.get("macro") or {},
         "case_summaries": product.get("case_summaries") or product.get("research_cases") or {
             "banner": "A-context · NON_AUTHORITATIVE · does not change action",
             "class": "A",
             "count": 0,
             "items": [],
         },
+        "telegram_sent": False,
+        "delivery": "dashboard",
         "decisions": decisions,
         "history_store": "cio.operator_product.history",
         "hidden_alternative_calculation": False,

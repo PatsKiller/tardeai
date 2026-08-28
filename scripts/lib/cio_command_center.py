@@ -965,6 +965,19 @@ def build_office_home(
         except Exception:
             home["operator_product"] = operator_product
     home["canonical_cio_source"] = "cio.operator_product.current"
+    op = operator_product if isinstance(operator_product, dict) else {}
+    home["earnings"] = list(op.get("earnings") or [])[:12]
+    home["new_position_if"] = list(op.get("new_position_if") or [])[:8]
+    home["cash"] = op.get("cash") or {}
+    home["temperament"] = op.get("temperament") or op.get("macro") or {}
+    home["case_summaries"] = op.get("case_summaries") or op.get("research_cases") or {
+        "banner": "A-context · NON_AUTHORITATIVE · does not change action",
+        "class": "A",
+        "count": 0,
+        "items": [],
+    }
+    home["telegram_sent"] = False
+    home["delivery"] = "dashboard"
     return home
 
 
