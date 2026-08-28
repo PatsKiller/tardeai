@@ -302,7 +302,8 @@ class CIOPlanStore:
             "llm_model", "llm_status", "llm_deferred", "fire_reasons",
             "thesis_version", "thesis_alignment", "multi_domain_summary",
             "material", "evidence_domains", "hermes_suggested", "hermes_challenge_id",
-            "hermes_research_id",
+            "hermes_research_id", "hermes_result_id", "research_id",
+            "hermes_completed_ts", "completed_ts",
             "prompt_version", "prompt_content_hash", "prompt_alias",
             "eval_structural_score", "eval_quality_total", "eval_judge_total", "eval_judge_scores", "judge_prompt_version", "judge_scored_ts",
         }

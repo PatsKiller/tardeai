@@ -895,20 +895,25 @@ class CIORunWorker:
                 specialist_result=specialist_result,
                 hermes_result=hermes_result,
             )
-            if isinstance(result, dict) and cognition:
+            if isinstance(result, dict):
                 result = dict(result)
-                result["persistent_ticker_cognition"] = cognition
-                if any(bool(i.get("recommendation_suppressed")) for i in (cognition.get("items") or [])):
-                    result["recommendation_suppressed"] = True
-                    result["recommendations"] = []
-            self._call_count += 1
-            self._cost_accrued += 0.001
-            if self.run_store and self._run_id:
-                self.run_store.record_model_call(
-                    self._run_id, f"synthesis-{artifact_id}", 0.001,
-                    actor="cio_run_worker",
-                )
-            return {"artifact_id": artifact_id, "result": result, "mode": self.mode}
+                if cognition:
+                    result["persistent_ticker_cognition"] = cognition
+                    if any(bool(i.get("recommendation_suppressed")) for i in (cognition.get("items") or [])):
+                        result["recommendation_suppressed"] = True
+                        result["recommendations"] = []
+                # Injected synthesis_fn is deterministic product build (persist_product),
+                # not a model. Do not stamp CIO_RUN_MODEL_CALL_RECORDED / $0.001.
+                result.setdefault("llm_dispatch", False)
+                result.setdefault("model_calls", 0)
+                result.setdefault("cost_usd", 0.0)
+                result.setdefault("dispatch_kind", "DETERMINISTIC_PRODUCT")
+            return {
+                "artifact_id": artifact_id,
+                "result": result,
+                "mode": self.mode,
+                "llm_dispatch": False,
+            }
 
         synthesis = {
             "artifact_id": artifact_id,
@@ -919,6 +924,10 @@ class CIORunWorker:
             "requires_operator_review": True,
             "snapshot_ref": snapshot.get("snapshot_id"),
             "health_state": "UNKNOWN",
+            "llm_dispatch": False,
+            "model_calls": 0,
+            "cost_usd": 0.0,
+            "dispatch_kind": "DETERMINISTIC_PRODUCT",
         }
         if cognition:
             synthesis["persistent_ticker_cognition"] = cognition
@@ -938,18 +947,13 @@ class CIORunWorker:
                 "top": (run.get("context") or {}).get("top", []),
             }
 
-        if self.run_store and self._run_id:
-            try:
-                self.run_store.record_model_call(
-                    self._run_id, f"synthesis-{artifact_id}", 0.001,
-                    actor="cio_run_worker",
-                )
-            except Exception:
-                pass
-            self._call_count += 1
-            self._cost_accrued += 0.001
-
-        return {"artifact_id": artifact_id, "result": synthesis, "mode": self.mode}
+        # Fallback dict-literal synthesis is also not a model.
+        return {
+            "artifact_id": artifact_id,
+            "result": synthesis,
+            "mode": self.mode,
+            "llm_dispatch": False,
+        }
 
     # ── Step: Write Actions ─────────────────────────────────────────────────
 
