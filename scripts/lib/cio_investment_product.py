@@ -303,6 +303,64 @@ def held_equity_symbols(holdings: dict[str, Any] | None) -> list[str]:
     return uniq
 
 
+def collect_holdings_thesis_coverage(
+    *,
+    holdings: dict[str, Any] | None = None,
+    root: Path | str | None = None,
+) -> dict[str, Any]:
+    """Every currently held equity → CURRENT or UNAVAILABLE. Never fake a thesis."""
+    from scripts.lib.symbol_thesis_attach import thesis_fields_for_symbol
+
+    items: list[dict[str, Any]] = []
+    for sym in held_equity_symbols(holdings):
+        try:
+            th = thesis_fields_for_symbol(sym, root=root)
+        except Exception as exc:
+            th = {
+                "has_current_symbol_thesis": False,
+                "thesis_state": "INSUFFICIENT_DATA",
+                "thesis_unavailable_reason": type(exc).__name__,
+            }
+        has_th = bool(
+            th.get("has_current_symbol_thesis")
+            and (th.get("thesis_summary") or th.get("why_owned_or_watched"))
+        )
+        if has_th:
+            items.append({
+                "symbol": sym,
+                "thesis_status": "CURRENT",
+                "thesis_status_reason": None,
+                "thesis_state": th.get("thesis_state"),
+                "why_owned_or_watched": th.get("why_owned_or_watched"),
+                "class": "D",
+            })
+        else:
+            items.append({
+                "symbol": sym,
+                "thesis_status": "UNAVAILABLE",
+                "thesis_status_reason": (
+                    th.get("thesis_unavailable_reason")
+                    or th.get("thesis_reason")
+                    or th.get("thesis_state")
+                    or "no living symbol thesis"
+                ),
+                "thesis_state": th.get("thesis_state") or "INSUFFICIENT_DATA",
+                "why_owned_or_watched": None,
+                "class": "D",
+            })
+    current_n = sum(1 for i in items if i["thesis_status"] == "CURRENT")
+    return {
+        "held_n": len(items),
+        "current_n": current_n,
+        "unavailable_n": len(items) - current_n,
+        "items": items,
+        "class": "D",
+        "no_fake_thesis": True,
+        "authority": AUTHORITY,
+        "memory_behavior_influence": 0,
+    }
+
+
 def _is_new_name_source(source: Any) -> bool:
     s = str(source or "").strip().lower()
     return any(s == p or s.startswith(p) for p in NEW_NAME_SOURCE_PREFIXES)
@@ -1430,6 +1488,9 @@ def build_product(
         "case_summaries": case_summaries,
         "research_cases": case_summaries,
         "watch_block_summary": watch_block_summary,
+        "holdings_thesis_coverage": collect_holdings_thesis_coverage(
+            holdings=holdings, root=root_path,
+        ),
         "thesis_universe": thesis_metrics,
         "thesis_changes_today": thesis_changes_today,
         "governed_verdicts": verdicts,
@@ -1484,6 +1545,9 @@ def overlay_step2_surfaces(
     cases = collect_case_summaries(root=root_path)
     p["case_summaries"] = cases
     p["research_cases"] = cases
+    p["holdings_thesis_coverage"] = collect_holdings_thesis_coverage(
+        holdings=holdings, root=root_path,
+    )
     temp = dict(p.get("temperament") or {})
     metrics = extract_cash_metrics(holdings)
     if metrics.get("total_cash") is not None or metrics.get("cash_pct") is not None:

@@ -12,8 +12,8 @@ Resume cursor: first slice with status != DONE.
 
 | Field | Value |
 |-------|--------|
-| CURRENT pin | `cc2c44d3` (#611 Wave 1 closeout) until slice 00 promote |
-| origin/main | `cc2c44d3` |
+| CURRENT pin | `26e61633` (#612 slice 00) — Wave 1 closeout still contained |
+| origin/main | `26e61633` |
 | `/api/v2/health` | 200 |
 | `/v3/cio` | 200 |
 | `/api/v3/cio/home` | 200 · earnings 10 · NEW_POSITION_IF 5 · telegram_sent false · delivery dashboard |
@@ -65,8 +65,8 @@ Leftovers still forbidden unless a Wave 2 slice explicitly allows a read-only st
 
 | NN | Title | Status | PR | sha | Rails | Proof |
 |----|-------|--------|----|-----|-------|-------|
-| 00 | bootstrap scoreboard + Drive | DONE | *(this PR)* | *(fill after promote)* | MBI=0 INTERDICT=0 | files created; Drive folder yes; file upsert FAIL |
-| 01 | held-universe thesis card | PENDING | | | | |
+| 00 | bootstrap scoreboard + Drive | DONE | #612 | `26e61633` | MBI=0 INTERDICT=0 | scoreboard on CURRENT; Drive folder yes; file upsert FAIL |
+| 01 | held-universe thesis card | DONE | *(this PR)* | *(fill after promote)* | MBI=0 | held_n=19 current=19 unavail=0; no fake thesis |
 | 02 | PRIM thesis hole | PENDING | | | | |
 | 03 | observational S1 held-without-plan | PENDING | | | | |
 | 04 | Surface A former-sold status | PENDING | | | | |

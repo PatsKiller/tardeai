@@ -10,8 +10,8 @@
     "folder_id": "1rRSmvAeO37z2PyyrIYtd2C5ngwHsAIqH"
   },
   "now": {
-    "current_pin": "cc2c44d31267e4256226e698e97110c09ec3f9e2",
-    "current_pr": 611,
+    "current_pin": "26e61633f9ed14840f64fa953c6bfdbad0e0e934",
+    "current_pr": 612,
     "health": 200,
     "cio": 200,
     "home": 200,
@@ -35,8 +35,8 @@
   },
   "wave1_closed": true,
   "slices": {
-    "00": {"title": "bootstrap scoreboard + Drive", "status": "DONE", "pr": null, "sha": null},
-    "01": {"title": "held-universe thesis card", "status": "PENDING"},
+    "00": {"title": "bootstrap scoreboard + Drive", "status": "DONE", "pr": 612, "sha": "26e61633f9ed14840f64fa953c6bfdbad0e0e934"},
+    "01": {"title": "held-universe thesis card", "status": "DONE", "pr": null, "sha": null, "live": "held_n=19 current=19 unavail=0"},
     "02": {"title": "PRIM thesis hole", "status": "PENDING"},
     "03": {"title": "observational S1 held-without-plan", "status": "PENDING"},
     "04": {"title": "Surface A former-sold status", "status": "PENDING"},
