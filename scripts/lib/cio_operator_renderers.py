@@ -40,7 +40,8 @@ def morning_text(product: dict[str, Any]) -> str:
     lines.append("")
     action_now = product.get("action_now") or []
     if action_now:
-        lines.append("ACTION NOW")
+        klass = product.get("action_now_class") or "D"
+        lines.append(f"ACTION NOW [{klass}]")
         for e in action_now[:8]:
             lines.append(render_decision(e))
             lines.append("")
