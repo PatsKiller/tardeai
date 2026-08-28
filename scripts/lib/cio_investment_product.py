@@ -1326,6 +1326,12 @@ def build_action_book(
             "actionability": o.get("actionability"),
             "class": "D",
         })
+        try:
+            from scripts.lib.cio_subject_guid import stamp_row
+            new_if[-1] = stamp_row(new_if[-1], root=root)
+        except Exception:
+            new_if[-1].setdefault("subject_guid", None)
+            new_if[-1].setdefault("identity_status", "UNRESOLVED")
         if len(new_if) >= NEW_NAME_CAP:
             break
     new_if_reason = None

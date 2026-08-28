@@ -737,6 +737,11 @@ def eval_s3(evidence: dict[str, Any], cfg: dict[str, Any], symbol: str | None = 
             "evidence_refs": refs,
             "fire_reasons": [f"reentry_{st}"],
         })
+    try:
+        from scripts.lib.cio_subject_guid import stamp_row
+        out = [stamp_row(c) for c in out]
+    except Exception:
+        pass
     return out
 
 
@@ -1012,6 +1017,11 @@ def eval_s7(evidence: dict[str, Any], cfg: dict[str, Any], symbol: str | None = 
             "evidence_refs": refs,
             "fire_reasons": [f"watch_{st}"],
         })
+    try:
+        from scripts.lib.cio_subject_guid import stamp_row
+        out = [stamp_row(c) for c in out]
+    except Exception:
+        pass
     return out
 
 
