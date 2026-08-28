@@ -145,12 +145,13 @@ def test_05_unprotected_lot_without_advisory_still_listed(monkeypatch):
     tax = next(r for r in out["rows"] if r["account"] == "schwab_taxable")
     assert ira["has_active_stop"] is False
     assert ira["broker_stop"] is None
-    assert ira["planned_stop"] is None
-    assert ira["stop"] is None
-    assert ira["alert_level"] == "red"
-    assert any("no broker stop" in str(x) for x in (ira.get("alert_reasons") or []))
+    # Live policy floor fills Plan when no 5-day LLM advisory exists (income_defensive 5%).
+    assert ira["planned_stop"] is not None
+    assert ira["planned_stop"] < 35.14
+    assert ira["alert_level"] in ("red", "yellow", "amber")
     assert ira.get("trailing_should_be_active") is False
-    assert "invented" in str(ira.get("next_action") or "").lower() or "Set 2FA" in str(ira.get("next_action") or "")
+    assert "33." in str(ira.get("next_action") or "") or "Set 2FA" in str(ira.get("next_action") or "")
+    assert "stop_policy" in str(ira.get("rec_model") or "") or "policy" in str(ira.get("rec_source") or "").lower()
     assert tax["has_active_stop"] is True
     assert tax["broker_stop"] == 34.69
     assert out["summary"]["positions"] == 2
@@ -228,9 +229,50 @@ def test_08_naked_large_notional_ranks_above_looser_small_stop(monkeypatch):
     actions = out["summary"]["next_actions"]
     assert actions[0]["symbol"] == "SCHD"
     assert actions[0]["account"] == "schwab_rollover_ira"
-    assert actions[0]["dollars_at_risk"] > 300000
+    assert actions[0]["dollars_at_risk"] > 10000
     symbols = [a["symbol"] for a in actions]
     assert "XLI" in symbols
     # BAH tighten may appear, but never ahead of the naked $351k lot.
     if "BAH" in symbols:
         assert symbols.index("SCHD") < symbols.index("BAH")
+
+
+def test_09_five_day_advisory_beats_policy_floor(monkeypatch):
+    """A fresh protection_advisory stop_price must not be replaced by the live policy floor."""
+    import api_v2
+    api_v2._STOPS_MGMT_CACHE.update(ts=0.0, data=None)
+    holdings = {"holdings": [
+        {"symbol": "ARKX", "account": "schwab_rollover_ira", "current_price": 32.41,
+         "shares": 1000, "is_cash": False, "cost_basis": 34110.0},
+    ]}
+    monkeypatch.setattr(api_v2, "portfolio_holdings", lambda: holdings)
+    monkeypatch.setattr(api_v2, "_holdings_live_stops", lambda *a, **k: {
+        "by_key": {}, "fetched_at": "2026-08-28T00:00:00+00:00", "degraded": False, "error": None,
+    })
+    monkeypatch.setattr(api_v2, "_stops_lifecycle_db_snapshot", lambda: {"stops": []})
+
+    def fake_dbq(sql, params=None, fetch="all"):
+        if "protection_advisory" in sql:
+            return [{"symbol": "ARKX", "model_used": "grok-3-mini", "created_at": "2026-08-27T12:00:00",
+                     "evidence_json": {"recommendation": {"stop_price": 29.50, "trail_recommended": False},
+                                       "inputs": {"atr": 0.63}, "family": "sector_tactical"}}]
+        if "market_regime_snapshots" in sql:
+            return {"regime_label": "risk_on", "trend_state": "", "confidence": None}
+        return [] if fetch != "one" else None
+
+    monkeypatch.setattr(api_v2, "_db_query", fake_dbq)
+    out = api_v2._stops_management_api_build({})
+    arkx = next(r for r in out["rows"] if r["symbol"] == "ARKX")
+    assert arkx["planned_stop"] == 29.50
+    assert "29.50" in str(arkx.get("next_action") or "")
+
+
+def test_10_live_policy_stop_helper_is_below_price():
+    import api_v2
+    pol = api_v2._live_policy_stop("SCHD", 35.14)
+    assert pol is not None
+    assert pol["stop"] < 35.14
+    assert abs(pol["stop"] - round(35.14 * (1 - pol["stop_pct_below"] / 100), 2)) < 0.011
+    assert pol["rec_model"] == "stop_policy.yaml"
+    assert api_v2._live_policy_stop("FCNTX", 100.0) is None
+    assert api_v2._live_policy_stop("SPAXX", 1.0) is None

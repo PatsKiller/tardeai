@@ -47,7 +47,7 @@ type Row = {
   direction?: 'long' | 'short'; narrative?: string | null; next_action?: string | null; projection?: string | null
   rec_evidence?: unknown[]; rec_data_i_doubt?: string | null
   rec_at?: string | null; holdings_llm_at?: string | null; next_earnings_date?: string | null
-  stop_curation?: { grade?: string; recommendation?: string; rr_assessment?: string; evidence?: unknown[]; data_i_doubt?: string | null; summary?: string } | null
+  stop_curation?: { grade?: string; recommendation?: string; suggested_action?: string; rr_assessment?: string; evidence?: unknown[]; data_i_doubt?: string | null; summary?: string } | null
   holdings_llm_health?: string | null; holdings_llm_evidence?: unknown[]; holdings_llm_data_i_doubt?: string | null
   consensus_target_mean?: number | null; consensus_target_high?: number | null; consensus_target_low?: number | null
   consensus_analysts?: number | null; consensus_stale?: boolean
@@ -295,6 +295,7 @@ function ReasonsSubRow({ r }: { r: Row }) {
           {r.stop_curation && ((r.stop_curation.evidence?.length ?? 0) > 0 || (r.stop_curation.data_i_doubt && r.stop_curation.data_i_doubt !== 'none') || r.stop_curation.grade) && (
             <div style={{ marginTop: 4 }}>
               {r.stop_curation.grade && <div style={{ fontSize: 10, color: PURPLE, fontWeight: 800, marginBottom: 2 }}>Grok curation · {r.stop_curation.grade}</div>}
+              {r.stop_curation.suggested_action && <div style={{ fontSize: 10, color: AMBER, marginBottom: 2 }}>Suggested: {r.stop_curation.suggested_action}</div>}
               <EvidenceBlock title="Grok stop evidence" evidence={r.stop_curation.evidence} dataIDoubt={r.stop_curation.data_i_doubt} compact maxItems={3} />
             </div>
           )}
@@ -1210,7 +1211,17 @@ function AdjustModal({ row, autoStage, onClose, onFocusHolding }: { row: Row; au
       const arr: any[] = Array.isArray(hd) ? hd : (hd.holdings ?? [])
       const h = arr.find(x => String(x.symbol).toUpperCase() === row.symbol.toUpperCase() && String(x.account) === row.account)
       const cov = unwrap(cj) ?? {}
-      const pr = (cov.protection ?? {})[row.symbol.toUpperCase()] ?? {}
+      const prCov = (cov.protection ?? {})[row.symbol.toUpperCase()] ?? {}
+      const broker = String(row.account || '').toLowerCase().startsWith('schwab') ? 'schwab'
+        : String(row.account || '').toLowerCase().startsWith('fidelity') ? 'fidelity' : undefined
+      const pr = {
+        ...prCov,
+        stop_price: Number(prCov.stop_price) || row.planned_stop || null,
+        price: prCov.price ?? row.current_price,
+        source_broker: prCov.source_broker || broker,
+        family_floor: prCov.family_floor,
+        family_floor_pct: prCov.family_floor_pct,
+      }
       const ls = unwrap(lj) ?? {}
       const conf = mergeLiveStop((cov.confirmed_stops ?? {})[key], (ls.by_key ?? {})[key])
       const mon = (unwrap(mj)?.by_key ?? {})[key]
@@ -1252,6 +1263,8 @@ function AdjustModal({ row, autoStage, onClose, onFocusHolding }: { row: Row; au
         {row.stop_curation && (
           <div style={{ fontSize: 12, padding: '8px 11px', borderRadius: 8, marginBottom: 12, background: `${PURPLE}10`, border: `1px solid ${PURPLE}44` }}>
             <b style={{ color: PURPLE }}>Grok stop curation{row.stop_curation.grade ? ` · ${row.stop_curation.grade}` : ''}</b>
+            {row.stop_curation.recommendation && <div style={{ fontSize: 11, color: TEXT0, marginTop: 3 }}>{row.stop_curation.recommendation}</div>}
+            {row.stop_curation.suggested_action && <div style={{ fontSize: 11, color: AMBER, marginTop: 3, fontWeight: 700 }}>Suggested: {row.stop_curation.suggested_action}</div>}
             {row.stop_curation.rr_assessment && <div style={{ fontSize: 11, color: MUTED, marginTop: 3 }}>{row.stop_curation.rr_assessment}</div>}
             <EvidenceBlock evidence={row.stop_curation.evidence} dataIDoubt={row.stop_curation.data_i_doubt} compact />
           </div>
