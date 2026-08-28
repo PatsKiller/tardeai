@@ -111,7 +111,11 @@ def _get_pipeline_health_for_brief() -> str:
                 COUNT(*) as total,
                 COUNT(CASE WHEN status='success' THEN 1 END) as ok,
                 COUNT(CASE WHEN status='failed' THEN 1 END) as failed,
-                COUNT(CASE WHEN run_type='retry' THEN 1 END) as retries
+                -- pipeline_runs has no `run_type`; the query below it failed on
+                -- every run since it was written, and the except returned '' so
+                -- the brief simply omitted its pipeline line. Retries live in
+                -- `run_label` as retry_1, retry_2, ...
+                COUNT(CASE WHEN run_label LIKE 'retry%' THEN 1 END) as retries
             FROM pipeline_runs
             WHERE started_at > NOW() - INTERVAL '12 hours'
         """, fetch="one")
@@ -127,7 +131,8 @@ def _get_pipeline_health_for_brief() -> str:
             return f"\u2705 *Pipeline:* {ok}/{total} steps OK overnight"
         elif failed > 0:
             failed_rows = _db_query("""
-                SELECT DISTINCT script_name FROM pipeline_runs
+                -- ...and there is no `script_name` either. It is `pipeline_key`.
+                SELECT DISTINCT pipeline_key AS script_name FROM pipeline_runs
                 WHERE status='failed'
                 AND started_at > NOW() - INTERVAL '12 hours'
             """) or []
@@ -138,8 +143,11 @@ def _get_pipeline_health_for_brief() -> str:
         elif retries > 0:
             return f"\u21ba *Pipeline:* {ok}/{total} OK ({retries} needed retry)"
         return ''
-    except Exception:
-        return ''
+    except Exception as e:
+        # Returning '' on failure is why a broken column hid for so long: the
+        # brief looked complete and simply had no pipeline line. Say so instead.
+        print(f"  [brief] pipeline health unavailable: {type(e).__name__}: {str(e)[:120]}")
+        return "\u26a0\ufe0f *Pipeline:* status unavailable (query failed)"
 
 
 # ── D1: Telegram delivery ────────────────────────────────────────────────
@@ -236,7 +244,7 @@ def _get_rotation_plan_brief() -> list:
     return []
 
 
-def send_telegram_brief(brief: dict, summary: str) -> bool:
+def send_telegram_brief(brief: dict, summary: str) -> dict:
     """Send compact morning brief to Telegram."""
     sections = brief.get("sections", [])
     next_actions = brief.get("next_actions", [])
@@ -405,11 +413,24 @@ def send_telegram_brief(brief: dict, summary: str) -> bool:
     msg = "\n".join(lines)
 
     try:
-        from telegram_alert import send_telegram
-        return send_telegram(msg)
+        from telegram_alert import publish_operator_message
+        res = publish_operator_message(msg) or {}
+        if res.get("delivered"):
+            outcome = "delivered"
+        elif res.get("queued"):
+            outcome = f"queued for digest ({res.get('route_mode') or 'digest'})"
+        elif res.get("accepted"):
+            # Accepted and deliberately not sent to the phone. This is normal
+            # routing, not a failure -- but it is not "sent" either.
+            outcome = f"not sent — routed {res.get('route_mode') or 'DASHBOARD_ONLY'}"
+        else:
+            outcome = f"failed ({res.get('reason') or 'unknown'})"
+        return {"outcome": outcome, "delivered": bool(res.get("delivered")),
+                "accepted": bool(res.get("accepted")), "route_mode": res.get("route_mode")}
     except Exception as e:
         print(f"  [brief] Telegram send failed: {e}")
-        return False
+        return {"outcome": f"failed ({type(e).__name__})", "delivered": False,
+                "accepted": False, "route_mode": None}
 
 
 # ── D3: Formal export ─────────────────────────────────────────────────────
@@ -563,9 +584,15 @@ def deliver(force: bool = False) -> dict:
     results = {}
 
     # Telegram
-    tg_ok = send_telegram_brief(brief, summary)
-    results["telegram"] = "sent" if tg_ok else "failed"
-    print(f"  Telegram: {'sent' if tg_ok else 'failed'}")
+    # `send_telegram` returns ACCEPTED, not delivered -- its own docstring says
+    # so, deliberately, because returning False for a correctly digested event
+    # made callers retry and caused a storm. This caller read it as "sent", so
+    # the log printed "Telegram: sent" directly under
+    # "[telegram] Suppressed (P2_DASHBOARD_ONLY)" every single morning. The
+    # suppression line was the honest one.
+    tg = send_telegram_brief(brief, summary)
+    results["telegram"] = tg["outcome"]
+    print(f"  Telegram: {tg['outcome']}")
 
     # Formal export
     export_path = write_formal_export(brief, summary)
