@@ -118,6 +118,8 @@ def _mint_extra(card: dict, *, dry_run: bool, apply_live: bool) -> dict:
         "grade_joined": card["grade_joined"],
         "mint_state": card["would_mint_state"],
         "mint_grade_source": card.get("mint_grade_source"),
+        "from_sandbox": bool(card.get("from_sandbox")),
+        "why_owned_or_watched": card.get("would_say") or None,
     }
 
 
@@ -198,6 +200,17 @@ def main() -> int:
         default="all",
         help="Which books to mint. holdings=T0-HOLD, reentry=READY/NEAR, watchlist=T1-WATCH.",
     )
+    ap.add_argument(
+        "--symbols",
+        default="",
+        help="Comma-separated ticker filter. Includes names even if not in the book walk.",
+    )
+    ap.add_argument(
+        "--notify",
+        action="store_true",
+        default=False,
+        help="Opt-in notify on --apply-live. Default silent (Wave 2 rail).",
+    )
     args = ap.parse_args()
 
     if args.apply_live:
@@ -213,6 +226,7 @@ def main() -> int:
     from research_scheduler import load_universe, load_reentry_ready_near_symbols
     from scripts.lib.cio_held_thesis_coverage import build_held_coverage_report
     from scripts.lib.portfolio_role import resolve_portfolio_role
+    from scripts.lib.symbol_thesis_mint_gate import evaluate_mint_eligibility
     from scripts.lib.thesis_substantiveness import grade_text, join_research_text, mint_state_for
 
     uni = load_universe(root=CURRENT)
@@ -235,6 +249,16 @@ def main() -> int:
     if want in ("watchlist", "all"):
         symbols.extend(watchlist)
     symbols = sorted(set(symbols))
+    if str(args.symbols or "").strip():
+        want_syms = {
+            s.strip().upper()
+            for s in str(args.symbols).split(",")
+            if s.strip()
+        }
+        symbols = [s for s in symbols if s in want_syms]
+        for s in sorted(want_syms):
+            if s not in symbols:
+                symbols.append(s)
     conn = _get_conn()
     research = _latest_research(conn, symbols)
     ranks = _hermes_rank(conn, symbols)
@@ -251,12 +275,15 @@ def main() -> int:
         summary_joined = _summary_from_rec(sym, joined)
         g_rec = grade_text(sym, summary_rec)
         g_joined = grade_text(sym, summary_joined)
-        mint_body = summary_joined or summary_rec
-        # P2: grade JOINED rec+dissent+evidence for would_mint_state / extra.
-        # Rec-only and joined splits stay in the report JSON.
+        # P2: grade JOINED rec+dissent+evidence. Sandbox/paper-trade that
+        # PASSes is promoted to a normal CIO body — not ignored.
         g_mint = g_joined if summary_joined else g_rec
-        mint_state = mint_state_for(g_mint)
-        would = mint_state in ("CURRENT", "THIN")
+        elig = evaluate_mint_eligibility(
+            sym, rec_only, rec.get("dissent"), rec.get("evidence"),
+        )
+        mint_state = elig["would_mint_state"]
+        would = bool(elig["would_mint"])
+        mint_body = (elig.get("cio_body") or summary_joined or summary_rec)
         role = resolve_portfolio_role(sym, universe_rec=uni.get(sym) or {}, root=CURRENT)
         live_row = live_state.get(sym) or {}
         live_summary = (live_row.get("thesis_summary") or "")
@@ -282,13 +309,15 @@ def main() -> int:
             "state_joined": g_joined.get("coverage_state"),
             "grade_mint": g_mint.get("grade"),
             "mint_grade_source": "joined" if summary_joined else "rec_only",
-            "would_mint_state": mint_state if would else "SKIP",
-            "would_mint_current": mint_state == "CURRENT",
-            "would_mint_thin": mint_state == "THIN",
+            "would_mint_state": mint_state,
+            "would_mint_current": bool(elig["would_mint_current"]),
+            "would_mint_thin": bool(elig["would_mint_thin"]),
             "would_mint": would,
             "would_say": mint_body,
             "would_say_preview": mint_body[:400],
-            "blockers": [] if would else ["no_nonempty_external_research_or_summary_lt_40"],
+            "blockers": list(elig.get("blockers") or []),
+            "raw_grade_state": elig.get("raw_state"),
+            "from_sandbox": bool(elig.get("from_sandbox")),
             "grade_reasons": g_mint.get("reasons") or [],
         }
         cards.append(card)
@@ -318,15 +347,15 @@ def main() -> int:
         from scripts.lib.cio_theses import CIOThesisStore
         # Never unlink live jsonl — append-only. Default CIOThesisStore paths.
         live_store = CIOThesisStore(event_path=LIVE_EVENTS, projection_path=LIVE_PROJ)
-        # P4: live apply uses CIOThesisStore.publish notify=True + desk card
+        # Wave 2 rail: notify is opt-in (--notify). Default silent.
         live_n = _publish_mint_cards(
             cards,
             live_store,
-            notify=True,
+            notify=bool(args.notify),
             dry_run=False,
             apply_live=True,
             actor_id="thesis_mint_from_research",
-            change_note="LIVE mint from hermes_external_research (joined rec+dissent+evidence)",
+            change_note="LIVE mint from hermes_external_research (joined rec+dissent+evidence; sandbox promoted to CIO)",
             emit_desk_card=True,
         )
 
@@ -396,7 +425,7 @@ def main() -> int:
         "apply_live": bool(args.apply_live),
         "live_published": live_n,
         "live_path": str(LIVE_EVENTS) if args.apply_live else None,
-        "notify": bool(args.apply_live),
+        "notify": bool(args.notify),
         "punchline": (
             f"Join gap still {len(mintable_holdings)}/{len(needs)} mintable; "
             f"quality split joined CURRENT={split_joined['CURRENT']} THIN={split_joined['THIN']}. "
