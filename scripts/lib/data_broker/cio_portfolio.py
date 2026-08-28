@@ -996,7 +996,23 @@ def _domain_retirement() -> DomainEvidence:
         if path.exists():
             roadmap = _load_json(path)
             if roadmap:
-                as_of = roadmap.get("config_version_timestamp", "") if isinstance(roadmap, dict) else ""
+                # `config_version_timestamp` is not a key this file has ever
+                # carried, so the stamp was always "" and the domain was never
+                # age-checked -- while the roadmap does record `generated_at`
+                # (precise) and `as_of` (date-only). Prefer the precise one;
+                # fall back to the file mtime, which is genuinely when the
+                # policy last changed. Never `now`: that would assert freshness
+                # the source has not earned.
+                as_of = ""
+                if isinstance(roadmap, dict):
+                    as_of = str(roadmap.get("generated_at") or roadmap.get("as_of") or "")
+                if not as_of:
+                    try:
+                        as_of = datetime.fromtimestamp(
+                            path.stat().st_mtime, tz=timezone.utc
+                        ).isoformat()
+                    except OSError:
+                        as_of = ""
                 roadmap["_authority_class"] = "AUTHORITATIVE_POLICY"
                 return DomainEvidence.available(
                     "retirement",

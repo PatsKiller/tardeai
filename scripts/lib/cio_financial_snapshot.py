@@ -666,7 +666,17 @@ def build_canonical_snapshot(
                     evidence = result
                 elif isinstance(result, dict):
                     r_state = result.get("quality_state") or result.get("state", "AVAILABLE")
-                    r_as_of = result.get("as_of", "")
+                    # A dict adapter that stamps under a conventional name was
+                    # being recorded as UNSTAMPED, because only "as_of" was read.
+                    # get_watch_intelligence returns the projection's
+                    # `generated_at` (and mirrors it to `last_assessed_at`), so
+                    # watch_intelligence reported freshness_unverified while its
+                    # producer was supplying a perfectly good timestamp -- and it
+                    # is required by WATCH_OR_CATALYST_REVIEW, which passes.
+                    r_as_of = (result.get("as_of")
+                               or result.get("generated_at")
+                               or result.get("last_assessed_at")
+                               or "")
                     r_source = result.get("source_ref", str(capability.canonical_source or ""))
                     r_data = result.get("data") or result
                     if r_state == "AVAILABLE":
