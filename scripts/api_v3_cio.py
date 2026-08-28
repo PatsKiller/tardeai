@@ -1041,7 +1041,10 @@ def get_investment_product() -> dict[str, Any]:
         if not brief:
             brief = persist_product(build_product())
         current = load_current_production_product()
-        product = current or brief
+        # Books tab needs the investment product, not the eligibility wrapper.
+        product = brief
+        if isinstance(current, dict) and str(current.get("schema") or "").startswith("CIOInvestmentProduct@"):
+            product = current
         try:
             product = overlay_step2_surfaces(product)
         except Exception:
