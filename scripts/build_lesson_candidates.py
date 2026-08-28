@@ -48,6 +48,25 @@ def run(apply: bool = False) -> dict[str, Any]:
     observations = _jsonl(root / OBSERVATION_PATH)
     # The whole corpus is scanned, so counterexample search is genuinely done.
     candidates = build_candidates(observations, searched_counterexamples=True)
+    case_n_before = len(candidates)
+    try:
+        from scripts.lib.agent_durable_memory import get_durable_provider
+        from scripts.lib.outcome_to_lesson import candidates_from_case_summaries
+        mems = list((get_durable_provider(root)._store or {}).values())
+        case_cands = candidates_from_case_summaries(mems)
+        existing_keys = {
+            (c.get("scope"), c.get("plan_id"), c.get("hermes_result_id"))
+            for c in candidates
+        }
+        for c in case_cands:
+            key = (c.get("scope"), c.get("plan_id"), c.get("hermes_result_id"))
+            if key in existing_keys:
+                continue
+            candidates.append(c)
+            existing_keys.add(key)
+        case_added = len(candidates) - case_n_before
+    except Exception:
+        case_added = 0
 
     path = root / LESSON_CANDIDATE_PATH
     existing = {str(r.get("lesson_id")) for r in _jsonl(path)}
@@ -67,6 +86,7 @@ def run(apply: bool = False) -> dict[str, Any]:
         "applied": bool(apply),
         "observations_read": len(observations),
         "candidates": len(candidates),
+        "case_summary_support_added": case_added,
         "written": written,
         "path": str(path),
         "detail": [
@@ -94,7 +114,7 @@ def main() -> int:
     if args.json:
         print(json.dumps(result, indent=2, sort_keys=True, default=str))
     else:
-        for key in ("observations_read", "candidates", "written", "applied"):
+        for key in ("observations_read", "candidates", "case_summary_support_added", "written", "applied"):
             print(f"{key:20} {result[key]}")
         for d in result["detail"]:
             print(f"\n  {d['scope']} / {d['task_class']}  [{d['status']}]")
