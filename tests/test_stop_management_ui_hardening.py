@@ -242,3 +242,13 @@ def test_32_live_stops_degraded_does_not_fall_back_to_llm_read_ok():
     assert "liveStopsDegraded" in src
     assert "live_stops_exception" in src
     assert "_brokerOkList" in src or "brokerOkList" in src or "Array.isArray(brokerStopReadOk) ? brokerStopReadOk : null" in src
+
+
+def test_33_premarket_uses_overnight_last_print_window():
+    """GTC staging at 08:50 ET must accept yesterday's 16:45 close (18h), not 60m pre-market."""
+    src = read(LOGIC)
+    qt = read(ROOT / "scripts/brokers/quote_time.py")
+    assert "session === 'closed' || session === 'pre_market'" in src
+    assert "return CLOSED_MAX_AGE_SEC" in src
+    assert 'session in ("closed", "pre_market")' in qt
+    assert "AFTER_HOURS_MAX_AGE_SEC" in qt

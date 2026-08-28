@@ -411,3 +411,36 @@ def test_after_hours_finviz_quote_fresh_within_60m(tmp_path):
     assert r["canRequestLive"] is True
     fresh = run_logic(js, f"m.isQuoteFresh('{quote_et}', {now_ms})")
     assert fresh is True
+
+
+def test_last_close_fresh_during_premarket_for_gtc(tmp_path):
+    """Yesterday 16:45 ET Finviz close is usable at 08:50 ET pre-market for GTC staging.
+
+    Live SCHD IRA 2FA died on 'outside the 60m pre market window (966m old)' even though
+    no newer tape exists and the GTC rests until RTH. Regular RTH still uses 15m.
+    """
+    from datetime import datetime, timedelta, timezone
+    js = compile_stop_management(tmp_path)
+    edt = timezone(timedelta(hours=-4))
+    quote_et = "2026-08-27 16:45:02"
+    now_pre = datetime(2026, 8, 28, 8, 50, 0, tzinfo=edt)
+    now_rth = datetime(2026, 8, 28, 10, 0, 0, tzinfo=edt)
+    now_pre_ms = int(now_pre.timestamp() * 1000)
+    now_rth_ms = int(now_rth.timestamp() * 1000)
+    r = run_logic(
+        js,
+        f"""m.buildStopLogic({{
+          h: {{ symbol: 'SCHD', account: 'schwab_rollover_ira', shares: 10000.2508, current_price: 35.14, source_timestamp: '{quote_et}' }},
+          pr: {{ price: 35.14, source_broker: 'schwab' }},
+          orderKind: 'STOP',
+          sourceTimestamp: '{quote_et}',
+          wholeShareConfirmed: true,
+          nowMs: {now_pre_ms}
+        }})""",
+    )
+    assert all(b["code"] != "stale_quote" for b in r["blockers"]), r["blockers"]
+    assert run_logic(js, f"m.isQuoteFresh('{quote_et}', {now_pre_ms})") is True
+    assert run_logic(js, f"m.isQuoteFresh('{quote_et}', {now_rth_ms})") is False
+    # Two-day-old print is still stale even in pre-market (beyond 18h).
+    old = "2026-08-26 16:45:02"
+    assert run_logic(js, f"m.isQuoteFresh('{old}', {now_pre_ms})") is False
