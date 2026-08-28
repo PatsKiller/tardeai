@@ -8,7 +8,7 @@ Usage:
     python3 scripts/portfolio_level_qa.py [--json]
 """
 import json, os, sys
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -179,7 +179,52 @@ def evaluate_portfolio_qa() -> dict:
     return result
 
 
-def alert_critical_violations(result: dict) -> bool:
+DEDUPE_FILE = STATE_DIR / "portfolio_qa_critical_alert_dedupe.json"
+DEDUPE_HOURS = 24
+
+
+def _critical_key(critical: list) -> str:
+    return ",".join(sorted(str(v.get("group") or "") for v in critical))
+
+
+def _deduped_recent(key: str, *, now=None, path=None, window_hours: int = DEDUPE_HOURS) -> bool:
+    p = Path(path) if path is not None else DEDUPE_FILE
+    if not p.is_file():
+        return False
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+    except Exception:
+        return False
+    if str(data.get("key") or "") != str(key):
+        return False
+    ts = data.get("sent_at")
+    if not ts:
+        return False
+    try:
+        sent = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    if sent.tzinfo is None:
+        sent = sent.replace(tzinfo=timezone.utc)
+    now = now or datetime.now(timezone.utc)
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=timezone.utc)
+    return (now - sent) < timedelta(hours=int(window_hours))
+
+
+def _mark_sent(key: str, *, now=None, path=None) -> None:
+    p = Path(path) if path is not None else DEDUPE_FILE
+    now = now or datetime.now(timezone.utc)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps({
+        "key": key,
+        "sent_at": now.isoformat(),
+        "channel": "existing_ops_alert",
+        "financial_product": False,
+    }), encoding="utf-8")
+
+
+def alert_critical_violations(result: dict, *, dedupe_path=None, now=None) -> bool:
     """A `severity: critical` group-cap breach (hard-cap exceeded) previously
     reached only logs/portfolio_qa.log and portfolio_intelligence_events —
     nothing forwarded it to a human. A live core_compounders breach at
@@ -187,10 +232,17 @@ def alert_critical_violations(result: dict) -> bool:
     multiple consecutive daily runs with zero alert. See
     docs/audits/CIO_PLATFORM_REMEDIATION_2026-08-27.md (Fix C5).
 
+    Uses the existing `telegram_alert.send_telegram` ops chokepoint (not a
+    new financial Telegram product). Same-key alerts are 24h-deduped.
+
     Returns whether an alert was sent, so callers/tests can assert on it
     without depending on Telegram actually being configured."""
     critical = [v for v in (result.get("group_cap_violations") or []) if v.get("severity") == "critical"]
     if not critical:
+        return False
+    key = _critical_key(critical)
+    if _deduped_recent(key, now=now, path=dedupe_path):
+        print("  [portfolio-qa] critical alert suppressed (24h dedupe)")
         return False
     lines = [f"⚠️ Portfolio QA: {len(critical)} CRITICAL hard-cap breach(es)"]
     for v in critical:
@@ -202,6 +254,7 @@ def alert_critical_violations(result: dict) -> bool:
     try:
         from telegram_alert import send_telegram
         send_telegram(message)
+        _mark_sent(key, now=now, path=dedupe_path)
         return True
     except Exception as exc:
         # A failed alert must not fail the QA run itself — but it must not be
