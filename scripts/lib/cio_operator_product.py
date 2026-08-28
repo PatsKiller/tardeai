@@ -193,7 +193,14 @@ def build_operator_product(*, root: Path | str | None = None, persist: bool = Fa
     as_of = brief.get("as_of") or _now()
     proto = [_map_action(r.get("recommended_action") or r.get("action") or r.get("title")) for r in recs if isinstance(r, dict)]
     gen = _generation_id(brief, [{"symbol": r.get("symbol"), "cio_decision": a, "what_should_i_do": ""} for r, a in zip((x for x in recs if isinstance(x, dict)), proto)])
-    entries = [_entry_from_rec(r, generation_id=gen, as_of=as_of) for r in recs if isinstance(r, dict)]
+    from scripts.lib.cio_advisory_admissibility import gate_recommendation_rows
+    hloc = load_json_store("portfolio.holdings.current", root=root)
+    holdings_payload = hloc.get("data") if hloc.get("available") and isinstance(hloc.get("data"), dict) else {}
+    recs = gate_recommendation_rows(
+        [r for r in recs if isinstance(r, dict)],
+        holdings=holdings_payload,
+    )
+    entries = [_entry_from_rec(r, generation_id=gen, as_of=as_of) for r in recs]
     if not entries:
         summary = brief.get("summary")
         if isinstance(summary, dict):

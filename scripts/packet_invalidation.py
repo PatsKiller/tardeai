@@ -239,12 +239,15 @@ def build_current_input_snapshot(symbol: str, conn=None, *, include_options: boo
         ownership = {"holdings_version": holdings_ver, "held": own.held,
                      "shares": own.shares, "shares_by_account": shares_by_acct,
                      "committed_shares": own.uncommitted_shares,
+                     "to_block": own.to_block(),
                      "ownership_content_hash": _h({"held": own.held,
                                                    "shares": int(round(own.shares or 0)),
                                                    "accts": sorted(own.accounts)})}
     except Exception:
         ownership = {"holdings_version": "", "held": False, "shares": 0,
-                     "shares_by_account": {}, "ownership_content_hash": _h({"held": False})}
+                     "shares_by_account": {},
+                     "to_block": "PORTFOLIO POSITION — GROUND TRUTH: UNKNOWN (fail-closed)",
+                     "ownership_content_hash": _h({"held": False})}
 
     # ── proposal state ────────────────────────────────────────────────────────
     open_props = []
