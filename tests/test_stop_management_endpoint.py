@@ -31,6 +31,14 @@ def test_02_ui_tab_present():
     # Degraded broker-read state must be surfaced, not hidden behind an empty table.
     assert "broker_stops_degraded" in src
     assert "Schwab live stop read failed" in src
+    # Trail-upgrade copy is only for lots that already have a live stop.
+    cta = src.split("function derivePrimaryCta", 1)[1].split("\nfunction ", 1)[0]
+    assert "fixed stop still on book" in cta
+    trail_idx = cta.find("fixed stop still on book")
+    before = cta[:trail_idx]
+    assert "has_active_stop" in before
+    assert "planned_stop == null" in cta or "planned_stop == null" in src
+    assert "No live broker stop and no advisory" in cta
     hub = (ROOT / "apps/command-center-v3/src/pages/PortfolioHub.tsx").read_text(encoding="utf-8")
     assert "Stop Management" in hub and "StopManagement" in hub
 
@@ -133,6 +141,8 @@ def test_05_unprotected_lot_without_advisory_still_listed(monkeypatch):
     assert ira["stop"] is None
     assert ira["alert_level"] == "red"
     assert any("no broker stop" in str(x) for x in (ira.get("alert_reasons") or []))
+    assert ira.get("trailing_should_be_active") is False
+    assert "invented" in str(ira.get("next_action") or "").lower() or "Set 2FA" in str(ira.get("next_action") or "")
     assert tax["has_active_stop"] is True
     assert tax["broker_stop"] == 34.69
     assert out["summary"]["positions"] == 2

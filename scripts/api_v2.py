@@ -699,6 +699,11 @@ def _stops_management_api_build(query=None):
                     should_trail = True
             except Exception:
                 pass
+        # A lot with no live stop and no advisory is NO STOP, not "trail upgrade of a
+        # phantom fixed stop". Keep trail-eligible only when there is something to convert
+        # (live stop) or an advisory to place (planned stop).
+        if unprotected_no_advisory:
+            should_trail = False
         if should_trail:
             trailing_not_active += 1
         is_fidelity = acct.startswith("fidelity")
