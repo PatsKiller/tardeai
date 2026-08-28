@@ -12,8 +12,8 @@ READ_ONLY_ADVISORY. No LLM calls. No broker mutation.
 """
 from __future__ import annotations
 
-NO_CONSUMER_REASON = (
-    "its cron entry is COMMENTED OUT, so nothing runs this. Genuinely dark until that line is re-enabled or a caller is wired."
+SCHEDULED_ENTRYPOINT = (
+    "systemd: tradeai-research-lane-health.timer -- every 15 min"
 )
 
 import argparse

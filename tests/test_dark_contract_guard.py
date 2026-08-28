@@ -53,13 +53,23 @@ def test_a_scheduled_entrypoint_is_excused_by_declaration():
                                     "SCHEDULED_ENTRYPOINT")
 
 
-def test_a_disabled_job_is_not_treated_as_scheduled():
-    """research_lane_health's cron line is commented out; the crontab-reading
-    version counted it as wired. It must be declared dark, not scheduled."""
+def test_a_declaration_must_name_the_real_scheduler():
+    """research_lane_health is scheduled by a systemd TIMER, not by cron.
+
+    Its cron line is commented out, and I read only that and declared the script
+    "genuinely dark". It is not: tradeai-research-lane-health.timer runs it every
+    15 minutes and it was actively alerting at the time. The declaration is a
+    claim about reality and has to be checked against every scheduler, not the
+    first one looked at -- removing the crontab probe made the gate
+    deterministic, and moved the burden of being right onto whoever writes the
+    declaration.
+    """
     g = _guard()
-    assert g.declared_module_string("scripts/research_lane_health.py",
-                                    "SCHEDULED_ENTRYPOINT") is None
-    assert g.declared_reason("scripts/research_lane_health.py")
+    decl = g.declared_module_string("scripts/research_lane_health.py",
+                                    "SCHEDULED_ENTRYPOINT")
+    assert decl and "systemd" in decl and "timer" in decl
+    assert g.declared_reason("scripts/research_lane_health.py") is None, (
+        "a scheduled script must not also claim to have no consumer")
 
 
 def test_the_gate_is_green_on_this_tree():
