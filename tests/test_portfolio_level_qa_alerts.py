@@ -26,26 +26,29 @@ def _violation(group="core_compounders", actual=86.1, hard_cap=60.0, severity="c
     return {"group": group, "actual": actual, "hard_cap": hard_cap, "severity": severity}
 
 
-def test_no_critical_violations_sends_nothing(monkeypatch):
+def test_no_critical_violations_sends_nothing(monkeypatch, tmp_path):
     calls = []
     monkeypatch.setattr("telegram_alert.send_telegram", lambda msg: calls.append(msg) or True)
-    sent = qa.alert_critical_violations({"group_cap_violations": [], "qa_summary": "ok"})
+    sent = qa.alert_critical_violations(
+        {"group_cap_violations": [], "qa_summary": "ok"},
+        dedupe_path=tmp_path / "d.json",
+    )
     assert sent is False
     assert calls == []
 
 
-def test_warning_severity_alone_does_not_alert(monkeypatch):
+def test_warning_severity_alone_does_not_alert(monkeypatch, tmp_path):
     """Only `critical` (hard-cap) violations page a human; `warning` (soft
     target drift) stays log-only — that distinction is deliberate, not a gap."""
     calls = []
     monkeypatch.setattr("telegram_alert.send_telegram", lambda msg: calls.append(msg) or True)
     result = {"group_cap_violations": [_violation(severity="warning")], "qa_summary": "ok"}
-    sent = qa.alert_critical_violations(result)
+    sent = qa.alert_critical_violations(result, dedupe_path=tmp_path / "d.json")
     assert sent is False
     assert calls == []
 
 
-def test_reproduces_the_core_compounders_hard_cap_incident(monkeypatch):
+def test_reproduces_the_core_compounders_hard_cap_incident(monkeypatch, tmp_path):
     """The actual audit finding: core_compounders at 86.1% against a hard
     cap, tagged critical, must now reach send_telegram."""
     calls = []
@@ -54,7 +57,7 @@ def test_reproduces_the_core_compounders_hard_cap_incident(monkeypatch):
         "group_cap_violations": [_violation(group="core_compounders", actual=86.1, hard_cap=60.0)],
         "qa_summary": "Portfolio $1,250,000. Income $52,000/yr (95% of target). 1 group violations.",
     }
-    sent = qa.alert_critical_violations(result)
+    sent = qa.alert_critical_violations(result, dedupe_path=tmp_path / "d.json")
     assert sent is True
     assert len(calls) == 1
     assert "core_compounders" in calls[0]
@@ -62,14 +65,14 @@ def test_reproduces_the_core_compounders_hard_cap_incident(monkeypatch):
     assert "60" in calls[0]
 
 
-def test_multiple_critical_violations_are_all_named(monkeypatch):
+def test_multiple_critical_violations_are_all_named(monkeypatch, tmp_path):
     calls = []
     monkeypatch.setattr("telegram_alert.send_telegram", lambda msg: calls.append(msg) or True)
     result = {"group_cap_violations": [
         _violation(group="core_compounders", actual=86.1, hard_cap=60.0),
         _violation(group="speculative_growth", actual=42.0, hard_cap=25.0),
     ]}
-    sent = qa.alert_critical_violations(result)
+    sent = qa.alert_critical_violations(result, dedupe_path=tmp_path / "d.json")
     assert sent is True
     assert "core_compounders" in calls[0] and "speculative_growth" in calls[0]
 
