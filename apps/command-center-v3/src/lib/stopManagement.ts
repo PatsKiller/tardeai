@@ -99,7 +99,7 @@ const BLOCKER_PRIORITY = [
 
 const FUND_SYMBOLS = new Set(['FCNTX', 'SPAXX'])
 const LIVE_STOP_KINDS = new Set<StopOrderKind>(['STOP', 'TRAILING', 'TRAILING_LIMIT', 'STOP_LIMIT', 'OCO'])
-/** Match brokers/quote_time.py — regular 15m; extended 60m; closed/overnight 18h (GTC rests until RTH). */
+/** Match brokers/quote_time.py — regular 15m; live AH 60m; closed + pre-market 18h (GTC rests until RTH). */
 const FRESH_MAX_AGE_SEC = 15 * 60
 const AFTER_HOURS_MAX_AGE_SEC = 60 * 60
 const CLOSED_MAX_AGE_SEC = 18 * 60 * 60
@@ -162,8 +162,10 @@ export function classifyQuoteSession(sourceTimestamp?: string | null): QuoteSess
 }
 
 export function freshMaxAgeSec(session: QuoteSession): number {
-  if (session === 'after_hours' || session === 'pre_market') return AFTER_HOURS_MAX_AGE_SEC
-  if (session === 'closed') return CLOSED_MAX_AGE_SEC
+  if (session === 'after_hours') return AFTER_HOURS_MAX_AGE_SEC
+  // Pre-market uses the overnight last-print window. A 60m pre-market cap made yesterday's
+  // 16:45 Finviz close "stale" at 04:00 ET even though no newer tape exists and GTC rests until RTH.
+  if (session === 'closed' || session === 'pre_market') return CLOSED_MAX_AGE_SEC
   return FRESH_MAX_AGE_SEC
 }
 
@@ -175,7 +177,8 @@ export function currentQuoteSession(nowMs = Date.now()): QuoteSession {
 export function isQuoteFresh(sourceTimestamp?: string | null, nowMs = Date.now()): boolean {
   const age = quoteAgeSeconds(sourceTimestamp, nowMs)
   if (age === null) return false
-  // Window follows current clock session, not print session (AH print usable overnight for GTC).
+  // Window follows current clock session, not print session (AH/RTH last print usable overnight
+  // and through pre-market for GTC). Regular RTH stays 15m.
   return age <= freshMaxAgeSec(currentQuoteSession(nowMs))
 }
 

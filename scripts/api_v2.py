@@ -954,19 +954,23 @@ def _stops_management_api_build(query=None):
     rows.sort(key=lambda r: (order.get(r["alert_level"], 3), -(r["dollars_at_risk"] or 0)))
     broker_active = sum(1 for r in rows if r.get("has_active_stop"))
     # Portfolio-level "next actionable thing in English": prioritize real risk reduction —
-    # (1) broker-looser-than-advised (tighten), then (2) naked positions by $ at risk desc. Monitor-only
-    # rows are excluded. Top 3 surface at the tab header so the operator sees what to do without scanning.
+    # (1) naked / no live stop by $ at risk desc (a $351k uncovered IRA lot outranks tightening a
+    #     $134 looser stop), then (2) broker-looser-than-advised, then (3) other next_actions.
+    # Monitor-only rows are excluded. Top 8 surface at the tab header (UI slices the same).
     def _act_priority(r):
+        dar = -(r.get("dollars_at_risk") or 0)
+        if not r.get("has_active_stop"):
+            return (0, dar)
         if r.get("divergence") == "broker looser than advised":
-            return (0, -(r.get("dollars_at_risk") or 0))
+            return (1, dar)
         if r.get("next_action") and not str(r.get("next_action")).startswith(("Monitor", "None")):
-            return (1, -(r.get("dollars_at_risk") or 0))
+            return (2, dar)
         return (9, 0)
     _actionable = [r for r in rows if _act_priority(r)[0] < 9]
     _actionable.sort(key=_act_priority)
     next_actions = [{"symbol": r["symbol"], "account": r["account"], "alert_level": r.get("alert_level"),
                      "action": r.get("next_action"), "projection": r.get("projection"),
-                     "dollars_at_risk": r.get("dollars_at_risk")} for r in _actionable[:3]]
+                     "dollars_at_risk": r.get("dollars_at_risk")} for r in _actionable[:8]]
     _schwab_holdings = sum(1 for h in holds if str(h.get("account", "")).startswith("schwab") and not h.get("is_cash"))
     _non_cash = sum(
         1 for h in holds

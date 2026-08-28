@@ -103,23 +103,26 @@ def classify_session(raw, now=None):
     return "closed"
 
 
-# Freshness windows (seconds). Regular session is tight; extended hours is more lenient because quotes
-# update less often and the protective order is GTC (it rests until triggered, so a quote within the hour
-# is acceptable). Overnight/closed: prints stop after ~20:00 ET, so a 15m window made GTC arming
-# impossible all night even though Schwab accepts GTC 24/7 and the stop rests until RTH. Allow the
-# last session print through the overnight window so operators can re-arm protection after ACATS /
-# before the open (still 2FA + evidence revalidation at submit).
+# Freshness windows (seconds). Regular session is tight; live after-hours tape is 60m. Overnight
+# *and* pre-market reuse the 18h last-print window: prints stop after ~20:00 ET, Finviz often still
+# reports the 16:45 close at 08:50 ET, and a 60m pre-market window made that print "stale" at 04:00
+# even though Schwab accepts GTC 24/7 and the stop rests until RTH. Still 2FA + evidence revalidation
+# at submit. Regular RTH stays 15m so yesterday's close cannot arm during the live tape.
 FRESH_MAX_AGE_SEC = 15 * 60
 AFTER_HOURS_MAX_AGE_SEC = 60 * 60
-# Last AH/overnight print → valid until roughly next premarket (covers ~20:00 → ~04:00 + margin).
+# Last RTH/AH print → valid through next pre-market (covers ~16:00 → ~09:30 + margin).
 CLOSED_MAX_AGE_SEC = 18 * 60 * 60
 
 
 def fresh_max_age_for(session):
-    """Session-aware freshness window in seconds."""
-    if session in ("after_hours", "pre_market"):
+    """Session-aware freshness window in seconds.
+
+    Regular 15m; live after-hours 60m; closed *and* pre-market 18h so yesterday's last
+    close can stage a GTC before the open when no newer tape exists.
+    """
+    if session == "after_hours":
         return AFTER_HOURS_MAX_AGE_SEC
-    if session == "closed":
+    if session in ("closed", "pre_market"):
         return CLOSED_MAX_AGE_SEC
     return FRESH_MAX_AGE_SEC
 

@@ -185,3 +185,52 @@ def test_06_cash_and_zero_qty_still_excluded(monkeypatch):
     assert ("SPAXX", "schwab_taxable") not in keys
     assert ("ARKX", "schwab_rollover_ira") not in keys
     assert ("ARKX", "schwab_taxable") in keys
+
+
+def test_08_naked_large_notional_ranks_above_looser_small_stop(monkeypatch):
+    """$351k SCHD IRA with no stop must outrank tightening BAH ($134 at risk)."""
+    import api_v2
+    api_v2._STOPS_MGMT_CACHE.update(ts=0.0, data=None)
+    holdings = {"holdings": [
+        {"symbol": "SCHD", "account": "schwab_rollover_ira", "current_price": 35.14,
+         "shares": 10000.25, "is_cash": False, "cost_basis": 313341.86},
+        {"symbol": "BAH", "account": "schwab_taxable", "current_price": 74.87,
+         "shares": 9, "is_cash": False, "cost_basis": 698.0},
+        {"symbol": "XLI", "account": "schwab_rollover_ira", "current_price": 180.40,
+         "shares": 201.0442, "is_cash": False, "cost_basis": 35000.0},
+    ]}
+    monkeypatch.setattr(api_v2, "portfolio_holdings", lambda: holdings)
+    monkeypatch.setattr(api_v2, "_holdings_live_stops", lambda *a, **k: {
+        "by_key": {
+            "BAH:schwab_taxable": {
+                "symbol": "BAH", "account": "schwab_taxable", "stop_price": 59.99,
+                "order_type": "STOP", "qty": 9, "status": "WORKING",
+            }
+        },
+        "fetched_at": "2026-08-28T00:00:00+00:00",
+        "degraded": False, "error": None,
+        "broker_stop_read_ok_accounts": ["schwab_rollover_ira", "schwab_taxable"],
+    })
+    monkeypatch.setattr(api_v2, "_stops_lifecycle_db_snapshot", lambda: {"stops": []})
+
+    def fake_dbq(sql, params=None, fetch="all"):
+        if "protection_advisory" in sql:
+            return [
+                {"symbol": "BAH", "evidence_json": {"recommendation": {"stop_price": 69.64}, "inputs": {"atr": 2.0}}},
+                {"symbol": "XLI", "evidence_json": {"recommendation": {"stop_price": 160.92}, "inputs": {"atr": 2.0}}},
+            ]
+        if "market_regime_snapshots" in sql:
+            return {"regime_label": "risk_on", "trend_state": "", "confidence": None}
+        return [] if fetch != "one" else None
+
+    monkeypatch.setattr(api_v2, "_db_query", fake_dbq)
+    out = api_v2._stops_management_api_build({})
+    actions = out["summary"]["next_actions"]
+    assert actions[0]["symbol"] == "SCHD"
+    assert actions[0]["account"] == "schwab_rollover_ira"
+    assert actions[0]["dollars_at_risk"] > 300000
+    symbols = [a["symbol"] for a in actions]
+    assert "XLI" in symbols
+    # BAH tighten may appear, but never ahead of the naked $351k lot.
+    if "BAH" in symbols:
+        assert symbols.index("SCHD") < symbols.index("BAH")
