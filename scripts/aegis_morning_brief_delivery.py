@@ -17,6 +17,13 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 STATE_DIR = PROJECT_ROOT / "data" / "portfolios" / "state"
+# PROJECT_ROOT itself, not just scripts/. cio_operator_renderers imports
+# `from scripts.lib.brief_semantic_dedupe import ...`, so `scripts` must be an
+# importable package. Without this the canonical delivery path dies with
+# "No module named 'scripts'" -- and because the primary import is wrapped in
+# `except ImportError` whose fallback needs the same missing root, the failure
+# surfaces as a confusing second ModuleNotFoundError rather than the first.
+sys.path.insert(0, str(PROJECT_ROOT))
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 _env_path = PROJECT_ROOT / ".env"

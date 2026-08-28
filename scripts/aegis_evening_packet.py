@@ -20,6 +20,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+# ROOT itself, not just its subdirectories. Modules this packet pulls in import
+# themselves absolutely -- canonical_store_registry does
+# `from scripts.lib.product_availability import ...` -- which needs `scripts` to
+# be an importable package, i.e. ROOT on the path. Without it the documented
+# invocation dies with "ModuleNotFoundError: No module named 'scripts'" while a
+# PYTHONPATH prefix works, which is how this shipped: the wrapper was fixed
+# instead of the script.
+sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(0, str(ROOT / "scripts" / "lib"))
 
