@@ -1034,14 +1034,20 @@ def get_investment_product() -> dict[str, Any]:
     """GET /api/v3/cio/investment-product — four canonical CIO books."""
     try:
         from scripts.lib.cio_investment_product import (
-            build_product, load_brief, load_current_production_product, persist_product,
+            build_product, load_brief, load_current_production_product,
+            overlay_step2_surfaces, persist_product,
         )
         brief = load_brief()
         if not brief:
             brief = persist_product(build_product())
         current = load_current_production_product()
+        product = current or brief
+        try:
+            product = overlay_step2_surfaces(product)
+        except Exception:
+            pass
         return {"ok": True, "authority": "READ_ONLY_ADVISORY", "mutation": False,
-                "financial_action": False, "product": current or brief}
+                "financial_action": False, "product": product}
     except Exception as e:
         return {"ok": False, "error": type(e).__name__, "detail": str(e)[:200],
                 "authority": "READ_ONLY_ADVISORY", "financial_action": False}

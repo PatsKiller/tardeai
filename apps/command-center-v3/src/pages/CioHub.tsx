@@ -1170,6 +1170,30 @@ function InvestmentBooksPanel() {
       <div style={{ marginTop: 6, fontWeight: 700 }}>{temp.title || '—'}</div>
       <div style={{ fontSize: 13, color: 'var(--text2)', marginTop: 6 }}>{temp.narrative}</div>
       <div style={{ fontSize: 13, marginTop: 8 }}>{temp.portfolio_implication}</div>
+      {(temp.cash != null || temp.cash_pct != null) && (
+        <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 8 }} data-testid="cio-temperament-cash">
+          Cash {temp.cash_pct != null ? `${temp.cash_pct}%` : ''}{temp.cash != null ? ` · ${temp.cash}` : ''} · class D
+        </div>
+      )}
+    </section>
+    <section style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 12 }} data-testid="cio-earnings">
+      <div style={{ fontWeight: 800 }}>Earnings (class D)</div>
+      <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 4 }}>
+        Next dated events, held first. {(p.earnings_quality && p.earnings_quality.quality) || ''}
+        {p.earnings_quality && p.earnings_quality.reason ? ` — ${p.earnings_quality.reason}` : ''}
+      </div>
+      {((p.earnings || []) as any[]).slice(0, 12).map((e: any, i: number) => (
+        <div key={(e.symbol || 'e') + i} style={{ fontSize: 13, marginTop: 4 }}>
+          {e.symbol} · {e.earnings_date || '—'} · {e.scope || ''}
+        </div>
+      ))}
+      {((p.earnings || []) as any[]).length === 0 && (
+        <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 6 }}>
+          {p.earnings_quality && p.earnings_quality.quality === 'DATA_UNAVAILABLE'
+            ? `DATA_UNAVAILABLE — ${p.earnings_quality.reason || 'earnings source missing'}`
+            : '—'}
+        </div>
+      )}
     </section>
     <section style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 12 }}>
       <div style={{ fontWeight: 800 }}>Re-Entry Book</div>
@@ -1212,10 +1236,33 @@ function InvestmentBooksPanel() {
           {((act as any)[k] || []).slice(0, 8).map((r: any, i: number) => (
             <div key={k + i} style={{ fontSize: 13 }}>{r.symbol} — {r.action}: {r.why ?? r.why_still_held ?? r.thesis_state ?? '—'}</div>
           ))}
-          {((act as any)[k] || []).length === 0 && <div style={{ fontSize: 12, color: 'var(--text3)' }}>—</div>}
+          {((act as any)[k] || []).length === 0 && (
+            <div style={{ fontSize: 12, color: 'var(--text3)' }}>
+              {k === 'NEW_POSITION_IF' && act.NEW_POSITION_IF_REASON ? act.NEW_POSITION_IF_REASON : '—'}
+            </div>
+          )}
         </div>
       ))}
     </section>
+    {(() => {
+      const cases = p.case_summaries || p.research_cases || {}
+      const items: any[] = cases.items || []
+      return (
+        <section style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 12 }} data-testid="cio-case-summaries">
+          <div style={{ fontWeight: 800 }}>Research cases</div>
+          <div style={{ fontSize: 12, color: 'var(--amber)', marginTop: 4 }}>
+            {cases.banner || 'A-context · NON_AUTHORITATIVE · does not change action'}
+          </div>
+          {items.slice(0, 12).map((c: any) => (
+            <div key={c.memory_id || c.subject} style={{ fontSize: 13, marginTop: 8 }}>
+              <div>{c.subject || 'research_case'}{(c.symbols || []).length ? ` · ${(c.symbols || []).join(', ')}` : ''}</div>
+              <div style={{ fontSize: 12, color: 'var(--text3)' }}>{(c.content || '').slice(0, 220)}</div>
+            </div>
+          ))}
+          {items.length === 0 && <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 6 }}>No ACTIVE CASE_SUMMARY memories on this surface.</div>}
+        </section>
+      )
+    })()}
     <div style={{ fontSize: 12, color: 'var(--text3)' }}>{p.summary}</div>
   </div>
 }

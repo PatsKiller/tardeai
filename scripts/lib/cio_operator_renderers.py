@@ -79,6 +79,22 @@ def morning_text(product: dict[str, Any]) -> str:
                 )
     elif product.get("catalysts_reason"):
         lines.append(f"Catalysts: {product.get('catalysts_reason')}")
+    cases = product.get("case_summaries") or product.get("research_cases") or {}
+    case_items = cases.get("items") if isinstance(cases, dict) else cases
+    if case_items:
+        top_syms: list[str] = []
+        for it in case_items[:3]:
+            if not isinstance(it, dict):
+                continue
+            for s in (it.get("symbols") or []):
+                u = str(s).upper()
+                if u and u not in top_syms:
+                    top_syms.append(u)
+            if not it.get("symbols") and it.get("subject"):
+                top_syms.append(str(it["subject"]).split(":")[-1])
+        n = cases.get("count") if isinstance(cases, dict) and cases.get("count") is not None else len(case_items)
+        bit = f" · {', '.join(top_syms[:3])}" if top_syms else ""
+        lines.append(f"Research cases (A-context, not action): {n}{bit}")
     lines.append("Open: Command Center → CIO. READ_ONLY_ADVISORY.")
     return "\n".join(lines).strip()
 
@@ -105,6 +121,20 @@ def eod_text(product: dict[str, Any]) -> str:
     dq = product.get("data_quality") or {}
     if dq.get("state") not in (None, "OK", "CURRENT"):
         lines.append(f"Data quality overnight: {dq.get('state')}")
+    cases = product.get("case_summaries") or product.get("research_cases") or {}
+    case_items = cases.get("items") if isinstance(cases, dict) else cases
+    if case_items:
+        top_syms: list[str] = []
+        for it in case_items[:3]:
+            if not isinstance(it, dict):
+                continue
+            for s in (it.get("symbols") or []):
+                u = str(s).upper()
+                if u and u not in top_syms:
+                    top_syms.append(u)
+        n = cases.get("count") if isinstance(cases, dict) and cases.get("count") is not None else len(case_items)
+        bit = f" · {', '.join(top_syms[:3])}" if top_syms else ""
+        lines.append(f"Research cases (A-context, not action): {n}{bit}")
     lines.append("READ_ONLY_ADVISORY — no order is being placed.")
     return "\n".join(lines).strip()
 
@@ -153,6 +183,13 @@ def command_center_view(product: dict[str, Any]) -> dict[str, Any]:
         "product_id": product.get("product_id"),
         "as_of": product.get("as_of"),
         "executive_summary": product.get("executive_summary"),
+        "earnings": list(product.get("earnings") or [])[:12],
+        "case_summaries": product.get("case_summaries") or product.get("research_cases") or {
+            "banner": "A-context · NON_AUTHORITATIVE · does not change action",
+            "class": "A",
+            "count": 0,
+            "items": [],
+        },
         "decisions": decisions,
         "history_store": "cio.operator_product.history",
         "hidden_alternative_calculation": False,
