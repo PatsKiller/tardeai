@@ -148,14 +148,29 @@ def test_product_books(root: Path):
     assert csco["verdict"] == "RE_ENTER"
 
 
+def test_prod_prefix_current_product_is_legacy_proven():
+    from scripts.lib.cio_production_eligibility import classify_advisory_record
+    rec = {
+        "schema": "CIOInvestmentProduct@v1",
+        "product_id": "prod_cio_books_20260828T145650",
+        "environment": "UNPROVEN",
+        "source_kind": "UNPROVEN",
+    }
+    v = classify_advisory_record(rec)
+    assert v["eligible"] is True
+    assert v["classification"] == "LEGACY_PROVEN"
+
+
 def test_persist_and_synthesis(root: Path):
     p = persist_product(build_product(root=root, queue={"items": []}, previously_traded=[], holdings={}), root=root)
     assert (root / "data/cio/cio_investment_brief.json").is_file()
+    assert str(p["product_id"]).startswith("prod_")
     fn = build_investment_product_synthesis_fn(root=root)
     out = fn({"run_id": "r1"}, {"snapshot_id": "s1"}, {"artifacts": []}, {})
     assert out["recommendations"] != []
     assert out["final_position"] == "HOLD"
     assert out["authority"] == "READ_ONLY_ADVISORY"
+    assert str(out["product_id"]).startswith("prod_")
 
 
 def test_entrypoint_wires_synthesis():

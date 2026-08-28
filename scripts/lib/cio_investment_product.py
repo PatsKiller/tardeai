@@ -1552,8 +1552,13 @@ def _summary(
 def persist_product(product: dict[str, Any], *, root: Path | str | None = None) -> dict[str, Any]:
     from scripts.lib.autonomy_watchdog.io import append_jsonl, atomic_write_json
     p = paths(root)
-    if not product.get("product_id"):
-        product["product_id"] = product.get("decision_id") or ("prod_" + _iso().replace(":", "").replace("-", "")[:15])
+    pid = str(product.get("product_id") or product.get("decision_id") or "")
+    if not pid.startswith("prod_"):
+        # classify_advisory_record treats prod_* CIOInvestmentProduct as
+        # LEGACY_PROVEN. cio_books_* without origin stamps as LEGACY_UNPROVEN
+        # and blanks Command Center current product.
+        suffix = pid or ("cio_books_" + _iso().replace(":", "").replace("-", "")[:15])
+        product["product_id"] = "prod_" + suffix
     stamp_advisory_origin(product, producer="cio_investment_product.persist_product")
     slim = {k: product[k] for k in product if k != "merged_queue"}
     atomic_write_json(p["brief"], slim)
