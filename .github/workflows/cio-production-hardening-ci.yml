@@ -59,6 +59,12 @@ jobs:
       - name: Dark contract guard (no new uncalled versioned schema)
         run: python3 scripts/check_dark_contracts.py --fail-on-new
 
+      # A "preserve CRLF" helper double-converted an already-CRLF file on
+      # 2026-08-27: \r\n became \r\r\n across 783 lines. Python parsed it and
+      # the tests passed; the only symptom was an implausible insertion count.
+      - name: Line-ending churn guard
+        run: python3 scripts/check_line_endings.py --range origin/main...HEAD
+
       - name: Report HTML export smoke
         run: |
           python3 - <<'PY'
