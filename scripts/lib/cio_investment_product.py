@@ -1007,18 +1007,20 @@ def build_reentry_book(
         1 for r in rows
         if str(r.get("thesis_state") or "") in {"RESEARCH_REQUIRED", "STALE", "CONFLICTED", "INSUFFICIENT_DATA"}
     )
-    return {
+    from scripts.lib.cio_reentry_surface_labels import SURFACE_A, banner as _scope_banner, stamp as _stamp_scope
+    return _stamp_scope({
         "count": len(rows),
         "counts": counts,
         "thesis_incomplete_count": thesis_incomplete,
         "names": rows,
         "note": (
+            f"{_scope_banner(SURFACE_A)}. "
             "IN_ZONE / READY / NEAR is not RE_ENTER. Governed verdicts are candidate-specific. "
             "Symbol thesis gaps are surfaced; mechanical why_sold placeholders replaced with "
             "DATA_UNAVAILABLE when no living exit thesis exists."
         ),
         "authority": AUTHORITY,
-    }
+    }, SURFACE_A)
 
 
 def _opportunity_row_pref(row: dict[str, Any]) -> tuple:
