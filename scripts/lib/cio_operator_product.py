@@ -272,6 +272,24 @@ def build_operator_product(*, root: Path | str | None = None, persist: bool = Fa
                 "changes_action": False,
             }
 
+    cov = brief.get("holdings_thesis_coverage")
+    if not isinstance(cov, dict) or cov.get("held_n") is None:
+        try:
+            from scripts.lib.cio_investment_product import (
+                collect_holdings,
+                collect_holdings_thesis_coverage,
+            )
+            cov = collect_holdings_thesis_coverage(holdings=collect_holdings(root), root=root)
+        except Exception:
+            cov = {
+                "held_n": 0,
+                "current_n": 0,
+                "unavailable_n": 0,
+                "items": [],
+                "no_fake_thesis": True,
+                "class": "D",
+            }
+
     data_quality = dict(holdings["data_quality"])
     ops = _ops_degradation(root)
     policy_gaps: list[Any] = []
@@ -314,6 +332,7 @@ def build_operator_product(*, root: Path | str | None = None, persist: bool = Fa
             or brief.get("new_position_if")
             or []
         ),
+        "holdings_thesis_coverage": cov,
         "temperament": brief.get("temperament") if isinstance(brief.get("temperament"), dict) else {},
         "reentry": {
             "count": reentry.get("count"),
