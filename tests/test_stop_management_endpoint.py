@@ -39,6 +39,14 @@ def test_02_ui_tab_present():
     assert "has_active_stop" in before
     assert "planned_stop == null" in cta or "planned_stop == null" in src
     assert "No live broker stop and no advisory" in cta
+
+
+def test_07_naked_no_advisory_still_renders_2fa_panel():
+    """SCHD IRA had no advisory → HoldingProtectionActions returned null, so Open adjust had no 2FA form."""
+    src = (ROOT / "apps/command-center-v3/src/components/HoldingProtectionActions.tsx").read_text(encoding="utf-8")
+    assert "if (!stop && !needsSellAll" not in src
+    assert "Enter a stop $ — this lot has no advisory price" in src
+    assert "const showProtect = !logic.isFundLike" in src
     hub = (ROOT / "apps/command-center-v3/src/pages/PortfolioHub.tsx").read_text(encoding="utf-8")
     assert "Stop Management" in hub and "StopManagement" in hub
 
