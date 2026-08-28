@@ -168,3 +168,77 @@ def build_candidates(
         candidates.append(candidate)
 
     return candidates
+
+
+def _case_ids(rec: dict[str, Any]) -> tuple[str, str]:
+    refs = [str(x) for x in (rec.get("source_refs") or rec.get("source_event_ids") or []) if x]
+    plan_ids = [str(x) for x in (rec.get("plan_ids") or []) if x]
+    plan_id = plan_ids[0] if plan_ids else ""
+    if not plan_id:
+        for ref in refs:
+            if str(ref).startswith("plan_"):
+                plan_id = str(ref)
+                break
+        if not plan_id and refs:
+            plan_id = refs[0]
+    result_id = ""
+    for ref in refs:
+        if str(ref).startswith("res_"):
+            result_id = str(ref)
+            break
+    return plan_id, result_id
+
+
+def candidates_from_case_summaries(memories: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """CASE_SUMMARY ACTIVE as supporting context only. Cap REVIEW_READY. Never policy."""
+    from scripts.lib.agent_memory_governance import MEMORY_TYPE_CASE_SUMMARY, STATUS_ACTIVE
+    from scripts.lib.cio_institutional_learning import lesson_candidate_v2
+
+    seen: set[tuple[str, str, str]] = set()
+    out: list[dict[str, Any]] = []
+    for rec in memories or []:
+        if not isinstance(rec, dict):
+            continue
+        if rec.get("memory_type") != MEMORY_TYPE_CASE_SUMMARY:
+            continue
+        if str(rec.get("status") or "") not in {STATUS_ACTIVE, "ADMITTED"}:
+            continue
+        plan_id, result_id = _case_ids(rec)
+        symbols = [str(s).upper() for s in (rec.get("symbols") or []) if s]
+        if not symbols and rec.get("subject"):
+            tail = str(rec.get("subject")).split(":")[-1].upper()
+            if tail:
+                symbols = [tail]
+        for sym in symbols or ["OFFICE"]:
+            key = (sym, plan_id, result_id)
+            if key in seen:
+                continue
+            seen.add(key)
+            statement = (
+                f"CASE_SUMMARY supporting context for {sym} "
+                f"(plan {plan_id or 'n/a'} result {result_id or 'n/a'}). "
+                "Non-authoritative; does not change policy or action."
+            )
+            cand = lesson_candidate_v2(
+                scope=sym,
+                task_class="CASE_SUMMARY_CONTEXT",
+                statement=statement,
+                supporting_outcome_ids=[],
+                counterexamples=[],
+                searched_counterexamples=True,
+                confidence=0.4,
+            )
+            # Force support-only: never SUPPORTED/policy from a single memory.
+            cand["status"] = "PROVISIONAL"
+            cand["promotion_stage"] = "REVIEW_READY"
+            cand["max_unattended"] = "REVIEW_READY"
+            cand["role"] = "SUPPORTING_CONTEXT"
+            cand["supporting_case_summary_ids"] = [rec.get("memory_id")]
+            cand["plan_id"] = plan_id
+            cand["hermes_result_id"] = result_id
+            cand["policy_effect"] = False
+            cand["cannot_become_policy"] = True
+            cand["memory_behavior_influence"] = MBI
+            cand["authority"] = AUTHORITY
+            out.append(cand)
+    return out
