@@ -93,6 +93,8 @@ def unavailable(*, reason: str, detail: str | None = None, path: str | None = No
         "entries": [],
         "decisions": [],
         "action_now": [],
+        "action_now_class": "D",
+        "executive_summary_class": "T",
         "earnings": [],
         "case_summaries": {
             "banner": "A-context · NON_AUTHORITATIVE · does not change action",
@@ -290,7 +292,9 @@ def build_operator_product(*, root: Path | str | None = None, persist: bool = Fa
         "source_store": "cio.product.current",
         "source_path": loc.get("path"),
         "executive_summary": str(exec_summary),
+        "executive_summary_class": "T",
         "action_now": action_now,
+        "action_now_class": "D",
         "decisions": entries,
         "standing_decisions": standing,
         "portfolio": holdings["portfolio"],
@@ -341,6 +345,8 @@ def build_operator_product(*, root: Path | str | None = None, persist: bool = Fa
         "operator_data_quality": data_quality.get("state") or "OK",
         "standing_decisions_complete": True,
     }
+    from scripts.lib.cio_p90_voice import apply_operator_voice
+    product = apply_operator_voice(product)
     product["completeness"] = completeness(product)
     product["standing_decisions_complete"] = product["completeness"]["grade"] in {
         "OPERATOR_PRODUCT_COMPLETE", "OPERATOR_PRODUCT_PARTIAL",

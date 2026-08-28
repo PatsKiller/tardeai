@@ -1431,6 +1431,8 @@ def build_product(
         "memory": {"provider": (mem.get("health") or {}).get("provider"), "counts": mem.get("counts")},
         "recommendations": recs,
         "summary": _summary(temperament, reentry, actions, prev),
+        "summary_class": "T",
+        "nothing_requires_action_class": "D",
         "decision_id": "cio_books_" + _iso(now).replace(":", "").replace("-", "")[:15],
         "final_position": "HOLD",
         "requires_operator_review": True,
@@ -1598,7 +1600,8 @@ def _summary(
     if do_now:
         parts.append("DO NOW: " + " · ".join(do_now) + ".")
     else:
-        parts.append("Nothing requires action today.")
+        from scripts.lib.cio_p90_voice import stamp_nothing_requires_action
+        parts.append(stamp_nothing_requires_action())
 
     near = _nearest_reentries(reentry)
     if near:
