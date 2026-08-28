@@ -1,6 +1,6 @@
 {
-  "date": "2026-08-26",
-  "timestamp": "2026-08-26T06:30:21.988286+00:00",
+  "date": "2026-08-27",
+  "timestamp": "2026-08-27T06:31:20.988386+00:00",
   "total_checks": 12,
   "passed": 10,
   "warnings": [
@@ -21,7 +21,7 @@
       "ok": true
     },
     "searxng_container": {
-      "status": "Up 4 days",
+      "status": "Up 5 days",
       "ok": true
     },
     "searxng_endpoint": {
@@ -33,9 +33,9 @@
       "ok": true
     },
     "hermes_rows": {
-      "total": 30104,
-      "staged": 1271,
-      "promoted": 9803,
+      "total": 30841,
+      "staged": 1424,
+      "promoted": 9407,
       "ok": true
     },
     "hermes_embeddings": {
@@ -55,7 +55,7 @@
       "ok": true
     },
     "cron_count": {
-      "count": 487,
+      "count": 486,
       "ok": true
     }
   }
