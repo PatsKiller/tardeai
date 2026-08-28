@@ -1296,6 +1296,17 @@ def build_action_book(
         if not sym or sym in blocked or sym in seen_new:
             continue
         seen_new.add(sym)
+        th = o.get("thesis") if isinstance(o.get("thesis"), dict) else {}
+        if not th.get("has_current_symbol_thesis"):
+            try:
+                th = thesis_fields_for_symbol(sym, root=root)
+            except Exception as exc:
+                th = {
+                    "has_current_symbol_thesis": False,
+                    "thesis_state": "INSUFFICIENT_DATA",
+                    "thesis_unavailable_reason": type(exc).__name__,
+                }
+        has_th = bool(th.get("has_current_symbol_thesis") and (th.get("thesis_summary") or th.get("why_owned_or_watched")))
         new_if.append({
             "symbol": sym,
             "action": _new_if_action(o),
@@ -1304,7 +1315,14 @@ def build_action_book(
             "vs_re": "not_former",
             "vs_former_holdings": "not_former",
             "verdict": o.get("verdict"),
-            "thesis_state": o.get("thesis_state"),
+            "thesis_state": th.get("thesis_state") or o.get("thesis_state"),
+            "thesis_status": (th.get("thesis_state") if has_th else "UNAVAILABLE"),
+            "thesis_status_reason": None if has_th else (
+                th.get("thesis_unavailable_reason") or th.get("thesis_reason")
+                or th.get("thesis_state") or "no living symbol thesis"
+            ),
+            "why_owned_or_watched": th.get("why_owned_or_watched") if has_th else None,
+            "has_current_symbol_thesis": bool(th.get("has_current_symbol_thesis")),
             "actionability": o.get("actionability"),
             "class": "D",
         })
