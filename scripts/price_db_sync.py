@@ -37,6 +37,7 @@ STATE_DIR = PROJECT_ROOT / "data" / "portfolios" / "state"
 # it as a bug in the guard.
 PRICE_OUTLIER_MIN_RATIO = float(os.environ.get("TICKER_PRICE_OUTLIER_MIN_RATIO", "0.1"))
 PRICE_OUTLIER_MAX_RATIO = float(os.environ.get("TICKER_PRICE_OUTLIER_MAX_RATIO", "10.0"))
+QUARANTINE_NAME = "price_outlier_quarantine.jsonl"
 
 
 def is_price_outlier(new_price, prior_price, *,
@@ -64,6 +65,45 @@ def is_price_outlier(new_price, prior_price, *,
         return True, (f"{new_price} is {ratio:.2f}x the prior close {prior_price} "
                       f"(bounds {min_ratio}x-{max_ratio}x)")
     return False, ""
+
+
+def quarantine_path(root: Path | None = None) -> Path:
+    base = Path(root) if root is not None else STATE_DIR
+    return base / QUARANTINE_NAME
+
+
+def quarantine_outlier(
+    *,
+    symbol: str,
+    price,
+    prior_close,
+    reason: str,
+    source: str,
+    price_date: str,
+    path: Path | None = None,
+    write: bool = True,
+) -> dict:
+    """Log a rejected ingest. Never deletes ticker_prices history."""
+    from datetime import datetime, timezone
+    rec = {
+        "schema": "PriceOutlierQuarantine@v1",
+        "symbol": str(symbol or "").upper(),
+        "price": price,
+        "prior_close": prior_close,
+        "reason": reason,
+        "source": source,
+        "price_date": str(price_date),
+        "action": "rejected_not_written",
+        "history_scrubbed": False,
+        "authority": "READ_ONLY_ADVISORY",
+        "as_of": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+    }
+    if write:
+        dest = path or quarantine_path()
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        with dest.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(rec, default=str) + "\n")
+    return rec
 
 
 def _get_conn():
@@ -201,6 +241,10 @@ def sync_daily_prices():
                 outlier, reason = is_price_outlier(price, _prior_close(sym))
                 if outlier:
                     rejected.append(f"{sym}(finviz):{reason}")
+                    quarantine_outlier(
+                        symbol=sym, price=price, prior_close=_prior_close(sym),
+                        reason=reason, source="finviz", price_date=today,
+                    )
                     continue
                 cur.execute("""
                     INSERT INTO ticker_prices (symbol, price_date, close_price, source)
@@ -220,6 +264,10 @@ def sync_daily_prices():
                 outlier, reason = is_price_outlier(price, _prior_close(sym))
                 if outlier:
                     rejected.append(f"{sym}(holdings):{reason}")
+                    quarantine_outlier(
+                        symbol=sym, price=price, prior_close=_prior_close(sym),
+                        reason=reason, source="holdings", price_date=today,
+                    )
                     continue
                 cur.execute("""
                     INSERT INTO ticker_prices (symbol, price_date, close_price, source)
@@ -339,6 +387,40 @@ def sync_quotes_to_ticker_prices(symbols: list[str] | None = None) -> int:
         {"syms": syms, "min_ratio": PRICE_OUTLIER_MIN_RATIO, "max_ratio": PRICE_OUTLIER_MAX_RATIO},
     )
     n = cur.rowcount
+    # Quarantine the rows the INSERT skipped. Do not DELETE ticker_prices.
+    cur.execute(
+        f"""WITH candidates AS (
+               SELECT DISTINCT ON (UPPER(symbol), fetched_at::date)
+                      UPPER(symbol) AS symbol, fetched_at::date AS price_date, price
+               FROM market_quotes
+               WHERE price IS NOT NULL AND price > 0
+                 {symbol_filter}
+               ORDER BY UPPER(symbol), fetched_at::date, fetched_at DESC
+           ),
+           bounded AS (
+               SELECT c.symbol, c.price_date, c.price, prior.close_price AS prior_price
+               FROM candidates c
+               LEFT JOIN LATERAL (
+                   SELECT tp.close_price FROM ticker_prices tp
+                   WHERE tp.symbol = c.symbol AND tp.price_date < c.price_date
+                   ORDER BY tp.price_date DESC LIMIT 1
+               ) prior ON true
+           )
+           SELECT symbol, price_date, price, prior_price
+           FROM bounded
+           WHERE prior_price IS NOT NULL
+             AND (price < prior_price * %(min_ratio)s OR price > prior_price * %(max_ratio)s)""",
+        {"syms": syms, "min_ratio": PRICE_OUTLIER_MIN_RATIO, "max_ratio": PRICE_OUTLIER_MAX_RATIO},
+    )
+    for row in cur.fetchall() or []:
+        prior = row[3]
+        price = row[2]
+        outlier, reason = is_price_outlier(price, prior)
+        if outlier:
+            quarantine_outlier(
+                symbol=row[0], price=price, prior_close=prior,
+                reason=reason, source="market_quotes", price_date=str(row[1]),
+            )
     conn.commit()
     cur.close()
     conn.close()
