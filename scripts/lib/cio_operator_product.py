@@ -359,6 +359,44 @@ def build_operator_product(*, root: Path | str | None = None, persist: bool = Fa
     return product
 
 
+def persist_operator_product_if_available(
+    *,
+    root: Path | str | None = None,
+    supplemental: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Write cio.operator_product.current only when the product is AVAILABLE.
+
+    Refuse persist of UNAVAILABLE so last-good is not overwritten. Probe then
+    persist is two builds, one write.
+    """
+    probe = build_operator_product(root=root, persist=False, supplemental=supplemental)
+    receipt: dict[str, Any] = {
+        "schema": "OperatorProductRefresh@v1",
+        "authority": AUTHORITY,
+        "available": bool(probe.get("available")),
+        "status": probe.get("status"),
+        "product_id": probe.get("product_id"),
+        "as_of": probe.get("as_of"),
+        "persisted": False,
+        "persisted_path": None,
+        "memory_behavior_influence": MBI,
+        "financial_action": False,
+    }
+    if not probe.get("available"):
+        receipt["skipped_reason"] = (
+            f"product not AVAILABLE (status={probe.get('status')}); "
+            "preserving the existing last-valid snapshot"
+        )
+        return receipt
+    written = build_operator_product(root=root, persist=True, supplemental=supplemental)
+    receipt["persisted"] = True
+    receipt["persisted_path"] = written.get("persisted_path")
+    receipt["product_id"] = written.get("product_id")
+    receipt["as_of"] = written.get("as_of")
+    receipt["status"] = written.get("status")
+    return receipt
+
+
 def render_human(product: dict[str, Any]) -> str:
     from scripts.lib.operator_human_renderer import render_product
     return render_product(product)
