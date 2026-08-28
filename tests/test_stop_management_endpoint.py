@@ -77,3 +77,93 @@ def test_03_alert_levels_from_synthetic_holdings(monkeypatch):
     assert by["TESTA"]["broker_stop"] is None and by["TESTA"]["planned_stop"] == 98.0
     assert out["summary"]["positions"] == 2
     assert out["summary"]["total_open_risk"] == 20.0 + 40.0   # (100-98)*10 + (100-96)*10
+    assert out["summary"].get("omitted", 0) == 0
+
+
+def test_05_unprotected_lot_without_advisory_still_listed(monkeypatch):
+    """SCHD IRA-class: no live stop + no 5-day advisory must still be a NO STOP row."""
+    import api_v2
+    api_v2._STOPS_MGMT_CACHE.update(ts=0.0, data=None)
+    holdings = {"holdings": [
+        {"symbol": "SCHD", "account": "schwab_rollover_ira", "current_price": 35.14,
+         "shares": 10000.25, "is_cash": False, "cost_basis": 313341.86},
+        {"symbol": "SCHD", "account": "schwab_taxable", "current_price": 35.14,
+         "shares": 406.54, "is_cash": False, "cost_basis": 12687.73},
+        {"symbol": "CASH", "account": "schwab_rollover_ira", "current_price": 1.0,
+         "shares": 585917.8, "is_cash": True},
+    ]}
+    monkeypatch.setattr(api_v2, "portfolio_holdings", lambda: holdings)
+    monkeypatch.setattr(api_v2, "_holdings_live_stops", lambda *a, **k: {
+        "by_key": {
+            "SCHD:schwab_taxable": {
+                "symbol": "SCHD", "account": "schwab_taxable", "stop_price": 34.69,
+                "order_type": "STOP", "qty": 406.0, "status": "WORKING",
+            }
+        },
+        "fetched_at": "2026-08-28T00:00:00+00:00",
+        "degraded": False,
+        "error": None,
+        "broker_stop_read_ok_accounts": ["schwab_rollover_ira", "schwab_taxable"],
+    })
+    monkeypatch.setattr(api_v2, "_stops_lifecycle_db_snapshot", lambda: {"stops": []})
+
+    real_dbq = api_v2._db_query
+
+    def fake_dbq(sql, params=None, fetch="all"):
+        if "protection_advisory" in sql:
+            return []
+        if "market_regime_snapshots" in sql:
+            return {"regime_label": "risk_on", "trend_state": "", "confidence": None}
+        try:
+            return real_dbq(sql, params, fetch)
+        except Exception:
+            return [] if fetch != "one" else None
+
+    monkeypatch.setattr(api_v2, "_db_query", fake_dbq)
+    out = api_v2._stops_management_api_build({})
+    keys = {(r["symbol"], r["account"]) for r in out["rows"]}
+    assert ("SCHD", "schwab_rollover_ira") in keys
+    assert ("SCHD", "schwab_taxable") in keys
+    assert ("CASH", "schwab_rollover_ira") not in keys
+    ira = next(r for r in out["rows"] if r["account"] == "schwab_rollover_ira")
+    tax = next(r for r in out["rows"] if r["account"] == "schwab_taxable")
+    assert ira["has_active_stop"] is False
+    assert ira["broker_stop"] is None
+    assert ira["planned_stop"] is None
+    assert ira["stop"] is None
+    assert ira["alert_level"] == "red"
+    assert any("no broker stop" in str(x) for x in (ira.get("alert_reasons") or []))
+    assert tax["has_active_stop"] is True
+    assert tax["broker_stop"] == 34.69
+    assert out["summary"]["positions"] == 2
+    assert out["summary"]["omitted"] == 0
+    assert out["summary"]["non_cash_holdings"] == 2
+
+
+def test_06_cash_and_zero_qty_still_excluded(monkeypatch):
+    import api_v2
+    api_v2._STOPS_MGMT_CACHE.update(ts=0.0, data=None)
+    holdings = {"holdings": [
+        {"symbol": "SPAXX", "account": "schwab_taxable", "current_price": 1.0, "shares": 100, "is_cash": False},
+        {"symbol": "ARKX", "account": "schwab_rollover_ira", "current_price": 32.0, "shares": 0, "is_cash": False},
+        {"symbol": "ARKX", "account": "schwab_taxable", "current_price": 32.0, "shares": 10, "is_cash": False},
+    ]}
+    monkeypatch.setattr(api_v2, "portfolio_holdings", lambda: holdings)
+    monkeypatch.setattr(api_v2, "_holdings_live_stops", lambda *a, **k: {
+        "by_key": {}, "fetched_at": "2026-08-28T00:00:00+00:00", "degraded": False, "error": None,
+    })
+    monkeypatch.setattr(api_v2, "_stops_lifecycle_db_snapshot", lambda: {"stops": []})
+
+    def fake_dbq(sql, params=None, fetch="all"):
+        if "protection_advisory" in sql:
+            return []
+        if "market_regime_snapshots" in sql:
+            return {"regime_label": "risk_on", "trend_state": "", "confidence": None}
+        return [] if fetch != "one" else None
+
+    monkeypatch.setattr(api_v2, "_db_query", fake_dbq)
+    out = api_v2._stops_management_api_build({})
+    keys = {(r["symbol"], r["account"]) for r in out["rows"]}
+    assert ("SPAXX", "schwab_taxable") not in keys
+    assert ("ARKX", "schwab_rollover_ira") not in keys
+    assert ("ARKX", "schwab_taxable") in keys

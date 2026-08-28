@@ -971,6 +971,17 @@ export default function StopManagement({ onFocusHolding, accountFilter = null, o
               <div style={{ fontSize: 11.5, color: MUTED, marginTop: 4 }}>Backend may be reconnecting — click ↻ Refresh or wait for the API server.</div>
             </div>
           )}
+          {!loading && !fetchError && Number(summary?.omitted || 0) > 0 && (
+            <div style={{ marginBottom: terminalUi ? 6 : 10, ...hubPanel(terminalUi), background: `${AMBER}14`, border: `1px solid ${AMBER}55` }}>
+              <div style={{ fontSize: 12.5, fontWeight: 800, color: AMBER }}>
+                {Number(summary.omitted)} holding{Number(summary.omitted) === 1 ? '' : 's'} omitted from this desk
+              </div>
+              <div style={{ fontSize: 11.5, color: MUTED, marginTop: 4, lineHeight: 1.45 }}>
+                Showing {deskStats.positions} of {Number(summary.non_cash_holdings || deskStats.positions)} non-cash holdings.
+                Unprotected lots (no broker stop and no advisory) should still appear as NO STOP — refresh if this persists.
+              </div>
+            </div>
+          )}
           {data?.broker_stops_degraded && (
             <div style={{ marginBottom: terminalUi ? 6 : 10, ...hubPanel(terminalUi), background: `${RED}14`, border: `1px solid ${RED}55` }}>
               <div style={{ fontSize: 12.5, fontWeight: 800, color: RED }}>⚠ Schwab live stop read failed — broker stops may be hidden</div>
