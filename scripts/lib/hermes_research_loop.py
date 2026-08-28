@@ -636,6 +636,21 @@ def on_hermes_completed(
         store = CIOPlanStore()
         plan = plan or store.get_plan(plan_id)
 
+    # Step 2A: CASE_SUMMARY from the joined VALID/PARTIAL result. Completeness
+    # only. Fail-soft. Does not notify and does not change material_changed.
+    if out.get("result_joined") and plan:
+        try:
+            try:
+                from lib.hermes_case_summary import mint_case_summary_from_attached_research
+            except Exception:
+                from scripts.lib.hermes_case_summary import mint_case_summary_from_attached_research  # type: ignore
+            out["case_summary"] = mint_case_summary_from_attached_research(
+                plan, result,
+                critique=out.get("critique") if isinstance(out.get("critique"), dict) else None,
+            )
+        except Exception as e:
+            out["case_summary_error"] = f"{type(e).__name__}:{e}"
+
     before_fp = _substantive_fingerprint(plan) if plan else ""
 
     if resynth and plan and store:

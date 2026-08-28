@@ -32,6 +32,7 @@ VALID_SOURCE_CLASSES = frozenset({
     "agent_run", "decision", "operator_feedback", "operator_disposition",
     "case", "outcome", "review", "score", "ratified_lesson",
     "research_artifact", "financial_senses_receipt",
+    "HERMES_VALID_COMPLETE",
 })
 
 
@@ -69,6 +70,9 @@ def admit_candidate(
             memory_id=raw.get("memory_id"),
             scope=raw.get("scope"),
             symbols=raw.get("symbols"),
+            decision_ids=raw.get("decision_ids"),
+            plan_ids=raw.get("plan_ids"),
+            case_ids=raw.get("case_ids"),
             source_event_ids=raw.get("source_event_ids"),
             source_refs=raw.get("source_refs"),
             source_kind=raw.get("source_kind"),
