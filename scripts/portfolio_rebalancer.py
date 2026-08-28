@@ -474,6 +474,23 @@ def compute_rebalancing(portfolio):
     drift = compute_drift(holdings, account_summaries, config)
     print("  [rebalancer] Generating rebalance orders...")
     orders = generate_rebalance_orders(drift)
+    try:
+        try:
+            from scripts.lib.cio_rebalancer_readonly import (
+                flag_orders_against_avoid,
+                load_cio_product_readonly,
+            )
+        except ImportError:
+            from lib.cio_rebalancer_readonly import (  # type: ignore
+                flag_orders_against_avoid,
+                load_cio_product_readonly,
+            )
+        cio = load_cio_product_readonly()
+        orders = flag_orders_against_avoid(orders, cio)
+        n_flag = sum(1 for o in orders if o.get("cio_avoid_contradiction"))
+        print(f"  [rebalancer] CIO AVOID flags: {n_flag} (read-only, job continues)")
+    except Exception as exc:
+        print(f"  [rebalancer] CIO product read failed ({type(exc).__name__}); continuing")
     print("  [rebalancer] Computing share counts...")
     orders = enrich_orders_with_shares(orders, holdings)
     print("  [rebalancer] V→SCHD scenario analysis...")
