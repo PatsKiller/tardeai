@@ -574,6 +574,17 @@ def collect_holdings_thesis_coverage(
         "current_n": current_n,
         "unavailable_n": len(items) - current_n,
         "items": items,
+        # Wave 2C item 118 — cost-basis provenance on the card. The basis and the
+        # positions are dated separately from the reprice, so a reader can see
+        # which of the three a number came from instead of assuming "now".
+        "cost_basis_as_of": (holdings or {}).get("reconciled_at"),
+        "positions_as_of": (holdings or {}).get("as_of"),
+        "priced_as_of": (holdings or {}).get("last_repriced"),
+        "cost_basis_sources": sorted({
+            str(r.get("cost_basis_source"))
+            for r in ((holdings or {}).get("holdings") or [])
+            if isinstance(r, dict) and r.get("cost_basis_source")
+        }),
         # Wave 2 slice 12a — dust is excluded from the counts above, not hidden.
         "held_n_including_dust": len(items) + len(dust_items),
         "dust_n": len(dust_items),

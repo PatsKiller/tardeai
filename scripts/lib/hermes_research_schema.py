@@ -227,14 +227,27 @@ def new_id(prefix: str) -> str:
 
 
 def lint_execution_language(blob: Any) -> Optional[str]:
-    """Return match text if forbidden execution language present, else None."""
+    """Return match text if forbidden execution language present, else None.
+
+    Delegates to `execution_language.find_imperative` — the single definition
+    shared with `research_quality.critique`. Two gates with separate word lists
+    is exactly how `execute the buy` passed both; EXEC_LINT is retained below
+    only as a fallback if that module cannot be imported.
+
+    This is the INGEST gate: it governs new research artifacts, where the
+    tighter rule applies immediately.
+    """
     try:
-        import json
-        text = blob if isinstance(blob, str) else json.dumps(blob, default=str)
-    except Exception:
-        text = str(blob)
-    m = EXEC_LINT.search(text)
-    return m.group(0) if m else None
+        from scripts.lib.execution_language import find_imperative
+    except Exception:  # pragma: no cover - fallback only
+        try:
+            import json
+            text = blob if isinstance(blob, str) else json.dumps(blob, default=str)
+        except Exception:
+            text = str(blob)
+        m = EXEC_LINT.search(text)
+        return m.group(0) if m else None
+    return find_imperative(blob)
 
 
 def validate_request(req: dict[str, Any]) -> tuple[bool, str]:

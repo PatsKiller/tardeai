@@ -354,7 +354,19 @@ def cash_total_sources(*, root: Path | None = None) -> dict[str, Any]:
 
     delta = None if declared is None else round(row_sum - declared, 2)
     agree = delta is not None and abs(delta) <= CASH_TOTAL_TOLERANCE_USD
+    # Operator display law while the gap is open: name both, name the gap, and
+    # refuse to hand S5 / HOLD_CASH_FOR a single number. Collapsing the two is
+    # how a writer bug gets hidden, and the brief has already flipped which
+    # figure it used once.
+    status = "RECONCILED" if agree else (
+        "UNKNOWN" if declared is None else "UNRECONCILED"
+    )
     return {
+        "cash_status": status,
+        "cash_gap": None if delta is None else abs(delta),
+        "cash_for_s5": (
+            row_sum if agree else "DATA_UNAVAILABLE_UNTIL_RECONCILED"
+        ),
         "cash_row_sum": row_sum,
         "cash_row_n": len(rows),
         "portfolio_totals_total_cash": declared,
@@ -367,6 +379,18 @@ def cash_total_sources(*, root: Path | None = None) -> dict[str, Any]:
         },
         "merged": False,
         "reconciled": False,
+        "sources": {
+            "position_rows": {"value": row_sum, "source": "position_rows",
+                              "role": "book foot (rows)"},
+            "portfolio_totals": {"value": declared, "source": "portfolio_totals",
+                                 "role": "totals writer"},
+        },
+        "writer_identified": False,
+        "next_slice": (
+            "identify the totals writer and name what the gap is (pending, "
+            "money-market sleeve, unmapped lot, or stale positions vs reprice). "
+            "Detect-then-name; the two fields are never merged."
+        ),
         "note": (
             "Two writers publish a cash total: the position rows and "
             "portfolio_totals. Both are reported. Never averaged or merged — "

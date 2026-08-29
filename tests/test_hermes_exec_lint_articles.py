@@ -49,12 +49,17 @@ def test_lint_runs_on_structured_blobs_not_just_strings():
     assert lint({"answers": [{"summary": "income ballast"}]}) is None
 
 
-def test_ambiguous_advisory_verbs_are_deliberately_not_matched():
-    """Recorded as an operator policy question, not decided here.
+def test_advisory_imperatives_are_now_matched_by_operator_judgment():
+    """Resolved 2026-08-29: ban the *instruction*, not the words.
 
-    "trim the position" and "sell half" appear in legitimate analysis. Adding
-    them would reject real research and shrink attachable coverage, which is a
-    call for the operator rather than a unilateral tightening.
+    The earlier version of this test asserted these were NOT matched, and
+    recorded the question for the operator. The answer was: "trim the position"
+    and "sell half" are instructions, not analysis, so they are rejected — while
+    `trim` / `sell` / `half` as vocabulary stay admissible. See
+    tests/test_execution_language_shared_gate.py for both halves.
     """
-    assert lint("trim the position") is None
-    assert lint("sell half the position") is None
+    assert lint("trim the position") is not None
+    assert lint("sell half the position") is not None
+    # the words themselves remain fine in analysis
+    assert lint("a trim would reduce concentration") is None
+    assert lint("sold half in 2021") is None
