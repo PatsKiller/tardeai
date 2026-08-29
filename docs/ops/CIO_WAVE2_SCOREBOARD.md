@@ -2,6 +2,8 @@
 
 GitHub is source of truth. Drive mirror: folder **TradeAI CIO Ops** `1rRSmvAeO37z2PyyrIYtd2C5ngwHsAIqH`. File upsert: **gog --replace** on blob IDs (MCP cannot write). Native Doc/Sheet IDs stay put.
 
+> **Blob id correction (2026-08-29):** the md blob is `1kNRoyK_Tq8FNUMxrwjNDRB2AZCqnxjOP` — capital **O**. The overnight prompt wrote a zero, which 404s. `1W04_1pATgfewyf8gp-WVIo8cqc26c4WQ` holds `CIO_WAVE2_SCOREBOARD.json`, not the census; the census has no blob yet.
+
 Authority: **READ_ONLY_ADVISORY**. MBI: **0**. INTERDICT: **0** (left as found).
 
 Resume cursor: first slice with status != DONE.
@@ -18,8 +20,8 @@ CASE_SUMMARY store is still 323 — item 87 will label this on the card).
 
 | Field | Value |
 |-------|--------|
-| CURRENT pin | `5f215504` (**#621 slices 12–18**, promoted 2026-08-29T02:39:18Z) |
-| origin/main | `5f215504` |
+| CURRENT pin | `53794d82` (**#623 slices 32–41**, promoted 2026-08-29T03:06:57Z) |
+| origin/main | `53794d82` |
 | `/api/v2/health` | 200 |
 | `/v3/cio` | 200 |
 | `/api/v3/cio/home` | 200 · earnings 10 · NEW_POSITION_IF 5 · telegram_sent false · **coverage** Class D |
@@ -123,38 +125,38 @@ Leftovers still forbidden unless a Wave 2 slice explicitly allows a read-only st
 | 16 | graph_impact on S6 names only | DONE | #621 | `5f215504` | S6 scope only | 8 S6 symbols · 5 attached · SCHD 5/13 · **BND 0/0 honest** · CASH/QCOM/SRNE skipped with reason |
 | 17 | identity_lookup_failed ≠ UNRESOLVED | DONE | #621 | `5f215504` | UNRESOLVED still UNRESOLVED · no mint | RESOLVED / UNRESOLVED / LOOKUP_FAILED / NOT_APPLICABLE; failure outranks clean negative |
 | 18 | never ticker as security GUID | DONE | #621 | `5f215504` | regression only | ticker_alias_guid UUIDv5 · symbol → aliases · by_symbol[SYM] ≠ SYM (SCHD/CUSIP/V) |
-| 19 | Hermes fail histogram last 7d | DONE | *(next PR)* | *(fill after promote)* | read-only · no requeue · no cap raised | 228 in 7d · **cost_cap 130** · execution_language 93 · truncated 3 · **worker_bug 0** |
-| 20 | skip enqueue of non-retryable execution-language | DONE | *(next PR)* | *(fill after promote)* | opt-in gate · fails soft | never requeued; blocks even beside a retryable truncation; nothing written on block |
-| 21 | truncated replay ≤1/plan/day | DONE | *(next PR)* | *(fill after promote)* | eligibility only · **no cap raised** | MAX_REPLAYS_PER_PLAN_PER_DAY=1 · cost_cap-only history waits for the window |
-| 22 | hermes_result_id on new attachable complete | DONE | *(next PR)* | *(fill after promote)* | unit · no live spend | attachable only on VALID\|PARTIAL + non-failed status; truncated/cost_cap flags refuse |
-| 23 | CASE_SUMMARY mints on VALID complete | DONE | *(next PR)* | *(fill after promote)* | unit · no admit | source_kind `HERMES_VALID_COMPLETE`; dedup on (symbol, plan_id, result_id) |
-| 24 | attach backfill dry would_attach | DONE | *(next PR)* | *(fill after promote)* | dry first · **operator-authorized apply of 2 only** | would_attach was **2, not 0**; both VALID → applied. Now **0**; missing_result_id 254→252; the 474 untouched; CASE_SUMMARY stayed 328 (no double-mint). |
-| 25 | VALID/PARTIAL/FAIL counts on product | DONE | *(next PR)* | *(fill after promote)* | read-only | 468 completed · VALID 392 · PARTIAL 74 · INSUFFICIENT 2 · **attachable 466** |
-| 26 | attach rule VALID\|PARTIAL documented | DONE | *(next PR)* | *(fill after promote)* | **no silent tighten** | on the payload; VALID-only would drop 74 of 466 |
-| 27 | due checkpoints observe | DONE | *(next PR)* | *(fill after promote)* | dry · **due=0** · no apply · no invented PnL | would_bind 152 → **106** after dust filter; JEPI/LDOS/SCHG/SRNE excluded |
-| 28 | top 8 PROVISIONAL lessons on product | DONE | *(next PR)* | *(fill after promote)* | cannot_become_policy true | 328 candidates, all PROVISIONAL/REVIEW_READY, policy_effect false, cap 8 |
-| 29 | REVIEW_READY count | DONE | *(next PR)* | *(fill after promote)* | ceiling REVIEW_READY | REVIEW_READY **328** · **policy 0** · 12 RATIFIED_CONTEXT not_production_policy |
-| 30 | memory receipts memory_type+promotable | DONE | *(next PR)* | *(fill after promote)* | regression | 338/757 carry both — split is chronological, all receipts since 2026-08-28T13:34 have them |
-| 31 | no RESEARCH_REFERENCE ACTIVE | DONE | *(next PR)* | *(fill after promote)* | regression | 448 CANDIDATE · **0 ACTIVE** · CASE_SUMMARY 328 ACTIVE |
-| 32 | complete→checkpoint rate exposed | DONE | *(PR 3)* | *(fill after promote)* | reported, nothing rewritten | 523 checkpoints · **0 with plan_id** · rate **UNCOMPUTABLE** not 0% · 148 on CASH · 50 on dust |
-| 33 | remaining P9.0 voice labels | DONE | *(PR 3)* | *(fill after promote)* | additive · no sentence reworded | temperament.narrative **T** · next_reviews **T** · closest-reentries **D** |
-| 34 | Surface labels on evening/desk | DONE | *(PR 3)* | *(fill after promote)* | books named, not merged | both briefs name Surface A; undeclared prints UNLABELED |
-| 35 | morning brief earnings length | DONE | *(PR 3)* | *(fill after promote)* | verified, not rebuilt | `Earnings (D): 10 upcoming` when product.earnings=10 |
-| 36 | evening cash = live temperament.cash | DONE | *(PR 3)* | *(fill after promote)* | never portfolio_implication | EOD had **no cash line at all**; now `$578,108 · 44.9%` |
-| 37 | dark-contract scan | DONE | *(PR 3)* | *(fill after promote)* | no new uncalled helpers | 37 helpers / 9 modules · uncalled **2 → 0** · untested **15 → 0** |
-| 38 | store_consistency never_auto_remediate | DONE | *(PR 3)* | *(fill after promote)* | regression | both findings still True; literal `False` absent from the module |
-| 39 | holdings as_of vs generated_at | DONE | *(PR 3)* | *(fill after promote)* | detect only | as_of 2026-08-26 vs reprice 08-28 16:45 · **3d old** · `DATA_STALE` |
-| 40 | two-writer holdings detect only | DONE | *(PR 3)* | *(fill after promote)* | **never merged** | rows **$630,784.82** vs total_cash **$578,107.50** · Δ **$52,677.32** · both printed |
-| 41 | C2 TRIM non-held + **dust** blocked | DONE | *(PR 3)* | *(fill after promote)* | block **added**, nothing loosened | dust TRIM was **admitted**; now `dust_residual_not_a_position`; AVOID still admissible |
-| 42 | C3 quarantine path | PENDING | | | | |
-| 43 | C5 dedupe key | PENDING | | | | |
-| 44 | rebalancer contradicted_by_cio | PENDING | | | | |
-| 45 | no new Telegram producer since #611 | PENDING | | | | |
-| 46 | INTERDICT recorded | PENDING | | | | |
-| 47 | census script | PENDING | | | | |
-| 48 | Drive upsert census | PENDING | | | | |
-| 49 | Wave 2 closeout vs diagram | PENDING | | | | |
-| 50 | STOP | PENDING | | | | |
+| 19 | Hermes fail histogram last 7d | DONE | #622 | `c3c7b966` | read-only · no requeue · no cap raised | 228 in 7d · **cost_cap 130** · execution_language 93 · truncated 3 · **worker_bug 0** |
+| 20 | skip enqueue of non-retryable execution-language | DONE | #622 | `c3c7b966` | opt-in gate · fails soft | never requeued; blocks even beside a retryable truncation; nothing written on block |
+| 21 | truncated replay ≤1/plan/day | DONE | #622 | `c3c7b966` | eligibility only · **no cap raised** | MAX_REPLAYS_PER_PLAN_PER_DAY=1 · cost_cap-only history waits for the window |
+| 22 | hermes_result_id on new attachable complete | DONE | #622 | `c3c7b966` | unit · no live spend | attachable only on VALID\|PARTIAL + non-failed status; truncated/cost_cap flags refuse |
+| 23 | CASE_SUMMARY mints on VALID complete | DONE | #622 | `c3c7b966` | unit · no admit | source_kind `HERMES_VALID_COMPLETE`; dedup on (symbol, plan_id, result_id) |
+| 24 | attach backfill dry would_attach | DONE | #622 | `c3c7b966` | dry first · **operator-authorized apply of 2 only** | would_attach was **2, not 0**; both VALID → applied. Now **0**; missing_result_id 254→252; the 474 untouched; CASE_SUMMARY stayed 328 (no double-mint). |
+| 25 | VALID/PARTIAL/FAIL counts on product | DONE | #622 | `c3c7b966` | read-only | 468 completed · VALID 392 · PARTIAL 74 · INSUFFICIENT 2 · **attachable 466** |
+| 26 | attach rule VALID\|PARTIAL documented | DONE | #622 | `c3c7b966` | **no silent tighten** | on the payload; VALID-only would drop 74 of 466 |
+| 27 | due checkpoints observe | DONE | #622 | `c3c7b966` | dry · **due=0** · no apply · no invented PnL | would_bind 152 → **106** after dust filter; JEPI/LDOS/SCHG/SRNE excluded |
+| 28 | top 8 PROVISIONAL lessons on product | DONE | #622 | `c3c7b966` | cannot_become_policy true | 328 candidates, all PROVISIONAL/REVIEW_READY, policy_effect false, cap 8 |
+| 29 | REVIEW_READY count | DONE | #622 | `c3c7b966` | ceiling REVIEW_READY | REVIEW_READY **328** · **policy 0** · 12 RATIFIED_CONTEXT not_production_policy |
+| 30 | memory receipts memory_type+promotable | DONE | #622 | `c3c7b966` | regression | 338/757 carry both — split is chronological, all receipts since 2026-08-28T13:34 have them |
+| 31 | no RESEARCH_REFERENCE ACTIVE | DONE | #622 | `c3c7b966` | regression | 448 CANDIDATE · **0 ACTIVE** · CASE_SUMMARY 328 ACTIVE |
+| 32 | complete→checkpoint rate exposed | DONE | #623 | `53794d82` | reported, nothing rewritten | 523 checkpoints · **0 with plan_id** · rate **UNCOMPUTABLE** not 0% · 148 on CASH · 50 on dust |
+| 33 | remaining P9.0 voice labels | DONE | #623 | `53794d82` | additive · no sentence reworded | temperament.narrative **T** · next_reviews **T** · closest-reentries **D** |
+| 34 | Surface labels on evening/desk | DONE | #623 | `53794d82` | books named, not merged | both briefs name Surface A; undeclared prints UNLABELED |
+| 35 | morning brief earnings length | DONE | #623 | `53794d82` | verified, not rebuilt | `Earnings (D): 10 upcoming` when product.earnings=10 |
+| 36 | evening cash = live temperament.cash | DONE | #623 | `53794d82` | never portfolio_implication | EOD had **no cash line at all**; now `$578,108 · 44.9%` |
+| 37 | dark-contract scan | DONE | #623 | `53794d82` | no new uncalled helpers | 37 helpers / 9 modules · uncalled **2 → 0** · untested **15 → 0** |
+| 38 | store_consistency never_auto_remediate | DONE | #623 | `53794d82` | regression | both findings still True; literal `False` absent from the module |
+| 39 | holdings as_of vs generated_at | DONE | #623 | `53794d82` | detect only | as_of 2026-08-26 vs reprice 08-28 16:45 · **3d old** · `DATA_STALE` |
+| 40 | two-writer holdings detect only | DONE | #623 | `53794d82` | **never merged** | rows **$630,784.82** vs total_cash **$578,107.50** · Δ **$52,677.32** · both printed |
+| 41 | C2 TRIM non-held + **dust** blocked | DONE | #623 | `53794d82` | block **added**, nothing loosened | dust TRIM was **admitted**; now `dust_residual_not_a_position`; AVOID still admissible |
+| 42 | C3 quarantine path on ingest | DONE | *(PR 4)* | *(fill after promote)* | no history scrub | hook wired at 3 call sites in `price_db_sync.py`; jsonl absent = **0 outliers**, created on first write |
+| 43 | C5 critical QA dedupe key | DONE | *(PR 4)* | *(fill after promote)* | regression | dedupe in `scripts/health_agent.py` |
+| 44 | rebalancer contradicted_by_cio | DONE | *(PR 4)* | *(fill after promote)* | flag only · **job still runs** | 8 AVOID symbols; annotates `cio_avoid_contradiction`, never drops or halts |
+| 45 | no new Telegram producer since #611 | DONE | *(PR 4)* | *(fill after promote)* | regression | git log over the 4 producer paths since `19d1eb9e` = **0 commits** |
+| 46 | INTERDICT recorded | DONE | *(PR 4)* | *(fill after promote)* | left as found | `CIO_TELEGRAM_INTERDICT=0` |
+| 47 | census script | DONE | *(PR 4)* | *(fill after promote)* | read-only | `scripts/cio_wave2_census.py` recomputes the whole NOW block; agrees with the card |
+| 48 | Drive upsert | **DONE (operator-run)** | *(PR 4)* | *(fill after promote)* | agent upload FAIL, no TTY | both blobs replaced; md id is capital-**O** (`…AZCqnxjOP`) — the prompt's zero 404s |
+| 49 | Wave 2 closeout vs diagram | DONE | *(PR 4)* | *(fill after promote)* | docs only | `CIO_WAVE2_OVERNIGHT_CLOSEOUT.md` + `CIO_WAVE2_CENSUS_2026-08-28.json` |
+| 50 | STOP | DONE | *(PR 4)* | *(fill after promote)* | **Wave 3 not started** | slices 12–41 shipped and promoted across #621 / #622 / #623 |
 
 ---
 

@@ -100,6 +100,11 @@ else
   if [[ "$cio" == "1" ]]; then
     "$PY" scripts/run_cio_hardening_ci.py
     "$PY" scripts/run_cio_adversarial_suite.py
+    # The cio-hardening CI job runs this as a separate step, so local acceptance
+    # could pass while CI failed on a new uncalled versioned contract — which is
+    # exactly what happened to PR #624, costing a remote cycle for something
+    # provable locally in 1.5s. Mirror the step here.
+    "$PY" scripts/check_dark_contracts.py --fail-on-new
     authority_green=true
   fi
   if [[ "$frontend" == "1" && -f apps/command-center-v3/package.json ]]; then

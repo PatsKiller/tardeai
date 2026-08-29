@@ -1,0 +1,140 @@
+{
+  "schema": "CIOWave2Census@v1",
+  "authority": "READ_ONLY_ADVISORY",
+  "memory_behavior_influence": 0,
+  "financial_action": false,
+  "root": "/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT",
+  "current_pin": "53794d823f0e88a220663eb47963ae3d46d51bd8",
+  "endpoints": {
+    "health": 200,
+    "v3_cio": 200,
+    "home": 200
+  },
+  "holdings": {
+    "position_rows": 30,
+    "held_equity_ticker_n": 19,
+    "held_equity_ticker_nondust_n": 15,
+    "dust_n": 4,
+    "dust_tickers": [
+      "JEPI",
+      "LDOS",
+      "SCHG",
+      "SRNE"
+    ],
+    "instrument_id_n": 3,
+    "instrument_ids": [
+      "12507E201",
+      "543354104",
+      "628518102"
+    ],
+    "dust_threshold_usd": 50.0,
+    "data_quality_state": "DATA_STALE",
+    "data_quality_labels": [
+      "DATA_STALE",
+      "REPRICE_AHEAD_OF_POSITIONS",
+      "CASH_TOTAL_DISAGREEMENT"
+    ],
+    "cash_row_sum": 630784.82,
+    "cash_portfolio_totals": 578107.5,
+    "cash_delta": 52677.32,
+    "cash_sources_agree": false
+  },
+  "plans": {
+    "open_total": 562,
+    "by_situation": {
+      "S3_REENTRY_CANDIDATE": 320,
+      "S1_POSITION_LIFECYCLE": 149,
+      "S6_CONCENTRATION_OR_DISPOSITION": 40,
+      "S5_CASH_DEPLOYMENT": 35,
+      "S7_WATCH_PROMOTION": 11,
+      "S0_OPERATOR_CONVERSE": 7
+    },
+    "by_status": {
+      "draft": 340,
+      "proposed": 221,
+      "accepted": 1
+    }
+  },
+  "research": {
+    "fail_window_days": 7,
+    "fails_in_window": 230,
+    "fails_all_time": 304,
+    "fails_by_class": {
+      "cost_cap": 132,
+      "execution_language": 93,
+      "truncated": 3,
+      "timeout": 1,
+      "provider_error": 1
+    },
+    "fails_retryable": 5,
+    "fails_worker_bug": 0,
+    "completed_n": 468,
+    "by_verdict": {
+      "VALID": 392,
+      "PARTIAL": 74,
+      "INSUFFICIENT": 2
+    },
+    "attachable_n": 466,
+    "attach_rule": "VALID|PARTIAL"
+  },
+  "memory": {
+    "records": 779,
+    "by_type_status": {
+      "CASE_SUMMARY:ACTIVE": 328,
+      "OPERATOR_EXPLICIT_PREFERENCE:ACTIVE": 1,
+      "OPERATOR_EXPLICIT_PREFERENCE:RETRACTED": 1,
+      "PROCEDURAL_HINT:CANDIDATE": 1,
+      "RESEARCH_REFERENCE:CANDIDATE": 448
+    },
+    "research_reference_active": 0
+  },
+  "home": {
+    "coverage": {
+      "held_n": 15,
+      "thesis_count": 15,
+      "with_plan": 11,
+      "with_plan_source": "open_plan_store",
+      "with_research": 5,
+      "with_case_summary": 10,
+      "watch_ready": 0,
+      "watch_block": 26,
+      "reentry_near": 25
+    },
+    "graph_impact": {
+      "s6_symbols": [
+        "AMANX",
+        "BND",
+        "DIV",
+        "SCHD",
+        "SPCX",
+        "SRNE"
+      ],
+      "attached_n": 5,
+      "skipped": [
+        "SRNE"
+      ]
+    },
+    "watch": {
+      "block_count": 26,
+      "ready_count": 0,
+      "fires_s7": false
+    },
+    "earnings_n": 10,
+    "new_position_if": [
+      "NKE",
+      "PFSI",
+      "PRIM",
+      "SH",
+      "XLU"
+    ],
+    "telegram_sent": false,
+    "authority": "READ_ONLY_ADVISORY"
+  },
+  "rails": {
+    "authority": "READ_ONLY_ADVISORY",
+    "memory_behavior_influence": 0,
+    "telegram_sent": false,
+    "fires_s7": false,
+    "interdict": "0"
+  }
+}

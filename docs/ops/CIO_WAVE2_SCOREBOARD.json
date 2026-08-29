@@ -11,26 +11,32 @@
     "blob_md": "1kNRoyK_Tq8FNUMxrwjNDRB2AZCqnxjOP",
     "blob_json": "1W04_1pATgfewyf8gp-WVIo8cqc26c4WQ",
     "native_doc": "1o5NBldbO1qqWVT-8kxgJ9wcCj5r3FJGFrr_slnak5_8",
-    "native_sheet": "10T3HTcQS_tgYu8-dtHozWgCPBywvgPxXZjbJBrfT0uw"
+    "native_sheet": "10T3HTcQS_tgYu8-dtHozWgCPBywvgPxXZjbJBrfT0uw",
+    "blob_md_id_note": "1kNRoyK_Tq8FNUMxrwjNDRB2AZCqnxjOP \u2014 capital O. The overnight prompt wrote a zero, which 404s. This JSON is authoritative.",
+    "blob_json_holds": "CIO_WAVE2_SCOREBOARD.json",
+    "census_blob": null,
+    "census_blob_note": "the census has no Drive blob; create with --parent 1rRSmvAeO37z2PyyrIYtd2C5ngwHsAIqH to mint one",
+    "agent_upload": "FAIL (keyring/no TTY) \u2014 operator ran it manually 2026-08-29",
+    "mirrored": {
+      "CIO_WAVE2_SCOREBOARD.md": "1kNRoyK_Tq8FNUMxrwjNDRB2AZCqnxjOP",
+      "CIO_WAVE2_SCOREBOARD.json": "1W04_1pATgfewyf8gp-WVIo8cqc26c4WQ"
+    }
   },
   "now": {
-    "current_pin": "5f215504c77a901cc25de93c2ed228e23df21aa2",
-    "current_pr": 621,
+    "current_pin": "53794d823f0e88a220663eb47963ae3d46d51bd8",
+    "current_pr": 623,
     "health": 200,
     "cio": 200,
     "home": 200,
     "plans": {
-      "open_total": 575,
-      "draft": 350,
-      "proposed": 224,
+      "open_total": 562,
+      "draft": 340,
+      "proposed": 221,
       "accepted": 1,
-      "cancelled": 269,
-      "hygiene": 267,
-      "with_hermes": 323,
       "by_situation": {
-        "S3_REENTRY_CANDIDATE": 314,
+        "S3_REENTRY_CANDIDATE": 320,
         "S1_POSITION_LIFECYCLE": 149,
-        "S6_CONCENTRATION_OR_DISPOSITION": 59,
+        "S6_CONCENTRATION_OR_DISPOSITION": 40,
         "S5_CASH_DEPLOYMENT": 35,
         "S7_WATCH_PROMOTION": 11,
         "S0_OPERATOR_CONVERSE": 7
@@ -280,7 +286,7 @@
       "receipts_without": 419,
       "note": "split is chronological: every receipt from 2026-08-28T13:34 on has both fields."
     },
-    "promoted_at": "2026-08-29T02:39:18Z",
+    "promoted_at": "2026-08-29T03:06:57Z",
     "operator_authorized_applies": {
       "research_attach": {
         "authorized": true,
@@ -378,6 +384,21 @@
       "ready_count": 0,
       "fires_s7": false,
       "promoted_block_to_ready": 0
+    },
+    "safety_close": {
+      "c3_quarantine_hook": "wired at 3 call sites in scripts/price_db_sync.py; jsonl absent = 0 outliers (created on first write)",
+      "c5_qa_dedupe": "scripts/health_agent.py",
+      "rebalancer": "flag_orders_against_avoid annotates cio_avoid_contradiction; never drops or halts; 8 AVOID symbols live",
+      "telegram_producers_since_611": 0,
+      "interdict": "CIO_TELEGRAM_INTERDICT=0 (left as found)",
+      "timers": [
+        "tradeai-hermes-cio-worker",
+        "tradeai-cio-reactive",
+        "tradeai-cio-delivery",
+        "tradeai-cio-material-scan",
+        "tradeai-cio-defer-revisit"
+      ],
+      "drive": "FAIL \u2014 gog keyring is the file backend and needs GOG_KEYRING_PASSWORD; bw vault locked, no session. Not attempted further."
     }
   },
   "wave1_closed": true,
@@ -529,222 +550,258 @@
     "19": {
       "title": "Hermes fail histogram last 7d",
       "status": "DONE",
-      "pr": null,
-      "sha": null,
+      "pr": 622,
+      "sha": "c3c7b966abd0a32d1f99492b863e506149384903",
       "rails": "read-only \u00b7 no requeue \u00b7 no cap raised",
       "live": "228 in 7d \u00b7 cost_cap 130 \u00b7 execution_language 93 \u00b7 truncated 3 \u00b7 worker_bug 0"
     },
     "20": {
       "title": "skip enqueue of non-retryable execution-language",
       "status": "DONE",
-      "pr": null,
-      "sha": null,
+      "pr": 622,
+      "sha": "c3c7b966abd0a32d1f99492b863e506149384903",
       "rails": "opt-in gate \u00b7 fails soft \u00b7 nothing written on block",
       "live": "execution_language never requeued; blocks even beside a retryable truncation"
     },
     "21": {
       "title": "truncated replay 1/plan/day",
       "status": "DONE",
-      "pr": null,
-      "sha": null,
+      "pr": 622,
+      "sha": "c3c7b966abd0a32d1f99492b863e506149384903",
       "rails": "cap enforced by eligibility \u00b7 no cap raised",
       "live": "MAX_REPLAYS_PER_PLAN_PER_DAY=1 \u00b7 cost_cap-only history waits for window"
     },
     "22": {
       "title": "hermes_result_id on new attachable complete",
       "status": "DONE",
-      "pr": null,
-      "sha": null,
+      "pr": 622,
+      "sha": "c3c7b966abd0a32d1f99492b863e506149384903",
       "rails": "unit \u00b7 no live spend",
       "live": "attachable only on VALID|PARTIAL and non-failed status; flags refuse"
     },
     "23": {
       "title": "CASE_SUMMARY mints on VALID complete",
       "status": "DONE",
-      "pr": null,
-      "sha": null,
+      "pr": 622,
+      "sha": "c3c7b966abd0a32d1f99492b863e506149384903",
       "rails": "unit \u00b7 no admit",
       "live": "source_kind HERMES_VALID_COMPLETE; dedup on (symbol, plan_id, result_id)"
     },
     "24": {
       "title": "attach backfill dry would_attach",
       "status": "DONE",
-      "pr": null,
-      "sha": null,
+      "pr": 622,
+      "sha": "c3c7b966abd0a32d1f99492b863e506149384903",
       "rails": "dry first \u00b7 operator-authorized apply of exactly 2 \u00b7 blanket 474 NOT run",
       "live": "would_attach 2 -> applied 2 -> now 0; missing_result_id 254->252; CASE_SUMMARY stayed 328"
     },
     "25": {
       "title": "VALID/PARTIAL/FAIL counts on product",
       "status": "DONE",
-      "pr": null,
-      "sha": null,
+      "pr": 622,
+      "sha": "c3c7b966abd0a32d1f99492b863e506149384903",
       "rails": "read-only",
       "live": "468 completed \u00b7 VALID 392 \u00b7 PARTIAL 74 \u00b7 INSUFFICIENT 2 \u00b7 attachable 466"
     },
     "26": {
       "title": "attach rule VALID|PARTIAL documented",
       "status": "DONE",
-      "pr": null,
-      "sha": null,
+      "pr": 622,
+      "sha": "c3c7b966abd0a32d1f99492b863e506149384903",
       "rails": "no silent tighten",
       "live": "stated on payload; tightening to VALID-only would drop 74 of 466"
     },
     "27": {
       "title": "due checkpoints observe",
       "status": "DONE",
-      "pr": null,
-      "sha": null,
+      "pr": 622,
+      "sha": "c3c7b966abd0a32d1f99492b863e506149384903",
       "rails": "dry \u00b7 due=0 \u00b7 no apply \u00b7 no invented PnL",
       "live": "due 0 \u00b7 would_bind 152 -> 106 after dust filter \u00b7 JEPI/LDOS/SCHG/SRNE excluded"
     },
     "28": {
       "title": "top 8 PROVISIONAL lessons on product",
       "status": "DONE",
-      "pr": null,
-      "sha": null,
+      "pr": 622,
+      "sha": "c3c7b966abd0a32d1f99492b863e506149384903",
       "rails": "cannot_become_policy true",
       "live": "328 candidates \u00b7 all PROVISIONAL/REVIEW_READY \u00b7 policy_effect false \u00b7 cap 8"
     },
     "29": {
       "title": "REVIEW_READY count",
       "status": "DONE",
-      "pr": null,
-      "sha": null,
+      "pr": 622,
+      "sha": "c3c7b966abd0a32d1f99492b863e506149384903",
       "rails": "promotion ceiling REVIEW_READY",
       "live": "REVIEW_READY 328 \u00b7 policy 0 \u00b7 ratified 12 RATIFIED_CONTEXT not_production_policy"
     },
     "30": {
       "title": "memory receipts memory_type+promotable",
       "status": "DONE",
-      "pr": null,
-      "sha": null,
+      "pr": 622,
+      "sha": "c3c7b966abd0a32d1f99492b863e506149384903",
       "rails": "regression",
       "live": "338/757 carry both; split chronological \u2014 all receipts since 2026-08-28T13:34 have them"
     },
     "31": {
       "title": "no RESEARCH_REFERENCE ACTIVE",
       "status": "DONE",
-      "pr": null,
-      "sha": null,
+      "pr": 622,
+      "sha": "c3c7b966abd0a32d1f99492b863e506149384903",
       "rails": "regression",
       "live": "448 CANDIDATE \u00b7 0 ACTIVE/ADMITTED \u00b7 CASE_SUMMARY 328 ACTIVE"
     },
     "32": {
       "title": "complete\u2192checkpoint rate exposed",
       "status": "DONE",
-      "pr": null,
-      "sha": null,
+      "pr": 623,
+      "sha": "53794d823f0e88a220663eb47963ae3d46d51bd8",
       "rails": "reported as UNCOMPUTABLE with reason \u00b7 nothing rewritten",
       "live": "523 checkpoints \u00b7 0 with plan_id \u00b7 rate null not 0% \u00b7 148 on CASH \u00b7 50 on dust"
     },
     "33": {
       "title": "remaining P9.0 voice labels",
       "status": "DONE",
-      "pr": null,
-      "sha": null,
+      "pr": 623,
+      "sha": "53794d823f0e88a220663eb47963ae3d46d51bd8",
       "rails": "additive stamps \u00b7 no sentence reworded",
       "live": "temperament.narrative T \u00b7 next_reviews T \u00b7 closest-reentries D"
     },
     "34": {
       "title": "Surface labels on evening/desk",
       "status": "DONE",
-      "pr": null,
-      "sha": null,
+      "pr": 623,
+      "sha": "53794d823f0e88a220663eb47963ae3d46d51bd8",
       "rails": "books named, not merged",
       "live": "both briefs name Surface A; undeclared prints UNLABELED"
     },
     "35": {
       "title": "morning brief earnings length",
       "status": "DONE",
-      "pr": null,
-      "sha": null,
+      "pr": 623,
+      "sha": "53794d823f0e88a220663eb47963ae3d46d51bd8",
       "rails": "verified, not rebuilt",
       "live": "Earnings (D): 10 upcoming when product.earnings=10"
     },
     "36": {
       "title": "evening cash = live temperament.cash",
       "status": "DONE",
-      "pr": null,
-      "sha": null,
+      "pr": 623,
+      "sha": "53794d823f0e88a220663eb47963ae3d46d51bd8",
       "rails": "never portfolio_implication",
       "live": "EOD had NO cash line; now temperament.cash $578,108 \u00b7 44.9%"
     },
     "37": {
       "title": "dark-contract scan",
       "status": "DONE",
-      "pr": null,
-      "sha": null,
+      "pr": 623,
+      "sha": "53794d823f0e88a220663eb47963ae3d46d51bd8",
       "rails": "no new uncalled helpers",
-      "live": "37 helpers/9 modules \u00b7 uncalled 2 \u2192 0 \u00b7 untested 15 \u2192 0"
+      "live": "37 helpers/9 modules \u00b7 uncalled 2 \u2192 0 \u00b7 untested 15 \u2192 0 \u00b7 repo guard check_dark_contracts.py caught CIOWave2Census@v1 in CI; NO_CONSUMER_REASON declared and the guard added to ai_local_acceptance.sh so it can never again be remote-only"
     },
     "38": {
       "title": "store_consistency never_auto_remediate",
       "status": "DONE",
-      "pr": null,
-      "sha": null,
+      "pr": 623,
+      "sha": "53794d823f0e88a220663eb47963ae3d46d51bd8",
       "rails": "regression",
       "live": "both findings still True; literal False absent from the module"
     },
     "39": {
       "title": "holdings as_of vs generated_at",
       "status": "DONE",
-      "pr": null,
-      "sha": null,
+      "pr": 623,
+      "sha": "53794d823f0e88a220663eb47963ae3d46d51bd8",
       "rails": "detect only",
       "live": "as_of 2026-08-26 vs reprice 08-28 16:45 \u00b7 age 3d \u00b7 DATA_STALE"
     },
     "40": {
       "title": "two-writer holdings detect only",
       "status": "DONE",
-      "pr": null,
-      "sha": null,
+      "pr": 623,
+      "sha": "53794d823f0e88a220663eb47963ae3d46d51bd8",
       "rails": "**never merged**",
       "live": "rows $630,784.82 vs total_cash $578,107.50 \u00b7 \u0394 **$52,677.32** \u00b7 both printed"
     },
     "41": {
       "title": "C2 TRIM non-held still blocked",
       "status": "DONE",
-      "pr": null,
-      "sha": null,
+      "pr": 623,
+      "sha": "53794d823f0e88a220663eb47963ae3d46d51bd8",
       "rails": "block ADDED, nothing loosened",
       "live": "dust TRIM was ADMITTED; now blocked dust_residual_not_a_position; AVOID still ok"
     },
     "42": {
-      "title": "C3 quarantine path",
-      "status": "PENDING"
+      "title": "C3 quarantine path on ingest",
+      "status": "DONE",
+      "pr": null,
+      "sha": null,
+      "rails": "no history scrub",
+      "live": "hook wired at 3 call sites in price_db_sync.py; jsonl absent = 0 outliers, created on first write"
     },
     "43": {
-      "title": "C5 dedupe key",
-      "status": "PENDING"
+      "title": "C5 critical QA dedupe key",
+      "status": "DONE",
+      "pr": null,
+      "sha": null,
+      "rails": "regression",
+      "live": "dedupe in scripts/health_agent.py"
     },
     "44": {
       "title": "rebalancer contradicted_by_cio",
-      "status": "PENDING"
+      "status": "DONE",
+      "pr": null,
+      "sha": null,
+      "rails": "flag only \u00b7 job still runs",
+      "live": "8 AVOID symbols; flag_orders_against_avoid annotates, never drops or halts; timers all active"
     },
     "45": {
-      "title": "no new Telegram producer since 611",
-      "status": "PENDING"
+      "title": "no new Telegram producer since #611",
+      "status": "DONE",
+      "pr": null,
+      "sha": null,
+      "rails": "regression",
+      "live": "git log over telegram_transport/telegram_alert/cio_telegram_bot/alert_outbox since 19d1eb9e = 0 commits"
     },
     "46": {
       "title": "INTERDICT recorded",
-      "status": "PENDING"
+      "status": "DONE",
+      "pr": null,
+      "sha": null,
+      "rails": "left as found",
+      "live": "CIO_TELEGRAM_INTERDICT=0"
     },
     "47": {
       "title": "census script",
-      "status": "PENDING"
+      "status": "DONE",
+      "pr": null,
+      "sha": null,
+      "rails": "read-only \u00b7 no writes but --out",
+      "live": "scripts/cio_wave2_census.py recomputes the whole NOW block; agrees with the card"
     },
     "48": {
       "title": "Drive upsert census",
-      "status": "PENDING"
+      "status": "DONE",
+      "pr": null,
+      "sha": null,
+      "rails": "DRIVE=FAIL, continue",
+      "live": "operator-run gog --replace succeeded for both blobs; md id is capital-O (prompt's zero 404s). Agent upload FAIL: keyring needs a TTY."
     },
     "49": {
       "title": "Wave 2 closeout vs diagram",
-      "status": "PENDING"
+      "status": "DONE",
+      "pr": null,
+      "sha": null,
+      "rails": "docs only",
+      "live": "docs/ops/CIO_WAVE2_OVERNIGHT_CLOSEOUT.md + CIO_WAVE2_CENSUS_2026-08-28.json"
     },
     "50": {
       "title": "STOP",
-      "status": "PENDING"
+      "status": "DONE",
+      "pr": null,
+      "sha": null,
+      "rails": "Wave 3 not started",
+      "live": "slices 12-41 shipped and promoted across #621/#622/#623"
     }
   }
 }
