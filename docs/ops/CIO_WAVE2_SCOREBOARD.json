@@ -1134,5 +1134,28 @@
     "caps_raised": false,
     "notify_changed": false,
     "wave3_started": false
+  },
+  "cash_fossil_closeout_2026_08_29": {
+    "status": "CLOSED",
+    "cash_writer": "portfolio_repricer._recalc_totals",
+    "prior_writer_patched_but_never_ran": "portfolio_loader.load_all_portfolios (#634)",
+    "pr": 635,
+    "merge_commit": "7ad62f7b9a601e92b316be7bf6e5d18b7a942cfa",
+    "current_pin": "7ad62f7b-main-exact-phase2-20260829-081457",
+    "proof": "Saturday after-hours reprice, 2026-08-29",
+    "cash_gap_live": 0.0,
+    "total_cash_before": 578107.5,
+    "total_cash_after": 630784.82,
+    "s5_cash": 630784.82,
+    "s5_prior_state": "DATA_UNAVAILABLE_UNTIL_RECONCILED",
+    "live_surfaces_agree": [
+      "temperament.cash",
+      "cash.cash_usd",
+      "/api/v2/overview total_cash"
+    ],
+    "persisted_brief_rebuilt_once": true,
+    "fourth_cash_writer_added": false,
+    "api_v2_2593_read_site": "left in place",
+    "doc": "docs/ops/CIO_CASH_SATURDAY_PROOF_2026-08-29.md"
   }
 }

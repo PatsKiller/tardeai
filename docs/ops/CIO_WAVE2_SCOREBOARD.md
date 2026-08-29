@@ -308,6 +308,35 @@ Leftovers still forbidden unless a Wave 2 slice explicitly allows a read-only st
    `fires_s7` false). Dark-contract scan: uncalled helpers **2 → 0**.
    MBI 0, INTERDICT 0, telegram_sent false.
 
+## Cash fossil — CLOSED (2026-08-29, Saturday proof)
+
+`portfolio_totals.total_cash` had drifted to **$578,107.50** against a
+**$630,784.82** cash row sum — a **$52,677.32** gap. It was the one key in that
+dict no writer refreshed.
+
+#634 patched `portfolio_loader.load_all_portfolios`, which the pipeline never
+calls. The writer that runs is `portfolio_repricer._recalc_totals` (the 16:10
+Mon–Fri cron). The stored document said so — `last_pipeline_run` 08-26 from the
+loader vs `last_repriced` 08-28 from the repricer — and `total_mv_excluded`
+staying correct to the cent was the tell: it sits in the repricer's update list,
+`total_cash` did not.
+
+#635 (`7ad62f7b`) adds the write there. Proven the same day rather than waiting
+for Monday, by running the real repricer after-hours on CURRENT:
+
+| | before | after |
+|---|---|---|
+| `total_cash` | 578,107.50 | **630,784.82** |
+| `cash_gap` | 52,677.32 | **0.00** |
+| `temperament.cash` | 578,107.50 | **630,784.82** |
+| S5 cash | `DATA_UNAVAILABLE_UNTIL_RECONCILED` | **630,784.82** |
+
+The live payload needed the persisted brief (`cio.product.current`) rebuilt
+once — it had regenerated 50s *before* the reprice, during the promote restart.
+No fourth cash writer. `api_v2.py:2593` left in place. Shares unchanged.
+
+Full evidence: `docs/ops/CIO_CASH_SATURDAY_PROOF_2026-08-29.md`.
+
 ## LLM_GATE = DONE (2026-08-29)
 
 `ResearchNeedDecision@v2` routes every research job to one of seven outcomes —
