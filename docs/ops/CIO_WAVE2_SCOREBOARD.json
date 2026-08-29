@@ -4,14 +4,19 @@
   "memory_behavior_influence": 0,
   "interdict": "0",
   "drive": {
-    "status": "OK",
+    "status": "PARTIAL",
     "reason": "gog --replace blobs; native Doc/Sheet create-only",
     "folder_name": "TradeAI CIO Ops",
     "folder_id": "1rRSmvAeO37z2PyyrIYtd2C5ngwHsAIqH",
     "blob_md": "1kNRoyK_Tq8FNUMxrwjNDRB2AZCqnxjOP",
     "blob_json": "1W04_1pATgfewyf8gp-WVIo8cqc26c4WQ",
     "native_doc": "1o5NBldbO1qqWVT-8kxgJ9wcCj5r3FJGFrr_slnak5_8",
-    "native_sheet": "10T3HTcQS_tgYu8-dtHozWgCPBywvgPxXZjbJBrfT0uw"
+    "native_sheet": "10T3HTcQS_tgYu8-dtHozWgCPBywvgPxXZjbJBrfT0uw",
+    "blob_md_id_note": "1kNRoyK_Tq8FNUMxrwjNDRB2AZCqnxjOP \u2014 capital O. The overnight prompt wrote a zero, which 404s. This JSON is authoritative.",
+    "blob_json_holds": "CIO_WAVE2_SCOREBOARD.json",
+    "census_blob": null,
+    "census_blob_note": "the census has no Drive blob; create with --parent 1rRSmvAeO37z2PyyrIYtd2C5ngwHsAIqH to mint one",
+    "agent_upload": "FAIL \u2014 gog keyring is the file backend and needs GOG_KEYRING_PASSWORD; bw vault locked with no session. Operator ran it manually."
   },
   "now": {
     "current_pin": "53794d823f0e88a220663eb47963ae3d46d51bd8",

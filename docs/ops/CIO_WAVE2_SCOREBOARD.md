@@ -2,6 +2,8 @@
 
 GitHub is source of truth. Drive mirror: folder **TradeAI CIO Ops** `1rRSmvAeO37z2PyyrIYtd2C5ngwHsAIqH`. File upsert: **gog --replace** on blob IDs (MCP cannot write). Native Doc/Sheet IDs stay put.
 
+> **Blob id correction (2026-08-29):** the md blob is `1kNRoyK_Tq8FNUMxrwjNDRB2AZCqnxjOP` — capital **O**. The overnight prompt wrote a zero, which 404s. `1W04_1pATgfewyf8gp-WVIo8cqc26c4WQ` holds `CIO_WAVE2_SCOREBOARD.json`, not the census; the census has no blob yet.
+
 Authority: **READ_ONLY_ADVISORY**. MBI: **0**. INTERDICT: **0** (left as found).
 
 Resume cursor: first slice with status != DONE.

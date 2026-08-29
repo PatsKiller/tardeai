@@ -110,8 +110,16 @@ GOG_KEYRING_PASSWORD="$(bw get password gog-keyring)" \
   --replace 1kNRoyK_Tq8FNUMxrwjNDRB2AZCqnxj0P -a john@jwwhiting.com
 ```
 
-(The scoreboard blob id in the JSON is `…AZCqnxjOP` and the prompt says
-`…AZCqnxj0P` — `O` vs `0`. Worth settling before the first successful upload.)
+**Settled 2026-08-29:** the md blob is `1kNRoyK_Tq8FNUMxrwjNDRB2AZCqnxjOP` —
+capital **O**. The overnight prompt's zero returns `404 File not found`. The
+scoreboard JSON is authoritative and has been corrected.
+
+Also corrected: `1W04_1pATgfewyf8gp-WVIo8cqc26c4WQ` is the **scoreboard** JSON
+mirror (its Drive name is `CIO_WAVE2_SCOREBOARD.json`), not a census blob. The
+census has no blob yet; `--parent 1rRSmvAeO37z2PyyrIYtd2C5ngwHsAIqH` would mint one.
+
+The operator ran the upload manually with the keyring password from Bitwarden
+(item *TradeAI gog keyring password*); the agent never handled it.
 
 ## Rails — all held
 
