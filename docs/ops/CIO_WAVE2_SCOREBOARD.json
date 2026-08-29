@@ -224,7 +224,26 @@
       "UNRESOLVED",
       "LOOKUP_FAILED",
       "NOT_APPLICABLE"
-    ]
+    ],
+    "research_fail_histogram_7d": {
+      "failures_in_window": 228,
+      "failures_all_time": 302,
+      "by_class": {
+        "cost_cap": 130,
+        "execution_language": 93,
+        "truncated": 3,
+        "timeout": 1,
+        "provider_error": 1
+      },
+      "retryable_n": 5,
+      "non_retryable_n": 223,
+      "worker_bug_n": 0,
+      "cost_cap_shapes": {
+        "HTTP_429_COST_CAP_EXCEEDED": 82,
+        "HTTP_500_RESERVATION_FAILED": 114
+      },
+      "note": "RESERVATION_FAILED is the daily request cap wearing a 500; not a worker bug."
+    }
   },
   "wave1_closed": true,
   "slices": {
@@ -373,16 +392,28 @@
       "live": "ticker_alias_guid UUIDv5 \u00b7 symbol in aliases \u00b7 by_symbol[SYM] != SYM (SCHD/CUSIP/V)"
     },
     "19": {
-      "title": "Hermes fail histogram",
-      "status": "PENDING"
+      "title": "Hermes fail histogram last 7d",
+      "status": "DONE",
+      "pr": null,
+      "sha": null,
+      "rails": "read-only \u00b7 no requeue \u00b7 no cap raised",
+      "live": "228 in 7d \u00b7 cost_cap 130 \u00b7 execution_language 93 \u00b7 truncated 3 \u00b7 worker_bug 0"
     },
     "20": {
-      "title": "skip non-retryable execution-language",
-      "status": "PENDING"
+      "title": "skip enqueue of non-retryable execution-language",
+      "status": "DONE",
+      "pr": null,
+      "sha": null,
+      "rails": "opt-in gate \u00b7 fails soft \u00b7 nothing written on block",
+      "live": "execution_language never requeued; blocks even beside a retryable truncation"
     },
     "21": {
-      "title": "retry truncated 1/plan/day",
-      "status": "PENDING"
+      "title": "truncated replay 1/plan/day",
+      "status": "DONE",
+      "pr": null,
+      "sha": null,
+      "rails": "cap enforced by eligibility \u00b7 no cap raised",
+      "live": "MAX_REPLAYS_PER_PLAN_PER_DAY=1 \u00b7 cost_cap-only history waits for window"
     },
     "22": {
       "title": "hermes_result_id on new completes",

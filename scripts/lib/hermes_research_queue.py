@@ -56,6 +56,7 @@ class EnqueueResult:
     fingerprint: str
     status: str
     reason: str  # created | duplicate_in_flight | priority_bumped | reused_fresh_result
+                 # | blocked_non_retryable (Wave 2 slices 20/21)
     existing: Optional[dict[str, Any]] = None
     age_seconds: Optional[float] = None
     ttl_seconds: Optional[int] = None
@@ -124,12 +125,25 @@ def enqueue_research_request(
     record_reuse_event: Optional[Callable[[dict[str, Any]], None]] = None,
     replace_open: bool = False,
     list_open_by_plan: Optional[Callable[[str], list[dict]]] = None,
+    list_prior_failures: Optional[Callable[[str], list[dict]]] = None,
     now: Optional[datetime] = None,
 ) -> EnqueueResult:
     """
     Idempotent enqueue with fingerprint de-duplication.
 
     Mutates request in place to attach fingerprint / status / timestamps.
+
+    Wave 2 slices 20 / 21 — when `list_prior_failures` is supplied, how this
+    plan failed *before* can block the enqueue:
+
+    * `execution_language` is never requeued. The output was correctly refused;
+      running it again spends the cap to be refused again.
+    * an all-`cost_cap` history waits for the cap window rather than retrying
+      into a closed door. A cost cap is the process working, not a worker bug.
+    * `truncated` is retryable but capped at one replay per plan per day.
+
+    The callback is optional and the default behaviour is unchanged, so no
+    existing caller is silently re-gated.
     """
     now = now or _now()
     now_iso = now.isoformat()
@@ -151,6 +165,38 @@ def enqueue_research_request(
         }
         base.update(extra)
         return base
+
+    # 0) Non-retryable prior failure? (Wave 2 slices 20/21) Cheapest check first:
+    # it costs a ledger read and can save a paid call.
+    if list_prior_failures is not None and plan_id:
+        try:
+            from scripts.lib.cio_research_fail_policy import replay_decision
+        except ImportError:  # pragma: no cover
+            from lib.cio_research_fail_policy import replay_decision  # type: ignore
+        try:
+            priors = list_prior_failures(plan_id) or []
+        except Exception:
+            priors = []
+        gate = replay_decision(prior_failures=priors, plan_id=plan_id, now=now)
+        if not gate["allow_enqueue"]:
+            _ledger_queue_skip(gate["reason"], request, fp)
+            return EnqueueResult(
+                created=False,
+                research_id="",
+                fingerprint=fp,
+                status="blocked",
+                reason="blocked_non_retryable",
+                existing=None,
+                priority=priority,
+                log_event=_log(
+                    created=False,
+                    reason="blocked_non_retryable",
+                    block_reason=gate["reason"],
+                    last_failure_class=gate["last_failure_class"],
+                    is_worker_bug=False,
+                    status="blocked",
+                ),
+            )
 
     # 1) In-flight duplicate?
     existing = find_in_flight_by_fingerprint(fp)

@@ -42,6 +42,8 @@ CASE_SUMMARY store is still 323 — item 87 will label this on the card).
 | **dry harness** | `TRADEAI_ROOT=CURRENT` is required — without it root-less collectors report reentry 43 / watch 0 instead of 70 / 26 |
 | **graph_impact (15/16)** | S6 only · 8 S6 symbols · 5 attached · SCHD 5/13 · AMANX 5/13 · DIV 5/11 · SPCX 5/8 · **BND 0/0** · skipped CASH/QCOM (not held) + SRNE (dust) |
 | **identity lookup (17)** | RESOLVED / UNRESOLVED / **LOOKUP_FAILED** / NOT_APPLICABLE — a registry read failure no longer reads as a clean negative |
+| **research fails 7d (19)** | 228 · cost_cap **130** · execution_language 93 · truncated 3 · timeout 1 · provider_error 1 · retryable **5** · **worker_bug 0** |
+| **cost_cap two shapes** | HTTP 429 `COST_CAP_EXCEEDED` 82 + HTTP 500 `RESERVATION_FAILED` 114 — same daily cap; classifying on the code would file 114 as provider errors |
 | exec voice | `[T]` / `[D] Nothing requires action today.` |
 | reentry | Surface A · 70 names · reentry_total 25 NEAR overlaid · queue 43 · **dual pipes NOT merged** |
 | slice 12c would | BAH · CSWC · V · XAR · AMANX (cap 5, notify false) — apply is a separate dry-first step |
@@ -107,9 +109,9 @@ Leftovers still forbidden unless a Wave 2 slice explicitly allows a read-only st
 | 16 | graph_impact on S6 names only | DONE | *(this PR)* | *(fill after promote)* | S6 scope only | 8 S6 symbols · 5 attached · SCHD 5/13 · **BND 0/0 honest** · CASH/QCOM/SRNE skipped with reason |
 | 17 | identity_lookup_failed ≠ UNRESOLVED | DONE | *(this PR)* | *(fill after promote)* | UNRESOLVED still UNRESOLVED · no mint | RESOLVED / UNRESOLVED / LOOKUP_FAILED / NOT_APPLICABLE; failure outranks clean negative |
 | 18 | never ticker as security GUID | DONE | *(this PR)* | *(fill after promote)* | regression only | ticker_alias_guid UUIDv5 · symbol → aliases · by_symbol[SYM] ≠ SYM (SCHD/CUSIP/V) |
-| 19 | Hermes fail histogram | PENDING | | | | |
-| 20 | skip non-retryable execution-language | PENDING | | | | |
-| 21 | retry truncated 1/plan/day | PENDING | | | | |
+| 19 | Hermes fail histogram last 7d | DONE | *(next PR)* | *(fill after promote)* | read-only · no requeue · no cap raised | 228 in 7d · **cost_cap 130** · execution_language 93 · truncated 3 · **worker_bug 0** |
+| 20 | skip enqueue of non-retryable execution-language | DONE | *(next PR)* | *(fill after promote)* | opt-in gate · fails soft | never requeued; blocks even beside a retryable truncation; nothing written on block |
+| 21 | truncated replay ≤1/plan/day | DONE | *(next PR)* | *(fill after promote)* | eligibility only · **no cap raised** | MAX_REPLAYS_PER_PLAN_PER_DAY=1 · cost_cap-only history waits for the window |
 | 22 | hermes_result_id on new completes | PENDING | | | | |
 | 23 | CASE_SUMMARY on VALID complete | PENDING | | | | |
 | 24 | missing result_id would_attach=0 | PENDING | | | | |
@@ -194,3 +196,21 @@ Leftovers still forbidden unless a Wave 2 slice explicitly allows a read-only st
    SRNE (dust) — skipped with an explicit reason. QCOM is a real warehouse signal.
 5. Identity: `LOOKUP_FAILED` now separates an unreadable registry from a genuine
    `UNRESOLVED`; ticker-as-GUID regression locked for SCHD / CUSIP / V. Minted 0.
+
+---
+
+## Slices 19–21 live 5-line proof (dry on CURRENT `d53fde4c`, read-only)
+
+1. 228 failures in the trailing 7d of 302 all time; `worker_bug_n = 0` and only
+   **5 of 228 are retryable**.
+2. `cost_cap` is 130 of 228 (57%) and arrives as **two** shapes — HTTP 429
+   `COST_CAP_EXCEEDED` (82 all-time) and HTTP 500 `RESERVATION_FAILED` whose
+   message is `COST_CAP_EXCEEDED: daily request cap` (114 all-time). The
+   classifier reads the message, not the code, so the 114 are not filed as
+   provider errors and nobody debugs a healthy bridge.
+3. `execution_language` is 93 — output correctly refused, never requeued, and it
+   blocks the plan even when a retryable truncation also exists in its history.
+4. Truncated replay capped at 1 per plan per calendar day; `raises_cost_cap` is
+   false on every decision. `LLM_GLOBAL_DAILY_USD_CAP` untouched.
+5. Zero live model calls, zero requeues, zero rows written by this slice. The
+   histogram is mtime-cached so a 9MB ledger is not re-read per home request.

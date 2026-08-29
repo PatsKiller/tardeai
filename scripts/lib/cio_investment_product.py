@@ -1763,6 +1763,20 @@ def build_product(
         "requires_operator_review": True,
         "confidence": 0.55 if verdicts or (queue.get("count") or 0) else 0.35,
     }
+    # Wave 2 slice 19: Hermes failure histogram, last 7d, classified. Read-only,
+    # mtime-cached, fail-soft — a ledger problem must not blank the product.
+    try:
+        from scripts.lib.cio_research_fail_policy import load_fail_histogram
+        product["research_fail_histogram"] = load_fail_histogram(root=root_path)
+    except Exception as exc:
+        product["research_fail_histogram"] = {
+            "schema": "CIOResearchFailHistogram@v1",
+            "authority": AUTHORITY,
+            "source_available": False,
+            "reason": type(exc).__name__,
+            "by_class": {},
+            "class": "D",
+        }
     # Wave 2 slice 13: measure identity coverage on the surfaces just built.
     # Lookup only — never mints, and fail-soft so a registry problem cannot
     # blank the product.
