@@ -31,7 +31,10 @@ OOS_START_YEAR = 2000
 SOURCE_ID_BOOK = "stock_traders_almanac"
 
 _REPO = Path(__file__).resolve().parents[3]
-DEFAULT_FIXTURE = _REPO / "tests" / "fixtures" / "us_equity_monthly_sample.csv"
+# Wave 3A: relocated out of tests/. Single resolver, see cio_library_paths.
+from scripts.lib.cio_library_paths import us_equity_monthly_path
+
+DEFAULT_FIXTURE = us_equity_monthly_path()
 
 # Public STA *alerts* — citation only.
 STA_PUBLIC_ALERTS: dict[str, dict[str, str]] = {

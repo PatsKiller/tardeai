@@ -26,7 +26,11 @@ AUTHORITY = "READ_ONLY_ADVISORY"
 MAX_INFLUENCE_PCT = 10.0
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_FIXTURE = _REPO_ROOT / "tests" / "fixtures" / "us_equity_monthly_sample.csv"
+# Wave 3A: live grade=B numbers must not resolve out of tests/. See
+# scripts/lib/cio_library_paths.py for why `data/` could not be used.
+from scripts.lib.cio_library_paths import us_equity_monthly_path
+
+DEFAULT_FIXTURE = us_equity_monthly_path()
 
 OOS_START_YEAR = 2000
 
