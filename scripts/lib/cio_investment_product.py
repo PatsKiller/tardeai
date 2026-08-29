@@ -400,6 +400,9 @@ def collect_held_instrument_ids(holdings: dict[str, Any] | None) -> dict[str, An
 
 # Surface A former-sold probe (Wave 2 slice 04). Dust residual ≠ HELD.
 SURFACE_A_STATUS_PROBE = ("SCHG", "AXTI", "FATN", "FANG")
+
+# Wave 2 slice 28: how many PROVISIONAL lessons the product surfaces.
+PROVISIONAL_LESSON_CAP = 8
 _MATERIAL_HELD_MIN_SHARES = 1.0
 
 
@@ -1776,6 +1779,64 @@ def build_product(
             "reason": type(exc).__name__,
             "by_class": {},
             "class": "D",
+        }
+    # Wave 2 slice 25: VALID / PARTIAL / FAIL-family counts, with the attach
+    # rule stated on the payload so it cannot be tightened silently (slice 26).
+    try:
+        from scripts.lib.cio_research_fail_policy import load_verdict_counts
+        product["research_quality_counts"] = load_verdict_counts(root=root_path)
+    except Exception as exc:
+        product["research_quality_counts"] = {
+            "schema": "CIOResearchVerdictCounts@v1", "authority": AUTHORITY,
+            "source_available": False, "reason": type(exc).__name__,
+            "by_verdict": {}, "attach_rule": "VALID|PARTIAL", "class": "D",
+        }
+    # Wave 2 slice 28: top PROVISIONAL lessons. Support-only, capped, and every
+    # row must carry cannot_become_policy — a lesson is context, never policy.
+    try:
+        from scripts.lib.outcome_to_lesson import candidates_from_case_summaries
+        cands = candidates_from_case_summaries(mem.get("sample") or [])
+        if not cands:
+            from scripts.lib.agent_durable_memory import get_durable_provider
+            provider = get_durable_provider(root_path)
+            cands = candidates_from_case_summaries(list(provider._store.values()))
+        product["provisional_lessons"] = {
+            "schema": "CIOProvisionalLessons@v1",
+            "authority": AUTHORITY,
+            "memory_behavior_influence": 0,
+            "financial_action": False,
+            "total_n": len(cands),
+            "review_ready_n": sum(
+                1 for c in cands if c.get("promotion_stage") == "REVIEW_READY"
+            ),
+            "policy_n": 0,
+            "cap": PROVISIONAL_LESSON_CAP,
+            "items": [
+                {
+                    "scope": c.get("scope"),
+                    "statement": c.get("statement"),
+                    "status": c.get("status"),
+                    "promotion_stage": c.get("promotion_stage"),
+                    "cannot_become_policy": c.get("cannot_become_policy"),
+                    "policy_effect": c.get("policy_effect"),
+                    "role": c.get("role"),
+                    "plan_id": c.get("plan_id"),
+                    "class": "D",
+                }
+                for c in cands[:PROVISIONAL_LESSON_CAP]
+            ],
+            "class": "D",
+            "note": (
+                "PROVISIONAL / REVIEW_READY only. cannot_become_policy is true on "
+                "every row; the promotion ceiling is REVIEW_READY and no path "
+                "here reaches policy."
+            ),
+        }
+    except Exception as exc:
+        product["provisional_lessons"] = {
+            "schema": "CIOProvisionalLessons@v1", "authority": AUTHORITY,
+            "available": False, "reason": type(exc).__name__,
+            "items": [], "total_n": 0, "policy_n": 0, "class": "D",
         }
     # Wave 2 slice 13: measure identity coverage on the surfaces just built.
     # Lookup only — never mints, and fail-soft so a registry problem cannot

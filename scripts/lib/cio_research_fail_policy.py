@@ -311,3 +311,93 @@ def replay_decision(
     if not rows:
         return _out(True, "no_prior_failure", is_worker_bug=False)
     return _out(True, "retryable_within_cap", is_worker_bug=False)
+
+
+# ── slice 25: critique verdict counts over completed results ────────────────
+
+_VERDICT_CACHE: dict[tuple, dict[str, Any]] = {}
+
+
+def build_verdict_counts(results: Iterable[dict[str, Any]]) -> dict[str, Any]:
+    """VALID / PARTIAL / FAIL-family counts over completed Hermes results.
+
+    The attach rule is VALID **or** PARTIAL (hermes_research_loop
+    ._SUCCESS_VERDICTS). Reporting only "VALID" would understate what actually
+    joins a plan, so `attachable_n` is stated separately from `valid_n`.
+    """
+    from scripts.lib.research_quality import critique
+
+    counts: Counter[str] = Counter()
+    reasons: Counter[str] = Counter()
+    total = 0
+    for rec in results:
+        if not isinstance(rec, dict):
+            continue
+        total += 1
+        verdict = critique(rec)
+        counts[str(verdict.get("verdict"))] += 1
+        for reason in verdict.get("reasons") or []:
+            reasons[str(reason)] += 1
+    attachable = counts.get("VALID", 0) + counts.get("PARTIAL", 0)
+    return {
+        "schema": "CIOResearchVerdictCounts@v1",
+        "authority": AUTHORITY,
+        "financial_action": False,
+        "completed_n": total,
+        "by_verdict": dict(counts.most_common()),
+        "valid_n": counts.get("VALID", 0),
+        "partial_n": counts.get("PARTIAL", 0),
+        "fail_family_n": total - attachable,
+        "attachable_n": attachable,
+        "attach_rule": "VALID|PARTIAL",
+        "attach_rule_source": "hermes_research_loop.research_complete_is_attachable",
+        "top_reasons": dict(reasons.most_common(6)),
+        "class": "D",
+        "note": (
+            "attachable = VALID + PARTIAL. PARTIAL attaches by design and is not "
+            "silently tightened; a PARTIAL is usually 'no_sources'."
+        ),
+    }
+
+
+def load_verdict_counts(
+    *,
+    root: Path | str,
+    use_cache: bool = True,
+) -> dict[str, Any]:
+    path = Path(root) / "data" / "cio" / "hermes_research_results.jsonl"
+    try:
+        st = path.stat()
+        stamp: tuple = (st.st_mtime_ns, st.st_size)
+        available = True
+    except OSError:
+        stamp, available = (0, 0), False
+
+    key = (str(path), stamp)
+    if use_cache and key in _VERDICT_CACHE:
+        return _VERDICT_CACHE[key]
+
+    def _rows() -> Iterable[dict[str, Any]]:
+        try:
+            handle = open(path, "r", encoding="utf-8")
+        except OSError:
+            return
+        with handle:
+            for line in handle:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    row = json.loads(line)
+                except ValueError:
+                    continue
+                if isinstance(row, dict):
+                    yield row
+
+    out = build_verdict_counts(_rows())
+    out["source"] = str(path)
+    out["source_available"] = available
+    if use_cache:
+        _VERDICT_CACHE.clear()
+        _VERDICT_CACHE[key] = out
+    return out

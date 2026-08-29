@@ -44,6 +44,11 @@ CASE_SUMMARY store is still 323 — item 87 will label this on the card).
 | **identity lookup (17)** | RESOLVED / UNRESOLVED / **LOOKUP_FAILED** / NOT_APPLICABLE — a registry read failure no longer reads as a clean negative |
 | **research fails 7d (19)** | 228 · cost_cap **130** · execution_language 93 · truncated 3 · timeout 1 · provider_error 1 · retryable **5** · **worker_bug 0** |
 | **cost_cap two shapes** | HTTP 429 `COST_CAP_EXCEEDED` 82 + HTTP 500 `RESERVATION_FAILED` 114 — same daily cap; classifying on the code would file 114 as provider errors |
+| **research quality (25)** | 468 completed · VALID 392 · PARTIAL 74 · INSUFFICIENT 2 · **attachable 466** · rule `VALID\|PARTIAL` |
+| **attach backfill (24)** | **would_attach 2, not 0** — plan_5463afc7bc04 · plan_9f4df5b991f3. Dry only, not applied. |
+| **checkpoints (27)** | due **0** · would_bind 152 → **106** after dust filter · nothing written |
+| **lessons (28/29)** | 328 PROVISIONAL / REVIEW_READY · **policy 0** · cannot_become_policy true |
+| **memory (30/31)** | CASE_SUMMARY 328 ACTIVE · RESEARCH_REFERENCE 448 CANDIDATE / **0 ACTIVE** · receipts 338/757 carry memory_type+promotable (chronological split) |
 | exec voice | `[T]` / `[D] Nothing requires action today.` |
 | reentry | Surface A · 70 names · reentry_total 25 NEAR overlaid · queue 43 · **dual pipes NOT merged** |
 | slice 12c would | BAH · CSWC · V · XAR · AMANX (cap 5, notify false) — apply is a separate dry-first step |
@@ -112,16 +117,16 @@ Leftovers still forbidden unless a Wave 2 slice explicitly allows a read-only st
 | 19 | Hermes fail histogram last 7d | DONE | *(next PR)* | *(fill after promote)* | read-only · no requeue · no cap raised | 228 in 7d · **cost_cap 130** · execution_language 93 · truncated 3 · **worker_bug 0** |
 | 20 | skip enqueue of non-retryable execution-language | DONE | *(next PR)* | *(fill after promote)* | opt-in gate · fails soft | never requeued; blocks even beside a retryable truncation; nothing written on block |
 | 21 | truncated replay ≤1/plan/day | DONE | *(next PR)* | *(fill after promote)* | eligibility only · **no cap raised** | MAX_REPLAYS_PER_PLAN_PER_DAY=1 · cost_cap-only history waits for the window |
-| 22 | hermes_result_id on new completes | PENDING | | | | |
-| 23 | CASE_SUMMARY on VALID complete | PENDING | | | | |
-| 24 | missing result_id would_attach=0 | PENDING | | | | |
-| 25 | VALID/PARTIAL/FAIL counts | PENDING | | | | |
-| 26 | PARTIAL attach rule documented | PENDING | | | | |
-| 27 | due checkpoints observe | PENDING | | | | |
-| 28 | top 8 PROVISIONAL lessons on product | PENDING | | | | |
-| 29 | REVIEW_READY count | PENDING | | | | |
-| 30 | memory receipts memory_type+promotable | PENDING | | | | |
-| 31 | no RESEARCH_REFERENCE ACTIVE | PENDING | | | | |
+| 22 | hermes_result_id on new attachable complete | DONE | *(next PR)* | *(fill after promote)* | unit · no live spend | attachable only on VALID\|PARTIAL + non-failed status; truncated/cost_cap flags refuse |
+| 23 | CASE_SUMMARY mints on VALID complete | DONE | *(next PR)* | *(fill after promote)* | unit · no admit | source_kind `HERMES_VALID_COMPLETE`; dedup on (symbol, plan_id, result_id) |
+| 24 | attach backfill dry would_attach | DONE | *(next PR)* | *(fill after promote)* | dry only · **NOT applied** | **would_attach=2, not 0** — plan_5463afc7bc04, plan_9f4df5b991f3 (both VALID). Reported for operator. |
+| 25 | VALID/PARTIAL/FAIL counts on product | DONE | *(next PR)* | *(fill after promote)* | read-only | 468 completed · VALID 392 · PARTIAL 74 · INSUFFICIENT 2 · **attachable 466** |
+| 26 | attach rule VALID\|PARTIAL documented | DONE | *(next PR)* | *(fill after promote)* | **no silent tighten** | on the payload; VALID-only would drop 74 of 466 |
+| 27 | due checkpoints observe | DONE | *(next PR)* | *(fill after promote)* | dry · **due=0** · no apply · no invented PnL | would_bind 152 → **106** after dust filter; JEPI/LDOS/SCHG/SRNE excluded |
+| 28 | top 8 PROVISIONAL lessons on product | DONE | *(next PR)* | *(fill after promote)* | cannot_become_policy true | 328 candidates, all PROVISIONAL/REVIEW_READY, policy_effect false, cap 8 |
+| 29 | REVIEW_READY count | DONE | *(next PR)* | *(fill after promote)* | ceiling REVIEW_READY | REVIEW_READY **328** · **policy 0** · 12 RATIFIED_CONTEXT not_production_policy |
+| 30 | memory receipts memory_type+promotable | DONE | *(next PR)* | *(fill after promote)* | regression | 338/757 carry both — split is chronological, all receipts since 2026-08-28T13:34 have them |
+| 31 | no RESEARCH_REFERENCE ACTIVE | DONE | *(next PR)* | *(fill after promote)* | regression | 448 CANDIDATE · **0 ACTIVE** · CASE_SUMMARY 328 ACTIVE |
 | 32 | checkpoint complete rate | PENDING | | | | |
 | 33 | remaining P9.0 voice labels | PENDING | | | | |
 | 34 | Surface B labels on evening/desk | PENDING | | | | |
@@ -214,3 +219,21 @@ Leftovers still forbidden unless a Wave 2 slice explicitly allows a read-only st
    false on every decision. `LLM_GLOBAL_DAILY_USD_CAP` untouched.
 5. Zero live model calls, zero requeues, zero rows written by this slice. The
    histogram is mtime-cached so a 9MB ledger is not re-read per home request.
+
+---
+
+## Slices 22–31 live 5-line proof (dry on CURRENT `d53fde4c`, no --apply)
+
+1. Attach rule is exactly `VALID|PARTIAL` and is now stated on the payload.
+   Tightening to VALID-only would silently drop **74 of 466** attachable results.
+2. Live verdicts: 468 completed → VALID 392 · PARTIAL 74 · INSUFFICIENT 2 ·
+   FAILED/STALE/CONFLICTED 0. `no_sources` explains 76 of the non-VALID rows.
+3. **`would_attach = 2`, not 0** — `plan_5463afc7bc04` and `plan_9f4df5b991f3`
+   both hold VALID completes that landed after #592's backfill. Reported, not
+   applied; no slice in this batch authorises the write.
+4. `resolve_due_checkpoints` due = **0**, so no `--apply` and no invented PnL.
+   Binding eligibility now excludes dust: would_bind 152 → **106**, dropping
+   JEPI/LDOS/SCHG/SRNE. No checkpoint deleted.
+5. Lessons: 328 PROVISIONAL, all capped at REVIEW_READY, **policy count 0**.
+   RESEARCH_REFERENCE 448 CANDIDATE, **0 ACTIVE**. Receipts still carry
+   `memory_type` + `promotable` on everything written since 2026-08-28T13:34.
