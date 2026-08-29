@@ -1,5 +1,23 @@
 # CIO institutional corpus map (2026-08-29)
 
+> **SUPERSEDED IN TWO PLACES — read this first.**
+>
+> 1. **`CORPUS_UNLOCATED` is retracted.** The 20–30 publications were catalogued
+>    all along in `config/cio_research_source_catalog.json` (34 sources). This
+>    document's sweep searched `data/` directories and filename globs and never
+>    looked in `config/` — a search failure, not an absence. See
+>    `CIO_LIBRARY_CENSUS_2026-08-29.md`.
+> 2. **"901 rows of real monthly US equity returns" is wrong.** That series is
+>    **synthetic**: 1987-10 reads +3.27% against an actual ≈ −21.5%, and no month
+>    in 75 years is worse than −7.88%. See
+>    `CIO_WAVE3A_LIBRARY_2026-08-29.md`. Operator-visible seasonality now grades
+>    off the Ken French series instead —
+>    `CIO_SEASONALITY_FRENCH_SURFACE_2026-08-29.md`.
+>
+> The rest of the map (paths, record counts, which stores are consulted) still
+> holds. Kept unedited below so the mistake stays legible.
+
+
 What is on disk today, where it lives, and whether the research gate consults
 it. Written before building the gate so the gate queries what exists instead of
 minting a parallel store.
