@@ -138,6 +138,36 @@ def _normalize_command_text(text: str) -> Optional[str]:
     return f"/cio {body}"
 
 
+def _s0_route(text: str, plan_id: Optional[str]) -> dict:
+    """Route one operator turn. Degrades to a bare marker, never raises.
+
+    A converse wake must not fail because routing is unavailable — the operator
+    said something, and losing that is worse than losing the enrichment.
+    """
+    try:
+        from scripts.lib.cio_s0_operator_loop import route_turn
+
+        return route_turn(text, plans=_open_plans_snapshot(), plan_id=plan_id)
+    except Exception as exc:                                    # noqa: BLE001
+        return {"action": "unrouted", "reason": str(exc)[:120],
+                "authority": "READ_ONLY_ADVISORY"}
+
+
+def _open_plans_snapshot() -> list:
+    """Open plans for attach resolution. Empty list if unreadable."""
+    try:
+        import json as _json
+
+        from maturity_control.store import resolve_root
+
+        p = resolve_root() / "data" / "cio" / "cio_plans_projection.json"
+        doc = _json.loads(p.read_text(encoding="utf-8"))
+        return [v for v in (doc.get("plans") or {}).values()
+                if isinstance(v, dict)]
+    except Exception:
+        return []
+
+
 def enqueue_operator_wake_channel(
     *,
     chat_id: str,
@@ -181,6 +211,12 @@ def enqueue_operator_wake_channel(
                     "action_id": action_id,
                     "event_id": event_id,
                     "authority": "READ_ONLY_ADVISORY",
+                    # S0 routing: extract the symbol, decide mint vs attach, and
+                    # carry a stable turn id. Without this the wake arrives with
+                    # bare text, the S0 plan is minted with symbols: [], and
+                    # nothing downstream can load registry[symbol] — which is
+                    # why the desk appeared to know only SCHD.
+                    "s0": _s0_route(text, plan_id),
                 },
             },
             actor_id=actor_id,

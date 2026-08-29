@@ -1057,8 +1057,22 @@ def build_notification_block(
         }
 
     env = _policy.notify_env_state()
+    # S0 rows are visible on the product even though the policy suppresses
+    # notifying about them — the operator should see their own turns landed.
+    s0_rows = [
+        {"plan_id": p.get("plan_id"),
+         "symbols": p.get("symbols") or [],
+         "status": p.get("status"),
+         "title": str(p.get("title") or "")[:80]}
+        for p in rows
+        if isinstance(p, dict)
+        and str(p.get("situation_type") or "").startswith("S0")
+        and str(p.get("status") or "") in {"draft", "proposed"}
+    ]
     return {
         "schema": "CIONotificationBlock@v1",
+        "s0_operator_turns": s0_rows[:cap],
+        "s0_open_n": len(s0_rows),
         "available": True,
         "authority": "READ_ONLY_ADVISORY",
         "financial_action": False,

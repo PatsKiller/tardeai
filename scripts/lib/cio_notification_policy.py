@@ -111,6 +111,11 @@ def decide(plan: Optional[dict[str, Any]] = None, *,
     if stype.startswith("S5"):
         return out(SUPPRESSED, "s5_cash_deployment_default_suppressed")
 
+    if stype.startswith("S0"):
+        # An operator turn is the operator talking to the desk. Notifying them
+        # about their own message is the definition of noise.
+        return out(SUPPRESSED, "s0_operator_turn_default_suppressed")
+
     if stype.startswith("S1"):
         flavour = str(plan.get("s1_kind") or plan.get("flavour") or "").lower()
         if not flavour or flavour in _OBSERVATIONAL_S1:

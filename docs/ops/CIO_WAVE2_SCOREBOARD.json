@@ -1648,5 +1648,44 @@
     "docs": [
       "docs/ops/CIO_QUESTION_ID_CONTRACT_2026-08-29.md"
     ]
+  },
+  "S0_OPERATOR_LOOP": {
+    "status": "DONE — mint+rehydrate+turn_id",
+    "telegram_sent": false,
+    "notify": "SUPPRESSED for S0",
+    "paid_calls": 0,
+    "root_cause": "free-text questions minted S0 with symbols: [] — extract_symbols existed in cio_telegram_converse but was never wired into cio_converse_core's mint path",
+    "routing": {
+      "mint": "no open plan for a mintable symbol",
+      "attach": "newest open plan, or explicit plan_id",
+      "refuse": "TEST/CASH/dust/no-symbol",
+      "attach_beats_refuse": true,
+      "closed_plans_not_targets": true
+    },
+    "turn_store": {
+      "path": "data/cio/cio_operator_turns.jsonl",
+      "keeps": "text_hash not text",
+      "fields": [
+        "turn_id",
+        "plan_id",
+        "symbol",
+        "text_hash",
+        "intent",
+        "created_at"
+      ]
+    },
+    "rehydrate": "open plans, prior outcome+artifacts, latest artifact, lessons, operator last turn; gate_input_from carries prior_outcome so the ladder applies",
+    "thesis_coverage": "reports gap, auto_minted=False — no desk@v5 stamp on names never reasoned about",
+    "product": {
+      "s0_rows_visible": true,
+      "s0_open_n": 6,
+      "policy": "SUPPRESSED"
+    },
+    "dry_eligible_unchanged": 4,
+    "tests": 29,
+    "header_body_conflict": "header said re-run the critique; body pins forbade --backend live and a Grok hop; body followed",
+    "docs": [
+      "docs/ops/CIO_S0_OPERATOR_LOOP_2026-08-29.md"
+    ]
   }
 }
