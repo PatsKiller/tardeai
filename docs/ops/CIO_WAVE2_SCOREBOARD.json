@@ -1752,5 +1752,27 @@
     "docs": [
       "docs/ops/CIO_COMMAND_CENTER_MODEL_2026-08-29.md"
     ]
+  },
+  "MATCHER_POSITION_DIRECTIVES": {
+    "status": "DONE",
+    "found_by": "live Grok critique on SPCX",
+    "miss": "'Maintain small tracking position' — maintain not in _VERB AND position not a bare _OBJECT",
+    "added": "maintain|add(to)|keep + position|stake|holding|exposure|weight|shares, up to 3 adjectives",
+    "separate_pattern": true,
+    "why_separate": "adding `position` as a bare object would pair it with buy/sell/trim and balloon the radius",
+    "blast_radius": {
+      "scanned": 471,
+      "already_caught": 1,
+      "newly_caught": 24,
+      "pct": 5.1
+    },
+    "grandfathered": 468,
+    "gated_by_new_rule": 3,
+    "retro_detached": 0,
+    "NOT_done": "'do not <verb>' rule written then removed — it breaks the pinned legacy case 'do not sell shares before the ex-date'; grammatically identical to 'do not add'; Decision 1 says the pin wins. 38 real misses knowingly left.",
+    "tests": 15,
+    "docs": [
+      "docs/ops/CIO_MATCHER_POSITION_DIRECTIVES_2026-08-29.md"
+    ]
   }
 }

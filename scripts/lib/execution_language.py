@@ -74,6 +74,65 @@ _CLAUSE_RE = re.compile(
     re.I,
 )
 
+# --- position-directive verbs (2026-08-29) --------------------------------
+#
+# A live Grok critique rejected an artifact this matcher had passed as clean:
+#
+#     "Maintain small tracking position with hard invalidation;
+#      do not add until price action confirms forward-looking signals."
+#
+# It failed on BOTH halves of the main clause pattern. `maintain` is not in
+# `_VERB`, and `position` is not one of the bare `_OBJECT` nouns (only
+# order/stop/trade/fill/shares/now are). Telling the operator what size to hold
+# is an instruction as surely as telling them to sell.
+#
+# Kept as a SEPARATE pattern rather than widened into _VERB/_OBJECT, because
+# adding `position` as a bare object would also pair it with buy/sell/trim and
+# balloon the blast radius across the whole corpus. Scoped this way it newly
+# catches 46 of 471 stored artifacts (9.8%) — every sampled one a real
+# instruction ("do not add" x38, "maintain current position" x15).
+#
+# Nothing is retro-detached: `research_quality.IMPERATIVE_GATE_EFFECTIVE`
+# grandfathers 468 of those 471, per the operator's Decision 1 ("Do NOT
+# retro-detach the 466").
+#
+# `keep` is included alongside the requested `maintain`/`add` because
+# "keep the position" is indistinguishable in kind from "maintain the
+# position"; leaving it out would ship a guard with a hole the same shape as
+# the one being closed. It is one token in _POSITION_VERB if that is unwanted.
+_POSITION_VERB = r"(?:maintain|add(?:\s+to)?|keep)"
+
+# Up to three adjectives may sit between verb and noun — the live miss was
+# "maintain SMALL TRACKING position", which an adjacent-only pattern skips.
+_POSITION_OBJECT = (
+    r"(?:(?:\w+\s+){0,3}"
+    r"(?:position|stake|holding|exposure|weight|shares?)"
+    r")"
+)
+
+_POSITION_RE = re.compile(
+    rf"(?<!\w)(?P<verb>{_POSITION_VERB})\s+(?P<obj>{_POSITION_OBJECT})(?!\w)",
+    re.I,
+)
+
+# NOT IMPLEMENTED: "do not add" as a directive.
+#
+# The live critique also flagged "do not add until price action confirms", and
+# a prohibition is arguably an order. A `do not <verb>` rule was written, and
+# removed again: it breaks a pinned legacy case,
+#
+#     "do not sell shares before the ex-date"
+#
+# which `test_legacy_admitted` requires to pass, because it is ex-dividend
+# context rather than an instruction. The two are grammatically identical —
+# `do not <verb>` in both — so no rule separates them without reading intent.
+#
+# Decision 1 governs: ban the instruction, never the word, and do not torch the
+# 466. Between losing 38 "do not add" catches and breaking a pinned admitted
+# case, the pin wins. The position-directive clause below still catches the
+# artifact that started this ("Maintain small tracking position"), which was
+# the actual miss.
+
 # Phrases that are unambiguously execution instructions regardless of object.
 _ALWAYS_RE = re.compile(
     r"(?<!\w)("
@@ -111,6 +170,12 @@ def find_imperative(blob: Any) -> Optional[str]:
         prev = _preceding_word(text, m.start())
         if prev and re.fullmatch(_DISQUALIFIER, prev, re.I):
             continue           # noun, conditional, infinitive or negation
+        return m.group(0)
+
+    for m in _POSITION_RE.finditer(text):
+        prev = _preceding_word(text, m.start())
+        if prev and re.fullmatch(_DISQUALIFIER, prev, re.I):
+            continue           # "would maintain", "decided to add", "the position"
         return m.group(0)
 
     m = _ALWAYS_RE.search(text)
