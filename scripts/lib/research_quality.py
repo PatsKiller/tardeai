@@ -39,7 +39,46 @@ def imperative_gate_applies(result: dict[str, Any]) -> bool:
     return at is not None and at >= IMPERATIVE_GATE_EFFECTIVE
 
 
-def critique(result: dict[str, Any]) -> dict[str, Any]:
+def critique(result: dict[str, Any], *, backend: str = "lint",
+             plan_id: Any = None, research_id: Any = None,
+             question_ids: Any = None, generate: Any = None) -> dict[str, Any]:
+    """Deterministic lint by default; a live Grok critique only on request.
+
+    `backend` defaults to "lint", so every existing caller, dry run, stub run
+    and test path behaves exactly as before — this function has no network in
+    its default mode and never acquires one implicitly.
+
+    `backend="live"` routes to cio_grok_critique, which is the call site
+    specified in docs/ops/CIO_GROK_CRITIQUE_CONTRACT_2026-08-29.md. The live
+    path still runs the local lint first and returns the lint verdict when it
+    already fails: there is nothing to ask a model about an artifact our own
+    matcher has already rejected, and spending a call to be told so twice is
+    just spending a call.
+    """
+    lint = _critique_lint(result)
+    if str(backend or "lint").lower() != "live":
+        return lint
+    if lint.get("verdict") in {"FAILED", "INSUFFICIENT"}:
+        lint["backend"] = "lint"
+        lint["live_skipped"] = "local_lint_already_failed"
+        lint["calls_made"] = 0
+        return lint
+    try:
+        from scripts.lib.cio_grok_critique import critique_live
+    except Exception as exc:                                    # noqa: BLE001
+        lint["backend"] = "lint"
+        lint["live_error"] = str(exc)[:120]
+        lint["calls_made"] = 0
+        return lint
+    live = critique_live(result, plan_id=plan_id, research_id=research_id,
+                         question_ids=question_ids, generate=generate)
+    live["backend"] = "live"
+    live["lint_verdict"] = lint.get("verdict")
+    live["lint_reasons"] = lint.get("reasons")
+    return live
+
+
+def _critique_lint(result: dict[str, Any]) -> dict[str, Any]:
     sources = result.get("sources") or result.get("source_urls") or []
     if isinstance(sources, str):
         sources = [sources]

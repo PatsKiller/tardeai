@@ -1438,5 +1438,42 @@
     ],
     "critique_networking_implemented": false,
     "wave3e_started": false
+  },
+  "WAVE3D_CRITIQUE": {
+    "status": "lane BUILT; one live call attempted and refused by policy",
+    "vendor_http_calls": 0,
+    "cost_usd": 0.0,
+    "attached": false,
+    "telegram_sent": false,
+    "call_site": "scripts/lib/cio_grok_critique.py — reuses llm_lane.generate, no new HTTP client, no new prompt",
+    "default_backend": "lint — unchanged, test asserts byte-identical output",
+    "stub_result": {
+      "plan": "plan_477c33c065ec (SPCX)",
+      "research_id": "res_557cfaab8c34",
+      "verdict": "VALID",
+      "network": false
+    },
+    "live_result": {
+      "process_id": "maria_research_critique",
+      "lane": "grok",
+      "reason": "POLICY_NOT_ALLOWED",
+      "verdict": "PARTIAL",
+      "attachable": false,
+      "cost_usd": 0.0
+    },
+    "BLOCKER": "no research/critique process permits lane=grok; all are DeepSeek-only (fast / deepseek-v4-flash)",
+    "grok_allowed_processes": 39,
+    "of_total": 58,
+    "options": [
+      "authorise grok on maria_research_critique (free_oauth; xAI would see artifact text)",
+      "critique on deepseek-v4-flash via hermes_external_research — no policy change needed (recommended)"
+    ],
+    "policy_changed_by_me": false,
+    "tests": 21,
+    "docs": [
+      "docs/ops/CIO_WAVE3D_CRITIQUE_2026-08-29.md",
+      "docs/ops/CIO_GROK_CRITIQUE_CONTRACT_2026-08-29.md"
+    ],
+    "wave3e_started": false
   }
 }

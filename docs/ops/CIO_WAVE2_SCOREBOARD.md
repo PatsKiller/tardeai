@@ -527,3 +527,33 @@ research; a fired S6/earnings event; or a completed critique on SPCX/ARKX
 (which needs 3D-critique).
 
 Detail: `docs/ops/CIO_WAVE3D_FLASH_2026-08-29.md`.
+
+## WAVE3D-critique = lane built, live call refused by policy
+
+**0 vendor HTTP calls, $0.00, nothing attached, telegram_sent false.**
+
+The missing call site now exists (`cio_grok_critique.py`), built to a contract
+written first. It reuses `llm_lane.generate` — no new HTTP client — and the
+curated `grok_critique` template — no new prompt. `research_quality.critique()`
+still returns the deterministic lint by default; a test asserts that output is
+byte-identical to before.
+
+Stub critique of SPCX's real artifact (`res_557cfaab8c34`): VALID, no network.
+
+The live call was **refused before reaching the proxy**: `POLICY_NOT_ALLOWED`.
+**No research or critique process permits `lane=grok`** — all are DeepSeek-only
+(`fast` / `deepseek-v4-flash`). 39 of 58 processes do allow grok, but none of
+the critique-shaped ones, and `grok_execution_review` is manual and
+semantically wrong; booking a research critique there would make the ledger
+read wrong under audit.
+
+That is the gate working. The critique failed closed: `attachable: false`,
+nothing attached.
+
+Unblocking is an operator decision: authorise `grok` on
+`maria_research_critique` (free_oauth, but xAI then sees artifact text), or
+critique on `deepseek-v4-flash` via `hermes_external_research` — no policy
+change needed, recommended. **No policy was widened.**
+
+Detail: `docs/ops/CIO_WAVE3D_CRITIQUE_2026-08-29.md`,
+`docs/ops/CIO_GROK_CRITIQUE_CONTRACT_2026-08-29.md`.
