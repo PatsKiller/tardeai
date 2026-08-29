@@ -917,8 +917,23 @@ def test_release_wrong_token_rejected(q):
 
 
 def test_zero_provider_calls():
-    """Structural — no LLM or provider imports exist in this module."""
-    assert True
+    """Structural: this module imports no provider / LLM / Telegram client.
+
+    Was `assert True` — a safety claim in a docstring that verified nothing.
+    Now it reads its own source and fails on a real import.
+    """
+    import re
+    from pathlib import Path
+
+    src = Path(__file__).read_text(encoding="utf-8", errors="replace")
+    code = re.sub(r"#.*", "", re.sub(r'("""|\'\'\')(?:.|\n)*?\1', "", src))
+    banned = (
+        "send_cio_message", "api.telegram.org", "RealTelegramAdapter",
+        "cio_telegram_transport", "llm_lane", "openai", "anthropic",
+        "requests.post", "urllib.request.urlopen", "httpx",
+    )
+    hits = [b for b in banned if b in code]
+    assert not hits, f"provider/LLM/Telegram reference in this suite: {hits}"
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

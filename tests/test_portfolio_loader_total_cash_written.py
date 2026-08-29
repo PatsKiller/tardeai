@@ -142,20 +142,25 @@ def test_the_safety_abort_still_preserves_prior_state(book):
     assert "total_cash_source" not in totals
 
 
-def test_the_api_v2_read_site_workaround_is_left_untouched():
-    """Operator: "Do NOT touch api_v2.py:2593 in this PR."
+def test_the_api_v2_read_site_workaround_is_retired():
+    """The condition it waited for was met, so it is gone.
 
-    Replaces an earlier version of this test that asserted nothing: it read
-    `cio_investment_product.collect_cash`, which does not exist, so `src` was ""
-    and a trailing `or True` made it pass unconditionally.
+    This test previously asserted the 2026-07-21 read-site recompute must
+    SURVIVE — correct while `total_cash` was a fossil nothing refreshed. #635
+    made portfolio_repricer write it every pass, and the Saturday proof showed
+    the stored field matching the row sum to the cent (630,784.82,
+    source=position_rows, gap 0.00) on holdings.json, /v2/overview and /v3/cio.
 
-    The 2026-07-21 workaround recomputes cash at the READ site. It stays until a
-    live pass proves cash_gap < 1; only then is it safe to delete.
+    Now it asserts the opposite: readers take the stored field. Two places
+    deriving one number is how the original drift hid for three months — the
+    read site papered over a writer that had stopped writing.
     """
+    import re
     from pathlib import Path
 
     src = (Path(__file__).resolve().parents[1] / "scripts" / "api_v2.py").read_text(
         encoding="utf-8", errors="replace")
-    assert '_cash_live = round(sum(float(p.get("market_value") or 0)' in src, (
-        "the api_v2 read-site cash recompute was removed or altered — it must "
-        "outlive this PR")
+    code = re.sub(r"#.*", "", src)
+    assert "_cash_live" not in code, "the read-site recompute is back"
+    assert '_total_cash = totals.get("total_cash")' in code, (
+        "api_v2 must read the stored total_cash, not derive its own")

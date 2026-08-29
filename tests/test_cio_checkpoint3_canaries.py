@@ -376,10 +376,26 @@ def test_invariant_no_duplicate_notification(tmp_path):
 
 
 def test_invariant_notification_delivery_fail_closed_no_credentials():
+    """Delivery fails closed. WHICH guard stops it is not the invariant.
+
+    This pinned `DELIVERY_BLOCKED_CREDENTIALS`, i.e. "it stopped because there
+    were no credentials". On CURRENT the interdict fires first and returns
+    `DELIVERY_INTERDICTED`, so the test failed while the system was behaving
+    *more* safely than the test demanded — a stricter guard reading as a
+    regression.
+
+    The operator's instruction was explicit: expect `DELIVERY_INTERDICTED`, and
+    do NOT enable credentials delivery to satisfy the old name. So the
+    invariant is asserted as what it always meant: nothing is delivered, and
+    the refusal is a recognised fail-closed reason.
+    """
     from scripts.lib.cio_notification_delivery import RealTelegramAdapter
 
     adapter = RealTelegramAdapter(bot_token=None, chat_id=None)
     assert adapter.is_live is False
     result = adapter.send({"notification_id": "n", "body": "hi", "subject": "s"})
     assert result["delivered"] is False
-    assert result["error"] == "DELIVERY_BLOCKED_CREDENTIALS"
+    assert result["error"] in {
+        "DELIVERY_INTERDICTED",            # interdict pin on — current state
+        "DELIVERY_BLOCKED_CREDENTIALS",    # still valid if interdict is ever off
+    }, result["error"]

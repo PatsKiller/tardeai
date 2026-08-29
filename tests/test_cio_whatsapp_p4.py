@@ -80,8 +80,13 @@ def test_flag_off_no_egress(wa_env, monkeypatch):
         rate_path=wa_env["rate"],
         send_fn=capture,
     )
-    # command may be handled but _send refuses when flag off
-    assert not sent or r.get("reason") == "converse_disabled" or True
+    # command may be handled, but _send must refuse while the flag is off.
+    #
+    # This carried a trailing `or True`, on a dry_run=False send path — it
+    # passed even if a message HAD gone out, which is the one thing it exists
+    # to prevent. Assert the actual contract instead.
+    assert not sent, (
+        f"WhatsApp send occurred while converse flag is off: {sent!r}")
     # free-text blocked
     r2 = process_whatsapp_inbound(
         {"wa_id": "15551234567", "message_id": "m_flag2", "text": "what about cash?"},
