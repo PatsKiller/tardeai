@@ -236,3 +236,37 @@ def test_the_stance_token_is_the_discriminator_not_the_separator():
     assert find_imperative("HOLD / do not add") is None
     assert find_imperative("HOLD; do not add") is not None
     assert find_imperative("HOLD, do not add") is not None
+
+
+# ---------------------------------------------------------------------------
+# The dict path (2026-08-29)
+#
+# Every test above feeds `find_imperative` a STRING. `research_quality.critique`
+# always feeds it a DICT, which goes through `_as_text` -> `json.dumps`. That
+# defaulted to ensure_ascii=True and escaped an em dash to the six literal
+# characters —, so punctuation-adjacency rules saw different text in the
+# two paths: `HOLD — DO NOT INITIATE` passed as a string and gated as a dict.
+#
+# These cases run the artifact shape, not the sentence.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("text,gated", [
+    ("The advisory remains HOLD — DO NOT INITIATE.", False),   # em dash
+    ("stance: EXIT – do not add", False),                      # en dash
+    ("The advisory remains HOLD / DO NOT INITIATE.", False),   # slash
+    ("freeze capital until a thesis exists — do not add to the position", True),
+    ("Do not add to the position until confirmed.", True),
+    ("Note: do not sell shares before the ex-date.", False),
+])
+def test_the_dict_path_matches_the_string_path(text, gated):
+    """A rule must not change its answer because the caller passed a dict."""
+    assert (find_imperative(text) is not None) is gated, text
+    assert (find_imperative({"summary": text, "symbol": "AUUD"}) is not None) \
+        is gated, text
+
+
+def test_non_ascii_survives_serialisation():
+    """`ensure_ascii=False` is load-bearing, not cosmetic."""
+    from scripts.lib.execution_language import _as_text
+    assert "—" in _as_text({"summary": "HOLD — DO NOT INITIATE"})
+    assert "\\u2014" not in _as_text({"summary": "HOLD — DO NOT INITIATE"})

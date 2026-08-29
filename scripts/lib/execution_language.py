@@ -232,10 +232,20 @@ def _preceding_word(text: str, start: int) -> str:
 
 
 def _as_text(blob: Any) -> str:
+    """Serialise an artifact for matching, preserving non-ASCII punctuation.
+
+    `ensure_ascii=False` is load-bearing, not cosmetic. The default escapes an
+    em dash to the six literal characters `\\u2014`, so every rule that reads
+    punctuation adjacency silently saw different text when handed a dict than
+    when handed a string — and `critique()` always hands it a dict. That made
+    `HOLD — DO NOT INITIATE` gate as an instruction while the identical string
+    passed, because the stance separator had been escaped away. Smart quotes,
+    en dashes and accented names had the same problem.
+    """
     if isinstance(blob, str):
         return blob
     try:
-        return json.dumps(blob, default=str)
+        return json.dumps(blob, default=str, ensure_ascii=False)
     except Exception:
         return str(blob)
 
