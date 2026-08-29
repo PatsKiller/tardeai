@@ -32,9 +32,24 @@ GROK_CRITIQUE_SCHEMA = "GrokCritique@v1"
 AUTHORITY = "READ_ONLY_ADVISORY"
 MBI = 0
 
-LANE = "grok"
-PROCESS_ID = "maria_research_critique"
-MODEL = "grok-3"
+# The critique is lane-agnostic by design: it asks "is this artifact
+# attachable", not "which vendor has the best opinion". Defaults are the
+# pairing the consumption gate actually permits.
+#
+# grok + maria_research_critique was the first choice and is refused:
+# POLICY_NOT_ALLOWED, because no research/critique process lists lane=grok.
+# Rather than widen that allowlist — which changes where spend may occur and
+# which vendor sees artifact text — the default is the already-authorised
+# DeepSeek pairing. The grok constants stay so the swap is one argument the day
+# that lane is authorised.
+LANE = "deepseek-v4-flash"
+PROCESS_ID = "hermes_external_research"
+MODEL = None                      # let the lane resolve its own model id
+
+GROK_LANE = "grok"                # authorised: no research process, today
+GROK_PROCESS_ID = "maria_research_critique"
+GROK_MODEL = "grok-3"
+
 TIMEOUT_S = 90
 
 VALID, PARTIAL, REJECT = "VALID", "PARTIAL", "REJECT"
@@ -43,6 +58,24 @@ VERDICTS = (VALID, PARTIAL, REJECT)
 # truncated/unparseable may retry once; execution_language never may.
 RETRYABLE_ONCE = frozenset({"truncated", "unparseable_response", "transport_error"})
 NEVER_RETRYABLE = frozenset({"execution_language", "cost_cap"})
+
+# The gate returns its refusals as free text inside the exception message, so a
+# literal set lookup misses them: a COST_CAP_EXCEEDED came back as
+# ["transport_error", "COST_CAP_EXCEEDED: global cap"] and was marked retryable,
+# which the contract forbids. Retrying a budget stop or a policy refusal is
+# asking the same question until a different answer arrives.
+_NEVER_RETRYABLE_MARKERS = (
+    "cost_cap", "cost_cap_exceeded", "cost_configuration_invalid",
+    "policy_not_allowed", "process_not_registered", "execution_language",
+    "manual_mode",
+)
+
+
+def _is_retryable(reasons: list[str]) -> bool:
+    blob = " ".join(str(r) for r in (reasons or [])).lower()
+    if any(m in blob for m in _NEVER_RETRYABLE_MARKERS):
+        return False
+    return bool(set(reasons or []) & RETRYABLE_ONCE)
 
 
 def _utc() -> str:
@@ -65,8 +98,7 @@ def _result(verdict: str, reasons: list[str], *, execution_language: bool = Fals
         "authority": AUTHORITY,
         "memory_behavior_influence": MBI,
         "financial_action": False,
-        "retryable": bool(set(reasons or []) & RETRYABLE_ONCE)
-        and not (set(reasons or []) & NEVER_RETRYABLE),
+        "retryable": _is_retryable(list(reasons or [])),
     }
     row.update(extra)
     return row
@@ -114,8 +146,10 @@ def critique_live(artifact: dict[str, Any], *, plan_id: Optional[str] = None,
                   research_id: Optional[str] = None,
                   question_ids: Optional[list[str]] = None,
                   generate: Any = None,
-                  model: str = MODEL) -> dict[str, Any]:
-    """One live Grok critique. `generate` is injectable for tests."""
+                  model: Optional[str] = MODEL,
+                  lane: str = LANE,
+                  process_id: str = PROCESS_ID) -> dict[str, Any]:
+    """One live critique through an authorised lane. `generate` injectable."""
     # Local lint first: if our own matcher already finds an instruction, the
     # artifact is tainted and there is nothing to ask a model about.
     try:
@@ -125,7 +159,8 @@ def critique_live(artifact: dict[str, Any], *, plan_id: Optional[str] = None,
         if find_imperative and find_imperative(blob):
             return _result(REJECT, ["execution_language"],
                            execution_language=True, attachable=False,
-                           detected_locally=True, calls_made=0)
+                           detected_locally=True, calls_made=0,
+                           lane=lane, process_id=process_id)
     except Exception:
         pass
 
@@ -152,12 +187,14 @@ def critique_live(artifact: dict[str, Any], *, plan_id: Optional[str] = None,
                                calls_made=0)
         generate = _gen
 
+    kwargs = {"lane": lane, "timeout": TIMEOUT_S, "process_id": process_id,
+              "task_summary": f"research critique {plan_id or ''}".strip(),
+              "response_json": True,
+              "metadata": {"plan_id": plan_id, "research_id": research_id}}
+    if model:
+        kwargs["model"] = model
     try:
-        text = generate(prompt, lane=LANE, model=model, timeout=TIMEOUT_S,
-                        process_id=PROCESS_ID,
-                        task_summary=f"grok critique {plan_id or ''}".strip(),
-                        response_json=True,
-                        metadata={"plan_id": plan_id, "research_id": research_id})
+        text = generate(prompt, **kwargs)
     except Exception as exc:                                    # noqa: BLE001
         return _result(PARTIAL, ["transport_error", str(exc)[:120]],
                        calls_made=1)
@@ -173,6 +210,8 @@ def critique_live(artifact: dict[str, Any], *, plan_id: Optional[str] = None,
     out["plan_id"] = plan_id
     out["research_id"] = research_id
     out["model"] = model
+    out["lane"] = lane
+    out["process_id"] = process_id
     return out
 
 
@@ -193,5 +232,6 @@ def to_artifact(result: dict[str, Any], *, artifact_id: str,
         source_refs=[{"verdict": result.get("verdict"),
                       "reasons": result.get("reasons"),
                       "attachable": result.get("attachable"),
-                      "lane": LANE, "process_id": PROCESS_ID}],
+                      "lane": result.get("lane", LANE),
+                      "process_id": result.get("process_id", PROCESS_ID)}],
     )
