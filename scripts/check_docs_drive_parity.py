@@ -9,10 +9,15 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 MANIFEST = Path.home() / ".local" / "state" / "drive-sync-manifest.txt"
+# sync-docs-to-drive.sh (is_runtime_dump_excluded) never uploads these trees —
+# "dead Drive parents / scratch shots". A CANONICAL entry under one of them can
+# never appear in the manifest, so it reports DRIFT forever. Two
+# docs/_findings/ entries did exactly that from 2026-07-19 until 2026-08-29,
+# which also meant a real drift would have been lost in the standing alarm.
+SYNC_EXCLUDED_PREFIXES = ("docs/_archive/", "docs/_trash/", "docs/_findings/")
+
 CANONICAL = [
     "docs/OPTIONS_LIFECYCLE_DESK.md",
-    "docs/_findings/OPTIONS_LIFECYCLE_DESK_DIAGNOSIS_2026-07-19.md",
-    "docs/_findings/OPTIONS_LIFECYCLE_V1_1_INTEGRATION_AUDIT_2026-07-19.md",
     "docs/runbooks/OPTIONS_FIRST_POSITION_ACCEPTANCE.md",
     "docs/COST_INTELLIGENCE_ARCHITECTURE.md",
     "docs/options-module.md",
@@ -27,6 +32,15 @@ CANONICAL = [
 ]
 HASH_STATE = Path.home() / ".local" / "state" / "docs-parity-hashes.json"
 STALE_HOURS = 26   # hourly sync + slack
+
+# Fail fast rather than alarm forever if an unsyncable path is ever added back.
+_unsyncable = [d for d in CANONICAL if d.startswith(SYNC_EXCLUDED_PREFIXES)]
+if _unsyncable:
+    raise SystemExit(
+        "check_docs_drive_parity: CANONICAL lists paths sync-docs-to-drive.sh "
+        "never uploads, so they can never reach parity: "
+        + ", ".join(_unsyncable)
+    )
 
 
 def main() -> int:
