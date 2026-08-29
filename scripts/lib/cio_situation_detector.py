@@ -157,8 +157,21 @@ def _s6_subject_skip_reason(
     market_value: float | None,
     market_value_known: bool,
 ) -> Optional[str]:
-    """Why S6 must not fire on this subject, or None when it may."""
-    from scripts.lib.holdings_universe import is_dust_market_value, is_held_equity_ticker
+    """Why S6 must not fire on this subject, or None when it may.
+
+    Fails OPEN. The only caller of eval_s6 wraps it in `except Exception: pass`,
+    so anything raised here would silently disable S6 *entirely* — trading a
+    nuisance dust plan for a missed concentration alert. If the policy module
+    cannot be read, fall back to the pre-rule behaviour and let the subject
+    through rather than losing the detector.
+    """
+    try:
+        from scripts.lib.holdings_universe import (
+            is_dust_market_value,
+            is_held_equity_ticker,
+        )
+    except Exception:
+        return None
 
     sym = str(symbol or "").strip().upper()
     if not sym:

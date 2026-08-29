@@ -111,3 +111,45 @@ Existing suites re-run clean: 102 tests across
 `test_cio_situations_phase2a`, `test_r11_situation_engine`,
 `test_r12_situation_matrix`, `test_cio_wake_detector` and
 `test_cio_wave2_orphan_s6_hygiene`.
+
+---
+
+## Addendum — the skip fails open (follow-up)
+
+Found after the first promote. The sole caller of `eval_s6` wraps it:
+
+```python
+try:
+    found.extend(eval_s6(evidence, cfg, sym))
+except Exception:
+    pass
+```
+
+If the `holdings_universe` import inside `_s6_subject_skip_reason` ever raised,
+the whole evaluator would raise and be swallowed — **silently disabling S6
+entirely**. That trades a nuisance dust plan for a missed concentration alert,
+which is the wrong direction here: SCHD's 28.4% weight is the alert this detector
+exists to raise; a residual plan is an annoyance.
+
+The import is now guarded and returns `None` on failure, so the subject goes
+through and behaviour reverts to pre-rule. **A skip rule fails open; only the
+safety gates fail closed.** Unlikely in practice — `holdings_universe` imports
+only stdlib — but the failure would have been silent, which is what makes it
+worth three lines. A test simulates the `ImportError` and asserts SCHD still
+fires.
+
+## Live verification
+
+| time (UTC) | event |
+|---|---|
+| 03:30:26 | detector mints `plan_a067113b2660` (SRNE) — **old code** |
+| 03:35:12 | #625 promoted; CURRENT `773b4182` |
+| 03:35:41 | `plan_a067113b2660` cancelled under the standing decision-4 authorisation |
+| 03:36:33 | first **post-promote** detector pass |
+| 03:37:34 | `would_cancel` **0** |
+
+Before the fix a new SRNE plan reappeared within ~20 minutes of every cancel.
+The deployed detector at CURRENT carries `_s6_subject_skip_reason`, and both
+detector services (`tradeai-cio-reactive`, `tradeai-cio-material-scan`) run with
+`WorkingDirectory=CURRENT`, so both paths pick it up. There is a single call site
+for `eval_s6`, so no path is left unguarded.
