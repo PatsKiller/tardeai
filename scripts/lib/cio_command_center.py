@@ -969,6 +969,7 @@ def build_office_home(
     home["earnings"] = list(op.get("earnings") or [])[:12]
     home["new_position_if"] = list(op.get("new_position_if") or [])[:8]
     home["holdings_thesis_coverage"] = op.get("holdings_thesis_coverage") if isinstance(op.get("holdings_thesis_coverage"), dict) else {}
+    home["surface_a_status"] = op.get("surface_a_status") if isinstance(op.get("surface_a_status"), dict) else {}
     home["cash"] = op.get("cash") or {}
     home["temperament"] = op.get("temperament") or op.get("macro") or {}
     home["case_summaries"] = op.get("case_summaries") or op.get("research_cases") or {

@@ -303,6 +303,101 @@ def held_equity_symbols(holdings: dict[str, Any] | None) -> list[str]:
     return uniq
 
 
+# Surface A former-sold probe (Wave 2 slice 04). Dust residual ≠ HELD.
+SURFACE_A_STATUS_PROBE = ("SCHG", "AXTI", "FATN", "FANG")
+_MATERIAL_HELD_MIN_SHARES = 1.0
+
+
+def _holding_row_for_symbol(
+    holdings: dict[str, Any] | None,
+    symbol: str,
+) -> dict[str, Any] | None:
+    sym = str(symbol or "").upper()
+    rows = (holdings or {}).get("holdings")
+    if not isinstance(rows, list):
+        return None
+    for h in rows:
+        if isinstance(h, dict) and str(h.get("symbol") or "").upper() == sym:
+            return h
+    return None
+
+
+def _is_material_held_row(row: dict[str, Any] | None) -> bool:
+    """True only for a real held sleeve. Fractional dust is not HELD for Surface A."""
+    if not isinstance(row, dict) or _is_cash_holding(row):
+        return False
+    try:
+        shares = float(row.get("shares") or row.get("broker_actual_shares") or 0)
+    except (TypeError, ValueError):
+        shares = 0.0
+    return shares >= _MATERIAL_HELD_MIN_SHARES
+
+
+def collect_surface_a_status(
+    *,
+    symbols: list[str] | tuple[str, ...] | None = None,
+    holdings: dict[str, Any] | None = None,
+    previously_traded: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Classify Surface A names HELD | EXITED | UNAVAILABLE. No invented prices.
+
+    HELD = material held (≥1 share). EXITED = former table or dust residual.
+    UNAVAILABLE = neither. Dust residual is EXITED, not HELD (operator: SCHG former).
+    """
+    holdings = holdings if holdings is not None else collect_holdings()
+    prev = previously_traded if previously_traded is not None else collect_previously_traded()
+    prev_syms = {
+        str(r.get("symbol") or "").upper()
+        for r in (prev or [])
+        if isinstance(r, dict) and r.get("symbol")
+    }
+    probe = [str(s).upper() for s in (symbols or SURFACE_A_STATUS_PROBE) if str(s).strip()]
+    items: list[dict[str, Any]] = []
+    for sym in probe:
+        row = _holding_row_for_symbol(holdings, sym)
+        try:
+            residual = float((row or {}).get("shares") or (row or {}).get("broker_actual_shares") or 0)
+        except (TypeError, ValueError):
+            residual = 0.0
+        material = _is_material_held_row(row)
+        dust = bool(row) and not material and residual > 0
+        if material:
+            status, reason = "HELD", "material_held"
+        elif sym in prev_syms:
+            status, reason = "EXITED", "previously_traded"
+        elif dust:
+            status, reason = "EXITED", "residual_dust_not_material_held"
+        else:
+            status, reason = "UNAVAILABLE", "not_in_holdings_or_former_table"
+        item: dict[str, Any] = {
+            "symbol": sym,
+            "status": status,
+            "status_reason": reason,
+            "class": "D",
+        }
+        # Honesty only: residual share count when dust EXITED. Never invent prices.
+        if dust:
+            item["residual_shares"] = residual
+        items.append(item)
+    counts = {
+        "HELD": sum(1 for i in items if i["status"] == "HELD"),
+        "EXITED": sum(1 for i in items if i["status"] == "EXITED"),
+        "UNAVAILABLE": sum(1 for i in items if i["status"] == "UNAVAILABLE"),
+    }
+    return {
+        "schema": "SurfaceAStatus@v1",
+        "authority": AUTHORITY,
+        "financial_action": False,
+        "surface": "A",
+        "surface_name": "former holdings vs exit",
+        "probe": probe,
+        "counts": counts,
+        "items": items,
+        "class": "D",
+        "note": "Dust residual (<1 share) is EXITED, not HELD. No invented prices.",
+    }
+
+
 def collect_holdings_thesis_coverage(
     *,
     holdings: dict[str, Any] | None = None,
@@ -1491,6 +1586,9 @@ def build_product(
         "holdings_thesis_coverage": collect_holdings_thesis_coverage(
             holdings=holdings, root=root_path,
         ),
+        "surface_a_status": collect_surface_a_status(
+            holdings=holdings, previously_traded=prev,
+        ),
         "thesis_universe": thesis_metrics,
         "thesis_changes_today": thesis_changes_today,
         "governed_verdicts": verdicts,
@@ -1548,6 +1646,7 @@ def overlay_step2_surfaces(
     p["holdings_thesis_coverage"] = collect_holdings_thesis_coverage(
         holdings=holdings, root=root_path,
     )
+    p["surface_a_status"] = collect_surface_a_status(holdings=holdings)
     temp = dict(p.get("temperament") or {})
     metrics = extract_cash_metrics(holdings)
     if metrics.get("total_cash") is not None or metrics.get("cash_pct") is not None:
