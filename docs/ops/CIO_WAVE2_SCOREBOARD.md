@@ -557,3 +557,29 @@ change needed, recommended. **No policy was widened.**
 
 Detail: `docs/ops/CIO_WAVE3D_CRITIQUE_2026-08-29.md`,
 `docs/ops/CIO_GROK_CRITIQUE_CONTRACT_2026-08-29.md`.
+
+## WAVE3E = DONE — CC block only (2026-08-29)
+
+Scope as given: **CC block only, INTERDICT stays on, no Telegram producer.**
+That made 3E pure rendering — **zero env flips**. `CIO_SITUATION_NOTIFY` stays
+0, INTERDICT stays on, `telegram_sent` false, `producer` null.
+
+Live on the real book: **466 considered → 4 surfaced** (S6: SCHD, DIV, SPCX,
+BND), 0 digest, 0 immediate, **462 suppressed** — duplicate_subject 382,
+not_material 72, s1_observational 7, s5_cash 1.
+
+The suppressed histogram is on the block deliberately: showing only what fired
+teaches the reader nothing else was considered. **4 is only credible next to
+462.** A test asserts the four counts reconcile, and the display cap never
+shrinks `surfaced_n`.
+
+Four tests hold it to render-only — no delivery import of any kind (including
+`FakeDeliveryAdapter`), no `os.environ[...] =`, `would_send: False` on every
+row, no imperative. `cio_command_center.py` is CRLF; edited via safe_text_edit,
+1374 → 1475 CRLF, **0 stray LF**.
+
+Also fixed a test of mine that passed while testing nothing: blocking a policy
+import needs the package *attribute* deleted, not just `sys.modules` — and an
+`__import__` hook never fires for an already-imported module.
+
+Detail: `docs/ops/CIO_WAVE3E_2026-08-29.md`.
