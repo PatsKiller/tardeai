@@ -419,3 +419,28 @@ grade A). Shiller and Damodaran stay URL-only — legacy `.xls` needing an
 starts in 2016 and the window is bull-dominated.
 
 Detail: `docs/ops/CIO_SEASONALITY_FRENCH_SURFACE_2026-08-29.md`.
+
+## WAVE3B = schema + policy + join (2026-08-29)
+
+notify=**SUPPRESSED** · telegram_sent=**false** · MBI=**0** · ROTATE=**advisory-only**
+
+Three schemas, no sending. `SpecialistArtifact@v1-lite` records provider / cost
+/ outcome (unknown provider raises rather than coercing — a silent normalise to
+`stub` would make a paid call look free). `CIOCouncilSynthesis@v1` joins VALID
+artifacts deterministically and labels disagreement **DISPUTED** with both
+shown: picking a winner is the judgement that would need a model, and a
+deterministic tie-break would be a fake one. `NotificationPolicy@v1` routes to
+IMMEDIATE / DIGEST / COMMAND_CENTER_ONLY / SUPPRESSED — S1 observational, all
+S5 cash and every duplicate subject default to SUPPRESSED; an S6 fire is
+COMMAND_CENTER_ONLY, never IMMEDIATE.
+
+Checkpoints now *declare* `plan_id`; a null is allowed when `plan_binding` says
+why, because cash- and dust-bound rows have no plan by nature and are the very
+rows not to be rewritten. The rate is computable over bound rows going forward.
+History untouched.
+
+EDGAR is a registry row only — entity scope, grade C, no crawler; it cannot
+corpus_hit by construction.
+
+45 tests, four of them pinning the pins. Dry unchanged: 8 eligible, 0 paid.
+Detail: `docs/ops/CIO_WAVE3B_2026-08-29.md`.

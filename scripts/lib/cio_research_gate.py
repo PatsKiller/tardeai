@@ -332,9 +332,19 @@ def schedule_surface(decisions: list[dict[str, Any]], *, cap: int = 10,
             {"symbol": d.get("symbol"), "plan_id": d.get("plan_id"),
              "decision": d.get("decision"), "reason": d.get("reason"),
              "kind": d.get("kind"),
+             "skip_reason": (d.get("reason") if d.get("decision") == "skip"
+                             else None),
              "next_eligible_at": d.get("next_eligible_at")}
             for d in eligible[:cap]
         ],
+        # Wave 3B ops block: what was skipped and why, capped alongside the
+        # eligible list. Ops only — a test asserts this block is never routed
+        # to Telegram.
+        "skipped_sample": [
+            {"symbol": d.get("symbol"), "plan_id": d.get("plan_id"),
+             "skip_reason": d.get("reason"), "kind": d.get("kind")}
+            for d in decisions if d.get("decision") == "skip"
+        ][:cap],
         "next_eligible_total": len(eligible),
         "skipped_by_reason": dict(sorted(skipped.items(), key=lambda kv: -kv[1])),
         "by_decision": by_decision,

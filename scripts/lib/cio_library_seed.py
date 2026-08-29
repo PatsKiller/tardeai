@@ -282,6 +282,24 @@ def wave3a3_series_rows() -> list[dict[str, Any]]:
     ]
 
 
+def edgar_row() -> dict[str, Any]:
+    """Registry row only. No crawler, no full-text sweep (Wave 3B item 6).
+
+    dimension_scope is *entity* — the first entity-scoped source in the
+    registry. That is exactly why it cannot corpus_hit: entity dimensions are
+    never corpus-closed, and grade C would block it regardless. Registering it
+    records the intent without granting the authority.
+    """
+    return _row("sec_edgar_full_text", "risk",
+                "SEC EDGAR full-text search",
+                official_url="https://efts.sec.gov/LATEST/search-index?q=",
+                grade="C", law=LAW_CITATION, scope="entity", refresh=EVENT,
+                notes=("registry row only — no crawler in this PR; primary "
+                       "filings are public domain and would be the first "
+                       "lawful entity-level free source, pending a later "
+                       "ingest and re-grade"))
+
+
 def fred_series_rows() -> list[dict[str, Any]]:
     """The seven ingested FRED series. Primary public data — grade A."""
     ids = ["sp500", "nasdaqcom", "fedfunds", "t10y2y", "cpiaucsl", "unrate",

@@ -1289,5 +1289,39 @@
       "docs/ops/CIO_SEASONALITY_FRENCH_SURFACE_2026-08-29.md"
     ],
     "wave3b_started": false
+  },
+  "WAVE3B": {
+    "status": "schema+policy+join",
+    "notify": "SUPPRESSED",
+    "telegram_sent": false,
+    "MBI": 0,
+    "ROTATE": "advisory-only",
+    "schemas": [
+      "SpecialistArtifact@v1-lite",
+      "CIOCouncilSynthesis@v1",
+      "NotificationPolicy@v1"
+    ],
+    "council_model_called": false,
+    "council_mints_plan": false,
+    "disagreement": "DISPUTED — both shown, no winner selected",
+    "delivery": "shadow adapter; would_send=false; zero Telegram call sites added",
+    "policy_defaults": {
+      "s1_observational": "SUPPRESSED",
+      "s5_cash": "SUPPRESSED",
+      "duplicate_subject": "SUPPRESSED",
+      "s6_fire": "COMMAND_CENTER_ONLY",
+      "council_disputed": "COMMAND_CENTER_ONLY"
+    },
+    "checkpoint_plan_binding": "field mandatory; null allowed with plan_binding reason; history untouched",
+    "eligible_surface": "skip_reason + skipped_sample, cap 10, ops only",
+    "edgar": "registry row only, entity scope, grade C, no crawler",
+    "registry_seed": 40,
+    "dry_eligible": 8,
+    "paid_calls": 0,
+    "tests": 45,
+    "docs": [
+      "docs/ops/CIO_WAVE3B_2026-08-29.md"
+    ],
+    "wave3c_started": false
   }
 }
