@@ -97,11 +97,26 @@ def _critique_lint(result: dict[str, Any]) -> dict[str, Any]:
     elif imperative_gate_applies(result):
         # One shared matcher with the ingest gate; grammatical, not a word list.
         try:
-            from scripts.lib.execution_language import find_imperative
+            from scripts.lib.execution_language import (
+                find_field_directive, find_imperative,
+            )
         except Exception:
             find_imperative = None      # fail open to the legacy floor
+            find_field_directive = None
         if find_imperative is not None and find_imperative(result):
             reasons.append("forbidden_authority")
+        elif find_field_directive is not None:
+            # Field-scoped, stricter: `desk_implications.notes` and
+            # `recommendation` exist to direct the operator, so `do not <verb>`
+            # counts there. Free prose keeps the looser rule, which is what
+            # keeps "do not sell shares before the ex-date" admitted — the two
+            # are grammatically identical and separable only by location.
+            # Same gate date, so nothing is retro-detached.
+            _fd = find_field_directive(result)
+            if _fd:
+                reasons.append("forbidden_authority")
+                reasons.append(
+                    "instruction_in_" + str(_fd.get("field") or "field"))
     if symbol and symbol.lower() not in text and symbol not in str(result):
         reasons.append("symbol_not_grounded")
     if "as of 20" not in text and not as_of:
