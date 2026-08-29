@@ -295,8 +295,10 @@ def registry() -> dict[str, Any]:
             fred_series_rows, seed_rows, wave3a3_series_rows,
         )
 
+        from scripts.lib.cio_library_seed import edgar_row
+
         seed = (list(seed_rows()) + list(fred_series_rows())
-                + list(wave3a3_series_rows()))
+                + list(wave3a3_series_rows()) + [edgar_row()])
     except Exception:
         seed = []
     try:

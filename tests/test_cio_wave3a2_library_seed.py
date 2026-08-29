@@ -210,8 +210,8 @@ def test_a_tariff_event_carrying_execution_language_still_fails_closed():
 def test_registry_is_still_one_index():
     r = corpus.registry()
     # 3A.3 added FF5, momentum, the normalised French series, Shiller and
-    # Damodaran to the seed.
-    assert r["counts"]["seed"] == 39
+    # Damodaran; Wave 3B added the EDGAR registry row.
+    assert r["counts"]["seed"] == 40
     assert r["counts"]["calendar_facts"] == 12
     # 3A.3 ingested FF5, momentum and the normalised French series.
     assert r["counts"]["seed_on_disk"] == 11

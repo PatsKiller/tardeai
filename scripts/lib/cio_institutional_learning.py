@@ -576,13 +576,26 @@ def identity_safe_subject(row: dict[str, Any]) -> str | None:
     return None
 
 
-def schedule_outcome_checkpoint(decision_id: str, horizon: str, existing: list[str] | None = None) -> dict[str, Any]:
+def schedule_outcome_checkpoint(decision_id: str, horizon: str,
+                                existing: list[str] | None = None,
+                                *, plan_id: str | None = None,
+                                plan_binding: str | None = None) -> dict[str, Any]:
+    """Build a checkpoint. Wave 3B: it always declares its plan binding.
+
+    Checkpoints key on `decision_id` while completed research keys on
+    `plan_id`, which is precisely why complete->checkpoint is UNCOMPUTABLE
+    rather than 0%. Carrying `plan_id` — even as an explicit None with a stated
+    binding — makes each new row say whether it belongs in the denominator, so
+    the rate becomes computable going forward without rewriting history.
+    """
     key = _sha({"decision_id": decision_id, "horizon": horizon})[:20]
     dup = key in set(existing or [])
     return {
         "schema": "OutcomeCheckpoint@v1",
         "checkpoint_id": key,
         "decision_id": decision_id,
+        "plan_id": plan_id,
+        "plan_binding": plan_binding or ("bound" if plan_id else "unbound"),
         "horizon": horizon,
         "due_at": None,
         "status": "SCHEDULED",
@@ -595,8 +608,31 @@ def schedule_outcome_checkpoint(decision_id: str, horizon: str, existing: list[s
 
 
 def persist_checkpoint(root: Path | str, checkpoint: dict[str, Any]) -> dict[str, Any]:
+    """Append a checkpoint. Wave 3B: new rows must carry plan_id.
+
+    523 historical checkpoints carry no plan_id while completed research keys
+    on one, so complete->checkpoint is UNCOMPUTABLE rather than 0% (see
+    checkpoint_lineage_health). History is NOT rewritten — 148 CASH-bound and
+    50 dust-bound rows stay exactly as they are. Requiring it on new writes is
+    what makes the rate computable going forward instead of never.
+    """
     path = Path(root) / CHECKPOINT_PATH
     cid = checkpoint.get("checkpoint_id")
+    # The FIELD is mandatory; a null VALUE is allowed when the row declares why.
+    # Requiring a non-empty plan_id outright would reject legitimate
+    # cash- and dust-bound checkpoints, which have no plan by nature — the same
+    # rows the operator said not to rewrite. Requiring the key to be present
+    # makes every new row self-describing: bound rows count toward the rate,
+    # unbound rows are excluded from the denominator instead of silently
+    # dragging it to "unknown".
+    if "plan_id" not in checkpoint:
+        return {"wrote": False, "duplicate": False,
+                "rejected": "missing_plan_id_field",
+                "reason": ("new outcome checkpoints must declare plan_id "
+                           "(a null value is fine when plan_binding says why) "
+                           "so complete->checkpoint stays computable"),
+                "checkpoint": checkpoint}
+        
     for row in _jsonl(path):
         if row.get("checkpoint_id") == cid:
             return {"wrote": False, "duplicate": True, "checkpoint": row}
