@@ -978,6 +978,59 @@ def build_office_coverage(
     }
 
 
+def build_reentry_book_labels() -> dict[str, Any]:
+    """Name both re-entry books on /v3/cio/home. Labelling is not merging.
+
+    The canonical definitions already live in `cio_reentry_surface_labels` and
+    each producer stamps its own book — `cio_investment_product.build_reentry_book`
+    with SURFACE_A, `cio_desk_depth.build_reentry_book` with SURFACE_B. Neither
+    book reaches this payload, though, so a reader here saw two re-entry counts
+    with no way to tell which question each answers. That is how two books get
+    merged in someone's head while the code keeps them apart.
+
+    Read from the canonical module, never re-worded here: a second copy of the
+    label text is a second definition waiting to drift.
+    """
+    try:
+        from scripts.lib.cio_reentry_surface_labels import SURFACE_A, SURFACE_B
+    except Exception as exc:
+        return {
+            "schema": "CIOReentryBookLabels@v1",
+            "authority": "READ_ONLY_ADVISORY",
+            "available": False,
+            "reason": type(exc).__name__,
+            "merged": False,
+            "class": "D",
+        }
+
+    def _view(sfc: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "surface": sfc["surface"],
+            "surface_name": sfc["name"],
+            "scope": sfc["scope"],
+            "question": sfc["question"],
+            "precedence": sfc["precedence"],
+            "not_this_book": sfc["not_this_book"],
+            "producer": sfc["producer"],
+            "class": sfc["class"],
+        }
+
+    return {
+        "schema": "CIOReentryBookLabels@v1",
+        "authority": "READ_ONLY_ADVISORY",
+        "available": True,
+        "merged": False,
+        "a": _view(SURFACE_A),
+        "b": _view(SURFACE_B),
+        "class": "D",
+        "note": (
+            "Two independent books with different questions (#584 / P9.3). "
+            "Precedence is not a winner — each is authoritative only for its "
+            "own question. Never combined."
+        ),
+    }
+
+
 def overlay_surface_a_reentry_on_opportunities(
     opportunities: dict[str, Any],
     reentry: Optional[dict[str, Any]] = None,
@@ -1161,6 +1214,11 @@ def build_office_home(
         home.get("opportunities") or {},
         op.get("reentry") if isinstance(op.get("reentry"), dict) else {},
     )
+    # Wave 2C items 131/132: both books name themselves on /home. The labels
+    # existed on the built product but never reached this payload, so a reader
+    # here could see two reentry numbers and no way to tell which question each
+    # answers. Copied, never combined — `merged` stays false.
+    home["reentry_books"] = build_reentry_book_labels()
     # Wave 2 slices 08/11: Class D coverage object on /v3/cio/home.
     home["coverage"] = build_office_coverage(
         holdings_thesis_coverage=home.get("holdings_thesis_coverage"),

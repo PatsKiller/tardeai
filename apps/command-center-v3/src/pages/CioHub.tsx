@@ -153,6 +153,26 @@ type Home = {
   evidence: Evidence
   operator_trust?: OperatorTrust
   coverage?: OfficeCoverage
+  reentry_books?: ReentryBookLabels
+}
+
+// Wave 2C 131/132/160: the two re-entry books name themselves. Labelling is not
+// merging — `merged` stays false and each book disclaims the other's question.
+type ReentryBookLabel = {
+  surface?: string
+  surface_name?: string
+  scope?: string
+  question?: string
+  precedence?: string
+  not_this_book?: string
+  producer?: string
+}
+
+type ReentryBookLabels = {
+  available?: boolean
+  merged?: boolean
+  a?: ReentryBookLabel
+  b?: ReentryBookLabel
 }
 
 type CapitalPlan = {
@@ -1329,7 +1349,7 @@ function InvestmentBooksPanel() {
   </div>
 }
 
-function OpportunitiesSection({ opp }: { opp: Opportunities }) {
+function OpportunitiesSection({ opp, books }: { opp: Opportunities; books?: ReentryBookLabels }) {
   const list = (items: { symbol: string; signal: string; source: string }[]) =>
     items.length === 0 ? <Empty text="None." /> : (
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
@@ -1376,6 +1396,13 @@ function OpportunitiesSection({ opp }: { opp: Opportunities }) {
               : ''}
           </div>
           {list(opp.reentry)}
+          {books?.b ? (
+            <div style={{ ...faint, marginTop: 10, paddingTop: 8, borderTop: '1px solid var(--border)' }}>
+              Surface {books.b.surface} · {books.b.scope} — a separate book, answering
+              “{books.b.question}”. Produced by {books.b.producer}.
+              {books.merged === false ? ' Not merged with Surface A.' : ''}
+            </div>
+          ) : null}
         </div>
       </div>
 
@@ -1944,7 +1971,7 @@ export default function CioHub({ onDrill }: Props) {
           {tab === 'cio-now' && <CioNowSection home={home} dispositions={dispositions} legacyUnversioned={legacyUnversioned} onAct={onAct} />}
           {tab === 'capital-plan' && <CapitalPlanSection cp={home.capital_plan} />}
           {tab === 'posture' && <PostureSection posture={home.posture} />}
-          {tab === 'opportunities' && <OpportunitiesSection opp={home.opportunities} />}
+          {tab === 'opportunities' && <OpportunitiesSection opp={home.opportunities} books={home.reentry_books} />}
           {tab === 'report' && <ReportSection report={home.report} />}
           {tab === 'evidence' && <EvidenceSection evidence={home.evidence} />}
         </div>
