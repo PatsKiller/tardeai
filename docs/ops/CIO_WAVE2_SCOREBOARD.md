@@ -12,8 +12,8 @@ Resume cursor: first slice with status != DONE.
 
 | Field | Value |
 |-------|--------|
-| CURRENT pin | `6a796e1a` (#617 slice 05) — this slice 06 PR not promoted yet |
-| origin/main | `6a796e1a` |
+| CURRENT pin | `6bbec1a1` (#618 slice 06) — this slice 07 PR not promoted yet |
+| origin/main | `6bbec1a1` |
 | `/api/v2/health` | 200 |
 | `/v3/cio` | 200 |
 | `/api/v3/cio/home` | 200 · earnings 10 · NEW_POSITION_IF 5 · telegram_sent false |
@@ -76,8 +76,8 @@ Leftovers still forbidden unless a Wave 2 slice explicitly allows a read-only st
 | 03 | observational S1 held-without-plan | DONE | #615 | `5e48f2b1` | MBI=0 notify off | cap 5; SCHG S1 cancelled (former) |
 | 04 | Surface A former-sold status | DONE | #616 | `bb489827` | MBI=0 | SCHG/AXTI/FATN EXITED; FANG UNAVAILABLE |
 | 05 | Watch READY/NEAR named; fires_s7=false | DONE | #617 | `6a796e1a` | MBI=0 | ready_symbols named; live 0 READY/NEAR; fires_s7=false |
-| 06 | earnings days_to_event + as_of | DONE | *(this PR)* | *(fill after promote)* | MBI=0 | days_to_event + as_of on items |
-| 07 | earnings commentary stub | PENDING | | | | |
+| 06 | earnings days_to_event + as_of | DONE | #618 | `6bbec1a1` | MBI=0 | days_to_event + as_of |
+| 07 | earnings commentary stub | DONE | *(this PR)* | *(fill after promote)* | MBI=0 | commentary UNAVAILABLE no transcript |
 | 08 | coverage API GET | PENDING | | | | |
 | 09 | CC coverage card | PENDING | | | | |
 | 10 | reentry keys not 0 when Surface A has names | PENDING | | | | |

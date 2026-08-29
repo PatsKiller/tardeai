@@ -14,8 +14,8 @@
     "native_sheet": "10T3HTcQS_tgYu8-dtHozWgCPBywvgPxXZjbJBrfT0uw"
   },
   "now": {
-    "current_pin": "6a796e1a0b038e5c0bfb46d8f87b210c51b9efdd",
-    "current_pr": 617,
+    "current_pin": "6bbec1a1dd1d945ddfc7fb80a37a7afe5f173cc8",
+    "current_pr": 618,
     "health": 200,
     "cio": 200,
     "home": 200,
@@ -140,13 +140,15 @@
     "06": {
       "title": "earnings days_to_event + as_of",
       "status": "DONE",
-      "pr": null,
-      "sha": null,
-      "live": "days_to_event on earnings items"
+      "pr": 618,
+      "sha": "6bbec1a1dd1d945ddfc7fb80a37a7afe5f173cc8"
     },
     "07": {
       "title": "earnings commentary stub",
-      "status": "PENDING"
+      "status": "DONE",
+      "pr": null,
+      "sha": null,
+      "live": "UNAVAILABLE no transcript"
     },
     "08": {
       "title": "coverage API GET",

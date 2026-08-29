@@ -683,6 +683,11 @@ def collect_earnings_events(
         if dt is not None:
             out["days_to_event"] = (dt - today).days
         out.setdefault("source_as_of", out.get("fetched_at") or out.get("as_of"))
+        # Slice 07: 1-line commentary only if a transcript row exists; else UNAVAILABLE.
+        # No scrape, no LLM, no 4150 dump. Cap handled by collector.
+        out["commentary"] = "UNAVAILABLE"
+        out["commentary_reason"] = "no_earnings_transcript_row"
+        out["commentary_class"] = "D"
         return out
 
     items: list[dict[str, Any]] = []
