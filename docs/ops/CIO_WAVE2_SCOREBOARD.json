@@ -1774,5 +1774,32 @@
     "docs": [
       "docs/ops/CIO_MATCHER_POSITION_DIRECTIVES_2026-08-29.md"
     ]
+  },
+  "FIELD_SCOPED_LINT": {
+    "status": "DONE",
+    "problem": "'do not <verb>' cannot be banned globally — 'do not sell shares before the ex-date' is pinned as admitted and is grammatically identical to 'do not add'",
+    "solution": "separate by LOCATION: desk_implications.{notes,note} and recommendation are instruction-shaped by construction",
+    "evidence": {
+      "scanned": 471,
+      "do_not_verb_in_fields": 57,
+      "also_mention_ex_dividend": 0
+    },
+    "api": [
+      "find_field_directive",
+      "describe_field_directive",
+      "instruction_field_text",
+      "INSTRUCTION_FIELDS"
+    ],
+    "free_prose_unchanged": true,
+    "corpus_effect": {
+      "field_hits": 47,
+      "actually_gated": 0,
+      "retro_detached": 0
+    },
+    "tests": 17,
+    "remaining": "a prohibition in free prose stays admitted — the only way the ex-dividend pin survives",
+    "docs": [
+      "docs/ops/CIO_FIELD_SCOPED_LINT_2026-08-29.md"
+    ]
   }
 }

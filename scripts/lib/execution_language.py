@@ -197,3 +197,92 @@ def describe(blob: Any) -> dict[str, Any]:
         "rule": "base-form verb + size/object, not preceded by determiner, modal, infinitive or negation",
         "not_this_gate": "operator product option_id recommendations",
     }
+
+
+# ── field-scoped lint ────────────────────────────────────────────────────────
+#
+# Some fields are instruction-shaped by construction. `desk_implications.notes`
+# and `recommendation` exist to tell the operator what the desk thinks should
+# happen; free prose in a summary does not.
+#
+# That distinction is what makes a stricter rule safe here. `do not <verb>`
+# cannot be banned globally, because the pinned legacy case
+# "do not sell shares before the ex-date" is ex-dividend CONTEXT and must stay
+# admitted — and it is grammatically identical to "do not add". No rule
+# separates them by shape.
+#
+# It separates by LOCATION. Measured across 471 stored artifacts: 57 carry a
+# `do not <verb>` inside these fields (56 of them "do not add"), and **zero**
+# of those also mention ex-date/ex-dividend. The ambiguous case does not occur
+# where instructions live.
+#
+#     "do not add, do not average down, and either exit or demand a verifiable…"
+#     "Do not add to position; treat as speculative lottery ticket or exit."
+#
+# Free-prose entry points (`find_imperative`, `lint_execution_language`) are
+# unchanged, so the pin still passes.
+
+INSTRUCTION_FIELDS = (
+    ("desk_implications", ("notes", "note")),
+    ("recommendation", None),
+)
+
+_DIRECTIVE_NEGATION_RE = re.compile(
+    r"(?<!\w)do\s+not\s+"
+    r"(?:add|buy|sell|trim|flatten|liquidate|maintain|keep|exit|short|cover)"
+    r"(?!\w)",
+    re.I,
+)
+
+
+def instruction_field_text(artifact: Any) -> dict[str, str]:
+    """Pull the instruction-shaped fields out of an artifact. Never raises."""
+    out: dict[str, str] = {}
+    if not isinstance(artifact, dict):
+        return out
+    for field, subkeys in INSTRUCTION_FIELDS:
+        v = artifact.get(field)
+        if v in (None, "", [], {}):
+            continue
+        if subkeys and isinstance(v, dict):
+            for sk in subkeys:
+                s = v.get(sk)
+                if s:
+                    out[f"{field}.{sk}"] = _as_text(s)
+        else:
+            out[field] = _as_text(v)
+    return out
+
+
+def find_field_directive(artifact: Any) -> Optional[dict[str, str]]:
+    """Stricter lint for instruction-shaped fields only.
+
+    Returns {field, match, rule} or None. Applies the ordinary matcher AND the
+    `do not <verb>` rule that free prose is exempt from.
+    """
+    for field, text in instruction_field_text(artifact).items():
+        hit = find_imperative(text)
+        if hit:
+            return {"field": field, "match": hit, "rule": "imperative_clause"}
+        m = _DIRECTIVE_NEGATION_RE.search(text)
+        if m:
+            return {"field": field, "match": m.group(0),
+                    "rule": "directive_negation"}
+    return None
+
+
+def describe_field_directive(artifact: Any) -> dict[str, Any]:
+    """Receipt shape, so a rejection says which field and which rule."""
+    hit = find_field_directive(artifact)
+    return {
+        "schema": SCHEMA,
+        "authority": AUTHORITY,
+        "instruction_in_field": hit is not None,
+        "field": (hit or {}).get("field"),
+        "match": (hit or {}).get("match"),
+        "rule": (hit or {}).get("rule"),
+        "fields_checked": sorted(instruction_field_text(artifact)),
+        "note": ("Stricter than free prose: these fields exist to direct the "
+                 "operator, so `do not <verb>` counts here and does not "
+                 "elsewhere."),
+    }
