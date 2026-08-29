@@ -12,11 +12,11 @@
     "blob_json": "1W04_1pATgfewyf8gp-WVIo8cqc26c4WQ",
     "native_doc": "1o5NBldbO1qqWVT-8kxgJ9wcCj5r3FJGFrr_slnak5_8",
     "native_sheet": "10T3HTcQS_tgYu8-dtHozWgCPBywvgPxXZjbJBrfT0uw",
-    "blob_md_id_note": "1kNRoyK_Tq8FNUMxrwjNDRB2AZCqnxjOP \u2014 capital O. The overnight prompt wrote a zero, which 404s. This JSON is authoritative.",
+    "blob_md_id_note": "1kNRoyK_Tq8FNUMxrwjNDRB2AZCqnxjOP — capital O. The overnight prompt wrote a zero, which 404s. This JSON is authoritative.",
     "blob_json_holds": "CIO_WAVE2_SCOREBOARD.json",
     "census_blob": null,
     "census_blob_note": "the census has no Drive blob; create with --parent 1rRSmvAeO37z2PyyrIYtd2C5ngwHsAIqH to mint one",
-    "agent_upload": "FAIL (keyring/no TTY) \u2014 operator ran it manually 2026-08-29",
+    "agent_upload": "FAIL (keyring/no TTY) — operator ran it manually 2026-08-29",
     "mirrored": {
       "CIO_WAVE2_SCOREBOARD.md": "1kNRoyK_Tq8FNUMxrwjNDRB2AZCqnxjOP",
       "CIO_WAVE2_SCOREBOARD.json": "1W04_1pATgfewyf8gp-WVIo8cqc26c4WQ"
@@ -398,7 +398,7 @@
         "tradeai-cio-material-scan",
         "tradeai-cio-defer-revisit"
       ],
-      "drive": "FAIL \u2014 gog keyring is the file backend and needs GOG_KEYRING_PASSWORD; bw vault locked, no session. Not attempted further."
+      "drive": "FAIL — gog keyring is the file backend and needs GOG_KEYRING_PASSWORD; bw vault locked, no session. Not attempted further."
     },
     "s6_dust_rule": {
       "status": "SHIPPED",
@@ -424,7 +424,7 @@
     "leftovers_closed": [
       "teach the S6 detector the dust rule"
     ],
-    "s1_dust_rule": "SHIPPED \u2014 35 dust S1 cancelled, 5 cap-5 created, full held coverage"
+    "s1_dust_rule": "SHIPPED — 35 dust S1 cancelled, 5 cap-5 created, full held coverage"
   },
   "wave1_closed": true,
   "slices": {
@@ -511,7 +511,7 @@
       "live": "thesis_count/held_n"
     },
     "12": {
-      "title": "holdings truth \u2014 instrument_id, DUST_RESIDUAL, with_plan counter, S1 leftovers",
+      "title": "holdings truth — instrument_id, DUST_RESIDUAL, with_plan counter, S1 leftovers",
       "status": "DONE",
       "pr": 621,
       "sha": "5f215504c77a901cc25de93c2ed228e23df21aa2",
@@ -522,46 +522,46 @@
         "12c": "observational S1 skips dust; would = BAH CSWC V XAR AMANX (cap 5, notify false). Apply is a separate dry-first step."
       },
       "rails": "MBI=0 INTERDICT=0 no broker write no notify no lot delete",
-      "live": "held_n 15 (19 incl dust) \u00b7 dust 4 \u00b7 instrument_id 3 \u00b7 with_plan 11 \u00b7 would_s1 BAH CSWC V XAR AMANX"
+      "live": "held_n 15 (19 incl dust) · dust 4 · instrument_id 3 · with_plan 11 · would_s1 BAH CSWC V XAR AMANX"
     },
     "13": {
       "title": "% subject_guid measured on NEW_POSITION_IF / reentry / watch",
       "status": "DONE",
       "pr": 621,
       "sha": "5f215504c77a901cc25de93c2ed228e23df21aa2",
-      "rails": "no mint \u00b7 registry not written \u00b7 MBI=0",
-      "live": "111 rows \u00b7 resolvable 100% \u00b7 stamped 4.5% (only NEW_POSITION_IF stamps) \u00b7 minted 0"
+      "rails": "no mint · registry not written · MBI=0",
+      "live": "111 rows · resolvable 100% · stamped 4.5% (only NEW_POSITION_IF stamps) · minted 0"
     },
     "14": {
       "title": "register HELD(non-dust)+ACTIVE watch missing from identity.registry",
       "status": "DONE",
       "pr": 621,
       "sha": "5f215504c77a901cc25de93c2ed228e23df21aa2",
-      "rails": "dry only \u00b7 --apply NOT run \u00b7 cap 30 \u00b7 refuses above cap",
-      "live": "would_register_n=0 \u2014 every held non-dust and active-watch name already registered"
+      "rails": "dry only · --apply NOT run · cap 30 · refuses above cap",
+      "live": "would_register_n=0 — every held non-dust and active-watch name already registered"
     },
     "15": {
       "title": "1-hop graph_impact same-sector held neighbours",
       "status": "DONE",
       "pr": 621,
       "sha": "5f215504c77a901cc25de93c2ed228e23df21aa2",
-      "rails": "class D \u00b7 no new store \u00b7 dust excluded both sides",
-      "live": "cap 5 \u00b7 deterministic rank \u00b7 missing map -> DATA_UNAVAILABLE \u00b7 BND honest 0 neighbours"
+      "rails": "class D · no new store · dust excluded both sides",
+      "live": "cap 5 · deterministic rank · missing map -> DATA_UNAVAILABLE · BND honest 0 neighbours"
     },
     "16": {
       "title": "graph_impact on S6 names only",
       "status": "DONE",
       "pr": 621,
       "sha": "5f215504c77a901cc25de93c2ed228e23df21aa2",
-      "rails": "S6 scope only \u00b7 context never action",
-      "live": "8 S6 symbols \u00b7 5 attached \u00b7 CASH/QCOM not held, SRNE dust -> skipped with reason"
+      "rails": "S6 scope only · context never action",
+      "live": "8 S6 symbols · 5 attached · CASH/QCOM not held, SRNE dust -> skipped with reason"
     },
     "17": {
       "title": "identity_lookup_failed != UNRESOLVED",
       "status": "DONE",
       "pr": 621,
       "sha": "5f215504c77a901cc25de93c2ed228e23df21aa2",
-      "rails": "UNRESOLVED still UNRESOLVED \u00b7 no mint",
+      "rails": "UNRESOLVED still UNRESOLVED · no mint",
       "live": "RESOLVED | UNRESOLVED | LOOKUP_FAILED | NOT_APPLICABLE; failure outranks clean negative"
     },
     "18": {
@@ -570,22 +570,22 @@
       "pr": 621,
       "sha": "5f215504c77a901cc25de93c2ed228e23df21aa2",
       "rails": "regression only",
-      "live": "ticker_alias_guid UUIDv5 \u00b7 symbol in aliases \u00b7 by_symbol[SYM] != SYM (SCHD/CUSIP/V)"
+      "live": "ticker_alias_guid UUIDv5 · symbol in aliases · by_symbol[SYM] != SYM (SCHD/CUSIP/V)"
     },
     "19": {
       "title": "Hermes fail histogram last 7d",
       "status": "DONE",
       "pr": 622,
       "sha": "c3c7b966abd0a32d1f99492b863e506149384903",
-      "rails": "read-only \u00b7 no requeue \u00b7 no cap raised",
-      "live": "228 in 7d \u00b7 cost_cap 130 \u00b7 execution_language 93 \u00b7 truncated 3 \u00b7 worker_bug 0"
+      "rails": "read-only · no requeue · no cap raised",
+      "live": "228 in 7d · cost_cap 130 · execution_language 93 · truncated 3 · worker_bug 0"
     },
     "20": {
       "title": "skip enqueue of non-retryable execution-language",
       "status": "DONE",
       "pr": 622,
       "sha": "c3c7b966abd0a32d1f99492b863e506149384903",
-      "rails": "opt-in gate \u00b7 fails soft \u00b7 nothing written on block",
+      "rails": "opt-in gate · fails soft · nothing written on block",
       "live": "execution_language never requeued; blocks even beside a retryable truncation"
     },
     "21": {
@@ -593,15 +593,15 @@
       "status": "DONE",
       "pr": 622,
       "sha": "c3c7b966abd0a32d1f99492b863e506149384903",
-      "rails": "cap enforced by eligibility \u00b7 no cap raised",
-      "live": "MAX_REPLAYS_PER_PLAN_PER_DAY=1 \u00b7 cost_cap-only history waits for window"
+      "rails": "cap enforced by eligibility · no cap raised",
+      "live": "MAX_REPLAYS_PER_PLAN_PER_DAY=1 · cost_cap-only history waits for window"
     },
     "22": {
       "title": "hermes_result_id on new attachable complete",
       "status": "DONE",
       "pr": 622,
       "sha": "c3c7b966abd0a32d1f99492b863e506149384903",
-      "rails": "unit \u00b7 no live spend",
+      "rails": "unit · no live spend",
       "live": "attachable only on VALID|PARTIAL and non-failed status; flags refuse"
     },
     "23": {
@@ -609,7 +609,7 @@
       "status": "DONE",
       "pr": 622,
       "sha": "c3c7b966abd0a32d1f99492b863e506149384903",
-      "rails": "unit \u00b7 no admit",
+      "rails": "unit · no admit",
       "live": "source_kind HERMES_VALID_COMPLETE; dedup on (symbol, plan_id, result_id)"
     },
     "24": {
@@ -617,7 +617,7 @@
       "status": "DONE",
       "pr": 622,
       "sha": "c3c7b966abd0a32d1f99492b863e506149384903",
-      "rails": "dry first \u00b7 operator-authorized apply of exactly 2 \u00b7 blanket 474 NOT run",
+      "rails": "dry first · operator-authorized apply of exactly 2 · blanket 474 NOT run",
       "live": "would_attach 2 -> applied 2 -> now 0; missing_result_id 254->252; CASE_SUMMARY stayed 328"
     },
     "25": {
@@ -626,7 +626,7 @@
       "pr": 622,
       "sha": "c3c7b966abd0a32d1f99492b863e506149384903",
       "rails": "read-only",
-      "live": "468 completed \u00b7 VALID 392 \u00b7 PARTIAL 74 \u00b7 INSUFFICIENT 2 \u00b7 attachable 466"
+      "live": "468 completed · VALID 392 · PARTIAL 74 · INSUFFICIENT 2 · attachable 466"
     },
     "26": {
       "title": "attach rule VALID|PARTIAL documented",
@@ -641,8 +641,8 @@
       "status": "DONE",
       "pr": 622,
       "sha": "c3c7b966abd0a32d1f99492b863e506149384903",
-      "rails": "dry \u00b7 due=0 \u00b7 no apply \u00b7 no invented PnL",
-      "live": "due 0 \u00b7 would_bind 152 -> 106 after dust filter \u00b7 JEPI/LDOS/SCHG/SRNE excluded"
+      "rails": "dry · due=0 · no apply · no invented PnL",
+      "live": "due 0 · would_bind 152 -> 106 after dust filter · JEPI/LDOS/SCHG/SRNE excluded"
     },
     "28": {
       "title": "top 8 PROVISIONAL lessons on product",
@@ -650,7 +650,7 @@
       "pr": 622,
       "sha": "c3c7b966abd0a32d1f99492b863e506149384903",
       "rails": "cannot_become_policy true",
-      "live": "328 candidates \u00b7 all PROVISIONAL/REVIEW_READY \u00b7 policy_effect false \u00b7 cap 8"
+      "live": "328 candidates · all PROVISIONAL/REVIEW_READY · policy_effect false · cap 8"
     },
     "29": {
       "title": "REVIEW_READY count",
@@ -658,7 +658,7 @@
       "pr": 622,
       "sha": "c3c7b966abd0a32d1f99492b863e506149384903",
       "rails": "promotion ceiling REVIEW_READY",
-      "live": "REVIEW_READY 328 \u00b7 policy 0 \u00b7 ratified 12 RATIFIED_CONTEXT not_production_policy"
+      "live": "REVIEW_READY 328 · policy 0 · ratified 12 RATIFIED_CONTEXT not_production_policy"
     },
     "30": {
       "title": "memory receipts memory_type+promotable",
@@ -666,7 +666,7 @@
       "pr": 622,
       "sha": "c3c7b966abd0a32d1f99492b863e506149384903",
       "rails": "regression",
-      "live": "338/757 carry both; split chronological \u2014 all receipts since 2026-08-28T13:34 have them"
+      "live": "338/757 carry both; split chronological — all receipts since 2026-08-28T13:34 have them"
     },
     "31": {
       "title": "no RESEARCH_REFERENCE ACTIVE",
@@ -674,23 +674,23 @@
       "pr": 622,
       "sha": "c3c7b966abd0a32d1f99492b863e506149384903",
       "rails": "regression",
-      "live": "448 CANDIDATE \u00b7 0 ACTIVE/ADMITTED \u00b7 CASE_SUMMARY 328 ACTIVE"
+      "live": "448 CANDIDATE · 0 ACTIVE/ADMITTED · CASE_SUMMARY 328 ACTIVE"
     },
     "32": {
-      "title": "complete\u2192checkpoint rate exposed",
+      "title": "complete→checkpoint rate exposed",
       "status": "DONE",
       "pr": 623,
       "sha": "53794d823f0e88a220663eb47963ae3d46d51bd8",
-      "rails": "reported as UNCOMPUTABLE with reason \u00b7 nothing rewritten",
-      "live": "523 checkpoints \u00b7 0 with plan_id \u00b7 rate null not 0% \u00b7 148 on CASH \u00b7 50 on dust"
+      "rails": "reported as UNCOMPUTABLE with reason · nothing rewritten",
+      "live": "523 checkpoints · 0 with plan_id · rate null not 0% · 148 on CASH · 50 on dust"
     },
     "33": {
       "title": "remaining P9.0 voice labels",
       "status": "DONE",
       "pr": 623,
       "sha": "53794d823f0e88a220663eb47963ae3d46d51bd8",
-      "rails": "additive stamps \u00b7 no sentence reworded",
-      "live": "temperament.narrative T \u00b7 next_reviews T \u00b7 closest-reentries D"
+      "rails": "additive stamps · no sentence reworded",
+      "live": "temperament.narrative T · next_reviews T · closest-reentries D"
     },
     "34": {
       "title": "Surface labels on evening/desk",
@@ -714,7 +714,7 @@
       "pr": 623,
       "sha": "53794d823f0e88a220663eb47963ae3d46d51bd8",
       "rails": "never portfolio_implication",
-      "live": "EOD had NO cash line; now temperament.cash $578,108 \u00b7 44.9%"
+      "live": "EOD had NO cash line; now temperament.cash $578,108 · 44.9%"
     },
     "37": {
       "title": "dark-contract scan",
@@ -722,7 +722,7 @@
       "pr": 623,
       "sha": "53794d823f0e88a220663eb47963ae3d46d51bd8",
       "rails": "no new uncalled helpers",
-      "live": "37 helpers/9 modules \u00b7 uncalled 2 \u2192 0 \u00b7 untested 15 \u2192 0 \u00b7 repo guard check_dark_contracts.py caught CIOWave2Census@v1 in CI; NO_CONSUMER_REASON declared and the guard added to ai_local_acceptance.sh so it can never again be remote-only"
+      "live": "37 helpers/9 modules · uncalled 2 → 0 · untested 15 → 0 · repo guard check_dark_contracts.py caught CIOWave2Census@v1 in CI; NO_CONSUMER_REASON declared and the guard added to ai_local_acceptance.sh so it can never again be remote-only"
     },
     "38": {
       "title": "store_consistency never_auto_remediate",
@@ -738,7 +738,7 @@
       "pr": 623,
       "sha": "53794d823f0e88a220663eb47963ae3d46d51bd8",
       "rails": "detect only",
-      "live": "as_of 2026-08-26 vs reprice 08-28 16:45 \u00b7 age 3d \u00b7 DATA_STALE"
+      "live": "as_of 2026-08-26 vs reprice 08-28 16:45 · age 3d · DATA_STALE"
     },
     "40": {
       "title": "two-writer holdings detect only",
@@ -746,7 +746,7 @@
       "pr": 623,
       "sha": "53794d823f0e88a220663eb47963ae3d46d51bd8",
       "rails": "**never merged**",
-      "live": "rows $630,784.82 vs total_cash $578,107.50 \u00b7 \u0394 **$52,677.32** \u00b7 both printed"
+      "live": "rows $630,784.82 vs total_cash $578,107.50 · Δ **$52,677.32** · both printed"
     },
     "41": {
       "title": "C2 TRIM non-held still blocked",
@@ -777,7 +777,7 @@
       "status": "DONE",
       "pr": null,
       "sha": null,
-      "rails": "flag only \u00b7 job still runs",
+      "rails": "flag only · job still runs",
       "live": "8 AVOID symbols; flag_orders_against_avoid annotates, never drops or halts; timers all active"
     },
     "45": {
@@ -801,7 +801,7 @@
       "status": "DONE",
       "pr": null,
       "sha": null,
-      "rails": "read-only \u00b7 no writes but --out",
+      "rails": "read-only · no writes but --out",
       "live": "scripts/cio_wave2_census.py recomputes the whole NOW block; agrees with the card"
     },
     "48": {
@@ -838,7 +838,7 @@
       118
     ],
     "s1_dust_rule": {
-      "root_cause": "deep_drawdown_from_basis \u2014 same (basis-last)/basis ratio as S6's disposition branch; a residual is permanently ~100% down",
+      "root_cause": "deep_drawdown_from_basis — same (basis-last)/basis ratio as S6's disposition branch; a residual is permanently ~100% down",
       "plans_found": {
         "JEPI": 20,
         "SRNE": 14,
@@ -865,7 +865,7 @@
     },
     "not_applied": {
       "divi_not_held_s1": 19,
-      "why": "reason is not_held, not dust \u2014 no authorisation; DIVI is in neither the book nor previously_traded and may be a bad-symbol variant of the held DIV"
+      "why": "reason is not_held, not dust — no authorisation; DIVI is in neither the book nor previously_traded and may be a bad-symbol variant of the held DIV"
     },
     "harness_trap": "collect_previously_traded() reads Postgres, not the root; a local rerun showed AXTI/FATN UNAVAILABLE when live is correctly EXITED",
     "renamed": "cio_orphan_s6_hygiene -> cio_orphan_plan_hygiene (S1 entered scope)"
@@ -880,7 +880,7 @@
         160
       ],
       "open": 0,
-      "gap": "books were separate but anonymous \u2014 canonical labels existed and each producer stamped its book, but neither reached /home and the CC named only Surface A",
+      "gap": "books were separate but anonymous — canonical labels existed and each producer stamped its book, but neither reached /home and the CC named only Surface A",
       "fix": "home.reentry_books reads the canonical cio_reentry_surface_labels module; CC renders Surface B beneath Surface A",
       "wrong_turn": "first attempt labelled build_opportunity_book as Surface B with invented text; Surface B is the desk_depth cash-stage book and canonical labels already existed. Reverted.",
       "merged": false
@@ -1099,5 +1099,63 @@
     "effect_now": "fossil 578107.50 stays in holdings.json until the next reprice; display law keeps UNRECONCILED",
     "effect_after_reprice": "gap 0.00, status RECONCILED, cash_for_S5 becomes 630784.82",
     "gap_threshold": 1.0
+  },
+  "LLM_GATE": {
+    "status": "DONE",
+    "schema": "ResearchNeedDecision@v2",
+    "decisions": [
+      "skip",
+      "reuse",
+      "corpus_hit",
+      "flash",
+      "pro",
+      "openai",
+      "grok_critique"
+    ],
+    "live": {
+      "open_researchable_plans_considered": 445,
+      "eligible_model_calls": 8,
+      "skipped_not_material": 353,
+      "skipped_duplicate_subject_same_day": 35,
+      "live_paid_calls_made": 0
+    },
+    "corpus": "CORPUS_UNLOCATED — 11 facts / 7 families in code; only seasonality has depth",
+    "corpus_closing_grades": [
+      "A",
+      "B"
+    ],
+    "freshness_law": "delegated to research_source_index.decide (one law, not two)",
+    "v1_unchanged": "research_need_decision.py untouched; closed_loop_maturity + symbol_thesis_research unaffected",
+    "tests": 57,
+    "docs": [
+      "docs/ops/CIO_LLM_GATE_CADENCE_CORPUS_2026-08-29.md",
+      "docs/ops/CIO_INSTITUTIONAL_CORPUS_MAP_2026-08-29.md"
+    ],
+    "caps_raised": false,
+    "notify_changed": false,
+    "wave3_started": false
+  },
+  "cash_fossil_closeout_2026_08_29": {
+    "status": "CLOSED",
+    "cash_writer": "portfolio_repricer._recalc_totals",
+    "prior_writer_patched_but_never_ran": "portfolio_loader.load_all_portfolios (#634)",
+    "pr": 635,
+    "merge_commit": "7ad62f7b9a601e92b316be7bf6e5d18b7a942cfa",
+    "current_pin": "7ad62f7b-main-exact-phase2-20260829-081457",
+    "proof": "Saturday after-hours reprice, 2026-08-29",
+    "cash_gap_live": 0.0,
+    "total_cash_before": 578107.5,
+    "total_cash_after": 630784.82,
+    "s5_cash": 630784.82,
+    "s5_prior_state": "DATA_UNAVAILABLE_UNTIL_RECONCILED",
+    "live_surfaces_agree": [
+      "temperament.cash",
+      "cash.cash_usd",
+      "/api/v2/overview total_cash"
+    ],
+    "persisted_brief_rebuilt_once": true,
+    "fourth_cash_writer_added": false,
+    "api_v2_2593_read_site": "left in place",
+    "doc": "docs/ops/CIO_CASH_SATURDAY_PROOF_2026-08-29.md"
   }
 }

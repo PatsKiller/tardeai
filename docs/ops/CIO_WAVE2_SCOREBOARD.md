@@ -307,3 +307,61 @@ Leftovers still forbidden unless a Wave 2 slice explicitly allows a read-only st
 5. Briefs now name the Surface and the **26 watch BLOCK names** (READY stays 0,
    `fires_s7` false). Dark-contract scan: uncalled helpers **2 → 0**.
    MBI 0, INTERDICT 0, telegram_sent false.
+
+## Cash fossil — CLOSED (2026-08-29, Saturday proof)
+
+`portfolio_totals.total_cash` had drifted to **$578,107.50** against a
+**$630,784.82** cash row sum — a **$52,677.32** gap. It was the one key in that
+dict no writer refreshed.
+
+#634 patched `portfolio_loader.load_all_portfolios`, which the pipeline never
+calls. The writer that runs is `portfolio_repricer._recalc_totals` (the 16:10
+Mon–Fri cron). The stored document said so — `last_pipeline_run` 08-26 from the
+loader vs `last_repriced` 08-28 from the repricer — and `total_mv_excluded`
+staying correct to the cent was the tell: it sits in the repricer's update list,
+`total_cash` did not.
+
+#635 (`7ad62f7b`) adds the write there. Proven the same day rather than waiting
+for Monday, by running the real repricer after-hours on CURRENT:
+
+| | before | after |
+|---|---|---|
+| `total_cash` | 578,107.50 | **630,784.82** |
+| `cash_gap` | 52,677.32 | **0.00** |
+| `temperament.cash` | 578,107.50 | **630,784.82** |
+| S5 cash | `DATA_UNAVAILABLE_UNTIL_RECONCILED` | **630,784.82** |
+
+The live payload needed the persisted brief (`cio.product.current`) rebuilt
+once — it had regenerated 50s *before* the reprice, during the promote restart.
+No fourth cash writer. `api_v2.py:2593` left in place. Shares unchanged.
+
+Full evidence: `docs/ops/CIO_CASH_SATURDAY_PROOF_2026-08-29.md`.
+
+## LLM_GATE = DONE (2026-08-29)
+
+`ResearchNeedDecision@v2` routes every research job to one of seven outcomes —
+`skip | reuse | corpus_hit | flash | pro | openai | grok_critique` — free-first,
+paid only when unresolved *and* material.
+
+Live on CURRENT, over the real open plan book:
+
+    445 open researchable plans  ->  8 eligible model calls   (0 paid calls made)
+    skip 437: not_material 353 | event_driven 38 | duplicate_same_day 35 | no_llm_kind 11
+
+Five lines worth keeping:
+
+1. **One freshness law.** `research_source_index.decide()` already owned
+   stale/unchanged, so v2 delegates instead of keeping a second TTL opinion —
+   the same two-writers-one-field shape as the `total_cash` fossil closed today.
+2. **Same-day subject collapse took 43 eligible jobs to 8.** 36 open S5 cash
+   plans are 36 rows asking one question.
+3. **`CORPUS_UNLOCATED`.** No 20–30 publication set exists; what does is 11
+   facts over 7 families in code, and only seasonality has depth.
+4. **The corpus limits itself.** Only grade A/B ("independently reproduced,
+   risk-modifier only") may close a gap, and never an entity-level question.
+   C is context-only; D "must not be treated as a Trade AI fact".
+5. **Execution language fails closed before escalation** — a tainted artifact
+   never buys a bigger model. v1 `research_need_decision.py` is unchanged.
+
+Detail: `docs/ops/CIO_LLM_GATE_CADENCE_CORPUS_2026-08-29.md`,
+`docs/ops/CIO_INSTITUTIONAL_CORPUS_MAP_2026-08-29.md`.
