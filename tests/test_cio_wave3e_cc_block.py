@@ -185,3 +185,79 @@ def test_the_full_store_and_the_window_give_different_counts():
 def test_office_home_still_reports_telegram_sent_false():
     code = CC.read_text(encoding="utf-8", errors="replace")
     assert 'home["telegram_sent"] = False' in code
+
+
+# ============================ plan-source regressions (2026-08-29)
+
+S6 = "S6_CONCENTRATION_OR_DISPOSITION"
+
+
+def _p(pid, stype=S6, sym="AMANX", material=True, status="draft"):
+    return {"plan_id": pid, "situation_type": stype, "symbols": [sym],
+            "status": status, "material": material}
+
+
+def test_a_material_s6_actually_surfaces():
+    """Regression pin for #653.
+
+    The block was pointed at `_coverage_plan_index()`, whose projection carried
+    no `material` key — so `NotificationPolicy.decide()` read it as falsy and
+    every row suppressed `not_material`. Live went to 475 considered / 475
+    suppressed / **0 surfaced**: a count that looked plausible while the surface
+    could never show anything.
+    """
+    b = build_notification_block([_p("a")], now=NOW)
+    assert b["surfaced_n"] == 1, "a material S6 must reach the block"
+    assert b["suppressed_n"] == 0
+
+
+def test_a_suppressed_row_does_not_claim_the_subject_slot():
+    """A non-material row iterated first must not shadow a material one.
+
+    The dup key is (situation_type, first symbol) and was claimed
+    unconditionally, so the first ('S6…','AMANX') row — material=False —
+    suppressed as not_material AND took the slot, making the later material
+    AMANX fire suppress as duplicate_subject. A concentration fire vanished on
+    iteration order.
+    """
+    b = build_notification_block([_p("cold", material=False), _p("hot")], now=NOW)
+    assert b["surfaced_n"] == 1
+    assert b["suppressed_by_reason"].get("duplicate_subject") is None
+    assert b["suppressed_by_reason"]["not_material"] == 1
+
+
+def test_a_genuine_duplicate_is_still_collapsed():
+    """The dup rule must still work — two material rows on one subject."""
+    b = build_notification_block([_p("one"), _p("two")], now=NOW)
+    assert b["surfaced_n"] == 1
+    assert b["suppressed_by_reason"]["duplicate_subject"] == 1
+
+
+def test_different_symbols_do_not_collapse_into_each_other():
+    b = build_notification_block([_p("a", sym="SCHD"), _p("b", sym="DIV")],
+                                 now=NOW)
+    assert b["surfaced_n"] == 2
+
+
+def test_the_coverage_projection_carries_material_and_plan_id():
+    """The projection a consumer branches on must not drop that field."""
+    import re
+
+    src = (REPO / "scripts" / "api_v3_cio.py").read_text(encoding="utf-8",
+                                                         errors="replace")
+    body = src.split("def _coverage_plan_index", 1)[1].split("\ndef ", 1)[0]
+    code = re.sub(r"#.*", "", re.sub(r'("""|\'\'\')(?:.|\n)*?\1', "", body))
+    assert '"material"' in code, "coverage projection must carry material"
+    assert '"plan_id"' in code, "coverage projection must carry plan_id"
+
+
+def test_open_plans_kpi_counts_the_store_not_the_window():
+    """`attention.open_plans` is defined as the durable store."""
+    from scripts.lib.cio_command_center import build_cio_now
+
+    window = [{"plan_id": f"w{i}", "status": "draft"} for i in range(12)]
+    store = [{"plan_id": f"s{i}", "status": "draft"} for i in range(458)]
+    assert build_cio_now(plans=window)["attention"]["open_plans"] == 12
+    got = build_cio_now(plans=window, all_open_plans=store)
+    assert got["attention"]["open_plans"] == 458
+    assert len(got.get("cards") or []) <= 5, "cards stay capped at 5"

@@ -227,6 +227,7 @@ def build_cio_now(
     position_decisions: Optional[list[dict[str, Any]]] = None,
     actions: Optional[list[dict[str, Any]]] = None,
     plans: Optional[list[dict[str, Any]]] = None,
+    all_open_plans: Optional[list[dict[str, Any]]] = None,
     portfolio_value: Optional[float] = None,
 ) -> dict[str, Any]:
     """CIO NOW — at most 5 investment decision cards + disjoint attention KPIs.
@@ -234,7 +235,11 @@ def build_cio_now(
     Phase 4 attention model (no double-count across KPI buckets):
       INVESTMENT DECISIONS — true InvestmentDecision objects needing attention
       WORKFLOW ACTIONS     — open action-ledger items only
-      OPEN PLANS           — durable plans still open
+      OPEN PLANS           — durable plans still open, counted from the FULL
+                             store (`all_open_plans`), not the card window.
+                             `plans` is the 12-row CIO NOW window; counting the
+                             KPI off it reported 12 against 458 real open plans,
+                             the same error as the `with_plan=1` coverage bug.
       MATERIAL TODAY       — deduped unique high-priority items (target 0–5)
 
     Cards shown are investment decisions only (not workflow actions).
@@ -404,6 +409,12 @@ def build_cio_now(
     elif isinstance(plans, list):
         plan_list = plans
     open_plans = [p for p in plan_list if _plan_is_open(p)]
+    # KPI counts the durable store; cards still come from `plans`.
+    if all_open_plans:
+        store_open = [p for p in all_open_plans
+                      if isinstance(p, dict) and _plan_is_open(p)]
+        if len(store_open) > len(open_plans):
+            open_plans = store_open
 
     # Material Today: deduped unique high-priority items. Uses the derived,
     # freshness-aware current action; a stale act_now=True record may remain
@@ -1032,8 +1043,17 @@ def build_notification_block(
         syms = p.get("symbols") or []
         key = (str(p.get("situation_type") or ""), syms[0] if syms else None)
         dup = key in seen
-        seen.add(key)
-        decisions.append(_policy.decide(p, duplicate_subject=dup, now=now))
+        d = _policy.decide(p, duplicate_subject=dup, now=now)
+        # Only a row that actually surfaces may claim the subject slot.
+        #
+        # Claiming it unconditionally let a SUPPRESSED row shadow a real one:
+        # the first ('S6…','AMANX') row is material=False, so it suppressed as
+        # not_material and still took the slot — and a later material AMANX S6
+        # then suppressed as duplicate_subject. A concentration fire vanished
+        # because a non-material row happened to be iterated first.
+        if d.get("decision") != _policy.SUPPRESSED:
+            seen.add(key)
+        decisions.append(d)
 
     surfaced = [d for d in decisions
                 if d.get("decision") == _policy.COMMAND_CENTER_ONLY]
@@ -1224,6 +1244,7 @@ def build_office_home(
         position_decisions=plan.get("position_decisions"),
         actions=actions,
         plans=plans,
+        all_open_plans=coverage_plans,
         portfolio_value=_num(plan.get("portfolio_value_usd")),
     )
     capital_surface = build_capital_plan(plan)

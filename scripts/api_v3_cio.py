@@ -351,8 +351,17 @@ def get_cio_plans(*, limit: int = 30, situation_type: Optional[str] = None) -> d
 def _coverage_plan_index(limit: int = 5000) -> list[dict[str, Any]]:
     """Read-only open-plan projection for coverage counting (Wave 2 slice 12b).
 
-    Only the four fields the counter reads. Fail-soft to [] so a plan-store
-    problem zeroes the count instead of blanking /v3/cio/home.
+    The fields the coverage counter AND the notification block read. Fail-soft
+    to [] so a plan-store problem zeroes the count instead of blanking
+    /v3/cio/home.
+
+    `material` and `plan_id` were added 2026-08-29. The projection previously
+    carried four fields, which was correct while only the coverage counter read
+    it; once the notification block was pointed here it began calling
+    `NotificationPolicy.decide()` on rows with no `material` key, so every row
+    suppressed as `not_material` and `surfaced_n` was structurally always 0
+    (475 considered, 475 suppressed). A projection that silently drops the field
+    a consumer branches on is worse than a short one.
     """
     try:
         rows = _plan_store().list_open_plans(limit=limit)
@@ -364,9 +373,11 @@ def _coverage_plan_index(limit: int = 5000) -> list[dict[str, Any]]:
             continue
         extra = p.get("extra") if isinstance(p.get("extra"), dict) else {}
         out.append({
+            "plan_id": p.get("plan_id"),
             "situation_type": p.get("situation_type"),
             "symbols": [str(s).upper() for s in (p.get("symbols") or []) if s],
             "status": p.get("status"),
+            "material": bool(p.get("material") or extra.get("material")),
             "hermes_result_id": p.get("hermes_result_id") or extra.get("hermes_result_id"),
         })
     return out

@@ -1730,5 +1730,27 @@
     "docs": [
       "docs/ops/CIO_GROK_HOP_RESULT_2026-08-29.md"
     ]
+  },
+  "CC_MODEL_VERIFY": {
+    "status": "DONE — model verified, 3 plan-source bugs fixed",
+    "verified": [
+      "coverage=S1/S3/S5/S6 (S0/S7 excluded)",
+      "accepted is not open",
+      "cards[:5]",
+      "HOLD/WATCH drop",
+      "freshness strips sizing",
+      "Trim-on-Hold is display",
+      "merged:false",
+      "fires_s7 false",
+      "notify dup key + cap 10 + IMMEDIATE counted"
+    ],
+    "model_correction": "'TRIM/EXIT/ADD/RE_ENTER even $0 delta' — L135 needs delta>=0.01 OR non_neutral; $0 + neutral why drops",
+    "bug_1_mine": "#653 pointed the notify block at _coverage_plan_index, which carried no `material` — 475 considered / 475 suppressed / 0 surfaced, structurally unable to surface",
+    "bug_2": "suppressed rows claimed the dup slot; a material=False AMANX row shadowed a real S6 fire",
+    "bug_3": "attention.open_plans read the 12-row window, not the 458-row store",
+    "tests_added": 6,
+    "docs": [
+      "docs/ops/CIO_COMMAND_CENTER_MODEL_2026-08-29.md"
+    ]
   }
 }
