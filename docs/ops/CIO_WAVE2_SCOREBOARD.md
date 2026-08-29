@@ -68,6 +68,7 @@ CASE_SUMMARY store is still 323 — item 87 will label this on the card).
 | **Wave 2C 131–160** | 27 DONE · 3 FIXED (131, 132, 160) · 0 open. Both books now name themselves on `/home` and in the CC; `merged: false` |
 | **Wave 2C 161–190** | 30 DONE · 0 open. `hermes_result_id` **328 total** = 282 open + 46 cancelled by dust hygiene (reconciles exactly). |
 | **$0.001 model receipts** | 46 historical, last `13:46:33Z`; fix `ff09c255` at `13:49:23Z` — **3 min later**. 47 runs since with none. |
+| **Wave 2C 221–250** | 29 DONE · **1 FIXED (236)** · 0 open. Jailbreak scan missed 4 canonical phrasings — fixed in #631. Checkpoints 527, all trading:false / MBI 0. |
 | exec voice | `[T]` / `[D] Nothing requires action today.` |
 | reentry | Surface A · 70 names · reentry_total 25 NEAR overlaid · queue 43 · **dual pipes NOT merged** |
 | slice 12c would | BAH · CSWC · V · XAR · AMANX (cap 5, notify false) — apply is a separate dry-first step |

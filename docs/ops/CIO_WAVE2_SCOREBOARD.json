@@ -908,6 +908,30 @@
       },
       "live_model_calls_this_batch": 0,
       "cap": "LLM_GLOBAL_DAILY_USD_CAP=0.50 unchanged"
+    },
+    "221-250": {
+      "done": 29,
+      "fixed": 1,
+      "fixed_items": [
+        236
+      ],
+      "open": 0,
+      "item236": "jailbreak scan allowed one qualifier; 'ignore all previous instructions' and 3 other canonical forms passed. Fixed in #631.",
+      "checkpoints": {
+        "total": 527,
+        "SCHEDULED": 477,
+        "NOT_PRICE_RESOLVABLE": 44,
+        "RESOLVED": 6,
+        "trading": false,
+        "observational_only": true,
+        "mbi": 0
+      },
+      "near_misses": [
+        "admit_status called with a dict positionally",
+        "collect_previously_traded reads Postgres, not the root",
+        "wrong TZ boundary on the #609 duplicate-S1 check"
+      ],
+      "agent_commitment_producer": false
     }
   }
 }
