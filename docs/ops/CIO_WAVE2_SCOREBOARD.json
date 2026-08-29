@@ -1405,5 +1405,38 @@
       "docs/ops/CIO_WAVE3D_2026-08-29.md"
     ],
     "wave3e_started": false
+  },
+  "WAVE3D_FLASH": {
+    "status": "STOPPED at step 1 — zero flash-eligible",
+    "live_vendor_calls": 0,
+    "cost_usd": 0.0,
+    "enqueued": 0,
+    "queue_before": 0,
+    "queue_after": 0,
+    "telegram_sent": false,
+    "spcx_decision": "grok_critique — NOT flash-eligible; enqueueing it and calling Flash is the substitution step 1 forbids",
+    "histogram": {
+      "skip_event_driven_kind_no_event": 32,
+      "skip_execution_language_fail_closed": 11,
+      "grok_critique": 2,
+      "flash": 0
+    },
+    "prior_outcomes": {
+      "VALID": 23,
+      "execution_language": 11,
+      "FAIL": 8,
+      "None": 3
+    },
+    "why_zero": [
+      "S1/S3 candidates all have prior VALID (-> critique) or prior execution_language (-> fail closed)",
+      "S6/S7 kinds are event-driven with no event fired; earnings_within(5) is empty"
+    ],
+    "to_create_a_flash_job": [
+      "a new material S1/S3 plan with no prior research",
+      "an S6 threshold cross / defer expiry / earnings within 5d",
+      "a completed critique on SPCX or ARKX (needs 3D-critique)"
+    ],
+    "critique_networking_implemented": false,
+    "wave3e_started": false
   }
 }
