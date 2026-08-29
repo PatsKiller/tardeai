@@ -82,7 +82,12 @@ def questions_from_request(request: dict[str, Any]) -> list[dict[str, str]]:
         text = str(q.get("text") or q.get("question") or "").strip()
         if not text:
             continue
-        qid = str(q.get("question_id") or q.get("id") or f"q{i+1}")
+        try:
+            from scripts.lib.cio_question_ids import question_id_for
+
+            qid = question_id_for(q, index=i)
+        except Exception:                                       # pragma: no cover
+            qid = str(q.get("question_id") or q.get("id") or f"q{i+1}")
         intent = str(q.get("intent") or "other")
         out.append({"id": qid, "text": text, "intent": intent})
     return out

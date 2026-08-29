@@ -37,6 +37,15 @@ def decide(inp: dict[str, Any]) -> dict[str, Any]:
             {"dim": "bear_case", "q": f"What is the bear case / falsifier for {symbol}?"},
             {"dim": "what_is_priced_in", "q": f"What is already priced in for {symbol}?"},
         ]
+    # Stable ids from `dim`, so a question means the same thing to the producer,
+    # the answerer and the critique. Without this the downstream enqueue
+    # assigned positional q1/q2/q3 and the carry-forward pointed at ordinals.
+    try:
+        from scripts.lib.cio_question_ids import assign_ids
+
+        questions = assign_ids(questions)
+    except Exception:                                           # pragma: no cover
+        pass
     if contradictions or (material and held and not complete):
         decision = "DEEP_RESEARCH"
         pri = "high"

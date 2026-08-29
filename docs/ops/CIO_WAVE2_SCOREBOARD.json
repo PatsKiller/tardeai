@@ -1599,5 +1599,54 @@
     "docs": [
       "docs/ops/CIO_LEFTOVER_CLOSEOUT_2026-08-29.md"
     ]
+  },
+  "QUESTION_ID_CONTRACT": {
+    "status": "DONE",
+    "found_by": "the one live Grok critique on SPCX, confirmed book-wide across 471 results",
+    "defect": "ids were POSITIONAL: q{i+1} meant 'whatever was second that day'; reorder or drop a question and carried-forward answers re-point silently",
+    "legacy_shapes": {
+      "q1": 337,
+      "q2": 191,
+      "q3": 191,
+      "q_cat_1": 134,
+      "q_cat_2": 134,
+      "q_cat_3": 134
+    },
+    "two_vocabularies": "intent (cio_hermes_research) and dim (research_need_decision) — now one resolver",
+    "rule": "explicit id -> intent/dim -> positional last resort; derived never stored",
+    "ids": {
+      "S6": [
+        "q_drift_attribution",
+        "q_catalyst_map",
+        "q_invalidation"
+      ],
+      "S1": [
+        "q_catalyst_map",
+        "q_invalidation",
+        "q_thesis_check"
+      ],
+      "S5": [
+        "q_deployment_candidates",
+        "q_regime",
+        "q_liquidity"
+      ],
+      "v1_gate": [
+        "q_structural_drivers",
+        "q_bear_case",
+        "q_priced_in"
+      ]
+    },
+    "wired_sites": [
+      "cio_hermes_research",
+      "hermes_research_backend",
+      "research_need_decision"
+    ],
+    "backfilled": false,
+    "tests": 22,
+    "pre_existing_failures_unrelated": 4,
+    "critique_rerun": false,
+    "docs": [
+      "docs/ops/CIO_QUESTION_ID_CONTRACT_2026-08-29.md"
+    ]
   }
 }
