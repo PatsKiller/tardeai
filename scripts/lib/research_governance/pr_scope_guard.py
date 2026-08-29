@@ -56,6 +56,26 @@ ALLOWLIST_PATTERNS: List[str] = [
     "tests/test_research_r6*",
     "tests/test_research_r7*",
     "tests/test_research_r8*",
+
+    # --- Wave 3A (2026-08-29): the institutional library has a home ----------
+    # R1 froze scope to the paths above. Wave 3A relocates the monthly series
+    # that `research_governance/almanac.py` reads out of `tests/fixtures/`,
+    # because live grade=B numbers must not resolve from a test directory.
+    # `almanac.py` holds the path as a live default (`p = path or
+    # DEFAULT_FIXTURE`), so the move and the repoint cannot be separated into
+    # different PRs without leaving the module pointing at a deleted file.
+    #
+    # These patterns admit exactly that change and nothing else: the library
+    # home, the single resolver both consumers call, and the retired fixture
+    # path. They do not open `scripts/lib/**` or `docs/**`.
+    "reference/library/*",
+    "reference/library/**",
+    "scripts/lib/cio_library_paths.py",
+    "scripts/lib/cio_seasonality_analytics.py",
+    "tests/fixtures/us_equity_monthly_sample.csv",
+    "tests/test_cio_wave3a_library_home.py",
+    "docs/ops/CIO_WAVE3A_LIBRARY_*",
+    "docs/ops/CIO_LIBRARY_CENSUS_*",
 ]
 
 # Off-limits shared CIO / retrieval / release files. Deferred to R4.

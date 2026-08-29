@@ -1,0 +1,29 @@
+{
+  "source_id": "us_equity_monthly_sample",
+  "path": "reference/library/us_equity_monthly_synthetic_1950_2024.csv",
+  "previous_path": "tests/fixtures/us_equity_monthly_sample.csv",
+  "moved_at": "2026-08-29",
+  "moved_by": "Wave 3A — live numbers must not resolve out of tests/",
+  "rows": 900,
+  "span": "1950-01 .. 2024-12",
+  "content_md5": "490569829861df12ca5f63fa1ca9f36c",
+
+  "provenance": "SYNTHETIC",
+  "is_market_data": false,
+  "vendor_print": false,
+  "provenance_note": [
+    "This series is synthetic, as documented in",
+    "docs/investment-office/PHASE11_16_RESEARCH_BRAIN.md ('synthetic but",
+    "statistically usable') and docs/investment-office/R3_ALMANAC_REPRODUCTION.md",
+    "('deterministic, not a vendor print').",
+    "It does not reproduce market history: 1987-10 reads +3.27% (actual approx",
+    "-21.5%), 2008-10 reads -0.88% (actual approx -16.9%), 2020-03 reads +2.84%",
+    "(actual approx -12.5%), and the worst month in 75 years is -7.88%. The",
+    "series has never experienced a crash.",
+    "Consequence: a seasonality 'reproduction' computed against this file is a",
+    "determinism check of the pipeline, NOT independent empirical support for a",
+    "calendar claim. Grades derived from it must be read that way."
+  ],
+  "renamed_because": "the old name said 'sample'; nothing said 'synthetic', and the file backs operator-visible grade=B labels",
+  "authority": "READ_ONLY_ADVISORY"
+}
