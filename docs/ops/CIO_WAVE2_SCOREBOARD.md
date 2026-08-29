@@ -474,3 +474,31 @@ issuer CIK, and guessing one would attach a fabricated identity to a real
 filing.
 
 Detail: `docs/ops/CIO_WAVE3C_2026-08-29.md`.
+
+## WAVE3D = one hop — STOPPED at step 2, no live call made
+
+**0 live vendor calls, $0.00, telegram_sent false.** Stopped where the brief
+says to stop.
+
+The peek offered 8 eligible, all `flash`. **Four of them — SCHD, NOC, BND,
+XLI — carried a prior "execution language not allowed in research output"
+failure.** The gate has always had the fail-closed law; nothing ever fed it
+`prior_outcome`, so tainted plans were being offered for a paid first pass. A
+guard that isn't wired to its inputs is not a guard.
+
+Wired (`cio_research_history.py`): `execution_language_fail_closed` 0 → **11**,
+eligible 8 → **4**. Setting `research_id` then broke the same-day collapse and
+re-expanded S5 (35 → 1), so collapse now keys on **subject and** research_id —
+restored to 35.
+
+Step 2 returned `claimed: 0`. Nothing is claimable: **471 completed, 321
+failed, 0 queued**. Step 3 was not forced: the clean candidates decide
+`grok_critique`, the Grok lane is ready (OAuth proxy, free_oauth — not the
+blocker), but **no live Grok critique path exists** — `research_quality.critique`
+is a deterministic lint. Making the call would mean building a vendor call site,
+not taking one hop through an existing one.
+
+To run 3D: enqueue one `flash`-decision job for a clean plan, or authorise
+building the critique call site as its own review.
+
+Detail: `docs/ops/CIO_WAVE3D_2026-08-29.md`.

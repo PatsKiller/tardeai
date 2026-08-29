@@ -1372,5 +1372,38 @@
     ],
     "wave3d_started": false,
     "wave3e_started": false
+  },
+  "WAVE3D": {
+    "status": "STOPPED at step 2 — no live call made",
+    "live_vendor_calls": 0,
+    "cost_usd": 0.0,
+    "attached": false,
+    "telegram_sent": false,
+    "stop_reason": "0 claimable research jobs: 471 completed / 321 failed / 0 queued",
+    "DEFECT_FOUND": "gate fail-closed law was never fed prior_outcome; 4 of 8 eligible carried a prior execution_language failure (SCHD, NOC, BND, XLI)",
+    "fix": [
+      "scripts/lib/cio_research_history.py — wires prior outcomes into the gate",
+      "collapse now keys on subject AND research_id (research_id alone re-expanded S5 35->1)"
+    ],
+    "exec_lang_fail_closed": {
+      "before": 0,
+      "after": 11
+    },
+    "eligible": {
+      "before": 8,
+      "after": 4
+    },
+    "collapse_restored": 35,
+    "grok_lane": "ready (oauth proxy 8645, free_oauth) — not the blocker",
+    "blocker": "no live Grok critique path exists; research_quality.critique is a deterministic lint",
+    "next": [
+      "enqueue one flash-decision job for a clean plan, then rerun the sequence",
+      "or authorise building the critique call site as its own review"
+    ],
+    "tests": 9,
+    "docs": [
+      "docs/ops/CIO_WAVE3D_2026-08-29.md"
+    ],
+    "wave3e_started": false
   }
 }
