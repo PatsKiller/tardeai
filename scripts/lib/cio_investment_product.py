@@ -792,6 +792,9 @@ def collect_watch_block_summary(
         "by_reason": {},
         "top": [],
         "ready_count": 0,
+        "ready_symbols": [],
+        "near_symbols": [],
+        "ready_near_named": [],
         "class": "D",
         "fires_s7": False,
         "note": "BLOCK is honest; not mapped to READY; does not fire S7",
@@ -822,12 +825,30 @@ def collect_watch_block_summary(
                 "trade_ai_state": r.get("trade_ai_state"),
                 "class": "D",
             })
-    ready_n = sum(1 for r in items if str(r.get("status") or "") in {"READY", "GO", "NEAR"})
+    ready_symbols: list[str] = []
+    near_symbols: list[str] = []
+    ready_near_named: list[dict[str, Any]] = []
+    for r in items:
+        st = str(r.get("status") or "").upper()
+        sym = str(r.get("symbol") or "").upper()
+        if not sym:
+            continue
+        if st in {"READY", "GO"}:
+            if sym not in ready_symbols:
+                ready_symbols.append(sym)
+            ready_near_named.append({"symbol": sym, "status": st, "class": "D"})
+        elif st == "NEAR":
+            if sym not in near_symbols:
+                near_symbols.append(sym)
+            ready_near_named.append({"symbol": sym, "status": st, "class": "D"})
     return {
         "count": len(blocked),
         "by_reason": by_reason,
         "top": top,
-        "ready_count": ready_n,
+        "ready_count": len(ready_symbols) + len(near_symbols),
+        "ready_symbols": ready_symbols,
+        "near_symbols": near_symbols,
+        "ready_near_named": ready_near_named[:12],
         "class": "D",
         "fires_s7": False,
         "note": "BLOCK is honest; not mapped to READY; does not fire S7",
