@@ -54,9 +54,15 @@ def _http_json(url: str, timeout: float = 30.0) -> dict[str, Any]:
 
 
 def census(root: Path) -> dict[str, Any]:
+    """Recompute the NOW block. Reads only; does NOT touch process state.
+
+    `TRADEAI_ROOT` is set by `main()`, not here. Setting it inside census()
+    leaked the value to every later caller in the same process — in the test
+    suite that meant a tmp_path root survived into unrelated tests and failed
+    them. A read-only measurement must not have a global side effect.
+    """
     sys.path.insert(0, str(ROOT))
     sys.path.insert(0, str(ROOT / "scripts"))
-    os.environ.setdefault("TRADEAI_ROOT", str(root))
 
     from scripts.lib import holdings_universe as hu
     from scripts.lib.cio_plans import CIOPlanStore
@@ -251,6 +257,9 @@ def main() -> int:
     ap.add_argument("--out", default="")
     a = ap.parse_args()
 
+    # The CLI owns the env, so root-less collectors resolve to the data root.
+    # See census()'s docstring for why this is not done inside it.
+    os.environ.setdefault("TRADEAI_ROOT", a.root)
     data = census(Path(a.root))
     text = json.dumps(data, indent=2, default=str)
     if a.out:

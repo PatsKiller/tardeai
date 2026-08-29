@@ -174,3 +174,68 @@ failure cannot be remote-only again.
 Wave 2 slices 12–41 complete and promoted. Slices 42–50 are verifications and
 the census, in this PR. **Wave 3 not started.** The LLM-gate / cadence / corpus
 prompt and Wave 2C items 101–320 are queued behind this and were not begun.
+
+
+---
+
+# Wave 2C addendum — items 101–320 complete
+
+`184 DONE · 9 FIXED · 1 open (118, cost-basis as_of)` across six batches.
+CURRENT `a1e05eab`+; all five endpoints 200.
+
+## What the audit actually found
+
+Verification was supposed to be a formality. Six items were not.
+
+| # | finding |
+|---|---|
+| 116/117 | slice 12c's cap-5 had been **dried and never applied** — five held names had no S1 at all. Applied; coverage is now complete. |
+| 198-adjacent | **S1 had the same dust disease as S6**, through `deep_drawdown_from_basis` instead of the disposition branch. 35 plans on JEPI/SRNE/LDOS. Fixing S6 alone would have left the larger leak open. |
+| 131/132/160 | the two re-entry books were **separate but anonymous** — canonical labels existed, neither reached `/home`, and the CC named only Surface A. |
+| 236 | the memory **jailbreak scan missed the four most canonical phrasings**, including `ignore all previous instructions`. Wordier variants were caught, so the guard looked functional. |
+| 186/302 | two execution-language gates with **disjoint vocabularies**; `execute the buy` passed both. |
+| 41 | **C2 admitted a TRIM of dust** — an advisory to trim $8.09 of an exited name. |
+
+Four of those six are the same underlying shape: **a rigid pattern that looks
+like a guard**. `ignore all previous instructions` fails a one-qualifier regex;
+`execute the buy` fails an exact-adjacency regex; a $0.90 residual is
+permanently ~100% down so a ratio branch fires forever. Each looked correct in
+review and each had a blind spot that only showed under a concrete example.
+
+## Where I was wrong
+
+Four times a local check produced something that looked like a finding and was
+not. Three I caught before writing them down; the fourth CI caught.
+
+1. `collect_previously_traded()` queries **Postgres**, not the data root — from
+   a shell it returns `[]`, making AXTI/FATN read `UNAVAILABLE` against an
+   `EXITED` baseline.
+2. `admit_status` takes `memory_type` positionally; I passed a dict, so the
+   forbidden-field guard never saw the subject and looked broken.
+3. A **timezone boundary three hours off** made 109 historical duplicate S1
+   plans look like a live guard failure.
+4. I converted a **CRLF file to LF** — 1010 churn lines for a 16-line edit,
+   exactly what `safe_text_edit` exists to prevent. CI caught it; I had checked
+   line endings on an earlier file and not on this one.
+
+The line-ending guard and the dark-contract guard were both **CI-only steps**.
+Both now run in `ai_local_acceptance.sh`, so neither class can be remote-only
+again.
+
+## Open questions for the operator — none actioned
+
+1. **Advisory verbs as execution language** — `trim the position` / `sell half`
+   pass both gates. Widening rejects real research; leaving it admits imperative
+   phrasing.
+2. **109 historical duplicate S1** on held names (pre-#609 backlog).
+3. **19 `DIVI` S1** flagged `not_held` — likely a bad-symbol variant of `DIV`.
+4. **`plan_a18173fb8235`** — an accepted S0 carrying `TEST`.
+5. **$52,677.32 cash disagreement** — detected, deliberately not reconciled.
+6. **148 CASH-bound and 50 dust-bound historical checkpoints.**
+7. **Item 118** — cost-basis `as_of` on the coverage card, the one item left open.
+
+## Still not started
+
+Wave 3, the LLM-gate / cadence / corpus prompt, notify-on, ROTATE-as-action,
+book merging, gating the rebalance cron, C3 history scrub, council types,
+AGENT_COMMITMENT, MBI > 0.
