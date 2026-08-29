@@ -1,145 +1,56 @@
 {
-  "date": "2026-08-27",
-  "timestamp": "2026-08-27T06:45:55.956550+00:00",
+  "date": "2026-08-28",
+  "timestamp": "2026-08-28T06:45:36.696738+00:00",
   "checks": {
-    "total_backlog": 30,
-    "open_count": 0,
-    "high_priority_count": 19,
+    "total_backlog": 31,
+    "open_count": 1,
+    "high_priority_count": 1,
+    "historical_high_priority_count": 20,
+    "terminal_count": 30,
     "stale_count": 0,
     "stale_ids": [],
-    "duplicate_risk_count": 20,
-    "duplicate_risks": [
-      {
-        "id": 25,
-        "duplicate_of": 27,
-        "key": "NULL:backtest_contradiction"
-      },
-      {
-        "id": 34,
-        "duplicate_of": 32,
-        "key": "NULL:unknown"
-      },
-      {
-        "id": 33,
-        "duplicate_of": 32,
-        "key": "NULL:unknown"
-      },
-      {
-        "id": 54,
-        "duplicate_of": 32,
-        "key": "NULL:unknown"
-      },
-      {
-        "id": 53,
-        "duplicate_of": 32,
-        "key": "NULL:unknown"
-      },
-      {
-        "id": 3726,
-        "duplicate_of": 32,
-        "key": "NULL:unknown"
-      },
-      {
-        "id": 3727,
-        "duplicate_of": 32,
-        "key": "NULL:unknown"
-      },
-      {
-        "id": 5329,
-        "duplicate_of": 32,
-        "key": "NULL:unknown"
-      },
-      {
-        "id": 5330,
-        "duplicate_of": 32,
-        "key": "NULL:unknown"
-      },
-      {
-        "id": 5331,
-        "duplicate_of": 32,
-        "key": "NULL:unknown"
-      },
-      {
-        "id": 5478,
-        "duplicate_of": 32,
-        "key": "NULL:unknown"
-      },
-      {
-        "id": 6024,
-        "duplicate_of": 32,
-        "key": "NULL:unknown"
-      },
-      {
-        "id": 7106,
-        "duplicate_of": 32,
-        "key": "NULL:unknown"
-      },
-      {
-        "id": 7986,
-        "duplicate_of": 32,
-        "key": "NULL:unknown"
-      },
-      {
-        "id": 9059,
-        "duplicate_of": 32,
-        "key": "NULL:unknown"
-      },
-      {
-        "id": 9057,
-        "duplicate_of": 32,
-        "key": "NULL:unknown"
-      },
-      {
-        "id": 9058,
-        "duplicate_of": 32,
-        "key": "NULL:unknown"
-      },
-      {
-        "id": 9060,
-        "duplicate_of": 32,
-        "key": "NULL:unknown"
-      },
-      {
-        "id": 9061,
-        "duplicate_of": 32,
-        "key": "NULL:unknown"
-      },
-      {
-        "id": 9666,
-        "duplicate_of": 32,
-        "key": "NULL:unknown"
-      }
-    ],
-    "missing_owner_agent": 20,
-    "missing_research_questions": 20,
+    "duplicate_risk_count": 0,
+    "duplicate_risks": [],
+    "missing_owner_agent": 1,
+    "missing_backlog_type": 1,
+    "missing_research_questions": 1,
     "missing_evidence": 0,
-    "missing_symbol": 27,
+    "missing_symbol": 1,
+    "historical_missing_owner_agent": 21,
     "source_surfaces": {
       "librarian_loop": 5,
+      "catalyst": 1,
       "backtest": 3,
       "journal": 1,
-      "catalyst": 1,
       "backtest_results": 18,
       "screener_registry": 1,
-      "catalyst_quality": 1
+      "catalyst_quality": 1,
+      "siem": 1
     },
     "oldest_item": {
-      "id": 22,
+      "id": 20,
       "created": "2026-05-31 21:36:31",
-      "age_days": 87
+      "age_days": 88
     },
     "newest_item": {
-      "id": 9666,
-      "created": "2026-07-14 12:03:57",
-      "age_days": 43
+      "id": 31199,
+      "created": "2026-08-27 06:15:01",
+      "age_days": 0
     },
     "ready_for_discovery": 0,
-    "not_ready_for_discovery": 0,
-    "operator_review_list": []
+    "not_ready_for_discovery": 1,
+    "operator_review_list": [
+      {
+        "id": 31199,
+        "symbol": null,
+        "topic": "DATA_QUALITY: research_topics_api \u2014 10\u00d7 in 14 days",
+        "priority": "high",
+        "age_days": 0
+      }
+    ]
   },
   "warnings": [
-    "20 potential duplicates",
-    "20 items missing owner agent"
+    "1 items missing owner agent"
   ],
-  "total_warnings": 2
+  "total_warnings": 1
 }
