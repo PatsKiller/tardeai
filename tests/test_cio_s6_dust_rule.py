@@ -175,3 +175,27 @@ def test_symbol_filter_still_works():
     ev = _evidence([SCHD_ROW, SRNE_ROW], cost_basis=SRNE_BASIS, quotes=SRNE_QUOTE)
     assert _symbols(eval_s6(ev, CFG, symbol="SCHD")) == ["SCHD"]
     assert eval_s6(ev, CFG, symbol="SRNE") == []
+
+
+def test_the_skip_rule_fails_open_rather_than_disabling_s6(monkeypatch):
+    """The caller swallows exceptions, so a raise here would silently kill S6.
+
+    Losing every concentration alert to protect against a nuisance dust plan is
+    the wrong trade. If the policy module cannot be read, the subject goes
+    through and behaviour reverts to pre-rule.
+    """
+    import builtins
+
+    real_import = builtins.__import__
+
+    def _no_holdings_universe(name, *a, **k):
+        if name == "scripts.lib.holdings_universe":
+            raise ImportError("simulated")
+        return real_import(name, *a, **k)
+
+    monkeypatch.setattr(builtins, "__import__", _no_holdings_universe)
+
+    ev = _evidence([SCHD_ROW, SRNE_ROW], cost_basis=SRNE_BASIS, quotes=SRNE_QUOTE)
+    fired = eval_s6(ev, CFG)
+    # SCHD — the alert that actually matters — still fires.
+    assert "SCHD" in _symbols(fired)
