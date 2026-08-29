@@ -156,8 +156,12 @@ failure cannot be remote-only again.
 
 ## Leftovers — POLICY ONLY, nothing implemented
 
-* **Teach the S6 detector the dust rule** — the highest-value one; it is
-  re-creating plans you just cancelled.
+* ~~Teach the S6 detector the dust rule~~ — **DONE**, authorised and shipped
+  after this closeout was first written. See
+  `docs/ops/CIO_S6_DUST_RULE_2026-08-29.md`. The root cause was the *disposition*
+  branch, not concentration: a $0.90 residual reads as a 100% loss held 36
+  months, clearing the 20% / 6-month thresholds on every pass — which is exactly
+  why cancelling could never hold. Thresholds untouched; SCHD still fires.
 * Reconcile the \$52,677.32 cash disagreement at the writer (detection only tonight).
 * Give checkpoints a `plan_id` so the complete→checkpoint rate becomes computable.
 * Re-home the 148 CASH-bound and 50 dust-bound historical checkpoints.

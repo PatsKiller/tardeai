@@ -60,6 +60,7 @@ CASE_SUMMARY store is still 323 — item 87 will label this on the card).
 | **checkpoints (32)** | 523 · 0 carry plan_id · rate **UNCOMPUTABLE** (not 0%) · **148 on CASH**, 50 on dust |
 | **C2 (41)** | dust TRIM **was admitted**; now blocked. AVOID on unheld still admissible. |
 | **watch in briefs** | 26 BLOCK **named** (FTH, SWBI, DXCM, ANET, V, SPCX, ABUS, PFLT +18) · READY **0**, never promoted |
+| **S6 dust rule** | **SHIPPED.** Root cause was the *disposition* branch, not concentration: a $0.90 residual reads as a 100% loss held 36m, clearing 20% / 6m on every pass — which is why cancelling could not fix it. Dust · CUSIP · empty subjects now skipped; SCHD still fires `weight_28.4pct`; thresholds untouched. |
 | exec voice | `[T]` / `[D] Nothing requires action today.` |
 | reentry | Surface A · 70 names · reentry_total 25 NEAR overlaid · queue 43 · **dual pipes NOT merged** |
 | slice 12c would | BAH · CSWC · V · XAR · AMANX (cap 5, notify false) — apply is a separate dry-first step |

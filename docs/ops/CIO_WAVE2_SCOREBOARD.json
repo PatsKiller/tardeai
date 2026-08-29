@@ -399,7 +399,31 @@
         "tradeai-cio-defer-revisit"
       ],
       "drive": "FAIL \u2014 gog keyring is the file backend and needs GOG_KEYRING_PASSWORD; bw vault locked, no session. Not attempted further."
-    }
+    },
+    "s6_dust_rule": {
+      "status": "SHIPPED",
+      "root_cause": "disposition branch, not concentration: a $0.90 residual reads as a 100% loss held 36m, clearing disposition_loss_pct 20.0 and disposition_hold_months 6.0 on every pass",
+      "fire_reasons_observed": [
+        "disposition_loss_100.0pct_hold_36.0m"
+      ],
+      "skip_reasons": [
+        "dust_residual",
+        "not_a_ticker",
+        "no_symbol"
+      ],
+      "thresholds_changed": false,
+      "new_fires_added": false,
+      "schd_still_fires": "weight_28.4pct",
+      "reappeared_plan_cancelled": "plan_faab4607a89f",
+      "plans_jsonl_lines": {
+        "before": 5007,
+        "after": 5009
+      },
+      "would_cancel_now": 0
+    },
+    "leftovers_closed": [
+      "teach the S6 detector the dust rule"
+    ]
   },
   "wave1_closed": true,
   "slices": {

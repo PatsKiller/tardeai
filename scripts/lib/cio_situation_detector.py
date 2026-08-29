@@ -137,6 +137,42 @@ def _is_cash_row(row: dict[str, Any]) -> bool:
     return at in ("cash", "money_market", "currency")
 
 
+# ── S6 dust rule ─────────────────────────────────────────────────────────────
+# S6 asks a concentration/disposition question, which presupposes a position.
+# It fired forever on SRNE: a $0.90 residual against its cost basis is a 100%
+# loss held 36 months, so the disposition branch matched on every pass — and a
+# residual can never stop being a 100% loss. Twenty such plans were cancelled by
+# hand on 2026-08-29 and a new one reappeared within twenty minutes.
+#
+# Same documented threshold as everywhere else in Wave 2 (holdings_universe
+# .DUST_POLICY): aggregate market value < $50 per ticker. Two guards carry over —
+# the value is aggregated across accounts, and an UNKNOWN value is never dust, so
+# a missing price cannot silently suppress a real concentration.
+#
+# This only ever SKIPS a fire. No threshold is loosened and no new fire is added.
+
+def _s6_subject_skip_reason(
+    symbol: str,
+    *,
+    market_value: float | None,
+    market_value_known: bool,
+) -> Optional[str]:
+    """Why S6 must not fire on this subject, or None when it may."""
+    from scripts.lib.holdings_universe import is_dust_market_value, is_held_equity_ticker
+
+    sym = str(symbol or "").strip().upper()
+    if not sym:
+        return "no_symbol"
+    if not is_held_equity_ticker(sym):
+        # CUSIP-only rows are instrument ids, not tickers (Wave 2 slice 12).
+        return "not_a_ticker"
+    if not market_value_known:
+        return None                      # unknown is HELD, never dust
+    if is_dust_market_value(market_value):
+        return "dust_residual"
+    return None
+
+
 def extract_holdings(evidence: dict[str, Any]) -> list[dict[str, Any]]:
     """Normalize holdings from various domain shapes (live broker + mock)."""
     hd = evidence.get("holdings_detail") or evidence.get("holdings") or {}
@@ -899,10 +935,16 @@ def eval_s6(evidence: dict[str, Any], cfg: dict[str, Any], symbol: str | None = 
         acc = by_sym.setdefault(sym, {
             "symbol": sym,
             "market_value": 0.0,
+            "market_value_known": True,
             "rows": [],
             "last": get_last(row, evidence, sym),
         })
-        acc["market_value"] = float(acc["market_value"] or 0) + float(_num(row.get("market_value")) or 0)
+        row_mv = _num(row.get("market_value"))
+        if row_mv is None:
+            # One unpriced leg makes the aggregate unknown. Without this the sum
+            # would read 0.0 and a real position would be mistaken for dust.
+            acc["market_value_known"] = False
+        acc["market_value"] = float(acc["market_value"] or 0) + float(row_mv or 0)
         acc["rows"].append(row)
         if acc.get("last") is None:
             acc["last"] = get_last(row, evidence, sym)
@@ -913,7 +955,16 @@ def eval_s6(evidence: dict[str, Any], cfg: dict[str, Any], symbol: str | None = 
         total = sum(float(a["market_value"] or 0) for a in by_sym.values()) or None
 
     out = []
+    skipped_subjects: list[dict[str, str]] = []
     for sym, acc in by_sym.items():
+        skip = _s6_subject_skip_reason(
+            sym,
+            market_value=acc.get("market_value"),
+            market_value_known=bool(acc.get("market_value_known", True)),
+        )
+        if skip:
+            skipped_subjects.append({"symbol": sym, "reason": skip})
+            continue
         reasons = []
         w = None
         if total and total > 0:
@@ -964,6 +1015,41 @@ def eval_s6(evidence: dict[str, Any], cfg: dict[str, Any], symbol: str | None = 
             "evidence_refs": refs,
             "fire_reasons": reasons,
         })
+    if skipped_subjects:
+        # Visible, not silent: a dropped subject is reported on the candidates
+        # that did fire, and in the dry receipt when nothing fired at all.
+        for cand in out:
+            cand["s6_skipped_subjects"] = skipped_subjects
+    return out
+
+
+def eval_s6_skipped_subjects(
+    evidence: dict[str, Any], cfg: dict[str, Any], symbol: str | None = None,
+) -> list[dict[str, str]]:
+    """Subjects S6 refused, for a dry run that fires nothing. Read-only."""
+    from scripts.lib.holdings_universe import is_dust_market_value  # noqa: F401  (policy anchor)
+
+    by_sym: dict[str, dict[str, Any]] = {}
+    for row in extract_holdings(evidence):
+        if _is_cash_row(row):
+            continue
+        sym = str(row.get("symbol") or "").upper()
+        if not sym or (symbol and sym != symbol.upper()):
+            continue
+        acc = by_sym.setdefault(sym, {"market_value": 0.0, "market_value_known": True})
+        row_mv = _num(row.get("market_value"))
+        if row_mv is None:
+            acc["market_value_known"] = False
+        acc["market_value"] = float(acc["market_value"] or 0) + float(row_mv or 0)
+    out: list[dict[str, str]] = []
+    for sym, acc in sorted(by_sym.items()):
+        reason = _s6_subject_skip_reason(
+            sym,
+            market_value=acc["market_value"],
+            market_value_known=bool(acc["market_value_known"]),
+        )
+        if reason:
+            out.append({"symbol": sym, "reason": reason})
     return out
 
 
