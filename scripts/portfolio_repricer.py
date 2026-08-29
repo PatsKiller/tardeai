@@ -562,6 +562,21 @@ def _recalc_totals(portfolio: Dict) -> None:
             print(f"  [repricer]   Likely data corruption. Keeping previous total.")
             return  # abort total update, keep previous values
 
+    # total_cash is written here for the same reason as in portfolio_loader: it
+    # was the one key in this dict that no writer refreshed, so every pass left
+    # the previous value in place and it drifted ($478k vs $186k real by
+    # 2026-07-21; $578,107.50 vs $630,784.82 by 2026-08-29).
+    #
+    # This is the writer that actually runs. The 16:10 Mon-Fri cron invokes
+    # portfolio_repricer, not portfolio_loader.load_all_portfolios — the stored
+    # document shows last_repriced on 08-28 while the loader's last_pipeline_run
+    # was still 08-26. Patching the loader alone would not have fired.
+    #
+    # `total_mv_excluded` above is the tell: it sits in this update list and has
+    # stayed correct to the cent, while total_cash — absent from it — rotted.
+    _cash_rows = [h for h in holdings if h.get("is_cash")]
+    _total_cash = round(sum(float(h.get("market_value") or 0) for h in _cash_rows), 2)
+
     portfolio["portfolio_totals"].update({
         "total_value":        round(gt, 2),
         "total_cost":         round(gc, 2),
@@ -572,6 +587,9 @@ def _recalc_totals(portfolio: Dict) -> None:
         "excluded_count":     excluded_count,
         "day_change":         round(gd, 2),
         "day_change_pct":     round((gd / (gt - gd) * 100) if (gt - gd) else 0, 4),
+        "total_cash":            _total_cash,
+        "total_cash_source":     "position_rows",
+        "total_cash_written_at": _utc_now_iso(),
     })
 
     for h in holdings:
