@@ -1,5 +1,23 @@
 # Wave 3D-critique on DeepSeek — **both live lanes are blocked, for opposite reasons**
 
+> **SUPERSEDED.** Both blockers were later cleared and the hop ran.
+>
+> * **grok** — the operator authorised `maria_research_critique += grok`. The
+>   registry edit alone was not enough: `should_call` reads
+>   `llm_process_config.allowed_lanes` in Postgres, and the sync reads
+>   `REGISTRY_PATH` from the *running release*, so the order is
+>   **merge → promote → sync → hop**.
+> * **deepseek** — the "not configured" finding in this document was **wrong**.
+>   The canonical env name is `deepseek_tradeai`, not `DEEPSEEK_API_KEY`, and it
+>   lives in `$PROJ/.env` under `trade-ai-v12-rebuild`, not the release worktree
+>   that was searched.
+>
+> Outcome: one live grok critique, **verdict REJECT**, nothing attached. See
+> `CIO_GROK_HOP_RESULT_2026-08-29.md`.
+>
+> Kept unedited below; the cost-cap and retryable findings in it remain valid.
+
+
     vendor HTTP calls   0        cost_usd  0.00
     attached            NO       telegram_sent  false
     provider_cost delta 0        research_call_accounting delta 0
