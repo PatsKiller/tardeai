@@ -444,3 +444,33 @@ corpus_hit by construction.
 
 45 tests, four of them pinning the pins. Dry unchanged: 8 eligible, 0 paid.
 Detail: `docs/ops/CIO_WAVE3B_2026-08-29.md`.
+
+## WAVE3C = receipt + lesson + registry + 1-hop (2026-08-29)
+
+notify=**SUPPRESSED** · telegram_sent=**false** · MBI=**0** · ROTATE=advisory-only
+
+465 delivery receipts on the live book: `none` 461, `cc` 4, **`telegram` 0**,
+`WOULD SEND ANY: False`. `SUPPRESSED` maps to `none` — a suppressed decision
+has no destination, not a quiet one — and `would_send` is a literal False in
+the builder, never derived.
+
+Lessons bind only to **plan-bound** checkpoints; unbound cash/dust checkpoints
+mint nothing and are recorded as skipped, because "we looked and found nothing
+to bind" is evidence. Hypotheses are `support_only` + `REVIEW_READY`;
+`AGENT_COMMITMENT` is rejected by validate.
+
+The spine was **extended, not duplicated**, and immediately earned it:
+`stores_minting("lesson_id")` returned NONE, catching that lesson binds had
+nowhere registered to live. Store added, check not softened.
+
+1-hop graph runs for held non-dust only; CASH/dust/TEST/CUSIP are skipped **with
+a reason**, never as an empty neighbour list. Found en route:
+`classify_instrument_id` never returns `"ticker"` — it names CUSIP/ISIN and
+returns UNKNOWN otherwise, so the first cut skipped every real ticker.
+
+EDGAR: one fetch, one filing — Visa 10-Q filed 2026-07-29, CIK 1403161, grade C,
+entity scope, cannot corpus_hit. **SCHD resolves UNAVAILABLE**: an ETF has no
+issuer CIK, and guessing one would attach a fabricated identity to a real
+filing.
+
+Detail: `docs/ops/CIO_WAVE3C_2026-08-29.md`.

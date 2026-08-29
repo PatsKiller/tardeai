@@ -1323,5 +1323,54 @@
       "docs/ops/CIO_WAVE3B_2026-08-29.md"
     ],
     "wave3c_started": false
+  },
+  "WAVE3C": {
+    "status": "receipt+lesson+registry+1hop",
+    "notify": "SUPPRESSED",
+    "telegram_sent": false,
+    "MBI": 0,
+    "ROTATE": "advisory-only",
+    "receipts_dry": 465,
+    "would_channel": {
+      "none": 461,
+      "cc": 4,
+      "telegram": 0
+    },
+    "would_send_any": false,
+    "schemas": [
+      "DeliveryReceipt@v1",
+      "LessonBind@v1",
+      "CIOGraphImpactHeld@v1",
+      "EdgarFilingProof@v1"
+    ],
+    "registry_stores_added": [
+      "cio.specialist_artifacts",
+      "cio.notification_policy",
+      "cio.delivery_receipts",
+      "cio.lesson_binds"
+    ],
+    "spine_caught": "stores_minting('lesson_id') was NONE — store added rather than check softened",
+    "unbound_checkpoint_mints_lesson": false,
+    "graph_1hop": {
+      "considered": 16,
+      "with_impact": 15,
+      "skipped": 1
+    },
+    "edgar": {
+      "symbol": "V",
+      "cik": 1403161,
+      "form": "10-Q",
+      "filed": "2026-07-29",
+      "fetches": 1,
+      "max": 1,
+      "schd": "UNAVAILABLE — ETF has no issuer CIK, not guessed"
+    },
+    "bug_found": "classify_instrument_id never returns 'ticker'; it names CUSIP/ISIN and returns UNKNOWN otherwise",
+    "tests": 33,
+    "docs": [
+      "docs/ops/CIO_WAVE3C_2026-08-29.md"
+    ],
+    "wave3d_started": false,
+    "wave3e_started": false
   }
 }

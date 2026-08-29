@@ -381,7 +381,85 @@ STORES: dict[str, dict[str, Any]] = {
         "aliases": ["data/cio/cio_notification_outbox.jsonl"],
         "note": "Primary notification history. notifications.outbox remains the secondary store.",
     },
+
+    # --- Wave 3B / 3C -------------------------------------------------------
+    # Registered here rather than in a new index: this module already IS the
+    # spine, and a second registry of the same ids is the drift bug this
+    # session has fixed twice (two total_cash writers, two freshness laws).
+    "cio.specialist_artifacts": {
+        "path": "data/cio/cio_specialist_artifacts.jsonl",
+        "format": "jsonl",
+        "schema": "SpecialistArtifact@v1-lite",
+        "authority": AUTHORITY,
+        "writer": "scripts.lib.cio_specialist_artifact",
+        "readers": ["cio.council_synthesis", "cio_wave3b_report"],
+        "kind": "history",
+        "ownership_class": "APPEND_ONLY_EVIDENCE",
+        "append_only": True,
+        "rebuildable": False,
+        "id_fields": ["artifact_id", "workflow_id", "research_id", "plan_id"],
+    },
+    "cio.notification_policy": {
+        "path": "data/cio/cio_notification_policy.jsonl",
+        "format": "jsonl",
+        "schema": "NotificationPolicy@v1",
+        "authority": AUTHORITY,
+        "writer": "scripts.lib.cio_notification_policy",
+        "readers": ["cio.delivery_receipts", "cio_wave3b_report"],
+        "kind": "history",
+        "ownership_class": "APPEND_ONLY_EVIDENCE",
+        "append_only": True,
+        "rebuildable": False,
+        "id_fields": ["notification_id", "plan_id"],
+    },
+    "cio.delivery_receipts": {
+        "path": "data/cio/cio_delivery_receipts.jsonl",
+        "format": "jsonl",
+        "schema": "DeliveryReceipt@v1",
+        "authority": AUTHORITY,
+        "writer": "scripts.lib.cio_delivery_receipt",
+        "readers": ["cio_wave3c_report"],
+        "kind": "history",
+        "ownership_class": "APPEND_ONLY_EVIDENCE",
+        "append_only": True,
+        "rebuildable": False,
+        "id_fields": ["notification_id", "dedupe_key", "plan_id"],
+        "note": "would_send is always false; a receipt records a decision, never a send.",
+    },
+    "cio.lesson_binds": {
+        "path": "data/cio/cio_lesson_binds.jsonl",
+        "format": "jsonl",
+        "schema": "LessonBind@v1",
+        "authority": AUTHORITY,
+        "writer": "scripts.lib.cio_lesson_bind",
+        "readers": ["cio_wave3c_report", "cio.weekly_learning_review"],
+        "kind": "history",
+        "ownership_class": "APPEND_ONLY_EVIDENCE",
+        "append_only": True,
+        "rebuildable": False,
+        "id_fields": ["lesson_id", "checkpoint_id", "plan_id"],
+        "note": "support-only hypotheses awaiting human review; MBI stays 0.",
+    },
 }
+
+# The id namespace this spine indexes. Listing the ids in one place is the
+# point of item 3: a new store that mints an id outside this set is either a
+# missing registration or a second spine.
+CANONICAL_ID_FIELDS = (
+    "workflow_id", "event_id", "research_id", "artifact_id", "generation_id",
+    "notification_id", "checkpoint_id", "outcome_id", "lesson_id",
+    "plan_id", "dedupe_key",
+)
+
+
+def id_fields_for(store_id: str) -> list[str]:
+    return list((STORES.get(store_id) or {}).get("id_fields") or [])
+
+
+def stores_minting(id_field: str) -> list[str]:
+    """Which registered stores carry this id. Empty means nothing does."""
+    return sorted(k for k, v in STORES.items()
+                  if id_field in (v.get("id_fields") or []))
 
 # No ambiguous store: every entry must declare ownership_class.
 assert all(v.get("ownership_class") in OWNERSHIP_CLASSES for v in STORES.values())
