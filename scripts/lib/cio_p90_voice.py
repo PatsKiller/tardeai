@@ -34,6 +34,21 @@ NOTHING_NOTE = (
     "all-clear judgment (P9.0 #2)"
 )
 
+# Wave 2 slice 33 — the three fields slice 10 left unlabeled.
+NARRATIVE_NOTE = (
+    "f-string over regime label, as-of, FS receipt count and ratified lesson "
+    "count; not a written view (P9.0 #4)"
+)
+NEXT_REVIEWS_NOTE = (
+    "one constant cadence sentence repeated per entry; a standing cadence, "
+    "not a dated catalyst per name (P9.0 #5)"
+)
+CLOSEST_REENTRY_NOTE = (
+    "filter over the Surface A book by pct-above-exit; a distance measurement, "
+    "not a re-entry judgment (P9.0 #7)"
+)
+CLOSEST_REENTRY_PREFIX = "Closest re-entries:"
+
 
 def already_stamped(text: str) -> bool:
     t = str(text or "").lstrip()
@@ -68,12 +83,30 @@ def voice_meta(klass: str, *, note: str) -> dict[str, Any]:
     }
 
 
+def stamp_closest_reentries(text: str) -> str:
+    """Mark the closest-re-entries clause D inside an otherwise-T summary.
+
+    The summary as a whole is a template, but this clause is a *filter over the
+    Surface A book by distance to exit*. Leaving it under the sentence-level
+    [T] implied the desk had picked those names; it measured them.
+    """
+    t = str(text or "")
+    if not t or CLOSEST_REENTRY_PREFIX not in t:
+        return t
+    if f"[{VOICE_D}] {CLOSEST_REENTRY_PREFIX}" in t:
+        return t
+    return t.replace(
+        CLOSEST_REENTRY_PREFIX, f"[{VOICE_D}] {CLOSEST_REENTRY_PREFIX}", 1,
+    )
+
+
 def apply_operator_voice(product: dict[str, Any]) -> dict[str, Any]:
     """Additive T/D stamps on operator product. CASE_SUMMARY remains A."""
     out = dict(product or {})
     exec_s = str(out.get("executive_summary") or "")
     if exec_s:
         exec_s = stamp_nothing_requires_action(exec_s)
+        exec_s = stamp_closest_reentries(exec_s)
         out["executive_summary"] = stamp_text(exec_s, VOICE_T)
     out["executive_summary_class"] = VOICE_T
     out["executive_summary_voice"] = voice_meta(VOICE_T, note=EXEC_SUMMARY_NOTE)
@@ -81,6 +114,29 @@ def apply_operator_voice(product: dict[str, Any]) -> dict[str, Any]:
     out["action_now_voice"] = voice_meta(VOICE_D, note=ACTION_NOW_NOTE)
     out["nothing_requires_action_class"] = VOICE_D
     out["nothing_requires_action_voice"] = voice_meta(VOICE_D, note=NOTHING_NOTE)
+    # Wave 2 slice 33 — temperament.narrative is an f-string, not a written view.
+    temp = out.get("temperament")
+    if isinstance(temp, dict):
+        temp = dict(temp)
+        narrative = str(temp.get("narrative") or "")
+        if narrative:
+            temp["narrative"] = stamp_text(narrative, VOICE_T)
+        temp["narrative_class"] = VOICE_T
+        temp["narrative_voice"] = voice_meta(VOICE_T, note=NARRATIVE_NOTE)
+        out["temperament"] = temp
+
+    # Wave 2 slice 33 — next_reviews is one constant cadence sentence repeated.
+    reviews = out.get("next_reviews")
+    if isinstance(reviews, list):
+        out["next_reviews"] = [
+            stamp_text(r, VOICE_T) if isinstance(r, str) and r else r
+            for r in reviews
+        ]
+    out["next_reviews_class"] = VOICE_T
+    out["next_reviews_voice"] = voice_meta(VOICE_T, note=NEXT_REVIEWS_NOTE)
+    out["closest_reentries_class"] = VOICE_D
+    out["closest_reentries_voice"] = voice_meta(VOICE_D, note=CLOSEST_REENTRY_NOTE)
+
     cs = out.get("case_summaries")
     if isinstance(cs, dict):
         cs = dict(cs)
