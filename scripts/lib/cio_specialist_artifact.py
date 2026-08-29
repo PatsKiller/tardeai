@@ -23,7 +23,7 @@ AUTHORITY = "READ_ONLY_ADVISORY"
 
 STORE_REL = "data/cio/cio_specialist_artifacts.jsonl"
 
-PROVIDERS = ("stub", "flash", "pro", "openai", "grok_critique")
+PROVIDERS = ("stub", "flash", "pro", "openai", "grok_critique", "edgar")
 OUTCOMES = ("VALID", "PARTIAL", "FAIL", "execution_language", "cost_cap")
 
 # Providers that may never be selected from inside this process. The gate
