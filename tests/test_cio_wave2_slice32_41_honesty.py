@@ -81,20 +81,25 @@ DISAGREE = {
 }
 
 
-def test_evening_cash_uses_the_live_temperament_number():
+def test_evening_cash_refuses_to_pick_while_unreconciled():
+    """Superseded by operator judgment 2026-08-29.
+
+    This originally asserted the brief leads with temperament.cash. The
+    operator's display law is that neither figure is chosen while the gap is
+    open — S5 gets DATA_UNAVAILABLE_UNTIL_RECONCILED instead. Full coverage in
+    tests/test_cash_unreconciled_law.py.
+    """
     lines = cash_lines(DISAGREE)
-    assert "temperament.cash" in lines[0]
-    assert "$578,108" in lines[0]
-    assert "44.9% of book" in lines[0]
+    assert lines[0].startswith("cash_rows")
+    assert any("DATA_UNAVAILABLE_UNTIL_RECONCILED" in l for l in lines)
 
 
 def test_disagreement_prints_both_and_merges_neither():
-    lines = cash_lines(DISAGREE)
-    body = " ".join(lines)
-    assert "disagree" in body
-    assert "$630,785" in body and "$578,108" in body
+    body = " ".join(cash_lines(DISAGREE))
+    assert "630,784.82" in body and "578,107.50" in body
+    assert "52,677.32" in body
     assert "604,446" not in body            # the average — must never appear
-    assert "Not merged" in body
+    assert "not merged, not averaged" in body
 
 
 def test_agreeing_sources_produce_no_warning():
@@ -121,10 +126,10 @@ def test_missing_cash_is_unavailable_not_zero():
     assert "$0" not in lines[0]
 
 
-def test_eod_brief_carries_the_cash_line():
+def test_eod_brief_carries_the_cash_block():
     text = eod_text({**DISAGREE, "executive_summary": "x"})
-    assert "temperament.cash" in text
-    assert "disagree" in text
+    assert "cash_rows" in text and "cash_totals" in text
+    assert "status=UNRECONCILED" in text
 
 
 # ── 34: which book is being quoted ───────────────────────────────────────────

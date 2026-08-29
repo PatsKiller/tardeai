@@ -73,6 +73,9 @@ CASE_SUMMARY store is still 323 — item 87 will label this on the card).
 | **Wave 2C 221–250** | 29 DONE · **1 FIXED (236)** · 0 open. Jailbreak scan missed 4 canonical phrasings — fixed in #631. Checkpoints 527, all trading:false / MBI 0. |
 | **Wave 2C 251–320** | 68 DONE · **2 FIXED (186/302)** · 0 open. EXEC_LINT adjacency gap — `execute the buy` passed **both** execution-language gates. |
 | **Wave 2C COMPLETE** | 101–320: **184 DONE · 9 FIXED · 1 open (118)** across 6 batches |
+| **operator judgments 2026-08-29** | one shared grammatical matcher (not word bans); **466 intact**; cash `UNRECONCILED` with S5 refusing a number; open S1 **120 → 16**, 0 duplicates, DIV untouched |
+| **cash law** | rows 630,784.82 · totals 578,107.50 · gap **52,677.32 UNRECONCILED** · `cash_for_S5 DATA_UNAVAILABLE_UNTIL_RECONCILED` |
+| **item 118** | basis **08-14** · positions **08-26** · priced **08-28** — two weeks apart |
 | exec voice | `[T]` / `[D] Nothing requires action today.` |
 | reentry | Surface A · 70 names · reentry_total 25 NEAR overlaid · queue 43 · **dual pipes NOT merged** |
 | slice 12c would | BAH · CSWC · V · XAR · AMANX (cap 5, notify false) — apply is a separate dry-first step |

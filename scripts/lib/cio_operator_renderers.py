@@ -50,28 +50,55 @@ def cash_lines(product: dict[str, Any]) -> list[str]:
     pct = temperament.get("cash_pct")
     rows_total = cash_block.get("cash_usd")
 
+    def _num(value):
+        """None unless it is genuinely numeric.
+
+        `temperament.cash` is not always a number — a real payload carries
+        strings such as "hold reserve". Formatting one with float() raised and
+        took the whole morning brief down, so every read goes through here.
+        """
+        if value is None or isinstance(value, bool):
+            return None
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    live_n, rows_n = _num(live), _num(rows_total)
+
     lines: list[str] = []
-    if live is None and rows_total is None:
+    if live_n is None and rows_n is None:
+        if live is not None or rows_total is not None:
+            # Present but unusable — say so rather than dropping the line.
+            return [f"Cash: UNAVAILABLE — non-numeric cash value ({live or rows_total!r})."]
         return ["Cash: UNAVAILABLE — no live temperament cash on the product."]
-    if live is not None:
-        pct_bit = f" · {pct:.1f}% of book" if isinstance(pct, (int, float)) else ""
-        lines.append(f"Cash (live, temperament.cash): ${float(live):,.0f}{pct_bit}")
-    else:
-        lines.append("Cash (live, temperament.cash): UNAVAILABLE")
 
     try:
         disagree = (
-            live is not None and rows_total is not None
-            and abs(float(rows_total) - float(live)) > CASH_SOURCE_TOLERANCE_USD
+            live_n is not None and rows_n is not None
+            and abs(rows_n - live_n) > CASH_SOURCE_TOLERANCE_USD
         )
     except (TypeError, ValueError):
         disagree = False
+
     if disagree:
-        lines.append(
-            f"  ⚠ cash sources disagree: position rows ${float(rows_total):,.0f} "
-            f"vs portfolio_totals ${float(live):,.0f} "
-            f"(Δ ${abs(float(rows_total) - float(live)):,.0f}). Not merged — both shown."
-        )
+        # Operator display law: name both, name the gap, and refuse to pick one.
+        # Picking silently is how a writer bug gets hidden, and this brief has
+        # already flipped which figure it used once.
+        gap = abs(rows_n - live_n)
+        lines.append(f"cash_rows      {rows_n:>12,.2f}   source=position_rows")
+        lines.append(f"cash_totals    {live_n:>12,.2f}   source=portfolio_totals")
+        lines.append(f"cash_gap       {gap:>12,.2f}   status=UNRECONCILED")
+        lines.append("cash_for_S5    DATA_UNAVAILABLE_UNTIL_RECONCILED — not merged, not averaged")
+        return lines
+
+    if live_n is not None:
+        pct_bit = f" · {pct:.1f}% of book" if isinstance(pct, (int, float)) else ""
+        lines.append(f"Cash (live, temperament.cash): ${live_n:,.0f}{pct_bit}")
+    elif rows_n is not None:
+        lines.append(f"Cash (position rows): ${rows_n:,.0f}")
+    else:
+        lines.append("Cash (live, temperament.cash): UNAVAILABLE")
     return lines
 
 

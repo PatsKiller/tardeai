@@ -1011,5 +1011,50 @@
       118
     ],
     "batches": 6
+  },
+  "operator_judgments_2026_08_29": {
+    "verbs": {
+      "shared_matcher": "scripts/lib/execution_language.find_imperative",
+      "rule": "grammatical: base-form verb + size/object, disqualified by determiner/modal/infinitive/negation",
+      "words_banned": null,
+      "attachable_before": 466,
+      "attachable_after": 466,
+      "grandfather_cutoff": "2026-08-29T05:00:00+00:00",
+      "would_have_flipped": 1,
+      "option_id_out_of_gate": true
+    },
+    "cash": {
+      "cash_rows": 630784.82,
+      "cash_totals": 578107.5,
+      "cash_gap": 52677.32,
+      "cash_status": "UNRECONCILED",
+      "cash_for_s5": "DATA_UNAVAILABLE_UNTIL_RECONCILED",
+      "merged": false,
+      "averaged": false,
+      "writer_identified": false
+    },
+    "applied": {
+      "divi_s1_cancelled": 19,
+      "duplicate_s1_expired": 85,
+      "test_s0_cancelled": "plan_a18173fb8235",
+      "open_s1_before": 120,
+      "open_s1_after": 16,
+      "duplicates_remaining": 0,
+      "div_untouched": true,
+      "plans_jsonl_lines": {
+        "before": 5104,
+        "after": 5314
+      }
+    },
+    "item118": {
+      "cost_basis_as_of": "2026-08-14",
+      "positions_as_of": "2026-08-26",
+      "priced_as_of": "2026-08-28",
+      "sources": [
+        "broker_api",
+        "csv_lot"
+      ]
+    },
+    "not_done": "148 CASH-bound + 50 dust-bound historical checkpoints left untouched"
   }
 }

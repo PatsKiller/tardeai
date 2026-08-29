@@ -906,6 +906,11 @@ def build_office_coverage(
 
     held_n = _safe_int(htc.get("held_n"))
     thesis_count = _safe_int(htc.get("current_n"))
+    # Item 118: carry the three dates through so the card can say which one a
+    # number came from. Positions, basis and price are dated separately.
+    cost_basis_as_of = htc.get("cost_basis_as_of")
+    positions_as_of = htc.get("positions_as_of")
+    priced_as_of = htc.get("priced_as_of")
 
     held_syms = {
         _str(i.get("symbol")).upper()
@@ -967,6 +972,9 @@ def build_office_coverage(
         "watch_ready": watch_ready,
         "watch_block": watch_block,
         "reentry_near": reentry_near,
+        "cost_basis_as_of": cost_basis_as_of,
+        "positions_as_of": positions_as_of,
+        "priced_as_of": priced_as_of,
         "class": "D",
         "authority": "READ_ONLY_ADVISORY",
         "memory_behavior_influence": 0,
