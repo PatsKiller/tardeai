@@ -385,26 +385,41 @@ def enqueue_research_request(
         symbol = syms[0] if syms else "BOOK"
         thesis = str(plan.get("thesis_version") or "")
         qlist = questions or default_questions_for_plan(plan)
+        # Ids derive from the question's MEANING, not its position. `q{i+1}`
+        # made `q2` mean "whatever was second that day", so reordering the list
+        # silently re-pointed every carried-forward answer. See
+        # scripts/lib/cio_question_ids.py.
+        try:
+            from scripts.lib.cio_question_ids import question_id_for
+        except Exception:                                       # pragma: no cover
+            question_id_for = None
         q_norm: list[dict[str, str]] = []
+        seen_ids: dict[str, int] = {}
         for i, q in enumerate(qlist[:6]):
             if isinstance(q, dict):
                 text = str(q.get("text") or "").strip()
                 if not text:
                     continue
-                q_norm.append({
-                    "question_id": str(q.get("question_id") or q.get("id") or f"q{i+1}"),
-                    "intent": str(q.get("intent") or "thesis_check")[:40],
-                    "text": text[:280],
-                })
+                intent = str(q.get("intent") or "thesis_check")[:40]
+                if question_id_for is not None:
+                    qid = question_id_for({**q, "intent": intent}, index=i)
+                else:
+                    qid = str(q.get("question_id") or q.get("id") or f"q{i+1}")
             else:
                 text = str(q).strip()
                 if not text:
                     continue
-                q_norm.append({
-                    "question_id": f"q{i+1}",
-                    "intent": "thesis_check",
-                    "text": text[:280],
-                })
+                intent = "thesis_check"
+                qid = (question_id_for({"intent": intent}, index=i)
+                       if question_id_for is not None else f"q{i+1}")
+            seen_ids[qid] = seen_ids.get(qid, 0) + 1
+            if seen_ids[qid] > 1:
+                qid = f"{qid}_{seen_ids[qid]}"
+            q_norm.append({
+                "question_id": qid,
+                "intent": intent,
+                "text": text[:280],
+            })
         if not q_norm:
             return {"ok": False, "error": "questions_required"}
 
