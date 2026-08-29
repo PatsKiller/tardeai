@@ -53,6 +53,11 @@ CASE_SUMMARY store is still 323 — item 87 will label this on the card).
 | **authorized apply: attach** | 2 of 2 (`plan_5463afc7bc04`, `plan_9f4df5b991f3`) · would_attach now **0** · CASE_SUMMARY stayed **328** (no double-mint) · the 474 untouched |
 | **authorized apply: orphan S6** | **20 cancelled** — CASH 1 · QCOM 1 · **SRNE 18** (dust) · notify false · append-only 4,958 → 4,998 lines · nothing deleted |
 | **live after applies** | `held_n` **15** · `with_plan` **11** · `graph_impact` 5 S6, **0 skipped** · telegram_sent false |
+| **cash two writers (40)** | position rows **$630,784.82** vs portfolio_totals **$578,107.50** · Δ **$52,677.32** · both printed, never merged |
+| **holdings freshness (39)** | as_of 2026-08-26 · reprice 08-28 16:45 · **3 days old** · `DATA_STALE` + `REPRICE_AHEAD_OF_POSITIONS` |
+| **checkpoints (32)** | 523 · 0 carry plan_id · rate **UNCOMPUTABLE** (not 0%) · **148 on CASH**, 50 on dust |
+| **C2 (41)** | dust TRIM **was admitted**; now blocked. AVOID on unheld still admissible. |
+| **watch in briefs** | 26 BLOCK **named** (FTH, SWBI, DXCM, ANET, V, SPCX, ABUS, PFLT +18) · READY **0**, never promoted |
 | exec voice | `[T]` / `[D] Nothing requires action today.` |
 | reentry | Surface A · 70 names · reentry_total 25 NEAR overlaid · queue 43 · **dual pipes NOT merged** |
 | slice 12c would | BAH · CSWC · V · XAR · AMANX (cap 5, notify false) — apply is a separate dry-first step |
@@ -131,16 +136,16 @@ Leftovers still forbidden unless a Wave 2 slice explicitly allows a read-only st
 | 29 | REVIEW_READY count | DONE | *(next PR)* | *(fill after promote)* | ceiling REVIEW_READY | REVIEW_READY **328** · **policy 0** · 12 RATIFIED_CONTEXT not_production_policy |
 | 30 | memory receipts memory_type+promotable | DONE | *(next PR)* | *(fill after promote)* | regression | 338/757 carry both — split is chronological, all receipts since 2026-08-28T13:34 have them |
 | 31 | no RESEARCH_REFERENCE ACTIVE | DONE | *(next PR)* | *(fill after promote)* | regression | 448 CANDIDATE · **0 ACTIVE** · CASE_SUMMARY 328 ACTIVE |
-| 32 | checkpoint complete rate | PENDING | | | | |
-| 33 | remaining P9.0 voice labels | PENDING | | | | |
-| 34 | Surface B labels on evening/desk | PENDING | | | | |
-| 35 | morning brief earnings length | PENDING | | | | |
-| 36 | evening cash live temperament | PENDING | | | | |
-| 37 | dark-contract scan | PENDING | | | | |
-| 38 | store_consistency never_auto_remediate | PENDING | | | | |
-| 39 | holdings as_of vs generated_at | PENDING | | | | |
-| 40 | two-writer holdings detect only | PENDING | | | | |
-| 41 | C2 TRIM non-held still blocked | PENDING | | | | |
+| 32 | complete→checkpoint rate exposed | DONE | *(PR 3)* | *(fill after promote)* | reported, nothing rewritten | 523 checkpoints · **0 with plan_id** · rate **UNCOMPUTABLE** not 0% · 148 on CASH · 50 on dust |
+| 33 | remaining P9.0 voice labels | DONE | *(PR 3)* | *(fill after promote)* | additive · no sentence reworded | temperament.narrative **T** · next_reviews **T** · closest-reentries **D** |
+| 34 | Surface labels on evening/desk | DONE | *(PR 3)* | *(fill after promote)* | books named, not merged | both briefs name Surface A; undeclared prints UNLABELED |
+| 35 | morning brief earnings length | DONE | *(PR 3)* | *(fill after promote)* | verified, not rebuilt | `Earnings (D): 10 upcoming` when product.earnings=10 |
+| 36 | evening cash = live temperament.cash | DONE | *(PR 3)* | *(fill after promote)* | never portfolio_implication | EOD had **no cash line at all**; now `$578,108 · 44.9%` |
+| 37 | dark-contract scan | DONE | *(PR 3)* | *(fill after promote)* | no new uncalled helpers | 37 helpers / 9 modules · uncalled **2 → 0** · untested **15 → 0** |
+| 38 | store_consistency never_auto_remediate | DONE | *(PR 3)* | *(fill after promote)* | regression | both findings still True; literal `False` absent from the module |
+| 39 | holdings as_of vs generated_at | DONE | *(PR 3)* | *(fill after promote)* | detect only | as_of 2026-08-26 vs reprice 08-28 16:45 · **3d old** · `DATA_STALE` |
+| 40 | two-writer holdings detect only | DONE | *(PR 3)* | *(fill after promote)* | **never merged** | rows **$630,784.82** vs total_cash **$578,107.50** · Δ **$52,677.32** · both printed |
+| 41 | C2 TRIM non-held + **dust** blocked | DONE | *(PR 3)* | *(fill after promote)* | block **added**, nothing loosened | dust TRIM was **admitted**; now `dust_residual_not_a_position`; AVOID still admissible |
 | 42 | C3 quarantine path | PENDING | | | | |
 | 43 | C5 dedupe key | PENDING | | | | |
 | 44 | rebalancer contradicted_by_cio | PENDING | | | | |
@@ -261,3 +266,24 @@ Leftovers still forbidden unless a Wave 2 slice explicitly allows a read-only st
 5. Live now: `held_n` **15**, `with_plan` **11**, `graph_impact` 5 S6 names with
    **0 skipped**, `telegram_sent` false, MBI 0, INTERDICT 0. Standing risk recorded:
    nothing yet stops the S6 detector re-creating dust plans.
+
+---
+
+## Slices 32–41 live 5-line proof (dry on CURRENT `5f215504`)
+
+1. **Two cash writers disagree by $52,677.32** — position rows $630,784.82 vs
+   `portfolio_totals.total_cash` $578,107.50. Both were already being shown to the
+   operator in the same session with nothing saying so. Both are now printed with
+   the delta; a test asserts the *average* never appears.
+2. **Positions are 3 days old** (as_of 2026-08-26) under a reprice from 08-28
+   16:45 — 64.8h later. Staleness is measured on the position date, so a fresh
+   reprice cannot hide stale positions. `DATA_STALE`, never auto-remediated.
+3. **C2 admitted "TRIM SCHG"** — 0.2294 shares is > 0, so the gate passed an
+   advisory to trim $8.09 of an exited name. Now blocked
+   `dust_residual_not_a_position`. AVOID on an unheld name stays admissible.
+4. **complete→checkpoint is UNCOMPUTABLE**, not 0%: 523 checkpoints carry no
+   `plan_id` while research keys on one. 148 are bound to CASH and 50 to dust —
+   reported, not rewritten.
+5. Briefs now name the Surface and the **26 watch BLOCK names** (READY stays 0,
+   `fires_s7` false). Dark-contract scan: uncalled helpers **2 → 0**.
+   MBI 0, INTERDICT 0, telegram_sent false.

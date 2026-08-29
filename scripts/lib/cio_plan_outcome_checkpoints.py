@@ -173,3 +173,117 @@ def bind_held_researched_plan_checkpoints(
         "bindings": bindings[:8] if apply else [],
         "notify": False,
     }
+
+
+# ── Wave 2 slice 32: complete → checkpoint lineage health ────────────────────
+
+CHECKPOINT_REL = "data/cio/outcome_checkpoints.jsonl"
+RESEARCH_PROJECTION_REL = "data/cio/hermes_research_projection.json"
+NON_SECURITY_SUBJECTS = frozenset({"CASH", "PORTFOLIO", "BOOK", "REENTRY", "MMKT"})
+
+
+def _checkpoint_symbol(row: dict[str, Any]) -> Optional[str]:
+    receipt = row.get("context_receipt") if isinstance(row.get("context_receipt"), dict) else {}
+    raw = receipt.get("symbol") or row.get("symbol")
+    return str(raw).strip().upper() if raw else None
+
+
+def checkpoint_lineage_health(
+    *,
+    root: Path | str,
+    holdings: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """How much of the research→checkpoint chain is actually joinable.
+
+    The honest answer here is a *reason*, not a percentage. Checkpoints key on
+    `decision_id` and carry no `plan_id`, and a completed research row keys on
+    `plan_id` — so the two ends cannot be joined at all. Reporting 0% would
+    read as "the pipeline never binds" (it binds 523 times); reporting 100%
+    would be an invention. The rate is UNCOMPUTABLE and says why.
+    """
+    import json as _json
+
+    base = Path(root)
+    rows: list[dict[str, Any]] = []
+    try:
+        with open(base / CHECKPOINT_REL, "r", encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rec = _json.loads(line)
+                except ValueError:
+                    continue
+                if isinstance(rec, dict):
+                    rows.append(rec)
+    except OSError:
+        rows = []
+
+    completed_plans: set[str] = set()
+    try:
+        proj = _json.loads((base / RESEARCH_PROJECTION_REL).read_text(encoding="utf-8"))
+        for rec in (proj.get("by_research_id") or {}).values():
+            if isinstance(rec, dict) and rec.get("status") == "completed" and rec.get("plan_id"):
+                completed_plans.add(str(rec["plan_id"]))
+    except (OSError, ValueError, AttributeError):
+        pass
+
+    dust: set[str] = set()
+    if holdings is not None:
+        try:
+            dust = set(dust_symbols(holdings))
+        except Exception:
+            dust = set()
+
+    by_status: dict[str, int] = {}
+    by_horizon: dict[str, int] = {}
+    with_plan = with_guid = with_symbol = 0
+    non_security: dict[str, int] = {}
+    on_dust: dict[str, int] = {}
+    for rec in rows:
+        st = str(rec.get("status") or "UNKNOWN")
+        by_status[st] = by_status.get(st, 0) + 1
+        hz = str(rec.get("horizon") or "UNKNOWN")
+        by_horizon[hz] = by_horizon.get(hz, 0) + 1
+        if rec.get("plan_id"):
+            with_plan += 1
+        if rec.get("subject_guid"):
+            with_guid += 1
+        sym = _checkpoint_symbol(rec)
+        if sym:
+            with_symbol += 1
+            if sym in NON_SECURITY_SUBJECTS:
+                non_security[sym] = non_security.get(sym, 0) + 1
+            elif sym in dust:
+                on_dust[sym] = on_dust.get(sym, 0) + 1
+
+    joinable = with_plan > 0 and bool(completed_plans)
+    return {
+        "schema": "CheckpointLineageHealth@v1",
+        "authority": AUTHORITY,
+        "financial_action": False,
+        "checkpoints_total": len(rows),
+        "by_status": by_status,
+        "by_horizon": by_horizon,
+        "with_plan_id": with_plan,
+        "with_subject_guid": with_guid,
+        "with_symbol": with_symbol,
+        "completed_research_plans": len(completed_plans),
+        "joinable_by_plan_id": joinable,
+        "complete_to_checkpoint_rate": None,
+        "rate_state": "OK" if joinable else "UNCOMPUTABLE",
+        "rate_reason": None if joinable else (
+            "checkpoints key on decision_id and carry no plan_id, while a "
+            "completed research row keys on plan_id — the two ends do not join. "
+            "Not 0%: the binder wrote "
+            f"{len(rows)} checkpoints."
+        ),
+        "non_security_subjects": non_security,
+        "on_dust_symbols": on_dust,
+        "class": "D",
+        "note": (
+            "Lineage health, not a score. A subject the binder could not resolve "
+            "is counted, never guessed."
+        ),
+    }

@@ -1780,6 +1780,30 @@ def build_product(
             "by_class": {},
             "class": "D",
         }
+    # Wave 2 slice 32: how much of the research->checkpoint chain is joinable.
+    # Reports a reason, not a fake percentage, when the two ends do not join.
+    try:
+        from scripts.lib.cio_plan_outcome_checkpoints import checkpoint_lineage_health
+        product["checkpoint_lineage"] = checkpoint_lineage_health(
+            root=root_path, holdings=holdings,
+        )
+    except Exception as exc:
+        product["checkpoint_lineage"] = {
+            "schema": "CheckpointLineageHealth@v1", "authority": AUTHORITY,
+            "rate_state": "UNCOMPUTABLE", "rate_reason": type(exc).__name__,
+            "checkpoints_total": 0, "class": "D",
+        }
+    # Wave 2 slices 39/40: holdings freshness + the two-writer cash check.
+    # Detect only — never merges or reconciles the disagreeing totals.
+    try:
+        from scripts.lib.holdings_universe import holdings_data_quality
+        product["holdings_data_quality"] = holdings_data_quality(root=root_path)
+    except Exception as exc:
+        product["holdings_data_quality"] = {
+            "schema": "HoldingsDataQuality@v1", "authority": AUTHORITY,
+            "state": "DATA_UNAVAILABLE", "reason": type(exc).__name__,
+            "labels": ["DATA_UNAVAILABLE"], "class": "D",
+        }
     # Wave 2 slice 25: VALID / PARTIAL / FAIL-family counts, with the attach
     # rule stated on the payload so it cannot be tightened silently (slice 26).
     try:

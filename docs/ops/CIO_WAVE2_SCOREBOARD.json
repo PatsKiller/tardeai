@@ -321,6 +321,63 @@
       "symptom": "held_n=19 and with_plan=14 on live after #621 promote",
       "cause": "operator product served a pre-12a persisted brief; freshness check only tested held_n is None",
       "fix": "treat a coverage block missing dust_tickers/held_n_including_dust as stale"
+    },
+    "holdings_data_quality": {
+      "state": "DATA_STALE",
+      "labels": [
+        "DATA_STALE",
+        "REPRICE_AHEAD_OF_POSITIONS",
+        "CASH_TOTAL_DISAGREEMENT"
+      ],
+      "as_of": "2026-08-26",
+      "generated_at": "2026-08-28 16:45:01 ET",
+      "position_date_age_days": 3,
+      "reprice_lag_hours": 64.8
+    },
+    "cash_two_writers": {
+      "position_rows_sum": 630784.82,
+      "portfolio_totals_total_cash": 578107.5,
+      "portfolio_totals_total_mv_excluded": 630784.82,
+      "delta": 52677.32,
+      "sources_agree": false,
+      "merged": false,
+      "reconciled": false
+    },
+    "checkpoint_lineage": {
+      "checkpoints_total": 523,
+      "with_plan_id": 0,
+      "with_subject_guid": 5,
+      "by_status": {
+        "SCHEDULED": 473,
+        "NOT_PRICE_RESOLVABLE": 44,
+        "RESOLVED": 6
+      },
+      "rate_state": "UNCOMPUTABLE",
+      "complete_to_checkpoint_rate": null,
+      "non_security_subjects": {
+        "CASH": 148,
+        "REENTRY": 8,
+        "BOOK": 3
+      },
+      "on_dust_symbols": {
+        "SRNE": 30,
+        "JEPI": 20
+      }
+    },
+    "dark_contract_scan": {
+      "helpers": 37,
+      "modules": 9,
+      "no_call_site_before": 2,
+      "no_call_site_after": 0,
+      "untested_before": 15,
+      "untested_after": 0
+    },
+    "watch_named_in_briefs": {
+      "block_count": 26,
+      "named": 8,
+      "ready_count": 0,
+      "fires_s7": false,
+      "promoted_block_to_ready": 0
     }
   },
   "wave1_closed": true,
@@ -574,44 +631,84 @@
       "live": "448 CANDIDATE \u00b7 0 ACTIVE/ADMITTED \u00b7 CASE_SUMMARY 328 ACTIVE"
     },
     "32": {
-      "title": "checkpoint complete rate",
-      "status": "PENDING"
+      "title": "complete\u2192checkpoint rate exposed",
+      "status": "DONE",
+      "pr": null,
+      "sha": null,
+      "rails": "reported as UNCOMPUTABLE with reason \u00b7 nothing rewritten",
+      "live": "523 checkpoints \u00b7 0 with plan_id \u00b7 rate null not 0% \u00b7 148 on CASH \u00b7 50 on dust"
     },
     "33": {
       "title": "remaining P9.0 voice labels",
-      "status": "PENDING"
+      "status": "DONE",
+      "pr": null,
+      "sha": null,
+      "rails": "additive stamps \u00b7 no sentence reworded",
+      "live": "temperament.narrative T \u00b7 next_reviews T \u00b7 closest-reentries D"
     },
     "34": {
-      "title": "Surface B evening/desk labels",
-      "status": "PENDING"
+      "title": "Surface labels on evening/desk",
+      "status": "DONE",
+      "pr": null,
+      "sha": null,
+      "rails": "books named, not merged",
+      "live": "both briefs name Surface A; undeclared prints UNLABELED"
     },
     "35": {
       "title": "morning brief earnings length",
-      "status": "PENDING"
+      "status": "DONE",
+      "pr": null,
+      "sha": null,
+      "rails": "verified, not rebuilt",
+      "live": "Earnings (D): 10 upcoming when product.earnings=10"
     },
     "36": {
-      "title": "evening cash live temperament",
-      "status": "PENDING"
+      "title": "evening cash = live temperament.cash",
+      "status": "DONE",
+      "pr": null,
+      "sha": null,
+      "rails": "never portfolio_implication",
+      "live": "EOD had NO cash line; now temperament.cash $578,108 \u00b7 44.9%"
     },
     "37": {
       "title": "dark-contract scan",
-      "status": "PENDING"
+      "status": "DONE",
+      "pr": null,
+      "sha": null,
+      "rails": "no new uncalled helpers",
+      "live": "37 helpers/9 modules \u00b7 uncalled 2 \u2192 0 \u00b7 untested 15 \u2192 0"
     },
     "38": {
       "title": "store_consistency never_auto_remediate",
-      "status": "PENDING"
+      "status": "DONE",
+      "pr": null,
+      "sha": null,
+      "rails": "regression",
+      "live": "both findings still True; literal False absent from the module"
     },
     "39": {
       "title": "holdings as_of vs generated_at",
-      "status": "PENDING"
+      "status": "DONE",
+      "pr": null,
+      "sha": null,
+      "rails": "detect only",
+      "live": "as_of 2026-08-26 vs reprice 08-28 16:45 \u00b7 age 3d \u00b7 DATA_STALE"
     },
     "40": {
       "title": "two-writer holdings detect only",
-      "status": "PENDING"
+      "status": "DONE",
+      "pr": null,
+      "sha": null,
+      "rails": "**never merged**",
+      "live": "rows $630,784.82 vs total_cash $578,107.50 \u00b7 \u0394 **$52,677.32** \u00b7 both printed"
     },
     "41": {
       "title": "C2 TRIM non-held still blocked",
-      "status": "PENDING"
+      "status": "DONE",
+      "pr": null,
+      "sha": null,
+      "rails": "block ADDED, nothing loosened",
+      "live": "dust TRIM was ADMITTED; now blocked dust_residual_not_a_position; AVOID still ok"
     },
     "42": {
       "title": "C3 quarantine path",
