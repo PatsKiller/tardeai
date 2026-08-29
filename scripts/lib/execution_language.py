@@ -115,23 +115,85 @@ _POSITION_RE = re.compile(
     re.I,
 )
 
-# NOT IMPLEMENTED: "do not add" as a directive.
+# --- prohibitions are instructions too (2026-08-29) -----------------------
 #
-# The live critique also flagged "do not add until price action confirms", and
-# a prohibition is arguably an order. A `do not <verb>` rule was written, and
-# removed again: it breaks a pinned legacy case,
+# The block that stood here declared a `do not <verb>` rule impossible: the
+# pinned legacy case "do not sell shares before the ex-date" and a live
+# directive "do not add until price action confirms" were called
+# "grammatically identical ... so no rule separates them without reading
+# intent", and the rule was abandoned to protect the pin.
 #
-#     "do not sell shares before the ex-date"
+# Measuring the corpus showed that is not true. They separate on two axes
+# that need no intent-reading at all:
 #
-# which `test_legacy_admitted` requires to pass, because it is ex-dividend
-# context rather than an instruction. The two are grammatically identical —
-# `do not <verb>` in both — so no rule separates them without reading intent.
+#   1. CLAUSE POSITION. An instruction is an imperative, so its `do not` sits
+#      at a clause boundary with no subject in front of it ("hold in monitored
+#      state, do not initiate"). The false positives are declaratives with an
+#      inanimate subject ("the evidence does not support", "results do not
+#      meet threshold") — 18 of them in prose, every one carrying a subject.
 #
-# Decision 1 governs: ban the instruction, never the word, and do not torch the
-# 466. Between losing 38 "do not add" catches and breaking a pinned admitted
-# case, the pin wins. The position-directive clause below still catches the
-# artifact that started this ("Maintain small tracking position"), which was
-# the actual miss.
+#   2. A MECHANICAL QUALIFIER. The pin is not portfolio authority, it is a
+#      settlement/tax caution: what makes it context is the *ex-date*, not the
+#      verb. Across all 471 stored artifacts, no directive shares a sentence
+#      with one of these qualifiers, and the pin cannot be written without one.
+#
+# So the rule bans the prohibition and keeps the caution. It newly catches 45
+# prose occurrences the field-scoped lint could not see — `answers[].detail`,
+# `summary`, `answers[].summary`, `what_did_not_change[]`, `reason_summary`,
+# `findings[].text` — which is the operator-reported gap ("the 38 do not add
+# prose misses").
+#
+# `not` / `never` stay in _DISQUALIFIER for the *other* patterns. That was the
+# original error worth naming: a negated verb was read as evidence of
+# narration, but a prohibition is an order. "Do not add to the position" tells
+# the operator what to hold as surely as "trim the position" does.
+
+_PROHIBITED_VERB = (
+    r"(?:initiate|add(?:\s+to)?|average\s+down|increase|reduce|"
+    r"buy|sell|trim|flatten|liquidate|exit|short|cover|open|establish)"
+)
+
+# A prohibition tied to a corporate action or settlement mechanic is a
+# CAUTION the desk already observes, not new authority.
+_MECHANICAL_QUALIFIER = re.compile(
+    r"(?<!\w)(?:ex-?date|ex-?div(?:idend)?|record\s+date|wash\s+sale|"
+    r"lock-?up|blackout|settlement|T\+\d)(?!\w)",
+    re.I,
+)
+
+_PROHIBITION_RE = re.compile(
+    rf"(?<!\w)do\s+not\s+(?P<verb>{_PROHIBITED_VERB})(?!\w)",
+    re.I,
+)
+
+# Conjunctions may sit before an imperative without giving it a subject.
+_CLAUSE_LEAD = r"(?:and|but|or|then|therefore|so|however|thus)"
+
+
+def _is_stance_label(text: str, start: int) -> bool:
+    """True when the prohibition is a NAME for an advisory state, not an order.
+
+    Live artifacts carry `HOLD / DO NOT INITIATE` as a compound stance label:
+    "The advisory on AUUD remains HOLD / DO NOT INITIATE." The subject is the
+    advisory, and the phrase is its name — the same category as
+    `hold_with_thesis`, which this gate has always admitted.
+
+    A slash separates label parts; sentence punctuation (. ; : , dash, paren)
+    separates clauses. Only the latter opens an imperative.
+    """
+    before = text[:start].rstrip()
+    return before.endswith("/") or before.endswith("|")
+
+
+def _sentence_around(text: str, start: int, end: int) -> str:
+    """The sentence holding [start:end) — the scope a qualifier must share."""
+    left = max(text.rfind(c, 0, start) for c in ".;\n")
+    right = min(
+        (i for i in (text.find(c, end) for c in ".;\n") if i != -1),
+        default=len(text),
+    )
+    return text[left + 1:right]
+
 
 # Phrases that are unambiguously execution instructions regardless of object.
 _ALWAYS_RE = re.compile(
@@ -178,6 +240,16 @@ def find_imperative(blob: Any) -> Optional[str]:
             continue           # "would maintain", "decided to add", "the position"
         return m.group(0)
 
+    for m in _PROHIBITION_RE.finditer(text):
+        prev = _preceding_word(text, m.start())
+        if prev and not re.fullmatch(_CLAUSE_LEAD, prev, re.I):
+            continue           # has a subject: "the evidence do(es) not ..."
+        if _is_stance_label(text, m.start()):
+            continue           # "advisory remains HOLD / DO NOT INITIATE"
+        if _MECHANICAL_QUALIFIER.search(_sentence_around(text, m.start(), m.end())):
+            continue           # ex-date / settlement caution, not authority
+        return m.group(0)
+
     m = _ALWAYS_RE.search(text)
     return m.group(0) if m else None
 
@@ -194,7 +266,7 @@ def describe(blob: Any) -> dict[str, Any]:
         "authority": AUTHORITY,
         "imperative": hit is not None,
         "match": hit,
-        "rule": "base-form verb + size/object, not preceded by determiner, modal, infinitive or negation",
+        "rule": "base-form verb + size/object, not preceded by determiner, modal or infinitive; or a subject-less prohibition without a settlement qualifier",
         "not_this_gate": "operator product option_id recommendations",
     }
 
@@ -257,17 +329,23 @@ def instruction_field_text(artifact: Any) -> dict[str, str]:
 def find_field_directive(artifact: Any) -> Optional[dict[str, str]]:
     """Stricter lint for instruction-shaped fields only.
 
-    Returns {field, match, rule} or None. Applies the ordinary matcher AND the
-    `do not <verb>` rule that free prose is exempt from.
+    Returns {field, match, rule} or None. Applies the ordinary matcher AND an
+    unconditional `do not <verb>` rule. Free prose is no longer exempt from
+    prohibitions (see the prohibition pattern above), but it keeps two
+    carve-outs this does not: a settlement qualifier and a stance label. In a
+    field that exists to direct the operator, neither excuses the instruction.
     """
     for field, text in instruction_field_text(artifact).items():
-        hit = find_imperative(text)
-        if hit:
-            return {"field": field, "match": hit, "rule": "imperative_clause"}
+        # Negation first: `find_imperative` now catches subject-less
+        # prohibitions too, and would relabel these `imperative_clause`. The
+        # field-scoped rule is the more specific finding, so it keeps the name.
         m = _DIRECTIVE_NEGATION_RE.search(text)
         if m:
             return {"field": field, "match": m.group(0),
                     "rule": "directive_negation"}
+        hit = find_imperative(text)
+        if hit:
+            return {"field": field, "match": hit, "rule": "imperative_clause"}
     return None
 
 

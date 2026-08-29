@@ -1,5 +1,13 @@
 # Imperative matcher — position directives (2026-08-29)
 
+> **SUPERSEDED IN PART (2026-08-29).** This document records that a
+> `do not <verb>` rule was impossible without breaking the pinned
+> ex-date case. Measuring the corpus disproved that: they separate on
+> clause position and on a settlement qualifier. The rule now ships and
+> the pin still passes. See
+> [CIO_PROSE_PROHIBITION_GATE_2026-08-29.md](CIO_PROSE_PROHIBITION_GATE_2026-08-29.md).
+
+
 Found by the system critiquing itself. The one live Grok critique rejected an
 artifact the shared matcher had passed as clean:
 
