@@ -65,6 +65,7 @@ CASE_SUMMARY store is still 323 — item 87 will label this on the card).
 | **Wave 2C 101–130** | 28 DONE · 2 FIXED (116, 117) · 1 OPEN (118 cost-basis as_of). 35 dust S1 cancelled, slice-12c cap-5 applied → **full held coverage** |
 | **held without open S1** | **NONE** — every non-dust held name now carries one |
 | **not cancelled** | 19 `DIVI` S1 flagged `not_held` — different reason, no authorisation, surfaced for the operator |
+| **Wave 2C 131–160** | 27 DONE · 3 FIXED (131, 132, 160) · 0 open. Both books now name themselves on `/home` and in the CC; `merged: false` |
 | exec voice | `[T]` / `[D] Nothing requires action today.` |
 | reentry | Surface A · 70 names · reentry_total 25 NEAR overlaid · queue 43 · **dual pipes NOT merged** |
 | slice 12c would | BAH · CSWC · V · XAR · AMANX (cap 5, notify false) — apply is a separate dry-first step |

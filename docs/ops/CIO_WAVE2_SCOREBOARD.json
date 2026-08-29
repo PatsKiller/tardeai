@@ -869,5 +869,21 @@
     },
     "harness_trap": "collect_previously_traded() reads Postgres, not the root; a local rerun showed AXTI/FATN UNAVAILABLE when live is correctly EXITED",
     "renamed": "cio_orphan_s6_hygiene -> cio_orphan_plan_hygiene (S1 entered scope)"
+  },
+  "wave2c_batches": {
+    "131-160": {
+      "done": 27,
+      "fixed": 3,
+      "fixed_items": [
+        131,
+        132,
+        160
+      ],
+      "open": 0,
+      "gap": "books were separate but anonymous \u2014 canonical labels existed and each producer stamped its book, but neither reached /home and the CC named only Surface A",
+      "fix": "home.reentry_books reads the canonical cio_reentry_surface_labels module; CC renders Surface B beneath Surface A",
+      "wrong_turn": "first attempt labelled build_opportunity_book as Surface B with invented text; Surface B is the desk_depth cash-stage book and canonical labels already existed. Reverted.",
+      "merged": false
+    }
   }
 }
