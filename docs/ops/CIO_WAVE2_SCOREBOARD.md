@@ -77,6 +77,7 @@ CASE_SUMMARY store is still 323 — item 87 will label this on the card).
 | **cash law** | rows 630,784.82 · totals 578,107.50 · gap **52,677.32 UNRECONCILED** · `cash_for_S5 DATA_UNAVAILABLE_UNTIL_RECONCILED` |
 | **item 118** | basis **08-14** · positions **08-26** · priced **08-28** — two weeks apart |
 | **cash writer NAMED** | `portfolio_totals.total_cash` is **never refreshed** — `portfolio_loader:332` carries it forward. Same field drifted $292k on 2026-07-21 and was fixed read-side only. Not a hypothesis on the list. |
+| **cash writer FIXED** | `portfolio_loader` now writes `total_cash` from the is_cash row sum, with `total_cash_source` + `total_cash_written_at`. Field kept, no read-site recompute added, `api_v2:2593` untouched. UNRECONCILED holds until the next reprice, then flips on its own. |
 | exec voice | `[T]` / `[D] Nothing requires action today.` |
 | reentry | Surface A · 70 names · reentry_total 25 NEAR overlaid · queue 43 · **dual pipes NOT merged** |
 | slice 12c would | BAH · CSWC · V · XAR · AMANX (cap 5, notify false) — apply is a separate dry-first step |
