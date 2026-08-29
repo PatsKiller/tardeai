@@ -68,6 +68,8 @@ CASE_SUMMARY store is still 323 — item 87 will label this on the card).
 | **Wave 2C 131–160** | 27 DONE · 3 FIXED (131, 132, 160) · 0 open. Both books now name themselves on `/home` and in the CC; `merged: false` |
 | **Wave 2C 161–190** | 30 DONE · 0 open. `hermes_result_id` **328 total** = 282 open + 46 cancelled by dust hygiene (reconciles exactly). |
 | **$0.001 model receipts** | 46 historical, last `13:46:33Z`; fix `ff09c255` at `13:49:23Z` — **3 min later**. 47 runs since with none. |
+| **Wave 2C 191–220** | 30 DONE · 0 open · **no code changed**. Plans: 533 open (S3 320 · S1 120 · S6 40 · S5 35 · S7 11 · S0 7); warehouse 860 total. |
+| **item 198 near-miss** | 109 historical duplicate S1 looked like a live guard failure; against the correct #609 boundary (17:09Z) only **9 created since, 0 duplicate symbols**. Guard holds. |
 | exec voice | `[T]` / `[D] Nothing requires action today.` |
 | reentry | Surface A · 70 names · reentry_total 25 NEAR overlaid · queue 43 · **dual pipes NOT merged** |
 | slice 12c would | BAH · CSWC · V · XAR · AMANX (cap 5, notify false) — apply is a separate dry-first step |
