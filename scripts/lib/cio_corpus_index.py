@@ -199,3 +199,99 @@ def coverage() -> dict[str, Any]:
         "note": ("Only seasonality has depth; other families hold a single "
                  "placeholder fact each, so corpus_hit is rare by construction."),
     }
+
+
+# ---------------------------------------------------------------- registry
+#
+# Wave 3A. The 20-30 publications were not missing — they were catalogued in
+# `config/cio_research_source_catalog.json` all along, which the previous
+# corpus sweep missed by searching data/ dirs and filename globs rather than
+# config/. The catalog is honest about itself: all 34 entries carry
+# full_text_status=NOT_FOUND_IN_FILE_LIBRARY, claim_status=
+# SOURCE_CLAIM_INCOMPLETE and license_class=COPYRIGHT.
+#
+# So the registry below is one index over two populations:
+#   - 11 library facts   (reproducible, graded, may close a context gap)
+#   - 34 catalogued works (citation only, no lawful full text -> grade D)
+#
+# Grade D "must not be treated as a Trade AI fact", so no catalogue entry can
+# ever corpus_hit. They are listed so the gate can cite them as context and so
+# a census question has one answer instead of a search.
+
+CATALOG_RELPATH = ("config", "cio_research_source_catalog.json")
+CATALOG_GRADE = "D"          # no lawful full text -> not reproducible -> D
+
+
+def _catalog_path() -> Path:
+    return Path(__file__).resolve().parents[2].joinpath(*CATALOG_RELPATH)
+
+
+def catalog_entries() -> list[dict[str, Any]]:
+    """The 34 catalogued works, normalised into registry shape."""
+    try:
+        raw = json.loads(_catalog_path().read_text(encoding="utf-8"))
+    except Exception:
+        return []
+    out = []
+    for s in (raw.get("sources") or []):
+        if not isinstance(s, dict):
+            continue
+        full_text = str(s.get("full_text_status") or "")
+        on_disk = full_text not in {"", "NOT_FOUND_IN_FILE_LIBRARY"}
+        out.append({
+            "source_id": s.get("source_id"),
+            "family": "context",
+            "title": s.get("title"),
+            "authors": s.get("authors"),
+            "path": None if not on_disk else s.get("path"),
+            "content_hash": None,
+            "as_of": None,
+            "evidence_grade": CATALOG_GRADE,
+            "application_law": ("citation only — no lawful full text on disk; "
+                                "grade D must not be treated as a Trade AI fact"),
+            "dimension_scope": "context",
+            "source_type": s.get("source_type"),
+            "canon_class": s.get("canon_class"),
+            "license_class": s.get("license_class"),
+            "full_text_status": full_text,
+            "claim_status": s.get("claim_status"),
+            "on_disk": on_disk,
+            "can_corpus_hit": False,
+        })
+    return out
+
+
+def registry() -> dict[str, Any]:
+    """One index over both populations. Reads only; ingests nothing."""
+    facts = []
+    for f in library_facts():
+        grade = str(f.get("evidence_grade") or "")
+        facts.append({
+            "source_id": f.get("source_id"),
+            "family": f.get("family"),
+            "title": f.get("title"),
+            "path": None,
+            "content_hash": None,
+            "as_of": None,
+            "evidence_grade": grade,
+            "application_law": f.get("current_applicability"),
+            "dimension_scope": "context",
+            "on_disk": False,
+            "can_corpus_hit": grade in CLOSING_GRADES,
+        })
+    cat = catalog_entries()
+    return {
+        "corpus_index_version": CORPUS_INDEX_VERSION,
+        "authority": AUTHORITY,
+        "library_facts": facts,
+        "catalog": cat,
+        "counts": {
+            "library_facts": len(facts),
+            "catalog": len(cat),
+            "catalog_on_disk": sum(1 for c in cat if c["on_disk"]),
+            "can_corpus_hit": sum(1 for f in facts if f["can_corpus_hit"]),
+        },
+        "freshness_law": "research_source_index.decide() — this module keeps none",
+        "note": ("Catalogued works are citation-only until lawful full text "
+                 "exists; grade D can never close a research gap."),
+    }
