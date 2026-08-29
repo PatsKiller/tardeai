@@ -271,18 +271,30 @@ def test_position_directives_are_caught(text):
     assert find_imperative(text), f"missed a position directive: {text!r}"
 
 
-def test_do_not_add_stays_admitted_because_the_pin_wins():
-    """A `do not <verb>` rule was written and deliberately removed.
+def test_a_prohibition_is_an_instruction_but_a_settlement_caution_is_not():
+    """Supersedes "the pin wins": both now hold at once.
 
-    A prohibition is arguably an order, but the same grammar covers the pinned
-    legacy case "do not sell shares before the ex-date", which
-    test_legacy_admitted requires to pass as ex-dividend context. Nothing
-    separates them without reading intent, and Decision 1 says the pin wins.
+    This test used to assert that "do not add until price action confirms"
+    stays admitted, because it was believed inseparable from the pinned
+    "do not sell shares before the ex-date" — same grammar, different intent.
+    Measuring the corpus disproved that. They separate on clause position and
+    on the settlement qualifier, so the prohibition is caught and the pin is
+    still admitted. See the header of execution_language.py.
     """
     from scripts.lib.execution_language import find_imperative
 
+    # the pin, unchanged
     assert find_imperative("do not sell shares before the ex-date") is None
-    assert find_imperative("do not add until price action confirms") is None
+    assert find_imperative("avoid selling before the ex-dividend date") is None
+
+    # the prohibition, now caught
+    assert find_imperative("do not add until price action confirms") is not None
+    assert find_imperative(
+        "hold in monitored state, do not initiate new put selling") is not None
+
+    # a declarative with a subject is not an instruction
+    assert find_imperative("the evidence does not support a change") is None
+    assert find_imperative("these findings do not add to the thesis") is None
 
 
 @pytest.mark.parametrize("text", [

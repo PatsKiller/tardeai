@@ -143,3 +143,81 @@ def test_the_cutoff_is_explicit_and_dated():
 def test_operator_option_ids_are_not_this_gate(option_id):
     """Running research rules over the operator's own vocabulary would reject it."""
     assert find_imperative(option_id) is None
+
+
+# ---------------------------------------------------------------------------
+# Subject-less prohibitions (2026-08-29)
+#
+# `do not <position verb>` used to be admitted everywhere in free prose: `not`
+# sat in _DISQUALIFIER, so a negated verb was read as narration. It is not —
+# a prohibition tells the operator what to hold. 45 prose occurrences across
+# 471 stored artifacts were passing the gate.
+#
+# The rule that was previously called impossible is possible because the pinned
+# ex-date case differs on two measurable axes, not on intent.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("text", [
+    # verbatim shapes from data/cio/hermes_research_results.jsonl
+    "hold in monitored state, do not initiate new put selling or momentum entry",
+    "Do not add to the position under any current conditions.",
+    "treat SRNE as a HIGH-RISK, INFORMATION-VOID position: do not add, "
+    "do not average down, and either exit or demand a verifiable thesis",
+    "do not add until price action confirms forward-looking signals.",
+    "Do not increase exposure.",
+    "and do not open a new starter position",
+])
+def test_prohibitions_are_instructions(text):
+    """A prohibition is an order. These were the prose misses."""
+    assert find_imperative(text) is not None, text
+
+
+@pytest.mark.parametrize("text", [
+    # 1. a settlement / corporate-action qualifier makes it a caution
+    "do not sell shares before the ex-date",
+    "Note: do not sell shares before the ex-date. As of 2026-08.",
+    "do not buy before the ex-dividend record date",
+    "do not trim into the blackout window",
+    # 2. a subject makes it a declarative, not an imperative
+    "the evidence does not support a thesis change",
+    "Multi-domain evidence does not support hold on SRNE",
+    "results do not meet threshold for changing hold language",
+    "the upgrade does not alter the drawdown thesis",
+    "the event does not constitute a confirmed material change",
+    "these findings do not add to the drawdown thesis",
+])
+def test_cautions_and_declaratives_stay_admitted(text):
+    """The pin, and the 18 declarative false positives it was protecting."""
+    assert find_imperative(text) is None, text
+    assert lint_execution_language(text) is None, text
+
+
+def test_the_qualifier_must_share_the_sentence():
+    """Scoped to the sentence, not the field.
+
+    Four artifacts pair a real directive with an ex-date mentioned elsewhere in
+    the same long field. A field-wide carve-out would have exempted them.
+    """
+    assert find_imperative(
+        "The ex-date is 2026-09-01. Do not add to the position.") is not None
+
+
+@pytest.mark.parametrize("text", [
+    # verbatim from the AUUD / BJDX artifacts of 2026-08-29, the two the rule
+    # would have failed on its first cut. A compound stance label is a NAME.
+    "The advisory on AUUD remains HOLD / DO NOT INITIATE. The only new "
+    "catalyst is a generic stock forecast article.",
+    "The advisory on BJDX would change from HOLD/DO NOT INITIATE to a "
+    "re-entry candidate only upon a fresh, high-conviction catalyst.",
+    "stance: WATCH | DO NOT ADD",
+])
+def test_a_compound_stance_label_is_not_an_order(text):
+    """Same family as `hold_with_thesis`: the gate bans orders, not names."""
+    assert find_imperative(text) is None, text
+
+
+def test_a_slash_does_not_open_a_clause_but_punctuation_does():
+    """The discriminator, stated once."""
+    assert find_imperative("HOLD / do not add") is None
+    assert find_imperative("HOLD; do not add") is not None
+    assert find_imperative("HOLD, do not add") is not None

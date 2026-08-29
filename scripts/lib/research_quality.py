@@ -103,20 +103,24 @@ def _critique_lint(result: dict[str, Any]) -> dict[str, Any]:
         except Exception:
             find_imperative = None      # fail open to the legacy floor
             find_field_directive = None
-        if find_imperative is not None and find_imperative(result):
+        # Both are computed, not short-circuited: the shared matcher decides
+        # PASS/FAIL, and the field lint supplies the field name for the
+        # receipt. Running only the first would fail an artifact without ever
+        # saying which field carried the instruction.
+        _imp = find_imperative(result) if find_imperative is not None else None
+        _fd = (find_field_directive(result)
+               if find_field_directive is not None else None)
+        if _imp or _fd:
             reasons.append("forbidden_authority")
-        elif find_field_directive is not None:
+        if _fd:
             # Field-scoped, stricter: `desk_implications.notes` and
-            # `recommendation` exist to direct the operator, so `do not <verb>`
-            # counts there. Free prose keeps the looser rule, which is what
-            # keeps "do not sell shares before the ex-date" admitted — the two
-            # are grammatically identical and separable only by location.
-            # Same gate date, so nothing is retro-detached.
-            _fd = find_field_directive(result)
-            if _fd:
-                reasons.append("forbidden_authority")
-                reasons.append(
-                    "instruction_in_" + str(_fd.get("field") or "field"))
+            # `recommendation` exist to direct the operator, so a prohibition
+            # counts there even when it carries a settlement qualifier that
+            # would keep it admitted in free prose ("do not sell shares before
+            # the ex-date"). Location decides. Same gate date, nothing is
+            # retro-detached.
+            reasons.append(
+                "instruction_in_" + str(_fd.get("field") or "field"))
     if symbol and symbol.lower() not in text and symbol not in str(result):
         reasons.append("symbol_not_grounded")
     if "as of 20" not in text and not as_of:

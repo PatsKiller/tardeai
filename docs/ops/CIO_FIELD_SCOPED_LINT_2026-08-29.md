@@ -1,5 +1,13 @@
 # Field-scoped instruction lint (2026-08-29)
 
+> **SUPERSEDED IN PART (2026-08-29).** This document records that a
+> `do not <verb>` rule was impossible without breaking the pinned
+> ex-date case. Measuring the corpus disproved that: they separate on
+> clause position and on a settlement qualifier. The rule now ships and
+> the pin still passes. See
+> [CIO_PROSE_PROHIBITION_GATE_2026-08-29.md](CIO_PROSE_PROHIBITION_GATE_2026-08-29.md).
+
+
 Closes the half of the matcher gap that a global rule could not.
 
 ## The problem a shape-based rule cannot solve
