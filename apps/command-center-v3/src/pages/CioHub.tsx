@@ -626,15 +626,15 @@ function CoverageCard({ coverage }: { coverage?: OfficeCoverage }) {
     >
       <SectionTitle>Office coverage</SectionTitle>
       <div style={{ ...faint, marginBottom: 10 }}>
-        Class D · from holdings thesis, plans, case summaries, watch block, Surface A reentry. No Telegram.
+        Class D · from holdings thesis, plans, case summaries, watch block, Surface A reentry. Dust residual excluded. No Telegram.
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 10 }}>
         <Stat
           label="Thesis / held"
           value={`${thesisCount}/${heldN}`}
-          help="thesis_count / held_n from holdings_thesis_coverage.current_n / held_n. SCHG dust may still count in held_n."
+          help="thesis_count / held_n from holdings_thesis_coverage.current_n / held_n. SCHG dust is DUST_RESIDUAL and is excluded from held_n (slice 12a, market value < $50)."
         />
-        <Stat label="With plan" value={n(c.with_plan)} help="Held symbols on injected open plans." />
+        <Stat label="With plan" value={n(c.with_plan)} help="Non-dust held symbols on an open S1/S3/S5/S6 plan, counted against the whole open-plan store." />
         <Stat label="With research" value={n(c.with_research)} help="Held symbols on open plans with hermes_result_id." />
         <Stat label="Case summaries" value={n(c.with_case_summary)} help="Active CASE_SUMMARY count (A-context)." />
         <Stat label="Watch READY" value={n(c.watch_ready)} help="Named READY/GO symbols. Live often 0 — honest." />

@@ -10,31 +10,43 @@ Resume cursor: first slice with status != DONE.
 
 ## NOW
 
+Updated by slice 12. Pin advanced 9f13273b (#619) → **d53fde4c (#620)** since the
+last NOW block; slices 08–11 sha/PR filled in below. Live drift recorded, not
+smoothed: `watch_block` 21 → 26 and `reentry_near` 4 → 25 are the #620 Surface A
+overlay landing, and `with_case_summary` 323 → 10 is the product cap-10 view (the
+CASE_SUMMARY store is still 323 — item 87 will label this on the card).
+
 | Field | Value |
 |-------|--------|
-| CURRENT pin | `9f13273b` (#619 slice 07) — this PR slices 08–11 |
-| origin/main | `9f13273b` |
+| CURRENT pin | `d53fde4c` (#620 slices 08–11) |
+| origin/main | `d53fde4c` |
 | `/api/v2/health` | 200 |
 | `/v3/cio` | 200 |
 | `/api/v3/cio/home` | 200 · earnings 10 · NEW_POSITION_IF 5 · telegram_sent false · **coverage** Class D |
-| plans | draft 319 · proposed 217 · accepted 1 · cancelled 269 (hygiene 267) · with_hermes 323 |
-| CASE_SUMMARY ACTIVE | 323 |
+| plans | open 575 · draft 350 · proposed 224 · accepted 1 · cancelled 269 (hygiene 267) · with_hermes 323 |
+| plans by situation | S3 314 · S1 149 · S6 59 · S5 35 · S7 11 · S0 7 |
+| CASE_SUMMARY ACTIVE | 323 (store) · 10 (product cap) |
 | RESEARCH_REFERENCE | 443 (CANDIDATE) |
-| earnings | 10 |
+| earnings | 10 · commentary UNAVAILABLE |
 | NEW_POSITION_IF | NKE/PFSI/PRIM/SH/XLU **CURRENT** |
 | cash | PRESENT $630,784.82 |
-| watch_block | 21 not_promotion_grade · ready 0 named · fires_s7=false |
+| watch_block | 26 · ready 0 named · fires_s7=false |
 | checkpoints | 152 (Wave 1 slice 8) |
-| holdings_thesis_coverage | held_n=19 current=19 unavail=0 |
-| coverage (home) | held=19 thesis_count=19 watch_block=21 watch_ready=0 reentry_near from Surface A · with_case_summary=323 |
+| **holdings_thesis_coverage** | **held_n=15** current=15 unavail=0 · held_n_including_dust=19 · dust_n=4 · instrument_id_n=3 |
+| **dust (12a)** | `dust_residual@v1` · market_value < **$50**/ticker aggregated across accounts · JEPI 22.66 · LDOS 31.16 · SCHG 8.09 · SRNE 0.90 · **no lot deleted** |
+| **instrument_id (12)** | 12507E201 · 543354104 · 628518102 — CUSIP, `is_ticker=false`, never a ticker field |
+| **coverage (home)** | held=15 thesis_count=15 **with_plan=11** (was 1) with_research · watch_block=26 watch_ready=0 reentry_near=25 with_case_summary=10 |
+| **with_plan definition** | distinct **non-dust held** tickers with ≥1 **open S1/S3/S5/S6** plan, counted over the **whole 575-plan open store** — not the 12-row CIO NOW window |
 | exec voice | `[T]` / `[D] Nothing requires action today.` |
-| reentry | Surface A · 67 former names · home opportunities.reentry_total overlaid (dual pipes not merged) |
-| DRIVE | OK via gog (blobs `--replace`; native create-only) |
-| rails | MBI=0 · notify not enabled · no broker write · no ROTATE |
+| reentry | Surface A · 70 names · reentry_total 25 NEAR overlaid · queue 43 · **dual pipes NOT merged** |
+| slice 12c would | BAH · CSWC · V · XAR · AMANX (cap 5, notify false) — apply is a separate dry-first step |
+| DRIVE | pending this bundle |
+| rails | MBI=0 · INTERDICT=0 · notify not enabled · no broker write · no ROTATE · no lot delete |
 | slice 02 would/applied | would_mint CURRENT · applied 1 `symbol_prim@v1` · PRIM CURRENT · telegram_sent false |
 | slice 03 would/applied | would 5 · applied 5 · SCHG S1 later cancelled (former, not held) |
 | surface_a_status | SCHG/AXTI/FATN EXITED · FANG UNAVAILABLE · no invented prices |
 | watch_ready_named | ready=[] near=[] · ready_count=0 · fires_s7=false (honest) |
+
 
 ---
 
@@ -79,11 +91,11 @@ Leftovers still forbidden unless a Wave 2 slice explicitly allows a read-only st
 | 05 | Watch READY/NEAR named; fires_s7=false | DONE | #617 | `6a796e1a` | MBI=0 | ready_symbols named; live 0 READY/NEAR; fires_s7=false |
 | 06 | earnings days_to_event + as_of | DONE | #618 | `6bbec1a1` | MBI=0 | days_to_event + as_of |
 | 07 | earnings commentary stub | DONE | #619 | `9f13273b` | MBI=0 | commentary UNAVAILABLE |
-| 08 | coverage API GET | DONE | *(feat/cio-wave2-slice08-coverage)* | *(fill after promote)* | MBI=0 | home.coverage Class D; fail-soft zeros |
-| 09 | CC coverage card | DONE | *(same branch)* | *(fill after promote)* | MBI=0 | cio-coverage-card after TrustStrip |
-| 10 | reentry keys not 0 when Surface A has names | DONE | *(same branch)* | *(fill after promote)* | MBI=0 | dual pipes; reentry_total overlaid from Surface A |
-| 11 | thesis count vs held on home | DONE | *(same branch)* | *(fill after promote)* | MBI=0 | thesis_count/held_n ~19/19; SCHG dust honesty |
-| 12 | CUSIP-only rows labeled instrument_id | PENDING | | | | |
+| 08 | coverage API GET | DONE | #620 | `d53fde4c` | MBI=0 | home.coverage Class D; fail-soft zeros |
+| 09 | CC coverage card | DONE | #620 | `d53fde4c` | MBI=0 | cio-coverage-card after TrustStrip |
+| 10 | reentry keys not 0 when Surface A has names | DONE | #620 | `d53fde4c` | MBI=0 | dual pipes; reentry_total overlaid from Surface A |
+| 11 | thesis count vs held on home | DONE | #620 | `d53fde4c` | MBI=0 | thesis_count/held_n 19/19; superseded by 12a (dust out → 15/15) |
+| 12 | holdings truth: instrument_id · DUST_RESIDUAL · with_plan counter · S1 leftovers | DONE | *(this PR)* | *(fill after promote)* | MBI=0 INTERDICT=0 no lot delete | held_n 19→15 · dust JEPI/LDOS/SCHG/SRNE · instrument_id 3 · with_plan 1→11 · would_s1 BAH CSWC V XAR AMANX |
 | 13 | % subject_guid measure | PENDING | | | | |
 | 14 | register HELD+ACTIVE watch missing | PENDING | | | | |
 | 15 | 1-hop graph_impact stub | PENDING | | | | |
@@ -132,3 +144,19 @@ Leftovers still forbidden unless a Wave 2 slice explicitly allows a read-only st
 3. Drive folder TradeAI CIO Ops created (`1rRSmvAeO37z2PyyrIYtd2C5ngwHsAIqH`).
 4. Drive file upsert FAIL — no write tool in MCP.
 5. INTERDICT=0, MBI=0, notify not enabled.
+
+---
+
+## Slice 12 live 5-line proof (dry on CURRENT `d53fde4c`, persist=False)
+
+1. DUST `dust_residual@v1` = aggregate market_value < $50/ticker; weight<0.5% rejected
+   (would have mislabelled AMANX $5,164 and SPCX $5,458). Dust = JEPI 22.66 · LDOS 31.16 ·
+   SCHG 8.09 · SRNE 0.90. **No lot deleted** — label only.
+2. held_n 19 → **15**, current 15 / unavailable 0; `held_n_including_dust=19` kept visible
+   so the change is auditable, not silent.
+3. Three CUSIP rows (12507E201 · 543354104 · 628518102) are `instrument_id` with
+   `id_type=CUSIP`, `is_ticker=false` — out of the ticker universe, out of thesis coverage.
+4. `with_plan` 1 → **11**. Root cause was the counter reading the 12-row CIO NOW window
+   instead of the 575-plan open store. Counter fixed; **no plan minted** to move the number.
+5. 12c dry: would = BAH · CSWC · V · XAR · AMANX (cap 5, notify false, financial_action false);
+   dust skipped. health/cio/home 200. MBI=0, INTERDICT=0, telegram_sent false.

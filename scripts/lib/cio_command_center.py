@@ -862,6 +862,16 @@ def _safe_int(v: Any, default: int = 0) -> int:
         return default
 
 
+# Wave 2 slice 12b — situation types that count as "this held name has an open
+# plan". S0 operator chatter and S7 watch promotion are not position coverage.
+COVERAGE_PLAN_SITUATION_TYPES = (
+    "S1_POSITION_LIFECYCLE",
+    "S3_REENTRY_CANDIDATE",
+    "S5_CASH_DEPLOYMENT",
+    "S6_CONCENTRATION_OR_DISPOSITION",
+)
+
+
 def build_office_coverage(
     *,
     holdings_thesis_coverage: Optional[dict[str, Any]] = None,
@@ -869,6 +879,7 @@ def build_office_coverage(
     case_summaries: Optional[dict[str, Any]] = None,
     reentry: Optional[dict[str, Any]] = None,
     plans: Optional[list[Any]] = None,
+    coverage_plans: Optional[list[Any]] = None,
 ) -> dict[str, Any]:
     """Class D office coverage counts from existing op/product keys.
 
@@ -877,8 +888,15 @@ def build_office_coverage(
     counts over new collectors or routes.
 
     ``held`` / ``held_n`` and ``with_thesis`` / ``thesis_count`` are aliases so
-    the CC card can show thesis_count/held_n without silent held_n semantics
-    changes (SCHG dust may still appear in held_equity_symbols).
+    the CC card can show thesis_count/held_n. After Wave 2 slice 12a they carry
+    the non-dust held universe; SCHG dust is excluded, not silently counted.
+
+    Wave 2 slice 12b — ``with_plan`` counts open S1/S3/S5/S6 plans on non-dust
+    held tickers. It reads ``coverage_plans`` (the whole open-plan store) when
+    the caller supplies it, and only falls back to ``plans`` -- which on
+    /v3/cio/home is a 12-row UI window -- when it does not. Counting against
+    that window is what produced with_plan=1 against 575 open plans. The fix is
+    the counter's input; no plan is minted to move the number.
     """
     htc = holdings_thesis_coverage if isinstance(holdings_thesis_coverage, dict) else {}
     wbs = watch_block_summary if isinstance(watch_block_summary, dict) else {}
@@ -894,21 +912,32 @@ def build_office_coverage(
         for i in (htc.get("items") or [])
         if isinstance(i, dict) and i.get("symbol")
     }
+    # Dust is not a hold: it can neither need a plan nor supply one (slice 12a).
+    dust_syms = {
+        _str(s).upper() for s in (htc.get("dust_tickers") or []) if s
+    }
+    held_syms -= dust_syms
 
+    plan_rows = coverage_plans if coverage_plans is not None else (plans or [])
+    plan_source = "open_plan_store" if coverage_plans is not None else "home_plan_window"
     plan_held: set[str] = set()
     research_held: set[str] = set()
-    for p in plans or []:
-        if not _plan_is_open(p):
-            continue
+    counted_open = 0
+    for p in plan_rows:
         if not isinstance(p, dict):
             continue
+        if not _plan_is_open(p):
+            continue
+        if _str(p.get("situation_type")) not in COVERAGE_PLAN_SITUATION_TYPES:
+            continue
+        counted_open += 1
         psyms = {
             _str(s).upper()
             for s in (p.get("symbols") or [])
             if s
         }
-        hit = psyms & held_syms if held_syms else set()
-        if not hit and not held_syms:
+        hit = psyms & held_syms
+        if not hit:
             continue
         plan_held |= hit
         if p.get("hermes_result_id"):
@@ -928,6 +957,9 @@ def build_office_coverage(
         "held": held_n,
         "held_n": held_n,
         "with_plan": len(plan_held),
+        "with_plan_symbols": sorted(plan_held),
+        "with_plan_source": plan_source,
+        "open_plans_considered": counted_open,
         "with_thesis": thesis_count,
         "thesis_count": thesis_count,
         "with_research": len(research_held),
@@ -939,9 +971,9 @@ def build_office_coverage(
         "authority": "READ_ONLY_ADVISORY",
         "memory_behavior_influence": 0,
         "note": (
-            "Aggregated from holdings_thesis_coverage, injected open plans ∩ held, "
-            "case_summaries.count, watch_block_summary, Surface A reentry.counts. "
-            "Fail-soft zeros. No Telegram."
+            "Aggregated from holdings_thesis_coverage, open S1/S3/S5/S6 plans ∩ "
+            "non-dust held, case_summaries.count, watch_block_summary, Surface A "
+            "reentry.counts. Fail-soft zeros. No Telegram."
         ),
     }
 
@@ -1004,6 +1036,7 @@ def build_office_home(
     income: Optional[dict[str, Any]] = None,
     actions: Optional[list[dict[str, Any]]] = None,
     plans: Optional[list[dict[str, Any]]] = None,
+    coverage_plans: Optional[list[dict[str, Any]]] = None,
     source_refs: Optional[list[dict[str, Any]]] = None,
     validator_states: Optional[list[dict[str, Any]]] = None,
     run_ids: Optional[list[dict[str, Any]]] = None,
@@ -1134,6 +1167,7 @@ def build_office_home(
         case_summaries=home.get("case_summaries") if isinstance(home.get("case_summaries"), dict) else {},
         reentry=op.get("reentry") if isinstance(op.get("reentry"), dict) else {},
         plans=plans,
+        coverage_plans=coverage_plans,
     )
     home["telegram_sent"] = False
     home["delivery"] = "dashboard"
