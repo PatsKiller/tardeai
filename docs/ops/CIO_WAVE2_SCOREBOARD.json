@@ -14,8 +14,8 @@
     "native_sheet": "10T3HTcQS_tgYu8-dtHozWgCPBywvgPxXZjbJBrfT0uw"
   },
   "now": {
-    "current_pin": "bb4898279a46a4d8eb0d43729f9a4becb600b77a",
-    "current_pr": 616,
+    "current_pin": "6a796e1a0b038e5c0bfb46d8f87b210c51b9efdd",
+    "current_pr": 617,
     "health": 200,
     "cio": 200,
     "home": 200,
@@ -133,13 +133,16 @@
     "05": {
       "title": "Watch READY/NEAR named",
       "status": "DONE",
-      "pr": null,
-      "sha": null,
-      "live": "ready=[] near=[] fires_s7=false honest"
+      "pr": 617,
+      "sha": "6a796e1a0b038e5c0bfb46d8f87b210c51b9efdd",
+      "live": "ready=[] fires_s7=false"
     },
     "06": {
       "title": "earnings days_to_event + as_of",
-      "status": "PENDING"
+      "status": "DONE",
+      "pr": null,
+      "sha": null,
+      "live": "days_to_event on earnings items"
     },
     "07": {
       "title": "earnings commentary stub",

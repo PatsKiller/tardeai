@@ -675,12 +675,19 @@ def collect_earnings_events(
         (r for r in dated if r["symbol"] not in held and (not watch or r["symbol"] in watch)),
         key=_sk,
     )
+    def _finalize(row: dict[str, Any], *, scope: str) -> dict[str, Any]:
+        out = dict(row)
+        dt = out.pop("_date", None)
+        out["scope"] = scope
+        # days_to_event from source date only — never invent a date.
+        if dt is not None:
+            out["days_to_event"] = (dt - today).days
+        out.setdefault("source_as_of", out.get("fetched_at") or out.get("as_of"))
+        return out
+
     items: list[dict[str, Any]] = []
     for row in held_dated:
-        row = dict(row)
-        row["scope"] = "held"
-        row.pop("_date", None)
-        items.append(row)
+        items.append(_finalize(row, scope="held"))
         if len(items) >= cap:
             break
     if len(items) < cap:
@@ -688,20 +695,16 @@ def collect_earnings_events(
         for row in watch_dated:
             if row["symbol"] in seen:
                 continue
-            row = dict(row)
-            row["scope"] = "watch"
-            row.pop("_date", None)
-            items.append(row)
+            items.append(_finalize(row, scope="watch"))
             seen.add(row["symbol"])
             if len(items) >= cap:
                 break
     if not items and dated:
         # Source present with dates — never pretend it is a quiet night.
         for row in sorted(dated, key=_sk)[:cap]:
-            row = dict(row)
-            row["scope"] = "held" if row["symbol"] in held else "watch"
-            row.pop("_date", None)
-            items.append(row)
+            items.append(_finalize(
+                row, scope="held" if row["symbol"] in held else "watch",
+            ))
     quality = "OK" if items else "DATA_UNAVAILABLE"
     reason = None if items else "no dated events in earnings_dates.json"
     return {
