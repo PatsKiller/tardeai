@@ -187,6 +187,16 @@ def critique_live(artifact: dict[str, Any], *, plan_id: Optional[str] = None,
                                calls_made=0)
         generate = _gen
 
+    # Report the lane/process ACTUALLY used, including on the failure paths.
+    # `_result` seeds them from the module defaults, so a refused call on an
+    # overridden lane was reporting the default — making a grok refusal read as
+    # a deepseek one in the record.
+    def _fail(verdict: str, reasons: list[str], **kw: Any) -> dict[str, Any]:
+        row = _result(verdict, reasons, **kw)
+        row["lane"] = lane
+        row["process_id"] = process_id
+        return row
+
     kwargs = {"lane": lane, "timeout": TIMEOUT_S, "process_id": process_id,
               "task_summary": f"research critique {plan_id or ''}".strip(),
               "response_json": True,
@@ -196,8 +206,8 @@ def critique_live(artifact: dict[str, Any], *, plan_id: Optional[str] = None,
     try:
         text = generate(prompt, **kwargs)
     except Exception as exc:                                    # noqa: BLE001
-        return _result(PARTIAL, ["transport_error", str(exc)[:120]],
-                       calls_made=1)
+        return _fail(PARTIAL, ["transport_error", str(exc)[:160]],
+                     calls_made=1)
 
     cost = 0.0
     if isinstance(text, tuple) and len(text) == 2:
