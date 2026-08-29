@@ -9,7 +9,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
-from scripts.lib.cio_investment_product import collect_holdings, held_equity_symbols
+from scripts.lib.cio_investment_product import (
+    collect_holdings,
+    dust_symbols,
+    held_equity_symbols,
+    held_equity_symbols_nondust,
+)
 from scripts.lib.cio_plans import CIOPlanStore, OPENISH
 from scripts.lib.outcome_resolution import NON_SECURITY_RECOMMENDATIONS
 from scripts.lib.r17_checkpoint_binding import bind_material_decision, is_cash_decision
@@ -115,7 +120,12 @@ def bind_held_researched_plan_checkpoints(
     root_p = Path(root) if root is not None else Path(".")
     store = store or CIOPlanStore()
     holdings = holdings if holdings is not None else collect_holdings(root_p)
-    held = set(held_equity_symbols(holdings))
+    # Wave 2 slice 27: a residual share is not a position to check an outcome
+    # against. Binding a checkpoint to SCHG's $8 or SRNE's $0.90 would put a
+    # PnL question on something that is already EXITED. Lots are untouched;
+    # only eligibility narrows, and both counts are reported.
+    held = set(held_equity_symbols_nondust(holdings))
+    dust = sorted(dust_symbols(holdings))
     selected, skipped = select_held_researched_plans(store, held, limit=limit)
     wrote_n = 0
     skipped_bind = 0
@@ -151,6 +161,9 @@ def bind_held_researched_plan_checkpoints(
         "observational_only": True,
         "apply": apply,
         "held_n": len(held),
+        "held_n_including_dust": len(set(held_equity_symbols(holdings))),
+        "dust_excluded": dust,
+        "dust_excluded_n": len(dust),
         "eligible_n": len(selected),
         "would_bind": len(selected),
         "wrote_n": wrote_n,

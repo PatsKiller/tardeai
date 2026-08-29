@@ -18,8 +18,8 @@ CASE_SUMMARY store is still 323 — item 87 will label this on the card).
 
 | Field | Value |
 |-------|--------|
-| CURRENT pin | `d53fde4c` (#620 slices 08–11) |
-| origin/main | `d53fde4c` |
+| CURRENT pin | `5f215504` (**#621 slices 12–18**, promoted 2026-08-29T02:39:18Z) |
+| origin/main | `5f215504` |
 | `/api/v2/health` | 200 |
 | `/v3/cio` | 200 |
 | `/api/v3/cio/home` | 200 · earnings 10 · NEW_POSITION_IF 5 · telegram_sent false · **coverage** Class D |
@@ -42,6 +42,17 @@ CASE_SUMMARY store is still 323 — item 87 will label this on the card).
 | **dry harness** | `TRADEAI_ROOT=CURRENT` is required — without it root-less collectors report reentry 43 / watch 0 instead of 70 / 26 |
 | **graph_impact (15/16)** | S6 only · 8 S6 symbols · 5 attached · SCHD 5/13 · AMANX 5/13 · DIV 5/11 · SPCX 5/8 · **BND 0/0** · skipped CASH/QCOM (not held) + SRNE (dust) |
 | **identity lookup (17)** | RESOLVED / UNRESOLVED / **LOOKUP_FAILED** / NOT_APPLICABLE — a registry read failure no longer reads as a clean negative |
+| **research fails 7d (19)** | 228 · cost_cap **130** · execution_language 93 · truncated 3 · timeout 1 · provider_error 1 · retryable **5** · **worker_bug 0** |
+| **cost_cap two shapes** | HTTP 429 `COST_CAP_EXCEEDED` 82 + HTTP 500 `RESERVATION_FAILED` 114 — same daily cap; classifying on the code would file 114 as provider errors |
+| **research quality (25)** | 468 completed · VALID 392 · PARTIAL 74 · INSUFFICIENT 2 · **attachable 466** · rule `VALID\|PARTIAL` |
+| **attach backfill (24)** | **would_attach 2, not 0** — plan_5463afc7bc04 · plan_9f4df5b991f3. Dry only, not applied. |
+| **checkpoints (27)** | due **0** · would_bind 152 → **106** after dust filter · nothing written |
+| **lessons (28/29)** | 328 PROVISIONAL / REVIEW_READY · **policy 0** · cannot_become_policy true |
+| **memory (30/31)** | CASE_SUMMARY 328 ACTIVE · RESEARCH_REFERENCE 448 CANDIDATE / **0 ACTIVE** · receipts 338/757 carry memory_type+promotable (chronological split) |
+| **12a activation fix** | live served `held_n=19` after promote — operator product was serving a pre-12a persisted brief; freshness check now detects the older schema |
+| **authorized apply: attach** | 2 of 2 (`plan_5463afc7bc04`, `plan_9f4df5b991f3`) · would_attach now **0** · CASE_SUMMARY stayed **328** (no double-mint) · the 474 untouched |
+| **authorized apply: orphan S6** | **20 cancelled** — CASH 1 · QCOM 1 · **SRNE 18** (dust) · notify false · append-only 4,958 → 4,998 lines · nothing deleted |
+| **live after applies** | `held_n` **15** · `with_plan` **11** · `graph_impact` 5 S6, **0 skipped** · telegram_sent false |
 | exec voice | `[T]` / `[D] Nothing requires action today.` |
 | reentry | Surface A · 70 names · reentry_total 25 NEAR overlaid · queue 43 · **dual pipes NOT merged** |
 | slice 12c would | BAH · CSWC · V · XAR · AMANX (cap 5, notify false) — apply is a separate dry-first step |
@@ -100,26 +111,26 @@ Leftovers still forbidden unless a Wave 2 slice explicitly allows a read-only st
 | 09 | CC coverage card | DONE | #620 | `d53fde4c` | MBI=0 | cio-coverage-card after TrustStrip |
 | 10 | reentry keys not 0 when Surface A has names | DONE | #620 | `d53fde4c` | MBI=0 | dual pipes; reentry_total overlaid from Surface A |
 | 11 | thesis count vs held on home | DONE | #620 | `d53fde4c` | MBI=0 | thesis_count/held_n 19/19; superseded by 12a (dust out → 15/15) |
-| 12 | holdings truth: instrument_id · DUST_RESIDUAL · with_plan counter · S1 leftovers | DONE | *(this PR)* | *(fill after promote)* | MBI=0 INTERDICT=0 no lot delete | held_n 19→15 · dust JEPI/LDOS/SCHG/SRNE · instrument_id 3 · with_plan 1→11 · would_s1 BAH CSWC V XAR AMANX |
-| 13 | % subject_guid measured on NEW_POSITION_IF / reentry / watch | DONE | *(this PR)* | *(fill after promote)* | no mint · MBI=0 | 111 rows · **resolvable 100%** · **stamped 4.5%** (only NEW_POSITION_IF stamps) · minted 0 |
-| 14 | register HELD(non-dust)+ACTIVE watch missing | DONE | *(this PR)* | *(fill after promote)* | dry only · **--apply NOT run** | **would_register_n=0** — all 47 considered already registered; cap 30 unused |
-| 15 | 1-hop graph_impact same-sector held neighbours | DONE | *(this PR)* | *(fill after promote)* | class D · no new store | cap 5 · deterministic · dust excluded both sides · missing map → DATA_UNAVAILABLE |
-| 16 | graph_impact on S6 names only | DONE | *(this PR)* | *(fill after promote)* | S6 scope only | 8 S6 symbols · 5 attached · SCHD 5/13 · **BND 0/0 honest** · CASH/QCOM/SRNE skipped with reason |
-| 17 | identity_lookup_failed ≠ UNRESOLVED | DONE | *(this PR)* | *(fill after promote)* | UNRESOLVED still UNRESOLVED · no mint | RESOLVED / UNRESOLVED / LOOKUP_FAILED / NOT_APPLICABLE; failure outranks clean negative |
-| 18 | never ticker as security GUID | DONE | *(this PR)* | *(fill after promote)* | regression only | ticker_alias_guid UUIDv5 · symbol → aliases · by_symbol[SYM] ≠ SYM (SCHD/CUSIP/V) |
-| 19 | Hermes fail histogram | PENDING | | | | |
-| 20 | skip non-retryable execution-language | PENDING | | | | |
-| 21 | retry truncated 1/plan/day | PENDING | | | | |
-| 22 | hermes_result_id on new completes | PENDING | | | | |
-| 23 | CASE_SUMMARY on VALID complete | PENDING | | | | |
-| 24 | missing result_id would_attach=0 | PENDING | | | | |
-| 25 | VALID/PARTIAL/FAIL counts | PENDING | | | | |
-| 26 | PARTIAL attach rule documented | PENDING | | | | |
-| 27 | due checkpoints observe | PENDING | | | | |
-| 28 | top 8 PROVISIONAL lessons on product | PENDING | | | | |
-| 29 | REVIEW_READY count | PENDING | | | | |
-| 30 | memory receipts memory_type+promotable | PENDING | | | | |
-| 31 | no RESEARCH_REFERENCE ACTIVE | PENDING | | | | |
+| 12 | holdings truth: instrument_id · DUST_RESIDUAL · with_plan counter · S1 leftovers | DONE | #621 | `5f215504` | MBI=0 INTERDICT=0 no lot delete | held_n 19→15 · dust JEPI/LDOS/SCHG/SRNE · instrument_id 3 · with_plan 1→11 · would_s1 BAH CSWC V XAR AMANX |
+| 13 | % subject_guid measured on NEW_POSITION_IF / reentry / watch | DONE | #621 | `5f215504` | no mint · MBI=0 | 111 rows · **resolvable 100%** · **stamped 4.5%** (only NEW_POSITION_IF stamps) · minted 0 |
+| 14 | register HELD(non-dust)+ACTIVE watch missing | DONE | #621 | `5f215504` | dry only · **--apply NOT run** | **would_register_n=0** — all 47 considered already registered; cap 30 unused |
+| 15 | 1-hop graph_impact same-sector held neighbours | DONE | #621 | `5f215504` | class D · no new store | cap 5 · deterministic · dust excluded both sides · missing map → DATA_UNAVAILABLE |
+| 16 | graph_impact on S6 names only | DONE | #621 | `5f215504` | S6 scope only | 8 S6 symbols · 5 attached · SCHD 5/13 · **BND 0/0 honest** · CASH/QCOM/SRNE skipped with reason |
+| 17 | identity_lookup_failed ≠ UNRESOLVED | DONE | #621 | `5f215504` | UNRESOLVED still UNRESOLVED · no mint | RESOLVED / UNRESOLVED / LOOKUP_FAILED / NOT_APPLICABLE; failure outranks clean negative |
+| 18 | never ticker as security GUID | DONE | #621 | `5f215504` | regression only | ticker_alias_guid UUIDv5 · symbol → aliases · by_symbol[SYM] ≠ SYM (SCHD/CUSIP/V) |
+| 19 | Hermes fail histogram last 7d | DONE | *(next PR)* | *(fill after promote)* | read-only · no requeue · no cap raised | 228 in 7d · **cost_cap 130** · execution_language 93 · truncated 3 · **worker_bug 0** |
+| 20 | skip enqueue of non-retryable execution-language | DONE | *(next PR)* | *(fill after promote)* | opt-in gate · fails soft | never requeued; blocks even beside a retryable truncation; nothing written on block |
+| 21 | truncated replay ≤1/plan/day | DONE | *(next PR)* | *(fill after promote)* | eligibility only · **no cap raised** | MAX_REPLAYS_PER_PLAN_PER_DAY=1 · cost_cap-only history waits for the window |
+| 22 | hermes_result_id on new attachable complete | DONE | *(next PR)* | *(fill after promote)* | unit · no live spend | attachable only on VALID\|PARTIAL + non-failed status; truncated/cost_cap flags refuse |
+| 23 | CASE_SUMMARY mints on VALID complete | DONE | *(next PR)* | *(fill after promote)* | unit · no admit | source_kind `HERMES_VALID_COMPLETE`; dedup on (symbol, plan_id, result_id) |
+| 24 | attach backfill dry would_attach | DONE | *(next PR)* | *(fill after promote)* | dry first · **operator-authorized apply of 2 only** | would_attach was **2, not 0**; both VALID → applied. Now **0**; missing_result_id 254→252; the 474 untouched; CASE_SUMMARY stayed 328 (no double-mint). |
+| 25 | VALID/PARTIAL/FAIL counts on product | DONE | *(next PR)* | *(fill after promote)* | read-only | 468 completed · VALID 392 · PARTIAL 74 · INSUFFICIENT 2 · **attachable 466** |
+| 26 | attach rule VALID\|PARTIAL documented | DONE | *(next PR)* | *(fill after promote)* | **no silent tighten** | on the payload; VALID-only would drop 74 of 466 |
+| 27 | due checkpoints observe | DONE | *(next PR)* | *(fill after promote)* | dry · **due=0** · no apply · no invented PnL | would_bind 152 → **106** after dust filter; JEPI/LDOS/SCHG/SRNE excluded |
+| 28 | top 8 PROVISIONAL lessons on product | DONE | *(next PR)* | *(fill after promote)* | cannot_become_policy true | 328 candidates, all PROVISIONAL/REVIEW_READY, policy_effect false, cap 8 |
+| 29 | REVIEW_READY count | DONE | *(next PR)* | *(fill after promote)* | ceiling REVIEW_READY | REVIEW_READY **328** · **policy 0** · 12 RATIFIED_CONTEXT not_production_policy |
+| 30 | memory receipts memory_type+promotable | DONE | *(next PR)* | *(fill after promote)* | regression | 338/757 carry both — split is chronological, all receipts since 2026-08-28T13:34 have them |
+| 31 | no RESEARCH_REFERENCE ACTIVE | DONE | *(next PR)* | *(fill after promote)* | regression | 448 CANDIDATE · **0 ACTIVE** · CASE_SUMMARY 328 ACTIVE |
 | 32 | checkpoint complete rate | PENDING | | | | |
 | 33 | remaining P9.0 voice labels | PENDING | | | | |
 | 34 | Surface B labels on evening/desk | PENDING | | | | |
@@ -194,3 +205,59 @@ Leftovers still forbidden unless a Wave 2 slice explicitly allows a read-only st
    SRNE (dust) — skipped with an explicit reason. QCOM is a real warehouse signal.
 5. Identity: `LOOKUP_FAILED` now separates an unreadable registry from a genuine
    `UNRESOLVED`; ticker-as-GUID regression locked for SCHD / CUSIP / V. Minted 0.
+
+---
+
+## Slices 19–21 live 5-line proof (dry on CURRENT `d53fde4c`, read-only)
+
+1. 228 failures in the trailing 7d of 302 all time; `worker_bug_n = 0` and only
+   **5 of 228 are retryable**.
+2. `cost_cap` is 130 of 228 (57%) and arrives as **two** shapes — HTTP 429
+   `COST_CAP_EXCEEDED` (82 all-time) and HTTP 500 `RESERVATION_FAILED` whose
+   message is `COST_CAP_EXCEEDED: daily request cap` (114 all-time). The
+   classifier reads the message, not the code, so the 114 are not filed as
+   provider errors and nobody debugs a healthy bridge.
+3. `execution_language` is 93 — output correctly refused, never requeued, and it
+   blocks the plan even when a retryable truncation also exists in its history.
+4. Truncated replay capped at 1 per plan per calendar day; `raises_cost_cap` is
+   false on every decision. `LLM_GLOBAL_DAILY_USD_CAP` untouched.
+5. Zero live model calls, zero requeues, zero rows written by this slice. The
+   histogram is mtime-cached so a 9MB ledger is not re-read per home request.
+
+---
+
+## Slices 22–31 live 5-line proof (dry on CURRENT `d53fde4c`, no --apply)
+
+1. Attach rule is exactly `VALID|PARTIAL` and is now stated on the payload.
+   Tightening to VALID-only would silently drop **74 of 466** attachable results.
+2. Live verdicts: 468 completed → VALID 392 · PARTIAL 74 · INSUFFICIENT 2 ·
+   FAILED/STALE/CONFLICTED 0. `no_sources` explains 76 of the non-VALID rows.
+3. **`would_attach = 2`, not 0** — `plan_5463afc7bc04` and `plan_9f4df5b991f3`
+   both hold VALID completes that landed after #592's backfill. Reported, not
+   applied; no slice in this batch authorises the write.
+4. `resolve_due_checkpoints` due = **0**, so no `--apply` and no invented PnL.
+   Binding eligibility now excludes dust: would_bind 152 → **106**, dropping
+   JEPI/LDOS/SCHG/SRNE. No checkpoint deleted.
+5. Lessons: 328 PROVISIONAL, all capped at REVIEW_READY, **policy count 0**.
+   RESEARCH_REFERENCE 448 CANDIDATE, **0 ACTIVE**. Receipts still carry
+   `memory_type` + `promotable` on everything written since 2026-08-28T13:34.
+
+---
+
+## Operator-authorized applies — live 5-line proof (CURRENT `5f215504`)
+
+1. **#621 promoted** at 02:39:18Z; health/cio/home 200. Verifying the live payload
+   caught that slice 12a was **not in effect**: `held_n` still 19, `with_plan` 14
+   counting JEPI/LDOS/SRNE. The operator product was serving a pre-12a persisted
+   brief because the freshness check only tested `held_n is None`. Fixed on PR 2.
+2. **Attach (authorized):** both plans were dried, both `critique: VALID`,
+   `--apply` wrote exactly 2. `would_attach` 2 → **0**, missing_result_id 254 → 252.
+   The 474 were never touched.
+3. **CASE_SUMMARY stayed 328** — both plans already had one from the forward path,
+   and the `(symbol, plan_id, result_id)` dedup refused a second. Not a missed mint.
+4. **Orphan S6 (authorized):** 20 cancelled — CASH 1, QCOM 1, and **SRNE 18**. The
+   detector had been re-firing on a $0.90 residual. Cancelled, never deleted:
+   `cio_plans.jsonl` 4,958 → 4,998 lines, append-only.
+5. Live now: `held_n` **15**, `with_plan` **11**, `graph_impact` 5 S6 names with
+   **0 skipped**, `telegram_sent` false, MBI 0, INTERDICT 0. Standing risk recorded:
+   nothing yet stops the S6 detector re-creating dust plans.

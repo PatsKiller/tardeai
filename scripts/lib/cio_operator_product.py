@@ -273,7 +273,18 @@ def build_operator_product(*, root: Path | str | None = None, persist: bool = Fa
             }
 
     cov = brief.get("holdings_thesis_coverage")
-    if not isinstance(cov, dict) or cov.get("held_n") is None:
+    # A persisted brief can predate the current coverage schema. Wave 2 slice 12a
+    # added dust exclusion, and the old freshness check ("held_n is None") passed
+    # happily on a pre-12a block — so /v3/cio/home kept serving held_n=19 with
+    # SCHG counted as a hold, hours after the code that excludes it shipped.
+    # Treat a block missing the 12a keys as stale and recompute it.
+    _cov_is_stale = (
+        not isinstance(cov, dict)
+        or cov.get("held_n") is None
+        or "dust_tickers" not in cov
+        or "held_n_including_dust" not in cov
+    )
+    if _cov_is_stale:
         try:
             from scripts.lib.cio_investment_product import (
                 collect_holdings,
@@ -286,6 +297,10 @@ def build_operator_product(*, root: Path | str | None = None, persist: bool = Fa
                 "current_n": 0,
                 "unavailable_n": 0,
                 "items": [],
+                "dust_tickers": [],
+                "dust_n": 0,
+                "held_n_including_dust": 0,
+                "instrument_id_n": 0,
                 "no_fake_thesis": True,
                 "class": "D",
             }

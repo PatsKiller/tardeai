@@ -14,8 +14,8 @@
     "native_sheet": "10T3HTcQS_tgYu8-dtHozWgCPBywvgPxXZjbJBrfT0uw"
   },
   "now": {
-    "current_pin": "d53fde4c4ad7cd643830642850e0a1f6c6181298",
-    "current_pr": 620,
+    "current_pin": "5f215504c77a901cc25de93c2ed228e23df21aa2",
+    "current_pr": 621,
     "health": 200,
     "cio": 200,
     "home": 200,
@@ -65,7 +65,20 @@
     "watch_block_count": 26,
     "watch_ready_count": 0,
     "fires_s7": false,
-    "checkpoints": 152,
+    "checkpoints": {
+      "due": 0,
+      "resolved": 0,
+      "would_bind": 106,
+      "would_bind_before_dust_filter": 152,
+      "dust_excluded": [
+        "JEPI",
+        "LDOS",
+        "SCHG",
+        "SRNE"
+      ],
+      "held_n": 15,
+      "held_n_including_dust": 19
+    },
     "holdings_thesis_coverage": {
       "held_n": 15,
       "current_n": 15,
@@ -92,7 +105,7 @@
       "watch_block": 26,
       "reentry_near": 25,
       "class": "D",
-      "note": "held_n excludes DUST_RESIDUAL (slice 12a). with_case_summary is the product cap-10 view; store CASE_SUMMARY ACTIVE = 323."
+      "note": "LIVE on CURRENT 5f215504 after the 12a activation fix and orphan-S6 cancel."
     },
     "telegram_sent": false,
     "slice02_would_mint": "CURRENT",
@@ -191,40 +204,124 @@
     },
     "dry_harness": "TRADEAI_ROOT=CURRENT required: root-less collectors fall back to the importing checkout, which reports reentry 43 / watch 0 instead of 70 / 26.",
     "graph_impact_s6": {
-      "sector_map_available": true,
       "s6_symbols": [
         "AMANX",
         "BND",
-        "CASH",
         "DIV",
-        "QCOM",
         "SCHD",
-        "SPCX",
-        "SRNE"
+        "SPCX"
       ],
       "attached_n": 5,
-      "skipped": {
-        "CASH": "not_held_non_dust",
-        "QCOM": "not_held_non_dust",
-        "SRNE": "dust_residual"
-      },
-      "neighbors": {
-        "SCHD": "5 of 13",
-        "AMANX": "5 of 13",
-        "DIV": "5 of 11",
-        "SPCX": "5 of 8",
-        "BND": "0 of 0"
-      },
-      "cap": 5,
-      "hop": 1,
-      "class": "D"
+      "skipped": {},
+      "note": "orphans CASH/QCOM/SRNE cancelled; nothing left to skip"
     },
     "identity_lookup_states": [
       "RESOLVED",
       "UNRESOLVED",
       "LOOKUP_FAILED",
       "NOT_APPLICABLE"
-    ]
+    ],
+    "research_fail_histogram_7d": {
+      "failures_in_window": 228,
+      "failures_all_time": 302,
+      "by_class": {
+        "cost_cap": 130,
+        "execution_language": 93,
+        "truncated": 3,
+        "timeout": 1,
+        "provider_error": 1
+      },
+      "retryable_n": 5,
+      "non_retryable_n": 223,
+      "worker_bug_n": 0,
+      "cost_cap_shapes": {
+        "HTTP_429_COST_CAP_EXCEEDED": 82,
+        "HTTP_500_RESERVATION_FAILED": 114
+      },
+      "note": "RESERVATION_FAILED is the daily request cap wearing a 500; not a worker bug."
+    },
+    "research_quality_counts": {
+      "completed_n": 468,
+      "VALID": 392,
+      "PARTIAL": 74,
+      "INSUFFICIENT": 2,
+      "attachable_n": 466,
+      "attach_rule": "VALID|PARTIAL",
+      "top_reasons": {
+        "no_sources": 76,
+        "empty_summary": 2
+      }
+    },
+    "attach_backfill_dry": {
+      "plans_open": 580,
+      "plans_missing_result_id": 254,
+      "would_attach": 2,
+      "applied": 0,
+      "plans": [
+        "plan_5463afc7bc04",
+        "plan_9f4df5b991f3"
+      ],
+      "note": "expected 0; two VALID completes landed after #592. Reported, not applied."
+    },
+    "lessons": {
+      "provisional_n": 328,
+      "review_ready_n": 328,
+      "policy_n": 0,
+      "cannot_become_policy": true,
+      "ratified_context_n": 12,
+      "auto_promotion_to_trading": false
+    },
+    "memory": {
+      "CASE_SUMMARY_ACTIVE": 328,
+      "RESEARCH_REFERENCE_CANDIDATE": 448,
+      "RESEARCH_REFERENCE_ACTIVE": 0,
+      "receipts_n": 757,
+      "receipts_with_memory_type_and_promotable": 338,
+      "receipts_without": 419,
+      "note": "split is chronological: every receipt from 2026-08-28T13:34 on has both fields."
+    },
+    "promoted_at": "2026-08-29T02:39:18Z",
+    "operator_authorized_applies": {
+      "research_attach": {
+        "authorized": true,
+        "would_attach": 2,
+        "attached": 2,
+        "plans": [
+          "plan_5463afc7bc04",
+          "plan_9f4df5b991f3"
+        ],
+        "case_summary_double_mint": false,
+        "case_summary_total": 328,
+        "blanket_474_applied": false
+      },
+      "orphan_s6_cancel": {
+        "authorized": true,
+        "would_cancel": 20,
+        "cancelled": 20,
+        "by_reason": {
+          "cash_sleeve": 1,
+          "not_held": 1,
+          "dust_residual": 18
+        },
+        "by_symbol": {
+          "CASH": 1,
+          "QCOM": 1,
+          "SRNE": 18
+        },
+        "notify": false,
+        "deletes_history": false,
+        "plans_jsonl_lines": {
+          "before": 4958,
+          "after": 4998
+        },
+        "standing_risk": "S6 detector may re-create; not taught the dust rule tonight"
+      }
+    },
+    "slice12a_live_activation_fix": {
+      "symptom": "held_n=19 and with_plan=14 on live after #621 promote",
+      "cause": "operator product served a pre-12a persisted brief; freshness check only tested held_n is None",
+      "fix": "treat a coverage block missing dust_tickers/held_n_including_dust as stale"
+    }
   },
   "wave1_closed": true,
   "slices": {
@@ -313,8 +410,8 @@
     "12": {
       "title": "holdings truth \u2014 instrument_id, DUST_RESIDUAL, with_plan counter, S1 leftovers",
       "status": "DONE",
-      "pr": null,
-      "sha": null,
+      "pr": 621,
+      "sha": "5f215504c77a901cc25de93c2ed228e23df21aa2",
       "sub": {
         "12": "3 CUSIP rows -> instrument_id (id_type CUSIP, is_ticker false); never a ticker field",
         "12a": "dust_residual@v1: aggregate market_value < $50/ticker. dust = JEPI LDOS SCHG SRNE. held_n 19 -> 15. No lot deleted.",
@@ -327,102 +424,154 @@
     "13": {
       "title": "% subject_guid measured on NEW_POSITION_IF / reentry / watch",
       "status": "DONE",
-      "pr": null,
-      "sha": null,
+      "pr": 621,
+      "sha": "5f215504c77a901cc25de93c2ed228e23df21aa2",
       "rails": "no mint \u00b7 registry not written \u00b7 MBI=0",
       "live": "111 rows \u00b7 resolvable 100% \u00b7 stamped 4.5% (only NEW_POSITION_IF stamps) \u00b7 minted 0"
     },
     "14": {
       "title": "register HELD(non-dust)+ACTIVE watch missing from identity.registry",
       "status": "DONE",
-      "pr": null,
-      "sha": null,
+      "pr": 621,
+      "sha": "5f215504c77a901cc25de93c2ed228e23df21aa2",
       "rails": "dry only \u00b7 --apply NOT run \u00b7 cap 30 \u00b7 refuses above cap",
       "live": "would_register_n=0 \u2014 every held non-dust and active-watch name already registered"
     },
     "15": {
       "title": "1-hop graph_impact same-sector held neighbours",
       "status": "DONE",
-      "pr": null,
-      "sha": null,
+      "pr": 621,
+      "sha": "5f215504c77a901cc25de93c2ed228e23df21aa2",
       "rails": "class D \u00b7 no new store \u00b7 dust excluded both sides",
       "live": "cap 5 \u00b7 deterministic rank \u00b7 missing map -> DATA_UNAVAILABLE \u00b7 BND honest 0 neighbours"
     },
     "16": {
       "title": "graph_impact on S6 names only",
       "status": "DONE",
-      "pr": null,
-      "sha": null,
+      "pr": 621,
+      "sha": "5f215504c77a901cc25de93c2ed228e23df21aa2",
       "rails": "S6 scope only \u00b7 context never action",
       "live": "8 S6 symbols \u00b7 5 attached \u00b7 CASH/QCOM not held, SRNE dust -> skipped with reason"
     },
     "17": {
       "title": "identity_lookup_failed != UNRESOLVED",
       "status": "DONE",
-      "pr": null,
-      "sha": null,
+      "pr": 621,
+      "sha": "5f215504c77a901cc25de93c2ed228e23df21aa2",
       "rails": "UNRESOLVED still UNRESOLVED \u00b7 no mint",
       "live": "RESOLVED | UNRESOLVED | LOOKUP_FAILED | NOT_APPLICABLE; failure outranks clean negative"
     },
     "18": {
       "title": "never ticker as security GUID",
       "status": "DONE",
-      "pr": null,
-      "sha": null,
+      "pr": 621,
+      "sha": "5f215504c77a901cc25de93c2ed228e23df21aa2",
       "rails": "regression only",
       "live": "ticker_alias_guid UUIDv5 \u00b7 symbol in aliases \u00b7 by_symbol[SYM] != SYM (SCHD/CUSIP/V)"
     },
     "19": {
-      "title": "Hermes fail histogram",
-      "status": "PENDING"
+      "title": "Hermes fail histogram last 7d",
+      "status": "DONE",
+      "pr": null,
+      "sha": null,
+      "rails": "read-only \u00b7 no requeue \u00b7 no cap raised",
+      "live": "228 in 7d \u00b7 cost_cap 130 \u00b7 execution_language 93 \u00b7 truncated 3 \u00b7 worker_bug 0"
     },
     "20": {
-      "title": "skip non-retryable execution-language",
-      "status": "PENDING"
+      "title": "skip enqueue of non-retryable execution-language",
+      "status": "DONE",
+      "pr": null,
+      "sha": null,
+      "rails": "opt-in gate \u00b7 fails soft \u00b7 nothing written on block",
+      "live": "execution_language never requeued; blocks even beside a retryable truncation"
     },
     "21": {
-      "title": "retry truncated 1/plan/day",
-      "status": "PENDING"
+      "title": "truncated replay 1/plan/day",
+      "status": "DONE",
+      "pr": null,
+      "sha": null,
+      "rails": "cap enforced by eligibility \u00b7 no cap raised",
+      "live": "MAX_REPLAYS_PER_PLAN_PER_DAY=1 \u00b7 cost_cap-only history waits for window"
     },
     "22": {
-      "title": "hermes_result_id on new completes",
-      "status": "PENDING"
+      "title": "hermes_result_id on new attachable complete",
+      "status": "DONE",
+      "pr": null,
+      "sha": null,
+      "rails": "unit \u00b7 no live spend",
+      "live": "attachable only on VALID|PARTIAL and non-failed status; flags refuse"
     },
     "23": {
-      "title": "CASE_SUMMARY on VALID complete",
-      "status": "PENDING"
+      "title": "CASE_SUMMARY mints on VALID complete",
+      "status": "DONE",
+      "pr": null,
+      "sha": null,
+      "rails": "unit \u00b7 no admit",
+      "live": "source_kind HERMES_VALID_COMPLETE; dedup on (symbol, plan_id, result_id)"
     },
     "24": {
-      "title": "missing result_id would_attach=0",
-      "status": "PENDING"
+      "title": "attach backfill dry would_attach",
+      "status": "DONE",
+      "pr": null,
+      "sha": null,
+      "rails": "dry first \u00b7 operator-authorized apply of exactly 2 \u00b7 blanket 474 NOT run",
+      "live": "would_attach 2 -> applied 2 -> now 0; missing_result_id 254->252; CASE_SUMMARY stayed 328"
     },
     "25": {
-      "title": "VALID/PARTIAL/FAIL counts",
-      "status": "PENDING"
+      "title": "VALID/PARTIAL/FAIL counts on product",
+      "status": "DONE",
+      "pr": null,
+      "sha": null,
+      "rails": "read-only",
+      "live": "468 completed \u00b7 VALID 392 \u00b7 PARTIAL 74 \u00b7 INSUFFICIENT 2 \u00b7 attachable 466"
     },
     "26": {
-      "title": "PARTIAL attach rule documented",
-      "status": "PENDING"
+      "title": "attach rule VALID|PARTIAL documented",
+      "status": "DONE",
+      "pr": null,
+      "sha": null,
+      "rails": "no silent tighten",
+      "live": "stated on payload; tightening to VALID-only would drop 74 of 466"
     },
     "27": {
       "title": "due checkpoints observe",
-      "status": "PENDING"
+      "status": "DONE",
+      "pr": null,
+      "sha": null,
+      "rails": "dry \u00b7 due=0 \u00b7 no apply \u00b7 no invented PnL",
+      "live": "due 0 \u00b7 would_bind 152 -> 106 after dust filter \u00b7 JEPI/LDOS/SCHG/SRNE excluded"
     },
     "28": {
-      "title": "top 8 PROVISIONAL lessons",
-      "status": "PENDING"
+      "title": "top 8 PROVISIONAL lessons on product",
+      "status": "DONE",
+      "pr": null,
+      "sha": null,
+      "rails": "cannot_become_policy true",
+      "live": "328 candidates \u00b7 all PROVISIONAL/REVIEW_READY \u00b7 policy_effect false \u00b7 cap 8"
     },
     "29": {
       "title": "REVIEW_READY count",
-      "status": "PENDING"
+      "status": "DONE",
+      "pr": null,
+      "sha": null,
+      "rails": "promotion ceiling REVIEW_READY",
+      "live": "REVIEW_READY 328 \u00b7 policy 0 \u00b7 ratified 12 RATIFIED_CONTEXT not_production_policy"
     },
     "30": {
-      "title": "memory receipts",
-      "status": "PENDING"
+      "title": "memory receipts memory_type+promotable",
+      "status": "DONE",
+      "pr": null,
+      "sha": null,
+      "rails": "regression",
+      "live": "338/757 carry both; split chronological \u2014 all receipts since 2026-08-28T13:34 have them"
     },
     "31": {
       "title": "no RESEARCH_REFERENCE ACTIVE",
-      "status": "PENDING"
+      "status": "DONE",
+      "pr": null,
+      "sha": null,
+      "rails": "regression",
+      "live": "448 CANDIDATE \u00b7 0 ACTIVE/ADMITTED \u00b7 CASE_SUMMARY 328 ACTIVE"
     },
     "32": {
       "title": "checkpoint complete rate",
