@@ -909,6 +909,38 @@
       "live_model_calls_this_batch": 0,
       "cap": "LLM_GLOBAL_DAILY_USD_CAP=0.50 unchanged"
     },
+    "191-220": {
+      "done": 30,
+      "open": 0,
+      "code_changed": false,
+      "item198": {
+        "historical_duplicates": 109,
+        "by_symbol": {
+          "ARKX": 25,
+          "XLI": 22,
+          "SCHD": 21,
+          "DIVI": 19,
+          "SPCX": 14,
+          "NOC": 8
+        },
+        "since_609": 9,
+        "duplicate_symbols_since_609": 0,
+        "note": "guard holds; my first check used a wrong TZ boundary and looked like a live failure"
+      },
+      "plans": {
+        "open": 533,
+        "draft": 315,
+        "proposed": 217,
+        "accepted": 1,
+        "cancelled": 327,
+        "total": 860
+      },
+      "standing": [
+        "109 historical duplicate S1 on held names",
+        "19 DIVI S1 flagged not_held",
+        "plan_a18173fb8235 accepted S0 carrying TEST"
+      ]
+    },
     "221-250": {
       "done": 29,
       "fixed": 1,
