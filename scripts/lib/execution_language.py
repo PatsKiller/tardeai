@@ -170,19 +170,37 @@ _PROHIBITION_RE = re.compile(
 _CLAUSE_LEAD = r"(?:and|but|or|then|therefore|so|however|thus)"
 
 
+# The advisory vocabulary this product actually emits, from
+# cio_command_center / api_v3_cio. A compound stance label is built from these.
+_STANCE_TOKEN = (
+    r"(?:HOLD|WATCH|EXIT|AVOID|MONITOR|RE[-_ ]?ENTER|REDUCE|TRIM|"
+    r"hold_with_thesis|defensive_observe)"
+)
+
+# A separator INSIDE a label. Note a bare dash cannot qualify on its own: the
+# corpus contains a real directive "…until a verifiable thesis exists — do not
+# add to the position", where the em dash opens a clause. What distinguishes a
+# label is the stance token in front of the separator, not the separator.
+_STANCE_LABEL_RE = re.compile(
+    rf"(?<!\w){_STANCE_TOKEN}\s*[/|\u2014\u2013-]\s*$",
+    re.I,
+)
+
+
 def _is_stance_label(text: str, start: int) -> bool:
     """True when the prohibition is a NAME for an advisory state, not an order.
 
     Live artifacts carry `HOLD / DO NOT INITIATE` as a compound stance label:
     "The advisory on AUUD remains HOLD / DO NOT INITIATE." The subject is the
-    advisory, and the phrase is its name — the same category as
+    advisory and the phrase is its name — the same category as
     `hold_with_thesis`, which this gate has always admitted.
 
-    A slash separates label parts; sentence punctuation (. ; : , dash, paren)
-    separates clauses. Only the latter opens an imperative.
+    Requires `<stance token> <separator>` immediately before the prohibition.
+    An earlier cut accepted any preceding `/`, which was too loose, and could
+    not admit the dash form (`HOLD — DO NOT INITIATE`) without also exempting
+    every em-dash clause. Anchoring on the stance token fixes both.
     """
-    before = text[:start].rstrip()
-    return before.endswith("/") or before.endswith("|")
+    return _STANCE_LABEL_RE.search(text[:start]) is not None
 
 
 def _sentence_around(text: str, start: int, end: int) -> str:

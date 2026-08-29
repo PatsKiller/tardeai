@@ -210,14 +210,29 @@ def test_the_qualifier_must_share_the_sentence():
     "The advisory on BJDX would change from HOLD/DO NOT INITIATE to a "
     "re-entry candidate only upon a fresh, high-conviction catalyst.",
     "stance: WATCH | DO NOT ADD",
+    # dash forms — em dash, en dash and hyphen all separate label parts
+    "The advisory remains HOLD — DO NOT INITIATE.",
+    "stance: WATCH - DO NOT ADD",
+    "EXIT – do not add",
 ])
 def test_a_compound_stance_label_is_not_an_order(text):
     """Same family as `hold_with_thesis`: the gate bans orders, not names."""
     assert find_imperative(text) is None, text
 
 
-def test_a_slash_does_not_open_a_clause_but_punctuation_does():
-    """The discriminator, stated once."""
+def test_the_stance_token_is_the_discriminator_not_the_separator():
+    """Why a dash cannot be a label separator on its own.
+
+    The corpus contains a real directive whose em dash opens a clause. If dash
+    alone admitted a label, that directive would be exempted too — so the rule
+    anchors on the stance token in front of the separator.
+    """
+    assert find_imperative(
+        "freeze capital until a verifiable thesis exists "
+        "— do not add to the position") is not None
+    assert find_imperative("HOLD — do not add") is None
+
+    # sentence punctuation opens a clause even after a stance token
     assert find_imperative("HOLD / do not add") is None
     assert find_imperative("HOLD; do not add") is not None
     assert find_imperative("HOLD, do not add") is not None
