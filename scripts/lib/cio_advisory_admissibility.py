@@ -28,6 +28,25 @@ MBI = 0
 
 UNKNOWN_HOLDING = "unknown_holding_fail_closed"
 
+# Wave 2 slice 41. C2 blocked disposal of an UNHELD name but admitted it on a
+# DUST_RESIDUAL one, because position_truth only asks "shares > 0". SCHG's
+# 0.2294 shares are > 0, so "TRIM SCHG" passed the gate — an advisory to trim
+# $8.09, on a name the operator has already exited. That is the dust-as-a-hold
+# mistake wearing a recommendation.
+#
+# Same rule as everywhere else in Wave 2: aggregate market value < $50/ticker.
+# This only ever ADDS a block; no previously-blocked case becomes admissible.
+DUST_RESIDUAL_BLOCK = "dust_residual_not_a_position"
+
+
+def _dust_symbols(holdings: Any) -> set[str]:
+    """DUST_RESIDUAL tickers in this holdings payload. Fail-open to empty."""
+    try:
+        from scripts.lib.cio_investment_product import dust_symbols
+        return set(dust_symbols(holdings if isinstance(holdings, dict) else {}))
+    except Exception:
+        return set()
+
 
 def holdings_payload_known(holdings: Any) -> bool:
     """A missing file is unknown. An empty holdings list is known (all unheld)."""
@@ -74,6 +93,19 @@ def admit_advisory(
             "reason": "",
             "to_block": own.to_block(),
             "blocked": False,
+            "authority": AUTHORITY,
+            "memory_behavior_influence": MBI,
+        }
+    # Dust is not a position to dispose of. Checked before the shares test,
+    # which would happily admit a trim of 0.2294 shares.
+    if rec in DISPOSAL_ACTIONS and sym in _dust_symbols(holdings):
+        own = ownership_from_holdings(sym, holdings or {})
+        return {
+            "admissible": False,
+            "reason": DUST_RESIDUAL_BLOCK,
+            "to_block": own.to_block(),
+            "blocked": True,
+            "original_recommendation": rec,
             "authority": AUTHORITY,
             "memory_behavior_influence": MBI,
         }

@@ -21,6 +21,118 @@ def _product(root: Path | str | None, supplemental: dict[str, Any] | None = None
     return build_operator_product(root=root, persist=False, supplemental=supplemental)
 
 
+# ── Wave 2 slices 34 / 36 / 40 ───────────────────────────────────────────────
+
+# Two writers publish a cash total and they disagree on CURRENT by ~$52.7k:
+#   product.cash.cash_usd   = sum of the is_cash position rows
+#   temperament.cash        = portfolio_totals.total_cash
+# Slice 36 says the evening line is the live temperament number. Slice 40 says
+# detect, never merge. So the brief prints temperament.cash AND says the sources
+# disagree — it never averages them and never silently picks the larger one.
+CASH_SOURCE_TOLERANCE_USD = 1.0
+
+
+def cash_lines(product: dict[str, Any]) -> list[str]:
+    """Live cash from temperament, plus an explicit disagreement note.
+
+    Never renders `portfolio_implication` — that is a constant sentence about
+    posture, not a cash number, and reading it as one is how a stale narrative
+    ends up standing in for a balance.
+    """
+    temperament = product.get("temperament") or product.get("macro") or {}
+    if not isinstance(temperament, dict):
+        temperament = {}
+    cash_block = product.get("cash") or {}
+    if not isinstance(cash_block, dict):
+        cash_block = {}
+
+    live = temperament.get("cash")
+    pct = temperament.get("cash_pct")
+    rows_total = cash_block.get("cash_usd")
+
+    lines: list[str] = []
+    if live is None and rows_total is None:
+        return ["Cash: UNAVAILABLE — no live temperament cash on the product."]
+    if live is not None:
+        pct_bit = f" · {pct:.1f}% of book" if isinstance(pct, (int, float)) else ""
+        lines.append(f"Cash (live, temperament.cash): ${float(live):,.0f}{pct_bit}")
+    else:
+        lines.append("Cash (live, temperament.cash): UNAVAILABLE")
+
+    try:
+        disagree = (
+            live is not None and rows_total is not None
+            and abs(float(rows_total) - float(live)) > CASH_SOURCE_TOLERANCE_USD
+        )
+    except (TypeError, ValueError):
+        disagree = False
+    if disagree:
+        lines.append(
+            f"  ⚠ cash sources disagree: position rows ${float(rows_total):,.0f} "
+            f"vs portfolio_totals ${float(live):,.0f} "
+            f"(Δ ${abs(float(rows_total) - float(live)):,.0f}). Not merged — both shown."
+        )
+    return lines
+
+
+def reentry_surface_label(product: dict[str, Any]) -> str:
+    """Name which re-entry book a brief is quoting. Two books, never merged."""
+    re = product.get("reentry") if isinstance(product.get("reentry"), dict) else {}
+    surface = str(re.get("surface") or "").strip()
+    scope = str(re.get("scope") or "").strip()
+    if not surface:
+        return "Re-entry book: UNLABELED — surface not declared on the product."
+    scope_bit = f" — {scope}" if scope else ""
+    return f"Re-entry: Surface {surface}{scope_bit} (Surface B is a separate book; not merged)."
+
+
+def watch_lines(product: dict[str, Any], *, cap: int = 8) -> list[str]:
+    """Name the watch names. BLOCK is named; READY is never invented.
+
+    The briefs carried a watch *count* and no names, which reads as "nothing to
+    look at" when 26 names are sitting on the payload with a reason each. They
+    are named here — as BLOCK, with the reason and the desk state — and READY /
+    NEAR are reported exactly as found. A BLOCK name is never re-labelled READY
+    and never fires S7; `watch_ready: 0` is a legal, honest answer.
+    """
+    wbs = product.get("watch_block_summary")
+    if not isinstance(wbs, dict) or not wbs:
+        return []
+
+    lines: list[str] = []
+    ready = [str(s).upper() for s in (wbs.get("ready_symbols") or []) if s]
+    near = [str(s).upper() for s in (wbs.get("near_symbols") or []) if s]
+    if ready or near:
+        bits = []
+        if ready:
+            bits.append("READY " + ", ".join(ready[:cap]))
+        if near:
+            bits.append("NEAR " + ", ".join(near[:cap]))
+        lines.append("Watch promotion-grade: " + " · ".join(bits))
+    else:
+        lines.append(
+            f"Watch promotion-grade: none (ready {int(wbs.get('ready_count') or 0)}, "
+            f"fires_s7 {bool(wbs.get('fires_s7'))}) — honest zero, not a filter miss."
+        )
+
+    top = [t for t in (wbs.get("top") or []) if isinstance(t, dict) and t.get("symbol")]
+    count = wbs.get("count")
+    if top:
+        named = ", ".join(
+            f"{str(t['symbol']).upper()} ({t.get('trade_ai_state') or '?'})"
+            for t in top[:cap]
+        )
+        more = ""
+        if isinstance(count, int) and count > len(top[:cap]):
+            more = f" +{count - len(top[:cap])} more"
+        reasons = wbs.get("by_reason") if isinstance(wbs.get("by_reason"), dict) else {}
+        reason_bit = f" · {', '.join(f'{k} {v}' for k, v in reasons.items())}" if reasons else ""
+        lines.append(f"Watch BLOCK ({count}): {named}{more}{reason_bit}")
+    elif count:
+        lines.append(f"Watch BLOCK: {count} names, none surfaced on the payload.")
+    return lines
+
+
 def morning_text(product: dict[str, Any]) -> str:
     if product.get("available") is False:
         return render_product(product)
@@ -30,7 +142,13 @@ def morning_text(product: dict[str, Any]) -> str:
         lines.append("")
     cash = product.get("cash") or {}
     if cash:
-        lines.append(f"Cash: {cash.get('status')} ${cash.get('cash_usd') or 0:,.0f}" if cash.get("cash_usd") is not None else f"Cash: {cash.get('status')}")
+        # Name the source: this is the position-row sum, not portfolio_totals.
+        # cash_lines() prints the live temperament number and flags any gap.
+        lines.append(
+            f"Cash (position rows): {cash.get('status')} ${cash.get('cash_usd') or 0:,.0f}"
+            if cash.get("cash_usd") is not None
+            else f"Cash (position rows): {cash.get('status')}"
+        )
     port = product.get("portfolio") or {}
     if port.get("holdings_n"):
         lines.append(f"Holdings: {port.get('holdings_n')} names")
@@ -90,9 +208,9 @@ def morning_text(product: dict[str, Any]) -> str:
     if new_if:
         nsyms = [str(x.get("symbol") or "") for x in new_if if isinstance(x, dict) and x.get("symbol")]
         lines.append("NEW_POSITION_IF: " + ", ".join(nsyms[:5]))
-    cash = product.get("cash") or {}
-    if cash:
-        lines.append(f"Cash temperament: {cash.get('status') or cash.get('cash_pct') or cash.get('note') or 'see Command Center'}")
+    lines.extend(cash_lines(product))
+    lines.extend(watch_lines(product))
+    lines.append(reentry_surface_label(product))
     cases = product.get("case_summaries") or product.get("research_cases") or {}
     case_items = cases.get("items") if isinstance(cases, dict) else cases
     if case_items:
@@ -134,9 +252,14 @@ def eod_text(product: dict[str, Any]) -> str:
     lines.append("Standing overnight posture")
     for e in (product.get("standing_decisions") or [])[:6]:
         lines.append(f"- {e.get('symbol') or 'PORTFOLIO'} {e.get('cio_decision')}: {e.get('what_changed')}")
+    lines.extend(cash_lines(product))
+    lines.extend(watch_lines(product))
+    lines.append(reentry_surface_label(product))
     dq = product.get("data_quality") or {}
     if dq.get("state") not in (None, "OK", "CURRENT"):
-        lines.append(f"Data quality overnight: {dq.get('state')}")
+        labels = dq.get("labels") if isinstance(dq.get("labels"), list) else []
+        label_bit = f" ({', '.join(str(x) for x in labels)})" if labels else ""
+        lines.append(f"Data quality overnight: {dq.get('state')}{label_bit}")
     cases = product.get("case_summaries") or product.get("research_cases") or {}
     case_items = cases.get("items") if isinstance(cases, dict) else cases
     if case_items:

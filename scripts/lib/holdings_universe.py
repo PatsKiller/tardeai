@@ -67,8 +67,10 @@ def _project_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
-def holdings_path(*, root: Path | None = None) -> Path:
-    root = root or _project_root()
+def holdings_path(*, root: Path | str | None = None) -> Path:
+    # Coerce: several callers pass a str root, and `str / str` raises TypeError
+    # deep inside a fail-soft caller, where it reads as "no holdings".
+    root = Path(root) if root else _project_root()
     return root / "data" / "portfolios" / "state" / "holdings.json"
 
 
@@ -252,7 +254,7 @@ def snapshot(*, root: Path | None = None) -> dict[str, Any]:
     cusips = held_unresolved_cusips(root=root)
     instrument_ids = held_instrument_id_rows(root=root)
     dust = held_dust_tickers(root=root)
-    nondust = [s for s in tickers if s not in set(dust)]
+    nondust = held_equity_tickers_nondust(root=root)
     return {
         "schema": SCHEMA,
         "authority": AUTHORITY,
@@ -295,3 +297,153 @@ if __name__ == "__main__":
     if "--write" in sys.argv:
         path = write_snapshot()
         sys.stderr.write(f"wrote {path}\n")
+
+
+# ── Wave 2 slices 39 / 40: holdings data quality — detect, never merge ───────
+
+DATA_OK = "OK"
+DATA_STALE = "DATA_STALE"
+DATA_UNAVAILABLE = "DATA_UNAVAILABLE"
+STALE_AFTER_DAYS = 2
+
+# Two independent writers publish a cash total into the same document:
+#   * the position rows themselves (sum of is_cash market_value)
+#   * portfolio_totals, written by the pipeline
+# They can disagree. Reporting one of them silently picks a winner, and picking
+# the wrong one moves a number the operator reads as cash on hand. Both are
+# reported with the delta; they are never averaged, reconciled or merged.
+CASH_TOTAL_TOLERANCE_USD = 1.0
+
+
+def _parse_when(value: Any) -> Optional[datetime]:
+    """Parse the several timestamp shapes holdings.json uses. None on failure."""
+    text = str(value or "").strip()
+    if not text:
+        return None
+    cleaned = text.replace("Z", "+00:00")
+    if cleaned.endswith(" ET"):
+        # "2026-08-28 16:45:01 ET" — wall clock, no offset available here.
+        cleaned = cleaned[:-3].strip()
+    for parse in (
+        lambda t: datetime.fromisoformat(t),
+        lambda t: datetime.strptime(t, "%Y-%m-%d"),
+        lambda t: datetime.strptime(t, "%Y-%m-%d %H:%M:%S"),
+    ):
+        try:
+            out = parse(cleaned)
+        except ValueError:
+            continue
+        return out if out.tzinfo else out.replace(tzinfo=timezone.utc)
+    return None
+
+
+def cash_total_sources(*, root: Path | None = None) -> dict[str, Any]:
+    """Every cash total in the document, side by side. Detect only."""
+    doc = load_holdings_doc(root=root)
+    rows = held_cash_rows(root=root)
+    row_sum = 0.0
+    for r in rows:
+        mv = _num(r.get("market_value"))
+        if mv is not None:
+            row_sum += mv
+    row_sum = round(row_sum, 2)
+
+    totals = doc.get("portfolio_totals") if isinstance(doc.get("portfolio_totals"), dict) else {}
+    declared = _num(totals.get("total_cash"))
+    excluded = _num(totals.get("total_mv_excluded"))
+
+    delta = None if declared is None else round(row_sum - declared, 2)
+    agree = delta is not None and abs(delta) <= CASH_TOTAL_TOLERANCE_USD
+    return {
+        "cash_row_sum": row_sum,
+        "cash_row_n": len(rows),
+        "portfolio_totals_total_cash": declared,
+        "portfolio_totals_total_mv_excluded": excluded,
+        "delta_rows_minus_declared": delta,
+        "sources_agree": bool(agree) if declared is not None else None,
+        "by_account": {
+            str(r.get("account") or r.get("account_id") or "?"): _num(r.get("market_value"))
+            for r in rows
+        },
+        "merged": False,
+        "reconciled": False,
+        "note": (
+            "Two writers publish a cash total: the position rows and "
+            "portfolio_totals. Both are reported. Never averaged or merged — "
+            "picking one silently would move a number the operator reads as cash."
+        ),
+    }
+
+
+def holdings_data_quality(
+    *,
+    root: Path | None = None,
+    now: Optional[datetime] = None,
+) -> dict[str, Any]:
+    """as_of vs generated_at, staleness, and the two-writer cash check."""
+    doc = load_holdings_doc(root=root)
+    rows = held_position_rows(root=root)
+    at = now or datetime.now(timezone.utc)
+
+    if not doc or not rows:
+        return {
+            "schema": "HoldingsDataQuality@v1",
+            "authority": AUTHORITY,
+            "financial_action": False,
+            "state": DATA_UNAVAILABLE,
+            "reason": "holdings document missing or has no position rows",
+            "position_rows": len(rows),
+            "labels": [DATA_UNAVAILABLE],
+            "class": "D",
+        }
+
+    as_of = _parse_when(doc.get("as_of"))
+    generated = _parse_when(doc.get("generated_at") or doc.get("last_repriced"))
+    lag_hours = (
+        round((generated - as_of).total_seconds() / 3600.0, 1)
+        if as_of and generated else None
+    )
+    age_hours = (
+        round((at - generated).total_seconds() / 3600.0, 1) if generated else None
+    )
+
+    labels: list[str] = []
+    # Staleness is measured on the POSITION date, not the reprice date. A fresh
+    # reprice over stale positions is still stale positions.
+    if as_of is None:
+        labels.append("AS_OF_UNPARSEABLE")
+    elif (at - as_of).days > STALE_AFTER_DAYS:
+        labels.append(DATA_STALE)
+    if lag_hours is not None and lag_hours > 24:
+        labels.append("REPRICE_AHEAD_OF_POSITIONS")
+
+    cash = cash_total_sources(root=root)
+    if cash["sources_agree"] is False:
+        labels.append("CASH_TOTAL_DISAGREEMENT")
+
+    return {
+        "schema": "HoldingsDataQuality@v1",
+        "authority": AUTHORITY,
+        "financial_action": False,
+        "state": DATA_STALE if DATA_STALE in labels else (
+            "ATTENTION" if labels else DATA_OK
+        ),
+        "labels": labels,
+        "as_of": doc.get("as_of"),
+        "generated_at": doc.get("generated_at"),
+        "last_repriced": doc.get("last_repriced"),
+        "positions_built_at": doc.get("positions_built_at"),
+        "reconciled_at": doc.get("reconciled_at"),
+        "position_date_age_days": (at - as_of).days if as_of else None,
+        "reprice_lag_hours": lag_hours,
+        "snapshot_age_hours": age_hours,
+        "stale_after_days": STALE_AFTER_DAYS,
+        "position_rows": len(rows),
+        "cash_totals": cash,
+        "auto_remediate": False,
+        "class": "D",
+        "note": (
+            "Detect only. Staleness is measured on the position date, not the "
+            "reprice date — a fresh reprice over stale positions is still stale."
+        ),
+    }
