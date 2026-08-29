@@ -166,18 +166,39 @@ def test_august_is_not_a_standalone_sell_signal():
     assert ctx["influence"]["creates_trim"] is False
     assert composed["standalone_sell"] is False
     assert composed["creates_trim"] is False
+    # The structured fields above are the guarantee. The previous substring
+    # check ("trim" absent, or the exact phrase "do not create trim" present)
+    # broke on wording — the payload says "does not create trim" — while the
+    # actual contract, creates_trim=False, held throughout. Assert the contract
+    # and check the prose only for an imperative.
+    from scripts.lib.execution_language import find_imperative
+
     blob = json.dumps(ctx).lower()
-    assert "trim" not in blob or "do not create trim" in blob
+    assert '"creates_trim": false' in blob.replace(" ", "").replace(
+        '"creates_trim":false', '"creates_trim": false') or \
+        ctx["influence"]["creates_trim"] is False
+    assert not find_imperative(blob), "research context must carry no instruction"
     assert composed.get("role") == "risk_modifier_or_context"
 
 
-def test_august_appears_in_weak_month_hypothesis_after_reproduction():
+def test_august_no_longer_reproduces_as_weak_on_real_data():
+    """Wave 3A.3 re-grade. This test previously asserted the opposite.
+
+    It was written against the synthetic series, where August looked weak. Once
+    the operator surface moved to Ken French (1926-, real crashes included),
+    August reproduces *positive* (~+1.15%, 63% win) and the almanac's
+    weak-August claim is contradicted — grade X, "do not apply".
+
+    September still reproduces weak, and October joins the weak set, which the
+    synthetic file could never show because it contains no crash.
+    """
     weak = reproduced_weak_months()
-    assert 8 in weak
-    assert 9 in weak
+    assert 8 not in weak, "August is not weak on real market data"
+    assert 9 in weak, "September weakness survives the re-grade"
+    assert 10 in weak, "October is weak once real crashes are in the sample"
     aug = month_context(8)
-    assert "weaker" in aug["hypothesis_bucket"]
-    assert 8 in aug["weak_months_reproduced"]
+    assert "stronger" in aug["hypothesis_bucket"]
+    assert 8 not in aug["weak_months_reproduced"]
 
 
 def test_options_expiration_is_not_day_15_21():

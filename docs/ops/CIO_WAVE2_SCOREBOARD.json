@@ -1245,5 +1245,49 @@
     "candidates_dry": 3,
     "tests": 22,
     "wave3b_started": false
+  },
+  "WAVE3A_3": {
+    "status": "DONE",
+    "surface": "French",
+    "synthetic": "tests-only (research_governance/almanac determinism fixture)",
+    "fed": "URL+event",
+    "operator_resolver": "cio_library_paths.operator_monthly_series_path -> series/us_equity_monthly_french_1926.csv",
+    "research_governance_touched": false,
+    "regrade": {
+      "august_general": "B -> X  (n 75->100, -0.069% -> +1.153%, win 45.3% -> 63.0%) claim CONTRADICTED",
+      "september_general": "B -> B  (-0.195% -> -0.771%) claim SURVIVES",
+      "august_midterm": "C -> B",
+      "september_midterm": "C -> B",
+      "best_six_months": "B -> B  (n 450->600)",
+      "weak_months": "{6,8,9} -> {2,9,10}  October now weak; synthetic had no crash"
+    },
+    "worst_six_months_may_oct": "+3.96% win 71.7% — differential vs Nov-Apr +7.68%, not a negative half-year",
+    "ingested_3a3": [
+      "ken_french_ff5_monthly",
+      "ken_french_momentum_monthly",
+      "us_equity_monthly_french_normalized"
+    ],
+    "url_only_reason_xls": [
+      "shiller_us_stock_market_data",
+      "damodaran_implied_erp_series"
+    ],
+    "regime_facts": 7,
+    "regime_caveat": "FRED SP500 starts 2016 — short bull-dominated window; small-n rows graded C",
+    "bugs_found": [
+      "test hand-copied VALIDATION_GRADES omitting failed_reproduction",
+      "one grade-X fact poisoned an entire corpus dimension"
+    ],
+    "registry_counts": {
+      "seed": 39,
+      "seed_on_disk": 11,
+      "calendar_facts": 12,
+      "regime_facts": 7
+    },
+    "second_ttl_table": false,
+    "tests": 165,
+    "docs": [
+      "docs/ops/CIO_SEASONALITY_FRENCH_SURFACE_2026-08-29.md"
+    ],
+    "wave3b_started": false
   }
 }

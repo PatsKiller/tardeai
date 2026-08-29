@@ -43,3 +43,42 @@ def resolves_under_tests(path: Path | str | None = None) -> bool:
     """True if a path lives under tests/. Used by the guard test."""
     p = Path(path) if path is not None else us_equity_monthly_path()
     return "tests" in p.resolve().parts
+
+
+# --- Wave 3A.3: operator surfaces grade off real market data -----------------
+#
+# `us_equity_monthly_path()` above still returns the SYNTHETIC series. That is
+# deliberate and must stay: `research_governance/almanac.py` reads it, that
+# module is R1-frozen, and the synthetic file is a legitimate
+# pipeline-determinism fixture — 1987-10 at +3.27% is stable and knowable.
+#
+# What it must NOT do is grade an operator-visible number. Everything the
+# operator reads (home.seasonality, strategy_context, the almanac headlines)
+# now resolves here instead: the Ken French monthly series, normalised by
+# scripts/build_french_monthly_normalized.py into the columns the seasonality
+# loader already parses.
+#
+# Two resolvers, one rule: determinism fixtures may be synthetic, operator
+# surfaces may not.
+
+OPERATOR_MONTHLY = (LIBRARY_ROOT / "series" /
+                    "us_equity_monthly_french_1926.csv")
+FRENCH_FACTORS_MONTHLY = (LIBRARY_ROOT / "series" /
+                          "ff_research_data_factors_monthly.csv")
+
+
+def operator_monthly_series_path() -> Path:
+    """The series any operator-visible seasonality number must grade from.
+
+    Never falls back to the synthetic file. A missing library file should
+    surface as a deployment problem, not silently downgrade the operator
+    product to synthetic data wearing a grade=B label.
+    """
+    return OPERATOR_MONTHLY
+
+
+def is_synthetic_path(path: Path | str | None = None) -> bool:
+    """True for the synthetic determinism fixture or the retired test path."""
+    p = Path(path) if path is not None else operator_monthly_series_path()
+    name = p.name.lower()
+    return "synthetic" in name or "tests" in p.parts or name == LEGACY_FIXTURE.name

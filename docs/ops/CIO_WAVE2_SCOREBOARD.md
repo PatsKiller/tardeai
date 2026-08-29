@@ -391,3 +391,31 @@ source index not stale. Dry unchanged: 445 → 8 eligible, 0 paid calls.
 
 Detail: `docs/ops/CIO_WAVE3A_LIBRARY_2026-08-29.md`,
 `docs/ops/CIO_LIBRARY_CENSUS_2026-08-29.md`.
+
+## WAVE3A.3 = DONE (2026-08-29) — surface=French, synthetic=tests-only, Fed=URL+event
+
+Operator-visible seasonality now grades off Ken French (1926–2026, real
+crashes) instead of the synthetic file. Numbers moved, as required.
+
+| effect | BEFORE (synthetic) | AFTER (French) |
+|---|---|---|
+| `august_general` | n=75, −0.07%, **B** | n=100, **+1.15%**, **X** |
+| `september_general` | n=75, −0.20%, B | n=100, −0.77%, **B** |
+| weak months | {6, 8, 9} | **{2, 9, 10}** |
+
+**August's weak-month claim is contradicted** — grade X, "do not apply". It had
+been showing `grade=B`, which reads as independently reproduced and was not.
+**September survives.** **October is now weak**, which a series containing no
+crash could never have shown.
+
+Two resolvers, one rule: a determinism fixture may be synthetic, an
+operator-visible number may not. `research_governance/` untouched — its
+fixture is unchanged and the R1 allowlist was not edited.
+
+Ingested: French FF5 + momentum + the normalised operator series (hashed,
+grade A). Shiller and Damodaran stay URL-only — legacy `.xls` needing an
+`xlrd` dep this PR does not add. Fed docs stay URL + `refresh: event`.
+7 regime facts, context only, small-n rows graded C because FRED's SPX series
+starts in 2016 and the window is bull-dominated.
+
+Detail: `docs/ops/CIO_SEASONALITY_FRENCH_SURFACE_2026-08-29.md`.

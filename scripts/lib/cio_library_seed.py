@@ -239,6 +239,49 @@ def seed_rows() -> list[dict[str, Any]]:
     ]
 
 
+def wave3a3_series_rows() -> list[dict[str, Any]]:
+    """Series added in Wave 3A.3. French factors on disk; xls sources URL-only."""
+    return [
+        _row("ken_french_ff5_monthly", "value",
+             "Ken French — 5 research factors, monthly",
+             authors="Fama & French",
+             official_url=("https://mba.tuck.dartmouth.edu/pages/faculty/"
+                           "ken.french/data_library.html"),
+             path=_SERIES / "ff_research_data_5_factors_monthly.csv",
+             grade="A", law=LAW_CONTEXT, refresh=WEEKLY),
+        _row("ken_french_momentum_monthly", "trend",
+             "Ken French — momentum factor, monthly", authors="Carhart/French",
+             official_url=("https://mba.tuck.dartmouth.edu/pages/faculty/"
+                           "ken.french/data_library.html"),
+             path=_SERIES / "ff_momentum_factor_monthly.csv",
+             grade="A", law=LAW_CONTEXT, refresh=WEEKLY),
+        _row("us_equity_monthly_french_normalized", "seasonality",
+             "US equity monthly total return, normalised from Ken French",
+             official_url=("https://mba.tuck.dartmouth.edu/pages/faculty/"
+                           "ken.french/data_library.html"),
+             path=_SERIES / "us_equity_monthly_french_1926.csv",
+             grade="A", law=LAW_CONTEXT,
+             notes=("THE operator grading series — every operator-visible "
+                    "seasonality number resolves here; regenerate with "
+                    "scripts/build_french_monthly_normalized.py")),
+        _row("shiller_us_stock_market_data", "value",
+             "Shiller US Stock Market Data, monthly 1871-", authors="Shiller",
+             official_url="http://www.econ.yale.edu/~shiller/data.htm",
+             grade="B", law=LAW_CONTEXT, refresh=WEEKLY,
+             notes=("URL-only: the source is a legacy .xls and parsing it "
+                    "needs an xlrd dependency this PR does not add. Intended "
+                    "as the SECOND series for OOS_START_YEAR=2000 checks, "
+                    "never as a replacement for French as primary")),
+        _row("damodaran_implied_erp_series", "value",
+             "Damodaran implied ERP — official NYU data page",
+             authors="Damodaran",
+             official_url="https://pages.stern.nyu.edu/~adamodar/New_Home_Page/datacurrent.html",
+             grade="B", law=LAW_CONTEXT, refresh=WEEKLY,
+             notes=("URL-only: the series itself is an .xls behind the page; "
+                    "the free public series, not the copyright book")),
+    ]
+
+
 def fred_series_rows() -> list[dict[str, Any]]:
     """The seven ingested FRED series. Primary public data — grade A."""
     ids = ["sp500", "nasdaqcom", "fedfunds", "t10y2y", "cpiaucsl", "unrate",

@@ -209,9 +209,12 @@ def test_a_tariff_event_carrying_execution_language_still_fails_closed():
 
 def test_registry_is_still_one_index():
     r = corpus.registry()
-    assert r["counts"]["seed"] == 34
+    # 3A.3 added FF5, momentum, the normalised French series, Shiller and
+    # Damodaran to the seed.
+    assert r["counts"]["seed"] == 39
     assert r["counts"]["calendar_facts"] == 12
-    assert r["counts"]["seed_on_disk"] == 8
+    # 3A.3 ingested FF5, momentum and the normalised French series.
+    assert r["counts"]["seed_on_disk"] == 11
     assert r["freshness_law"].startswith("research_source_index")
 
 

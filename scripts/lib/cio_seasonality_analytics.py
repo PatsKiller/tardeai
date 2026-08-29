@@ -28,9 +28,13 @@ MAX_INFLUENCE_PCT = 10.0
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 # Wave 3A: live grade=B numbers must not resolve out of tests/. See
 # scripts/lib/cio_library_paths.py for why `data/` could not be used.
-from scripts.lib.cio_library_paths import us_equity_monthly_path
+# Wave 3A.3: operator-visible seasonality grades off real market data.
+# us_equity_monthly_path() still returns the synthetic determinism fixture and
+# is deliberately NOT used here — see cio_library_paths for the two-resolver
+# rule.
+from scripts.lib.cio_library_paths import operator_monthly_series_path
 
-DEFAULT_FIXTURE = us_equity_monthly_path()
+DEFAULT_FIXTURE = operator_monthly_series_path()
 
 OOS_START_YEAR = 2000
 
