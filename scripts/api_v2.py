@@ -2591,12 +2591,22 @@ def overview():
         today_pct = (today_change / (total_val - today_change) * 100) if total_val > abs(today_change) else 0
     _fv_meta = (_load_json(STATE_DIR / "finviz_quote_cache.json") or {}).get("_meta") or {}
     # Cash = sum of the actual CASH positions. The stored portfolio_totals.total_cash had drifted to
-    # $478k while the real cash was $186k (it did NOT reconcile: $186k cash + $1.069M positions = the
-    # $1.255M total, whereas $478k would imply a $1.55M book). Recompute from the holdings so "cash
-    # available" for deploy/rotation sizing is correct. (2026-07-21 audit.)
-    _cash_live = round(sum(float(p.get("market_value") or 0) for p in holdings if p.get("is_cash")), 2)
-    _stored_cash = totals.get("total_cash")
-    _total_cash = _cash_live if _cash_live > 0 else (_stored_cash if _stored_cash is not None else 0)
+    # $478k while the real cash was $186k. The read-site recompute that used to
+    # live here was a workaround for a field nothing refreshed, and it is now
+    # retired: #635 made portfolio_repricer._recalc_totals write total_cash from
+    # the is_cash position rows on every pass, and the 2026-08-29 Saturday proof
+    # showed the stored field agreeing with the row sum to the cent
+    # (630,784.82, source=position_rows, gap 0.00) across holdings.json,
+    # /v2/overview and /v3/cio.
+    #
+    # Read the stored field. Two places deriving the same number is how the
+    # original drift went unnoticed for three months: the read site quietly
+    # papered over a writer that had stopped writing.
+    _total_cash = totals.get("total_cash")
+    if _total_cash is None:
+        # No stored value at all is a real gap, not something to silently
+        # reconstruct — surface 0 and let the data-quality surface say so.
+        _total_cash = 0
     return {
         "portfolio_value": total_val,
         "derived_total_value": _derived_total,

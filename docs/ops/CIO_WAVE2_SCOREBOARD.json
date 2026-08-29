@@ -1581,5 +1581,23 @@
     "docs": [
       "docs/ops/CIO_WAVE3E_2026-08-29.md"
     ]
+  },
+  "LEFTOVER_CLOSEOUT": {
+    "status": "DONE — 4 leftovers closed, no new wave",
+    "api_v2_2593": "DELETED — gap 0.00, source=position_rows on stored field; readers take the stored field; guard test inverted",
+    "vacuous_tests": {
+      "found": 3,
+      "fixed": 3,
+      "worst": "test_cio_whatsapp_p4 had `or True` on a dry_run=False send path — passed even if a message was sent",
+      "root_cause": "existing AST or-True guard scanned 2 source files, never tests/",
+      "new_guard": "tests/test_no_vacuous_assertions.py — 475 checks, negative control, scope test"
+    },
+    "interdict_canary": "expects DELIVERY_INTERDICTED or BLOCKED_CREDENTIALS; no credentials delivery enabled; last carried failure closed",
+    "seasonality": "already French (3A.3) — pin recorded, skipped",
+    "header_body_conflict": "header said fix question_id + re-run critique; body said NO WAVE 3F and forbade the 3D hop; body followed, header flagged",
+    "tests_green": 665,
+    "docs": [
+      "docs/ops/CIO_LEFTOVER_CLOSEOUT_2026-08-29.md"
+    ]
   }
 }
