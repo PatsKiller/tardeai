@@ -12,8 +12,8 @@ Resume cursor: first slice with status != DONE.
 
 | Field | Value |
 |-------|--------|
-| CURRENT pin | `5e48f2b1` (#615 slice 03) — this slice 04 PR not promoted yet |
-| origin/main | `5e48f2b1` |
+| CURRENT pin | `bb489827` (#616 slice 04) — this slice 05 PR not promoted yet |
+| origin/main | `bb489827` |
 | `/api/v2/health` | 200 |
 | `/v3/cio` | 200 |
 | `/api/v3/cio/home` | 200 · earnings 10 · NEW_POSITION_IF 5 · telegram_sent false |
@@ -33,6 +33,7 @@ Resume cursor: first slice with status != DONE.
 | slice 02 would/applied | would_mint CURRENT · applied 1 `symbol_prim@v1` · PRIM CURRENT · telegram_sent false |
 | slice 03 would/applied | would 5 · applied 5 · SCHG S1 later cancelled (former, not held) |
 | surface_a_status | SCHG/AXTI/FATN EXITED · FANG UNAVAILABLE · no invented prices |
+| watch_ready_named | ready=[] near=[] · ready_count=0 · fires_s7=false (honest) |
 
 ---
 
@@ -73,8 +74,8 @@ Leftovers still forbidden unless a Wave 2 slice explicitly allows a read-only st
 | 01 | held-universe thesis card | DONE | #613 | `6616d618` | MBI=0 | held_n=19 current=19 unavail=0; no fake thesis |
 | 02 | PRIM thesis hole | DONE | #614 | `a8434346` | MBI=0 notify off | sandbox→CIO; PRIM CURRENT; applied 1 |
 | 03 | observational S1 held-without-plan | DONE | #615 | `5e48f2b1` | MBI=0 notify off | cap 5; SCHG S1 cancelled (former) |
-| 04 | Surface A former-sold status | DONE | *(this PR)* | *(fill after promote)* | MBI=0 | SCHG/AXTI/FATN EXITED; FANG UNAVAILABLE |
-| 05 | Watch READY/NEAR named; fires_s7=false | PENDING | | | | |
+| 04 | Surface A former-sold status | DONE | #616 | `bb489827` | MBI=0 | SCHG/AXTI/FATN EXITED; FANG UNAVAILABLE |
+| 05 | Watch READY/NEAR named; fires_s7=false | DONE | *(this PR)* | *(fill after promote)* | MBI=0 | ready_symbols named; live 0 READY/NEAR honest; fires_s7=false |
 | 06 | earnings days_to_event + as_of | PENDING | | | | |
 | 07 | earnings commentary stub | PENDING | | | | |
 | 08 | coverage API GET | PENDING | | | | |

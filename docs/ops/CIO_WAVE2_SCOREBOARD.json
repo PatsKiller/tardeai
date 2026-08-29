@@ -14,92 +14,308 @@
     "native_sheet": "10T3HTcQS_tgYu8-dtHozWgCPBywvgPxXZjbJBrfT0uw"
   },
   "now": {
-    "current_pin": "5e48f2b15d7a6462c60c63d574e8d5b347eb00b6",
-    "current_pr": 615,
+    "current_pin": "bb4898279a46a4d8eb0d43729f9a4becb600b77a",
+    "current_pr": 616,
     "health": 200,
     "cio": 200,
     "home": 200,
-    "plans": {"draft": 319, "proposed": 217, "accepted": 1, "cancelled": 269, "hygiene": 267, "with_hermes": 323},
+    "plans": {
+      "draft": 319,
+      "proposed": 217,
+      "accepted": 1,
+      "cancelled": 269,
+      "hygiene": 267,
+      "with_hermes": 323
+    },
     "case_summary_active": 323,
     "research_reference": 443,
     "earnings": 10,
     "new_position_if": [
-      ["NKE", "CURRENT"],
-      ["PFSI", "CURRENT"],
-      ["PRIM", "CURRENT"],
-      ["SH", "CURRENT"],
-      ["XLU", "CURRENT"]
+      [
+        "NKE",
+        "CURRENT"
+      ],
+      [
+        "PFSI",
+        "CURRENT"
+      ],
+      [
+        "PRIM",
+        "CURRENT"
+      ],
+      [
+        "SH",
+        "CURRENT"
+      ],
+      [
+        "XLU",
+        "CURRENT"
+      ]
     ],
     "cash_usd": 630784.82,
     "watch_block_count": 21,
-    "watch_ready_count": 4,
+    "watch_ready_count": 0,
     "fires_s7": false,
     "checkpoints": 152,
-    "holdings_thesis_coverage": {"held_n": 19, "current_n": 19, "unavailable_n": 0},
+    "holdings_thesis_coverage": {
+      "held_n": 19,
+      "current_n": 19,
+      "unavailable_n": 0
+    },
     "telegram_sent": false,
     "slice02_would_mint": "CURRENT",
     "slice02_applied": 1,
-    "slice03_would": ["PFLT", "SCHG", "RTX", "LDOS", "DIV"],
+    "slice03_would": [
+      "PFLT",
+      "SCHG",
+      "RTX",
+      "LDOS",
+      "DIV"
+    ],
     "slice03_applied": 5,
     "surface_a_status": [
-      ["SCHG", "EXITED"],
-      ["AXTI", "EXITED"],
-      ["FATN", "EXITED"],
-      ["FANG", "UNAVAILABLE"]
-    ]
+      [
+        "SCHG",
+        "EXITED"
+      ],
+      [
+        "AXTI",
+        "EXITED"
+      ],
+      [
+        "FATN",
+        "EXITED"
+      ],
+      [
+        "FANG",
+        "UNAVAILABLE"
+      ]
+    ],
+    "watch_ready_symbols": [],
+    "watch_near_symbols": []
   },
   "wave1_closed": true,
   "slices": {
-    "00": {"title": "bootstrap scoreboard + Drive", "status": "DONE", "pr": 612, "sha": "26e61633f9ed14840f64fa953c6bfdbad0e0e934"},
-    "01": {"title": "held-universe thesis card", "status": "DONE", "pr": 613, "sha": "6616d6182cf3db2edddd75f072bd54d4a5ff636a", "live": "held_n=19 current=19 unavail=0"},
-    "02": {"title": "PRIM thesis hole", "status": "DONE", "pr": 614, "sha": "a8434346db3b8f693eed29ffc1192e4d413f5766", "live": "would_mint=CURRENT applied=1 PRIM CURRENT sandbox_promoted notify=false"},
-    "03": {"title": "observational S1 held-without-plan", "status": "DONE", "pr": 615, "sha": "5e48f2b15d7a6462c60c63d574e8d5b347eb00b6", "live": "would=5 applied=5; SCHG S1 cancelled (former)"},
-    "04": {"title": "Surface A former-sold status", "status": "DONE", "pr": null, "sha": null, "live": "SCHG/AXTI/FATN EXITED FANG UNAVAILABLE no prices"},
-    "05": {"title": "Watch READY/NEAR named", "status": "PENDING"},
-    "06": {"title": "earnings days_to_event + as_of", "status": "PENDING"},
-    "07": {"title": "earnings commentary stub", "status": "PENDING"},
-    "08": {"title": "coverage API GET", "status": "PENDING"},
-    "09": {"title": "CC coverage card", "status": "PENDING"},
-    "10": {"title": "reentry keys not zero", "status": "PENDING"},
-    "11": {"title": "thesis count vs held on home", "status": "PENDING"},
-    "12": {"title": "CUSIP-only instrument_id", "status": "PENDING"},
-    "13": {"title": "subject_guid percent measure", "status": "PENDING"},
-    "14": {"title": "register HELD+ACTIVE watch missing", "status": "PENDING"},
-    "15": {"title": "1-hop graph_impact stub", "status": "PENDING"},
-    "16": {"title": "graph_impact on S6", "status": "PENDING"},
-    "17": {"title": "identity_lookup_failed vs UNRESOLVED", "status": "PENDING"},
-    "18": {"title": "never ticker as security GUID", "status": "PENDING"},
-    "19": {"title": "Hermes fail histogram", "status": "PENDING"},
-    "20": {"title": "skip non-retryable execution-language", "status": "PENDING"},
-    "21": {"title": "retry truncated 1/plan/day", "status": "PENDING"},
-    "22": {"title": "hermes_result_id on new completes", "status": "PENDING"},
-    "23": {"title": "CASE_SUMMARY on VALID complete", "status": "PENDING"},
-    "24": {"title": "missing result_id would_attach=0", "status": "PENDING"},
-    "25": {"title": "VALID/PARTIAL/FAIL counts", "status": "PENDING"},
-    "26": {"title": "PARTIAL attach rule documented", "status": "PENDING"},
-    "27": {"title": "due checkpoints observe", "status": "PENDING"},
-    "28": {"title": "top 8 PROVISIONAL lessons", "status": "PENDING"},
-    "29": {"title": "REVIEW_READY count", "status": "PENDING"},
-    "30": {"title": "memory receipts", "status": "PENDING"},
-    "31": {"title": "no RESEARCH_REFERENCE ACTIVE", "status": "PENDING"},
-    "32": {"title": "checkpoint complete rate", "status": "PENDING"},
-    "33": {"title": "remaining P9.0 voice labels", "status": "PENDING"},
-    "34": {"title": "Surface B evening/desk labels", "status": "PENDING"},
-    "35": {"title": "morning brief earnings length", "status": "PENDING"},
-    "36": {"title": "evening cash live temperament", "status": "PENDING"},
-    "37": {"title": "dark-contract scan", "status": "PENDING"},
-    "38": {"title": "store_consistency never_auto_remediate", "status": "PENDING"},
-    "39": {"title": "holdings as_of vs generated_at", "status": "PENDING"},
-    "40": {"title": "two-writer holdings detect only", "status": "PENDING"},
-    "41": {"title": "C2 TRIM non-held still blocked", "status": "PENDING"},
-    "42": {"title": "C3 quarantine path", "status": "PENDING"},
-    "43": {"title": "C5 dedupe key", "status": "PENDING"},
-    "44": {"title": "rebalancer contradicted_by_cio", "status": "PENDING"},
-    "45": {"title": "no new Telegram producer since 611", "status": "PENDING"},
-    "46": {"title": "INTERDICT recorded", "status": "PENDING"},
-    "47": {"title": "census script", "status": "PENDING"},
-    "48": {"title": "Drive upsert census", "status": "PENDING"},
-    "49": {"title": "Wave 2 closeout vs diagram", "status": "PENDING"},
-    "50": {"title": "STOP", "status": "PENDING"}
+    "00": {
+      "title": "bootstrap scoreboard + Drive",
+      "status": "DONE",
+      "pr": 612,
+      "sha": "26e61633f9ed14840f64fa953c6bfdbad0e0e934"
+    },
+    "01": {
+      "title": "held-universe thesis card",
+      "status": "DONE",
+      "pr": 613,
+      "sha": "6616d6182cf3db2edddd75f072bd54d4a5ff636a",
+      "live": "held_n=19 current=19 unavail=0"
+    },
+    "02": {
+      "title": "PRIM thesis hole",
+      "status": "DONE",
+      "pr": 614,
+      "sha": "a8434346db3b8f693eed29ffc1192e4d413f5766",
+      "live": "would_mint=CURRENT applied=1 PRIM CURRENT sandbox_promoted notify=false"
+    },
+    "03": {
+      "title": "observational S1 held-without-plan",
+      "status": "DONE",
+      "pr": 615,
+      "sha": "5e48f2b15d7a6462c60c63d574e8d5b347eb00b6",
+      "live": "would=5 applied=5; SCHG S1 cancelled (former)"
+    },
+    "04": {
+      "title": "Surface A former-sold status",
+      "status": "DONE",
+      "pr": 616,
+      "sha": "bb4898279a46a4d8eb0d43729f9a4becb600b77a",
+      "live": "SCHG/AXTI/FATN EXITED FANG UNAVAILABLE"
+    },
+    "05": {
+      "title": "Watch READY/NEAR named",
+      "status": "DONE",
+      "pr": null,
+      "sha": null,
+      "live": "ready=[] near=[] fires_s7=false honest"
+    },
+    "06": {
+      "title": "earnings days_to_event + as_of",
+      "status": "PENDING"
+    },
+    "07": {
+      "title": "earnings commentary stub",
+      "status": "PENDING"
+    },
+    "08": {
+      "title": "coverage API GET",
+      "status": "PENDING"
+    },
+    "09": {
+      "title": "CC coverage card",
+      "status": "PENDING"
+    },
+    "10": {
+      "title": "reentry keys not zero",
+      "status": "PENDING"
+    },
+    "11": {
+      "title": "thesis count vs held on home",
+      "status": "PENDING"
+    },
+    "12": {
+      "title": "CUSIP-only instrument_id",
+      "status": "PENDING"
+    },
+    "13": {
+      "title": "subject_guid percent measure",
+      "status": "PENDING"
+    },
+    "14": {
+      "title": "register HELD+ACTIVE watch missing",
+      "status": "PENDING"
+    },
+    "15": {
+      "title": "1-hop graph_impact stub",
+      "status": "PENDING"
+    },
+    "16": {
+      "title": "graph_impact on S6",
+      "status": "PENDING"
+    },
+    "17": {
+      "title": "identity_lookup_failed vs UNRESOLVED",
+      "status": "PENDING"
+    },
+    "18": {
+      "title": "never ticker as security GUID",
+      "status": "PENDING"
+    },
+    "19": {
+      "title": "Hermes fail histogram",
+      "status": "PENDING"
+    },
+    "20": {
+      "title": "skip non-retryable execution-language",
+      "status": "PENDING"
+    },
+    "21": {
+      "title": "retry truncated 1/plan/day",
+      "status": "PENDING"
+    },
+    "22": {
+      "title": "hermes_result_id on new completes",
+      "status": "PENDING"
+    },
+    "23": {
+      "title": "CASE_SUMMARY on VALID complete",
+      "status": "PENDING"
+    },
+    "24": {
+      "title": "missing result_id would_attach=0",
+      "status": "PENDING"
+    },
+    "25": {
+      "title": "VALID/PARTIAL/FAIL counts",
+      "status": "PENDING"
+    },
+    "26": {
+      "title": "PARTIAL attach rule documented",
+      "status": "PENDING"
+    },
+    "27": {
+      "title": "due checkpoints observe",
+      "status": "PENDING"
+    },
+    "28": {
+      "title": "top 8 PROVISIONAL lessons",
+      "status": "PENDING"
+    },
+    "29": {
+      "title": "REVIEW_READY count",
+      "status": "PENDING"
+    },
+    "30": {
+      "title": "memory receipts",
+      "status": "PENDING"
+    },
+    "31": {
+      "title": "no RESEARCH_REFERENCE ACTIVE",
+      "status": "PENDING"
+    },
+    "32": {
+      "title": "checkpoint complete rate",
+      "status": "PENDING"
+    },
+    "33": {
+      "title": "remaining P9.0 voice labels",
+      "status": "PENDING"
+    },
+    "34": {
+      "title": "Surface B evening/desk labels",
+      "status": "PENDING"
+    },
+    "35": {
+      "title": "morning brief earnings length",
+      "status": "PENDING"
+    },
+    "36": {
+      "title": "evening cash live temperament",
+      "status": "PENDING"
+    },
+    "37": {
+      "title": "dark-contract scan",
+      "status": "PENDING"
+    },
+    "38": {
+      "title": "store_consistency never_auto_remediate",
+      "status": "PENDING"
+    },
+    "39": {
+      "title": "holdings as_of vs generated_at",
+      "status": "PENDING"
+    },
+    "40": {
+      "title": "two-writer holdings detect only",
+      "status": "PENDING"
+    },
+    "41": {
+      "title": "C2 TRIM non-held still blocked",
+      "status": "PENDING"
+    },
+    "42": {
+      "title": "C3 quarantine path",
+      "status": "PENDING"
+    },
+    "43": {
+      "title": "C5 dedupe key",
+      "status": "PENDING"
+    },
+    "44": {
+      "title": "rebalancer contradicted_by_cio",
+      "status": "PENDING"
+    },
+    "45": {
+      "title": "no new Telegram producer since 611",
+      "status": "PENDING"
+    },
+    "46": {
+      "title": "INTERDICT recorded",
+      "status": "PENDING"
+    },
+    "47": {
+      "title": "census script",
+      "status": "PENDING"
+    },
+    "48": {
+      "title": "Drive upsert census",
+      "status": "PENDING"
+    },
+    "49": {
+      "title": "Wave 2 closeout vs diagram",
+      "status": "PENDING"
+    },
+    "50": {
+      "title": "STOP",
+      "status": "PENDING"
+    }
   }
 }
