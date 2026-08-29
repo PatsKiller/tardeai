@@ -11,7 +11,8 @@ from pathlib import Path
 import pytest
 
 from scripts.lib.cio_grok_critique import (
-    LANE, PROCESS_ID, REJECT, VALID, PARTIAL, critique_live, to_artifact,
+    GROK_LANE, LANE, PROCESS_ID, REJECT, VALID, PARTIAL, critique_live,
+    to_artifact,
 )
 from scripts.lib.research_quality import critique
 
@@ -69,6 +70,21 @@ def test_live_uses_the_existing_lane_and_process():
     assert g.last_kwargs["lane"] == LANE
     assert g.last_kwargs["process_id"] == PROCESS_ID
     assert g.last_kwargs["response_json"] is True
+
+
+def test_default_pairing_is_one_the_gate_permits():
+    """grok is refused for every research process; the default must not be."""
+    assert LANE == "deepseek-v4-flash"
+    assert PROCESS_ID == "hermes_external_research"
+    assert GROK_LANE == "grok", "kept for the day that lane is authorised"
+
+
+def test_lane_and_process_are_overridable():
+    g = _gen('{"verdict":"VALID","reasons":[],"execution_language":false,"attachable":true}')
+    r = critique_live(GOOD, generate=g, lane="grok",
+                      process_id="maria_research_critique")
+    assert g.last_kwargs["lane"] == "grok"
+    assert r["lane"] == "grok"
 
 
 def test_prompt_comes_from_the_curated_template():
@@ -153,9 +169,22 @@ def test_transport_error_fails_closed():
 
 
 def test_live_does_not_attach_or_escalate():
-    code = (REPO / "scripts/lib/cio_grok_critique.py").read_text(encoding="utf-8")
-    for bad in ("attach_research", "def attach", "flash", "openai_hop"):
+    """No attach, no next-gate hop.
+
+    Checks escalation *semantics*, not the substring "flash": the authorised
+    lane is literally named `deepseek-v4-flash`, and a lane name is not an
+    escalation.
+    """
+    # Code only. The module's own docstring says "does not escalate", which a
+    # naive substring scan reads as an escalation.
+    code = re.sub(r"#.*", "", re.sub(r'("""|\'\'\')(?:.|\n)*?\1', "",
+                  (REPO / "scripts/lib/cio_grok_critique.py").read_text(encoding="utf-8")))
+    for bad in ("attach_research", "def attach", "openai_hop", "def escalate",
+                "next_gate"):
         assert bad not in code, bad
+    from scripts.lib import cio_grok_critique as mod
+
+    assert not hasattr(mod, "escalate")
 
 
 def test_critique_carries_no_financial_action_and_mbi_zero():
@@ -183,3 +212,35 @@ def test_tainted_artifact_row_records_execution_language():
              '"attachable":false}')
     a = to_artifact(critique_live(GOOD, generate=g), artifact_id="a1")
     assert a["outcome"] == "execution_language"
+
+
+# ------------------------------------------------- gate refusals never retry
+
+@pytest.mark.parametrize("refusal", [
+    "COST_CAP_EXCEEDED: global cap",
+    "COST_CONFIGURATION_INVALID: LLM_GLOBAL_DAILY_USD_CAP required",
+    "POLICY_NOT_ALLOWED",
+    "PROCESS_NOT_REGISTERED",
+])
+def test_gate_refusals_are_never_retryable(refusal):
+    """Found live: a COST_CAP came back as ["transport_error", "COST_CAP..."].
+
+    The literal set lookup missed it because the gate reports refusals as free
+    text inside the exception message, so it was marked retryable — which the
+    contract forbids. Retrying a budget stop or a policy refusal is asking the
+    same question until a different answer arrives.
+    """
+    def refuse(prompt, **kw):
+        raise RuntimeError(refusal)
+
+    r = critique_live(GOOD, generate=refuse)
+    assert r["verdict"] == PARTIAL
+    assert r["attachable"] is False
+    assert r["retryable"] is False, f"{refusal} must not retry"
+
+
+def test_a_genuine_transport_error_still_retries_once():
+    def boom(prompt, **kw):
+        raise ConnectionError("connection reset by peer")
+
+    assert critique_live(GOOD, generate=boom)["retryable"] is True

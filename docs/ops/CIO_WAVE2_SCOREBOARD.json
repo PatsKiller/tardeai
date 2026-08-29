@@ -1475,5 +1475,37 @@
       "docs/ops/CIO_GROK_CRITIQUE_CONTRACT_2026-08-29.md"
     ],
     "wave3e_started": false
+  },
+  "WAVE3D_CRITIQUE_DEEPSEEK": {
+    "status": "both live lanes blocked, for opposite reasons — no call made",
+    "vendor_http_calls": 0,
+    "cost_usd": 0.0,
+    "attached": false,
+    "telegram_sent": false,
+    "deepseek": {
+      "policy": "allow=True on hermes_external_research",
+      "result": "COST_CAP_EXCEEDED: global cap",
+      "root_cause": "cap UNCONFIGURED not exceeded — $0.00 spent today, 0 events",
+      "credential": "DEEPSEEK_API_KEY absent everywhere; no .env; no unit env"
+    },
+    "grok": {
+      "policy": "POLICY_NOT_ALLOWED — no research/critique process lists lane=grok",
+      "credential": "fine — free_oauth proxy 8645 returns 200"
+    },
+    "summary": "the lane that works needs a policy decision; the lane policy allows needs a credential and a cap",
+    "bug_found_and_fixed": "gate refusals arrive as free text, so COST_CAP was marked retryable=True; contract says never. Now matched on markers; 5 tests pin it",
+    "surfaced_only_by_attempting_live": true,
+    "options": [
+      "authorise grok on maria_research_critique (free, xAI sees artifact text)",
+      "configure DEEPSEEK_API_KEY + LLM_GLOBAL_DAILY_USD_CAP (metered spend)"
+    ],
+    "policy_changed_by_me": false,
+    "cap_set_by_me": false,
+    "key_added_by_me": false,
+    "tests": 28,
+    "docs": [
+      "docs/ops/CIO_WAVE3D_CRITIQUE_DEEPSEEK_2026-08-29.md"
+    ],
+    "wave3e_started": false
   }
 }
