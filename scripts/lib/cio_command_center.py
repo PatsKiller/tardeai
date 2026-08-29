@@ -986,6 +986,105 @@ def build_office_coverage(
     }
 
 
+def build_notification_block(
+    plans: Optional[list[dict[str, Any]]] = None,
+    *,
+    cap: int = 10,
+    now: Optional[Any] = None,
+) -> dict[str, Any]:
+    """Wave 3E — render NotificationPolicy decisions as a Command Center block.
+
+    **Scope, per the operator: CC block only. No Telegram producer, INTERDICT
+    stays on, `CIO_SITUATION_NOTIFY` stays 0.**
+
+    That makes this pure rendering. It reads the decisions `NotificationPolicy@v1`
+    already computes and displays them; it constructs no message, selects no
+    adapter, and reaches no channel. `would_send` is False on every row and
+    `producer` is null — a test asserts both, and asserts this module gained no
+    delivery import.
+
+    The suppressed count matters as much as the surfaced one. A notification
+    surface that shows only what fired teaches the reader that nothing else was
+    considered; showing 460 suppressed with reasons is what makes 4 credible.
+    """
+    rows = list(plans or [])
+    try:
+        from scripts.lib import cio_notification_policy as _policy
+    except Exception as exc:                                    # noqa: BLE001
+        return {
+            "schema": "CIONotificationBlock@v1",
+            "available": False,
+            "reason": "policy_unavailable",
+            "detail": str(exc)[:160],
+            "telegram_sent": False,
+            "would_send_any": False,
+            "producer": None,
+            "authority": "READ_ONLY_ADVISORY",
+        }
+
+    seen: set[tuple] = set()
+    decisions: list[dict[str, Any]] = []
+    for p in rows:
+        if not isinstance(p, dict):
+            continue
+        if str(p.get("status") or "") not in {"draft", "proposed"}:
+            continue
+        syms = p.get("symbols") or []
+        key = (str(p.get("situation_type") or ""), syms[0] if syms else None)
+        dup = key in seen
+        seen.add(key)
+        decisions.append(_policy.decide(p, duplicate_subject=dup, now=now))
+
+    surfaced = [d for d in decisions
+                if d.get("decision") == _policy.COMMAND_CENTER_ONLY]
+    digest = [d for d in decisions if d.get("decision") == _policy.DIGEST]
+    immediate = [d for d in decisions if d.get("decision") == _policy.IMMEDIATE]
+
+    by_reason: dict[str, int] = {}
+    for d in decisions:
+        if d.get("decision") == _policy.SUPPRESSED:
+            r = str(d.get("reason") or "unknown")
+            by_reason[r] = by_reason.get(r, 0) + 1
+
+    def _row(d: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "plan_id": d.get("plan_id"),
+            "situation_type": d.get("situation_type"),
+            "decision": d.get("decision"),
+            "reason": d.get("reason"),
+            "notification_id": d.get("notification_id"),
+            "would_send": False,
+        }
+
+    env = _policy.notify_env_state()
+    return {
+        "schema": "CIONotificationBlock@v1",
+        "available": True,
+        "authority": "READ_ONLY_ADVISORY",
+        "financial_action": False,
+        "memory_behavior_influence": 0,
+        # Scope declarations. Wave 3E is rendering only.
+        "producer": None,
+        "channel": "command_center",
+        "telegram_sent": False,
+        "would_send_any": False,
+        "notify_enabled": bool(env.get("notify_enabled")),
+        "interdicted": bool(env.get("interdicted")),
+        "considered": len(decisions),
+        "surfaced_n": len(surfaced),
+        "items": [_row(d) for d in surfaced[:cap]],
+        "digest_n": len(digest),
+        "immediate_n": len(immediate),
+        "suppressed_n": sum(by_reason.values()),
+        "suppressed_by_reason": dict(
+            sorted(by_reason.items(), key=lambda kv: -kv[1])),
+        "cap": cap,
+        "note": ("Command Center only. No message is produced or sent; "
+                 "suppressed counts are shown so the surfaced few are legible "
+                 "against everything that was considered."),
+    }
+
+
 def build_reentry_book_labels() -> dict[str, Any]:
     """Name both re-entry books on /v3/cio/home. Labelling is not merging.
 
@@ -1249,6 +1348,8 @@ def build_office_home(
         "class": "D",
         "authority": "READ_ONLY_ADVISORY",
     }
+    # Wave 3E: the notification decisions, rendered. No producer, no channel.
+    home["notifications"] = build_notification_block(plans)
     home["telegram_sent"] = False
     home["delivery"] = "dashboard"
     return home
