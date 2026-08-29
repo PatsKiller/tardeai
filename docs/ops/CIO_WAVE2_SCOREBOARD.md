@@ -502,3 +502,28 @@ To run 3D: enqueue one `flash`-decision job for a clean plan, or authorise
 building the critique call site as its own review.
 
 Detail: `docs/ops/CIO_WAVE3D_2026-08-29.md`.
+
+## WAVE3D-flash = STOPPED at step 1 — zero flash-eligible
+
+**0 live calls, $0.00, nothing enqueued, telegram_sent false.**
+
+SPCX decides **`grok_critique`**, not `flash` — it already has a completed VALID
+artifact awaiting critique. Enqueueing it and running `--backend live` would
+have called Flash on a job the gate says needs critique, which is the exact
+substitution step 1 forbids. So nothing was enqueued.
+
+Histogram over 45 open/material/non-dust/non-S5/non-TEST candidates:
+`event_driven_kind_no_event` 32 · `execution_language_fail_closed` 11 ·
+`grok_critique` 2 · **`flash` 0**.
+
+Why zero: every S1/S3 candidate either has a prior VALID (→ critique, because a
+paid artifact must be critiqued before attach) or a prior execution_language
+failure (→ fail closed). Every S6/S7 candidate is event-driven with no event
+fired, and `earnings_within(5)` is empty. The system is telling us the next
+legitimate hop is **critique**, not first-pass research.
+
+A genuine Flash job needs one of: a new material S1/S3 plan with no prior
+research; a fired S6/earnings event; or a completed critique on SPCX/ARKX
+(which needs 3D-critique).
+
+Detail: `docs/ops/CIO_WAVE3D_FLASH_2026-08-29.md`.
