@@ -77,18 +77,46 @@ label parts; sentence punctuation separates clauses. Only the latter opens an
 imperative. That carve-out removed 13 of 46 catches — every one a false
 positive that would otherwise have shipped.
 
-## Effect
+## Effect — measured against the #658 baseline, not against nothing
 
 | measure | value |
-|---|---|
+|---|---:|
 | stored artifacts | 471 |
-| caught by the new rule | **33** (7.0%) |
+| prose occurrences the rule now sees | 33 |
+| artifacts flagged by the **#658 pipeline** | 59 |
+| artifacts flagged by **this rule + #658** | 59 |
+| **NEW artifacts flagged** | **0** |
 | newly **FAILED** (not grandfathered) | **0** |
-| prose fields newly reachable | `answers[].detail`, `summary`, `answers[].summary`, `what_did_not_change[]`, `reason_summary`, `findings[].text` |
+
+**This adds no artifact-level coverage on the current corpus, and the first
+draft of this document wrongly implied it did.** All 33 prose catches also
+carry the same directive in `recommendation` or `desk_implications.notes` —
+the writer repeats itself — so the field-scoped lint had already failed every
+one of them. Counting occurrences (45) made the gap look larger than the thing
+that actually gates PASS/FAIL, which is the artifact.
+
+The rule is therefore **defense in depth, not new coverage.** What it closes is
+the case the field lint structurally cannot see, because that lint reads two
+fields and prose is not one of them:
+
+```
+summary: "AUUD remains a speculative holding as of 2026-08.
+          Do not add to the position until price action confirms."
+(no recommendation, no desk_implications.notes)
+
+  #658 field lint : None             <- passes
+  this rule       : 'Do not add to'  -> FAILED / forbidden_authority
+```
+
+Zero of 471 stored artifacts have that shape. Nothing guarantees the next one
+will not: a writer that puts the directive in `summary` alone defeats #658
+entirely. That is the whole of the benefit, and it should be weighed as such.
+
+Newly reachable fields: `answers[].detail`, `summary`, `answers[].summary`,
+`what_did_not_change[]`, `reason_summary`, `findings[].text`.
 
 Nothing is retro-detached: `IMPERATIVE_GATE_EFFECTIVE = 2026-08-29 05:00Z`
-grandfathers all 33, per Decision 1 ("do not retro-detach the 466"). The rule
-binds new research from here.
+grandfathers all 33, per Decision 1 ("do not retro-detach the 466").
 
 ## Receipt fix
 
