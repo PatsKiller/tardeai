@@ -154,9 +154,14 @@ def consult(dimension: str, *, family_hint: str | None = None,
     # resolved question and skip the research that would have caught it.
     closing = [f for f in hits if str(f.get("evidence_grade") or "") in CLOSING_GRADES]
     contradicted = [f for f in hits if str(f.get("evidence_grade") or "") == "X"]
-    if contradicted:
+    # A contradicted fact is dropped, not fatal to the dimension. "Do not
+    # apply" is a instruction about *that fact*; August failing to reproduce
+    # says nothing about September. Blocking the whole dimension on one X
+    # would make an honest re-grade look like a corpus outage.
+    if contradicted and not closing:
         return {"closes": False, "reason": "corpus_fact_contradicted_grade_x",
-                "source_refs": refs, "dimension": dim}
+                "source_refs": refs, "dimension": dim,
+                "contradicted": [f.get("source_id") for f in contradicted]}
     if not closing:
         grades = sorted({str(f.get("evidence_grade")) for f in hits})
         return {"closes": False,
@@ -286,9 +291,12 @@ def registry() -> dict[str, Any]:
     seed: list[dict[str, Any]] = []
     calendar: list[dict[str, Any]] = []
     try:
-        from scripts.lib.cio_library_seed import fred_series_rows, seed_rows
+        from scripts.lib.cio_library_seed import (
+            fred_series_rows, seed_rows, wave3a3_series_rows,
+        )
 
-        seed = list(seed_rows()) + list(fred_series_rows())
+        seed = (list(seed_rows()) + list(fred_series_rows())
+                + list(wave3a3_series_rows()))
     except Exception:
         seed = []
     try:
@@ -297,6 +305,17 @@ def registry() -> dict[str, Any]:
         calendar = list(build_calendar_facts())
     except Exception:
         calendar = []
+    regime: list[dict[str, Any]] = []
+    try:
+        from scripts.lib.cio_regime_facts import build_regime_facts
+
+        regime = list(build_regime_facts())
+    except Exception:
+        regime = []
+    for row in regime:
+        row["can_corpus_hit"] = (
+            str(row.get("evidence_grade")) in CLOSING_GRADES
+            and row.get("dimension_scope") == "context")
     for row in seed:
         row["can_corpus_hit"] = (
             str(row.get("evidence_grade")) in CLOSING_GRADES
@@ -313,6 +332,7 @@ def registry() -> dict[str, Any]:
         "catalog": cat,
         "seed": seed,
         "calendar_facts": calendar,
+        "regime_facts": regime,
         "counts": {
             "library_facts": len(facts),
             "catalog": len(cat),
@@ -322,6 +342,7 @@ def registry() -> dict[str, Any]:
             "seed_on_disk": sum(1 for s in seed if s.get("status") == "FOUND_ON_DISK"),
             "calendar_facts": len(calendar),
             "calendar_reproduced": sum(1 for c in calendar if c.get("reproduced")),
+            "regime_facts": len(regime),
         },
         "freshness_law": "research_source_index.decide() — this module keeps none",
         "note": ("Catalogued works are citation-only until lawful full text "

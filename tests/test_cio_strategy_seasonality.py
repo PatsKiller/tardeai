@@ -63,15 +63,17 @@ def test_seed_facts_layered_not_collapsed():
         assert "source_claim" in layers
         assert "trade_ai_reproduction" in layers
         assert "current_application" in layers
-        # STA layers stay distinct. Fixture reproduction may lift unverified →
+        # STA layers stay distinct. Reproduction may lift unverified →
         # partially_reproduced; do not require seeds to stay unverified.
+        #
+        # Wave 3A.3: this used a hand-copied subset that omitted
+        # failed_reproduction, so it broke the first time a claim was actually
+        # contradicted (August, once grading moved to real market data). Read
+        # the module's own enum instead of duplicating it.
         if "sta_" in str(f.get("source_id")):
-            assert f["internal_validation_status"] in {
-                "unverified_source_claim",
-                "partially_reproduced",
-                "reproduced",
-                "reproduced_oos",
-            }
+            from scripts.lib.cio_strategy_knowledge import VALIDATION_GRADES
+
+            assert f["internal_validation_status"] in VALIDATION_GRADES
             assert layers["source_claim"] != layers["trade_ai_reproduction"]
             assert layers["current_application"] != layers["source_claim"]
             assert "fulltext" not in (f.get("claim") or "").lower()

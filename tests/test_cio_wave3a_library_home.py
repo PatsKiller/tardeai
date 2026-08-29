@@ -27,12 +27,21 @@ def test_seasonality_does_not_resolve_under_tests():
 
 
 def test_both_consumers_point_at_the_library():
+    """Neither resolves out of tests/ any more.
+
+    Wave 3A.3 split the two: the operator surface grades off real market data
+    (Ken French) while research_governance/almanac keeps the synthetic
+    determinism fixture. Both live under reference/library.
+    """
+    from scripts.lib.cio_library_paths import OPERATOR_MONTHLY
     from scripts.lib.cio_seasonality_analytics import DEFAULT_FIXTURE as analytics
     from scripts.lib.research_governance.almanac import DEFAULT_FIXTURE as almanac
 
     for p in (analytics, almanac):
         assert "tests" not in p.parts, p
-        assert p == US_EQUITY_MONTHLY, p
+        assert LIBRARY_ROOT in p.parents, p
+    assert analytics == OPERATOR_MONTHLY, "operator surface must be real data"
+    assert almanac == US_EQUITY_MONTHLY, "R1 determinism fixture is unchanged"
 
 
 def test_the_series_is_present_and_intact():
@@ -115,20 +124,41 @@ def test_manifest_hash_matches_the_file():
     ("best_six_months", 450, "B"),
 ])
 def test_relocation_did_not_move_the_numbers(fn, n, grade):
-    """Same file, same hash, same output — the move is number-neutral."""
+    """The 3A.1 move was number-neutral, pinned against that same file.
+
+    Read explicitly from the synthetic fixture rather than the module default:
+    3A.3 repointed the default to Ken French, which moves these numbers on
+    purpose. What this test still guards is that *relocating a file* changed
+    nothing — which is a different claim from what the surface should show.
+    """
     from scripts.lib import cio_seasonality_analytics as sa
 
-    rec = getattr(sa, fn)()
-    assert rec["n"] == n
-    assert rec["evidence_grade"] == grade
+    prev = sa.DEFAULT_FIXTURE
+    sa.DEFAULT_FIXTURE = US_EQUITY_MONTHLY
+    sa._cached_rows.cache_clear()
+    try:
+        rec = getattr(sa, fn)()
+        assert rec["n"] == n
+        assert rec["evidence_grade"] == grade
+    finally:
+        sa.DEFAULT_FIXTURE = prev
+        sa._cached_rows.cache_clear()
 
 
 def test_august_headline_figures_are_unchanged():
+    """Against the determinism fixture. The live surface now shows French."""
     from scripts.lib import cio_seasonality_analytics as sa
 
-    rec = sa.august_general()
-    assert round(rec["mean"], 2) == -0.07
-    assert round(rec["win_rate"] * 100, 1) == 45.3
+    prev = sa.DEFAULT_FIXTURE
+    sa.DEFAULT_FIXTURE = US_EQUITY_MONTHLY
+    sa._cached_rows.cache_clear()
+    try:
+        rec = sa.august_general()
+        assert round(rec["mean"], 2) == -0.07
+        assert round(rec["win_rate"] * 100, 1) == 45.3
+    finally:
+        sa.DEFAULT_FIXTURE = prev
+        sa._cached_rows.cache_clear()
 
 
 def test_library_root_is_not_under_data():

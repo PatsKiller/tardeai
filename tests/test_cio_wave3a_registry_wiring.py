@@ -88,4 +88,6 @@ def test_corpus_hit_uses_the_relocated_series():
     assert ctx, "seasonality context empty — series did not resolve"
     r = consult("seasonality")
     assert r["closes"] is True
-    assert r["seasonality"]["n"] == 75
+    # 3A.3: the operator series is Ken French (1200 months), so the sample is
+    # 100 Augusts, not the synthetic file's 75.
+    assert ctx["n"] == 100
