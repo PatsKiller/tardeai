@@ -142,11 +142,20 @@ def test_the_safety_abort_still_preserves_prior_state(book):
     assert "total_cash_source" not in totals
 
 
-def test_no_read_site_recompute_was_added():
-    """Operator: do not add another api_v2 / CIO read-site recompute."""
-    import inspect
+def test_the_api_v2_read_site_workaround_is_left_untouched():
+    """Operator: "Do NOT touch api_v2.py:2593 in this PR."
 
-    from scripts.lib import cio_investment_product as cip
+    Replaces an earlier version of this test that asserted nothing: it read
+    `cio_investment_product.collect_cash`, which does not exist, so `src` was ""
+    and a trailing `or True` made it pass unconditionally.
 
-    src = inspect.getsource(cip.collect_cash) if hasattr(cip, "collect_cash") else ""
-    assert "is_cash" not in src or "totals.get" in src or True   # unchanged path
+    The 2026-07-21 workaround recomputes cash at the READ site. It stays until a
+    live pass proves cash_gap < 1; only then is it safe to delete.
+    """
+    from pathlib import Path
+
+    src = (Path(__file__).resolve().parents[1] / "scripts" / "api_v2.py").read_text(
+        encoding="utf-8", errors="replace")
+    assert '_cash_live = round(sum(float(p.get("market_value") or 0)' in src, (
+        "the api_v2 read-site cash recompute was removed or altered — it must "
+        "outlive this PR")
