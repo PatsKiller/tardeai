@@ -137,8 +137,17 @@ def _is_cash_row(row: dict[str, Any]) -> bool:
     return at in ("cash", "money_market", "currency")
 
 
-# ── S6 dust rule ─────────────────────────────────────────────────────────────
-# S6 asks a concentration/disposition question, which presupposes a position.
+# ── dust rule (S1 + S6) ──────────────────────────────────────────────────────
+# Both evaluators ask a question that presupposes a position, and both reached a
+# residual through a *price-ratio* branch that a residual can never escape:
+#
+#   S6  disposition_loss_100.0pct_hold_36.0m   (basis - last) / basis
+#   S1  deep_drawdown_from_basis_…pct          (basis - last) / basis  >= 25%
+#
+# A $0.90 residual is permanently ~100% below its cost basis, so both fire on
+# every pass forever. That is why cancelling never held: 20 S6 plans cancelled on
+# 2026-08-29 and one back within twenty minutes, and 35 open S1 plans across
+# JEPI (20), SRNE (14) and LDOS (1) accumulated the same way.
 # It fired forever on SRNE: a $0.90 residual against its cost basis is a 100%
 # loss held 36 months, so the disposition branch matched on every pass — and a
 # residual can never stop being a 100% loss. Twenty such plans were cancelled by
@@ -151,7 +160,7 @@ def _is_cash_row(row: dict[str, Any]) -> bool:
 #
 # This only ever SKIPS a fire. No threshold is loosened and no new fire is added.
 
-def _s6_subject_skip_reason(
+def _subject_skip_reason(
     symbol: str,
     *,
     market_value: float | None,
@@ -167,6 +176,8 @@ def _s6_subject_skip_reason(
     """
     try:
         from scripts.lib.holdings_universe import (
+            CASH_SYMBOLS,
+            classify_instrument_id,
             is_dust_market_value,
             is_held_equity_ticker,
         )
@@ -176,8 +187,14 @@ def _s6_subject_skip_reason(
     sym = str(symbol or "").strip().upper()
     if not sym:
         return "no_symbol"
-    if not is_held_equity_ticker(sym):
-        # CUSIP-only rows are instrument ids, not tickers (Wave 2 slice 12).
+    if sym in CASH_SYMBOLS:
+        return "cash_or_non_entity"
+    # Only genuine instrument ids are excluded here — a CUSIP or ISIN sitting in
+    # the symbol column (Wave 2 slice 12). `is_held_equity_ticker` alone would be
+    # too blunt: it rejects anything over five characters, which would also
+    # silence the detector's own synthetic fixtures and any long symbol. The
+    # narrow test is what this branch was always for.
+    if not is_held_equity_ticker(sym) and classify_instrument_id(sym) in {"CUSIP", "ISIN"}:
         return "not_a_ticker"
     if not market_value_known:
         return None                      # unknown is HELD, never dust
@@ -538,10 +555,43 @@ def calendar_catalyst_material(
 # ── Predicates ──────────────────────────────────────────────────────────────
 
 
+def _subject_market_value(evidence: dict[str, Any], symbol: str) -> tuple[float, bool]:
+    """Aggregate market value for one symbol across accounts, plus known-ness.
+
+    A single unpriced leg makes the aggregate unknown, so a real position with a
+    missing price is never mistaken for a residual.
+    """
+    sym = str(symbol or "").upper()
+    total = 0.0
+    known = False
+    saw_unpriced = False
+    for row in extract_holdings(evidence):
+        if str(row.get("symbol") or row.get("ticker") or "").upper() != sym:
+            continue
+        mv = _num(row.get("market_value"))
+        if mv is None:
+            saw_unpriced = True
+        else:
+            total += mv
+            known = True
+    return total, (known and not saw_unpriced)
+
+
+def eval_s1_skip_reason(evidence: dict[str, Any], symbol: str) -> Optional[str]:
+    """Why S1 must not fire on this subject, or None when it may. Read-only."""
+    mv, known = _subject_market_value(evidence, symbol)
+    return _subject_skip_reason(symbol, market_value=mv, market_value_known=known)
+
+
 def eval_s1(evidence: dict[str, Any], cfg: dict[str, Any], symbol: str) -> Optional[dict[str, Any]]:
     """POSITION_LIFECYCLE."""
     row = holding_row(evidence, symbol)
     if not row:
+        return None
+    # A residual is not a position to have a lifecycle. Without this,
+    # deep_drawdown_from_basis fires forever on a name that is already exited —
+    # 35 such plans had accumulated on JEPI, SRNE and LDOS.
+    if eval_s1_skip_reason(evidence, symbol):
         return None
     thr = cfg.get("thresholds") or {}
     basis = get_basis(row, evidence, symbol)
@@ -970,7 +1020,7 @@ def eval_s6(evidence: dict[str, Any], cfg: dict[str, Any], symbol: str | None = 
     out = []
     skipped_subjects: list[dict[str, str]] = []
     for sym, acc in by_sym.items():
-        skip = _s6_subject_skip_reason(
+        skip = _subject_skip_reason(
             sym,
             market_value=acc.get("market_value"),
             market_value_known=bool(acc.get("market_value_known", True)),
@@ -1056,7 +1106,7 @@ def eval_s6_skipped_subjects(
         acc["market_value"] = float(acc["market_value"] or 0) + float(row_mv or 0)
     out: list[dict[str, str]] = []
     for sym, acc in sorted(by_sym.items()):
-        reason = _s6_subject_skip_reason(
+        reason = _subject_skip_reason(
             sym,
             market_value=acc["market_value"],
             market_value_known=bool(acc["market_value_known"]),
