@@ -123,3 +123,21 @@ def test_census_declares_its_authority(book, monkeypatch):
     assert c["authority"] == "READ_ONLY_ADVISORY"
     assert c["memory_behavior_influence"] == 0
     assert c["financial_action"] is False
+
+
+def test_census_does_not_mutate_the_process_environment(book, monkeypatch):
+    """A read-only measurement must not have a global side effect.
+
+    census() used to os.environ.setdefault("TRADEAI_ROOT", ...), which leaked a
+    tmp_path root into every later caller in the same process and failed five
+    unrelated tests in the full suite while passing in isolation.
+    """
+    import os
+
+    monkeypatch.setattr(census_mod, "_http_status", lambda *a, **k: 200)
+    monkeypatch.setattr(census_mod, "_http_json", lambda *a, **k: {})
+    monkeypatch.delenv("TRADEAI_ROOT", raising=False)
+
+    census_mod.census(book)
+
+    assert "TRADEAI_ROOT" not in os.environ
