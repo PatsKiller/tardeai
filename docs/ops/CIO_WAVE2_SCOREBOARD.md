@@ -12,22 +12,23 @@ Resume cursor: first slice with status != DONE.
 
 | Field | Value |
 |-------|--------|
-| CURRENT pin | `6bbec1a1` (#618 slice 06) — this slice 07 PR not promoted yet |
-| origin/main | `6bbec1a1` |
+| CURRENT pin | `9f13273b` (#619 slice 07) — this PR slices 08–11 |
+| origin/main | `9f13273b` |
 | `/api/v2/health` | 200 |
 | `/v3/cio` | 200 |
-| `/api/v3/cio/home` | 200 · earnings 10 · NEW_POSITION_IF 5 · telegram_sent false |
+| `/api/v3/cio/home` | 200 · earnings 10 · NEW_POSITION_IF 5 · telegram_sent false · **coverage** Class D |
 | plans | draft 319 · proposed 217 · accepted 1 · cancelled 269 (hygiene 267) · with_hermes 323 |
 | CASE_SUMMARY ACTIVE | 323 |
 | RESEARCH_REFERENCE | 443 (CANDIDATE) |
 | earnings | 10 |
 | NEW_POSITION_IF | NKE/PFSI/PRIM/SH/XLU **CURRENT** |
 | cash | PRESENT $630,784.82 |
-| watch_block | 21 not_promotion_grade · ready 4 · fires_s7=false |
+| watch_block | 21 not_promotion_grade · ready 0 named · fires_s7=false |
 | checkpoints | 152 (Wave 1 slice 8) |
 | holdings_thesis_coverage | held_n=19 current=19 unavail=0 |
+| coverage (home) | held=19 thesis_count=19 watch_block=21 watch_ready=0 reentry_near from Surface A · with_case_summary=323 |
 | exec voice | `[T]` / `[D] Nothing requires action today.` |
-| reentry | Surface A · 67 former names |
+| reentry | Surface A · 67 former names · home opportunities.reentry_total overlaid (dual pipes not merged) |
 | DRIVE | OK via gog (blobs `--replace`; native create-only) |
 | rails | MBI=0 · notify not enabled · no broker write · no ROTATE |
 | slice 02 would/applied | would_mint CURRENT · applied 1 `symbol_prim@v1` · PRIM CURRENT · telegram_sent false |
@@ -77,11 +78,11 @@ Leftovers still forbidden unless a Wave 2 slice explicitly allows a read-only st
 | 04 | Surface A former-sold status | DONE | #616 | `bb489827` | MBI=0 | SCHG/AXTI/FATN EXITED; FANG UNAVAILABLE |
 | 05 | Watch READY/NEAR named; fires_s7=false | DONE | #617 | `6a796e1a` | MBI=0 | ready_symbols named; live 0 READY/NEAR; fires_s7=false |
 | 06 | earnings days_to_event + as_of | DONE | #618 | `6bbec1a1` | MBI=0 | days_to_event + as_of |
-| 07 | earnings commentary stub | DONE | *(this PR)* | *(fill after promote)* | MBI=0 | commentary UNAVAILABLE no transcript |
-| 08 | coverage API GET | PENDING | | | | |
-| 09 | CC coverage card | PENDING | | | | |
-| 10 | reentry keys not 0 when Surface A has names | PENDING | | | | |
-| 11 | thesis count vs held on home | PENDING | | | | |
+| 07 | earnings commentary stub | DONE | #619 | `9f13273b` | MBI=0 | commentary UNAVAILABLE |
+| 08 | coverage API GET | DONE | *(feat/cio-wave2-slice08-coverage)* | *(fill after promote)* | MBI=0 | home.coverage Class D; fail-soft zeros |
+| 09 | CC coverage card | DONE | *(same branch)* | *(fill after promote)* | MBI=0 | cio-coverage-card after TrustStrip |
+| 10 | reentry keys not 0 when Surface A has names | DONE | *(same branch)* | *(fill after promote)* | MBI=0 | dual pipes; reentry_total overlaid from Surface A |
+| 11 | thesis count vs held on home | DONE | *(same branch)* | *(fill after promote)* | MBI=0 | thesis_count/held_n ~19/19; SCHG dust honesty |
 | 12 | CUSIP-only rows labeled instrument_id | PENDING | | | | |
 | 13 | % subject_guid measure | PENDING | | | | |
 | 14 | register HELD+ACTIVE watch missing | PENDING | | | | |
