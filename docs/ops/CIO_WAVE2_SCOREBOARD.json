@@ -1687,5 +1687,22 @@
     "docs": [
       "docs/ops/CIO_S0_OPERATOR_LOOP_2026-08-29.md"
     ]
+  },
+  "NOTIFY_PRECONDITIONS": {
+    "telegram_sent": false,
+    "interdict": true,
+    "telegram_api_calls": 0,
+    "check_1_s0_attach": "PASS — shipped #652",
+    "check_2_cc_beyond_schd": "PASS — block was fed the 12-row NOW window; now the full store: 8/0/8 -> 467/4/463, s0_open 6",
+    "check_2_coverage_names": 15,
+    "check_3_grok_critique": "BLOCKED — second allowlist: registry JSON updated (that process only) but should_call reads Postgres llm_process_config; sync reads REGISTRY_PATH from the running release, so merge->promote->sync->hop",
+    "check_3_registry_diff": "maria_research_critique only; 56->56 processes; cost cap 0.3 unchanged",
+    "check_4_dust_cash": "PASS — 15 tests; SCHG/SRNE/CASH/QCOM refuse mint, skip graph, skip detector with a reason",
+    "legacy_dust_plan": "plan_7bd81581b9d4 S1 draft on SRNE — hygiene would expire 49 drafts, wider than authorised; flagged not actioned",
+    "cards_added_to_NOW": 0,
+    "docs": [
+      "docs/ops/CIO_NOTIFY_PRECONDITIONS_2026-08-29.md"
+    ],
+    "awaiting": "operator sentence: 'Telegram on' + channel + bar"
   }
 }

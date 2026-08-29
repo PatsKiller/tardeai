@@ -156,9 +156,30 @@ def test_policy_unavailable_degrades_visibly(monkeypatch):
 
 # ------------------------------------------------------------ mounted
 
-def test_block_is_mounted_on_office_home():
+def test_block_is_mounted_on_office_home_with_the_full_store():
+    """Fed `coverage_plans`, not the 12-row CIO NOW window.
+
+    Reading the window made the block report `suppressed_n: 12` against 450 real
+    open plans — a count that looks like the whole picture and is not, which is
+    the same error as showing only the survivors. NOW stays capped at 5 cards;
+    the block is not a card.
+    """
     code = CC.read_text(encoding="utf-8", errors="replace")
-    assert 'home["notifications"] = build_notification_block(plans)' in code
+    assert 'home["notifications"] = build_notification_block(' in code
+    assert "coverage_plans if coverage_plans else plans" in code, (
+        "the block must read the full open store, not the NOW window")
+
+
+def test_the_full_store_and_the_window_give_different_counts():
+    """Guards the distinction the mount relies on."""
+    window = [{"plan_id": f"w{i}", "situation_type": "S1_POSITION_LIFECYCLE",
+               "symbols": ["V"], "status": "draft", "material": False}
+              for i in range(3)]
+    full = window + [
+        {"plan_id": "s6", "situation_type": "S6_CONCENTRATION_OR_DISPOSITION",
+         "symbols": ["SCHD"], "status": "draft", "material": True}]
+    assert build_notification_block(window, now=NOW)["surfaced_n"] == 0
+    assert build_notification_block(full, now=NOW)["surfaced_n"] == 1
 
 
 def test_office_home_still_reports_telegram_sent_false():
