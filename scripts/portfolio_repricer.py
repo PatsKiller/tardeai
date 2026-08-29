@@ -517,14 +517,45 @@ def _recalc_totals(portfolio: Dict) -> None:
                 acct["reconciliation_residual_usd"] = drift
                 acct["residual_source"] = "broker_reported_vs_derived_holdings"
                 acct["residual_as_of"] = now.isoformat() if hasattr(now, "isoformat") else str(now)
-                acct["residual_quality"] = "UNEXPLAINED" if abs(drift) >= 1.0 else "IMMATERIAL"
                 acct["residual_class"] = "NON_SECURITY"
+
+                # A closed account that was rolled elsewhere is not an
+                # unexplained gap — it is a stale pre-transfer snapshot, and the
+                # assets are already counted in the destination.
+                #
+                # fidelity_rollover_ira is the live case: closed 2026-07-17,
+                # rolled_to schwab_rollover_ira, 0 holdings, but still carrying
+                # reported_total_value 566,439.39 as of 2026-07-16 — the day
+                # before the transfer. The pre-rollover backup shows Fidelity
+                # 566,439.39 / Schwab 583,116.93; Schwab now holds 1,164,151.51.
+                # The money moved. Calling this UNEXPLAINED made it read as a
+                # missing half-million, and "fixing" it by adding the residual
+                # to cash would double-count the rollover.
+                rolled_to = str(acct.get("rolled_to") or "")
+                closed = bool(acct.get("closed_at")) or str(
+                    acct.get("status") or "").startswith("closed")
+                if closed and rolled_to:
+                    acct["residual_quality"] = "EXPLAINED_ROLLED_OVER"
+                    acct["residual_explanation"] = (
+                        f"account closed and rolled to {rolled_to}; reported total is a "
+                        f"pre-transfer snapshot as of {acct.get('reported_total_as_of')}. "
+                        f"Assets are counted in {rolled_to}. Not cash, not missing.")
+                else:
+                    acct["residual_quality"] = (
+                        "UNEXPLAINED" if abs(drift) >= 1.0 else "IMMATERIAL")
                 acct_total = derived_total
                 if _reported_total_stale(acct, now) and not is_401k:
                     acct["reported_total_stale"] = True
-                print(f"  [repricer][residual] {acct_key}: ACCOUNT_RECONCILIATION_RESIDUAL "
-                      f"${drift:+,.2f} (reported ${reported_total:,.2f} vs derived ${derived_total:,.2f}) "
-                      f"— not injected into cash or a fund")
+                if acct.get("residual_quality") == "EXPLAINED_ROLLED_OVER":
+                    print(f"  [repricer][residual] {acct_key}: CLOSED_ROLLED_TO "
+                          f"{rolled_to} — stale pre-transfer total "
+                          f"${reported_total:,.2f} as of "
+                          f"{acct.get('reported_total_as_of')}; assets counted in "
+                          f"{rolled_to}, not cash, not missing")
+                else:
+                    print(f"  [repricer][residual] {acct_key}: ACCOUNT_RECONCILIATION_RESIDUAL "
+                          f"${drift:+,.2f} (reported ${reported_total:,.2f} vs derived ${derived_total:,.2f}) "
+                          f"— not injected into cash or a fund")
             else:
                 acct["reconciliation_residual_usd"] = 0.0
                 acct_total = reported_total
