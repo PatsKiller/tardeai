@@ -154,7 +154,7 @@ Leftovers still forbidden unless a Wave 2 slice explicitly allows a read-only st
 | 45 | no new Telegram producer since #611 | DONE | *(PR 4)* | *(fill after promote)* | regression | git log over the 4 producer paths since `19d1eb9e` = **0 commits** |
 | 46 | INTERDICT recorded | DONE | *(PR 4)* | *(fill after promote)* | left as found | `CIO_TELEGRAM_INTERDICT=0` |
 | 47 | census script | DONE | *(PR 4)* | *(fill after promote)* | read-only | `scripts/cio_wave2_census.py` recomputes the whole NOW block; agrees with the card |
-| 48 | Drive upsert census | **DRIVE=FAIL** | *(PR 4)* | *(fill after promote)* | continue per rail | gog keyring locked (no TTY) + bw vault locked; operator command in the closeout |
+| 48 | Drive upsert | **DONE (operator-run)** | *(PR 4)* | *(fill after promote)* | agent upload FAIL, no TTY | both blobs replaced; md id is capital-**O** (`…AZCqnxjOP`) — the prompt's zero 404s |
 | 49 | Wave 2 closeout vs diagram | DONE | *(PR 4)* | *(fill after promote)* | docs only | `CIO_WAVE2_OVERNIGHT_CLOSEOUT.md` + `CIO_WAVE2_CENSUS_2026-08-28.json` |
 | 50 | STOP | DONE | *(PR 4)* | *(fill after promote)* | **Wave 3 not started** | slices 12–41 shipped and promoted across #621 / #622 / #623 |
 

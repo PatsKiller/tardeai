@@ -4,7 +4,7 @@
   "memory_behavior_influence": 0,
   "interdict": "0",
   "drive": {
-    "status": "PARTIAL",
+    "status": "OK",
     "reason": "gog --replace blobs; native Doc/Sheet create-only",
     "folder_name": "TradeAI CIO Ops",
     "folder_id": "1rRSmvAeO37z2PyyrIYtd2C5ngwHsAIqH",
@@ -16,7 +16,11 @@
     "blob_json_holds": "CIO_WAVE2_SCOREBOARD.json",
     "census_blob": null,
     "census_blob_note": "the census has no Drive blob; create with --parent 1rRSmvAeO37z2PyyrIYtd2C5ngwHsAIqH to mint one",
-    "agent_upload": "FAIL \u2014 gog keyring is the file backend and needs GOG_KEYRING_PASSWORD; bw vault locked with no session. Operator ran it manually."
+    "agent_upload": "FAIL (keyring/no TTY) \u2014 operator ran it manually 2026-08-29",
+    "mirrored": {
+      "CIO_WAVE2_SCOREBOARD.md": "1kNRoyK_Tq8FNUMxrwjNDRB2AZCqnxjOP",
+      "CIO_WAVE2_SCOREBOARD.json": "1W04_1pATgfewyf8gp-WVIo8cqc26c4WQ"
+    }
   },
   "now": {
     "current_pin": "53794d823f0e88a220663eb47963ae3d46d51bd8",
@@ -693,7 +697,7 @@
       "pr": 623,
       "sha": "53794d823f0e88a220663eb47963ae3d46d51bd8",
       "rails": "no new uncalled helpers",
-      "live": "37 helpers/9 modules \u00b7 uncalled 2 \u2192 0 \u00b7 untested 15 \u2192 0"
+      "live": "37 helpers/9 modules \u00b7 uncalled 2 \u2192 0 \u00b7 untested 15 \u2192 0 \u00b7 repo guard check_dark_contracts.py caught CIOWave2Census@v1 in CI; NO_CONSUMER_REASON declared and the guard added to ai_local_acceptance.sh so it can never again be remote-only"
     },
     "38": {
       "title": "store_consistency never_auto_remediate",
@@ -781,7 +785,7 @@
       "pr": null,
       "sha": null,
       "rails": "DRIVE=FAIL, continue",
-      "live": "gog keyring locked (no TTY), bw vault locked; operator command recorded in the closeout"
+      "live": "operator-run gog --replace succeeded for both blobs; md id is capital-O (prompt's zero 404s). Agent upload FAIL: keyring needs a TTY."
     },
     "49": {
       "title": "Wave 2 closeout vs diagram",

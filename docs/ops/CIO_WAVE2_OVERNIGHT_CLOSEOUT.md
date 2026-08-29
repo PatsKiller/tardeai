@@ -94,7 +94,7 @@ is tonight's run at pin `53794d82`. The card and the census agree; the only
 labelled gap is `with_case_summary` (product cap 10 vs store 328), which the card
 now names.
 
-## DRIVE = FAIL
+## DRIVE = OK (operator-run); agent upload FAIL
 
 `gog` is installed and holds a token for the operator, but its keyring is the
 file backend and needs `GOG_KEYRING_PASSWORD`, which is not available in a
@@ -120,6 +120,19 @@ census has no blob yet; `--parent 1rRSmvAeO37z2PyyrIYtd2C5ngwHsAIqH` would mint 
 
 The operator ran the upload manually with the keyring password from Bitwarden
 (item *TradeAI gog keyring password*); the agent never handled it.
+
+## One more finding, from CI
+
+The repo's own `check_dark_contracts.py` **failed PR #624** on
+`CIOWave2Census@v1` — a new versioned contract with no consumer. It was right:
+the census is an operator CLI, so its consumer is a person, not a code path.
+Declared via `NO_CONSUMER_REASON`.
+
+The lesson is the *timing*. That guard is a separate step in the `cio-hardening`
+CI job and was **not** in `scripts/ai_local_acceptance.sh`, so local acceptance
+went green while CI failed — a remote cycle spent on something provable locally
+in 1.5 seconds. The guard is now mirrored in local acceptance, so this class of
+failure cannot be remote-only again.
 
 ## Rails — all held
 

@@ -12,6 +12,13 @@ READ_ONLY_ADVISORY. MBI=0. Reads only; writes nothing but --out.
 """
 from __future__ import annotations
 
+NO_CONSUMER_REASON = (
+    "operator-invoked audit CLI: CIOWave2Census@v1 exists so the Wave 2 "
+    "scoreboard can be checked against the live surfaces, and its consumer is a "
+    "person running --json, not a code path. Wiring it into the product would "
+    "make the scoreboard verify itself, which defeats the point."
+)
+
 import argparse
 import json
 import os
