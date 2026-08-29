@@ -1056,5 +1056,21 @@
       ]
     },
     "not_done": "148 CASH-bound + 50 dust-bound historical checkpoints left untouched"
+  },
+  "cash_writer_fix": {
+    "operator_pick": "WRITE total_cash at the source",
+    "site": "scripts/portfolio_loader.py refresh list (~332)",
+    "definition": "sum of is_cash position rows (same as total_mv_excluded, 630784.82)",
+    "fields_added": [
+      "total_cash",
+      "total_cash_source=position_rows",
+      "total_cash_written_at=as_of"
+    ],
+    "field_deleted": false,
+    "read_site_recompute_added": false,
+    "api_v2_2593_touched": false,
+    "effect_now": "fossil 578107.50 stays in holdings.json until the next reprice; display law keeps UNRECONCILED",
+    "effect_after_reprice": "gap 0.00, status RECONCILED, cash_for_S5 becomes 630784.82",
+    "gap_threshold": 1.0
   }
 }

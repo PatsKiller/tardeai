@@ -335,6 +335,24 @@ def load_all_portfolios(project_root_str: str) -> Dict:
     prev_pt["day_change_pct"] = portfolio_day_change_pct
     prev_pt["as_of"] = today
     prev_pt["last_pipeline_run"] = datetime.now().isoformat()
+    # total_cash used to be the one number in this dict that nothing refreshed.
+    # `prev_pt` carries the whole block forward, and every other key above is
+    # then overwritten — total_cash simply was not on the list, so each reprice
+    # copied a stale value forward indefinitely. It drifted to $478k against
+    # $186k of real cash by 2026-07-21 (fixed at the api_v2 read site only, so
+    # the stored field kept drifting) and to $578,107.50 against $630,784.82 by
+    # 2026-08-29 — a $52,677.32 gap in a field the operator reads as cash.
+    #
+    # Written at the source now, from the same definition that already agrees
+    # with total_mv_excluded and the five per-account cash rows: the sum of
+    # is_cash position rows. Cash rows pass through the repricing loop above
+    # unchanged, so `repriced` is the right list to sum.
+    _cash_rows = [h for h in repriced if h.get("is_cash")]
+    prev_pt["total_cash"] = round(
+        sum(float(h.get("market_value") or 0) for h in _cash_rows), 2
+    )
+    prev_pt["total_cash_source"] = "position_rows"
+    prev_pt["total_cash_written_at"] = today
     updated["portfolio_totals"] = prev_pt
 
     # Print summary
