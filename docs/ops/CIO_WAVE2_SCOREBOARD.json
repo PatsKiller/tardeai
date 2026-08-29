@@ -884,6 +884,30 @@
       "fix": "home.reentry_books reads the canonical cio_reentry_surface_labels module; CC renders Surface B beneath Surface A",
       "wrong_turn": "first attempt labelled build_opportunity_book as Surface B with invented text; Surface B is the desk_depth cash-stage book and canonical labels already existed. Reverted.",
       "merged": false
+    },
+    "161-190": {
+      "done": 30,
+      "fixed": 0,
+      "open": 0,
+      "hermes_result_id": {
+        "total": 328,
+        "open": 282,
+        "cancelled_by_dust_hygiene": 46,
+        "by_symbol": {
+          "SRNE": 26,
+          "JEPI": 20
+        },
+        "reconciles": true
+      },
+      "model_call_0001": {
+        "historical_events": 46,
+        "last": "2026-08-28T13:46:33Z",
+        "fix_commit": "ff09c255",
+        "fix_committed": "2026-08-28T13:49:23Z",
+        "completed_runs_since_with_none": 47
+      },
+      "live_model_calls_this_batch": 0,
+      "cap": "LLM_GLOBAL_DAILY_USD_CAP=0.50 unchanged"
     }
   }
 }
