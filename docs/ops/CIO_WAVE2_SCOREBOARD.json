@@ -14,8 +14,8 @@
     "native_sheet": "10T3HTcQS_tgYu8-dtHozWgCPBywvgPxXZjbJBrfT0uw"
   },
   "now": {
-    "current_pin": "6bbec1a1dd1d945ddfc7fb80a37a7afe5f173cc8",
-    "current_pr": 618,
+    "current_pin": "9f13273b470d6b03ced7fda1f4389a60e004976f",
+    "current_pr": 619,
     "health": 200,
     "cio": 200,
     "home": 200,
@@ -61,6 +61,16 @@
       "held_n": 19,
       "current_n": 19,
       "unavailable_n": 0
+    },
+    "coverage": {
+      "held": 19,
+      "held_n": 19,
+      "thesis_count": 19,
+      "with_thesis": 19,
+      "with_case_summary": 323,
+      "watch_ready": 0,
+      "watch_block": 21,
+      "class": "D"
     },
     "telegram_sent": false,
     "slice02_would_mint": "CURRENT",
@@ -146,25 +156,37 @@
     "07": {
       "title": "earnings commentary stub",
       "status": "DONE",
-      "pr": null,
-      "sha": null,
-      "live": "UNAVAILABLE no transcript"
+      "pr": 619,
+      "sha": "9f13273b470d6b03ced7fda1f4389a60e004976f",
+      "live": "UNAVAILABLE"
     },
     "08": {
       "title": "coverage API GET",
-      "status": "PENDING"
+      "status": "DONE",
+      "pr": null,
+      "sha": null,
+      "live": "home.coverage"
     },
     "09": {
       "title": "CC coverage card",
-      "status": "PENDING"
+      "status": "DONE",
+      "pr": null,
+      "sha": null,
+      "live": "cio-coverage-card"
     },
     "10": {
       "title": "reentry keys not zero",
-      "status": "PENDING"
+      "status": "DONE",
+      "pr": null,
+      "sha": null,
+      "live": "surface_a overlay"
     },
     "11": {
       "title": "thesis count vs held on home",
-      "status": "PENDING"
+      "status": "DONE",
+      "pr": null,
+      "sha": null,
+      "live": "thesis_count/held_n"
     },
     "12": {
       "title": "CUSIP-only instrument_id",

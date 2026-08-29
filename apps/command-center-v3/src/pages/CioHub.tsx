@@ -125,6 +125,21 @@ type OperatorTrust = {
   }
 }
 
+type OfficeCoverage = {
+  held?: number
+  held_n?: number
+  with_plan?: number
+  with_thesis?: number
+  thesis_count?: number
+  with_research?: number
+  with_case_summary?: number
+  watch_ready?: number
+  watch_block?: number
+  reentry_near?: number
+  class?: string
+  note?: string
+}
+
 type Home = {
   ok?: boolean
   as_of?: string
@@ -137,6 +152,7 @@ type Home = {
   report: ReportSummary
   evidence: Evidence
   operator_trust?: OperatorTrust
+  coverage?: OfficeCoverage
 }
 
 type CapitalPlan = {
@@ -199,6 +215,16 @@ type Opportunities = {
   reentry: { symbol: string; source: string; signal: string; label: string }[]
   watch_total?: number
   reentry_total?: number
+  queue_reentry_total?: number
+  surface_a_reentry_count?: number
+  surface_a_reentry_near?: number
+  surface_a_reentry_reenter?: number
+  reentry_pipes?: {
+    queue?: string
+    surface_a?: string
+    merged?: boolean
+    note?: string
+  }
   rotation: { sector: string; state: string; recommendation: string }[]
   research_gaps: { symbol: string; sector: string }[]
 }
@@ -588,6 +614,37 @@ function TrustStrip({ trust }: { trust?: OperatorTrust }) {
   )
 }
 
+function CoverageCard({ coverage }: { coverage?: OfficeCoverage }) {
+  const c = coverage || {}
+  const heldN = c.held_n ?? c.held ?? 0
+  const thesisCount = c.thesis_count ?? c.with_thesis ?? 0
+  const n = (v: number | undefined) => (v == null ? 0 : v)
+  return (
+    <div
+      data-testid="cio-coverage-card"
+      style={{ ...card, marginBottom: 16 }}
+    >
+      <SectionTitle>Office coverage</SectionTitle>
+      <div style={{ ...faint, marginBottom: 10 }}>
+        Class D · from holdings thesis, plans, case summaries, watch block, Surface A reentry. No Telegram.
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 10 }}>
+        <Stat
+          label="Thesis / held"
+          value={`${thesisCount}/${heldN}`}
+          help="thesis_count / held_n from holdings_thesis_coverage.current_n / held_n. SCHG dust may still count in held_n."
+        />
+        <Stat label="With plan" value={n(c.with_plan)} help="Held symbols on injected open plans." />
+        <Stat label="With research" value={n(c.with_research)} help="Held symbols on open plans with hermes_result_id." />
+        <Stat label="Case summaries" value={n(c.with_case_summary)} help="Active CASE_SUMMARY count (A-context)." />
+        <Stat label="Watch READY" value={n(c.watch_ready)} help="Named READY/GO symbols. Live often 0 — honest." />
+        <Stat label="Watch BLOCK" value={n(c.watch_block)} help="Honest BLOCK count; never remapped to READY." />
+        <Stat label="Reentry NEAR" value={n(c.reentry_near)} help="Surface A NEAR count (former holdings book)." />
+      </div>
+    </div>
+  )
+}
+
 // ── Section renderers ─────────────────────────────────────────────────────────
 
 function CioNowSection({ home, dispositions, legacyUnversioned, onAct }: {
@@ -612,6 +669,7 @@ function CioNowSection({ home, dispositions, legacyUnversioned, onAct }: {
         <Stat label="Material Today" value={materialToday ?? '—'} help="Deduped priority set (not the sum of the other three). Cards show at most 5." />
       </div>
       <TrustStrip trust={home.operator_trust} />
+      <CoverageCard coverage={home.coverage} />
       {decisions.length === 0 ? (
         <Empty text="Nothing needs a decision right now. Portfolio is stable." />
       ) : (
@@ -1307,7 +1365,15 @@ function OpportunitiesSection({ opp }: { opp: Opportunities }) {
           <SectionTitle>Re-entry A</SectionTitle>
           <div style={{ ...faint, marginBottom: 8 }}>
             Surface A · former holdings vs exit trigger (not candidates vs cash-stage R:R under desk thesis).
-            {opp.reentry_total != null && opp.reentry_total > opp.reentry.length ? ` · showing ${opp.reentry.length} of ${opp.reentry_total}` : ''}
+            {opp.surface_a_reentry_count != null && opp.surface_a_reentry_count > 0
+              ? ` · book ${opp.surface_a_reentry_count} (NEAR ${opp.surface_a_reentry_near ?? 0} · REENTER ${opp.surface_a_reentry_reenter ?? 0})`
+              : ''}
+            {opp.reentry.length > 0 && opp.reentry_total != null && opp.reentry_total > opp.reentry.length
+              ? ` · queue chips ${opp.reentry.length} of ${opp.queue_reentry_total ?? opp.reentry_total}`
+              : ''}
+            {opp.reentry_pipes && opp.reentry_pipes.merged === false
+              ? ' · dual pipes not merged'
+              : ''}
           </div>
           {list(opp.reentry)}
         </div>

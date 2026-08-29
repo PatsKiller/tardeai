@@ -850,6 +850,146 @@ def build_evidence(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Coverage (Wave 2 slices 08 / 11) + Surface A reentry overlay (slice 10)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _safe_int(v: Any, default: int = 0) -> int:
+    try:
+        if v is None:
+            return default
+        return int(v)
+    except (TypeError, ValueError):
+        return default
+
+
+def build_office_coverage(
+    *,
+    holdings_thesis_coverage: Optional[dict[str, Any]] = None,
+    watch_block_summary: Optional[dict[str, Any]] = None,
+    case_summaries: Optional[dict[str, Any]] = None,
+    reentry: Optional[dict[str, Any]] = None,
+    plans: Optional[list[Any]] = None,
+) -> dict[str, Any]:
+    """Class D office coverage counts from existing op/product keys.
+
+    Fail-soft zeros. Never invents thesis, prices, or READY/NEAR. Prefer
+    holdings_thesis_coverage / watch_block_summary / case_summaries / reentry
+    counts over new collectors or routes.
+
+    ``held`` / ``held_n`` and ``with_thesis`` / ``thesis_count`` are aliases so
+    the CC card can show thesis_count/held_n without silent held_n semantics
+    changes (SCHG dust may still appear in held_equity_symbols).
+    """
+    htc = holdings_thesis_coverage if isinstance(holdings_thesis_coverage, dict) else {}
+    wbs = watch_block_summary if isinstance(watch_block_summary, dict) else {}
+    cases = case_summaries if isinstance(case_summaries, dict) else {}
+    re = reentry if isinstance(reentry, dict) else {}
+    re_counts = re.get("counts") if isinstance(re.get("counts"), dict) else {}
+
+    held_n = _safe_int(htc.get("held_n"))
+    thesis_count = _safe_int(htc.get("current_n"))
+
+    held_syms = {
+        _str(i.get("symbol")).upper()
+        for i in (htc.get("items") or [])
+        if isinstance(i, dict) and i.get("symbol")
+    }
+
+    plan_held: set[str] = set()
+    research_held: set[str] = set()
+    for p in plans or []:
+        if not _plan_is_open(p):
+            continue
+        if not isinstance(p, dict):
+            continue
+        psyms = {
+            _str(s).upper()
+            for s in (p.get("symbols") or [])
+            if s
+        }
+        hit = psyms & held_syms if held_syms else set()
+        if not hit and not held_syms:
+            continue
+        plan_held |= hit
+        if p.get("hermes_result_id"):
+            research_held |= hit
+
+    # Prefer ready_count (READY+NEAR); fall back to named lists.
+    watch_ready = _safe_int(wbs.get("ready_count"))
+    if watch_ready <= 0:
+        ready_syms = wbs.get("ready_symbols") if isinstance(wbs.get("ready_symbols"), list) else []
+        near_syms = wbs.get("near_symbols") if isinstance(wbs.get("near_symbols"), list) else []
+        watch_ready = len([s for s in list(ready_syms) + list(near_syms) if s])
+    watch_block = _safe_int(wbs.get("count"))
+    reentry_near = _safe_int(re_counts.get("NEAR"))
+    with_case = _safe_int(cases.get("count"))
+
+    return {
+        "held": held_n,
+        "held_n": held_n,
+        "with_plan": len(plan_held),
+        "with_thesis": thesis_count,
+        "thesis_count": thesis_count,
+        "with_research": len(research_held),
+        "with_case_summary": with_case,
+        "watch_ready": watch_ready,
+        "watch_block": watch_block,
+        "reentry_near": reentry_near,
+        "class": "D",
+        "authority": "READ_ONLY_ADVISORY",
+        "memory_behavior_influence": 0,
+        "note": (
+            "Aggregated from holdings_thesis_coverage, injected open plans ∩ held, "
+            "case_summaries.count, watch_block_summary, Surface A reentry.counts. "
+            "Fail-soft zeros. No Telegram."
+        ),
+    }
+
+
+def overlay_surface_a_reentry_on_opportunities(
+    opportunities: dict[str, Any],
+    reentry: Optional[dict[str, Any]] = None,
+) -> dict[str, Any]:
+    """Overlay Surface A NEAR/REENTER counts onto home opportunities.
+
+    Does **not** merge books. Queue-sourced ``reentry`` chips stay pipe 1;
+    Surface A ``reentry_book`` / operator ``reentry`` is pipe 2. When Surface A
+    names are nonempty, ``reentry_total`` and ``surface_a_*`` keys are non-zero
+    even if the queue pipe is empty.
+    """
+    opp = dict(opportunities or {})
+    re = reentry if isinstance(reentry, dict) else {}
+    names = re.get("names") if isinstance(re.get("names"), list) else None
+    sa_count = _safe_int(re.get("count"))
+    if names is not None and sa_count <= 0:
+        sa_count = len(names)
+    re_counts = re.get("counts") if isinstance(re.get("counts"), dict) else {}
+    sa_near = _safe_int(re_counts.get("NEAR"))
+    sa_reenter = _safe_int(re_counts.get("REENTER"))
+    queue_total = _safe_int(opp.get("reentry_total"))
+
+    opp["queue_reentry_total"] = queue_total
+    opp["surface_a_reentry_count"] = sa_count
+    opp["surface_a_reentry_near"] = sa_near
+    opp["surface_a_reentry_reenter"] = sa_reenter
+    opp["reentry_pipes"] = {
+        "queue": "opportunities.reentry / queue_reentry_total",
+        "surface_a": "surface_a_reentry_* from operator_product.reentry / reentry_book",
+        "merged": False,
+        "note": "Dual pipes labeled not merged (Wave 1 slice 3 / Wave 2 slice 10)",
+    }
+
+    if sa_count > 0:
+        # Prefer actionable NEAR+REENTER overlay; fall back to full book count
+        # when names exist but none are currently NEAR/REENTER (WAIT/AVOID book).
+        overlay = sa_near + sa_reenter
+        opp["reentry_total"] = overlay if overlay > 0 else sa_count
+    else:
+        opp["reentry_total"] = queue_total
+    return opp
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Composition
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -981,6 +1121,20 @@ def build_office_home(
         "count": 0,
         "items": [],
     }
+    # Wave 2 slice 10: overlay Surface A reentry counts onto opportunities
+    # without merging queue chips with the Surface A book (dual pipes).
+    home["opportunities"] = overlay_surface_a_reentry_on_opportunities(
+        home.get("opportunities") or {},
+        op.get("reentry") if isinstance(op.get("reentry"), dict) else {},
+    )
+    # Wave 2 slices 08/11: Class D coverage object on /v3/cio/home.
+    home["coverage"] = build_office_coverage(
+        holdings_thesis_coverage=home.get("holdings_thesis_coverage"),
+        watch_block_summary=home.get("watch_block_summary"),
+        case_summaries=home.get("case_summaries") if isinstance(home.get("case_summaries"), dict) else {},
+        reentry=op.get("reentry") if isinstance(op.get("reentry"), dict) else {},
+        plans=plans,
+    )
     home["telegram_sent"] = False
     home["delivery"] = "dashboard"
     return home
