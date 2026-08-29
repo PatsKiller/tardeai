@@ -14,18 +14,27 @@
     "native_sheet": "10T3HTcQS_tgYu8-dtHozWgCPBywvgPxXZjbJBrfT0uw"
   },
   "now": {
-    "current_pin": "9f13273b470d6b03ced7fda1f4389a60e004976f",
-    "current_pr": 619,
+    "current_pin": "d53fde4c4ad7cd643830642850e0a1f6c6181298",
+    "current_pr": 620,
     "health": 200,
     "cio": 200,
     "home": 200,
     "plans": {
-      "draft": 319,
-      "proposed": 217,
+      "open_total": 575,
+      "draft": 350,
+      "proposed": 224,
       "accepted": 1,
       "cancelled": 269,
       "hygiene": 267,
-      "with_hermes": 323
+      "with_hermes": 323,
+      "by_situation": {
+        "S3_REENTRY_CANDIDATE": 314,
+        "S1_POSITION_LIFECYCLE": 149,
+        "S6_CONCENTRATION_OR_DISPOSITION": 59,
+        "S5_CASH_DEPLOYMENT": 35,
+        "S7_WATCH_PROMOTION": 11,
+        "S0_OPERATOR_CONVERSE": 7
+      }
     },
     "case_summary_active": 323,
     "research_reference": 443,
@@ -53,24 +62,37 @@
       ]
     ],
     "cash_usd": 630784.82,
-    "watch_block_count": 21,
+    "watch_block_count": 26,
     "watch_ready_count": 0,
     "fires_s7": false,
     "checkpoints": 152,
     "holdings_thesis_coverage": {
-      "held_n": 19,
-      "current_n": 19,
-      "unavailable_n": 0
+      "held_n": 15,
+      "current_n": 15,
+      "unavailable_n": 0,
+      "held_n_including_dust": 19,
+      "dust_n": 4,
+      "dust_tickers": [
+        "JEPI",
+        "LDOS",
+        "SCHG",
+        "SRNE"
+      ],
+      "instrument_id_n": 3
     },
     "coverage": {
-      "held": 19,
-      "held_n": 19,
-      "thesis_count": 19,
-      "with_thesis": 19,
-      "with_case_summary": 323,
+      "held": 15,
+      "held_n": 15,
+      "thesis_count": 15,
+      "with_thesis": 15,
+      "with_plan": 11,
+      "with_plan_source": "open_plan_store",
+      "with_case_summary": 10,
       "watch_ready": 0,
-      "watch_block": 21,
-      "class": "D"
+      "watch_block": 26,
+      "reentry_near": 25,
+      "class": "D",
+      "note": "held_n excludes DUST_RESIDUAL (slice 12a). with_case_summary is the product cap-10 view; store CASE_SUMMARY ACTIVE = 323."
     },
     "telegram_sent": false,
     "slice02_would_mint": "CURRENT",
@@ -102,7 +124,107 @@
       ]
     ],
     "watch_ready_symbols": [],
-    "watch_near_symbols": []
+    "watch_near_symbols": [],
+    "reentry_near": 25,
+    "dust_policy": {
+      "policy_id": "dust_residual@v1",
+      "threshold_usd": 50.0,
+      "basis": "market_value",
+      "aggregation": "per_ticker_across_accounts",
+      "rejected_alternative": "portfolio weight < 0.5%",
+      "deletes_lots": false
+    },
+    "instrument_ids": [
+      "12507E201",
+      "543354104",
+      "628518102"
+    ],
+    "slice12c_would": [
+      "BAH",
+      "CSWC",
+      "V",
+      "XAR",
+      "AMANX"
+    ],
+    "slice12c_applied": 0,
+    "identity_coverage": {
+      "total_rows": 111,
+      "total_resolvable": 111,
+      "total_resolvable_pct": 100.0,
+      "total_stamped": 5,
+      "total_stamped_pct": 4.5,
+      "by_surface": {
+        "new_position_if": {
+          "n": 5,
+          "resolvable_pct": 100.0,
+          "stamped_pct": 100.0
+        },
+        "reentry_book": {
+          "n": 70,
+          "resolvable_pct": 100.0,
+          "stamped_pct": 0.0
+        },
+        "opportunity_book": {
+          "n": 28,
+          "resolvable_pct": 100.0,
+          "stamped_pct": 0.0
+        },
+        "watch_block": {
+          "n": 8,
+          "resolvable_pct": 100.0,
+          "stamped_pct": 0.0
+        }
+      },
+      "registry_entities": 10279,
+      "registry_symbols": 5277,
+      "minted": 0
+    },
+    "identity_register_dry": {
+      "held_non_dust_n": 15,
+      "watch_n": 36,
+      "considered_n": 47,
+      "would_register_n": 0,
+      "would_register": [],
+      "cap": 30,
+      "applied": false,
+      "apply_reason": "nothing to register"
+    },
+    "dry_harness": "TRADEAI_ROOT=CURRENT required: root-less collectors fall back to the importing checkout, which reports reentry 43 / watch 0 instead of 70 / 26.",
+    "graph_impact_s6": {
+      "sector_map_available": true,
+      "s6_symbols": [
+        "AMANX",
+        "BND",
+        "CASH",
+        "DIV",
+        "QCOM",
+        "SCHD",
+        "SPCX",
+        "SRNE"
+      ],
+      "attached_n": 5,
+      "skipped": {
+        "CASH": "not_held_non_dust",
+        "QCOM": "not_held_non_dust",
+        "SRNE": "dust_residual"
+      },
+      "neighbors": {
+        "SCHD": "5 of 13",
+        "AMANX": "5 of 13",
+        "DIV": "5 of 11",
+        "SPCX": "5 of 8",
+        "BND": "0 of 0"
+      },
+      "cap": 5,
+      "hop": 1,
+      "class": "D"
+    },
+    "identity_lookup_states": [
+      "RESOLVED",
+      "UNRESOLVED",
+      "LOOKUP_FAILED",
+      "NOT_APPLICABLE"
+    ]
   },
   "wave1_closed": true,
   "slices": {
@@ -163,58 +285,92 @@
     "08": {
       "title": "coverage API GET",
       "status": "DONE",
-      "pr": null,
-      "sha": null,
+      "pr": 620,
+      "sha": "d53fde4c4ad7cd643830642850e0a1f6c6181298",
       "live": "home.coverage"
     },
     "09": {
       "title": "CC coverage card",
       "status": "DONE",
-      "pr": null,
-      "sha": null,
+      "pr": 620,
+      "sha": "d53fde4c4ad7cd643830642850e0a1f6c6181298",
       "live": "cio-coverage-card"
     },
     "10": {
       "title": "reentry keys not zero",
       "status": "DONE",
-      "pr": null,
-      "sha": null,
+      "pr": 620,
+      "sha": "d53fde4c4ad7cd643830642850e0a1f6c6181298",
       "live": "surface_a overlay"
     },
     "11": {
       "title": "thesis count vs held on home",
       "status": "DONE",
-      "pr": null,
-      "sha": null,
+      "pr": 620,
+      "sha": "d53fde4c4ad7cd643830642850e0a1f6c6181298",
       "live": "thesis_count/held_n"
     },
     "12": {
-      "title": "CUSIP-only instrument_id",
-      "status": "PENDING"
+      "title": "holdings truth \u2014 instrument_id, DUST_RESIDUAL, with_plan counter, S1 leftovers",
+      "status": "DONE",
+      "pr": null,
+      "sha": null,
+      "sub": {
+        "12": "3 CUSIP rows -> instrument_id (id_type CUSIP, is_ticker false); never a ticker field",
+        "12a": "dust_residual@v1: aggregate market_value < $50/ticker. dust = JEPI LDOS SCHG SRNE. held_n 19 -> 15. No lot deleted.",
+        "12b": "with_plan 1 -> 11. Root cause: coverage counted the 12-row CIO NOW window, not the 575-plan store. Counter fixed; no plan minted.",
+        "12c": "observational S1 skips dust; would = BAH CSWC V XAR AMANX (cap 5, notify false). Apply is a separate dry-first step."
+      },
+      "rails": "MBI=0 INTERDICT=0 no broker write no notify no lot delete",
+      "live": "held_n 15 (19 incl dust) \u00b7 dust 4 \u00b7 instrument_id 3 \u00b7 with_plan 11 \u00b7 would_s1 BAH CSWC V XAR AMANX"
     },
     "13": {
-      "title": "subject_guid percent measure",
-      "status": "PENDING"
+      "title": "% subject_guid measured on NEW_POSITION_IF / reentry / watch",
+      "status": "DONE",
+      "pr": null,
+      "sha": null,
+      "rails": "no mint \u00b7 registry not written \u00b7 MBI=0",
+      "live": "111 rows \u00b7 resolvable 100% \u00b7 stamped 4.5% (only NEW_POSITION_IF stamps) \u00b7 minted 0"
     },
     "14": {
-      "title": "register HELD+ACTIVE watch missing",
-      "status": "PENDING"
+      "title": "register HELD(non-dust)+ACTIVE watch missing from identity.registry",
+      "status": "DONE",
+      "pr": null,
+      "sha": null,
+      "rails": "dry only \u00b7 --apply NOT run \u00b7 cap 30 \u00b7 refuses above cap",
+      "live": "would_register_n=0 \u2014 every held non-dust and active-watch name already registered"
     },
     "15": {
-      "title": "1-hop graph_impact stub",
-      "status": "PENDING"
+      "title": "1-hop graph_impact same-sector held neighbours",
+      "status": "DONE",
+      "pr": null,
+      "sha": null,
+      "rails": "class D \u00b7 no new store \u00b7 dust excluded both sides",
+      "live": "cap 5 \u00b7 deterministic rank \u00b7 missing map -> DATA_UNAVAILABLE \u00b7 BND honest 0 neighbours"
     },
     "16": {
-      "title": "graph_impact on S6",
-      "status": "PENDING"
+      "title": "graph_impact on S6 names only",
+      "status": "DONE",
+      "pr": null,
+      "sha": null,
+      "rails": "S6 scope only \u00b7 context never action",
+      "live": "8 S6 symbols \u00b7 5 attached \u00b7 CASH/QCOM not held, SRNE dust -> skipped with reason"
     },
     "17": {
-      "title": "identity_lookup_failed vs UNRESOLVED",
-      "status": "PENDING"
+      "title": "identity_lookup_failed != UNRESOLVED",
+      "status": "DONE",
+      "pr": null,
+      "sha": null,
+      "rails": "UNRESOLVED still UNRESOLVED \u00b7 no mint",
+      "live": "RESOLVED | UNRESOLVED | LOOKUP_FAILED | NOT_APPLICABLE; failure outranks clean negative"
     },
     "18": {
       "title": "never ticker as security GUID",
-      "status": "PENDING"
+      "status": "DONE",
+      "pr": null,
+      "sha": null,
+      "rails": "regression only",
+      "live": "ticker_alias_guid UUIDv5 \u00b7 symbol in aliases \u00b7 by_symbol[SYM] != SYM (SCHD/CUSIP/V)"
     },
     "19": {
       "title": "Hermes fail histogram",

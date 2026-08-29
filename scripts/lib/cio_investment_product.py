@@ -303,6 +303,101 @@ def held_equity_symbols(holdings: dict[str, Any] | None) -> list[str]:
     return uniq
 
 
+# ── Wave 2 slice 12 / 12a: instrument_id and DUST_RESIDUAL ──────────────────
+# Threshold, rationale and the rejected weight-based alternative live in
+# scripts/lib/holdings_universe.DUST_POLICY. This module applies that policy to
+# an injected holdings dict so callers/tests need no filesystem.
+
+def _row_market_value(row: dict[str, Any]) -> float | None:
+    if not isinstance(row, dict):
+        return None
+    v = row.get("market_value")
+    if v is None or isinstance(v, bool):
+        return None
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None
+
+
+def market_value_by_symbol(holdings: dict[str, Any] | None) -> dict[str, float | None]:
+    """Aggregate held market value per ticker. ``None`` = unknown, never dust."""
+    rows = (holdings or {}).get("holdings")
+    if not isinstance(rows, list):
+        return {}
+    known: dict[str, float] = {}
+    unknown: set[str] = set()
+    for h in rows:
+        if not isinstance(h, dict) or _is_cash_holding(h):
+            continue
+        sym = str(h.get("symbol") or "").upper()
+        if not _looks_like_ticker(sym):
+            continue
+        known.setdefault(sym, 0.0)
+        mv = _row_market_value(h)
+        if mv is None:
+            unknown.add(sym)
+        else:
+            known[sym] += mv
+    return {sym: (None if sym in unknown else round(total, 2)) for sym, total in known.items()}
+
+
+def dust_symbols(holdings: dict[str, Any] | None) -> list[str]:
+    """Held tickers below the documented dust floor. SCHG is the fixture."""
+    from scripts.lib.holdings_universe import is_dust_market_value
+
+    return sorted(s for s, mv in market_value_by_symbol(holdings).items() if is_dust_market_value(mv))
+
+
+def held_equity_symbols_nondust(holdings: dict[str, Any] | None) -> list[str]:
+    """held_equity_symbols minus DUST_RESIDUAL. The post-12a coverage universe."""
+    dust = set(dust_symbols(holdings))
+    return [s for s in held_equity_symbols(holdings) if s not in dust]
+
+
+def collect_held_instrument_ids(holdings: dict[str, Any] | None) -> dict[str, Any]:
+    """Held rows whose ``symbol`` is an instrument id (CUSIP), not a ticker.
+
+    These rows must never be rendered as tickers. Reported separately so a
+    surface that wants tickers gets tickers and a surface that wants the whole
+    book can still show the unresolved ids honestly.
+    """
+    from scripts.lib.holdings_universe import classify_instrument_id
+
+    rows = (holdings or {}).get("holdings")
+    items: list[dict[str, Any]] = []
+    if isinstance(rows, list):
+        for h in rows:
+            if not isinstance(h, dict) or _is_cash_holding(h):
+                continue
+            raw = str(h.get("symbol") or "").upper().strip()
+            if not raw or _looks_like_ticker(raw):
+                continue
+            items.append({
+                "instrument_id": raw,
+                "id_type": classify_instrument_id(raw),
+                "is_ticker": False,
+                "ticker": None,
+                "account": h.get("account") or h.get("account_id"),
+                "market_value": _row_market_value(h),
+                "name": h.get("name"),
+                "class": "D",
+            })
+    items.sort(key=lambda x: (str(x["instrument_id"]), str(x.get("account") or "")))
+    return {
+        "schema": "HeldInstrumentIds@v1",
+        "authority": AUTHORITY,
+        "financial_action": False,
+        "instrument_id_n": len(items),
+        "items": items,
+        "class": "D",
+        "note": (
+            "CUSIP-only held rows are instrument_id, not ticker. No surface may "
+            "render these in a ticker field and no thesis is minted for them."
+        ),
+    }
+
+
 # Surface A former-sold probe (Wave 2 slice 04). Dust residual ≠ HELD.
 SURFACE_A_STATUS_PROBE = ("SCHG", "AXTI", "FATN", "FANG")
 _MATERIAL_HELD_MIN_SHARES = 1.0
@@ -403,11 +498,34 @@ def collect_holdings_thesis_coverage(
     holdings: dict[str, Any] | None = None,
     root: Path | str | None = None,
 ) -> dict[str, Any]:
-    """Every currently held equity → CURRENT or UNAVAILABLE. Never fake a thesis."""
+    """Every currently held equity → CURRENT or UNAVAILABLE. Never fake a thesis.
+
+    Wave 2 slice 12a: DUST_RESIDUAL names are reported but excluded from
+    ``held_n`` / ``current_n`` / ``unavailable_n``. A residual share left over
+    from a sale is not a hold and must not manufacture a coverage hole. Lots
+    are untouched — this is a label. ``held_n_including_dust`` keeps the old
+    number visible so the change is auditable rather than silent.
+    """
     from scripts.lib.symbol_thesis_attach import thesis_fields_for_symbol
+    from scripts.lib.holdings_universe import DUST_POLICY, DUST_STATUS, HELD_STATUS
+
+    mv_by_symbol = market_value_by_symbol(holdings)
+    dust = set(dust_symbols(holdings))
+    dust_items: list[dict[str, Any]] = [
+        {
+            "symbol": sym,
+            "holding_status": DUST_STATUS,
+            "market_value": mv_by_symbol.get(sym),
+            "threshold_usd": DUST_POLICY["threshold_usd"],
+            "thesis_status": "NOT_REQUIRED",
+            "thesis_status_reason": "dust_residual_not_a_hold",
+            "class": "D",
+        }
+        for sym in sorted(dust)
+    ]
 
     items: list[dict[str, Any]] = []
-    for sym in held_equity_symbols(holdings):
+    for sym in held_equity_symbols_nondust(holdings):
         try:
             th = thesis_fields_for_symbol(sym, root=root)
         except Exception as exc:
@@ -443,12 +561,25 @@ def collect_holdings_thesis_coverage(
                 "why_owned_or_watched": None,
                 "class": "D",
             })
+    for row in items:
+        row["holding_status"] = HELD_STATUS
+        row["market_value"] = mv_by_symbol.get(row["symbol"])
     current_n = sum(1 for i in items if i["thesis_status"] == "CURRENT")
+    instrument_ids = collect_held_instrument_ids(holdings)
     return {
         "held_n": len(items),
         "current_n": current_n,
         "unavailable_n": len(items) - current_n,
         "items": items,
+        # Wave 2 slice 12a — dust is excluded from the counts above, not hidden.
+        "held_n_including_dust": len(items) + len(dust_items),
+        "dust_n": len(dust_items),
+        "dust_tickers": sorted(dust),
+        "dust_items": dust_items,
+        "dust_policy": DUST_POLICY,
+        # Wave 2 slice 12 — CUSIP-only rows are instrument ids, not tickers.
+        "instrument_id_n": instrument_ids["instrument_id_n"],
+        "instrument_ids": instrument_ids["items"],
         "class": "D",
         "no_fake_thesis": True,
         "authority": AUTHORITY,
@@ -1632,6 +1763,23 @@ def build_product(
         "requires_operator_review": True,
         "confidence": 0.55 if verdicts or (queue.get("count") or 0) else 0.35,
     }
+    # Wave 2 slice 13: measure identity coverage on the surfaces just built.
+    # Lookup only — never mints, and fail-soft so a registry problem cannot
+    # blank the product.
+    try:
+        from scripts.lib.cio_identity_coverage import measure_identity_coverage
+        product["identity_coverage"] = measure_identity_coverage(
+            product=product, root=root_path,
+        )
+    except Exception as exc:
+        product["identity_coverage"] = {
+            "schema": "CIOIdentityCoverage@v1",
+            "authority": AUTHORITY,
+            "available": False,
+            "reason": type(exc).__name__,
+            "minted": 0,
+            "class": "D",
+        }
     stamp_advisory_origin(product, producer="cio_investment_product.build_product")
     return product
 

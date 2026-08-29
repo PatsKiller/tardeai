@@ -348,6 +348,30 @@ def get_cio_plans(*, limit: int = 30, situation_type: Optional[str] = None) -> d
     }
 
 
+def _coverage_plan_index(limit: int = 5000) -> list[dict[str, Any]]:
+    """Read-only open-plan projection for coverage counting (Wave 2 slice 12b).
+
+    Only the four fields the counter reads. Fail-soft to [] so a plan-store
+    problem zeroes the count instead of blanking /v3/cio/home.
+    """
+    try:
+        rows = _plan_store().list_open_plans(limit=limit)
+    except Exception:
+        return []
+    out: list[dict[str, Any]] = []
+    for p in rows or []:
+        if not isinstance(p, dict):
+            continue
+        extra = p.get("extra") if isinstance(p.get("extra"), dict) else {}
+        out.append({
+            "situation_type": p.get("situation_type"),
+            "symbols": [str(s).upper() for s in (p.get("symbols") or []) if s],
+            "status": p.get("status"),
+            "hermes_result_id": p.get("hermes_result_id") or extra.get("hermes_result_id"),
+        })
+    return out
+
+
 def get_cio_plan(plan_id: str) -> dict[str, Any]:
     store = _plan_store()
     plan = store.get_plan(str(plan_id).strip())
@@ -1113,6 +1137,26 @@ def get_cio_home() -> dict[str, Any]:
     thesis = (get_cio_thesis() or {}).get("thesis") or None
     actions = _cio_actions_data(20)
     plans = (get_cio_plans(limit=12) or {}).get("plans") or []
+    # Wave 2 slice 12b: `plans` above is the 12-row CIO NOW window and must stay
+    # that size. Coverage counts open plans against the whole store, through a
+    # minimal read-only projection (_public_plan drops hermes_result_id, which
+    # coverage.with_research needs). Nothing is minted, nothing is written.
+    coverage_plans = _coverage_plan_index()
+    # Wave 2 slice 16: same-sector context for S6 names only. Fail-soft — a
+    # sector-map problem must not blank /v3/cio/home.
+    try:
+        from scripts.lib.cio_graph_impact import build_graph_impact_for_s6
+        from scripts.lib.cio_investment_product import collect_holdings
+        graph_impact = build_graph_impact_for_s6(
+            plans=coverage_plans, holdings=collect_holdings(PROJECT_ROOT),
+        )
+    except Exception as e:
+        graph_impact = {
+            "schema": "CIOGraphImpactS6@v1", "available": False,
+            "reason": type(e).__name__, "items": {}, "attached_n": 0,
+            "scope": "S6_CONCENTRATION_OR_DISPOSITION names only",
+            "class": "D", "authority": "READ_ONLY_ADVISORY",
+        }
 
     # Evidence / audit block.
     source_refs = [
@@ -1164,6 +1208,8 @@ def get_cio_home() -> dict[str, Any]:
         income=income,
         actions=actions,
         plans=plans,
+        coverage_plans=coverage_plans,
+        graph_impact=graph_impact,
         source_refs=source_refs,
         validator_states=validator_states,
         run_ids=run_ids,

@@ -2,6 +2,10 @@
 
 READ_ONLY_ADVISORY. Not eval_s1 (no invented PnL / basis). Draft only.
 Skip CUSIP/CASH. Skip if an open S1 already exists for the symbol.
+
+Wave 2 slice 12c also skips DUST_RESIDUAL. A residual share left behind by a
+sale is not a hold, so it is not a coverage hole and must not mint a plan.
+SCHG's slice-03 S1 had to be cancelled by hand for exactly this reason.
 """
 from __future__ import annotations
 
@@ -26,11 +30,18 @@ def collect_held_without_open_s1(
     root: Path | str | None = None,
     cap: int = CAP,
 ) -> dict[str, Any]:
-    from scripts.lib.cio_investment_product import collect_holdings, held_equity_symbols
+    from scripts.lib.cio_investment_product import (
+        collect_holdings,
+        dust_symbols,
+        held_equity_symbols,
+        held_equity_symbols_nondust,
+    )
 
     if holdings is None:
         holdings = collect_holdings(root)
-    held = list(held_equity_symbols(holdings))
+    held_all = list(held_equity_symbols(holdings))
+    held = list(held_equity_symbols_nondust(holdings))
+    skipped_dust = sorted(dust_symbols(holdings))
     open_s1: set[str] = set()
     if plans is not None:
         try:
@@ -65,6 +76,8 @@ def collect_held_without_open_s1(
         "financial_action": False,
         "held_n": len(held),
         "held": held,
+        "held_n_including_dust": len(held_all),
+        "skipped_dust": skipped_dust,
         "open_s1_n": len(open_s1),
         "skipped_open_s1": skipped_open,
         "would_n": len(would),

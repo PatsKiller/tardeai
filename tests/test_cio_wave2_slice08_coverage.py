@@ -1,4 +1,8 @@
-"""Wave 2 slice 08: coverage object on /v3/cio/home (Class D). Fail-soft zeros."""
+"""Wave 2 slice 08: coverage object on /v3/cio/home (Class D). Fail-soft zeros.
+
+Slice 12b tightened ``with_plan`` to open S1/S3/S5/S6 plans only, so these
+fixtures carry an explicit ``situation_type``. The assertions are unchanged.
+"""
 from __future__ import annotations
 
 from scripts.lib.cio_command_center import build_office_coverage, build_office_home
@@ -25,9 +29,12 @@ def test_coverage_from_existing_keys():
         case_summaries={"count": 323, "items": [], "class": "A"},
         reentry={"count": 67, "counts": {"NEAR": 4, "WAIT": 50, "AVOID": 13}},
         plans=[
-            {"status": "draft", "symbols": ["SCHD"], "hermes_result_id": "res_1"},
-            {"status": "proposed", "symbols": ["NOC"]},
-            {"status": "cancelled", "symbols": ["SCHD"], "hermes_result_id": "res_x"},
+            {"status": "draft", "situation_type": "S1_POSITION_LIFECYCLE",
+             "symbols": ["SCHD"], "hermes_result_id": "res_1"},
+            {"status": "proposed", "situation_type": "S6_CONCENTRATION_OR_DISPOSITION",
+             "symbols": ["NOC"]},
+            {"status": "cancelled", "situation_type": "S1_POSITION_LIFECYCLE",
+             "symbols": ["SCHD"], "hermes_result_id": "res_x"},
         ],
     )
     assert cov["class"] == "D"
@@ -76,7 +83,8 @@ def test_home_wires_coverage():
             "case_summaries": {"count": 10, "items": [], "class": "A"},
             "reentry": {"count": 8, "counts": {"NEAR": 2}},
         },
-        plans=[{"status": "draft", "symbols": ["AAA"], "hermes_result_id": "r1"}],
+        plans=[{"status": "draft", "situation_type": "S1_POSITION_LIFECYCLE",
+                "symbols": ["AAA"], "hermes_result_id": "r1"}],
     )
     assert "coverage" in home
     assert home["coverage"]["held"] == 3
