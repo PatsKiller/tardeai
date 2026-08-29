@@ -1704,5 +1704,31 @@
       "docs/ops/CIO_NOTIFY_PRECONDITIONS_2026-08-29.md"
     ],
     "awaiting": "operator sentence: 'Telegram on' + channel + bar"
+  },
+  "GROK_HOP": {
+    "status": "DONE — one live grok critique, verdict REJECT, nothing attached",
+    "lane": "grok",
+    "process_id": "maria_research_critique",
+    "model": "grok-3",
+    "verdict": "REJECT",
+    "attachable": false,
+    "attached": false,
+    "cost_usd": 0.0,
+    "calls": 1,
+    "telegram_sent": false,
+    "unblock_sequence": "merge -> promote -> sync -> hop (should_call reads Postgres; sync reads REGISTRY_PATH from the running release)",
+    "FINDING": "our shared imperative matcher MISSES position-directive language: 'Maintain small tracking position ... do not add until ...' returns NO MATCH. Verb set lacks maintain/add/keep/hold.",
+    "verb_list_widened": false,
+    "why_not": "Decision 1: banning hold/maintain would fail-closed a large fraction of stored research; hold_with_thesis is a legitimate stance label",
+    "options": [
+      "add position verbs behind the existing object requirement",
+      "lint desk_implications.notes and recommendation as instruction-shaped fields",
+      "rely on critique for this class"
+    ],
+    "bug_fixed": "failure path reported the module-default lane; a refused grok call recorded as deepseek",
+    "model_flag_mismatch": "verdict REJECT but execution_language boolean false, while its prose says execution-tainted",
+    "docs": [
+      "docs/ops/CIO_GROK_HOP_RESULT_2026-08-29.md"
+    ]
   }
 }
