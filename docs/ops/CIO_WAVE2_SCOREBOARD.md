@@ -12,8 +12,8 @@ Resume cursor: first slice with status != DONE.
 
 | Field | Value |
 |-------|--------|
-| CURRENT pin | `a8434346` (#614 slice 02) — this slice 03 PR not promoted yet |
-| origin/main | `a8434346` |
+| CURRENT pin | `5e48f2b1` (#615 slice 03) — this slice 04 PR not promoted yet |
+| origin/main | `5e48f2b1` |
 | `/api/v2/health` | 200 |
 | `/v3/cio` | 200 |
 | `/api/v3/cio/home` | 200 · earnings 10 · NEW_POSITION_IF 5 · telegram_sent false |
@@ -31,7 +31,8 @@ Resume cursor: first slice with status != DONE.
 | DRIVE | OK via gog (blobs `--replace`; native create-only) |
 | rails | MBI=0 · notify not enabled · no broker write · no ROTATE |
 | slice 02 would/applied | would_mint CURRENT · applied 1 `symbol_prim@v1` · PRIM CURRENT · telegram_sent false |
-| slice 03 would/applied | would 5 PFLT/SCHG/RTX/LDOS/DIV · applied 5 observational drafts · notify false |
+| slice 03 would/applied | would 5 · applied 5 · SCHG S1 later cancelled (former, not held) |
+| surface_a_status | SCHG/AXTI/FATN EXITED · FANG UNAVAILABLE · no invented prices |
 
 ---
 
@@ -71,8 +72,8 @@ Leftovers still forbidden unless a Wave 2 slice explicitly allows a read-only st
 | 00 | bootstrap scoreboard + Drive | DONE | #612 | `26e61633` | MBI=0 INTERDICT=0 | scoreboard on CURRENT; Drive folder yes |
 | 01 | held-universe thesis card | DONE | #613 | `6616d618` | MBI=0 | held_n=19 current=19 unavail=0; no fake thesis |
 | 02 | PRIM thesis hole | DONE | #614 | `a8434346` | MBI=0 notify off | sandbox→CIO; PRIM CURRENT; applied 1 |
-| 03 | observational S1 held-without-plan | DONE | *(this PR)* | *(fill after promote)* | MBI=0 notify off | cap 5 PFLT SCHG RTX LDOS DIV drafts |
-| 04 | Surface A former-sold status | PENDING | | | | |
+| 03 | observational S1 held-without-plan | DONE | #615 | `5e48f2b1` | MBI=0 notify off | cap 5; SCHG S1 cancelled (former) |
+| 04 | Surface A former-sold status | DONE | *(this PR)* | *(fill after promote)* | MBI=0 | SCHG/AXTI/FATN EXITED; FANG UNAVAILABLE |
 | 05 | Watch READY/NEAR named; fires_s7=false | PENDING | | | | |
 | 06 | earnings days_to_event + as_of | PENDING | | | | |
 | 07 | earnings commentary stub | PENDING | | | | |

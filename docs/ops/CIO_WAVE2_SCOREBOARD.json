@@ -14,8 +14,8 @@
     "native_sheet": "10T3HTcQS_tgYu8-dtHozWgCPBywvgPxXZjbJBrfT0uw"
   },
   "now": {
-    "current_pin": "a8434346db3b8f693eed29ffc1192e4d413f5766",
-    "current_pr": 614,
+    "current_pin": "5e48f2b15d7a6462c60c63d574e8d5b347eb00b6",
+    "current_pr": 615,
     "health": 200,
     "cio": 200,
     "home": 200,
@@ -40,15 +40,21 @@
     "slice02_would_mint": "CURRENT",
     "slice02_applied": 1,
     "slice03_would": ["PFLT", "SCHG", "RTX", "LDOS", "DIV"],
-    "slice03_applied": 5
+    "slice03_applied": 5,
+    "surface_a_status": [
+      ["SCHG", "EXITED"],
+      ["AXTI", "EXITED"],
+      ["FATN", "EXITED"],
+      ["FANG", "UNAVAILABLE"]
+    ]
   },
   "wave1_closed": true,
   "slices": {
     "00": {"title": "bootstrap scoreboard + Drive", "status": "DONE", "pr": 612, "sha": "26e61633f9ed14840f64fa953c6bfdbad0e0e934"},
     "01": {"title": "held-universe thesis card", "status": "DONE", "pr": 613, "sha": "6616d6182cf3db2edddd75f072bd54d4a5ff636a", "live": "held_n=19 current=19 unavail=0"},
     "02": {"title": "PRIM thesis hole", "status": "DONE", "pr": 614, "sha": "a8434346db3b8f693eed29ffc1192e4d413f5766", "live": "would_mint=CURRENT applied=1 PRIM CURRENT sandbox_promoted notify=false"},
-    "03": {"title": "observational S1 held-without-plan", "status": "DONE", "pr": null, "sha": null, "live": "would=5 applied=5 PFLT SCHG RTX LDOS DIV observational notify=false"},
-    "04": {"title": "Surface A former-sold status", "status": "PENDING"},
+    "03": {"title": "observational S1 held-without-plan", "status": "DONE", "pr": 615, "sha": "5e48f2b15d7a6462c60c63d574e8d5b347eb00b6", "live": "would=5 applied=5; SCHG S1 cancelled (former)"},
+    "04": {"title": "Surface A former-sold status", "status": "DONE", "pr": null, "sha": null, "live": "SCHG/AXTI/FATN EXITED FANG UNAVAILABLE no prices"},
     "05": {"title": "Watch READY/NEAR named", "status": "PENDING"},
     "06": {"title": "earnings days_to_event + as_of", "status": "PENDING"},
     "07": {"title": "earnings commentary stub", "status": "PENDING"},

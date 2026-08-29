@@ -290,6 +290,19 @@ def build_operator_product(*, root: Path | str | None = None, persist: bool = Fa
                 "class": "D",
             }
 
+    surface_a = brief.get("surface_a_status")
+    if not isinstance(surface_a, dict) or not surface_a.get("items"):
+        try:
+            from scripts.lib.cio_investment_product import collect_surface_a_status
+            surface_a = collect_surface_a_status()
+        except Exception:
+            surface_a = {
+                "schema": "SurfaceAStatus@v1",
+                "items": [],
+                "counts": {"HELD": 0, "EXITED": 0, "UNAVAILABLE": 0},
+                "class": "D",
+            }
+
     data_quality = dict(holdings["data_quality"])
     ops = _ops_degradation(root)
     policy_gaps: list[Any] = []
@@ -333,6 +346,7 @@ def build_operator_product(*, root: Path | str | None = None, persist: bool = Fa
             or []
         ),
         "holdings_thesis_coverage": cov,
+        "surface_a_status": surface_a,
         "temperament": brief.get("temperament") if isinstance(brief.get("temperament"), dict) else {},
         "reentry": {
             "count": reentry.get("count"),
