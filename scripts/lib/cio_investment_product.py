@@ -1763,6 +1763,23 @@ def build_product(
         "requires_operator_review": True,
         "confidence": 0.55 if verdicts or (queue.get("count") or 0) else 0.35,
     }
+    # Wave 2 slice 13: measure identity coverage on the surfaces just built.
+    # Lookup only — never mints, and fail-soft so a registry problem cannot
+    # blank the product.
+    try:
+        from scripts.lib.cio_identity_coverage import measure_identity_coverage
+        product["identity_coverage"] = measure_identity_coverage(
+            product=product, root=root_path,
+        )
+    except Exception as exc:
+        product["identity_coverage"] = {
+            "schema": "CIOIdentityCoverage@v1",
+            "authority": AUTHORITY,
+            "available": False,
+            "reason": type(exc).__name__,
+            "minted": 0,
+            "class": "D",
+        }
     stamp_advisory_origin(product, producer="cio_investment_product.build_product")
     return product
 

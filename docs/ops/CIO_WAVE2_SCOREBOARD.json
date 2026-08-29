@@ -146,7 +146,50 @@
       "XAR",
       "AMANX"
     ],
-    "slice12c_applied": 0
+    "slice12c_applied": 0,
+    "identity_coverage": {
+      "total_rows": 111,
+      "total_resolvable": 111,
+      "total_resolvable_pct": 100.0,
+      "total_stamped": 5,
+      "total_stamped_pct": 4.5,
+      "by_surface": {
+        "new_position_if": {
+          "n": 5,
+          "resolvable_pct": 100.0,
+          "stamped_pct": 100.0
+        },
+        "reentry_book": {
+          "n": 70,
+          "resolvable_pct": 100.0,
+          "stamped_pct": 0.0
+        },
+        "opportunity_book": {
+          "n": 28,
+          "resolvable_pct": 100.0,
+          "stamped_pct": 0.0
+        },
+        "watch_block": {
+          "n": 8,
+          "resolvable_pct": 100.0,
+          "stamped_pct": 0.0
+        }
+      },
+      "registry_entities": 10279,
+      "registry_symbols": 5277,
+      "minted": 0
+    },
+    "identity_register_dry": {
+      "held_non_dust_n": 15,
+      "watch_n": 36,
+      "considered_n": 47,
+      "would_register_n": 0,
+      "would_register": [],
+      "cap": 30,
+      "applied": false,
+      "apply_reason": "nothing to register"
+    },
+    "dry_harness": "TRADEAI_ROOT=CURRENT required: root-less collectors fall back to the importing checkout, which reports reentry 43 / watch 0 instead of 70 / 26."
   },
   "wave1_closed": true,
   "slices": {
@@ -247,12 +290,20 @@
       "live": "held_n 15 (19 incl dust) \u00b7 dust 4 \u00b7 instrument_id 3 \u00b7 with_plan 11 \u00b7 would_s1 BAH CSWC V XAR AMANX"
     },
     "13": {
-      "title": "subject_guid percent measure",
-      "status": "PENDING"
+      "title": "% subject_guid measured on NEW_POSITION_IF / reentry / watch",
+      "status": "DONE",
+      "pr": null,
+      "sha": null,
+      "rails": "no mint \u00b7 registry not written \u00b7 MBI=0",
+      "live": "111 rows \u00b7 resolvable 100% \u00b7 stamped 4.5% (only NEW_POSITION_IF stamps) \u00b7 minted 0"
     },
     "14": {
-      "title": "register HELD+ACTIVE watch missing",
-      "status": "PENDING"
+      "title": "register HELD(non-dust)+ACTIVE watch missing from identity.registry",
+      "status": "DONE",
+      "pr": null,
+      "sha": null,
+      "rails": "dry only \u00b7 --apply NOT run \u00b7 cap 30 \u00b7 refuses above cap",
+      "live": "would_register_n=0 \u2014 every held non-dust and active-watch name already registered"
     },
     "15": {
       "title": "1-hop graph_impact stub",

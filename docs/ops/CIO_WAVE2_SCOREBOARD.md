@@ -37,6 +37,9 @@ CASE_SUMMARY store is still 323 — item 87 will label this on the card).
 | **instrument_id (12)** | 12507E201 · 543354104 · 628518102 — CUSIP, `is_ticker=false`, never a ticker field |
 | **coverage (home)** | held=15 thesis_count=15 **with_plan=11** (was 1) with_research · watch_block=26 watch_ready=0 reentry_near=25 with_case_summary=10 |
 | **with_plan definition** | distinct **non-dust held** tickers with ≥1 **open S1/S3/S5/S6** plan, counted over the **whole 575-plan open store** — not the 12-row CIO NOW window |
+| **identity (13)** | 111 rows · resolvable **100%** · stamped **4.5%** · registry 10,279 entities / 5,277 symbols · **minted 0** |
+| **identity register (14)** | would_register_n **0** · `--apply` not run · cap 30 |
+| **dry harness** | `TRADEAI_ROOT=CURRENT` is required — without it root-less collectors report reentry 43 / watch 0 instead of 70 / 26 |
 | exec voice | `[T]` / `[D] Nothing requires action today.` |
 | reentry | Surface A · 70 names · reentry_total 25 NEAR overlaid · queue 43 · **dual pipes NOT merged** |
 | slice 12c would | BAH · CSWC · V · XAR · AMANX (cap 5, notify false) — apply is a separate dry-first step |
@@ -96,8 +99,8 @@ Leftovers still forbidden unless a Wave 2 slice explicitly allows a read-only st
 | 10 | reentry keys not 0 when Surface A has names | DONE | #620 | `d53fde4c` | MBI=0 | dual pipes; reentry_total overlaid from Surface A |
 | 11 | thesis count vs held on home | DONE | #620 | `d53fde4c` | MBI=0 | thesis_count/held_n 19/19; superseded by 12a (dust out → 15/15) |
 | 12 | holdings truth: instrument_id · DUST_RESIDUAL · with_plan counter · S1 leftovers | DONE | *(this PR)* | *(fill after promote)* | MBI=0 INTERDICT=0 no lot delete | held_n 19→15 · dust JEPI/LDOS/SCHG/SRNE · instrument_id 3 · with_plan 1→11 · would_s1 BAH CSWC V XAR AMANX |
-| 13 | % subject_guid measure | PENDING | | | | |
-| 14 | register HELD+ACTIVE watch missing | PENDING | | | | |
+| 13 | % subject_guid measured on NEW_POSITION_IF / reentry / watch | DONE | *(this PR)* | *(fill after promote)* | no mint · MBI=0 | 111 rows · **resolvable 100%** · **stamped 4.5%** (only NEW_POSITION_IF stamps) · minted 0 |
+| 14 | register HELD(non-dust)+ACTIVE watch missing | DONE | *(this PR)* | *(fill after promote)* | dry only · **--apply NOT run** | **would_register_n=0** — all 47 considered already registered; cap 30 unused |
 | 15 | 1-hop graph_impact stub | PENDING | | | | |
 | 16 | graph_impact on S6 names | PENDING | | | | |
 | 17 | identity_lookup_failed vs UNRESOLVED | PENDING | | | | |
@@ -160,3 +163,17 @@ Leftovers still forbidden unless a Wave 2 slice explicitly allows a read-only st
    instead of the 575-plan open store. Counter fixed; **no plan minted** to move the number.
 5. 12c dry: would = BAH · CSWC · V · XAR · AMANX (cap 5, notify false, financial_action false);
    dust skipped. health/cio/home 200. MBI=0, INTERDICT=0, telegram_sent false.
+
+---
+
+## Slices 13 / 14 live 5-line proof (dry on CURRENT `d53fde4c`, TRADEAI_ROOT=CURRENT)
+
+1. Identity resolves on every surface: NEW_POSITION_IF 5/5, Surface A re-entry 70/70,
+   opportunity book 28/28, watch BLOCK 8/8 — **111/111 resolvable, 100%**.
+2. Only NEW_POSITION_IF *stamps* the guid onto the row: **5/111 = 4.5% stamped**.
+   The gap is carriage, not registry. Nothing was stamped by this slice.
+3. `would_register_n = 0`. Every held non-dust ticker and active watch name is
+   already registered, so **`--apply` was not run** — cap 30 never came into play.
+4. Registry untouched: 10,279 entities / 5,277 symbols before and after. `minted: 0`.
+5. Dry-harness trap recorded: without `TRADEAI_ROOT=CURRENT` the same command
+   reports reentry 43 / watch 0 off an empty build tree. health/cio/home 200.
