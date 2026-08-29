@@ -423,7 +423,8 @@
     },
     "leftovers_closed": [
       "teach the S6 detector the dust rule"
-    ]
+    ],
+    "s1_dust_rule": "SHIPPED \u2014 35 dust S1 cancelled, 5 cap-5 created, full held coverage"
   },
   "wave1_closed": true,
   "slices": {
@@ -827,5 +828,46 @@
       "rails": "Wave 3 not started",
       "live": "slices 12-41 shipped and promoted across #621/#622/#623"
     }
+  },
+  "wave2c": {
+    "batch": "101-130",
+    "done": 28,
+    "fixed": 2,
+    "open": 1,
+    "open_items": [
+      118
+    ],
+    "s1_dust_rule": {
+      "root_cause": "deep_drawdown_from_basis \u2014 same (basis-last)/basis ratio as S6's disposition branch; a residual is permanently ~100% down",
+      "plans_found": {
+        "JEPI": 20,
+        "SRNE": 14,
+        "LDOS": 1
+      },
+      "gate": "shared _subject_skip_reason across S1 and S6",
+      "gate_narrowed": "instrument-id test now classify_instrument_id CUSIP/ISIN, not is_held_equity_ticker (which rejects >5 chars and broke the SPACEX_TEST fixture)",
+      "live": "15 eligible, 8 skipped (3 CUSIP, CASH, 4 dust)"
+    },
+    "applied": {
+      "dust_s1_cancelled": 35,
+      "slice12c_cap5_created": [
+        "BAH",
+        "CSWC",
+        "V",
+        "XAR",
+        "AMANX"
+      ],
+      "plans_jsonl_lines": {
+        "before": 5023,
+        "after": 5098
+      },
+      "deletes_history": false
+    },
+    "not_applied": {
+      "divi_not_held_s1": 19,
+      "why": "reason is not_held, not dust \u2014 no authorisation; DIVI is in neither the book nor previously_traded and may be a bad-symbol variant of the held DIV"
+    },
+    "harness_trap": "collect_previously_traded() reads Postgres, not the root; a local rerun showed AXTI/FATN UNAVAILABLE when live is correctly EXITED",
+    "renamed": "cio_orphan_s6_hygiene -> cio_orphan_plan_hygiene (S1 entered scope)"
   }
 }

@@ -199,3 +199,88 @@ def test_the_skip_rule_fails_open_rather_than_disabling_s6(monkeypatch):
     fired = eval_s6(ev, CFG)
     # SCHD — the alert that actually matters — still fires.
     assert "SCHD" in _symbols(fired)
+
+
+# ── S1 shares the gate ───────────────────────────────────────────────────────
+
+from scripts.lib.cio_situation_detector import eval_s1, eval_s1_skip_reason  # noqa: E402
+
+S1_CFG = {"thresholds": {"basis_drawdown_pct": 25.0, "reclaim_eps_pct": 1.0,
+                         "partial_recovery_pct": 15.0}}
+
+
+def _s1_evidence(rows, quotes, basis):
+    return {
+        "holdings_detail": {"holdings": rows},
+        "market_quote": quotes,
+        "quotes": quotes,
+        "cost_basis": {"positions": basis},
+    }
+
+
+def test_s1_no_longer_fires_deep_drawdown_on_a_residual():
+    """35 open S1 plans had accumulated this way on JEPI, SRNE and LDOS."""
+    ev = _s1_evidence(
+        [{"symbol": "SRNE", "market_value": 0.90, "shares": 1000.0,
+          "avg_cost": 5.0, "last": 0.0009, "basis": 5.0}],
+        {"SRNE": {"last": 0.0009}},
+        [{"symbol": "SRNE", "avg_cost": 5.0, "avg_cost_per_share": 5.0}],
+    )
+    assert eval_s1_skip_reason(ev, "SRNE") == "dust_residual"
+    assert eval_s1(ev, S1_CFG, "SRNE") is None
+
+
+def test_s1_still_fires_on_a_real_position_in_drawdown():
+    """Guard the guard: the same shape at size must still fire."""
+    ev = _s1_evidence(
+        [{"symbol": "REAL", "market_value": 50_000.0, "shares": 1000.0,
+          "avg_cost": 5.0, "last": 1.0, "basis": 5.0}],
+        {"REAL": {"last": 1.0}},
+        [{"symbol": "REAL", "avg_cost": 5.0, "avg_cost_per_share": 5.0}],
+    )
+    assert eval_s1_skip_reason(ev, "REAL") is None
+    fired = eval_s1(ev, S1_CFG, "REAL")
+    assert fired is not None
+    assert any(r.startswith("deep_drawdown") for r in fired["fire_reasons"])
+
+
+def test_s1_and_s6_share_one_gate():
+    """One rule, not two drifting copies."""
+    import inspect
+
+    from scripts.lib import cio_situation_detector as det
+
+    # S1 routes through eval_s1_skip_reason; S6 calls the gate directly. Both
+    # end at the same function, and the S6-only name is gone.
+    assert "eval_s1_skip_reason" in inspect.getsource(det.eval_s1)
+    assert "_subject_skip_reason" in inspect.getsource(det.eval_s1_skip_reason)
+    assert "_subject_skip_reason" in inspect.getsource(det.eval_s6)
+    assert not hasattr(det, "_s6_subject_skip_reason")
+
+    # and the one gate produces the same verdict for both callers
+    assert det._subject_skip_reason(
+        "SRNE", market_value=0.90, market_value_known=True) == "dust_residual"
+    assert det._subject_skip_reason(
+        "SCHD", market_value=365_694.75, market_value_known=True) is None
+
+
+def test_s1_unknown_price_still_fires():
+    ev = _s1_evidence(
+        [{"symbol": "ZZZX", "shares": 1000.0, "avg_cost": 5.0, "last": 1.0,
+          "basis": 5.0}],
+        {"ZZZX": {"last": 1.0}},
+        [{"symbol": "ZZZX", "avg_cost": 5.0, "avg_cost_per_share": 5.0}],
+    )
+    assert eval_s1_skip_reason(ev, "ZZZX") is None
+
+
+def test_s1_aggregates_across_accounts():
+    ev = _s1_evidence(
+        [{"symbol": "SPCX", "market_value": 5.0, "account": "a", "shares": 1.0,
+          "avg_cost": 500.0, "last": 1.0, "basis": 500.0},
+         {"symbol": "SPCX", "market_value": 21_833.60, "account": "b", "shares": 100.0,
+          "avg_cost": 500.0, "last": 1.0, "basis": 500.0}],
+        {"SPCX": {"last": 1.0}},
+        [{"symbol": "SPCX", "avg_cost": 500.0, "avg_cost_per_share": 500.0}],
+    )
+    assert eval_s1_skip_reason(ev, "SPCX") is None

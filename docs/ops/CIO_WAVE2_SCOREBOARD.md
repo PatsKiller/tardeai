@@ -61,6 +61,10 @@ CASE_SUMMARY store is still 323 — item 87 will label this on the card).
 | **C2 (41)** | dust TRIM **was admitted**; now blocked. AVOID on unheld still admissible. |
 | **watch in briefs** | 26 BLOCK **named** (FTH, SWBI, DXCM, ANET, V, SPCX, ABUS, PFLT +18) · READY **0**, never promoted |
 | **S6 dust rule** | **SHIPPED.** Root cause was the *disposition* branch, not concentration: a $0.90 residual reads as a 100% loss held 36m, clearing 20% / 6m on every pass — which is why cancelling could not fix it. Dust · CUSIP · empty subjects now skipped; SCHD still fires `weight_28.4pct`; thresholds untouched. |
+| **S1 dust rule (Wave 2C)** | S1 had the same disease as S6 via `deep_drawdown_from_basis` — **35 open plans** on JEPI 20 / SRNE 14 / LDOS 1. One shared gate now serves both. |
+| **Wave 2C 101–130** | 28 DONE · 2 FIXED (116, 117) · 1 OPEN (118 cost-basis as_of). 35 dust S1 cancelled, slice-12c cap-5 applied → **full held coverage** |
+| **held without open S1** | **NONE** — every non-dust held name now carries one |
+| **not cancelled** | 19 `DIVI` S1 flagged `not_held` — different reason, no authorisation, surfaced for the operator |
 | exec voice | `[T]` / `[D] Nothing requires action today.` |
 | reentry | Surface A · 70 names · reentry_total 25 NEAR overlaid · queue 43 · **dual pipes NOT merged** |
 | slice 12c would | BAH · CSWC · V · XAR · AMANX (cap 5, notify false) — apply is a separate dry-first step |

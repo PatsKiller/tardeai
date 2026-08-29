@@ -1,13 +1,14 @@
-"""Cancel open S6 plans whose subject is not a held, non-dust position.
+"""Cancel open plans whose subject is not a held, non-dust position.
 
-Wave 2 — operator-authorised follow-up to slice 16, which surfaced three open
-`S6_CONCENTRATION_OR_DISPOSITION` plans on names that are not in the book:
-`CASH`, `QCOM` and dust `SRNE`.
+Covers S1 and S6 — both ask a question that presupposes a position, and both
+reached residuals through a price-ratio branch a residual can never escape
+(S6 `disposition_loss_…`, S1 `deep_drawdown_from_basis_…`). On CASH it is a
+category error, on a name the operator does not own it is noise, and on a
+residual share it is the SCHG mistake again.
 
-A concentration/disposition question presupposes a position to concentrate or
-dispose of. On CASH it is a category error, on a name the operator does not own
-it is noise, and on a residual share it is the SCHG mistake again — the same
-dust rule applies.
+Renamed from `cio_orphan_s6_hygiene` on 2026-08-29 when S1 was added: 35 open S1
+plans had accumulated on JEPI (20), SRNE (14) and LDOS (1) by exactly the same
+mechanism, so the S6-only name had become wrong.
 
 READ_ONLY_ADVISORY. MBI=0. `notify: false`.
 
@@ -22,8 +23,10 @@ from typing import Any, Optional
 AUTHORITY = "READ_ONLY_ADVISORY"
 MBI = 0
 S6 = "S6_CONCENTRATION_OR_DISPOSITION"
-ACTOR = "cio_orphan_s6_hygiene"
-REASON = "s6_subject_not_held_non_dust"
+S1 = "S1_POSITION_LIFECYCLE"
+SUBJECT_SITUATIONS = (S1, S6)
+ACTOR = "cio_orphan_plan_hygiene"
+REASON = "subject_not_held_non_dust"
 
 CASH_SLEEVE = "cash_sleeve"
 DUST_RESIDUAL = "dust_residual"
@@ -54,12 +57,22 @@ def orphan_reason(
     return NOT_HELD
 
 
-def select_orphan_s6(
+def select_orphan_plans(
     store: Any,
     *,
     holdings: Optional[dict[str, Any]] = None,
     limit: int = 0,
+    situations: tuple[str, ...] = SUBJECT_SITUATIONS,
+    reasons: Optional[tuple[str, ...]] = None,
 ) -> list[dict[str, Any]]:
+    """Orphaned plans, optionally narrowed to specific orphan reasons.
+
+    `reasons` exists so an authorisation boundary can be stated in the command
+    rather than in the operator's head: "cancel the dust ones" is a different
+    decision from "cancel everything the detector flags", and a name that is
+    merely *not held* may be a data problem worth understanding before it is
+    swept away.
+    """
     from scripts.lib.cio_investment_product import (
         collect_holdings,
         dust_symbols,
@@ -72,13 +85,15 @@ def select_orphan_s6(
     dust = set(dust_symbols(holdings))
     cash = set(CASH_SYMBOLS)
 
-    try:
-        rows = store.list_open_plans(situation_type=S6, limit=100000)
-    except TypeError:
-        rows = [
-            p for p in (store.list_open_plans(limit=100000) or [])
-            if p.get("situation_type") == S6
-        ]
+    rows: list[dict[str, Any]] = []
+    for situation in situations:
+        try:
+            rows.extend(store.list_open_plans(situation_type=situation, limit=100000) or [])
+        except TypeError:
+            rows.extend([
+                p for p in (store.list_open_plans(limit=100000) or [])
+                if p.get("situation_type") == situation
+            ])
 
     out: list[dict[str, Any]] = []
     for plan in rows or []:
@@ -92,10 +107,13 @@ def select_orphan_s6(
         )
         if reason is None:
             continue
+        if reasons is not None and reason not in reasons:
+            continue
         out.append({
             "plan_id": plan.get("plan_id"),
             "symbols": list(plan.get("symbols") or []),
             "status": plan.get("status"),
+            "situation_type": plan.get("situation_type"),
             "orphan_reason": reason,
             "class": "D",
         })
@@ -105,15 +123,20 @@ def select_orphan_s6(
     return out
 
 
-def cancel_orphan_s6(
+def cancel_orphan_plans(
     store: Any,
     *,
     holdings: Optional[dict[str, Any]] = None,
     apply: bool = False,
     limit: int = 0,
+    situations: tuple[str, ...] = SUBJECT_SITUATIONS,
+    reasons: Optional[tuple[str, ...]] = None,
 ) -> dict[str, Any]:
-    """Dry by default. Cancels — never deletes — orphaned S6 plans."""
-    candidates = select_orphan_s6(store, holdings=holdings, limit=limit)
+    """Dry by default. Cancels — never deletes — orphaned S1/S6 plans."""
+    candidates = select_orphan_plans(
+        store, holdings=holdings, limit=limit, situations=situations,
+        reasons=reasons,
+    )
     cancelled: list[str] = []
     if apply:
         for row in candidates:
@@ -130,14 +153,17 @@ def cancel_orphan_s6(
 
     by_reason: dict[str, int] = {}
     by_symbol: dict[str, int] = {}
+    by_situation: dict[str, int] = {}
     for row in candidates:
+        st = str(row.get("situation_type") or "UNKNOWN")
+        by_situation[st] = by_situation.get(st, 0) + 1
         by_reason[row["orphan_reason"]] = by_reason.get(row["orphan_reason"], 0) + 1
         for s in row["symbols"]:
             key = str(s).upper()
             by_symbol[key] = by_symbol.get(key, 0) + 1
 
     return {
-        "schema": "OrphanS6Hygiene@v1",
+        "schema": "OrphanPlanHygiene@v1",
         "authority": AUTHORITY,
         "memory_behavior_influence": MBI,
         "financial_action": False,
@@ -148,10 +174,13 @@ def cancel_orphan_s6(
         "cancelled_plan_ids": cancelled,
         "by_reason": by_reason,
         "by_symbol": by_symbol,
+        "by_situation": by_situation,
+        "situations": list(situations),
+        "reasons_filter": list(reasons) if reasons is not None else None,
         "samples": candidates[:10],
         "deletes_history": False,
         "note": (
-            "S6 asks a concentration/disposition question, which presupposes a "
-            "position. Cancelled, not deleted; the plan stays readable."
+            "S1 and S6 both ask a question that presupposes a position. "
+            "Cancelled, not deleted; the plan stays readable."
         ),
     }
