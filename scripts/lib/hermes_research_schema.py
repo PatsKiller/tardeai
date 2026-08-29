@@ -22,9 +22,28 @@ TERMINAL = frozenset({"completed", "failed", "cancelled", "superseded"})
 
 PRIORITY_RANK = {"low": 0, "normal": 1, "high": 2, "critical": 3}
 
+# Adjacency was rigid: "place order" matched but "place an order" did not, and
+# "execute trade" matched but "execute the buy" did not. An article was enough to
+# pass the gate — the same failure shape as the memory jailbreak scan fixed in
+# #631, where "ignore all previous instructions" slipped past a one-qualifier
+# pattern.
+#
+# `research_quality.critique` catches "place an order" and this lint catches
+# "buy now", so between them each covered the other's blind spot by accident.
+# "execute the buy" was covered by neither.
+#
+# Only the article gap is closed here. Ambiguous advisory verbs ("trim the
+# position", "sell half") are deliberately NOT added: they appear in legitimate
+# analysis, and rejecting them would silently shrink research coverage. That is
+# an operator policy call, recorded in the Wave 2C 251-320 note.
+_ART = r"(?:\s+(?:a|an|the|this|that|your|its))?"
+
 EXEC_LINT = re.compile(
-    r"\b(buy now|sell now|place stop|place order|submit order|execute trade|"
-    r"force fill|enter long|enter short|market order|limit order)\b",
+    r"\b("
+    rf"(?:buy|sell)\s+now|place{_ART}\s+(?:stop|order)|submit{_ART}\s+order|"
+    rf"execute{_ART}\s+(?:trade|order|buy|sell)|"
+    r"force fill|enter long|enter short|market order|limit order"
+    r")\b",
     re.I,
 )
 

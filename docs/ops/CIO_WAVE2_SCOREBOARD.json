@@ -964,6 +964,52 @@
         "wrong TZ boundary on the #609 duplicate-S1 check"
       ],
       "agent_commitment_producer": false
+    },
+    "251-320": {
+      "done": 68,
+      "fixed": 2,
+      "fixed_items": [
+        186,
+        302
+      ],
+      "open": 0,
+      "exec_lint_gap": {
+        "cause": "EXEC_LINT required exact adjacency; an article passed the gate",
+        "passed_both_gates": [
+          "execute the buy",
+          "trim the position",
+          "sell half the position"
+        ],
+        "fixed": [
+          "place an order",
+          "submit an order",
+          "execute the buy/trade/sell/order"
+        ],
+        "deliberately_not_fixed": [
+          "trim the position",
+          "sell half"
+        ],
+        "why": "advisory verbs appear in legitimate analysis; widening would shrink the 466 attachable results. Operator policy call."
+      },
+      "endpoints": {
+        "health": 200,
+        "v3_cio": 200,
+        "home": 200,
+        "v3_portfolio": 200,
+        "v3_advisory": 200
+      },
+      "item297": "pin is on /api/v3/cio/home._serving.source_pin, not /api/v2/health",
+      "item290": "rebalance is a cron entry, not a systemd timer; present and ungated"
     }
+  },
+  "wave2c_complete": {
+    "range": "101-320",
+    "done": 184,
+    "fixed": 9,
+    "open": 1,
+    "open_items": [
+      118
+    ],
+    "batches": 6
   }
 }

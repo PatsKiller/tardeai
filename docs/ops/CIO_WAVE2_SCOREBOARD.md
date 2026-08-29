@@ -71,6 +71,8 @@ CASE_SUMMARY store is still 323 — item 87 will label this on the card).
 | **Wave 2C 191–220** | 30 DONE · 0 open · **no code changed**. Plans: 533 open (S3 320 · S1 120 · S6 40 · S5 35 · S7 11 · S0 7); warehouse 860 total. |
 | **item 198 near-miss** | 109 historical duplicate S1 looked like a live guard failure; against the correct #609 boundary (17:09Z) only **9 created since, 0 duplicate symbols**. Guard holds. |
 | **Wave 2C 221–250** | 29 DONE · **1 FIXED (236)** · 0 open. Jailbreak scan missed 4 canonical phrasings — fixed in #631. Checkpoints 527, all trading:false / MBI 0. |
+| **Wave 2C 251–320** | 68 DONE · **2 FIXED (186/302)** · 0 open. EXEC_LINT adjacency gap — `execute the buy` passed **both** execution-language gates. |
+| **Wave 2C COMPLETE** | 101–320: **184 DONE · 9 FIXED · 1 open (118)** across 6 batches |
 | exec voice | `[T]` / `[D] Nothing requires action today.` |
 | reentry | Surface A · 70 names · reentry_total 25 NEAR overlaid · queue 43 · **dual pipes NOT merged** |
 | slice 12c would | BAH · CSWC · V · XAR · AMANX (cap 5, notify false) — apply is a separate dry-first step |
