@@ -1037,6 +1037,7 @@ def build_office_home(
     actions: Optional[list[dict[str, Any]]] = None,
     plans: Optional[list[dict[str, Any]]] = None,
     coverage_plans: Optional[list[dict[str, Any]]] = None,
+    graph_impact: Optional[dict[str, Any]] = None,
     source_refs: Optional[list[dict[str, Any]]] = None,
     validator_states: Optional[list[dict[str, Any]]] = None,
     run_ids: Optional[list[dict[str, Any]]] = None,
@@ -1169,6 +1170,19 @@ def build_office_home(
         plans=plans,
         coverage_plans=coverage_plans,
     )
+    # Wave 2 slice 16: 1-hop same-sector context, S6 names only. Computed by the
+    # caller that already holds plans + holdings; when a caller does not compute
+    # it the key says so rather than going quietly missing.
+    home["graph_impact"] = graph_impact if isinstance(graph_impact, dict) else {
+        "schema": "CIOGraphImpactS6@v1",
+        "available": False,
+        "reason": "not_computed_by_this_caller",
+        "scope": "S6_CONCENTRATION_OR_DISPOSITION names only",
+        "items": {},
+        "attached_n": 0,
+        "class": "D",
+        "authority": "READ_ONLY_ADVISORY",
+    }
     home["telegram_sent"] = False
     home["delivery"] = "dashboard"
     return home

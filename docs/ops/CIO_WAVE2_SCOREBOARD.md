@@ -40,6 +40,8 @@ CASE_SUMMARY store is still 323 — item 87 will label this on the card).
 | **identity (13)** | 111 rows · resolvable **100%** · stamped **4.5%** · registry 10,279 entities / 5,277 symbols · **minted 0** |
 | **identity register (14)** | would_register_n **0** · `--apply` not run · cap 30 |
 | **dry harness** | `TRADEAI_ROOT=CURRENT` is required — without it root-less collectors report reentry 43 / watch 0 instead of 70 / 26 |
+| **graph_impact (15/16)** | S6 only · 8 S6 symbols · 5 attached · SCHD 5/13 · AMANX 5/13 · DIV 5/11 · SPCX 5/8 · **BND 0/0** · skipped CASH/QCOM (not held) + SRNE (dust) |
+| **identity lookup (17)** | RESOLVED / UNRESOLVED / **LOOKUP_FAILED** / NOT_APPLICABLE — a registry read failure no longer reads as a clean negative |
 | exec voice | `[T]` / `[D] Nothing requires action today.` |
 | reentry | Surface A · 70 names · reentry_total 25 NEAR overlaid · queue 43 · **dual pipes NOT merged** |
 | slice 12c would | BAH · CSWC · V · XAR · AMANX (cap 5, notify false) — apply is a separate dry-first step |
@@ -101,10 +103,10 @@ Leftovers still forbidden unless a Wave 2 slice explicitly allows a read-only st
 | 12 | holdings truth: instrument_id · DUST_RESIDUAL · with_plan counter · S1 leftovers | DONE | *(this PR)* | *(fill after promote)* | MBI=0 INTERDICT=0 no lot delete | held_n 19→15 · dust JEPI/LDOS/SCHG/SRNE · instrument_id 3 · with_plan 1→11 · would_s1 BAH CSWC V XAR AMANX |
 | 13 | % subject_guid measured on NEW_POSITION_IF / reentry / watch | DONE | *(this PR)* | *(fill after promote)* | no mint · MBI=0 | 111 rows · **resolvable 100%** · **stamped 4.5%** (only NEW_POSITION_IF stamps) · minted 0 |
 | 14 | register HELD(non-dust)+ACTIVE watch missing | DONE | *(this PR)* | *(fill after promote)* | dry only · **--apply NOT run** | **would_register_n=0** — all 47 considered already registered; cap 30 unused |
-| 15 | 1-hop graph_impact stub | PENDING | | | | |
-| 16 | graph_impact on S6 names | PENDING | | | | |
-| 17 | identity_lookup_failed vs UNRESOLVED | PENDING | | | | |
-| 18 | never ticker as security GUID | PENDING | | | | |
+| 15 | 1-hop graph_impact same-sector held neighbours | DONE | *(this PR)* | *(fill after promote)* | class D · no new store | cap 5 · deterministic · dust excluded both sides · missing map → DATA_UNAVAILABLE |
+| 16 | graph_impact on S6 names only | DONE | *(this PR)* | *(fill after promote)* | S6 scope only | 8 S6 symbols · 5 attached · SCHD 5/13 · **BND 0/0 honest** · CASH/QCOM/SRNE skipped with reason |
+| 17 | identity_lookup_failed ≠ UNRESOLVED | DONE | *(this PR)* | *(fill after promote)* | UNRESOLVED still UNRESOLVED · no mint | RESOLVED / UNRESOLVED / LOOKUP_FAILED / NOT_APPLICABLE; failure outranks clean negative |
+| 18 | never ticker as security GUID | DONE | *(this PR)* | *(fill after promote)* | regression only | ticker_alias_guid UUIDv5 · symbol → aliases · by_symbol[SYM] ≠ SYM (SCHD/CUSIP/V) |
 | 19 | Hermes fail histogram | PENDING | | | | |
 | 20 | skip non-retryable execution-language | PENDING | | | | |
 | 21 | retry truncated 1/plan/day | PENDING | | | | |
@@ -177,3 +179,18 @@ Leftovers still forbidden unless a Wave 2 slice explicitly allows a read-only st
 4. Registry untouched: 10,279 entities / 5,277 symbols before and after. `minted: 0`.
 5. Dry-harness trap recorded: without `TRADEAI_ROOT=CURRENT` the same command
    reports reentry 43 / watch 0 off an empty build tree. health/cio/home 200.
+
+---
+
+## Slices 15–18 live 5-line proof (dry on CURRENT `d53fde4c`, TRADEAI_ROOT=CURRENT)
+
+1. graph_impact is 1-hop same-sector from the **existing** holdings sector map —
+   no new store, no vendor, class D, `financial_action: false`.
+2. S6 scope only: 8 open-S6 symbols, **5 attached**. SCHD 5 of 13 neighbours
+   (item 72 holds), AMANX 5/13, DIV 5/11, SPCX 5/8.
+3. **BND returns 0 neighbours and says so** — sole held name in Fixed Income.
+   Nothing was reached for to fill the slot.
+4. Three open S6 plans sit on names that are not held non-dust — CASH, QCOM,
+   SRNE (dust) — skipped with an explicit reason. QCOM is a real warehouse signal.
+5. Identity: `LOOKUP_FAILED` now separates an unreadable registry from a genuine
+   `UNRESOLVED`; ticker-as-GUID regression locked for SCHD / CUSIP / V. Minted 0.

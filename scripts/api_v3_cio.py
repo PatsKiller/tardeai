@@ -1142,6 +1142,21 @@ def get_cio_home() -> dict[str, Any]:
     # minimal read-only projection (_public_plan drops hermes_result_id, which
     # coverage.with_research needs). Nothing is minted, nothing is written.
     coverage_plans = _coverage_plan_index()
+    # Wave 2 slice 16: same-sector context for S6 names only. Fail-soft — a
+    # sector-map problem must not blank /v3/cio/home.
+    try:
+        from scripts.lib.cio_graph_impact import build_graph_impact_for_s6
+        from scripts.lib.cio_investment_product import collect_holdings
+        graph_impact = build_graph_impact_for_s6(
+            plans=coverage_plans, holdings=collect_holdings(PROJECT_ROOT),
+        )
+    except Exception as e:
+        graph_impact = {
+            "schema": "CIOGraphImpactS6@v1", "available": False,
+            "reason": type(e).__name__, "items": {}, "attached_n": 0,
+            "scope": "S6_CONCENTRATION_OR_DISPOSITION names only",
+            "class": "D", "authority": "READ_ONLY_ADVISORY",
+        }
 
     # Evidence / audit block.
     source_refs = [
@@ -1194,6 +1209,7 @@ def get_cio_home() -> dict[str, Any]:
         actions=actions,
         plans=plans,
         coverage_plans=coverage_plans,
+        graph_impact=graph_impact,
         source_refs=source_refs,
         validator_states=validator_states,
         run_ids=run_ids,

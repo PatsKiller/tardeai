@@ -189,7 +189,42 @@
       "applied": false,
       "apply_reason": "nothing to register"
     },
-    "dry_harness": "TRADEAI_ROOT=CURRENT required: root-less collectors fall back to the importing checkout, which reports reentry 43 / watch 0 instead of 70 / 26."
+    "dry_harness": "TRADEAI_ROOT=CURRENT required: root-less collectors fall back to the importing checkout, which reports reentry 43 / watch 0 instead of 70 / 26.",
+    "graph_impact_s6": {
+      "sector_map_available": true,
+      "s6_symbols": [
+        "AMANX",
+        "BND",
+        "CASH",
+        "DIV",
+        "QCOM",
+        "SCHD",
+        "SPCX",
+        "SRNE"
+      ],
+      "attached_n": 5,
+      "skipped": {
+        "CASH": "not_held_non_dust",
+        "QCOM": "not_held_non_dust",
+        "SRNE": "dust_residual"
+      },
+      "neighbors": {
+        "SCHD": "5 of 13",
+        "AMANX": "5 of 13",
+        "DIV": "5 of 11",
+        "SPCX": "5 of 8",
+        "BND": "0 of 0"
+      },
+      "cap": 5,
+      "hop": 1,
+      "class": "D"
+    },
+    "identity_lookup_states": [
+      "RESOLVED",
+      "UNRESOLVED",
+      "LOOKUP_FAILED",
+      "NOT_APPLICABLE"
+    ]
   },
   "wave1_closed": true,
   "slices": {
@@ -306,20 +341,36 @@
       "live": "would_register_n=0 \u2014 every held non-dust and active-watch name already registered"
     },
     "15": {
-      "title": "1-hop graph_impact stub",
-      "status": "PENDING"
+      "title": "1-hop graph_impact same-sector held neighbours",
+      "status": "DONE",
+      "pr": null,
+      "sha": null,
+      "rails": "class D \u00b7 no new store \u00b7 dust excluded both sides",
+      "live": "cap 5 \u00b7 deterministic rank \u00b7 missing map -> DATA_UNAVAILABLE \u00b7 BND honest 0 neighbours"
     },
     "16": {
-      "title": "graph_impact on S6",
-      "status": "PENDING"
+      "title": "graph_impact on S6 names only",
+      "status": "DONE",
+      "pr": null,
+      "sha": null,
+      "rails": "S6 scope only \u00b7 context never action",
+      "live": "8 S6 symbols \u00b7 5 attached \u00b7 CASH/QCOM not held, SRNE dust -> skipped with reason"
     },
     "17": {
-      "title": "identity_lookup_failed vs UNRESOLVED",
-      "status": "PENDING"
+      "title": "identity_lookup_failed != UNRESOLVED",
+      "status": "DONE",
+      "pr": null,
+      "sha": null,
+      "rails": "UNRESOLVED still UNRESOLVED \u00b7 no mint",
+      "live": "RESOLVED | UNRESOLVED | LOOKUP_FAILED | NOT_APPLICABLE; failure outranks clean negative"
     },
     "18": {
       "title": "never ticker as security GUID",
-      "status": "PENDING"
+      "status": "DONE",
+      "pr": null,
+      "sha": null,
+      "rails": "regression only",
+      "live": "ticker_alias_guid UUIDv5 \u00b7 symbol in aliases \u00b7 by_symbol[SYM] != SYM (SCHD/CUSIP/V)"
     },
     "19": {
       "title": "Hermes fail histogram",
