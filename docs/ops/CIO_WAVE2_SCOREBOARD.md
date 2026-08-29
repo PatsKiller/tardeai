@@ -365,3 +365,29 @@ Five lines worth keeping:
 
 Detail: `docs/ops/CIO_LLM_GATE_CADENCE_CORPUS_2026-08-29.md`,
 `docs/ops/CIO_INSTITUTIONAL_CORPUS_MAP_2026-08-29.md`.
+
+## WAVE3A = DONE (2026-08-29) — PRs #637, #638
+
+Seasonality series moved out of `tests/fixtures/` to
+`reference/library/us_equity_monthly_synthetic_1950_2024.csv`. Same md5, same
+numbers (n=75, −0.07%, 45.3%, grade=B unchanged). Not `data/` — the deploy
+rsyncs with `--exclude='data/'` and `CURRENT/data/cio` is a host symlink, so a
+tracked file there is never promoted.
+
+**The move surfaced something bigger: that series is synthetic.** 1987-10 reads
++3.27% against an actual ≈ −21.5%; the worst month in 75 years is −7.88%. So
+every `grade=B` "independently reproduced" seasonality label is a determinism
+check of the pipeline, not empirical support for a calendar claim. Nothing was
+re-graded — the move had to be number-neutral — and it is flagged for decision.
+
+`CORPUS_UNLOCATED` is **retracted**. The 20–30 publications were catalogued all
+along in `config/cio_research_source_catalog.json` (34 sources); the prior sweep
+searched `data/` and filename globs, not `config/`. All 34 are `COPYRIGHT` with
+no lawful full text — grade D, so none can ever `corpus_hit`. No full text
+exists in repo, host data, or Drive.
+
+`corpus_hit` now requires reproduced A/B **and** a context dimension **and** the
+source index not stale. Dry unchanged: 445 → 8 eligible, 0 paid calls.
+
+Detail: `docs/ops/CIO_WAVE3A_LIBRARY_2026-08-29.md`,
+`docs/ops/CIO_LIBRARY_CENSUS_2026-08-29.md`.

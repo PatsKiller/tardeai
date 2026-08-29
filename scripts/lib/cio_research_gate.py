@@ -242,7 +242,17 @@ def decide(inp: dict[str, Any], *, now: Optional[datetime] = None) -> dict[str, 
                              next_eligible_at=(last_ok + timedelta(hours=ttl_h)).isoformat())
 
     # --- corpus: free before paid ----------------------------------------
+    # Wave 3A: a stale-or-changed source must not be closed by the corpus.
+    # `RESEARCH_EXECUTED` means the source hash moved or its SLA lapsed — the
+    # entity-level facts changed, and an entity-agnostic almanac fact cannot
+    # speak to that. Closing it here would let new information be answered with
+    # old context and skip the research that would have caught it.
     corpus = inp.get("corpus") or {}
+    if verdict == "RESEARCH_EXECUTED" and corpus.get("closes"):
+        tried.append("corpus_index")
+        corpus = dict(corpus)
+        corpus["closes"] = False
+        corpus["reason"] = "source_index_stale_corpus_may_not_close"
     if corpus.get("closes"):
         tried.append("corpus_index")
         return _decision("corpus_hit", corpus.get("reason") or "corpus_closed_gap",

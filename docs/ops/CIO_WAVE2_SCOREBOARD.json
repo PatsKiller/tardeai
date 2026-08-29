@@ -1157,5 +1157,40 @@
     "fourth_cash_writer_added": false,
     "api_v2_2593_read_site": "left in place",
     "doc": "docs/ops/CIO_CASH_SATURDAY_PROOF_2026-08-29.md"
+  },
+  "WAVE3A": {
+    "status": "DONE",
+    "prs": [
+      637,
+      638
+    ],
+    "seasonality_home": "reference/library/us_equity_monthly_synthetic_1950_2024.csv",
+    "moved_from": "tests/fixtures/us_equity_monthly_sample.csv",
+    "content_md5_unchanged": "490569829861df12ca5f63fa1ca9f36c",
+    "numbers_moved": false,
+    "FINDING": "series is SYNTHETIC — 1987-10 reads +3.27% vs actual approx -21.5%; grade=B reproductions are determinism checks, not empirical support",
+    "regrade_done": false,
+    "regrade_flagged_for_operator": true,
+    "census": "config/cio_research_source_catalog.json — 34 sources (20 books + 1 practitioner + 13 papers)",
+    "census_full_text_on_disk": 0,
+    "corpus_unlocated_retracted": "registry existed in config/; prior sweep missed it",
+    "registry_counts": {
+      "library_facts": 11,
+      "can_corpus_hit": 3,
+      "catalog": 34,
+      "catalog_can_corpus_hit": 0
+    },
+    "corpus_hit_requires": [
+      "reproduced_A_or_B",
+      "context_level_dimension",
+      "source_index_not_stale"
+    ],
+    "dry_445_to_eligible": 8,
+    "candidates_proposed_dry": 3,
+    "docs": [
+      "docs/ops/CIO_WAVE3A_LIBRARY_2026-08-29.md",
+      "docs/ops/CIO_LIBRARY_CENSUS_2026-08-29.md"
+    ],
+    "wave3b_started": false
   }
 }
