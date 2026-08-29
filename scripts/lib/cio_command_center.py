@@ -1363,7 +1363,14 @@ def build_office_home(
         "authority": "READ_ONLY_ADVISORY",
     }
     # Wave 3E: the notification decisions, rendered. No producer, no channel.
-    home["notifications"] = build_notification_block(plans)
+    #
+    # Fed from `coverage_plans` — the FULL open store — not `plans`, which is
+    # the 12-row CIO NOW window. Reading the window made the block report
+    # "suppressed_n: 12" against 450 real open plans, which is the same class
+    # of error as showing only the survivors: a count that looks like the whole
+    # picture and is not. NOW stays capped at 5 cards; the block is not a card.
+    home["notifications"] = build_notification_block(
+        coverage_plans if coverage_plans else plans)
     home["telegram_sent"] = False
     home["delivery"] = "dashboard"
     return home

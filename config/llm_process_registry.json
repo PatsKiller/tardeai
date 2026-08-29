@@ -2,7 +2,7 @@
   "version": 4,
   "default_mode": "manual",
   "lane_policies": {
-    "grok_only": "Grok only \u2014 single lane",
+    "grok_only": "Grok only — single lane",
     "chatgpt_only": "ChatGPT only",
     "either": "Operator picks Grok OR ChatGPT (one is enough)",
     "both_preferred": "Best with both lanes; either alone still useful",
@@ -31,7 +31,7 @@
       "name": "Broker Proposal Cloud Oversight",
       "category": "Trading",
       "lane_policy": "both_preferred",
-      "description": "Per-proposal second opinion \u2014 pick Grok, ChatGPT, or both via card buttons"
+      "description": "Per-proposal second opinion — pick Grok, ChatGPT, or both via card buttons"
     },
     {
       "id": "cloud_review",
@@ -39,7 +39,7 @@
       "category": "Hermes",
       "lane_policy": "both_preferred",
       "default_mode": "automated",
-      "description": "Reviews local LLM output \u2014 auto uses both when available"
+      "description": "Reviews local LLM output — auto uses both when available"
     },
     {
       "id": "oauth_lane_keepalive",
@@ -129,7 +129,7 @@
       "category": "Watch",
       "lane_policy": "deepseek_only",
       "default_mode": "automated",
-      "description": "Governed cio_synthesis via exact deepseek-v4-flash FAST only \u2014 Pro/PRO_* forbidden on this path (issue #283).",
+      "description": "Governed cio_synthesis via exact deepseek-v4-flash FAST only — Pro/PRO_* forbidden on this path (issue #283).",
       "allowed_lanes": [
         "deepseek-flash",
         "deepseek-v4-flash",
@@ -212,7 +212,7 @@
       "name": "Rotation Independent Oversight",
       "category": "Rotation",
       "lane_policy": "ensemble",
-      "description": "Grok + ChatGPT oversight on rotation engine \u2014 run both for full picture"
+      "description": "Grok + ChatGPT oversight on rotation engine — run both for full picture"
     },
     {
       "id": "watchlist_cio_synthesis",
@@ -220,7 +220,7 @@
       "category": "Watch",
       "lane_policy": "ensemble",
       "default_mode": "manual",
-      "description": "CIO view \u2014 Grok primary + ChatGPT reconcile when both run",
+      "description": "CIO view — Grok primary + ChatGPT reconcile when both run",
       "deepseek_default_policy": "PRO_THINK",
       "deepseek_allowed_policies": [
         "FAST_THINK",
@@ -239,7 +239,7 @@
       "lane_policy": "either",
       "default_mode": "automated",
       "daily_soft_cap": 80,
-      "description": "OAuth Maria narratives for portfolio holdings, top WAIT setups, and manual refresh \u2014 ~30-80 calls/day",
+      "description": "OAuth Maria narratives for portfolio holdings, top WAIT setups, and manual refresh — ~30-80 calls/day",
       "deepseek_default_policy": "FAST",
       "deepseek_allowed_policies": [
         "FAST",
@@ -274,7 +274,7 @@
       "max_input_tokens": 8000,
       "max_output_tokens": 4096,
       "daily_soft_cap": 600,
-      "daily_cost_cap_usd": 0.30,
+      "daily_cost_cap_usd": 0.3,
       "tools_allowed": false,
       "fallback_allowed": false,
       "advisory_only": true,
@@ -426,14 +426,14 @@
       "name": "Hermes Scalp Post-Trade Review",
       "category": "Trading",
       "lane_policy": "either",
-      "description": "OAuth enrichment \u2014 grok preferred"
+      "description": "OAuth enrichment — grok preferred"
     },
     {
       "id": "portfolio_ask",
       "name": "Portfolio Ask",
       "category": "Portfolio",
       "lane_policy": "either",
-      "description": "Q&A \u2014 Grok or ChatGPT",
+      "description": "Q&A — Grok or ChatGPT",
       "deepseek_default_policy": "FAST",
       "deepseek_allowed_policies": [
         "FAST",
@@ -452,7 +452,7 @@
       "name": "Journal Ask",
       "category": "Journal",
       "lane_policy": "either",
-      "description": "Q&A \u2014 Grok or ChatGPT",
+      "description": "Q&A — Grok or ChatGPT",
       "deepseek_default_policy": "FAST",
       "deepseek_allowed_policies": [
         "FAST",
@@ -464,7 +464,7 @@
       "name": "Strategy Planner",
       "category": "Strategy",
       "lane_policy": "either",
-      "description": "What-if planning \u2014 Grok default, ChatGPT ok",
+      "description": "What-if planning — Grok default, ChatGPT ok",
       "deepseek_default_policy": "PRO_THINK",
       "deepseek_allowed_policies": [
         "FAST_THINK",
@@ -539,7 +539,7 @@
       ],
       "output_schema": "pipeline_diagnosis.v1",
       "fallback": "DETERMINISTIC_DIAGNOSIS",
-      "description": "Health narrative \u2014 Fast default; deterministic fallback on model failure"
+      "description": "Health narrative — Fast default; deterministic fallback on model failure"
     },
     {
       "id": "architecture_review",
@@ -562,7 +562,7 @@
       "category": "CIO",
       "lane_policy": "deepseek_only",
       "default_mode": "automated",
-      "description": "Alex CIO autonomous advisory synthesis \u2014 platform-wide portfolio/wealth CIO reasoning via governed DeepSeek V4 Pro",
+      "description": "Alex CIO autonomous advisory synthesis — platform-wide portfolio/wealth CIO reasoning via governed DeepSeek V4 Pro",
       "allowed_lanes": [
         "pro",
         "deepseek-v4-pro"
@@ -575,7 +575,7 @@
       "max_input_tokens": 32000,
       "max_output_tokens": 16384,
       "daily_soft_cap": 100,
-      "daily_cost_cap_usd": 0.40,
+      "daily_cost_cap_usd": 0.4,
       "tools_allowed": true,
       "fallback_allowed": false,
       "advisory_only": true,
@@ -583,7 +583,7 @@
       "circuit_breaker": true,
       "registered_by": "P-1.2A",
       "registered_at": "2026-08-08T13:48:00Z",
-      "notes": " | 2026-08-11 P2b soak: raised daily_cost_cap_usd 0.02\u21920.15 for plan enrichment under global 0.25 | 2026-08-12: raised 0.15\u21920.40 / soft 80\u2192100 so a Pro synthesis (~$0.0324/call at 32000\u00d716384) is no longer capped to ~4 calls/day."
+      "notes": " | 2026-08-11 P2b soak: raised daily_cost_cap_usd 0.02→0.15 for plan enrichment under global 0.25 | 2026-08-12: raised 0.15→0.40 / soft 80→100 so a Pro synthesis (~$0.0324/call at 32000×16384) is no longer capped to ~4 calls/day."
     },
     {
       "id": "alex_cio_escalation",
@@ -591,7 +591,7 @@
       "category": "CIO",
       "lane_policy": "deepseek_only",
       "default_mode": "automated",
-      "description": "Alex CIO complex escalation \u2014 deterministic-reason-gated, thinking-enabled DeepSeek V4 Pro for multi-agent reconciliation and critical decisions. PRO_THINK requires a deterministic escalation reason (specialist_disagreement, conflicting_evidence, unresolved_contradictions, material_risk, or insufficient_evidence). Operator confirmation is NOT required for PRO_THINK.",
+      "description": "Alex CIO complex escalation — deterministic-reason-gated, thinking-enabled DeepSeek V4 Pro for multi-agent reconciliation and critical decisions. PRO_THINK requires a deterministic escalation reason (specialist_disagreement, conflicting_evidence, unresolved_contradictions, material_risk, or insufficient_evidence). Operator confirmation is NOT required for PRO_THINK.",
       "allowed_lanes": [
         "pro_think"
       ],
@@ -639,7 +639,7 @@
       "max_input_tokens": 32000,
       "max_output_tokens": 8192,
       "daily_soft_cap": 200,
-      "daily_cost_cap_usd": 0.30,
+      "daily_cost_cap_usd": 0.3,
       "tools_allowed": false,
       "fallback_allowed": false,
       "advisory_only": true,
@@ -667,7 +667,7 @@
       "max_input_tokens": 32000,
       "max_output_tokens": 4096,
       "daily_soft_cap": 10,
-      "daily_cost_cap_usd": 0.10,
+      "daily_cost_cap_usd": 0.1,
       "tools_allowed": false,
       "fallback_allowed": false,
       "advisory_only": true,
@@ -696,7 +696,7 @@
       "max_input_tokens": 8000,
       "max_output_tokens": 1024,
       "daily_soft_cap": 100,
-      "daily_cost_cap_usd": 0.10,
+      "daily_cost_cap_usd": 0.1,
       "tools_allowed": false,
       "fallback_allowed": false,
       "advisory_only": true,
@@ -712,7 +712,7 @@
       "category": "CIO",
       "lane_policy": "deepseek_only",
       "default_mode": "manual",
-      "description": "Guardian risk critique \u2014 deterministic-first risk analysis reading Trade AI risk data. Read-only. No risk limit changes, no stop modifications, no execution.",
+      "description": "Guardian risk critique — deterministic-first risk analysis reading Trade AI risk data. Read-only. No risk limit changes, no stop modifications, no execution.",
       "allowed_lanes": [
         "fast",
         "deepseek-v4-flash"
@@ -724,7 +724,7 @@
       "max_input_tokens": 32000,
       "max_output_tokens": 8192,
       "daily_soft_cap": 60,
-      "daily_cost_cap_usd": 0.20,
+      "daily_cost_cap_usd": 0.2,
       "tools_allowed": true,
       "fallback_allowed": false,
       "advisory_only": true,
@@ -739,7 +739,7 @@
       "category": "CIO",
       "lane_policy": "deepseek_only",
       "default_mode": "manual",
-      "description": "Ledger tax/account-constraint critique \u2014 deterministic-first constraint validation reading Trade AI account data. Flags wash-sale proximity, IRA limits, account-type mismatches. Read-only. No execution.",
+      "description": "Ledger tax/account-constraint critique — deterministic-first constraint validation reading Trade AI account data. Flags wash-sale proximity, IRA limits, account-type mismatches. Read-only. No execution.",
       "allowed_lanes": [
         "fast",
         "deepseek-v4-flash"
@@ -751,7 +751,7 @@
       "max_input_tokens": 32000,
       "max_output_tokens": 8192,
       "daily_soft_cap": 60,
-      "daily_cost_cap_usd": 0.20,
+      "daily_cost_cap_usd": 0.2,
       "tools_allowed": true,
       "fallback_allowed": false,
       "advisory_only": true,
@@ -766,7 +766,7 @@
       "category": "CIO",
       "lane_policy": "deepseek_only",
       "default_mode": "manual",
-      "description": "Steph allocation and wealth planning \u2014 deterministic-first portfolio/wealth analysis reading Trade AI holdings and allocation data. Read-only advisory. No execution.",
+      "description": "Steph allocation and wealth planning — deterministic-first portfolio/wealth analysis reading Trade AI holdings and allocation data. Read-only advisory. No execution.",
       "allowed_lanes": [
         "pro",
         "fast",
@@ -781,7 +781,7 @@
       "max_input_tokens": 32000,
       "max_output_tokens": 8192,
       "daily_soft_cap": 40,
-      "daily_cost_cap_usd": 0.30,
+      "daily_cost_cap_usd": 0.3,
       "tools_allowed": true,
       "fallback_allowed": false,
       "advisory_only": true,
@@ -794,12 +794,13 @@
       "id": "maria_research_critique",
       "name": "Maria Research Critique",
       "category": "CIO",
-      "lane_policy": "deepseek_only",
+      "lane_policy": "either",
       "default_mode": "automated",
-      "description": "Maria research critique \u2014 deterministic-first fundamental and catalyst analysis reading Trade AI research data. Read-only advisory. No execution.",
+      "description": "Maria research critique — deterministic-first fundamental and catalyst analysis reading Trade AI research data. Read-only advisory. No execution.",
       "allowed_lanes": [
         "fast",
-        "deepseek-v4-flash"
+        "deepseek-v4-flash",
+        "grok"
       ],
       "deepseek_default_policy": "FAST",
       "deepseek_allowed_policies": [
@@ -808,14 +809,15 @@
       "max_input_tokens": 32000,
       "max_output_tokens": 8192,
       "daily_soft_cap": 80,
-      "daily_cost_cap_usd": 0.30,
+      "daily_cost_cap_usd": 0.3,
       "tools_allowed": true,
       "fallback_allowed": false,
       "advisory_only": true,
       "dedupe_policy": "request_id_only",
       "circuit_breaker": true,
       "registered_by": "D1B",
-      "registered_at": "2026-08-10T20:05:00Z"
+      "registered_at": "2026-08-10T20:05:00Z",
+      "allowed_lanes_note": "grok added 2026-08-29 by operator authorisation, this process only. Free oauth lane; the critique is lane-agnostic and asks whether an artifact is attachable, not which vendor forms the opinion."
     },
     {
       "id": "morgan_wealth_synthesis",
@@ -823,7 +825,7 @@
       "category": "CIO",
       "lane_policy": "deepseek_only",
       "default_mode": "automated",
-      "description": "Morgan wealth synthesis \u2014 deterministic-first multi-account wealth and goal-tracking analysis reading Trade AI portfolio/income/retirement data. Read-only advisory. No execution.",
+      "description": "Morgan wealth synthesis — deterministic-first multi-account wealth and goal-tracking analysis reading Trade AI portfolio/income/retirement data. Read-only advisory. No execution.",
       "allowed_lanes": [
         "fast",
         "deepseek-v4-flash"
@@ -835,7 +837,7 @@
       "max_input_tokens": 32000,
       "max_output_tokens": 8192,
       "daily_soft_cap": 60,
-      "daily_cost_cap_usd": 0.20,
+      "daily_cost_cap_usd": 0.2,
       "tools_allowed": true,
       "fallback_allowed": false,
       "advisory_only": true,
