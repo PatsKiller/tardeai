@@ -244,3 +244,87 @@ def test_a_genuine_transport_error_still_retries_once():
         raise ConnectionError("connection reset by peer")
 
     assert critique_live(GOOD, generate=boom)["retryable"] is True
+
+
+# ==================== position-directive verbs (found by the live critique)
+
+@pytest.mark.parametrize("text", [
+    "Maintain small tracking position with hard invalidation.",
+    "maintain current position",
+    "maintain the position",
+    "keep a small tracking position",
+    "add exposure",
+    "add to the position",
+    "maintain cash position",
+])
+def test_position_directives_are_caught(text):
+    """The gap the live Grok critique found.
+
+    The matcher passed "Maintain small tracking position … do not add until …"
+    as clean. It failed on both halves: `maintain` was not a verb, and
+    `position` was not a bare object (only order/stop/trade/fill/shares/now).
+    Telling the operator what size to hold is an instruction as surely as
+    telling them to sell.
+    """
+    from scripts.lib.execution_language import find_imperative
+
+    assert find_imperative(text), f"missed a position directive: {text!r}"
+
+
+def test_do_not_add_stays_admitted_because_the_pin_wins():
+    """A `do not <verb>` rule was written and deliberately removed.
+
+    A prohibition is arguably an order, but the same grammar covers the pinned
+    legacy case "do not sell shares before the ex-date", which
+    test_legacy_admitted requires to pass as ex-dividend context. Nothing
+    separates them without reading intent, and Decision 1 says the pin wins.
+    """
+    from scripts.lib.execution_language import find_imperative
+
+    assert find_imperative("do not sell shares before the ex-date") is None
+    assert find_imperative("do not add until price action confirms") is None
+
+
+@pytest.mark.parametrize("text", [
+    "hold_with_thesis",                      # a stance label, used everywhere
+    "suggestion_bias: hold_with_thesis",
+    "the position is small",                 # noun, not verb
+    "we maintain a neutral view",            # no position object
+    "maintained the position last quarter",  # past tense
+    "would add exposure if confirmed",       # modal
+    "decided to add shares in March",        # infinitive
+    "We trimmed the position in March.",     # past tense, existing rule
+    "a maintenance release",
+])
+def test_the_widening_does_not_torch_ordinary_prose(text):
+    """Decision 1: ban the instruction, never the word.
+
+    Blast radius was measured before shipping: 46 of 471 stored artifacts newly
+    match, every sampled one a real instruction. 468 of the 471 sit before
+    IMPERATIVE_GATE_EFFECTIVE and are grandfathered, so nothing is
+    retro-detached.
+    """
+    from scripts.lib.execution_language import find_imperative
+
+    assert not find_imperative(text), f"false positive on: {text!r}"
+
+
+def test_existing_catches_still_fire():
+    from scripts.lib.execution_language import find_imperative
+
+    for text in ("Sell half the position now.", "place an order",
+                 "execute trade", "flatten it", "liquidate"):
+        assert find_imperative(text), text
+
+
+def test_the_spcx_artifact_is_now_caught():
+    """End-to-end on the real stored artifact Grok rejected."""
+    import json
+    from pathlib import Path
+
+    from scripts.lib.execution_language import find_imperative
+
+    p = Path("/tmp/claude-1000/spcx_artifact.json")
+    if not p.is_file():
+        pytest.skip("artifact fixture not present")
+    assert find_imperative(json.dumps(json.loads(p.read_text()), default=str))
