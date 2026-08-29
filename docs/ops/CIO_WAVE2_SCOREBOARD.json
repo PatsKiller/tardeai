@@ -14,8 +14,8 @@
     "native_sheet": "10T3HTcQS_tgYu8-dtHozWgCPBywvgPxXZjbJBrfT0uw"
   },
   "now": {
-    "current_pin": "d53fde4c4ad7cd643830642850e0a1f6c6181298",
-    "current_pr": 620,
+    "current_pin": "5f215504c77a901cc25de93c2ed228e23df21aa2",
+    "current_pr": 621,
     "health": 200,
     "cio": 200,
     "home": 200,
@@ -105,7 +105,7 @@
       "watch_block": 26,
       "reentry_near": 25,
       "class": "D",
-      "note": "held_n excludes DUST_RESIDUAL (slice 12a). with_case_summary is the product cap-10 view; store CASE_SUMMARY ACTIVE = 323."
+      "note": "LIVE on CURRENT 5f215504 after the 12a activation fix and orphan-S6 cancel."
     },
     "telegram_sent": false,
     "slice02_would_mint": "CURRENT",
@@ -204,33 +204,16 @@
     },
     "dry_harness": "TRADEAI_ROOT=CURRENT required: root-less collectors fall back to the importing checkout, which reports reentry 43 / watch 0 instead of 70 / 26.",
     "graph_impact_s6": {
-      "sector_map_available": true,
       "s6_symbols": [
         "AMANX",
         "BND",
-        "CASH",
         "DIV",
-        "QCOM",
         "SCHD",
-        "SPCX",
-        "SRNE"
+        "SPCX"
       ],
       "attached_n": 5,
-      "skipped": {
-        "CASH": "not_held_non_dust",
-        "QCOM": "not_held_non_dust",
-        "SRNE": "dust_residual"
-      },
-      "neighbors": {
-        "SCHD": "5 of 13",
-        "AMANX": "5 of 13",
-        "DIV": "5 of 11",
-        "SPCX": "5 of 8",
-        "BND": "0 of 0"
-      },
-      "cap": 5,
-      "hop": 1,
-      "class": "D"
+      "skipped": {},
+      "note": "orphans CASH/QCOM/SRNE cancelled; nothing left to skip"
     },
     "identity_lookup_states": [
       "RESOLVED",
@@ -296,6 +279,48 @@
       "receipts_with_memory_type_and_promotable": 338,
       "receipts_without": 419,
       "note": "split is chronological: every receipt from 2026-08-28T13:34 on has both fields."
+    },
+    "promoted_at": "2026-08-29T02:39:18Z",
+    "operator_authorized_applies": {
+      "research_attach": {
+        "authorized": true,
+        "would_attach": 2,
+        "attached": 2,
+        "plans": [
+          "plan_5463afc7bc04",
+          "plan_9f4df5b991f3"
+        ],
+        "case_summary_double_mint": false,
+        "case_summary_total": 328,
+        "blanket_474_applied": false
+      },
+      "orphan_s6_cancel": {
+        "authorized": true,
+        "would_cancel": 20,
+        "cancelled": 20,
+        "by_reason": {
+          "cash_sleeve": 1,
+          "not_held": 1,
+          "dust_residual": 18
+        },
+        "by_symbol": {
+          "CASH": 1,
+          "QCOM": 1,
+          "SRNE": 18
+        },
+        "notify": false,
+        "deletes_history": false,
+        "plans_jsonl_lines": {
+          "before": 4958,
+          "after": 4998
+        },
+        "standing_risk": "S6 detector may re-create; not taught the dust rule tonight"
+      }
+    },
+    "slice12a_live_activation_fix": {
+      "symptom": "held_n=19 and with_plan=14 on live after #621 promote",
+      "cause": "operator product served a pre-12a persisted brief; freshness check only tested held_n is None",
+      "fix": "treat a coverage block missing dust_tickers/held_n_including_dust as stale"
     }
   },
   "wave1_closed": true,
@@ -385,8 +410,8 @@
     "12": {
       "title": "holdings truth \u2014 instrument_id, DUST_RESIDUAL, with_plan counter, S1 leftovers",
       "status": "DONE",
-      "pr": null,
-      "sha": null,
+      "pr": 621,
+      "sha": "5f215504c77a901cc25de93c2ed228e23df21aa2",
       "sub": {
         "12": "3 CUSIP rows -> instrument_id (id_type CUSIP, is_ticker false); never a ticker field",
         "12a": "dust_residual@v1: aggregate market_value < $50/ticker. dust = JEPI LDOS SCHG SRNE. held_n 19 -> 15. No lot deleted.",
@@ -399,48 +424,48 @@
     "13": {
       "title": "% subject_guid measured on NEW_POSITION_IF / reentry / watch",
       "status": "DONE",
-      "pr": null,
-      "sha": null,
+      "pr": 621,
+      "sha": "5f215504c77a901cc25de93c2ed228e23df21aa2",
       "rails": "no mint \u00b7 registry not written \u00b7 MBI=0",
       "live": "111 rows \u00b7 resolvable 100% \u00b7 stamped 4.5% (only NEW_POSITION_IF stamps) \u00b7 minted 0"
     },
     "14": {
       "title": "register HELD(non-dust)+ACTIVE watch missing from identity.registry",
       "status": "DONE",
-      "pr": null,
-      "sha": null,
+      "pr": 621,
+      "sha": "5f215504c77a901cc25de93c2ed228e23df21aa2",
       "rails": "dry only \u00b7 --apply NOT run \u00b7 cap 30 \u00b7 refuses above cap",
       "live": "would_register_n=0 \u2014 every held non-dust and active-watch name already registered"
     },
     "15": {
       "title": "1-hop graph_impact same-sector held neighbours",
       "status": "DONE",
-      "pr": null,
-      "sha": null,
+      "pr": 621,
+      "sha": "5f215504c77a901cc25de93c2ed228e23df21aa2",
       "rails": "class D \u00b7 no new store \u00b7 dust excluded both sides",
       "live": "cap 5 \u00b7 deterministic rank \u00b7 missing map -> DATA_UNAVAILABLE \u00b7 BND honest 0 neighbours"
     },
     "16": {
       "title": "graph_impact on S6 names only",
       "status": "DONE",
-      "pr": null,
-      "sha": null,
+      "pr": 621,
+      "sha": "5f215504c77a901cc25de93c2ed228e23df21aa2",
       "rails": "S6 scope only \u00b7 context never action",
       "live": "8 S6 symbols \u00b7 5 attached \u00b7 CASH/QCOM not held, SRNE dust -> skipped with reason"
     },
     "17": {
       "title": "identity_lookup_failed != UNRESOLVED",
       "status": "DONE",
-      "pr": null,
-      "sha": null,
+      "pr": 621,
+      "sha": "5f215504c77a901cc25de93c2ed228e23df21aa2",
       "rails": "UNRESOLVED still UNRESOLVED \u00b7 no mint",
       "live": "RESOLVED | UNRESOLVED | LOOKUP_FAILED | NOT_APPLICABLE; failure outranks clean negative"
     },
     "18": {
       "title": "never ticker as security GUID",
       "status": "DONE",
-      "pr": null,
-      "sha": null,
+      "pr": 621,
+      "sha": "5f215504c77a901cc25de93c2ed228e23df21aa2",
       "rails": "regression only",
       "live": "ticker_alias_guid UUIDv5 \u00b7 symbol in aliases \u00b7 by_symbol[SYM] != SYM (SCHD/CUSIP/V)"
     },
@@ -489,8 +514,8 @@
       "status": "DONE",
       "pr": null,
       "sha": null,
-      "rails": "dry only \u00b7 NOT applied",
-      "live": "would_attach=2 (expected 0) \u2014 plan_5463afc7bc04, plan_9f4df5b991f3; operator call to apply"
+      "rails": "dry first \u00b7 operator-authorized apply of exactly 2 \u00b7 blanket 474 NOT run",
+      "live": "would_attach 2 -> applied 2 -> now 0; missing_result_id 254->252; CASE_SUMMARY stayed 328"
     },
     "25": {
       "title": "VALID/PARTIAL/FAIL counts on product",
