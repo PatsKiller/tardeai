@@ -1507,5 +1507,38 @@
       "docs/ops/CIO_WAVE3D_CRITIQUE_DEEPSEEK_2026-08-29.md"
     ],
     "wave3e_started": false
+  },
+  "WAVE3D_HOP": {
+    "status": "DONE — one live hop executed",
+    "plan_id": "plan_477c33c065ec (SPCX)",
+    "research_id": "res_557cfaab8c34",
+    "lane": "deepseek-v4-flash",
+    "process_id": "hermes_external_research",
+    "verdict": "PARTIAL",
+    "attachable": false,
+    "attached": false,
+    "cost_usd": 0.0005,
+    "calls": 1,
+    "telegram_sent": false,
+    "would_channel": "none",
+    "global_spend": {
+      "before": 2.0446,
+      "after": 2.0451,
+      "cap_for_run": 2.25,
+      "env_cap_unchanged": 0.5
+    },
+    "CORRECTION": "I wrongly reported DeepSeek unconfigured; canonical env is deepseek_tradeai (not DEEPSEEK_API_KEY) and lives in $PROJ/.env. Operator was right.",
+    "grok_policy_changed": false,
+    "critique_findings": [
+      "question_ids answered as q1/q2/q3 not q_thesis/q_bear",
+      "'recommendation' field flagged as interpretable-as-instruction, correctly not failed",
+      "internally consistent; attachable once mapping fixed"
+    ],
+    "bitwarden_guard": "render_env.py refused a shrinking key set; keeps last-known-good; --allow-key-removal to accept",
+    "bitwarden_guard_tests": 9,
+    "docs": [
+      "docs/ops/CIO_WAVE3D_HOP_2026-08-29.md"
+    ],
+    "wave3e_started": false
   }
 }

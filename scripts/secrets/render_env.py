@@ -173,6 +173,35 @@ def _atomic_write(path: Path, text: str, mode: int = 0o600) -> None:
         raise
 
 
+def _previous_render_keys() -> list[str]:
+    """Shell-exportable key NAMES from the last good render. Never values.
+
+    Read from the manifest when present, else from the rendered cache itself,
+    so the guard still works on a host whose manifest was cleared.
+    """
+    try:
+        man = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
+        keys = man.get("shell_keys")
+        if isinstance(keys, list) and keys:
+            return [str(k) for k in keys]
+    except Exception:
+        pass
+    try:
+        out = []
+        for line in RENDER_PATH.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            k = line.split("=", 1)[0].strip()
+            if k.startswith("export "):
+                k = k[len("export "):].strip()
+            if k:
+                out.append(k)
+        return out
+    except Exception:
+        return []
+
+
 def _load_state() -> dict:
     if STATE_PATH.exists():
         try:
@@ -212,7 +241,7 @@ def _age_hours(path: Path) -> float | None:
     return (time.time() - path.stat().st_mtime) / 3600.0
 
 
-def render(*, force: bool = False) -> dict:
+def render(*, force: bool = False, force_shrink: bool = False) -> dict:
     result = {
         "ok": False,
         "source": None,
@@ -231,6 +260,29 @@ def render(*, force: bool = False) -> dict:
         shell_secrets, skipped_keys = _shell_exportable(secrets)
         if not shell_secrets:
             raise RuntimeError("SM returned zero shell-exportable secrets")
+
+        # A DELETED secret is not a failed fetch. The zero-secret guards above
+        # only catch total loss; a single key removed in the SM UI comes back
+        # as a perfectly successful render that is one key short, and the
+        # atomic write below would overwrite the cache and take the key with
+        # it. The credential then vanishes from every consumer at once, with
+        # no error anywhere.
+        #
+        # Same posture as a transport failure: keep last-known-good and shout.
+        # A stale cache costs nothing; a silently missing key takes the system
+        # down at the next call site that needs it.
+        prev_keys = set(_previous_render_keys())
+        now_keys = set(shell_secrets)
+        dropped = sorted(prev_keys - now_keys)
+        if dropped and not force_shrink:
+            _telegram(
+                "⚠️ SM render REFUSED: %d key(s) disappeared from Bitwarden "
+                "(%s). Last-known-good cache kept. Restore in SM, or re-run "
+                "with --allow-key-removal if the deletion is intended."
+                % (len(dropped), ", ".join(dropped[:6])))
+            raise RuntimeError(
+                "SM_KEYS_DISAPPEARED: %s (cache kept; --allow-key-removal to "
+                "accept)" % ", ".join(dropped[:8]))
         text = _format_env(shell_secrets, skipped_keys=skipped_keys)
         # Hash all SM keys (incl. nonshell) for drift; values never logged
         hashes = _hashes(secrets)
@@ -242,6 +294,8 @@ def render(*, force: bool = False) -> dict:
                     "rendered_at": datetime.now(timezone.utc).isoformat(),
                     "n_keys": len(shell_secrets),
                     "n_sm_keys": len(secrets),
+                    # Names only — the guard above compares these, never values.
+                    "shell_keys": sorted(shell_secrets),
                     "skipped_nonshell_keys": skipped_keys,
                     "hashes": hashes,
                     "project": PROJECT_NAME,
@@ -330,6 +384,13 @@ def render(*, force: bool = False) -> dict:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--now", action="store_true", help="force render attempt now")
+    ap.add_argument(
+        "--allow-key-removal",
+        action="store_true",
+        help=("accept a render that drops keys present in the last good "
+              "render (deliberate SM deletion). Without it, a shrinking key "
+              "set is refused and the last-known-good cache is kept."),
+    )
     ap.add_argument("--check-stale", action="store_true", help="alert if cache >6h without re-render")
     args = ap.parse_args()
     if args.check_stale:
@@ -344,7 +405,7 @@ def main() -> int:
             return 1
         print(json.dumps({"ok": True, "stale_hours": age}))
         return 0
-    r = render(force=args.now)
+    r = render(force=args.now, force_shrink=args.allow_key_removal)
     return 0 if r.get("ok") else 1
 
 
