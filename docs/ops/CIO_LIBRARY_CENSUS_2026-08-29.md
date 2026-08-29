@@ -99,3 +99,87 @@ lawfully redistributable series that could actually earn a grade:
 | `sec_edgar_full_text` | primary filings are public domain; would give entity-level dimensions a lawful free source, which the corpus cannot serve at all today | risk | C |
 
 Stored as `CANDIDATE` refs only — no grade, no ingest, no download.
+
+---
+
+# Wave 3A.2 — seed + ingest (same day)
+
+## The grading series changed, and that is the point
+
+3A.1 established the seasonality file is **synthetic**. Reproducing a calendar
+claim against it proves the pipeline is deterministic and says nothing about
+markets, so no grade derived from it can honestly read "independently
+reproduced".
+
+Wave 3A.2 ingests the **Ken French Data Library** monthly series and grades
+against that instead:
+
+| | synthetic file | Ken French (now the grading series) |
+|---|---:|---:|
+| span | 1950-01 … 2024-12 | 1926-07 … 2026-06 |
+| months | 900 | **1200** |
+| 1987-10 | +3.27% | **−23.19%** |
+| worst month | −7.88% | **−28.74%** |
+
+Public, redistributable, citable. The synthetic file stays only for the
+determinism check it was always performing.
+
+## Ingested this PR (8 files, ~848 KB, all hashed)
+
+| source_id | grade | rows |
+|---|:---:|---:|
+| `ken_french_data_library` | A | 1200 monthly |
+| `fred_sp500` `fred_nasdaqcom` `fred_fedfunds` `fred_t10y2y` `fred_cpiaucsl` `fred_unrate` `fred_vixcls` | A | 7 series |
+
+Fed documents (FOMC minutes, Beige Books, FRBSF WP 2025-30) are registered
+`OFFICIAL_URL_ONLY` with `refresh: event` rather than committed: they are
+event-driven by design — a hash change *is* the trigger — so pinning stale
+copies in the release would work against the cadence rule. Flagged as a
+deviation from the ingest list.
+
+## Calendar effects — 12 rows, 9 reproduced
+
+Reproduced against Ken French, never against the synthetic file:
+
+| fact | grade | n | result |
+|---|:---:|---:|---|
+| `best_six_months` / `halloween_nov_apr` | B | 99 | +7.68% mean, win 74.8% |
+| `worst_six_months_may_oct` | B | 99 | **+3.96% mean, win 71.7%** |
+| `september_weakness` | B | 100 | −0.77% mean, win 51.0% |
+| `january_barometer` | B | 99 | sign agreement |
+| `midterm_year_pattern` | B | 300 | +0.56%/mo |
+| `post_election_year` | B | 300 | +0.84%/mo |
+| `presidential_4yr_cycle` | B | 1200 | by mechanical year%4 label |
+| `midterm_bottom_picker` | B | 75 | Q2–Q3 −0.16%/mo vs Q4 **+2.08%/mo**, spread +2.24pp |
+| `santa_claus_rally` | C | — | December proxy only; true window needs daily data |
+| `turn_of_month`, `pre_holiday` | C | 0 | monthly series cannot express them |
+
+**Worth reading twice:** on real 1926– data the "worst six months" averages
+**+3.96%** with a 71.7% win rate. "Sell in May" reads as though May–Oct is
+negative; it is not. The effect is a *differential* against Nov–Apr's +7.68%.
+This is exactly why these are stored as `calendar_context` with
+`standalone_sell: False` and never as a verb — a test asserts no calendar row
+contains an imperative.
+
+Nothing claims grade **A**: A additionally requires out-of-sample directional
+support, so B is the ceiling for a single in-sample reproduction.
+
+## Registry: 34 rows across Families A–G
+
+    A 16 | B 12 | C 6      on disk 8 | official-url-only 26
+
+Every row carries `source_id, family, title, authors, year, isbn_or_doi,
+official_url, path_or_MISSING, content_hash, as_of, evidence_grade,
+application_law, dimension_scope, refresh, notes`. All are
+`dimension_scope: context` — none may close an entity question.
+
+Copyright books (Natenberg, Hull, Gatheral, Almanac 2026) stay grade C,
+`path_or_MISSING: MISSING`, official URL + ISBN recorded. The Almanac upgrades
+to B *per named effect* only once that effect is reproduced — which several now
+are, against French rather than against itself.
+
+## Candidates (dry, 3 of 3)
+
+`hirsch_stock_traders_almanac_2026`, `dimson_marsh_staunton_yearbook`,
+`natenberg_option_volatility` — all owned-book candidates whose files are not
+lawfully on disk. `CANDIDATE`, no grade, no ingest.

@@ -1192,5 +1192,58 @@
       "docs/ops/CIO_LIBRARY_CENSUS_2026-08-29.md"
     ],
     "wave3b_started": false
+  },
+  "WAVE3A_2": {
+    "status": "DONE",
+    "grading_series": "reference/library/series/ff_research_data_factors_monthly.csv (Ken French, 1926-07..2026-06, 1200 months)",
+    "why": "synthetic file cannot support a reproduced grade; French 1987-10 = -23.19% vs synthetic +3.27%",
+    "ingested_on_disk": 8,
+    "ingested": [
+      "ken_french_ff3_monthly",
+      "fred_sp500",
+      "fred_nasdaqcom",
+      "fred_fedfunds",
+      "fred_t10y2y",
+      "fred_cpiaucsl",
+      "fred_unrate",
+      "fred_vixcls"
+    ],
+    "registry_rows": 34,
+    "registry_url_only": 26,
+    "calendar_facts": 12,
+    "calendar_reproduced": 9,
+    "calendar_grades": {
+      "B": 9,
+      "C": 3
+    },
+    "FINDING_worst_six_months": "May-Oct averages +3.96% on real data (win 71.7%) — the Halloween effect is a differential vs Nov-Apr +7.68%, not a negative half-year",
+    "FINDING_midterm": "midterm Q2-Q3 -0.16%/mo vs Q4 +2.08%/mo, spread +2.24pp, n=75",
+    "grade_law": {
+      "closing": [
+        "A",
+        "B"
+      ],
+      "context_only": [
+        "C",
+        "D"
+      ],
+      "contradicted": "X",
+      "corpus_hit_requires": [
+        "A_or_B",
+        "dimension_scope_context",
+        "source_index_not_stale"
+      ]
+    },
+    "entity_dimensions_never_closed": [
+      "bear_case",
+      "what_is_priced_in",
+      "structural_drivers"
+    ],
+    "second_freshness_table": false,
+    "second_corpus_store": false,
+    "dry_eligible": 8,
+    "candidates_dry": 3,
+    "tests": 22,
+    "wave3b_started": false
   }
 }

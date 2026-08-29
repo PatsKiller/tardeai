@@ -280,16 +280,48 @@ def registry() -> dict[str, Any]:
             "can_corpus_hit": grade in CLOSING_GRADES,
         })
     cat = catalog_entries()
+
+    # Wave 3A.2 seed: Family A-G sources, plus calendar effects reproduced
+    # against the Ken French monthly series. Same index, no second store.
+    seed: list[dict[str, Any]] = []
+    calendar: list[dict[str, Any]] = []
+    try:
+        from scripts.lib.cio_library_seed import fred_series_rows, seed_rows
+
+        seed = list(seed_rows()) + list(fred_series_rows())
+    except Exception:
+        seed = []
+    try:
+        from scripts.lib.cio_calendar_facts import build_calendar_facts
+
+        calendar = list(build_calendar_facts())
+    except Exception:
+        calendar = []
+    for row in seed:
+        row["can_corpus_hit"] = (
+            str(row.get("evidence_grade")) in CLOSING_GRADES
+            and row.get("dimension_scope") == "context")
+    for row in calendar:
+        row["can_corpus_hit"] = (
+            str(row.get("evidence_grade")) in CLOSING_GRADES
+            and row.get("dimension_scope") == "context")
+
     return {
         "corpus_index_version": CORPUS_INDEX_VERSION,
         "authority": AUTHORITY,
         "library_facts": facts,
         "catalog": cat,
+        "seed": seed,
+        "calendar_facts": calendar,
         "counts": {
             "library_facts": len(facts),
             "catalog": len(cat),
             "catalog_on_disk": sum(1 for c in cat if c["on_disk"]),
             "can_corpus_hit": sum(1 for f in facts if f["can_corpus_hit"]),
+            "seed": len(seed),
+            "seed_on_disk": sum(1 for s in seed if s.get("status") == "FOUND_ON_DISK"),
+            "calendar_facts": len(calendar),
+            "calendar_reproduced": sum(1 for c in calendar if c.get("reproduced")),
         },
         "freshness_law": "research_source_index.decide() — this module keeps none",
         "note": ("Catalogued works are citation-only until lawful full text "
