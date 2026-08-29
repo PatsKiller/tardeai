@@ -1057,6 +1057,33 @@
     },
     "not_done": "148 CASH-bound + 50 dust-bound historical checkpoints left untouched"
   },
+  "cash_writer_identified": {
+    "answer": "portfolio_totals.total_cash is never written by the reprice path; portfolio_loader carries it forward unchanged",
+    "site": "scripts/portfolio_loader.py:332",
+    "refreshed_keys": [
+      "total_value",
+      "day_change",
+      "day_change_pct",
+      "as_of",
+      "last_pipeline_run"
+    ],
+    "total_cash_refreshed": false,
+    "corroboration": "total_mv_excluded IS recomputed and matches the row sum to the cent",
+    "prior_occurrence": {
+      "commit": "c7d02bc8",
+      "date": "2026-07-21",
+      "gap_then": "$292k (stored 478k vs real 186k)",
+      "fix_then": "recompute at the api_v2 read site; stored field left alone"
+    },
+    "why_surfaces_disagree": "api_v2 routes around it; cio_investment_product.collect_cash reads totals.total_cash directly",
+    "odd_field": "total_cash",
+    "recommended": [
+      "write total_cash in portfolio_loader",
+      "or delete the ownerless field"
+    ],
+    "rejected": "a third read-site recompute would leave the fossil for the next reader",
+    "written": false
+  },
   "cash_writer_fix": {
     "operator_pick": "WRITE total_cash at the source",
     "site": "scripts/portfolio_loader.py refresh list (~332)",
