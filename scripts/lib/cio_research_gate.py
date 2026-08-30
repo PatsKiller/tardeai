@@ -29,6 +29,7 @@ decides nothing; it executes what this returns.
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any, Optional
 
 GATE_VERSION = "ResearchNeedDecision@v2"
@@ -39,6 +40,23 @@ DECISIONS = (
     "skip", "reuse", "corpus_hit", "flash", "pro", "openai", "grok_critique",
 )
 PAID_DECISIONS = frozenset({"flash", "pro", "openai", "grok_critique"})
+
+# The residual rung. It has always been `openai` -- the step after `pro`, whose
+# prompt skeleton in `cio_research_templates` reads "residual only -- the
+# questions Pro left open". `ResidualWebLane@v1` is the lane that EXECUTES this
+# rung; the token stays as-is because renaming it would touch the templates,
+# `cio_specialist_artifact.PROVIDERS` (which raises on an unknown provider) and
+# a row of ban-list tests. The gate names the rung; the lane names the executor.
+RESIDUAL_DECISION = "openai"
+RESIDUAL_LANE = "residual_web"
+
+# Which lane executes each decision. Reporting only -- it changes no routing.
+LANE_FOR: dict[str, str] = {
+    "flash": "llm_flash",
+    "pro": "llm_pro",
+    RESIDUAL_DECISION: RESIDUAL_LANE,
+    "grok_critique": "grok_critique",
+}
 
 # Outcome classes carried forward from the previous attempt on a research_id.
 OUTCOMES = (
@@ -93,6 +111,7 @@ def _decision(name: str, reason: str, **extra: Any) -> dict[str, Any]:
     out: dict[str, Any] = {
         "schema": GATE_VERSION,
         "decision": name,
+        "lane": LANE_FOR.get(name),
         "reason": reason,
         "authority": AUTHORITY,
         "financial_action": FINANCIAL_ACTION,
@@ -137,6 +156,28 @@ def _source_index_verdict(inp: dict[str, Any],
         )
     except Exception:
         return None
+
+
+def _librarian_filter(corpus: dict[str, Any], now: datetime,
+                      root: Any = None) -> dict[str, Any]:
+    """Apply SourceLibrarian@v1 shelf life to a corpus verdict, fail-open.
+
+    Fail-open on purpose: if the librarian cannot be consulted, the corpus
+    keeps whatever verdict it already had. A staleness gate that fails CLOSED
+    would silently route every corpus_hit to a paid call the moment its store
+    was unreadable — the exact failure mode this ladder exists to prevent.
+    """
+    if not corpus:
+        return corpus
+    try:
+        from scripts.lib.cio_research_librarian import filter_corpus
+    except Exception:                                            # noqa: BLE001
+        return corpus
+    try:
+        return filter_corpus(corpus, now=now,
+                             root=Path(root) if root else None)
+    except Exception:                                            # noqa: BLE001
+        return corpus
 
 
 def _has_execution_language(text: Any) -> bool:
@@ -253,6 +294,12 @@ def decide(inp: dict[str, Any], *, now: Optional[datetime] = None) -> dict[str, 
         corpus = dict(corpus)
         corpus["closes"] = False
         corpus["reason"] = "source_index_stale_corpus_may_not_close"
+    # Slice D: a graded source has a shelf life. SourceLibrarian@v1 drops any
+    # source_ref whose grade-derived `stale_after_days` has lapsed, and
+    # un-closes the corpus when nothing eligible survives. It has an opinion
+    # ONLY about sources carrying a grade and a last_seen, so an ungraded
+    # corpus behaves exactly as it did before.
+    corpus = _librarian_filter(corpus, now, inp.get("root"))
     if corpus.get("closes"):
         tried.append("corpus_index")
         return _decision("corpus_hit", corpus.get("reason") or "corpus_closed_gap",
@@ -301,6 +348,49 @@ def decide(inp: dict[str, Any], *, now: Optional[datetime] = None) -> dict[str, 
                      prior_artifact_ids=prior_ids,
                      prior_outcome=prior_outcome,
                      next_eligible_at=(now + timedelta(hours=ttl_h or 168)).isoformat())
+
+
+def collapse_same_day_duplicates(
+    decisions: list[dict[str, Any]], *,
+    now: Optional[datetime] = None,
+) -> dict[str, Any]:
+    """One model class per SUBJECT per calendar day. Mutates `decisions`.
+
+    Lifted out of `cio_research_gate_report` so it can be tested. 36 open S5
+    cash plans are 36 rows asking one question (the SLEEVE:CASH question), and
+    routing each to its own paid call is the grind this gate exists to stop.
+
+    Collapse on the SUBJECT *and* on research_id -- either one repeating is a
+    duplicate. Keying on research_id alone re-expands the S5 cash plans: those
+    36 rows each carry a distinct research_id, so they would all survive as
+    separate paid jobs.
+    """
+    now = _utc(now)
+    day = now.date().isoformat()
+    seen_subject: set[tuple] = set()
+    seen_research: set[tuple] = set()
+    collapsed = 0
+    for d in decisions:
+        if d.get("decision") not in PAID_DECISIONS:
+            continue
+        subject = (d.get("kind"), d.get("symbol"), day)
+        research = (d.get("research_id"), day) if d.get("research_id") else None
+        if subject in seen_subject or (research and research in seen_research):
+            d["decision"] = "skip"
+            d["lane"] = LANE_FOR.get("skip")
+            d["reason"] = "duplicate_subject_same_day"
+            collapsed += 1
+            continue
+        seen_subject.add(subject)
+        if research:
+            seen_research.add(research)
+    return {
+        "day": day,
+        "collapsed": collapsed,
+        "surviving_subjects": sorted(
+            {(str(k), str(sym)) for k, sym, _ in seen_subject}),
+        "surviving_subject_count": len(seen_subject),
+    }
 
 
 def schedule_surface(decisions: list[dict[str, Any]], *, cap: int = 10,

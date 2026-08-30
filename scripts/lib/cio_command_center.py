@@ -1216,6 +1216,238 @@ def overlay_surface_a_reentry_on_opportunities(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Slice C — the record's narrative, rendered
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# `cio_run` stays a DETERMINISTIC_PRODUCT. The narrative blob is an INPUT this
+# composer renders, exactly like a number: the agent wrote the prose earlier in
+# its own governed lane and the record carried it forward. Nothing below calls
+# a model, and `test_cio_cc_record_narrative_slice_c.py` asserts this module
+# imports no delivery/LLM module.
+#
+# Every read fails SOFT. A missing or empty store must still produce a payload —
+# a blank page is worse than a stale one, and a page that empties itself when
+# memory is missing teaches the reader that memory is optional.
+
+RECORD_NARRATIVE_SECTIONS = ("book", "watch", "reentry", "cash", "sector")
+
+
+def resolve_record_store(record_store: Any = None) -> Any:
+    """The InstrumentRecord store, or None. Never raises."""
+    if record_store is not None:
+        return record_store
+    try:
+        from scripts.lib.cio_instrument_record import InstrumentRecordStore
+        return InstrumentRecordStore()
+    except Exception:                                            # noqa: BLE001
+        return None
+
+
+def _narrative_is_clean(text: Any) -> bool:
+    """A record is agent-written prose; it does not get to smuggle an order in.
+
+    The guard that protects the cash letter also runs over row narratives. A
+    record that trips it is DROPPED back to the deterministic line rather than
+    raising, because one poisoned row must not blank the whole desk.
+    """
+    try:
+        from scripts.lib.cio_record_narrative import assert_no_instruction
+        assert_no_instruction(text)
+        return True
+    except Exception:                                            # noqa: BLE001
+        return False
+
+
+def _row_narrative(store: Any, keys: tuple[str, ...], fallback_what: str) -> dict[str, Any]:
+    """Prefer the record's cc_narrative; fall back deterministically."""
+    if store is not None:
+        try:
+            from scripts.lib.cio_record_narrative import narrative_for
+        except Exception:                                        # noqa: BLE001
+            narrative_for = None                                 # type: ignore[assignment]
+        if narrative_for is not None:
+            for key in keys:
+                try:
+                    nar = narrative_for(key, store=store)
+                except Exception:                                # noqa: BLE001
+                    nar = None
+                if nar and _str(nar.get("what")).strip():
+                    if _narrative_is_clean(nar.get("what")):
+                        out = dict(nar)
+                        out["narrative_source"] = "record"
+                        return out
+                    return {
+                        "subject_key": key,
+                        "what": fallback_what,
+                        "writer": "deterministic_fallback",
+                        "from_record": False,
+                        "narrative_source": "deterministic",
+                        "record_refused": "instruction_in_narrative",
+                    }
+    return {
+        "subject_key": keys[0] if keys else None,
+        "what": fallback_what,
+        "writer": "deterministic_fallback",
+        "from_record": False,
+        "narrative_source": "deterministic",
+    }
+
+
+def attach_record_narratives(home: dict[str, Any], store: Any) -> dict[str, Any]:
+    """Attach `cc_narrative` to the CC sections the spec names.
+
+    position/book row · watch row · re-entry row · sector row. (The SLEEVE:CASH
+    letter is built separately by `build_cash_letter_section`, which enforces a
+    much tighter shape.) Returns a small coverage object so the page can say how
+    much of what it shows came from memory rather than from a template.
+    """
+    try:
+        from scripts.lib.cio_instrument_record import subject_key as _sk
+    except Exception:                                            # noqa: BLE001
+        def _sk(kind: str, name: str) -> str:                    # type: ignore[misc]
+            return f"{str(kind).upper()}:{str(name).strip().upper()}"
+
+    counts = {k: {"rows": 0, "from_record": 0} for k in RECORD_NARRATIVE_SECTIONS}
+
+    def _tally(section: str, nar: dict[str, Any]) -> None:
+        counts[section]["rows"] += 1
+        if nar.get("from_record"):
+            counts[section]["from_record"] += 1
+
+    # Position / book rows — HELD first, EXIT for a name already being unwound.
+    for row in (home.get("cio_now") or {}).get("decisions") or []:
+        if not isinstance(row, dict):
+            continue
+        sym = _str(row.get("symbol")).upper()
+        if not sym:
+            continue
+        stance = _human_stance(row.get("stance") or row.get("action"))
+        nar = _row_narrative(
+            store,
+            (_sk("HELD", sym), _sk("EXIT", sym)),
+            f"{sym}: {stance}. No record narrative attached yet.",
+        )
+        row["cc_narrative"] = nar
+        row["narrative_source"] = nar.get("narrative_source")
+        _tally("book", nar)
+
+    opp = home.get("opportunities") or {}
+    for section, section_keys in (
+        ("watch", ("WATCH", "HELD")),
+        ("reentry", ("EXIT", "WATCH", "HELD")),
+    ):
+        for row in opp.get(section) or []:
+            if not isinstance(row, dict):
+                continue
+            sym = _str(row.get("symbol")).upper()
+            if not sym:
+                continue
+            signal = _str(row.get("signal") or row.get("label")) or "no signal"
+            nar = _row_narrative(
+                store,
+                tuple(_sk(k, sym) for k in section_keys),
+                f"{sym}: {signal}. No record narrative attached yet.",
+            )
+            row["cc_narrative"] = nar
+            row["narrative_source"] = nar.get("narrative_source")
+            _tally(section, nar)
+
+    for row in (home.get("posture") or {}).get("sector_tilts") or []:
+        if not isinstance(row, dict):
+            continue
+        name = _str(row.get("sector")).strip()
+        if not name:
+            continue
+        state = _str(row.get("state")) or "no state"
+        nar = _row_narrative(
+            store,
+            (_sk("SECTOR", name),),
+            f"{name}: {state}. No record narrative attached yet.",
+        )
+        row["cc_narrative"] = nar
+        row["narrative_source"] = nar.get("narrative_source")
+        _tally("sector", nar)
+
+    letter = home.get("cash_letter") or {}
+    counts["cash"]["rows"] = 1 if letter else 0
+    counts["cash"]["from_record"] = 1 if letter.get("from_record") else 0
+
+    rows_n = sum(c["rows"] for c in counts.values())
+    rec_n = sum(c["from_record"] for c in counts.values())
+    # A store object that reads an absent file is not the same as memory being
+    # present, and reporting only "available" would hide an empty spine.
+    try:
+        store_records = len(store.all()) if store is not None else 0
+    except Exception:                                            # noqa: BLE001
+        store_records = 0
+    return {
+        "schema": "CCRecordNarrativeCoverage@v1",
+        "sections": counts,
+        "rows": rows_n,
+        "from_record": rec_n,
+        "from_deterministic_fallback": rows_n - rec_n,
+        "store_available": store is not None,
+        "store_records": store_records,
+        "authority": "READ_ONLY_ADVISORY",
+        "memory_behavior_influence": 0,
+        "product": "DETERMINISTIC_PRODUCT",
+        "note": (
+            "CC prefers InstrumentRecord.cc_narrative and falls back "
+            "deterministically. The composer renders prose; it never calls a model."
+        ),
+    }
+
+
+def build_cash_letter_section(
+    store: Any,
+    *,
+    capital_plan: Optional[dict[str, Any]] = None,
+    seasonality: Optional[dict[str, Any]] = None,
+    now: Optional[datetime] = None,
+) -> dict[str, Any]:
+    """The SLEEVE:CASH letter. Required on /v3/cio even though notify is off.
+
+    Cash is the $630k question and the single easiest place for an advisory
+    surface to drift into instruction, so the letter is on the page whether or
+    not anything is being delivered anywhere.
+    """
+    try:
+        from scripts.lib.cio_instrument_record import CASH_SLEEVE
+        from scripts.lib.cio_record_narrative import build_cash_letter
+    except Exception as exc:                                     # noqa: BLE001
+        return {
+            "schema": "CashSleeveLetter@v1",
+            "available": False,
+            "reason": f"module_unavailable: {str(exc)[:120]}",
+            "authority": "READ_ONLY_ADVISORY",
+        }
+    rec = None
+    if store is not None:
+        try:
+            rec = store.load(CASH_SLEEVE)
+        except Exception:                                        # noqa: BLE001
+            rec = None
+    try:
+        return build_cash_letter(
+            rec, capital_plan=capital_plan, seasonality=seasonality, now=now)
+    except Exception as exc:                                     # noqa: BLE001
+        # A record that trips the instruction guard loses its prose, not the
+        # letter. The reader still gets the cash figure and the next look-date.
+        try:
+            letter = build_cash_letter(
+                None, capital_plan=capital_plan, seasonality=seasonality, now=now)
+            letter["record_refused"] = str(exc)[:160]
+            return letter
+        except Exception:                                        # noqa: BLE001
+            return {
+                "schema": "CashSleeveLetter@v1",
+                "available": False,
+                "reason": str(exc)[:160],
+                "authority": "READ_ONLY_ADVISORY",
+            }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Composition
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -1237,6 +1469,7 @@ def build_office_home(
     run_ids: Optional[list[dict[str, Any]]] = None,
     now: Optional[datetime] = None,
     operator_product: Optional[dict[str, Any]] = None,
+    record_store: Optional[Any] = None,
 ) -> dict[str, Any]:
     now = now or datetime.now(timezone.utc)
     plan = capital_plan or {}
@@ -1392,6 +1625,29 @@ def build_office_home(
     # picture and is not. NOW stays capped at 5 cards; the block is not a card.
     home["notifications"] = build_notification_block(
         coverage_plans if coverage_plans else plans)
+    # Slice C: the persistent spine reaches the page.
+    #
+    # The record's own prose is PREFERRED for the position/book row, the watch
+    # row, the re-entry row, the SLEEVE:CASH letter and the sector row, with a
+    # deterministic line behind each one. This is a render of an INPUT, not a
+    # model call — `cio_run` stays DETERMINISTIC_PRODUCT.
+    #
+    # The cash letter is unconditional. It is required on /v3/cio even though
+    # notify is off, because the $630k question is answered on the page, not in
+    # a channel.
+    _store = resolve_record_store(record_store)
+    home["cash_letter"] = build_cash_letter_section(
+        _store,
+        capital_plan=plan,
+        seasonality=home.get("seasonality"),
+        now=now,
+    )
+    try:
+        from scripts.lib.cio_record_narrative import record_narratives
+        home["instrument_narratives"] = record_narratives(_store) if _store else {}
+    except Exception:                                            # noqa: BLE001
+        home["instrument_narratives"] = {}
+    home["record_narrative_coverage"] = attach_record_narratives(home, _store)
     home["telegram_sent"] = False
     home["delivery"] = "dashboard"
     return home

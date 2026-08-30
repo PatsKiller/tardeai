@@ -238,8 +238,21 @@ def augment_multi_domain_evidence(plan: dict[str, Any]) -> dict[str, Any]:
 
         def _pull(name: str, fields: list[str], extra: Optional[dict] = None) -> None:
             nonlocal refs, have
+            # Take the NEWER of the two. This used to `return` whenever the
+            # domain was already present, so it only ever filled gaps and never
+            # refreshed. A plan enriched on 2026-08-11 kept quoting that day's
+            # cash forever, which is how 34 of 42 open S6 plans came to carry
+            # 578,10x against an actual 630,784.82 — see #663/#668. Monotonic
+            # by construction: a stale snapshot can never replace fresh
+            # evidence, only the other way round.
+            existing_at = None
+            existing_ref = None
             if name in have:
-                return
+                for _r in refs:
+                    if str(_r.get("domain")) == name:
+                        existing_ref = _r
+                        existing_at = str(_r.get("as_of") or "")
+                        break
             raw = domains.get(name)
             if not isinstance(raw, dict):
                 return
@@ -276,6 +289,21 @@ def augment_multi_domain_evidence(plan: dict[str, Any]) -> dict[str, Any]:
             if extra:
                 ref.update(extra)
             if ref["fields_used"] or any(k not in ("domain", "as_of", "fields_used", "quality_state") for k in ref):
+                if name in have:
+                    if not existing_at or str(ref.get("as_of") or "") <= existing_at:
+                        return                    # snapshot is not newer
+                    # MERGE, do not replace. A snapshot need not carry every
+                    # field the old ref had — a plan about a symbol no longer
+                    # in the book would otherwise lose its basis/last on
+                    # refresh, trading stale data for missing data. Overlay the
+                    # fresh values, keep the rest.
+                    merged = dict(existing_ref or {})
+                    merged.update(ref)
+                    merged["fields_used"] = sorted(
+                        set(list((existing_ref or {}).get("fields_used") or [])
+                            + list(ref.get("fields_used") or [])))
+                    ref = merged
+                    refs[:] = [r for r in refs if str(r.get("domain")) != name]
                 refs.append(ref)
                 have.add(name)
 
@@ -2316,6 +2344,38 @@ def maybe_notify_plan(
                 return False
         except Exception:
             pass
+    # A narrative that quotes a portfolio figure current truth contradicts must
+    # not reach the operator. Found 2026-08-30: a live S6 plan was one wake from
+    # saying "cash is elevated at 805800" against an actual 630,784.82 — LLM
+    # prose frozen on 2026-08-26, past every other gate. Fails closed; abstains
+    # when the book cannot be read, so it never blocks on its own blindness.
+    if not force:
+        try:
+            try:
+                from scripts.lib.cio_notify_freshness import stale_claim, stale_evidence
+            except Exception:
+                from lib.cio_notify_freshness import (  # type: ignore
+                    stale_claim, stale_evidence,
+                )
+            _stale = stale_claim(plan) or stale_evidence(plan)
+            if _stale:
+                try:
+                    _log_enrich({
+                        "ts": _now(),
+                        "plan_id": plan.get("plan_id"),
+                        "llm": "notify_skipped",
+                        "notify_skip": _stale.get("reason") or "stale",
+                        "claimed": _stale.get("claimed"),
+                        "actual": _stale.get("actual"),
+                        "drift_pct": _stale.get("drift_pct"),
+                        "age_days": _stale.get("age_days"),
+                        "authority": "READ_ONLY_ADVISORY",
+                    })
+                except Exception:
+                    pass
+                return False
+        except Exception:
+            pass
     # Prefer high-value situation types for notify (S1/S2/S5/S6/S8).
     # S3 is NOT on the static allowlist — bare READY/NEAR must stay quiet.
     # S3 notifies only when s3_capital_act_now(plan) (governed RE_ENTER + ACT_NOW).
@@ -2423,6 +2483,34 @@ def maybe_notify_plan(
             thesis_alignment=plan.get("thesis_alignment"),
             multi_domain_summary=plan.get("multi_domain_summary"),
         )
+        # Presentation curation (OFF unless CIO_ADVISORY_CURATOR=1). DeepSeek
+        # may rearrange this message; it may not restate the book. Every number
+        # in the result must already exist here, the plan id and READ_ONLY
+        # marker must survive, and it may not grow — else the deterministic
+        # text is sent unchanged. Fail-open on purpose: `text` is already
+        # correct, so the worst acceptable outcome is the ugly version.
+        try:
+            try:
+                from scripts.lib.cio_advisory_curator import curate as _curate
+            except Exception:
+                from lib.cio_advisory_curator import curate as _curate  # type: ignore
+            _cur = _curate(text, plan_id=plan.get("plan_id"), plan=plan)
+            if _cur.get("curated"):
+                text = _cur.get("text") or text
+            if _cur.get("reason") not in (None, "disabled"):
+                try:
+                    _log_enrich({
+                        "ts": _now(),
+                        "plan_id": plan.get("plan_id"),
+                        "llm": "advisory_curation",
+                        "curated": bool(_cur.get("curated")),
+                        "curation_reason": _cur.get("reason"),
+                        "authority": "READ_ONLY_ADVISORY",
+                    })
+                except Exception:
+                    pass
+        except Exception:
+            pass
         chats = allowlist_chat_ids()
         if not chats:
             return False

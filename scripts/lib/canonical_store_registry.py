@@ -27,21 +27,22 @@ OWNERSHIP_CLASSES = (
 
 # Logical stores. Paths are relative to production state root.
 STORES: dict[str, dict[str, Any]] = {
-    "instrument.records": {
-        "path": "postgres://watchlist_items",
-        "backend": "POSTGRES",
-        "table": "watchlist_items",
-        "format": "row_projection",
+    "cio.instrument_records": {
+        "path": "data/cio/cio_instrument_records.jsonl",
+        "format": "jsonl",
         "schema": "InstrumentRecord@v1",
         "authority": AUTHORITY,
-        "writer": "instrument_record adapter",
-        "readers": ["control_plane", "command_center", "notification_policy"],
-        "kind": "current",
+        "writer": "cio_instrument_record",
+        "readers": ["cio.operator_product", "cio.command_center", "cio.research"],
+        "kind": "append_only",
         "ownership_class": "CANONICAL_PERSISTENT_STATE",
-        "append_only": False,
+        "append_only": True,
         "rebuildable": True,
-        "identity_key": "canonical_entity_id",
-        "note": "Projection over watchlist_items; no independent instrument store.",
+        "id_fields": ["subject_key"],
+        "note": (
+            "One record per subject (HELD:/EXIT:/WATCH:/SECTOR:/SLEEVE:CASH). "
+            "Cognition only: MBI_BEHAVIOR=0 — never a size, order or delta."
+        ),
     },
     "portfolio.watchlist": {
         "path": "data/portfolios/state/watchlist.json",
@@ -521,22 +522,6 @@ def resolve_store(store_id: str, *, root: Path | str | None = None) -> dict[str,
             "reason": "UNKNOWN_STORE",
             "store_id": store_id,
             "authority": AUTHORITY,
-        }
-    if spec.get("backend") == "POSTGRES":
-        return {
-            "ok": True,
-            "store_id": store_id,
-            "backend": "POSTGRES",
-            "table": spec.get("table"),
-            "path": None,
-            "exists": True,
-            "using_alias": False,
-            "schema": spec.get("schema"),
-            "authority": spec.get("authority", AUTHORITY),
-            "ownership_class": spec.get("ownership_class"),
-            "writer": spec.get("writer"),
-            "readers": spec.get("readers", []),
-            "data_quality": "AVAILABLE",
         }
     base = production_state_root(root)
     primary = base / spec["path"]

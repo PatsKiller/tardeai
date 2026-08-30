@@ -84,6 +84,20 @@ def test_notify_once_per_fingerprint(tmp_path, monkeypatch):
 
     ledger = tmp_path / "notify_ledger.json"
     plan = spacex_plan()
+    # The delivery bar is S6-only as of the 2026-08-29 operator sentence, and
+    # the shared fixture is S1. This test is about fingerprint dedupe, not
+    # about which type qualifies — so use a type that actually delivers, or the
+    # dedupe assertions pass vacuously against a row the bar already dropped.
+    plan["situation_type"] = "S6_CONCENTRATION_OR_DISPOSITION"
+    # The shared fixture pins evidence at 2026-08-11, which the notify
+    # freshness bar (14d) now refuses. A hardcoded date silently rots; this
+    # test is about fingerprint dedupe, so its evidence is made current and the
+    # staleness rule is exercised in its own suite.
+    from datetime import datetime, timedelta, timezone
+    _fresh = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+    for _e in plan.get("evidence_refs") or []:
+        if isinstance(_e, dict) and _e.get("as_of"):
+            _e["as_of"] = _fresh
     plan["status"] = "proposed"
     plan["narrative_source"] = "llm"
     plan["evidence_hash"] = enr.evidence_hash(plan)

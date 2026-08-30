@@ -11,7 +11,11 @@ import urllib.parse
 import urllib.request
 from typing import Any, Optional
 
-DEFAULT_SEARXNG = os.environ.get("SEARXNG_URL", "http://127.0.0.1:8080/search")
+# Port 18888, not 8080. Nothing has ever listened on 8080 here — all 18 real
+# call sites pass 18888 explicitly, so the default only ever applied to a
+# caller that forgot, and then failed at connect time looking like the remote
+# search was down. The first live residual-web hop hit exactly that.
+DEFAULT_SEARXNG = os.environ.get("SEARXNG_URL", "http://127.0.0.1:18888/search")
 AUTHORITY = "READ_ONLY_ADVISORY"
 
 
