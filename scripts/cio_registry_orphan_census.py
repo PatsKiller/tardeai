@@ -1,7 +1,3 @@
-NO_CONSUMER_REASON = (
-    "operator-invoked diligence CLI: CIORegistryOrphanCensus@v1 is a stdout receipt for Phase 9 orphan scans, not an ingested store contract"
-)
-
 #!/usr/bin/env python3
 """CanonicalStoreRegistry orphan / missing-cross-id census (read-only).
 
@@ -26,6 +22,10 @@ from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable
+
+NO_CONSUMER_REASON = (
+    "operator-invoked diligence CLI: CIORegistryOrphanCensus@v1 is a stdout receipt for Phase 9 orphan scans, not an ingested store contract"
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
