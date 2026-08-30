@@ -24,15 +24,19 @@ non_material_sources:
   - pure_heartbeat_no_change
   - cio_slash_status
 
-situation_notify_telegram: false   # master; also requires CIO_SITUATION_NOTIFY=1 (alias CIO_SITUATIONS_NOTIFY=1 OR'd)
+situation_notify_telegram: true    # master; also requires CIO_SITUATION_NOTIFY=1 (alias CIO_SITUATIONS_NOTIFY=1 OR'd)
 # When notify is on, only these situation types go to @tradeai_cio_bot
-# Phase B material canary prefers S1/S5/S6/S8 (+ calendar_catalyst_material on S1); S2 optional
+#
+# 2026-08-29, operator: "Telegram on" — channel @tradeai_cio_bot, bar S6 FIRE
+# ONLY. Narrowed from the Phase B canary set (S1/S2/S5/S8 also listed) to the
+# single type the operator asked to hear about. The others are NOT deleted
+# history: re-add a line to widen the bar, and say so explicitly, because
+# widening this list is what turns a 4-message desk into a 400-message one.
+#
+# Phase B material canary preferred S1/S5/S6/S8 (+ calendar_catalyst_material
+# on S1); S2 optional. Restore that set only on an explicit operator sentence.
 notify_situation_types:
-  - S1_POSITION_LIFECYCLE
-  - S2_STOP_GAP
-  - S5_CASH_DEPLOYMENT
   - S6_CONCENTRATION_OR_DISPOSITION
-  - S8_DEFENSIVE_REGIME
 # Re-notify guards (re-enrich must NOT re-push Telegram by default)
 notify_once_per_fingerprint: true  # same plan_id+evidence/fire → one notify; ledger: data/cio/cio_plan_notify_ledger.json
 notify_cooldown_hours: 12          # legacy rows without fingerprint
