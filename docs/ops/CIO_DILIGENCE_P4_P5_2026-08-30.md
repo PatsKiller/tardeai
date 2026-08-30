@@ -23,7 +23,8 @@ Promote: **DO NOT** (operator gate)
 ## Commands (read-only)
 
 ```bash
-python3 scripts/cio_research_governance_census.py --root . --json
+python3 scripts/cio_research_governance_census.py \
+  --root /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT --json
 python3 scripts/cio_research_budget_report.py \
   --root /home/johnclaw/trade-ai-releases/persistent-state --json
 python3 scripts/cio_specialist_sample_audit.py \
@@ -36,8 +37,20 @@ python3 -m pytest tests/test_cio_diligence_p4_p5_research_specialists.py -q
 1. **P4 PASS on code gates:** free-first ladder, `DAILY_CAP=5`, residual hop=1 / subject / day, C/D∉`corpus_hit`, same-day collapse — pinned by tests + census.  
 2. **P5 sample N=100 run:** 2 live SpecialistArtifacts + 98 hermes fixture projections; **exit gate FAIL** on zero-orphan / universal same-workflow / same-IR.  
 3. **G-SPEC-01 remains OPEN** with measured rates (same-wf 50%, same-IR 64%, wf orphans 50%). Accuracy/relevance = **DATA_UNAVAILABLE** (no LLM rubric).  
-4. Live budget dry-select (2026-08-30): PFLT, NOC, RTX, SLEEVE:CASH, EXIT:CAST — cap held at 5.  
-5. No budget raise, no vendor call, no notify-on, no promote in this package.
+4. Live budget dry-select is a **daily-varying value** and is no longer frozen in
+   this note — regenerate it with the budget dry report above. Cap held at 5 in
+   code. `[VERIFIED]` 2026-08-30T18:04Z against `CURRENT`: `selected_count=4` —
+   HELD:PFLT, HELD:NOC, HELD:RTX, EXIT:CAST; the CASH slot went unfilled.  
+5. No budget raise, no vendor call, no notify-on, no promote in this package.  
+6. **Amended 2026-08-30 (Wave A-RECONCILE R2).** The census JSON published with
+   this package carried four keys the census script does not emit
+   (`live_overlay_root`, `stores_live_overlay`, `live_budget_report`,
+   `free_first.note_live`) and a `stores` block measured against a worktree with
+   no `data/`, so all six stores read `exists: false`. The keys are struck and
+   the file is regenerated from the producer against the live release root. P4's
+   scoreboard status is downgraded to `NEEDS_REVERIFICATION` pending coordinator
+   adjudication against the new evidence. Detail:
+   `docs/ops/CIO_R2_NO_PRODUCER_2026-08-30.md`.
 
 ## Wave 3D reuse
 
