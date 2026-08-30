@@ -408,6 +408,28 @@ def check_cc_narrative_without_ping(
 
 # ── check 3: a critique persisted on a record ──────────────────────────────
 
+def _is_critique_shaped(rec: dict[str, Any]) -> bool:
+    """Does the evidence on this record come from a CRITIQUE?
+
+    The check used to accept a bare `last_artifact_id`, so ANY artifact
+    satisfied a check named for a critique. On 2026-08-30 a residual_web hop
+    (artifact rw_8893dcc5aad5be6c, lane residual_web, zero grok lessons) turned
+    it GREEN while the grok critique lane was still POLICY_NOT_ALLOWED — the
+    board reported the thing it exists to detect as present when it was absent.
+
+    A green obtained by the wrong artifact type is worse than a red, because a
+    red gets investigated.
+    """
+    for field in ("last_artifact_id", "last_outcome", "last_lane",
+                  "last_provider", "critique_verdict"):
+        if any(m in str(rec.get(field) or "").lower() for m in CRITIQUE_MARKERS):
+            return True
+    for les in rec.get("lessons") or []:
+        if any(m in json.dumps(les, default=str).lower() for m in CRITIQUE_MARKERS):
+            return True
+    return False
+
+
 def _critique_evidence(rec: dict[str, Any]) -> Optional[dict[str, Any]]:
     outcome = str(rec.get("last_outcome") or "").strip().lower()
     artifact_id = rec.get("last_artifact_id")
@@ -419,6 +441,11 @@ def _critique_evidence(rec: dict[str, Any]) -> Optional[dict[str, Any]]:
         if any(m in text for m in CRITIQUE_MARKERS):
             lesson_hit = les.get("lesson_id") or les.get("claim")
             break
+
+    # The evidence must come from a critique. A research attach of any other
+    # kind is real work and still not what this check is named for.
+    if not _is_critique_shaped(rec):
+        return None
 
     kind = None
     if outcome in REJECT_OUTCOMES or blocked is True:
