@@ -2452,6 +2452,34 @@ def maybe_notify_plan(
             thesis_alignment=plan.get("thesis_alignment"),
             multi_domain_summary=plan.get("multi_domain_summary"),
         )
+        # Presentation curation (OFF unless CIO_ADVISORY_CURATOR=1). DeepSeek
+        # may rearrange this message; it may not restate the book. Every number
+        # in the result must already exist here, the plan id and READ_ONLY
+        # marker must survive, and it may not grow — else the deterministic
+        # text is sent unchanged. Fail-open on purpose: `text` is already
+        # correct, so the worst acceptable outcome is the ugly version.
+        try:
+            try:
+                from scripts.lib.cio_advisory_curator import curate as _curate
+            except Exception:
+                from lib.cio_advisory_curator import curate as _curate  # type: ignore
+            _cur = _curate(text, plan_id=plan.get("plan_id"))
+            if _cur.get("curated"):
+                text = _cur.get("text") or text
+            if _cur.get("reason") not in (None, "disabled"):
+                try:
+                    _log_enrich({
+                        "ts": _now(),
+                        "plan_id": plan.get("plan_id"),
+                        "llm": "advisory_curation",
+                        "curated": bool(_cur.get("curated")),
+                        "curation_reason": _cur.get("reason"),
+                        "authority": "READ_ONLY_ADVISORY",
+                    })
+                except Exception:
+                    pass
+        except Exception:
+            pass
         chats = allowlist_chat_ids()
         if not chats:
             return False
