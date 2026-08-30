@@ -28,7 +28,7 @@ import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -54,6 +54,34 @@ def _enabled() -> bool:
 
 def _hash(s: str) -> str:
     return hashlib.sha256(s.encode()).hexdigest()[:16]
+
+
+# A wake raised from a two-week-old event is analysis about a portfolio that no
+# longer exists. The situation backlog on this bus is 1,100 events reaching back
+# 15 days; routing `situation.raised` correctly started draining it at 12 per
+# cycle, which is "processing a historical backlog" — operator-only under the
+# wave rules, and the exact failure S1 names: fluent, confident, wrong, and
+# delivered as if current.
+#
+# So the cycle only wakes on events young enough to still be about today. Older
+# ones are counted and reported as stale, never silently dropped.
+EVENT_MAX_AGE_HOURS = float(os.environ.get("CIO_REACTIVE_EVENT_MAX_AGE_HOURS", "48"))
+
+
+def _event_age_hours(ev: Any, now: datetime) -> Optional[float]:
+    """Age of an event in hours, or None when it carries no usable timestamp."""
+    raw = getattr(ev, "timestamp", None)
+    if raw is None and isinstance(ev, dict):
+        raw = ev.get("timestamp") or ev.get("occurred_at")
+    if not raw:
+        return None
+    try:
+        d = datetime.fromisoformat(str(raw).strip().replace("Z", "+00:00"))
+    except Exception:
+        return None
+    if d.tzinfo is None:
+        d = d.replace(tzinfo=timezone.utc)
+    return (now - d).total_seconds() / 3600.0
 
 
 def run_once(*, max_wakes: int = 12, dispatch: bool = False) -> dict[str, Any]:
@@ -82,6 +110,7 @@ def run_once(*, max_wakes: int = 12, dispatch: bool = False) -> dict[str, Any]:
         "enabled": _enabled(),
         "event_enqueued": [],
         "event_skipped": [],
+        "event_stale": [],
         "cursor_advanced": [],
         "goal_enqueue": {},
         "dispatch": {},
@@ -109,7 +138,8 @@ def run_once(*, max_wakes: int = 12, dispatch: bool = False) -> dict[str, Any]:
 
     bus = CIOEventBus()
     wake_store = CIOWakeJobStore()
-    hour = datetime.now(timezone.utc).strftime("%Y%m%d%H")
+    _now_dt = datetime.now(timezone.utc)
+    hour = _now_dt.strftime("%Y%m%d%H")
     enqueued_n = 0
     recent_types: list[str] = []
 
@@ -130,6 +160,20 @@ def run_once(*, max_wakes: int = 12, dispatch: bool = False) -> dict[str, Any]:
             if not et or not eid:
                 continue
             recent_types.append(str(et))
+
+            # Freshness bound. An unstamped event is allowed through — refusing
+            # it would silently drop live events for a missing field — but a
+            # demonstrably old one is not.
+            _age = _event_age_hours(ev, _now_dt)
+            if _age is not None and _age > EVENT_MAX_AGE_HOURS:
+                out["event_stale"].append({
+                    "event_id": eid, "event_type": str(et),
+                    "age_hours": round(_age, 1),
+                    "max_age_hours": EVENT_MAX_AGE_HOURS,
+                })
+                last_id = eid          # advance past it; do not re-read forever
+                continue
+
             wake_job_id = f"wake_ev_{agent_id}_{_hash(eid)}_{hour}"
             # Dedup: if already in store as pending/active, skip
             try:

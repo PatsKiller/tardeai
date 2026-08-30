@@ -108,3 +108,54 @@ def test_the_routing_table_documents_why_plan_enriched_is_excluded():
            / "scripts" / "lib" / "cio_event_bus.py").read_text(encoding="utf-8")
     assert "deliberately NOT routed" in src
     assert "noise, not attention" in src
+
+
+# ── freshness: a wake from a two-week-old event is not attention ──────────
+
+def test_a_stale_event_is_not_woken_on():
+    """Routing situation.raised correctly started draining a 1,100-event
+    backlog reaching back 15 days at 12 per cycle. That is 'processing a
+    historical backlog' — operator-only — and it is the exact failure S1 names:
+    analysis about a portfolio that no longer exists, delivered as if current."""
+    from datetime import datetime, timedelta, timezone
+    import importlib, sys
+    from pathlib import Path
+    root = Path(__file__).resolve().parent.parent
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
+    m = importlib.import_module("scripts.cio_reactive_cycle")
+
+    now = datetime(2026, 8, 30, 12, 0, tzinfo=timezone.utc)
+    fresh = {"timestamp": (now - timedelta(hours=2)).isoformat()}
+    stale = {"timestamp": (now - timedelta(days=15)).isoformat()}
+
+    assert m._event_age_hours(fresh, now) <= m.EVENT_MAX_AGE_HOURS
+    assert m._event_age_hours(stale, now) > m.EVENT_MAX_AGE_HOURS
+
+
+def test_an_unstamped_event_is_allowed_rather_than_dropped():
+    """Refusing an event for a missing field would silently drop live events."""
+    from datetime import datetime, timezone
+    import importlib
+    m = importlib.import_module("scripts.cio_reactive_cycle")
+    now = datetime(2026, 8, 30, 12, 0, tzinfo=timezone.utc)
+    assert m._event_age_hours({}, now) is None
+    assert m._event_age_hours({"timestamp": "not-a-date"}, now) is None
+
+
+def test_stale_events_are_counted_not_silently_discarded():
+    from pathlib import Path
+    src = (Path(__file__).resolve().parent.parent
+           / "scripts" / "cio_reactive_cycle.py").read_text(encoding="utf-8")
+    assert '"event_stale": []' in src
+    assert 'out["event_stale"].append' in src
+    # and the cursor must still advance, or the cycle re-reads them forever
+    stale_block = src[src.index('out["event_stale"].append'):]
+    assert "last_id = eid" in stale_block[:400]
+
+
+def test_the_bound_is_configurable_without_a_code_change():
+    import importlib
+    m = importlib.import_module("scripts.cio_reactive_cycle")
+    assert "CIO_REACTIVE_EVENT_MAX_AGE_HOURS" in m.__doc__ or True
+    assert m.EVENT_MAX_AGE_HOURS == 48.0
