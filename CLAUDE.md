@@ -37,6 +37,61 @@ rails.
 moves none of those raises `CognitionNoOp` and is a failed persist. Silence is
 how a memory system convinces itself it is learning.
 
+## DeepSeek pricing and scheduling — binding rules
+
+Source: https://api-docs.deepseek.com/quick_start/pricing (verified 2026-08-30).
+Prices change. Re-verify before relying on a figure, and never quote one from memory.
+
+### Peak / off-peak
+
+**Peak: 01:00–04:00 and 06:00–10:00 UTC, Monday–Friday. Everything else is off-peak.
+Off-peak is half the peak rate.**
+
+The weekday qualifier is in **UTC**, not local time.
+
+### This box runs US Eastern (`America/New_York`) and observes DST
+
+| | EDT (Mar–Nov, UTC−4) | EST (Nov–Mar, UTC−5) |
+|---|---|---|
+| Peak block 1 | 21:00–00:00 | 20:00–23:00 |
+| Peak block 2 | 02:00–06:00 | 01:00–05:00 |
+| Off-peak | 00:00–02:00 and 06:00–21:00 | 23:00–01:00 and 05:00–20:00 |
+
+**The entire US trading day is off-peak. All weekend hours are off-peak.**
+
+**Never schedule an LLM-heavy job using a local-time cron expression.** The peak window is
+fixed in UTC, so a job pinned to Eastern local time silently crosses into peak twice a year at
+the DST boundaries and doubles in cost with nothing reporting it. Schedule in UTC, or compute
+the window at runtime from UTC.
+
+### Rates per 1M tokens (off-peak / peak)
+
+| | flash | pro |
+|---|---|---|
+| Input, cache hit | $0.007 / $0.014 | $0.022 / $0.044 |
+| Input, cache miss | $0.22 / $0.44 | $0.66 / $1.32 |
+| Output | $0.66 / $1.32 | $1.98 / $3.96 |
+
+Context length 1M, max output 384K. Concurrency: flash 2500, pro 500.
+
+### Context caching is the larger lever
+
+Cache hit against cache miss on input is **31×**. Peak against off-peak is **2×**. A system that
+re-sends the same InstrumentRecord, thesis, and lesson context on every wake is precisely the
+shape that benefits. **Getting caching right matters more than getting the schedule right** —
+optimise it first.
+
+### Cost accounting rules
+
+- Every model call records its **measured** cost, never a literal. A hardcoded cost figure is a
+  fiction and has already misled one audit in this repository.
+- Every call records the **rate tier that applied** — `peak` or `off_peak` — and whether input
+  was a cache hit. Without this, "we run in the cheap window" is an unverifiable claim.
+- Cost is checked against the cap **before** the call. A budget-check error must never result in
+  an unbudgeted call.
+- If the configured cap makes a lane unable to run meaningfully, that is a finding to report,
+  not a reason to exceed it or to starve silently.
+
 ## The governing principle
 
 **A component reporting success is not evidence that it did anything.**
