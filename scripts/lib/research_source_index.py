@@ -261,6 +261,46 @@ def upsert_row(
     return row
 
 
+def upsert_meta(
+    source_id: str,
+    *,
+    meta: dict[str, Any],
+    path: Path | None = None,
+    root: Path | None = None,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    """Merge librarian metadata (grade / last_seen / stale_after_days) into a row.
+
+    Additive on purpose. This index already owns the freshness axis, so the
+    librarian's grade and shelf-life belong on the same row rather than in a
+    second store — two freshness laws over one source drift apart, and the
+    drift is invisible until someone diffs them by hand.
+
+    Unlike `upsert_row` this never touches `content_hash` or `fresh_until`:
+    grading a source is not researching it, and must not reset its TTL. A row
+    that does not exist yet is created empty-hashed, so a source can be graded
+    before it has ever been fetched.
+    """
+    now_dt = _now(now)
+    p = Path(path) if path is not None else index_path(root=root)
+    idx = load_index(path=p, root=root)
+    sources = idx.setdefault("sources", {})
+    row = sources.get(source_id)
+    if not isinstance(row, dict):
+        row = {"source_id": source_id, "content_hash": "",
+               "last_modified_at": None, "last_researched_at": None,
+               "fresh_until": None}
+    extra = dict(row.get("extra") or {})
+    extra.update({k: v for k, v in (meta or {}).items() if v is not None})
+    row["extra"] = extra
+    sources[source_id] = row
+    idx["schema"] = SCHEMA
+    idx["authority"] = AUTHORITY
+    idx["updated_at"] = iso(now_dt)
+    _atomic_write(p, json.dumps(idx, indent=2, sort_keys=True, default=str) + "\n")
+    return row
+
+
 def is_stale(row: dict[str, Any] | None, now: datetime | None = None) -> bool:
     """True when missing, never researched, or fresh_until has passed."""
     now_dt = _now(now)
