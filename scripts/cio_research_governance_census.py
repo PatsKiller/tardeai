@@ -1,3 +1,7 @@
+NO_CONSUMER_REASON = (
+    "operator-invoked diligence CLI: CIOResearchGovernanceCensus@v1 is a stdout receipt for Phase 4, not an ingested store contract"
+)
+
 #!/usr/bin/env python3
 """Read-only census of CIO research-engine governance (P4 / WS6–8).
 

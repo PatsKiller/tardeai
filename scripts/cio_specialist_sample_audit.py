@@ -1,3 +1,7 @@
+NO_CONSUMER_REASON = (
+    "operator-invoked diligence CLI: CIOSpecialistSampleAudit@v1 is a stdout scorecard for Phase 5, not an ingested store contract"
+)
+
 #!/usr/bin/env python3
 """P5 SpecialistArtifact sample audit (N≤100) — read-only.
 
