@@ -477,18 +477,29 @@ def compute_rebalancing(portfolio):
     try:
         try:
             from scripts.lib.cio_rebalancer_readonly import (
-                flag_orders_against_avoid,
+                append_avoid_refusal_receipt,
+                drop_orders_against_avoid,
                 load_cio_product_readonly,
             )
         except ImportError:
             from lib.cio_rebalancer_readonly import (  # type: ignore
-                flag_orders_against_avoid,
+                append_avoid_refusal_receipt,
+                drop_orders_against_avoid,
                 load_cio_product_readonly,
             )
         cio = load_cio_product_readonly()
-        orders = flag_orders_against_avoid(orders, cio)
-        n_flag = sum(1 for o in orders if o.get("cio_avoid_contradiction"))
-        print(f"  [rebalancer] CIO AVOID flags: {n_flag} (read-only, job continues)")
+        # G-AUTH-01: drop AVOID contradictions from actionable list by default.
+        # READ_ONLY_ADVISORY / MBI=0 / no broker write / no notify-on.
+        orders, dropped = drop_orders_against_avoid(orders, cio, drop_contradictions=True)
+        n_kept, n_dropped = len(orders), len(dropped)
+        print(
+            f"  [rebalancer] CIO AVOID: kept={n_kept} dropped={n_dropped} "
+            "(read-only, job continues for remaining; never broker-write)"
+        )
+        if dropped:
+            receipt_path = append_avoid_refusal_receipt(dropped)
+            if receipt_path is not None:
+                print(f"  [rebalancer] CIO AVOID refusal receipt: {receipt_path}")
     except Exception as exc:
         print(f"  [rebalancer] CIO product read failed ({type(exc).__name__}); continuing")
     print("  [rebalancer] Computing share counts...")
