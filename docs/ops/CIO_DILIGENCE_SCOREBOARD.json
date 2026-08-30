@@ -8,8 +8,8 @@
     "reason": "optional gog upsert not run on kickoff"
   },
   "now": {
-    "current_pin": "852ecd47",
-    "current_pr": 681,
+    "current_pin": "be09945b",
+    "current_pr": 679,
     "health": 200,
     "cio": 200,
     "lineage": {
@@ -27,32 +27,39 @@
       }
     },
     "telegram_sent": false,
-    "phase_cursor": "P1-WS1"
+    "phase_cursor": "P1-WS1",
+    "p9_orphan_census": {
+      "window_days": 30,
+      "stores_present": 9,
+      "stores_scanned": 12,
+      "missing_cross_id_hits": 144,
+      "orphan_hits": 3
+    }
   },
   "packages": {
     "P0": {
       "title": "Master plan + scoreboard + gap register",
       "status": "DONE",
       "pr": 681,
-      "sha": "852ecd47"
+      "sha": "f54bf9f5"
     },
     "P1-WS1": {"title": "Architecture as-built pack", "status": "PENDING"},
     "P1-WS2": {"title": "Event lifecycle census baseline", "status": "PENDING"},
     "P1-WS3": {"title": "Operator S0 workflow + failure battery", "status": "PENDING"},
     "P2-WS4": {"title": "Identity confidence score", "status": "PENDING"},
     "P2-WS5": {"title": "HELD/EXIT/WATCH/CASH/DUST matrix", "status": "PENDING"},
-    "P3": {
-      "title": "InstrumentRecord persistence drills",
-      "status": "DONE",
-      "pr": 682,
-      "sha": "72bc42c9",
-      "proof": "tmp cold-start/partial-write/rollback PASS; docs/audits/diligence/P3_INSTRUMENT_RECORD_PERSISTENCE_2026-08-30.md"
-    },
+    "P3": {"title": "InstrumentRecord persistence drills", "status": "PENDING"},
     "P4": {"title": "Research free / residual / model gov", "status": "PENDING"},
     "P5": {"title": "Specialist N=100 sample", "status": "PENDING"},
     "P6": {"title": "Council determinism", "status": "PENDING"},
     "P7": {"title": "Notification matrix CC-first", "status": "PENDING"},
     "P8": {"title": "Outcome/lesson MBI partition", "status": "PENDING"},
-    "P9": {"title": "Registry / orphan / 99.99% path", "status": "PENDING"}
+    "P9": {
+      "title": "Registry / orphan / 99.99% path",
+      "status": "DONE",
+      "pr": null,
+      "sha": null,
+      "proof": "cio_registry_orphan_census 30d miss=144 orphans=3; lineage 54%; design path to 99.99%"
+    }
   }
 }
