@@ -74,6 +74,9 @@ def test_gap_register_g_auth_01_locked():
     assert "cio_rebalancer_readonly" in text or "rebalancer_readonly" in text
     assert "G-DUAL-01" in text
     assert "merged" in text.lower()
+    # PR-G closeout: G-AUTH-01 mitigated via #695; G-DUAL-01 closed by design
+    assert "#695" in text
+    assert "CLOSED" in text
 
 
 def test_scoreboard_p1_ws1_done():
@@ -90,7 +93,7 @@ def test_scoreboard_p1_ws1_done():
     assert data["packages"]["P1-WS2"]["status"] == "DONE"
     assert data["packages"]["P1-WS3"]["status"] == "DONE"
     assert data["now"]["phase_cursor"] in {"COMPLETE", "DONE"}
-    assert data["now"]["current_pin"] == "db08bd11"
+    assert data["now"]["current_pin"] == "015a7891"
     assert data["now"].get("this_package_pre_promote") is True
     assert data["now"]["health"] == 200
     assert data["now"]["cio"] == 200

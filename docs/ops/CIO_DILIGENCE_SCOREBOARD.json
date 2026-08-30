@@ -8,10 +8,10 @@
     "reason": "optional gog upsert not run; DRIVE remains optional FAIL until gog"
   },
   "now": {
-    "current_pin": "db08bd11",
-    "origin_main": "db08bd11",
-    "origin_main_full": "db08bd11c449633ee995ef549fc44c4592f9e986",
-    "current_pr": 686,
+    "current_pin": "015a7891",
+    "origin_main": "015a7891",
+    "origin_main_full": "015a7891a60a013119eff7554278c98696c6db9f",
+    "current_pr": 702,
     "health": 200,
     "cio": 200,
     "lineage": {
@@ -57,8 +57,36 @@
     "identity_production_resolvable_pct": 98.9,
     "schg_surface_a": "EXITED",
     "this_package_pre_promote": true,
-    "current_pin_note": "pre-promote (orchestrator)",
-    "cio_home": 200
+    "current_pin_note": "pre-promote (orchestrator) — gap-register closeout restamp; tip at cut is Merge #702",
+    "cio_home": 200,
+    "gap_closeout": {
+      "restamped_at": "2026-08-30",
+      "label": "PR-G",
+      "closed_mitigated": [
+        "G-AUTH-01",
+        "G-SPEC-01",
+        "G-PRICE-01",
+        "G-ID-01",
+        "G-IR-01",
+        "G-MBI-01",
+        "G-DUAL-01"
+      ],
+      "partial": [
+        "G-LOOP-01",
+        "G-NOTIFY-01"
+      ],
+      "remediation_prs": {
+        "G-AUTH-01": 695,
+        "G-SPEC-01": 696,
+        "G-LOOP-01": 697,
+        "G-PRICE-01": 698,
+        "G-ID-01": 699,
+        "G-IR-01": 702
+      },
+      "claim_99_99": false,
+      "notify_on": false,
+      "canary": "DEFERRED_OPS"
+    }
   },
   "packages": {
     "P0": {
@@ -230,7 +258,7 @@
         "tests/test_cio_registry_orphan_census.py",
         "docs/ops/CIO_DILIGENCE_P9_REGISTRY_LIFECYCLE_2026-08-30.md"
       ],
-      "metrics": "cio_registry_orphan_census 30d miss=144 orphans=3; lineage 54%; design path to 99.99%"
+      "metrics": "cio_registry_orphan_census 30d miss=144 orphans=3; lineage 54%; design path to 99.99% (not claimed)"
     }
   }
 }
