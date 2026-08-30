@@ -580,6 +580,14 @@ def build_capital_plan(plan: Optional[dict[str, Any]] = None) -> dict[str, Any]:
         "post_plan_cash_usd": _num(p.get("post_plan_cash_usd")),
         "post_plan_cash_pct": _num(p.get("post_plan_cash_pct")),
         "account_cash": account_cash,
+        # The cash block's own evidence clock. The page-level stamp is when the
+        # surface was composed; these dollars can be much older, and on the live
+        # book they span 27 days. Never let the reader infer age from the frame.
+        "cash_as_of": p.get("cash_as_of") or {
+            "as_of": None, "unstamped": True,
+            "note": "cash age not supplied by the plan; do not read the page "
+                    "stamp as the age of these dollars",
+        },
         "plan_version": p.get("plan_version"),
         "plan_digest": digest,
         "double_count_guard": src.get("double_count_guard") or "earmarked_redeploy_excluded_from_raise",
@@ -1236,20 +1244,30 @@ def overlay_surface_a_reentry_on_opportunities(
     opp["surface_a_reentry_count"] = sa_count
     opp["surface_a_reentry_near"] = sa_near
     opp["surface_a_reentry_reenter"] = sa_reenter
+    # `reentry_total` used to be one of THREE quantities depending on the day's
+    # data -- NEAR+REENTER overlay, else the full Surface A book, else the queue
+    # pipe -- while sitting in the field position that reads as the total of the
+    # list above it, and `reentry_pipes` did not mention it. On a money surface a
+    # number whose meaning moves with the data is worse than no number.
+    #
+    # It is now bound to ONE book: the Surface A re-entry book count, always. The
+    # actionable subset is its own named field rather than a value that
+    # sometimes replaces the total, and every field is in the pipes map.
+    opp["reentry_total"] = sa_count
+    opp["reentry_actionable"] = sa_near + sa_reenter
     opp["reentry_pipes"] = {
         "queue": "opportunities.reentry / queue_reentry_total",
         "surface_a": "surface_a_reentry_* from operator_product.reentry / reentry_book",
+        "reentry_total": "surface_a_reentry_count — the Surface A book, always; "
+                         "not the queue pipe and not the actionable subset",
+        "reentry_actionable": "surface_a_reentry_near + surface_a_reentry_reenter "
+                              "— the subset of reentry_total that is actionable now",
+        "queue_reentry_total": "the queue pipe; a different population, never summed "
+                               "with reentry_total",
         "merged": False,
-        "note": "Dual pipes labeled not merged (Wave 1 slice 3 / Wave 2 slice 10)",
+        "note": "Dual pipes labeled not merged (Wave 1 slice 3 / Wave 2 slice 10). "
+                "reentry_total is bound to one book and no longer branches.",
     }
-
-    if sa_count > 0:
-        # Prefer actionable NEAR+REENTER overlay; fall back to full book count
-        # when names exist but none are currently NEAR/REENTER (WAIT/AVOID book).
-        overlay = sa_near + sa_reenter
-        opp["reentry_total"] = overlay if overlay > 0 else sa_count
-    else:
-        opp["reentry_total"] = queue_total
     return opp
 
 
