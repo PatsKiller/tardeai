@@ -141,11 +141,41 @@ def build_reference_index(corpus, names, literals):
     return index
 
 
+def module_compiles(rel: str) -> tuple[bool, str]:
+    """Does this file actually compile? `compile()`, never `ast.parse()`.
+
+    `ast.parse()` ACCEPTS a misplaced `from __future__` import; `compile()`
+    refuses it. That difference is not academic. Commit aa21559c put a
+    module-level NO_CONSUMER_REASON above the `__future__` import in
+    scripts/cio_event_lifecycle_census.py to satisfy THIS gate. The file was a
+    SyntaxError for 10 hours -- unimportable, unrunnable -- while this gate
+    read the declaration straight back out of it with `ast.parse` and reported
+    green, and its numbers were quoted the whole time.
+
+    Bytes, not str: the UTF-8 codec strips a BOM exactly as the interpreter
+    does, so this asks the same question `python <file>` asks. A str read would
+    raise on a BOM that does not, in fact, stop the file from running.
+    """
+    try:
+        compile((REPO / rel).read_bytes(), rel, "exec")
+    except SyntaxError as exc:
+        return False, f"{exc.msg} (line {exc.lineno})"
+    except (OSError, ValueError) as exc:
+        return False, f"{type(exc).__name__}: {exc}"
+    return True, ""
+
+
 def declared_module_string(rel: str, name: str) -> str | None:
-    """A module-level string constant, if the author declared one."""
+    """A module-level string constant, if the author declared one.
+
+    Callers must check `module_compiles(rel)` first. A file that does not
+    compile returns None here, which is indistinguishable from a file that
+    simply carries no declaration -- so on its own this cannot tell "declared
+    nothing" from "cannot be parsed at all".
+    """
     try:
         tree = ast.parse((REPO / rel).read_text(encoding="utf-8", errors="ignore"))
-    except (OSError, SyntaxError):
+    except (OSError, SyntaxError, ValueError):
         return None
     for node in tree.body:
         if isinstance(node, ast.Assign):
@@ -173,6 +203,17 @@ def audit() -> dict[str, Any]:
             corpus[rel] = path.read_text(encoding="utf-8", errors="ignore")
         except OSError:
             continue
+
+    # A declaration is a claim about a file that RUNS. Verify that first: this
+    # gate demands a module-level NO_CONSUMER_REASON, and the obvious place to
+    # put one is the top of the file -- above `from __future__`, which is a
+    # SyntaxError. The gate that induces that shape must be the gate that
+    # catches it, or it launders a dead file into a green check.
+    uncompilable = []
+    for rel in sorted(corpus):
+        ok, why = module_compiles(rel)
+        if not ok:
+            uncompilable.append({"module": rel, "error": why})
 
     names = {Path(rel).stem for rel in defs}
     all_lits = {lit for lits in defs.values() for lit in lits}
@@ -207,6 +248,7 @@ def audit() -> dict[str, Any]:
     return {
         "schema": "DarkContractAudit@v1",
         "authority": "READ_ONLY_ADVISORY",
+        "uncompilable": uncompilable,
         "definers": len(defs),
         "zero_consumer": len(dark),
         "declared": len(declared),
@@ -233,6 +275,9 @@ def main() -> int:
     if args.json:
         print(json.dumps(result, indent=2, sort_keys=True))
     else:
+        print(f"uncompilable modules      : {len(result['uncompilable'])}")
+        for row in result["uncompilable"]:
+            print(f"    ✗ {row['module']}  {row['error']}")
         print(f"versioned-schema definers : {result['definers']}")
         print(f"zero-consumer             : {result['zero_consumer']}")
         print(f"  inherited (seeded)      : {result['inherited']}")
@@ -244,6 +289,21 @@ def main() -> int:
             print(f"\n  resolved since baseline ({len(result['resolved_since_baseline'])}):")
             for m in result["resolved_since_baseline"]:
                 print(f"    ✓ {m}")
+
+    # Order matters: report the unrunnable file BEFORE the consumer verdict.
+    # A module that cannot compile has no consumers and no declaration in any
+    # meaningful sense, and reporting it as "declared, 0 new" is the specific
+    # false green this gate shipped for 10 hours.
+    if result["uncompilable"]:
+        print("\nFAIL: a module under scripts/ does not compile. Its declaration, its\n"
+              "consumers and its schemas are all unverifiable until it does.\n"
+              "compile() -- not ast.parse() -- is the check; ast.parse accepts a\n"
+              "module-level statement placed above `from __future__`, which is\n"
+              "exactly how a NO_CONSUMER_REASON added to satisfy THIS gate broke\n"
+              "the file it was added to.", file=sys.stderr)
+        for row in result["uncompilable"]:
+            print(f"  {row['module']}: {row['error']}", file=sys.stderr)
+        return 1
 
     if args.fail_on_new and result["new"]:
         print("\nFAIL: a new versioned contract has no caller and no NO_CONSUMER_REASON.\n"
