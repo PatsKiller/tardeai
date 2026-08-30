@@ -72,6 +72,40 @@ def main():
         result["error_count"],
     )
 
+    # ── Step 1b: M5 evidence ──────────────────────────────────────────
+    # The record consult happens inside poll_and_dispatch, before any claim.
+    # Emit what it changed, to the log AND to a durable artifact, so the proof
+    # comes from a scheduled unattended run rather than from running this by
+    # hand. A lane whose only evidence is a hand-run has not proven a schedule.
+    consult = result.get("record_consult") or {}
+    log.info(
+        "record_consult: wakes=%s subject_resolved=%s record_found=%s "
+        "changed_by_record=%s skipped_cadence_not_due=%s no_subject=%s",
+        consult.get("wakes_considered"), consult.get("subject_resolved"),
+        consult.get("record_found"), consult.get("decisions_changed_by_record"),
+        consult.get("skipped_cadence_not_due"), consult.get("no_subject"),
+    )
+    for ch in (consult.get("changed") or []):
+        log.info("record_changed_decision: subject=%s without_record=%s "
+                 "with_record=%s reason=%s",
+                 ch.get("subject_key"), ch.get("without_record"),
+                 ch.get("with_record"), ch.get("reason"))
+    try:
+        import json as _json
+        from datetime import datetime as _dt, timezone as _tz
+        _p = _PROJECT / "data" / "cio" / "wake_record_consult.json"
+        _p.parent.mkdir(parents=True, exist_ok=True)
+        _p.write_text(_json.dumps({
+            "schema": "WakeRecordConsult@v1",
+            "authority": "READ_ONLY_ADVISORY",
+            "as_of": _dt.now(_tz.utc).replace(microsecond=0).isoformat(),
+            "unattended": True,
+            "entrypoint": "cron: */5 * * * * cio_wake_dispatch_entrypoint.py",
+            **consult,
+        }, indent=2, default=str) + "\n", encoding="utf-8")
+    except Exception:
+        log.exception("record_consult artifact write failed (fail-soft)")
+
     # ── Step 1b: Persist today's investment books even if no wake fires ─
     try:
         from scripts.lib.cio_investment_product import build_product, persist_product
