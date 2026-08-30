@@ -138,6 +138,35 @@ def reject_legacy_model_id(model_id: str) -> None:
         raise RegistryError(f"unknown DeepSeek model id: {model_id!r}")
 
 
+def _in_peak_window(provider: dict[str, Any], *, at: Any = None) -> bool:
+    """True inside a provider's peak pricing window (UTC, weekdays only)."""
+    from datetime import datetime, timezone
+    windows = provider.get("pricing_peak_hours_utc") or []
+    if not windows:
+        return False
+    now = at or datetime.now(timezone.utc)
+    try:
+        if now.tzinfo is None:
+            now = now.replace(tzinfo=timezone.utc)
+        now = now.astimezone(timezone.utc)
+    except Exception:                                            # noqa: BLE001
+        return False
+    days = str(provider.get("pricing_peak_days") or "Mon-Fri")
+    if days == "Mon-Fri" and now.weekday() >= 5:
+        return False
+    minutes = now.hour * 60 + now.minute
+    for w in windows:
+        try:
+            a, _, b = str(w).partition("-")
+            ah, am = (int(x) for x in a.split(":"))
+            bh, bm = (int(x) for x in b.split(":"))
+        except Exception:                                        # noqa: BLE001
+            continue
+        if ah * 60 + am <= minutes < bh * 60 + bm:
+            return True
+    return False
+
+
 def estimate_usd_cost(
     *,
     model_id: str,
@@ -145,16 +174,26 @@ def estimate_usd_cost(
     completion_tokens: int | None,
     cache_hit_tokens: int | None = None,
     cache_miss_tokens: int | None = None,
+    at: Any = None,
 ) -> dict[str, Any]:
     """Estimate USD from registry price snapshot. Not billed actual unless provider-verified."""
     reject_legacy_model_id(model_id)
     reg = load_registry()
     pricing = None
     effective = None
+    tier = "off_peak"
     for prov in (reg.get("providers") or {}).values():
         for m in (prov.get("models") or {}).values():
             if m.get("model_id") == model_id:
-                pricing = m.get("pricing_snapshot_usd_per_million_tokens") or {}
+                # DeepSeek bills DOUBLE during peak windows (01:00-04:00 and
+                # 06:00-10:00 UTC, Mon-Fri). Billing everything at the off-peak
+                # rate understated real cost by up to 2x on top of the snapshot
+                # itself being 1.5x-4.7x low before 2026-08-30.
+                peak = m.get("pricing_peak_usd_per_million_tokens")
+                if peak and _in_peak_window(prov, at=at):
+                    pricing, tier = peak, "peak"
+                else:
+                    pricing = m.get("pricing_snapshot_usd_per_million_tokens") or {}
                 effective = m.get("pricing_effective_at")
                 break
         if pricing is not None:
@@ -177,6 +216,7 @@ def estimate_usd_cost(
     return {
         "estimated_cost_usd": round(usd, 8),
         "cost_basis": "provider_usage_x_registry_snapshot",
+        "pricing_tier": tier,
         "pricing_effective_at": effective,
         "tokens": {
             "cache_hit_input": hit,

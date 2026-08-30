@@ -54,8 +54,17 @@ def _as_et(dt: datetime | None) -> datetime:
 
 
 def is_deepseek_peak_utc(dt: datetime | None = None) -> bool:
-    """True inside official DeepSeek pricing peak hours (half-open UTC)."""
+    """True inside official DeepSeek pricing peak hours (half-open UTC).
+
+    Peak is WEEKDAYS ONLY. The vendor doc states 01:00-04:00 and 06:00-10:00
+    UTC "Monday through Friday (all other hours are off-peak)", so a Saturday
+    03:00 UTC job bills off-peak and there is nothing to skip. Treating the
+    weekend as peak cost nothing in dollars but deferred bulk work for two days
+    a week to dodge a surcharge that was never charged.
+    """
     when = _as_utc(dt)
+    if when.weekday() >= 5:                      # Sat/Sun: no peak surcharge
+        return False
     hour = when.hour + when.minute / 60.0 + when.second / 3600.0
     for start, end in DEEPSEEK_PEAK_UTC:
         if start <= hour < end:

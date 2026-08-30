@@ -395,8 +395,18 @@ def ledger_paid_usd_today(process_id: str | None = None, *, cur=None) -> float:
       - reserved: count projected_usd (open holds)
       - settled: count actual_usd if set, else projected_usd (conservative)
       - released: count 0 (pre-provider failures do not consume budget)
+      - test_/pytest_/fixture_ process ids are EXCLUDED entirely
 
     Consumption logs are NOT included (avoid double counting).
+
+    The test exclusion is not tidiness. On 2026-08-29 sixteen `test_*` rows
+    carrying synthetic amounts ($0.60, $0.04, $0.03) were written to this
+    PRODUCTION ledger by test suites. They were 99% of that day's apparent
+    $2.72 spend — real production was $0.0141 — and two never settled, so they
+    permanently held budget and blocked a live hop with COST_CAP_EXCEEDED.
+    Worse than the false cap: they corrupt the very number an operator reads to
+    decide what a realistic cap is. Tests may still write rows; they may not
+    spend the operator's money.
     """
     own = cur is None
     if own:
@@ -430,6 +440,10 @@ def ledger_paid_usd_today(process_id: str | None = None, *, cur=None) -> float:
                 ), 0)
                 FROM llm_cost_reservations
                 WHERE created_at >= CURRENT_DATE
+                  AND process_id NOT LIKE 'test\\_%' ESCAPE '\\'
+                  AND process_id NOT LIKE 'test-%'
+                  AND process_id NOT LIKE 'pytest\\_%' ESCAPE '\\'
+                  AND process_id NOT LIKE 'fixture\\_%' ESCAPE '\\'
                 """
             )
         return float(cur.fetchone()[0] or 0)
@@ -623,6 +637,33 @@ def cost_persistence_available() -> bool:
         except Exception:
             pass
         return False
+
+
+# Test process ids must not consume the operator's real budget.
+#
+# On 2026-08-29 sixteen `test_*` reservations carrying synthetic amounts
+# ($0.60, $0.04, $0.03) were written to the PRODUCTION ledger by test suites.
+# They accounted for 99% of that day's apparent $2.72 spend — real production
+# was $0.0141 — and two never settled, so they permanently held budget and
+# blocked a live hop with COST_CAP_EXCEEDED.
+#
+# The damage is not only the false cap: it corrupts the very number an operator
+# consults to decide what a realistic cap IS.
+#
+# Refused by default. A test that genuinely needs to exercise the ledger sets
+# LLM_LEDGER_ALLOW_TEST_PROCESS=1 for its own scope, which is explicit and
+# greppable rather than accidental.
+_TEST_PROCESS_PREFIXES = ("test_", "test-", "pytest_", "fixture_")
+
+
+def is_test_process_id(process_id: str | None) -> bool:
+    pid = str(process_id or "").strip().lower()
+    return pid.startswith(_TEST_PROCESS_PREFIXES)
+
+
+def test_ledger_writes_allowed() -> bool:
+    return os.environ.get("LLM_LEDGER_ALLOW_TEST_PROCESS", "").strip().lower() in (
+        "1", "true", "yes", "on")
 
 
 def reserve_projected_cost(
