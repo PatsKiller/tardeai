@@ -27,6 +27,23 @@ OWNERSHIP_CLASSES = (
 
 # Logical stores. Paths are relative to production state root.
 STORES: dict[str, dict[str, Any]] = {
+    "cio.instrument_records": {
+        "path": "data/cio/cio_instrument_records.jsonl",
+        "format": "jsonl",
+        "schema": "InstrumentRecord@v1",
+        "authority": AUTHORITY,
+        "writer": "cio_instrument_record",
+        "readers": ["cio.operator_product", "cio.command_center", "cio.research"],
+        "kind": "append_only",
+        "ownership_class": "CANONICAL_PERSISTENT_STATE",
+        "append_only": True,
+        "rebuildable": True,
+        "id_fields": ["subject_key"],
+        "note": (
+            "One record per subject (HELD:/EXIT:/WATCH:/SECTOR:/SLEEVE:CASH). "
+            "Cognition only: MBI_BEHAVIOR=0 — never a size, order or delta."
+        ),
+    },
     "portfolio.watchlist": {
         "path": "data/portfolios/state/watchlist.json",
         "format": "json",
