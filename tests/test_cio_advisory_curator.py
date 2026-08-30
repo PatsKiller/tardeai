@@ -11,7 +11,7 @@ import os
 import pytest
 
 from scripts.lib.cio_advisory_curator import (
-    LANE, MODEL, curate, enabled, validate, _numbers,
+    LANE, MODEL, _numbers, _user_prompt, curate, enabled, plan_context, validate,
 )
 
 ORIG = ("🧠 CIO · READ_ONLY · `desk@v4`\nCash 630,784.82 · weight 42.1pct\n"
@@ -88,3 +88,78 @@ def test_the_notify_path_is_wired_to_the_curator():
            / "cio_plan_enrichment.py").read_text(encoding="utf-8")
     assert "cio_advisory_curator" in src
     assert "advisory_curation" in src          # decision is logged either way
+
+
+# --- enhancement: inference is now checked, not just asked for -------------
+#
+# The first live curation wrote "current weight exceeds max name threshold".
+# True, derived only from numbers already present, and still analysis. I
+# shipped that as an accepted limit; it is not — the relation words are a
+# closed set, so it is mechanically checkable after all.
+
+LONG = ("READ_ONLY_ADVISORY. Desk thesis desk@v4 defensive_observe. Single-name "
+        "weight 42.1pct. Posture max_name 12.0%, cash_min 20.0%, dd 25.0%. "
+        "Options: trim concentration; hold with thesis. Risks: disposition "
+        "effect; concentration gap. plan_77e48566970e revisit 2026-08-12")
+
+
+@pytest.mark.parametrize("phrase", [
+    "weight 42.1pct exceeds max_name 12.0%",
+    "therefore hold",
+    "weight is above the 12.0% limit",
+    "which implies a size review",
+])
+def test_a_drawn_comparison_is_rejected(phrase):
+    out = f"READ_ONLY_ADVISORY {phrase}. plan_77e48566970e"
+    r = validate(LONG, out, plan_id="plan_77e48566970e")
+    assert r and r.startswith("added_inference"), r
+
+
+def test_printing_both_numbers_without_comparing_is_fine():
+    out = ("READ_ONLY_ADVISORY Hold with thesis. weight 42.1pct, max_name "
+           "12.0%. plan_77e48566970e revisit 2026-08-12")
+    assert validate(LONG, out, plan_id="plan_77e48566970e") is None
+
+
+def test_a_relation_word_already_in_the_input_is_allowed():
+    """Only NEWLY drawn comparisons are the problem."""
+    orig = LONG + " Weight exceeds the cap per the desk note."
+    out = "READ_ONLY_ADVISORY weight exceeds the cap. plan_77e48566970e"
+    assert validate(orig, out, plan_id="plan_77e48566970e") is None
+
+
+def test_inference_is_reported_before_length():
+    """'It reasoned' tells the operator more than 'it grew'."""
+    out = ("READ_ONLY_ADVISORY " + LONG + " and therefore the weight exceeds "
+           "the cap by a wide margin, which implies action. plan_77e48566970e")
+    r = validate(LONG, out, plan_id="plan_77e48566970e")
+    assert r.startswith("added_inference"), r
+
+
+# --- enhancement: named context so it can order, not guess -----------------
+
+def test_plan_context_names_the_decision():
+    ctx = plan_context({
+        "situation_type": "S6_CONCENTRATION_OR_DISPOSITION", "symbols": ["SPCX"],
+        "thesis_stance": "defensive_observe", "option_id": "hold_with_thesis",
+        "revisit_at": "2026-08-12"})
+    for expect in ("S6 CONCENTRATION", "SPCX", "defensive_observe",
+                   "hold_with_thesis", "2026-08-12"):
+        assert expect in ctx, expect
+    assert "never to add claims" in ctx
+
+
+@pytest.mark.parametrize("bad", [None, "", [], {}, 42])
+def test_plan_context_survives_junk(bad):
+    assert plan_context(bad) == ""
+
+
+def test_the_user_prompt_carries_context_and_the_advisory():
+    p = _user_prompt("ADVISORY BODY", {"symbols": ["SPCX"]})
+    assert "ADVISORY BODY" in p and "SPCX" in p
+    assert "Draw no comparisons" in p
+
+
+def test_the_user_prompt_works_without_a_plan():
+    p = _user_prompt("ADVISORY BODY", None)
+    assert "ADVISORY BODY" in p and "CONTEXT" not in p
