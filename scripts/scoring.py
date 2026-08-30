@@ -709,6 +709,21 @@ def score_all(
     disqualified_count = 0
     unverified_count = 0
 
+    # Bind loop-helper imports once at function entry (before any path).
+    # Previously attach_catalyst_exception_tags was imported inside the for-loop;
+    # empty tickers skipped the import and raised UnboundLocalError on the post-loop call
+    # (orchestrator abort 2026-07-24; scanner stuck on prior run).
+    import sys as _sys_sq
+    from pathlib import Path as _Path_sq
+    _sq_lib = _Path_sq(__file__).resolve().parent / "lib"
+    if str(_sq_lib) not in _sys_sq.path:
+        _sys_sq.path.insert(0, str(_sq_lib))
+    from squeeze_manual_review import classify_ticker_risk, apply_squeeze_manual_fields
+    from high_rvol_manual_review import qualifies_high_rvol_manual, apply_high_rvol_manual_fields
+    from micro_float_manual_review import apply_micro_float_manual_fields
+    from low_price_manual_review import apply_low_price_manual_fields
+    from catalyst_exception import attach_catalyst_exception_tags
+
     for row in tickers:
         sym = str(row.get("symbol", "")).upper()
         enrichment = enrichments.get(sym, {
@@ -717,17 +732,6 @@ def score_all(
         })
 
         # ── FIX 1: Risk classification (squeeze manual vs hard DQ) ──
-        import sys as _sys_sq
-        from pathlib import Path as _Path_sq
-        _sq_lib = _Path_sq(__file__).resolve().parent / "lib"
-        if str(_sq_lib) not in _sys_sq.path:
-            _sys_sq.path.insert(0, str(_sq_lib))
-        from squeeze_manual_review import classify_ticker_risk, apply_squeeze_manual_fields
-        from high_rvol_manual_review import qualifies_high_rvol_manual, apply_high_rvol_manual_fields
-        from micro_float_manual_review import apply_micro_float_manual_fields
-        from low_price_manual_review import apply_low_price_manual_fields
-        from catalyst_exception import attach_catalyst_exception_tags
-
         risk = classify_ticker_risk(sym, row)
         if risk["action"] in ("hard_dq", "standard_dq"):
             disq_reason = risk["reasons"]
@@ -816,7 +820,8 @@ def score_all(
             print(f"  [scoring] HIGH_RVOL_MANUAL_REVIEW {sym}: RVOL={scored.get('rvol')}")
         results.append(scored)
 
-    attach_catalyst_exception_tags(results)
+    if results:
+        attach_catalyst_exception_tags(results)
 
     if disqualified_count:
         print(f"  [scoring] Data quality: {disqualified_count} disqualified, {unverified_count} catalyst unverified")
