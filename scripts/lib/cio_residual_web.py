@@ -358,6 +358,43 @@ def _stub_transport(request: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+_STOPWORDS = frozenset("""
+a an the and or of for to in on at by with from as is are was were be been being
+what which who whom whose when where why how do does did done can could should
+would may might will shall must show shows currently current into over under
+about their there this that these those it its if then than so such
+official officially source sources data figure figures report reports say says
+latest recent path outlook view level levels
+""".split())
+
+
+def search_query_from_question(question: str, *, max_terms: int = 6) -> str:
+    """Keywords, not a sentence.
+
+    SearXNG is a keyword engine. Handed the full question "What do official
+    Federal Reserve and FRED sources currently show for short-term cash
+    yields...", it latched onto "do" and returned Merriam-Webster and WebMD
+    pages on osteopathy. A first fix kept ten terms beginning with "official"
+    and it then matched *that* word instead — dictionary pages again. Generic
+    research vocabulary ("official", "sources", "latest", "path") carries no
+    signal for a search engine and actively crowds out the terms that do, so it
+    is dropped and the query is capped at six terms. Measured 2026-08-30
+    against the live engine.
+    """
+    import re as _re
+    words = _re.findall(r"[A-Za-z0-9][A-Za-z0-9.\-]*", str(question or ""))
+    terms: list[str] = []
+    for w in words:
+        if w.lower() in _STOPWORDS or len(w) < 2:
+            continue
+        if w.lower() in {t.lower() for t in terms}:
+            continue
+        terms.append(w)
+        if len(terms) >= max_terms:
+            break
+    return " ".join(terms) or str(question or "")[:120]
+
+
 def _live_transport(request: dict[str, Any]) -> dict[str, Any]:
     """The live transport. NOT taken by this PR — the operator sequences it.
 
@@ -368,14 +405,39 @@ def _live_transport(request: dict[str, Any]) -> dict[str, Any]:
     from llm_lane import generate                             # noqa: PLC0415
 
     hits = searx_search(
-        str(request.get("query") or ""),
+        search_query_from_question(request.get("query") or request.get("question") or ""),
         limit=int(request.get("limit") or 6),
         searx_url=request.get("searx_url"),
     ) or []
     urls = [h.get("url") for h in hits if isinstance(h, dict) and h.get("url")]
 
+    # The retrieved evidence has to reach the model, and the word "json" has to
+    # appear in the prompt. Both were missing on the first live attempt: the
+    # prompt was the bare question, so the search ran and its results were
+    # discarded (the "web" in residual_web did nothing), and DeepSeek rejected
+    # json mode with HTTP 400 because the prompt never mentioned json.
+    sources = "\n".join(
+        f"[{i + 1}] {str(h.get('title') or '')[:110]} — {h.get('url')}\n    "
+        f"{str(h.get('content') or h.get('snippet') or '')[:280]}"
+        for i, h in enumerate(hits[:6]) if isinstance(h, dict) and h.get("url")
+    ) or "(no sources retrieved)"
+
+    prompt = (
+        "You are a read-only research assistant for an investment desk.\n"
+        f"QUESTION: {request.get('prompt') or request.get('question')}\n\n"
+        f"SOURCES:\n{sources}\n\n"
+        "Answer ONLY from the sources above. Prefer official pages (SEC, IR, "
+        "Federal Reserve, FRED) over commentary. If the sources do not settle "
+        "the question, say so rather than inferring.\n"
+        "Never tell the operator to buy, sell, add, trim, maintain or hold "
+        "anything — state facts, not instructions.\n"
+        "Return json with exactly these keys: answers (list of {claim, "
+        "source_url}), still_unresolved (list of question ids), "
+        "confidence (low|medium|high)."
+    )
+
     text = generate(
-        str(request.get("prompt") or ""),
+        prompt,
         lane=str(request.get("model_lane") or MODEL_LANE),
         process_id=PROCESS_ID,
         task_summary=f"{LANE}:{request.get('subject_key')}",
