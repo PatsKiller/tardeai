@@ -938,8 +938,15 @@ def collect_case_summaries(
 
 def collect_watch_block_summary(
     payload: dict[str, Any] | list | None = None,
+    *,
+    root: Path | str | None = None,
 ) -> dict[str, Any]:
-    """Honest BLOCK histogram for watch items. Does not map BLOCK→READY or fire S7."""
+    """Honest BLOCK histogram for watch items. Does not map BLOCK→READY or fire S7.
+
+    G-ID-01: stamps ``subject_guid`` on top / ready_near_named rows when the
+    identity registry resolves. Miss leaves guid unset and increments the miss
+    counter — never ticker-as-GUID.
+    """
     empty = {
         "count": 0,
         "by_reason": {},
@@ -994,6 +1001,17 @@ def collect_watch_block_summary(
             if sym not in near_symbols:
                 near_symbols.append(sym)
             ready_near_named.append({"symbol": sym, "status": st, "class": "D"})
+    # G-ID-01 carriage: stamp watch rows when registry resolves.
+    try:
+        from scripts.lib.cio_subject_guid import empty_carriage_metrics, stamp_subject_guid
+        carriage = empty_carriage_metrics()
+        top = [stamp_subject_guid(r, root=root, metrics=carriage) for r in top]
+        ready_near_named = [
+            stamp_subject_guid(r, root=root, metrics=carriage) for r in ready_near_named[:12]
+        ]
+    except Exception:
+        carriage = {"subject_guid_hit": 0, "subject_guid_miss": 0}
+        ready_near_named = ready_near_named[:12]
     return {
         "count": len(blocked),
         "by_reason": by_reason,
@@ -1001,7 +1019,8 @@ def collect_watch_block_summary(
         "ready_count": len(ready_symbols) + len(near_symbols),
         "ready_symbols": ready_symbols,
         "near_symbols": near_symbols,
-        "ready_near_named": ready_near_named[:12],
+        "ready_near_named": ready_near_named,
+        "identity_carriage": carriage,
         "class": "D",
         "fires_s7": False,
         "note": "BLOCK is honest; not mapped to READY; does not fire S7",
@@ -1365,6 +1384,14 @@ def build_reentry_book(
     by_q = _queue_by_symbol(queue)
     fs_ok = _fs_ok(fs_rows)
     rows = []
+    # G-ID-01 carriage: stamp subject_guid when registry resolves; miss → unset + counter.
+    try:
+        from scripts.lib.cio_subject_guid import empty_carriage_metrics, stamp_subject_guid
+        carriage = empty_carriage_metrics()
+        _stamp = stamp_subject_guid
+    except Exception:
+        carriage = {"subject_guid_hit": 0, "subject_guid_miss": 0}
+        _stamp = None
     for row in _merge_prev_and_queue(prev, queue):
         row = dict(row)
         sym = str(row.get("symbol") or "").upper()
@@ -1377,6 +1404,11 @@ def build_reentry_book(
             row, qitems=by_q.get(str(row.get("symbol") or "").upper(), []),
             lessons=lessons, fs_ok=fs_ok, infl=infl,
         )
+        if _stamp is not None:
+            try:
+                rec = _stamp(rec, root=root, metrics=carriage)
+            except Exception:
+                rec.setdefault("subject_guid", None)
         rows.append(rec)
     counts: dict[str, int] = {}
     for r in rows:
@@ -1391,6 +1423,7 @@ def build_reentry_book(
         "counts": counts,
         "thesis_incomplete_count": thesis_incomplete,
         "names": rows,
+        "identity_carriage": carriage,
         "note": (
             f"{_scope_banner(SURFACE_A)}. "
             "IN_ZONE / READY / NEAR is not RE_ENTER. Governed verdicts are candidate-specific. "
@@ -1497,6 +1530,16 @@ def build_opportunity_book(
         row.pop("_orig_i", None)
         row.setdefault("vs_re", row.get("vs_former_holdings"))
         row.setdefault("class", "D")
+    # G-ID-01 carriage: stamp opportunity / not_former rows when registry resolves.
+    try:
+        from scripts.lib.cio_subject_guid import empty_carriage_metrics, stamp_subject_guid
+        carriage = empty_carriage_metrics()
+        ranked = [stamp_subject_guid(r, root=root, metrics=carriage) for r in ranked]
+        not_former_items = [
+            stamp_subject_guid(r, root=root, metrics=carriage) for r in not_former_items
+        ]
+    except Exception:
+        carriage = {"subject_guid_hit": 0, "subject_guid_miss": 0}
     nf_reason = None
     if not not_former_items:
         nf_reason = "no not_former defense/advisory names in queue after held+reentry classification"
@@ -1508,6 +1551,7 @@ def build_opportunity_book(
         "not_former_reason": nf_reason,
         "not_former_class": "D",
         "deduped_from": len(candidates),
+        "identity_carriage": carriage,
         "note": (
             "New capital uses ranked against cash and former holdings. "
             "Unresolved material thesis gaps → RESEARCH_REQUIRED, not weak ADD/REENTER. "
@@ -1585,9 +1629,17 @@ def build_action_book(
         memb = (r.get("thesis") or {}).get("memberships") or []
         if "HELD" in memb and r["symbol"] not in held_syms:
             held_syms.append(r["symbol"])
+    # G-ID-01 carriage for holdings thesis rows (product surface, not broker lots).
+    try:
+        from scripts.lib.cio_subject_guid import empty_carriage_metrics, stamp_subject_guid
+        holdings_carriage = empty_carriage_metrics()
+        _stamp_held = stamp_subject_guid
+    except Exception:
+        holdings_carriage = {"subject_guid_hit": 0, "subject_guid_miss": 0}
+        _stamp_held = None
     for sym in sorted(set(held_syms)):
         th = thesis_fields_for_symbol(sym, root=root)
-        held_thesis.append({
+        held_row = {
             "symbol": sym,
             "action": "HOLD_REVIEW",
             "thesis_state": th.get("thesis_state"),
@@ -1598,7 +1650,13 @@ def build_action_book(
             "research_gaps": th.get("research_gaps") or [],
             "what_would_change": th.get("what_would_change") or [],
             "symbol_thesis_version": th.get("symbol_thesis_version"),
-        })
+        }
+        if _stamp_held is not None:
+            try:
+                held_row = _stamp_held(held_row, root=root, metrics=holdings_carriage)
+            except Exception:
+                held_row.setdefault("subject_guid", None)
+        held_thesis.append(held_row)
         if th.get("thesis_state") in {"STALE", "RESEARCH_REQUIRED", "CONFLICTED"}:
             research.append({
                 "symbol": sym,
@@ -1683,6 +1741,7 @@ def build_action_book(
         "HOLD_CASH_FOR": cash_for,
         "AVOID": avoid,
         "CURRENT_HOLDINGS_THESIS": held_thesis[:40],
+        "CURRENT_HOLDINGS_IDENTITY_CARRIAGE": holdings_carriage,
         "RESEARCH_NEXT": research_dedup[:12],
         "authority": AUTHORITY,
         "financial_action": False,
@@ -1732,7 +1791,7 @@ def build_product(
         root=root_path, holdings=holdings, watch_symbols=watch_syms, now=now,
     )
     case_summaries = collect_case_summaries(root=root_path)
-    watch_block_summary = collect_watch_block_summary()
+    watch_block_summary = collect_watch_block_summary(root=root_path)
     verdicts = [r for r in reentry.get("names") or [] if r.get("governed_verdict")]
     merged = apply_governed_verdicts(queue, verdicts)
     recs = _recommendations(actions, temperament, holdings=holdings)

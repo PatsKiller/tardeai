@@ -106,3 +106,89 @@ def stamp_row(row: dict[str, Any], *, root=None) -> dict[str, Any]:
         out["entity_type"] = UNRESOLVED
         out["identity_status"] = UNRESOLVED
     return out
+
+
+# Carriage counters for writers that stamp product rows (G-ID-01).
+METRICS_HIT = "subject_guid_hit"
+METRICS_MISS = "subject_guid_miss"
+
+
+def _is_ticker_as_guid(guid: Any, symbol: str) -> bool:
+    """Refuse ticker-as-GUID regression. Real GUIDs are not bare tickers."""
+    if guid is None or not symbol:
+        return False
+    g = str(guid).strip().upper()
+    s = str(symbol).strip().upper()
+    return bool(g) and g == s
+
+
+def stamp_subject_guid(
+    row: dict[str, Any],
+    *,
+    symbol: str | None = None,
+    root=None,
+    metrics: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Stamp ``subject_guid`` from the identity registry. Lookup only. No mint.
+
+    G-ID-01 carriage helper for reentry / watch / holdings product writers:
+
+    * **Hit** — registry resolves → set ``subject_guid`` (and identity fields).
+    * **Miss** — leave ``subject_guid`` unset (``None``) and increment the miss
+      counter on ``metrics`` when provided.
+    * **Never** mint, and **never** carriage ticker-as-GUID.
+
+    ``stamp_row`` remains the multi-symbol / situation-detector path; this helper
+    is the single-symbol product-row carriage API with an optional miss metric.
+    """
+    out = dict(row or {})
+    sym = str(symbol or out.get("symbol") or "").strip().upper()
+    if symbol is not None and not out.get("symbol"):
+        out["symbol"] = sym
+
+    if not sym or sym in NON_ENTITY_SYMBOLS:
+        out["subject_guid"] = None
+        out.setdefault("entity_type", UNRESOLVED)
+        out.setdefault("identity_status", UNRESOLVED)
+        out.setdefault("identity_lookup", NOT_APPLICABLE)
+        out.setdefault("identity_lookup_failed", False)
+        if metrics is not None:
+            metrics[METRICS_MISS] = int(metrics.get(METRICS_MISS) or 0) + 1
+        return out
+
+    hit = lookup_subject(sym, root=root)
+    guid = hit.get("subject_guid")
+    if guid and _is_ticker_as_guid(guid, sym):
+        # Hard rail: never ship ticker-as-security-GUID.
+        guid = None
+
+    if guid:
+        out["subject_guid"] = guid
+        out["entity_type"] = hit.get("entity_type") or "SECURITY"
+        out["identity_status"] = hit.get("identity_status") or "CANDIDATE"
+        out["identity_lookup"] = RESOLVED
+        out["identity_lookup_failed"] = False
+        out["identity_lookup_reason"] = None
+        out["authority"] = AUTHORITY
+        out["memory_behavior_influence"] = MBI
+        if metrics is not None:
+            metrics[METRICS_HIT] = int(metrics.get(METRICS_HIT) or 0) + 1
+        return out
+
+    # Miss: leave unset + counter. Do not invent a GUID.
+    out["subject_guid"] = None
+    out["entity_type"] = UNRESOLVED
+    out["identity_status"] = UNRESOLVED
+    out["identity_lookup"] = hit.get("identity_lookup") or UNRESOLVED
+    out["identity_lookup_failed"] = bool(hit.get("identity_lookup_failed"))
+    out["identity_lookup_reason"] = hit.get("identity_lookup_reason")
+    out["authority"] = AUTHORITY
+    out["memory_behavior_influence"] = MBI
+    if metrics is not None:
+        metrics[METRICS_MISS] = int(metrics.get(METRICS_MISS) or 0) + 1
+    return out
+
+
+def empty_carriage_metrics() -> dict[str, int]:
+    """Fresh hit/miss counters for a writer pass."""
+    return {METRICS_HIT: 0, METRICS_MISS: 0}
