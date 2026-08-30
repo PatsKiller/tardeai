@@ -1119,6 +1119,44 @@ def build_notification_block(
     }
 
 
+def build_agent_brief_panel() -> dict[str, Any]:
+    """What the agent did, on the Command Center — the same artifact as the
+    daily Telegram brief, from one producer.
+
+    Reporting only. Two surfaces rendering the same quantity from two producers
+    is the defect P9.3 documented; this reads `cio_agent_brief.build_brief` and
+    re-words nothing, so the panel and the message cannot drift.
+    """
+    try:
+        from scripts.lib.cio_agent_brief import build_brief, SCHEMA
+    except Exception:
+        try:
+            from lib.cio_agent_brief import build_brief, SCHEMA  # type: ignore
+        except Exception as exc:
+            return {
+                "schema": "CIOAgentBrief@v1",
+                "authority": "READ_ONLY_ADVISORY",
+                "available": False,
+                "reason": f"{type(exc).__name__}: {str(exc)[:120]}",
+            }
+    try:
+        b = build_brief()
+    except Exception as exc:
+        return {
+            "schema": SCHEMA,
+            "authority": "READ_ONLY_ADVISORY",
+            "available": False,
+            "reason": f"{type(exc).__name__}: {str(exc)[:120]}",
+        }
+    b["available"] = True
+    b["surface"] = "command_center"
+    b["provenance_note"] = (
+        "All counts deterministic (class D). Prose is template (class T). "
+        "No judgment was exercised in this panel."
+    )
+    return b
+
+
 def build_reentry_book_labels() -> dict[str, Any]:
     """Name both re-entry books on /v3/cio/home. Labelling is not merging.
 

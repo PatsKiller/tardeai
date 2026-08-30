@@ -116,6 +116,9 @@ GATES = [
     ("ci_self_guards", [
         "tests/test_ci_test_coverage_gate.py",
     ]),
+    ("agent_brief", [
+        "tests/test_agent_brief.py",
+    ]),
     ("r13_institutional", [
         "tests/test_r13_institution.py",
         "tests/test_r13_goldens_properties_faults.py",
