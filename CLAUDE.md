@@ -134,6 +134,10 @@ stale upstream).
   remote, no direct-to-main push, no API call substituting for a blocked CLI, no
   merge without a PR. Each produces a "landed" claim with no review artifact —
   the exact failure class this work exists to find.
+- **A checkpoint is `git commit`, not `git push`.** Commit locally as often as
+  useful; pushing, opening a PR, or triggering CI is a separate act that needs
+  explicit authorization per `AI_WORK_POLICY.md` §3. Reasoning that lives only
+  in an unpushed commit is the same failure mode as everything else here.
 
 ## Deploy protocol
 
