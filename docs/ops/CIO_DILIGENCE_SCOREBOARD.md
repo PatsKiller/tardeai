@@ -35,7 +35,7 @@ Resume cursor: first phase/package with status != DONE.
 | P1-WS3 | Operator S0 workflow + failure battery | PENDING | | | |
 | P2-WS4 | Identity confidence score | PENDING | | | |
 | P2-WS5 | HELD/EXIT/WATCH/CASH/DUST matrix | PENDING | | | |
-| P3 | InstrumentRecord persistence drills | DONE | *(this PR)* | *(fill after merge)* | tmp cold-start/partial-write/rollback PASS; see diligence audit |
+| P3 | InstrumentRecord persistence drills | DONE | #682 | `72bc42c9` | tmp cold-start/partial-write/rollback PASS; see diligence audit |
 | P4 | Research free / residual / model gov | PENDING | | | |
 | P5 | Specialist N=100 sample | PENDING | | | |
 | P6 | Council determinism | PENDING | | | |

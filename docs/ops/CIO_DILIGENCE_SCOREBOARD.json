@@ -44,8 +44,8 @@
     "P3": {
       "title": "InstrumentRecord persistence drills",
       "status": "DONE",
-      "pr": null,
-      "sha": null,
+      "pr": 682,
+      "sha": "72bc42c9",
       "proof": "tmp cold-start/partial-write/rollback PASS; docs/audits/diligence/P3_INSTRUMENT_RECORD_PERSISTENCE_2026-08-30.md"
     },
     "P4": {"title": "Research free / residual / model gov", "status": "PENDING"},
