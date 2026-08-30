@@ -1,271 +1,271 @@
-# CIO persistent spine — preconditions board (Slice E)
+# CIO persistent spine — closeout
 
-Date: 2026-08-30 (evidence captured 2026-08-29 late session)
-Authority: `READ_ONLY_ADVISORY` · `MBI_BEHAVIOR=0` · `MBI_COGNITION=1`
+Date: 2026-08-30 · Authority: `READ_ONLY_ADVISORY` · `MBI_BEHAVIOR=0` · `MBI_COGNITION=1`
+Served pin at close: `d4cc7371-main-exact-phase2-20260830-110200`
 Board: `scripts/cio_preconditions_board.py` → `CIOPreconditionsBoard@v1`
 
-**Headline: 2 GREEN, 2 RED.** The spine persists correctly and refuses correctly.
-Nothing in the product reads it back. That is the finding, and a truthful RED is
-the deliverable here — not a green board.
+**Headline: 4 GREEN, 0 RED — and the number is only worth reading because of
+what it took to stop it being a lie.** This document keeps the failures, not
+just the final state. The board reached 4/4 twice today. The first time was
+wrong.
 
 ---
 
-## 1. The four-item board, against live CURRENT
-
-Run: `python3 scripts/cio_preconditions_board.py --root /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT`
+## 1. The board, against live CURRENT
 
 ```
-CIOPreconditionsBoard@v1  authority=READ_ONLY_ADVISORY  MBI_BEHAVIOR=0
-root      : /home/johnclaw/trade-ai-releases/portfolio-server/8f108622-main-exact-phase2-20260829-223817
-store     : /home/johnclaw/trade-ai-releases/persistent-state/data/cio/cio_instrument_records.jsonl
-root probe: ROOT_OK — 40 subject(s)
-records   : EXIT=24, HELD=15, SLEEVE=1  (total 40)
+1. [GREEN] S0 attach + rehydrate (operator turn on the record, read back)
+      1 record carries an operator turn with a plan_id and hands it back
+      through the gate input
+2. [GREEN] CC shows a non-SCHD held narrative + the cash letter, no ping
+      12 non-SCHD held narratives and the cash letter are in the payload;
+      nothing was pushed
+3. [GREEN] Grok critique attach OR reject persisted on a record
+      0 attach + 1 reject persisted on records
+4. [GREEN] dust / CASH-as-a-ticker cannot mint or fire
+      9 refusal probes held, a real ticker still mints, and no stored record
+      is dust or cash
 
-PRECONDITIONS
-  1. [GREEN        ] S0 attach + rehydrate (operator turn on the record, read back)
-        1 record(s) carry an operator turn with a plan_id and hand it back through the gate input
-        CAVEAT: read-back verified through cio_rehydrate.gate_input_from_record;
-                NO scheduled product wake imports it yet, so this is a working
-                mechanism, not yet a working loop
-  2. [RED          ] CC shows a non-SCHD held narrative + the cash letter, no ping
-        12 non-SCHD held narrative(s) exist on records but none appears in the CC
-        payload; the cash letter is on the record but not in the CC payload
-  3. [RED          ] Grok critique attach OR reject persisted on a record
-        no record carries last_artifact_id, a critique lesson, or a reject outcome
-        — no critique has ever been written back
-  4. [GREEN        ] dust / CASH-as-a-ticker cannot mint or fire
-        9 refusal probes held, a real ticker still mints, and no stored record is
-        dust or cash
-
-spine wake consumers: NONE
-
-TOTAL green=2 red=2 cannot_verify=0
+TOTAL green=4 red=0 cannot_verify=0
 ```
 
-### Why each verdict
+### How it got here — the honest sequence
 
-**1 — GREEN, with a caveat that matters.** `HELD:SCHD` carries an operator turn
-with `plan_id=plan_79fe9e72f2d4`; that turn moved four cognition fields; and
-`gate_input_from_record` hands the plan_id and the pushed eligibility straight
-back to a later wake. The mechanism is real. What is *not* real is a caller:
-`scan_wake_consumers` finds **zero** product modules importing the spine, and no
-cron entry or systemd timer runs one. The GREEN is on the mechanism, and the
-board prints the caveat on the same line so it cannot be read as a working loop.
+| state | board | why |
+|---|---|---|
+| Slices A+B live | 2 green, 2 red | records existed; **nothing read them** |
+| Slice C merged | 3 green, 1 red | the CC became the reader; check 2 flipped |
+| residual_web hop | **4 green — FALSE** | check 3 accepted a bare `last_artifact_id`, so a residual_web artifact satisfied a check named for a *critique* |
+| check 3 tightened | 3 green, 1 red | honest again |
+| live Grok critique | **4 green — real** | `0 attach + 1 reject` from an actual critique |
 
-**2 — RED, and not because the narratives are missing.** Twelve non-SCHD HELD
-records carry real prose (`HELD:NOC`, `HELD:XLB`, `HELD:BAH`, …), and
-`SLEEVE:CASH` carries the cash letter. None of it reaches
-`/api/v3/cio/home`: every `holdings_thesis_coverage.items[].why_owned_or_watched`
-is `null`, because that field is fed from the symbol-thesis store, not from
-`cio.instrument_records`. The "no ping" half is satisfied
-(`telegram_sent=false`, `would_send_any=false`, `delivery=dashboard`) — the CC
-is silent, it just has nothing of the record's to say.
-
-**3 — RED, unambiguously.** Across all 40 records: `last_artifact_id` is `None`
-40/40, `last_outcome` is `None` 40/40, `research_blocked` is unset 40/40, and no
-lesson mentions a critique. Slice B's rule-2 branch (reject → reframe the
-question, flag `research_blocked`) is implemented and unit-tested but has never
-fired on live data.
-
-**4 — GREEN.** Nine refusal probes hold at the gate, the control symbol still
-mints (so the gate is not simply refusing everything), and no stored record is a
-cash/TEST ticker or one of the four live dust tickers.
-
-### The root trap, handled explicitly
-
-Many CIO stores use relative paths and follow the CWD. Run the board from a
-worktree with no `data/` and a careless implementation reports four REDs about a
-spine that is perfectly healthy. This board reports **CANNOT_VERIFY** instead,
-and names the path it looked at:
-
-```
-root probe: ROOT_NO_CIO_DIR — no data/cio under <worktree> — this tree carries no
-CIO state. Re-run with --root pointing at the live release (.../CURRENT).
-  1. [CANNOT_VERIFY] S0 attach + rehydrate …
-TOTAL green=0 red=0 cannot_verify=4
-```
-
-Three root verdicts map to CANNOT_VERIFY: `ROOT_NO_CIO_DIR`,
-`ROOT_NO_RECORD_STORE`, `ROOT_EMPTY_STORE`. An unreachable CC payload is also
-CANNOT_VERIFY, never RED — a surface that cannot be fetched is unverified, not
-broken.
+The false green was reported to the operator before it was caught. A green
+obtained by the wrong artifact type is worse than a red, because a red gets
+investigated.
 
 ---
 
 ## 2. Record counts by kind
 
-| kind | count |
-|------|-------|
-| HELD | 15 |
-| EXIT | 24 |
-| SLEEVE | 1 |
-| **total** | **40** |
+```
+HELD   15      EXIT   24      SLEEVE  1        total 40
+```
 
-129 append-only rows project to 40 subjects. Store resolves through
-`CURRENT/data/cio/` to
-`/home/johnclaw/trade-ai-releases/persistent-state/data/cio/cio_instrument_records.jsonl`.
+Refused at mint: 4 dust (<$50 aggregate MV), 3 non-equity tickers, 25 exits
+with no plan or case summary. Three symbols held across multiple accounts
+correctly collapse to **one record per subject**.
+
+`SLEEVE:CASH` is a sleeve, never a ticker — a fake CASH holding is exactly how
+the $630k question leaks in as an instrument.
 
 ---
 
-## 3. The SCHD defer, as shown on the record
+## 3. The SCHD defer, on the record
 
 ```json
-"last_operator_turn": {
-  "intent": "defer",
-  "note": "wait for price buffer",
-  "plan_id": "plan_79fe9e72f2d4",
-  "text_hash": "65e59e0a6d4cbceb",
-  "ts": "2026-08-11T21:33:52.184311+00:00"
-}
+{"intent": "defer", "note": "wait for price buffer",
+ "plan_id": "plan_79fe9e72f2d4", "ts": "2026-08-11T21:33:52+00:00"}
 ```
 
+This is the thing the spine exists for. The disposition was made on 2026-08-11
+and the plan that carried it closed; the record kept it. A wake on SCHD now
+returns `skip / cadence_not_due` instead of re-running research the operator
+already answered.
+
+**It did not work on the first attempt.** Slice A seeded the defer into the
+narrative *prose* but never pushed `next_eligible_at`, so the defer was narrated
+and not honoured — the live record routed to `flash` twice while carrying it.
+Two Slice-A bugs surfaced only against the live record:
+
+- the migration seeded the **weight** hash from `market_value` — different
+  quantities that happened to share a field name, so every first observation
+  looked like a move
+- `hash_changed` treated an **unset** hash as a change, so first contact fired a
+  spurious event override on every freshly migrated record — overriding the
+  very defer the record was created to remember
+
+The migration now routes dispositions through the same `attach_operator_turn`
+rule the live loop uses, so there is one definition of what a defer means.
+
+---
+
+## 4. Cognition apply — before / after
+
+`MBI_COGNITION=1` means a lesson must change what the desk does next. A write
+that moves none of `next_research_question`, `next_eligible_at`,
+`notify_priority`, `cc_narrative` raises `CognitionNoOp` — a **failed** persist.
+
+**Operator defer (`HELD:SCHD`)**
+
 ```
-next_eligible_at       : 2026-09-06T02:34:32.326342+00:00   (pushed; skips on cadence)
-next_research_question : Has a catalyst or earnings event changed the condition
-                         behind the defer (wait for price buffer)?
-notify_priority        : cc
-cc_narrative.writer    : cognition:defer_honored
-cc_narrative.what      : "Operator deferred: wait for price buffer. Under desk@v5
-                          (defensive_observe): concentration/disposition on SCHD.
-                          Fire=weight_17.6pct. …"
+before  next_research_question: null
+        next_eligible_at:       null
+after   next_research_question: "Has a catalyst or earnings event changed the
+                                 condition behind the defer (wait for price
+                                 buffer)?"
+        next_eligible_at:       2026-09-06   (+7d)
+        notify_priority:        cc
+        cc_narrative.what:      "Operator deferred: wait for price buffer. ..."
+        changed: [next_research_question, next_eligible_at,
+                  notify_priority, cc_narrative]
 ```
 
-The read-back a later wake performs:
+**Grok critique REJECT (`HELD:SCHD`)**
+
+```
+before  next_research_question: "Has a catalyst or earnings event changed ..."
+after   next_research_question: "Prior research was refused (rejected). What
+                                 INDEPENDENT evidence would settle this
+                                 without restating it?"
+        last_artifact_id:       grok_critique_ebb4120ba659
+        last_outcome:           rejected
+        research_blocked:       true
+```
+
+The reframe is the point: re-asking a prompt that failed closed is how a desk
+spends a budget learning nothing.
+
+**Provenance alone is not a persist.** A lesson attached with no decision moved
+raises `CognitionNoOp`. Silence is how a memory system convinces itself it is
+learning.
+
+---
+
+## 5. The live Grok critique
+
+Lane `grok` on `maria_research_critique`, model `grok-3`, through the OAuth
+proxy. Verdict **REJECT**, four reasons, the first of which is the system
+catching its own core failure mode:
+
+> "Includes explicit `recommendation` field directing `hold_with_thesis` which
+> constitutes an action instruction"
+>
+> "Internally contradictory: states 18% weight exceeds 12% desk maximum yet
+> recommends hold"
+
+**The lane was never blocked.** `cio_grok_critique.py` carried a comment saying
+`POLICY_NOT_ALLOWED` "because no research/critique process lists lane=grok". It
+does — `allowed_lanes: ["fast","deepseek-v4-flash","grok"]` in **both** the file
+registry and `llm_process_config`. The comment outlived its condition and was
+quoted twice as current policy. Corrected in place.
+
+---
+
+## 6. The cash letter, on `/v3/cio`
 
 ```json
-{"plan_id": "plan_79fe9e72f2d4",
- "next_eligible_at": "2026-09-06T02:34:32.326342+00:00",
- "symbol": "SCHD", "event_fired": false, "material": true}
+{"what": "Cash sleeve 630784.82.",
+ "option_ids": ["hold_cash", "stage_into_X", "wait_until_month"],
+ "recommendation_option_id": "hold_cash",
+ "standalone_sell": false,
+ "month_context": "August (historically_stronger_in_almanac_literature) · worst-six-months window",
+ "next_eligible_at": "2026-08-31T14:53:41+00:00"}
 ```
 
-The plan_id survives on the record. This is the exact thing that was lost before
-Slice A: attaching the turn to the plan alone meant the plan closed and the
-disposition went with it.
+Shape enforced in code, not requested in a prompt: the option ids are a closed
+set, `standalone_sell` is always false, and a regex guard **refuses**
+"deploy $N into TICKER" — a dollar amount pointed at a ticker is an instruction
+wearing a letter's clothes.
+
+Honest limit: `what` is still the migration's deterministic string
+(`writer: migration:deterministic`), not agent prose. The pipe works; no real
+cash letter has been written yet.
+
+Alongside it: **37 instrument narratives** in the payload.
 
 ---
 
-## 4. Cash letter excerpt
+## 7. MBI evidence
 
-As stored on `SLEEVE:CASH` (not surfaced in the CC — see check 2):
+`MBI_BEHAVIOR=0` is enforced, not asserted. `apply_cognition()` **raises**
+`BehaviorWriteRefused` on `recommended_delta_usd`, `size_usd`, `shares`, `qty`,
+`order`, `stop`, `limit`, `target_weight_pct`, `trade`, `execution`. Refused
+outright rather than filtered — a silently dropped size field *looks* honoured.
 
-```json
-{
-  "what": "Cash sleeve 630784.82.",
-  "thesis_fit": "Cash is intentional optionality under the desk thesis.",
-  "recommendation_option_id": "hold_cash",
-  "writer": "migration:deterministic",
-  "as_of": "2026-08-30T02:34:32.327723+00:00"
-}
-```
+| suite | tests |
+|---|---:|
+| `test_cio_instrument_record.py` | 44 |
+| `test_cio_rehydrate_slice_b.py` | 15 |
+| `test_cio_cc_record_narrative_slice_c.py` | 20 |
+| `test_cio_research_budget_slice_d.py` | 51 |
+| `test_cio_preconditions_board.py` | 32 |
+| `test_cio_residual_web_lane.py` + live path | 89 |
+| `test_board_check3_requires_a_critique.py` | 8 |
 
-The CC's own cash prose is a different object and comes from a different
-producer — `earmark_narrative`: *"$630,785 of current cash is earmarked from
-prior exits/redeploy; it is not new capital. Prospective raise is $168,440 from
-trims/exits not yet cash. Recommended deploy $541,944 is bounded by investable
-free cash plus prospective raise only."* Both describe the same $630,784.82; only
-the second one reaches the operator. Cash is correctly modelled as
-`SLEEVE:CASH`, never as a holding.
+Acceptance green on all six flags at every promote.
 
 ---
 
-## 5. Cognition apply — before / after `next_research_question`
+## 8. Rails at close — the true values, not the intended ones
 
-`HELD:NOC`, driven through `apply_after_cycle` with a rejected artifact.
-In-memory only; nothing persisted (store row count 129 before and after).
+| rail | value |
+|---|---|
+| `telegram_sent` (CC block) | **false** |
+| `CIO_SITUATION_NOTIFY` | **1** — delivery is ON |
+| `CIO_TELEGRAM_INTERDICT` | **0** — not raised |
+| `notify_situation_types` | `S6_CONCENTRATION_OR_DISPOSITION` only |
+| `MBI_BEHAVIOR` / `MBI_COGNITION` | 0 / 1 |
+| financial action | none |
 
-| field | BEFORE | AFTER |
-|-------|--------|-------|
-| `next_research_question` | `None` | `Prior research was refused (rejected). What INDEPENDENT evidence would settle this without restating it?` |
-| `next_eligible_at` | `None` | `2026-08-30T00:00:00+00:00` |
-| `last_outcome` | `None` | `rejected` |
-| `research_blocked` | unset | `True` |
-| changed fields | — | `['next_research_question', 'next_eligible_at']` |
+The original slice spec pinned `CIO_SITUATION_NOTIFY=0` and "INTERDICT on".
+**Those pins are superseded** by an explicit operator decision earlier the same
+day: Telegram on, channel `@tradeai_cio_bot`, bar S6 fire only. The board reads
+and prints the live flag values rather than restating the pin — a board that
+lies about its own rails is worse than no board.
 
-The reframe is the point: re-asking a prompt that already failed closed is how a
-desk burns a research budget learning nothing.
-
----
-
-## 6. MBI evidence — behaviour refused, cognition required
-
-`MBI_BEHAVIOR=0` — a size cannot travel through cognition:
-
-```
->>> apply_cognition(rec, recommended_delta_usd=25000)
-BehaviorWriteRefused: MBI_BEHAVIOR=0: cognition may not carry ['recommended_delta_usd']
-
->>> apply_cognition(rec, size_usd=1, shares=10)
-BehaviorWriteRefused: MBI_BEHAVIOR=0: cognition may not carry ['shares', 'size_usd']
-```
-
-Refused outright rather than filtered — a silently dropped size field looks like
-it was honoured.
-
-`MBI_COGNITION=1` — a write that moves nothing is a FAILED persist, not a no-op:
-
-```
->>> apply_cognition(rec, notify_priority=rec['notify_priority'])
-CognitionNoOp: HELD:NOC: nothing in ('next_research_question', 'next_eligible_at',
-'notify_priority', 'cc_narrative') changed — a lesson that moves no decision is
-not persisted
-```
-
-Test evidence: `tests/test_cio_instrument_record.py` (22 tests),
-`tests/test_cio_rehydrate_slice_b.py` (13 tests),
-`tests/test_cio_preconditions_board.py` (32 tests) — **91 passed**.
+`telegram_sent: false` is not a claim that notify is off. It is the Wave 3E CC
+block being render-only: `producer: null`, `would_send: false` on every row.
 
 ---
 
-## 7. Live notify rails — read, not asserted
+## 9. Cost governance (same session, adjacent)
 
-The original spine spec said "Do NOT lift INTERDICT, do NOT set
-`CIO_SITUATION_NOTIFY=1`" and assumed notify was off. **That text is stale.** The
-operator turned Telegram delivery on and confirmed it supersedes the pin. The
-board therefore reads `/proc/<server pid>/environ` and `config/cio_llm_policy.yaml`
-and prints what it finds. It changes nothing.
+- **Test rows were 99% of a day's apparent spend.** Sixteen `test_*`
+  reservations carrying synthetic amounts totalled $2.71 against real
+  production of $0.0141, and two never settled — blocking a live hop with
+  `COST_CAP_EXCEEDED`. Excluded from the budget; the stale holds released.
+- **Prices were 2.30x low.** DeepSeek output was 0.28 against a true 0.66
+  off-peak / 1.32 peak, and no peak/off-peak concept existed at all. Restated:
+  ~$0.267/day, not $0.116.
+- **Five ungoverned cloud spend paths** bypassed the ledger entirely — OpenAI,
+  xAI and Anthropic, all reachable from cron. All now route through `llm_lane`;
+  `KNOWN_UNGOVERNED` is **empty**, with a ratchet test that blocks new ones.
+- **Two callers named retired models** (`claude-sonnet-4-20250514`,
+  `claude-opus-4-20250514`) that cannot succeed on the first-party API at all.
+- All 15 peak-window batch jobs now run under the `PEAK_SKIP` gate
+  (`--official`), which permits NY market hours whenever it is off-peak.
+  Saving ~$0.019/day — trivial in dollars, and not the reason it mattered.
 
-| rail | live value | source |
-|------|-----------|--------|
-| `CIO_SITUATION_NOTIFY` | `1` | `/proc/3280084/environ` |
-| `CIO_TELEGRAM_INTERDICT` | `0` (interdict NOT raised) | `/proc/3280084/environ` |
-| `CIO_MATERIAL_FINANCIAL_NOTIFY_CANARY` | `1` | `/proc/3280084/environ` |
-| `ENABLE_TELEGRAM` | `true` | `/proc/3280084/environ` |
-| `situation_notify_telegram` | `true` | `config/cio_llm_policy.yaml` |
-| `notify_situation_types` | `S6_CONCENTRATION_OR_DISPOSITION` only | `config/cio_llm_policy.yaml` |
-| notify enabled (derived) | **true** | env AND policy |
-
-The bar is narrowed to S6 alone — deliberately, per the 2026-08-29 operator note
-in the policy file. Widening that list is what turns a 4-message desk into a
-400-message one. Bot tokens and chat IDs sit next to these flags in the same
-environment; `read_server_env` collects only the keys in `NOTIFY_ENV_KEYS`, and a
-test pins that no token or chat ID appears in the board output.
-
-Nothing in this slice sent a Telegram, made a vendor/LLM call, or touched a flag.
+A residual web hop costs **$0.000172**.
 
 ---
 
-## 8. What would move the two REDs
+## 10. What is still not true
 
-Neither RED is a defect in Slice A or B. Both are the same missing thing stated
-twice: **the record has no reader.**
-
-- **Check 2** needs a CC producer to take `cc_narrative.what` off the record for
-  held subjects and off `SLEEVE:CASH` for the cash letter, in addition to (not
-  instead of) the symbol-thesis field. The silent-delivery half already passes.
-- **Check 3** needs the critique lane to route its verdict through
-  `apply_after_cycle(artifact=…)`. The reject branch exists and is tested; it has
-  never been handed a live artifact.
-- **Check 1's caveat** dissolves the moment either of the above lands, because
-  both require a wake that reads a record.
+- **No scheduled wake consumes the spine.** Check 1 is GREEN on the
+  *mechanism* and says so inline: a working mechanism, not yet a working loop.
+- **The librarian has no data.** `research_source_index.json` does not exist in
+  any tree; the shelf-life law is fully tested and a no-op live.
+- **The cash letter is deterministic text**, not agent prose.
+- **The re-entry status source is a dedup cache**, not the adjudicated
+  Surface A book — the budget report says so in its own output.
+- **SearXNG's engine pool is degraded** — brave, duckduckgo and startpage all
+  suspended on CAPTCHA — so result quality rests on what remains.
 
 ---
 
-## Provenance
+## Appendix — the recurring failure
 
-- Board: `scripts/cio_preconditions_board.py`, `scripts/lib/cio_preconditions_board.py`
-- Tests: `tests/test_cio_preconditions_board.py` — 32 tests
-- Read-only: no `--apply` exists. The board reads the record store, one HTTP
-  payload, the policy file and the server environment. `test_the_board_writes_
-  nothing_to_the_store` pins the store bytes across two full board builds.
-- `NO_CONSUMER_REASON` declared on the CLI; `scripts/check_dark_contracts.py`
-  reports 0 new unexplained zero-consumer schemas.
+Nearly every defect this session was one shape: **a surface reporting on a set
+it never read, or a guard not wired to its input.**
+
+Two `total_cash` writers. A notify block reading a 12-row window. A repricer
+writing a tree nobody serves. A hygiene sweep run from the wrong cwd. An
+evidence refresher that only filled gaps. A freshness guard blind to
+`total_cash=` because an underscore is a word character. A cost ledger that
+could not see three vendors. A board check whose name promised more than its
+code verified. A policy comment that outlived its policy.
+
+Where a fix could not be completed, the debt is recorded in a test that fails
+if it grows — `KNOWN_UNGOVERNED`, the check-3 shape rule, the stale-comment
+assertion — rather than in a comment nobody re-reads.
