@@ -37,8 +37,15 @@ def test_diligence_json_contract():
     assert now["identity_production_resolvable_pct"] == 98.9
     assert now["schg_surface_a"] == "EXITED"
     assert now["phase_cursor"] in {"COMPLETE", "DONE"}
-    assert now["current_pin"] == "db08bd11"
+    assert now["current_pin"] == "015a7891"
     assert now.get("this_package_pre_promote") is True
+    gc = now.get("gap_closeout") or {}
+    assert "G-AUTH-01" in gc.get("closed_mitigated", [])
+    assert "G-LOOP-01" in gc.get("partial", [])
+    assert "G-NOTIFY-01" in gc.get("partial", [])
+    assert gc.get("claim_99_99") is False
+    assert gc.get("notify_on") is False
+    assert gc.get("canary") == "DEFERRED_OPS"
     pkgs = data["packages"]
     assert pkgs["P0"]["status"] == "DONE"
     assert "P1-WS1" in pkgs
@@ -98,6 +105,15 @@ def test_all_packages_p0_p9_done_with_pr_and_proof():
     assert data["now"]["telegram_sent"] is False
     assert data["memory_behavior_influence"] == 0
     assert data["now"].get("packages_done_out_of_order") in ([], None)
+    gaps = GAPS.read_text(encoding="utf-8")
+    assert "CLOSED (mitigated)" in gaps
+    assert "PARTIAL" in gaps
+    assert "#695" in gaps and "#702" in gaps
+    assert "no fake 99.99%" in gaps.lower() or "no 99.99%" in gaps.lower()
+    assert "DEFERRED_OPS" in gaps
+    md = MD.read_text(encoding="utf-8")
+    assert "PR-G" in md or "gap-register closeout" in md.lower()
+    assert "DEFERRED_OPS" in md
 
 
 def test_p6_p7_p8_packages_done_with_proof():
