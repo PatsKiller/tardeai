@@ -886,3 +886,346 @@ Claims I made during this census and then **withdrew after measurement refuted t
 lane-registry "empty endpoint" defect (§1.4), and the 525-module scheduled count (§3.4). Both are
 left in the document rather than deleted, per the working-style rule that the failures belong in the
 write-up and not just the final state.
+
+---
+
+# ADDENDUM A — the checkout-relative escalation (C-03 follow-up)
+
+Requested by the coordinator on operator escalation. Scope: which scheduled jobs resolve against the
+dev tree, what each is failing on from durable evidence, which fail silently, and **where the
+resolution actually happens**. READ-ONLY: no cron edited, no scheduler entry installed or removed.
+
+**Pin.** `CURRENT` → `4baf677d-main-exact-phase2-20260830-193256` `[VERIFIED]` `readlink -f` at
+2026-08-30T23:43:42Z. It had rotated twice more since §0.1 (`a9389f67` → `865a4a1d` → `a5006df1` →
+`4baf677d`), so every claim below names the concrete release dir. Hub = `$HUB` =
+`/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild`; `$REL` =
+`/home/johnclaw/trade-ai-releases/portfolio-server/4baf677d-main-exact-phase2-20260830-193256`.
+
+## A.0 The escalation's central premise is wrong, and the correction changes the fix
+
+The brief states the two morning jobs crash on a bug **"already fixed in the served release"**, and
+infers that a promote failing to reach 93% of the cron tree is the cause. **The first half does not
+hold, and therefore neither does the inference.**
+
+`[VERIFIED]` the implicated files are **byte-identical** between the hub and the served release:
+
+```
+diff $HUB/scripts/lib/cio_operator_renderers.py  $REL/scripts/lib/cio_operator_renderers.py  -> IDENTICAL
+diff $HUB/scripts/lib/research_prompt_context.py $REL/scripts/lib/research_prompt_context.py -> IDENTICAL
+```
+
+`[VERIFIED]` and the failure reproduces **from the served release**, using the release's own code,
+by replicating exactly what `python scripts/X.py` does to `sys.path` (`sys.path[0]` = the *script's*
+directory, not the repo root):
+
+```
+served release (4baf677d): import scripts.lib.brief_semantic_dedupe -> FAILS: No module named 'scripts'
+same release, root inserted:                                        -> OK
+```
+
+**Finding C-14 — this is an invocation-style defect, not a tree-version defect. Promoting to the hub
+would not fix it.** The failing jobs would fail identically if their cron lines were repointed at
+`CURRENT` today. C-03 (456 of 492 cron lines running in the hub) remains true and remains worth
+fixing, but **it is not the cause of these crashes**, and a fix aimed at the working directory would
+leave every one of them broken. This is why the coordinator's instruction to fix at the resolution
+layer rather than at the cron's working directory is the right call — more so than the brief's own
+reasoning implies.
+
+## A.1 Where the resolution actually happens — the named line
+
+`[CODE]` `scripts/portfolio_server.py:100-102`, and **nowhere else in any scheduled path**:
+
+```python
+import sys as _sys_root  # noqa: E402
+if str(PROJECT_ROOT) not in _sys_root.path:
+    _sys_root.path.insert(0, str(PROJECT_ROOT))
+```
+
+Its own comment states the failure mode verbatim: *"without the root on sys.path the web server
+raises 'No module named scripts'."*
+
+Three facts make this the whole story:
+
+1. `[VERIFIED]` **`scripts/__init__.py` does not exist.** `scripts` is an implicit namespace
+   package, so `import scripts.lib.X` resolves **only** when the repository root is on `sys.path`.
+2. `[VERIFIED]` **there is no global bootstrap.** No `sitecustomize.py` in the repo or the venv; the
+   only `.pth` file on the venv is `distutils-precedence.pth`. Nothing injects the root
+   process-wide.
+3. `[VERIFIED]` **851 tracked modules use absolute `scripts.` imports — 3,244 statements**, of which
+   **1,511 are module-level** (fail at import) and **1,733 are indented inside functions** (latent:
+   fail only when that code path executes). 260 of the 851 are in `scripts/lib/`, i.e. the shared
+   library layer that cron entrypoints load.
+
+So the repo-root resolution lives **inside the web server entrypoint**. Every scheduled job that
+reaches a `from scripts.…` import has no equivalent, and crashes. That is the resolution layer, and
+that is where a fix belongs.
+
+### A.1.1 The dual-path fallback cannot work — and that is why this went unnoticed
+
+The codebase anticipated this and guards it in five places with a two-arm import. `[CODE]`
+`scripts/send_morning_brief.py:145-148` (identical shape in `aegis_morning_brief_delivery.py:614-617`,
+`morning_command_digest.py:75-77`, `portfolio_live_monitor.py:323-325`):
+
+```python
+try:
+    from lib.cio_operator_renderers import deliver_morning
+except ImportError:
+    from scripts.lib.cio_operator_renderers import deliver_morning  # type: ignore
+```
+
+`[VERIFIED]` `issubclass(ModuleNotFoundError, ImportError)` → **True**.
+
+The first arm *locates* `lib.cio_operator_renderers` successfully — `scripts/` is on `sys.path`. It
+then fails **inside** that module, at its line 11, on `from scripts.lib.brief_semantic_dedupe`. That
+`ModuleNotFoundError` is caught by `except ImportError`, and the fallback arm imports **the same
+module by its other name**, which fails at the same line 11 for the same reason — this time
+uncaught.
+
+**Finding C-15 — the fallback is structurally defeated: both arms load the same file, and the
+failure is inside it, not in locating it.** The guard was written for "this module is not on the
+path", but the actual defect is "this module's own import is unsatisfiable". A guard that cannot
+distinguish the two converts a clear failure into a confusing chained traceback and buys nothing.
+
+## A.2 Which scheduled jobs are actually failing, and on what — durable evidence
+
+Static reachability gives an **upper bound**, not a verdict. Recomputed over the 358 scheduler-named
+entrypoints `[VERIFIED]`:
+
+| exposure class | count |
+|---|---:|
+| EXPOSED_LATENT (deferred `scripts.` import in reach, no root bootstrap) | 203 |
+| NO_SCRIPTS_IMPORT | 88 |
+| EXPOSED_HARD (module-level `scripts.` import in reach, no root bootstrap) | 49 |
+| BOOTSTRAPPED (entrypoint itself puts the root on `sys.path`) | 18 |
+
+**I do not report 49 + 203 as "failing".** Many demonstrably run — `cio_wake_dispatch_entrypoint.py`
+is classed EXPOSED_HARD and `[VERIFIED]` writes its store every 5 minutes. A module-level
+`scripts.` import somewhere in the closure only fires if that module is actually loaded on the taken
+path. The static figure bounds the risk; the logs establish the fact.
+
+`[VERIFIED]` sweeping **every** `$HUB/logs/*.log` for `No module named 'scripts'` returns exactly
+seven files, resolving to **five distinct scheduled jobs**:
+
+| # | job | schedule | last durable evidence | what it fails on | effect |
+|---|---|---|---|---|---|
+| 1 | `scripts/send_morning_brief.py` | cron 186, `0 8 * * 1-5` | log ends **at the traceback**, mtime 2026-08-28 08:00:01 | `send_morning_brief.py:148` → `cio_operator_renderers.py:11` | **hard crash — no morning brief delivered** |
+| 2 | `scripts/aegis_morning_brief_delivery.py` | cron 252, `5 8 * * 1-5` | log ends **at the traceback**, mtime 2026-08-28 08:05 | `aegis_morning_brief_delivery.py:542` → same line 11 | **hard crash — no Aegis brief delivered** |
+| 3 | `scripts/auto_research.py` | cron 164, `0 20 * * 1-5` | log ends at traceback, mtime 2026-08-28 20:00 | `research_prompt_context.py:316` (deferred, inside `build_research_prompt_context`) | **crash mid-run**, after "Found 5 research triggers", on the first symbol (AESP) |
+| 4 | `scripts/aegis_overnight.py` | cron 326 + `aegis-overnight.timer` | 2026-08-29 20:03 | same renderer chain, inside a phase | **silent — see A.3** |
+| 5 | `portfolio_orchestrator` (`run_portfolio`) | daily ~07:30 | 2026-08-28 07:38 | morning-command bundle send | **silent — see A.3** |
+
+**Regression boundary, from durable evidence** `[VERIFIED]` — `$HUB/logs/aegis_brief.log`:
+
+```
+[aegis-brief] Morning brief delivery starting — 2026-08-27T08:05:01.828759
+  Telegram: sent
+  Export: …/aegis_morning_brief_2026-08-27.md
+[aegis-brief] Delivery complete
+[aegis-brief] Morning brief delivery starting — 2026-08-28T08:05:01.675499
+Traceback (most recent call last): … ModuleNotFoundError: No module named 'scripts'
+```
+
+Last good run **2026-08-27 08:05**, first bad run **2026-08-28 08:05**. `[VERIFIED]` the import was
+introduced by commit **`6b032f1e`** (2026-08-26 09:23:47 -0400, *"feat(r18-data): finish operator
+product convergence locally"*), which created `scripts/lib/brief_semantic_dedupe.py` and added the
+module-level `from scripts.lib.brief_semantic_dedupe` to `cio_operator_renderers.py`. It is an
+ancestor of the hub's HEAD `[VERIFIED]`.
+
+**Both morning briefs have been undelivered on every weekday run since, and will fail again on
+Monday 2026-08-31 08:00.** Aug 29–30 were a weekend, so only one weekday has elapsed — which is why
+nothing had escalated yet.
+
+### A.2.1 Third-party import errors in the same logs are *not* this bug
+
+Guarding against a false aggregate: `[VERIFIED]` the same log sweep surfaces `psycopg2`, `dotenv`,
+`numpy` and `pandas_ta` failures, and **they are unrelated and mostly historical.** Every `psycopg2`
+/ `dotenv` / `numpy` traceback dates to **2026-07-01/02** (e.g. `agent_event_router.log`:
+`[2026-07-01 23:30:02] FATAL`), and `[VERIFIED]` those packages were installed into
+`.venv/lib/python3.14/site-packages` on **2026-07-01 23:41 / 07-02 00:04** — the failures stop where
+the install begins. Their logs have fresh mtimes only because successful runs keep appending. This
+is M-03 again, in the opposite direction: **a fresh mtime on a log containing an old error is not
+evidence of a current failure.**
+
+One real environment defect did surface `[VERIFIED]`: the hub venv is internally inconsistent —
+`pyvenv.cfg` declares `version = 3.13.7`, `executable = /usr/bin/python3.13`, while
+`.venv/bin/python` resolves to `/usr/bin/python3.14` (Python 3.14.4), and **both** a `python3.13`
+(256 entries) and a `python3.14` (276 entries) `site-packages` exist. `pandas_ta` is absent from the
+3.14 tree, so `indicator_engine` degraded for a period. It imports cleanly today. Recorded as a
+finding; the interpreter/venv reconciliation is an operator decision, not part of this fix.
+
+## A.3 Silent failures — three distinct mechanisms
+
+Asked specifically: succeeding by exit code while producing nothing, or writing to a tree nobody
+serves.
+
+**(a) `aegis_overnight` — a failed phase inside a "COMPLETE" job.** `[VERIFIED]`
+`$HUB/logs/aegis_overnight.log`:
+
+```
+[2026-08-28 20:14:57]   PHASE START: morning_brief_delivery
+[aegis-brief] Morning brief delivery starting — 2026-08-28T20:14:57.905591
+[2026-08-28 20:14:57]   PHASE FAILED: morning_brief_delivery — 0.0s — No module named 'scripts'
+[2026-08-28 20:14:57] AEGIS OVERNIGHT COMPLETE — aegis-overnight-20260828-200001 — 896s total
+[telegram] Suppressed (P1_DIGEST): Aegis Overnight Complete (14min)  Briefs: 15 | Stops: 1
+```
+
+The job records the phase failure, then declares itself **COMPLETE** and emits an operator digest
+headed *"Aegis Overnight Complete"* claiming **"Briefs: 15"**. The brief-delivery phase produced
+nothing. This is precisely `CLAUDE.md`'s governing principle: a component reporting success is not
+evidence that it did anything.
+
+**(b) `portfolio_orchestrator` — a failed stage inside "all pipeline stages completed".**
+`[VERIFIED]`:
+
+```
+  [morning-command] Bundle send failed: No module named 'scripts'
+  …
+  [notifications] ✅ Daily digest sent via Gmail
+all pipeline stages completed
+```
+
+**(c) `cio_command_center.py:1620-1624` — a bare `except Exception` that degrades the operator
+surface with no log line at all.** `[CODE]`:
+
+```python
+try:
+    from scripts.lib.cio_operator_renderers import command_center_view
+    home["operator_product"] = command_center_view(operator_product)
+except Exception:
+    home["operator_product"] = operator_product
+```
+
+When the import fails, the Command Center home silently serves the **raw** operator product instead
+of the rendered view. Nothing is logged, nothing is flagged, and the key
+`home["canonical_cio_source"] = "cio.operator_product.current"` is still set on the very next line —
+so the surface **labels the payload with a provenance it did not actually render through**. This one
+lands on PART 2's surface; see A.5.
+
+**(d) Adjacent, same class, found while verifying (b).** `[CODE]`
+`scripts/trade_ai_orchestrator.py:783-785`:
+
+```python
+else:
+    _err("run_health", f"{_health_status} — {len(scored)} symbols (min {min_symbols}) — {_health_reasons}")
+    if not allow_underfilled:
+        print(f"\n  ⚠️  Run is {_health_status}. Use --allow-underfilled to proceed anyway.\n")
+```
+
+There is **no `return`, no `sys.exit`, no `raise`** — the flag suppresses a message and nothing else,
+so the pipeline proceeds regardless. `[VERIFIED]` every screener run back to 2026-08-27 has flagged
+`run_health` ❌ and every one still reported `✅ v12 complete`, including four `RUN_FAILED — 0 symbols
+(min 40) — ['CSV_EMPTY']` runs on 2026-08-30 that nonetheless published a dashboard, PDF, DOCX and
+updated `dashboard_live.html` — the file the operator is told to keep open. Weekday 2026-08-27 runs
+show `RUN_UNDERFILLED — 15..17 symbols` with `ONLY_ONE_SCREENER_RETURNED`, so this is not a weekend
+artifact. **A gate whose failure branch only prints is not a gate.**
+
+## A.4 Proposed fix at the resolution layer
+
+Read-only: proposed, not applied. Precise enough to hand to an implementer, with what it breaks.
+
+**The chokepoint already exists and is empty.** `[VERIFIED]` `scripts/lib/__init__.py` is present
+and **0 bytes**. Every failing chain in A.2 passes through it, because each entrypoint's first arm is
+`from lib.<module> import …`, which executes `scripts/lib/__init__.py` **before** any `lib.*` module
+body runs — therefore before the `from scripts.lib.…` line that fails.
+
+**Proposal P-1 — put the root resolution in `scripts/lib/__init__.py`:**
+
+```python
+# scripts/lib/__init__.py — repo root on sys.path so `from scripts.lib.X` resolves
+# for every caller, not only the web server (portfolio_server.py:100-102).
+# `scripts` is an implicit namespace package (no scripts/__init__.py), so it is
+# importable only when the repository root is on sys.path.
+import sys as _sys
+from pathlib import Path as _Path
+_ROOT = str(_Path(__file__).resolve().parents[2])
+if _ROOT not in _sys.path:
+    _sys.path.insert(0, _ROOT)
+```
+
+`[VERIFIED]` proof of concept, under the exact cron `sys.path` (`sys.path[0]` = `$HUB/scripts`), with
+the root inserted before importing `lib.*`:
+
+```
+lib.cio_operator_renderers imported OK -> $HUB/scripts/lib/cio_operator_renderers.py
+deliver_morning present: True
+```
+
+`parents[2]` from `scripts/lib/__init__.py` is the repo root, and it is **derived from `__file__`**,
+so it follows whichever checkout is executing — hub or release — and needs no env var. It cannot
+re-break C-09-style, because it never consults `TRADEAI_ROOT`.
+
+**What P-1 would break — stated plainly, because this is the real risk.** Putting the root on
+`sys.path` makes **both** `lib.X` and `scripts.lib.X` importable in every process. Python treats
+those as **two distinct module objects**, with two distinct copies of every class. That is not
+hypothetical here: `docs/CHANGELOG.md` records exactly this defect — *"`cio_portfolio` imports
+`DomainEvidence` from `lib.*` while the snapshot imports it from `scripts.lib.*` — two distinct
+class objects, so `isinstance` was False for **8 of 18 broker collectors**"*. P-1 does not create
+that hazard (it exists today wherever the root is already present, including the entire web server),
+but it **extends it to every scheduled process**. Any `isinstance`, `except SomeError`, or module-level
+singleton that spans the two import spellings can silently change behaviour.
+
+Mitigations, in the order I would sequence them:
+
+1. **Land P-1 with an import-identity assertion**, not bare. Have `scripts/lib/__init__.py`, or a
+   startup self-check, verify that `sys.modules.get("lib.cio_lineage") is sys.modules.get("scripts.lib.cio_lineage")`
+   wherever both are loaded, and fail loudly rather than diverge silently. A dual-identity that
+   announces itself is recoverable; one that does not is the 8-of-18 defect again.
+2. **Then normalise the spellings.** `[VERIFIED]` 3,244 `scripts.`-prefixed statements across 851
+   modules. Converting them to the `lib.` form (or the reverse) is mechanical but large, and
+   collapsing to one spelling is the only change that removes the hazard rather than containing it.
+   That is a separate wave, and it should not gate the morning briefs being restored.
+
+**Alternatives considered and rejected:**
+
+- *Add `scripts/__init__.py`.* Makes `scripts` a regular package, but does **not** put the root on
+  `sys.path`, so `import scripts.lib.X` still fails from a cron entrypoint. It does not fix the bug.
+- *A `sitecustomize.py` or `.pth` in the venv.* Would work process-wide, but it is environment
+  configuration outside the repository, invisible to code review, not carried by a promote, and it
+  would apply to unrelated projects sharing the interpreter. It moves the resolution further from
+  the code, which is the opposite of the ask.
+- *Editing the cron lines' working directory or `PYTHONPATH`.* Explicitly ruled out by the
+  coordinator, and correctly: `[VERIFIED]` it also would not work — `python scripts/X.py` sets
+  `sys.path[0]` to the **script's** directory regardless of `cwd`, so changing the working directory
+  alone does not put the root on the path.
+
+**Fixing C-15 as well.** Independently of P-1, the five two-arm fallbacks should not catch
+`ImportError` broadly. Catching `ModuleNotFoundError` **and re-raising when `err.name` is not the
+module being located** would have surfaced this on day one instead of producing a chained traceback
+that reads like a path problem.
+
+**Not proposed, deliberately.** I have not proposed removing the two expired cron lines (§4.4),
+repointing any cron line from the hub to `CURRENT`, or reconciling the 3.13/3.14 venv. Each is an
+operator decision under `CLAUDE.md`'s operator-only list or adjacent to it.
+
+## A.5 Hand-off to PART 2
+
+- **A.3(c) is a surface defect.** `cio_command_center.py:1620-1624` silently substitutes the raw
+  operator product for the rendered `command_center_view` on import failure, then still stamps
+  `home["canonical_cio_source"] = "cio.operator_product.current"`. PART 2 should establish what the
+  Command Center home renders when that except fires, and whether the provenance label is displayed
+  — because it currently asserts a rendering path that did not run.
+- **The morning brief is an operator-facing deliverable and it has been silently absent since
+  2026-08-28.** If PART 2 finds a surface that reports brief delivery status, it should be checked
+  against A.2 — `aegis_overnight` emits *"Aegis Overnight Complete … Briefs: 15"* on a run whose
+  brief-delivery phase failed in 0.0s.
+- **`dashboard_live.html` is being overwritten from 0-symbol runs** (A.3(d)). PART 2 owns whether
+  that file is an operator surface; if it is, it has been showing an empty scan published under a
+  `✅ v12 complete` banner.
+
+## A.6 Corrections to my own work in this addendum
+
+Kept per the coordinator's instruction that a census showing its corrections is more trustworthy
+than one reading clean.
+
+- **My first exposure computation was unsound.** I classed an entrypoint `BOOTSTRAPPED` if *any*
+  module in its transitive closure put the root on `sys.path`. That is wrong: a bootstrap deep in
+  the graph cannot help an import that fires before it is reached. `[VERIFIED]` the error was
+  detectable — it classed `scripts/auto_research.py` as `BOOTSTRAPPED` while the log shows it
+  crashing on exactly this bug. Corrected to require the **entrypoint itself** to bootstrap, which
+  moved the counts from 256/3 to 18/49 and produced the table in A.2.
+- **My initial regex for self-bootstrapping matched `sys.path.insert(0, str(PROJECT_ROOT / "scripts"))`
+  as if it were a root insert.** It is not — it inserts `scripts/`, which is the very condition under
+  which `import scripts.*` fails. Tightened to match only the repo root.
+- **I began writing up the `psycopg2`/`numpy`/`dotenv` failures as current.** They are from
+  2026-07-01/02 and were resolved by a package install hours later; only the fresh log mtime made
+  them look live (A.2.1).
