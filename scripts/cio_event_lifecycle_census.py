@@ -1,7 +1,3 @@
-NO_CONSUMER_REASON = (
-    "operator-invoked diligence CLI: CIOEventLifecycleCensus@v1 is a stdout baseline receipt for Phase 1 WS2, not an ingested store contract"
-)
-
 #!/usr/bin/env python3
 """Event lifecycle census — measure accepted→…→recoverable by family.
 
@@ -24,6 +20,13 @@ Stages:
 This is instrumentation for a *baseline*, not a claim of 99.99%.
 """
 from __future__ import annotations
+
+# Declared below the __future__ import on purpose: a module-level
+# assignment ABOVE it is a SyntaxError, which is exactly how this file
+# spent 10 hours unrunnable while its numbers were still being quoted.
+NO_CONSUMER_REASON = (
+    "operator-invoked diligence CLI: CIOEventLifecycleCensus@v1 is a stdout baseline receipt for Phase 1 WS2, not an ingested store contract"
+)
 
 import argparse
 import json
