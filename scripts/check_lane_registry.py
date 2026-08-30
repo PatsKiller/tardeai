@@ -93,18 +93,29 @@ def main() -> int:
     undeclared = find_undeclared(reg, found)
 
     active = sum(1 for r in rows if r.get("state") == STATE_ACTIVE)
+    # Count the FIELD, not the prose. This grepped state_reason for the literal
+    # word "UNKNOWN" and so reported 2 the moment the reasons were rewritten,
+    # while 8 lanes still carried reason_confidence=UNKNOWN.
     unknown = [r["lane_id"] for r in rows
-               if "UNKNOWN" in str(r.get("state_reason") or "")]
+               if r.get("state") != STATE_ACTIVE
+               and str(r.get("reason_confidence") or "UNKNOWN") == "UNKNOWN"]
+    correlated = [r["lane_id"] for r in rows
+                  if str(r.get("reason_confidence") or "") == "CORRELATED"]
 
     if args.json:
         print(json.dumps({"declared": len(rows), "active": active,
                           "errors": errors, "undeclared": undeclared,
-                          "unknown_reason_lanes": unknown}, indent=2))
+                          "unknown_reason_lanes": unknown,
+                          "correlated_reason_lanes": correlated}, indent=2))
     else:
         print(f"declared lanes          : {len(rows)}  ({active} ACTIVE)")
         print(f"inherited-debt baseline : {len(reg.get('undeclared_baseline') or [])}")
-        print(f"reason=UNKNOWN lanes    : {len(unknown)}"
-              + (f"  {unknown[:6]}" if unknown else ""))
+        print(f"reason ESTABLISHED     : "
+              f"{sum(1 for r in rows if r.get('reason_confidence') == 'ESTABLISHED')}")
+        print(f"reason CORRELATED      : {len(correlated)}"
+              " (successor runs; equivalence NOT verified)")
+        print(f"reason UNKNOWN         : {len(unknown)}"
+              + (f"  {unknown}" if unknown else ""))
         print(f"structural errors       : {len(errors)}")
         for e in errors:
             print(f"    ✗ {e}")

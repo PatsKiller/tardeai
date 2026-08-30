@@ -62,7 +62,9 @@
         "table": "deep_overnight_llm_results",
         "column": "created_at"
       },
-      "note": "1588 done / 268 failed / 1928 pending, frozen since 2026-05-31. The 1,588 completed outputs are a calibration set and must not be deleted."
+      "note": "1588 done / 268 failed / 1928 pending, frozen since 2026-05-31. The 1,588 completed outputs are a calibration set and must not be deleted.",
+      "reason_confidence": "UNKNOWN",
+      "reason_evidence": "PHASE102 closeout (commit 1a843fc3, 2026-06-01) gives one reason: 'Global queue covers all jobs' \u2014 a supersession claim never verified. Its sibling ('continuous_runner covers 04:00-11:00', 2026-06-11) was found FALSE and reverted; see docs/CHANGELOG.md:3432. The lane's last completed job is 2026-05-23, NINE DAYS BEFORE the retirement, so the retirement may not be the cause of the silence at all."
     },
     {
       "lane_id": "overnight-batch",
@@ -77,7 +79,9 @@
       "output_signal": {
         "kind": "file_mtime",
         "path": "logs/overnight_batch.log"
-      }
+      },
+      "reason_confidence": "UNKNOWN",
+      "reason_evidence": "Crontab carries only the tag 'PHASE102-RETIRED' with no reason text. Note two of its sub-commands were later RESTORED to cron ('35 6 * * 1 ... --tax-sweep', '40 5 * * * ... --outcomes'), so the retirement was partially reversed without the registry knowing."
     },
     {
       "lane_id": "portfolio-backup-cron",
@@ -92,7 +96,10 @@
       "output_signal": {
         "kind": "file_mtime",
         "path": "data/runtime/portfolio_maintenance_backup_last_run.json"
-      }
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "The cron comment states it verbatim: '[RETIRED 2026-06-06 \u2014 folded into tradeai-portfolio-backup-cadence @02:30 with weekly staleness checks]'. That successor timer is enabled and last ran 2026-08-30T11:07.",
+      "superseded_by": "tradeai-portfolio-backup-cadence.timer"
     },
     {
       "lane_id": "cio-residual-web",
@@ -107,7 +114,9 @@
       "output_signal": {
         "kind": "file_mtime",
         "path": "data/cio/residual_web_results.jsonl"
-      }
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "scripts/lib/cio_residual_web.py::_live_transport carries the reason in source: 'The live transport. NOT taken by this PR \u2014 the operator sequences it.' No cron entry and no timer exists, so the lane has never been scheduled \u2014 deliberate, not lost."
     },
     {
       "lane_id": "tradeai-continuous",
@@ -120,11 +129,13 @@
       "state": "PAUSED",
       "state_since": "2026-08-21",
       "review_by": "2026-09-15",
-      "state_reason": "Timer is `disabled`; last fired 2026-08-21. No commit, comment or decision document records why. reason=UNKNOWN \u2014 not invented.",
+      "state_reason": "Did not survive the 2026-08-21 host reboot. The timer is `disabled`, so it was running transiently (started, never `systemctl --user enable`d) and nothing brought it back. Not a decision \u2014 an unnoticed consequence of a restart.",
       "output_signal": {
         "kind": "file_mtime",
         "path": "logs/continuous.log"
-      }
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "Host booted 2026-08-21 12:51:17; user manager PID changed 2779 -> 7039. Last run 2026-08-21T04:00, the morning BEFORE that reboot. Linger=yes, and every timer with is-enabled=enabled resumed after the reboot while every disabled one did not. Its OnCalendar is Mon-Fri 04:00, so it should have run 08-24 and did not."
     },
     {
       "lane_id": "hermes-autonomous-loop",
@@ -137,11 +148,13 @@
       "state": "PAUSED",
       "state_since": "2026-08-22",
       "review_by": "2026-09-15",
-      "state_reason": "Timer is `disabled`; last fired 2026-08-22. No commit, comment or decision document records why. reason=UNKNOWN \u2014 not invented.",
+      "state_reason": "It FAILED; nobody turned it off. Exited 1 on 2026-08-22 after both its subjects returned HTTP 503 from an upstream, and because the timer is `disabled` nothing restarted it. The reboot does not explain this one \u2014 it ran a day after the reboot.",
       "output_signal": {
         "kind": "file_mtime",
         "path": "logs/hermes-autonomous-loop.log"
-      }
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "journalctl: 'FAILED: HTTP Error 503: Service Unavailable' x2, 'Done in 0.5s: 0 validated, 2 failed/rejected', then 'Main process exited, code=exited, status=1/FAILURE' at 2026-08-22T13:10:16 under systemd[7039], the post-reboot manager."
     },
     {
       "lane_id": "tradeai-flash-llm-intelligence",
@@ -154,11 +167,13 @@
       "state": "PAUSED",
       "state_since": "2026-08-18",
       "review_by": "2026-09-15",
-      "state_reason": "Timer is `disabled`; last fired 2026-08-18. No commit, comment or decision document records why. reason=UNKNOWN \u2014 not invented.",
+      "state_reason": "Last run SUCCEEDED on 2026-08-18 and it never ran again \u2014 so it was disabled out of band, not crashed. Coincides exactly with the Flash-first governance migration (PRs #386/#398/#401/#406, 2026-08-18 to 08-20), which is documented to have failed on 08-20. Correlation in date and subject matter is strong; CAUSATION IS NOT ESTABLISHED and is not asserted here.",
       "output_signal": {
         "kind": "file_mtime",
         "path": "logs/flash-llm-intelligence.log"
-      }
+      },
+      "reason_confidence": "CORRELATED",
+      "reason_evidence": "journalctl shows 'Finished ... service' on 2026-08-18 then nothing. No commit in that window touches any systemd unit file \u2014 enablement lives in ~/.config/systemd/user/*.wants/ symlinks, which git does not track, so a `systemctl --user disable` leaves no trace in the repository. docs/ops/RESEARCH_ENGINE_FLASH_FIRST_FAILURE_2026-08-20.md records the migration failing with COST_CONFIGURATION_INVALID and open circuit breakers (failed=312, completed=8, zero DeepSeek Flash)."
     },
     {
       "lane_id": "tradeai-flash-watchlist-daily",
@@ -171,11 +186,13 @@
       "state": "PAUSED",
       "state_since": "2026-08-18",
       "review_by": "2026-09-15",
-      "state_reason": "Timer is `disabled`; last fired 2026-08-18. No commit, comment or decision document records why. reason=UNKNOWN \u2014 not invented.",
+      "state_reason": "Last run SUCCEEDED on 2026-08-18 and it never ran again \u2014 so it was disabled out of band, not crashed. Coincides exactly with the Flash-first governance migration (PRs #386/#398/#401/#406, 2026-08-18 to 08-20), which is documented to have failed on 08-20. Correlation in date and subject matter is strong; CAUSATION IS NOT ESTABLISHED and is not asserted here.",
       "output_signal": {
         "kind": "file_mtime",
         "path": "logs/flash-watchlist-daily.log"
-      }
+      },
+      "reason_confidence": "CORRELATED",
+      "reason_evidence": "journalctl shows 'Finished ... service' on 2026-08-18 then nothing. No commit in that window touches any systemd unit file \u2014 enablement lives in ~/.config/systemd/user/*.wants/ symlinks, which git does not track, so a `systemctl --user disable` leaves no trace in the repository. docs/ops/RESEARCH_ENGINE_FLASH_FIRST_FAILURE_2026-08-20.md records the migration failing with COST_CONFIGURATION_INVALID and open circuit breakers (failed=312, completed=8, zero DeepSeek Flash)."
     },
     {
       "lane_id": "tradeai-hermes-research-remediation",
@@ -188,11 +205,13 @@
       "state": "PAUSED",
       "state_since": "2026-08-18",
       "review_by": "2026-09-15",
-      "state_reason": "Timer is `disabled`; last fired 2026-08-18. No commit, comment or decision document records why. reason=UNKNOWN \u2014 not invented.",
+      "state_reason": "Last run SUCCEEDED on 2026-08-18 and it never ran again \u2014 so it was disabled out of band, not crashed. Coincides exactly with the Flash-first governance migration (PRs #386/#398/#401/#406, 2026-08-18 to 08-20), which is documented to have failed on 08-20. Correlation in date and subject matter is strong; CAUSATION IS NOT ESTABLISHED and is not asserted here.",
       "output_signal": {
         "kind": "file_mtime",
         "path": "logs/hermes-research-remediation.log"
-      }
+      },
+      "reason_confidence": "CORRELATED",
+      "reason_evidence": "journalctl shows 'Finished ... service' on 2026-08-18 then nothing. No commit in that window touches any systemd unit file \u2014 enablement lives in ~/.config/systemd/user/*.wants/ symlinks, which git does not track, so a `systemctl --user disable` leaves no trace in the repository. docs/ops/RESEARCH_ENGINE_FLASH_FIRST_FAILURE_2026-08-20.md records the migration failing with COST_CONFIGURATION_INVALID and open circuit breakers (failed=312, completed=8, zero DeepSeek Flash)."
     },
     {
       "lane_id": "tradeai-intelligence-remediation",
@@ -205,11 +224,13 @@
       "state": "PAUSED",
       "state_since": "2026-08-18",
       "review_by": "2026-09-15",
-      "state_reason": "Timer is `disabled`; last fired 2026-08-18. No commit, comment or decision document records why. reason=UNKNOWN \u2014 not invented.",
+      "state_reason": "Last run SUCCEEDED on 2026-08-18 and it never ran again \u2014 so it was disabled out of band, not crashed. Coincides exactly with the Flash-first governance migration (PRs #386/#398/#401/#406, 2026-08-18 to 08-20), which is documented to have failed on 08-20. Correlation in date and subject matter is strong; CAUSATION IS NOT ESTABLISHED and is not asserted here.",
       "output_signal": {
         "kind": "file_mtime",
         "path": "logs/intelligence-remediation.log"
-      }
+      },
+      "reason_confidence": "CORRELATED",
+      "reason_evidence": "journalctl shows 'Finished ... service' on 2026-08-18 then nothing. No commit in that window touches any systemd unit file \u2014 enablement lives in ~/.config/systemd/user/*.wants/ symlinks, which git does not track, so a `systemctl --user disable` leaves no trace in the repository. docs/ops/RESEARCH_ENGINE_FLASH_FIRST_FAILURE_2026-08-20.md records the migration failing with COST_CONFIGURATION_INVALID and open circuit breakers (failed=312, completed=8, zero DeepSeek Flash)."
     },
     {
       "lane_id": "tradeai-main-desk-free-llm-weekly",
@@ -222,11 +243,13 @@
       "state": "PAUSED",
       "state_since": "2026-08-16",
       "review_by": "2026-09-15",
-      "state_reason": "Timer is `disabled`; last fired 2026-08-16. No commit, comment or decision document records why. reason=UNKNOWN \u2014 not invented.",
+      "state_reason": "Same cause as tradeai-continuous: transient timer lost to the 2026-08-21 reboot.",
       "output_signal": {
         "kind": "file_mtime",
         "path": "logs/main-desk-free-llm-weekly.log"
-      }
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "OnCalendar=Sun *-*-* 18:15. Ran 2026-08-09 and 2026-08-16 \u2014 the last two Sundays before the 08-21 reboot \u2014 and has missed 08-23 and 08-30 since. is-enabled=disabled."
     },
     {
       "lane_id": "portfolio-backup",
@@ -237,12 +260,15 @@
       },
       "expected_cadence_hours": 24.0,
       "state": "NEVER_SCHEDULED",
-      "state_since": "2026-08-30",
-      "state_reason": "Timer unit installed but `disabled` and journal shows no run, ever. reason=UNKNOWN",
+      "state_since": "2026-06-06",
+      "state_reason": "Superseded by tradeai-portfolio-backup-cadence.timer, the controller-owned cadence migration. The cron comment for the sibling records it: '[RETIRED 2026-06-06 \u2014 folded into tradeai-portfolio-backup-cadence @02:30]'.",
       "output_signal": {
         "kind": "file_mtime",
         "path": "logs/portfolio-backup.log"
-      }
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tradeai-portfolio-backup-cadence.timer is enabled and last ran 2026-08-30T11:07, a cadence consistent with its name. Name-matched 1:1 with this lane.",
+      "superseded_by": "tradeai-portfolio-backup-cadence.timer"
     },
     {
       "lane_id": "portfolio-daily",
@@ -253,12 +279,15 @@
       },
       "expected_cadence_hours": 24.0,
       "state": "NEVER_SCHEDULED",
-      "state_since": "2026-08-30",
-      "state_reason": "Timer unit installed but `disabled` and journal shows no run, ever. reason=UNKNOWN",
+      "state_since": "2026-06-06",
+      "state_reason": "Superseded by tradeai-portfolio-daily-cadence.timer, the controller-owned cadence migration. The cron comment for the sibling records it: '[RETIRED 2026-06-06 \u2014 folded into tradeai-portfolio-backup-cadence @02:30]'.",
       "output_signal": {
         "kind": "file_mtime",
         "path": "logs/portfolio-daily.log"
-      }
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tradeai-portfolio-daily-cadence.timer is enabled and last ran 2026-08-28T07:43, a cadence consistent with its name. Name-matched 1:1 with this lane.",
+      "superseded_by": "tradeai-portfolio-daily-cadence.timer"
     },
     {
       "lane_id": "portfolio-weekly",
@@ -269,12 +298,15 @@
       },
       "expected_cadence_hours": 24.0,
       "state": "NEVER_SCHEDULED",
-      "state_since": "2026-08-30",
-      "state_reason": "Timer unit installed but `disabled` and journal shows no run, ever. reason=UNKNOWN",
+      "state_since": "2026-06-06",
+      "state_reason": "Superseded by tradeai-portfolio-weekly-cadence.timer, the controller-owned cadence migration. The cron comment for the sibling records it: '[RETIRED 2026-06-06 \u2014 folded into tradeai-portfolio-backup-cadence @02:30]'.",
       "output_signal": {
         "kind": "file_mtime",
         "path": "logs/portfolio-weekly.log"
-      }
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tradeai-portfolio-weekly-cadence.timer is enabled and last ran 2026-08-23T20:39, a cadence consistent with its name. Name-matched 1:1 with this lane.",
+      "superseded_by": "tradeai-portfolio-weekly-cadence.timer"
     },
     {
       "lane_id": "portfolio-monthly",
@@ -285,12 +317,15 @@
       },
       "expected_cadence_hours": 24.0,
       "state": "NEVER_SCHEDULED",
-      "state_since": "2026-08-30",
-      "state_reason": "Timer unit installed but `disabled` and journal shows no run, ever. reason=UNKNOWN",
+      "state_since": "2026-06-06",
+      "state_reason": "Superseded by tradeai-portfolio-monthly-cadence.timer, the controller-owned cadence migration. The cron comment for the sibling records it: '[RETIRED 2026-06-06 \u2014 folded into tradeai-portfolio-backup-cadence @02:30]'.",
       "output_signal": {
         "kind": "file_mtime",
         "path": "logs/portfolio-monthly.log"
-      }
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tradeai-portfolio-monthly-cadence.timer is enabled and last ran 2026-08-01T07:43, a cadence consistent with its name. Name-matched 1:1 with this lane.",
+      "superseded_by": "tradeai-portfolio-monthly-cadence.timer"
     },
     {
       "lane_id": "portfolio-lookthrough",
@@ -301,12 +336,15 @@
       },
       "expected_cadence_hours": 24.0,
       "state": "NEVER_SCHEDULED",
-      "state_since": "2026-08-30",
-      "state_reason": "Timer unit installed but `disabled` and journal shows no run, ever. reason=UNKNOWN",
+      "state_since": "2026-06-06",
+      "state_reason": "Superseded by tradeai-portfolio-lookthrough-cadence.timer, the controller-owned cadence migration. The cron comment for the sibling records it: '[RETIRED 2026-06-06 \u2014 folded into tradeai-portfolio-backup-cadence @02:30]'.",
       "output_signal": {
         "kind": "file_mtime",
         "path": "logs/portfolio-lookthrough.log"
-      }
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tradeai-portfolio-lookthrough-cadence.timer is enabled and last ran 2026-08-02T06:31, a cadence consistent with its name. Name-matched 1:1 with this lane.",
+      "superseded_by": "tradeai-portfolio-lookthrough-cadence.timer"
     },
     {
       "lane_id": "tradeai-governance-facts",
@@ -318,11 +356,14 @@
       "expected_cadence_hours": 24.0,
       "state": "NEVER_SCHEDULED",
       "state_since": "2026-08-30",
-      "state_reason": "Timer unit installed but `disabled` and journal shows no run, ever. reason=UNKNOWN",
+      "state_reason": "Plausibly superseded by tradeai-governance-pipeline.timer, which is enabled and running. The names overlap but no document records the replacement, and I did not verify that the successor produces this lane's output. Do not treat as covered.",
       "output_signal": {
         "kind": "file_mtime",
         "path": "logs/governance-facts.log"
-      }
+      },
+      "reason_confidence": "CORRELATED",
+      "reason_evidence": "tradeai-governance-pipeline.timer enabled, last ran 2026-08-30. This unit disabled and never fired. No commit or decision document ties the two together.",
+      "superseded_by": "tradeai-governance-pipeline.timer"
     },
     {
       "lane_id": "tradeai-governance-status",
@@ -334,11 +375,14 @@
       "expected_cadence_hours": 24.0,
       "state": "NEVER_SCHEDULED",
       "state_since": "2026-08-30",
-      "state_reason": "Timer unit installed but `disabled` and journal shows no run, ever. reason=UNKNOWN",
+      "state_reason": "Plausibly superseded by tradeai-governance-pipeline.timer, which is enabled and running. The names overlap but no document records the replacement, and I did not verify that the successor produces this lane's output. Do not treat as covered.",
       "output_signal": {
         "kind": "file_mtime",
         "path": "logs/governance-status.log"
-      }
+      },
+      "reason_confidence": "CORRELATED",
+      "reason_evidence": "tradeai-governance-pipeline.timer enabled, last ran 2026-08-30. This unit disabled and never fired. No commit or decision document ties the two together.",
+      "superseded_by": "tradeai-governance-pipeline.timer"
     },
     {
       "lane_id": "tradeai-maturity-board",
@@ -350,11 +394,14 @@
       "expected_cadence_hours": 24.0,
       "state": "NEVER_SCHEDULED",
       "state_since": "2026-08-30",
-      "state_reason": "Timer unit installed but `disabled` and journal shows no run, ever. reason=UNKNOWN",
+      "state_reason": "Plausibly superseded by tradeai-maturity-feeds.timer, which is enabled and running. The names overlap but no document records the replacement, and I did not verify that the successor produces this lane's output. Do not treat as covered.",
       "output_signal": {
         "kind": "file_mtime",
         "path": "logs/maturity-board.log"
-      }
+      },
+      "reason_confidence": "CORRELATED",
+      "reason_evidence": "tradeai-maturity-feeds.timer enabled, last ran 2026-08-30. This unit disabled and never fired. No commit or decision document ties the two together.",
+      "superseded_by": "tradeai-maturity-feeds.timer"
     },
     {
       "lane_id": "tradeai-operator-readiness",
@@ -366,11 +413,13 @@
       "expected_cadence_hours": 24.0,
       "state": "NEVER_SCHEDULED",
       "state_since": "2026-08-30",
-      "state_reason": "Timer unit installed but `disabled` and journal shows no run, ever. reason=UNKNOWN",
+      "state_reason": "Unit installed, never enabled, journal shows no run ever. No successor unit found by name, and no commit or document records an intent to retire it. Genuinely unexplained.",
       "output_signal": {
         "kind": "file_mtime",
         "path": "logs/operator-readiness.log"
-      }
+      },
+      "reason_confidence": "UNKNOWN",
+      "reason_evidence": "systemctl is-enabled=disabled; journalctl shows no entries; no name-matched successor among the 75 enabled timers."
     },
     {
       "lane_id": "tradeai-flash-portfolio-risk-hourly",
@@ -382,11 +431,13 @@
       "expected_cadence_hours": 24.0,
       "state": "NEVER_SCHEDULED",
       "state_since": "2026-08-30",
-      "state_reason": "Timer unit installed but `disabled` and journal shows no run, ever. reason=UNKNOWN",
+      "state_reason": "Unit installed, never enabled, journal shows no run ever. No successor unit found by name, and no commit or document records an intent to retire it. Genuinely unexplained.",
       "output_signal": {
         "kind": "file_mtime",
         "path": "logs/flash-portfolio-risk-hourly.log"
-      }
+      },
+      "reason_confidence": "UNKNOWN",
+      "reason_evidence": "systemctl is-enabled=disabled; journalctl shows no entries; no name-matched successor among the 75 enabled timers."
     },
     {
       "lane_id": "tradeai-flash-portfolio-risk-weekend",
@@ -398,11 +449,13 @@
       "expected_cadence_hours": 24.0,
       "state": "NEVER_SCHEDULED",
       "state_since": "2026-08-30",
-      "state_reason": "Timer unit installed but `disabled` and journal shows no run, ever. reason=UNKNOWN",
+      "state_reason": "Unit installed, never enabled, journal shows no run ever. No successor unit found by name, and no commit or document records an intent to retire it. Genuinely unexplained.",
       "output_signal": {
         "kind": "file_mtime",
         "path": "logs/flash-portfolio-risk-weekend.log"
-      }
+      },
+      "reason_confidence": "UNKNOWN",
+      "reason_evidence": "systemctl is-enabled=disabled; journalctl shows no entries; no name-matched successor among the 75 enabled timers."
     },
     {
       "lane_id": "alex-daily",
@@ -412,13 +465,16 @@
       },
       "expected_cadence_hours": 24.0,
       "state": "PAUSED",
-      "state_since": "2026-08-30",
+      "state_since": "2026-08-08",
       "review_by": "2026-09-15",
-      "state_reason": "Cron line commented and tagged DISABLED with no reason text. reason=UNKNOWN",
+      "state_reason": "Superseded by the agent runtime. The cron line records it: 'DISABLED 2026-08-08 \u2014 agent_runtime@alex.timer now shadow-live'.",
       "output_signal": {
         "kind": "file_mtime",
         "path": "logs/alex_daily.log"
-      }
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tradeai-agent-runtime@alex.timer is enabled and fired 2026-08-30T18:31 completing 2 jobs. NOTE: the unit is 'SHADOW, prepare-only', so the successor prepares work rather than acting on it \u2014 equivalence of OUTPUT is not established, only that the successor runs.",
+      "superseded_by": "tradeai-agent-runtime@alex.timer"
     },
     {
       "lane_id": "alex-weekly",
@@ -428,13 +484,15 @@
       },
       "expected_cadence_hours": 24.0,
       "state": "PAUSED",
-      "state_since": "2026-08-30",
+      "state_since": "2026-08-08",
       "review_by": "2026-09-15",
-      "state_reason": "Cron line commented and tagged DISABLED with no reason text. reason=UNKNOWN",
+      "state_reason": "Disabled 2026-08-08 in the same batch as alex-daily, whose line records supersession by agent_runtime@alex.timer. This entry carries no reason text of its own, so the supersession is inferred from the batch, not read.",
       "output_signal": {
         "kind": "file_mtime",
         "path": "logs/alex_weekly.log"
-      }
+      },
+      "reason_confidence": "CORRELATED",
+      "reason_evidence": "Cron comment 'DISABLED 2026-08-08' with no reason; four alex lines share that exact date and tag; the successor timer is verified running."
     },
     {
       "lane_id": "alex-monthly",
@@ -444,13 +502,15 @@
       },
       "expected_cadence_hours": 24.0,
       "state": "PAUSED",
-      "state_since": "2026-08-30",
+      "state_since": "2026-08-08",
       "review_by": "2026-09-15",
-      "state_reason": "Cron line commented and tagged DISABLED with no reason text. reason=UNKNOWN",
+      "state_reason": "Disabled 2026-08-08 in the same batch as alex-daily, whose line records supersession by agent_runtime@alex.timer. This entry carries no reason text of its own, so the supersession is inferred from the batch, not read.",
       "output_signal": {
         "kind": "file_mtime",
         "path": "logs/alex_monthly.log"
-      }
+      },
+      "reason_confidence": "CORRELATED",
+      "reason_evidence": "Cron comment 'DISABLED 2026-08-08' with no reason; four alex lines share that exact date and tag; the successor timer is verified running."
     },
     {
       "lane_id": "alex-hygiene",
@@ -460,13 +520,15 @@
       },
       "expected_cadence_hours": 24.0,
       "state": "PAUSED",
-      "state_since": "2026-08-30",
+      "state_since": "2026-08-08",
       "review_by": "2026-09-15",
-      "state_reason": "Cron line commented and tagged DISABLED with no reason text. reason=UNKNOWN",
+      "state_reason": "Disabled 2026-08-08 in the same batch as alex-daily, whose line records supersession by agent_runtime@alex.timer. This entry carries no reason text of its own, so the supersession is inferred from the batch, not read.",
       "output_signal": {
         "kind": "file_mtime",
         "path": "logs/alex_hygiene.log"
-      }
+      },
+      "reason_confidence": "CORRELATED",
+      "reason_evidence": "Cron comment 'DISABLED 2026-08-08' with no reason; four alex lines share that exact date and tag; the successor timer is verified running."
     },
     {
       "lane_id": "alex-gov-research",
@@ -476,13 +538,15 @@
       },
       "expected_cadence_hours": 24.0,
       "state": "PAUSED",
-      "state_since": "2026-08-30",
+      "state_since": "2026-08-08",
       "review_by": "2026-09-15",
-      "state_reason": "Cron line commented and tagged DISABLED with no reason text. reason=UNKNOWN",
+      "state_reason": "Disabled 2026-08-08 in the same batch as alex-daily, whose line records supersession by agent_runtime@alex.timer. This entry carries no reason text of its own, so the supersession is inferred from the batch, not read.",
       "output_signal": {
         "kind": "file_mtime",
         "path": "logs/alex_gov_research.log"
-      }
+      },
+      "reason_confidence": "CORRELATED",
+      "reason_evidence": "Cron comment 'DISABLED 2026-08-08' with no reason; four alex lines share that exact date and tag; the successor timer is verified running."
     },
     {
       "lane_id": "cio-decision-engine",
@@ -492,13 +556,15 @@
       },
       "expected_cadence_hours": 24.0,
       "state": "PAUSED",
-      "state_since": "2026-08-30",
+      "state_since": "2026-08-08",
       "review_by": "2026-09-15",
-      "state_reason": "Cron line commented and tagged DISABLED with no reason text. reason=UNKNOWN",
+      "state_reason": "Cron line commented 2026-08-08 with the bare tag 'DISABLED 2026-08-08' and no reason. Disabled the same day as the alex family but is a different subsystem, so the alex supersession does NOT transfer.",
       "output_signal": {
         "kind": "file_mtime",
         "path": "logs/cio_decision_engine.log"
-      }
+      },
+      "reason_confidence": "UNKNOWN",
+      "reason_evidence": "crontab: '#0 7 * * 1-5 $PY scripts/cio_decision_engine.py --run  # DISABLED 2026-08-08'. No commit, PR or decision document found for it."
     }
   ],
   "undeclared_baseline": [
