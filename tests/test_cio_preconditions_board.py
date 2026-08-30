@@ -179,7 +179,7 @@ def test_cc_cannot_verify_when_the_payload_could_not_be_fetched():
 
 def test_critique_is_green_on_an_attached_artifact():
     rec = _held_with_narrative("V", "V held.")
-    rec["last_artifact_id"] = "rr_3d2314e10dc2"
+    rec["last_artifact_id"] = "grok_critique_3d2314e10dc2"
     rec["last_outcome"] = "attached"
     out = check_critique_persisted([rec], probe=OK_PROBE)
     assert out["status"] == GREEN
@@ -191,6 +191,7 @@ def test_critique_is_green_on_a_reject_and_names_it_a_reject():
     learn from a refusal instead of re-asking the prompt that failed closed."""
     rec = _held_with_narrative("V", "V held.")
     rec["last_outcome"] = "rejected"
+    rec["last_artifact_id"] = "grok_critique_rejected"
     rec["research_blocked"] = True
     out = check_critique_persisted([rec], probe=OK_PROBE)
     assert out["status"] == GREEN
@@ -317,7 +318,7 @@ def test_a_fully_healthy_tree_boards_four_greens(tmp_path):
     held = _held_with_narrative("NOC", "NOC is held under desk@v5 defensive_observe, "
                                        "observational lifecycle note only.")
     critiqued = _held_with_narrative("V", "V is held with no open S1.")
-    critiqued["last_artifact_id"] = "rr_3d2314e10dc2"
+    critiqued["last_artifact_id"] = "grok_critique_3d2314e10dc2"
     critiqued["last_outcome"] = "attached"
     cash = _cash_sleeve()
     _write_store(tmp_path, [_schd_with_defer(), held, critiqued, cash])
