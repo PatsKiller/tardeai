@@ -303,6 +303,36 @@ phase-cursor token spelled that way would have kept the test green by accident.
 The token chosen is `P4_PENDING_REVERIFICATION` specifically so the test fails
 honestly instead.
 
+### 6.1 Those three reds do not fail CI — nothing runs them
+
+`[VERIFIED]` The entire P0–P9 diligence suite is invoked by nothing:
+
+```
+$ grep -rn "test_cio_diligence" --exclude-dir=.git --exclude-dir=node_modules .
+  (every hit outside tests/ is a DOCUMENT: scoreboard proof lists, package
+   write-ups, this note. Zero hits in .github/, scripts/, or any runner.)
+
+$ grep -rn "diligence\|scoreboard" scripts/run_release_ci_equivalent.py   -> exit 1
+$ grep -rn "diligence" scripts/run_cio_hardening_ci.py                     -> exit 1
+$ grep -rln "test_cio_diligence" .github/workflows/                        -> exit 1
+```
+
+Every workflow names its test files explicitly; none names these. So the
+documented local acceptance went **green on this very commit** —
+`ACCEPT_FINAL_EXIT=0`, 17/17 release-proof checks — while three of its own
+diligence tests were red, because a docs-only diff routes past the CIO lane and
+no lane covers them anyway.
+
+That is the governing principle in miniature: **a component reporting success is
+not evidence that it did anything.** The scoreboard's guard tests belong on the
+"built and unwired" list beside `test_every_script_compiles.py` before #709 —
+except these are worse, because they assert literals out of the file they
+validate, so wiring them without first fixing that would gate the repository on
+a self-consistency check.
+
+The red is therefore reported, not hidden, and it is a human-typed red rather
+than a CI one. Its value is entirely in what R1 does with it.
+
 ---
 
 ## 7. Also observed, outside this brief
