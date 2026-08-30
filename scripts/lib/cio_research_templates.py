@@ -95,7 +95,8 @@ def build(gate: str, *, symbol: str | None = None,
           prior_outcome: str | None = None,
           prior_critique: Any = None,
           corpus_refs: Optional[list[dict[str, Any]]] = None,
-          research_id: str | None = None) -> dict[str, Any]:
+          research_id: str | None = None,
+          workflow_id: str | None = None) -> dict[str, Any]:
     """Render one gate's system+user pair plus the carry block.
 
     Raises ValueError on an unknown gate rather than silently producing an
@@ -108,6 +109,7 @@ def build(gate: str, *, symbol: str | None = None,
 
     carry = {
         "research_id": research_id,
+        "workflow_id": workflow_id,
         "artifact_id": artifact_id,
         "question_ids": list(question_ids or []),
         "prior_outcome": prior_outcome,

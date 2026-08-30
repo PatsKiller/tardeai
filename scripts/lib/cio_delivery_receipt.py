@@ -53,6 +53,10 @@ def build(decision_row: dict[str, Any], *,
     return {
         "schema": DELIVERY_RECEIPT_SCHEMA,
         "notification_id": nid,
+        # Carry the originating workflow through delivery/audit projections;
+        # this is linkage only and does not grant delivery authority.
+        "workflow_id": decision_row.get("workflow_id"),
+        "generation_id": decision_row.get("generation_id") or decision_row.get("material_generation_id"),
         "plan_id": decision_row.get("plan_id"),
         "decision": decision,
         "would_channel": _CHANNEL_FOR[decision],
