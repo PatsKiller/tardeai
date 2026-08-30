@@ -14,8 +14,10 @@ Resume cursor: first phase/package with status != DONE.
 |-------|--------|
 | CURRENT pin | `852ecd47` (main @ P0 merge #681; live CURRENT may still trail) |
 | origin/main | `852ecd47` |
+| This PR pin | **pre-promote** (orchestrator promotes) |
 | `/api/v2/health` | 200 |
 | `/v3/cio` | 200 |
+| `/api/v3/cio/home` | 200 |
 | lineage complete_to_checkpoint | **406 / 752 (54.0%)** |
 | event lifecycle (weighted full) | **2.17%** recoverable / accepted (P1-WS2) |
 | event lifecycle (unweighted mean) | **67.16%** · catalyst family **1.49%** |
@@ -23,7 +25,7 @@ Resume cursor: first phase/package with status != DONE.
 | first open stage | research 640 · cio 112 |
 | rails | MBI=0 · READ_ONLY_ADVISORY · no broker write · no notify-on · no Telegram producer |
 | DRIVE | FAIL until gog upsert (optional) |
-| phase cursor | **P1-WS1** (earliest PENDING) · P1-WS3 + P2-WS4/WS5 + P6/P7/P8 DONE out of order · P4/P5 DONE this PR |
+| phase cursor | **P1-WS1 DONE (docs PR)** → next **P3** · P1-WS2/WS3 + P2 + P4/P5 + P6/P7/P8 DONE out of order |
 
 ---
 
@@ -32,7 +34,7 @@ Resume cursor: first phase/package with status != DONE.
 | ID | Title | Status | PR | sha | Proof |
 |----|-------|--------|----|-----|-------|
 | P0 | Master plan + scoreboard + gap register | DONE | #681 | `f54bf9f5` | plan in docs/audits; lineage re-measure 54% |
-| P1-WS1 | Architecture as-built pack | PENDING | | | |
+| P1-WS1 | Architecture as-built pack | **DONE** | *(this PR)* | *(fill after promote)* | as-built + failure inventory + type mapping Wave3 appendix + gap reconfirm G-AUTH-01/G-DUAL-01 |
 | P1-WS2 | Event lifecycle census baseline | DONE | *(this PR)* | | weighted full **2.17%**; catalyst **1.49%**; claim_99.99=false |
 | P1-WS3 | Operator S0 workflow + failure battery | **DONE** | *(this PR)* | *(fill after promote)* | S0 flow matrix + dedup/OOO/restart battery; INTERDICT would_send=false |
 | P2-WS4 | Identity confidence score | **DONE** | *(this PR)* | *(fill after merge)* | `docs/audits/diligence/P2_WS4_*`; production resolvable **98.9%**; ICS def shipped |
@@ -50,5 +52,7 @@ Resume cursor: first phase/package with status != DONE.
 ## Seeded gap themes (update with evidence)
 
 See `docs/audits/CIO_DILIGENCE_GAP_REGISTER.md`.
+
+P1-WS1 locked **G-AUTH-01 → Sev 2** (rebalancer flag-only CIO consult; still bypasses authority). **G-DUAL-01** reconfirmed `merged=false` on live home.
 
 Leftovers still forbidden unless a package explicitly allows: ROTATE-as-action, notify-on, gate loosen, AGENT_COMMITMENT as policy, book merge, cio_run LLM default, stop-management files, historical ticker_prices DELETE.

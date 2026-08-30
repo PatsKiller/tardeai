@@ -5,7 +5,7 @@
   "interdict": "left_as_found",
   "drive": {
     "status": "FAIL",
-    "reason": "optional gog upsert not run on kickoff"
+    "reason": "optional gog upsert not run on P1-WS1"
   },
   "now": {
     "current_pin": "852ecd47",
@@ -38,7 +38,7 @@
       "instrument": "scripts/cio_event_lifecycle_census.py"
     },
     "telegram_sent": false,
-    "phase_cursor": "P1-WS1",
+    "phase_cursor": "P3",
     "packages_done_out_of_order": [
       "P1-WS3",
       "P2-WS4",
@@ -50,7 +50,9 @@
       "P8"
     ],
     "identity_production_resolvable_pct": 98.9,
-    "schg_surface_a": "EXITED"
+    "schg_surface_a": "EXITED",
+    "this_package_pre_promote": true,
+    "cio_home": 200
   },
   "packages": {
     "P0": {
@@ -61,7 +63,15 @@
     },
     "P1-WS1": {
       "title": "Architecture as-built pack",
-      "status": "PENDING"
+      "status": "DONE",
+      "pr": null,
+      "sha": null,
+      "proof": [
+        "docs/audits/diligence/P1_WS1_AS_BUILT_ARCHITECTURE_2026-08-30.md",
+        "docs/audits/diligence/P1_WS1_FAILURE_POINT_INVENTORY_2026-08-30.md",
+        "docs/architecture/cio/EXTERNAL_DIAGRAM_TYPE_MAPPING.md",
+        "docs/audits/CIO_DILIGENCE_GAP_REGISTER.md"
+      ]
     },
     "P1-WS2": {
       "title": "Event lifecycle census baseline",
