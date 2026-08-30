@@ -41,6 +41,23 @@ DECISIONS = (
 )
 PAID_DECISIONS = frozenset({"flash", "pro", "openai", "grok_critique"})
 
+# The residual rung. It has always been `openai` -- the step after `pro`, whose
+# prompt skeleton in `cio_research_templates` reads "residual only -- the
+# questions Pro left open". `ResidualWebLane@v1` is the lane that EXECUTES this
+# rung; the token stays as-is because renaming it would touch the templates,
+# `cio_specialist_artifact.PROVIDERS` (which raises on an unknown provider) and
+# a row of ban-list tests. The gate names the rung; the lane names the executor.
+RESIDUAL_DECISION = "openai"
+RESIDUAL_LANE = "residual_web"
+
+# Which lane executes each decision. Reporting only -- it changes no routing.
+LANE_FOR: dict[str, str] = {
+    "flash": "llm_flash",
+    "pro": "llm_pro",
+    RESIDUAL_DECISION: RESIDUAL_LANE,
+    "grok_critique": "grok_critique",
+}
+
 # Outcome classes carried forward from the previous attempt on a research_id.
 OUTCOMES = (
     "VALID", "PARTIAL", "FAIL", "execution_language", "truncated",
@@ -94,6 +111,7 @@ def _decision(name: str, reason: str, **extra: Any) -> dict[str, Any]:
     out: dict[str, Any] = {
         "schema": GATE_VERSION,
         "decision": name,
+        "lane": LANE_FOR.get(name),
         "reason": reason,
         "authority": AUTHORITY,
         "financial_action": FINANCIAL_ACTION,
@@ -330,6 +348,49 @@ def decide(inp: dict[str, Any], *, now: Optional[datetime] = None) -> dict[str, 
                      prior_artifact_ids=prior_ids,
                      prior_outcome=prior_outcome,
                      next_eligible_at=(now + timedelta(hours=ttl_h or 168)).isoformat())
+
+
+def collapse_same_day_duplicates(
+    decisions: list[dict[str, Any]], *,
+    now: Optional[datetime] = None,
+) -> dict[str, Any]:
+    """One model class per SUBJECT per calendar day. Mutates `decisions`.
+
+    Lifted out of `cio_research_gate_report` so it can be tested. 36 open S5
+    cash plans are 36 rows asking one question (the SLEEVE:CASH question), and
+    routing each to its own paid call is the grind this gate exists to stop.
+
+    Collapse on the SUBJECT *and* on research_id -- either one repeating is a
+    duplicate. Keying on research_id alone re-expands the S5 cash plans: those
+    36 rows each carry a distinct research_id, so they would all survive as
+    separate paid jobs.
+    """
+    now = _utc(now)
+    day = now.date().isoformat()
+    seen_subject: set[tuple] = set()
+    seen_research: set[tuple] = set()
+    collapsed = 0
+    for d in decisions:
+        if d.get("decision") not in PAID_DECISIONS:
+            continue
+        subject = (d.get("kind"), d.get("symbol"), day)
+        research = (d.get("research_id"), day) if d.get("research_id") else None
+        if subject in seen_subject or (research and research in seen_research):
+            d["decision"] = "skip"
+            d["lane"] = LANE_FOR.get("skip")
+            d["reason"] = "duplicate_subject_same_day"
+            collapsed += 1
+            continue
+        seen_subject.add(subject)
+        if research:
+            seen_research.add(research)
+    return {
+        "day": day,
+        "collapsed": collapsed,
+        "surviving_subjects": sorted(
+            {(str(k), str(sym)) for k, sym, _ in seen_subject}),
+        "surviving_subject_count": len(seen_subject),
+    }
 
 
 def schedule_surface(decisions: list[dict[str, Any]], *, cap: int = 10,

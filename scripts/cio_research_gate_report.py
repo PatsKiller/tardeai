@@ -17,7 +17,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from scripts.lib.cio_research_gate import decide, schedule_surface  # noqa: E402
+from scripts.lib.cio_research_gate import (  # noqa: E402
+    collapse_same_day_duplicates, decide, schedule_surface,
+)
 from scripts.lib import cio_corpus_index as corpus  # noqa: E402
 from scripts.lib.cio_research_history import (  # noqa: E402
     gate_inputs_for, history_by_plan,
@@ -85,30 +87,10 @@ def main() -> int:
                 else None)
         decisions.append(decide(gate_in, now=now))
 
-    # "One model class per research_id per calendar day." Plans without a
-    # research_id are grouped by (kind, symbol) instead: 36 open S5 cash plans
-    # are 36 rows asking one question, and routing each to its own Flash call
-    # is the grind this gate exists to stop.
-    # Collapse on the SUBJECT and on research_id — either one repeating is a
-    # duplicate. Keying on research_id alone re-expands the S5 cash plans:
-    # 36 rows asking one question each carry a distinct research_id, so they
-    # would all survive as separate paid jobs, which is the grind this gate
-    # exists to stop.
-    seen_subject: set[tuple] = set()
-    seen_research: set[tuple] = set()
-    day = now.date().isoformat()
-    for d in decisions:
-        if d.get("decision") not in {"flash", "pro", "openai", "grok_critique"}:
-            continue
-        subject = (d.get("kind"), d.get("symbol"), day)
-        research = (d.get("research_id"), day) if d.get("research_id") else None
-        if subject in seen_subject or (research and research in seen_research):
-            d["decision"] = "skip"
-            d["reason"] = "duplicate_subject_same_day"
-            continue
-        seen_subject.add(subject)
-        if research:
-            seen_research.add(research)
+    # One model class per SUBJECT per calendar day. The law now lives in
+    # cio_research_gate.collapse_same_day_duplicates so it is testable and so
+    # this script cannot drift from it.
+    collapse = collapse_same_day_duplicates(decisions, now=now)
 
     surface = schedule_surface(decisions, cap=args.limit, now=now)
     if args.json:
@@ -134,6 +116,7 @@ def main() -> int:
     if not surface["next_eligible"]:
         print("    (none — claimed=0 is healthy)")
     print()
+    print(f"  collapsed as duplicate subject same day: {collapse['collapsed']}")
     print("  LIVE PAID CALLS MADE: 0 (dry report, stub backend)")
     return 0
 
