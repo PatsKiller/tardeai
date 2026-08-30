@@ -201,3 +201,24 @@ def test_impairment_is_decided_by_engines_not_by_result_count(monkeypatch):
     """A single engine returning 100 results is still one engine's blind spots."""
     monkeypatch.setattr(sh, "probe_searxng", _probe(["bing"], [], results=100))
     assert sh.pool_health(now=NOW)["impaired"] is True
+
+
+# ── the weekend skip must not silence on-demand research ──────────────────
+
+def test_the_weekend_skip_applies_to_bulk_jobs_but_not_on_demand_research():
+    """Re-pointing web_research through the budgeted client made every
+    interactive lookup return [] on a Saturday — the silent-empty failure this
+    budget work exists to remove. The skip is a spend heuristic for scheduled
+    bulk jobs, whose subject matter does not move when the market is closed."""
+    import sys
+    from pathlib import Path
+    root = Path(__file__).resolve().parent.parent
+    if str(root / "scripts") not in sys.path:
+        sys.path.insert(0, str(root / "scripts"))
+    import brave_search as bs
+
+    assert bs.SKIP_WEEKENDS is True
+    assert "web_research" in bs.ON_DEMAND_CALLERS
+    assert "intel_query" in bs.ON_DEMAND_CALLERS
+    assert "portfolio_news" not in bs.ON_DEMAND_CALLERS
+    assert "aegis_social_sentiment" not in bs.ON_DEMAND_CALLERS
