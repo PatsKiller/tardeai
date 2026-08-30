@@ -20,6 +20,9 @@ REQUEST_TIMEOUT = 10
 DAILY_BUDGET = 25
 MONTHLY_BUDGET = 850  # Reserve 150 for P0/manual searches out of 1000
 SKIP_WEEKENDS = True
+# Callers that answer a question someone is waiting for. These are rate-limited
+# and budgeted like everything else; they are simply not silenced on a weekend.
+ON_DEMAND_CALLERS = frozenset({"web_research", "intel_query", "manual"})
 CALLER_CAPS = {
     "portfolio_news": 10,
     "catalyst_intelligence": 10,
@@ -79,7 +82,12 @@ def _check_budget(caller: str = "default") -> bool:
     month = datetime.now().strftime("%Y-%m")
     is_weekend = datetime.now().weekday() >= 5
 
-    if SKIP_WEEKENDS and is_weekend:
+    # The weekend skip is a spend heuristic for SCHEDULED bulk jobs, whose
+    # subject matter does not move when the market is closed. It must not apply
+    # to on-demand research: re-pointing web_research through this client made
+    # every interactive lookup return [] on a Saturday, which is precisely the
+    # silent-empty failure this budget work exists to remove.
+    if SKIP_WEEKENDS and is_weekend and caller not in ON_DEMAND_CALLERS:
         return False
 
     budget = _load_budget()

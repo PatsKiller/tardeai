@@ -1,12 +1,12 @@
 {
-  "ui_version": "3.14+mtgcqtz5",
+  "ui_version": "3.14+mtgdc631",
   "base_version": "3.14",
-  "built_at": "2026-08-30T21:59:29.027Z",
+  "built_at": "2026-08-30T22:16:05.930Z",
   "release_notes": "home-inbox-parity: MetricStrip STALE, No-stop gauge taxonomy, Operator Inbox plain language",
-  "git_sha": "b969d2f53f6519c5392e8a9286931f70d4d5529f",
-  "source_sha": "b969d2f53f6519c5392e8a9286931f70d4d5529f",
-  "build_sha": "b969d2f53f65",
-  "source_commit": "b969d2f53f6519c5392e8a9286931f70d4d5529f",
+  "git_sha": "18e7884e9ae26e01bbbcc45769f6c3fdd3c12729",
+  "source_sha": "18e7884e9ae26e01bbbcc45769f6c3fdd3c12729",
+  "build_sha": "18e7884e9ae2",
+  "source_commit": "18e7884e9ae26e01bbbcc45769f6c3fdd3c12729",
   "branch": "main",
   "release_label": "main-exact-phase2"
 }
