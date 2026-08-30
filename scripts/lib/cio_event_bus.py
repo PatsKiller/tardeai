@@ -70,8 +70,20 @@ VALID_EVENT_TYPES = frozenset({
     "thesis.changed",    # symbol thesis minted / upgraded / downgraded / invalidated
 })
 
+# `situation.raised` is the event the situation detector emits when it finds
+# something worth attention: it carries `symbols`, `situation_type` and
+# `owner_agent`, and it is the ONLY high-volume event on this bus that names a
+# subject. Measured 2026-08-30 it had fired 1,100 times — 642 S3_REENTRY_CANDIDATE,
+# 260 S1_POSITION_LIFECYCLE, 71 S2_STOP_GAP — across 80 distinct symbols, and no
+# agent subscribed to it, so no wake was ever raised for any of them.
+#
+# `plan.enriched` (1,290 events) is deliberately NOT routed. It is LOW-priority
+# pipeline bookkeeping — `narrative_source: template`, `llm: blocked_cap` — and
+# waking on it would be noise, not attention.
+
 # Events that should wake Alex
 ALEX_EVENTS = frozenset({
+    "situation.raised",  # 993 of 1,100 are alex-owned
     "portfolio.material_change",
     "risk.heat_increased",
     "allocation.drift",
@@ -90,6 +102,7 @@ ALEX_EVENTS = frozenset({
 
 # Events that should wake Steph
 STEPH_EVENTS = frozenset({
+    "situation.raised",
     "portfolio.material_change",
     "allocation.drift",
     "market.regime_change",
@@ -105,6 +118,7 @@ HERMES_EVENTS = frozenset({
 
 # Events that should wake Morgan (Senior Wealth Advisor)
 MORGAN_EVENTS = frozenset({
+    "situation.raised",
     "portfolio.material_change",
     "allocation.drift",
     "behavioral.flag_raised",
@@ -122,6 +136,7 @@ AGENT_EVENT_ROUTING: dict[str, frozenset[str]] = {
 
 # Priority mapping for wake job creation
 EVENT_PRIORITY: dict[str, str] = {
+    "situation.raised": "MEDIUM",
     "portfolio.material_change": "HIGH",
     "risk.heat_increased": "HIGH",
     "risk.stop_triggered": "HIGH",
