@@ -135,6 +135,9 @@ GATES = [
     ("corpus_grades_cost_units", [
         "tests/test_corpus_grades_and_cost_units.py",
     ]),
+    ("wake_loads_record", [
+        "tests/test_wake_loads_record.py",
+    ]),
     ("r13_institutional", [
         "tests/test_r13_institution.py",
         "tests/test_r13_goldens_properties_faults.py",
