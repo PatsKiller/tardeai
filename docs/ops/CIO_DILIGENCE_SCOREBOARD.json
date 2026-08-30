@@ -39,7 +39,14 @@
     },
     "telegram_sent": false,
     "phase_cursor": "P1-WS1",
-    "packages_done_out_of_order": ["P2-WS4", "P2-WS5", "P6", "P7", "P8"],
+    "packages_done_out_of_order": [
+      "P1-WS3",
+      "P2-WS4",
+      "P2-WS5",
+      "P6",
+      "P7",
+      "P8"
+    ],
     "identity_production_resolvable_pct": 98.9,
     "schg_surface_a": "EXITED"
   },
@@ -50,7 +57,10 @@
       "pr": 681,
       "sha": "f54bf9f5"
     },
-    "P1-WS1": {"title": "Architecture as-built pack", "status": "PENDING"},
+    "P1-WS1": {
+      "title": "Architecture as-built pack",
+      "status": "PENDING"
+    },
     "P1-WS2": {
       "title": "Event lifecycle census baseline",
       "status": "DONE",
@@ -58,7 +68,17 @@
       "sha": null,
       "proof": "weighted_full_lifecycle_pct=2.17; catalyst=1.49; claim_99_99=false"
     },
-    "P1-WS3": {"title": "Operator S0 workflow + failure battery", "status": "PENDING"},
+    "P1-WS3": {
+      "title": "Operator S0 workflow + failure battery",
+      "status": "DONE",
+      "pr": null,
+      "sha": null,
+      "proof": [
+        "docs/audits/diligence/P1_WS3_OPERATOR_S0_VALIDATION_2026-08-30.md",
+        "tests/test_cio_diligence_p1_ws3_operator_s0.py",
+        "docs/ops/CIO_DILIGENCE_P1_WS3_2026-08-30.md"
+      ]
+    },
     "P2-WS4": {
       "title": "Identity confidence score",
       "status": "DONE",
@@ -73,9 +93,18 @@
       "sha": null,
       "proof": "docs/audits/diligence/P2_WS5_POSITION_STATE_MATRIX_2026-08-30.md"
     },
-    "P3": {"title": "InstrumentRecord persistence drills", "status": "PENDING"},
-    "P4": {"title": "Research free / residual / model gov", "status": "PENDING"},
-    "P5": {"title": "Specialist N=100 sample", "status": "PENDING"},
+    "P3": {
+      "title": "InstrumentRecord persistence drills",
+      "status": "PENDING"
+    },
+    "P4": {
+      "title": "Research free / residual / model gov",
+      "status": "PENDING"
+    },
+    "P5": {
+      "title": "Specialist N=100 sample",
+      "status": "PENDING"
+    },
     "P6": {
       "title": "Council determinism",
       "status": "DONE",
@@ -109,6 +138,9 @@
         "tests/test_cio_diligence_p8_mbi_partition.py"
       ]
     },
-    "P9": {"title": "Registry / orphan / 99.99% path", "status": "PENDING"}
+    "P9": {
+      "title": "Registry / orphan / 99.99% path",
+      "status": "PENDING"
+    }
   }
 }

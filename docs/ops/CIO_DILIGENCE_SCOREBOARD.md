@@ -23,7 +23,7 @@ Resume cursor: first phase/package with status != DONE.
 | first open stage | research 640 · cio 112 |
 | rails | MBI=0 · READ_ONLY_ADVISORY · no broker write · no notify-on · no Telegram producer |
 | DRIVE | FAIL until gog upsert (optional) |
-| phase cursor | **P1-WS1** (earliest PENDING) · P2-WS4/WS5 + P6/P7/P8 DONE out of order |
+| phase cursor | **P1-WS1** (earliest PENDING) · P1-WS3 + P2-WS4/WS5 + P6/P7/P8 DONE out of order |
 
 ---
 
@@ -34,7 +34,7 @@ Resume cursor: first phase/package with status != DONE.
 | P0 | Master plan + scoreboard + gap register | DONE | #681 | `f54bf9f5` | plan in docs/audits; lineage re-measure 54% |
 | P1-WS1 | Architecture as-built pack | PENDING | | | |
 | P1-WS2 | Event lifecycle census baseline | DONE | *(this PR)* | | weighted full **2.17%**; catalyst **1.49%**; claim_99.99=false |
-| P1-WS3 | Operator S0 workflow + failure battery | PENDING | | | |
+| P1-WS3 | Operator S0 workflow + failure battery | **DONE** | *(this PR)* | *(fill after promote)* | S0 flow matrix + dedup/OOO/restart battery; INTERDICT would_send=false |
 | P2-WS4 | Identity confidence score | **DONE** | *(this PR)* | *(fill after merge)* | `docs/audits/diligence/P2_WS4_*`; production resolvable **98.9%**; ICS def shipped |
 | P2-WS5 | HELD/EXIT/WATCH/CASH/DUST matrix | **DONE** | *(this PR)* | *(fill after merge)* | `docs/audits/diligence/P2_WS5_*`; SCHG Surface A EXITED; dust table |
 | P3 | InstrumentRecord persistence drills | PENDING | | | |
