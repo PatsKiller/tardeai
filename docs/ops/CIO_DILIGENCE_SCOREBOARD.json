@@ -1,0 +1,52 @@
+{
+  "schema": "CIODiligenceScoreboard@v1",
+  "authority": "READ_ONLY_ADVISORY",
+  "memory_behavior_influence": 0,
+  "interdict": "left_as_found",
+  "drive": {
+    "status": "FAIL",
+    "reason": "optional gog upsert not run on kickoff"
+  },
+  "now": {
+    "current_pin": "be09945b",
+    "current_pr": 679,
+    "health": 200,
+    "cio": 200,
+    "lineage": {
+      "workflows": 752,
+      "complete_to_checkpoint": 406,
+      "complete_pct": 54.0,
+      "with_checkpoint_id": 436,
+      "arcs": {
+        "research_checkpoint": 436,
+        "cio_notification": 29
+      },
+      "first_open_stage": {
+        "research": 640,
+        "cio": 112
+      }
+    },
+    "telegram_sent": false,
+    "phase_cursor": "P1-WS1"
+  },
+  "packages": {
+    "P0": {
+      "title": "Master plan + scoreboard + gap register",
+      "status": "DONE",
+      "pr": null,
+      "sha": null
+    },
+    "P1-WS1": {"title": "Architecture as-built pack", "status": "PENDING"},
+    "P1-WS2": {"title": "Event lifecycle census baseline", "status": "PENDING"},
+    "P1-WS3": {"title": "Operator S0 workflow + failure battery", "status": "PENDING"},
+    "P2-WS4": {"title": "Identity confidence score", "status": "PENDING"},
+    "P2-WS5": {"title": "HELD/EXIT/WATCH/CASH/DUST matrix", "status": "PENDING"},
+    "P3": {"title": "InstrumentRecord persistence drills", "status": "PENDING"},
+    "P4": {"title": "Research free / residual / model gov", "status": "PENDING"},
+    "P5": {"title": "Specialist N=100 sample", "status": "PENDING"},
+    "P6": {"title": "Council determinism", "status": "PENDING"},
+    "P7": {"title": "Notification matrix CC-first", "status": "PENDING"},
+    "P8": {"title": "Outcome/lesson MBI partition", "status": "PENDING"},
+    "P9": {"title": "Registry / orphan / 99.99% path", "status": "PENDING"}
+  }
+}
