@@ -1,7 +1,3 @@
-NO_CONSUMER_REASON = (
-    "operator-invoked diligence CLI: CIOResearchGovernanceCensus@v1 is a stdout receipt for Phase 4, not an ingested store contract"
-)
-
 #!/usr/bin/env python3
 """Read-only census of CIO research-engine governance (P4 / WS6–8).
 
@@ -32,6 +28,9 @@ from scripts.lib import cio_research_budget as budget  # noqa: E402
 from scripts.lib import cio_research_gate as gate  # noqa: E402
 from scripts.lib import cio_residual_web as residual  # noqa: E402
 
+NO_CONSUMER_REASON = (
+    "operator-invoked diligence CLI: CIOResearchGovernanceCensus@v1 is a stdout receipt for Phase 4, not an ingested store contract"
+)
 
 SCHEMA = "CIOResearchGovernanceCensus@v1"
 AUTHORITY = "READ_ONLY_ADVISORY"
