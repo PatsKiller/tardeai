@@ -68,6 +68,15 @@ FINANCIAL_ACTION = False
 
 LANE = "residual_web"
 
+# The MODEL lane, distinct from the executor lane above. `LANE` names who runs
+# the hop and is for reporting; `MODEL_LANE` names the registered provider that
+# llm_lane.generate() will accept. Conflating them is not cosmetic: the first
+# live hop died with
+#   UNKNOWN_LANE: lane='residual_web' is not registered
+# because the executor name was passed straight into generate(). Registered
+# lanes are deepseek-flash / deepseek-v4-flash / deepseek-v4-pro.
+MODEL_LANE = "deepseek-flash"
+
 # The gate rung this lane executes. Reused from cio_research_gate.DECISIONS —
 # see the module docstring for why this is not renamed.
 RESIDUAL_DECISION = "openai"
@@ -367,7 +376,7 @@ def _live_transport(request: dict[str, Any]) -> dict[str, Any]:
 
     text = generate(
         str(request.get("prompt") or ""),
-        lane=str(request.get("lane") or "deepseek-flash"),
+        lane=str(request.get("model_lane") or MODEL_LANE),
         process_id=PROCESS_ID,
         task_summary=f"{LANE}:{request.get('subject_key')}",
         response_json=True,
