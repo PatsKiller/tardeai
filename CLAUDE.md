@@ -178,6 +178,21 @@ stale upstream).
   twelve. A zero from a detector that could not have found a positive is not
   evidence of absence, and it is the most convincing kind of wrong answer
   because the tool worked perfectly.
+
+  **This rule names a class, not an incident. Four earlier findings, each filed
+  separately, are the same defect:**
+
+  | detector | keyed on | could never see |
+  |---|---|---|
+  | `ast.parse` compile sweep | "does this parse under `ast.parse`" | files Python refuses to import — it tolerates a BOM and misplaced `__future__` |
+  | the catalyst skip aggregate | a count | its own members, so a 149-name registry gap read as a structural 35,928-event skip |
+  | the preconditions board check | an artifact's *presence* | the artifact's *type*, so a residual-web hop satisfied a check named for a critique |
+  | the agent-origination scan | invariance | generated prose, which is maximally variable |
+
+  A fifth, mine: a root-sensitivity control whose two arms resolved to the same
+  file through a symlink. Each was a working tool answering a question adjacent
+  to the one asked. Expect more; the way to find them is to ask what the
+  instrument keys on before believing what it reports.
 - **File `atime` is not evidence of a live consumer.** This filesystem is
   mounted `relatime`, so a read may not update `atime` at all. An investigation
   nearly concluded "nothing reads the spine" from atime alone; the conclusion
