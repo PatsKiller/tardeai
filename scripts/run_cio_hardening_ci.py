@@ -126,6 +126,9 @@ GATES = [
         "tests/test_money_surface_honesty.py",
         "tests/test_cash_guidance_provenance.py",
     ]),
+    ("lane_registry", [
+        "tests/test_lane_registry.py",
+    ]),
     ("r13_institutional", [
         "tests/test_r13_institution.py",
         "tests/test_r13_goldens_properties_faults.py",
