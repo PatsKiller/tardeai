@@ -8,8 +8,10 @@ invoke them, the versioned schema literals they declare, and the stores they rea
 The Command Center operator surface (routes, pages, tabs, rendered fields) belongs to PART 2 and is
 **not** censused here.
 
-**Status: PASS 1 of N.** Published progressively per the brief. Sections marked `PENDING` are not
-yet measured and are named so that no reader mistakes absence for a zero.
+**Status: complete for the declared scope, with one third of the repository deliberately left
+`UNKNOWN`.** Published progressively per the brief (pass 1 = §0–§5, pass 2 = §6–§10). The `UNKNOWN`
+population in §8.2 is a measured result, not an omission: see §8.2 for why no `DARK` verdict is
+recorded despite 811 modules having no inbound reference at all.
 
 ---
 
@@ -502,52 +504,385 @@ a name-shaped match standing in for a resolved symbol — is the recurring defec
 
 ---
 
-## 6. What is not yet measured
+## 6. The canonical store registry
 
-Named explicitly so that absence is not read as zero.
+Root read: `/home/johnclaw/trade-ai-releases/persistent-state` (`$PS` below; every registry path
+resolves under it). `as_of` **2026-08-30T23:25:45Z**. Hub root `$HUB` =
+`/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild`.
 
-- `PENDING` — **canonical store registry**: every store, its writer(s), its reader(s), absolute vs.
-  root-relative path, and the stores with no non-test reader. Measurement in progress.
-- `PENDING` — **`LIVE_UNCONSUMED` determination for the 358 scheduled modules**: which of them
-  produce a durable artifact that nothing reads. This is the most expensive class in the system and
-  it is deliberately not estimated here.
-- `PENDING` — per-module `produces` / `consumed_by` / `last_ran` rows for the 358 scheduled modules.
-- `PENDING` — adjudication of the 984 `NO_INBOUND` + `TEST_ONLY_IMPORT` candidates into `DARK`,
-  `ONE_SHOT`, `SUPERSEDED` or `UNKNOWN`. No file in this population has been called dead: per
-  `CLAUDE.md`, a single observation cannot support that verdict, and §4 has already shown four
-  distinct ways a live component can look dead.
+### 6.0 A correction to the brief — and to `CLAUDE.md` itself
 
-**No verdict totals are published in this pass.** Publishing a `LIVE`/`DARK` split before §6 is
-complete would produce exactly the artifact this census exists to prevent: a number everyone trusts,
-derived from an aggregate that discarded its members.
+Both the brief and `CLAUDE.md`'s standing-traps section state that
+`cio_lineage_health.DEFAULT_PATH` points outside every checkout and that `TRADEAI_ROOT` "can neither
+fix nor break it". **Both halves of that are wrong**, and I verified it independently after the
+store trace reported it, because it contradicts the standing rules.
+
+`[VERIFIED]`, root `/home/johnclaw/r20-r24-exact-main-deploy` @ `79a3f573`:
+
+```
+cio_lineage_health.DEFAULT_PATH exists: False
+cio_lineage.DEFAULT_PATH        exists: True
+no-env                  DEFAULT_PATH = /home/johnclaw/trade-ai-releases/persistent-state/data/cio/cio_workflow_lineage.jsonl
+TRADEAI_ROOT=/tmp/fakeroot -> DEFAULT_PATH = /tmp/fakeroot/data/cio/cio_workflow_lineage.jsonl
+```
+
+`[CODE]` `scripts/lib/cio_lineage.py:73-78` — the attribute does not exist on
+`cio_lineage_health` at all; it is served on **`cio_lineage`** by a module `__getattr__` that
+returns `production_state_root() / LINEAGE_RELATIVE`, i.e. it is **computed on every access**.
+
+**Finding C-09 — the path is root-sensitive, and it lives on a different module than the rules say.**
+It merely *looks* absolute because the marker file `$PS/PERSISTENT_STATE_ROOT.json` exists and wins
+the fallback chain; remove the marker or set `TRADEAI_ROOT` and it moves. `CLAUDE.md` cites this
+example as the settled resolution of a dispute in which "two agents drew opposite conclusions about
+that collector's root sensitivity; both were reasoning about a path the variable never touched."
+The measurement says the variable *does* touch it. **This is a factual error in the standing rules
+being used to adjudicate future disagreements**, and it should be corrected there — that is an
+operator/coordinator decision, not mine to make.
+
+### 6.1 Five competing registries, not one
+
+`[VERIFIED]` the canonical one is
+`/home/johnclaw/r20-r24-exact-main-deploy/scripts/lib/canonical_store_registry.py`
+(`CanonicalStoreRegistry@v1`, dict `STORES`, **34 entries**). Established by: ~38 importers across
+`scripts/`; every other store-list module imports *it*; it compiles clean under builtin `compile()`;
+and `docs/audits/diligence/P1_WS1_AS_BUILT_ARCHITECTURE_2026-08-30.md:173` names it with a matching
+count of 34 `[DOC-CLAIM, count independently VERIFIED]`. The `.py` is **byte-identical**
+(`sha256 283d966e4856cb8c…`) across the deploy worktree, the hub and the served release.
+
+| # | registry | entries | status |
+|---|---|---:|---|
+| 1 | `scripts/lib/canonical_store_registry.py` | **34** | **CANONICAL** |
+| 2 | `$PS/data/runtime/canonical_store_registry.json` | **19** | frozen 2026-08-26 20:56, **no writer anywhere in the repo — yet this is what production serves** |
+| 3 | `scripts/lib/persistent_state_root.py:157-175` `inventory()` | 16 | divergent id namespace; `inventory()` has no non-test caller |
+| 4 | `scripts/control_plane_api.py:27-90` `CONTROL_PLANE_DOMAINS` | 9 domains | own fallback list **and its own root resolver** |
+| 5 | retired release `671d760f-…-20260828-095246` copy | 29 | not live; recorded for completeness |
+
+**Finding C-10 — production serves the stale 19-entry JSON, not the 34-entry code registry.**
+`[VERIFIED]` simulating the live server exactly (served release on `sys.path`, all three root env
+vars unset — matching the real server process, which sets **none** of them):
+
+```
+LIVE-EQUIVALENT _state_root() = /home/johnclaw/trade-ai-releases/portfolio-server/a5006df1-…
+served n = 19   quality = AVAILABLE
+source has resolved_path key (=> JSON snapshot): True
+```
+
+`[CODE]` `control_plane_api._stores()` (`:50-56, 682-700`) puts the JSON **first** in its candidate
+list and returns early on `AVAILABLE`; the 34-store code registry is only a fallback. **15
+registered stores are therefore invisible on that surface**: `cio.agent_traces`,
+`cio.delivery_receipts`, `cio.instrument_records`, `cio.lesson_binds`, `cio.notification_policy`,
+`cio.specialist_artifacts`, `cio.workflow_lineage`, `identity.registry`, `learning.weekly`,
+`notifications.audit`, `portfolio.watchlist`, `reconciliation.latest`, `research.hermes_requests`,
+`runtime.audit_claims`, `runtime.maturity`. Nothing in the JSON is absent from the code registry.
+
+**Finding C-11 — two different root laws are in force simultaneously.** `[CODE]`
+`canonical_store_registry.production_state_root()` (`:487-502`) resolves env → `$PS` marker probe →
+`CURRENT` probe → `parents[2]`; `control_plane_api._state_root()` (`:157-163`) resolves env →
+`PROJECT_ROOT` (the checkout), with **no marker probe and no `CURRENT` probe**. With no env set the
+two disagree. `[VERIFIED]` in production the disagreement is *masked* because the release dir
+overlays `data/cio`, `data/runtime`, `data/health` and `data/portfolios/state` as symlinks into `$PS`
+(same dev:inode) — **except `data/reconciliation/state`, which is a real directory**, and that single
+gap produces the live split-brain in §6.4.
+
+### 6.2 The 34 stores
+
+All paths are `$PS/<suffix>`. **`[VERIFIED]` none of the 34 registry entries carries an absolute
+path** — all 34 `path` values and all 8 alias values are root-relative. (The real
+absolute-path-outside-every-checkout cases are 12 hardcoded literals in `scripts/`, 9 of them into
+`$HUB` — see §6.5.) Writers/readers are `[CODE]`, traced to the actual write call; exists/size/mtime
+are `[VERIFIED]` `stat` at as_of.
+
+| # | store id | path suffix | exists · bytes · mtime | traced WRITER | non-test READERS |
+|---|---|---|---|---|---|
+| 1 | `cio.instrument_records` | `data/cio/cio_instrument_records.jsonl` | ✅ 392,062 · 08-30 14:58 | `cio_instrument_record.py:272` | 6 |
+| 2 | `portfolio.watchlist` | `data/portfolios/state/watchlist.json` | ✅ 2,645 · **2026-05-09 (113d)** | `portfolio_watchlist.py:38` (init only; `save_watchlist` has **zero callers**) — operator-edited | 8 |
+| 3 | `reconciliation.latest` | `data/reconciliation/state/latest.json` | ❌ **MISSING at `$PS`** | `cio_reconciliation.py:162` → **3 destinations, incl. a hardcoded `$HUB` path at `:154`** | `data_broker/cio_portfolio.py:362` |
+| 4 | `learning.weekly` | `data/cio/weekly_learning.jsonl` | ❌ MISSING | **NONE** | **NONE** |
+| 5 | `cio.workflow_lineage` | `data/cio/cio_workflow_lineage.jsonl` | ✅ 6,883,798 · 08-30 23:21 | `cio_lineage.py:214` | 5 |
+| 6 | `portfolio.holdings.current` | `data/portfolios/state/holdings.json` | ✅ 232,477 · 08-30 12:00 | `schwab_position_sync.py:313,371` via `protected_holdings_write` | ~13 |
+| 7 | `cio.product.current` | `data/cio/cio_investment_brief.json` | ✅ 767,043 · 08-30 23:21 | `cio_investment_product.py:2160` — **filename never appears at the write line** | 6 |
+| 8 | `cio.product.history` | `data/cio/cio_investment_briefs.jsonl` | ✅ 1,180,032 · 08-30 23:26 | `cio_investment_product.py:2161` | **🔴 NONE** |
+| 9 | `cio.operator_product.current` | `data/cio/cio_operator_product.json` | ✅ 151,654 · 08-30 23:17 | `cio_operator_product.py:418` | **🔴 NONE** |
+| 10 | `cio.operator_product.history` | `data/cio/cio_operator_product.jsonl` | ✅ 51,791 · 08-30 23:17 | `cio_operator_product.py:420` | **🔴 NONE** |
+| 11 | `cio.decisions` | `data/cio/cio_decisions.jsonl` | ❌ MISSING | **NONE** — the `cio_decisions` *Postgres table* is written by `cio_decision_engine.py:194`; no bridge to JSONL | `memory_consolidator_shadow.py:85` reads a file nothing produces |
+| 12 | `cio.checkpoints` | `data/cio/outcome_checkpoints.jsonl` | ✅ 1,502,130 · 08-30 23:17 | `cio_institutional_learning.py:638` (**not** the declared `r17_checkpoint_binding`) | 4 |
+| 13 | `cio.outcomes` | `data/cio/outcome_observations.jsonl` | ✅ 420,238 · 08-30 21:10 | `cio_institutional_learning.py:567` | 2 |
+| 14 | `advisory.current` | `data/runtime/advisory_desk_latest.json` | ✅ 4,795,691 · 08-30 14:25 | **two**: `data_broker/advisory_desk.py:3351` (primary), `api_v3_advisory.py:523` | 4 |
+| 15 | `research.current` | `data/cio/hermes_research_projection.json` | ✅ 15,918,995 · 08-30 23:21 | `cio_hermes_research.py:155`; `PROJECTION_PATH` is **CWD-relative** | 2 |
+| 16 | `research.raw` | `data/cio/cio_research_impacts.jsonl` | ✅ 300,166 · 08-30 14:25 | `cio_product_reassessment.py:874` (declared `cio_research` **does not exist**) | `control_plane_api:46` only |
+| 17 | `research.hermes` | *same file as #15* | ✅ | same as #15 | **🔴 NONE — dead duplicate id** |
+| 18 | `memory.canonical` | `data/cio/aif_memory.json` | ✅ 1,738,563 · 08-30 14:25 | `agent_durable_memory.py:248` | **🔴 NONE** — every consumer reads `aif_memory.jsonl` instead |
+| 19 | `ops.health` | `data/health` (dir) | ✅ 1 file · 08-18 16:57 | `post_deploy_smoke_test.py:220` | `ops_health_routing:105` greps for strings the writer never emits |
+| 20 | `sector.momentum.current` | `data/runtime/sector_momentum_latest.json` | ✅ 8,329 · 08-26 02:04 | `sector_momentum_engine.py:424` | 9 |
+| 21 | `industry.momentum.current` | `data/runtime/industry_momentum_latest.json` | ✅ 49,279 · 08-25 20:23 | `finviz_industry_groups.py:295` (**not** declared `industry_momentum`) | 8 |
+| 22 | `cio.theses` | `data/cio/cio_theses_projection.json` | ✅ 3,556,867 · 08-30 08:23 | `cio_theses.py:177` — ⚠️ constructing `CIOThesisStore()` can trigger a rebuild-**write** from read-only call sites | 7 |
+| 23 | `cio.feedback` | `data/cio/decision_dispositions.jsonl` | ✅ 1,159 · 08-15 15:32 | `api_v3_cio.py:1623` | 4 |
+| 24 | `notifications.outbox` | `data/cio/cio_notification_outbox.jsonl` | ❌ MISSING | **NONE reaches this path** — `cio_notification_outbox.py:331-337` defaults to `operator_notification_outbox.jsonl` and both prod callers pass no `root=` | `telegram_receipts.py:30` hedges, reads both names |
+| 25 | `cio.agent_traces` | `data/cio/agent_run_traces.jsonl` | ✅ 19,620,037 · 08-30 23:15 | `agent_run_trace.py:199`; **undeclared 2nd writer** `agent_trace_retention.py:101` rewrites the file despite `append_only:True` | 7 |
+| 26 | `identity.registry` | `data/runtime/identity_registry.json` | ✅ 9,419,731 · 08-28 09:50 | `identity_registry.py:157` | 10 |
+| 27 | `runtime.maturity` | `data/runtime/maturity_score_latest.json` | ✅ 5,423 · **2026-06-28 (63d)** | `compute_maturity_score.py:275` | 2 |
+| 28 | `runtime.audit_claims` | `data/runtime/cc_v3_cio_office_audit.json` (**alias**) | ✅ 1,828 · 08-23 20:18 | `cc_v3_cio_office_audit.py:429` writes **only the alias**; the declared primary `audit_capability_claims.json` is **never written by anything** | `control_plane_api:84` only |
+| 29 | `research.hermes_requests` | `data/cio/hermes_research_requests.jsonl` | ✅ 10,521,734 · 08-30 23:21 | `cio_hermes_research.py:125` **+ 2 undeclared CWD-relative writers** (`hermes_worker.py:60`, `hermes_research_loop.py:773`) | 3 |
+| 30 | `notifications.audit` | `data/cio/cio_notification_audit.jsonl` | ✅ 3,920,120 · 08-27 03:10 | `cio_notification_signal.py:405`; ⚠️ `:362-365` **truncates in place** despite `append_only:True` | 4 |
+| 31 | `cio.specialist_artifacts` | `data/cio/cio_specialist_artifacts.jsonl` | ✅ 2,350 (2 rows) · 08-29 20:11 | `cio_specialist_artifact.py:149` — **only caller is a test** | 3 |
+| 32 | `cio.notification_policy` | `data/cio/cio_notification_policy.jsonl` | ❌ MISSING | `cio_notification_policy.py:144` — **only caller is a test** | **🔴 NONE — not even a test** |
+| 33 | `cio.delivery_receipts` | `data/cio/cio_delivery_receipts.jsonl` | ✅ 410 (1 row) · 08-29 18:30 | `cio_delivery_receipt.py:122` — **only caller is a test** | only the generic `cio_registry_orphan_census:59` |
+| 34 | `cio.lesson_binds` | `data/cio/cio_lesson_binds.jsonl` | ❌ MISSING | `cio_lesson_bind.py:143` — **only caller is a test** | `cio_s0_operator_loop.py:330` — **local import inside a `try:`; a filename grep finds nothing** |
+
+**Totals `[VERIFIED]`, as_of 2026-08-30T23:25:45Z, root `$PS`: 34 registered · 28 present on disk ·
+6 missing** (`reconciliation.latest`, `learning.weekly`, `cio.decisions`, `notifications.outbox`,
+`cio.notification_policy`, `cio.lesson_binds`). 33 distinct paths — #15 and #17 share one file.
+
+### 6.3 Registry metadata is wrong often enough that it cannot be trusted — and it is published
+
+`[CODE]` `control_plane_api._stores()` (`:682-700`) echoes each spec's `writer` field **straight to
+the GUI**. The following declared writers name modules that do not exist, or that do not write:
+
+`cio.decisions`→`cio_decision_pipeline` (no such module) · `reconciliation.latest`→
+`broker_reconciliation` (no such module) · `identity.registry`→`identity` (no such module) ·
+`notifications.audit`→`cio_notification` (no such module) · `research.raw`→`cio_research` (no such
+module) · `cio.checkpoints`→`r17_checkpoint_binding` (reads only) ·
+`industry.momentum.current`→`industry_momentum` (formatters only) ·
+`portfolio.holdings.current`→`"holdings reconciliation"` (prose) · `ops.health`→`"health agents"`
+(prose) · `research.current`/`research.hermes`→`hermes_research_loop` (the caller, not the writer) ·
+`advisory.current`→`api_v3_advisory` (the secondary writer).
+
+Declared `readers` are wrong at least as often: `cio.operator_product` is listed as a reader of
+`cio.instrument_records`, `portfolio.watchlist`, `reconciliation.latest`, `sector.momentum.current`
+and `industry.momentum.current`, and `[VERIFIED]` reads **none** of them.
+`cio.weekly_learning_review` is a fictional module.
+
+**Finding C-12 — the registry is barely used by the code it describes.** `[VERIFIED]`
+`resolve_store(` and `load_json_store(` together have only ~20 non-test call sites; most readers
+hardcode filenames — precisely the failure the module's own docstring says it exists to prevent.
+Combined with C-07 (§5.3), the registry declares schemas it never validates and writers it never
+verifies, and publishes both to an operator surface as if they were facts.
+
+### 6.4 Divergent copies — both reported, no winner picked
+
+`$PS` and the served release are the **same inode**, not copies `[VERIFIED]`. The genuine second
+live root is the hub, whose `data/` is a real directory.
+
+**`reconciliation.latest` — a three-way split in which today's write was orphaned by a promote**
+`[VERIFIED]`:
+
+| path | bytes | mtime | sha256₁₂ |
+|---|---:|---|---|
+| `$PS/data/reconciliation/state/latest.json` | — | — | **ABSENT (dir does not exist)** |
+| `$HUB/data/reconciliation/state/latest.json` | 721 | **2026-08-30 18:41:50** | `c6c01ce9c64b` |
+| `…/portfolio-server/a5006df1-…/data/reconciliation/state/latest.json` | 722 | 2026-08-29 18:41 | `cae3760a74d6` |
+| `$PS/data/cio/reconciliation_latest.json` | 721 | **2026-08-30 18:41:50** | `c6c01ce9c64b` |
+
+`[CODE]` `cio_reconciliation.persist()` (`:151-155`) writes three destinations, the first being
+`Path(__file__).parents[2]/data/reconciliation/state/latest.json` — **release-local, not
+`production_state_root()`**. That write landed inside the live release at 18:41; `CURRENT` then
+flipped at 19:15 and again at 19:22, and each promote rsynced the **Aug-29** file forward. So the
+registry's canonical path serves a day-old payload while the fresh one survives only at two
+non-canonical destinations. `resolve_store("reconciliation.latest")` → MISSING;
+`control_plane_api` (PROJECT_ROOT) → FOUND-but-stale. **This is the one store the symlink overlay
+does not cover.** Per `CLAUDE.md` I am reporting both paths, both hashes, both timestamps and both
+verdicts, and picking neither.
+
+Other genuine `$PS` vs `$HUB` divergences, all live today `[VERIFIED]`:
+
+| store | `$PS` | `$HUB` |
+|---|---|---|
+| `advisory.current` | 4,795,691 · 08-30 10:25 · `b06ff4f398e8` | 3,031,023 · **08-30 17:45** · `0ba216d77d5a` |
+| `research.raw` | 300,166 · 08-30 10:25 · `1e5315856982` | 318,542 · **08-30 13:16** · `aa82d2612d5f` |
+| `sector.momentum.current` | 8,329 · 08-25 22:04 · `f435fe85a984` | 7,362 · **08-30 01:51** · `6fcc5a74e178` |
+| `portfolio.holdings.current` | 232,477 · 08-30 08:00:24.209 · `91517df4f3cc` | 232,477 · 08-30 08:00:24.297 · `7a2a42019acf` |
+| `cio.agent_traces` | 19,620,037 · 08-30 19:15 | 12,348,957 · 08-26 10:24 |
+| `cio.product.current` | 767,043 · 08-30 19:21 | 602,053 · 08-26 10:31 |
+| `cio.theses` | 3,556,867 · 08-30 04:23 | 3,520,352 · 08-28 17:17 |
+
+**Three of these are fresher in the hub than in production.** And `holdings.json` is the sharpest
+case: identical size, **88 µs apart, different hashes** — two separate writes, not a copy.
+
+### 6.5 Absolute paths that bypass the registry
+
+`[VERIFIED]` 12 hardcoded absolute literals in `scripts/`, **9 of them into `$HUB`**, touching 4
+registered stores: `run_cio_acceptance.py:35`, `reconcile_holdings_canonical_marks.py:25`,
+`cio_live_report.py:24,28`, `cio_acceptance_purity.py:18-20`, `research_lane_health.py:296`,
+`data_broker/cio_portfolio.py:364`, `cio_reconciliation.py:154`, plus
+`claude_escalation_handler.py:312` (into `CURRENT`) and `cio_instrument_record_drill.py:146` (into
+`$PS`). For these, `TRADEAI_ROOT` genuinely cannot fix or break the path — unlike C-09.
+
+Separately, the deploy worktree carries **7 git-tracked stale store files** (e.g.
+`outcome_checkpoints.jsonl` 9,738 B vs the live 1,502,130 B; `agent_run_traces.jsonl` 2,268 B vs
+19,620,037 B). Harmless while the marker probe wins — but they **become the live store the moment
+`TRADEAI_ROOT` points at that checkout**, which is exactly what `control_plane_api._state_root()`
+does by default (C-11).
 
 ---
 
-## 7. For PART 2 and later parts
+## 7. `LIVE_UNCONSUMED` — reported prominently and separately
 
-- **§5.3 / C-06 crosses the boundary.** `ControlPlane@v1.0.0` is declared independently in Python
-  and in `apps/command-center-v3/src/control-plane/contractV1.ts`. PART 2 owns the TypeScript side;
-  it should verify whether any operator surface would detect a version skew between the two, because
-  from the backend side nothing would.
-- **C-01 affects PART 2's method.** `CURRENT` rotated three times in fifteen minutes. Any PART 2
-  measurement taken against `CURRENT` must record the concrete release hash, or it will not be
-  reproducible.
-- **C-07 is a surface question too.** The store registry's `schema` field is rendered into reports
-  via `control_plane_api.py:693` and `data_store_inventory.py:48`. If an operator surface displays
-  that field, it is displaying a value that is never validated — PART 2 should establish whether it
-  is shown, and whether it is shown as if it were a check.
+Per the brief: a component that runs, produces, and whose output nobody reads is the most expensive
+thing on the list. It costs compute, it produces evidence of health, and it delivers nothing.
+
+### 7.1 Stores with no non-test reader — seven
+
+`[VERIFIED]` as_of 2026-08-30T23:25:45Z, root `$PS`:
+
+| store | size | last write | why it is unconsumed |
+|---|---:|---|---|
+| `cio.operator_product.current` | 151,654 | **08-30 23:17** | every declared consumer calls `build_operator_product()` and **re-derives**. `aegis_morning_brief_delivery.py:577` merely *labels* its output `"source": "cio.operator_product.current"` without opening the file |
+| `cio.operator_product.history` | 51,791 | **08-30 23:17** | only other mention is a string label at `cio_operator_renderers.py:365` |
+| `cio.product.history` | 1,180,032 | **08-30 23:26** | only non-test refs are the writer's own path dict, the registry, a lint allow-list and a deploy manifest. Nothing, not even a test, parses it |
+| `memory.canonical` | 1,738,563 | 08-30 14:25 | write-only snapshot; the provider's own `_load()` reads the `.jsonl` event log, never the snapshot |
+| `research.hermes` | (alias of #15) | — | dead duplicate id; `"research.hermes"` appears in **zero** non-test call sites |
+| `cio.notification_policy` | MISSING | — | the filename appears exactly **twice** in the whole repo: the registry declaration and the writer's own constant |
+| `learning.weekly` | MISSING | — | **no writer and no reader.** The registry path is drifted: the live file is `data/cio/cio_weekly_learning_reviews.jsonl` (writer `cio_feedback_learning_v1.py:220`, reader `api_v3_cio.py:95`). The declared writer `multi_tier_trade_reviewer` is Postgres-only |
+
+Plus, effectively unconsumed: `cio.delivery_receipts` (sole consumer is the census that iterates
+every store id), and `research.raw` / `runtime.audit_claims` (single reader each, and that reader is
+only the generic control-plane collection endpoint).
+
+### 7.2 The scheduled producers behind them — verdict `LIVE_UNCONSUMED`
+
+These are the components that hold the verdict. Each is on a schedule, each writes on that schedule,
+and nothing reads what it writes.
+
+| module | schedule | evidence it ran | output nobody reads |
+|---|---|---|---|
+| `scripts/refresh_operator_product.py` | `[VERIFIED]` cron line 986, **`5 */6 * * *`** (every 6 h), cwd `CURRENT`, hub interpreter | artifacts written **08-30 23:17**, ~14 min before as_of | `cio.operator_product.current` **and** `.history` — **both** |
+| `scripts/cio_wake_dispatch_entrypoint.py` | `[VERIFIED]` cron line 934, **`*/5 * * * *`** (every 5 min, 24/7), cwd `CURRENT`, hub interpreter | `cio.product.history` written **08-30 23:26**, ~5 min before as_of | `cio.product.history` (its sibling `cio.product.current` **is** read by 6 consumers) |
+| `scripts/lib/agent_durable_memory.py` via `advisory_shadow_seed.py`, `build_lesson_candidates.py` | `[VERIFIED]` both are scheduled | `memory.canonical` written 08-30 14:25 | `memory.canonical` snapshot |
+
+**Finding C-13 — `refresh_operator_product.py` is the cleanest `LIVE_UNCONSUMED` component in the
+system.** It runs four times a day from the served release, spends a full operator-product build,
+writes 203 KB across two stores, and `[VERIFIED]` **nothing outside tests reads either file** —
+every consumer re-derives the same data by calling `build_operator_product()` directly. The compute
+is spent twice and the artifact is spent zero times.
+
+### 7.3 A caution against acting on this list too quickly
+
+`[VERIFIED]` `git log --reverse` places `cio_specialist_artifact.py`, `cio_notification_policy.py`,
+`cio_delivery_receipt.py` and `cio_lesson_bind.py` all at **2026-08-29 — one day before this
+census**. Their "only caller is a test" status should be read as **not yet wired**, not as decayed.
+They are recorded as `UNKNOWN`, not `DARK`.
+
+Likewise `portfolio.watchlist` (113 days) and `runtime.maturity` (63 days) look stale, but
+`[VERIFIED]` I found **no cron or systemd entry for either producer**, so their intended cadence is
+`UNKNOWN`. `portfolio.watchlist` is operator-edited (`save_watchlist` has zero callers), which is a
+coherent explanation for a 113-day-old file with 8 active readers — but I did not confirm it, so it
+stays `UNKNOWN`.
 
 ---
 
-## 8. Method register
+## 8. Verdict counts
 
-Every claim above is tagged. The techniques that changed a conclusion during this census:
+`as_of` **2026-08-30T23:30Z**, root `/home/johnclaw/r20-r24-exact-main-deploy` @ `79a3f573`,
+N = **3,449** tracked `.py` files.
 
-- `compile()` over raw bytes, never `ast.parse` — §3.1.
-- Path-suffix resolution against `git ls-files`, never basename grep — M-02, §3.4.
-- Durable artifacts, never log existence or mtime, for `last_ran` — M-03, §4.
-- Reading the producer before believing an empty surface — M-01, §1.4.
-- Checking cron **and** both systemd scopes — C-04, §2.2.
-- `${PIPESTATUS[0]}` rather than `$?` after a pipe, and testing for the specific expected exit code
-  rather than mere success — applied throughout §2.1 and §3.1.
-- `atime` was not used as evidence anywhere in this document; the filesystem is `relatime`.
+Two tables, deliberately separated. The first is **measured and complete**. The second is
+**partial**, and its largest cell is `UNKNOWN`.
+
+### 8.1 Invocation evidence — complete, every file classified
+
+| class | count | share of repo |
+|---|---:|---:|
+| TEST | 1,029 | 29.8% |
+| NO_INBOUND (nothing imports it, no scheduler names it) | 811 | 23.5% |
+| IMPORTED_BY_HTTP (in the served server's transitive closure) | 682 | 19.8% |
+| SCHEDULED (named by cron or a systemd unit) | 358 | 10.4% |
+| IMPORTED_BY_SCHEDULED | 210 | 6.1% |
+| IMPORTED_NONLIVE_ONLY | 184 | 5.3% |
+| TEST_ONLY_IMPORT | 173 | 5.0% |
+| HTTP_ENTRY | 2 | 0.1% |
+| **total** | **3,449** | **100%** |
+
+### 8.2 Verdicts — partial, and honest about it
+
+| verdict | count | share of repo | basis |
+|---|---:|---:|---|
+| `LIVE` | **1,248** | 36.18% | the 1,252-module live-evidence population (358 SCHEDULED + 682 IMPORTED_BY_HTTP + 2 HTTP_ENTRY + 210 IMPORTED_BY_SCHEDULED), **less** the 3 `LIVE_UNCONSUMED` producers and the 1 `ONE_SHOT` module below |
+| `LIVE_UNCONSUMED` | **3** | 0.09% | §7.2 — each proven to run *and* proven to have no reader |
+| `ONE_SHOT` | **1** | 0.03% | `scripts/run_paper_canary_chain.py`, reached only by cron lines 851–852, both date-guarded to a past date (§4.4). One module, two dead cron lines |
+| `UNKNOWN` | **1,168** | 33.86% | 811 NO_INBOUND + 173 TEST_ONLY_IMPORT + 184 IMPORTED_NONLIVE_ONLY — **not adjudicated** |
+| `test` (not given a live/dark verdict) | 1,029 | 29.83% | — |
+| `DARK` | **0 adjudicated** | — | see below |
+| `ORPHANED` | **0 adjudicated** | — | see below |
+| `SUPERSEDED` | **0 adjudicated** | — | see below |
+
+**`DARK`, `ORPHANED` and `SUPERSEDED` are reported as zero *adjudicated*, not as zero *existing*.**
+This is the census's central honest result and it should not be smoothed over: **1,168 modules (33.86% of the repository) could not be given a verdict from the evidence gathered in this pass.**
+Almost certainly a large majority of the 811 `NO_INBOUND` files are genuinely dark. I am not
+recording that, because §4 demonstrated four separate mechanisms by which a live component looks
+dead in this system — silent-on-success, gate-only logging, cron-redirect versus internal `LOG=`,
+and monthly/annual cadence — and because §7.3 found four modules that are one day old and look
+identical to abandoned ones. `CLAUDE.md` is explicit: never conclude "dead" on a single observation.
+
+**An honest `UNKNOWN` is a finding, not a failure.** The correct reading of this table is that the
+repository is roughly a third demonstrably live, a third tests, and a third unadjudicated — and that
+the unadjudicated third is the work item this census exists to scope.
+
+### 8.3 Scheduler totals
+
+| measure | value | as_of |
+|---|---:|---|
+| cron job lines | **492** | 23:15Z |
+| — of which belong to other projects | 2 | 23:15Z |
+| — expired (date-guarded to a past date; 1 module) | 2 | 23:15Z |
+| distinct tracked modules named by cron | 311 | 23:15Z |
+| distinct tracked modules named by systemd | 54 | 23:20Z |
+| union of scheduler-named modules | **358** | 23:20Z |
+| tradeai-family user timer units | 78 (65 enabled / 13 disabled) | 23:20Z |
+| system-level tradeai units | 3 | 23:20Z |
+| lane-registry entries (live, over HTTP) | **56** | 23:20:19Z |
+| canonical stores registered / present / missing | **34 / 28 / 6** | 23:25:45Z |
+| stores with no non-test reader | **7** | 23:25:45Z |
+| versioned schema literals / zero-consumer | **437 / 376 (86%)** | 23:25Z |
+| schema literals ever read back at runtime | **9 (2%)** | 23:25Z |
+
+---
+
+## 9. For PART 2 and later parts
+
+- **C-06 crosses the boundary.** `ControlPlane@v1.0.0` is declared independently in
+  `scripts/lib/control_plane_contract_v1.py:14` and
+  `apps/command-center-v3/src/control-plane/contractV1.ts:3`. The TS side has 2 consumers; the
+  Python side has zero. **Nothing enforces that the two strings match.** PART 2 should establish
+  whether any operator surface would detect a skew — from the backend side, nothing would.
+- **C-10 is a surface finding as much as a backend one.** The control-plane store surface serves the
+  **stale 19-entry JSON**, so **15 registered stores are invisible on it**. If PART 2 finds a page
+  listing stores, it is listing 19 of 34. That page is not wrong about what it shows; it is silent
+  about what it omits.
+- **C-07 / C-12 — the registry publishes unvalidated metadata to the GUI.**
+  `control_plane_api._stores()` echoes `writer` and `schema` fields straight through, and §6.3 shows
+  at least 11 declared writers naming modules that do not exist or do not write. PART 2 should
+  establish whether these strings are rendered to the operator, and whether they are rendered as
+  facts.
+- **C-01 constrains PART 2's method.** `CURRENT` rotated **three times in fifteen minutes** during
+  this census. Any PART 2 measurement taken against `CURRENT` must record the concrete release hash
+  or it will not be reproducible.
+- **C-09 should be corrected in `CLAUDE.md`.** The standing rules cite a root-insensitivity that
+  measurement refutes. Whoever owns that file should fix the example; I have not edited it.
+
+---
+
+## 10. Method register
+
+Every claim above carries `[VERIFIED]`, `[CODE]` or `[DOC-CLAIM]`. The techniques that **changed a
+conclusion** during this census, each of which had already cost this programme time before:
+
+- **`compile()` over raw bytes, never `ast.parse`** — §3.1. All 3,449 files compile.
+- **Path-suffix resolution against `git ls-files`, never basename grep** — M-02/§3.4. Basename
+  matching claimed 525 scheduled modules; the true figure is 358. Three spot-checked members of the
+  525 were false positives.
+- **Durable artifacts, never log existence or mtime, for `last_ran`** — M-03/§4. Nineteen jobs
+  looked stale; **none** was dead.
+- **Reading the producer before believing an empty surface** — M-01/§1.4. I withdrew a false defect
+  against a healthy endpoint whose zero was produced by my own parser.
+- **Checking cron *and* both systemd scopes** — C-04. `tradeai-continuous.timer` is disabled at user
+  level and enabled and firing at system level.
+- **Following symbols to the real write call** — §6.2. Two writes in the registry
+  (`cio.product.current`, `cio.lesson_binds`) are unreachable by grepping their filename; one reader
+  is a local import inside a `try:`.
+- **Testing the specific expected exit code**, and `${PIPESTATUS[0]}` rather than `$?` after a pipe.
+- **`atime` was not used as evidence anywhere in this document.** The filesystem is `relatime`.
+
+Claims I made during this census and then **withdrew after measurement refuted them**: the
+lane-registry "empty endpoint" defect (§1.4), and the 525-module scheduled count (§3.4). Both are
+left in the document rather than deleted, per the working-style rule that the failures belong in the
+write-up and not just the final state.
