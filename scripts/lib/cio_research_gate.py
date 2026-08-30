@@ -29,6 +29,7 @@ decides nothing; it executes what this returns.
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any, Optional
 
 GATE_VERSION = "ResearchNeedDecision@v2"
@@ -137,6 +138,28 @@ def _source_index_verdict(inp: dict[str, Any],
         )
     except Exception:
         return None
+
+
+def _librarian_filter(corpus: dict[str, Any], now: datetime,
+                      root: Any = None) -> dict[str, Any]:
+    """Apply SourceLibrarian@v1 shelf life to a corpus verdict, fail-open.
+
+    Fail-open on purpose: if the librarian cannot be consulted, the corpus
+    keeps whatever verdict it already had. A staleness gate that fails CLOSED
+    would silently route every corpus_hit to a paid call the moment its store
+    was unreadable — the exact failure mode this ladder exists to prevent.
+    """
+    if not corpus:
+        return corpus
+    try:
+        from scripts.lib.cio_research_librarian import filter_corpus
+    except Exception:                                            # noqa: BLE001
+        return corpus
+    try:
+        return filter_corpus(corpus, now=now,
+                             root=Path(root) if root else None)
+    except Exception:                                            # noqa: BLE001
+        return corpus
 
 
 def _has_execution_language(text: Any) -> bool:
@@ -253,6 +276,12 @@ def decide(inp: dict[str, Any], *, now: Optional[datetime] = None) -> dict[str, 
         corpus = dict(corpus)
         corpus["closes"] = False
         corpus["reason"] = "source_index_stale_corpus_may_not_close"
+    # Slice D: a graded source has a shelf life. SourceLibrarian@v1 drops any
+    # source_ref whose grade-derived `stale_after_days` has lapsed, and
+    # un-closes the corpus when nothing eligible survives. It has an opinion
+    # ONLY about sources carrying a grade and a last_seen, so an ungraded
+    # corpus behaves exactly as it did before.
+    corpus = _librarian_filter(corpus, now, inp.get("root"))
     if corpus.get("closes"):
         tried.append("corpus_index")
         return _decision("corpus_hit", corpus.get("reason") or "corpus_closed_gap",
