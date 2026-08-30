@@ -123,10 +123,16 @@ def _build_portfolio_context(portfolio, analysis, risk, perf_history,
     flag_lines = "\n".join(
         f"  [{f.get('severity','?')}] {f.get('message','')[:100]}" for f in (flags or [])[:5]
     ) if flags else "  None"
+    # stops.json also carries top-level freshness metadata.  Only mapping
+    # values represent stop records; metadata must never abort the advisory
+    # stage with an AttributeError.
     stop_lines = "\n".join(
         f"  {sym}: stop=${d.get('stop',0)} notes={d.get('notes','')}"
         for sym, d in stops_data.items()
+        if isinstance(d, dict)
     ) if stops_data else "  None configured"
+    if not stop_lines:
+        stop_lines = "  None configured"
 
     div_total = divs.get("total_annual_income", 0) or 0
     if not div_total:
