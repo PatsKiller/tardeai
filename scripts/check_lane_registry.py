@@ -48,6 +48,11 @@ def main() -> int:
     ap.add_argument("--fail-on-new", action="store_true",
                     help="exit 1 on any violation (CI mode)")
     ap.add_argument("--registry", default=None)
+    ap.add_argument("--discovery-json", default=None,
+                    help="read the scheduler inventory from this file instead of "
+                         "the live host. The mutation test needs it: CI has no "
+                         "crontab and no systemd, so live discovery returns empty "
+                         "there and a gate that can only pass would look correct.")
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args()
 
@@ -76,7 +81,15 @@ def main() -> int:
         return EXIT_CANNOT_RUN
 
     errors = validate_registry(reg)
-    found = discover_all()
+    if args.discovery_json:
+        try:
+            found = json.loads(Path(args.discovery_json).read_text(encoding="utf-8"))
+        except Exception as e:
+            print(f"lane-registry gate CANNOT RUN: discovery unreadable: {e}",
+                  file=sys.stderr)
+            return EXIT_CANNOT_RUN
+    else:
+        found = discover_all()
     undeclared = find_undeclared(reg, found)
 
     active = sum(1 for r in rows if r.get("state") == STATE_ACTIVE)

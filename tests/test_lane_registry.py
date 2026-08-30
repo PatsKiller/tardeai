@@ -117,10 +117,12 @@ def test_a_retired_lane_keeps_its_row_and_its_reason():
 
 # ── acceptance 3 — CI gate: undeclared job fails, declaring it passes ──────
 
-def _gate(registry=None, extra=()):
+def _gate(registry=None, extra=(), discovery=None):
     cmd = [sys.executable, str(GATE), "--fail-on-new", *extra]
     if registry:
         cmd += ["--registry", str(registry)]
+    if discovery:
+        cmd += ["--discovery-json", str(discovery)]
     return subprocess.run(cmd, cwd=str(ROOT), capture_output=True,
                           text=True, timeout=300).returncode
 
@@ -130,22 +132,42 @@ def test_the_gate_is_green_on_this_tree():
 
 
 def test_a_scheduled_job_with_no_row_fails_the_build(tmp_path):
-    """Mutation test. A gate that can only pass is not a gate."""
+    """Mutation test. A gate that can only pass is not a gate.
+
+    Discovery is injected rather than read from the host. The first version of
+    this test read the live crontab and systemd, so it passed on a developer box
+    and failed in CI — where there is no crontab and no systemd, live discovery
+    returns empty, and nothing can ever be undeclared. A mutation test that
+    depends on host state is not testing the gate.
+    """
     reg = json.loads((ROOT / "config" / "lane_registry.json").read_text())
     declared = {r["scheduler"].get("expression") for r in reg["lanes"]}
     victims = [b for b in reg["undeclared_baseline"]
                if b.endswith(".timer") and b not in declared]
     assert victims, "need a baselined timer to remove"
+
+    disco = tmp_path / "discovery.json"
+    disco.write_text(json.dumps({
+        "cron": [], "cron_commented": [],
+        "systemd": [{"expression": victims[0], "enabled_state": "enabled"}],
+    }), encoding="utf-8")
+
+    p = tmp_path / "mutated.json"
     reg["undeclared_baseline"] = [b for b in reg["undeclared_baseline"]
                                   if b != victims[0]]
-    p = tmp_path / "mutated.json"
     p.write_text(json.dumps(reg), encoding="utf-8")
-    assert _gate(p) == 1, "removing a job's declaration must go red"
+    assert _gate(p, discovery=disco) == 1, "removing a declaration must go red"
 
     # ...and restoring it goes green again.
     reg["undeclared_baseline"].append(victims[0])
     p.write_text(json.dumps(reg), encoding="utf-8")
-    assert _gate(p) == 0
+    assert _gate(p, discovery=disco) == 0
+
+
+def test_unreadable_discovery_is_cannot_run_not_a_pass(tmp_path):
+    reg = tmp_path / "r.json"
+    reg.write_text((ROOT / "config" / "lane_registry.json").read_text(), encoding="utf-8")
+    assert _gate(reg, discovery=tmp_path / "absent.json") == 2
 
 
 def test_a_row_without_an_output_signal_fails(tmp_path):
