@@ -217,6 +217,47 @@ class InstrumentRecordStore:
             out[k] = out.get(k, 0) + 1
         return out
 
+    def history(self, key: str) -> list[dict[str, Any]]:
+        """All append rows for ``subject_key`` in file order (oldest → newest).
+
+        Corrupt / partial lines are skipped the same way ``_load`` skips them,
+        so a truncated final write does not hide earlier complete versions.
+        """
+        want = str(key)
+        out: list[dict[str, Any]] = []
+        try:
+            if not self.path.is_file():
+                return out
+            with open(self.path, encoding="utf-8", errors="replace") as fh:
+                for line in fh:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        row = json.loads(line)
+                    except Exception:                            # noqa: BLE001
+                        continue
+                    if str(row.get("subject_key") or "") == want:
+                        out.append(row)
+        except OSError:
+            return out
+        return out
+
+    def rollback(self, key: str, *, to_index: int = -2) -> dict[str, Any]:
+        """Re-append a prior version as the new tip (append-only rollback).
+
+        Default ``to_index=-2`` restores the previous tip. Index is into
+        ``history(key)`` (0 = first mint). Raises ``IndexError`` when the
+        subject has no such version. Does not rewrite or delete history.
+        """
+        versions = self.history(key)
+        if not versions:
+            raise IndexError(f"no history for {key}")
+        prior = dict(versions[to_index])
+        prior["rollback_of_updated_ts"] = prior.get("updated_ts")
+        prior["rollback_source_index"] = to_index if to_index >= 0 else len(versions) + to_index
+        return self.upsert(prior)
+
     # --------------------------------------------------------------- write
     def upsert(self, record: dict[str, Any]) -> dict[str, Any]:
         key = str(record.get("subject_key") or "")
@@ -233,6 +274,22 @@ class InstrumentRecordStore:
         proj = self._load()
         proj[key] = row
         return row
+
+
+def thesis_summary(record: Optional[dict[str, Any]]) -> dict[str, Any]:
+    """Operator-facing thesis slice recovered from a record version."""
+    if not record:
+        return {"thesis_ref": None, "what": None, "thesis_fit": None}
+    narr = record.get("cc_narrative") or {}
+    if not isinstance(narr, dict):
+        narr = {}
+    return {
+        "thesis_ref": record.get("thesis_ref"),
+        "what": narr.get("what"),
+        "thesis_fit": narr.get("thesis_fit"),
+        "next_research_question": record.get("next_research_question"),
+        "updated_ts": record.get("updated_ts"),
+    }
 
 
 # ── cognition apply ────────────────────────────────────────────────────────

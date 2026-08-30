@@ -12,8 +12,8 @@ Resume cursor: first phase/package with status != DONE.
 
 | Field | Value |
 |-------|--------|
-| CURRENT pin | `be09945b` (#679) |
-| origin/main | `be09945b` |
+| CURRENT pin | `852ecd47` (#681) |
+| origin/main | `852ecd47` |
 | `/api/v2/health` | 200 |
 | `/v3/cio` | 200 |
 | lineage complete_to_checkpoint | **406 / 752 (54.0%)** |
@@ -21,7 +21,7 @@ Resume cursor: first phase/package with status != DONE.
 | first open stage | research 640 · cio 112 |
 | rails | MBI=0 · READ_ONLY_ADVISORY · no broker write · no notify-on |
 | DRIVE | FAIL until gog upsert (optional) |
-| phase cursor | **P0 kickoff** → next WS1 after promote |
+| phase cursor | **P3 DONE** → next first PENDING (P1-WS1) |
 
 ---
 
@@ -29,13 +29,13 @@ Resume cursor: first phase/package with status != DONE.
 
 | ID | Title | Status | PR | sha | Proof |
 |----|-------|--------|----|-----|-------|
-| P0 | Master plan + scoreboard + gap register | DONE | *(this PR)* | *(fill after promote)* | plan in docs/audits; lineage re-measure 54% |
+| P0 | Master plan + scoreboard + gap register | DONE | #681 | `852ecd47` | plan in docs/audits; lineage re-measure 54% |
 | P1-WS1 | Architecture as-built pack | PENDING | | | |
 | P1-WS2 | Event lifecycle census baseline | PENDING | | | |
 | P1-WS3 | Operator S0 workflow + failure battery | PENDING | | | |
 | P2-WS4 | Identity confidence score | PENDING | | | |
 | P2-WS5 | HELD/EXIT/WATCH/CASH/DUST matrix | PENDING | | | |
-| P3 | InstrumentRecord persistence drills | PENDING | | | |
+| P3 | InstrumentRecord persistence drills | DONE | #682 | `72bc42c9` | tmp cold-start/partial-write/rollback PASS; see diligence audit |
 | P4 | Research free / residual / model gov | PENDING | | | |
 | P5 | Specialist N=100 sample | PENDING | | | |
 | P6 | Council determinism | PENDING | | | |
