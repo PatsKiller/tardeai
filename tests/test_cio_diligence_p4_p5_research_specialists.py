@@ -98,7 +98,8 @@ def test_governance_census_json_shape(tmp_path: Path):
 
 def test_specialist_artifact_schema_rejects_unknown_provider():
     with pytest.raises(ValueError):
-        build(artifact_id="a1", provider="not_a_provider", outcome="VALID")
+        build(artifact_id="a1", provider="not_a_provider", outcome="VALID",
+              workflow_id="wf_x")
 
 
 def test_specialist_sample_audit_on_fixtures(tmp_path: Path):
@@ -106,15 +107,22 @@ def test_specialist_sample_audit_on_fixtures(tmp_path: Path):
     cio = root / "data" / "cio"
     cio.mkdir(parents=True)
 
-    live = build(
-        artifact_id="live_1",
-        provider="grok_critique",
-        outcome="PARTIAL",
-        workflow_id=None,
-        plan_id="plan_x",
-        research_id="res_live",
-        cost_usd=0.0,
-    )
+    # Historical live orphan (null workflow_id) — written as raw jsonl, not via
+    # build()/append() which now refuse unbound new writes (G-SPEC-01).
+    live = {
+        "schema": "SpecialistArtifact@v1-lite",
+        "artifact_id": "live_1",
+        "workflow_id": None,
+        "plan_id": "plan_x",
+        "research_id": "res_live",
+        "provider": "grok_critique",
+        "cost_usd": 0.0,
+        "outcome": "PARTIAL",
+        "source_refs": [],
+        "created_at": "2026-08-30T00:00:00+00:00",
+        "authority": "READ_ONLY_ADVISORY",
+        "financial_action": False,
+    }
     (cio / "cio_specialist_artifacts.jsonl").write_text(
         json.dumps(live) + "\n", encoding="utf-8"
     )
@@ -172,12 +180,21 @@ def test_specialist_sample_marks_orphan_without_lineage_or_ir(tmp_path: Path):
     root = tmp_path
     cio = root / "data" / "cio"
     cio.mkdir(parents=True)
-    live = build(
-        artifact_id="orphan_1",
-        provider="stub",
-        outcome="VALID",
-        research_id="res_missing",
-    )
+    # Historical unbound row (simulates pre-G-SPEC-01 live store).
+    live = {
+        "schema": "SpecialistArtifact@v1-lite",
+        "artifact_id": "orphan_1",
+        "workflow_id": None,
+        "plan_id": None,
+        "research_id": "res_missing",
+        "provider": "stub",
+        "cost_usd": 0.0,
+        "outcome": "VALID",
+        "source_refs": [],
+        "created_at": "2026-08-30T00:00:00+00:00",
+        "authority": "READ_ONLY_ADVISORY",
+        "financial_action": False,
+    }
     (cio / "cio_specialist_artifacts.jsonl").write_text(
         json.dumps(live) + "\n", encoding="utf-8"
     )

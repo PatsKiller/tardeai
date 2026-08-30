@@ -10,6 +10,12 @@ Distinct from `cio_specialist_artifacts.py` (plural), which extracts advisory
 positions out of agent handoffs. This one records provider, cost and outcome
 for a research artifact so the join and the notification policy have something
 auditable to read.
+
+G-SPEC-01 (2026-08-30): *new* writes MUST stamp a non-empty `workflow_id`.
+`build()` raises; `append()` returns a structured refusal. Historical jsonl
+rows with null/empty workflow_id remain readable (READ_ONLY_ADVISORY —
+no silent DELETE/rewrite). `validate()` stays historical-tolerant unless
+`new_write=True`.
 """
 from __future__ import annotations
 
@@ -31,21 +37,36 @@ OUTCOMES = ("VALID", "PARTIAL", "FAIL", "execution_language", "cost_cap")
 # authorises a paid call; this module only records that one happened.
 _NO_LIVE_CALL = True
 
+# G-SPEC-01 new-write bind policy (does not rewrite historical rows).
+NEW_WRITE_REQUIRES_WORKFLOW_ID = True
+MISSING_WORKFLOW_ID = "missing_workflow_id"
+
 
 def _utc() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def build(*, workflow_id: str | None = None, plan_id: str | None = None,
+def workflow_id_bound(workflow_id: Any) -> bool:
+    """True iff workflow_id is a non-empty string (after strip)."""
+    return isinstance(workflow_id, str) and bool(workflow_id.strip())
+
+
+def build(*, workflow_id: str, plan_id: str | None = None,
           research_id: str | None = None, artifact_id: str,
           provider: str, outcome: str, cost_usd: float = 0.0,
           source_refs: Optional[list[dict[str, Any]]] = None,
           created_at: str | None = None) -> dict[str, Any]:
-    """Build one artifact row. Raises on an unknown provider or outcome.
+    """Build one artifact row. Raises on unknown provider/outcome or unbound wf.
 
     Raising beats coercing: an unrecognised provider silently normalised to
-    "stub" would make a paid call look free in the cost ledger.
+    "stub" would make a paid call look free in the cost ledger. G-SPEC-01:
+    null/empty workflow_id raises — builders used in tests should fail loud.
     """
+    if not workflow_id_bound(workflow_id):
+        raise ValueError(
+            "workflow_id is required for new SpecialistArtifact writes "
+            f"(G-SPEC-01); got {workflow_id!r}"
+        )
     if provider not in PROVIDERS:
         raise ValueError(f"unknown provider: {provider!r} (expected {PROVIDERS})")
     if outcome not in OUTCOMES:
@@ -61,7 +82,7 @@ def build(*, workflow_id: str | None = None, plan_id: str | None = None,
     return {
         "schema": SPECIALIST_ARTIFACT_SCHEMA,
         "artifact_id": str(artifact_id),
-        "workflow_id": workflow_id,
+        "workflow_id": str(workflow_id).strip(),
         "plan_id": plan_id,
         "research_id": research_id,
         "provider": provider,
@@ -74,8 +95,13 @@ def build(*, workflow_id: str | None = None, plan_id: str | None = None,
     }
 
 
-def validate(row: dict[str, Any]) -> list[str]:
-    """Return a list of problems. Empty means valid."""
+def validate(row: dict[str, Any], *, new_write: bool = False) -> list[str]:
+    """Return a list of problems. Empty means valid.
+
+    Historical rows with null workflow_id remain structurally valid
+    (`new_write=False`, default). New-write path (`new_write=True`) adds
+    `missing_workflow_id` when unbound — used by `append()`.
+    """
     problems: list[str] = []
     if row.get("schema") != SPECIALIST_ARTIFACT_SCHEMA:
         problems.append("wrong_schema")
@@ -89,6 +115,10 @@ def validate(row: dict[str, Any]) -> list[str]:
         problems.append("bad_cost")
     if row.get("financial_action") is not False:
         problems.append("financial_action_must_be_false")
+    if new_write and NEW_WRITE_REQUIRES_WORKFLOW_ID and not workflow_id_bound(
+        row.get("workflow_id")
+    ):
+        problems.append(MISSING_WORKFLOW_ID)
     return problems
 
 
@@ -97,15 +127,28 @@ def store_path(root: Path | str) -> Path:
 
 
 def append(root: Path | str, row: dict[str, Any]) -> dict[str, Any]:
-    """Append one validated artifact. Used by tests and the join only."""
-    problems = validate(row)
+    """Append one validated *new-write* artifact.
+
+    Jobs must not crash on missing workflow_id: returns a structured refusal
+    (`wrote=False`, `refused=True`, `reason=missing_workflow_id`) instead of
+    raising. Does not rewrite or delete historical rows.
+    """
+    problems = validate(row, new_write=True)
     if problems:
-        return {"wrote": False, "problems": problems}
+        refused = MISSING_WORKFLOW_ID in problems
+        out: dict[str, Any] = {
+            "wrote": False,
+            "problems": problems,
+            "refused": refused,
+        }
+        if refused:
+            out["reason"] = MISSING_WORKFLOW_ID
+        return out
     p = store_path(root)
     p.parent.mkdir(parents=True, exist_ok=True)
     with p.open("a", encoding="utf-8") as fh:
         fh.write(json.dumps(row, ensure_ascii=False) + "\n")
-    return {"wrote": True, "problems": [], "path": str(p)}
+    return {"wrote": True, "problems": [], "refused": False, "path": str(p)}
 
 
 def load(root: Path | str) -> list[dict[str, Any]]:

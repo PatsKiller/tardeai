@@ -226,9 +226,15 @@ def critique_live(artifact: dict[str, Any], *, plan_id: Optional[str] = None,
 
 
 def to_artifact(result: dict[str, Any], *, artifact_id: str,
+                workflow_id: str,
                 plan_id: Optional[str] = None,
                 research_id: Optional[str] = None) -> dict[str, Any]:
-    """Render the critique as a SpecialistArtifact row."""
+    """Render the critique as a SpecialistArtifact row.
+
+    G-SPEC-01: `workflow_id` is required (non-empty). `build()` raises if
+    unbound so test builders fail loud; job writers should pass plan/research
+    context workflow_id through.
+    """
     from scripts.lib.cio_specialist_artifact import build as build_artifact
 
     outcome = {VALID: "VALID", PARTIAL: "PARTIAL", REJECT: "FAIL"}[
@@ -237,7 +243,8 @@ def to_artifact(result: dict[str, Any], *, artifact_id: str,
         outcome = "execution_language"
     return build_artifact(
         artifact_id=artifact_id, provider="grok_critique", outcome=outcome,
-        cost_usd=float(result.get("cost_usd") or 0.0), plan_id=plan_id,
+        cost_usd=float(result.get("cost_usd") or 0.0),
+        workflow_id=workflow_id, plan_id=plan_id,
         research_id=research_id,
         source_refs=[{"verdict": result.get("verdict"),
                       "reasons": result.get("reasons"),

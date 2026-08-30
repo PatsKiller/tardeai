@@ -134,8 +134,13 @@ def build_proof(symbol: str, *, repo_root: Path | str,
 
 
 def to_artifact(proof: dict[str, Any], *,
-                plan_id: Optional[str] = None) -> Optional[dict[str, Any]]:
-    """Render a PROOF as a SpecialistArtifact row. None unless it is a proof."""
+                workflow_id: str,
+                plan_id: Optional[str] = None,
+                research_id: Optional[str] = None) -> Optional[dict[str, Any]]:
+    """Render a PROOF as a SpecialistArtifact row. None unless it is a proof.
+
+    G-SPEC-01: `workflow_id` is required for the SpecialistArtifact bind.
+    """
     if proof.get("status") != "PROOF":
         return None
     from scripts.lib.cio_specialist_artifact import build as build_artifact
@@ -145,7 +150,8 @@ def to_artifact(proof: dict[str, Any], *,
     acc = str(filing.get("accession_number") or "unknown")
     return build_artifact(
         artifact_id=f"edgar_{issuer.get('symbol')}_{acc}",
-        provider="edgar", outcome="VALID", cost_usd=0.0, plan_id=plan_id,
+        provider="edgar", outcome="VALID", cost_usd=0.0,
+        workflow_id=workflow_id, plan_id=plan_id, research_id=research_id,
         source_refs=[{
             "source_id": "sec_edgar_full_text",
             "issuer": issuer.get("issuer"),
