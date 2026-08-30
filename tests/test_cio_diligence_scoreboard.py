@@ -119,15 +119,28 @@ def test_lineage_snapshot_is_bounded_by_the_live_producer():
     )
 
 
-def test_current_pin_is_a_real_commit():
-    """The pinned SHA must exist in this repository, not merely look like one."""
-    pin = json.loads(JS.read_text(encoding="utf-8"))["now"]["origin_main_full"]
-    proc = subprocess.run(
-        ["git", "-C", str(ROOT), "cat-file", "-t", pin],
-        capture_output=True, text=True,
+def _git(*args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["git", "-C", str(ROOT), *args], capture_output=True, text=True,
     )
-    if proc.returncode != 0 and "Not a git repository" in proc.stderr:
+
+
+def test_current_pin_is_a_real_commit():
+    """The pinned SHA must exist in this repository, not merely look like one.
+
+    Skipped where the object genuinely cannot be present -- no git, or a
+    shallow clone that does not carry history -- rather than asserted anyway.
+    A skip states that nothing was checked; a literal comparison against a
+    copy of the same SHA would have claimed a check it never made.
+    """
+    probe = _git("rev-parse", "--is-shallow-repository")
+    if probe.returncode != 0:
         pytest.skip("not a git checkout")
+    if probe.stdout.strip() == "true":
+        pytest.skip("shallow clone: commit objects are not all present")
+
+    pin = json.loads(JS.read_text(encoding="utf-8"))["now"]["origin_main_full"]
+    proc = _git("cat-file", "-t", pin)
     assert proc.returncode == 0, f"pinned SHA {pin} is not an object here: {proc.stderr}"
     assert proc.stdout.strip() == "commit", f"{pin} is a {proc.stdout.strip()}, not a commit"
 
