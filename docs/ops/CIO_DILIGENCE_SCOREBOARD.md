@@ -23,7 +23,7 @@ Resume cursor: first phase/package with status != DONE.
 | first open stage | research 640 · cio 112 |
 | rails | MBI=0 · READ_ONLY_ADVISORY · no broker write · no notify-on · no Telegram producer |
 | DRIVE | FAIL until gog upsert (optional) |
-| phase cursor | **P1-WS1** (earliest PENDING) · P1-WS3 + P2-WS4/WS5 + P6/P7/P8 DONE out of order |
+| phase cursor | **P1-WS1** (earliest PENDING) · P1-WS3 + P2-WS4/WS5 + P6/P7/P8 DONE out of order · P4/P5 DONE this PR |
 
 ---
 
@@ -38,8 +38,8 @@ Resume cursor: first phase/package with status != DONE.
 | P2-WS4 | Identity confidence score | **DONE** | *(this PR)* | *(fill after merge)* | `docs/audits/diligence/P2_WS4_*`; production resolvable **98.9%**; ICS def shipped |
 | P2-WS5 | HELD/EXIT/WATCH/CASH/DUST matrix | **DONE** | *(this PR)* | *(fill after merge)* | `docs/audits/diligence/P2_WS5_*`; SCHG Surface A EXITED; dust table |
 | P3 | InstrumentRecord persistence drills | PENDING | | | |
-| P4 | Research free / residual / model gov | PENDING | | | |
-| P5 | Specialist N=100 sample | PENDING | | | |
+| P4 | Research free / residual / model gov | DONE | *(this PR)* | | `docs/audits/diligence/P4_*` + census + `test_cio_diligence_p4_p5_*` |
+| P5 | Specialist N=100 sample | DONE | *(this PR)* | | `docs/audits/diligence/P5_*`; G-SPEC-01 evidence; exit gate FAIL honest |
 | P6 | Council determinism | DONE | *(#683)* | | `docs/audits/diligence/P6_*` + `test_cio_diligence_p6_*` |
 | P7 | Notification matrix (CC-first) | DONE | *(#683)* | | `docs/audits/diligence/P7_*` + `test_cio_diligence_p7_*`; G-NOTIFY-01 evidence |
 | P8 | Outcome/lesson MBI partition | DONE | *(#683)* | | `docs/audits/diligence/P8_*` + `test_cio_diligence_p8_*`; G-MBI-01 CI gate |

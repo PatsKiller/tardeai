@@ -43,6 +43,8 @@
       "P1-WS3",
       "P2-WS4",
       "P2-WS5",
+      "P4",
+      "P5",
       "P6",
       "P7",
       "P8"
@@ -99,11 +101,29 @@
     },
     "P4": {
       "title": "Research free / residual / model gov",
-      "status": "PENDING"
+      "status": "DONE",
+      "pr": null,
+      "sha": null,
+      "proof": [
+        "docs/audits/diligence/P4_RESEARCH_ENGINE_REVIEW_2026-08-30.md",
+        "docs/audits/diligence/P4_RESEARCH_GOVERNANCE_CENSUS_2026-08-30.json",
+        "scripts/cio_research_governance_census.py",
+        "tests/test_cio_diligence_p4_p5_research_specialists.py"
+      ]
     },
     "P5": {
       "title": "Specialist N=100 sample",
-      "status": "PENDING"
+      "status": "DONE",
+      "pr": null,
+      "sha": null,
+      "gap": "G-SPEC-01",
+      "exit_gate": "FAIL_honest_orphans_and_bind_rates",
+      "proof": [
+        "docs/audits/diligence/P5_SPECIALIST_SAMPLE_2026-08-30.md",
+        "docs/audits/diligence/P5_SPECIALIST_SAMPLE_EVIDENCE_2026-08-30.json",
+        "scripts/cio_specialist_sample_audit.py",
+        "tests/test_cio_diligence_p4_p5_research_specialists.py"
+      ]
     },
     "P6": {
       "title": "Council determinism",
