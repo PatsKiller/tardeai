@@ -1,5 +1,7 @@
 """Tests for ATTR-1 attribution benchmark truth layer."""
 import subprocess, sys, json
+
+import pytest
 from pathlib import Path
 
 PROJ = Path(__file__).resolve().parent.parent
@@ -31,23 +33,48 @@ def test_attribution_has_real_data():
     assert data.get("has_data") is True
 
 
-def test_no_fake_alpha():
-    """Alpha must be computed from real CAGR values, not hardcoded."""
+def test_alpha_is_internally_consistent_with_its_own_cagrs():
+    """alpha_annualized must equal port_cagr - bench_cagr in the same file.
+
+    NAMING NOTE. This was called `test_no_fake_alpha` and its docstring claimed
+    alpha "must be computed from real CAGR values, not hardcoded". It cannot
+    show that. All three numbers are read from
+    data/portfolios/state/performance_attribution.json, so the test asks the
+    artifact to vouch for itself: a wholly fabricated but internally consistent
+    file passes. Measured 2026-08-30 against the deployed tree -- port_cagr
+    16.85, bench_cagr 16.77, alpha 0.08 -- it passed on a file four days stale.
+
+    What it does prove is worth keeping: the producer did not derive alpha by
+    some other route than the difference it reports. It is named for that now.
+    Detecting a fabricated CAGR needs the producer re-run against the snapshot
+    and price stores, which this test does not do.
+    """
     data = json.loads((STATE / "performance_attribution.json").read_text())
-    if data.get("alpha_annualized") is not None:
-        # Alpha = port_cagr - bench_cagr
-        port = data.get("port_cagr")
-        bench = data.get("bench_cagr")
-        assert port is not None and bench is not None, "Alpha exists but CAGR values are null"
-        expected = round(port - bench, 2)
-        assert abs(data["alpha_annualized"] - expected) < 0.1, f"Alpha {data['alpha_annualized']} != port-bench {expected}"
+    alpha = data.get("alpha_annualized")
+    if alpha is None:
+        # Previously an `if ... is not None:` wrapper, so a null alpha made the
+        # whole test pass silently -- the "no fake alpha" gate was green
+        # precisely when there was no alpha to check. Skip states that.
+        pytest.skip("alpha_annualized is null; nothing to check")
+    port = data.get("port_cagr")
+    bench = data.get("bench_cagr")
+    assert port is not None and bench is not None, "Alpha exists but CAGR values are null"
+    expected = round(port - bench, 2)
+    assert abs(alpha - expected) < 0.1, f"Alpha {alpha} != port-bench {expected}"
 
 
-def test_no_fake_benchmark():
-    """Benchmark CAGR must come from real price data."""
+def test_benchmark_cagr_declares_enough_history():
+    """A bench_cagr must be accompanied by a snapshot_count that supports it.
+
+    Same caveat as above, stated rather than implied: snapshot_count is the
+    artifact's own claim about its input depth, not a count taken from the
+    snapshot store. This rejects a file that admits to thin history; it cannot
+    reject one that misreports it.
+    """
     data = json.loads((STATE / "performance_attribution.json").read_text())
-    if data.get("bench_cagr") is not None:
-        assert data.get("snapshot_count", 0) >= 30, "Benchmark CAGR with insufficient data"
+    if data.get("bench_cagr") is None:
+        pytest.skip("bench_cagr is null; nothing to check")
+    assert data.get("snapshot_count", 0) >= 30, "Benchmark CAGR with insufficient data"
 
 
 def test_insufficient_history_returns_reason():
