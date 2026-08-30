@@ -115,6 +115,7 @@ GATES = [
     ]),
     ("ci_self_guards", [
         "tests/test_ci_test_coverage_gate.py",
+        "tests/test_wake_turn_effect.py",
     ]),
     ("r13_institutional", [
         "tests/test_r13_institution.py",
