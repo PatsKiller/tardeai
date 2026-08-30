@@ -491,9 +491,21 @@ def pull_brave_aplus(symbol: str, score: int, conn) -> bool:
         """)
         if cur.fetchone()[0] >= 3:
             return False
+        # Budget BEFORE the call, and a budget that cannot be established denies.
+        # This caller held its own client, so its calls were never counted.
+        try:
+            from scripts.lib.search_budget import check as _budget_check, record as _budget_record
+        except ImportError:
+            from lib.search_budget import check as _budget_check, record as _budget_record  # type: ignore
+        _verdict = _budget_check('brave')
+        if not _verdict['allowed']:
+            _report_source('brave_search', False,
+                           error=f"budget: {_verdict['reason']}")
+            return False
         resp = requests.get('https://api.search.brave.com/res/v1/news/search',
             headers={'Accept': 'application/json', 'X-Subscription-Token': brave_key},
             params={'q': f'{symbol} stock news', 'count': 5, 'freshness': 'pd'}, timeout=10)
+        _budget_record('brave', allowed=True, caller='symbol_enrichment')
         if resp.status_code in (402, 429):
             _report_source('brave_search', False, error=f'HTTP {resp.status_code} (budget/rate-limit)')
             return False

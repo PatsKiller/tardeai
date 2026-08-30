@@ -45,6 +45,14 @@ def _brave_search(query: str, max_results: int = 5) -> List[Dict]:
     key = _get_brave_key()
     if not key:
         return []
+    # brave_search.CALLER_CAPS declared `web_news_fetcher: 5` while this module
+    # held its own client — a cap that governed nothing.
+    try:
+        from scripts.lib.search_budget import guard as _sb_guard
+    except ImportError:
+        from lib.search_budget import guard as _sb_guard  # type: ignore
+    if not _sb_guard("brave", "web_news_fetcher"):
+        return []
     try:
         url = (f"https://api.search.brave.com/res/v1/web/search"
                f"?q={urllib.parse.quote(query)}&count={max_results}&freshness=pw")

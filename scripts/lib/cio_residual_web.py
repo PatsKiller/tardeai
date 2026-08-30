@@ -404,6 +404,17 @@ def _live_transport(request: dict[str, Any]) -> dict[str, Any]:
     from scripts.lib.searxng_client import searx_search       # noqa: PLC0415
     from llm_lane import generate                             # noqa: PLC0415
 
+    # Record the pool's state alongside the answer. A thin answer that looks
+    # identical to a full one is the failure this programme exists to remove:
+    # on 2026-08-30 a ten-result response came entirely from one engine, with
+    # three of four CAPTCHA-suspended or rate-limited, and nothing said so.
+    try:
+        from scripts.lib.search_health import pool_health   # noqa: PLC0415
+        _pool = pool_health(url=request.get("searx_url"))
+    except Exception as _e:
+        _pool = {"impaired": None, "degradation_note":
+                 f"pool health unavailable: {type(_e).__name__}: {_e}"}
+
     hits = searx_search(
         search_query_from_question(request.get("query") or request.get("question") or ""),
         limit=int(request.get("limit") or 6),
@@ -451,6 +462,11 @@ def _live_transport(request: dict[str, Any]) -> dict[str, Any]:
         "still_unresolved": list(request.get("question_ids") or []),
         "source_urls": urls,
         "raw": text,
+        # The record says how good its sources could have been. `impaired=True`
+        # means this answer is narrower than its length suggests.
+        "search_pool": _pool,
+        "search_pool_impaired": _pool.get("impaired"),
+        "search_degradation_note": _pool.get("degradation_note"),
     }
 
 
