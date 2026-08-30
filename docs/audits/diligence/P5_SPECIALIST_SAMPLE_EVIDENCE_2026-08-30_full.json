@@ -1,0 +1,2581 @@
+{
+  "schema": "CIOSpecialistSampleAudit@v1",
+  "authority": "READ_ONLY_ADVISORY",
+  "financial_action": false,
+  "memory_behavior_influence": 0,
+  "as_of": "2026-08-30T04:46:04.496110+00:00",
+  "root": "/home/johnclaw/trade-ai-releases/persistent-state",
+  "limit": 100,
+  "sample_n": 100,
+  "sources": {
+    "live_overlay": 2,
+    "fixture_projection_hermes_result": 98
+  },
+  "live_specialist_artifact_n": 2,
+  "fixture_projection_n": 98,
+  "bind_rates": {
+    "same_workflow_id": {
+      "count": 50,
+      "rate": 0.5,
+      "note": "stamped workflow_id OR single recoverable lineage workflow via research_id\u2192node_id; multi-wf counts as not same-bind"
+    },
+    "same_instrument_record": {
+      "count": 64,
+      "rate": 0.64,
+      "note": "exactly one InstrumentRecord subject_key via plan/symbol"
+    }
+  },
+  "orphans": {
+    "orphan_workflow_count": 50,
+    "orphan_instrument_count": 36,
+    "orphan_workflow_rate": 0.5,
+    "orphan_instrument_rate": 0.36
+  },
+  "scorecard_summary": {
+    "accuracy": "DATA_UNAVAILABLE",
+    "relevance": "DATA_UNAVAILABLE",
+    "consistency": {
+      "PASS": 100
+    },
+    "traceability": {
+      "PASS": 100
+    },
+    "honesty": "accuracy/relevance require human or authorized LLM rubric; this package is READ_ONLY and did not score them"
+  },
+  "gap_g_spec_01": {
+    "id": "G-SPEC-01",
+    "live_store_n": 2,
+    "workflow_id_stamped_on_live": 0,
+    "finding": "SpecialistArtifact@v1-lite exists; live overlay has very few rows and does not stamp workflow_id. Same-workflow bind is recoverable via lineage for some research_ids; InstrumentRecord last_artifact_id pointer unused on live tip census."
+  },
+  "rows": [
+    {
+      "artifact_id": "crit_spcx_res_557cfaab8c34",
+      "sample_source": "live_overlay",
+      "research_id": "res_557cfaab8c34",
+      "plan_id": "plan_477c33c065ec",
+      "provider": "grok_critique",
+      "outcome": "PARTIAL",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [
+        "wf_e374cc02293301e1396f"
+      ],
+      "workflow_id_recovered": "wf_e374cc02293301e1396f",
+      "same_workflow_bind": true,
+      "instrument_subjects": [
+        "HELD:SPCX"
+      ],
+      "same_instrument_record_bind": true,
+      "orphan_workflow": false,
+      "orphan_instrument": false,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "crit_grok_spcx_res_557cfaab8c34",
+      "sample_source": "live_overlay",
+      "research_id": "res_557cfaab8c34",
+      "plan_id": "plan_477c33c065ec",
+      "provider": "grok_critique",
+      "outcome": "FAIL",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [
+        "wf_e374cc02293301e1396f"
+      ],
+      "workflow_id_recovered": "wf_e374cc02293301e1396f",
+      "same_workflow_bind": true,
+      "instrument_subjects": [
+        "HELD:SPCX"
+      ],
+      "same_instrument_record_bind": true,
+      "orphan_workflow": false,
+      "orphan_instrument": false,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_c58a63552680",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_c58a63552680",
+      "plan_id": "plan_368d65718d91",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [
+        "wf_71a6c1cfd62f3aa6f1ed"
+      ],
+      "workflow_id_recovered": "wf_71a6c1cfd62f3aa6f1ed",
+      "same_workflow_bind": true,
+      "instrument_subjects": [
+        "EXIT:GXAI"
+      ],
+      "same_instrument_record_bind": true,
+      "orphan_workflow": false,
+      "orphan_instrument": false,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_f831e5ddcb74",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_f831e5ddcb74",
+      "plan_id": "plan_1ae2fc2e968a",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [
+        "wf_c2aa1c9552bbec5d311d"
+      ],
+      "workflow_id_recovered": "wf_c2aa1c9552bbec5d311d",
+      "same_workflow_bind": true,
+      "instrument_subjects": [
+        "EXIT:BJDX"
+      ],
+      "same_instrument_record_bind": true,
+      "orphan_workflow": false,
+      "orphan_instrument": false,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_7835f6b837d6",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_7835f6b837d6",
+      "plan_id": "plan_f836df1bfed6",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [
+        "wf_b2f8c758da3e0f154c62"
+      ],
+      "workflow_id_recovered": "wf_b2f8c758da3e0f154c62",
+      "same_workflow_bind": true,
+      "instrument_subjects": [],
+      "same_instrument_record_bind": false,
+      "orphan_workflow": false,
+      "orphan_instrument": true,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_57ab7a7067d8",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_57ab7a7067d8",
+      "plan_id": "plan_9f4df5b991f3",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [
+        "wf_f669ded184ffe0e1dde3"
+      ],
+      "workflow_id_recovered": "wf_f669ded184ffe0e1dde3",
+      "same_workflow_bind": true,
+      "instrument_subjects": [
+        "EXIT:RGNT"
+      ],
+      "same_instrument_record_bind": true,
+      "orphan_workflow": false,
+      "orphan_instrument": false,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_6b05738ba718",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_6b05738ba718",
+      "plan_id": "plan_012473787c99",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [
+        "wf_d433ef9ed2148be78619"
+      ],
+      "workflow_id_recovered": "wf_d433ef9ed2148be78619",
+      "same_workflow_bind": true,
+      "instrument_subjects": [
+        "EXIT:GXAI"
+      ],
+      "same_instrument_record_bind": true,
+      "orphan_workflow": false,
+      "orphan_instrument": false,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_700c97861291",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_700c97861291",
+      "plan_id": "plan_5463afc7bc04",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [
+        "wf_339dd13a38b04ee2d5b0"
+      ],
+      "workflow_id_recovered": "wf_339dd13a38b04ee2d5b0",
+      "same_workflow_bind": true,
+      "instrument_subjects": [
+        "EXIT:BJDX"
+      ],
+      "same_instrument_record_bind": true,
+      "orphan_workflow": false,
+      "orphan_instrument": false,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_6f750cd1ceb5",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_6f750cd1ceb5",
+      "plan_id": "plan_a8c49319bc1c",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [
+        "wf_e6438fa5b4b9badc0195"
+      ],
+      "workflow_id_recovered": "wf_e6438fa5b4b9badc0195",
+      "same_workflow_bind": true,
+      "instrument_subjects": [],
+      "same_instrument_record_bind": false,
+      "orphan_workflow": false,
+      "orphan_instrument": true,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_ceeb9c281fa4",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_ceeb9c281fa4",
+      "plan_id": "plan_0a57b30d13a4",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [
+        "wf_0ba68779d49a36da422f"
+      ],
+      "workflow_id_recovered": "wf_0ba68779d49a36da422f",
+      "same_workflow_bind": true,
+      "instrument_subjects": [
+        "EXIT:FATN"
+      ],
+      "same_instrument_record_bind": true,
+      "orphan_workflow": false,
+      "orphan_instrument": false,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_65315566f214",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_65315566f214",
+      "plan_id": "plan_e0b1100fdcec",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [
+        "wf_32d97b60fc7fc15476e8"
+      ],
+      "workflow_id_recovered": "wf_32d97b60fc7fc15476e8",
+      "same_workflow_bind": true,
+      "instrument_subjects": [
+        "HELD:XLI"
+      ],
+      "same_instrument_record_bind": true,
+      "orphan_workflow": false,
+      "orphan_instrument": false,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_1381db35c530",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_1381db35c530",
+      "plan_id": "plan_2106f1f47337",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [
+        "wf_4abd39dc845d26106b0d"
+      ],
+      "workflow_id_recovered": "wf_4abd39dc845d26106b0d",
+      "same_workflow_bind": true,
+      "instrument_subjects": [
+        "EXIT:NUAI"
+      ],
+      "same_instrument_record_bind": true,
+      "orphan_workflow": false,
+      "orphan_instrument": false,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_ee67cfa710ea",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_ee67cfa710ea",
+      "plan_id": "plan_8ae7dee32c6d",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [
+        "wf_d0e7b4afd5b52cc3ff76"
+      ],
+      "workflow_id_recovered": "wf_d0e7b4afd5b52cc3ff76",
+      "same_workflow_bind": true,
+      "instrument_subjects": [],
+      "same_instrument_record_bind": false,
+      "orphan_workflow": false,
+      "orphan_instrument": true,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_551fc0787eaa",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_551fc0787eaa",
+      "plan_id": "plan_6e41817053c1",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [
+        "wf_2224c1c4bc18790f5d54"
+      ],
+      "workflow_id_recovered": "wf_2224c1c4bc18790f5d54",
+      "same_workflow_bind": true,
+      "instrument_subjects": [
+        "EXIT:LASE"
+      ],
+      "same_instrument_record_bind": true,
+      "orphan_workflow": false,
+      "orphan_instrument": false,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_de02e044bcc2",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_de02e044bcc2",
+      "plan_id": "plan_477c33c065ec",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [
+        "wf_826134f7eb775e529d05"
+      ],
+      "workflow_id_recovered": "wf_826134f7eb775e529d05",
+      "same_workflow_bind": true,
+      "instrument_subjects": [
+        "HELD:SPCX"
+      ],
+      "same_instrument_record_bind": true,
+      "orphan_workflow": false,
+      "orphan_instrument": false,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_073f2c3703f4",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_073f2c3703f4",
+      "plan_id": "plan_fef564ebd462",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [
+        "wf_11c5b4dcc35dea89ab24"
+      ],
+      "workflow_id_recovered": "wf_11c5b4dcc35dea89ab24",
+      "same_workflow_bind": true,
+      "instrument_subjects": [],
+      "same_instrument_record_bind": false,
+      "orphan_workflow": false,
+      "orphan_instrument": true,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_5fdd537c9108",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_5fdd537c9108",
+      "plan_id": "plan_5c3d19f20b3d",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [
+        "wf_88c37b452b9501edb247"
+      ],
+      "workflow_id_recovered": "wf_88c37b452b9501edb247",
+      "same_workflow_bind": true,
+      "instrument_subjects": [],
+      "same_instrument_record_bind": false,
+      "orphan_workflow": false,
+      "orphan_instrument": true,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_8e019000de27",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_8e019000de27",
+      "plan_id": "plan_a379e1e21f45",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [
+        "wf_bb4022f45e3b2d62b56a"
+      ],
+      "workflow_id_recovered": "wf_bb4022f45e3b2d62b56a",
+      "same_workflow_bind": true,
+      "instrument_subjects": [],
+      "same_instrument_record_bind": false,
+      "orphan_workflow": false,
+      "orphan_instrument": true,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_fd1f96b3642b",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_fd1f96b3642b",
+      "plan_id": "plan_c7803ba7cd60",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [
+        "wf_e8bb4818ce32c25efb84"
+      ],
+      "workflow_id_recovered": "wf_e8bb4818ce32c25efb84",
+      "same_workflow_bind": true,
+      "instrument_subjects": [
+        "HELD:ARKX"
+      ],
+      "same_instrument_record_bind": true,
+      "orphan_workflow": false,
+      "orphan_instrument": false,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_040e07fc9455",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_040e07fc9455",
+      "plan_id": "plan_c7803ba7cd60",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [
+        "wf_bfd1485f19f8b33673e5"
+      ],
+      "workflow_id_recovered": "wf_bfd1485f19f8b33673e5",
+      "same_workflow_bind": true,
+      "instrument_subjects": [
+        "HELD:ARKX"
+      ],
+      "same_instrument_record_bind": true,
+      "orphan_workflow": false,
+      "orphan_instrument": false,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_7f3a3247f0a2",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_7f3a3247f0a2",
+      "plan_id": "plan_8ac8cd386ccb",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [
+        "wf_3960a11fe4644f5e6a5f"
+      ],
+      "workflow_id_recovered": "wf_3960a11fe4644f5e6a5f",
+      "same_workflow_bind": true,
+      "instrument_subjects": [],
+      "same_instrument_record_bind": false,
+      "orphan_workflow": false,
+      "orphan_instrument": true,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_919f8f4367ba",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_919f8f4367ba",
+      "plan_id": "plan_a0295a940395",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [
+        "wf_095a8aca3ff7fe4d7789"
+      ],
+      "workflow_id_recovered": "wf_095a8aca3ff7fe4d7789",
+      "same_workflow_bind": true,
+      "instrument_subjects": [],
+      "same_instrument_record_bind": false,
+      "orphan_workflow": false,
+      "orphan_instrument": true,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_44cfb80bb1e4",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_44cfb80bb1e4",
+      "plan_id": "plan_b3380ca6f562",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [
+        "wf_6ba7d8262ffffcf8e284"
+      ],
+      "workflow_id_recovered": "wf_6ba7d8262ffffcf8e284",
+      "same_workflow_bind": true,
+      "instrument_subjects": [
+        "EXIT:RGNT"
+      ],
+      "same_instrument_record_bind": true,
+      "orphan_workflow": false,
+      "orphan_instrument": false,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_bb99cfd8b39f",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_bb99cfd8b39f",
+      "plan_id": "plan_86b238d78de6",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [
+        "wf_65cb9d850ff1499c4c3a"
+      ],
+      "workflow_id_recovered": "wf_65cb9d850ff1499c4c3a",
+      "same_workflow_bind": true,
+      "instrument_subjects": [
+        "EXIT:GXAI"
+      ],
+      "same_instrument_record_bind": true,
+      "orphan_workflow": false,
+      "orphan_instrument": false,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_fb487475b172",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_fb487475b172",
+      "plan_id": "plan_6ac4d45f0f2f",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [
+        "wf_8ed8060a3bf2fa9f567b"
+      ],
+      "workflow_id_recovered": "wf_8ed8060a3bf2fa9f567b",
+      "same_workflow_bind": true,
+      "instrument_subjects": [],
+      "same_instrument_record_bind": false,
+      "orphan_workflow": false,
+      "orphan_instrument": true,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_07aa6e3bf885",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_07aa6e3bf885",
+      "plan_id": "plan_8555304d4120",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [
+        "wf_08e1a1175003db16439a"
+      ],
+      "workflow_id_recovered": "wf_08e1a1175003db16439a",
+      "same_workflow_bind": true,
+      "instrument_subjects": [
+        "EXIT:BJDX"
+      ],
+      "same_instrument_record_bind": true,
+      "orphan_workflow": false,
+      "orphan_instrument": false,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_7ab265906999",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_7ab265906999",
+      "plan_id": "plan_4f44b5d5b195",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [
+        "wf_6dfe23f100593d131b7a"
+      ],
+      "workflow_id_recovered": "wf_6dfe23f100593d131b7a",
+      "same_workflow_bind": true,
+      "instrument_subjects": [],
+      "same_instrument_record_bind": false,
+      "orphan_workflow": false,
+      "orphan_instrument": true,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_f77137efe31d",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_f77137efe31d",
+      "plan_id": "plan_aa30114c5a82",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [
+        "wf_61348060fef2779dc738"
+      ],
+      "workflow_id_recovered": "wf_61348060fef2779dc738",
+      "same_workflow_bind": true,
+      "instrument_subjects": [
+        "EXIT:RGNT"
+      ],
+      "same_instrument_record_bind": true,
+      "orphan_workflow": false,
+      "orphan_instrument": false,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_478c5a393050",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_478c5a393050",
+      "plan_id": "plan_14a82ba4d8a4",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [
+        "wf_9d4414542a72205b086c"
+      ],
+      "workflow_id_recovered": "wf_9d4414542a72205b086c",
+      "same_workflow_bind": true,
+      "instrument_subjects": [
+        "EXIT:GXAI"
+      ],
+      "same_instrument_record_bind": true,
+      "orphan_workflow": false,
+      "orphan_instrument": false,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_fe2b738a43e6",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_fe2b738a43e6",
+      "plan_id": "plan_00ae370cf6b2",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [
+        "wf_b46bfa530dca4af9b689"
+      ],
+      "workflow_id_recovered": "wf_b46bfa530dca4af9b689",
+      "same_workflow_bind": true,
+      "instrument_subjects": [],
+      "same_instrument_record_bind": false,
+      "orphan_workflow": false,
+      "orphan_instrument": true,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_1d606de955db",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_1d606de955db",
+      "plan_id": "plan_13ea7ccf4895",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [
+        "wf_1501ceac1cbe46988fcd"
+      ],
+      "workflow_id_recovered": "wf_1501ceac1cbe46988fcd",
+      "same_workflow_bind": true,
+      "instrument_subjects": [
+        "EXIT:BJDX"
+      ],
+      "same_instrument_record_bind": true,
+      "orphan_workflow": false,
+      "orphan_instrument": false,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_6ee3ac052c37",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_6ee3ac052c37",
+      "plan_id": "plan_25c94323a4b6",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [
+        "wf_f00c6c66a4d884bb023e"
+      ],
+      "workflow_id_recovered": "wf_f00c6c66a4d884bb023e",
+      "same_workflow_bind": true,
+      "instrument_subjects": [],
+      "same_instrument_record_bind": false,
+      "orphan_workflow": false,
+      "orphan_instrument": true,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_289d0e6b788e",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_289d0e6b788e",
+      "plan_id": "plan_10d3b5133388",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [
+        "wf_a500ccedc001cd478b1d"
+      ],
+      "workflow_id_recovered": "wf_a500ccedc001cd478b1d",
+      "same_workflow_bind": true,
+      "instrument_subjects": [
+        "EXIT:RKLB"
+      ],
+      "same_instrument_record_bind": true,
+      "orphan_workflow": false,
+      "orphan_instrument": false,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_1ade50c4d61b",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_1ade50c4d61b",
+      "plan_id": "plan_9f79ce74160b",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [
+        "wf_858073bf6bb86900271e"
+      ],
+      "workflow_id_recovered": "wf_858073bf6bb86900271e",
+      "same_workflow_bind": true,
+      "instrument_subjects": [],
+      "same_instrument_record_bind": false,
+      "orphan_workflow": false,
+      "orphan_instrument": true,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_96fe6624326a",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_96fe6624326a",
+      "plan_id": "plan_4fc096357ce0",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [
+        "wf_072a00fa15824a73e1f9"
+      ],
+      "workflow_id_recovered": "wf_072a00fa15824a73e1f9",
+      "same_workflow_bind": true,
+      "instrument_subjects": [],
+      "same_instrument_record_bind": false,
+      "orphan_workflow": false,
+      "orphan_instrument": true,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_e5753fd53db3",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_e5753fd53db3",
+      "plan_id": "plan_67aae22c7662",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [
+        "wf_0b969a2960f175da79c2"
+      ],
+      "workflow_id_recovered": "wf_0b969a2960f175da79c2",
+      "same_workflow_bind": true,
+      "instrument_subjects": [
+        "HELD:SPCX"
+      ],
+      "same_instrument_record_bind": true,
+      "orphan_workflow": false,
+      "orphan_instrument": false,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_05a861fe9498",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_05a861fe9498",
+      "plan_id": "plan_67aae22c7662",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [
+        "wf_f9830482e330741aa390"
+      ],
+      "workflow_id_recovered": "wf_f9830482e330741aa390",
+      "same_workflow_bind": true,
+      "instrument_subjects": [
+        "HELD:SPCX"
+      ],
+      "same_instrument_record_bind": true,
+      "orphan_workflow": false,
+      "orphan_instrument": false,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_7c4b9fcc01e6",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_7c4b9fcc01e6",
+      "plan_id": "plan_25a252bf808f",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [
+        "wf_c7a3c2ad7c8287e1042d"
+      ],
+      "workflow_id_recovered": "wf_c7a3c2ad7c8287e1042d",
+      "same_workflow_bind": true,
+      "instrument_subjects": [],
+      "same_instrument_record_bind": false,
+      "orphan_workflow": false,
+      "orphan_instrument": true,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_9b82d50c04d2",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_9b82d50c04d2",
+      "plan_id": "plan_42106701bc0e",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [
+        "wf_e392cf1f6e4b11c199ef"
+      ],
+      "workflow_id_recovered": "wf_e392cf1f6e4b11c199ef",
+      "same_workflow_bind": true,
+      "instrument_subjects": [],
+      "same_instrument_record_bind": false,
+      "orphan_workflow": false,
+      "orphan_instrument": true,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_3348e4ca2f6d",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_3348e4ca2f6d",
+      "plan_id": "plan_0d386be39518",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [
+        "wf_a9f80fa57d617782a40c"
+      ],
+      "workflow_id_recovered": "wf_a9f80fa57d617782a40c",
+      "same_workflow_bind": true,
+      "instrument_subjects": [
+        "HELD:ARKX"
+      ],
+      "same_instrument_record_bind": true,
+      "orphan_workflow": false,
+      "orphan_instrument": false,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_b58e6b0acfec",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_b58e6b0acfec",
+      "plan_id": "plan_0d386be39518",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [
+        "wf_233ce8b4453c9a94f3df"
+      ],
+      "workflow_id_recovered": "wf_233ce8b4453c9a94f3df",
+      "same_workflow_bind": true,
+      "instrument_subjects": [
+        "HELD:ARKX"
+      ],
+      "same_instrument_record_bind": true,
+      "orphan_workflow": false,
+      "orphan_instrument": false,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_10a7c5a16d13",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_10a7c5a16d13",
+      "plan_id": "plan_69777611c6e8",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [
+        "wf_819aecdc7cabc7668a02"
+      ],
+      "workflow_id_recovered": "wf_819aecdc7cabc7668a02",
+      "same_workflow_bind": true,
+      "instrument_subjects": [],
+      "same_instrument_record_bind": false,
+      "orphan_workflow": false,
+      "orphan_instrument": true,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_c12d9eed78dc",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_c12d9eed78dc",
+      "plan_id": "plan_0f1e663588a4",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [
+        "wf_a58950d797f967556774"
+      ],
+      "workflow_id_recovered": "wf_a58950d797f967556774",
+      "same_workflow_bind": true,
+      "instrument_subjects": [
+        "EXIT:FATN"
+      ],
+      "same_instrument_record_bind": true,
+      "orphan_workflow": false,
+      "orphan_instrument": false,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_b557eedb15f5",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_b557eedb15f5",
+      "plan_id": "plan_9f84f5c09566",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [
+        "wf_1ef0752e5cc414e37ffd"
+      ],
+      "workflow_id_recovered": "wf_1ef0752e5cc414e37ffd",
+      "same_workflow_bind": true,
+      "instrument_subjects": [],
+      "same_instrument_record_bind": false,
+      "orphan_workflow": false,
+      "orphan_instrument": true,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_5fe129ba6d61",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_5fe129ba6d61",
+      "plan_id": "plan_273ab8666b07",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [
+        "wf_677876f84eb7c29f6cd3"
+      ],
+      "workflow_id_recovered": "wf_677876f84eb7c29f6cd3",
+      "same_workflow_bind": true,
+      "instrument_subjects": [
+        "EXIT:RGNT"
+      ],
+      "same_instrument_record_bind": true,
+      "orphan_workflow": false,
+      "orphan_instrument": false,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_7cf56ce87a50",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_7cf56ce87a50",
+      "plan_id": "plan_a04b81690d1b",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [
+        "wf_79957c758da8ecda78e0"
+      ],
+      "workflow_id_recovered": "wf_79957c758da8ecda78e0",
+      "same_workflow_bind": true,
+      "instrument_subjects": [
+        "EXIT:LGPS"
+      ],
+      "same_instrument_record_bind": true,
+      "orphan_workflow": false,
+      "orphan_instrument": false,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_67db9de3f411",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_67db9de3f411",
+      "plan_id": "plan_e99629f1aeb5",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [
+        "wf_721203876acbb304dbde"
+      ],
+      "workflow_id_recovered": "wf_721203876acbb304dbde",
+      "same_workflow_bind": true,
+      "instrument_subjects": [
+        "EXIT:GXAI"
+      ],
+      "same_instrument_record_bind": true,
+      "orphan_workflow": false,
+      "orphan_instrument": false,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_4c7ee48ba9d7",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_4c7ee48ba9d7",
+      "plan_id": "plan_f73e8b3e8fed",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [
+        "wf_546c5eff7aa8299e7707"
+      ],
+      "workflow_id_recovered": "wf_546c5eff7aa8299e7707",
+      "same_workflow_bind": true,
+      "instrument_subjects": [],
+      "same_instrument_record_bind": false,
+      "orphan_workflow": false,
+      "orphan_instrument": true,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_dc3dc3b9ef27",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_dc3dc3b9ef27",
+      "plan_id": "plan_280d585f845c",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [
+        "wf_a2ee30a3bfd583bead6d"
+      ],
+      "workflow_id_recovered": "wf_a2ee30a3bfd583bead6d",
+      "same_workflow_bind": true,
+      "instrument_subjects": [
+        "EXIT:LASE"
+      ],
+      "same_instrument_record_bind": true,
+      "orphan_workflow": false,
+      "orphan_instrument": false,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_cb36982b2439",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_cb36982b2439",
+      "plan_id": "plan_3abc57c5482c",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [
+        "wf_cfebda913cc19e723f80"
+      ],
+      "workflow_id_recovered": "wf_cfebda913cc19e723f80",
+      "same_workflow_bind": true,
+      "instrument_subjects": [
+        "HELD:XLI"
+      ],
+      "same_instrument_record_bind": true,
+      "orphan_workflow": false,
+      "orphan_instrument": false,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_87d498d7ccea",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_87d498d7ccea",
+      "plan_id": "plan_9f31784699c8",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [],
+      "workflow_id_recovered": null,
+      "same_workflow_bind": false,
+      "instrument_subjects": [
+        "EXIT:CAST"
+      ],
+      "same_instrument_record_bind": true,
+      "orphan_workflow": true,
+      "orphan_instrument": false,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_ff0707668c0b",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_ff0707668c0b",
+      "plan_id": "plan_9cc84dc5460f",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [],
+      "workflow_id_recovered": null,
+      "same_workflow_bind": false,
+      "instrument_subjects": [
+        "HELD:SPCX"
+      ],
+      "same_instrument_record_bind": true,
+      "orphan_workflow": true,
+      "orphan_instrument": false,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_c59de3194025",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_c59de3194025",
+      "plan_id": "plan_9cc84dc5460f",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [],
+      "workflow_id_recovered": null,
+      "same_workflow_bind": false,
+      "instrument_subjects": [
+        "HELD:SPCX"
+      ],
+      "same_instrument_record_bind": true,
+      "orphan_workflow": true,
+      "orphan_instrument": false,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_749df7ef6a9f",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_749df7ef6a9f",
+      "plan_id": "plan_c00c5c0139d4",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [],
+      "workflow_id_recovered": null,
+      "same_workflow_bind": false,
+      "instrument_subjects": [],
+      "same_instrument_record_bind": false,
+      "orphan_workflow": true,
+      "orphan_instrument": true,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_19cee22f8e86",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_19cee22f8e86",
+      "plan_id": "plan_437b256956ff",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [],
+      "workflow_id_recovered": null,
+      "same_workflow_bind": false,
+      "instrument_subjects": [],
+      "same_instrument_record_bind": false,
+      "orphan_workflow": true,
+      "orphan_instrument": true,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_cc786f0b5ad6",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_cc786f0b5ad6",
+      "plan_id": "plan_1f10806b3bd6",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [],
+      "workflow_id_recovered": null,
+      "same_workflow_bind": false,
+      "instrument_subjects": [
+        "HELD:ARKX"
+      ],
+      "same_instrument_record_bind": true,
+      "orphan_workflow": true,
+      "orphan_instrument": false,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_9b0067b3b92d",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_9b0067b3b92d",
+      "plan_id": "plan_1f10806b3bd6",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [],
+      "workflow_id_recovered": null,
+      "same_workflow_bind": false,
+      "instrument_subjects": [
+        "HELD:ARKX"
+      ],
+      "same_instrument_record_bind": true,
+      "orphan_workflow": true,
+      "orphan_instrument": false,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_a30ba502d4f4",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_a30ba502d4f4",
+      "plan_id": "plan_ef1bd3495533",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [],
+      "workflow_id_recovered": null,
+      "same_workflow_bind": false,
+      "instrument_subjects": [],
+      "same_instrument_record_bind": false,
+      "orphan_workflow": true,
+      "orphan_instrument": true,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_d2f34c05c56b",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_d2f34c05c56b",
+      "plan_id": "plan_df329f4f07fc",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [],
+      "workflow_id_recovered": null,
+      "same_workflow_bind": false,
+      "instrument_subjects": [
+        "EXIT:FATN"
+      ],
+      "same_instrument_record_bind": true,
+      "orphan_workflow": true,
+      "orphan_instrument": false,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_306c78534509",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_306c78534509",
+      "plan_id": "plan_69b2efe2d025",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [],
+      "workflow_id_recovered": null,
+      "same_workflow_bind": false,
+      "instrument_subjects": [],
+      "same_instrument_record_bind": false,
+      "orphan_workflow": true,
+      "orphan_instrument": true,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_0f40d7818fa0",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_0f40d7818fa0",
+      "plan_id": "plan_ab0ee5df1e22",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [],
+      "workflow_id_recovered": null,
+      "same_workflow_bind": false,
+      "instrument_subjects": [
+        "EXIT:RGNT"
+      ],
+      "same_instrument_record_bind": true,
+      "orphan_workflow": true,
+      "orphan_instrument": false,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_93d2335c94ac",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_93d2335c94ac",
+      "plan_id": "plan_c84e54807fc2",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [],
+      "workflow_id_recovered": null,
+      "same_workflow_bind": false,
+      "instrument_subjects": [
+        "EXIT:LGPS"
+      ],
+      "same_instrument_record_bind": true,
+      "orphan_workflow": true,
+      "orphan_instrument": false,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_dfce5f7e8b22",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_dfce5f7e8b22",
+      "plan_id": "plan_a666d799520b",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [],
+      "workflow_id_recovered": null,
+      "same_workflow_bind": false,
+      "instrument_subjects": [
+        "EXIT:GXAI"
+      ],
+      "same_instrument_record_bind": true,
+      "orphan_workflow": true,
+      "orphan_instrument": false,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_421ae8c8052d",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_421ae8c8052d",
+      "plan_id": "plan_f64498adbb23",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [],
+      "workflow_id_recovered": null,
+      "same_workflow_bind": false,
+      "instrument_subjects": [],
+      "same_instrument_record_bind": false,
+      "orphan_workflow": true,
+      "orphan_instrument": true,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_33d8a17ceb33",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_33d8a17ceb33",
+      "plan_id": "plan_1ab227f9bc53",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [],
+      "workflow_id_recovered": null,
+      "same_workflow_bind": false,
+      "instrument_subjects": [
+        "EXIT:LASE"
+      ],
+      "same_instrument_record_bind": true,
+      "orphan_workflow": true,
+      "orphan_instrument": false,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_df9bcd92b498",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_df9bcd92b498",
+      "plan_id": "plan_09d340371324",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [],
+      "workflow_id_recovered": null,
+      "same_workflow_bind": false,
+      "instrument_subjects": [
+        "HELD:XLI"
+      ],
+      "same_instrument_record_bind": true,
+      "orphan_workflow": true,
+      "orphan_instrument": false,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_65b83bbbfc61",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_65b83bbbfc61",
+      "plan_id": "plan_e0fa3db19867",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [],
+      "workflow_id_recovered": null,
+      "same_workflow_bind": false,
+      "instrument_subjects": [
+        "EXIT:NUAI"
+      ],
+      "same_instrument_record_bind": true,
+      "orphan_workflow": true,
+      "orphan_instrument": false,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_5f3e1e24c9ce",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_5f3e1e24c9ce",
+      "plan_id": "plan_64aa787ec303",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [],
+      "workflow_id_recovered": null,
+      "same_workflow_bind": false,
+      "instrument_subjects": [],
+      "same_instrument_record_bind": false,
+      "orphan_workflow": true,
+      "orphan_instrument": true,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_d6c55799c96c",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_d6c55799c96c",
+      "plan_id": "plan_b0861fe461c8",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [],
+      "workflow_id_recovered": null,
+      "same_workflow_bind": false,
+      "instrument_subjects": [
+        "EXIT:DFSC"
+      ],
+      "same_instrument_record_bind": true,
+      "orphan_workflow": true,
+      "orphan_instrument": false,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_3b2eef26d99b",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_3b2eef26d99b",
+      "plan_id": "plan_3bf58d1b75a2",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [],
+      "workflow_id_recovered": null,
+      "same_workflow_bind": false,
+      "instrument_subjects": [
+        "HELD:SPCX"
+      ],
+      "same_instrument_record_bind": true,
+      "orphan_workflow": true,
+      "orphan_instrument": false,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_1a8caba3d7b6",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_1a8caba3d7b6",
+      "plan_id": "plan_3bf58d1b75a2",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [],
+      "workflow_id_recovered": null,
+      "same_workflow_bind": false,
+      "instrument_subjects": [
+        "HELD:SPCX"
+      ],
+      "same_instrument_record_bind": true,
+      "orphan_workflow": true,
+      "orphan_instrument": false,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_e6d38ddd01aa",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_e6d38ddd01aa",
+      "plan_id": "plan_52f2ff5e45be",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [],
+      "workflow_id_recovered": null,
+      "same_workflow_bind": false,
+      "instrument_subjects": [],
+      "same_instrument_record_bind": false,
+      "orphan_workflow": true,
+      "orphan_instrument": true,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_b84b82b020e0",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_b84b82b020e0",
+      "plan_id": "plan_40c316cee82c",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [],
+      "workflow_id_recovered": null,
+      "same_workflow_bind": false,
+      "instrument_subjects": [],
+      "same_instrument_record_bind": false,
+      "orphan_workflow": true,
+      "orphan_instrument": true,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_cfb4459b87ae",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_cfb4459b87ae",
+      "plan_id": "plan_7ddaaada8de2",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [],
+      "workflow_id_recovered": null,
+      "same_workflow_bind": false,
+      "instrument_subjects": [],
+      "same_instrument_record_bind": false,
+      "orphan_workflow": true,
+      "orphan_instrument": true,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_822095d3a28d",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_822095d3a28d",
+      "plan_id": "plan_2750072cee75",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [],
+      "workflow_id_recovered": null,
+      "same_workflow_bind": false,
+      "instrument_subjects": [
+        "HELD:ARKX"
+      ],
+      "same_instrument_record_bind": true,
+      "orphan_workflow": true,
+      "orphan_instrument": false,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_c028cab3ee94",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_c028cab3ee94",
+      "plan_id": "plan_2750072cee75",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [],
+      "workflow_id_recovered": null,
+      "same_workflow_bind": false,
+      "instrument_subjects": [
+        "HELD:ARKX"
+      ],
+      "same_instrument_record_bind": true,
+      "orphan_workflow": true,
+      "orphan_instrument": false,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_16286ab39ec1",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_16286ab39ec1",
+      "plan_id": "plan_fe49c1efd310",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [],
+      "workflow_id_recovered": null,
+      "same_workflow_bind": false,
+      "instrument_subjects": [],
+      "same_instrument_record_bind": false,
+      "orphan_workflow": true,
+      "orphan_instrument": true,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_55726ab11982",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_55726ab11982",
+      "plan_id": "plan_e6c43f6d668f",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [],
+      "workflow_id_recovered": null,
+      "same_workflow_bind": false,
+      "instrument_subjects": [
+        "EXIT:FATN"
+      ],
+      "same_instrument_record_bind": true,
+      "orphan_workflow": true,
+      "orphan_instrument": false,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_50d477806b77",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_50d477806b77",
+      "plan_id": "plan_86e951277fcc",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [],
+      "workflow_id_recovered": null,
+      "same_workflow_bind": false,
+      "instrument_subjects": [],
+      "same_instrument_record_bind": false,
+      "orphan_workflow": true,
+      "orphan_instrument": true,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_2a82428b92c1",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_2a82428b92c1",
+      "plan_id": "plan_53b263908161",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [],
+      "workflow_id_recovered": null,
+      "same_workflow_bind": false,
+      "instrument_subjects": [
+        "EXIT:RGNT"
+      ],
+      "same_instrument_record_bind": true,
+      "orphan_workflow": true,
+      "orphan_instrument": false,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_1e51b21f232d",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_1e51b21f232d",
+      "plan_id": "plan_0949c15f7508",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [],
+      "workflow_id_recovered": null,
+      "same_workflow_bind": false,
+      "instrument_subjects": [
+        "EXIT:GXAI"
+      ],
+      "same_instrument_record_bind": true,
+      "orphan_workflow": true,
+      "orphan_instrument": false,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_4f51b9573022",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_4f51b9573022",
+      "plan_id": "plan_7fbecf465eb8",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [],
+      "workflow_id_recovered": null,
+      "same_workflow_bind": false,
+      "instrument_subjects": [],
+      "same_instrument_record_bind": false,
+      "orphan_workflow": true,
+      "orphan_instrument": true,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_97578d423523",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_97578d423523",
+      "plan_id": "plan_b098c51ecec1",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [],
+      "workflow_id_recovered": null,
+      "same_workflow_bind": false,
+      "instrument_subjects": [],
+      "same_instrument_record_bind": false,
+      "orphan_workflow": true,
+      "orphan_instrument": true,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_ede4c4bc6322",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_ede4c4bc6322",
+      "plan_id": "plan_1705e1668a16",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [],
+      "workflow_id_recovered": null,
+      "same_workflow_bind": false,
+      "instrument_subjects": [
+        "EXIT:LASE"
+      ],
+      "same_instrument_record_bind": true,
+      "orphan_workflow": true,
+      "orphan_instrument": false,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_20b023c5a5bc",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_20b023c5a5bc",
+      "plan_id": "plan_06ee8ebdd208",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [],
+      "workflow_id_recovered": null,
+      "same_workflow_bind": false,
+      "instrument_subjects": [
+        "EXIT:CAST"
+      ],
+      "same_instrument_record_bind": true,
+      "orphan_workflow": true,
+      "orphan_instrument": false,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_944b8ed23dea",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_944b8ed23dea",
+      "plan_id": "plan_52f6044b54db",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [],
+      "workflow_id_recovered": null,
+      "same_workflow_bind": false,
+      "instrument_subjects": [
+        "HELD:SPCX"
+      ],
+      "same_instrument_record_bind": true,
+      "orphan_workflow": true,
+      "orphan_instrument": false,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_ae2a0362e81a",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_ae2a0362e81a",
+      "plan_id": "plan_52f6044b54db",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [],
+      "workflow_id_recovered": null,
+      "same_workflow_bind": false,
+      "instrument_subjects": [
+        "HELD:SPCX"
+      ],
+      "same_instrument_record_bind": true,
+      "orphan_workflow": true,
+      "orphan_instrument": false,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_54652f8852a6",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_54652f8852a6",
+      "plan_id": "plan_b36e22a1bd7c",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [],
+      "workflow_id_recovered": null,
+      "same_workflow_bind": false,
+      "instrument_subjects": [
+        "HELD:ARKX"
+      ],
+      "same_instrument_record_bind": true,
+      "orphan_workflow": true,
+      "orphan_instrument": false,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_b5ac4330da9e",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_b5ac4330da9e",
+      "plan_id": "plan_b36e22a1bd7c",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [],
+      "workflow_id_recovered": null,
+      "same_workflow_bind": false,
+      "instrument_subjects": [
+        "HELD:ARKX"
+      ],
+      "same_instrument_record_bind": true,
+      "orphan_workflow": true,
+      "orphan_instrument": false,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_ae7433b538eb",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_ae7433b538eb",
+      "plan_id": "plan_8ccd2c8dc0eb",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [],
+      "workflow_id_recovered": null,
+      "same_workflow_bind": false,
+      "instrument_subjects": [
+        "EXIT:BJDX"
+      ],
+      "same_instrument_record_bind": true,
+      "orphan_workflow": true,
+      "orphan_instrument": false,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_d800891d97ef",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_d800891d97ef",
+      "plan_id": "plan_1c70bca82d01",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [],
+      "workflow_id_recovered": null,
+      "same_workflow_bind": false,
+      "instrument_subjects": [],
+      "same_instrument_record_bind": false,
+      "orphan_workflow": true,
+      "orphan_instrument": true,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_30124b0177b9",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_30124b0177b9",
+      "plan_id": "plan_ea81f960d395",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [],
+      "workflow_id_recovered": null,
+      "same_workflow_bind": false,
+      "instrument_subjects": [
+        "EXIT:FATN"
+      ],
+      "same_instrument_record_bind": true,
+      "orphan_workflow": true,
+      "orphan_instrument": false,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_dbf03f30e71a",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_dbf03f30e71a",
+      "plan_id": "plan_e252651eeceb",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [],
+      "workflow_id_recovered": null,
+      "same_workflow_bind": false,
+      "instrument_subjects": [],
+      "same_instrument_record_bind": false,
+      "orphan_workflow": true,
+      "orphan_instrument": true,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_ac01d45aa9df",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_ac01d45aa9df",
+      "plan_id": "plan_7012078b4b68",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [],
+      "workflow_id_recovered": null,
+      "same_workflow_bind": false,
+      "instrument_subjects": [
+        "EXIT:RGNT"
+      ],
+      "same_instrument_record_bind": true,
+      "orphan_workflow": true,
+      "orphan_instrument": false,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_799236f1c8ed",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_799236f1c8ed",
+      "plan_id": "plan_7feeb9c17b85",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [],
+      "workflow_id_recovered": null,
+      "same_workflow_bind": false,
+      "instrument_subjects": [
+        "EXIT:LGPS"
+      ],
+      "same_instrument_record_bind": true,
+      "orphan_workflow": true,
+      "orphan_instrument": false,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_413c57296112",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_413c57296112",
+      "plan_id": "plan_cac7fb0b0a02",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [],
+      "workflow_id_recovered": null,
+      "same_workflow_bind": false,
+      "instrument_subjects": [
+        "EXIT:GXAI"
+      ],
+      "same_instrument_record_bind": true,
+      "orphan_workflow": true,
+      "orphan_instrument": false,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_d4ea8a47e44b",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_d4ea8a47e44b",
+      "plan_id": "plan_10af3ebec4e4",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [],
+      "workflow_id_recovered": null,
+      "same_workflow_bind": false,
+      "instrument_subjects": [],
+      "same_instrument_record_bind": false,
+      "orphan_workflow": true,
+      "orphan_instrument": true,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_6eb45e92af9c",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_6eb45e92af9c",
+      "plan_id": "plan_6b58aee51bee",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [],
+      "workflow_id_recovered": null,
+      "same_workflow_bind": false,
+      "instrument_subjects": [],
+      "same_instrument_record_bind": false,
+      "orphan_workflow": true,
+      "orphan_instrument": true,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_6c853131f349",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_6c853131f349",
+      "plan_id": "plan_e301b8b585a8",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [],
+      "workflow_id_recovered": null,
+      "same_workflow_bind": false,
+      "instrument_subjects": [
+        "EXIT:LASE"
+      ],
+      "same_instrument_record_bind": true,
+      "orphan_workflow": true,
+      "orphan_instrument": false,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    },
+    {
+      "artifact_id": "fixture_proj_res_a8c496ceb35b",
+      "sample_source": "fixture_projection_hermes_result",
+      "research_id": "res_a8c496ceb35b",
+      "plan_id": "plan_4c6e4570590d",
+      "provider": "stub",
+      "outcome": "VALID",
+      "workflow_id_stamped": null,
+      "workflow_ids_via_lineage": [],
+      "workflow_id_recovered": null,
+      "same_workflow_bind": false,
+      "instrument_subjects": [
+        "HELD:XLI"
+      ],
+      "same_instrument_record_bind": true,
+      "orphan_workflow": true,
+      "orphan_instrument": false,
+      "validate_problems": [],
+      "scorecard": {
+        "accuracy": "DATA_UNAVAILABLE",
+        "relevance": "DATA_UNAVAILABLE",
+        "consistency": "PASS",
+        "traceability": "PASS"
+      }
+    }
+  ]
+}
