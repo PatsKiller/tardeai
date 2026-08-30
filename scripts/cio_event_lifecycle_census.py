@@ -1,3 +1,7 @@
+NO_CONSUMER_REASON = (
+    "operator-invoked diligence CLI: CIOEventLifecycleCensus@v1 is a stdout baseline receipt for Phase 1 WS2, not an ingested store contract"
+)
+
 #!/usr/bin/env python3
 """Event lifecycle census — measure accepted→…→recoverable by family.
 
