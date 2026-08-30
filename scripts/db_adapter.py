@@ -1103,33 +1103,6 @@ def load_watchlist_items(source_type: str = None, status: str = "active") -> lis
     return [dict(r) for r in result] if result else []
 
 
-def load_instrument_records(*, symbol: str | None = None, status: str = "active") -> list:
-    """Read persisted InstrumentRecord@v1 payloads from canonical watchlist rows."""
-    if not USE_DB:
-        return []
-    sql = "SELECT symbol, instrument_record, instrument_record_updated_at FROM watchlist_items WHERE status = %s AND instrument_record IS NOT NULL"
-    params: list = [status]
-    if symbol:
-        sql += " AND upper(symbol) = upper(%s)"
-        params.append(symbol)
-    rows = _execute(sql, params, fetch="all") or []
-    return [dict(r) for r in rows]
-
-
-def save_instrument_record(symbol: str, record: dict) -> bool:
-    """Persist one normalized record on the existing canonical watchlist row."""
-    if not USE_DB or not symbol or not isinstance(record, dict):
-        return False
-    try:
-        _execute(
-            "UPDATE watchlist_items SET instrument_record = %s::jsonb, instrument_record_updated_at = now(), updated_at = now() WHERE upper(symbol) = upper(%s) AND status <> 'removed'",
-            (json.dumps(record, default=str), symbol),
-        )
-        return True
-    except Exception:
-        return False
-
-
 def save_escalations(escalations: list) -> None:
     """Save escalation queue entries. Upsert by (observation_id, trigger_rule)."""
     if not USE_DB or not escalations:

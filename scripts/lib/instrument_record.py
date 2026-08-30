@@ -114,12 +114,27 @@ def notification_crossed(previous: Any, current: Any, *, ordering: tuple[str, ..
 
 
 def persist_instrument_record(record: Mapping[str, Any]) -> bool:
-    """Persist through db_adapter when available; return False on unavailable DB."""
+    """Persist through the canonical append-only InstrumentRecord store.
+
+    The registry's ``cio.instrument_records`` JSONL is the source of truth.
+    This compatibility entry point must not create a second Postgres-backed
+    record store, which would allow Command Center and cognition writers to
+    observe different versions of the same subject.
+    """
     symbol = str(record.get("symbol") or "").strip().upper()
     if not symbol:
         return False
     try:
-        from scripts import db_adapter
-        return bool(db_adapter.save_instrument_record(symbol, dict(record)))
+        from scripts.lib.cio_instrument_record import InstrumentRecordStore, new_record
+
+        kind = str(record.get("kind") or "HELD").upper()
+        normalized = dict(record)
+        normalized.setdefault("subject_key", f"{kind}:{symbol}")
+        if normalized.get("subject_key") == f"{kind}:{symbol}":
+            base = new_record(kind, symbol)
+            base.update(normalized)
+            normalized = base
+        InstrumentRecordStore().upsert(normalized)
+        return True
     except Exception:
         return False
