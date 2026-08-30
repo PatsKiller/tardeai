@@ -2463,7 +2463,7 @@ def maybe_notify_plan(
                 from scripts.lib.cio_advisory_curator import curate as _curate
             except Exception:
                 from lib.cio_advisory_curator import curate as _curate  # type: ignore
-            _cur = _curate(text, plan_id=plan.get("plan_id"))
+            _cur = _curate(text, plan_id=plan.get("plan_id"), plan=plan)
             if _cur.get("curated"):
                 text = _cur.get("text") or text
             if _cur.get("reason") not in (None, "disabled"):
