@@ -132,6 +132,9 @@ GATES = [
     ("search_budget", [
         "tests/test_search_budget_and_health.py",
     ]),
+    ("corpus_grades_cost_units", [
+        "tests/test_corpus_grades_and_cost_units.py",
+    ]),
     ("r13_institutional", [
         "tests/test_r13_institution.py",
         "tests/test_r13_goldens_properties_faults.py",
