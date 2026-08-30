@@ -12,16 +12,17 @@ Resume cursor: first phase/package with status != DONE.
 
 | Field | Value |
 |-------|--------|
-| CURRENT pin | `852ecd47` (#681) |
-| origin/main | `852ecd47` |
+| CURRENT pin | `be09945b` (#679) / main tip at P9 branch base `852ecd47` |
+| origin/main | re-pin on promote |
 | `/api/v2/health` | 200 |
 | `/v3/cio` | 200 |
 | lineage complete_to_checkpoint | **406 / 752 (54.0%)** |
 | arcs | research_checkpoint 436 · cio_notification 29 |
 | first open stage | research 640 · cio 112 |
-| rails | MBI=0 · READ_ONLY_ADVISORY · no broker write · no notify-on |
+| P9 orphan census (30d) | missing_cross_id **144** · orphan_hits **3** · stores 9/12 |
+| rails | MBI=0 · READ_ONLY_ADVISORY · no broker write · no notify-on · never_auto_remediate store_consistency |
 | DRIVE | FAIL until gog upsert (optional) |
-| phase cursor | **P3 DONE** → next first PENDING (P1-WS1) |
+| phase cursor | **P1-WS1** (P0+P9 DONE; do not skip WS order for promote) |
 
 ---
 
@@ -29,19 +30,19 @@ Resume cursor: first phase/package with status != DONE.
 
 | ID | Title | Status | PR | sha | Proof |
 |----|-------|--------|----|-----|-------|
-| P0 | Master plan + scoreboard + gap register | DONE | #681 | `852ecd47` | plan in docs/audits; lineage re-measure 54% |
+| P0 | Master plan + scoreboard + gap register | DONE | *(this PR)* | *(fill after promote)* | plan in docs/audits; lineage re-measure 54% |
 | P1-WS1 | Architecture as-built pack | PENDING | | | |
 | P1-WS2 | Event lifecycle census baseline | PENDING | | | |
 | P1-WS3 | Operator S0 workflow + failure battery | PENDING | | | |
 | P2-WS4 | Identity confidence score | PENDING | | | |
 | P2-WS5 | HELD/EXIT/WATCH/CASH/DUST matrix | PENDING | | | |
-| P3 | InstrumentRecord persistence drills | DONE | #682 | `72bc42c9` | tmp cold-start/partial-write/rollback PASS; see diligence audit |
+| P3 | InstrumentRecord persistence drills | PENDING | | | |
 | P4 | Research free / residual / model gov | PENDING | | | |
 | P5 | Specialist N=100 sample | PENDING | | | |
 | P6 | Council determinism | PENDING | | | |
 | P7 | Notification matrix (CC-first) | PENDING | | | |
 | P8 | Outcome/lesson MBI partition | PENDING | | | |
-| P9 | Registry / orphan / 99.99% path | PENDING | | | |
+| P9 | Registry / orphan / 99.99% path | DONE | *(this PR)* | *(fill after promote)* | census 30d: miss 144 · orphans 3 · lineage 54%; design path to 99.99% |
 
 ---
 
