@@ -54,7 +54,20 @@ pm_step() {
   if [ "$DRY_RUN" = "1" ]; then
     echo "    [DRY_RUN] would run: $*"; status="dry_run"
   else
-    if "$@"; then status="ok"; else local rc=$?; status="FAILED(rc=$rc)"; overall=1; fi
+    if "$@"; then
+      status="ok"
+    else
+      local rc=$?
+      # pg backup returns 69 when a recent full dump exists (or another
+      # single-flight run owns the lock). This is an intentional gate, not a
+      # failed cadence step.
+      if [ "$rc" = "69" ]; then
+        status="gated_skip_fresh"
+      else
+        status="FAILED(rc=$rc)"
+        overall=1
+      fi
+    fi
   fi
   end=${EPOCHREALTIME/./}; ms=$(( (end - start) / 1000 ))
   echo "  ---- step END: $name status=$status ${ms}ms ----"
