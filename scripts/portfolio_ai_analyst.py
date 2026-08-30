@@ -111,18 +111,28 @@ def _ai(prompt: str, model: str = None, max_tokens: int = 1500) -> str:
     return _claude(prompt, model=model, max_tokens=max_tokens)
 
 def _claude(prompt: str, model: str = None, max_tokens: int = 1500) -> str:
-    key = _get_api_key()
-    if not key: return "AI analysis unavailable — ANTHROPIC_API_KEY not set."
+    """Claude via the GOVERNED lane. Was a direct api.anthropic.com POST.
+
+    Read ANTHROPIC_API_KEY and POSTed straight to api.anthropic.com/v1/messages
+    with no reservation, no ledger row and no cap, while being reachable from
+    portfolio_orchestrator (cron 07:15 weekdays). Audited 2026-08-30.
+
+    The lane also fixes a second problem: this module's SONNET constant is
+    claude-sonnet-4-20250514, which is RETIRED on the first-party API
+    (Bedrock/Google Cloud only). The lane resolves to a current model instead,
+    so the call can actually succeed.
+    """
+    want = str(model or "").lower()
+    lane = "haiku" if "haiku" in want else "sonnet"
     try:
-        r = requests.post("https://api.anthropic.com/v1/messages",
-            headers={"x-api-key": key, "anthropic-version": "2023-06-01",
-                     "content-type": "application/json"},
-            json={"model": model or SONNET, "max_tokens": max_tokens,
-                  "messages": [{"role": "user", "content": prompt}]},
-            timeout=90)
-        r.raise_for_status()
-        return r.json()["content"][0]["text"].strip()
-    except Exception as e:
+        from llm_lane import generate
+    except Exception:                                            # noqa: BLE001
+        from scripts.llm_lane import generate                    # type: ignore
+    try:
+        return (generate(prompt, lane=lane, max_tokens=max_tokens,
+                         process_id="portfolio_ai_analyst",
+                         task_summary=f"portfolio_ai_analyst:{lane}") or "").strip()
+    except Exception as e:                                       # noqa: BLE001
         return f"Error: {str(e)[:100]}"
 
 # ── Build portfolio context string ────────────────────────────────────────────

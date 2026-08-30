@@ -125,6 +125,47 @@
         "06:00-10:00"
       ],
       "pricing_peak_days": "Mon-Fri"
+    },
+    "anthropic": {
+      "provider_family": "anthropic",
+      "base_url": "https://api.anthropic.com",
+      "auth_type": "api_key",
+      "credential_slot": "ANTHROPIC_API_KEY",
+      "auth_env": "ANTHROPIC_API_KEY",
+      "enabled": true,
+      "kill_switch": false,
+      "pricing_source": "https://platform.claude.com/docs/en/docs/about-claude/pricing",
+      "pricing_effective_at": "2026-08-30",
+      "note": "No peak/off-peak tiering — Anthropic prices are flat, unlike DeepSeek. Cache-hit reads are 0.1x base input.",
+      "models": {
+        "anthropic_haiku": {
+          "model_id": "claude-haiku-4-5-20251001",
+          "display_name": "Claude Haiku 4.5",
+          "latency_class": "fast",
+          "enabled": true,
+          "pricing_snapshot_usd_per_million_tokens": {
+            "cache_hit_input": 0.1,
+            "cache_miss_input": 1.0,
+            "output": 5.0
+          }
+        },
+        "anthropic_sonnet": {
+          "model_id": "claude-sonnet-4-5-20250929",
+          "display_name": "Claude Sonnet 4.5",
+          "latency_class": "standard",
+          "enabled": true,
+          "pricing_snapshot_usd_per_million_tokens": {
+            "cache_hit_input": 0.3,
+            "cache_miss_input": 3.0,
+            "output": 15.0
+          }
+        }
+      },
+      "retired_models": {
+        "claude-sonnet-4-20250514": "retired on the first-party API (Bedrock/GCloud only)",
+        "claude-opus-4-20250514": "retired on the first-party API (GCloud only)",
+        "claude-opus-4-1": "retired on the first-party API (Bedrock/GCloud only)"
+      }
     }
   },
   "logical_policies": {

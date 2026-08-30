@@ -33,24 +33,23 @@ PROBE_ALLOWLIST = {
     "verify_llm_providers.py", "secret_validators.py", "rotation_probes.py",
     "secrets_admin.py", "cloud_oauth_usage_monitor.py", "defense_oversight.py",
     "validate_rotation_production_readiness.py",
+    # max_tokens=1 "ping" that exists to read back a credit-status error.
+    "alert_missing_conditions.py",
 }
 
-# Known, still-ungoverned, and NOT excused — recorded so the guard can block
-# NEW ones while the debt stays visible. All three call Anthropic, for which
-# llm_lane has no lane (deepseek-*, grok, chatgpt only), so they cannot be
-# routed the way OpenAI and xAI were. All are reachable from scheduled work:
-# portfolio_ai_analyst and monthly_advisory via portfolio_orchestrator (cron
-# 07:15 weekdays), alert_missing_conditions directly. Mitigating observation,
-# not a fix: the monthly run last failed with "credit balance is too low", so
-# Anthropic spend appears to be zero.
+# CLOSED 2026-08-30. The list is empty, and the test below keeps it that way.
 #
-# Closing these needs an `anthropic` lane plus registry pricing. Until then
-# this list must SHRINK, never grow.
-KNOWN_UNGOVERNED = {
-    "scripts/portfolio_ai_analyst.py": "anthropic; no llm_lane anthropic lane",
-    "scripts/monthly_advisory.py": "anthropic + openai; no anthropic lane",
-    "scripts/alert_missing_conditions.py": "anthropic; no anthropic lane",
-}
+# portfolio_ai_analyst and monthly_advisory now route through llm_lane's
+# `anthropic` lane (haiku / sonnet), added in this change together with real
+# registry pricing from the vendor doc. That lane also resolves a CURRENT
+# model: both callers named claude-sonnet-4-20250514 / claude-opus-4-20250514,
+# which are RETIRED on the first-party API (Bedrock/Google Cloud only), so
+# those calls could never have succeeded regardless of credit.
+#
+# alert_missing_conditions is NOT a generation call — it POSTs max_tokens=1
+# with the body "ping" purely to read back a credit-status error. It is a
+# probe, so it belongs in PROBE_ALLOWLIST rather than on a lane.
+KNOWN_UNGOVERNED: dict[str, str] = {}
 
 
 def _py_files():
@@ -108,3 +107,50 @@ def test_the_known_list_is_accurate_and_shrinking():
     assert sorted(still) == sorted(KNOWN_UNGOVERNED), (
         "an entry no longer calls a vendor directly — remove it from "
         f"KNOWN_UNGOVERNED: {sorted(set(KNOWN_UNGOVERNED) - set(still))}")
+
+
+def test_the_known_ungoverned_list_is_closed():
+    """It reached zero on 2026-08-30. It must not reopen.
+
+    Re-adding an entry is allowed only alongside a deliberate decision — the
+    point of the empty dict is that a new offender fails the test above rather
+    than being quietly appended here.
+    """
+    assert KNOWN_UNGOVERNED == {}, (
+        f"the list reopened: {sorted(KNOWN_UNGOVERNED)}")
+
+
+@pytest.mark.parametrize("name", ["portfolio_ai_analyst.py", "monthly_advisory.py"])
+def test_the_anthropic_callers_route_through_the_lane(name):
+    src = (ROOT / "scripts" / name).read_text(encoding="utf-8")
+    assert not VENDOR_COMPLETION.search(src)
+    assert "llm_lane import generate" in src
+    assert "process_id=" in src
+
+
+def test_the_anthropic_lane_exists_and_is_governed():
+    src = (ROOT / "scripts" / "llm_lane.py").read_text(encoding="utf-8")
+    assert "_ANTHROPIC_LANES" in src
+    assert "log_call(lane=lane_l" in src, "anthropic calls must be ledgered"
+
+
+def test_the_anthropic_lane_defaults_to_current_models():
+    """The callers named RETIRED models; the lane must not repeat that."""
+    from scripts.llm_lane import _ANTHROPIC_DEFAULT
+    for m in _ANTHROPIC_DEFAULT.values():
+        assert "sonnet-4-2025" not in m, m      # retired
+        assert "opus-4-2025" not in m, m        # retired
+    assert "haiku-4-5" in _ANTHROPIC_DEFAULT["haiku"]
+    assert "sonnet-4-5" in _ANTHROPIC_DEFAULT["sonnet"]
+
+
+def test_anthropic_registry_pricing_matches_the_vendor_doc():
+    from scripts.lib.llm_model_registry import load_registry
+    a = (load_registry().get("providers") or {}).get("anthropic") or {}
+    got = {m["model_id"]: m["pricing_snapshot_usd_per_million_tokens"]
+           for m in (a.get("models") or {}).values()}
+    assert got["claude-haiku-4-5-20251001"] == {
+        "cache_hit_input": 0.10, "cache_miss_input": 1.00, "output": 5.00}
+    assert got["claude-sonnet-4-5-20250929"] == {
+        "cache_hit_input": 0.30, "cache_miss_input": 3.00, "output": 15.00}
+    assert "claude-opus-4-20250514" in (a.get("retired_models") or {})

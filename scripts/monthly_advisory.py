@@ -47,36 +47,44 @@ def _get_key(provider):
     return key
 
 def _call_claude(prompt, model, max_tokens=2000):
-    key = _get_key("anthropic")
-    if not key:
-        return "Anthropic API key not available."
+    # Claude via the GOVERNED lane. Was a direct api.anthropic.com POST with no
+    # reservation, no ledger row and no cap, reachable from
+    # portfolio_orchestrator (cron 07:15 weekdays). Audited 2026-08-30. The
+    # module's OPUS constant (claude-opus-4-20250514) is RETIRED on the
+    # first-party API, so the lane resolves a current model instead.
+    want = str(model or "").lower()
+    lane = "haiku" if "haiku" in want else "sonnet"
     try:
-        r = requests.post("https://api.anthropic.com/v1/messages",
-            headers={"x-api-key": key, "anthropic-version": "2023-06-01",
-                     "content-type": "application/json"},
-            json={"model": model, "max_tokens": max_tokens,
-                  "messages": [{"role": "user", "content": prompt}]},
-            timeout=180)
-        r.raise_for_status()
-        return r.json()["content"][0]["text"].strip()
-    except Exception as e:
+        from llm_lane import generate
+    except Exception:                                            # noqa: BLE001
+        from scripts.llm_lane import generate                    # type: ignore
+    try:
+        return (generate(prompt, lane=lane, max_tokens=max_tokens,
+                         process_id="monthly_advisory",
+                         task_summary=f"monthly_advisory:{lane}") or "").strip()
+    except Exception as e:                                       # noqa: BLE001
         return f"Error: {str(e)[:200]}"
 
 def _call_openai(prompt, model=GPT4O, max_tokens=2000):
-    key = _get_key("openai")
-    if not key:
-        return "OpenAI API key not available."
+    """ChatGPT via the GOVERNED lane. Was a direct api.openai.com POST.
+
+    The second ungoverned call in this module — the Anthropic one above got the
+    attention, this one sat right beneath it. Same defect: no reservation, no
+    ledger row, no cap, reachable from portfolio_orchestrator (cron 07:15
+    weekdays). Audited 2026-08-30.
+    """
     try:
-        r = requests.post("https://api.openai.com/v1/chat/completions",
-            headers={"Authorization": f"Bearer {key}",
-                     "Content-Type": "application/json"},
-            json={"model": model, "max_tokens": max_tokens,
-                  "messages": [{"role": "user", "content": prompt}]},
-            timeout=180)
-        r.raise_for_status()
-        return r.json()["choices"][0]["message"]["content"].strip()
-    except Exception as e:
+        from llm_lane import generate
+    except Exception:                                            # noqa: BLE001
+        from scripts.llm_lane import generate                    # type: ignore
+    try:
+        return (generate(prompt, lane="chatgpt", model=model,
+                         max_tokens=max_tokens,
+                         process_id="monthly_advisory",
+                         task_summary="monthly_advisory:chatgpt") or "").strip()
+    except Exception as e:                                       # noqa: BLE001
         return f"Error: {str(e)[:200]}"
+
 
 def _build_portfolio_context(portfolio, analysis, risk, perf_history,
                               retirement, tax_proj, rebalancing, dividends_cal):
