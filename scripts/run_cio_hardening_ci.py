@@ -119,6 +119,9 @@ GATES = [
     ("agent_brief", [
         "tests/test_agent_brief.py",
     ]),
+    ("research_reaches_surface", [
+        "tests/test_research_reaches_surface.py",
+    ]),
     ("r13_institutional", [
         "tests/test_r13_institution.py",
         "tests/test_r13_goldens_properties_faults.py",
