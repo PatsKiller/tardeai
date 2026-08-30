@@ -184,11 +184,41 @@ def _fetch_symbols(symbols: List[str], start: str, end: str) -> Dict[str, Dict[s
 
 # ── Price lookup (used by other modules) ─────────────────────────────────────
 
+def _quarantined_pairs_failsoft() -> set:
+    """G-PRICE-01: load quarantine pairs; empty set if DB/table unavailable."""
+    try:
+        from scripts.lib.ticker_price_quarantine import load_quarantined_pairs_failsoft
+        return load_quarantined_pairs_failsoft()
+    except Exception:
+        try:
+            from lib.ticker_price_quarantine import load_quarantined_pairs_failsoft  # type: ignore
+            return load_quarantined_pairs_failsoft()
+        except Exception:
+            return set()
+
+
+def _apply_quarantine_to_cache(cache: Dict) -> Dict:
+    """Strip quarantined (symbol, date) bars from a price cache dict."""
+    q = _quarantined_pairs_failsoft()
+    if not q:
+        return cache
+    try:
+        from scripts.lib.ticker_price_quarantine import filter_price_cache
+    except Exception:
+        try:
+            from lib.ticker_price_quarantine import filter_price_cache  # type: ignore
+        except Exception:
+            return cache
+    return filter_price_cache(cache, q)
+
+
 def get_price(sym: str, date_str: str, cache: Dict,
               fallback_live: bool = True) -> Optional[float]:
     """
     Look up closing price for sym on or before date_str.
     Uses cache first; optionally falls back to live Yahoo.
+
+    G-PRICE-01: skip dates present in ticker_prices_quarantine.
     """
     sym = sym.upper()
     # Cash-equivalents are always $1.00 — never trust Yahoo
@@ -197,18 +227,31 @@ def get_price(sym: str, date_str: str, cache: Dict,
     # Delisted are $0 — no lookup
     if sym in DELISTED:
         return 0.0
+
+    quarantined = _quarantined_pairs_failsoft()
+    try:
+        from scripts.lib.ticker_price_quarantine import is_quarantined
+    except Exception:
+        try:
+            from lib.ticker_price_quarantine import is_quarantined  # type: ignore
+        except Exception:
+            is_quarantined = None  # type: ignore
+
     prices = cache.get(sym, {})
     if prices:
-        # Find closest date on or before target
+        # Find closest date on or before target, skipping quarantined bars
         target = date_str
-        avail = sorted(d for d in prices if d <= target)
+        avail = sorted(
+            d for d in prices
+            if d <= target and not (is_quarantined and is_quarantined(sym, d, quarantined))
+        )
         if avail:
             return prices[avail[-1]]
 
     if not fallback_live or sym in DELISTED:
         return None
 
-    # Live fallback (single date window)
+    # Live fallback (single date window) — still skip quarantine dates
     try:
         import warnings, yfinance as yf
         with warnings.catch_warnings():
@@ -225,7 +268,10 @@ def get_price(sym: str, date_str: str, cache: Dict,
                 str(d.date() if hasattr(d, "date") else d)
                 for d in close.index
             )
-            avail_before = [d for d in avail if d <= date_str]
+            avail_before = [
+                d for d in avail
+                if d <= date_str and not (is_quarantined and is_quarantined(sym, d, quarantined))
+            ]
             if avail_before:
                 price = float(close.iloc[avail.index(avail_before[-1])])
                 return round(price, 4)
@@ -235,13 +281,16 @@ def get_price(sym: str, date_str: str, cache: Dict,
 
 
 def load_price_cache(state_dir: Path) -> Dict:
-    """Load price cache. Uses PostgreSQL on Linux, JSON on Windows."""
+    """Load price cache. Uses PostgreSQL on Linux, JSON on Windows.
+
+    G-PRICE-01: strip quarantined (symbol, date) bars after load (fail-soft).
+    """
     if _db_load_cache:
         data = _db_load_cache(state_dir)
         if data and len([k for k in data if not k.startswith("_")]) > 0:
-            return data
+            return _apply_quarantine_to_cache(data)
     cache_path = Path(state_dir) / "price_cache.json"
-    return _load_cache(cache_path)
+    return _apply_quarantine_to_cache(_load_cache(cache_path))
 
 
 # ── Main build/refresh logic ──────────────────────────────────────────────────

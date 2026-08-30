@@ -294,40 +294,103 @@ def get_price_from_db(symbol: str, date_str: str, fidelity_map: dict = None) -> 
 
     This is the canonical price lookup — use this instead of JSON cache.
     Falls back to nearest date within 5 days.
+
+    G-PRICE-01: skip (symbol, date) pairs present in ticker_prices_quarantine
+    (fail-soft if that table is missing).
     """
     mapped = symbol
     if fidelity_map and symbol in fidelity_map:
         mapped = fidelity_map[symbol]
 
     conn = _get_conn()
+    try:
+        from scripts.lib.ticker_price_quarantine import is_quarantined, quarantined_pairs
+    except Exception:
+        try:
+            from lib.ticker_price_quarantine import is_quarantined, quarantined_pairs  # type: ignore
+        except Exception:
+            is_quarantined = None  # type: ignore
+            quarantined_pairs = None  # type: ignore
+
+    q: set = set()
+    if quarantined_pairs is not None:
+        q = quarantined_pairs(conn)
+
     cur = conn.cursor()
+    try:
+        # Exact date — honor quarantine skip
+        if not (is_quarantined and is_quarantined(mapped, date_str, q)):
+            cur.execute(
+                "SELECT close_price FROM ticker_prices WHERE symbol=%s AND price_date=%s",
+                (mapped, date_str),
+            )
+            row = cur.fetchone()
+            if row:
+                return float(row[0])
 
-    # Exact date
-    cur.execute("SELECT close_price FROM ticker_prices WHERE symbol=%s AND price_date=%s", (mapped, date_str))
-    row = cur.fetchone()
-    if row:
-        cur.close(); conn.close()
-        return float(row[0])
-
-    # Nearest within 5 days
-    cur.execute("""
-        SELECT close_price, price_date FROM ticker_prices
-        WHERE symbol=%s AND price_date BETWEEN %s::date - 5 AND %s::date + 5
-        ORDER BY ABS(price_date - %s::date) LIMIT 1
-    """, (mapped, date_str, date_str, date_str))
-    row = cur.fetchone()
-    cur.close(); conn.close()
-    return float(row[0]) if row else None
+        # Nearest within 5 days, skipping quarantined bars
+        cur.execute("""
+            SELECT close_price, price_date FROM ticker_prices
+            WHERE symbol=%s AND price_date BETWEEN %s::date - 5 AND %s::date + 5
+            ORDER BY ABS(price_date - %s::date)
+        """, (mapped, date_str, date_str, date_str))
+        for price, pdt in cur.fetchall() or []:
+            if is_quarantined and is_quarantined(mapped, pdt, q):
+                continue
+            return float(price)
+        return None
+    finally:
+        try:
+            cur.close()
+        except Exception:
+            pass
+        try:
+            conn.close()
+        except Exception:
+            pass
 
 
 def get_latest_price_from_db(symbol: str) -> float | None:
-    """Get most recent price for a symbol from DB."""
+    """Get most recent price for a symbol from DB.
+
+    G-PRICE-01: walk recent bars newest-first, skipping quarantined dates.
+    """
     conn = _get_conn()
+    try:
+        from scripts.lib.ticker_price_quarantine import is_quarantined, quarantined_pairs
+    except Exception:
+        try:
+            from lib.ticker_price_quarantine import is_quarantined, quarantined_pairs  # type: ignore
+        except Exception:
+            is_quarantined = None  # type: ignore
+            quarantined_pairs = None  # type: ignore
+
+    q: set = set()
+    if quarantined_pairs is not None:
+        q = quarantined_pairs(conn)
+
     cur = conn.cursor()
-    cur.execute("SELECT close_price FROM ticker_prices WHERE symbol=%s ORDER BY price_date DESC LIMIT 1", (symbol,))
-    row = cur.fetchone()
-    cur.close(); conn.close()
-    return float(row[0]) if row else None
+    try:
+        # Bound the walk so a fully-quarantined symbol cannot scan forever.
+        cur.execute(
+            "SELECT close_price, price_date FROM ticker_prices "
+            "WHERE symbol=%s ORDER BY price_date DESC LIMIT 60",
+            (symbol,),
+        )
+        for price, pdt in cur.fetchall() or []:
+            if is_quarantined and is_quarantined(symbol, pdt, q):
+                continue
+            return float(price)
+        return None
+    finally:
+        try:
+            cur.close()
+        except Exception:
+            pass
+        try:
+            conn.close()
+        except Exception:
+            pass
 
 
 def count_price_rows(symbol: str) -> int:
