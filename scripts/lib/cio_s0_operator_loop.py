@@ -345,6 +345,33 @@ def rehydrate(symbol: Any, *, root: Path | str,
     except Exception:
         bundle["lesson_ids"] = []
 
+    # G-IR-01: explicit InstrumentRecord wake load (LOADED | IR_MISSING | …).
+    try:
+        from scripts.lib.cio_instrument_record import load_instrument_record_for_wake
+
+        wake = load_instrument_record_for_wake(symbol=s, root=root)
+        bundle["instrument_record_wake"] = wake
+        if wake.get("status") == "LOADED" and wake.get("record"):
+            rec = wake["record"]
+            if not bundle.get("research"):
+                bundle["research"] = {}
+            if isinstance(bundle["research"], dict):
+                if rec.get("last_outcome") and not bundle["research"].get("prior_outcome"):
+                    bundle["research"]["prior_outcome"] = rec.get("last_outcome")
+                aids = list(bundle["research"].get("prior_artifact_ids") or [])
+                if rec.get("last_artifact_id") and rec["last_artifact_id"] not in aids:
+                    bundle["research"]["prior_artifact_ids"] = (
+                        [rec["last_artifact_id"]] + aids
+                    )
+    except Exception:
+        bundle["instrument_record_wake"] = {
+            "ok": False,
+            "record": None,
+            "status": "IR_ERROR",
+            "authority": AUTHORITY,
+            "memory_behavior_influence": MBI,
+        }
+
     bundle["desk_pin_only"] = not bool(bundle.get("latest_artifact"))
     return bundle
 

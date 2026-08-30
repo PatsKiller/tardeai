@@ -406,3 +406,121 @@ def hash_changed(record: dict[str, Any], name: str, value: Any) -> bool:
     if prior in (None, ""):
         return False
     return prior != content_hash(value)
+
+
+# ── G-IR-01 wake load ─────────────────────────────────────────────────────
+#
+# Persistence alone is not universal wake load. Every subject wake should
+# explicitly LOADED | IR_MISSING | IR_ERROR rather than silently empty.
+
+
+def _store_for_root(root: Path | str | None = None) -> InstrumentRecordStore:
+    if root is None:
+        try:
+            from scripts.lib.canonical_store_registry import resolve_store
+
+            loc = resolve_store(STORE_ID)
+            path = Path(getattr(loc, "path", None) or loc)
+            return InstrumentRecordStore(path)
+        except Exception:  # noqa: BLE001
+            return InstrumentRecordStore(DEFAULT_PATH)
+    root_p = Path(root)
+    return InstrumentRecordStore(root_p / DEFAULT_PATH)
+
+
+def _candidate_keys(subject: Any) -> list[str]:
+    raw = str(subject or "").strip()
+    if not raw:
+        return []
+    if ":" in raw:
+        kind, _, name = raw.partition(":")
+        return [subject_key(kind, name)]
+    sym = raw.upper()
+    return [subject_key(k, sym) for k in ("HELD", "EXIT", "WATCH", "SECTOR")]
+
+
+def load_instrument_record_for_wake(
+    subject_guid: Any = None,
+    *,
+    subject_key_hint: Any = None,
+    symbol: Any = None,
+    root: Path | str | None = None,
+) -> dict[str, Any]:
+    """RO tip load for a wake. Never raises for missing store/subject.
+
+    Prefers ``subject_key_hint``, then ``subject_guid`` (may already be a
+    ``KIND:NAME`` key), then symbol probes ``HELD|EXIT|WATCH|SECTOR:SYM``.
+    """
+    base: dict[str, Any] = {
+        "ok": False,
+        "record": None,
+        "status": "NO_SUBJECT",
+        "subject_key": None,
+        "authority": AUTHORITY,
+        "memory_behavior_influence": MBI_BEHAVIOR,
+        "schema": "InstrumentRecordWake@v1",
+    }
+    probe = subject_key_hint or subject_guid or symbol
+    keys = _candidate_keys(probe)
+    if not keys:
+        return base
+    try:
+        store = _store_for_root(root)
+        for key in keys:
+            rec = store.load(key)
+            if rec:
+                return {
+                    **base,
+                    "ok": True,
+                    "record": dict(rec),
+                    "status": "LOADED",
+                    "subject_key": key,
+                }
+        return {**base, "status": "IR_MISSING", "subject_key": keys[0]}
+    except Exception as exc:  # noqa: BLE001
+        return {
+            **base,
+            "status": "IR_ERROR",
+            "subject_key": keys[0] if keys else None,
+            "error": f"{type(exc).__name__}: {exc}"[:200],
+        }
+
+
+def stamp_last_artifact_id(
+    subject_key_or_symbol: Any,
+    artifact_id: Any,
+    *,
+    root: Path | str | None = None,
+) -> dict[str, Any]:
+    """Append tip update with last_artifact_id. MBI stays 0. Fail-soft."""
+    out: dict[str, Any] = {
+        "ok": False,
+        "wrote": False,
+        "authority": AUTHORITY,
+        "memory_behavior_influence": MBI_BEHAVIOR,
+    }
+    aid = str(artifact_id or "").strip()
+    if not aid:
+        out["reason"] = "empty_artifact_id"
+        return out
+    wake = load_instrument_record_for_wake(subject_key_or_symbol, root=root)
+    if wake.get("status") != "LOADED" or not wake.get("record"):
+        out["reason"] = str(wake.get("status") or "IR_MISSING")
+        out["subject_key"] = wake.get("subject_key")
+        return out
+    try:
+        store = _store_for_root(root)
+        rec = dict(wake["record"])
+        rec["last_artifact_id"] = aid
+        rec["memory_behavior_influence"] = MBI_BEHAVIOR
+        stored = store.upsert(rec)
+        return {
+            **out,
+            "ok": True,
+            "wrote": True,
+            "subject_key": stored.get("subject_key"),
+            "last_artifact_id": aid,
+        }
+    except Exception as exc:  # noqa: BLE001
+        out["reason"] = f"{type(exc).__name__}: {exc}"[:200]
+        return out
