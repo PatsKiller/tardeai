@@ -18,7 +18,7 @@ Severity: **1** Critical · **2** High · **3** Medium · **4** Low
 | G-ID-01 | 2 | subject_guid / instrument identity incomplete | Wave 2 slice 13: resolvable high, stamped low historically; dust/CUSIP edges | P2-WS4 |
 | G-IR-01 | 2 | InstrumentRecord not universal wake load | Wave 3A–C library present; **P3 2026-08-30:** tmp cold-start / partial-write / version+rollback PASS; live RO census 129 rows / 40 subjects (all multi-version, MBI=0). Universality of wake load still unproven — producers may side-store | P5, P9 (persistence proven; wake-path still open) |
 | G-SPEC-01 | 2 | Specialist→same record not proven at N=100 | SpecialistArtifact@v1-lite exists; sample audit not run | P5 |
-| G-NOTIFY-01 | 2–3 | Alert fatigue vs miss under INTERDICT | Wave 3E: 462/466 suppressed CC-only; **P7 matrix proven** (CC-first / would_send=false); canary enablement still TBD — **not closed** | P7 done · canary TBD |
+| G-NOTIFY-01 | 2–3 | Alert fatigue vs miss under INTERDICT | Wave 3E: 462/466 suppressed CC-only; **P7 matrix proven** (CC-first / would_send=false); **P1-WS3 2026-08-30:** S0 always `SUPPRESSED`/`would_send=False`; CC surfaces `s0_operator_turns` with `would_send_any=False`; INTERDICT left as found (no notify-on). Canary enablement still TBD — **not closed** | P7 done · P1-WS3 S0 evidence · canary TBD |
 | G-PRICE-01 | 2 | Outlier/corrupt price history; no DELETE policy | Aug 27 C3; quarantine path preferred | P1-WS2 / ops |
 | G-MBI-01 | 1 | Continuous gate that MBI never rises | **P8 CI suite landed** (`test_cio_diligence_p8_mbi_partition.py`); stamps + BehaviorWriteRefused + AST/grep | P8 CI done · live env standing |
 | G-DUAL-01 | 3 | Dual reentry pipes (queue vs Surface A) | Wave 2 slice 10 overlay; must stay labeled not merged | P1-WS1 |
