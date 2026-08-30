@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -93,7 +94,14 @@ def test_scoreboard_p1_ws1_done():
     assert data["packages"]["P1-WS2"]["status"] == "DONE"
     assert data["packages"]["P1-WS3"]["status"] == "DONE"
     assert data["now"]["phase_cursor"] in {"COMPLETE", "DONE"}
-    assert data["now"]["current_pin"] == "015a7891"
+    # Not a literal. Pinning the SHA made this assert track the document
+    # rather than the tree -- it still read "015a7891" while origin/main was
+    # 9d92b6e0, and restamping it to the newer SHA would only reproduce that.
+    # Assert the shape and the snapshot's internal agreement instead;
+    # tests/test_cio_diligence_scoreboard.py checks the SHA is a real commit.
+    pin = data["now"]["current_pin"]
+    assert re.fullmatch(r"[0-9a-f]{7,40}", pin), pin
+    assert data["now"]["origin_main_full"].startswith(pin)
     assert data["now"].get("this_package_pre_promote") is True
     assert data["now"]["health"] == 200
     assert data["now"]["cio"] == 200
