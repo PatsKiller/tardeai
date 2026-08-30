@@ -6,6 +6,15 @@ fewer than `--limit` rows, projects recent `hermes_research_results` into
 SpecialistArtifact-*shaped* fixture rows (explicitly labeled) so bind-rate and
 orphan metrics can be measured without new LLM spend.
 
+G-SPEC-01 policy (2026-08-30 mitigation):
+  * **New writes** via `cio_specialist_artifact.build` / `.append` MUST stamp a
+    non-empty `workflow_id` (build raises; append returns structured refusal).
+  * **Historical** live rows with null/empty `workflow_id` remain until an
+    operator-gated DLQ/replay package — this audit does **not** DELETE or
+    rewrite jsonl. Consistency scoring uses historical-tolerant `validate()`.
+  * Fixture projections may still carry `workflow_id=None` and recover via
+    lineage; they are not new-write API traffic.
+
 Qualitative scorecard axes (accuracy / relevance) are **DATA_UNAVAILABLE**
 unless a human score is supplied — this package does not call a model.
 
@@ -296,11 +305,21 @@ def audit(root: Path, limit: int = 100) -> dict[str, Any]:
             "workflow_id_stamped_on_live": sum(
                 1 for r in live if r.get("workflow_id")
             ),
+            "new_write_policy": {
+                "requires_workflow_id": True,
+                "build": "ValueError on null/empty",
+                "append": "structured refusal reason=missing_workflow_id",
+                "historical_null_wf": (
+                    "retained read-only until DLQ/replay; no silent rewrite"
+                ),
+            },
             "finding": (
-                "SpecialistArtifact@v1-lite exists; live overlay has very few "
-                "rows and does not stamp workflow_id. Same-workflow bind is "
-                "recoverable via lineage for some research_ids; InstrumentRecord "
-                "last_artifact_id pointer unused on live tip census."
+                "SpecialistArtifact@v1-lite new-write path now requires "
+                "workflow_id (G-SPEC-01 mitigation). Live historical null-wf "
+                "rows may remain until DLQ; same-workflow bind for those is "
+                "still recoverable via lineage for some research_ids. "
+                "InstrumentRecord last_artifact_id pointer unused on live tip "
+                "census (separate follow-on)."
             ),
         },
         "rows": scored,

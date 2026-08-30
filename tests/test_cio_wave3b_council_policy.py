@@ -97,8 +97,10 @@ def test_pin_specialist_artifact_makes_no_http_call():
 # ========================================================= SpecialistArtifact
 
 def test_artifact_schema_and_validation():
-    a = build(artifact_id="a1", provider="stub", outcome="VALID", plan_id="p1")
+    a = build(artifact_id="a1", provider="stub", outcome="VALID",
+              plan_id="p1", workflow_id="wf_wave3b")
     assert a["schema"] == "SpecialistArtifact@v1-lite"
+    assert a["workflow_id"] == "wf_wave3b"
     assert validate(a) == []
     assert a["financial_action"] is False
 
@@ -106,42 +108,49 @@ def test_artifact_schema_and_validation():
 @pytest.mark.parametrize("provider", PROVIDERS)
 def test_every_declared_provider_builds(provider):
     cost = 0.0 if provider == "stub" else 0.01
-    a = build(artifact_id="x", provider=provider, outcome="VALID", cost_usd=cost)
+    a = build(artifact_id="x", provider=provider, outcome="VALID",
+              cost_usd=cost, workflow_id="wf_wave3b")
     assert validate(a) == []
 
 
 @pytest.mark.parametrize("outcome", OUTCOMES)
 def test_every_declared_outcome_builds(outcome):
     assert validate(build(artifact_id="x", provider="stub",
-                          outcome=outcome)) == []
+                          outcome=outcome, workflow_id="wf_wave3b")) == []
 
 
 def test_unknown_provider_raises_rather_than_coercing():
     """A silently normalised provider would make a paid call look free."""
     with pytest.raises(ValueError):
-        build(artifact_id="x", provider="gemini", outcome="VALID")
+        build(artifact_id="x", provider="gemini", outcome="VALID",
+              workflow_id="wf_wave3b")
 
 
 def test_a_stub_artifact_must_be_free():
     with pytest.raises(ValueError):
-        build(artifact_id="x", provider="stub", outcome="VALID", cost_usd=1.0)
+        build(artifact_id="x", provider="stub", outcome="VALID", cost_usd=1.0,
+              workflow_id="wf_wave3b")
 
 
 def test_negative_cost_rejected():
     with pytest.raises(ValueError):
-        build(artifact_id="x", provider="flash", outcome="VALID", cost_usd=-1)
+        build(artifact_id="x", provider="flash", outcome="VALID", cost_usd=-1,
+              workflow_id="wf_wave3b")
 
 
 def test_append_and_load_roundtrip(tmp_path):
-    a = build(artifact_id="a1", provider="stub", outcome="VALID")
+    a = build(artifact_id="a1", provider="stub", outcome="VALID",
+              workflow_id="wf_wave3b")
     assert append(tmp_path, a)["wrote"] is True
     rows = load(tmp_path)
     assert len(rows) == 1 and rows[0]["artifact_id"] == "a1"
+    assert rows[0]["workflow_id"] == "wf_wave3b"
     assert total_cost(rows) == 0.0
 
 
 def test_invalid_row_is_not_written(tmp_path):
-    bad = build(artifact_id="a1", provider="stub", outcome="VALID")
+    bad = build(artifact_id="a1", provider="stub", outcome="VALID",
+                workflow_id="wf_wave3b")
     bad["provider"] = "gemini"
     assert append(tmp_path, bad)["wrote"] is False
     assert load(tmp_path) == []

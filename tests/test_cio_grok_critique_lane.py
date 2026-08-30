@@ -202,15 +202,17 @@ def test_artifact_row_maps_verdict_to_outcome():
         g = _gen(json.dumps({"verdict": verdict, "reasons": [],
                              "execution_language": False, "attachable": False}))
         a = to_artifact(critique_live(GOOD, generate=g), artifact_id="a1",
-                        plan_id="p1")
+                        workflow_id="wf_critique", plan_id="p1")
         assert a["provider"] == "grok_critique"
         assert a["outcome"] == outcome
+        assert a["workflow_id"] == "wf_critique"
 
 
 def test_tainted_artifact_row_records_execution_language():
     g = _gen('{"verdict":"REJECT","reasons":["x"],"execution_language":true,'
              '"attachable":false}')
-    a = to_artifact(critique_live(GOOD, generate=g), artifact_id="a1")
+    a = to_artifact(critique_live(GOOD, generate=g), artifact_id="a1",
+                    workflow_id="wf_critique")
     assert a["outcome"] == "execution_language"
 
 
