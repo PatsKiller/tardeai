@@ -36,6 +36,20 @@ def _load_repo_env() -> None:
 _load_repo_env()
 
 _GROK_URL = os.environ.get("HERMES_XAI_PROXY_URL", "http://127.0.0.1:8645/v1/chat/completions")
+_ANTHROPIC_URL = os.environ.get(
+    "ANTHROPIC_API_URL", "https://api.anthropic.com/v1/messages")
+_ANTHROPIC_LANES = frozenset({"anthropic", "claude", "haiku", "sonnet"})
+# Defaults are CURRENT models. claude-sonnet-4-20250514 and
+# claude-opus-4-20250514 — which the callers used — are RETIRED on the
+# first-party API (Bedrock/Google Cloud only), so a direct call with them fails
+# regardless of credit. Verified against the vendor pricing page 2026-08-30.
+_ANTHROPIC_DEFAULT = {
+    "anthropic": "claude-haiku-4-5-20251001",
+    "claude": "claude-haiku-4-5-20251001",
+    "haiku": "claude-haiku-4-5-20251001",
+    "sonnet": "claude-sonnet-4-5-20250929",
+}
+
 _CHATGPT_URL = os.environ.get("CHATGPT_PROXY_URL", "http://127.0.0.1:8646").rstrip("/")
 
 # Legacy lane names still accepted as *logical* aliases → registry policies.
@@ -119,6 +133,8 @@ def available(lane):
                 return bool(h.get("authenticated")) and not h.get("token_expired")
             except Exception:
                 return False
+    if lane in _ANTHROPIC_LANES:
+        return bool(os.environ.get("ANTHROPIC_API_KEY", "").strip())
     if lane in _AMBIGUOUS_DEEPSEEK:
         return False  # never available=True for ambiguous alias
     if lane in ("deepseek-flash", "deepseek-v4-flash", "fast", "fast_think"):
@@ -262,7 +278,8 @@ def generate(
     deepseek_requested = lane_l in _DEEPSEEK_LANES
 
     if process_id and not _skip_consumption and (
-        lane_l in ("grok", "chatgpt") or deepseek_requested
+        lane_l in ("grok", "chatgpt") or lane_l in _ANTHROPIC_LANES
+        or deepseek_requested
     ):
         from lib.llm_consumption import gate_and_generate
         return gate_and_generate(
@@ -319,6 +336,39 @@ def generate(
                 pass
         if return_provenance:
             return text, provenance
+        return text
+
+    if lane_l in _ANTHROPIC_LANES:
+        import requests
+        api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
+        if not api_key:
+            raise RuntimeError("ANTHROPIC_API_KEY not configured")
+        model_id = model or _ANTHROPIC_DEFAULT.get(lane_l, "claude-haiku-4-5-20251001")
+        r = requests.post(
+            _ANTHROPIC_URL,
+            json={"model": model_id, "max_tokens": max_tokens or 1500,
+                  "messages": [{"role": "user", "content": prompt}]},
+            headers={"x-api-key": api_key,
+                     "anthropic-version": "2023-06-01",
+                     "content-type": "application/json"},
+            timeout=timeout)
+        r.raise_for_status()
+        body = r.json()
+        text = "".join(
+            b.get("text", "") for b in (body.get("content") or [])
+            if isinstance(b, dict) and b.get("type") == "text")
+        if process_id and not _skip_consumption:
+            try:
+                from lib.llm_consumption import log_call
+                usage = body.get("usage") or {}
+                log_call(lane=lane_l, process_id=process_id,
+                         task_summary=task_summary or prompt[:160],
+                         trigger_mode="automated", success=bool(text),
+                         model_name=model_id, prompt=prompt, response=text,
+                         tokens_in=usage.get("input_tokens"),
+                         tokens_out=usage.get("output_tokens"))
+            except Exception:
+                pass
         return text
 
     if lane_l == "grok":
