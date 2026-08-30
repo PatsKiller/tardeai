@@ -173,13 +173,17 @@ stale upstream).
   nearly concluded "nothing reads the spine" from atime alone; the conclusion
   happened to be right and the method was worthless. Prove a consumer by finding
   the call site and observing it run, never by timestamp.
-- **Check whether a store's default path is absolute before reasoning about
-  roots.** `cio_lineage_health.DEFAULT_PATH` points at
-  `~/trade-ai-releases/persistent-state/...`, outside every checkout, so
-  `TRADEAI_ROOT` can neither fix nor break it — four runs across both cwds with
-  and without the variable returned identical output. Two agents drew opposite
-  conclusions about that collector's root sensitivity; both were reasoning about
-  a path the variable never touched.
+- **A root that symlinks to the same destination is not a control.** I set
+  `TRADEAI_ROOT` to a release whose `data/cio` is a symlink into
+  `persistent-state`, got byte-identical output across four runs, and wrote
+  "this collector is root-immune" into these rules. It is not: pointed at a root
+  that is genuinely elsewhere, the path moves. Vary the *destination*, not just
+  the variable, and confirm the two arms resolve to different inodes before
+  concluding anything from a null result.
+- **Attribute location is a claim like any other.** The same note named
+  `cio_lineage_health.DEFAULT_PATH`; that attribute is on neither module's
+  `__dict__` and resolves dynamically. I read it off one module and wrote down
+  another. Check `vars(mod)` before citing a symbol's home.
 - **Never mint a placeholder identity.** `None` for unresolvable. Never a ticker
   as a GUID. A shared "unknown" id joins every unresolved event to every other.
 - **Never auto-remediate store divergence.** Report both paths, both hashes,
