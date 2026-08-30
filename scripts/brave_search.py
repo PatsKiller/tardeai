@@ -55,7 +55,26 @@ def _save_budget(data: dict):
 
 
 def _check_budget(caller: str = "default") -> bool:
-    """Return True if we can make a Brave API call today. Enforces per-caller and monthly caps."""
+    """Return True if we can make a Brave API call today.
+
+    Delegates to the shared per-provider budget, which DENIES when it cannot
+    establish state. The local ledger below is kept as a secondary per-caller
+    cap; it is no longer the only thing standing between a bulk caller and the
+    monthly allowance, because three other modules used to bypass it entirely.
+    """
+    try:
+        from scripts.lib.search_budget import check as _shared_check
+    except ImportError:                                  # pragma: no cover
+        try:
+            from lib.search_budget import check as _shared_check  # type: ignore
+        except ImportError:
+            _shared_check = None                          # type: ignore
+    if _shared_check is not None:
+        verdict = _shared_check("brave")
+        if not verdict["allowed"]:
+            print(f"  [brave-search] denied by shared budget: {verdict['reason']}")
+            return False
+
     today = datetime.now().strftime("%Y-%m-%d")
     month = datetime.now().strftime("%Y-%m")
     is_weekend = datetime.now().weekday() >= 5
@@ -91,6 +110,21 @@ def _check_budget(caller: str = "default") -> bool:
         return False
 
     return True
+
+
+def _record_shared(provider: str, caller: str) -> None:
+    """Count the call in the shared per-provider ledger. Best effort."""
+    try:
+        from scripts.lib.search_budget import record
+    except ImportError:                                  # pragma: no cover
+        try:
+            from lib.search_budget import record  # type: ignore
+        except ImportError:
+            return
+    try:
+        record(provider, allowed=True, caller=caller)
+    except Exception:
+        pass
 
 
 def _record_call(caller: str = "default"):
@@ -153,6 +187,7 @@ def search(query, count=MAX_RESULTS, freshness=None, project_root=".", caller="d
             except Exception: pass
             data = json.loads(raw)
         results = [{"title": i.get("title",""), "url": i.get("url",""), "description": i.get("description",""), "age": i.get("age","")} for i in data.get("web",{}).get("results",[])]
+        _record_shared("brave", caller)
         _record_call(caller)
         _cache_set(ck, results)
         return results
@@ -180,6 +215,7 @@ def search_news(query, count=MAX_RESULTS, freshness="pd", project_root=".", call
             except Exception: pass
             data = json.loads(raw)
         results = [{"title": i.get("title",""), "url": i.get("url",""), "description": i.get("description",""), "age": i.get("age",""), "source": i.get("meta_url",{}).get("hostname","")} for i in data.get("results",[])]
+        _record_shared("brave", caller)
         _record_call(caller)
         _cache_set(ck, results)
         return results

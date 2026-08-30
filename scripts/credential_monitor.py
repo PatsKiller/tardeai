@@ -146,6 +146,14 @@ def check_brave() -> dict:
     key = _env("BRAVE_SEARCH_API_KEY")
     if not key:
         return {"name": "Brave Search", "status": "missing", "error": "BRAVE_SEARCH_API_KEY not set"}
+    # Counted, never denied — see secret_validators._brave. A liveness probe
+    # consumes a real credit, so it must reach the ledger; denying it would
+    # report a healthy key as dead, which is the worse failure.
+    try:
+        from scripts.lib.search_budget import note as _sb_note
+        _sb_note("brave", "credential_monitor")
+    except Exception:
+        pass
     try:
         url = "https://api.search.brave.com/res/v1/web/search?q=test&count=1"
         req = urllib.request.Request(url, headers={

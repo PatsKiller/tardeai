@@ -426,6 +426,18 @@ def collect_report(*, now: Optional[datetime] = None) -> dict[str, Any]:
         except Exception:
             from lane_registry import collect_lane_registry_report  # type: ignore
         lanes.append(collect_lane_registry_report(now=now))
+    # Search providers. This monitor had zero lanes covering search: measured
+    # 2026-08-30 the SearXNG pool returned ten results of which every one came
+    # from bing, with duckduckgo and startpage CAPTCHA-suspended, and nothing
+    # reported it. Off by default in CI (no local SearXNG to probe).
+    if os.getenv("RESEARCH_LANE_HEALTH_SEARCH", "1").strip().lower() not in {
+        "0", "false", "off", "no"
+    }:
+        try:
+            from scripts.lib.search_health import collect_search_health
+        except Exception:
+            from search_health import collect_search_health  # type: ignore
+        lanes.append(collect_search_health(now=now))
     firing = [r for r in lanes if not r["ok"]]
     return {
         "schema": SCHEMA,

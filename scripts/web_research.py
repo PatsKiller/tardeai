@@ -35,6 +35,22 @@ def search_web(query: str, count: int = 5, freshness: str = "pw") -> list:
 
     Returns list of {title, url, description, age}
     """
+    # Routed through the one budgeted Brave client. This module used to hold its
+    # own key read and its own urlopen, so none of its calls were ever counted:
+    # measured 2026-08-30 the ledger saw ~150 of ~1,000 monthly calls, and the
+    # budget alert reported "ok" at 17.6% while the provider was at its ceiling.
+    try:
+        from brave_search import search as _budgeted_search
+    except ImportError:
+        try:
+            from scripts.brave_search import search as _budgeted_search  # type: ignore
+        except ImportError:
+            _budgeted_search = None  # type: ignore
+    if _budgeted_search is not None:
+        return _budgeted_search(query, count=count, freshness=freshness,
+                                project_root=str(PROJECT_ROOT),
+                                caller="web_research")
+
     key = _get_api_key()
     if not key:
         return []

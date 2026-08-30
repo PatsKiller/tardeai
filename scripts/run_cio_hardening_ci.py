@@ -129,6 +129,9 @@ GATES = [
     ("lane_registry", [
         "tests/test_lane_registry.py",
     ]),
+    ("search_budget", [
+        "tests/test_search_budget_and_health.py",
+    ]),
     ("r13_institutional", [
         "tests/test_r13_institution.py",
         "tests/test_r13_goldens_properties_faults.py",
