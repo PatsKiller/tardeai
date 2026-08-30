@@ -5,11 +5,13 @@
   "interdict": "left_as_found",
   "drive": {
     "status": "FAIL",
-    "reason": "optional gog upsert not run on P1-WS1"
+    "reason": "optional gog upsert not run; DRIVE remains optional FAIL until gog"
   },
   "now": {
-    "current_pin": "852ecd47",
-    "current_pr": 681,
+    "current_pin": "db08bd11",
+    "origin_main": "db08bd11",
+    "origin_main_full": "db08bd11c449633ee995ef549fc44c4592f9e986",
+    "current_pr": 686,
     "health": 200,
     "cio": 200,
     "lineage": {
@@ -38,20 +40,24 @@
       "instrument": "scripts/cio_event_lifecycle_census.py"
     },
     "telegram_sent": false,
-    "phase_cursor": "P3",
-    "packages_done_out_of_order": [
+    "phase_cursor": "COMPLETE",
+    "packages_done_out_of_order": [],
+    "packages_done_out_of_order_historical": [
       "P1-WS3",
       "P2-WS4",
       "P2-WS5",
+      "P3",
       "P4",
       "P5",
       "P6",
       "P7",
-      "P8"
+      "P8",
+      "P9"
     ],
     "identity_production_resolvable_pct": 98.9,
     "schg_surface_a": "EXITED",
     "this_package_pre_promote": true,
+    "current_pin_note": "pre-promote (orchestrator)",
     "cio_home": 200
   },
   "packages": {
@@ -59,32 +65,48 @@
       "title": "Master plan + scoreboard + gap register",
       "status": "DONE",
       "pr": 681,
-      "sha": "f54bf9f5"
+      "sha": "f54bf9f5",
+      "merge_sha": "852ecd47",
+      "proof": [
+        "docs/audits/CIO_PLATFORM_DILIGENCE_MASTER_PLAN_2026-08-30.md",
+        "docs/audits/CIO_DILIGENCE_GAP_REGISTER.md",
+        "docs/ops/CIO_DILIGENCE_P0_KICKOFF_2026-08-30.md"
+      ]
     },
     "P1-WS1": {
       "title": "Architecture as-built pack",
       "status": "DONE",
-      "pr": null,
-      "sha": null,
+      "pr": 686,
+      "sha": "003806bc",
+      "merge_sha": "db08bd11",
       "proof": [
         "docs/audits/diligence/P1_WS1_AS_BUILT_ARCHITECTURE_2026-08-30.md",
         "docs/audits/diligence/P1_WS1_FAILURE_POINT_INVENTORY_2026-08-30.md",
         "docs/architecture/cio/EXTERNAL_DIAGRAM_TYPE_MAPPING.md",
-        "docs/audits/CIO_DILIGENCE_GAP_REGISTER.md"
+        "docs/audits/CIO_DILIGENCE_GAP_REGISTER.md",
+        "docs/ops/CIO_DILIGENCE_P1_WS1_2026-08-30.md"
       ]
     },
     "P1-WS2": {
       "title": "Event lifecycle census baseline",
       "status": "DONE",
-      "pr": null,
-      "sha": null,
-      "proof": "weighted_full_lifecycle_pct=2.17; catalyst=1.49; claim_99_99=false"
+      "pr": 685,
+      "sha": "aa21559c",
+      "merge_sha": "64ecd009",
+      "proof": [
+        "docs/audits/diligence/P1_WS2_EVENT_LIFECYCLE_BASELINE_2026-08-30.md",
+        "scripts/cio_event_lifecycle_census.py",
+        "tests/test_cio_diligence_p1_ws2_lifecycle.py",
+        "docs/ops/CIO_DILIGENCE_P1_WS2_2026-08-30.md"
+      ],
+      "metrics": "weighted_full_lifecycle_pct=2.17; catalyst=1.49; claim_99_99=false"
     },
     "P1-WS3": {
       "title": "Operator S0 workflow + failure battery",
       "status": "DONE",
-      "pr": null,
-      "sha": null,
+      "pr": 689,
+      "sha": "b30aef08",
+      "merge_sha": "2678945e",
       "proof": [
         "docs/audits/diligence/P1_WS3_OPERATOR_S0_VALIDATION_2026-08-30.md",
         "tests/test_cio_diligence_p1_ws3_operator_s0.py",
@@ -94,83 +116,121 @@
     "P2-WS4": {
       "title": "Identity confidence score",
       "status": "DONE",
-      "pr": null,
-      "sha": null,
-      "proof": "docs/audits/diligence/P2_WS4_IDENTITY_CONFIDENCE_2026-08-30.md; scripts/cio_identity_confidence_census.py"
+      "pr": 688,
+      "sha": "b9f60227",
+      "merge_sha": "6663a9f8",
+      "proof": [
+        "docs/audits/diligence/P2_WS4_IDENTITY_CONFIDENCE_2026-08-30.md",
+        "scripts/cio_identity_confidence_census.py",
+        "docs/ops/CIO_DILIGENCE_P2_2026-08-30.md"
+      ]
     },
     "P2-WS5": {
       "title": "HELD/EXIT/WATCH/CASH/DUST matrix",
       "status": "DONE",
-      "pr": null,
-      "sha": null,
-      "proof": "docs/audits/diligence/P2_WS5_POSITION_STATE_MATRIX_2026-08-30.md"
+      "pr": 688,
+      "sha": "b9f60227",
+      "merge_sha": "6663a9f8",
+      "proof": [
+        "docs/audits/diligence/P2_WS5_POSITION_STATE_MATRIX_2026-08-30.md",
+        "docs/ops/CIO_DILIGENCE_P2_2026-08-30.md"
+      ]
     },
     "P3": {
       "title": "InstrumentRecord persistence drills",
-      "status": "PENDING"
+      "status": "DONE",
+      "pr": 682,
+      "sha": "72bc42c9",
+      "merge_sha": "8fce86ec",
+      "proof": [
+        "docs/audits/diligence/P3_INSTRUMENT_RECORD_PERSISTENCE_2026-08-30.md",
+        "scripts/cio_instrument_record_drill.py",
+        "tests/test_cio_diligence_p3_instrument_record.py",
+        "docs/ops/CIO_DILIGENCE_P3_2026-08-30.md"
+      ]
     },
     "P4": {
       "title": "Research free / residual / model gov",
       "status": "DONE",
-      "pr": null,
-      "sha": null,
+      "pr": 687,
+      "sha": "d959111c",
+      "merge_sha": "3e9b58d4",
       "proof": [
         "docs/audits/diligence/P4_RESEARCH_ENGINE_REVIEW_2026-08-30.md",
         "docs/audits/diligence/P4_RESEARCH_GOVERNANCE_CENSUS_2026-08-30.json",
         "scripts/cio_research_governance_census.py",
-        "tests/test_cio_diligence_p4_p5_research_specialists.py"
+        "tests/test_cio_diligence_p4_p5_research_specialists.py",
+        "docs/ops/CIO_DILIGENCE_P4_P5_2026-08-30.md"
       ]
     },
     "P5": {
       "title": "Specialist N=100 sample",
       "status": "DONE",
-      "pr": null,
-      "sha": null,
+      "pr": 687,
+      "sha": "d959111c",
+      "merge_sha": "3e9b58d4",
       "gap": "G-SPEC-01",
       "exit_gate": "FAIL_honest_orphans_and_bind_rates",
       "proof": [
         "docs/audits/diligence/P5_SPECIALIST_SAMPLE_2026-08-30.md",
         "docs/audits/diligence/P5_SPECIALIST_SAMPLE_EVIDENCE_2026-08-30.json",
         "scripts/cio_specialist_sample_audit.py",
-        "tests/test_cio_diligence_p4_p5_research_specialists.py"
+        "tests/test_cio_diligence_p4_p5_research_specialists.py",
+        "docs/ops/CIO_DILIGENCE_P4_P5_2026-08-30.md"
       ]
     },
     "P6": {
       "title": "Council determinism",
       "status": "DONE",
-      "pr": null,
-      "sha": null,
+      "pr": 683,
+      "sha": "eba4699a",
+      "merge_sha": "cb7c652b",
       "proof": [
         "docs/audits/diligence/P6_COUNCIL_DETERMINISM_2026-08-30.md",
         "tests/test_cio_diligence_p6_council_determinism.py",
-        "scripts/lib/cio_council_synthesis.py"
+        "scripts/lib/cio_council_synthesis.py",
+        "docs/ops/CIO_DILIGENCE_P6_COUNCIL_DETERMINISM_2026-08-30.md"
       ]
     },
     "P7": {
       "title": "Notification matrix CC-first",
       "status": "DONE",
-      "pr": null,
-      "sha": null,
+      "pr": 683,
+      "sha": "eba4699a",
+      "merge_sha": "cb7c652b",
       "gap": "G-NOTIFY-01",
       "proof": [
         "docs/audits/diligence/P7_NOTIFICATION_MATRIX_2026-08-30.md",
-        "tests/test_cio_diligence_p7_notification_matrix.py"
+        "tests/test_cio_diligence_p7_notification_matrix.py",
+        "docs/ops/CIO_DILIGENCE_P7_NOTIFICATION_MATRIX_2026-08-30.md"
       ]
     },
     "P8": {
       "title": "Outcome/lesson MBI partition",
       "status": "DONE",
-      "pr": null,
-      "sha": null,
+      "pr": 683,
+      "sha": "eba4699a",
+      "merge_sha": "cb7c652b",
       "gap": "G-MBI-01",
       "proof": [
         "docs/audits/diligence/P8_MBI_PARTITION_2026-08-30.md",
-        "tests/test_cio_diligence_p8_mbi_partition.py"
+        "tests/test_cio_diligence_p8_mbi_partition.py",
+        "docs/ops/CIO_DILIGENCE_P8_MBI_PARTITION_2026-08-30.md"
       ]
     },
     "P9": {
       "title": "Registry / orphan / 99.99% path",
-      "status": "PENDING"
+      "status": "DONE",
+      "pr": 684,
+      "sha": "714a665f",
+      "merge_sha": "80f55f6f",
+      "proof": [
+        "docs/audits/diligence/P9_REGISTRY_ORPHAN_LIFECYCLE_2026-08-30.md",
+        "scripts/cio_registry_orphan_census.py",
+        "tests/test_cio_registry_orphan_census.py",
+        "docs/ops/CIO_DILIGENCE_P9_REGISTRY_LIFECYCLE_2026-08-30.md"
+      ],
+      "metrics": "cio_registry_orphan_census 30d miss=144 orphans=3; lineage 54%; design path to 99.99%"
     }
   }
 }

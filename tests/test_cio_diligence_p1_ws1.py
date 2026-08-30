@@ -86,11 +86,11 @@ def test_scoreboard_p1_ws1_done():
     assert data.get("memory_behavior_influence") in {0, "0"}
     assert data["packages"]["P0"]["status"] == "DONE"
     assert data["packages"]["P1-WS1"]["status"] == "DONE"
-    # P1-WS2 already landed on main (#685) ahead of this rebase
+    # All diligence packages P0–P9 restamped DONE on main tip
     assert data["packages"]["P1-WS2"]["status"] == "DONE"
     assert data["packages"]["P1-WS3"]["status"] == "DONE"
-    assert data["now"]["phase_cursor"] == "P3"
-    assert data["now"]["current_pin"] == "852ecd47"
+    assert data["now"]["phase_cursor"] in {"COMPLETE", "DONE"}
+    assert data["now"]["current_pin"] == "db08bd11"
     assert data["now"].get("this_package_pre_promote") is True
     assert data["now"]["health"] == 200
     assert data["now"]["cio"] == 200
