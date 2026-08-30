@@ -136,3 +136,77 @@ def test_it_declares_itself_reporting_only():
     assert "REPORTING ONLY" in src
     assert '"memory_behavior_influence": 0' in src
     assert '"financial_action": False' in src
+
+
+# ── M5: what memory changed about what the agent DID ──────────────────────
+
+def _brief_root(tmp_path, consult=None):
+    import json as _j
+    d = tmp_path / "data" / "cio"
+    d.mkdir(parents=True, exist_ok=True)
+    if consult is not None:
+        (d / "wake_record_consult.json").write_text(_j.dumps(consult), encoding="utf-8")
+    return tmp_path
+
+
+def test_a_missing_consult_artifact_is_a_fault_not_a_quiet_day(tmp_path):
+    """Silence must never be indistinguishable from 'nothing to report'."""
+    from scripts.lib.cio_agent_brief import acted_on_memory
+    got = acted_on_memory(_brief_root(tmp_path))
+    assert got["state"] == "NOT_RUNNING"
+    assert "not consulting" in got["note"] or "not running" in got["note"].lower()
+
+
+def test_the_brief_says_a_missing_consult_is_a_fault(tmp_path):
+    from scripts.lib.cio_agent_brief import render_telegram
+    brief = {"as_of": "2026-08-30T12:00:00Z", "window_hours": 24,
+             "looked_at": {"requests_raised": 0, "self_raised": 0,
+                           "operator_forced": 0, "by_situation": {}},
+             "came_back": {"completed": 0, "critique_verdicts": {}},
+             "changed_because": {"changed": 0, "changes": []},
+             "learned": {"written_in_window": 0, "total": 0,
+                         "total_research_derived": 0, "total_outcome_derived": 0},
+             "acted_on_memory": {"state": "NOT_RUNNING", "note": "absent"},
+             "could_not_do": {"lanes": [], "unstamped_domains": [],
+                              "blocked_purposes": []}}
+    out = render_telegram(brief)
+    assert "not consulting the record" in out
+    assert "fault, not a quiet day" in out
+
+
+def test_the_brief_reads_the_scheduled_artifact_rather_than_recomputing(tmp_path):
+    """Recomputing would report what the record WOULD have changed, which is a
+    different claim from what it DID change on a schedule."""
+    from scripts.lib.cio_agent_brief import acted_on_memory
+    got = acted_on_memory(_brief_root(tmp_path, consult={
+        "as_of": "2026-08-30T23:15:00+00:00", "unattended": True,
+        "wakes_considered": 1515, "subject_resolved": 1,
+        "decisions_changed_by_record": 1, "skipped_cadence_not_due": 1,
+        "no_subject": 1514,
+        "changed": [{"subject_key": "HELD:SCHD", "without_record": "proceed",
+                     "with_record": "skip/cadence_not_due", "reason": "deferred"}]}))
+    assert got["state"] == "RUNNING"
+    assert got["unattended"] is True
+    assert got["decisions_changed_by_record"] == 1
+    assert got["changed"][0]["subject_key"] == "HELD:SCHD"
+
+
+def test_zero_changes_is_reported_as_read_and_nothing_applied(tmp_path):
+    """'Nothing changed today' is a valid brief — but it must be distinguishable
+    from the lane not running at all."""
+    from scripts.lib.cio_agent_brief import render_telegram
+    brief = {"as_of": "2026-08-30T12:00:00Z", "window_hours": 24,
+             "looked_at": {"requests_raised": 0, "self_raised": 0,
+                           "operator_forced": 0, "by_situation": {}},
+             "came_back": {"completed": 0, "critique_verdicts": {}},
+             "changed_because": {"changed": 0, "changes": []},
+             "learned": {"written_in_window": 0, "total": 0,
+                         "total_research_derived": 0, "total_outcome_derived": 0},
+             "acted_on_memory": {"state": "RUNNING", "wakes_considered": 12,
+                                 "subject_resolved": 0,
+                                 "decisions_changed_by_record": 0, "changed": []},
+             "could_not_do": {"lanes": [], "unstamped_domains": [],
+                              "blocked_purposes": []}}
+    out = render_telegram(brief)
+    assert "the record changed nothing today" in out
+    assert "fault" not in out.split("*Acted on memory*")[1].split("*Learned*")[0]

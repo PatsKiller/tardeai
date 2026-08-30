@@ -213,6 +213,37 @@ def learned(lessons: list[dict[str, Any]], since: datetime) -> dict[str, Any]:
     }
 
 
+def acted_on_memory(root: Path) -> dict[str, Any]:
+    """D — what the record changed about what the agent did.
+
+    Read from the durable artifact the SCHEDULED dispatcher writes, not
+    recomputed here: recomputing would report what the record *would* have
+    changed, which is a different claim from what it *did* change on a schedule.
+    An absent artifact means the consult is not running, and the brief says so
+    rather than printing a zero that looks like "nothing to report".
+    """
+    p = Path(root) / "data" / "cio" / "wake_record_consult.json"
+    if not p.exists():
+        return {"state": "NOT_RUNNING", "provenance": "D",
+                "note": "no wake_record_consult artifact — the scheduled wake is "
+                        "not consulting the record, or has not run since deploy"}
+    try:
+        doc = json.loads(p.read_text(encoding="utf-8"))
+    except Exception as e:
+        return {"state": "UNREADABLE", "provenance": "D", "note": str(e)}
+    return {
+        "state": "RUNNING", "provenance": "D",
+        "as_of": doc.get("as_of"),
+        "unattended": doc.get("unattended"),
+        "wakes_considered": doc.get("wakes_considered"),
+        "subject_resolved": doc.get("subject_resolved"),
+        "decisions_changed_by_record": doc.get("decisions_changed_by_record"),
+        "skipped_cadence_not_due": doc.get("skipped_cadence_not_due"),
+        "no_subject": doc.get("no_subject"),
+        "changed": doc.get("changed") or [],
+    }
+
+
 def could_not_do(root: Path) -> dict[str, Any]:
     """D — lanes starved, domains unstamped, purposes blocked. Not buried."""
     out: dict[str, Any] = {"class": "D", "lanes": [], "unstamped_domains": [],
@@ -270,6 +301,7 @@ def build_brief(*, window_hours: float = DEFAULT_WINDOW_HOURS,
         "came_back": came_back(reqs, since),
         "changed_because": changed_because(records, since),
         "learned": learned(lessons, since),
+        "acted_on_memory": acted_on_memory(r),
         "could_not_do": could_not_do(r),
     }
 
@@ -278,6 +310,7 @@ def render_telegram(brief: dict[str, Any]) -> str:
     """T — fixed prose around D values. Labelled as such at the foot."""
     L, C = brief["looked_at"], brief["came_back"]
     CH, LE, CN = brief["changed_because"], brief["learned"], brief["could_not_do"]
+    AM = brief.get("acted_on_memory") or {}
     lines: list[str] = [
         "*🧠 Agent brief — what I did*",
         f"_{brief['as_of'][:16]}Z · last {brief['window_hours']:g}h · advisory only_",
@@ -302,6 +335,26 @@ def render_telegram(brief: dict[str, Any]) -> str:
             lines.append(f"  • {c['subject_key']} · {c['field']}")
             lines.append(f"      was: {c['before']}")
             lines.append(f"      now: {c['after']}")
+    lines.append("")
+
+    # M5 — what memory changed about what the agent DID, not what it read.
+    if AM.get("state") == "NOT_RUNNING":
+        lines.append("*Acted on memory* — the scheduled wake is not consulting "
+                     "the record. This is a fault, not a quiet day.")
+    elif AM.get("state") == "UNREADABLE":
+        lines.append(f"*Acted on memory* — consult artifact unreadable: "
+                     f"{AM.get('note')}")
+    else:
+        n = AM.get("decisions_changed_by_record") or 0
+        lines.append(f"*Acted on memory* — {AM.get('wakes_considered')} wakes, "
+                     f"{AM.get('subject_resolved')} with a subject, "
+                     f"{n} decision(s) changed by the record")
+        for c in (AM.get("changed") or [])[:3]:
+            lines.append(f"  • {c.get('subject_key')}: "
+                         f"{c.get('without_record')} → {c.get('with_record')}")
+        if n == 0:
+            lines.append("  • the record changed nothing today — it was read "
+                         "and nothing in it applied")
     lines.append("")
 
     if LE["written_in_window"] == 0:
