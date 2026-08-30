@@ -9,6 +9,7 @@ MD = ROOT / "docs" / "ops" / "CIO_DILIGENCE_SCOREBOARD.md"
 JS = ROOT / "docs" / "ops" / "CIO_DILIGENCE_SCOREBOARD.json"
 PLAN = ROOT / "docs" / "audits" / "CIO_PLATFORM_DILIGENCE_MASTER_PLAN_2026-08-30.md"
 GAPS = ROOT / "docs" / "audits" / "CIO_DILIGENCE_GAP_REGISTER.md"
+DIL = ROOT / "docs" / "audits" / "diligence"
 
 
 def test_diligence_files_exist():
@@ -34,3 +35,16 @@ def test_diligence_json_contract():
     assert "P1-WS1" in pkgs
     assert "P9" in pkgs
     assert data["drive"]["status"] in {"OK", "FAIL"}
+
+
+def test_p6_p7_p8_packages_done_with_proof():
+    data = json.loads(JS.read_text(encoding="utf-8"))
+    pkgs = data["packages"]
+    for pid in ("P6", "P7", "P8"):
+        assert pkgs[pid]["status"] == "DONE", pid
+        assert pkgs[pid].get("proof"), pid
+    assert (DIL / "P6_COUNCIL_DETERMINISM_2026-08-30.md").is_file()
+    assert (DIL / "P7_NOTIFICATION_MATRIX_2026-08-30.md").is_file()
+    assert (DIL / "P8_MBI_PARTITION_2026-08-30.md").is_file()
+    assert data["now"]["telegram_sent"] is False
+    assert data["memory_behavior_influence"] == 0
