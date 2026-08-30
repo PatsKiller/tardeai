@@ -2316,6 +2316,35 @@ def maybe_notify_plan(
                 return False
         except Exception:
             pass
+    # A narrative that quotes a portfolio figure current truth contradicts must
+    # not reach the operator. Found 2026-08-30: a live S6 plan was one wake from
+    # saying "cash is elevated at 805800" against an actual 630,784.82 — LLM
+    # prose frozen on 2026-08-26, past every other gate. Fails closed; abstains
+    # when the book cannot be read, so it never blocks on its own blindness.
+    if not force:
+        try:
+            try:
+                from scripts.lib.cio_notify_freshness import stale_claim
+            except Exception:
+                from lib.cio_notify_freshness import stale_claim  # type: ignore
+            _stale = stale_claim(plan)
+            if _stale:
+                try:
+                    _log_enrich({
+                        "ts": _now(),
+                        "plan_id": plan.get("plan_id"),
+                        "llm": "notify_skipped",
+                        "notify_skip": "narrative_quotes_stale_cash",
+                        "claimed": _stale.get("claimed"),
+                        "actual": _stale.get("actual"),
+                        "drift_pct": _stale.get("drift_pct"),
+                        "authority": "READ_ONLY_ADVISORY",
+                    })
+                except Exception:
+                    pass
+                return False
+        except Exception:
+            pass
     # Prefer high-value situation types for notify (S1/S2/S5/S6/S8).
     # S3 is NOT on the static allowlist — bare READY/NEAR must stay quiet.
     # S3 notifies only when s3_capital_act_now(plan) (governed RE_ENTER + ACT_NOW).
