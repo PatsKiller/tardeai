@@ -137,6 +137,7 @@ GATES = [
     ]),
     ("wake_loads_record", [
         "tests/test_wake_loads_record.py",
+        "tests/test_reactive_enqueue_routing.py",
     ]),
     ("r13_institutional", [
         "tests/test_r13_institution.py",
