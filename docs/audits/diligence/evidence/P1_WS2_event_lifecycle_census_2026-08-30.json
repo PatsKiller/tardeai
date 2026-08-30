@@ -1,0 +1,197 @@
+{
+  "as_of": "2026-08-30T04:45:56+00:00",
+  "authority": "READ_ONLY_ADVISORY",
+  "current_pin": "852ecd47260d73d4705c5264f89e2ed85b2912a1",
+  "families": {
+    "catalyst_earnings": {
+      "drop_reasons": {
+        "catalyst_graph_skip:entity_has_no_issuer": 2962,
+        "catalyst_graph_skip:symbol_not_registered": 35928,
+        "earnings_date_missing": 27,
+        "earnings_no_dated_archive": 54,
+        "earnings_symbol_not_normalized": 3,
+        "hermes_persisted_daily_only": 82
+      },
+      "errors": [],
+      "family": "catalyst_earnings",
+      "full_lifecycle_pct": 1.49,
+      "notes": [
+        "hermes_dir_fallback=/home/johnclaw/trade-ai-releases/persistent-state/data/hermes/momentum_catalysts",
+        "catalyst_graph_skipped_aggregate=38890 (counted in stages via aggregate, not per-row materialization)",
+        "graph_traces=1110 graph_nodes=452 hermes_rows_sampled=82 hermes_files=62 earnings_symbols=54 skip_total=38890",
+        "bound_by_type={'ANALYST_DOWNGRADE': 13, 'ANALYST_UPGRADE': 45, 'BUYBACK': 3, 'CONTRACT_WIN': 36, 'EARNINGS_BEAT': 35, 'EARNINGS_MISS': 4, 'GEOPOLITICAL': 5, 'INSIDER_BUY': 8, 'MERGER_ACQUISITION': 33, 'NEWS_MOMENTUM': 39, 'OFFERING_DILUTION': 6, 'OTHER': 872}",
+        "earnings_meta={'last_refresh': '2026-08-24T08:34:42.316371', 'tickers_fetched': 22, 'dates_found': 10}"
+      ],
+      "ok": true,
+      "processed_pct": 1.42,
+      "producers": [
+        "catalyst_events \u2192 catalyst_graph_latest",
+        "hermes/momentum_catalysts/*.jsonl",
+        "earnings_dates.json"
+      ],
+      "sample_n": 39478,
+      "stage_pct_of_accepted": {
+        "accepted": 100.0,
+        "archived": 1.35,
+        "normalized": 1.48,
+        "persisted": 1.49,
+        "processed": 1.42,
+        "recoverable": 1.49
+      },
+      "stages": {
+        "accepted": 39478,
+        "archived": 534,
+        "normalized": 585,
+        "persisted": 588,
+        "processed": 561,
+        "recoverable": 588
+      },
+      "stores": [
+        "/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/data/cio/catalyst_graph_latest.json",
+        "/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/data/portfolios/state/earnings_dates.json",
+        "/home/johnclaw/trade-ai-releases/persistent-state/data/hermes/momentum_catalysts"
+      ]
+    },
+    "sector_industry": {
+      "drop_reasons": {
+        "industry_archive_current_only": 143,
+        "sector_not_decomposed:fixed income \u2014 not equity sector exposure": 1,
+        "sector_not_decomposed:no reliable current factsheet \u2014 never guess": 2
+      },
+      "errors": [],
+      "family": "sector_industry",
+      "full_lifecycle_pct": 100.0,
+      "notes": [
+        "sector_rows=11 industry_rows=143 holdings_resolved_sectors=12",
+        "sector_wouldhavefired_present",
+        "sector_universe_sync_state_present"
+      ],
+      "ok": true,
+      "processed_pct": 100.0,
+      "producers": [
+        "sector_momentum_engine \u2192 sector.momentum.current",
+        "industry_momentum \u2192 industry.momentum.current",
+        "holdings resolved_sectors"
+      ],
+      "sample_n": 154,
+      "stage_pct_of_accepted": {
+        "accepted": 100.0,
+        "archived": 7.14,
+        "normalized": 100.0,
+        "persisted": 100.0,
+        "processed": 100.0,
+        "recoverable": 100.0
+      },
+      "stages": {
+        "accepted": 154,
+        "archived": 11,
+        "normalized": 154,
+        "persisted": 154,
+        "processed": 154,
+        "recoverable": 154
+      },
+      "stores": [
+        "/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/data/runtime/sector_momentum_latest.json",
+        "/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/data/runtime/industry_momentum_latest.json",
+        "/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/data/runtime/sector_momentum_wouldhavefired.json",
+        "/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/data/runtime/sector_universe_sync_state.json"
+      ]
+    },
+    "security_holdings_exit_reentry": {
+      "drop_reasons": {
+        "holdings_cash_skipped": 5,
+        "holdings_symbol_not_normalized": 3,
+        "reentry_missing_price_source": 9,
+        "reentry_persisted_desk_only": 50
+      },
+      "errors": [],
+      "family": "security_holdings_exit_reentry",
+      "full_lifecycle_pct": 100.0,
+      "notes": [
+        "readable_holdings_backups=2",
+        "holdings_rows=30 exit_ir=24 reentry_desk_rows=108 reentry_payload_syms=58"
+      ],
+      "ok": true,
+      "processed_pct": 100.0,
+      "producers": [
+        "holdings reconciliation \u2192 portfolio.holdings.current",
+        "cio_instrument_record (HELD:/EXIT:)",
+        "reentry_decision_desk",
+        "reentry_payload_last"
+      ],
+      "sample_n": 120,
+      "stage_pct_of_accepted": {
+        "accepted": 100.0,
+        "archived": 20.0,
+        "normalized": 97.5,
+        "persisted": 100.0,
+        "processed": 100.0,
+        "recoverable": 100.0
+      },
+      "stages": {
+        "accepted": 120,
+        "archived": 24,
+        "normalized": 117,
+        "persisted": 120,
+        "processed": 120,
+        "recoverable": 120
+      },
+      "stores": [
+        "/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/data/portfolios/state/holdings.json",
+        "/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/data/cio/cio_instrument_records.jsonl",
+        "/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/data/runtime/reentry_decision_desk_latest.json",
+        "/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/data/cio/reentry_payload_last.json",
+        "/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/data/runtime/identity_registry.json"
+      ]
+    }
+  },
+  "financial_action": false,
+  "headline": {
+    "accepted_total": 39752,
+    "claim_99_99": false,
+    "claim_note": "99.99% is a Phase-9 KPI after instrumentation; this package measures baseline only",
+    "families_measured": 3,
+    "mean_full_lifecycle_pct": 67.16,
+    "mean_processed_pct": 67.14,
+    "min_full_lifecycle_pct": 1.49,
+    "processed_total": 835,
+    "recoverable_total": 862,
+    "weighted_full_lifecycle_pct": 2.17,
+    "weighted_processed_pct": 2.1
+  },
+  "lineage_overlay": {
+    "arcs": {
+      "cio_notification": 29,
+      "research_checkpoint": 436
+    },
+    "available": true,
+    "complete_to_checkpoint": 406,
+    "completion_pct": 53.99,
+    "completion_rate": 0.5399,
+    "note": "workflow lineage \u2260 event-family lifecycle; shown for G-LOOP-01 context",
+    "stalled_at": {
+      "cio": 112,
+      "research": 640
+    },
+    "with_checkpoint_id": 436,
+    "workflows": 752
+  },
+  "memory_behavior_influence": 0,
+  "rails": {
+    "authority": "READ_ONLY_ADVISORY",
+    "broker_writes": false,
+    "history_delete": false,
+    "mbi": 0,
+    "notify_on": false
+  },
+  "root": "/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT",
+  "schema": "CIOEventLifecycleCensus@v1",
+  "stages": [
+    "accepted",
+    "normalized",
+    "persisted",
+    "processed",
+    "archived",
+    "recoverable"
+  ]
+}

@@ -17,6 +17,8 @@ Resume cursor: first phase/package with status != DONE.
 | `/api/v2/health` | 200 |
 | `/v3/cio` | 200 |
 | lineage complete_to_checkpoint | **406 / 752 (54.0%)** |
+| event lifecycle (weighted full) | **2.17%** recoverable / accepted (P1-WS2) |
+| event lifecycle (unweighted mean) | **67.16%** · catalyst family **1.49%** |
 | arcs | research_checkpoint 436 · cio_notification 29 |
 | first open stage | research 640 · cio 112 |
 | rails | MBI=0 · READ_ONLY_ADVISORY · no broker write · no notify-on · no Telegram producer |
@@ -31,7 +33,7 @@ Resume cursor: first phase/package with status != DONE.
 |----|-------|--------|----|-----|-------|
 | P0 | Master plan + scoreboard + gap register | DONE | #681 | `f54bf9f5` | plan in docs/audits; lineage re-measure 54% |
 | P1-WS1 | Architecture as-built pack | PENDING | | | |
-| P1-WS2 | Event lifecycle census baseline | PENDING | | | |
+| P1-WS2 | Event lifecycle census baseline | DONE | *(this PR)* | | weighted full **2.17%**; catalyst **1.49%**; claim_99.99=false |
 | P1-WS3 | Operator S0 workflow + failure battery | PENDING | | | |
 | P2-WS4 | Identity confidence score | PENDING | | | |
 | P2-WS5 | HELD/EXIT/WATCH/CASH/DUST matrix | PENDING | | | |

@@ -26,6 +26,17 @@
         "cio": 112
       }
     },
+    "event_lifecycle": {
+      "weighted_full_lifecycle_pct": 2.17,
+      "mean_full_lifecycle_pct": 67.16,
+      "min_full_lifecycle_pct": 1.49,
+      "weighted_processed_pct": 2.1,
+      "accepted_total": 39752,
+      "recoverable_total": 862,
+      "claim_99_99": false,
+      "measured_at": "2026-08-30",
+      "instrument": "scripts/cio_event_lifecycle_census.py"
+    },
     "telegram_sent": false,
     "phase_cursor": "P1-WS1",
     "packages_done_out_of_order": ["P6", "P7", "P8"]
@@ -38,7 +49,13 @@
       "sha": "f54bf9f5"
     },
     "P1-WS1": {"title": "Architecture as-built pack", "status": "PENDING"},
-    "P1-WS2": {"title": "Event lifecycle census baseline", "status": "PENDING"},
+    "P1-WS2": {
+      "title": "Event lifecycle census baseline",
+      "status": "DONE",
+      "pr": null,
+      "sha": null,
+      "proof": "weighted_full_lifecycle_pct=2.17; catalyst=1.49; claim_99_99=false"
+    },
     "P1-WS3": {"title": "Operator S0 workflow + failure battery", "status": "PENDING"},
     "P2-WS4": {"title": "Identity confidence score", "status": "PENDING"},
     "P2-WS5": {"title": "HELD/EXIT/WATCH/CASH/DUST matrix", "status": "PENDING"},
