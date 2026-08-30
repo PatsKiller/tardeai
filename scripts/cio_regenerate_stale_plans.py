@@ -80,6 +80,39 @@ def main() -> int:
     )
     from scripts.lib.cio_plans import CIOPlanStore
 
+    # Refuse to run blind. augment_multi_domain_evidence is fail-soft: with no
+    # Data Broker snapshot it silently refreshes nothing, and this tool would
+    # then "regenerate" every plan back to the same stale numbers and report
+    # success. That happened while developing this — running the tool from a
+    # tree without data/ made `lib.data_broker` resolve somewhere empty.
+    try:
+        try:
+            from lib.data_broker.cio_portfolio import get_cio_snapshot
+        except Exception:
+            from scripts.lib.data_broker.cio_portfolio import get_cio_snapshot  # type: ignore
+        _snap = get_cio_snapshot(max_age_s=86400) or {}
+        _doms = _snap.get("domains") or _snap
+        _n = len(_doms) if isinstance(_doms, dict) else 0
+    except Exception as exc:                                     # noqa: BLE001
+        print(f"FATAL: Data Broker unavailable ({exc.__class__.__name__}); "
+              f"refusing to regenerate against no evidence", file=sys.stderr)
+        return 2
+    # Domain COUNT is not enough: run from a tree without data/ and the broker
+    # still returns 18 domains, with empty bodies. Check the field this tool
+    # actually depends on.
+    _cash = None
+    if isinstance(_doms, dict):
+        _raw = _doms.get("cash_buying_power") or {}
+        _body = _raw.get("data") if isinstance(_raw.get("data"), dict) else _raw
+        _cash = (_body or {}).get("total_cash")
+    if _n < 3 or not isinstance(_cash, (int, float)):
+        print(f"FATAL: Data Broker gave {_n} domains and "
+              f"cash_buying_power.total_cash={_cash!r}; refusing to regenerate "
+              f"against no evidence. Run from the served release "
+              f"(cd .../portfolio-server/CURRENT) so `lib.data_broker` and the "
+              f"plan store resolve to the served tree.", file=sys.stderr)
+        return 2
+
     res = get_cio_plans(limit=900, situation_type=args.situation or None)
     plans = (res.get("plans") if isinstance(res, dict) else res) or []
 
@@ -98,8 +131,16 @@ def main() -> int:
         if args.limit and regenerated >= args.limit:
             break
         try:
-            pack = build_evidence_pack(plan)
-            narrative = template_narrative_from_plan(plan, pack)
+            # Clear the old narrative BEFORE rebuilding. The template builder
+            # folds the existing summary forward (pack["existing_summary"]), so
+            # regenerating in place left the previous multi-domain line — and
+            # its stale cash figure — embedded in `summary` even after
+            # multi_domain_summary itself had been correctly refreshed.
+            scratch = dict(plan)
+            for _f in ("summary", "multi_domain_summary", "thesis_alignment"):
+                scratch[_f] = ""
+            pack = build_evidence_pack(scratch)
+            narrative = template_narrative_from_plan(scratch, pack)
             fresh = dict(plan)
             for k in ("summary", "multi_domain_summary", "thesis_alignment",
                       "recommendation", "risks", "options"):
