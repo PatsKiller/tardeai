@@ -48,6 +48,162 @@ def _confirmed_field(policy: dict[str, Any], name: str) -> Any:
     return field.get("value") if field.get("operator_confirmed") else None
 
 
+# ── provenance at display ──────────────────────────────────────────────────
+#
+# Measured 2026-08-30 across 24 materially different situations — 1%/5%/20%
+# cash, risk-on and risk-off, policy confirmed and not, thesis present and
+# absent, reaching all four conclusions (DEPLOY_STAGED, HOLD_CASH, REBALANCE,
+# RESEARCH_FIRST) — two fields never moved:
+#
+#   counter_case         one byte-identical sentence in all 24
+#   supporting_evidence  [null, null, null, null, null]
+#
+# A counter-case is the argument against THIS recommendation on THIS data. A
+# constant string in that slot is a disclaimer wearing a counter-case's label,
+# and it reads to the operator as reasoning that was done. Five nulls rendered
+# as a list of supporting evidence is the same failure in the other direction.
+#
+# Both now say what is true of the situation in front of them, and say nothing
+# rather than something generic when there is nothing specific to say.
+
+_COUNTER_CASE_BY_CONCLUSION = {
+    "DEPLOY_STAGED": (
+        "Cash above the policy ceiling is not itself a reason to deploy: the "
+        "ceiling assumes opportunities worth funding, and none of this "
+        "establishes that today's candidates are."
+    ),
+    "HOLD_CASH": (
+        "Holding here costs the return the cash would have earned deployed, "
+        "and a regime read is not a forecast — the same posture would have "
+        "been wrong through most recoveries."
+    ),
+    "REBALANCE": (
+        "Cash below the floor can be the correct posture when the positions "
+        "holding that capital still earn it; restoring the floor by selling "
+        "them trades a live thesis for a policy number."
+    ),
+    "RESEARCH_FIRST": (
+        "Waiting for complete evidence has its own cost, and evidence that is "
+        "incomplete for a structural reason will not become complete by "
+        "waiting for it."
+    ),
+    "WAIT": (
+        "Waiting is a position. If the condition being waited on is not "
+        "named and dated, this is indefinite by default."
+    ),
+}
+
+
+def _counter_case(
+    *,
+    conclusion: str,
+    deviation_state: Any,
+    regime_risk_off: Any,
+    blockers: list[str],
+) -> dict[str, Any]:
+    """The argument against this conclusion, on this data — or an honest absence."""
+    text = _COUNTER_CASE_BY_CONCLUSION.get(str(conclusion or ""))
+    grounds: list[str] = []
+    if deviation_state and deviation_state not in {"UNAVAILABLE", "POLICY_REQUIRED"}:
+        grounds.append(f"cash is {deviation_state} the confirmed policy range")
+    if regime_risk_off:
+        grounds.append("the current regime reads risk-off")
+    if blockers:
+        grounds.append(f"{len(blockers)} blocking gap(s) remain: {', '.join(sorted(set(blockers))[:3])}")
+    if text is None:
+        return {
+            "state": "NONE_SPECIFIC",
+            "text": None,
+            "against_conclusion": conclusion,
+            "note": "no counter-case is stated for this conclusion; an absence, "
+                    "not a generic one",
+        }
+    return {
+        "state": "STATED",
+        "text": text,
+        "against_conclusion": conclusion,
+        "grounds": grounds,
+        "provenance": "TEMPLATE — one per conclusion, selected by this "
+                      "situation's conclusion; the grounds are read from the "
+                      "situation. Not model-written.",
+    }
+
+
+def _counter_case_text(**kw: Any) -> str | None:
+    """The published string form: the conclusion-specific case, plus the grounds
+    it was drawn from. Still a string, so every existing consumer is unaffected."""
+    cc = _counter_case(**kw)
+    if not cc.get("text"):
+        return None
+    grounds = cc.get("grounds") or []
+    if not grounds:
+        return str(cc["text"])
+    return f"{cc['text']} (on this data: {'; '.join(grounds)})"
+
+
+def _evidence_versions(
+    policy: dict[str, Any],
+    portfolio_state: dict[str, Any],
+    market_context: dict[str, Any],
+    seasonality: dict[str, Any],
+    portfolio_thesis: dict[str, Any] | None,
+) -> list[Any]:
+    """The published list form, order-stable for positional readers."""
+    return [
+        (policy or {}).get("version"),
+        (portfolio_state or {}).get("version"),
+        (market_context or {}).get("version"),
+        (seasonality or {}).get("version"),
+        (portfolio_thesis or {}).get("thesis_version"),
+    ]
+
+
+_EVIDENCE_SOURCES = (
+    ("policy", "version"),
+    ("portfolio_state", "version"),
+    ("market_context", "version"),
+    ("seasonality", "version"),
+    ("portfolio_thesis", "thesis_version"),
+)
+
+
+def _supporting_evidence(
+    policy: dict[str, Any],
+    portfolio_state: dict[str, Any],
+    market_context: dict[str, Any],
+    seasonality: dict[str, Any],
+    portfolio_thesis: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Which inputs actually carried a version, and which did not.
+
+    Was a bare list of five values, rendered as supporting evidence even when
+    every one of them was null. A named absence is evidence; an unnamed null
+    is not.
+    """
+    docs = {
+        "policy": policy or {},
+        "portfolio_state": portfolio_state or {},
+        "market_context": market_context or {},
+        "seasonality": seasonality or {},
+        "portfolio_thesis": portfolio_thesis or {},
+    }
+    present: list[dict[str, Any]] = []
+    missing: list[str] = []
+    for name, key in _EVIDENCE_SOURCES:
+        v = docs[name].get(key)
+        if v:
+            present.append({"source": name, "version": str(v)})
+        else:
+            missing.append(name)
+    return {
+        "state": "COMPLETE" if not missing else (
+            "NONE" if not present else "PARTIAL"),
+        "present": present,
+        "unversioned_sources": missing,
+        "counts": {"present": len(present), "missing": len(missing)},
+    }
+
+
 def independently_material_cash(
     cash_pct: Any,
     observed_cash: Any = None,
@@ -232,14 +388,26 @@ def build_cash_deployment_situation(
             "macro": (fields.get("macro_calendar") or {}).get("value"),
             "portfolio_earnings": (fields.get("portfolio_earnings_calendar") or {}).get("value"),
         },
-        "supporting_evidence": [
-            policy.get("version"),
-            portfolio_state.get("version"),
-            market_context.get("version"),
-            seasonality.get("version"),
-            (portfolio_thesis or {}).get("thesis_version"),
-        ],
-        "counter_case": "Holding cash can remain rational when policy, deployability, valuation, event risk, or living-thesis evidence is incomplete.",
+        # Shapes stay as published — `counter_case` a string, `supporting_evidence`
+        # a list — because four consumers read them positionally and one does
+        # `list(...)`, which on a dict silently yields the keys. The structure
+        # goes in sibling keys instead.
+        "supporting_evidence": _evidence_versions(
+            policy, portfolio_state, market_context, seasonality, portfolio_thesis),
+        "supporting_evidence_state": _supporting_evidence(
+            policy, portfolio_state, market_context, seasonality, portfolio_thesis),
+        "counter_case": _counter_case_text(
+            conclusion=conclusion,
+            deviation_state=deviation_state,
+            regime_risk_off=regime_risk_off,
+            blockers=blockers,
+        ),
+        "counter_case_provenance": _counter_case(
+            conclusion=conclusion,
+            deviation_state=deviation_state,
+            regime_risk_off=regime_risk_off,
+            blockers=blockers,
+        ),
         "what_changes_the_plan": sorted(set(blockers + ["MATERIAL_MARKET_CONTEXT_CHANGE", "PORTFOLIO_THESIS_DELTA"])),
         "blockers": sorted(set(blockers)),
         "missing_policy_fields": missing_policy,

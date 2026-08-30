@@ -49,6 +49,11 @@ MBI_BEHAVIOR = 0
 # unexamined.
 DEFER_PUSH_DAYS = 7
 
+# Deltas that may raise a surface. CONFIRMS and STRENGTHENS are findings; the
+# others are honest negatives and must stay silent, or the operator mutes the
+# lane and the whole exercise is worse than not notifying.
+_POSITIVE_DELTAS = frozenset({"CONFIRMS", "STRENGTHENS"})
+
 # Observables whose movement overrides a cadence skip.
 EVENT_HASHES = ("weight", "earnings")
 
@@ -174,6 +179,42 @@ def apply_after_cycle(
         else:
             rec["research_blocked"] = False
             outcome = verdict.lower() or "attached"
+            # A critique-validated finding used to end here: research_blocked
+            # cleared, an outcome string recorded, and nothing the operator
+            # would ever see. The gate's own reason code says why --
+            # POSITIVE_DELTA_MAY_RAISE_COMPLETENESS_NOT_ACTION -- and that rule
+            # is kept: nothing below touches size, weight, order or any
+            # behaviour field, and apply_cognition raises BehaviorWriteRefused
+            # on all of them. MBI_BEHAVIOR stays 0.
+            #
+            # What changes is that a positive delta may now reach a surface
+            # through the three cognition fields MBI_COGNITION=1 already
+            # permits: notify_priority, cc_narrative, next_research_question.
+            #
+            # Only CONFIRMS and STRENGTHENS qualify. NO_NEW_INFO and
+            # INSUFFICIENT_DATA are honest negatives and must not raise
+            # priority -- a lane that notifies on every completion is a lane
+            # the operator mutes.
+            _delta = str(artifact.get("delta_classification")
+                         or artifact.get("classification") or "").upper()
+            if _delta in _POSITIVE_DELTAS:
+                _subject = str(rec.get("subject_key") or "this position")
+                priority = "cc"
+                nxt_q = (f"{_delta.capitalize()}ing evidence is now on record for "
+                         f"{_subject}. What would have to be true for it to be wrong?")
+                _old = dict(rec.get("cc_narrative") or {})
+                _what = str(_old.get("what") or "")
+                _line = (f"Research {_delta.lower()} the standing thesis.")
+                if not _what.startswith("Research "):
+                    _what = (_line + (f" {_what}" if _what else "")).strip()
+                narrative = cc_narrative(
+                    what=_what,
+                    thesis_fit=str(_old.get("thesis_fit") or ""),
+                    recommendation_option_id=_old.get("recommendation_option_id"),
+                    risks=list(_old.get("risks") or []),
+                    evidence_refs=list(_old.get("evidence_refs") or []),
+                    writer="cognition:research_positive_delta",
+                )
 
     # ── rule 1: defer honored, no new catalyst ───────────────────────────
     if lesson and not event_moved:
