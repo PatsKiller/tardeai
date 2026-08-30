@@ -565,6 +565,23 @@
       },
       "reason_confidence": "UNKNOWN",
       "reason_evidence": "crontab: '#0 7 * * 1-5 $PY scripts/cio_decision_engine.py --run  # DISABLED 2026-08-08'. No commit, PR or decision document found for it."
+    },
+    {
+      "lane_id": "cio-wake-dispatch",
+      "owner": "cio",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "*/5 * * * * cio_wake_dispatch_entrypoint.py",
+        "match": "cio_wake_dispatch_entrypoint.py"
+      },
+      "expected_cadence_hours": 0.25,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/cio/wake_record_consult.json",
+        "key": "as_of"
+      },
+      "note": "M5. The durable artifact proves the record was consulted on a SCHEDULE, unattended \u2014 a hand-run leaves no trace here."
     }
   ],
   "undeclared_baseline": [
