@@ -28,7 +28,9 @@
     },
     "telegram_sent": false,
     "phase_cursor": "P1-WS1",
-    "packages_done_out_of_order": ["P6", "P7", "P8"]
+    "packages_done_out_of_order": ["P2-WS4", "P2-WS5", "P6", "P7", "P8"],
+    "identity_production_resolvable_pct": 98.9,
+    "schg_surface_a": "EXITED"
   },
   "packages": {
     "P0": {
@@ -40,8 +42,20 @@
     "P1-WS1": {"title": "Architecture as-built pack", "status": "PENDING"},
     "P1-WS2": {"title": "Event lifecycle census baseline", "status": "PENDING"},
     "P1-WS3": {"title": "Operator S0 workflow + failure battery", "status": "PENDING"},
-    "P2-WS4": {"title": "Identity confidence score", "status": "PENDING"},
-    "P2-WS5": {"title": "HELD/EXIT/WATCH/CASH/DUST matrix", "status": "PENDING"},
+    "P2-WS4": {
+      "title": "Identity confidence score",
+      "status": "DONE",
+      "pr": null,
+      "sha": null,
+      "proof": "docs/audits/diligence/P2_WS4_IDENTITY_CONFIDENCE_2026-08-30.md; scripts/cio_identity_confidence_census.py"
+    },
+    "P2-WS5": {
+      "title": "HELD/EXIT/WATCH/CASH/DUST matrix",
+      "status": "DONE",
+      "pr": null,
+      "sha": null,
+      "proof": "docs/audits/diligence/P2_WS5_POSITION_STATE_MATRIX_2026-08-30.md"
+    },
     "P3": {"title": "InstrumentRecord persistence drills", "status": "PENDING"},
     "P4": {"title": "Research free / residual / model gov", "status": "PENDING"},
     "P5": {"title": "Specialist N=100 sample", "status": "PENDING"},
