@@ -75,3 +75,66 @@ def test_a_stub_hop_still_costs_nothing():
     out = rw.run_hop("SLEEVE:CASH", question="q", question_ids=["q1"])
     assert out["cost_usd"] == 0.0
     assert out.get("provider") == "stub"
+
+
+# ── the search query, and the prompt that carries its results ─────────────
+#
+# Two more defects the stub could not reach, both found by running the hop:
+#   * the prompt was the bare question, so DeepSeek rejected json mode with
+#     HTTP 400 AND the retrieved URLs never reached the model — the "web" in
+#     residual_web did nothing.
+#   * a full sentence was handed to SearXNG, a KEYWORD engine. It matched "do"
+#     and returned Merriam-Webster and WebMD pages on osteopathy.
+
+@pytest.mark.parametrize("question,must_have,must_not", [
+    ("What do official Federal Reserve and FRED sources currently show for "
+     "short-term cash yields and the policy rate path into Q4 2026?",
+     ["Federal", "Reserve", "FRED"], ["do", "what", "official", "sources", "path"]),
+    ("Which SEC filings show the current dividend coverage for SCHD?",
+     ["SEC", "SCHD"], ["which", "show", "current"]),
+])
+def test_the_search_query_is_keywords_not_a_sentence(question, must_have, must_not):
+    q = rw.search_query_from_question(question)
+    terms = [t.lower() for t in q.split()]
+    for w in must_have:
+        assert w.lower() in terms, f"{w} dropped from {q!r}"
+    for w in must_not:
+        assert w.lower() not in terms, f"{w!r} should not survive: {q!r}"
+
+
+def test_generic_research_vocabulary_is_dropped():
+    """'official' and 'sources' carry no signal and crowd out terms that do.
+
+    The first fix kept ten terms led by 'official' and SearXNG matched THAT —
+    dictionary pages again, a different word but the same failure.
+    """
+    q = rw.search_query_from_question(
+        "What are the official latest reports and sources on Fed policy?")
+    assert "fed" in q.lower() or "policy" in q.lower()
+    for junk in ("official", "latest", "reports", "sources"):
+        assert junk not in q.lower().split()
+
+
+def test_the_query_is_capped():
+    q = rw.search_query_from_question(" ".join(f"term{i}" for i in range(40)))
+    assert len(q.split()) <= 6
+
+
+def test_an_empty_question_does_not_produce_an_empty_query():
+    assert rw.search_query_from_question("") == ""
+    assert rw.search_query_from_question("the and of") != ""   # falls back
+
+
+def test_the_prompt_says_json_and_carries_the_sources():
+    """DeepSeek 400s on json mode unless the prompt contains 'json'."""
+    src = inspect.getsource(rw._live_transport)
+    assert "json" in src.lower()
+    assert "SOURCES:" in src, "retrieved urls must reach the model"
+    assert "sources" in src
+
+
+def test_the_prompt_forbids_instruction_language():
+    """A web answer must not come back as an order."""
+    src = inspect.getsource(rw._live_transport)
+    for verb in ("buy", "sell", "add", "trim", "maintain", "hold"):
+        assert verb in src.lower(), f"prompt should name {verb} as forbidden"
