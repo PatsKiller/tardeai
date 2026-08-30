@@ -91,3 +91,34 @@ def test_the_notify_path_is_actually_wired_to_it():
            / "scripts" / "lib" / "cio_plan_enrichment.py").read_text(encoding="utf-8")
     assert "cio_notify_freshness" in src
     assert "narrative_quotes_stale_cash" in src
+
+
+# --- the identifier form, missed by the first cut (2026-08-30) --------------
+#
+# `\bcash\b` needs a word boundary, but `total_cash=` and `cash_buying_power`
+# sit next to underscores, which ARE word characters. The guard passed a plan
+# as clean and it delivered `total_cash=578107.50` against an actual
+# 630,784.82 — 8.4% off — to the operator's phone.
+
+def test_the_snake_case_identifier_form_is_caught(book):
+    plan = {"multi_domain_summary":
+            "Domains cash_buying_power, risk: cash_buying_power("
+            "total_cash=578107.50); portfolio(total_value=1277811.05)"}
+    hit = stale_claim(plan, root=book)
+    assert hit, "the delivered-message form must not pass"
+    assert hit["claimed"] == 578107.50
+    assert 8.0 < hit["drift_pct"] < 9.0
+
+
+def test_the_same_identifier_carrying_truth_passes(book):
+    assert stale_claim(
+        {"multi_domain_summary": f"cash_buying_power(total_cash={ACTUAL})"},
+        root=book) is None
+
+
+@pytest.mark.parametrize("text", [
+    "free_cashflow_yield was 12000 bps",      # cashflow is not cash
+    "cashless_exercise of 45000 units",
+])
+def test_words_merely_containing_cash_do_not_match(book, text):
+    assert stale_claim({"summary": text}, root=book) is None

@@ -634,6 +634,48 @@ def record_decision_thread_note(decision_id: str, note: str, *, disposition: str
 # ── Structured reply formatter ──────────────────────────────────────────────
 
 
+def _trim(text: str, limit: int) -> str:
+    """Cut at a sentence, else a word — never mid-token.
+
+    `summary[:160]` produced "…escalate material drift, concentration, and deep
+    drawdowns to the" in a delivered advisory on 2026-08-30. A hard slice makes
+    the desk look broken even when the content is right.
+    """
+    t = (text or "").strip()
+    if len(t) <= limit:
+        return t
+    window = t[:limit]
+    for end in (". ", "; ", " — ", ", "):
+        cut = window.rfind(end)
+        if cut >= int(limit * 0.5):
+            return window[:cut + 1].strip().rstrip(",;")
+    cut = window.rfind(" ")
+    return (window[:cut] if cut >= int(limit * 0.5) else window).rstrip(" ,;") + "…"
+
+
+# Detector output, not prose: "reasons=weight_42.1pct; weight=42.1; loss_pct=None".
+# It reached the operator verbatim in the *What* block on 2026-08-30.
+_DEBUG_KV_RE = re.compile(
+    r"^\s*(?:[a-z_]+=[^;\n]*)(?:\s*;\s*[a-z_]+=[^;\n]*)+\s*$", re.I)
+
+
+def _readable_reasons(text: str) -> str:
+    """Turn a k=v debug string into a sentence; leave real prose alone."""
+    t = (text or "").strip()
+    if not _DEBUG_KV_RE.match(t):
+        return t
+    parts = []
+    for chunk in t.split(";"):
+        if "=" not in chunk:
+            continue
+        k, _, v = chunk.partition("=")
+        k = k.strip().replace("_", " "); v = v.strip()
+        if not v or v.lower() in ("none", "null", "nan", ""):
+            continue                      # "loss_pct=None" says nothing
+        parts.append(f"{k} {v}")
+    return ("Detector flags: " + ", ".join(parts) + ".") if parts else ""
+
+
 def format_structured_reply(
     *,
     summary: str,
@@ -720,14 +762,14 @@ def format_structured_reply(
         rec = CIOThesisStore().get_by_pin(str(pin)) if pin else None
         if rec:
             thesis_stance = str(rec.get("stance") or "")
-            thesis_summary = str(rec.get("summary") or "")[:160]
+            thesis_summary = _trim(str(rec.get("summary") or ""), 160)
     except Exception:
         try:
             from lib.cio_theses import CIOThesisStore  # type: ignore
             rec = CIOThesisStore().get_by_pin(str(pin)) if pin else None
             if rec:
                 thesis_stance = str(rec.get("stance") or "")
-                thesis_summary = str(rec.get("summary") or "")[:160]
+                thesis_summary = _trim(str(rec.get("summary") or ""), 160)
         except Exception:
             pass
     if pin and (thesis_stance or thesis_summary):
@@ -739,20 +781,26 @@ def format_structured_reply(
     what_body = _clean(summary) or "(no summary)"
     thesis_align_line = _clean(thesis_alignment or "")
     multi_dom_line = _clean(multi_domain_summary or "")
-    if not thesis_align_line and "Thesis alignment" in what_body:
+    # Always lift an embedded block out of *What*, even when the structured
+    # field is populated. The old condition (`not thesis_align_line and ...`)
+    # stripped it ONLY when the field was empty, so a plan carrying both
+    # rendered the identical paragraph twice — once in *What*, once under 🧭.
+    # Observed verbatim in a delivered advisory on 2026-08-30.
+    if "Thesis alignment" in what_body:
         parts = what_body.split("Thesis alignment", 1)
         what_body = parts[0].strip()
         rest = parts[1]
         if "Multi-domain" in rest:
             ta_part, md_part = rest.split("Multi-domain", 1)
-            thesis_align_line = ("Thesis alignment" + ta_part).strip(" :\n")
-            multi_dom_line = ("Multi-domain" + md_part).strip(" :\n")
+            thesis_align_line = thesis_align_line or ("Thesis alignment" + ta_part).strip(" :\n")
+            multi_dom_line = multi_dom_line or ("Multi-domain" + md_part).strip(" :\n")
         else:
-            thesis_align_line = ("Thesis alignment" + rest).strip(" :\n")
+            thesis_align_line = thesis_align_line or ("Thesis alignment" + rest).strip(" :\n")
     elif "Multi-domain" in what_body:
         parts = what_body.split("Multi-domain", 1)
         what_body = parts[0].strip()
-        multi_dom_line = ("Multi-domain" + parts[1]).strip(" :\n")
+        multi_dom_line = multi_dom_line or ("Multi-domain" + parts[1]).strip(" :\n")
+    what_body = _readable_reasons(what_body)
     lines.append("📌 *What*")
     lines.append(what_body or "(no summary)")
     if thesis_align_line:

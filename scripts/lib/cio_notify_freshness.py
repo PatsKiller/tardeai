@@ -36,9 +36,16 @@ TOLERANCE_PCT = 2.0
 # "portfolio heat 0.09%" do not, which is the point — this is not a numeric
 # scanner, it is a claim checker.
 _NUM = r"\$?\s*([0-9][0-9,]{2,}(?:\.[0-9]+)?)"
+
+# `cash` as a WORD or as part of a snake_case identifier. The first cut used
+# \bcash\b and silently missed `total_cash=578107.50` and `cash_buying_power`,
+# because an underscore is a word character so the boundary never matched. That
+# hole shipped a message quoting 578,107.50 against an actual 630,784.82 while
+# the guard reported the plan clean — measured 2026-08-30.
+_CASH = r"(?<![A-Za-z])(?:[a-z]+_)*cash(?:_[a-z]+)*(?![A-Za-z])"
 _CASH_CLAIM_RE = re.compile(
-    rf"(?i)\bcash\b[^.;\n]{{0,60}}?{_NUM}"
-    rf"|{_NUM}[^.;\n]{{0,40}}?\bcash\b"
+    rf"(?i){_CASH}[^.;\n]{{0,60}}?{_NUM}"
+    rf"|{_NUM}[^.;\n]{{0,40}}?{_CASH}"
 )
 
 
