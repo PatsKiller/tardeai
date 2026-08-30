@@ -1,0 +1,189 @@
+{
+  "schema": "CIOResearchGovernanceCensus@v1",
+  "authority": "READ_ONLY_ADVISORY",
+  "financial_action": false,
+  "memory_behavior_influence": 0,
+  "as_of": "2026-08-30T04:46:14.982079+00:00",
+  "root": "/home/johnclaw/tradeai-wt-cio-diligence-p4-p5",
+  "free_first": {
+    "layer": "free_research",
+    "fred_series_on_disk": [
+      "fred_cpiaucsl.csv",
+      "fred_fedfunds.csv",
+      "fred_nasdaqcom.csv",
+      "fred_sp500.csv",
+      "fred_t10y2y.csv",
+      "fred_unrate.csv",
+      "fred_vixcls.csv"
+    ],
+    "fred_series_count": 7,
+    "ff_factor_files": [
+      "ff_momentum_factor_monthly.csv",
+      "ff_research_data_5_factors_monthly.csv",
+      "ff_research_data_factors_monthly.csv"
+    ],
+    "provider_doc_exists": true,
+    "ingest_script_exists": true,
+    "free_first_refresh_exists": true,
+    "api_key_env_names": [
+      "FRED_API_KEY"
+    ],
+    "note": "Without FRED_API_KEY the financial-senses provider returns NOT_CONFIGURED honestly; on-disk reference series remain usable for free-first / RAG context.",
+    "note_live": "Code/docs/reference series resolved from repo; live overlay store snapshot under stores_live_overlay."
+  },
+  "invariants": {
+    "research_budget": {
+      "schema": "ResearchBudget@v1",
+      "daily_cap": 5,
+      "held_slots": 3,
+      "cash_slots": 1,
+      "reentry_or_watch_slots": 1,
+      "mbi_behavior": 0,
+      "authority": "READ_ONLY_ADVISORY"
+    },
+    "residual_web": {
+      "max_hops_per_subject_per_day": 1,
+      "daily_subject_budget": 3,
+      "residual_decision_token": "openai",
+      "lane": "residual_web"
+    },
+    "gate_ladder": {
+      "version": "ResearchNeedDecision@v2",
+      "decisions": [
+        "skip",
+        "reuse",
+        "corpus_hit",
+        "flash",
+        "pro",
+        "openai",
+        "grok_critique"
+      ],
+      "paid_decisions": [
+        "flash",
+        "grok_critique",
+        "openai",
+        "pro"
+      ],
+      "lane_for": {
+        "flash": "llm_flash",
+        "pro": "llm_pro",
+        "openai": "residual_web",
+        "grok_critique": "grok_critique"
+      },
+      "free_rungs": [
+        "skip",
+        "reuse",
+        "corpus_hit"
+      ],
+      "model_rungs": [
+        "flash",
+        "pro",
+        "openai",
+        "grok_critique"
+      ]
+    },
+    "corpus": {
+      "closing_grades": [
+        "A",
+        "B"
+      ],
+      "grade_c_or_d_may_corpus_hit": false,
+      "law": "only A/B close; C/D/X are context-only / not corpus_hit"
+    }
+  },
+  "stores": {
+    "instrument_records": {
+      "path": "/home/johnclaw/tradeai-wt-cio-diligence-p4-p5/data/cio/cio_instrument_records.jsonl",
+      "exists": false
+    },
+    "specialist_artifacts": {
+      "path": "/home/johnclaw/tradeai-wt-cio-diligence-p4-p5/data/cio/cio_specialist_artifacts.jsonl",
+      "exists": false
+    },
+    "hermes_research_results": {
+      "path": "/home/johnclaw/tradeai-wt-cio-diligence-p4-p5/data/cio/hermes_research_results.jsonl",
+      "exists": false
+    },
+    "workflow_lineage": {
+      "path": "/home/johnclaw/tradeai-wt-cio-diligence-p4-p5/data/cio/cio_workflow_lineage.jsonl",
+      "exists": false
+    },
+    "research_budget_ledger": {
+      "path": "/home/johnclaw/tradeai-wt-cio-diligence-p4-p5/data/cio/cio_research_budget_ledger.jsonl",
+      "exists": false
+    },
+    "plans_projection": {
+      "path": "/home/johnclaw/tradeai-wt-cio-diligence-p4-p5/data/cio/cio_plans_projection.json",
+      "exists": false
+    }
+  },
+  "wave3d_ops_notes": [
+    "docs/ops/CIO_WAVE3D_2026-08-29.md",
+    "docs/ops/CIO_WAVE3D_HOP_2026-08-29.md",
+    "docs/ops/CIO_WAVE3D_FLASH_2026-08-29.md",
+    "docs/ops/CIO_WAVE3D_CRITIQUE_2026-08-29.md",
+    "docs/ops/CIO_WAVE3D_CRITIQUE_DEEPSEEK_2026-08-29.md"
+  ],
+  "cited_modules": [
+    "scripts/lib/cio_residual_web.py",
+    "scripts/lib/cio_research_budget.py",
+    "scripts/cio_research_budget_report.py",
+    "scripts/lib/cio_research_gate.py",
+    "scripts/lib/cio_corpus_index.py",
+    "scripts/lib/cio_research_librarian.py"
+  ],
+  "live_overlay_root": "/home/johnclaw/trade-ai-releases/persistent-state",
+  "stores_live_overlay": {
+    "instrument_records": {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/cio/cio_instrument_records.jsonl",
+      "exists": true,
+      "bytes": 382039,
+      "lines": 129
+    },
+    "specialist_artifacts": {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/cio/cio_specialist_artifacts.jsonl",
+      "exists": true,
+      "bytes": 2350,
+      "lines": 2
+    },
+    "hermes_research_results": {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/cio/hermes_research_results.jsonl",
+      "exists": true,
+      "bytes": 2287866,
+      "lines": 471
+    },
+    "workflow_lineage": {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/cio/cio_workflow_lineage.jsonl",
+      "exists": true,
+      "bytes": 5820557,
+      "lines": 8562
+    },
+    "research_budget_ledger": {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/cio/cio_research_budget_ledger.jsonl",
+      "exists": false
+    },
+    "plans_projection": {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/cio/cio_plans_projection.json",
+      "exists": true,
+      "bytes": 12384347
+    }
+  },
+  "live_budget_report": {
+    "cap": 5,
+    "day": "2026-08-30",
+    "selected_count": 5,
+    "selected_subjects": [
+      "HELD:PFLT",
+      "HELD:NOC",
+      "HELD:RTX",
+      "SLEEVE:CASH",
+      "EXIT:CAST"
+    ],
+    "slots": {
+      "held": 3,
+      "cash": 1,
+      "reentry_or_watch": 1
+    },
+    "memory_behavior_influence": 0
+  }
+}
