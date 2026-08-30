@@ -267,13 +267,36 @@ def test_the_registry_names_every_currently_disabled_lane():
     assert "cio-residual-web" in ids
 
 
+# The registry was seeded with 26 lanes whose cause was not established. Working
+# through the git history, the crontab comments, the journal and the systemd
+# enablement state brought that to 6. This is a RATCHET, not a snapshot: the
+# first version of this test asserted `>= 20` and failed the moment the work was
+# done, which is a test encoding a measurement instead of a rule.
+MAX_UNKNOWN_LANES = 6
+
+
+def test_the_unexplained_count_can_only_shrink():
+    reg = load_registry()
+    unknown = [r["lane_id"] for r in reg["lanes"]
+               if r.get("state") != "ACTIVE"
+               and str(r.get("reason_confidence") or "UNKNOWN") == "UNKNOWN"]
+    assert len(unknown) <= MAX_UNKNOWN_LANES, (
+        f"{len(unknown)} lanes have no established reason, was {MAX_UNKNOWN_LANES}. "
+        "Either establish the cause or lower the ratchet deliberately.")
+
+
 def test_unknown_reasons_are_recorded_as_unknown_not_invented():
     """An honest UNKNOWN is the correct entry and is itself a finding."""
     reg = load_registry()
-    unknown = [r for r in reg["lanes"] if "UNKNOWN" in str(r.get("state_reason"))]
-    assert len(unknown) >= 20, "the census found many unexplained retirements"
+    unknown = [r for r in reg["lanes"]
+               if str(r.get("reason_confidence") or "") == "UNKNOWN"]
+    assert unknown, "if nothing is unknown, check that the field is being read"
     for r in unknown:
         assert r.get("state_since"), r["lane_id"]
+        # An UNKNOWN must still say what WAS looked at, so the next reader does
+        # not repeat the dig.
+        assert len(str(r.get("reason_evidence") or r.get("state_reason") or "")) > 60, (
+            f"{r['lane_id']}: UNKNOWN with no record of what was searched")
 
 
 def test_recoverable_reasons_are_recorded_rather_than_marked_unknown():
@@ -312,3 +335,68 @@ def test_find_undeclared_respects_the_inherited_debt_baseline():
                                      {"expression": "b.timer"}]}
     got = find_undeclared(reg, found)
     assert [g["expression"] for g in got] == ["b.timer"]
+
+
+# ── reason quality: 26 UNKNOWN lanes worked down to 6 ─────────────────────
+
+def test_every_non_active_lane_declares_how_well_its_reason_is_established():
+    """"Superseded" has been asserted falsely in this repo twice. A reason now
+    has to say whether it was proven or merely correlated."""
+    from scripts.lib.lane_registry import REASON_CONFIDENCE
+    for r in load_registry()["lanes"]:
+        if r.get("state") != "ACTIVE":
+            assert r.get("reason_confidence") in REASON_CONFIDENCE, r["lane_id"]
+
+
+def test_an_established_reason_carries_the_evidence_that_established_it():
+    for r in load_registry()["lanes"]:
+        if r.get("reason_confidence") == "ESTABLISHED":
+            ev = str(r.get("reason_evidence") or "")
+            assert len(ev) > 60, f"{r['lane_id']}: ESTABLISHED with no evidence"
+
+
+def test_correlated_reasons_refuse_to_claim_coverage():
+    """The whole point of the CORRELATED tier: a running successor is not proof
+    that this lane's output is produced."""
+    rows = [r for r in load_registry()["lanes"]
+            if r.get("reason_confidence") == "CORRELATED"]
+    assert rows, "the tier must actually be used, or it is decoration"
+    for r in rows:
+        blob = (str(r.get("state_reason")) + str(r.get("reason_evidence"))).lower()
+        assert any(k in blob for k in
+                   ("not established", "not proven", "not verify", "not verified",
+                    "inferred", "do not treat as covered")), r["lane_id"]
+
+
+def test_the_unknown_count_is_read_from_the_field_not_the_prose():
+    """The gate grepped state_reason for the word UNKNOWN and reported 2 the
+    moment the reasons were rewritten, while 8 lanes were still UNKNOWN."""
+    import subprocess, sys as _s
+    out = subprocess.run([_s.executable, str(GATE), "--json"], cwd=str(ROOT),
+                         capture_output=True, text=True, timeout=300).stdout
+    got = json.loads(out)
+    expected = [r["lane_id"] for r in load_registry()["lanes"]
+                if r.get("state") != "ACTIVE"
+                and str(r.get("reason_confidence") or "UNKNOWN") == "UNKNOWN"]
+    assert got["unknown_reason_lanes"] == expected
+
+
+def test_a_superseded_lane_names_the_unit_that_replaced_it():
+    for r in load_registry()["lanes"]:
+        if "supersed" in str(r.get("state_reason") or "").lower():
+            assert r.get("superseded_by"), (
+                f"{r['lane_id']} claims supersession without naming the successor")
+
+
+def test_the_reboot_finding_is_recorded_on_both_lanes_it_explains():
+    by = {r["lane_id"]: r for r in load_registry()["lanes"]}
+    for lid in ("tradeai-continuous", "tradeai-main-desk-free-llm-weekly"):
+        assert "reboot" in str(by[lid]["state_reason"]).lower()
+        assert by[lid]["reason_confidence"] == "ESTABLISHED"
+
+
+def test_the_lane_that_crashed_is_not_described_as_turned_off():
+    by = {r["lane_id"]: r for r in load_registry()["lanes"]}
+    h = by["hermes-autonomous-loop"]
+    assert "failed" in str(h["state_reason"]).lower()
+    assert "503" in str(h["reason_evidence"])

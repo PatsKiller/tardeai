@@ -69,6 +69,11 @@ FINDING_VERDICTS = (SILENT, UNDECLARED, ORPHANED)
 # correct entry and is itself a finding worth reporting.
 REASON_UNKNOWN = "UNKNOWN"
 
+# ESTABLISHED — the cause is proven from evidence quoted in reason_evidence.
+# CORRELATED  — strong evidence, causation NOT proven. Do not treat as covered.
+# UNKNOWN     — genuinely not established. An honest entry, and itself a finding.
+REASON_CONFIDENCE = ("ESTABLISHED", "CORRELATED", "UNKNOWN")
+
 
 # ── loading and validation ─────────────────────────────────────────────────
 
@@ -111,6 +116,15 @@ def validate_row(row: dict[str, Any]) -> list[str]:
             errs.append(f"{lane_id}: state_reason is required when state != ACTIVE")
         if not row.get("state_since"):
             errs.append(f"{lane_id}: state_since is required when state != ACTIVE")
+    # How well is the reason established? Added 2026-08-30 after working the
+    # 26 UNKNOWN lanes down to 6: most had a recoverable cause, but "superseded"
+    # has been asserted falsely in this repo before, so a reason now has to say
+    # whether it was proven or merely correlated.
+    if state != STATE_ACTIVE:
+        conf = row.get("reason_confidence")
+        if conf not in REASON_CONFIDENCE:
+            errs.append(f"{lane_id}: reason_confidence must be one of "
+                        f"{REASON_CONFIDENCE}, got {conf!r}")
     if state == STATE_PAUSED and not row.get("review_by"):
         errs.append(f"{lane_id}: review_by is required when state == PAUSED "
                     "(a paused lane the operator is never asked about again is a "
