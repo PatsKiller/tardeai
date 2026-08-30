@@ -4,7 +4,9 @@ GitHub is source of truth. Drive mirror optional via gog.
 
 Authority: **READ_ONLY_ADVISORY**. MBI_BEHAVIOR: **0**. INTERDICT: left as found.
 
-Resume cursor: first phase/package with status != DONE — **none** (all P0–P9 DONE).
+Resume cursor: first phase/package with status != DONE — **P4**
+(`NEEDS_REVERIFICATION`, restamped 2026-08-30 by Wave A-RECONCILE R2; see
+`docs/ops/CIO_R2_NO_PRODUCER_2026-08-30.md`).
 
 ---
 
@@ -13,7 +15,7 @@ Resume cursor: first phase/package with status != DONE — **none** (all P0–P9
 | Field | Value |
 |-------|--------|
 | CURRENT pin | **pre-promote (orchestrator)** — do not promote from this gap-register closeout alone |
-| origin/main | `015a7891` (Merge #702 · full `015a7891a60a013119eff7554278c98696c6db9f`) |
+| origin/main | `015a7891` (Merge #702 · full `015a7891a60a013119eff7554278c98696c6db9f`) — **hand-stamped, no producer**; records the tip these NOW figures were cut at, not today's tip. See *NOW provenance* below |
 | This PR pin | **pre-promote** (orchestrator promotes) |
 | Gap restamp | **PR-G** — closed mitigations + PARTIAL residuals (2026-08-30) |
 | `/api/v2/health` | 200 |
@@ -28,7 +30,28 @@ Resume cursor: first phase/package with status != DONE — **none** (all P0–P9
 | SCHG Surface A | **EXITED** (P2-WS5) |
 | rails | MBI=0 · READ_ONLY_ADVISORY · INTERDICT as found · no broker write · **no notify-on** · no Telegram producer |
 | DRIVE | FAIL until gog upsert (optional) |
-| phase cursor | **COMPLETE** — all packages P0–P9 DONE |
+| phase cursor | **P4 PENDING REVERIFICATION** — P0–P3 and P5–P9 DONE |
+
+### NOW provenance — hand-stamped, no producer
+
+`[VERIFIED]` `grep -rn 'DILIGENCE_SCOREBOARD' scripts/ .github/` exits **1**: no
+script and no workflow reads or writes `CIO_DILIGENCE_SCOREBOARD.json` or this
+file. Every value in the NOW block is typed by hand, the `origin/main` pin
+included.
+
+A real producer for that quantity does exist —
+`scripts/cio_release_manifest.py::git_origin_main()`, which is
+`git rev-parse origin/main` — but it writes the release manifest, and wiring it
+to this block would be the wrong fix. The pin's job is to say **which tip these
+numbers were measured at**. Refreshing it on its own would hand stale figures a
+current pin: a green obtained by the wrong artifact. So the pin is *labelled*
+rather than automated, and it must be restamped only together with the numbers
+beneath it.
+
+`[DOC-CLAIM]` Those numbers have not been regenerated since they were stamped.
+`docs/ops/CIO_V_SWEEP_2026-08-30.md` §2 re-measured several and recorded
+`STALE`. Treat every NOW figure as `[DOC-CLAIM]` until the producer named beside
+it is re-run.
 
 ---
 
@@ -43,7 +66,7 @@ Resume cursor: first phase/package with status != DONE — **none** (all P0–P9
 | P2-WS4 | Identity confidence score | DONE | #688 | `b9f60227` | `docs/audits/diligence/P2_WS4_*`; production resolvable **98.9%**; ICS def shipped |
 | P2-WS5 | HELD/EXIT/WATCH/CASH/DUST matrix | DONE | #688 | `b9f60227` | `docs/audits/diligence/P2_WS5_*`; SCHG Surface A EXITED; dust table |
 | P3 | InstrumentRecord persistence drills | DONE | #682 | `72bc42c9` | `docs/audits/diligence/P3_*` + drill CLI + `test_cio_diligence_p3_*` |
-| P4 | Research free / residual / model gov | DONE | #687 | `d959111c` | `docs/audits/diligence/P4_*` + census + `test_cio_diligence_p4_p5_*` |
+| P4 | Research free / residual / model gov | **NEEDS_REVERIFICATION** | #687 | `d959111c` | Evidence JSON regenerated from `scripts/cio_research_governance_census.py` on 2026-08-30 after four hand-added keys were struck and an all-`exists:false` `stores` block (wrong root) was replaced. Code invariants (cap 5 · hop 1 · C/D∉`corpus_hit`) reproduce. Awaiting coordinator re-adjudication — `docs/ops/CIO_R2_NO_PRODUCER_2026-08-30.md` |
 | P5 | Specialist N=100 sample | DONE | #687 | `d959111c` | `docs/audits/diligence/P5_*`; G-SPEC-01 evidence; exit gate FAIL honest |
 | P6 | Council determinism | DONE | #683 | `eba4699a` | `docs/audits/diligence/P6_*` + `test_cio_diligence_p6_*` |
 | P7 | Notification matrix (CC-first) | DONE | #683 | `eba4699a` | `docs/audits/diligence/P7_*` + `test_cio_diligence_p7_*`; G-NOTIFY-01 matrix evidence |
