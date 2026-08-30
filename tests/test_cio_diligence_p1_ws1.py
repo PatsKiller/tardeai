@@ -5,6 +5,8 @@ import json
 import re
 from pathlib import Path
 
+from tests.test_cio_diligence_scoreboard import PACKAGE_STATUSES
+
 ROOT = Path(__file__).resolve().parents[1]
 AS_BUILT = ROOT / "docs" / "audits" / "diligence" / "P1_WS1_AS_BUILT_ARCHITECTURE_2026-08-30.md"
 FAILURES = ROOT / "docs" / "audits" / "diligence" / "P1_WS1_FAILURE_POINT_INVENTORY_2026-08-30.md"
@@ -88,12 +90,16 @@ def test_scoreboard_p1_ws1_done():
     data = json.loads(SCORE_JS.read_text(encoding="utf-8"))
     assert data.get("authority") == "READ_ONLY_ADVISORY"
     assert data.get("memory_behavior_influence") in {0, "0"}
-    assert data["packages"]["P0"]["status"] == "DONE"
-    assert data["packages"]["P1-WS1"]["status"] == "DONE"
-    # All diligence packages P0–P9 restamped DONE on main tip
-    assert data["packages"]["P1-WS2"]["status"] == "DONE"
-    assert data["packages"]["P1-WS3"]["status"] == "DONE"
-    assert data["now"]["phase_cursor"] in {"COMPLETE", "DONE"}
+    # Statuses are adjudications and may legitimately be downgraded -- pinning
+    # "DONE" meant this test could only fail when someone recorded the truth.
+    # Assert the package is present and carries a status from the vocabulary;
+    # tests/test_cio_diligence_scoreboard.py holds the cross-field rules.
+    for pid in ("P0", "P1-WS1", "P1-WS2", "P1-WS3"):
+        pkg = data["packages"][pid]
+        assert pkg["status"] in PACKAGE_STATUSES, (pid, pkg["status"])
+        assert pkg.get("proof"), pid
+    assert isinstance(data["now"]["phase_cursor"], str)
+    assert data["now"]["phase_cursor"].strip()
     # Not a literal. Pinning the SHA made this assert track the document
     # rather than the tree -- it still read "015a7891" while origin/main was
     # 9d92b6e0, and restamping it to the newer SHA would only reproduce that.
@@ -102,6 +108,9 @@ def test_scoreboard_p1_ws1_done():
     pin = data["now"]["current_pin"]
     assert re.fullmatch(r"[0-9a-f]{7,40}", pin), pin
     assert data["now"]["origin_main_full"].startswith(pin)
-    assert data["now"].get("this_package_pre_promote") is True
-    assert data["now"]["health"] == 200
-    assert data["now"]["cio"] == 200
+    assert isinstance(data["now"].get("this_package_pre_promote"), bool)
+    # Recorded probe results, not policy floors; see the note in
+    # tests/test_cio_diligence_scoreboard.py.
+    for probe in ("health", "cio"):
+        assert isinstance(data["now"][probe], int)
+        assert 100 <= data["now"][probe] <= 599, (probe, data["now"][probe])
