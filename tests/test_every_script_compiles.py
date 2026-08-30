@@ -24,10 +24,23 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 COMPILE_EXEMPT: dict[str, str] = {}
 
 
+_SKIP_PARTS = {"__pycache__", ".venv", "node_modules"}
+
+
 def _python_files():
-    for sub in ("scripts", "scripts/lib"):
-        for p in sorted((ROOT / sub).glob("*.py")):
-            yield p
+    """Every .py under scripts/, recursively.
+
+    This used to be `glob("*.py")` over exactly ("scripts", "scripts/lib"),
+    which reached 2025 files and left 384 in 37 nested subpackages —
+    scripts/active_trader, scripts/agent_runtime, scripts/brokers,
+    scripts/moomoo, scripts/lib/options_pipeline, scripts/lib/hermes_* and the
+    rest — outside the only repo-wide compile sweep there is. A sweep with a
+    hole that size cannot support the claim its name makes.
+    """
+    for p in sorted((ROOT / "scripts").rglob("*.py")):
+        if _SKIP_PARTS & set(p.relative_to(ROOT).parts):
+            continue
+        yield p
 
 
 def test_every_script_compiles():
