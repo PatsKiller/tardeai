@@ -84,6 +84,11 @@ def test_notify_once_per_fingerprint(tmp_path, monkeypatch):
 
     ledger = tmp_path / "notify_ledger.json"
     plan = spacex_plan()
+    # The delivery bar is S6-only as of the 2026-08-29 operator sentence, and
+    # the shared fixture is S1. This test is about fingerprint dedupe, not
+    # about which type qualifies — so use a type that actually delivers, or the
+    # dedupe assertions pass vacuously against a row the bar already dropped.
+    plan["situation_type"] = "S6_CONCENTRATION_OR_DISPOSITION"
     plan["status"] = "proposed"
     plan["narrative_source"] = "llm"
     plan["evidence_hash"] = enr.evidence_hash(plan)
