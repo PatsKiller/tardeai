@@ -126,7 +126,7 @@ All four workstreams shipped + verified same-day. **WS-1 Path B** (Path A gunico
 
 ## 7. HARD GUARDRAILS
 
-Advisory/paper only; no broker writes, no 2FA/gate/threshold/supervisor/Phase-191/scope-governor/momentum_scalp edits. Zero cloud LLM in request paths. Never delete — hide/flag/expire/alias are states. Iron-rule holdings check around `data/` writes ($1.0–1.4M, count>0, else STOP). No secrets (hooks live). `npm run build` before UI screenshots; verify SERVED bundle. Honest sample sizes (n<10 → render n, abstain).
+Advisory/paper only **for this desk's own work**. The broker execution subsystem is out of scope: do not modify, disable, test against, or call it (see §5n — `place_order` exists, is pilot-fenced, 2FA-gated and operator-controlled; this is by design, not an inconsistency). No 2FA/gate/threshold/supervisor/Phase-191/scope-governor/momentum_scalp edits. Zero cloud LLM in request paths. Never delete — hide/flag/expire/alias are states. Iron-rule holdings check around `data/` writes ($1.0–1.4M, count>0, else STOP). No secrets (hooks live). `npm run build` before UI screenshots; verify SERVED bundle. Honest sample sizes (n<10 → render n, abstain).
 
 ## 8. WORKING PATTERNS + GOTCHAS (proven this cycle)
 
