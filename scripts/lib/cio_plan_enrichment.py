@@ -238,8 +238,21 @@ def augment_multi_domain_evidence(plan: dict[str, Any]) -> dict[str, Any]:
 
         def _pull(name: str, fields: list[str], extra: Optional[dict] = None) -> None:
             nonlocal refs, have
+            # Take the NEWER of the two. This used to `return` whenever the
+            # domain was already present, so it only ever filled gaps and never
+            # refreshed. A plan enriched on 2026-08-11 kept quoting that day's
+            # cash forever, which is how 34 of 42 open S6 plans came to carry
+            # 578,10x against an actual 630,784.82 — see #663/#668. Monotonic
+            # by construction: a stale snapshot can never replace fresh
+            # evidence, only the other way round.
+            existing_at = None
+            existing_ref = None
             if name in have:
-                return
+                for _r in refs:
+                    if str(_r.get("domain")) == name:
+                        existing_ref = _r
+                        existing_at = str(_r.get("as_of") or "")
+                        break
             raw = domains.get(name)
             if not isinstance(raw, dict):
                 return
@@ -276,6 +289,21 @@ def augment_multi_domain_evidence(plan: dict[str, Any]) -> dict[str, Any]:
             if extra:
                 ref.update(extra)
             if ref["fields_used"] or any(k not in ("domain", "as_of", "fields_used", "quality_state") for k in ref):
+                if name in have:
+                    if not existing_at or str(ref.get("as_of") or "") <= existing_at:
+                        return                    # snapshot is not newer
+                    # MERGE, do not replace. A snapshot need not carry every
+                    # field the old ref had — a plan about a symbol no longer
+                    # in the book would otherwise lose its basis/last on
+                    # refresh, trading stale data for missing data. Overlay the
+                    # fresh values, keep the rest.
+                    merged = dict(existing_ref or {})
+                    merged.update(ref)
+                    merged["fields_used"] = sorted(
+                        set(list((existing_ref or {}).get("fields_used") or [])
+                            + list(ref.get("fields_used") or [])))
+                    ref = merged
+                    refs[:] = [r for r in refs if str(r.get("domain")) != name]
                 refs.append(ref)
                 have.add(name)
 
