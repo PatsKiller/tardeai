@@ -109,7 +109,8 @@ def main() -> int:
     except Exception:                                            # noqa: BLE001
         pass
 
-    def _seed(kind: str, sym: str, *, mv: float | None = None) -> None:
+    def _seed(kind: str, sym: str, *, mv: float | None = None,
+              weight_pct: float | None = None) -> None:
         ok, why = is_mintable(kind, sym, market_value=mv)
         if not ok:
             _refuse(why)
@@ -124,37 +125,39 @@ def main() -> int:
             evidence_refs=list(plan.get("evidence_refs") or [])[:6],
             writer="migration:deterministic",
         )
-        # An operator disposition outranks the plan's own prose: it is the last
-        # thing a human actually said about this subject.
-        nxt = None
-        if turn and str(turn.get("disposition") or "").lower() == "defer":
-            note = str(turn.get("note") or "").strip()
-            narrative["what"] = (
-                f"Operator deferred: {note}." + (
-                    f" {narrative['what']}" if narrative["what"] else "")
-            ).strip()
-            nxt = (f"Has the condition behind the defer changed ({note})?"
-                   if note else "Has the condition behind the defer changed?")
         rec = new_record(
             kind, sym,
             symbols=[sym.upper()] if kind != "SLEEVE" else [],
             thesis_ref=plan.get("thesis_version"),
             desk_pin=plan.get("thesis_version"),
             cc_narrative=narrative,
-            next_research_question=nxt,
-            last_operator_turn=({
-                "intent": turn.get("disposition"),
-                "text_hash": content_hash(turn.get("note")),
-                "note": turn.get("note"),
-                "plan_id": turn.get("plan_id"),
-                "ts": turn.get("ts"),
-            } if turn else None),
             last_artifact_id=plan.get("hermes_result_id"),
+            # Hash the WEIGHT, not the market value. Seeding weight from mv
+            # made every first observation look like a move, because the two
+            # are different quantities that happened to share a field name.
             hashes={
                 "price": None, "analyst": None, "earnings": None,
-                "weight": content_hash(mv) if mv is not None else None,
+                "weight": (content_hash(weight_pct)
+                           if weight_pct is not None else None),
             },
         )
+        # An operator disposition outranks the plan's own prose: it is the last
+        # thing a human actually said about this subject. Route it through the
+        # SAME cognition rule the live loop uses, so the defer is honoured in
+        # TIMING and not merely narrated — seeding the prose alone left
+        # next_eligible_at None and the gate re-ran a deferred subject.
+        if turn:
+            from scripts.lib.cio_rehydrate import attach_operator_turn
+            try:
+                rec, _ = attach_operator_turn(
+                    rec,
+                    intent=str(turn.get("disposition") or "note"),
+                    text=str(turn.get("note") or ""),
+                    plan_id=turn.get("plan_id"),
+                    ts=turn.get("ts"),
+                )
+            except Exception:                                    # noqa: BLE001
+                pass
         if args.apply:
             store.upsert(rec)
         minted.append(rec["subject_key"])
@@ -172,7 +175,11 @@ def main() -> int:
             mv = float(mv) if mv is not None else None
         except (TypeError, ValueError):
             mv = None
-        _seed("HELD", sym, mv=mv)
+        try:
+            wpct = float(row.get("weight_pct")) if row.get("weight_pct") is not None else None
+        except (TypeError, ValueError):
+            wpct = None
+        _seed("HELD", sym, mv=mv, weight_pct=wpct)
 
     if not minted:
         print(f"FATAL: no held equity rows under root={data_root!r}; refusing "
