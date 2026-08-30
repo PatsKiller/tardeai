@@ -2324,20 +2324,23 @@ def maybe_notify_plan(
     if not force:
         try:
             try:
-                from scripts.lib.cio_notify_freshness import stale_claim
+                from scripts.lib.cio_notify_freshness import stale_claim, stale_evidence
             except Exception:
-                from lib.cio_notify_freshness import stale_claim  # type: ignore
-            _stale = stale_claim(plan)
+                from lib.cio_notify_freshness import (  # type: ignore
+                    stale_claim, stale_evidence,
+                )
+            _stale = stale_claim(plan) or stale_evidence(plan)
             if _stale:
                 try:
                     _log_enrich({
                         "ts": _now(),
                         "plan_id": plan.get("plan_id"),
                         "llm": "notify_skipped",
-                        "notify_skip": "narrative_quotes_stale_cash",
+                        "notify_skip": _stale.get("reason") or "stale",
                         "claimed": _stale.get("claimed"),
                         "actual": _stale.get("actual"),
                         "drift_pct": _stale.get("drift_pct"),
+                        "age_days": _stale.get("age_days"),
                         "authority": "READ_ONLY_ADVISORY",
                     })
                 except Exception:

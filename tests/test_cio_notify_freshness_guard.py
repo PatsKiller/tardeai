@@ -90,7 +90,10 @@ def test_the_notify_path_is_actually_wired_to_it():
     src = (Path(__file__).resolve().parent.parent
            / "scripts" / "lib" / "cio_plan_enrichment.py").read_text(encoding="utf-8")
     assert "cio_notify_freshness" in src
-    assert "narrative_quotes_stale_cash" in src
+    assert "stale_claim" in src
+    # The skip reason is now carried from the guard rather than hard-coded,
+    # so both the cash and the evidence rule name themselves in the log.
+    assert '_stale.get("reason")' in src
 
 
 # --- the identifier form, missed by the first cut (2026-08-30) --------------
@@ -122,3 +125,56 @@ def test_the_same_identifier_carrying_truth_passes(book):
 ])
 def test_words_merely_containing_cash_do_not_match(book, text):
     assert stale_claim({"summary": text}, root=book) is None
+
+
+# --- evidence age (2026-08-30) ---------------------------------------------
+#
+# A plan's revisit horizon is 24h, so 617 of 618 open plans were "past revisit".
+# That makes the revisit date useless as a gate — blocking on it silences the
+# desk. Evidence age is the checkable thing: research two weeks old is not
+# current advice against a one-day horizon.
+
+from datetime import datetime, timedelta, timezone   # noqa: E402
+
+from scripts.lib.cio_notify_freshness import (       # noqa: E402
+    EVIDENCE_MAX_AGE_DAYS, evidence_age_days, stale_evidence,
+)
+
+_NOW = datetime.now(timezone.utc)
+
+
+def _plan(*days):
+    return {"evidence_refs": [
+        {"as_of": (_NOW - timedelta(days=d)).isoformat()} for d in days]}
+
+
+@pytest.mark.parametrize("age", [0, 1, 7, 13, EVIDENCE_MAX_AGE_DAYS])
+def test_evidence_within_the_bar_delivers(age):
+    assert stale_evidence(_plan(age)) is None
+
+
+@pytest.mark.parametrize("age", [EVIDENCE_MAX_AGE_DAYS + 1, 18, 30])
+def test_evidence_past_the_bar_is_refused(age):
+    hit = stale_evidence(_plan(age))
+    assert hit and hit["age_days"] == age
+    assert hit["reason"] == "evidence_older_than_bar"
+
+
+def test_the_newest_evidence_decides():
+    """One fresh source rehabilitates a plan; the oldest must not condemn it."""
+    assert stale_evidence(_plan(30, 20, 1)) is None
+    assert evidence_age_days(_plan(30, 20, 1)) == 1
+
+
+def test_undated_evidence_does_not_block():
+    """A metadata gap is not proof of age. This guard must not punish it."""
+    assert stale_evidence({"evidence_refs": [{}, {"domain": "risk"}]}) is None
+    assert stale_evidence({"evidence_refs": []}) is None
+    assert stale_evidence({}) is None
+
+
+def test_the_notify_path_checks_evidence_too():
+    from pathlib import Path
+    src = (Path(__file__).resolve().parent.parent / "scripts" / "lib"
+           / "cio_plan_enrichment.py").read_text(encoding="utf-8")
+    assert "stale_evidence" in src

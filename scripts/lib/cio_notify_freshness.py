@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import re
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
@@ -30,6 +31,14 @@ AUTHORITY = "READ_ONLY_ADVISORY"
 # 2% absorbs intraday drift and rounding in prose ("about 630k"); the case that
 # prompted this was off by 27.8%.
 TOLERANCE_PCT = 2.0
+
+# A plan sets its own revisit horizon at 24h (situation detector default), so
+# "past revisit" describes 617 of 618 open plans and cannot gate anything —
+# blocking on it would silence the desk. Evidence age can: against a 24h
+# horizon, research two weeks old is not current advice. Measured 2026-08-30
+# across the 42 open S6 plans: 15-30d = 8, 8-14d = 16, 3-7d = 11, 0-2d = 7.
+# A 14-day bar refuses those 8 and lets 34 through.
+EVIDENCE_MAX_AGE_DAYS = 14
 
 # A number is only checked when the prose ties it to a quantity we can verify.
 # "cash is elevated at 805800" / "805,800 in cash" both match; "RSI=50.56" and
@@ -135,8 +144,59 @@ def stale_claim(
     return None
 
 
+def _age_days(raw: Any, now: datetime | None = None) -> Optional[int]:
+    if not raw:
+        return None
+    try:
+        d = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+        if not d.tzinfo:
+            d = d.replace(tzinfo=timezone.utc)
+        return ((now or datetime.now(timezone.utc)) - d).days
+    except Exception:                                            # noqa: BLE001
+        return None
+
+
+def evidence_age_days(plan: Any, now: datetime | None = None) -> Optional[int]:
+    """Age of the NEWEST dated evidence, or None when nothing is dated."""
+    if not isinstance(plan, dict):
+        return None
+    ages = []
+    for e in plan.get("evidence_refs") or []:
+        if not isinstance(e, dict):
+            continue
+        a = _age_days(e.get("as_of") or e.get("date") or e.get("ts"), now)
+        if a is not None:
+            ages.append(a)
+    return min(ages) if ages else None
+
+
+def stale_evidence(
+    plan: Any,
+    *,
+    now: datetime | None = None,
+    max_age_days: int = EVIDENCE_MAX_AGE_DAYS,
+) -> Optional[dict[str, Any]]:
+    """Refuse advice whose newest evidence is older than the bar.
+
+    Undated evidence does NOT block — absence of a date is not proof of age,
+    and this guard must not punish a plan for a metadata gap.
+    """
+    age = evidence_age_days(plan, now)
+    if age is None or age <= max_age_days:
+        return None
+    return {
+        "schema": SCHEMA,
+        "authority": AUTHORITY,
+        "field": "evidence",
+        "age_days": age,
+        "max_age_days": max_age_days,
+        "reason": "evidence_older_than_bar",
+    }
+
+
 def blocks_notify(plan: Any, *, root: Path | str | None = None) -> bool:
-    return stale_claim(plan, root=root) is not None
+    return (stale_claim(plan, root=root) is not None
+            or stale_evidence(plan) is not None)
 
 
 def describe(plan: Any, *, root: Path | str | None = None) -> dict[str, Any]:

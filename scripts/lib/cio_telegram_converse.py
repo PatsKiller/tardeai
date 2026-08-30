@@ -634,6 +634,19 @@ def record_decision_thread_note(decision_id: str, note: str, *, disposition: str
 # ── Structured reply formatter ──────────────────────────────────────────────
 
 
+def _age_suffix(raw: str) -> str:
+    """' · 18d' — the operator should see evidence age without being told."""
+    try:
+        from datetime import datetime, timezone
+        d = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+        if not d.tzinfo:
+            d = d.replace(tzinfo=timezone.utc)
+        n = (datetime.now(timezone.utc) - d).days
+        return f" · {n}d" if n >= 2 else ""
+    except Exception:
+        return ""
+
+
 def _trim(text: str, limit: int) -> str:
     """Cut at a sentence, else a word — never mid-token.
 
@@ -862,8 +875,12 @@ def format_structured_reply(
         lines.append("📎 *Evidence* (Data Broker)")
         for r in evidence_refs[:4]:
             dom = r.get("domain") or "?"
-            as_of = str(r.get("as_of") or "")[:10] or "n/a"
-            lines.append(f"• {dom} · {as_of}")
+            raw = str(r.get("as_of") or "")
+            as_of = raw[:10] or "n/a"
+            # Age, not just a date. "2026-08-11" reads as fine at a glance;
+            # "2026-08-11 · 18d" does not, and the operator is entitled to
+            # judge how old the evidence under an advisory actually is.
+            lines.append(f"• {dom} · {as_of}{_age_suffix(raw)}")
     lines.append("────────────────")
     meta = []
     if plan_id:
@@ -873,7 +890,12 @@ def format_structured_reply(
     if pin:
         meta.append(f"thesis `{pin}`")
     if revisit_at:
-        meta.append(f"revisit {str(revisit_at)[:10]}")
+        # A revisit date in the past is the norm, not the exception (the
+        # horizon is 24h), so it is marked rather than hidden: printing it bare
+        # invited the reading that this plan was reviewed on that date.
+        _rev = str(revisit_at)[:10]
+        _overdue = _age_suffix(str(revisit_at))
+        meta.append(f"revisit {_rev}" + (f" (overdue{_overdue})" if _overdue else ""))
     if meta:
         lines.append(" · ".join(meta))
     base = cc_base()
