@@ -148,7 +148,33 @@ def append(root: Path | str, row: dict[str, Any]) -> dict[str, Any]:
     p.parent.mkdir(parents=True, exist_ok=True)
     with p.open("a", encoding="utf-8") as fh:
         fh.write(json.dumps(row, ensure_ascii=False) + "\n")
-    return {"wrote": True, "problems": [], "refused": False, "path": str(p)}
+    out: dict[str, Any] = {
+        "wrote": True,
+        "problems": [],
+        "refused": False,
+        "path": str(p),
+    }
+    # G-IR-01: stamp IR tip last_artifact_id when subject is known (fail-soft).
+    try:
+        aid = row.get("artifact_id") or row.get("research_id")
+        subject = (
+            row.get("subject_key")
+            or row.get("subject_guid")
+            or ((row.get("symbols") or [None])[0])
+            or row.get("symbol")
+        )
+        if aid and subject:
+            from scripts.lib.cio_instrument_record import stamp_last_artifact_id
+
+            stamp = stamp_last_artifact_id(subject, aid, root=root)
+            out["instrument_record_stamp"] = stamp
+    except Exception as exc:  # noqa: BLE001
+        out["instrument_record_stamp"] = {
+            "ok": False,
+            "wrote": False,
+            "reason": f"{type(exc).__name__}: {exc}"[:200],
+        }
+    return out
 
 
 def load(root: Path | str) -> list[dict[str, Any]]:
