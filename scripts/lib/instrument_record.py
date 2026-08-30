@@ -111,3 +111,15 @@ def notification_crossed(previous: Any, current: Any, *, ordering: tuple[str, ..
         return ordering.index(str(current).upper()) > ordering.index(str(previous).upper())
     except ValueError:
         return str(previous) != str(current)
+
+
+def persist_instrument_record(record: Mapping[str, Any]) -> bool:
+    """Persist through db_adapter when available; return False on unavailable DB."""
+    symbol = str(record.get("symbol") or "").strip().upper()
+    if not symbol:
+        return False
+    try:
+        from scripts import db_adapter
+        return bool(db_adapter.save_instrument_record(symbol, dict(record)))
+    except Exception:
+        return False

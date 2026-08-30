@@ -31,3 +31,11 @@ def test_notification_only_crosses_upward():
     assert notification_crossed("LOW", "HIGH") is True
     assert notification_crossed("HIGH", "HIGH") is False
     assert notification_crossed("CRITICAL", "LOW") is False
+
+
+def test_record_has_stable_projection_keys():
+    rec = build_instrument_record({"symbol": "V", "canonical_entity_id": "sec-v"}, workflow_id="wf-v")
+    for key in ("thesis", "cc_narrative", "last_event", "last_price_hash", "research_ids",
+                "artifact_ids", "operator_turn_ids", "lesson_ids", "next_eligible_at",
+                "notify_priority", "workflow_id"):
+        assert key in rec
