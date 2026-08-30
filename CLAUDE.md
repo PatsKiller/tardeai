@@ -32,7 +32,7 @@ how a memory system convinces itself it is learning.
 
 The recurring defect in this codebase is a contract built and a caller never
 wired, or a surface reporting on a set it never read. Each artifact passes its
-own tests, so nothing reports a problem. Instances found so far:
+own tests, so nothing reports a problem. Instances found so far include:
 
 - a gate affirming a declaration it read out of a `SyntaxError`
 - a test asserting literals from the file it validates
@@ -56,8 +56,9 @@ An untagged claim is a defect. A `[DOC-CLAIM]` promoted to `[VERIFIED]` without
 a command is a serious one.
 
 **Never state a measured value as a premise.** State the question and the
-threshold; measure the value. Values here have moved between phases of the same
-session, and briefs that embedded numbers have been refuted every single time.
+threshold; measure the value. Values in this system have moved between phases of
+the same session repeatedly, and briefs that embedded numbers have been refuted
+every single time.
 
 ## Metric rules
 
