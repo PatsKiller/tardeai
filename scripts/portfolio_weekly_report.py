@@ -454,7 +454,13 @@ def _get_brave_analyst_commentary(symbols: list, brave_api_key: str) -> Dict:
     commentary = {}
     import urllib.request, urllib.parse
 
+    try:
+        from scripts.lib.search_budget import guard as _sb_guard
+    except ImportError:
+        from lib.search_budget import guard as _sb_guard  # type: ignore
     for sym in symbols[:5]:  # Limit to top 5 to stay within 2000/mo free tier
+        if not _sb_guard("brave", "portfolio_weekly_report"):
+            break
         try:
             query = f"{sym} stock analyst rating price target 2026"
             url = f"https://api.search.brave.com/res/v1/web/search?q={urllib.parse.quote(query)}&count=3&freshness=pw"

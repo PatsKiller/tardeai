@@ -411,6 +411,33 @@ def collect_report(*, now: Optional[datetime] = None) -> dict[str, Any]:
         "0", "false", "off", "no"
     }:
         lanes.append(collect_coverage_stall(now=now, deepseek_ok_24h=_deepseek_ok(lanes)))
+    # Lane registry. This monitor learns its own lanes from the hardcoded tuples
+    # above, so it can see a lane producing poorly but not a lane that produces
+    # nothing because nobody told it the lane existed. That is how a lane
+    # disabled on 2026-06-01 went unreported for three months. The registry is
+    # the declaration; this appends its verdicts as one more lane row, in the
+    # same shape as every other collector. It EXTENDS this monitor rather than
+    # standing up a second one.
+    if os.getenv("RESEARCH_LANE_HEALTH_REGISTRY", "1").strip().lower() not in {
+        "0", "false", "off", "no"
+    }:
+        try:
+            from scripts.lib.lane_registry import collect_lane_registry_report
+        except Exception:
+            from lane_registry import collect_lane_registry_report  # type: ignore
+        lanes.append(collect_lane_registry_report(now=now))
+    # Search providers. This monitor had zero lanes covering search: measured
+    # 2026-08-30 the SearXNG pool returned ten results of which every one came
+    # from bing, with duckduckgo and startpage CAPTCHA-suspended, and nothing
+    # reported it. Off by default in CI (no local SearXNG to probe).
+    if os.getenv("RESEARCH_LANE_HEALTH_SEARCH", "1").strip().lower() not in {
+        "0", "false", "off", "no"
+    }:
+        try:
+            from scripts.lib.search_health import collect_search_health
+        except Exception:
+            from search_health import collect_search_health  # type: ignore
+        lanes.append(collect_search_health(now=now))
     firing = [r for r in lanes if not r["ok"]]
     return {
         "schema": SCHEMA,

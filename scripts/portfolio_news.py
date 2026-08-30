@@ -55,7 +55,18 @@ def _ollama(prompt, max_tokens=500):
 
 
 def _brave_search(query, count=3):
-    """Search Brave for enrichment context on high-scoring catalysts."""
+    """Search Brave for enrichment context on high-scoring catalysts.
+
+    Routed through the budgeted client. This ran once per catalyst scoring >= 70
+    with no cap on how many that was, and none of it reached the budget ledger.
+    """
+    try:
+        from brave_search import search as _budgeted_search
+        return _budgeted_search(query, count=count,
+                                project_root=str(Path(__file__).resolve().parent.parent),
+                                caller="portfolio_news")
+    except ImportError:
+        pass
     key = _env("BRAVE_SEARCH_API_KEY")
     if not key:
         return []

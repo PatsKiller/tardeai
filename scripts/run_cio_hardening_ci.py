@@ -113,6 +113,32 @@ GATES = [
         "tests/test_r12_acceptance_scenarios.py",
         "tests/test_r12_properties.py",
     ]),
+    ("ci_self_guards", [
+        "tests/test_ci_test_coverage_gate.py",
+    ]),
+    ("agent_brief", [
+        "tests/test_agent_brief.py",
+    ]),
+    ("research_reaches_surface", [
+        "tests/test_research_reaches_surface.py",
+    ]),
+    ("money_surface_honesty", [
+        "tests/test_money_surface_honesty.py",
+        "tests/test_cash_guidance_provenance.py",
+    ]),
+    ("lane_registry", [
+        "tests/test_lane_registry.py",
+    ]),
+    ("search_budget", [
+        "tests/test_search_budget_and_health.py",
+    ]),
+    ("corpus_grades_cost_units", [
+        "tests/test_corpus_grades_and_cost_units.py",
+    ]),
+    ("wake_loads_record", [
+        "tests/test_wake_loads_record.py",
+        "tests/test_reactive_enqueue_routing.py",
+    ]),
     ("r13_institutional", [
         "tests/test_r13_institution.py",
         "tests/test_r13_goldens_properties_faults.py",

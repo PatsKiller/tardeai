@@ -122,6 +122,13 @@ def _alphavantage(k):
 
 
 def _brave(k):
+    # Counted but never denied: this consumes a real credit, so it has to reach
+    # the ledger, but a denied validator would report a healthy key as dead.
+    try:
+        from scripts.lib.search_budget import note as _sb_note
+        _sb_note("brave", "secret_validators")
+    except Exception:
+        pass
     r = _get("https://api.search.brave.com/res/v1/web/search?q=test&count=1",
              {"X-Subscription-Token": k})
     note = " (consumed 1 search credit)" if r.status_code == 200 else ""

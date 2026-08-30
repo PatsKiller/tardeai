@@ -145,6 +145,17 @@ def run_once(*, max_wakes: int = 12, dispatch: bool = False) -> dict[str, Any]:
 
             priority = EVENT_PRIORITY.get(str(et), "NORMAL")
             reason = str(et).upper().replace(".", "_")
+            # Carry the event's own subject onto the wake. Without this the wake
+            # is subject-less and the record consult in the dispatcher has
+            # nothing to load by — which is exactly why `load-by-subject` was
+            # never called: 0 of 1,513 wakes carried a subject.
+            _payload = getattr(ev, "payload", None)
+            if _payload is None and isinstance(ev, dict):
+                _payload = ev.get("payload")
+            _payload = _payload if isinstance(_payload, dict) else {}
+            _symbols = [str(s) for s in (_payload.get("symbols") or []) if s]
+            _owner = str(_payload.get("owner_agent") or "") or None
+            _situation = _payload.get("situation_type")
             wake_payload = {
                 "wake_job_id": wake_job_id,
                 "trigger_type": "EVENT_BUS",
@@ -155,11 +166,21 @@ def run_once(*, max_wakes: int = 12, dispatch: bool = False) -> dict[str, Any]:
                 "wake_intent": "NEW_RUN",
                 "idempotency_key": wake_job_id,
                 "context": {
-                    "target_agent": agent_id,
+                    # The payload names its owner; prefer it over the routing
+                    # key so a morgan-owned situation does not arrive as alex's.
+                    "target_agent": _owner or agent_id,
+                    "routed_via_agent": agent_id,
                     "event_type": et,
                     "event_id": eid,
                     "priority": priority,
                     "authority": "READ_ONLY_ADVISORY",
+                    "symbols": _symbols,
+                    # First symbol is the wake's subject; a multi-symbol
+                    # situation still resolves to one record to consult.
+                    "symbol": _symbols[0] if _symbols else None,
+                    "situation_type": _situation,
+                    "plan_id": _payload.get("plan_id"),
+                    "shadow": _payload.get("shadow"),
                 },
             }
             try:
