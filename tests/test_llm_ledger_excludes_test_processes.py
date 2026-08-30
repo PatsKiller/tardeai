@@ -147,3 +147,31 @@ def test_the_superseded_prices_are_kept_not_deleted():
                 assert sup["values"]["output"] == 0.28
                 return
     pytest.fail("flash not found")
+
+
+# ── the PEAK_SKIP gate must agree with the price table ────────────────────
+
+def test_the_offpeak_gate_windows_match_the_registry():
+    from scripts.lib.deepseek_offpeak import DEEPSEEK_PEAK_UTC
+    reg = load_registry()
+    ds = (reg.get("providers") or {}).get("deepseek") or {}
+    windows = [tuple(int(x.split(":")[0]) for x in w.split("-"))
+               for w in ds["pricing_peak_hours_utc"]]
+    assert sorted(DEEPSEEK_PEAK_UTC) == sorted(windows), (
+        "the skip gate and the price table must not drift apart")
+
+
+@pytest.mark.parametrize("at,expect", [
+    (datetime(2026, 9, 1, 2, 30, tzinfo=timezone.utc), True),    # Tue in-window
+    (datetime(2026, 9, 5, 2, 30, tzinfo=timezone.utc), False),   # Sat: no surcharge
+    (datetime(2026, 9, 6, 7, 0, tzinfo=timezone.utc), False),    # Sun: no surcharge
+    (datetime(2026, 9, 1, 12, 0, tzinfo=timezone.utc), False),   # Tue off-window
+])
+def test_the_gate_skips_only_when_a_surcharge_is_actually_charged(at, expect):
+    """Peak is weekdays only.
+
+    Treating the weekend as peak cost nothing in dollars but deferred bulk work
+    for two days a week to dodge a surcharge that was never charged.
+    """
+    from scripts.lib.deepseek_offpeak import is_deepseek_peak_utc
+    assert is_deepseek_peak_utc(at) is expect
