@@ -338,6 +338,14 @@ def apply_cognition(
 
 
 def hash_changed(record: dict[str, Any], name: str, value: Any) -> bool:
-    """True when an observable (price/weight/earnings/analyst) actually moved."""
-    old = (record.get("hashes") or {}).get(name)
-    return old != content_hash(value)
+    """True when an observable (price/weight/earnings/analyst) actually MOVED.
+
+    An UNSET hash is not a change. First contact means the desk has no prior
+    belief to contradict, and treating it as an event fired a spurious override
+    on every freshly migrated record — overriding the very defer the record was
+    created to remember.
+    """
+    prior = (record.get("hashes") or {}).get(name)
+    if prior in (None, ""):
+        return False
+    return prior != content_hash(value)
