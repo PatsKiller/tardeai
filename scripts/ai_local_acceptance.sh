@@ -97,6 +97,15 @@ else
   echo "== Target/repository validation =="
   TRADE_AI_CI=1 "$PY" scripts/run_release_ci_equivalent.py --source-only
   release_equivalent_green=true
+  # Lane registry. Deliberately OUTSIDE the cio branch below: a scheduler is not
+  # a CIO concern, and the first version of this line sat inside that branch,
+  # whose case patterns (scripts/lib/cio_*, tests/test_cio_*) match none of the
+  # lane-registry files — so acceptance reported ready_to_request_sync: true
+  # having never run the gate, and a change to the registry would not have run
+  # its own gate either.
+  echo
+  echo "== Lane registry =="
+  "$PY" scripts/check_lane_registry.py --fail-on-new
   if [[ "$cio" == "1" ]]; then
     "$PY" scripts/run_cio_hardening_ci.py
     "$PY" scripts/run_cio_adversarial_suite.py
@@ -107,9 +116,6 @@ else
     # a 16-line edit). Mirror both steps here.
     "$PY" scripts/check_dark_contracts.py --fail-on-new
     "$PY" scripts/check_line_endings.py
-    # Same shape as the dark-contract gate: a scheduled job with no declaration
-    # fails here rather than three months later.
-    "$PY" scripts/check_lane_registry.py --fail-on-new
     authority_green=true
   fi
   if [[ "$frontend" == "1" && -f apps/command-center-v3/package.json ]]; then

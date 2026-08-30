@@ -1,13 +1,13 @@
 # Release Manifest (auto-generated)
 
-Status: PASS
+Status: WARN
 
-_Generated: 2026-08-30T21:09:57.188184+00:00_  
+_Generated: 2026-08-30T21:51:37.064665+00:00_  
 _Source: `python3 scripts/validate_release_readiness.py --json --skip-build`_
 
 ## Checks
 
-- [PASS] repo_hygiene_report: working tree clean
+- [WARN] repo_hygiene_report: dirty_count=4, no live-broker/secrets dirty files
 - [PASS] python3 scripts/validate_metric_consistency.py --strict: Ambiguous label hits: 0
 - [PASS] symbol_card_quality_validator: validator present; run with /api/v2/symbol-cards export during deployment
 - [PASS] python3 scripts/validate_schwab_write_policy.py:   source-only mode: DB-state posture guards are proven by the deployed CI-equivalent run (docs/project/CI_EVIDENCE_LATEST.md), not this sandbox.
@@ -22,7 +22,9 @@ _Source: `python3 scripts/validate_release_readiness.py --json --skip-build`_
 
 - live-adjacent (would FAIL): none
 - documented runtime/generated (WARN_NON_LIVE_ADJACENT only):
-  - (none)
-- other untracked-by-policy: none
+  - `docs/diligence/current/OPTIONS_RISK_BLOCK_MATRIX.md`
+  - `docs/project/CI_EVIDENCE_LATEST.md`
+  - `docs/project/RELEASE_MANIFEST_LATEST.md`
+- other untracked-by-policy: ['scripts/ai_local_acceptance.sh']
 
 *Does not authorize live trading. Operator-approved path only.*
