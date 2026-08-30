@@ -168,6 +168,16 @@ stale upstream).
 - **`sys.path` contamination:** measurements run from a worktree read a `data/`
   that isn't there. Use the documented live-measurement path.
 - **A gate that edits source must verify its own edit still compiles.**
+- **A detector's shape determines what it structurally cannot see. Before
+  trusting a zero, state what property the detector keys on, and whether the
+  thing you are looking for would exhibit that property.** An invariance scan
+  looking for agent-originated fields returned zero and was believed. Generated
+  prose is maximally *variable*, so it can never land in an invariance bucket:
+  the tool was well-built and pointed at the wrong property. The 27 fields were
+  found instead by sorting prose leaves by length and reading the longest
+  twelve. A zero from a detector that could not have found a positive is not
+  evidence of absence, and it is the most convincing kind of wrong answer
+  because the tool worked perfectly.
 - **File `atime` is not evidence of a live consumer.** This filesystem is
   mounted `relatime`, so a read may not update `atime` at all. An investigation
   nearly concluded "nothing reads the spine" from atime alone; the conclusion
