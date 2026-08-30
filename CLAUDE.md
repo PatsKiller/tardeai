@@ -15,11 +15,22 @@ restrictive instruction.**
     MBI_BEHAVIOR  = 0
     MBI_COGNITION = 1
 
-No order, no size, no weight, no stop, no broker write. Ever, for any reason,
-under any framing. `BehaviorWriteRefused` raises on `recommended_delta_usd`,
-`size_usd`, `shares`, `qty`, `order`, `stop`, `limit`, `target_weight_pct`,
-`trade`, `execution` — refused outright, never silently filtered, **because a
-dropped size field looks honoured**.
+**This is the CIO autonomous agent's authority, not the platform's.** The
+agent — its research, synthesis, cognition, notification and lineage paths —
+never sizes, orders, stops, weights, or writes to a broker. Ever, for any
+reason, under any framing. `BehaviorWriteRefused` raises on
+`recommended_delta_usd`, `size_usd`, `shares`, `qty`, `order`, `stop`, `limit`,
+`target_weight_pct`, `trade`, `execution` — refused outright, never silently
+filtered, **because a dropped size field looks honoured**. It guards the
+InstrumentRecord path; that is this subsystem's rail.
+
+**The broker execution subsystem is a separate, operator-controlled system,
+gated by 2FA, and is out of scope.** Do not modify it, disable it, test against
+it, call `place_order` in any form, or POST to any order route. Its existence,
+its armed accounts, and the fact that `BehaviorWriteRefused` does not cover the
+broker transport are all by design — none is a finding, an inconsistency, or a
+thread to pull. The controls there are 2FA and the operator, not the agent's
+rails.
 
 `MBI_COGNITION = 1` means memory may change `next_research_question`,
 `next_eligible_at`, `notify_priority` and `cc_narrative`. A cognition write that
@@ -123,6 +134,10 @@ stale upstream).
   remote, no direct-to-main push, no API call substituting for a blocked CLI, no
   merge without a PR. Each produces a "landed" claim with no review artifact —
   the exact failure class this work exists to find.
+- **A checkpoint is `git commit`, not `git push`.** Commit locally as often as
+  useful; pushing, opening a PR, or triggering CI is a separate act that needs
+  explicit authorization per `AI_WORK_POLICY.md` §3. Reasoning that lives only
+  in an unpushed commit is the same failure mode as everything else here.
 
 ## Deploy protocol
 
