@@ -30,6 +30,8 @@ os.chdir(str(PROJECT_ROOT))
 from dotenv import load_dotenv
 load_dotenv(PROJECT_ROOT / ".env")
 
+PROCESS_ID = "multi_tier_trade_reviewer"
+
 log = logging.getLogger("multi_tier_reviewer")
 
 # ── Advisory cloud review (ChatGPT+Grok) gating ──────────────────────────
@@ -101,22 +103,35 @@ def _generate_deepseek(prompt, max_tokens=800, temperature=0.3):
 
 
 def _generate_openai(prompt, model, max_tokens=1500, temperature=0.5):
-    """Call OpenAI API."""
-    import requests
-    api_key = os.getenv("OPENAI_API_KEY", "")
-    if not api_key:
-        log.warning("No OPENAI_API_KEY set")
-        return None
+    """ChatGPT via the GOVERNED lane. Was a direct api.openai.com POST.
+
+    This read OPENAI_API_KEY and POSTed straight to
+    api.openai.com/v1/chat/completions with no reservation, no ledger row and
+    no cap, while being scheduled three times (weekly, monthly, overnight). It
+    was a recurring cloud spend path invisible to
+    llm_consumption.ledger_paid_usd_today and therefore to the daily cap, and
+    absent from every usage figure an operator could consult. Audited
+    2026-08-30.
+
+    llm_lane already carries a governed `chatgpt` lane through the OAuth proxy
+    (CHATGPT_PROXY_URL, default 127.0.0.1:8646), so the call is reserved,
+    settled and logged like every DeepSeek one.
+    """
     try:
-        resp = requests.post("https://api.openai.com/v1/chat/completions", json={
-            "model": model,
-            "messages": [{"role": "user", "content": prompt}],
-            "max_tokens": max_tokens, "temperature": temperature,
-        }, headers={"Authorization": f"Bearer {api_key}"}, timeout=120)
-        if resp.ok:
-            return resp.json()["choices"][0]["message"]["content"]
-    except Exception as e:
-        log.warning(f"OpenAI {model} failed: {e}")
+        from llm_lane import generate
+    except Exception:                                            # noqa: BLE001
+        from scripts.llm_lane import generate                    # type: ignore
+    try:
+        return generate(
+            prompt,
+            lane="chatgpt",
+            model=model,
+            max_tokens=max_tokens,
+            process_id=PROCESS_ID,
+            task_summary=f"multi_tier_review:{model}",
+        )
+    except Exception as e:                                       # noqa: BLE001
+        log.warning(f"Governed ChatGPT lane {model} failed: {e}")
     return None
 
 

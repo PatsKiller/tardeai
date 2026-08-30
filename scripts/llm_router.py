@@ -136,43 +136,43 @@ def _call_openai(prompt: str, max_tokens: int = 2000) -> dict:
 
 
 def _call_grok(prompt: str, max_tokens: int = 2000) -> dict:
-    """Call xAI Grok API."""
-    keys = _load_env()
-    api_key = keys.get("XAI_API_KEY", "")
-    if not api_key:
-        return {"success": False, "error": "XAI_API_KEY not configured", "provider": "grok"}
+    """Grok via the GOVERNED lane. Was a direct api.x.ai POST.
 
+    This read XAI_API_KEY and urlopen'd api.x.ai/v1/chat/completions with NO
+    reservation, NO ledger row and NO cap, while being reachable from scheduled
+    jobs (iterate_research_topics, agent_watchlist_engine, overnight_batch,
+    api_v2). Its `cost_estimate` was arithmetic on max_tokens — a guess
+    recorded as a fact. Audited 2026-08-30.
+
+    llm_lane carries a governed `grok` lane through the xAI proxy
+    (HERMES_XAI_PROXY_URL, default 127.0.0.1:8645). Cost now comes from the
+    consumption ledger instead of from a token ceiling.
+    """
     t0 = time.time()
     try:
-        payload = json.dumps({
-            "model": "grok-3-mini",  # grok-3-mini: fast + cheap for agent tasks
-            # GPU upgrade: stays as grok-3-mini even after GPU — Grok used as cloud fallback
-            "max_tokens": max_tokens,
-            "messages": [{"role": "user", "content": prompt}],
-        }).encode()
-        req = urllib.request.Request(
-            "https://api.x.ai/v1/chat/completions",
-            data=payload,
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {api_key}",
-            },
-            method="POST"
-        )
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            result = json.loads(resp.read())
-            text = result.get("choices", [{}])[0].get("message", {}).get("content", "")
-            latency = round(time.time() - t0, 2)
-            return {
-                "model_used": "grok-3-mini", "provider": "grok",
-                "response": text.strip(), "latency": latency,
-                "success": bool(text.strip()),
-                # grok-3-mini: ~$0.30/1M input, $0.50/1M output (estimate)
-                "cost_estimate": round((max_tokens * 0.0005) / 1000, 5),
-            }
-    except Exception as e:
+        try:
+            from llm_lane import generate
+        except Exception:                                        # noqa: BLE001
+            from scripts.llm_lane import generate                # type: ignore
+        text = generate(
+            prompt,
+            lane="grok",
+            max_tokens=max_tokens,
+            process_id=getattr(_call_grok, "_process_id", "llm_router"),
+            task_summary="llm_router:grok",
+        ) or ""
+        return {
+            "model_used": "grok-3-mini", "provider": "grok",
+            "response": str(text).strip(),
+            "latency": round(time.time() - t0, 2),
+            "success": bool(str(text).strip()),
+            "cost_estimate": None,      # settled by the ledger, not guessed
+            "governed": True,
+        }
+    except Exception as e:                                       # noqa: BLE001
         return {"success": False, "error": str(e), "provider": "grok",
-                "latency": round(time.time() - t0, 2), "cost_estimate": 0.0}
+                "latency": round(time.time() - t0, 2),
+                "cost_estimate": None, "governed": True}
 
 
 _PROVIDERS = {
