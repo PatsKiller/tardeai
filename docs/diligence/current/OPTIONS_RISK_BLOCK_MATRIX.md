@@ -1,6 +1,6 @@
 # Options Hard-Risk Block Matrix
 
-_Generated: 2026-08-30T21:10:11.439623+00:00_  
+_Generated: 2026-08-30T21:48:52.088025+00:00_  
 _Source: `python3 tests/test_options_hard_risk_blocks_matrix.py` over `tests/fixtures/options_risk_blocks/_fixtures.json`_
 
 Each row is a hard block enforced on the live options path by `options_desk_enterprise.evaluate_hard_risk_blocks`. Codes are a stable contract.

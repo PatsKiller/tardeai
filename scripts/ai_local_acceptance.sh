@@ -107,6 +107,9 @@ else
     # a 16-line edit). Mirror both steps here.
     "$PY" scripts/check_dark_contracts.py --fail-on-new
     "$PY" scripts/check_line_endings.py
+    # Same shape as the dark-contract gate: a scheduled job with no declaration
+    # fails here rather than three months later.
+    "$PY" scripts/check_lane_registry.py --fail-on-new
     authority_green=true
   fi
   if [[ "$frontend" == "1" && -f apps/command-center-v3/package.json ]]; then
