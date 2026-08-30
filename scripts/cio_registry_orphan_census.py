@@ -1,3 +1,7 @@
+NO_CONSUMER_REASON = (
+    "operator-invoked diligence CLI: CIORegistryOrphanCensus@v1 is a stdout receipt for Phase 9 orphan scans, not an ingested store contract"
+)
+
 #!/usr/bin/env python3
 """CanonicalStoreRegistry orphan / missing-cross-id census (read-only).
 
