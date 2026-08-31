@@ -42,7 +42,11 @@ from __future__ import annotations
 import argparse, json, os, sys, traceback
 from datetime import datetime
 from pathlib import Path
-from dotenv import load_dotenv
+try:
+    from dotenv import load_dotenv
+except ImportError:  # CI hardening image has no python-dotenv; .env is optional
+    def load_dotenv(*_a, **_k):
+        return False
 
 # NEW: Dashboard generator for single persistent file
 try:

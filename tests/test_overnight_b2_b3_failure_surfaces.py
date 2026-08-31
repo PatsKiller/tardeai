@@ -32,6 +32,14 @@ if str(ROOT / "scripts") not in sys.path:
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+# CI hardening image may lack python-dotenv; stub before importing the
+# orchestrator so collection does not depend on an optional runtime dep.
+if "dotenv" not in sys.modules:
+    import types
+    _dotenv = types.ModuleType("dotenv")
+    _dotenv.load_dotenv = lambda *_a, **_k: False  # type: ignore[attr-defined]
+    sys.modules["dotenv"] = _dotenv
+
 tao = importlib.import_module("trade_ai_orchestrator")
 ao = importlib.import_module("aegis_overnight")
 
