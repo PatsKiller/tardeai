@@ -80,6 +80,13 @@ APPROVED_TOOLING = {
     "tests/conftest.py",
     "tests/test_cio_phase1_notification_containment.py",
     "tests/test_telegram_p0_card_gate.py",
+    # 2026-08-31: tests that ASSERT the interdict and the ratchet. A test proving
+    # deliver_text is interdictable must name deliver_text, a token and a chat id;
+    # a test proving the ratchet can go red must plant the pattern it detects.
+    # Named individually, following this file's own convention -- never a blanket
+    # tests/ exclusion, which would let a real producer hide in a test path.
+    "tests/test_notification_integrity_waves_cdeg.py",
+    "tests/test_telegram_chokepoint_ratchet.py",
 }
 APPROVED = APPROVED_OUTBOUND | APPROVED_DELIVERY | APPROVED_INBOUND | APPROVED_TOOLING
 
