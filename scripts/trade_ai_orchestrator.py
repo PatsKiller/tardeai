@@ -916,14 +916,35 @@ def run_pipeline(root, run_label, date_str, use_llm=True, send_alerts=True, skip
         _sync_inserted = sync_result.get("inserted", 0)
         _sync_total = sync_result.get("strategy_signals_after", 0)
         _sync_go = sync_result.get("go_count", 0) + sync_result.get("aplus_count", 0)
-        _ok("strategy_signal_sync", f"{_sync_inserted} inserted  {_sync_total} total  ({_sync_go} GO/A+ scans)")
-        # Health alert if GO scans exist but no signals written
-        if _sync_go > 0 and _sync_total == 0:
+        _sync_errors = sync_result.get("errors", 0)
+        # errors MUST appear in the summary line. Between 2026-08-08 and 2026-08-31 every
+        # insert raised (ON CONFLICT naming a non-existent constraint) and this line still
+        # read "0 inserted  0 total" with a green tick -- a total outage was indistinguishable
+        # from a quiet day in the one line a human reads.
+        _sync_msg = f"{_sync_inserted} inserted  {_sync_total} total  ({_sync_go} GO/A+ scans)"
+        if _sync_errors:
+            _sync_msg += f"  {_sync_errors} ERRORS"
+        # Zero-rows alert: GO/A+ scans arrived but nothing was written, or writes errored.
+        if (_sync_go > 0 and _sync_total == 0) or _sync_errors:
+            _err("strategy_signal_sync", _sync_msg)
+            _alert_text = (f"⚠️ Signal flow warning: {_sync_go} GO/A+ scans, "
+                           f"{_sync_inserted} inserted, {_sync_errors} errors — "
+                           f"0 strategy_signals written. Strategy Desk will be empty.")
             try:
-                from telegram_alert import send_alert
-                send_alert(f"⚠️ Signal flow warning: {_sync_go} GO/A+ scans but 0 strategy_signals written. Strategy Desk will be empty.")
-            except Exception:
-                print(f"  ⚠️ ALERT: {_sync_go} GO/A+ scans but 0 strategy_signals — Strategy Desk empty!")
+                # send_telegram, NOT send_alert. `send_alert` has never existed in
+                # telegram_alert.py (git log -S "def send_alert" returns no commit), so this
+                # alarm raised ImportError and printed to a log file 171 times while the
+                # Strategy Desk sat empty for 24 days. An alarm that cannot raise is not an alarm.
+                from telegram_alert import send_telegram
+                _alert_ok = send_telegram(_alert_text)
+                if not _alert_ok:
+                    print(f"  ⚠️ ALERT NOT DELIVERED (send_telegram returned False): {_alert_text}")
+            except Exception as _alert_exc:
+                # Record WHY, and name the symbol. A bare `except Exception: print(...)` is what
+                # laundered the ImportError into a log line nobody read.
+                print(f"  ⚠️ ALERT NOT DELIVERED ({type(_alert_exc).__name__}: {_alert_exc}): {_alert_text}")
+        else:
+            _ok("strategy_signal_sync", _sync_msg)
     except Exception as exc:
         _err("strategy_signal_sync", f"{exc}  — continuing without signal sync")
         # Fallback: try subprocess

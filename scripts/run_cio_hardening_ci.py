@@ -18,6 +18,12 @@ REPO = Path(__file__).resolve().parents[1]
 
 # Ordered, explicit suite list (Phase 10.2)
 GATES = [
+    # Pins the 2026-08-08 -> 2026-08-31 Strategy Desk outage: an ON CONFLICT clause
+    # naming a constraint that does not exist (every signal insert raised), and the
+    # alarms that reported it to nobody by importing a send_alert that has never existed.
+    ("signal_flow_regression", [
+        "tests/test_signal_sync_onconflict_regression.py",
+    ]),
     ("notification_no_network", [
         "tests/test_cio_phase1_notification_containment.py",
         "tests/test_cio_phase9_alex_telegram.py",

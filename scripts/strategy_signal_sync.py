@@ -515,17 +515,30 @@ def insert_strategy_signal(conn, scan: dict, plan: dict, available_cols: set,
     cols_str = ", ".join(insert_data.keys())
     placeholders = ", ".join(["%s"] * len(insert_data))
 
+    # NOTE: deliberately a plain INSERT. An `ON CONFLICT (strategy_id, symbol,
+    # signal_type, fired_at) DO NOTHING` clause was added 2026-08-08 (f0446ff33)
+    # naming a constraint that does not exist -- there is no unique index on those
+    # four columns and none was ever migrated. Postgres rejects the whole statement,
+    # not the row ("there is no unique or exclusion constraint matching the ON
+    # CONFLICT specification"), so EVERY signal insert raised for 24 days and the
+    # Strategy Desk went empty. Idempotency is already enforced above, on
+    # (symbol, strategy_id, fired_at::date, active/pending) -- a strictly broader key
+    # than that clause, which keyed on an exact fired_at timestamp that would
+    # essentially never collide. Do not re-add the clause without first creating and
+    # migrating the matching unique index.
     cur.execute(
         f"INSERT INTO strategy_signals ({cols_str}) VALUES ({placeholders}) "
-        f"ON CONFLICT (strategy_id, symbol, signal_type, fired_at) DO NOTHING "
         f"RETURNING id",
         list(insert_data.values())
     )
     row = cur.fetchone()
     if row is None:
-        # ON CONFLICT DO NOTHING — duplicate signal already exists, skip
-        conn.commit()
-        return None
+        # Not reachable for a plain INSERT ... RETURNING (it raises rather than
+        # returning no row), but the caller does result.get('status'), so never
+        # return a bare None -- that would AttributeError into the generic handler
+        # and be counted as an opaque error.
+        conn.rollback()
+        return {"status": "skipped", "reason": "insert_returned_no_row", "signal_id": None}
     signal_id = row[0]
 
     # Phase B-1c: also write to watchpool if strategy is watchpool-routed
