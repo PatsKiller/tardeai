@@ -7,7 +7,7 @@ a stopped system look identical from the outside, which is the failure this whol
 programme keeps finding. This is the artifact that tells them apart.
 
 REPORTING ONLY. It changes no decision, no ranking, no position. Every line
-carries its provenance class per CLAUDE.md:
+carries its provenance class per AGENTS.md §2:
 
     D deterministic · T template · M model-assisted, gated
     A agent-originated · S snapshot-derived
@@ -111,7 +111,7 @@ def came_back(rows: list[dict[str, Any]], since: datetime) -> dict[str, Any]:
 def changed_because(records: list[dict[str, Any]], since: datetime) -> dict[str, Any]:
     """D — named records whose cognition fields moved, with before/after.
 
-    The cognition fields are the four CLAUDE.md permits memory to move. A field
+    The cognition fields are the four AGENTS.md §2 permits memory to move. A field
     that did not move is not reported as movement.
     """
     COG = ("next_research_question", "next_eligible_at", "notify_priority", "cc_narrative")
