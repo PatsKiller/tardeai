@@ -22,14 +22,16 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
-sys.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
+# G2: scripts-only + lib — never also put scripts/lib or root on path
+_SCRIPTS = Path(__file__).resolve().parent
+if str(_SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(_SCRIPTS))
 HOLDINGS_PATH = PROJECT_ROOT / "data" / "portfolios" / "state" / "holdings.json"
 # MIN_TOTAL retained as a deprecated alias for import compatibility. It is NOT
 # applied. Validation is coverage + relative-drop (see holdings_sanity).
 MIN_TOTAL = None
 BASIS_DIVERGENCE_PCT = 2.0     # flag if API avg price differs from stored basis by > this %
-from holdings_sanity import (  # noqa: E402
+from lib.holdings_sanity import (  # noqa: E402
     CATASTROPHIC_DROP_FRACTION,
     REASON_VALID_COMPLETE,
     validate_payload,
@@ -566,6 +568,9 @@ def sync_schwab_positions(account_key, dry_run=True):
 
 
 if __name__ == "__main__":
+    # G2: after imports settle — refuse dual lib.X / scripts.lib.X identity
+    from lib import assert_single_import_identity
+    assert_single_import_identity()
     import argparse
     ap = argparse.ArgumentParser()
     ap.add_argument("account", nargs="?", default=None, help="one account, or omit for all 3 Schwab accounts")

@@ -31,8 +31,9 @@ from pathlib import Path
 from typing import Any, Optional
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(ROOT / "scripts"))
+# G2: root-only + scripts.lib — never also put scripts/ on path
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 os.chdir(ROOT)
 
@@ -317,7 +318,7 @@ def run_once(*, max_wakes: int = 12, dispatch: bool = False) -> dict[str, Any]:
     # Shadow/advisory + fail-soft: stages feedback only (firewalled); the app-role
     # drain (watch_directives_service) governs promotion. Never wedges the cycle.
     try:
-        from lib.two_way_curation import (
+        from scripts.lib.two_way_curation import (
             CIO_CURATION_SITUATIONS,
             cio_situation_to_feedback,
             emit_all,
@@ -328,7 +329,7 @@ def run_once(*, max_wakes: int = 12, dispatch: bool = False) -> dict[str, Any]:
         plans_to_emit: list[dict] = list(_situations.get("plans_detail") or [])
         # Re-seed from open plans of curation types (materiality + rate limit).
         try:
-            from lib.cio_plans import CIOPlanStore
+            from scripts.lib.cio_plans import CIOPlanStore
             for _op in CIOPlanStore().list_open_plans(limit=40) or []:
                 st = str(_op.get("situation_type") or "")
                 if st not in CIO_CURATION_SITUATIONS:
@@ -365,7 +366,7 @@ def run_once(*, max_wakes: int = 12, dispatch: bool = False) -> dict[str, Any]:
                 import psycopg2
                 import psycopg2.extras
                 import directive_promotion as _dp
-                from lib.two_way_curation import drain_curation_sources as _drain_cs
+                from scripts.lib.two_way_curation import drain_curation_sources as _drain_cs
 
                 _conn = psycopg2.connect(
                     host=os.getenv("DB_HOST", "localhost"),
@@ -414,10 +415,7 @@ def run_once(*, max_wakes: int = 12, dispatch: bool = False) -> dict[str, Any]:
 
     # Restart-safe cheap retry of research→product reassessment. Never reruns paid LLM.
     try:
-        try:
-            from lib.cio_product_reassessment import retry_pending_reassessments
-        except Exception:
-            from scripts.lib.cio_product_reassessment import retry_pending_reassessments  # type: ignore
+        from scripts.lib.cio_product_reassessment import retry_pending_reassessments
         out["reassessment_retry"] = retry_pending_reassessments(limit=3)
     except Exception as exc:
         out.setdefault("errors", []).append(f"reassessment_retry:{exc}")
@@ -431,6 +429,9 @@ def run_once(*, max_wakes: int = 12, dispatch: bool = False) -> dict[str, Any]:
 
 
 def main() -> int:
+    # G2: after imports settle — refuse dual lib.X / scripts.lib.X identity
+    from scripts.lib import assert_single_import_identity
+    assert_single_import_identity()
     ap = argparse.ArgumentParser()
     ap.add_argument("--once", action="store_true", default=True)
     ap.add_argument("--json", action="store_true")
