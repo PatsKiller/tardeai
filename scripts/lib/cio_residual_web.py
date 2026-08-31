@@ -104,6 +104,231 @@ BLOCKED_NEXT_LOOK_DAYS = 1
 OUTCOMES = ("VALID", "PARTIAL", "REJECT", "execution_language", "FAIL")
 ATTACHING_OUTCOMES = frozenset({"VALID", "PARTIAL"})
 
+# F1/F2 bound policy: web *search* serves this lane only. Bulk news/catalyst
+# enrichment uses RSS + Finviz (see SEARCH_CALLER_CENSUS). Never fail open on
+# an unreadable search budget — that property lives in scripts.lib.search_budget.
+NEWS_BELONGS_ON = ("rss", "finviz")
+SEARCH_API_RESERVED_FOR = LANE
+WEEKDAYS_PER_MONTH_DEFAULT = 21
+
+
+# Census rows are the F1 deliverable. `class` is residual-web vs legacy-bulk.
+# `calls_per_run` is the pre-bound worst case from source; `bound_monthly` is
+# the post-F2 projection under the policy (news/catalyst Brave → 0).
+SEARCH_CALLER_CENSUS: tuple[dict[str, Any], ...] = (
+    {
+        "caller": "cio_residual_web",
+        "provider": "searxng",
+        "trigger": "gate residual rung (decision==openai) + legality",
+        "schedule": "none (operator-sequenced; no cron)",
+        "calls_per_run": DAILY_SUBJECT_BUDGET * MAX_HOPS_PER_SUBJECT_PER_DAY,
+        "class": "residual-web",
+        "empty_result_behavior": "PARTIAL + still_unresolved; never fabricate",
+        "consumer": "instrument record / CC narrative via apply_hop",
+        "bound_monthly": DAILY_SUBJECT_BUDGET * MAX_HOPS_PER_SUBJECT_PER_DAY * WEEKDAYS_PER_MONTH_DEFAULT,
+    },
+    {
+        "caller": "portfolio_news",
+        "provider": "brave→finviz/yahoo (F2)",
+        "trigger": "llm_score >= 70 enrichment",
+        "schedule": "via portfolio_orchestrator (cron DISABLED 2026-08-30)",
+        "calls_per_run": 10,  # CALLER_CAPS portfolio_news
+        "class": "legacy-bulk",
+        "empty_result_behavior": "omit brave_context; snapshot still writes",
+        "consumer": "recovery_watch_daily, analyst_report_builder, api_v2",
+        "bound_monthly": 0,
+    },
+    {
+        "caller": "catalyst_intelligence",
+        "provider": "brave→finviz/yahoo (F2)",
+        "trigger": "per-symbol ollama analyze enrichment",
+        "schedule": "trade_ai_orchestrator Stage 6",
+        "calls_per_run": 10,  # CALLER_CAPS
+        "class": "legacy-bulk",
+        "empty_result_behavior": "prompt without WEB NEWS line",
+        "consumer": "trade_ai_orchestrator.analyze_all_catalysts",
+        "bound_monthly": 0,
+    },
+    {
+        "caller": "web_news_fetcher",
+        "provider": "brave→finviz/yahoo (F2); ddg scrape fallback",
+        "trigger": "on-demand fetch_web_news(symbol)",
+        "schedule": "none (library); consumers invoke",
+        "calls_per_run": 5,  # CALLER_CAPS
+        "class": "legacy-bulk",
+        "empty_result_behavior": "[] then DDG scrape; never invent",
+        "consumer": "portfolio_ai_analyst, incubator_llm_screener",
+        "bound_monthly": 0,
+    },
+    {
+        "caller": "portfolio_weekly_report",
+        "provider": "brave→finviz (F2)",
+        "trigger": "top-5 holdings analyst commentary",
+        "schedule": "Sunday via run_portfolio_weekly.sh",
+        "calls_per_run": 5,
+        "class": "legacy-bulk",
+        "empty_result_behavior": "narrative without commentary block",
+        "consumer": "weekly DOCX report",
+        "bound_monthly": 0,
+    },
+    {
+        "caller": "symbol_enrichment",
+        "provider": "brave→retired; google_news_rss/finviz remain",
+        "trigger": "Tier 5 A+ (score>=55), max 3/day pre-F2",
+        "schedule": "30 7 * * 1-5 symbol_enrichment.py --limit 50",
+        "calls_per_run": 3,
+        "class": "legacy-bulk",
+        "empty_result_behavior": "skip source; other tiers continue",
+        "consumer": "trade_ai_orchestrator enrichment + cron",
+        "bound_monthly": 0,
+    },
+    {
+        "caller": "topic_ingestion",
+        "provider": "brave (retired unless TOPIC_BRAVE_ENABLED=1)",
+        "trigger": "SOURCE 4 gap-fill",
+        "schedule": "45 20 * * 1-5 and 45 2 * * * topic_ingestion.py",
+        "calls_per_run": 0,  # default off
+        "class": "legacy-bulk",
+        "empty_result_behavior": "print retired; RSS/Yahoo sources continue",
+        "consumer": "news_articles → news_to_catalyst",
+        "bound_monthly": 0,
+    },
+    {
+        "caller": "aegis_social_sentiment",
+        "provider": "brave",
+        "trigger": "fetch_brave_social top symbols",
+        "schedule": "0 11,15 * * 1-5 (2×/weekday)",
+        "calls_per_run": 10,
+        "class": "legacy-bulk",
+        "empty_result_behavior": "reddit/stocktwits-only sentiment",
+        "consumer": "aegis overnight / social_sentiment store",
+        "bound_monthly": 10 * 2 * WEEKDAYS_PER_MONTH_DEFAULT,  # still under search_budget
+    },
+    {
+        "caller": "aegis_transcript_discovery",
+        "provider": "brave",
+        "trigger": "youtube + article + theme loops",
+        "schedule": "0 9 * * 1-5",
+        "calls_per_run": 12,  # ~12 symbols + themes across three loops
+        "class": "legacy-bulk",
+        "empty_result_behavior": "degrade; continue other sources",
+        "consumer": "aegis transcript / discovery store",
+        "bound_monthly": 12 * WEEKDAYS_PER_MONTH_DEFAULT,
+    },
+    {
+        "caller": "web_research",
+        "provider": "brave (on-demand)",
+        "trigger": "interactive search_web / research_symbol_web",
+        "schedule": "none (library)",
+        "calls_per_run": "variable",
+        "class": "legacy-bulk",
+        "empty_result_behavior": "[] — never fabricate",
+        "consumer": "agents / auto-research",
+        "bound_monthly": "budgeted; not bulk news",
+    },
+    {
+        "caller": "credential_monitor",
+        "provider": "brave",
+        "trigger": "key health probe",
+        "schedule": "credential monitor lane",
+        "calls_per_run": 1,
+        "class": "legacy-bulk",
+        "empty_result_behavior": "counted, never denied (deny would false-fail key)",
+        "consumer": "credential_monitor status",
+        "bound_monthly": "~30 (1/day)",
+    },
+    {
+        "caller": "secret_validators",
+        "provider": "brave",
+        "trigger": "BRAVE_SEARCH_API_KEY validation",
+        "schedule": "on demand / deploy checks",
+        "calls_per_run": 1,
+        "class": "legacy-bulk",
+        "empty_result_behavior": "counted, never denied",
+        "consumer": "secret_validators",
+        "bound_monthly": "sparse",
+    },
+)
+
+
+def projected_search_volume(
+    *,
+    weekdays_per_month: int = WEEKDAYS_PER_MONTH_DEFAULT,
+    as_of: Optional[datetime] = None,
+) -> dict[str, Any]:
+    """F2 bound-policy volume with as_of. Dry-run arithmetic only — no network.
+
+    Residual-web: N subjects × 1 hop × weekdays. News/catalyst Brave under the
+    bound policy is zero (re-pointed to RSS/Finviz). Remaining legacy-bulk that
+    is *not* news (aegis social/transcript) stays under search_budget caps.
+    """
+    now = _utc(as_of)
+    wd = max(0, int(weekdays_per_month))
+    residual_per_day = DAILY_SUBJECT_BUDGET * MAX_HOPS_PER_SUBJECT_PER_DAY
+    residual_monthly = residual_per_day * wd
+    news_catalyst_callers = (
+        "portfolio_news", "catalyst_intelligence", "web_news_fetcher",
+        "portfolio_weekly_report", "symbol_enrichment", "topic_ingestion",
+    )
+    news_bound = 0
+    remaining_legacy = 0
+    rows = []
+    for row in SEARCH_CALLER_CENSUS:
+        bound = row.get("bound_monthly")
+        if isinstance(bound, int):
+            # Recompute residual and aegis rows against the requested weekday count.
+            if row["caller"] == "cio_residual_web":
+                bound = residual_monthly
+            elif row["caller"] == "aegis_social_sentiment":
+                bound = 10 * 2 * wd
+            elif row["caller"] == "aegis_transcript_discovery":
+                bound = 12 * wd
+            if row["caller"] in news_catalyst_callers:
+                news_bound += bound
+            elif row["class"] == "legacy-bulk" and isinstance(bound, int):
+                remaining_legacy += bound
+        rows.append({**row, "bound_monthly": bound})
+    return {
+        "schema": SCHEMA,
+        "as_of": now.replace(microsecond=0).isoformat(),
+        "policy": {
+            "max_hops_per_subject_per_day": MAX_HOPS_PER_SUBJECT_PER_DAY,
+            "daily_subject_budget": DAILY_SUBJECT_BUDGET,
+            "news_belongs_on": list(NEWS_BELONGS_ON),
+            "search_api_reserved_for": SEARCH_API_RESERVED_FOR,
+            "never_fail_open": True,
+            "no_cron_for_residual_web": True,
+        },
+        "residual_web": {
+            "provider": "searxng",
+            "calls_per_day_cap": residual_per_day,
+            "monthly_projection": residual_monthly,
+            "arithmetic": (
+                f"{DAILY_SUBJECT_BUDGET} subjects × {MAX_HOPS_PER_SUBJECT_PER_DAY} hop "
+                f"× {wd} weekdays = {residual_monthly}"
+            ),
+            "cost_usd_month": 0.0,
+        },
+        "news_catalyst_brave_under_bound": {
+            "monthly_projection": news_bound,
+            "arithmetic": "all named news/catalyst Brave sites re-pointed → 0",
+            "callers": list(news_catalyst_callers),
+        },
+        "remaining_legacy_bulk_brave": {
+            "monthly_projection": remaining_legacy,
+            "arithmetic": (
+                f"aegis_social 10×2×{wd}={10*2*wd} + "
+                f"aegis_transcript 12×{wd}={12*wd} = {remaining_legacy} "
+                f"(still denied by search_budget when exhausted; never fail open)"
+            ),
+            "note": "not news/catalyst — left on budgeted Brave; not deleted",
+        },
+        "census": rows,
+        "authority": AUTHORITY,
+        "financial_action": FINANCIAL_ACTION,
+        "store_writes": False,
+    }
+
 
 class ResidualWebRefused(RuntimeError):
     """Raised when the lane is asked to do something it may not do."""
@@ -404,6 +629,14 @@ def _live_transport(request: dict[str, Any]) -> dict[str, Any]:
     from scripts.lib.searxng_client import searx_search       # noqa: PLC0415
     from llm_lane import generate                             # noqa: PLC0415
 
+    # WAVE F4: stamp pool degradation via the thin helper (not a rewrite of
+    # this transport). A thin answer that looks identical to a full one is the
+    # failure this programme exists to remove — measured 2026-08-30 a ten-result
+    # response came entirely from one engine with CAPTCHA-suspended peers.
+    from scripts.lib.search_health_degradation import (  # noqa: PLC0415
+        attach_degradation,
+    )
+
     hits = searx_search(
         search_query_from_question(request.get("query") or request.get("question") or ""),
         limit=int(request.get("limit") or 6),
@@ -443,15 +676,21 @@ def _live_transport(request: dict[str, Any]) -> dict[str, Any]:
         task_summary=f"{LANE}:{request.get('subject_key')}",
         response_json=True,
     )
-    return {
-        "provider": RESIDUAL_DECISION,
-        "outcome": "PARTIAL",
-        "cost_usd": None,          # settled by the consumption ledger
-        "answers": [],
-        "still_unresolved": list(request.get("question_ids") or []),
-        "source_urls": urls,
-        "raw": text,
-    }
+    # `impaired=True` means this answer is narrower than its length suggests.
+    return attach_degradation(
+        {
+            "provider": RESIDUAL_DECISION,
+            "outcome": "PARTIAL",
+            "cost_usd": None,          # settled by the consumption ledger
+            "answers": [],
+            "still_unresolved": list(request.get("question_ids") or []),
+            "source_urls": urls,
+            "raw": text,
+        },
+        probe=True,
+        persist=True,
+        url=request.get("searx_url"),
+    )
 
 
 def run_hop(
@@ -507,7 +746,12 @@ def run_hop(
 
     artifact_id = f"rw_{content_hash({'s': subject_key, 'q': question, 'd': now.date().isoformat()})}"
 
-    return {
+    # F4: forward pool-degradation stamp from the transport. Prior to F4 the
+    # live transport set these keys and run_hop dropped them — thinner looked
+    # like full on the hop result / CC binding.
+    from scripts.lib.search_health_degradation import forward_stamp  # noqa: PLC0415
+
+    hop = {
         "schema": SCHEMA,
         "lane": LANE,
         "decision_token": RESIDUAL_DECISION,
@@ -532,6 +776,7 @@ def run_hop(
         "financial_action": FINANCIAL_ACTION,
         "memory_behavior_influence": MBI_BEHAVIOR,
     }
+    return forward_stamp(hop, resp)
 
 
 # ── write the instrument record ────────────────────────────────────────────
@@ -553,6 +798,9 @@ def _facts_only_narrative(
             + f"; {len(hop.get('still_unresolved') or [])} question(s) still unresolved.")
     if hop.get("note"):
         what += f" {hop['note']}."
+    # F4: surface CAPTCHA / impaired pool so narrative thinner ≠ full.
+    from scripts.lib.search_health_degradation import narrative_suffix  # noqa: PLC0415
+    what += narrative_suffix(hop)
 
     narrative = cc_narrative(
         what=what,
@@ -679,7 +927,7 @@ def cc_binding(record: dict[str, Any], hop: dict[str, Any],
     `cio_command_center` — this lane adds no send site.
     """
     now = _utc(now)
-    return {
+    binding = {
         "schema": SCHEMA,
         "lane": LANE,
         "subject_key": record.get("subject_key"),
@@ -700,6 +948,9 @@ def cc_binding(record: dict[str, Any], hop: dict[str, Any],
         "financial_action": FINANCIAL_ACTION,
         "memory_behavior_influence": MBI_BEHAVIOR,
     }
+    # F4: CC binding carries the same stamp the hop carries.
+    from scripts.lib.search_health_degradation import forward_stamp  # noqa: PLC0415
+    return forward_stamp(binding, hop)
 
 
 def entity_admissible_refs(refs: list[dict[str, Any]]) -> list[dict[str, Any]]:

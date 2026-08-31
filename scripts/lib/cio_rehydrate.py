@@ -49,6 +49,32 @@ MBI_BEHAVIOR = 0
 # unexamined.
 DEFER_PUSH_DAYS = 7
 
+# How far a NORMAL completion pushes the next look.
+#
+# Until 2026-08-31 this module set `next_eligible_at` only when something went
+# wrong -- a rejected artifact (+1d) or an operator defer (+7d). A cadence field
+# that exists only after a failure describes failures, not cadence. Measured on
+# the live store that day: of 40 records, 38 had never carried a value and none
+# of those 38 carried a next_research_question either, because they had never
+# been through a cognition write at all. The two that did carry one both came
+# from the rejection path.
+#
+# 7 days is not a new number. `cio_residual_web.NEXT_LOOK_DAYS` -- the lane
+# designed to be the routine writer, and still NEVER_SCHEDULED -- already uses
+# 7 for a completed hop and 1 for a blocked one, which are the same two values
+# this module uses for defer and rejection. Matching it keeps one cadence
+# vocabulary rather than introducing a second.
+#
+# A per-subject-class cadence is probably right and is NOT built here: an EXIT
+# position and a HELD one do not deserve the same revisit interval. That is a
+# policy with its own evidence requirements; see the PR body for the proposal.
+ROUTINE_LOOK_DAYS = 7
+
+# Deltas that may raise a surface. CONFIRMS and STRENGTHENS are findings; the
+# others are honest negatives and must stay silent, or the operator mutes the
+# lane and the whole exercise is worse than not notifying.
+_POSITIVE_DELTAS = frozenset({"CONFIRMS", "STRENGTHENS"})
+
 # Observables whose movement overrides a cadence skip.
 EVENT_HASHES = ("weight", "earnings")
 
@@ -131,6 +157,7 @@ def apply_after_cycle(
 
     nxt_q: Optional[str] = None
     nxt_at: Optional[str] = None
+    normal_completion = False
     narrative: Optional[dict[str, Any]] = None
     priority: Optional[str] = None
     outcome: Optional[str] = None
@@ -174,6 +201,51 @@ def apply_after_cycle(
         else:
             rec["research_blocked"] = False
             outcome = verdict.lower() or "attached"
+            # The normal path: a completed, unrejected artifact means the
+            # question was answered, so the next look is a cadence decision --
+            # the ordinary output of a wake, not an exception marker.
+            #
+            # Recorded as an INTENT, not written to nxt_at here. Setting it
+            # inline pre-empted `decision.next_eligible_at`, whose branch below
+            # reads `if decision and not nxt_at`, so a caller that had computed
+            # its own cadence silently lost it. An existing test caught that.
+            normal_completion = True
+            # A critique-validated finding used to end here: research_blocked
+            # cleared, an outcome string recorded, and nothing the operator
+            # would ever see. The gate's own reason code says why --
+            # POSITIVE_DELTA_MAY_RAISE_COMPLETENESS_NOT_ACTION -- and that rule
+            # is kept: nothing below touches size, weight, order or any
+            # behaviour field, and apply_cognition raises BehaviorWriteRefused
+            # on all of them. MBI_BEHAVIOR stays 0.
+            #
+            # What changes is that a positive delta may now reach a surface
+            # through the three cognition fields MBI_COGNITION=1 already
+            # permits: notify_priority, cc_narrative, next_research_question.
+            #
+            # Only CONFIRMS and STRENGTHENS qualify. NO_NEW_INFO and
+            # INSUFFICIENT_DATA are honest negatives and must not raise
+            # priority -- a lane that notifies on every completion is a lane
+            # the operator mutes.
+            _delta = str(artifact.get("delta_classification")
+                         or artifact.get("classification") or "").upper()
+            if _delta in _POSITIVE_DELTAS:
+                _subject = str(rec.get("subject_key") or "this position")
+                priority = "cc"
+                nxt_q = (f"{_delta.capitalize()}ing evidence is now on record for "
+                         f"{_subject}. What would have to be true for it to be wrong?")
+                _old = dict(rec.get("cc_narrative") or {})
+                _what = str(_old.get("what") or "")
+                _line = (f"Research {_delta.lower()} the standing thesis.")
+                if not _what.startswith("Research "):
+                    _what = (_line + (f" {_what}" if _what else "")).strip()
+                narrative = cc_narrative(
+                    what=_what,
+                    thesis_fit=str(_old.get("thesis_fit") or ""),
+                    recommendation_option_id=_old.get("recommendation_option_id"),
+                    risks=list(_old.get("risks") or []),
+                    evidence_refs=list(_old.get("evidence_refs") or []),
+                    writer="cognition:research_positive_delta",
+                )
 
     # ── rule 1: defer honored, no new catalyst ───────────────────────────
     if lesson and not event_moved:
@@ -203,6 +275,14 @@ def apply_after_cycle(
     if decision and not nxt_at:
         nxt_at = decision.get("next_eligible_at")
         outcome = outcome or decision.get("decision")
+
+    # Routine cadence, last. Precedence, most specific first:
+    #   moved event (due now) > rejection (+1d) > operator defer (+7d)
+    #   > the caller's own decision > this default.
+    # It fills the gap where a wake completed normally and nothing else had an
+    # opinion about when to look again.
+    if normal_completion and not nxt_at:
+        nxt_at = (now + timedelta(days=ROUTINE_LOOK_DAYS)).isoformat()
 
     return apply_cognition(
         rec,

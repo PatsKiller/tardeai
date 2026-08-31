@@ -496,7 +496,11 @@ def recover_stale_reservations(*, max_age_minutes: int = 30, cur=None) -> int:
 
 
 def reserved_usd_open(process_id: str | None = None) -> float:
-    """Open holds only (projected). Prefer ledger_paid_usd_today for cap checks."""
+    """Open holds only (projected). Prefer ledger_paid_usd_today for cap checks.
+
+    Never fails open: an unreadable ledger raises rather than returning 0.0
+    (returning zero would understate open holds and admit over-cap calls).
+    """
     try:
         ensure_schema()
         cur = _conn().cursor()
@@ -512,12 +516,12 @@ def reserved_usd_open(process_id: str | None = None) -> float:
                 "WHERE status='reserved' AND created_at >= CURRENT_DATE"
             )
         return float(cur.fetchone()[0] or 0)
-    except Exception:
+    except Exception as exc:
         try:
             _conn().rollback()
         except Exception:
             pass
-        return 0.0
+        raise RuntimeError(f"BUDGET_UNAVAILABLE: reserved_usd_open failed: {type(exc).__name__}") from exc
 
 
 def check_cost_cap(
@@ -527,24 +531,36 @@ def check_cost_cap(
     global_cap: float | None = None,
     cur=None,
 ) -> dict:
-    """Cap check using reservation ledger as the paid authority (not consumption logs)."""
-    cfg = get_process_config(process_id)
-    if cfg.get("daily_cost_cap_usd") is None:
-        for p in (_load_registry().get("processes") or []):
-            if p.get("id") == process_id and p.get("daily_cost_cap_usd") is not None:
-                cfg["daily_cost_cap_usd"] = p.get("daily_cost_cap_usd")
-                break
-    proc_cap = cfg.get("daily_cost_cap_usd")
-    spent = ledger_paid_usd_today(process_id, cur=cur)
-    if proc_cap is not None and (spent + float(projected_usd or 0)) > float(proc_cap):
-        return {"allow": False, "reason": "COST_CAP_EXCEEDED", "scope": "process",
-                "spent_usd": spent, "cap_usd": float(proc_cap)}
-    if global_cap is not None:
-        g = ledger_paid_usd_today(None, cur=cur)
-        if (g + float(projected_usd or 0)) > float(global_cap):
-            return {"allow": False, "reason": "COST_CAP_EXCEEDED", "scope": "global",
-                    "spent_usd": g, "cap_usd": float(global_cap)}
-    return {"allow": True, "spent_process_usd": spent}
+    """Cap check using reservation ledger as the paid authority (not consumption logs).
+
+    Never fails open: a ledger/config error returns allow=False with
+    reason=BUDGET_UNAVAILABLE rather than treating spend as zero.
+    """
+    try:
+        cfg = get_process_config(process_id)
+        if cfg.get("daily_cost_cap_usd") is None:
+            for p in (_load_registry().get("processes") or []):
+                if p.get("id") == process_id and p.get("daily_cost_cap_usd") is not None:
+                    cfg["daily_cost_cap_usd"] = p.get("daily_cost_cap_usd")
+                    break
+        proc_cap = cfg.get("daily_cost_cap_usd")
+        spent = ledger_paid_usd_today(process_id, cur=cur)
+        if proc_cap is not None and (spent + float(projected_usd or 0)) > float(proc_cap):
+            return {"allow": False, "reason": "COST_CAP_EXCEEDED", "scope": "process",
+                    "spent_usd": spent, "cap_usd": float(proc_cap), "fail_open": False}
+        if global_cap is not None:
+            g = ledger_paid_usd_today(None, cur=cur)
+            if (g + float(projected_usd or 0)) > float(global_cap):
+                return {"allow": False, "reason": "COST_CAP_EXCEEDED", "scope": "global",
+                        "spent_usd": g, "cap_usd": float(global_cap), "fail_open": False}
+        return {"allow": True, "spent_process_usd": spent, "fail_open": False}
+    except Exception as exc:  # noqa: BLE001
+        return {
+            "allow": False,
+            "reason": "BUDGET_UNAVAILABLE",
+            "error": type(exc).__name__,
+            "fail_open": False,
+        }
 
 
 def set_process_mode(process_id: str, mode: str) -> dict:

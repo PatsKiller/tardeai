@@ -13,9 +13,11 @@ import argparse, json, subprocess, sys
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
-sys.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
-from cio_agent_contract import contract_header
+# G2: scripts-only + lib — never also put scripts/lib or root on path
+_SCRIPTS = Path(__file__).resolve().parent
+if str(_SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(_SCRIPTS))
+from lib.cio_agent_contract import contract_header
 from lib.research_call_accounting import append_event as append_call_event, call_id_for, new_run_id
 FRESH_HOURS = 12
 
@@ -229,6 +231,9 @@ def run(top=20, lanes=("chatgpt", "grok"), apply=False, symbols=None, *, run_id=
 
 
 def main():
+    # G2: after imports settle — refuse dual lib.X / scripts.lib.X identity
+    from lib import assert_single_import_identity
+    assert_single_import_identity()
     ap = argparse.ArgumentParser()
     ap.add_argument("--top", type=int, default=20)
     ap.add_argument("--lanes", default="chatgpt,grok")

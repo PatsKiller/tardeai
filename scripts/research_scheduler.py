@@ -23,6 +23,7 @@ import argparse
 import json
 import os
 import subprocess
+import shutil
 import sys
 import time
 from datetime import datetime, timezone
@@ -38,7 +39,41 @@ from lib.research_call_accounting import (
     call_id_for,
     new_run_id,
 )
-PY = str(ROOT / ".venv" / "bin" / "python")
+
+
+def _resolve_child_python() -> str:
+    """The interpreter to launch the researcher subprocess with.
+
+    2026-08-31: this was `str(ROOT / ".venv" / "bin" / "python")`. Releases
+    stopped shipping a `.venv` between 9d92b6e0 and 1306132c, and `ROOT` is the
+    RELEASE directory -- so that path exists in no release and every dispatch
+    died at `subprocess.run` with FileNotFoundError. 19 of 19 on 2026-08-31,
+    while the run still reported "19 external calls".
+
+    `sys.executable` is the interpreter running this process. The cron line
+    already invokes the parent with a working venv, so deriving the child from
+    the parent cannot drift from it and cannot be broken by a release layout
+    change. That is why this is the resolution layer rather than a --python flag
+    on the cron line: a cron-level fix leaves the next caller free to
+    reintroduce it.
+    """
+    if sys.executable:
+        return sys.executable
+    bundled = ROOT / ".venv" / "bin" / "python"
+    if bundled.exists():
+        return str(bundled)
+    found = shutil.which("python3")
+    if found:
+        return found
+    # Deliberately loud: a wrong interpreter silently producing no research is
+    # the failure this function exists to end.
+    raise RuntimeError(
+        "no usable Python interpreter for the researcher subprocess: "
+        "sys.executable is empty, %s does not exist, and python3 is not on PATH"
+        % bundled)
+
+
+PY = _resolve_child_python()
 RESEARCHER = str(ROOT / "scripts" / "hermes_external_researcher.py")
 
 # ── tunables (env-overridable) ───────────────────────────────────────────────

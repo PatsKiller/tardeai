@@ -26,14 +26,16 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT / "scripts"))
-sys.path.insert(0, str(ROOT / "scripts" / "lib"))
+# G2: scripts-only + lib — never also put scripts/lib or root on path
+_SCRIPTS = Path(__file__).resolve().parent
+if str(_SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(_SCRIPTS))
 
 log = logging.getLogger("moomoo_live_read_sync")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
 try:
-    from env_bootstrap import load_env
+    from lib.env_bootstrap import load_env
     load_env()
 except Exception:
     pass
@@ -170,6 +172,9 @@ def run(*, dry_run: bool = False) -> dict:
 
 
 def main() -> int:
+    # G2: after imports settle — refuse dual lib.X / scripts.lib.X identity
+    from lib import assert_single_import_identity
+    assert_single_import_identity()
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()

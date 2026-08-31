@@ -447,55 +447,47 @@ def _build_rebalance_rationale(risk_data: Dict, holdings_data: Dict,
 
 
 def _get_brave_analyst_commentary(symbols: list, brave_api_key: str) -> Dict:
-    """Fetch recent analyst commentary from Brave Search for key holdings."""
-    if not brave_api_key or not symbols:
+    """F2: Finviz/Yahoo headlines for key holdings — not Brave search API.
+
+    Consumer: weekly DOCX narrative. ``brave_api_key`` retained for call-site
+    compatibility but is unused; search API is residual-web only. Empty → {}.
+    """
+    if not symbols:
         return {}
 
-    commentary = {}
-    import urllib.request, urllib.parse
-
-    for sym in symbols[:5]:  # Limit to top 5 to stay within 2000/mo free tier
+    commentary: Dict = {}
+    for sym in symbols[:5]:
+        snippets = []
         try:
-            query = f"{sym} stock analyst rating price target 2026"
-            url = f"https://api.search.brave.com/res/v1/web/search?q={urllib.parse.quote(query)}&count=3&freshness=pw"
-            req = urllib.request.Request(url, headers={
-                "Accept": "application/json",
-                "Accept-Encoding": "gzip",
-                "X-Subscription-Token": brave_api_key
-            })
-            with urllib.request.urlopen(req, timeout=10) as r:
-                import json, gzip
-                data_raw = r.read()
-                try:
-                    data = json.loads(gzip.decompress(data_raw))
-                except Exception:
-                    data = json.loads(data_raw)
-
-                results = data.get("web", {}).get("results", [])
-                snippets = []
-                for res in results[:3]:
-                    title = res.get("title","")
-                    desc  = res.get("description","")
-                    url_r = res.get("url","")
-                    # Only include from reputable sources
-                    src_domain = url_r.split("/")[2] if "/" in url_r else ""
-                    reputable = any(d in src_domain for d in [
-                        "reuters", "bloomberg", "wsj", "barrons", "marketwatch",
-                        "cnbc", "seekingalpha", "zacks", "tipranks", "benzinga",
-                        "fool", "finviz", "nasdaq", "investing"
-                    ])
-                    if reputable:
+            from finviz_news import fetch_finviz_news
+            for a in fetch_finviz_news(str(sym).upper(), lookback_hours=168)[:3]:
+                title = (a.get("headline") or a.get("title") or "")[:100]
+                url_r = a.get("url") or ""
+                if title:
+                    snippets.append({
+                        "title": title,
+                        "snippet": str(a.get("original_source") or a.get("source") or "finviz")[:200],
+                        "source": "finviz_news",
+                        "url": url_r,
+                    })
+        except Exception:
+            pass
+        if not snippets:
+            try:
+                from yahoo_news import fetch_yahoo_news
+                for a in fetch_yahoo_news(str(sym).upper(), lookback_hours=168)[:3]:
+                    title = (a.get("headline") or a.get("title") or "")[:100]
+                    if title:
                         snippets.append({
-                            "title": title[:100],
-                            "snippet": desc[:200],
-                            "source": src_domain,
-                            "url": url_r
+                            "title": title,
+                            "snippet": str(a.get("source") or "yahoo")[:200],
+                            "source": "yahoo_news",
+                            "url": a.get("url") or "",
                         })
-
-                if snippets:
-                    commentary[sym] = snippets
-        except Exception as _e:
-            pass  # Brave search optional — fail silently
+            except Exception:
+                pass
+        if snippets:
+            commentary[sym] = snippets
 
     return commentary
 
@@ -977,7 +969,7 @@ def run_weekly_report(project_root: str = ".") -> Optional[Path]:
     top_syms  = [p["symbol"] for p in analyst_intel.get("positions", [])[:5]]
     brave_commentary = _get_brave_analyst_commentary(top_syms, brave_key)
     if brave_commentary:
-        print(f"[weekly-report] Brave: {len(brave_commentary)} symbols with commentary")
+        print(f"[weekly-report] Finviz/Yahoo: {len(brave_commentary)} symbols with commentary")
 
     print("[weekly-report] Generating OAuth narratives (6 sections)...")
     narratives = _generate_narrative(

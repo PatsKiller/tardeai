@@ -578,11 +578,12 @@ No single instruction-file name is guaranteed across every AI coding product.
 Therefore enforcement is layered:
 
 1. `AI_WORK_POLICY.md` — canonical human-readable policy
-2. tool adapter instruction files (`AGENTS.md`, `CLAUDE.md`, Cursor rules, Copilot)
-3. Git pre-push hook — tool-independent enforcement
-4. `scripts/ai_local_acceptance.sh` — one local command before requesting sync
-5. `scripts/ai_work_status.sh` — read-only local status; never contacts GitHub
-6. GitHub CI — final independent validation only
+2. `AGENTS.md` — canonical agent-behaviour standard, read by every tool
+3. tool adapter instruction files (`CLAUDE.md`, Cursor rules, Copilot) — pointers only
+4. Git pre-push hook — tool-independent enforcement
+5. `scripts/ai_local_acceptance.sh` — one local command before requesting sync
+6. `scripts/ai_work_status.sh` — read-only local status; never contacts GitHub
+7. GitHub CI — final independent validation only
 
 If an assistant ignores its adapter, Git still blocks casual `git push`.
 
