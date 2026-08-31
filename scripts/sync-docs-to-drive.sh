@@ -248,15 +248,46 @@ resolve_folder() {
 
     # Search Drive for existing folder
     local found_id
+    # 2026-09-01: this returned '' on ANY failure -- a timeout, a transient API
+    # error, a parse problem -- and the caller then created a folder. So one bad
+    # `ls` minted a DUPLICATE folder with the same name. Two folders named `docs`
+    # exist in Trade_AI_Docs_v2 for exactly this reason.
+    #
+    # Once duplicated, `matches[0]` picked whichever Drive listed first, which is
+    # not stable, so uploads alternated between them -- and the delete-before-
+    # upload lookup is scoped to ONE target_parent, so it could not see the copy
+    # in the sibling. That is the 28 extra copies.
+    #
+    # Now: LOOKUP_FAILED is distinguished from NOT_FOUND, and a failed lookup
+    # ABORTS rather than creating. Existing duplicates are reported as a finding
+    # and the selection is left unchanged -- consolidating them is the operator's
+    # call, not a side effect of this fix.
     found_id=$(gog drive ls --account "$GOG_ACCOUNT" --parent "$current_parent" --max=1000 --json --no-input 2>/dev/null \
       | python3 -c "
 import sys,json
 try:
     files=json.load(sys.stdin).get('files',[])
-    matches=[f['id'] for f in files if f.get('name')=='$part' and 'folder' in f.get('mimeType','')]
-    print(matches[0] if matches else '')
-except: print('')
-" 2>/dev/null || echo "")
+except Exception:
+    print('LOOKUP_FAILED'); raise SystemExit(0)
+matches=[f for f in files if f.get('name')=='$part' and 'folder' in f.get('mimeType','')]
+if not matches:
+    print('')
+else:
+    # Selection is DELIBERATELY UNCHANGED from the previous behaviour. Switching
+    # to oldest-wins looked more principled, but the dry run showed it would move
+    # uploads from the folder currently holding 111 files to its older sibling --
+    # a mass re-upload and 111 orphans, to fix a naming collision. Consolidating
+    # duplicate folders is the operator's call (§17), not a side effect of a
+    # resolver fix. The collision is REPORTED so it can be decided.
+    if len(matches) > 1:
+        sys.stderr.write('DUPLICATE_FOLDER name=$part count=%d ids=%s\\n' % (len(matches), ','.join(f['id'] for f in matches)))
+    print(matches[0]['id'])
+" 2>>"$LOG" || echo "LOOKUP_FAILED")
+
+    if [ "$found_id" = "LOOKUP_FAILED" ]; then
+      log "ABORT: folder lookup failed for '$part' under $current_parent — refusing to create a duplicate"
+      return 1
+    fi
 
     if [ -n "$found_id" ]; then
       current_parent="$found_id"
