@@ -102,7 +102,11 @@ def check_health(conn):
             if not send_telegram(msg):
                 log.error("ALERT NOT DELIVERED (send_telegram returned False): %s", msg)
         except Exception as exc:
-            # Never swallow. An alarm that cannot raise is not an alarm.
+            # ALARM-DELIVERY-DECLARED: logs the exception type and message rather than
+            # recording to a durable surface. This is the handler that swallowed an
+            # ImportError for 24 days; naming the failure is the fix that mattered.
+            # Durable recording (signal_flow_audit delivery column) is remaining debt,
+            # tracked in the C3 baseline rather than silently accepted.
             log.error("ALERT NOT DELIVERED (%s: %s): %s", type(exc).__name__, exc, msg)
     elif status == "WARN":
         msg = f"WARNING: {go_count} GO/A+ scans but only {signal_count} strategy_signals."

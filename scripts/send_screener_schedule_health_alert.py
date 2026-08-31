@@ -178,8 +178,9 @@ def main():
             if not sent:
                 print(f"  WARN: Telegram send returned False — alert NOT delivered")
         except Exception as e:
-            # Reported regardless of --verbose: a health alert that failed to send is
-            # exactly the case a quiet run must not hide.
+            # ALARM-DELIVERY-DECLARED: prints the exception type and message to the run
+            # log rather than a durable surface. Reported regardless of --verbose: a
+            # health alert that failed to send is exactly what a quiet run must not hide.
             print(f"  WARN: Telegram send failed ({type(e).__name__}: {e}) — alert NOT delivered")
 
     report = {
