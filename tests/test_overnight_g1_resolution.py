@@ -51,7 +51,7 @@ def test_g1_overlay_rels_include_logs_and_match_data_dirs_alias():
     assert "logs" in OVERLAY_RELS
     assert "data/portfolios/state" in OVERLAY_RELS
     assert "data/runtime" in OVERLAY_RELS
-    assert "state/data_broker" in OVERLAY_RELS
+    assert "state/data_broker" not in OVERLAY_RELS  # diverge: do not auto-link
     assert DATA_DIRS_TO_LINK is OVERLAY_RELS or tuple(DATA_DIRS_TO_LINK) == tuple(OVERLAY_RELS)
     assert "logs" in SENTINELS
 
@@ -64,7 +64,7 @@ def test_g1_logs_overlay_symlink_is_safe_and_additive(tmp_path: Path):
     (src / "logs" / "pipeline_liveness.log").write_text("a\nb\n")
     (src / "logs" / "claude_escalation_queue.json").write_text("[]")
     # Other overlay dirs present so apply doesn't skip the whole set awkwardly
-    for rel in ("data/cio", "data/runtime", "data/health", "data/portfolios/state", "state/data_broker"):
+    for rel in ("data/cio", "data/runtime", "data/health", "data/portfolios/state", ):
         (src / rel).mkdir(parents=True, exist_ok=True)
     (src / "data/portfolios/state" / "holdings.json").write_text("{}")
     (src / "data/cio" / "cio_investment_brief.json").write_text("{}")
