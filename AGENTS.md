@@ -268,6 +268,7 @@ question:
 | `import_module` in an import guard | whether the module executes | a name with no referent, vs an optional dependency absent here |
 | a `**` pathspec | `scripts/**/*.py` | top-level `scripts/*.py` — under-reported 50 files as 3, three times in one session |
 | a source grep for a fixed string | the string appearing anywhere | the difference between code and a comment quoting it |
+| `attempts_24h` on a research lane | **rows the child wrote** | a child that never started — `subprocess.run` raising `FileNotFoundError` writes no row, so *called and failing quietly* and *no caller* read identically |
 
 ## Investigation method
 
@@ -306,7 +307,15 @@ looking for would exhibit it.**
 | a synthetic bootstrap probe | one import spelling | the spelling the failing job uses |
 
 Each was a working tool answering an adjacent question. **A broken tool gets investigated; these
-reported cleanly.** **Positive-control before publishing a zero** — inject a known instance and
+reported cleanly.**
+
+> **The `attempts_24h` case is the one to remember**, because that metric is read as ground
+> truth across this programme. The deepseek lane showed `attempts_24h=0` for nine days and every
+> reader concluded nothing was calling it. Its scheduler ran on time, every weekday, and died at
+> `subprocess.run` before the child could write the row the metric counts. **A counter of
+> completed work cannot distinguish work never started from work that failed on its first
+> instruction.** When a lane reads zero, establish which of the two it is before reasoning from
+> it — they have opposite fixes. **Positive-control before publishing a zero** — inject a known instance and
 confirm the detector finds it.
 
 ## Controls whose name exceeds their code
