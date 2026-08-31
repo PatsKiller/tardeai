@@ -629,16 +629,13 @@ def _live_transport(request: dict[str, Any]) -> dict[str, Any]:
     from scripts.lib.searxng_client import searx_search       # noqa: PLC0415
     from llm_lane import generate                             # noqa: PLC0415
 
-    # Record the pool's state alongside the answer. A thin answer that looks
-    # identical to a full one is the failure this programme exists to remove:
-    # on 2026-08-30 a ten-result response came entirely from one engine, with
-    # three of four CAPTCHA-suspended or rate-limited, and nothing said so.
-    try:
-        from scripts.lib.search_health import pool_health   # noqa: PLC0415
-        _pool = pool_health(url=request.get("searx_url"))
-    except Exception as _e:
-        _pool = {"impaired": None, "degradation_note":
-                 f"pool health unavailable: {type(_e).__name__}: {_e}"}
+    # WAVE F4: stamp pool degradation via the thin helper (not a rewrite of
+    # this transport). A thin answer that looks identical to a full one is the
+    # failure this programme exists to remove — measured 2026-08-30 a ten-result
+    # response came entirely from one engine with CAPTCHA-suspended peers.
+    from scripts.lib.search_health_degradation import (  # noqa: PLC0415
+        attach_degradation,
+    )
 
     hits = searx_search(
         search_query_from_question(request.get("query") or request.get("question") or ""),
@@ -679,20 +676,21 @@ def _live_transport(request: dict[str, Any]) -> dict[str, Any]:
         task_summary=f"{LANE}:{request.get('subject_key')}",
         response_json=True,
     )
-    return {
-        "provider": RESIDUAL_DECISION,
-        "outcome": "PARTIAL",
-        "cost_usd": None,          # settled by the consumption ledger
-        "answers": [],
-        "still_unresolved": list(request.get("question_ids") or []),
-        "source_urls": urls,
-        "raw": text,
-        # The record says how good its sources could have been. `impaired=True`
-        # means this answer is narrower than its length suggests.
-        "search_pool": _pool,
-        "search_pool_impaired": _pool.get("impaired"),
-        "search_degradation_note": _pool.get("degradation_note"),
-    }
+    # `impaired=True` means this answer is narrower than its length suggests.
+    return attach_degradation(
+        {
+            "provider": RESIDUAL_DECISION,
+            "outcome": "PARTIAL",
+            "cost_usd": None,          # settled by the consumption ledger
+            "answers": [],
+            "still_unresolved": list(request.get("question_ids") or []),
+            "source_urls": urls,
+            "raw": text,
+        },
+        probe=True,
+        persist=True,
+        url=request.get("searx_url"),
+    )
 
 
 def run_hop(
@@ -748,7 +746,12 @@ def run_hop(
 
     artifact_id = f"rw_{content_hash({'s': subject_key, 'q': question, 'd': now.date().isoformat()})}"
 
-    return {
+    # F4: forward pool-degradation stamp from the transport. Prior to F4 the
+    # live transport set these keys and run_hop dropped them — thinner looked
+    # like full on the hop result / CC binding.
+    from scripts.lib.search_health_degradation import forward_stamp  # noqa: PLC0415
+
+    hop = {
         "schema": SCHEMA,
         "lane": LANE,
         "decision_token": RESIDUAL_DECISION,
@@ -773,6 +776,7 @@ def run_hop(
         "financial_action": FINANCIAL_ACTION,
         "memory_behavior_influence": MBI_BEHAVIOR,
     }
+    return forward_stamp(hop, resp)
 
 
 # ── write the instrument record ────────────────────────────────────────────
@@ -794,6 +798,9 @@ def _facts_only_narrative(
             + f"; {len(hop.get('still_unresolved') or [])} question(s) still unresolved.")
     if hop.get("note"):
         what += f" {hop['note']}."
+    # F4: surface CAPTCHA / impaired pool so narrative thinner ≠ full.
+    from scripts.lib.search_health_degradation import narrative_suffix  # noqa: PLC0415
+    what += narrative_suffix(hop)
 
     narrative = cc_narrative(
         what=what,
@@ -920,7 +927,7 @@ def cc_binding(record: dict[str, Any], hop: dict[str, Any],
     `cio_command_center` — this lane adds no send site.
     """
     now = _utc(now)
-    return {
+    binding = {
         "schema": SCHEMA,
         "lane": LANE,
         "subject_key": record.get("subject_key"),
@@ -941,6 +948,9 @@ def cc_binding(record: dict[str, Any], hop: dict[str, Any],
         "financial_action": FINANCIAL_ACTION,
         "memory_behavior_influence": MBI_BEHAVIOR,
     }
+    # F4: CC binding carries the same stamp the hop carries.
+    from scripts.lib.search_health_degradation import forward_stamp  # noqa: PLC0415
+    return forward_stamp(binding, hop)
 
 
 def entity_admissible_refs(refs: list[dict[str, Any]]) -> list[dict[str, Any]]:

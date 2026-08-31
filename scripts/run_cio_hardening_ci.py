@@ -163,6 +163,9 @@ GATES = [
     ("overnight_f3_search_budget", [
         "tests/test_overnight_f3_search_budget.py",
     ]),
+    ("overnight_f4_search_health", [
+        "tests/test_overnight_f4_search_health.py",
+    ]),
     ("corpus_grades_cost_units", [
         "tests/test_corpus_grades_and_cost_units.py",
     ]),
