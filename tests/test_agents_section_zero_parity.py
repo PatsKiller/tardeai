@@ -1,6 +1,6 @@
-"""The ten rules in AGENTS.md section 0 are duplicated into three adapters.
+"""The ten rules in AGENTS.md section 0 are duplicated into four adapters.
 
-Four copies of one block is the shape that drifts. Adapters exist because no
+Five copies of one block is the shape that drifts. Adapters exist because no
 instruction-file name is guaranteed across AI products, and an agent that reads
 fifteen lines and stops must still know the rules that prevent irreversible
 harm. That only holds while the copies agree.
@@ -21,6 +21,7 @@ ADAPTERS = (
     ROOT / "CLAUDE.md",
     ROOT / ".cursor" / "rules" / "00-tradeai-work-policy.mdc",
     ROOT / ".github" / "copilot-instructions.md",
+    ROOT / ".goosehints",
 )
 MARKER = "## The ten rules, verbatim from `AGENTS.md` §0\n\n"
 
