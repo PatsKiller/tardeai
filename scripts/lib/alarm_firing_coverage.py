@@ -57,11 +57,25 @@ def declared_covers(tests_dir: Path) -> set[str]:
     return covered
 
 
+def is_covered(site: tuple[str, int], declared: set[str]) -> bool:
+    """A site is covered by a whole-file entry, or by an exact `file:line` entry.
+
+    SITE-LEVEL EXISTS BECAUSE FILE-LEVEL OVERSTATES. open_trade_monitor is honestly
+    a whole file: nine of its ten sites funnel through one wrapper, so testing the
+    wrapper covers them. alpaca_stop_manager is not: four sites sit in three
+    different functions, and testing two of them while declaring the file covered
+    would claim four alarms had been observed firing when two had. Partial coverage
+    is declared per site.
+    """
+    path, lineno = site
+    return path in declared or f"{path}:{lineno}" in declared
+
+
 def summary(scripts_dir: Path, tests_dir: Path) -> dict:
     sites = call_sites(scripts_dir)
     covered_files = declared_covers(tests_dir)
-    covered = [s for s in sites if s[0] in covered_files]
-    uncovered = [s for s in sites if s[0] not in covered_files]
+    covered = [s for s in sites if is_covered(s, covered_files)]
+    uncovered = [s for s in sites if not is_covered(s, covered_files)]
     return {
         "transport": TRANSPORT,
         "sites_total": len(sites),
