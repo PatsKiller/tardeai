@@ -235,6 +235,39 @@ served release. Both are required.
   the cron form, not a convenient one.** A repair inside `scripts.lib` cannot run before `scripts`
   resolves.
 - **A gate that edits source must verify its own edit still compiles.**
+- **Process-local state cannot hold a cross-invocation guarantee.** A
+  module-level dict in a one-shot cron or systemd process is empty at every
+  invocation. If a guarantee spans invocations — dedupe, rate limit, budget,
+  cap — its state must be durable, or **the guarantee does not exist**. *Cause:
+  `_dedupe_cache`, `_hourly_counts`, `_last_health`; `mark_sent()` wrote to a
+  dict that died microseconds later, and a "max 2 per day" cap passed
+  unconditionally on every cold start.*
+- **A mode flag that disables a control is a finding, not a configuration.** Any
+  `OFF` on a control path must be reported by the health surface. *Cause:
+  `TELEGRAM_NORMALIZATION_MODE=OFF` left two tables at 0 rows; the router at
+  `runtime_mode: OFF` made correct routing unreachable; and the digest queue held
+  one row from May while the code reported messages queued.*
+- **Never fix an alarm without fixing what it alarmed on.** Removing a red that
+  reported a real outage is a regression, not a fix. *Cause: fixing an
+  `UnboundLocalError` took the stage-error count from two to one, so the
+  orchestrator began exiting 0 — ten consecutive silent successes while a Finviz
+  outage aged from 64h to 97h.*
+- **Bound by the thing you are bounding.** A cache bounded by a line count, a
+  window bounded by a calendar day, a dedupe bounded by a run id — each drifts
+  from what it is supposed to bound. *Cause: `splitlines()[-500:]` against a
+  time-based TTL, 71 sends from silently losing its own history; and a weekend
+  gate that asked whether today is Saturday rather than whether the lookback
+  window contained hours the writer runs.*
+
+**Detector shape, further instances** — each a working tool answering an adjacent
+question:
+
+| detector | keyed on | could never see |
+|---|---|---|
+| OS scheduler search | cron and systemd | a scheduler running inside another process — OpenClaw's is in its gateway |
+| `import_module` in an import guard | whether the module executes | a name with no referent, vs an optional dependency absent here |
+| a `**` pathspec | `scripts/**/*.py` | top-level `scripts/*.py` — under-reported 50 files as 3, three times in one session |
+| a source grep for a fixed string | the string appearing anywhere | the difference between code and a comment quoting it |
 
 ## Investigation method
 
@@ -383,6 +416,31 @@ accumulates the divergence this document exists to remove.
   action today" reads as a verdict and is `do_n == 0`.
 - **Test sends never go to a live channel without the operator's word**, and a test must not write
   a dedupe marker that suppresses the real send. Back up the marker; restore it by content.
+- **One chokepoint.** Every operator-facing send goes through one transport that
+  applies policy. A direct send path or a router bypass requires a declared
+  reason and is CI-gated. *Cause: 155 producers, ~50 direct API paths, 34 router
+  bypasses across 30 files; what reached the operator was decided by which path a
+  producer happened to use, not by priority.*
+- **Every send records a durable receipt** — message id on success, error on
+  failure. **A send with no receipt is not a send.** *Cause: `sent_telegram` 0 of
+  864 rows and `telegram_sent_at` 0 of 932; nobody could establish which producer
+  emitted 25 repeats, or whether any specific POST succeeded.*
+- **An absent field never defaults to an affirmative value.** Absent renders as
+  `not computed`. *Cause: `Data quality: OK` asserted under every decision in a
+  document whose own verdict was `ATTENTION` with two named defects — while
+  confidence, counterpoint and next-review all honestly said "not provided".*
+- **If the system computes a completeness or quality verdict, the operator
+  surface renders it.** *Cause: `field_status` and `OPERATOR_PRODUCT_PARTIAL`
+  computed on every entry and rendered nowhere; the reader saw four
+  confident-looking lines the machine had already recorded as unpopulated.*
+- **A retry that silently changes the request is a failure swallow.** *Cause: a
+  Markdown 400 triggered a plaintext resend that was never logged, so identifier
+  legibility was decided by underscore parity and nothing recorded which attempt
+  the operator received.*
+- **Notify on transitions, not on evaluations.** A condition that has not changed
+  is not news. *Cause: a stop warning keyed on `(trade_id, alert_type)` with a
+  30-minute window against a 3-minute cadence — 40 interrupts over four trading
+  days, 83% of every row in its own alert table.*
 
 ## 9.2 Model calls
 

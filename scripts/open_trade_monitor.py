@@ -336,30 +336,39 @@ def send_telegram_with_buttons(message, buttons, dry_run=False, no_telegram=Fals
             for row in buttons
         ]}
 
+        # C3, 2026-08-31: was a hand-built urllib POST straight to
+        # api.telegram.org -- one of 46 producers the chokepoint ratchet tracks.
+        # Now routed through telegram_transport, which is the actual chokepoint:
+        # it carries the interdict at its lowest layer (#775), idempotency, and
+        # the parse-mode fallback.
+        #
+        # NOT routed through telegram_alert_router. Measured on this tree, the
+        # router is runtime_mode=OFF and should_send_telegram() returns False for
+        # every operator-facing class -- morning brief, lane health, stop warning,
+        # stop-hit-close. Routing there would silence them, which is the trap A4
+        # avoided: replacing loud messages with zero and calling it a fix.
+        #
+        # Chat-id selection is unchanged, deliberately: this is a transport swap,
+        # not a routing change.
+        from telegram_transport import send_message as _transport_send
         for chat_id in chat_ids:
-            payload = json.dumps({
-                "chat_id": chat_id,
-                "text": message,
-                "reply_markup": json.dumps(keyboard),
-            }).encode()
-            req = urllib.request.Request(
-                f"https://api.telegram.org/bot{token}/sendMessage",
-                data=payload,
-                headers={"Content-Type": "application/json"},
-                method="POST",
+            res = _transport_send(
+                token=token,
+                chat_id=chat_id,
+                text=message,
+                reply_markup=keyboard,
+                parse_mode=None,
             )
-            try:
-                with urllib.request.urlopen(req, timeout=10) as resp:
-                    body = json.loads(resp.read().decode("utf-8", "replace"))
-                mid = ((body or {}).get("result") or {}).get("message_id")
+            if res.get("ok"):
+                receipt["ok"] = True
+                mid = (res.get("response") or {}).get("result", {}).get("message_id")
                 if mid is not None:
                     receipt["message_id"] = mid
-                receipt["ok"] = True
-            except Exception as e:
-                # B5: ERROR, not warning. A send that failed and logged at warning
-                # is how STOP_HIT_CLOSE went unnoticed for 98 days.
-                log.error("Button alert send failed for %s: %s", chat_id, e)
-                receipt["error"] = f"{type(e).__name__}: {e}"
+            elif res.get("interdicted"):
+                receipt["error"] = "interdicted"
+            else:
+                receipt["error"] = str(res.get("response") or res.get("status_code"))
+                log.error("Button alert send failed for %s: %s", chat_id, receipt["error"])
     except Exception as e:
         log.error("send_telegram_with_buttons failed: %s", e)
         receipt["error"] = f"{type(e).__name__}: {e}"

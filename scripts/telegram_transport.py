@@ -11,6 +11,7 @@ retry into editMessageText.
 """
 from __future__ import annotations
 
+import logging
 from typing import Any, Callable, Optional
 
 import requests
@@ -115,6 +116,33 @@ def _interdicted_result() -> dict:
     }
 
 
+
+_log = logging.getLogger(__name__)
+
+
+def escape_markdown(text: str) -> str:
+    """THE shared Markdown V1 escaper. Use this; do not write another.
+
+    D1, 2026-08-31. 126 producers send with parse_mode="Markdown". Exactly one
+    escaper existed -- `_esc_md`, private, in telegram_proposal_alert_policy --
+    reachable by 2 of them. The other 124 escaped nothing, so whether an
+    identifier survived was decided by underscore parity: an even count parsed
+    and Telegram ate the underscores (READ_ONLY_ADVISORY -> READONLYADVISORY), an
+    odd count 400'd and the plaintext retry preserved them.
+
+    Placed on the transport so every producer already importing it can reach it,
+    rather than adding a 127th convention. Migrating the producers is a separate
+    wave; this is the thing they migrate TO.
+    """
+    return (
+        str(text)
+        .replace("_", "\\_")
+        .replace("*", "\\*")
+        .replace("[", "\\[")
+        .replace("`", "\\`")
+    )
+
+
 def deliver_text(
     *,
     token: str,
@@ -216,12 +244,30 @@ def deliver_text(
     mid = _message_id_from(body2) if ok2 else None
     if ok2:
         _remember(mid)
+    # D1, 2026-08-31: THE FALLBACK IS NO LONGER SILENT.
+    #
+    # `plain_fallback: True` was returned and never logged or persisted by any
+    # caller. So the first send failing -- typically a Markdown parse 400 -- and
+    # the request being silently changed was invisible: the operator saw
+    # `READ_ONLY_ADVISORY` render as READONLYADVISORY on an even underscore count
+    # and intact on an odd one, and nothing recorded which had happened.
+    #
+    # A retry that silently alters the request is a failure swallow (AGENTS.md
+    # §9.1). It stays a retry -- dropping the message would be worse -- but it
+    # now says so.
+    _log.warning(
+        "telegram parse_mode fallback: first send failed (code=%s), resent as "
+        "plain text. Original parse_mode=%r. Identifiers with underscores may "
+        "render differently between attempts. chat=%s ok=%s",
+        code, parse_mode, chat_id, bool(ok2),
+    )
     return {
         "ok": bool(ok2),
         "status_code": code2,
         "response": body2,
         "edited": False,
         "plain_fallback": True,
+        "plain_fallback_reason": f"first_send_failed_code_{code}",
         "message_id": mid,
     }
 
