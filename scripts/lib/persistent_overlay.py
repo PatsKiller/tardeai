@@ -23,7 +23,11 @@ MBI = 0
 # AGENTS.md still described it as a DATA_DIRS_TO_LINK gap for that reason.
 OVERLAY_RELS = (
     "data/portfolios/state",
-    "state/data_broker",
+    # state/data_broker: NOT listed. On this host it still forks (hub
+    # trade-ai-v12-rebuild/state/data_broker vs persistent
+    # data/portfolios/state/data_broker). Auto-linking would pick one and
+    # destroy the other — escalate, do not overlay. Deploy may still list it
+    # historically; guard must not refuse prepare when the persistent path is empty.
     "data/runtime",
     "data/health",
     "data/cio",
@@ -72,6 +76,22 @@ def _has_sentinel(directory: Path, rel: str) -> bool:
     return any((directory / n).exists() for n in names)
 
 
+def _resolve_overlay_source(src_root: Path, rel: str) -> Path:
+    """Map release-relative overlay paths onto the persistent root layout.
+
+    `state/data_broker` historically lived under the checkout / release tree and
+    was later dual-homed. On the GOOD_PERSISTENT_ROOT the durable files sit at
+    `data/portfolios/state/data_broker`. Prefer that when `state/data_broker` is
+    absent so deploy guards do not refuse a healthy persistent root.
+    """
+    primary = src_root / rel
+    if rel == "state/data_broker" and not _has_sentinel(primary, rel):
+        alt = src_root / "data" / "portfolios" / "state" / "data_broker"
+        if _has_sentinel(alt, rel):
+            return alt
+    return primary
+
+
 def overlay_is_safe(
     *,
     canonical_source: Path | str,
@@ -83,7 +103,7 @@ def overlay_is_safe(
     blocked = []
     allowed = []
     for rel in rels:
-        source = src_root / rel
+        source = _resolve_overlay_source(src_root, rel)
         target = dest_root / rel
         source_ok = _has_sentinel(source, rel)
         dest_ok = _has_sentinel(target, rel)
@@ -123,7 +143,7 @@ def apply_overlay_symlinks(
     dest_root = Path(dest)
     linked = []
     for rel in rels:
-        source = src_root / rel
+        source = _resolve_overlay_source(src_root, rel)
         target = dest_root / rel
         if not source.exists():
             continue
