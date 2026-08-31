@@ -156,11 +156,20 @@ def fetch_youtube_transcripts(symbols: list[str], max_per_symbol: int = 1) -> li
     """Prefer DB transcripts; optionally enrich via Brave + youtube_transcript_api.
 
     Brave network failures are logged and skipped — never invents rows.
+    Brave live discovery is OFF by default (Wave 3 2026-09-01) — set
+    AEGIS_BRAVE_ENABLED=1 to re-enable. DB corpus remains the durable path.
+    Consumer: aegis transcript store — do not delete this function.
     """
+    import os
     # Preferred path: already-ingested corpus
     records = fetch_db_youtube_transcripts(symbols, max_per_symbol=max(max_per_symbol, 2))
     if records:
         print(f"  [youtube] DB corpus: {len(records)} symbol-related transcripts")
+
+    if os.getenv("AEGIS_BRAVE_ENABLED", "0").lower() not in ("1", "true", "yes"):
+        print("  [youtube] Brave discovery retired default — DB path only; "
+              "set AEGIS_BRAVE_ENABLED=1 to re-enable")
+        return records
 
     try:
         from youtube_transcript_api import YouTubeTranscriptApi
@@ -254,7 +263,15 @@ def fetch_brave_discovery(symbols: list[str], themes: list[dict]) -> list[dict]:
 
     On network failure: log clearly and return whatever was collected (often []).
     Callers should still run DB/article enrichment — this never invents data.
+
+    Default OFF (Wave 3 2026-09-01). A search API is not a news feed; news
+    belongs on RSS/Finviz. Set AEGIS_BRAVE_ENABLED=1 to re-enable. Consumer
+    named (aegis transcript / discovery store) — do not delete.
     """
+    import os
+    if os.getenv("AEGIS_BRAVE_ENABLED", "0").lower() not in ("1", "true", "yes"):
+        print("  [brave-disc] retired default — set AEGIS_BRAVE_ENABLED=1 to re-enable")
+        return []
     if not BRAVE_KEY:
         print("  [brave-disc] No Brave key — skipping live discovery")
         return []
