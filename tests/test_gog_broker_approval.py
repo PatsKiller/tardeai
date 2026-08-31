@@ -19,7 +19,17 @@ ALLOWLIST = ROOT / "config" / "gog_approved_agents.txt"
 
 
 def _run(env_extra):
+    """Run the broker with a deterministic environment.
+
+    BW_BIN and GOG_BIN default to /bin/true so the test does not depend on
+    Bitwarden or gog being installed. CI has neither, and without this the broker
+    exits at the binary check before reaching the stage under test -- which is
+    exactly how this file first failed in CI while passing locally.
+    """
     env = dict(os.environ)
+    env.setdefault("BW_BIN", "/bin/true")
+    env.setdefault("GOG_BIN", "/bin/true")
+    env.update({"BW_BIN": "/bin/true", "GOG_BIN": "/bin/true"})
     env.update(env_extra)
     return subprocess.run(["bash", str(BROKER), "drive", "files", "list"],
                           capture_output=True, text=True, env=env)
