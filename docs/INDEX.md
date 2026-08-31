@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `b658f9e9987efaae823a1aee1883c523d78ce668351b4ebb780ac5eae4f90363`
+**Tree fingerprint:** `8af8cc6680a74dc2ed47fd672cc51c591d254f59dcb307f121fff36c8f98d160`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -14,9 +14,9 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 |--------|------:|
 | Files under `docs/` (excl. this INDEX) | 2276 |
 | Markdown (excl. this INDEX) | 1908 |
-| **MISSING HEADER** | **1034** |
-| Header OK | 874 |
-| Duplicate groups | 8 |
+| **MISSING HEADER** | **0** |
+| Header OK | 1908 |
+| Duplicate groups | 5 |
 
 ### By status_guess
 
@@ -29,8 +29,8 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_code_snapshot | 3 |
 | artifact_raw_sync | 8 |
 | current_phase_keep | 313 |
-| delete_candidate_duplicate | 12 |
-| review_required | 1908 |
+| delete_candidate_duplicate | 6 |
+| review_required | 1914 |
 
 ## Markdown tree
 
@@ -38,165 +38,165 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 |------|-------|--------------|--------|------|
 | `docs/A1A.md` | A1A Documentation Protocol (Authoritative) | active_keep | OK | `18ef2a6322cf` |
 | `docs/AGENT_AND_HERMES_WORKFLOWS.md` | Agent & Hermes Workflows | review_required | OK | `0a17e850ce76` |
-| `docs/AGENT_PAGES_DETAIL.md` | Agent Pages — Detailed Function Matrix | review_required | MISSING HEADER | `2d903da94a5a` |
-| `docs/AGENT_ROSTER.md` | Trade AI v12 — Agent Roster | review_required | MISSING HEADER | `c08f51afa784` |
-| `docs/AI_TRADE_CRITIQUE.md` | AI Trade Critique — Persistence & System Integration | review_required | MISSING HEADER | `89844123838e` |
-| `docs/APPENDIX_E_SCRIPT_ROUTING_MATRIX.md` | Appendix E — Initial Script Routing Matrix | review_required | MISSING HEADER | `619bccecb1e5` |
-| `docs/ATM_PROPOSAL_CONTROLS_2026_06_04.md` | Editable ATM + Proposal Controls — PAPER-ONLY, GATE-INTERLOCKED (2026-06-04) | review_required | MISSING HEADER | `3909d56a4b12` |
-| `docs/BROKER_PROPOSALS_UI.md` | Broker Proposals UI — Live Execution Desk (v3) | review_required | MISSING HEADER | `149024eb4e5b` |
-| `docs/BROKER_TRADE_PLAN_GATE.md` | Broker Trade Plan Gate — No Gambling on Generic 2×R | review_required | MISSING HEADER | `d31e33684568` |
-| `docs/CC_V3_ACTIONABILITY_SPRINT_20260702.md` | CC v3 Actionability Sprint — Layered Document | review_required | MISSING HEADER | `ffe30916abc0` |
-| `docs/CC_V3_HOME_TRUST_HARDENING_20260726.md` | CC v3 Home Trust Hardening — 2026-07-26 | review_required | MISSING HEADER | `a3ff7b26b8a5` |
-| `docs/CHANGELOG.md` | Changelog | review_required | MISSING HEADER | `93c7d83e00fa` |
+| `docs/AGENT_PAGES_DETAIL.md` | Agent Pages — Detailed Function Matrix | review_required | OK | `c52bb8ece19f` |
+| `docs/AGENT_ROSTER.md` | Trade AI v12 — Agent Roster | review_required | OK | `2421229298b1` |
+| `docs/AI_TRADE_CRITIQUE.md` | AI Trade Critique — Persistence & System Integration | review_required | OK | `a36de70f5d2c` |
+| `docs/APPENDIX_E_SCRIPT_ROUTING_MATRIX.md` | Appendix E — Initial Script Routing Matrix | review_required | OK | `1bf4f69d9156` |
+| `docs/ATM_PROPOSAL_CONTROLS_2026_06_04.md` | Editable ATM + Proposal Controls — PAPER-ONLY, GATE-INTERLOCKED (2026-06-04) | review_required | OK | `fcd9627cba2d` |
+| `docs/BROKER_PROPOSALS_UI.md` | Broker Proposals UI — Live Execution Desk (v3) | review_required | OK | `e78c8ff03dea` |
+| `docs/BROKER_TRADE_PLAN_GATE.md` | Broker Trade Plan Gate — No Gambling on Generic 2×R | review_required | OK | `e73e70a22a5c` |
+| `docs/CC_V3_ACTIONABILITY_SPRINT_20260702.md` | CC v3 Actionability Sprint — Layered Document | review_required | OK | `47096521500f` |
+| `docs/CC_V3_HOME_TRUST_HARDENING_20260726.md` | CC v3 Home Trust Hardening — 2026-07-26 | review_required | OK | `401363e962e2` |
+| `docs/CHANGELOG.md` | Changelog | review_required | OK | `a0ed34ea9bb1` |
 | `docs/CHEAT_SHEET.md` | Trade AI v12 -- Operator Cheat Sheet | active_keep | OK | `5fbf6fb2ebe7` |
-| `docs/CIO_PROMPT_INPUT_AUDIT_2026_07_01.md` | CIO Prompt & Input Audit — 2026-07-01 | review_required | MISSING HEADER | `546957164dbb` |
-| `docs/CLAUDE_CHALLENGER_AND_ANALYST_LANES.md` | Claude Challenger Cohort (A/B) + Analyst Lanes | review_required | MISSING HEADER | `594b9012d36c` |
-| `docs/COMMAND_CENTER_PAGE_MATRIX.md` | Command Center — Complete Page Matrix | review_required | MISSING HEADER | `f887a09f963e` |
+| `docs/CIO_PROMPT_INPUT_AUDIT_2026_07_01.md` | CIO Prompt & Input Audit — 2026-07-01 | review_required | OK | `927dbe10051c` |
+| `docs/CLAUDE_CHALLENGER_AND_ANALYST_LANES.md` | Claude Challenger Cohort (A/B) + Analyst Lanes | review_required | OK | `3159e054b153` |
+| `docs/COMMAND_CENTER_PAGE_MATRIX.md` | Command Center — Complete Page Matrix | review_required | OK | `3620582300fa` |
 | `docs/COMMAND_CENTER_RISK_VISUALIZATIONS.md` | Command Center v3 — Risk Visualizations | review_required | OK | `b5a273fe9b22` |
-| `docs/COMMAND_CENTER_V3_WATCHLIST.md` | Command Center v3 — Watchlist Hub | review_required | MISSING HEADER | `b8d9bfea0018` |
-| `docs/CONSOLIDATION_CHECKPOINT_2026_06_04.md` | Consolidation & Verification Checkpoint — 2026-06-04 | review_required | MISSING HEADER | `2f9d7c13e769` |
-| `docs/COST_INTELLIGENCE_ARCHITECTURE.md` | Investment Cost Intelligence — Architecture (v1.2, 2026-07-19) | review_required | MISSING HEADER | `a1471ab73644` |
+| `docs/COMMAND_CENTER_V3_WATCHLIST.md` | Command Center v3 — Watchlist Hub | review_required | OK | `4340447ae480` |
+| `docs/CONSOLIDATION_CHECKPOINT_2026_06_04.md` | Consolidation & Verification Checkpoint — 2026-06-04 | review_required | OK | `6e1fbd7c7d43` |
+| `docs/COST_INTELLIGENCE_ARCHITECTURE.md` | Investment Cost Intelligence — Architecture (v1.2, 2026-07-19) | review_required | OK | `940b9795fc24` |
 | `docs/COST_MODEL.md` | Trade AI v12 -- Cloud Operating Cost Model | review_required | OK | `4de73e25bfea` |
-| `docs/CURRENT_EXECUTION_STATE.md` | Current Execution State | review_required | MISSING HEADER | `6c92c8ba7f59` |
-| `docs/CURSOR_CLOUD_PLAIN_ENGLISH_STARTER_GUIDE.md` | Cursor Cloud Plain-English Starter Guide | review_required | MISSING HEADER | `9a88b73ceda8` |
-| `docs/DAILY_OPS_LOG.md` | DAILY_OPS_LOG.md | review_required | MISSING HEADER | `8a59e622f21b` |
-| `docs/DASHBOARD_AUDIT_WORKFLOW.md` | Dashboard Visual Audit — Operator Workflow | review_required | MISSING HEADER | `3d36f865254d` |
+| `docs/CURRENT_EXECUTION_STATE.md` | Current Execution State | review_required | OK | `5233c7dcd2e0` |
+| `docs/CURSOR_CLOUD_PLAIN_ENGLISH_STARTER_GUIDE.md` | Cursor Cloud Plain-English Starter Guide | review_required | OK | `679170e382af` |
+| `docs/DAILY_OPS_LOG.md` | DAILY_OPS_LOG.md | review_required | OK | `80578251dbf0` |
+| `docs/DASHBOARD_AUDIT_WORKFLOW.md` | Dashboard Visual Audit — Operator Workflow | review_required | OK | `4f878d49e6a9` |
 | `docs/DOCUMENTATION_INDEX.md` | Trade AI v12 — Documentation Index | review_required | OK | `5939f2eb8717` |
-| `docs/ENGINEERING_HARD_RULES.md` | Engineering Hard Rules (enforced) | review_required | MISSING HEADER | `917d4dc33fb2` |
-| `docs/ENGINE_ROOM_V1.md` | Engine Room v1 — Plumbing & Intake Hardening (2026-07-16) | review_required | MISSING HEADER | `4d695141f46b` |
+| `docs/ENGINEERING_HARD_RULES.md` | Engineering Hard Rules (enforced) | review_required | OK | `c9798da3d1f2` |
+| `docs/ENGINE_ROOM_V1.md` | Engine Room v1 — Plumbing & Intake Hardening (2026-07-16) | review_required | OK | `c13ce7b7e784` |
 | `docs/EXECUTIVE_ARCHITECTURE_OVERVIEW.md` | Trade AI v12 — Executive Architecture Overview | review_required | OK | `84fd22510408` |
-| `docs/FINVIZ_INTEGRATION_AND_DATA_SOURCE_MONITORING.md` | Finviz Integration + Data-Source Health Monitoring | review_required | MISSING HEADER | `e51c57511891` |
+| `docs/FINVIZ_INTEGRATION_AND_DATA_SOURCE_MONITORING.md` | Finviz Integration + Data-Source Health Monitoring | review_required | OK | `d2c64a1e13d9` |
 | `docs/FINVIZ_SOURCE_AUTHORITY.md` | Finviz Source Authority & Phase 0 Reconciliation | review_required | OK | `93533d98e174` |
-| `docs/GIT_HYGIENE.md` | Git Hygiene — protect the live primary tree (2026-07-01) | review_required | MISSING HEADER | `a146da33e76a` |
+| `docs/GIT_HYGIENE.md` | Git Hygiene — protect the live primary tree (2026-07-01) | review_required | OK | `bb52d4d23b64` |
 | `docs/GPU_OLLAMA_SETUP.md` | Intel Arc B50: Trade AI Runtime Status | review_required | OK | `8c1dff864802` |
-| `docs/HEALTH_AGENT.md` | Health Agent + Multi-Coder Auto-Fix | review_required | MISSING HEADER | `cc2b254baf10` |
-| `docs/HEALTH_AUTONOMOUS_LOOP.md` | Health autonomous fix loop (no manual operator / no one-off agent fixes) | review_required | MISSING HEADER | `439ae00cd3f3` |
+| `docs/HEALTH_AGENT.md` | Health Agent + Multi-Coder Auto-Fix | review_required | OK | `f148baa2203c` |
+| `docs/HEALTH_AUTONOMOUS_LOOP.md` | Health autonomous fix loop (no manual operator / no one-off agent fixes) | review_required | OK | `f165f018ff3c` |
 | `docs/HERMES_DATA_ACCESS.md` | Hermes Data Access — the one canonical way every consumer reads Hermes intelligence | review_required | OK | `e597b05f60f3` |
-| `docs/HERMES_DISCOVERY_COVERAGE.md` | Hermes Discovery Inbox — Current Coverage & Discovery Mechanics (2026-07-05) | review_required | MISSING HEADER | `c74b9949b66a` |
-| `docs/HERMES_GOVERNANCE_PANEL.md` | Hermes Governance Panel | review_required | MISSING HEADER | `ea6b7d482074` |
+| `docs/HERMES_DISCOVERY_COVERAGE.md` | Hermes Discovery Inbox — Current Coverage & Discovery Mechanics (2026-07-05) | review_required | OK | `28f9832642be` |
+| `docs/HERMES_GOVERNANCE_PANEL.md` | Hermes Governance Panel | review_required | OK | `2f6cb20c50af` |
 | `docs/HERMES_INTELLIGENCE_ENGINE.md` | Hermes Intelligence Engine — ranked, intelligence-driven watchlist (canonical) | review_required | OK | `8808a896ab19` |
 | `docs/HERMES_NEWS_TO_SCALP_CATALYST_INTEGRATION_2026_06_04.md` | Hermes News → Scalp Catalyst Integration — STEP 0 Grounding & Revised Plan | review_required | OK | `c25f4d1ce844` |
-| `docs/HERMES_POSITION_PROPOSAL_RESEARCH_2026_06_04.md` | Hermes auto-research of held positions + open proposals — 2026-06-04 | review_required | MISSING HEADER | `ab5342fc3ff5` |
-| `docs/HERMES_RESEARCH_BUDGET_POLICY.md` | Hermes Research Budget Policy | review_required | MISSING HEADER | `b291b853fb54` |
-| `docs/HERMES_RESEARCH_LIFECYCLE_AND_SOURCE_RATINGS.md` | Hermes Research Lifecycle — Topics, LLM Engine, Website Cataloging & Ratings | review_required | MISSING HEADER | `255eead2495d` |
-| `docs/HERMES_RESEARCH_SCOPE_AUDIT.md` | Hermes Research Scope Audit | review_required | MISSING HEADER | `ae05915b5832` |
-| `docs/INFERENCE_LAYERS_LAYER4.md` | Layer-4 Inference / Synthesis Engine | review_required | MISSING HEADER | `e42c3fa7c79c` |
-| `docs/INTELLIGENCE_RATING_AND_LLM_STAGES_2026_06_04.md` | Article Quality Rating Framework + LLM Enhancement Stages — 2026-06-04 | review_required | MISSING HEADER | `50c6c060a8b5` |
+| `docs/HERMES_POSITION_PROPOSAL_RESEARCH_2026_06_04.md` | Hermes auto-research of held positions + open proposals — 2026-06-04 | review_required | OK | `e5c76998897f` |
+| `docs/HERMES_RESEARCH_BUDGET_POLICY.md` | Hermes Research Budget Policy | review_required | OK | `ae9354fd9306` |
+| `docs/HERMES_RESEARCH_LIFECYCLE_AND_SOURCE_RATINGS.md` | Hermes Research Lifecycle — Topics, LLM Engine, Website Cataloging & Ratings | review_required | OK | `fd127859cd19` |
+| `docs/HERMES_RESEARCH_SCOPE_AUDIT.md` | Hermes Research Scope Audit | review_required | OK | `b8e03bc8090d` |
+| `docs/INFERENCE_LAYERS_LAYER4.md` | Layer-4 Inference / Synthesis Engine | review_required | OK | `d10505bb19e7` |
+| `docs/INTELLIGENCE_RATING_AND_LLM_STAGES_2026_06_04.md` | Article Quality Rating Framework + LLM Enhancement Stages — 2026-06-04 | review_required | OK | `cd922799d180` |
 | `docs/LIVE_SYSTEM_FACTS.md` | Live System Facts — Authoritative Counts | review_required | OK | `1c3dcee8a3af` |
 | `docs/LLM_DATA_DICTIONARY.md` | LLM Data Dictionary — How Data Flows to Every Model Call | review_required | OK | `1960a201f17b` |
 | `docs/LLM_FLEET_STRATEGY_v4_1_FINAL.md` | LLM Fleet Strategy v4.1 — Final Execution Revision | active_keep | OK | `c0f8815dff83` |
 | `docs/MASTER_SYSTEM_DOCUMENTATION.md` | Trade AI v12 -- Master System Documentation | active_keep | OK | `eb5b2c72213b` |
-| `docs/MISSION_LOG_2026_07_04_05.md` | Mission Log — 2026-07-04/05 (Due Diligence · Discovery Inbox · Incident Sweep) | review_required | MISSING HEADER | `ea0e283ffd0f` |
-| `docs/MOMENTUM_SCALP_REGIME_DETECTION_ALGORITHM.md` | Momentum Scalp Regime Detection Algorithm | review_required | MISSING HEADER | `8d170a79b47c` |
+| `docs/MISSION_LOG_2026_07_04_05.md` | Mission Log — 2026-07-04/05 (Due Diligence · Discovery Inbox · Incident Sweep) | review_required | OK | `424f1859cb37` |
+| `docs/MOMENTUM_SCALP_REGIME_DETECTION_ALGORITHM.md` | Momentum Scalp Regime Detection Algorithm | review_required | OK | `013af083a666` |
 | `docs/MOMENTUM_SCALP_STOP_AND_TRAIL_POLICY.md` | Momentum Scalp — Stop & Trailing-Stop Policy | review_required | OK | `354954d22052` |
 | `docs/MOMENTUM_SCALP_STOP_MONITORING_PROTOCOL.md` | Stop Monitoring & Adjustment Protocol | review_required | OK | `8196359bfabe` |
-| `docs/MONDAY_BURNIN_CHECKLIST.md` | Monday ATM Burn-In Checklist | review_required | MISSING HEADER | `d1d6a7b912fb` |
-| `docs/OPERATOR_RUNBOOK_LLM_v4_1_FINAL.md` | Operator Runbook — LLM Fleet v4.1 Final Execution Pack | active_keep | MISSING HEADER | `285e61034a91` |
-| `docs/OPTIONS_BROKER_EXECUTION_FLOWS.md` | Options & Broker Execution Flows | review_required | MISSING HEADER | `bbca02acc6b0` |
-| `docs/OPTIONS_LIFECYCLE_DESK.md` | Options Lifecycle Desk — Architecture & Acceptance (2026-07-19) | review_required | MISSING HEADER | `476815783fc6` |
+| `docs/MONDAY_BURNIN_CHECKLIST.md` | Monday ATM Burn-In Checklist | review_required | OK | `362afe5ab3ac` |
+| `docs/OPERATOR_RUNBOOK_LLM_v4_1_FINAL.md` | Operator Runbook — LLM Fleet v4.1 Final Execution Pack | active_keep | OK | `70f0232fe382` |
+| `docs/OPTIONS_BROKER_EXECUTION_FLOWS.md` | Options & Broker Execution Flows | review_required | OK | `8b8b79559aae` |
+| `docs/OPTIONS_LIFECYCLE_DESK.md` | Options Lifecycle Desk — Architecture & Acceptance (2026-07-19) | review_required | OK | `629259dafb19` |
 | `docs/OPTIONS_STRATEGY_PIPELINE.md` | Options Strategy Pipeline (paper-only lane) | review_required | OK | `035f6891f1c7` |
-| `docs/PEER_REVIEW_PACKET_COMMAND_CENTER_PAGES.md` | Peer-Review Packet — Command Center v3 Intelligence Pages | review_required | MISSING HEADER | `734fc076672a` |
+| `docs/PEER_REVIEW_PACKET_COMMAND_CENTER_PAGES.md` | Peer-Review Packet — Command Center v3 Intelligence Pages | review_required | OK | `3a0a0500f287` |
 | `docs/PHANTOM_ELIMINATION_BROKER_CONFIRMATION_DESIGN.md` | Phantom Elimination — Broker-Confirmation Gate (DESIGN, vendor-neutral) | review_required | OK | `0458a3ad1d4d` |
 | `docs/PRIVATE_COMPANY_PROXY.md` | Private-Company Proxy Graph | review_required | OK | `371d6bfc0777` |
-| `docs/PROPOSAL_EXECUTION_PATHS.md` | Proposal Execution Paths | review_required | MISSING HEADER | `48e313b4b93a` |
-| `docs/PROPOSAL_MATURITY_AUDIT.md` | Proposal Maturity Audit — 2026-06-22 | review_required | MISSING HEADER | `b74a06a2984f` |
+| `docs/PROPOSAL_EXECUTION_PATHS.md` | Proposal Execution Paths | review_required | OK | `2deb1296287a` |
+| `docs/PROPOSAL_MATURITY_AUDIT.md` | Proposal Maturity Audit — 2026-06-22 | review_required | OK | `97d9e4588c72` |
 | `docs/PROTECTION_ATM_COUPLING.md` | Protection Adjustments → ATM Coupling (handoff) | review_required | OK | `3a4d6ecd3912` |
-| `docs/PULLBACK_MACD_SCREENER.md` | Pullback / MACD Screener | review_required | MISSING HEADER | `7e6e2d0ad537` |
-| `docs/RESEARCH_INGEST_TICKER_AUDIT_2026_06_20.md` | Research Ingestion + Ticker Extraction + Connector Audit — 2026-06-20 | review_required | MISSING HEADER | `f11dd5bf93b0` |
-| `docs/RESEARCH_PRIORITIZATION.md` | Research Prioritization & Refresh Methodology (all Hermes lanes, 24/7) | review_required | MISSING HEADER | `561f2edd8e2a` |
-| `docs/RESEARCH_TOPIC_REGISTRY_2026_06_04.md` | Research Topic Registry — 2026-06-04 | review_required | MISSING HEADER | `95713d4734cb` |
-| `docs/RESTORE_GUIDE.md` | Trade AI v12 — Restore Guide | active_keep | MISSING HEADER | `5148e0d3bf1d` |
-| `docs/SCHWAB_AUTO_REAUTH.md` | Schwab OAuth Reauth (manual-first) | review_required | MISSING HEADER | `7497d86ad893` |
-| `docs/SESSION_2026_06_04_SUMMARY.md` | Session Summary — 2026-06-04 | archive_session_handoff | MISSING HEADER | `d186466c2525` |
-| `docs/SESSION_2026_06_25_CHANGES.md` | Session 2026-06-25 — Changes Log | archive_session_handoff | MISSING HEADER | `4c73dc14b861` |
-| `docs/SESSION_2026_07_02_HERMES_MATURITY5.md` | Session 2026-07-02 — Hermes Maturity-5 Program (audit → phases 0–6, one day) | archive_session_handoff | MISSING HEADER | `763d64da654c` |
+| `docs/PULLBACK_MACD_SCREENER.md` | Pullback / MACD Screener | review_required | OK | `afc1169eccc2` |
+| `docs/RESEARCH_INGEST_TICKER_AUDIT_2026_06_20.md` | Research Ingestion + Ticker Extraction + Connector Audit — 2026-06-20 | review_required | OK | `d78b663bf596` |
+| `docs/RESEARCH_PRIORITIZATION.md` | Research Prioritization & Refresh Methodology (all Hermes lanes, 24/7) | review_required | OK | `139c93ab1bcd` |
+| `docs/RESEARCH_TOPIC_REGISTRY_2026_06_04.md` | Research Topic Registry — 2026-06-04 | review_required | OK | `f51d95275ab4` |
+| `docs/RESTORE_GUIDE.md` | Trade AI v12 — Restore Guide | active_keep | OK | `e75090b6bb16` |
+| `docs/SCHWAB_AUTO_REAUTH.md` | Schwab OAuth Reauth (manual-first) | review_required | OK | `039c557e4214` |
+| `docs/SESSION_2026_06_04_SUMMARY.md` | Session Summary — 2026-06-04 | archive_session_handoff | OK | `42c62bde2441` |
+| `docs/SESSION_2026_06_25_CHANGES.md` | Session 2026-06-25 — Changes Log | archive_session_handoff | OK | `0b26829b54f4` |
+| `docs/SESSION_2026_07_02_HERMES_MATURITY5.md` | Session 2026-07-02 — Hermes Maturity-5 Program (audit → phases 0–6, one day) | archive_session_handoff | OK | `b28e4413fcb5` |
 | `docs/STOP_METHODOLOGY.md` | Stop & Trailing-Stop Methodology (canonical) | review_required | OK | `5b9791931edc` |
 | `docs/STOP_SYSTEM_GAP_REPORT.md` | Trade AI v12 — Stop System Alignment / Gap Report | review_required | OK | `12d1dfe39ffb` |
-| `docs/STRATEGY_MONITORING_20260626.md` | Strategy & Monitoring — Audit Remediation (2026-06-26) | review_required | MISSING HEADER | `775bacfab06a` |
-| `docs/SYSTEM_HEALTH_BASELINE_2026_06_04.md` | System Health Baseline — 2026-06-04 (post catalyst/signal/watchdog work) | review_required | MISSING HEADER | `e3e6bd99db45` |
+| `docs/STRATEGY_MONITORING_20260626.md` | Strategy & Monitoring — Audit Remediation (2026-06-26) | review_required | OK | `4655d328251e` |
+| `docs/SYSTEM_HEALTH_BASELINE_2026_06_04.md` | System Health Baseline — 2026-06-04 (post catalyst/signal/watchdog work) | review_required | OK | `afa050c5712d` |
 | `docs/TAXONOMY_ALIGNMENT_SCOPE.md` | Shared Taxonomy Alignment — Scope | review_required | OK | `64fb745f70a4` |
-| `docs/TRADE_IN_VIEW_GAP_AUDIT.md` | TradeInView Gap Audit — 2026-06-27 | review_required | MISSING HEADER | `09a2fcff5616` |
+| `docs/TRADE_IN_VIEW_GAP_AUDIT.md` | TradeInView Gap Audit — 2026-06-27 | review_required | OK | `184ffe4b45b3` |
 | `docs/TRADE_IN_VIEW_IMPLEMENTATION_PLAN.md` | TradeInView Implementation Plan | review_required | OK | `84bf39f812c9` |
-| `docs/WARRIOR_ROSS_TRADEAI_ALIGNMENT.md` | Warrior / Ross ↔ TradeAI Alignment | review_required | MISSING HEADER | `70567f0046b6` |
-| `docs/WATCHLIST_ITEMS_PERF.md` | Watchlist Items — Latency Fix & Loading State (2026-07-01) | review_required | MISSING HEADER | `b15b4e8c7e3b` |
-| `docs/WATCHLIST_PROPOSAL_BRIDGE.md` | Watchlist → Broker Proposals Bridge | review_required | MISSING HEADER | `23ecc889fe8f` |
+| `docs/WARRIOR_ROSS_TRADEAI_ALIGNMENT.md` | Warrior / Ross ↔ TradeAI Alignment | review_required | OK | `7508cc21c3a2` |
+| `docs/WATCHLIST_ITEMS_PERF.md` | Watchlist Items — Latency Fix & Loading State (2026-07-01) | review_required | OK | `a90ab076c8cd` |
+| `docs/WATCHLIST_PROPOSAL_BRIDGE.md` | Watchlist → Broker Proposals Bridge | review_required | OK | `80ccd91d5cdf` |
 | `docs/WATCH_DIRECTIVES.md` | Watch Directives + Hermes→Trade AI Promotion (canonical) | review_required | OK | `ce70528a7e79` |
-| `docs/WATCH_DIRECTIVE_CLEANUP.md` | Watch-Directive Clutter Cleanup (2026-07-01) | review_required | MISSING HEADER | `ecec7d5812ab` |
-| `docs/_audit/drift_report.md` | Documentation Drift Report | review_required | MISSING HEADER | `6e7fd6bca618` |
-| `docs/_audit/summary.md` | Docs Audit Summary | review_required | MISSING HEADER | `f221ca4a9110` |
+| `docs/WATCH_DIRECTIVE_CLEANUP.md` | Watch-Directive Clutter Cleanup (2026-07-01) | review_required | OK | `4e210bcba587` |
+| `docs/_audit/drift_report.md` | Documentation Drift Report | review_required | OK | `aba96a8bed94` |
+| `docs/_audit/summary.md` | Docs Audit Summary | review_required | OK | `b0ccb4dcd31d` |
 | `docs/_design/defense_desk_redesign_v1/CC_PROMPT_DEFENSE_DESK_REDESIGN.md` | Claude Code Execution Prompt — Defense Desk Redesign (Stage DD-S0 + S1) | review_required | OK | `ebfb03af0d5d` |
-| `docs/_design/defense_desk_redesign_v1/VISUAL_CONTRACT_defense_desk_v1.md` | Visual Contract — Defense Desk redesign v1 | review_required | MISSING HEADER | `4cb47400240a` |
-| `docs/_design/sector_leaders_v1/README_SECTOR_LEADERS_v1.md` | Sector Leaders Card - Design Spec v1 | review_required | MISSING HEADER | `38d238abde43` |
+| `docs/_design/defense_desk_redesign_v1/VISUAL_CONTRACT_defense_desk_v1.md` | Visual Contract — Defense Desk redesign v1 | review_required | OK | `160df0d81bd8` |
+| `docs/_design/sector_leaders_v1/README_SECTOR_LEADERS_v1.md` | Sector Leaders Card - Design Spec v1 | review_required | OK | `32dfa240a286` |
 | `docs/_evidence/autonomous_advisory_loop/research_data_hygiene/2026-08-23_live_findings.md` | Research Data Hygiene Live Findings - 2026-08-23 | review_required | OK | `d443a37b4406` |
-| `docs/_evidence/r20-r24/PORTFOLIO_GENERATION_PROPAGATION.md` | Portfolio Generation Propagation Dry Run | review_required | MISSING HEADER | `7268cf13e722` |
-| `docs/_evidence/r20-r24/WORKFLOW_ACCEPTANCE_HARNESS.md` | Workflow Acceptance Harness | review_required | MISSING HEADER | `b8567515f0d7` |
-| `docs/_evidence/r20/R20_VS_R21.md` | R20 live specialist status vs R21 admin visibility | review_required | MISSING HEADER | `c287d5673aec` |
-| `docs/_evidence/r21/R21_1_DETAIL_ENDPOINTS.md` | R21.1 Detail Endpoints | review_required | MISSING HEADER | `69a0797cf62c` |
-| `docs/_findings/ACTIVE_TRADER_LIVE_MOTION_UI_v1.md` | Active Trader Live Motion UI v1 — Findings | review_required | MISSING HEADER | `adf6c041aba8` |
-| `docs/_findings/ACTIVE_TRADER_MOTION_ENDPOINT_v1.md` | Active Trader Live Motion Endpoint — v1 | review_required | MISSING HEADER | `b8f3cc24dc54` |
-| `docs/_findings/ACTIVE_TRADER_MOTION_RUNTIME_v1.md` | Active Trader Motion Runtime v1 | review_required | MISSING HEADER | `9aecef94c435` |
+| `docs/_evidence/r20-r24/PORTFOLIO_GENERATION_PROPAGATION.md` | Portfolio Generation Propagation Dry Run | review_required | OK | `5461764ecc9e` |
+| `docs/_evidence/r20-r24/WORKFLOW_ACCEPTANCE_HARNESS.md` | Workflow Acceptance Harness | review_required | OK | `eb1687008437` |
+| `docs/_evidence/r20/R20_VS_R21.md` | R20 live specialist status vs R21 admin visibility | review_required | OK | `b36cacccd2e2` |
+| `docs/_evidence/r21/R21_1_DETAIL_ENDPOINTS.md` | R21.1 Detail Endpoints | review_required | OK | `7718fd1bdf0b` |
+| `docs/_findings/ACTIVE_TRADER_LIVE_MOTION_UI_v1.md` | Active Trader Live Motion UI v1 — Findings | review_required | OK | `717dc60f22b3` |
+| `docs/_findings/ACTIVE_TRADER_MOTION_ENDPOINT_v1.md` | Active Trader Live Motion Endpoint — v1 | review_required | OK | `94039d627891` |
+| `docs/_findings/ACTIVE_TRADER_MOTION_RUNTIME_v1.md` | Active Trader Motion Runtime v1 | review_required | OK | `46e9810a264c` |
 | `docs/_findings/ALEX_AUTONOMY_GROUND_TRUTH_2026-08-21.md` | Phase 0 Ground Truth — Alex Autonomy Maturation | review_required | OK | `e28efc326b18` |
-| `docs/_findings/BETA_WATCHLIST_TRUST_INCIDENT_2026-07-20.md` | BETA Watchlist Trust Incident — 2026-07-20 | review_required | MISSING HEADER | `83a56acb2fe8` |
-| `docs/_findings/CSCO_COVERED_CALL_INCIDENT_2026-07-20.md` | CSCO Covered-Call Incident — 2026-07-20 | review_required | MISSING HEADER | `0649b88b7e40` |
+| `docs/_findings/BETA_WATCHLIST_TRUST_INCIDENT_2026-07-20.md` | BETA Watchlist Trust Incident — 2026-07-20 | review_required | OK | `e0ab2cb96346` |
+| `docs/_findings/CSCO_COVERED_CALL_INCIDENT_2026-07-20.md` | CSCO Covered-Call Incident — 2026-07-20 | review_required | OK | `e13df056b408` |
 | `docs/_findings/CURRENT_MAIN_CONVERGENCE_PACKET_2026-07-27.md` | Current-Main Host Convergence Packet — dry-run-first, exact-ref (2026-07-27) | review_required | OK | `d0f0109a0f1a` |
-| `docs/_findings/ENGINE_STALE_SECTOR_ROWS_2026-07-29.md` | Sector momentum engine — two sectors running on stale relative strength | review_required | MISSING HEADER | `b470a815f3ba` |
-| `docs/_findings/INVERSE_HEDGE_STOPLIGHTS_MEMO_2026-07-19.md` | Inverse-ETF Hedge Stoplights — Research Memorandum & Results (2026-07-19) | review_required | MISSING HEADER | `ef088defe1fa` |
-| `docs/_findings/INVERSE_HEDGE_TWODAY_PREREGISTRATION_2026-07-19.md` | Inverse-ETF Hedge — Two-Day Entry Rule: PRE-REGISTERED Backtest Specification | review_required | MISSING HEADER | `d541ba7005b9` |
-| `docs/_findings/M3_S2_5_GATE_CLEARANCE_2026-07-27.md` | GATES CLEAR WITH CORRECTIONS | review_required | MISSING HEADER | `2fda4425a5ab` |
-| `docs/_findings/M3_S5_5_PROVIDER_ENTITLEMENT_2026-07-27.md` | M3-S5.5 — Provider Entitlement Proof & Observation Fabric (2026-07-27) | review_required | MISSING HEADER | `1d0ffbd1f45e` |
+| `docs/_findings/ENGINE_STALE_SECTOR_ROWS_2026-07-29.md` | Sector momentum engine — two sectors running on stale relative strength | review_required | OK | `2799ff6ece09` |
+| `docs/_findings/INVERSE_HEDGE_STOPLIGHTS_MEMO_2026-07-19.md` | Inverse-ETF Hedge Stoplights — Research Memorandum & Results (2026-07-19) | review_required | OK | `2a367966f5dd` |
+| `docs/_findings/INVERSE_HEDGE_TWODAY_PREREGISTRATION_2026-07-19.md` | Inverse-ETF Hedge — Two-Day Entry Rule: PRE-REGISTERED Backtest Specification | review_required | OK | `f723bf63fd7f` |
+| `docs/_findings/M3_S2_5_GATE_CLEARANCE_2026-07-27.md` | GATES CLEAR WITH CORRECTIONS | review_required | OK | `8a46256fad45` |
+| `docs/_findings/M3_S5_5_PROVIDER_ENTITLEMENT_2026-07-27.md` | M3-S5.5 — Provider Entitlement Proof & Observation Fabric (2026-07-27) | review_required | OK | `72265ea4b468` |
 | `docs/_findings/OPTIONS_LIFECYCLE_DESK_DIAGNOSIS_2026-07-19.md` | OPTIONS LIFECYCLE DESK — Phase 0 Read-Only Truth Audit | review_required | OK | `2db0ed3d3e02` |
-| `docs/_findings/OPTIONS_LIFECYCLE_V1_1_INTEGRATION_AUDIT_2026-07-19.md` | Options Lifecycle v1.1 — Integration Audit (read-only, 2026-07-19) | review_required | MISSING HEADER | `8284b5d56213` |
-| `docs/_findings/OPTIONS_V1_2_AND_COSTS_AUDIT_2026-07-19.md` | Options v1.2/v1.2.1 + Costs — Phase 0 Read-Only Truth Audit (2026-07-19) | review_required | MISSING HEADER | `4d8bf8bc9621` |
-| `docs/_findings/P0_WORKING_TREE_IS_PRODUCTION_2026-07-29.md` | P0 — The working tree is production for ~130 execution paths | review_required | MISSING HEADER | `a63b70039712` |
-| `docs/_findings/SCALP_FIRE_INTEGRITY_FIX_2026-07-28.md` | Scalp Fire Integrity — Gate Persistence, Stop Floor, and Canonical Setup Identity | review_required | MISSING HEADER | `e548923416fd` |
-| `docs/_findings/SCALP_SETUP_IMPLEMENTATION_CLOSEOUT_2026-07-27.md` | Scalp Multi-Setup Taxonomy — Implementation Closeout (2026-07-27) | review_required | MISSING HEADER | `1f399f0c1903` |
-| `docs/_findings/SCALP_SETUP_SOURCE_SYNTHESIS_2026-07-27.md` | Scalp Setup — Source Synthesis (2026-07-27) | review_required | MISSING HEADER | `867e259777c2` |
+| `docs/_findings/OPTIONS_LIFECYCLE_V1_1_INTEGRATION_AUDIT_2026-07-19.md` | Options Lifecycle v1.1 — Integration Audit (read-only, 2026-07-19) | review_required | OK | `657a3c374454` |
+| `docs/_findings/OPTIONS_V1_2_AND_COSTS_AUDIT_2026-07-19.md` | Options v1.2/v1.2.1 + Costs — Phase 0 Read-Only Truth Audit (2026-07-19) | review_required | OK | `2be7c2d6c3ba` |
+| `docs/_findings/P0_WORKING_TREE_IS_PRODUCTION_2026-07-29.md` | P0 — The working tree is production for ~130 execution paths | review_required | OK | `e7f22512083c` |
+| `docs/_findings/SCALP_FIRE_INTEGRITY_FIX_2026-07-28.md` | Scalp Fire Integrity — Gate Persistence, Stop Floor, and Canonical Setup Identity | review_required | OK | `96c0a57cc069` |
+| `docs/_findings/SCALP_SETUP_IMPLEMENTATION_CLOSEOUT_2026-07-27.md` | Scalp Multi-Setup Taxonomy — Implementation Closeout (2026-07-27) | review_required | OK | `cf9f9b2ed107` |
+| `docs/_findings/SCALP_SETUP_SOURCE_SYNTHESIS_2026-07-27.md` | Scalp Setup — Source Synthesis (2026-07-27) | review_required | OK | `4cd64ccd98e2` |
 | `docs/_findings/alpaca_taxonomy_audit_2026-07-21.md` | FINDINGS: Alpaca Paper/Live Taxonomy & Multi-Account Readiness Audit | review_required | OK | `8212d11b2f89` |
 | `docs/_findings/bitwarden_env_posture_recon_2026-07-21.md` | RECON: Bitwarden + Env Posture Inventory (read-only) | review_required | OK | `a0d867f98a49` |
-| `docs/_findings/brave_search_api_usage_audit_2026-05.md` | Brave Search API Usage Audit — May 2026 | review_required | MISSING HEADER | `d802dae7d7c2` |
-| `docs/_findings/defense_desk_v1_diagnosis_2026-07-17.md` | Defense Desk v1 — Phase 0 Diagnosis (2026-07-17) | review_required | MISSING HEADER | `d9f3f209e272` |
-| `docs/_findings/defense_desk_v2_diagnosis_2026-07-18.md` | Defense Desk v2 — Phase 0 Diagnosis (2026-07-18) | review_required | MISSING HEADER | `348101e57621` |
-| `docs/_findings/defense_desk_v7_diagnosis_2026-07-18.md` | Defense Desk v7 — Phase 0 Diagnosis + EXEC Branch Decision (2026-07-18) | review_required | MISSING HEADER | `3212aa83644c` |
+| `docs/_findings/brave_search_api_usage_audit_2026-05.md` | Brave Search API Usage Audit — May 2026 | review_required | OK | `943f66776820` |
+| `docs/_findings/defense_desk_v1_diagnosis_2026-07-17.md` | Defense Desk v1 — Phase 0 Diagnosis (2026-07-17) | review_required | OK | `97acf7b2dff3` |
+| `docs/_findings/defense_desk_v2_diagnosis_2026-07-18.md` | Defense Desk v2 — Phase 0 Diagnosis (2026-07-18) | review_required | OK | `5dc0e9420a52` |
+| `docs/_findings/defense_desk_v7_diagnosis_2026-07-18.md` | Defense Desk v7 — Phase 0 Diagnosis + EXEC Branch Decision (2026-07-18) | review_required | OK | `4ff42d3ab9bc` |
 | `docs/_findings/defense_redesign_recon_2026-07-29.md` | Defense Desk redesign — Stage DD-S0 recon | review_required | OK | `afa1bb00bd4e` |
 | `docs/_findings/env_bak_phase0_kill_2026-07-21.md` | PHASE-0: Kill `.env` backup sprawl — handoff | archive_superseded | OK | `62be7c5b7520` |
-| `docs/_findings/fidelity_to_schwab_rollover_2026-07-16.md` | Fidelity Rollover IRA → Schwab (ACATS reflection) — 2026-07-16 | review_required | MISSING HEADER | `1d70272afdb9` |
-| `docs/_findings/gain_guardian_diagnosis_2026-07-16.md` | Gain Guardian (Holdings Exit Intelligence) — Phase 0 Diagnosis — 2026-07-16 | review_required | MISSING HEADER | `88ede8f3fe27` |
-| `docs/_findings/home_v2_diagnosis_2026-07-17.md` | Home v2 (Command Brain) — Phase 0 Diagnosis (2026-07-17) | review_required | MISSING HEADER | `0ebc55888448` |
-| `docs/_findings/monday_morning_state_20260525.md` | Monday Morning Pre-ATM State | review_required | MISSING HEADER | `a699a6929335` |
-| `docs/_findings/news_ingestion_gap_2026-05-24.md` | News Ingestion Gap — 2026-05-24 | review_required | MISSING HEADER | `c2acbd03a92c` |
+| `docs/_findings/fidelity_to_schwab_rollover_2026-07-16.md` | Fidelity Rollover IRA → Schwab (ACATS reflection) — 2026-07-16 | review_required | OK | `71d24c872a46` |
+| `docs/_findings/gain_guardian_diagnosis_2026-07-16.md` | Gain Guardian (Holdings Exit Intelligence) — Phase 0 Diagnosis — 2026-07-16 | review_required | OK | `8c72cfece06d` |
+| `docs/_findings/home_v2_diagnosis_2026-07-17.md` | Home v2 (Command Brain) — Phase 0 Diagnosis (2026-07-17) | review_required | OK | `b48f52f0250a` |
+| `docs/_findings/monday_morning_state_20260525.md` | Monday Morning Pre-ATM State | review_required | OK | `eba3cea4e935` |
+| `docs/_findings/news_ingestion_gap_2026-05-24.md` | News Ingestion Gap — 2026-05-24 | review_required | OK | `20649729d370` |
 | `docs/_findings/ops_morning_stability_2026-07-16.md` | Findings — Morning Ops Stability (2026-07-16) | review_required | OK | `99fc676a70c5` |
-| `docs/_findings/ops_scanner_500_loop_2026-07-17.md` | Ops: Market Opportunities Scanner 500-loop + Postgres slot exhaustion — 2026-07-17 | review_required | MISSING HEADER | `fec1d58d6891` |
-| `docs/_findings/pre_burnin_findings_2026-05-25.md` | Pre-Burn-In Findings (2026-05-25) | review_required | MISSING HEADER | `a963dd28bd11` |
-| `docs/_findings/reports_desk_v1_diagnosis_2026-07-16.md` | Reports Desk v2 — Phase 0 Residual Diagnosis (2026-07-16 evening) | review_required | MISSING HEADER | `495676f182f1` |
-| `docs/_findings/reports_desk_v3_diagnosis_2026-07-17.md` | Reports Desk v3 — Phase 0 Diagnosis (2026-07-17) | review_required | MISSING HEADER | `3f900c21a211` |
-| `docs/_findings/ri_v3_1_diagnosis_2026-07-16.md` | RI v3.1 Phase 0 Diagnosis — 2026-07-16 | review_required | MISSING HEADER | `faf2e3d227d1` |
-| `docs/_findings/ri_v3_diagnosis_2026-07-16.md` | RI v3.0 Phase 0 Diagnosis — 2026-07-16 | review_required | MISSING HEADER | `76125c1febea` |
-| `docs/_findings/scalp_engine_recon_20260727.md` | Momentum Scalp Signal Engine — M3-S0 Recon Findings (2026-07-27) | review_required | MISSING HEADER | `273725170a04` |
+| `docs/_findings/ops_scanner_500_loop_2026-07-17.md` | Ops: Market Opportunities Scanner 500-loop + Postgres slot exhaustion — 2026-07-17 | review_required | OK | `3946f6f102db` |
+| `docs/_findings/pre_burnin_findings_2026-05-25.md` | Pre-Burn-In Findings (2026-05-25) | review_required | OK | `d0becac9e7c6` |
+| `docs/_findings/reports_desk_v1_diagnosis_2026-07-16.md` | Reports Desk v2 — Phase 0 Residual Diagnosis (2026-07-16 evening) | review_required | OK | `a7c12bc28af9` |
+| `docs/_findings/reports_desk_v3_diagnosis_2026-07-17.md` | Reports Desk v3 — Phase 0 Diagnosis (2026-07-17) | review_required | OK | `1231c78a1e34` |
+| `docs/_findings/ri_v3_1_diagnosis_2026-07-16.md` | RI v3.1 Phase 0 Diagnosis — 2026-07-16 | review_required | OK | `3c83b0e51f83` |
+| `docs/_findings/ri_v3_diagnosis_2026-07-16.md` | RI v3.0 Phase 0 Diagnosis — 2026-07-16 | review_required | OK | `be8d8e3bc3a9` |
+| `docs/_findings/scalp_engine_recon_20260727.md` | Momentum Scalp Signal Engine — M3-S0 Recon Findings (2026-07-27) | review_required | OK | `25a4ef112079` |
 | `docs/_findings/sector_leaders_recon_2026-07-29.md` | Sector Leaders Card — Stage SL-S0 Recon | review_required | OK | `078eff072fcc` |
-| `docs/_findings/sunday_audit_fixes_2026-05-25.md` | Sunday Night Audit Fixes (2026-05-25) | review_required | MISSING HEADER | `e045e92aadb5` |
-| `docs/_findings/triggered_stops_2026-05-24_pre_schwab_check.md` | 7 Triggered Stops — Pre-Schwab Verification | archive_superseded | MISSING HEADER | `78e51a823234` |
-| `docs/_findings/watch_desk_v2_diagnosis_2026-07-16.md` | Watch Desk v2 Phase 0 Diagnosis — 2026-07-16 | review_required | MISSING HEADER | `455127657130` |
-| `docs/_findings/watch_desk_v3_diagnosis_2026-07-16.md` | Watch Desk v3 Phase 0 — 2026-07-16 | review_required | MISSING HEADER | `e896aed932a0` |
-| `docs/_findings/watch_desk_v4_diagnosis_2026-07-16.md` | Watch Desk v4 — Phase 0 Diagnosis (2026-07-16, post-close) | review_required | MISSING HEADER | `31ad9a3cf479` |
-| `docs/_generated/profit_capture/README.md` | Profit-Capture Refresh Artifacts (generated) | review_required | MISSING HEADER | `ab72ae4b820e` |
-| `docs/_generated/profit_capture/pc_bt.md` | Profit-Protection Rule Backtests — quality-gated (evidence only) | review_required | MISSING HEADER | `c2d26ba07591` |
-| `docs/_generated/profit_capture/pc_refresh.md` | Profit-Capture All-Trades Analysis | review_required | MISSING HEADER | `97b5f5ccad86` |
-| `docs/_generated/profit_capture/pc_shadow.md` | Profit-Protection Shadow Threshold Recommendations (advisory only) | review_required | MISSING HEADER | `5ffa7d3ae934` |
-| `docs/_generated/profit_capture/pc_val.md` | Profit-Capture Rule Quality Validation | review_required | MISSING HEADER | `854dab286b0c` |
+| `docs/_findings/sunday_audit_fixes_2026-05-25.md` | Sunday Night Audit Fixes (2026-05-25) | review_required | OK | `9fb2ba331b9b` |
+| `docs/_findings/triggered_stops_2026-05-24_pre_schwab_check.md` | 7 Triggered Stops — Pre-Schwab Verification | archive_superseded | OK | `ec26f93bbb0d` |
+| `docs/_findings/watch_desk_v2_diagnosis_2026-07-16.md` | Watch Desk v2 Phase 0 Diagnosis — 2026-07-16 | review_required | OK | `ca451db905da` |
+| `docs/_findings/watch_desk_v3_diagnosis_2026-07-16.md` | Watch Desk v3 Phase 0 — 2026-07-16 | review_required | OK | `64dadf8be679` |
+| `docs/_findings/watch_desk_v4_diagnosis_2026-07-16.md` | Watch Desk v4 — Phase 0 Diagnosis (2026-07-16, post-close) | review_required | OK | `636942cc915a` |
+| `docs/_generated/profit_capture/README.md` | Profit-Capture Refresh Artifacts (generated) | review_required | OK | `a18c3334f4e0` |
+| `docs/_generated/profit_capture/pc_bt.md` | Profit-Protection Rule Backtests — quality-gated (evidence only) | review_required | OK | `1854112f674b` |
+| `docs/_generated/profit_capture/pc_refresh.md` | Profit-Capture All-Trades Analysis | review_required | OK | `01ce13f3e88a` |
+| `docs/_generated/profit_capture/pc_shadow.md` | Profit-Protection Shadow Threshold Recommendations (advisory only) | review_required | OK | `396938ff08de` |
+| `docs/_generated/profit_capture/pc_val.md` | Profit-Capture Rule Quality Validation | review_required | OK | `630fb810182f` |
 | `docs/adr/ADR-AIF-FS-ONE-GATEWAY.md` | ADR: Financial Senses integrates through the AIF governed read-only gateway | review_required | OK | `b62f7dc5ac25` |
-| `docs/advisory/PHASE141_142_DUAL_OPINION_AND_CHOICE_TRACKING.md` | Phases 141-142 — Dual-Opinion Advisory + Operator Choice Tracking | review_required | MISSING HEADER | `efb2e0c2ded7` |
-| `docs/advisory/PHASE143_144_INLINE_ADVISORY_REPORT.md` | Phases 143-144 — Inline Dual-Opinion Advisory + Journal/Backtest Intelligence | review_required | MISSING HEADER | `d7ee3c2ab966` |
-| `docs/advisory/PHASE155_158_OBSERVATION_EVIDENCE_ESCALATION.md` | Phases 155-158 — Observation, Evidence Backlog, High-LLM Escalation | review_required | MISSING HEADER | `631d14f1e636` |
-| `docs/advisory/PHASE160_164_EVIDENCE_ESCALATION_CLOSEOUT.md` | Phases 160-164 — Evidence Remediation, Escalation, Waiting Room, UX, Closeout | review_required | MISSING HEADER | `c434e5565014` |
+| `docs/advisory/PHASE141_142_DUAL_OPINION_AND_CHOICE_TRACKING.md` | Phases 141-142 — Dual-Opinion Advisory + Operator Choice Tracking | review_required | OK | `f1ca2aa75749` |
+| `docs/advisory/PHASE143_144_INLINE_ADVISORY_REPORT.md` | Phases 143-144 — Inline Dual-Opinion Advisory + Journal/Backtest Intelligence | review_required | OK | `3caee3d01e99` |
+| `docs/advisory/PHASE155_158_OBSERVATION_EVIDENCE_ESCALATION.md` | Phases 155-158 — Observation, Evidence Backlog, High-LLM Escalation | review_required | OK | `38260165b985` |
+| `docs/advisory/PHASE160_164_EVIDENCE_ESCALATION_CLOSEOUT.md` | Phases 160-164 — Evidence Remediation, Escalation, Waiting Room, UX, Closeout | review_required | OK | `9f1de068ce25` |
 | `docs/advisory/desk-v1/AUTONOMOUS_ADVISORY_DESK_PLAN_2026-08-10.md` | Plan: Autonomous Advisory Desk (CIO + Wealth Advisors) | review_required | OK | `64bfb6f9fd6f` |
 | `docs/advisory/desk-v1/AUTONOMY_AND_SCHEDULING_TRUTH_2026-08-11.md` | Autonomy & scheduling truth — Advisory Desk + agent fleet | review_required | OK | `0202de4e9e63` |
 | `docs/advisory/desk-v1/AUTONOMY_GOAL_THESIS_COMPLETE.md` | Autonomy gap close — Goal + Thesis store (WS1–WS6) | review_required | OK | `02419888e172` |
-| `docs/advisory/desk-v1/CC_V3_MATURITY_CRITIQUE_2026-08-12.md` | Command Center v3 — Maturity Critique & Polish (2026-08-12) | review_required | MISSING HEADER | `71524c45cc24` |
-| `docs/advisory/desk-v1/DATA_INTEGRITY_AUDIT_2026-08-12.md` | Advisory Desk & CIO Desk — Data Integrity Audit (2026-08-12) | review_required | MISSING HEADER | `f96603b99998` |
-| `docs/advisory/desk-v1/DEEPSEEK_USAGE_2026-08-12.md` | DeepSeek usage + prompt curation — 2026-08-12 | review_required | MISSING HEADER | `09221168ad46` |
-| `docs/advisory/desk-v1/HEALTH_AGENT_FIXES_2026-08-12.md` | Health Agent Fixes — release manifest + Finnhub 401 (2026-08-12) | review_required | MISSING HEADER | `641b9841cfc1` |
+| `docs/advisory/desk-v1/CC_V3_MATURITY_CRITIQUE_2026-08-12.md` | Command Center v3 — Maturity Critique & Polish (2026-08-12) | review_required | OK | `33737e4d63be` |
+| `docs/advisory/desk-v1/DATA_INTEGRITY_AUDIT_2026-08-12.md` | Advisory Desk & CIO Desk — Data Integrity Audit (2026-08-12) | review_required | OK | `f170cb5ce124` |
+| `docs/advisory/desk-v1/DEEPSEEK_USAGE_2026-08-12.md` | DeepSeek usage + prompt curation — 2026-08-12 | review_required | OK | `7a40280f1cef` |
+| `docs/advisory/desk-v1/HEALTH_AGENT_FIXES_2026-08-12.md` | Health Agent Fixes — release manifest + Finnhub 401 (2026-08-12) | review_required | OK | `9131bb033016` |
 | `docs/advisory/desk-v1/LLM_SURFACE_FIX_2026-08-12.md` | LLM Surface Fix — Flash/Pro opinions now reach `/v3/advisory` (2026-08-12) | review_required | OK | `ee7e255e5e2c` |
-| `docs/advisory/desk-v1/MATURITY_BASELINE_2026-08-12.md` | Advisory Desk maturity baseline — 2026-08-12 | review_required | MISSING HEADER | `e4a9499096a0` |
+| `docs/advisory/desk-v1/MATURITY_BASELINE_2026-08-12.md` | Advisory Desk maturity baseline — 2026-08-12 | review_required | OK | `1cc58a6a2d77` |
 | `docs/advisory/desk-v1/P0_BRIDGE_OUTCOME_2026-08-11.md` | P0 Outcome — Governed Bridge Path for Advisory Desk | review_required | OK | `e116e5a054d1` |
 | `docs/advisory/desk-v1/PHASE1_DATA_TRUTH_OUTCOME_2026-08-11.md` | Phase 1 Outcome — Data Truth & Multi-Agent Evidence | review_required | OK | `c6aec6c7f152` |
 | `docs/advisory/desk-v1/PHASE2_QUALITY_CACHE_OUTCOME_2026-08-11.md` | Phase 2 Outcome — Evidence Quality, Cache, Pro Synthesis | review_required | OK | `3f75251d9c87` |
@@ -209,159 +209,159 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/advisory/desk-v1/RUNTIME_TRUTH_2026-08-11.md` | Runtime truth — host verification (P0 ops) | delete_candidate_duplicate | OK | `b3ebf94fe56b` |
 | `docs/advisory/desk-v1/SITUATION_CATALOG_V1_FREEZE.md` | Situation Catalog v1 — FREEZE | review_required | OK | `4de970fb9ce6` |
 | `docs/advisory/desk-v1/SURFACE_REPORT_AND_ACTORS_2026-08-12.md` | Advisory Desk → Operators: Wiring, Telegram, and the MS-Style Report | review_required | OK | `86de44c270fa` |
-| `docs/agent-intelligence/ADR/001-context-envelope.md` | ADR-001 — ContextEnvelope as canonical agent context | review_required | MISSING HEADER | `224d8b85f3d8` |
-| `docs/agent-intelligence/ADR/002-observability-first.md` | ADR-002 — Observability before memory activation | review_required | MISSING HEADER | `580835fb406f` |
-| `docs/agent-intelligence/ADR/003-mcp-read-only-gateway.md` | ADR-003 — Internal read-only MCP gateway | review_required | MISSING HEADER | `68e5119b5346` |
-| `docs/agent-intelligence/ADR/004-mem0-over-letta-for-memory-adapter.md` | ADR-004 — Mem0 (or local test double) as the memory adapter | review_required | MISSING HEADER | `fbcf80b1a95d` |
-| `docs/agent-intelligence/ADR/005-langgraph-conditional-not-platform-rewrite.md` | ADR-005 — LangGraph conditional, not a platform rewrite | review_required | MISSING HEADER | `8c1f61318bd7` |
-| `docs/agent-intelligence/ADR/006-memory-never-financial-truth.md` | ADR-006 — Memory never financial truth | review_required | MISSING HEADER | `acc2987883b8` |
-| `docs/agent-intelligence/ADR/007-durable-jsonl-memory-backend.md` | ADR-007 — Durable JSONL as the Program 3 memory backend | review_required | MISSING HEADER | `ea1170a8ca9a` |
-| `docs/agent-intelligence/AGENT_INTELLIGENCE_FOUNDATION_ARCHITECTURE.md` | Agent Intelligence Foundation — Architecture | review_required | MISSING HEADER | `08fcdd860ada` |
-| `docs/agent-intelligence/AGENT_RUN_TRACE_SPEC.md` | AgentRunTrace@v1 — Specification | review_required | MISSING HEADER | `24ef0e559112` |
-| `docs/agent-intelligence/AIF_FINANCIAL_SENSES_INTEGRATION.md` | AIF ↔ Financial Senses — governed read-only integration | review_required | MISSING HEADER | `b76f383730fa` |
-| `docs/agent-intelligence/AUTONOMOUS_OFFICE_INITIATIVE.md` | Autonomous Office Initiative — Phase 6 | review_required | MISSING HEADER | `761cea838ad9` |
-| `docs/agent-intelligence/CONTEXT_ENVELOPE_SPEC.md` | ContextEnvelope@v1 — Specification | review_required | MISSING HEADER | `d07a6361c14e` |
-| `docs/agent-intelligence/DEPLOYMENT_RUNBOOK.md` | Deployment Runbook — Controlled Read-Only Activation (Phase 12) | review_required | MISSING HEADER | `4fa70417a753` |
-| `docs/agent-intelligence/EVALUATION_AND_SHADOW_TEST_PLAN.md` | Evaluation & Shadow Test Plan — Agent Intelligence Foundation | review_required | MISSING HEADER | `031a03480b5f` |
-| `docs/agent-intelligence/IMPLEMENTATION_LOG.md` | Agent Intelligence Foundation — Implementation Log | review_required | MISSING HEADER | `1e5a97a51135` |
-| `docs/agent-intelligence/MCP_READ_ONLY_GATEWAY.md` | MCP Read-Only Gateway | review_required | MISSING HEADER | `60e3034d82ab` |
-| `docs/agent-intelligence/MCP_SECURITY_MODEL.md` | MCP Security Model | review_required | MISSING HEADER | `43dbfcd42217` |
-| `docs/agent-intelligence/MEMORY_ADMISSION_POLICY.md` | Memory Admission Policy | review_required | MISSING HEADER | `cc5280e92d14` |
-| `docs/agent-intelligence/MEMORY_GOVERNANCE_AND_MEM0.md` | Memory Governance & Mem0 Shadow Pilot | review_required | MISSING HEADER | `3a870175a64c` |
+| `docs/agent-intelligence/ADR/001-context-envelope.md` | ADR-001 — ContextEnvelope as canonical agent context | review_required | OK | `e87d3b556fef` |
+| `docs/agent-intelligence/ADR/002-observability-first.md` | ADR-002 — Observability before memory activation | review_required | OK | `b80738ae8a61` |
+| `docs/agent-intelligence/ADR/003-mcp-read-only-gateway.md` | ADR-003 — Internal read-only MCP gateway | review_required | OK | `c1f420a08a5f` |
+| `docs/agent-intelligence/ADR/004-mem0-over-letta-for-memory-adapter.md` | ADR-004 — Mem0 (or local test double) as the memory adapter | review_required | OK | `0ebdcb4010fc` |
+| `docs/agent-intelligence/ADR/005-langgraph-conditional-not-platform-rewrite.md` | ADR-005 — LangGraph conditional, not a platform rewrite | review_required | OK | `4bed7f654bc6` |
+| `docs/agent-intelligence/ADR/006-memory-never-financial-truth.md` | ADR-006 — Memory never financial truth | review_required | OK | `b371ba4d32eb` |
+| `docs/agent-intelligence/ADR/007-durable-jsonl-memory-backend.md` | ADR-007 — Durable JSONL as the Program 3 memory backend | review_required | OK | `ed30289def99` |
+| `docs/agent-intelligence/AGENT_INTELLIGENCE_FOUNDATION_ARCHITECTURE.md` | Agent Intelligence Foundation — Architecture | review_required | OK | `9dfd1831f9da` |
+| `docs/agent-intelligence/AGENT_RUN_TRACE_SPEC.md` | AgentRunTrace@v1 — Specification | review_required | OK | `a7949d35bcae` |
+| `docs/agent-intelligence/AIF_FINANCIAL_SENSES_INTEGRATION.md` | AIF ↔ Financial Senses — governed read-only integration | review_required | OK | `6aeb36e9ef7e` |
+| `docs/agent-intelligence/AUTONOMOUS_OFFICE_INITIATIVE.md` | Autonomous Office Initiative — Phase 6 | review_required | OK | `92e58843ad7c` |
+| `docs/agent-intelligence/CONTEXT_ENVELOPE_SPEC.md` | ContextEnvelope@v1 — Specification | review_required | OK | `df6a100c0292` |
+| `docs/agent-intelligence/DEPLOYMENT_RUNBOOK.md` | Deployment Runbook — Controlled Read-Only Activation (Phase 12) | review_required | OK | `2581689e8153` |
+| `docs/agent-intelligence/EVALUATION_AND_SHADOW_TEST_PLAN.md` | Evaluation & Shadow Test Plan — Agent Intelligence Foundation | review_required | OK | `61d88d4a755f` |
+| `docs/agent-intelligence/IMPLEMENTATION_LOG.md` | Agent Intelligence Foundation — Implementation Log | review_required | OK | `ee11c3133faf` |
+| `docs/agent-intelligence/MCP_READ_ONLY_GATEWAY.md` | MCP Read-Only Gateway | review_required | OK | `46cc149550ab` |
+| `docs/agent-intelligence/MCP_SECURITY_MODEL.md` | MCP Security Model | review_required | OK | `c7fd61a38975` |
+| `docs/agent-intelligence/MEMORY_ADMISSION_POLICY.md` | Memory Admission Policy | review_required | OK | `96cd39f53501` |
+| `docs/agent-intelligence/MEMORY_GOVERNANCE_AND_MEM0.md` | Memory Governance & Mem0 Shadow Pilot | review_required | OK | `aa729c90fa37` |
 | `docs/agent-intelligence/ORCHESTRATION_AND_LANGGRAPH_DECISION.md` | Orchestration & LangGraph Decision | review_required | OK | `cc2343bb87af` |
-| `docs/agent-intelligence/PHASE_ACCEPTANCE.md` | Agent Intelligence Foundation — Phase Acceptance | review_required | MISSING HEADER | `a8b5f868ab8f` |
-| `docs/agent-intelligence/PLAN_crontab_proj_migration.md` | Plan: Crontab `$PROJ` / `$PY` Runtime Migration (deferred) | review_required | MISSING HEADER | `af40a95c1bc5` |
-| `docs/agent-intelligence/PRIVACY_AND_REDACTION.md` | Privacy & Redaction | review_required | MISSING HEADER | `1460635b63be` |
-| `docs/agent-intelligence/README.md` | Agent Intelligence Foundation | review_required | MISSING HEADER | `8aa47b6c34c8` |
-| `docs/agent-intelligence/ROLLBACK_RUNBOOK.md` | Rollback Runbook — Controlled Read-Only Activation (Phase 12) | review_required | MISSING HEADER | `71bd7986cbbb` |
-| `docs/agent-intelligence/THREAT_MODEL.md` | Threat Model | review_required | MISSING HEADER | `1b15e0cd3f60` |
-| `docs/agent_runtime/AGENT_HANDBOOK.md` | Trade AI Agent Handbook | review_required | MISSING HEADER | `fb781ecfcac0` |
-| `docs/agent_runtime/AGENT_IDENTITY_NAMESPACE_RECOMMENDATION_v1.md` | Agent Identity Namespace Recommendation v1 | review_required | MISSING HEADER | `e48ba955db9c` |
-| `docs/agent_runtime/AGENT_MATURITY_OBSERVABILITY_BASELINE_v1.md` | Agent Maturity Observability Baseline v1 | review_required | MISSING HEADER | `020ed47c5a0b` |
-| `docs/agent_runtime/AGENT_MATURITY_OBSERVABILITY_IMPLEMENTATION_v1.md` | Agent Maturity Observability Implementation v1 | review_required | MISSING HEADER | `c0a2ba48573e` |
-| `docs/agent_runtime/AGENT_MATURITY_OBSERVABILITY_ROLLBACK_v1.md` | Agent Maturity Observability Rollback v1 | review_required | MISSING HEADER | `f8ab73d5c92a` |
+| `docs/agent-intelligence/PHASE_ACCEPTANCE.md` | Agent Intelligence Foundation — Phase Acceptance | review_required | OK | `89a482ee7af2` |
+| `docs/agent-intelligence/PLAN_crontab_proj_migration.md` | Plan: Crontab `$PROJ` / `$PY` Runtime Migration (deferred) | review_required | OK | `bb0c7247b040` |
+| `docs/agent-intelligence/PRIVACY_AND_REDACTION.md` | Privacy & Redaction | review_required | OK | `878e5eeaedee` |
+| `docs/agent-intelligence/README.md` | Agent Intelligence Foundation | review_required | OK | `6daf3a348876` |
+| `docs/agent-intelligence/ROLLBACK_RUNBOOK.md` | Rollback Runbook — Controlled Read-Only Activation (Phase 12) | review_required | OK | `4b8f6b3ca25e` |
+| `docs/agent-intelligence/THREAT_MODEL.md` | Threat Model | review_required | OK | `81cd524ca15f` |
+| `docs/agent_runtime/AGENT_HANDBOOK.md` | Trade AI Agent Handbook | review_required | OK | `89d0909bdf3b` |
+| `docs/agent_runtime/AGENT_IDENTITY_NAMESPACE_RECOMMENDATION_v1.md` | Agent Identity Namespace Recommendation v1 | review_required | OK | `96dd49ecee7f` |
+| `docs/agent_runtime/AGENT_MATURITY_OBSERVABILITY_BASELINE_v1.md` | Agent Maturity Observability Baseline v1 | review_required | OK | `7ef713124cc5` |
+| `docs/agent_runtime/AGENT_MATURITY_OBSERVABILITY_IMPLEMENTATION_v1.md` | Agent Maturity Observability Implementation v1 | review_required | OK | `60982f92dee3` |
+| `docs/agent_runtime/AGENT_MATURITY_OBSERVABILITY_ROLLBACK_v1.md` | Agent Maturity Observability Rollback v1 | review_required | OK | `3f3c32f12d8d` |
 | `docs/agent_runtime/AGENT_MATURITY_OUTCOME_COMPLETENESS_DRY_RUN_v1.md` | Agent Maturity Outcome Completeness Dry Run v1 | review_required | OK | `8916f7ba78d0` |
-| `docs/agent_runtime/AGENT_PERMISSION_MATRIX.md` | Agent Permission and Authority Matrix | review_required | MISSING HEADER | `56fa31e7c3d3` |
-| `docs/agent_runtime/FLEET_LIFECYCLE_AND_PROMOTION.md` | Agent-Runtime Fleet — Lifecycle & Promotion (why only 4 of 16 are SHADOW) | review_required | MISSING HEADER | `fba12f4fd4ad` |
-| `docs/agent_runtime/FLEET_STATUS_2026-07-30.md` | Agent-Runtime Fleet Status — 2026-07-30 | review_required | MISSING HEADER | `289e35d40d01` |
-| `docs/agent_runtime/LANE_D_SHADOW_AGENTS.md` | Lane D — Autonomous SHADOW Agents (default-disabled, prepare-only) | review_required | MISSING HEADER | `3ee0f359838d` |
-| `docs/agent_runtime/PERSISTENCE_RUNBOOK.md` | Agent-runtime persistence slice — runbook | review_required | MISSING HEADER | `febaa6a739c6` |
+| `docs/agent_runtime/AGENT_PERMISSION_MATRIX.md` | Agent Permission and Authority Matrix | review_required | OK | `67e0d6bab4de` |
+| `docs/agent_runtime/FLEET_LIFECYCLE_AND_PROMOTION.md` | Agent-Runtime Fleet — Lifecycle & Promotion (why only 4 of 16 are SHADOW) | review_required | OK | `b97dcd80edb5` |
+| `docs/agent_runtime/FLEET_STATUS_2026-07-30.md` | Agent-Runtime Fleet Status — 2026-07-30 | review_required | OK | `5406ce9480e9` |
+| `docs/agent_runtime/LANE_D_SHADOW_AGENTS.md` | Lane D — Autonomous SHADOW Agents (default-disabled, prepare-only) | review_required | OK | `c93d3645a834` |
+| `docs/agent_runtime/PERSISTENCE_RUNBOOK.md` | Agent-runtime persistence slice — runbook | review_required | OK | `0d0c835b1a18` |
 | `docs/agent_runtime/SHADOW_ACTIVATION_RUNBOOK.md` | Wave-1 SHADOW Agent-Runtime Activation Runbook | review_required | OK | `504efe9930a2` |
-| `docs/alerts/PHASE68A_TELEGRAM_ALERT_TAXONOMY.md` | Phase 68A — Telegram Alert Taxonomy | review_required | MISSING HEADER | `4502c285cdbe` |
-| `docs/alerts/PHASE68B_ALERT_DEDUPE_DESIGN.md` | Phase 68B — Alert Dedupe Design | review_required | MISSING HEADER | `2fc695b3bf68` |
-| `docs/alerts/PHASE68C_FALSE_FIXED_VERIFICATION_GATE.md` | Phase 68C — False-Fixed Verification Gate | review_required | MISSING HEADER | `186622ae45c8` |
-| `docs/alerts/PHASE68D_ALERT_TO_HERMES_BACKLOG_DESIGN.md` | Phase 68D — Alert-to-Hermes Backlog Design | review_required | MISSING HEADER | `f2087998dd9b` |
+| `docs/alerts/PHASE68A_TELEGRAM_ALERT_TAXONOMY.md` | Phase 68A — Telegram Alert Taxonomy | review_required | OK | `35de18d52f2e` |
+| `docs/alerts/PHASE68B_ALERT_DEDUPE_DESIGN.md` | Phase 68B — Alert Dedupe Design | review_required | OK | `241e05cde594` |
+| `docs/alerts/PHASE68C_FALSE_FIXED_VERIFICATION_GATE.md` | Phase 68C — False-Fixed Verification Gate | review_required | OK | `7722b0a39795` |
+| `docs/alerts/PHASE68D_ALERT_TO_HERMES_BACKLOG_DESIGN.md` | Phase 68D — Alert-to-Hermes Backlog Design | review_required | OK | `761874de8ee9` |
 | `docs/alerts/PHASE68E_ALERT_DEDUPE_DRYRUN_REPORT.md` | Phase 68E — Alert Dedupe Dry-Run Report | review_required | OK | `d0286b9c9fc2` |
 | `docs/architecture/AGENTIC_FINANCIAL_SYSTEM_ARCHITECTURE_v2_0.md` | AGENTIC FINANCIAL SYSTEM & COGNITIVE ARCHITECTURE v2.0 | review_required | OK | `4d1b395eee0f` |
 | `docs/architecture/AGENTIC_LAB_EXECUTION_PACKET_2026-07-24.md` | Agentic MVL Disposable LAB Execution Checklist — 2026-07-24 | review_required | OK | `77b3c7bfb04c` |
-| `docs/architecture/AGENTIC_LAB_PROVISIONING_BLOCKER_2026-07-24.md` | Agentic LAB Provisioning Checkpoint — 2026-07-24 | review_required | MISSING HEADER | `8f097f6201c4` |
-| `docs/architecture/AGENTIC_MVL_BACKLOG_2026-07-23.md` | Trade AI Agentic MVL Backlog — 2026-07-23 | review_required | MISSING HEADER | `59a003ffd4cc` |
+| `docs/architecture/AGENTIC_LAB_PROVISIONING_BLOCKER_2026-07-24.md` | Agentic LAB Provisioning Checkpoint — 2026-07-24 | review_required | OK | `90dd25e9095c` |
+| `docs/architecture/AGENTIC_MVL_BACKLOG_2026-07-23.md` | Trade AI Agentic MVL Backlog — 2026-07-23 | review_required | OK | `52e841026679` |
 | `docs/architecture/AGENTIC_MVL_DILIGENCE_AND_TODAY_PLAN_2026-07-24.md` | Trade AI Agentic MVL — Read Diligence and Today Plan | review_required | OK | `72e9b64a657e` |
-| `docs/architecture/AGENTIC_MVL_REMAINING_DELIVERABLES_2026-07-24.md` | Agentic MVL Remaining Deliverables — 2026-07-24 | review_required | MISSING HEADER | `522cbf4ee08e` |
+| `docs/architecture/AGENTIC_MVL_REMAINING_DELIVERABLES_2026-07-24.md` | Agentic MVL Remaining Deliverables — 2026-07-24 | review_required | OK | `26268d5de74a` |
 | `docs/architecture/AGENTIC_RUNTIME_BASELINE_2026-07-23.md` | Trade AI Agentic Runtime Baseline — 2026-07-23 | review_required | OK | `26a644a55edf` |
-| `docs/architecture/AGENT_MATURITY_COMMAND_CENTER_IMPLEMENTATION_PLAN_2026-07-25.md` | Agent Maturity and Command Center Implementation Plan — 2026-07-25 | review_required | MISSING HEADER | `e3a198ead2c7` |
+| `docs/architecture/AGENT_MATURITY_COMMAND_CENTER_IMPLEMENTATION_PLAN_2026-07-25.md` | Agent Maturity and Command Center Implementation Plan — 2026-07-25 | review_required | OK | `4a66cdff27f6` |
 | `docs/architecture/AGENT_TOOL_PERMISSION_MATRIX_2026-07-23.md` | Trade AI Agent Tool Permission Matrix — 2026-07-23 | review_required | OK | `f40d7f04bd37` |
-| `docs/architecture/ATM_BROKER_ACCOUNT_AUTOMATION_2026_06_05.md` | ATM → Broker/Account Automation Console (Phase 1) — 2026-06-05 | review_required | MISSING HEADER | `63e83c629c7e` |
-| `docs/architecture/ATM_BROKER_ACCOUNT_REFACTOR_DUE_DILIGENCE.md` | ATM Controls → Broker/Account Automation — Due Diligence (Phase 1) | review_required | MISSING HEADER | `32d0d6797fa2` |
-| `docs/architecture/ATM_EXECUTOR_AUTOMATION_MODE_WIRING_2026_06_05.md` | ATM Executor ← automation_mode Wiring (2026-06-05) | review_required | MISSING HEADER | `c4ab64923758` |
-| `docs/architecture/COST_BASIS_FEED_CORRECTION_2026_06_05.md` | Cost Basis Feed Correction (2026-06-05) | review_required | MISSING HEADER | `e3d324ee3789` |
+| `docs/architecture/ATM_BROKER_ACCOUNT_AUTOMATION_2026_06_05.md` | ATM → Broker/Account Automation Console (Phase 1) — 2026-06-05 | review_required | OK | `4cc7fdd232c2` |
+| `docs/architecture/ATM_BROKER_ACCOUNT_REFACTOR_DUE_DILIGENCE.md` | ATM Controls → Broker/Account Automation — Due Diligence (Phase 1) | review_required | OK | `34549ef247f4` |
+| `docs/architecture/ATM_EXECUTOR_AUTOMATION_MODE_WIRING_2026_06_05.md` | ATM Executor ← automation_mode Wiring (2026-06-05) | review_required | OK | `62abcc4e67d2` |
+| `docs/architecture/COST_BASIS_FEED_CORRECTION_2026_06_05.md` | Cost Basis Feed Correction (2026-06-05) | review_required | OK | `971080919db9` |
 | `docs/architecture/DECISION_PACKET_OPERATOR_CARD_AND_RTH_REFRESH.md` | Decision Packet Operator Card + RTH Few-Hour Refresh | review_required | OK | `3e3ba446c94f` |
-| `docs/architecture/DECISION_PROVENANCE_MATRIX.md` | Decision provenance matrix — 2026-08-28 | review_required | MISSING HEADER | `8b5cc1aa1fba` |
-| `docs/architecture/DEFENSE_DESK_V1.md` | Defense Desk v1 — Sector Momentum · Posture · (Hedge/Short foundations) — 2026-07-17 | review_required | MISSING HEADER | `ca2cb221dd74` |
-| `docs/architecture/DEFENSE_DESK_V10.md` | Defense Desk v10 — Cross-Desk Consistency & Stop Re-Entry Watch (2026-08-06) | review_required | MISSING HEADER | `d0bde0424220` |
-| `docs/architecture/DEFENSE_DESK_V2.md` | Defense Desk v2 — Whole Market · Industries · The Rotation Picture (2026-07-18) | review_required | MISSING HEADER | `1964cbb52c99` |
-| `docs/architecture/DEFENSE_DESK_V3.md` | Defense Desk v3 — Recommendations First · W/M/Q Rotation · Dashboard (2026-07-18) | review_required | MISSING HEADER | `1ec9d9bd0808` |
-| `docs/architecture/DEFENSE_DESK_V4.md` | Defense Desk v4 — See the Core · The Round-Trip Ledger · Cards That Show the Trade (2026-07-18) | review_required | MISSING HEADER | `b4c62b48ee62` |
-| `docs/architecture/DEFENSE_DESK_V5.md` | Defense Desk v5 — Dynamic Trims · Sell Tickets · Exit Ladders · The Rotation Plan (2026-07-18) | review_required | MISSING HEADER | `d4f0e8ba84df` |
-| `docs/architecture/DEFENSE_DESK_V6.md` | Defense Desk v6 — The Core Registry · Funded Rotation Pairs · Ladders You Can Read (2026-07-18) | review_required | MISSING HEADER | `cf8d21ee25ab` |
-| `docs/architecture/DEFENSE_DESK_V7.md` | Defense Desk v7 — Execute Through the Rail · Validate the Chain · Watch Every Play (2026-07-18) | review_required | MISSING HEADER | `59b9b29c4083` |
-| `docs/architecture/DEFENSE_DESK_V8.md` | Defense Desk v8 — Real Accounts · Quiet Alerts · The Oversight Stack (2026-07-18) | review_required | MISSING HEADER | `ede3ddaa5ebd` |
-| `docs/architecture/DEFENSE_DESK_V9.md` | Defense Desk v9 — The Adjudication Layer (2026-07-18 evening) | review_required | MISSING HEADER | `9bd2a549fa54` |
-| `docs/architecture/EXECUTION_QUALITY.md` | Replay-Aware Execution Quality (design) | review_required | MISSING HEADER | `f1609ca05579` |
-| `docs/architecture/GAIN_GUARDIAN.md` | Gain Guardian — Holdings Exit Intelligence (Live Book, Advisory-Only) | review_required | MISSING HEADER | `3b417fc19e82` |
+| `docs/architecture/DECISION_PROVENANCE_MATRIX.md` | Decision provenance matrix — 2026-08-28 | review_required | OK | `56592a4af733` |
+| `docs/architecture/DEFENSE_DESK_V1.md` | Defense Desk v1 — Sector Momentum · Posture · (Hedge/Short foundations) — 2026-07-17 | review_required | OK | `2d7224586b88` |
+| `docs/architecture/DEFENSE_DESK_V10.md` | Defense Desk v10 — Cross-Desk Consistency & Stop Re-Entry Watch (2026-08-06) | review_required | OK | `0bb10a0bd93d` |
+| `docs/architecture/DEFENSE_DESK_V2.md` | Defense Desk v2 — Whole Market · Industries · The Rotation Picture (2026-07-18) | review_required | OK | `420f9c7484ef` |
+| `docs/architecture/DEFENSE_DESK_V3.md` | Defense Desk v3 — Recommendations First · W/M/Q Rotation · Dashboard (2026-07-18) | review_required | OK | `4c7d690afb8f` |
+| `docs/architecture/DEFENSE_DESK_V4.md` | Defense Desk v4 — See the Core · The Round-Trip Ledger · Cards That Show the Trade (2026-07-18) | review_required | OK | `2aecd6adf906` |
+| `docs/architecture/DEFENSE_DESK_V5.md` | Defense Desk v5 — Dynamic Trims · Sell Tickets · Exit Ladders · The Rotation Plan (2026-07-18) | review_required | OK | `a3d37b4749b4` |
+| `docs/architecture/DEFENSE_DESK_V6.md` | Defense Desk v6 — The Core Registry · Funded Rotation Pairs · Ladders You Can Read (2026-07-18) | review_required | OK | `35d9ea37fb30` |
+| `docs/architecture/DEFENSE_DESK_V7.md` | Defense Desk v7 — Execute Through the Rail · Validate the Chain · Watch Every Play (2026-07-18) | review_required | OK | `41e88f593ca8` |
+| `docs/architecture/DEFENSE_DESK_V8.md` | Defense Desk v8 — Real Accounts · Quiet Alerts · The Oversight Stack (2026-07-18) | review_required | OK | `a491bff63084` |
+| `docs/architecture/DEFENSE_DESK_V9.md` | Defense Desk v9 — The Adjudication Layer (2026-07-18 evening) | review_required | OK | `cadd848574d7` |
+| `docs/architecture/EXECUTION_QUALITY.md` | Replay-Aware Execution Quality (design) | review_required | OK | `685082a5cd95` |
+| `docs/architecture/GAIN_GUARDIAN.md` | Gain Guardian — Holdings Exit Intelligence (Live Book, Advisory-Only) | review_required | OK | `1d3bec366edc` |
 | `docs/architecture/GOOGLE_NOTES_BITEMPORAL_DDL_ARCHITECT_RECONCILIATION_2026-08-24.md` | Google Notes bitemporal DDL — architect reconciliation | review_required | OK | `8d29266fc3e6` |
 | `docs/architecture/HERMES_PERSISTENT_TICKER_INTELLIGENCE_ARCHITECTURE_2026-08-23.md` | Hermes Persistent Ticker Intelligence Architecture | review_required | OK | `3a4320625b1e` |
-| `docs/architecture/HOME_COMMAND_BRAIN_V2.md` | Home v2 — The Command Brain (2026-07-17) | review_required | MISSING HEADER | `1bd3ac2f2d23` |
+| `docs/architecture/HOME_COMMAND_BRAIN_V2.md` | Home v2 — The Command Brain (2026-07-17) | review_required | OK | `a26f2380b797` |
 | `docs/architecture/HYBRID_EVIDENCE_REFRESH_AND_HERMES_BRIDGE_2026-08-23.md` | Hybrid Evidence Refresh and Hermes Bridge | review_required | OK | `9c55a507faab` |
 | `docs/architecture/M2_PRODUCTION_SHADOW_MIGRATION_DESIGN_2026-08-24.md` | M2 production shadow migration — DESIGN ONLY | review_required | OK | `18aa33439911` |
 | `docs/architecture/OPENCLAW_HERMES_UPGRADE_ROLLBACK_PLAN_2026-07-23.md` | OpenClaw and Hermes Shadow Upgrade / Rollback Plan — 2026-07-23 | review_required | OK | `9fd429af3119` |
-| `docs/architecture/PHASE199A_PREFLIGHT_RUNTIME_CONTROL_PLANE_AUDIT.md` | Phase 199A — Preflight: Runtime Control Plane Audit (2026-06-04) | review_required | MISSING HEADER | `8294a9848a60` |
-| `docs/architecture/PHASE199B_RUNTIME_JOB_INVENTORY.md` | Phase 199B — Runtime Job Inventory | review_required | MISSING HEADER | `b3ccbdf64f24` |
-| `docs/architecture/PHASE199C_RUNTIME_PIPELINE_OWNERSHIP_MODEL.md` | Phase 199C — Runtime Pipeline Ownership Model (target architecture) | review_required | MISSING HEADER | `8f68ff00cd6d` |
-| `docs/architecture/PHASE199D_CRON_COMPRESSION_MIGRATION_PLAN.md` | Phase 199D — Cron Compression & Migration Plan | review_required | MISSING HEADER | `abb385ef5da1` |
-| `docs/architecture/PHASE199E_PIPELINE_CONTROLLER_SKELETONS.md` | Phase 199E — Pipeline Controller Skeletons (DRY-RUN, no schedules wired) | review_required | MISSING HEADER | `1b38832be1f8` |
-| `docs/architecture/PHASE199F_COMMAND_CENTER_V3_QUEUE_CONTROL_TOWER_PLAN.md` | Phase 199F — Command Center v3 Queue Control Tower Enhancement Plan | review_required | MISSING HEADER | `490a24aa19cd` |
-| `docs/architecture/PHASE199G_RUNTIME_API_FOR_V3_REPORT.md` | Phase 199G — Read-only Runtime Control Plane API for v3 | review_required | MISSING HEADER | `dddf6fa11fbb` |
-| `docs/architecture/PHASE199H_V3_QUEUE_CONTROL_TOWER_IMPLEMENTATION.md` | Phase 199H — v3 Runtime Queue Control Tower (Control Plane) Implementation | review_required | MISSING HEADER | `7de17fe8ea2b` |
-| `docs/architecture/PHASE199I_STATE_OF_REPO_SNAPSHOT_GENERATOR.md` | Phase 199I — State-of-Repo Snapshot Generator | review_required | MISSING HEADER | `50e981a86687` |
-| `docs/architecture/PHASE199J_RUNTIME_CONTROL_PLANE_VALIDATION.md` | Phase 199J — Runtime Control Plane Validation | review_required | MISSING HEADER | `42f4e5b92d9a` |
-| `docs/architecture/PHASE200A_GOVERNANCE_CRON_MIGRATION_PREFLIGHT.md` | Phase 200A — Governance Cron Migration Pilot: Preflight | review_required | MISSING HEADER | `3e74e65e6759` |
-| `docs/architecture/PHASE200B_GOVERNANCE_JOB_SELECTION.md` | Phase 200B — Governance Job Selection | review_required | MISSING HEADER | `517a685e71f7` |
-| `docs/architecture/PHASE200C_GOVERNANCE_CONTROLLER_HARDENING.md` | Phase 200C — Governance Controller Hardening | review_required | MISSING HEADER | `0553aca7f106` |
-| `docs/architecture/PHASE200D_GOVERNANCE_CONTROLLER_DRYRUN_VALIDATION.md` | Phase 200D — Governance Controller Dry-Run Validation | review_required | MISSING HEADER | `74a168c795c2` |
-| `docs/architecture/PHASE200E_GOVERNANCE_PARALLEL_RUN_REPORT.md` | Phase 200E — Governance Controller Parallel Run (--apply) | review_required | MISSING HEADER | `2ef26445d35a` |
-| `docs/architecture/PHASE200F_GOVERNANCE_OUTPUT_DIFF_REPORT.md` | Phase 200F — Governance Output Diff Report | review_required | MISSING HEADER | `aa4f6b0c805d` |
-| `docs/architecture/PHASE200G_GOVERNANCE_CONTROLLER_SCHEDULE_REPORT.md` | Phase 200G — Governance Controller Schedule (legacy kept active) | review_required | MISSING HEADER | `8732cb60c4d4` |
-| `docs/architecture/PHASE200H_GOVERNANCE_SCHEDULED_CYCLE_OBSERVATION.md` | Phase 200H — Governance Scheduled-Cycle Observation | review_required | MISSING HEADER | `464ab3152fcf` |
-| `docs/architecture/PHASE200I_LEGACY_GOVERNANCE_CRON_RETIREMENT_REPORT.md` | Phase 200I — Legacy Governance Cron Retirement (comment, not delete) | review_required | MISSING HEADER | `e18ec26c5d0b` |
-| `docs/architecture/PHASE200J_V3_GOVERNANCE_PIPELINE_VISIBILITY.md` | Phase 200J — v3 Governance Pipeline Visibility | review_required | MISSING HEADER | `1917df03e2ef` |
-| `docs/architecture/PHASE201A_GOVERNANCE_AUTO_CYCLE_OBSERVATION.md` | Phase 201A — Automatic Governance Controller Cycle Observation | review_required | MISSING HEADER | `545eb2bdac06` |
-| `docs/architecture/PHASE201B_PHASE41_GOVERNANCE_TIMER_OVERLAP_INVENTORY.md` | Phase 201B — PHASE41 Governance Timer Overlap Inventory | review_required | MISSING HEADER | `a2d153b1021a` |
-| `docs/architecture/PHASE201C_GOVERNANCE_TIMER_RETIREMENT_DECISION_GATE.md` | Phase 201C — Governance Timer Retirement Decision Gate | review_required | MISSING HEADER | `2d4d83071487` |
-| `docs/architecture/PHASE201D_PHASE41_GOVERNANCE_TIMER_RETIREMENT_REPORT.md` | Phase 201D — PHASE41 Governance Timer Retirement Report | review_required | MISSING HEADER | `0bf2c3ffd92e` |
-| `docs/architecture/PHASE201E_POST_RETIREMENT_GOVERNANCE_VALIDATION.md` | Phase 201E — Post-Retirement Governance Validation | review_required | MISSING HEADER | `b30779585bef` |
-| `docs/architecture/PHASE201F_PORTFOLIO_MAINTENANCE_MIGRATION_PREFLIGHT.md` | Phase 201F — Portfolio-Maintenance Migration Preflight (design only) | review_required | MISSING HEADER | `edbbb556244d` |
-| `docs/architecture/PHASE201G_PORTFOLIO_MAINTENANCE_RISK_MODEL.md` | Phase 201G — Portfolio-Maintenance Migration Risk Model | review_required | MISSING HEADER | `c79fbb448771` |
-| `docs/architecture/PHASE201H_PORTFOLIO_MAINTENANCE_MIGRATION_PLAN.md` | Phase 201H — Portfolio-Maintenance Migration Plan (no runtime change) | review_required | MISSING HEADER | `66c788a7d99f` |
-| `docs/architecture/PHASE201I_V3_CONTROL_TOWER_POST_GOVERNANCE_STATUS.md` | Phase 201I — v3 Control Tower Post-Governance Status | review_required | MISSING HEADER | `50bf360ef19d` |
-| `docs/architecture/PHASE202A_PORTFOLIO_MAINTENANCE_PREFLIGHT.md` | Phase 202A — Portfolio-Maintenance P0-Safe Migration Preflight | review_required | MISSING HEADER | `bea7260fffd5` |
-| `docs/architecture/PHASE202B_EXCLUDED_PORTFOLIO_JOBS.md` | Phase 202B — Excluded Portfolio-Maintenance Jobs | review_required | MISSING HEADER | `042f230a9141` |
-| `docs/architecture/PHASE202B_P0_SAFE_PORTFOLIO_JOB_SELECTION.md` | Phase 202B — P0-Safe Portfolio-Maintenance Job Selection | review_required | MISSING HEADER | `5819c04f3900` |
-| `docs/architecture/PHASE202C_PORTFOLIO_CONTROLLER_HARDENING.md` | Phase 202C — Portfolio-Maintenance Controller Hardening | review_required | MISSING HEADER | `7645e7b99789` |
-| `docs/architecture/PHASE202D_PORTFOLIO_CONTROLLER_DRYRUN_VALIDATION.md` | Phase 202D — Portfolio-Maintenance Controller Dry-Run Validation | review_required | MISSING HEADER | `16a728985173` |
-| `docs/architecture/PHASE202E_PORTFOLIO_PARALLEL_APPLY_REPORT.md` | PHASE202E_PORTFOLIO_PARALLEL_APPLY_REPORT.md | review_required | MISSING HEADER | `e741d6f7a388` |
-| `docs/architecture/PHASE202F_PORTFOLIO_OUTPUT_DIFF_REPORT.md` | PHASE202F_PORTFOLIO_OUTPUT_DIFF_REPORT.md | review_required | MISSING HEADER | `76099760a39f` |
-| `docs/architecture/PHASE202G_CADENCE_AWARE_PORTFOLIO_CONTROLLER_REDESIGN.md` | Phase 202G — Cadence-Aware Portfolio Controller Redesign (Option B) | review_required | MISSING HEADER | `f701213c0820` |
-| `docs/architecture/PHASE202H_CADENCE_DRYRUN_VALIDATION.md` | Phase 202H — Cadence-Aware Dry-Run Validation | review_required | MISSING HEADER | `72e82f4f50a1` |
-| `docs/architecture/PHASE203A_V3_EMPTY_SCANNER_SYMPTOM_SNAPSHOT.md` | Phase 203A — v3 Empty Scanner Symptom Snapshot | review_required | MISSING HEADER | `174fd0f789a7` |
-| `docs/architecture/PHASE203B_SCANNER_RUNTIME_STATUS_AUDIT.md` | Phase 203B — Scanner Runtime Status Audit | review_required | MISSING HEADER | `4fc56a2ecea8` |
-| `docs/architecture/PHASE203C_SCANNER_SCHEDULE_DIFF_AGAINST_BACKUPS.md` | Phase 203C — Scanner Schedule Diff vs Migration Backups | archive_superseded | MISSING HEADER | `12690c8760f6` |
-| `docs/architecture/PHASE203D_TRADE_AI_API_DATA_SOURCE_AUDIT.md` | Phase 203D — trade-ai API Data Source Audit | review_required | MISSING HEADER | `9196ed5086b4` |
-| `docs/architecture/PHASE203E_FEED_FINVIZ_HEALTH_AUDIT.md` | Phase 203E — Feed & Finviz Health Audit | review_required | MISSING HEADER | `edf7bd49267c` |
-| `docs/architecture/PHASE203F_V3_TRADE_AI_FRONTEND_MAPPING_AUDIT.md` | Phase 203F — v3 trade-ai Frontend Mapping Audit | review_required | MISSING HEADER | `f395029a5b82` |
-| `docs/architecture/PHASE203G_EMPTY_SCANNER_ROOT_CAUSE_DECISION.md` | Phase 203G — Empty Scanner Root-Cause Decision | review_required | MISSING HEADER | `c3fb54d7d550` |
-| `docs/architecture/PHASE203H_EMPTY_SCANNER_FIX_REPORT.md` | Phase 203H — Empty Scanner Fix Report | review_required | MISSING HEADER | `2f019516796a` |
-| `docs/architecture/PHASE203I_EMPTY_SCANNER_FIX_VALIDATION.md` | Phase 203I — Empty Scanner Fix Validation | review_required | MISSING HEADER | `0ca320caaf28` |
-| `docs/architecture/PHASE204A_SECRETS_STATE_BACKUP_FAILURE_SNAPSHOT.md` | Phase 204A — secrets_state_backup Failure Snapshot | archive_superseded | MISSING HEADER | `d175c17ede18` |
-| `docs/architecture/PHASE204B_GOG_BACKUP_ENVIRONMENT_DIFF.md` | Phase 204B — gog Backup: Controller vs Legacy Environment Diff | archive_superseded | MISSING HEADER | `db82bc67fa59` |
-| `docs/architecture/PHASE204C_GOG_BACKUP_SAFE_REPRODUCTION.md` | Phase 204C — Safe Reproduction (no secret leak) | archive_superseded | MISSING HEADER | `3a835aa6f2e1` |
-| `docs/architecture/PHASE204D_GOG_BACKUP_MINIMAL_FIX.md` | Phase 204D — Minimal Fix for secrets_state_backup | archive_superseded | MISSING HEADER | `d878e658f9ea` |
-| `docs/architecture/PHASE204E_CADENCE_AWARE_PORTFOLIO_CONTROLLER_REDESIGN.md` | Phase 204E — Cadence-Aware Portfolio Controller (implemented) | review_required | MISSING HEADER | `3b5695c7ebf1` |
-| `docs/architecture/PHASE204H0_BACKUP_APPLY_STATE_VERIFICATION.md` | Phase 204H0 — Backup-Apply State Verification (resume from stale checkpoint) — 2026-06-07 | archive_superseded | MISSING HEADER | `e19055ed7edb` |
-| `docs/architecture/PHASE204H_BACKUP_OUTPUT_DIFF_AND_SCHEDULE_DECISION.md` | Phase 204H — Backup Output Diff & Schedule Decision | archive_superseded | MISSING HEADER | `9a6c20dfe12f` |
-| `docs/architecture/PHASE204I_BACKUP_CADENCE_SCHEDULE_REPORT.md` | Phase 204I — Backup Cadence Schedule Report | archive_superseded | MISSING HEADER | `8d1aa2d81b73` |
-| `docs/architecture/PHASE205_BACKUP_CADENCE_OBSERVATION.md` | Phase 205 — First Automatic Backup-Cadence Cycle Observation | archive_superseded | MISSING HEADER | `4bfa341bfa6e` |
-| `docs/architecture/PHASE207A_DAILY_REPORT_CADENCE_PREFLIGHT.md` | Phase 207A — Daily Report Cadence Migration: Preflight — 2026-06-07 | review_required | MISSING HEADER | `0deb32523825` |
-| `docs/architecture/PHASE207B_DAILY_REPORT_ADVISORY_DRAFT_CLASSIFICATION.md` | Phase 207B — Daily Report Advisory-Draft Classification — 2026-06-07 | review_required | MISSING HEADER | `d9b7fe39acb7` |
-| `docs/architecture/PHASE207C_DAILY_CADENCE_CONTROLLER_HARDENING.md` | Phase 207C — Daily Cadence Controller Hardening — 2026-06-07 | review_required | MISSING HEADER | `9ea24c1a82c0` |
-| `docs/architecture/PHASE207D_DAILY_CADENCE_DRYRUN_VALIDATION.md` | Phase 207D — Daily Cadence Dry-Run Validation — 2026-06-07 | review_required | MISSING HEADER | `12d21a0cbf86` |
-| `docs/architecture/PHASE207E_DAILY_CADENCE_PARALLEL_APPLY_REPORT.md` | Phase 207E — Daily Cadence Parallel Apply Report — 2026-06-07 | review_required | MISSING HEADER | `3275ec0eda10` |
-| `docs/architecture/PHASE207F_DAILY_OUTPUT_DIFF_REPORT.md` | Phase 207F — Daily Output Diff Report — 2026-06-07 | review_required | MISSING HEADER | `dfc28ccb6736` |
-| `docs/architecture/PHASE207G_DAILY_CADENCE_SCHEDULE_REPORT.md` | Phase 207G — Daily Cadence Schedule Report — 2026-06-07 | review_required | MISSING HEADER | `e1fd4e45e1f5` |
-| `docs/architecture/PHASE207H_DAILY_SCHEDULED_CYCLE_OBSERVATION.md` | Phase 207H — Daily Scheduled-Equivalent Cycle Observation — 2026-06-07 | review_required | MISSING HEADER | `d89c8e2af194` |
-| `docs/architecture/PHASE207I_LEGACY_DAILY_REPORT_RETIREMENT_REPORT.md` | Phase 207I — Legacy Daily Report Retirement Decision — 2026-06-07 | review_required | MISSING HEADER | `49b280576895` |
-| `docs/architecture/PHASE207J_V3_DAILY_CADENCE_VISIBILITY.md` | Phase 207J — v3 Daily Cadence Visibility — 2026-06-07 | review_required | MISSING HEADER | `e6ca28fc1bde` |
-| `docs/architecture/PHASE208A_WEEKLY_REPORT_CADENCE_PREFLIGHT_CLASSIFY_HARDEN.md` | Phase 208A — Weekly Report Cadence: Preflight + Classification + Harden + Dry-Run — 2026-06-07 | review_required | MISSING HEADER | `4e1807433b27` |
-| `docs/architecture/PHASE208B_WEEKLY_CADENCE_APPLY_DIFF_SCHEDULE.md` | Phase 208B — Weekly Cadence Apply + Diff + Schedule — 2026-06-07 | review_required | MISSING HEADER | `9ce009ba9ddc` |
-| `docs/architecture/PHASE209A_MONTHLY_REPORT_CADENCE_PREFLIGHT_CLASSIFY_HARDEN.md` | Phase 209A — Monthly Report Cadence: Preflight + Classify + Harden + Dry-Run — 2026-06-07 | review_required | MISSING HEADER | `2cc84177859c` |
-| `docs/architecture/PHASE209B_MONTHLY_CADENCE_APPLY_DIFF_SCHEDULE.md` | Phase 209B — Monthly Cadence Apply + Diff + Schedule — 2026-06-07 | review_required | MISSING HEADER | `41eb19ffb41e` |
-| `docs/architecture/PHASE210A_LOOKTHROUGH_CADENCE_PREFLIGHT_CLASSIFY_HARDEN.md` | Phase 210A — Lookthrough Cadence: Preflight + Classify + Harden + Dry-Run — 2026-06-07 | review_required | MISSING HEADER | `4ed6984fe998` |
-| `docs/architecture/PHASE210B_LOOKTHROUGH_APPLY_DIFF_SCHEDULE.md` | Phase 210B — Lookthrough Apply + Diff + Schedule — 2026-06-07 | review_required | MISSING HEADER | `0b2178cfa051` |
-| `docs/architecture/PHASE210C_CADENCE_TIMER_SCHEDULE_VERIFICATION.md` | Phase 210C — Cadence Timer Schedule Verification — 2026-06-07 | review_required | MISSING HEADER | `cf817ed143c5` |
-| `docs/architecture/PRE_DEPLOY_STATE_GUARD.md` | Pre-Deploy State Guard (canonical) | review_required | MISSING HEADER | `8520928ed9f0` |
+| `docs/architecture/PHASE199A_PREFLIGHT_RUNTIME_CONTROL_PLANE_AUDIT.md` | Phase 199A — Preflight: Runtime Control Plane Audit (2026-06-04) | review_required | OK | `22f3223c1a13` |
+| `docs/architecture/PHASE199B_RUNTIME_JOB_INVENTORY.md` | Phase 199B — Runtime Job Inventory | review_required | OK | `1bb895bc901f` |
+| `docs/architecture/PHASE199C_RUNTIME_PIPELINE_OWNERSHIP_MODEL.md` | Phase 199C — Runtime Pipeline Ownership Model (target architecture) | review_required | OK | `2e7f85061125` |
+| `docs/architecture/PHASE199D_CRON_COMPRESSION_MIGRATION_PLAN.md` | Phase 199D — Cron Compression & Migration Plan | review_required | OK | `dd4ec367cb46` |
+| `docs/architecture/PHASE199E_PIPELINE_CONTROLLER_SKELETONS.md` | Phase 199E — Pipeline Controller Skeletons (DRY-RUN, no schedules wired) | review_required | OK | `76dd30154575` |
+| `docs/architecture/PHASE199F_COMMAND_CENTER_V3_QUEUE_CONTROL_TOWER_PLAN.md` | Phase 199F — Command Center v3 Queue Control Tower Enhancement Plan | review_required | OK | `c298453f3228` |
+| `docs/architecture/PHASE199G_RUNTIME_API_FOR_V3_REPORT.md` | Phase 199G — Read-only Runtime Control Plane API for v3 | review_required | OK | `2ae0970edfa0` |
+| `docs/architecture/PHASE199H_V3_QUEUE_CONTROL_TOWER_IMPLEMENTATION.md` | Phase 199H — v3 Runtime Queue Control Tower (Control Plane) Implementation | review_required | OK | `2b6c2c6a6982` |
+| `docs/architecture/PHASE199I_STATE_OF_REPO_SNAPSHOT_GENERATOR.md` | Phase 199I — State-of-Repo Snapshot Generator | review_required | OK | `24380b29fb67` |
+| `docs/architecture/PHASE199J_RUNTIME_CONTROL_PLANE_VALIDATION.md` | Phase 199J — Runtime Control Plane Validation | review_required | OK | `172521f614af` |
+| `docs/architecture/PHASE200A_GOVERNANCE_CRON_MIGRATION_PREFLIGHT.md` | Phase 200A — Governance Cron Migration Pilot: Preflight | review_required | OK | `8ce28c198217` |
+| `docs/architecture/PHASE200B_GOVERNANCE_JOB_SELECTION.md` | Phase 200B — Governance Job Selection | review_required | OK | `7bbf90aa95df` |
+| `docs/architecture/PHASE200C_GOVERNANCE_CONTROLLER_HARDENING.md` | Phase 200C — Governance Controller Hardening | review_required | OK | `5fdcdffaef92` |
+| `docs/architecture/PHASE200D_GOVERNANCE_CONTROLLER_DRYRUN_VALIDATION.md` | Phase 200D — Governance Controller Dry-Run Validation | review_required | OK | `c5da87df8424` |
+| `docs/architecture/PHASE200E_GOVERNANCE_PARALLEL_RUN_REPORT.md` | Phase 200E — Governance Controller Parallel Run (--apply) | review_required | OK | `7538c5c359ae` |
+| `docs/architecture/PHASE200F_GOVERNANCE_OUTPUT_DIFF_REPORT.md` | Phase 200F — Governance Output Diff Report | review_required | OK | `87a94890e56d` |
+| `docs/architecture/PHASE200G_GOVERNANCE_CONTROLLER_SCHEDULE_REPORT.md` | Phase 200G — Governance Controller Schedule (legacy kept active) | review_required | OK | `58fbd84e23dc` |
+| `docs/architecture/PHASE200H_GOVERNANCE_SCHEDULED_CYCLE_OBSERVATION.md` | Phase 200H — Governance Scheduled-Cycle Observation | review_required | OK | `439b5c915fc9` |
+| `docs/architecture/PHASE200I_LEGACY_GOVERNANCE_CRON_RETIREMENT_REPORT.md` | Phase 200I — Legacy Governance Cron Retirement (comment, not delete) | review_required | OK | `5632c2186c23` |
+| `docs/architecture/PHASE200J_V3_GOVERNANCE_PIPELINE_VISIBILITY.md` | Phase 200J — v3 Governance Pipeline Visibility | review_required | OK | `afadd4277618` |
+| `docs/architecture/PHASE201A_GOVERNANCE_AUTO_CYCLE_OBSERVATION.md` | Phase 201A — Automatic Governance Controller Cycle Observation | review_required | OK | `351f6b9949e6` |
+| `docs/architecture/PHASE201B_PHASE41_GOVERNANCE_TIMER_OVERLAP_INVENTORY.md` | Phase 201B — PHASE41 Governance Timer Overlap Inventory | review_required | OK | `29c3a668c8d5` |
+| `docs/architecture/PHASE201C_GOVERNANCE_TIMER_RETIREMENT_DECISION_GATE.md` | Phase 201C — Governance Timer Retirement Decision Gate | review_required | OK | `3eb8e19cb94f` |
+| `docs/architecture/PHASE201D_PHASE41_GOVERNANCE_TIMER_RETIREMENT_REPORT.md` | Phase 201D — PHASE41 Governance Timer Retirement Report | review_required | OK | `58d394295c3e` |
+| `docs/architecture/PHASE201E_POST_RETIREMENT_GOVERNANCE_VALIDATION.md` | Phase 201E — Post-Retirement Governance Validation | review_required | OK | `d7e56b531789` |
+| `docs/architecture/PHASE201F_PORTFOLIO_MAINTENANCE_MIGRATION_PREFLIGHT.md` | Phase 201F — Portfolio-Maintenance Migration Preflight (design only) | review_required | OK | `919c3cdb42c0` |
+| `docs/architecture/PHASE201G_PORTFOLIO_MAINTENANCE_RISK_MODEL.md` | Phase 201G — Portfolio-Maintenance Migration Risk Model | review_required | OK | `600f3a8f3dff` |
+| `docs/architecture/PHASE201H_PORTFOLIO_MAINTENANCE_MIGRATION_PLAN.md` | Phase 201H — Portfolio-Maintenance Migration Plan (no runtime change) | review_required | OK | `15b8df627af4` |
+| `docs/architecture/PHASE201I_V3_CONTROL_TOWER_POST_GOVERNANCE_STATUS.md` | Phase 201I — v3 Control Tower Post-Governance Status | review_required | OK | `2b7a05abd695` |
+| `docs/architecture/PHASE202A_PORTFOLIO_MAINTENANCE_PREFLIGHT.md` | Phase 202A — Portfolio-Maintenance P0-Safe Migration Preflight | review_required | OK | `a60b9908e0f9` |
+| `docs/architecture/PHASE202B_EXCLUDED_PORTFOLIO_JOBS.md` | Phase 202B — Excluded Portfolio-Maintenance Jobs | review_required | OK | `73265260f04d` |
+| `docs/architecture/PHASE202B_P0_SAFE_PORTFOLIO_JOB_SELECTION.md` | Phase 202B — P0-Safe Portfolio-Maintenance Job Selection | review_required | OK | `34c6494ff81d` |
+| `docs/architecture/PHASE202C_PORTFOLIO_CONTROLLER_HARDENING.md` | Phase 202C — Portfolio-Maintenance Controller Hardening | review_required | OK | `3ed0a5322998` |
+| `docs/architecture/PHASE202D_PORTFOLIO_CONTROLLER_DRYRUN_VALIDATION.md` | Phase 202D — Portfolio-Maintenance Controller Dry-Run Validation | review_required | OK | `9508bc7b3b89` |
+| `docs/architecture/PHASE202E_PORTFOLIO_PARALLEL_APPLY_REPORT.md` | PHASE202E_PORTFOLIO_PARALLEL_APPLY_REPORT.md | review_required | OK | `4dd779934b71` |
+| `docs/architecture/PHASE202F_PORTFOLIO_OUTPUT_DIFF_REPORT.md` | PHASE202F_PORTFOLIO_OUTPUT_DIFF_REPORT.md | review_required | OK | `b63ee24cd87b` |
+| `docs/architecture/PHASE202G_CADENCE_AWARE_PORTFOLIO_CONTROLLER_REDESIGN.md` | Phase 202G — Cadence-Aware Portfolio Controller Redesign (Option B) | review_required | OK | `93af14847bf5` |
+| `docs/architecture/PHASE202H_CADENCE_DRYRUN_VALIDATION.md` | Phase 202H — Cadence-Aware Dry-Run Validation | review_required | OK | `a477ef9eefa4` |
+| `docs/architecture/PHASE203A_V3_EMPTY_SCANNER_SYMPTOM_SNAPSHOT.md` | Phase 203A — v3 Empty Scanner Symptom Snapshot | review_required | OK | `4bbace89c9fa` |
+| `docs/architecture/PHASE203B_SCANNER_RUNTIME_STATUS_AUDIT.md` | Phase 203B — Scanner Runtime Status Audit | review_required | OK | `34e8e5fbb122` |
+| `docs/architecture/PHASE203C_SCANNER_SCHEDULE_DIFF_AGAINST_BACKUPS.md` | Phase 203C — Scanner Schedule Diff vs Migration Backups | archive_superseded | OK | `83ae7ca792e7` |
+| `docs/architecture/PHASE203D_TRADE_AI_API_DATA_SOURCE_AUDIT.md` | Phase 203D — trade-ai API Data Source Audit | review_required | OK | `19ecff07d0ce` |
+| `docs/architecture/PHASE203E_FEED_FINVIZ_HEALTH_AUDIT.md` | Phase 203E — Feed & Finviz Health Audit | review_required | OK | `13d2f8a2a3e5` |
+| `docs/architecture/PHASE203F_V3_TRADE_AI_FRONTEND_MAPPING_AUDIT.md` | Phase 203F — v3 trade-ai Frontend Mapping Audit | review_required | OK | `1e2113e86d8a` |
+| `docs/architecture/PHASE203G_EMPTY_SCANNER_ROOT_CAUSE_DECISION.md` | Phase 203G — Empty Scanner Root-Cause Decision | review_required | OK | `e8264364b91e` |
+| `docs/architecture/PHASE203H_EMPTY_SCANNER_FIX_REPORT.md` | Phase 203H — Empty Scanner Fix Report | review_required | OK | `d6ecd1cd0073` |
+| `docs/architecture/PHASE203I_EMPTY_SCANNER_FIX_VALIDATION.md` | Phase 203I — Empty Scanner Fix Validation | review_required | OK | `e52cc6167e50` |
+| `docs/architecture/PHASE204A_SECRETS_STATE_BACKUP_FAILURE_SNAPSHOT.md` | Phase 204A — secrets_state_backup Failure Snapshot | archive_superseded | OK | `376ce2525c44` |
+| `docs/architecture/PHASE204B_GOG_BACKUP_ENVIRONMENT_DIFF.md` | Phase 204B — gog Backup: Controller vs Legacy Environment Diff | archive_superseded | OK | `b60f02f9ce17` |
+| `docs/architecture/PHASE204C_GOG_BACKUP_SAFE_REPRODUCTION.md` | Phase 204C — Safe Reproduction (no secret leak) | archive_superseded | OK | `4c916898a59e` |
+| `docs/architecture/PHASE204D_GOG_BACKUP_MINIMAL_FIX.md` | Phase 204D — Minimal Fix for secrets_state_backup | archive_superseded | OK | `e0dab6250133` |
+| `docs/architecture/PHASE204E_CADENCE_AWARE_PORTFOLIO_CONTROLLER_REDESIGN.md` | Phase 204E — Cadence-Aware Portfolio Controller (implemented) | review_required | OK | `15fbdec80a46` |
+| `docs/architecture/PHASE204H0_BACKUP_APPLY_STATE_VERIFICATION.md` | Phase 204H0 — Backup-Apply State Verification (resume from stale checkpoint) — 2026-06-07 | archive_superseded | OK | `bece48c9d915` |
+| `docs/architecture/PHASE204H_BACKUP_OUTPUT_DIFF_AND_SCHEDULE_DECISION.md` | Phase 204H — Backup Output Diff & Schedule Decision | archive_superseded | OK | `abc44d6f3138` |
+| `docs/architecture/PHASE204I_BACKUP_CADENCE_SCHEDULE_REPORT.md` | Phase 204I — Backup Cadence Schedule Report | archive_superseded | OK | `65460d3d3bf7` |
+| `docs/architecture/PHASE205_BACKUP_CADENCE_OBSERVATION.md` | Phase 205 — First Automatic Backup-Cadence Cycle Observation | archive_superseded | OK | `ff6dc89f3b0d` |
+| `docs/architecture/PHASE207A_DAILY_REPORT_CADENCE_PREFLIGHT.md` | Phase 207A — Daily Report Cadence Migration: Preflight — 2026-06-07 | review_required | OK | `3266fc9b441e` |
+| `docs/architecture/PHASE207B_DAILY_REPORT_ADVISORY_DRAFT_CLASSIFICATION.md` | Phase 207B — Daily Report Advisory-Draft Classification — 2026-06-07 | review_required | OK | `d983681bebc4` |
+| `docs/architecture/PHASE207C_DAILY_CADENCE_CONTROLLER_HARDENING.md` | Phase 207C — Daily Cadence Controller Hardening — 2026-06-07 | review_required | OK | `afab8c0a65b7` |
+| `docs/architecture/PHASE207D_DAILY_CADENCE_DRYRUN_VALIDATION.md` | Phase 207D — Daily Cadence Dry-Run Validation — 2026-06-07 | review_required | OK | `9be4c9e4ff0b` |
+| `docs/architecture/PHASE207E_DAILY_CADENCE_PARALLEL_APPLY_REPORT.md` | Phase 207E — Daily Cadence Parallel Apply Report — 2026-06-07 | review_required | OK | `e5b46fae85bd` |
+| `docs/architecture/PHASE207F_DAILY_OUTPUT_DIFF_REPORT.md` | Phase 207F — Daily Output Diff Report — 2026-06-07 | review_required | OK | `d46c9aaf34e4` |
+| `docs/architecture/PHASE207G_DAILY_CADENCE_SCHEDULE_REPORT.md` | Phase 207G — Daily Cadence Schedule Report — 2026-06-07 | review_required | OK | `8501557cb406` |
+| `docs/architecture/PHASE207H_DAILY_SCHEDULED_CYCLE_OBSERVATION.md` | Phase 207H — Daily Scheduled-Equivalent Cycle Observation — 2026-06-07 | review_required | OK | `7490813da4f4` |
+| `docs/architecture/PHASE207I_LEGACY_DAILY_REPORT_RETIREMENT_REPORT.md` | Phase 207I — Legacy Daily Report Retirement Decision — 2026-06-07 | review_required | OK | `f69e6de2d9b6` |
+| `docs/architecture/PHASE207J_V3_DAILY_CADENCE_VISIBILITY.md` | Phase 207J — v3 Daily Cadence Visibility — 2026-06-07 | review_required | OK | `f1281434772e` |
+| `docs/architecture/PHASE208A_WEEKLY_REPORT_CADENCE_PREFLIGHT_CLASSIFY_HARDEN.md` | Phase 208A — Weekly Report Cadence: Preflight + Classification + Harden + Dry-Run — 2026-06-07 | review_required | OK | `aa312f1f481b` |
+| `docs/architecture/PHASE208B_WEEKLY_CADENCE_APPLY_DIFF_SCHEDULE.md` | Phase 208B — Weekly Cadence Apply + Diff + Schedule — 2026-06-07 | review_required | OK | `a057c6e81b48` |
+| `docs/architecture/PHASE209A_MONTHLY_REPORT_CADENCE_PREFLIGHT_CLASSIFY_HARDEN.md` | Phase 209A — Monthly Report Cadence: Preflight + Classify + Harden + Dry-Run — 2026-06-07 | review_required | OK | `0195573b6ff6` |
+| `docs/architecture/PHASE209B_MONTHLY_CADENCE_APPLY_DIFF_SCHEDULE.md` | Phase 209B — Monthly Cadence Apply + Diff + Schedule — 2026-06-07 | review_required | OK | `0d0f7639128a` |
+| `docs/architecture/PHASE210A_LOOKTHROUGH_CADENCE_PREFLIGHT_CLASSIFY_HARDEN.md` | Phase 210A — Lookthrough Cadence: Preflight + Classify + Harden + Dry-Run — 2026-06-07 | review_required | OK | `a658e122a9e2` |
+| `docs/architecture/PHASE210B_LOOKTHROUGH_APPLY_DIFF_SCHEDULE.md` | Phase 210B — Lookthrough Apply + Diff + Schedule — 2026-06-07 | review_required | OK | `8f9f70d8d735` |
+| `docs/architecture/PHASE210C_CADENCE_TIMER_SCHEDULE_VERIFICATION.md` | Phase 210C — Cadence Timer Schedule Verification — 2026-06-07 | review_required | OK | `1d9cdac8c715` |
+| `docs/architecture/PRE_DEPLOY_STATE_GUARD.md` | Pre-Deploy State Guard (canonical) | review_required | OK | `fe30cc8699b6` |
 | `docs/architecture/QUOTE_PIPELINE_UNIFICATION_SCOPING_2026-08-27.md` | Quote Pipeline Unification — Scoping (Audit Finding H4) | review_required | OK | `d3580a82544b` |
-| `docs/architecture/REPORTS_DESK_V1.md` | Reports Desk v1 — Total Rebuild (2026-07-16, night) | review_required | MISSING HEADER | `d80e02b11ffb` |
-| `docs/architecture/REPORTS_DESK_V3.md` | Reports Desk v3 — One Corpus · The System Rollup · Zero Garbage (2026-07-17) | review_required | MISSING HEADER | `f853de88861b` |
+| `docs/architecture/REPORTS_DESK_V1.md` | Reports Desk v1 — Total Rebuild (2026-07-16, night) | review_required | OK | `3d92abab9c57` |
+| `docs/architecture/REPORTS_DESK_V3.md` | Reports Desk v3 — One Corpus · The System Rollup · Zero Garbage (2026-07-17) | review_required | OK | `d3698668ed8e` |
 | `docs/architecture/RESEARCH_INTELLIGENCE_V1.md` | Research Intelligence v1 — Architecture (Command Center v3) | review_required | OK | `451e1ddbd60c` |
 | `docs/architecture/RESEARCH_INTELLIGENCE_V2.md` | Research Intelligence v2 — Freshness, Archive, Retirement Pillar | review_required | OK | `4849198f52a3` |
 | `docs/architecture/RESEARCH_INTELLIGENCE_V2_1_NARRATIVE_UI.md` | Research Intelligence v2.1 — Narrative Quality + Editorial UI | review_required | OK | `742e4d1846ac` |
@@ -371,11 +371,11 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/RESEARCH_INTELLIGENCE_V2_5_SECURITY_MULTIFACTOR.md` | Research Intelligence v2.5 — Security Data + Multi-Factor Sizing | review_required | OK | `6516babf24f0` |
 | `docs/architecture/RESEARCH_INTELLIGENCE_V2_6_MATURITY.md` | Research Intelligence v2.6 — Maturity Upgrade | review_required | OK | `fd6e6a2147ed` |
 | `docs/architecture/RESEARCH_INTELLIGENCE_V2_7_STAGING.md` | Research Intelligence v2.7 — Stage Trade + Cross-Theme | review_required | OK | `83010aec814e` |
-| `docs/architecture/RESEARCH_INTELLIGENCE_V3.md` | Research Intelligence v3.0 — Decision Desk | review_required | MISSING HEADER | `68bd2881c72c` |
-| `docs/architecture/RESEARCH_INTELLIGENCE_V3_1.md` | Research Intelligence v3.1 — Institutional Desk (Reliability · Provenance · Curation) | review_required | MISSING HEADER | `e453a5e89f70` |
-| `docs/architecture/SCALP_MULTI_SETUP_INTEGRATION_2026-07-27.md` | Scalp Multi-Setup Taxonomy — Integration Architecture (2026-07-27) | review_required | MISSING HEADER | `d3dd3a1f1e7f` |
-| `docs/architecture/SCHWAB_API_CAPABILITY_MAP.md` | Schwab Trader API → Trade AI v12 — Capability Map (design, no code) | review_required | MISSING HEADER | `b1b18a1f3cb8` |
-| `docs/architecture/SCHWAB_API_PHASE1_READONLY_FOUNDATION.md` | Schwab API — Phase 1 Read-Only Foundation (canonical) | review_required | MISSING HEADER | `03403f29cde0` |
+| `docs/architecture/RESEARCH_INTELLIGENCE_V3.md` | Research Intelligence v3.0 — Decision Desk | review_required | OK | `091ac32b6f89` |
+| `docs/architecture/RESEARCH_INTELLIGENCE_V3_1.md` | Research Intelligence v3.1 — Institutional Desk (Reliability · Provenance · Curation) | review_required | OK | `a168d0217d49` |
+| `docs/architecture/SCALP_MULTI_SETUP_INTEGRATION_2026-07-27.md` | Scalp Multi-Setup Taxonomy — Integration Architecture (2026-07-27) | review_required | OK | `970e5489b60b` |
+| `docs/architecture/SCHWAB_API_CAPABILITY_MAP.md` | Schwab Trader API → Trade AI v12 — Capability Map (design, no code) | review_required | OK | `163c131c4c86` |
+| `docs/architecture/SCHWAB_API_PHASE1_READONLY_FOUNDATION.md` | Schwab API — Phase 1 Read-Only Foundation (canonical) | review_required | OK | `a11674ef7b56` |
 | `docs/architecture/TICKER_KNOWLEDGE_GRAPH_GUID_LINEAGE.md` | Ticker Knowledge Graph GUID Lineage | review_required | OK | `a7c43967abca` |
 | `docs/architecture/TRADEAI_SYSTEM_STATE_AND_AUTONOMY_2026-08-20.md` | TradeAI System State & Autonomy Record — 2026-08-20 (updated 2026-08-21 evening) | review_required | OK | `d9303c3e9930` |
 | `docs/architecture/TRADE_AI_BITEMPORAL_MEMORY_DATA_MODEL_2026-08-24.md` | Bitemporal memory data model | review_required | OK | `8491cfb5a15b` |
@@ -386,11 +386,11 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/TRADE_AI_MASTER_AGENTIC_FINANCIAL_SYSTEM_ARCHITECTURE_v3_3.md` | TRADE AI MASTER AGENTIC FINANCIAL SYSTEM ARCHITECTURE v3.3 | review_required | OK | `e2649ec30f53` |
 | `docs/architecture/TRADE_AI_MEMORY_RETRIEVAL_AND_INDEX_STRATEGY_2026-08-24.md` | Memory retrieval and index strategy | review_required | OK | `c37d853660e6` |
 | `docs/architecture/TRADE_INTELLIGENCE_JOURNAL_DESIGN.md` | Trade Intelligence Journal -- Design Document | review_required | OK | `471edac9ceb2` |
-| `docs/architecture/V3_OPENCLAW_TRADEAI_SYSTEM_TABS.md` | Command Center v3 — OpenClaw + TradeAI System Tabs — 2026-06-07 | review_required | MISSING HEADER | `e0ec91c11d89` |
-| `docs/architecture/V3_OPEN_TRADES_INTELLIGENCE_2026_06_05.md` | v3 Open Trades — Actionable Position Intelligence (2026-06-05) | review_required | MISSING HEADER | `825dcbff1786` |
-| `docs/architecture/WATCH_DESK_V2.md` | Watch Desk v2 — Truth & Directive Governance (P0 workstreams, 2026-07-16) | review_required | MISSING HEADER | `25f0495c944c` |
-| `docs/architecture/WATCH_DESK_V3.md` | Watch Desk v3 — From Watching to Learning (2026-07-16 evening) | review_required | MISSING HEADER | `c12832a4f2b6` |
-| `docs/architecture/WATCH_DESK_V4.md` | Watch Desk v4 — Terminal Grade (2026-07-16, evening) | review_required | MISSING HEADER | `5407480e072b` |
+| `docs/architecture/V3_OPENCLAW_TRADEAI_SYSTEM_TABS.md` | Command Center v3 — OpenClaw + TradeAI System Tabs — 2026-06-07 | review_required | OK | `10a7313b3681` |
+| `docs/architecture/V3_OPEN_TRADES_INTELLIGENCE_2026_06_05.md` | v3 Open Trades — Actionable Position Intelligence (2026-06-05) | review_required | OK | `f0c1ace4b5a9` |
+| `docs/architecture/WATCH_DESK_V2.md` | Watch Desk v2 — Truth & Directive Governance (P0 workstreams, 2026-07-16) | review_required | OK | `be5f8cd47049` |
+| `docs/architecture/WATCH_DESK_V3.md` | Watch Desk v3 — From Watching to Learning (2026-07-16 evening) | review_required | OK | `ea65c14610d0` |
+| `docs/architecture/WATCH_DESK_V4.md` | Watch Desk v4 — Terminal Grade (2026-07-16, evening) | review_required | OK | `018c8ea82d4c` |
 | `docs/architecture/cio/ADR_ALEX_AUTHORITY_MANIFEST.md` | ADR: Alex Authority Manifest | review_required | OK | `8bf7e2366689` |
 | `docs/architecture/cio/ADR_CIO_STATE_ARCHITECTURE.md` | ADR: CIO State Architecture | review_required | OK | `78b3c731e31d` |
 | `docs/architecture/cio/ADR_CONTAINMENT_SPECIFICATION.md` | ADR: Containment Specification | review_required | OK | `e090bef207bf` |
@@ -400,23 +400,23 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/cio/ADR_SCHEDULER_OWNERSHIP.md` | ADR: Scheduler Ownership | review_required | OK | `ce6bbb93b073` |
 | `docs/architecture/cio/ADR_SPECIALIST_CALCULATION_POLICY.md` | ADR: Specialist Calculation Policy | review_required | OK | `6fb1d320fe1e` |
 | `docs/architecture/cio/CIO_ACTION_LEDGER_LAB.md` | CIO Action Ledger LAB — P-1.3 Implementation | review_required | OK | `ec14ebf33b85` |
-| `docs/architecture/cio/CIO_AGENT_HANDOFF_QUEUE_LAB.md` | CIO Agent Handoff Queue — LAB Service (P-1.4) | review_required | MISSING HEADER | `39cbdde5dded` |
+| `docs/architecture/cio/CIO_AGENT_HANDOFF_QUEUE_LAB.md` | CIO Agent Handoff Queue — LAB Service (P-1.4) | review_required | OK | `a7505d0994e7` |
 | `docs/architecture/cio/CIO_FINANCIAL_SCHEDULE_POLICY.md` | CIO Financial Schedule Policy | review_required | OK | `c82d165baf11` |
-| `docs/architecture/cio/CIO_HEALTH_BOUNDARY_LAB.md` | CIO Health Boundary — LAB Service (P-1.5) | review_required | MISSING HEADER | `ef5306324585` |
+| `docs/architecture/cio/CIO_HEALTH_BOUNDARY_LAB.md` | CIO Health Boundary — LAB Service (P-1.5) | review_required | OK | `d140df186f03` |
 | `docs/architecture/cio/CIO_OPENCLAW_GOVERNED_MODEL_BRIDGE.md` | CIO OpenClaw Governed Model Bridge | review_required | OK | `48cb713aa126` |
 | `docs/architecture/cio/CIO_OPERATOR_COMMUNICATION_POLICY.md` | CIO Operator Communication Policy | review_required | OK | `60df94ef8079` |
 | `docs/architecture/cio/CIO_OPERATOR_NOTIFICATION_OUTBOX_LAB.md` | CIO Operator Notification Outbox LAB | review_required | OK | `b31817a5246b` |
 | `docs/architecture/cio/CIO_PHASE_3_DELIVERY.md` | CIO Phase 3 — Autonomous Chief Investment Officer — DELIVERED | review_required | OK | `67a3a333e643` |
-| `docs/architecture/cio/CIO_PHASE_MINUS_1_PLAN_CORRECTED.md` | CIO Phase -1 Plan — Architecture Corrected v3.3 | review_required | MISSING HEADER | `d6ad0fdf3bbe` |
-| `docs/architecture/cio/CIO_PLATFORM_READINESS_REPORT.md` | CIO Platform Readiness Report — Gate 0 | review_required | MISSING HEADER | `0e9f447ad43d` |
+| `docs/architecture/cio/CIO_PHASE_MINUS_1_PLAN_CORRECTED.md` | CIO Phase -1 Plan — Architecture Corrected v3.3 | review_required | OK | `67920c1e19d3` |
+| `docs/architecture/cio/CIO_PLATFORM_READINESS_REPORT.md` | CIO Platform Readiness Report — Gate 0 | review_required | OK | `586f547bf42f` |
 | `docs/architecture/cio/CIO_QUALITY_METRICS.md` | CIO Quality Metrics | review_required | OK | `f0b712c5f529` |
 | `docs/architecture/cio/CIO_RUN_BUDGETS.md` | CIO Run Budgets | review_required | OK | `ddedd4fb29aa` |
-| `docs/architecture/cio/CIO_WAKE_EVENT_DETECTOR_LAB.md` | CIO Wake/Event Detector Lab (P-1.6) | review_required | MISSING HEADER | `cd81394d1115` |
+| `docs/architecture/cio/CIO_WAKE_EVENT_DETECTOR_LAB.md` | CIO Wake/Event Detector Lab (P-1.6) | review_required | OK | `5f841a432f07` |
 | `docs/architecture/cio/EXTERNAL_DIAGRAM_TYPE_MAPPING.md` | External Diagram Type Mapping | review_required | OK | `4f99a4129b32` |
 | `docs/architecture/cio/FINANCIAL_DOMAIN_CAPABILITY_MATRIX.md` | Financial Domain Capability Matrix | review_required | OK | `f0e120d59387` |
 | `docs/architecture/cio/HERMES_CHALLENGE_POLICY.md` | Hermes Challenge Policy — Independent Review | review_required | OK | `f716af49c1ca` |
 | `docs/architecture/cio/IDENTITY_AND_MEMORY_ADVISORY_2026-08-27.md` | Identity, GUIDs and the memory layer — advisory | review_required | OK | `8badf0967c19` |
-| `docs/architecture/cio/LEGACY_ALEX_SCHEDULE_INVENTORY.md` | Legacy Alex Schedule Inventory | review_required | MISSING HEADER | `29e127465239` |
+| `docs/architecture/cio/LEGACY_ALEX_SCHEDULE_INVENTORY.md` | Legacy Alex Schedule Inventory | review_required | OK | `98027036e790` |
 | `docs/architecture/cio/LEGACY_FINANCIAL_FACT_INVENTORY.md` | Legacy Financial Fact Inventory | review_required | OK | `d60631efb6b6` |
 | `docs/architecture/cio/LOOP_CLOSURE_2026-08-27.md` | Closing the CIO learning loop — implementation record | review_required | OK | `1dae6e4d91c2` |
 | `docs/architecture/cio/OPENCLAW_CIO_ARCHITECTURE_FEEDBACK_2026-08-08.md` | OpenClaw + Hermes CIO Architecture — Audit Feedback | review_required | OK | `55031b0d25ba` |
@@ -433,60 +433,60 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/cio/PHASE_2_TRIGGER_OWNERSHIP.md` | Phase 2 Trigger Ownership — Trade AI CIO | review_required | OK | `37a58cdad564` |
 | `docs/architecture/cio/PHASE_MINUS_1_DEPENDENCY_GRAPH.md` | CIO Phase -1 Dependency Graph | review_required | OK | `f070b02eaf30` |
 | `docs/architecture/cio/PHASE_MINUS_1_FINAL_ACCEPTANCE.md` | CIO Phase -1 Final Acceptance Report | review_required | OK | `6f150fa78ddf` |
-| `docs/architecture/cio/SPECIALIST_MATURITY_CATALOG.md` | Specialist Maturity Catalog | review_required | MISSING HEADER | `34da15e9710b` |
-| `docs/atm/PHASE180A_ATM_CURRENT_CONFIGURATION_AUDIT.md` | Phase 180A: ATM Current Configuration Audit | review_required | MISSING HEADER | `1b71642a706e` |
-| `docs/atm/PHASE180B_ATM_PAPER_SCALE_UP_RISK_POLICY.md` | Phase 180B: ATM Paper Scale-Up Risk Policy | review_required | MISSING HEADER | `186d9f196126` |
-| `docs/atm/PHASE180C_ATM_PAPER_VOLUME_RAMP_SCHEDULE.md` | Phase 180C: ATM Paper Trade Volume Ramp Schedule | review_required | MISSING HEADER | `5465f00913bc` |
-| `docs/atm/PHASE180D_ATM_PAPER_ONLY_GUARDRAILS_REPORT.md` | Phase 180D: ATM Paper-Only Guardrails Report | review_required | MISSING HEADER | `868b10dd8755` |
-| `docs/atm/PHASE180E_ATM_PAPER_SCALE_DASHBOARD_REPORT.md` | Phase 180E: ATM Paper Scale Dashboard Report | review_required | MISSING HEADER | `edf6a7496d79` |
-| `docs/atm/PHASE186A_STAGE1_PIPELINE_PRE_RUN_SAFETY.md` | Phase 186A: Stage 1 Pipeline Pre-Run Safety | archive_superseded | MISSING HEADER | `c76997d5753c` |
-| `docs/atm/PHASE186B_STAGE1_FEED_PREFLIGHT_REPORT.md` | Phase 186B: Stage 1 Feed Preflight Report | review_required | MISSING HEADER | `a3fdd45241d8` |
-| `docs/atm/PHASE186C_STAGE1_TOMORROW_CANDIDATE_PIPELINE_REPORT.md` | Phase 186C: Stage 1 Tomorrow Candidate Pipeline Report | review_required | MISSING HEADER | `3cd025b85e80` |
-| `docs/atm/PHASE186D_STAGE1_PAPER_PROPOSAL_PREVIEW.md` | Phase 186D: Stage 1 Paper Proposal Preview | review_required | MISSING HEADER | `424b816bfc6b` |
-| `docs/atm/PHASE186E_STAGE1_PROPOSAL_QUALITY_VALIDATION.md` | Phase 186E: Stage 1 Proposal Quality Validation | review_required | MISSING HEADER | `d2fad6241b5a` |
-| `docs/atm/PHASE186G_BROKER_ACCOUNT_ROUTING_CORRECTION_AUDIT.md` | Phase 186G: Broker/Account Routing Correction Audit | review_required | MISSING HEADER | `fc9e60e0472e` |
-| `docs/atm/PHASE186H_ALPACA_EXTENDED_HOURS_CAPABILITY_AUDIT.md` | Phase 186H: Alpaca Extended-Hours Capability Audit | review_required | MISSING HEADER | `7ac59156084c` |
-| `docs/atm/PHASE186I_AUTO_APPROVER_TIMING_CORRECTION_DESIGN.md` | Phase 186I: Auto-Approver Timing Correction Design | review_required | MISSING HEADER | `0e503c3ec300` |
-| `docs/atm/PHASE186J_EXTENDED_HOURS_RISK_GATES.md` | Phase 186J: Extended-Hours Risk Gates | review_required | MISSING HEADER | `47a8fa538852` |
-| `docs/atm/PHASE186M_AUTO_APPROVER_TRAILING_STOP_IMPLEMENTATION_PLAN.md` | Phase 186M: Auto-Approver & Trailing Stop Implementation Plan | review_required | MISSING HEADER | `b7422cf906d5` |
-| `docs/atm/PHASE188A_ELMT_MARKET_OPEN_REVALIDATION.md` | PHASE 188A — ELMT Market-Open Revalidation Watch | review_required | MISSING HEADER | `63d2bc2928b7` |
-| `docs/atm/PHASE188B_SNOW_OPEN_POSITION_DETAIL_REVIEW.md` | PHASE 188B — SNOW Open Position Detail Review | review_required | MISSING HEADER | `4aeea06fb767` |
-| `docs/atm/PHASE188C_OPEN_POSITION_TRAILING_ELIGIBILITY_AUDIT.md` | PHASE 188C — Open-Position Trailing & Profit-Protection Eligibility Audit | review_required | MISSING HEADER | `c6c745003ee5` |
-| `docs/atm/PHASE188D_PAPER_STOP_TAKE_PROFIT_RECOMMENDATIONS.md` | PHASE 188D — Paper-Only Stop / Take-Profit Recommendations | review_required | MISSING HEADER | `2b45c58d027b` |
-| `docs/atm/PHASE188E_MARKET_OPEN_OPERATOR_DIGEST.md` | PHASE 188E — Market-Open Operator Digest | review_required | MISSING HEADER | `704bb960866d` |
-| `docs/atm/PHASE189A_MARKET_OPEN_WATCH_SCHEDULE_REPORT.md` | PHASE 189A — Market-Open Watch Schedule Report | review_required | MISSING HEADER | `8bf5b7daf5f1` |
-| `docs/atm/PHASE189B_EXTENDED_HOURS_BLOCKAGE_ROOT_CAUSE.md` | PHASE 189B — Extended-Hours Capability & Blockage Root Cause | review_required | MISSING HEADER | `43f999c60f6f` |
-| `docs/atm/PHASE189C_MISSING_STOP_ROOT_CAUSE_TRACE.md` | PHASE 189C — Missing-Stop Root-Cause Trace | review_required | MISSING HEADER | `861f9dedd339` |
-| `docs/atm/PHASE189E_MARKET_OPEN_OPERATOR_DIGEST.md` | PHASE 189E — Corrected Market-Open Operator Digest | review_required | MISSING HEADER | `17235f7343cf` |
-| `docs/atm/PHASE189F_MARKET_OPEN_REVALIDATION_REPORT.md` | PHASE 189F — Market-Open Revalidation Report (post-open, authoritative) | review_required | MISSING HEADER | `2bd9f168f858` |
-| `docs/atm/PHASE189G_DURABLE_PROTECTION_REMEDIATION_PLAN.md` | PHASE 189G — Durable Protection Remediation Plan | review_required | MISSING HEADER | `1c3e6c5db801` |
-| `docs/atm/PHASE190A_PROTECTION_METADATA_SCHEMA_WRITEPATH_AUDIT.md` | PHASE 190A — Protection Metadata Schema & Write-Path Audit | review_required | MISSING HEADER | `dc278e1dd94c` |
-| `docs/atm/PHASE190B_BROKER_STOP_VERIFICATION_PERSISTENCE_REPORT.md` | PHASE 190B — Broker Stop Verification Persistence Report | review_required | MISSING HEADER | `b6ef57bb1233` |
-| `docs/atm/PHASE190C_STOP_PLACED_NOTE_ROOT_CAUSE_FIX.md` | PHASE 190C — False "Stop Placed" Note Root-Cause Fix | review_required | MISSING HEADER | `ef43134e3c6b` |
-| `docs/atm/PHASE190F_ATM_PROTECTION_DASHBOARD_UPDATE.md` | PHASE 190F — ATM Protection Dashboard Update | review_required | MISSING HEADER | `d6fcf06befa1` |
-| `docs/atm/PHASE190G_PENDING_TRADING_WINDOW_LIFECYCLE_REPORT.md` | PHASE 190G — PENDING_TRADING_WINDOW Lifecycle Report | review_required | MISSING HEADER | `15cbe76366a7` |
-| `docs/atm/PHASE190H_PROTECTION_VERIFICATION_RUNTIME_TEST.md` | PHASE 190H — Protection Verification Runtime Test | review_required | MISSING HEADER | `73cb411d4eab` |
-| `docs/atm/PHASE191A_PROTECTION_UI_VISIBILITY_VERIFICATION.md` | PHASE 191A — Protection UI Visibility Verification | review_required | MISSING HEADER | `994b0422a8aa` |
-| `docs/atm/PHASE191B_OPEN_TRADE_PROFIT_PROTECTION_AUDIT.md` | PHASE 191B — Open-Trade Profit-Protection Audit | review_required | MISSING HEADER | `82b43d995230` |
-| `docs/atm/PHASE191C_PROFIT_PROTECTION_ADVISORY_GAP_ROOT_CAUSE.md` | PHASE 191C — Root Cause: Why the Profit-Protection Advisory Did Not Show | review_required | MISSING HEADER | `085379dda761` |
-| `docs/atm/PHASE191D_TRADEAI_PROFIT_PROTECTION_SCORING_MODEL.md` | PHASE 191D — TradeAI Profit-Protection Scoring Model | review_required | MISSING HEADER | `8059345477a3` |
-| `docs/atm/PHASE191F_INLINE_ATM_PROFIT_PROTECTION_PANEL.md` | PHASE 191F — Inline ATM/Open-Trade Profit-Protection Panel | review_required | MISSING HEADER | `be71a341c9dd` |
-| `docs/atm/PHASE191G_ANY_SNOW_PROFIT_PROTECTION_ADVISORY_REPORT.md` | PHASE 191G — ANY & SNOW Profit-Protection Advisory Report | review_required | MISSING HEADER | `e6aa7c0c80d1` |
-| `docs/atm/PHASE191I_PROFIT_PROTECTION_ALERT_POLICY.md` | PHASE 191I — Profit-Protection Alert Policy | review_required | MISSING HEADER | `6835f7fd783d` |
-| `docs/atm/PHASE192A_COMMAND_CENTER_V2_V3_PARITY_INVENTORY.md` | PHASE 192A — Command Center v2 / v3 Parity Inventory | review_required | MISSING HEADER | `1a0635803a91` |
-| `docs/atm/PHASE192B_PROFIT_PROTECTION_ADJUSTMENT_PREFLIGHT.md` | PHASE 192B — Profit-Protection Adjustment Preflight | review_required | MISSING HEADER | `b4b3d31813c4` |
-| `docs/atm/PHASE192C_OPERATOR_APPROVED_PROTECTION_ACTION_POLICY.md` | PHASE 192C — Operator-Approved Protection Action Policy | review_required | MISSING HEADER | `f9a1837f1812` |
-| `docs/atm/PHASE192F_SHARED_UI_COMPONENT_OR_V2_V3_PLAN.md` | PHASE 192F — Shared UI Component / v2-v3 Plan | review_required | MISSING HEADER | `812ebf37290b` |
-| `docs/atm/PHASE192G_COMMAND_CENTER_V2_WIRING_REPORT.md` | PHASE 192G — Command Center v2 Wiring Report | review_required | MISSING HEADER | `4d673f0681e1` |
-| `docs/atm/PHASE192H_COMMAND_CENTER_V3_WIRING_REPORT.md` | PHASE 192H — Command Center v3 Wiring Report (Plan + Placeholder) | review_required | MISSING HEADER | `10cca5dccf5b` |
-| `docs/atm/PHASE192I_OPERATOR_APPROVAL_EXECUTION_ENDPOINT_REPORT.md` | PHASE 192I — Operator Approval Execution Endpoint Report | review_required | MISSING HEADER | `cc6993dbcfd5` |
-| `docs/atm/PHASE192J_AUDIT_LOG_AND_LEARNING_LINKAGE.md` | PHASE 192J — Audit Log & Journal/Learning Linkage | review_required | MISSING HEADER | `f9604464f02d` |
-| `docs/atm/PHASE192K_ANY_SNOW_DRYRUN_V2_V3_RUNTIME_VERIFICATION.md` | PHASE 192K — ANY/SNOW Dry-Run + v2/v3 Runtime Verification | review_required | MISSING HEADER | `c64c8de291e1` |
+| `docs/architecture/cio/SPECIALIST_MATURITY_CATALOG.md` | Specialist Maturity Catalog | review_required | OK | `640743c1004c` |
+| `docs/atm/PHASE180A_ATM_CURRENT_CONFIGURATION_AUDIT.md` | Phase 180A: ATM Current Configuration Audit | review_required | OK | `2d3ef26142a3` |
+| `docs/atm/PHASE180B_ATM_PAPER_SCALE_UP_RISK_POLICY.md` | Phase 180B: ATM Paper Scale-Up Risk Policy | review_required | OK | `ec9342bcaa35` |
+| `docs/atm/PHASE180C_ATM_PAPER_VOLUME_RAMP_SCHEDULE.md` | Phase 180C: ATM Paper Trade Volume Ramp Schedule | review_required | OK | `1f087f81f7ed` |
+| `docs/atm/PHASE180D_ATM_PAPER_ONLY_GUARDRAILS_REPORT.md` | Phase 180D: ATM Paper-Only Guardrails Report | review_required | OK | `b62eb948087d` |
+| `docs/atm/PHASE180E_ATM_PAPER_SCALE_DASHBOARD_REPORT.md` | Phase 180E: ATM Paper Scale Dashboard Report | review_required | OK | `161391895175` |
+| `docs/atm/PHASE186A_STAGE1_PIPELINE_PRE_RUN_SAFETY.md` | Phase 186A: Stage 1 Pipeline Pre-Run Safety | archive_superseded | OK | `608d4359c303` |
+| `docs/atm/PHASE186B_STAGE1_FEED_PREFLIGHT_REPORT.md` | Phase 186B: Stage 1 Feed Preflight Report | review_required | OK | `1c47849b8495` |
+| `docs/atm/PHASE186C_STAGE1_TOMORROW_CANDIDATE_PIPELINE_REPORT.md` | Phase 186C: Stage 1 Tomorrow Candidate Pipeline Report | review_required | OK | `7163f27aeefe` |
+| `docs/atm/PHASE186D_STAGE1_PAPER_PROPOSAL_PREVIEW.md` | Phase 186D: Stage 1 Paper Proposal Preview | review_required | OK | `c4404d823cd9` |
+| `docs/atm/PHASE186E_STAGE1_PROPOSAL_QUALITY_VALIDATION.md` | Phase 186E: Stage 1 Proposal Quality Validation | review_required | OK | `1ad79d62a21e` |
+| `docs/atm/PHASE186G_BROKER_ACCOUNT_ROUTING_CORRECTION_AUDIT.md` | Phase 186G: Broker/Account Routing Correction Audit | review_required | OK | `ee7a21850e84` |
+| `docs/atm/PHASE186H_ALPACA_EXTENDED_HOURS_CAPABILITY_AUDIT.md` | Phase 186H: Alpaca Extended-Hours Capability Audit | review_required | OK | `fe109fe4aaf8` |
+| `docs/atm/PHASE186I_AUTO_APPROVER_TIMING_CORRECTION_DESIGN.md` | Phase 186I: Auto-Approver Timing Correction Design | review_required | OK | `ae4d7d561e4f` |
+| `docs/atm/PHASE186J_EXTENDED_HOURS_RISK_GATES.md` | Phase 186J: Extended-Hours Risk Gates | review_required | OK | `717ad967e8c9` |
+| `docs/atm/PHASE186M_AUTO_APPROVER_TRAILING_STOP_IMPLEMENTATION_PLAN.md` | Phase 186M: Auto-Approver & Trailing Stop Implementation Plan | review_required | OK | `cda13fa70a31` |
+| `docs/atm/PHASE188A_ELMT_MARKET_OPEN_REVALIDATION.md` | PHASE 188A — ELMT Market-Open Revalidation Watch | review_required | OK | `23af60850303` |
+| `docs/atm/PHASE188B_SNOW_OPEN_POSITION_DETAIL_REVIEW.md` | PHASE 188B — SNOW Open Position Detail Review | review_required | OK | `867b3ac19790` |
+| `docs/atm/PHASE188C_OPEN_POSITION_TRAILING_ELIGIBILITY_AUDIT.md` | PHASE 188C — Open-Position Trailing & Profit-Protection Eligibility Audit | review_required | OK | `1b33665cbca4` |
+| `docs/atm/PHASE188D_PAPER_STOP_TAKE_PROFIT_RECOMMENDATIONS.md` | PHASE 188D — Paper-Only Stop / Take-Profit Recommendations | review_required | OK | `a963b672ddeb` |
+| `docs/atm/PHASE188E_MARKET_OPEN_OPERATOR_DIGEST.md` | PHASE 188E — Market-Open Operator Digest | review_required | OK | `dfeed8d9770c` |
+| `docs/atm/PHASE189A_MARKET_OPEN_WATCH_SCHEDULE_REPORT.md` | PHASE 189A — Market-Open Watch Schedule Report | review_required | OK | `f186b9a45f5a` |
+| `docs/atm/PHASE189B_EXTENDED_HOURS_BLOCKAGE_ROOT_CAUSE.md` | PHASE 189B — Extended-Hours Capability & Blockage Root Cause | review_required | OK | `56a20cae31cb` |
+| `docs/atm/PHASE189C_MISSING_STOP_ROOT_CAUSE_TRACE.md` | PHASE 189C — Missing-Stop Root-Cause Trace | review_required | OK | `9c536a89089a` |
+| `docs/atm/PHASE189E_MARKET_OPEN_OPERATOR_DIGEST.md` | PHASE 189E — Corrected Market-Open Operator Digest | review_required | OK | `836d6e53aa56` |
+| `docs/atm/PHASE189F_MARKET_OPEN_REVALIDATION_REPORT.md` | PHASE 189F — Market-Open Revalidation Report (post-open, authoritative) | review_required | OK | `52ed78613469` |
+| `docs/atm/PHASE189G_DURABLE_PROTECTION_REMEDIATION_PLAN.md` | PHASE 189G — Durable Protection Remediation Plan | review_required | OK | `3bb0921d640a` |
+| `docs/atm/PHASE190A_PROTECTION_METADATA_SCHEMA_WRITEPATH_AUDIT.md` | PHASE 190A — Protection Metadata Schema & Write-Path Audit | review_required | OK | `54d1397595e7` |
+| `docs/atm/PHASE190B_BROKER_STOP_VERIFICATION_PERSISTENCE_REPORT.md` | PHASE 190B — Broker Stop Verification Persistence Report | review_required | OK | `8441f6f2fcd2` |
+| `docs/atm/PHASE190C_STOP_PLACED_NOTE_ROOT_CAUSE_FIX.md` | PHASE 190C — False "Stop Placed" Note Root-Cause Fix | review_required | OK | `c524f40febce` |
+| `docs/atm/PHASE190F_ATM_PROTECTION_DASHBOARD_UPDATE.md` | PHASE 190F — ATM Protection Dashboard Update | review_required | OK | `e888b92242e7` |
+| `docs/atm/PHASE190G_PENDING_TRADING_WINDOW_LIFECYCLE_REPORT.md` | PHASE 190G — PENDING_TRADING_WINDOW Lifecycle Report | review_required | OK | `0d3b9424a21e` |
+| `docs/atm/PHASE190H_PROTECTION_VERIFICATION_RUNTIME_TEST.md` | PHASE 190H — Protection Verification Runtime Test | review_required | OK | `c69cf83ef022` |
+| `docs/atm/PHASE191A_PROTECTION_UI_VISIBILITY_VERIFICATION.md` | PHASE 191A — Protection UI Visibility Verification | review_required | OK | `2d6804182e5b` |
+| `docs/atm/PHASE191B_OPEN_TRADE_PROFIT_PROTECTION_AUDIT.md` | PHASE 191B — Open-Trade Profit-Protection Audit | review_required | OK | `a0b2498157db` |
+| `docs/atm/PHASE191C_PROFIT_PROTECTION_ADVISORY_GAP_ROOT_CAUSE.md` | PHASE 191C — Root Cause: Why the Profit-Protection Advisory Did Not Show | review_required | OK | `0239d436d306` |
+| `docs/atm/PHASE191D_TRADEAI_PROFIT_PROTECTION_SCORING_MODEL.md` | PHASE 191D — TradeAI Profit-Protection Scoring Model | review_required | OK | `acb90c95cb42` |
+| `docs/atm/PHASE191F_INLINE_ATM_PROFIT_PROTECTION_PANEL.md` | PHASE 191F — Inline ATM/Open-Trade Profit-Protection Panel | review_required | OK | `18c16b3bf602` |
+| `docs/atm/PHASE191G_ANY_SNOW_PROFIT_PROTECTION_ADVISORY_REPORT.md` | PHASE 191G — ANY & SNOW Profit-Protection Advisory Report | review_required | OK | `b3e8200a976c` |
+| `docs/atm/PHASE191I_PROFIT_PROTECTION_ALERT_POLICY.md` | PHASE 191I — Profit-Protection Alert Policy | review_required | OK | `f9f0523d55eb` |
+| `docs/atm/PHASE192A_COMMAND_CENTER_V2_V3_PARITY_INVENTORY.md` | PHASE 192A — Command Center v2 / v3 Parity Inventory | review_required | OK | `2e1b6f84549d` |
+| `docs/atm/PHASE192B_PROFIT_PROTECTION_ADJUSTMENT_PREFLIGHT.md` | PHASE 192B — Profit-Protection Adjustment Preflight | review_required | OK | `2fa8917dc4af` |
+| `docs/atm/PHASE192C_OPERATOR_APPROVED_PROTECTION_ACTION_POLICY.md` | PHASE 192C — Operator-Approved Protection Action Policy | review_required | OK | `93c9defc1037` |
+| `docs/atm/PHASE192F_SHARED_UI_COMPONENT_OR_V2_V3_PLAN.md` | PHASE 192F — Shared UI Component / v2-v3 Plan | review_required | OK | `215deffe070a` |
+| `docs/atm/PHASE192G_COMMAND_CENTER_V2_WIRING_REPORT.md` | PHASE 192G — Command Center v2 Wiring Report | review_required | OK | `76105c4b9ded` |
+| `docs/atm/PHASE192H_COMMAND_CENTER_V3_WIRING_REPORT.md` | PHASE 192H — Command Center v3 Wiring Report (Plan + Placeholder) | review_required | OK | `976ef32477ce` |
+| `docs/atm/PHASE192I_OPERATOR_APPROVAL_EXECUTION_ENDPOINT_REPORT.md` | PHASE 192I — Operator Approval Execution Endpoint Report | review_required | OK | `5708d38d5ea2` |
+| `docs/atm/PHASE192J_AUDIT_LOG_AND_LEARNING_LINKAGE.md` | PHASE 192J — Audit Log & Journal/Learning Linkage | review_required | OK | `99e97b834b36` |
+| `docs/atm/PHASE192K_ANY_SNOW_DRYRUN_V2_V3_RUNTIME_VERIFICATION.md` | PHASE 192K — ANY/SNOW Dry-Run + v2/v3 Runtime Verification | review_required | OK | `b66e1d42dc43` |
 | `docs/atm/PHASE192_V3_PROTECTION_PANEL_HANDOFF.md` | Phase 192 → Command Center v3 Protection Panel — HANDOFF | review_required | OK | `ade858376413` |
-| `docs/atm/atm_burnin_limited_active/day1/MONDAY_ATM_BURNIN_RUNBOOK_2026_05_26.md` | Monday ATM Burn-in Runbook — 2026-05-26 | review_required | MISSING HEADER | `a9707f09c0e0` |
+| `docs/atm/atm_burnin_limited_active/day1/MONDAY_ATM_BURNIN_RUNBOOK_2026_05_26.md` | Monday ATM Burn-in Runbook — 2026-05-26 | review_required | OK | `16957da94cda` |
 | `docs/atm/atm_burnin_limited_active/day1/atm_active_config_change_plan.md` | ATM Config Change Plan — Limited Paper Active | review_required | OK | `772c3bf91871` |
-| `docs/atm/atm_burnin_limited_active/day1/atm_active_deferral_report.md` | ATM Burn-in Day 1 — Deferral Report | review_required | MISSING HEADER | `d0b6dafc0f6e` |
-| `docs/atm/atm_burnin_limited_active/day1/atm_active_pre_stop_reconciliation.md` | STOP-V2.1 Reconciliation Report | archive_superseded | MISSING HEADER | `1b0d14bc68a9` |
+| `docs/atm/atm_burnin_limited_active/day1/atm_active_deferral_report.md` | ATM Burn-in Day 1 — Deferral Report | review_required | OK | `56b034eebafe` |
+| `docs/atm/atm_burnin_limited_active/day1/atm_active_pre_stop_reconciliation.md` | STOP-V2.1 Reconciliation Report | archive_superseded | OK | `e15222e26107` |
 | `docs/atm/atm_burnin_limited_active/day1/atm_active_preflight.md` | ATM Limited Active Burn-in — Day 1 Preflight | review_required | OK | `bcc2f7f74a23` |
 | `docs/atm/atm_burnin_limited_active/day1/atm_active_safety_audit.md` | ATM Limited Active — Day 1 Safety Audit | review_required | OK | `082ea66b05a1` |
 | `docs/atm/atm_burnin_limited_active/day1/atm_active_strategy_scope.md` | ATM Limited Active — Strategy Scope | review_required | OK | `b07ad46da297` |
@@ -494,67 +494,67 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/atm_audit_2026_05_26/AGENT_MONITORING_AUDIT.md` | Agent Monitoring Audit — 2026-05-26 | review_required | OK | `8d446fb75c3d` |
 | `docs/atm_audit_2026_05_26/ATM_SYSTEM_AUDIT.md` | ATM System Audit — 2026-05-26 | review_required | OK | `687ccdb1332f` |
 | `docs/atm_audit_2026_05_26/CAPITAL_ALLOCATION_AUDIT.md` | Capital Allocation Audit | review_required | OK | `2049a921894b` |
-| `docs/atm_audit_2026_05_26/HANDOFF_MANIFEST.md` | ATM Audit Handoff Manifest | review_required | MISSING HEADER | `69c8ca517cb7` |
-| `docs/atm_audit_2026_05_26/NEXT_PHASE_ATM_BURNIN_DRYRUN_PROMPT.md` | ATM Dry-run Burn-in — Next Phase Prompt | review_required | MISSING HEADER | `24dede7fd208` |
+| `docs/atm_audit_2026_05_26/HANDOFF_MANIFEST.md` | ATM Audit Handoff Manifest | review_required | OK | `7da82c852390` |
+| `docs/atm_audit_2026_05_26/NEXT_PHASE_ATM_BURNIN_DRYRUN_PROMPT.md` | ATM Dry-run Burn-in — Next Phase Prompt | review_required | OK | `76dbb12a4d87` |
 | `docs/atm_audit_2026_05_26/PROJECT_DOC_INDEX.md` | Trade AI v12 — Documentation Index | review_required | OK | `a3b35c25d3dc` |
 | `docs/atm_audit_2026_05_26/STOP_AND_TRADE_MANAGEMENT_AUDIT.md` | Stop and Trade Management Audit | review_required | OK | `eacb96526bf9` |
-| `docs/atm_audit_2026_05_26/SYSTEM_ARCHITECTURE_COMPLETE.md` | Trade AI v12 — Complete System Architecture | review_required | MISSING HEADER | `0b7b10471a17` |
-| `docs/atm_audit_2026_05_26/api_samples/API_CAPTURE_SUMMARY.md` | API Capture Summary — ATM Audit 2026-05-26 | review_required | MISSING HEADER | `6153f5fc7892` |
-| `docs/atm_audit_2026_05_26/atm_reenable_burn_in_plan.md` | ATM Re-enable Burn-in Plan | review_required | MISSING HEADER | `3502c3a2f6d9` |
+| `docs/atm_audit_2026_05_26/SYSTEM_ARCHITECTURE_COMPLETE.md` | Trade AI v12 — Complete System Architecture | review_required | OK | `173d25d5c499` |
+| `docs/atm_audit_2026_05_26/api_samples/API_CAPTURE_SUMMARY.md` | API Capture Summary — ATM Audit 2026-05-26 | review_required | OK | `5a528427704a` |
+| `docs/atm_audit_2026_05_26/atm_reenable_burn_in_plan.md` | ATM Re-enable Burn-in Plan | review_required | OK | `24359b0393aa` |
 | `docs/atm_audit_2026_05_26/atm_reenable_config_proposal.md` | ATM Re-enable Configuration Proposal | review_required | OK | `312fc3d26d4d` |
-| `docs/atm_audit_2026_05_26/atm_reenable_gate_checklist.md` | ATM Re-enable Gate Checklist | review_required | MISSING HEADER | `b1fa72ef1e8b` |
+| `docs/atm_audit_2026_05_26/atm_reenable_gate_checklist.md` | ATM Re-enable Gate Checklist | review_required | OK | `205a4a42f1a8` |
 | `docs/atm_audit_2026_05_26/atm_reenable_john_7_decisions.md` | ATM Re-enable — John's 7 Decisions | review_required | OK | `30240d08298e` |
-| `docs/atm_audit_2026_05_26/atm_reenable_modes.md` | ATM Re-enable Modes | review_required | MISSING HEADER | `279bba952803` |
-| `docs/atm_audit_2026_05_26/atm_reenable_operator_runbook.md` | ATM Re-enable Operator Runbook | review_required | MISSING HEADER | `697479ca3d57` |
-| `docs/atm_audit_2026_05_26/atm_reenable_readiness_evidence.md` | ATM Re-enable Readiness Evidence | review_required | MISSING HEADER | `001751162af2` |
-| `docs/atm_audit_2026_05_26/atm_reenable_risk_register.md` | ATM Re-enable Risk Register | review_required | MISSING HEADER | `4e18bdeaff0a` |
-| `docs/atm_audit_2026_05_26/cron_snapshot/ATM_CRON_MAP.md` | ATM Cron Map — Audit 2026-05-26 | review_required | MISSING HEADER | `7111bbf6b271` |
+| `docs/atm_audit_2026_05_26/atm_reenable_modes.md` | ATM Re-enable Modes | review_required | OK | `24c2cdf7372e` |
+| `docs/atm_audit_2026_05_26/atm_reenable_operator_runbook.md` | ATM Re-enable Operator Runbook | review_required | OK | `a14d71073a8a` |
+| `docs/atm_audit_2026_05_26/atm_reenable_readiness_evidence.md` | ATM Re-enable Readiness Evidence | review_required | OK | `af3689635ce8` |
+| `docs/atm_audit_2026_05_26/atm_reenable_risk_register.md` | ATM Re-enable Risk Register | review_required | OK | `f14075bc802b` |
+| `docs/atm_audit_2026_05_26/cron_snapshot/ATM_CRON_MAP.md` | ATM Cron Map — Audit 2026-05-26 | review_required | OK | `2cdadd59ec6a` |
 | `docs/atm_audit_2026_05_26/designer_review/P05B_CONTROL_HARDENING_REPORT.md` | P0.5B Control Hardening Report | review_required | OK | `9062d3ac767a` |
-| `docs/atm_audit_2026_05_26/designer_review/POST_FIX_SOURCE_MANIFEST.md` | POST-FIX SOURCE MANIFEST | review_required | MISSING HEADER | `b58229434bc9` |
-| `docs/atm_audit_2026_05_26/designer_review/alert_routing_direct_sender_audit.md` | Direct Telegram Sender Audit | review_required | MISSING HEADER | `c1c283f44065` |
-| `docs/atm_audit_2026_05_26/log_evidence/INCIDENT_TIMELINE_EVIDENCE.md` | Incident Timeline Evidence -- ATM Audit 2026-05-26 | review_required | MISSING HEADER | `09015e84d882` |
+| `docs/atm_audit_2026_05_26/designer_review/POST_FIX_SOURCE_MANIFEST.md` | POST-FIX SOURCE MANIFEST | review_required | OK | `0c200a6e0057` |
+| `docs/atm_audit_2026_05_26/designer_review/alert_routing_direct_sender_audit.md` | Direct Telegram Sender Audit | review_required | OK | `2bfe91c0828e` |
+| `docs/atm_audit_2026_05_26/log_evidence/INCIDENT_TIMELINE_EVIDENCE.md` | Incident Timeline Evidence -- ATM Audit 2026-05-26 | review_required | OK | `c751a09a0faa` |
 | `docs/atm_audit_2026_05_26/remediation_plan/P0_REMEDIATION_PLAN.md` | P0 Remediation Plan — ATM Incident 2026-05-26 | review_required | OK | `cc2fd53bac6b` |
-| `docs/atm_audit_2026_05_26/schema_snapshot/SCHEMA_FINDINGS.md` | Schema Findings -- ATM Audit 2026-05-26 | review_required | MISSING HEADER | `74d5b35659e0` |
-| `docs/atm_audit_2026_05_26/schema_snapshot/table_schemas.md` | Schema Snapshot -- ATM Audit 2026-05-26 | review_required | MISSING HEADER | `5705fcd7aafa` |
+| `docs/atm_audit_2026_05_26/schema_snapshot/SCHEMA_FINDINGS.md` | Schema Findings -- ATM Audit 2026-05-26 | review_required | OK | `c47df933fc27` |
+| `docs/atm_audit_2026_05_26/schema_snapshot/table_schemas.md` | Schema Snapshot -- ATM Audit 2026-05-26 | review_required | OK | `ba858d82d79f` |
 | `docs/audit/PROPOSALS_BROKER_VS_REGULAR_AUDIT_20260624.md` | Proposals Audit — Broker vs Regular (Frontend + Backend) | review_required | OK | `c3f78de62d14` |
-| `docs/audits/ATM_APPROVE_FAILED_2026-05-22.md` | ATM approve_proposal_failed Investigation — 2026-05-22 | review_required | MISSING HEADER | `e9dedf6331a4` |
+| `docs/audits/ATM_APPROVE_FAILED_2026-05-22.md` | ATM approve_proposal_failed Investigation — 2026-05-22 | review_required | OK | `9f1bdc8d2d08` |
 | `docs/audits/CENSUS_PART1_BACKEND_2026-08-30.md` | CENSUS — PART 1: BACKEND | review_required | OK | `18392c652fe2` |
 | `docs/audits/CENSUS_PART2_COMMAND_CENTER_2026-08-30.md` | CENSUS PART 2 — The Command Center / operator surface | review_required | OK | `a01d2b2b3eee` |
-| `docs/audits/CENSUS_PART5_LEVEL_SET.md` | CENSUS_PART5_LEVEL_SET.md | review_required | MISSING HEADER | `5dec505bae4c` |
+| `docs/audits/CENSUS_PART5_LEVEL_SET.md` | CENSUS_PART5_LEVEL_SET.md | review_required | OK | `2b8c85d465e2` |
 | `docs/audits/CIO_DILIGENCE_GAP_REGISTER.md` | CIO Diligence Gap Register | review_required | OK | `bda3d68b2c3f` |
 | `docs/audits/CIO_PIPELINE_DIAGRAM_VERIFICATION_2026-08-27.md` | Is the CIO pipeline diagram the true state? — measured verification | review_required | OK | `91e849bb4976` |
 | `docs/audits/CIO_PLATFORM_AUDIT_2026-08-27.md` | CIO Platform Comprehensive Audit — Phase 1: Findings | review_required | OK | `10d02758c227` |
-| `docs/audits/CIO_PLATFORM_DILIGENCE_MASTER_PLAN_2026-08-30.md` | Trade AI Platform — Enterprise Due Diligence, Validation, Remediation & Execution Master Plan | review_required | MISSING HEADER | `f9b8417ba3c1` |
+| `docs/audits/CIO_PLATFORM_DILIGENCE_MASTER_PLAN_2026-08-30.md` | Trade AI Platform — Enterprise Due Diligence, Validation, Remediation & Execution Master Plan | review_required | OK | `4c59080608e4` |
 | `docs/audits/CIO_PLATFORM_REMEDIATION_2026-08-27.md` | CIO Platform Comprehensive Audit — Phase 2: Remediation Plan | review_required | OK | `2224490a6526` |
-| `docs/audits/EXECUTION_LINK_2026-06-26.md` | Proposal Execution Link Audit — 2026-06-26 | review_required | MISSING HEADER | `d5d854cbb486` |
+| `docs/audits/EXECUTION_LINK_2026-06-26.md` | Proposal Execution Link Audit — 2026-06-26 | review_required | OK | `fa7e72d022a2` |
 | `docs/audits/FCNTX_144_ACCEPTANCE_2026-07-14.md` | FCNTX Event #144 — A–G Acceptance Fixture (Part H) | review_required | OK | `212809f92fec` |
-| `docs/audits/FCNTX_144_DECISION_PACKET_LATEST.md` | FCNTX event #144 — operator decision packet (version-bound) | delete_candidate_duplicate | MISSING HEADER | `fb2de97de579` |
-| `docs/audits/FCNTX_144_DECISION_PACKET_v31_2026-07-14.md` | FCNTX event #144 — operator decision packet (version-bound) | delete_candidate_duplicate | MISSING HEADER | `fb2de97de579` |
-| `docs/audits/P101_RISK_PRODUCER_2026-08-28.md` | P10.1 — `risk_management.json` has a producer. It writes to the wrong tree. | review_required | MISSING HEADER | `1f98259a8c9f` |
-| `docs/audits/P85_FRESHNESS_FLIP_HELD_2026-08-28.md` | P8.5 — the freshness flip: **not applied** | review_required | MISSING HEADER | `c86888b6467f` |
-| `docs/audits/P91_WHERE_THE_MODEL_CALL_GOES_2026-08-28.md` | P9.1 — where does the model call go? | review_required | MISSING HEADER | `57cb0cf47fa5` |
-| `docs/audits/P92_RESEARCH_ROUND_TRIP_2026-08-28.md` | P9.2 — has a research round trip ever closed? | review_required | MISSING HEADER | `9b7602390c23` |
-| `docs/audits/P93_TWO_SURFACES_ONE_BOOK_2026-08-28.md` | P9.3 — the two surfaces disagree about the same book | review_required | MISSING HEADER | `b2198a74adcc` |
-| `docs/audits/P95_CAPABILITY_BOUNDARIES_2026-08-28.md` | P9.5 — capability boundaries | review_required | MISSING HEADER | `2788bb5ca17a` |
-| `docs/audits/PHASE8_ANALYSIS_2026-08-27.md` | Phase 8 analysis — P8.3, P8.4, P8.6 | review_required | MISSING HEADER | `56645898d214` |
-| `docs/audits/PROPOSAL_SUPPLY_AUDIT_2026-05-22.md` | Proposal Supply Throughput Audit — 2026-05-22 | review_required | MISSING HEADER | `e2ee12bf4db8` |
-| `docs/audits/PROPOSAL_SUPPLY_AUDIT_2026-06-26.md` | Proposal Supply Funnel Audit — 2026-06-26 | review_required | MISSING HEADER | `b4a8c91a9f1a` |
-| `docs/audits/REDEPLOY_BACKFILL_EVIDENCE_2026-07-14.md` | Redeploy Historical Backfill Evidence — 2026-07-14 | review_required | MISSING HEADER | `0c8f506781ed` |
-| `docs/audits/REDEPLOY_DEFECT_MAP_2026-07-14.md` | Redeploy semantic-integrity release — defect-to-code map (Phase 0) | review_required | MISSING HEADER | `2e69cbba0c2b` |
+| `docs/audits/FCNTX_144_DECISION_PACKET_LATEST.md` | FCNTX event #144 — operator decision packet (version-bound) | review_required | OK | `94249bee25f1` |
+| `docs/audits/FCNTX_144_DECISION_PACKET_v31_2026-07-14.md` | FCNTX event #144 — operator decision packet (version-bound) | review_required | OK | `5bd54a7f0c60` |
+| `docs/audits/P101_RISK_PRODUCER_2026-08-28.md` | P10.1 — `risk_management.json` has a producer. It writes to the wrong tree. | review_required | OK | `ab3ccb5ebae0` |
+| `docs/audits/P85_FRESHNESS_FLIP_HELD_2026-08-28.md` | P8.5 — the freshness flip: **not applied** | review_required | OK | `ae8d52380901` |
+| `docs/audits/P91_WHERE_THE_MODEL_CALL_GOES_2026-08-28.md` | P9.1 — where does the model call go? | review_required | OK | `fe5e6124f0c7` |
+| `docs/audits/P92_RESEARCH_ROUND_TRIP_2026-08-28.md` | P9.2 — has a research round trip ever closed? | review_required | OK | `a2df230950f3` |
+| `docs/audits/P93_TWO_SURFACES_ONE_BOOK_2026-08-28.md` | P9.3 — the two surfaces disagree about the same book | review_required | OK | `f7a0f6f9413c` |
+| `docs/audits/P95_CAPABILITY_BOUNDARIES_2026-08-28.md` | P9.5 — capability boundaries | review_required | OK | `51eaf0d8d236` |
+| `docs/audits/PHASE8_ANALYSIS_2026-08-27.md` | Phase 8 analysis — P8.3, P8.4, P8.6 | review_required | OK | `0dc408525a27` |
+| `docs/audits/PROPOSAL_SUPPLY_AUDIT_2026-05-22.md` | Proposal Supply Throughput Audit — 2026-05-22 | review_required | OK | `8ddde048acbb` |
+| `docs/audits/PROPOSAL_SUPPLY_AUDIT_2026-06-26.md` | Proposal Supply Funnel Audit — 2026-06-26 | review_required | OK | `fdb1de0ca914` |
+| `docs/audits/REDEPLOY_BACKFILL_EVIDENCE_2026-07-14.md` | Redeploy Historical Backfill Evidence — 2026-07-14 | review_required | OK | `24802fd81ecf` |
+| `docs/audits/REDEPLOY_DEFECT_MAP_2026-07-14.md` | Redeploy semantic-integrity release — defect-to-code map (Phase 0) | review_required | OK | `2e25e9904f5e` |
 | `docs/audits/REDEPLOY_FIXTURE_AUDIT_2026-07-13.md` | P0 Data-Integrity Audit — Redeploy Desk Test-Fixture Pollution | review_required | OK | `96cced0e7cac` |
-| `docs/audits/REDEPLOY_PHASE0_REPORT_2026-07-14.md` | Redeploy institutional rebuild — Phase-0 report (2026-07-14) | review_required | MISSING HEADER | `24da220c139f` |
-| `docs/audits/REPLAY_INTEGRITY_2026-06-27.md` | Replay chart integrity audit — 2026-06-27 | review_required | MISSING HEADER | `5307e3a1411b` |
-| `docs/audits/REPLAY_INTEGRITY_2026-07-11.md` | Replay chart integrity audit — 2026-07-11 | review_required | MISSING HEADER | `5727200a5a4f` |
-| `docs/audits/REPLAY_INTEGRITY_2026-07-15.md` | Replay chart integrity audit — 2026-07-15 | delete_candidate_duplicate | MISSING HEADER | `7bcea77cbd47` |
-| `docs/audits/REPLAY_INTEGRITY_LATEST.md` | Replay chart integrity audit — 2026-07-15 | delete_candidate_duplicate | MISSING HEADER | `7bcea77cbd47` |
-| `docs/audits/REPLAY_SCALE_FIX_2026-06-27.md` | Replay price-scale fix — 2026-06-27 | review_required | MISSING HEADER | `c5eafc402dc6` |
-| `docs/audits/STOP_MGMT_DISCOVERY_2026-05-23.md` | Stop Management System Discovery — 2026-05-23 | review_required | MISSING HEADER | `8057fbc49cb0` |
-| `docs/audits/STORAGE_SAFEGUARDS_AUDIT_2026-08-11.md` | Storage Safeguards Audit — 2026-08-11 | review_required | MISSING HEADER | `ab8386f2f87a` |
+| `docs/audits/REDEPLOY_PHASE0_REPORT_2026-07-14.md` | Redeploy institutional rebuild — Phase-0 report (2026-07-14) | review_required | OK | `27855280305f` |
+| `docs/audits/REPLAY_INTEGRITY_2026-06-27.md` | Replay chart integrity audit — 2026-06-27 | review_required | OK | `2afebe4f0039` |
+| `docs/audits/REPLAY_INTEGRITY_2026-07-11.md` | Replay chart integrity audit — 2026-07-11 | review_required | OK | `6aab21a23423` |
+| `docs/audits/REPLAY_INTEGRITY_2026-07-15.md` | Replay chart integrity audit — 2026-07-15 | review_required | OK | `0655b5c42f64` |
+| `docs/audits/REPLAY_INTEGRITY_LATEST.md` | Replay chart integrity audit — 2026-07-15 | review_required | OK | `fdd9446be17b` |
+| `docs/audits/REPLAY_SCALE_FIX_2026-06-27.md` | Replay price-scale fix — 2026-06-27 | review_required | OK | `47f67ee8a8ab` |
+| `docs/audits/STOP_MGMT_DISCOVERY_2026-05-23.md` | Stop Management System Discovery — 2026-05-23 | review_required | OK | `05cb7b189dc7` |
+| `docs/audits/STORAGE_SAFEGUARDS_AUDIT_2026-08-11.md` | Storage Safeguards Audit — 2026-08-11 | review_required | OK | `cdedb00b3ff6` |
 | `docs/audits/SUPPLY_TRIAGE_2026-05-22.md` | Supply Triage — 2026-05-22 (Session A, Revised) | review_required | OK | `f6b9feb41d5f` |
 | `docs/audits/WATCHLIST_LIFECYCLE_AUDIT_2026-08-19.md` | Watchlist Lifecycle Audit — 2026-08-19 | review_required | OK | `daf9a80cdea3` |
 | `docs/audits/WATCHLIST_LIFECYCLE_REMEDIATION_2026-08-19.md` | Watchlist Lifecycle Remediation — Build & Documentation | review_required | OK | `abc80c02abae` |
-| `docs/audits/WATCH_DECISION_DESK_V5_BASELINE_2026-07-22.md` | Watch Decision Desk V5 — Baseline & Source Audit (2026-07-22) | review_required | MISSING HEADER | `9aa6d9c94496` |
-| `docs/audits/diligence/G_AUTH_01_MITIGATION_2026-08-30.md` | G-AUTH-01 mitigation (2026-08-30) | review_required | MISSING HEADER | `8944ce791434` |
+| `docs/audits/WATCH_DECISION_DESK_V5_BASELINE_2026-07-22.md` | Watch Decision Desk V5 — Baseline & Source Audit (2026-07-22) | review_required | OK | `4b1f6ba966eb` |
+| `docs/audits/diligence/G_AUTH_01_MITIGATION_2026-08-30.md` | G-AUTH-01 mitigation (2026-08-30) | review_required | OK | `4944bb09ca7a` |
 | `docs/audits/diligence/G_ID_01_MITIGATION_2026-08-30.md` | G-ID-01 — subject_guid carriage mitigation | review_required | OK | `3c31c237cfe2` |
 | `docs/audits/diligence/G_IR_01_MITIGATION_2026-08-30.md` | G-IR-01 mitigation — InstrumentRecord wake load | review_required | OK | `1eea3ed94246` |
 | `docs/audits/diligence/G_LOOP_01_PARTIAL_2026-08-30.md` | G-LOOP-01 — Partial: operator-gated DLQ ledger (dry-run) | review_required | OK | `b6b2504c0892` |
@@ -587,7 +587,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/audits/overnight/F4_SEARCH_HEALTH_2026-08-31.md` | Overnight F4 — Search health + degradation into research output | review_required | OK | `4dc974d8af55` |
 | `docs/audits/overnight/F5_MODEL_COST_2026-08-31.md` | Overnight F5 — Model-call cost accounting | review_required | OK | `b7e798b44094` |
 | `docs/audits/overnight/F6_UTC_CRON_PROPOSALS_2026-08-31.md` | WAVE F6 — UTC scheduling proposals for LLM-heavy jobs · 2026-08-31 | review_required | OK | `ad31fa3b797a` |
-| `docs/audits/overnight/G1_OVERLAY_DATABROKER_HOTFIX_2026-08-31.md` | G1 overlay hotfix — state/data_broker path | review_required | MISSING HEADER | `522d336a2b3a` |
+| `docs/audits/overnight/G1_OVERLAY_DATABROKER_HOTFIX_2026-08-31.md` | G1 overlay hotfix — state/data_broker path | review_required | OK | `13ac05cb0d21` |
 | `docs/audits/overnight/G1_RESOLUTION_LAYER_2026-08-31.md` | Overnight G1 — Checkout-relative remediation at the resolution layer | review_required | OK | `d6c281abaef4` |
 | `docs/audits/overnight/G2_IMPORT_NORMALISE_2026-08-31.md` | Overnight G2 — Import normalisation (A3 dual-load hot paths) | review_required | OK | `f6dec2f4a99a` |
 | `docs/audits/overnight/G3_DOCS_INDEX_2026-08-31.md` | Overnight G3 — Documentation index generator | review_required | OK | `c84615e159f7` |
@@ -602,8 +602,8 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/audits/overnight/W5_SEARCH_COST_PROOFS_2026-09-01.md` | Night Three Wave 5 — Search / cost proofs (5a–5d) | review_required | OK | `de36a3e5b06d` |
 | `docs/audits/overnight/W6_STRUCTURE_PROOFS_2026-09-01.md` | Night Three Wave 6 — Structure proofs (G1 / G4 / G3) | review_required | OK | `3c93ef8a1431` |
 | `docs/audits/overnight/WAVE_E_CATALYST_2026-08-31.md` | WAVE E — Catalyst pipeline (E1→E5) · 2026-08-31 | review_required | OK | `c700329a997a` |
-| `docs/briefs/PHASE_11_superseded.md` | Phase 11 — superseded by the validation sweep before execution | archive_superseded | MISSING HEADER | `a77d6d25a9e3` |
-| `docs/briefs/README.md` | Wave briefs | review_required | MISSING HEADER | `a2f504a8b977` |
+| `docs/briefs/PHASE_11_superseded.md` | Phase 11 — superseded by the validation sweep before execution | archive_superseded | OK | `a9a0963cd1ce` |
+| `docs/briefs/README.md` | Wave briefs | review_required | OK | `4050ed8f6c68` |
 | `docs/briefs/TEMPLATE.md` | WAVE <n> — <short name> | review_required | OK | `a602898a4cef` |
 | `docs/briefs/WAVE_12_CONTINUED_land_it.md` | Wave 12 continued — land it, then build | review_required | OK | `6f3787e517df` |
 | `docs/briefs/WAVE_12_maturity_bar.md` | Wave 12 — the operator's maturity bar | review_required | OK | `cfa9bb927eaa` |
@@ -619,45 +619,45 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/briefs/WAVE_3E_close_leftovers.md` | No Wave 3F — close leftovers | review_required | OK | `02d2e413ec7f` |
 | `docs/briefs/WAVE_CASH_PROOF_authorized_promote.md` | Authorized merge #635 + exact-main promote | review_required | OK | `00e7c9d65c79` |
 | `docs/briefs/WAVE_CASH_PROOF_saturday_635.md` | Saturday cash-fossil proof of #635 | review_required | OK | `587d1d6a5bdf` |
-| `docs/briefs/WAVE_PERSISTENT_CIO_slices_a_e.md` | Persistent CIO — Slices A-E (InstrumentRecord, rehydrate, CC reads record, research budget, preconditions board) | review_required | MISSING HEADER | `66b4fb194c7f` |
-| `docs/briefs/WAVE_RESIDUAL_WEB_live_still_gated.md` | Residual web — live, still gated | review_required | MISSING HEADER | `beecd75ae04c` |
+| `docs/briefs/WAVE_PERSISTENT_CIO_slices_a_e.md` | Persistent CIO — Slices A-E (InstrumentRecord, rehydrate, CC reads record, research budget, preconditions board) | review_required | OK | `8e822c859ba1` |
+| `docs/briefs/WAVE_RESIDUAL_WEB_live_still_gated.md` | Residual web — live, still gated | review_required | OK | `f92827b61b73` |
 | `docs/briefs/WAVE_RULES_install_standing_rules.md` | Install the standing rules into the repo | review_required | OK | `c0d9fc36b316` |
 | `docs/briefs/WAVE_S0_operator_loop.md` | S0 operator loop | review_required | OK | `2f92d09dc621` |
 | `docs/briefs/WAVE_V_VALIDATION_SWEEP.md` | Validation sweep V0-V5 | review_required | OK | `d503aea899dc` |
 | `docs/broker-promote-sizing.md` | Broker Promote: Sizing + AI Oversight (paper → Schwab/Fidelity) | review_required | OK | `22a87f0cd242` |
-| `docs/brokers/ALPACA_DUE_DILIGENCE_AUDIT_2026-07-21.md` | Alpaca / Paper Trading — Due Diligence Audit (2026-07-21) | review_required | MISSING HEADER | `feae3a8b5bc7` |
+| `docs/brokers/ALPACA_DUE_DILIGENCE_AUDIT_2026-07-21.md` | Alpaca / Paper Trading — Due Diligence Audit (2026-07-21) | review_required | OK | `12b020b1c8e9` |
 | `docs/brokers/GROK_HANDOFF_ALPACA_TAXONOMY_2026-07-21.md` | Handoff Package for Grok Analysis — Alpaca / Paper / Paca Taxonomy | review_required | OK | `4f08644ea43e` |
 | `docs/brokers/advanced-order-support-matrix.md` | Advanced Order Support Matrix (Phase 3) | review_required | OK | `4c745b6ac89f` |
-| `docs/brokers/alpaca-live-accounts.md` | Alpaca Live Accounts (Taxable + IRA) — Roadmap | review_required | MISSING HEADER | `feed2fb4b531` |
+| `docs/brokers/alpaca-live-accounts.md` | Alpaca Live Accounts (Taxable + IRA) — Roadmap | review_required | OK | `7bf3ce627049` |
 | `docs/brokers/alpaca-vs-schwab-capability-matrix.md` | Alpaca vs Schwab Capability Matrix (Phase 2) | review_required | OK | `1d43178f08e5` |
 | `docs/brokers/broker-abstraction-adr.md` | ADR-B1: Broker Abstraction Layer | review_required | OK | `d05c42a9876e` |
 | `docs/brokers/canonical-order-model.md` | Canonical Order-Intent Model (ADR-B2) | review_required | OK | `c43fe24d5eca` |
 | `docs/brokers/current-state-alpaca-integration.md` | Current-State: Alpaca Integration (Phase 1 Discovery) | review_required | OK | `9e75c115a184` |
 | `docs/brokers/execution-safety-guards.md` | Execution Safety Guards (ADR-B3) | review_required | OK | `f84d88f633f6` |
-| `docs/brokers/implementation-notes.md` | Implementation Notes / PR Summary — Schwab Integration Phase (research + dormant scaffold) | review_required | MISSING HEADER | `f0c7b9257adb` |
-| `docs/brokers/master-test-plan.md` | Master Test Plan — Schwab Broker Integration (dormant phase) | review_required | MISSING HEADER | `b327ce281066` |
+| `docs/brokers/implementation-notes.md` | Implementation Notes / PR Summary — Schwab Integration Phase (research + dormant scaffold) | review_required | OK | `a44ef1fc4921` |
+| `docs/brokers/master-test-plan.md` | Master Test Plan — Schwab Broker Integration (dormant phase) | review_required | OK | `6ae7f4bcf2de` |
 | `docs/brokers/migration-plan-alpaca-to-schwab.md` | Migration Plan: Alpaca → Schwab (forward-looking; NO migration this phase) | review_required | OK | `e87549711f3f` |
 | `docs/brokers/open-questions-and-unverified-items.md` | Open Questions & UNVERIFIED Items | review_required | OK | `c11631716d82` |
-| `docs/brokers/paca-accounts.md` | Redirect: paca-accounts.md (superseded) | review_required | MISSING HEADER | `31ba96d30113` |
-| `docs/brokers/paper-trading.md` | Paper Trading (Alpaca) — As-Is Operator Procedures | review_required | MISSING HEADER | `31e28a8c867c` |
+| `docs/brokers/paca-accounts.md` | Redirect: paca-accounts.md (superseded) | review_required | OK | `0cb169843916` |
+| `docs/brokers/paper-trading.md` | Paper Trading (Alpaca) — As-Is Operator Procedures | review_required | OK | `1da735f090cf` |
 | `docs/brokers/schwab-integration-target-architecture.md` | Schwab Integration — Target Architecture (Phase 3) | review_required | OK | `c996530a2bc1` |
 | `docs/brokers/schwab_widening_promotion_roadmap.md` | Schwab Widening Promotion Roadmap | review_required | OK | `fe5ee55d6e4d` |
 | `docs/brokers/snaptrade-fidelity-protective-stops-spec.md` | SnapTrade / Fidelity Protective Stops — Spec (build-now, operator-approve) | review_required | OK | `b3d426c9d9cc` |
 | `docs/brokers/snaptrade-read-only-aggregation-spec.md` | SnapTrade Read-Only Aggregation — Spec | review_required | OK | `86cb73449484` |
-| `docs/brokers/stage1-translation-review-log.md` | Stage-1 Translation Review Log | review_required | MISSING HEADER | `8bd28c71d92a` |
+| `docs/brokers/stage1-translation-review-log.md` | Stage-1 Translation Review Log | review_required | OK | `5477cccf60ef` |
 | `docs/brokers/stage2a-canary-protocol.md` | Stage 2a — Shadow Validation Protocol (manual orders + read-only API) | review_required | OK | `d449a5f5aec9` |
-| `docs/brokers/stage2a-reconciliation-log.md` | Stage 2a — Shadow Reconciliation Log (read-only harness) | review_required | MISSING HEADER | `70592b627c75` |
-| `docs/brokers/stage2a-session-runbook.md` | Stage 2a Canary Session — OPERATOR RUNBOOK (compressed 5-order battery) | review_required | MISSING HEADER | `840668302626` |
-| `docs/brokers/stage2b-write-pilot-spec.md` | Stage 2b — Schwab Write Pilot Spec (operator-approved parameters, 2026-06-12) | review_required | MISSING HEADER | `7c6f0e669792` |
-| `docs/brokers/stage2c-protective-stops-spec.md` | Stage 2c — Protective Stops on Holdings (spec) | review_required | MISSING HEADER | `683e824fa63f` |
-| `docs/brokers/stop-management-architecture.md` | Stop Management Architecture (as-built) | review_required | MISSING HEADER | `b3952a56b3b0` |
+| `docs/brokers/stage2a-reconciliation-log.md` | Stage 2a — Shadow Reconciliation Log (read-only harness) | review_required | OK | `ec1461eb3b59` |
+| `docs/brokers/stage2a-session-runbook.md` | Stage 2a Canary Session — OPERATOR RUNBOOK (compressed 5-order battery) | review_required | OK | `28b66e598904` |
+| `docs/brokers/stage2b-write-pilot-spec.md` | Stage 2b — Schwab Write Pilot Spec (operator-approved parameters, 2026-06-12) | review_required | OK | `f2256bf6edd7` |
+| `docs/brokers/stage2c-protective-stops-spec.md` | Stage 2c — Protective Stops on Holdings (spec) | review_required | OK | `4b6c9d93874d` |
+| `docs/brokers/stop-management-architecture.md` | Stop Management Architecture (as-built) | review_required | OK | `f913678db261` |
 | `docs/brokers/trading-environments.md` | Trading Environments — Taxonomy & Configuration | review_required | OK | `1a28c5ad063a` |
 | `docs/brokers/tradingview-lanes.md` | TradingView Lanes (Alpaca multi-account era) | review_required | OK | `8b2d65b3e8d2` |
 | `docs/brokers/ui-card-contracts-schwab.md` | Broker Orders — UI Card Contracts (Phase 5) | review_required | OK | `5f78a07dc929` |
-| `docs/cio/ARCHITECTURE.md` | Architecture — Track A vs Track B | review_required | MISSING HEADER | `cee3abdf4d53` |
-| `docs/cio/AUTHORITY.md` | Authority — READ_ONLY_ADVISORY | review_required | MISSING HEADER | `019199effd1e` |
+| `docs/cio/ARCHITECTURE.md` | Architecture — Track A vs Track B | review_required | OK | `b2638a2533ca` |
+| `docs/cio/AUTHORITY.md` | Authority — READ_ONLY_ADVISORY | review_required | OK | `7aaecdff72b8` |
 | `docs/cio/CATALYST_AND_HERMES.md` | Catalyst domain + Hermes research de-duplication | review_required | OK | `65dfcba21b19` |
-| `docs/cio/CIO_DESK_OPERATING_PACKET.md` | Trade AI — CIO Desk Operating Packet | review_required | MISSING HEADER | `d8d1228704ce` |
+| `docs/cio/CIO_DESK_OPERATING_PACKET.md` | Trade AI — CIO Desk Operating Packet | review_required | OK | `6d3c1e290b04` |
 | `docs/cio/CIO_NOTIFICATION_POLICY.md` | CIO Notification Policy — Signal over Spam | review_required | OK | `40a0bb623a7c` |
 | `docs/cio/CIO_NOTIFICATION_REPLAY_ACCEPTANCE.md` | CIO Notification Replay Acceptance | review_required | OK | `76573f672e2d` |
 | `docs/cio/CIO_NOTIFICATION_RUNTIME_TOPOLOGY.md` | CIO Notification Runtime Topology | review_required | OK | `ab46eaffc931` |
@@ -670,10 +670,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/cio/EVIDENCE_INVENTORY_WS0.md` | WS0 — CIO Evidence & Hermes Inventory (Phase 0 hard gate) | review_required | OK | `563352167d61` |
 | `docs/cio/LEARNING_LOOP.md` | Learning loop — dispositions → enrichment bias | review_required | OK | `256c98fd17bc` |
 | `docs/cio/P2B_PLAN_ENRICHMENT.md` | Phase P2b — Plan enrichment (brain depth) | review_required | OK | `84357e0f4baf` |
-| `docs/cio/PROMPT_CURATION.md` | Alex enrichment — prompt curation, versioning, evaluation | review_required | MISSING HEADER | `c08f5bb823d0` |
-| `docs/cio/README.md` | CIO Desk — Architect Packet | review_required | MISSING HEADER | `fd3b1089e629` |
-| `docs/cio/REENTRY_RR.md` | Re-entry R:R methodology (live system) | review_required | MISSING HEADER | `6e6289376ab0` |
-| `docs/cio/ROADMAP_GAPS.md` | Roadmap gaps — explicit “not yet” | review_required | MISSING HEADER | `194e74707198` |
+| `docs/cio/PROMPT_CURATION.md` | Alex enrichment — prompt curation, versioning, evaluation | review_required | OK | `cd347417c892` |
+| `docs/cio/README.md` | CIO Desk — Architect Packet | review_required | OK | `6088d212af48` |
+| `docs/cio/REENTRY_RR.md` | Re-entry R:R methodology (live system) | review_required | OK | `812b1becafa6` |
+| `docs/cio/ROADMAP_GAPS.md` | Roadmap gaps — explicit “not yet” | review_required | OK | `73d81a84b73a` |
 | `docs/cio/SITUATIONS.md` | Situation catalog & plan lifecycle | review_required | OK | `e0d3e3a62f8d` |
 | `docs/cio/SITUATION_CATALOG_V1.md` | Situation Catalog v1 (code freeze — Phase 2a) | review_required | OK | `d855e95f4c44` |
 | `docs/cio/THESIS.md` | Desk thesis — `desk@vN` | review_required | OK | `13fc723dc294` |
@@ -681,103 +681,103 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/cio/TWO_WAY_CURATION_OPS_STATUS_2026-08-13.md` | Two-Way Watchlist Curation — Ops Status (2026-08-13) | review_required | OK | `cf6dc79d8253` |
 | `docs/cio/TWO_WAY_WATCHLIST_CURATION.md` | Two-Way Watchlist Curation | review_required | OK | `6154bc9debd1` |
 | `docs/cio/WAKE_TRACES_P5.md` | Phase P5 — Lightweight wake traces | review_required | OK | `b17c04bc59ed` |
-| `docs/consumption-monitoring.md` | LLM Consumption Monitoring (Command Center v3) | review_required | MISSING HEADER | `12246ca93338` |
-| `docs/convergence/COMMAND_CENTER_CUTOVER_PLAN.md` | Command Center cutover plan | review_required | MISSING HEADER | `ab185839793b` |
-| `docs/convergence/CONTRACT_CHANGE_LOG.md` | Control-plane contract change log | review_required | MISSING HEADER | `87975f0eea47` |
-| `docs/convergence/CONTROL_PLANE_API_V1_1.md` | CONTROL_PLANE_API_V1.1 | review_required | MISSING HEADER | `3821db91f7f3` |
+| `docs/consumption-monitoring.md` | LLM Consumption Monitoring (Command Center v3) | review_required | OK | `a232b99dce13` |
+| `docs/convergence/COMMAND_CENTER_CUTOVER_PLAN.md` | Command Center cutover plan | review_required | OK | `7d77edf9913d` |
+| `docs/convergence/CONTRACT_CHANGE_LOG.md` | Control-plane contract change log | review_required | OK | `f72f66c0716d` |
+| `docs/convergence/CONTROL_PLANE_API_V1_1.md` | CONTROL_PLANE_API_V1.1 | review_required | OK | `82a64c09a88f` |
 | `docs/convergence/CONTROL_PLANE_API_V1_BASELINE.md` | CONTROL_PLANE_API_V1_BASELINE | review_required | OK | `acb9460868cd` |
-| `docs/convergence/CONTROL_PLANE_CONTRACTS.md` | Control-Plane Contracts v1 | review_required | MISSING HEADER | `1bbc82f6e768` |
-| `docs/convergence/DEPENDENCY_LEDGER.md` | Dependency Ledger | review_required | MISSING HEADER | `bba3e977f133` |
-| `docs/convergence/INTEGRATION_RULES.md` | Integration Rules | review_required | MISSING HEADER | `e7c086cadd1d` |
-| `docs/convergence/INTEGRATOR_OWNED_PATHS.md` | Integrator-owned paths | review_required | MISSING HEADER | `594316315843` |
+| `docs/convergence/CONTROL_PLANE_CONTRACTS.md` | Control-Plane Contracts v1 | review_required | OK | `a4ba2e134d11` |
+| `docs/convergence/DEPENDENCY_LEDGER.md` | Dependency Ledger | review_required | OK | `2c74a693ee99` |
+| `docs/convergence/INTEGRATION_RULES.md` | Integration Rules | review_required | OK | `ce1bed942d9d` |
+| `docs/convergence/INTEGRATOR_OWNED_PATHS.md` | Integrator-owned paths | review_required | OK | `ac62691065b6` |
 | `docs/convergence/PARALLEL_EXECUTION_MANIFEST.md` | R20-R24 Parallel Execution Manifest | review_required | OK | `17171b7c47bd` |
-| `docs/convergence/PROOF_STANDARD.md` | Proof Standard | review_required | MISSING HEADER | `52cc70f23906` |
-| `docs/convergence/R21_CODEX_BRIEF.md` | R21 Codex brief — CONTROL_PLANE_BACKEND | review_required | MISSING HEADER | `d41f60426eff` |
-| `docs/convergence/RELEASE_GATES.md` | R20–R24 release gates | review_required | MISSING HEADER | `fc6a4721b1b7` |
-| `docs/convergence/UI_REPLACEMENT_MATRIX.md` | Command Center Replacement Matrix | review_required | MISSING HEADER | `ca9becd4bf4a` |
-| `docs/convergence/UI_ROUTE_OWNERSHIP.md` | UI Route Ownership | review_required | MISSING HEADER | `48df45f8cbd3` |
+| `docs/convergence/PROOF_STANDARD.md` | Proof Standard | review_required | OK | `d435166e3006` |
+| `docs/convergence/R21_CODEX_BRIEF.md` | R21 Codex brief — CONTROL_PLANE_BACKEND | review_required | OK | `8ff875755da6` |
+| `docs/convergence/RELEASE_GATES.md` | R20–R24 release gates | review_required | OK | `601e8e6ad5e6` |
+| `docs/convergence/UI_REPLACEMENT_MATRIX.md` | Command Center Replacement Matrix | review_required | OK | `c5cfc7a821e2` |
+| `docs/convergence/UI_ROUTE_OWNERSHIP.md` | UI Route Ownership | review_required | OK | `fe5a35b48fc7` |
 | `docs/deepseek_audit_2026-08-02.md` | DeepSeek Audit & Fix — Comprehensive Report | review_required | OK | `68d6408f3f5c` |
-| `docs/design/ACTIVE_TRADER_LIVE_DATA_ARCHITECTURE.md` | ActiveTrader — Live Data Architecture (2026-07-28) | current_phase_keep | MISSING HEADER | `0564d8653a40` |
+| `docs/design/ACTIVE_TRADER_LIVE_DATA_ARCHITECTURE.md` | ActiveTrader — Live Data Architecture (2026-07-28) | current_phase_keep | OK | `bed16d9677d0` |
 | `docs/design/ACTIVE_TRADER_T2_JIT_AND_MOMENTUM_EXIT_v1.md` | Active Trader T2 JIT and Momentum Exit — Design v1 | current_phase_keep | OK | `514faa88f6da` |
-| `docs/design/AT_CONFIG_TAB_S1_CONTRACT.md` | Active Trader Configuration Tab — S1 API Contract (`/api/v3/active-trader/config`) | current_phase_keep | MISSING HEADER | `6572b9584739` |
-| `docs/design/ActiveTrader_Implementation_Pack_2026-07-27_v1/README_ActiveTrader_Implementation_Pack.md` | README_ActiveTrader_Implementation_Pack.md | current_phase_keep | MISSING HEADER | `0a22eabac6cb` |
-| `docs/design/ActiveTrader_Implementation_Pack_2026-07-27_v1/code/ActiveTrader_React_TypeScript_Code_Reference.md` | ActiveTrader_React_TypeScript_Code_Reference.md | current_phase_keep | MISSING HEADER | `c88d16646ca1` |
-| `docs/design/ActiveTrader_Implementation_Pack_2026-07-27_v1/code/TradingHub.integration.patch.md` | TradingHub integration patch | current_phase_keep | MISSING HEADER | `26f3cb7d83f2` |
-| `docs/design/ActiveTrader_Implementation_Pack_2026-07-27_v1/documents/ACTIVE_TRADER_CODEX_BUILD_PROMPT_and_IMAGE_PROMPTS.md` | ACTIVE_TRADER_CODEX_BUILD_PROMPT_and_IMAGE_PROMPTS.md | current_phase_keep | MISSING HEADER | `594d30a8166e` |
-| `docs/design/ActiveTrader_Implementation_Pack_2026-07-27_v1/documents/ActiveTrader_Image_Prompts_and_Codex_Build_Prompt.md` | ActiveTrader_Image_Prompts_and_Codex_Build_Prompt.md | current_phase_keep | MISSING HEADER | `594d30a8166e` |
+| `docs/design/AT_CONFIG_TAB_S1_CONTRACT.md` | Active Trader Configuration Tab — S1 API Contract (`/api/v3/active-trader/config`) | current_phase_keep | OK | `530dc26eff0b` |
+| `docs/design/ActiveTrader_Implementation_Pack_2026-07-27_v1/README_ActiveTrader_Implementation_Pack.md` | README_ActiveTrader_Implementation_Pack.md | current_phase_keep | OK | `d90c34c10b99` |
+| `docs/design/ActiveTrader_Implementation_Pack_2026-07-27_v1/code/ActiveTrader_React_TypeScript_Code_Reference.md` | ActiveTrader_React_TypeScript_Code_Reference.md | current_phase_keep | OK | `614e3fad33f1` |
+| `docs/design/ActiveTrader_Implementation_Pack_2026-07-27_v1/code/TradingHub.integration.patch.md` | TradingHub integration patch | current_phase_keep | OK | `6232314a8612` |
+| `docs/design/ActiveTrader_Implementation_Pack_2026-07-27_v1/documents/ACTIVE_TRADER_CODEX_BUILD_PROMPT_and_IMAGE_PROMPTS.md` | ACTIVE_TRADER_CODEX_BUILD_PROMPT_and_IMAGE_PROMPTS.md | current_phase_keep | OK | `9b721d368314` |
+| `docs/design/ActiveTrader_Implementation_Pack_2026-07-27_v1/documents/ActiveTrader_Image_Prompts_and_Codex_Build_Prompt.md` | ActiveTrader_Image_Prompts_and_Codex_Build_Prompt.md | current_phase_keep | OK | `9b721d368314` |
 | `docs/design/ActiveTrader_Implementation_Pack_2026-07-27_v1/documents/Momentum_Scalp_ActiveTrader_Implementation_Spec_v0.2.md` | Momentum_Scalp_ActiveTrader_Implementation_Spec_v0.2.md | current_phase_keep | OK | `ee4014134c97` |
-| `docs/design/ActiveTrader_Implementation_Pack_2026-07-27_v1/graphics/ActiveTrader_Mockups_Graphics_Atlas.md` | ActiveTrader_Mockups_Graphics_Atlas.md | current_phase_keep | MISSING HEADER | `b2067f418ff9` |
-| `docs/design/HERMES_MATURITY_5_DESIGN.md` | Hermes Maturity-5 Design — Event-Driven Scope + Outcome-Gated Learning | current_phase_keep | MISSING HEADER | `481373702c55` |
+| `docs/design/ActiveTrader_Implementation_Pack_2026-07-27_v1/graphics/ActiveTrader_Mockups_Graphics_Atlas.md` | ActiveTrader_Mockups_Graphics_Atlas.md | current_phase_keep | OK | `5f7aa3c2d615` |
+| `docs/design/HERMES_MATURITY_5_DESIGN.md` | Hermes Maturity-5 Design — Event-Driven Scope + Outcome-Gated Learning | current_phase_keep | OK | `c13dc9382b44` |
 | `docs/design/OCO_ATM_UNIFICATION_DESIGN.md` | OCO Brackets + ATM ↔ Proposals Unification — Design | current_phase_keep | OK | `5ab49e4c5d95` |
 | `docs/design/REDEPLOY_DESK_INSTITUTIONAL_DESIGN.md` | Redeploy Desk — Institutional Capital-Allocation Design | current_phase_keep | OK | `aadba4e323e9` |
-| `docs/design/SCALED_EXITS_PAPER_EXECUTOR_DESIGN.md` | Scaled Exits for the Paper Executor — Design Spec (SX) | current_phase_keep | MISSING HEADER | `2fbdf2e61b82` |
+| `docs/design/SCALED_EXITS_PAPER_EXECUTOR_DESIGN.md` | Scaled Exits for the Paper Executor — Design Spec (SX) | current_phase_keep | OK | `b54bec742f6e` |
 | `docs/design/STOP_MANAGEMENT_V2_DESIGN.md` | Stop Management v2 — Design Document | current_phase_keep | OK | `1c76aa250f41` |
 | `docs/design/SYMBOL_THESIS_UNIVERSE_DESIGN.md` | Living Symbol Thesis + Universe Intelligence (design) | current_phase_keep | OK | `e9e6d5d7b523` |
-| `docs/design/signal_freshness_audit_2026-05-15/AUDIT_FINDINGS.md` | Signal Freshness & Persistence Audit — 2026-05-15 | current_phase_keep | MISSING HEADER | `7252562f0c8b` |
+| `docs/design/signal_freshness_audit_2026-05-15/AUDIT_FINDINGS.md` | Signal Freshness & Persistence Audit — 2026-05-15 | current_phase_keep | OK | `37b40d420965` |
 | `docs/design/watchlist-intelligence-v3/CECO_REVIEW_AUTHORIZATION_AUDIT.md` | CECO Maria/CIO authorization audit (read-only) | current_phase_keep | OK | `ddc0930b8e69` |
-| `docs/design/watchlist-intelligence-v3/DATA_BROKER_WATCH_CONSUMERS.md` | Data Broker — Watch Intelligence consumers | current_phase_keep | MISSING HEADER | `1f27443c3ed0` |
-| `docs/diligence/current/AUDIT_LEDGER_STATUS.md` | Audit Ledger Status | review_required | MISSING HEADER | `fea78c92b00a` |
-| `docs/diligence/current/BROKER_WRITE_GUARD_EVIDENCE.md` | Broker Write Guard Evidence | review_required | MISSING HEADER | `3c25e89d4436` |
-| `docs/diligence/current/CLOUD_OAUTH_USAGE.md` | Cloud-OAuth Lane Usage | review_required | MISSING HEADER | `4747a4bd42f4` |
-| `docs/diligence/current/CONTROL_MATRIX.md` | Control Matrix | review_required | MISSING HEADER | `8bc919411c62` |
-| `docs/diligence/current/CURRENT_EXECUTION_STATE.md` | Current Execution State | review_required | MISSING HEADER | `424490f1ac0e` |
-| `docs/diligence/current/DAY_SCALP_SOURCE_INVENTORY_2026-08-19.md` | Day-Scalp Source Inventory — 2026-08-19 | review_required | MISSING HEADER | `64a4c3747a2b` |
-| `docs/diligence/current/HEALTH_MONITORING_MATRIX.md` | Health Monitoring Matrix (Execution Hardening) | review_required | MISSING HEADER | `f79d8c92b5b9` |
-| `docs/diligence/current/JOB_SCHEDULE_AUDIT.md` | Job Schedule Audit & Contention Map | review_required | MISSING HEADER | `08599ca0bb43` |
-| `docs/diligence/current/JOB_SCHEDULE_TIERED_PRIORITIZATION.md` | Job-Schedule Tiered Prioritization + GPU/LLM Optimization | review_required | MISSING HEADER | `78c4cee07116` |
-| `docs/diligence/current/KILL_SWITCH_MATRIX.md` | Kill Switch Matrix | review_required | MISSING HEADER | `622bc2e24dfe` |
-| `docs/diligence/current/LLM_ROUTING_MATRIX.md` | LLM Routing Matrix — Local vs Cloud-OAuth (+ local-LLM optimization assessment) | review_required | MISSING HEADER | `efc327ffe2e1` |
+| `docs/design/watchlist-intelligence-v3/DATA_BROKER_WATCH_CONSUMERS.md` | Data Broker — Watch Intelligence consumers | current_phase_keep | OK | `e51fa417cfa4` |
+| `docs/diligence/current/AUDIT_LEDGER_STATUS.md` | Audit Ledger Status | review_required | OK | `69dcb2cb6237` |
+| `docs/diligence/current/BROKER_WRITE_GUARD_EVIDENCE.md` | Broker Write Guard Evidence | review_required | OK | `c7898f6eb2c6` |
+| `docs/diligence/current/CLOUD_OAUTH_USAGE.md` | Cloud-OAuth Lane Usage | review_required | OK | `66139696657f` |
+| `docs/diligence/current/CONTROL_MATRIX.md` | Control Matrix | review_required | OK | `b0604a9bc4a8` |
+| `docs/diligence/current/CURRENT_EXECUTION_STATE.md` | Current Execution State | review_required | OK | `26044d0163bb` |
+| `docs/diligence/current/DAY_SCALP_SOURCE_INVENTORY_2026-08-19.md` | Day-Scalp Source Inventory — 2026-08-19 | review_required | OK | `077e2a8d699c` |
+| `docs/diligence/current/HEALTH_MONITORING_MATRIX.md` | Health Monitoring Matrix (Execution Hardening) | review_required | OK | `ccf1993f5747` |
+| `docs/diligence/current/JOB_SCHEDULE_AUDIT.md` | Job Schedule Audit & Contention Map | review_required | OK | `4af4820bdcb2` |
+| `docs/diligence/current/JOB_SCHEDULE_TIERED_PRIORITIZATION.md` | Job-Schedule Tiered Prioritization + GPU/LLM Optimization | review_required | OK | `b3d0e3838497` |
+| `docs/diligence/current/KILL_SWITCH_MATRIX.md` | Kill Switch Matrix | review_required | OK | `9d5bd190dc00` |
+| `docs/diligence/current/LLM_ROUTING_MATRIX.md` | LLM Routing Matrix — Local vs Cloud-OAuth (+ local-LLM optimization assessment) | review_required | OK | `90c869dc04f9` |
 | `docs/diligence/current/LOCAL_LLM_RUNTIME_POLICY.md` | Local Model Runtime Policy | review_required | OK | `4f34dd175864` |
-| `docs/diligence/current/MATURITY_4_5_ACCEPTANCE.md` | Maturity 4.5 Acceptance Checklist | review_required | MISSING HEADER | `c6acebd0ba24` |
-| `docs/diligence/current/MATURITY_SCORE_LATEST.md` | Trade AI — Maturity Score | review_required | MISSING HEADER | `2312d7079693` |
-| `docs/diligence/current/MOMENTUM_SCALP_FRESHNESS_SLA.md` | Momentum Scalp Freshness SLA | review_required | MISSING HEADER | `0bf23f44875d` |
-| `docs/diligence/current/MOMENTUM_SCALP_HEALTH_INCIDENT_20260629.md` | Momentum Scalp — 2026-06-29 Health DEGRADED Incident | review_required | MISSING HEADER | `3a3d49790aaf` |
-| `docs/diligence/current/MOMENTUM_SCALP_LIFECYCLE.md` | Momentum Scalp Lifecycle | review_required | MISSING HEADER | `f87c89b6a9b9` |
-| `docs/diligence/current/MOMENTUM_SCALP_PAPER_FAST_PATH.md` | (Legacy alias) Momentum Scalp Paper Fast Path | review_required | MISSING HEADER | `d52282873e5e` |
-| `docs/diligence/current/MOMENTUM_SCALP_PAPER_PATH_DIAGNOSIS.md` | Momentum Scalp Paper-Path Diagnosis | review_required | MISSING HEADER | `bef82289fc56` |
-| `docs/diligence/current/MOMENTUM_SCALP_SOURCE_LATENCY_SLA.md` | Momentum Scalp Source → Validation Latency SLA | review_required | MISSING HEADER | `3e6e5bf6d942` |
-| `docs/diligence/current/MOMENTUM_SCALP_SOURCE_LIFECYCLE.md` | Momentum Scalp Source Lifecycle | review_required | MISSING HEADER | `d74a64acde47` |
-| `docs/diligence/current/MOMENTUM_SCALP_SOURCE_MATURITY.md` | Momentum Scalp Source Maturity | review_required | MISSING HEADER | `51775497f3aa` |
-| `docs/diligence/current/MOMENTUM_SCALP_VALIDATION_FAST_PATH.md` | Momentum Scalp Validation Fast Path | review_required | MISSING HEADER | `10658557e94b` |
-| `docs/diligence/current/MOMENTUM_SCALP_VALIDATION_OPS.md` | Momentum Scalp Validation Ops | review_required | MISSING HEADER | `17a143b3efb9` |
-| `docs/diligence/current/MOMENTUM_SCALP_VALIDATION_TRACKER.md` | Momentum Scalp Validation Tracker | review_required | MISSING HEADER | `cff4d428531c` |
-| `docs/diligence/current/OPTIONS_RISK_BLOCK_MATRIX.md` | Options Hard-Risk Block Matrix | review_required | MISSING HEADER | `c9258fb7e03f` |
-| `docs/diligence/current/ORDER_LIFECYCLE.md` | Order Lifecycle | review_required | MISSING HEADER | `1ab0fe37e308` |
-| `docs/diligence/current/RELEASE_READINESS.md` | Release Readiness | review_required | MISSING HEADER | `056dca3bf78f` |
-| `docs/diligence/current/RISK_GATE_MATRIX.md` | Risk Gate Matrix | review_required | MISSING HEADER | `a9c77f519b14` |
-| `docs/diligence/current/SCALP_LIFECYCLE_FUNNEL.md` | Scalp Lifecycle Funnel | review_required | MISSING HEADER | `b6112674586b` |
-| `docs/diligence/current/SCALP_LIFECYCLE_MATURITY.md` | Scalp Lifecycle Maturity | review_required | MISSING HEADER | `f8d568d825eb` |
-| `docs/diligence/current/SCALP_LIFECYCLE_MATURITY_REGRESSION_DIAGNOSIS.md` | Scalp Lifecycle Maturity — 3.25 Regression Diagnosis | review_required | MISSING HEADER | `c6a133e7552f` |
-| `docs/diligence/current/SCALP_OUTCOME_LEARNING.md` | Scalp Outcome Learning (advisory) | review_required | MISSING HEADER | `3abae576f4b2` |
-| `docs/diligence/current/SEC_FORM4_MOMENTUM_CONTEXT.md` | SEC / Form 4 — Momentum Catalyst Context | review_required | MISSING HEADER | `53ba6eaa1e92` |
-| `docs/diligence/current/SOCIAL_ROUTE_POLICY_REPLAY.md` | Social Route Policy Replay | review_required | MISSING HEADER | `26f52a5b9360` |
-| `docs/diligence/current/SOCIAL_SCALP_ROUTE_MATRIX.md` | Social Scalp Route Matrix | review_required | MISSING HEADER | `5be00527f5fc` |
-| `docs/diligence/current/SOCIAL_SCOUT_PILLARS.md` | Social Scout Pillars | review_required | MISSING HEADER | `edba1dd99dc1` |
-| `docs/diligence/current/SOCIAL_SCOUT_REPLAY.md` | Social Scout Replay | review_required | MISSING HEADER | `3c0d7c9595aa` |
-| `docs/diligence/current/TEST_EVIDENCE.md` | Test Evidence | review_required | MISSING HEADER | `8deaf9cbdad3` |
-| `docs/diligence/current/VALIDATION_TAXONOMY_AUDIT.md` | Validation Taxonomy Audit | review_required | MISSING HEADER | `aecd66960d47` |
-| `docs/evidence/DEFENSE_SECTORS_RECONCILIATION_2026-07-26.md` | Defense/Sectors Production Reconciliation (Lane C) | review_required | MISSING HEADER | `81c76c6e8174` |
-| `docs/features/PORTFOLIO_REENTRY_DESK.md` | Portfolio Re-Entry Intelligence | review_required | MISSING HEADER | `e4bc4081c7ad` |
-| `docs/features/PORTFOLIO_REENTRY_OPERATOR_GUIDE.md` | Portfolio Re-Entry and Rotation Intelligence — Operator Guide | review_required | MISSING HEADER | `5b58a9789da0` |
-| `docs/features/PORTFOLIO_REENTRY_REQUIREMENTS_v2.md` | Portfolio Re-Entry — Requirements Contract v2 | review_required | MISSING HEADER | `5b52c053033d` |
-| `docs/features/PORTFOLIO_REENTRY_ROTATION_INTELLIGENCE_REQUIREMENTS_v4.md` | Portfolio Re-Entry + Rotation Intelligence — Requirements Contract v4 | review_required | MISSING HEADER | `8b675f935ddb` |
-| `docs/features/PORTFOLIO_REENTRY_VISIBLE_CLASSIFICATION_FIX.md` | Re-Entry Visible Classification and Data-Source Correction | review_required | MISSING HEADER | `2f04d0ba07c1` |
-| `docs/features/PORTFOLIO_REENTRY_WATCH_JOURNAL_SHARED_CONTEXT_v1.md` | Portfolio Re-Entry, Watch and Journal Shared Context v1 | review_required | MISSING HEADER | `a898ff2d8246` |
-| `docs/features/WATCH_TRUTHFULNESS_VALUATION_CLASSIFICATION_v1.md` | Watch Truthfulness, Valuation, and Re-Entry Classification v1 | review_required | MISSING HEADER | `428dd4596b6b` |
+| `docs/diligence/current/MATURITY_4_5_ACCEPTANCE.md` | Maturity 4.5 Acceptance Checklist | review_required | OK | `e98fe34338ea` |
+| `docs/diligence/current/MATURITY_SCORE_LATEST.md` | Trade AI — Maturity Score | review_required | OK | `beda48ec0b5c` |
+| `docs/diligence/current/MOMENTUM_SCALP_FRESHNESS_SLA.md` | Momentum Scalp Freshness SLA | review_required | OK | `8bd327eec179` |
+| `docs/diligence/current/MOMENTUM_SCALP_HEALTH_INCIDENT_20260629.md` | Momentum Scalp — 2026-06-29 Health DEGRADED Incident | review_required | OK | `7992848088a7` |
+| `docs/diligence/current/MOMENTUM_SCALP_LIFECYCLE.md` | Momentum Scalp Lifecycle | review_required | OK | `b1033eecd9cb` |
+| `docs/diligence/current/MOMENTUM_SCALP_PAPER_FAST_PATH.md` | (Legacy alias) Momentum Scalp Paper Fast Path | review_required | OK | `93ad2c9b6d4a` |
+| `docs/diligence/current/MOMENTUM_SCALP_PAPER_PATH_DIAGNOSIS.md` | Momentum Scalp Paper-Path Diagnosis | review_required | OK | `fcd9e7b082c1` |
+| `docs/diligence/current/MOMENTUM_SCALP_SOURCE_LATENCY_SLA.md` | Momentum Scalp Source → Validation Latency SLA | review_required | OK | `f2ebb4230963` |
+| `docs/diligence/current/MOMENTUM_SCALP_SOURCE_LIFECYCLE.md` | Momentum Scalp Source Lifecycle | review_required | OK | `62558e520fb1` |
+| `docs/diligence/current/MOMENTUM_SCALP_SOURCE_MATURITY.md` | Momentum Scalp Source Maturity | review_required | OK | `7c259bd47f86` |
+| `docs/diligence/current/MOMENTUM_SCALP_VALIDATION_FAST_PATH.md` | Momentum Scalp Validation Fast Path | review_required | OK | `3748851b3d6f` |
+| `docs/diligence/current/MOMENTUM_SCALP_VALIDATION_OPS.md` | Momentum Scalp Validation Ops | review_required | OK | `4a3c07e96be5` |
+| `docs/diligence/current/MOMENTUM_SCALP_VALIDATION_TRACKER.md` | Momentum Scalp Validation Tracker | review_required | OK | `163d9dd4dcf1` |
+| `docs/diligence/current/OPTIONS_RISK_BLOCK_MATRIX.md` | Options Hard-Risk Block Matrix | review_required | OK | `6a174fa42834` |
+| `docs/diligence/current/ORDER_LIFECYCLE.md` | Order Lifecycle | review_required | OK | `5cf9785fa463` |
+| `docs/diligence/current/RELEASE_READINESS.md` | Release Readiness | review_required | OK | `ae9d35f0e895` |
+| `docs/diligence/current/RISK_GATE_MATRIX.md` | Risk Gate Matrix | review_required | OK | `a2878f191a9e` |
+| `docs/diligence/current/SCALP_LIFECYCLE_FUNNEL.md` | Scalp Lifecycle Funnel | review_required | OK | `10712d6797a0` |
+| `docs/diligence/current/SCALP_LIFECYCLE_MATURITY.md` | Scalp Lifecycle Maturity | review_required | OK | `34cc67bcd358` |
+| `docs/diligence/current/SCALP_LIFECYCLE_MATURITY_REGRESSION_DIAGNOSIS.md` | Scalp Lifecycle Maturity — 3.25 Regression Diagnosis | review_required | OK | `29c6f3964dae` |
+| `docs/diligence/current/SCALP_OUTCOME_LEARNING.md` | Scalp Outcome Learning (advisory) | review_required | OK | `716a3edfdb83` |
+| `docs/diligence/current/SEC_FORM4_MOMENTUM_CONTEXT.md` | SEC / Form 4 — Momentum Catalyst Context | review_required | OK | `7e89f011485f` |
+| `docs/diligence/current/SOCIAL_ROUTE_POLICY_REPLAY.md` | Social Route Policy Replay | review_required | OK | `46f8141ede44` |
+| `docs/diligence/current/SOCIAL_SCALP_ROUTE_MATRIX.md` | Social Scalp Route Matrix | review_required | OK | `e552d6347f94` |
+| `docs/diligence/current/SOCIAL_SCOUT_PILLARS.md` | Social Scout Pillars | review_required | OK | `86b269c2dd62` |
+| `docs/diligence/current/SOCIAL_SCOUT_REPLAY.md` | Social Scout Replay | review_required | OK | `1c1ad8bfccad` |
+| `docs/diligence/current/TEST_EVIDENCE.md` | Test Evidence | review_required | OK | `e70759983603` |
+| `docs/diligence/current/VALIDATION_TAXONOMY_AUDIT.md` | Validation Taxonomy Audit | review_required | OK | `96c1b7b7a853` |
+| `docs/evidence/DEFENSE_SECTORS_RECONCILIATION_2026-07-26.md` | Defense/Sectors Production Reconciliation (Lane C) | review_required | OK | `78404d5eadf6` |
+| `docs/features/PORTFOLIO_REENTRY_DESK.md` | Portfolio Re-Entry Intelligence | review_required | OK | `37641ce48db4` |
+| `docs/features/PORTFOLIO_REENTRY_OPERATOR_GUIDE.md` | Portfolio Re-Entry and Rotation Intelligence — Operator Guide | review_required | OK | `8f24c213e510` |
+| `docs/features/PORTFOLIO_REENTRY_REQUIREMENTS_v2.md` | Portfolio Re-Entry — Requirements Contract v2 | review_required | OK | `937860c28dcf` |
+| `docs/features/PORTFOLIO_REENTRY_ROTATION_INTELLIGENCE_REQUIREMENTS_v4.md` | Portfolio Re-Entry + Rotation Intelligence — Requirements Contract v4 | review_required | OK | `b5a8adf041fc` |
+| `docs/features/PORTFOLIO_REENTRY_VISIBLE_CLASSIFICATION_FIX.md` | Re-Entry Visible Classification and Data-Source Correction | review_required | OK | `22803e059ec2` |
+| `docs/features/PORTFOLIO_REENTRY_WATCH_JOURNAL_SHARED_CONTEXT_v1.md` | Portfolio Re-Entry, Watch and Journal Shared Context v1 | review_required | OK | `59b2e1ab963d` |
+| `docs/features/WATCH_TRUTHFULNESS_VALUATION_CLASSIFICATION_v1.md` | Watch Truthfulness, Valuation, and Re-Entry Classification v1 | review_required | OK | `690c78f8953b` |
 | `docs/features/share-reconciliation.md` | Share Reconciliation (Dividend Reinvestment) | review_required | OK | `a9704ca65f01` |
 | `docs/features/transfer-aware-performance.md` | Transfer-Aware Position Tracking & YTD Performance | review_required | OK | `4520b05c17cd` |
 | `docs/feeds/PHASE71A_FINVIZ_FEED_RESILIENCE_DESIGN.md` | Phase 71A — Finviz Feed Resilience Design | review_required | OK | `e0a299c70f60` |
 | `docs/feeds/PHASE71B_FINVIZ_HEALTH_PREFLIGHT_SCRIPT_REPORT.md` | Phase 71B — Finviz Health Preflight Report | review_required | OK | `c48e389dea5a` |
-| `docs/feeds/PHASE71C_FINVIZ_FAILURE_DEDUPE_INTEGRATION.md` | Phase 71C — Finviz Failure Dedupe Integration | review_required | MISSING HEADER | `68e6c675459e` |
-| `docs/feeds/PHASE71D_FEED_FALLBACK_POLICY.md` | Phase 71D — Feed Fallback Policy | review_required | MISSING HEADER | `d935626ea076` |
+| `docs/feeds/PHASE71C_FINVIZ_FAILURE_DEDUPE_INTEGRATION.md` | Phase 71C — Finviz Failure Dedupe Integration | review_required | OK | `8a9005812567` |
+| `docs/feeds/PHASE71D_FEED_FALLBACK_POLICY.md` | Phase 71D — Feed Fallback Policy | review_required | OK | `b5dd839f6bcb` |
 | `docs/feeds/PHASE71E_FEED_HEALTH_DASHBOARD_DESIGN.md` | Phase 71E — Feed Health Dashboard Design | review_required | OK | `526d17148406` |
 | `docs/feeds/PHASE72A_FINVIZ_RECOVERY_EVIDENCE_INVENTORY.md` | Phase 72A — Finviz Recovery Evidence Inventory | review_required | OK | `01d59f3335b3` |
 | `docs/feeds/PHASE72B_FINVIZ_THREE_CLEAN_RUN_VALIDATION.md` | Phase 72B — Three Clean Run Validation | review_required | OK | `172b8446e47d` |
-| `docs/feeds/PHASE72C_FINVIZ_COOKIE_ROTATION_RECOMMENDATION.md` | Phase 72C — Cookie Rotation Recommendation | review_required | MISSING HEADER | `321a91b2345c` |
-| `docs/feeds/PHASE72E_OPS_BACKLOG_RECOVERY_UPDATE_DESIGN.md` | Phase 72E — Ops Backlog Recovery Update Design | review_required | MISSING HEADER | `c2f681b8b708` |
+| `docs/feeds/PHASE72C_FINVIZ_COOKIE_ROTATION_RECOMMENDATION.md` | Phase 72C — Cookie Rotation Recommendation | review_required | OK | `2c9ef62d4593` |
+| `docs/feeds/PHASE72E_OPS_BACKLOG_RECOVERY_UPDATE_DESIGN.md` | Phase 72E — Ops Backlog Recovery Update Design | review_required | OK | `cab37d5456e9` |
 | `docs/feeds/PHASE75A_THIRD_CLEAN_RUN_EVIDENCE.md` | Phase 75A — Third Clean Run Evidence | review_required | OK | `ab8bf7f62f3f` |
-| `docs/feeds/PHASE77A_RESEARCH_ONLY_FEED_FALLBACK_POLICY.md` | Phase 77A — Research-Only Feed Fallback Policy | review_required | MISSING HEADER | `4eb54b67ebfb` |
-| `docs/financial-senses/ACCEPTANCE.md` | Acceptance profile | review_required | MISSING HEADER | `14bbd8be1116` |
+| `docs/feeds/PHASE77A_RESEARCH_ONLY_FEED_FALLBACK_POLICY.md` | Phase 77A — Research-Only Feed Fallback Policy | review_required | OK | `68cedb0b557e` |
+| `docs/financial-senses/ACCEPTANCE.md` | Acceptance profile | review_required | OK | `51de9f39a439` |
 | `docs/financial-senses/ADR/001-reuse-existing-sec-pipeline.md` | ADR-001 — Reuse the existing SEC pipeline | review_required | OK | `f10bb9692756` |
 | `docs/financial-senses/ADR/002-provider-adapters-not-second-mcp-gateway.md` | ADR-002 — Provider adapters, not a second MCP gateway | review_required | OK | `99065f6c47a7` |
 | `docs/financial-senses/ADR/003-vintage-aware-macro.md` | ADR-003 — Vintage-aware macro | review_required | OK | `d7bfed8265ac` |
@@ -786,76 +786,76 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/financial-senses/ADR/006-claim-graph-before-narrative.md` | ADR-006 — Claim graph before narrative | review_required | OK | `67aa732718a9` |
 | `docs/financial-senses/ADR/007-independent-critic-shadow-only.md` | ADR-007 — Independent CIO critic, shadow only | review_required | OK | `d1e062d930cb` |
 | `docs/financial-senses/ADR/008-openbb-optional-plumbing-only.md` | ADR-008 — OpenBB optional plumbing only | review_required | OK | `775ac58e5977` |
-| `docs/financial-senses/ARCHITECTURE.md` | Architecture | review_required | MISSING HEADER | `bdbedf249dfd` |
-| `docs/financial-senses/CLAIM_EVIDENCE_GRAPH.md` | Claim / evidence graph | review_required | MISSING HEADER | `5c4aeaca1c47` |
-| `docs/financial-senses/DEPLOYMENT_NOT_AUTHORIZED.md` | Deployment NOT authorized | review_required | MISSING HEADER | `fb009a89ae78` |
-| `docs/financial-senses/EXISTING_CAPABILITY_INVENTORY.md` | Existing capability inventory (Phase 0) | review_required | MISSING HEADER | `6d5b3fd00f27` |
-| `docs/financial-senses/FACTOR_EXPOSURE_MODEL.md` | Factor / overlap model | review_required | MISSING HEADER | `edb983c5763d` |
-| `docs/financial-senses/FRED_ALFRED_PROVIDER.md` | FRED / ALFRED provider | review_required | MISSING HEADER | `e14ea6edf7c8` |
-| `docs/financial-senses/IMPLEMENTATION_LOG.md` | Implementation log | review_required | MISSING HEADER | `f0ad4361744a` |
-| `docs/financial-senses/INDEPENDENT_CIO_CRITIC.md` | Independent CIO critic (shadow-only) | review_required | MISSING HEADER | `79a02fcde36c` |
-| `docs/financial-senses/INSTRUMENT_IDENTITY_CONTRACT.md` | Instrument identity contract | review_required | MISSING HEADER | `aeb1c364bfd6` |
-| `docs/financial-senses/INTEGRATION_WITH_AGENT_INTELLIGENCE_FOUNDATION.md` | Integration with the Agent Intelligence Foundation | review_required | MISSING HEADER | `8b21c16f1fe4` |
-| `docs/financial-senses/MACRO_VINTAGE_POLICY.md` | Macro vintage policy | review_required | MISSING HEADER | `4a6debd1df75` |
-| `docs/financial-senses/OPENBB_DUE_DILIGENCE.md` | OpenBB due diligence | review_required | MISSING HEADER | `c65bd6d52924` |
-| `docs/financial-senses/OPENFIGI_INSTRUMENT_IDENTITY.md` | OpenFIGI instrument identity | review_required | MISSING HEADER | `3ef1049cabe6` |
-| `docs/financial-senses/PARALLEL_WORKTREE_AND_MERGE_STRATEGY.md` | Parallel worktree and merge strategy | review_required | MISSING HEADER | `2761e62a2ca6` |
-| `docs/financial-senses/PORTFOLIO_STRESS_ENGINE.md` | Portfolio stress engine | review_required | MISSING HEADER | `0515837eb05b` |
-| `docs/financial-senses/README.md` | Financial Senses — read-only financial intelligence providers | review_required | MISSING HEADER | `ae343ebd44de` |
-| `docs/financial-senses/SECURITY_AND_SOURCE_GOVERNANCE.md` | Security and source governance | review_required | MISSING HEADER | `a9ea03671bae` |
-| `docs/financial-senses/SEC_EDGAR_PROVIDER.md` | SEC EDGAR provider | review_required | MISSING HEADER | `c235c3ebd9f4` |
-| `docs/financial-senses/SEC_EXISTING_PIPELINE_COMPATIBILITY.md` | SEC existing pipeline compatibility | review_required | MISSING HEADER | `c22b38ac2c31` |
-| `docs/financial-senses/SEC_FILING_DIFF_INTELLIGENCE.md` | SEC filing diff intelligence | review_required | MISSING HEADER | `55020e1126e5` |
-| `docs/financial-senses/TEST_AND_DRY_RUN_PLAN.md` | Test and dry-run plan | review_required | MISSING HEADER | `ad1306168ef5` |
+| `docs/financial-senses/ARCHITECTURE.md` | Architecture | review_required | OK | `fa594ae55bf3` |
+| `docs/financial-senses/CLAIM_EVIDENCE_GRAPH.md` | Claim / evidence graph | review_required | OK | `dfba0b2f15fa` |
+| `docs/financial-senses/DEPLOYMENT_NOT_AUTHORIZED.md` | Deployment NOT authorized | review_required | OK | `e232de52da89` |
+| `docs/financial-senses/EXISTING_CAPABILITY_INVENTORY.md` | Existing capability inventory (Phase 0) | review_required | OK | `955a560dc316` |
+| `docs/financial-senses/FACTOR_EXPOSURE_MODEL.md` | Factor / overlap model | review_required | OK | `2abe14f03bed` |
+| `docs/financial-senses/FRED_ALFRED_PROVIDER.md` | FRED / ALFRED provider | review_required | OK | `b15cbd75cf7f` |
+| `docs/financial-senses/IMPLEMENTATION_LOG.md` | Implementation log | review_required | OK | `0b6b8e23fc42` |
+| `docs/financial-senses/INDEPENDENT_CIO_CRITIC.md` | Independent CIO critic (shadow-only) | review_required | OK | `fea1ebafa0d1` |
+| `docs/financial-senses/INSTRUMENT_IDENTITY_CONTRACT.md` | Instrument identity contract | review_required | OK | `2e73d19e0349` |
+| `docs/financial-senses/INTEGRATION_WITH_AGENT_INTELLIGENCE_FOUNDATION.md` | Integration with the Agent Intelligence Foundation | review_required | OK | `d5e92b821cf3` |
+| `docs/financial-senses/MACRO_VINTAGE_POLICY.md` | Macro vintage policy | review_required | OK | `5ac161b65e4b` |
+| `docs/financial-senses/OPENBB_DUE_DILIGENCE.md` | OpenBB due diligence | review_required | OK | `c4fe233dc42e` |
+| `docs/financial-senses/OPENFIGI_INSTRUMENT_IDENTITY.md` | OpenFIGI instrument identity | review_required | OK | `187b48a4b098` |
+| `docs/financial-senses/PARALLEL_WORKTREE_AND_MERGE_STRATEGY.md` | Parallel worktree and merge strategy | review_required | OK | `b3eb525de8e0` |
+| `docs/financial-senses/PORTFOLIO_STRESS_ENGINE.md` | Portfolio stress engine | review_required | OK | `6f3901c4d9d8` |
+| `docs/financial-senses/README.md` | Financial Senses — read-only financial intelligence providers | review_required | OK | `88fadc5590d6` |
+| `docs/financial-senses/SECURITY_AND_SOURCE_GOVERNANCE.md` | Security and source governance | review_required | OK | `3af43f5eece1` |
+| `docs/financial-senses/SEC_EDGAR_PROVIDER.md` | SEC EDGAR provider | review_required | OK | `fe27d14224f4` |
+| `docs/financial-senses/SEC_EXISTING_PIPELINE_COMPATIBILITY.md` | SEC existing pipeline compatibility | review_required | OK | `49ba97356c5b` |
+| `docs/financial-senses/SEC_FILING_DIFF_INTELLIGENCE.md` | SEC filing diff intelligence | review_required | OK | `51a9a6c59932` |
+| `docs/financial-senses/TEST_AND_DRY_RUN_PLAN.md` | Test and dry-run plan | review_required | OK | `94ab4b5dc733` |
 | `docs/governance/PHASE111A_AUTHORITY_BOUNDARY_SCORECARD.md` | Phase 111A — Authority Boundary Scorecard | review_required | OK | `c138020b5406` |
-| `docs/governance/PHASE111B_PROGRESSIVE_AUTHORITY_LADDER.md` | Phase 111B — Progressive Hermes Authority Ladder | review_required | MISSING HEADER | `59cded285a9e` |
-| `docs/governance/PHASE113A_PROPOSAL_AUTHORITY_CONTROL_COMPARISON.md` | Phase 113A — Proposal Authority Control Comparison | review_required | MISSING HEADER | `f35e389d5dfd` |
-| `docs/governance/PHASE113B_HERMES_PROPOSAL_DRAFT_SANDBOX_DESIGN.md` | Phase 113B — Hermes Proposal Draft Sandbox Design | review_required | MISSING HEADER | `ab20df09d75b` |
-| `docs/governance/PHASE113C_PROPOSAL_DRAFT_QUALITY_SCORECARD.md` | Phase 113C — Proposal Draft Quality Scorecard | review_required | MISSING HEADER | `86173d5eab7f` |
-| `docs/governance/PHASE113D_HERMES_MOCK_PROPOSAL_PACKET_TEMPLATE.md` | Phase 113D — Hermes Mock Proposal Packet Template | review_required | MISSING HEADER | `1ca60b5b0689` |
-| `docs/governance/PHASE113E_PROPOSAL_SANDBOX_READINESS_DECISION.md` | Phase 113E — Proposal Sandbox Readiness Decision | review_required | MISSING HEADER | `5431856c6b6b` |
-| `docs/governance/PHASE119C_TONIGHT_GO_LIVE_BOUNDARY_DECISION.md` | Phase 119C — Tonight Go-Live Boundary Decision | review_required | MISSING HEADER | `dffbdda0f20e` |
-| `docs/governance/PHASE182A_LIVE_READINESS_EVIDENCE_STANDARD.md` | Phase 182A: Live-Readiness Evidence Standard | review_required | MISSING HEADER | `318650170e3a` |
-| `docs/governance/PHASE182B_LIVE_READINESS_SCORING_MODEL.md` | Phase 182B: Live Readiness Scoring Model | review_required | MISSING HEADER | `059a9255aea6` |
+| `docs/governance/PHASE111B_PROGRESSIVE_AUTHORITY_LADDER.md` | Phase 111B — Progressive Hermes Authority Ladder | review_required | OK | `76838566a709` |
+| `docs/governance/PHASE113A_PROPOSAL_AUTHORITY_CONTROL_COMPARISON.md` | Phase 113A — Proposal Authority Control Comparison | review_required | OK | `fe605e2d90c0` |
+| `docs/governance/PHASE113B_HERMES_PROPOSAL_DRAFT_SANDBOX_DESIGN.md` | Phase 113B — Hermes Proposal Draft Sandbox Design | review_required | OK | `cd1ea83694af` |
+| `docs/governance/PHASE113C_PROPOSAL_DRAFT_QUALITY_SCORECARD.md` | Phase 113C — Proposal Draft Quality Scorecard | review_required | OK | `61117839c9c0` |
+| `docs/governance/PHASE113D_HERMES_MOCK_PROPOSAL_PACKET_TEMPLATE.md` | Phase 113D — Hermes Mock Proposal Packet Template | review_required | OK | `226b63f64bc9` |
+| `docs/governance/PHASE113E_PROPOSAL_SANDBOX_READINESS_DECISION.md` | Phase 113E — Proposal Sandbox Readiness Decision | review_required | OK | `7365f5132e44` |
+| `docs/governance/PHASE119C_TONIGHT_GO_LIVE_BOUNDARY_DECISION.md` | Phase 119C — Tonight Go-Live Boundary Decision | review_required | OK | `5d8fe282fca5` |
+| `docs/governance/PHASE182A_LIVE_READINESS_EVIDENCE_STANDARD.md` | Phase 182A: Live-Readiness Evidence Standard | review_required | OK | `b42ed5069903` |
+| `docs/governance/PHASE182B_LIVE_READINESS_SCORING_MODEL.md` | Phase 182B: Live Readiness Scoring Model | review_required | OK | `a4b194f75fab` |
 | `docs/governance/phase9c_scheduled_maturity_board/00_README.md` | Phase 9C — Scheduled Maturity Control Board | current_phase_keep | OK | `514ad61e8c46` |
 | `docs/governance/phase_gov1_scheduled_facts_a1a/00_README.md` | GOV-1 — Scheduled System Facts and A1A Checks | current_phase_keep | OK | `174c5a2c8411` |
 | `docs/health-inspection-system.md` | Trade AI Health Inspection System | review_required | OK | `b124f6cc38ef` |
 | `docs/health_inspector_build_log.md` | Health Inspector Multi-Layered Remediation System — Build Log | review_required | OK | `f5c9c44604e3` |
-| `docs/hermes/EXTERNAL_LLM_USAGE_POLICY_20260607.md` | External LLM Usage Policy & Approval Process (2026-06-07) | review_required | MISSING HEADER | `e53ef3d8a7d2` |
+| `docs/hermes/EXTERNAL_LLM_USAGE_POLICY_20260607.md` | External LLM Usage Policy & Approval Process (2026-06-07) | review_required | OK | `abf799888c3a` |
 | `docs/hermes/HERMES_ADAPTIVE_THRESHOLD_LEARNING.md` | Hermes Adaptive Threshold Learning | review_required | OK | `f4f8db724c12` |
 | `docs/hermes/HERMES_ADVISORY_ACTIONABILITY_STANDARD.md` | Hermes Advisory Actionability Standard | review_required | OK | `c43482aa2943` |
-| `docs/hermes/HERMES_AGENTS_WORKFLOWS_SOULS_AND_SELF_LEARNING_MATRIX.md` | Hermes Agents, Workflows, SOULs & Self-Learning Matrix | review_required | MISSING HEADER | `392650908a83` |
+| `docs/hermes/HERMES_AGENTS_WORKFLOWS_SOULS_AND_SELF_LEARNING_MATRIX.md` | Hermes Agents, Workflows, SOULs & Self-Learning Matrix | review_required | OK | `26254d596f4b` |
 | `docs/hermes/HERMES_AGENT_CONTRACTS_AND_PERMISSIONS.md` | Hermes Agent Contracts and Permissions Registry | review_required | OK | `7eb7075fa706` |
-| `docs/hermes/HERMES_AGENT_FUNCTION_INDEX.md` | Hermes/TradeAI Agent → Function Index (2026-06-07) | review_required | MISSING HEADER | `d9567e47ac9d` |
-| `docs/hermes/HERMES_AGENT_GRAPH_MIGRATION_AUDIT_20260606.md` | Hermes Agent Graph vs Global Profiles — Reconciliation Audit — 2026-06-06 | review_required | MISSING HEADER | `347cac24930d` |
+| `docs/hermes/HERMES_AGENT_FUNCTION_INDEX.md` | Hermes/TradeAI Agent → Function Index (2026-06-07) | review_required | OK | `976cec5127ed` |
+| `docs/hermes/HERMES_AGENT_GRAPH_MIGRATION_AUDIT_20260606.md` | Hermes Agent Graph vs Global Profiles — Reconciliation Audit — 2026-06-06 | review_required | OK | `280afcfca5e4` |
 | `docs/hermes/HERMES_AGENT_OPERATING_MODEL.md` | Hermes Agent Operating Model | review_required | OK | `927a8c913d71` |
-| `docs/hermes/HERMES_AUTONOMOUS_LOOP_OPERATOR_RUNBOOK.md` | Hermes Autonomous Loop — Operator Runbook | review_required | MISSING HEADER | `d49a4cc35b68` |
+| `docs/hermes/HERMES_AUTONOMOUS_LOOP_OPERATOR_RUNBOOK.md` | Hermes Autonomous Loop — Operator Runbook | review_required | OK | `670ce0c9f56f` |
 | `docs/hermes/HERMES_AUTONOMOUS_RESEARCH_ENGINE_PHASES_0_5.md` | Hermes Autonomous Research Engine — Phases 0-5 | review_required | OK | `56cec9e2ddbb` |
-| `docs/hermes/HERMES_CLAUDE_EXTERNAL_LANE_20260607.md` | Hermes External Researcher — Claude Lane (2026-06-07) | review_required | MISSING HEADER | `f0f2cc50c085` |
+| `docs/hermes/HERMES_CLAUDE_EXTERNAL_LANE_20260607.md` | Hermes External Researcher — Claude Lane (2026-06-07) | review_required | OK | `1b5e44b7e161` |
 | `docs/hermes/HERMES_CLOSED_LOOP_TRACEABILITY.md` | Hermes Closed-Loop Traceability — Master Roadmap & Validation | review_required | OK | `bb23aa02a8f0` |
-| `docs/hermes/HERMES_COMMAND_CENTER_PANEL_20260606.md` | Hermes Command Center Panel — 2026-06-06 | review_required | MISSING HEADER | `d0993f5050c0` |
+| `docs/hermes/HERMES_COMMAND_CENTER_PANEL_20260606.md` | Hermes Command Center Panel — 2026-06-06 | review_required | OK | `32b6afb5a26f` |
 | `docs/hermes/HERMES_COMPATIBILITY_AUDIT.md` | Hermes Compatibility Audit — Trade AI v12 | review_required | OK | `7267127c77c3` |
-| `docs/hermes/HERMES_CURATED_MIGRATION_INVENTORY_20260606.md` | Hermes Curated Migration Inventory — 2026-06-06 | review_required | MISSING HEADER | `4cda82a64650` |
+| `docs/hermes/HERMES_CURATED_MIGRATION_INVENTORY_20260606.md` | Hermes Curated Migration Inventory — 2026-06-06 | review_required | OK | `e35e6720613d` |
 | `docs/hermes/HERMES_DATABASE_FIRST_INTEGRATION_ARCHITECTURE.md` | Hermes Database-First Integration Architecture — Trade AI v12 | review_required | OK | `ba0ae16ae20d` |
 | `docs/hermes/HERMES_DATA_INGESTION_ARCHITECTURE.md` | Hermes Data Ingestion Architecture — Trade AI v12 | review_required | OK | `c25b30a2d9b2` |
-| `docs/hermes/HERMES_DEEPSEEK_HYBRID_POLICY.md` | Hermes DeepSeek hybrid policy (pointer) | review_required | MISSING HEADER | `05be371ec0cb` |
-| `docs/hermes/HERMES_DEEP_RESEARCH_LOCAL_RUNNER_20260607.md` | Hermes Deep Research (Local) — Overnight Runner (2026-06-07) | review_required | MISSING HEADER | `2b9bb369fc17` |
-| `docs/hermes/HERMES_DEV_CODEX_SETUP_20260606.md` | Hermes dev Profile — Codex/ChatGPT Setup — 2026-06-06 | review_required | MISSING HEADER | `f00a56c3ce17` |
-| `docs/hermes/HERMES_EXTERNAL_LANES_STATUS_20260607.md` | Hermes External Researcher Lanes — Status & Routes (2026-06-07, updated 2026-07-02) | review_required | MISSING HEADER | `b51d52006706` |
+| `docs/hermes/HERMES_DEEPSEEK_HYBRID_POLICY.md` | Hermes DeepSeek hybrid policy (pointer) | review_required | OK | `908142169b95` |
+| `docs/hermes/HERMES_DEEP_RESEARCH_LOCAL_RUNNER_20260607.md` | Hermes Deep Research (Local) — Overnight Runner (2026-06-07) | review_required | OK | `1643f5fa9dcb` |
+| `docs/hermes/HERMES_DEV_CODEX_SETUP_20260606.md` | Hermes dev Profile — Codex/ChatGPT Setup — 2026-06-06 | review_required | OK | `c3d57f40bbea` |
+| `docs/hermes/HERMES_EXTERNAL_LANES_STATUS_20260607.md` | Hermes External Researcher Lanes — Status & Routes (2026-06-07, updated 2026-07-02) | review_required | OK | `4049337416ef` |
 | `docs/hermes/HERMES_FULL_SESSION_CLOSEOUT_2026_05_31.md` | Hermes Full Session Closeout — 2026-05-30/31 | review_required | OK | `0e6ac0ff18c0` |
-| `docs/hermes/HERMES_GLOBAL_INSTALL_MIGRATION_20260606.md` | Hermes Global Install Migration — 2026-06-06 | review_required | MISSING HEADER | `39d8f211d141` |
-| `docs/hermes/HERMES_GLOBAL_PROFILE_MIGRATION_V1_8_CLOSEOUT_20260606.md` | Hermes Global Profile Migration v1.8 Closeout — 2026-06-06 | review_required | MISSING HEADER | `6b93b667eedf` |
+| `docs/hermes/HERMES_GLOBAL_INSTALL_MIGRATION_20260606.md` | Hermes Global Install Migration — 2026-06-06 | review_required | OK | `63986b3f2745` |
+| `docs/hermes/HERMES_GLOBAL_PROFILE_MIGRATION_V1_8_CLOSEOUT_20260606.md` | Hermes Global Profile Migration v1.8 Closeout — 2026-06-06 | review_required | OK | `2ed784cc00b8` |
 | `docs/hermes/HERMES_HOLDINGS_LIFECYCLE.md` | Hermes Holdings Lifecycle | review_required | OK | `3b5a2a6a525c` |
-| `docs/hermes/HERMES_IDENTITY_EDITOR_20260607.md` | Hermes Identity Editor — Command Center v3 (2026-06-07) | review_required | MISSING HEADER | `69796bb24698` |
-| `docs/hermes/HERMES_IDENTITY_PROFILES_20260607.md` | Hermes Identity Profiles — Due Diligence + Seeded Identities (2026-06-07) | review_required | MISSING HEADER | `5802818f39c4` |
+| `docs/hermes/HERMES_IDENTITY_EDITOR_20260607.md` | Hermes Identity Editor — Command Center v3 (2026-06-07) | review_required | OK | `82364c3c8aa8` |
+| `docs/hermes/HERMES_IDENTITY_PROFILES_20260607.md` | Hermes Identity Profiles — Due Diligence + Seeded Identities (2026-06-07) | review_required | OK | `f0685d23e9f3` |
 | `docs/hermes/HERMES_INSTALL_EXECUTION_PLAN.md` | Hermes Install Execution Plan — Trade AI v12 | review_required | OK | `79838cfdf54e` |
-| `docs/hermes/HERMES_JOURNAL_BACKTEST_INTERNAL_EXTERNAL_MAPPING_20260607.md` | Hermes Journal-Review & Backtesting — Internal Owner → External Escalation (2026-06-07) | review_required | MISSING HEADER | `b544a44a0dda` |
-| `docs/hermes/HERMES_LLM_AUTH_STATUS_20260607.md` | Hermes LLM Auth / OAuth — Status & Guided Login (2026-06-07, updated 2026-07-02) | review_required | MISSING HEADER | `0b3d8443adc4` |
-| `docs/hermes/HERMES_LOOP_DB_RESILIENCE_20260726.md` | Hermes autonomous loop — DB resilience (2026-07-26) | review_required | MISSING HEADER | `e178122d526c` |
-| `docs/hermes/HERMES_LOOP_OUTPUT_QUALITY_20260726.md` | Hermes autonomous loop — output quality assessment (2026-07-26) | review_required | MISSING HEADER | `56ba7837f1ad` |
+| `docs/hermes/HERMES_JOURNAL_BACKTEST_INTERNAL_EXTERNAL_MAPPING_20260607.md` | Hermes Journal-Review & Backtesting — Internal Owner → External Escalation (2026-06-07) | review_required | OK | `45ae84623d50` |
+| `docs/hermes/HERMES_LLM_AUTH_STATUS_20260607.md` | Hermes LLM Auth / OAuth — Status & Guided Login (2026-06-07, updated 2026-07-02) | review_required | OK | `6aee0f997975` |
+| `docs/hermes/HERMES_LOOP_DB_RESILIENCE_20260726.md` | Hermes autonomous loop — DB resilience (2026-07-26) | review_required | OK | `40650c86b5bc` |
+| `docs/hermes/HERMES_LOOP_OUTPUT_QUALITY_20260726.md` | Hermes autonomous loop — output quality assessment (2026-07-26) | review_required | OK | `df0aed4f49db` |
 | `docs/hermes/HERMES_MATURITY_AUDIT_REMEDIATION_20260624.md` | Hermes Maturity Audit Remediation — 2026-06-24 | review_required | OK | `a60ea73862a1` |
-| `docs/hermes/HERMES_MODEL_CANARY_STATUS_20260606.md` | Hermes Model Canary Status — 2026-06-06 | review_required | MISSING HEADER | `fcaf6a4d1148` |
-| `docs/hermes/HERMES_MULTI_AGENT_COORDINATION_ARCHITECTURE.md` | Hermes Multi-Agent Coordination Architecture | review_required | MISSING HEADER | `5615ef878491` |
+| `docs/hermes/HERMES_MODEL_CANARY_STATUS_20260606.md` | Hermes Model Canary Status — 2026-06-06 | review_required | OK | `52fc75c20433` |
+| `docs/hermes/HERMES_MULTI_AGENT_COORDINATION_ARCHITECTURE.md` | Hermes Multi-Agent Coordination Architecture | review_required | OK | `e9d0405cbc11` |
 | `docs/hermes/HERMES_PHASE11A_OBSERVATION_HEALTH_CHECK.md` | Hermes Phase 11A — Post-Closeout Observation Health Check | review_required | OK | `276180c77c09` |
 | `docs/hermes/HERMES_PHASE13A_PROMOTION_REVIEW_DRY_RUN_DESIGN.md` | Phase 13A — Promotion Review Dry-Run Design | review_required | OK | `39bdd8bb690e` |
 | `docs/hermes/HERMES_PHASE13B_PROMOTION_REVIEW_DRY_RUN_REPORT.md` | Phase 13B — Promotion Review Dry-Run Report | review_required | OK | `39b98fefe440` |
@@ -866,15 +866,15 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/hermes/HERMES_PHASE15_PROMOTION_EXECUTION_REPORT.md` | Hermes Phase 15 — Capped Promotion Execution Report | review_required | OK | `df9ffa08e3d2` |
 | `docs/hermes/HERMES_PHASE1A_DB_ROLES_REPORT.md` | Hermes Phase 1A DB Roles Report — Trade AI v12 | review_required | OK | `f0a6824fef13` |
 | `docs/hermes/HERMES_PHASE1B_RUNTIME_STAGING_WRITES_REPORT.md` | Hermes Phase 1B Runtime Staging Writes Report — Trade AI v12 | review_required | OK | `721899683a98` |
-| `docs/hermes/HERMES_PHASE1C_DRIVE_SYNC_VERIFICATION.md` | Hermes Phase 1C Drive Sync Verification — 2026-05-30 | review_required | MISSING HEADER | `19039b5d0498` |
+| `docs/hermes/HERMES_PHASE1C_DRIVE_SYNC_VERIFICATION.md` | Hermes Phase 1C Drive Sync Verification — 2026-05-30 | review_required | OK | `e9a6c46a3ab5` |
 | `docs/hermes/HERMES_PHASE1C_PRODUCTION_READ_ACCESS_MAP.md` | Hermes Phase 1C — Production Read Access Map | review_required | OK | `78a3f80b20c2` |
 | `docs/hermes/HERMES_PHASE1C_SECURITY_FINDINGS.md` | Hermes Phase 1C — Security Findings | review_required | OK | `7838b400d67c` |
 | `docs/hermes/HERMES_PHASE1D_SAFE_VIEWS_AND_GRANTS_VERIFICATION.md` | Hermes Phase 1D — Safe Views and Grants Verification | review_required | OK | `af6afd36f1b3` |
 | `docs/hermes/HERMES_PHASE1D_SESSION_CLOSEOUT.md` | Hermes Phase 1D Session Closeout | review_required | OK | `46dfcc51671a` |
-| `docs/hermes/HERMES_PHASE1D_VIEWS_AND_GRANTS_REPORT.md` | Hermes Phase 1D: Safe Views and Read Grants — 2026-05-30 | review_required | MISSING HEADER | `c7e58ed8a57c` |
+| `docs/hermes/HERMES_PHASE1D_VIEWS_AND_GRANTS_REPORT.md` | Hermes Phase 1D: Safe Views and Read Grants — 2026-05-30 | review_required | OK | `a43382e45cdd` |
 | `docs/hermes/HERMES_PHASE1E_FIRST_RESEARCH_INGESTION_REPORT.md` | Hermes Phase 1E — First Real Research Ingestion Report | review_required | OK | `1e55003c6775` |
 | `docs/hermes/HERMES_PHASE1F_BATCH_RESEARCH_INGESTION_REPORT.md` | Hermes Phase 1F — Batch Research Ingestion Report | review_required | OK | `7a3c75624bcc` |
-| `docs/hermes/HERMES_PHASE1F_BATCH_RESEARCH_INGESTION_ROLLBACK_SQL.md` | Hermes Phase 1F Rollback SQL | review_required | MISSING HEADER | `2eef661bbee2` |
+| `docs/hermes/HERMES_PHASE1F_BATCH_RESEARCH_INGESTION_ROLLBACK_SQL.md` | Hermes Phase 1F Rollback SQL | review_required | OK | `95dd2773b9f6` |
 | `docs/hermes/HERMES_PHASE1F_SESSION_CLOSEOUT.md` | Hermes Phase 1F Session Closeout | review_required | OK | `93e0b1fdad27` |
 | `docs/hermes/HERMES_PHASE1G_STAGED_RESEARCH_QUALITY_REVIEW.md` | Hermes Phase 1G — Staged Research Quality Review | review_required | OK | `f5d08abb1cf4` |
 | `docs/hermes/HERMES_PHASE1H_PROMPT_HARDENING_AND_LIMITED_INGESTION_REPORT.md` | Hermes Phase 1H — Prompt Hardening + Limited Ingestion Report | review_required | OK | `e8692d88a4c2` |
@@ -950,24 +950,24 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/hermes/HERMES_PHASE37D_LOW_LATENCY_SAFETY_AND_SLA.md` | Hermes Phase 37D — Low-Latency Safety and Latency SLA | review_required | OK | `b155e3958161` |
 | `docs/hermes/HERMES_PHASE37E_LOW_LATENCY_IMPLEMENTATION_GATES.md` | Hermes Phase 37E — Low-Latency Bridge Implementation Gates | review_required | OK | `50a3014b789d` |
 | `docs/hermes/HERMES_PHASE3A_AUTONOMOUS_LOOP_IMPLEMENTATION_PLAN.md` | Hermes Phase 3A — Autonomous Loop Implementation Plan | review_required | OK | `29f8188c6c90` |
-| `docs/hermes/HERMES_PHASE3A_AUTONOMOUS_LOOP_SAFETY_CHECKLIST.md` | Hermes Autonomous Loop Safety Checklist | review_required | MISSING HEADER | `97bd81091d0c` |
+| `docs/hermes/HERMES_PHASE3A_AUTONOMOUS_LOOP_SAFETY_CHECKLIST.md` | Hermes Autonomous Loop Safety Checklist | review_required | OK | `274d50f4d5b3` |
 | `docs/hermes/HERMES_PHASE3A_AUTONOMOUS_RESEARCH_LOOP_ARCHITECTURE.md` | Hermes Phase 3A — Autonomous Research Loop Architecture | review_required | OK | `820689a72de0` |
 | `docs/hermes/HERMES_PHASE3A_SESSION_CLOSEOUT.md` | Hermes Phase 3A Session Closeout | review_required | OK | `21e7585eefcf` |
 | `docs/hermes/HERMES_PHASE3B_MANUAL_DRY_RUN_LOOP_REPORT.md` | Hermes Phase 3B — Manual Dry-Run Loop Report | review_required | OK | `d3713023eae9` |
 | `docs/hermes/HERMES_PHASE3C_MANUAL_APPLY_STAGING_REPORT.md` | Hermes Phase 3C — Manual Apply Staging Report | review_required | OK | `1d6566ef0f07` |
 | `docs/hermes/HERMES_PHASE3D_DASHBOARD_MONITORING_REPORT.md` | Hermes Phase 3D — Dashboard Monitoring Report | review_required | OK | `c1508eea5705` |
 | `docs/hermes/HERMES_PHASE3E_TIMER_SERVICE_DRAFT_REVIEW.md` | Hermes Phase 3E — Timer/Service Draft Review | review_required | OK | `10ca0b1644c4` |
-| `docs/hermes/HERMES_PHASE3F_TIMER_DISABLE_ROLLBACK.md` | Hermes Phase 3F — Timer Disable/Rollback | review_required | MISSING HEADER | `2ba832ceaa1c` |
+| `docs/hermes/HERMES_PHASE3F_TIMER_DISABLE_ROLLBACK.md` | Hermes Phase 3F — Timer Disable/Rollback | review_required | OK | `f10cdc47adcf` |
 | `docs/hermes/HERMES_PHASE3F_TIMER_DRY_RUN_ACTIVATION_REPORT.md` | Hermes Phase 3F — Timer Dry-Run Activation Report | review_required | OK | `a2f053275ef4` |
 | `docs/hermes/HERMES_PHASE3G_MANUAL_TO_TIMER_SEQUENCE_CLOSEOUT.md` | Hermes Phase 3G — Manual-to-Timer Sequence Closeout | review_required | OK | `e1493d83b542` |
 | `docs/hermes/HERMES_PHASE3H_APPLY_MODE_ACTIVATION_REPORT.md` | Hermes Phase 3H — Apply-Mode Activation Report | review_required | OK | `3c4f9fb68a22` |
-| `docs/hermes/HERMES_PHASE3H_APPLY_MODE_ROLLBACK.md` | Phase 3H Rollback | review_required | MISSING HEADER | `f8468e7f8a89` |
+| `docs/hermes/HERMES_PHASE3H_APPLY_MODE_ROLLBACK.md` | Phase 3H Rollback | review_required | OK | `248c5865e44d` |
 | `docs/hermes/HERMES_PHASE3I_FIRST_APPLY_OBSERVATION_AUDIT.md` | Hermes Phase 3I — First Apply-Mode Observation Audit | review_required | OK | `7dfd75d3b208` |
 | `docs/hermes/HERMES_PHASE3J_AUTONOMOUS_OUTPUT_QUALITY_REVIEW.md` | Hermes Phase 3J — Autonomous Output Quality Review | review_required | OK | `01a8099a9cd9` |
 | `docs/hermes/HERMES_PHASE3K_AUTONOMOUS_LOOP_CLOSEOUT.md` | Hermes Phase 3K — Autonomous Loop Closeout | review_required | OK | `9dafa6f75674` |
 | `docs/hermes/HERMES_PHASE4A_PROMOTION_ARCHITECTURE.md` | Hermes Phase 4A — Promotion Architecture | review_required | OK | `f974428d01f4` |
 | `docs/hermes/HERMES_PHASE4A_PROMOTION_DRY_RUN_REPORT.md` | Hermes Phase 4A — Promotion Dry-Run Report | review_required | OK | `4be90dda3251` |
-| `docs/hermes/HERMES_PHASE4A_ROLLBACK_STRATEGY.md` | Phase 4A Rollback Strategy | review_required | MISSING HEADER | `6b868f12a778` |
+| `docs/hermes/HERMES_PHASE4A_ROLLBACK_STRATEGY.md` | Phase 4A Rollback Strategy | review_required | OK | `1451f3e568fa` |
 | `docs/hermes/HERMES_PHASE4B_FIRST_CAPPED_PROMOTION_REPORT.md` | Hermes Phase 4B — First Capped Promotion Report | review_required | OK | `e5cb4276391e` |
 | `docs/hermes/HERMES_PHASE4C_PROMOTION_IMPACT_AUDIT.md` | Hermes Phase 4C — Promotion Impact Audit | review_required | OK | `39be072f8ce5` |
 | `docs/hermes/HERMES_PHASE4D_DASHBOARD_PROMOTION_VISIBILITY_REPORT.md` | Hermes Phase 4D — Dashboard Promotion Visibility | review_required | OK | `7b26da2237fb` |
@@ -1003,138 +1003,138 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/hermes/HERMES_PHASE9D_OBSERVATION_AND_INFRA_PLANNING_CLOSEOUT.md` | Hermes Phase 9D — Observation + Infra Planning Closeout | review_required | OK | `ad7c387dde61` |
 | `docs/hermes/HERMES_PHASE_P0_FINAL_GATE.md` | Hermes Phase P0 Final Gate — Trade AI v12 | review_required | OK | `9fa20a78d0ac` |
 | `docs/hermes/HERMES_PHASE_P0_INSTALL_REPORT.md` | Hermes Phase P0 Install Report — Trade AI v12 | review_required | OK | `d8828fb2d88f` |
-| `docs/hermes/HERMES_PREINSTALL_DISCOVERY.md` | Hermes Preinstall Discovery — 2026-05-30 | review_required | MISSING HEADER | `fb9d2e35b8b7` |
-| `docs/hermes/HERMES_PROFILE_MATRIX_20260606.md` | Hermes Profile Matrix — 2026-06-06 | review_required | MISSING HEADER | `6e9256fce83f` |
-| `docs/hermes/HERMES_PROMOTION_OPERATOR_CHECKLIST.md` | Hermes Promotion Operator Checklist | review_required | MISSING HEADER | `fcd71f01a98e` |
+| `docs/hermes/HERMES_PREINSTALL_DISCOVERY.md` | Hermes Preinstall Discovery — 2026-05-30 | review_required | OK | `7b78f90ca347` |
+| `docs/hermes/HERMES_PROFILE_MATRIX_20260606.md` | Hermes Profile Matrix — 2026-06-06 | review_required | OK | `8cc6b7596c54` |
+| `docs/hermes/HERMES_PROMOTION_OPERATOR_CHECKLIST.md` | Hermes Promotion Operator Checklist | review_required | OK | `7f7b25e86535` |
 | `docs/hermes/HERMES_READ_ONLY_PILOT_PLAN.md` | Hermes Read-Only Pilot Plan — Trade AI v12 | review_required | OK | `64a4196f3659` |
-| `docs/hermes/HERMES_REPORTS_WATCHLIST_FEED_AND_LLM_CURATION_20260607.md` | Hermes → Reports/Watchlist Feed + Curated-LLM & Learning Standard (2026-06-07) | review_required | MISSING HEADER | `94e3140f925e` |
-| `docs/hermes/HERMES_RESEARCHER_RESPONSIBILITY_MATRIX.md` | Hermes Researcher Responsibility Matrix (2026-06-07) | review_required | MISSING HEADER | `3a056c894046` |
-| `docs/hermes/HERMES_RESEARCH_GRAPH_KILL_SWITCH_REPOINT_20260606.md` | Hermes Research-Graph Kill-Switch Repoint — 2026-06-06 | review_required | MISSING HEADER | `cf752ee81be4` |
-| `docs/hermes/HERMES_RESEARCH_QUALITY_GATE_CHECKLIST.md` | Hermes Research Quality Gate Checklist | review_required | MISSING HEADER | `306fe87ba037` |
+| `docs/hermes/HERMES_REPORTS_WATCHLIST_FEED_AND_LLM_CURATION_20260607.md` | Hermes → Reports/Watchlist Feed + Curated-LLM & Learning Standard (2026-06-07) | review_required | OK | `cfedcc17ed43` |
+| `docs/hermes/HERMES_RESEARCHER_RESPONSIBILITY_MATRIX.md` | Hermes Researcher Responsibility Matrix (2026-06-07) | review_required | OK | `02667bbb8380` |
+| `docs/hermes/HERMES_RESEARCH_GRAPH_KILL_SWITCH_REPOINT_20260606.md` | Hermes Research-Graph Kill-Switch Repoint — 2026-06-06 | review_required | OK | `8f6a74bad511` |
+| `docs/hermes/HERMES_RESEARCH_QUALITY_GATE_CHECKLIST.md` | Hermes Research Quality Gate Checklist | review_required | OK | `3e34133e4461` |
 | `docs/hermes/HERMES_ROLLBACK_PLAN.md` | Hermes Rollback Plan — Trade AI v12 | review_required | OK | `6670a68cc3b4` |
 | `docs/hermes/HERMES_SCOPE_GOVERNOR.md` | Hermes Scope Governor Agent | review_required | OK | `2798b7c07490` |
-| `docs/hermes/HERMES_SIDECAR_RETIREMENT_PLAN_20260606.md` | Hermes Sidecar Retirement Plan — 2026-06-06 | review_required | MISSING HEADER | `3330e94396a9` |
+| `docs/hermes/HERMES_SIDECAR_RETIREMENT_PLAN_20260606.md` | Hermes Sidecar Retirement Plan — 2026-06-06 | review_required | OK | `8e085c2407c8` |
 | `docs/hermes/HERMES_SOURCE_DISCOVERY_AND_MEMORY_DESIGN.md` | Hermes Source Discovery and Site Memory Design | review_required | OK | `884bdf669cc0` |
 | `docs/hermes/HERMES_TELEGRAM_AND_COMMUNICATION_RETENTION_AUDIT.md` | Hermes Telegram and Communication Retention Audit | review_required | OK | `aeae1273e491` |
 | `docs/hermes/HERMES_TELEGRAM_REVIEW_ACTIONABILITY_DRY_RUN.md` | Hermes Telegram Review Actionability Dry-Run Classification | review_required | OK | `667e63462eba` |
 | `docs/hermes/HERMES_TELEGRAM_REVIEW_ACTIONABILITY_GATE.md` | Hermes Telegram Review Actionability Gate | review_required | OK | `77f79fd80761` |
 | `docs/hermes/HERMES_THRESHOLD_EVALUATION_ENGINE.md` | Hermes Threshold Evaluation Engine (Phase 2) | review_required | OK | `c3e7834234f9` |
 | `docs/hermes/HERMES_THRESHOLD_SCORING_REVIEW.md` | Threshold Learner Scoring Logic — Review & Recommendations | review_required | OK | `66dd3c4d93fc` |
-| `docs/hermes/HERMES_TRADEAI_RESEARCH_AND_SELF_LEARNING_ARCHITECTURE.md` | Hermes / TradeAI Research & Self-Learning Architecture | review_required | MISSING HEADER | `27d2d64521e3` |
-| `docs/hermes/HERMES_TRADEAI_TOOL_POLICY_DECISION_20260607.md` | Hermes tradeai Tool Policy — Operator Decision (2026-06-07) | review_required | MISSING HEADER | `06a284a45f57` |
+| `docs/hermes/HERMES_TRADEAI_RESEARCH_AND_SELF_LEARNING_ARCHITECTURE.md` | Hermes / TradeAI Research & Self-Learning Architecture | review_required | OK | `63a6f91cdb25` |
+| `docs/hermes/HERMES_TRADEAI_TOOL_POLICY_DECISION_20260607.md` | Hermes tradeai Tool Policy — Operator Decision (2026-06-07) | review_required | OK | `672b944990b0` |
 | `docs/hermes/HERMES_WATCHLIST_LIFECYCLE.md` | Hermes Watchlist Lifecycle | review_required | OK | `9399f32cdae7` |
-| `docs/hermes/Hermes_Project_Memory_Notes_v4.md` | Project Memory Notes - Hermes Sidecar Strategy v4 | review_required | MISSING HEADER | `ad29aae5e664` |
-| `docs/hermes/Hermes_Sidecar_Strategy_for_Trade_AI_v4.md` | Hermes Sidecar Strategy for Trade AI - Version 4 | review_required | MISSING HEADER | `d241fe971ec1` |
+| `docs/hermes/Hermes_Project_Memory_Notes_v4.md` | Project Memory Notes - Hermes Sidecar Strategy v4 | review_required | OK | `bd125c837c12` |
+| `docs/hermes/Hermes_Sidecar_Strategy_for_Trade_AI_v4.md` | Hermes Sidecar Strategy for Trade AI - Version 4 | review_required | OK | `8a7e32254f7c` |
 | `docs/hermes/OUTCOME_BUS_IMPLEMENTATION.md` | Outcome Bus — Implementation Guide | review_required | OK | `6117a815d789` |
-| `docs/hermes/PHASE189E_HERMES_MISSING_STOP_FAILURE_ANALYSIS.md` | PHASE 189E — Hermes Missing-Stop Failure Analysis | review_required | MISSING HEADER | `425d5d439260` |
-| `docs/hermes/PHASE190E_HERMES_PROTECTION_VIEW_RULE_REPORT.md` | PHASE 190E — Hermes Protection Safe View & Rule Report | review_required | MISSING HEADER | `9481c5a5f0d1` |
-| `docs/hermes/PHASE191E_HERMES_PROFIT_PROTECTION_RULE.md` | PHASE 191E — Hermes Profit-Protection Second-Opinion Rule | review_required | MISSING HEADER | `0a38489fbb33` |
-| `docs/hermes/PHASE206A_LEGACY_AGENT_VISIBILITY_ROOT_CAUSE.md` | Phase 206A — Legacy Agent Visibility: Root-Cause Audit — 2026-06-07 | review_required | MISSING HEADER | `4faa3bd29d66` |
-| `docs/hermes/PHASE206B_LEGACY_AGENT_INVENTORY_SCRIPT.md` | Phase 206B — Legacy/Retired Agent Inventory Script — 2026-06-07 | review_required | MISSING HEADER | `7804b5465809` |
-| `docs/hermes/PHASE206C_LEGACY_AGENT_API_REPORT.md` | Phase 206C — Legacy/Retired Agent API — 2026-06-07 | review_required | MISSING HEADER | `67cef8626ffa` |
-| `docs/hermes/PHASE206D_V3_LEGACY_AGENT_UI_REPORT.md` | Phase 206D — v3 Hermes UI: Legacy / Retired Agents Section — 2026-06-07 | review_required | MISSING HEADER | `8ebb7d4de010` |
-| `docs/hermes/PHASE206E_HERMES_LEGACY_AGENT_SAFETY_ASSERTIONS.md` | Phase 206E — Hermes Legacy Agent Safety Assertions — 2026-06-07 | review_required | MISSING HEADER | `e64dd85a1a46` |
-| `docs/hermes/PHASE206F_LEGACY_AGENT_TO_PROFILE_MAPPING_PLAN.md` | Phase 206F — Legacy Agent → Future Profile Mapping Plan (NO migration) — 2026-06-07 | review_required | MISSING HEADER | `ae059e1e4250` |
-| `docs/hermes/PHASE206G_LEGACY_AGENT_VISIBILITY_VALIDATION.md` | Phase 206G — Legacy Agent Visibility Validation — 2026-06-07 | review_required | MISSING HEADER | `655d08951631` |
-| `docs/hermes/PHASE208A_HERMES_AUDIT_PREFLIGHT.md` | Phase 208A — Hermes End-to-End Audit Preflight (2026-06-07) | review_required | MISSING HEADER | `c4d2251f9038` |
-| `docs/hermes/PHASE208B_HERMES_IDENTITY_PROFILE_INVENTORY.md` | Phase 208B — Hermes Identity & Profile Inventory (2026-06-07) | review_required | MISSING HEADER | `a9034f80989c` |
-| `docs/hermes/PHASE208C_HERMES_SOUL_AUDIT.md` | Phase 208C — Hermes SOUL Audit (2026-06-07) | review_required | MISSING HEADER | `c5283ac98bb6` |
-| `docs/hermes/PHASE208D_HERMES_JOB_CALL_GRAPH.md` | Phase 208D — Hermes Job-to-Agent Call Graph (2026-06-07) | review_required | MISSING HEADER | `d376af4f7733` |
-| `docs/hermes/PHASE208E_LIVE_RESEARCH_FLEET_HEALTH_AUDIT.md` | Phase 208E — Live Hermes Research Fleet Health (2026-06-07) | review_required | MISSING HEADER | `c3974e81bf91` |
-| `docs/hermes/PHASE208F_RETIRED_ARTIFACT_DEPENDENCY_PROOF.md` | Phase 208F — Retired Hermes Artifact Dependency Proof (2026-06-07) | review_required | MISSING HEADER | `39dab5ae7bcb` |
-| `docs/hermes/PHASE208G_V3_HERMES_VISIBILITY_AUDIT.md` | Phase 208G — v3 Hermes Visibility Audit (2026-06-07) | review_required | MISSING HEADER | `ae0ba11de4ac` |
-| `docs/hermes/PHASE208H_HERMES_VISIBILITY_FIX_REPORT.md` | Phase 208H — Hermes Visibility Fix Report (2026-06-07) | review_required | MISSING HEADER | `4fe429095253` |
-| `docs/hermes/PHASE208I_HERMES_END_TO_END_AUDIT_VALIDATION.md` | Phase 208I — Hermes End-to-End Audit Validation (2026-06-07) | review_required | MISSING HEADER | `7a951356c09b` |
-| `docs/hermes/PHASE208J_HERMES_AGENT_RISK_REGISTER.md` | Phase 208J — Hermes Agent Risk Register (2026-06-07) | review_required | MISSING HEADER | `030198853a9b` |
-| `docs/hermes/PHASE208K_OPERATOR_ANSWER_WHY_RETIRED_AND_IS_IT_SAFE.md` | Phase 208K — Operator Answer: Why Retired, Is It Safe (2026-06-07) | review_required | MISSING HEADER | `871c88790b6b` |
-| `docs/hermes/PHASE209A_WORKFLOW_MATRIX_PREFLIGHT.md` | PHASE209A_WORKFLOW_MATRIX_PREFLIGHT.md | review_required | MISSING HEADER | `9edc5e345d0c` |
-| `docs/hermes/PHASE209B_V3_GRAPH_NODE_INVENTORY.md` | Phase 209B — v3 Hermes Graph Node Inventory (2026-06-07) | review_required | MISSING HEADER | `8c6af4cdb114` |
-| `docs/hermes/PHASE209C_SCRIPT_JOB_OWNERSHIP_DISCOVERY.md` | Phase 209C — Script/Job Ownership Discovery (2026-06-07) | review_required | MISSING HEADER | `d6e5b2ed9985` |
-| `docs/hermes/PHASE209D_DB_READ_WRITE_LINEAGE_MATRIX.md` | Phase 209D — Hermes DB Read/Write Lineage (2026-06-07) | review_required | MISSING HEADER | `32ab4858e99e` |
-| `docs/hermes/PHASE209E_HERMES_CHAT_PROFILE_USAGE_MATRIX.md` | Phase 209E — Hermes Chat Profile Usage Matrix (2026-06-07) | review_required | MISSING HEADER | `d41848e23e67` |
-| `docs/hermes/PHASE209F_HERMES_LIBRARIAN_DEEP_DIVE.md` | Phase 209F — Hermes Librarian Deep Dive (2026-06-07) | review_required | MISSING HEADER | `4141a202e3a3` |
-| `docs/hermes/PHASE209G_TRADEAI_ENHANCEMENT_WORKFLOW_MATRIX.md` | Phase 209G — TradeAI Enhancement Workflow Matrix (2026-06-07) | review_required | MISSING HEADER | `c04c4b98f941` |
-| `docs/hermes/PHASE209H_WORKFLOW_GAPS_DUPLICATES_CONFLICTS.md` | Phase 209H — Workflow Gaps, Duplicates, Conflicts (2026-06-07) | review_required | MISSING HEADER | `3e7db8b3f492` |
-| `docs/hermes/PHASE209I_V3_WORKFLOW_MATRIX_VISIBILITY.md` | Phase 209I — v3 Hermes Workflow Matrix Visibility (2026-06-07) | review_required | MISSING HEADER | `da9ea84ce0b2` |
-| `docs/hermes/PHASE209J_WORKFLOW_MATRIX_VALIDATION.md` | Phase 209J — Workflow Matrix Validation (2026-06-07) | review_required | MISSING HEADER | `23ca7bbe981e` |
-| `docs/hermes/PHASE209K_OPERATOR_GUIDE_HERMES_TRADEAI_WORKFLOWS.md` | Phase 209K — Operator Guide: Hermes / TradeAI Workflows (2026-06-07) | review_required | MISSING HEADER | `bef5d6d3cc7d` |
-| `docs/hermes/PHASE210A_SELF_LEARNING_RESEARCH_ARCHITECTURE_PREFLIGHT.md` | Phase 210A — Self-Learning Research Architecture Preflight (2026-06-07) | review_required | MISSING HEADER | `8d2c8d8de291` |
-| `docs/hermes/PHASE210B_HERMES_SELF_LEARNING_LOOP_AUDIT.md` | Phase 210B — Hermes Self-Learning Loop Audit (2026-06-07) | review_required | MISSING HEADER | `9e157f29f880` |
-| `docs/hermes/PHASE210C_INTERNAL_DEEP_RESEARCH_AGENT_DESIGN.md` | Phase 210C — Internal Deep-Research Lane Design (2026-06-07) | review_required | MISSING HEADER | `ed62eac43d20` |
-| `docs/hermes/PHASE210D_EXTERNAL_RESEARCHER_ESCALATION_DESIGN.md` | Phase 210D — External Researcher Escalation Design (2026-06-07) | review_required | MISSING HEADER | `a42e45969239` |
-| `docs/hermes/PHASE210F_HERMES_LEARNING_FEEDBACK_ARCHITECTURE.md` | Phase 210F — Hermes Learning Feedback Architecture (2026-06-07) | review_required | MISSING HEADER | `6c23fec11e58` |
-| `docs/hermes/PHASE210G_EXTERNAL_ESCALATION_TRIGGER_POLICY.md` | Phase 210G — External Escalation Trigger Policy (2026-06-07) | review_required | MISSING HEADER | `0ec439011f64` |
-| `docs/hermes/PHASE210H_V3_RESEARCH_AND_LEARNING_MATRIX_VISIBILITY.md` | Phase 210H — v3 Research & Learning Matrix Visibility Design (2026-06-07) | review_required | MISSING HEADER | `1bd001c2c088` |
-| `docs/hermes/PHASE210J_V3_RESEARCH_LEARNING_MATRIX.md` | Phase 210J — v3 Research & Learning Matrix (2026-06-07) | review_required | MISSING HEADER | `1629fbed21a2` |
-| `docs/hermes/PHASE210M_VALIDATION.md` | Phase 210M — Validation (2026-06-07) | review_required | MISSING HEADER | `d44618e2c042` |
-| `docs/hermes/PHASE212A_HERMES_CURRENT_RUNTIME_SNAPSHOT.md` | PHASE 212A — Hermes Current Runtime Snapshot (2026-06-07) | review_required | MISSING HEADER | `f59c137ea00b` |
-| `docs/hermes/PHASE212B_HERMES_VERSION_DISCOVERY.md` | PHASE 212B — Hermes Version Discovery (2026-06-07) | review_required | MISSING HEADER | `23d32589f61c` |
-| `docs/hermes/PHASE212C_HERMES_SHADOW_INSTALL.md` | PHASE 212C — Hermes Shadow Install (2026-06-07) | review_required | MISSING HEADER | `877d45152ed7` |
-| `docs/hermes/PHASE212D_SHADOW_CODEX_INTERACTIVE_SANITY.md` | PHASE 212D — Shadow Codex Interactive Sanity (2026-06-07) | review_required | MISSING HEADER | `5e908f6c1590` |
-| `docs/hermes/PHASE212E_CODEX_HEADLESS_SHADOW_TEST.md` | PHASE 212E — Codex Headless Test (current build, all command shapes) (2026-06-07) | review_required | MISSING HEADER | `2c2cd304effe` |
-| `docs/hermes/PHASE212F_CHATGPT_LANE_HEADLESS_PATCH.md` | PHASE 212F — ChatGPT Lane Headless Patch (2026-06-07) | review_required | MISSING HEADER | `5b444426167f` |
-| `docs/hermes/PHASE212G_HERMES_BUILD_PROMOTION_DECISION.md` | PHASE 212G — Hermes Build Promotion Decision (2026-06-07) | review_required | MISSING HEADER | `fb8c1def3e7c` |
-| `docs/hermes/PHASE212H_V3_CODEX_HEADLESS_STATUS_UPDATE.md` | PHASE 212H — v3 Codex Interactive vs Headless Status (2026-06-07) | review_required | MISSING HEADER | `72b8c442a9b0` |
-| `docs/hermes/PHASE212I_CODEX_HEADLESS_VALIDATION.md` | PHASE 212I — Validation (2026-06-07) | review_required | MISSING HEADER | `d4cc67ad8096` |
-| `docs/hermes/PHASE213A_CODEX_HEADLESS_LIMITATION_AUTHORITY.md` | PHASE 213A — Codex Headless Limitation — Authoritative Finding (2026-06-07) | review_required | MISSING HEADER | `735432b444c0` |
-| `docs/hermes/PHASE213E_HERMES_UPDATE_MONITOR_PLAN.md` | PHASE 213E — Hermes Update Monitor Plan (2026-06-07) | review_required | MISSING HEADER | `a0397c3f38ae` |
-| `docs/hermes/PHASE213F_EXTERNAL_LANE_HARDENING_VALIDATION.md` | PHASE 213F — External Lane Hardening Validation (2026-06-07) | review_required | MISSING HEADER | `418cb1a732a8` |
-| `docs/hermes/PHASE213I_EXTERNAL_FEEDBACK_LOOP_AND_DRILLDOWN.md` | Phase 213I — External-Researcher Feedback Loop + Loop Drill-Down (2026-06-07) | review_required | MISSING HEADER | `70dcf592aa34` |
-| `docs/hermes/PHASE214A_COORDINATOR_KILLSWITCH_PREFLIGHT.md` | PHASE 214A — Coordinator Kill-Switch Preflight (2026-06-07) | review_required | MISSING HEADER | `d7a26d4fda30` |
-| `docs/hermes/PHASE214B_COORDINATOR_KILLSWITCH_ROOT_CAUSE.md` | PHASE 214B — Coordinator Kill-Switch Root Cause (2026-06-07) | review_required | MISSING HEADER | `6eeac779c5b3` |
-| `docs/hermes/PHASE214C_KILLSWITCH_HELPER_IMPLEMENTATION.md` | PHASE 214C — Canonical Kill-Switch Helper (2026-06-07) | review_required | MISSING HEADER | `cfaa67787153` |
-| `docs/hermes/PHASE214D_COORDINATOR_REPOINT_IMPLEMENTATION.md` | PHASE 214D — Coordinator Repoint (2026-06-07) | review_required | MISSING HEADER | `4d0d5903869b` |
-| `docs/hermes/PHASE214E_V3_COORDINATOR_KILLSWITCH_VISIBILITY.md` | PHASE 214E — v3 Kill-Switch Visibility (2026-06-07) | review_required | MISSING HEADER | `efa068858610` |
-| `docs/hermes/PHASE214F_KILLSWITCH_BEHAVIOR_TESTS.md` | PHASE 214F — Kill-Switch Behavior Tests (2026-06-07) | review_required | MISSING HEADER | `9a0c73106b42` |
-| `docs/hermes/PHASE214G_RETIRED_KILLSWITCH_PATH_DEPENDENCY_PROOF.md` | PHASE 214G — Retired Kill-Switch Path Dependency Proof (2026-06-07) | review_required | MISSING HEADER | `006b57f3b225` |
-| `docs/hermes/PHASE216A_LIVE_V3_PORTAL_TRUTH_CAPTURE.md` | PHASE 216A — Live v3 Portal Truth Capture (2026-06-07) | review_required | MISSING HEADER | `5764cb395945` |
-| `docs/hermes/PHASE216B_DOC_VS_PORTAL_MISMATCH_AUDIT.md` | PHASE 216B — Doc vs Portal Mismatch Audit (2026-06-07) | review_required | MISSING HEADER | `b3c2c5d2eaf1` |
-| `docs/hermes/PHASE216F_DOCX_RENDER_QA.md` | PHASE 216F — Word Doc Render QA (2026-06-07) | review_required | MISSING HEADER | `91c7d8de96c0` |
-| `docs/hermes/PHASE217A_LIVE_STATE_RECAPTURE.md` | PHASE 217A — Live State Recapture (2026-06-07) | review_required | MISSING HEADER | `a7771ceb0878` |
-| `docs/hermes/PHASE217B_CANONICAL_STATUS_BUILDER.md` | PHASE 217B — Canonical Status Builder (2026-06-07) | review_required | MISSING HEADER | `149ca3b07529` |
-| `docs/hermes/PHASE217C_PORTAL_LABEL_RECONCILIATION.md` | PHASE 217C — Portal Label Reconciliation (2026-06-07) | review_required | MISSING HEADER | `a1ab4f33c78b` |
-| `docs/hermes/PHASE217F_DOCUMENT_QA_REPORT.md` | PHASE 217F — Document QA (2026-06-07) | review_required | MISSING HEADER | `9b6d1ddf13b7` |
-| `docs/hermes/PHASE217H_DRIVE_SYNC_REPORT.md` | PHASE 217H — Drive Sync Report (2026-06-07) | review_required | MISSING HEADER | `e6f56513d275` |
-| `docs/hermes/PHASE217I_PORTAL_DOC_ALIGNMENT_VERIFICATION.md` | PHASE 217I — Portal/Doc Alignment Verification (2026-06-07) | review_required | MISSING HEADER | `f75adef90513` |
-| `docs/hermes/auto_promotion_queue/2026-06-01_queue.md` | Auto-Promotion Dry-Run Queue — 2026-06-01 | review_required | MISSING HEADER | `5e1e96add5b6` |
-| `docs/hermes/auto_promotion_shadow/2026-06-01_shadow.md` | Auto-Promotion Shadow — 2026-06-01 | review_required | MISSING HEADER | `fd70bf09a5c4` |
-| `docs/hermes/auto_promotion_shadow/phase95_shadow.md` | Expanded Shadow — 2026-06-01 | review_required | MISSING HEADER | `b7c5628a6442` |
-| `docs/hermes/cache_quality/2026-06-01_cache_quality.md` | Advisory Cache Quality — 2026-06-01 | review_required | MISSING HEADER | `ccdd52596f67` |
-| `docs/hermes/momentum_scalp_swarm/DEPLOYMENT_OPERATIONS.md` | Deployment & Operations — MS-01 | review_required | MISSING HEADER | `6f345ede4547` |
-| `docs/hermes/momentum_scalp_swarm/GETTING_STARTED.md` | Getting Started — Momentum Scalp Hermes Swarm | review_required | MISSING HEADER | `519e66c6c3d7` |
-| `docs/hermes/momentum_scalp_swarm/INTEGRATION_GUIDE.md` | Integration Guide — Trade AI v12 Components | review_required | MISSING HEADER | `2fc4ae10cc03` |
-| `docs/hermes/momentum_scalp_swarm/MULTI_HERMES_MOMENTUM_SCALP_ARCHITECTURE.md` | Multi-Hermes Momentum Scalp Swarm — Architecture | review_required | MISSING HEADER | `28bafd75a79e` |
+| `docs/hermes/PHASE189E_HERMES_MISSING_STOP_FAILURE_ANALYSIS.md` | PHASE 189E — Hermes Missing-Stop Failure Analysis | review_required | OK | `049f2126738f` |
+| `docs/hermes/PHASE190E_HERMES_PROTECTION_VIEW_RULE_REPORT.md` | PHASE 190E — Hermes Protection Safe View & Rule Report | review_required | OK | `9be2dad1337c` |
+| `docs/hermes/PHASE191E_HERMES_PROFIT_PROTECTION_RULE.md` | PHASE 191E — Hermes Profit-Protection Second-Opinion Rule | review_required | OK | `f6de125f6be7` |
+| `docs/hermes/PHASE206A_LEGACY_AGENT_VISIBILITY_ROOT_CAUSE.md` | Phase 206A — Legacy Agent Visibility: Root-Cause Audit — 2026-06-07 | review_required | OK | `4c4a8f77d834` |
+| `docs/hermes/PHASE206B_LEGACY_AGENT_INVENTORY_SCRIPT.md` | Phase 206B — Legacy/Retired Agent Inventory Script — 2026-06-07 | review_required | OK | `588a02b65cdf` |
+| `docs/hermes/PHASE206C_LEGACY_AGENT_API_REPORT.md` | Phase 206C — Legacy/Retired Agent API — 2026-06-07 | review_required | OK | `b79728787a73` |
+| `docs/hermes/PHASE206D_V3_LEGACY_AGENT_UI_REPORT.md` | Phase 206D — v3 Hermes UI: Legacy / Retired Agents Section — 2026-06-07 | review_required | OK | `59f606406d38` |
+| `docs/hermes/PHASE206E_HERMES_LEGACY_AGENT_SAFETY_ASSERTIONS.md` | Phase 206E — Hermes Legacy Agent Safety Assertions — 2026-06-07 | review_required | OK | `76c4d2ce5386` |
+| `docs/hermes/PHASE206F_LEGACY_AGENT_TO_PROFILE_MAPPING_PLAN.md` | Phase 206F — Legacy Agent → Future Profile Mapping Plan (NO migration) — 2026-06-07 | review_required | OK | `cb120555849d` |
+| `docs/hermes/PHASE206G_LEGACY_AGENT_VISIBILITY_VALIDATION.md` | Phase 206G — Legacy Agent Visibility Validation — 2026-06-07 | review_required | OK | `1ddcf5da98ba` |
+| `docs/hermes/PHASE208A_HERMES_AUDIT_PREFLIGHT.md` | Phase 208A — Hermes End-to-End Audit Preflight (2026-06-07) | review_required | OK | `5cc8eeef9436` |
+| `docs/hermes/PHASE208B_HERMES_IDENTITY_PROFILE_INVENTORY.md` | Phase 208B — Hermes Identity & Profile Inventory (2026-06-07) | review_required | OK | `1ab192fe0f81` |
+| `docs/hermes/PHASE208C_HERMES_SOUL_AUDIT.md` | Phase 208C — Hermes SOUL Audit (2026-06-07) | review_required | OK | `1ee465ce46c9` |
+| `docs/hermes/PHASE208D_HERMES_JOB_CALL_GRAPH.md` | Phase 208D — Hermes Job-to-Agent Call Graph (2026-06-07) | review_required | OK | `4fc38091a275` |
+| `docs/hermes/PHASE208E_LIVE_RESEARCH_FLEET_HEALTH_AUDIT.md` | Phase 208E — Live Hermes Research Fleet Health (2026-06-07) | review_required | OK | `82f7f40b6c86` |
+| `docs/hermes/PHASE208F_RETIRED_ARTIFACT_DEPENDENCY_PROOF.md` | Phase 208F — Retired Hermes Artifact Dependency Proof (2026-06-07) | review_required | OK | `f03c48843079` |
+| `docs/hermes/PHASE208G_V3_HERMES_VISIBILITY_AUDIT.md` | Phase 208G — v3 Hermes Visibility Audit (2026-06-07) | review_required | OK | `de13bc5618c6` |
+| `docs/hermes/PHASE208H_HERMES_VISIBILITY_FIX_REPORT.md` | Phase 208H — Hermes Visibility Fix Report (2026-06-07) | review_required | OK | `8c42531a6410` |
+| `docs/hermes/PHASE208I_HERMES_END_TO_END_AUDIT_VALIDATION.md` | Phase 208I — Hermes End-to-End Audit Validation (2026-06-07) | review_required | OK | `b7325f4433b9` |
+| `docs/hermes/PHASE208J_HERMES_AGENT_RISK_REGISTER.md` | Phase 208J — Hermes Agent Risk Register (2026-06-07) | review_required | OK | `f8ff47a63b46` |
+| `docs/hermes/PHASE208K_OPERATOR_ANSWER_WHY_RETIRED_AND_IS_IT_SAFE.md` | Phase 208K — Operator Answer: Why Retired, Is It Safe (2026-06-07) | review_required | OK | `58c3646111eb` |
+| `docs/hermes/PHASE209A_WORKFLOW_MATRIX_PREFLIGHT.md` | PHASE209A_WORKFLOW_MATRIX_PREFLIGHT.md | review_required | OK | `be6631f1813e` |
+| `docs/hermes/PHASE209B_V3_GRAPH_NODE_INVENTORY.md` | Phase 209B — v3 Hermes Graph Node Inventory (2026-06-07) | review_required | OK | `6fff87696748` |
+| `docs/hermes/PHASE209C_SCRIPT_JOB_OWNERSHIP_DISCOVERY.md` | Phase 209C — Script/Job Ownership Discovery (2026-06-07) | review_required | OK | `db7c8b389f64` |
+| `docs/hermes/PHASE209D_DB_READ_WRITE_LINEAGE_MATRIX.md` | Phase 209D — Hermes DB Read/Write Lineage (2026-06-07) | review_required | OK | `4ed145e5f57d` |
+| `docs/hermes/PHASE209E_HERMES_CHAT_PROFILE_USAGE_MATRIX.md` | Phase 209E — Hermes Chat Profile Usage Matrix (2026-06-07) | review_required | OK | `722295e3ea3c` |
+| `docs/hermes/PHASE209F_HERMES_LIBRARIAN_DEEP_DIVE.md` | Phase 209F — Hermes Librarian Deep Dive (2026-06-07) | review_required | OK | `e21a896888cb` |
+| `docs/hermes/PHASE209G_TRADEAI_ENHANCEMENT_WORKFLOW_MATRIX.md` | Phase 209G — TradeAI Enhancement Workflow Matrix (2026-06-07) | review_required | OK | `15fcd47e3a2c` |
+| `docs/hermes/PHASE209H_WORKFLOW_GAPS_DUPLICATES_CONFLICTS.md` | Phase 209H — Workflow Gaps, Duplicates, Conflicts (2026-06-07) | review_required | OK | `a63be84121b0` |
+| `docs/hermes/PHASE209I_V3_WORKFLOW_MATRIX_VISIBILITY.md` | Phase 209I — v3 Hermes Workflow Matrix Visibility (2026-06-07) | review_required | OK | `ffc116cd4acd` |
+| `docs/hermes/PHASE209J_WORKFLOW_MATRIX_VALIDATION.md` | Phase 209J — Workflow Matrix Validation (2026-06-07) | review_required | OK | `f90d84a30b9c` |
+| `docs/hermes/PHASE209K_OPERATOR_GUIDE_HERMES_TRADEAI_WORKFLOWS.md` | Phase 209K — Operator Guide: Hermes / TradeAI Workflows (2026-06-07) | review_required | OK | `1fed48f482ed` |
+| `docs/hermes/PHASE210A_SELF_LEARNING_RESEARCH_ARCHITECTURE_PREFLIGHT.md` | Phase 210A — Self-Learning Research Architecture Preflight (2026-06-07) | review_required | OK | `586e0c1eaeb5` |
+| `docs/hermes/PHASE210B_HERMES_SELF_LEARNING_LOOP_AUDIT.md` | Phase 210B — Hermes Self-Learning Loop Audit (2026-06-07) | review_required | OK | `1a80df5535cf` |
+| `docs/hermes/PHASE210C_INTERNAL_DEEP_RESEARCH_AGENT_DESIGN.md` | Phase 210C — Internal Deep-Research Lane Design (2026-06-07) | review_required | OK | `bcde7b485aaf` |
+| `docs/hermes/PHASE210D_EXTERNAL_RESEARCHER_ESCALATION_DESIGN.md` | Phase 210D — External Researcher Escalation Design (2026-06-07) | review_required | OK | `6f1796fd6e70` |
+| `docs/hermes/PHASE210F_HERMES_LEARNING_FEEDBACK_ARCHITECTURE.md` | Phase 210F — Hermes Learning Feedback Architecture (2026-06-07) | review_required | OK | `dae6326839c3` |
+| `docs/hermes/PHASE210G_EXTERNAL_ESCALATION_TRIGGER_POLICY.md` | Phase 210G — External Escalation Trigger Policy (2026-06-07) | review_required | OK | `a9c8ed4349b2` |
+| `docs/hermes/PHASE210H_V3_RESEARCH_AND_LEARNING_MATRIX_VISIBILITY.md` | Phase 210H — v3 Research & Learning Matrix Visibility Design (2026-06-07) | review_required | OK | `11b5a4403a77` |
+| `docs/hermes/PHASE210J_V3_RESEARCH_LEARNING_MATRIX.md` | Phase 210J — v3 Research & Learning Matrix (2026-06-07) | review_required | OK | `1c2639afceaf` |
+| `docs/hermes/PHASE210M_VALIDATION.md` | Phase 210M — Validation (2026-06-07) | review_required | OK | `af27fee0ad0f` |
+| `docs/hermes/PHASE212A_HERMES_CURRENT_RUNTIME_SNAPSHOT.md` | PHASE 212A — Hermes Current Runtime Snapshot (2026-06-07) | review_required | OK | `b7dcb88799d8` |
+| `docs/hermes/PHASE212B_HERMES_VERSION_DISCOVERY.md` | PHASE 212B — Hermes Version Discovery (2026-06-07) | review_required | OK | `3f0281856c4b` |
+| `docs/hermes/PHASE212C_HERMES_SHADOW_INSTALL.md` | PHASE 212C — Hermes Shadow Install (2026-06-07) | review_required | OK | `ba9c0338efce` |
+| `docs/hermes/PHASE212D_SHADOW_CODEX_INTERACTIVE_SANITY.md` | PHASE 212D — Shadow Codex Interactive Sanity (2026-06-07) | review_required | OK | `034b07e8c953` |
+| `docs/hermes/PHASE212E_CODEX_HEADLESS_SHADOW_TEST.md` | PHASE 212E — Codex Headless Test (current build, all command shapes) (2026-06-07) | review_required | OK | `48fa73c4f863` |
+| `docs/hermes/PHASE212F_CHATGPT_LANE_HEADLESS_PATCH.md` | PHASE 212F — ChatGPT Lane Headless Patch (2026-06-07) | review_required | OK | `d0c1e0dc01d6` |
+| `docs/hermes/PHASE212G_HERMES_BUILD_PROMOTION_DECISION.md` | PHASE 212G — Hermes Build Promotion Decision (2026-06-07) | review_required | OK | `107d72913e98` |
+| `docs/hermes/PHASE212H_V3_CODEX_HEADLESS_STATUS_UPDATE.md` | PHASE 212H — v3 Codex Interactive vs Headless Status (2026-06-07) | review_required | OK | `d3d7f55cac8e` |
+| `docs/hermes/PHASE212I_CODEX_HEADLESS_VALIDATION.md` | PHASE 212I — Validation (2026-06-07) | review_required | OK | `c881cac6bb7e` |
+| `docs/hermes/PHASE213A_CODEX_HEADLESS_LIMITATION_AUTHORITY.md` | PHASE 213A — Codex Headless Limitation — Authoritative Finding (2026-06-07) | review_required | OK | `a47255ad11c4` |
+| `docs/hermes/PHASE213E_HERMES_UPDATE_MONITOR_PLAN.md` | PHASE 213E — Hermes Update Monitor Plan (2026-06-07) | review_required | OK | `9ab3ec44f81d` |
+| `docs/hermes/PHASE213F_EXTERNAL_LANE_HARDENING_VALIDATION.md` | PHASE 213F — External Lane Hardening Validation (2026-06-07) | review_required | OK | `f5cc08b454e5` |
+| `docs/hermes/PHASE213I_EXTERNAL_FEEDBACK_LOOP_AND_DRILLDOWN.md` | Phase 213I — External-Researcher Feedback Loop + Loop Drill-Down (2026-06-07) | review_required | OK | `16a6e05eb400` |
+| `docs/hermes/PHASE214A_COORDINATOR_KILLSWITCH_PREFLIGHT.md` | PHASE 214A — Coordinator Kill-Switch Preflight (2026-06-07) | review_required | OK | `104f215133df` |
+| `docs/hermes/PHASE214B_COORDINATOR_KILLSWITCH_ROOT_CAUSE.md` | PHASE 214B — Coordinator Kill-Switch Root Cause (2026-06-07) | review_required | OK | `4fd8b39f77b6` |
+| `docs/hermes/PHASE214C_KILLSWITCH_HELPER_IMPLEMENTATION.md` | PHASE 214C — Canonical Kill-Switch Helper (2026-06-07) | review_required | OK | `1130900f8680` |
+| `docs/hermes/PHASE214D_COORDINATOR_REPOINT_IMPLEMENTATION.md` | PHASE 214D — Coordinator Repoint (2026-06-07) | review_required | OK | `f7f359ce0387` |
+| `docs/hermes/PHASE214E_V3_COORDINATOR_KILLSWITCH_VISIBILITY.md` | PHASE 214E — v3 Kill-Switch Visibility (2026-06-07) | review_required | OK | `04c97c32bc51` |
+| `docs/hermes/PHASE214F_KILLSWITCH_BEHAVIOR_TESTS.md` | PHASE 214F — Kill-Switch Behavior Tests (2026-06-07) | review_required | OK | `8a97df8b0668` |
+| `docs/hermes/PHASE214G_RETIRED_KILLSWITCH_PATH_DEPENDENCY_PROOF.md` | PHASE 214G — Retired Kill-Switch Path Dependency Proof (2026-06-07) | review_required | OK | `9bbcb72e133d` |
+| `docs/hermes/PHASE216A_LIVE_V3_PORTAL_TRUTH_CAPTURE.md` | PHASE 216A — Live v3 Portal Truth Capture (2026-06-07) | review_required | OK | `a2a6db05b2ab` |
+| `docs/hermes/PHASE216B_DOC_VS_PORTAL_MISMATCH_AUDIT.md` | PHASE 216B — Doc vs Portal Mismatch Audit (2026-06-07) | review_required | OK | `7ec6049e980a` |
+| `docs/hermes/PHASE216F_DOCX_RENDER_QA.md` | PHASE 216F — Word Doc Render QA (2026-06-07) | review_required | OK | `51dd7a95beb9` |
+| `docs/hermes/PHASE217A_LIVE_STATE_RECAPTURE.md` | PHASE 217A — Live State Recapture (2026-06-07) | review_required | OK | `5249b80a1034` |
+| `docs/hermes/PHASE217B_CANONICAL_STATUS_BUILDER.md` | PHASE 217B — Canonical Status Builder (2026-06-07) | review_required | OK | `25ca973b819b` |
+| `docs/hermes/PHASE217C_PORTAL_LABEL_RECONCILIATION.md` | PHASE 217C — Portal Label Reconciliation (2026-06-07) | review_required | OK | `4186b1ec4c9c` |
+| `docs/hermes/PHASE217F_DOCUMENT_QA_REPORT.md` | PHASE 217F — Document QA (2026-06-07) | review_required | OK | `f8dc35150a5e` |
+| `docs/hermes/PHASE217H_DRIVE_SYNC_REPORT.md` | PHASE 217H — Drive Sync Report (2026-06-07) | review_required | OK | `1557693236ce` |
+| `docs/hermes/PHASE217I_PORTAL_DOC_ALIGNMENT_VERIFICATION.md` | PHASE 217I — Portal/Doc Alignment Verification (2026-06-07) | review_required | OK | `f9414ddccb2d` |
+| `docs/hermes/auto_promotion_queue/2026-06-01_queue.md` | Auto-Promotion Dry-Run Queue — 2026-06-01 | review_required | OK | `a2f6796c0f98` |
+| `docs/hermes/auto_promotion_shadow/2026-06-01_shadow.md` | Auto-Promotion Shadow — 2026-06-01 | review_required | OK | `a04d8a61b6e9` |
+| `docs/hermes/auto_promotion_shadow/phase95_shadow.md` | Expanded Shadow — 2026-06-01 | review_required | OK | `e3093e09db69` |
+| `docs/hermes/cache_quality/2026-06-01_cache_quality.md` | Advisory Cache Quality — 2026-06-01 | review_required | OK | `8bd9082dc9c0` |
+| `docs/hermes/momentum_scalp_swarm/DEPLOYMENT_OPERATIONS.md` | Deployment & Operations — MS-01 | review_required | OK | `11055a4a2336` |
+| `docs/hermes/momentum_scalp_swarm/GETTING_STARTED.md` | Getting Started — Momentum Scalp Hermes Swarm | review_required | OK | `643b2789a1fe` |
+| `docs/hermes/momentum_scalp_swarm/INTEGRATION_GUIDE.md` | Integration Guide — Trade AI v12 Components | review_required | OK | `c747ee77e598` |
+| `docs/hermes/momentum_scalp_swarm/MULTI_HERMES_MOMENTUM_SCALP_ARCHITECTURE.md` | Multi-Hermes Momentum Scalp Swarm — Architecture | review_required | OK | `468dda3a1fc8` |
 | `docs/hermes/momentum_scalp_swarm/ORCHESTRATION_ROUTING.md` | Orchestration & Routing Logic | review_required | OK | `7f8ff63b750f` |
 | `docs/hermes/momentum_scalp_swarm/PHASE_3_DRY_TEST.md` | Phase 3 Dry Test Report — Exit Intelligence + Post-Trade Review | review_required | OK | `e7d7dfcc9f6d` |
-| `docs/hermes/momentum_scalp_swarm/SHARED_STATE_SCHEMA.md` | Shared State Schema — Momentum Scalp Swarm | review_required | MISSING HEADER | `0cded1964a71` |
-| `docs/hermes/momentum_scalp_swarm/VALIDATION_CHECKLIST.md` | Validation Checklist — 4-Layer Stop Policy Enforcement | review_required | MISSING HEADER | `9a35b029ff4d` |
-| `docs/hermes/momentum_scalp_swarm/agents/entry_validation.md` | Entry Validation Agent — System Prompt | review_required | MISSING HEADER | `1b521097038e` |
-| `docs/hermes/momentum_scalp_swarm/agents/exit_intelligence.md` | Exit Intelligence Agent — System Prompt | review_required | MISSING HEADER | `38e8a853c4aa` |
-| `docs/hermes/momentum_scalp_swarm/agents/live_monitor.md` | Live Monitor Agent — System Prompt | review_required | MISSING HEADER | `bbd6b3569629` |
-| `docs/hermes/momentum_scalp_swarm/agents/post_trade_review.md` | Post-Trade Review Agent — System Prompt | review_required | MISSING HEADER | `cea85dbae666` |
-| `docs/hermes/momentum_scalp_swarm/agents/scalp_orchestrator.md` | Hermes Orchestrator (Supervisor) — System Prompt | review_required | MISSING HEADER | `d92990787877` |
-| `docs/hermes/momentum_scalp_swarm/agents/signal_scout.md` | Signal Scout Agent — System Prompt | review_required | MISSING HEADER | `83e5f6d54c93` |
-| `docs/hermes/momentum_scalp_swarm/agents/stop_adjustment.md` | Stop Adjustment Agent — System Prompt | review_required | MISSING HEADER | `f04ac1f71184` |
-| `docs/hermes/phase13a_promotion_review_dryrun/dry_run_summary.md` | Phase 13A Promotion Review Dry-Run | review_required | MISSING HEADER | `c39c7a4edbef` |
+| `docs/hermes/momentum_scalp_swarm/SHARED_STATE_SCHEMA.md` | Shared State Schema — Momentum Scalp Swarm | review_required | OK | `02d8b2220ace` |
+| `docs/hermes/momentum_scalp_swarm/VALIDATION_CHECKLIST.md` | Validation Checklist — 4-Layer Stop Policy Enforcement | review_required | OK | `76506517bf75` |
+| `docs/hermes/momentum_scalp_swarm/agents/entry_validation.md` | Entry Validation Agent — System Prompt | review_required | OK | `4dd0b253af4f` |
+| `docs/hermes/momentum_scalp_swarm/agents/exit_intelligence.md` | Exit Intelligence Agent — System Prompt | review_required | OK | `0b609c65c213` |
+| `docs/hermes/momentum_scalp_swarm/agents/live_monitor.md` | Live Monitor Agent — System Prompt | review_required | OK | `62642834bfca` |
+| `docs/hermes/momentum_scalp_swarm/agents/post_trade_review.md` | Post-Trade Review Agent — System Prompt | review_required | OK | `80f914633b24` |
+| `docs/hermes/momentum_scalp_swarm/agents/scalp_orchestrator.md` | Hermes Orchestrator (Supervisor) — System Prompt | review_required | OK | `ec655a30b75f` |
+| `docs/hermes/momentum_scalp_swarm/agents/signal_scout.md` | Signal Scout Agent — System Prompt | review_required | OK | `60a8de0d8400` |
+| `docs/hermes/momentum_scalp_swarm/agents/stop_adjustment.md` | Stop Adjustment Agent — System Prompt | review_required | OK | `7eb6fc9cf57d` |
+| `docs/hermes/phase13a_promotion_review_dryrun/dry_run_summary.md` | Phase 13A Promotion Review Dry-Run | review_required | OK | `22f9f0c16bf0` |
 | `docs/hermes/phase21_communication_actionability_dryrun/dry_run_summary.md` | Advisory Communication Actionability Dry-Run Summary | review_required | OK | `02215891b674` |
 | `docs/hermes/phase21_librarian_dryrun/dry_run_summary.md` | Hermes Librarian Dry-Run Summary | review_required | OK | `e7d8eb687c35` |
 | `docs/hermes/phase23_income_rotation_discovery/dry_run_summary.md` | Income-Rotation Source Discovery Summary | review_required | OK | `3d653fb810b5` |
 | `docs/hermes/phase25_embedding_curator_dryrun/dry_run_summary.md` | Embedding Curator Dry-Run Summary | review_required | OK | `2b7b1c0cf960` |
 | `docs/hermes/phase30_expanded_librarian_dryrun/dry_run_summary.md` | Expanded Librarian Dry-Run Summary | review_required | OK | `b99e3d0cafd2` |
-| `docs/hermes/phase38_backlog_source_discovery/dry_run_summary.md` | Backlog Source Discovery — 6 queries, 40 candidates | review_required | MISSING HEADER | `6310ab433c82` |
-| `docs/hermes/phase44_bridge_worker_dryrun/worker_dryrun_summary.md` | Bridge Worker Dry-Run — 2026-06-01 14:33 UTC | review_required | MISSING HEADER | `2c0a5ec2117f` |
-| `docs/hermes/phase4a_dryrun/dry_run_summary.md` | Phase 4A Dry-Run Summary | review_required | MISSING HEADER | `6de259567d47` |
-| `docs/hermes/phase7a_pipeline_quality_dryrun/dry_run_summary.md` | Phase 7A Pipeline Quality Dry-Run Summary | review_required | MISSING HEADER | `8273cc96bf82` |
-| `docs/hermes/phase8a_portfolio_reflection_dryrun/dry_run_summary.md` | Phase 8A Portfolio Reflection Dry-Run | review_required | MISSING HEADER | `5d076bbeb488` |
-| `docs/hermes/promotion_reviews/2026-06-01_promotion_review.md` | Promotion Review — 2026-06-01 | review_required | MISSING HEADER | `5353082e1a70` |
-| `docs/hermes/source_discovery_dryruns/2026-06-01_source_discovery_dryrun.md` | Source Discovery Dry-Run — 2026-06-01 | review_required | MISSING HEADER | `baca8457ae69` |
-| `docs/hermes/source_discovery_dryruns/2026-06-02_source_discovery_dryrun.md` | Source Discovery Dry-Run — 2026-06-02 | review_required | MISSING HEADER | `dad766919bcc` |
-| `docs/hermes/source_discovery_dryruns/2026-08-28_source_discovery_dryrun.md` | Source Discovery Dry-Run — 2026-08-28 | review_required | MISSING HEADER | `aac3521c2b53` |
-| `docs/hermes/source_discovery_dryruns/2026-08-29_source_discovery_dryrun.md` | Source Discovery Dry-Run — 2026-08-29 | review_required | MISSING HEADER | `6a14ac825963` |
-| `docs/implementation/ACTIVE_TRADER_CURRENT_GUARDRAILS.md` | Active Trader — Current guardrails (Stage 0) | review_required | MISSING HEADER | `04fe880d6cdf` |
+| `docs/hermes/phase38_backlog_source_discovery/dry_run_summary.md` | Backlog Source Discovery — 6 queries, 40 candidates | review_required | OK | `e1dce8d0ec4c` |
+| `docs/hermes/phase44_bridge_worker_dryrun/worker_dryrun_summary.md` | Bridge Worker Dry-Run — 2026-06-01 14:33 UTC | review_required | OK | `ca311ec04755` |
+| `docs/hermes/phase4a_dryrun/dry_run_summary.md` | Phase 4A Dry-Run Summary | review_required | OK | `270774ccd0d2` |
+| `docs/hermes/phase7a_pipeline_quality_dryrun/dry_run_summary.md` | Phase 7A Pipeline Quality Dry-Run Summary | review_required | OK | `74dedc511874` |
+| `docs/hermes/phase8a_portfolio_reflection_dryrun/dry_run_summary.md` | Phase 8A Portfolio Reflection Dry-Run | review_required | OK | `7edaeb6586e8` |
+| `docs/hermes/promotion_reviews/2026-06-01_promotion_review.md` | Promotion Review — 2026-06-01 | review_required | OK | `7e5986864a22` |
+| `docs/hermes/source_discovery_dryruns/2026-06-01_source_discovery_dryrun.md` | Source Discovery Dry-Run — 2026-06-01 | review_required | OK | `e8cfe76575de` |
+| `docs/hermes/source_discovery_dryruns/2026-06-02_source_discovery_dryrun.md` | Source Discovery Dry-Run — 2026-06-02 | review_required | OK | `5fe5537bd7da` |
+| `docs/hermes/source_discovery_dryruns/2026-08-28_source_discovery_dryrun.md` | Source Discovery Dry-Run — 2026-08-28 | review_required | OK | `8c36697ecaca` |
+| `docs/hermes/source_discovery_dryruns/2026-08-29_source_discovery_dryrun.md` | Source Discovery Dry-Run — 2026-08-29 | review_required | OK | `6fdb0537b0d5` |
+| `docs/implementation/ACTIVE_TRADER_CURRENT_GUARDRAILS.md` | Active Trader — Current guardrails (Stage 0) | review_required | OK | `6c94f1907575` |
 | `docs/implementation/ACTIVE_TRADER_NEAR_READY_v1.md` | Active Trader — Stage 1b: Near-Ready Candidate Read Model (v1) | review_required | OK | `19dc8b2f79f9` |
-| `docs/implementation/ACTIVE_TRADER_ROUTE_API_DB_MAP.md` | Active Trader — Route / API / DB map (Stage 0 inventory) | review_required | MISSING HEADER | `dfa4613acf8e` |
-| `docs/implementation/ACTIVE_TRADER_STAGE0_BASELINE.md` | Active Trader Stage 0 — Baseline | review_required | MISSING HEADER | `1597ce667c44` |
+| `docs/implementation/ACTIVE_TRADER_ROUTE_API_DB_MAP.md` | Active Trader — Route / API / DB map (Stage 0 inventory) | review_required | OK | `e094d5dd5389` |
+| `docs/implementation/ACTIVE_TRADER_STAGE0_BASELINE.md` | Active Trader Stage 0 — Baseline | review_required | OK | `1dbd606d89d5` |
 | `docs/implementation/ACTIVE_TRADER_VENUE_ELIGIBILITY_v1.md` | Active Trader — Venue Eligibility & Schwab Compliance-Block Prompt (Stage 1a) | review_required | OK | `8f4ed9463ca3` |
 | `docs/incidents/DAY_SCALP_PIPELINE_FIXES_2026-08-19.md` | Day-Scalp Pipeline — Fixes & Enhancements (2026-08-19) | review_required | OK | `c6c4a11b63fb` |
 | `docs/incidents/DAY_SCALP_PIPELINE_OUTAGE_2026-08-19.md` | Day-Scalp Pipeline Outage — Root Cause & Remediation Plan (2026-08-19) | review_required | OK | `304b9f0e8db6` |
@@ -1149,9 +1149,9 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/infra/DOCKER_PHASE12B_VERSION_CHECK_PILOT_RUN_REPORT.md` | Docker Phase 12B — Version-Check Pilot Run Report | review_required | OK | `dd74ab72e3cb` |
 | `docs/infra/DOCKER_PHASE12C_VERSION_CHECK_SAFETY_AUDIT.md` | Docker Phase 12C — Version-Check Safety Audit | review_required | OK | `e585551bfa97` |
 | `docs/infra/DOCKER_PHASED_MIGRATION_PLAN.md` | Docker Phased Migration Plan | review_required | OK | `5a88c6750815` |
-| `docs/infra/DOCKER_READINESS_CHECKLIST.md` | Docker Readiness Checklist | review_required | MISSING HEADER | `203edf50275c` |
-| `docs/infra/DOCKER_ROLLBACK_RUNBOOK.md` | Docker Rollback Runbook | review_required | MISSING HEADER | `c20500523450` |
-| `docs/infra/POST_REBOOT_RECOVERY_2026_07_02.md` | Post-Reboot / OS-Upgrade Recovery (2026-07-02) | review_required | MISSING HEADER | `97c349814fd6` |
+| `docs/infra/DOCKER_READINESS_CHECKLIST.md` | Docker Readiness Checklist | review_required | OK | `c39a7f69c072` |
+| `docs/infra/DOCKER_ROLLBACK_RUNBOOK.md` | Docker Rollback Runbook | review_required | OK | `c32a9785f8d4` |
+| `docs/infra/POST_REBOOT_RECOVERY_2026_07_02.md` | Post-Reboot / OS-Upgrade Recovery (2026-07-02) | review_required | OK | `67a0c1f207ae` |
 | `docs/infra/SEARXNG_OPERATOR_RUNBOOK.md` | SearXNG Operator Runbook | review_required | OK | `53d03e790040` |
 | `docs/infra/SEARXNG_PHASE16_COMMAND_CENTER_VISIBILITY_REPORT.md` | SearXNG Phase 16D — Command Center Visibility Report | review_required | OK | `0f60c0cec6b2` |
 | `docs/infra/SEARXNG_PHASE16_INSTALL_REPORT.md` | SearXNG Phase 16B — Install Report | review_required | OK | `db9275d11d20` |
@@ -1171,27 +1171,27 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/infra/SEARXNG_SHARED_LAYER_ARCHITECTURE.md` | SearXNG Shared Search Layer — Architecture | review_required | OK | `8f449313eba0` |
 | `docs/infra/searxng_phase18_source_discovery_dryrun/dry_run_summary.md` | SearXNG Source Discovery Dry-Run Summary | review_required | OK | `a1c25dfbfbb7` |
 | `docs/integrity-system.md` | File Integrity Verification System | review_required | OK | `13f21d16d3eb` |
-| `docs/intelligence_maturity_20260622.md` | Intelligence Engine & Command Center — Maturity Audit (2026-06-22) | review_required | MISSING HEADER | `328c6df45bbb` |
-| `docs/investment-office/ALEX_CIO_OPERATING_MODEL.md` | Alex (CIO) Operating Model — Autonomous Orchestration Lifecycle | review_required | MISSING HEADER | `866addec7428` |
-| `docs/investment-office/BOOK_KNOWLEDGE_INVENTORY.md` | Book & Research Knowledge — Inventory (PR-R1) | review_required | MISSING HEADER | `b8306b434a05` |
+| `docs/intelligence_maturity_20260622.md` | Intelligence Engine & Command Center — Maturity Audit (2026-06-22) | review_required | OK | `2f8a3a13e5a2` |
+| `docs/investment-office/ALEX_CIO_OPERATING_MODEL.md` | Alex (CIO) Operating Model — Autonomous Orchestration Lifecycle | review_required | OK | `7ffab4c7afe1` |
+| `docs/investment-office/BOOK_KNOWLEDGE_INVENTORY.md` | Book & Research Knowledge — Inventory (PR-R1) | review_required | OK | `e8ce0f5ef06f` |
 | `docs/investment-office/CANON_IMPLEMENTATION_AUDIT_2026-08-21.md` | Investigation Report: Canonical Investment Frameworks — Claimed vs Actual | review_required | OK | `9499c8131df5` |
-| `docs/investment-office/CIO_AND_ADVISORY_LIVING_STATUS.md` | CIO + Advisory — Living Operator Status | review_required | MISSING HEADER | `9ae5aa739951` |
+| `docs/investment-office/CIO_AND_ADVISORY_LIVING_STATUS.md` | CIO + Advisory — Living Operator Status | review_required | OK | `30a4510a36cd` |
 | `docs/investment-office/CIO_FINAL_ACCEPTANCE_CLOSURE_BASELINE.md` | CIO Final Acceptance Closure v2 — baseline | review_required | OK | `6915631436df` |
 | `docs/investment-office/CIO_FINAL_TRUTH_BUILD_BASELINE.md` | CIO Final Truth — isolated-branch baseline | review_required | OK | `40b57f606c35` |
-| `docs/investment-office/CIO_MATURITY_AND_GAP_ANALYSIS_2026-08-20.md` | CIO Maturity & Gap Analysis — 2026-08-20 | review_required | MISSING HEADER | `de8f94603f32` |
+| `docs/investment-office/CIO_MATURITY_AND_GAP_ANALYSIS_2026-08-20.md` | CIO Maturity & Gap Analysis — 2026-08-20 | review_required | OK | `e00f131afe61` |
 | `docs/investment-office/CIO_OPERATOR_PRODUCT.md` | CIO Operator Product (proactive Alex) | review_required | OK | `86dd8c1ebde7` |
-| `docs/investment-office/CIO_RESEARCH_LIVE_WIRE.md` | CIO Research Live Wire | review_required | MISSING HEADER | `b26e76af62b4` |
-| `docs/investment-office/EVIDENCE_AND_PROVENANCE.md` | Evidence & Provenance — Trade AI Investment Office | review_required | MISSING HEADER | `3aa52eb71daf` |
-| `docs/investment-office/EXECUTIVE_ROLE_CHARTER.md` | Executive Role Charter — Trade AI Investment Office | review_required | MISSING HEADER | `da8ba4491359` |
+| `docs/investment-office/CIO_RESEARCH_LIVE_WIRE.md` | CIO Research Live Wire | review_required | OK | `ae701dab7a92` |
+| `docs/investment-office/EVIDENCE_AND_PROVENANCE.md` | Evidence & Provenance — Trade AI Investment Office | review_required | OK | `efdf46bf9580` |
+| `docs/investment-office/EXECUTIVE_ROLE_CHARTER.md` | Executive Role Charter — Trade AI Investment Office | review_required | OK | `1dca3aa16a0d` |
 | `docs/investment-office/FINAL_MATURITY_GAP_REGISTER_V2.md` | FINAL_MATURITY_GAP_REGISTER@v2 | review_required | OK | `1c5334958bc2` |
-| `docs/investment-office/OPERATOR_STEPS_1_3.md` | Operator steps 1–3 (post Phase 13) — executed 2026-08-14 | review_required | MISSING HEADER | `34ab235421e1` |
-| `docs/investment-office/OPERATOR_UX.md` | Operator UX — the private investment office home (`/v3/cio`) | review_required | MISSING HEADER | `033060156a42` |
+| `docs/investment-office/OPERATOR_STEPS_1_3.md` | Operator steps 1–3 (post Phase 13) — executed 2026-08-14 | review_required | OK | `1f74f46afbf7` |
+| `docs/investment-office/OPERATOR_UX.md` | Operator UX — the private investment office home (`/v3/cio`) | review_required | OK | `2070b00afd96` |
 | `docs/investment-office/PHASE10_GIT_RELEASE_CI_DRIVE.md` | PHASE 10 CLOSEOUT — Git / Release Manifest / CI / Drive Truth | review_required | OK | `bfd694399b25` |
-| `docs/investment-office/PHASE10_OUTCOME_LEARNING.md` | Phase 10 — Outcome Learning: close the disposition → learning → calibration loop | review_required | MISSING HEADER | `beb69f3d02b4` |
+| `docs/investment-office/PHASE10_OUTCOME_LEARNING.md` | Phase 10 — Outcome Learning: close the disposition → learning → calibration loop | review_required | OK | `addd4d31de0f` |
 | `docs/investment-office/PHASE10_TELEGRAM_DRY_CANARY.md` | PHASE 10 — Telegram DRY Canary (acceptance measurement) | review_required | OK | `d47b00d226e7` |
 | `docs/investment-office/PHASE11_16_RESEARCH_BRAIN.md` | PHASES 11–16 — Research-brain foundation (dry-testable) | review_required | OK | `79434ca71b67` |
 | `docs/investment-office/PHASE11_ADVERSARIAL_SUITE.md` | PHASE 11 CLOSEOUT — Adversarial QA + Safety Scan (+ ops truth) | review_required | OK | `69eddbf40463` |
-| `docs/investment-office/PHASE12_ARCHITECTURE_REVIEW.md` | PHASE 12 — Independent Architecture Review (Read-Only) | review_required | MISSING HEADER | `c99e4271b583` |
+| `docs/investment-office/PHASE12_ARCHITECTURE_REVIEW.md` | PHASE 12 — Independent Architecture Review (Read-Only) | review_required | OK | `9bafeb71e779` |
 | `docs/investment-office/PHASE13_CONTROLLED_CANARY.md` | PHASE 13 CLOSEOUT — Controlled Production Canary + Rollback Proof | review_required | OK | `12c3e1aa22cb` |
 | `docs/investment-office/PHASE1_ACCEPTANCE_HARNESS.md` | PHASE 1 CLOSEOUT — Acceptance harness v4 (fail-closed) | review_required | OK | `2554b48bb1d2` |
 | `docs/investment-office/PHASE1_EXACT_RELEASE_CONVERGENCE.md` | PHASE 1 CLOSEOUT — Exact Release Convergence | review_required | OK | `951d7668d1e2` |
@@ -1204,83 +1204,83 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/investment-office/PHASE3_DECISION_SEMANTICS.md` | PHASE 3 CLOSEOUT — Decision Semantics Hygiene | review_required | OK | `2a59daea298b` |
 | `docs/investment-office/PHASE3_FRESHNESS_MATERIALITY_GATE.md` | PHASE 3 CLOSEOUT — Freshness & Materiality Gate | review_required | OK | `d5ddccab6067` |
 | `docs/investment-office/PHASE4_5_ATTENTION_AND_SIZING.md` | PHASE 4–5 CLOSEOUT — Attention KPIs + Institutional Sizing | review_required | OK | `7a1721ace7aa` |
-| `docs/investment-office/PHASE4_ADVISORY_COMMITTEE.md` | Phase 4 — Advisory Desk Analyst Committee & `InvestmentDecision@v1` | review_required | MISSING HEADER | `4fbfe346cf23` |
+| `docs/investment-office/PHASE4_ADVISORY_COMMITTEE.md` | Phase 4 — Advisory Desk Analyst Committee & `InvestmentDecision@v1` | review_required | OK | `61161a835fb6` |
 | `docs/investment-office/PHASE4_FRESHNESS_LOOPHOLE.md` | PHASE 4 — Freshness loophole closed | review_required | OK | `8373bcb309b6` |
 | `docs/investment-office/PHASE4_REPORT_ARCHITECTURE.md` | PHASE 4 CLOSEOUT — One Reporting Architecture | review_required | OK | `50551ade8a8a` |
 | `docs/investment-office/PHASE5_CIO_UX.md` | PHASE 5 — CIO UX (attention KPIs) | review_required | OK | `9f5efc90468d` |
 | `docs/investment-office/PHASE5_INSTITUTIONAL_VISUALS.md` | PHASE 5 CLOSEOUT — Institutional Visual Quality + Chart Suite | review_required | OK | `8337d0089a37` |
-| `docs/investment-office/PHASE5_TWO_WAY_LOOP.md` | Phase 5 — Mature the two-way Watch / Defense / Rotation / Re-Entry loop | review_required | MISSING HEADER | `f45eac317c11` |
+| `docs/investment-office/PHASE5_TWO_WAY_LOOP.md` | Phase 5 — Mature the two-way Watch / Defense / Rotation / Re-Entry loop | review_required | OK | `507b128d439b` |
 | `docs/investment-office/PHASE6_21_REST_CLOSEOUT.md` | PHASES 6–21 CLOSEOUT — Rest of CIO Acceptance (v3.0) | review_required | OK | `e2468e083d95` |
 | `docs/investment-office/PHASE6_ANALYTIC_COMPLETENESS.md` | PHASE 6 CLOSEOUT — Analytic Completeness + Methodology Truth | review_required | OK | `c62e46be3158` |
-| `docs/investment-office/PHASE6_CAPITAL_PLAN.md` | Phase 6 — Capital plan and portfolio decision engine | review_required | MISSING HEADER | `7d0cf5c1267c` |
+| `docs/investment-office/PHASE6_CAPITAL_PLAN.md` | Phase 6 — Capital plan and portfolio decision engine | review_required | OK | `d5edc7ae9f1d` |
 | `docs/investment-office/PHASE6_SIZING_V2.md` | PHASE 6 — Institutional Sizing v2 (Candidate Set) | review_required | OK | `c4eba359f833` |
 | `docs/investment-office/PHASE7_ADVISORY_PROVENANCE_UI.md` | PHASE 7 — Wire `/v3/advisory` provenance UI | review_required | OK | `f618476d897e` |
-| `docs/investment-office/PHASE7_INSTITUTIONAL_REPORT.md` | Phase 7 — Institutional Report v2 | review_required | MISSING HEADER | `d68bf323bc2f` |
+| `docs/investment-office/PHASE7_INSTITUTIONAL_REPORT.md` | Phase 7 — Institutional Report v2 | review_required | OK | `289f77cf8517` |
 | `docs/investment-office/PHASE7_OUTPUT_PIPELINE.md` | PHASE 7 CLOSEOUT — Output Pipeline (HTML / PDF / DOCX + Immutable Manifest) | review_required | OK | `217dba16902c` |
 | `docs/investment-office/PHASE8_9_LIVE_REPORT.md` | PHASES 8–9 — Live report path + plan/report decision parity | review_required | OK | `41910045f049` |
-| `docs/investment-office/PHASE8_COMMAND_CENTER.md` | Phase 8 — Command Center UX Convergence: Alex is the front door | review_required | MISSING HEADER | `2f6a202d8c3d` |
+| `docs/investment-office/PHASE8_COMMAND_CENTER.md` | Phase 8 — Command Center UX Convergence: Alex is the front door | review_required | OK | `762e0fb0dfb3` |
 | `docs/investment-office/PHASE8_OFFICE_REPORT_CONSISTENCY.md` | PHASE 8 CLOSEOUT — Alex / Command Center / Report Consistency | review_required | OK | `fd6705897497` |
-| `docs/investment-office/PHASE9_FULL_SYSTEM_DRYRUN.md` | Phase 9 — Full-System Integration Dry-Run | review_required | MISSING HEADER | `37c9aa2734aa` |
+| `docs/investment-office/PHASE9_FULL_SYSTEM_DRYRUN.md` | Phase 9 — Full-System Integration Dry-Run | review_required | OK | `feeb092aec70` |
 | `docs/investment-office/PHASE9_TELEGRAM_ALEX_PRODUCT.md` | PHASE 9 CLOSEOUT — Telegram Alex Product Behavior + Dedupe | review_required | OK | `4bb5c158d844` |
-| `docs/investment-office/R1_FORMULA_AND_REFERENCE_AUDIT.md` | R1 Formula & Reference Audit | review_required | MISSING HEADER | `28f1eabfe2fc` |
-| `docs/investment-office/R2_DETERMINISTIC_MECHANICS.md` | R2 Deterministic Mechanics | review_required | MISSING HEADER | `2a740a68865c` |
-| `docs/investment-office/R2_DETERMINISTIC_MECHANICS_BASELINE.md` | R2 Deterministic Mechanics — Build Baseline | review_required | MISSING HEADER | `08ca97f90cca` |
-| `docs/investment-office/R2_FORMULA_REFERENCE_AUDIT.md` | R2 Formula Reference Audit | review_required | MISSING HEADER | `606b96bc2251` |
-| `docs/investment-office/R3_ALMANAC_REPRODUCTION.md` | R3 Almanac Reproduction | review_required | MISSING HEADER | `b2cf373cb189` |
+| `docs/investment-office/R1_FORMULA_AND_REFERENCE_AUDIT.md` | R1 Formula & Reference Audit | review_required | OK | `d8c9ae188888` |
+| `docs/investment-office/R2_DETERMINISTIC_MECHANICS.md` | R2 Deterministic Mechanics | review_required | OK | `9b234703003e` |
+| `docs/investment-office/R2_DETERMINISTIC_MECHANICS_BASELINE.md` | R2 Deterministic Mechanics — Build Baseline | review_required | OK | `7d740f642382` |
+| `docs/investment-office/R2_FORMULA_REFERENCE_AUDIT.md` | R2 Formula Reference Audit | review_required | OK | `bbb3781c64f2` |
+| `docs/investment-office/R3_ALMANAC_REPRODUCTION.md` | R3 Almanac Reproduction | review_required | OK | `c986b887a716` |
 | `docs/investment-office/R3_R4_BUILD_BASELINE.md` | R3/R4 Build Baseline | review_required | OK | `f70ad518325f` |
-| `docs/investment-office/R4_RETRIEVAL_INTEGRATION.md` | R4 Retrieval + Decision-Use Audit | review_required | MISSING HEADER | `ee8829735f60` |
+| `docs/investment-office/R4_RETRIEVAL_INTEGRATION.md` | R4 Retrieval + Decision-Use Audit | review_required | OK | `97f832d22325` |
 | `docs/investment-office/R5_CPCV_PATHS.md` | R5 — CPCV Path Construction | review_required | OK | `a9dfe39672cc` |
 | `docs/investment-office/R5_R8_BUILD_BASELINE.md` | R5–R8 Build Baseline | review_required | OK | `13d911eae17c` |
 | `docs/investment-office/R6_DURABLE_STORE.md` | R6 — Append-Only Governance Store | review_required | OK | `107064a72323` |
 | `docs/investment-office/R7_POLICY_BEHAVIORAL.md` | R7 — Policy / Regulatory + Behavioral Frameworks | review_required | OK | `74ff2e571c9b` |
 | `docs/investment-office/R8_EMPIRICAL_FAMILY.md` | R8 — Empirical Factor / Strategy Families | review_required | OK | `cf30e983dd51` |
 | `docs/investment-office/RELEASE_MANIFEST.md` | Release Manifest — Investment Office (CIO Production Hardening) | review_required | OK | `437310a1a609` |
-| `docs/investment-office/RESEARCH_GOVERNANCE.md` | Research Governance — PR-R1 Foundation | review_required | MISSING HEADER | `ffa1c97a620c` |
-| `docs/investment-office/RESEARCH_GOVERNANCE_BUILD_BASELINE.md` | Research Governance — Build Baseline | review_required | MISSING HEADER | `a200fb71fbde` |
-| `docs/journal_quality/PHASE131_EXIT_FORENSICS_REPORT.md` | Phase 131 — Exit Reason Forensics and Stop Quality Review | review_required | MISSING HEADER | `484339d116bd` |
-| `docs/learning/PHASE133_CLOSED_LOOP_LEARNING_LINEAGE_AUDIT.md` | Phase 133 — Closed-Loop Learning Lineage Audit | review_required | MISSING HEADER | `6fa06a956e7e` |
-| `docs/learning/PHASE134_138_LEARNING_INFRASTRUCTURE.md` | Phases 134-138 — Strategy Learning Infrastructure | review_required | MISSING HEADER | `e973b2dc1f81` |
-| `docs/learning/PHASE138_140_LINEAGE_EFFECTIVENESS_OBSERVATION.md` | Phases 138-140 — Lineage, Effectiveness, Observation | review_required | MISSING HEADER | `8814a365976a` |
-| `docs/learning/PHASE181A_PAPER_TRADE_CLOSED_LOOP_FIELD_MAP.md` | Phase 181A: Paper Trade Closed-Loop Field Map | review_required | MISSING HEADER | `6611bd768ed2` |
-| `docs/learning/PHASE181C_CURRENT_PAPER_TRADE_LOOP_VALIDATION_REPORT.md` | Phase 181C: Current Paper Trade Loop Validation Report | review_required | MISSING HEADER | `f92a4e296954` |
-| `docs/learning/PHASE181D_HERMES_PAPER_TRADE_AUDIT_INTEGRATION.md` | Phase 181D: Hermes Paper Trade Audit Integration | review_required | MISSING HEADER | `144ea81bb4fb` |
-| `docs/learning/PHASE181E_PAPER_TRADE_BACKTEST_COMPARISON_INTEGRATION.md` | Phase 181E: Paper Trade Backtest Comparison Integration | review_required | MISSING HEADER | `685169522f01` |
-| `docs/learning/PHASE191H_PROFIT_PROTECTION_CLOSED_LOOP_LEARNING.md` | PHASE 191H — Profit-Protection Closed-Loop Learning Integration | review_required | MISSING HEADER | `c3aac6da2465` |
-| `docs/learning/PHASE193A_ADVISORY_OUTCOME_RECONCILER_DESIGN.md` | PHASE 193A — Profit-Protection Advisory Close-Loop Reconciler Design | review_required | MISSING HEADER | `de2a7e248584` |
-| `docs/learning/PHASE193B_RECONCILER_RUN_REPORT.md` | PHASE 193B — Reconciler Run Report | review_required | MISSING HEADER | `e10fece8e9f7` |
-| `docs/learning/PHASE194A_MFE_UNITS_FIX.md` | PHASE 194A — MFE/MAE Units Fix (Data-Integrity) | review_required | MISSING HEADER | `09d9a7f2ff78` |
-| `docs/learning/PHASE194B_PROTECTION_PIPELINE_SCHEDULING.md` | PHASE 194B — Protection Learning Pipeline Scheduling | review_required | MISSING HEADER | `c633f12c1c4f` |
-| `docs/learning/PHASE195A_CLOSE_TIMESTAMP_CAPTURE_FIX.md` | PHASE 195A — Close-Timestamp Capture Fix | review_required | MISSING HEADER | `d5dd98ab232b` |
-| `docs/learning/PHASE196A_INTRADAY_MFE_SAME_DAY.md` | PHASE 196A — Intraday MFE for Same-Day Scalps | review_required | MISSING HEADER | `3258b3ae40c6` |
-| `docs/learning/PHASE198A_THRESHOLD_TUNING_FRAMEWORK.md` | PHASE 198A — Advisory Threshold Tuning Framework | review_required | MISSING HEADER | `7ba0c1c34e63` |
+| `docs/investment-office/RESEARCH_GOVERNANCE.md` | Research Governance — PR-R1 Foundation | review_required | OK | `9e4cb9a603b7` |
+| `docs/investment-office/RESEARCH_GOVERNANCE_BUILD_BASELINE.md` | Research Governance — Build Baseline | review_required | OK | `abe076021c87` |
+| `docs/journal_quality/PHASE131_EXIT_FORENSICS_REPORT.md` | Phase 131 — Exit Reason Forensics and Stop Quality Review | review_required | OK | `ea9c5a281438` |
+| `docs/learning/PHASE133_CLOSED_LOOP_LEARNING_LINEAGE_AUDIT.md` | Phase 133 — Closed-Loop Learning Lineage Audit | review_required | OK | `b0771ec5b720` |
+| `docs/learning/PHASE134_138_LEARNING_INFRASTRUCTURE.md` | Phases 134-138 — Strategy Learning Infrastructure | review_required | OK | `15dd0c229ec9` |
+| `docs/learning/PHASE138_140_LINEAGE_EFFECTIVENESS_OBSERVATION.md` | Phases 138-140 — Lineage, Effectiveness, Observation | review_required | OK | `7f145c2a5bd2` |
+| `docs/learning/PHASE181A_PAPER_TRADE_CLOSED_LOOP_FIELD_MAP.md` | Phase 181A: Paper Trade Closed-Loop Field Map | review_required | OK | `3edc84d89124` |
+| `docs/learning/PHASE181C_CURRENT_PAPER_TRADE_LOOP_VALIDATION_REPORT.md` | Phase 181C: Current Paper Trade Loop Validation Report | review_required | OK | `24533bb2feb4` |
+| `docs/learning/PHASE181D_HERMES_PAPER_TRADE_AUDIT_INTEGRATION.md` | Phase 181D: Hermes Paper Trade Audit Integration | review_required | OK | `e8f01180cc01` |
+| `docs/learning/PHASE181E_PAPER_TRADE_BACKTEST_COMPARISON_INTEGRATION.md` | Phase 181E: Paper Trade Backtest Comparison Integration | review_required | OK | `878ebc86cc50` |
+| `docs/learning/PHASE191H_PROFIT_PROTECTION_CLOSED_LOOP_LEARNING.md` | PHASE 191H — Profit-Protection Closed-Loop Learning Integration | review_required | OK | `5fa1feecf3ec` |
+| `docs/learning/PHASE193A_ADVISORY_OUTCOME_RECONCILER_DESIGN.md` | PHASE 193A — Profit-Protection Advisory Close-Loop Reconciler Design | review_required | OK | `7e445dcc5b94` |
+| `docs/learning/PHASE193B_RECONCILER_RUN_REPORT.md` | PHASE 193B — Reconciler Run Report | review_required | OK | `56c3b972e999` |
+| `docs/learning/PHASE194A_MFE_UNITS_FIX.md` | PHASE 194A — MFE/MAE Units Fix (Data-Integrity) | review_required | OK | `852784e9e0e1` |
+| `docs/learning/PHASE194B_PROTECTION_PIPELINE_SCHEDULING.md` | PHASE 194B — Protection Learning Pipeline Scheduling | review_required | OK | `872ade624f5f` |
+| `docs/learning/PHASE195A_CLOSE_TIMESTAMP_CAPTURE_FIX.md` | PHASE 195A — Close-Timestamp Capture Fix | review_required | OK | `5b881bd32fe0` |
+| `docs/learning/PHASE196A_INTRADAY_MFE_SAME_DAY.md` | PHASE 196A — Intraday MFE for Same-Day Scalps | review_required | OK | `966a9d50be5f` |
+| `docs/learning/PHASE198A_THRESHOLD_TUNING_FRAMEWORK.md` | PHASE 198A — Advisory Threshold Tuning Framework | review_required | OK | `ba7e461aa81b` |
 | `docs/llm/PHASE53A_HIGH_MODEL_USAGE_AUDIT.md` | Phase 53A — High-Model Usage Audit | review_required | OK | `34129f49d08a` |
 | `docs/llm/PHASE53B_HIGH_LLM_PRIORITY_METHODOLOGY.md` | Phase 53B — High-Level LLM Priority Methodology | review_required | OK | `78972d4e1ca8` |
 | `docs/llm/PHASE53C_HIGH_LLM_QUEUE_SCHEMA_DESIGN.md` | Phase 53C — High-Level LLM Queue Schema Design | review_required | OK | `8daf82991ca2` |
 | `docs/llm/PHASE53E_HIGH_LLM_INTEGRATION_PLAN.md` | Phase 53E — High-Level LLM Integration Plan | review_required | OK | `065fefe24ebc` |
 | `docs/llm/PHASE61A_OLLAMA_FAILURE_INVENTORY.md` | Phase 61A — Ollama Failure Inventory | review_required | OK | `8ba83c21c386` |
 | `docs/llm/PHASE61B_OLLAMA_CONTENTION_POLICY.md` | Phase 61B — Ollama Contention Policy | review_required | OK | `da27cbc760c7` |
-| `docs/llm/high_llm_scheduler_dryruns/2026-06-01_schedule.md` | Full Queue Schedule — 2026-06-01 | review_required | MISSING HEADER | `962aa9ba7baa` |
-| `docs/maturity/CIO_INVESTMENT_PRODUCT.md` | CIO Investment Intelligence Product (Program 3.5) | review_required | MISSING HEADER | `1e071afda1b3` |
-| `docs/maturity/CONTROL_PLANE_V1.md` | Maturity Control Plane v1 — architecture map | review_required | MISSING HEADER | `d5a81190dfd8` |
-| `docs/maturity/DAILY_INTELLIGENCE_WATCHDOG.md` | Daily Intelligence Watchdog (Program 4) | review_required | MISSING HEADER | `d79041450d66` |
-| `docs/maturity/MEMORY_OPERATOR_GUIDE.md` | Command Center — Durable Memory operator guide | review_required | MISSING HEADER | `3c4503e6b22b` |
+| `docs/llm/high_llm_scheduler_dryruns/2026-06-01_schedule.md` | Full Queue Schedule — 2026-06-01 | review_required | OK | `d37166508bdc` |
+| `docs/maturity/CIO_INVESTMENT_PRODUCT.md` | CIO Investment Intelligence Product (Program 3.5) | review_required | OK | `ff682b92a885` |
+| `docs/maturity/CONTROL_PLANE_V1.md` | Maturity Control Plane v1 — architecture map | review_required | OK | `97bd672c3968` |
+| `docs/maturity/DAILY_INTELLIGENCE_WATCHDOG.md` | Daily Intelligence Watchdog (Program 4) | review_required | OK | `80a8cfc1b5df` |
+| `docs/maturity/MEMORY_OPERATOR_GUIDE.md` | Command Center — Durable Memory operator guide | review_required | OK | `fd5a3f9332cb` |
 | `docs/maturity_hardening/post_stop_v2_maturity_refresh/00_README.md` | Post-STOP-V2 Maturity Refresh | current_phase_keep | OK | `cee158730940` |
 | `docs/maturity_hardening/post_stop_v2_maturity_refresh/post_stop_v2_maturity_board.md` | Maturity Control Board — Post STOP-V2 | current_phase_keep | OK | `a04a7f5fc499` |
-| `docs/maturity_hardening/post_stop_v2_maturity_refresh/post_stop_v2_operator_readiness_summary.md` | Operator Readiness — Post STOP-V2 | current_phase_keep | MISSING HEADER | `d789364dd789` |
-| `docs/maturity_hardening/post_stop_v2_maturity_refresh/post_stop_v2_reconciliation_verification.md` | STOP-V2.1 Reconciliation Report | current_phase_keep | MISSING HEADER | `b1c79541ea47` |
-| `docs/maturity_hardening/post_stop_v2_maturity_refresh/post_stop_v2_safety_audit.md` | Post-STOP-V2 Maturity Refresh — Safety Audit | current_phase_keep | MISSING HEADER | `4dc905912460` |
-| `docs/maturity_hardening/post_stop_v2_maturity_refresh/post_stop_v2_scoring_rationale.md` | Post-STOP-V2 Scoring Rationale | current_phase_keep | MISSING HEADER | `de6bfe074987` |
-| `docs/maturity_hardening/post_stop_v2_maturity_refresh/post_stop_v2_unified_supervisor_verification.md` | Unified Stop Supervisor Report | current_phase_keep | MISSING HEADER | `11eb45d81246` |
-| `docs/momentum_catalysts/PHASE127_128_CATALYST_QUALITY_AND_SCORING.md` | Phase 127-128 — Catalyst Quality Scoring and Advisory Overlay Design | review_required | MISSING HEADER | `3030e3e3fd66` |
+| `docs/maturity_hardening/post_stop_v2_maturity_refresh/post_stop_v2_operator_readiness_summary.md` | Operator Readiness — Post STOP-V2 | current_phase_keep | OK | `5bfc52e0c089` |
+| `docs/maturity_hardening/post_stop_v2_maturity_refresh/post_stop_v2_reconciliation_verification.md` | STOP-V2.1 Reconciliation Report | current_phase_keep | OK | `644465bf2bcc` |
+| `docs/maturity_hardening/post_stop_v2_maturity_refresh/post_stop_v2_safety_audit.md` | Post-STOP-V2 Maturity Refresh — Safety Audit | current_phase_keep | OK | `4949cffb750c` |
+| `docs/maturity_hardening/post_stop_v2_maturity_refresh/post_stop_v2_scoring_rationale.md` | Post-STOP-V2 Scoring Rationale | current_phase_keep | OK | `c835b258297a` |
+| `docs/maturity_hardening/post_stop_v2_maturity_refresh/post_stop_v2_unified_supervisor_verification.md` | Unified Stop Supervisor Report | current_phase_keep | OK | `ebc386128fdc` |
+| `docs/momentum_catalysts/PHASE127_128_CATALYST_QUALITY_AND_SCORING.md` | Phase 127-128 — Catalyst Quality Scoring and Advisory Overlay Design | review_required | OK | `b04ebcb32eeb` |
 | `docs/notifications/alert_fatigue_1/00_README.md` | ALERT-FATIGUE-1 — Telegram Alert Routing Fix | current_phase_keep | OK | `ca37d61e332e` |
-| `docs/notifications/alert_fatigue_1/alert_routing_simulation.md` | Alert Routing Simulation | review_required | MISSING HEADER | `c0ff00ba1565` |
-| `docs/notifications/alert_url_fqdn_1/notification_url_simulation.md` | Notification URL Simulation | review_required | MISSING HEADER | `0557d0514814` |
+| `docs/notifications/alert_fatigue_1/alert_routing_simulation.md` | Alert Routing Simulation | review_required | OK | `49a6b5e5758c` |
+| `docs/notifications/alert_url_fqdn_1/notification_url_simulation.md` | Notification URL Simulation | review_required | OK | `9e95ceb9224e` |
 | `docs/operations/CIO_PRODUCTION_SCHEDULES.md` | CIO Production Schedules — Operations Plan | review_required | OK | `20f69a43c6b4` |
 | `docs/operations/CIO_RESTART_PROCEDURES.md` | CIO Restart / Recovery Procedures | review_required | OK | `991d01b25595` |
 | `docs/operations/DOCUMENTATION_STANDARDS.md` | Documentation Standards — Trade AI v12 | review_required | OK | `bca7253c377a` |
 | `docs/operations/MOMENTUM_SCALP_PROPOSALS_EXPIRED_BEFORE_APPROVAL_2026-07-27.md` | Ops note: `momentum_scalp` bottleneck `proposals_expired_before_approval` | review_required | OK | `de31a924f02b` |
 | `docs/operations/MOOMOO_STAGE0_FOUNDATION_v1.md` | Moomoo Stage 0 Foundation v1 — Read-plane only | review_required | OK | `4a4d6f6884f7` |
-| `docs/operations/MOOMOO_T2_SHADOW.md` | Moomoo OpenD / T2 (L2 depth) — operations | review_required | MISSING HEADER | `33b9554bcca2` |
+| `docs/operations/MOOMOO_T2_SHADOW.md` | Moomoo OpenD / T2 (L2 depth) — operations | review_required | OK | `47194353194a` |
 | `docs/operations/PHASE36A_CRON_RISK_AND_GROUPING_AUDIT.md` | Phase 36A — Cron Risk and Grouping Audit | review_required | OK | `32870cc645dd` |
 | `docs/operations/PHASE36B_SCHEDULE_DUPLICATE_OVERLAP_AUDIT.md` | Phase 36B — Schedule Duplicate and Overlap Audit | review_required | OK | `50839a855620` |
 | `docs/operations/PHASE36C_SCHEDULED_JOB_CONSOLIDATION_DESIGN.md` | Phase 36C — Scheduled Job Consolidation Design | review_required | OK | `c72b8208159c` |
@@ -1300,27 +1300,27 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/operations/PHASE46B_SCHEDULED_JOB_HEALTH_API_REPORT.md` | Phase 46B — Scheduled Job Health API Report | review_required | OK | `473348dd0522` |
 | `docs/operations/PHASE46C_SCHEDULED_JOB_HEALTH_UI_REPORT.md` | Phase 46C — Scheduled Job Health UI Report | review_required | OK | `c88717c8c453` |
 | `docs/operations/PHASE46D_SCHEDULED_JOB_HEALTH_SAFETY_AUDIT.md` | Phase 46D — Scheduled Job Health Safety Audit | review_required | OK | `b04a97b346bb` |
-| `docs/operations/PROMOTION_GATE_v1.md` | Promotion Gate v1 — Phase 10 (prepare-only) | review_required | MISSING HEADER | `a187dcb1dadb` |
+| `docs/operations/PROMOTION_GATE_v1.md` | Promotion Gate v1 — Phase 10 (prepare-only) | review_required | OK | `b9e7f7f19ce5` |
 | `docs/operations/SCHEDULED_JOBS_REFERENCE.md` | Trade AI v12 — Scheduled Jobs Reference | review_required | OK | `eaa8b76d62ef` |
-| `docs/operations/WATCH_QUALITY_GOVERNANCE_2026-07-25.md` | Watch Quality Governance — 2026-07-25 | review_required | MISSING HEADER | `587560d49f4c` |
+| `docs/operations/WATCH_QUALITY_GOVERNANCE_2026-07-25.md` | Watch Quality Governance — 2026-07-25 | review_required | OK | `e8214251edc7` |
 | `docs/operations/WATCH_QUALITY_PROJECTION_V2_2026-07-25.md` | Watch quality projection v2 — source-unit correction | review_required | OK | `ab142131545c` |
 | `docs/operations/overnight_activity_repair/00_README.md` | Overnight Activity Repair | current_phase_keep | OK | `7e5bcddb3828` |
-| `docs/operations/overnight_activity_repair/overnight_activity_fix_report.md` | Fix Report | review_required | MISSING HEADER | `6e31e4b68810` |
-| `docs/operations/overnight_activity_repair/overnight_activity_pipeline_verification.md` | Pipeline Verification | review_required | MISSING HEADER | `2ab967247ea9` |
-| `docs/operations/overnight_activity_repair/overnight_activity_root_cause.md` | Root Cause Analysis | review_required | MISSING HEADER | `e264075db039` |
-| `docs/operations/overnight_activity_repair/overnight_activity_safety_audit.md` | Safety Audit | review_required | MISSING HEADER | `f2155452ffbc` |
+| `docs/operations/overnight_activity_repair/overnight_activity_fix_report.md` | Fix Report | review_required | OK | `0c757b34be17` |
+| `docs/operations/overnight_activity_repair/overnight_activity_pipeline_verification.md` | Pipeline Verification | review_required | OK | `6d46c35dbec7` |
+| `docs/operations/overnight_activity_repair/overnight_activity_root_cause.md` | Root Cause Analysis | review_required | OK | `61a9562332b7` |
+| `docs/operations/overnight_activity_repair/overnight_activity_safety_audit.md` | Safety Audit | review_required | OK | `0dd95c6daa05` |
 | `docs/operator/ATM_RUNBOOK.md` | ATM Operator Runbook | review_required | OK | `b273f679aff3` |
 | `docs/ops/AUTONOMOUS_ADVISORY_LOOP_CLOSURE_RESULT_2026-08-23.md` | Trade AI Autonomous Advisory Loop Closure Result | review_required | OK | `51a39935be0a` |
 | `docs/ops/AUTONOMOUS_ADVISOR_SESSION_CLOSEOUT_2026-08-20.md` | Autonomous Advisor Session Closeout — 2026-08-20 | review_required | OK | `368297046d4f` |
-| `docs/ops/AUTONOMY_OPERATOR_RUNBOOK.md` | Autonomy Operator Runbook (READ_ONLY_ADVISORY) | review_required | MISSING HEADER | `bfe0056117f4` |
+| `docs/ops/AUTONOMY_OPERATOR_RUNBOOK.md` | Autonomy Operator Runbook (READ_ONLY_ADVISORY) | review_required | OK | `3bff13b73149` |
 | `docs/ops/AUTONOMY_RUNTIME_TRUTH_2026-08-11.md` | Runtime truth — host verification (P0 ops) | delete_candidate_duplicate | OK | `b3ebf94fe56b` |
 | `docs/ops/CANON_SOURCE_ACQUISITION_QUEUE_2026-08-23.md` | Canon Source Acquisition Queue - 2026-08-23 | review_required | OK | `a49f0fc9b389` |
 | `docs/ops/CIO_ADVISORY_TRUTH_HARDENING_CLOSEOUT_2026-08-20.md` | CIO/Advisory truth + presentation hardening — closeout 2026-08-20 | review_required | OK | `1661c226ddf4` |
-| `docs/ops/CIO_CASH_SATURDAY_PROOF_2026-08-29.md` | CIO cash fossil — Saturday proof (2026-08-29) | review_required | MISSING HEADER | `75c921798f55` |
+| `docs/ops/CIO_CASH_SATURDAY_PROOF_2026-08-29.md` | CIO cash fossil — Saturday proof (2026-08-29) | review_required | OK | `cc534b5312c6` |
 | `docs/ops/CIO_CASH_TOTALS_WRITER_2026-08-29.md` | The $52,677.32 cash gap — writer identified | review_required | OK | `32eedd37d074` |
 | `docs/ops/CIO_CLOSED_LOOP_LINEAGE_CLOSEOUT_2026-08-20.md` | CIO Closed-Loop Lineage — Phase A Closeout (2026-08-20) | review_required | OK | `116d9ec54867` |
-| `docs/ops/CIO_COMMAND_CENTER_MODEL_2026-08-29.md` | Command Center — the mental model, verified (2026-08-29) | review_required | MISSING HEADER | `3eb36962f8dd` |
-| `docs/ops/CIO_DECISION_PAYLOAD_PHASE1_2026-08-21.md` | CIO DecisionPayload@v1 — Phase 1 (2026-08-21) | review_required | MISSING HEADER | `87615ddb759c` |
+| `docs/ops/CIO_COMMAND_CENTER_MODEL_2026-08-29.md` | Command Center — the mental model, verified (2026-08-29) | review_required | OK | `c1fbaec9602f` |
+| `docs/ops/CIO_DECISION_PAYLOAD_PHASE1_2026-08-21.md` | CIO DecisionPayload@v1 — Phase 1 (2026-08-21) | review_required | OK | `3c040be9309d` |
 | `docs/ops/CIO_DESK_MEMO_CONTINUOUS_2026-08-20.md` | CIO desk memo continuous regen — Phase C (2026-08-20) | review_required | OK | `e5c2420c9f49` |
 | `docs/ops/CIO_DILIGENCE_GAP_REGISTER_CLOSEOUT_2026-08-30.md` | CIO Diligence — gap register closeout (PR-G) | review_required | OK | `31158a804cc9` |
 | `docs/ops/CIO_DILIGENCE_P0_KICKOFF_2026-08-30.md` | CIO Diligence Phase 0 — kickoff | review_required | OK | `1a7fadcb7218` |
@@ -1335,31 +1335,31 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/CIO_DILIGENCE_P8_MBI_PARTITION_2026-08-30.md` | CIO Diligence P8 — outcome/lesson MBI partition | review_required | OK | `bc3fad2cbb08` |
 | `docs/ops/CIO_DILIGENCE_P9_REGISTRY_LIFECYCLE_2026-08-30.md` | CIO Diligence P9 — registry / orphan / 99.99% path | review_required | OK | `969b5126353d` |
 | `docs/ops/CIO_DILIGENCE_SCOREBOARD.md` | CIO Platform Diligence — living scoreboard | review_required | OK | `97ecddcae5e2` |
-| `docs/ops/CIO_FIELD_SCOPED_LINT_2026-08-29.md` | Field-scoped instruction lint (2026-08-29) | review_required | MISSING HEADER | `146dcad30c25` |
-| `docs/ops/CIO_GROK_CRITIQUE_CONTRACT_2026-08-29.md` | Grok critique call site — contract (2026-08-29) | review_required | MISSING HEADER | `6bbaf88ca9b1` |
-| `docs/ops/CIO_GROK_HOP_RESULT_2026-08-29.md` | Grok critique hop — executed, verdict REJECT (2026-08-29) | review_required | MISSING HEADER | `14dfac5a9007` |
-| `docs/ops/CIO_HELD_THESIS_COVERAGE_2026-08-20.md` | Held-book thesis coverage (Phase 1) — 2026-08-20 | review_required | MISSING HEADER | `c92a8332ff8a` |
-| `docs/ops/CIO_IIC_FEEDBACK_CC_2026-08-21.md` | CIO IIC Phase B+C — Feedback + CC (2026-08-21) | review_required | MISSING HEADER | `1b071ab1b4be` |
-| `docs/ops/CIO_IIC_PHASE_D_SI_QUEUE_2026-08-21.md` | CIO IIC Phase D — Symbol Intelligence dossier + research queue age (2026-08-21) | review_required | MISSING HEADER | `1b5d83f62439` |
+| `docs/ops/CIO_FIELD_SCOPED_LINT_2026-08-29.md` | Field-scoped instruction lint (2026-08-29) | review_required | OK | `4ba171f0d82e` |
+| `docs/ops/CIO_GROK_CRITIQUE_CONTRACT_2026-08-29.md` | Grok critique call site — contract (2026-08-29) | review_required | OK | `131628d68083` |
+| `docs/ops/CIO_GROK_HOP_RESULT_2026-08-29.md` | Grok critique hop — executed, verdict REJECT (2026-08-29) | review_required | OK | `83734dc263ed` |
+| `docs/ops/CIO_HELD_THESIS_COVERAGE_2026-08-20.md` | Held-book thesis coverage (Phase 1) — 2026-08-20 | review_required | OK | `f6e7911ca1a5` |
+| `docs/ops/CIO_IIC_FEEDBACK_CC_2026-08-21.md` | CIO IIC Phase B+C — Feedback + CC (2026-08-21) | review_required | OK | `44100af61815` |
+| `docs/ops/CIO_IIC_PHASE_D_SI_QUEUE_2026-08-21.md` | CIO IIC Phase D — Symbol Intelligence dossier + research queue age (2026-08-21) | review_required | OK | `3b8a2028f9c2` |
 | `docs/ops/CIO_IIC_SESSION_CLOSEOUT_2026-08-21.md` | CIO IIC Arc Session Closeout — 2026-08-21 | review_required | OK | `8d667c366684` |
-| `docs/ops/CIO_IIC_TELEGRAM_ACTIONABLE_VISUAL_2026-08-21.md` | CIO IIC Telegram — actionable visual + raw dump kill (2026-08-21) | review_required | MISSING HEADER | `1ae57479a3d0` |
-| `docs/ops/CIO_INSTITUTIONAL_CORPUS_MAP_2026-08-29.md` | CIO institutional corpus map (2026-08-29) | review_required | MISSING HEADER | `5084649159f3` |
-| `docs/ops/CIO_INVESTMENT_INTELLIGENCE_CARD_2026-08-21.md` | CIO Investment Intelligence Card (Phase A) — 2026-08-21 | review_required | MISSING HEADER | `f48e5bed087d` |
-| `docs/ops/CIO_LEFTOVER_CLOSEOUT_2026-08-29.md` | CIO leftover closeout (2026-08-29) | review_required | MISSING HEADER | `2c425d9b13a4` |
-| `docs/ops/CIO_LIBRARY_CENSUS_2026-08-29.md` | CIO library census (2026-08-29) | review_required | MISSING HEADER | `8e91a05f31fa` |
-| `docs/ops/CIO_LLM_GATE_CADENCE_CORPUS_2026-08-29.md` | CIO LLM gate + cadence + institutional corpus (2026-08-29) | review_required | MISSING HEADER | `3728acd9e1b9` |
+| `docs/ops/CIO_IIC_TELEGRAM_ACTIONABLE_VISUAL_2026-08-21.md` | CIO IIC Telegram — actionable visual + raw dump kill (2026-08-21) | review_required | OK | `9db7ca919fbe` |
+| `docs/ops/CIO_INSTITUTIONAL_CORPUS_MAP_2026-08-29.md` | CIO institutional corpus map (2026-08-29) | review_required | OK | `8add9a83cb61` |
+| `docs/ops/CIO_INVESTMENT_INTELLIGENCE_CARD_2026-08-21.md` | CIO Investment Intelligence Card (Phase A) — 2026-08-21 | review_required | OK | `f1577e5448bf` |
+| `docs/ops/CIO_LEFTOVER_CLOSEOUT_2026-08-29.md` | CIO leftover closeout (2026-08-29) | review_required | OK | `7028706c95a7` |
+| `docs/ops/CIO_LIBRARY_CENSUS_2026-08-29.md` | CIO library census (2026-08-29) | review_required | OK | `2daa3135932a` |
+| `docs/ops/CIO_LLM_GATE_CADENCE_CORPUS_2026-08-29.md` | CIO LLM gate + cadence + institutional corpus (2026-08-29) | review_required | OK | `1ff0592565d1` |
 | `docs/ops/CIO_LOOP_B1_B3_D1_CLOSEOUT_2026-08-20.md` | CIO Loop Continuity B1/B2/B3/D1 — Closeout 2026-08-20 | review_required | OK | `c68bbad7badd` |
-| `docs/ops/CIO_MATCHER_POSITION_DIRECTIVES_2026-08-29.md` | Imperative matcher — position directives (2026-08-29) | review_required | MISSING HEADER | `ee06b74f34e2` |
+| `docs/ops/CIO_MATCHER_POSITION_DIRECTIVES_2026-08-29.md` | Imperative matcher — position directives (2026-08-29) | review_required | OK | `c53dd4e83d9e` |
 | `docs/ops/CIO_MATERIAL_NOTIFY_CANARY_2026-08-20.md` | CIO material notify canary — 2026-08-20 | review_required | OK | `9c1fe05ed382` |
-| `docs/ops/CIO_MEMORY_SHADOW_MEASURE_PHASE2_2026-08-21.md` | CIO Memory Shadow Measure — Phase 2 start (2026-08-21) | review_required | MISSING HEADER | `b9ed50265e54` |
+| `docs/ops/CIO_MEMORY_SHADOW_MEASURE_PHASE2_2026-08-21.md` | CIO Memory Shadow Measure — Phase 2 start (2026-08-21) | review_required | OK | `0fba107a98b5` |
 | `docs/ops/CIO_NATURAL_PERSISTENT_COGNITION_L5_CLOSEOUT_2026-08-24.md` | CIO natural persistent cognition L5 closeout | review_required | OK | `6010100d1306` |
-| `docs/ops/CIO_NOTIFY_PRECONDITIONS_2026-08-29.md` | Notify preconditions — four checks (2026-08-29) | review_required | MISSING HEADER | `92334840930b` |
-| `docs/ops/CIO_OPERATOR_DESK_LOOP_P0_2026-08-20.md` | CIO operator desk loop — P0 intent routing (2026-08-20) | review_required | MISSING HEADER | `1a9d7ef249d6` |
-| `docs/ops/CIO_OPERATOR_FREEFORM_AGENT_2026-08-20.md` | CIO operator freeform agent (2026-08-20) | review_required | MISSING HEADER | `74df5d9bf0b2` |
+| `docs/ops/CIO_NOTIFY_PRECONDITIONS_2026-08-29.md` | Notify preconditions — four checks (2026-08-29) | review_required | OK | `67343b7e0fb6` |
+| `docs/ops/CIO_OPERATOR_DESK_LOOP_P0_2026-08-20.md` | CIO operator desk loop — P0 intent routing (2026-08-20) | review_required | OK | `88a6bebe6205` |
+| `docs/ops/CIO_OPERATOR_FREEFORM_AGENT_2026-08-20.md` | CIO operator freeform agent (2026-08-20) | review_required | OK | `078178808736` |
 | `docs/ops/CIO_OPERATOR_JUDGMENTS_2026-08-29.md` | CIO — operator judgments of 2026-08-29, implemented | review_required | OK | `df4583ed25f8` |
 | `docs/ops/CIO_OUTCOME_LEARNING_CLOSEOUT_2026-08-20.md` | CIO Outcome Learning — Phase D thin closeout (2026-08-20) | review_required | OK | `7e74dd4f5c1a` |
 | `docs/ops/CIO_PERSISTENT_COGNITION_CONSUMPTION_2026-08-24.md` | CIO persistent cognition consumption | review_required | OK | `db8705624d47` |
-| `docs/ops/CIO_PERSISTENT_SPINE_2026-08-30.md` | CIO persistent spine — closeout | review_required | MISSING HEADER | `57ae8adaea1e` |
+| `docs/ops/CIO_PERSISTENT_SPINE_2026-08-30.md` | CIO persistent spine — closeout | review_required | OK | `9e912a952d0c` |
 | `docs/ops/CIO_PHASE1_2_MEASURE_CLOSEOUT_2026-08-21.md` | CIO Phase 1–2 Measure Closeout — 2026-08-21 | review_required | OK | `da19fe1563fb` |
 | `docs/ops/CIO_PHASE_A_INTERDICT_NOTIFY_2026-08-20.md` | CIO Phase A — INTERDICT truth + ACT_NOW notify — 2026-08-20 | review_required | OK | `5646031c29af` |
 | `docs/ops/CIO_PIPELINE_CONDUCTOR_CLOSEOUT_2026-08-28.md` | CIO Pipeline Conductor Closeout — 2026-08-28 | review_required | OK | `8d36c597210b` |
@@ -1382,16 +1382,16 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/CIO_PIPELINE_STEP2A_CASE_SUMMARY_2026-08-28.md` | CIO Pipeline Step 2A — CASE_SUMMARY from attached VALID research | review_required | OK | `1259315e5ae8` |
 | `docs/ops/CIO_PIPELINE_STEP2B_2C_SURFACES_2026-08-28.md` | CIO Pipeline Step 2B+2C — surfaces + CASE_SUMMARY as labeled A-context | review_required | OK | `dd07366de749` |
 | `docs/ops/CIO_PROSE_PROHIBITION_GATE_2026-08-29.md` | Prose prohibitions are instructions — closing the "do not add" misses | review_required | OK | `eee450aecde6` |
-| `docs/ops/CIO_QUESTION_ID_CONTRACT_2026-08-29.md` | Question id contract — semantic, not positional (2026-08-29) | review_required | MISSING HEADER | `294e5b36adaf` |
-| `docs/ops/CIO_R2_NO_PRODUCER_2026-08-30.md` | The two NO_PRODUCER rows — P4's evidence and the scoreboard pin | review_required | MISSING HEADER | `0709189b88dc` |
-| `docs/ops/CIO_REENTRY_S3_WIRE_2026-08-20.md` | CIO Reentry → S3 wire (Fix #1) — 2026-08-20 | review_required | MISSING HEADER | `6b029a4b9a58` |
+| `docs/ops/CIO_QUESTION_ID_CONTRACT_2026-08-29.md` | Question id contract — semantic, not positional (2026-08-29) | review_required | OK | `f822308654d1` |
+| `docs/ops/CIO_R2_NO_PRODUCER_2026-08-30.md` | The two NO_PRODUCER rows — P4's evidence and the scoreboard pin | review_required | OK | `4e90da70a68e` |
+| `docs/ops/CIO_REENTRY_S3_WIRE_2026-08-20.md` | CIO Reentry → S3 wire (Fix #1) — 2026-08-20 | review_required | OK | `08591124c1de` |
 | `docs/ops/CIO_RESIDUAL_WEB_LIVE_2026-08-30.md` | CIO Residual Web Lane — live hop runbook | review_required | OK | `9e0888e6b80f` |
-| `docs/ops/CIO_S0_OPERATOR_LOOP_2026-08-29.md` | S0 operator loop — mint, attach, turn_id, rehydrate (2026-08-29) | review_required | MISSING HEADER | `c2f1ae3ed2ca` |
+| `docs/ops/CIO_S0_OPERATOR_LOOP_2026-08-29.md` | S0 operator loop — mint, attach, turn_id, rehydrate (2026-08-29) | review_required | OK | `ddc0c50a5f66` |
 | `docs/ops/CIO_S6_DUST_RULE_2026-08-29.md` | CIO — teach the S6 detector the dust rule | review_required | OK | `f450917a844c` |
-| `docs/ops/CIO_SEASONALITY_FRENCH_SURFACE_2026-08-29.md` | Seasonality surface moved to Ken French (2026-08-29) | review_required | MISSING HEADER | `51431c445d10` |
+| `docs/ops/CIO_SEASONALITY_FRENCH_SURFACE_2026-08-29.md` | Seasonality surface moved to Ken French (2026-08-29) | review_required | OK | `a5875177ae22` |
 | `docs/ops/CIO_UI_AUDIT_2026-08-22.md` | UI audit — /v3/advisory + CIO Office tabs (every tab) | review_required | OK | `720fd845b5e3` |
-| `docs/ops/CIO_V_SWEEP_2026-08-30.md` | CIO validation sweep V1–V5 — 2026-08-30 | review_required | MISSING HEADER | `8c9ffbbcb994` |
-| `docs/ops/CIO_WATCH_S7_WIRE_2026-08-20.md` | CIO Watch → S7 wire (Fix #2) — 2026-08-20 | review_required | MISSING HEADER | `80f9c2e66347` |
+| `docs/ops/CIO_V_SWEEP_2026-08-30.md` | CIO validation sweep V1–V5 — 2026-08-30 | review_required | OK | `4b89fcaba4ca` |
+| `docs/ops/CIO_WATCH_S7_WIRE_2026-08-20.md` | CIO Watch → S7 wire (Fix #2) — 2026-08-20 | review_required | OK | `954e61dee401` |
 | `docs/ops/CIO_WAVE2C_ITEMS_101_130_2026-08-29.md` | CIO Wave 2C — items 101–130 (holdings truth / dust / CUSIP) | review_required | OK | `88b5d61d807f` |
 | `docs/ops/CIO_WAVE2C_ITEMS_131_160_2026-08-29.md` | CIO Wave 2C — items 131–160 (reentry / watch / new names) | review_required | OK | `158ded509fdc` |
 | `docs/ops/CIO_WAVE2C_ITEMS_161_190_2026-08-29.md` | CIO Wave 2C — items 161–190 (research / Hermes / attach) | review_required | OK | `68fb5cee62cd` |
@@ -1399,7 +1399,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/CIO_WAVE2C_ITEMS_221_250_2026-08-29.md` | CIO Wave 2C — items 221–250 (outcomes / memory / lessons) | review_required | OK | `d50df40fbca3` |
 | `docs/ops/CIO_WAVE2C_ITEMS_251_320_2026-08-29.md` | CIO Wave 2C — items 251–320 (surfaces / safety / locks / closeout) | review_required | OK | `4c528f227150` |
 | `docs/ops/CIO_WAVE2_OPERATOR_AUTHORIZED_2026-08-28.md` | CIO Wave 2 — operator-authorised applies + slice 12a live-activation fix | review_required | OK | `13bf0cb85ca1` |
-| `docs/ops/CIO_WAVE2_OVERNIGHT_CLOSEOUT.md` | CIO Wave 2 — overnight closeout (Claude Code, 2026-08-28 → 08-29) | review_required | MISSING HEADER | `e1b7a46be094` |
+| `docs/ops/CIO_WAVE2_OVERNIGHT_CLOSEOUT.md` | CIO Wave 2 — overnight closeout (Claude Code, 2026-08-28 → 08-29) | review_required | OK | `d2616e9e2f4f` |
 | `docs/ops/CIO_WAVE2_SCOREBOARD.md` | CIO Wave 2 living scoreboard | review_required | OK | `61ef2b7fca44` |
 | `docs/ops/CIO_WAVE2_SLICE00_2026-08-28.md` | CIO Wave 2 Slice 00 — bootstrap scoreboard + Drive mirror | review_required | OK | `fdfd2e4c7927` |
 | `docs/ops/CIO_WAVE2_SLICE01_2026-08-28.md` | CIO Wave 2 Slice 01 — held-universe thesis coverage | review_required | OK | `10c27aec46a8` |
@@ -1419,18 +1419,18 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/CIO_WAVE2_SLICE19_21_2026-08-28.md` | CIO Wave 2 — slices 19 / 20 / 21: research failure truth and replay policy | review_required | OK | `b13249d0617e` |
 | `docs/ops/CIO_WAVE2_SLICE22_31_2026-08-28.md` | CIO Wave 2 — slices 22–31: research attach, memory governance, lessons | review_required | OK | `4c4777d59052` |
 | `docs/ops/CIO_WAVE2_SLICE32_41_2026-08-28.md` | CIO Wave 2 — slices 32–41: data-quality honesty on the operator surfaces | review_required | OK | `5910cd3588ad` |
-| `docs/ops/CIO_WAVE3A_LIBRARY_2026-08-29.md` | Wave 3A — institutional library home + seasonality off fixtures (2026-08-29) | review_required | MISSING HEADER | `b2243eaf3395` |
-| `docs/ops/CIO_WAVE3B_2026-08-29.md` | CIO Wave 3B — council, notification policy, checkpoint binding (2026-08-29) | review_required | MISSING HEADER | `ea294ecc3202` |
-| `docs/ops/CIO_WAVE3C_2026-08-29.md` | CIO Wave 3C — silent closed loop (2026-08-29) | review_required | MISSING HEADER | `dfe84bf093c4` |
-| `docs/ops/CIO_WAVE3D_2026-08-29.md` | CIO Wave 3D — one live hop: **STOPPED at step 2, no live call made** | review_required | MISSING HEADER | `a50496e01743` |
-| `docs/ops/CIO_WAVE3D_CRITIQUE_2026-08-29.md` | CIO Wave 3D-critique — lane built, one call attempted, **refused by policy** | review_required | MISSING HEADER | `ae6de11b1fc0` |
-| `docs/ops/CIO_WAVE3D_CRITIQUE_DEEPSEEK_2026-08-29.md` | Wave 3D-critique on DeepSeek — **both live lanes are blocked, for opposite reasons** | review_required | MISSING HEADER | `dff9d04782ce` |
-| `docs/ops/CIO_WAVE3D_FLASH_2026-08-29.md` | CIO Wave 3D-flash — **STOPPED at step 1: zero flash-eligible** | review_required | MISSING HEADER | `30d8c52813c7` |
-| `docs/ops/CIO_WAVE3D_HOP_2026-08-29.md` | Wave 3D — the one live hop, executed (2026-08-29) | review_required | MISSING HEADER | `4582554ef8ee` |
-| `docs/ops/CIO_WAVE3E_2026-08-29.md` | CIO Wave 3E — notification decisions on the Command Center (2026-08-29) | review_required | MISSING HEADER | `f88c30af18dc` |
+| `docs/ops/CIO_WAVE3A_LIBRARY_2026-08-29.md` | Wave 3A — institutional library home + seasonality off fixtures (2026-08-29) | review_required | OK | `6b1741fc3bfe` |
+| `docs/ops/CIO_WAVE3B_2026-08-29.md` | CIO Wave 3B — council, notification policy, checkpoint binding (2026-08-29) | review_required | OK | `b802cb725ef6` |
+| `docs/ops/CIO_WAVE3C_2026-08-29.md` | CIO Wave 3C — silent closed loop (2026-08-29) | review_required | OK | `05eda8b2dbd5` |
+| `docs/ops/CIO_WAVE3D_2026-08-29.md` | CIO Wave 3D — one live hop: **STOPPED at step 2, no live call made** | review_required | OK | `c08b4edff0ae` |
+| `docs/ops/CIO_WAVE3D_CRITIQUE_2026-08-29.md` | CIO Wave 3D-critique — lane built, one call attempted, **refused by policy** | review_required | OK | `88806aea4f14` |
+| `docs/ops/CIO_WAVE3D_CRITIQUE_DEEPSEEK_2026-08-29.md` | Wave 3D-critique on DeepSeek — **both live lanes are blocked, for opposite reasons** | review_required | OK | `43238c8300e8` |
+| `docs/ops/CIO_WAVE3D_FLASH_2026-08-29.md` | CIO Wave 3D-flash — **STOPPED at step 1: zero flash-eligible** | review_required | OK | `df9fb2572aae` |
+| `docs/ops/CIO_WAVE3D_HOP_2026-08-29.md` | Wave 3D — the one live hop, executed (2026-08-29) | review_required | OK | `02ef350a1efb` |
+| `docs/ops/CIO_WAVE3E_2026-08-29.md` | CIO Wave 3E — notification decisions on the Command Center (2026-08-29) | review_required | OK | `6fd2ce532756` |
 | `docs/ops/CLOSE_OPERATOR_GAPS_TO_100_2026-08-19.md` | Close remaining operator gaps to 100% | review_required | OK | `9f9aada669d7` |
-| `docs/ops/COST_CAP_EXCEEDED_2026-08-22.md` | COST_CAP_EXCEEDED 2026-08-22 — what did not run, and why 895 ≠ 312 | review_required | MISSING HEADER | `ca53443f1934` |
-| `docs/ops/CURRENT_CUTOVER_AFTER_2026-08-27.md` | CURRENT cutover — execute after 2026-08-27 close | review_required | MISSING HEADER | `b9e92125c588` |
+| `docs/ops/COST_CAP_EXCEEDED_2026-08-22.md` | COST_CAP_EXCEEDED 2026-08-22 — what did not run, and why 895 ≠ 312 | review_required | OK | `e11d852dddbb` |
+| `docs/ops/CURRENT_CUTOVER_AFTER_2026-08-27.md` | CURRENT cutover — execute after 2026-08-27 close | review_required | OK | `ff4d8004bf21` |
 | `docs/ops/DECISION_PAYLOAD_LANDING_2026-08-21.md` | DecisionPayload landing check — 2026-08-21 19:31 ET | review_required | OK | `f3951cc5a623` |
 | `docs/ops/DEEPSEEK_BULK_WINDOW_ET_2026-08-19.md` | DeepSeek bulk window: 10:00–21:00 US Eastern | review_required | OK | `7f5763a0c9fb` |
 | `docs/ops/DESK_GAP_FIX_CLOSEOUT_2026-08-19.md` | Desk gap-fix closeout — Advisory/CIO accuracy + daily shadow-receipt producer | review_required | OK | `950c2f95e8b8` |
@@ -1445,9 +1445,9 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/HERMES_FREE_FIRST_NATURAL_SCHEDULER_2026-08-23.md` | FREE_FIRST_ONLY natural scheduler | review_required | OK | `306d4dbb9131` |
 | `docs/ops/HERMES_LIBRARIAN_CURATION_MATURITY_2026-08-23.md` | Librarian + curation maturity (PR C) | review_required | OK | `e902b7cca2e7` |
 | `docs/ops/HERMES_TICKER_INTELLIGENCE_WIRING_CLOSEOUT_2026-08-23.md` | Hermes Ticker Intelligence Wiring Closeout | review_required | OK | `d7e283f4cd5a` |
-| `docs/ops/INSTRUMENT_RECORD_V1.md` | InstrumentRecord@v1 | review_required | MISSING HEADER | `b5be55e2d30c` |
+| `docs/ops/INSTRUMENT_RECORD_V1.md` | InstrumentRecord@v1 | review_required | OK | `613aea387bc6` |
 | `docs/ops/LANE_QUALITY_BAKEOFF_2026-08-21.md` | Lane Quality Bake-Off — 2026-08-21 | review_required | OK | `cd49b9ce53e7` |
-| `docs/ops/LANE_QUALITY_BAKEOFF_OPERATOR_BLIND_2026-08-21.md` | Blind ranking sheet — Lane bake-off 2026-08-21 | delete_candidate_duplicate | MISSING HEADER | `e5ee161095b8` |
+| `docs/ops/LANE_QUALITY_BAKEOFF_OPERATOR_BLIND_2026-08-21.md` | Blind ranking sheet — Lane bake-off 2026-08-21 | review_required | OK | `f88b31c995fa` |
 | `docs/ops/LANE_REGISTRY_AND_RETIREMENT_CONVENTION.md` | Lane registry and the retirement convention | review_required | OK | `b54b463e120a` |
 | `docs/ops/LLM_ROUTING_AND_DATA_LAYERS.md` | How LLMs, Hermes, SearXNG, and ticker data actually work | review_required | OK | `3b36a08165b8` |
 | `docs/ops/M2_DARK_READ_PARITY_2026-08-24.md` | M2 dark-read parity | review_required | OK | `ebee0b2213fc` |
@@ -1457,9 +1457,9 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/MATURE_INVESTMENT_OFFICE_LIVE_CONVERGENCE_2026-08-23.md` | Trade AI v12 R9.1 - Mature Investment Office Live Convergence | review_required | OK | `05d7f40f4fee` |
 | `docs/ops/MATURITY_SCORECARD.md` | Maturity scorecard (GET-only) | review_required | OK | `45731da83d49` |
 | `docs/ops/OPERATOR_ACTION_REQUIRED.md` | OPERATOR_ACTION_REQUIRED — live advisory notification canary | review_required | OK | `840fa4562f95` |
-| `docs/ops/OPERATOR_DEPLOYMENT_REQUIRED.md` | OPERATOR_DEPLOYMENT_REQUIRED | review_required | MISSING HEADER | `965ea2789e5a` |
-| `docs/ops/PHASE189D_HEALTH_AGENT_MISSING_STOP_FAILURE_ANALYSIS.md` | PHASE 189D — Health-Agent Missing-Stop Failure Analysis | review_required | MISSING HEADER | `52042059268e` |
-| `docs/ops/PHASE190D_HEALTH_AGENT_PROTECTION_ALERT_ROUTING_FIX.md` | PHASE 190D — Health-Agent Protection Alert Routing Fix | review_required | MISSING HEADER | `dc1fb1f6a317` |
+| `docs/ops/OPERATOR_DEPLOYMENT_REQUIRED.md` | OPERATOR_DEPLOYMENT_REQUIRED | review_required | OK | `ad67ce75eb83` |
+| `docs/ops/PHASE189D_HEALTH_AGENT_MISSING_STOP_FAILURE_ANALYSIS.md` | PHASE 189D — Health-Agent Missing-Stop Failure Analysis | review_required | OK | `57b472ac277f` |
+| `docs/ops/PHASE190D_HEALTH_AGENT_PROTECTION_ALERT_ROUTING_FIX.md` | PHASE 190D — Health-Agent Protection Alert Routing Fix | review_required | OK | `8f174ca4e015` |
 | `docs/ops/R11_AUTONOMOUS_INVESTMENT_OFFICE_OPERATOR_VALUE_CLOSEOUT_2026-08-25.md` | R11 — Autonomous Investment Office Operator-Value Closeout | review_required | OK | `0539b80504f0` |
 | `docs/ops/R12_OPERATOR_INTELLIGENCE_NATURAL_NOTIFICATION_CLOSEOUT_2026-08-25.md` | R12 — Operator-intelligence natural notification closeout | review_required | OK | `dbcce083dfc0` |
 | `docs/ops/R13_INSTITUTIONAL_MATURITY_CLOSEOUT_2026-08-25.md` | R13 Institutional maturity closeout | review_required | OK | `58eb48120061` |
@@ -1469,12 +1469,12 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/R16_2_OBSERVATIONAL_SOAK_CLOSEOUT_2026-08-25.md` | R16.2 — Observational soak closeout | review_required | OK | `f4fafed1db85` |
 | `docs/ops/R16_INSTITUTIONAL_LEARNING_CLOSEOUT_2026-08-25.md` | R16 — Institutional learning closeout | review_required | OK | `ca94d6696590` |
 | `docs/ops/R17_NATURAL_FEEDBACK_AND_COVERAGE_CLOSEOUT.md` | R17 — Natural feedback closure and coverage convergence | review_required | OK | `90033f566da4` |
-| `docs/ops/R20_DATA_PLANE_REPAIR_CLOSEOUT.md` | R20 Data-Plane Repair Closeout | review_required | MISSING HEADER | `25f5b7ec61bc` |
+| `docs/ops/R20_DATA_PLANE_REPAIR_CLOSEOUT.md` | R20 Data-Plane Repair Closeout | review_required | OK | `918b179bcd82` |
 | `docs/ops/R20_DATA_PLANE_V2_CONTRACT.md` | R20 Data-Plane V2 — shared integrator contract | review_required | OK | `d967ed78d359` |
-| `docs/ops/R20_LINEAGE_HERMES_CLOSEOUT.md` | R20 Hermes lineage and queue persistence | review_required | MISSING HEADER | `b84c6bc19d84` |
+| `docs/ops/R20_LINEAGE_HERMES_CLOSEOUT.md` | R20 Hermes lineage and queue persistence | review_required | OK | `fde4d2ec0b9a` |
 | `docs/ops/R20_LIVE_RUNTIME_CLOSEOUT.md` | R20 Live Runtime / Specialist Office Audit | review_required | OK | `1b0f9c01a701` |
 | `docs/ops/R20_R24_PARALLEL_INTEGRATION_CLOSEOUT.md` | R20-R24 Parallel Integration Closeout | review_required | OK | `31d4ef09ad07` |
-| `docs/ops/R20_R24_QA_CLOSEOUT.md` | R20-R24 QA Closeout | review_required | MISSING HEADER | `5855b80c9f9e` |
+| `docs/ops/R20_R24_QA_CLOSEOUT.md` | R20-R24 QA Closeout | review_required | OK | `2fcf178f415c` |
 | `docs/ops/R21_CONTROL_PLANE_BACKEND_CLOSEOUT.md` | R21 Control-Plane Backend Closeout | review_required | OK | `ec52561567ea` |
 | `docs/ops/R22_AGENT_WORKFLOW_UI_CLOSEOUT.md` | R22 Agent Office and Workflow Trace | review_required | OK | `63b050d2f7ed` |
 | `docs/ops/R23_ADMIN_OBSERVABILITY_CLOSEOUT.md` | R23 Research, Data, Identity, and Notification Observability | review_required | OK | `724dbd33da08` |
@@ -1487,7 +1487,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/RESEARCH_LIFECYCLE_STANDARD.md` | Research Algorithm and Re-Research Methodology | review_required | OK | `38f982802e43` |
 | `docs/ops/RESEARCH_QUALITY_AND_THESIS_GAP_2026-08-22.md` | Research quality, thesis mint gap, alarms — 2026-08-22 | review_required | OK | `6310c0e41813` |
 | `docs/ops/RESEARCH_TIER_LLM_CADENCE.md` | Research tiers, watchlist, and when each gets an LLM | review_required | OK | `28c7d73a7129` |
-| `docs/ops/ROLLBACK_COMMANDS.md` | CURRENT rollback (exact-main phase2) | review_required | MISSING HEADER | `5f87fd3ca358` |
+| `docs/ops/ROLLBACK_COMMANDS.md` | CURRENT rollback (exact-main phase2) | review_required | OK | `ec18ccb0ad96` |
 | `docs/ops/SESSION_CLOSEOUT_2026-08-22.md` | Session closeout — 2026-08-22 | review_required | OK | `22febcb04ade` |
 | `docs/ops/SYMBOL_THESIS_ACQUISITION_PIPELINE_LIVE_2026-08-20.md` | Symbol-thesis acquisition pipeline — live (autonomous, debt-sensitive) — 2026-08-20 | review_required | OK | `c2bbceeb4d87` |
 | `docs/ops/SYMBOL_THESIS_CANARY_DRY_RUN_2026-08-20.md` | Bounded canary dry-run — SCHG / CSCO / ANET | review_required | OK | `fb6602cf2a8a` |
@@ -1503,76 +1503,76 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/TRANSFERSON_UNIVERSE_PRE_MERGE_ACCEPTANCE_2026-08-25.md` | Transferson universe — two-stage acceptance (PRE_MERGE) | archive_superseded | OK | `516017293ff1` |
 | `docs/ops/WEEKLY_OVERSIGHT_CHATGPT_OAUTH.md` | Weekly oversight — ChatGPT OAuth auto, paid manual | review_required | OK | `952b623d11ae` |
 | `docs/ops/YEDAS_EYE_INSTITUTIONAL_BRAIN_MATURITY_2026-08-24.md` | Yeda's Eye — first institutional-brain audit | review_required | OK | `156812edbf91` |
-| `docs/ops/alerts/PHASE126_TELEGRAM_ENFORCEMENT_REPORT.md` | Phase 126 — Telegram Actionable-Only Enforcement Report | review_required | MISSING HEADER | `f1544b6d8625` |
-| `docs/ops/alerts/PHASE132_STOP_ALERT_INTELLIGENCE_REPORT.md` | Phase 132 — Stop Alert Intelligence Report | review_required | MISSING HEADER | `f6efec46d61a` |
-| `docs/ops/alerts/telegram_notification_normalization_2026_07_28/ALERT_POLICY_DIFF.md` | Alert Policy Diff | review_required | MISSING HEADER | `5864acc06f97` |
-| `docs/ops/alerts/telegram_notification_normalization_2026_07_28/CODEX_IMPLEMENT_TELEGRAM_NOTIFICATION_NORMALIZATION_2026_07_28.md` | CODEX IMPLEMENTATION PROMPT — Trade AI Telegram Notification Normalization | review_required | MISSING HEADER | `e5c8ecec4037` |
-| `docs/ops/alerts/telegram_notification_normalization_2026_07_28/CODEX_RUN_LAST_MESSAGE.md` | CODEX_RUN_LAST_MESSAGE.md | review_required | MISSING HEADER | `3f63ce865496` |
-| `docs/ops/alerts/telegram_notification_normalization_2026_07_28/IMPLEMENTATION_CLOSEOUT.md` | Implementation Closeout | review_required | MISSING HEADER | `bf8cc53c4f23` |
-| `docs/ops/alerts/telegram_notification_normalization_2026_07_28/OPERATOR_ROLLOUT_CHECKLIST.md` | Operator Rollout Checklist | review_required | MISSING HEADER | `4a0a8732ad80` |
-| `docs/ops/alerts/telegram_notification_normalization_2026_07_28/REMEDIATION_CLOSEOUT.md` | Remediation Closeout — Telegram Notification Normalization | review_required | MISSING HEADER | `be259fd4ba97` |
-| `docs/ops/alerts/telegram_notification_normalization_2026_07_28/ROLLBACK.md` | Rollback | review_required | MISSING HEADER | `02dbe12620bc` |
-| `docs/ops/alerts/telegram_notification_normalization_2026_07_28/ROUTE_AND_SCHEMA_MAP.md` | Route and Schema Map | review_required | MISSING HEADER | `a88d5c8a2cb5` |
-| `docs/ops/alerts/telegram_notification_normalization_2026_07_28/SENDER_INVENTORY.md` | Sender Inventory | review_required | MISSING HEADER | `3d8c6715b088` |
-| `docs/ops/alerts/telegram_notification_normalization_2026_07_28/STAGE0_BASELINE.md` | Stage 0 Baseline | review_required | MISSING HEADER | `231a11582faa` |
-| `docs/ops/alerts/telegram_notification_normalization_2026_07_28/TRADE_AI_TELEGRAM_NOTIFICATION_DUE_DILIGENCE_2026-07-28.md` | Trade AI Telegram Notification Due-Diligence Report | review_required | MISSING HEADER | `8c0b5fd4b669` |
-| `docs/ops/bakeoff-2026-08-21/README.md` | Lane bake-off 2026-08-21 — operator-blind quality half | review_required | MISSING HEADER | `75e12a9300d7` |
-| `docs/ops/bakeoff-2026-08-21/operator_blind.md` | Blind ranking sheet — Lane bake-off 2026-08-21 | delete_candidate_duplicate | MISSING HEADER | `e5ee161095b8` |
-| `docs/ops/deepseek-v4-mainline-2026-08-03/FINAL_REPORT.md` | DeepSeek V4 Mainline Integration Report | review_required | MISSING HEADER | `899bf2b59667` |
-| `docs/ops/deepseek-v4-mainline-2026-08-03/ROLLBACK.md` | Rollback | review_required | MISSING HEADER | `f87a0b15508b` |
-| `docs/ops/deepseek-v4-mainline-2026-08-03/SECURITY_AND_AUTHORITY_REVIEW.md` | Security and authority review — DeepSeek V4 mainline | review_required | MISSING HEADER | `52069ebf0592` |
-| `docs/ops/deepseek-v4-mainline-2026-08-03/SERVICE_RUNTIME_OPERATOR_STEPS.md` | Service-runtime DeepSeek credential wiring (operator-approved only) | review_required | MISSING HEADER | `d8624323ca38` |
-| `docs/ops/deepseek-v4-mainline-2026-08-03/V3_ROUTE_TEST_RESULTS.md` | V3 route/subtab maturity results | review_required | MISSING HEADER | `6d6a85868f7b` |
-| `docs/ops/incident-gate-a-canonical-store-hygiene.md` | Gate A Canonical Store Hygiene Incident | review_required | MISSING HEADER | `80c1509afef2` |
-| `docs/ops/provider-spend-attribution/README.md` | Provider spend attribution | review_required | MISSING HEADER | `c2e162ae66e5` |
+| `docs/ops/alerts/PHASE126_TELEGRAM_ENFORCEMENT_REPORT.md` | Phase 126 — Telegram Actionable-Only Enforcement Report | review_required | OK | `105a8d6bbf0d` |
+| `docs/ops/alerts/PHASE132_STOP_ALERT_INTELLIGENCE_REPORT.md` | Phase 132 — Stop Alert Intelligence Report | review_required | OK | `389717eefa0c` |
+| `docs/ops/alerts/telegram_notification_normalization_2026_07_28/ALERT_POLICY_DIFF.md` | Alert Policy Diff | review_required | OK | `7a5a5a39b780` |
+| `docs/ops/alerts/telegram_notification_normalization_2026_07_28/CODEX_IMPLEMENT_TELEGRAM_NOTIFICATION_NORMALIZATION_2026_07_28.md` | CODEX IMPLEMENTATION PROMPT — Trade AI Telegram Notification Normalization | review_required | OK | `04c9191e25f6` |
+| `docs/ops/alerts/telegram_notification_normalization_2026_07_28/CODEX_RUN_LAST_MESSAGE.md` | CODEX_RUN_LAST_MESSAGE.md | review_required | OK | `2fb2063e6846` |
+| `docs/ops/alerts/telegram_notification_normalization_2026_07_28/IMPLEMENTATION_CLOSEOUT.md` | Implementation Closeout | review_required | OK | `ebc7e4bb6e23` |
+| `docs/ops/alerts/telegram_notification_normalization_2026_07_28/OPERATOR_ROLLOUT_CHECKLIST.md` | Operator Rollout Checklist | review_required | OK | `cecc98a011e2` |
+| `docs/ops/alerts/telegram_notification_normalization_2026_07_28/REMEDIATION_CLOSEOUT.md` | Remediation Closeout — Telegram Notification Normalization | review_required | OK | `189f6cf8ca12` |
+| `docs/ops/alerts/telegram_notification_normalization_2026_07_28/ROLLBACK.md` | Rollback | review_required | OK | `04d3d29aee88` |
+| `docs/ops/alerts/telegram_notification_normalization_2026_07_28/ROUTE_AND_SCHEMA_MAP.md` | Route and Schema Map | review_required | OK | `57ca8f1c1e68` |
+| `docs/ops/alerts/telegram_notification_normalization_2026_07_28/SENDER_INVENTORY.md` | Sender Inventory | review_required | OK | `3e7f886c89ce` |
+| `docs/ops/alerts/telegram_notification_normalization_2026_07_28/STAGE0_BASELINE.md` | Stage 0 Baseline | review_required | OK | `0fd4701d6efb` |
+| `docs/ops/alerts/telegram_notification_normalization_2026_07_28/TRADE_AI_TELEGRAM_NOTIFICATION_DUE_DILIGENCE_2026-07-28.md` | Trade AI Telegram Notification Due-Diligence Report | review_required | OK | `12cc5e2aa292` |
+| `docs/ops/bakeoff-2026-08-21/README.md` | Lane bake-off 2026-08-21 — operator-blind quality half | review_required | OK | `fbb09d7db965` |
+| `docs/ops/bakeoff-2026-08-21/operator_blind.md` | Blind ranking sheet — Lane bake-off 2026-08-21 | review_required | OK | `caf7b3f49130` |
+| `docs/ops/deepseek-v4-mainline-2026-08-03/FINAL_REPORT.md` | DeepSeek V4 Mainline Integration Report | review_required | OK | `29d541688fd1` |
+| `docs/ops/deepseek-v4-mainline-2026-08-03/ROLLBACK.md` | Rollback | review_required | OK | `e39ac9129fda` |
+| `docs/ops/deepseek-v4-mainline-2026-08-03/SECURITY_AND_AUTHORITY_REVIEW.md` | Security and authority review — DeepSeek V4 mainline | review_required | OK | `6ef6c7ff0e9b` |
+| `docs/ops/deepseek-v4-mainline-2026-08-03/SERVICE_RUNTIME_OPERATOR_STEPS.md` | Service-runtime DeepSeek credential wiring (operator-approved only) | review_required | OK | `7517d436573f` |
+| `docs/ops/deepseek-v4-mainline-2026-08-03/V3_ROUTE_TEST_RESULTS.md` | V3 route/subtab maturity results | review_required | OK | `9e4ae2f55bda` |
+| `docs/ops/incident-gate-a-canonical-store-hygiene.md` | Gate A Canonical Store Hygiene Incident | review_required | OK | `fc3f3944515a` |
+| `docs/ops/provider-spend-attribution/README.md` | Provider spend attribution | review_required | OK | `df44cfc4ee62` |
 | `docs/options-module.md` | Options Module — Architecture & Operations | review_required | OK | `c5c94a4d61dc` |
-| `docs/paper_trading/PHASE179A_PAPER_TRADE_SOURCE_INVENTORY.md` | Phase 179A: Paper Trade Source Inventory | review_required | MISSING HEADER | `90355603570e` |
-| `docs/paper_trading/PHASE179C_CURRENT_PAPER_TRADE_STATISTICS_REPORT.md` | Phase 179C: Current Paper Trade Statistics Report | review_required | MISSING HEADER | `176722ef3a31` |
-| `docs/paper_trading/PHASE179D_STATISTICAL_READINESS_THRESHOLDS.md` | Phase 179D: Statistical Readiness Thresholds | review_required | MISSING HEADER | `96c4de291eb1` |
-| `docs/paper_trading/PHASE179E_PAPER_TRADING_READINESS_DASHBOARD_REPORT.md` | Phase 179E: Paper Trading Readiness Dashboard Report | review_required | MISSING HEADER | `4df83893d809` |
-| `docs/paper_trading/PHASE186K_STOP_TO_TRAILING_CONVERSION_AUDIT.md` | Phase 186K: Hard-Stop to Trailing-Stop Conversion Audit | review_required | MISSING HEADER | `623533cd25c7` |
-| `docs/paper_trading/PHASE186L_TRAILING_STOP_ALGORITHM_SPECIFICATION.md` | Phase 186L: Trailing Stop Algorithm Specification | review_required | MISSING HEADER | `e055b01c6472` |
+| `docs/paper_trading/PHASE179A_PAPER_TRADE_SOURCE_INVENTORY.md` | Phase 179A: Paper Trade Source Inventory | review_required | OK | `72664d5cf493` |
+| `docs/paper_trading/PHASE179C_CURRENT_PAPER_TRADE_STATISTICS_REPORT.md` | Phase 179C: Current Paper Trade Statistics Report | review_required | OK | `95ccbd19ce31` |
+| `docs/paper_trading/PHASE179D_STATISTICAL_READINESS_THRESHOLDS.md` | Phase 179D: Statistical Readiness Thresholds | review_required | OK | `cebd18783641` |
+| `docs/paper_trading/PHASE179E_PAPER_TRADING_READINESS_DASHBOARD_REPORT.md` | Phase 179E: Paper Trading Readiness Dashboard Report | review_required | OK | `a191c7c6c990` |
+| `docs/paper_trading/PHASE186K_STOP_TO_TRAILING_CONVERSION_AUDIT.md` | Phase 186K: Hard-Stop to Trailing-Stop Conversion Audit | review_required | OK | `7910d9e429be` |
+| `docs/paper_trading/PHASE186L_TRAILING_STOP_ALGORITHM_SPECIFICATION.md` | Phase 186L: Trailing Stop Algorithm Specification | review_required | OK | `4b3ba04029af` |
 | `docs/patches/2026-06-15_stage2b_intent_persistence_fix.md` | Stage 2b Schwab Pilot Hotfix — Intent Persistence Before Approval | review_required | OK | `0f35a94b1ef8` |
-| `docs/project/CI_EVIDENCE_LATEST.md` | CI Evidence — Release Readiness Proof | current_phase_keep | MISSING HEADER | `1d9307f1e8f8` |
-| `docs/project/CLOSED_LOOP_ALL_TRADES_ABSTRACTION_20260606.md` | Closed-Loop All-Trades Abstraction (2026-06-06) | current_phase_keep | MISSING HEADER | `14f49c2429e7` |
-| `docs/project/CLOSED_LOOP_ALL_TRADES_ABSTRACTION_DUE_DILIGENCE_20260606.md` | Closed-Loop All-Trades Abstraction — Due Diligence (2026-06-06) | current_phase_keep | MISSING HEADER | `3a38580a8f5f` |
-| `docs/project/CLOSED_LOOP_IMPORTED_EDGE_COMPARISON_20260606.md` | Closed-Loop Imported Trade Edge Comparison (2026-06-06) | current_phase_keep | MISSING HEADER | `d6ef0ca0538c` |
-| `docs/project/CLOSED_LOOP_LEARNING_CERTIFICATION_AUDIT_20260605.md` | Closed-Loop Learning Certification Audit (2026-06-05) | current_phase_keep | MISSING HEADER | `c6f5c8111637` |
-| `docs/project/CLOSED_LOOP_LEARNING_CERTIFICATION_REAUDIT_20260605.md` | Closed-Loop Learning Certification — RE-AUDIT (2026-06-05, after Steps 1–6) | current_phase_keep | MISSING HEADER | `8f5135975722` |
-| `docs/project/CLOSED_LOOP_LEARNING_CERTIFICATION_REAUDIT_ALL_TRADES_20260606.md` | Closed-Loop Learning Certification — ALL-TRADES RE-AUDIT (2026-06-06) | current_phase_keep | MISSING HEADER | `2861a0e7da39` |
-| `docs/project/CLOSED_LOOP_NEWS_LINKAGE_20260606.md` | Closed-Loop Structured News Linkage (2026-06-06) | current_phase_keep | MISSING HEADER | `37deae8b5d9f` |
-| `docs/project/CLOSED_LOOP_STEP1_EXECUTION_LINEAGE_20260605.md` | Closed-Loop Step 1 — Execution Lineage (2026-06-05) | current_phase_keep | MISSING HEADER | `74b223a87ff6` |
-| `docs/project/CLOSED_LOOP_STEP1_LINEAGE_DUE_DILIGENCE_20260605.md` | Closed-Loop Step 1 — Execution Lineage Due Diligence (2026-06-05) | current_phase_keep | MISSING HEADER | `8274d3848c97` |
-| `docs/project/CLOSED_LOOP_STEP2_HERMES_TRADE_LINKAGE_20260605.md` | Closed-Loop Step 2 — Hermes Trade-Reflection Linkage (2026-06-05) | current_phase_keep | MISSING HEADER | `84a61a3a7e27` |
-| `docs/project/CLOSED_LOOP_STEP3_KEYSPACE_UNIFICATION_20260605.md` | Closed-Loop Step 3 — Keyspace Unification (2026-06-05) | current_phase_keep | MISSING HEADER | `275b827fe8b8` |
-| `docs/project/CLOSED_LOOP_STEP4_EDGE_COMPARISON_20260605.md` | Closed-Loop Step 4 — Post-Exit Backtest (Edge) Comparison (2026-06-05) | current_phase_keep | MISSING HEADER | `5579293978b2` |
-| `docs/project/CLOSED_LOOP_STEP5_SHADOW_DB_AND_FEEDBACK_20260605.md` | Closed-Loop Step 5 — Shadow Scores → DB + Loop-Closure Flag (2026-06-05) | current_phase_keep | MISSING HEADER | `e1ddf278d909` |
-| `docs/project/CLOSED_LOOP_STEP6_LESSONS_TO_SCORING_SHADOW_20260605.md` | Closed-Loop Step 6 — Lessons → Scoring (Shadow-First Evidence) (2026-06-05) | current_phase_keep | MISSING HEADER | `042a9247f66c` |
-| `docs/project/CLOSED_LOOP_STEP7_HERMES_PAPER_TARGETING_20260605.md` | Closed-Loop Step 7 — Hermes Paper-Loop Targeting (2026-06-05) | current_phase_keep | MISSING HEADER | `becaee0eaa09` |
-| `docs/project/COST_BASIS_JUNE5_CSV_REPAIR_20260605.md` | Cost Basis + Income Repair from June 5 CSVs (2026-06-05) | current_phase_keep | MISSING HEADER | `850e9276c275` |
+| `docs/project/CI_EVIDENCE_LATEST.md` | CI Evidence — Release Readiness Proof | current_phase_keep | OK | `4c3673a67e0a` |
+| `docs/project/CLOSED_LOOP_ALL_TRADES_ABSTRACTION_20260606.md` | Closed-Loop All-Trades Abstraction (2026-06-06) | current_phase_keep | OK | `82b9d6a350f7` |
+| `docs/project/CLOSED_LOOP_ALL_TRADES_ABSTRACTION_DUE_DILIGENCE_20260606.md` | Closed-Loop All-Trades Abstraction — Due Diligence (2026-06-06) | current_phase_keep | OK | `06306949c580` |
+| `docs/project/CLOSED_LOOP_IMPORTED_EDGE_COMPARISON_20260606.md` | Closed-Loop Imported Trade Edge Comparison (2026-06-06) | current_phase_keep | OK | `d1472f1967df` |
+| `docs/project/CLOSED_LOOP_LEARNING_CERTIFICATION_AUDIT_20260605.md` | Closed-Loop Learning Certification Audit (2026-06-05) | current_phase_keep | OK | `fa455dbd058f` |
+| `docs/project/CLOSED_LOOP_LEARNING_CERTIFICATION_REAUDIT_20260605.md` | Closed-Loop Learning Certification — RE-AUDIT (2026-06-05, after Steps 1–6) | current_phase_keep | OK | `25a701150571` |
+| `docs/project/CLOSED_LOOP_LEARNING_CERTIFICATION_REAUDIT_ALL_TRADES_20260606.md` | Closed-Loop Learning Certification — ALL-TRADES RE-AUDIT (2026-06-06) | current_phase_keep | OK | `db0ce06f1b67` |
+| `docs/project/CLOSED_LOOP_NEWS_LINKAGE_20260606.md` | Closed-Loop Structured News Linkage (2026-06-06) | current_phase_keep | OK | `0298f3420f32` |
+| `docs/project/CLOSED_LOOP_STEP1_EXECUTION_LINEAGE_20260605.md` | Closed-Loop Step 1 — Execution Lineage (2026-06-05) | current_phase_keep | OK | `5a561d1fbb89` |
+| `docs/project/CLOSED_LOOP_STEP1_LINEAGE_DUE_DILIGENCE_20260605.md` | Closed-Loop Step 1 — Execution Lineage Due Diligence (2026-06-05) | current_phase_keep | OK | `f2006a3bb64d` |
+| `docs/project/CLOSED_LOOP_STEP2_HERMES_TRADE_LINKAGE_20260605.md` | Closed-Loop Step 2 — Hermes Trade-Reflection Linkage (2026-06-05) | current_phase_keep | OK | `b8bc267accef` |
+| `docs/project/CLOSED_LOOP_STEP3_KEYSPACE_UNIFICATION_20260605.md` | Closed-Loop Step 3 — Keyspace Unification (2026-06-05) | current_phase_keep | OK | `6ff09bee1086` |
+| `docs/project/CLOSED_LOOP_STEP4_EDGE_COMPARISON_20260605.md` | Closed-Loop Step 4 — Post-Exit Backtest (Edge) Comparison (2026-06-05) | current_phase_keep | OK | `5f8af0f94bb5` |
+| `docs/project/CLOSED_LOOP_STEP5_SHADOW_DB_AND_FEEDBACK_20260605.md` | Closed-Loop Step 5 — Shadow Scores → DB + Loop-Closure Flag (2026-06-05) | current_phase_keep | OK | `4759dbd473f4` |
+| `docs/project/CLOSED_LOOP_STEP6_LESSONS_TO_SCORING_SHADOW_20260605.md` | Closed-Loop Step 6 — Lessons → Scoring (Shadow-First Evidence) (2026-06-05) | current_phase_keep | OK | `585e535eb040` |
+| `docs/project/CLOSED_LOOP_STEP7_HERMES_PAPER_TARGETING_20260605.md` | Closed-Loop Step 7 — Hermes Paper-Loop Targeting (2026-06-05) | current_phase_keep | OK | `8a1bba3f22ee` |
+| `docs/project/COST_BASIS_JUNE5_CSV_REPAIR_20260605.md` | Cost Basis + Income Repair from June 5 CSVs (2026-06-05) | current_phase_keep | OK | `98f848722572` |
 | `docs/project/CURRENT_PROJECT_CONTEXT.md` | Current Project Context — Trade AI v12 | current_phase_keep | OK | `b258a09ca762` |
-| `docs/project/DOCS_CONSOLIDATION_2026_06_22.md` | Documentation Consolidation — 2026-06-22 (A1A) | current_phase_keep | MISSING HEADER | `8d1a2185eebd` |
+| `docs/project/DOCS_CONSOLIDATION_2026_06_22.md` | Documentation Consolidation — 2026-06-22 (A1A) | current_phase_keep | OK | `523740e5b77b` |
 | `docs/project/DRIVE_SYNC_RUNTIME_DUMP_EXCLUDES_20260606.md` | Drive Sync — Hermes Runtime-Dump Excludes (2026-06-06) | current_phase_keep | OK | `babeb5043ec7` |
 | `docs/project/ETF_FUND_INSTRUMENTS.md` | ETFs & Funds as first-class instruments | current_phase_keep | OK | `12dad57c57ec` |
 | `docs/project/EXECUTION_COACHING_QUEUE_20260611.md` | Daily Execution Coaching Queue — governance | current_phase_keep | OK | `3e9393c1bd5d` |
-| `docs/project/FEE_EFFICIENCY_ANALYZER_2026-06-21.md` | Fee / Cost-Efficiency Analyzer (2026-06-21) | current_phase_keep | MISSING HEADER | `70737db91cba` |
-| `docs/project/HERMES_ALL_TRADES_REFLECTION_DRAIN_20260606.md` | Hermes All-Trades Reflection Drain — Batch 1 (2026-06-06) | current_phase_keep | MISSING HEADER | `82dcf948c7b4` |
-| `docs/project/HERMES_DAILY_COMMIT_CRON_VERIFICATION_2026-06-19.md` | Hermes Daily Commit Cron — Verification (2026-06-19) | current_phase_keep | MISSING HEADER | `bca85ea0af84` |
-| `docs/project/HERMES_SUMMARY_RECOVERY_20260606.md` | Hermes Bounded Summary Recovery (2026-06-06) | current_phase_keep | MISSING HEADER | `6be34ce1af8b` |
+| `docs/project/FEE_EFFICIENCY_ANALYZER_2026-06-21.md` | Fee / Cost-Efficiency Analyzer (2026-06-21) | current_phase_keep | OK | `c83efba35f0d` |
+| `docs/project/HERMES_ALL_TRADES_REFLECTION_DRAIN_20260606.md` | Hermes All-Trades Reflection Drain — Batch 1 (2026-06-06) | current_phase_keep | OK | `fd55d5bb2b13` |
+| `docs/project/HERMES_DAILY_COMMIT_CRON_VERIFICATION_2026-06-19.md` | Hermes Daily Commit Cron — Verification (2026-06-19) | current_phase_keep | OK | `6d2e61319778` |
+| `docs/project/HERMES_SUMMARY_RECOVERY_20260606.md` | Hermes Bounded Summary Recovery (2026-06-06) | current_phase_keep | OK | `6834c49a9169` |
 | `docs/project/INFERENCE_LAYERS.md` | Inference Layers — Modular Higher-Order Reasoning | current_phase_keep | OK | `19514f1614d3` |
-| `docs/project/INGESTION_INTELLIGENCE_REVIEW_20260611.md` | Ingestion & Intelligence Due-Diligence Review (Finviz / Trade AI / Hermes) — 2026-06-11 | current_phase_keep | MISSING HEADER | `9db78c3e84d1` |
-| `docs/project/MARIA_WATCHLIST_FABRICATION_FIX_2026-06-19.md` | Maria Watchlist Fabrication — Audit & Fix (2026-06-19) | current_phase_keep | MISSING HEADER | `cd3fbed49332` |
+| `docs/project/INGESTION_INTELLIGENCE_REVIEW_20260611.md` | Ingestion & Intelligence Due-Diligence Review (Finviz / Trade AI / Hermes) — 2026-06-11 | current_phase_keep | OK | `7bb8f3e49f85` |
+| `docs/project/MARIA_WATCHLIST_FABRICATION_FIX_2026-06-19.md` | Maria Watchlist Fabrication — Audit & Fix (2026-06-19) | current_phase_keep | OK | `7471877e3a98` |
 | `docs/project/MASTER_REWRITE_AND_ARCHIVE_REPORT_2026_05_31.md` | MASTER Rewrite and Architecture Consolidation Report | current_phase_keep | OK | `ad4384746a28` |
-| `docs/project/MATURITY_AUDIT_20260611.md` | Trade AI v12 — System Maturity Audit (2026-06-11) | current_phase_keep | MISSING HEADER | `d61f65411397` |
-| `docs/project/MATURITY_AUDIT_2026_06_22.md` | Trade AI v12 — System Maturity Audit (2026-06-22) | current_phase_keep | MISSING HEADER | `d9000dff3187` |
-| `docs/project/MEMORY_NOTES_FOR_NEXT_SESSION_2026_05_28.md` | Memory Notes for Next Session — 2026-05-28 | current_phase_keep | MISSING HEADER | `a32ca821b59e` |
-| `docs/project/MEMORY_NOTES_FOR_NEXT_SESSION_2026_05_29.md` | Memory Notes for Next Session — 2026-05-29 | current_phase_keep | MISSING HEADER | `1ab7c347e96a` |
-| `docs/project/MEMORY_NOTES_FOR_NEXT_SESSION_2026_05_29_FINAL.md` | Memory Notes for Next Session — 2026-05-29 Final | current_phase_keep | MISSING HEADER | `d1681359fee6` |
+| `docs/project/MATURITY_AUDIT_20260611.md` | Trade AI v12 — System Maturity Audit (2026-06-11) | current_phase_keep | OK | `2466e2b45f7f` |
+| `docs/project/MATURITY_AUDIT_2026_06_22.md` | Trade AI v12 — System Maturity Audit (2026-06-22) | current_phase_keep | OK | `467a93fb3db4` |
+| `docs/project/MEMORY_NOTES_FOR_NEXT_SESSION_2026_05_28.md` | Memory Notes for Next Session — 2026-05-28 | current_phase_keep | OK | `74e833b204a5` |
+| `docs/project/MEMORY_NOTES_FOR_NEXT_SESSION_2026_05_29.md` | Memory Notes for Next Session — 2026-05-29 | current_phase_keep | OK | `4312618428c0` |
+| `docs/project/MEMORY_NOTES_FOR_NEXT_SESSION_2026_05_29_FINAL.md` | Memory Notes for Next Session — 2026-05-29 Final | current_phase_keep | OK | `6994e2cd6667` |
 | `docs/project/METRIC_DEFINITIONS.md` | Command Center v3 Metric Definitions | current_phase_keep | OK | `0d4861eb940f` |
-| `docs/project/NEXT_SESSION_RUNBOOK_2026_05_28.md` | Next Session Runbook — 2026-05-28 | current_phase_keep | MISSING HEADER | `c6b09763cf22` |
-| `docs/project/NEXT_SESSION_RUNBOOK_2026_05_29.md` | Next Session Runbook — 2026-05-29 | current_phase_keep | MISSING HEADER | `cb966196c98e` |
-| `docs/project/NEXT_SESSION_RUNBOOK_2026_05_29_FINAL.md` | Next Session Runbook — 2026-05-29 Final | current_phase_keep | MISSING HEADER | `9ffa78ff0802` |
-| `docs/project/OPEN_TRADES_FALSE_POSITIVE_ROOT_CAUSE_20260605.md` | Open Trades False-Positive Root Cause & Fix (2026-06-05) | current_phase_keep | MISSING HEADER | `dce3c49eb81b` |
+| `docs/project/NEXT_SESSION_RUNBOOK_2026_05_28.md` | Next Session Runbook — 2026-05-28 | current_phase_keep | OK | `fc9c51c63cf1` |
+| `docs/project/NEXT_SESSION_RUNBOOK_2026_05_29.md` | Next Session Runbook — 2026-05-29 | current_phase_keep | OK | `47f9952fb696` |
+| `docs/project/NEXT_SESSION_RUNBOOK_2026_05_29_FINAL.md` | Next Session Runbook — 2026-05-29 Final | current_phase_keep | OK | `ad0cfbb596cc` |
+| `docs/project/OPEN_TRADES_FALSE_POSITIVE_ROOT_CAUSE_20260605.md` | Open Trades False-Positive Root Cause & Fix (2026-06-05) | current_phase_keep | OK | `d87bb0e3fa51` |
 | `docs/project/PHASE100_SYSTEM_MILESTONE_AUDIT_CLOSEOUT.md` | Phase 100 — System Milestone Audit Closeout | current_phase_keep | OK | `07ce805b766e` |
 | `docs/project/PHASE101_PRODUCTION_OBSERVATION_CLOSEOUT.md` | Phase 101 — Production Observation Closeout | current_phase_keep | OK | `5592e822bf43` |
 | `docs/project/PHASE102_OLD_OVERNIGHT_RETIREMENT_CLOSEOUT.md` | Phase 102 — Old Overnight Retirement Closeout | current_phase_keep | OK | `86278faea729` |
@@ -1583,53 +1583,53 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/project/PHASE107_SELF_LEARNING_RUNTIME_INTERACTIVITY_FIX_CLOSEOUT.md` | Phase 107+108 — Dashboard Runtime Interactivity + Operator Workflow Closeout | current_phase_keep | OK | `6301b0e3d5f2` |
 | `docs/project/PHASE109_DASHBOARD_RUNTIME_DEFECT_FIX_CLOSEOUT.md` | Phase 109 — Dashboard Runtime Defect Fix Closeout | current_phase_keep | OK | `81be7c0c35af` |
 | `docs/project/PHASE111_AUTHORITY_BOUNDARY_SYS_ACTIONABILITY_CLOSEOUT.md` | Phase 111 — Authority Boundary & SYS Actionability Closeout | current_phase_keep | OK | `85caa9cfdf69` |
-| `docs/project/PHASE113_PROPOSAL_DRAFT_SANDBOX_DESIGN_CLOSEOUT.md` | Phase 113 — Proposal Draft Sandbox Design Closeout | current_phase_keep | MISSING HEADER | `536434e94e17` |
+| `docs/project/PHASE113_PROPOSAL_DRAFT_SANDBOX_DESIGN_CLOSEOUT.md` | Phase 113 — Proposal Draft Sandbox Design Closeout | current_phase_keep | OK | `b7d680558a13` |
 | `docs/project/PHASE11_OBSERVATION_AND_DOCKER_PREVIEW_CLOSEOUT.md` | Phase 11 — Observation and Docker Preview Closeout | current_phase_keep | OK | `dbbc7243db5d` |
 | `docs/project/PHASE12_DOCKER_VERSION_CHECK_CLOSEOUT.md` | Phase 12 — Docker Version-Check Pilot Closeout | current_phase_keep | OK | `3a187b2c1f68` |
-| `docs/project/PHASE130_TONIGHT_LEVEL6_OPERATIONS_CLOSEOUT.md` | Phase 130 — Tonight Level 6 Operations Closeout | current_phase_keep | MISSING HEADER | `3b610ea21bd2` |
+| `docs/project/PHASE130_TONIGHT_LEVEL6_OPERATIONS_CLOSEOUT.md` | Phase 130 — Tonight Level 6 Operations Closeout | current_phase_keep | OK | `9551686ff239` |
 | `docs/project/PHASE13_PROMOTION_REVIEW_LOOP_CLOSEOUT.md` | Phase 13 — Promotion Review Loop Closeout | current_phase_keep | OK | `a084ed012adb` |
 | `docs/project/PHASE14_PROMOTION_REVIEW_DASHBOARD_CLOSEOUT.md` | Phase 14 — Promotion Review Dashboard Closeout | current_phase_keep | OK | `946df57ae797` |
 | `docs/project/PHASE16_SEARXNG_SHARED_LAYER_CLOSEOUT.md` | Phase 16 — SearXNG Shared Layer Closeout | current_phase_keep | OK | `3bced6372986` |
-| `docs/project/PHASE179_PAPER_TRADING_VOLUME_STATISTICAL_READINESS_CLOSEOUT.md` | Phase 179: Paper Trading Volume and Statistical Readiness Audit — CLOSEOUT | current_phase_keep | MISSING HEADER | `ca67cecb3825` |
+| `docs/project/PHASE179_PAPER_TRADING_VOLUME_STATISTICAL_READINESS_CLOSEOUT.md` | Phase 179: Paper Trading Volume and Statistical Readiness Audit — CLOSEOUT | current_phase_keep | OK | `1d053e0a3fd6` |
 | `docs/project/PHASE17_SEARXNG_MANUAL_WRAPPER_CLOSEOUT.md` | Phase 17 — SearXNG Manual Wrapper Closeout | current_phase_keep | OK | `283059a6865f` |
-| `docs/project/PHASE180_ATM_PAPER_SCALE_UP_PLAN_CLOSEOUT.md` | Phase 180: ATM Paper Trading Scale-Up Plan — CLOSEOUT | current_phase_keep | MISSING HEADER | `6531b78ea5b8` |
-| `docs/project/PHASE181_PAPER_TRADE_CLOSED_LOOP_LEARNING_VALIDATION_CLOSEOUT.md` | Phase 181: Paper Trade Closed-Loop Learning Validation — CLOSEOUT | current_phase_keep | MISSING HEADER | `2dd20728ac18` |
-| `docs/project/PHASE182_LIVE_TRADING_READINESS_GATE_CLOSEOUT.md` | Phase 182: Live Trading Readiness Gate — CLOSEOUT | current_phase_keep | MISSING HEADER | `53c9eec70ce5` |
-| `docs/project/PHASE186_BROKER_TIMING_EXTENDED_HOURS_TRAILING_STOP_CLOSEOUT.md` | Phase 186: Broker Timing, Extended Hours, and Trailing Stop Audit — CLOSEOUT | current_phase_keep | MISSING HEADER | `58141734b465` |
-| `docs/project/PHASE186_STAGE1_TOMORROW_PIPELINE_READY_CLOSEOUT.md` | Phase 186: Stage 1 Tomorrow Pipeline Ready — CLOSEOUT | current_phase_keep | MISSING HEADER | `16c0b5274cf1` |
-| `docs/project/PHASE188_MARKET_OPEN_ELMT_SNOW_PROFIT_PROTECTION_CLOSEOUT.md` | PHASE 188 — Market-Open ELMT & SNOW Profit-Protection Review — CLOSEOUT | current_phase_keep | MISSING HEADER | `d36082439c54` |
-| `docs/project/PHASE189_MARKET_OPEN_ROOT_CAUSE_PROTECTION_CLOSEOUT.md` | PHASE 189 — Market-Open Watch + Protection Root-Cause Investigation — CLOSEOUT | current_phase_keep | MISSING HEADER | `b34bcdc38fd5` |
+| `docs/project/PHASE180_ATM_PAPER_SCALE_UP_PLAN_CLOSEOUT.md` | Phase 180: ATM Paper Trading Scale-Up Plan — CLOSEOUT | current_phase_keep | OK | `1d1d0a824ee7` |
+| `docs/project/PHASE181_PAPER_TRADE_CLOSED_LOOP_LEARNING_VALIDATION_CLOSEOUT.md` | Phase 181: Paper Trade Closed-Loop Learning Validation — CLOSEOUT | current_phase_keep | OK | `e6a89fc32bf3` |
+| `docs/project/PHASE182_LIVE_TRADING_READINESS_GATE_CLOSEOUT.md` | Phase 182: Live Trading Readiness Gate — CLOSEOUT | current_phase_keep | OK | `3b6f376840bb` |
+| `docs/project/PHASE186_BROKER_TIMING_EXTENDED_HOURS_TRAILING_STOP_CLOSEOUT.md` | Phase 186: Broker Timing, Extended Hours, and Trailing Stop Audit — CLOSEOUT | current_phase_keep | OK | `7fe35dc13ea8` |
+| `docs/project/PHASE186_STAGE1_TOMORROW_PIPELINE_READY_CLOSEOUT.md` | Phase 186: Stage 1 Tomorrow Pipeline Ready — CLOSEOUT | current_phase_keep | OK | `d4944bd2fd26` |
+| `docs/project/PHASE188_MARKET_OPEN_ELMT_SNOW_PROFIT_PROTECTION_CLOSEOUT.md` | PHASE 188 — Market-Open ELMT & SNOW Profit-Protection Review — CLOSEOUT | current_phase_keep | OK | `d7aa040d63d0` |
+| `docs/project/PHASE189_MARKET_OPEN_ROOT_CAUSE_PROTECTION_CLOSEOUT.md` | PHASE 189 — Market-Open Watch + Protection Root-Cause Investigation — CLOSEOUT | current_phase_keep | OK | `8e6aabde8476` |
 | `docs/project/PHASE18_SEARXNG_SOURCE_DISCOVERY_DRY_RUN_CLOSEOUT.md` | Phase 18 — SearXNG Source Discovery Dry-Run Closeout | current_phase_keep | OK | `d967bd278d6c` |
-| `docs/project/PHASE190_DURABLE_PROTECTION_GUARDRAILS_CLOSEOUT.md` | PHASE 190 — Durable Protection Guardrails Implementation — CLOSEOUT | current_phase_keep | MISSING HEADER | `ef18161195e0` |
-| `docs/project/PHASE191_ATM_PROFIT_PROTECTION_INTELLIGENCE_CLOSEOUT.md` | PHASE 191 — ATM Profit-Protection Intelligence — CLOSEOUT | current_phase_keep | MISSING HEADER | `77451e2dd7e5` |
-| `docs/project/PHASE192_OPERATOR_APPROVED_PAPER_PROTECTION_ADJUSTMENT_CLOSEOUT.md` | PHASE 192 — Operator-Approved Paper Protection Adjustment Workflow — CLOSEOUT | current_phase_keep | MISSING HEADER | `6bc51e24c9f7` |
-| `docs/project/PHASE193_PROFIT_PROTECTION_CLOSED_LOOP_CLOSEOUT.md` | PHASE 193 — Profit-Protection Advisory Close-Loop — CLOSEOUT | current_phase_keep | MISSING HEADER | `3307c6ed314f` |
-| `docs/project/PHASE194_MFE_FIX_AND_PIPELINE_SCHEDULING_CLOSEOUT.md` | PHASE 194 — MFE Units Fix + Protection Pipeline Scheduling — CLOSEOUT | current_phase_keep | MISSING HEADER | `a0c9e33420aa` |
-| `docs/project/PHASE195_CLOSE_TIMESTAMP_FIX_CLOSEOUT.md` | PHASE 195 — Close-Timestamp Capture Fix — CLOSEOUT | current_phase_keep | MISSING HEADER | `f7dd153f77cb` |
-| `docs/project/PHASE196_INTRADAY_MFE_CLOSEOUT.md` | PHASE 196 — Intraday MFE for Same-Day Scalps — CLOSEOUT | current_phase_keep | MISSING HEADER | `c68068af54b5` |
-| `docs/project/PHASE197_V3_JOURNAL_OUTCOMES_CLOSEOUT.md` | PHASE 197 — Surface Profit-Protection Outcomes in v3 Journal Hub — CLOSEOUT | current_phase_keep | MISSING HEADER | `da1d6cc72cf1` |
-| `docs/project/PHASE198_THRESHOLD_TUNING_CLOSEOUT.md` | PHASE 198 — Advisory Threshold Tuning Framework — CLOSEOUT | current_phase_keep | MISSING HEADER | `4a9f4ebccc9e` |
-| `docs/project/PHASE199_RUNTIME_CONTROL_PLANE_V3_GOVERNANCE_CLOSEOUT.md` | Phase 199 — Runtime Control Plane Consolidation + v3 Canonical UI Governance — CLOSEOUT | current_phase_keep | MISSING HEADER | `10ae7232d5d3` |
+| `docs/project/PHASE190_DURABLE_PROTECTION_GUARDRAILS_CLOSEOUT.md` | PHASE 190 — Durable Protection Guardrails Implementation — CLOSEOUT | current_phase_keep | OK | `3aa19cef5844` |
+| `docs/project/PHASE191_ATM_PROFIT_PROTECTION_INTELLIGENCE_CLOSEOUT.md` | PHASE 191 — ATM Profit-Protection Intelligence — CLOSEOUT | current_phase_keep | OK | `20fb53c93973` |
+| `docs/project/PHASE192_OPERATOR_APPROVED_PAPER_PROTECTION_ADJUSTMENT_CLOSEOUT.md` | PHASE 192 — Operator-Approved Paper Protection Adjustment Workflow — CLOSEOUT | current_phase_keep | OK | `55144fbb4606` |
+| `docs/project/PHASE193_PROFIT_PROTECTION_CLOSED_LOOP_CLOSEOUT.md` | PHASE 193 — Profit-Protection Advisory Close-Loop — CLOSEOUT | current_phase_keep | OK | `2b4dcbe31fa2` |
+| `docs/project/PHASE194_MFE_FIX_AND_PIPELINE_SCHEDULING_CLOSEOUT.md` | PHASE 194 — MFE Units Fix + Protection Pipeline Scheduling — CLOSEOUT | current_phase_keep | OK | `fdd78459320f` |
+| `docs/project/PHASE195_CLOSE_TIMESTAMP_FIX_CLOSEOUT.md` | PHASE 195 — Close-Timestamp Capture Fix — CLOSEOUT | current_phase_keep | OK | `e450cb8e2b20` |
+| `docs/project/PHASE196_INTRADAY_MFE_CLOSEOUT.md` | PHASE 196 — Intraday MFE for Same-Day Scalps — CLOSEOUT | current_phase_keep | OK | `ef7f79c9b899` |
+| `docs/project/PHASE197_V3_JOURNAL_OUTCOMES_CLOSEOUT.md` | PHASE 197 — Surface Profit-Protection Outcomes in v3 Journal Hub — CLOSEOUT | current_phase_keep | OK | `f3d023417d3a` |
+| `docs/project/PHASE198_THRESHOLD_TUNING_CLOSEOUT.md` | PHASE 198 — Advisory Threshold Tuning Framework — CLOSEOUT | current_phase_keep | OK | `e4ec997e2f9c` |
+| `docs/project/PHASE199_RUNTIME_CONTROL_PLANE_V3_GOVERNANCE_CLOSEOUT.md` | Phase 199 — Runtime Control Plane Consolidation + v3 Canonical UI Governance — CLOSEOUT | current_phase_keep | OK | `3b49fd8117dc` |
 | `docs/project/PHASE19_SEARXNG_STAGED_SOURCE_INGESTION_CLOSEOUT.md` | Phase 19 — SearXNG Staged Source Ingestion Closeout | current_phase_keep | OK | `3ddcb758856d` |
-| `docs/project/PHASE200_GOVERNANCE_CRON_MIGRATION_CLOSEOUT.md` | Phase 200 — Governance Cron Migration Pilot — CLOSEOUT | current_phase_keep | MISSING HEADER | `5c8ad8438514` |
-| `docs/project/PHASE201_GOVERNANCE_TIMER_RETIREMENT_PORTFOLIO_PREFLIGHT_CLOSEOUT.md` | Phase 201 — Governance Timer Retirement + Portfolio-Maintenance Preflight — CLOSEOUT | current_phase_keep | MISSING HEADER | `e8293678f973` |
-| `docs/project/PHASE203_V3_EMPTY_SCANNER_ROOT_CAUSE_CLOSEOUT.md` | Phase 203 — v3 Empty Scanner Root-Cause — CLOSEOUT | current_phase_keep | MISSING HEADER | `7bae69396f27` |
-| `docs/project/PHASE204_PORTFOLIO_BACKUP_CADENCE_FIX_AND_PILOT_CLOSEOUT.md` | Phase 204 — Portfolio Backup-Cadence Fix & Pilot — CLOSEOUT | current_phase_keep | MISSING HEADER | `f2628af44c1e` |
-| `docs/project/PHASE205_LEGACY_BACKUP_RETIREMENT_20260606.md` | Phase 205 — Legacy Backup Path Retirement (2026-06-06, operator-approved) | current_phase_keep | MISSING HEADER | `6ef9255cc7cb` |
-| `docs/project/PHASE206_HERMES_LEGACY_AGENT_VISIBILITY_CLOSEOUT.md` | Phase 206 — Hermes Legacy/Retired Agent Visibility — Closeout — 2026-06-07 | current_phase_keep | MISSING HEADER | `95a39302eec4` |
-| `docs/project/PHASE207_DAILY_PORTFOLIO_REPORT_CADENCE_MIGRATION_CLOSEOUT.md` | Phase 207 — Daily Portfolio Report Cadence Migration — Closeout — 2026-06-07 | current_phase_keep | MISSING HEADER | `30badbb1fbbe` |
-| `docs/project/PHASE208_HERMES_END_TO_END_AGENT_AUDIT_CLOSEOUT.md` | Phase 208 — Hermes End-to-End Agent Audit — CLOSEOUT (2026-06-07) | current_phase_keep | MISSING HEADER | `0aa137874c35` |
-| `docs/project/PHASE208_WEEKLY_PORTFOLIO_REPORT_CADENCE_MIGRATION_CLOSEOUT.md` | Phase 208 — Weekly Portfolio Report Cadence Migration — Closeout — 2026-06-07 | current_phase_keep | MISSING HEADER | `0dfca150d099` |
-| `docs/project/PHASE209_HERMES_TRADEAI_WORKFLOW_MATRIX_CLOSEOUT.md` | Phase 209 — Hermes/TradeAI Workflow Matrix — CLOSEOUT (2026-06-07) | current_phase_keep | MISSING HEADER | `d7684fbb80f9` |
-| `docs/project/PHASE209_MONTHLY_PORTFOLIO_REPORT_CADENCE_MIGRATION_CLOSEOUT.md` | Phase 209 — Monthly Portfolio Report Cadence Migration — Closeout — 2026-06-07 | current_phase_keep | MISSING HEADER | `38bc6619df92` |
+| `docs/project/PHASE200_GOVERNANCE_CRON_MIGRATION_CLOSEOUT.md` | Phase 200 — Governance Cron Migration Pilot — CLOSEOUT | current_phase_keep | OK | `0ead0ad61c44` |
+| `docs/project/PHASE201_GOVERNANCE_TIMER_RETIREMENT_PORTFOLIO_PREFLIGHT_CLOSEOUT.md` | Phase 201 — Governance Timer Retirement + Portfolio-Maintenance Preflight — CLOSEOUT | current_phase_keep | OK | `33e05c3f1040` |
+| `docs/project/PHASE203_V3_EMPTY_SCANNER_ROOT_CAUSE_CLOSEOUT.md` | Phase 203 — v3 Empty Scanner Root-Cause — CLOSEOUT | current_phase_keep | OK | `d342381fe74e` |
+| `docs/project/PHASE204_PORTFOLIO_BACKUP_CADENCE_FIX_AND_PILOT_CLOSEOUT.md` | Phase 204 — Portfolio Backup-Cadence Fix & Pilot — CLOSEOUT | current_phase_keep | OK | `368dedd0148f` |
+| `docs/project/PHASE205_LEGACY_BACKUP_RETIREMENT_20260606.md` | Phase 205 — Legacy Backup Path Retirement (2026-06-06, operator-approved) | current_phase_keep | OK | `3ebb34ef51d2` |
+| `docs/project/PHASE206_HERMES_LEGACY_AGENT_VISIBILITY_CLOSEOUT.md` | Phase 206 — Hermes Legacy/Retired Agent Visibility — Closeout — 2026-06-07 | current_phase_keep | OK | `326d215e4882` |
+| `docs/project/PHASE207_DAILY_PORTFOLIO_REPORT_CADENCE_MIGRATION_CLOSEOUT.md` | Phase 207 — Daily Portfolio Report Cadence Migration — Closeout — 2026-06-07 | current_phase_keep | OK | `308ab2e29a8c` |
+| `docs/project/PHASE208_HERMES_END_TO_END_AGENT_AUDIT_CLOSEOUT.md` | Phase 208 — Hermes End-to-End Agent Audit — CLOSEOUT (2026-06-07) | current_phase_keep | OK | `a2fcd0af1bfc` |
+| `docs/project/PHASE208_WEEKLY_PORTFOLIO_REPORT_CADENCE_MIGRATION_CLOSEOUT.md` | Phase 208 — Weekly Portfolio Report Cadence Migration — Closeout — 2026-06-07 | current_phase_keep | OK | `048c73ab38ad` |
+| `docs/project/PHASE209_HERMES_TRADEAI_WORKFLOW_MATRIX_CLOSEOUT.md` | Phase 209 — Hermes/TradeAI Workflow Matrix — CLOSEOUT (2026-06-07) | current_phase_keep | OK | `0d6560cb5446` |
+| `docs/project/PHASE209_MONTHLY_PORTFOLIO_REPORT_CADENCE_MIGRATION_CLOSEOUT.md` | Phase 209 — Monthly Portfolio Report Cadence Migration — Closeout — 2026-06-07 | current_phase_keep | OK | `bdd4b34d87cd` |
 | `docs/project/PHASE20_HERMES_AGENT_MODEL_AND_ACTIONABILITY_CLOSEOUT.md` | Phase 20 — Hermes Agent Model and Actionability Standard Closeout | current_phase_keep | OK | `eea66b792db3` |
-| `docs/project/PHASE210_HERMES_RESEARCH_SELF_LEARNING_MATRIX_CLOSEOUT.md` | Phase 210 — Hermes Research & Self-Learning Architecture — CLOSEOUT (2026-06-07) | current_phase_keep | MISSING HEADER | `6ce407f0a1d7` |
-| `docs/project/PHASE210_LOOKTHROUGH_CADENCE_MIGRATION_CLOSEOUT.md` | Phase 210 — Lookthrough Cadence Migration — Closeout — 2026-06-07 | current_phase_keep | MISSING HEADER | `dd3327e7b292` |
-| `docs/project/PHASE212_CODEX_HEADLESS_HERMES_BUILD_EVALUATION_CLOSEOUT.md` | PHASE 212 — Codex Headless Hermes Build Evaluation — CLOSEOUT (2026-06-07) | current_phase_keep | MISSING HEADER | `e6c53cbddaee` |
-| `docs/project/PHASE213_CODEX_HEADLESS_CLOSEOUT_EXTERNAL_LANE_HARDENING.md` | PHASE 213 — Codex Headless Closeout & External Lane Hardening — CLOSEOUT (2026-06-07) | current_phase_keep | MISSING HEADER | `0b63da6c9736` |
-| `docs/project/PHASE214_COORDINATOR_KILLSWITCH_REPOINT_CLOSEOUT.md` | PHASE 214 — Coordinator Kill-Switch Repoint — CLOSEOUT (2026-06-07) | current_phase_keep | MISSING HEADER | `f9b43dbea58c` |
-| `docs/project/PHASE216_HERMES_DOCUMENTATION_PORTAL_TRUTH_REFRESH_CLOSEOUT.md` | PHASE 216 — Hermes Documentation Portal-Truth Refresh — CLOSEOUT (2026-06-07) | current_phase_keep | MISSING HEADER | `505e55d6a947` |
-| `docs/project/PHASE217_PORTAL_SYSTEM_DOC_ALIGNMENT_CLOSEOUT.md` | PHASE 217 — Portal / System / Doc Alignment — CLOSEOUT (2026-06-07) | current_phase_keep | MISSING HEADER | `1a52bd955f3d` |
+| `docs/project/PHASE210_HERMES_RESEARCH_SELF_LEARNING_MATRIX_CLOSEOUT.md` | Phase 210 — Hermes Research & Self-Learning Architecture — CLOSEOUT (2026-06-07) | current_phase_keep | OK | `16f80be2cc47` |
+| `docs/project/PHASE210_LOOKTHROUGH_CADENCE_MIGRATION_CLOSEOUT.md` | Phase 210 — Lookthrough Cadence Migration — Closeout — 2026-06-07 | current_phase_keep | OK | `3357836aa6ff` |
+| `docs/project/PHASE212_CODEX_HEADLESS_HERMES_BUILD_EVALUATION_CLOSEOUT.md` | PHASE 212 — Codex Headless Hermes Build Evaluation — CLOSEOUT (2026-06-07) | current_phase_keep | OK | `1f37ae0fc795` |
+| `docs/project/PHASE213_CODEX_HEADLESS_CLOSEOUT_EXTERNAL_LANE_HARDENING.md` | PHASE 213 — Codex Headless Closeout & External Lane Hardening — CLOSEOUT (2026-06-07) | current_phase_keep | OK | `a5d12c5cbfb4` |
+| `docs/project/PHASE214_COORDINATOR_KILLSWITCH_REPOINT_CLOSEOUT.md` | PHASE 214 — Coordinator Kill-Switch Repoint — CLOSEOUT (2026-06-07) | current_phase_keep | OK | `b009f7d0d72e` |
+| `docs/project/PHASE216_HERMES_DOCUMENTATION_PORTAL_TRUTH_REFRESH_CLOSEOUT.md` | PHASE 216 — Hermes Documentation Portal-Truth Refresh — CLOSEOUT (2026-06-07) | current_phase_keep | OK | `6b591cc8ec07` |
+| `docs/project/PHASE217_PORTAL_SYSTEM_DOC_ALIGNMENT_CLOSEOUT.md` | PHASE 217 — Portal / System / Doc Alignment — CLOSEOUT (2026-06-07) | current_phase_keep | OK | `241b74a7955c` |
 | `docs/project/PHASE21_HERMES_LIBRARIAN_DRY_RUN_CLOSEOUT.md` | Phase 21 — Hermes Librarian Dry-Run Closeout | current_phase_keep | OK | `fa28265de51c` |
 | `docs/project/PHASE22_RESEARCH_BACKLOG_STAGED_WRITE_CLOSEOUT.md` | Phase 22 — Research Backlog Staged-Write Pilot Closeout | current_phase_keep | OK | `060afdae1573` |
 | `docs/project/PHASE23_INCOME_ROTATION_RESEARCH_CLOSEOUT.md` | Phase 23 — Income-Rotation Research Discovery Closeout | current_phase_keep | OK | `ad693299b2ad` |
@@ -1679,12 +1679,12 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/project/PHASE72_FINVIZ_RECOVERY_CERTIFICATION_CLOSEOUT.md` | Phase 72 — Finviz Recovery Certification Closeout | current_phase_keep | OK | `188837054550` |
 | `docs/project/PHASE73_ALERT_DEDUPE_APPLY_CLOSEOUT.md` | Phase 73 — Alert Dedupe Apply Closeout | current_phase_keep | OK | `483bcfbbc3d0` |
 | `docs/project/PHASE74_FEED_HEALTH_DASHBOARD_CLOSEOUT.md` | Phase 74 — Feed Health Dashboard Closeout | current_phase_keep | OK | `d1021fa2cb55` |
-| `docs/project/PHASE75B_LEVEL6_CERTIFICATION_CRITERIA_AUDIT.md` | Phase 75B — Level 6 Certification Criteria Audit | current_phase_keep | MISSING HEADER | `8ea07c7a2d34` |
+| `docs/project/PHASE75B_LEVEL6_CERTIFICATION_CRITERIA_AUDIT.md` | Phase 75B — Level 6 Certification Criteria Audit | current_phase_keep | OK | `d60ef53f7cd8` |
 | `docs/project/PHASE75C_LEVEL6_CERTIFICATION_UPGRADE.md` | Phase 75C — Level 6 Certification Upgrade | current_phase_keep | OK | `327bc99f833b` |
 | `docs/project/PHASE75_LEVEL6_CERTIFICATION_UPGRADE_CLOSEOUT.md` | Phase 75 — Level 6 Certification Upgrade Closeout | current_phase_keep | OK | `da9e9b3c35a5` |
 | `docs/project/PHASE76_FINVIZ_PREFLIGHT_AUTOMATION_CLOSEOUT.md` | Phase 76 — Finviz Preflight Automation Closeout | current_phase_keep | OK | `304f0321c819` |
 | `docs/project/PHASE77D_SELF_LEARNING_MATURITY_ASSESSMENT.md` | Phase 77D — Self-Learning Maturity Assessment | current_phase_keep | OK | `d6cab1763ce2` |
-| `docs/project/PHASE77E_NEXT_AUTOMATION_ROADMAP.md` | Phase 77E — Next Automation Roadmap | current_phase_keep | MISSING HEADER | `9174959f2bcc` |
+| `docs/project/PHASE77E_NEXT_AUTOMATION_ROADMAP.md` | Phase 77E — Next Automation Roadmap | current_phase_keep | OK | `e167a9942db5` |
 | `docs/project/PHASE77_FEED_FALLBACK_SELF_LEARNING_MATURITY_CLOSEOUT.md` | Phase 77 — Feed Fallback & Self-Learning Maturity Closeout | current_phase_keep | OK | `6ecd13225d0a` |
 | `docs/project/PHASE78_LEVEL6_CLEAN_OBSERVATION_CLOSEOUT.md` | Phase 78 — Level 6 Clean Observation Certification Closeout | current_phase_keep | OK | `a845745ae4f4` |
 | `docs/project/PHASE79_EXPANDED_SOURCE_DISCOVERY_STAGED_WRITES_CLOSEOUT.md` | Phase 79 — Expanded Source Discovery Staged Writes Closeout | current_phase_keep | OK | `df704fcbfd9d` |
@@ -1709,147 +1709,147 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/project/PHASE97_SELF_LEARNING_P0_VISUAL_UPGRADE_CLOSEOUT.md` | Phase 97 — Self-Learning P0 Visual Upgrade Closeout | current_phase_keep | OK | `937852d43e39` |
 | `docs/project/PHASE98_SELF_LEARNING_FLOW_TIMELINE_CHARTS_CLOSEOUT.md` | Phase 98 — Self-Learning Flow/Timeline Charts Closeout | current_phase_keep | OK | `b606ae074082` |
 | `docs/project/PHASE99_SECOND_AUTO_PROMOTION_OR_HOLD_CLOSEOUT.md` | Phase 99 — Second Auto-Promotion Closeout | current_phase_keep | OK | `c0a1b8864cbd` |
-| `docs/project/PHASE_ATM_ALPACA_PAPER_AUTOLIVE_VERIFICATION_20260605.md` | ATM — alpaca_paper AUTO_LIVE Policy-Mode Verification (2026-06-05) | current_phase_keep | MISSING HEADER | `960272203e92` |
-| `docs/project/PHASE_ATM_AUTOMATION_MODAL_E2E_TEST_20260605.md` | ATM Automation Modal — End-to-End Write Test (2026-06-05) | current_phase_keep | MISSING HEADER | `49b2db4bfa2f` |
+| `docs/project/PHASE_ATM_ALPACA_PAPER_AUTOLIVE_VERIFICATION_20260605.md` | ATM — alpaca_paper AUTO_LIVE Policy-Mode Verification (2026-06-05) | current_phase_keep | OK | `a91f0778873c` |
+| `docs/project/PHASE_ATM_AUTOMATION_MODAL_E2E_TEST_20260605.md` | ATM Automation Modal — End-to-End Write Test (2026-06-05) | current_phase_keep | OK | `559b056c3797` |
 | `docs/project/PROFIT_CAPTURE_BACKTEST_QUALITY_REVIEW_20260606.md` | Profit-Capture Rule Backtest — Quality Review (2026-06-06) | current_phase_keep | OK | `acfa8215ecd6` |
 | `docs/project/PROFIT_CAPTURE_EVIDENCE_FLOOR_CEILING_20260606.md` | Profit-Capture — Evidence-Floor Ceiling Determination (2026-06-06) | current_phase_keep | OK | `accb7e33d8e8` |
 | `docs/project/PROFIT_CAPTURE_INTRABAR_PREMATURE_EXIT_20260606.md` | Profit-Capture — Intrabar Path Ingestion + Path-Measured Premature-Exit (Phase 206c, 2026-06-06) | current_phase_keep | OK | `080663aeae4d` |
 | `docs/project/PROFIT_CAPTURE_RULE_BACKTEST_HARDENING_20260606.md` | Profit-Capture Rule Backtest — Hardening (Phase 206b, 2026-06-06) | current_phase_keep | OK | `5895cb719065` |
-| `docs/project/PROJECT_DOC_INDEX.md` | PROJECT_DOC_INDEX.md | active_keep | MISSING HEADER | `f22562226aac` |
-| `docs/project/PROTECTIVE_STOP_SUBMIT_UI_FIX_2026-06-21.md` | Protective-Stop Submit — Confirm Response Handling Fix (2026-06-21) | current_phase_keep | MISSING HEADER | `107119f77afb` |
+| `docs/project/PROJECT_DOC_INDEX.md` | PROJECT_DOC_INDEX.md | active_keep | OK | `226e98e141db` |
+| `docs/project/PROTECTIVE_STOP_SUBMIT_UI_FIX_2026-06-21.md` | Protective-Stop Submit — Confirm Response Handling Fix (2026-06-21) | current_phase_keep | OK | `fdbc12f84836` |
 | `docs/project/RECOMMENDATION_INTELLIGENCE.md` | Recommendation Intelligence Engine | current_phase_keep | OK | `86fc73d96ca3` |
 | `docs/project/RELEASE_MANIFEST_LATEST.md` | Release Manifest (auto-generated) | current_phase_keep | OK | `323cb66d950c` |
-| `docs/project/REPORTS_ACTION_TARGET_CONTRACT_2026-06-21.md` | Reports Action Target Contract + 3-Column Briefing (2026-06-21) | current_phase_keep | MISSING HEADER | `0ce71fe187b0` |
-| `docs/project/REPORTS_COMMAND_PORTAL_PHASE2_UX_HARDENING_2026-06-21.md` | Reports Command Portal — Phase 2 UX Hardening (2026-06-21) | current_phase_keep | MISSING HEADER | `f1f81542edc9` |
-| `docs/project/REPORTS_COMMAND_PORTAL_REDESIGN_2026-06-19.md` | Reports Command Portal — Redesign (2026-06-19) | current_phase_keep | MISSING HEADER | `979e302ee143` |
+| `docs/project/REPORTS_ACTION_TARGET_CONTRACT_2026-06-21.md` | Reports Action Target Contract + 3-Column Briefing (2026-06-21) | current_phase_keep | OK | `14d5ea7ac651` |
+| `docs/project/REPORTS_COMMAND_PORTAL_PHASE2_UX_HARDENING_2026-06-21.md` | Reports Command Portal — Phase 2 UX Hardening (2026-06-21) | current_phase_keep | OK | `fd2e6de7b2be` |
+| `docs/project/REPORTS_COMMAND_PORTAL_REDESIGN_2026-06-19.md` | Reports Command Portal — Redesign (2026-06-19) | current_phase_keep | OK | `d7d3f916e021` |
 | `docs/project/ROOT_CAUSE_ATM_DEAD_2026_05_26.md` | ROOT CAUSE: ATM Dead — No Fresh GO Signals, No Proposals, No Execution | current_phase_keep | OK | `8c64b42a07c0` |
 | `docs/project/ROTATION_LLM_ADVISOR.md` | Rotation LLM Advisor Runbook | current_phase_keep | OK | `c5a4cb9a977d` |
-| `docs/project/ROTATION_PRODUCTION_READINESS_2026-06-19.md` | Rotation Intelligence Production Readiness — 2026-06-19 | current_phase_keep | MISSING HEADER | `31ca7559cf4e` |
-| `docs/project/SCHWAB_PUBLIC_REPO_INTAKE_20260611.md` | Schwab Public Repo Intake Memo (read-only review) | current_phase_keep | MISSING HEADER | `49ead07e6a8e` |
-| `docs/project/SCHWAB_TOKEN_HEALTH_CHECK_2026-06-21.md` | Schwab Token Health Check — Re-auth Needed Up Front (2026-06-21) | current_phase_keep | MISSING HEADER | `0c969eb833df` |
-| `docs/project/SCHWAB_TOKEN_REFRESH_RACE_2026-06-21.md` | Schwab Token Revoked Early — Concurrent-Refresh Race (2026-06-21) | current_phase_keep | MISSING HEADER | `c7abd39b0b7e` |
-| `docs/project/SESSION_2026_05_28_TRADE_AI_LLM_BACKTESTING_SUMMARY.md` | Session 2026-05-28 — Trade AI LLM & Backtesting Summary | current_phase_keep | MISSING HEADER | `e74f50a8242f` |
-| `docs/project/SESSION_2026_05_29_FINAL_SUMMARY.md` | Session 2026-05-29 Final Summary | current_phase_keep | MISSING HEADER | `e891311dc5b2` |
-| `docs/project/SESSION_2026_05_29_SUMMARY.md` | Session 2026-05-29 — Classifier Completion, llama.cpp Canary, Full Self-Healing Overhaul | current_phase_keep | MISSING HEADER | `42567647f705` |
-| `docs/project/SESSION_2026_05_30_SUMMARY.md` | Session 2026-05-30 Summary | current_phase_keep | MISSING HEADER | `50aebf2c1edd` |
-| `docs/project/SESSION_2026_05_31_HERMES_FULL_CLOSEOUT_SUMMARY.md` | Session 2026-05-30/31 — Hermes Full Closeout Summary | current_phase_keep | MISSING HEADER | `d304017a8839` |
-| `docs/project/SESSION_2026_06_02_V3_BACKTEST_INTELLIGENCE.md` | Session 2026-06-02 — V3 Backtest Intelligence | current_phase_keep | MISSING HEADER | `0a3af5c98586` |
+| `docs/project/ROTATION_PRODUCTION_READINESS_2026-06-19.md` | Rotation Intelligence Production Readiness — 2026-06-19 | current_phase_keep | OK | `0f1386f479e9` |
+| `docs/project/SCHWAB_PUBLIC_REPO_INTAKE_20260611.md` | Schwab Public Repo Intake Memo (read-only review) | current_phase_keep | OK | `23a587abd546` |
+| `docs/project/SCHWAB_TOKEN_HEALTH_CHECK_2026-06-21.md` | Schwab Token Health Check — Re-auth Needed Up Front (2026-06-21) | current_phase_keep | OK | `86f3ebd6110a` |
+| `docs/project/SCHWAB_TOKEN_REFRESH_RACE_2026-06-21.md` | Schwab Token Revoked Early — Concurrent-Refresh Race (2026-06-21) | current_phase_keep | OK | `22f59c942c40` |
+| `docs/project/SESSION_2026_05_28_TRADE_AI_LLM_BACKTESTING_SUMMARY.md` | Session 2026-05-28 — Trade AI LLM & Backtesting Summary | current_phase_keep | OK | `bc5fce7ccd50` |
+| `docs/project/SESSION_2026_05_29_FINAL_SUMMARY.md` | Session 2026-05-29 Final Summary | current_phase_keep | OK | `9157b96408bb` |
+| `docs/project/SESSION_2026_05_29_SUMMARY.md` | Session 2026-05-29 — Classifier Completion, llama.cpp Canary, Full Self-Healing Overhaul | current_phase_keep | OK | `b3d0af38a198` |
+| `docs/project/SESSION_2026_05_30_SUMMARY.md` | Session 2026-05-30 Summary | current_phase_keep | OK | `d79ac556972d` |
+| `docs/project/SESSION_2026_05_31_HERMES_FULL_CLOSEOUT_SUMMARY.md` | Session 2026-05-30/31 — Hermes Full Closeout Summary | current_phase_keep | OK | `f4b5281b1341` |
+| `docs/project/SESSION_2026_06_02_V3_BACKTEST_INTELLIGENCE.md` | Session 2026-06-02 — V3 Backtest Intelligence | current_phase_keep | OK | `170134994b7a` |
 | `docs/project/SKILLS.md` | Trade AI v12 — Skills & Agent Capabilities Reference | current_phase_keep | OK | `8f889f118aa6` |
-| `docs/project/STABILIZATION_SESSION_2026_06_22.md` | Stabilization Session — 2026-06-22 | current_phase_keep | MISSING HEADER | `d93e7f414f2a` |
-| `docs/project/STATE_OF_REPO_2026_06_02.md` | State of the Repo — 2026-06-02 Consolidated | current_phase_keep | MISSING HEADER | `5993e60e05f4` |
-| `docs/project/STRATEGY_SCOREBOARD_RR_EXPECTANCY_20260608.md` | Strategy Scoreboard — R:R, Expectancy & Self-Healing Freshness (2026-06-08) | current_phase_keep | MISSING HEADER | `935259ebee29` |
-| `docs/project/SYNTHETIC_STOP_FRACTIONAL_2026-06-21.md` | Synthetic Stops for Fractional Positions (2026-06-21) | current_phase_keep | MISSING HEADER | `55927aef03d0` |
-| `docs/project/SYSTEM_DEEP_REVIEW_20260611.md` | Trade AI v12 — Deep Technical & Product Review (2026-06-11) | current_phase_keep | MISSING HEADER | `d7c5e08061ab` |
+| `docs/project/STABILIZATION_SESSION_2026_06_22.md` | Stabilization Session — 2026-06-22 | current_phase_keep | OK | `5583ab9c0b2c` |
+| `docs/project/STATE_OF_REPO_2026_06_02.md` | State of the Repo — 2026-06-02 Consolidated | current_phase_keep | OK | `29c8618fbf54` |
+| `docs/project/STRATEGY_SCOREBOARD_RR_EXPECTANCY_20260608.md` | Strategy Scoreboard — R:R, Expectancy & Self-Healing Freshness (2026-06-08) | current_phase_keep | OK | `e6ad36c90fd1` |
+| `docs/project/SYNTHETIC_STOP_FRACTIONAL_2026-06-21.md` | Synthetic Stops for Fractional Positions (2026-06-21) | current_phase_keep | OK | `8e4110b83062` |
+| `docs/project/SYSTEM_DEEP_REVIEW_20260611.md` | Trade AI v12 — Deep Technical & Product Review (2026-06-11) | current_phase_keep | OK | `4b11d08c75ac` |
 | `docs/project/SYSTEM_HEALTH_AGENT_ARCHITECTURE.md` | System Health Agent Architecture | current_phase_keep | OK | `265e1546754c` |
 | `docs/project/TRADE_CARD_UI_REDESIGN_REVIEW_20260611.md` | Trade Card Redesign → Actionable Position Decision Cards (review) | current_phase_keep | OK | `8e979122576c` |
-| `docs/project/TRADE_SUPERVISION_METHODOLOGY.md` | Trade Supervision Methodology | current_phase_keep | MISSING HEADER | `d4bd62b8e643` |
-| `docs/project/V3_BACKTESTING_BASE_DATA_QUALITY_PLAN_20260606.md` | v3 Backtesting Base Data Quality Scorecard (2026-06-06) | current_phase_keep | MISSING HEADER | `c48f79d0fcc4` |
-| `docs/project/V3_BACKTESTING_FILTERS_ALL_TABS_20260606.md` | v3 Backtesting — Account/Strategy Filters Apply to All Tabs (2026-06-06) | current_phase_keep | MISSING HEADER | `ecf702071569` |
+| `docs/project/TRADE_SUPERVISION_METHODOLOGY.md` | Trade Supervision Methodology | current_phase_keep | OK | `2880482e63ed` |
+| `docs/project/V3_BACKTESTING_BASE_DATA_QUALITY_PLAN_20260606.md` | v3 Backtesting Base Data Quality Scorecard (2026-06-06) | current_phase_keep | OK | `616003d8d6ca` |
+| `docs/project/V3_BACKTESTING_FILTERS_ALL_TABS_20260606.md` | v3 Backtesting — Account/Strategy Filters Apply to All Tabs (2026-06-06) | current_phase_keep | OK | `0301b2990627` |
 | `docs/project/V3_ELEMENT_LEVEL_GAP_AUDIT_2026_06_02.md` | v3 Element-Level Gap Audit — 2026-06-02 | current_phase_keep | OK | `16590cd20b40` |
-| `docs/project/V3_JOURNAL_BACKTESTING_INTEGRITY_AUDIT_20260606.md` | v3 Journal → Backtesting Integrity Audit (2026-06-06) | current_phase_keep | MISSING HEADER | `a481d0567458` |
+| `docs/project/V3_JOURNAL_BACKTESTING_INTEGRITY_AUDIT_20260606.md` | v3 Journal → Backtesting Integrity Audit (2026-06-06) | current_phase_keep | OK | `f101b4e1cec5` |
 | `docs/project/V3_JOURNAL_FIELD_COMPLETENESS_BACKFILL_20260606.md` | V3 Journal Field Completeness — Exact Backfill (2026-06-06) | current_phase_keep | OK | `9ef4962508f4` |
-| `docs/project/V3_LLM_REVIEW_OLLAMA_HEALTH_GATE_20260606.md` | v3 LLM-Review Ollama Health Gate + Retry (2026-06-06) | current_phase_keep | MISSING HEADER | `f646ef28aa15` |
-| `docs/project/V3_LLM_REVIEW_PROVENANCE_20260606.md` | v3 LLM-Review Per-Row Provenance (2026-06-06, audit #9) | current_phase_keep | MISSING HEADER | `c53624911836` |
-| `docs/project/V3_LLM_REVIEW_PROVENANCE_BACKFILL_20260606.md` | v3 LLM-Review Provenance Backfill (2026-06-06) | current_phase_keep | MISSING HEADER | `240655646f5c` |
-| `docs/project/V3_MISSED_OPPORTUNITIES_DEDUP_VERDICT_FIX_20260606.md` | v3 Missed-Opportunities Dedupe + Verdict Fix (2026-06-06) | current_phase_keep | MISSING HEADER | `f9a3a9a5e164` |
+| `docs/project/V3_LLM_REVIEW_OLLAMA_HEALTH_GATE_20260606.md` | v3 LLM-Review Ollama Health Gate + Retry (2026-06-06) | current_phase_keep | OK | `573441a80b36` |
+| `docs/project/V3_LLM_REVIEW_PROVENANCE_20260606.md` | v3 LLM-Review Per-Row Provenance (2026-06-06, audit #9) | current_phase_keep | OK | `c8e2ff3a168b` |
+| `docs/project/V3_LLM_REVIEW_PROVENANCE_BACKFILL_20260606.md` | v3 LLM-Review Provenance Backfill (2026-06-06) | current_phase_keep | OK | `5543969e587f` |
+| `docs/project/V3_MISSED_OPPORTUNITIES_DEDUP_VERDICT_FIX_20260606.md` | v3 Missed-Opportunities Dedupe + Verdict Fix (2026-06-06) | current_phase_keep | OK | `af1659f7d533` |
 | `docs/project/V3_PROTECTION_GIVEBACK_ROOT_CAUSE_20260606.md` | V3 Protection Give-Back — Root Cause (2026-06-06) | current_phase_keep | OK | `45207c271cb2` |
 | `docs/project/V3_PROTECTION_PROFIT_CAPTURE_ENHANCEMENT_20260606.md` | V3 Protection — Canonical Profit-Capture Enhancement (Phase 206, 2026-06-06) | current_phase_keep | OK | `cefea5db508e` |
 | `docs/project/V3_TRUST_HARDENING_AND_ROTATION_INTELLIGENCE.md` | Command Center v3 Trust Hardening + Rotation Intelligence | current_phase_keep | OK | `98652e5cc65e` |
-| `docs/project/context_sync_2026_05_22/NEXT_PHASE_ATM_SAFE_1_PROMPT.md` | ATM-SAFE-1 — Execution Containment Phase | current_phase_keep | MISSING HEADER | `33a93138cd27` |
-| `docs/project/context_sync_2026_05_22/context_sync_2026_05_22_timeline.md` | Context Sync Timeline — 2026-05-22 | current_phase_keep | MISSING HEADER | `8eace8607255` |
-| `docs/project/context_sync_2026_05_22/context_sync_doc_inventory.md` | Context Sync Doc Inventory — 2026-05-22 | current_phase_keep | MISSING HEADER | `2d55d9444517` |
-| `docs/project/context_sync_2026_05_22/context_sync_maturity_reclassification.md` | Maturity Reclassification — 2026-05-22 | current_phase_keep | MISSING HEADER | `5ade46ddced5` |
-| `docs/project/context_sync_2026_05_22/context_sync_preflight.md` | Context Sync Preflight — 2026-05-22 | current_phase_keep | MISSING HEADER | `0de85b40ba67` |
-| `docs/project/context_sync_2026_05_22/context_sync_validation.md` | Context Sync Validation — 2026-05-22 | current_phase_keep | MISSING HEADER | `048aac5055dc` |
-| `docs/project/daily_commit_logs/full_day_commit_log_2026_05_22.md` | Full Day Commit Log — 2026-05-22 | current_phase_keep | MISSING HEADER | `c62fa9e6190c` |
+| `docs/project/context_sync_2026_05_22/NEXT_PHASE_ATM_SAFE_1_PROMPT.md` | ATM-SAFE-1 — Execution Containment Phase | current_phase_keep | OK | `094791fcb7f0` |
+| `docs/project/context_sync_2026_05_22/context_sync_2026_05_22_timeline.md` | Context Sync Timeline — 2026-05-22 | current_phase_keep | OK | `d0133573ebda` |
+| `docs/project/context_sync_2026_05_22/context_sync_doc_inventory.md` | Context Sync Doc Inventory — 2026-05-22 | current_phase_keep | OK | `556c957d2ec0` |
+| `docs/project/context_sync_2026_05_22/context_sync_maturity_reclassification.md` | Maturity Reclassification — 2026-05-22 | current_phase_keep | OK | `130555a82c65` |
+| `docs/project/context_sync_2026_05_22/context_sync_preflight.md` | Context Sync Preflight — 2026-05-22 | current_phase_keep | OK | `186ff147de60` |
+| `docs/project/context_sync_2026_05_22/context_sync_validation.md` | Context Sync Validation — 2026-05-22 | current_phase_keep | OK | `11f3f9efd3e8` |
+| `docs/project/daily_commit_logs/full_day_commit_log_2026_05_22.md` | Full Day Commit Log — 2026-05-22 | current_phase_keep | OK | `f669450c3987` |
 | `docs/project/dashboard_data_correctness/dashboard_cleanup_closeout.md` | Dashboard Data Correctness — Closeout | current_phase_keep | OK | `180c82d1035d` |
 | `docs/project/dashboard_data_correctness/fix_4_8_wrong_data_pages_audit.md` | Fix 4-8: Wrong Data Pages Audit | current_phase_keep | OK | `333acbaff5f9` |
-| `docs/project/examples/rotation_grok_oauth_prompt_example.md` | rotation_grok_oauth_prompt_example.md | current_phase_keep | MISSING HEADER | `aa4fb8f96a2a` |
-| `docs/project/next_session/MONDAY_ATM_BURNIN_COMMAND_PACKET_2026_05_26.md` | Monday ATM Burn-in Command Packet — 2026-05-26 | current_phase_keep | MISSING HEADER | `b9efe1c53287` |
+| `docs/project/examples/rotation_grok_oauth_prompt_example.md` | rotation_grok_oauth_prompt_example.md | current_phase_keep | OK | `5fd882ab95ee` |
+| `docs/project/next_session/MONDAY_ATM_BURNIN_COMMAND_PACKET_2026_05_26.md` | Monday ATM Burn-in Command Packet — 2026-05-26 | current_phase_keep | OK | `cc6f2d38bb11` |
 | `docs/project/phase_8d_readonly_prep/phase_8d_strategy_readiness_matrix.md` | Phase 8D — Strategy Quality Readiness Matrix (Read-Only) | current_phase_keep | OK | `9072984b64cb` |
 | `docs/project/project_openclaw.md` | OpenClaw Setup Documentation | current_phase_keep | OK | `d4504c6bf291` |
-| `docs/project/session_summaries/final_full_session_summary_2026_05_22_to_2026_05_24.md` | Final Full Session Summary — 2026-05-22 | current_phase_keep | MISSING HEADER | `2c7387bc45fe` |
-| `docs/project/strategy_proof/a5_rereview_trigger.md` | A-5 Re-review Trigger Rules | current_phase_keep | MISSING HEADER | `698b068e979e` |
+| `docs/project/session_summaries/final_full_session_summary_2026_05_22_to_2026_05_24.md` | Final Full Session Summary — 2026-05-22 | current_phase_keep | OK | `23cee441064b` |
+| `docs/project/strategy_proof/a5_rereview_trigger.md` | A-5 Re-review Trigger Rules | current_phase_keep | OK | `8baaf23b9f68` |
 | `docs/project/strategy_proof/closed_trade_evidence_tracker.md` | Closed Trade Evidence Tracker | current_phase_keep | OK | `7ffe4b8b8b2b` |
-| `docs/prompts/ACTIVE_TRADER_ARCHITECT_LITMUS_REVIEW_PROMPT_v1_0.md` | ACTIVE TRADER ARCHITECT LITMUS REVIEW PROMPT v1.0 | review_required | MISSING HEADER | `0c7b5d2d31a1` |
-| `docs/prompts/CLAUDE_ACTIVE_TRADER_LIVE_MOTION_UI_v1.md` | Claude Code Prompt — Active Trader Live Motion UI v1 | review_required | MISSING HEADER | `11d91a0630b4` |
-| `docs/prompts/CODEX_ACTIVE_TRADER_MOOMOO_SCALP_IMPLEMENTATION_v1_0.md` | CODEX IMPLEMENTATION PROGRAM v1.0 | review_required | MISSING HEADER | `27ea012c863c` |
-| `docs/prompts/CODEX_ACTIVE_TRADER_MOOMOO_SCALP_IMPLEMENTATION_v1_1.md` | CODEX IMPLEMENTATION PROGRAM v1.1 | review_required | MISSING HEADER | `6293b5502ad3` |
+| `docs/prompts/ACTIVE_TRADER_ARCHITECT_LITMUS_REVIEW_PROMPT_v1_0.md` | ACTIVE TRADER ARCHITECT LITMUS REVIEW PROMPT v1.0 | review_required | OK | `0807d32556a8` |
+| `docs/prompts/CLAUDE_ACTIVE_TRADER_LIVE_MOTION_UI_v1.md` | Claude Code Prompt — Active Trader Live Motion UI v1 | review_required | OK | `22ed014b0818` |
+| `docs/prompts/CODEX_ACTIVE_TRADER_MOOMOO_SCALP_IMPLEMENTATION_v1_0.md` | CODEX IMPLEMENTATION PROGRAM v1.0 | review_required | OK | `88e572f77ee8` |
+| `docs/prompts/CODEX_ACTIVE_TRADER_MOOMOO_SCALP_IMPLEMENTATION_v1_1.md` | CODEX IMPLEMENTATION PROGRAM v1.1 | review_required | OK | `680c9741c741` |
 | `docs/proposal_quality/phase_promote1_pre_promotion_readiness_gate/00_README.md` | PROMOTE-1 — Pre-Promotion Readiness Gate | current_phase_keep | OK | `4b2142d8b3cc` |
 | `docs/proposal_quality/phase_promote1_pre_promotion_readiness_gate/promote1_safety_audit.md` | PROMOTE-1 Safety Audit | archive_superseded | OK | `93e2768ff71c` |
-| `docs/proposal_sandbox/PHASE115B_PROPOSAL_DRAFT_SCORE_RESULTS.md` | Phase 115B — Proposal Draft Score Results | review_required | MISSING HEADER | `97767897e413` |
-| `docs/reporting/REPORTING_ENGINE.md` | Reporting & Prospectus Generation Module | review_required | MISSING HEADER | `e743ac50df65` |
+| `docs/proposal_sandbox/PHASE115B_PROPOSAL_DRAFT_SCORE_RESULTS.md` | Phase 115B — Proposal Draft Score Results | review_required | OK | `039190d4f687` |
+| `docs/reporting/REPORTING_ENGINE.md` | Reporting & Prospectus Generation Module | review_required | OK | `1df81f320b67` |
 | `docs/risk_management/stop_management_v2_3_strategy_trailing_tiers/00_README.md` | Stop Management V2.3 — Strategy Trailing Tiers | current_phase_keep | OK | `bde4bfa05075` |
-| `docs/risk_management/stop_management_v2_3_strategy_trailing_tiers/stop_v23_dry_run.md` | Unified Stop Supervisor Report | review_required | MISSING HEADER | `b272cced8a7b` |
-| `docs/risk_management/stop_management_v2_3_strategy_trailing_tiers/stop_v23_safety_audit.md` | STOP-V2.3 Safety Audit | review_required | MISSING HEADER | `cbbcf7430e1d` |
-| `docs/rockville/ROCKVILLE_LIVE_BUNDLE_GOVERNANCE.md` | ROCKVILLE_LIVE_BUNDLE_GOVERNANCE | review_required | MISSING HEADER | `8b8ee504a9f4` |
+| `docs/risk_management/stop_management_v2_3_strategy_trailing_tiers/stop_v23_dry_run.md` | Unified Stop Supervisor Report | review_required | OK | `16824f3bfe3c` |
+| `docs/risk_management/stop_management_v2_3_strategy_trailing_tiers/stop_v23_safety_audit.md` | STOP-V2.3 Safety Audit | review_required | OK | `80ffb07ed7c1` |
+| `docs/rockville/ROCKVILLE_LIVE_BUNDLE_GOVERNANCE.md` | ROCKVILLE_LIVE_BUNDLE_GOVERNANCE | review_required | OK | `464cff7c3f44` |
 | `docs/rockville/ROCKVILLE_WATCH_BASELINE.md` | ROCKVILLE_WATCH_BASELINE | review_required | OK | `f5a26ca09a46` |
-| `docs/rockville/ROCKVILLE_WATCH_CARD_V2_SPEC.md` | ROCKVILLE_WATCH_CARD_V2_SPEC | review_required | MISSING HEADER | `736f13efd832` |
+| `docs/rockville/ROCKVILLE_WATCH_CARD_V2_SPEC.md` | ROCKVILLE_WATCH_CARD_V2_SPEC | review_required | OK | `8f6e33163a48` |
 | `docs/rockville/ROCKVILLE_WATCH_CLOSEOUT.md` | ROCKVILLE_WATCH_CLOSEOUT | review_required | OK | `b4cbd337eb94` |
-| `docs/rockville/ROCKVILLE_WATCH_ROLLBACK.md` | ROCKVILLE_WATCH_ROLLBACK | review_required | MISSING HEADER | `2958979b0da9` |
-| `docs/rockville/ROCKVILLE_WATCH_SOURCE_MATRIX.md` | ROCKVILLE_WATCH_SOURCE_MATRIX | review_required | MISSING HEADER | `db554cdfbc03` |
-| `docs/rockville/ROCKVILLE_WATCH_UI_SCREENSHOTS/README.md` | ROCKVILLE_WATCH_UI_SCREENSHOTS | review_required | MISSING HEADER | `0250d91bc882` |
-| `docs/runbooks/AIF_FINANCIAL_SENSES_SHADOW.md` | Runbook — AIF ↔ Financial Senses shadow | review_required | MISSING HEADER | `e2b1e7846244` |
-| `docs/runbooks/BARE_METAL_RECOVERY.md` | Bare-Metal Recovery Runbook (2026-07-17 backup-scope audit) | review_required | MISSING HEADER | `9d5fc9b70226` |
-| `docs/runbooks/DB_HANG_PREVENTION.md` | DB-induced dashboard hang — prevention & recovery | review_required | MISSING HEADER | `ac4e790bffb9` |
-| `docs/runbooks/FINNHUB_KEY_ROTATION.md` | Finnhub API Key Rotation Runbook | review_required | MISSING HEADER | `cfa4ba2de8df` |
-| `docs/runbooks/KEY_ROTATION.md` | Key Rotation Runbook (2026-07-18) | review_required | MISSING HEADER | `3d6b58310095` |
-| `docs/runbooks/OPTIONS_FIRST_POSITION_ACCEPTANCE.md` | First Real Option Position — Acceptance Runbook (v1.1 Phase 10) | review_required | MISSING HEADER | `0e15ee1bf271` |
+| `docs/rockville/ROCKVILLE_WATCH_ROLLBACK.md` | ROCKVILLE_WATCH_ROLLBACK | review_required | OK | `4f046c100096` |
+| `docs/rockville/ROCKVILLE_WATCH_SOURCE_MATRIX.md` | ROCKVILLE_WATCH_SOURCE_MATRIX | review_required | OK | `54cb60bfee2a` |
+| `docs/rockville/ROCKVILLE_WATCH_UI_SCREENSHOTS/README.md` | ROCKVILLE_WATCH_UI_SCREENSHOTS | review_required | OK | `d958faad74cf` |
+| `docs/runbooks/AIF_FINANCIAL_SENSES_SHADOW.md` | Runbook — AIF ↔ Financial Senses shadow | review_required | OK | `8509647d1d08` |
+| `docs/runbooks/BARE_METAL_RECOVERY.md` | Bare-Metal Recovery Runbook (2026-07-17 backup-scope audit) | review_required | OK | `80d205a4c45f` |
+| `docs/runbooks/DB_HANG_PREVENTION.md` | DB-induced dashboard hang — prevention & recovery | review_required | OK | `078bf2e6e7d1` |
+| `docs/runbooks/FINNHUB_KEY_ROTATION.md` | Finnhub API Key Rotation Runbook | review_required | OK | `0940c6bfe0ad` |
+| `docs/runbooks/KEY_ROTATION.md` | Key Rotation Runbook (2026-07-18) | review_required | OK | `986b4883e260` |
+| `docs/runbooks/OPTIONS_FIRST_POSITION_ACCEPTANCE.md` | First Real Option Position — Acceptance Runbook (v1.1 Phase 10) | review_required | OK | `bb13ee87064a` |
 | `docs/runbooks/PLAYWRIGHT_ARTIFACTS_POLICY.md` | Playwright / visual-review artifact policy | review_required | OK | `fed6d1aae523` |
-| `docs/runbooks/post-sale-redeploy-sync-2026-07-14.md` | Post-Sale Redeploy Sync — 2026-07-14 | review_required | MISSING HEADER | `cc1b7e5ea8f0` |
-| `docs/runbooks/protective-stop-integration-2026-06-30.md` | Protective Stop Integration Runbook — 2026-06-30 | review_required | MISSING HEADER | `58a6d0b31508` |
+| `docs/runbooks/post-sale-redeploy-sync-2026-07-14.md` | Post-Sale Redeploy Sync — 2026-07-14 | review_required | OK | `1463f1a871ee` |
+| `docs/runbooks/protective-stop-integration-2026-06-30.md` | Protective Stop Integration Runbook — 2026-06-30 | review_required | OK | `5286e6a1ce61` |
 | `docs/screener_architecture/phase_afterhours_ready1_full_candidate_preparation/00_README.md` | AFTERHOURS-READY-1 — Full After-Hours Candidate Preparation Pipeline | current_phase_keep | OK | `21878c19cfaf` |
-| `docs/screener_architecture/phase_afterhours_ready1_full_candidate_preparation/afterhours_candidate_preparation_apply_report.md` | After-Hours Candidate Preparation APPLIED | review_required | MISSING HEADER | `f93941a9f909` |
-| `docs/screener_architecture/phase_afterhours_ready1_full_candidate_preparation/afterhours_candidate_preparation_dry_run_report.md` | After-Hours Candidate Preparation DRY RUN | review_required | MISSING HEADER | `977a989ce9ac` |
-| `docs/screener_architecture/phase_afterhours_ready1_full_candidate_preparation/afterhours_digest_dry_run_report.md` | afterhours_digest_dry_run_report.md | review_required | MISSING HEADER | `5e084dbe9f58` |
-| `docs/screener_architecture/phase_afterhours_ready1_full_candidate_preparation/afterhours_migration_apply_report.md` | Migration: afterhours readiness tables | review_required | MISSING HEADER | `e837acc61cf8` |
-| `docs/screener_architecture/phase_afterhours_ready1_full_candidate_preparation/afterhours_ready1_completion_matrix.md` | AFTERHOURS-READY-1 — Completion Matrix | review_required | MISSING HEADER | `8ac8649381c5` |
-| `docs/screener_architecture/phase_afterhours_ready1_full_candidate_preparation/afterhours_ready1_safety_audit.md` | AFTERHOURS-READY-1 — Safety Audit | review_required | MISSING HEADER | `9c7d3b0e46a7` |
-| `docs/screener_architecture/phase_afterhours_ready1_full_candidate_preparation/afterhours_runtime_verification_report.md` | After-Hours Readiness Runtime Verification | review_required | MISSING HEADER | `3d6594d62015` |
-| `docs/screener_architecture/phase_afterhours_ready1_full_candidate_preparation/operator_observed_failure.md` | Operator Observed Failure | review_required | MISSING HEADER | `1ddc1fb94551` |
+| `docs/screener_architecture/phase_afterhours_ready1_full_candidate_preparation/afterhours_candidate_preparation_apply_report.md` | After-Hours Candidate Preparation APPLIED | review_required | OK | `ec6dba912c3a` |
+| `docs/screener_architecture/phase_afterhours_ready1_full_candidate_preparation/afterhours_candidate_preparation_dry_run_report.md` | After-Hours Candidate Preparation DRY RUN | review_required | OK | `c8708e860c47` |
+| `docs/screener_architecture/phase_afterhours_ready1_full_candidate_preparation/afterhours_digest_dry_run_report.md` | afterhours_digest_dry_run_report.md | review_required | OK | `4323963ce11c` |
+| `docs/screener_architecture/phase_afterhours_ready1_full_candidate_preparation/afterhours_migration_apply_report.md` | Migration: afterhours readiness tables | review_required | OK | `584b49ecd814` |
+| `docs/screener_architecture/phase_afterhours_ready1_full_candidate_preparation/afterhours_ready1_completion_matrix.md` | AFTERHOURS-READY-1 — Completion Matrix | review_required | OK | `c8f1c53490b6` |
+| `docs/screener_architecture/phase_afterhours_ready1_full_candidate_preparation/afterhours_ready1_safety_audit.md` | AFTERHOURS-READY-1 — Safety Audit | review_required | OK | `89261d275174` |
+| `docs/screener_architecture/phase_afterhours_ready1_full_candidate_preparation/afterhours_runtime_verification_report.md` | After-Hours Readiness Runtime Verification | review_required | OK | `03c97e8d08e3` |
+| `docs/screener_architecture/phase_afterhours_ready1_full_candidate_preparation/operator_observed_failure.md` | Operator Observed Failure | review_required | OK | `8c3fbb0110eb` |
 | `docs/screener_architecture/phase_income_dividend_scan_observation/00_README.md` | Income/Dividend Screener Observation | current_phase_keep | OK | `60e9dce1145d` |
 | `docs/screener_architecture/phase_screener_arch4_full_universe_strategy_fit/00_README.md` | SCREENER-ARCH-4 — Full Universe Strategy-Fit Audit | current_phase_keep | OK | `139aaa92c0db` |
-| `docs/screener_architecture/phase_screener_arch4_full_universe_strategy_fit/api_dashboard_integration_report.md` | SCREENER-ARCH-4 — API/Dashboard Integration | review_required | MISSING HEADER | `40503a0bd335` |
-| `docs/screener_architecture/phase_screener_arch4_full_universe_strategy_fit/full_strategy_fit_apply_report.md` | Strategy-Fit Audit APPLIED | review_required | MISSING HEADER | `63478d0e4085` |
-| `docs/screener_architecture/phase_screener_arch4_full_universe_strategy_fit/full_strategy_fit_dry_run_report.md` | Strategy-Fit Audit DRY RUN | review_required | MISSING HEADER | `626b8675e2fb` |
-| `docs/screener_architecture/phase_screener_arch4_full_universe_strategy_fit/no_proposal_no_trade_verification_report.md` | Arch4 Safety Verification | review_required | MISSING HEADER | `a69ddd98c525` |
-| `docs/screener_architecture/phase_screener_arch4_full_universe_strategy_fit/sample_strategy_fit_dry_run_report.md` | Strategy-Fit Audit DRY RUN | review_required | MISSING HEADER | `fbf87cee503e` |
-| `docs/screener_architecture/phase_screener_arch4_full_universe_strategy_fit/screener_arch4_completion_matrix.md` | SCREENER-ARCH-4 — Completion Matrix | review_required | MISSING HEADER | `6a45ffe52972` |
+| `docs/screener_architecture/phase_screener_arch4_full_universe_strategy_fit/api_dashboard_integration_report.md` | SCREENER-ARCH-4 — API/Dashboard Integration | review_required | OK | `a5d2646e7665` |
+| `docs/screener_architecture/phase_screener_arch4_full_universe_strategy_fit/full_strategy_fit_apply_report.md` | Strategy-Fit Audit APPLIED | review_required | OK | `06e3004a2afb` |
+| `docs/screener_architecture/phase_screener_arch4_full_universe_strategy_fit/full_strategy_fit_dry_run_report.md` | Strategy-Fit Audit DRY RUN | review_required | OK | `a59980443bfa` |
+| `docs/screener_architecture/phase_screener_arch4_full_universe_strategy_fit/no_proposal_no_trade_verification_report.md` | Arch4 Safety Verification | review_required | OK | `91151b390750` |
+| `docs/screener_architecture/phase_screener_arch4_full_universe_strategy_fit/sample_strategy_fit_dry_run_report.md` | Strategy-Fit Audit DRY RUN | review_required | OK | `91102eec1976` |
+| `docs/screener_architecture/phase_screener_arch4_full_universe_strategy_fit/screener_arch4_completion_matrix.md` | SCREENER-ARCH-4 — Completion Matrix | review_required | OK | `06c799fff51b` |
 | `docs/screener_architecture/phase_screener_arch4_full_universe_strategy_fit/screener_arch4_preflight.md` | SCREENER-ARCH-4 Preflight | review_required | OK | `d63e4ad2fdc3` |
-| `docs/screener_architecture/phase_screener_arch4_full_universe_strategy_fit/screener_arch4_safety_audit.md` | SCREENER-ARCH-4 — Safety Audit | review_required | MISSING HEADER | `37d84549e02c` |
-| `docs/screener_architecture/phase_screener_arch4_full_universe_strategy_fit/screener_arch4_test_results.md` | SCREENER-ARCH-4 — Test Results | review_required | MISSING HEADER | `23d3e6000a03` |
-| `docs/screener_architecture/phase_screener_arch4_full_universe_strategy_fit/strategy_fit_audit_data_model.md` | SCREENER-ARCH-4 — Strategy-Fit Audit Data Model | review_required | MISSING HEADER | `962b89b2fc41` |
-| `docs/screener_architecture/phase_screener_arch4_full_universe_strategy_fit/strategy_fit_coverage_report.md` | Strategy-Fit Coverage Report | review_required | MISSING HEADER | `14cc4455a17c` |
-| `docs/screener_architecture/phase_screener_arch4_full_universe_strategy_fit/strategy_fit_data_gaps_report.md` | Strategy-Fit Data Gaps Report | review_required | MISSING HEADER | `963be52e731c` |
-| `docs/screener_architecture/phase_screener_arch4_full_universe_strategy_fit/strategy_fit_migration_apply_report.md` | Migration: universe_strategy_fit_audit | review_required | MISSING HEADER | `e691e69c1623` |
-| `docs/screener_architecture/phase_screener_arch4_full_universe_strategy_fit/strategy_fit_migration_dry_run_report.md` | Migration: universe_strategy_fit_audit | review_required | MISSING HEADER | `d895ccfd9de3` |
-| `docs/screener_architecture/phase_screener_arch4_full_universe_strategy_fit/universe_strategy_baseline_report.md` | SCREENER-ARCH-4 Universe & Strategy Baseline | review_required | MISSING HEADER | `75b0e652c036` |
+| `docs/screener_architecture/phase_screener_arch4_full_universe_strategy_fit/screener_arch4_safety_audit.md` | SCREENER-ARCH-4 — Safety Audit | review_required | OK | `49bc95f4ef9f` |
+| `docs/screener_architecture/phase_screener_arch4_full_universe_strategy_fit/screener_arch4_test_results.md` | SCREENER-ARCH-4 — Test Results | review_required | OK | `5a0aaa1c6677` |
+| `docs/screener_architecture/phase_screener_arch4_full_universe_strategy_fit/strategy_fit_audit_data_model.md` | SCREENER-ARCH-4 — Strategy-Fit Audit Data Model | review_required | OK | `3a6543153177` |
+| `docs/screener_architecture/phase_screener_arch4_full_universe_strategy_fit/strategy_fit_coverage_report.md` | Strategy-Fit Coverage Report | review_required | OK | `154d9c8eeca3` |
+| `docs/screener_architecture/phase_screener_arch4_full_universe_strategy_fit/strategy_fit_data_gaps_report.md` | Strategy-Fit Data Gaps Report | review_required | OK | `ccee4c835969` |
+| `docs/screener_architecture/phase_screener_arch4_full_universe_strategy_fit/strategy_fit_migration_apply_report.md` | Migration: universe_strategy_fit_audit | review_required | OK | `7dce99b82229` |
+| `docs/screener_architecture/phase_screener_arch4_full_universe_strategy_fit/strategy_fit_migration_dry_run_report.md` | Migration: universe_strategy_fit_audit | review_required | OK | `4197569fcd63` |
+| `docs/screener_architecture/phase_screener_arch4_full_universe_strategy_fit/universe_strategy_baseline_report.md` | SCREENER-ARCH-4 Universe & Strategy Baseline | review_required | OK | `a5181b89803f` |
 | `docs/screener_architecture/phase_screener_arch5_schedule_stale_remediation/00_README.md` | SCREENER-ARCH-5 — Schedule and Stale Screener Remediation | current_phase_keep | OK | `4567b788104d` |
-| `docs/screener_architecture/phase_screener_arch5_schedule_stale_remediation/schedule_baseline_report.md` | SCREENER-ARCH-5 Schedule Baseline | review_required | MISSING HEADER | `eda0961ae46e` |
-| `docs/screener_architecture/phase_screener_arch5_schedule_stale_remediation/screener_arch5_completion_matrix.md` | SCREENER-ARCH-5 — Completion Matrix | review_required | MISSING HEADER | `15d59d88623f` |
-| `docs/screener_architecture/phase_screener_arch5_schedule_stale_remediation/screener_arch5_safety_audit.md` | SCREENER-ARCH-5 — Safety Audit | review_required | MISSING HEADER | `706d5c9e18d6` |
-| `docs/screener_architecture/phase_screener_arch5_schedule_stale_remediation/screener_schedule_policy.md` | SCREENER-ARCH-5 — Schedule Policy | review_required | MISSING HEADER | `6808ca623501` |
-| `docs/screener_architecture/phase_screener_arch5_schedule_stale_remediation/stale_remediation_dry_run_report.md` | Remediate Stale Screeners (ARCH-5) | review_required | MISSING HEADER | `412ab1907ed5` |
+| `docs/screener_architecture/phase_screener_arch5_schedule_stale_remediation/schedule_baseline_report.md` | SCREENER-ARCH-5 Schedule Baseline | review_required | OK | `0d981764bde0` |
+| `docs/screener_architecture/phase_screener_arch5_schedule_stale_remediation/screener_arch5_completion_matrix.md` | SCREENER-ARCH-5 — Completion Matrix | review_required | OK | `04a44ef16459` |
+| `docs/screener_architecture/phase_screener_arch5_schedule_stale_remediation/screener_arch5_safety_audit.md` | SCREENER-ARCH-5 — Safety Audit | review_required | OK | `75986034c158` |
+| `docs/screener_architecture/phase_screener_arch5_schedule_stale_remediation/screener_schedule_policy.md` | SCREENER-ARCH-5 — Schedule Policy | review_required | OK | `3cc3c3195d68` |
+| `docs/screener_architecture/phase_screener_arch5_schedule_stale_remediation/stale_remediation_dry_run_report.md` | Remediate Stale Screeners (ARCH-5) | review_required | OK | `c9b94a880b1b` |
 | `docs/screener_architecture/phase_screener_map1_strategy_coverage_repair/00_README.md` | SCREENER-MAP-1 — Strategy Source Coverage Repair | current_phase_keep | OK | `4a1768b28e71` |
 | `docs/screener_architecture/phase_screener_map1_strategy_coverage_repair/screener_map1_drive_sync_server_restart.md` | SCREENER-MAP-1 Drive Sync + Server Restart Verification | review_required | OK | `235a18e89553` |
-| `docs/screener_architecture/phase_screener_map1_strategy_coverage_repair/screener_map1_safety_audit.md` | SCREENER-MAP-1 Safety Audit | review_required | MISSING HEADER | `29c47372e32d` |
+| `docs/screener_architecture/phase_screener_map1_strategy_coverage_repair/screener_map1_safety_audit.md` | SCREENER-MAP-1 Safety Audit | review_required | OK | `9099740c21a9` |
 | `docs/screener_architecture/phase_screener_map2_shadow_source_runs/00_README.md` | SCREENER-MAP-2 — Shadow Source Runs | current_phase_keep | OK | `cfa17a877c1f` |
-| `docs/screener_architecture/phase_screener_map2_shadow_source_runs/map2_safety_audit.md` | SCREENER-MAP-2 Safety Audit | review_required | MISSING HEADER | `eb19fa36ca61` |
-| `docs/screener_architecture/phase_screener_map2_shadow_source_runs/map2_shadow_source_health_report.md` | Shadow Source Health Report | review_required | MISSING HEADER | `8d28ad152e0b` |
+| `docs/screener_architecture/phase_screener_map2_shadow_source_runs/map2_safety_audit.md` | SCREENER-MAP-2 Safety Audit | review_required | OK | `bc881078bbcb` |
+| `docs/screener_architecture/phase_screener_map2_shadow_source_runs/map2_shadow_source_health_report.md` | Shadow Source Health Report | review_required | OK | `9f453f1276a5` |
 | `docs/screener_architecture/phase_screener_map3_promoter_family_thresholds/00_README.md` | SCREENER-MAP-3 — Promoter Family Thresholds | current_phase_keep | OK | `f8ac7cc33f99` |
-| `docs/screener_architecture/phase_screener_map3_promoter_family_thresholds/map3_safety_audit.md` | SCREENER-MAP-3 Safety Audit | review_required | MISSING HEADER | `a31e4530a3f0` |
-| `docs/screener_architecture/phase_screener_map3_promoter_family_thresholds/map3_to_map4_implementation_plan.md` | MAP-3 → MAP-4 Implementation Plan | review_required | MISSING HEADER | `a32a84454212` |
+| `docs/screener_architecture/phase_screener_map3_promoter_family_thresholds/map3_safety_audit.md` | SCREENER-MAP-3 Safety Audit | review_required | OK | `f6bef9ff39d7` |
+| `docs/screener_architecture/phase_screener_map3_promoter_family_thresholds/map3_to_map4_implementation_plan.md` | MAP-3 → MAP-4 Implementation Plan | review_required | OK | `29c01fdf9674` |
 | `docs/screener_architecture/phase_screener_map4_production_family_thresholds/00_README.md` | SCREENER-MAP-4 — Production Family Thresholds | current_phase_keep | OK | `d9163995d3a8` |
-| `docs/screener_architecture/phase_screener_map4_production_family_thresholds/map4_safety_audit.md` | SCREENER-MAP-4 Safety Audit | review_required | MISSING HEADER | `58c7d7103bdc` |
+| `docs/screener_architecture/phase_screener_map4_production_family_thresholds/map4_safety_audit.md` | SCREENER-MAP-4 Safety Audit | review_required | OK | `4658a07a9a3a` |
 | `docs/screener_architecture/phase_screener_map4b_promoter_observation/00_README.md` | SCREENER-MAP-4B — Post-Wire Promoter Observation | current_phase_keep | OK | `8620112956ab` |
 | `docs/screener_architecture/phase_screener_map5_dividend_income_scoring/00_README.md` | SCREENER-MAP-5 — Dividend Income Scoring | current_phase_keep | OK | `3cdb278c5b10` |
 | `docs/screener_architecture/phase_screener_map5_dividend_income_scoring/map5_restart_resync_verification.md` | MAP-5 Restart & Drive Resync Verification | review_required | OK | `fd458f336f80` |
-| `docs/screener_architecture/phase_screener_map5_dividend_income_scoring/map5_safety_audit.md` | SCREENER-MAP-5 Safety Audit | review_required | MISSING HEADER | `9e7ce9447733` |
+| `docs/screener_architecture/phase_screener_map5_dividend_income_scoring/map5_safety_audit.md` | SCREENER-MAP-5 Safety Audit | review_required | OK | `9d54184dfc76` |
 | `docs/screener_architecture/phase_screener_map5b_dividend_promoter_observation/00_README.md` | MAP-5B — Dividend Income Promoter Observation | current_phase_keep | OK | `9f5429ec661c` |
-| `docs/screener_architecture/phase_screener_map5b_dividend_promoter_observation/map5b_safety_audit.md` | MAP-5B Safety Audit | review_required | MISSING HEADER | `ed6a25c7c832` |
+| `docs/screener_architecture/phase_screener_map5b_dividend_promoter_observation/map5b_safety_audit.md` | MAP-5B Safety Audit | review_required | OK | `df8d9991ae69` |
 | `docs/screener_architecture/phase_screener_map5c_dividend_yield_enrichment/00_README.md` | MAP-5C — Dividend Yield Enrichment | current_phase_keep | OK | `04c475a5fee2` |
 | `docs/screener_architecture/phase_screener_map5d_dividend_quote_refresh/00_README.md` | MAP-5D — Dividend Quote Refresh | current_phase_keep | OK | `060e36349fc8` |
-| `docs/screener_architecture/phase_screener_map5d_dividend_quote_refresh/map5d_safety_audit.md` | MAP-5D Safety Audit | review_required | MISSING HEADER | `dda94439ba43` |
+| `docs/screener_architecture/phase_screener_map5d_dividend_quote_refresh/map5d_safety_audit.md` | MAP-5D Safety Audit | review_required | OK | `cebc6943187f` |
 | `docs/sessions/ALPACA_LIVE_READ_INTEGRATION_2026-07-21.md` | Alpaca Live Read-Only Integration — Session Handoff | review_required | OK | `ee2052565b9f` |
 | `docs/sessions/ALPACA_TAXONOMY_BUILD_2026-07-21.md` | Alpaca Multi-Account Taxonomy Build — R1–R5 Session Handoff | review_required | OK | `556e597927ea` |
 | `docs/sessions/bitwarden_sm_migration_2026-07-21.md` | Bitwarden Secrets Manager Migration — Session Handoff (S0–S7) | review_required | OK | `5d1c34e95f2b` |
@@ -1858,89 +1858,89 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/strategy/BOT_MATURITY_ROADMAP_v1.md` | Automated Trade Bot Maturity Roadmap v1 | current_phase_keep | OK | `597378911cfd` |
 | `docs/strategy/SCREENER_REFERENCE.md` | Trade AI v12 — Screener Reference | current_phase_keep | OK | `8836ce913693` |
 | `docs/system/SYSTEM_ACCESS_AND_APPLICATIONS_PAGE_REPORT.md` | System Access & Applications Pages Report — Trade AI v12 | review_required | OK | `cbe0b6e04fb0` |
-| `docs/trade_in_view_profit_capture.md` | Profit-Capture All-Trades Analysis | review_required | MISSING HEADER | `6f41d8ba7645` |
-| `docs/ui/PHASE111C_SYS_CLASSIFICATION_AUDIT.md` | Phase 111C — SYS Classification Audit | review_required | MISSING HEADER | `f00d42ce1d6d` |
-| `docs/ui/PHASE112_DASHBOARD_ACTIONABILITY_REPORT.md` | Phase 112 — Self-Learning Dashboard Actionability Fix | review_required | MISSING HEADER | `0bb24deb3788` |
+| `docs/trade_in_view_profit_capture.md` | Profit-Capture All-Trades Analysis | review_required | OK | `3628798fab7a` |
+| `docs/ui/PHASE111C_SYS_CLASSIFICATION_AUDIT.md` | Phase 111C — SYS Classification Audit | review_required | OK | `5d2b43556700` |
+| `docs/ui/PHASE112_DASHBOARD_ACTIONABILITY_REPORT.md` | Phase 112 — Self-Learning Dashboard Actionability Fix | review_required | OK | `506e1cb20ed0` |
 | `docs/ui/PHASE91A_SELF_LEARNING_DASHBOARD_GAP_AUDIT.md` | Phase 91A — Self-Learning Dashboard Gap Audit | review_required | OK | `ca00de45575a` |
-| `docs/ui/PHASE91B_SELF_LEARNING_DRILLTHROUGH_UX_ARCHITECTURE.md` | Phase 91B — Drill-Through UX Architecture | review_required | MISSING HEADER | `0b69f20358d2` |
+| `docs/ui/PHASE91B_SELF_LEARNING_DRILLTHROUGH_UX_ARCHITECTURE.md` | Phase 91B — Drill-Through UX Architecture | review_required | OK | `9ac312892ffe` |
 | `docs/ui/PHASE96A_SELF_LEARNING_OPERATOR_UX_GAP_REVIEW.md` | Phase 96A — Self-Learning Dashboard Operator UX Gap Review | review_required | OK | `fc997eb3814e` |
-| `docs/ui/PHASE96E_SELF_LEARNING_DASHBOARD_IMPLEMENTATION_BACKLOG.md` | Phase 96E — Dashboard Implementation Backlog | review_required | MISSING HEADER | `5c30795fb34b` |
-| `docs/ui/PORTFOLIO_DEEP_LINK_CONTRACT_2026-07-31.md` | Portfolio deep-link contract (2026-07-31) | review_required | MISSING HEADER | `15d1c9b7f467` |
-| `docs/ui/REENTRY_DECISION_SCORECARD_v1.md` | Re-Entry Decision Scorecard v1 | review_required | MISSING HEADER | `2cff8cbf2dee` |
-| `docs/ui/TRADING_DEEP_LINK_CONTRACT.md` | Trading deep-link contract (WP-T1) | review_required | MISSING HEADER | `9d671df1f6a9` |
+| `docs/ui/PHASE96E_SELF_LEARNING_DASHBOARD_IMPLEMENTATION_BACKLOG.md` | Phase 96E — Dashboard Implementation Backlog | review_required | OK | `fc2bcf9fa903` |
+| `docs/ui/PORTFOLIO_DEEP_LINK_CONTRACT_2026-07-31.md` | Portfolio deep-link contract (2026-07-31) | review_required | OK | `9b979ef794b0` |
+| `docs/ui/REENTRY_DECISION_SCORECARD_v1.md` | Re-Entry Decision Scorecard v1 | review_required | OK | `b404568bbe7a` |
+| `docs/ui/TRADING_DEEP_LINK_CONTRACT.md` | Trading deep-link contract (WP-T1) | review_required | OK | `863264abc970` |
 | `docs/ui/stop-management-desk-redesign-2026-07-15.md` | Stop Management desk redesign (CC v3) | review_required | OK | `3306fdd2c2f4` |
-| `docs/ui_audits/2026-05-23_command_center_fix/FIX_SUMMARY.md` | Command Center Data Integrity Fix Summary (2026-05-23) | review_required | MISSING HEADER | `80e72cb07627` |
-| `docs/ui_audits/2026-05-23_command_center_fix/ROOT_CAUSE_MATRIX.md` | ROOT CAUSE MATRIX — Command Center v12 Visual Audit (2026-05-23) | review_required | MISSING HEADER | `6673600acf76` |
-| `docs/ui_audits/2026-05-23_command_center_reliability_fix/DATA_PRODUCT_FRESHNESS_REGISTRY.md` | Data Product Freshness Registry | review_required | MISSING HEADER | `e4c9ccf3dd99` |
-| `docs/ui_audits/2026-05-23_command_center_reliability_fix/FIX_SUMMARY.md` | Command Center Reliability Fix Summary (2026-05-23) | review_required | MISSING HEADER | `1813f220000c` |
-| `docs/ui_audits/2026-05-23_command_center_reliability_fix/ROOT_CAUSE_MATRIX.md` | ROOT CAUSE MATRIX — Command Center Reliability Fix (2026-05-23) | review_required | MISSING HEADER | `72e0ef0f8340` |
-| `docs/ui_audits/2026-05-24_source_verification/CODE_FIX_VERIFICATION_MATRIX.md` | Code Fix Verification Matrix (2026-05-24) | review_required | MISSING HEADER | `19a566713873` |
-| `docs/ui_audits/2026-05-24_source_verification/REMAINING_FLAWS.md` | Remaining Flaws — Post-Verification Assessment (2026-05-24) | review_required | MISSING HEADER | `88a87cf9efa5` |
-| `docs/ui_audits/2026-05-24_source_verification/SOURCE_BACKUP_VERIFICATION.md` | Source Backup Verification (2026-05-24) | archive_superseded | MISSING HEADER | `5f43b26c7f0a` |
-| `docs/ui_audits/post_8b348c3/VERIFICATION_MATRIX.md` | Post-8b348c3 Verification Matrix | review_required | MISSING HEADER | `58341b319dc4` |
-| `docs/ui_redesign/ALL_V2_ROUTE_MAP.md` | Trade AI Command Center v2 -- Full Route Map | review_required | MISSING HEADER | `ddca410bb0fc` |
-| `docs/ui_redesign/API_CONTRACTS_AND_PAYLOADS.md` | API Contracts and Payloads | review_required | MISSING HEADER | `d172db029ead` |
-| `docs/ui_redesign/ARCHITECTURE_BLUEPRINT_V1.md` | Trade AI Command Center -- Architecture Blueprint v1 | archive_legacy_blueprint | MISSING HEADER | `1e3ea43b543f` |
-| `docs/ui_redesign/COMPONENT_INVENTORY.md` | Component Inventory | review_required | MISSING HEADER | `fc0a1aa5dbb1` |
-| `docs/ui_redesign/DESIGN_TOKENS_CURRENT.md` | Design Tokens -- Current State | review_required | MISSING HEADER | `b9005884d1d3` |
-| `docs/ui_redesign/DRIVE_SYNC_INSTRUCTIONS.md` | Google Drive Sync Instructions | review_required | MISSING HEADER | `1d25eea64c3f` |
-| `docs/ui_redesign/DUPLICATE_AND_OVERLAP_AUDIT.md` | Duplicate and Overlap Audit | review_required | MISSING HEADER | `7da30145d45b` |
-| `docs/ui_redesign/GOVERNANCE_TRADEAI_PROSPECTS_REVIEW.md` | Governance / Trade AI / Prospects Review | review_required | MISSING HEADER | `e8e6aebc529a` |
-| `docs/ui_redesign/HANDOFF_MANIFEST.md` | Design Handoff Manifest | review_required | MISSING HEADER | `0a24512eb613` |
-| `docs/ui_redesign/IMPLEMENTATION_CONSTRAINTS.md` | Implementation Constraints | review_required | MISSING HEADER | `17fe2554ec68` |
-| `docs/ui_redesign/NAVIGATION_REDESIGN_REVIEW.md` | Navigation Redesign Review | review_required | MISSING HEADER | `16a0418403a9` |
-| `docs/ui_redesign/OPS_PIPELINE_HEALTH_REVIEW.md` | Ops / Pipeline / Health Page Family Review | review_required | MISSING HEADER | `456eb5694434` |
-| `docs/ui_redesign/PAGE_FAMILY_CONSOLIDATION_REVIEW.md` | Page Family Consolidation Review | review_required | MISSING HEADER | `f0cc41882e5f` |
-| `docs/ui_redesign/README_DESIGN_HANDOFF.md` | Trade AI Command Center v2 -- UI/UX Design Handoff Package | review_required | MISSING HEADER | `0bd5aa5409c1` |
-| `docs/ui_redesign/REDESIGN_TARGETS.md` | Redesign Targets | review_required | MISSING HEADER | `c857f68433f1` |
-| `docs/ui_redesign/SCREENSHOT_INDEX.md` | Screenshot Index | review_required | MISSING HEADER | `77d5be3b38d9` |
-| `docs/ui_redesign/SELF_IMPROVEMENT_PAGE_ENHANCEMENT_NOTES.md` | Self-Improvement Page Enhancement Notes | review_required | MISSING HEADER | `d0a25a9d80cd` |
-| `docs/ui_redesign/UI_REDESIGN_BACKLOG.md` | UI Redesign Backlog | review_required | MISSING HEADER | `d17a024db11f` |
-| `docs/ui_redesign/UX_ISSUES_OBSERVED.md` | UX Issues Observed | review_required | MISSING HEADER | `ce887372cc30` |
-| `docs/ui_redesign/designer_workspace/DESIGNER_MISSING_FILES_REPORT.md` | Designer Missing Files Report | review_required | MISSING HEADER | `1adf6a18319f` |
-| `docs/ui_redesign/designer_workspace/designed_replacements/phase1_5_ui_primitives/ActionButton.tsx.REPLACEMENT.md` | New Component: ActionButton.tsx | review_required | MISSING HEADER | `8f8587c8077e` |
-| `docs/ui_redesign/designer_workspace/designed_replacements/phase1_5_ui_primitives/AgentChip.tsx.REPLACEMENT.md` | New Component: AgentChip.tsx | review_required | MISSING HEADER | `543d190c7b66` |
-| `docs/ui_redesign/designer_workspace/designed_replacements/phase1_5_ui_primitives/SeverityBadge.tsx.REPLACEMENT.md` | New Component: SeverityBadge.tsx | review_required | MISSING HEADER | `bf1c45e93944` |
-| `docs/ui_redesign/designer_workspace/designed_replacements/phase1_5_ui_primitives/StateCard.tsx.REPLACEMENT.md` | New Component: StateCard.tsx | review_required | MISSING HEADER | `fbd98c2437ad` |
+| `docs/ui_audits/2026-05-23_command_center_fix/FIX_SUMMARY.md` | Command Center Data Integrity Fix Summary (2026-05-23) | review_required | OK | `7d6b928d201a` |
+| `docs/ui_audits/2026-05-23_command_center_fix/ROOT_CAUSE_MATRIX.md` | ROOT CAUSE MATRIX — Command Center v12 Visual Audit (2026-05-23) | review_required | OK | `913182d686e5` |
+| `docs/ui_audits/2026-05-23_command_center_reliability_fix/DATA_PRODUCT_FRESHNESS_REGISTRY.md` | Data Product Freshness Registry | review_required | OK | `ee92c6ec5d64` |
+| `docs/ui_audits/2026-05-23_command_center_reliability_fix/FIX_SUMMARY.md` | Command Center Reliability Fix Summary (2026-05-23) | review_required | OK | `c7f1bb7fc02d` |
+| `docs/ui_audits/2026-05-23_command_center_reliability_fix/ROOT_CAUSE_MATRIX.md` | ROOT CAUSE MATRIX — Command Center Reliability Fix (2026-05-23) | review_required | OK | `586c0e1d7876` |
+| `docs/ui_audits/2026-05-24_source_verification/CODE_FIX_VERIFICATION_MATRIX.md` | Code Fix Verification Matrix (2026-05-24) | review_required | OK | `af82a4fe6da1` |
+| `docs/ui_audits/2026-05-24_source_verification/REMAINING_FLAWS.md` | Remaining Flaws — Post-Verification Assessment (2026-05-24) | review_required | OK | `0c58819c11cf` |
+| `docs/ui_audits/2026-05-24_source_verification/SOURCE_BACKUP_VERIFICATION.md` | Source Backup Verification (2026-05-24) | archive_superseded | OK | `c3a33f40c09e` |
+| `docs/ui_audits/post_8b348c3/VERIFICATION_MATRIX.md` | Post-8b348c3 Verification Matrix | review_required | OK | `91c5afa4fc76` |
+| `docs/ui_redesign/ALL_V2_ROUTE_MAP.md` | Trade AI Command Center v2 -- Full Route Map | review_required | OK | `ac90ab482bbd` |
+| `docs/ui_redesign/API_CONTRACTS_AND_PAYLOADS.md` | API Contracts and Payloads | review_required | OK | `bd1dea4ca669` |
+| `docs/ui_redesign/ARCHITECTURE_BLUEPRINT_V1.md` | Trade AI Command Center -- Architecture Blueprint v1 | archive_legacy_blueprint | OK | `e87c76716d41` |
+| `docs/ui_redesign/COMPONENT_INVENTORY.md` | Component Inventory | review_required | OK | `0c1a9aaa746f` |
+| `docs/ui_redesign/DESIGN_TOKENS_CURRENT.md` | Design Tokens -- Current State | review_required | OK | `160c246fcefe` |
+| `docs/ui_redesign/DRIVE_SYNC_INSTRUCTIONS.md` | Google Drive Sync Instructions | review_required | OK | `64f06d042a58` |
+| `docs/ui_redesign/DUPLICATE_AND_OVERLAP_AUDIT.md` | Duplicate and Overlap Audit | review_required | OK | `93c0a7440523` |
+| `docs/ui_redesign/GOVERNANCE_TRADEAI_PROSPECTS_REVIEW.md` | Governance / Trade AI / Prospects Review | review_required | OK | `cf945d6a8eb0` |
+| `docs/ui_redesign/HANDOFF_MANIFEST.md` | Design Handoff Manifest | review_required | OK | `8874f1d644aa` |
+| `docs/ui_redesign/IMPLEMENTATION_CONSTRAINTS.md` | Implementation Constraints | review_required | OK | `1c6855376bcb` |
+| `docs/ui_redesign/NAVIGATION_REDESIGN_REVIEW.md` | Navigation Redesign Review | review_required | OK | `13a816ff402d` |
+| `docs/ui_redesign/OPS_PIPELINE_HEALTH_REVIEW.md` | Ops / Pipeline / Health Page Family Review | review_required | OK | `73c71509b897` |
+| `docs/ui_redesign/PAGE_FAMILY_CONSOLIDATION_REVIEW.md` | Page Family Consolidation Review | review_required | OK | `49124c51e20d` |
+| `docs/ui_redesign/README_DESIGN_HANDOFF.md` | Trade AI Command Center v2 -- UI/UX Design Handoff Package | review_required | OK | `edfac8b57e43` |
+| `docs/ui_redesign/REDESIGN_TARGETS.md` | Redesign Targets | review_required | OK | `2a283a86aded` |
+| `docs/ui_redesign/SCREENSHOT_INDEX.md` | Screenshot Index | review_required | OK | `5334e9c132e9` |
+| `docs/ui_redesign/SELF_IMPROVEMENT_PAGE_ENHANCEMENT_NOTES.md` | Self-Improvement Page Enhancement Notes | review_required | OK | `521540d1b202` |
+| `docs/ui_redesign/UI_REDESIGN_BACKLOG.md` | UI Redesign Backlog | review_required | OK | `7388431686e4` |
+| `docs/ui_redesign/UX_ISSUES_OBSERVED.md` | UX Issues Observed | review_required | OK | `aa796a5dae5b` |
+| `docs/ui_redesign/designer_workspace/DESIGNER_MISSING_FILES_REPORT.md` | Designer Missing Files Report | review_required | OK | `7378498badaa` |
+| `docs/ui_redesign/designer_workspace/designed_replacements/phase1_5_ui_primitives/ActionButton.tsx.REPLACEMENT.md` | New Component: ActionButton.tsx | review_required | OK | `9b1fb23a876c` |
+| `docs/ui_redesign/designer_workspace/designed_replacements/phase1_5_ui_primitives/AgentChip.tsx.REPLACEMENT.md` | New Component: AgentChip.tsx | review_required | OK | `5e77a84d39e5` |
+| `docs/ui_redesign/designer_workspace/designed_replacements/phase1_5_ui_primitives/SeverityBadge.tsx.REPLACEMENT.md` | New Component: SeverityBadge.tsx | review_required | OK | `219796982c46` |
+| `docs/ui_redesign/designer_workspace/designed_replacements/phase1_5_ui_primitives/StateCard.tsx.REPLACEMENT.md` | New Component: StateCard.tsx | review_required | OK | `55fc5783c621` |
 | `docs/ui_redesign/designer_workspace/designed_replacements/phase1_5_ui_primitives/StatusBadge.tsx.REPLACEMENT.md` | New Component: StatusBadge.tsx | review_required | OK | `022a3dc2ff3e` |
-| `docs/ui_redesign/designer_workspace/designed_replacements/phase1_5_ui_primitives/UI_PRIMITIVES_DESIGN_NOTES.md` | Phase 1.5 UI Primitives — Design Notes | review_required | MISSING HEADER | `0d2014da07b8` |
-| `docs/ui_redesign/designer_workspace/designed_replacements/phase1_5_ui_primitives/UI_PRIMITIVES_USAGE_GUIDE.md` | Phase 1.5 UI Primitives — Usage Guide | review_required | MISSING HEADER | `f1b8ed32e387` |
-| `docs/ui_redesign/designer_workspace/designed_replacements/phase2b_automation_trust/AUTOMATION_TRUST_CENTER_APPLY_PLAN.md` | Automation Trust Center -- Apply Plan | review_required | MISSING HEADER | `90c67733f6a5` |
-| `docs/ui_redesign/designer_workspace/designed_replacements/phase2b_automation_trust/AUTOMATION_TRUST_CENTER_DESIGN_NOTES.md` | Automation Trust Center -- Design Notes | review_required | MISSING HEADER | `53367734a688` |
-| `docs/ui_redesign/designer_workspace/designed_replacements/phase2b_automation_trust/AgentPipeline.tsx.REPLACEMENT.md` | AgentPipeline.tsx Replacement | review_required | MISSING HEADER | `5110beb71893` |
-| `docs/ui_redesign/designer_workspace/designed_replacements/phase2b_automation_trust/OpsHub.tsx.REPLACEMENT.md` | OpsHub.tsx Replacement | review_required | MISSING HEADER | `173a74f07b93` |
-| `docs/ui_redesign/designer_workspace/designed_replacements/phase2b_automation_trust/PipelineHub.tsx.REPLACEMENT.md` | PipelineHub.tsx Replacement | review_required | MISSING HEADER | `ff242f52bd40` |
-| `docs/ui_redesign/designer_workspace/designed_replacements/phase2b_automation_trust/SystemHealth.tsx.REPLACEMENT.md` | SystemHealth.tsx Replacement | review_required | MISSING HEADER | `2a754ce59fe6` |
-| `docs/ui_redesign/designer_workspace/designed_replacements/phase3_market_opportunities/MARKET_OPPORTUNITIES_APPLY_PLAN.md` | Market Opportunities Phase 3 - Apply Plan | review_required | MISSING HEADER | `7f4971a3abe0` |
-| `docs/ui_redesign/designer_workspace/designed_replacements/phase3_market_opportunities/MARKET_OPPORTUNITIES_DESIGN_NOTES.md` | Market Opportunities Phase 3 - Design Notes | review_required | MISSING HEADER | `57b1d44d83ae` |
-| `docs/ui_redesign/designer_workspace/designed_replacements/phase3_market_opportunities/Prospects.tsx.REPLACEMENT.md` | Prospects.tsx Replacement | review_required | MISSING HEADER | `11fd0a3de6cc` |
-| `docs/ui_redesign/designer_workspace/designed_replacements/phase3_market_opportunities/TradeAI.tsx.REPLACEMENT.md` | TradeAI.tsx Replacement | review_required | MISSING HEADER | `6478fb95080e` |
-| `docs/ui_redesign/designer_workspace/designed_replacements/phase4_governance_approvals/GOVERNANCE_APPROVALS_APPLY_PLAN.md` | Phase 4 Governance & Approvals -- Apply Plan | review_required | MISSING HEADER | `8e2f672b6fce` |
-| `docs/ui_redesign/designer_workspace/designed_replacements/phase4_governance_approvals/GOVERNANCE_APPROVALS_DESIGN_NOTES.md` | Governance & Approvals -- Design Notes | review_required | MISSING HEADER | `d8a883f4f11d` |
-| `docs/ui_redesign/designer_workspace/designed_replacements/phase4_governance_approvals/GOVERNANCE_APPROVALS_ROUTE_AUDIT.md` | Governance & Approvals Route Audit | review_required | MISSING HEADER | `a2b4f0d853c0` |
-| `docs/ui_redesign/designer_workspace/designed_replacements/phase4_governance_approvals/GovernanceHub.tsx.REPLACEMENT.md` | GovernanceHub.tsx Replacement | review_required | MISSING HEADER | `7ffc993e958d` |
-| `docs/ui_redesign/designer_workspace/designed_replacements/phase4_governance_approvals/LearningGovernance.tsx.REPLACEMENT.md` | LearningGovernance.tsx Replacement | review_required | MISSING HEADER | `2add474de43b` |
-| `docs/ui_redesign/designer_workspace/designed_replacements/phase4_governance_approvals/PaperGovernance.tsx.REPLACEMENT.md` | PaperGovernance.tsx Replacement | review_required | MISSING HEADER | `4720c9736186` |
-| `docs/ui_redesign/designer_workspace/designed_replacements/phase4_governance_approvals/PaperProposals.tsx.REPLACEMENT.md` | PaperProposals.tsx Replacement | review_required | MISSING HEADER | `b6080e2106d2` |
-| `docs/ui_redesign/designer_workspace/designed_replacements/phase4_governance_approvals/PaperReview.tsx.REPLACEMENT.md` | PaperReview.tsx Replacement | review_required | MISSING HEADER | `a261e5603f2c` |
-| `docs/ui_redesign/designer_workspace/designed_replacements/phase4_governance_approvals/ProposalAlerts.tsx.REPLACEMENT.md` | ProposalAlerts.tsx Replacement | review_required | MISSING HEADER | `ee6a35c54aed` |
-| `docs/ui_redesign/designer_workspace/implementation_prompts/AGENT_COLLABORATION_DECISION_COCKPIT_APPLY_REPORT.md` | Agent Collaboration Decision Cockpit — Apply Report | review_required | MISSING HEADER | `2e371c076a5c` |
-| `docs/ui_redesign/designer_workspace/implementation_prompts/CLAUDE_APPLY_DESIGNER_REPLACEMENTS_TEMPLATE.md` | Claude Code — Apply Designer Replacement Files | review_required | MISSING HEADER | `ec443d221860` |
-| `docs/ui_redesign/designer_workspace/implementation_prompts/PHASE1_5_UI_PRIMITIVES_APPLY_REPORT.md` | Phase 1.5 UI Primitives Apply Report | review_required | MISSING HEADER | `3711ef23eef0` |
-| `docs/ui_redesign/designer_workspace/implementation_prompts/PHASE1_NAV_APPLY_REPORT.md` | Phase 1 Navigation Apply Report | review_required | MISSING HEADER | `e6001171c520` |
-| `docs/ui_redesign/designer_workspace/implementation_prompts/PHASE2B_AUTOMATION_TRUST_CENTER_APPLY_REPORT.md` | Phase 2b Automation Trust Center — Apply Report | review_required | MISSING HEADER | `f4d2dd4f7e81` |
-| `docs/ui_redesign/designer_workspace/implementation_prompts/PHASE3_MARKET_OPPORTUNITIES_APPLY_REPORT.md` | Phase 3 Market Opportunities — Apply Report | review_required | MISSING HEADER | `6252f77af0e2` |
-| `docs/ui_redesign/designer_workspace/implementation_prompts/PHASE4B_APPROVALS_APPLY_REPORT.md` | Phase 4B Approvals — Apply Report | review_required | MISSING HEADER | `91cbd401f7f2` |
-| `docs/ui_redesign/designer_workspace/implementation_prompts/PHASE4C_PAPER_PROPOSALS_APPLY_REPORT.md` | Phase 4C Paper Proposals — Apply Report | review_required | MISSING HEADER | `2873a07efa2f` |
-| `docs/ui_redesign/designer_workspace/implementation_prompts/PHASE4_GOVERNANCE_APPROVALS_CLOSEOUT_REPORT.md` | Phase 4 Governance & Approvals Closeout Report | review_required | MISSING HEADER | `fc79f7a9d007` |
-| `docs/ui_redesign/designer_workspace/implementation_prompts/PHASE5_SELF_IMPROVEMENT_POLISH_APPLY_REPORT.md` | Phase 5 Self-Improvement Polish — Apply Report | review_required | MISSING HEADER | `fa2a5be0daee` |
-| `docs/ui_redesign/designer_workspace/implementation_prompts/UI_REDESIGN_COMPLETE_SESSION_MEMORY.md` | Trade AI Command Center UI Redesign — Complete Session Memory | review_required | MISSING HEADER | `0a4a3c9977a2` |
-| `docs/ui_redesign/designer_workspace/implementation_prompts/UI_REDESIGN_FINAL_CLOSEOUT_REPORT.md` | UI Redesign Final Closeout Report | review_required | MISSING HEADER | `17643952224c` |
-| `docs/ui_redesign/designer_workspace/implementation_prompts/UI_REDESIGN_FINAL_COMPLETE_CLOSEOUT_REPORT.md` | UI Redesign Final Complete Closeout Report | review_required | MISSING HEADER | `25e74ead9d14` |
-| `docs/ui_redesign/designer_workspace/implementation_prompts/UI_REDESIGN_FULL_SESSION_MEMORY.md` | Trade AI Command Center UI Redesign Session Memory | review_required | MISSING HEADER | `f548f6154bfd` |
-| `docs/ui_redesign/designer_workspace/implementation_prompts/UI_REDESIGN_SESSION_CLOSEOUT_REPORT.md` | UI Redesign Session Closeout Report | review_required | MISSING HEADER | `858c91760587` |
-| `docs/ui_ux/COMMAND_CENTER_UI_CONSOLIDATION_REVIEW.md` | Command Center UI Consolidation Review | review_required | MISSING HEADER | `1f99b19a15c9` |
-| `docs/ui_ux/NAVIGATION_REDESIGN_PROPOSAL.md` | Navigation Redesign Proposal — Command Center v12 | review_required | MISSING HEADER | `2264cff864a3` |
-| `docs/ui_ux/PAGE_OVERLAP_MATRIX.md` | Page Overlap Matrix — Command Center v12 | review_required | MISSING HEADER | `9a5b6766c447` |
+| `docs/ui_redesign/designer_workspace/designed_replacements/phase1_5_ui_primitives/UI_PRIMITIVES_DESIGN_NOTES.md` | Phase 1.5 UI Primitives — Design Notes | review_required | OK | `db6299389ea4` |
+| `docs/ui_redesign/designer_workspace/designed_replacements/phase1_5_ui_primitives/UI_PRIMITIVES_USAGE_GUIDE.md` | Phase 1.5 UI Primitives — Usage Guide | review_required | OK | `49b2ba7e6583` |
+| `docs/ui_redesign/designer_workspace/designed_replacements/phase2b_automation_trust/AUTOMATION_TRUST_CENTER_APPLY_PLAN.md` | Automation Trust Center -- Apply Plan | review_required | OK | `cf3e7036c73d` |
+| `docs/ui_redesign/designer_workspace/designed_replacements/phase2b_automation_trust/AUTOMATION_TRUST_CENTER_DESIGN_NOTES.md` | Automation Trust Center -- Design Notes | review_required | OK | `8cb48b53d128` |
+| `docs/ui_redesign/designer_workspace/designed_replacements/phase2b_automation_trust/AgentPipeline.tsx.REPLACEMENT.md` | AgentPipeline.tsx Replacement | review_required | OK | `37c8a0371b3c` |
+| `docs/ui_redesign/designer_workspace/designed_replacements/phase2b_automation_trust/OpsHub.tsx.REPLACEMENT.md` | OpsHub.tsx Replacement | review_required | OK | `24a6ae975038` |
+| `docs/ui_redesign/designer_workspace/designed_replacements/phase2b_automation_trust/PipelineHub.tsx.REPLACEMENT.md` | PipelineHub.tsx Replacement | review_required | OK | `4f29e50efff1` |
+| `docs/ui_redesign/designer_workspace/designed_replacements/phase2b_automation_trust/SystemHealth.tsx.REPLACEMENT.md` | SystemHealth.tsx Replacement | review_required | OK | `2d4ac70cf233` |
+| `docs/ui_redesign/designer_workspace/designed_replacements/phase3_market_opportunities/MARKET_OPPORTUNITIES_APPLY_PLAN.md` | Market Opportunities Phase 3 - Apply Plan | review_required | OK | `30d68ff16887` |
+| `docs/ui_redesign/designer_workspace/designed_replacements/phase3_market_opportunities/MARKET_OPPORTUNITIES_DESIGN_NOTES.md` | Market Opportunities Phase 3 - Design Notes | review_required | OK | `d503c70dbc66` |
+| `docs/ui_redesign/designer_workspace/designed_replacements/phase3_market_opportunities/Prospects.tsx.REPLACEMENT.md` | Prospects.tsx Replacement | review_required | OK | `c0cae6739da0` |
+| `docs/ui_redesign/designer_workspace/designed_replacements/phase3_market_opportunities/TradeAI.tsx.REPLACEMENT.md` | TradeAI.tsx Replacement | review_required | OK | `38404e25e455` |
+| `docs/ui_redesign/designer_workspace/designed_replacements/phase4_governance_approvals/GOVERNANCE_APPROVALS_APPLY_PLAN.md` | Phase 4 Governance & Approvals -- Apply Plan | review_required | OK | `dd0cb5154d46` |
+| `docs/ui_redesign/designer_workspace/designed_replacements/phase4_governance_approvals/GOVERNANCE_APPROVALS_DESIGN_NOTES.md` | Governance & Approvals -- Design Notes | review_required | OK | `f74e16e1b159` |
+| `docs/ui_redesign/designer_workspace/designed_replacements/phase4_governance_approvals/GOVERNANCE_APPROVALS_ROUTE_AUDIT.md` | Governance & Approvals Route Audit | review_required | OK | `046cc03e8671` |
+| `docs/ui_redesign/designer_workspace/designed_replacements/phase4_governance_approvals/GovernanceHub.tsx.REPLACEMENT.md` | GovernanceHub.tsx Replacement | review_required | OK | `c91e25aecf8c` |
+| `docs/ui_redesign/designer_workspace/designed_replacements/phase4_governance_approvals/LearningGovernance.tsx.REPLACEMENT.md` | LearningGovernance.tsx Replacement | review_required | OK | `b0582610105a` |
+| `docs/ui_redesign/designer_workspace/designed_replacements/phase4_governance_approvals/PaperGovernance.tsx.REPLACEMENT.md` | PaperGovernance.tsx Replacement | review_required | OK | `537d18f6bc65` |
+| `docs/ui_redesign/designer_workspace/designed_replacements/phase4_governance_approvals/PaperProposals.tsx.REPLACEMENT.md` | PaperProposals.tsx Replacement | review_required | OK | `91029e6f088f` |
+| `docs/ui_redesign/designer_workspace/designed_replacements/phase4_governance_approvals/PaperReview.tsx.REPLACEMENT.md` | PaperReview.tsx Replacement | review_required | OK | `a0e447c6bea0` |
+| `docs/ui_redesign/designer_workspace/designed_replacements/phase4_governance_approvals/ProposalAlerts.tsx.REPLACEMENT.md` | ProposalAlerts.tsx Replacement | review_required | OK | `a080f832077d` |
+| `docs/ui_redesign/designer_workspace/implementation_prompts/AGENT_COLLABORATION_DECISION_COCKPIT_APPLY_REPORT.md` | Agent Collaboration Decision Cockpit — Apply Report | review_required | OK | `2c80e3bf14d3` |
+| `docs/ui_redesign/designer_workspace/implementation_prompts/CLAUDE_APPLY_DESIGNER_REPLACEMENTS_TEMPLATE.md` | Claude Code — Apply Designer Replacement Files | review_required | OK | `dbdb5fbff5aa` |
+| `docs/ui_redesign/designer_workspace/implementation_prompts/PHASE1_5_UI_PRIMITIVES_APPLY_REPORT.md` | Phase 1.5 UI Primitives Apply Report | review_required | OK | `4d54526b205e` |
+| `docs/ui_redesign/designer_workspace/implementation_prompts/PHASE1_NAV_APPLY_REPORT.md` | Phase 1 Navigation Apply Report | review_required | OK | `38852bfab034` |
+| `docs/ui_redesign/designer_workspace/implementation_prompts/PHASE2B_AUTOMATION_TRUST_CENTER_APPLY_REPORT.md` | Phase 2b Automation Trust Center — Apply Report | review_required | OK | `a26ff518c2a1` |
+| `docs/ui_redesign/designer_workspace/implementation_prompts/PHASE3_MARKET_OPPORTUNITIES_APPLY_REPORT.md` | Phase 3 Market Opportunities — Apply Report | review_required | OK | `57e07c611eb6` |
+| `docs/ui_redesign/designer_workspace/implementation_prompts/PHASE4B_APPROVALS_APPLY_REPORT.md` | Phase 4B Approvals — Apply Report | review_required | OK | `e822da8506d1` |
+| `docs/ui_redesign/designer_workspace/implementation_prompts/PHASE4C_PAPER_PROPOSALS_APPLY_REPORT.md` | Phase 4C Paper Proposals — Apply Report | review_required | OK | `929da0ecbcb0` |
+| `docs/ui_redesign/designer_workspace/implementation_prompts/PHASE4_GOVERNANCE_APPROVALS_CLOSEOUT_REPORT.md` | Phase 4 Governance & Approvals Closeout Report | review_required | OK | `646724764de2` |
+| `docs/ui_redesign/designer_workspace/implementation_prompts/PHASE5_SELF_IMPROVEMENT_POLISH_APPLY_REPORT.md` | Phase 5 Self-Improvement Polish — Apply Report | review_required | OK | `ec37fdd1ddb8` |
+| `docs/ui_redesign/designer_workspace/implementation_prompts/UI_REDESIGN_COMPLETE_SESSION_MEMORY.md` | Trade AI Command Center UI Redesign — Complete Session Memory | review_required | OK | `0cd2e613f9e8` |
+| `docs/ui_redesign/designer_workspace/implementation_prompts/UI_REDESIGN_FINAL_CLOSEOUT_REPORT.md` | UI Redesign Final Closeout Report | review_required | OK | `784003e33278` |
+| `docs/ui_redesign/designer_workspace/implementation_prompts/UI_REDESIGN_FINAL_COMPLETE_CLOSEOUT_REPORT.md` | UI Redesign Final Complete Closeout Report | review_required | OK | `873ff5b38d72` |
+| `docs/ui_redesign/designer_workspace/implementation_prompts/UI_REDESIGN_FULL_SESSION_MEMORY.md` | Trade AI Command Center UI Redesign Session Memory | review_required | OK | `93400a693ac5` |
+| `docs/ui_redesign/designer_workspace/implementation_prompts/UI_REDESIGN_SESSION_CLOSEOUT_REPORT.md` | UI Redesign Session Closeout Report | review_required | OK | `d1e67c3bd4be` |
+| `docs/ui_ux/COMMAND_CENTER_UI_CONSOLIDATION_REVIEW.md` | Command Center UI Consolidation Review | review_required | OK | `78a35a72007f` |
+| `docs/ui_ux/NAVIGATION_REDESIGN_PROPOSAL.md` | Navigation Redesign Proposal — Command Center v12 | review_required | OK | `11c95fbe899c` |
+| `docs/ui_ux/PAGE_OVERLAP_MATRIX.md` | Page Overlap Matrix — Command Center v12 | review_required | OK | `c4fac1133fa0` |
 | `docs/v4_1_deployment_log.md` | LLM Fleet v4.1 — Deployment Log | active_keep | OK | `a44a0859673f` |
 | `docs/wealth-advisor/STEPH_WEALTH_ADVISOR.md` | Steph Wealth Advisor — Documentation | review_required | OK | `aebf31e845b7` |
