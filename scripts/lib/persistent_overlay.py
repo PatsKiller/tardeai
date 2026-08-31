@@ -72,6 +72,22 @@ def _has_sentinel(directory: Path, rel: str) -> bool:
     return any((directory / n).exists() for n in names)
 
 
+def _resolve_overlay_source(src_root: Path, rel: str) -> Path:
+    """Map release-relative overlay paths onto the persistent root layout.
+
+    `state/data_broker` historically lived under the checkout / release tree and
+    was later dual-homed. On the GOOD_PERSISTENT_ROOT the durable files sit at
+    `data/portfolios/state/data_broker`. Prefer that when `state/data_broker` is
+    absent so deploy guards do not refuse a healthy persistent root.
+    """
+    primary = src_root / rel
+    if rel == "state/data_broker" and not _has_sentinel(primary, rel):
+        alt = src_root / "data" / "portfolios" / "state" / "data_broker"
+        if _has_sentinel(alt, rel):
+            return alt
+    return primary
+
+
 def overlay_is_safe(
     *,
     canonical_source: Path | str,
@@ -83,7 +99,7 @@ def overlay_is_safe(
     blocked = []
     allowed = []
     for rel in rels:
-        source = src_root / rel
+        source = _resolve_overlay_source(src_root, rel)
         target = dest_root / rel
         source_ok = _has_sentinel(source, rel)
         dest_ok = _has_sentinel(target, rel)
@@ -123,7 +139,7 @@ def apply_overlay_symlinks(
     dest_root = Path(dest)
     linked = []
     for rel in rels:
-        source = src_root / rel
+        source = _resolve_overlay_source(src_root, rel)
         target = dest_root / rel
         if not source.exists():
             continue
