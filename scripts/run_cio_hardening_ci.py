@@ -119,6 +119,9 @@ GATES = [
     ("scripts_lib_bootstrap", [
         "tests/test_scripts_lib_bootstrap.py",
     ]),
+    ("governance_section_zero_parity", [
+        "tests/test_agents_section_zero_parity.py",
+    ]),
     ("agent_brief", [
         "tests/test_agent_brief.py",
     ]),

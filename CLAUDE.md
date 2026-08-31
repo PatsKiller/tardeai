@@ -1,351 +1,41 @@
-# CLAUDE.md — standing rules for this repository
+# CLAUDE.md — adapter
 
-Read this before doing anything. Every rule here was written after a specific
-failure, and most were written after the same class of failure happened more
-than once.
+**Read `./AGENTS.md` first.** It is the single source of truth for agent behaviour in this
+repository: identity, authority rails, evidence and citation standards, dry-run requirements,
+standing traps, validation, deploy protocol, multi-agent protocol, model-lane policy, the maturity
+bar, and the operator-only list.
 
-`./AI_WORK_POLICY.md` remains the canonical engineering, Git, CI-cost,
-deployment-boundary and remote-synchronization policy, and `AGENTS.md` remains
-the runtime reference. This file is not a second policy — it is the operating
-technique those two assume. **If there is a conflict, use the safer or more
-restrictive instruction.**
+`./AI_WORK_POLICY.md` is canonical for remote synchronization, the push budget, CI cost and the
+deployment boundary. It is enforced by a git pre-push hook.
 
-## Authority — non-negotiable
+This file is an adapter. It contains no rules of its own. If it appears to conflict with either
+document above, that is a defect in this file — **the safer or more restrictive instruction wins**,
+and the conflict is worth reporting.
 
-    MBI_BEHAVIOR  = 0
-    MBI_COGNITION = 1
+A local checkpoint is `git commit`, not `git push`.
 
-**This is the CIO autonomous agent's authority, not the platform's.** The
-agent — its research, synthesis, cognition, notification and lineage paths —
-never sizes, orders, stops, weights, or writes to a broker. Ever, for any
-reason, under any framing. `BehaviorWriteRefused` raises on
-`recommended_delta_usd`, `size_usd`, `shares`, `qty`, `order`, `stop`, `limit`,
-`target_weight_pct`, `trade`, `execution` — refused outright, never silently
-filtered, **because a dropped size field looks honoured**. It guards the
-InstrumentRecord path; that is this subsystem's rail.
+## The ten rules, verbatim from `AGENTS.md` §0
 
-**The broker execution subsystem is a separate, operator-controlled system,
-gated by 2FA, and is out of scope.** Do not modify it, disable it, test against
-it, call `place_order` in any form, or POST to any order route. Its existence,
-its armed accounts, and the fact that `BehaviorWriteRefused` does not cover the
-broker transport are all by design — none is a finding, an inconsistency, or a
-thread to pull. The controls there are 2FA and the operator, not the agent's
-rails.
+These ten prevent irreversible harm. They are repeated verbatim in every tool adapter, because an
+agent that reads fifteen lines and stops must still know them.
 
-`MBI_COGNITION = 1` means memory may change `next_research_question`,
-`next_eligible_at`, `notify_priority` and `cc_narrative`. A cognition write that
-moves none of those raises `CognitionNoOp` and is a failed persist. Silence is
-how a memory system convinces itself it is learning.
-
-## DeepSeek pricing and scheduling — binding rules
-
-Source: https://api-docs.deepseek.com/quick_start/pricing (verified 2026-08-30).
-Prices change. Re-verify before relying on a figure, and never quote one from memory.
-
-### Peak / off-peak
-
-**Peak: 01:00–04:00 and 06:00–10:00 UTC, Monday–Friday. Everything else is off-peak.
-Off-peak is half the peak rate.**
-
-The weekday qualifier is in **UTC**, not local time.
-
-### This box runs US Eastern (`America/New_York`) and observes DST
-
-| | EDT (Mar–Nov, UTC−4) | EST (Nov–Mar, UTC−5) |
-|---|---|---|
-| Peak block 1 | 21:00–00:00 | 20:00–23:00 |
-| Peak block 2 | 02:00–06:00 | 01:00–05:00 |
-| Off-peak | 00:00–02:00 and 06:00–21:00 | 23:00–01:00 and 05:00–20:00 |
-
-**The entire US trading day is off-peak. All weekend hours are off-peak.**
-
-**Never schedule an LLM-heavy job using a local-time cron expression.** The peak window is
-fixed in UTC, so a job pinned to Eastern local time silently crosses into peak twice a year at
-the DST boundaries and doubles in cost with nothing reporting it. Schedule in UTC, or compute
-the window at runtime from UTC.
-
-### Rates per 1M tokens (off-peak / peak)
-
-| | flash | pro |
-|---|---|---|
-| Input, cache hit | $0.007 / $0.014 | $0.022 / $0.044 |
-| Input, cache miss | $0.22 / $0.44 | $0.66 / $1.32 |
-| Output | $0.66 / $1.32 | $1.98 / $3.96 |
-
-Context length 1M, max output 384K. Concurrency: flash 2500, pro 500.
-
-### Context caching is the larger lever
-
-Cache hit against cache miss on input is **31×**. Peak against off-peak is **2×**. A system that
-re-sends the same InstrumentRecord, thesis, and lesson context on every wake is precisely the
-shape that benefits. **Getting caching right matters more than getting the schedule right** —
-optimise it first.
-
-### Cost accounting rules
-
-- Every model call records its **measured** cost, never a literal. A hardcoded cost figure is a
-  fiction and has already misled one audit in this repository.
-- Every call records the **rate tier that applied** — `peak` or `off_peak` — and whether input
-  was a cache hit. Without this, "we run in the cheap window" is an unverifiable claim.
-- Cost is checked against the cap **before** the call. A budget-check error must never result in
-  an unbudgeted call.
-- If the configured cap makes a lane unable to run meaningfully, that is a finding to report,
-  not a reason to exceed it or to starve silently.
-
-## The governing principle
-
-**A component reporting success is not evidence that it did anything.**
-
-The recurring defect in this codebase is a contract built and a caller never
-wired, or a surface reporting on a set it never read. Each artifact passes its
-own tests, so nothing reports a problem. Instances found so far include:
-
-- a gate affirming a declaration it read out of a `SyntaxError`
-- a test asserting literals from the file it validates
-- a liveness monitor that was never scheduled
-- a repricer writing a tree nobody serves
-- a root map whose green classes were unreachable
-- a policy comment that outlived its policy
-
-**Corollary:** a green obtained by the wrong artifact is worse than a red,
-because a red gets investigated.
-
-## Evidence vocabulary — required on every claim
-
-| tag | means |
-|---|---|
-| `[VERIFIED]` | a command was run and its output is quoted. Nothing else qualifies. |
-| `[CODE]` | source was read; describes what the code does, not that it ran. |
-| `[DOC-CLAIM]` | a document asserts it and it has not been confirmed. |
-
-An untagged claim is a defect. A `[DOC-CLAIM]` promoted to `[VERIFIED]` without
-a command is a serious one.
-
-**Never state a measured value as a premise.** State the question and the
-threshold; measure the value. Values in this system have moved between phases of
-the same session repeatedly, and briefs that embedded numbers have been refuted
-every single time.
-
-## Metric rules
-
-- Every metric carries an `as_of` and the root it read. **Two measurements of a
-  live-appending store are not in conflict unless they share an as-of.** Four
-  measurements of lineage completion once looked like a four-way disagreement
-  and were all correct.
-- **An aggregate that discards its members is a hypothesis, not a measurement.**
-  Recompute from source before reasoning from it. One "structural" 35,928-event
-  skip turned out to be a 149-name registry gap under 58,682 rows of extraction
-  noise.
-- **A test whose expected value comes from the artifact under test validates
-  nothing.** Assert against a freshly regenerated value or delete the test.
-  Never update the literals.
-- **A metric whose floor makes failure unreportable should be struck, not
-  relabeled.** An unweighted mean over three families where two are tiny and
-  perfect cannot drop below 66.67%.
-
-Verdict vocabulary when auditing published numbers: `VERIFIED_FRESH` · `STALE` ·
-`UNRUNNABLE` · `NO_PRODUCER` · `FRESH_SCRIPT_STALE_SOURCE` (runnable script,
-stale upstream).
-
-## Standing traps — each one has cost real time
-
-- **`compile()`, never `ast.parse`**, for any "does this file parse" question.
-  `ast.parse` does not enforce `__future__` placement and tolerates a BOM; it
-  passes files Python refuses to import.
-- **Check exit codes for the specific expected value.** Exit 2 for a missing
-  script reads identically to a pass. `$?` after a pipe is the pipe's status.
-- **A scheduler declaration is a claim about reality** — check cron *and*
-  systemd. A job with a commented crontab line may run under an active timer.
-- **Follow symbols to the actual write call.** Grepping for a filename has
-  produced three wrong conclusions; the write often sits in a one-line helper
-  imported locally inside a `try:`.
-- **Read tracebacks whole.** A chained exception hides its real cause in the
-  part that gets truncated.
-- **Line endings:** route every edit through `safe_text_edit`. It detects the
-  existing style and refuses to convert. Conditional conversion has produced
-  `\r\r\n` across an entire file, which Python still parses and tests still
-  pass. If a diff is implausibly large, check encoding before reading it.
-- **`sys.path` contamination:** measurements run from a worktree read a `data/`
-  that isn't there. Use the documented live-measurement path.
-- **Before relying on a mechanism's scope in an argument, run the one command
-  that establishes it.** Four findings in a single day shared this root, and
-  none was a broken tool — each was a correct mechanism operating over a
-  different scope than the person using it had in mind:
-
-  | mechanism | assumed scope | actual scope |
-  |---|---|---|
-  | `python -c` | the repo is not on the path | cwd is prepended to `sys.path`, so it is |
-  | a synthetic bootstrap probe | imports the way the failing job imports | a different import spelling, so it could not reproduce the failure |
-  | `git add -A` / `git checkout -- .` | the paths I had in mind | every path under the pathspec; this swept 14 unrelated files into a docs branch |
-  | event-bus poll cursors | sit at the end, so history will not replay | advance by exactly what was consumed, so routing replayed 1,100 events at 12 per cycle |
-
-  Verifying scope costs one command. Assuming it has produced a wrong claim four
-  times in a day, and each was believed because the mechanism was working.
-- **A gate that edits source must verify its own edit still compiles.**
-- **A detector's shape determines what it structurally cannot see. Before
-  trusting a zero, state what property the detector keys on, and whether the
-  thing you are looking for would exhibit that property.** An invariance scan
-  looking for agent-originated fields returned zero and was believed. Generated
-  prose is maximally *variable*, so it can never land in an invariance bucket:
-  the tool was well-built and pointed at the wrong property. The 27 fields were
-  found instead by sorting prose leaves by length and reading the longest
-  twelve. A zero from a detector that could not have found a positive is not
-  evidence of absence, and it is the most convincing kind of wrong answer
-  because the tool worked perfectly.
-
-  **This rule names a class, not an incident. Four earlier findings, each filed
-  separately, are the same defect:**
-
-  | detector | keyed on | could never see |
-  |---|---|---|
-  | `ast.parse` compile sweep | "does this parse under `ast.parse`" | files Python refuses to import — it tolerates a BOM and misplaced `__future__` |
-  | the catalyst skip aggregate | a count | its own members, so a 149-name registry gap read as a structural 35,928-event skip |
-  | the preconditions board check | an artifact's *presence* | the artifact's *type*, so a residual-web hop satisfied a check named for a critique |
-  | the agent-origination scan | invariance | generated prose, which is maximally variable |
-
-  A fifth, mine: a root-sensitivity control whose two arms resolved to the same
-  file through a symlink. Each was a working tool answering a question adjacent
-  to the one asked. Expect more; the way to find them is to ask what the
-  instrument keys on before believing what it reports.
-- **A control whose name asserts a restriction is not evidence the restriction
-  exists. Check that some code path reads it.** This is the sibling of the
-  detector-shape rule above and the more dangerous of the two, because each
-  instance is a rail somebody is relying on by name.
-
-  | control | name asserts | what the code does |
-  |---|---|---|
-  | `CIO_TELEGRAM_INTERDICT` | Telegram sends are interdicted | does not gate the family that actually reaches the operator |
-  | `BehaviorWriteRefused` | behaviour writes are refused | guards the InstrumentRecord path only; the broker transport is not covered — by design, but the name does not say so |
-  | `shadow` (situation detector) | detections are held back | appears in exactly three places, all of which only write it into a payload, a plan's `extra`, or a run summary. It gates no emission, no plan creation, no routing. `notify` is the flag that gates notification. |
-  | `BLOCKED_ACTIONS_WHEN_NOT_READY` | these actions are blocked when not ready | defined once, read nowhere in the tree |
-
-  Two severities, and they fail differently:
-
-  * **The restriction does not exist.** The first three. Anyone reasoning from
-    the name is wrong about what the system does.
-  * **The restriction exists, but not in the thing named for it.**
-    `BLOCKED_ACTIONS_WHEN_NOT_READY` is dead, yet `APPROVE_PAPER` *is* gated —
-    by a separate hardcoded branch a few lines below. Editing the named control
-    changes nothing, which is how a careful person makes a change that silently
-    does not take.
-
-  A mechanical sweep for restriction-asserting names flags 212 candidates, 125
-  never read in a conditional. **Do not quote that number as a finding.**
-  Spot-checking four, three were legitimate — value constants and `in`-tests the
-  sweep cannot see. The sweep has the exact defect the rule above it describes:
-  it is a candidate generator, not a count.
-
-- **File `atime` is not evidence of a live consumer.** This filesystem is
-  mounted `relatime`, so a read may not update `atime` at all. An investigation
-  nearly concluded "nothing reads the spine" from atime alone; the conclusion
-  happened to be right and the method was worthless. Prove a consumer by finding
-  the call site and observing it run, never by timestamp.
-- **A root that symlinks to the same destination is not a control.** I set
-  `TRADEAI_ROOT` to a release whose `data/cio` is a symlink into
-  `persistent-state`, got byte-identical output across four runs, and wrote
-  "this collector is root-immune" into these rules. It is not: pointed at a root
-  that is genuinely elsewhere, the path moves. Vary the *destination*, not just
-  the variable, and confirm the two arms resolve to different inodes before
-  concluding anything from a null result.
-- **Attribute location is a claim like any other.** The same note named
-  `cio_lineage_health.DEFAULT_PATH`; that attribute is on neither module's
-  `__dict__` and resolves dynamically. I read it off one module and wrote down
-  another. Check `vars(mod)` before citing a symbol's home.
-- **Never mint a placeholder identity.** `None` for unresolvable. Never a ticker
-  as a GUID. A shared "unknown" id joins every unresolved event to every other.
-- **Never auto-remediate store divergence.** Report both paths, both hashes,
-  both timestamps, both reconciliation verdicts. Two candidate truths means a
-  machine picking one can destroy the other.
-- **Never route around a permission denial. Stop and report.** No alternate
-  remote, no direct-to-main push, no API call substituting for a blocked CLI, no
-  merge without a PR. Each produces a "landed" claim with no review artifact —
-  the exact failure class this work exists to find.
-- **A checkpoint is `git commit`, not `git push`.** Commit locally as often as
-  useful; pushing, opening a PR, or triggering CI is a separate act that needs
-  explicit authorization per `AI_WORK_POLICY.md` §3. Reasoning that lives only
-  in an unpushed commit is the same failure mode as everything else here.
-
-## Deploy protocol
-
-- `prepare` → `promote` → **verify the live directory independently**.
-  `PROMOTE OK` has re-pinned a stale release.
-- The deploy script reads its own worktree's HEAD — **detach onto the merged
-  commit first.**
-- **Prove behaviour from the served release**, not just that files copied.
-- Additive only on append-only stores; verify by byte snapshot (rows added, ids
-  removed = 0, confirmed states downgraded = 0).
-- `logs/` and state directories are symlinks to persistent state. A release that
-  starts them empty orphans evidence and makes the deploy silently non-additive.
-- A red CI run may be a quota block rather than a test failure — check before
-  diagnosing.
-- One PR per finding, with the validation output quoted in the body.
-
-## Multi-agent protocol
-
-- Parallel is for independent investigation, disjoint fixes with declared file
-  sets, and tests for separate modules.
-- **Never parallel:** two agents writing the same file, store or crontab;
-  anything touching holdings, the identity registry, lineage stores or the
-  InstrumentRecord store; deploys.
-- Before dispatch, each agent declares its file set and store set. Overlaps are
-  serialized.
-- On conflict the `[VERIFIED]` claim wins. If both are verified, **check as-ofs
-  before calling it a conflict at all**, then re-run both.
-- **No agent marks its own work DONE.** The coordinator marks it, against the
-  proof.
-- **When a finding contradicts the brief, the finding wins.** That has been the
-  correct outcome in every wave. Report it once and continue.
-
-## The maturity bar — five proofs, not a percentage
-
-A package is complete when its proof is observed **at runtime, from the served
-release, with the command quoted**. No percentage, test suite or CI pass
-substitutes.
-
-| # | proof | |
-|---|---|---|
-| M1 | Research | The system raised a research request itself, it completed, and it changed a named field on a named record. Show the diff. |
-| M2 | Advice | A critique verdict changed `next_research_question` rather than being logged beside it. Show both questions. |
-| M3 | Feedback | An operator reply landed on a record and changed the next wake's behaviour. Show the wake's decision with and without the turn. |
-| M4 | Consistency | Every operator-facing number traces to one regenerable producer, and no two surfaces state the same quantity differently without a labeled scope. |
-| M5 | Persistence | A scheduled wake loads the record before acting, and a disposition made days earlier is still honoured today with nobody replaying it. |
-
-`NOT OBSERVED` is an acceptable and expected result. **A truthful three-of-five
-is worth more than a claimed five**, and a claimed five that a later session
-refutes is the worst outcome available. If all five come back observed on the
-first attempt, assume something is wrong and find it before reporting.
-
-## Not accepted as completion
-
-- A package DONE on CI alone.
-- A number quoted from a document rather than regenerated.
-- A proof demonstrated by hand where the claim is that it happens on schedule.
-- A metric whose floor makes failure unreportable.
-- A gate that has never executed.
-- A check whose name promises more than its code verifies.
-- A producer reconstructed to justify an already-published number.
-
-## Operator-only decisions
-
-Do not resolve these; propose and stop.
-
-- Collapsing the two holdings copies into one file.
-- Changing what is ranked onto an operator surface.
-- Any new production cron or systemd entry — propose, do not install.
-- Raising `MBI_BEHAVIOR` above 0, in any form.
-- Re-enabling the retired overnight LLM window.
-- Merging divergent copies of any authoritative store.
-
-The deferred list should **shrink** each wave. The escalate-never-resolve rule
-exists for cases where a machine choosing between two candidate truths can
-destroy one. It does not cover labeling, error strings, routing defaults whose
-conservative option is reversible, or additive monitoring. Do not defer those.
-**If the deferred list grows during a wave, that is a finding about how the wave
-was run.**
-
-## Working style
-
-Direct, evidence-based, and intolerant of work parked behind questions already
-answered. Correct your own prior claims out loud when measurement refutes them —
-that has produced the most valuable findings in this repository. Keep the
-failures in the write-up, not just the final state.
+1. **`MBI_BEHAVIOR = 0`.** The agent never sizes, orders, stops, weights, or writes to a broker.
+   Ever, for any reason, under any framing. (`MBI_BEHAVIOR` is the shorthand, not a variable —
+   the rail is an unconditional raise in code. See `AGENTS.md` §2.)
+2. **The broker execution subsystem is out of scope.** Do not modify, disable, test against,
+   investigate, call `place_order`, or POST to any order route. It is 2FA-gated and by design.
+3. **Never route around a permission denial.** Stop and report. No alternate remote, no
+   direct-to-main push, no API call substituting for a blocked CLI, no branch rename to reset a
+   budget.
+4. **A checkpoint is `git commit`, not `git push`.** Remote sync requires
+   `TRADEAI_REMOTE_PUSH_AUTHORIZED=1` plus explicit operator intent — `AI_WORK_POLICY.md`.
+5. **Never auto-remediate divergent copies of an authoritative store.** Report both paths, hashes
+   and timestamps. A machine picking one can destroy the other.
+6. **Never delete.** Archive with a tripwire that fires if anything reads the archived path.
+7. **Dry-run before any live run** that writes durable state, sends to an operator surface, spends
+   money, or touches a scheduled job. Quote the dry run's output.
+8. **Exit code 0 is not evidence of work.** Prove by a durable artifact that would not exist if the
+   thing had not run.
+9. **Operator-only decisions: propose and stop.** The list is §17.
+10. **When a finding contradicts this file, the finding wins.** Report it once, continue, and open
+    an amendment PR (§20).

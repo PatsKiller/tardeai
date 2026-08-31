@@ -5,6 +5,10 @@ description: Canonical knowledge for Trade AI v12's Research Intelligence desk (
 
 # SKILL: research-intelligence-desk
 
+> **This file is domain knowledge.** On any behavioural rule — authority, evidence standards,
+> maturity scoring, working method — **`AGENTS.md` supersedes it.** Read this for what the
+> subsystem does and what its numbers were; read `AGENTS.md` for how to work.
+
 Written 2026-07-16 late rev after the FIVE-session build day (RI v3.0 → Gain Guardian shadow → RI v3.1 → Watch Desk v2 → Watch Desk v3) plus the trade-ai/summary transport fix. Anything dated after 2026-07-16 supersedes this file — diagnose live before trusting details here.
 
 ## 1. WHAT THIS FEATURE IS
