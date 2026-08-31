@@ -56,7 +56,7 @@
       "expected_cadence_hours": 24.0,
       "state": "RETIRED",
       "state_since": "2026-06-01",
-      "state_reason": "PHASE102-RETIRED. The closeout records only 'Global queue covers all jobs' \u2014 a supersession claim that was never verified, and whose sibling ('continuous_runner covers 04:00-11:00') was found false and REVERTED ten days later. The lane's last completed job is 2026-05-23, nine days BEFORE the retirement, so the retirement may not be the cause of the silence. Actual cause: UNKNOWN",
+      "state_reason": "PHASE102-RETIRED. Closeout records only 'Global queue covers all jobs' \u2014 unverified supersession; sibling continuous_runner claim found false and reverted. Actual cause: UNKNOWN",
       "output_signal": {
         "kind": "db_max",
         "table": "deep_overnight_llm_results",
@@ -64,7 +64,7 @@
       },
       "note": "1588 done / 268 failed / 1928 pending, frozen since 2026-05-31. The 1,588 completed outputs are a calibration set and must not be deleted.",
       "reason_confidence": "UNKNOWN",
-      "reason_evidence": "PHASE102 closeout (commit 1a843fc3, 2026-06-01) gives one reason: 'Global queue covers all jobs' \u2014 a supersession claim never verified. Its sibling ('continuous_runner covers 04:00-11:00', 2026-06-11) was found FALSE and reverted; see docs/CHANGELOG.md:3432. The lane's last completed job is 2026-05-23, NINE DAYS BEFORE the retirement, so the retirement may not be the cause of the silence at all."
+      "reason_evidence": "Re-investigated 2026-08-31 (Wave 2b). PHASE102 closeout commit 1a843fc3 (2026-06-01) + docs/project/PHASE102_OLD_OVERNIGHT_RETIREMENT_CLOSEOUT.md give one reason: 'Global queue covers all jobs' \u2014 a supersession claim never verified. Sibling claim ('continuous_runner covers 04:00-11:00', 2026-06-11) was found FALSE and reverted (docs/CHANGELOG.md ~3432). PHASE58_OLD_OVERNIGHT_MONOPOLY_RETIREMENT_CLOSEOUT.md is DESIGN ONLY / not applied. Lane last completed job 2026-05-23 \u2014 nine days BEFORE retirement \u2014 so the retirement may not explain the silence. No PR beyond 1a843fc3 establishes a verified successor for this lane's outputs. Remains UNKNOWN."
     },
     {
       "lane_id": "overnight-batch",
@@ -75,13 +75,13 @@
       "expected_cadence_hours": 24.0,
       "state": "RETIRED",
       "state_since": "2026-06-01",
-      "state_reason": "PHASE102-RETIRED. Reason recorded in the crontab tag only: UNKNOWN",
+      "state_reason": "PHASE102-RETIRED. Crontab tag only; global-queue supersession claim unverified. Partial sub-command restores (--tax-sweep, --outcomes) and scorer rehome do not establish the retirement cause. Actual cause: UNKNOWN",
       "output_signal": {
         "kind": "file_mtime",
         "path": "logs/overnight_batch.log"
       },
       "reason_confidence": "UNKNOWN",
-      "reason_evidence": "Crontab carries only the tag 'PHASE102-RETIRED' with no reason text. Note two of its sub-commands were later RESTORED to cron ('35 6 * * 1 ... --tax-sweep', '40 5 * * * ... --outcomes'), so the retirement was partially reversed without the registry knowing."
+      "reason_evidence": "Re-investigated 2026-08-31 (Wave 2b). Crontab tag is only 'PHASE102-RETIRED' with no reason text. PHASE102 closeout (1a843fc3) asserts 'Global queue covers all jobs' without verifying coverage of overnight_batch outputs. Partial reversal WITHOUT registry update: '# RESTORED 2026-07-04 weekly (tax_agent staleness max 7d; sweep was retired as collateral of overnight_batch Phase 102 retirement)' then active '35 6 * * 1 \u2026 overnight_batch.py --tax-sweep'; and '40 5 * * * \u2026 overnight_batch.py --outcomes'. docs/MASTER_SYSTEM_DOCUMENTATION.md: agent-performance scorer rehomed to update_agent_performance.py (cron 0 20 * * 1-5) \u2014 documents WHERE a piece went, not WHY the monopoly path was retired. Coverage of the --telegram overnight path by the global queue remains unverified. Remains UNKNOWN."
     },
     {
       "lane_id": "portfolio-backup-cron",
@@ -411,15 +411,16 @@
         "expression": "tradeai-operator-readiness.timer"
       },
       "expected_cadence_hours": 24.0,
-      "state": "NEVER_SCHEDULED",
-      "state_since": "2026-08-30",
-      "state_reason": "Unit installed, never enabled, journal shows no run ever. No successor unit found by name, and no commit or document records an intent to retire it. Genuinely unexplained.",
+      "state": "RETIRED",
+      "state_since": "2026-06-05",
+      "state_reason": "PHASE201 (2026-06-05) retired the four PHASE41 governance timers into tradeai-governance-pipeline.timer. PHASE201C decision gate APPROVED; PHASE201D executed stop+disable of tradeai-operator-readiness.timer (unit files preserved). Successor pipeline step 'operator_readiness' runs scripts/report_operator_readiness_summary.py to the same docs/maturity_hardening/operator_readiness_latest.* paths.",
       "output_signal": {
         "kind": "file_mtime",
         "path": "logs/operator-readiness.log"
       },
-      "reason_confidence": "UNKNOWN",
-      "reason_evidence": "systemctl is-enabled=disabled; journalctl shows no entries; no name-matched successor among the 75 enabled timers."
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "docs/architecture/PHASE201C_GOVERNANCE_TIMER_RETIREMENT_DECISION_GATE.md: 'ALL CONDITIONS PASS \u2192 APPROVED to retire the 4 redundant PHASE41 governance timers (201D): \u2026 tradeai-operator-readiness.timer'. docs/architecture/PHASE201D_PHASE41_GOVERNANCE_TIMER_RETIREMENT_REPORT.md records stop+disable. docs/project/PHASE201_GOVERNANCE_TIMER_RETIREMENT_PORTFOLIO_PREFLIGHT_CLOSEOUT.md: 'PHASE41 governance timers retired | 4'. docs/operations/SCHEDULED_JOBS_REFERENCE.md: consolidated into tradeai-governance-pipeline. scripts/pipelines/run_governance_pipeline.sh gov_step operator_readiness invokes report_operator_readiness_summary.py. journalctl 2026-08-31T07:40: operator_readiness status=ok. Prior #722 UNKNOWN missed these docs ('no successor by name').",
+      "superseded_by": "tradeai-governance-pipeline.timer"
     },
     {
       "lane_id": "tradeai-flash-portfolio-risk-hourly",
@@ -430,14 +431,14 @@
       },
       "expected_cadence_hours": 24.0,
       "state": "NEVER_SCHEDULED",
-      "state_since": "2026-08-30",
-      "state_reason": "Unit installed, never enabled, journal shows no run ever. No successor unit found by name, and no commit or document records an intent to retire it. Genuinely unexplained.",
+      "state_since": "2026-08-03",
+      "state_reason": "Shipped 2026-08-03 (commit eed471bc4 / flash-cadence) as an optional operator install. Unit file present in ~/.config/systemd/user since birth 2026-08-03; systemctl is-enabled=disabled; journalctl shows no entries. Enablement is operator-gated per README and was never performed.",
       "output_signal": {
         "kind": "file_mtime",
         "path": "logs/flash-portfolio-risk-hourly.log"
       },
-      "reason_confidence": "UNKNOWN",
-      "reason_evidence": "systemctl is-enabled=disabled; journalctl shows no entries; no name-matched successor among the 75 enabled timers."
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "config/systemd/flash-cadence/README.md (commit eed471bc4, 2026-08-03): 'Install timers (optional \u2014 operator)' with example enable only for tradeai-flash-watchlist-daily.timer. stat Birth of ~/.config/systemd/user/tradeai-flash-portfolio-risk-hourly.timer = 2026-08-03 00:35:20. systemctl --user is-enabled=disabled; journalctl --user -u tradeai-flash-portfolio-risk.service: No entries. Sibling flash-watchlist-daily / flash-llm-intelligence from the same commit were enabled and ran until 2026-08-18 (now PAUSED/CORRELATED)."
     },
     {
       "lane_id": "tradeai-flash-portfolio-risk-weekend",
@@ -448,14 +449,14 @@
       },
       "expected_cadence_hours": 24.0,
       "state": "NEVER_SCHEDULED",
-      "state_since": "2026-08-30",
-      "state_reason": "Unit installed, never enabled, journal shows no run ever. No successor unit found by name, and no commit or document records an intent to retire it. Genuinely unexplained.",
+      "state_since": "2026-08-03",
+      "state_reason": "Same shipment as the hourly twin: optional operator install from flash-cadence README (eed471bc4, 2026-08-03). Unit present, never enabled, never fired.",
       "output_signal": {
         "kind": "file_mtime",
         "path": "logs/flash-portfolio-risk-weekend.log"
       },
-      "reason_confidence": "UNKNOWN",
-      "reason_evidence": "systemctl is-enabled=disabled; journalctl shows no entries; no name-matched successor among the 75 enabled timers."
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "config/systemd/flash-cadence/README.md (eed471bc4): 'Install timers (optional \u2014 operator)'; schedule table lists 'Portfolio risk-ish Flash \u2014 Hourly 07\u201319 weekdays; 10:00 weekends' as the intended cadence IF installed. stat Birth ~/.config/systemd/user/tradeai-flash-portfolio-risk-weekend.timer = 2026-08-03. is-enabled=disabled; journal empty for tradeai-flash-portfolio-risk.service."
     },
     {
       "lane_id": "alex-daily",
@@ -558,13 +559,13 @@
       "state": "PAUSED",
       "state_since": "2026-08-08",
       "review_by": "2026-09-15",
-      "state_reason": "Cron line commented 2026-08-08 with the bare tag 'DISABLED 2026-08-08' and no reason. Disabled the same day as the alex family but is a different subsystem, so the alex supersession does NOT transfer.",
+      "state_reason": "Cron line commented 2026-08-08 with bare tag 'DISABLED 2026-08-08' and no reason. Same calendar day as the alex family but a different subsystem \u2014 alex supersession does NOT transfer. No authoring commit/PR found. Actual cause: UNKNOWN",
       "output_signal": {
         "kind": "file_mtime",
         "path": "logs/cio_decision_engine.log"
       },
       "reason_confidence": "UNKNOWN",
-      "reason_evidence": "crontab: '#0 7 * * 1-5 $PY scripts/cio_decision_engine.py --run  # DISABLED 2026-08-08'. No commit, PR or decision document found for it."
+      "reason_evidence": "Re-investigated 2026-08-31 (Wave 2b). Live crontab: '#0 7 * * 1-5 $PY scripts/cio_decision_engine.py --run  # DISABLED 2026-08-08'. No commit/PR found that performed the disable (git log -S 'DISABLED 2026-08-08' and Aug 7\u20139 window yield no authoring commit; last log mtime 2026-08-07 07:00). docs/cio/CIO_NOTIFICATION_RUNTIME_TOPOLOGY.md claims alex + cio_decision_engine were 'moved to agent-runtime@*.timer shadow-live' \u2014 but the alex cron line alone records agent_runtime@alex supersession; this line carries no successor, and alex supersession does NOT transfer. docs/cio/ARCHITECTURE.md + docs/audits/CIO_PLATFORM_REMEDIATION_2026-08-27.md Fix C1 still treat the disable reason as unknown ('check the commit/PR that disabled it before re-enabling'). Operator chose C1 option (b): document mechanical independence rather than re-enable (PR #526). Remains UNKNOWN."
     },
     {
       "lane_id": "cio-wake-dispatch",
