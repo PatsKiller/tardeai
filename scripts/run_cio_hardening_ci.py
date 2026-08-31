@@ -119,6 +119,9 @@ GATES = [
     ("scripts_lib_bootstrap", [
         "tests/test_scripts_lib_bootstrap.py",
     ]),
+    ("stop_path_notification", [
+        "tests/test_stop_path_notification_imports.py",
+    ]),
     ("governance_section_zero_parity", [
         "tests/test_agents_section_zero_parity.py",
     ]),
