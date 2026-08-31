@@ -32,14 +32,14 @@ if _env_path.is_file():
             k, v = line.split("=", 1)
             os.environ.setdefault(k.strip(), v.strip())
 
-import psycopg2
-
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [catalyst-momentum] %(message)s")
 log = logging.getLogger("catalyst_momentum")
 PY = str(ROOT / ".venv" / "bin" / "python")
 # Kill switch: prefer served-state root, fall back to checkout (legacy).
 # E5: resolution layer, not cron cwd — CURRENT/data/runtime is a symlink into
 # persistent-state, so the served path is what operators and other pins see.
+# psycopg2 is imported lazily inside main() so unit tests can import path
+# helpers without a Postgres driver in CI.
 
 
 def _served_state_root() -> Path:
@@ -107,6 +107,8 @@ def main():
     band = BANDS[args.band]
     log.info("Catalyst Momentum Engine — band=%s (apply=%s, gen_proposals=%s)", args.band, args.apply, args.generate_proposals and band["gen_proposals"])
     log.info("  served_state_root=%s", _served_state_root())
+
+    import psycopg2  # lazy — keep module importable in CI without Postgres driver
 
     from hermes_momentum_candidate_reader import get_momentum_candidates
     from hermes_momentum_catalyst_researcher import search_catalyst, classify_catalyst

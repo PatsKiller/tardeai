@@ -198,6 +198,7 @@ def test_e5_diagnose_staleness_reports_schedule_gap(monkeypatch, tmp_path):
 
 
 def test_e5_momentum_engine_last_run_relative_is_cio_served():
-    from scripts import catalyst_momentum_engine as cme
+    # Import path helpers only — engine main() needs psycopg2 at runtime, not here.
+    from scripts.catalyst_momentum_engine import LAST_RUN_RELATIVE
 
-    assert cme.LAST_RUN_RELATIVE == Path("data") / "cio" / "catalyst_momentum_last_run.json"
+    assert LAST_RUN_RELATIVE == Path("data") / "cio" / "catalyst_momentum_last_run.json"
