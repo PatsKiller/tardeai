@@ -463,6 +463,7 @@ def build_operator_product(*, root: Path | str | None = None, persist: bool = Fa
             "surface": reentry.get("surface") or "A",
             "scope": reentry.get("scope") or "former holdings vs exit trigger",
             "question": reentry.get("question"),
+            "population": reentry.get("population"),
             "precedence": reentry.get("precedence"),
             "not_this_book": reentry.get("not_this_book"),
         },
