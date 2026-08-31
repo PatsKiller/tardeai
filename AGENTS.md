@@ -353,6 +353,12 @@ number.** Spot-checking four, three were legitimate. The sweep is a candidate ge
 - **Never auto-remediate store divergence.**
 - **Validate against a known set; never normalise input to make it valid.** Coercing `"ALEX"` to
   `"alex"` accepts a value the emitter never sent and hides the emitter's bug.
+- **A standard that omits the vocabulary cannot enforce the pre-build check.** An agent searching
+  for a concept under the wrong name concludes honestly and wrongly that nothing exists, and builds
+  a duplicate. *Cause: `AGENTS.md` §13.5 required a pre-build search while the type vocabulary lived
+  only in two diagram documents §19 did not list. A project specification then proposed four new
+  types where three were already registered — in a document whose own constraints forbade exactly
+  that.*
 
 ---
 
@@ -664,6 +670,137 @@ and push**: no secrets in git; no hardcoded values — broker/account-agnostic, 
 a missing account **fails closed**; `holdings.json` never wiped. Install once after clone:
 `bash scripts/install_git_hooks.sh`. Verify: `python3 scripts/check_no_secrets.py --tree`.
 
+## 13.4 · The type vocabulary — what already exists
+
+**Read this before proposing any new type, store, field, or mechanism.** §13.5's pre-build check
+is unusable without it: an agent cannot search for what it does not know is there.
+
+### Registered id types — `CanonicalStoreRegistry@v1`
+
+```
+workflow_id     event_id        research_id     artifact_id
+generation_id   notification_id checkpoint_id   outcome_id
+lesson_id       operator_turn_id                instrument_record_id
+```
+
+All under `GOOD_PERSISTENT_ROOT`. **A new id type requires justification against these eleven.**
+
+### Subject-key namespace
+
+```
+HELD:SYM        a current position
+EXIT:SYM        a former position, in the re-entry book
+WATCH:SYM       watched, not held
+SECTOR:name     a sector as a first-class subject
+SLEEVE:CASH     the cash sleeve
+```
+
+A subject key names an `InstrumentRecord@v1`. **Records can be woken, hold a thesis, carry operator
+turns, and have a cadence. Tags cannot.** If a thing needs research on a schedule, it is a record.
+
+### `InstrumentRecord@v1` — the persistent unit
+
+```
+subject_key
+thesis · cc_narrative              CC reads cc_narrative; writers rewrite it
+last_event · last_price_hash
+research[] · artifact_ids
+operator_turns[]                   ack / defer / reject / question land HERE
+lessons[]                          cognition only → next question, priority
+analyst · earnings_next
+next_eligible_at · notify_priority
+```
+
+Loaded by `load-by-subject` on every wake. `plan_id` on every wake. An operator ack or defer writes
+back onto **this** record.
+
+### Pipeline stages — extend these; do not build alongside them
+
+```
+S0_OPERATOR_CONVERSE      the operator is an event; a Telegram reply is the next S0
+CANONICAL ENTITY          ticker ≠ CUSIP ≠ ETF-without-CIK; dust residual ≠ a position
+MATERIALITY               S1–S7, persist fairness → notify_priority
+GRAPH IMPACT              1-hop, held non-dust only
+RESEARCH GAP              gap vs THIS record, not a blank page
+FREE-FIRST RESEARCH       persistent cognition · Hermes/RAG/FRED · librarian grading
+                          then residual web, gated, ≤1 hop per subject_key per day, budget N=3
+                          then LLM only if unresolved AND materially useful
+SPECIALIST DISPATCHER     thin; no second harness; same workflow_id
+CIOCouncilSynthesis@v1    deterministic; DISPUTED stands
+WRITE BACK                cc_narrative · next_research_question · next_eligible_at · notify_priority
+CIOOperatorProduct@v1     DETERMINISTIC_PRODUCT · $0.00 — CC sections BIND to the record
+NOTIFICATION POLICY       fires only if notify_priority crossed a bar
+                          IMMEDIATE · DIGEST · COMMAND_CENTER_ONLY · SUPPRESSED
+DELIVERY RECEIPT/DEDUPE   sent or would_send, stamped
+OutcomeCheckpoint@v1      plan_id or plan_binding reason, bound at creation
+OUTCOME → LESSON          support-only, cognition apply
+REVIEW_READY              next wake loads the record
+```
+
+### Artifact types
+
+```
+SpecialistArtifact@v1-lite   specialist output; same workflow_id; writers update THE SAME record
+CIOCouncilSynthesis@v1       deterministic synthesis
+CIOOperatorProduct@v1        the operator-facing product
+OutcomeCheckpoint@v1         a checkpoint bound to a plan at creation
+AgentView@v1                 an agent-formed view — claim, reasoning, confidence, falsifier.
+                             Provenance class A. Marked as opinion everywhere it is displayed.
+AGENT_COMMITMENT@v1          subject_key · claim · confidence · horizon · falsifier · checkpoint_id
+                             A view with no falsifier is not a commitment — it is a sentence,
+                             and it does not enter the store.
+                             MBI_BEHAVIOR stays 0: a commitment is a belief, never an order.
+```
+
+**`AgentView@v1` and `AGENT_COMMITMENT@v1` are specified and currently have no producer.** They are
+not missing types. They are unbuilt producers for existing types, and building them is the
+judgment and commitment work in the future-state spec.
+
+### Provenance classes — every operator-facing field carries one
+
+```
+D  deterministic     rule, threshold, arithmetic; reproducible
+T  template          fixed prose around D values; reads as commentary, contains no judgment
+M  model-assisted    a model produced it; a deterministic gate validated it
+A  agent-originated  the agent chose the subject, sought evidence, formed a view
+S  snapshot-derived  reproduced from a stored artifact; may disagree with a live D computation
+```
+
+### Cognition boundary
+
+```
+MBI_BEHAVIOR  = 0    cognition may NEVER move size, weight, order, stop.
+                     BehaviorWriteRefused raises — refused outright, never silently filtered.
+                     Not an env var: an unconditional raise at cio_instrument_record.py:390.
+MBI_COGNITION = 1    cognition MAY move next_research_question, next_eligible_at,
+                     notify_priority, cc_narrative. A write moving none of these raises
+                     CognitionNoOp and is a FAILED persist.
+```
+
+### Before proposing anything new
+
+1. Which registered id type covers this? If one does, use it.
+2. Which pipeline stage owns this behaviour? If one does, extend it.
+3. Which record field holds this state? If one does, add to it.
+4. Does an existing type have the shape with fields missing? **Add the fields.**
+5. Only then propose something new — **and state in the PR body which of 1–4 you ruled out and
+   why.**
+
+**A PR introducing a new `@v1` type, store, or subsystem without that statement is incomplete.**
+
+## 13.5 · Pre-build check
+
+Before building a new type, store, field, subsystem, or parallel mechanism:
+
+1. **Read §13.4.** The pre-build search is unusable without knowing what already exists. An agent
+   that has not read the type vocabulary will search for the wrong names and conclude, honestly and
+   wrongly, that nothing exists.
+2. Search the hub for the registered id types, subject keys, pipeline stages, and artifact types
+   named in §13.4. Prefer an exact name match over a synonym.
+3. If a match exists, **extend it**. Do not clone it under a new `@v1` name or a parallel store.
+4. If you still propose something new, state in the PR body which of §13.4's five questions you
+   ruled out and why. A PR without that statement is incomplete.
+
 ---
 
 # 14 · Documentation standards
@@ -854,6 +991,8 @@ warning at boot if `holdings.json` is more than 7 days old.
 | `config/lane_registry.json` | which lanes exist and what proves they ran | when a lane looks silent |
 | `.claude/skills/*/SKILL.md` | **domain knowledge only** | for context on a subsystem, never for a behavioural rule |
 | `config/*.yaml`, `config/*.json` policy | **trading and system policy** — the operator's | never edit without the operator |
+| `CIO_ASIS_VS_SPEC_2026-08-30.md` | which pipeline nodes are LIVE / PARTIAL / UNWIRED / DARK | before claiming any stage works |
+| `CIO_FUTURE_STATE_FULL_MATURITY.md` | the target: judgment, commitment, scoring, self-repair | before designing anything new |
 
 ## How each tool discovers this file
 

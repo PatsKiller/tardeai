@@ -189,6 +189,9 @@ GATES = [
     ("governance_section_zero_parity", [
         "tests/test_agents_section_zero_parity.py",
     ]),
+    ("agents_type_vocabulary", [
+        "tests/test_agents_type_vocabulary.py",
+    ]),
     ("agent_brief", [
         "tests/test_agent_brief.py",
     ]),
