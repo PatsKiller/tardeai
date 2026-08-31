@@ -65,18 +65,23 @@ def _check_budget(caller: str = "default") -> bool:
     cap; it is no longer the only thing standing between a bulk caller and the
     monthly allowance, because three other modules used to bypass it entirely.
     """
+    # Shared per-provider ledger is mandatory. Falling through to the local
+    # release-relative counter when the shared module cannot be imported was
+    # fail-open: concurrent cron jobs under different releases each saw their
+    # own near-empty file and spent. WAVE F3: DENY when the shared budget is
+    # unavailable — never fail open.
     try:
         from scripts.lib.search_budget import check as _shared_check
     except ImportError:                                  # pragma: no cover
         try:
             from lib.search_budget import check as _shared_check  # type: ignore
         except ImportError:
-            _shared_check = None                          # type: ignore
-    if _shared_check is not None:
-        verdict = _shared_check("brave")
-        if not verdict["allowed"]:
-            print(f"  [brave-search] denied by shared budget: {verdict['reason']}")
+            print("  [brave-search] shared budget unavailable — DENY (never fail open)")
             return False
+    verdict = _shared_check("brave")
+    if not verdict["allowed"]:
+        print(f"  [brave-search] denied by shared budget: {verdict['reason']}")
+        return False
 
     today = datetime.now().strftime("%Y-%m-%d")
     month = datetime.now().strftime("%Y-%m")
