@@ -131,6 +131,9 @@ GATES = [
     ("stop_warning_transitions", [
         "tests/test_stop_warning_transitions.py",
     ]),
+    ("notification_memory", [
+        "tests/test_notification_memory.py",
+    ]),
     ("governance_section_zero_parity", [
         "tests/test_agents_section_zero_parity.py",
     ]),
