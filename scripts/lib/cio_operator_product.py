@@ -517,7 +517,8 @@ def build_operator_product(*, root: Path | str | None = None, persist: bool = Fa
             "writer_means": "author",
             "note": (
                 "Deterministic projection of cio.product.current + holdings. "
-                "No model produced this operator product."
+                "No model produced this operator product. "
+                "writer names the author, not the copy step."
             ),
         },
     }

@@ -234,6 +234,7 @@ def test_cash_letter_as_of_uses_evidence_not_composition_and_writer_is_author():
         "schema": "CashSleeveLetter@v1",
         "cash_usd": _EXPECTED_CASH_USD,
         "what": "Cash sleeve standing.",
+        # Legacy seed wrongly named the copy step. Display must strip it.
         "writer": "migration:deterministic",
         "as_of": "2026-08-31T03:35:57+00:00",
         "from_record": True,
@@ -246,9 +247,50 @@ def test_cash_letter_as_of_uses_evidence_not_composition_and_writer_is_author():
     assert stamped["as_of"] == "2026-08-03"
     assert stamped["composition_as_of"] == "2026-08-31T03:35:57+00:00"
     assert stamped["as_of_source"] == "cash_evidence_oldest_balance"
-    assert stamped["author"] == "migration:deterministic"
+    # W3c — writer names the author, not migration:. Do not assert the copy step.
+    assert stamped["author"] == "deterministic"
     assert stamped["writer"] == stamped["author"]
+    assert stamped["writer"] != "migration:deterministic"
+    assert stamped.get("copy_step") == "migration"
     assert stamped["model_produced"] is False
+
+
+def test_normalize_writer_author_strips_migration_copy_step():
+    from scripts.lib.cio_instrument_record import cc_narrative, normalize_writer_author
+
+    stamps = normalize_writer_author(writer="migration:deterministic")
+    assert stamps["writer"] == "deterministic"
+    assert stamps["author"] == "deterministic"
+    assert stamps["copy_step"] == "migration"
+
+    # Honest cognition author is left alone.
+    cogn = normalize_writer_author(writer="cognition:defer_honored")
+    assert cogn["writer"] == "cognition:defer_honored"
+    assert cogn["author"] == "cognition:defer_honored"
+    assert "copy_step" not in cogn
+
+    # Seed default: author mirrors writer; no migration: prefix.
+    nar = cc_narrative(what="Cash sleeve standing.", writer="deterministic")
+    assert nar["writer"] == "deterministic"
+    assert nar["author"] == "deterministic"
+    assert "migration:" not in nar["writer"]
+
+
+def test_provenance_footer_never_claims_model_for_deterministic_brief(tmp_path: Path):
+    _write_holdings(tmp_path, _DOC)
+    _write_minimal_brief(tmp_path)
+    product = build_operator_product(root=tmp_path, persist=False)
+    footer = product["provenance_footer"]
+    assert footer["model_produced"] is False
+    assert footer["writer_means"] == "author"
+    morning = morning_text(product)
+    eod = eod_text(product)
+    assert "no model produced this brief" in morning
+    assert "no model produced this brief" in eod
+    assert "writer = author" in morning
+    assert "DeepSeek" not in morning
+    assert "model-assisted" not in morning.lower()
+    assert "model_provider" not in morning.lower()
 
 
 def test_labelling_fix_does_not_change_dollar_amounts(tmp_path: Path):
