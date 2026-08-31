@@ -145,6 +145,9 @@ GATES = [
     ("overnight_d3_lesson_provenance", [
         "tests/test_overnight_d3_lesson_provenance.py",
     ]),
+    ("overnight_wave_e_catalyst", [
+        "tests/test_overnight_wave_e_catalyst.py",
+    ]),
     ("lane_registry", [
         "tests/test_lane_registry.py",
     ]),

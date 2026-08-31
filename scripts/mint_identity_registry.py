@@ -234,12 +234,206 @@ def collect_rows() -> list[dict]:
     return list(merged.values())
 
 
+def _profile_row(symbol: str) -> dict | None:
+    """Verify a symbol against the known ticker universe (symbol_profiles)."""
+    try:
+        from price_db_sync import _get_conn  # type: ignore
+        conn = _get_conn()
+    except Exception:
+        return None
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """SELECT upper(symbol) AS symbol, description_1s, sector
+                 FROM symbol_profiles WHERE upper(symbol)=%s LIMIT 1""",
+            (normalize_symbol(symbol),),
+        )
+        row = cur.fetchone()
+        if not row:
+            return None
+        return {"symbol": row[0], "description_1s": row[1], "sector": row[2]}
+    except Exception:
+        return None
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
+def propose_catalyst_registry_gap(*, limit: int = 200) -> dict:
+    """E3 propose-list: real catalyst symbols in symbol_profiles but not registered.
+
+    Does not mint. Does not widen any rule. Operator verifies one-at-a-time via
+    `--register-symbol SYM` (dry-run default).
+    """
+    try:
+        from scripts.lib.hermes_discovery.symbol_validation import is_research_directive_slug
+    except Exception:
+        def is_research_directive_slug(sym: str) -> bool:  # type: ignore
+            return "_" in str(sym or "")
+
+    doc = load()
+    try:
+        from price_db_sync import _get_conn  # type: ignore
+        conn = _get_conn()
+    except Exception as exc:
+        return {"ok": False, "error": str(exc), "proposed": []}
+
+    proposed: list[dict] = []
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT upper(ce.symbol) AS sym, count(*) AS n
+              FROM catalyst_events ce
+              JOIN symbol_profiles sp ON upper(sp.symbol) = upper(ce.symbol)
+             WHERE ce.symbol IS NOT NULL AND btrim(ce.symbol) <> ''
+             GROUP BY 1
+             ORDER BY n DESC
+            """
+        )
+        for sym, n in cur.fetchall():
+            s = normalize_symbol(sym)
+            if not s or is_research_directive_slug(s):
+                continue
+            if lookup_symbol(doc, s):
+                continue
+            proposed.append({"symbol": s, "catalyst_rows": int(n), "in_symbol_profiles": True})
+            if len(proposed) >= limit:
+                break
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+    return {
+        "ok": True,
+        "mode": "propose",
+        "proposed_count": len(proposed),
+        "proposed": proposed,
+        "applied": False,
+        "note": (
+            "Propose only. Register deliberately with "
+            "`--register-symbol SYM` (dry-run) then `--register-symbol SYM --apply`."
+        ),
+    }
+
+
+def register_one_verified(symbol: str, *, apply: bool = False) -> dict:
+    """E3 deliberate one-at-a-time mint. Requires universe verification.
+
+    Refuses research-directive slugs and symbols absent from symbol_profiles.
+    Dry-run default — never silent-mints junk.
+    """
+    try:
+        from scripts.lib.hermes_discovery.symbol_validation import is_research_directive_slug
+    except Exception:
+        def is_research_directive_slug(sym: str) -> bool:  # type: ignore
+            return "_" in str(sym or "")
+
+    sym = normalize_symbol(symbol)
+    if not sym:
+        return {"ok": False, "symbol": sym, "error": "empty symbol", "applied": False}
+    if is_research_directive_slug(sym):
+        return {
+            "ok": False,
+            "symbol": sym,
+            "error": "research-directive / topic slug — refuse mint",
+            "applied": False,
+        }
+    profile = _profile_row(sym)
+    if not profile:
+        return {
+            "ok": False,
+            "symbol": sym,
+            "error": "not in symbol_profiles — refuse mint (do not widen a rule)",
+            "applied": False,
+        }
+
+    existing = lookup_symbol(load(), sym)
+    if existing:
+        return {
+            "ok": True,
+            "symbol": sym,
+            "already_registered": True,
+            "subject_guid": existing.get("subject_guid"),
+            "identity_status": existing.get("identity_status"),
+            "applied": False,
+        }
+
+    row = {
+        "symbol": sym,
+        "company": (profile.get("description_1s") or "").split(",")[0][:80] or None,
+        "source": "deliberate_catalyst_gap",
+    }
+    summary = register_all([row], apply=apply)
+    after = lookup_symbol(load(), sym) if apply else None
+    return {
+        "ok": True,
+        "symbol": sym,
+        "already_registered": False,
+        "verified_against": "symbol_profiles",
+        "would_register": not apply,
+        "applied": bool(apply),
+        "register_summary": {
+            "entities_added": summary.get("entities_added"),
+            "path": summary.get("path"),
+        },
+        "subject_guid": (after or {}).get("subject_guid"),
+        "identity_status": (after or {}).get("identity_status"),
+        "authority": "READ_ONLY_ADVISORY",
+    }
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="Mint the durable identity registry (Phase A)")
     ap.add_argument("--apply", action="store_true", help="write the registry (default: dry run)")
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--symbol", default=None, help="show the registered identity for one symbol")
+    ap.add_argument(
+        "--propose-catalyst-gap",
+        action="store_true",
+        help="E3: list catalyst symbols in symbol_profiles but not in the registry (propose only)",
+    )
+    ap.add_argument(
+        "--register-symbol",
+        default=None,
+        metavar="SYM",
+        help="E3: deliberate one-at-a-time mint; verifies against symbol_profiles; dry-run unless --apply",
+    )
     args = ap.parse_args()
+
+    if args.propose_catalyst_gap:
+        report = propose_catalyst_registry_gap()
+        if args.json:
+            print(json.dumps(report, indent=2, sort_keys=True))
+        else:
+            print(f"PROPOSE catalyst registry gap — {report.get('proposed_count', 0)} symbol(s)")
+            for row in report.get("proposed") or []:
+                print(f"  {row['symbol']:<8}  catalyst_rows={row['catalyst_rows']}")
+            print(report.get("note", ""))
+        return 0 if report.get("ok") else 1
+
+    if args.register_symbol:
+        report = register_one_verified(args.register_symbol, apply=args.apply)
+        if args.json:
+            print(json.dumps(report, indent=2, sort_keys=True))
+        else:
+            print(f"{'APPLY' if args.apply else 'DRY RUN'} — register-symbol {report.get('symbol')}")
+            if not report.get("ok"):
+                print(f"  REFUSED: {report.get('error')}")
+                return 1
+            if report.get("already_registered"):
+                print(f"  already registered  status={report.get('identity_status')}  "
+                      f"guid={(report.get('subject_guid') or '')[:8]}")
+            else:
+                print(f"  verified against symbol_profiles")
+                print(f"  entities_added={report.get('register_summary', {}).get('entities_added')}")
+                if not args.apply:
+                    print("\nnothing written. re-run with --register-symbol SYM --apply.")
+        return 0 if report.get("ok") else 1
 
     if args.symbol:
         ent = lookup_symbol(load(), args.symbol)
