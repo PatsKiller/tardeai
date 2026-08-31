@@ -169,6 +169,9 @@ GATES = [
     ("overnight_f4_search_health", [
         "tests/test_overnight_f4_search_health.py",
     ]),
+    ("overnight_g1_resolution", [
+        "tests/test_overnight_g1_resolution.py",
+    ]),
     ("overnight_g2_import_normalise", [
         "tests/test_overnight_g2_import_normalise.py",
     ]),

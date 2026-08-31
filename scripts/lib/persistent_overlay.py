@@ -1,7 +1,12 @@
 """Exact-main overlay safety: persistent stores must survive deploy.
 
-Refuse to retarget CURRENT data/{cio,runtime,portfolios/state,health} at an
-empty source-tree directory when a prior overlay already held those files.
+Refuse to retarget CURRENT data/{cio,runtime,portfolios/state,health,logs,…}
+at an empty source-tree directory when a prior overlay already held those files.
+
+WAVE G1: OVERLAY_RELS / DATA_DIRS_TO_LINK is the resolution-layer source of
+truth for which release-local trees must symlink into the persistent root.
+Deploy scripts should mirror this tuple — do not leave logs/ (or any other
+durable tree) as a release-local fork.
 """
 from __future__ import annotations
 
@@ -12,12 +17,21 @@ from typing import Any
 AUTHORITY = "READ_ONLY_ADVISORY"
 MBI = 0
 
+# Served-release trees that must symlink into GOOD_PERSISTENT_ROOT.
+# Keep in lockstep with scripts/cio_phase2_exact_main_deploy.sh link_pipeline_data.
+# G1: logs was already linked by deploy (#569) but missing from this lib list —
+# AGENTS.md still described it as a DATA_DIRS_TO_LINK gap for that reason.
 OVERLAY_RELS = (
-    "data/cio",
+    "data/portfolios/state",
+    "state/data_broker",
     "data/runtime",
     "data/health",
-    "data/portfolios/state",
+    "data/cio",
+    "logs",
 )
+
+# Public alias — the name used in AGENTS.md / deploy commentary.
+DATA_DIRS_TO_LINK = OVERLAY_RELS
 
 
 def overlay_data_source(*, canonical_source: Path | str | None = None) -> Path:
@@ -31,11 +45,18 @@ def overlay_data_source(*, canonical_source: Path | str | None = None) -> Path:
     return Path("/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild")
 
 # Files that mean "this persistent store is not empty".
+# Empty tuple → any directory entry counts as a sentinel.
 SENTINELS = {
     "data/cio": ("cio_investment_brief.json", "outcome_checkpoints.jsonl", "aif_memory.json"),
-    "data/runtime": ("advisory_desk_latest.json",),
+    "data/runtime": ("advisory_desk_latest.json", "aegis_evening_packet.json"),
     "data/health": (),
     "data/portfolios/state": ("holdings.json",),
+    "state/data_broker": (),
+    "logs": (
+        "claude_escalation_queue.json",
+        "health_agent.jsonl",
+        "pipeline_liveness.log",
+    ),
 }
 
 
