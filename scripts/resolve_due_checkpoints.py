@@ -39,6 +39,7 @@ import argparse
 import json
 import os
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -199,6 +200,7 @@ def run_pending_triage(
     *,
     apply: bool = False,
     limit: int | None = None,
+    now: datetime | None = None,
 ) -> dict[str, Any]:
     """Census PENDING_DATA; optionally resolve obtainable / expire never (env-gated)."""
     root = _state_root()
@@ -210,8 +212,8 @@ def run_pending_triage(
         price_lookup=lookup,
         registry_lookup=registry_lookup,
         limit=limit,
+        now=now,
     )
-
     refused: dict[str, Any] | None = None
     resolved = expired = 0
     resolve_samples: list[dict[str, Any]] = []
@@ -319,10 +321,11 @@ def run(
     limit: int | None = None,
     *,
     apply_pending_data: bool = False,
+    now: datetime | None = None,
 ) -> dict[str, Any]:
     """SCHEDULED due pass + always-on PENDING_DATA triage (dry unless gated)."""
     scheduled = run_scheduled(apply=apply, limit=limit)
-    triage = run_pending_triage(apply=apply_pending_data, limit=limit)
+    triage = run_pending_triage(apply=apply_pending_data, limit=limit, now=now)
     return {
         "schema": "DueCheckpointResolution@v2",
         "authority": "READ_ONLY_ADVISORY",
@@ -349,6 +352,23 @@ def run(
     }
 
 
+def _parse_as_of(raw: str | None) -> datetime | None:
+    """Parse --as-of as an aware UTC datetime. Date-only → end of that UTC day."""
+    if not raw:
+        return None
+    text = raw.strip()
+    if len(text) == 10 and text[4] == "-" and text[7] == "-":
+        # YYYY-MM-DD → 23:59:59 UTC so on_or_before includes that calendar day.
+        dt = datetime.fromisoformat(text).replace(
+            hour=23, minute=59, second=59, tzinfo=timezone.utc,
+        )
+        return dt
+    dt = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="Resolve due outcome checkpoints")
     ap.add_argument("--apply", action="store_true",
@@ -363,12 +383,22 @@ def main() -> int:
     )
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--limit", type=int, default=None)
+    ap.add_argument(
+        "--as-of",
+        default=None,
+        help=(
+            "Pin PENDING_DATA triage/apply clock (ISO date or datetime). "
+            "Use when today's ticker_prices row is a known copy-forward and "
+            "a prior session close is the honest horizon."
+        ),
+    )
     args = ap.parse_args()
 
     result = run(
         apply=args.apply,
         limit=args.limit,
         apply_pending_data=args.apply_pending_data,
+        now=_parse_as_of(args.as_of),
     )
     if args.json:
         print(json.dumps(result, indent=2, sort_keys=True, default=str))

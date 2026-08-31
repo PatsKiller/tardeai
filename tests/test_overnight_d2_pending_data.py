@@ -50,9 +50,25 @@ def _pending(**over):
 
 
 def _prices(table):
-    """table: symbol -> (close, date) or None sentinel via missing key."""
+    """table: symbol -> (close, date) or None sentinel via missing key.
+
+    Ignores on_or_before — both ends of the comparison see the same row.
+    Prefer ``_prices_by_date`` when testing move / exact-equal behaviour.
+    """
     def lookup(symbol, on_or_before):
         return table.get(symbol)
+    return lookup
+
+
+def _prices_by_date(table):
+    """table: symbol -> list of (close, date) ascending. Closest on_or_before wins."""
+    def lookup(symbol, on_or_before):
+        rows = table.get(symbol) or []
+        best = None
+        for close, date in rows:
+            if str(date) <= str(on_or_before):
+                best = (close, date)
+        return best
     return lookup
 
 
@@ -72,16 +88,36 @@ def test_future_dated_pending_is_left_alone():
 
 
 def test_obtainable_when_both_price_ends_exist():
+    """Distinct dates and a non-zero move → resolve."""
     item = classify_pending_checkpoint(
         _pending(),
-        price_lookup=_prices({"SCHD": (35.03, "2026-08-28")}),
+        price_lookup=_prices_by_date({
+            "SCHD": [(35.03, "2026-08-28"), (35.10, "2026-08-31")],
+        }),
         registry_lookup=lambda s: True,
         now=NOW,
     )
     assert item["class"] == CLASS_OBTAINABLE
     assert item["action"] == "resolve"
     assert item["realized_state"]["symbol"] == "SCHD"
+    assert item["realized_state"]["change_pct"] != 0.0
     assert "change_pct" in item["realized_state"]
+
+
+def test_exact_equal_endpoints_left_stuck():
+    """Same close on distinct dates — refuse; do not manufacture a 0.00% outcome."""
+    item = classify_pending_checkpoint(
+        _pending(),
+        price_lookup=_prices_by_date({
+            "SCHD": [(34.88, "2026-08-28"), (34.88, "2026-08-31")],
+        }),
+        registry_lookup=lambda s: True,
+        now=NOW,
+    )
+    assert item["class"] == CLASS_STUCK
+    assert item["action"] == "leave"
+    assert item["reason"] == "exact_equal_endpoints"
+    assert item["realized_state"]["change_pct"] == 0.0
 
 
 def test_stuck_when_price_history_still_missing():
@@ -171,10 +207,12 @@ def test_triage_counts_split_future_obtainable_stuck_never():
             },
         ),
     ]
-    # Only SCHD has prices → "ok" obtainable; XLI stuck; cash never; fut future.
+    # SCHD has a real move → "ok" obtainable; XLI missing → stuck; cash never; fut future.
     out = triage_pending_data(
         rows,
-        price_lookup=_prices({"SCHD": (35.0, "2026-08-28")}),
+        price_lookup=_prices_by_date({
+            "SCHD": [(35.0, "2026-08-28"), (35.2, "2026-08-31")],
+        }),
         registry_lookup=lambda s: True,
         now=NOW,
     )
@@ -297,7 +335,9 @@ def test_apply_pending_resolves_obtainable_when_env_armed(tmp_path, monkeypatch)
     monkeypatch.setattr(rdc, "_state_root", lambda: root)
     monkeypatch.setattr(
         rdc, "_price_lookup_factory",
-        lambda: _prices({"SCHD": (35.03, "2026-08-28")}),
+        lambda: _prices_by_date({
+            "SCHD": [(35.03, "2026-08-28"), (35.20, "2026-08-31")],
+        }),
     )
     monkeypatch.setattr(rdc, "_registry_lookup_factory", lambda: (lambda s: True))
 
@@ -308,6 +348,79 @@ def test_apply_pending_resolves_obtainable_when_env_armed(tmp_path, monkeypatch)
     assert lines[-1]["status"] == STATUS_RESOLVED
     assert lines[-1]["outcome_id"]
     assert obs.exists() and obs.read_text().strip(), "observation must be persisted"
+
+
+def test_apply_pending_skips_exact_equal_endpoints(tmp_path, monkeypatch):
+    """Exact-equal closes must not become RESOLVED observations."""
+    monkeypatch.setenv(PENDING_APPLY_ENV, "1")
+
+    root = tmp_path
+    ck = root / "data" / "cio" / "outcome_checkpoints.jsonl"
+    obs = root / "data" / "cio" / "outcome_observations.jsonl"
+    ck.parent.mkdir(parents=True)
+    ck.write_text(json.dumps(_pending(checkpoint_id="flat1")) + "\n", encoding="utf-8")
+
+    import scripts.resolve_due_checkpoints as rdc
+
+    monkeypatch.setattr(rdc, "_state_root", lambda: root)
+    monkeypatch.setattr(
+        rdc, "_price_lookup_factory",
+        lambda: _prices_by_date({
+            "SCHD": [(34.88, "2026-08-28"), (34.88, "2026-08-31")],
+        }),
+    )
+    monkeypatch.setattr(rdc, "_registry_lookup_factory", lambda: (lambda s: True))
+
+    out = rdc.run_pending_triage(apply=True)
+    assert out["resolved"] == 0
+    assert out["obtainable"] == 0
+    assert out["stuck_waiting_data"] == 1
+    assert out["reasons"].get("exact_equal_endpoints") == 1
+    lines = [json.loads(l) for l in ck.read_text().splitlines() if l.strip()]
+    assert len(lines) == 1
+    assert lines[0]["status"] == STATUS_PENDING_DATA
+    assert not obs.exists() or not obs.read_text().strip()
+
+
+def test_parse_as_of_date_pins_end_of_utc_day():
+    import scripts.resolve_due_checkpoints as rdc
+
+    dt = rdc._parse_as_of("2026-08-30")
+    assert dt is not None
+    assert dt.year == 2026 and dt.month == 8 and dt.day == 30
+    assert dt.hour == 23 and dt.minute == 59
+    assert dt.tzinfo is not None
+
+
+def test_as_of_selects_prior_horizon_price(tmp_path, monkeypatch):
+    """Pinned as_of must use that day's close, not a later copy-forward row."""
+    monkeypatch.setenv(PENDING_APPLY_ENV, "1")
+    root = tmp_path
+    ck = root / "data" / "cio" / "outcome_checkpoints.jsonl"
+    ck.parent.mkdir(parents=True)
+    ck.write_text(json.dumps(_pending(checkpoint_id="asof1")) + "\n", encoding="utf-8")
+
+    import scripts.resolve_due_checkpoints as rdc
+
+    monkeypatch.setattr(rdc, "_state_root", lambda: root)
+    # 08-31 is a copy of an outlier; 08-30 is the honest prior close.
+    monkeypatch.setattr(
+        rdc, "_price_lookup_factory",
+        lambda: _prices_by_date({
+            "SCHD": [
+                (34.88, "2026-08-28"),
+                (34.90, "2026-08-30"),
+                (35.11, "2026-08-31"),  # copy-forward / weekend artifact
+            ],
+        }),
+    )
+    monkeypatch.setattr(rdc, "_registry_lookup_factory", lambda: (lambda s: True))
+
+    pinned = rdc._parse_as_of("2026-08-30")
+    out = rdc.run_pending_triage(apply=True, now=pinned)
+    assert out["resolved"] == 1
+    assert out["resolve_samples"][0]["horizon_price_date"] == "2026-08-30"
+    assert out["resolve_samples"][0]["change_pct"] == 0.0573
 
 
 def test_dry_run_triage_never_writes(tmp_path, monkeypatch):
