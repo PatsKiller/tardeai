@@ -148,6 +148,9 @@ GATES = [
     ("overnight_wave_e_catalyst", [
         "tests/test_overnight_wave_e_catalyst.py",
     ]),
+    ("overnight_f1_f2_search_bound", [
+        "tests/test_overnight_f1_f2_search_bound.py",
+    ]),
     ("lane_registry", [
         "tests/test_lane_registry.py",
     ]),

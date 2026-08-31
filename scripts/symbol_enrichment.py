@@ -477,56 +477,21 @@ def search_youtube(symbol: str, conn) -> dict:
 # ─────────────────────────────────────────────
 
 def pull_brave_aplus(symbol: str, score: int, conn) -> bool:
-    """Brave Search — A+ signals only (score>=55), max 3/day."""
+    """F2: Brave search API retired for bulk news enrichment.
+
+    Consumer: trade_ai_orchestrator + weekday cron ``symbol_enrichment.py``.
+    News for A+ symbols already flows through ``pull_google_news_rss`` and
+    Finviz tiers in this module. Search API credits are reserved for
+    residual-web (≤1 hop/subject/day, N=3). Never fail-open to an unbudgeted
+    call — this path is a deliberate no-op.
+    """
     if score < 55:
         return False
-    try:
-        brave_key = os.getenv('BRAVE_SEARCH_API_KEY', '')
-        if not brave_key:
-            return False
-        cur = conn.cursor()
-        cur.execute("""
-            SELECT COUNT(*) FROM news_articles
-            WHERE source='brave_search' AND created_at > NOW() - INTERVAL '24 hours'
-        """)
-        if cur.fetchone()[0] >= 3:
-            return False
-        # Budget BEFORE the call, and a budget that cannot be established denies.
-        # This caller held its own client, so its calls were never counted.
-        try:
-            from scripts.lib.search_budget import check as _budget_check, record as _budget_record
-        except ImportError:
-            from lib.search_budget import check as _budget_check, record as _budget_record  # type: ignore
-        _verdict = _budget_check('brave')
-        if not _verdict['allowed']:
-            _report_source('brave_search', False,
-                           error=f"budget: {_verdict['reason']}")
-            return False
-        resp = requests.get('https://api.search.brave.com/res/v1/news/search',
-            headers={'Accept': 'application/json', 'X-Subscription-Token': brave_key},
-            params={'q': f'{symbol} stock news', 'count': 5, 'freshness': 'pd'}, timeout=10)
-        _budget_record('brave', allowed=True, caller='symbol_enrichment')
-        if resp.status_code in (402, 429):
-            _report_source('brave_search', False, error=f'HTTP {resp.status_code} (budget/rate-limit)')
-            return False
-        if resp.status_code != 200:
-            _report_source('brave_search', False, error=f'HTTP {resp.status_code}')
-            return False
-        _report_source('brave_search', True)
-        results = resp.json().get('results', [])
-        added = 0
-        for r in results:
-            try:
-                if _insert_news_article(cur, r.get('title') or '', r.get('url') or '',
-                                        symbol, 'brave_search', 75):
-                    added += 1
-            except Exception:
-                conn.rollback()
-        conn.commit()
-        log.info(f"[enrichment] Brave A+: {added} articles for {symbol}")
-        return True
-    except Exception:
-        return False
+    _report_source(
+        'brave_search', False,
+        error='retired_bulk_news_use_rss_finviz',
+    )
+    return False
 
 
 # ─────────────────────────────────────────────
