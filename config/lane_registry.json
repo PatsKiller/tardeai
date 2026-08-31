@@ -582,6 +582,22 @@
         "key": "as_of"
       },
       "note": "M5. The durable artifact proves the record was consulted on a SCHEDULE, unattended \u2014 a hand-run leaves no trace here."
+    },
+    {
+      "lane_id": "cio-situation-detector",
+      "owner": "cio",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "emitted from the reactive cycle / heartbeat hooks",
+        "match": "cio_situation_detector"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/cio/cio_events.jsonl"
+      },
+      "note": "Emits situation.raised \u2014 the only high-volume bus event that names a subject. shadow=true is its default posture since 2026-08-11 (0241722b, 'SHADOW default; no broker calls') and has never been changed. ESTABLISHED 2026-08-30: shadow is a LABEL ONLY \u2014 it appears in exactly three places, all of which write it into a payload/plan/summary. It gates no emission, no plan creation and no routing. What gates operator notification is `notify`, a separate flag that has its own canary doc (CIO_MATERIAL_NOTIFY_CANARY_2026-08-20.md) and remains false. Consuming situation.raised is therefore NOT a promotion out of shadow."
     }
   ],
   "undeclared_baseline": [

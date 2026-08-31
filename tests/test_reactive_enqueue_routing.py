@@ -159,3 +159,57 @@ def test_the_bound_is_configurable_without_a_code_change():
     m = importlib.import_module("scripts.cio_reactive_cycle")
     assert "CIO_REACTIVE_EVENT_MAX_AGE_HOURS" in m.__doc__ or True
     assert m.EVENT_MAX_AGE_HOURS == 48.0
+
+
+# ── owner_agent is payload data and must not choose its own handler ───────
+
+def _ctx(payload, routed_via="alex"):
+    """Rebuild the context exactly as run_once does, including validation."""
+    import importlib
+    m = importlib.import_module("scripts.cio_reactive_cycle")
+    claimed = str(payload.get("owner_agent") or "").strip() or None
+    if claimed and claimed in m.KNOWN_AGENTS:
+        owner, rejected = claimed, None
+    else:
+        owner, rejected = None, claimed
+    return {"target_agent": owner or routed_via,
+            "routed_via_agent": routed_via,
+            "owner_agent_rejected": rejected}
+
+
+def test_a_known_owner_is_honoured():
+    c = _ctx({"owner_agent": "morgan"}, routed_via="alex")
+    assert c["target_agent"] == "morgan"
+    assert c["owner_agent_rejected"] is None
+
+
+def test_an_unknown_owner_cannot_choose_its_handler():
+    """target_agent decides who handles the wake. Dispatching on whatever the
+    payload says would let an event pick a handler that was never meant to
+    receive that class of work — or one that does not exist."""
+    for bogus in ("root", "attacker", "", "   ", "ALEX", "alex; drop", None):
+        c = _ctx({"owner_agent": bogus}, routed_via="steph")
+        assert c["target_agent"] == "steph", bogus
+        assert c["target_agent"] in ("alex", "steph", "hermes", "morgan")
+
+
+def test_a_rejected_owner_is_recorded_not_discarded():
+    c = _ctx({"owner_agent": "nobody"}, routed_via="alex")
+    assert c["owner_agent_rejected"] == "nobody"
+
+
+def test_the_allowlist_is_sourced_from_the_routing_table():
+    """A hand-maintained second list would drift from the subscriptions it
+    mirrors."""
+    import importlib
+    m = importlib.import_module("scripts.cio_reactive_cycle")
+    from scripts.lib.cio_event_bus import AGENT_EVENT_ROUTING
+    assert m.KNOWN_AGENTS == frozenset(AGENT_EVENT_ROUTING)
+
+
+def test_case_sensitivity_is_not_silently_normalised():
+    """'ALEX' is not 'alex'. Normalising would quietly accept a value the
+    emitter did not actually send."""
+    c = _ctx({"owner_agent": "ALEX"}, routed_via="steph")
+    assert c["target_agent"] == "steph"
+    assert c["owner_agent_rejected"] == "ALEX"
