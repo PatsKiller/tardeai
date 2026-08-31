@@ -189,6 +189,9 @@ GATES = [
     ("overnight_g4_archive_mechanism", [
         "tests/test_overnight_g4_archive_mechanism.py",
     ]),
+    ("overnight_g6_missing_stores", [
+        "tests/test_overnight_g6_missing_stores.py",
+    ]),
     ("r13_institutional", [
         "tests/test_r13_institution.py",
         "tests/test_r13_goldens_properties_faults.py",
