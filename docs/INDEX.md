@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `fd55cc5ce3c8923be18caf3a96f5dd4f38a5a199cd139a84096df42d74f14dc2`
+**Tree fingerprint:** `e7b23954c2eb93e88de857a9ac88ee8d412e1421ecf30df9b379a7b4b83c7bbf`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,10 +12,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2260 |
-| Markdown (excl. this INDEX) | 1892 |
+| Files under `docs/` (excl. this INDEX) | 2262 |
+| Markdown (excl. this INDEX) | 1894 |
 | **MISSING HEADER** | **1033** |
-| Header OK | 859 |
+| Header OK | 861 |
 | Duplicate groups | 8 |
 
 ### By status_guess
@@ -30,7 +30,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_raw_sync | 8 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 12 |
-| review_required | 1892 |
+| review_required | 1894 |
 
 ## Markdown tree
 
@@ -585,6 +585,8 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/audits/overnight/F5_MODEL_COST_2026-08-31.md` | Overnight F5 — Model-call cost accounting | review_required | OK | `b7e798b44094` |
 | `docs/audits/overnight/F6_UTC_CRON_PROPOSALS_2026-08-31.md` | WAVE F6 — UTC scheduling proposals for LLM-heavy jobs · 2026-08-31 | review_required | OK | `ad31fa3b797a` |
 | `docs/audits/overnight/G3_DOCS_INDEX_2026-08-31.md` | Overnight G3 — Documentation index generator | review_required | OK | `c84615e159f7` |
+| `docs/audits/overnight/G4_ARCHIVE_MECHANISM_2026-08-31.md` | Overnight G4 — Archive mechanism | review_required | OK | `81e760481cc0` |
+| `docs/audits/overnight/G5_DUPLICATION_RECOMMENDATIONS_2026-08-31.md` | G5 — Duplication cluster recommendations (from Census Part 3) | review_required | OK | `0b081115c5fc` |
 | `docs/audits/overnight/WAVE_E_CATALYST_2026-08-31.md` | WAVE E — Catalyst pipeline (E1→E5) · 2026-08-31 | review_required | OK | `c700329a997a` |
 | `docs/briefs/PHASE_11_superseded.md` | Phase 11 — superseded by the validation sweep before execution | archive_superseded | MISSING HEADER | `a77d6d25a9e3` |
 | `docs/briefs/README.md` | Wave briefs | review_required | MISSING HEADER | `a2f504a8b977` |
