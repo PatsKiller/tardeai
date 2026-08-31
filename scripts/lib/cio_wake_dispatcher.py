@@ -42,6 +42,16 @@ DEFAULT_STALE_LEASE_MULTIPLIER = 2  # 2x lease before auto-recover
 GOAL_WAKE_DEDUP_MINUTES = 30
 
 
+def _summarise_subject(decisions):
+    """M5 evidence line. Kept a module function so a failure here cannot take
+    down a dispatch cycle, and so the shape is testable without a store."""
+    try:
+        from scripts.lib.cio_wake_subject import summarise
+        return summarise(decisions)
+    except Exception as exc:                      # named, never bare
+        return {"error": f"{type(exc).__name__}: {exc}", "wakes_considered": len(decisions)}
+
+
 class CIOWakeDispatcher:
     """Sole wake claimant and CIO run creator.
 
@@ -146,6 +156,23 @@ class CIOWakeDispatcher:
         dispatched: list[dict[str, str]] = []
         skipped: list[str] = []
         errors: list[dict[str, str]] = []
+        # M5: the record is consulted BEFORE anything is claimed or run. Loaded
+        # once per cycle so the per-wake consult is a dict lookup, not I/O.
+        subject_decisions: list[dict[str, Any]] = []
+        _known_keys = None
+        try:
+            from scripts.lib.cio_wake_subject import decide as _subject_decide
+            from scripts.lib.cio_wake_subject import SKIP_CADENCE as _SKIP_CADENCE
+            from scripts.lib.cio_instrument_record import InstrumentRecordStore
+            _rec_store = InstrumentRecordStore()
+            _known_keys = {str(r.get("subject_key")) for r in _rec_store.all()
+                           if r.get("subject_key")}
+        except Exception as exc:
+            # Explicitly NOT a bare pass: if memory is unavailable the cycle
+            # still runs, and says so, rather than silently losing the check.
+            log.warning("record consult unavailable, wakes proceed unfiltered: %s", exc)
+            _subject_decide = None
+            _rec_store = None
 
         for wake in wakes:
             wake_job_id = wake.get("wake_job_id", "")
@@ -161,6 +188,22 @@ class CIOWakeDispatcher:
                 self._dispatched.add(wake_job_id)
                 skipped.append(wake_job_id)
                 continue
+
+            # M5: load the record before acting. A disposition the operator
+            # recorded days ago must change what happens next. This runs before
+            # the claim, so a deferred subject costs no lease and creates no run.
+            if _subject_decide is not None:
+                try:
+                    _d = _subject_decide(wake, store=_rec_store,
+                                         known_keys=_known_keys)
+                    subject_decisions.append(_d)
+                    if _d["verdict"] == _SKIP_CADENCE:
+                        log.info("wake %s skipped by record: %s",
+                                 wake_job_id, _d["reason"])
+                        skipped.append(wake_job_id)
+                        continue
+                except Exception as exc:
+                    log.warning("record consult failed for %s: %s", wake_job_id, exc)
 
             # Determine wake intent
             wake_intent = wake.get("wake_intent", "NEW_RUN")
@@ -322,6 +365,8 @@ class CIOWakeDispatcher:
             "dispatched_count": len(dispatched),
             "skipped_count": len(skipped),
             "error_count": len(errors),
+            # M5 evidence, emitted every cycle: what the record changed.
+            "record_consult": _summarise_subject(subject_decisions),
             "recovered_count": len(recovered),
             "dispatched": dispatched,
             "skipped": skipped,

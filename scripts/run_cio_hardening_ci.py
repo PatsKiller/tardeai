@@ -113,6 +113,110 @@ GATES = [
         "tests/test_r12_acceptance_scenarios.py",
         "tests/test_r12_properties.py",
     ]),
+    ("ci_self_guards", [
+        "tests/test_ci_test_coverage_gate.py",
+    ]),
+    ("scripts_lib_bootstrap", [
+        "tests/test_scripts_lib_bootstrap.py",
+    ]),
+    ("stop_path_notification", [
+        "tests/test_stop_path_notification_imports.py",
+    ]),
+    ("research_scheduler_child_interpreter", [
+        "tests/test_research_scheduler_child_interpreter.py",
+    ]),
+    ("decision_field_honesty", [
+        "tests/test_decision_field_honesty.py",
+    ]),
+    ("stop_warning_transitions", [
+        "tests/test_stop_warning_transitions.py",
+    ]),
+    ("notification_memory", [
+        "tests/test_notification_memory.py",
+    ]),
+    ("notification_receipts", [
+        "tests/test_notification_receipts.py",
+    ]),
+    ("telegram_chokepoint_ratchet", [
+        "tests/test_telegram_chokepoint_ratchet.py",
+    ]),
+    ("notification_integrity_cdeg", [
+        "tests/test_notification_integrity_waves_cdeg.py",
+    ]),
+    ("governance_section_zero_parity", [
+        "tests/test_agents_section_zero_parity.py",
+    ]),
+    ("agent_brief", [
+        "tests/test_agent_brief.py",
+    ]),
+    ("research_reaches_surface", [
+        "tests/test_research_reaches_surface.py",
+    ]),
+    ("overnight_b2_b3_failure_surfaces", [
+        "tests/test_overnight_b2_b3_failure_surfaces.py",
+    ]),
+    ("money_surface_honesty", [
+        "tests/test_money_surface_honesty.py",
+        "tests/test_cash_guidance_provenance.py",
+        "tests/test_overnight_b4_b5_asof_provenance.py",
+        "tests/test_overnight_w3_3b_frozen_fields.py",
+    ]),
+    ("overnight_b6_reentry_scope", [
+        "tests/test_overnight_b6_reentry_scope.py",
+    ]),
+    ("overnight_d2_pending_data", [
+        "tests/test_overnight_d2_pending_data.py",
+    ]),
+    ("overnight_d3_lesson_provenance", [
+        "tests/test_overnight_d3_lesson_provenance.py",
+    ]),
+    ("overnight_wave_e_catalyst", [
+        "tests/test_overnight_wave_e_catalyst.py",
+    ]),
+    ("overnight_f1_f2_search_bound", [
+        "tests/test_overnight_f1_f2_search_bound.py",
+    ]),
+    ("overnight_f5_model_cost", [
+        "tests/test_overnight_f5_model_cost.py",
+    ]),
+    ("overnight_g3_docs_index", [
+        "tests/test_overnight_g3_docs_index.py",
+    ]),
+    ("lane_registry", [
+        "tests/test_lane_registry.py",
+    ]),
+    ("search_budget", [
+        "tests/test_search_budget_and_health.py",
+    ]),
+    ("overnight_f3_search_budget", [
+        "tests/test_overnight_f3_search_budget.py",
+    ]),
+    ("overnight_f4_search_health", [
+        "tests/test_overnight_f4_search_health.py",
+    ]),
+    ("overnight_g1_resolution", [
+        "tests/test_overnight_g1_resolution.py",
+    ]),
+    ("overnight_g2_import_normalise", [
+        "tests/test_overnight_g2_import_normalise.py",
+    ]),
+    ("corpus_grades_cost_units", [
+        "tests/test_corpus_grades_and_cost_units.py",
+    ]),
+    ("wake_loads_record", [
+        "tests/test_wake_loads_record.py",
+        "tests/test_reactive_enqueue_routing.py",
+        "tests/test_next_eligible_normal_path.py",
+    ]),
+    ("overnight_d1_m5_cadence", [
+        "tests/test_overnight_d1_m5_cadence.py",
+    ]),
+    ("overnight_g4_archive_mechanism", [
+        "tests/test_overnight_g4_archive_mechanism.py",
+    ]),
+    ("overnight_g6_missing_stores", [
+        "tests/test_overnight_g6_missing_stores.py",
+    ]),
     ("r13_institutional", [
         "tests/test_r13_institution.py",
         "tests/test_r13_goldens_properties_faults.py",
@@ -149,6 +253,17 @@ def main() -> int:
     # Phase 2: never regenerate the committed manifest before validating it.
     # 1) check-committed — read-only integrity of the files in git
     # 2) candidate — write a generated copy to an isolated dir and show the diff
+    print("[RUN]  docs_index_drift")
+    dix = subprocess.run(
+        [sys.executable, "scripts/report_docs_inventory.py", "--check-index"],
+        cwd=str(REPO),
+    )
+    if dix.returncode != 0:
+        failed.append("docs_index_drift")
+        print("[FAIL] docs_index_drift — docs/INDEX.md does not match regenerate")
+    else:
+        print("[PASS] docs_index_drift")
+
     print("[RUN]  validate_committed_manifest")
     chk = subprocess.run(
         [sys.executable, "scripts/cio_release_manifest.py", "check-committed"],

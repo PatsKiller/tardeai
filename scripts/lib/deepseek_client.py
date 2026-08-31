@@ -74,6 +74,10 @@ class DeepSeekResponse:
     usage: dict = field(default_factory=dict)
     estimated_cost_usd: float | None = None
     cost_basis: str | None = None
+    # AGENTS.md §9.2 — measured accounting fields (never hardcoded literals)
+    pricing_tier: str | None = None  # peak | off_peak | flat
+    cache_hit: bool | None = None
+    price_schedule_id: str | None = None
     request_id: str | None = None
     latency_ms: int | None = None
     http_status: int | None = None
@@ -324,6 +328,60 @@ def chat(
     if response_json:
         body["response_format"] = {"type": "json_object"}
 
+    # AGENTS.md §9.2: budget check BEFORE the call. Never fail open.
+    budget_reason: str | None = None
+    try:
+        try:
+            from scripts.lib.provider_cost.budget import BudgetDenied, ensure_budget_allows_call
+        except ImportError:  # pragma: no cover
+            from lib.provider_cost.budget import BudgetDenied, ensure_budget_allows_call  # type: ignore
+        ensure_budget_allows_call(
+            process_id=source_process,
+            projected_usd=0.0,
+            reservation_id=reservation_id,
+            require_global_cap=True,
+        )
+    except Exception as budget_exc:  # noqa: BLE001
+        budget_reason = getattr(budget_exc, "reason", None) or "BUDGET_UNAVAILABLE"
+        if type(budget_exc).__name__ != "BudgetDenied" and not hasattr(budget_exc, "reason"):
+            budget_reason = "BUDGET_UNAVAILABLE"
+    if budget_reason:
+        _emit_chat_event(
+            outcome="pre_send_failure",
+            model_id=model_id,
+            request_id=None,
+            client_rid=client_rid,
+            raw_key=None,
+            request_sent=False,
+            possibly_billable=False,
+            error_class=COST_CAP_EXCEEDED,
+            source_service=source_service,
+            source_process=source_process,
+            source_lane=source_lane,
+            agent=agent,
+            run_id=run_id,
+            reservation_id=reservation_id,
+            environment=environment,
+        )
+        return DeepSeekResponse(
+            ok=False,
+            requested_policy=requested_policy,
+            executed_policy=None,
+            requested_model_id=model_id,
+            returned_model=None,
+            thinking=thinking,
+            reasoning_effort=reasoning_effort,
+            content=None,
+            reasoning_content=None,
+            tool_calls=None,
+            finish_reason=None,
+            error_class=COST_CAP_EXCEEDED,
+            error_message=f"budget denied before send: {budget_reason}",
+            client_request_id=client_rid,
+            request_sent=False,
+            possibly_billable=False,
+        )
+
     t0 = time.time()
     request_sent = False
     try:
@@ -564,12 +622,14 @@ def chat(
     else:
         err = None
 
+    cache_hit_tok = usage.get("prompt_cache_hit_tokens") or usage.get("cache_hit_tokens")
+    cache_miss_tok = usage.get("prompt_cache_miss_tokens") or usage.get("cache_miss_tokens")
     cost = estimate_usd_cost(
         model_id=model_id,  # type: ignore[arg-type]
         prompt_tokens=usage.get("prompt_tokens"),
         completion_tokens=usage.get("completion_tokens"),
-        cache_hit_tokens=(usage.get("prompt_cache_hit_tokens") or usage.get("cache_hit_tokens")),
-        cache_miss_tokens=(usage.get("prompt_cache_miss_tokens") or usage.get("cache_miss_tokens")),
+        cache_hit_tokens=cache_hit_tok,
+        cache_miss_tokens=cache_miss_tok,
     )
 
     _emit_chat_event(
@@ -605,6 +665,9 @@ def chat(
         usage=usage,
         estimated_cost_usd=cost.get("estimated_cost_usd"),
         cost_basis=cost.get("cost_basis"),
+        pricing_tier=cost.get("pricing_tier"),
+        cache_hit=cost.get("cache_hit"),
+        price_schedule_id=cost.get("price_schedule_id"),
         request_id=req_id,
         latency_ms=latency,
         http_status=r.status_code,

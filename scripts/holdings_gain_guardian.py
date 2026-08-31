@@ -30,7 +30,10 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT / "scripts"))
+# G2: scripts-only + lib — never also put scripts/lib or root on path
+_SCRIPTS = Path(__file__).resolve().parent
+if str(_SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(_SCRIPTS))
 
 try:
     from dotenv import load_dotenv
@@ -88,10 +91,7 @@ def _iron_rule() -> tuple[float, int]:
     total = float((d.get("portfolio_totals") or {}).get("total_value") or 0)
     n = len([h for h in d.get("holdings") or [] if not h.get("is_cash")])
     try:
-        import sys
-        from pathlib import Path
-        sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
-        from holdings_sanity import validate_payload
+        from lib.holdings_sanity import validate_payload
         v = validate_payload(d, None)
         if not v.ok or n <= 0:
             raise SystemExit(f"IRON RULE FAIL: {v.reason_code} total_value={total} holdings={n} — refusing to run")
@@ -589,6 +589,9 @@ def promote() -> int:
 
 
 def main() -> int:
+    # G2: after imports settle — refuse dual lib.X / scripts.lib.X identity
+    from lib import assert_single_import_identity
+    assert_single_import_identity()
     ap = argparse.ArgumentParser()
     ap.add_argument("--apply", action="store_true", help="Persist metrics + HWM ratchet")
     ap.add_argument("--dry-run", action="store_true", help="Default — compute and print only")

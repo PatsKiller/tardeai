@@ -1,7 +1,7 @@
 # WAVE <n> — <short name>
 
 **Authority:** READ_ONLY_ADVISORY · MBI_BEHAVIOR=0 · MBI_COGNITION=1.
-Standing rules are in `/CLAUDE.md` and are not restated here.
+Standing rules are in `/AGENTS.md` and are not restated here.
 
 ## Objective
 
@@ -47,6 +47,6 @@ a natural extension.
 
 ## Operator-only
 
-Decisions to propose and stop on, beyond the standing list in `CLAUDE.md`. If
+Decisions to propose and stop on, beyond the standing list in `AGENTS.md`. If
 this section is longer at the end of the wave than at the start, that is a
 finding about how the wave was run.

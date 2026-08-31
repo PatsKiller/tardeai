@@ -95,6 +95,7 @@ def run(apply: bool = False) -> dict[str, Any]:
                 "scope": c.get("scope"),
                 "task_class": c.get("task_class"),
                 "status": c.get("status"),
+                "lesson_provenance": c.get("lesson_provenance"),
                 "independent_samples": c.get("independent_samples"),
                 "total_observations": c.get("total_observations"),
                 "statement": c.get("statement"),

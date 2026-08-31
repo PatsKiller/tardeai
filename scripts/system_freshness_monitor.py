@@ -98,12 +98,54 @@ def _age_hours(cur, table, ts_col="created_at", agg="max"):
     return float(r) if r is not None else None
 
 
+# Minimum weekday hours a lookback window must contain before a weekday-only
+# check is meaningful. Below this the writer had no realistic opportunity to
+# run, so an empty table is expected rather than a finding.
+MIN_WEEKDAY_HOURS_IN_WINDOW = 6
+
+
+def _window_covers_a_weekday(hours: float) -> bool:
+    """Does the lookback window contain any hour the writer was scheduled to run?
+
+    G1, 2026-08-31. The gate was `weekend = datetime.now().weekday() >= 5` -- it
+    asked whether TODAY is Saturday, not whether the WINDOW contains weekday
+    hours. At Monday 00:00 today is Monday, so the check ran against a 30-hour
+    window that was entirely weekend, and paged "fused_signals 0 rows in 30h"
+    against a writer scheduled weekdays only. Four consecutive Sat/Sun pairs read
+    exactly 0 against 12k-20k every weekday.
+
+    A correct implementation already exists in system_health_agent
+    (_weekday_only_schedule + _is_trading_day_cached), which walks the schedule
+    across the window rather than sampling one day.
+
+    AGENTS.md §7, detector shape: the detector keyed on the calendar day and
+    structurally could not see its own window.
+    """
+    now = datetime.now()
+    step = timedelta(hours=1)
+    t = now - timedelta(hours=max(1.0, float(hours)))
+    weekday_hours = 0
+    while t <= now:
+        if t.weekday() < 5:
+            weekday_hours += 1
+        t += step
+    # A single boundary hour is not an opportunity to produce. At Monday 00:00 a
+    # 30h window contains one hour of Monday and 29 of weekend -- which is
+    # exactly the false page this fixes. Require enough weekday time that a
+    # weekday-scheduled writer could plausibly have run.
+    return weekday_hours >= MIN_WEEKDAY_HOURS_IN_WINDOW
+
+
 def detect(cur):
     findings = []
-    weekend = datetime.now().weekday() >= 5  # server TZ is America/New_York (market time)
     for e in REGISTRY:
-        if e.get("weekday_only") and weekend:
-            continue  # weekday-cadence table — don't false-page on weekends
+        if e.get("weekday_only"):
+            # G1: ask whether the WINDOW contains weekday hours, not whether
+            # today is a weekend. Skips only when the writer could not have run
+            # at any point the window covers.
+            _win = e.get("window_h") or e.get("max_age_h") or 24
+            if not _window_covers_a_weekday(_win):
+                continue
         try:
             if e["kind"] == "fresh":
                 age = _age_hours(cur, e["table"], e.get("ts_col", "created_at"), e.get("agg", "max"))

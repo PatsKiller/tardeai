@@ -43,6 +43,6 @@ that is not the operator's.
 
 Briefs do not restate the authority rails, the evidence vocabulary, the
 multi-agent protocol, the deploy protocol, the maturity proofs, or the
-operator-only list. Those live in `/CLAUDE.md` and load automatically. A brief
-references them; when a brief and `CLAUDE.md` disagree, the safer instruction
+operator-only list. Those live in `/AGENTS.md` and load automatically. A brief
+references them; when a brief and `AGENTS.md` disagree, the safer instruction
 wins and the disagreement is itself a finding worth reporting.

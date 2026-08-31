@@ -175,8 +175,15 @@ def fetch_youtube_transcripts(symbols: list[str], max_per_symbol: int = 1) -> li
     seen_ids = {r.get("video_id") for r in records if r.get("video_id")}
     brave_ok = True
 
+    try:
+        from scripts.lib.search_budget import guard as _sb_guard
+    except ImportError:
+        from lib.search_budget import guard as _sb_guard  # type: ignore
+
     for sym in symbols[:12]:
         if not brave_ok:
+            break
+        if not _sb_guard("brave", "aegis_transcript_discovery"):
             break
         try:
             url = "https://api.search.brave.com/res/v1/web/search"
@@ -254,7 +261,14 @@ def fetch_brave_discovery(symbols: list[str], themes: list[dict]) -> list[dict]:
 
     discovery_records = []
 
+    try:
+        from scripts.lib.search_budget import guard as _sb_guard
+    except ImportError:
+        from lib.search_budget import guard as _sb_guard  # type: ignore
+
     for sym in symbols[:10]:
+        if not _sb_guard("brave", "aegis_transcript_discovery"):
+            break
         try:
             url = "https://api.search.brave.com/res/v1/web/search"
             params = {"q": f"{sym} stock earnings analysis news 2026", "count": 3, "freshness": "pw"}
@@ -285,6 +299,8 @@ def fetch_brave_discovery(symbols: list[str], themes: list[dict]) -> list[dict]:
             print(f"  [brave-disc] {sym} error: {e}")
 
     for t in themes:
+        if not _sb_guard("brave", "aegis_transcript_discovery"):
+            break
         try:
             url = "https://api.search.brave.com/res/v1/web/search"
             params = {"q": t["query"], "count": 3, "freshness": "pw"}

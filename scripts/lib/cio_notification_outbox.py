@@ -174,13 +174,34 @@ def build_dedupe_key(notification: dict[str, Any]) -> str:
             parts.append(f"state:{state}")
     if notification.get("cio_action_id"):
         parts.append(f"action:{notification['cio_action_id']}")
-    if notification.get("wake_job_id"):
+    # B1: `wake_job_id` is a FRESH ID EVERY RUN. Including it alongside the body
+    # hash would keep every key unique and defeat the content key entirely --
+    # adding content is not enough while the run id still identifies the
+    # message. When we have content, the content IS the identity; the run that
+    # emitted it is not. Kept only as a last-resort discriminator when there is
+    # no body hash to key on.
+    if notification.get("wake_job_id") and not notification.get("body_hash"):
         parts.append(f"wake:{notification['wake_job_id']}")
     if notification.get("handoff_id"):
         parts.append(f"handoff:{notification['handoff_id']}")
     if notification.get("health_decision_id"):
         parts.append(f"health:{notification['health_decision_id']}")
     parts.append(f"class:{notification.get('message_class', '')}")
+    # B1, 2026-08-31: CONTENT IN THE KEY FOR EVERY CLASS.
+    #
+    # Only `checkin` got a content hash (above). Every other class fell through
+    # to identity parts -- and `wake_job_id` is a FRESH ID EVERY RUN, so an
+    # unchanged message produced a different key each time and re-paged. That is
+    # precisely the defect #567 was written to fix, still live for every class
+    # except the one it was written for.
+    #
+    # A genuinely changed message still notifies (different content, different
+    # key); an unchanged one is suppressed for its declared window. AGENTS.md
+    # §9.1: "Every send carries a dedupe key including content, with a declared
+    # window."
+    body_hash = notification.get("body_hash")
+    if body_hash:
+        parts.append(f"body:{body_hash}")
     return hashlib.sha256("|".join(sorted(parts)).encode()).hexdigest()[:32]
 
 

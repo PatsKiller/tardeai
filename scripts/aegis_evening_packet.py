@@ -31,9 +31,26 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(0, str(ROOT / "scripts" / "lib"))
 
+# Checkout-relative fallback only. Writers must go through
+# evening_packet_write_targets() so the served/persistent copy is updated even
+# when this script lives in (or is invoked from) the hub tree (WAVE G1).
 PACKET_PATH = ROOT / "data" / "runtime" / "aegis_evening_packet.json"
 MAX_FINDINGS = 8
 MAX_CHARS = 12_000
+
+
+def evening_packet_targets() -> list[Path]:
+    """Resolution-layer write targets — persistent/runtime first, then checkout."""
+    try:
+        from scripts.lib.persistent_state_root import evening_packet_write_targets
+
+        return evening_packet_write_targets(ROOT)
+    except Exception:
+        return [PACKET_PATH]
+
+
+def primary_packet_path() -> Path:
+    return evening_packet_targets()[0]
 
 
 def _read_json(path: Path, default=None):
@@ -191,7 +208,10 @@ def build_packet() -> dict:
     return packet
 
 
-def isolated_prompt(packet_path: Path = PACKET_PATH) -> str:
+def isolated_prompt(packet_path: Path | None = None) -> str:
+    if packet_path is None:
+        packet_path = primary_packet_path()
+
     return (
         "FRESH SESSION. Do not inherit prior conversation.\n"
         "Read ONLY this bounded packet file and reply with 'Aegis Evening Scan'.\n"
@@ -212,15 +232,23 @@ def main() -> int:
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args()
     packet = build_packet()
-    PACKET_PATH.parent.mkdir(parents=True, exist_ok=True)
-    PACKET_PATH.write_text(json.dumps(packet, indent=2, default=str))
+    payload = json.dumps(packet, indent=2, default=str)
+    targets = evening_packet_targets()
+    primary = targets[0]
+    for path in targets:
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(payload)
+        except OSError as e:
+            # Never let a second destination break the first.
+            print(f"[aegis-evening] write failed for {path}: {type(e).__name__}: {e}")
     if args.prompt:
-        print(isolated_prompt(PACKET_PATH))
+        print(isolated_prompt(primary))
         return 0
     if args.json:
         print(json.dumps(packet, indent=2, default=str))
         return 0
-    print(f"[aegis-evening] wrote {PACKET_PATH} chars={packet.get('packet_chars')}")
+    print(f"[aegis-evening] wrote {primary} chars={packet.get('packet_chars')}")
     return 0
 
 

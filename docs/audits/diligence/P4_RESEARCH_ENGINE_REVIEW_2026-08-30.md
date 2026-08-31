@@ -5,9 +5,16 @@
 **Pin context:** post Phase-0 kickoff (`852ecd47` / prior live pin `be09945b`)  
 **Rails:** no budget raise · no new LLM spend · no promote  
 
-**Evidence:** `docs/audits/diligence/P4_RESEARCH_GOVERNANCE_CENSUS_2026-08-30.json`  
-**Census:** `python3 scripts/cio_research_governance_census.py --json`  
-**Budget dry report:** `scripts/cio_research_budget_report.py --root <overlay> --json`  
+**Evidence:** `docs/audits/diligence/P4_RESEARCH_GOVERNANCE_CENSUS_2026-08-30.json`
+— **producer output only, no hand-added keys** (see "Evidence provenance" below).  
+**Census:** `python3 scripts/cio_research_governance_census.py --root /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT --json`  
+**Budget dry report:** `python3 scripts/cio_research_budget_report.py --root /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT --json`  
+
+`--root` is load-bearing. Run from a checkout without `--root` and the census
+reads a `data/` that is not there and reports all six stores `exists: false`
+with exit 0 — which is how this package's first evidence file was produced.
+`CURRENT/data/cio` is a symlink into `persistent-state`, so the live release
+root resolves the code facts and the store facts in one run at one `as_of`.
 
 Cited modules: `scripts/lib/cio_residual_web.py`, `scripts/lib/cio_research_budget.py`, `scripts/cio_research_budget_report.py`, `scripts/lib/cio_research_gate.py`, `scripts/lib/cio_corpus_index.py`, `scripts/lib/cio_research_librarian.py`.  
 Wave 3D ops notes: `docs/ops/CIO_WAVE3D_*.md` (HOP / FLASH / CRITIQUE / CRITIQUE_DEEPSEEK / base).
@@ -23,7 +30,7 @@ Wave 3D ops notes: `docs/ops/CIO_WAVE3D_*.md` (HOP / FLASH / CRITIQUE / CRITIQUE
 | Free-first path exists (FRED/Fed/RAG/corpus before paid) | **PASS (code + reference data)** | Gate ladder `skip → reuse → corpus_hit → flash → …`; 7 FRED series on disk; `free_first_refresh.py`; financial-senses FRED/ALFRED provider |
 | Residual ≤1 hop / subject / day | **PASS (code + tests)** | `MAX_HOPS_PER_SUBJECT_PER_DAY = 1`; legality refuses when `hops_today >= 1` |
 | Residual daily subject budget | **PASS (code)** | `DAILY_SUBJECT_BUDGET = 3` (held residual selection), distinct from research-budget `DAILY_CAP = 5` |
-| Research daily subject budget | **PASS (code + live dry)** | `DAILY_CAP=5` (3 HELD + 1 CASH + 1 reentry/watch); live select 2026-08-30: PFLT, NOC, RTX, SLEEVE:CASH, EXIT:CAST |
+| Research daily subject budget | **PASS (code)** | `[CODE]` `DAILY_CAP=5` (3 HELD + 1 CASH + 1 reentry/watch) in `cio_research_budget`. The day's dry select is **not frozen here** — it is a daily-varying value and the previously published five-subject list is not reproducible on any later day. Regenerate with the budget dry report above. `[VERIFIED]` 2026-08-30T18:04Z against `CURRENT`: `selected_count=4` — HELD:PFLT, HELD:NOC, HELD:RTX, EXIT:CAST; the CASH slot went unfilled |
 | Grade C/D ≠ `corpus_hit` | **PASS (code + tests)** | `CLOSING_GRADES = {A,B}` only |
 | One paid class / subject / day | **PASS (code + tests)** | `collapse_same_day_duplicates` on `(kind,symbol,day)` and `research_id` |
 | Live residual hop under INTERDICT / no spend in this package | **N/A / held** | Package is read-only; Wave 3D already recorded the authorized hop history |
@@ -40,7 +47,7 @@ Wave 3D ops notes: `docs/ops/CIO_WAVE3D_*.md` (HOP / FLASH / CRITIQUE / CRITIQUE
 | **Fed / factor research** | `ff_*.csv` Fama–French factor files beside FRED series | Static library files — not a live Fed scrape in this census. |
 | **Gov / EDGAR** | EDGAR lane present as specialist provider `edgar`; Wave 3B artifact vocabulary | Not re-proven in this package (no network). |
 | **Internal RAG / corpus** | `cio_corpus_index` + `cio_research_librarian` shelf life; gate `corpus_hit` before flash | Only grades **A/B** close. C/D dropped from closing set (Wave 3D / Slice D law). |
-| **Historical DBs / Hermes results** | `hermes_research_results.jsonl` on overlay (**471** rows) | Free reuse path via gate `reuse` / VALID-within-TTL before paid. |
+| **Historical DBs / Hermes results** | `hermes_research_results.jsonl` (**477** rows at `2026-08-30T18:02Z` against `CURRENT`) | Live-appending store: read `stores.hermes_research_results.lines` from the census JSON, which carries the `as_of` and `root` the count belongs to. Two counts here are not in conflict unless they share an as-of. Free reuse path via gate `reuse` / VALID-within-TTL before paid. |
 | **Free-first refresh** | `scripts/free_first_refresh.py` (`--circulate` = Hermes → RAG → structured → residual SearXNG) | Exists; this diligence package did **not** run circulate (would leave free-first path into residual/search). |
 
 ### Gap (honest)
@@ -100,6 +107,38 @@ skip | reuse | corpus_hit | flash | pro | openai | grok_critique
 | G-LOOP-01 | 2 | Lineage completion still ~54% — research arcs dominate open stages |
 
 ---
+
+## Evidence provenance — four keys struck (Wave A-RECONCILE R2, 2026-08-30)
+
+The census JSON as first published (`dee83bf6`) carried four keys that
+`scripts/cio_research_governance_census.py` does not emit and never has:
+
+    live_overlay_root        stores_live_overlay
+    live_budget_report       free_first.note_live
+
+`[CODE]` `census()` returns a dict literal and `main()` `json.dumps` it with no
+mutation; there is no `.update()`, no `**` splat and no dynamic key
+construction anywhere in the module, and the only importer of the module in the
+repository is `tests/test_cio_diligence_p4_p5_research_specialists.py`, which
+calls `census.census(root)` and asserts on the returned object rather than on
+this file. `[VERIFIED]` `git log --all -S` over full history finds each of the
+four strings first appearing in `dee83bf6` — the same commit that added the
+script — and in no script at any commit on any ref.
+
+They were not, however, invented numbers. `[VERIFIED]` re-running the same
+census with `--root /home/johnclaw/trade-ai-releases/persistent-state`
+reproduces `stores_live_overlay` key-for-key and path-for-path as that run's
+own `root` and `stores` blocks, and `live_budget_report` is a hand-reduced
+subset of `cio_research_budget_report.py --json` (its `selected_subjects` key
+exists nowhere in the codebase; the producer emits `selected`, a list of row
+dicts). The defect is that one `CIOResearchGovernanceCensus@v1` object was
+assembled by hand from **three runs at two different roots plus one written
+sentence**, under a single `as_of` and a single `root`, so nothing in the
+repository could regenerate the document as published.
+
+The fix is not a new producer. It is the existing producer pointed at a root
+that has the data: the four keys are struck, and the file is now the verbatim
+output of the documented command.
 
 ## Tests added
 

@@ -23,7 +23,14 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
-from session13_db import get_conn
+# 2026-08-31: this was a module-level `from session13_db import get_conn`, so
+# importing this module required psycopg2 -- and the deterministic CI subset
+# runs WITHOUT a database. The repo supports JSON-only mode by design
+# (AGENTS.md §18), and a notification module should not need a live DB merely
+# to be imported. Deferred to first use; the single call site is run_monitor().
+def get_conn(*args, **kwargs):
+    from session13_db import get_conn as _get_conn
+    return _get_conn(*args, **kwargs)
 
 log = logging.getLogger("open_trade_monitor")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(message)s")
@@ -139,6 +146,90 @@ def check_negative_news(conn, symbol, since):
     return negatives
 
 
+def _stop_warning_notify_decision(conn, trade_id, symbol, pct_consumed):
+    """Should this STOP_WARNING reach the operator, or is it a repeat?
+
+    A4, 2026-08-31. AES #825 produced 40 alerts over four trading days -- 83% of
+    every row in open_trade_alerts -- because `already_alerted` keys on
+    (trade_id, alert_type) with a 30-minute window against a 3-minute evaluation
+    cadence. That is not a dedupe window; it is a repeat-every-30-minutes
+    instruction, for as long as the trade stays in the band.
+
+    Three acknowledgement mechanisms already exist and this producer read none of
+    them: `stop_snooze` and `stop_decisions` HOLD_OVERRIDE are both honoured by
+    portfolio_stops.py, and open_trade_alerts.acknowledged has never been written
+    in 864 rows. The operator's own Hold button wrote to a table nobody consulted.
+
+    Returns (should_notify, reason).
+    """
+    # 1. Operator acknowledgements -- the same queries portfolio_stops.py uses.
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT 1 FROM stop_snooze WHERE symbol = %s AND snoozed_until > NOW() LIMIT 1",
+                    [symbol])
+        if cur.fetchone():
+            return False, "operator snoozed this symbol"
+        cur.execute("""
+            SELECT 1 FROM stop_decisions
+            WHERE symbol = %s AND decision = 'HOLD_OVERRIDE'
+              AND created_at > NOW() - INTERVAL '96 hours' LIMIT 1
+        """, [symbol])
+        if cur.fetchone():
+            return False, "operator chose HOLD_OVERRIDE"
+        cur.execute("""
+            SELECT 1 FROM open_trade_alerts
+            WHERE paper_trade_id = %s AND alert_type = 'STOP_WARNING'
+              AND acknowledged IS TRUE LIMIT 1
+        """, [trade_id])
+        if cur.fetchone():
+            return False, "operator acknowledged this warning"
+    except Exception as e:
+        # Loud, not swallowed: an acknowledgement we cannot read must not be
+        # silently treated as absent, but it must also not stop the monitor.
+        log.error("stop-warning acknowledgement lookup failed for %s: %s", symbol, e)
+
+    # 2. Transitions notify; unchanged conditions do not.
+    try:
+        from lib.alert_condition_state import observe
+    except ImportError:
+        try:
+            from scripts.lib.alert_condition_state import observe
+        except ImportError as e:
+            log.error("alert_condition_state unavailable, falling back to send: %s", e)
+            return True, "state machine unavailable"
+    band = "warn_band"
+    result = observe(f"stop_warning:{trade_id}", band, alertable=True,
+                     extra={"symbol": symbol, "pct_consumed": round(pct_consumed, 1)})
+    action = result.get("action")
+    if result.get("notify"):
+        return True, f"state {action}"
+    return False, f"state {action} — unchanged since last notification"
+
+
+
+def record_send_receipt(conn, alert_id, receipt):
+    """Persist what actually happened to a notification.
+
+    B5. open_trade_alerts.sent_telegram was 0 of 864 rows -- the column existed
+    and nothing ever wrote it. Without a receipt there is no way to answer "did
+    the operator get this?", which is why the 25 repeats could not be traced to a
+    producer and why a 98-day delivery outage went unnoticed.
+
+    Best-effort and non-fatal: failing to record a receipt must never stop the
+    monitor, but it must be loud, because a silent receipt failure recreates the
+    blindness this fixes.
+    """
+    if not alert_id or not isinstance(receipt, dict):
+        return
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "UPDATE open_trade_alerts SET sent_telegram = %s WHERE id = %s",
+            [bool(receipt.get("ok")), alert_id])
+    except Exception as e:
+        log.error("could not record send receipt for alert %s: %s", alert_id, e)
+
+
 def already_alerted(conn, trade_id, alert_type):
     cur = conn.cursor()
     cur.execute("""
@@ -176,14 +267,41 @@ def send_telegram(message, dry_run=False, no_telegram=False):
     if dry_run or no_telegram:
         log.info(f"[telegram-skip] {message[:100]}")
         return
+    # 2026-08-31: this imported `telegram_bot`, a module that does not exist in any
+    # tree. The bare `except Exception` caught the ImportError and logged it at
+    # warning, so STOP_HIT_CLOSE / TIME_STOP_CLOSE / TRAILING_STOP / NEAR_TARGET
+    # were undeliverable from 2026-05-25 to 2026-08-31 -- 581 identical failures,
+    # one distinct cause, nobody paged. The operator received 40 copies of the
+    # "monitoring" alert (a different sender, which works) and zero copies of
+    # "your stop was hit and I closed the position".
+    #
+    # bypass_router=True is deliberate and measured, not convenience: the router's
+    # own should_send_telegram() returns False for a stop-close body, so routing
+    # this through the default path would replace a silent failure with a
+    # different silent failure that looks fixed. The sibling sender in this file,
+    # send_telegram_with_buttons, already bypasses and demonstrably delivers.
     try:
-        from telegram_bot import send_message
-        send_message(message)
-    except Exception as e:
-        log.warning(f"Telegram send failed: {e}")
+        from telegram_alert import send_telegram
+    except ImportError as e:
+        log.error(
+            "STOP-PATH NOTIFICATION UNDELIVERABLE - sender import failed: %s - "
+            "message was: %s", e, message[:120])
+        return
+    if not send_telegram(message, bypass_router=True):
+        log.error("STOP-PATH NOTIFICATION NOT DELIVERED: %s", message[:120])
 
 
 def send_telegram_with_buttons(message, buttons, dry_run=False, no_telegram=False):
+    """Send with an inline keyboard, and RETURN A RECEIPT.
+
+    B5, 2026-08-31. This returned None. open_trade_alerts.sent_telegram was 0 of
+    864 rows and alert_events.telegram_sent_at 0 of 932: no durable record of
+    what was delivered existed anywhere, which is why nobody could establish
+    which producer emitted 25 repeats, or whether any specific POST succeeded.
+
+    A send with no receipt is not a send.
+    """
+    receipt = {"ok": False, "message_id": None, "error": None}
     """Send a Telegram message with inline keyboard buttons.
 
     buttons: list of rows, each row is list of (text, callback_data) tuples.
@@ -191,7 +309,8 @@ def send_telegram_with_buttons(message, buttons, dry_run=False, no_telegram=Fals
     """
     if dry_run or no_telegram:
         log.info(f"[telegram-skip] {message[:100]} [+buttons]")
-        return
+        receipt["error"] = "dry_run" if dry_run else "no_telegram"
+        return receipt
     try:
         import urllib.request
         token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
@@ -200,8 +319,9 @@ def send_telegram_with_buttons(message, buttons, dry_run=False, no_telegram=Fals
                 if line.startswith("TELEGRAM_BOT_TOKEN="):
                     token = line.split("=", 1)[1].strip()
         if not token:
-            log.warning("No TELEGRAM_BOT_TOKEN for button alert")
-            return
+            log.error("No TELEGRAM_BOT_TOKEN for button alert -- message NOT delivered")
+            receipt["error"] = "no_token"
+            return receipt
 
         chat_ids = []
         cid = os.environ.get("TRADEAI_PROPOSAL_ALERT_CHAT_ID", "").strip()
@@ -216,24 +336,43 @@ def send_telegram_with_buttons(message, buttons, dry_run=False, no_telegram=Fals
             for row in buttons
         ]}
 
+        # C3, 2026-08-31: was a hand-built urllib POST straight to
+        # api.telegram.org -- one of 46 producers the chokepoint ratchet tracks.
+        # Now routed through telegram_transport, which is the actual chokepoint:
+        # it carries the interdict at its lowest layer (#775), idempotency, and
+        # the parse-mode fallback.
+        #
+        # NOT routed through telegram_alert_router. Measured on this tree, the
+        # router is runtime_mode=OFF and should_send_telegram() returns False for
+        # every operator-facing class -- morning brief, lane health, stop warning,
+        # stop-hit-close. Routing there would silence them, which is the trap A4
+        # avoided: replacing loud messages with zero and calling it a fix.
+        #
+        # Chat-id selection is unchanged, deliberately: this is a transport swap,
+        # not a routing change.
+        from telegram_transport import send_message as _transport_send
         for chat_id in chat_ids:
-            payload = json.dumps({
-                "chat_id": chat_id,
-                "text": message,
-                "reply_markup": json.dumps(keyboard),
-            }).encode()
-            req = urllib.request.Request(
-                f"https://api.telegram.org/bot{token}/sendMessage",
-                data=payload,
-                headers={"Content-Type": "application/json"},
-                method="POST",
+            res = _transport_send(
+                token=token,
+                chat_id=chat_id,
+                text=message,
+                reply_markup=keyboard,
+                parse_mode=None,
             )
-            try:
-                urllib.request.urlopen(req, timeout=10)
-            except Exception as e:
-                log.warning(f"Button alert send failed for {chat_id}: {e}")
+            if res.get("ok"):
+                receipt["ok"] = True
+                mid = (res.get("response") or {}).get("result", {}).get("message_id")
+                if mid is not None:
+                    receipt["message_id"] = mid
+            elif res.get("interdicted"):
+                receipt["error"] = "interdicted"
+            else:
+                receipt["error"] = str(res.get("response") or res.get("status_code"))
+                log.error("Button alert send failed for %s: %s", chat_id, receipt["error"])
     except Exception as e:
-        log.warning(f"send_telegram_with_buttons failed: {e}")
+        log.error("send_telegram_with_buttons failed: %s", e)
+        receipt["error"] = f"{type(e).__name__}: {e}"
+    return receipt
 
 
 def _log_risk_action(conn, trade_id, symbol, action_type, old_value, new_value, trigger_price, trigger_reason):
@@ -542,7 +681,8 @@ def monitor_trade(conn, trade, dry_run=False, no_telegram=False):
                     [("📉 Trail 8%", f"trail:{tid}:8"),
                      ("⏸ Hold", f"stophold:{tid}")],
                 ]
-                send_telegram_with_buttons(msg, buttons, dry_run, no_telegram)
+                receipt = send_telegram_with_buttons(msg, buttons, dry_run, no_telegram)
+                record_send_receipt(conn, alert_id, receipt)
                 alerts.append(('NEAR_STOP', symbol))
 
         # WARNING: within 50% of stop (50% of risk consumed)
@@ -557,17 +697,27 @@ def monitor_trade(conn, trade, dry_run=False, no_telegram=False):
                     f"P&L: ${pnl_now:+,.0f}  |  Risk consumed: {pct_consumed:.0f}%\n\n"
                     f"Trade `#{tid}` — monitoring"
                 )
-                insert_alert(conn, tid, symbol, sid, 'STOP_WARNING', 'WARN',
-                             f'{symbol} approaching stop', msg,
-                             {'price': price, 'stop': stop, 'entry': entry,
-                              'pct_to_stop': round(pct_to_stop, 2)})
+                warn_alert_id = insert_alert(
+                    conn, tid, symbol, sid, 'STOP_WARNING', 'WARN',
+                    f'{symbol} approaching stop', msg,
+                    {'price': price, 'stop': stop, 'entry': entry,
+                     'pct_to_stop': round(pct_to_stop, 2)})
                 buttons = [
                     [("📉 Trail 5%", f"trail:{tid}:5"),
                      ("📉 Trail 8%", f"trail:{tid}:8"),
                      ("⏸ Hold", f"stophold:{tid}")],
                 ]
-                send_telegram_with_buttons(msg, buttons, dry_run, no_telegram)
-                alerts.append(('STOP_WARNING', symbol))
+                # The durable row above is always written. Only the operator
+                # interrupt is gated -- the record and the notification are
+                # different concerns, and conflating them is why the history is
+                # 83% one trade's repeats.
+                should, why = _stop_warning_notify_decision(conn, tid, symbol, pct_consumed)
+                if should:
+                    receipt = send_telegram_with_buttons(msg, buttons, dry_run, no_telegram)
+                    record_send_receipt(conn, warn_alert_id, receipt)
+                    alerts.append(('STOP_WARNING', symbol))
+                else:
+                    log.info("[stop-warning] %s suppressed: %s", symbol, why)
 
     # ── Near Target ──
     if target > 0 and entry < target:

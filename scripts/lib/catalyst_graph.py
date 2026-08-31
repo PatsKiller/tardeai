@@ -49,6 +49,12 @@ from scripts.lib.event_identity import build_event, event_guid
 from scripts.lib.identity_registry import load as load_registry, lookup_symbol
 from scripts.lib.security_identity import normalize_symbol
 
+try:
+    from scripts.lib.hermes_discovery.symbol_validation import is_research_directive_slug
+except Exception:  # pragma: no cover — fail-soft; slug filter is belt-and-braces
+    def is_research_directive_slug(sym: str) -> bool:  # type: ignore
+        return "_" in str(sym or "")
+
 AUTHORITY = "READ_ONLY_ADVISORY"
 MBI = 0
 SCHEMA = "CatalystEntityBinding@v1"
@@ -97,6 +103,11 @@ def bind_catalyst(row: Mapping[str, Any], registry: Mapping[str, Any]) -> dict[s
     """
     symbol = normalize_symbol(row.get("symbol"))
     if not symbol:
+        return None
+
+    # E1 defense: research-directive / topic slugs are not securities. Refuse
+    # before identity lookup so they never mint a wrong-company edge.
+    if is_research_directive_slug(symbol):
         return None
 
     entity = lookup_symbol(registry, symbol)
@@ -165,6 +176,8 @@ def build_graph(rows: Iterable[Mapping[str, Any]],
             sym = normalize_symbol(row.get("symbol"))
             if not sym:
                 skipped["no_symbol"] += 1
+            elif is_research_directive_slug(sym):
+                skipped["research_directive_slug"] += 1
             elif not lookup_symbol(reg, sym):
                 skipped["symbol_not_registered"] += 1
             elif not (lookup_symbol(reg, sym) or {}).get("issuer_guid"):
