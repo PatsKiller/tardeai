@@ -122,6 +122,9 @@ GATES = [
     ("governance_section_zero_parity", [
         "tests/test_agents_section_zero_parity.py",
     ]),
+    ("dashboard_no_embedded_key", [
+        "tests/test_dashboard_never_embeds_a_key.py",
+    ]),
     ("agent_brief", [
         "tests/test_agent_brief.py",
     ]),
