@@ -9,6 +9,24 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
+# CI does not install python-dotenv, so any alarm module importing it raised
+# ModuleNotFoundError during collection and the C1 firing gate did not run at all.
+# A gate that silently does not execute is the exact defect this suite exists to
+# close, so the dependency is stubbed rather than the tests skipped. Loading a real
+# .env inside a unit test would be wrong anyway: the stub is the correct behaviour,
+# not a workaround.
+if "dotenv" not in sys.modules:
+    try:
+        import dotenv  # noqa: F401
+    except ModuleNotFoundError:
+        import types as _types
+
+        _stub = _types.ModuleType("dotenv")
+        _stub.load_dotenv = lambda *a, **k: False
+        _stub.find_dotenv = lambda *a, **k: ""
+        _stub.dotenv_values = lambda *a, **k: {}
+        sys.modules["dotenv"] = _stub
+
 # These four predate the pytest suite: they are standalone SCRIPTS whose entire
 # body — including live database writes to trade_approvals and
 # schwab_round_trips — runs at module import and then calls sys.exit(). pytest
@@ -146,6 +164,10 @@ def alarm_capture(monkeypatch):
     # Bound into telegram_alert's namespace by `from telegram_transport import ...`,
     # so patching the source module alone would not intercept it.
     monkeypatch.setattr(TA, "send_message", _fake_send_message, raising=True)
+    # _enabled() gates send_telegram before anything else. Patching only _token and
+    # _chat_ids passed locally (a real token in the environment) and failed in CI,
+    # where send_telegram returned at the first line and produced nothing at all.
+    monkeypatch.setattr(TA, "_enabled", lambda: True, raising=False)
     monkeypatch.setattr(TA, "_token", lambda: "test-token", raising=False)
     monkeypatch.setattr(TA, "_chat_ids", lambda: ["test-chat"], raising=False)
 
