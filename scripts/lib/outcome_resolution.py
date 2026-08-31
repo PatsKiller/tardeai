@@ -306,6 +306,31 @@ def classify_pending_checkpoint(
 
     available, realized, source_refs = realized_state(cp, price_lookup, now=at)
     if available:
+        # Exact-equal closes on distinct dates are almost never a genuine
+        # market flat at our stored precision — Night Three measured
+        # 2026-08-31 finviz 58/58 identical to 2026-08-28, which would have
+        # written 126 manufactured 0.00% outcomes into the learning store.
+        # Leave pending until a non-identical horizon price appears.
+        then_px = realized.get("price_at_decision")
+        end_px = realized.get("price_at_horizon")
+        then_date = realized.get("decision_price_date")
+        end_date = realized.get("horizon_price_date")
+        if (
+            then_px is not None
+            and end_px is not None
+            and float(then_px) == float(end_px)
+            and then_date
+            and end_date
+            and str(then_date) != str(end_date)
+        ):
+            return {
+                **base,
+                "class": CLASS_STUCK,
+                "reason": "exact_equal_endpoints",
+                "action": "leave",
+                "realized_state": realized,
+                "source_refs": source_refs,
+            }
         return {
             **base,
             "class": CLASS_OBTAINABLE,
