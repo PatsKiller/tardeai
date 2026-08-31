@@ -46,7 +46,10 @@ logs/
 # ── Backups & archives (out-of-band backup strategy, not git) ──────────────
 backups/
 file_backups/
-archive/
+# WAVE G4 (2026-08-31): `archive/` is the §0.6 mechanism tree and MUST be
+# tracked so `git mv` preserves history + ARCHIVE_MANIFEST.json is reviewable.
+# Local bulk dumps belong in backups/ / file_backups/, not here.
+# archive/  # retired — was incompatible with the archive mechanism
 *.tar.gz
 *.zip
 *.bak

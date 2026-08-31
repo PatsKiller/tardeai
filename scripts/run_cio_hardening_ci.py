@@ -180,6 +180,9 @@ GATES = [
     ("overnight_d1_m5_cadence", [
         "tests/test_overnight_d1_m5_cadence.py",
     ]),
+    ("overnight_g4_archive_mechanism", [
+        "tests/test_overnight_g4_archive_mechanism.py",
+    ]),
     ("r13_institutional", [
         "tests/test_r13_institution.py",
         "tests/test_r13_goldens_properties_faults.py",
