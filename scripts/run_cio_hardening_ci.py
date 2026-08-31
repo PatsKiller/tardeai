@@ -137,6 +137,9 @@ GATES = [
     ("notification_receipts", [
         "tests/test_notification_receipts.py",
     ]),
+    ("telegram_chokepoint_ratchet", [
+        "tests/test_telegram_chokepoint_ratchet.py",
+    ]),
     ("governance_section_zero_parity", [
         "tests/test_agents_section_zero_parity.py",
     ]),
