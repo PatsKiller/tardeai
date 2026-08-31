@@ -18,6 +18,11 @@ REPO = Path(__file__).resolve().parents[1]
 
 # Ordered, explicit suite list (Phase 10.2)
 GATES = [
+    # The gog credential broker: an unapproved agent must be refused ON APPROVAL,
+    # and the broker must never read the operator-only ~/.openclaw/credentials path.
+    ("gog_broker_approval", [
+        "tests/test_gog_broker_approval.py",
+    ]),
     # Pins the 2026-08-08 -> 2026-08-31 Strategy Desk outage: an ON CONFLICT clause
     # naming a constraint that does not exist (every signal insert raised), and the
     # alarms that reported it to nobody by importing a send_alert that has never existed.
