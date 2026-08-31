@@ -87,6 +87,11 @@ APPROVED_TOOLING = {
     # tests/ exclusion, which would let a real producer hide in a test path.
     "tests/test_notification_integrity_waves_cdeg.py",
     "tests/test_telegram_chokepoint_ratchet.py",
+    # 2026-08-31 (C1): the alarm-firing capture self-test imports telegram_transport
+    # in order to make the real send_message RAISE if it is ever reached, proving the
+    # harness sends nothing. It is the strongest possible non-caller: the import
+    # exists to forbid the call. Named individually, per this file's convention.
+    "tests/test_alarm_capture_selftest.py",
 }
 APPROVED = APPROVED_OUTBOUND | APPROVED_DELIVERY | APPROVED_INBOUND | APPROVED_TOOLING
 

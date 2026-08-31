@@ -98,7 +98,11 @@ def test_send_alert_really_does_not_exist():
 def test_no_alarm_swallows_its_own_delivery_failure():
     """`except Exception: pass` around a send is how a CRITICAL reached nobody."""
     src = (SCRIPTS / "session18_signal_flow_health.py").read_text(encoding="utf-8")
-    idx = src.find("send_telegram(msg)")
+    # Anchor on the call NAME, not a literal argument list. The previous anchor was
+    # the exact string "send_telegram(msg)", which stopped matching the moment the
+    # call gained bypass_router=True -- a test that breaks when the code it guards is
+    # correctly improved is a test that will be deleted rather than fixed.
+    idx = src.find("send_telegram(msg")
     assert idx > 0, "expected the repaired send_telegram call"
     following = src[idx: idx + 600]
     assert "except Exception:\n            pass" not in following, (

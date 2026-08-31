@@ -18,6 +18,15 @@ REPO = Path(__file__).resolve().parents[1]
 
 # Ordered, explicit suite list (Phase 10.2)
 GATES = [
+    # C1 (batch 1: send_telegram). Every alarm must be OBSERVED firing; the
+    # uncovered set is a named number in config/alarm_firing_baseline.txt that can
+    # only shrink. Presence of alarm code is not evidence it fires.
+    ("alarm_fires", [
+        "tests/test_alarm_capture_selftest.py",
+        "tests/test_alarm_fires.py",
+        "tests/test_alarm_fires_stop_path.py",
+        "tests/test_alarm_coverage.py",
+    ]),
     # C5: declared cadence vs observed output for stores feeding operator surfaces.
     # strategy_signals stopped advancing 2026-08-07 and nothing watched the date.
     ("store_cadence", [

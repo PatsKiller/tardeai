@@ -99,7 +99,21 @@ def check_health(conn):
             # into `except Exception: pass` and reported a CRITICAL to nobody, silently,
             # for the whole 24-day Strategy Desk outage.
             from telegram_alert import send_telegram
-            if not send_telegram(msg):
+            # BYPASS_ROUTER_REASON: the router classifies this CRITICAL as P1_DIGEST
+            # and suppresses it into report_capture's "reports_archive" channel.
+            # Nothing delivers that archive: alert_daily_digest -- the only active
+            # digest cron -- reads the alert_events table, not reports_archive. So a
+            # routed CRITICAL reaches nobody.
+            #
+            # This was NOT caught by repairing the import in #787. That fix made
+            # send_telegram resolve; the message was then suppressed one layer lower
+            # and the alarm stayed silent. Presence of a working import is not
+            # evidence an alarm fires -- which is the whole point of C1, and it
+            # caught my own remediation.
+            #
+            # "Strategy Desk is empty" is an operator-interrupt condition, not a
+            # digest line.
+            if not send_telegram(msg, bypass_router=True):
                 log.error("ALERT NOT DELIVERED (send_telegram returned False): %s", msg)
         except Exception as exc:
             # ALARM-DELIVERY-DECLARED: logs the exception type and message rather than
