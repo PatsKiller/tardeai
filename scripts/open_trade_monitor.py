@@ -139,6 +139,66 @@ def check_negative_news(conn, symbol, since):
     return negatives
 
 
+def _stop_warning_notify_decision(conn, trade_id, symbol, pct_consumed):
+    """Should this STOP_WARNING reach the operator, or is it a repeat?
+
+    A4, 2026-08-31. AES #825 produced 40 alerts over four trading days -- 83% of
+    every row in open_trade_alerts -- because `already_alerted` keys on
+    (trade_id, alert_type) with a 30-minute window against a 3-minute evaluation
+    cadence. That is not a dedupe window; it is a repeat-every-30-minutes
+    instruction, for as long as the trade stays in the band.
+
+    Three acknowledgement mechanisms already exist and this producer read none of
+    them: `stop_snooze` and `stop_decisions` HOLD_OVERRIDE are both honoured by
+    portfolio_stops.py, and open_trade_alerts.acknowledged has never been written
+    in 864 rows. The operator's own Hold button wrote to a table nobody consulted.
+
+    Returns (should_notify, reason).
+    """
+    # 1. Operator acknowledgements -- the same queries portfolio_stops.py uses.
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT 1 FROM stop_snooze WHERE symbol = %s AND snoozed_until > NOW() LIMIT 1",
+                    [symbol])
+        if cur.fetchone():
+            return False, "operator snoozed this symbol"
+        cur.execute("""
+            SELECT 1 FROM stop_decisions
+            WHERE symbol = %s AND decision = 'HOLD_OVERRIDE'
+              AND created_at > NOW() - INTERVAL '96 hours' LIMIT 1
+        """, [symbol])
+        if cur.fetchone():
+            return False, "operator chose HOLD_OVERRIDE"
+        cur.execute("""
+            SELECT 1 FROM open_trade_alerts
+            WHERE paper_trade_id = %s AND alert_type = 'STOP_WARNING'
+              AND acknowledged IS TRUE LIMIT 1
+        """, [trade_id])
+        if cur.fetchone():
+            return False, "operator acknowledged this warning"
+    except Exception as e:
+        # Loud, not swallowed: an acknowledgement we cannot read must not be
+        # silently treated as absent, but it must also not stop the monitor.
+        log.error("stop-warning acknowledgement lookup failed for %s: %s", symbol, e)
+
+    # 2. Transitions notify; unchanged conditions do not.
+    try:
+        from lib.alert_condition_state import observe
+    except ImportError:
+        try:
+            from scripts.lib.alert_condition_state import observe
+        except ImportError as e:
+            log.error("alert_condition_state unavailable, falling back to send: %s", e)
+            return True, "state machine unavailable"
+    band = "warn_band"
+    result = observe(f"stop_warning:{trade_id}", band, alertable=True,
+                     extra={"symbol": symbol, "pct_consumed": round(pct_consumed, 1)})
+    action = result.get("action")
+    if result.get("notify"):
+        return True, f"state {action}"
+    return False, f"state {action} — unchanged since last notification"
+
+
 def already_alerted(conn, trade_id, alert_type):
     cur = conn.cursor()
     cur.execute("""
@@ -583,8 +643,16 @@ def monitor_trade(conn, trade, dry_run=False, no_telegram=False):
                      ("📉 Trail 8%", f"trail:{tid}:8"),
                      ("⏸ Hold", f"stophold:{tid}")],
                 ]
-                send_telegram_with_buttons(msg, buttons, dry_run, no_telegram)
-                alerts.append(('STOP_WARNING', symbol))
+                # The durable row above is always written. Only the operator
+                # interrupt is gated -- the record and the notification are
+                # different concerns, and conflating them is why the history is
+                # 83% one trade's repeats.
+                should, why = _stop_warning_notify_decision(conn, tid, symbol, pct_consumed)
+                if should:
+                    send_telegram_with_buttons(msg, buttons, dry_run, no_telegram)
+                    alerts.append(('STOP_WARNING', symbol))
+                else:
+                    log.info("[stop-warning] %s suppressed: %s", symbol, why)
 
     # ── Near Target ──
     if target > 0 and entry < target:
