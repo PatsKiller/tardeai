@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `fd55cc5ce3c8923be18caf3a96f5dd4f38a5a199cd139a84096df42d74f14dc2`
+**Tree fingerprint:** `97ac2ff88e68965be65d70d624ae2633e94e8309061e0c00ea25ea54782f0536`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,10 +12,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2260 |
-| Markdown (excl. this INDEX) | 1892 |
+| Files under `docs/` (excl. this INDEX) | 2263 |
+| Markdown (excl. this INDEX) | 1895 |
 | **MISSING HEADER** | **1033** |
-| Header OK | 859 |
+| Header OK | 862 |
 | Duplicate groups | 8 |
 
 ### By status_guess
@@ -30,7 +30,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_raw_sync | 8 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 12 |
-| review_required | 1892 |
+| review_required | 1895 |
 
 ## Markdown tree
 
@@ -584,7 +584,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/audits/overnight/F4_SEARCH_HEALTH_2026-08-31.md` | Overnight F4 — Search health + degradation into research output | review_required | OK | `4dc974d8af55` |
 | `docs/audits/overnight/F5_MODEL_COST_2026-08-31.md` | Overnight F5 — Model-call cost accounting | review_required | OK | `b7e798b44094` |
 | `docs/audits/overnight/F6_UTC_CRON_PROPOSALS_2026-08-31.md` | WAVE F6 — UTC scheduling proposals for LLM-heavy jobs · 2026-08-31 | review_required | OK | `ad31fa3b797a` |
+| `docs/audits/overnight/G1_RESOLUTION_LAYER_2026-08-31.md` | Overnight G1 — Checkout-relative remediation at the resolution layer | review_required | OK | `d6c281abaef4` |
+| `docs/audits/overnight/G2_IMPORT_NORMALISE_2026-08-31.md` | Overnight G2 — Import normalisation (A3 dual-load hot paths) | review_required | OK | `f6dec2f4a99a` |
 | `docs/audits/overnight/G3_DOCS_INDEX_2026-08-31.md` | Overnight G3 — Documentation index generator | review_required | OK | `c84615e159f7` |
+| `docs/audits/overnight/G4_ARCHIVE_MECHANISM_2026-08-31.md` | Overnight G4 — Archive mechanism | review_required | OK | `81e760481cc0` |
 | `docs/audits/overnight/WAVE_E_CATALYST_2026-08-31.md` | WAVE E — Catalyst pipeline (E1→E5) · 2026-08-31 | review_required | OK | `c700329a997a` |
 | `docs/briefs/PHASE_11_superseded.md` | Phase 11 — superseded by the validation sweep before execution | archive_superseded | MISSING HEADER | `a77d6d25a9e3` |
 | `docs/briefs/README.md` | Wave briefs | review_required | MISSING HEADER | `a2f504a8b977` |

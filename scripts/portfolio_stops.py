@@ -396,7 +396,20 @@ def check_stop_alerts(risk_data: Dict) -> List[Dict]:
 # ── Save to state ─────────────────────────────────────────────────────────────
 
 def _canonical_state_dir() -> Path | None:
-    """The state directory the CIO actually reads, or None if unresolvable."""
+    """The state directory the CIO actually reads, or None if unresolvable.
+
+    G1: resolve through persistent_state_root.portfolio_state_write_targets /
+    good_persistent_root (served copy), not cron cwd. Monkeypatched by
+    tests/test_risk_state_served_copy.py.
+    """
+    try:
+        from scripts.lib.persistent_state_root import good_persistent_root
+
+        persistent = Path(good_persistent_root()) / "data" / "portfolios" / "state"
+        if persistent.is_dir():
+            return persistent
+    except Exception:
+        pass
     try:
         from scripts.lib.canonical_store_registry import production_state_root
     except Exception:
@@ -431,6 +444,10 @@ def save_risk_state(risk_data: Dict, state_dir: Path) -> None:
     additive -- portfolio_signals, portfolio_weekly_report and event_detector
     all read that tree under `cd $PROJ` and would silently freeze. Collapsing
     to one copy is the same irreversible decision held open for holdings.
+
+    G1: `_canonical_state_dir` resolves via persistent_state_root. Historical
+    divergent copies are reported (never auto-merged) by
+    `report_authoritative_divergence`.
     """
     payload = json.dumps(risk_data, indent=2, default=str)
     targets = [Path(state_dir)]
