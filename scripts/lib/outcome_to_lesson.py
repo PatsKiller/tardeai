@@ -38,6 +38,44 @@ SCHEMA = "OutcomeToLesson@v1"
 AUTHORITY = "READ_ONLY_ADVISORY"
 MBI = 0
 
+# Permanent derivation label (Wave D3). Written on new candidates; projected for
+# legacy rows. Never rewrite historical JSONL in place — that would poison scores
+# by relabelling research-derived history as outcome evidence.
+LESSON_PROVENANCE_FIELD = "lesson_provenance"
+PROVENANCE_OUTCOME_DERIVED = "OUTCOME_DERIVED"
+PROVENANCE_RESEARCH_DERIVED = "RESEARCH_DERIVED"
+_PROVENANCE_VALUES = frozenset({PROVENANCE_OUTCOME_DERIVED, PROVENANCE_RESEARCH_DERIVED})
+
+
+def project_lesson_provenance(row: dict[str, Any]) -> str:
+    """Reader projection for ``lesson_provenance`` — display only, no disk write.
+
+    Explicit stamp wins. Unstamped legacy rows without ``supporting_outcome_ids``
+    are RESEARCH_DERIVED (the pre-D3 advisory/KB corpus). Nonempty supporting
+    outcome ids imply OUTCOME_DERIVED when the field is absent.
+    """
+    explicit = row.get(LESSON_PROVENANCE_FIELD)
+    if explicit in _PROVENANCE_VALUES:
+        return str(explicit)
+    ids = row.get("supporting_outcome_ids") or []
+    if ids:
+        return PROVENANCE_OUTCOME_DERIVED
+    return PROVENANCE_RESEARCH_DERIVED
+
+
+def with_lesson_provenance(
+    row: dict[str, Any],
+    *,
+    stamp: str | None = None,
+) -> dict[str, Any]:
+    """Return a shallow copy with ``lesson_provenance`` set (projection or stamp)."""
+    out = dict(row)
+    if stamp in _PROVENANCE_VALUES:
+        out[LESSON_PROVENANCE_FIELD] = stamp
+    else:
+        out[LESSON_PROVENANCE_FIELD] = project_lesson_provenance(row)
+    return out
+
 
 def observation_key(observation: dict[str, Any]) -> tuple[str, str, str, str]:
     """What makes two outcomes the *same* observation rather than two samples.
@@ -165,6 +203,9 @@ def build_candidates(
         candidate["authority"] = AUTHORITY
         candidate["memory_behavior_influence"] = MBI
         candidate["observational_only"] = True
+        # Outcome path always stamps OUTCOME_DERIVED — including counterexample-only
+        # rows where supporting_outcome_ids is empty (projection alone would mislabel).
+        candidate[LESSON_PROVENANCE_FIELD] = PROVENANCE_OUTCOME_DERIVED
         candidates.append(candidate)
 
     return candidates
@@ -240,5 +281,7 @@ def candidates_from_case_summaries(memories: list[dict[str, Any]]) -> list[dict[
             cand["cannot_become_policy"] = True
             cand["memory_behavior_influence"] = MBI
             cand["authority"] = AUTHORITY
+            # CASE_SUMMARY / research-memory support — not recorded outcomes.
+            cand[LESSON_PROVENANCE_FIELD] = PROVENANCE_RESEARCH_DERIVED
             out.append(cand)
     return out
