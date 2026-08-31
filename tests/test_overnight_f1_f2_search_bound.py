@@ -75,9 +75,10 @@ def test_f2_projected_volume_arithmetic_as_of():
     assert "3 subjects × 1 hop × 21 weekdays = 63" in rw_block["arithmetic"]
     assert rw_block["cost_usd_month"] == 0.0
     assert v["news_catalyst_brave_under_bound"]["monthly_projection"] == 0
-    # aegis left on budgeted Brave: 10×2×21 + 12×21 = 420 + 252 = 672
-    assert v["remaining_legacy_bulk_brave"]["monthly_projection"] == 672
+    # Wave 3 2026-09-01: aegis Brave paths opt-in off → cron bulk projection 0
+    assert v["remaining_legacy_bulk_brave"]["monthly_projection"] == 0
     assert v["policy"]["never_fail_open"] is True
+    assert v["policy"].get("aegis_brave_default") == "off"
     assert v["policy"]["no_cron_for_residual_web"] is True
 
 
@@ -184,9 +185,33 @@ def test_f2_select_daily_respects_budget_n3():
 
 
 def test_f2_unnamed_aegis_callers_listed_not_deleted():
-    """Do not delete unnamed/non-news consumers — census must still name them."""
+    """Do not delete named consumers — census must still name them after re-point."""
     names = {r["caller"] for r in rw.SEARCH_CALLER_CENSUS}
     assert "aegis_social_sentiment" in names
     assert "aegis_transcript_discovery" in names
     social = next(r for r in rw.SEARCH_CALLER_CENSUS if r["caller"] == "aegis_social_sentiment")
-    assert social["bound_monthly"] == 420  # 10 × 2 × 21 pre-budget-deny ceiling
+    # Wave 3: default-off opt-in; bound_monthly 0 (was 420 = 10×2×21)
+    assert social["bound_monthly"] == 0
+    assert social["consumer"]
+
+
+def test_aegis_social_brave_default_off(monkeypatch):
+    monkeypatch.delenv("AEGIS_BRAVE_ENABLED", raising=False)
+    from scripts import aegis_social_sentiment as ass
+    out = ass.fetch_brave_social(["SCHD", "V"], max_queries=2)
+    assert out == {}
+
+
+def test_aegis_transcript_brave_default_off(monkeypatch):
+    monkeypatch.delenv("AEGIS_BRAVE_ENABLED", raising=False)
+    from scripts import aegis_transcript_discovery as atd
+    # discovery should short-circuit without network
+    out = atd.fetch_brave_discovery(["SCHD"], [{"theme": "dividends"}])
+    assert out == []
+
+
+def test_aegis_census_bound_monthly_zero():
+    for name in ("aegis_social_sentiment", "aegis_transcript_discovery"):
+        row = next(r for r in rw.SEARCH_CALLER_CENSUS if r["caller"] == name)
+        assert row["bound_monthly"] == 0, name
+        assert row["consumer"], name  # never delete without naming consumer

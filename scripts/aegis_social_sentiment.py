@@ -165,7 +165,19 @@ def fetch_stocktwits_mentions(symbols: list[str], max_symbols: int = 50) -> dict
 # ── Brave Search API ─────────────────────────────────────────────────────
 
 def fetch_brave_social(symbols: list[str], max_queries: int = 10) -> dict[str, dict]:
-    """Use Brave to discover social/community mentions for top symbols."""
+    """Optional Brave discovery for social mentions.
+
+    Default OFF (Wave 3 2026-09-01). Reddit + StockTwits are the durable social
+    feeds; a search API is not a social feed and was exhausting the Brave daily
+    budget (10×2×21 ≈ 420/mo) under F1/F2 bounds that already zeroed news/
+    catalyst. Set AEGIS_BRAVE_ENABLED=1 to re-enable. Consumer named:
+    aegis overnight / social store — do not delete this function.
+    """
+    import os
+    if os.getenv("AEGIS_BRAVE_ENABLED", "0").lower() not in ("1", "true", "yes"):
+        print("  [brave] retired default — reddit+stocktwits only; "
+              "set AEGIS_BRAVE_ENABLED=1 to re-enable")
+        return {}
     if not BRAVE_KEY:
         print("  [brave] No BRAVE_SEARCH_API_KEY — skipping")
         return {}
