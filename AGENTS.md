@@ -73,10 +73,30 @@ everything from event intake through the daily brief.
    most valuable findings in this repository.
 4. **Leave the system more legible than you found it** — every field traceable, every metric
    regenerable, every control enforcing what its name asserts.
+   **Search before you build** (§13.5). An unwired component is not an absent one; rebuilding
+   what already exists is this system's most expensive habit.
 5. **Stop and ask** on anything operator-only, and on anything irreversible.
 
 Work is not finished when it is committed. It is finished when its effect has been **observed at
 runtime, from the served release**.
+
+## Session protocol
+
+Nothing said what to do at the start of a session. **Six promotes inside one hour from a peer
+session were discovered by accident during a census** — that discovery is the only reason its
+measurements were stamped correctly.
+
+**At session start:**
+
+1. Read this file.
+2. **Resolve the live pin to a concrete directory.** `CURRENT` rotates.
+3. `git status` and `git log origin/main..HEAD` — know what is in flight and unpushed.
+4. **Check for peer sessions.** Another agent may be promoting, writing, or holding a lock. If
+   recent promotes or writes are not yours, **say so before measuring anything.**
+5. Check the push budget state for the branch.
+
+**At session end:** the status report format in `AI_WORK_POLICY.md` §23, plus anything left
+uncommitted, unpushed or undeployed — **stated at the top, never in a footnote.**
 
 ---
 
@@ -113,6 +133,56 @@ and is a **failed** persist. Silence is how a memory system convinces itself it 
 
 A push authorization is not a deployment authorization, and neither is authority over broker, risk,
 2FA, cash, canary or registry changes — `AI_WORK_POLICY.md` §20, §27.
+
+---
+
+# 2A · Data egress — what may leave this box
+
+Nothing in the governance set governed this until 2026-08-31. `ENGINEERING_HARD_RULES.md` blocks
+secrets entering **git**, which is a different question from portfolio data leaving for a
+third-party API. The system already sends InstrumentRecord context — symbols, theses, exposure —
+to an external model provider, and no document said whether that was intended or where the line
+sat.
+
+## Never leaves this box — absolute
+
+To **any** external model provider, chat, document store, artifact, or paste, including an agent's
+own reports and PR bodies:
+
+- credentials, API keys, tokens, session cookies
+- account numbers and broker account identifiers
+- anything personally identifying
+- the contents of `.env` **in any form**, including a single value quoted "for debugging"
+
+This is the same class as the hook-blocked secrets rule, not a preference. There is no debugging
+justification and no redaction that makes a credential safe to paste. If a value is needed to
+reason about a failure, name the variable, never its content.
+
+## Permitted to an external model provider
+
+**`OPERATOR DECISION PENDING`.** The working set — symbol, thesis text, public price and
+fundamental data, aggregate exposure, research questions — is what the system sends today. Whether
+**dollar position sizes** and **account-level detail** may go to a foreign API provider is the
+operator's decision and is not settled here. Until it is settled, treat position dollars and
+account identity as **not permitted**, and say so when a lane needs them.
+
+## A single egress point
+
+Every outbound model call should pass through **one** function that applies this rule, so the
+policy is enforced in code rather than remembered by each caller.
+
+> **No such function exists today** `[VERIFIED]` 2026-08-31 — the rule is currently enforced by
+> convention at each call site, which is the shape every other finding in this file describes.
+> **Proposed, not built:** a single `sanitise_for_external()` on the egress path, with the
+> permitted set as data and a test that a forbidden field cannot pass. Building it is a change to
+> a production path and belongs in its own package.
+
+## Drive and chat
+
+The Drive sync already excludes `.env`, keys and credentials; that rule belongs here as well as in
+the tool, because a rule living only in a tool is lost when the tool changes. An agent must not
+paste credentials, tokens or account identifiers into any chat context — including its own status
+reports, where they are easiest to leak by accident.
 
 ---
 
@@ -158,7 +228,8 @@ Cite so a reader can reproduce the check, not so the claim looks sourced.
 | a commit | short sha + date | Never a branch name alone; branches move. |
 | a command | the command **and its output**, quoted | An unquoted command is a `[DOC-CLAIM]` about your own work. |
 | a measurement | value + `as_of` + the root read from | Without all three it cannot be compared to anything, including itself later. |
-| a repository document | repo-relative path | |
+| a repository document | repo-relative path | Current by definition. |
+| an export, tarball, upload or paste | the extraction commit | **`[DOC-CLAIM]` about state at that commit, not now.** Re-read from `main` before relying on it. A verbatim export two hours old described a section that had already been corrected — it was honest about what it copied and silent about *when*. |
 | a Drive document | title + modified date | |
 | an external source | URL + date fetched | Prices, APIs and terms change; a URL alone dates nothing. |
 
@@ -187,6 +258,20 @@ trustworthy than one that reads clean, and the correction is often the finding.
 
 Verdicts when auditing published numbers: `VERIFIED_FRESH` · `STALE` · `UNRUNNABLE` ·
 `NO_PRODUCER` · `FRESH_SCRIPT_STALE_SOURCE`.
+
+## Time discipline
+
+`as_of` stamps appear as both ISO-Z and ET across the corpus, in a system whose model peak window
+is fixed in **UTC** and whose market hours are **Eastern**. That is two zones and a DST boundary
+in one comparison.
+
+- **Every stored timestamp is UTC, ISO-8601, with an explicit `Z`.**
+- Operator-facing display may be Eastern and **must be labeled** — `14:32 ET`, never a bare time.
+- **Never compare timestamps across zones without normalising**, and never infer a zone from
+  format.
+- Cron for **LLM-heavy** jobs is **UTC** (§12) — the peak window is fixed in UTC, so an Eastern
+  expression silently crosses into peak twice a year. Cron for **market-hours** jobs is **Eastern**.
+  The crontab comment says which and why for each.
 
 ---
 
@@ -358,6 +443,37 @@ gates besides those files). Re-measure rather than quoting this figure.
 
 ---
 
+# 8A · Testing standards
+
+Scattered rules, consolidated. Each states the failure that produced it.
+
+- **Every test file is registered in the CI allowlist.** `test_ci_test_coverage_gate.py` enforces
+  it. An unregistered test is invisible — the "wired to nothing" defect the guard exists to
+  prevent. *Cause: it caught the §0 drift guard in #734, which would otherwise have been a parity
+  test nobody ran, guarding against drift in four files while drifting silently itself.*
+- **Assert on behaviour, never on source strings.** A test that greps its subject's source passes
+  when the source is wrong in a different way. *Cause: a PR shipped broken past a test that only
+  read source text.*
+- **A test whose expected value comes from the artifact under test validates nothing.** Regenerate
+  or delete; never update the literals — see §5.
+- **Pin floors, not adjudications.** A floor forbids every alternative, so pinning it is right. An
+  adjudication permits them, so a pin fires only when someone corrects the record. *Cause:
+  `assert status == "DONE"` went red on an honest downgrade — a test that fails when someone tells
+  the truth.*
+- **Mutation-test every guard.** Break the thing, confirm red; restore, confirm green; check the
+  exit code for the specific expected value. **A guard that has never been shown to fail is a
+  guard nobody has tested.** *Cause: a dark-contract gate returned exit 0 on a file that could not
+  compile, having read its own required declaration out of a `SyntaxError`.*
+- **Positive-control every detector before publishing a zero.** Inject a known instance and confirm
+  the detector finds it. §7 has the class; this is the obligation it implies. *Cause: an
+  origination scan returned zero because generated prose is maximally variable and could never
+  land in an invariance bucket.*
+- **A skipped test is a failure wearing better manners.** Fix the name guess or delete it; never
+  leave a green skip. *Cause: a "no fake alpha" test was wrapped in `if alpha is not None`, so the
+  gate was green precisely when there was no alpha.*
+
+---
+
 # 9 · Standard operating procedures
 
 These are the recurring operations. Every agent performs them the same way, or the system
@@ -446,6 +562,26 @@ accumulates the divergence this document exists to remove.
   orphans evidence and makes the deploy **silently non-additive**.
 - One PR per finding, validation output quoted in the body.
 - **A push is not a deploy and a merge is not a deploy** — `AI_WORK_POLICY.md` §21, §27.
+
+## Incident and rollback
+
+A deploy protocol with no procedure for production being wrong. Three days of undelivered briefs, a
+1,100-event flood, and a ten-hour broken census all happened with no written answer to "roll back
+or fix forward."
+
+- **Roll back** when the defect is in a release and a previous release is known good. **Fix
+  forward** when the defect predates the release, or when a rollback would lose durable state.
+- **Rolling back is re-pointing `CURRENT` at a known-good release directory.** Verify the live
+  directory independently afterwards, exactly as a promote requires — `PROMOTE OK` has re-pinned a
+  stale release, and a rollback can do the same. Confirm the command against the deploy script
+  before relying on it; do not run it from memory.
+- **Bound the blast radius before enabling, not after.** The 1,100-event flood was bounded at 48h
+  by watching it happen. A cap decided in advance is a control; a cap decided during an incident is
+  a reaction.
+- **Write the incident up the same day**, in `docs/ops/`: what was observed, what was changed, and
+  **what would have caught it sooner**.
+- **Never disable a control to clear an incident without the operator.** Disabling is how a
+  temporary fix becomes a permanent gap.
 
 ---
 
@@ -553,6 +689,74 @@ a missing account **fails closed**; `holdings.json` never wiped. Install once af
 
 ---
 
+# 13.5 · Before you build — the pre-build check
+
+**The failure this prevents.** This system's most expensive recurring pattern is not broken code.
+It is **rebuilding something that already exists and is merely unwired.** `load-by-subject` was
+built, correct, tested, and called by nothing. `store_consistency.py` the same. The librarian's
+grading law shipped with no index file. Two independent re-entry books, two identity-minting
+schemes, three `place_order` definitions, ~37 identity/memory/lineage modules with known
+duplicates. Each cost the effort of building it **and** the effort of later finding it.
+
+**An unwired thing is not an absent thing.** If a search turns up a module that does the job and
+nothing calls it, **wire it — do not write a second one.** A second implementation does not fix the
+first; it doubles the surface and guarantees they will disagree.
+
+## The check — run it before writing any new module, contract, store, gate, metric, operator field, or scheduled job
+
+1. **Read the documentation index** (§14.1) for the concept, by name **and by synonym**.
+2. **Search for the capability, not the filename.** Filename greps have produced three wrong
+   conclusions here. Search the behaviour: the write call, the schema literal, the route, the field.
+3. **Check the registries** — `config/lane_registry.json` for a scheduled job,
+   `CanonicalStoreRegistry` for a store, the provenance matrix for an operator field.
+4. **Check the dark inventory.** The census verdicts `DARK`, `LIVE_UNCONSUMED`, `ONE_SHOT`,
+   `ORPHANED` are a list of things that exist and do not run. Look there before concluding absence.
+5. **Check `archive/` and its manifest.** Something may have been retired deliberately. Rebuilding
+   it without reading the reason repeats whatever caused the retirement.
+
+## Record the search
+
+**State in the PR body what you searched and what you found.** Naming the search makes it
+auditable; without it, "nothing exists" is a `[DOC-CLAIM]` about your own diligence.
+
+> Searched the index for *cadence*, *eligibility*, *next-look*; searched for writes to
+> `next_eligible_at`; checked the lane registry for a scheduler. Found `cio_residual_web:654`
+> writes it on completion and is `NEVER_SCHEDULED`. **Wiring that rather than adding a writer.**
+
+## The rule that follows
+
+- **Exists and wired** → extend it. One canonical source of truth per concept (§13).
+- **Exists and unwired** → wire it, and say why it was unwired if that can be established.
+- **Exists and wrong** → fix in place, or replace it and **delete the original in the same PR**.
+  Two implementations of one concept must never both be live.
+- **Nothing exists** → build it, having stated where you looked.
+
+---
+
+# 13.6 · Conformance checklist — before the first line is written
+
+Every item is a defect this system has already produced. A new artifact that cannot answer these
+is not ready to be built.
+
+- **Who consumes it?** Name the caller. **A new versioned contract names a non-test production
+  consumer in the PR body.** The dark-contract gate catches this after the fact; naming it prevents
+  it. No consumer yet means it is not ready — build the consumer first, or state
+  `no_consumer_reason`.
+- **What proves it ran?** The durable artifact — not an exit code, not a log line. For a scheduled
+  job that is its `output_signal`, and it needs a lane registry row **before** the job is proposed.
+- **What layer does it belong in?** No frontend business logic for runtime, materiality,
+  notification or maturity decisions.
+- **Does it write durable state, send to an operator, or spend money?** Then it needs a
+  `--dry-run` that exercises the real path and reports what it would do (§6).
+- **Does it emit a number?** It carries an `as_of` and the root it read (§5).
+- **Does it reach an operator surface?** It carries its provenance class and its own `as_of` (§9.5).
+- **Does it assert a restriction?** Some code path must read it, and a test must show it firing
+  (§7).
+- **Can it fail silently?** No bare `except`, no success claim conditional on nothing, and the
+  failure reaches a surface rather than a log (§9.1).
+
+---
+
 # 14 · Documentation standards
 
 Documents in this repository are evidence. They are read by people deciding what is true about a
@@ -582,6 +786,11 @@ Measured at: <commit sha> / <live pin>, or "not measured"
   `[DOC-CLAIM]` no matter how confidently written.
 - **Keep the corrections in.** A write-up that shows what it got wrong is more useful than one that
   reads clean.
+- **A rewrite that claims to preserve is a claim like any other — diff it.** A rewrite of this file
+  asserted the previous content was preserved inside it, and **ten operational items were gone**.
+  Nothing malfunctioned and nothing reported a problem: the assertion and the loss were authored in
+  the same act, and only a diff could find it. Diff old against new and report what did not
+  survive, every time.
 - **Do not invent a reason.** `UNKNOWN` is a legitimate and expected entry, and its count is itself
   a measurement.
 
@@ -597,6 +806,49 @@ Measured at: <commit sha> / <live pin>, or "not measured"
 
 **Drive** holds the durable audit corpus. **Never sync `.env`, keys, or credentials** — the sync
 excludes them and `check_no_secrets.py` blocks them at commit.
+
+## 14.1 · The documentation directory
+
+**The index is the map an agent reads before building anything** (§13.5). It must be **generated
+from the tree, not hand-maintained** — a hand-written index of documents is a dark contract waiting
+to happen, and this system has enough.
+
+> **Pre-build check on this very section** `[VERIFIED]` 2026-08-31, and it changed the plan.
+> `docs/INDEX.md` does not exist — **but two things that do the job already do**:
+> `docs/project/PROJECT_DOC_INDEX.md` (950 lines, **hand-maintained**, last committed 2026-08-26)
+> and `scripts/report_docs_inventory.py`, which inventories and classifies docs read-only and is
+> **invoked by nothing** — `DARK`. There are **1,875** markdown files under `docs/`, so the
+> hand-maintained index covers a fraction of them and cannot not drift.
+>
+> Per §13.5 the correct action is to **wire the existing inventory script and let it generate the
+> index**, not to write a third mechanism. That is a new scheduled artifact plus a CI check, so it
+> is **proposed here, not built** — it belongs in its own package with a lane registry row and an
+> `output_signal`.
+
+When it is built: a generator walks `docs/` and emits one row per document — path, title, `Status`,
+`as_of`, last-commit date — from the header §14 already requires. A CI check regenerates and fails
+if the committed copy differs, so the index cannot drift from what exists; register it in the CI
+allowlist or `test_ci_test_coverage_gate.py` will leave it invisible. **A document with no header
+cannot be indexed** and appears in a `MISSING HEADER` section rather than being silently omitted —
+**that section's size is a measurement**, and against 1,875 files it is the honest size of the
+documentation debt.
+
+## Where things go
+
+| path | holds | read before |
+|---|---|---|
+| the generated index | **map of everything below** | building anything |
+| `docs/architecture/` | how a subsystem is designed; ADRs | changing a subsystem's shape |
+| `docs/audits/` | what was measured, when, against which pin | claiming anything about current state |
+| `docs/ops/` | runbooks, conventions, incidents | operating, deploying, retiring anything |
+| `docs/briefs/` | what each wave was asked to do | starting a wave |
+| `docs/convergence/` | integration rules | building anything new |
+| `config/` | lane registry, store registry, **domain policy** | scheduling, storing, touching policy |
+| `.claude/skills/` | domain knowledge — never behavioural rules | context on a subsystem |
+| `archive/` | retired code, with manifest and tripwire | **before rebuilding something that seems absent** |
+
+**Every new document is indexed by the generator, not by hand.** If the generator does not pick it
+up, it is in the wrong place or missing its header — both are findings.
 
 ## Closeout format
 
@@ -645,7 +897,9 @@ without that being stated at the top of the report.
 Propose and stop.
 
 Collapsing the two holdings copies · changing what is ranked onto an operator surface · any new
-production cron or systemd entry · **weakening the behaviour rail in any form** — editing
+production cron or systemd entry · **what portfolio data may be sent to an external model
+provider** (§2A) · **whether to fund off-box backup of `persistent-state`** (§18) ·
+**weakening the behaviour rail in any form** — editing
 `BEHAVIOR_FIELDS`, altering or conditionalising the unconditional raise at
 `scripts/lib/cio_instrument_record.py:343`, or routing a cognition write around it; there is no
 variable to raise, the control surface is the code · re-enabling the retired
@@ -658,6 +912,48 @@ where a machine choosing between two candidate truths can destroy one. It does *
 labeling, error strings, routing defaults whose conservative option is reversible, or additive
 monitoring. **If the deferred list grows during a wave, that is a finding about how the wave was
 run.**
+
+---
+
+# 17A · Topology and vocabulary
+
+Orientation, not architecture. §10 cannot be followed without knowing there are several trees and
+which one you are standing in — that confusion produced four checkout-relative splits.
+
+## The trees `[VERIFIED]` 2026-08-31
+
+| tree | path | role |
+|---|---|---|
+| **canonical source / "the hub"** | `~/trade-ai-v12-rebuild/trade-ai-v12-rebuild` | where the **pipeline writes**. Most cron jobs `cd` here. Often on a feature branch, **not** `main`. |
+| **deploy worktree** | `~/r20-r24-exact-main-deploy` | where release work is done. `prepare`/`promote` run here and read **this worktree's HEAD**. |
+| **release directories** | `~/trade-ai-releases/portfolio-server/<sha>-main-exact-phase2-<ts>/` | immutable snapshots. **249 of them** exist. |
+| **`CURRENT`** | `~/trade-ai-releases/portfolio-server/CURRENT` | a **rotating symlink** to one release. What the **server reads**. Has rotated three times in fifteen minutes. |
+| **persistent state** | `~/trade-ai-releases/persistent-state/` | absolute paths **outside every checkout** — lineage, logs, CIO stores. `TRADEAI_ROOT` neither fixes nor breaks these. |
+| **agent worktrees** | various, e.g. `~/census-part1-backend` | short-lived. **303 worktrees are registered** — a worktree holding a branch is why `git checkout` and `branch -d` fail with "already used by worktree". |
+
+**Never quote `CURRENT` as an identifier.** Resolve it to a concrete release directory first and
+quote that pin — the "live pin".
+
+**Four trees, four different answers to "where does this file live."** The pipeline writes to the
+hub; the server reads a release; a cron job resolves against whichever tree its `cd` names; the
+deploy script reads the deploy worktree's HEAD. A value written to the wrong one is not a write.
+
+## Glossary
+
+| term | what it is |
+|---|---|
+| **wake** | a scheduled or event-triggered decision cycle for one subject |
+| **lane** | a declared producer with a row in `config/lane_registry.json` and an `output_signal` |
+| **subject_key** | the stable identifier a wake and its research hang from |
+| **InstrumentRecord** | the per-instrument durable record — cognition fields writable, behaviour fields refused |
+| **situation** | a detected condition that may raise a wake |
+| **envelope** | one lineage row: a workflow's state at a stage transition |
+| **arc** | a lineage path through stages, e.g. `research_checkpoint`, `cio_notification` |
+| **workflow** | one end-to-end run, keyed by `workflow_id`, appearing as many envelopes |
+| **checkpoint** | the outcome-review point a completed workflow schedules |
+| **pin** | the concrete release sha + timestamp a measurement was read at |
+| **served release** | the release `CURRENT` points to right now |
+| **hub** | the canonical source checkout — see the table above |
 
 ---
 
@@ -726,6 +1022,27 @@ Never manually copy `data/portfolios/state/` into a release. If the header looks
 re-link, then restart the service. `state/data_broker/portfolio_snapshot.json` is a 45s cache —
 delete it and the next `/api/v2/overview` recomputes. `portfolio_server.py` prints a CRITICAL
 warning at boot if `holdings.json` is more than 7 days old.
+
+## Operational realities
+
+Each cost an investigation and lived in no file.
+
+- **`.env` is a symlink to `/run/user/1000/tradeai/env`, on tmpfs** `[VERIFIED]` 2026-08-31 — it
+  does not survive a reboot and is regenerated from Bitwarden Secrets Manager by
+  `scripts/secrets/render_env.py`. **A hand edit is lost at the next render.** Durable changes go
+  into the secret store, never into the file. *The regeneration trigger and interval are not yet
+  established — no `render_env` crontab line exists; check systemd timers before quoting a number.*
+- **Backups do not cover the durable stores** `[VERIFIED]` 2026-08-31. `persistent-state` appears
+  in **zero** crontab entries, and it holds **885 MB across 81 CIO JSONL stores** — the lineage
+  store, the identity registry, the learning history. The offsite job that once covered `data/` is
+  marked RETIRED and folded into a cadence job scoped to the hub. `~/backups` is on the **same
+  physical disk** (`/dev/nvme0n1p2`) as everything it would protect. **Off-box backup of
+  `persistent-state` is an `OPERATOR DECISION PENDING` in §17.**
+- **The archive mechanism §0 rule 6 requires**, when it is built: move to `archive/` preserving git
+  history; a manifest row per item carrying verdict, evidence, date, `review_by` and the restore
+  command; and a **tripwire** that raises a finding if anything imports or reads an archived path.
+  **Never archive on a single observation** — a quarterly job and a dead one are indistinguishable
+  on any given Tuesday. If a cadence is unknown, the verdict is `UNKNOWN` and it waits.
 
 ---
 
