@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `ca01f7bbc5c69a52411531ff4acaf0c47753125a882fde8bd8c255f641c8d255`
+**Tree fingerprint:** `ac574dda2032c59e48781cfac46621a81a522137d8e04aee2253080f62832b22`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,10 +12,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2269 |
-| Markdown (excl. this INDEX) | 1901 |
+| Files under `docs/` (excl. this INDEX) | 2270 |
+| Markdown (excl. this INDEX) | 1902 |
 | **MISSING HEADER** | **1034** |
-| Header OK | 867 |
+| Header OK | 868 |
 | Duplicate groups | 8 |
 
 ### By status_guess
@@ -30,7 +30,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_raw_sync | 8 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 12 |
-| review_required | 1901 |
+| review_required | 1902 |
 
 ## Markdown tree
 
@@ -593,6 +593,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/audits/overnight/G5_DUPLICATION_RECOMMENDATIONS_2026-08-31.md` | G5 — Duplication cluster recommendations (from Census Part 3) | review_required | OK | `0b081115c5fc` |
 | `docs/audits/overnight/G6_MISSING_STORES_2026-08-31.md` | Overnight G6 — Missing CanonicalStoreRegistry stores | review_required | OK | `8d97c7c5491f` |
 | `docs/audits/overnight/W3_3A_POPULATION_2026-09-01.md` | Night Three Wave 3a — project `population` onto operator / home surfaces | review_required | OK | `66b4016fcb90` |
+| `docs/audits/overnight/W3_3B_FROZEN_FIELDS_2026-09-01.md` | Night Three Wave 3b — frozen fields that imply judgment but never move | review_required | OK | `8b4f5b2161b8` |
 | `docs/audits/overnight/W3_3C_PROVENANCE_2026-09-01.md` | Night Three Wave 3c — provenance markers: writer=author; honest footer | review_required | OK | `bdc03913e77d` |
 | `docs/audits/overnight/WAVE_E_CATALYST_2026-08-31.md` | WAVE E — Catalyst pipeline (E1→E5) · 2026-08-31 | review_required | OK | `c700329a997a` |
 | `docs/briefs/PHASE_11_superseded.md` | Phase 11 — superseded by the validation sweep before execution | archive_superseded | MISSING HEADER | `a77d6d25a9e3` |
