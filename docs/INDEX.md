@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `00dde3d4a5b7876fcea801f03b02511921d6ee7f4964152059dc5418a54386d8`
+**Tree fingerprint:** `0c25d763cd9294f04b3d1e46cacebfb839e0f0fef4c2ab7df56d6d5eeb29e61b`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,10 +12,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2272 |
-| Markdown (excl. this INDEX) | 1904 |
+| Files under `docs/` (excl. this INDEX) | 2273 |
+| Markdown (excl. this INDEX) | 1905 |
 | **MISSING HEADER** | **1034** |
-| Header OK | 870 |
+| Header OK | 871 |
 | Duplicate groups | 8 |
 
 ### By status_guess
@@ -30,7 +30,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_raw_sync | 8 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 12 |
-| review_required | 1904 |
+| review_required | 1905 |
 
 ## Markdown tree
 
@@ -518,6 +518,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/atm_audit_2026_05_26/schema_snapshot/table_schemas.md` | Schema Snapshot -- ATM Audit 2026-05-26 | review_required | MISSING HEADER | `5705fcd7aafa` |
 | `docs/audit/PROPOSALS_BROKER_VS_REGULAR_AUDIT_20260624.md` | Proposals Audit — Broker vs Regular (Frontend + Backend) | review_required | OK | `c3f78de62d14` |
 | `docs/audits/ATM_APPROVE_FAILED_2026-05-22.md` | ATM approve_proposal_failed Investigation — 2026-05-22 | review_required | MISSING HEADER | `e9dedf6331a4` |
+| `docs/audits/CENSUS_PART1_BACKEND_2026-08-30.md` | CENSUS — PART 1: BACKEND | review_required | OK | `18392c652fe2` |
 | `docs/audits/CENSUS_PART5_LEVEL_SET.md` | CENSUS_PART5_LEVEL_SET.md | review_required | MISSING HEADER | `5dec505bae4c` |
 | `docs/audits/CIO_DILIGENCE_GAP_REGISTER.md` | CIO Diligence Gap Register | review_required | OK | `bda3d68b2c3f` |
 | `docs/audits/CIO_PIPELINE_DIAGRAM_VERIFICATION_2026-08-27.md` | Is the CIO pipeline diagram the true state? — measured verification | review_required | OK | `91e849bb4976` |
