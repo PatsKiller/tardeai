@@ -391,6 +391,32 @@ Descending strength. **Only the first two settle a claim about runtime.**
   See `docs/ops/GITHUB_ACTIONS_QUOTA_INCIDENT_2026-08-27.md`. **Do not debug the diff.**
 - **Check a gate can go red where it runs.** A suite in a non-required workflow will run, go red,
   and block nothing.
+- **A guard verified by presence is not a guard.** An alarm, check or gate that has never been
+  observed firing is indistinguishable from its absence. *Cause: a signal writer failed for 24
+  days. Three independent detectors saw it and told the operator nothing — an alarm fired 171
+  times into a bare `except` on an import that has never existed, a durable audit went CRITICAL
+  and is surfaced by nothing, and that audit then read OK because zero input made its condition
+  false. Same shape as STOP_HIT_CLOSE: 98 days, an import of `telegram_bot`, a module that exists
+  in no tree.*
+- **Repairing the reason an alarm was silent is not evidence it now fires.** Fix the cause, then
+  observe the message arrive. *Cause: `send_alert` → `send_telegram` made the import resolve, and
+  the CRITICAL still reached nobody — the router classified it `P1_DIGEST` and suppressed it into
+  `report_capture`'s `reports_archive`, which nothing delivers: the only active digest cron reads
+  a different table. The repair was verified by presence and shipped. The firing test written one
+  wave later is what caught it.*
+- **Two states cannot express "no input."** A health check whose failure condition requires inputs
+  will read healthy when nothing arrives. Give it a third verdict. *Cause: `signal_flow_audit`
+  read OK across a 24-day outage because zero GO scans made `go>0 and after==0` false. The name
+  for that state already existed — `NO_GO_TODAY`, emitted by another writer into the same table —
+  so check before coining a second one.*
+- **A surviving mutation may be an invalid mutation.** Before concluding a test is weak, confirm
+  the mutation actually moved the quantity the test measures. *Cause: twice in one session. A
+  "fix a swallowed alarm" mutation landed on a handler whose `try` contained no alarm call; a
+  `dotenv`-absent simulation patched `builtins.__import__`, which also defeats the `sys.modules`
+  stub under test and failed for a reason CI never would.*
+- **A test that exercises a helper is not a test of the wiring.** *Cause: reverting the docs
+  inventory to `rglob` left the git-aware helper correct and unused, and the test that called the
+  helper directly stayed green. Three pins this session tested a part rather than the caller.*
 
 ## Know what CI green means
 
@@ -425,6 +451,26 @@ accumulates the divergence this document exists to remove.
   action today" reads as a verdict and is `do_n == 0`.
 - **Test sends never go to a live channel without the operator's word**, and a test must not write
   a dedupe marker that suppresses the real send. Back up the marker; restore it by content.
+- **Every alarm has a test that observes it firing, and that test is mutation-tested.** Inject the
+  condition, capture the message at the transport — captured, never sent — and confirm breaking the
+  alarm turns the test red. Record router suppression separately from delivery: a message built and
+  then dropped has not fired. *Coverage is a stated number, not an impression: 11 of 141
+  `send_telegram` sites at 2026-08-31, the rest named in `config/alarm_firing_baseline.txt`.*
+- **Every import on an alarm path resolves — CI-gated.** *`tests/test_alarm_imports_resolve.py`;
+  556 checked, 0 unresolved. Both historical defects (`send_alert`, `telegram_bot`) reproduce it.*
+- **No bare `except` on an alarm path.** The handler records the failure to a durable surface or
+  declares a reason with `ALARM-DELIVERY-DECLARED`. A log line is not a durable surface. *CI-gated
+  against a shrink-only baseline: 65 pure swallows and 46 log-only at 2026-08-31.*
+- **Every health check has a distinct verdict for "no input."** *See the trap above.*
+- **Every store feeding an operator surface declares a cadence and an `output_signal`, and
+  something compares them.** Extend the existing lane monitor; never build a second.
+  *`config/operator_surface_stores.json`, evaluated by `lane_registry.evaluate_lane`. On its first
+  run it reported `strategy_signals` SILENT at 581h and `paper_trade_proposals[momentum_scalp]`
+  SILENT at 1496h. Scope the row to the strategy: the unscoped table read LIVE at 0.6h because
+  other strategies kept writing it, and an aggregate cannot see a per-strategy cliff.*
+- **A verdict that reaches only a log file has not reached the operator.** State plainly which
+  findings surface and which do not. *The store-cadence monitor's SILENT verdict does not yet
+  reach a surface; that is named debt, not a closed item.*
 - **One chokepoint.** Every operator-facing send goes through one transport that
   applies policy. A direct send path or a router bypass requires a declared
   reason and is CI-gated. *Cause: 155 producers, ~50 direct API paths, 34 router
