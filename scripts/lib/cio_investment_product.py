@@ -81,6 +81,39 @@ CASE_SUMMARY_BANNER = "A-context · NON_AUTHORITATIVE · does not change action"
 EARNINGS_REL = Path("data") / "portfolios" / "state" / "earnings_dates.json"
 
 
+def _earnings_dates_path(root: Path | str | None = None) -> Path:
+    """Resolve earnings_dates.json for the collector.
+
+    Explicit ``root`` is a pin (tests / dry-run) — only that tree is consulted.
+    When ``root`` is omitted, try the process checkout, then the served
+    persistent-state copy, then the hub legacy tree. Prefer a real file; never
+    invent dates. Return the primary candidate when none exist so callers can
+    report a precise missing-path reason.
+    """
+    if root is not None:
+        return resolve_root(root) / EARNINGS_REL
+    primary = resolve_root(None) / EARNINGS_REL
+    candidates: list[Path] = [primary]
+    try:
+        from scripts.lib.persistent_state_root import good_persistent_root
+
+        persistent = good_persistent_root() / EARNINGS_REL
+        if persistent not in candidates:
+            candidates.append(persistent)
+    except Exception:
+        pass
+    try:
+        legacy = Path("/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild") / EARNINGS_REL
+        if legacy not in candidates:
+            candidates.append(legacy)
+    except Exception:
+        pass
+    for path in candidates:
+        if path.is_file():
+            return path
+    return primary
+
+
 def _now() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -753,8 +786,7 @@ def collect_earnings_events(
     parseable dated events) — then quality=DATA_UNAVAILABLE, not a fake quiet night.
     """
     as_of = _iso(now)
-    base = resolve_root(root)
-    path = base / EARNINGS_REL
+    path = _earnings_dates_path(root)
     source = str(path)
     if not path.is_file():
         return {

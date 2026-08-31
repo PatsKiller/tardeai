@@ -113,6 +113,46 @@ def reentry_surface_label(product: dict[str, Any]) -> str:
     return f"Re-entry: Surface {surface}{scope_bit} (Surface B is a separate book; not merged)."
 
 
+def earnings_lines(product: dict[str, Any], *, cap: int = 8) -> list[str]:
+    """Render dated earnings events that already exist on the product.
+
+    Same honesty pattern as watch_lines: a bare count reads as an empty brief
+    when symbols and dates are sitting on the payload. List what the collector
+    produced (symbol · date · days · scope). Never invent commentary — UNAVAILABLE
+    commentary stays off this surface. When items are empty, name DATA_UNAVAILABLE
+    from earnings_quality rather than omitting the section.
+    """
+    earn = product.get("earnings") or []
+    if not isinstance(earn, list):
+        earn = []
+    quality = product.get("earnings_quality") if isinstance(product.get("earnings_quality"), dict) else {}
+    lines: list[str] = []
+    if earn:
+        lines.append(f"Earnings (D): {len(earn)} upcoming")
+        for row in earn[:cap]:
+            if not isinstance(row, dict):
+                continue
+            sym = str(row.get("symbol") or "").upper()
+            if not sym:
+                continue
+            date_s = str(row.get("earnings_date") or "—")
+            scope = str(row.get("scope") or "").strip()
+            days = row.get("days_to_event")
+            bits = [sym, date_s]
+            if isinstance(days, int):
+                bits.append(f"{days}d")
+            if scope:
+                bits.append(scope)
+            lines.append("- " + " · ".join(bits))
+        return lines
+    q = str(quality.get("quality") or "")
+    reason = quality.get("reason")
+    if q == "DATA_UNAVAILABLE" or reason:
+        reason_bit = f" — {reason}" if reason else ""
+        lines.append(f"Earnings (D): DATA_UNAVAILABLE{reason_bit}")
+    return lines
+
+
 def watch_lines(product: dict[str, Any], *, cap: int = 8) -> list[str]:
     """Name the watch names. BLOCK is named; READY is never invented.
 
@@ -228,9 +268,7 @@ def morning_text(product: dict[str, Any]) -> str:
                 )
     elif product.get("catalysts_reason"):
         lines.append(f"Catalysts: {product.get('catalysts_reason')}")
-    earn = product.get("earnings") or []
-    if earn:
-        lines.append(f"Earnings (D): {len(earn)} upcoming")
+    lines.extend(earnings_lines(product))
     new_if = product.get("new_position_if") or []
     if new_if:
         nsyms = [str(x.get("symbol") or "") for x in new_if if isinstance(x, dict) and x.get("symbol")]
@@ -350,6 +388,10 @@ def command_center_view(product: dict[str, Any]) -> dict[str, Any]:
         "as_of": product.get("as_of"),
         "executive_summary": product.get("executive_summary"),
         "earnings": list(product.get("earnings") or [])[:12],
+        "earnings_quality": product.get("earnings_quality") if isinstance(product.get("earnings_quality"), dict) else {
+            "quality": "OK" if product.get("earnings") else "DATA_UNAVAILABLE",
+            "class": "D",
+        },
         "new_position_if": list(product.get("new_position_if") or [])[:8],
         "cash": product.get("cash") or {},
         "temperament": product.get("temperament") or product.get("macro") or {},

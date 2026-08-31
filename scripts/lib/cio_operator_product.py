@@ -238,7 +238,26 @@ def build_operator_product(*, root: Path | str | None = None, persist: bool = Fa
     if not earnings_items:
         try:
             from scripts.lib.cio_investment_product import collect_earnings_events
-            earn = collect_earnings_events(root=root)
+            # Pass holdings + watch so held names rank first and scope is honest.
+            # A bare collect_earnings_events(root=...) labels everything "watch".
+            watch_syms: list[str] = []
+            for bucket in (
+                opportunity.get("watch") if isinstance(opportunity, dict) else None,
+                brief.get("watch"),
+                ((brief.get("opportunity_book") or {}).get("top") if isinstance(brief.get("opportunity_book"), dict) else None),
+            ):
+                if not isinstance(bucket, list):
+                    continue
+                for it in bucket:
+                    if isinstance(it, dict) and it.get("symbol"):
+                        watch_syms.append(str(it["symbol"]).upper())
+                    elif isinstance(it, str) and it.strip():
+                        watch_syms.append(it.strip().upper())
+            earn = collect_earnings_events(
+                root=root,
+                holdings=holdings_payload if isinstance(holdings_payload, dict) else None,
+                watch_symbols=watch_syms or None,
+            )
             earnings_items = list(earn.get("items") or [])
             if not earnings_quality:
                 earnings_quality = {

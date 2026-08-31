@@ -276,6 +276,7 @@ UNLISTED_BASELINE: frozenset = frozenset([
     "tests/test_cio_final_truth_adversarial.py",
     "tests/test_cio_full_cycle.py",
     "tests/test_cio_gap_auth_01.py",
+    "tests/test_cio_gap_earnings_b1.py",
     "tests/test_cio_gap_ir_01.py",
     "tests/test_cio_gap_loop_01.py",
     "tests/test_cio_gap_price_01.py",
