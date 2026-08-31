@@ -118,19 +118,57 @@ def check_pipeline_critical() -> list:
         from db_adapter import get_connection
         conn = get_connection()
         cur = conn.cursor()
+        # D3: aggregate by cause with a count, not one alert per row.
+        # "Five identical failures per batch" was never five failures -- it was
+        # this query's LIMIT 5 with no aggregation and no dedupe, emitting one
+        # critical alert per row, each rendering the SAME stringified exit code
+        # under the label "Error:".
         cur.execute("""
-            SELECT pipeline_key, status, started_at, summary->>'errors' as error
+            SELECT pipeline_key,
+                   COALESCE(summary->>'errors', 'unknown') AS error,
+                   COUNT(*) AS n,
+                   MIN(started_at) AS first_at,
+                   MAX(started_at) AS last_at
             FROM pipeline_runs
             WHERE status = 'failed' AND started_at > NOW() - INTERVAL '4 hours'
-              AND status != 'test_artifact'
               AND COALESCE(trigger_source, 'cron') != 'manual_test'
-            ORDER BY started_at DESC LIMIT 5
+            GROUP BY pipeline_key, COALESCE(summary->>'errors', 'unknown')
+            ORDER BY MAX(started_at) DESC LIMIT 5
         """)
-        for r in cur.fetchall():
+        for key, error, n, first_at, last_at in cur.fetchall():
+            times = f"at {last_at}" if n == 1 else f"{n}x, {first_at} to {last_at}"
             alerts.append({
                 "type": "pipeline_critical",
                 "severity": "critical",
-                "message": f"Pipeline FAILED: {r[0]} at {r[2]}. Error: {(r[3] or 'unknown')[:100]}",
+                "message": f"Pipeline FAILED: {key} ({times}). Error: {str(error)[:200]}",
+            })
+
+        # E4: A SUCCESS THAT PRODUCED NOTHING IS NOT A SUCCESS.
+        #
+        # Ten consecutive runs reported status='success' with rows_produced 0
+        # while a Finviz outage aged from 64h to 97h, and nothing read it. Fixing
+        # the second stage error had removed the ALARM, not the outage: with one
+        # error instead of two the orchestrator began exiting 0. AGENTS.md §3 --
+        # a green obtained by the wrong artifact is worse than a red, because a
+        # red gets investigated.
+        cur.execute("""
+            SELECT pipeline_key, COUNT(*) AS n, MAX(started_at) AS last_at
+            FROM pipeline_runs
+            WHERE status = 'success'
+              AND started_at > NOW() - INTERVAL '24 hours'
+              AND COALESCE(trigger_source, 'cron') != 'manual_test'
+              AND COALESCE((summary->>'rows_produced')::bigint, -1) = 0
+            GROUP BY pipeline_key
+            HAVING COUNT(*) >= 2
+            ORDER BY MAX(started_at) DESC LIMIT 5
+        """)
+        for key, n, last_at in cur.fetchall():
+            alerts.append({
+                "type": "pipeline_zero_rows",
+                "severity": "critical",
+                "message": (f"Pipeline produced NOTHING while reporting success: "
+                            f"{key} -- {n} runs with rows_produced=0 in 24h, "
+                            f"latest {last_at}"),
             })
         conn.close()
     except Exception as e:

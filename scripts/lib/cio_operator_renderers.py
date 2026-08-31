@@ -311,7 +311,23 @@ def morning_text(product: dict[str, Any]) -> str:
         n = cases.get("count") if isinstance(cases, dict) and cases.get("count") is not None else len(case_items)
         bit = f" · {', '.join(top_syms[:3])}" if top_syms else ""
         lines.append(f"Research cases (A-context, not action): {n}{bit}")
-    lines.append("Open: Command Center → CIO. READ_ONLY_ADVISORY.")
+    # D2, 2026-08-31: this said "Open: Command Center → CIO" with NO LINK, in
+    # the one message the operator reads every day. The canonical builder
+    # exists and its docstring says "All Telegram body/button links MUST go
+    # through this module" -- this renderer never imported it.
+    #
+    # Fail-soft: if the builder cannot resolve a base URL, fall back to the
+    # original text rather than rendering a broken or half-built link. A wrong
+    # link is worse than none.
+    try:
+        from scripts.notification_url_builder import build_dashboard_url
+        _cc = build_dashboard_url("/v3/cio")
+    except Exception:
+        _cc = ""
+    if _cc:
+        lines.append(f"Open: {_cc}  READ_ONLY_ADVISORY.")
+    else:
+        lines.append("Open: Command Center → CIO. READ_ONLY_ADVISORY.")
     # B5 — honest provenance footer. This path is a deterministic projection;
     # never assert model provenance for a brief no model produced.
     lines.append(PROVENANCE_FOOTER)

@@ -82,6 +82,39 @@ def _base_payload(
     return payload
 
 
+def _interdicted() -> bool:
+    """Is outbound Telegram delivery interdicted right now?
+
+    C4, 2026-08-31. This check lived only in `send_message`, which then delegates
+    to `deliver_text` -- and `deliver_text` is exported and callable directly. Any
+    caller reaching it bypassed the interdict entirely, so a control named for
+    stopping delivery did not cover every path that delivers.
+
+    AGENTS.md §7, severity 2: the restriction existed, but not in the thing named
+    for it. Someone hardening delivery by setting CIO_TELEGRAM_INTERDICT would
+    have changed nothing for those callers, which is how a careful person makes a
+    change that silently does not take.
+
+    The check now sits at the LOWEST COMMON LAYER -- the function that actually
+    performs the HTTP -- so no caller can reach a send that skips it.
+    """
+    import os
+    return bool(
+        os.environ.get("PYTEST_CURRENT_TEST")
+        or os.environ.get("CIO_TELEGRAM_INTERDICT", "").lower()
+        in ("1", "true", "yes", "on")
+    )
+
+
+def _interdicted_result() -> dict:
+    return {
+        "ok": False,
+        "status_code": 0,
+        "response": {"ok": False, "description": "INTERDICTED_TEST_OR_FLAG"},
+        "interdicted": True,
+    }
+
+
 def deliver_text(
     *,
     token: str,
@@ -100,6 +133,8 @@ def deliver_text(
       attempt, if no message exists yet, send plaintext ONCE. If a message_id
       exists, edit it. Never sendMessage twice for the same key.
     """
+    if _interdicted():
+        return _interdicted_result()
     poster = post or _http_post
     edit_id = None
     if idempotency_key:
@@ -201,17 +236,11 @@ def send_message(
     parse_mode: str | None = "Markdown",
     idempotency_key: str | None = None,
 ) -> dict:
-    # Phase 1 network interdiction: never hit Telegram API under pytest / CI flags
-    import os
-    if os.environ.get("PYTEST_CURRENT_TEST") or os.environ.get("CIO_TELEGRAM_INTERDICT", "").lower() in (
-        "1", "true", "yes", "on",
-    ):
-        return {
-            "ok": False,
-            "status_code": 0,
-            "response": {"ok": False, "description": "INTERDICTED_TEST_OR_FLAG"},
-            "interdicted": True,
-        }
+    # C4: the interdict now lives in deliver_text, the lowest common layer, so it
+    # cannot be bypassed by calling that directly. Kept here as an early return
+    # only to avoid building a request that will be discarded.
+    if _interdicted():
+        return _interdicted_result()
     return deliver_text(
         token=token,
         chat_id=chat_id,

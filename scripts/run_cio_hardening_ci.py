@@ -140,6 +140,9 @@ GATES = [
     ("telegram_chokepoint_ratchet", [
         "tests/test_telegram_chokepoint_ratchet.py",
     ]),
+    ("notification_integrity_cdeg", [
+        "tests/test_notification_integrity_waves_cdeg.py",
+    ]),
     ("governance_section_zero_parity", [
         "tests/test_agents_section_zero_parity.py",
     ]),
