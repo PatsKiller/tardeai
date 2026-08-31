@@ -128,6 +128,9 @@ GATES = [
     ("decision_field_honesty", [
         "tests/test_decision_field_honesty.py",
     ]),
+    ("stop_warning_transitions", [
+        "tests/test_stop_warning_transitions.py",
+    ]),
     ("governance_section_zero_parity", [
         "tests/test_agents_section_zero_parity.py",
     ]),
