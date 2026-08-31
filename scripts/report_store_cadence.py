@@ -19,6 +19,15 @@ Read-only. Never writes. Exit 0 always unless --strict is given.
 """
 from __future__ import annotations
 
+NO_CONSUMER_REASON = (
+    "Operator-facing cadence report. The schedule is PROPOSED, not installed -- "
+    "cron and systemd are operator-only, so this contract has no scheduled caller "
+    "by design and not by omission. Surfacing a SILENT verdict to an operator "
+    "surface is named remaining work: a finding that appears only in a log file is "
+    "the defect this package exists to correct. Invoked today by the operator CLI "
+    "and by tests/test_store_cadence.py."
+)
+
 import argparse
 import json
 import sys
