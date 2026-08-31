@@ -18,6 +18,11 @@ REPO = Path(__file__).resolve().parents[1]
 
 # Ordered, explicit suite list (Phase 10.2)
 GATES = [
+    # C5: declared cadence vs observed output for stores feeding operator surfaces.
+    # strategy_signals stopped advancing 2026-08-07 and nothing watched the date.
+    ("store_cadence", [
+        "tests/test_store_cadence.py",
+    ]),
     # C3: an alarm whose delivery failure is swallowed is worse than no alarm.
     # Shrink-only baseline of named inherited debt; new swallows fail the build.
     ("no_swallowed_alarms", [

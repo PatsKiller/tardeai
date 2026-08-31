@@ -1,0 +1,200 @@
+{
+  "_comment": [
+    "C5 \u2014 stores that feed operator surfaces, declared so something compares their",
+    "declared cadence against their observed output age.",
+    "",
+    "Rows use the SAME schema as config/lane_registry.json and are evaluated by the",
+    "SAME code (scripts/lib/lane_registry.evaluate_lane). This is deliberately an",
+    "extension of the existing liveness monitor, not a second mechanism: AGENTS.md",
+    "\u00a713.5 exists because a parallel monitor is how two answers to one question get",
+    "built. It lives in its own file only because config/lane_registry.json is owned",
+    "by another agent in this run.",
+    "",
+    "Why this exists: strategy_signals stopped advancing on 2026-08-07 and nothing",
+    "watched the date. Three detectors reported nothing for 24 days. A store whose",
+    "last write date goes stale while an operator surface reads it is the finding",
+    "this file makes visible.",
+    "",
+    "Verdicts come from the shared evaluator: LIVE, SLOW, SILENT, EXPECTED_SILENT,",
+    "UNVERIFIABLE, ORPHANED. SILENT and ORPHANED are findings.",
+    "",
+    "Every column below was verified against information_schema, not guessed."
+  ],
+  "lanes": [
+    {
+      "lane_id": "store:strategy_signals",
+      "owner": "signals",
+      "surface": "Strategy Desk / momentum + scalp Telegram alerts",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "trade_ai_orchestrator.py",
+        "match": "trade_ai_orchestrator.py"
+      },
+      "expected_cadence_hours": 12,
+      "active_days": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "db_max",
+        "table": "strategy_signals",
+        "column": "fired_at"
+      },
+      "note": "The 24-day outage. Written in-process by trade_ai_orchestrator via sync_strategy_signals; it has no cron line of its own, which is why a scheduler search alone reported it unscheduled."
+    },
+    {
+      "lane_id": "store:trade_ai_scans",
+      "owner": "discovery",
+      "surface": "trade page candidates; upstream of every strategy signal",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "trade_ai_orchestrator.py",
+        "match": "trade_ai_orchestrator.py"
+      },
+      "expected_cadence_hours": 12,
+      "active_days": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "db_max",
+        "table": "trade_ai_scans",
+        "column": "scanned_at"
+      },
+      "note": "Kept producing through the outage, which is how the break was localised downstream of discovery."
+    },
+    {
+      "lane_id": "store:paper_trade_proposals",
+      "owner": "signals",
+      "surface": "trade page proposals",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "trade_ai_orchestrator.py",
+        "match": "trade_ai_orchestrator.py"
+      },
+      "expected_cadence_hours": 24,
+      "active_days": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "db_max",
+        "table": "paper_trade_proposals",
+        "column": "created_at"
+      },
+      "note": "Grok dates a momentum_scalp proposal cliff to 2026-06-30, earlier than the signal break and still unowned. This row makes that visible instead of inferred."
+    },
+    {
+      "lane_id": "store:scalp_scan_results",
+      "owner": "scalp",
+      "surface": "scalp alerts",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "social_scalp_scanner.py",
+        "match": "social_scalp_scanner.py"
+      },
+      "expected_cadence_hours": 12,
+      "active_days": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "db_max",
+        "table": "scalp_scan_results",
+        "column": "scanned_at"
+      },
+      "note": "Still receives rows; its last GO was 2026-08-13 per Grok. Row age alone will read LIVE \u2014 a store can be written and still be useless, which is why this is a cadence monitor and not a quality one."
+    },
+    {
+      "lane_id": "store:fused_signals",
+      "owner": "fusion",
+      "surface": "CIO home, watch intelligence",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "signal_fusion.py",
+        "match": "signal_fusion.py"
+      },
+      "expected_cadence_hours": 6,
+      "active_days": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "db_max",
+        "table": "fused_signals",
+        "column": "created_at"
+      },
+      "note": "An earlier census claimed this table was dead; Grok measured 7,346 rows in 30h. Declared here so the claim is checkable rather than remembered."
+    },
+    {
+      "lane_id": "store:catalyst_events",
+      "owner": "research",
+      "surface": "CIO home catalysts",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "news_to_catalyst.py",
+        "match": "news_to_catalyst.py"
+      },
+      "expected_cadence_hours": 6,
+      "active_days": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "db_max",
+        "table": "catalyst_events",
+        "column": "created_at"
+      }
+    },
+    {
+      "lane_id": "store:paper_trade_proposals[momentum_scalp]",
+      "owner": "signals",
+      "surface": "trade page \u2014 Momentum Day Scouts",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "trade_ai_orchestrator.py",
+        "match": "trade_ai_orchestrator.py"
+      },
+      "expected_cadence_hours": 48,
+      "active_days": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "db_max",
+        "table": "paper_trade_proposals",
+        "column": "created_at",
+        "where": "strategy_id = 'momentum_scalp'"
+      },
+      "note": "SCOPED DELIBERATELY. The unscoped row above reads LIVE because other strategies keep writing the table, while momentum_scalp proposals stopped 2026-06-30 (Grok). A whole-table cadence check cannot see a per-strategy cliff -- the aggregate hides it. This is the same shape as an audit that reads OK because zero input makes its condition false."
+    }
+  ]
+}
