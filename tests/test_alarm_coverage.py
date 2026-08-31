@@ -13,7 +13,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts" / "lib"))
 
-from alarm_firing_coverage import call_sites, declared_covers, summary  # noqa: E402
+from alarm_firing_coverage import call_sites, declared_covers, is_covered, summary  # noqa: E402
 
 BASELINE = ROOT / "config" / "alarm_firing_baseline.txt"
 
@@ -31,7 +31,8 @@ def _baseline() -> dict[str, int]:
 
 def test_no_file_gains_an_untested_alarm():
     covered = declared_covers(ROOT / "tests")
-    uncovered = Counter(f for f, _ in call_sites(ROOT / "scripts") if f not in covered)
+    uncovered = Counter(f for f, ln in call_sites(ROOT / "scripts")
+                        if not is_covered((f, ln), covered))
     base = _baseline()
     regressions = [f"  {f}: {n} untested send_telegram sites, baseline {base.get(f, 0)}"
                    for f, n in sorted(uncovered.items()) if n > base.get(f, 0)]
@@ -45,7 +46,8 @@ def test_no_file_gains_an_untested_alarm():
 def test_baseline_has_no_stale_entries():
     """Debt paid must be recorded, or the slack absorbs the next regression."""
     covered = declared_covers(ROOT / "tests")
-    uncovered = Counter(f for f, _ in call_sites(ROOT / "scripts") if f not in covered)
+    uncovered = Counter(f for f, ln in call_sites(ROOT / "scripts")
+                        if not is_covered((f, ln), covered))
     stale = [f"  {f}: baseline {n}, actual {uncovered.get(f, 0)}"
              for f, n in sorted(_baseline().items()) if uncovered.get(f, 0) < n]
     assert not stale, "lower these baseline entries:\n" + "\n".join(stale)
