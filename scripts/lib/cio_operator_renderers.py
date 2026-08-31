@@ -246,7 +246,7 @@ def morning_text(product: dict[str, Any]) -> str:
         klass = product.get("action_now_class") or "D"
         lines.append(f"ACTION NOW [{klass}]")
         for e in action_now[:8]:
-            lines.append(render_decision(e))
+            lines.append(render_decision(e, product))
             lines.append("")
     else:
         lines.append("No ACT-NOW items. Standing posture below.")
@@ -330,7 +330,7 @@ def eod_text(product: dict[str, Any]) -> str:
     if material:
         lines.append("Meaningful changes")
         for e in material[:8]:
-            lines.append(render_decision(e))
+            lines.append(render_decision(e, product))
             lines.append("")
     else:
         lines.append("No material CIO change this session.")

@@ -125,6 +125,9 @@ GATES = [
     ("research_scheduler_child_interpreter", [
         "tests/test_research_scheduler_child_interpreter.py",
     ]),
+    ("decision_field_honesty", [
+        "tests/test_decision_field_honesty.py",
+    ]),
     ("governance_section_zero_parity", [
         "tests/test_agents_section_zero_parity.py",
     ]),
