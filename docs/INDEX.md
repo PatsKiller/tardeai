@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `f270cf51e55da69ce06ea9dcc666b1fb0b7b787858e020985e3c4646b7f193a5`
+**Tree fingerprint:** `c3daaeffcbd76f273821165a2805a48094a4d263a4a2fdda47601e8bd42ff74e`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,10 +12,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2267 |
-| Markdown (excl. this INDEX) | 1899 |
+| Files under `docs/` (excl. this INDEX) | 2268 |
+| Markdown (excl. this INDEX) | 1900 |
 | **MISSING HEADER** | **1034** |
-| Header OK | 865 |
+| Header OK | 866 |
 | Duplicate groups | 8 |
 
 ### By status_guess
@@ -30,7 +30,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_raw_sync | 8 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 12 |
-| review_required | 1899 |
+| review_required | 1900 |
 
 ## Markdown tree
 
@@ -592,6 +592,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/audits/overnight/G4_ARCHIVE_MECHANISM_2026-08-31.md` | Overnight G4 — Archive mechanism | review_required | OK | `81e760481cc0` |
 | `docs/audits/overnight/G5_DUPLICATION_RECOMMENDATIONS_2026-08-31.md` | G5 — Duplication cluster recommendations (from Census Part 3) | review_required | OK | `0b081115c5fc` |
 | `docs/audits/overnight/G6_MISSING_STORES_2026-08-31.md` | Overnight G6 — Missing CanonicalStoreRegistry stores | review_required | OK | `8d97c7c5491f` |
+| `docs/audits/overnight/W3_3A_POPULATION_2026-09-01.md` | Night Three Wave 3a — project `population` onto operator / home surfaces | review_required | OK | `66b4016fcb90` |
 | `docs/audits/overnight/WAVE_E_CATALYST_2026-08-31.md` | WAVE E — Catalyst pipeline (E1→E5) · 2026-08-31 | review_required | OK | `c700329a997a` |
 | `docs/briefs/PHASE_11_superseded.md` | Phase 11 — superseded by the validation sweep before execution | archive_superseded | MISSING HEADER | `a77d6d25a9e3` |
 | `docs/briefs/README.md` | Wave briefs | review_required | MISSING HEADER | `a2f504a8b977` |
