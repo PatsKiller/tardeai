@@ -112,11 +112,49 @@ def unavailable(*, reason: str, detail: str | None = None, path: str | None = No
     return payload
 
 
+def _cash_block_as_of(cash_rows: list[dict[str, Any]], doc: dict[str, Any]) -> dict[str, Any]:
+    """Cash block age = oldest contributing balance, never composition time.
+
+    Reuses the capital-plan evidence clock so OP.cash / home.cash / capital_plan
+    share one rule. Dollar amounts are not touched here — labelling only (B4).
+    """
+    try:
+        from scripts.lib.cio_capital_plan import cash_evidence_as_of
+        return cash_evidence_as_of(cash_rows, doc)
+    except Exception:  # noqa: BLE001
+        return {
+            "as_of": None,
+            "oldest_row_as_of": None,
+            "newest_row_as_of": None,
+            "mixed_ages": False,
+            "distinct_stamps": 0,
+            "unstamped": True,
+            "unstamped_accounts": [],
+            "by_account": [],
+            "document_as_of": doc.get("as_of") or doc.get("generated_at"),
+            "source": "holdings rows where is_cash, oldest stamp wins",
+            "note": (
+                "The block is as current as its stalest account, never the moment "
+                "the builder ran."
+            ),
+        }
+
+
 def _holdings_sections(root: Path | str | None) -> dict[str, Any]:
     hloc = load_json_store("portfolio.holdings.current", root=root)
     data_quality = {"state": "OK", "labels": []}
     portfolio: dict[str, Any] = {"holdings_n": 0, "source": "portfolio.holdings.current"}
-    cash: dict[str, Any] = {"status": "UNKNOWN"}
+    cash: dict[str, Any] = {
+        "status": "UNKNOWN",
+        "as_of": None,
+        "cash_as_of": {
+            "as_of": None,
+            "unstamped": True,
+            "note": "holdings unavailable; do not read product as_of as cash age",
+        },
+        "class": "D",
+        "provenance_class": "D",
+    }
     if not hloc.get("available"):
         data_quality = {
             "state": "MISSING_REQUIRED_INPUT" if hloc.get("reason") == "PRODUCER_NOT_RUN" else hloc.get("status") or "UNAVAILABLE",
@@ -142,13 +180,46 @@ def _holdings_sections(root: Path | str | None) -> dict[str, Any]:
         "source": "portfolio.holdings.current",
         "as_of": doc.get("as_of") or doc.get("generated_at"),
         "freshness_note": doc.get("_freshness_note"),
+        "class": "D",
+        "provenance_class": "D",
     }
+    cash_as_of = _cash_block_as_of(cash_rows, doc)
     cash = {
         "cash_usd": round(cash_usd, 2),
         "cash_n": len(cash_rows),
         "status": "PRESENT" if cash_rows else "UNCONFIRMED",
+        # B4: own evidence clock — oldest contributing balance, not product as_of.
+        "as_of": cash_as_of.get("as_of"),
+        "cash_as_of": cash_as_of,
+        "class": "D",
+        "provenance_class": "D",
     }
     return {"portfolio": portfolio, "cash": cash, "data_quality": data_quality}
+
+
+def _temperament_display(temp: dict[str, Any], cash: dict[str, Any]) -> dict[str, Any]:
+    """Provenance at display for temperament (B5).
+
+    `portfolio_implication` is a standing-policy constant (class T). It must not
+    render as situation guidance. Cash on temperament inherits the cash block's
+    own as_of — never the product composition stamp.
+    """
+    out = dict(temp or {})
+    implication = out.get("portfolio_implication")
+    if implication:
+        out["standing_policy_template"] = implication
+        out["standing_policy_template_class"] = out.get("portfolio_implication_class") or "T"
+        out["portfolio_implication_is_guidance"] = False
+        out["portfolio_implication_role"] = "standing_policy_template"
+        # Stop rendering the constant in the guidance-shaped field.
+        out["portfolio_implication"] = None
+    cash_as_of = cash.get("cash_as_of") if isinstance(cash, dict) else None
+    if isinstance(cash_as_of, dict):
+        out["cash_as_of"] = cash_as_of
+        if out.get("cash") is not None or out.get("cash_pct") is not None:
+            out.setdefault("as_of", cash_as_of.get("as_of"))
+    out.setdefault("cash_class", "D")
+    return out
 
 
 def _ops_degradation(root: Path | str | None) -> dict[str, Any] | None:
@@ -381,7 +452,10 @@ def build_operator_product(*, root: Path | str | None = None, persist: bool = Fa
         ),
         "holdings_thesis_coverage": cov,
         "surface_a_status": surface_a,
-        "temperament": brief.get("temperament") if isinstance(brief.get("temperament"), dict) else {},
+        "temperament": _temperament_display(
+            brief.get("temperament") if isinstance(brief.get("temperament"), dict) else {},
+            holdings["cash"],
+        ),
         "reentry": {
             "count": reentry.get("count"),
             "counts": reentry.get("counts"),
@@ -424,6 +498,27 @@ def build_operator_product(*, root: Path | str | None = None, persist: bool = Fa
         "gui_is_projection": True,
         "operator_data_quality": data_quality.get("state") or "OK",
         "standing_decisions_complete": True,
+        # B4/B5 — per-block clocks + display provenance. Product as_of above is
+        # composition/brief time; block ages are independent.
+        "block_as_of": {
+            "cash": (holdings["cash"] or {}).get("as_of"),
+            "portfolio": (holdings["portfolio"] or {}).get("as_of"),
+            "product_composition": brief.get("as_of") or _now(),
+            "note": (
+                "Block age is the oldest contributing evidence for that block. "
+                "product_composition is when the brief/product was composed — "
+                "never read it as cash age."
+            ),
+        },
+        "provenance_footer": {
+            "model_produced": False,
+            "classes": "D counts/sums · T templates · A case-summary context",
+            "writer_means": "author",
+            "note": (
+                "Deterministic projection of cio.product.current + holdings. "
+                "No model produced this operator product."
+            ),
+        },
     }
     from scripts.lib.cio_p90_voice import apply_operator_voice
     product = apply_operator_voice(product)

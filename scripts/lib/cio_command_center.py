@@ -1331,11 +1331,15 @@ def _row_narrative(store: Any, keys: tuple[str, ...], fallback_what: str) -> dic
                     if _narrative_is_clean(nar.get("what")):
                         out = dict(nar)
                         out["narrative_source"] = "record"
+                        # B5 — writer names the author, not the last hand.
+                        out["author"] = out.get("writer") or out.get("author") or "record"
+                        out["writer"] = out["author"]
                         return out
                     return {
                         "subject_key": key,
                         "what": fallback_what,
                         "writer": "deterministic_fallback",
+                        "author": "deterministic_fallback",
                         "from_record": False,
                         "narrative_source": "deterministic",
                         "record_refused": "instruction_in_narrative",
@@ -1344,6 +1348,7 @@ def _row_narrative(store: Any, keys: tuple[str, ...], fallback_what: str) -> dic
         "subject_key": keys[0] if keys else None,
         "what": fallback_what,
         "writer": "deterministic_fallback",
+        "author": "deterministic_fallback",
         "from_record": False,
         "narrative_source": "deterministic",
     }
@@ -1484,7 +1489,7 @@ def build_cash_letter_section(
         except Exception:                                        # noqa: BLE001
             rec = None
     try:
-        return build_cash_letter(
+        letter = build_cash_letter(
             rec, capital_plan=capital_plan, seasonality=seasonality, now=now)
     except Exception as exc:                                     # noqa: BLE001
         # A record that trips the instruction guard loses its prose, not the
@@ -1493,7 +1498,6 @@ def build_cash_letter_section(
             letter = build_cash_letter(
                 None, capital_plan=capital_plan, seasonality=seasonality, now=now)
             letter["record_refused"] = str(exc)[:160]
-            return letter
         except Exception:                                        # noqa: BLE001
             return {
                 "schema": "CashSleeveLetter@v1",
@@ -1501,6 +1505,39 @@ def build_cash_letter_section(
                 "reason": str(exc)[:160],
                 "authority": "READ_ONLY_ADVISORY",
             }
+    return _stamp_cash_letter_provenance(letter, capital_plan=capital_plan)
+
+
+def _stamp_cash_letter_provenance(
+    letter: dict[str, Any],
+    *,
+    capital_plan: Optional[dict[str, Any]] = None,
+) -> dict[str, Any]:
+    """B4/B5 — letter age is cash evidence, writer means author.
+
+    `build_cash_letter` historically stamped `as_of=now` (composition). The
+    dollars can be weeks older. Prefer capital_plan.cash_as_of (oldest
+    contributing balance). Dollar fields are left untouched.
+    """
+    out = dict(letter or {})
+    author = out.get("writer") or out.get("author") or "deterministic_fallback"
+    out["author"] = author
+    out["writer"] = author  # AGENTS §9.2 — writer names the author
+    evidence = (capital_plan or {}).get("cash_as_of")
+    if isinstance(evidence, dict) and evidence.get("as_of"):
+        out["composition_as_of"] = out.get("as_of")
+        out["as_of"] = evidence.get("as_of")
+        out["cash_as_of"] = evidence
+        out["as_of_source"] = "cash_evidence_oldest_balance"
+    else:
+        out["as_of_source"] = out.get("as_of_source") or "composition_time"
+        out.setdefault(
+            "as_of_note",
+            "cash evidence age not supplied; do not read composition time as "
+            "the age of these dollars",
+        )
+    out["model_produced"] = False
+    return out
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1632,13 +1669,50 @@ def build_office_home(
         op.get("watch_block_summary") if isinstance(op.get("watch_block_summary"), dict) else {}
     )
     home["cash"] = op.get("cash") or {}
-    home["temperament"] = op.get("temperament") or op.get("macro") or {}
+    # B5 — demote constant standing-policy text so home does not render it as
+    # situation guidance. Prefer OP's already-redacted temperament.
+    temp = op.get("temperament") or op.get("macro") or {}
+    if isinstance(temp, dict):
+        temp = dict(temp)
+        if temp.get("portfolio_implication") and not temp.get(
+            "portfolio_implication_is_guidance"
+        ):
+            temp.setdefault(
+                "standing_policy_template", temp.get("portfolio_implication")
+            )
+            temp["portfolio_implication"] = None
+            temp["portfolio_implication_is_guidance"] = False
+            temp["portfolio_implication_role"] = "standing_policy_template"
+        # Cash on temperament shares the cash block clock when OP stamped it.
+        if isinstance(home["cash"], dict) and home["cash"].get("cash_as_of"):
+            temp.setdefault("cash_as_of", home["cash"]["cash_as_of"])
+    home["temperament"] = temp
     home["case_summaries"] = op.get("case_summaries") or op.get("research_cases") or {
         "banner": "A-context · NON_AUTHORITATIVE · does not change action",
         "class": "A",
         "count": 0,
         "items": [],
     }
+    home["block_as_of"] = op.get("block_as_of") or {
+        "cash": (home["cash"] or {}).get("as_of") if isinstance(home["cash"], dict) else None,
+        "product_composition": op.get("as_of"),
+        "home_composition": home.get("as_of"),
+        "note": (
+            "home.as_of is request composition time; cash age is home.cash.as_of "
+            "/ capital_plan.cash_as_of (oldest contributing balance)."
+        ),
+    }
+    home["provenance_footer"] = op.get("provenance_footer") or {
+        "model_produced": False,
+        "classes": "D counts/sums · T templates · A case-summary context",
+        "writer_means": "author",
+        "note": (
+            "Office home is a deterministic composition. No model produced "
+            "this page; model/process telemetry belongs below the fold only "
+            "when a model actually ran."
+        ),
+    }
+    home["model_produced"] = False
     # Wave 2 slice 10: overlay Surface A reentry counts onto opportunities
     # without merging queue chips with the Surface A book (dual pipes).
     home["opportunities"] = overlay_surface_a_reentry_on_opportunities(
