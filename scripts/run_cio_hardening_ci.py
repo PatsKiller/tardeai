@@ -153,6 +153,9 @@ GATES = [
         "tests/test_reactive_enqueue_routing.py",
         "tests/test_next_eligible_normal_path.py",
     ]),
+    ("overnight_d1_m5_cadence", [
+        "tests/test_overnight_d1_m5_cadence.py",
+    ]),
     ("r13_institutional", [
         "tests/test_r13_institution.py",
         "tests/test_r13_goldens_properties_faults.py",
