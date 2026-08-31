@@ -187,7 +187,7 @@ python3 scripts/report_docs_inventory.py --check-index
 | **6b tripwire** | **PASS** |
 | **6c MISSING HEADER** | **1034** |
 | **6c CI drift check** | present + mutation red/green proven |
-| **PRs this tranche** | docs-only (this audit + INDEX regen) if pushed; **no resolution-layer code PR** |
+| **PRs this tranche** | [#773](https://github.com/PatsKiller/tardeai/pull/773) docs-only (this audit + INDEX regen); **no resolution-layer code PR** |
 
 ---
 
