@@ -22,6 +22,14 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+# Writer-status sidecar is operator/diagnose output written beside the
+# projection; no production importer reads CatalystGraphWriterStatus@v1 yet.
+# --diagnose-staleness and the audit doc are the consumers of record.
+NO_CONSUMER_REASON = (
+    "CatalystGraphWriterStatus@v1 is a served-path staleness sidecar for E5; "
+    "operators read it via --diagnose-staleness / audit, no code importer yet."
+)
+
 ROOT = Path(__file__).resolve().parents[1]
 for p in (str(ROOT), str(ROOT / "scripts")):
     if p not in sys.path:
