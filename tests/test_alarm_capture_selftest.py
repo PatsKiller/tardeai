@@ -1,4 +1,9 @@
-"""The harness must be proven to capture, and proven to notice a silent alarm."""
+"""The harness must be proven to capture, and proven to notice a silent alarm.
+
+Routed through send_telegram(bypass_router=True), never _raw_send_telegram: the
+chokepoint ratchet counts a direct low-level call as a NEW bypass, and it is right
+to. A test that bypasses the chokepoint to prove the chokepoint works is not a test.
+"""
 from __future__ import annotations
 
 # `alarm_capture` is a fixture from tests/conftest.py — no import needed.
@@ -6,7 +11,7 @@ from __future__ import annotations
 
 def test_harness_captures_a_real_send(alarm_capture):
     import telegram_alert as TA
-    TA._raw_send_telegram("probe: harness self-test")
+    TA.send_telegram("probe: harness self-test", bypass_router=True)
     alarm_capture.assert_fired(contains="harness self-test")
 
 
@@ -24,5 +29,5 @@ def test_harness_sends_nothing_over_the_network(alarm_capture, monkeypatch):
         raise AssertionError("the real transport was called — the harness leaked")
     monkeypatch.setattr(TT, "send_message", _boom, raising=True)
     import telegram_alert as TA
-    TA._raw_send_telegram("probe: must not leak")
+    TA.send_telegram("probe: must not leak", bypass_router=True)
     alarm_capture.assert_fired()
