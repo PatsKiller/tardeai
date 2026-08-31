@@ -375,6 +375,39 @@ def protected_holdings_write(new_holdings, source="schwab_sync", account_key="sc
         except Exception as _e:
             print(f"  [transfer-normalize] detect failed (non-fatal): {str(_e)[:120]}")
 
+    # G1 — resolution-layer dual-write. When the primary path is one of the
+    # durable write targets (served/persistent + checkout), mirror the validated
+    # bytes to the other targets so cron→dev and release readers cannot diverge
+    # on the next write. Never runs for an arbitrary target_path (tests / one-offs),
+    # and never merges two historically divergent copies — it writes ONE new
+    # payload. report_authoritative_divergence reports existing forks.
+    try:
+        from scripts.lib.persistent_state_root import portfolio_state_write_targets
+
+        durable = [
+            (d / "holdings.json").resolve()
+            for d in portfolio_state_write_targets(PROJECT_ROOT)
+        ]
+        hp_res = HP.resolve()
+        if hp_res in durable:
+            primary_bytes = HP.read_bytes()
+            for other in durable:
+                if other == hp_res:
+                    continue
+                try:
+                    other.parent.mkdir(parents=True, exist_ok=True)
+                    fd2, tmp2 = tempfile.mkstemp(dir=str(other.parent), suffix=".tmp")
+                    with os.fdopen(fd2, "wb") as f:
+                        f.write(primary_bytes)
+                    os.replace(tmp2, other)
+                except OSError as e:
+                    print(
+                        f"  [holdings-guard] secondary write failed for {other}: "
+                        f"{type(e).__name__}: {e}"
+                    )
+    except Exception as _e:
+        print(f"  [holdings-guard] secondary mirror skipped (non-fatal): {str(_e)[:120]}")
+
     return {"wrote": True, "status": "ok", "total_value": v, "position_count": n, "basis_flags": flagged}
 
 
