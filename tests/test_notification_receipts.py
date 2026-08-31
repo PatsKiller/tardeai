@@ -100,6 +100,19 @@ def test_recording_a_receipt_is_non_fatal():
     m.record_send_receipt(FailingConn(), None, {"ok": True})
 
 
+def test_the_monitor_imports_without_a_database():
+    """CI runs the deterministic subset with no Postgres.
+
+    This module previously did a module-level `from session13_db import get_conn`,
+    so merely importing it required psycopg2 and these tests failed in CI while
+    passing locally -- green on a machine that happened to have the driver.
+    """
+    import importlib
+    import open_trade_monitor as m
+    importlib.reload(m)
+    assert callable(m.get_conn)
+
+
 def test_both_alert_paths_record_a_receipt():
     src = (ROOT / "scripts" / "open_trade_monitor.py").read_text(encoding="utf-8")
     code = [ln for ln in src.splitlines() if not ln.lstrip().startswith("#")]

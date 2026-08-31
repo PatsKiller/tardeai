@@ -23,7 +23,14 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
-from session13_db import get_conn
+# 2026-08-31: this was a module-level `from session13_db import get_conn`, so
+# importing this module required psycopg2 -- and the deterministic CI subset
+# runs WITHOUT a database. The repo supports JSON-only mode by design
+# (AGENTS.md §18), and a notification module should not need a live DB merely
+# to be imported. Deferred to first use; the single call site is run_monitor().
+def get_conn(*args, **kwargs):
+    from session13_db import get_conn as _get_conn
+    return _get_conn(*args, **kwargs)
 
 log = logging.getLogger("open_trade_monitor")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(message)s")
