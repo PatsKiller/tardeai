@@ -382,7 +382,8 @@ def protected_holdings_write(new_holdings, source="schwab_sync", account_key="sc
     # and never merges two historically divergent copies — it writes ONE new
     # payload. report_authoritative_divergence reports existing forks.
     try:
-        from scripts.lib.persistent_state_root import portfolio_state_write_targets
+        # scripts-only spelling (G2): this file runs with scripts/ on sys.path.
+        from lib.persistent_state_root import portfolio_state_write_targets
 
         durable = [
             (d / "holdings.json").resolve()
