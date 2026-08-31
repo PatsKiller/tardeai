@@ -130,7 +130,12 @@ def normalize_decision(row: dict[str, Any], *, generation_id: str | None = None,
         row.get("next_review") or row.get("next_review_at"),
         empty="next material generation or next session — standing cadence, not a dated catalyst",
     )
-    dq = row.get("data_quality") or "OK"
+    # 2026-08-31 (A2): this defaulted to "OK". An absent field must never render
+    # as an affirmative all-clear -- the brief printed "Data quality: OK" under
+    # every decision in a document whose own holdings verdict was ATTENTION with
+    # REPRICE_AHEAD_OF_POSITIONS and CASH_TOTAL_DISAGREEMENT. None here lets the
+    # renderer say "not computed", which is true, instead of "OK", which was not.
+    dq = row.get("data_quality")
 
     payload = f"{entity}|{action}|{generation_id or ''}|{what}"
     did = row.get("decision_id") or ("dec_" + hashlib.sha256(payload.encode()).hexdigest()[:16])
