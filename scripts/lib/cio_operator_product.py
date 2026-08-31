@@ -10,6 +10,7 @@ from typing import Any
 from scripts.lib.atomic_json_store import append_jsonl, atomic_write_json
 from scripts.lib.canonical_cognition_bind import bind_market_context
 from scripts.lib.canonical_store_registry import load_json_store, resolve_store
+from scripts.lib.cio_cash_evidence import cash_evidence_as_of, unstamped_evidence
 from scripts.lib.operator_decision_contract import completeness, normalize_decision
 from scripts.lib.product_availability import AVAILABLE, UNAVAILABLE_REASONS, availability_payload, canonicalize_reason
 
@@ -116,7 +117,7 @@ def _holdings_sections(root: Path | str | None) -> dict[str, Any]:
     hloc = load_json_store("portfolio.holdings.current", root=root)
     data_quality = {"state": "OK", "labels": []}
     portfolio: dict[str, Any] = {"holdings_n": 0, "source": "portfolio.holdings.current"}
-    cash: dict[str, Any] = {"status": "UNKNOWN"}
+    cash: dict[str, Any] = {"status": "UNKNOWN", "cash_as_of": unstamped_evidence()}
     if not hloc.get("available"):
         data_quality = {
             "state": "MISSING_REQUIRED_INPUT" if hloc.get("reason") == "PRODUCER_NOT_RUN" else hloc.get("status") or "UNAVAILABLE",
@@ -143,10 +144,18 @@ def _holdings_sections(root: Path | str | None) -> dict[str, Any]:
         "as_of": doc.get("as_of") or doc.get("generated_at"),
         "freshness_note": doc.get("_freshness_note"),
     }
+    # The cash block used to publish a figure and a count and no date at all,
+    # directly beside a `portfolio.as_of` carrying the document clock -- so the
+    # only date in view belonged to the equity repricing, and the reader had no
+    # way to tell that the oldest balance in the total was weeks old. One shared
+    # derivation: the block is dated by its OLDEST contributing balance.
+    cash_evidence = cash_evidence_as_of(cash_rows, doc)
     cash = {
         "cash_usd": round(cash_usd, 2),
         "cash_n": len(cash_rows),
         "status": "PRESENT" if cash_rows else "UNCONFIRMED",
+        "as_of": cash_evidence["as_of"],
+        "cash_as_of": cash_evidence,
     }
     return {"portfolio": portfolio, "cash": cash, "data_quality": data_quality}
 

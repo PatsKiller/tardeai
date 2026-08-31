@@ -19,6 +19,8 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Optional
 
+from scripts.lib.cio_cash_evidence import evidence_from_plan
+
 OFFICE_HOME_VERSION = "office_home_1.3.0"  # Phase 6–13: strategy context on home
 
 # Human labels for stance / posture / readiness codes surfaced in primary views.
@@ -583,11 +585,7 @@ def build_capital_plan(plan: Optional[dict[str, Any]] = None) -> dict[str, Any]:
         # The cash block's own evidence clock. The page-level stamp is when the
         # surface was composed; these dollars can be much older, and on the live
         # book they span 27 days. Never let the reader infer age from the frame.
-        "cash_as_of": p.get("cash_as_of") or {
-            "as_of": None, "unstamped": True,
-            "note": "cash age not supplied by the plan; do not read the page "
-                    "stamp as the age of these dollars",
-        },
+        "cash_as_of": evidence_from_plan(p),
         "plan_version": p.get("plan_version"),
         "plan_digest": digest,
         "double_count_guard": src.get("double_count_guard") or "earmarked_redeploy_excluded_from_raise",

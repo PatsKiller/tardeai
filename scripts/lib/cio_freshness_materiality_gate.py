@@ -26,6 +26,10 @@ import json
 from datetime import datetime, timezone
 from typing import Any, Optional
 
+from scripts.lib.cio_cash_evidence import (  # noqa: E402
+    evidence_from_holdings_doc,
+    unstamped_evidence,
+)
 # Reuse timestamp helpers from financial truth gate
 from scripts.lib.cio_financial_truth_gate import (  # noqa: E402
     PROCESS_CLOCK_FIELDS,
@@ -452,6 +456,40 @@ def _freshness_record(
     }
 
 
+def _cash_freshness_record(
+    *,
+    ts: Any,
+    now: datetime,
+    source: str,
+    present: bool,
+    session: Optional[dict[str, Any]] = None,
+    evidence: Optional[dict[str, Any]] = None,
+) -> dict[str, Any]:
+    """The cash evidence class, with the per-account spread behind it.
+
+    The headline age is the oldest contributing balance. The breakdown rides
+    along so "why is this stale" is answerable from the payload, without
+    running a query against a store the reader may not have.
+    """
+    rec = _freshness_record(
+        name="cash", ts=ts, max_age_sec=CASH_FRESH_SEC,
+        now=now, required_for_act_now=True, source=source,
+        present=present, session=session,
+    )
+    ev = evidence if isinstance(evidence, dict) else unstamped_evidence()
+    rec["cash_evidence"] = {
+        "as_of": ev.get("as_of"),
+        "oldest_row_as_of": ev.get("oldest_row_as_of"),
+        "newest_row_as_of": ev.get("newest_row_as_of"),
+        "mixed_ages": ev.get("mixed_ages"),
+        "unstamped": ev.get("unstamped"),
+        "unstamped_accounts": ev.get("unstamped_accounts"),
+        "by_account": ev.get("by_account"),
+        "note": ev.get("note"),
+    }
+    return rec
+
+
 def collect_evidence_timestamps(
     *,
     decision: dict[str, Any],
@@ -502,7 +540,13 @@ def collect_evidence_timestamps(
     mv_ts = quote_ts
     if mv_ts is None:
         mv_ts = pos.get("broker_position_as_of") or pos.get("source_as_of")
-    cash_ts = holdings_ts
+    # cash: the OLDEST cash row, from the one shared derivation. This used to
+    # be `holdings_ts` -- the document's repricing clock -- which reported the
+    # book's five cash balances as 11.7 hours old on a day when the oldest of
+    # them had not been confirmed for 27. Repricing an equity mark says nothing
+    # about when a broker last confirmed a cash balance, so it may not date one.
+    cash_evidence = evidence_from_holdings_doc(doc) if doc else unstamped_evidence()
+    cash_ts = cash_evidence.get("as_of")
     # advisory / desk
     advisory_ts = (
         decision.get("advisory_as_of")
@@ -544,6 +588,7 @@ def collect_evidence_timestamps(
         "quote": quote_ts,
         "market_value": mv_ts,
         "cash": cash_ts,
+        "cash_evidence": cash_evidence,
         "advisory": advisory_ts,
         "analyst": analyst_ts,
         "thesis": thesis_ts,
@@ -560,7 +605,7 @@ def collect_evidence_timestamps(
             "holdings": "holdings.json",
             "quote": quote_source,
             "market_value": "holdings.market_value",
-            "cash": "holdings.cash",
+            "cash": "holdings.cash rows, oldest stamp wins",
             "advisory": "opportunity_queue/directive",
             "analyst": "analyst_consensus",
             "thesis": "cio_thesis",
@@ -672,11 +717,10 @@ def evaluate_decision_actionability(
             present=mv_present,
             after_hours_ok=True, session=session,
         ),
-        _freshness_record(
-            name="cash", ts=stamps["cash"], max_age_sec=CASH_FRESH_SEC,
-            now=now, required_for_act_now=True, source=str(src.get("cash") or ""),
+        _cash_freshness_record(
+            ts=stamps["cash"], now=now, source=str(src.get("cash") or ""),
             present=bool(stamps["cash"] or holdings_doc),
-            session=session,
+            session=session, evidence=stamps.get("cash_evidence"),
         ),
         _freshness_record(
             name="risk", ts=stamps["risk"], max_age_sec=RISK_FRESH_SEC,

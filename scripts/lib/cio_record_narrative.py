@@ -28,6 +28,7 @@ import re
 from datetime import datetime, timezone
 from typing import Any, Optional
 
+from scripts.lib.cio_cash_evidence import evidence_from_plan, oldest_as_of
 from scripts.lib.cio_instrument_record import CASH_SLEEVE, content_hash
 
 SCHEMA = "CashSleeveLetter@v1"
@@ -100,6 +101,13 @@ def build_cash_letter(
     if cash_usd is None:
         cash_usd = cp.get("cash_total_usd")
 
+    # The letter used to stamp itself `as_of: now` and print the cash figure
+    # directly underneath, which reads as "this is what you hold right now".
+    # On the served book those dollars were up to 27 days old. The letter now
+    # dates the MONEY, from the one shared derivation, and keeps the moment it
+    # was written under its own name.
+    cash_as_of = evidence_from_plan(cp)
+
     narrative = rec.get("cc_narrative") or {}
     what = str(narrative.get("what") or "").strip()
     if not what:
@@ -133,7 +141,10 @@ def build_cash_letter(
         "financial_action": False,
         "next_eligible_at": rec.get("next_eligible_at"),
         "writer": narrative.get("writer") or "deterministic_fallback",
-        "as_of": now.isoformat(),
+        # `as_of` is the age of the dollars above it, never the build clock.
+        "as_of": oldest_as_of(cash_as_of),
+        "cash_as_of": cash_as_of,
+        "composed_at": now.isoformat(),
         "from_record": bool(record),
     }
     # The guard runs on what actually reaches the reader.

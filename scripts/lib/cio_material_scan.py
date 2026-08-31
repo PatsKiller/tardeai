@@ -154,7 +154,17 @@ def _holdings_decisions(events: list[dict[str, Any]], *, baseline: bool) -> list
 
 
 def _cash_decision(plan: dict[str, Any], reclass: dict[str, Any]) -> dict[str, Any]:
+    from scripts.lib.cio_cash_evidence import evidence_from_plan
+
     cash = cash_posture(plan)
+    # The prose prints the cash total. It has to print how old that total is,
+    # or the sentence reads as a live balance. One derivation: oldest wins.
+    cash_evidence = evidence_from_plan(plan)
+    _as_of = cash_evidence.get("as_of")
+    cash_age_phrase = (
+        f" (cash as of {_as_of}, oldest contributing balance)" if _as_of
+        else " (cash age UNDATED -- no balance carries a confirmation stamp)"
+    )
     status = str(cash.get("cash_posture_status") or "UNKNOWN")
     investable = cash.get("cash_investable_usd")
     reserve = cash.get("cash_reserved_usd")
@@ -177,7 +187,8 @@ def _cash_decision(plan: dict[str, Any], reclass: dict[str, Any]) -> dict[str, A
     else:
         action = "HOLD_CASH"
         why = (
-            f"HOLD CASH / WAIT. Cash {status}: total ${float(cash.get('cash_total_usd') or 0):,.0f}, "
+            f"HOLD CASH / WAIT. Cash {status}: total ${float(cash.get('cash_total_usd') or 0):,.0f}"
+            f"{cash_age_phrase}, "
             f"investable ${float(investable or 0):,.0f}, reserve ${float(reserve or 0):,.0f}, "
             f"recommended deploy ${float(deploy or 0):,.0f} / raise "
             f"${float(cash.get('net_recommended_raise_usd') or 0):,.0f}. "
@@ -206,6 +217,7 @@ def _cash_decision(plan: dict[str, Any], reclass: dict[str, Any]) -> dict[str, A
                 "remain_cash": reserve,
             },
             "cash_posture": cash,
+            "cash_as_of": cash_evidence,
             "reentry_call": reclass.get("call"),
             "act_now": act_now_flag,
             "action_label": "ACT_NOW" if act_now_flag else "NO_ACTION",
@@ -590,6 +602,7 @@ def scan_office(
             live_status=str(cash_blob.get("cash_posture_status") or ""),
             policy=policy_doc.get("policy") if isinstance(policy_doc.get("policy"), dict) else policy_doc,
             capital_plan_version=str(cash_blob.get("version") or ""),
+            cash_as_of=cash_blob.get("cash_as_of"),
         )
         policy_gap = policy_prov.get("policy_status") == "POLICY_GAP"
         sit_office = office.get("situation_office") if isinstance(office.get("situation_office"), dict) else None

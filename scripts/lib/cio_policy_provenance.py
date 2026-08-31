@@ -6,6 +6,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from scripts.lib.cio_cash_evidence import is_evidence_block, unstamped_evidence
+
 AUTHORITY = "READ_ONLY_ADVISORY"
 SCHEMA = "PolicyProvenance@v1"
 
@@ -16,6 +18,31 @@ DEFAULT_CASH_MAX_PCT = 25.0
 KIND_FACT = "MATERIAL_FACT"
 KIND_GAP = "POLICY_GAP"
 KIND_INTERP = "ADVISORY_INTERPRETATION"
+
+# Freshness vocabulary, shared with the financial truth gate so the operator
+# does not have to learn two of them. This module publishes the STAMP, not an
+# age verdict -- `effective_at` carries the date and the reader (or the gate)
+# decides whether that is recent enough.
+FRESH_AS_OF = "VERIFIED_AS_OF"
+FRESH_UNDATED = "DATA_UNAVAILABLE"
+FRESH_UNAVAILABLE = "UNAVAILABLE"
+
+
+def cash_fact_freshness(value: Any, cash_as_of: dict[str, Any] | None) -> tuple[str, str | None]:
+    """Freshness + effective_at for a cash fact, from the shared derivation.
+
+    This used to be `"CURRENT" if value is not None`, with `effective_at=None`:
+    the presence of a number was treated as proof of its age. On the served
+    book the number was present and up to 27 days old. A cash figure is now
+    dated by the OLDEST balance that contributes to it, or is openly undated.
+    """
+    if value is None:
+        return FRESH_UNAVAILABLE, None
+    ev = cash_as_of if is_evidence_block(cash_as_of) else unstamped_evidence()
+    stamp = ev.get("as_of")
+    if not stamp:
+        return FRESH_UNDATED, None
+    return FRESH_AS_OF, str(stamp)
 
 
 def _field(
@@ -63,8 +90,15 @@ def audit_cash_posture_policy(
     live_status: str | None,
     policy: dict[str, Any] | None,
     capital_plan_version: str | None = None,
+    cash_as_of: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Explain ABOVE_BAND / IN_BAND without inventing operator policy."""
+    """Explain ABOVE_BAND / IN_BAND without inventing operator policy.
+
+    `cash_as_of` is the capital plan's cash-evidence block (the one shared
+    derivation). Omitting it does not make the cash look current -- the facts
+    below then publish DATA_UNAVAILABLE rather than borrowing a clock.
+    """
+    cash_freshness, cash_effective_at = cash_fact_freshness(cash_total_usd, cash_as_of)
     confirmed = confirmed_cash_range(policy)
     cash_pct = None
     try:
@@ -77,12 +111,12 @@ def audit_cash_posture_policy(
         _field(
             field="observed_cash_usd",
             value=cash_total_usd,
-            source="verified_holdings_or_capital_plan",
+            source="verified_holdings_or_capital_plan (oldest contributing balance)",
             authority=AUTHORITY,
             version=capital_plan_version,
-            effective_at=None,
+            effective_at=cash_effective_at,
             confirmed_by_operator=False,
-            freshness="CURRENT" if cash_total_usd is not None else "UNAVAILABLE",
+            freshness=cash_freshness,
             kind=KIND_FACT,
         ),
         _field(
@@ -91,9 +125,10 @@ def audit_cash_posture_policy(
             source="observed_cash / portfolio_value",
             authority=AUTHORITY,
             version=capital_plan_version,
-            effective_at=None,
+            # A ratio is no fresher than its numerator.
+            effective_at=cash_effective_at if cash_pct is not None else None,
             confirmed_by_operator=False,
-            freshness="CURRENT" if cash_pct is not None else "UNAVAILABLE",
+            freshness=(cash_freshness if cash_pct is not None else FRESH_UNAVAILABLE),
             kind=KIND_FACT,
         ),
     ]
@@ -141,9 +176,11 @@ def audit_cash_posture_policy(
         source="cio_capital_plan.cash_posture vs band",
         authority=AUTHORITY,
         version=capital_plan_version,
-        effective_at=None,
+        # ABOVE_BAND / IN_BAND is a verdict ON the cash figure, so it inherits
+        # the cash figure's age. It used to be flatly CURRENT.
+        effective_at=cash_effective_at,
         confirmed_by_operator=False,
-        freshness="CURRENT",
+        freshness=cash_freshness,
         kind=status_kind,
     )
 

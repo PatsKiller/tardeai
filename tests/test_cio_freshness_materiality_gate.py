@@ -35,7 +35,11 @@ def _fresh_holdings():
         "as_of": "2026-08-14",
         "portfolio_totals": {"total_value": 100_000.0},
         "holdings": [
-            {"symbol": "CASH", "is_cash": True, "market_value": 20_000.0, "account": "ira"},
+            # The cash row carries its own confirmation stamp. It used to carry
+            # none and be dated by the document above it, which is how the live
+            # book came to report 27-day-old balances as 11.7 hours old.
+            {"symbol": "CASH", "is_cash": True, "market_value": 20_000.0, "account": "ira",
+             "canonical_mark_as_of": (NOW - timedelta(minutes=5)).isoformat()},
             {
                 "symbol": "SCHD",
                 "account": "ira",
@@ -54,6 +58,34 @@ def _fresh_holdings():
 
 def test_version():
     assert FRESHNESS_MATERIALITY_VERSION.startswith("freshness_materiality_")
+
+
+def test_an_undated_cash_row_does_not_borrow_the_documents_clock():
+    """The document was written 5 minutes ago. That dates the equity marks."""
+    doc = _fresh_holdings()
+    doc["holdings"][0].pop("canonical_mark_as_of")
+    out = evaluate_decision_actionability(
+        _trim_fire_decision(generated_at=NOW.isoformat()),
+        holdings_doc=doc, financial_truth=_ft_ok(), now=NOW)
+    cash = next(b for b in out["freshness_board"] if b["name"] == "cash")
+    assert cash["source_as_of"] is None
+    assert cash["detail"] == "undated"
+    assert cash["pass"] is False
+    assert out["act_now"] is False
+
+
+def test_a_stale_cash_row_is_stale_however_fresh_the_document_is():
+    doc = _fresh_holdings()
+    doc["holdings"][0]["canonical_mark_as_of"] = (NOW - timedelta(days=27)).isoformat()
+    out = evaluate_decision_actionability(
+        _trim_fire_decision(generated_at=NOW.isoformat()),
+        holdings_doc=doc, financial_truth=_ft_ok(), now=NOW)
+    cash = next(b for b in out["freshness_board"] if b["name"] == "cash")
+    assert cash["quality"] == "STALE"
+    assert cash["age_seconds"] > 26 * 24 * 3600
+    # And the holdings class, which really is 5 minutes old, is unaffected.
+    holdings = next(b for b in out["freshness_board"] if b["name"] == "holdings")
+    assert holdings["quality"] != "STALE"
 
 
 def _ft_ok():

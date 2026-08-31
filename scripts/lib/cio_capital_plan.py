@@ -720,11 +720,12 @@ def build_capital_plan(
         # the cash. `cash_as_of` below carries the cash's own evidence clock.
         "as_of": now.isoformat(),
         "as_of_means": "composition time of this projection, not data age",
-        "cash_as_of": cash_as_of if cash_as_of is not None else {
-            "as_of": None, "unstamped": True,
-            "source": "not supplied by caller",
-            "note": "cash age unknown; do not read the envelope clock as its age",
-        },
+        # One shape, one derivation. A caller that supplies nothing (or something
+        # that is not an evidence block) gets the honest absence, never a clock
+        # borrowed from this envelope.
+        "cash_as_of": (cash_as_of if _is_cash_evidence_block(cash_as_of)
+                       else _unstamped_cash_evidence(
+                           "cash age unknown; do not read the envelope clock as its age")),
         "portfolio_value_usd": round(value, 2),
         "cash_total_usd": round(cash, 2),
         "cash_reserved_usd": posture["reserve_usd"],
@@ -822,73 +823,21 @@ def capital_invariant_operands(plan: Optional[dict[str, Any]]) -> dict[str, Any]
 # Cash ledger + double-count invariants (Phase 2)
 # ─────────────────────────────────────────────────────────────────────────────
 
-# Stamps a cash row may carry, most specific first. `updated_at` is the row's
-# write time and is deliberately LAST: it is when the collector touched the row,
-# not when the broker last confirmed the balance.
-_CASH_STAMP_KEYS = (
-    "canonical_mark_as_of", "broker_position_as_of", "as_of", "updated_at",
+# The cash block's as-of has ONE derivation, shared by every publication point
+# that prints a cash figure (the plan below, the SLEEVE:CASH letter, the
+# freshness board's `cash` evidence class, the policy-provenance cash facts and
+# the operator product's cash block). It lives in `cio_cash_evidence` so those
+# five readers cannot drift into five different ideas of how old the money is,
+# which is exactly what happened. The rule it enforces: the OLDEST contributing
+# balance dates the block. Re-exported here because this module's public surface
+# already had these names.
+from scripts.lib.cio_cash_evidence import (  # noqa: E402
+    CASH_STAMP_KEYS as _CASH_STAMP_KEYS,
+    cash_evidence_as_of,
+    cash_row_as_of as _cash_row_as_of,
+    is_evidence_block as _is_cash_evidence_block,
+    unstamped_evidence as _unstamped_cash_evidence,
 )
-
-
-def _cash_row_as_of(h: dict[str, Any]) -> Optional[str]:
-    for k in _CASH_STAMP_KEYS:
-        v = h.get(k)
-        if v:
-            return str(v)
-    return None
-
-
-def cash_evidence_as_of(
-    holdings_rows: Optional[list[dict[str, Any]]],
-    doc: Optional[dict[str, Any]] = None,
-) -> dict[str, Any]:
-    """The cash block's OWN as-of, derived from the cash rows themselves.
-
-    A capital plan used to stamp its cash with the composition clock -- the
-    moment the builder ran. Measured on 2026-08-30 the live book held five cash
-    rows spanning 27 days: $500 confirmed 2026-08-03, $5,000 on 2026-08-04, and
-    $625,284 of Schwab cash on 2026-08-26. All of it was presented as of today.
-
-    So: report the OLDEST stamp as the block's as-of, because a total is only as
-    current as its stalest member; keep the newest and the per-account spread so
-    the operator can see which account is dragging; and never fall back to
-    ``now``. No stamp anywhere means ``as_of=None`` and ``unstamped=True``,
-    which is a visible absence rather than a false freshness.
-    """
-    rows = [h for h in (holdings_rows or [])
-            if isinstance(h, dict) and h.get("is_cash")]
-    per: list[dict[str, Any]] = []
-    for h in rows:
-        per.append({
-            "account": str(h.get("account") or h.get("account_id") or "unknown"),
-            "settled_cash_usd": round(_fnum(h.get("market_value")), 2),
-            "as_of": _cash_row_as_of(h),
-        })
-    stamps = sorted({p["as_of"] for p in per if p["as_of"]})
-    doc_stamp = None
-    for k in ("as_of", "generated_at", "updated_at"):
-        v = (doc or {}).get(k)
-        if v:
-            doc_stamp = str(v)
-            break
-    oldest = stamps[0] if stamps else None
-    newest = stamps[-1] if stamps else None
-    return {
-        "as_of": oldest,
-        "oldest_row_as_of": oldest,
-        "newest_row_as_of": newest,
-        "mixed_ages": bool(len(stamps) > 1),
-        "distinct_stamps": len(stamps),
-        "unstamped": not stamps,
-        "unstamped_accounts": [p["account"] for p in per if not p["as_of"]],
-        "by_account": sorted(per, key=lambda p: (p["as_of"] or "", p["account"])),
-        "document_as_of": doc_stamp,
-        "source": "holdings rows where is_cash, oldest stamp wins",
-        "note": (
-            "The block is as current as its stalest account, never the moment "
-            "the builder ran."
-        ),
-    }
 
 
 def account_cash_breakdown(
