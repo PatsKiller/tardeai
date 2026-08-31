@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `97ac2ff88e68965be65d70d624ae2633e94e8309061e0c00ea25ea54782f0536`
+**Tree fingerprint:** `5eb698016d21b0abef6705caaaca04d7d8f3f73e1f43fc9d41823fcb906b6d02`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,10 +12,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2263 |
-| Markdown (excl. this INDEX) | 1895 |
+| Files under `docs/` (excl. this INDEX) | 2264 |
+| Markdown (excl. this INDEX) | 1896 |
 | **MISSING HEADER** | **1033** |
-| Header OK | 862 |
+| Header OK | 863 |
 | Duplicate groups | 8 |
 
 ### By status_guess
@@ -30,7 +30,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_raw_sync | 8 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 12 |
-| review_required | 1895 |
+| review_required | 1896 |
 
 ## Markdown tree
 
@@ -588,6 +588,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/audits/overnight/G2_IMPORT_NORMALISE_2026-08-31.md` | Overnight G2 — Import normalisation (A3 dual-load hot paths) | review_required | OK | `f6dec2f4a99a` |
 | `docs/audits/overnight/G3_DOCS_INDEX_2026-08-31.md` | Overnight G3 — Documentation index generator | review_required | OK | `c84615e159f7` |
 | `docs/audits/overnight/G4_ARCHIVE_MECHANISM_2026-08-31.md` | Overnight G4 — Archive mechanism | review_required | OK | `81e760481cc0` |
+| `docs/audits/overnight/G5_DUPLICATION_RECOMMENDATIONS_2026-08-31.md` | G5 — Duplication cluster recommendations (from Census Part 3) | review_required | OK | `0b081115c5fc` |
 | `docs/audits/overnight/WAVE_E_CATALYST_2026-08-31.md` | WAVE E — Catalyst pipeline (E1→E5) · 2026-08-31 | review_required | OK | `c700329a997a` |
 | `docs/briefs/PHASE_11_superseded.md` | Phase 11 — superseded by the validation sweep before execution | archive_superseded | MISSING HEADER | `a77d6d25a9e3` |
 | `docs/briefs/README.md` | Wave briefs | review_required | MISSING HEADER | `a2f504a8b977` |
