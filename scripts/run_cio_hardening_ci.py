@@ -18,6 +18,11 @@ REPO = Path(__file__).resolve().parents[1]
 
 # Ordered, explicit suite list (Phase 10.2)
 GATES = [
+    # The gog credential broker: an unapproved agent must be refused ON APPROVAL,
+    # and the broker must never read the operator-only ~/.openclaw/credentials path.
+    ("gog_broker_approval", [
+        "tests/test_gog_broker_approval.py",
+    ]),
     # C1 (batch 1: send_telegram). Every alarm must be OBSERVED firing; the
     # uncovered set is a named number in config/alarm_firing_baseline.txt that can
     # only shrink. Presence of alarm code is not evidence it fires.
