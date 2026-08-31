@@ -408,13 +408,20 @@ def command_center_view(product: dict[str, Any]) -> dict[str, Any]:
         temperament = {}
     else:
         temperament = dict(temperament)
-    # B5 — constant standing-policy text is not situation guidance at display.
+    # B5 / W3 3b — constant standing-policy text is not situation guidance.
+    # Idempotent: source may already have demoted to standing_policy_template.
     if temperament.get("portfolio_implication") and not temperament.get(
         "portfolio_implication_is_guidance"
     ):
         temperament.setdefault(
             "standing_policy_template", temperament.get("portfolio_implication")
         )
+        temperament["portfolio_implication"] = None
+        temperament["portfolio_implication_is_guidance"] = False
+        temperament["portfolio_implication_role"] = "standing_policy_template"
+    elif temperament.get("standing_policy_template") and not temperament.get(
+        "portfolio_implication_is_guidance"
+    ):
         temperament["portfolio_implication"] = None
         temperament["portfolio_implication_is_guidance"] = False
         temperament["portfolio_implication_role"] = "standing_policy_template"

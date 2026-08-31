@@ -10,7 +10,11 @@ from typing import Any
 from scripts.lib.atomic_json_store import append_jsonl, atomic_write_json
 from scripts.lib.canonical_cognition_bind import bind_market_context
 from scripts.lib.canonical_store_registry import load_json_store, resolve_store
-from scripts.lib.operator_decision_contract import completeness, normalize_decision
+from scripts.lib.operator_decision_contract import (
+    STANDING_CADENCE_TEMPLATE,
+    completeness,
+    normalize_decision,
+)
 from scripts.lib.product_availability import AVAILABLE, UNAVAILABLE_REASONS, availability_payload, canonicalize_reason
 
 AUTHORITY = "READ_ONLY_ADVISORY"
@@ -198,21 +202,33 @@ def _holdings_sections(root: Path | str | None) -> dict[str, Any]:
 
 
 def _temperament_display(temp: dict[str, Any], cash: dict[str, Any]) -> dict[str, Any]:
-    """Provenance at display for temperament (B5).
+    """Provenance at display for temperament (B5 / W3 3b).
 
     `portfolio_implication` is a standing-policy constant (class T). It must not
     render as situation guidance. Cash on temperament inherits the cash block's
     own as_of — never the product composition stamp.
+
+    W3 3b: the constant is unconditional across inputs — that is honest only
+    when it lives on ``standing_policy_template``, never on a guidance-shaped
+    field. Source may already have demoted; this path is idempotent.
     """
     out = dict(temp or {})
     implication = out.get("portfolio_implication")
-    if implication:
+    already = out.get("standing_policy_template")
+    if implication and not out.get("portfolio_implication_is_guidance"):
         out["standing_policy_template"] = implication
         out["standing_policy_template_class"] = out.get("portfolio_implication_class") or "T"
         out["portfolio_implication_is_guidance"] = False
         out["portfolio_implication_role"] = "standing_policy_template"
         # Stop rendering the constant in the guidance-shaped field.
         out["portfolio_implication"] = None
+    elif already and not out.get("portfolio_implication_is_guidance"):
+        out["standing_policy_template_class"] = out.get(
+            "standing_policy_template_class"
+        ) or out.get("portfolio_implication_class") or "T"
+        out["portfolio_implication"] = None
+        out["portfolio_implication_is_guidance"] = False
+        out["portfolio_implication_role"] = "standing_policy_template"
     cash_as_of = cash.get("cash_as_of") if isinstance(cash, dict) else None
     if isinstance(cash_as_of, dict):
         out["cash_as_of"] = cash_as_of
@@ -424,6 +440,23 @@ def build_operator_product(*, root: Path | str | None = None, persist: bool = Fa
         if extra_ops:
             data_quality["supplemental_ops"] = extra_ops
 
+    # W3 3b — next_reviews is a judgment register. Only dated catalysts belong.
+    # Standing cadence (byte-identical across inputs) is demoted to
+    # standing_cadence_template so a constant is not rendered as a schedule.
+    dated_reviews = [
+        e.get("next_review_at") or e.get("next_review")
+        for e in entries
+        if e.get("next_review_is_dated_catalyst")
+    ]
+    has_standing_cadence = any(
+        e.get("next_review_role") == "standing_cadence_template"
+        or (
+            not e.get("next_review_is_dated_catalyst")
+            and e.get("standing_cadence_template")
+        )
+        for e in entries
+    )
+
     product = {
         "schema": SCHEMA,
         "available": True,
@@ -485,7 +518,14 @@ def build_operator_product(*, root: Path | str | None = None, persist: bool = Fa
         "outcomes_learning": {"source": "cio.outcomes", "influence_from_bug_duplicates": 0},
         "data_quality": data_quality,
         "policy_gaps": policy_gaps,
-        "next_reviews": [e.get("next_review_at") or e.get("next_review") for e in entries],
+        "next_reviews": dated_reviews,
+        "standing_cadence_template": (
+            STANDING_CADENCE_TEMPLATE if has_standing_cadence else None
+        ),
+        "next_reviews_role": (
+            "dated_catalysts" if dated_reviews else "standing_cadence_template"
+        ),
+        "next_reviews_is_judgment": bool(dated_reviews),
         "entries": entries[:20],
         "competing_products": [],
         "competing_products_removed": True,

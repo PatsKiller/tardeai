@@ -1712,8 +1712,9 @@ def build_office_home(
         op.get("watch_block_summary") if isinstance(op.get("watch_block_summary"), dict) else {}
     )
     home["cash"] = op.get("cash") or {}
-    # B5 — demote constant standing-policy text so home does not render it as
-    # situation guidance. Prefer OP's already-redacted temperament.
+    # B5 / W3 3b — demote constant standing-policy text so home does not render
+    # it as situation guidance. Prefer OP's already-redacted temperament.
+    # Idempotent when source already wrote standing_policy_template.
     temp = op.get("temperament") or op.get("macro") or {}
     if isinstance(temp, dict):
         temp = dict(temp)
@@ -1723,6 +1724,12 @@ def build_office_home(
             temp.setdefault(
                 "standing_policy_template", temp.get("portfolio_implication")
             )
+            temp["portfolio_implication"] = None
+            temp["portfolio_implication_is_guidance"] = False
+            temp["portfolio_implication_role"] = "standing_policy_template"
+        elif temp.get("standing_policy_template") and not temp.get(
+            "portfolio_implication_is_guidance"
+        ):
             temp["portfolio_implication"] = None
             temp["portfolio_implication_is_guidance"] = False
             temp["portfolio_implication_role"] = "standing_policy_template"
