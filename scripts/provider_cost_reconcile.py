@@ -11,8 +11,9 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(ROOT / "scripts"))
+# G2: root-only + scripts.lib — never also put scripts/ on path
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from scripts.lib.provider_cost.parse import (  # noqa: E402
     parse_bypass_rows,
@@ -52,6 +53,9 @@ def _load_json(path: Path):
 
 
 def main() -> int:
+    # G2: after imports settle — refuse dual lib.X / scripts.lib.X identity
+    from scripts.lib import assert_single_import_identity
+    assert_single_import_identity()
     ap = argparse.ArgumentParser()
     ap.add_argument("--fixture", default=str(ROOT / "tests/fixtures/provider_cost/period_ab.json"))
     ap.add_argument("--out", default=str(ROOT / "docs/ops/provider-spend-attribution/latest_reconciliation.json"))
