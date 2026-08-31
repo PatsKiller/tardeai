@@ -199,7 +199,9 @@ def observe_signal(sig: dict[str, Any], *, root: Optional[Path] = None,
             if not p.is_absolute():
                 p = root / p
             ts = _mtime_utc(p)
-            return {"last_output_at": ts,
+            # An absent file IS readable: we looked and there was nothing. That is
+            # silence, not unverifiability.
+            return {"last_output_at": ts, "readable": True,
                     "detail": str(p) + ("" if ts else " (absent)")}
 
         if kind == "json_key":
@@ -207,7 +209,8 @@ def observe_signal(sig: dict[str, Any], *, root: Optional[Path] = None,
             if not p.is_absolute():
                 p = root / p
             if not p.exists():
-                return {"last_output_at": None, "detail": f"{p} (absent)"}
+                return {"last_output_at": None, "readable": True,
+                        "detail": f"{p} (absent)"}
             doc = json.loads(p.read_text(encoding="utf-8"))
             cur: Any = doc
             for part in str(sig.get("key") or "").split("."):
@@ -215,7 +218,8 @@ def observe_signal(sig: dict[str, Any], *, root: Optional[Path] = None,
                     continue
                 cur = cur.get(part) if isinstance(cur, dict) else None
             ts = _parse_ts(cur)
-            return {"last_output_at": ts, "detail": f"{p}#{sig.get('key')}={cur!r}"}
+            return {"last_output_at": ts, "readable": True,
+                    "detail": f"{p}#{sig.get('key')}={cur!r}"}
 
         if kind == "db_max":
             # Validate the DECLARATION before checking whether we can execute
@@ -225,23 +229,31 @@ def observe_signal(sig: dict[str, Any], *, root: Optional[Path] = None,
             table = str(sig.get("table") or "")
             col = str(sig.get("column") or "created_at")
             if not _SAFE_IDENT.match(table) or not _SAFE_IDENT.match(col):
-                return {"last_output_at": None,
+                return {"last_output_at": None, "readable": False,
                         "detail": f"unsafe identifier {table}.{col}"}
             where = sig.get("where")
             if where and not _SAFE_WHERE.match(str(where)):
-                return {"last_output_at": None,
+                return {"last_output_at": None, "readable": False,
                         "detail": f"unsafe where clause {where!r}"}
             if db_query is None:
-                return {"last_output_at": None, "detail": "no db_query supplied"}
+                # We could not look. Reporting SILENT here would be a lie about a
+                # store that may be perfectly healthy.
+                return {"last_output_at": None, "readable": False,
+                        "detail": "no db_query supplied"}
             sql = f"SELECT max({col}) FROM {table}"
             if where:
                 sql += f" WHERE {where}"
             rows = db_query(sql)
+            if rows is None:
+                return {"last_output_at": None, "readable": False,
+                        "detail": sql + " (query unavailable)"}
             val = rows[0][0] if rows and rows[0] else None
-            return {"last_output_at": _parse_ts(val), "detail": sql}
+            return {"last_output_at": _parse_ts(val), "readable": True, "detail": sql}
     except Exception as e:                    # never let a signal read break a cycle
-        return {"last_output_at": None, "detail": f"{type(e).__name__}: {e}"}
-    return {"last_output_at": None, "detail": "no output signal declared"}
+        return {"last_output_at": None, "readable": False,
+                "detail": f"{type(e).__name__}: {e}"}
+    return {"last_output_at": None, "readable": False,
+            "detail": "no output signal declared"}
 
 
 _SAFE_IDENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -387,6 +399,13 @@ def evaluate_lane(row: dict[str, Any], *, now: Optional[datetime] = None,
     elif not sched_ok:
         verdict = ORPHANED
     elif str((row.get("output_signal") or {}).get("kind")) == "none":
+        verdict = UNVERIFIABLE
+    elif not obs.get("readable", True):
+        # We could not read the signal. This module's own docstring says reporting
+        # that as SILENT is "how a monitor starts lying" -- but until now only
+        # kind=="none" reached UNVERIFIABLE, so an unreachable database reported
+        # every store SILENT. A false SILENT is worse than no verdict: it spends the
+        # attention that a real one needs.
         verdict = UNVERIFIABLE
     elif last is None:
         verdict = SILENT if in_window else EXPECTED_SILENT
