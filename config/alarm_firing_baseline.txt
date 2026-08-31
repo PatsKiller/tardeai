@@ -8,7 +8,7 @@
 # call site. It can only shrink: cover the alarm with a firing test, add the file
 # to that test's COVERS list, and lower the number here.
 #
-# transport=send_telegram  total_sites=141  covered=1  uncovered=140
+# transport=send_telegram  total_sites=141  covered=11  uncovered=130
 
 scripts/advisory_telegram_brief.py 1
 scripts/aegis_overnight.py 3
@@ -51,7 +51,6 @@ scripts/moomoo/opend_health.py 1
 scripts/morning_digest.py 1
 scripts/nightly_integrity_sweep.py 1
 scripts/oauth_lane_keepalive.py 1
-scripts/open_trade_monitor.py 10
 scripts/overnight_batch.py 1
 scripts/overnight_digest_telegram.py 1
 scripts/oversight_weekly_digest.py 1

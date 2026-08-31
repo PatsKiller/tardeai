@@ -945,6 +945,7 @@ UNLISTED_BASELINE: frozenset = frozenset([
     "tests/test_strategy_card_agent_rec.py",
     "tests/test_alarm_capture_selftest.py",
     "tests/test_alarm_fires.py",
+    "tests/test_alarm_fires_stop_path.py",
     "tests/test_alarm_coverage.py",
     "tests/test_store_cadence.py",
     "tests/test_no_swallowed_alarms.py",
