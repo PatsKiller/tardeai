@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import ast
 import importlib
+import importlib.util
 import sys
 from pathlib import Path
 
@@ -43,14 +44,29 @@ def _function_local_imports(path: Path) -> list[tuple[str, int]]:
 
 
 def test_every_function_local_import_in_the_monitor_resolves():
-    """The regression. A name that does not resolve is a silent dead notification."""
+    """The regression. A name that does not resolve is a silent dead notification.
+
+    Uses find_spec, which RESOLVES a name without EXECUTING the module.
+
+    The first version called import_module, which executes -- so it could not tell
+    "this name resolves to nothing" (the telegram_bot defect: no such module in
+    any tree) from "this module exists but an optional third-party dependency is
+    absent in this environment". It went red in CI on `session13_db`, whose file
+    is right there in scripts/ but which imports psycopg2, deliberately absent
+    from the deterministic no-database subset.
+
+    The defect being guarded is a name with no referent. find_spec is the
+    detector shaped to that question; import_module answers a different one.
+    """
     unresolvable = []
     for mod, lineno in _function_local_imports(MONITOR):
         try:
-            importlib.import_module(mod)
-        except ImportError as exc:
-            unresolvable.append(f"{MONITOR.name}:{lineno} -> {mod} ({exc})")
-    assert not unresolvable, "unresolvable imports on a notification path: " + "; ".join(unresolvable)
+            spec = importlib.util.find_spec(mod)
+        except (ImportError, ValueError, ModuleNotFoundError):
+            spec = None
+        if spec is None:
+            unresolvable.append(f"{MONITOR.name}:{lineno} -> {mod}")
+    assert not unresolvable, "imports naming a module that does not exist: " + "; ".join(unresolvable)
 
 
 def test_the_detector_can_see_a_broken_import():
