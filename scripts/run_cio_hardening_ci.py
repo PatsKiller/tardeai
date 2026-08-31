@@ -154,6 +154,9 @@ GATES = [
     ("overnight_f5_model_cost", [
         "tests/test_overnight_f5_model_cost.py",
     ]),
+    ("overnight_g3_docs_index", [
+        "tests/test_overnight_g3_docs_index.py",
+    ]),
     ("lane_registry", [
         "tests/test_lane_registry.py",
     ]),
@@ -176,6 +179,9 @@ GATES = [
     ]),
     ("overnight_d1_m5_cadence", [
         "tests/test_overnight_d1_m5_cadence.py",
+    ]),
+    ("overnight_g4_archive_mechanism", [
+        "tests/test_overnight_g4_archive_mechanism.py",
     ]),
     ("r13_institutional", [
         "tests/test_r13_institution.py",
@@ -213,6 +219,17 @@ def main() -> int:
     # Phase 2: never regenerate the committed manifest before validating it.
     # 1) check-committed — read-only integrity of the files in git
     # 2) candidate — write a generated copy to an isolated dir and show the diff
+    print("[RUN]  docs_index_drift")
+    dix = subprocess.run(
+        [sys.executable, "scripts/report_docs_inventory.py", "--check-index"],
+        cwd=str(REPO),
+    )
+    if dix.returncode != 0:
+        failed.append("docs_index_drift")
+        print("[FAIL] docs_index_drift — docs/INDEX.md does not match regenerate")
+    else:
+        print("[PASS] docs_index_drift")
+
     print("[RUN]  validate_committed_manifest")
     chk = subprocess.run(
         [sys.executable, "scripts/cio_release_manifest.py", "check-committed"],

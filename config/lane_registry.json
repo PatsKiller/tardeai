@@ -598,6 +598,24 @@
         "path": "data/cio/cio_events.jsonl"
       },
       "note": "Emits situation.raised \u2014 the only high-volume bus event that names a subject. shadow=true is its default posture since 2026-08-11 (0241722b, 'SHADOW default; no broker calls') and has never been changed. ESTABLISHED 2026-08-30: shadow is a LABEL ONLY \u2014 it appears in exactly three places, all of which write it into a payload/plan/summary. It gates no emission, no plan creation and no routing. What gates operator notification is `notify`, a separate flag that has its own canary doc (CIO_MATERIAL_NOTIFY_CANARY_2026-08-20.md) and remains false. Consuming situation.raised is therefore NOT a promotion out of shadow."
+    },
+    {
+      "lane_id": "docs-index",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "none"
+      },
+      "expected_cadence_hours": 168.0,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-08-31",
+      "state_reason": "CI/manual regenerate via scripts/report_docs_inventory.py --write-index / --check-index. No cron or systemd timer installed; scheduler install is operator-only.",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "docs/INDEX.md"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "WAVE G3 2026-08-31 wired report_docs_inventory.py to emit the durable artifact docs/INDEX.md; hardening CI runs --check-index (regenerate+diff).",
+      "note": "Hand-maintained docs/DOCUMENTATION_INDEX.md and docs/project/PROJECT_DOC_INDEX.md remain. This lane is the regenerable tree listing \u2014 not a third narrative index."
     }
   ],
   "undeclared_baseline": [
