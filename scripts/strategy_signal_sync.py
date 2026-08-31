@@ -684,11 +684,28 @@ def sync_strategy_signals(conn, run_label=None, symbols=None, target_date=None,
     signals_after = cur.fetchone()[0] or 0
 
     # Write audit
-    audit_status = "OK"
-    if go_count + aplus_count > 0 and signals_after == 0:
+    # Third state: NO_GO_TODAY. Without it this audit reads OK whenever there are zero
+    # GO/A+ scans, because `go>0 and after==0` is false -- so "the upstream produced
+    # nothing" is indistinguishable from "everything worked". During the 2026-08
+    # outage signal_flow_audit read OK on 08-28, 08-30 and 08-31 while the Strategy
+    # Desk was empty, purely because discovery had also stopped. A green that only
+    # means "nothing to do" is the same defect as the alarm this table exists to
+    # corroborate, and it is why the audit did not contradict the green tick.
+    #
+    # The name is NOT new. session18_signal_flow_health.py:62 already emits
+    # "NO_GO_TODAY" for exactly this condition, and writes to this same table. Coining
+    # a second name (NO_INPUT) would have put two labels for one state into one column
+    # -- the drift INTEGRATION_RULES.md exists to prevent. One canonical name per
+    # concept; this adopts the one that already ships.
+    scans_in = go_count + aplus_count
+    if scans_in == 0:
+        audit_status = "NO_GO_TODAY"
+    elif signals_after == 0:
         audit_status = "CRITICAL"
-    elif signals_after < (go_count + aplus_count) * 0.5:
+    elif signals_after < scans_in * 0.5:
         audit_status = "WARN"
+    else:
+        audit_status = "OK"
 
     if not dry_run:
         try:
