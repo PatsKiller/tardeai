@@ -102,6 +102,16 @@ def test_legacy_row_with_supporting_outcomes_projects_outcome_derived():
     assert project_lesson_provenance(legacy) == PROVENANCE_OUTCOME_DERIVED
 
 
+def test_legacy_counterexample_only_projects_outcome_derived():
+    """Night Three SCHD/TRIM shape: empty supporting ids, nonempty counterexamples."""
+    legacy = {
+        "lesson_id": "e38856b4febcafbf8b25",
+        "supporting_outcome_ids": [],
+        "counterexamples": ["cc06af712aff1dc88af18b7e"],
+    }
+    assert project_lesson_provenance(legacy) == PROVENANCE_OUTCOME_DERIVED
+
+
 def test_explicit_stamp_wins_over_inference():
     """Do not let empty supporting ids override an OUTCOME_DERIVED stamp."""
     stamped = {
@@ -167,3 +177,61 @@ def test_new_writes_include_provenance_field_on_disk(tmp_path):
     rows = _jsonl(path)
     assert len(rows) == 1
     assert rows[0][LESSON_PROVENANCE_FIELD] == PROVENANCE_OUTCOME_DERIVED
+
+
+def test_apply_appends_provenance_amendment_for_unstamped_outcome_row(tmp_path, monkeypatch):
+    """Same lesson_id, missing stamp, outcome candidate → append amendment; no in-place rewrite."""
+    import scripts.build_lesson_candidates as blc
+    from scripts.lib.outcome_to_lesson import (
+        needs_outcome_provenance_amendment,
+        provenance_amendment_row,
+    )
+
+    root = tmp_path
+    cio = root / "data" / "cio"
+    cio.mkdir(parents=True)
+    obs_path = cio / "outcome_observations.jsonl"
+    # One TRIM observation that rises → counterexample-only OUTCOME_DERIVED candidate
+    obs = _obs("amend_o1", rec="TRIM", change=+2.0)
+    obs_path.write_text(json.dumps(obs) + "\n", encoding="utf-8")
+
+    cand = build_candidates([obs], searched_counterexamples=True)[0]
+    lid = cand["lesson_id"]
+    legacy = {
+        "schema": "LessonCandidate@v2",
+        "lesson_id": lid,
+        "scope": "SCHD",
+        "task_class": "TRIM",
+        "statement": cand["statement"],
+        "supporting_outcome_ids": [],
+        "counterexamples": cand["counterexamples"],
+        "status": "PROVISIONAL",
+        # no lesson_provenance — the Night Three poison shape
+    }
+    path = cio / "lesson_candidates.jsonl"
+    original = json.dumps(legacy, sort_keys=True) + "\n"
+    path.write_text(original, encoding="utf-8")
+
+    assert needs_outcome_provenance_amendment(legacy, cand) is True
+
+    monkeypatch.setattr(blc, "_state_root", lambda: root)
+    out = blc.run(apply=True)
+    assert out["amended"] == 1
+    assert out["written"] == 0
+
+    lines = path.read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 2
+    assert lines[0] == original.rstrip("\n")
+    amend = json.loads(lines[1])
+    assert amend[LESSON_PROVENANCE_FIELD] == PROVENANCE_OUTCOME_DERIVED
+    assert amend.get("provenance_amendment") is True
+    assert amend.get("amends_lesson_id") == lid
+    # RESEARCH stamp must not be amended away
+    research = {
+        "lesson_id": "res1",
+        LESSON_PROVENANCE_FIELD: PROVENANCE_RESEARCH_DERIVED,
+        "supporting_outcome_ids": [],
+    }
+    assert needs_outcome_provenance_amendment(research, cand) is False
+    stamped = provenance_amendment_row(cand)
+    assert stamped[LESSON_PROVENANCE_FIELD] == PROVENANCE_OUTCOME_DERIVED

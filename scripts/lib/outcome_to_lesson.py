@@ -50,17 +50,55 @@ _PROVENANCE_VALUES = frozenset({PROVENANCE_OUTCOME_DERIVED, PROVENANCE_RESEARCH_
 def project_lesson_provenance(row: dict[str, Any]) -> str:
     """Reader projection for ``lesson_provenance`` — display only, no disk write.
 
-    Explicit stamp wins. Unstamped legacy rows without ``supporting_outcome_ids``
-    are RESEARCH_DERIVED (the pre-D3 advisory/KB corpus). Nonempty supporting
-    outcome ids imply OUTCOME_DERIVED when the field is absent.
+    Explicit stamp wins. Unstamped legacy rows without outcome evidence
+    (``supporting_outcome_ids`` or ``counterexamples``) are RESEARCH_DERIVED
+    (the pre-D3 advisory/KB corpus). Nonempty outcome evidence implies
+    OUTCOME_DERIVED when the field is absent — including counterexample-only
+    TRIM/rise rows that Night Three left unstamped on disk.
     """
     explicit = row.get(LESSON_PROVENANCE_FIELD)
     if explicit in _PROVENANCE_VALUES:
         return str(explicit)
     ids = row.get("supporting_outcome_ids") or []
-    if ids:
+    counters = row.get("counterexamples") or []
+    if ids or counters:
         return PROVENANCE_OUTCOME_DERIVED
     return PROVENANCE_RESEARCH_DERIVED
+
+
+def needs_outcome_provenance_amendment(
+    existing: dict[str, Any],
+    candidate: dict[str, Any],
+) -> bool:
+    """True when an append-only OUTCOME_DERIVED stamp should be written.
+
+    Never reclassify a row that already carries an explicit provenance stamp.
+    Never invent outcome evidence — the candidate must already be stamped
+    OUTCOME_DERIVED by the outcome writer and carry supporting ids and/or
+    counterexamples.
+    """
+    if existing.get(LESSON_PROVENANCE_FIELD) in _PROVENANCE_VALUES:
+        return False
+    if candidate.get(LESSON_PROVENANCE_FIELD) != PROVENANCE_OUTCOME_DERIVED:
+        return False
+    if not (
+        (candidate.get("supporting_outcome_ids") or [])
+        or (candidate.get("counterexamples") or [])
+    ):
+        return False
+    return True
+
+
+def provenance_amendment_row(candidate: dict[str, Any]) -> dict[str, Any]:
+    """Append-only row: same lesson_id, explicit OUTCOME_DERIVED stamp."""
+    out = dict(candidate)
+    out[LESSON_PROVENANCE_FIELD] = PROVENANCE_OUTCOME_DERIVED
+    out["provenance_amendment"] = True
+    out["amends_lesson_id"] = candidate.get("lesson_id")
+    out["authority"] = AUTHORITY
+    out["memory_behavior_influence"] = MBI
+    out["observational_only"] = True
+    return out
 
 
 def with_lesson_provenance(
