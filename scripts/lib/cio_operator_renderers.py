@@ -92,14 +92,28 @@ def cash_lines(product: dict[str, Any]) -> list[str]:
         lines.append("cash_for_S5    DATA_UNAVAILABLE_UNTIL_RECONCILED — not merged, not averaged")
         return lines
 
+    # B4 — print the cash block's own age (oldest contributing balance).
+    cash_as_of = cash_block.get("as_of")
+    if cash_as_of is None and isinstance(cash_block.get("cash_as_of"), dict):
+        cash_as_of = cash_block["cash_as_of"].get("as_of")
+    if cash_as_of is None and isinstance(temperament.get("cash_as_of"), dict):
+        cash_as_of = temperament["cash_as_of"].get("as_of")
+    age_bit = f" · as_of {cash_as_of} (oldest cash balance)" if cash_as_of else " · as_of UNSTAMPED"
+
     if live_n is not None:
         pct_bit = f" · {pct:.1f}% of book" if isinstance(pct, (int, float)) else ""
-        lines.append(f"Cash (live, temperament.cash): ${live_n:,.0f}{pct_bit}")
+        lines.append(f"Cash (live, temperament.cash): ${live_n:,.0f}{pct_bit}{age_bit}")
     elif rows_n is not None:
-        lines.append(f"Cash (position rows): ${rows_n:,.0f}")
+        lines.append(f"Cash (position rows): ${rows_n:,.0f}{age_bit}")
     else:
-        lines.append("Cash (live, temperament.cash): UNAVAILABLE")
+        lines.append(f"Cash (live, temperament.cash): UNAVAILABLE{age_bit}")
     return lines
+
+
+PROVENANCE_FOOTER = (
+    "_Provenance: D counts/sums · T templates · no model produced this brief. "
+    "writer = author._"
+)
 
 
 def reentry_surface_label(product: dict[str, Any]) -> str:
@@ -111,6 +125,46 @@ def reentry_surface_label(product: dict[str, Any]) -> str:
         return "Re-entry book: UNLABELED — surface not declared on the product."
     scope_bit = f" — {scope}" if scope else ""
     return f"Re-entry: Surface {surface}{scope_bit} (Surface B is a separate book; not merged)."
+
+
+def earnings_lines(product: dict[str, Any], *, cap: int = 8) -> list[str]:
+    """Render dated earnings events that already exist on the product.
+
+    Same honesty pattern as watch_lines: a bare count reads as an empty brief
+    when symbols and dates are sitting on the payload. List what the collector
+    produced (symbol · date · days · scope). Never invent commentary — UNAVAILABLE
+    commentary stays off this surface. When items are empty, name DATA_UNAVAILABLE
+    from earnings_quality rather than omitting the section.
+    """
+    earn = product.get("earnings") or []
+    if not isinstance(earn, list):
+        earn = []
+    quality = product.get("earnings_quality") if isinstance(product.get("earnings_quality"), dict) else {}
+    lines: list[str] = []
+    if earn:
+        lines.append(f"Earnings (D): {len(earn)} upcoming")
+        for row in earn[:cap]:
+            if not isinstance(row, dict):
+                continue
+            sym = str(row.get("symbol") or "").upper()
+            if not sym:
+                continue
+            date_s = str(row.get("earnings_date") or "—")
+            scope = str(row.get("scope") or "").strip()
+            days = row.get("days_to_event")
+            bits = [sym, date_s]
+            if isinstance(days, int):
+                bits.append(f"{days}d")
+            if scope:
+                bits.append(scope)
+            lines.append("- " + " · ".join(bits))
+        return lines
+    q = str(quality.get("quality") or "")
+    reason = quality.get("reason")
+    if q == "DATA_UNAVAILABLE" or reason:
+        reason_bit = f" — {reason}" if reason else ""
+        lines.append(f"Earnings (D): DATA_UNAVAILABLE{reason_bit}")
+    return lines
 
 
 def watch_lines(product: dict[str, Any], *, cap: int = 8) -> list[str]:
@@ -171,10 +225,14 @@ def morning_text(product: dict[str, Any]) -> str:
     if cash:
         # Name the source: this is the position-row sum, not portfolio_totals.
         # cash_lines() prints the live temperament number and flags any gap.
+        age = cash.get("as_of")
+        if age is None and isinstance(cash.get("cash_as_of"), dict):
+            age = cash["cash_as_of"].get("as_of")
+        age_bit = f" · as_of {age} (oldest cash balance)" if age else " · as_of UNSTAMPED"
         lines.append(
-            f"Cash (position rows): {cash.get('status')} ${cash.get('cash_usd') or 0:,.0f}"
+            f"Cash (position rows): {cash.get('status')} ${cash.get('cash_usd') or 0:,.0f}{age_bit}"
             if cash.get("cash_usd") is not None
-            else f"Cash (position rows): {cash.get('status')}"
+            else f"Cash (position rows): {cash.get('status')}{age_bit}"
         )
     port = product.get("portfolio") or {}
     if port.get("holdings_n"):
@@ -228,9 +286,7 @@ def morning_text(product: dict[str, Any]) -> str:
                 )
     elif product.get("catalysts_reason"):
         lines.append(f"Catalysts: {product.get('catalysts_reason')}")
-    earn = product.get("earnings") or []
-    if earn:
-        lines.append(f"Earnings (D): {len(earn)} upcoming")
+    lines.extend(earnings_lines(product))
     new_if = product.get("new_position_if") or []
     if new_if:
         nsyms = [str(x.get("symbol") or "") for x in new_if if isinstance(x, dict) and x.get("symbol")]
@@ -255,6 +311,9 @@ def morning_text(product: dict[str, Any]) -> str:
         bit = f" · {', '.join(top_syms[:3])}" if top_syms else ""
         lines.append(f"Research cases (A-context, not action): {n}{bit}")
     lines.append("Open: Command Center → CIO. READ_ONLY_ADVISORY.")
+    # B5 — honest provenance footer. This path is a deterministic projection;
+    # never assert model provenance for a brief no model produced.
+    lines.append(PROVENANCE_FOOTER)
     text = "\n".join(lines).strip()
     # Dashboard brief must never claim a Telegram send.
     return text.replace("Telegram sent", "dashboard only")
@@ -302,6 +361,7 @@ def eod_text(product: dict[str, Any]) -> str:
         bit = f" · {', '.join(top_syms[:3])}" if top_syms else ""
         lines.append(f"Research cases (A-context, not action): {n}{bit}")
     lines.append("READ_ONLY_ADVISORY — no order is being placed.")
+    lines.append(PROVENANCE_FOOTER)
     return "\n".join(lines).strip()
 
 
@@ -341,6 +401,33 @@ def command_center_view(product: dict[str, Any]) -> dict[str, Any]:
             "next_review": e.get("next_review_at") or e.get("next_review"),
             "generation_id": e.get("generation_id") or product.get("generation_id"),
         })
+    cash = product.get("cash") or {}
+    temperament = product.get("temperament") or product.get("macro") or {}
+    if not isinstance(temperament, dict):
+        temperament = {}
+    else:
+        temperament = dict(temperament)
+    # B5 — constant standing-policy text is not situation guidance at display.
+    if temperament.get("portfolio_implication") and not temperament.get(
+        "portfolio_implication_is_guidance"
+    ):
+        temperament.setdefault(
+            "standing_policy_template", temperament.get("portfolio_implication")
+        )
+        temperament["portfolio_implication"] = None
+        temperament["portfolio_implication_is_guidance"] = False
+        temperament["portfolio_implication_role"] = "standing_policy_template"
+    provenance = product.get("provenance_footer") if isinstance(
+        product.get("provenance_footer"), dict
+    ) else {
+        "model_produced": False,
+        "classes": "D counts/sums · T templates · A case-summary context",
+        "writer_means": "author",
+        "note": (
+            "Deterministic projection of cio.operator_product; "
+            "no model produced this view."
+        ),
+    }
     return {
         "source": "cio.operator_product.current",
         "loaded": bool(product.get("available")),
@@ -348,11 +435,19 @@ def command_center_view(product: dict[str, Any]) -> dict[str, Any]:
         "generation_id": product.get("generation_id"),
         "product_id": product.get("product_id"),
         "as_of": product.get("as_of"),
+        "block_as_of": product.get("block_as_of") or {
+            "cash": cash.get("as_of") if isinstance(cash, dict) else None,
+            "product_composition": product.get("as_of"),
+        },
         "executive_summary": product.get("executive_summary"),
         "earnings": list(product.get("earnings") or [])[:12],
+        "earnings_quality": product.get("earnings_quality") if isinstance(product.get("earnings_quality"), dict) else {
+            "quality": "OK" if product.get("earnings") else "DATA_UNAVAILABLE",
+            "class": "D",
+        },
         "new_position_if": list(product.get("new_position_if") or [])[:8],
-        "cash": product.get("cash") or {},
-        "temperament": product.get("temperament") or product.get("macro") or {},
+        "cash": cash,
+        "temperament": temperament,
         "case_summaries": product.get("case_summaries") or product.get("research_cases") or {
             "banner": "A-context · NON_AUTHORITATIVE · does not change action",
             "class": "A",
@@ -366,6 +461,8 @@ def command_center_view(product: dict[str, Any]) -> dict[str, Any]:
         "hidden_alternative_calculation": False,
         "authority": AUTHORITY,
         "financial_action": False,
+        "provenance_footer": provenance,
+        "model_produced": False,
     }
 
 

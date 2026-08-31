@@ -134,6 +134,10 @@ GATES = [
     ("money_surface_honesty", [
         "tests/test_money_surface_honesty.py",
         "tests/test_cash_guidance_provenance.py",
+        "tests/test_overnight_b4_b5_asof_provenance.py",
+    ]),
+    ("overnight_b6_reentry_scope", [
+        "tests/test_overnight_b6_reentry_scope.py",
     ]),
     ("lane_registry", [
         "tests/test_lane_registry.py",
