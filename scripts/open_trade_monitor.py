@@ -176,11 +176,28 @@ def send_telegram(message, dry_run=False, no_telegram=False):
     if dry_run or no_telegram:
         log.info(f"[telegram-skip] {message[:100]}")
         return
+    # 2026-08-31: this imported `telegram_bot`, a module that does not exist in any
+    # tree. The bare `except Exception` caught the ImportError and logged it at
+    # warning, so STOP_HIT_CLOSE / TIME_STOP_CLOSE / TRAILING_STOP / NEAR_TARGET
+    # were undeliverable from 2026-05-25 to 2026-08-31 -- 581 identical failures,
+    # one distinct cause, nobody paged. The operator received 40 copies of the
+    # "monitoring" alert (a different sender, which works) and zero copies of
+    # "your stop was hit and I closed the position".
+    #
+    # bypass_router=True is deliberate and measured, not convenience: the router's
+    # own should_send_telegram() returns False for a stop-close body, so routing
+    # this through the default path would replace a silent failure with a
+    # different silent failure that looks fixed. The sibling sender in this file,
+    # send_telegram_with_buttons, already bypasses and demonstrably delivers.
     try:
-        from telegram_bot import send_message
-        send_message(message)
-    except Exception as e:
-        log.warning(f"Telegram send failed: {e}")
+        from telegram_alert import send_telegram
+    except ImportError as e:
+        log.error(
+            "STOP-PATH NOTIFICATION UNDELIVERABLE - sender import failed: %s - "
+            "message was: %s", e, message[:120])
+        return
+    if not send_telegram(message, bypass_router=True):
+        log.error("STOP-PATH NOTIFICATION NOT DELIVERED: %s", message[:120])
 
 
 def send_telegram_with_buttons(message, buttons, dry_run=False, no_telegram=False):
