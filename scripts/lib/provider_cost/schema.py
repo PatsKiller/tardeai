@@ -102,6 +102,10 @@ class ProviderCostEvent:
     calculated_cost_usd: Optional[float] = None
     provider_reported_cost_usd: Optional[float] = None
     cost_source: Optional[str] = None
+    # AGENTS.md §9.2: measured cost must carry the rate tier and cache-hit bit.
+    # rate_tier is peak | off_peak | flat | None (unknown / pre-send).
+    rate_tier: Optional[str] = None
+    cache_hit: Optional[bool] = None
     environment: Optional[str] = None
     is_test: bool = False
     evidence_refs: list[str] = field(default_factory=list)
