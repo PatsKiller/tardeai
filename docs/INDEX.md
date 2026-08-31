@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `e7b23954c2eb93e88de857a9ac88ee8d412e1421ecf30df9b379a7b4b83c7bbf`
+**Tree fingerprint:** `1667b85eca01b04efdea998f9e80bc7273ff6ec9d7cd8d3a871d806a01ed9237`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,10 +12,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2262 |
-| Markdown (excl. this INDEX) | 1894 |
+| Files under `docs/` (excl. this INDEX) | 2263 |
+| Markdown (excl. this INDEX) | 1895 |
 | **MISSING HEADER** | **1033** |
-| Header OK | 861 |
+| Header OK | 862 |
 | Duplicate groups | 8 |
 
 ### By status_guess
@@ -30,7 +30,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_raw_sync | 8 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 12 |
-| review_required | 1894 |
+| review_required | 1895 |
 
 ## Markdown tree
 
@@ -584,6 +584,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/audits/overnight/F4_SEARCH_HEALTH_2026-08-31.md` | Overnight F4 — Search health + degradation into research output | review_required | OK | `4dc974d8af55` |
 | `docs/audits/overnight/F5_MODEL_COST_2026-08-31.md` | Overnight F5 — Model-call cost accounting | review_required | OK | `b7e798b44094` |
 | `docs/audits/overnight/F6_UTC_CRON_PROPOSALS_2026-08-31.md` | WAVE F6 — UTC scheduling proposals for LLM-heavy jobs · 2026-08-31 | review_required | OK | `ad31fa3b797a` |
+| `docs/audits/overnight/G2_IMPORT_NORMALISE_2026-08-31.md` | Overnight G2 — Import normalisation (A3 dual-load hot paths) | review_required | OK | `f6dec2f4a99a` |
 | `docs/audits/overnight/G3_DOCS_INDEX_2026-08-31.md` | Overnight G3 — Documentation index generator | review_required | OK | `c84615e159f7` |
 | `docs/audits/overnight/G4_ARCHIVE_MECHANISM_2026-08-31.md` | Overnight G4 — Archive mechanism | review_required | OK | `81e760481cc0` |
 | `docs/audits/overnight/G5_DUPLICATION_RECOMMENDATIONS_2026-08-31.md` | G5 — Duplication cluster recommendations (from Census Part 3) | review_required | OK | `0b081115c5fc` |
