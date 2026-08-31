@@ -94,10 +94,16 @@ def check_health(conn):
         msg = f"CRITICAL: {go_count} GO/A+ scans but 0 strategy_signals. Strategy Desk is empty!"
         log.error(msg)
         try:
-            from telegram_alert import send_alert
-            send_alert(msg)
-        except Exception:
-            pass
+            # send_telegram, NOT send_alert -- `send_alert` has never existed in
+            # telegram_alert.py, so this dedicated signal-flow alarm raised ImportError
+            # into `except Exception: pass` and reported a CRITICAL to nobody, silently,
+            # for the whole 24-day Strategy Desk outage.
+            from telegram_alert import send_telegram
+            if not send_telegram(msg):
+                log.error("ALERT NOT DELIVERED (send_telegram returned False): %s", msg)
+        except Exception as exc:
+            # Never swallow. An alarm that cannot raise is not an alarm.
+            log.error("ALERT NOT DELIVERED (%s: %s): %s", type(exc).__name__, exc, msg)
     elif status == "WARN":
         msg = f"WARNING: {go_count} GO/A+ scans but only {signal_count} strategy_signals."
         log.warning(msg)
