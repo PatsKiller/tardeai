@@ -4,11 +4,13 @@
 # indistinguishable from no alarm; this file is the count of alarms still in that
 # state, so the gap is a number rather than an omission.
 #
-# The gate fails when a file exceeds its entry, or when an unlisted file gains a
-# call site. It can only shrink: cover the alarm with a firing test, add the file
-# to that test's COVERS list, and lower the number here.
+# COVERS entries may be a whole file, or `file:line` for partial coverage. A file
+# is only declared whole when the sites funnel through one tested path.
 #
-# transport=send_telegram  total_sites=141  covered=11  uncovered=130
+# The gate fails when a file exceeds its entry, or when an unlisted file gains a
+# call site. It can only shrink.
+#
+# transport=send_telegram  total_sites=141  covered=13  uncovered=128
 
 scripts/advisory_telegram_brief.py 1
 scripts/aegis_overnight.py 3
@@ -18,7 +20,7 @@ scripts/alert_daily_digest.py 1
 scripts/alert_dispatcher.py 1
 scripts/alerting.py 1
 scripts/alpaca_live_read_sync.py 1
-scripts/alpaca_stop_manager.py 4
+scripts/alpaca_stop_manager.py 2
 scripts/api_v2.py 3
 scripts/atm_auto_approver.py 1
 scripts/auto_research.py 1
