@@ -139,6 +139,9 @@ GATES = [
     ("overnight_b6_reentry_scope", [
         "tests/test_overnight_b6_reentry_scope.py",
     ]),
+    ("overnight_d2_pending_data", [
+        "tests/test_overnight_d2_pending_data.py",
+    ]),
     ("overnight_d3_lesson_provenance", [
         "tests/test_overnight_d3_lesson_provenance.py",
     ]),
