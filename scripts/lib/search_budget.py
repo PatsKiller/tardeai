@@ -24,18 +24,29 @@ Three properties this module exists to guarantee:
     whole point of the check is to be conservative when it cannot be sure.
   * **Survives a process.** State is a file under the canonical state root, not
     an in-memory cache, and not a path relative to whichever release directory
-    the caller happened to import from.
+    the caller happened to import from. Overnight F3 hardens the write path
+    with an exclusive flock so concurrent cron invocations cannot both observe
+    an under-limit counter and both spend.
+
+Shared API for callers (including WAVE F1/F2 residual-web binding):
+
+    check(provider)       → {allowed, reason, status}   # read-only preflight
+    try_consume(provider) → same shape; atomic check+count under flock
+    guard(provider)       → bool                         # try_consume convenience
+    record / note         → count after the fact / validators
 
 READ_ONLY_ADVISORY with respect to the trading system: this module counts and
 denies. It never issues a request itself.
 """
 from __future__ import annotations
 
+import fcntl
 import json
 import os
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Iterator, Optional
 
 SCHEMA = "SearchBudget@v1"
 
@@ -66,12 +77,40 @@ def _state_root() -> Path:
 
 
 def budget_path(root: Optional[Path] = None) -> Path:
+    """Durable ledger path. Always under production_state_root/data/runtime.
+
+    Dry-run quote (2026-08-31):
+      production_state_root → ~/trade-ai-releases/persistent-state
+      ledger → …/persistent-state/data/runtime/search_budget.json
+    """
     base = Path(root) if root else _state_root()
     return base / "data" / "runtime" / "search_budget.json"
 
 
 class BudgetUnavailable(RuntimeError):
     """The budget could not be established. Callers must treat this as DENY."""
+
+
+def _lock_path(path: Path) -> Path:
+    return path.with_suffix(path.suffix + ".lock")
+
+
+@contextmanager
+def _exclusive(path: Path) -> Iterator[None]:
+    """Exclusive flock on a sidecar so concurrent cron processes serialize."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lock = _lock_path(path)
+    if not lock.exists():
+        lock.touch()
+    with open(lock, "a+") as lf:
+        fcntl.flock(lf.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            try:
+                fcntl.flock(lf.fileno(), fcntl.LOCK_UN)
+            except Exception:
+                pass
 
 
 def _load(path: Path) -> dict[str, Any]:
@@ -116,12 +155,9 @@ def _keys(now: datetime) -> tuple[str, str]:
     return now.strftime("%Y-%m-%d"), now.strftime("%Y-%m")
 
 
-def status(provider: str, *, now: Optional[datetime] = None,
-           root: Optional[Path] = None) -> dict[str, Any]:
-    now = now or datetime.now(timezone.utc)
+def _status_from_doc(provider: str, doc: dict[str, Any], now: datetime,
+                     path: Path) -> dict[str, Any]:
     day, month = _keys(now)
-    path = budget_path(root)
-    doc = _load(path)
     p = (doc.get("providers") or {}).get(provider) or {}
     daily = int((p.get("daily") or {}).get(day, 0))
     monthly = int((p.get("monthly") or {}).get(month, 0))
@@ -139,6 +175,27 @@ def status(provider: str, *, now: Optional[datetime] = None,
     }
 
 
+def _apply_record(doc: dict[str, Any], provider: str, *, allowed: bool,
+                  caller: str, now: datetime) -> None:
+    day, month = _keys(now)
+    p = doc.setdefault("providers", {}).setdefault(provider, {})
+    bucket = "daily" if allowed else "denied"
+    p.setdefault(bucket, {})[day] = int(p.get(bucket, {}).get(day, 0)) + 1
+    if allowed:
+        p.setdefault("monthly", {})[month] = int(p.get("monthly", {}).get(month, 0)) + 1
+        p.setdefault("callers", {}).setdefault(month, {})
+        p["callers"][month][caller] = int(p["callers"][month].get(caller, 0)) + 1
+        p["last_call"] = now.isoformat()
+
+
+def status(provider: str, *, now: Optional[datetime] = None,
+           root: Optional[Path] = None) -> dict[str, Any]:
+    now = now or datetime.now(timezone.utc)
+    path = budget_path(root)
+    doc = _load(path)
+    return _status_from_doc(provider, doc, now, path)
+
+
 def check(provider: str, *, now: Optional[datetime] = None,
           root: Optional[Path] = None) -> dict[str, Any]:
     """May this provider be called right now? Returns {allowed, reason, status}.
@@ -146,6 +203,9 @@ def check(provider: str, *, now: Optional[datetime] = None,
     **Never raises, and never fails open.** Any error establishing the budget
     returns ``allowed=False`` with the reason, because a caller that cannot know
     whether it is over budget must behave as though it is.
+
+    Read-only: does not mutate the ledger. Prefer ``try_consume`` / ``guard`` at
+    the call site so concurrent cron processes cannot both spend the last unit.
     """
     try:
         st = status(provider, now=now, root=root)
@@ -160,51 +220,99 @@ def check(provider: str, *, now: Optional[datetime] = None,
     return {"allowed": True, "reason": "OK", "status": st}
 
 
-def record(provider: str, *, allowed: bool = True, caller: str = "default",
-           now: Optional[datetime] = None, root: Optional[Path] = None) -> None:
-    """Record one call (or one denial). Best-effort — a failed write must not
-    take down the caller — but a failed write is visible in the next status()
-    as a counter that did not advance, and the health lane reports it."""
+def try_consume(provider: str, *, caller: str = "default",
+                now: Optional[datetime] = None,
+                root: Optional[Path] = None) -> dict[str, Any]:
+    """Atomically check the budget and consume one unit when allowed.
+
+    Holds an exclusive flock for the read-modify-write so two cron processes
+    cannot both observe an under-limit counter and both spend. On any error
+    establishing or writing the ledger: ``allowed=False`` (never fail open).
+    """
     now = now or datetime.now(timezone.utc)
-    day, month = _keys(now)
     path = budget_path(root)
     try:
-        doc = _load(path)
-    except BudgetUnavailable:
-        doc = {"schema": SCHEMA, "providers": {}}   # ledger is being rebuilt
-    p = doc.setdefault("providers", {}).setdefault(provider, {})
-    bucket = "daily" if allowed else "denied"
-    p.setdefault(bucket, {})[day] = int(p.get(bucket, {}).get(day, 0)) + 1
-    if allowed:
-        p.setdefault("monthly", {})[month] = int(p.get("monthly", {}).get(month, 0)) + 1
-        p.setdefault("callers", {}).setdefault(month, {})
-        p["callers"][month][caller] = int(p["callers"][month].get(caller, 0)) + 1
-        p["last_call"] = now.isoformat()
+        with _exclusive(path):
+            try:
+                doc = _load(path)
+            except BudgetUnavailable as e:
+                return {"allowed": False,
+                        "reason": f"BUDGET_UNAVAILABLE: {type(e).__name__}: {e}",
+                        "fail_open": False, "status": None}
+            st = _status_from_doc(provider, doc, now, path)
+            if st["monthly_used"] >= st["monthly_limit"]:
+                _apply_record(doc, provider, allowed=False, caller=caller, now=now)
+                try:
+                    _save(path, doc)
+                except Exception:
+                    pass
+                return {"allowed": False, "reason": "MONTHLY_EXHAUSTED", "status":
+                        _status_from_doc(provider, doc, now, path)}
+            if st["daily_used"] >= st["daily_limit"]:
+                _apply_record(doc, provider, allowed=False, caller=caller, now=now)
+                try:
+                    _save(path, doc)
+                except Exception:
+                    pass
+                return {"allowed": False, "reason": "DAILY_EXHAUSTED", "status":
+                        _status_from_doc(provider, doc, now, path)}
+            _apply_record(doc, provider, allowed=True, caller=caller, now=now)
+            try:
+                _save(path, doc)
+            except Exception as e:
+                # Could not persist the consume → deny rather than spend uncounted
+                return {"allowed": False,
+                        "reason": f"BUDGET_UNAVAILABLE: {type(e).__name__}: {e}",
+                        "fail_open": False, "status": st}
+            return {"allowed": True, "reason": "OK",
+                    "status": _status_from_doc(provider, doc, now, path)}
+    except Exception as e:
+        return {"allowed": False,
+                "reason": f"BUDGET_UNAVAILABLE: {type(e).__name__}: {e}",
+                "fail_open": False, "status": None}
+
+
+def record(provider: str, *, allowed: bool = True, caller: str = "default",
+           now: Optional[datetime] = None, root: Optional[Path] = None) -> None:
+    """Record one call (or one denial) under exclusive flock.
+
+    A failed or corrupt ledger must **not** be rebuilt as a fresh zero counter
+    (that was the fail-open write path). Skip the write instead; the next
+    ``check`` / ``try_consume`` will DENY on the unreadable ledger.
+    """
+    now = now or datetime.now(timezone.utc)
+    path = budget_path(root)
     try:
-        _save(path, doc)
+        with _exclusive(path):
+            try:
+                doc = _load(path)
+            except BudgetUnavailable:
+                return                       # never overwrite a corrupt ledger with zeros
+            _apply_record(doc, provider, allowed=allowed, caller=caller, now=now)
+            try:
+                _save(path, doc)
+            except Exception:
+                pass
     except Exception:
         pass
 
 
-def guard(provider: str, caller: str = "default") -> bool:
+def guard(provider: str, caller: str = "default", *,
+          now: Optional[datetime] = None,
+          root: Optional[Path] = None) -> bool:
     """One-liner for a call site: may I call, and count it if so.
 
     Returns False when denied — including when the budget cannot be established,
     because a caller that cannot know whether it is over budget must behave as
-    though it is.
+    though it is. Uses ``try_consume`` so the decision and the count are atomic
+    across concurrent processes.
     """
-    verdict = check(provider)
-    if not verdict["allowed"]:
-        try:
-            record(provider, allowed=False, caller=caller)
-        except Exception:
-            pass
-        return False
-    record(provider, allowed=True, caller=caller)
-    return True
+    return bool(try_consume(provider, caller=caller, now=now, root=root)["allowed"])
 
 
-def note(provider: str, caller: str = "default") -> None:
+def note(provider: str, caller: str = "default", *,
+         now: Optional[datetime] = None,
+         root: Optional[Path] = None) -> None:
     """Count a call that must NOT be denied.
 
     Key validators and credential monitors consume a real credit, so they have
@@ -212,7 +320,7 @@ def note(provider: str, caller: str = "default") -> None:
     a healthy key report as dead, which is a worse failure than the spend.
     """
     try:
-        record(provider, allowed=True, caller=caller)
+        record(provider, allowed=True, caller=caller, now=now, root=root)
     except Exception:
         pass
 
