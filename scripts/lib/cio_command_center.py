@@ -1332,9 +1332,23 @@ def _row_narrative(store: Any, keys: tuple[str, ...], fallback_what: str) -> dic
                     if _narrative_is_clean(nar.get("what")):
                         out = dict(nar)
                         out["narrative_source"] = "record"
-                        # B5 — writer names the author, not the last hand.
-                        out["author"] = out.get("writer") or out.get("author") or "record"
-                        out["writer"] = out["author"]
+                        # W3c / AGENTS §9.2 — writer names the author, not the
+                        # migration copy step. Strip migration: if present.
+                        try:
+                            from scripts.lib.cio_instrument_record import (
+                                normalize_writer_author,
+                            )
+                            stamps = normalize_writer_author(
+                                writer=out.get("writer") or out.get("author") or "record",
+                                author=out.get("author"),
+                            )
+                            out["author"] = stamps["author"]
+                            out["writer"] = stamps["writer"]
+                            if stamps.get("copy_step"):
+                                out["copy_step"] = stamps["copy_step"]
+                        except Exception:                        # noqa: BLE001
+                            out["author"] = out.get("writer") or out.get("author") or "record"
+                            out["writer"] = out["author"]
                         return out
                     return {
                         "subject_key": key,
@@ -1521,9 +1535,24 @@ def _stamp_cash_letter_provenance(
     contributing balance). Dollar fields are left untouched.
     """
     out = dict(letter or {})
-    author = out.get("writer") or out.get("author") or "deterministic_fallback"
-    out["author"] = author
-    out["writer"] = author  # AGENTS §9.2 — writer names the author
+    # W3c / AGENTS §9.2 — writer names the author, never migration: copy step.
+    try:
+        from scripts.lib.cio_instrument_record import normalize_writer_author
+        stamps = normalize_writer_author(
+            writer=out.get("writer"),
+            author=out.get("author"),
+        )
+        out["author"] = stamps["author"]
+        out["writer"] = stamps["writer"]
+        if stamps.get("copy_step"):
+            out["copy_step"] = stamps["copy_step"]
+    except Exception:                                            # noqa: BLE001
+        author = out.get("writer") or out.get("author") or "deterministic_fallback"
+        if str(author).lower().startswith("migration:"):
+            author = str(author).split(":", 1)[1].strip() or "deterministic"
+            out["copy_step"] = "migration"
+        out["author"] = author
+        out["writer"] = author
     evidence = (capital_plan or {}).get("cash_as_of")
     if isinstance(evidence, dict) and evidence.get("as_of"):
         out["composition_as_of"] = out.get("as_of")
@@ -1537,6 +1566,7 @@ def _stamp_cash_letter_provenance(
             "cash evidence age not supplied; do not read composition time as "
             "the age of these dollars",
         )
+    # This letter is a deterministic composition; never claim model provenance.
     out["model_produced"] = False
     return out
 
@@ -1722,9 +1752,14 @@ def build_office_home(
         "note": (
             "Office home is a deterministic composition. No model produced "
             "this page; model/process telemetry belongs below the fold only "
-            "when a model actually ran."
+            "when a model actually ran. writer names the author, not the "
+            "copy step."
         ),
     }
+    # Consistency: never claim model provenance for a brief no model produced.
+    if isinstance(home["provenance_footer"], dict):
+        home["provenance_footer"]["model_produced"] = False
+        home["provenance_footer"].setdefault("writer_means", "author")
     home["model_produced"] = False
     # Wave 2 slice 10: overlay Surface A reentry counts onto opportunities
     # without merging queue chips with the Surface A book (dual pipes).

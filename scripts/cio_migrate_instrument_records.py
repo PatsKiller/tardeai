@@ -117,13 +117,15 @@ def main() -> int:
             return
         plan = plans_by_sym.get(sym.upper()) or {}
         turn = turns.get(sym.upper())
+        # writer = author of the prose (deterministic seed composer), not the
+        # copy step. AGENTS §9.2 — never stamp migration: as authorship.
         narrative = cc_narrative(
             what=str(plan.get("summary") or "")[:600],
             thesis_fit=str(plan.get("thesis_alignment") or "")[:400],
             recommendation_option_id=plan.get("option_id"),
             risks=list(plan.get("risks") or [])[:4],
             evidence_refs=list(plan.get("evidence_refs") or [])[:6],
-            writer="migration:deterministic",
+            writer="deterministic",
         )
         rec = new_record(
             kind, sym,
@@ -197,7 +199,7 @@ def main() -> int:
                   else "Cash sleeve: DATA_UNAVAILABLE."),
             thesis_fit="Cash is intentional optionality under the desk thesis.",
             recommendation_option_id="hold_cash",
-            writer="migration:deterministic",
+            writer="deterministic",
         ),
         cash_usd=cash_usd,
         cash_source=totals.get("total_cash_source"),

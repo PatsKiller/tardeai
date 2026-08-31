@@ -110,9 +110,10 @@ def cash_lines(product: dict[str, Any]) -> list[str]:
     return lines
 
 
+# Honest footer for briefs no model produced. Do not assert model provenance.
 PROVENANCE_FOOTER = (
     "_Provenance: D counts/sums · T templates · no model produced this brief. "
-    "writer = author._"
+    "writer = author (not the copy step)._"
 )
 
 
