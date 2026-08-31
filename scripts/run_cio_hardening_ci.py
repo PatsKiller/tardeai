@@ -125,6 +125,9 @@ GATES = [
     ("research_reaches_surface", [
         "tests/test_research_reaches_surface.py",
     ]),
+    ("silent_success", [
+        "tests/test_aegis_silent_success.py",
+    ]),
     ("money_surface_honesty", [
         "tests/test_money_surface_honesty.py",
         "tests/test_cash_guidance_provenance.py",
