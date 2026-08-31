@@ -167,19 +167,90 @@ stale upstream).
   pass. If a diff is implausibly large, check encoding before reading it.
 - **`sys.path` contamination:** measurements run from a worktree read a `data/`
   that isn't there. Use the documented live-measurement path.
+- **Before relying on a mechanism's scope in an argument, run the one command
+  that establishes it.** Four findings in a single day shared this root, and
+  none was a broken tool — each was a correct mechanism operating over a
+  different scope than the person using it had in mind:
+
+  | mechanism | assumed scope | actual scope |
+  |---|---|---|
+  | `python -c` | the repo is not on the path | cwd is prepended to `sys.path`, so it is |
+  | a synthetic bootstrap probe | imports the way the failing job imports | a different import spelling, so it could not reproduce the failure |
+  | `git add -A` / `git checkout -- .` | the paths I had in mind | every path under the pathspec; this swept 14 unrelated files into a docs branch |
+  | event-bus poll cursors | sit at the end, so history will not replay | advance by exactly what was consumed, so routing replayed 1,100 events at 12 per cycle |
+
+  Verifying scope costs one command. Assuming it has produced a wrong claim four
+  times in a day, and each was believed because the mechanism was working.
 - **A gate that edits source must verify its own edit still compiles.**
+- **A detector's shape determines what it structurally cannot see. Before
+  trusting a zero, state what property the detector keys on, and whether the
+  thing you are looking for would exhibit that property.** An invariance scan
+  looking for agent-originated fields returned zero and was believed. Generated
+  prose is maximally *variable*, so it can never land in an invariance bucket:
+  the tool was well-built and pointed at the wrong property. The 27 fields were
+  found instead by sorting prose leaves by length and reading the longest
+  twelve. A zero from a detector that could not have found a positive is not
+  evidence of absence, and it is the most convincing kind of wrong answer
+  because the tool worked perfectly.
+
+  **This rule names a class, not an incident. Four earlier findings, each filed
+  separately, are the same defect:**
+
+  | detector | keyed on | could never see |
+  |---|---|---|
+  | `ast.parse` compile sweep | "does this parse under `ast.parse`" | files Python refuses to import — it tolerates a BOM and misplaced `__future__` |
+  | the catalyst skip aggregate | a count | its own members, so a 149-name registry gap read as a structural 35,928-event skip |
+  | the preconditions board check | an artifact's *presence* | the artifact's *type*, so a residual-web hop satisfied a check named for a critique |
+  | the agent-origination scan | invariance | generated prose, which is maximally variable |
+
+  A fifth, mine: a root-sensitivity control whose two arms resolved to the same
+  file through a symlink. Each was a working tool answering a question adjacent
+  to the one asked. Expect more; the way to find them is to ask what the
+  instrument keys on before believing what it reports.
+- **A control whose name asserts a restriction is not evidence the restriction
+  exists. Check that some code path reads it.** This is the sibling of the
+  detector-shape rule above and the more dangerous of the two, because each
+  instance is a rail somebody is relying on by name.
+
+  | control | name asserts | what the code does |
+  |---|---|---|
+  | `CIO_TELEGRAM_INTERDICT` | Telegram sends are interdicted | does not gate the family that actually reaches the operator |
+  | `BehaviorWriteRefused` | behaviour writes are refused | guards the InstrumentRecord path only; the broker transport is not covered — by design, but the name does not say so |
+  | `shadow` (situation detector) | detections are held back | appears in exactly three places, all of which only write it into a payload, a plan's `extra`, or a run summary. It gates no emission, no plan creation, no routing. `notify` is the flag that gates notification. |
+  | `BLOCKED_ACTIONS_WHEN_NOT_READY` | these actions are blocked when not ready | defined once, read nowhere in the tree |
+
+  Two severities, and they fail differently:
+
+  * **The restriction does not exist.** The first three. Anyone reasoning from
+    the name is wrong about what the system does.
+  * **The restriction exists, but not in the thing named for it.**
+    `BLOCKED_ACTIONS_WHEN_NOT_READY` is dead, yet `APPROVE_PAPER` *is* gated —
+    by a separate hardcoded branch a few lines below. Editing the named control
+    changes nothing, which is how a careful person makes a change that silently
+    does not take.
+
+  A mechanical sweep for restriction-asserting names flags 212 candidates, 125
+  never read in a conditional. **Do not quote that number as a finding.**
+  Spot-checking four, three were legitimate — value constants and `in`-tests the
+  sweep cannot see. The sweep has the exact defect the rule above it describes:
+  it is a candidate generator, not a count.
+
 - **File `atime` is not evidence of a live consumer.** This filesystem is
   mounted `relatime`, so a read may not update `atime` at all. An investigation
   nearly concluded "nothing reads the spine" from atime alone; the conclusion
   happened to be right and the method was worthless. Prove a consumer by finding
   the call site and observing it run, never by timestamp.
-- **Check whether a store's default path is absolute before reasoning about
-  roots.** `cio_lineage_health.DEFAULT_PATH` points at
-  `~/trade-ai-releases/persistent-state/...`, outside every checkout, so
-  `TRADEAI_ROOT` can neither fix nor break it — four runs across both cwds with
-  and without the variable returned identical output. Two agents drew opposite
-  conclusions about that collector's root sensitivity; both were reasoning about
-  a path the variable never touched.
+- **A root that symlinks to the same destination is not a control.** I set
+  `TRADEAI_ROOT` to a release whose `data/cio` is a symlink into
+  `persistent-state`, got byte-identical output across four runs, and wrote
+  "this collector is root-immune" into these rules. It is not: pointed at a root
+  that is genuinely elsewhere, the path moves. Vary the *destination*, not just
+  the variable, and confirm the two arms resolve to different inodes before
+  concluding anything from a null result.
+- **Attribute location is a claim like any other.** The same note named
+  `cio_lineage_health.DEFAULT_PATH`; that attribute is on neither module's
+  `__dict__` and resolves dynamically. I read it off one module and wrote down
+  another. Check `vars(mod)` before citing a symbol's home.
 - **Never mint a placeholder identity.** `None` for unresolvable. Never a ticker
   as a GUID. A shared "unknown" id joins every unresolved event to every other.
 - **Never auto-remediate store divergence.** Report both paths, both hashes,
