@@ -1,5 +1,9 @@
 # Hermes Curated Migration Inventory — 2026-06-06
 
+Status:      ACTIVE
+as_of:       2026-06-06T22:07:57-04:00
+Measured at: efcc51365 / not measured
+
 Curated record of what moved from the Trade-AI sidecar into the global Hermes install, what was
 intentionally left behind, and what remains as rollback evidence. Verified live on ms01.
 

@@ -1,5 +1,9 @@
 # CIO persistent spine — closeout
 
+Status:      HISTORICAL
+as_of:       2026-08-30T11:09:16-04:00
+Measured at: efcc51365 / not measured
+
 Date: 2026-08-30 · Authority: `READ_ONLY_ADVISORY` · `MBI_BEHAVIOR=0` · `MBI_COGNITION=1`
 Served pin at close: `d4cc7371-main-exact-phase2-20260830-110200`
 Board: `scripts/cio_preconditions_board.py` → `CIOPreconditionsBoard@v1`

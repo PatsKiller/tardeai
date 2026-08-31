@@ -1,5 +1,9 @@
 # PHASE 192H — Command Center v3 Wiring Report (Plan + Placeholder)
 
+Status:      HISTORICAL
+as_of:       2026-06-02T12:10:31-04:00
+Measured at: efcc51365 / not measured
+
 **App:** `apps/command-center-v3` (hub architecture, served at `/v3/`) · Alpaca paper only
 
 ---

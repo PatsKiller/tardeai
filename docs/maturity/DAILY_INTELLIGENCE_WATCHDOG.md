@@ -1,5 +1,9 @@
 # Daily Intelligence Watchdog (Program 4)
 
+Status:      ACTIVE
+as_of:       2026-08-18T08:26:56-04:00
+Measured at: efcc51365 / not measured
+
 READ_ONLY_ADVISORY. The watchdog observes, classifies, records, and alerts.
 It does **not** trade, change risk, rotate credentials, or grant itself authority.
 

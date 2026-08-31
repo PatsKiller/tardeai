@@ -1,5 +1,9 @@
 # SCREENER-ARCH-4 — Test Results
 
+Status:      HISTORICAL
+as_of:       2026-05-19T16:51:15-04:00
+Measured at: efcc51365 / not measured
+
 ## 18/18 PASS
 
 - Compile: 7 (baseline, migration, engine, coverage, gaps, verifier, api)

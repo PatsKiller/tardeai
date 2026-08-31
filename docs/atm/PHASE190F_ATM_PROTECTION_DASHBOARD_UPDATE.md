@@ -1,5 +1,9 @@
 # PHASE 190F — ATM Protection Dashboard Update
 
+Status:      HISTORICAL
+as_of:       2026-06-02T10:33:34-04:00
+Measured at: efcc51365 / not measured
+
 **File:** `scripts/api_v2.py` (additive route + handler) · Alpaca paper only
 
 ---

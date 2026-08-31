@@ -1,5 +1,9 @@
 # Re-Entry Visible Classification and Data-Source Correction
 
+Status:      ACTIVE
+as_of:       2026-07-23T17:13:17-04:00
+Measured at: efcc51365 / not measured
+
 ## Screenshot defect
 
 The production screenshot exposed three regressions after PR #156:

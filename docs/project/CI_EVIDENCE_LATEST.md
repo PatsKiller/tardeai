@@ -1,5 +1,9 @@
 # CI Evidence — Release Readiness Proof
 
+Status:      ACTIVE
+as_of:       2026-08-30T17:58:41-04:00
+Measured at: efcc51365 / not measured
+
 **Status: PASS**  
 _Generated: 2026-08-30T21:51:56.263338+00:00_  
 _Source: `python3 scripts/run_release_ci_equivalent.py --json`_  

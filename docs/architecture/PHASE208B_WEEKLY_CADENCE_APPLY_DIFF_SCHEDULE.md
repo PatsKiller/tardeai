@@ -1,5 +1,9 @@
 # Phase 208B — Weekly Cadence Apply + Diff + Schedule — 2026-06-07
 
+Status:      HISTORICAL
+as_of:       2026-06-07T11:26:53-04:00
+Measured at: efcc51365 / not measured
+
 ## Parallel apply (208E)
 `--cadence weekly --apply` → **exit 0, 269s**, `overall=ok`. Step `portfolio_weekly_report` ok
 (`PORTFOLIO_ADVISORY_DRAFT_REVIEW_ONLY`); price_cache + db_retention `EXCLUDED_NOT_RUN`. Legacy

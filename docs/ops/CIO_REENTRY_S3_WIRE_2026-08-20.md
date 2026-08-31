@@ -1,5 +1,9 @@
 # CIO Reentry → S3 wire (Fix #1) — 2026-08-20
 
+Status:      HISTORICAL
+as_of:       2026-08-20T15:51:20-04:00
+Measured at: efcc51365 / not measured
+
 **READ_ONLY_ADVISORY.** No orders, stops, Telegram enable, or S7/watch changes.
 
 ## Problem

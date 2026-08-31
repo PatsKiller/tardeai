@@ -1,5 +1,9 @@
 # Phase 201I — v3 Control Tower Post-Governance Status
 
+Status:      HISTORICAL
+as_of:       2026-06-05T10:46:39-04:00
+Measured at: efcc51365 / not measured
+
 v3 Queue Control Tower (SystemHub → Control Plane) now distinguishes the full post-governance state.
 Read-only; **no v2 UI changed**.
 

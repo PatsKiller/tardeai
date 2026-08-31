@@ -1,5 +1,9 @@
 # Proposal Maturity Audit — 2026-06-22
 
+Status:      HISTORICAL
+as_of:       2026-06-25T22:26:32-04:00
+Measured at: efcc51365 / not measured
+
 Target: **Maturity Level 10** — robust, high-edge, low-noise, explainable, proactively monitored.
 
 ## Executive Summary

@@ -1,5 +1,9 @@
 # Notify preconditions — four checks (2026-08-29)
 
+Status:      HISTORICAL
+as_of:       2026-08-29T16:00:18-04:00
+Measured at: efcc51365 / not measured
+
 **Telegram send stays OFF.** `CIO_SITUATION_NOTIFY` 0, INTERDICT on,
 `telegram_sent` false, 0 Telegram API calls in this PR. This document is not a
 request to turn it on.

@@ -1,5 +1,9 @@
 # Persistent CIO — Slices A-E (InstrumentRecord, rehydrate, CC reads record, research budget, preconditions board)
 
+Status:      ACTIVE
+as_of:       2026-08-30T15:09:19-04:00
+Measured at: efcc51365 / not measured
+
 **Status: BRIEF NOT PRESERVED.**
 
 This wave was executed. Its brief text was not recovered.

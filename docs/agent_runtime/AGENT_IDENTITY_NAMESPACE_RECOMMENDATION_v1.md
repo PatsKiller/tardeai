@@ -1,5 +1,9 @@
 # Agent Identity Namespace Recommendation v1
 
+Status:      ACTIVE
+as_of:       2026-07-30T11:19:37-04:00
+Measured at: efcc51365 / not measured
+
 Broad renames are out of scope for this tranche.
 
 Recommendation: use subsystem-qualified stable IDs for new storage and APIs while preserving current IDs as aliases until a separate migration is approved.

@@ -1,5 +1,9 @@
 # Momentum Scalp — 2026-06-29 Health DEGRADED Incident
 
+Status:      HISTORICAL
+as_of:       2026-06-29T08:03:38-04:00
+Measured at: efcc51365 / not measured
+
 _First trading morning (Monday) after the every-5-min Finviz lane + SEC context + multi-source health
 went in. Health Agent fired **DEGRADED 69/100** at 07:46 ET. Investigation + fixes below. No live trades,
 no broker writes; source/scheduler/monitoring only._

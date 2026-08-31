@@ -1,5 +1,9 @@
 # Fidelity Rollover IRA → Schwab (ACATS reflection) — 2026-07-16
 
+Status:      HISTORICAL
+as_of:       2026-07-17T10:53:10-04:00
+Measured at: efcc51365 / not measured
+
 ## Operator report
 
 Fidelity Rollover IRA assets are now at Schwab. Command Center still showed a **Fidelity Rollover IRA** book (~$566k) alongside **Schwab Rollover IRA** (~$583k), **double-counting** the rolled positions (e.g. SCHG 5000@Fidelity + 2774@Schwab while Schwab API already showed **7774** SCHG in one account).

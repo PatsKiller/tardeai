@@ -1,5 +1,9 @@
 # STOP-V2.1 Reconciliation Report
 
+Status:      ACTIVE
+as_of:       2026-05-22T18:59:31-04:00
+Measured at: efcc51365 / not measured
+
 Generated: 2026-05-22T22:57:32.929213+00:00
 
 ## Summary

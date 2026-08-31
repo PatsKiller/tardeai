@@ -1,5 +1,9 @@
 # Scalp Lifecycle Maturity
 
+Status:      ACTIVE
+as_of:       2026-06-28T22:49:34-04:00
+Measured at: efcc51365 / not measured
+
 **Combined: 4.4 / 5** (raw 5.0) — meets 4.5: **False**  
 _Generated: 2026-06-29T02:47:51.568824+00:00_  
 _Source: `python3 scripts/compute_scalp_lifecycle_maturity.py --json`_  

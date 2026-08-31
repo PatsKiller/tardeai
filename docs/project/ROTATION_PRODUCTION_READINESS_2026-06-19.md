@@ -1,5 +1,9 @@
 # Rotation Intelligence Production Readiness — 2026-06-19
 
+Status:      HISTORICAL
+as_of:       2026-06-19T12:48:08-04:00
+Measured at: efcc51365 / not measured
+
 ## Status
 
 **Target state:** 8.x advisory-production-ready  

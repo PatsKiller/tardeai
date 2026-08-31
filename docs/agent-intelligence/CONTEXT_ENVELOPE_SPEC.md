@@ -1,5 +1,9 @@
 # ContextEnvelope@v1 — Specification
 
+Status:      ACTIVE
+as_of:       2026-08-16T22:03:26-04:00
+Measured at: efcc51365 / not measured
+
 Canonical context object shared by Alex and participating specialists.
 Implemented in `scripts/lib/agent_context_envelope.py`.
 

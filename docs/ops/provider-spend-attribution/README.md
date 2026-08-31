@@ -1,5 +1,9 @@
 # Provider spend attribution
 
+Status:      ACTIVE
+as_of:       2026-08-17T18:17:51-04:00
+Measured at: efcc51365 / not measured
+
 READ_ONLY_ADVISORY. Observability / FinOps only.
 
 ## Three numbers (never mix)

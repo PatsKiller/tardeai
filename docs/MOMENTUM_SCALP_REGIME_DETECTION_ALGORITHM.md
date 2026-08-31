@@ -1,5 +1,9 @@
 # Momentum Scalp Regime Detection Algorithm
 
+Status:      ACTIVE
+as_of:       2026-07-02T18:42:35-04:00
+Measured at: efcc51365 / not measured
+
 **Version:** 1.0 · **Effective:** 2026-07-02  
 **Policy:** [`MOMENTUM_SCALP_STOP_AND_TRAIL_POLICY.md`](MOMENTUM_SCALP_STOP_AND_TRAIL_POLICY.md) Layer 3 multiplier table + Layer 4  
 **Implementation:** `scripts/lib/momentum_scalp_regime.py` · `config/momentum_scalp_regime.yaml`

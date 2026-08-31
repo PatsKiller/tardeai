@@ -1,5 +1,9 @@
 # Defense Desk v4 — See the Core · The Round-Trip Ledger · Cards That Show the Trade (2026-07-18)
 
+Status:      ACTIVE
+as_of:       2026-07-18T10:51:17-04:00
+Measured at: efcc51365 / not measured
+
 Session 4. Operator graded v3 a 4/10: nothing about the core book, no dollars/levels on
 cards, 20 rows of honest-empty radar, bottom-list movers celebrated, and no memory of
 "step out" advice. v4 fixes each structurally; the remaining points accrue on the

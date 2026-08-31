@@ -1,5 +1,9 @@
 # Hermes DeepSeek hybrid policy (pointer)
 
+Status:      ACTIVE
+as_of:       2026-08-04T14:37:39-04:00
+Measured at: efcc51365 / not measured
+
 Canonical operator doc:
 
 **`docs/ops/HERMES_DEEPSEEK_HYBRID_FREE_OAUTH_ROLLOVER_2026-08-04.md`**

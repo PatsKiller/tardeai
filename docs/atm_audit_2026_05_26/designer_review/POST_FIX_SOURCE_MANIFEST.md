@@ -1,5 +1,9 @@
 # POST-FIX SOURCE MANIFEST
 
+Status:      HISTORICAL
+as_of:       2026-05-26T15:26:25-04:00
+Measured at: efcc51365 / not measured
+
 **Export Timestamp:** 2026-05-26T15:50Z  
 **Git Commit:** `c1286d314deb377df49713e1646f139db7f43643` (main)  
 **Git Branch:** `main`  

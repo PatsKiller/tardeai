@@ -1,5 +1,9 @@
 # ADR-002 — Observability before memory activation
 
+Status:      ACTIVE
+as_of:       2026-08-16T22:03:26-04:00
+Measured at: efcc51365 / not measured
+
 - **Status**: Accepted
 - **Date**: 2026-08-17
 

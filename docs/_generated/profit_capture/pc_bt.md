@@ -1,5 +1,9 @@
 # Profit-Protection Rule Backtests — quality-gated (evidence only)
 
+Status:      ACTIVE
+as_of:       2026-06-14T03:30:37-04:00
+Measured at: efcc51365 / not measured
+
 run_id: ppbt_auto_20260614  |  raw measurable: 34  |  trades with intrabar path: 31  |  gate: {'quality_gated': True, 'winners_only': True, 'min_bars_analyzed': 10, 'max_mfe_r': 20.0, 'require_planned_stop': True, 'reliable_floor': 20}
 
 **No rule applied to live trading. Where a trade has a real intrabar path, premature-exit cost is PATH-MEASURED (estimate_quality=path_measured); otherwise it is a single-peak upper bound. Confidence uses reliable n, not raw n.**

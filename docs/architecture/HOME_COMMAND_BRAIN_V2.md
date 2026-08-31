@@ -1,5 +1,9 @@
 # Home v2 — The Command Brain (2026-07-17)
 
+Status:      ACTIVE
+as_of:       2026-07-17T12:46:39-04:00
+Measured at: efcc51365 / not measured
+
 Commits `50fd3de0..b7fc3391`. The operator's stated identity for the page: "the command
 center brain — the page that needs all the information on it." Reference composition
 (operator-supplied Finviz screenshots) delivered as Row 1: Market Movers · Your Book ·

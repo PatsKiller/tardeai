@@ -1,5 +1,9 @@
 # Phase 179A: Paper Trade Source Inventory
 
+Status:      HISTORICAL
+as_of:       2026-06-01T23:21:01-04:00
+Measured at: efcc51365 / not measured
+
 **Date**: 2026-06-01
 **Operator**: John Whiting
 **Mode**: PAPER ONLY — no live trading

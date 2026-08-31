@@ -1,5 +1,9 @@
 # v3 LLM-Review Per-Row Provenance (2026-06-06, audit #9)
 
+Status:      ACTIVE
+as_of:       2026-06-06T10:54:25-04:00
+Measured at: efcc51365 / not measured
+
 ## Gap
 `trade_llm_reviews` rows mixed simulation, imported-backtest, and paper sources with no visible provenance
 or canonical lineage — the operator couldn't tell what each analytic row represented.

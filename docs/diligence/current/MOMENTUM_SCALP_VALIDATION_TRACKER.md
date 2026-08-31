@@ -1,5 +1,9 @@
 # Momentum Scalp Validation Tracker
 
+Status:      ACTIVE
+as_of:       2026-06-28T22:49:34-04:00
+Measured at: efcc51365 / not measured
+
 **Status: PASS** | gate met: **False** | live-ready: **False**  
 _Generated: 2026-06-29T02:48:11.932087+00:00_  
 _Source: `python3 scripts/momentum_scalp_validation_tracker.py --json`_  

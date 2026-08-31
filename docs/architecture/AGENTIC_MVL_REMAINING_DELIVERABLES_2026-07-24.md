@@ -1,5 +1,9 @@
 # Agentic MVL Remaining Deliverables — 2026-07-24
 
+Status:      HISTORICAL
+as_of:       2026-07-24T17:42:02-04:00
+Measured at: efcc51365 / not measured
+
 **PR:** #163  
 **Mode:** DRAFT / LAB / SHADOW  
 **Financial authority:** DENIED

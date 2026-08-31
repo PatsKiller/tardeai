@@ -1,5 +1,9 @@
 # Cost Basis Feed Correction (2026-06-05)
 
+Status:      HISTORICAL
+as_of:       2026-06-05T16:33:29-04:00
+Measured at: efcc51365 / not measured
+
 Fixed fabricated cost basis / gains in holdings.json (e.g. V +4932%, FCNTX +2321%, SCHD +705%).
 The source data WAS present — the import logic was wrong. No live broker API exists; sources are the
 Schwab transaction CSVs + Fidelity PDFs in `data/portfolios/input/`.

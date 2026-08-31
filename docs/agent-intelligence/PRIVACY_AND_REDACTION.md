@@ -1,5 +1,9 @@
 # Privacy & Redaction
 
+Status:      ACTIVE
+as_of:       2026-08-17T10:57:05-04:00
+Measured at: efcc51365 / not measured
+
 `READ_ONLY_ADVISORY` · Phase 9
 
 This document specifies what the Agent Intelligence Foundation redacts, where

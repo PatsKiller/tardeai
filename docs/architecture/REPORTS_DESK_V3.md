@@ -1,5 +1,9 @@
 # Reports Desk v3 — One Corpus · The System Rollup · Zero Garbage (2026-07-17)
 
+Status:      ACTIVE
+as_of:       2026-07-17T11:25:59-04:00
+Measured at: efcc51365 / not measured
+
 Commits `a405b3c3..d552f00f` (one per WS). Builds on the v1 ship (f6b481db..14caffb9 — the
 prompt's "v2" baseline; no v2 commits exist, naming drift documented in
 `docs/_findings/reports_desk_v3_diagnosis_2026-07-17.md`).

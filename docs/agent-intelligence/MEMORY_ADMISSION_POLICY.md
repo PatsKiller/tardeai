@@ -1,5 +1,9 @@
 # Memory Admission Policy
 
+Status:      ACTIVE
+as_of:       2026-08-21T14:10:39-04:00
+Measured at: efcc51365 / not measured
+
 `READ_ONLY_ADVISORY`. This policy governs what a memory record may be admitted
 as, and what it can never become. Implemented in
 `scripts/lib/agent_memory_governance.py`.

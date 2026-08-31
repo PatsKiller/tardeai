@@ -1,5 +1,9 @@
 # Command Center — Durable Memory operator guide
 
+Status:      ACTIVE
+as_of:       2026-08-17T23:11:04-04:00
+Measured at: efcc51365 / not measured
+
 READ_ONLY_ADVISORY. Memory is durable. Memory is advisory. Memory is **not**
 financial truth. Memory is **not** execution authority.
 

@@ -1,5 +1,9 @@
 # Phase 209H — Workflow Gaps, Duplicates, Conflicts (2026-06-07)
 
+Status:      HISTORICAL
+as_of:       2026-06-07T12:29:04-04:00
+Measured at: efcc51365 / not measured
+
 | Finding | Class | Note |
 |---------|-------|------|
 | Coordinator kill-switch references retired hermes_sidecar/.hermes/DISABLED (stale path) | P1 | repoint to live path (operator-approved) — carried from 208J/R3 |

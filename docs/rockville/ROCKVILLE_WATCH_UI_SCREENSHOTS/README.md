@@ -1,5 +1,9 @@
 # ROCKVILLE_WATCH_UI_SCREENSHOTS
 
+Status:      ACTIVE
+as_of:       2026-08-04T21:35:08-04:00
+Measured at: efcc51365 / not measured
+
 Placeholder for acceptance screenshots.
 
 Required captures (when `watch_card_v2_visible` or shadow band on):

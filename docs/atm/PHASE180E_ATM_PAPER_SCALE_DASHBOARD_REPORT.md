@@ -1,5 +1,9 @@
 # Phase 180E: ATM Paper Scale Dashboard Report
 
+Status:      HISTORICAL
+as_of:       2026-06-01T23:26:38-04:00
+Measured at: efcc51365 / not measured
+
 **Date**: 2026-06-01
 **Mode**: PAPER ONLY — Level 7 PROHIBITED
 

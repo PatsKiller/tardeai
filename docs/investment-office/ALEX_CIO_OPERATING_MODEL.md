@@ -1,5 +1,9 @@
 # Alex (CIO) Operating Model — Autonomous Orchestration Lifecycle
 
+Status:      ACTIVE
+as_of:       2026-08-13T20:51:47-04:00
+Measured at: efcc51365 / not measured
+
 > Canonical reference for the ONE authoritative CIO lifecycle that converges
 > event → wake → run → handoff → synthesis → notify → disposition → follow-up.
 >

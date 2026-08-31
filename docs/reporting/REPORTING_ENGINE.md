@@ -1,5 +1,9 @@
 # Reporting & Prospectus Generation Module
 
+Status:      ACTIVE
+as_of:       2026-06-24T12:44:46-04:00
+Measured at: efcc51365 / not measured
+
 Trade AI v12 produces analyst-firm quality reports from synthesized intelligence (Layer 4, Hermes, news, ensemble validation, portfolio state, health agent, journal).
 
 ## Architecture

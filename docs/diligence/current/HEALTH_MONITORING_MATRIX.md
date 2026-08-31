@@ -1,5 +1,9 @@
 # Health Monitoring Matrix (Execution Hardening)
 
+Status:      ACTIVE
+as_of:       2026-06-27T21:35:53-04:00
+Measured at: efcc51365 / not measured
+
 _Source: `scripts/health_agent.py::collect_execution_hardening_health` + policy
 `config/health_agent_policy.json` → `execution_hardening`._
 

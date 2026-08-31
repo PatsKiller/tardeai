@@ -1,5 +1,9 @@
 # Root Cause Analysis
 
+Status:      ACTIVE
+as_of:       2026-05-21T15:13:01-04:00
+Measured at: efcc51365 / not measured
+
 ## Root Cause 1: DB credentials not available in cron
 
 **Mechanism:** `db_adapter.py` reads `DB_PASSWORD` from `os.getenv()`. In interactive shells, `.env` is sourced. In cron, only `PROJ` and `PY` are set as crontab variables. Without `DB_PASSWORD`, `_db_enabled()` returns False and `_get_conn()` returns None.

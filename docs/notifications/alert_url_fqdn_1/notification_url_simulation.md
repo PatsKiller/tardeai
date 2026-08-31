@@ -1,5 +1,9 @@
 # Notification URL Simulation
 
+Status:      ACTIVE
+as_of:       2026-05-22T22:13:54-04:00
+Measured at: efcc51365 / not measured
+
 Passed: 8/8
 
 - PASS [rewrite] Trade opened: CMCSA 120sh @ $24.97

@@ -1,5 +1,9 @@
 # Reports Desk v2 — Phase 0 Residual Diagnosis (2026-07-16 evening)
 
+Status:      HISTORICAL
+as_of:       2026-07-16T17:46:11-04:00
+Measured at: efcc51365 / not measured
+
 Repo at 59aa6118 (Watch Desk v4 SHIPPED between prompt-write and execution —
 WS-E is import-only as hoped; `watchTokens.ts` + `TerminalChip.tsx` are the house system).
 

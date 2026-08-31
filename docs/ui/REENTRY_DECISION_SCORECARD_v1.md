@@ -1,5 +1,9 @@
 # Re-Entry Decision Scorecard v1
 
+Status:      ACTIVE
+as_of:       2026-07-31T12:52:12-04:00
+Measured at: efcc51365 / not measured
+
 **Route:** `/v3/portfolio/re-entry`  
 **Library:** `apps/command-center-v3/src/lib/reentryDecisionScorecard.ts`  
 **UI:** `ReEntryCommandHeader` + expanded row scorecard in `ReEntryCurrentIntelligence`

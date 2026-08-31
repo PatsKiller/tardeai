@@ -1,5 +1,9 @@
 # PHASE 188D — Paper-Only Stop / Take-Profit Recommendations
 
+Status:      HISTORICAL
+as_of:       2026-06-02T08:17:52-04:00
+Measured at: efcc51365 / not measured
+
 **Run:** 2026-06-02 ~08:25 ET (premarket) · Alpaca **paper** only · Live endpoint blocked
 **Nature:** Recommendations only. **No stop was modified, no order was placed.** Existing ATM
 policy does not authorize automatic action on `unknown` family or on stale premarket quotes.

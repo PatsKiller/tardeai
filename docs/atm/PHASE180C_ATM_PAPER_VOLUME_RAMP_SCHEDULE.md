@@ -1,5 +1,9 @@
 # Phase 180C: ATM Paper Trade Volume Ramp Schedule
 
+Status:      HISTORICAL
+as_of:       2026-06-01T23:26:38-04:00
+Measured at: efcc51365 / not measured
+
 **Date**: 2026-06-01
 **Mode**: PAPER ONLY — Level 7 PROHIBITED
 

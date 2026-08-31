@@ -1,5 +1,9 @@
 # Legacy Alex Schedule Inventory
 
+Status:      HISTORICAL
+as_of:       2026-08-08T18:02:23-04:00
+Measured at: efcc51365 / not measured
+
 Discovered: 2026-08-08 during P-1.6 infrastructure discovery.
 
 ## Canonical Alex Cron Entries

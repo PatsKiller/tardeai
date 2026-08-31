@@ -1,5 +1,9 @@
 # Closed-Loop Learning Certification Audit (2026-06-05)
 
+Status:      HISTORICAL
+as_of:       2026-06-05T17:40:32-04:00
+Measured at: efcc51365 / not measured
+
 Read-only evidence audit of the chain: signal → proposal → paper execution → monitoring → exit →
 journal → Hermes reflection → backtest comparison → lesson → shadow score → future-candidate lineage.
 No trading behaviour, GO/WAIT, strategy YAML, proposals, orders, or broker state were changed (SELECT-only).

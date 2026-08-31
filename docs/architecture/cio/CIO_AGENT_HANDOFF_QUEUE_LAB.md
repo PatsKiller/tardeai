@@ -1,5 +1,9 @@
 # CIO Agent Handoff Queue — LAB Service (P-1.4)
 
+Status:      HISTORICAL
+as_of:       2026-08-08T18:02:23-04:00
+Measured at: efcc51365 / not measured
+
 ## Overview
 
 The Agent Handoff Queue is a deterministic, append-only, hash-chained event store that durably records specialist work requests from Alex to downstream agents (Maria, Steph, Guardian, Ledger, and future specialists). It is a LAB service — no production provider calls, no Telegram delivery, no autonomous agent execution.

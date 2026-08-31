@@ -1,5 +1,9 @@
 # Trade Supervision Methodology
 
+Status:      ACTIVE
+as_of:       2026-05-26T10:58:36-04:00
+Measured at: efcc51365 / not measured
+
 How the Trade AI v12 system monitors active positions, generates execution adjustments, conducts after-hours research, and carries insights forward into the next trading session.
 
 **Last verified:** 2026-05-26 (Extended hours, trailing stop V2.4, alert fatigue fix, TCA populated)  

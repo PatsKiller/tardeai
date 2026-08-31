@@ -1,5 +1,9 @@
 # Moomoo OpenD / T2 (L2 depth) — operations
 
+Status:      ACTIVE
+as_of:       2026-07-28T11:19:05-04:00
+Measured at: efcc51365 / not measured
+
 **Status 2026-07-28:** OpenD running and authenticated. L2 depth entitled and flowing
 into observations. **Scoring is still T0 — depth influences no decision yet.**
 

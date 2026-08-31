@@ -1,5 +1,9 @@
 # Phase 186J: Extended-Hours Risk Gates
 
+Status:      HISTORICAL
+as_of:       2026-06-02T01:02:56-04:00
+Measured at: efcc51365 / not measured
+
 **Date**: 2026-06-02
 
 ## Context

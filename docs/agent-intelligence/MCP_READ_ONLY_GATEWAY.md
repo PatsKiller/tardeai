@@ -1,5 +1,9 @@
 # MCP Read-Only Gateway
 
+Status:      ACTIVE
+as_of:       2026-08-16T23:13:39-04:00
+Measured at: efcc51365 / not measured
+
 `READ_ONLY_ADVISORY` · Phase 3
 
 The MCP read-only gateway is the single chokepoint between an agent and any

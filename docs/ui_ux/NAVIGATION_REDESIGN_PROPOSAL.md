@@ -1,5 +1,9 @@
 # Navigation Redesign Proposal — Command Center v12
 
+Status:      HISTORICAL
+as_of:       2026-05-24T18:56:51-04:00
+Measured at: efcc51365 / not measured
+
 ## Current State
 - 8 nav groups with 40+ items
 - Operator must scan many pages to answer basic questions

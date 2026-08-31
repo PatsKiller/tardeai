@@ -1,5 +1,9 @@
 # GATES CLEAR WITH CORRECTIONS
 
+Status:      HISTORICAL
+as_of:       2026-07-27T15:32:10-04:00
+Measured at: efcc51365 / not measured
+
 **Stage:** M3-S2.5 gate clearance · **Date:** 2026-07-27 · **Tree:** `main` (post-M3-S3)
 **IRON RULE:** ✅ `holdings.total_value = 1,254,050.06`, 33 holdings (non-zero).
 

@@ -1,5 +1,9 @@
 # PHASE 190C — False "Stop Placed" Note Root-Cause Fix
 
+Status:      HISTORICAL
+as_of:       2026-06-02T10:33:34-04:00
+Measured at: efcc51365 / not measured
+
 **File:** `scripts/alpaca_paper_adapter.py` · Alpaca **paper** only
 
 ---

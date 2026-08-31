@@ -1,5 +1,9 @@
 # Schema Snapshot -- ATM Audit 2026-05-26
 
+Status:      HISTORICAL
+as_of:       2026-05-26T11:21:21-04:00
+Measured at: efcc51365 / not measured
+
 ## pipeline_runs (11 columns)
   id                                       bigint               nullable=NO default=nextval('pipeline_runs_id_seq1
   run_id                                   text                 nullable=NO default=

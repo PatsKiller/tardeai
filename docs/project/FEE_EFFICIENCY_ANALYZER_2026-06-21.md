@@ -1,5 +1,9 @@
 # Fee / Cost-Efficiency Analyzer (2026-06-21)
 
+Status:      HISTORICAL
+as_of:       2026-06-21T22:26:22-04:00
+Measured at: efcc51365 / not measured
+
 ## Why
 Operator: *"this is the type of stuff that should be autonomous in reports and rotation — Contrafund
 expensive compared to SCHD cost and returns."* Trading commissions were tracked (journal net P&L) but the

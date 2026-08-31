@@ -1,5 +1,9 @@
 # Autonomy Operator Runbook (READ_ONLY_ADVISORY)
 
+Status:      ACTIVE
+as_of:       2026-08-11T14:15:27-04:00
+Measured at: efcc51365 / not measured
+
 ## How agents wake
 
 1. **Timers** (backstop): `tradeai-agent-runtime@alex|morgan|steph|hermes.timer`

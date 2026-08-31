@@ -6,6 +6,10 @@
 
 # Appendix E — Initial Script Routing Matrix
 
+Status:      ACTIVE
+as_of:       2026-06-02T21:03:40-04:00
+Measured at: efcc51365 / not measured
+
 This matrix answers the operational question: “Which local-LLM scripts should use which model going forward?” It is an initial routing map, not permission to mass-refactor. Claude Code must validate it with the Phase 0 hardcoded-reference scan and live source inspection before changing any specific file.
 
 ## Core rule

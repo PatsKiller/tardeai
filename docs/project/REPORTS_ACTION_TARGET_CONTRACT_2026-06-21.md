@@ -1,5 +1,9 @@
 # Reports Action Target Contract + 3-Column Briefing (2026-06-21)
 
+Status:      HISTORICAL
+as_of:       2026-06-21T18:53:04-04:00
+Measured at: efcc51365 / not measured
+
 Make every Reports action cue resolve to an **exact page + tab + drawer/modal**, not a generic hub, and
 turn the reader into a presidential-brief layout (What-matters first, full body below). Advisory/read-only;
 no broker execution, no new order path, no trading-gate/purge/secrets changes.

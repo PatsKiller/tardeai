@@ -1,5 +1,9 @@
 # Defense Desk v8 — Real Accounts · Quiet Alerts · The Oversight Stack (2026-07-18)
 
+Status:      ACTIVE
+as_of:       2026-08-21T20:25:01-04:00
+Measured at: efcc51365 / not measured
+
 ## WS-ALERT (P0, all live defects fixed)
 A1 account inversion: intent default = the CARD's real account (picker when multiple,
 never silent); paper twin = separate intent labeled "Alpaca Paper (shadow)"

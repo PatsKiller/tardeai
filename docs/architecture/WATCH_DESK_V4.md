@@ -1,5 +1,9 @@
 # Watch Desk v4 — Terminal Grade (2026-07-16, evening)
 
+Status:      ACTIVE
+as_of:       2026-07-16T17:34:46-04:00
+Measured at: efcc51365 / not measured
+
 Builds on v2 (7d72bdb, e155dbe) + v3 (19434adc). Commits `65d79b18..c776a8a4`
 (`watch-v4:` prefix, one per WS). All five tabs on one design system; every
 functional gap from the v4 prompt closed or explicitly flagged. Advisory-only,

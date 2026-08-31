@@ -1,5 +1,9 @@
 # Watch Desk v2 — Truth & Directive Governance (P0 workstreams, 2026-07-16)
 
+Status:      ACTIVE
+as_of:       2026-07-16T14:42:37-04:00
+Measured at: efcc51365 / not measured
+
 **Shipped this session:** WS-A1 (header truth) + WS-B1/B2/B4 (directive governance). Diagnosis (all 10 items answered): `docs/_findings/watch_desk_v2_diagnosis_2026-07-16.md`.
 
 ## WS-A1 — One book value everywhere

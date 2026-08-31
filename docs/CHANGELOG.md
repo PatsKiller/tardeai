@@ -1,5 +1,9 @@
 # Changelog
 
+Status:      ACTIVE
+as_of:       2026-08-27T17:07:44-04:00
+Measured at: efcc51365 / not measured
+
 ## 2026-08-27 (evening) — CIO learning loop closed end to end (4 PRs, `5b9738fd` → `2cf31a8e`)
 
 MATURITY_IMPACT: the decision→outcome→lesson chain resolves for the first time; the evidence gate that blocked 54 of 55 runs for 17 days now passes 4 of 5 run purposes. Execution posture UNCHANGED (all `READ_ONLY_ADVISORY`, `memory_behavior_influence` 0, no broker authority). Full record: `docs/architecture/cio/LOOP_CLOSURE_2026-08-27.md`.

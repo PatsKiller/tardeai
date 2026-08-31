@@ -1,5 +1,9 @@
 # Alpaca / Paper Trading — Due Diligence Audit (2026-07-21)
 
+Status:      HISTORICAL
+as_of:       2026-07-21T12:07:44-04:00
+Measured at: efcc51365 / not measured
+
 **Author:** Grok Code session · **Scope:** entire Trade AI v12 repo (+ Drive docs mirror via `docs/`)  
 **Goal:** Inventory Alpaca/paper usage; document as-is processes; freeze taxonomy for future
 **Paca personal** and **Paca IRA** without hard-coded paper≡Alpaca confusion.  

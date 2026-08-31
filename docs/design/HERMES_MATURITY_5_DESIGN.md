@@ -1,5 +1,9 @@
 # Hermes Maturity-5 Design — Event-Driven Scope + Outcome-Gated Learning
 
+Status:      ACTIVE
+as_of:       2026-07-02T19:07:32-04:00
+Measured at: efcc51365 / not measured
+
 _Status: DESIGN (operator review pending) · 2026-07-02 · Follows the audit of 2026-07-02
 (4,171-symbol clock-driven sweep, one proxy-fed learning loop, write-only tagging, maturity 2/5)._
 

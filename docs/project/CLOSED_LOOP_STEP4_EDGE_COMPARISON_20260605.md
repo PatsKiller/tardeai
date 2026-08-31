@@ -2,6 +2,10 @@
 
 # Closed-Loop Step 4 — Post-Exit Backtest (Edge) Comparison (2026-06-05)
 
+Status:      ACTIVE
+as_of:       2026-06-05T23:46:56-04:00
+Measured at: efcc51365 / not measured
+
 ## Gap fixed (from certification audit)
 "No post-exit comparison of realized outcome vs the matched backtest cohort." Proposal-time backtest
 snapshots existed (`proposal_backtest_snapshots`, 40% of closed trades) but were never compared to the

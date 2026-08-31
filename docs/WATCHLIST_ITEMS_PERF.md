@@ -1,5 +1,9 @@
 # Watchlist Items — Latency Fix & Loading State (2026-07-01)
 
+Status:      ACTIVE
+as_of:       2026-07-01T15:09:35-04:00
+Measured at: efcc51365 / not measured
+
 Branch: `perf/watchlist-items-latency`
 
 ## Symptom

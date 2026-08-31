@@ -1,5 +1,9 @@
 # Day-Scalp Source Inventory — 2026-08-19
 
+Status:      HISTORICAL
+as_of:       2026-08-19T12:02:14-04:00
+Measured at: efcc51365 / not measured
+
 **Purpose:** Authoritative inventory of every data source feeding the Trade AI day-scalp lead
 pipeline, with current health status and fallback notes. Maintained so a future break can be
 traced to a specific lane and re-routed without re-deriving the graph.

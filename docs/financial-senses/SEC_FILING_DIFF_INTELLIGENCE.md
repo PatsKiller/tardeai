@@ -1,5 +1,9 @@
 # SEC filing diff intelligence
 
+Status:      ACTIVE
+as_of:       2026-08-17T12:35:13-04:00
+Measured at: efcc51365 / not measured
+
 `sec_filing_diff.py` compares two periods of company facts deterministically —
 structured facts, not prose.
 

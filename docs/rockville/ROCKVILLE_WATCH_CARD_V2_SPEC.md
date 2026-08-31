@@ -1,5 +1,9 @@
 # ROCKVILLE_WATCH_CARD_V2_SPEC
 
+Status:      ACTIVE
+as_of:       2026-08-04T21:35:08-04:00
+Measured at: efcc51365 / not measured
+
 ## Hierarchy (5-second operator scan)
 
 1. **Identity + market strip** — symbol, company, sector, badges, last, day %, timestamp  

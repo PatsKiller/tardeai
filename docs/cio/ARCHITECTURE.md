@@ -1,5 +1,9 @@
 # Architecture — Track A vs Track B
 
+Status:      ACTIVE
+as_of:       2026-08-27T10:54:06-04:00
+Measured at: efcc51365 / not measured
+
 Two related but distinct CIO paths run on the same authority contract (`READ_ONLY_ADVISORY`). Architects should not assume thesis injection is universal.
 
 **R11 (2026-08-25):** Portfolio-level attention is `CIOSituationState@v1`

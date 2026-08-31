@@ -1,5 +1,9 @@
 # Control-Plane Contracts v1
 
+Status:      ACTIVE
+as_of:       2026-08-26T13:11:11-04:00
+Measured at: efcc51365 / not measured
+
 **HTTP freeze (consume this): CONTROL_PLANE_API_V1_BASELINE** (`084674c5`)
 See `CONTROL_PLANE_API_V1_BASELINE.md` / `.json`. Envelope key is `data`.
 

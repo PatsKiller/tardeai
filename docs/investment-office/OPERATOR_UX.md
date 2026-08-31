@@ -1,5 +1,9 @@
 # Operator UX — the private investment office home (`/v3/cio`)
 
+Status:      ACTIVE
+as_of:       2026-08-13T19:58:47-04:00
+Measured at: efcc51365 / not measured
+
 This is the contract Alex (CIO) upholds when the operator opens the office. It
 is written from the operator's point of view, not the engineer's.
 

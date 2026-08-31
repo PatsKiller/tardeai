@@ -1,5 +1,9 @@
 # Phase 113D — Hermes Mock Proposal Packet Template
 
+Status:      HISTORICAL
+as_of:       2026-06-01T15:53:13-04:00
+Measured at: efcc51365 / not measured
+
 ## Template
 
 ```json

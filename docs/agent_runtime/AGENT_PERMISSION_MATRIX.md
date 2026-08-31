@@ -1,5 +1,9 @@
 # Agent Permission and Authority Matrix
 
+Status:      ACTIVE
+as_of:       2026-07-25T18:22:19-04:00
+Measured at: efcc51365 / not measured
+
 **Contract:** `agent-runtime-monitoring-v1`  
 **Applies to:** `config/agent_maturity_catalog.json`  
 **Environment:** LAB / SHADOW only

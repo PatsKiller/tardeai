@@ -1,5 +1,9 @@
 # Phase 4C Paper Proposals — Apply Report
 
+Status:      HISTORICAL
+as_of:       2026-05-25T15:31:40-04:00
+Measured at: efcc51365 / not measured
+
 | Field | Value |
 |-------|-------|
 | Timestamp | 2026-05-25T15:31:40-04:00 |

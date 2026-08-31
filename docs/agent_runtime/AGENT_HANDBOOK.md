@@ -1,5 +1,9 @@
 # Trade AI Agent Handbook
 
+Status:      ACTIVE
+as_of:       2026-07-25T18:22:00-04:00
+Measured at: efcc51365 / not measured
+
 **Contract:** `agent-runtime-monitoring-v1`  
 **Catalog:** `config/agent_maturity_catalog.json`  
 **Environment:** LAB / SHADOW only  

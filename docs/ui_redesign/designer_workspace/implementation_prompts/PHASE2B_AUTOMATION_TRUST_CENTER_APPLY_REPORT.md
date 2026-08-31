@@ -1,5 +1,9 @@
 # Phase 2b Automation Trust Center — Apply Report
 
+Status:      HISTORICAL
+as_of:       2026-05-25T14:00:12-04:00
+Measured at: efcc51365 / not measured
+
 ## Summary
 4 pages redesigned as the Automation Trust Center family. All use shared primitives.
 

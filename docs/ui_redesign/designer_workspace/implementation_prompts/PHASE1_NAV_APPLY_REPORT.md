@@ -1,5 +1,9 @@
 # Phase 1 Navigation Apply Report
 
+Status:      HISTORICAL
+as_of:       2026-05-25T12:05:53-04:00
+Measured at: efcc51365 / not measured
+
 ## Summary
 Phase 1 navigation restructure applied successfully.
 

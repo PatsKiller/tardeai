@@ -1,5 +1,9 @@
 # Trade AI Telegram Notification Due-Diligence Report
 
+Status:      HISTORICAL
+as_of:       2026-07-29T12:56:50-04:00
+Measured at: efcc51365 / not measured
+
 **Review date:** 2026-07-28  
 **Source chats:** `TradeAI Proposal Decisions` and `tradeai_bigjohn718_bot`  
 **Data window:** 2026-05-18 through 2026-07-28  

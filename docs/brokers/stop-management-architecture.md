@@ -1,5 +1,9 @@
 # Stop Management Architecture (as-built)
 
+Status:      ACTIVE
+as_of:       2026-07-21T12:49:43-04:00
+Measured at: efcc51365 / not measured
+
 **Status: LIVE in production as of 2026-06-15.** This is the canonical reference for how protective stops
 are placed, monitored, modified, cancelled, curated, and (for paper) auto-managed across every account.
 Supersedes the design intent in [`stage2c-protective-stops-spec.md`](stage2c-protective-stops-spec.md).

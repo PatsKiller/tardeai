@@ -1,5 +1,9 @@
 # Research Topic Registry — 2026-06-04
 
+Status:      HISTORICAL
+as_of:       2026-06-04T20:44:22-04:00
+Measured at: efcc51365 / not measured
+
 A managed system-of-record for research topics, built **over the existing `topic_monitor`** table
 (no new table / no migration — per the STEP 0 finding that `topic_monitor` already had a rich
 schema). Adds an `owner` mapping (TradeAI / Hermes / Shared) and a guarded v3 management modal.

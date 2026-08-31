@@ -1,5 +1,9 @@
 # Agent Intelligence Foundation — Architecture
 
+Status:      ACTIVE
+as_of:       2026-08-16T23:27:37-04:00
+Measured at: efcc51365 / not measured
+
 The top-level map for the **Agent Intelligence Foundation** program: how Trade
 AI's agents become context-aware, self-observing, memory-assisted, and
 proactively advisory — **without** gaining trading authority.

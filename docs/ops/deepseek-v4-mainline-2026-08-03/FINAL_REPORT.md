@@ -1,5 +1,9 @@
 # DeepSeek V4 Mainline Integration Report
 
+Status:      ACTIVE
+as_of:       2026-08-03T11:40:56-04:00
+Measured at: efcc51365 / not measured
+
 **Verdict: CONDITIONAL_PASS_DO_NOT_PUSH**
 
 ## SHAs

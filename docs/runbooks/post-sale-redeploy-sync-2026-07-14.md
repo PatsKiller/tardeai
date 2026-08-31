@@ -1,5 +1,9 @@
 # Post-Sale Redeploy Sync — 2026-07-14
 
+Status:      HISTORICAL
+as_of:       2026-07-13T23:58:49-04:00
+Measured at: efcc51365 / not measured
+
 ## Scope
 
 Advisory-only pipeline that detects broker sells, scores redeploy targets, and surfaces plans in Portfolio → **Redeploy** (UI live). No broker execution path.

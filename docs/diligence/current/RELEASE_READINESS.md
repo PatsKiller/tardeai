@@ -1,5 +1,9 @@
 # Release Readiness
 
+Status:      ACTIVE
+as_of:       2026-06-27T22:07:55-04:00
+Measured at: efcc51365 / not measured
+
 _Generated: 2026-06-28T02:05:13.781589+00:00_  
 _Source: `python3 scripts/validate_release_readiness.py --json --skip-build`_  
 **Status: WARN_NON_LIVE_ADJACENT**

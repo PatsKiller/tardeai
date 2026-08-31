@@ -1,4 +1,9 @@
 # Hermes Multi-Agent Coordination Architecture
+
+Status:      ACTIVE
+as_of:       2026-07-03T14:20:20-04:00
+Measured at: efcc51365 / not measured
+
 **v2.1 · Production-ready · 2026-07-03 · Trade AI v12**
 
 ---

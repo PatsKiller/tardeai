@@ -1,5 +1,9 @@
 # Phase 200 — Governance Cron Migration Pilot — CLOSEOUT
 
+Status:      HISTORICAL
+as_of:       2026-06-04T23:28:56-04:00
+Measured at: efcc51365 / not measured
+
 Date: 2026-06-04 · Branch: `main` · Scope: **governance pipeline only**. Parallel-run + diff-first;
 legacy commented (not deleted) only after all gates passed.
 

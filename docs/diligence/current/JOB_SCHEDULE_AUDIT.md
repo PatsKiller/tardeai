@@ -1,5 +1,9 @@
 # Job Schedule Audit & Contention Map
 
+Status:      HISTORICAL
+as_of:       2026-06-29T08:43:52-04:00
+Measured at: efcc51365 / not measured
+
 **361 active cron jobs** · 73 LLM-touching  
 _Source: `python3 scripts/job_schedule_audit.py --json`_  
 

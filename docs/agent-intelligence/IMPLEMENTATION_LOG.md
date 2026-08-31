@@ -1,5 +1,9 @@
 # Agent Intelligence Foundation — Implementation Log
 
+Status:      ACTIVE
+as_of:       2026-08-17T12:39:48-04:00
+Measured at: efcc51365 / not measured
+
 Phase-by-phase record of the Agent Intelligence Foundation program
 (READ_ONLY_ADVISORY). Each entry records base/head SHA, files changed,
 design decisions, tests run, dry-run evidence, failures found and fixed,

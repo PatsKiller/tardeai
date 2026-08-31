@@ -1,4 +1,9 @@
 # PHASE 212 — Codex Headless Hermes Build Evaluation — CLOSEOUT (2026-06-07)
+
+Status:      HISTORICAL
+as_of:       2026-06-07T15:33:32-04:00
+Measured at: efcc51365 / not measured
+
 - Phase 212 complete: **YES** (objective met: determined a newer build cannot fix it — none exists).
 - Current Hermes version: **0.16.0** (latest published).
 - Shadow Hermes version tested: **none** (no newer build to shadow; tested alt command shapes on 0.16.0 instead).

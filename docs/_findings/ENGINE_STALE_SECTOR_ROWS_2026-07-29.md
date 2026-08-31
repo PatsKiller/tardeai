@@ -1,5 +1,9 @@
 # Sector momentum engine — two sectors running on stale relative strength
 
+Status:      HISTORICAL
+as_of:       2026-07-29T13:13:15-04:00
+Measured at: efcc51365 / not measured
+
 **Filed:** 2026-07-29 · **Found during:** SL-S1 (Sector Leaders card) · **Status:** DIAGNOSED, NOT FIXED
 **Classification:** **decision-quality defect** — not a rendering bug
 

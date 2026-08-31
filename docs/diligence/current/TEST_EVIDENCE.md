@@ -1,5 +1,9 @@
 # Test Evidence
 
+Status:      ACTIVE
+as_of:       2026-06-27T22:07:55-04:00
+Measured at: efcc51365 / not measured
+
 _Generated: 2026-06-28T02:06:07.290359+00:00_  
 _Source: `python3 scripts/run_release_ci_equivalent.py --json (data/runtime/ci_evidence_latest.json)`_  
 **Status: PASS**

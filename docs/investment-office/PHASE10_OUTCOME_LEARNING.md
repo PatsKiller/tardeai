@@ -1,5 +1,9 @@
 # Phase 10 — Outcome Learning: close the disposition → learning → calibration loop
 
+Status:      HISTORICAL
+as_of:       2026-08-13T20:32:39-04:00
+Measured at: efcc51365 / not measured
+
 **"A disposition is durable. A measured outcome is actionable. Wire the second
 into the first so the office actually gets smarter."**
 

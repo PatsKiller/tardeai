@@ -1,5 +1,9 @@
 # Trading deep-link contract (WP-T1)
 
+Status:      ACTIVE
+as_of:       2026-07-31T13:42:39-04:00
+Measured at: efcc51365 / not measured
+
 Enterprise maturity packaging for `/v3/trading`. All in-app and Telegram links into Trading should use this schema.
 
 ## Query parameters

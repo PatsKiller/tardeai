@@ -1,5 +1,9 @@
 # CIO Health Boundary — LAB Service (P-1.5)
 
+Status:      ACTIVE
+as_of:       2026-08-08T18:02:23-04:00
+Measured at: efcc51365 / not measured
+
 ## Overview
 
 The CIO Health Boundary is a **deterministic, domain-scoped advisory gate** that converts canonical Trade AI health and data-quality evidence into typed advisory availability states. It is a **read-only boundary** — it consumes health snapshots, produces decisions, and records durable CIO_DATA_QUALITY_BLOCK lifecycle events without performing remediation.

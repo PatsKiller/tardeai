@@ -1,5 +1,9 @@
 # Research Governance — Build Baseline
 
+Status:      HISTORICAL
+as_of:       2026-08-14T22:06:40-04:00
+Measured at: efcc51365 / not measured
+
 Parallel workstream (book/research knowledge infusion) isolated from the
 production-hardening CIO remediation agent.
 

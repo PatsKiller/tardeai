@@ -1,5 +1,9 @@
 # R4 Retrieval + Decision-Use Audit
 
+Status:      ACTIVE
+as_of:       2026-08-15T08:06:05-04:00
+Measured at: efcc51365 / not measured
+
 Dry-testable integration (RGA-16). Authority: `READ_ONLY_ADVISORY`.
 
 ## What R4 is

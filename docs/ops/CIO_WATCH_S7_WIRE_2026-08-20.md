@@ -1,5 +1,9 @@
 # CIO Watch → S7 wire (Fix #2) — 2026-08-20
 
+Status:      HISTORICAL
+as_of:       2026-08-20T16:01:57-04:00
+Measured at: efcc51365 / not measured
+
 **READ_ONLY_ADVISORY.** No orders/stops. `CIO_TELEGRAM_INTERDICT=1` stays on. No Fix #1 reentry rewrite. No S1 cap redesign.
 
 ## Problem

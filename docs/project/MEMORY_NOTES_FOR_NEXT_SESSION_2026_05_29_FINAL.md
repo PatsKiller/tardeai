@@ -1,5 +1,9 @@
 # Memory Notes for Next Session — 2026-05-29 Final
 
+Status:      HISTORICAL
+as_of:       2026-06-01T15:21:08-04:00
+Measured at: efcc51365 / not measured
+
 ## Backtest Classification
 - **Complete**: 3,593 / 3,593 (100%)
 - SHFS id=860 is `speculative_growth` — manual operator-approved correction

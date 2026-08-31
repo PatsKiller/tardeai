@@ -1,5 +1,9 @@
 # Research Governance — PR-R1 Foundation
 
+Status:      ACTIVE
+as_of:       2026-08-15T08:49:41-04:00
+Measured at: efcc51365 / not measured
+
 Parallel workstream: book/research knowledge infusion. Isolated from the
 production-hardening CIO remediation agent.
 

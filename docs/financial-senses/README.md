@@ -1,5 +1,9 @@
 # Financial Senses — read-only financial intelligence providers
 
+Status:      ACTIVE
+as_of:       2026-08-17T11:10:54-04:00
+Measured at: efcc51365 / not measured
+
 Parallel, isolated branch (`feature/financial-senses-parallel-v1`) that builds
 provider-side financial "senses" for Trade AI. This branch is the **financial
 senses** lane; the separate `feature/agent-intelligence-foundation` branch owns

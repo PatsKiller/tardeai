@@ -1,5 +1,9 @@
 # DeepSeek usage + prompt curation — 2026-08-12
 
+Status:      HISTORICAL
+as_of:       2026-08-12T14:39:24-04:00
+Measured at: efcc51365 / not measured
+
 Read-only assessment of how DeepSeek is wired into the Advisory Desk opinion
 layer. No LLM behavior was changed this sprint (git diff confirms the three
 LLM files are untouched).

@@ -1,5 +1,9 @@
 # Roadmap gaps — explicit “not yet”
 
+Status:      ACTIVE
+as_of:       2026-08-12T14:39:24-04:00
+Measured at: efcc51365 / not measured
+
 This file is the **only** place aspirational CIO / FA product should live.  
 Everything else in `docs/cio/` documents **live** behavior.
 

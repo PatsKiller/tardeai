@@ -1,5 +1,9 @@
 # Master Test Plan — Schwab Broker Integration (dormant phase)
 
+Status:      ACTIVE
+as_of:       2026-06-11T18:20:34-04:00
+Measured at: efcc51365 / not measured
+
 **Audience:** external developer review · **Status:** Levels 1–2 automated & passing; Level 3 awaiting
 operator approval; Level 4 gated · **Last run evidence:** 46/46 scaffold tests, 30/30 translation review,
 validator 12/12.

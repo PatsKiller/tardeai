@@ -1,5 +1,9 @@
 # Phase 210B — Hermes Self-Learning Loop Audit (2026-06-07)
 
+Status:      HISTORICAL
+as_of:       2026-06-07T12:42:19-04:00
+Measured at: efcc51365 / not measured
+
 Script: `scripts/audit_hermes_self_learning_loops.py` → `data/hermes/hermes_self_learning_loop_audit_latest.json`.
 
 ## Conclusions

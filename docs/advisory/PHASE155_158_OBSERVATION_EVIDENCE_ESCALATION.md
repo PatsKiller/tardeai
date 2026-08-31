@@ -1,5 +1,9 @@
 # Phases 155-158 — Observation, Evidence Backlog, High-LLM Escalation
 
+Status:      HISTORICAL
+as_of:       2026-06-01T21:28:17-04:00
+Measured at: efcc51365 / not measured
+
 ## Phase 155 — Production Observation (COMPLETE)
 
 ### Smoke Test Results

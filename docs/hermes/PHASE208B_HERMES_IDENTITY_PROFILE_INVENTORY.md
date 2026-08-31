@@ -1,5 +1,9 @@
 # Phase 208B — Hermes Identity & Profile Inventory (2026-06-07)
 
+Status:      HISTORICAL
+as_of:       2026-06-07T11:26:30-04:00
+Measured at: efcc51365 / not measured
+
 Script: `scripts/audit_hermes_identities.py` → `data/hermes/hermes_identity_audit_latest.json` (read-only, no secrets).
 
 ## Counts

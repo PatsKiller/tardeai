@@ -1,5 +1,9 @@
 # SEC EDGAR provider
 
+Status:      ACTIVE
+as_of:       2026-08-17T11:10:54-04:00
+Measured at: efcc51365 / not measured
+
 Read-only adapter over the existing SEC pipeline.
 
 ## Capabilities

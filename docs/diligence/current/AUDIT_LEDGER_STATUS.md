@@ -1,5 +1,9 @@
 # Audit Ledger Status
 
+Status:      ACTIVE
+as_of:       2026-06-27T22:07:55-04:00
+Measured at: efcc51365 / not measured
+
 _Generated: 2026-06-28T02:06:07.289660+00:00_  
 _Source: `audit_ledger.verify_chain() + audit_ledger.coverage_report()`_  
 **Status: WARN**

@@ -1,5 +1,9 @@
 # Momentum Scalp Signal Engine — M3-S0 Recon Findings (2026-07-27)
 
+Status:      HISTORICAL
+as_of:       2026-07-27T14:49:14-04:00
+Measured at: efcc51365 / not measured
+
 **Scope:** S0 diagnostic ONLY. No code written, nothing changed. Read-only DB queries + code
 search. Confirms/corrects every `[VERIFY]` in `docs/strategies/MOMENTUM_SCALP_SIGNAL_ENGINE_v1.md`.
 **Tree:** `main @ 4445b5d2` · **IRON RULE:** ✅ holdings.json `total_value=$1,253,766`, 33 holdings.

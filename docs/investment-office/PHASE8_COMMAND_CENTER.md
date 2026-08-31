@@ -1,5 +1,9 @@
 # Phase 8 — Command Center UX Convergence: Alex is the front door
 
+Status:      HISTORICAL
+as_of:       2026-08-13T19:58:47-04:00
+Measured at: efcc51365 / not measured
+
 **"Stop forcing the operator to browse pages to discover decisions."**
 
 ## Goal

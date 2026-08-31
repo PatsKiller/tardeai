@@ -1,5 +1,9 @@
 # Active Trader — Route / API / DB map (Stage 0 inventory)
 
+Status:      ACTIVE
+as_of:       2026-07-27T12:13:37-04:00
+Measured at: efcc51365 / not measured
+
 Honest map of **current** production surfaces vs **Active Trader Next** targets.
 Stage 0 does not replace `/v3` TradingHub.
 

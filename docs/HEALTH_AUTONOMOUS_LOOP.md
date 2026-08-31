@@ -1,5 +1,9 @@
 # Health autonomous fix loop (no manual operator / no one-off agent fixes)
 
+Status:      ACTIVE
+as_of:       2026-08-08T18:02:23-04:00
+Measured at: efcc51365 / not measured
+
 ## Who fixes what
 
 | Layer | Schedule | Role |

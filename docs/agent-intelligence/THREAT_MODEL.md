@@ -1,5 +1,9 @@
 # Threat Model
 
+Status:      ACTIVE
+as_of:       2026-08-17T12:17:37-04:00
+Measured at: efcc51365 / not measured
+
 `READ_ONLY_ADVISORY` · Phase 9 (Security / Threat Model / Red Team)
 
 This document is the threat model for the Agent Intelligence Foundation. The

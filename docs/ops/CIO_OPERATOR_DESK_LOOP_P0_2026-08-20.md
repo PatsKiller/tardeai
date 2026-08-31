@@ -1,5 +1,9 @@
 # CIO operator desk loop — P0 intent routing (2026-08-20)
 
+Status:      HISTORICAL
+as_of:       2026-08-20T19:33:23-04:00
+Measured at: efcc51365 / not measured
+
 **READ_ONLY_ADVISORY.** Telegram INTERDICT stays as deployed.
 
 ## P0 bug (live proof)

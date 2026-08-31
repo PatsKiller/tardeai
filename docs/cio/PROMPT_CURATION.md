@@ -1,5 +1,9 @@
 # Alex enrichment — prompt curation, versioning, evaluation
 
+Status:      ACTIVE
+as_of:       2026-08-12T10:49:48-04:00
+Measured at: efcc51365 / not measured
+
 ## Layout
 
 ```

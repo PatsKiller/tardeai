@@ -1,4 +1,9 @@
 # Phase 203A — v3 Empty Scanner Symptom Snapshot
+
+Status:      HISTORICAL
+as_of:       2026-06-05T11:54:29-04:00
+Measured at: efcc51365 / not measured
+
 - Time: 2026-06-05 ~11:43 EDT. Route: /v3/trading → "Trade AI" tab.
 - **API was NOT empty.** `GET /api/v2/trade-ai` → HTTP 200, ~1.5 MB. Returned: run_date 2026-06-05,
   run_label 1000, latest_run_timestamp 2026-06-05T10:23:31, symbols_scanned 1067, go 0 / wait 4 /

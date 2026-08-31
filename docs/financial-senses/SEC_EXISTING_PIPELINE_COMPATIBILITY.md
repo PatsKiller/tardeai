@@ -1,5 +1,9 @@
 # SEC existing pipeline compatibility
 
+Status:      ACTIVE
+as_of:       2026-08-16T22:32:42-04:00
+Measured at: efcc51365 / not measured
+
 The provider reuses the existing pipeline rather than replacing it. Verified
 compatibility:
 

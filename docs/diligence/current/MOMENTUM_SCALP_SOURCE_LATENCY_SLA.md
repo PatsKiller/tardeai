@@ -1,5 +1,9 @@
 # Momentum Scalp Source → Validation Latency SLA
 
+Status:      ACTIVE
+as_of:       2026-06-28T22:49:34-04:00
+Measured at: efcc51365 / not measured
+
 **Status: WARN_PENDING_OBSERVATION** | readiness score: 4.5/5 | observed score: pending | samples: 0 | window: 30d  
 _4.5-ready, pending live in-window observation_  
 _Generated: 2026-06-29T02:48:13.568154+00:00_  

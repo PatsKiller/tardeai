@@ -1,5 +1,9 @@
 # Phase 206A — Legacy Agent Visibility: Root-Cause Audit — 2026-06-07
 
+Status:      HISTORICAL
+as_of:       2026-06-07T10:25:00-04:00
+Measured at: efcc51365 / not measured
+
 ## Question
 Command Center v3 → System → Hermes shows only the 5 active global profiles (default, tradeai,
 tradeai12b, dev, serverops) plus a flat list of retired directory NAMES. The operator wants the

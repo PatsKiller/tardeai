@@ -1,5 +1,9 @@
 # Reports Command Portal — Phase 2 UX Hardening (2026-06-21)
 
+Status:      HISTORICAL
+as_of:       2026-06-21T17:58:04-04:00
+Measured at: efcc51365 / not measured
+
 Refined (not rebuilt) the Reports Command Portal into a true operator triage page. Advisory/read-only
 throughout — no broker actions, no order execution, no trading-gate or purge-semantics changes.
 

@@ -1,5 +1,9 @@
 # Watch-Directive Clutter Cleanup (2026-07-01)
 
+Status:      ACTIVE
+as_of:       2026-07-01T15:29:21-04:00
+Measured at: efcc51365 / not measured
+
 Branch: `chore/watch-directive-clutter-cleanup`
 
 ## Problem

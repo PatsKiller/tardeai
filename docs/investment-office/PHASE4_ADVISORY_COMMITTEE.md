@@ -1,5 +1,9 @@
 # Phase 4 — Advisory Desk Analyst Committee & `InvestmentDecision@v1`
 
+Status:      HISTORICAL
+as_of:       2026-08-13T16:45:18-04:00
+Measured at: efcc51365 / not measured
+
 > Converged investment office. Alex (CIO) is the chair and sole producer of the
 > final investment recommendation; the committee provides inputs/constraints.
 > Everything remains `READ_ONLY_ADVISORY` — no broker/order/stop/2FA authority.

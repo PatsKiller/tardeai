@@ -1,5 +1,9 @@
 # ATM → Broker/Account Automation Console (Phase 1) — 2026-06-05
 
+Status:      HISTORICAL
+as_of:       2026-06-05T15:47:01-04:00
+Measured at: efcc51365 / not measured
+
 Refactors the hard-coded `alpaca_paper` ATM page into an account-aware Automation Control Center.
 Phase 1 = data model + backend + UI; NO live writes, NO Schwab arm, NO strategy/GO-WAIT change.
 

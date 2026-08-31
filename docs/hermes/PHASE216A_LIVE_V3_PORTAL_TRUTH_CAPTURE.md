@@ -1,4 +1,9 @@
 # PHASE 216A — Live v3 Portal Truth Capture (2026-06-07)
+
+Status:      HISTORICAL
+as_of:       2026-06-07T17:50:18-04:00
+Measured at: efcc51365 / not measured
+
 Source: live `/api/v2/hermes/*` endpoints (source of truth over stale docs).
 
 ## Header / infra

@@ -1,5 +1,9 @@
 # Agent Intelligence Foundation — Phase Acceptance
 
+Status:      ACTIVE
+as_of:       2026-08-17T12:17:37-04:00
+Measured at: efcc51365 / not measured
+
 `READ_ONLY_ADVISORY`. This records the acceptance profile
 (`AGENT_INTELLIGENCE_FOUNDATION_ACCEPTANCE`) and each phase's gates.
 

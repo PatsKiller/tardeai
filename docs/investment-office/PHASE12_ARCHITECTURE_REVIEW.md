@@ -1,5 +1,9 @@
 # PHASE 12 — Independent Architecture Review (Read-Only)
 
+Status:      HISTORICAL
+as_of:       2026-08-14T08:34:19-04:00
+Measured at: efcc51365 / not measured
+
 **UTC:** 2026-08-14  
 **Reviewer posture:** fresh senior reviewer (not the implementer’s success claims)  
 **Branch under review:** `wt/cio-phase1-notify` @ `41a6e40c` (content pin `8675dfd0`)  

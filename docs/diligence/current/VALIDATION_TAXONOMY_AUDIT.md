@@ -1,5 +1,9 @@
 # Validation Taxonomy Audit
 
+Status:      HISTORICAL
+as_of:       2026-06-28T22:49:34-04:00
+Measured at: efcc51365 / not measured
+
 **Status: PASS** | files scanned: 34 | violations: 0  
 _Generated: 2026-06-29T02:48:13.921189+00:00_  
 _Source: `python3 scripts/audit_validation_taxonomy.py --json`_  

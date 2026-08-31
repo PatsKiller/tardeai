@@ -2,6 +2,10 @@
 
 # Closed-Loop Step 3 — Keyspace Unification (2026-06-05)
 
+Status:      ACTIVE
+as_of:       2026-06-05T23:46:56-04:00
+Measured at: efcc51365 / not measured
+
 ## Broken join fixed
 journal_trade_reviews + trade_backtest_results were keyed only to `trade_key` (SYMBOL:account:date) of the
 imported **Schwab** ledger; paper_trades used a numeric id → two disconnected keyspaces, paper loop uncovered.

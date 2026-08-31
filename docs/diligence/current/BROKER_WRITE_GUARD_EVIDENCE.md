@@ -1,5 +1,9 @@
 # Broker Write Guard Evidence
 
+Status:      ACTIVE
+as_of:       2026-06-27T22:07:55-04:00
+Measured at: efcc51365 / not measured
+
 _Generated: 2026-06-28T02:06:07.103153+00:00_  
 _Source: `python3 scripts/validate_schwab_write_policy.py + scripts/broker_write_scanner.py + tests/test_no_broker_write_bypass.py`_  
 **Status: PASS**

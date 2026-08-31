@@ -1,5 +1,9 @@
 # Phase 205 — First Automatic Backup-Cadence Cycle Observation
 
+Status:      HISTORICAL
+as_of:       2026-06-05T13:13:43-04:00
+Measured at: efcc51365 / not measured
+
 ## Status: TIMER_NOT_RUN (not yet due — observation pending)
 - Observed at: 2026-06-05 13:07 EDT (Friday).
 - `tradeai-portfolio-backup-cadence.timer`: **active (waiting)**, armed since 12:23 EDT.

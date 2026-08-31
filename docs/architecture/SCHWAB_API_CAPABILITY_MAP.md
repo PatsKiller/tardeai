@@ -1,5 +1,9 @@
 # Schwab Trader API → Trade AI v12 — Capability Map (design, no code)
 
+Status:      ACTIVE
+as_of:       2026-06-09T23:18:22-04:00
+Measured at: efcc51365 / not measured
+
 **Prepared:** 2026-06-10 · **Type:** design/capability mapping (documentation only — no implementation)
 **Source of truth for the API surface:** the operator's mid-2026 Schwab Trader API (Individual / Production)
 capability inventory (reproduced inline below). **Source of truth for our system state:** the live cred-in

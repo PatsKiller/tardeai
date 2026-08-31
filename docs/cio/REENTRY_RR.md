@@ -1,5 +1,9 @@
 # Re-entry R:R methodology (live system)
 
+Status:      ACTIVE
+as_of:       2026-08-12T10:17:19-04:00
+Measured at: efcc51365 / not measured
+
 **Source of truth:** [`scripts/lib/data_broker/reentry_decision_desk.py`](../../scripts/lib/data_broker/reentry_decision_desk.py) — deterministic, no LLM.  
 **Desk-note display filters:** [`scripts/lib/cio_desk_depth.py`](../../scripts/lib/cio_desk_depth.py) (`CORE_MIN_RR`, `MAX_SANE_RR`) — presentation/governance only; does **not** change READY/NEAR/BLOCK states.
 

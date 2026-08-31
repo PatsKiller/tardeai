@@ -1,5 +1,9 @@
 # Session 2026-05-29 — Classifier Completion, llama.cpp Canary, Full Self-Healing Overhaul
 
+Status:      HISTORICAL
+as_of:       2026-05-29T20:50:24-04:00
+Measured at: efcc51365 / not measured
+
 **Commits:** 46 (7045209 through 6d765a5)
 
 ## Executive Summary

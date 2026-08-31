@@ -1,5 +1,9 @@
 # Hermes autonomous loop — output quality assessment (2026-07-26)
 
+Status:      ACTIVE
+as_of:       2026-07-26T17:21:06-04:00
+Measured at: efcc51365 / not measured
+
 ## Question
 
 When the loop prints `VALIDATED` / `COMMITTED`, is the research **thorough and conclusive**, or only **structurally complete**?

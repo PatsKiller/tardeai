@@ -1,5 +1,9 @@
 # ROCKVILLE_WATCH_ROLLBACK
 
+Status:      ACTIVE
+as_of:       2026-08-04T21:35:08-04:00
+Measured at: efcc51365 / not measured
+
 ## Instant UI rollback
 
 1. Ensure flags in `config/rockville/ROCKVILLE_WATCH_CIO_MODEL_POLICY.json` (or override `data/runtime/rockville/feature_flags.json`):

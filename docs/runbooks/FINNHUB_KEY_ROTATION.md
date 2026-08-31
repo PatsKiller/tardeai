@@ -1,5 +1,9 @@
 # Finnhub API Key Rotation Runbook
 
+Status:      ACTIVE
+as_of:       2026-08-19T12:02:14-04:00
+Measured at: efcc51365 / not measured
+
 **Why:** `data_source_health` recorded `finnhub` with `last_error: HTTP 401` — Finnhub is
 actively rejecting the stored `FINNHUB_API_KEY`. A 401 is a credential failure, not a
 transient ingestion stall: no producer retry can clear it, so the health agent now surfaces

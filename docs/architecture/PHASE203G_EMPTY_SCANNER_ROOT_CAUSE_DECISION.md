@@ -1,5 +1,9 @@
 # Phase 203G — Empty Scanner Root-Cause Decision
 
+Status:      HISTORICAL
+as_of:       2026-06-05T11:54:29-04:00
+Measured at: efcc51365 / not measured
+
 ## Root cause (proven)
 **API_SCHEMA_MISMATCH (JSON serialization defect)** + **FRONTEND_ZERO_STATE_MASKS_ERROR.**
 

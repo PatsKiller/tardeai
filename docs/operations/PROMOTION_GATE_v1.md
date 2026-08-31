@@ -1,5 +1,9 @@
 # Promotion Gate v1 — Phase 10 (prepare-only)
 
+Status:      ACTIVE
+as_of:       2026-07-27T11:56:39-04:00
+Measured at: efcc51365 / not measured
+
 **Packet:** E (`scripts/operator_packets/packet_e_promotion_gate.{sh,py}`)  
 **Phase:** 10  
 **Ack token:** `PROMOTE-AGENT-OPERATIONAL-E`  

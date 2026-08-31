@@ -1,5 +1,9 @@
 # InstrumentRecord@v1
 
+Status:      ACTIVE
+as_of:       2026-08-29T23:50:42-04:00
+Measured at: efcc51365 / not measured
+
 `InstrumentRecord@v1` is the normalized operator projection for one instrument.
 It is built from the existing `watchlist_items` row and linked canonical
 identity, research, specialist, operator-turn, and lesson evidence. It is not

@@ -1,5 +1,9 @@
 # Proposal Execution Link Audit — 2026-06-26
 
+Status:      HISTORICAL
+as_of:       2026-06-25T22:33:29-04:00
+Measured at: efcc51365 / not measured
+
 Window: **5** days
 
 ## Funnel

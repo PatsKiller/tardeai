@@ -1,5 +1,9 @@
 # Broker Proposals UI — Live Execution Desk (v3)
 
+Status:      HISTORICAL
+as_of:       2026-07-09T16:50:36-04:00
+Measured at: efcc51365 / not measured
+
 Command Center → **Trading** → **Broker Proposals** tab (`BrokerProposals.tsx`).
 
 Path B live queue for Schwab/Fidelity equity proposals promoted from the paper-agnostic queue.

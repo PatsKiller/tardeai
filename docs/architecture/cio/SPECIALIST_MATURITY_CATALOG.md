@@ -1,5 +1,9 @@
 # Specialist Maturity Catalog
 
+Status:      ACTIVE
+as_of:       2026-08-13T15:38:32-04:00
+Measured at: efcc51365 / not measured
+
 ## Phase 2.4 Post-Hardening State
 
 | Field | Alex (CIO) | Maria (PA) | Steph (Wealth) | Guardian (Risk) | Ledger (Tax) |

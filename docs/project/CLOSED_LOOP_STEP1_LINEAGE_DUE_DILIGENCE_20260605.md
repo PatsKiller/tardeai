@@ -1,5 +1,9 @@
 # Closed-Loop Step 1 — Execution Lineage Due Diligence (2026-06-05)
 
+Status:      ACTIVE
+as_of:       2026-06-05T22:02:42-04:00
+Measured at: efcc51365 / not measured
+
 ## Broken join (from certification audit)
 `paper_trades.signal_id / source_signal_id = 0%` — signal/card identity lost at execution.
 

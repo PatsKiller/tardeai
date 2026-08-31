@@ -1,5 +1,9 @@
 # FRED / ALFRED provider
 
+Status:      ACTIVE
+as_of:       2026-08-17T11:10:54-04:00
+Measured at: efcc51365 / not measured
+
 Read-only macro provider over the official FRED/ALFRED JSON API.
 
 ## Capabilities

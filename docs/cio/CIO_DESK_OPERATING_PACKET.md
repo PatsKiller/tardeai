@@ -1,5 +1,9 @@
 # Trade AI — CIO Desk Operating Packet
 
+Status:      ACTIVE
+as_of:       2026-08-12T11:14:13-04:00
+Measured at: efcc51365 / not measured
+
 | Field | Value |
 |---|---|
 | **Document** | Trade AI — CIO Desk Operating Packet |

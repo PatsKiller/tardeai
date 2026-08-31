@@ -1,5 +1,10 @@
 # Advisory Desk & CIO Desk — Data Integrity Audit (2026-08-12)
 
+Status:      HISTORICAL
+as_of:       2026-08-12T22:00:58-04:00
+Measured at: efcc51365 / not measured
+
+
 **Trigger:** an operator found that the Command Center v3 advisory page showed a
 `watchlist` row with a confident directional verdict (`ADD @ 0.50`, `AVOID @ 0.45`)
 sitting on top of an *empty* expand card — no lots, no price action, no analyst,

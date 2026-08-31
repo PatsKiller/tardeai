@@ -1,5 +1,9 @@
 # R2 Deterministic Mechanics — Build Baseline
 
+Status:      HISTORICAL
+as_of:       2026-08-14T22:33:07-04:00
+Measured at: efcc51365 / not measured
+
 Isolated additive workstream. Not wired into live Alex / CIO / retrieval /
 Telegram / reports / sizing. Authority remains `READ_ONLY_ADVISORY`.
 

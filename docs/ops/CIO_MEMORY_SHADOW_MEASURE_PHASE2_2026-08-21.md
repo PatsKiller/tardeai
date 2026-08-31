@@ -1,5 +1,9 @@
 # CIO Memory Shadow Measure — Phase 2 start (2026-08-21)
 
+Status:      HISTORICAL
+as_of:       2026-08-21T12:00:01-04:00
+Measured at: efcc51365 / not measured
+
 **READ_ONLY_ADVISORY.** `MEMORY_BEHAVIOR_INFLUENCE` stays **0**.
 
 ## Window

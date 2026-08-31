@@ -1,5 +1,9 @@
 # Authority — READ_ONLY_ADVISORY
 
+Status:      ACTIVE
+as_of:       2026-08-27T10:52:34-04:00
+Measured at: efcc51365 / not measured
+
 **Contract:** The CIO desk is **advisory only**. No component on the situation→plan→Telegram path or the WakeDispatcher→RunWorker path may place orders, change stops, mutate risk limits, or perform 2FA / broker auth.
 
 This is enforced in product language, tool allowlists, and store metadata (`authority: READ_ONLY_ADVISORY` on thesis, plans, learning rows).
