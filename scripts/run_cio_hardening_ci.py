@@ -18,6 +18,12 @@ REPO = Path(__file__).resolve().parents[1]
 
 # Ordered, explicit suite list (Phase 10.2)
 GATES = [
+    # C2: every symbol imported on an alarm path must resolve. Two incidents months
+    # apart -- send_alert (never existed) and telegram_bot (module never existed) --
+    # both sat in bare excepts and reported to nobody.
+    ("alarm_imports_resolve", [
+        "tests/test_alarm_imports_resolve.py",
+    ]),
     # Two detectors that could not tell two states apart: the docs inventory counted
     # gitignored artifacts (tracked 2274 vs filesystem 2276, reddening a required
     # gate), and signal_flow_audit read OK when nothing had been scanned.
