@@ -128,7 +128,14 @@ def was_recently_sent(dedupe_key: str, *, ttl: int = DEDUPE_TTL_SECONDS) -> bool
         return False
     now = time.time()
     try:
-        for line in path.read_text(encoding="utf-8", errors="replace").splitlines()[-500:]:
+        # B4, 2026-08-31: this was `.splitlines()[-500:]`. The file stood at 429
+        # lines -- 71 sends from silently dropping its own history, at which
+        # point a key older than the last 500 lines but younger than the TTL
+        # would read as "never sent" and a duplicate would go out with nothing
+        # reporting it. The file is now bounded by TTL on write (see mark_sent),
+        # so reading all of it is bounded too, and correctness no longer depends
+        # on a line count that has no relationship to the window.
+        for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
             if not line.strip():
                 continue
             try:
@@ -154,8 +161,41 @@ def mark_sent(dedupe_key: str, *, meta: Optional[dict] = None) -> None:
         }
         with path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(rec, default=str) + "\n")
+        _prune_expired(path)
     except OSError as e:
         log.warning("dedupe mark failed: %s", type(e).__name__)
+
+
+
+def _prune_expired(path, *, ttl: int = DEDUPE_TTL_SECONDS) -> None:
+    """Drop entries older than the TTL so the file stays bounded by time.
+
+    B4. Bounding by a line count is what created the hazard: 500 lines has no
+    relationship to the dedupe window, so at any send rate high enough the oldest
+    still-valid key falls off the end and a duplicate goes out silently. Bounding
+    by the same TTL the reader uses makes the two agree by construction.
+
+    Best-effort and non-fatal: a prune that fails leaves a longer file, which is
+    safe. A prune that failed silently AND shortened the file would not be.
+    """
+    try:
+        cutoff = time.time() - ttl
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+        kept = []
+        for line in lines:
+            if not line.strip():
+                continue
+            try:
+                if float(json.loads(line).get("ts", 0)) >= cutoff:
+                    kept.append(line)
+            except (json.JSONDecodeError, TypeError, ValueError):
+                kept.append(line)   # unparseable: keep, never silently discard
+        if len(kept) != len(lines):
+            tmp = path.with_suffix(path.suffix + ".tmp")
+            tmp.write_text("\n".join(kept) + ("\n" if kept else ""), encoding="utf-8")
+            tmp.replace(path)
+    except OSError as e:
+        log.warning("dedupe prune skipped: %s", type(e).__name__)
 
 
 def thesis_notify_enabled() -> bool:
