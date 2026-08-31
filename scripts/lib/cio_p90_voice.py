@@ -40,8 +40,10 @@ NARRATIVE_NOTE = (
     "count; not a written view (P9.0 #4)"
 )
 NEXT_REVIEWS_NOTE = (
-    "one constant cadence sentence repeated per entry; a standing cadence, "
-    "not a dated catalyst per name (P9.0 #5)"
+    "standing cadence template (class T) — not a dated catalyst per name. "
+    "When the producer supplies no date, next_reviews is demoted off the "
+    "judgment register; the constant lives on standing_cadence_template "
+    "(W3 3b / P9.0 #5)"
 )
 CLOSEST_REENTRY_NOTE = (
     "filter over the Surface A book by pct-above-exit; a distance measurement, "
@@ -125,7 +127,9 @@ def apply_operator_voice(product: dict[str, Any]) -> dict[str, Any]:
         temp["narrative_voice"] = voice_meta(VOICE_T, note=NARRATIVE_NOTE)
         out["temperament"] = temp
 
-    # Wave 2 slice 33 — next_reviews is one constant cadence sentence repeated.
+    # Wave 2 slice 33 / W3 3b — next_reviews is standing cadence, not judgment.
+    # Dated catalysts (if any) stay; constant-only lists are already demoted to
+    # standing_cadence_template by the operator product builder.
     reviews = out.get("next_reviews")
     if isinstance(reviews, list):
         out["next_reviews"] = [
@@ -134,6 +138,9 @@ def apply_operator_voice(product: dict[str, Any]) -> dict[str, Any]:
         ]
     out["next_reviews_class"] = VOICE_T
     out["next_reviews_voice"] = voice_meta(VOICE_T, note=NEXT_REVIEWS_NOTE)
+    if out.get("standing_cadence_template") and not out.get("next_reviews"):
+        out["next_reviews_role"] = "standing_cadence_template"
+        out["next_reviews_is_judgment"] = False
     out["closest_reentries_class"] = VOICE_D
     out["closest_reentries_voice"] = voice_meta(VOICE_D, note=CLOSEST_REENTRY_NOTE)
 

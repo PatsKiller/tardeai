@@ -153,6 +153,7 @@ GATES = [
         "tests/test_money_surface_honesty.py",
         "tests/test_cash_guidance_provenance.py",
         "tests/test_overnight_b4_b5_asof_provenance.py",
+        "tests/test_overnight_w3_3b_frozen_fields.py",
     ]),
     ("overnight_b6_reentry_scope", [
         "tests/test_overnight_b6_reentry_scope.py",

@@ -72,6 +72,8 @@ CASE_SUMMARY_CAP = 10
 CASE_CONTENT_MAX = 400
 CASH_ATTENTION_BAND_PCT = 20.0
 NEW_NAME_SOURCE_PREFIXES = ("defense", "advisory")
+# W3 3b — standing-policy constant (class T). Unconditional across inputs.
+# Lives on standing_policy_template; must not render as situation guidance.
 PORTFOLIO_IMPLICATION_CONSTANT = (
     "Preserve quality growth exposure, keep cash for dislocations, "
     "and do not force lower-quality replacements. Re-entries need "
@@ -1346,8 +1348,14 @@ def build_temperament(
             f"Temperament {title}. Regime source as-of {regime.get('as_of') or 'n/a'}. "
             f"FS receipts in store: {fs_n}. Ratified lessons available: {ratified}."
         ),
-        "portfolio_implication": PORTFOLIO_IMPLICATION_CONSTANT,
+        # W3 3b — constant is standing policy, not situation guidance. Write the
+        # honest template field at source; leave portfolio_implication empty so
+        # judgment surfaces never render the constant as guidance (B5/W3 3b).
+        "portfolio_implication": None,
+        "standing_policy_template": PORTFOLIO_IMPLICATION_CONSTANT,
         "portfolio_implication_class": "T",
+        "portfolio_implication_is_guidance": False,
+        "portfolio_implication_role": "standing_policy_template",
         "authority": AUTHORITY,
     }
 
