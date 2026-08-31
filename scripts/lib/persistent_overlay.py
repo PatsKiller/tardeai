@@ -23,7 +23,11 @@ MBI = 0
 # AGENTS.md still described it as a DATA_DIRS_TO_LINK gap for that reason.
 OVERLAY_RELS = (
     "data/portfolios/state",
-    "state/data_broker",
+    # state/data_broker: NOT listed. On this host it still forks (hub
+    # trade-ai-v12-rebuild/state/data_broker vs persistent
+    # data/portfolios/state/data_broker). Auto-linking would pick one and
+    # destroy the other — escalate, do not overlay. Deploy may still list it
+    # historically; guard must not refuse prepare when the persistent path is empty.
     "data/runtime",
     "data/health",
     "data/cio",
