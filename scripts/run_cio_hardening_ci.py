@@ -18,6 +18,11 @@ REPO = Path(__file__).resolve().parents[1]
 
 # Ordered, explicit suite list (Phase 10.2)
 GATES = [
+    # C3: an alarm whose delivery failure is swallowed is worse than no alarm.
+    # Shrink-only baseline of named inherited debt; new swallows fail the build.
+    ("no_swallowed_alarms", [
+        "tests/test_no_swallowed_alarms.py",
+    ]),
     # C2: every symbol imported on an alarm path must resolve. Two incidents months
     # apart -- send_alert (never existed) and telegram_bot (module never existed) --
     # both sat in bare excepts and reported to nobody.
