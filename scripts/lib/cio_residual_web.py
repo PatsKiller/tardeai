@@ -195,25 +195,25 @@ SEARCH_CALLER_CENSUS: tuple[dict[str, Any], ...] = (
     },
     {
         "caller": "aegis_social_sentiment",
-        "provider": "brave",
-        "trigger": "fetch_brave_social top symbols",
+        "provider": "brave→retired (reddit+stocktwits remain)",
+        "trigger": "fetch_brave_social top symbols (opt-in AEGIS_BRAVE_ENABLED)",
         "schedule": "0 11,15 * * 1-5 (2×/weekday)",
-        "calls_per_run": 10,
+        "calls_per_run": 0,  # default off Wave 3 2026-09-01
         "class": "legacy-bulk",
         "empty_result_behavior": "reddit/stocktwits-only sentiment",
         "consumer": "aegis overnight / social_sentiment store",
-        "bound_monthly": 10 * 2 * WEEKDAYS_PER_MONTH_DEFAULT,  # still under search_budget
+        "bound_monthly": 0,
     },
     {
         "caller": "aegis_transcript_discovery",
-        "provider": "brave",
-        "trigger": "youtube + article + theme loops",
+        "provider": "brave→retired (DB youtube corpus remains)",
+        "trigger": "youtube + article + theme loops (opt-in AEGIS_BRAVE_ENABLED)",
         "schedule": "0 9 * * 1-5",
-        "calls_per_run": 12,  # ~12 symbols + themes across three loops
+        "calls_per_run": 0,  # default off Wave 3 2026-09-01
         "class": "legacy-bulk",
         "empty_result_behavior": "degrade; continue other sources",
         "consumer": "aegis transcript / discovery store",
-        "bound_monthly": 12 * WEEKDAYS_PER_MONTH_DEFAULT,
+        "bound_monthly": 0,
     },
     {
         "caller": "web_research",
@@ -259,8 +259,9 @@ def projected_search_volume(
     """F2 bound-policy volume with as_of. Dry-run arithmetic only — no network.
 
     Residual-web: N subjects × 1 hop × weekdays. News/catalyst Brave under the
-    bound policy is zero (re-pointed to RSS/Finviz). Remaining legacy-bulk that
-    is *not* news (aegis social/transcript) stays under search_budget caps.
+    bound policy is zero (re-pointed to RSS/Finviz). Aegis social/transcript
+    Brave paths are opt-in off by default (Wave 3 2026-09-01) → remaining
+    legacy bulk cron projection is zero; web_research stays on-demand only.
     """
     now = _utc(as_of)
     wd = max(0, int(weekdays_per_month))
@@ -270,19 +271,18 @@ def projected_search_volume(
         "portfolio_news", "catalyst_intelligence", "web_news_fetcher",
         "portfolio_weekly_report", "symbol_enrichment", "topic_ingestion",
     )
+    aegis_repointed = ("aegis_social_sentiment", "aegis_transcript_discovery")
     news_bound = 0
     remaining_legacy = 0
     rows = []
     for row in SEARCH_CALLER_CENSUS:
         bound = row.get("bound_monthly")
         if isinstance(bound, int):
-            # Recompute residual and aegis rows against the requested weekday count.
+            # Recompute residual against the requested weekday count.
             if row["caller"] == "cio_residual_web":
                 bound = residual_monthly
-            elif row["caller"] == "aegis_social_sentiment":
-                bound = 10 * 2 * wd
-            elif row["caller"] == "aegis_transcript_discovery":
-                bound = 12 * wd
+            elif row["caller"] in aegis_repointed:
+                bound = 0  # AEGIS_BRAVE_ENABLED default off
             if row["caller"] in news_catalyst_callers:
                 news_bound += bound
             elif row["class"] == "legacy-bulk" and isinstance(bound, int):
@@ -298,6 +298,7 @@ def projected_search_volume(
             "search_api_reserved_for": SEARCH_API_RESERVED_FOR,
             "never_fail_open": True,
             "no_cron_for_residual_web": True,
+            "aegis_brave_default": "off",
         },
         "residual_web": {
             "provider": "searxng",
@@ -317,11 +318,14 @@ def projected_search_volume(
         "remaining_legacy_bulk_brave": {
             "monthly_projection": remaining_legacy,
             "arithmetic": (
-                f"aegis_social 10×2×{wd}={10*2*wd} + "
-                f"aegis_transcript 12×{wd}={12*wd} = {remaining_legacy} "
-                f"(still denied by search_budget when exhausted; never fail open)"
+                f"aegis_social+transcript opt-in off → 0 cron bulk; "
+                f"web_research/credential probes remain on-demand under search_budget "
+                f"(never fail open). as_of weekday_count={wd}"
             ),
-            "note": "not news/catalyst — left on budgeted Brave; not deleted",
+            "note": (
+                "Wave 3 2026-09-01: aegis Brave paths gated by AEGIS_BRAVE_ENABLED; "
+                "callers kept (named consumers). Not deleted."
+            ),
         },
         "census": rows,
         "authority": AUTHORITY,
