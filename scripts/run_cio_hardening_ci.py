@@ -134,6 +134,9 @@ GATES = [
     ("notification_memory", [
         "tests/test_notification_memory.py",
     ]),
+    ("notification_receipts", [
+        "tests/test_notification_receipts.py",
+    ]),
     ("governance_section_zero_parity", [
         "tests/test_agents_section_zero_parity.py",
     ]),
