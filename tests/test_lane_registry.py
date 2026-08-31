@@ -272,7 +272,7 @@ def test_the_registry_names_every_currently_disabled_lane():
 # enablement state brought that to 6. This is a RATCHET, not a snapshot: the
 # first version of this test asserted `>= 20` and failed the moment the work was
 # done, which is a test encoding a measurement instead of a rule.
-MAX_UNKNOWN_LANES = 6
+MAX_UNKNOWN_LANES = 3
 
 
 def test_the_unexplained_count_can_only_shrink():
@@ -337,7 +337,7 @@ def test_find_undeclared_respects_the_inherited_debt_baseline():
     assert [g["expression"] for g in got] == ["b.timer"]
 
 
-# ── reason quality: 26 UNKNOWN lanes worked down to 6 ─────────────────────
+# ── reason quality: 26 UNKNOWN lanes → 6 (#722) → 3 (Wave 2b A4) ───────────
 
 def test_every_non_active_lane_declares_how_well_its_reason_is_established():
     """"Superseded" has been asserted falsely in this repo twice. A reason now

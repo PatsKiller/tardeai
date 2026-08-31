@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `86c461f732c96aa15bd036d9741778d09544f04eb3ea0fa9372f7f455a56521f`
+**Tree fingerprint:** `f270cf51e55da69ce06ea9dcc666b1fb0b7b787858e020985e3c4646b7f193a5`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,10 +12,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2266 |
-| Markdown (excl. this INDEX) | 1898 |
+| Files under `docs/` (excl. this INDEX) | 2267 |
+| Markdown (excl. this INDEX) | 1899 |
 | **MISSING HEADER** | **1034** |
-| Header OK | 864 |
+| Header OK | 865 |
 | Duplicate groups | 8 |
 
 ### By status_guess
@@ -30,7 +30,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_raw_sync | 8 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 12 |
-| review_required | 1898 |
+| review_required | 1899 |
 
 ## Markdown tree
 
@@ -571,6 +571,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/audits/diligence/P7_NOTIFICATION_MATRIX_2026-08-30.md` | P7 — Notification routing matrix (CC-first) | review_required | OK | `178a2d3f5929` |
 | `docs/audits/diligence/P8_MBI_PARTITION_2026-08-30.md` | P8 — Outcome / lesson MBI partition | review_required | OK | `735d40eabea4` |
 | `docs/audits/diligence/P9_REGISTRY_ORPHAN_LIFECYCLE_2026-08-30.md` | P9 — Registry / orphan scan / lifecycle path toward 99.99% | review_required | OK | `0a8d5be191d0` |
+| `docs/audits/overnight/A4_2B_UNKNOWN_RETIREMENTS_2026-09-01.md` | A4 Wave 2b — UNKNOWN retirement reasons | review_required | OK | `3abcb3333f56` |
 | `docs/audits/overnight/B1_EARNINGS_RENDERER_2026-08-31.md` | WAVE B1 — Earnings renderer | review_required | OK | `d258bdc01136` |
 | `docs/audits/overnight/B2_B3_FAILURE_SURFACES_2026-08-31.md` | B2 + B3 — Failure surfaces (2026-08-31) | review_required | OK | `fcff0b5c0734` |
 | `docs/audits/overnight/B4_B5_ASOF_PROVENANCE_2026-08-31.md` | B4 + B5 — Per-block `as_of` and provenance at display | review_required | OK | `3c0e9517e74f` |
