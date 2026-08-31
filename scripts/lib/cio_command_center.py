@@ -1196,6 +1196,7 @@ def build_reentry_book_labels() -> dict[str, Any]:
             "surface_name": sfc["name"],
             "scope": sfc["scope"],
             "question": sfc["question"],
+            "population": sfc["population"],
             "precedence": sfc["precedence"],
             "not_this_book": sfc["not_this_book"],
             "producer": sfc["producer"],

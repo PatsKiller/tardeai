@@ -119,3 +119,73 @@ def test_producers_remain_separate_in_source():
     assert "SURFACE_B" not in a_src
     assert "SURFACE_B" in b_src and "_stamp_scope" in b_src
     assert "SURFACE_A" not in b_src
+
+
+# ── W3 3a — project stamped population onto home / operator product ─────────
+
+
+def test_home_reentry_book_labels_project_population():
+    """Live /api/v3/cio/home reentry_books.* used to omit population (always null).
+
+    Night Three Wave 3a: ``build_reentry_book_labels`` / ``_view`` must pass
+    through the stamped canonical field — not re-word it.
+    """
+    from scripts.lib.cio_command_center import build_reentry_book_labels
+
+    labels = build_reentry_book_labels()
+    assert labels["available"] is True
+    assert labels["merged"] is False
+    assert labels["a"]["population"] == SURFACE_A["population"]
+    assert labels["b"]["population"] == SURFACE_B["population"]
+    assert labels["a"]["population"] == "former holdings (exited / previously traded)"
+    assert labels["b"]["population"] == "desk cash-stage candidates under desk thesis"
+    assert labels["a"]["population"] != labels["b"]["population"]
+
+
+def test_operator_product_reentry_projects_stamped_population(tmp_path, monkeypatch):
+    """Operator product ``reentry`` dict must carry stamped book ``population``."""
+    import json
+
+    from scripts.lib.canonical_store_registry import resolve_store
+    from scripts.lib.cio_operator_product import build_operator_product
+    from scripts.lib.cio_reentry_surface_labels import stamp
+
+    monkeypatch.setenv("TRADEAI_ROOT", str(tmp_path))
+    monkeypatch.setenv("MATURITY_CONTROL_ROOT", str(tmp_path))
+    monkeypatch.setenv("MEMORY_BEHAVIOR_INFLUENCE", "0")
+
+    stamped = stamp(
+        {"count": 1, "counts": {"NEAR": 1}, "names": [{"symbol": "SCHG"}]},
+        SURFACE_A,
+    )
+    loc = resolve_store("cio.product.current", root=tmp_path)
+    path = Path(loc["primary_path"])
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "schema": "CIOInvestmentProduct@v1",
+                "available": True,
+                "as_of": "2026-09-01T00:00:00+00:00",
+                "product_id": "w3_3a_pop",
+                "decision_id": "w3_3a_pop",
+                "final_position": "HOLD",
+                "summary": {"headline": "[T] population projection check."},
+                "recommendations": [],
+                "reentry_book": stamped,
+            }
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "data" / "portfolios" / "state").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "data" / "portfolios" / "state" / "holdings.json").write_text(
+        json.dumps({"holdings": []}), encoding="utf-8"
+    )
+
+    product = build_operator_product(root=tmp_path, persist=False)
+    assert product.get("available") is True
+    re = product["reentry"]
+    assert re["population"] == SURFACE_A["population"]
+    assert re["population"] == stamped["population"]
+    assert re["question"] == SURFACE_A["question"]
+    assert re["surface"] == "A"
