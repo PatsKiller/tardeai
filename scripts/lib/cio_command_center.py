@@ -1610,19 +1610,31 @@ def build_office_home(
         }
     home["operator_trust"] = build_operator_trust()
     # Composition does not hunt files. API wrapper injects the canonical product.
+    # B3: a bare except that served the unrendered product used to still stamp
+    # `canonical_cio_source` — a provenance label for a path that did not run.
+    # Stamp only when command_center_view actually rendered.
     if operator_product is None:
         home["operator_product"] = {
             "source": "cio.operator_product.current",
             "loaded": False,
             "note": "injected by API wrapper; composition itself does not hunt files",
         }
+        # No rendered product → no canonical stamp.
     else:
         try:
             from scripts.lib.cio_operator_renderers import command_center_view
             home["operator_product"] = command_center_view(operator_product)
-        except Exception:
-            home["operator_product"] = operator_product
-    home["canonical_cio_source"] = "cio.operator_product.current"
+            home["canonical_cio_source"] = "cio.operator_product.current"
+        except Exception as _render_exc:
+            home["operator_product"] = {
+                "source": "cio.operator_product.current",
+                "loaded": False,
+                "render_error": str(_render_exc)[:200],
+                "note": "command_center_view failed; unrendered product is not stamped canonical",
+                "raw_available": True,
+            }
+            # Deliberately omit canonical_cio_source — failure must reach the
+            # surface as absence of the stamp, not a false provenance claim.
     op = operator_product if isinstance(operator_product, dict) else {}
     home["earnings"] = list(op.get("earnings") or [])[:12]
     home["new_position_if"] = list(op.get("new_position_if") or [])[:8]
