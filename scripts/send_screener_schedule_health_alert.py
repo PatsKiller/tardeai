@@ -170,12 +170,17 @@ def main():
     sent = False
     if not args.dry_run and should_send:
         try:
-            from telegram_alert import send_alert
-            send_alert(message)
-            sent = True
+            # send_telegram, NOT send_alert -- `send_alert` has never existed in
+            # telegram_alert.py. `sent` also used to be set unconditionally after the
+            # call, so it claimed delivery it never checked; take the return value.
+            from telegram_alert import send_telegram
+            sent = bool(send_telegram(message))
+            if not sent:
+                print(f"  WARN: Telegram send returned False — alert NOT delivered")
         except Exception as e:
-            if args.verbose:
-                print(f"  WARN: Telegram send failed: {e}")
+            # Reported regardless of --verbose: a health alert that failed to send is
+            # exactly the case a quiet run must not hide.
+            print(f"  WARN: Telegram send failed ({type(e).__name__}: {e}) — alert NOT delivered")
 
     report = {
         "generated_at":    now.isoformat(),
