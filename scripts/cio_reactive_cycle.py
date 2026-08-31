@@ -84,6 +84,22 @@ def _event_age_hours(ev: Any, now: datetime) -> Optional[float]:
     return (now - d).total_seconds() / 3600.0
 
 
+def _known_agents() -> frozenset[str]:
+    """Agents allowed to be named as a wake's target.
+
+    Sourced from the routing table so the allowlist cannot drift away from the
+    subscriptions it is meant to mirror.
+    """
+    try:
+        from scripts.lib.cio_event_bus import AGENT_EVENT_ROUTING
+        return frozenset(AGENT_EVENT_ROUTING)
+    except Exception:
+        return frozenset({"alex", "steph", "hermes", "morgan"})
+
+
+KNOWN_AGENTS = _known_agents()
+
+
 def run_once(*, max_wakes: int = 12, dispatch: bool = False) -> dict[str, Any]:
     """Enqueue reactive and goal wakes. Does NOT claim them by default.
 
@@ -198,8 +214,19 @@ def run_once(*, max_wakes: int = 12, dispatch: bool = False) -> dict[str, Any]:
                 _payload = ev.get("payload")
             _payload = _payload if isinstance(_payload, dict) else {}
             _symbols = [str(s) for s in (_payload.get("symbols") or []) if s]
-            _owner = str(_payload.get("owner_agent") or "") or None
             _situation = _payload.get("situation_type")
+            # `owner_agent` is payload data, and target_agent chooses which agent
+            # handles the wake. Dispatching on whatever the payload says would let
+            # an event pick its own handler — including one that does not exist,
+            # or one that was never meant to receive that class of work. Validate
+            # against the known agent set and fall back to the subscription that
+            # actually matched, recording the rejected value rather than
+            # discarding it silently.
+            _claimed_owner = str(_payload.get("owner_agent") or "").strip() or None
+            if _claimed_owner and _claimed_owner in KNOWN_AGENTS:
+                _owner, _owner_rejected = _claimed_owner, None
+            else:
+                _owner, _owner_rejected = None, _claimed_owner
             wake_payload = {
                 "wake_job_id": wake_job_id,
                 "trigger_type": "EVENT_BUS",
@@ -214,6 +241,8 @@ def run_once(*, max_wakes: int = 12, dispatch: bool = False) -> dict[str, Any]:
                     # key so a morgan-owned situation does not arrive as alex's.
                     "target_agent": _owner or agent_id,
                     "routed_via_agent": agent_id,
+                    # Present only when the payload named an agent we do not know.
+                    "owner_agent_rejected": _owner_rejected,
                     "event_type": et,
                     "event_id": eid,
                     "priority": priority,
