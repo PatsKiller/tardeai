@@ -13,11 +13,15 @@ script so the selection and comparison logic can be tested without a database.
 Two rules it will not break:
 
 *   **Never invent a realized state.** If the price history cannot supply both
-    ends of the comparison, the checkpoint is recorded as OUTCOME_PENDING_DATA
-    and stays due. A fabricated outcome is worse than a missing one: it teaches
-    the system something untrue and there is no later signal that it was wrong.
+    ends of the comparison, the checkpoint is recorded as OUTCOME_PENDING_DATA.
+    A fabricated outcome is worse than a missing one: it teaches the system
+    something untrue and there is no later signal that it was wrong.
 *   **Append, never rewrite.** Resolving a checkpoint appends a new version
     carrying the outcome link. The original row stays exactly as written.
+*   **PENDING_DATA is not forever.** Wave D2: classify each pending row
+    (future-dated / obtainable / stuck waiting / never-resolvable). Obtainable
+    rows may resolve once prices appear; never-resolvable rows expire
+    explicitly so they stop sitting in the store with no terminal state.
 
 AUTHORITY: READ_ONLY_ADVISORY. Observational only; no trading, no authority.
 """
@@ -27,6 +31,7 @@ from datetime import datetime, timezone
 from typing import Any, Callable
 
 SCHEMA = "OutcomeResolution@v1"
+SCHEMA_PENDING_TRIAGE = "PendingDataTriage@v1"
 AUTHORITY = "READ_ONLY_ADVISORY"
 MBI = 0
 
@@ -36,6 +41,18 @@ STATUS_PENDING_DATA = "OUTCOME_PENDING_DATA"
 # Structurally not a price comparison — distinct from "waiting for data", which
 # would keep the checkpoint churning through every future run forever.
 STATUS_NOT_PRICE_RESOLVABLE = "NOT_PRICE_RESOLVABLE"
+# Terminal for a PENDING_DATA row that will never become a price comparison.
+# Distinct from NOT_PRICE_RESOLVABLE (refused on first due pass) so receipts
+# show the row was pending, triaged, and explicitly expired.
+STATUS_EXPIRED = "OUTCOME_EXPIRED"
+
+# Classification labels for OUTCOME_PENDING_DATA census / triage.
+CLASS_FUTURE = "future_dated"
+CLASS_OBTAINABLE = "obtainable"
+CLASS_STUCK = "stuck_waiting_data"
+CLASS_NEVER = "never_resolvable"
+
+PENDING_APPLY_ENV = "TRADEAI_PENDING_DATA_APPLY"
 
 # Recommendations about the portfolio's cash, not about a security. `HOLD_CASH`
 # with symbol "CASH" is the trap: CASH is also a real listed equity (Pathward
@@ -206,3 +223,151 @@ def resolution_row(
     row["observational_only"] = True
     row["trading"] = False
     return row
+
+
+def pending_data_checkpoints(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Latest version of every checkpoint currently in OUTCOME_PENDING_DATA."""
+    out = [
+        cp for cp in latest_checkpoints(rows).values()
+        if str(cp.get("status") or "") == STATUS_PENDING_DATA
+    ]
+    return sorted(out, key=lambda c: str(c.get("due_at") or c.get("checkpoint_id")))
+
+
+def _pending_data_gap(
+    cp: dict[str, Any],
+    price_lookup: PriceLookup,
+    now: datetime | None = None,
+) -> str:
+    """Why a structurally resolvable pending row still lacks a comparison."""
+    at = now or _now()
+    symbol = checkpoint_symbol(cp)
+    if not symbol:
+        return "no_security_subject"
+    original = cp.get("original_decision_state") or {}
+    decided_at = _parse(original.get("as_of")) or _parse(cp.get("created_at"))
+    if not decided_at:
+        return "no_decision_timestamp"
+    then = price_lookup(symbol, decided_at.date().isoformat())
+    now_px = price_lookup(symbol, at.date().isoformat())
+    if not then and not now_px:
+        return "no_price_history_either_end"
+    if not then:
+        return "missing_decision_price"
+    if not now_px:
+        return "missing_horizon_price"
+    if not then[0]:
+        return "decision_price_zero"
+    return "comparison_unavailable"
+
+
+def classify_pending_checkpoint(
+    cp: dict[str, Any],
+    *,
+    price_lookup: PriceLookup,
+    registry_lookup: Callable[[str], bool] | None = None,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    """Classify one OUTCOME_PENDING_DATA row.
+
+    Returns a small dict with ``class`` in
+    {future_dated, obtainable, stuck_waiting_data, never_resolvable},
+    a ``reason`` naming what data is pending (or why it will never resolve),
+    and when obtainable the realized comparison payload.
+    """
+    at = now or _now()
+    due = _parse(cp.get("due_at"))
+    symbol = checkpoint_symbol(cp)
+    base = {
+        "checkpoint_id": cp.get("checkpoint_id"),
+        "decision_id": cp.get("decision_id"),
+        "symbol": symbol,
+        "due_at": cp.get("due_at"),
+        "entity_type": cp.get("entity_type"),
+        "prior_reason": cp.get("resolution_reason"),
+    }
+
+    # A pending row whose horizon has not arrived yet is not stuck — leave it.
+    if due and due > at:
+        return {**base, "class": CLASS_FUTURE, "reason": "due_at_in_future",
+                "action": "leave"}
+
+    ok, refuse_reason = price_resolvable(cp, registry_lookup)
+    if not ok:
+        return {**base, "class": CLASS_NEVER, "reason": refuse_reason or "not_price_resolvable",
+                "action": "expire"}
+
+    # Missing decision timestamp can never be healed by more market data.
+    original = cp.get("original_decision_state") or {}
+    decided_at = _parse(original.get("as_of")) or _parse(cp.get("created_at"))
+    if not decided_at:
+        return {**base, "class": CLASS_NEVER, "reason": "no_decision_timestamp",
+                "action": "expire"}
+
+    available, realized, source_refs = realized_state(cp, price_lookup, now=at)
+    if available:
+        return {
+            **base,
+            "class": CLASS_OBTAINABLE,
+            "reason": "price_history_available",
+            "action": "resolve",
+            "realized_state": realized,
+            "source_refs": source_refs,
+        }
+
+    gap = _pending_data_gap(cp, price_lookup, now=at)
+    return {**base, "class": CLASS_STUCK, "reason": gap, "action": "leave"}
+
+
+def triage_pending_data(
+    rows: list[dict[str, Any]],
+    *,
+    price_lookup: PriceLookup,
+    registry_lookup: Callable[[str], bool] | None = None,
+    now: datetime | None = None,
+    limit: int | None = None,
+) -> dict[str, Any]:
+    """Census OUTCOME_PENDING_DATA into future / obtainable / stuck / never.
+
+    Pure — does not write. The runner decides whether to append resolve or
+    expire receipts under the TRADEAI_PENDING_DATA_APPLY env gate.
+    """
+    at = now or _now()
+    pending = pending_data_checkpoints(rows)
+    if limit is not None:
+        pending = pending[:limit]
+
+    counts = {
+        CLASS_FUTURE: 0,
+        CLASS_OBTAINABLE: 0,
+        CLASS_STUCK: 0,
+        CLASS_NEVER: 0,
+    }
+    reasons: dict[str, int] = {}
+    classified: list[dict[str, Any]] = []
+    for cp in pending:
+        item = classify_pending_checkpoint(
+            cp,
+            price_lookup=price_lookup,
+            registry_lookup=registry_lookup,
+            now=at,
+        )
+        klass = str(item["class"])
+        counts[klass] = counts.get(klass, 0) + 1
+        reason = str(item.get("reason") or "unknown")
+        reasons[reason] = reasons.get(reason, 0) + 1
+        classified.append(item)
+
+    return {
+        "schema": SCHEMA_PENDING_TRIAGE,
+        "authority": AUTHORITY,
+        "memory_behavior_influence": MBI,
+        "financial_action": False,
+        "observational_only": True,
+        "as_of": at.replace(microsecond=0).isoformat(),
+        "pending_total": len(pending),
+        "counts": counts,
+        "reasons": reasons,
+        "classified": classified,
+        "apply_env": PENDING_APPLY_ENV,
+    }
