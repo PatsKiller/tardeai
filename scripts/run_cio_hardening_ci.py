@@ -18,6 +18,12 @@ REPO = Path(__file__).resolve().parents[1]
 
 # Ordered, explicit suite list (Phase 10.2)
 GATES = [
+    # Two detectors that could not tell two states apart: the docs inventory counted
+    # gitignored artifacts (tracked 2274 vs filesystem 2276, reddening a required
+    # gate), and signal_flow_audit read OK when nothing had been scanned.
+    ("detectors_distinguish_states", [
+        "tests/test_detectors_distinguish_states.py",
+    ]),
     # Pins the 2026-08-08 -> 2026-08-31 Strategy Desk outage: an ON CONFLICT clause
     # naming a constraint that does not exist (every signal insert raised), and the
     # alarms that reported it to nobody by importing a send_alert that has never existed.
