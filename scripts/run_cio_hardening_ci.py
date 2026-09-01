@@ -324,6 +324,9 @@ GATES = [
     ("watch_instrument_admit", [
         "tests/test_cio_watch_instrument_admit.py",
     ]),
+    ("wake_writer_stamp", [
+        "tests/test_wake_writer_stamp.py",
+    ]),
     ("overnight_g4_archive_mechanism", [
         "tests/test_overnight_g4_archive_mechanism.py",
     ]),
