@@ -1365,7 +1365,10 @@ def generate_portfolio_dashboard(
     )
 
     # Pass API key to JS safely
-    api_key_js = api_key.replace("'", "\\'") if api_key else ""
+    # SECURITY 2026-08-31: the key is NEVER embedded. The page only ever used it
+    # as a presence check -- the actual call goes to the local proxy on :7778,
+    # which holds the credential. Emit a boolean, not a secret.
+    ai_enabled_js = "true" if api_key else "false"
     sonnet_model = os.getenv("CLAUDE_ESCALATION_MODEL", "claude-sonnet-4-6")
     haiku_model  = os.getenv("CLAUDE_CHEAP_MODEL",      "claude-haiku-4-5")
 
@@ -1419,7 +1422,7 @@ function updateClock() {{
 setInterval(updateClock, 1000); updateClock();
 
 // ── AI Analysis on demand ──────────────────────────────────────────────────
-const API_KEY    = '{api_key_js}';
+const AI_ENABLED = {ai_enabled_js};
 const SONNET     = '{sonnet_model}';
 const HAIKU      = '{haiku_model}';
 
@@ -1430,13 +1433,11 @@ function showAIPopup(title, prompt, model) {{
   ttl.textContent  = title;
   body.innerHTML   = '<p style="color:#9A9AB0">⏳ Calling Claude ' + (model===SONNET?'Sonnet 4.6':'Haiku') + '...</p>';
   popup.style.display = 'block';
-  if (!API_KEY) {{
+  if (!AI_ENABLED) {{
     body.innerHTML = '<div style="color:#F4B400;font-size:12px">' +
-      '<b>⚡ API key not embedded in this dashboard.</b><br><br>' +
-      'Re-run the pipeline to embed your key:<br>' +
-      '<code style="background:#0d0d1a;padding:4px 8px;border-radius:4px;display:inline-block;margin-top:6px">' +
-      'run_portfolio.bat</code><br><br>' +
-      'Then refresh this page at localhost:7777' +
+      '<b>⚡ AI analysis is not configured.</b><br><br>' +
+      'The dashboard never holds a key. Configure ANTHROPIC_API_KEY for the ' +
+      'local proxy on port 7778 and re-run the pipeline.' +
       '</div>';
     return;
   }}

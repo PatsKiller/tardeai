@@ -198,6 +198,11 @@ GATES = [
     ("governance_section_zero_parity", [
         "tests/test_agents_section_zero_parity.py",
     ]),
+    # Both sides added gates. Keeping both: a conflict in a gate LIST is never
+    # resolved by choosing a side, because each side is a check something needs.
+    ("dashboard_no_embedded_key", [
+        "tests/test_dashboard_never_embeds_a_key.py",
+    ]),
     ("guard_push_auth", [
         "tests/test_guard_push_auth.py",
     ]),
