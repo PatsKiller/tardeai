@@ -355,3 +355,195 @@ recorded, not touched, and carried to the morning packet.
 - Deferred-to-operator list gained two items tonight (the §13.4 amendment, the 928–930 cron fix)
   and resolved none. Per §17 that is itself a finding about how this wave was run, and it is
   recorded rather than hidden — though both items are *discoveries*, not deferrals the wave created.
+---
+
+## Stitch 3 — 2026-08-31 23:34 ET · the writer never existed · Worker B lands
+
+### THE WRITER THAT STOPPED — it did not stop. There has never been one.
+
+The store was asked directly who wrote it. `[VERIFIED]`, read from
+`/home/johnclaw/trade-ai-releases/persistent-state/data/cio/cio_instrument_records.jsonl`,
+131 rows, as_of 2026-08-31T23:30 ET:
+
+```
+=== writer histogram (cc_narrative.writer) ===
+  126  migration:deterministic       last updated_ts=2026-08-30T14:53:41Z
+    5  cognition:defer_honored       last updated_ts=2026-08-30T14:58:17Z
+
+=== updated_ts range ===
+earliest 2026-08-30T02:23:59Z      latest 2026-08-30T14:58:17Z      rows with no updated_ts: 0
+```
+
+**Every row in the store was written inside a single twelve-hour window on 2026-08-30, and 126 of
+131 were written by the migration script.** The file's mtime — Aug 30 10:58 EDT — is 14:58 UTC,
+matching the last row (`HELD:SCHD`) to the second.
+
+A first pass at this histogram keyed on `updated_at` / `author` and returned "131 rows, writer
+`(none)`". The fields are `updated_ts` and `cc_narrative.writer`. The correction is kept because
+the wrong reading looked like a clean answer — a store with no writer stamps at all — and would
+have been reported as one.
+
+### The write graph, traced to exhaustion `[CODE]`
+
+`InstrumentRecordStore.upsert()` at `scripts/lib/cio_instrument_record.py:309` (append at
+`:319-320`) is the **only** write in the class. Every path that reaches it:
+
+| entry point | non-test callers | scheduled? |
+|---|---|---|
+| `persist_instrument_record()` — `lib/instrument_record.py:116` | **ZERO** | dead code |
+| `stamp_last_artifact_id()` — `lib/cio_instrument_record.py:536` | `lib/cio_specialist_artifact.py:169` | see below |
+| `apply_after_cycle()` — writes `cognition:defer_honored` at `lib/cio_rehydrate.py:272` | `attach_operator_turn()` at `:326` — and that has exactly one non-test caller: **`cio_migrate_instrument_records.py:152`** | no |
+| `rollback()` — `:306` | — | no |
+| `cio_instrument_record_drill.py` | — | drill tool |
+
+`[VERIFIED]` Nothing in the crontab schedules any of them:
+
+```
+$ crontab -l | grep -inE "specialist_artifact|migrate_instrument|rehydrate|instrument_record"
+(empty)
+```
+
+**So the five `cognition:defer_honored` rows — the only non-migration writes that have ever
+existed — were themselves produced by the migration**, through its own call to
+`attach_operator_turn`. The cognition writer has never run outside a migration.
+
+### The near-miss that makes it worse
+
+`stamp_last_artifact_id` is the one path that could plausibly be reached on a scheduled wake. It is
+not, and the reason is a name collision:
+
+```
+$ ls scripts/lib/cio_specialist_artifact*.py
+cio_specialist_artifact.py    7479 bytes    ← holds the stamp call at :169
+cio_specialist_artifacts.py   4249 bytes    ← PLURAL
+$ grep -n "cio_specialist_artifact" scripts/lib/cio_run_worker.py
+33:from scripts.lib.cio_specialist_artifacts import resolve_run_specialist_advisories
+```
+
+`cio_run_worker` — which **is** in the scheduled wake path, and whose log lines appear in the
+dispatcher output — imports the **plural** module. The stamp lives in the **singular** one. And
+even if it were reached, it writes `last_artifact_id` only: it cannot set `next_eligible_at`, so
+it could never create a deferral for a later wake to honour.
+
+`[VERIFIED]` No log evidence it is ever reached: `grep -ci "last_artifact_id\|stamp_last"` over the
+whole dispatcher log → `0`.
+
+### What this means for M5
+
+Worker A concluded the M5 blocker is a missing writer. **That is right, and it is worse than
+"missing".** This is precisely the defect `AGENTS.md` §3 names — *a contract built and a caller
+never wired* — and §13.4 warns of by name: *"An agent that ships a feature on top of them without
+wiring the consumer is repeating the filing-cabinet defect."*
+
+The P1 work landed the **loader**. The loader is correct, scheduled, and running 337 times. It is
+reading a store that a one-off migration filled once on 2026-08-30 and that no scheduled process
+has written since. **M5 is not blocked on the wake. It is blocked on the fact that nothing in
+production has ever written a disposition.**
+
+Corollary worth stating plainly: the 5 deferrals A found expired this morning are the *migration's*
+deferrals. When they expired, the system's entire supply of honourable dispositions was exhausted,
+and no process exists to make more.
+
+### A live, silent, high-volume failure found in the same path
+
+```
+$ grep -c "Action write failed" logs/cio_wake_dispatcher.log
+6875
+first  2026-08-27 19:16:18  [tradeai.cio_run_worker] Action write failed for rec 0: 'stream_id'
+last   2026-08-31 23:23:41  [tradeai.cio_run_worker] Action write failed for rec 24: 'stream_id'
+```
+
+**6,875 failures over four days, still firing tonight.** A `KeyError: 'stream_id'` in
+`cio_run_worker`, logged and swallowed. Not investigated further tonight — it is a separate defect,
+it is on the wake path, and it is routed to the morning packet. Recorded here because a failure
+this loud that nothing acts on is the §8 trap *"a guard verified by presence is not a guard"* in
+its other form: an alarm that fires constantly and changes nothing.
+
+---
+
+## Worker B — COMPLETE, and it refutes two authorities
+
+**Worker B: DONE.** Marked against reproduced proof. Files:
+`docs/audits/CIO_OUTCOME_EDGE_CENSUS_2026-09-01.md` (701 lines),
+`docs/ops/CIO_OUTCOME_DRY_2026-09-01.md` (453 lines). No `--apply`, nothing expired, no git write.
+
+### Coordinator re-measurement
+
+| B's claim | coordinator re-measurement | agrees? |
+|---|---|---|
+| latest-by-id: SCHEDULED 875 · RESOLVED 158 · NOT_PRICE_RESOLVABLE 86 · OUTCOME_PENDING_DATA 6 | **877 · 158 · 86 · 6** — SCHEDULED and total drifted by 2 because the store is live and grew during the audit, exactly as B documented | yes |
+| 1,125 distinct `checkpoint_id` | **1,127** (same live drift) | yes |
+| hourly resolver, crontab 964, `--apply` | `20 * * * * … scripts/resolve_due_checkpoints.py --apply >> logs/resolve_due_checkpoints.log` | exact |
+| 871 of 875 SCHEDULED have `due_at: null` | 877 of 877 latest-SCHEDULED carry `due_at: null` in my read — B's 871/875 is the stricter figure; **either way this is the finding** | direction confirmed |
+
+### THE OUTCOME EDGE IS NOT DARK — second authority refuted tonight
+
+`AGENTS.md` §13.4: *"`OUTCOME` edge — checkpoints exist; **settlement is dark**."*
+The AS-IS doc: `✗ OUTCOME — the edge is dark`.
+
+**Both false.** 158 checkpoints RESOLVED, 402 resolution rows across 2026-08-27/29/30/31, most
+recent `2026-08-31T14:20:02Z`, written by a resolver that runs **hourly with `--apply`** and is
+proven running by its own durable log. 152 travelled `SCHEDULED→OUTCOME_PENDING_DATA→RESOLVED`.
+
+That is now **two** §13.4 dark-contract entries falsified in one night — `load-by-subject` (A) and
+the outcome edge (B). Both amendments queued for morning; neither opened tonight, because opening a
+PR is a remote action.
+
+### B's own refutations of its brief — findings win
+
+1. **`PENDING_DATA` is fully explained. UNKNOWN = 0.** All 6 are one subject, SCHD/TRIM, awaiting
+   `ticker_prices.close_price`/`price_date`, read at `resolve_due_checkpoints.py:89-95`. B then
+   found the *next* layer honestly: `_price_lookup_factory` degrades to `lambda: None` on
+   connection failure (`:84-86`), so the receipt **cannot** distinguish "SCHD absent" from
+   "database down". That degradation is recorded as UNKNOWN rather than papered over.
+2. **The real dark mass is `due_at`, not `PENDING_DATA`.** **871 of 875 SCHEDULED checkpoints have
+   `due_at: null`** — the factory sets it unconditionally at
+   `cio_institutional_learning.py:606`, and `due_checkpoints()` treats null as *not due*
+   (`outcome_resolution.py:101-117`). **77% of the store is structurally invisible to the resolver,
+   forever.** The brief never asked about this. It is the most important thing B found.
+3. **"A checkpoint bound to nothing cannot settle" — my brief asserted this and it is wrong.**
+   0 of 1,125 carry a real `plan_id`, and all 158 settled anyway; settlement keys on `decision_id`
+   + `original_decision_state.symbol`. The coordinator wrote a premise into the brief and B
+   measured it instead of inheriting it. That is the §4 rule working as intended.
+4. **"337 lessons, ALL research-fed" is wrong on both counts.** 344 distinct `LessonCandidate@v2`;
+   **343 research-derived, 1 outcome-derived.** The outcome→lesson edge has fired exactly once.
+   "Never fired" and "fired once" are different states, and only one of them proves the edge exists.
+5. **A fifth status exists in code and has never occurred:** `OUTCOME_EXPIRED`
+   (`outcome_resolution.py:47`), double-gated behind `--apply-pending-data` +
+   `TRADEAI_PENDING_DATA_APPLY=1`, which no cron passes. A state that has never occurred is a
+   finding.
+6. **No "scored" violation** — 343 candidates carry `cannot_become_policy: true`. The rail holds.
+
+### The store-root trap, measured rather than assumed
+
+B tested my brief's warning instead of repeating it. `outcome_checkpoints.jsonl` resolves via
+`production_state_root()` (`canonical_store_registry.py:487-502`), **not** cwd — so the trap does
+**not** apply to it. It **does** apply to `CIOPlanStore`, and B reproduced it in the sharpest
+possible form: the same dry command, the same minute, **43 would-expire from the served root and 0
+from `$PROJ`.**
+
+**Six copies** of `outcome_checkpoints.jsonl` on the box; the `$PROJ` copy is a strict subset
+(153/153 upstream, 0 unique). Two divergent copies of `advisory_kb_lessons.jsonl`. Paths, sizes,
+hashes and mtimes reported; **nothing picked, nothing merged** (§0 rule 5, §17).
+
+### Permission denial — handled correctly, no wake sent
+
+The auto-mode classifier blocked a **no-flag (dry)** run of `resolve_due_checkpoints.py`. B did not
+retry, restructure, or route around it (§0 rule 3). It substituted the hourly cron's own durable
+log — **a stronger evidence tier than the run it was denied** — and delivered complete work.
+
+Assessed against the standing wake trigger: **this is not a pin abort.** B did not stop, nothing is
+blocked, and no operator decision is needed before morning. Waking the operator for a denial that
+was correctly absorbed at zero cost would train them to ignore the alarm. Recorded here and carried
+to the morning packet instead.
+
+### Observation, untouched
+
+The 06:52 `cio_draft_plan_hygiene.py --apply` cron fires at 2026-09-01T06:52 ET, 68 minutes before
+this wave stops. It has run successfully before (854 hygiene events, 124 on 2026-08-31). **Not
+interfered with.** The 43 would-expire plans B itemised are what it is likely to act on.
+
+### Open at stitch 3
+
+- **A: DONE. B: DONE.** C and D still running. E still held.
+- Morning amendment queue now holds **two** §13.4 corrections plus the 928–930 cron fix.
