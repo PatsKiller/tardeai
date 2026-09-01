@@ -1,5 +1,9 @@
 # Hermes Agents, Workflows, SOULs & Self-Learning Matrix
 
+Status:      ACTIVE
+as_of:       2026-06-07T18:49:05-04:00
+Measured at: efcc51365 / not measured
+
 _ms01-openclaw · 2026-06-07 · **generated from canonical status snapshot** (`data/runtime/hermes_canonical_status_latest.json`, Phase 217) · advisory-only · paper-only · live trading PROHIBITED_
 
 > This document and its `.docx` are regenerated from the single canonical snapshot built by

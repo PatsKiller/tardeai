@@ -1,5 +1,9 @@
 # Strategy-Fit Audit DRY RUN
 
+Status:      ACTIVE
+as_of:       2026-05-19T16:51:15-04:00
+Measured at: efcc51365 / not measured
+
 Run: arch4_20260519_203032
 
 | Metric | Value |

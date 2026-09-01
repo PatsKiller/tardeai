@@ -1,5 +1,9 @@
 # Monday ATM Burn-in Runbook — 2026-05-26
 
+Status:      HISTORICAL
+as_of:       2026-05-22T19:21:56-04:00
+Measured at: efcc51365 / not measured
+
 **Earliest run:** Monday 2026-05-26 after 09:35 ET
 **Mode:** Limited paper-active (1 entry max)
 

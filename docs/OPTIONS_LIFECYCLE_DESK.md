@@ -1,5 +1,9 @@
 # Options Lifecycle Desk — Architecture & Acceptance (2026-07-19)
 
+Status:      ACTIVE
+as_of:       2026-07-19T18:08:28-04:00
+Measured at: efcc51365 / not measured
+
 ## Status (the three-level language, applied honestly)
 
 - **STRUCTURALLY COMPLETE** — all 11 phases built: canonical strategy model,

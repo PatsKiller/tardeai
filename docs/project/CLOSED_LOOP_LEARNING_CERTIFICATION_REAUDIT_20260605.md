@@ -2,6 +2,10 @@
 
 # Closed-Loop Learning Certification — RE-AUDIT (2026-06-05, after Steps 1–6)
 
+Status:      ACTIVE
+as_of:       2026-06-05T23:46:56-04:00
+Measured at: efcc51365 / not measured
+
 Read-only re-run of the certification audit following the six closed-loop fixes. SELECT-only; no trading,
 GO/WAIT, strategy, proposal, order, broker, or live changes.
 

@@ -1,5 +1,9 @@
 # Hermes Profile Matrix — 2026-06-06
 
+Status:      ACTIVE
+as_of:       2026-06-06T23:14:31-04:00
+Measured at: efcc51365 / not measured
+
 Verified live via `hermes profile list` / `<profile> config show` / `<profile> tools list` on ms01.
 All profiles use provider=custom → local Ollama (`http://127.0.0.1:11434/v1`, api_mode openai).
 

@@ -1,5 +1,9 @@
 # PHASE 191D — TradeAI Profit-Protection Scoring Model
 
+Status:      HISTORICAL
+as_of:       2026-06-02T11:12:46-04:00
+Measured at: efcc51365 / not measured
+
 **Implemented:** `scripts/profit_protection_advisory.py` → `score()`. **Advisory only — never moves
 stops or places orders.**
 

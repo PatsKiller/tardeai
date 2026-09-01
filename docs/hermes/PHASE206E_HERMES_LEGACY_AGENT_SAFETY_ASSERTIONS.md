@@ -1,5 +1,9 @@
 # Phase 206E — Hermes Legacy Agent Safety Assertions — 2026-06-07
 
+Status:      HISTORICAL
+as_of:       2026-06-07T10:33:09-04:00
+Measured at: efcc51365 / not measured
+
 The read-only legacy-agent visibility (206B–206D) holds every safety boundary. Each assertion below is
 enforced by construction and verified.
 

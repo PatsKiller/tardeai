@@ -1,5 +1,9 @@
 # Alex enrichment — prompt curation, versioning, evaluation
 
+Status:      ACTIVE
+as_of:       2026-08-12T10:49:48-04:00
+Measured at: efcc51365 / not measured
+
 ## Layout
 
 ```
@@ -10,8 +14,8 @@ prompts/cio_alex_enrich/
   CHANGELOG.md
 ```
 
-Loader: `scripts/lib/cio_prompt_loader.py` → `load_active_prompt()`  
-Eval: `scripts/lib/cio_prompt_eval.py` → structural_check + heuristic quality + probe CLI  
+Loader: `scripts/lib/cio_prompt_loader.py` → `load_active_prompt()`
+Eval: `scripts/lib/cio_prompt_eval.py` → structural_check + heuristic quality + probe CLI
 
 ## Techniques applied (v2)
 

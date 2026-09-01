@@ -1,5 +1,9 @@
 # Phase 9 — Full-System Integration Dry-Run
 
+Status:      HISTORICAL
+as_of:       2026-08-13T20:21:34-04:00
+Measured at: efcc51365 / not measured
+
 **"One autonomous cycle, wired end-to-end, with an asserted evidence spine."**
 
 ## Goal

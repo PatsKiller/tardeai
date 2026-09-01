@@ -1,5 +1,9 @@
 # Phase 111C — SYS Classification Audit
 
+Status:      HISTORICAL
+as_of:       2026-06-01T15:19:56-04:00
+Measured at: efcc51365 / not measured
+
 22 items with NULL symbol. Reclassification:
 
 | ID | Current | Better Category | Better Label |

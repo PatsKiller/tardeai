@@ -1,5 +1,9 @@
 # Trade AI v12 — Complete System Architecture
 
+Status:      HISTORICAL
+as_of:       2026-05-26T11:21:21-04:00
+Measured at: efcc51365 / not measured
+
 **Version:** 12.30 | **Date:** 2026-05-12 | **Classification:** Internal Technical Reference
 
 ---

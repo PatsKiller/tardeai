@@ -1,5 +1,9 @@
 # Stabilization Session — 2026-06-22
 
+Status:      HISTORICAL
+as_of:       2026-06-22T11:29:29-04:00
+Measured at: efcc51365 / not measured
+
 **Operator request:** Track 1 — stabilize execution (agent backlog, screener errors, SIEM/stop alerts, LLM queue).
 **Session:** Grok CLI · ms01-openclaw · branch `main` @ `e868d7f5`
 **Safety:** Paper-only throughout; no broker writes, no strategy YAML changes, no cron mutations.

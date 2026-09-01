@@ -1,5 +1,9 @@
 # Evaluation & Shadow Test Plan — Agent Intelligence Foundation
 
+Status:      ACTIVE
+as_of:       2026-08-16T23:27:44-04:00
+Measured at: efcc51365 / not measured
+
 `READ_ONLY_ADVISORY`. This plan covers **Phase 2.5 (dry replay harness)** and
 **Phase 11 (shadow acceptance before behavior influence)**. It defines how we
 measure the agent stack against historical data, and how we compare an

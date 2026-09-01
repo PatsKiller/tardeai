@@ -1,5 +1,9 @@
 # Shadow Source Health Report
 
+Status:      ACTIVE
+as_of:       2026-05-21T10:21:31-04:00
+Measured at: efcc51365 / not measured
+
 **10/23 strategies healthy**
 
 | Strategy | Sources | Screeners | Classified | Incubator | Proposals 30d | Health |

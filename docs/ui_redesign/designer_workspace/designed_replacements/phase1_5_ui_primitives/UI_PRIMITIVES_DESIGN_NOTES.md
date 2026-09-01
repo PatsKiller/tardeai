@@ -1,5 +1,9 @@
 # Phase 1.5 UI Primitives — Design Notes
 
+Status:      HISTORICAL
+as_of:       2026-05-25T13:05:19-04:00
+Measured at: efcc51365 / not measured
+
 ## Why These Components Are Needed
 
 The DESIGNER_MISSING_FILES_REPORT identified the #1 design system gap: **the app has no shared component library for badges, chips, status indicators, or action buttons.** Every page defines its own inline styles, leading to:

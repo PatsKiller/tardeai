@@ -1,5 +1,9 @@
 # PHASE 194 — MFE Units Fix + Protection Pipeline Scheduling — CLOSEOUT
 
+Status:      HISTORICAL
+as_of:       2026-06-02T13:01:40-04:00
+Measured at: efcc51365 / not measured
+
 **Run:** 2026-06-02 ~12:40–13:05 ET · Alpaca **paper** only · data-quality + ops; no execution
 
 ---

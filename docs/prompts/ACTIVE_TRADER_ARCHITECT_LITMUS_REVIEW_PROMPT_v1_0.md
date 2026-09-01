@@ -1,4 +1,9 @@
 # ACTIVE TRADER ARCHITECT LITMUS REVIEW PROMPT v1.0
+
+Status:      ACTIVE
+as_of:       2026-07-22T23:51:03Z
+Measured at: efcc51365 / not measured
+
 ## Read-only challenge review — no modification authority
 
 You are the independent reviewing architect.

@@ -1,5 +1,9 @@
 # Phase 113 — Proposal Draft Sandbox Design Closeout
 
+Status:      DRAFT
+as_of:       2026-06-01T15:53:13-04:00
+Measured at: efcc51365 / not measured
+
 ## Status: COMPLETE (design only)
 
 ## Deliverables

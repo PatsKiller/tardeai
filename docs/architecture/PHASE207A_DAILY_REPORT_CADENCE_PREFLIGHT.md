@@ -1,5 +1,9 @@
 # Phase 207A — Daily Report Cadence Migration: Preflight — 2026-06-07
 
+Status:      HISTORICAL
+as_of:       2026-06-07T10:47:32-04:00
+Measured at: efcc51365 / not measured
+
 ## Verified current state
 - **Backup cadence controller active + clean:** `tradeai-portfolio-backup-cadence.timer` enabled, last
   fire 2026-06-07 02:30 `overall=ok` (Phase 204/205 complete). Legacy backup cron retired 2026-06-06.

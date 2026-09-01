@@ -1,5 +1,9 @@
 # Signal Freshness & Persistence Audit — 2026-05-15
 
+Status:      HISTORICAL
+as_of:       2026-05-15T17:07:48-04:00
+Measured at: efcc51365 / not measured
+
 ## Current Architecture
 
 ### Freshness filter location

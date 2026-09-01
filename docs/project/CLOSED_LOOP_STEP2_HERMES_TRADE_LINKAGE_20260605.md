@@ -1,5 +1,9 @@
 # Closed-Loop Step 2 — Hermes Trade-Reflection Linkage (2026-06-05)
 
+Status:      ACTIVE
+as_of:       2026-06-05T22:10:20-04:00
+Measured at: efcc51365 / not measured
+
 ## Broken join fixed
 `hermes_research_intelligence.related_trade_id / related_proposal_id = 0%` (0/1170) — Hermes reflection
 orphaned from trades/proposals.

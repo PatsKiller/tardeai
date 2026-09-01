@@ -1,5 +1,9 @@
 # Phase 200D — Governance Controller Dry-Run Validation
 
+Status:      HISTORICAL
+as_of:       2026-06-04T23:14:00-04:00
+Measured at: efcc51365 / not measured
+
 ## Tests
 - `bash -n scripts/pipelines/run_governance_pipeline.sh` → **OK**.
 - `DRY_RUN=1 run_governance_pipeline.sh` → **PASS** (exit 0).

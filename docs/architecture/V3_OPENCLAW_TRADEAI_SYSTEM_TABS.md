@@ -1,5 +1,9 @@
 # Command Center v3 — OpenClaw + TradeAI System Tabs — 2026-06-07
 
+Status:      ACTIVE
+as_of:       2026-06-07T21:24:18-04:00
+Measured at: efcc51365 / not measured
+
 Added two System-hub tabs alongside Hermes, same format.
 
 ## OpenClaw tab (System → OpenClaw)

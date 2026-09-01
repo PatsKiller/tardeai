@@ -1,5 +1,9 @@
 # Hermes Sidecar Strategy for Trade AI - Version 4
 
+Status:      ACTIVE
+as_of:       2026-05-29T22:39:06-04:00
+Measured at: efcc51365 / not measured
+
 **Document purpose:** Strategic design guide for integrating Hermes as a near-24/7 research, memory, and challenge layer for Trade AI.
 
 **Design status:** Planning and architecture document. This is not an implementation approval and does not authorize trading, database mutation, broker activity, or model-routing changes.

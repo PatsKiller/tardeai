@@ -1,5 +1,9 @@
 # Phase 207D — Daily Cadence Dry-Run Validation — 2026-06-07
 
+Status:      HISTORICAL
+as_of:       2026-06-07T10:50:46-04:00
+Measured at: efcc51365 / not measured
+
 `bash scripts/pipelines/run_portfolio_maintenance_pipeline.sh --cadence daily --dry-run` → `overall=ok`.
 
 | Check | Result |

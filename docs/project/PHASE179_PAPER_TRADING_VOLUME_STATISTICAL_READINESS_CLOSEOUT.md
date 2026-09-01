@@ -1,5 +1,9 @@
 # Phase 179: Paper Trading Volume and Statistical Readiness Audit — CLOSEOUT
 
+Status:      HISTORICAL
+as_of:       2026-06-01T23:21:14-04:00
+Measured at: efcc51365 / not measured
+
 **Date**: 2026-06-01
 **Operator**: John Whiting
 **Status**: COMPLETE

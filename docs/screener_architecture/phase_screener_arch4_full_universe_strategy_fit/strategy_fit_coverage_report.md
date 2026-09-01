@@ -1,5 +1,9 @@
 # Strategy-Fit Coverage Report
 
+Status:      ACTIVE
+as_of:       2026-05-19T16:51:15-04:00
+Measured at: efcc51365 / not measured
+
 **Audit Run ID:** `arch4_20260519_203108`
 **Generated:** 2026-05-19T20:37:26.510310+00:00
 

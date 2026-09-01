@@ -22,9 +22,9 @@ SCREENERS = [
         "screener_id": "swing_breakout_targeted",
         "display_name": "Swing Breakout — base breakout (targeted)",
         "strategy_type": "swing_breakout",
-        "finviz_url": EXPORT.format(f="sh_price_o5,sh_price_u150,sh_float_u500,sh_relvol_o1.5,"
+        "finviz_url": EXPORT.format(f="sh_price_o5,sh_price_u150,sh_float_u100,sh_relvol_o1.5,"
                                       "sh_avgvol_o500,ta_sma20_pa,ta_sma50_pa,ta_highlow52w_b0to10h"),
-        "description": "Near 52w high, above 20/50 SMA, RVOL>1.5, float<500M, $5-150 — matches swing_breakout config.",
+        "description": "Near 52w high, above 20/50 SMA, RVOL>1.5, float<100M, $5+ — matches swing_breakout config. Float cap 100M (operator, 2026-09-01): Finviz has no 500M step, and uncapped this screen returned bond ETFs.",
         "schedule": "weekly_mon_1000",
         "keywords": "breakout, 52w high, base, volume expansion",
         "sources": "[\"finviz_elite\"]",

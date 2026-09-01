@@ -1,5 +1,9 @@
 # FCNTX event #144 — operator decision packet (version-bound)
 
+Status:      ACTIVE
+as_of:       2026-07-14T13:47:20-04:00
+Measured at: efcc51365 / not measured
+
 **BOUND TO plan version 31** · generated 2026-07-14T17:46:56.697839+00:00 · generator `phase_b_2.0.0` ·
 decision policy `decision_1.1.0` ·
 regime basis `risk_off` · **advisory only — this desk places no orders.**

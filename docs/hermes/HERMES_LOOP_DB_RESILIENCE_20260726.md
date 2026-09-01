@@ -1,5 +1,9 @@
 # Hermes autonomous loop — DB resilience (2026-07-26)
 
+Status:      ACTIVE
+as_of:       2026-07-26T16:26:55-04:00
+Measured at: efcc51365 / not measured
+
 **Branch:** `grok/hermes-loop-db-resilience-20260726`
 
 ## Incident

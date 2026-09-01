@@ -1,3 +1,7 @@
+Status:      ACTIVE
+as_of:       2026-06-17T15:52:54-04:00
+Measured at: efcc51365 / not measured
+
 <!-- Example output of: scripts/rotation_dual_llm_advisor.py --skip-local --print-grok-prompt
      Advisory-only. Free/OAuth Grok manual paste. No API key, no xAI API, no outbound HTTP. -->
 

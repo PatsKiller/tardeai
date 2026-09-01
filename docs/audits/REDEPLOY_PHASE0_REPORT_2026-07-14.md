@@ -1,5 +1,9 @@
 # Redeploy institutional rebuild — Phase-0 report (2026-07-14)
 
+Status:      HISTORICAL
+as_of:       2026-07-14T08:38:04-04:00
+Measured at: efcc51365 / not measured
+
 Read-only audit run against the production DB on 2026-07-14 before any functional rebuild change.
 Scope per operator directive: cleanup, freeze, and truth. **No production rows were modified.**
 

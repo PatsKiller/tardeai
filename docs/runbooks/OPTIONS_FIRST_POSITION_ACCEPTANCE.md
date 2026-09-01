@@ -1,5 +1,9 @@
 # First Real Option Position — Acceptance Runbook (v1.1 Phase 10)
 
+Status:      ACTIVE
+as_of:       2026-07-19T10:39:52-04:00
+Measured at: efcc51365 / not measured
+
 **No fixtures.** The first GENUINE Alpaca paper option position runs the whole
 chain; the first real Schwab option gets READ-ONLY intake + monitoring
 verification before any lifecycle action.

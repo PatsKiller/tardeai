@@ -1,5 +1,9 @@
 # Lane D — Autonomous SHADOW Agents (default-disabled, prepare-only)
 
+Status:      ACTIVE
+as_of:       2026-07-26T11:32:24-04:00
+Measured at: efcc51365 / not measured
+
 This document describes the Lane D deliverable: production-ready, **default-disabled**
 governed definitions for the reflective SHADOW agent fleet, plus their scheduler
 design, maturity gates, least-privilege database roles, and Command Center

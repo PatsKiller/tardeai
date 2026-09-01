@@ -1,5 +1,9 @@
 # Operator steps 1–3 (post Phase 13) — executed 2026-08-14
 
+Status:      ACTIVE
+as_of:       2026-08-14T08:55:29-04:00
+Measured at: efcc51365 / not measured
+
 ## 1. Pull request → main
 
 | Item | Value |

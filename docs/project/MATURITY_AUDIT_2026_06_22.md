@@ -1,5 +1,9 @@
 # Trade AI v12 — System Maturity Audit (2026-06-22)
 
+Status:      HISTORICAL
+as_of:       2026-06-22T11:29:29-04:00
+Measured at: efcc51365 / not measured
+
 **Method:** Live system probe (health agent, APIs, DB facts, queue metrics) + prior audit baseline (`MATURITY_AUDIT_20260611.md`).
 **Scale:** 10 = institutional prop-desk grade; 5 = works but unproven; 2 = schema/aspiration only.
 

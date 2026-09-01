@@ -1,5 +1,9 @@
 # Command Center — the mental model, verified (2026-08-29)
 
+Status:      HISTORICAL
+as_of:       2026-08-29T16:25:41-04:00
+Measured at: efcc51365 / not measured
+
 Command Center is **not** the plan warehouse. It is a **composition**
 (`cio_command_center.py`) turning plans + capital-plan decisions + operator
 product into `/v3/cio`. No LLM. No broker. Notify is a **render** of policy

@@ -1,18 +1,41 @@
-# Trade AI — Claude Code adapter
+# CLAUDE.md — adapter
 
-Before performing any work in this repository, read and obey:
+**Read `./AGENTS.md` first.** It is the single source of truth for agent behaviour in this
+repository: identity, authority rails, evidence and citation standards, dry-run requirements,
+standing traps, validation, deploy protocol, multi-agent protocol, model-lane policy, the maturity
+bar, and the operator-only list.
 
-`./AI_WORK_POLICY.md`
+`./AI_WORK_POLICY.md` is canonical for remote synchronization, the push budget, CI cost and the
+deployment boundary. It is enforced by a git pre-push hook.
 
-It is the canonical engineering, Git, CI-cost, deployment-boundary and
-remote-synchronization policy for this repository.
+This file is an adapter. It contains no rules of its own. If it appears to conflict with either
+document above, that is a defect in this file — **the safer or more restrictive instruction wins**,
+and the conflict is worth reporting.
 
-A local checkpoint means `git commit`, not `git push`.
+A local checkpoint is `git commit`, not `git push`.
 
-Do not remotely push, open/update PRs, or trigger GitHub CI merely as part of
-ordinary iteration.
+## The ten rules, verbatim from `AGENTS.md` §0
 
-Runtime notes for this repo (how to run the server, tests, and worktrees)
-remain in `AGENTS.md`. Do not treat this adapter as a second policy.
+These ten prevent irreversible harm. They are repeated verbatim in every tool adapter, because an
+agent that reads fifteen lines and stops must still know them.
 
-If there is a conflict, use the safer/more restrictive instruction.
+1. **`MBI_BEHAVIOR = 0`.** The agent never sizes, orders, stops, weights, or writes to a broker.
+   Ever, for any reason, under any framing. (`MBI_BEHAVIOR` is the shorthand, not a variable —
+   the rail is an unconditional raise in code. See `AGENTS.md` §2.)
+2. **The broker execution subsystem is out of scope.** Do not modify, disable, test against,
+   investigate, call `place_order`, or POST to any order route. It is 2FA-gated and by design.
+3. **Never route around a permission denial.** Stop and report. No alternate remote, no
+   direct-to-main push, no API call substituting for a blocked CLI, no branch rename to reset a
+   budget.
+4. **A checkpoint is `git commit`, not `git push`.** Remote sync requires
+   `TRADEAI_REMOTE_PUSH_AUTHORIZED=1` plus explicit operator intent — `AI_WORK_POLICY.md`.
+5. **Never auto-remediate divergent copies of an authoritative store.** Report both paths, hashes
+   and timestamps. A machine picking one can destroy the other.
+6. **Never delete.** Archive with a tripwire that fires if anything reads the archived path.
+7. **Dry-run before any live run** that writes durable state, sends to an operator surface, spends
+   money, or touches a scheduled job. Quote the dry run's output.
+8. **Exit code 0 is not evidence of work.** Prove by a durable artifact that would not exist if the
+   thing had not run.
+9. **Operator-only decisions: propose and stop.** The list is §17.
+10. **When a finding contradicts this file, the finding wins.** Report it once, continue, and open
+    an amendment PR (§20).

@@ -1,5 +1,9 @@
 # Watch Quality Governance — 2026-07-25
 
+Status:      HISTORICAL
+as_of:       2026-07-26T11:32:09-04:00
+Measured at: efcc51365 / not measured
+
 ## Status
 
 Draft PR #172 is a deterministic-first remediation of the Watch decision system. It is based on PR #171 so the deployed support/resistance and valuation-card changes are preserved. PR #170 remains the backend valuation-source dependency.
@@ -34,8 +38,8 @@ A later layer cannot waive an earlier failure. Models never create, repair or mo
 
 ## Quality admission contract
 
-Policy: `config/watch_quality_policy.json`  
-Engine: `scripts/watch_quality_policy.py`  
+Policy: `config/watch_quality_policy.json`
+Engine: `scripts/watch_quality_policy.py`
 Version: `watch-quality-admission-v1`
 
 States:

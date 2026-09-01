@@ -1,5 +1,9 @@
 # Options & Broker Execution Flows
 
+Status:      ACTIVE
+as_of:       2026-06-23T10:28:40-04:00
+Measured at: efcc51365 / not measured
+
 Trade AI v12 closed-loop design for automatic vs manual broker execution.
 
 > **Equity proposals (same two-path model):** see `docs/PROPOSAL_EXECUTION_PATHS.md`

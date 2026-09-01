@@ -1,5 +1,9 @@
 # ROOT CAUSE MATRIX — Command Center v12 Visual Audit (2026-05-23)
 
+Status:      HISTORICAL
+as_of:       2026-05-23T20:17:18-04:00
+Measured at: efcc51365 / not measured
+
 ## Snapshot Value Reconciliation
 
 | Source | Value | Filter | File |

@@ -1,5 +1,9 @@
 # Promotion Review — 2026-06-01
 
+Status:      HISTORICAL
+as_of:       2026-06-01T13:07:50-04:00
+Measured at: efcc51365 / not measured
+
 ## AUTO_REJECT (1)
 - [3.4] id=9 TELO (ticker_thesis_challenge) — low confidence or missing evidence
 

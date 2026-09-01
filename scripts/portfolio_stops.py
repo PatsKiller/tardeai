@@ -395,9 +395,72 @@ def check_stop_alerts(risk_data: Dict) -> List[Dict]:
 
 # ── Save to state ─────────────────────────────────────────────────────────────
 
+def _canonical_state_dir() -> Path | None:
+    """The state directory the CIO actually reads, or None if unresolvable.
+
+    G1: resolve through persistent_state_root.portfolio_state_write_targets /
+    good_persistent_root (served copy), not cron cwd. Monkeypatched by
+    tests/test_risk_state_served_copy.py.
+    """
+    try:
+        from scripts.lib.persistent_state_root import good_persistent_root
+
+        persistent = Path(good_persistent_root()) / "data" / "portfolios" / "state"
+        if persistent.is_dir():
+            return persistent
+    except Exception:
+        pass
+    try:
+        from scripts.lib.canonical_store_registry import production_state_root
+    except Exception:
+        try:
+            from lib.canonical_store_registry import production_state_root  # type: ignore
+        except Exception:
+            return None
+    try:
+        return Path(production_state_root()) / "data" / "portfolios" / "state"
+    except Exception:
+        return None
+
+
 def save_risk_state(risk_data: Dict, state_dir: Path) -> None:
-    out = state_dir / "risk_management.json"
-    out.write_text(json.dumps(risk_data, indent=2, default=str))
+    """Write the risk state where the caller asked AND where the CIO reads.
+
+    The caller passes a state_dir resolved from its own project_root
+    (portfolio_orchestrator.py:116), and cron runs it with `cd $PROJ`, so the
+    fresh file landed in the checkout tree while the CIO snapshot read
+    persistent-state. Measured 2026-08-28: checkout 08-28 07:30, served copy
+    08-26 07:31, and the contents genuinely differed -- stop_count 26 vs 25,
+    plus positions, total_mv, unprotected and total_unprotected_mv. The CIO was
+    reasoning about a two-day-old risk picture while a correct one was written
+    every weekday into a tree nothing serves.
+
+    Fixed here rather than by changing the cron's working directory, for the
+    same reason the holdings totals recompute went to the write gate: a
+    cron-level fix leaves the next caller free to reintroduce it.
+
+    BOTH paths are written, from one in-memory object, so they cannot diverge.
+    Removing the checkout copy would be the tidier end state but it is not
+    additive -- portfolio_signals, portfolio_weekly_report and event_detector
+    all read that tree under `cd $PROJ` and would silently freeze. Collapsing
+    to one copy is the same irreversible decision held open for holdings.
+
+    G1: `_canonical_state_dir` resolves via persistent_state_root. Historical
+    divergent copies are reported (never auto-merged) by
+    `report_authoritative_divergence`.
+    """
+    payload = json.dumps(risk_data, indent=2, default=str)
+    targets = [Path(state_dir)]
+    canonical = _canonical_state_dir()
+    if canonical is not None and canonical.resolve() != Path(state_dir).resolve():
+        targets.append(canonical)
+    for d in targets:
+        try:
+            d.mkdir(parents=True, exist_ok=True)
+            (d / "risk_management.json").write_text(payload)
+        except OSError as e:
+            # Never let a second destination break the first.
+            print(f"  [risk] write failed for {d}: {type(e).__name__}: {e}")
 
 
 # ── CLI interface ─────────────────────────────────────────────────────────────

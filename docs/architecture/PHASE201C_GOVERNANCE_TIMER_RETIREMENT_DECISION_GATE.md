@@ -1,5 +1,9 @@
 # Phase 201C — Governance Timer Retirement Decision Gate
 
+Status:      HISTORICAL
+as_of:       2026-06-05T10:06:29-04:00
+Measured at: efcc51365 / not measured
+
 ## Conditions
 | Condition | Status |
 |-----------|--------|

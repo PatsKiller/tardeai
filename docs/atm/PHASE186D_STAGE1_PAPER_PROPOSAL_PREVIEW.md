@@ -1,5 +1,9 @@
 # Phase 186D: Stage 1 Paper Proposal Preview
 
+Status:      HISTORICAL
+as_of:       2026-06-02T00:21:42-04:00
+Measured at: efcc51365 / not measured
+
 **Date**: 2026-06-02
 **Mode**: PAPER ONLY
 

@@ -1,5 +1,9 @@
 # Closed-Loop Structured News Linkage (2026-06-06)
 
+Status:      ACTIVE
+as_of:       2026-06-06T00:08:45-04:00
+Measured at: efcc51365 / not measured
+
 ## Gap (from all-trades cert re-audit)
 News had no structured FK to trades — only symbol/date correlation. The closed loop could not answer
 "what news surrounded this trade's entry/exit?" in a queryable way.

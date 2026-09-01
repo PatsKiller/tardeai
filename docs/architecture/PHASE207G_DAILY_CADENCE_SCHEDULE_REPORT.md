@@ -1,5 +1,9 @@
 # Phase 207G — Daily Cadence Schedule Report — 2026-06-07
 
+Status:      HISTORICAL
+as_of:       2026-06-07T11:02:28-04:00
+Measured at: efcc51365 / not measured
+
 207F diff PASSED, so the daily cadence is scheduled **in parallel** with the legacy timer (not retired).
 
 ## Scheduled

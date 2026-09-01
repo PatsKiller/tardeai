@@ -1,5 +1,9 @@
 # PHASE 189G — Durable Protection Remediation Plan
 
+Status:      HISTORICAL
+as_of:       2026-06-02T09:13:00-04:00
+Measured at: efcc51365 / not measured
+
 **Run:** 2026-06-02 ~09:10 ET · Alpaca **paper** only · **Design only — no code changed here.**
 Implementation is **Phase 190**. This plan prevents recurrence; it does not patch blindly.
 

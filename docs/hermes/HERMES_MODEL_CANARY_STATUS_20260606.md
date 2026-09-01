@@ -1,5 +1,9 @@
 # Hermes Model Canary Status — 2026-06-06
 
+Status:      ACTIVE
+as_of:       2026-06-06T21:18:13-04:00
+Measured at: efcc51365 / not measured
+
 ## Live canary results (this session, direct Ollama /api/generate, num_ctx=4096, temp=0)
 | Model | Exact-string canary | Math canary (2+2) | Verdict |
 |-------|--------------------|--------------------|---------|

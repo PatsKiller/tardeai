@@ -1,5 +1,9 @@
 # Hermes → Reports/Watchlist Feed + Curated-LLM & Learning Standard (2026-06-07)
 
+Status:      ACTIVE
+as_of:       2026-06-07T14:20:29-04:00
+Measured at: efcc51365 / not measured
+
 Honest audit of (a) whether Hermes research feeds the daily/weekly/monthly reports + watchlist, and
 (b) whether each LLM submission is curated and learns over time. **Findings include real gaps.**
 

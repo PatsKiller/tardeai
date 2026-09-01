@@ -23,10 +23,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
-sys.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
+# G2: scripts-only + lib — never also put scripts/lib or root on path
+_SCRIPTS = Path(__file__).resolve().parent
+if str(_SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(_SCRIPTS))
 import os
-from watchlist_priority import (
+from lib.watchlist_priority import (
     WATCHLIST_TOP_N, daily_priority_sql_params, holdings_list, is_off_hours_et, scoring_top_n,
     sql_scoring_priority_exists,
     sql_daily_priority_exists,
@@ -559,6 +561,9 @@ def run(limit=None):
 
 
 def main():
+    # G2: after imports settle — refuse dual lib.X / scripts.lib.X identity
+    from lib import assert_single_import_identity
+    assert_single_import_identity()
     ap = argparse.ArgumentParser(); ap.add_argument("--once", action="store_true"); ap.add_argument("--limit", type=int)
     a = ap.parse_args(); run(limit=a.limit)
 

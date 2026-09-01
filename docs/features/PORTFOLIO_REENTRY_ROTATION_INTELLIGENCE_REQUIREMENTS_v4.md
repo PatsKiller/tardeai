@@ -1,5 +1,9 @@
 # Portfolio Re-Entry + Rotation Intelligence — Requirements Contract v4
 
+Status:      ACTIVE
+as_of:       2026-07-23T16:51:42-04:00
+Measured at: efcc51365 / not measured
+
 ## Operator decisions
 
 The operator selected:

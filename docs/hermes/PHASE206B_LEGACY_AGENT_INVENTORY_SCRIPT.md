@@ -1,5 +1,9 @@
 # Phase 206B — Legacy/Retired Agent Inventory Script — 2026-06-07
 
+Status:      HISTORICAL
+as_of:       2026-06-07T10:27:59-04:00
+Measured at: efcc51365 / not measured
+
 ## Script
 `scripts/hermes_legacy_agent_inventory.py` — READ-ONLY. Scans the retired sidecar dirs (and the active
 global Hermes home for context) and writes `data/hermes/legacy_agent_inventory_latest.json`.

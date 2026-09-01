@@ -1,5 +1,9 @@
 # P9.2 — has a research round trip ever closed?
 
+Status:      HISTORICAL
+as_of:       2026-08-28T09:21:16-04:00
+Measured at: efcc51365 / not measured
+
 **No. 0 of 456.** And the reason is written into the system as a policy, not a bug.
 
 READ ONLY. Nothing was fixed. `[VERIFIED]` = command run against live state, output

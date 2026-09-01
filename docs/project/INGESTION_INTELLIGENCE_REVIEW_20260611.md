@@ -1,5 +1,9 @@
 # Ingestion & Intelligence Due-Diligence Review (Finviz / Trade AI / Hermes) — 2026-06-11
 
+Status:      ACTIVE
+as_of:       2026-06-11T13:23:28-04:00
+Measured at: efcc51365 / not measured
+
 **Method:** two code-tracing audits (Finviz list machinery; Hermes learning loops) + direct DB quantification
 (30-day windows). Confirmed findings carry file:line or query evidence; assumptions are labeled. Builds on the
 same-day SYSTEM_DEEP_REVIEW (proposal pipeline + backtesting audits).

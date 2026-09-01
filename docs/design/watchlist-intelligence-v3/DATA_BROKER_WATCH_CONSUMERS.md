@@ -1,5 +1,9 @@
 # Data Broker — Watch Intelligence consumers
 
+Status:      ACTIVE
+as_of:       2026-08-05T10:23:18-04:00
+Measured at: efcc51365 / not measured
+
 Watch Intelligence is **not a side API**. It is a projection in the existing
 `scripts/lib/data_broker` package, advertised next to `market_quote`,
 `symbol_profile`, `reentry_decision_desk`, and the rest.
@@ -11,8 +15,8 @@ GET /api/v3/data-broker
 GET /api/v3/data-broker/catalog
 ```
 
-Contract: `watch_intelligence.broker.v1`  
-Module: `lib.data_broker.watch_intelligence`  
+Contract: `watch_intelligence.broker.v1`
+Module: `lib.data_broker.watch_intelligence`
 Primary UI: `/v3/watch`
 
 Endpoints:

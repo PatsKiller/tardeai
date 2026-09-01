@@ -1,5 +1,9 @@
 # Stage 2c — Protective Stops on Holdings (spec)
 
+Status:      ACTIVE
+as_of:       2026-07-21T12:49:43-04:00
+Measured at: efcc51365 / not measured
+
 > **✅ SHIPPED 2026-06-15 — this is the original DESIGN spec (historical). For the as-built production
 > architecture (all taxable + IRAs live, standing no-ARM, modify, lifecycle/health/Hermes/Grok monitoring,
 > Alpaca auto-management) see → [`stop-management-architecture.md`](stop-management-architecture.md).**

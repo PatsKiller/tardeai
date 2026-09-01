@@ -1,5 +1,9 @@
 # Phase 1.5 UI Primitives — Usage Guide
 
+Status:      HISTORICAL
+as_of:       2026-05-25T13:05:19-04:00
+Measured at: efcc51365 / not measured
+
 ## Import Pattern
 
 ```tsx

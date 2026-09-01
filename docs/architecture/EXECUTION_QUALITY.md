@@ -1,5 +1,9 @@
 # Replay-Aware Execution Quality (design)
 
+Status:      ACTIVE
+as_of:       2026-06-10T21:48:34-04:00
+Measured at: efcc51365 / not measured
+
 **Prepared:** 2026-06-10 · **Type:** read-only analytics. No trading writes; validator 12/12.
 
 Separates **outcome** (won/lost) from **execution** (good/poor) using real fill timestamps + intraday bars,

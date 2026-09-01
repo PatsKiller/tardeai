@@ -1,5 +1,9 @@
 # Phase 113E — Proposal Sandbox Readiness Decision
 
+Status:      HISTORICAL
+as_of:       2026-06-01T15:53:13-04:00
+Measured at: efcc51365 / not measured
+
 ## Decision: READY_FOR_FILE_ONLY_SANDBOX
 
 ### Rationale

@@ -1,5 +1,9 @@
 # Stage 2a Canary Session — OPERATOR RUNBOOK (compressed 5-order battery)
 
+Status:      ACTIVE
+as_of:       2026-06-12T10:05:44-04:00
+Measured at: efcc51365 / not measured
+
 **Date prepared:** 2026-06-12 · Allowlist committed: **GRAB** (primary, ~$3.35) / XRX (fallback)
 
 ## ⚠️ THE ONE THING TO UNDERSTAND FIRST

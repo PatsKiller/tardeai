@@ -1,4 +1,9 @@
 # PHASE 212G — Hermes Build Promotion Decision (2026-06-07)
+
+Status:      HISTORICAL
+as_of:       2026-06-07T15:33:32-04:00
+Measured at: efcc51365 / not measured
+
 - **Promote newer Hermes: NO.** Reason: 0.16.0 is already the latest published build — there is nothing newer
   to promote. No upgrade can fix headless Codex today.
 - Tests passed: version discovery (latest confirmed), alternative-command-shape tests (all fail).

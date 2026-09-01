@@ -1,5 +1,9 @@
 # Phase 206G — Legacy Agent Visibility Validation — 2026-06-07
 
+Status:      HISTORICAL
+as_of:       2026-06-07T10:35:54-04:00
+Measured at: efcc51365 / not measured
+
 | Check | Result |
 |-------|--------|
 | `python3 scripts/hermes_legacy_agent_inventory.py` | OK — 24 items (`RETIRED_SOUL:2, RETIRED_AGENT:1, RETIRED_WRAPPER:4, UNSAFE_RUNTIME_ARTIFACT:13, ACTIVE_PROFILE:4`) |

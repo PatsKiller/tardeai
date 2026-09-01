@@ -1,5 +1,9 @@
 # PHASE 192C — Operator-Approved Protection Action Policy
 
+Status:      HISTORICAL
+as_of:       2026-06-02T12:10:31-04:00
+Measured at: efcc51365 / not measured
+
 **Alpaca paper only.** Defines allowed paper-only adjustment actions, their guards, and Alpaca
 support. **Nothing executes without explicit operator approval (`confirm=true`).**
 

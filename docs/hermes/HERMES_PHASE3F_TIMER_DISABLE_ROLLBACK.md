@@ -1,5 +1,9 @@
 # Hermes Phase 3F — Timer Disable/Rollback
 
+Status:      HISTORICAL
+as_of:       2026-05-30T23:09:56-04:00
+Measured at: efcc51365 / not measured
+
 ## Disable Timer
 ```bash
 systemctl --user stop hermes-autonomous-loop.timer

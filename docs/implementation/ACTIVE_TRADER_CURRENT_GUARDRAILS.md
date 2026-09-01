@@ -1,5 +1,9 @@
 # Active Trader — Current guardrails (Stage 0)
 
+Status:      ACTIVE
+as_of:       2026-07-27T12:13:37-04:00
+Measured at: efcc51365 / not measured
+
 These guardrails apply to Stage 0 work and remain binding until a later stage is
 explicitly authorized by architecture + operator process.
 

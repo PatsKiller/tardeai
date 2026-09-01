@@ -1,5 +1,9 @@
 # PHASE 192A — Command Center v2 / v3 Parity Inventory
 
+Status:      HISTORICAL
+as_of:       2026-06-02T11:52:03-04:00
+Measured at: efcc51365 / not measured
+
 **Run:** 2026-06-02 ~11:30 ET · Validation gate for Phase 192 · Alpaca **paper** only
 
 ---

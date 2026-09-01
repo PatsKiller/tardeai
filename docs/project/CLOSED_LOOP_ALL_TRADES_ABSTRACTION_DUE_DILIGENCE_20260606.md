@@ -1,5 +1,9 @@
 # Closed-Loop All-Trades Abstraction — Due Diligence (2026-06-06)
 
+Status:      ACTIVE
+as_of:       2026-06-05T23:46:56-04:00
+Measured at: efcc51365 / not measured
+
 ## Root concern (operator/CIO)
 Steps 1–7 closed real gaps but centered on `paper_trades`. Names like `paper_trade_id`,
 `paper_trade_edge_comparison`, `closed_paper_trade`, `paper_trades.trade_key` must NOT become canonical.

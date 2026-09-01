@@ -1,5 +1,9 @@
 # Docker Rollback Runbook
 
+Status:      ACTIVE
+as_of:       2026-05-31T17:44:35-04:00
+Measured at: efcc51365 / not measured
+
 ## If a container fails or causes issues:
 
 ```bash

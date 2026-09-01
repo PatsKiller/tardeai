@@ -1,5 +1,9 @@
 # Replay price-scale fix — 2026-06-27
 
+Status:      HISTORICAL
+as_of:       2026-06-27T18:19:12-04:00
+Measured at: efcc51365 / not measured
+
 ## Problem
 
 Per-trade replay charts (Journal / TradeInView / Tagging Queue) showed candlesticks clustered at the

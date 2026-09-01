@@ -1,5 +1,9 @@
 # Intelligence Engine & Command Center — Maturity Audit (2026-06-22)
 
+Status:      ACTIVE
+as_of:       2026-06-22T12:40:43-04:00
+Measured at: efcc51365 / not measured
+
 Operator goal: continuous autonomous intelligence (Hermes → RAG → agents) and a polished Command Center Intelligence hub (`/v3/intelligence`).
 
 ## Grade summary (post-remediation)

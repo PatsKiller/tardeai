@@ -1,5 +1,9 @@
 # Command Center Replacement Matrix
 
+Status:      ACTIVE
+as_of:       2026-08-26T14:08:51-04:00
+Measured at: efcc51365 / not measured
+
 Measured 2026-08-26 against `convergence/r20-r24` HEAD. No live cutover.
 Every old page: KEEP | REPLACE | MERGE | SPLIT | RETIRE | REDIRECT | DEFER.
 Parity class: PARITY | NEW_SUPERSET | INTENTIONAL_SEMANTIC_REPLACEMENT | REGRESSION.

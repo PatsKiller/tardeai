@@ -1,5 +1,9 @@
 # Phase 4 Governance & Approvals -- Apply Plan
 
+Status:      HISTORICAL
+as_of:       2026-05-25T15:07:30-04:00
+Measured at: efcc51365 / not measured
+
 ## Prerequisites
 
 1. Phase 1.5 shared primitives must exist:

@@ -1,5 +1,9 @@
 # Post-8b348c3 Verification Matrix
 
+Status:      HISTORICAL
+as_of:       2026-05-24T14:12:34-04:00
+Measured at: efcc51365 / not measured
+
 ## Summary
 - Playwright: 61 OK, 0 console errors, 0 network failures, 2 skipped
 - Consistency check: 9 PASS, 1 WARN, 0 FAIL

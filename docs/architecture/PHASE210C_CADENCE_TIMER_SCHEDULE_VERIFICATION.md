@@ -1,5 +1,9 @@
 # Phase 210C — Cadence Timer Schedule Verification — 2026-06-07
 
+Status:      HISTORICAL
+as_of:       2026-06-07T18:55:39-04:00
+Measured at: efcc51365 / not measured
+
 Verified all five portfolio-maintenance cadence timers are armed and resolve to correct upcoming fires
 (`systemd-analyze calendar`), each triggering the correct service with the correct `--cadence` arg. All
 `active/enabled`, `Persistent=true` (missed fires catch up on next boot).

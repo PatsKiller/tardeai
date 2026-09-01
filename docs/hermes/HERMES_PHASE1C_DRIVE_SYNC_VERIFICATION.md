@@ -1,5 +1,9 @@
 # Hermes Phase 1C Drive Sync Verification — 2026-05-30
 
+Status:      HISTORICAL
+as_of:       2026-05-30T17:58:08-04:00
+Measured at: efcc51365 / not measured
+
 ## Verification Results
 
 | Check | Result |

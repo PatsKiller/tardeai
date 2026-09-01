@@ -1,5 +1,9 @@
 # Hermes All-Trades Reflection Drain — Batch 1 (2026-06-06)
 
+Status:      ACTIVE
+as_of:       2026-06-06T19:36:39-04:00
+Measured at: efcc51365 / not measured
+
 Resumed Hermes reflection generation against the CANONICAL all-trades tier
 `closed_trade_needing_reflection` (queries `trade_instances`, all source_systems) — NOT the legacy
 paper-only `closed_paper_trade`. CLI: `hermes_autonomous_loop.py --loop ticker_challenger --apply

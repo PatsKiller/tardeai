@@ -1,5 +1,9 @@
 # Page Overlap Matrix — Command Center v12
 
+Status:      ACTIVE
+as_of:       2026-05-24T18:56:51-04:00
+Measured at: efcc51365 / not measured
+
 ## Overlap Groups
 
 | Group | Pages | Decision | Action |

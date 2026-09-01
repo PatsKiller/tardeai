@@ -1,3 +1,6 @@
+Status:      ACTIVE
+as_of:       2026-08-11T16:35:08-04:00
+Measured at: efcc51365 / not measured
 
 ## 2026-08-11 — P3+P6 thesis pin + CC deep links in CIO replies
 

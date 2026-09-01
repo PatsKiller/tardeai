@@ -1,5 +1,9 @@
 # Home v2 — The Command Brain (2026-07-17)
 
+Status:      ACTIVE
+as_of:       2026-07-17T12:46:39-04:00
+Measured at: efcc51365 / not measured
+
 Commits `50fd3de0..b7fc3391`. The operator's stated identity for the page: "the command
 center brain — the page that needs all the information on it." Reference composition
 (operator-supplied Finviz screenshots) delivered as Row 1: Market Movers · Your Book ·
@@ -33,7 +37,7 @@ source-domain chip · headline · relative time → outbound noopener links + ac
 
 ## WS-D — Plain English + everything clickable (P0)
 `lib/homeLabels.ts`: STATE_LABELS dictionary, `plain()`, `runLabel()` ("0400 2026-07-17" →
-"4:00 AM scan · Jul 17"), `count()` (4.0→4, applied in RiskGauge for unit=''), 
+"4:00 AM scan · Jul 17"), `count()` (4.0→4, applied in RiskGauge for unit=''),
 `thresholdSentence()` ("Heat 8.9% — above your 5% ceiling"), `plainAlert()` rewrite rules
 (journal-sync/repriced/agent-backlog/kill-switch classes) with the raw-chip fallback for
 unknown shapes. Raw strings ALWAYS in tooltips. D3: transfer-distorted period %s (the Roth

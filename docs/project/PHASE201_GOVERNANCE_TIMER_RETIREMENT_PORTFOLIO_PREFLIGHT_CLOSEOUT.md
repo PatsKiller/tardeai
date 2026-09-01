@@ -1,5 +1,9 @@
 # Phase 201 — Governance Timer Retirement + Portfolio-Maintenance Preflight — CLOSEOUT
 
+Status:      HISTORICAL
+as_of:       2026-06-05T10:47:29-04:00
+Measured at: efcc51365 / not measured
+
 Date: 2026-06-05 · Branch: `main`. Completes the governance migration (retires redundant timers after
 a clean automatic cycle) and prepares the next pilot (portfolio-maintenance, design-only).
 

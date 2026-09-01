@@ -1,5 +1,9 @@
 # Health Agent Fixes — release manifest + Finnhub 401 (2026-08-12)
 
+Status:      HISTORICAL
+as_of:       2026-08-12T17:09:42-04:00
+Measured at: efcc51365 / not measured
+
 Two stale/unactionable health findings fixed in this sprint.
 
 ## 1. `release_manifest_fail` (stale false positive)

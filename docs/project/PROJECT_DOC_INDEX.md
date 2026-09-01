@@ -1,3 +1,7 @@
+Status:      ACTIVE
+as_of:       2026-08-26T18:24:21-04:00
+Measured at: efcc51365 / not measured
+
 ## Research lifecycle standard (2026-08-21)
 | Document | Purpose |
 |----------|---------|

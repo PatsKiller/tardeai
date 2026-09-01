@@ -1,5 +1,9 @@
 # ADR-007 — Durable JSONL as the Program 3 memory backend
 
+Status:      ACTIVE
+as_of:       2026-08-17T23:11:04-04:00
+Measured at: efcc51365 / not measured
+
 - **Status**: Accepted
 - **Date**: 2026-08-17
 

@@ -1,5 +1,9 @@
 # Context Sync Timeline — 2026-05-22
 
+Status:      HISTORICAL
+as_of:       2026-05-22T16:02:12-04:00
+Measured at: efcc51365 / not measured
+
 ## 1. ATM v1 Design / Build
 
 **Docs:** `ATM_V1_BUILD_PROMPT.md`, `ATM_RUNBOOK.md`, `ATM_V1_BUILD_2026-05-22.md`

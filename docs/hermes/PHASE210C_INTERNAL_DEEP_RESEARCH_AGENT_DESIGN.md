@@ -1,5 +1,9 @@
 # Phase 210C — Internal Deep-Research Lane Design (2026-06-07)
 
+Status:      HISTORICAL
+as_of:       2026-06-07T13:06:32-04:00
+Measured at: efcc51365 / not measured
+
 ## Hermes Deep Research — Local
 - **Model:** gemma3:27b / gemma3-overnight (BATCH_OVERNIGHT). **NOT gemma4** (not installed → deferred).
 - **Process:** batch, overnight window only; no interactive/daytime load on the trading stack.

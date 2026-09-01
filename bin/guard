@@ -91,7 +91,14 @@ cmd_grant() {
   echo
   if [[ $yes -eq 0 ]]; then
     read -r -p "Type ${BOLD}APPROVE${OFF} to confirm: " ans
-    [[ "$ans" == "APPROVE" ]] || { echo "cancelled"; exit 1; }
+    ans="$(printf '%s' "$ans" | tr '[:lower:]' '[:upper:]' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+    if [[ "$ans" != "APPROVE" ]]; then
+      if [[ "$ans" == "APPPROVE" || "$ans" == "APROVE" ]]; then
+        echo "${YEL}Typo — type exactly APPROVE (not APPPROVE).${OFF}"
+      fi
+      echo "cancelled"
+      exit 1
+    fi
   fi
 
   local exp=$(( $(now) + dur ))
@@ -101,6 +108,10 @@ cmd_grant() {
   audit_line "$(jq -nc --arg ts "$(date -Is)" --arg t "$tier" --arg r "$reason" --argjson d "$dur" \
     '{ts:$ts, event:"grant-issued", tier:$t, reason:$r, seconds:$d}')"
   echo "${GRN}granted.${OFF}  revoke with: guard revoke $tier"
+  if [[ "$tier" == "git-push" ]]; then
+    echo "Agents may git push (or bin/agent-push) until this grant expires or uses run out."
+    echo "Each push consumes one use from the Cursor shell guard and one from this grant window."
+  fi
 }
 
 cmd_plan() {

@@ -104,6 +104,9 @@ def _data_source_retry_cmd(policy: dict, ftype: str, finding: dict) -> str | Non
     can never clear the finding. Prefer a per-source override from
     `policy.data_source_remediation` (keyed by source_key) when present, and skip auto-retry
     (return None → escalate) for non-quote sources that have no explicit producer.
+
+    Finviz cookie / empty-screener failures must never hit the quotes ingest either —
+    that path cannot refresh FINVIZ_COOKIE (AGENTS.md §13.6).
     """
     rmap = policy.get("remediation_map") or {}
     cmd = rmap.get(ftype)
@@ -119,6 +122,17 @@ def _data_source_retry_cmd(policy: dict, ftype: str, finding: dict) -> str | Non
         # is a no-op loop — skip auto (escalate) rather than run the wrong producer.
         if src and src not in _QUOTE_SOURCE_KEYS:
             return None
+        if src == "finviz":
+            try:
+                from credential_monitor import is_finviz_cookie_failure_text
+            except Exception:
+                is_finviz_cookie_failure_text = lambda _t: False  # noqa: E731
+            blob = " ".join(
+                str(finding.get(k) or "")
+                for k in ("last_error", "message", "detail", "error")
+            )
+            if is_finviz_cookie_failure_text(blob):
+                return None
     return cmd if isinstance(cmd, str) else None
 
 
@@ -1500,6 +1514,7 @@ WHY = {
 _CTA_BY_TYPE = {
     "portfolio_repricer_stale": {"label": "System → Pipeline", "route": "/v3/system?tab=pipeline"},
     "finviz_quote_cache_stale": {"label": "System → Admin", "route": "/v3/system?tab=admin"},
+    "finviz_cookie_expired": {"label": "System → Admin secrets", "route": "/v3/system?tab=Admin"},
     "agent_jobs_processing_stuck": {"label": "System → Jobs", "route": "/v3/system?tab=jobs"},
     "trade_proposals_backlog": {"label": "Trading → Proposals", "route": "/v3/trading?tab=Proposals"},
     "enrichment_pipeline_failure": {"label": "Trading → Proposals", "route": "/v3/trading?tab=Proposals"},
@@ -2772,20 +2787,37 @@ def collect_data_source_health() -> list[dict]:
         sev = "info" if _IS_WEEKEND else ("critical" if age_m > allowed_m * 3 else "warning")
         msg = (f"data source '{src}' stale: last success {age_m / 60:.1f}h ago "
                f"(max {max_stale_m / 60:.1f}h)" + (" [weekend]" if _IS_WEEKEND else ""))
-        if src == "finviz" and cfg.get("finviz_cookie_check", True):
-            # Distinguish cookie expiry (operator action) from transient failure.
+        last_err = (r.get("last_error") or "")[:200]
+        if src == "finviz":
+            # Prefer last_error cookie/zero-row signals (no live HTTP) before the probe.
             try:
-                from credential_monitor import check_finviz
-                ck = check_finviz()
-                if str(ck.get("status")) != "ok":
-                    out.append(_f("data_quality", "finviz_cookie_expired", "critical",
-                                  f"Finviz cookie invalid ({ck.get('error') or ck.get('status')}) — "
-                                  f"screener ingestion dead since {age_m / 60:.0f}h; operator must refresh "
-                                  f"FINVIZ_COOKIE in .env", source=src))
-                    continue
+                from credential_monitor import is_finviz_cookie_failure_text, check_finviz
             except Exception:
-                pass
-        last_err = (r.get("last_error") or "")[:120]
+                is_finviz_cookie_failure_text = lambda _t: False  # noqa: E731
+                check_finviz = None
+            if is_finviz_cookie_failure_text(last_err):
+                out.append(_f("data_quality", "finviz_cookie_expired", "critical",
+                              f"Finviz cookie/screener failure ({last_err.strip()[:120]}) — "
+                              f"screener ingestion dead since {age_m / 60:.0f}h; operator must refresh "
+                              f"FINVIZ_COOKIE in System → Admin secrets",
+                              source=src, last_error=last_err[:120], operator_action=True,
+                              reauth_cmd="Open /v3/system?tab=Admin and rotate FINVIZ_COOKIE"))
+                continue
+            if cfg.get("finviz_cookie_check", True) and check_finviz is not None:
+                # Distinguish cookie expiry (operator action) from transient failure.
+                try:
+                    ck = check_finviz()
+                    if str(ck.get("status")) != "ok":
+                        out.append(_f("data_quality", "finviz_cookie_expired", "critical",
+                                      f"Finviz cookie invalid ({ck.get('error') or ck.get('status')}) — "
+                                      f"screener ingestion dead since {age_m / 60:.0f}h; operator must refresh "
+                                      f"FINVIZ_COOKIE in System → Admin secrets",
+                                      source=src, last_error=last_err[:120], operator_action=True,
+                                      reauth_cmd="Open /v3/system?tab=Admin and rotate FINVIZ_COOKIE"))
+                        continue
+                except Exception:
+                    pass
+        last_err = last_err[:120]
         if "401" in last_err or "403" in last_err:
             # Auth failure = a rotated/expired API key, not a transient ingestion stall.
             # Auto-retrying the producer can never clear a 401, so surface it as a distinct

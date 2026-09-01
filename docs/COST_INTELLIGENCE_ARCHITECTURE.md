@@ -1,5 +1,9 @@
 # Investment Cost Intelligence — Architecture (v1.2, 2026-07-19)
 
+Status:      ACTIVE
+as_of:       2026-07-19T12:50:59-04:00
+Measured at: efcc51365 / not measured
+
 **Canonical ledger:** `investment_cost_events` (dedupe_key UNIQUE — every charge
 counted exactly once, DB-enforced) + `fund_expense_rate_history` (dated OER
 rates; missing rate = visible gap, zero accrual, never a guess).

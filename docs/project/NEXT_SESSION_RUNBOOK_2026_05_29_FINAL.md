@@ -1,5 +1,9 @@
 # Next Session Runbook — 2026-05-29 Final
 
+Status:      HISTORICAL
+as_of:       2026-06-01T21:56:10-04:00
+Measured at: efcc51365 / not measured
+
 ## 1. Preflight
 ```bash
 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild

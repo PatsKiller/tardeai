@@ -1,5 +1,9 @@
 # Stage 2b — Schwab Write Pilot Spec (operator-approved parameters, 2026-06-12)
 
+Status:      ACTIVE
+as_of:       2026-06-12T18:49:26-04:00
+Measured at: efcc51365 / not measured
+
 **Status: SPEC — no write code authorized until each gate below is checked off in order.**
 **Supersedes nothing; builds on `stage2a-canary-protocol.md` and the committed `brokers/canary_gate.py`.**
 

@@ -1,5 +1,9 @@
 # Storage Safeguards Audit — 2026-08-11
 
+Status:      HISTORICAL
+as_of:       2026-08-11T09:14:53-04:00
+Measured at: efcc51365 / not measured
+
 ## Incident
 
 Health-agent auto-remediation of `db_dump_stale` / `db_dump_missing` / `backup_cadence_stale`

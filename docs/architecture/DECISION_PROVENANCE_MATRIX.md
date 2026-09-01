@@ -1,5 +1,9 @@
 # Decision provenance matrix — 2026-08-28
 
+Status:      ACTIVE
+as_of:       2026-08-28T09:21:08-04:00
+Measured at: efcc51365 / not measured
+
 Answers one question: **which parts of what the operator reads are the system's own
 view, and which are rules?**
 

@@ -1,5 +1,9 @@
 # Phase 213I — External-Researcher Feedback Loop + Loop Drill-Down (2026-06-07)
 
+Status:      HISTORICAL
+as_of:       2026-06-07T17:08:49-04:00
+Measured at: efcc51365 / not measured
+
 ## External-researcher feedback loop (closes self-learning gap #2)
 `scripts/hermes_external_feedback_loop.py` (advisory, dry-run default, `--apply`): for each scored-eligible
 `hermes_external_research` row (status=sent, usefulness_score NULL), rates usefulness 0–1 via local gemma3

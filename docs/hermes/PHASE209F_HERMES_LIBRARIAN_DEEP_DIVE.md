@@ -1,5 +1,9 @@
 # Phase 209F — Hermes Librarian Deep Dive (2026-06-07)
 
+Status:      HISTORICAL
+as_of:       2026-06-07T12:29:04-04:00
+Measured at: efcc51365 / not measured
+
 - **Who handles librarian functions?** The "Hermes Librarian" fleet agent (advisory/staging only).
 - **Script:** `scripts/hermes_autonomous_librarian_backlog_loop.py`.
 - **Timer:** `hermes-librarian-backlog-loop.timer` (systemd user; last result = success per 208E/209A).

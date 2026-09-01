@@ -36,6 +36,14 @@ jobs:
       - name: Integration CI (pinned manifest)
         run: python3 scripts/run_aif_financial_senses_ci.py
 
+      - name: Every script compiles (repo-wide)
+        # Deliberately FIRST and on this workflow: it has no paths filter, so it
+        # runs on every push. A compile guard behind a paths filter would have
+        # missed aa21559c, which broke a script by editing a DIFFERENT concern
+        # (a NO_CONSUMER_REASON declaration) and left it unrunnable for 10 hours
+        # while its numbers were still quoted as current state.
+        run: python3 -m pytest -q --tb=line tests/test_every_script_compiles.py
+
       - name: Financial Senses suite
         run: python3 -m pytest -q --tb=line tests/financial_senses
 

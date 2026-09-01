@@ -33,7 +33,9 @@ prose. It never produces a size.
 """
 from __future__ import annotations
 
+import json
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any, Optional
 
 from scripts.lib.cio_instrument_record import (
@@ -48,6 +50,32 @@ MBI_BEHAVIOR = 0
 # enough that the desk stops nagging, short enough that a quarter cannot pass
 # unexamined.
 DEFER_PUSH_DAYS = 7
+
+# How far a NORMAL completion pushes the next look.
+#
+# Until 2026-08-31 this module set `next_eligible_at` only when something went
+# wrong -- a rejected artifact (+1d) or an operator defer (+7d). A cadence field
+# that exists only after a failure describes failures, not cadence. Measured on
+# the live store that day: of 40 records, 38 had never carried a value and none
+# of those 38 carried a next_research_question either, because they had never
+# been through a cognition write at all. The two that did carry one both came
+# from the rejection path.
+#
+# 7 days is not a new number. `cio_residual_web.NEXT_LOOK_DAYS` -- the lane
+# designed to be the routine writer, and still NEVER_SCHEDULED -- already uses
+# 7 for a completed hop and 1 for a blocked one, which are the same two values
+# this module uses for defer and rejection. Matching it keeps one cadence
+# vocabulary rather than introducing a second.
+#
+# A per-subject-class cadence is probably right and is NOT built here: an EXIT
+# position and a HELD one do not deserve the same revisit interval. That is a
+# policy with its own evidence requirements; see the PR body for the proposal.
+ROUTINE_LOOK_DAYS = 7
+
+# Deltas that may raise a surface. CONFIRMS and STRENGTHENS are findings; the
+# others are honest negatives and must stay silent, or the operator mutes the
+# lane and the whole exercise is worse than not notifying.
+_POSITIVE_DELTAS = frozenset({"CONFIRMS", "STRENGTHENS"})
 
 # Observables whose movement overrides a cadence skip.
 EVENT_HASHES = ("weight", "earnings")
@@ -109,6 +137,79 @@ def _defer_question(note: str) -> str:
             "Has a catalyst or earnings event changed the deferred condition?")
 
 
+def _record_turn_effect(
+    record: dict[str, Any],
+    *,
+    turn: dict[str, Any],
+    lesson: Optional[dict[str, Any]],
+    question_with: str,
+    next_eligible_at: Optional[str],
+    priority: Optional[str],
+) -> None:
+    """Append what this wake decided WITH the operator turn, and without it.
+
+    The M3 proof asks for the wake's decision with and without the turn. The
+    turn was landing and the decision was demonstrably shaped by it -- the defer
+    question quotes the operator's own note -- but the record kept only the
+    with-branch, so there was no runtime evidence of what would otherwise have
+    happened. "The turn changed the outcome" and "the turn coincided with the
+    outcome" looked identical, and constructing the counterfactual by hand is
+    exactly what the maturity bar refuses.
+
+    So the producer records its own counterfactual. It is deterministic and
+    free: without the turn, `note` falls back to the lesson's note, and
+    `_defer_question` derives a different question from it. Nothing is simulated.
+
+    Deliberately NOT on the instrument record: apply_cognition accepts exactly
+    four cognition fields and raises BehaviorWriteRefused on anything else. That
+    rail is correct and is not being widened for an audit trail.
+
+    Append-only, best-effort. A wake must never fail because its audit line
+    could not be written.
+    """
+    try:
+        note_with = str(turn.get("note") or (lesson or {}).get("note") or "").strip()
+        note_without = str((lesson or {}).get("note") or "").strip()
+        row = {
+            "schema": "WakeTurnEffect@v1",
+            "authority": "READ_ONLY_ADVISORY",
+            "memory_behavior_influence": 0,
+            "at": datetime.now(timezone.utc).isoformat(),
+            "subject_key": record.get("subject_key"),
+            "turn": {
+                "intent": turn.get("intent"),
+                "note": turn.get("note"),
+                "ts": turn.get("ts"),
+                "plan_id": turn.get("plan_id"),
+            },
+            "with_turn": {
+                "next_research_question": question_with,
+                "next_eligible_at": next_eligible_at,
+                "notify_priority": priority,
+                "note_source": "operator_turn" if turn.get("note") else "lesson",
+            },
+            "without_turn": {
+                "next_research_question": _defer_question(note_without),
+                "next_eligible_at": next_eligible_at,
+                "notify_priority": priority,
+                "note_source": "lesson" if note_without else "none",
+            },
+        }
+        # The honest negative: if the lesson carries the same note, the turn
+        # changed nothing here, and that is worth recording rather than hiding.
+        row["turn_changed_decision"] = (
+            row["with_turn"]["next_research_question"]
+            != row["without_turn"]["next_research_question"]
+        )
+        from scripts.lib.canonical_store_registry import production_state_root
+        out = Path(production_state_root()) / "data" / "cio" / "wake_turn_effects.jsonl"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        with open(out, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(row, default=str) + "\n")
+    except Exception:
+        return
+
+
 def apply_after_cycle(
     record: dict[str, Any],
     *,
@@ -131,6 +232,7 @@ def apply_after_cycle(
 
     nxt_q: Optional[str] = None
     nxt_at: Optional[str] = None
+    normal_completion = False
     narrative: Optional[dict[str, Any]] = None
     priority: Optional[str] = None
     outcome: Optional[str] = None
@@ -174,6 +276,51 @@ def apply_after_cycle(
         else:
             rec["research_blocked"] = False
             outcome = verdict.lower() or "attached"
+            # The normal path: a completed, unrejected artifact means the
+            # question was answered, so the next look is a cadence decision --
+            # the ordinary output of a wake, not an exception marker.
+            #
+            # Recorded as an INTENT, not written to nxt_at here. Setting it
+            # inline pre-empted `decision.next_eligible_at`, whose branch below
+            # reads `if decision and not nxt_at`, so a caller that had computed
+            # its own cadence silently lost it. An existing test caught that.
+            normal_completion = True
+            # A critique-validated finding used to end here: research_blocked
+            # cleared, an outcome string recorded, and nothing the operator
+            # would ever see. The gate's own reason code says why --
+            # POSITIVE_DELTA_MAY_RAISE_COMPLETENESS_NOT_ACTION -- and that rule
+            # is kept: nothing below touches size, weight, order or any
+            # behaviour field, and apply_cognition raises BehaviorWriteRefused
+            # on all of them. MBI_BEHAVIOR stays 0.
+            #
+            # What changes is that a positive delta may now reach a surface
+            # through the three cognition fields MBI_COGNITION=1 already
+            # permits: notify_priority, cc_narrative, next_research_question.
+            #
+            # Only CONFIRMS and STRENGTHENS qualify. NO_NEW_INFO and
+            # INSUFFICIENT_DATA are honest negatives and must not raise
+            # priority -- a lane that notifies on every completion is a lane
+            # the operator mutes.
+            _delta = str(artifact.get("delta_classification")
+                         or artifact.get("classification") or "").upper()
+            if _delta in _POSITIVE_DELTAS:
+                _subject = str(rec.get("subject_key") or "this position")
+                priority = "cc"
+                nxt_q = (f"{_delta.capitalize()}ing evidence is now on record for "
+                         f"{_subject}. What would have to be true for it to be wrong?")
+                _old = dict(rec.get("cc_narrative") or {})
+                _what = str(_old.get("what") or "")
+                _line = (f"Research {_delta.lower()} the standing thesis.")
+                if not _what.startswith("Research "):
+                    _what = (_line + (f" {_what}" if _what else "")).strip()
+                narrative = cc_narrative(
+                    what=_what,
+                    thesis_fit=str(_old.get("thesis_fit") or ""),
+                    recommendation_option_id=_old.get("recommendation_option_id"),
+                    risks=list(_old.get("risks") or []),
+                    evidence_refs=list(_old.get("evidence_refs") or []),
+                    writer="cognition:research_positive_delta",
+                )
 
     # ── rule 1: defer honored, no new catalyst ───────────────────────────
     if lesson and not event_moved:
@@ -185,6 +332,10 @@ def apply_after_cycle(
             nxt_q = _defer_question(note)
             nxt_at = (now + timedelta(days=DEFER_PUSH_DAYS)).isoformat()
             priority = "cc"
+            _record_turn_effect(
+                rec, turn=turn, lesson=lesson,
+                question_with=nxt_q, next_eligible_at=nxt_at, priority=priority,
+            )
             old = dict(rec.get("cc_narrative") or {})
             what = str(old.get("what") or "")
             defer_line = (f"Operator deferred: {note}." if note
@@ -203,6 +354,14 @@ def apply_after_cycle(
     if decision and not nxt_at:
         nxt_at = decision.get("next_eligible_at")
         outcome = outcome or decision.get("decision")
+
+    # Routine cadence, last. Precedence, most specific first:
+    #   moved event (due now) > rejection (+1d) > operator defer (+7d)
+    #   > the caller's own decision > this default.
+    # It fills the gap where a wake completed normally and nothing else had an
+    # opinion about when to look again.
+    if normal_completion and not nxt_at:
+        nxt_at = (now + timedelta(days=ROUTINE_LOOK_DAYS)).isoformat()
 
     return apply_cognition(
         rec,

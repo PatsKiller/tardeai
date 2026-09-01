@@ -1,5 +1,9 @@
 # Stage 2a — Shadow Reconciliation Log (read-only harness)
 
+Status:      ACTIVE
+as_of:       2026-06-12T18:24:43-04:00
+Measured at: efcc51365 / not measured
+
 ## Session 2026-06-12 — armed, watchers exercised, NO test orders placed
 
 - Watchers (recon + activity, 30s cadence) ran live ~10:17–14:17 ET with fresh token; read-back of

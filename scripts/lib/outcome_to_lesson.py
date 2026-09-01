@@ -38,6 +38,82 @@ SCHEMA = "OutcomeToLesson@v1"
 AUTHORITY = "READ_ONLY_ADVISORY"
 MBI = 0
 
+# Permanent derivation label (Wave D3). Written on new candidates; projected for
+# legacy rows. Never rewrite historical JSONL in place — that would poison scores
+# by relabelling research-derived history as outcome evidence.
+LESSON_PROVENANCE_FIELD = "lesson_provenance"
+PROVENANCE_OUTCOME_DERIVED = "OUTCOME_DERIVED"
+PROVENANCE_RESEARCH_DERIVED = "RESEARCH_DERIVED"
+_PROVENANCE_VALUES = frozenset({PROVENANCE_OUTCOME_DERIVED, PROVENANCE_RESEARCH_DERIVED})
+
+
+def project_lesson_provenance(row: dict[str, Any]) -> str:
+    """Reader projection for ``lesson_provenance`` — display only, no disk write.
+
+    Explicit stamp wins. Unstamped legacy rows without outcome evidence
+    (``supporting_outcome_ids`` or ``counterexamples``) are RESEARCH_DERIVED
+    (the pre-D3 advisory/KB corpus). Nonempty outcome evidence implies
+    OUTCOME_DERIVED when the field is absent — including counterexample-only
+    TRIM/rise rows that Night Three left unstamped on disk.
+    """
+    explicit = row.get(LESSON_PROVENANCE_FIELD)
+    if explicit in _PROVENANCE_VALUES:
+        return str(explicit)
+    ids = row.get("supporting_outcome_ids") or []
+    counters = row.get("counterexamples") or []
+    if ids or counters:
+        return PROVENANCE_OUTCOME_DERIVED
+    return PROVENANCE_RESEARCH_DERIVED
+
+
+def needs_outcome_provenance_amendment(
+    existing: dict[str, Any],
+    candidate: dict[str, Any],
+) -> bool:
+    """True when an append-only OUTCOME_DERIVED stamp should be written.
+
+    Never reclassify a row that already carries an explicit provenance stamp.
+    Never invent outcome evidence — the candidate must already be stamped
+    OUTCOME_DERIVED by the outcome writer and carry supporting ids and/or
+    counterexamples.
+    """
+    if existing.get(LESSON_PROVENANCE_FIELD) in _PROVENANCE_VALUES:
+        return False
+    if candidate.get(LESSON_PROVENANCE_FIELD) != PROVENANCE_OUTCOME_DERIVED:
+        return False
+    if not (
+        (candidate.get("supporting_outcome_ids") or [])
+        or (candidate.get("counterexamples") or [])
+    ):
+        return False
+    return True
+
+
+def provenance_amendment_row(candidate: dict[str, Any]) -> dict[str, Any]:
+    """Append-only row: same lesson_id, explicit OUTCOME_DERIVED stamp."""
+    out = dict(candidate)
+    out[LESSON_PROVENANCE_FIELD] = PROVENANCE_OUTCOME_DERIVED
+    out["provenance_amendment"] = True
+    out["amends_lesson_id"] = candidate.get("lesson_id")
+    out["authority"] = AUTHORITY
+    out["memory_behavior_influence"] = MBI
+    out["observational_only"] = True
+    return out
+
+
+def with_lesson_provenance(
+    row: dict[str, Any],
+    *,
+    stamp: str | None = None,
+) -> dict[str, Any]:
+    """Return a shallow copy with ``lesson_provenance`` set (projection or stamp)."""
+    out = dict(row)
+    if stamp in _PROVENANCE_VALUES:
+        out[LESSON_PROVENANCE_FIELD] = stamp
+    else:
+        out[LESSON_PROVENANCE_FIELD] = project_lesson_provenance(row)
+    return out
+
 
 def observation_key(observation: dict[str, Any]) -> tuple[str, str, str, str]:
     """What makes two outcomes the *same* observation rather than two samples.
@@ -165,6 +241,9 @@ def build_candidates(
         candidate["authority"] = AUTHORITY
         candidate["memory_behavior_influence"] = MBI
         candidate["observational_only"] = True
+        # Outcome path always stamps OUTCOME_DERIVED — including counterexample-only
+        # rows where supporting_outcome_ids is empty (projection alone would mislabel).
+        candidate[LESSON_PROVENANCE_FIELD] = PROVENANCE_OUTCOME_DERIVED
         candidates.append(candidate)
 
     return candidates
@@ -240,5 +319,7 @@ def candidates_from_case_summaries(memories: list[dict[str, Any]]) -> list[dict[
             cand["cannot_become_policy"] = True
             cand["memory_behavior_influence"] = MBI
             cand["authority"] = AUTHORITY
+            # CASE_SUMMARY / research-memory support — not recorded outcomes.
+            cand[LESSON_PROVENANCE_FIELD] = PROVENANCE_RESEARCH_DERIVED
             out.append(cand)
     return out

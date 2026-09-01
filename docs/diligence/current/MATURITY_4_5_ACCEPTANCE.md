@@ -1,5 +1,9 @@
 # Maturity 4.5 Acceptance Checklist
 
+Status:      ACTIVE
+as_of:       2026-06-28T18:07:57-04:00
+Measured at: efcc51365 / not measured
+
 _Generated: 2026-06-28T02:06:07.291007+00:00_
 _Source: `python3 scripts/export_diligence_evidence.py` + `scripts/compute_maturity_score.py`_
 **Status: **4.5 BLOCKED****

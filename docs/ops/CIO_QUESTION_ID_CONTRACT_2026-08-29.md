@@ -1,5 +1,9 @@
 # Question id contract — semantic, not positional (2026-08-29)
 
+Status:      HISTORICAL
+as_of:       2026-08-29T15:23:52-04:00
+Measured at: efcc51365 / not measured
+
 Found by the system critiquing itself. The one live Grok critique on SPCX
 flagged that the artifact answered `q1/q2/q3` rather than the requested ids. A
 scan of all 471 stored results showed the same shape book-wide:

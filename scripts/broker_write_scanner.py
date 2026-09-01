@@ -90,7 +90,19 @@ def _scan_write_calls(path: Path, src: str) -> list[dict]:
     findings = []
     try:
         tree = ast.parse(src)
-    except SyntaxError:
+    except SyntaxError as exc:
+        # FAIL CLOSED. This used to `return findings` — an empty list, which is
+        # the same value a genuinely clean file returns. A script that could not
+        # be parsed was therefore issued a clean broker-write bill of health, and
+        # the one shape most likely to make a file unparseable is an edit to the
+        # top of it. "I could not look" must never render as "I looked and it
+        # was fine."
+        findings.append({
+            "path": str(path),
+            "kind": "unscannable",
+            "detail": f"cannot parse: {exc.msg} (line {exc.lineno})",
+            "line": exc.lineno or 0,
+        })
         return findings
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):

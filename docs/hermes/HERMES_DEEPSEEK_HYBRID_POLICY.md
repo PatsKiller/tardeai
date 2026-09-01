@@ -1,5 +1,9 @@
 # Hermes DeepSeek hybrid policy (pointer)
 
+Status:      ACTIVE
+as_of:       2026-08-04T14:37:39-04:00
+Measured at: efcc51365 / not measured
+
 Canonical operator doc:
 
 **`docs/ops/HERMES_DEEPSEEK_HYBRID_FREE_OAUTH_ROLLOVER_2026-08-04.md`**
@@ -10,7 +14,7 @@ Local → free OAuth (Grok/ChatGPT) → **DeepSeek Flash on free-OAuth bottlenec
 
 ### Not allowed for Hermes bulk
 
-- DeepSeek Pro as default or bottleneck rollover  
-- Silent paid fallback when local fails  
+- DeepSeek Pro as default or bottleneck rollover
+- Silent paid fallback when local fails
 
-Config: `config/hermes_research_budget.yaml` → `cloud_unavailable.free_oauth_bottleneck_rollover`.  
+Config: `config/hermes_research_budget.yaml` → `cloud_unavailable.free_oauth_bottleneck_rollover`.

@@ -1,5 +1,9 @@
 # PHASE 194B — Protection Learning Pipeline Scheduling
 
+Status:      HISTORICAL
+as_of:       2026-06-02T13:01:40-04:00
+Measured at: efcc51365 / not measured
+
 **Alpaca paper only · read-only/advisory chain · no order/stop/GO-WAIT/strategy mutation**
 
 ---

@@ -1,5 +1,9 @@
 # Warrior / Ross ↔ TradeAI Alignment
 
+Status:      ACTIVE
+as_of:       2026-07-10T17:35:52-04:00
+Measured at: efcc51365 / not measured
+
 > **Audience:** operator + engineers tuning the momentum-scalp scanner for Ross-style awareness.
 > **Goal:** surface Ross-catalog names in TradeAI without auto-GOing them; measure weekly recall.
 

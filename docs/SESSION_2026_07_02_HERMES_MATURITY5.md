@@ -1,5 +1,9 @@
 # Session 2026-07-02 — Hermes Maturity-5 Program (audit → phases 0–6, one day)
 
+Status:      HISTORICAL
+as_of:       2026-07-02T19:10:32-04:00
+Measured at: efcc51365 / not measured
+
 **Commits (this session):** `dfa09163` (phases 0–5) · `d9f99893` (A1A doc sync) · `f970ea8f`
 (review-gap fixes) · `87b40d96` (phase 6). CI green throughout.
 **Canonical design + per-phase status:** [`docs/design/HERMES_MATURITY_5_DESIGN.md`](design/HERMES_MATURITY_5_DESIGN.md).

@@ -1,5 +1,9 @@
 # Integrator-owned paths
 
+Status:      ACTIVE
+as_of:       2026-08-26T13:11:11-04:00
+Measured at: efcc51365 / not measured
+
 Workers must not modify these files. Handoffs that touch them are rejected.
 
 ## Contracts and fixtures

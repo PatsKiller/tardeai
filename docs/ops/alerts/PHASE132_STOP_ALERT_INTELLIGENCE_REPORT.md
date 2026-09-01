@@ -1,5 +1,9 @@
 # Phase 132 — Stop Alert Intelligence Report
 
+Status:      HISTORICAL
+as_of:       2026-06-01T17:45:21-04:00
+Measured at: efcc51365 / not measured
+
 ## Current Stop Alert Pipeline
 
 | Component | Script | What It Does |

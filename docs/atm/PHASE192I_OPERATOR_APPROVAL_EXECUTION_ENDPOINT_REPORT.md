@@ -1,5 +1,9 @@
 # PHASE 192I — Operator Approval Execution Endpoint Report
 
+Status:      HISTORICAL
+as_of:       2026-06-02T12:10:31-04:00
+Measured at: efcc51365 / not measured
+
 **Endpoint:** `POST /api/v2/atm/protection-adjustment-proposals/:proposal_id/approve`
 **Engine:** `scripts/apply_paper_protection_adjustment.py` · Alpaca **paper** only
 

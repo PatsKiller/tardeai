@@ -1,4 +1,9 @@
 # Phase 204I — Backup Cadence Schedule Report
+
+Status:      HISTORICAL
+as_of:       2026-06-05T12:23:35-04:00
+Measured at: efcc51365 / not measured
+
 Diff passed (204H) → the refined **backup cadence** is scheduled. **Legacy retained; nothing retired.**
 - **Scheduled: YES.** Mechanism: **systemd user timer** (project convention).
   - Service `tradeai-portfolio-backup-cadence.service` →

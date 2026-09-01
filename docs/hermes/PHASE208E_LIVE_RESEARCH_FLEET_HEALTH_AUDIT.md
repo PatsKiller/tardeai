@@ -1,5 +1,9 @@
 # Phase 208E — Live Hermes Research Fleet Health (2026-06-07)
 
+Status:      HISTORICAL
+as_of:       2026-06-07T11:30:00-04:00
+Measured at: efcc51365 / not measured
+
 Script: `scripts/audit_hermes_live_fleet_health.py` → `data/hermes/hermes_live_fleet_health_latest.json` (read-only).
 
 ## Fleet data flow (DB-backed, live)

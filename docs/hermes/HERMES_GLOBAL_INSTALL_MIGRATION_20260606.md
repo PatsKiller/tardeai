@@ -1,5 +1,9 @@
 # Hermes Global Install Migration — 2026-06-06
 
+Status:      ACTIVE
+as_of:       2026-06-06T21:42:34-04:00
+Measured at: efcc51365 / not measured
+
 ## Result
 
 Hermes has been promoted from a Trade AI sidecar-only install to a global/default install.

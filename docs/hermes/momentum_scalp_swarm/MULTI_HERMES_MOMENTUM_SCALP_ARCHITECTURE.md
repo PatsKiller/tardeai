@@ -1,8 +1,12 @@
 # Multi-Hermes Momentum Scalp Swarm — Architecture
 
-**Version:** 1.0 · **Date:** 2026-07-02  
-**Policy:** [`MOMENTUM_SCALP_STOP_AND_TRAIL_POLICY.md`](../../MOMENTUM_SCALP_STOP_AND_TRAIL_POLICY.md)  
-**Phase:** 4.4 → 4.5 paper trading validation  
+Status:      ACTIVE
+as_of:       2026-07-02T18:56:18-04:00
+Measured at: efcc51365 / not measured
+
+**Version:** 1.0 · **Date:** 2026-07-02
+**Policy:** [`MOMENTUM_SCALP_STOP_AND_TRAIL_POLICY.md`](../../MOMENTUM_SCALP_STOP_AND_TRAIL_POLICY.md)
+**Phase:** 4.4 → 4.5 paper trading validation
 **UI:** Command Center v3 → Hermes → **Momentum Scalp Swarm**
 
 ---

@@ -1,5 +1,9 @@
 # CSCO Covered-Call Incident — 2026-07-20
 
+Status:      HISTORICAL
+as_of:       2026-07-20T13:28:58-04:00
+Measured at: efcc51365 / not measured
+
 **Starting SHA:** `972e9d4cc9b405c2636b7c8c25e8204024e181d7` · working tree clean
 **Test baseline before remediation:** 208 passed, 0 failed, 0 skipped
 **Orders submitted during this investigation:** none

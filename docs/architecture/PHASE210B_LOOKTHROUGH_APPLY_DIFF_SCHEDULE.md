@@ -1,5 +1,9 @@
 # Phase 210B — Lookthrough Apply + Diff + Schedule — 2026-06-07
 
+Status:      HISTORICAL
+as_of:       2026-06-07T16:58:08-04:00
+Measured at: efcc51365 / not measured
+
 ## Apply (210E)
 `--cadence lookthrough --apply` → exit 0, 3s, `overall=ok`. `portfolio_lookthrough` ok (READ_ONLY_SNAPSHOT);
 price_cache + db_retention EXCLUDED. Legacy timer left active. Safety: 0 paper_trades, 0 proposals; no drafts.

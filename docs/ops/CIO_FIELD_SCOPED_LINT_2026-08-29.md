@@ -1,5 +1,9 @@
 # Field-scoped instruction lint (2026-08-29)
 
+Status:      HISTORICAL
+as_of:       2026-08-29T18:47:43-04:00
+Measured at: efcc51365 / not measured
+
 > **SUPERSEDED IN PART (2026-08-29).** This document records that a
 > `do not <verb>` rule was impossible without breaking the pinned
 > ex-date case. Measuring the corpus disproved that: they separate on

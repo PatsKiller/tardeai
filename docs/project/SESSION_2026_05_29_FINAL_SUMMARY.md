@@ -1,5 +1,9 @@
 # Session 2026-05-29 Final Summary
 
+Status:      HISTORICAL
+as_of:       2026-05-31T16:52:04-04:00
+Measured at: efcc51365 / not measured
+
 ## Executive Summary
 40 commits across two parallel CLI sessions. Completed classifier/backtesting 100%, fixed all P0/P1 proposal lifecycle bugs, hardened self-healing escalation with retry_cmd direct execution, validated Gemma4 31B Tier 3a via llama.cpp, added backtesting UI clarity + proposal lifecycle inspector, clarified all backtesting/LLM labels, audited automated trading live path (working correctly), added execution-readiness endpoint, and captured 15/15 Playwright screenshots verifying new labels.
 
