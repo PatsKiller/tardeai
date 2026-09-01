@@ -109,7 +109,7 @@ Verified by file content: `apply_cycle_and_persist` 2 · `decide_after_load` 5 �
 `WakeResearchPersist@v1` 1 · `subject_key` on dispatch 1 · PP3 `_cash_ts_from_rows` 2
 (unregressed).
 
-## M5 — partially observed, and the distinction matters
+## M5 — OBSERVED at 13:35 (the three-stage account below)
 
 A natural, unattended `*/5` fire at **13:08:56** ran the new code and wrote its artifact.
 Proven by a signal only the new code can emit (the old build has no such line):
@@ -156,6 +156,44 @@ wakes do resolve subjects on this box (`subject_resolved: 3` at both 12:38 and 1
 the path is expected to run naturally when an event wake next dispatches. Until a cycle
 records `research_called > 0`, **M5 remains NOT_OBSERVED** and the hand-run positive control
 is still the only proof the write path works.
+
+### Third observation — M5 CLOSED, 13:35
+
+A natural, unattended cycle dispatched four wakes, three of which resolved a real subject:
+
+```
+research_gate     EXIT:WLDS  flash / free_sources_exhausted_first_pass
+                  decide_called=True  record_loaded=True
+cognition_persist EXIT:WLDS  persisted=True  changed=["next_eligible_at"]
+research_gate     EXIT:WLDS  skip / cadence_not_due     <- reads back what was just written
+
+WakeResearchPersist@v1: dispatched 4 · research_called 3 · persisted 1 · cognition_noop 2
+```
+
+Verified in the durable store, re-read from disk rather than inferred from the log:
+
+```
+cio_instrument_records.jsonl   131 -> 132 rows (append-only)
+EXIT:WLDS   next_eligible_at   None -> 2026-09-04T17:35:11
+behaviour fields on the record  NONE  -- the rail held
+```
+
+**The loop closed.** Wake 1 ran the gate and wrote `next_eligible_at`; wakes 2 and 3 for the
+same subject then read that value back and were cadence-skipped **because of it**. A record
+that changes the next decision is the whole point of M5 — `cio_rehydrate`'s own docstring:
+*"a record nothing reads is just a slower log."* This is that, unattended, in production.
+
+**On the two `cognition_noop`s:** both followed a `cadence_not_due` skip, so nothing *should*
+have moved and the noop is the correct outcome, not a defect. §13.4 calls a noop a failed
+persist, and that framing is aimed at a wake which actually researched and still moved
+nothing. **A refinement worth having: the artifact does not yet distinguish "noop after a
+cadence skip" from "noop after real research".** Only the second is a finding. Named, not
+built.
+
+**Concurrency, concretely.** Three wakes for one `subject_key` landed in a single cycle and
+were handled sequentially, which is safe. Across two *overlapping* cycles the same three
+would interleave against a last-writer-wins projection — the exact loss this session's
+`flock` now prevents. The risk was not hypothetical.
 
 ## Mistakes made in this session
 
