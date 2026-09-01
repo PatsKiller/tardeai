@@ -10,7 +10,7 @@
 # The gate fails when a file exceeds its entry, or when an unlisted file gains a
 # call site. It can only shrink.
 #
-# transport=send_telegram  total_sites=141  covered=13  uncovered=128
+# transport=send_telegram  total_sites=142  covered=15  uncovered=127
 
 scripts/advisory_telegram_brief.py 1
 scripts/aegis_overnight.py 3
@@ -20,7 +20,7 @@ scripts/alert_daily_digest.py 1
 scripts/alert_dispatcher.py 1
 scripts/alerting.py 1
 scripts/alpaca_live_read_sync.py 1
-scripts/alpaca_stop_manager.py 2
+scripts/alpaca_stop_manager.py 1
 scripts/api_v2.py 3
 scripts/atm_auto_approver.py 1
 scripts/auto_research.py 1
