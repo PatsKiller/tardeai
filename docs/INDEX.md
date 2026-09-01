@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `780e28cdab1f85aa7395b8ee6d3877363a4ccafc8f4f11f5dcdf7fec70bd7458`
+**Tree fingerprint:** `a3c9ad338c3de38a7049d3b5068a81b2d80a30ded2f63dd2b456ac3922fd7668`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,10 +12,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2312 |
-| Markdown (excl. this INDEX) | 1944 |
+| Files under `docs/` (excl. this INDEX) | 2313 |
+| Markdown (excl. this INDEX) | 1945 |
 | **MISSING HEADER** | **11** |
-| Header OK | 1933 |
+| Header OK | 1934 |
 | Duplicate groups | 5 |
 
 ### By status_guess
@@ -30,7 +30,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_raw_sync | 8 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 6 |
-| review_required | 1950 |
+| review_required | 1951 |
 
 ## Markdown tree
 
@@ -1333,6 +1333,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/CIO_AFTERNOON_FIVE_2026-09-01.md` | Afternoon five — closeout | review_required | OK | `58bb7c12e239` |
 | `docs/ops/CIO_BANNER_DATA_ASOF_2026-09-01.md` | PORTFOLIO chip — freshness is `data_as_of`, not the loader run | review_required | OK | `e52ceb650854` |
 | `docs/ops/CIO_BANNER_WAKE_CLOSEOUT_2026-09-01.md` | Banner + wake — closeout | review_required | OK | `8169a0671f08` |
+| `docs/ops/CIO_CASH_LETTER_ROWS_2026-09-01.md` | Cash letter publishes row-sum cash, not the CASH_SLEEVE fossil | review_required | OK | `43ef3c80a9ac` |
 | `docs/ops/CIO_CASH_SATURDAY_PROOF_2026-08-29.md` | CIO cash fossil — Saturday proof (2026-08-29) | review_required | OK | `cc534b5312c6` |
 | `docs/ops/CIO_CASH_TOTALS_WRITER_2026-08-29.md` | The $52,677.32 cash gap — writer identified | review_required | OK | `32eedd37d074` |
 | `docs/ops/CIO_CLOSED_LOOP_LINEAGE_CLOSEOUT_2026-08-20.md` | CIO Closed-Loop Lineage — Phase A Closeout (2026-08-20) | review_required | OK | `116d9ec54867` |

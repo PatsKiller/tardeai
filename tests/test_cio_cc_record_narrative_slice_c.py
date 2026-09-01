@@ -57,10 +57,13 @@ NEXT_LOOK = "2026-09-15T13:30:00+00:00"
 
 def _plan() -> dict:
     return {
-        "cash_total_usd": 630784.82,
+        # Live is_cash row sum (LITMUS_MONEY). Sleeve fossil 630784.82 is prior only.
+        "cash_total_usd": 630513.62,
         "cash_investable_usd": 321622.3,
         "cash_posture": "ABOVE_BAND",
         "cash_source": "position_rows",
+        "cash_as_of": {"as_of": "2026-08-14", "unstamped": False,
+                       "source": "holdings rows where is_cash, oldest stamp wins"},
         "portfolio_value_usd": 1240000.0,
         "portfolio_constraints": [{"kind": "concentration_fire_pct", "value": 12.0}],
         "position_decisions": [
@@ -100,14 +103,16 @@ def _queue() -> dict:
     ]}
 
 
-def _store(tmp_path: Path, *, cash_narrative: str = "Cash sleeve 630784.82 held as optionality.",
+def _store(tmp_path: Path, *, cash_narrative: str = "Cash sleeve held as optionality.",
            with_cash_record: bool = True) -> InstrumentRecordStore:
     """A store with prose on a held name, a watch, a re-entry and a sector."""
     store = InstrumentRecordStore(tmp_path / "records.jsonl")
     if with_cash_record:
         store.upsert(new_record(
             "SLEEVE", "CASH",
+            # Fossil on the sleeve — must NOT become cash_letter.cash_usd.
             cash_usd=630784.82,
+            cash_written_at="2026-08-29T23:28:23.648735+00:00",
             cash_source="position_rows",
             next_eligible_at=NEXT_LOOK,
             notify_priority="cc",
@@ -181,7 +186,11 @@ def test_home_payload_carries_cash_letter_and_held_narrative(tmp_path):
     assert letter["schema"] == "CashSleeveLetter@v1"
     assert letter["subject_key"] == CASH_SLEEVE
     assert letter["from_record"] is True
-    assert letter["cash_usd"] == 630784.82
+    # Published dollar follows capital_plan (row sum), not the sleeve fossil.
+    assert letter["cash_usd"] == home["capital_plan"]["cash_total_usd"] == 630513.62
+    assert letter["prior_cash_usd"] == 630784.82
+    assert letter["prior_cash_written_at"] == "2026-08-29T23:28:23.648735+00:00"
+    assert letter["as_of"] == "2026-08-14"
     assert "Cash sleeve" in letter["what"]
 
     nars = home["instrument_narratives"]
@@ -283,7 +292,7 @@ def test_fallback_when_no_record(tmp_path):
     assert letter["from_record"] is False
     assert letter["writer"] == "deterministic_fallback"
     assert letter["what"], "the letter must never be blank"
-    assert letter["cash_usd"] == 630784.82  # falls back to the capital plan
+    assert letter["cash_usd"] == 630513.62  # capital_plan row sum (not sleeve)
     assert letter["recommendation_option_id"] == "hold_cash"
 
     assert home["instrument_narratives"] == {}
