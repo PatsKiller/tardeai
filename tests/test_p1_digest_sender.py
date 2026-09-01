@@ -165,3 +165,44 @@ def test_the_escaper_is_the_shared_one_not_a_new_convention(sender):
     assert "from telegram_transport import escape_markdown" in src, (
         "use the shared escaper; a 127th private convention is the defect it replaced"
     )
+
+
+# ── the watermark must not be keyed to a checkout ────────────────────────────
+def test_default_watermark_is_not_tree_relative():
+    """A per-tree watermark is not a cache. It is a duplicate delivery.
+
+    This shipped tree-relative and re-sent 33 already-delivered messages: the job
+    ran once from the deploy worktree (watermark -> 6159) and once from the hub,
+    which had none of its own and so started at 0. Same class as the release-local
+    logs/ and the two holdings copies.
+    """
+    import importlib, os, sys
+    os.environ.pop("P1_DIGEST_STATE", None)
+    sys.modules.pop("p1_digest_sender", None)
+    import p1_digest_sender as P
+    importlib.reload(P)
+    d = P._default_state_path()
+    assert "r20-r24" not in str(d) and "trade-ai-v12-rebuild" not in str(d), (
+        f"watermark defaults inside a checkout: {d}"
+    )
+
+
+def test_empty_env_override_does_not_resolve_to_cwd():
+    """Path("") is Path("."), which is TRUTHY.
+
+    `Path(os.environ.get(...)) or _default()` silently put the watermark in the
+    current directory — so every run from a different cwd started from zero.
+    """
+    import importlib, os, sys
+    os.environ["P1_DIGEST_STATE"] = ""
+    sys.modules.pop("p1_digest_sender", None)
+    import p1_digest_sender as P
+    importlib.reload(P)
+    try:
+        assert P.STATE != pathlib_Path("."), "empty override resolved to the cwd"
+        assert str(P.STATE) not in (".", ""), f"bad state path: {P.STATE}"
+    finally:
+        os.environ.pop("P1_DIGEST_STATE", None)
+
+
+from pathlib import Path as pathlib_Path  # noqa: E402

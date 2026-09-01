@@ -44,9 +44,35 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-STATE = Path(os.environ.get(
-    "P1_DIGEST_STATE",
-    ROOT / "data" / "runtime" / "p1_digest_watermark.json"))
+def _default_state_path() -> Path:
+    """Shared persistent state, NOT a path relative to this checkout.
+
+    THIS DEFAULT WAS TREE-RELATIVE AND IT RE-SENT A DIGEST. The job ran once from
+    the deploy worktree (watermark -> 6159) and once from the hub, which had no
+    watermark of its own, so it started at 0 and delivered 33 messages the operator
+    had already received. Two files, one job:
+
+        <deploy>/data/runtime/p1_digest_watermark.json   last_id 6159
+        <hub>/data/runtime/p1_digest_watermark.json      last_id 6159
+
+    Same class as the release-local logs/ and the two holdings copies: state keyed
+    to a checkout diverges the moment a second checkout runs the same job. A
+    watermark is exactly-once bookkeeping, so a per-tree copy is not a cache -- it
+    is a duplicate delivery.
+
+    Falls back to the checkout only when the shared root is absent, so tests and
+    fresh clones still work.
+    """
+    shared = Path("/home/johnclaw/trade-ai-releases/persistent-state/state")
+    if shared.is_dir():
+        return shared / "p1_digest_watermark.json"
+    return ROOT / "data" / "runtime" / "p1_digest_watermark.json"
+
+
+# NOT `Path(os.environ.get(...)) or _default()`: Path("") is Path("."), which is
+# TRUTHY, so that form silently resolves the watermark to the current directory.
+_STATE_ENV = os.environ.get("P1_DIGEST_STATE", "").strip()
+STATE = Path(_STATE_ENV) if _STATE_ENV else _default_state_path()
 
 MAX_LINES = 25          # a digest longer than this is a wall, not a report
 MAX_BODY = 3000         # keep well inside the transport's split threshold

@@ -1042,6 +1042,23 @@
         "path": "data/audit/cio_material_scan_last.json"
       },
       "note": "cio_material_scan --live receipt at data/audit/cio_material_scan_last.json (release-local audit/, not PS overlay)."
+    },
+    {
+      "lane_id": "p1-digest-delivery",
+      "owner": "notifications",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "0 */4 * * * p1_digest_sender.py",
+        "match": "p1_digest_sender.py"
+      },
+      "expected_cadence_hours": 4,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "/home/johnclaw/trade-ai-releases/persistent-state/state/p1_digest_watermark.json",
+        "key": "as_of"
+      },
+      "note": "Delivers the P1_DIGEST tier, which had no sender: a P1_DIGEST verdict archived the message to telegram_outbox and returned False, and nothing pushed the archive (4,387 archived vs 1,707 delivered since 2026-07-02). Installed 2026-09-01, operator-authorised. The output_signal is the SHARED watermark, deliberately not a checkout-relative path: a per-tree watermark re-sent 33 already-delivered messages when the job ran from a second tree."
     }
   ],
   "undeclared_baseline": [
