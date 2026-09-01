@@ -2068,7 +2068,12 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
                 _r = PROJECT_ROOT / "reports"
                 _pf = PROJECT_ROOT / "data" / "portfolios" / "reports"
                 # Live dashboards
-                for _f in ["command_center.html", "portfolio_live.html", "dashboard_live.html", "strategy_center.html", "reports_hub.html"]:
+                # SECURITY 2026-08-31: portfolio_live.html withheld from the catalogue.
+                # Historic copies embed a live Anthropic key in client-side JS (201 of 228
+                # generated pages measured). The generator no longer embeds one, but the old
+                # files still exist and this route is served-if-present. Restore this entry
+                # once the historic copies are removed -- that deletion is operator-only.
+                for _f in ["command_center.html", "dashboard_live.html", "strategy_center.html", "reports_hub.html"]:
                     _fp = _r / _f
                     if _fp.exists():
                         _cat["live"].append({"name": _f, "path": f"/reports/{_f}", "size_kb": round(_fp.stat().st_size / 1024, 1),
