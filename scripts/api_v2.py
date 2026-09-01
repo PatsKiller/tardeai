@@ -32925,6 +32925,76 @@ def _schwab_token_health(query=None):
             "message": msg}
 
 
+def _finviz_credential_health(query=None):
+    """GET /api/v2/data-sources/finviz/credential-health — live FINVIZ_COOKIE probe + last_error.
+
+    Mirrors Schwab token-health for the site-wide FinvizCookieBanner. Uses
+    secret_validators._finviz_cookie (Elite CSV export) and data_source_health.last_error.
+    Never returns cookie material.
+    """
+    from datetime import datetime, timezone
+    as_of = datetime.now(timezone.utc).isoformat()
+    last_error = None
+    try:
+        row = _db_query(
+            "SELECT last_error, status, last_success_at FROM data_source_health "
+            "WHERE source_key = %s LIMIT 1",
+            ("finviz",),
+            fetch="one",
+        ) or {}
+        last_error = row.get("last_error")
+    except Exception:
+        row = {}
+        last_error = None
+    try:
+        import sys as _sys
+        _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        import secret_validators as _sv
+        from credential_monitor import is_finviz_cookie_failure_text
+        cookie = _sv._key("FINVIZ_COOKIE")
+        if not cookie:
+            return {
+                "ok": False,
+                "status": "missing",
+                "detail": "FINVIZ_COOKIE not set",
+                "last_error": last_error,
+                "as_of": as_of,
+                "show_banner": True,
+                "message": "Finviz Elite cookie expired — screener and social scalp empty",
+                "admin_secrets_path": "/v3/system?tab=Admin",
+            }
+        ok, detail = _sv._finviz_cookie(cookie)
+        err_signal = is_finviz_cookie_failure_text(last_error or "") or is_finviz_cookie_failure_text(detail or "")
+        healthy = bool(ok) and not is_finviz_cookie_failure_text(last_error or "")
+        if healthy:
+            status = "ok"
+            message = detail
+        else:
+            status = "expired" if (not ok or err_signal) else "error"
+            message = "Finviz Elite cookie expired — screener and social scalp empty"
+        return {
+            "ok": healthy,
+            "status": status,
+            "detail": detail,
+            "last_error": last_error,
+            "as_of": as_of,
+            "show_banner": not healthy,
+            "message": message,
+            "admin_secrets_path": "/v3/system?tab=Admin",
+        }
+    except Exception as e:
+        return {
+            "ok": False,
+            "status": "check_failed",
+            "detail": str(e)[:160],
+            "last_error": last_error,
+            "as_of": as_of,
+            "show_banner": True,
+            "message": "Finviz Elite cookie expired — screener and social scalp empty",
+            "admin_secrets_path": "/v3/system?tab=Admin",
+        }
+
+
 def _schwab_reauth_url(query=None):
     """GET /api/v2/brokers/schwab/reauth-url — build Schwab OAuth authorize URL for manual login.
     Operator opens the URL on their phone, completes 2FA, then pastes the 127.0.0.1?code=... redirect
@@ -36137,6 +36207,7 @@ ROUTES = {
     "/api/v2/time-exit-proposals": _time_exit_proposals_list,
     "/api/v2/system/schwab-status": _schwab_status,
     "/api/v2/brokers/schwab/token-health": _schwab_token_health,
+    "/api/v2/data-sources/finviz/credential-health": _finviz_credential_health,
     "/api/v2/brokers/schwab/reauth-url": _schwab_reauth_url,
     "/api/v2/holdings/synthetic-stops": _synthetic_stops_list,
     "/api/v2/holdings/live-stops": lambda: _holdings_live_stops(_current_query),

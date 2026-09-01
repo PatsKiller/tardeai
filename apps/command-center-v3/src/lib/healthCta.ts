@@ -5,6 +5,7 @@ export function healthFindingCta(f: { type?: string; category?: string; message?
   const byType: Record<string, { label: string; route: string }> = {
     portfolio_repricer_stale: { label: 'System → Pipeline', route: '/system?tab=pipeline' },
     finviz_quote_cache_stale: { label: 'System → Admin', route: '/system?tab=admin' },
+    finviz_cookie_expired: { label: 'System → Admin secrets', route: '/system?tab=Admin' },
     agent_jobs_processing_stuck: { label: 'System → Jobs', route: '/system?tab=jobs' },
     trade_proposals_backlog: { label: 'Trading → Proposals', route: '/trading?tab=Proposals' },
     watchlist_stale: { label: 'Watch → Watchlist', route: '/watch?tab=watchlist' },
