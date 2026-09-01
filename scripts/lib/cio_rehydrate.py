@@ -33,7 +33,9 @@ prose. It never produces a size.
 """
 from __future__ import annotations
 
+import json
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any, Optional
 
 from scripts.lib.cio_instrument_record import (
@@ -133,6 +135,79 @@ def _defer_question(note: str) -> str:
     return (f"Has a catalyst or earnings event changed the condition behind the "
             f"defer ({n})?" if n else
             "Has a catalyst or earnings event changed the deferred condition?")
+
+
+def _record_turn_effect(
+    record: dict[str, Any],
+    *,
+    turn: dict[str, Any],
+    lesson: Optional[dict[str, Any]],
+    question_with: str,
+    next_eligible_at: Optional[str],
+    priority: Optional[str],
+) -> None:
+    """Append what this wake decided WITH the operator turn, and without it.
+
+    The M3 proof asks for the wake's decision with and without the turn. The
+    turn was landing and the decision was demonstrably shaped by it -- the defer
+    question quotes the operator's own note -- but the record kept only the
+    with-branch, so there was no runtime evidence of what would otherwise have
+    happened. "The turn changed the outcome" and "the turn coincided with the
+    outcome" looked identical, and constructing the counterfactual by hand is
+    exactly what the maturity bar refuses.
+
+    So the producer records its own counterfactual. It is deterministic and
+    free: without the turn, `note` falls back to the lesson's note, and
+    `_defer_question` derives a different question from it. Nothing is simulated.
+
+    Deliberately NOT on the instrument record: apply_cognition accepts exactly
+    four cognition fields and raises BehaviorWriteRefused on anything else. That
+    rail is correct and is not being widened for an audit trail.
+
+    Append-only, best-effort. A wake must never fail because its audit line
+    could not be written.
+    """
+    try:
+        note_with = str(turn.get("note") or (lesson or {}).get("note") or "").strip()
+        note_without = str((lesson or {}).get("note") or "").strip()
+        row = {
+            "schema": "WakeTurnEffect@v1",
+            "authority": "READ_ONLY_ADVISORY",
+            "memory_behavior_influence": 0,
+            "at": datetime.now(timezone.utc).isoformat(),
+            "subject_key": record.get("subject_key"),
+            "turn": {
+                "intent": turn.get("intent"),
+                "note": turn.get("note"),
+                "ts": turn.get("ts"),
+                "plan_id": turn.get("plan_id"),
+            },
+            "with_turn": {
+                "next_research_question": question_with,
+                "next_eligible_at": next_eligible_at,
+                "notify_priority": priority,
+                "note_source": "operator_turn" if turn.get("note") else "lesson",
+            },
+            "without_turn": {
+                "next_research_question": _defer_question(note_without),
+                "next_eligible_at": next_eligible_at,
+                "notify_priority": priority,
+                "note_source": "lesson" if note_without else "none",
+            },
+        }
+        # The honest negative: if the lesson carries the same note, the turn
+        # changed nothing here, and that is worth recording rather than hiding.
+        row["turn_changed_decision"] = (
+            row["with_turn"]["next_research_question"]
+            != row["without_turn"]["next_research_question"]
+        )
+        from scripts.lib.canonical_store_registry import production_state_root
+        out = Path(production_state_root()) / "data" / "cio" / "wake_turn_effects.jsonl"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        with open(out, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(row, default=str) + "\n")
+    except Exception:
+        return
 
 
 def apply_after_cycle(
@@ -257,6 +332,10 @@ def apply_after_cycle(
             nxt_q = _defer_question(note)
             nxt_at = (now + timedelta(days=DEFER_PUSH_DAYS)).isoformat()
             priority = "cc"
+            _record_turn_effect(
+                rec, turn=turn, lesson=lesson,
+                question_with=nxt_q, next_eligible_at=nxt_at, priority=priority,
+            )
             old = dict(rec.get("cc_narrative") or {})
             what = str(old.get("what") or "")
             defer_line = (f"Operator deferred: {note}." if note
