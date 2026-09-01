@@ -192,3 +192,24 @@ splits. Flagged into Worker C's store-split sweep.
 - E remains held until A–D land, so its closeout is written against real verdicts. If a worker
   stalls or aborts on a pin, E is still spawned before 08:00 with that gap named as a finding
   rather than left blank.
+---
+
+## Standing operator instruction — 2026-08-31 23:26 ET
+
+**Wake the operator if a worker aborts on a pin.** Recorded here so the trigger survives a context
+compaction and is not left as a conversational aside.
+
+Fires a push notification, immediately, on: any worker reporting `ABORTED`, or any worker report
+stating it stopped because it reached one of the wave's hard pins — broker / `place_order` / 2FA /
+`BehaviorWriteRefused`, push / merge / promote / deploy / cron edit, Telegram send / `--backend
+live` / `--apply` / model spend, the retired overnight LLM window, mass-expiry / deletion /
+choosing between divergent holdings copies, a new `@v1` type, or a permission denial it was told
+not to route around.
+
+**Does not fire** on: a worker finishing normally, a worker reporting `NOT_OBSERVED` or `UNKNOWN`
+(both are expected and legitimate results, AGENTS.md §14 §15), or a worker hitting an ordinary
+investigation dead end.
+
+A worker that fails for a non-pin reason — crash, timeout, empty result — is a different event. It
+is recorded in the stitch and carried into Worker E's closeout as a named gap, but it does not wake
+the operator overnight unless it leaves the packet materially incomplete.
