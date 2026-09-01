@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `a29d168ebaec6a37371cd4b955e615eedec25aeced1b5dd4a3a09738a8715d15`
+**Tree fingerprint:** `d0592dabce53fa98223d92fdd15dcb76aaeb5b6262b134fd3bb842d1dc5bb9c1`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,9 +12,9 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2287 |
-| Markdown (excl. this INDEX) | 1919 |
-| **MISSING HEADER** | **9** |
+| Files under `docs/` (excl. this INDEX) | 2288 |
+| Markdown (excl. this INDEX) | 1920 |
+| **MISSING HEADER** | **10** |
 | Header OK | 1910 |
 | Duplicate groups | 5 |
 
@@ -30,7 +30,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_raw_sync | 8 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 6 |
-| review_required | 1925 |
+| review_required | 1926 |
 
 ## Markdown tree
 
@@ -1346,6 +1346,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/CIO_DILIGENCE_P9_REGISTRY_LIFECYCLE_2026-08-30.md` | CIO Diligence P9 — registry / orphan / 99.99% path | review_required | OK | `969b5126353d` |
 | `docs/ops/CIO_DILIGENCE_SCOREBOARD.md` | CIO Platform Diligence — living scoreboard | review_required | OK | `97ecddcae5e2` |
 | `docs/ops/CIO_FIELD_SCOPED_LINT_2026-08-29.md` | Field-scoped instruction lint (2026-08-29) | review_required | OK | `4ba171f0d82e` |
+| `docs/ops/CIO_GATE_EXECUTION_HISTORY_2026-08-30.md` | CIO Gate Execution History — 2026-08-30 | review_required | MISSING HEADER | `66e24bdfdb12` |
 | `docs/ops/CIO_GROK_CRITIQUE_CONTRACT_2026-08-29.md` | Grok critique call site — contract (2026-08-29) | review_required | OK | `131628d68083` |
 | `docs/ops/CIO_GROK_HOP_RESULT_2026-08-29.md` | Grok critique hop — executed, verdict REJECT (2026-08-29) | review_required | OK | `83734dc263ed` |
 | `docs/ops/CIO_HELD_THESIS_COVERAGE_2026-08-20.md` | Held-book thesis coverage (Phase 1) — 2026-08-20 | review_required | OK | `f6e7911ca1a5` |
