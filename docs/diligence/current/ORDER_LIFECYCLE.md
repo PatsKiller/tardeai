@@ -1,7 +1,11 @@
 # Order Lifecycle
 
-_Generated: 2026-06-28T02:06:07.289867+00:00_  
-_Source: `brokers/order_lifecycle.py + brokers/reconcile_orders.py`_  
+Status:      ACTIVE
+as_of:       2026-06-27T22:07:55-04:00
+Measured at: efcc51365 / not measured
+
+_Generated: 2026-06-28T02:06:07.289867+00:00_
+_Source: `brokers/order_lifecycle.py + brokers/reconcile_orders.py`_
 **Status: PASS**
 
 No trade is live before broker acknowledgement. Internal state never outruns broker truth.

@@ -1,5 +1,9 @@
 # Phase 200B — Governance Job Selection
 
+Status:      HISTORICAL
+as_of:       2026-06-04T23:11:56-04:00
+Measured at: efcc51365 / not measured
+
 Governance-pipeline jobs selected for the controller. All are **read-only reporting** (produce docs /
 JSON); none touch broker, trading, proposals, protection, Hermes, LLM, or portfolio state.
 

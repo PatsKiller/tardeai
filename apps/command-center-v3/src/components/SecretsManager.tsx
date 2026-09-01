@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useApi } from '../hooks/useApi'
 
 // Secrets / API-key manager. Write-only: the UI never shows or receives a full secret value — only a
@@ -47,6 +47,17 @@ export default function SecretsManager() {
       return d.result
     } catch { return null }
   }
+
+  // Auto-validate FINVIZ_COOKIE on mount so an expired Elite cookie surfaces without a click
+  // (stale-data RCA / AGENTS.md §13.6 — screener + social scalp go empty silently otherwise).
+  useEffect(() => {
+    const row = secrets.find((s: any) => s.key === 'FINVIZ_COOKIE')
+    if (!row?.present) return
+    if (vres.FINVIZ_COOKIE) return
+    void validateOne('FINVIZ_COOKIE')
+    // secrets list identity changes when /admin/secrets loads; do not re-fire once we have a result
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [secrets.length, data])
 
   const save = async () => {
     if (!key.trim() || val.trim().length < 4 || busy) return

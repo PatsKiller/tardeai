@@ -1,5 +1,9 @@
 # PHASE 198 — Advisory Threshold Tuning Framework — CLOSEOUT
 
+Status:      HISTORICAL
+as_of:       2026-06-02T13:48:02-04:00
+Measured at: efcc51365 / not measured
+
 **Run:** 2026-06-02 ~13:40 ET · Alpaca **paper** only · learning/backtest; no execution
 
 ---

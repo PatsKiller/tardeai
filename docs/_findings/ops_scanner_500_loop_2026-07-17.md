@@ -1,5 +1,9 @@
 # Ops: Market Opportunities Scanner 500-loop + Postgres slot exhaustion — 2026-07-17
 
+Status:      HISTORICAL
+as_of:       2026-07-17T09:23:45-04:00
+Measured at: efcc51365 / not measured
+
 ## ⚠ TRUE ROOT CAUSE (found later same day — supersedes the "GIL saturation" framing below)
 The api_v2 route dispatcher passes the parsed query dict to any handler whose signature has
 ≥1 parameter. `trade_ai(force=False)`'s one parameter is `force` — so every cache-busted

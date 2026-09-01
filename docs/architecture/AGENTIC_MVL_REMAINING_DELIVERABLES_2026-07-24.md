@@ -1,7 +1,11 @@
 # Agentic MVL Remaining Deliverables — 2026-07-24
 
-**PR:** #163  
-**Mode:** DRAFT / LAB / SHADOW  
+Status:      HISTORICAL
+as_of:       2026-07-24T17:42:02-04:00
+Measured at: efcc51365 / not measured
+
+**PR:** #163
+**Mode:** DRAFT / LAB / SHADOW
 **Financial authority:** DENIED
 
 ## Gate 1 — classify the user-owned PostgreSQL LAB candidate

@@ -1,5 +1,9 @@
 # Phase 199D — Cron Compression & Migration Plan
 
+Status:      HISTORICAL
+as_of:       2026-06-04T22:40:47-04:00
+Measured at: efcc51365 / not measured
+
 Plan only. **No crons removed or modified in this phase.** Any change below requires explicit
 operator approval before execution (later phase).
 

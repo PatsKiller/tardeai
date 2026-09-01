@@ -1,4 +1,9 @@
 # PHASE 213A — Codex Headless Limitation — Authoritative Finding (2026-06-07)
+
+Status:      HISTORICAL
+as_of:       2026-06-07T16:43:49-04:00
+Measured at: efcc51365 / not measured
+
 - Current Hermes version: **0.16.0**. Latest available: **0.16.0** (no newer; no pre-release; 0.16.1 absent).
 - **No shadow venv created**: there is no newer version to shadow; shadowing the same 0.16.0 would only
   reproduce the limitation. (Phase 212.)

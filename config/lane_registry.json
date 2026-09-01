@@ -2,7 +2,7 @@
   "schema": "LaneRegistry@v1",
   "authority": "READ_ONLY_ADVISORY",
   "seeded_at": "2026-08-30",
-  "note": "Declared lanes below. `undeclared_baseline` is inherited debt, captured so the CI gate is green on day one and can only shrink \u2014 the precedent that made the dark-contract gate adoptable. A NEW scheduled job not in either list fails CI.",
+  "note": "Declared lanes below. `undeclared_baseline` is inherited debt, captured so the CI gate is green on day one and can only shrink \u2014 the precedent that made the dark-contract gate adoptable. A NEW scheduled job not in either list fails CI. Wave2-2026-09-01 batch1: shrink wake-dispatch duplicate; retire cron-freshness-watcher; promote due-checkpoints,cio-delivery,cio-defer-revisit,autonomy-watchdog,hermes-momentum-catalyst-morning. as_of=2026-08-31T16:58:07+00:00. Wave2-2026-09-01 batch2: promote portfolio-backup-cadence,portfolio-daily-cadence,portfolio-weekly-cadence,portfolio-monthly-cadence,portfolio-lookthrough-cadence,governance-pipeline,cio-nightly-reflection,cio-memory-shadow-measure,cio-desk-memo-regen,sm-render,tax-lots-rebuild,provider-cost-reconcile,free-first-circulation,holdings-agent-enqueue,hermes-update-check,portfolio-price-cache,agent-runtime-health; retire at-observation-01,at-observation-01-closeout. as_of=2026-08-31T17:06:54+00:00. Wave2 batch3: promote advisory-shadow-seed,cio-material-scan. as_of=2026-08-31T17:08:11+00:00.",
   "lanes": [
     {
       "lane_id": "research-lane-health",
@@ -56,7 +56,7 @@
       "expected_cadence_hours": 24.0,
       "state": "RETIRED",
       "state_since": "2026-06-01",
-      "state_reason": "PHASE102-RETIRED. The closeout records only 'Global queue covers all jobs' \u2014 a supersession claim that was never verified, and whose sibling ('continuous_runner covers 04:00-11:00') was found false and REVERTED ten days later. The lane's last completed job is 2026-05-23, nine days BEFORE the retirement, so the retirement may not be the cause of the silence. Actual cause: UNKNOWN",
+      "state_reason": "PHASE102-RETIRED. Closeout records only 'Global queue covers all jobs' \u2014 unverified supersession; sibling continuous_runner claim found false and reverted. Actual cause: UNKNOWN",
       "output_signal": {
         "kind": "db_max",
         "table": "deep_overnight_llm_results",
@@ -64,7 +64,7 @@
       },
       "note": "1588 done / 268 failed / 1928 pending, frozen since 2026-05-31. The 1,588 completed outputs are a calibration set and must not be deleted.",
       "reason_confidence": "UNKNOWN",
-      "reason_evidence": "PHASE102 closeout (commit 1a843fc3, 2026-06-01) gives one reason: 'Global queue covers all jobs' \u2014 a supersession claim never verified. Its sibling ('continuous_runner covers 04:00-11:00', 2026-06-11) was found FALSE and reverted; see docs/CHANGELOG.md:3432. The lane's last completed job is 2026-05-23, NINE DAYS BEFORE the retirement, so the retirement may not be the cause of the silence at all."
+      "reason_evidence": "Re-investigated 2026-08-31 (Wave 2b). PHASE102 closeout commit 1a843fc3 (2026-06-01) + docs/project/PHASE102_OLD_OVERNIGHT_RETIREMENT_CLOSEOUT.md give one reason: 'Global queue covers all jobs' \u2014 a supersession claim never verified. Sibling claim ('continuous_runner covers 04:00-11:00', 2026-06-11) was found FALSE and reverted (docs/CHANGELOG.md ~3432). PHASE58_OLD_OVERNIGHT_MONOPOLY_RETIREMENT_CLOSEOUT.md is DESIGN ONLY / not applied. Lane last completed job 2026-05-23 \u2014 nine days BEFORE retirement \u2014 so the retirement may not explain the silence. No PR beyond 1a843fc3 establishes a verified successor for this lane's outputs. Remains UNKNOWN."
     },
     {
       "lane_id": "overnight-batch",
@@ -75,13 +75,13 @@
       "expected_cadence_hours": 24.0,
       "state": "RETIRED",
       "state_since": "2026-06-01",
-      "state_reason": "PHASE102-RETIRED. Reason recorded in the crontab tag only: UNKNOWN",
+      "state_reason": "PHASE102-RETIRED. Crontab tag only; global-queue supersession claim unverified. Partial sub-command restores (--tax-sweep, --outcomes) and scorer rehome do not establish the retirement cause. Actual cause: UNKNOWN",
       "output_signal": {
         "kind": "file_mtime",
         "path": "logs/overnight_batch.log"
       },
       "reason_confidence": "UNKNOWN",
-      "reason_evidence": "Crontab carries only the tag 'PHASE102-RETIRED' with no reason text. Note two of its sub-commands were later RESTORED to cron ('35 6 * * 1 ... --tax-sweep', '40 5 * * * ... --outcomes'), so the retirement was partially reversed without the registry knowing."
+      "reason_evidence": "Re-investigated 2026-08-31 (Wave 2b). Crontab tag is only 'PHASE102-RETIRED' with no reason text. PHASE102 closeout (1a843fc3) asserts 'Global queue covers all jobs' without verifying coverage of overnight_batch outputs. Partial reversal WITHOUT registry update: '# RESTORED 2026-07-04 weekly (tax_agent staleness max 7d; sweep was retired as collateral of overnight_batch Phase 102 retirement)' then active '35 6 * * 1 \u2026 overnight_batch.py --tax-sweep'; and '40 5 * * * \u2026 overnight_batch.py --outcomes'. docs/MASTER_SYSTEM_DOCUMENTATION.md: agent-performance scorer rehomed to update_agent_performance.py (cron 0 20 * * 1-5) \u2014 documents WHERE a piece went, not WHY the monopoly path was retired. Coverage of the --telegram overnight path by the global queue remains unverified. Remains UNKNOWN."
     },
     {
       "lane_id": "portfolio-backup-cron",
@@ -411,15 +411,16 @@
         "expression": "tradeai-operator-readiness.timer"
       },
       "expected_cadence_hours": 24.0,
-      "state": "NEVER_SCHEDULED",
-      "state_since": "2026-08-30",
-      "state_reason": "Unit installed, never enabled, journal shows no run ever. No successor unit found by name, and no commit or document records an intent to retire it. Genuinely unexplained.",
+      "state": "RETIRED",
+      "state_since": "2026-06-05",
+      "state_reason": "PHASE201 (2026-06-05) retired the four PHASE41 governance timers into tradeai-governance-pipeline.timer. PHASE201C decision gate APPROVED; PHASE201D executed stop+disable of tradeai-operator-readiness.timer (unit files preserved). Successor pipeline step 'operator_readiness' runs scripts/report_operator_readiness_summary.py to the same docs/maturity_hardening/operator_readiness_latest.* paths.",
       "output_signal": {
         "kind": "file_mtime",
         "path": "logs/operator-readiness.log"
       },
-      "reason_confidence": "UNKNOWN",
-      "reason_evidence": "systemctl is-enabled=disabled; journalctl shows no entries; no name-matched successor among the 75 enabled timers."
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "docs/architecture/PHASE201C_GOVERNANCE_TIMER_RETIREMENT_DECISION_GATE.md: 'ALL CONDITIONS PASS \u2192 APPROVED to retire the 4 redundant PHASE41 governance timers (201D): \u2026 tradeai-operator-readiness.timer'. docs/architecture/PHASE201D_PHASE41_GOVERNANCE_TIMER_RETIREMENT_REPORT.md records stop+disable. docs/project/PHASE201_GOVERNANCE_TIMER_RETIREMENT_PORTFOLIO_PREFLIGHT_CLOSEOUT.md: 'PHASE41 governance timers retired | 4'. docs/operations/SCHEDULED_JOBS_REFERENCE.md: consolidated into tradeai-governance-pipeline. scripts/pipelines/run_governance_pipeline.sh gov_step operator_readiness invokes report_operator_readiness_summary.py. journalctl 2026-08-31T07:40: operator_readiness status=ok. Prior #722 UNKNOWN missed these docs ('no successor by name').",
+      "superseded_by": "tradeai-governance-pipeline.timer"
     },
     {
       "lane_id": "tradeai-flash-portfolio-risk-hourly",
@@ -430,14 +431,14 @@
       },
       "expected_cadence_hours": 24.0,
       "state": "NEVER_SCHEDULED",
-      "state_since": "2026-08-30",
-      "state_reason": "Unit installed, never enabled, journal shows no run ever. No successor unit found by name, and no commit or document records an intent to retire it. Genuinely unexplained.",
+      "state_since": "2026-08-03",
+      "state_reason": "Shipped 2026-08-03 (commit eed471bc4 / flash-cadence) as an optional operator install. Unit file present in ~/.config/systemd/user since birth 2026-08-03; systemctl is-enabled=disabled; journalctl shows no entries. Enablement is operator-gated per README and was never performed.",
       "output_signal": {
         "kind": "file_mtime",
         "path": "logs/flash-portfolio-risk-hourly.log"
       },
-      "reason_confidence": "UNKNOWN",
-      "reason_evidence": "systemctl is-enabled=disabled; journalctl shows no entries; no name-matched successor among the 75 enabled timers."
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "config/systemd/flash-cadence/README.md (commit eed471bc4, 2026-08-03): 'Install timers (optional \u2014 operator)' with example enable only for tradeai-flash-watchlist-daily.timer. stat Birth of ~/.config/systemd/user/tradeai-flash-portfolio-risk-hourly.timer = 2026-08-03 00:35:20. systemctl --user is-enabled=disabled; journalctl --user -u tradeai-flash-portfolio-risk.service: No entries. Sibling flash-watchlist-daily / flash-llm-intelligence from the same commit were enabled and ran until 2026-08-18 (now PAUSED/CORRELATED)."
     },
     {
       "lane_id": "tradeai-flash-portfolio-risk-weekend",
@@ -448,14 +449,14 @@
       },
       "expected_cadence_hours": 24.0,
       "state": "NEVER_SCHEDULED",
-      "state_since": "2026-08-30",
-      "state_reason": "Unit installed, never enabled, journal shows no run ever. No successor unit found by name, and no commit or document records an intent to retire it. Genuinely unexplained.",
+      "state_since": "2026-08-03",
+      "state_reason": "Same shipment as the hourly twin: optional operator install from flash-cadence README (eed471bc4, 2026-08-03). Unit present, never enabled, never fired.",
       "output_signal": {
         "kind": "file_mtime",
         "path": "logs/flash-portfolio-risk-weekend.log"
       },
-      "reason_confidence": "UNKNOWN",
-      "reason_evidence": "systemctl is-enabled=disabled; journalctl shows no entries; no name-matched successor among the 75 enabled timers."
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "config/systemd/flash-cadence/README.md (eed471bc4): 'Install timers (optional \u2014 operator)'; schedule table lists 'Portfolio risk-ish Flash \u2014 Hourly 07\u201319 weekdays; 10:00 weekends' as the intended cadence IF installed. stat Birth ~/.config/systemd/user/tradeai-flash-portfolio-risk-weekend.timer = 2026-08-03. is-enabled=disabled; journal empty for tradeai-flash-portfolio-risk.service."
     },
     {
       "lane_id": "alex-daily",
@@ -558,13 +559,13 @@
       "state": "PAUSED",
       "state_since": "2026-08-08",
       "review_by": "2026-09-15",
-      "state_reason": "Cron line commented 2026-08-08 with the bare tag 'DISABLED 2026-08-08' and no reason. Disabled the same day as the alex family but is a different subsystem, so the alex supersession does NOT transfer.",
+      "state_reason": "Cron line commented 2026-08-08 with bare tag 'DISABLED 2026-08-08' and no reason. Same calendar day as the alex family but a different subsystem \u2014 alex supersession does NOT transfer. No authoring commit/PR found. Actual cause: UNKNOWN",
       "output_signal": {
         "kind": "file_mtime",
         "path": "logs/cio_decision_engine.log"
       },
       "reason_confidence": "UNKNOWN",
-      "reason_evidence": "crontab: '#0 7 * * 1-5 $PY scripts/cio_decision_engine.py --run  # DISABLED 2026-08-08'. No commit, PR or decision document found for it."
+      "reason_evidence": "Re-investigated 2026-08-31 (Wave 2b). Live crontab: '#0 7 * * 1-5 $PY scripts/cio_decision_engine.py --run  # DISABLED 2026-08-08'. No commit/PR found that performed the disable (git log -S 'DISABLED 2026-08-08' and Aug 7\u20139 window yield no authoring commit; last log mtime 2026-08-07 07:00). docs/cio/CIO_NOTIFICATION_RUNTIME_TOPOLOGY.md claims alex + cio_decision_engine were 'moved to agent-runtime@*.timer shadow-live' \u2014 but the alex cron line alone records agent_runtime@alex supersession; this line carries no successor, and alex supersession does NOT transfer. docs/cio/ARCHITECTURE.md + docs/audits/CIO_PLATFORM_REMEDIATION_2026-08-27.md Fix C1 still treat the disable reason as unknown ('check the commit/PR that disabled it before re-enabling'). Operator chose C1 option (b): document mechanical independence rather than re-enable (PR #526). Remains UNKNOWN."
     },
     {
       "lane_id": "cio-wake-dispatch",
@@ -598,6 +599,466 @@
         "path": "data/cio/cio_events.jsonl"
       },
       "note": "Emits situation.raised \u2014 the only high-volume bus event that names a subject. shadow=true is its default posture since 2026-08-11 (0241722b, 'SHADOW default; no broker calls') and has never been changed. ESTABLISHED 2026-08-30: shadow is a LABEL ONLY \u2014 it appears in exactly three places, all of which write it into a payload/plan/summary. It gates no emission, no plan creation and no routing. What gates operator notification is `notify`, a separate flag that has its own canary doc (CIO_MATERIAL_NOTIFY_CANARY_2026-08-20.md) and remains false. Consuming situation.raised is therefore NOT a promotion out of shadow."
+    },
+    {
+      "lane_id": "docs-index",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "none"
+      },
+      "expected_cadence_hours": 168.0,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-08-31",
+      "state_reason": "CI/manual regenerate via scripts/report_docs_inventory.py --write-index / --check-index. No cron or systemd timer installed; scheduler install is operator-only.",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "docs/INDEX.md"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "WAVE G3 2026-08-31 wired report_docs_inventory.py to emit the durable artifact docs/INDEX.md; hardening CI runs --check-index (regenerate+diff).",
+      "note": "Hand-maintained docs/DOCUMENTATION_INDEX.md and docs/project/PROJECT_DOC_INDEX.md remain. This lane is the regenerable tree listing \u2014 not a third narrative index."
+    },
+    {
+      "lane_id": "cron-freshness-watcher",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "*/5 * * * * cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && flock -n /tmp/cron_freshness_watcher.lock .venv/bin/python scripts/cron_freshness_watcher.py >> logs/cron_freshness_watcher.log 2>&1",
+        "match": "cron_freshness_watcher.py"
+      },
+      "expected_cadence_hours": 0.25,
+      "state": "RETIRED",
+      "state_reason": "scripts/cron_freshness_watcher.py is absent from the tree; undeclared cron line referenced a missing producer. Investigated 2026-09-01.",
+      "state_since": "2026-09-01",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": [
+        "Path scripts/cron_freshness_watcher.py does not exist on origin/main (stat/exists False)."
+      ],
+      "output_signal": {
+        "kind": "none"
+      },
+      "note": "RETIRED but cron still live (script missing). Declared so the gate covers the line; operator should remove the crontab entry. Do not install."
+    },
+    {
+      "lane_id": "due-checkpoints",
+      "owner": "cio",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-due-checkpoints.timer"
+      },
+      "expected_cadence_hours": 1.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/cio/outcome_checkpoints.jsonl"
+      },
+      "note": "systemd process_due_checkpoints --persist; append-only checkpoint store."
+    },
+    {
+      "lane_id": "cio-delivery",
+      "owner": "cio",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-cio-delivery.timer"
+      },
+      "expected_cadence_hours": 0.25,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/cio/cio_delivery_receipts.jsonl"
+      },
+      "note": "cio_delivery_worker --once --mode live."
+    },
+    {
+      "lane_id": "cio-defer-revisit",
+      "owner": "cio",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-cio-defer-revisit.timer"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/cio/cio_defer_lineage.jsonl"
+      },
+      "note": "cio_defer_revisit --live."
+    },
+    {
+      "lane_id": "autonomy-watchdog",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-autonomy-watchdog.timer"
+      },
+      "expected_cadence_hours": 0.25,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/cio/watchdog_state.json"
+      },
+      "note": "autonomy_watchdog.py --once; watchdog_state.json refreshed continuously."
+    },
+    {
+      "lane_id": "hermes-momentum-catalyst-morning",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "hermes-momentum-catalyst-morning.timer"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/cio/catalyst_momentum_last_run.json"
+      },
+      "note": "Morning momentum catalyst research lane."
+    },
+    {
+      "lane_id": "portfolio-backup-cadence",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-portfolio-backup-cadence.timer"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/portfolio_maintenance_backup_last_run.json"
+      },
+      "note": "Phase 204 portfolio-maintenance --cadence backup --apply; last_run JSON under data/runtime."
+    },
+    {
+      "lane_id": "portfolio-daily-cadence",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-portfolio-daily-cadence.timer"
+      },
+      "expected_cadence_hours": 48.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/portfolio_maintenance_daily_last_run.json"
+      },
+      "note": "Mon-Fri 07:30 portfolio-maintenance --cadence daily. Cadence 48h covers weekend gap."
+    },
+    {
+      "lane_id": "portfolio-weekly-cadence",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-portfolio-weekly-cadence.timer"
+      },
+      "expected_cadence_hours": 168.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/portfolio_maintenance_weekly_last_run.json"
+      },
+      "note": "Sun 20:30 portfolio-maintenance --cadence weekly."
+    },
+    {
+      "lane_id": "portfolio-monthly-cadence",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-portfolio-monthly-cadence.timer"
+      },
+      "expected_cadence_hours": 744.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/portfolio_maintenance_monthly_last_run.json"
+      },
+      "note": "Day-1 07:35 portfolio-maintenance --cadence monthly."
+    },
+    {
+      "lane_id": "portfolio-lookthrough-cadence",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-portfolio-lookthrough-cadence.timer"
+      },
+      "expected_cadence_hours": 744.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/portfolio_maintenance_lookthrough_last_run.json"
+      },
+      "note": "1st-Sun 06:30 portfolio-maintenance --cadence lookthrough."
+    },
+    {
+      "lane_id": "governance-pipeline",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-governance-pipeline.timer"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/governance_pipeline_last_run.json"
+      },
+      "note": "Weekday morning + Sunday eve governance pipeline controller; last_run JSON."
+    },
+    {
+      "lane_id": "cio-nightly-reflection",
+      "owner": "cio",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-cio-nightly-reflection.timer"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/cio/cio_reflection_candidates.jsonl"
+      },
+      "note": "cio_nightly_reflection.py appends candidates history jsonl."
+    },
+    {
+      "lane_id": "cio-memory-shadow-measure",
+      "owner": "cio",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-cio-memory-shadow-measure.timer"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/cio/memory_shadow_measure_latest.json"
+      },
+      "note": "run_memory_shadow_measure.py \u2192 memory_shadow_measure_latest.json."
+    },
+    {
+      "lane_id": "cio-desk-memo-regen",
+      "owner": "cio",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-cio-desk-memo-regen.timer"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/cio/cio_desk_note_latest.md"
+      },
+      "note": "cio_desk_synthesis.py persists cio_desk_note_latest.md (+ memo spine)."
+    },
+    {
+      "lane_id": "sm-render",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-sm-render.timer"
+      },
+      "expected_cadence_hours": 4.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/sm_render_state.json"
+      },
+      "note": "secrets/render_env.py --now; sm_render_state.json. Dual-homed writer may land under v12-rebuild vs PS."
+    },
+    {
+      "lane_id": "tax-lots-rebuild",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-tax-lots-rebuild.timer"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/tax_lots_rebuild_latest.json"
+      },
+      "note": "rebuild_tax_lots_from_transactions.py writes tax_lots_rebuild_latest.json."
+    },
+    {
+      "lane_id": "provider-cost-reconcile",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-provider-cost-reconcile.timer"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/provider_cost/latest_reconciliation.json"
+      },
+      "note": "run_provider_cost_daily.sh \u2192 data/runtime/provider_cost/latest_reconciliation.json."
+    },
+    {
+      "lane_id": "free-first-circulation",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-free-first-circulation.timer"
+      },
+      "expected_cadence_hours": 1.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/cio/free_first_last_run.json"
+      },
+      "note": "R9.3 FREE_FIRST_ONLY hourly :23 ET; free_first_last_run.json receipt."
+    },
+    {
+      "lane_id": "holdings-agent-enqueue",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-holdings-agent-enqueue.timer"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/holdings_agent_enqueue_latest.json"
+      },
+      "note": "enqueue_holdings_agent_opinions.py --apply; holdings_agent_enqueue_latest.json."
+    },
+    {
+      "lane_id": "hermes-update-check",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "hermes-update-check.timer"
+      },
+      "expected_cadence_hours": 168.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/hermes_update_status.json"
+      },
+      "note": "check_hermes_update_available.py always writes hermes_update_status.json (read-only check)."
+    },
+    {
+      "lane_id": "portfolio-price-cache",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "portfolio-price-cache.timer"
+      },
+      "expected_cadence_hours": 168.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/portfolios/state/price_cache.json"
+      },
+      "note": "run_price_cache.sh / portfolio_price_cache.py \u2192 price_cache.json."
+    },
+    {
+      "lane_id": "agent-runtime-health",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-agent-runtime-health.timer"
+      },
+      "expected_cadence_hours": 0.25,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "/home/johnclaw/.local/state/tradeai/agent-runtime-health.json"
+      },
+      "note": "agent_runtime.health_monitor writes absolute state under ~/.local/state/tradeai (not data/)."
+    },
+    {
+      "lane_id": "at-observation-01",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "at-observation-01.timer"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "RETIRED",
+      "state_since": "2026-07-27",
+      "state_reason": "One-shot OnCalendar=2026-07-27 06:55:00; timer SubState=elapsed with no NextElapse. Session-1 premarket capture is spent, not a recurring producer.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": [
+        "systemctl --user cat at-observation-01.timer: OnCalendar=2026-07-27 06:55:00 Persistent=false",
+        "systemctl --user show: ActiveState=active SubState=elapsed NextElapseUSecRealtime empty",
+        "Unit description: Active Trader Session 1 capture \u2014 Mon 2026-07-27"
+      ],
+      "output_signal": {
+        "kind": "none"
+      },
+      "note": "RETIRED spent one-shot. Declared so find_undeclared covers the timer; do not re-enable as recurring."
+    },
+    {
+      "lane_id": "at-observation-01-closeout",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "at-observation-01-closeout.timer"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "RETIRED",
+      "state_since": "2026-07-27",
+      "state_reason": "One-shot OnCalendar=2026-07-27 10:12:00; timer SubState=elapsed with no NextElapse. Session-1 closeout is spent, not a recurring producer.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": [
+        "systemctl --user cat at-observation-01-closeout.timer: OnCalendar=2026-07-27 10:12:00 Persistent=false",
+        "systemctl --user show: ActiveState=active SubState=elapsed NextElapseUSecRealtime empty",
+        "Unit description: Active Trader Session 1 closeout \u2014 Mon 2026-07-27"
+      ],
+      "output_signal": {
+        "kind": "none"
+      },
+      "note": "RETIRED spent one-shot. Declared so find_undeclared covers the timer; do not re-enable as recurring."
+    },
+    {
+      "lane_id": "advisory-shadow-seed",
+      "owner": "cio",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-advisory-shadow-seed.timer"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/cio/agent_tool_traces.jsonl"
+      },
+      "note": "advisory_shadow_seed.py appends FS heartbeat to agent_tool_traces.jsonl (+ aif_memory admission)."
+    },
+    {
+      "lane_id": "cio-material-scan",
+      "owner": "cio",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-cio-material-scan.timer"
+      },
+      "expected_cadence_hours": 0.25,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/audit/cio_material_scan_last.json"
+      },
+      "note": "cio_material_scan --live receipt at data/audit/cio_material_scan_last.json (release-local audit/, not PS overlay)."
+    },
+    {
+      "lane_id": "p1-digest-delivery",
+      "owner": "notifications",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "0 */4 * * * p1_digest_sender.py",
+        "match": "p1_digest_sender.py"
+      },
+      "expected_cadence_hours": 4,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "/home/johnclaw/trade-ai-releases/persistent-state/state/p1_digest_watermark.json",
+        "key": "as_of"
+      },
+      "note": "Delivers the P1_DIGEST tier, which had no sender: a P1_DIGEST verdict archived the message to telegram_outbox and returned False, and nothing pushed the archive (4,387 archived vs 1,707 delivered since 2026-07-02). Installed 2026-09-01, operator-authorised. The output_signal is the SHARED watermark, deliberately not a checkout-relative path: a per-tree watermark re-sent 33 already-delivered messages when the job ran from a second tree."
     }
   ],
   "undeclared_baseline": [
@@ -672,8 +1133,6 @@
     "*/5 * * * * bash /home/johnclaw/.config/tradeai/bin/telegram_poller_watchdog_current.sh",
     "*/5 * * * * bash /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/cleanup_stale_locks.sh",
     "*/5 * * * * cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/hermes_event_feeder.lock $PY scripts/hermes_score_event_feeder.py --apply >> logs/hermes_event_feeder.log 2>&1",
-    "*/5 * * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/cio_wake_dispatch_entrypoint.py >> logs/cio_wake_dispatcher.log 2>&1  # 24/7 2026-08-27: was 9-16 M-F. Catalysts, filings and overnight news do not keep market hours; a wake created outside the window sat unprocessed until the next weekday morning.",
-    "*/5 * * * * cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && flock -n /tmp/cron_freshness_watcher.lock .venv/bin/python scripts/cron_freshness_watcher.py >> logs/cron_freshness_watcher.log 2>&1",
     "*/5 15 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && flock -n /tmp/options_lifecycle.lock bash -c \"set -a; . ./.env; set +a; .venv/bin/python scripts/options_lifecycle_run.py\" >> logs/options_lifecycle.log 2>&1",
     "*/5 6-11 * * 1-5 cd $PROJ && bash $PROJ/scripts/run_scalp_shadow_logger.sh >> logs/scalp_shadow_logger.log 2>&1",
     "*/5 6-11 * * 1-5 cd $PROJ && flock -n /tmp/tradeai_finviz_momentum_scalp.lock timeout 200 $PY scripts/run_finviz_momentum_scalp_scan.py --window early --apply --skip-finviz-refresh --sync-signals --generate-proposals --run-validation-fast-path --submit-validation >> logs/finviz_momentum_scalp_scan.log 2>&1",
@@ -1092,8 +1551,6 @@
     "@reboot sleep 60 && cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && systemctl --user start trade-ai-lab-moomoo-opend.service >> logs/moomoo_opend_health.log 2>&1  # belt-and-braces: systemd linger already autostarts it, this covers a failed/disabled unit",
     "aegis-overnight.timer",
     "aegis-surveillance.timer",
-    "at-observation-01-closeout.timer",
-    "at-observation-01.timer",
     "db-retention.timer",
     "hermes-advisory-cache-worker.timer",
     "hermes-backlog-health-check.timer",
@@ -1101,15 +1558,12 @@
     "hermes-embedding-promotion-review.timer",
     "hermes-external-feedback.timer",
     "hermes-librarian-backlog-loop.timer",
-    "hermes-momentum-catalyst-morning.timer",
     "hermes-observation-check.timer",
     "hermes-shadow-scorer.timer",
     "hermes-source-discovery-dryrun.timer",
-    "hermes-update-check.timer",
     "high-llm-execution-worker.timer",
     "launchpadlib-cache-clean.timer",
     "mcporter-token-refresh.timer",
-    "portfolio-price-cache.timer",
     "recovery-watch.timer",
     "snap.firmware-updater.firmware-notifier.timer",
     "systemd-tmpfiles-clean.timer",
@@ -1117,9 +1571,7 @@
     "tradeai-advisory-lessons-reflect.timer",
     "tradeai-advisory-notif-broker.timer",
     "tradeai-advisory-outcome-scorer.timer",
-    "tradeai-advisory-shadow-seed.timer",
     "tradeai-advisory-shadow-session.timer",
-    "tradeai-agent-runtime-health.timer",
     "tradeai-agent-runtime-producer.timer",
     "tradeai-agent-runtime@aegis.timer",
     "tradeai-agent-runtime@alex.timer",
@@ -1138,29 +1590,10 @@
     "tradeai-agent-runtime@steph.timer",
     "tradeai-agent-runtime@tax_agent.timer",
     "tradeai-agent-runtime@vega.timer",
-    "tradeai-autonomy-watchdog.timer",
     "tradeai-backup-enforcer.timer",
-    "tradeai-cio-defer-revisit.timer",
-    "tradeai-cio-delivery.timer",
-    "tradeai-cio-desk-memo-regen.timer",
-    "tradeai-cio-material-scan.timer",
-    "tradeai-cio-memory-shadow-measure.timer",
-    "tradeai-cio-nightly-reflection.timer",
-    "tradeai-due-checkpoints.timer",
-    "tradeai-free-first-circulation.timer",
-    "tradeai-governance-pipeline.timer",
     "tradeai-hermes-cio-worker.timer",
-    "tradeai-holdings-agent-enqueue.timer",
     "tradeai-iris-taxonomy.timer",
     "tradeai-maturity-feeds.timer",
-    "tradeai-portfolio-backup-cadence.timer",
-    "tradeai-portfolio-daily-cadence.timer",
-    "tradeai-portfolio-lookthrough-cadence.timer",
-    "tradeai-portfolio-monthly-cadence.timer",
-    "tradeai-portfolio-weekly-cadence.timer",
-    "tradeai-provider-cost-reconcile.timer",
-    "tradeai-sm-render.timer",
-    "tradeai-tax-lots-rebuild.timer",
     "tradeai-watch-decision-scheduler.timer",
     "ubuntu-insights-collect.timer",
     "ubuntu-insights-upload.timer"

@@ -1,5 +1,9 @@
 # Wave briefs
 
+Status:      ACTIVE
+as_of:       2026-08-30T22:01:17-04:00
+Measured at: efcc51365 / not measured
+
 A **brief** is the instruction that starts a wave of work: what the wave is for,
 what it must not do, and what would count as having finished. It is written by
 the operator and it is the authority for that wave. These files exist so a

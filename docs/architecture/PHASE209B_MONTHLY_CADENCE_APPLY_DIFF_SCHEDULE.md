@@ -1,5 +1,9 @@
 # Phase 209B — Monthly Cadence Apply + Diff + Schedule — 2026-06-07
 
+Status:      HISTORICAL
+as_of:       2026-06-07T12:11:21-04:00
+Measured at: efcc51365 / not measured
+
 ## Parallel apply (209E)
 `--cadence monthly --apply` → **exit 0, 841s (~14 min — longest chain)**, `overall=ok`. Step
 `portfolio_monthly_report` ok (`PORTFOLIO_ADVISORY_DRAFT_REVIEW_ONLY`); price_cache + db_retention

@@ -1,5 +1,9 @@
 # Portfolio Re-Entry — Requirements Contract v2
 
+Status:      ACTIVE
+as_of:       2026-07-23T13:32:16-04:00
+Measured at: efcc51365 / not measured
+
 ## Purpose
 
 Re-Entry is a persistent decision workstation beneath Portfolio for every position exited during the trailing twelve months. It must answer:

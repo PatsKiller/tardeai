@@ -1,5 +1,9 @@
 # CIO validation sweep V1–V5 — 2026-08-30
 
+Status:      HISTORICAL
+as_of:       2026-08-30T12:55:16-04:00
+Measured at: efcc51365 / not measured
+
 Agent A1, Wave A. Authority **READ_ONLY_ADVISORY**, **MBI_BEHAVIOR=0**.
 Nothing promoted, merged, deployed. No cron installed. No Telegram, no vendor call.
 

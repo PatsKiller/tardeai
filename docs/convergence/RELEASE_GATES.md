@@ -1,5 +1,9 @@
 # R20–R24 release gates
 
+Status:      ACTIVE
+as_of:       2026-08-26T14:08:51-04:00
+Measured at: efcc51365 / not measured
+
 Do not mix these.
 
 ## LOCAL_R20_R24_READY_FOR_SYNC

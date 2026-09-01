@@ -1,5 +1,9 @@
 # Phase 4B Approvals — Apply Report
 
+Status:      HISTORICAL
+as_of:       2026-05-25T15:20:26-04:00
+Measured at: efcc51365 / not measured
+
 | Field | Value |
 |-------|-------|
 | Timestamp | 2026-05-25T15:20:26-04:00 |

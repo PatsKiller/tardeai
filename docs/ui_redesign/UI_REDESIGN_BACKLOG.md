@@ -1,5 +1,9 @@
 # UI Redesign Backlog
 
+Status:      HISTORICAL
+as_of:       2026-05-25T11:12:43-04:00
+Measured at: efcc51365 / not measured
+
 Generated: 2026-05-25
 
 ---

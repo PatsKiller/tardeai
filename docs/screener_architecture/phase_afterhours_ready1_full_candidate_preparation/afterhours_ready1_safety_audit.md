@@ -1,5 +1,9 @@
 # AFTERHOURS-READY-1 — Safety Audit
 
+Status:      HISTORICAL
+as_of:       2026-05-19T21:01:07-04:00
+Measured at: efcc51365 / not measured
+
 | Check | Status |
 |-------|--------|
 | ALPACA_MODE=paper | PASS |

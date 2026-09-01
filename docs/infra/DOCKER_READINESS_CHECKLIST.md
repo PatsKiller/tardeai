@@ -1,5 +1,9 @@
 # Docker Readiness Checklist
 
+Status:      ACTIVE
+as_of:       2026-05-31T17:44:35-04:00
+Measured at: efcc51365 / not measured
+
 Must pass ALL checks before any container pilot.
 
 ## Preflight

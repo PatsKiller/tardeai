@@ -1,5 +1,9 @@
 # CIO Watch → S7 wire (Fix #2) — 2026-08-20
 
+Status:      HISTORICAL
+as_of:       2026-08-20T16:01:57-04:00
+Measured at: efcc51365 / not measured
+
 **READ_ONLY_ADVISORY.** No orders/stops. `CIO_TELEGRAM_INTERDICT=1` stays on. No Fix #1 reentry rewrite. No S1 cap redesign.
 
 ## Problem
@@ -10,16 +14,16 @@ Watch producer (`list_watch_intelligence`) was **LIVE**; gap was evidence plumbi
 
 ## Fix
 
-1. `normalize_watch_s7_status` / `project_watch_intelligence_for_cio` in  
-   `scripts/lib/data_broker/watch_intelligence.py`  
-   - Promotion-grade only → `READY` | `GO` | `NEAR`  
-   - `proposal_allowed` → READY  
-   - `trade_ai_state` READY/GO/PROMOTE/… → READY or GO  
-   - `near_trigger` / `is_near_trigger` → NEAR (`strong_near` if no score)  
+1. `normalize_watch_s7_status` / `project_watch_intelligence_for_cio` in
+   `scripts/lib/data_broker/watch_intelligence.py`
+   - Promotion-grade only → `READY` | `GO` | `NEAR`
+   - `proposal_allowed` → READY
+   - `trade_ai_state` READY/GO/PROMOTE/… → READY or GO
+   - `near_trigger` / `is_near_trigger` → NEAR (`strong_near` if no score)
    - WAIT / MANAGING / street alone → **BLOCK** (no spam)
-2. `_domain_watch_intelligence` in `scripts/lib/data_broker/cio_portfolio.py`  
-   - Collector for domain `watch_intelligence` (broker + project)  
-   - Domain `watch` remains thesis `watchlist.json` for legacy readers  
+2. `_domain_watch_intelligence` in `scripts/lib/data_broker/cio_portfolio.py`
+   - Collector for domain `watch_intelligence` (broker + project)
+   - Domain `watch` remains thesis `watchlist.json` for legacy readers
    - Fail-soft → `DATA_UNAVAILABLE` (no raise)
 
 `eval_s7` unchanged.
@@ -51,9 +55,9 @@ PY
 
 ## Non-goals
 
-- Telegram / notify enable  
-- Bulk S7 plans for all watch names  
-- Hermes force-enqueue / thesis backfill / closing S1 flood  
+- Telegram / notify enable
+- Bulk S7 plans for all watch names
+- Hermes force-enqueue / thesis backfill / closing S1 flood
 
 ## Follow-on
 

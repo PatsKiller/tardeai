@@ -1,5 +1,9 @@
 # Phase 204 — Portfolio Backup-Cadence Fix & Pilot — CLOSEOUT
 
+Status:      HISTORICAL
+as_of:       2026-06-05T12:24:22-04:00
+Measured at: efcc51365 / not measured
+
 Date: 2026-06-05 · Branch: main. Isolated the degraded backup step, fixed it, and piloted the
 cadence-aware controller's **backup cadence only** (scheduled, parallel, no retirement).
 

@@ -1,5 +1,9 @@
 # CIO Prompt & Input Audit — 2026-07-01
 
+Status:      HISTORICAL
+as_of:       2026-07-02T01:07:57-04:00
+Measured at: efcc51365 / not measured
+
 Audit of the prompts and input data submitted to the LLMs that produce the **CIO View**
 (`watchlist_final_synthesis`) — for maturity and tightness, to improve output quality.
 Triggered by observed cases where the CIO's own output flagged input problems (e.g. AZN:

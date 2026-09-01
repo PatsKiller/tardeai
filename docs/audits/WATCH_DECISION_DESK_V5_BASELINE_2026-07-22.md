@@ -1,5 +1,9 @@
 # Watch Decision Desk V5 — Baseline & Source Audit (2026-07-22)
 
+Status:      HISTORICAL
+as_of:       2026-07-22T10:35:40-04:00
+Measured at: efcc51365 / not measured
+
 ## Git / deploy baseline
 
 | item | value |

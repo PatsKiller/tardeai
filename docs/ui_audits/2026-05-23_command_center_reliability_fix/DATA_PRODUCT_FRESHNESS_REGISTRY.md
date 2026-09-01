@@ -1,5 +1,9 @@
 # Data Product Freshness Registry
 
+Status:      HISTORICAL
+as_of:       2026-05-24T11:44:41-04:00
+Measured at: efcc51365 / not measured
+
 Defines dashboard-critical data products, their expected cadence, staleness thresholds, and operator remediation.
 
 | Product | Owner Script | Schedule | Max Stale (h) | Source | Downstream Pages | Alert Tier |

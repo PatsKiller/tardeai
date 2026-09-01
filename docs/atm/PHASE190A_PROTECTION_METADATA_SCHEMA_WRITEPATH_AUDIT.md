@@ -1,5 +1,9 @@
 # PHASE 190A — Protection Metadata Schema & Write-Path Audit
 
+Status:      HISTORICAL
+as_of:       2026-06-02T10:33:34-04:00
+Measured at: efcc51365 / not measured
+
 **Run:** 2026-06-02 ~09:50 ET · Alpaca **paper** only · Read-only audit
 
 ---

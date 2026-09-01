@@ -1,5 +1,9 @@
 # Monday ATM Burn-In Checklist
 
+Status:      ACTIVE
+as_of:       2026-05-23T15:34:57-04:00
+Measured at: efcc51365 / not measured
+
 Run at 09:00 ET (35 min before market open).
 
 ## Health (5 min)

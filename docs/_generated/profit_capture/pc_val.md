@@ -1,5 +1,9 @@
 # Profit-Capture Rule Quality Validation
 
+Status:      ACTIVE
+as_of:       2026-06-14T03:30:37-04:00
+Measured at: efcc51365 / not measured
+
 **Verdict: PASS** (14/14)
 
 | check | pass | detail |

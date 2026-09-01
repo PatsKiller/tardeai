@@ -1,5 +1,9 @@
 # Phase 202C — Portfolio-Maintenance Controller Hardening
 
+Status:      HISTORICAL
+as_of:       2026-06-05T11:00:13-04:00
+Measured at: efcc51365 / not measured
+
 `scripts/pipelines/run_portfolio_maintenance_pipeline.sh` upgraded from 199E skeleton to a real
 executor for **P0-safe** jobs only. No schedule wired yet (202G).
 

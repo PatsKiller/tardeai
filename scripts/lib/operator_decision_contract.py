@@ -43,6 +43,13 @@ INVALID = "OPERATOR_PRODUCT_INVALID"
 NOT_PROVIDED = "NOT_PROVIDED"
 PROVIDED = "PROVIDED"
 
+# Wave 3b — standing cadence is a constant, not a dated catalyst judgment.
+# When the producer supplies no next_review, do not leave this sentence in a
+# register that implies a per-name review date (A6 / Part 2 §5.1).
+STANDING_CADENCE_TEMPLATE = (
+    "next material generation or next session — standing cadence, not a dated catalyst"
+)
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
@@ -128,15 +135,39 @@ def normalize_decision(row: dict[str, Any], *, generation_id: str | None = None,
         block_status = PROVIDED  # explicit empty list = none blocking
     nrev, nrev_status = _explicit(
         row.get("next_review") or row.get("next_review_at"),
-        empty="next material generation or next session — standing cadence, not a dated catalyst",
+        empty=STANDING_CADENCE_TEMPLATE,
     )
-    dq = row.get("data_quality") or "OK"
+    # 2026-08-31 (A2): this defaulted to "OK". An absent field must never render
+    # as an affirmative all-clear -- the brief printed "Data quality: OK" under
+    # every decision in a document whose own holdings verdict was ATTENTION with
+    # REPRICE_AHEAD_OF_POSITIONS and CASH_TOTAL_DISAGREEMENT. None here lets the
+    # renderer say "not computed", which is true, instead of "OK", which was not.
+    dq = row.get("data_quality")
 
     payload = f"{entity}|{action}|{generation_id or ''}|{what}"
     did = row.get("decision_id") or ("dec_" + hashlib.sha256(payload.encode()).hexdigest()[:16])
 
     if action == "INSUFFICIENT_DATA":
         dq = "INSUFFICIENT_DATA"
+
+    # W3 3b — demote standing cadence off the dated-catalyst judgment fields.
+    # Value remains on standing_cadence_template (class T). next_review*_at stay
+    # present for REQUIRED_FIELDS / completeness, but only as the demoted
+    # pointer when no producer date was supplied.
+    if nrev_status == NOT_PROVIDED:
+        dated_catalyst = False
+        next_review_role = "standing_cadence_template"
+        standing_cadence = STANDING_CADENCE_TEMPLATE
+        # Keep the sentence available under the honest template name; clear the
+        # judgment-shaped aliases so cards that prefer next_review do not treat
+        # a constant as a per-name dated catalyst. Completeness accepts the
+        # demotion via standing_cadence_template + field_status (below).
+        nrev_display = None
+    else:
+        dated_catalyst = True
+        next_review_role = "dated_catalyst"
+        standing_cadence = None
+        nrev_display = nrev
 
     return {
         "decision_id": did,
@@ -158,8 +189,12 @@ def normalize_decision(row: dict[str, Any], *, generation_id: str | None = None,
         "data_quality": dq,
         "created_at": created,
         "last_confirmed_at": confirmed,
-        "next_review_at": nrev,
-        "next_review": nrev,
+        "next_review_at": nrev_display,
+        "next_review": nrev_display,
+        "standing_cadence_template": standing_cadence,
+        "next_review_role": next_review_role,
+        "next_review_is_dated_catalyst": dated_catalyst,
+        "next_review_class": "T" if not dated_catalyst else "A",
         "field_status": {
             "confidence": conf_status,
             "supporting_evidence": support_status,
@@ -201,6 +236,17 @@ def completeness(product: dict[str, Any]) -> dict[str, Any]:
                     partial.append(f"decisions[{i}].confidence")
                 else:
                     missing.append(f"decisions[{i}].confidence")
+            elif f == "next_review_at" and (v is None or v == ""):
+                # W3 3b — demoted standing cadence is partial, not missing.
+                fs = (d.get("field_status") or {}).get("next_review_at")
+                if (
+                    fs == NOT_PROVIDED
+                    and d.get("standing_cadence_template")
+                    and d.get("next_review_role") == "standing_cadence_template"
+                ):
+                    partial.append(f"decisions[{i}].next_review_at")
+                else:
+                    missing.append(f"decisions[{i}].{f}")
             elif f != "confidence" and (v is None or v == ""):
                 missing.append(f"decisions[{i}].{f}")
         fs = d.get("field_status") or {}

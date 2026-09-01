@@ -1,5 +1,9 @@
 # Held-book thesis coverage (Phase 1) — 2026-08-20
 
+Status:      HISTORICAL
+as_of:       2026-08-20T21:01:28-04:00
+Measured at: efcc51365 / not measured
+
 **READ_ONLY_ADVISORY.** First Build of the autonomous advisor spine.
 
 ## Problem

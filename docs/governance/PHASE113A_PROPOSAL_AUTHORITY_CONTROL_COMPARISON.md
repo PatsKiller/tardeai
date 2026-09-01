@@ -1,5 +1,9 @@
 # Phase 113A — Proposal Authority Control Comparison
 
+Status:      HISTORICAL
+as_of:       2026-06-01T15:53:13-04:00
+Measured at: efcc51365 / not measured
+
 ## Hermes vs TradeAI: Can Hermes Produce Proposals?
 
 The question is not "whose research is better" but "what controls exist for each path."

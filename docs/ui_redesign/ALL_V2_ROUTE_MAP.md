@@ -1,5 +1,9 @@
 # Trade AI Command Center v2 -- Full Route Map
 
+Status:      HISTORICAL
+as_of:       2026-05-25T10:45:00-04:00
+Measured at: efcc51365 / not measured
+
 Generated: 2026-05-25 (Memorial Day)
 Source: `apps/command-center-v2/src/App.tsx` + `components/Shell.tsx`
 Baseline commit: `8e938dca`

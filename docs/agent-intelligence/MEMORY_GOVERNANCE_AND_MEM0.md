@@ -1,5 +1,9 @@
 # Memory Governance & Mem0 Shadow Pilot
 
+Status:      ACTIVE
+as_of:       2026-08-17T23:11:04-04:00
+Measured at: efcc51365 / not measured
+
 Phase 4 of the Agent Intelligence Foundation. `READ_ONLY_ADVISORY`.
 
 This document records the memory-provider abstraction, the Mem0 due diligence

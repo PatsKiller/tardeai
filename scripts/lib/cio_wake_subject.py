@@ -38,6 +38,11 @@ AUTHORITY = "READ_ONLY_ADVISORY"
 
 # Verdicts this module can return for a wake.
 PROCEED = "proceed"
+# Honours a future next_eligible_at already on the record. The ordinary writer
+# of that field on a normal (non-reject, non-defer) completion is
+# cio_rehydrate.apply_after_cycle → ROUTINE_LOOK_DAYS (#732). This module does
+# not stamp; it consults. A stamp that exists only after rejection/defer would
+# make this skip a failure-path artefact, not cadence.
 SKIP_CADENCE = "skip/cadence_not_due"
 NO_SUBJECT = "proceed/no_subject"
 NO_RECORD = "proceed/no_record"

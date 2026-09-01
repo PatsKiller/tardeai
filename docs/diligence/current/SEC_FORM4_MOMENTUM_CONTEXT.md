@@ -1,5 +1,9 @@
 # SEC / Form 4 — Momentum Catalyst Context
 
+Status:      ACTIVE
+as_of:       2026-06-28T22:23:05-04:00
+Measured at: efcc51365 / not measured
+
 _SEC/Form 4 as a **supporting evidence** source for momentum_scalp. Implemented in
 `scripts/run_sec_form4_momentum_context.py` (scheduled wrapper) + `scripts/sec_form4_source_maturity.py`
 (context classifier + maturity scorer); covered by `tests/test_sec_form4_momentum_context.py`._

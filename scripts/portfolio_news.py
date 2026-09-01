@@ -7,8 +7,8 @@ Surfaces:
   - Weekly DOCX report
   - Monthly DOCX report
 
-Uses: catalyst_enrichment.py (7 API sources), Brave search (threshold),
-      Ollama local LLM (scoring/curation), social_sentiment.py
+Uses: catalyst_enrichment.py (7 API sources), Finviz/Yahoo enrich (F2; not
+      Brave search API), Ollama local LLM (scoring/curation), social_sentiment.py
 """
 import json, os, time, hashlib, requests
 from datetime import datetime, timedelta
@@ -22,7 +22,10 @@ HISTORY_DAYS = 90
 from local_llm_config import get_local_llm_model, get_local_llm_base_url
 OLLAMA_MODEL = get_local_llm_model()
 OLLAMA_URL = get_local_llm_base_url().rstrip("/") + "/api/chat"
-BRAVE_SCORE_THRESHOLD = 70  # Only Brave-enrich catalysts scoring >= this
+# F2: was Brave-enrich at score>=70. Search API is residual-web only;
+# high-score enrichment now uses Finviz/Yahoo (RSS/export), same threshold.
+NON_SEARCH_ENRICH_THRESHOLD = 70
+BRAVE_SCORE_THRESHOLD = NON_SEARCH_ENRICH_THRESHOLD  # back-compat alias
 MAX_PORTFOLIO_TICKERS = 40
 FIDELITY_PREFIXES = ("FID-", "SS-", "TRP-", "JPM-", "VANG-", "WM-", "AB-", "SP500-")
 SKIP_SYMBOLS = {"CASH", "--", "SNSXX", "SWVXX", "SPRXX", "VMFXX", "FDRXX"}
@@ -54,41 +57,50 @@ def _ollama(prompt, max_tokens=500):
         return f"LLM error: {e}"
 
 
-def _brave_search(query, count=3):
-    """Search Brave for enrichment context on high-scoring catalysts.
+def _non_search_enrich(symbol: str, title: str = "", count: int = 3):
+    """F2: enrich high-score catalysts via Finviz/Yahoo — not the search API.
 
-    Routed through the budgeted client. This ran once per catalyst scoring >= 70
-    with no cap on how many that was, and none of it reached the budget ledger.
+    AGENTS.md: web search serves residual-web (≤1 hop/subject/day, N=3), not
+    bulk news. News belongs on RSS and Finviz. Empty → [] (never fabricate;
+    never fall through to an unbudgeted Brave client).
     """
-    try:
-        from brave_search import search as _budgeted_search
-        return _budgeted_search(query, count=count,
-                                project_root=str(Path(__file__).resolve().parent.parent),
-                                caller="portfolio_news")
-    except ImportError:
-        pass
-    key = _env("BRAVE_SEARCH_API_KEY")
-    if not key:
+    sym = (symbol or "").upper().strip()
+    if not sym:
         return []
+    out: List[Dict[str, Any]] = []
     try:
-        r = requests.get("https://api.search.brave.com/res/v1/news/search",
-            headers={"X-Subscription-Token": key, "Accept": "application/json"},
-            params={"q": query, "count": count, "freshness": "pw"},
-            timeout=15)
-        if r.status_code != 200:
-            return []
-        results = []
-        for item in r.json().get("results", [])[:count]:
-            results.append({
-                "title": item.get("title", ""),
-                "url": item.get("url", ""),
-                "description": item.get("description", "")[:200],
-                "source": item.get("meta_url", {}).get("hostname", ""),
-                "age": item.get("age", ""),
+        from finviz_news import fetch_finviz_news
+        for a in fetch_finviz_news(sym, lookback_hours=72)[:count]:
+            out.append({
+                "title": a.get("headline") or a.get("title") or "",
+                "url": a.get("url") or "",
+                "description": str(a.get("original_source") or a.get("source") or "")[:200],
+                "source": "finviz_news",
+                "age": "",
             })
-        return results
-    except:
-        return []
+    except Exception:
+        pass
+    if len(out) < count:
+        try:
+            from yahoo_news import fetch_yahoo_news
+            for a in fetch_yahoo_news(sym, lookback_hours=72)[: max(0, count - len(out))]:
+                out.append({
+                    "title": a.get("headline") or a.get("title") or "",
+                    "url": a.get("url") or "",
+                    "description": str(a.get("source") or "yahoo")[:200],
+                    "source": "yahoo_news",
+                    "age": "",
+                })
+        except Exception:
+            pass
+    return out[:count]
+
+
+def _brave_search(query, count=3):
+    """Deprecated alias — F2 re-points news enrichment off the search API."""
+    # Best-effort: first token may be the symbol from "SYM title…"
+    sym = str(query or "").split()[0] if query else ""
+    return _non_search_enrich(sym, title=str(query or ""), count=count)
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -219,18 +231,18 @@ def collect_portfolio_news(portfolio: Dict, state_dir: Path, root: str = ".") ->
         scored.extend(_wl_scored)
         scored.sort(key=lambda x: -x.get("llm_score", 0))
 
-    # Brave-enrich top-scoring catalysts
-    brave_enriched = []
+    # F2: Finviz/Yahoo-enrich top-scoring catalysts (not Brave search API)
+    brave_enriched = []  # name kept for snapshot schema back-compat
     for c in scored:
-        if c.get("llm_score", 0) >= BRAVE_SCORE_THRESHOLD:
+        if c.get("llm_score", 0) >= NON_SEARCH_ENRICH_THRESHOLD:
             sym = c.get("portfolio_symbol", "")
-            query = f"{sym} {c.get('title', '')[:50]}"
-            brave = _brave_search(query, count=2)
-            if brave:
-                c["brave_context"] = brave
+            enrich = _non_search_enrich(sym, title=c.get("title", "")[:50], count=2)
+            if enrich:
+                c["brave_context"] = enrich  # schema key retained; sources are finviz/yahoo
+                c["enrich_sources"] = sorted({e.get("source") for e in enrich if e.get("source")})
                 brave_enriched.append(sym)
     if brave_enriched:
-        print(f"  [portfolio-news] Brave-enriched {len(brave_enriched)} high-scoring catalysts")
+        print(f"  [portfolio-news] RSS/Finviz-enriched {len(brave_enriched)} high-scoring catalysts")
 
     # Build daily snapshot
     today = datetime.now().strftime("%Y-%m-%d")

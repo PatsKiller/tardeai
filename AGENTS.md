@@ -114,7 +114,7 @@ READ_ONLY_ADVISORY
 > `agent_feature_flags.py` — "memory may shape advisory context (default 0)" — but it is a
 > different control, and most of its read sites copy it into a payload for reporting.
 >
-> **The rail is the unconditional raise at `scripts/lib/cio_instrument_record.py:343`.** It
+> **The rail is the unconditional raise at `scripts/lib/cio_instrument_record.py:390`.** It
 > consults no environment variable and no flag. `BEHAVIOR_FIELDS` is the list; the raise is the
 > enforcement; `"MBI_BEHAVIOR=0"` appears only inside the error string.
 >
@@ -320,6 +320,49 @@ served release. Both are required.
   the cron form, not a convenient one.** A repair inside `scripts.lib` cannot run before `scripts`
   resolves.
 - **A gate that edits source must verify its own edit still compiles.**
+- **Process-local state cannot hold a cross-invocation guarantee.** A
+  module-level dict in a one-shot cron or systemd process is empty at every
+  invocation. If a guarantee spans invocations — dedupe, rate limit, budget,
+  cap — its state must be durable, or **the guarantee does not exist**. *Cause:
+  `_dedupe_cache`, `_hourly_counts`, `_last_health`; `mark_sent()` wrote to a
+  dict that died microseconds later, and a "max 2 per day" cap passed
+  unconditionally on every cold start.*
+- **A mode flag that disables a control is a finding, not a configuration.** Any
+  `OFF` on a control path must be reported by the health surface. *Cause:
+  `TELEGRAM_NORMALIZATION_MODE=OFF` left two tables at 0 rows; the router at
+  `runtime_mode: OFF` made correct routing unreachable; and the digest queue held
+  one row from May while the code reported messages queued.*
+- **Never fix an alarm without fixing what it alarmed on.** Removing a red that
+  reported a real outage is a regression, not a fix. *Cause: fixing an
+  `UnboundLocalError` took the stage-error count from two to one, so the
+  orchestrator began exiting 0 — ten consecutive silent successes while a Finviz
+  outage aged from 64h to 97h.*
+- **Bound by the thing you are bounding.** A cache bounded by a line count, a
+  window bounded by a calendar day, a dedupe bounded by a run id — each drifts
+  from what it is supposed to bound. *Cause: `splitlines()[-500:]` against a
+  time-based TTL, 71 sends from silently losing its own history; and a weekend
+  gate that asked whether today is Saturday rather than whether the lookback
+  window contained hours the writer runs.*
+- **Finviz HTTP 200 without a CSV header is not cookie expiry by default.** A
+  rate-limit or transient HTML page can return 200 with no `Ticker` header; only
+  a login/sign-in body is cookie expiry. Screener paths must try `FINVIZ_API_TOKEN`
+  `&auth=` backstop before declaring auth dead — see §13.6.
+- **Session-cache heal is not data recovery.** `heal_trade_ai_session_cache.py`
+  patches `run_date` in place; when upstream producers return zero tickers it
+  preserves **0** tickers and clears `stale` without restoring content. That is
+  a session anchor, not a Finviz fix — see §13.6 and
+  `docs/audits/STALE_DATA_RCA_AND_REMEDIATION_PLAN_2026-09-01.md`.
+
+**Detector shape, further instances** — each a working tool answering an adjacent
+question:
+
+| detector | keyed on | could never see |
+|---|---|---|
+| OS scheduler search | cron and systemd | a scheduler running inside another process — OpenClaw's is in its gateway |
+| `import_module` in an import guard | whether the module executes | a name with no referent, vs an optional dependency absent here |
+| a `**` pathspec | `scripts/**/*.py` | top-level `scripts/*.py` — under-reported 50 files as 3, three times in one session |
+| a source grep for a fixed string | the string appearing anywhere | the difference between code and a comment quoting it |
+| `attempts_24h` on a research lane | **rows the child wrote** | a child that never started — `subprocess.run` raising `FileNotFoundError` writes no row, so *called and failing quietly* and *no caller* read identically |
 
 ## Investigation method
 
@@ -358,7 +401,15 @@ looking for would exhibit it.**
 | a synthetic bootstrap probe | one import spelling | the spelling the failing job uses |
 
 Each was a working tool answering an adjacent question. **A broken tool gets investigated; these
-reported cleanly.** **Positive-control before publishing a zero** — inject a known instance and
+reported cleanly.**
+
+> **The `attempts_24h` case is the one to remember**, because that metric is read as ground
+> truth across this programme. The deepseek lane showed `attempts_24h=0` for nine days and every
+> reader concluded nothing was calling it. Its scheduler ran on time, every weekday, and died at
+> `subprocess.run` before the child could write the row the metric counts. **A counter of
+> completed work cannot distinguish work never started from work that failed on its first
+> instruction.** When a lane reads zero, establish which of the two it is before reasoning from
+> it — they have opposite fixes. **Positive-control before publishing a zero** — inject a known instance and
 confirm the detector finds it.
 
 ## Controls whose name exceeds their code
@@ -372,7 +423,7 @@ some code path reads it.**
 | `BehaviorWriteRefused` | behaviour writes are refused | InstrumentRecord path only; broker transport not covered |
 | `shadow` (situation detector) | detections are held back | written into a payload, a plan's `extra`, and a run summary. Gates no emission, no plan, no routing. `notify` is the real gate. |
 | `BLOCKED_ACTIONS_WHEN_NOT_READY` | these actions are blocked | defined once, read nowhere |
-| `MBI_BEHAVIOR` | an env var holding the behaviour rail at 0 | not an env var; nothing reads it. All 51 occurrences are prose. The rail is an unconditional raise at `cio_instrument_record.py:343`. |
+| `MBI_BEHAVIOR` | an env var holding the behaviour rail at 0 | not an env var; nothing reads it. All 51 occurrences are prose. The rail is an unconditional raise at `cio_instrument_record.py:390`. |
 
 Three severities:
 
@@ -396,6 +447,12 @@ number.** Spot-checking four, three were legitimate. The sweep is a candidate ge
 - **Never auto-remediate store divergence.**
 - **Validate against a known set; never normalise input to make it valid.** Coercing `"ALEX"` to
   `"alex"` accepts a value the emitter never sent and hides the emitter's bug.
+- **A standard that omits the vocabulary cannot enforce the pre-build check.** An agent searching
+  for a concept under the wrong name concludes honestly and wrongly that nothing exists, and builds
+  a duplicate. *Cause: `AGENTS.md` §13.5 required a pre-build search while the type vocabulary lived
+  only in two diagram documents §19 did not list. A project specification then proposed four new
+  types where three were already registered — in a document whose own constraints forbade exactly
+  that.*
 
 ---
 
@@ -434,6 +491,35 @@ Descending strength. **Only the first two settle a claim about runtime.**
   See `docs/ops/GITHUB_ACTIONS_QUOTA_INCIDENT_2026-08-27.md`. **Do not debug the diff.**
 - **Check a gate can go red where it runs.** A suite in a non-required workflow will run, go red,
   and block nothing.
+- **A guard verified by presence is not a guard.** An alarm, check or gate that has never been
+  observed firing is indistinguishable from its absence. *Cause: a signal writer failed for 24
+  days. Three independent detectors saw it and told the operator nothing — an alarm fired 171
+  times into a bare `except` on an import that has never existed, a durable audit went CRITICAL
+  and is surfaced by nothing, and that audit then read OK because zero input made its condition
+  false. Same shape as STOP_HIT_CLOSE: 98 days, an import of `telegram_bot`, a module that exists
+  in no tree.*
+- **Repairing the reason an alarm was silent is not evidence it now fires.** Fix the cause, then
+  observe the message arrive. *Cause: `send_alert` → `send_telegram` made the import resolve, and
+  the CRITICAL still reached nobody — the router classified it `P1_DIGEST` and suppressed it into
+  `report_capture`'s `reports_archive`, which nothing delivers: the only active digest cron reads
+  a different table. The repair was verified by presence and shipped. The firing test written one
+  wave later is what caught it.*
+- **Two states cannot express "no input."** A health check whose failure condition requires inputs
+  will read healthy when nothing arrives. Give it a third verdict. *Cause: `signal_flow_audit`
+  read OK across a 24-day outage because zero GO scans made `go>0 and after==0` false. The name
+  for that state already existed — `NO_GO_TODAY`, emitted by another writer into the same table —
+  so check before coining a second one.*
+- **A surviving mutation may be an invalid mutation.** Before concluding a test is weak, confirm
+  the mutation actually moved the quantity the test measures. *Cause: twice in one session. A
+  "fix a swallowed alarm" mutation landed on a handler whose `try` contained no alarm call; a
+  `dotenv`-absent simulation patched `builtins.__import__`, which also defeats the `sys.modules`
+  stub under test and failed for a reason CI never would.*
+- **A test that exercises a helper is not a test of the wiring.** *Cause: reverting the docs
+  inventory to `rglob` left the git-aware helper correct and unused, and the test that called the
+  helper directly stayed green. Three pins this session tested a part rather than the caller.*
+- **A Finviz health probe that tries only cookie auth can false-positive "cookie expired"**
+  when `FINVIZ_API_TOKEN` would succeed on the same export URL with `&auth=`. Probe both auth
+  modes before surfacing `data_source_stale` — §13.6.
 
 ## Know what CI green means
 
@@ -499,6 +585,51 @@ accumulates the divergence this document exists to remove.
   action today" reads as a verdict and is `do_n == 0`.
 - **Test sends never go to a live channel without the operator's word**, and a test must not write
   a dedupe marker that suppresses the real send. Back up the marker; restore it by content.
+- **Every alarm has a test that observes it firing, and that test is mutation-tested.** Inject the
+  condition, capture the message at the transport — captured, never sent — and confirm breaking the
+  alarm turns the test red. Record router suppression separately from delivery: a message built and
+  then dropped has not fired. *Coverage is a stated number, not an impression: 11 of 141
+  `send_telegram` sites at 2026-08-31, the rest named in `config/alarm_firing_baseline.txt`.*
+- **Every import on an alarm path resolves — CI-gated.** *`tests/test_alarm_imports_resolve.py`;
+  556 checked, 0 unresolved. Both historical defects (`send_alert`, `telegram_bot`) reproduce it.*
+- **No bare `except` on an alarm path.** The handler records the failure to a durable surface or
+  declares a reason with `ALARM-DELIVERY-DECLARED`. A log line is not a durable surface. *CI-gated
+  against a shrink-only baseline: 65 pure swallows and 46 log-only at 2026-08-31.*
+- **Every health check has a distinct verdict for "no input."** *See the trap above.*
+- **Every store feeding an operator surface declares a cadence and an `output_signal`, and
+  something compares them.** Extend the existing lane monitor; never build a second.
+  *`config/operator_surface_stores.json`, evaluated by `lane_registry.evaluate_lane`. On its first
+  run it reported `strategy_signals` SILENT at 581h and `paper_trade_proposals[momentum_scalp]`
+  SILENT at 1496h. Scope the row to the strategy: the unscoped table read LIVE at 0.6h because
+  other strategies kept writing it, and an aggregate cannot see a per-strategy cliff.*
+- **A verdict that reaches only a log file has not reached the operator.** State plainly which
+  findings surface and which do not. *The store-cadence monitor's SILENT verdict does not yet
+  reach a surface; that is named debt, not a closed item.*
+- **One chokepoint.** Every operator-facing send goes through one transport that
+  applies policy. A direct send path or a router bypass requires a declared
+  reason and is CI-gated. *Cause: 155 producers, ~50 direct API paths, 34 router
+  bypasses across 30 files; what reached the operator was decided by which path a
+  producer happened to use, not by priority.*
+- **Every send records a durable receipt** — message id on success, error on
+  failure. **A send with no receipt is not a send.** *Cause: `sent_telegram` 0 of
+  864 rows and `telegram_sent_at` 0 of 932; nobody could establish which producer
+  emitted 25 repeats, or whether any specific POST succeeded.*
+- **An absent field never defaults to an affirmative value.** Absent renders as
+  `not computed`. *Cause: `Data quality: OK` asserted under every decision in a
+  document whose own verdict was `ATTENTION` with two named defects — while
+  confidence, counterpoint and next-review all honestly said "not provided".*
+- **If the system computes a completeness or quality verdict, the operator
+  surface renders it.** *Cause: `field_status` and `OPERATOR_PRODUCT_PARTIAL`
+  computed on every entry and rendered nowhere; the reader saw four
+  confident-looking lines the machine had already recorded as unpopulated.*
+- **A retry that silently changes the request is a failure swallow.** *Cause: a
+  Markdown 400 triggered a plaintext resend that was never logged, so identifier
+  legibility was decided by underscore parity and nothing recorded which attempt
+  the operator received.*
+- **Notify on transitions, not on evaluations.** A condition that has not changed
+  is not news. *Cause: a stop warning keyed on `(trade_id, alert_type)` with a
+  30-minute window against a 3-minute cadence — 40 interrupts over four trading
+  days, 83% of every row in its own alert table.*
 
 ## 9.2 Model calls
 
@@ -526,6 +657,10 @@ accumulates the divergence this document exists to remove.
 - **Retirement carries its reason**: `# RETIRED <date> lane=<id> reason=<why> owner=<who>
   review_by=<date>`. **Never invent a reason**; an honest `UNKNOWN` is itself a finding.
 - **After install, verify durable evidence on the natural schedule** — a hand-run does not close it.
+- **Data-source lanes declare which credential each path uses.** Screener CSV (`finviz_ingestion.py`,
+  `finviz_screener_runner.py`) prefers `FINVIZ_COOKIE` and falls back to `FINVIZ_API_TOKEN` with
+  `&auth=`; per-ticker enrichment prefers token first. Do not assume one credential covers all
+  paths — §13.6.
 
 ## 9.4 Store writes
 
@@ -686,6 +821,217 @@ Mechanically enforced standards live in `docs/ENGINEERING_HARD_RULES.md`, **hook
 and push**: no secrets in git; no hardcoded values — broker/account-agnostic, config from a source,
 a missing account **fails closed**; `holdings.json` never wiped. Install once after clone:
 `bash scripts/install_git_hooks.sh`. Verify: `python3 scripts/check_no_secrets.py --tree`.
+
+## 13.4 · The type vocabulary — what already exists
+
+**Read this before proposing any new type, store, field, or mechanism.** §13.5's pre-build check
+is unusable without it: an agent cannot search for what it does not know is there.
+
+### Registered id types — `CanonicalStoreRegistry@v1`
+
+```
+workflow_id     event_id        research_id     artifact_id
+generation_id   notification_id checkpoint_id   outcome_id
+lesson_id       operator_turn_id                instrument_record_id
+```
+
+All under `GOOD_PERSISTENT_ROOT`. **A new id type requires justification against these eleven.**
+
+### Subject-key namespace
+
+```
+HELD:SYM        a current position
+EXIT:SYM        a former position, in the re-entry book
+WATCH:SYM       watched, not held
+SECTOR:name     a sector as a first-class subject
+SLEEVE:CASH     the cash sleeve
+INDUSTRY:name   Finviz-derived industry — SPECIFIED, no producer yet
+THEME:slug      operator-declared theme — SPECIFIED, no producer yet
+EVENT:slug      dated watchable event — SPECIFIED, no producer yet
+```
+
+A subject key names an `InstrumentRecord@v1`. **Records can be woken, hold a thesis, carry operator
+turns, and have a cadence. Tags cannot.** If a thing needs research on a schedule, it is a record.
+`INDUSTRY:` / `THEME:` / `EVENT:` are registered prefixes, not shipped
+records. Do not mint them until Phase 1 of
+`docs/architecture/PROJECT_THE_DESK_V2.md` names a scheduled consumer.
+Do not invent a parallel type for any of them.
+
+### `InstrumentRecord@v1` — the persistent unit
+
+```
+subject_key
+thesis · cc_narrative              CC reads cc_narrative; writers rewrite it
+last_event · last_price_hash
+research[] · artifact_ids
+operator_turns[]                   ack / defer / reject / question land HERE
+lessons[]                          cognition only → next question, priority
+analyst · earnings_next
+next_eligible_at · notify_priority
+commitments[]                  SPECIFIED — AgentView staked; no producer
+priors                         SPECIFIED — belief + strength; no producer
+scored_lessons[]               SPECIFIED — outcome-derived only; no producer
+```
+
+Loaded by `load-by-subject` on every wake. `plan_id` on every wake. An operator ack or defer writes
+back onto **this** record.
+
+### Pipeline stages — extend these; do not build alongside them
+
+```
+S0_OPERATOR_CONVERSE      the operator is an event; a Telegram reply is the next S0
+CANONICAL ENTITY          ticker ≠ CUSIP ≠ ETF-without-CIK; dust residual ≠ a position
+MATERIALITY               S1–S7, persist fairness → notify_priority
+GRAPH IMPACT              1-hop, held non-dust only
+RESEARCH GAP              gap vs THIS record, not a blank page
+FREE-FIRST RESEARCH       persistent cognition · Hermes/RAG/FRED · librarian grading
+                          then residual web, gated, ≤1 hop per subject_key per day, budget N=3
+                          then LLM only if unresolved AND materially useful
+SPECIALIST DISPATCHER     thin; no second harness; same workflow_id
+CIOCouncilSynthesis@v1    deterministic; DISPUTED stands
+WRITE BACK                cc_narrative · next_research_question · next_eligible_at · notify_priority
+CIOOperatorProduct@v1     DETERMINISTIC_PRODUCT · $0.00 — CC sections BIND to the record
+NOTIFICATION POLICY       fires only if notify_priority crossed a bar
+                          IMMEDIATE · DIGEST · COMMAND_CENTER_ONLY · SUPPRESSED
+DELIVERY RECEIPT/DEDUPE   sent or would_send, stamped
+OutcomeCheckpoint@v1      plan_id or plan_binding reason, bound at creation
+OUTCOME → LESSON          support-only, cognition apply
+REVIEW_READY              next wake loads the record
+```
+
+### Artifact types
+
+```
+SpecialistArtifact@v1-lite   specialist output; same workflow_id; writers update THE SAME record
+CIOCouncilSynthesis@v1       deterministic synthesis
+CIOOperatorProduct@v1        the operator-facing product
+OutcomeCheckpoint@v1         a checkpoint bound to a plan at creation
+AgentView@v1                 an agent-formed view — claim, reasoning, confidence, falsifier.
+                             Provenance class A. Marked as opinion everywhere it is displayed.
+AGENT_COMMITMENT@v1          subject_key · claim · confidence · horizon · falsifier · checkpoint_id
+                             A view with no falsifier is not a commitment — it is a sentence,
+                             and it does not enter the store.
+                             MBI_BEHAVIOR stays 0: a commitment is a belief, never an order.
+```
+
+**`AgentView@v1` and `AGENT_COMMITMENT@v1` are specified and currently have no producer.** They are
+not missing types. They are unbuilt producers for existing types, and building them is the
+judgment and commitment work in the future-state spec.
+
+### Provenance classes — every operator-facing field carries one
+
+```
+D  deterministic     rule, threshold, arithmetic; reproducible
+T  template          fixed prose around D values; reads as commentary, contains no judgment
+M  model-assisted    a model produced it; a deterministic gate validated it
+A  agent-originated  the agent chose the subject, sought evidence, formed a view
+S  snapshot-derived  reproduced from a stored artifact; may disagree with a live D computation
+```
+
+### Cognition boundary
+
+```
+MBI_BEHAVIOR  = 0    cognition may NEVER move size, weight, order, stop.
+                     BehaviorWriteRefused raises — refused outright, never silently filtered.
+                     Not an env var: an unconditional raise at cio_instrument_record.py:390.
+MBI_COGNITION = 1    cognition MAY move next_research_question, next_eligible_at,
+                     notify_priority, cc_narrative. A write moving none of these raises
+                     CognitionNoOp and is a FAILED persist.
+```
+
+### Dark contracts — do not report these as LIVE
+
+These mechanisms exist in code or spec. They are not scheduled consumers.
+An agent that ships a feature on top of them without wiring the consumer
+is repeating the filing-cabinet defect.
+
+- `load-by-subject` — built, tested, **no scheduled wake consumes it**.
+  Wiring that call is P1 / M5. Until a cron loads the record before
+  `decide()`, persistence is unwired.
+- `OUTCOME` edge — checkpoints exist; settlement is dark. Lessons on
+  disk today are **research-derived**. Do not call them scored.
+- `AgentView@v1` / `AGENT_COMMITMENT@v1` — types registered, **no producer**.
+- librarian grade/stale-out law — tested; **index file absent**.
+- `CIO_TELEGRAM_INTERDICT` — name exceeds code. Before claiming Telegram
+  is interdicted or enabled, grep the **actual send gate** that reaches
+  the operator family and name that symbol. INTERDICT is not that gate.
+
+### Before proposing anything new
+
+1. Which registered id type covers this? If one does, use it.
+2. Which pipeline stage owns this behaviour? If one does, extend it.
+3. Which record field holds this state? If one does, add to it.
+4. Does an existing type have the shape with fields missing? **Add the fields.**
+5. Only then propose something new — **and state in the PR body which of 1–4 you ruled out and
+   why.**
+
+**A PR introducing a new `@v1` type, store, or subsystem without that statement is incomplete.**
+
+## 13.5 · Pre-build check
+
+Before building a new type, store, field, subsystem, or parallel mechanism:
+
+1. **Read §13.4.** The pre-build search is unusable without knowing what already exists. An agent
+   that has not read the type vocabulary will search for the wrong names and conclude, honestly and
+   wrongly, that nothing exists.
+2. Search the hub for the registered id types, subject keys, pipeline stages, and artifact types
+   named in §13.4. Prefer an exact name match over a synonym.
+3. If a match exists, **extend it**. Do not clone it under a new `@v1` name or a parallel store.
+4. If you still propose something new, state in the PR body which of §13.4's five questions you
+   ruled out and why. A PR without that statement is incomplete.
+
+## 13.6 · Operator surface data producers
+
+Read this before touching Finviz auth, screener ingestion, social scalp gates, or stale-data
+auto-remediation. Full RCA: `docs/audits/STALE_DATA_RCA_AND_REMEDIATION_PLAN_2026-09-01.md`.
+
+### Finviz credentials — two paths, one operator surface
+
+| secret | transport | primary use |
+|---|---|---|
+| `FINVIZ_COOKIE` | `Cookie:` header on Elite export/screener URLs | Screener CSV bulk download (`finviz_ingestion.py`, `finviz_screener_runner.py`) |
+| `FINVIZ_API_TOKEN` | `&auth=` query param on Elite export URLs | Per-ticker enrichment (`finviz_enrichment.py`, `symbol_enrichment.py`, `social_scalp_scanner.fetch_finviz_base`) |
+
+They are **not interchangeable by default** — each producer historically required one or the other.
+`[VERIFIED]` 2026-09-01: Elite screener **export** URLs accept `&auth=FINVIZ_API_TOKEN` as a
+backstop when cookie auth returns a login page or no CSV header. Screener paths must retry with
+token auth before raising cookie expiry or returning zero rows.
+
+### Screener path vs enrichment path
+
+- **Screener path** — multi-row CSV from saved screener URLs in `assets/screeners.yaml` or
+  `finviz_screeners` DB table. Writers: `finviz_ingestion.py` (orchestrator / Trade AI universe),
+  `finviz_screener_runner.py` (watchlist discovery). Auth: cookie first, token `&auth=` fallback.
+- **Enrichment path** — batched per-ticker export views (`v=111`, `v=121`, …) for fundamentals
+  already in the candidate set. Writers: `finviz_enrichment.py`, `symbol_enrichment.py`. Auth:
+  token first, cookie second.
+
+A green enrichment run does **not** prove screener CSV auth works, and vice versa.
+
+### Social ingest vs social_scalp Finviz gate
+
+- **`social_ingest.py`** — Stocktwits/Reddit discovery; **no Finviz dependency**. Silence here
+  does not explain Finviz screener staleness.
+- **`social_scalp_scanner.py`** — requires Finviz base fields (price, RVOL, gap) via
+  `fetch_finviz_base` before GO/WAIT scoring. Token-first, cookie fallback — same token as
+  enrichment, **not** the screener cookie path. Zero candidates with live social mentions often
+  means this gate failed even when `social_ingest` is healthy.
+
+### Auto-remediation — same store only
+
+§0 rule 5 applies: **never auto-remediate divergent copies of an authoritative store.** Health
+Agent remediation commands in `config/health_agent_policy.json` must target the **same store the
+detector read** — not a sibling cache, not a release-local copy, not a stale `.bak`. When two
+paths disagree, report both paths with hashes and timestamps; do not pick one.
+
+### Cache heal trap
+
+`heal_trade_ai_session_cache.py` patches `trade_ai_cache.json` `run_date` to today and writes a
+zero-ticker `HEALTH_AUTOHEAL` package so Command Center stops showing session stale. It **does
+not** refetch Finviz screeners or restore tickers. When upstream producers are dead, heal
+preserves **0 tickers** (`preserved_tickers:0`) while clearing the stale flag — the Trade AI
+page looks "fresh" and empty. Treat heal as a session anchor only; fix the producer (§13.6
+auth paths above) before declaring recovery.
 
 ---
 
@@ -901,7 +1247,7 @@ production cron or systemd entry · **what portfolio data may be sent to an exte
 provider** (§2A) · **whether to fund off-box backup of `persistent-state`** (§18) ·
 **weakening the behaviour rail in any form** — editing
 `BEHAVIOR_FIELDS`, altering or conditionalising the unconditional raise at
-`scripts/lib/cio_instrument_record.py:343`, or routing a cognition write around it; there is no
+`scripts/lib/cio_instrument_record.py:390`, or routing a cognition write around it; there is no
 variable to raise, the control surface is the code · re-enabling the retired
 overnight LLM window · merging divergent copies of any authoritative store · branch-protection or
 required-context changes · provisioning or funding any model or data plan · deleting anything ·
@@ -1058,6 +1404,9 @@ Each cost an investigation and lived in no file.
 | `config/lane_registry.json` | which lanes exist and what proves they ran | when a lane looks silent |
 | `.claude/skills/*/SKILL.md` | **domain knowledge only** | for context on a subsystem, never for a behavioural rule |
 | `config/*.yaml`, `config/*.json` policy | **trading and system policy** — the operator's | never edit without the operator |
+| `docs/architecture/CIO_ASIS_VS_SPEC_2026-08-30.md` | dated LIVE/PARTIAL/UNWIRED/DARK map | before claiming a stage works |
+| `docs/architecture/CIO_FUTURE_STATE_FULL_MATURITY.md` | judgment / commitment / scoring / self-repair target | before designing anything new |
+| `docs/architecture/PROJECT_THE_DESK_V2.md` | extensions only; no new subsystem | before adding a type or subject prefix |
 
 ## How each tool discovers this file
 

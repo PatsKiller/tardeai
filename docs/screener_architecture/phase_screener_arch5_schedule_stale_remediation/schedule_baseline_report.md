@@ -1,5 +1,9 @@
 # SCREENER-ARCH-5 Schedule Baseline
 
+Status:      HISTORICAL
+as_of:       2026-05-19T19:29:16-04:00
+Measured at: efcc51365 / not measured
+
 Generated: 2026-05-19T23:25:51.428685+00:00  |  Look-back: 14 days
 
 ## Summary

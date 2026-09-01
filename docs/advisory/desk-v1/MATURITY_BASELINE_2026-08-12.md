@@ -1,5 +1,9 @@
 # Advisory Desk maturity baseline — 2026-08-12
 
+Status:      HISTORICAL
+as_of:       2026-08-12T14:39:24-04:00
+Measured at: efcc51365 / not measured
+
 Goal: reach a **4 / 10** operator-facing maturity, using the Morgan Stanley
 Full Portfolio Report (`Full_Portfolio_Report_10Aug2026.pdf`) as a **field
 template only** (not a data source). This file is the honest field-gap map and

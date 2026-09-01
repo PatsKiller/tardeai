@@ -1,5 +1,9 @@
 # Hermes External Researcher Lanes — Status & Routes (2026-06-07, updated 2026-07-02)
 
+Status:      ACTIVE
+as_of:       2026-07-02T00:41:17-04:00
+Measured at: efcc51365 / not measured
+
 `scripts/hermes_external_researcher.py --lane {claude|chatgpt|grok}`. All advisory-only, redaction-first,
 DRY-RUN by default, manual/escalation, governed by EXTERNAL_LLM_USAGE_POLICY_20260607.md. Audit:
 `hermes_external_research` + `GET /api/v2/hermes/external-research`.

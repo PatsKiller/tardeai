@@ -16,17 +16,36 @@ authorized=0
 override=0
 [[ "${TRADEAI_REMOTE_PUSH_OVERRIDE:-0}" == "1" ]] && override=1
 
+guard_meta="$(python3 - <<'PY'
+import json, os, sys
+sys.path.insert(0, os.environ.get("PYTHONPATH", "").split(":")[0] or ".")
+try:
+    from scripts.lib.guard_push_auth import push_authorized_by_guard
+    ok, reason = push_authorized_by_guard()
+    print(json.dumps({"ok": ok, "reason": reason}))
+except Exception:
+    print(json.dumps({"ok": False, "reason": ""}))
+PY
+)"
+guard_ok="$(python3 -c 'import json,sys; print("1" if json.loads(sys.argv[1])["ok"] else "0")' "$guard_meta")"
+guard_reason="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["reason"])' "$guard_meta")"
+if [[ "$guard_ok" == "1" ]]; then
+  authorized=1
+  # Operator scope grant covers the push-budget override for this window.
+  override=1
+fi
+
 decision="$(python3 - <<PY
 import os, json, sys
 sys.path.insert(0, os.environ.get("PYTHONPATH", "").split(":")[0] or ".")
 from scripts.lib.tradeai_push_budget import decide, load_state
 st = load_state()
 d = decide(
-    authorized=os.environ.get("TRADEAI_REMOTE_PUSH_AUTHORIZED") == "1",
-    override=os.environ.get("TRADEAI_REMOTE_PUSH_OVERRIDE") == "1",
+    authorized=os.environ.get("TRADEAI_REMOTE_PUSH_AUTHORIZED") == "1" or ${authorized} == 1,
+    override=os.environ.get("TRADEAI_REMOTE_PUSH_OVERRIDE") == "1" or ${override} == 1,
     count=int(st.get("authorized_push_count") or 0),
 )
-print(json.dumps({**d, "state_count": int(st.get("authorized_push_count") or 0)}))
+print(json.dumps({**d, "state_count": int(st.get("authorized_push_count") or 0), "guard_grant": ${guard_ok} == 1}))
 PY
 )"
 
@@ -60,6 +79,11 @@ not:
 
 Complete local acceptance first, then authorize ONE synchronization:
 
+    bin/guard grant git-push --for 30m --uses 10 --reason "..."
+    git push ...
+
+Or, for a single push without a grant window:
+
     TRADEAI_REMOTE_PUSH_AUTHORIZED=1 git push ...
 
 Do not set that flag merely to bypass this policy.
@@ -69,6 +93,9 @@ EOF
 fi
 
 echo "Remote synchronization explicitly authorized for this command (reason=$reason count=$count)."
+if [[ "$guard_ok" == "1" ]]; then
+  echo "Cursor git-push grant active: $guard_reason"
+fi
 
 if [[ "${TRADEAI_SKIP_SECRETS_SCAN:-0}" != "1" ]]; then
   if [[ -f "$repo_root/scripts/check_no_secrets.py" ]]; then

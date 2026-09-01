@@ -22,6 +22,14 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+# Writer-status sidecar is operator/diagnose output written beside the
+# projection; no production importer reads CatalystGraphWriterStatus@v1 yet.
+# --diagnose-staleness and the audit doc are the consumers of record.
+NO_CONSUMER_REASON = (
+    "CatalystGraphWriterStatus@v1 is a served-path staleness sidecar for E5; "
+    "operators read it via --diagnose-staleness / audit, no code importer yet."
+)
+
 ROOT = Path(__file__).resolve().parents[1]
 for p in (str(ROOT), str(ROOT / "scripts")):
     if p not in sys.path:
@@ -31,15 +39,84 @@ from scripts.lib.catalyst_graph import build_graph, events_for_entity  # noqa: E
 from scripts.lib.identity_registry import load as load_registry, lookup_symbol  # noqa: E402
 
 PROJECTION_RELATIVE = Path("data") / "cio" / "catalyst_graph_latest.json"
+MOMENTUM_RELATIVE = Path("data") / "hermes" / "momentum_catalysts"
+WRITER_STATUS_RELATIVE = Path("data") / "cio" / "catalyst_graph_writer_status.json"
+
+
+def _state_root() -> Path:
+    """Served / authoritative state root — never checkout-relative.
+
+    E5: graph and momentum consumers must resolve here, not via cron cwd.
+    `data/cio` under CURRENT is already a symlink into this root; hermes is not.
+    """
+    try:
+        from scripts.lib.canonical_store_registry import production_state_root
+        return Path(production_state_root())
+    except Exception:
+        return Path.home() / "trade-ai-releases" / "persistent-state"
 
 
 def projection_path() -> Path:
-    try:
-        from scripts.lib.canonical_store_registry import production_state_root
-        return Path(production_state_root()) / PROJECTION_RELATIVE
-    except Exception:
-        return Path.home() / "trade-ai-releases" / "persistent-state" / PROJECTION_RELATIVE
+    return _state_root() / PROJECTION_RELATIVE
 
+
+def momentum_catalysts_dir() -> Path:
+    """Canonical hermes momentum jsonl directory (served-state root)."""
+    return _state_root() / MOMENTUM_RELATIVE
+
+
+def diagnose_writer_staleness() -> dict:
+    """E5: are graph/momentum artifacts fresh, and do they sit on the served path?"""
+    from datetime import datetime, timezone
+
+    graph = projection_path()
+    mom = momentum_catalysts_dir()
+    now = datetime.now(timezone.utc)
+    graph_mtime = None
+    if graph.is_file():
+        graph_mtime = datetime.fromtimestamp(graph.stat().st_mtime, timezone.utc)
+    mom_files = sorted(mom.glob("*_catalysts.jsonl")) if mom.is_dir() else []
+    mom_latest = mom_files[-1] if mom_files else None
+    mom_mtime = (
+        datetime.fromtimestamp(mom_latest.stat().st_mtime, timezone.utc)
+        if mom_latest is not None else None
+    )
+
+    def age_hours(ts: datetime | None) -> float | None:
+        if ts is None:
+            return None
+        return round((now - ts).total_seconds() / 3600.0, 1)
+
+    return {
+        "as_of": now.replace(microsecond=0).isoformat(),
+        "state_root": str(_state_root()),
+        "graph": {
+            "path": str(graph),
+            "exists": graph.is_file(),
+            "mtime": graph_mtime.replace(microsecond=0).isoformat() if graph_mtime else None,
+            "age_hours": age_hours(graph_mtime),
+            "scheduled": False,
+            "schedule_note": (
+                "build_catalyst_graph.py is NOT in crontab. news_to_catalyst and "
+                "catalyst_momentum_engine are. Projection path already uses "
+                "production_state_root (not cron cwd)."
+            ),
+        },
+        "momentum_jsonl": {
+            "path": str(mom),
+            "exists": mom.is_dir(),
+            "file_count": len(mom_files),
+            "latest": mom_latest.name if mom_latest is not None else None,
+            "mtime": mom_mtime.replace(microsecond=0).isoformat() if mom_mtime else None,
+            "age_hours": age_hours(mom_mtime),
+            "scheduled_writer": "hermes_momentum_catalyst_researcher.py (checkout-relative PROJECT_ROOT)",
+            "served_path_split": (
+                "CURRENT/data/hermes is NOT symlinked to persistent-state; "
+                "writer uses checkout data/hermes — fix is resolution layer, not cron cwd."
+            ),
+        },
+        "authority": "READ_ONLY_ADVISORY",
+    }
 
 def fetch_catalysts(limit: int) -> list[dict]:
     from price_db_sync import _get_conn  # type: ignore
@@ -66,7 +143,28 @@ def main() -> int:
     ap.add_argument("--limit", type=int, default=40000, help="catalysts to scan (newest first)")
     ap.add_argument("--symbol", default=None, help="print one entity's lifecycle timeline")
     ap.add_argument("--json", action="store_true")
+    ap.add_argument(
+        "--diagnose-staleness",
+        action="store_true",
+        help="E5: report graph/momentum path freshness on the served state root",
+    )
     args = ap.parse_args()
+
+    if args.diagnose_staleness:
+        report = diagnose_writer_staleness()
+        if args.json:
+            print(json.dumps(report, indent=2, sort_keys=True))
+        else:
+            print(f"as_of={report['as_of']}  state_root={report['state_root']}")
+            g = report["graph"]
+            print(f"graph  exists={g['exists']}  age_h={g['age_hours']}  "
+                  f"scheduled={g['scheduled']}  path={g['path']}")
+            print(f"       {g['schedule_note']}")
+            m = report["momentum_jsonl"]
+            print(f"momentum_jsonl  files={m['file_count']}  latest={m['latest']}  "
+                  f"age_h={m['age_hours']}  path={m['path']}")
+            print(f"       {m['served_path_split']}")
+        return 0
 
     registry = load_registry()
     graph = build_graph(fetch_catalysts(args.limit), registry)
@@ -104,9 +202,27 @@ def main() -> int:
         tmp = path.with_suffix(path.suffix + ".tmp")
         tmp.write_text(json.dumps(payload, indent=2, sort_keys=True, default=str), encoding="utf-8")
         tmp.replace(path)
+        # Writer status on the same served root so staleness is observable
+        # without reading checkout-relative logs.
+        status_path = _state_root() / WRITER_STATUS_RELATIVE
+        status = {
+            "schema": "CatalystGraphWriterStatus@v1",
+            "generated_at": payload["generated_at"],
+            "projection_path": str(path),
+            "node_count": graph["node_count"],
+            "trace_count": graph["trace_count"],
+            "skipped": graph.get("skipped"),
+            "scheduled": False,
+            "authority": "READ_ONLY_ADVISORY",
+        }
+        stmp = status_path.with_suffix(status_path.suffix + ".tmp")
+        stmp.write_text(json.dumps(status, indent=2, sort_keys=True), encoding="utf-8")
+        stmp.replace(status_path)
         print(f"\n  wrote {path}")
+        print(f"  wrote {status_path}")
     elif not args.json:
-        print("\nnothing written. re-run with --apply.")
+        print(f"\nprojection path (served): {projection_path()}")
+        print("nothing written. re-run with --apply.")
     return 0
 
 

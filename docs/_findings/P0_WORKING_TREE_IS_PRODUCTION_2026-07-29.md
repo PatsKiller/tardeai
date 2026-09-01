@@ -1,5 +1,9 @@
 # P0 — The working tree is production for ~130 execution paths
 
+Status:      HISTORICAL
+as_of:       2026-07-29T13:13:15-04:00
+Measured at: efcc51365 / not measured
+
 **Filed:** 2026-07-29 · **Found during:** SL-S2 · **Status:** DIAGNOSED, NOT TOUCHED
 **Classification:** architectural — two deployment models running simultaneously
 

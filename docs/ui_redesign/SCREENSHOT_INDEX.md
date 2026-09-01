@@ -1,5 +1,9 @@
 # Screenshot Index
 
+Status:      HISTORICAL
+as_of:       2026-05-25T11:12:43-04:00
+Measured at: efcc51365 / not measured
+
 Generated: 2026-05-25
 Viewport: 1920x1080 (desktop)
 Method: Playwright (Python, headless Chromium)

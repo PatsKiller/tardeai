@@ -1,5 +1,9 @@
 # Open Trades False-Positive Root Cause & Fix (2026-06-05)
 
+Status:      ACTIVE
+as_of:       2026-06-05T15:32:17-04:00
+Measured at: efcc51365 / not measured
+
 ## Symptom
 v3 Open Trades showed ~152 "positions" incl sold-out **AXTI**, 149 zero-share rows, numeric CUSIPs,
 duplicate lots, entry 0.00 — for accounts the operator no longer holds.

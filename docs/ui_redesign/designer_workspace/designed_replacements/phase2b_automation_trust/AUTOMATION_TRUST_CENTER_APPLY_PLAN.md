@@ -1,5 +1,9 @@
 # Automation Trust Center -- Apply Plan
 
+Status:      HISTORICAL
+as_of:       2026-05-25T14:00:12-04:00
+Measured at: efcc51365 / not measured
+
 ## Prerequisites
 
 1. Phase 2a shared primitives must be created first:

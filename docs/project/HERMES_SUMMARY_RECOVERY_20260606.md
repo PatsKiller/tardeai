@@ -1,5 +1,9 @@
 # Hermes Bounded Summary Recovery (2026-06-06)
 
+Status:      ACTIVE
+as_of:       2026-06-06T12:15:48-04:00
+Measured at: efcc51365 / not measured
+
 ## Root cause
 After fixing the deterministic-field rejects (hermes_agent_name/research_type @6304065, topic @3707347),
 the residual drain rejects were all `MISSING required column: summary` — gemma3 sometimes returns useful

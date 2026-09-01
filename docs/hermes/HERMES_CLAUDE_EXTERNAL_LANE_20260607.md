@@ -1,5 +1,9 @@
 # Hermes External Researcher — Claude Lane (2026-06-07)
 
+Status:      ACTIVE
+as_of:       2026-06-07T13:23:09-04:00
+Measured at: efcc51365 / not measured
+
 Implements the Phase 210D/G Anthropic/Claude external research lane. `scripts/hermes_external_researcher.py --lane claude`.
 
 ## Status

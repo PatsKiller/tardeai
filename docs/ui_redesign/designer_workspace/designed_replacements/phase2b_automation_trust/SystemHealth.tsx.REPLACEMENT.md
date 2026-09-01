@@ -1,5 +1,9 @@
 # SystemHealth.tsx Replacement
 
+Status:      HISTORICAL
+as_of:       2026-05-25T14:00:12-04:00
+Measured at: efcc51365 / not measured
+
 - **Target**: `apps/command-center-v2/src/pages/SystemHealth.tsx`
 - **Original SHA256**: `f2ed031181c2d2dbbfe04b8f9b94f07d7505230c9645ca91e9bb5f8636a8acd7`
 

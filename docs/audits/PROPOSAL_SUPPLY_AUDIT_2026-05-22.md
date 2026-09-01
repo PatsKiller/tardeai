@@ -1,5 +1,9 @@
 # Proposal Supply Throughput Audit — 2026-05-22
 
+Status:      HISTORICAL
+as_of:       2026-05-22T10:47:41-04:00
+Measured at: efcc51365 / not measured
+
 ## Funnel Attrition Table (5-day average, May 18-22)
 
 ```

@@ -1,5 +1,9 @@
 # Rollback Runbook — Controlled Read-Only Activation (Phase 12)
 
+Status:      ACTIVE
+as_of:       2026-08-17T23:11:04-04:00
+Measured at: efcc51365 / not measured
+
 `READ_ONLY_ADVISORY`. This runbook describes how to **roll back** any Phase 12
 feature-flag activation and how to confirm core CIO decisions still work after
 rollback. Rollback is the default posture: if anything is uncertain, revert to

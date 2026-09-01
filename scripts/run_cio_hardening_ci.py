@@ -18,6 +18,57 @@ REPO = Path(__file__).resolve().parents[1]
 
 # Ordered, explicit suite list (Phase 10.2)
 GATES = [
+    # The P1 digest tier had no delivery: a P1_DIGEST verdict archived the message
+    # and returned False, and nothing pushed the archive. 4,387 rows since
+    # 2026-07-02 against 1,707 delivered.
+    ("p1_digest_sender", [
+        "tests/test_p1_digest_sender.py",
+    ]),
+    # The gog credential broker: an unapproved agent must be refused ON APPROVAL,
+    # and the broker must never read the operator-only ~/.openclaw/credentials path.
+    ("gog_broker_approval", [
+        "tests/test_gog_broker_approval.py",
+    ]),
+    # C1 (batch 1: send_telegram). Every alarm must be OBSERVED firing; the
+    # uncovered set is a named number in config/alarm_firing_baseline.txt that can
+    # only shrink. Presence of alarm code is not evidence it fires.
+    ("alarm_fires", [
+        "tests/test_alarm_capture_selftest.py",
+        "tests/test_alarm_fires.py",
+        "tests/test_alarm_fires_stop_path.py",
+        "tests/test_alarm_fires_batch3.py",
+        "tests/test_alarm_fires_batch4.py",
+        "tests/test_alarm_fires_batch5.py",
+        "tests/test_alarm_coverage.py",
+    ]),
+    # C5: declared cadence vs observed output for stores feeding operator surfaces.
+    # strategy_signals stopped advancing 2026-08-07 and nothing watched the date.
+    ("store_cadence", [
+        "tests/test_store_cadence.py",
+    ]),
+    # C3: an alarm whose delivery failure is swallowed is worse than no alarm.
+    # Shrink-only baseline of named inherited debt; new swallows fail the build.
+    ("no_swallowed_alarms", [
+        "tests/test_no_swallowed_alarms.py",
+    ]),
+    # C2: every symbol imported on an alarm path must resolve. Two incidents months
+    # apart -- send_alert (never existed) and telegram_bot (module never existed) --
+    # both sat in bare excepts and reported to nobody.
+    ("alarm_imports_resolve", [
+        "tests/test_alarm_imports_resolve.py",
+    ]),
+    # Two detectors that could not tell two states apart: the docs inventory counted
+    # gitignored artifacts (tracked 2274 vs filesystem 2276, reddening a required
+    # gate), and signal_flow_audit read OK when nothing had been scanned.
+    ("detectors_distinguish_states", [
+        "tests/test_detectors_distinguish_states.py",
+    ]),
+    # Pins the 2026-08-08 -> 2026-08-31 Strategy Desk outage: an ON CONFLICT clause
+    # naming a constraint that does not exist (every signal insert raised), and the
+    # alarms that reported it to nobody by importing a send_alert that has never existed.
+    ("signal_flow_regression", [
+        "tests/test_signal_sync_onconflict_regression.py",
+    ]),
     ("notification_no_network", [
         "tests/test_cio_phase1_notification_containment.py",
         "tests/test_cio_phase9_alex_telegram.py",
@@ -119,8 +170,38 @@ GATES = [
     ("scripts_lib_bootstrap", [
         "tests/test_scripts_lib_bootstrap.py",
     ]),
+    ("stop_path_notification", [
+        "tests/test_stop_path_notification_imports.py",
+    ]),
+    ("research_scheduler_child_interpreter", [
+        "tests/test_research_scheduler_child_interpreter.py",
+    ]),
+    ("decision_field_honesty", [
+        "tests/test_decision_field_honesty.py",
+    ]),
+    ("stop_warning_transitions", [
+        "tests/test_stop_warning_transitions.py",
+    ]),
+    ("notification_memory", [
+        "tests/test_notification_memory.py",
+    ]),
+    ("notification_receipts", [
+        "tests/test_notification_receipts.py",
+    ]),
+    ("telegram_chokepoint_ratchet", [
+        "tests/test_telegram_chokepoint_ratchet.py",
+    ]),
+    ("notification_integrity_cdeg", [
+        "tests/test_notification_integrity_waves_cdeg.py",
+    ]),
     ("governance_section_zero_parity", [
         "tests/test_agents_section_zero_parity.py",
+    ]),
+    ("guard_push_auth", [
+        "tests/test_guard_push_auth.py",
+    ]),
+    ("agents_type_vocabulary", [
+        "tests/test_agents_type_vocabulary.py",
     ]),
     ("agent_brief", [
         "tests/test_agent_brief.py",
@@ -128,15 +209,58 @@ GATES = [
     ("research_reaches_surface", [
         "tests/test_research_reaches_surface.py",
     ]),
+    ("overnight_b2_b3_failure_surfaces", [
+        "tests/test_overnight_b2_b3_failure_surfaces.py",
+    ]),
     ("money_surface_honesty", [
         "tests/test_money_surface_honesty.py",
         "tests/test_cash_guidance_provenance.py",
+        "tests/test_overnight_b4_b5_asof_provenance.py",
+        "tests/test_overnight_w3_3b_frozen_fields.py",
+    ]),
+    ("overnight_b6_reentry_scope", [
+        "tests/test_overnight_b6_reentry_scope.py",
+    ]),
+    ("overnight_d2_pending_data", [
+        "tests/test_overnight_d2_pending_data.py",
+    ]),
+    ("overnight_d3_lesson_provenance", [
+        "tests/test_overnight_d3_lesson_provenance.py",
+    ]),
+    ("overnight_wave_e_catalyst", [
+        "tests/test_overnight_wave_e_catalyst.py",
+    ]),
+    ("overnight_f1_f2_search_bound", [
+        "tests/test_overnight_f1_f2_search_bound.py",
+    ]),
+    ("overnight_f5_model_cost", [
+        "tests/test_overnight_f5_model_cost.py",
+    ]),
+    ("overnight_g3_docs_index", [
+        "tests/test_overnight_g3_docs_index.py",
+    ]),
+    ("finviz_data_producers", [
+        "tests/test_finviz_token_screener_fallback.py",
+        "tests/test_agents_data_producers.py",
+        "tests/test_finviz_cookie_classification.py",
     ]),
     ("lane_registry", [
         "tests/test_lane_registry.py",
     ]),
     ("search_budget", [
         "tests/test_search_budget_and_health.py",
+    ]),
+    ("overnight_f3_search_budget", [
+        "tests/test_overnight_f3_search_budget.py",
+    ]),
+    ("overnight_f4_search_health", [
+        "tests/test_overnight_f4_search_health.py",
+    ]),
+    ("overnight_g1_resolution", [
+        "tests/test_overnight_g1_resolution.py",
+    ]),
+    ("overnight_g2_import_normalise", [
+        "tests/test_overnight_g2_import_normalise.py",
     ]),
     ("corpus_grades_cost_units", [
         "tests/test_corpus_grades_and_cost_units.py",
@@ -145,6 +269,18 @@ GATES = [
         "tests/test_wake_loads_record.py",
         "tests/test_reactive_enqueue_routing.py",
         "tests/test_next_eligible_normal_path.py",
+    ]),
+    ("overnight_d1_m5_cadence", [
+        "tests/test_overnight_d1_m5_cadence.py",
+    ]),
+    ("cio_p1_load_by_subject", [
+        "tests/test_cio_p1_load_by_subject.py",
+    ]),
+    ("overnight_g4_archive_mechanism", [
+        "tests/test_overnight_g4_archive_mechanism.py",
+    ]),
+    ("overnight_g6_missing_stores", [
+        "tests/test_overnight_g6_missing_stores.py",
     ]),
     ("r13_institutional", [
         "tests/test_r13_institution.py",
@@ -182,6 +318,17 @@ def main() -> int:
     # Phase 2: never regenerate the committed manifest before validating it.
     # 1) check-committed — read-only integrity of the files in git
     # 2) candidate — write a generated copy to an isolated dir and show the diff
+    print("[RUN]  docs_index_drift")
+    dix = subprocess.run(
+        [sys.executable, "scripts/report_docs_inventory.py", "--check-index"],
+        cwd=str(REPO),
+    )
+    if dix.returncode != 0:
+        failed.append("docs_index_drift")
+        print("[FAIL] docs_index_drift — docs/INDEX.md does not match regenerate")
+    else:
+        print("[PASS] docs_index_drift")
+
     print("[RUN]  validate_committed_manifest")
     chk = subprocess.run(
         [sys.executable, "scripts/cio_release_manifest.py", "check-committed"],

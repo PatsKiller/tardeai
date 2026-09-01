@@ -1,5 +1,9 @@
 # Plan: Crontab `$PROJ` / `$PY` Runtime Migration (deferred)
 
+Status:      ACTIVE
+as_of:       2026-08-16T22:57:35-04:00
+Measured at: efcc51365 / not measured
+
 **Status**: PLAN ONLY — do not execute without a fresh operator GO. No changes
 made under this plan during Phase 0 topology convergence.
 

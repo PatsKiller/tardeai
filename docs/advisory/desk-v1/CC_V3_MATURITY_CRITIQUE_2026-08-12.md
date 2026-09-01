@@ -1,5 +1,9 @@
 # Command Center v3 — Maturity Critique & Polish (2026-08-12)
 
+Status:      HISTORICAL
+as_of:       2026-08-12T16:31:19-04:00
+Measured at: efcc51365 / not measured
+
 **Scope:** `/v3/advisory` (Advisory Desk) and `/v3/cio` (CIO Command Center).
 **Method:** live-page review of both routes, then targeted polish + data-accuracy
 fixes. Every surface item below is scored 1–10 on *operator maturity* — i.e.

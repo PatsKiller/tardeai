@@ -1,5 +1,9 @@
 # Watch Desk v3 Phase 0 — 2026-07-16
 
+Status:      HISTORICAL
+as_of:       2026-07-16T15:19:37-04:00
+Measured at: efcc51365 / not measured
+
 | # | Item | Actual | Decision |
 |---|------|--------|----------|
 | 0.1 | Attribution chain | `watch_directive_hits`: directive_id/symbol/surfaced_at/**promoted/promotion_status** (staged hop native). `paper_trade_proposals`: **discovery_source, origin, source_table, source_record_id** (proposal hop linkable). `trade_journal`: **NO source/proposal columns → journal hop UNLINKABLE** | FLAG-BACK honored: score directive→staged and →proposal hops; journal attribution abstains (no fuzzy symbol+date matching) |

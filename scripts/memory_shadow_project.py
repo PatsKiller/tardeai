@@ -11,11 +11,15 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(ROOT / "scripts"))
+# G2: root-only + scripts.lib — never also put scripts/ on path
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 
 def main(argv: list[str] | None = None) -> int:
+    # G2: after imports settle — refuse dual lib.X / scripts.lib.X identity
+    from scripts.lib import assert_single_import_identity
+    assert_single_import_identity()
     p = argparse.ArgumentParser()
     p.add_argument("--root", default=str(ROOT))
     p.add_argument("--apply-schema", action="store_true")

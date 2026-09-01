@@ -1,5 +1,9 @@
 # Visual Contract — Defense Desk redesign v1
 
+Status:      ACTIVE
+as_of:       2026-07-29T15:17:04-04:00
+Measured at: efcc51365 / not measured
+
 Approved by the operator 2026-07-29. This document governs implementation of
 `defense_desk_redesign_v1.html`.
 

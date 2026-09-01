@@ -1,5 +1,9 @@
 # Phase 202B — Excluded Portfolio-Maintenance Jobs
 
+Status:      HISTORICAL
+as_of:       2026-06-05T10:59:04-04:00
+Measured at: efcc51365 / not measured
+
 Jobs deliberately **NOT migrated** in the P0-safe pilot. They remain on their existing legacy
 schedules, untouched. Rendered as echo-only `EXCLUDED_NOT_RUN` in the controller for visibility.
 

@@ -1,5 +1,9 @@
 # Hermes Agent Graph vs Global Profiles — Reconciliation Audit — 2026-06-06
 
+Status:      HISTORICAL
+as_of:       2026-06-07T00:03:46-04:00
+Measured at: efcc51365 / not measured
+
 ## Summary
 Two distinct Hermes layers coexist and BOTH are kept. The `/v3/hermes` page is the **Research Agent Graph**
 (Trade AI research-workflow layer); **System → Hermes** is the **Global Hermes Profile** management panel.

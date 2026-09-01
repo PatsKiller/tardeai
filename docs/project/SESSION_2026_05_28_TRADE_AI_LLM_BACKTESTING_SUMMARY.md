@@ -1,5 +1,9 @@
 # Session 2026-05-28 — Trade AI LLM & Backtesting Summary
 
+Status:      HISTORICAL
+as_of:       2026-05-28T23:16:50-04:00
+Measured at: efcc51365 / not measured
+
 **Commits this session:** 17 (a8706f9 through ae8efe0)
 
 ## Executive Summary

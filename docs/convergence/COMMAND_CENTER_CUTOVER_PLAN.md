@@ -1,5 +1,9 @@
 # Command Center cutover plan
 
+Status:      ACTIVE
+as_of:       2026-08-26T13:52:03-04:00
+Measured at: efcc51365 / not measured
+
 No cutover in this cycle. Shadow routes are registered under `/control-plane/*`.
 Legacy routes stay. Feature flag: `localStorage.CC_CONTROL_PLANE_PREVIEW=1`.
 Nav preview section appears when the flag is set or the path is already under `/control-plane`.

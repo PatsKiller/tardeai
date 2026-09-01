@@ -1,5 +1,9 @@
 # Phase 8 analysis — P8.3, P8.4, P8.6
 
+Status:      HISTORICAL
+as_of:       2026-08-28T09:20:59-04:00
+Measured at: efcc51365 / not measured
+
 Three deliverables the brief asked for as analysis rather than code. Grouped in
 one review because none of them changes a line of production code and two of
 them argue against changing any.

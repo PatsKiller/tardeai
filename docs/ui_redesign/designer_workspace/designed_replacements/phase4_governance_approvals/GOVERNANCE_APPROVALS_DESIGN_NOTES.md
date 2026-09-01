@@ -1,5 +1,9 @@
 # Governance & Approvals -- Design Notes
 
+Status:      HISTORICAL
+as_of:       2026-05-25T15:07:30-04:00
+Measured at: efcc51365 / not measured
+
 ## Phase 4: Governance & Approvals Family
 
 This phase redesigns 7 pages that together form the governance, approval, and trade proposal review system. These are the most critical decision-making pages in the Command Center.

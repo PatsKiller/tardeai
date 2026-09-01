@@ -1,5 +1,9 @@
 # A-5 Re-review Trigger Rules
 
+Status:      ACTIVE
+as_of:       2026-05-22T20:13:41-04:00
+Measured at: efcc51365 / not measured
+
 **Last review:** 2026-05-22 (FAIL/EXTEND)
 
 ## Automatic Triggers

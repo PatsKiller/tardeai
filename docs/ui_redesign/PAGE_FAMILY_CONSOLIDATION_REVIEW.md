@@ -1,5 +1,9 @@
 # Page Family Consolidation Review
 
+Status:      HISTORICAL
+as_of:       2026-05-25T10:45:00-04:00
+Measured at: efcc51365 / not measured
+
 Generated: 2026-05-25
 
 ---
@@ -26,7 +30,7 @@ These hubs are working well -- each uses TabPage to group related sub-pages:
 ### Family 1: Trading & Screening
 **Current:** 3 separate pages
 - Trade AI (`/trade-ai`) -- screener results
-- Prospects (`/prospects`) -- prospect discovery  
+- Prospects (`/prospects`) -- prospect discovery
 - Strategy Desk (`/strategy-desk`) -- strategy overview
 
 **Proposal:** Create "Trading Hub" with 3 tabs

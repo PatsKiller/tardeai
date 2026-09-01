@@ -1,5 +1,9 @@
 # PHASE 192J — Audit Log & Journal/Learning Linkage
 
+Status:      HISTORICAL
+as_of:       2026-06-02T12:10:31-04:00
+Measured at: efcc51365 / not measured
+
 **Audit file:** `data/atm/protection_adjustment_audit/<date>_actions.jsonl` (append-only JSONL)
 
 ---

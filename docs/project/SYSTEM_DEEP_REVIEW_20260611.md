@@ -1,5 +1,9 @@
 # Trade AI v12 — Deep Technical & Product Review (2026-06-11)
 
+Status:      ACTIVE
+as_of:       2026-06-11T11:57:09-04:00
+Measured at: efcc51365 / not measured
+
 **Type:** read-only audit. Four parallel code-tracing audits (intake, integrations, proposals, backtesting) +
 direct DB evidence + all 23 strategy YAMLs reviewed individually. Findings cite file:line where confirmed;
 hypotheses are labeled. Repo: main @ 1,957 commits; 955 tracked .py, 241 .tsx, 1,907 .md; api_v2.py 27,938 lines.

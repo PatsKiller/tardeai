@@ -40,42 +40,64 @@ def _longest_shared_run(a: str, b: str) -> int:
 
 
 def test_adapters_point_at_canonical_policy_without_duplicating_it() -> None:
-    """The rule is 'do not restate the policy'. Length was only ever a proxy.
+    """Hierarchy after #734 (AGENTS.md behaviour hub):
 
-    The proxy broke on 2026-08-30: CLAUDE.md grew into the operating-technique
-    file the policy assumes, hit the length cap at 11,999 bytes against 2,679,
-    and blocked every push — while duplicating nothing. Measured at the time,
-    zero of its 58 blocks were >75% similar to any of the policy's 70, and the
-    longest verbatim run between the two files was 19 characters: the string
-    "AI_WORK_POLICY.md" itself, i.e. the pointer the test wants to see.
+    - ``AGENTS.md`` is the behaviour hub — SoT for how agents work. It
+      references ``AI_WORK_POLICY.md`` and never restates it.
+    - ``AI_WORK_POLICY.md`` owns push / CI cost / deploy authorization.
+    - Three tool adapters (``CLAUDE.md``, Cursor rule, Copilot) are pointers
+      only. They carry ``AGENTS.md`` §0 verbatim so an agent that stops after
+      fifteen lines still knows the irreversible-harm rules.
 
-    So assert the property, not the proxy. This is strictly stronger: nothing
-    previously checked duplication at all, so a 2,600-byte adapter that was
-    pure copy-paste passed. The compactness cap is kept for the two adapters
-    that are still thin pointers by design.
+    That deliberate §0 duplication puts each adapter near ~2.5 KB. A
+    compactness cap keyed to "thin pointer" size (``len < policy/5``) is the
+    wrong property — it is exactly what §0 is designed to exceed — and is not
+    asserted here. ``CLAUDE.md`` is an adapter, not a governance SoT; §0
+    byte-identity across hub + adapters is guarded by
+    ``tests/test_agents_section_zero_parity.py``.
     """
     policy = POLICY.read_text(encoding="utf-8")
-    policy_len = len(policy)
+    hub = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+
+    # Behaviour hub — not an adapter, not a second push-policy.
+    assert "single source of truth for how agents work" in hub
+    assert "AI_WORK_POLICY.md" in hub
+    assert "never duplicates it" in hub
+    assert "git commit" in hub
+    hub_run = _longest_shared_run(policy, hub)
+    assert hub_run < 400, (
+        f"AGENTS.md restates {hub_run} verbatim characters of AI_WORK_POLICY.md; "
+        "the hub references the policy, it does not copy it"
+    )
+
+    # Policy names the split: behaviour hub vs push/CI/deploy vs adapters.
+    assert "canonical agent-behaviour standard" in policy
+    assert "pointers only" in policy
+
     adapters = {
-        "AGENTS.md": ROOT / "AGENTS.md",
         "CLAUDE.md": ROOT / "CLAUDE.md",
         "copilot": ROOT / ".github/copilot-instructions.md",
         "cursor": ROOT / ".cursor/rules/00-tradeai-work-policy.mdc",
     }
-    # These two carry their own material by design: AGENTS.md the runtime
-    # reference, CLAUDE.md the operating technique the policy assumes.
-    CARRIES_OWN_MATERIAL = {"AGENTS.md", "CLAUDE.md"}
+    section_zero_marker = "## The ten rules, verbatim from `AGENTS.md` §0"
     for name, path in adapters.items():
         blob = path.read_text(encoding="utf-8")
+        assert "AGENTS.md" in blob, name
         assert "AI_WORK_POLICY.md" in blob, name
         assert "git commit" in blob, name
-        # The actual rule, applied to every adapter including the long ones.
+        assert "single source of truth" in blob, name
+        assert section_zero_marker in blob, (
+            f"{name} must carry AGENTS.md §0 verbatim; size caps that fight "
+            "that duplication are the defect this test no longer encodes"
+        )
+        # Do not restate the push/CI/deploy policy. No byte-length cap: §0
+        # duplication is intentional and is what makes a pointer succeed when
+        # the agent does not follow the pointer.
         run = _longest_shared_run(policy, blob)
         assert run < 400, (
             f"{name} restates {run} verbatim characters of AI_WORK_POLICY.md; "
-            "adapters point at the policy, they do not copy it")
-        if name not in CARRIES_OWN_MATERIAL:
-            assert len(blob) < policy_len / 5, name
+            "adapters point at the policy, they do not copy it"
+        )
 
 
 def test_pre_push_blocks_without_authorization() -> None:

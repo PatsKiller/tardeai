@@ -1,3 +1,7 @@
+Status:      HISTORICAL
+as_of:       2026-06-07T12:23:44-04:00
+Measured at: efcc51365 / not measured
+
 branch: main | head: 23d6bb8 feat: monthly portfolio report cadence apply + diff + parallel schedule
 host: ms01-openclaw | Sun Jun  7 16:23:43 UTC 2026
 hermes: Hermes Agent v0.16.0 (2026.6.5)

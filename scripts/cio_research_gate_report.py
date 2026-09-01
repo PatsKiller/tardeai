@@ -18,12 +18,13 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from scripts.lib.cio_research_gate import (  # noqa: E402
-    collapse_same_day_duplicates, decide, schedule_surface,
+    collapse_same_day_duplicates, schedule_surface,
 )
 from scripts.lib import cio_corpus_index as corpus  # noqa: E402
 from scripts.lib.cio_research_history import (  # noqa: E402
     gate_inputs_for, history_by_plan,
 )
+from scripts.lib.cio_research_preflight import decide_after_load  # noqa: E402
 
 # S-types whose plans may carry a research need at all.
 RESEARCHABLE = {
@@ -71,22 +72,32 @@ def main() -> int:
         syms = p.get("symbols") or []
         sym = str(syms[0]).upper() if syms else None
         dim = "seasonality" if kind == "s6_concentration" else "bear_case"
-        gate_in = {
-            "plan_id": p.get("plan_id"),
-            "symbol": sym,
-            "kind": kind,
-            "material": bool(p.get("material")),
-            "days_to_event": earnings.get(sym) if sym else None,
-            "corpus": corpus.consult(dim, now=now),
-        }
-        gate_in.update(gate_inputs_for(p.get("plan_id"), hist))
-        if gate_in.get("prior_outcome") is None:
-            gate_in["prior_outcome"] = (
+        # P1: load InstrumentRecord by subject_key BEFORE decide().
+        # Prefer HELD:SYM; load_instrument_record_for_wake probes siblings.
+        subject_key = f"HELD:{sym}" if sym else "SLEEVE:CASH"
+        hist_bits = gate_inputs_for(p.get("plan_id"), hist)
+        if hist_bits.get("prior_outcome") is None:
+            hist_bits["prior_outcome"] = (
                 p.get("llm_status")
                 if p.get("llm_status") in {"VALID", "PARTIAL", "FAIL", "truncated"}
                 else None)
-        decisions.append(decide(gate_in, now=now))
-
+        decisions.append(decide_after_load(
+            subject_key,
+            plan={
+                "plan_id": p.get("plan_id"),
+                "symbol": sym,
+                "kind": kind,
+                "material": bool(p.get("material")),
+                "symbols": [sym] if sym else [],
+            },
+            now=now,
+            root=root,
+            gate_extra={
+                "days_to_event": earnings.get(sym) if sym else None,
+                "corpus": corpus.consult(dim, now=now),
+                **hist_bits,
+            },
+        ))
     # One model class per SUBJECT per calendar day. The law now lives in
     # cio_research_gate.collapse_same_day_duplicates so it is testable and so
     # this script cannot drift from it.

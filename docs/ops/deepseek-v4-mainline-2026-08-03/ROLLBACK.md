@@ -1,5 +1,9 @@
 # Rollback
 
+Status:      ACTIVE
+as_of:       2026-08-03T11:40:56-04:00
+Measured at: efcc51365 / not measured
+
 ```bash
 # discard working branch tip back to origin/main
 git -C /home/johnclaw/tradeai-wt-deepseek-v4-mainline reset --hard origin/main

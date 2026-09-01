@@ -1,5 +1,9 @@
 # TradingHub integration patch
 
+Status:      ACTIVE
+as_of:       2026-07-28T00:17:07-04:00
+Measured at: efcc51365 / not measured
+
 The implementation belongs on a dedicated **ActiveTrader** tab, not inside the existing Scalp table.
 
 ```tsx

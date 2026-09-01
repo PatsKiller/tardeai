@@ -1,5 +1,9 @@
 # Gain Guardian — Holdings Exit Intelligence (Live Book, Advisory-Only)
 
+Status:      ACTIVE
+as_of:       2026-07-16T12:18:15-04:00
+Measured at: efcc51365 / not measured
+
 **Shipped:** 2026-07-16 · **Status:** SHADOW (config `published=false`; operator runs `--promote` after ≥10 trading days)
 **Diagnosis:** `docs/_findings/gain_guardian_diagnosis_2026-07-16.md`
 **Mode:** Advisory-only. Read-only on every broker surface. Zero LLM calls (deterministic core). No stop moves, no orders, no auto-proposals. Iron-rule holdings check before/after every run.

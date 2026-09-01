@@ -1,5 +1,9 @@
 # Phase 202D — Portfolio-Maintenance Controller Dry-Run Validation
 
+Status:      HISTORICAL
+as_of:       2026-06-05T11:01:00-04:00
+Measured at: efcc51365 / not measured
+
 ## Tests
 - `bash -n` → OK.
 - `DRY_RUN=1 run_portfolio_maintenance_pipeline.sh` → PASS (exit 0).

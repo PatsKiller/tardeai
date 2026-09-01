@@ -1,5 +1,9 @@
 # Reports Desk v2 — Phase 0 Residual Diagnosis (2026-07-16 evening)
 
+Status:      HISTORICAL
+as_of:       2026-07-16T17:46:11-04:00
+Measured at: efcc51365 / not measured
+
 Repo at 59aa6118 (Watch Desk v4 SHIPPED between prompt-write and execution —
 WS-E is import-only as hoped; `watchTokens.ts` + `TerminalChip.tsx` are the house system).
 
@@ -29,7 +33,7 @@ plenty for WS-D rollups; weekend dips visible (80 on Sat 07-12).
 ## 0.4 `<b>` leak: confirmed — telegram_outbox.body stores raw Telegram HTML
 (`<b>Pre-Market Brief…</b>`); fix in ONE formatter at render.
 
-## 0.5 Morning brief structure: `fetch` from `/api/v2/aegis/chat-context` (:65) → 
+## 0.5 Morning brief structure: `fetch` from `/api/v2/aegis/chat-context` (:65) →
 `brief.get("sections",[])` used as DATA in both telegram (:214) and markdown (:387)
 renderers; .md export at data/portfolios/reports/ + docs/ copy. → WS-B persists
 `brief.json` sidecar next to the .md — purely additive, Telegram path untouched.

@@ -1,5 +1,9 @@
 # Profit-Capture Refresh Artifacts (generated)
 
+Status:      ACTIVE
+as_of:       2026-06-06T22:43:08-04:00
+Measured at: efcc51365 / not measured
+
 A **rolling** set of evidence artifacts written by `scripts/run_profit_capture_refresh.sh`
 (weekly cron, Sun 03:30) — overwritten each run:
 

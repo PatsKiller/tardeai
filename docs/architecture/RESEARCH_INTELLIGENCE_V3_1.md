@@ -1,5 +1,9 @@
 # Research Intelligence v3.1 — Institutional Desk (Reliability · Provenance · Curation)
 
+Status:      ACTIVE
+as_of:       2026-07-16T12:57:17-04:00
+Measured at: efcc51365 / not measured
+
 **Shipped:** 2026-07-16 (commits 775d94f4, 13ec3953, 1ea3fc0e, c70a5fc0, b2aaf1f2) · Feed `version: "3.1"`
 **Diagnosis:** `docs/_findings/ri_v3_1_diagnosis_2026-07-16.md` — read it; the server-busy flag-back is canonical.
 

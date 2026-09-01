@@ -1196,6 +1196,7 @@ def build_reentry_book_labels() -> dict[str, Any]:
             "surface_name": sfc["name"],
             "scope": sfc["scope"],
             "question": sfc["question"],
+            "population": sfc["population"],
             "precedence": sfc["precedence"],
             "not_this_book": sfc["not_this_book"],
             "producer": sfc["producer"],
@@ -1331,11 +1332,29 @@ def _row_narrative(store: Any, keys: tuple[str, ...], fallback_what: str) -> dic
                     if _narrative_is_clean(nar.get("what")):
                         out = dict(nar)
                         out["narrative_source"] = "record"
+                        # W3c / AGENTS §9.2 — writer names the author, not the
+                        # migration copy step. Strip migration: if present.
+                        try:
+                            from scripts.lib.cio_instrument_record import (
+                                normalize_writer_author,
+                            )
+                            stamps = normalize_writer_author(
+                                writer=out.get("writer") or out.get("author") or "record",
+                                author=out.get("author"),
+                            )
+                            out["author"] = stamps["author"]
+                            out["writer"] = stamps["writer"]
+                            if stamps.get("copy_step"):
+                                out["copy_step"] = stamps["copy_step"]
+                        except Exception:                        # noqa: BLE001
+                            out["author"] = out.get("writer") or out.get("author") or "record"
+                            out["writer"] = out["author"]
                         return out
                     return {
                         "subject_key": key,
                         "what": fallback_what,
                         "writer": "deterministic_fallback",
+                        "author": "deterministic_fallback",
                         "from_record": False,
                         "narrative_source": "deterministic",
                         "record_refused": "instruction_in_narrative",
@@ -1344,6 +1363,7 @@ def _row_narrative(store: Any, keys: tuple[str, ...], fallback_what: str) -> dic
         "subject_key": keys[0] if keys else None,
         "what": fallback_what,
         "writer": "deterministic_fallback",
+        "author": "deterministic_fallback",
         "from_record": False,
         "narrative_source": "deterministic",
     }
@@ -1484,7 +1504,7 @@ def build_cash_letter_section(
         except Exception:                                        # noqa: BLE001
             rec = None
     try:
-        return build_cash_letter(
+        letter = build_cash_letter(
             rec, capital_plan=capital_plan, seasonality=seasonality, now=now)
     except Exception as exc:                                     # noqa: BLE001
         # A record that trips the instruction guard loses its prose, not the
@@ -1493,7 +1513,6 @@ def build_cash_letter_section(
             letter = build_cash_letter(
                 None, capital_plan=capital_plan, seasonality=seasonality, now=now)
             letter["record_refused"] = str(exc)[:160]
-            return letter
         except Exception:                                        # noqa: BLE001
             return {
                 "schema": "CashSleeveLetter@v1",
@@ -1501,6 +1520,55 @@ def build_cash_letter_section(
                 "reason": str(exc)[:160],
                 "authority": "READ_ONLY_ADVISORY",
             }
+    return _stamp_cash_letter_provenance(letter, capital_plan=capital_plan)
+
+
+def _stamp_cash_letter_provenance(
+    letter: dict[str, Any],
+    *,
+    capital_plan: Optional[dict[str, Any]] = None,
+) -> dict[str, Any]:
+    """B4/B5 — letter age is cash evidence, writer means author.
+
+    `build_cash_letter` historically stamped `as_of=now` (composition). The
+    dollars can be weeks older. Prefer capital_plan.cash_as_of (oldest
+    contributing balance). Dollar fields are left untouched.
+    """
+    out = dict(letter or {})
+    # W3c / AGENTS §9.2 — writer names the author, never migration: copy step.
+    try:
+        from scripts.lib.cio_instrument_record import normalize_writer_author
+        stamps = normalize_writer_author(
+            writer=out.get("writer"),
+            author=out.get("author"),
+        )
+        out["author"] = stamps["author"]
+        out["writer"] = stamps["writer"]
+        if stamps.get("copy_step"):
+            out["copy_step"] = stamps["copy_step"]
+    except Exception:                                            # noqa: BLE001
+        author = out.get("writer") or out.get("author") or "deterministic_fallback"
+        if str(author).lower().startswith("migration:"):
+            author = str(author).split(":", 1)[1].strip() or "deterministic"
+            out["copy_step"] = "migration"
+        out["author"] = author
+        out["writer"] = author
+    evidence = (capital_plan or {}).get("cash_as_of")
+    if isinstance(evidence, dict) and evidence.get("as_of"):
+        out["composition_as_of"] = out.get("as_of")
+        out["as_of"] = evidence.get("as_of")
+        out["cash_as_of"] = evidence
+        out["as_of_source"] = "cash_evidence_oldest_balance"
+    else:
+        out["as_of_source"] = out.get("as_of_source") or "composition_time"
+        out.setdefault(
+            "as_of_note",
+            "cash evidence age not supplied; do not read composition time as "
+            "the age of these dollars",
+        )
+    # This letter is a deterministic composition; never claim model provenance.
+    out["model_produced"] = False
+    return out
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1610,19 +1678,31 @@ def build_office_home(
         }
     home["operator_trust"] = build_operator_trust()
     # Composition does not hunt files. API wrapper injects the canonical product.
+    # B3: a bare except that served the unrendered product used to still stamp
+    # `canonical_cio_source` — a provenance label for a path that did not run.
+    # Stamp only when command_center_view actually rendered.
     if operator_product is None:
         home["operator_product"] = {
             "source": "cio.operator_product.current",
             "loaded": False,
             "note": "injected by API wrapper; composition itself does not hunt files",
         }
+        # No rendered product → no canonical stamp.
     else:
         try:
             from scripts.lib.cio_operator_renderers import command_center_view
             home["operator_product"] = command_center_view(operator_product)
-        except Exception:
-            home["operator_product"] = operator_product
-    home["canonical_cio_source"] = "cio.operator_product.current"
+            home["canonical_cio_source"] = "cio.operator_product.current"
+        except Exception as _render_exc:
+            home["operator_product"] = {
+                "source": "cio.operator_product.current",
+                "loaded": False,
+                "render_error": str(_render_exc)[:200],
+                "note": "command_center_view failed; unrendered product is not stamped canonical",
+                "raw_available": True,
+            }
+            # Deliberately omit canonical_cio_source — failure must reach the
+            # surface as absence of the stamp, not a false provenance claim.
     op = operator_product if isinstance(operator_product, dict) else {}
     home["earnings"] = list(op.get("earnings") or [])[:12]
     home["new_position_if"] = list(op.get("new_position_if") or [])[:8]
@@ -1632,13 +1712,62 @@ def build_office_home(
         op.get("watch_block_summary") if isinstance(op.get("watch_block_summary"), dict) else {}
     )
     home["cash"] = op.get("cash") or {}
-    home["temperament"] = op.get("temperament") or op.get("macro") or {}
+    # B5 / W3 3b — demote constant standing-policy text so home does not render
+    # it as situation guidance. Prefer OP's already-redacted temperament.
+    # Idempotent when source already wrote standing_policy_template.
+    temp = op.get("temperament") or op.get("macro") or {}
+    if isinstance(temp, dict):
+        temp = dict(temp)
+        if temp.get("portfolio_implication") and not temp.get(
+            "portfolio_implication_is_guidance"
+        ):
+            temp.setdefault(
+                "standing_policy_template", temp.get("portfolio_implication")
+            )
+            temp["portfolio_implication"] = None
+            temp["portfolio_implication_is_guidance"] = False
+            temp["portfolio_implication_role"] = "standing_policy_template"
+        elif temp.get("standing_policy_template") and not temp.get(
+            "portfolio_implication_is_guidance"
+        ):
+            temp["portfolio_implication"] = None
+            temp["portfolio_implication_is_guidance"] = False
+            temp["portfolio_implication_role"] = "standing_policy_template"
+        # Cash on temperament shares the cash block clock when OP stamped it.
+        if isinstance(home["cash"], dict) and home["cash"].get("cash_as_of"):
+            temp.setdefault("cash_as_of", home["cash"]["cash_as_of"])
+    home["temperament"] = temp
     home["case_summaries"] = op.get("case_summaries") or op.get("research_cases") or {
         "banner": "A-context · NON_AUTHORITATIVE · does not change action",
         "class": "A",
         "count": 0,
         "items": [],
     }
+    home["block_as_of"] = op.get("block_as_of") or {
+        "cash": (home["cash"] or {}).get("as_of") if isinstance(home["cash"], dict) else None,
+        "product_composition": op.get("as_of"),
+        "home_composition": home.get("as_of"),
+        "note": (
+            "home.as_of is request composition time; cash age is home.cash.as_of "
+            "/ capital_plan.cash_as_of (oldest contributing balance)."
+        ),
+    }
+    home["provenance_footer"] = op.get("provenance_footer") or {
+        "model_produced": False,
+        "classes": "D counts/sums · T templates · A case-summary context",
+        "writer_means": "author",
+        "note": (
+            "Office home is a deterministic composition. No model produced "
+            "this page; model/process telemetry belongs below the fold only "
+            "when a model actually ran. writer names the author, not the "
+            "copy step."
+        ),
+    }
+    # Consistency: never claim model provenance for a brief no model produced.
+    if isinstance(home["provenance_footer"], dict):
+        home["provenance_footer"]["model_produced"] = False
+        home["provenance_footer"].setdefault("writer_means", "author")
+    home["model_produced"] = False
     # Wave 2 slice 10: overlay Surface A reentry counts onto opportunities
     # without merging queue chips with the Surface A book (dual pipes).
     home["opportunities"] = overlay_surface_a_reentry_on_opportunities(

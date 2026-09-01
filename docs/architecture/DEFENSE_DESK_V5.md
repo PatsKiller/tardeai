@@ -1,5 +1,9 @@
 # Defense Desk v5 — Dynamic Trims · Sell Tickets · Exit Ladders · The Rotation Plan (2026-07-18)
 
+Status:      ACTIVE
+as_of:       2026-07-18T11:12:32-04:00
+Measured at: efcc51365 / not measured
+
 Session 5. One capability in three parts, no cut line: WS-DT → WS-EL → WS-RP all shipped.
 The static "trim 25–50%" band is dead — and the field guard makes its return impossible.
 

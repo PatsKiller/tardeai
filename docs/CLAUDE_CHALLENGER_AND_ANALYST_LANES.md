@@ -1,5 +1,9 @@
 # Claude Challenger Cohort (A/B) + Analyst Lanes
 
+Status:      ACTIVE
+as_of:       2026-06-24T20:36:32-04:00
+Measured at: efcc51365 / not measured
+
 Two additions to the discovery/research stack: a weekly Claude-curated **challenger watchlist** tested
 head-to-head against the mechanical screener, and **dedicated analyst-aggregator sources**.
 

@@ -1,5 +1,9 @@
 # Alert Policy Diff
 
+Status:      ACTIVE
+as_of:       2026-07-29T12:56:50-04:00
+Measured at: efcc51365 / not measured
+
 Source policy changed:
 
 - `paper_proposal`, paper approval/lifecycle, blocked/rebuild/watch/expired/revalidated proposal states: Telegram OFF; Command Center or digest only.

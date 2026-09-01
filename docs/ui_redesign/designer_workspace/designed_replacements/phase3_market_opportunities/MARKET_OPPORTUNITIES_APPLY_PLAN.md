@@ -1,5 +1,9 @@
 # Market Opportunities Phase 3 - Apply Plan
 
+Status:      HISTORICAL
+as_of:       2026-05-25T14:16:20-04:00
+Measured at: efcc51365 / not measured
+
 ## Pre-flight
 
 Verify the source files have not changed since the replacements were designed:

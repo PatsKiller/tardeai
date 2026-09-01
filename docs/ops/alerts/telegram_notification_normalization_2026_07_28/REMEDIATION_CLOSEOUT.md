@@ -1,5 +1,9 @@
 # Remediation Closeout — Telegram Notification Normalization
 
+Status:      ACTIVE
+as_of:       2026-07-29T12:56:50-04:00
+Measured at: efcc51365 / not measured
+
 **Run type:** remediation and completion pass over the existing working tree.
 **Status: INCOMPLETE.** 7 of 15 blockers resolved and verified; 8 remain. Details below.
 Nothing was committed, pushed, deployed, or activated. The production migration was

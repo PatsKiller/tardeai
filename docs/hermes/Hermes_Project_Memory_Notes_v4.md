@@ -1,5 +1,9 @@
 # Project Memory Notes - Hermes Sidecar Strategy v4
 
+Status:      ACTIVE
+as_of:       2026-05-29T22:39:06-04:00
+Measured at: efcc51365 / not measured
+
 ## Durable Decision
 Hermes should be integrated into Trade AI as a near-24/7 research, memory, and challenge sidecar. It should not be installed as a standalone Railway trading worker or second execution system.
 

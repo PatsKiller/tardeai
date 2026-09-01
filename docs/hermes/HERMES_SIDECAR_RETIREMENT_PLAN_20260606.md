@@ -1,5 +1,9 @@
 # Hermes Sidecar Retirement Plan — 2026-06-06
 
+Status:      ACTIVE
+as_of:       2026-06-06T22:07:57-04:00
+Measured at: efcc51365 / not measured
+
 Staged, reversible. **No deletion or renaming in this task.** Stage D requires explicit operator approval.
 
 ## Stage A — Preserve (DONE, verified)

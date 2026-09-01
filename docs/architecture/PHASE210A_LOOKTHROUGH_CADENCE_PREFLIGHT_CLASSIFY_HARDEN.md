@@ -1,5 +1,9 @@
 # Phase 210A — Lookthrough Cadence: Preflight + Classify + Harden + Dry-Run — 2026-06-07
 
+Status:      HISTORICAL
+as_of:       2026-06-07T14:36:32-04:00
+Measured at: efcc51365 / not measured
+
 The **last** report-family cadence. Follows the proven pattern (Phases 207–209).
 
 ## Preflight (verified)

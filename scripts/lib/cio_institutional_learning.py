@@ -398,6 +398,12 @@ def lesson_candidate_v2(
     searched_counterexamples: bool,
     confidence: float = 0.5,
 ) -> dict[str, Any]:
+    """Build a LessonCandidate@v2 body (status from sample discipline).
+
+    Derivation label ``lesson_provenance`` (OUTCOME_DERIVED / RESEARCH_DERIVED)
+    is stamped by writers in ``outcome_to_lesson`` — not inferred here — so
+    counterexample-only outcome rows are not mislabelled as research.
+    """
     n = len(supporting_outcome_ids)
     if n < MIN_LESSON_SAMPLES:
         status = "PROVISIONAL"

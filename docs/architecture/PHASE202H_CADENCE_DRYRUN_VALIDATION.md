@@ -1,5 +1,9 @@
 # Phase 202H — Cadence-Aware Dry-Run Validation
 
+Status:      HISTORICAL
+as_of:       2026-06-05T12:05:46-04:00
+Measured at: efcc51365 / not measured
+
 All five cadences dry-run cleanly with perfect isolation (each runs ONLY its own steps):
 | cadence | active steps | correct? |
 |---------|--------------|----------|

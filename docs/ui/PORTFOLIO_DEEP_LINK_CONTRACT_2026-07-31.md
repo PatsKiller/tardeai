@@ -1,5 +1,9 @@
 # Portfolio deep-link contract (2026-07-31)
 
+Status:      HISTORICAL
+as_of:       2026-07-31T10:59:21-04:00
+Measured at: efcc51365 / not measured
+
 Enterprise maturity WP-A. All in-app links into `/v3/portfolio` should use this schema.
 
 ## Query parameters

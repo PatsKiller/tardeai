@@ -1,5 +1,9 @@
 # Post-STOP-V2 Maturity Refresh — Safety Audit
 
+Status:      HISTORICAL
+as_of:       2026-05-22T17:31:22-04:00
+Measured at: efcc51365 / not measured
+
 | # | Check | Result |
 |---|-------|--------|
 | 1 | ALPACA_MODE=paper | YES |

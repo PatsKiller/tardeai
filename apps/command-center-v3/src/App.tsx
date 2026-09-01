@@ -32,6 +32,7 @@ import HealthHub from './pages/HealthHub'
 import ConsumptionHub from './pages/ConsumptionHub'
 import SchwabReauthHub from './pages/SchwabReauthHub'
 import SchwabReauthBanner from './components/SchwabReauthBanner'
+import FinvizCookieBanner from './components/FinvizCookieBanner'
 import AdvisoryDeskHub from './pages/AdvisoryDeskHub'
 import CioHub from './pages/CioHub'
 import {
@@ -156,6 +157,7 @@ function Shell() {
   return (
     <div className="app-shell cc-terminal-ui" style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--bg0)', color: 'var(--text0)' }}>
       <SchwabReauthBanner />
+      <FinvizCookieBanner />
       <ReconnectingBar />
       <MetricStrip onDrill={setDrill} />
       <div className="app-body" style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden' }}>

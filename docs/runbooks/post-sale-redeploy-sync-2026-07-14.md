@@ -1,5 +1,9 @@
 # Post-Sale Redeploy Sync — 2026-07-14
 
+Status:      HISTORICAL
+as_of:       2026-07-13T23:58:49-04:00
+Measured at: efcc51365 / not measured
+
 ## Scope
 
 Advisory-only pipeline that detects broker sells, scores redeploy targets, and surfaces plans in Portfolio → **Redeploy** (UI live). No broker execution path.
@@ -8,7 +12,7 @@ Advisory-only pipeline that detects broker sells, scores redeploy targets, and s
 
 **P0 (2026-07-13):** the Phase E test suite committed synthetic JEPQ fills against live event #144 (false 3% restoration). Guards + quarantine shipped; permanent deletion awaits operator approval — `docs/audits/REDEPLOY_FIXTURE_AUDIT_2026-07-13.md`.
 
-**Branch:** `main`  
+**Branch:** `main`
 **Migration:** `migrations/2026_07_14_deploy_redeploy_events.sql`
 
 ## Guardrails
@@ -49,9 +53,9 @@ python3 scripts/deploy_detect.py --apply --days 30
 python3 scripts/deploy_detect.py --apply --trading-days-only   # skip weekends/holidays
 ```
 
-**Source:** `scripts/lib/sale_event_detector.py`  
-**Accounts:** `schwab_rollover_ira`, `schwab_taxable`, `schwab_roth`, `fidelity_rollover_ira`  
-**Min proceeds:** $500  
+**Source:** `scripts/lib/sale_event_detector.py`
+**Accounts:** `schwab_rollover_ira`, `schwab_taxable`, `schwab_roth`, `fidelity_rollover_ira`
+**Min proceeds:** $500
 **Proxy mapping:** `holding_proxies.HOLDING_PROXY_MAP` + mutual-fund fallback → SCHG
 
 ### 2. Historical backfill (one-time / refresh)

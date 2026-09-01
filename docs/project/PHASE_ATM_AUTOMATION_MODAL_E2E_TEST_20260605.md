@@ -1,5 +1,9 @@
 # ATM Automation Modal — End-to-End Write Test (2026-06-05)
 
+Status:      ACTIVE
+as_of:       2026-06-05T14:56:46-04:00
+Measured at: efcc51365 / not measured
+
 **Commit tested:** 491be32 (ATM broker/account correction + Automation Policy modal).
 **Statement:** No broker orders submitted; no live writes; no strategy/GO-WAIT mutation.
 

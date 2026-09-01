@@ -1,5 +1,9 @@
 # Phase 113B — Hermes Proposal Draft Sandbox Design
 
+Status:      DRAFT
+as_of:       2026-06-01T15:53:13-04:00
+Measured at: efcc51365 / not measured
+
 ## Architecture
 
 The sandbox is completely isolated from real proposal tables and the execution path.

@@ -1,5 +1,9 @@
 # Session 2026-05-30/31 — Hermes Full Closeout Summary
 
+Status:      HISTORICAL
+as_of:       2026-05-31T17:57:00-04:00
+Measured at: efcc51365 / not measured
+
 ## 101 commits across two days
 
 Hermes sidecar installed, configured, and operational as Trade AI's advisory research desk. From zero to autonomous staged research, RAG embeddings, advisory promotion, pipeline quality monitoring, portfolio reflection, governance model, and Docker architecture planning.

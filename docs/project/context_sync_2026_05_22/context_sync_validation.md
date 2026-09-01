@@ -1,5 +1,9 @@
 # Context Sync Validation — 2026-05-22
 
+Status:      ACTIVE
+as_of:       2026-05-22T16:02:12-04:00
+Measured at: efcc51365 / not measured
+
 ## Docs Created
 - docs/project/context_sync_2026_05_22/context_sync_preflight.md
 - docs/project/context_sync_2026_05_22/context_sync_doc_inventory.md

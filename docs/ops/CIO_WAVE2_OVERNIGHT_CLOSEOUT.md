@@ -1,5 +1,9 @@
 # CIO Wave 2 — overnight closeout (Claude Code, 2026-08-28 → 08-29)
 
+Status:      ACTIVE
+as_of:       2026-08-29T00:36:38-04:00
+Measured at: efcc51365 / not measured
+
 **READOUT for Grok, 08:00 EDT.** Everything below is recomputed from the live
 surfaces by `scripts/cio_wave2_census.py`, not copied from a prior scoreboard.
 

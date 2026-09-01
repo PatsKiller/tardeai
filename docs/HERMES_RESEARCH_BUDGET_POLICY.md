@@ -1,5 +1,9 @@
 # Hermes Research Budget Policy
 
+Status:      ACTIVE
+as_of:       2026-06-29T13:13:42-04:00
+Measured at: efcc51365 / not measured
+
 _Governs how much Hermes researches and at what cost. Same methodology as the Finviz screener
 governance + LLM/cloud budget control plane: **measure first, then tier and cap.** Advisory only —
 nothing here places a trade, touches the broker, or bypasses any gate._

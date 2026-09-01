@@ -1,4 +1,9 @@
 # PHASE 214 — Coordinator Kill-Switch Repoint — CLOSEOUT (2026-06-07)
+
+Status:      HISTORICAL
+as_of:       2026-06-07T17:19:21-04:00
+Measured at: efcc51365 / not measured
+
 - Phase 214 complete: **YES**
 - Old kill-switch path: **none active** — Coordinator already used canonical paths; retired `.hermes/DISABLED` was referenced only in comments/audit scanners (never read by active code; files absent on disk).
 - New canonical kill-switch path: **data/runtime/HERMES_DISABLED** (via shared `hermes_killswitch.py`; env override HERMES_KILL_SWITCH_PATH).

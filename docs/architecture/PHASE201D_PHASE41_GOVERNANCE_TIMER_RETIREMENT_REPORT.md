@@ -1,5 +1,9 @@
 # Phase 201D — PHASE41 Governance Timer Retirement Report
 
+Status:      HISTORICAL
+as_of:       2026-06-05T10:07:06-04:00
+Measured at: efcc51365 / not measured
+
 Gate (201C) passed → the 4 redundant governance timers were **stopped + disabled** (unit files
 preserved, NOT deleted). The controller is now the sole governance scheduler.
 

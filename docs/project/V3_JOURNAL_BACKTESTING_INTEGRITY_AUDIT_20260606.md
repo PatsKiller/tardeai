@@ -1,5 +1,9 @@
 # v3 Journal → Backtesting Integrity Audit (2026-06-06)
 
+Status:      HISTORICAL
+as_of:       2026-06-06T11:30:56-04:00
+Measured at: efcc51365 / not measured
+
 Read-only audit + safe fixes only. No trading/GO-WAIT/strategy/broker/proposal/order/stop/live changes.
 Verdict: **treat the Backtesting page as DIAGNOSTIC/ADVISORY only** until the code fixes below land.
 

@@ -1,5 +1,9 @@
 # Hermes Research Lifecycle — Topics, LLM Engine, Website Cataloging & Ratings
 
+Status:      ACTIVE
+as_of:       2026-08-23T20:36:25-04:00
+Measured at: efcc51365 / not measured
+
 _Last updated: 2026-06-20_
 
 **SUPERSEDED AS OF 2026-08-23** for the routing line “Free LLM lanes only (grok → chatgpt → local gemma)”. Local generative advisory routing was retired; Flash is the default paid curator **only after free-first**. Canonical: `docs/architecture/HERMES_PERSISTENT_TICKER_INTELLIGENCE_ARCHITECTURE_2026-08-23.md`. This file remains historical evidence of topic/source lifecycle, not current model policy.

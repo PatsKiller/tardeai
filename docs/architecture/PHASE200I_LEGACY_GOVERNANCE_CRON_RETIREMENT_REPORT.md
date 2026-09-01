@@ -1,5 +1,9 @@
 # Phase 200I — Legacy Governance Cron Retirement (comment, not delete)
 
+Status:      HISTORICAL
+as_of:       2026-06-04T23:21:53-04:00
+Measured at: efcc51365 / not measured
+
 All preconditions passed (dry-run ✓, apply ✓, output diff ✓, scheduled cycle ✓, rollback documented
 ✓, governance-only ✓, operator approval in the Phase 200 prompt ✓), so the **active legacy A1A cron
 lines were commented** (not deleted) with a dated marker.
