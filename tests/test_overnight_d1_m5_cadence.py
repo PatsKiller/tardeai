@@ -202,11 +202,19 @@ def test_wake_subject_documents_normal_path_writer():
     assert "apply_after_cycle" in src
 
 
-def test_no_scheduled_apply_after_cycle_caller_is_honest():
-    """Guardrail for the doc claim: production scripts do not call it yet.
+def test_scheduled_apply_after_cycle_caller_is_named():
+    """The scheduled consumer, named -- replacing the no-caller guardrail.
 
-    If a scheduled caller is wired later, this test should be replaced with an
-    assertion that names that path — not silently deleted.
+    Until 2026-09-01 this asserted `prod == []`, and its own docstring said:
+    "If a scheduled caller is wired later, this test should be replaced with an
+    assertion that names that path -- not silently deleted." That happened. The
+    installed timer (`*/5 * * * * cio_wake_dispatch_entrypoint.py`, no flag) now
+    applies the cycle as cognition and persists it.
+
+    The list stays CLOSED. A second production caller appearing without this
+    test being updated is the thing worth catching: two schedulers writing
+    cognition for the same subject is how a record ends up with two versions of
+    what the desk last decided.
     """
     root = Path(__file__).resolve().parent.parent / "scripts"
     callers = []
@@ -215,13 +223,26 @@ def test_no_scheduled_apply_after_cycle_caller_is_honest():
             continue
         text = p.read_text(encoding="utf-8", errors="replace")
         if "apply_after_cycle" in text and "def apply_after_cycle" not in text:
-            # import-only or call sites outside the defining module
             if "apply_after_cycle(" in text:
                 callers.append(str(p.relative_to(root.parent)))
-    # migrate path may attach_operator_turn (defer), not normal completion.
-    # research_reaches_surface is a test. Production stamp callers: none.
-    prod = [c for c in callers if not c.startswith("tests/")]
-    assert prod == [], (
-        "unexpected production apply_after_cycle caller(s): "
-        f"{prod}. Update D1 audit + this test if a scheduled consumer was wired."
+    prod = sorted(c for c in callers if not c.startswith("tests/"))
+    assert prod == ["scripts/cio_wake_dispatch_entrypoint.py"], (
+        "the scheduled cognition writer set changed. Expected exactly the wake "
+        f"dispatch entrypoint; found {prod}. Update the D1 audit and this test "
+        "if another scheduled consumer was deliberately wired."
+    )
+
+
+def test_the_named_caller_is_the_one_cron_runs():
+    """Naming a caller is not evidence it is scheduled.
+
+    The D1 claim is about what runs unattended, so the file this test names must
+    be the file the crontab invokes -- not merely a module that imports the
+    writer. Asserted against the entrypoint's own recorded cron form so the two
+    cannot drift apart silently.
+    """
+    entry = (Path(__file__).resolve().parent.parent
+             / "scripts" / "cio_wake_dispatch_entrypoint.py").read_text(encoding="utf-8")
+    assert "cron: */5 * * * * cio_wake_dispatch_entrypoint.py" in entry, (
+        "the entrypoint must record the schedule it claims to run on"
     )
