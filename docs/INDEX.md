@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `b658f9e9987efaae823a1aee1883c523d78ce668351b4ebb780ac5eae4f90363`
+**Tree fingerprint:** `7fc27a2a613169f69b60f54b2819e87f340f4ccf89733b52df67ccd8564e250a`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,10 +12,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2276 |
-| Markdown (excl. this INDEX) | 1908 |
+| Files under `docs/` (excl. this INDEX) | 2281 |
+| Markdown (excl. this INDEX) | 1913 |
 | **MISSING HEADER** | **1034** |
-| Header OK | 874 |
+| Header OK | 879 |
 | Duplicate groups | 8 |
 
 ### By status_guess
@@ -30,7 +30,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_raw_sync | 8 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 12 |
-| review_required | 1908 |
+| review_required | 1913 |
 
 ## Markdown tree
 
@@ -578,6 +578,11 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/audits/overnight/B2_B3_FAILURE_SURFACES_2026-08-31.md` | B2 + B3 — Failure surfaces (2026-08-31) | review_required | OK | `fcff0b5c0734` |
 | `docs/audits/overnight/B4_B5_ASOF_PROVENANCE_2026-08-31.md` | B4 + B5 — Per-block `as_of` and provenance at display | review_required | OK | `3c0e9517e74f` |
 | `docs/audits/overnight/B6_REENTRY_SCOPE_2026-08-31.md` | Overnight B6 — Surface scope labels (re-entry books) | review_required | OK | `99641ec30a8b` |
+| `docs/audits/overnight/BISECT_TRADE_REGRESSION_2026-09-01.md` | BISECT_TRADE_REGRESSION_2026-09-01 | review_required | OK | `de9b6a69614a` |
+| `docs/audits/overnight/CC_PAGE_CENSUS_2026-09-01.md` | CC_PAGE_CENSUS_2026-09-01 | review_required | OK | `7f383b2fd7bb` |
+| `docs/audits/overnight/CC_REMEDIATION_2026-09-01.md` | CC_REMEDIATION_2026-09-01 | review_required | OK | `eb2a0c6ed996` |
+| `docs/audits/overnight/CC_WATCH_INTELLIGENCE_WIRING_2026-09-01.md` | CC_WATCH_INTELLIGENCE_WIRING_2026-09-01 | review_required | OK | `33db1b23e28a` |
+| `docs/audits/overnight/CC_WI_SPINE_WIRING_PROPOSAL_2026-09-01.md` | CC_WI_SPINE_WIRING_PROPOSAL_2026-09-01 | review_required | OK | `c38e52d5e340` |
 | `docs/audits/overnight/CENSUS_PART5_LEVEL_SET_2026-08-31.md` | Census Part 5 — Operator level-set | review_required | OK | `a9c50f171387` |
 | `docs/audits/overnight/D1_M5_CADENCE_2026-08-31.md` | Overnight D1 — M5 cadence via normal-path `next_eligible_at` | review_required | OK | `694d9d635dd3` |
 | `docs/audits/overnight/D2_PENDING_DATA_2026-08-31.md` | D2 — OUTCOME_PENDING_DATA triage (2026-08-31) | review_required | OK | `df13db77ddaa` |

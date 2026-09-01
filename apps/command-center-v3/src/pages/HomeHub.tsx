@@ -3,7 +3,8 @@ import { useApi } from '../hooks/useApi'
 import MarketMoversBoard from '../components/home/MarketMoversBoard'
 import BookTreemap from '../components/home/BookTreemap'
 import MajorNewsGrid from '../components/home/MajorNewsGrid'
-import { plain, plainAlert, runLabel, thresholdSentence, isScanStale } from '../lib/homeLabels'
+import { plain, plainAlert, runLabel, thresholdSentence } from '../lib/homeLabels'
+import { tradeAiSurfaceFreshness } from '../lib/surfaceFreshness'
 import { setupStateLabel, HermesGatewayLine, AiIntelligenceBriefing, EquityThinNote } from '../components/home/HomeTrustRender'
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import { fmt$, fmtPct } from '../lib/format'
@@ -77,7 +78,7 @@ export default function HomeHub({ onDrill }: Props) {
   const goCount = tradeAi?.go_count ?? 0
   const waitCount = tradeAi?.wait_count ?? 0
   const avoidCount = tradeAi?.avoid_count ?? 0
-  const scanStale = isScanStale(tradeAi?.run_date)
+  const scanStale = tradeAiSurfaceFreshness(tradeAi).stale
   const setupLbl = setupStateLabel({ go: goCount, wait: waitCount, avoid: avoidCount, runLabel: tradeAi?.run_label, runDate: tradeAi?.run_date })
   const journalPnl = journal?.total_pnl
   const positions = risk?.positions ?? []
