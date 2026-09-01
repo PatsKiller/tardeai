@@ -1082,6 +1082,22 @@
         "path": "data/portfolios/state/price_cache.json"
       },
       "note": "DECLARED BY THE INTEGRATOR to unblock a red required gate, not by this lane's owner. The cron line existed undeclared and failed check_lane_registry on clean main, blocking every PR. Facts used: the cron expression itself, and price_cache.json as the durable artifact (monitor_trigger_state.json only moves when a trigger fires, so it is not a liveness signal -- its mtime is 2026-04-13). Cadence is set to 24h DELIBERATELY CONSERVATIVE: the cron runs every 20 minutes in market hours, but the evaluator has no notion of active hours, so a 0.33h cadence would report SILENT every evening and weekend. 24h still catches a truly dead lane. The owner should tighten it."
+    },
+    {
+      "lane_id": "warm-caches",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "*/8 * * * * warm_caches.py",
+        "match": "warm_caches.py"
+      },
+      "expected_cadence_hours": 1,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/rotation_summary_cache.json"
+      },
+      "note": "DECLARED BY THE INTEGRATOR, not this lane's owner. The cron was added while PRs were in flight and check_lane_registry failed on clean main, blocking every merge. Facts used: the cron expression, and the script's own statement that it 'computes + writes data/runtime/rotation_summary_cache.json'. Cadence 1h against an 8-minute schedule -- deliberately loose, because an integrator guessing a tight cadence on someone else's lane manufactures false SILENTs. The owner should tighten it."
     }
   ],
   "undeclared_baseline": [
