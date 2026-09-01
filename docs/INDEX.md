@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `5ceef2cc2e682fc162e5a728a05c98c05899d8ed2690f63e2cae94526d1a8b5d`
+**Tree fingerprint:** `3017b0eb1b5f1f9d8c9cda719e767bfe72fc51d229ce0d900db3255837ef11bf`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,10 +12,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2305 |
-| Markdown (excl. this INDEX) | 1937 |
+| Files under `docs/` (excl. this INDEX) | 2311 |
+| Markdown (excl. this INDEX) | 1943 |
 | **MISSING HEADER** | **11** |
-| Header OK | 1926 |
+| Header OK | 1932 |
 | Duplicate groups | 5 |
 
 ### By status_guess
@@ -30,7 +30,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_raw_sync | 8 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 6 |
-| review_required | 1943 |
+| review_required | 1949 |
 
 ## Markdown tree
 
@@ -1369,6 +1369,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/CIO_LIBRARY_CENSUS_2026-08-29.md` | CIO library census (2026-08-29) | review_required | OK | `2daa3135932a` |
 | `docs/ops/CIO_LLM_GATE_CADENCE_CORPUS_2026-08-29.md` | CIO LLM gate + cadence + institutional corpus (2026-08-29) | review_required | OK | `1ff0592565d1` |
 | `docs/ops/CIO_LOOP_B1_B3_D1_CLOSEOUT_2026-08-20.md` | CIO Loop Continuity B1/B2/B3/D1 — Closeout 2026-08-20 | review_required | OK | `c68bbad7badd` |
+| `docs/ops/CIO_M5_FIRST_FIRE_2026-09-01.md` | M5 — first fire | review_required | OK | `f8b86b410e1a` |
 | `docs/ops/CIO_M5_TIMER_WATCH_2026-09-01.md` | CIO M5 timer watch — overnight 2026-08-31 → 2026-09-01 | review_required | OK | `025fb46a1ca4` |
 | `docs/ops/CIO_MATCHER_POSITION_DIRECTIVES_2026-08-29.md` | Imperative matcher — position directives (2026-08-29) | review_required | OK | `c53dd4e83d9e` |
 | `docs/ops/CIO_MATERIAL_NOTIFY_CANARY_2026-08-20.md` | CIO material notify canary — 2026-08-20 | review_required | OK | `9c1fe05ed382` |
@@ -1553,6 +1554,11 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/deepseek-v4-mainline-2026-08-03/SERVICE_RUNTIME_OPERATOR_STEPS.md` | Service-runtime DeepSeek credential wiring (operator-approved only) | review_required | OK | `7517d436573f` |
 | `docs/ops/deepseek-v4-mainline-2026-08-03/V3_ROUTE_TEST_RESULTS.md` | V3 route/subtab maturity results | review_required | OK | `9e4ae2f55bda` |
 | `docs/ops/incident-gate-a-canonical-store-hygiene.md` | Gate A Canonical Store Hygiene Incident | review_required | OK | `fc3f3944515a` |
+| `docs/ops/litmus/LITMUS_CC_ROUTES_2026-09-01.md` | Litmus slice C — Command Center routes (discovery only) | review_required | OK | `e9eb54337381` |
+| `docs/ops/litmus/LITMUS_COVERAGE_2026-09-01.md` | Litmus · D coverage (holdings vs plans vs watch vs re-entry vs S3) | review_required | OK | `c0da1ec339d7` |
+| `docs/ops/litmus/LITMUS_LANES_2026-09-01.md` | Litmus A — lanes | review_required | OK | `c8b2f9b12275` |
+| `docs/ops/litmus/LITMUS_MONEY_2026-09-01.md` | Litmus · B money | review_required | OK | `97edd2be6a93` |
+| `docs/ops/litmus/LITMUS_WAKE_2026-09-01.md` | Litmus · E wake | review_required | OK | `abf36821e5af` |
 | `docs/ops/provider-spend-attribution/README.md` | Provider spend attribution | review_required | OK | `df44cfc4ee62` |
 | `docs/options-module.md` | Options Module — Architecture & Operations | review_required | OK | `c5c94a4d61dc` |
 | `docs/paper_trading/PHASE179A_PAPER_TRADE_SOURCE_INVENTORY.md` | Phase 179A: Paper Trade Source Inventory | review_required | OK | `72664d5cf493` |
