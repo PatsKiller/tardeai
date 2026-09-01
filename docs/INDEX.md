@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `9712cafbd0f1f9a267cefe34332762468bab54b018d0a436ed4f9154f5c77668`
+**Tree fingerprint:** `ee8e90bd73d029a77a5440e8b5b3936a5d1523a7e101c24572627c4f786e9f3c`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,10 +12,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2315 |
-| Markdown (excl. this INDEX) | 1947 |
+| Files under `docs/` (excl. this INDEX) | 2316 |
+| Markdown (excl. this INDEX) | 1948 |
 | **MISSING HEADER** | **11** |
-| Header OK | 1936 |
+| Header OK | 1937 |
 | Duplicate groups | 5 |
 
 ### By status_guess
@@ -30,7 +30,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_raw_sync | 8 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 6 |
-| review_required | 1953 |
+| review_required | 1954 |
 
 ## Markdown tree
 
@@ -1383,6 +1383,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/CIO_OPERATOR_JUDGMENTS_2026-08-29.md` | CIO — operator judgments of 2026-08-29, implemented | review_required | OK | `df4583ed25f8` |
 | `docs/ops/CIO_OUTCOME_DRY_2026-09-01.md` | CIO staleness routine — dry-run receipt | review_required | OK | `5f377c51b957` |
 | `docs/ops/CIO_OUTCOME_LEARNING_CLOSEOUT_2026-08-20.md` | CIO Outcome Learning — Phase D thin closeout (2026-08-20) | review_required | OK | `7e74dd4f5c1a` |
+| `docs/ops/CIO_OVERNIGHT_AUTONOMY_SCOREBOARD_2026-09-02.md` | Overnight autonomy scoreboard — 2026-09-02 | review_required | OK | `96915dce529a` |
 | `docs/ops/CIO_OVERNIGHT_CLOSEOUT_2026-09-01.md` | CIO overnight wave — closeout, 2026-09-01 | review_required | OK | `a6a397bc7ae8` |
 | `docs/ops/CIO_OVERNIGHT_STITCH_2026-09-01.md` | CIO overnight wave — coordinator stitch, 2026-09-01 | review_required | OK | `01d6f87d37cd` |
 | `docs/ops/CIO_P1_LOAD_BY_SUBJECT_2026-08-31.md` | CIO P1 — scheduled wake loads InstrumentRecord before decide (M5) | review_required | OK | `0a5f0262eb60` |
