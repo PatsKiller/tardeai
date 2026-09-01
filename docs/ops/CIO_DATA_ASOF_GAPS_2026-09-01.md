@@ -91,10 +91,85 @@ dependency for one check would be a heavier change than the check.
 
 ## Live expectation
 
-No dollar amount changes and no clock is refreshed. The chip already read ~29.5d; it now also
-**labels** that number `data_as_of` and names `moomoo_taxable_live`. A block with no data
-clock, which does not occur on the live payload today, would read `data_as_of UNDATED`
-instead of silently printing the loader's date.
+No dollar amount changes and no clock is refreshed **by this change**. A block with no data
+clock would read `data_as_of UNDATED` instead of silently printing the loader's date.
+
+> **Superseded within two minutes of the promote — see the addendum below.** The value the
+> chip renders changed for an unrelated upstream reason, and the sentence that used to sit
+> here ("the chip already read ~29.5d ... and names `moomoo_taxable_live`") became false.
+> Recording that rather than quietly editing it, because *why* it became false is the finding.
 
 **A promote is required for the surface half**: `apps/command-center-v3/dist/` is untracked
 and built at promote time, and the API runs from `CURRENT`.
+
+
+---
+
+# Addendum — the chip got "fresher" by losing an account
+
+**Not caused by this change.** Measured after the promote, and recorded because the surface
+now looks reassuring for a reason nobody chose.
+
+## What moved
+
+| | 13:00 | 14:30 |
+|---|---|---|
+| `data_as_of` | `2026-08-03` | `2026-09-01` |
+| `data_as_of_account` | `moomoo_taxable_live` | `alpaca_taxable_live` |
+| chip age | **29.5d, STALE** | **0.6d, not stale** |
+| `total_cash` | 631,013.62 | 630,513.62 |
+| `portfolio_value` | 1,278,305.39 | 1,278,568.26 |
+
+`holdings.json` was rewritten at **14:30:32** (`positions_built_at 13:30:02`,
+`last_repriced 14:30:02`) — **two minutes before this promote**, and by the repricer, not by
+anything here. This change touches a label, an `asOf` value on one branch, and tests.
+
+## The finding
+
+**`moomoo_taxable_live` now has zero holdings rows.** It is still declared in
+`account_summaries`, with `total_value: 0`. So is `fidelity_rollover_ira`.
+
+At 13:00 the moomoo rows carried `2026-08-03` and were the reason the book read 29 days old.
+They are gone, so the oldest surviving row is today's, and the banner improved from **29.5d
+to 0.6d without a single stale figure being refreshed.**
+
+**The staleness was not fixed. The stale rows left.**
+
+## What cannot be concluded
+
+Two possibilities produce this identical signature, and they have opposite implications:
+
+1. the account was legitimately emptied or closed, and zero is the truth; or
+2. a collector returned nothing and the writer persisted the empty result — the fail-open
+   shape AGENTS.md §7 describes, where "the file keeps its normal name, shape, size class and
+   a *fresh* mtime, so every staleness check reads it as current."
+
+**Establish which before reasoning from it** (§7, the `attempts_24h` rule). Nothing here does,
+and nothing was changed to find out: holdings state is operator-only under §17.
+
+## The surface that did NOT follow, and why that matters
+
+The CIO cash path did **not** jump to fresh:
+
+```
+capital_plan.cash_as_of  as_of 2026-08-14 · oldest_row 2026-08-14
+                         newest_row 2026-09-01 · mixed_ages true
+```
+
+That is PP3 (#822) working as designed: it dates the **cash rows**, not the whole book, so a
+surviving 08-14 cash row keeps the cash surface honest at 18 days while the portfolio banner
+reads 0.6d. The two numbers disagree because they measure different things, and both are
+correct for what they measure.
+
+**Detector shape, stated plainly:** `compute_data_as_of` is the oldest row across the entire
+book. It is the right definition for "how old is this book", and it structurally cannot
+distinguish *a stale row that got refreshed* from *a stale row that disappeared*. A freshness
+metric that improves when data is removed will read as good news on the day it should read as
+an alarm. The chip is not wrong; it is answering a narrower question than a reader will
+assume when the number drops by 29 days overnight.
+
+## Proposed, not done
+
+- Establish which of the two possibilities produced the empty moomoo book. Operator-only.
+- Consider surfacing an account that transitions to zero rows while remaining declared — a
+  drop-out is invisible in every number on the banner today.
