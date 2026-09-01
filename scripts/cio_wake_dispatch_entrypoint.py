@@ -302,19 +302,42 @@ def main(argv: list[str] | None = None):
                     "reason": research.get("reason"),
                     "decide_called": research.get("decide_called"),
                     "record_loaded": research.get("record_loaded"),
+                    # #839 made decide_after_load consult the retained hits and
+                    # then nothing recorded the answer, so the consult ran and
+                    # left no trace. A value computed and observed by nothing is
+                    # the defect this programme keeps finding; these four keys
+                    # are what make it observable.
+                    #
+                    # last_hit_readable False means the document could not be
+                    # read -- NOT that there is no hit. Kept distinct here for
+                    # the same reason decide_after_load keeps it distinct.
+                    "last_hit_at": research.get("last_hit_at"),
+                    "last_hit_decision": research.get("last_hit_decision"),
+                    "last_hit_readable": research.get("last_hit_readable"),
+                    "duplicate_research_suspected": research.get(
+                        "duplicate_research_suspected"),
                 })
                 log.info(
                     "research_gate subject=%s decision=%s reason=%s "
-                    "decide_called=%s record_loaded=%s",
+                    "decide_called=%s record_loaded=%s last_hit_at=%s "
+                    "last_hit_readable=%s duplicate_research_suspected=%s",
                     subject_key, research.get("decision"),
                     research.get("reason"), research.get("decide_called"),
-                    research.get("record_loaded"),
+                    research.get("record_loaded"), research.get("last_hit_at"),
+                    research.get("last_hit_readable"),
+                    research.get("duplicate_research_suspected"),
                 )
             except Exception:
                 log.exception("research gate failed for %s", subject_key)
                 research_rows.append({"subject_key": subject_key,
                                       "wake_job_id": wake_id,
-                                      "decision": "ERROR"})
+                                      "decision": "ERROR",
+                                      "last_hit_at": None,
+                                      "last_hit_decision": None,
+                                      # The gate raised before any consult could
+                                      # be trusted: unknown, not "no hit".
+                                      "last_hit_readable": None,
+                                      "duplicate_research_suspected": None})
 
         dispatcher.mark_in_flight(wake_id)
         exec_result = worker.execute(run_id)
