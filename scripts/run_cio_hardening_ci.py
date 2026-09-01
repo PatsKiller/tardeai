@@ -276,6 +276,7 @@ GATES = [
     ]),
     ("lane_registry", [
         "tests/test_lane_registry.py",
+        "tests/test_lane_portfolio_repricer.py",
     ]),
     ("search_budget", [
         "tests/test_search_budget_and_health.py",

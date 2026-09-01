@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `a3c9ad338c3de38a7049d3b5068a81b2d80a30ded2f63dd2b456ac3922fd7668`
+**Tree fingerprint:** `9d0a7c49a37c8d3ac48a9114d82889891e4779776ccf283fae585e2945157420`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,10 +12,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2313 |
-| Markdown (excl. this INDEX) | 1945 |
+| Files under `docs/` (excl. this INDEX) | 2314 |
+| Markdown (excl. this INDEX) | 1946 |
 | **MISSING HEADER** | **11** |
-| Header OK | 1934 |
+| Header OK | 1935 |
 | Duplicate groups | 5 |
 
 ### By status_guess
@@ -30,7 +30,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_raw_sync | 8 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 6 |
-| review_required | 1951 |
+| review_required | 1952 |
 
 ## Markdown tree
 
@@ -1366,6 +1366,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/CIO_IIC_TELEGRAM_ACTIONABLE_VISUAL_2026-08-21.md` | CIO IIC Telegram — actionable visual + raw dump kill (2026-08-21) | review_required | OK | `9db7ca919fbe` |
 | `docs/ops/CIO_INSTITUTIONAL_CORPUS_MAP_2026-08-29.md` | CIO institutional corpus map (2026-08-29) | review_required | OK | `8add9a83cb61` |
 | `docs/ops/CIO_INVESTMENT_INTELLIGENCE_CARD_2026-08-21.md` | CIO Investment Intelligence Card (Phase A) — 2026-08-21 | review_required | OK | `f1577e5448bf` |
+| `docs/ops/CIO_LANE_REPRICER_2026-09-01.md` | Declare portfolio_repricer lane (writes data_as_of) | review_required | OK | `bb8fb68b1b66` |
 | `docs/ops/CIO_LEFTOVER_CLOSEOUT_2026-08-29.md` | CIO leftover closeout (2026-08-29) | review_required | OK | `7028706c95a7` |
 | `docs/ops/CIO_LIBRARY_CENSUS_2026-08-29.md` | CIO library census (2026-08-29) | review_required | OK | `2daa3135932a` |
 | `docs/ops/CIO_LLM_GATE_CADENCE_CORPUS_2026-08-29.md` | CIO LLM gate + cadence + institutional corpus (2026-08-29) | review_required | OK | `1ff0592565d1` |

@@ -2,7 +2,7 @@
   "schema": "LaneRegistry@v1",
   "authority": "READ_ONLY_ADVISORY",
   "seeded_at": "2026-08-30",
-  "note": "Declared lanes below. `undeclared_baseline` is inherited debt, captured so the CI gate is green on day one and can only shrink \u2014 the precedent that made the dark-contract gate adoptable. A NEW scheduled job not in either list fails CI. Wave2-2026-09-01 batch1: shrink wake-dispatch duplicate; retire cron-freshness-watcher; promote due-checkpoints,cio-delivery,cio-defer-revisit,autonomy-watchdog,hermes-momentum-catalyst-morning. as_of=2026-08-31T16:58:07+00:00. Wave2-2026-09-01 batch2: promote portfolio-backup-cadence,portfolio-daily-cadence,portfolio-weekly-cadence,portfolio-monthly-cadence,portfolio-lookthrough-cadence,governance-pipeline,cio-nightly-reflection,cio-memory-shadow-measure,cio-desk-memo-regen,sm-render,tax-lots-rebuild,provider-cost-reconcile,free-first-circulation,holdings-agent-enqueue,hermes-update-check,portfolio-price-cache,agent-runtime-health; retire at-observation-01,at-observation-01-closeout. as_of=2026-08-31T17:06:54+00:00. Wave2 batch3: promote advisory-shadow-seed,cio-material-scan. as_of=2026-08-31T17:08:11+00:00.",
+  "note": "Declared lanes below. `undeclared_baseline` is inherited debt, captured so the CI gate is green on day one and can only shrink \u2014 the precedent that made the dark-contract gate adoptable. A NEW scheduled job not in either list fails CI. Wave2-2026-09-01 batch1: shrink wake-dispatch duplicate; retire cron-freshness-watcher; promote due-checkpoints,cio-delivery,cio-defer-revisit,autonomy-watchdog,hermes-momentum-catalyst-morning. as_of=2026-08-31T16:58:07+00:00. Wave2-2026-09-01 batch2: promote portfolio-backup-cadence,portfolio-daily-cadence,portfolio-weekly-cadence,portfolio-monthly-cadence,portfolio-lookthrough-cadence,governance-pipeline,cio-nightly-reflection,cio-memory-shadow-measure,cio-desk-memo-regen,sm-render,tax-lots-rebuild,provider-cost-reconcile,free-first-circulation,holdings-agent-enqueue,hermes-update-check,portfolio-price-cache,agent-runtime-health; retire at-observation-01,at-observation-01-closeout. as_of=2026-08-31T17:06:54+00:00. Wave2 batch3: promote advisory-shadow-seed,cio-material-scan. as_of=2026-08-31T17:08:11+00:00. Wave-2026-09-01 portfolio-repricer: declare portfolio-repricer ACTIVE (*/15 market hours \u2192 holdings.json); remove 3 portfolio_repricer cron lines from undeclared_baseline. as_of=2026-09-01T20:41:10+00:00.",
   "lanes": [
     {
       "lane_id": "research-lane-health",
@@ -1098,6 +1098,29 @@
         "path": "data/runtime/rotation_summary_cache.json"
       },
       "note": "DECLARED BY THE INTEGRATOR, not this lane's owner. The cron was added while PRs were in flight and check_lane_registry failed on clean main, blocking every merge. Facts used: the cron expression, and the script's own statement that it 'computes + writes data/runtime/rotation_summary_cache.json'. Cadence 1h against an 8-minute schedule -- deliberately loose, because an integrator guessing a tight cadence on someone else's lane manufactures false SILENTs. The owner should tighten it."
+    },
+    {
+      "lane_id": "portfolio-repricer",
+      "owner": "portfolio",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "*/15 9-16 * * 1-5 portfolio_repricer.py",
+        "match": "portfolio_repricer.py"
+      },
+      "expected_cadence_hours": 0.25,
+      "active_days": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/portfolios/state/holdings.json"
+      },
+      "note": "Writes holdings.json and data_as_of (LITMUS_LANES F7 / #831). Cadence matches the installed */15 9-16 market-hours cron, not a fake 24h. Artifact is the holdings.json CURRENT serves (persistent-state via symlink), not $PROJ. Three cron lines (*/15 9-16, 5 9 open, 10 16 postclose) share match=portfolio_repricer.py. F3 live_monitor and F5 warm_caches stay loose \u2014 out of scope."
     }
   ],
   "undeclared_baseline": [
@@ -1131,7 +1154,6 @@
     "*/15 9-16 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/mkt_quotes_intraday.lock $PY scripts/external_market_data_ingest.py --quotes >> logs/market_data.log 2>&1  # intraday live quotes (Alpaca primary)",
     "*/15 9-16 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/trade_integrity_audit.lock $PY scripts/trade_integrity_audit.py >> logs/trade_integrity_audit.log 2>&1",
     "*/15 9-16 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && bash /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/safe_flock.sh /tmp/alpaca_live_read_sync.lock /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/alpaca_live_read_sync.py >> /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/alpaca_live_read_sync.log 2>&1",
-    "*/15 9-16 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && bash /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/safe_flock.sh /tmp/portfolio_repricer.lock /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/portfolio_repricer.py >> /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/portfolio_repricer_intraday.log 2>&1",
     "*/15 9-16 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && flock -n /tmp/moomoo_live_read.lock .venv/bin/python scripts/moomoo_live_read_sync.py >> logs/moomoo_live_read_sync.log 2>&1  # positions + cash -> holdings.json via protected_holdings_write; totals left to portfolio_loader/repricer",
     "*/2 * * * * bash /home/johnclaw/.config/tradeai/bin/run_telegram_callback_poller_current.sh",
     "*/2 * * * * bash /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/scripts/portfolio_server_watchdog.sh",
@@ -1308,7 +1330,6 @@
     "10 10 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/deploy_detect.py --apply --trading-days-only --days 14 >> /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/deploy_redeploy_cron.log 2>&1",
     "10 10 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && flock -n /tmp/defense_recs.lock bash -c \"set -a; . ./.env; set +a; .venv/bin/python scripts/defense_recommendations.py\" >> logs/defense_recs.log 2>&1",
     "10 12,15 * * 1-5 cd $PROJ && bash scripts/market_day_gate.sh $PY scripts/system_health_alerts.py >> logs/system_health_alerts_cron.log 2>&1",
-    "10 16 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/portfolio_repricer.lock $PY scripts/portfolio_repricer.py && $PY scripts/holdings_reconcile.py --apply && flock -n /tmp/lookthrough_resolver.lock $PY scripts/phase3_lookthrough_resolver.py --project-root $PROJ >> logs/portfolio_repricer_postclose.log 2>&1  # +phase3 look-through allocation: DAILY auto-refresh from settled holdings (2026-06-18)",
     "10 16 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && flock -n -E 99 /tmp/tradeai_stale_proposal_sweeper.lock ./scripts/run_scheduled_stale_proposal_sweeper.sh --report-only >> logs/stale_proposal_sweeper.log 2>&1",
     "10 17 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && bash /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/linux_launchers/run_options_paper_position_monitor.sh",
     "10 18 * * 1-5 cd $PROJ && $PY scripts/compute_source_weights.py --apply >> logs/source_weights.log 2>&1",
@@ -1567,7 +1588,6 @@
     "5 7 * * 1-5 cd $PROJ && $PY scripts/sync_dividend_data.py >> logs/dividend_sync.log 2>&1",
     "5 8 * * 1-5 cd $PROJ && $PY scripts/aegis_morning_brief_delivery.py >> logs/aegis_brief.log 2>&1",
     "5 8 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && flock -n /tmp/options_lc_digest.lock bash -c \"set -a; . ./.env; set +a; .venv/bin/python scripts/options_lifecycle_digest.py\" >> logs/options_lifecycle.log 2>&1",
-    "5 9 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && bash /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/safe_flock.sh /tmp/portfolio_repricer.lock /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/portfolio_repricer.py >> /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/portfolio_repricer_intraday.log 2>&1",
     "50 10 * * * cd $PROJ && bash \"$HOME/.config/tradeai/bin/run_with_deepseek_offpeak.sh\" -- bash $PROJ/scripts/safe_flock.sh /tmp/hermes_outcome_grader.lock $PY scripts/hermes_outcome_grader.py --apply --max-rows 10000 >> logs/hermes_outcome_grader.log 2>&1  # RETARGETED_OFFPEAK 2026-08-21 was 02:50 ET Peak B",
     "50 15 * * 1-5 cd $PROJ && flock -n /tmp/two_way_options_edge.lock bash scripts/run_scheduled_two_way_curation.sh options-edge",
     "50 17 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && flock -n /tmp/defense_recs.lock bash -c \"set -a; . ./.env; set +a; .venv/bin/python scripts/defense_recommendations.py\" >> logs/defense_recs.log 2>&1  # Defense v3 WS-R: recommendations after sector 17:25 + radar 17:35",
