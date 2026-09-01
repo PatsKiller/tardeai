@@ -178,14 +178,7 @@ is still the only proof the write path works.
   `expected_cadence_hours: 24` — so this lane should already evaluate stale, and that
   verdict still reaches no operator surface. Lane row declares 24h against a `*/20 9-16`
   cron. Left alone, by instruction.
-- **The wake cron overlaps itself.** Line 949 is one of the few crontab lines **without
-  `flock`** (322 lines use it; this one does not), and runs take 4–6 minutes against a
-  `*/5` schedule — two dispatchers were observed running concurrently at 13:05. The lease
-  prevents the same wake being dispatched twice, and `upsert` appends one line per write so
-  no line can tear. But this change adds a **cognition write** to that path, and two
-  overlapping cycles touching one `subject_key` could lose an update (load → append →
-  last-writer-wins projection). **Adding `flock` is a cron change and therefore
-  operator-only (§17) — proposed, not done.**
+- **The wake cron overlapped itself — FIXED, operator-authorized.** See the section below.
 - **`ai_local_acceptance.sh` does not run `run_cio_hardening_ci.py`.** A PR that adds a
   document passes every local gate and fails CI on `docs_index_drift`. That is what
   happened here.
@@ -196,6 +189,66 @@ is still the only proof the write path works.
 - **`$PROJ` now lags `origin/main` by two commits** (#825, #826). Not fast-forwarded, per
   the pin. Harmless for these two changes specifically: the wake cron runs `cd CURRENT`, and
   `api_v2`/the SPA are served from `CURRENT`. Nothing in either PR is executed from `$PROJ`.
+
+## Crontab line 949 — `flock` added (operator-authorized)
+
+Proposed as operator-only under §17; the operator then instructed "add flock to line 949",
+which is the authorization §17 requires. Applied.
+
+**Why it mattered now.** Runs take 4–6 minutes against a `*/5` schedule and two dispatchers
+were observed running concurrently at 13:05. The lease prevents the same wake dispatching
+twice, and `upsert` writes one whole line per append so nothing can tear. But #826 puts a
+**cognition write** on that path, and two overlapping cycles touching one `subject_key`
+could lose an update through load → append → last-writer-wins projection.
+
+```
+- */5 … && PY scripts/cio_wake_dispatch_entrypoint.py >> logs/… 2>&1  # …
++ */5 … && flock -n -E 99 /tmp/cio_wake_dispatch.lock PY scripts/… >> logs/… 2>&1; rc=$?; \
++   [ $rc -eq 99 ] && echo "$(date …) [flock] wake dispatch skipped - previous cycle still running" >> …
+```
+
+**`-E 99` and the skip line are deliberate, not scope creep.** A bare `flock -n` exits 1 and
+writes nothing, so a skipped cycle would be indistinguishable from a cycle that never fired —
+a new blind spot on the very lane that just gained a write. AGENTS.md §9.1: silence must
+never be indistinguishable from a dead system. This is the pattern crontab line 928 already
+uses, reused rather than reinvented.
+
+**Not added: `timeout`.** Line 928 pairs `flock` with `timeout 45m`. That is a second control
+with its own failure mode — killing a run mid-append — and it was not what was asked for.
+**Standing risk, unresolved: with `-n` and no timeout, a hung dispatcher holds the lock and
+every later cycle skips forever.** The skip line makes that visible in the log, but nothing
+alerts on it. Proposed, not done.
+
+### Proof the control engages
+
+Mechanism, three states, before touching the crontab:
+
+```
+lock free    → rc=0   command ran
+lock held    → rc=99  command did NOT run
+lock freed   → rc=0   command ran again
+```
+
+Then the exact installed command form (with cron's `\%` un-escaped as cron does), scratch
+lock and log:
+
+```
+overlap → inner rc=99
+log     → 2026-09-01 13:32:58 [flock] wake dispatch skipped - previous cycle still running
+```
+
+### Change safety
+
+```
+backup    /home/johnclaw/backups-crontab/crontab.20260901-133122.bak   sha a3071398ae744cbd
+diff      exactly 1 line removed, 1 added; 1013 lines before and after
+readback  byte-identical to the candidate (sha 9e0525727567cbe3)
+```
+
+Anchored on unique line CONTENT and then asserted to be at line 949, rather than trusting a
+line number. `~/backups` was not touched; the backup went to a new sibling directory.
+`MAILTO` is unset and nothing parses this log for exit status, so the trailing test's
+non-zero exit on a healthy run is inert — and matches line 928.
 
 ## Not done, by instruction
 
