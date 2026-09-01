@@ -1150,8 +1150,54 @@ def _load_cache(state_dir: Path, key: str) -> Optional[str]:
     try: return json.loads(f.read_text()).get("text","") if f.exists() else None
     except: return None
 
+# Sentinels this module emits when a run produces no analysis. They are status
+# messages, not analysis, and must never be cached over real content.
+_FAILURE_PREFIXES = (
+    "Analysis unavailable",     # _ollama: all LLMs failed / returned empty
+    "LLM error:",               # _ollama: exception path
+    "Analysis error:",          # run_ai_analysis: section raised
+)
+
+
+def _is_failure_text(text) -> bool:
+    """True when `text` is a failure sentinel or empty rather than an analysis."""
+    t = str(text or "").strip()
+    return not t or t.startswith(_FAILURE_PREFIXES)
+
+
 def _save_cache(state_dir: Path, key: str, text: str):
+    """Persist an analysis. FAILS CLOSED: a failed run never destroys good content.
+
+    This used to write whatever it was handed. When the LLM lane was down the
+    caller passed "Analysis unavailable — all LLMs failed" and that string was
+    written straight over the last good analysis — no version, no backup, no
+    skip. Observed 2026-09-01: all seven ai_*.json caches overwritten between
+    07:32 and 07:33, destroying analyses from 2026-08-11. Every subsequent run
+    destroyed another copy, and the only reason the originals survived at all is
+    that a second, diverging state tree was not written by this job.
+
+    A cache that fails OPEN converts a transient outage into permanent data loss,
+    and it does so silently, because the file keeps its normal shape and mtime.
+    """
     Path(state_dir).mkdir(parents=True, exist_ok=True)
+    path = Path(state_dir) / f"ai_{key}.json"
+
+    if _is_failure_text(text):
+        prior = None
+        try:
+            prior = json.loads(path.read_text()) if path.exists() else None
+        except Exception:
+            prior = None
+        if isinstance(prior, dict) and not _is_failure_text(prior.get("text")):
+            # Keep the analysis; record the failure beside it so the outage is
+            # visible in-band rather than inferred from a missing refresh.
+            prior["last_failure_ts"] = datetime.now().isoformat()
+            prior["last_failure_text"] = str(text or "")[:200]
+            prior["stale_since_failure"] = True
+            path.write_text(json.dumps(prior, indent=2))
+            print(f"  [ai] {key}: run failed — prior analysis PRESERVED, not overwritten")
+            return
+
     h_hash = _current_holdings_hash(state_dir)
     (Path(state_dir) / f"ai_{key}.json").write_text(
         json.dumps({"key":key,"text":text,"ts":datetime.now().isoformat(),
