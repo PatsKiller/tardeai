@@ -965,3 +965,82 @@ layer. It now *does* gate the CIO family — but still does not gate **46 chokep
 - Morning queue: two §13.4 dark-contract amendments, a third §13.4/§7 staleness correction, the
   AS-IS class-A and cash-`as_of` claims, the 928–930 cron fix, the frozen-`CURRENT` daemon, and
   three operator-only store decisions.
+---
+
+## Stitch 7 — 2026-08-31 23:43 ET · operator raises the frozen daemon to P0
+
+Operator instruction received: **the frozen-`CURRENT` daemon is P0 in the morning packet.** Routed
+to Worker E for the top slot in both files, with remediation as a runnable command. **Nothing was
+killed, restarted or touched** — the restart is operator-only under §17 and this is a docs-only
+wave. It is recorded as a P0 *proposal with a verified diagnosis*, not as an action taken.
+
+### Supervision established — the diagnosis is now complete
+
+`[VERIFIED]`
+
+```
+$ cat /proc/3637980/cgroup
+0::/user.slice/user-1000.slice/user@1000.service/app.slice/tradeai-health-agent.service
+
+$ systemctl --user status tradeai-health-agent.service
+● tradeai-health-agent.service - TradeAI Health Agent daemon
+    (continuous score + auto-remediate + tier1 escalation)
+     Active: active (running) since Wed 2026-08-26 20:38:03 EDT; 5 days ago
+     Main PID: 3637980 (python)     CPU: 2h 38min
+     Drop-In: 20-exact-main.conf, 30-current-collectors.conf
+```
+
+Three `ExecStart` layers, each resetting the last; the effective one is the wrapper. Base unit
+`WorkingDirectory` is `$PROJ`; both drop-ins override it to the **`CURRENT` symlink path**, which
+systemd also resolves at start. So the root is frozen twice over — once by systemd, once by the
+wrapper's `.resolve()`.
+
+### Why it is P0 and not merely untidy
+
+1. **It auto-remediates.** The unit's own description is "continuous score + **auto-remediate** +
+   tier1 escalation". Five-day-old remediation code is acting on a system that has moved twelve
+   promotes underneath it.
+2. **It fails where nobody reads.** 20 MB appended tonight at 23:22 to a log whose filename does
+   not exist in `persistent-state/logs` at all; `retry_cmd failed (rc=127)` and
+   `SKIP Tier2/3 LLM — 19 remaining unfixed; Tier1 resolved=0`.
+3. **The inversion — the finding of the night after the writer.** `Restart=always`,
+   `RestartSec=20`. The daemon would have re-resolved `CURRENT` on **any** crash. It has not
+   crashed in five days. **It is stale precisely because it has been healthy.** Its correctness
+   decays with its uptime, so no liveness check will ever catch it, and every monitor on this box
+   reports it green.
+
+That is a new shape for this repository's catalogue. §8 already records "a guard verified by
+presence is not a guard" and "two states cannot express *no input*". This is a third: **a component
+whose wrongness is proportional to its uptime, and therefore invisible to every health signal that
+measures whether it is running.**
+
+### Remediation — mitigation and durable fix, deliberately not conflated
+
+**Mitigation** (one command, reversible, self-healing under `Restart=always`):
+
+```
+systemctl --user restart tradeai-health-agent.service
+readlink /proc/$(systemctl --user show -p MainPID --value tradeai-health-agent.service)/cwd
+```
+
+The second line is not optional. It must print the current release directory, not `40360117`.
+Verifying by "service is active" would repeat the very defect being fixed.
+
+**Durable fix** — the mitigation only resets the clock; the daemon rots again from the next promote
+onward. Two candidate shapes, **proposed, not chosen**: (a) re-resolve the root per cycle rather
+than freezing it at import; (b) a post-promote hook restarting this unit. Because the unit's
+`WorkingDirectory` is *also* the symlink path and systemd resolves it at start, **(a) alone may not
+be sufficient** — stated as an open question rather than asserted either way.
+
+### The repair that introduced it
+
+The wrapper exists to fix a root-resolution bug. Its docstring: *"CURRENT/scripts/health_agent_daemon.py
+rebases PROJECT_ROOT to the git checkout whenever that tree exists. That made #349 collectors dead
+on a live exact-main release."* It fixed that one and introduced this one — **a repair verified by
+the symptom it targeted**, which is §8 almost verbatim.
+
+### Open at stitch 7
+
+- A, B, C, D: **DONE**, all deliverables committed. **E: running**, P0 routed.
+- Discovered, not created: this belongs in the *discovered* column when E tallies whether the
+  operator-only list grew.
