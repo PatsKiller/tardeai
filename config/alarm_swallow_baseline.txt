@@ -1,0 +1,98 @@
+# C3 baseline — alarm deliveries whose failure is swallowed.
+#
+# NAMED INHERITED DEBT, not an allowlist. The gate fails when any file exceeds
+# its number here, or when a file not listed acquires a finding. It can only
+# shrink: lowering a number is the fix, raising one is the defect.
+#
+# Two classes:
+#   pure_swallow  handler body is literally `pass` -- unambiguous
+#   log_only      handler only writes a log line -- a log is not a durable surface
+#
+# A handler may instead carry ALARM-DELIVERY-DECLARED: <reason> and is then exempt.
+#
+# generated against scripts/  ·  pure_swallow=65  log_only=46  files=84
+
+scripts/aegis_overnight.py 2
+scripts/agent_watchlist_engine.py 1
+scripts/alert_daily_digest.py 1
+scripts/alert_missing_conditions.py 1
+scripts/alerting.py 1
+scripts/alpaca_live_read_sync.py 1
+scripts/alpaca_stop_manager.py 4
+scripts/api_v2.py 3
+scripts/auto_research.py 1
+scripts/backup_verify.py 1
+scripts/brokers/approval_service.py 1
+scripts/check_deep_overnight_health.py 2
+scripts/cio_event_brief.py 1
+scripts/claude_escalation_handler.py 2
+scripts/cloud_consensus_verdict.py 1
+scripts/continuous_runner.py 1
+scripts/credential_monitor.py 1
+scripts/cron_self_heal.py 1
+scripts/defense_execution.py 1
+scripts/defense_weekly_paid_review.py 1
+scripts/finviz_health_check.py 1
+scripts/finviz_ingestion.py 2
+scripts/generate_daily_intelligence_report.py 1
+scripts/generate_weekly_docx.py 1
+scripts/gpu_lifecycle.py 2
+scripts/health_agent.py 1
+scripts/hermes_backlog_drain.py 1
+scripts/hermes_deep_research_local.py 1
+scripts/hermes_score_alerts.py 1
+scripts/incubator_llm_screener.py 1
+scripts/incubator_proposal_promoter.py 2
+scripts/interlock_parity_monitor.py 1
+scripts/lib/cio_operator_renderers.py 1
+scripts/lib/cio_plan_enrichment.py 1
+scripts/lib/cio_theses.py 1
+scripts/lib/gain_guardian_publish.py 1
+scripts/market_regime_classifier.py 1
+scripts/moomoo/opend_health.py 1
+scripts/nightly_integrity_sweep.py 1
+scripts/oauth_lane_keepalive.py 1
+scripts/open_trade_monitor.py 1
+scripts/overnight_batch.py 1
+scripts/oversight_weekly_digest.py 1
+scripts/paper_performance_governance.py 1
+scripts/paper_trade_monitor.py 2
+scripts/pipeline_freshness_slo.py 1
+scripts/pipeline_watchdog.py 2
+scripts/portfolio_level_qa.py 1
+scripts/portfolio_orchestrator.py 1
+scripts/portfolio_report_ms.py 1
+scripts/process_reaper.py 1
+scripts/process_watchlist_agent_jobs.py 3
+scripts/proposal_alerter.py 3
+scripts/proposal_paper_submitter.py 3
+scripts/pullback_macd_screener.py 1
+scripts/rebalance_verifier.py 1
+scripts/recovery_watch_daily.py 2
+scripts/rerun_cio_dual_consensus.py 1
+scripts/research_intelligence_queue.py 1
+scripts/rotation_rebalance_digest.py 1
+scripts/run_paper_canary_chain.py 1
+scripts/run_proactive_quote_refresh.py 2
+scripts/scalp_critic_agent.py 1
+scripts/scalp_outcome_scorer.py 1
+scripts/secrets/render_env.py 1
+scripts/secrets/rotation_daemon.py 1
+scripts/secrets_admin.py 1
+scripts/send_alert_digest.py 1
+scripts/stop_drift_alert.py 1
+scripts/stop_over_consensus_monitor.py 1
+scripts/system_health_agent.py 5
+scripts/system_rollup_snapshot.py 1
+scripts/telegram_alert.py 1
+scripts/telegram_callback_handler.py 3
+scripts/telegram_cio_summary.py 1
+scripts/telegram_reply_processor.py 1
+scripts/trade_ai_orchestrator.py 1
+scripts/verify_fib_proposals.py 1
+scripts/verify_hermes_daily.py 1
+scripts/warrior_weekly_audit_cron.py 1
+scripts/watch_alerts_eval.py 1
+scripts/watch_directive_hygiene.py 1
+scripts/youtube_backfill_manager.py 1
+scripts/youtube_transcript_ingest.py 1

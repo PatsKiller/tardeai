@@ -9,6 +9,24 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
+# CI does not install python-dotenv, so any alarm module importing it raised
+# ModuleNotFoundError during collection and the C1 firing gate did not run at all.
+# A gate that silently does not execute is the exact defect this suite exists to
+# close, so the dependency is stubbed rather than the tests skipped. Loading a real
+# .env inside a unit test would be wrong anyway: the stub is the correct behaviour,
+# not a workaround.
+if "dotenv" not in sys.modules:
+    try:
+        import dotenv  # noqa: F401
+    except ModuleNotFoundError:
+        import types as _types
+
+        _stub = _types.ModuleType("dotenv")
+        _stub.load_dotenv = lambda *a, **k: False
+        _stub.find_dotenv = lambda *a, **k: ""
+        _stub.dotenv_values = lambda *a, **k: {}
+        sys.modules["dotenv"] = _stub
+
 # These four predate the pytest suite: they are standalone SCRIPTS whose entire
 # body — including live database writes to trade_approvals and
 # schwab_round_trips — runs at module import and then calls sys.exit(). pytest
@@ -95,3 +113,83 @@ def _block_alert_outbox_production_writes(monkeypatch):
     except Exception:
         return
     monkeypatch.setattr(alert_outbox, "_db", lambda: None)
+
+
+# ── C1 alarm-firing capture ──────────────────────────────────────────────────
+# An alarm that has never been observed firing is indistinguishable from no alarm.
+# Capture happens at the REAL transport boundary, telegram_transport.send_message,
+# which telegram_alert binds at module level. Capturing at send_telegram itself
+# would prove only that a function was called; capturing here proves the message
+# reached the transport it claims to use, having survived the router. Nothing is
+# sent -- the stub never touches the network.
+from dataclasses import dataclass, field  # noqa: E402
+
+
+@dataclass
+class Captured:
+    transport: list[dict] = field(default_factory=list)
+    suppressed: list[str] = field(default_factory=list)
+
+    @property
+    def fired(self) -> bool:
+        return bool(self.transport)
+
+    def text(self) -> str:
+        return "\n".join(m.get("text", "") for m in self.transport)
+
+    def assert_fired(self, contains: str | None = None) -> None:
+        assert self.transport, (
+            "alarm did not reach the transport. "
+            + (f"router suppressed {len(self.suppressed)}: {self.suppressed[:2]}"
+               if self.suppressed else "nothing was produced at all")
+        )
+        if contains is not None:
+            assert contains.lower() in self.text().lower(), (
+                f"alarm fired but the message does not mention {contains!r}: "
+                f"{self.text()[:200]!r}"
+            )
+
+
+@pytest.fixture
+def alarm_capture(monkeypatch):
+    """Capture outbound Telegram at the transport boundary. Sends nothing."""
+    import telegram_alert as TA
+
+    cap = Captured()
+
+    def _fake_send_message(token=None, chat_id=None, text="", **kw):
+        cap.transport.append({"chat_id": chat_id, "text": text})
+        return {"ok": True, "status_code": 200}
+
+    # Bound into telegram_alert's namespace by `from telegram_transport import ...`,
+    # so patching the source module alone would not intercept it.
+    monkeypatch.setattr(TA, "send_message", _fake_send_message, raising=True)
+    # _enabled() gates send_telegram before anything else. Patching only _token and
+    # _chat_ids passed locally (a real token in the environment) and failed in CI,
+    # where send_telegram returned at the first line and produced nothing at all.
+    monkeypatch.setattr(TA, "_enabled", lambda: True, raising=False)
+    monkeypatch.setattr(TA, "_token", lambda: "test-token", raising=False)
+    monkeypatch.setattr(TA, "_chat_ids", lambda: ["test-chat"], raising=False)
+
+    # Record router suppression instead of letting it silently swallow.
+    try:
+        import telegram_alert_router as TR
+
+        real_should = TR.should_send_telegram
+
+        def _record(msg, *a, **k):
+            allowed = True
+            try:
+                allowed = bool(real_should(msg, *a, **k))
+            except Exception:
+                allowed = True
+            if not allowed:
+                cap.suppressed.append(msg[:120])
+            return allowed
+
+        monkeypatch.setattr(TR, "should_send_telegram", _record, raising=True)
+        monkeypatch.setattr(TR, "mark_sent", lambda *a, **k: None, raising=False)
+    except Exception:
+        pass
+
+    return cap

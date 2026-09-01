@@ -19,6 +19,7 @@ import argparse
 import hashlib
 import json
 import re
+import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -155,6 +156,40 @@ def header_status_for(path: Path, ext: str) -> tuple[str, str | None]:
     return HEADER_MISSING, title
 
 
+def _candidate_files(root: Path) -> list[Path]:
+    """Files under `root` that git tracks, falling back to a filesystem walk.
+
+    WHY THIS IS GIT-AWARE. This previously used `root.rglob("*")`, a plain
+    filesystem walk with no knowledge of git. The index it generates is checked by
+    a REQUIRED CI gate (docs_index_drift), and CI runs on a clean checkout that
+    contains only tracked files. Any developer with build artifacts under docs/ --
+    a single docs/_design/.../__pycache__/ was enough -- therefore regenerated a
+    different index than CI could ever reproduce:
+
+        tracked docs     2274   (what CI sees, and what was committed)
+        filesystem walk  2276   (two gitignored .pyc files)
+
+    That divergence produced a red gate on commits that passed locally, and a
+    "fix" regenerated from the polluted tree turned a green PR red. It caused the
+    index thrash across two nights.
+
+    Tracked-file listing is the shape that matches the gate. The fallback keeps
+    the tool usable outside a git checkout, where there is nothing to diverge from.
+    """
+    try:
+        out = subprocess.run(
+            ["git", "-C", str(PROJ), "ls-files", "-z", "--", str(root)],
+            capture_output=True, check=True, timeout=60,
+        ).stdout.decode("utf-8", "replace")
+        names = [n for n in out.split("\0") if n]
+        if names:
+            return [PROJ / n for n in names]
+    except (OSError, subprocess.SubprocessError):
+        pass
+    # Not a git checkout (or git unavailable): fall back to the filesystem.
+    return list(root.rglob("*"))
+
+
 def collect_inventory(root: Path) -> tuple[list[dict], dict]:
     inventory: list[dict] = []
     hash_groups: dict[str, list[str]] = {}
@@ -164,7 +199,7 @@ def collect_inventory(root: Path) -> tuple[list[dict], dict]:
     else:
         root = root.resolve()
 
-    for filepath in sorted(root.rglob("*")):
+    for filepath in sorted(_candidate_files(root)):
         if not filepath.is_file():
             continue
         relpath = str(filepath.relative_to(PROJ)).replace("\\", "/")

@@ -18,6 +18,49 @@ REPO = Path(__file__).resolve().parents[1]
 
 # Ordered, explicit suite list (Phase 10.2)
 GATES = [
+    # The P1 digest tier had no delivery: a P1_DIGEST verdict archived the message
+    # and returned False, and nothing pushed the archive. 4,387 rows since
+    # 2026-07-02 against 1,707 delivered.
+    ("p1_digest_sender", [
+        "tests/test_p1_digest_sender.py",
+    ]),
+    # The gog credential broker: an unapproved agent must be refused ON APPROVAL,
+    # and the broker must never read the operator-only ~/.openclaw/credentials path.
+    ("gog_broker_approval", [
+        "tests/test_gog_broker_approval.py",
+    ]),
+    # C1 (batch 1: send_telegram). Every alarm must be OBSERVED firing; the
+    # uncovered set is a named number in config/alarm_firing_baseline.txt that can
+    # only shrink. Presence of alarm code is not evidence it fires.
+    ("alarm_fires", [
+        "tests/test_alarm_capture_selftest.py",
+        "tests/test_alarm_fires.py",
+        "tests/test_alarm_fires_stop_path.py",
+        "tests/test_alarm_fires_batch3.py",
+        "tests/test_alarm_coverage.py",
+    ]),
+    # C5: declared cadence vs observed output for stores feeding operator surfaces.
+    # strategy_signals stopped advancing 2026-08-07 and nothing watched the date.
+    ("store_cadence", [
+        "tests/test_store_cadence.py",
+    ]),
+    # C3: an alarm whose delivery failure is swallowed is worse than no alarm.
+    # Shrink-only baseline of named inherited debt; new swallows fail the build.
+    ("no_swallowed_alarms", [
+        "tests/test_no_swallowed_alarms.py",
+    ]),
+    # C2: every symbol imported on an alarm path must resolve. Two incidents months
+    # apart -- send_alert (never existed) and telegram_bot (module never existed) --
+    # both sat in bare excepts and reported to nobody.
+    ("alarm_imports_resolve", [
+        "tests/test_alarm_imports_resolve.py",
+    ]),
+    # Two detectors that could not tell two states apart: the docs inventory counted
+    # gitignored artifacts (tracked 2274 vs filesystem 2276, reddening a required
+    # gate), and signal_flow_audit read OK when nothing had been scanned.
+    ("detectors_distinguish_states", [
+        "tests/test_detectors_distinguish_states.py",
+    ]),
     # Pins the 2026-08-08 -> 2026-08-31 Strategy Desk outage: an ON CONFLICT clause
     # naming a constraint that does not exist (every signal insert raised), and the
     # alarms that reported it to nobody by importing a send_alert that has never existed.
@@ -151,6 +194,12 @@ GATES = [
     ]),
     ("governance_section_zero_parity", [
         "tests/test_agents_section_zero_parity.py",
+    ]),
+    ("guard_push_auth", [
+        "tests/test_guard_push_auth.py",
+    ]),
+    ("agents_type_vocabulary", [
+        "tests/test_agents_type_vocabulary.py",
     ]),
     ("agent_brief", [
         "tests/test_agent_brief.py",
