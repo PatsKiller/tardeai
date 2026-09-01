@@ -317,6 +317,9 @@ GATES = [
     ("decide_consults_wake_hits", [
         "tests/test_decide_consults_wake_hits.py",
     ]),
+    ("wake_consult_reaches_the_row", [
+        "tests/test_wake_consult_reaches_the_row.py",
+    ]),
     ("cash_letter_rows", [
         "tests/test_cash_letter_rows.py",
         "tests/test_cio_cc_record_narrative_slice_c.py",
