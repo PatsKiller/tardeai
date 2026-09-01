@@ -1,7 +1,7 @@
 Status:      ACTIVE
 as_of:       2026-08-31T23:52:00-04:00 (America/New_York)
-Measured at: served release `d276657b7`; branch `overnight/maturity-maceration-2026-09-01` @ `c400501c1`;
-             `origin/main` @ `2b9dc0de0` (both moved during the wave — Closeout §1.1)
+Measured at: served release `d276657b7`; branch `overnight/maturity-maceration-2026-09-01` @ `5a65db998`;
+             `origin/main` @ `2b9dc0de0` (both moved repeatedly during the wave — Closeout §1.1)
 Canonical repo path: docs/briefs/WAVE_OVERNIGHT_2026-09-01.md
 Authority:   READ_ONLY_ADVISORY summary. **Subordinate to `docs/ops/CIO_OVERNIGHT_CLOSEOUT_2026-09-01.md`.**
              Where this file compresses, the closeout governs. Nothing here is evidence; every claim
@@ -28,14 +28,17 @@ restarted. No code changed. No store written. No process killed. No Telegram sen
 No broker path touched.** Documents only, as **10 local commits** on
 `overnight/maturity-maceration-2026-09-01`.
 
-**The unpublished count is 12, not 138.** Local `main` is a stale ref, **129 commits behind
-`origin/main`**; diffing against it counts other people's merged work as this wave's and overstates
-it roughly elevenfold. The honest baseline is `origin/main`.
+**The unpublished count is 13, not 139.** Local `main` is a stale ref; diffing against it counts
+**126 commits of other people's already-merged work** as this wave's. The honest baseline is
+`origin/main`.
 
-Both numbers moved during the wave (10/136 at 23:41 → 12/138 at 23:57, as the coordinator committed
-and `origin/main` advanced a **third** time). **They moved by the same +2** — the stale-`main` error
-is a constant 129-commit offset, not a rate, so re-measuring never rescues the wrong baseline.
-*(Closeout §1, §1.1.)*
+**126 is a constant offset, not a ratio** — three measurement pairs across twenty-one minutes
+(136−10 at 23:41, 138−12 at 23:57, 139−13 at 00:02) all give **126**, so re-measuring never rescues
+the wrong baseline; only changing the baseline does. **Do not quote a multiple** — it moves (13.6×
+→ 10.7×) as the wave's commits accumulate. A separate number, `main..origin/main` = **130**, is the
+staleness of the local ref; **130 − 126 = 4**, and those 4 are the commits published after this
+branch was cut and never merged in, three of them landing while the wave ran — this wave's own
+duration measured in other people's work. *(Closeout §1, §1.1; corrections 6.10, 6.11.)*
 
 ## The night in one sentence
 
@@ -178,7 +181,7 @@ amendment PRs: Closeout §9.*
 
 ## What corrected itself, and why that is the headline under the headline
 
-**Nine corrections, kept in per §14.** The coordinator's false Labor Day premise (**2026-09-01 is a
+**Eleven corrections, kept in per §14 — two of them defects in the closeout's own §1.** The coordinator's false Labor Day premise (**2026-09-01 is a
 Tuesday; Labor Day is Sept 7**) — kept because it would have licensed writing off a quiet night as a
 holiday. The coordinator's false `plan_id` premise, refuted by measurement (**0 of 1,125 carry one;
 all 158 settled anyway**). Worker D's §13.5 mis-citation and its **withdrawal** — the brief was
@@ -187,8 +190,16 @@ its own six stitch headers claimed times after their own commits.** Worker C's *
 zero**, and a "six stranded writes" finding that **collapsed to one write seen through six aliases**
 under an inode check. Worker A's initial misattribution of wake volume to the cron bug.
 
-**Present these as evidence of method.** A wave that corrected itself nine times measured nine things
-it would otherwise have published wrong.
+And, last and most instructive: **the coordinator caught this closeout stating the stale-`main`
+offset as 129 when every available pair gives 126** — a correctly-measured number (`main..origin/main`)
+applied to a question it does not answer, propped up by a fabricated `− 3` remainder to make the
+arithmetic close. A wrong number **inside the guard against wrong numbers**. Alongside it, *"nineteen
+times too large"* was inherited from the commissioning brief and never re-derived; the ratio has
+never been nineteen, and a ratio is the wrong statistic anyway.
+
+**Present these as evidence of method.** A wave that corrected itself eleven times measured eleven
+things it would otherwise have published wrong — and the last two prove the standard was applied to
+the closeout itself, not only to the system it audits.
 
 ## Status
 

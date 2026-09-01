@@ -1174,3 +1174,106 @@ release that is gone, and tonight the same wakes resolve to no subject at all.
   or code touched.
 - The sampler continues to 08:00 ET. Its remaining ticks are evidence for the morning, not a reason
   to wake anyone.
+---
+
+## Stitch 9 — 2026-09-01 00:07 ET · final · the correction found two more
+
+E applied the offset correction and, in doing so, found **two further errors — one of them the
+coordinator's.** Both are worth more than the fix that surfaced them.
+
+### The offset is 126, and E found why it wasn't
+
+`[VERIFIED]` Three pairs, twenty-one minutes apart, plus a fourth taken now:
+
+```
+136 − 10 = 126   (23:41)      139 − 13 = 126   (00:02)
+138 − 12 = 126   (23:57)      139 − 13 = 126   (00:1x, coordinator)
+git rev-list --count main..origin/main → 130      HEAD..origin/main → 4      130 = 126 + 4
+```
+
+**129 was not invented.** It was the correctly-measured `main..origin/main` **at 23:41**, applied to
+a question it does not answer — one true number substituted for a different true number. And the
+staleness has since moved 129 → 130 while the offset stayed 126, so **the error demonstrates the
+very thesis of the section it was in**: the offset is constant, the staleness is a rate.
+
+E named the four commits that make up the 4: `d276657b7` (22:55), `db115caec` (23:28),
+`8c4d109f5` (23:39), `2b9dc0de0` (23:52). Branch point 22:51, stitch 0 at 23:14 — **three landed
+while the wave ran.** The gap between the two numbers is the wave's own duration measured in other
+people's commits.
+
+### The fudge term — the sharpest self-catch of the night
+
+E found the tell had been sitting in its own sentence:
+
+> `136 = 129 (already on origin/main) + 10 (this wave, actually unpublished) − 3 (see below)`
+
+**The `− 3` is a fudge term.** It exists only because `129 + 10` overshoots `136`. The correct
+identity needs no remainder: `136 = 126 + 10`, exactly. A correction term was written in to force
+an identity to close, labelled "(see below)", and passed over — **inside the section warning about
+manufactured numbers.**
+
+An identity that will not close is telling you an input is wrong. That is now recorded as
+correction 6.10, and it is a better entry in this repository's trap catalogue than the arithmetic
+that produced it.
+
+### The coordinator's error, found by the worker it corrected
+
+E re-derived the ratio and found **"nineteen times too large" was inherited from the coordinator's
+brief and never checked.** `[VERIFIED]` it has never been nineteen: **13.6× at 23:41, 11.5× at
+23:57, 10.7× at 00:02.**
+
+The coordinator computed that ratio at one moment, when the counts were roughly 132 and 7, and then
+**wrote it into a brief as a fixed fact.** Two failures in one clause: a number quoted rather than
+regenerated (§16), and — worse — **the ratio is the wrong statistic entirely**, because it is not
+constant. The correct invariant was always the 126.
+
+E rewrote §1 to lead with the constant and **removed every ratio-as-finding from the packet**
+(remaining instances of the word are inside the correction sections that document it, plus an
+unrelated "nineteen-minute window" and "nineteen proposed morning diffs"). Recorded as correction
+6.11.
+
+**This is the wave's method landing on the wave itself, in the right direction.** The coordinator
+corrected D's citation, corrected A's holiday premise, corrected B's `plan_id` premise, corrected
+E's offset — and E, checking that correction, found the coordinator had seeded a worse error into
+the same paragraph. §11 says no agent marks its own work DONE. It does not say the coordinator's
+inputs are exempt from measurement.
+
+### Corrections: nine → eleven, and two are in §1 itself
+
+E raised the count in both files and added the note a reader actually needs: **two of the eleven
+are defects in the closeout's own §1**, the section whose purpose is to prevent a wrong commit
+count, and a reader weighing the packet's reliability should read those two first.
+
+### A paragraph that went stale while being written
+
+§1.1 said both files were "still untracked." They were landed as `5a65db998` mid-edit, making it
+false. E kept **all three versions** of the sentence — the count moved 10 → 12 → 13 while the
+paragraph describing it was being written — rather than smoothing it. The section's own point,
+demonstrating itself.
+
+### Drive — re-verified by the coordinator after E's re-sync
+
+`[VERIFIED]` `gog drive ls --parent 1Ur6VXRgl2HfVwbDTqdGlkPnLS_Q_85nc` → **11 files, zero
+duplicates**; closeout 97.0 KB and brief 15.8 KB refreshed at 04:05 UTC, stitch log at 04:06.
+E also noticed unprompted that the coordinator's stitch log had grown (60,795 → 67,329 bytes) and
+its Drive copy had gone stale, and refreshed it — read-only on a file it does not own.
+
+**This stitch invalidates that copy again.** The Drive stitch log is re-synced immediately after
+this commit and re-verified; the repository remains authoritative, and any Drive copy is a
+point-in-time snapshot of a file that was still being written.
+
+### WAVE CLOSED — 2026-09-01, docs only, nothing pushed
+
+- **A, B, C, D, E: all DONE**, every deliverable marked by the coordinator against reproduced
+  proof, never against a worker's own report.
+- **M1–M5: zero of five, all `NOT_OBSERVED`.** No percentage. One separately-stamped
+  `M5_CANDIDATE @ pin 1d64cb59f`, never merged into tonight's verdict.
+- **`DRIVE_SYNC=OK`** — 11 files, byte-matched, no secrets.
+- **Nothing pushed, merged, deployed or scheduled. No cron, daemon, store or line of code touched.**
+- **Eleven corrections kept in**, two of them in the section written to prevent them, and one of
+  them the coordinator's.
+- The sampler runs to 08:00 ET. Its remaining ticks are morning evidence.
+
+The night's one-sentence version, unchanged by any of the above: **the cortex is still not wired —
+the loader landed, the writer never existed, and the store nothing writes is already speaking to
+the operator in stale numbers.**

@@ -2,9 +2,10 @@ Status:      ACTIVE
 as_of:       2026-08-31T23:47:00-04:00 (America/New_York)
 Measured at: served release `d276657b7` (`CURRENT -> d276657b7-main-exact-phase2-20260831-225546`,
              symlink mtime 2026-08-31 22:56 EDT, re-verified unrotated at 23:41 ET);
-             wave branch `overnight/maturity-maceration-2026-09-01` @ `c400501c1` (was `d20ed6a03`
-             when §1 was first measured — the coordinator committed under this worker);
-             `origin/main` @ `2b9dc0de0` (moved THREE times during the wave — §1, §1.1)
+             wave branch `overnight/maturity-maceration-2026-09-01` @ `5a65db998` (was `d20ed6a03`
+             when §1 was first measured — the coordinator commits under this worker as it works);
+             `origin/main` @ `2b9dc0de0` (moved FOUR times during the wave — §1, §1.1)
+Corrections: §6.10 and §6.11 correct §1's own arithmetic. Read them before quoting any count here.
 Canonical repo path: docs/ops/CIO_OVERNIGHT_CLOSEOUT_2026-09-01.md
 Authority:   READ_ONLY_ADVISORY closeout. Not a behaviour spec. No verdict here authorises an action.
              MBI_BEHAVIOR = 0. No broker path touched, considered, or called.
@@ -52,10 +53,11 @@ is given, it is given so the operator can run it — not as a record that it ran
 
 ---
 
-# 1 · The unpublished commit count — and the number that is nineteen times too large
+# 1 · The unpublished commit count — and the number that counts 126 commits this wave did not write
 
-Two baselines are available and they disagree by a factor of nineteen. **The larger one is wrong,
-and it is the one a reader reaches for first.**
+Two baselines are available. **The larger one is wrong, and it is the one a reader reaches for
+first.** It is wrong by a **constant offset of 126 commits** — not by a ratio, which is why §1.1
+exists and why the ratio is deliberately not the headline here.
 
 `[VERIFIED]` as_of 2026-08-31T23:41 ET, root `/home/johnclaw/tradeai-wt-final-operator-convergence`:
 
@@ -82,14 +84,50 @@ $ git log --oneline main..origin/main | wc -l
 129
 ```
 
-Local `main` is **129 commits behind** `origin/main`. Diffing this branch against it counts those
-129 already-published commits — other people's merged work — as though this wave had produced them.
-`136 = 129 (already on origin/main) + 10 (this wave, actually unpublished) − 3 (see below)`.
+**Two different quantities live here and they must not be conflated.** This is the section whose
+whole job is to stop a reader quoting a bad commit count, so both are named:
 
-**Reporting 136 would overstate the wave's unpublished work by roughly nineteen times, and would
-attribute 129 other people's merged commits to a docs-only overnight census.** That is the
-manufactured-evidence shape §14 forbids, arrived at by laziness rather than intent — which is
-exactly why it needs naming.
+| quantity | value | what it is | moves? |
+|---|---|---|---|
+| **the offset** — `\|main..HEAD\| − \|origin/main..HEAD\|` | **126** | already-published commits that `main..HEAD` wrongly attributes to this wave | **no — constant** |
+| **the staleness** — `git rev-list --count main..origin/main` | **130** (was 129 at 23:41) | how far the local `main` ref is behind published history | yes |
+
+**The offset is 126.** Diffing this branch against local `main` counts 126 already-published
+commits — other people's merged work — as though this wave had produced them:
+
+```
+136 (main..HEAD)  −  10 (origin/main..HEAD)  =  126        exactly, no remainder
+```
+
+**Reporting 136 would attribute 126 other people's merged commits to a docs-only overnight
+census.** That is the manufactured-evidence shape §14 forbids, arrived at by laziness rather than
+intent — which is exactly why it needs naming.
+
+### Why staleness (130) and offset (126) differ by exactly 4
+
+The gap is **4**, and those 4 are a finding rather than a rounding artifact — they are the commits
+published after this branch was cut that were never merged into it. `[VERIFIED]` as_of
+2026-09-01T00:02 ET:
+
+```
+$ git log --format='%h  %ci  %s' HEAD..origin/main
+2b9dc0de0  2026-08-31 23:52:12  fix(finviz): cap momentum-class screens at 100M float (#811)
+8c4d109f5  2026-08-31 23:39:06  M3: the wake records what it would have decided without the operator turn (#715)
+db115caec  2026-08-31 23:28:26  docs(agents): amendment -- nine gaps, each citing the failure that produced it (#735)
+d276657b7  2026-08-31 22:55:27  Merge pull request #810 from PatsKiller/feat/cio-p1-load-by-subject
+$ git log --oneline HEAD..origin/main | wc -l
+4
+```
+
+So `130 = 126 + 4`. The branch was cut from `c0ae53cf1` at **22:51**; stitch 0 opened the wave at
+**23:14**. **Three of the four landed while the wave was running** (23:28, 23:39, 23:52); the
+fourth, `d276657b7`, landed at 22:55 — in the nineteen-minute window between the branch point and
+the wave opening, which is why the served release carries it and this branch does not.
+
+**Those 4 commits are this wave's own duration, measured in other people's merged work.** Finding
+(1) below — that `origin/main` was never a fixed baseline — is the same fact showing up in the
+arithmetic. A reader who wants one number should take **126**; a reader who wants to know how stale
+the local ref is should take **130** and re-measure it, because it moves.
 
 The ten, in full `[VERIFIED]`:
 
@@ -160,12 +198,19 @@ dc11dd94b cio(overnight): stitch 7 — operator raises frozen-CURRENT daemon to 
 c400501c1 cio(overnight): record standing wake-on-E-landing trigger
 ```
 
-**The honest unpublished count at close is 12, not 10** — the coordinator added two stitch commits
-under this worker while it was writing, exactly as it did to Worker C (C's correction 1). Landing
-this closeout and the wave brief will raise it further by however many commits the coordinator uses;
-**both files are still untracked at the time of writing** (`git status --porcelain` shows them as
-`??`), because **this worker made no git write of any kind** — no `add`, no `commit`, no `push`. The
-coordinator commits.
+**The honest unpublished count at close is 13** — the coordinator added stitch commits under this
+worker while it was writing, exactly as it did to Worker C (C's correction 1), and then landed this
+packet as `5a65db998` *"land Worker E packet + stitch 8 — wave closed, M1-M5 zero of five"*.
+
+**This sentence has itself been overtaken twice, and both versions are kept.** It first read that the
+count was **10** and the files were untracked; then that it was **12** and the files were still
+untracked (`git status --porcelain` showing `??`); as of 00:05 ET the count is **13** and the files
+are committed. **The count moved three times while the paragraph describing it was being written.**
+That is not a defect in the paragraph — it is the strongest available demonstration of the point the
+section is making, which is why it is recorded rather than smoothed into a single final figure.
+
+**This worker made no git write of any kind at any point** — no `add`, no `commit`, no `push`. The
+coordinator commits. The offset stayed **126** across every one of these measurements.
 
 **`origin/main` has now moved three times during a wave that ran under two hours**: `d276657b7`
 (22:55) → `db115caec` (23:28) → `8c4d109f5` (23:39) → `2b9dc0de0` (by 23:57). The served release is
@@ -177,9 +222,23 @@ pinned at the first of those and is now **three or more commits behind published
    against a fresh `git log` will get different numbers, and needs to know why before concluding the
    document is wrong.
 2. **The ratio is unchanged and the lesson survives.** `origin/main..HEAD` went 10 → 12;
-   `main..HEAD` went 136 → 138. **Both moved by the same +2, because the 129-commit stale-`main`
-   error is a constant offset, not a rate.** The misleading number stays misleading by exactly the
-   same margin. Re-measuring does not rescue the wrong baseline.
+   `main..HEAD` went 136 → 138. **Both moved by the same +2, because the stale-`main` error is a
+   constant 126-commit offset, not a rate.** A third pair taken at 00:02 ET makes the point
+   conclusively — `[VERIFIED]` `main..HEAD` → **139**, `origin/main..HEAD` → **13**:
+
+   ```
+   136 − 10 = 126        (23:41)
+   138 − 12 = 126        (23:57)
+   139 − 13 = 126        (00:02)
+   ```
+
+   **Three measurement pairs, twenty-one minutes apart, one offset.** The misleading number stays
+   misleading by exactly the same margin no matter when it is taken. **Re-measuring does not rescue
+   the wrong baseline** — only changing the baseline does.
+
+   Note what this kills: the *ratio* is not constant and must not be quoted. It was 13.6× at 23:41
+   and 10.7× at 00:02, falling as the wave commits accumulate. **State the harm as the constant
+   126, never as a multiple** (correction 6.11).
 3. **A count is not a fact about a repository; it is a fact about an instant.** This is the same
    defect §12 item 10 names for every other number in this packet — `record_consult` read 335 / 337 /
    340, the checkpoint store grew three rows in eight minutes, the split sweep gave three totals —
@@ -872,12 +931,18 @@ write another (4.1).
 **AGENTS.md §14: keep the corrections in.** *"A write-up that shows what it got wrong is more useful
 than one that reads clean."*
 
-This wave corrected itself **nine times**, in every direction available to it: the coordinator
+This wave corrected itself **eleven times**, in every direction available to it: the coordinator
 corrected workers; workers corrected the coordinator's briefs; workers corrected themselves;
 a worker's correction of the coordinator was itself wrong and was withdrawn; and the coordinator
 audited its own log and found it defective. **These are presented as evidence of method, not as
-apology.** A wave that corrected itself nine times measured nine things it would otherwise have
+apology.** A wave that corrected itself eleven times measured eleven things it would otherwise have
 published wrong.
+
+**Two of the eleven (6.10, 6.11) are defects in this closeout's own §1** — the section written to
+stop a reader quoting a bad commit count contained a wrong number and an unverified ratio. They were
+caught by the coordinator and by a re-derivation prompted by it, **after** the file was first
+written and synced. They are placed last not because they matter least but because they are the
+newest; a reader weighing this packet's reliability should read them first.
 
 ## 6.1 The coordinator's false Labor Day premise
 
@@ -1052,6 +1117,93 @@ and `main..HEAD` as `132`; both were stale by the time this file was written. Re
 `origin/main` is `8c4d109f5`, `main..HEAD` is `136`, and **`origin/main..HEAD` is `10` against both
 the old and the new baseline.** Recorded here so this closeout is held to the standard it applies to
 everyone else in §6.4.
+
+## 6.10 The coordinator corrected this worker's offset — 126, not 129 — in the section written to prevent exactly this
+
+**This is the most embarrassing correction in the packet and the most instructive, so it is recorded
+at full strength.**
+
+§1 originally stated the stale-`main` offset as **129** and built its arithmetic on it. **It is
+126.** The coordinator re-measured and caught it. `[VERIFIED]` — every available pair gives 126:
+
+```
+136 − 10 = 126        (23:41)
+138 − 12 = 126        (23:57)
+139 − 13 = 126        (00:02)
+```
+
+**There is no measurement that gives 129 as the offset.**
+
+### Where 129 actually came from — a real number, used for the wrong job
+
+129 was not invented. It was the `[VERIFIED]` output of `git log --oneline main..origin/main | wc -l`
+at 23:41 — **the staleness of the local `main` ref**, which is a different quantity, and a moving one
+(it reads **130** now that `#811` has landed). The error was not a bad measurement. It was **taking a
+correctly-measured number and using it to answer a question it does not answer.**
+
+### The tell this worker walked straight past
+
+The original text read:
+
+> `136 = 129 (already on origin/main) + 10 (this wave, actually unpublished) − 3 (see below)`
+
+**That `− 3` is a fudge term.** It exists only because 129 + 10 overshoots 136, and the identity was
+forced to balance rather than derived. The correct offset needs no correction term at all —
+`136 = 126 + 10`, exactly. **An equation that requires an unexplained remainder to close is telling
+you the inputs are wrong, and this worker wrote the remainder in, labelled it "(see below)", and
+moved on.** Manufacturing a term to preserve a conclusion is the §14 pattern in miniature, committed
+inside the section warning about it.
+
+### Why it matters more here than anywhere else in the packet
+
+§1's entire purpose is to stop a reader quoting a bad commit count. **A wrong number inside the
+guard against wrong numbers is the worst place it could have landed** — it is the shape §2's daemon
+has (a repair that introduced the defect it was built to prevent) and the shape §4.2 has (the PR
+that reproduced the defect it was written to close). **That pattern has now appeared three times
+tonight in the system under audit and once in the audit itself.**
+
+### The correction made the section better, which is the argument for keeping corrections
+
+Forced to separate the two quantities, §1 now states both — **offset 126 (constant), staleness 130
+(moving)** — and explains that they differ by exactly **4**, those 4 being the commits published
+after this branch was cut and never merged in: three of them landing while the wave ran. **The
+wave's own duration, measured in other people's merged work.** That is a better explanation than the
+original ever contained, and it exists only because the number was wrong.
+
+Recorded per §14 and per the coordinator's instruction that it stay visible. **The coordinator
+audited upward and the finding won (§0 rule 10)** — the same direction §6.4 found missing when the
+coordinator was auditing only downward.
+
+## 6.11 "Nineteen times too large" was inherited from the brief and never re-derived
+
+Caught by this worker while applying 6.10, and it is the **same class of error one paragraph away**.
+
+§1's original heading and body claimed the misleading number was *"nineteen times too large"* and
+that the two baselines *"disagree by a factor of nineteen."* **The word came from the commissioning
+brief, which said getting this wrong "would overstate the wave's unpublished work by nineteen
+times." It was never checked.** `[VERIFIED]`, the ratio has never been nineteen:
+
+```
+136 / 10  = 13.6×     (23:41)
+138 / 12  = 11.5×     (23:57)
+139 / 13  = 10.7×     (00:02)
+```
+
+**Two failures, not one.** First, a number was quoted from a brief rather than regenerated — §16
+lists *"a number quoted from a document rather than regenerated"* as not accepted, and
+`docs/briefs/README.md` forbids briefs carrying readings **precisely because "numbers embedded in a
+brief have been refuted every single time one was embedded."** This is that rule earning its place,
+against the very worker that quoted the README approvingly at the top of File 2.
+
+Second, and worse: **the ratio is the wrong statistic entirely.** It is not constant — it falls as
+the wave's own commits accumulate, from 13.6× to 10.7× in twenty-one minutes. A reader who quotes
+"eleven times" tomorrow will be wrong by tomorrow. **The harm is a constant 126 phantom commits and
+must be stated that way.** The heading and body were rewritten to lead with the offset; **no ratio
+is quoted as a finding anywhere in this packet.**
+
+Both corrections are the same lesson from opposite ends: **6.10 is a measured number applied to the
+wrong question; 6.11 is an unmeasured number inherited from an authority.** Neither survived being
+re-derived, and the wave's own standard is that nothing should be published that has not been.
 
 ---
 
