@@ -166,6 +166,7 @@ GATES = [
     ]),
     ("ci_self_guards", [
         "tests/test_ci_test_coverage_gate.py",
+        "tests/test_wake_turn_effect.py",
     ]),
     ("scripts_lib_bootstrap", [
         "tests/test_scripts_lib_bootstrap.py",
