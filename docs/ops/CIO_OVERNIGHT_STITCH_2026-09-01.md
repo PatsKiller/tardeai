@@ -213,3 +213,145 @@ investigation dead end.
 A worker that fails for a non-pin reason — crash, timeout, empty result — is a different event. It
 is recorded in the stitch and carried into Worker E's closeout as a named gap, but it does not wake
 the operator overnight unless it leaves the packet materially incomplete.
+---
+
+## Stitch 2 — 2026-08-31 23:26 ET · Worker A lands · the dark contract is stale
+
+**Worker A: COMPLETE.** Marked DONE by the coordinator against reproduced proof, not against the
+worker's report (AGENTS.md §11). File: `docs/ops/CIO_M5_TIMER_WATCH_2026-09-01.md`, 801 lines.
+No pin breached, no job invoked, no git write.
+
+**Verdict: `NOT_OBSERVED`** at pin `d276657b7`.
+
+### Coordinator re-measurement of A's headline claims
+
+Every number A reported was re-run independently before accepting it.
+
+| A's claim | coordinator re-measurement | agrees? |
+|---|---|---|
+| 335 `record_consult` lines | **337** at 23:23 — A measured at 23:22, two `*/5` fires landed between. Not a discrepancy; the log is live. | yes |
+| 165 lines with `record_found ≥ 1` | `grep -o "record_consult:.*" \| grep -vc "record_found=0"` → **165** | exact |
+| 117 lines with `skipped_cadence_not_due ≥ 1` | → **117** | exact |
+| last deferral-honouring line at 10:57:32 | `2026-08-31 10:57:32,949 … wakes=5 subject_resolved=2 record_found=2 changed_by_record=2 skipped_cadence_not_due=2 no_subject=3` | exact |
+
+### FINDING THAT SUPERSEDES `AGENTS.md` §13.4 — the finding wins (§0 rule 10)
+
+§13.4 Dark contracts states: "`load-by-subject` — built, tested, **no scheduled wake consumes it**.
+Wiring that call is P1 / M5. Until a cron loads the record before `decide()`, persistence is
+unwired."
+
+**That is now false.** A scheduled wake does consume it, it has done so 337 times, and it has
+loaded 524 records. The consult runs at `cio_wake_dispatcher.py:195-202`, ahead of the claim at
+`:240`. This requires an amendment PR against §13.4 (§20) — **queued for the morning, not opened
+tonight**, because opening a PR is a remote action and this wave does not push.
+
+### The verdict is a third category the brief did not offer
+
+The dispatch brief offered A two ways to record `NOT_OBSERVED`: for want of wiring, or for want of
+input. **Neither is true, and A was right to refuse both.**
+
+- Not want of wiring — the consult runs, unattended, cron-parented. A captured the ancestry at
+  23:15:00: `python ← bash ← cron ← cron(pid 6472) ← systemd`. Rung 1 for the *mechanism*.
+- Not want of input — wakes are arriving. Three at 23:18; five fires between 20:08 and 22:28 had
+  `record_found ≥ 1`.
+
+**The real reason: there are no unexpired deferrals left to honour.** 40 distinct subject_keys,
+38 carrying no `next_eligible_at` at all, and the only 2 that had one — `HELD:SCHD` and
+`SLEEVE:CASH` — expired this morning around 10:53–10:58 ET. The acceptance criterion's clause (d)
+is therefore **structurally unsatisfiable tonight at any wake volume**, and that prediction is
+confirmed by the data: the last `skipped_cadence_not_due ≥ 1` line in the entire log is 10:57:32,
+**45 seconds before the last deferral expired.**
+
+`[VERIFIED]` The blocker is a missing **writer**, not a missing loader:
+
+```
+$ ls -l .../data/cio/cio_instrument_records.jsonl
+-rw------- 1 johnclaw johnclaw 392062 Aug 30 10:58    # now: 2026-08-31T23:24 ET → ~36.5h silent
+```
+
+Nothing about the timer, the queue or the loader needs fixing. **M5 cannot be observed because
+nothing is writing dispositions for a later wake to honour.** That is the single most actionable
+sentence this wave has produced.
+
+### Coordinator refinement of A's storage claim — strengthens it
+
+A reported "`logs/` is a symlink to shared `persistent-state` while `data/` is per-release." That is
+imprecise, and the correction matters:
+
+```
+$ ls -ld CURRENT/data CURRENT/data/cio CURRENT/logs
+drwx------  … /data                                    # per-release, real directory
+lrwxrwxrwx  … /data/cio -> /home/johnclaw/trade-ai-releases/persistent-state/data/cio
+lrwxrwxrwx  … /logs     -> /home/johnclaw/trade-ai-releases/persistent-state/logs
+```
+
+`data/` is per-release, but **`data/cio` is itself a symlink into shared persistent-state.** The
+consequence is important: the 36-hour silence is **not** an artifact of tonight's 22:55 promote
+stranding writes in an old release tree. The store is genuinely shared and genuinely untouched
+since Aug 30 10:58. A's conclusion survives the correction and is strengthened by it. Routed to
+Worker C, whose store-split sweep needs this.
+
+### A declined a candidate on a pin technicality, correctly
+
+The strongest line in the log is `2026-08-31 07:12:05 — wakes=5 subject_resolved=5 record_found=5
+changed_by_record=5 skipped_cadence_not_due=5`. A refused to call it `M5_CANDIDATE` because **it
+was written by pin `1d64cb59f`, not the pin A is stamped to** — `logs/` being shared means the log
+spans twelve promotes on 2026-08-31 alone.
+
+The coordinator accepts that reasoning and adopts A's recommendation: record it separately as
+**`M5_CANDIDATE @ pin 1d64cb59f, as_of 2026-08-31T07:12 ET`** — correctly stamped, carried to the
+morning packet as a candidate against *that* release, and never merged into the `d276657b7`
+verdict. This is the §11 rule about stamping every measurement with the pin it was read at, applied
+against the worker's own interest in a stronger headline.
+
+### Two evidence defects in the instrument itself
+
+1. **The `record_consult` line omits a `no_record` counter.** A total memory outage and a quiet
+   queue emit byte-identical lines. Partly mitigated empirically — `subject_resolved == record_found`
+   exactly (524 = 524), so `NO_RECORD` has never fired — but the instrument structurally cannot
+   distinguish the two states. This is the §8 trap "two states cannot express *no input*"; the fix
+   is a third verdict.
+2. **`entrypoint.py:168-171` hard-codes `"unattended": True` and the cron string as literals.** A
+   hand-run writes them identically. **That artifact is therefore worthless as M5 proof** — it
+   cannot go red where it runs (§16). Proposed fix only; no code edited.
+
+### Routed item — a live cron defect firing at 05:00 ET tonight
+
+`[VERIFIED]` crontab lines 928–930 carry a shell-quoting bug. Reproduced without invoking the
+detector:
+
+```
+$ bash -c 'echo python3 -c "… print(f'"'"'Wakes: {r.get("wakes_created",0)}'"'"')"'
+python3 -c from x import y; r=y(); print(f'Wakes: {r.get(wakes_created,0)}')
+```
+
+The shell strips the inner double quotes, so `"wakes_created"` becomes the bare name
+`wakes_created`. Confirmed in the detector's own log — rung 1, its own unattended cron fire:
+
+```
+$ tail .../logs/cio_detector.log
+NameError: name 'wakes_created' is not defined      # ×2, last at Aug 31 05:00
+```
+
+**Scope, stated precisely because A initially got this wrong and corrected itself:** the
+`NameError` is raised evaluating the `print`, which is the *third* statement on the line.
+`run_cio_event_detector_once()` has already returned by then. **Wakes are still created; only the
+telemetry is lost.** A first blamed this for the wake volume, was wrong, and recorded the
+correction (its §10.8). The coordinator confirms the corrected reading.
+
+Line 928 is `0 5 * * 1-5`; Tuesday matches, so **it fires again at 05:00 ET tonight and will lose
+its telemetry again.** Editing a crontab is a hard pin and an operator-only decision (§17). It is
+recorded, not touched, and carried to the morning packet.
+
+### Two UNKNOWNs left standing rather than routed around
+
+- root's crontab — `sudo: a password is required`. Not escalated (§0 rule 3).
+- `/etc/systemd/system/tradeai-continuous.service.d/singleton.conf` — unreadable, effect inferred
+  from the resolved `ExecStart` only.
+
+### Open at stitch 2
+
+- **A: DONE.** B, C, D still running. E still held.
+- Deferred-to-operator list gained two items tonight (the §13.4 amendment, the 928–930 cron fix)
+  and resolved none. Per §17 that is itself a finding about how this wave was run, and it is
+  recorded rather than hidden — though both items are *discoveries*, not deferrals the wave created.
