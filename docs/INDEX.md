@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `64065226b0c07f5ace4c0d15ec08db2d199b68afeef091b58b3fb505ae0193db`
+**Tree fingerprint:** `e6fa09886a2c9bfed0f49dcaf93243d0f0242e78f12e876e63de6e9d66055140`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,10 +12,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2291 |
-| Markdown (excl. this INDEX) | 1923 |
+| Files under `docs/` (excl. this INDEX) | 2299 |
+| Markdown (excl. this INDEX) | 1931 |
 | **MISSING HEADER** | **11** |
-| Header OK | 1912 |
+| Header OK | 1920 |
 | Duplicate groups | 5 |
 
 ### By status_guess
@@ -30,7 +30,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_raw_sync | 8 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 6 |
-| review_required | 1929 |
+| review_required | 1937 |
 
 ## Markdown tree
 
@@ -524,11 +524,14 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/audits/CENSUS_PART1_BACKEND_2026-08-30.md` | CENSUS — PART 1: BACKEND | review_required | OK | `18392c652fe2` |
 | `docs/audits/CENSUS_PART2_COMMAND_CENTER_2026-08-30.md` | CENSUS PART 2 — The Command Center / operator surface | review_required | OK | `a01d2b2b3eee` |
 | `docs/audits/CENSUS_PART5_LEVEL_SET.md` | CENSUS_PART5_LEVEL_SET.md | review_required | OK | `2b8c85d465e2` |
+| `docs/audits/CIO_DARK_CONTRACTS_2026-09-01.md` | CIO dark contracts — re-measurement, 2026-09-01 | review_required | OK | `89415d2bc04c` |
 | `docs/audits/CIO_DILIGENCE_GAP_REGISTER.md` | CIO Diligence Gap Register | review_required | OK | `bda3d68b2c3f` |
+| `docs/audits/CIO_OUTCOME_EDGE_CENSUS_2026-09-01.md` | CIO OUTCOME EDGE — census of `OutcomeCheckpoint@v1` | review_required | OK | `fd38d03fdae0` |
 | `docs/audits/CIO_PIPELINE_DIAGRAM_VERIFICATION_2026-08-27.md` | Is the CIO pipeline diagram the true state? — measured verification | review_required | OK | `91e849bb4976` |
 | `docs/audits/CIO_PLATFORM_AUDIT_2026-08-27.md` | CIO Platform Comprehensive Audit — Phase 1: Findings | review_required | OK | `10d02758c227` |
 | `docs/audits/CIO_PLATFORM_DILIGENCE_MASTER_PLAN_2026-08-30.md` | Trade AI Platform — Enterprise Due Diligence, Validation, Remediation & Execution Master Plan | review_required | OK | `4c59080608e4` |
 | `docs/audits/CIO_PLATFORM_REMEDIATION_2026-08-27.md` | CIO Platform Comprehensive Audit — Phase 2: Remediation Plan | review_required | OK | `2224490a6526` |
+| `docs/audits/CIO_SURFACE_ASOF_2026-09-01.md` | CIO operator surfaces — field-level `as_of` and provenance census | review_required | OK | `a5073ae48b02` |
 | `docs/audits/EXECUTION_LINK_2026-06-26.md` | Proposal Execution Link Audit — 2026-06-26 | review_required | OK | `fa7e72d022a2` |
 | `docs/audits/FCNTX_144_ACCEPTANCE_2026-07-14.md` | FCNTX Event #144 — A–G Acceptance Fixture (Part H) | review_required | OK | `212809f92fec` |
 | `docs/audits/FCNTX_144_DECISION_PACKET_LATEST.md` | FCNTX event #144 — operator decision packet (version-bound) | review_required | OK | `94249bee25f1` |
@@ -629,6 +632,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/briefs/WAVE_3E_close_leftovers.md` | No Wave 3F — close leftovers | review_required | OK | `02d2e413ec7f` |
 | `docs/briefs/WAVE_CASH_PROOF_authorized_promote.md` | Authorized merge #635 + exact-main promote | review_required | OK | `00e7c9d65c79` |
 | `docs/briefs/WAVE_CASH_PROOF_saturday_635.md` | Saturday cash-fossil proof of #635 | review_required | OK | `587d1d6a5bdf` |
+| `docs/briefs/WAVE_OVERNIGHT_2026-09-01.md` | CIO overnight wave — the five-minute version, 2026-09-01 | review_required | OK | `021e9c78d091` |
 | `docs/briefs/WAVE_PERSISTENT_CIO_slices_a_e.md` | Persistent CIO — Slices A-E (InstrumentRecord, rehydrate, CC reads record, research budget, preconditions board) | review_required | OK | `8e822c859ba1` |
 | `docs/briefs/WAVE_RESIDUAL_WEB_live_still_gated.md` | Residual web — live, still gated | review_required | OK | `f92827b61b73` |
 | `docs/briefs/WAVE_RULES_install_standing_rules.md` | Install the standing rules into the repo | review_required | OK | `c0d9fc36b316` |
@@ -1361,6 +1365,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/CIO_LIBRARY_CENSUS_2026-08-29.md` | CIO library census (2026-08-29) | review_required | OK | `2daa3135932a` |
 | `docs/ops/CIO_LLM_GATE_CADENCE_CORPUS_2026-08-29.md` | CIO LLM gate + cadence + institutional corpus (2026-08-29) | review_required | OK | `1ff0592565d1` |
 | `docs/ops/CIO_LOOP_B1_B3_D1_CLOSEOUT_2026-08-20.md` | CIO Loop Continuity B1/B2/B3/D1 — Closeout 2026-08-20 | review_required | OK | `c68bbad7badd` |
+| `docs/ops/CIO_M5_TIMER_WATCH_2026-09-01.md` | CIO M5 timer watch — overnight 2026-08-31 → 2026-09-01 | review_required | OK | `025fb46a1ca4` |
 | `docs/ops/CIO_MATCHER_POSITION_DIRECTIVES_2026-08-29.md` | Imperative matcher — position directives (2026-08-29) | review_required | OK | `c53dd4e83d9e` |
 | `docs/ops/CIO_MATERIAL_NOTIFY_CANARY_2026-08-20.md` | CIO material notify canary — 2026-08-20 | review_required | OK | `9c1fe05ed382` |
 | `docs/ops/CIO_MEMORY_SHADOW_MEASURE_PHASE2_2026-08-21.md` | CIO Memory Shadow Measure — Phase 2 start (2026-08-21) | review_required | OK | `eb8ad871d616` |
@@ -1369,7 +1374,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/CIO_OPERATOR_DESK_LOOP_P0_2026-08-20.md` | CIO operator desk loop — P0 intent routing (2026-08-20) | review_required | OK | `01145f5ea4bd` |
 | `docs/ops/CIO_OPERATOR_FREEFORM_AGENT_2026-08-20.md` | CIO operator freeform agent (2026-08-20) | review_required | OK | `078178808736` |
 | `docs/ops/CIO_OPERATOR_JUDGMENTS_2026-08-29.md` | CIO — operator judgments of 2026-08-29, implemented | review_required | OK | `df4583ed25f8` |
+| `docs/ops/CIO_OUTCOME_DRY_2026-09-01.md` | CIO staleness routine — dry-run receipt | review_required | OK | `5f377c51b957` |
 | `docs/ops/CIO_OUTCOME_LEARNING_CLOSEOUT_2026-08-20.md` | CIO Outcome Learning — Phase D thin closeout (2026-08-20) | review_required | OK | `7e74dd4f5c1a` |
+| `docs/ops/CIO_OVERNIGHT_CLOSEOUT_2026-09-01.md` | CIO overnight wave — closeout, 2026-09-01 | review_required | OK | `a6a397bc7ae8` |
+| `docs/ops/CIO_OVERNIGHT_STITCH_2026-09-01.md` | CIO overnight wave — coordinator stitch, 2026-09-01 | review_required | OK | `01d6f87d37cd` |
 | `docs/ops/CIO_P1_LOAD_BY_SUBJECT_2026-08-31.md` | CIO P1 — scheduled wake loads InstrumentRecord before decide (M5) | review_required | OK | `0a5f0262eb60` |
 | `docs/ops/CIO_PERSISTENT_COGNITION_CONSUMPTION_2026-08-24.md` | CIO persistent cognition consumption | review_required | OK | `db8705624d47` |
 | `docs/ops/CIO_PERSISTENT_SPINE_2026-08-30.md` | CIO persistent spine — closeout | review_required | OK | `9e912a952d0c` |

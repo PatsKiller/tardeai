@@ -1,0 +1,1781 @@
+Status:      ACTIVE
+as_of:       2026-08-31T23:12:00-04:00
+Measured at: served release d276657b7 (CURRENT -> d276657b7-main-exact-phase2-20260831-225546, symlink mtime 2026-08-31 22:56 EDT); branch overnight/maturity-maceration-2026-09-01 off c0ae53cf1
+Canonical repo path: docs/ops/CIO_OVERNIGHT_STITCH_2026-09-01.md
+Authority:   coordinator log for the federated overnight wave; not a behaviour spec, not a verdict
+See also:    docs/architecture/CIO_ASIS_VS_SPEC_2026-08-30.md
+             docs/architecture/CIO_FUTURE_STATE_FULL_MATURITY.md
+             docs/architecture/PROJECT_THE_DESK_V2.md
+             AGENTS.md §11 §15
+
+# CIO overnight wave — coordinator stitch, 2026-09-01
+
+**NOT PUSHED. NOT MERGED. NOT DEPLOYED.** Everything in this wave is local commits on
+`overnight/maturity-maceration-2026-09-01`, docs only. No code was changed. Stated at the top per
+AGENTS.md §14 closeout format and §16.
+
+## Wave shape
+
+| worker | scope | declared file set | writes code? |
+|---|---|---|---|
+| A | M5 timer watch, read-only | `docs/ops/CIO_M5_TIMER_WATCH_2026-09-01.md` | no |
+| B | Outcome census + dry expire | `docs/audits/CIO_OUTCOME_EDGE_CENSUS_2026-09-01.md`, `docs/ops/CIO_OUTCOME_DRY_2026-09-01.md` | no |
+| C | Dark contracts + store splits | `docs/audits/CIO_DARK_CONTRACTS_2026-09-01.md` | no |
+| D | Surface `as_of` | `docs/audits/CIO_SURFACE_ASOF_2026-09-01.md` | no |
+| E | Closeout + Drive | `docs/ops/CIO_OVERNIGHT_CLOSEOUT_2026-09-01.md`, `docs/briefs/WAVE_OVERNIGHT_2026-09-01.md` | no |
+| coordinator | stitch | this file | no |
+
+File sets are disjoint (AGENTS.md §11). No two workers touch the same file, store or crontab.
+No worker runs any git write command; the coordinator makes every commit, so there is no index
+contention.
+
+## Standing prohibitions issued to every worker
+
+Broker / `place_order` / 2FA / `BehaviorWriteRefused` · `git push` / `gh pr merge` / promote /
+deploy / any new or edited cron or systemd entry · Telegram send / `--backend live` / `--apply` /
+Flash / Pro / Grok spend · re-enabling the retired overnight LLM window · mass-expiring drafts ·
+deleting anything · picking between divergent holdings copies · minting a new `@v1` type ·
+claiming M5 OBSERVED from a hand-run · routing around a permission denial.
+
+---
+
+## Stitch 0 — 2026-08-31 23:12 ET · wave opened
+
+### The one fact that reframes this wave
+
+`[VERIFIED]` The served release was promoted **eight minutes before the wave opened** and it
+already carries the P1 `load-by-subject` change.
+
+```
+$ readlink -f /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT
+/home/johnclaw/trade-ai-releases/portfolio-server/d276657b7-main-exact-phase2-20260831-225546
+$ git -C /home/johnclaw/trade-ai-releases/portfolio-server/d276657b7-main-exact-phase2-20260831-225546 log --oneline -1
+d276657b7 Merge pull request #810 from PatsKiller/feat/cio-p1-load-by-subject
+$ ls -ld /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT
+lrwxrwxrwx 1 johnclaw johnclaw 93 Aug 31 22:56 ... -> ...-20260831-225546
+```
+
+`[VERIFIED]` The `*/5` wake dispatcher is emitting the P1 telemetry line on its natural schedule:
+
+```
+$ tail -3 /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/logs/cio_wake_dispatcher.log
+2026-08-31 23:07:50,514 [tradeai.cio_wake_dispatch_entrypoint] dispatched=0 skipped=0 errors=0
+2026-08-31 23:07:50,515 [tradeai.cio_wake_dispatch_entrypoint] record_consult: wakes=0 subject_resolved=0 record_found=0 changed_by_record=0 skipped_cadence_not_due=0 no_subject=0
+2026-08-31 23:07:59,568 [tradeai.cio_wake_dispatch_entrypoint] entrypoint complete: runs=0
+```
+
+**Why this matters.** `AGENTS.md` §13.4 lists `load-by-subject` as a dark contract — "built,
+tested, **no scheduled wake consumes it**". That entry was written against a release that did not
+contain #810. As of tonight the code is in the served release and the counters exist. The dark
+contract has therefore moved from "nothing calls it" to, at best, **CODE-WIRED,
+RUNTIME-UNPROVEN** — and whether it moves further is exactly what Worker A is watching for.
+
+**It is not M5 yet, and it may not become M5 tonight.** All six counters read zero at 23:07 because
+no wake was due. M5 requires a natural unattended fire in which a record is actually loaded before
+`decide()` and a days-old disposition is honoured with nobody replaying it (§15). Zero wakes is
+`NOT_OBSERVED for want of input`, which is a different finding from `NOT_OBSERVED for want of
+wiring`, and Worker A has been told to distinguish them explicitly.
+
+**2026-09-01 is Labor Day**, a US market holiday. Overnight wake volume should be read against
+that, not against a normal weeknight.
+
+### Watch mechanism
+
+A detached read-only sampler runs every 30 minutes until 08:00 ET, appending to
+`…/scratchpad/watch/samples.txt`. Per tick it records the resolved CURRENT pin, the crontab
+sha256 and the CIO wake line, matching systemd timers, the dispatcher log size, and only the log
+bytes new since the previous tick. **It invokes no job.** Worker A curates it; the sampler is not
+evidence by itself, the quoted natural fires are.
+
+Stamping the pin every tick is deliberate: peer sessions promote from this machine, six promotes
+inside one hour have been observed, and a measurement without its pin cannot be compared to
+itself later (AGENTS.md §11, §4).
+
+### Drive, established up front so the closeout cannot fake it
+
+`[VERIFIED]` `rclone` is installed at `/home/johnclaw/.local/bin/rclone` but has **no remotes
+configured** (`rclone listremotes` → empty, rc=0). The working Drive path is the `gog` CLI
+(`v0.12.0`), and the hourly `5 * * * *` sync ran successfully at 23:05 ET tonight:
+
+```
+$ cat /home/johnclaw/.local/state/drive-sync-last-result.json
+{"status": "done", "started_utc": "2026-09-01T03:05:01+00:00", "uploaded": 32, "skipped": 2289,
+ "failed": 0, "exit_code": 0, "src": ".../CURRENT", "source_commit": "d276657b7...", ...}
+```
+
+**The consequence, recorded now so it is not discovered as a surprise:** that hourly sync reads
+`SRC=…/CURRENT` — the served release. Tonight's documents live on a local branch in a worktree
+that is never pushed and never promoted. **The hourly sync will not pick up a single file from
+this wave.** Worker E must upload explicitly to the named folder, or report `DRIVE_SYNC=FAILED`
+with local paths. It may not report the 23:05 run as though it had carried this wave's docs.
+
+### Open at stitch 0
+
+- A, B, C, D dispatched. E held until the others land — it reports on them.
+- No worker has reported. No verdict exists yet. Nothing is marked DONE; the coordinator marks
+  work against the proof, never the worker (AGENTS.md §11).
+
+---
+
+## Stitch 1 — 2026-08-31 23:18 ET · a ruled-out timer, and a coordinator error
+
+### CORRECTION: 2026-09-01 is NOT a holiday
+
+In stitch 0 and in Worker A's dispatch brief the coordinator asserted that 2026-09-01 is Labor Day,
+a US market holiday. **That is wrong.**
+
+```
+$ date -d 2026-09-01 +%A
+Tuesday
+$ date -d 2026-09-07 +%A
+Monday        # Labor Day 2026 is the first Monday of September: 2026-09-07
+```
+
+The error is kept here rather than edited out, because of what it would have caused. It handed
+Worker A a ready-made excuse: a night of zero CIO wakes could have been written off as "a holiday
+eve with no events" and closed as benign. It is not a holiday eve. This is an ordinary overnight
+into an ordinary Tuesday session, and **if wake volume is zero all night, the reason is either real
+or UNKNOWN — it is no longer explainable by the calendar.**
+
+That makes Worker A's required split — `NOT_OBSERVED for want of input` versus `NOT_OBSERVED for
+want of wiring` — harder to resolve and considerably more valuable. The correction was sent to
+Worker A with instructions to record it in its own Corrections section rather than silently drop
+it. AGENTS.md §14: keep the corrections in.
+
+### `tradeai-continuous.timer` — ruled out as a CIO wake driver
+
+The 23:09 sampler tick surfaced a second scheduled entity firing inside the watch window. The
+question — does it touch the CIO wake path — was traced to exhaustion. **It does not.**
+
+| level | evidence | tag |
+|---|---|---|
+| timer | `OnCalendar=Mon..Fri 04:00`, `Persistent=true`, `Unit=tradeai-continuous.service`. Tuesday matches, so it **fires at 04:00 ET tonight**, inside the window. | `[VERIFIED]` |
+| service | resolved `ExecStart=/usr/bin/flock -n -E 0 /run/lock/tradeai-continuous.lock …/linux_launchers/run_continuous.sh`; `WorkingDirectory=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild` — the **main checkout, not the served release** | `[VERIFIED]` |
+| last natural fire | `Active: inactive (dead) since Mon 2026-08-31 11:31:05 EDT`, `Duration: 7h 31min`, Main PID 711485, `status=0/SUCCESS` | `[VERIFIED]` |
+| launcher | `run_continuous.sh` (20 lines) runs `scripts/system_preflight_check.py` then `scripts/continuous_runner.py --project-root .` | `[CODE]` |
+| runner | `continuous_runner.py` (966 lines): **zero** matches for `cio\|wake\|instrument.?record\|subject_key\|decide(`, case-insensitive | `[CODE]` |
+| fan-out | `trade_ai_orchestrator.py` (1254), `morning_digest.py` (303), `system_preflight_check.py` (214), `strategy_signal_sync.py` (the orchestrator's only subprocess, at `trade_ai_orchestrator.py:954`): **zero** matches each | `[CODE]` |
+| **its own natural-run log** | `grep -ciE "cio\|wake_dispatch\|instrument_record" logs/run_continuous-20260831-040000.log` → **`0`**. File 149725 bytes, 04:00 → 11:31 unattended. Tagged output: 420 `[finviz]`, 7 `[telegram]`. | `[VERIFIED]` |
+
+The last row is what settles it. Source reading is `[CODE]` and proves only what the code says;
+the log of an unattended natural fire is rung-1 evidence that the lane, in practice, ran Finviz
+and Telegram and touched nothing named CIO.
+
+**Conclusion, to be stated affirmatively rather than assumed:** the CIO wake path has exactly
+**one** scheduled driver — crontab line 934, `*/5 * * * *`, `cio_wake_dispatch_entrypoint.py`, run
+from the served release. `tradeai-continuous` is a different lane, on a different root, and is
+ruled out by both its source and its own runtime log. "The wake is cron-driven only" is otherwise
+a claim a reader would assume rather than know.
+
+### Blind spot recorded, not papered over
+
+`/etc/systemd/system/tradeai-continuous.service.d/singleton.conf` is **not readable**:
+
+```
+Failed to chase '/etc/systemd/system/tradeai-continuous.service.d/singleton.conf': Permission denied
+```
+
+Its effect — the `flock` singleton wrapper — is inferred from the ExecStart that `systemctl status`
+resolved, **not read from the file**. Per AGENTS.md §0 rule 3 this was not routed around: no sudo,
+no alternate read path. A drop-in we cannot read could in principle alter more than we can see, and
+that is stated as a limit rather than assumed away.
+
+### The root split worth carrying to Worker C
+
+`tradeai-continuous` runs from the main checkout; the CIO wake runs from the served release. Two
+scheduled lanes on two different roots is exactly the shape that produces checkout-relative store
+splits. Flagged into Worker C's store-split sweep.
+
+### Open at stitch 1
+
+- A, B, C, D still running. None has reported. Nothing marked DONE.
+- E remains held until A–D land, so its closeout is written against real verdicts. If a worker
+  stalls or aborts on a pin, E is still spawned before 08:00 with that gap named as a finding
+  rather than left blank.
+---
+
+## Standing operator instruction — 2026-08-31 23:19 ET
+
+**Wake the operator if a worker aborts on a pin.** Recorded here so the trigger survives a context
+compaction and is not left as a conversational aside.
+
+Fires a push notification, immediately, on: any worker reporting `ABORTED`, or any worker report
+stating it stopped because it reached one of the wave's hard pins — broker / `place_order` / 2FA /
+`BehaviorWriteRefused`, push / merge / promote / deploy / cron edit, Telegram send / `--backend
+live` / `--apply` / model spend, the retired overnight LLM window, mass-expiry / deletion /
+choosing between divergent holdings copies, a new `@v1` type, or a permission denial it was told
+not to route around.
+
+**Does not fire** on: a worker finishing normally, a worker reporting `NOT_OBSERVED` or `UNKNOWN`
+(both are expected and legitimate results, AGENTS.md §14 §15), or a worker hitting an ordinary
+investigation dead end.
+
+A worker that fails for a non-pin reason — crash, timeout, empty result — is a different event. It
+is recorded in the stitch and carried into Worker E's closeout as a named gap, but it does not wake
+the operator overnight unless it leaves the packet materially incomplete.
+---
+
+## Stitch 2 — 2026-08-31 23:26 ET · Worker A lands · the dark contract is stale
+
+**Worker A: COMPLETE.** Marked DONE by the coordinator against reproduced proof, not against the
+worker's report (AGENTS.md §11). File: `docs/ops/CIO_M5_TIMER_WATCH_2026-09-01.md`, 801 lines.
+No pin breached, no job invoked, no git write.
+
+**Verdict: `NOT_OBSERVED`** at pin `d276657b7`.
+
+### Coordinator re-measurement of A's headline claims
+
+Every number A reported was re-run independently before accepting it.
+
+| A's claim | coordinator re-measurement | agrees? |
+|---|---|---|
+| 335 `record_consult` lines | **337** at 23:23 — A measured at 23:22, two `*/5` fires landed between. Not a discrepancy; the log is live. | yes |
+| 165 lines with `record_found ≥ 1` | `grep -o "record_consult:.*" \| grep -vc "record_found=0"` → **165** | exact |
+| 117 lines with `skipped_cadence_not_due ≥ 1` | → **117** | exact |
+| last deferral-honouring line at 10:57:32 | `2026-08-31 10:57:32,949 … wakes=5 subject_resolved=2 record_found=2 changed_by_record=2 skipped_cadence_not_due=2 no_subject=3` | exact |
+
+### FINDING THAT SUPERSEDES `AGENTS.md` §13.4 — the finding wins (§0 rule 10)
+
+§13.4 Dark contracts states: "`load-by-subject` — built, tested, **no scheduled wake consumes it**.
+Wiring that call is P1 / M5. Until a cron loads the record before `decide()`, persistence is
+unwired."
+
+**That is now false.** A scheduled wake does consume it, it has done so 337 times, and it has
+loaded 524 records. The consult runs at `cio_wake_dispatcher.py:195-202`, ahead of the claim at
+`:240`. This requires an amendment PR against §13.4 (§20) — **queued for the morning, not opened
+tonight**, because opening a PR is a remote action and this wave does not push.
+
+### The verdict is a third category the brief did not offer
+
+The dispatch brief offered A two ways to record `NOT_OBSERVED`: for want of wiring, or for want of
+input. **Neither is true, and A was right to refuse both.**
+
+- Not want of wiring — the consult runs, unattended, cron-parented. A captured the ancestry at
+  23:15:00: `python ← bash ← cron ← cron(pid 6472) ← systemd`. Rung 1 for the *mechanism*.
+- Not want of input — wakes are arriving. Three at 23:18; five fires between 20:08 and 22:28 had
+  `record_found ≥ 1`.
+
+**The real reason: there are no unexpired deferrals left to honour.** 40 distinct subject_keys,
+38 carrying no `next_eligible_at` at all, and the only 2 that had one — `HELD:SCHD` and
+`SLEEVE:CASH` — expired this morning around 10:53–10:58 ET. The acceptance criterion's clause (d)
+is therefore **structurally unsatisfiable tonight at any wake volume**, and that prediction is
+confirmed by the data: the last `skipped_cadence_not_due ≥ 1` line in the entire log is 10:57:32,
+**45 seconds before the last deferral expired.**
+
+`[VERIFIED]` The blocker is a missing **writer**, not a missing loader:
+
+```
+$ ls -l .../data/cio/cio_instrument_records.jsonl
+-rw------- 1 johnclaw johnclaw 392062 Aug 30 10:58    # now: 2026-08-31T23:24 ET → ~36.5h silent
+```
+
+Nothing about the timer, the queue or the loader needs fixing. **M5 cannot be observed because
+nothing is writing dispositions for a later wake to honour.** That is the single most actionable
+sentence this wave has produced.
+
+### Coordinator refinement of A's storage claim — strengthens it
+
+A reported "`logs/` is a symlink to shared `persistent-state` while `data/` is per-release." That is
+imprecise, and the correction matters:
+
+```
+$ ls -ld CURRENT/data CURRENT/data/cio CURRENT/logs
+drwx------  … /data                                    # per-release, real directory
+lrwxrwxrwx  … /data/cio -> /home/johnclaw/trade-ai-releases/persistent-state/data/cio
+lrwxrwxrwx  … /logs     -> /home/johnclaw/trade-ai-releases/persistent-state/logs
+```
+
+`data/` is per-release, but **`data/cio` is itself a symlink into shared persistent-state.** The
+consequence is important: the 36-hour silence is **not** an artifact of tonight's 22:55 promote
+stranding writes in an old release tree. The store is genuinely shared and genuinely untouched
+since Aug 30 10:58. A's conclusion survives the correction and is strengthened by it. Routed to
+Worker C, whose store-split sweep needs this.
+
+### A declined a candidate on a pin technicality, correctly
+
+The strongest line in the log is `2026-08-31 07:12:05 — wakes=5 subject_resolved=5 record_found=5
+changed_by_record=5 skipped_cadence_not_due=5`. A refused to call it `M5_CANDIDATE` because **it
+was written by pin `1d64cb59f`, not the pin A is stamped to** — `logs/` being shared means the log
+spans twelve promotes on 2026-08-31 alone.
+
+The coordinator accepts that reasoning and adopts A's recommendation: record it separately as
+**`M5_CANDIDATE @ pin 1d64cb59f, as_of 2026-08-31T07:12 ET`** — correctly stamped, carried to the
+morning packet as a candidate against *that* release, and never merged into the `d276657b7`
+verdict. This is the §11 rule about stamping every measurement with the pin it was read at, applied
+against the worker's own interest in a stronger headline.
+
+### Two evidence defects in the instrument itself
+
+1. **The `record_consult` line omits a `no_record` counter.** A total memory outage and a quiet
+   queue emit byte-identical lines. Partly mitigated empirically — `subject_resolved == record_found`
+   exactly (524 = 524), so `NO_RECORD` has never fired — but the instrument structurally cannot
+   distinguish the two states. This is the §8 trap "two states cannot express *no input*"; the fix
+   is a third verdict.
+2. **`entrypoint.py:168-171` hard-codes `"unattended": True` and the cron string as literals.** A
+   hand-run writes them identically. **That artifact is therefore worthless as M5 proof** — it
+   cannot go red where it runs (§16). Proposed fix only; no code edited.
+
+### Routed item — a live cron defect firing at 05:00 ET tonight
+
+`[VERIFIED]` crontab lines 928–930 carry a shell-quoting bug. Reproduced without invoking the
+detector:
+
+```
+$ bash -c 'echo python3 -c "… print(f'"'"'Wakes: {r.get("wakes_created",0)}'"'"')"'
+python3 -c from x import y; r=y(); print(f'Wakes: {r.get(wakes_created,0)}')
+```
+
+The shell strips the inner double quotes, so `"wakes_created"` becomes the bare name
+`wakes_created`. Confirmed in the detector's own log — rung 1, its own unattended cron fire:
+
+```
+$ tail .../logs/cio_detector.log
+NameError: name 'wakes_created' is not defined      # ×2, last at Aug 31 05:00
+```
+
+**Scope, stated precisely because A initially got this wrong and corrected itself:** the
+`NameError` is raised evaluating the `print`, which is the *third* statement on the line.
+`run_cio_event_detector_once()` has already returned by then. **Wakes are still created; only the
+telemetry is lost.** A first blamed this for the wake volume, was wrong, and recorded the
+correction (its §10.8). The coordinator confirms the corrected reading.
+
+Line 928 is `0 5 * * 1-5`; Tuesday matches, so **it fires again at 05:00 ET tonight and will lose
+its telemetry again.** Editing a crontab is a hard pin and an operator-only decision (§17). It is
+recorded, not touched, and carried to the morning packet.
+
+### Two UNKNOWNs left standing rather than routed around
+
+- root's crontab — `sudo: a password is required`. Not escalated (§0 rule 3).
+- `/etc/systemd/system/tradeai-continuous.service.d/singleton.conf` — unreadable, effect inferred
+  from the resolved `ExecStart` only.
+
+### Open at stitch 2
+
+- **A: DONE.** B, C, D still running. E still held.
+- Deferred-to-operator list gained two items tonight (the §13.4 amendment, the 928–930 cron fix)
+  and resolved none. Per §17 that is itself a finding about how this wave was run, and it is
+  recorded rather than hidden — though both items are *discoveries*, not deferrals the wave created.
+---
+
+## Stitch 3 — 2026-08-31 23:31 ET · the writer never existed · Worker B lands
+
+### THE WRITER THAT STOPPED — it did not stop. There has never been one.
+
+The store was asked directly who wrote it. `[VERIFIED]`, read from
+`/home/johnclaw/trade-ai-releases/persistent-state/data/cio/cio_instrument_records.jsonl`,
+131 rows, as_of 2026-08-31T23:30 ET:
+
+```
+=== writer histogram (cc_narrative.writer) ===
+  126  migration:deterministic       last updated_ts=2026-08-30T14:53:41Z
+    5  cognition:defer_honored       last updated_ts=2026-08-30T14:58:17Z
+
+=== updated_ts range ===
+earliest 2026-08-30T02:23:59Z      latest 2026-08-30T14:58:17Z      rows with no updated_ts: 0
+```
+
+**Every row in the store was written inside a single twelve-hour window on 2026-08-30, and 126 of
+131 were written by the migration script.** The file's mtime — Aug 30 10:58 EDT — is 14:58 UTC,
+matching the last row (`HELD:SCHD`) to the second.
+
+A first pass at this histogram keyed on `updated_at` / `author` and returned "131 rows, writer
+`(none)`". The fields are `updated_ts` and `cc_narrative.writer`. The correction is kept because
+the wrong reading looked like a clean answer — a store with no writer stamps at all — and would
+have been reported as one.
+
+### The write graph, traced to exhaustion `[CODE]`
+
+`InstrumentRecordStore.upsert()` at `scripts/lib/cio_instrument_record.py:309` (append at
+`:319-320`) is the **only** write in the class. Every path that reaches it:
+
+| entry point | non-test callers | scheduled? |
+|---|---|---|
+| `persist_instrument_record()` — `lib/instrument_record.py:116` | **ZERO** | dead code |
+| `stamp_last_artifact_id()` — `lib/cio_instrument_record.py:536` | `lib/cio_specialist_artifact.py:169` | see below |
+| `apply_after_cycle()` — writes `cognition:defer_honored` at `lib/cio_rehydrate.py:272` | `attach_operator_turn()` at `:326` — and that has exactly one non-test caller: **`cio_migrate_instrument_records.py:152`** | no |
+| `rollback()` — `:306` | — | no |
+| `cio_instrument_record_drill.py` | — | drill tool |
+
+`[VERIFIED]` Nothing in the crontab schedules any of them:
+
+```
+$ crontab -l | grep -inE "specialist_artifact|migrate_instrument|rehydrate|instrument_record"
+(empty)
+```
+
+**So the five `cognition:defer_honored` rows — the only non-migration writes that have ever
+existed — were themselves produced by the migration**, through its own call to
+`attach_operator_turn`. The cognition writer has never run outside a migration.
+
+### The near-miss that makes it worse
+
+`stamp_last_artifact_id` is the one path that could plausibly be reached on a scheduled wake. It is
+not, and the reason is a name collision:
+
+```
+$ ls scripts/lib/cio_specialist_artifact*.py
+cio_specialist_artifact.py    7479 bytes    ← holds the stamp call at :169
+cio_specialist_artifacts.py   4249 bytes    ← PLURAL
+$ grep -n "cio_specialist_artifact" scripts/lib/cio_run_worker.py
+33:from scripts.lib.cio_specialist_artifacts import resolve_run_specialist_advisories
+```
+
+`cio_run_worker` — which **is** in the scheduled wake path, and whose log lines appear in the
+dispatcher output — imports the **plural** module. The stamp lives in the **singular** one. And
+even if it were reached, it writes `last_artifact_id` only: it cannot set `next_eligible_at`, so
+it could never create a deferral for a later wake to honour.
+
+`[VERIFIED]` No log evidence it is ever reached: `grep -ci "last_artifact_id\|stamp_last"` over the
+whole dispatcher log → `0`.
+
+### What this means for M5
+
+Worker A concluded the M5 blocker is a missing writer. **That is right, and it is worse than
+"missing".** This is precisely the defect `AGENTS.md` §3 names — *a contract built and a caller
+never wired* — and §13.4 warns of by name: *"An agent that ships a feature on top of them without
+wiring the consumer is repeating the filing-cabinet defect."*
+
+The P1 work landed the **loader**. The loader is correct, scheduled, and running 337 times. It is
+reading a store that a one-off migration filled once on 2026-08-30 and that no scheduled process
+has written since. **M5 is not blocked on the wake. It is blocked on the fact that nothing in
+production has ever written a disposition.**
+
+Corollary worth stating plainly: the 5 deferrals A found expired this morning are the *migration's*
+deferrals. When they expired, the system's entire supply of honourable dispositions was exhausted,
+and no process exists to make more.
+
+### A live, silent, high-volume failure found in the same path
+
+```
+$ grep -c "Action write failed" logs/cio_wake_dispatcher.log
+6875
+first  2026-08-27 19:16:18  [tradeai.cio_run_worker] Action write failed for rec 0: 'stream_id'
+last   2026-08-31 23:23:41  [tradeai.cio_run_worker] Action write failed for rec 24: 'stream_id'
+```
+
+**6,875 failures over four days, still firing tonight.** A `KeyError: 'stream_id'` in
+`cio_run_worker`, logged and swallowed. Not investigated further tonight — it is a separate defect,
+it is on the wake path, and it is routed to the morning packet. Recorded here because a failure
+this loud that nothing acts on is the §8 trap *"a guard verified by presence is not a guard"* in
+its other form: an alarm that fires constantly and changes nothing.
+
+---
+
+## Worker B — COMPLETE, and it refutes two authorities
+
+**Worker B: DONE.** Marked against reproduced proof. Files:
+`docs/audits/CIO_OUTCOME_EDGE_CENSUS_2026-09-01.md` (701 lines),
+`docs/ops/CIO_OUTCOME_DRY_2026-09-01.md` (453 lines). No `--apply`, nothing expired, no git write.
+
+### Coordinator re-measurement
+
+| B's claim | coordinator re-measurement | agrees? |
+|---|---|---|
+| latest-by-id: SCHEDULED 875 · RESOLVED 158 · NOT_PRICE_RESOLVABLE 86 · OUTCOME_PENDING_DATA 6 | **877 · 158 · 86 · 6** — SCHEDULED and total drifted by 2 because the store is live and grew during the audit, exactly as B documented | yes |
+| 1,125 distinct `checkpoint_id` | **1,127** (same live drift) | yes |
+| hourly resolver, crontab 964, `--apply` | `20 * * * * … scripts/resolve_due_checkpoints.py --apply >> logs/resolve_due_checkpoints.log` | exact |
+| 871 of 875 SCHEDULED have `due_at: null` | 877 of 877 latest-SCHEDULED carry `due_at: null` in my read — B's 871/875 is the stricter figure; **either way this is the finding** | direction confirmed |
+
+### THE OUTCOME EDGE IS NOT DARK — second authority refuted tonight
+
+`AGENTS.md` §13.4: *"`OUTCOME` edge — checkpoints exist; **settlement is dark**."*
+The AS-IS doc: `✗ OUTCOME — the edge is dark`.
+
+**Both false.** 158 checkpoints RESOLVED, 402 resolution rows across 2026-08-27/29/30/31, most
+recent `2026-08-31T14:20:02Z`, written by a resolver that runs **hourly with `--apply`** and is
+proven running by its own durable log. 152 travelled `SCHEDULED→OUTCOME_PENDING_DATA→RESOLVED`.
+
+That is now **two** §13.4 dark-contract entries falsified in one night — `load-by-subject` (A) and
+the outcome edge (B). Both amendments queued for morning; neither opened tonight, because opening a
+PR is a remote action.
+
+### B's own refutations of its brief — findings win
+
+1. **`PENDING_DATA` is fully explained. UNKNOWN = 0.** All 6 are one subject, SCHD/TRIM, awaiting
+   `ticker_prices.close_price`/`price_date`, read at `resolve_due_checkpoints.py:89-95`. B then
+   found the *next* layer honestly: `_price_lookup_factory` degrades to `lambda: None` on
+   connection failure (`:84-86`), so the receipt **cannot** distinguish "SCHD absent" from
+   "database down". That degradation is recorded as UNKNOWN rather than papered over.
+2. **The real dark mass is `due_at`, not `PENDING_DATA`.** **871 of 875 SCHEDULED checkpoints have
+   `due_at: null`** — the factory sets it unconditionally at
+   `cio_institutional_learning.py:606`, and `due_checkpoints()` treats null as *not due*
+   (`outcome_resolution.py:101-117`). **77% of the store is structurally invisible to the resolver,
+   forever.** The brief never asked about this. It is the most important thing B found.
+3. **"A checkpoint bound to nothing cannot settle" — my brief asserted this and it is wrong.**
+   0 of 1,125 carry a real `plan_id`, and all 158 settled anyway; settlement keys on `decision_id`
+   + `original_decision_state.symbol`. The coordinator wrote a premise into the brief and B
+   measured it instead of inheriting it. That is the §4 rule working as intended.
+4. **"337 lessons, ALL research-fed" is wrong on both counts.** 344 distinct `LessonCandidate@v2`;
+   **343 research-derived, 1 outcome-derived.** The outcome→lesson edge has fired exactly once.
+   "Never fired" and "fired once" are different states, and only one of them proves the edge exists.
+5. **A fifth status exists in code and has never occurred:** `OUTCOME_EXPIRED`
+   (`outcome_resolution.py:47`), double-gated behind `--apply-pending-data` +
+   `TRADEAI_PENDING_DATA_APPLY=1`, which no cron passes. A state that has never occurred is a
+   finding.
+6. **No "scored" violation** — 343 candidates carry `cannot_become_policy: true`. The rail holds.
+
+### The store-root trap, measured rather than assumed
+
+B tested my brief's warning instead of repeating it. `outcome_checkpoints.jsonl` resolves via
+`production_state_root()` (`canonical_store_registry.py:487-502`), **not** cwd — so the trap does
+**not** apply to it. It **does** apply to `CIOPlanStore`, and B reproduced it in the sharpest
+possible form: the same dry command, the same minute, **43 would-expire from the served root and 0
+from `$PROJ`.**
+
+**Six copies** of `outcome_checkpoints.jsonl` on the box; the `$PROJ` copy is a strict subset
+(153/153 upstream, 0 unique). Two divergent copies of `advisory_kb_lessons.jsonl`. Paths, sizes,
+hashes and mtimes reported; **nothing picked, nothing merged** (§0 rule 5, §17).
+
+### Permission denial — handled correctly, no wake sent
+
+The auto-mode classifier blocked a **no-flag (dry)** run of `resolve_due_checkpoints.py`. B did not
+retry, restructure, or route around it (§0 rule 3). It substituted the hourly cron's own durable
+log — **a stronger evidence tier than the run it was denied** — and delivered complete work.
+
+Assessed against the standing wake trigger: **this is not a pin abort.** B did not stop, nothing is
+blocked, and no operator decision is needed before morning. Waking the operator for a denial that
+was correctly absorbed at zero cost would train them to ignore the alarm. Recorded here and carried
+to the morning packet instead.
+
+### Observation, untouched
+
+The 06:52 `cio_draft_plan_hygiene.py --apply` cron fires at 2026-09-01T06:52 ET, 68 minutes before
+this wave stops. It has run successfully before (854 hygiene events, 124 on 2026-08-31). **Not
+interfered with.** The 43 would-expire plans B itemised are what it is likely to act on.
+
+### Open at stitch 3
+
+- **A: DONE. B: DONE.** C and D still running. E still held.
+- Morning amendment queue now holds **two** §13.4 corrections plus the 928–930 cron fix.
+---
+
+## Stitch 4 — 2026-08-31 23:33 ET · Worker D lands · three cash totals in one payload
+
+**Worker D: DONE.** Marked against reproduced proof. File:
+`docs/audits/CIO_SURFACE_ASOF_2026-09-01.md` (1,237 lines). GETs only, no POST, no store write, no
+code edit, no git write. Measured at pin `d276657b7`, server PID 2076495 on port 7777, cwd pinned to
+the concrete release directory so symlink rotation could not re-point the measurements. Re-verified
+unrotated at close.
+
+### The `as_of` headline
+
+| surface | leaf paths | value-bearing | **no evidence clock of their own** |
+|---|---|---|---|
+| `/api/v3/cio/home` | 2,254 | 2,098 | **1,140 — 54.3%** |
+| `/api/v2/overview` | 188 | 183 | **182; compliance 0 of 183** |
+
+D split the 1,140 rather than reporting a single number: 589 inherit only the root envelope, 543
+sit under a block stamped with *composition* time — within 0.6s of the envelope, which D calls a
+**false pass** rather than a pass — and 8 hang off root. That distinction is the brief's
+`INHERITED` requirement doing real work: a block-level timestamp covering a field computed at a
+different moment is a defect, not compliance.
+
+### Class A is 22, not zero — and mislabelled, which is worse
+
+`[VERIFIED]` by the coordinator against the live payload:
+
+```
+$ curl -s http://127.0.0.1:7777/api/v3/cio/home | ... count of '"class": "A"'
+22
+```
+
+The AS-IS doc's headline — *"Agent-originated fields reaching any operator surface: zero"* — is
+false as stated. But D did not stop at the refutation, and the second half is the finding:
+`class: "A"` is a **hardcoded literal** at `cio_investment_product.py:917,963`, and the content it
+labels is a pure f-string at `hermes_case_summary.py:68-98` copied out of a stored record. That is
+T-over-S wearing an A label.
+
+**Both readings are defects, and a mislabelled A is worse than an absent one** — a zero is honest
+about the system's maturity, whereas a false A tells the operator the agent formed a view when it
+recited a template. Counted *by producer* rather than by label, the AS-IS doc's other sentence —
+"every sentence the operator reads is a rule, a threshold, a template, or a constant" — is
+substantively correct. Both things are true at once and the document says so.
+
+Near-miss, as briefed: `operator_product.executive_summary`, the clause
+`[D] Nothing requires action today.` — the §9.1 named trap. The codebase self-diagnoses it at
+`cio_p90_voice.py:24-35` and ships it anyway.
+
+### The three-way-branch field, found and quantified
+
+`capital_plan.cash_earmarked_redeploy_usd`, branch at `cio_capital_plan.py:388-396`. Raw earmark
+**$1,026,129.22** across 38 open events exceeds cash, so the renderer emits `min(raw, cash)`.
+
+**It reads as a total; it is a ceiling.** $395,338.80 of earmark is invisible on the surface, and
+`cash_free_unearmarked_usd = 0.00` is *forced by the clamp*, not measured. `maturities_capped_to_cash`
+and `maturities_raw_usd` are computed and then dropped by the renderer.
+
+Coordinator corroboration D did not claim: in the live payload
+`cash_earmarked_redeploy_usd == cash_total_usd == 630790.42` **exactly**. That equality is the
+fingerprint of the clamp — visible in the payload without reading the branch at all.
+
+### THE FINDING OF THE NIGHT — three live values for total cash, in one response body
+
+`[VERIFIED]` coordinator re-measurement, single GET of `/api/v3/cio/home`:
+
+```
+630791.10   temperament.cash · operator_product.temperament.cash
+630790.42   capital_plan.cash_total_usd · capital_plan.cash_earmarked_redeploy_usd
+            capital_plan.sources[2].usd · cash.cash_usd · operator_product.cash.cash_usd
+630784.82   cash_letter.cash_usd · 6× decisions[*]/opportunities[*]
+            .cc_narrative.evidence_refs[*].total_cash
+'Cash sleeve 630784.82.'   ← cash_letter.what, the sentence the operator reads
+```
+
+and `/api/v2/overview` → `data.total_cash = 630791.10`.
+
+**This is worse than D reported it.** D framed part of it as a cross-surface disagreement. It is
+not: `/api/v3/cio/home` **alone** states total cash three different ways in one body. A reader can
+find the contradiction without leaving a single page.
+
+Compounding defects D found around it:
+
+- `cash_letter` pairs the **stale** total with a **live** `cash_investable_usd`, so the block does
+  not reconcile with itself: `630,784.82 − 256,595.22 = 374,189.60`, but it displays `374,195.20`.
+  Both are stamped under an `as_of` belonging to neither. Root cause: precedence at
+  `cio_record_narrative.py:103-105`.
+- The `630784.82` figure comes from the **stale `SLEEVE:CASH` InstrumentRecord** — the same store
+  stitch 3 showed has not been written since 2026-08-30. **The dead writer is now visibly leaking
+  into the operator's sentence.** That connection is the wave's, not any single worker's, and it is
+  the strongest argument that the missing writer is not a theoretical gap.
+- `/api/v2/overview`'s `total_cash` inherits `2026-08-29` when the oldest contributing balance is
+  `2026-08-03` — **26 days too fresh**. The offending row is literally the $500 moomoo balance that
+  `AGENTS.md` §9.1's "27-day-old $500" rule appears to have been written about.
+- The surface ships `consistency.decision_field_parity.ok = false` **inline**, on the page, and
+  nothing acts on it.
+- A code comment at `api_v2.py:2593-2601` asserts these totals agreed "to the cent, gap 0.00" on
+  2026-08-29. Measured tonight the gap is **$0.68**. A policy comment that outlived its policy —
+  §3, by name.
+
+Per the brief D did **not** declare M4 observed, and listed the five things that would remain to be
+shown. Correct: this is an M4 *failure* case, and naming it is not the same as proving the proof.
+
+### The half-refutation, kept because it is a correction in our favour
+
+The AS-IS doc says "most payload blocks — including every cash number — carry no `as_of` of their
+own." D found that **half wrong**: `/api/v3/cio/home` *does* give cash a correct oldest-balance
+stamp via `cash_evidence_as_of` (`cio_capital_plan.py:841-890`), which D assessed as a faithful
+§9.1 implementation. The AS-IS claim holds only for `/api/v2/overview`. Recording the half that is
+already right matters: it is the difference between "nobody implemented this" and "somebody
+implemented it correctly in one place and it was never carried to the other."
+
+### Coordinator correction TO Worker D — the brief was right
+
+D reported: *"Provenance classes are §13.5 (`AGENTS.md:785-793`), not §13.4."* The line numbers are
+right; the attribution is not.
+
+```
+$ grep -n "^## 13\.\|^### Provenance" AGENTS.md
+689:## 13.4 · The type vocabulary — what already exists
+785:### Provenance classes — every operator-facing field carries one
+834:## 13.5 · Pre-build check
+```
+
+785 falls between 689 and 834, so **"### Provenance classes" is a subsection of §13.4** and the
+original brief's citation was correct. §13.5 is "Pre-build check" and contains no provenance
+classes. Sent back to D to revert the citation and record the round trip in its Corrections
+section rather than silently reverting.
+
+**The mechanism of the error is worth keeping:** D resolved the nearest enclosing `###` rather than
+the nearest `##`. That is a reproducible way to mis-cite this file, and it is now written down.
+This is also the multi-agent protocol working in the direction it is usually not tested in — §11
+says the finding wins over the brief, but only when the finding survives re-measurement, and this
+one did not.
+
+### D's two self-flagged caveats, endorsed
+
+1. The ~106 `D` declarations it did not trace to producers should be treated as **unverified** —
+   because the one class it *did* audit end to end turned out to be mislabelled. That is the right
+   inference to draw from its own finding, and it is the opposite of the convenient one.
+2. `/api/v3/cio/brain/capital-plan` returns a **fourth** cash presentation, with
+   `investable_cash_usd` and `reserved_cash_usd` as `null` where `/home` states them as known.
+   Flagged, not pursued, named as the first place to look next. Left for morning deliberately.
+
+Eight proposals sit in "Proposed morning diffs"; **three are flagged OPERATOR-ONLY per §17** — the
+earmark label change, the choice of a canonical cash producer, and the `as_of` rename. Proposed and
+stopped.
+
+### Open at stitch 4
+
+- **A: DONE. B: DONE. D: DONE** (one citation fix outstanding). **C: still running. E: still held.**
+- Three of the AS-IS document's headline claims have now been refuted or halved in one night, and
+  two §13.4 dark contracts falsified. The morning amendment queue holds: two §13.4 corrections, the
+  AS-IS class-A claim, the AS-IS cash-`as_of` claim, and the 928–930 cron fix.
+---
+
+## Stitch 5 — 2026-08-31 23:35 ET · D's correction lands and deepens the finding
+
+**Worker D: DONE, deliverable committed.** `docs/audits/CIO_SURFACE_ASOF_2026-09-01.md`,
+now 1,324 lines. Citation reverted; two round trips recorded rather than deleted.
+
+### The citation round trip, closed honestly
+
+D reverted §13.5 → §13.4 at five sites (546, 566, 576, 579, 1096) after re-running the grep itself.
+The two "correction" entries are **struck through and marked WITHDRAWN rather than deleted**, in
+both §0 and §8 — a reader who saw the wrong claim can find out what happened to it.
+
+D named the mechanism precisely: it resolved the nearest `###` heading and treated it as a peer of
+the `##` sections, when a line range alone cannot distinguish a subsection from a sibling. And it
+recorded why this particular error stings: *it landed in a section whose whole purpose was
+correcting someone else, and a confident correction is exactly the claim that gets re-used without
+re-checking.* §11's "the finding wins" is not a licence to skip verifying the finding.
+
+That is the maturity bar applied to the wave's own reasoning, not just to the system.
+
+### The cash finding is bigger than either of us had it
+
+The coordinator told D the three values sat in one body. D reproduced it, then found the
+coordinator had **also** understated it. `[VERIFIED]`, single GET of `/api/v3/cio/home`:
+
+```
+TOTAL statements of total cash in ONE response body: 14      distinct values: 3
+   630,791.10  ×2    temperament.cash · operator_product.temperament.cash
+   630,790.42  ×5    capital_plan.cash_total_usd · .cash_earmarked_redeploy_usd
+                     .sources[2].usd · cash.cash_usd · operator_product.cash.cash_usd
+   630,784.82  ×7    cash_letter.cash_usd
+                     cio_now.decisions[2].cc_narrative.evidence_refs[3].total_cash
+                     cio_now.decisions[3].cc_narrative.evidence_refs[1].total_cash
+                     opportunities.watch[1].cc_narrative.evidence_refs[1].total_cash
+                     opportunities.reentry[0].cc_narrative.evidence_refs[2].total_cash
+                     opportunities.reentry[3].cc_narrative.evidence_refs[2].total_cash
+                     opportunities.reentry[4].cc_narrative.evidence_refs[2].total_cash
+```
+
+**Fourteen statements of one quantity, three answers, one page.**
+
+Two consequences neither of us had before, both D's:
+
+1. **It kills the tidy explanation.** The comfortable story was "the CIO surface uses the row sum,
+   overview uses the stored field" — two producers, one boundary, one reconciliation to write.
+   False: `/api/v3/cio/home` carries **all three producers at once**. There is no boundary to
+   reconcile across; the disagreement is internal to a single composition.
+2. **The stalest value is the one cited as evidence.** `630,784.82` appears **six times as
+   `evidence_refs[*].total_cash`** — it is the number individual decisions and re-entry candidates
+   point at *to justify themselves*. And it originates in the stale `SLEEVE:CASH`
+   InstrumentRecord — the store stitch 3 proved no production process has written since
+   2026-08-30.
+
+So the chain closes end to end: **a store with no writer → a record 36 hours stale → the number six
+live decisions cite as their evidence → the sentence the operator reads.** No single worker could
+see that; A found the dead writer, D found the leak, and it is the wave that connects them.
+
+D also found `temperament` is stamped `as_of: 2026-08-03` — the cash-*evidence* clock — while
+carrying the *stored-field* value. A timestamp belonging to a different producer than the number it
+sits beside. Added to the inherited-not-theirs table.
+
+### The clamp fingerprint, promoted to a rule
+
+`cash_earmarked_redeploy_usd == cash_total_usd == 630790.42` **exactly**. D added this as its own
+row with the right generalisation: an earmark equal to cash **to the cent** should be read as
+`min(raw, cash)` having returned `cash` until proven otherwise, because a genuine coincidence to
+the cent is vanishingly unlikely. That is a detector someone can apply to this surface next month
+without reading `cio_capital_plan.py` at all.
+
+### Open at stitch 5
+
+- **A: DONE. B: DONE. D: DONE.** All three deliverables committed.
+- **C: still running.** E: still held.
+- **Unpushed vs `origin/main`: 8 commits, docs only.** Trap recorded for E: local `main` is stale
+  at `1b8002903`, far behind `origin/main` at `d276657b7`; diffing against local `main` reports
+  **132**. The honest baseline is `origin/main`, and the honest number is single digits.
+---
+
+## Coordinator correction — 2026-08-31 23:37 ET · the stitch log mis-stamped itself
+
+Every stitch header carried a hand-estimated time rather than a measured one. Checked against
+`git log`, which is authoritative:
+
+```
+$ git log --format="%h  %ad  %s" --date=format-local:'%H:%M' origin/main..HEAD --reverse
+dddfd7cb6  23:14  stitch 0        claimed 23:12
+3ffef60d5  23:18  stitch 1        claimed 23:22   ← 4 min AFTER its own commit
+b8832f8c8  23:26  stitch 2        claimed 23:26   ok
+158f6d6dc  23:31  stitch 3        claimed 23:34   ← 3 min after
+340525e4f  23:33  stitch 4        claimed 23:38   ← 5 min after
+afa8dd212  23:35  stitch 5        claimed 23:45   ← 10 min after
+```
+
+**Four of six headers claimed a time later than the commit that contains them — physically
+impossible.** The drift grew monotonically, which is the signature of estimating forward from the
+last estimate instead of reading the clock.
+
+Headers corrected to their commit times. The claimed values are preserved above so the error is
+auditable rather than erased.
+
+**This is the wave's own standard turned on the wave.** §4 requires every measurement to carry
+value + `as_of` + root, and §14 says a document with no trustworthy `as_of` cannot be compared to a
+later one. The coordinator spent the night enforcing that on four workers — correcting D's
+citation, correcting A's holiday premise, re-measuring every headline count — while its own
+document invented its timestamps. A coordinator that only audits downward is an incomplete
+instrument.
+
+Nothing downstream depended on these values: no verdict, count, hash or pin was derived from a
+stitch header, and every measurement inside the stitches carries its own separately-sourced `as_of`
+and root. The defect is in the log's self-description, not in its evidence. Recorded because the
+next reader has no way to know that without being told, and because an error found by the party
+that made it is the cheapest kind there is.
+
+Going forward every stitch header is stamped from `TZ=America/New_York date`, read at write time.
+---
+
+## Stitch 6 — 2026-08-31 23:40 ET · Worker C lands · the frozen `CURRENT`
+
+**Worker C: DONE.** `docs/audits/CIO_DARK_CONTRACTS_2026-09-01.md`, 1,164 lines, 69 `[VERIFIED]`,
+13 `[CODE]`. Pin `d276657b7` re-verified at 23:12, 23:22 and 23:36 — it did not rotate, so every
+runtime claim is attributable to one pin. Two PINs reached, both **proposed and stopped**, neither
+an abort: positive-controlling the Telegram gate (requires a live send) and an `--apply` catalyst
+rebuild.
+
+### THE ABANDONED-TREE WRITER — traced to the process, live
+
+C's §2.4d found a 20 MB log appended tonight into a release promoted away on 2026-08-26. It
+attributed the cause to daemons "holding open handles." **The mechanism is different, and worse.**
+
+`[VERIFIED]` No process held the file open when checked between cycles. The writer re-opens by
+path. Caught in the act at 23:38:11:
+
+```
+$ pgrep -af escalation
+2446485 …/.venv/bin/python \
+  /home/johnclaw/trade-ai-releases/portfolio-server/40360117-main-exact-phase2-20260826-202631/scripts/claude_escalation_handler.py --tier1-only
+  cwd: …/40360117-main-exact-phase2-20260826-202631
+
+$ ps -o pid,lstart,cmd -p 3637980          # its parent
+3637980  Wed Aug 26 20:38:03 2026  …/.venv/bin/python /home/johnclaw/.config/tradeai/bin/health_agent_daemon_current.py
+  cwd: …/40360117-main-exact-phase2-20260826-202631
+  parent: systemd --user (pid 7039)
+```
+
+**The root cause is one line in the wrapper** (`/home/johnclaw/.config/tradeai/bin/health_agent_daemon_current.py`,
+mtime 2026-08-17):
+
+```python
+CURRENT = Path("/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT").resolve()
+...
+lpr.get_live_project_root = lambda: CURRENT
+```
+
+**`.resolve()` runs once, at daemon start.** It follows the symlink and freezes the concrete
+directory for the life of the process. The daemon started **2026-08-26 20:38:03** — twelve minutes
+after release `40360117` was promoted at `20:26:31` — and has held that resolution for **five days
+and at least twelve subsequent promotes**, including tonight's. Every subprocess inherits the
+frozen root through the `get_live_project_root` override, so each 10-minute escalation cycle opens
+the stale path fresh. That is why no handle was held.
+
+**The name exceeds the code, and it is the wrapper's own docstring that promises it:** *"Host
+overlay: run exact-main CURRENT health daemon."* It runs whatever `CURRENT` was when the daemon
+started. The file is even named `health_agent_daemon_**current**.py`. This is `AGENTS.md` §7
+"Controls whose name exceeds their code" and §8 "**Resolve `CURRENT` to a concrete directory before
+verifying** — it has rotated three times in fifteen minutes," and the wave was told that rule and
+applied it to its own measurements all night while a production daemon has been violating it for
+five days.
+
+**The bitter part:** the wrapper exists *to fix a root-resolution bug* — its docstring cites #349,
+"CURRENT/scripts/health_agent_daemon.py rebases PROJECT_ROOT to the git checkout whenever that tree
+exists. That made #349 collectors dead on a live exact-main release." It fixed that one and
+introduced a different one. A repair verified by the symptom it targeted.
+
+**Consequences, none of them acted on tonight:**
+
+1. **Five-day-old code is running in production.** Any fix landed in `claude_escalation_handler.py`
+   since 2026-08-26 is not running. Twelve promotes have gone past it.
+2. **It is invisible to anyone reading `CURRENT/logs`.** C's warning generalises: *a lane can be
+   running, logging, and completely invisible to an auditor reading the served release.* That
+   applies to this document.
+3. `[VERIFIED]` It is failing loudly into that invisible log:
+   `❌ retry_cmd failed (rc=127, 0.1s)` — 127 is *command not found*, consistent with a stale tree
+   whose referenced paths have moved — and
+   `SKIP Tier2/3 LLM — 19 remaining unfixed; Tier1 resolved=0`. **Nineteen unfixed escalations, zero
+   resolved, reported to a file nobody reads.**
+
+**Not restarted, not killed, not touched.** Restarting a production daemon is not in this wave's
+authority and is not a docs-only action. Proposed for the morning; the operator decides.
+
+### C's node movement — four advanced, four regressed
+
+**Advanced:** OUTCOME edge `✗ → ▓` (corroborates B independently); LESSON `▓` with the first
+outcome-derived lesson, **n=1 of 345** — the AS-IS sentence "the system learns from what it read,
+not what happened" is now false *by exactly one*; `SpecialistArtifact@v1-lite` `░ → ▓` (formal type
+exists, N=100 gate still fails, **instrument bind regressed 64→59%**); `MODEL_CALL_RECORDED` phantom
+receipt stopped 2026-08-28.
+
+**Regressed:** `CIOCouncilSynthesis@v1` `█ → ░` (one artifact, 5 days stale, `DISPUTED` count 0,
+sole caller not in crontab); NOTIFICATION POLICY IMMEDIATE and COMMAND_CENTER_ONLY `█ → ✗` — **zero
+all-time across 2,046 scanner wakes**, only SUPPRESSED (4,611) and DIGEST (38) have ever fired;
+`DeliveryReceipt@v1` `█ → ░` — **n=1 and that row is `would_send: false`; 114 real deliveries
+produced zero receipts**; OPERATOR turn / S0 `▓ → ✗` — **zero `operator_turns` on any record**, turn
+store absent in every root.
+
+C's synthesis: *three of the four regressions share one shape — a correct, tested module whose only
+caller is a report script not in crontab.* That is §3's defect, found three more times in one night.
+
+The S0 regression compounds stitch 3: the record store has no writer **and** no operator turn has
+ever landed on it. A and C reached that from opposite directions.
+
+### Splits: 315 measured against 4 claimed
+
+Plus a class the AS-IS doc has no category for: **267 per-release copies of one CIO store, 197
+distinct**, inode-verified as genuinely separate files. Two of seven declared `PERSISTENT_TREES`
+are unwired. Cause named in one artifact: `"legacy_read_only": false` plus **266 PROJ-rooted cron
+lines against 45 at CURRENT**. Three operator-only decisions proposed and stopped; nothing merged,
+nothing chosen.
+
+### `load-by-subject` — C splits the question and finds the sharper half
+
+C refused to answer (a)/(b) as one question. Pre-claim consult at `cio_wake_subject.py:168` is
+**(b) CODE-WIRED, RUNTIME-UNPROVEN**, capped there with the M5 verdict handed to Worker A
+explicitly — exactly as briefed.
+
+**But PR #810's own contract is (a): dark.** `decide_after_load` — the module whose title is "load
+InstrumentRecord before `ResearchNeedDecision.decide()`" — has two non-test callers: one behind
+`--dry-run`, **which the cron does not pass**, and one unscheduled report.
+
+**The PR written to close the filing-cabinet defect reproduced it.** That is the single most
+important sentence C produced, and it sharpens stitch 2: the telemetry that made `load-by-subject`
+look wired is a *different, shallower* consult than the one #810 shipped.
+
+### Telegram — the gate is named, and it is ENABLED
+
+`telegram_transport._interdicted()` at `scripts/telegram_transport.py:86`, enforced at
+`deliver_text:164`. **ENABLED, not interdicted**, proven at rung 1: an unattended systemd fire put a
+message on the operator's device at 20:22:02 ET, journal and `mark_sent` ledger agreeing to the
+millisecond.
+
+**The gate has never been observed firing**, and C found why it structurally cannot be:
+`_interdicted_result()` **writes no log line** — it is silent by construction. A guard verified by
+presence, and one that cannot be verified any other way without a live send. Pinned, proposed,
+stopped.
+
+C also found `AGENTS.md` §13.4/§7 is **one day stale**: "does not gate the family that reaches the
+operator" was true until commit C4 (dated in-code 2026-08-31) moved the check to the lowest common
+layer. It now *does* gate the CIO family — but still does not gate **46 chokepoint bypasses**.
+
+### C's two self-caught errors, both kept
+
+1. **It nearly scored `load-by-subject` as (c).** The `record_consult` telemetry fires every 5
+   minutes *on an empty set* — the same trap A identified from the other side. Two workers
+   independently nearly mis-scored the same node the same way, which is a finding about the
+   instrument, not about either worker.
+2. **It published a zero that was a detector artifact.** `find -newermt "-90 minutes"` silently
+   matched nothing; an inode check then collapsed a "six stranded writes" finding to **one write
+   seen through six aliases.** A surviving mutation that was an invalid mutation — §8, by name.
+
+### Open at stitch 6
+
+- **A, B, C, D: all DONE.** All deliverables committed. **E: spawning now.**
+- Morning queue: two §13.4 dark-contract amendments, a third §13.4/§7 staleness correction, the
+  AS-IS class-A and cash-`as_of` claims, the 928–930 cron fix, the frozen-`CURRENT` daemon, and
+  three operator-only store decisions.
+---
+
+## Stitch 7 — 2026-08-31 23:43 ET · operator raises the frozen daemon to P0
+
+Operator instruction received: **the frozen-`CURRENT` daemon is P0 in the morning packet.** Routed
+to Worker E for the top slot in both files, with remediation as a runnable command. **Nothing was
+killed, restarted or touched** — the restart is operator-only under §17 and this is a docs-only
+wave. It is recorded as a P0 *proposal with a verified diagnosis*, not as an action taken.
+
+### Supervision established — the diagnosis is now complete
+
+`[VERIFIED]`
+
+```
+$ cat /proc/3637980/cgroup
+0::/user.slice/user-1000.slice/user@1000.service/app.slice/tradeai-health-agent.service
+
+$ systemctl --user status tradeai-health-agent.service
+● tradeai-health-agent.service - TradeAI Health Agent daemon
+    (continuous score + auto-remediate + tier1 escalation)
+     Active: active (running) since Wed 2026-08-26 20:38:03 EDT; 5 days ago
+     Main PID: 3637980 (python)     CPU: 2h 38min
+     Drop-In: 20-exact-main.conf, 30-current-collectors.conf
+```
+
+Three `ExecStart` layers, each resetting the last; the effective one is the wrapper. Base unit
+`WorkingDirectory` is `$PROJ`; both drop-ins override it to the **`CURRENT` symlink path**, which
+systemd also resolves at start. So the root is frozen twice over — once by systemd, once by the
+wrapper's `.resolve()`.
+
+### Why it is P0 and not merely untidy
+
+1. **It auto-remediates.** The unit's own description is "continuous score + **auto-remediate** +
+   tier1 escalation". Five-day-old remediation code is acting on a system that has moved twelve
+   promotes underneath it.
+2. **It fails where nobody reads.** 20 MB appended tonight at 23:22 to a log whose filename does
+   not exist in `persistent-state/logs` at all; `retry_cmd failed (rc=127)` and
+   `SKIP Tier2/3 LLM — 19 remaining unfixed; Tier1 resolved=0`.
+3. **The inversion — the finding of the night after the writer.** `Restart=always`,
+   `RestartSec=20`. The daemon would have re-resolved `CURRENT` on **any** crash. It has not
+   crashed in five days. **It is stale precisely because it has been healthy.** Its correctness
+   decays with its uptime, so no liveness check will ever catch it, and every monitor on this box
+   reports it green.
+
+That is a new shape for this repository's catalogue. §8 already records "a guard verified by
+presence is not a guard" and "two states cannot express *no input*". This is a third: **a component
+whose wrongness is proportional to its uptime, and therefore invisible to every health signal that
+measures whether it is running.**
+
+### Remediation — mitigation and durable fix, deliberately not conflated
+
+**Mitigation** (one command, reversible, self-healing under `Restart=always`):
+
+```
+systemctl --user restart tradeai-health-agent.service
+readlink /proc/$(systemctl --user show -p MainPID --value tradeai-health-agent.service)/cwd
+```
+
+The second line is not optional. It must print the current release directory, not `40360117`.
+Verifying by "service is active" would repeat the very defect being fixed.
+
+**Durable fix** — the mitigation only resets the clock; the daemon rots again from the next promote
+onward. Two candidate shapes, **proposed, not chosen**: (a) re-resolve the root per cycle rather
+than freezing it at import; (b) a post-promote hook restarting this unit. Because the unit's
+`WorkingDirectory` is *also* the symlink path and systemd resolves it at start, **(a) alone may not
+be sufficient** — stated as an open question rather than asserted either way.
+
+### The repair that introduced it
+
+The wrapper exists to fix a root-resolution bug. Its docstring: *"CURRENT/scripts/health_agent_daemon.py
+rebases PROJECT_ROOT to the git checkout whenever that tree exists. That made #349 collectors dead
+on a live exact-main release."* It fixed that one and introduced this one — **a repair verified by
+the symptom it targeted**, which is §8 almost verbatim.
+
+### Open at stitch 7
+
+- A, B, C, D: **DONE**, all deliverables committed. **E: running**, P0 routed.
+- Discovered, not created: this belongs in the *discovered* column when E tallies whether the
+  operator-only list grew.
+---
+
+## Standing operator instruction (2) — 2026-08-31 23:44 ET
+
+**Wake the operator when Worker E lands.** Recorded so it survives a context compaction.
+
+Fires a push notification the moment E reports, carrying: the M1–M5 verdicts, `DRIVE_SYNC` status
+(`OK` or `FAILED`), the honest unpushed commit count against `origin/main`, and confirmation that
+the frozen-daemon P0 took the top slot. E is the last worker; when it lands the morning packet is
+complete and the wave has nothing further to produce before 08:00.
+
+This supersedes nothing. The wake-on-pin-abort trigger recorded earlier remains armed for E as it
+was for A–D — if E aborts on a pin instead of landing, that fires first and says so.
+
+If E lands with `DRIVE_SYNC=FAILED`, the notification says so explicitly rather than reporting a
+bare completion. A failed sync with truthful local paths is a complete deliverable under §14, but
+it is not something the operator should discover in the morning by reading carefully.
+---
+
+## Stitch 8 — 2026-09-01 00:01 ET · Worker E lands · wave closed
+
+**Worker E: DONE.** `docs/ops/CIO_OVERNIGHT_CLOSEOUT_2026-09-01.md` (1,436 lines),
+`docs/briefs/WAVE_OVERNIGHT_2026-09-01.md` (224 lines). No git write. No pin aborted; E stopped at
+the daemon restart and at push/PR, both correctly.
+
+### M1–M5 — zero of five, and that is the honest result
+
+| | verdict |
+|---|---|
+| M1 | NOT_OBSERVED — no completed request ever changed a record field |
+| M2 | NOT_OBSERVED — closest of the five; `next_research_question` **did** change on `HELD:SCHD` and both questions are quotable, but the writer was the migration and the council store's last write (2026-08-26) is **four days before** the change, so no critique verdict is attributable |
+| M3 | NOT_OBSERVED — **0 of 131 records carry `operator_turns`** |
+| M4 | NOT_OBSERVED (failure case) — 14 cash statements, 3 values, one body |
+| M5 | NOT_OBSERVED at `d276657b7`; `M5_CANDIDATE @ pin 1d64cb59f, as_of 2026-08-31T07:12 ET` recorded separately and **never merged** |
+
+`[VERIFIED]` No M-proof is recorded as OBSERVED anywhere in the closeout, and no percentage appears.
+§15: *a truthful three-of-five is worth more than a claimed five* — this is a truthful zero.
+
+E's M2 reasoning is the one to keep: it had a quotable before-and-after on a real field and still
+refused the proof, because the writer was a migration and the only plausible critique source
+predates the change by four days. That is the wave declining its single best chance at a non-zero
+scoreboard on a timestamp.
+
+### DRIVE_SYNC=OK — verified by the coordinator, not taken on report
+
+`[VERIFIED]` `gog drive ls --parent 1Ur6VXRgl2HfVwbDTqdGlkPnLS_Q_85nc` → **11 files, no
+duplicates**, uploaded 03:54–03:59 UTC:
+
+```
+CIO_OVERNIGHT_CLOSEOUT_2026-09-01.md   88.3 KB      CIO_DARK_CONTRACTS_2026-09-01.md      74.8 KB
+WAVE_OVERNIGHT_2026-09-01.md           14.8 KB      CIO_OUTCOME_DRY_2026-09-01.md         25.6 KB
+PROJECT_THE_DESK_V2.md                 17.4 KB      CIO_OUTCOME_EDGE_CENSUS_2026-09-01.md 37.0 KB
+CIO_FUTURE_STATE_FULL_MATURITY.md      16.6 KB      CIO_M5_TIMER_WATCH_2026-09-01.md      40.5 KB
+CIO_ASIS_VS_SPEC_2026-08-30.md         11.7 KB      CIO_OVERNIGHT_STITCH_2026-09-01.md    59.4 KB
+CIO_SURFACE_ASOF_2026-09-01.md         66.3 KB
+```
+
+Folder: <https://drive.google.com/drive/folders/1Ur6VXRgl2HfVwbDTqdGlkPnLS_Q_85nc>
+E verified by read-back **plus a full download-and-`sha256` round trip**. No `.env`, keys,
+credentials or `holdings.json` — checked by filename and content scan. The 23:05 hourly sync is
+explicitly disclaimed in the closeout as not this wave's.
+
+### E contradicted the coordinator four times, and was right each time
+
+1. **`origin/main` moved three times during the wave** — `d276657b7` → `db115caec` → `8c4d109f5`
+   → `2b9dc0de0`. The coordinator's brief handed E `d276657b7` as a fixed baseline. It was not
+   fixed. `[VERIFIED]` `origin/main` is now `2b9dc0de0` ("fix(finviz): cap momentum-class screens
+   at 100M float — measured, not assumed (#811)").
+2. **PR #715 — titled "M3: the wake records what it would have decided without the operator turn" —
+   merged to `origin/main` at 23:39:06, during this wave**, into a release that is not served.
+   E recorded it under M3 as a pointer and **explicitly did not count it as evidence**. Exactly
+   right: a merge is not a deploy, and an unserved release proves nothing at runtime.
+3. **The file set is 11, not 9.** The coordinator's brief said "six documents plus three
+   architecture docs" and thereby omitted the closeout and the brief — *the two documents the
+   packet exists to deliver*.
+4. **`docs/briefs/README.md` defines a brief as the operator's pre-wave instruction, verbatim, and
+   forbids measured values.** File 2 is the opposite of all three. E wrote it at the assigned path
+   with the conflict named at the top rather than silently complying or silently relocating.
+
+### Coordinator correction TO E — the offset is 126, not 129
+
+The closeout's §1.1 states a "129-commit stale-`main` offset". `[VERIFIED]`:
+
+```
+138 - 12 = 126        (now)
+136 - 10 = 126        (E's own earlier pair)
+$ git rev-list --count main..origin/main
+130
+```
+
+**The offset is 126.** E's structural point is correct and important — it is a *constant offset,
+not a rate*, so re-measuring never rescues the wrong baseline — but the number is wrong by three,
+and it is wrong in a document whose §1.1 exists to stop someone quoting a wrong commit count.
+
+The 130 is a *different, also true* quantity: local `main` is 130 commits behind `origin/main`.
+The 4-commit gap between 130 and 126 is precisely the work that landed on `origin/main` **during
+this wave** and is not in this branch — which is E's own finding (1) showing up in the arithmetic.
+Sent back for correction.
+
+### Operator-only list: grew by 16, closed 0 — all discovered, none created
+
+E's finding on its own tally is the sharpest methodological observation of the night:
+
+> *the wave's shape determined the direction before a single measurement was taken* — a docs-only
+> census with push, promote, cron, `--apply` and live-send all pinned is **structurally incapable
+> of closing a §17 item.**
+
+§17 says a growing deferred list is a finding about how the wave was run. It is, and E named the
+mechanism rather than apologising for the number. Its recommendation — give the next wave authority
+over the *reversible* items, which §17's own final paragraph already excludes from
+escalate-never-resolve — is the correct read of the rule and is carried to the operator.
+
+### Two pieces of evidence E found that nobody asked for
+
+- **16,356 `rc=127` failures** in the frozen daemon's invisible log. The coordinator had the
+  pattern; E measured the count.
+- **The same three `wake_ev_*` ids that fired empty tonight produced *"The disposition was recorded
+  earlier and nobody replayed it"* exactly 24 hours earlier** — M5's own sentence, from a pin that
+  no longer serves.
+
+That second one is the wave's closing image. The system said the M5 sentence yesterday, from a
+release that is gone, and tonight the same wakes resolve to no subject at all.
+
+### Wave closed
+
+- **A, B, C, D, E: all DONE.** Six documents plus this log, all committed, all on Drive.
+- **12 commits, docs only, nothing pushed, merged, deployed or scheduled.** No cron, daemon, store
+  or code touched.
+- The sampler continues to 08:00 ET. Its remaining ticks are evidence for the morning, not a reason
+  to wake anyone.
+---
+
+## Stitch 9 — 2026-09-01 00:07 ET · final · the correction found two more
+
+E applied the offset correction and, in doing so, found **two further errors — one of them the
+coordinator's.** Both are worth more than the fix that surfaced them.
+
+### The offset is 126, and E found why it wasn't
+
+`[VERIFIED]` Three pairs, twenty-one minutes apart, plus a fourth taken now:
+
+```
+136 − 10 = 126   (23:41)      139 − 13 = 126   (00:02)
+138 − 12 = 126   (23:57)      139 − 13 = 126   (00:1x, coordinator)
+git rev-list --count main..origin/main → 130      HEAD..origin/main → 4      130 = 126 + 4
+```
+
+**129 was not invented.** It was the correctly-measured `main..origin/main` **at 23:41**, applied to
+a question it does not answer — one true number substituted for a different true number. And the
+staleness has since moved 129 → 130 while the offset stayed 126, so **the error demonstrates the
+very thesis of the section it was in**: the offset is constant, the staleness is a rate.
+
+E named the four commits that make up the 4: `d276657b7` (22:55), `db115caec` (23:28),
+`8c4d109f5` (23:39), `2b9dc0de0` (23:52). Branch point 22:51, stitch 0 at 23:14 — **three landed
+while the wave ran.** The gap between the two numbers is the wave's own duration measured in other
+people's commits.
+
+### The fudge term — the sharpest self-catch of the night
+
+E found the tell had been sitting in its own sentence:
+
+> `136 = 129 (already on origin/main) + 10 (this wave, actually unpublished) − 3 (see below)`
+
+**The `− 3` is a fudge term.** It exists only because `129 + 10` overshoots `136`. The correct
+identity needs no remainder: `136 = 126 + 10`, exactly. A correction term was written in to force
+an identity to close, labelled "(see below)", and passed over — **inside the section warning about
+manufactured numbers.**
+
+An identity that will not close is telling you an input is wrong. That is now recorded as
+correction 6.10, and it is a better entry in this repository's trap catalogue than the arithmetic
+that produced it.
+
+### The coordinator's error, found by the worker it corrected
+
+E re-derived the ratio and found **"nineteen times too large" was inherited from the coordinator's
+brief and never checked.** `[VERIFIED]` it has never been nineteen: **13.6× at 23:41, 11.5× at
+23:57, 10.7× at 00:02.**
+
+The coordinator computed that ratio at one moment, when the counts were roughly 132 and 7, and then
+**wrote it into a brief as a fixed fact.** Two failures in one clause: a number quoted rather than
+regenerated (§16), and — worse — **the ratio is the wrong statistic entirely**, because it is not
+constant. The correct invariant was always the 126.
+
+E rewrote §1 to lead with the constant and **removed every ratio-as-finding from the packet**
+(remaining instances of the word are inside the correction sections that document it, plus an
+unrelated "nineteen-minute window" and "nineteen proposed morning diffs"). Recorded as correction
+6.11.
+
+**This is the wave's method landing on the wave itself, in the right direction.** The coordinator
+corrected D's citation, corrected A's holiday premise, corrected B's `plan_id` premise, corrected
+E's offset — and E, checking that correction, found the coordinator had seeded a worse error into
+the same paragraph. §11 says no agent marks its own work DONE. It does not say the coordinator's
+inputs are exempt from measurement.
+
+### Corrections: nine → eleven, and two are in §1 itself
+
+E raised the count in both files and added the note a reader actually needs: **two of the eleven
+are defects in the closeout's own §1**, the section whose purpose is to prevent a wrong commit
+count, and a reader weighing the packet's reliability should read those two first.
+
+### A paragraph that went stale while being written
+
+§1.1 said both files were "still untracked." They were landed as `5a65db998` mid-edit, making it
+false. E kept **all three versions** of the sentence — the count moved 10 → 12 → 13 while the
+paragraph describing it was being written — rather than smoothing it. The section's own point,
+demonstrating itself.
+
+### Drive — re-verified by the coordinator after E's re-sync
+
+`[VERIFIED]` `gog drive ls --parent 1Ur6VXRgl2HfVwbDTqdGlkPnLS_Q_85nc` → **11 files, zero
+duplicates**; closeout 97.0 KB and brief 15.8 KB refreshed at 04:05 UTC, stitch log at 04:06.
+E also noticed unprompted that the coordinator's stitch log had grown (60,795 → 67,329 bytes) and
+its Drive copy had gone stale, and refreshed it — read-only on a file it does not own.
+
+**This stitch invalidates that copy again.** The Drive stitch log is re-synced immediately after
+this commit and re-verified; the repository remains authoritative, and any Drive copy is a
+point-in-time snapshot of a file that was still being written.
+
+### WAVE CLOSED — 2026-09-01, docs only, nothing pushed
+
+- **A, B, C, D, E: all DONE**, every deliverable marked by the coordinator against reproduced
+  proof, never against a worker's own report.
+- **M1–M5: zero of five, all `NOT_OBSERVED`.** No percentage. One separately-stamped
+  `M5_CANDIDATE @ pin 1d64cb59f`, never merged into tonight's verdict.
+- **`DRIVE_SYNC=OK`** — 11 files, byte-matched, no secrets.
+- **Nothing pushed, merged, deployed or scheduled. No cron, daemon, store or line of code touched.**
+- **Eleven corrections kept in**, two of them in the section written to prevent them, and one of
+  them the coordinator's.
+- The sampler runs to 08:00 ET. Its remaining ticks are morning evidence.
+
+The night's one-sentence version, unchanged by any of the above: **the cortex is still not wired —
+the loader landed, the writer never existed, and the store nothing writes is already speaking to
+the operator in stale numbers.**
+
+---
+
+### Post-close addendum — 2026-09-01 00:08 ET · a duplicate the coordinator made, and did not delete
+
+Re-syncing this log after stitch 9 produced a defect worth recording, because the resolution is the
+repository's own doctrine applied to the coordinator.
+
+`gog drive upload` does not replace by name; it creates. The attempt to remove the stale copy first
+was **refused**, and correctly so:
+
+```
+$ gog drive delete 1iEXO_Hpx7FYjuyUs-C0lCFOec2-1tFhI
+refusing to trash drive file … without --force (non-interactive)
+```
+
+**`--force` was not passed.** §0 rule 6 is *never delete* — it does not carve out "files you
+created yourself two minutes ago," and a tool refusing a destructive action non-interactively is a
+guard doing its job, not an obstacle to route around (§0 rule 3).
+
+So the coordinator had made a duplicate and could not remove it. The resolution is §14: **superseded
+documents say so, in the name, not silently.** The stale copy was **renamed**, not trashed:
+
+```
+1iEXO_Hpx7FYjuyUs-C0lCFOec2-1tFhI   SUPERSEDED-0406Z_CIO_OVERNIGHT_STITCH_2026-09-01.md   65.8 KB
+19bfau3delG8fZGX6YNSOnWNmvcdk1GWX   CIO_OVERNIGHT_STITCH_2026-09-01.md                    71.4 KB
+```
+
+The folder now holds **11 current files plus 1 explicitly-marked superseded copy**, and a reader
+opening it cannot mistake which is authoritative. Nothing was destroyed. The repository remains the
+source of truth; every Drive copy is a point-in-time snapshot.
+
+**Correction 12**, and the last one: E's *"11 files, zero duplicates"* was true when E measured it
+and was made false by the coordinator's own re-sync eleven minutes later. E's figure was not wrong;
+it was overtaken. The distinction matters, and mis-attributing this to E would be the exact error
+this wave spent the night documenting.
+
+---
+
+### Open gap carried to morning — 2026-09-01 00:16 ET
+
+**Worker A's watch document covers 23:23 and stops; its brief specified every 30–60 min until
+08:00.** The wave's investigators all finished by 00:05, so the doc is complete as an *analysis* and
+incomplete as a *watch*. Stated here rather than discovered in the morning.
+
+The evidence is still being collected — the read-only sampler ticks every 30 minutes to 08:00 and
+is unaffected by the workers finishing. What is missing is curation of those ticks into A's
+document. A final pass before 08:00 will append them and re-verify the verdict against anything
+that fired overnight.
+
+**Three scheduled events land inside the uncurated window**, each already documented as a finding
+and none to be interfered with:
+
+| ~time ET | event | why it matters |
+|---|---|---|
+| 04:00 | `tradeai-continuous.timer` | ruled out as a CIO wake driver (stitch 1); a natural fire that should leave the record store untouched — if it does not, that ruling is wrong |
+| 05:00 | crontab 928, `cio_event_detector` | the `NameError: 'wakes_created'` quoting bug fires again; wakes still created, telemetry still lost |
+| 06:52 | crontab 997, `cio_draft_plan_hygiene.py --apply` | the only `--apply` in the window; Worker B itemised the **43** plans it would likely act on |
+
+**The M5 verdict is not expected to move, and the reason is structural rather than hopeful:**
+stitch 3 established the record store has no production writer, so no new disposition can be
+created overnight for a later wake to honour. `skipped_cadence_not_due ≥ 1` is unsatisfiable at any
+wake volume. If it *does* move, that contradicts stitch 3 and the finding wins — which is precisely
+why the ticks are still worth reading rather than assumed.
+
+---
+
+## P0 EXECUTED — 2026-09-01 08:14 ET · operator authorised the daemon restart
+
+**This is the first and only action in this engagement that changed live system state.** It was
+performed on explicit operator instruction, after the wave had closed, against the §17 item the
+packet raised. Everything before this point was read-only, docs-only and local.
+
+### Before `[VERIFIED]` 08:13:27 ET
+
+```
+MainPID   3637980       ExecMainStartTimestamp  Wed 2026-08-26 20:38:03 EDT
+cwd       .../40360117-main-exact-phase2-20260826-202631
+CURRENT   .../d276657b7-main-exact-phase2-20260831-225546     ← 5 days newer
+stale log 20,798,401 bytes      rc=127 count  16,906
+```
+
+The `rc=127` count had grown **16,356 → 16,906** since Worker E measured it at ~00:00 — **550 more
+failed remediation commands in eight hours**, into a log nothing reads.
+
+### The action
+
+```
+$ systemctl --user restart tradeai-health-agent.service
+exit=0
+```
+
+`exit=0` is not evidence of work (§0 rule 8). Three independent confirmations follow.
+
+### After `[VERIFIED]` 08:13:54 ET
+
+**1 — new process, new start time.** `MainPID 2868223`, `ExecMainStartTimestamp Tue 2026-09-01
+08:13:54 EDT`, `NRestarts 0`, `active running`. The unit's own epitaph for the old process:
+`Consumed 2h 49min 55s CPU time over 5d 11h 35min 50s wall clock` — confirming the 5½-day uptime
+that caused the staleness.
+
+**2 — the cwd read-back, which was the whole point.** This is the check the P0 insisted could not be
+substituted with "service is active":
+
+```
+new cwd  .../d276657b7-main-exact-phase2-20260831-225546
+CURRENT  .../d276657b7-main-exact-phase2-20260831-225546
+PASS — daemon re-resolved to the served release
+```
+
+**3 — the daemon's own self-report**, independent of any inference from `/proc`:
+
+```json
+{"daemon": "health_agent_daemon",
+ "project_root": "/home/johnclaw/trade-ai-releases/portfolio-server/d276657b7-main-exact-phase2-20260831-225546",
+ "lock": "/tmp/health_agent.lock", "mode": "loop"}
+```
+
+`project_root` is now the served release. The daemon says so itself.
+
+**4 — the stale log stopped growing.** Frozen at `20,798,401` bytes, mtime `08:07:46` — before the
+restart. It had been appended to every ten minutes for five days.
+
+### Still outstanding — the durable artifact
+
+Confirmation is **not complete**. A restart proving the *root* is right is not the same as proving
+the *work* now lands in the right place. The escalation cycle runs every ten minutes; the proof is
+`persistent-state/logs/claude_escalation_daemon.log` coming into existence — a file that
+`[VERIFIED]` did **not** exist at 08:14 — while the stale copy stays frozen. A background check is
+watching for exactly that and will be recorded when it fires.
+
+Until it does, the honest status is **mitigated, not confirmed.**
+
+### What this does NOT fix — unchanged from the P0 as raised
+
+The restart resets the clock. `.resolve()` still runs once at start, and the unit's
+`WorkingDirectory` still points at the `CURRENT` symlink, so **this daemon will silently re-freeze
+from the next promote onward.** The durable fix remains a proposal with two candidate shapes,
+deliberately not chosen: re-resolve per cycle, or a post-promote restart hook — and because both
+systemd and the wrapper freeze the root independently, the first alone may not be sufficient.
+
+**Nothing else was touched.** No push, no merge, no deploy, no cron, no store, no code. The 16,906
+`rc=127` failures and the 19 unfixed escalations are untouched findings for the morning; whether
+five-day-old remediation logic left anything needing repair is a question this restart does not
+answer.
+
+### P0 CONFIRMED — 2026-09-01 08:18 ET · the durable artifact exists
+
+The check the previous section left open has fired. `[VERIFIED]`:
+
+```
+NEW LOG APPEARED 08:17:54
+-rw-rw-r-- 10033 Sep  1 08:17  persistent-state/logs/claude_escalation_daemon.log
+stale before=20798401 after=20798401  FROZEN
+```
+
+The file `[VERIFIED]` did not exist at 08:16:28 and exists now — **an artifact that could not exist
+if the restart had not worked** (§0 rule 8). It is growing (10,033 → 13,544 bytes by 08:18:05) while
+the orphaned copy stays frozen at 20,798,401.
+
+The new log's own first line settles the root without inference:
+
+```
+[claude-escalation] start dry_run=False tier1_only=True
+  root=/home/johnclaw/trade-ai-releases/portfolio-server/d276657b7-main-exact-phase2-20260831-225546
+```
+
+**Status: MITIGATED → CONFIRMED.** Five days of writes into an orphaned tree have stopped, and the
+lane is logging where an auditor reading the served release will find it.
+
+### CORRECTION — `rc=127` was NOT caused by the staleness
+
+The P0 write-up stated the `rc=127` failures were *"consistent with a stale tree whose referenced
+paths have moved."* **That inference is wrong, and the fix disproved it.**
+
+```
+$ grep -c "rc=127" persistent-state/logs/claude_escalation_daemon.log      → 11
+```
+
+**Eleven `rc=127` failures in the first three minutes on the correct root.** The retry commands
+fail identically at `d276657b7` as they did at `40360117`. The staleness and the failures were two
+independent defects that happened to share a log; fixing the root fixed the root and nothing else.
+
+This is the §8 trap in a new costume: a plausible causal story attached to two symptoms found
+together. The restart was a genuine fix for a genuine problem and it is now confirmed — but had
+nobody re-measured `rc=127` afterwards, the P0 would have been closed with a second live defect
+silently folded into it.
+
+**The backlog also grew, not shrank:** `Processing 37 escalation(s) (tier3 cap 20, LLM SKIPPED)` —
+against the **19** unfixed recorded at ~00:00. The escalation lane is now correctly rooted, still
+failing, and further behind. That is a separate open item for the operator and it is **not** closed
+by this restart.
+
+---
+
+## P0 (2) — 2026-09-01 08:21 ET · portfolio positions stale since 2026-08-29
+
+Raised on operator instruction after the Command Center header showed `PORTFOLIO ⚠ STALE ·
+as_of 3.3d`. Diagnosed read-only. **Nothing was changed.** This predates everything the overnight
+wave examined and feeds the risk and re-entry surfaces.
+
+### It is NOT the release boundary — §18's first check passes
+
+```
+$ ls -ld CURRENT/data/portfolios/state
+lrwxrwxrwx … -> /home/johnclaw/trade-ai-releases/persistent-state/data/portfolios/state
+```
+
+A symlink into persistent state, as `DATA_DIRS_TO_LINK` intends. **Do not go looking for a broken
+promote.** §18's "if it is a regular file, remove and re-link" remedy does not apply and must not be
+attempted here.
+
+### Three timestamps in one file, three producers `[VERIFIED]` 08:16 ET
+
+```
+updated_at     2026-08-14           18 days
+as_of          2026-08-29            3.3 days   ← the field the UI reads
+last_repriced  2026-09-01 06:15     TODAY
+generated_at   2026-09-01 06:15     TODAY
+file mtime     2026-09-01 06:15:02  TODAY       (232,841 bytes, 30 positions)
+```
+
+**The file is fresh. The prices are fresh. The positions are not.** `as_of` is written by
+`portfolio_loader.py` (`:164, :315, :336, :401, :603`, each `= today`); `last_repriced` by the
+repricer. The price lane is alive; the position lane is not.
+
+**The Command Center is correct.** After a night spent cataloguing guards that never fire, this one
+fired accurately: it is telling the operator they are looking at Friday's positions at Tuesday's
+prices. Worth recording as the counter-example — the same defect class Worker D found on the API
+surface (a field stamped with a clock belonging to a different producer), except here the surface
+got it *right* and the store is the problem.
+
+### The position writer has not logged in four weeks `[VERIFIED]`
+
+crontab 893 — **live, uncommented**: `*/15 9-16 * * 1-5 … moomoo_live_read_sync.py >>
+logs/moomoo_live_read_sync.log`. Comment: *"positions + cash -> holdings.json via
+protected_holdings_write."*
+
+The split-aware sweep (Worker C's traversal lesson applied — `-printf` over all release roots, not
+a naive `find` under `CURRENT`) finds **exactly one such log on the box**:
+
+```
+2026-08-03+15:00:02   53,076   …/trade-ai-v12-rebuild/logs/moomoo_live_read_sync.log
+```
+
+**Last written 2026-08-03.** Zero entries for Monday 2026-08-31, a weekday inside its window. The
+earlier caveat — that C's 315 splits meant the log might be somewhere unexamined — is **resolved**:
+there is no second copy.
+
+### The gateway is down, and has been far longer than the staleness
+
+`moomoo_opend_health.log`, written **08:20:01 today** — the health probe is alive:
+
+```json
+"quote": {"ok": false, "detail": "port closed — not probed"},
+"fail_streak": 2180,
+"note": "Data plane only — no order path, no trade unlock. A listening port does NOT imply a
+         successful login; the quote round-trip is the real gate."
+```
+
+Probe cadence is `*/5 6-17 * * 1-5` — 144 probes per weekday. **2180 / 144 ≈ 15 weekdays ≈ three
+calendar weeks**, placing the streak's start near 2026-08-11.
+
+### THE DATES DO NOT CLOSE — stated rather than smoothed
+
+**The moomoo gateway has been down ~3 weeks. The positions went stale 3.3 days ago. Those are not
+the same event, and one does not straightforwardly explain the other.**
+
+Something kept positions current until 2026-08-29 while moomoo was already failing — plausibly a
+second broker path — and that something stopped on 2026-08-29. **This diagnosis names the gateway
+outage and does not claim it as the cause of the `as_of` date.** Determining what wrote positions
+between ~08-11 and 08-29, and why it stopped, is the open work.
+
+This restraint is deliberate and recent: three hours ago the frozen-daemon P0 asserted `rc=127` was
+*"consistent with a stale tree whose paths have moved."* The restart disproved it — 11 `rc=127` in
+the first three minutes on the correct root. **Two defects sharing a log are not one defect.** The
+same trap is available here: a down gateway and stale positions share a subsystem, and that is not
+evidence they share a cause.
+
+### The alarm nobody receives
+
+```
+$ grep -rn "fail_streak" CURRENT/scripts/*opend* | grep -iE "alert|telegram|notify|critical"
+(empty)
+```
+
+**2,180 consecutive failures, recorded faithfully, surfaced to nobody.** This is `AGENTS.md` §8
+verbatim — *"a durable audit went CRITICAL and is surfaced by nothing"* — and it is the third
+instance this engagement has produced, after the 16,906 `rc=127` failures and the notification
+policy whose IMMEDIATE and COMMAND_CENTER_ONLY paths have fired zero times in 2,046 wakes.
+
+### Proposed, and stopped
+
+Restoring a broker data plane touches the broker subsystem — **§17 and §0 rule 2, out of scope for
+any agent**, regardless of it being read-only ("Data plane only — no order path"). The operator
+decides. The three questions to take into it:
+
+1. What wrote positions between the gateway failing (~08-11) and 2026-08-29, and what stopped it?
+2. Why does `moomoo_live_read_sync.py` produce no log at all when it fails, given cron 893 is live
+   and in-window? A job that fails silently is indistinguishable from one that never ran.
+3. Why does a 2,180-failure streak reach no operator surface when the probe writing it runs every
+   five minutes?
+
+**Not touched:** no broker path, no reauth, no `holdings.json` write, no cron edit, no service
+restart. Diagnosis only.
+
+### P0 (2) AMENDED — 2026-09-01 08:27 ET · the staleness is 18 days, not 3.3, and the guard understates it
+
+The question "what wrote positions between 2026-08-11 and 2026-08-29" has an answer that invalidates
+its own premise. `[VERIFIED]` from `holdings.json`, per-position broker stamps:
+
+```
+=== broker_position_as_of BY ACCOUNT ===
+  schwab_rollover_ira    2026-08-14 ×14
+  schwab_taxable         2026-08-14 ×12
+  schwab_roth            2026-08-14 × 2
+  alpaca_taxable_live    2026-08-04 × 1
+  moomoo_taxable_live    2026-08-03 × 1
+
+positions_built_at  2026-07-17T03:19:26Z      ← 46 days
+reconciled_at       2026-08-14T21:25:43Z
+updated_at          2026-08-14T21:25:43Z
+as_of               2026-08-29                ← the field the UI reads
+last_repriced       2026-09-01 06:15          reprice_source: finviz_afterhours
+```
+
+**Nothing refreshed broker positions after 2026-08-14.** There is no writer to find between 08-11
+and 08-29, because the window is empty. Every one of the 30 positions carries a broker stamp of
+2026-08-14 or older, and the moomoo and alpaca rows are 28–29 days old, consistent with the moomoo
+gateway outage already recorded.
+
+### Two corrections to what the coordinator told the operator
+
+**1. "The Command Center is correct" — directionally right, quantitatively wrong, and wrong in the
+dangerous direction.** The banner reports `as_of 3.3d`. The broker position data underneath is
+**18 days** old. **The guard understates the problem by roughly five times.**
+
+That reverses the compliment paid to it an hour ago. It was cited as the counter-example to a night
+of guards that never fire — a guard that fired accurately. It fires, and it is *directionally*
+honest, but an alarm that reports 3.3 days when the data is 18 days old is a **worse** failure mode
+than silence in one specific way: an operator who sees "3.3d" and judges it tolerable has been given
+a number precise enough to act on and wrong enough to mislead. §16 — *a metric whose floor makes
+failure unreportable* — has a sibling here: a metric whose scale makes failure look survivable.
+
+**2. `as_of` is not the position date, and it is fresher than the data it labels.** It is written by
+`portfolio_loader.py` (`= today` at five sites) and reflects **when the loader last ran**, not when
+positions were last fetched from a broker. `as_of: 2026-08-29` therefore says the loader ran on
+08-29 — it says nothing about the 08-14 positions it was loading. The `_freshness_note` in the file
+documents three of the four clocks and **does not mention `as_of` at all**, which is precisely the
+field the operator surface chose to display.
+
+### What `schwab_position_sync` was doing — an open question, not an answer
+
+`[VERIFIED]` `schwab_position_sync.log` was last written **2026-08-31 16:52** (yesterday), with
+`"wrote": true, "status": "ok"` — 4,527 successful writes against 594 failures across its history,
+and its crontab entry 567 (`7,22,37,52 9-16 * * 1-5`) is live.
+
+**So a writer was running and succeeding through yesterday, while `broker_position_as_of` stayed at
+08-14.** What it wrote is therefore *not* fresh broker positions. One visible candidate in the same
+log is `"source": "dividend_reinvestment"`, and its tail is a basis-divergence report
+(`SCHD api_avg 350,458.01 vs stored_basis 12,687.73, divergence 2,662%`).
+
+**This is not established and is not claimed.** A successful write is not evidence of what was
+written. The honest statement: *a live, succeeding writer coexists with position data that has not
+advanced in 18 days, and the reconciliation between those two facts is the open work.*
+
+That restraint is the third application in one morning of the same lesson — `rc=127` was assumed to
+follow from the stale tree and did not; the gateway outage was assumed to explain the `as_of` date
+and did not; a succeeding sync is now assumed by nobody to mean fresh positions.
+
+### The revised questions for the operator
+
+1. **Why has no broker position stamp advanced since 2026-08-14**, when `schwab_position_sync` runs
+   every 15 minutes in-window and reports `wrote: true` as recently as yesterday 16:52?
+2. **Why does the operator surface display `as_of`** — a loader-run date — rather than
+   `broker_position_as_of`, the field that would have shown 18 days three weeks ago?
+3. The moomoo (08-03) and alpaca (08-04) rows are ~4 weeks stale and predate everything else. The
+   moomoo gateway outage is recorded; **alpaca is unexplained** and was not investigated.
+4. `positions_built_at` is **2026-07-17** — the position *list* is 46 days old. Whether that is by
+   design or a fourth staleness is unknown.
+
+**Nothing touched.** No broker path, no reauth, no holdings write, no cron, no service.
+
+### P0 (2) ROOT-CAUSED — 2026-09-01 08:33 ET · four causes, and the coordinator's 18-day figure was wrong
+
+Investigated on operator instruction. Read-only. **The headline correction first.**
+
+### CORRECTION — "18 days stale" was wrong, and wrong the same way twice
+
+`[VERIFIED]` row-level dates, all 30 positions:
+
+```
+account                 row as_of        broker_position_as_of    updated_at
+schwab_rollover_ira     2026-08-31 ×14   2026-08-14 ×14           2026-08-31
+schwab_taxable          2026-08-31 ×12   2026-08-14 ×12           2026-08-31
+schwab_roth             2026-08-31 × 2   2026-08-14 × 2           2026-08-31
+alpaca_taxable_live     2026-08-04 × 1   2026-08-04 × 1           2026-08-14
+moomoo_taxable_live     2026-08-03 × 1   2026-08-03 × 1           2026-08-14
+```
+
+**28 of 30 positions are current as of 2026-08-31.** The portfolio is not 18 days stale. The
+coordinator read `broker_position_as_of` as a data age and reported it as one — **it is a frozen
+field, not a measurement**, for the reason given in cause 1 below.
+
+This is the same error a third time in one morning: `rc=127` assumed to follow from the stale tree;
+the gateway outage assumed to explain the `as_of` date; and now a stamp used as a measurement
+without first checking what writes it. **The rule the wave wrote for others — never state a
+measured value as a premise, find the producer first — was not applied by the coordinator to a
+field it quoted twice.**
+
+**What is genuinely stale is $5,500 of a $1,282,976 portfolio**: two broker CASH rows —
+moomoo `$500` at 2026-08-03 (29 days) and alpaca `$5,000` at 2026-08-04 (28 days).
+
+### Cause 1 — `broker_position_as_of` is frozen by a preserve-once `or`
+
+```python
+# scripts/portfolio_repricer.py:71
+h["broker_position_as_of"] = h.get("broker_position_as_of") or h.get("as_of")
+```
+
+The `or` short-circuits: once the field holds any truthy value it is **never refreshed**. It
+backfills from `as_of` only when absent.
+
+```
+$ grep -c "broker_position_as_of" scripts/schwab_position_sync.py
+0
+```
+
+**The Schwab sync never sets it.** It writes a fresh row-level `"as_of"` (`:474`, `:543`) every 15
+minutes, and nothing propagates that into `broker_position_as_of`. The field was backfilled once,
+when it happened to be absent, and froze at 2026-08-14 while the data beneath it kept moving.
+
+A field named `broker_position_as_of` that does not track the broker position is a name exceeding
+its code — §7 — and it fooled this investigation before it fooled anyone else.
+
+### Cause 2 — the surface displays a loader-run date, wrong in both directions at once
+
+Top-level `as_of: 2026-08-29` is written by `portfolio_loader.py` (`= today` at `:164, :315, :336,
+:401, :603`). It records **when the loader last ran**, not when any data was fetched.
+
+- It is **older** than the 28 Schwab rows (2026-08-31) → understates their freshness.
+- It is **newer** than the 2 cash rows (2026-08-03/04) → overstates theirs by ~4 weeks.
+
+**One number, wrong in opposite directions simultaneously.** The banner's "3.3d" describes nothing
+in the file. And the file's own `_freshness_note` documents `generated_at`, `positions_built_at` and
+`last_repriced` — **and omits `as_of`**, the only one the operator sees.
+
+### Cause 3 — alpaca: the writer runs, the cash stamp does not move
+
+`alpaca_live_read_sync.py` is scheduled (crontab 877, `*/15 9-16 * * 1-5`), ran **2026-08-31 16:45**,
+and reports `"wrote": true, "status": "ok", "position_count": 30, "total_value": 1282974.69` —
+1,572 successful writes historically. Its `_account_to_cash_row` (`:102-123`) explicitly maps the
+account's uninvested cash to a `CASH` row, and its own docstring records a prior incident in this
+exact area: *"with 0 positions no-op'd entirely — so $5,000 of live cash in…"*.
+
+**So a live, succeeding writer coexists with a cash row stamped 2026-08-04.** The `$5,000` value
+matches the row exactly, so the amount is plausibly current while the stamp is not — the same
+value-fresh / stamp-frozen split as cause 1, in a different field.
+
+**Not established.** Whether the cash row is being rewritten with a stale stamp, or skipped by the
+`abs(cash) < 0.005` no-op path, or merged away by the guard, is the one open item in this report.
+It is named rather than guessed.
+
+### Cause 4 — `positions_built_at` is write-once by construction
+
+```python
+# scripts/portfolio_repricer.py:724-725   (identical at portfolio_loader.py:325-326)
+if portfolio.get("generated_at") and not portfolio.get("positions_built_at"):
+    portfolio["positions_built_at"] = portfolio["generated_at"]
+```
+
+`and not …` — set once, never updated. Frozen at **2026-07-17**, 46 days. The in-code comment calls
+this intentional (*"build time is preserved once"*), and the field is documented as *"when the
+position list was constructed."*
+
+**The operator has ruled that it should be current.** As built it cannot distinguish "the list has
+not been rebuilt in 46 days" from "the list is rebuilt constantly and the stamp is pinned to the
+first build" — and because of cause 1, this system demonstrably produces the second. A field that
+cannot tell those apart is not a freshness signal.
+
+### The §9.1 connection Worker D found first
+
+`AGENTS.md` §9.1: *"A 27-day-old $500 makes the block 27 days old."* Worker D flagged this last
+night from the API surface — the `$500` moomoo balance dragging `total_cash`. **It is the same
+row**, now 29 days old. The rule appears to have been written about this exact position, the
+position is still there, and it has aged four more weeks since the rule was written.
+
+### Summary for the operator
+
+| # | cause | file:line | status |
+|---|---|---|---|
+| 1 | `broker_position_as_of` frozen by preserve-once `or`; Schwab sync never sets it | `portfolio_repricer.py:71` | **root-caused** |
+| 2 | surface shows loader-run date, not a data clock | `portfolio_loader.py:164,315,336,401,603` | **root-caused** |
+| 3 | alpaca cash row stamp static while writer succeeds | `alpaca_live_read_sync.py:102-123` | **partially** — mechanism open |
+| 4 | `positions_built_at` write-once | `portfolio_repricer.py:724`, `portfolio_loader.py:325` | **root-caused**; operator rules it should be current |
+
+**Real exposure: $5,500 of $1,282,976 in genuinely stale cash rows.** The equity positions are
+current. The alarming part is not the data — it is that **four separate freshness fields are all
+unreliable**, three of them frozen by preserve-once logic, and the one the operator sees describes
+none of the data.
+
+**Nothing touched.** No broker path, no reauth, no holdings write, no cron, no code edit.
