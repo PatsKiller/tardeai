@@ -309,6 +309,10 @@ GATES = [
     ("wake_research_persist_hits", [
         "tests/test_wake_research_persist_hits.py",
     ]),
+    ("cash_letter_rows", [
+        "tests/test_cash_letter_rows.py",
+        "tests/test_cio_cc_record_narrative_slice_c.py",
+    ]),
     ("overnight_g4_archive_mechanism", [
         "tests/test_overnight_g4_archive_mechanism.py",
     ]),

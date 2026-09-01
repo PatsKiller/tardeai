@@ -2594,10 +2594,16 @@ def overview():
     # $478k while the real cash was $186k. The read-site recompute that used to
     # live here was a workaround for a field nothing refreshed, and it is now
     # retired: #635 made portfolio_repricer._recalc_totals write total_cash from
-    # the is_cash position rows on every pass, and the 2026-08-29 Saturday proof
-    # showed the stored field agreeing with the row sum to the cent
-    # (630,784.82, source=position_rows, gap 0.00) across holdings.json,
-    # /v2/overview and /v3/cio.
+    # the is_cash position rows on every pass.
+    #
+    # The 2026-08-29 Saturday proof once showed the stored field agreeing with
+    # the row sum to the cent at 630,784.82 (gap 0.00). That sentence is no
+    # longer true as a live claim: on 2026-09-01 the live row sum /
+    # portfolio_totals.total_cash / overview / capital_plan read 630,513.62,
+    # while cash_letter still published the CASH_SLEEVE fossil 630,784.82
+    # (delta $271.20 — LITMUS_MONEY). The letter now follows capital_plan; the
+    # fossil remains as prior_cash_* on that payload. Do not resurrect
+    # 630,784.82 as proof of agreement.
     #
     # Read the stored field. Two places deriving the same number is how the
     # original drift went unnoticed for three months: the read site quietly

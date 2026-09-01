@@ -109,15 +109,37 @@ def build_cash_letter(
     seasonality: Optional[dict[str, Any]] = None,
     now: Optional[datetime] = None,
 ) -> dict[str, Any]:
-    """The SLEEVE:CASH letter. Present even when notify is off."""
+    """The SLEEVE:CASH letter. Present even when notify is off.
+
+    Published ``cash_usd`` is ``capital_plan.cash_total_usd`` — the same is_cash
+    row sum ``/api/v2/overview`` and the capital plan already use. The
+    InstrumentRecord sleeve may still carry a fossil ``cash_usd``; that value is
+    never the published dollar. When it disagrees it is retained as
+    ``prior_cash_usd`` / ``prior_cash_written_at`` so the split stays visible
+    (LITMUS_MONEY $271.20). ``as_of`` is the PP3 cash-rows clock from the plan,
+    not the sleeve's ``cash_written_at``. ``composed_at`` stays the build clock.
+    """
     now = now or _now()
     rec = record or {}
     cp = capital_plan or {}
     regime = regime_summary(capital_plan=cp, seasonality=seasonality)
 
-    cash_usd = rec.get("cash_usd")
-    if cash_usd is None:
-        cash_usd = cp.get("cash_total_usd")
+    # Live dollar = capital_plan only. Never CASH_SLEEVE.cash_usd.
+    plan_cash = cp.get("cash_total_usd")
+    sleeve_cash = rec.get("cash_usd")
+    cash_usd = plan_cash
+
+    prior_cash_usd = None
+    prior_cash_written_at = None
+    if sleeve_cash is not None:
+        try:
+            sleeve_f = float(sleeve_cash)
+            plan_f = float(plan_cash) if plan_cash is not None else None
+        except (TypeError, ValueError):
+            sleeve_f, plan_f = None, None
+        if plan_f is None or (sleeve_f is not None and sleeve_f != plan_f):
+            prior_cash_usd = sleeve_cash
+            prior_cash_written_at = rec.get("cash_written_at")
 
     narrative = rec.get("cc_narrative") or {}
     what = str(narrative.get("what") or "").strip()
@@ -143,7 +165,8 @@ def build_cash_letter(
         "memory_behavior_influence": MBI_BEHAVIOR,
         "subject_key": CASH_SLEEVE,
         "cash_usd": cash_usd,
-        "cash_source": rec.get("cash_source") or cp.get("cash_source"),
+        "cash_source": cp.get("cash_source") or (
+            "capital_plan.cash_total_usd" if plan_cash is not None else None),
         "cash_investable_usd": cp.get("cash_investable_usd"),
         "regime": regime,
         "month_context": month_ctx,
@@ -158,15 +181,20 @@ def build_cash_letter(
         "next_eligible_at": rec.get("next_eligible_at"),
         "writer": stamps["writer"],
         "author": stamps["author"],
-        # PP2. This was `now.isoformat()` -- the build clock, printed directly beside
-        # the cash figure, so a balance last confirmed weeks ago read as of this
-        # second. `as_of` on a cash letter is the age of the dollars above it; the
-        # moment the letter was composed is a separate field and is kept.
+        # PP2/PP3. as_of is the cash-rows clock on the plan (same derivation the
+        # freshness board uses). composed_at is the build clock, named as such.
         "as_of": _cash_letter_as_of(cp, now),
         "cash_as_of": cp.get("cash_as_of"),
         "composed_at": now.isoformat(),
         "from_record": bool(record),
     }
+    if prior_cash_usd is not None:
+        letter["prior_cash_usd"] = prior_cash_usd
+        letter["prior_cash_written_at"] = prior_cash_written_at
+        letter["prior_cash_note"] = (
+            "CASH_SLEEVE.cash_usd retained as prior; published cash_usd is "
+            "capital_plan.cash_total_usd (is_cash row sum)."
+        )
     if stamps.get("copy_step"):
         letter["copy_step"] = stamps["copy_step"]
     elif narrative.get("copy_step"):
