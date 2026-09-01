@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `28f0838754bc4a98ffafbd033c9e6efd9fbc8758fe4db693729bb1b2fcb5513a`
+**Tree fingerprint:** `64065226b0c07f5ace4c0d15ec08db2d199b68afeef091b58b3fb505ae0193db`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,10 +12,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2290 |
-| Markdown (excl. this INDEX) | 1922 |
+| Files under `docs/` (excl. this INDEX) | 2291 |
+| Markdown (excl. this INDEX) | 1923 |
 | **MISSING HEADER** | **11** |
-| Header OK | 1911 |
+| Header OK | 1912 |
 | Duplicate groups | 5 |
 
 ### By status_guess
@@ -30,7 +30,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_raw_sync | 8 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 6 |
-| review_required | 1928 |
+| review_required | 1929 |
 
 ## Markdown tree
 
@@ -1459,6 +1459,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/HERMES_FREE_FIRST_NATURAL_SCHEDULER_2026-08-23.md` | FREE_FIRST_ONLY natural scheduler | review_required | OK | `306d4dbb9131` |
 | `docs/ops/HERMES_LIBRARIAN_CURATION_MATURITY_2026-08-23.md` | Librarian + curation maturity (PR C) | review_required | OK | `e902b7cca2e7` |
 | `docs/ops/HERMES_TICKER_INTELLIGENCE_WIRING_CLOSEOUT_2026-08-23.md` | Hermes Ticker Intelligence Wiring Closeout | review_required | OK | `d7e283f4cd5a` |
+| `docs/ops/HOLDINGS_STATE_RECONCILIATION_2026-09-01.md` | Holdings state — per-file reconciliation plan | review_required | OK | `8f08e31c9da8` |
 | `docs/ops/INSTRUMENT_RECORD_V1.md` | InstrumentRecord@v1 | review_required | OK | `613aea387bc6` |
 | `docs/ops/LANE_QUALITY_BAKEOFF_2026-08-21.md` | Lane Quality Bake-Off — 2026-08-21 | review_required | OK | `cd49b9ce53e7` |
 | `docs/ops/LANE_QUALITY_BAKEOFF_OPERATOR_BLIND_2026-08-21.md` | Blind ranking sheet — Lane bake-off 2026-08-21 | review_required | OK | `f88b31c995fa` |
