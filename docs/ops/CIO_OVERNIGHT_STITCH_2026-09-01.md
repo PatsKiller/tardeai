@@ -1659,3 +1659,123 @@ and did not; a succeeding sync is now assumed by nobody to mean fresh positions.
    design or a fourth staleness is unknown.
 
 **Nothing touched.** No broker path, no reauth, no holdings write, no cron, no service.
+
+### P0 (2) ROOT-CAUSED — 2026-09-01 08:33 ET · four causes, and the coordinator's 18-day figure was wrong
+
+Investigated on operator instruction. Read-only. **The headline correction first.**
+
+### CORRECTION — "18 days stale" was wrong, and wrong the same way twice
+
+`[VERIFIED]` row-level dates, all 30 positions:
+
+```
+account                 row as_of        broker_position_as_of    updated_at
+schwab_rollover_ira     2026-08-31 ×14   2026-08-14 ×14           2026-08-31
+schwab_taxable          2026-08-31 ×12   2026-08-14 ×12           2026-08-31
+schwab_roth             2026-08-31 × 2   2026-08-14 × 2           2026-08-31
+alpaca_taxable_live     2026-08-04 × 1   2026-08-04 × 1           2026-08-14
+moomoo_taxable_live     2026-08-03 × 1   2026-08-03 × 1           2026-08-14
+```
+
+**28 of 30 positions are current as of 2026-08-31.** The portfolio is not 18 days stale. The
+coordinator read `broker_position_as_of` as a data age and reported it as one — **it is a frozen
+field, not a measurement**, for the reason given in cause 1 below.
+
+This is the same error a third time in one morning: `rc=127` assumed to follow from the stale tree;
+the gateway outage assumed to explain the `as_of` date; and now a stamp used as a measurement
+without first checking what writes it. **The rule the wave wrote for others — never state a
+measured value as a premise, find the producer first — was not applied by the coordinator to a
+field it quoted twice.**
+
+**What is genuinely stale is $5,500 of a $1,282,976 portfolio**: two broker CASH rows —
+moomoo `$500` at 2026-08-03 (29 days) and alpaca `$5,000` at 2026-08-04 (28 days).
+
+### Cause 1 — `broker_position_as_of` is frozen by a preserve-once `or`
+
+```python
+# scripts/portfolio_repricer.py:71
+h["broker_position_as_of"] = h.get("broker_position_as_of") or h.get("as_of")
+```
+
+The `or` short-circuits: once the field holds any truthy value it is **never refreshed**. It
+backfills from `as_of` only when absent.
+
+```
+$ grep -c "broker_position_as_of" scripts/schwab_position_sync.py
+0
+```
+
+**The Schwab sync never sets it.** It writes a fresh row-level `"as_of"` (`:474`, `:543`) every 15
+minutes, and nothing propagates that into `broker_position_as_of`. The field was backfilled once,
+when it happened to be absent, and froze at 2026-08-14 while the data beneath it kept moving.
+
+A field named `broker_position_as_of` that does not track the broker position is a name exceeding
+its code — §7 — and it fooled this investigation before it fooled anyone else.
+
+### Cause 2 — the surface displays a loader-run date, wrong in both directions at once
+
+Top-level `as_of: 2026-08-29` is written by `portfolio_loader.py` (`= today` at `:164, :315, :336,
+:401, :603`). It records **when the loader last ran**, not when any data was fetched.
+
+- It is **older** than the 28 Schwab rows (2026-08-31) → understates their freshness.
+- It is **newer** than the 2 cash rows (2026-08-03/04) → overstates theirs by ~4 weeks.
+
+**One number, wrong in opposite directions simultaneously.** The banner's "3.3d" describes nothing
+in the file. And the file's own `_freshness_note` documents `generated_at`, `positions_built_at` and
+`last_repriced` — **and omits `as_of`**, the only one the operator sees.
+
+### Cause 3 — alpaca: the writer runs, the cash stamp does not move
+
+`alpaca_live_read_sync.py` is scheduled (crontab 877, `*/15 9-16 * * 1-5`), ran **2026-08-31 16:45**,
+and reports `"wrote": true, "status": "ok", "position_count": 30, "total_value": 1282974.69` —
+1,572 successful writes historically. Its `_account_to_cash_row` (`:102-123`) explicitly maps the
+account's uninvested cash to a `CASH` row, and its own docstring records a prior incident in this
+exact area: *"with 0 positions no-op'd entirely — so $5,000 of live cash in…"*.
+
+**So a live, succeeding writer coexists with a cash row stamped 2026-08-04.** The `$5,000` value
+matches the row exactly, so the amount is plausibly current while the stamp is not — the same
+value-fresh / stamp-frozen split as cause 1, in a different field.
+
+**Not established.** Whether the cash row is being rewritten with a stale stamp, or skipped by the
+`abs(cash) < 0.005` no-op path, or merged away by the guard, is the one open item in this report.
+It is named rather than guessed.
+
+### Cause 4 — `positions_built_at` is write-once by construction
+
+```python
+# scripts/portfolio_repricer.py:724-725   (identical at portfolio_loader.py:325-326)
+if portfolio.get("generated_at") and not portfolio.get("positions_built_at"):
+    portfolio["positions_built_at"] = portfolio["generated_at"]
+```
+
+`and not …` — set once, never updated. Frozen at **2026-07-17**, 46 days. The in-code comment calls
+this intentional (*"build time is preserved once"*), and the field is documented as *"when the
+position list was constructed."*
+
+**The operator has ruled that it should be current.** As built it cannot distinguish "the list has
+not been rebuilt in 46 days" from "the list is rebuilt constantly and the stamp is pinned to the
+first build" — and because of cause 1, this system demonstrably produces the second. A field that
+cannot tell those apart is not a freshness signal.
+
+### The §9.1 connection Worker D found first
+
+`AGENTS.md` §9.1: *"A 27-day-old $500 makes the block 27 days old."* Worker D flagged this last
+night from the API surface — the `$500` moomoo balance dragging `total_cash`. **It is the same
+row**, now 29 days old. The rule appears to have been written about this exact position, the
+position is still there, and it has aged four more weeks since the rule was written.
+
+### Summary for the operator
+
+| # | cause | file:line | status |
+|---|---|---|---|
+| 1 | `broker_position_as_of` frozen by preserve-once `or`; Schwab sync never sets it | `portfolio_repricer.py:71` | **root-caused** |
+| 2 | surface shows loader-run date, not a data clock | `portfolio_loader.py:164,315,336,401,603` | **root-caused** |
+| 3 | alpaca cash row stamp static while writer succeeds | `alpaca_live_read_sync.py:102-123` | **partially** — mechanism open |
+| 4 | `positions_built_at` write-once | `portfolio_repricer.py:724`, `portfolio_loader.py:325` | **root-caused**; operator rules it should be current |
+
+**Real exposure: $5,500 of $1,282,976 in genuinely stale cash rows.** The equity positions are
+current. The alarming part is not the data — it is that **four separate freshness fields are all
+unreliable**, three of them frozen by preserve-once logic, and the one the operator sees describes
+none of the data.
+
+**Nothing touched.** No broker path, no reauth, no holdings write, no cron, no code edit.
