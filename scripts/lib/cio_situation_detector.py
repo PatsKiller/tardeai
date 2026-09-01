@@ -820,6 +820,21 @@ def eval_s3(evidence: dict[str, Any], cfg: dict[str, Any], symbol: str | None = 
         st = str(r.get("status") or r.get("decision") or r.get("state") or "").upper()
         if st not in ok_status:
             continue
+        # A held name is not a re-entry candidate. Re-entry is the former/watch
+        # universe by definition (LITMUS_COVERAGE 2026-09-01: "S3 does not help
+        # position coverage: intersection with held equity is empty by design").
+        #
+        # That intersection was empty only by accident of desk state, not by any
+        # rule here: measured 2026-09-01 the desk carried
+        #   (held=False, READY) 1 · (held=False, NEAR) 24
+        #   (held=False, BLOCK) 71 · (held=True, BLOCK) 10
+        # so all ten held names were excluded by BLOCK, and nothing in this
+        # predicate looked at `held`. SCHG returned 0 for exactly that reason --
+        # status=BLOCK, held=True -- and would have been emitted as a re-entry
+        # candidate for a position already owned the moment the desk moved it to
+        # NEAR. The empty intersection was luck, and it read like a rule.
+        if r.get("held") is True:
+            continue
         refs = [_ref("reentry_decision_desk", desk if isinstance(desk, dict) else {"items": rows}, ["status", "symbol"])]
         out.append({
             "situation_type": SITUATION_CODES["S3"],
