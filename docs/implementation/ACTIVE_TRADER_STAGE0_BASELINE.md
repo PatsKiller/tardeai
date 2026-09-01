@@ -4,12 +4,12 @@ Status:      HISTORICAL
 as_of:       2026-07-27T12:13:37-04:00
 Measured at: efcc51365 / not measured
 
-**Packet:** G (`scripts/operator_packets/packet_g_active_trader_stage0.{sh,py}`)
-**Stage:** 0 — baseline inventory + **read-only** health/status scaffolds
-**Program:** `docs/prompts/CODEX_ACTIVE_TRADER_MOOMOO_SCALP_IMPLEMENTATION_v1_1.md`
-**Litmus:** `docs/prompts/ACTIVE_TRADER_ARCHITECT_LITMUS_REVIEW_PROMPT_v1_0.md`
-**Moomoo data plane:** `docs/operations/MOOMOO_STAGE0_FOUNDATION_v1.md`
-**Controlling architecture:** v3.3 (session-scoped live authority — **not** activated here)
+**Packet:** G (`scripts/operator_packets/packet_g_active_trader_stage0.{sh,py}`)  
+**Stage:** 0 — baseline inventory + **read-only** health/status scaffolds  
+**Program:** `docs/prompts/CODEX_ACTIVE_TRADER_MOOMOO_SCALP_IMPLEMENTATION_v1_1.md`  
+**Litmus:** `docs/prompts/ACTIVE_TRADER_ARCHITECT_LITMUS_REVIEW_PROMPT_v1_0.md`  
+**Moomoo data plane:** `docs/operations/MOOMOO_STAGE0_FOUNDATION_v1.md`  
+**Controlling architecture:** v3.3 (session-scoped live authority — **not** activated here)  
 **Operator product intent recorded:** 2026-07-27
 
 ## Goal (Stage 0 only)
@@ -102,21 +102,21 @@ execution when Schwab blocks and policy allows.
 
 Future stages (not this PR) must implement, under session envelope:
 
-1. Operator selects near-ready setup + **opt-in** size + account allocation
-2. Session authorize (2FA / envelope)
-3. Managed entry (pullback break + gates) / exit (limit, market sell, flatten)
-4. Venue selection: Schwab primary; Moomoo/Alpaca only if bound into envelope
-5. Journal + Darwin feedback
+1. Operator selects near-ready setup + **opt-in** size + account allocation  
+2. Session authorize (2FA / envelope)  
+3. Managed entry (pullback break + gates) / exit (limit, market sell, flatten)  
+4. Venue selection: Schwab primary; Moomoo/Alpaca only if bound into envelope  
+5. Journal + Darwin feedback  
 
 Stage 0 **does not** implement any of the above.
 
 ## Gaps vs program Stage 0–4
 
-1. No Active Trader session schema or authorization envelope (Stage 1).
-2. No multi-broker capability registry for AT (Stage 2).
-3. No dedicated AT read API for candidates/orders/positions (Stage 4) — only Stage 0 health.
-4. No `/v3-next` UI shell (Stage 6).
-5. TradingHub Scalp is **not** the Active Trader Next product surface.
+1. No Active Trader session schema or authorization envelope (Stage 1).  
+2. No multi-broker capability registry for AT (Stage 2).  
+3. No dedicated AT read API for candidates/orders/positions (Stage 4) — only Stage 0 health.  
+4. No `/v3-next` UI shell (Stage 6).  
+5. TradingHub Scalp is **not** the Active Trader Next product surface.  
 6. No near-ready / below-RVOL candidate projection for AT.
 
 ## Stage 0 deliverables in this PR
@@ -134,21 +134,21 @@ Stage 0 **does not** implement any of the above.
 
 ## Explicit non-goals
 
-- Stages 1–13 implementation
-- Order placement on **any** venue (Schwab / Moomoo / Alpaca)
-- Session authorize / 2FA live path
-- Live canary (`live_canary` remains false)
-- OpenD trade unlock
-- Agent timer enable or OPERATIONAL promotion
-- Unattended discover-and-fire
+- Stages 1–13 implementation  
+- Order placement on **any** venue (Schwab / Moomoo / Alpaca)  
+- Session authorize / 2FA live path  
+- Live canary (`live_canary` remains false)  
+- OpenD trade unlock  
+- Agent timer enable or OPERATIONAL promotion  
+- Unattended discover-and-fire  
 - Changing Packet D/E/F behavior (except scanner-safe probes if needed for CI)
 
 ## Acceptance (Stage 0)
 
-- [x] Baseline + multi-broker matrix + opt-in intent documented
-- [x] Route map + guardrails docs committed
-- [x] `GET /api/v3/active-trader/health` returns `stage:0`, `write:false`, `canary:false`, `venues` read-only inventory
-- [x] Sessions list empty without inventing sessions
-- [x] All feature flags default OFF in example config
-- [x] Packet G default-disabled; missing ack refuses; execute never enables live_canary
-- [x] Tests pass without network or live brokers
+- [x] Baseline + multi-broker matrix + opt-in intent documented  
+- [x] Route map + guardrails docs committed  
+- [x] `GET /api/v3/active-trader/health` returns `stage:0`, `write:false`, `canary:false`, `venues` read-only inventory  
+- [x] Sessions list empty without inventing sessions  
+- [x] All feature flags default OFF in example config  
+- [x] Packet G default-disabled; missing ack refuses; execute never enables live_canary  
+- [x] Tests pass without network or live brokers  

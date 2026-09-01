@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `1c3d2c1935971c776ec71398549057bbb62e6e47688ef4cd58d657a5f929af77`
+**Tree fingerprint:** `5a270f8e2ed53c4e7fe30e567035c9fa1481c2581d5e761c07632199e4bf66a5`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -191,12 +191,12 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/advisory/desk-v1/AUTONOMOUS_ADVISORY_DESK_PLAN_2026-08-10.md` | Plan: Autonomous Advisory Desk (CIO + Wealth Advisors) | review_required | OK | `64bfb6f9fd6f` |
 | `docs/advisory/desk-v1/AUTONOMY_AND_SCHEDULING_TRUTH_2026-08-11.md` | Autonomy & scheduling truth — Advisory Desk + agent fleet | review_required | OK | `0202de4e9e63` |
 | `docs/advisory/desk-v1/AUTONOMY_GOAL_THESIS_COMPLETE.md` | Autonomy gap close — Goal + Thesis store (WS1–WS6) | review_required | OK | `02419888e172` |
-| `docs/advisory/desk-v1/CC_V3_MATURITY_CRITIQUE_2026-08-12.md` | Command Center v3 — Maturity Critique & Polish (2026-08-12) | review_required | OK | `75ac5c89dce5` |
-| `docs/advisory/desk-v1/DATA_INTEGRITY_AUDIT_2026-08-12.md` | Advisory Desk & CIO Desk — Data Integrity Audit (2026-08-12) | review_required | OK | `d39121fd5bf9` |
-| `docs/advisory/desk-v1/DEEPSEEK_USAGE_2026-08-12.md` | DeepSeek usage + prompt curation — 2026-08-12 | review_required | OK | `1aa18f026061` |
-| `docs/advisory/desk-v1/HEALTH_AGENT_FIXES_2026-08-12.md` | Health Agent Fixes — release manifest + Finnhub 401 (2026-08-12) | review_required | OK | `c80d066eba2e` |
+| `docs/advisory/desk-v1/CC_V3_MATURITY_CRITIQUE_2026-08-12.md` | Command Center v3 — Maturity Critique & Polish (2026-08-12) | review_required | OK | `488769d0b576` |
+| `docs/advisory/desk-v1/DATA_INTEGRITY_AUDIT_2026-08-12.md` | Advisory Desk & CIO Desk — Data Integrity Audit (2026-08-12) | review_required | OK | `2cd4ecc333bb` |
+| `docs/advisory/desk-v1/DEEPSEEK_USAGE_2026-08-12.md` | DeepSeek usage + prompt curation — 2026-08-12 | review_required | OK | `f123a48bc1fe` |
+| `docs/advisory/desk-v1/HEALTH_AGENT_FIXES_2026-08-12.md` | Health Agent Fixes — release manifest + Finnhub 401 (2026-08-12) | review_required | OK | `2bfd39214732` |
 | `docs/advisory/desk-v1/LLM_SURFACE_FIX_2026-08-12.md` | LLM Surface Fix — Flash/Pro opinions now reach `/v3/advisory` (2026-08-12) | review_required | OK | `ee7e255e5e2c` |
-| `docs/advisory/desk-v1/MATURITY_BASELINE_2026-08-12.md` | Advisory Desk maturity baseline — 2026-08-12 | review_required | OK | `05eff6edd7b0` |
+| `docs/advisory/desk-v1/MATURITY_BASELINE_2026-08-12.md` | Advisory Desk maturity baseline — 2026-08-12 | review_required | OK | `d5a66be92b4b` |
 | `docs/advisory/desk-v1/P0_BRIDGE_OUTCOME_2026-08-11.md` | P0 Outcome — Governed Bridge Path for Advisory Desk | review_required | OK | `e116e5a054d1` |
 | `docs/advisory/desk-v1/PHASE1_DATA_TRUTH_OUTCOME_2026-08-11.md` | Phase 1 Outcome — Data Truth & Multi-Agent Evidence | review_required | OK | `c6aec6c7f152` |
 | `docs/advisory/desk-v1/PHASE2_QUALITY_CACHE_OUTCOME_2026-08-11.md` | Phase 2 Outcome — Evidence Quality, Cache, Pro Synthesis | review_required | OK | `3f75251d9c87` |
@@ -209,32 +209,32 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/advisory/desk-v1/RUNTIME_TRUTH_2026-08-11.md` | Runtime truth — host verification (P0 ops) | delete_candidate_duplicate | OK | `b3ebf94fe56b` |
 | `docs/advisory/desk-v1/SITUATION_CATALOG_V1_FREEZE.md` | Situation Catalog v1 — FREEZE | review_required | OK | `4de970fb9ce6` |
 | `docs/advisory/desk-v1/SURFACE_REPORT_AND_ACTORS_2026-08-12.md` | Advisory Desk → Operators: Wiring, Telegram, and the MS-Style Report | review_required | OK | `86de44c270fa` |
-| `docs/agent-intelligence/ADR/001-context-envelope.md` | ADR-001 — ContextEnvelope as canonical agent context | review_required | OK | `987d8c79d114` |
-| `docs/agent-intelligence/ADR/002-observability-first.md` | ADR-002 — Observability before memory activation | review_required | OK | `056dc98cef28` |
-| `docs/agent-intelligence/ADR/003-mcp-read-only-gateway.md` | ADR-003 — Internal read-only MCP gateway | review_required | OK | `2af1d747d563` |
-| `docs/agent-intelligence/ADR/004-mem0-over-letta-for-memory-adapter.md` | ADR-004 — Mem0 (or local test double) as the memory adapter | review_required | OK | `32e4a0e3a1a9` |
-| `docs/agent-intelligence/ADR/005-langgraph-conditional-not-platform-rewrite.md` | ADR-005 — LangGraph conditional, not a platform rewrite | review_required | OK | `1d41d6779282` |
-| `docs/agent-intelligence/ADR/006-memory-never-financial-truth.md` | ADR-006 — Memory never financial truth | review_required | OK | `3f055d1e55c4` |
+| `docs/agent-intelligence/ADR/001-context-envelope.md` | ADR-001 — ContextEnvelope as canonical agent context | review_required | OK | `362f315c1f27` |
+| `docs/agent-intelligence/ADR/002-observability-first.md` | ADR-002 — Observability before memory activation | review_required | OK | `803596a5d755` |
+| `docs/agent-intelligence/ADR/003-mcp-read-only-gateway.md` | ADR-003 — Internal read-only MCP gateway | review_required | OK | `e2a1c0f03992` |
+| `docs/agent-intelligence/ADR/004-mem0-over-letta-for-memory-adapter.md` | ADR-004 — Mem0 (or local test double) as the memory adapter | review_required | OK | `94c144ec6690` |
+| `docs/agent-intelligence/ADR/005-langgraph-conditional-not-platform-rewrite.md` | ADR-005 — LangGraph conditional, not a platform rewrite | review_required | OK | `bdfa670eb766` |
+| `docs/agent-intelligence/ADR/006-memory-never-financial-truth.md` | ADR-006 — Memory never financial truth | review_required | OK | `7071f651f0cf` |
 | `docs/agent-intelligence/ADR/007-durable-jsonl-memory-backend.md` | ADR-007 — Durable JSONL as the Program 3 memory backend | review_required | OK | `ed30289def99` |
-| `docs/agent-intelligence/AGENT_INTELLIGENCE_FOUNDATION_ARCHITECTURE.md` | Agent Intelligence Foundation — Architecture | review_required | OK | `412d96220d56` |
-| `docs/agent-intelligence/AGENT_RUN_TRACE_SPEC.md` | AgentRunTrace@v1 — Specification | review_required | OK | `7a26dad76728` |
+| `docs/agent-intelligence/AGENT_INTELLIGENCE_FOUNDATION_ARCHITECTURE.md` | Agent Intelligence Foundation — Architecture | review_required | OK | `781d17a8e571` |
+| `docs/agent-intelligence/AGENT_RUN_TRACE_SPEC.md` | AgentRunTrace@v1 — Specification | review_required | OK | `9ceca368ef50` |
 | `docs/agent-intelligence/AIF_FINANCIAL_SENSES_INTEGRATION.md` | AIF ↔ Financial Senses — governed read-only integration | review_required | OK | `6aeb36e9ef7e` |
-| `docs/agent-intelligence/AUTONOMOUS_OFFICE_INITIATIVE.md` | Autonomous Office Initiative — Phase 6 | review_required | OK | `d030a1a64d4b` |
-| `docs/agent-intelligence/CONTEXT_ENVELOPE_SPEC.md` | ContextEnvelope@v1 — Specification | review_required | OK | `e852a7f9db94` |
-| `docs/agent-intelligence/DEPLOYMENT_RUNBOOK.md` | Deployment Runbook — Controlled Read-Only Activation (Phase 12) | review_required | OK | `ac62a3d06fad` |
-| `docs/agent-intelligence/EVALUATION_AND_SHADOW_TEST_PLAN.md` | Evaluation & Shadow Test Plan — Agent Intelligence Foundation | review_required | OK | `85d5bb9ce7dc` |
-| `docs/agent-intelligence/IMPLEMENTATION_LOG.md` | Agent Intelligence Foundation — Implementation Log | review_required | OK | `6899fef37fe9` |
-| `docs/agent-intelligence/MCP_READ_ONLY_GATEWAY.md` | MCP Read-Only Gateway | review_required | OK | `9824885fe6c0` |
-| `docs/agent-intelligence/MCP_SECURITY_MODEL.md` | MCP Security Model | review_required | OK | `48c72d54c163` |
-| `docs/agent-intelligence/MEMORY_ADMISSION_POLICY.md` | Memory Admission Policy | review_required | OK | `dd9e669de2f3` |
+| `docs/agent-intelligence/AUTONOMOUS_OFFICE_INITIATIVE.md` | Autonomous Office Initiative — Phase 6 | review_required | OK | `f0db66f606d6` |
+| `docs/agent-intelligence/CONTEXT_ENVELOPE_SPEC.md` | ContextEnvelope@v1 — Specification | review_required | OK | `0ed0719e3d4f` |
+| `docs/agent-intelligence/DEPLOYMENT_RUNBOOK.md` | Deployment Runbook — Controlled Read-Only Activation (Phase 12) | review_required | OK | `c307a2ec1a74` |
+| `docs/agent-intelligence/EVALUATION_AND_SHADOW_TEST_PLAN.md` | Evaluation & Shadow Test Plan — Agent Intelligence Foundation | review_required | OK | `ff690941a927` |
+| `docs/agent-intelligence/IMPLEMENTATION_LOG.md` | Agent Intelligence Foundation — Implementation Log | review_required | OK | `f84cd99b9ad8` |
+| `docs/agent-intelligence/MCP_READ_ONLY_GATEWAY.md` | MCP Read-Only Gateway | review_required | OK | `b0fcedf16b55` |
+| `docs/agent-intelligence/MCP_SECURITY_MODEL.md` | MCP Security Model | review_required | OK | `982d43dd2055` |
+| `docs/agent-intelligence/MEMORY_ADMISSION_POLICY.md` | Memory Admission Policy | review_required | OK | `52942713517a` |
 | `docs/agent-intelligence/MEMORY_GOVERNANCE_AND_MEM0.md` | Memory Governance & Mem0 Shadow Pilot | review_required | OK | `aa729c90fa37` |
 | `docs/agent-intelligence/ORCHESTRATION_AND_LANGGRAPH_DECISION.md` | Orchestration & LangGraph Decision | review_required | OK | `cc2343bb87af` |
-| `docs/agent-intelligence/PHASE_ACCEPTANCE.md` | Agent Intelligence Foundation — Phase Acceptance | review_required | OK | `13e21e4d7892` |
-| `docs/agent-intelligence/PLAN_crontab_proj_migration.md` | Plan: Crontab `$PROJ` / `$PY` Runtime Migration (deferred) | review_required | OK | `94b588fa4a3f` |
-| `docs/agent-intelligence/PRIVACY_AND_REDACTION.md` | Privacy & Redaction | review_required | OK | `7b95309a2b00` |
-| `docs/agent-intelligence/README.md` | Agent Intelligence Foundation | review_required | OK | `1c2d7f8cd59e` |
-| `docs/agent-intelligence/ROLLBACK_RUNBOOK.md` | Rollback Runbook — Controlled Read-Only Activation (Phase 12) | review_required | OK | `33da552aca02` |
-| `docs/agent-intelligence/THREAT_MODEL.md` | Threat Model | review_required | OK | `6dbb8675bc16` |
+| `docs/agent-intelligence/PHASE_ACCEPTANCE.md` | Agent Intelligence Foundation — Phase Acceptance | review_required | OK | `1a220d9cc795` |
+| `docs/agent-intelligence/PLAN_crontab_proj_migration.md` | Plan: Crontab `$PROJ` / `$PY` Runtime Migration (deferred) | review_required | OK | `b652a4244633` |
+| `docs/agent-intelligence/PRIVACY_AND_REDACTION.md` | Privacy & Redaction | review_required | OK | `62e6250a0d37` |
+| `docs/agent-intelligence/README.md` | Agent Intelligence Foundation | review_required | OK | `3f2adbc2e779` |
+| `docs/agent-intelligence/ROLLBACK_RUNBOOK.md` | Rollback Runbook — Controlled Read-Only Activation (Phase 12) | review_required | OK | `d678466a3154` |
+| `docs/agent-intelligence/THREAT_MODEL.md` | Threat Model | review_required | OK | `760b4379aa8f` |
 | `docs/agent_runtime/AGENT_HANDBOOK.md` | Trade AI Agent Handbook | review_required | OK | `c85e876e3240` |
 | `docs/agent_runtime/AGENT_IDENTITY_NAMESPACE_RECOMMENDATION_v1.md` | Agent Identity Namespace Recommendation v1 | review_required | OK | `96dd49ecee7f` |
 | `docs/agent_runtime/AGENT_MATURITY_OBSERVABILITY_BASELINE_v1.md` | Agent Maturity Observability Baseline v1 | review_required | OK | `7ef713124cc5` |
@@ -400,23 +400,23 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/cio/ADR_SCHEDULER_OWNERSHIP.md` | ADR: Scheduler Ownership | review_required | OK | `ce6bbb93b073` |
 | `docs/architecture/cio/ADR_SPECIALIST_CALCULATION_POLICY.md` | ADR: Specialist Calculation Policy | review_required | OK | `6fb1d320fe1e` |
 | `docs/architecture/cio/CIO_ACTION_LEDGER_LAB.md` | CIO Action Ledger LAB — P-1.3 Implementation | review_required | OK | `ec14ebf33b85` |
-| `docs/architecture/cio/CIO_AGENT_HANDOFF_QUEUE_LAB.md` | CIO Agent Handoff Queue — LAB Service (P-1.4) | review_required | OK | `590a2d80ebb4` |
+| `docs/architecture/cio/CIO_AGENT_HANDOFF_QUEUE_LAB.md` | CIO Agent Handoff Queue — LAB Service (P-1.4) | review_required | OK | `ee721c2eddf7` |
 | `docs/architecture/cio/CIO_FINANCIAL_SCHEDULE_POLICY.md` | CIO Financial Schedule Policy | review_required | OK | `c82d165baf11` |
-| `docs/architecture/cio/CIO_HEALTH_BOUNDARY_LAB.md` | CIO Health Boundary — LAB Service (P-1.5) | review_required | OK | `55b7cce01307` |
+| `docs/architecture/cio/CIO_HEALTH_BOUNDARY_LAB.md` | CIO Health Boundary — LAB Service (P-1.5) | review_required | OK | `171e3bc62612` |
 | `docs/architecture/cio/CIO_OPENCLAW_GOVERNED_MODEL_BRIDGE.md` | CIO OpenClaw Governed Model Bridge | review_required | OK | `48cb713aa126` |
 | `docs/architecture/cio/CIO_OPERATOR_COMMUNICATION_POLICY.md` | CIO Operator Communication Policy | review_required | OK | `60df94ef8079` |
 | `docs/architecture/cio/CIO_OPERATOR_NOTIFICATION_OUTBOX_LAB.md` | CIO Operator Notification Outbox LAB | review_required | OK | `b31817a5246b` |
 | `docs/architecture/cio/CIO_PHASE_3_DELIVERY.md` | CIO Phase 3 — Autonomous Chief Investment Officer — DELIVERED | review_required | OK | `67a3a333e643` |
-| `docs/architecture/cio/CIO_PHASE_MINUS_1_PLAN_CORRECTED.md` | CIO Phase -1 Plan — Architecture Corrected v3.3 | review_required | OK | `28979eaa3920` |
+| `docs/architecture/cio/CIO_PHASE_MINUS_1_PLAN_CORRECTED.md` | CIO Phase -1 Plan — Architecture Corrected v3.3 | review_required | OK | `a41298dfa8fe` |
 | `docs/architecture/cio/CIO_PLATFORM_READINESS_REPORT.md` | CIO Platform Readiness Report — Gate 0 | review_required | OK | `586f547bf42f` |
 | `docs/architecture/cio/CIO_QUALITY_METRICS.md` | CIO Quality Metrics | review_required | OK | `f0b712c5f529` |
 | `docs/architecture/cio/CIO_RUN_BUDGETS.md` | CIO Run Budgets | review_required | OK | `ddedd4fb29aa` |
-| `docs/architecture/cio/CIO_WAKE_EVENT_DETECTOR_LAB.md` | CIO Wake/Event Detector Lab (P-1.6) | review_required | OK | `c8088b24c237` |
+| `docs/architecture/cio/CIO_WAKE_EVENT_DETECTOR_LAB.md` | CIO Wake/Event Detector Lab (P-1.6) | review_required | OK | `80a23bced2f5` |
 | `docs/architecture/cio/EXTERNAL_DIAGRAM_TYPE_MAPPING.md` | External Diagram Type Mapping | review_required | OK | `4f99a4129b32` |
 | `docs/architecture/cio/FINANCIAL_DOMAIN_CAPABILITY_MATRIX.md` | Financial Domain Capability Matrix | review_required | OK | `f0e120d59387` |
 | `docs/architecture/cio/HERMES_CHALLENGE_POLICY.md` | Hermes Challenge Policy — Independent Review | review_required | OK | `f716af49c1ca` |
 | `docs/architecture/cio/IDENTITY_AND_MEMORY_ADVISORY_2026-08-27.md` | Identity, GUIDs and the memory layer — advisory | review_required | OK | `8badf0967c19` |
-| `docs/architecture/cio/LEGACY_ALEX_SCHEDULE_INVENTORY.md` | Legacy Alex Schedule Inventory | review_required | OK | `9d01670003ba` |
+| `docs/architecture/cio/LEGACY_ALEX_SCHEDULE_INVENTORY.md` | Legacy Alex Schedule Inventory | review_required | OK | `d6f3ec9e41a7` |
 | `docs/architecture/cio/LEGACY_FINANCIAL_FACT_INVENTORY.md` | Legacy Financial Fact Inventory | review_required | OK | `d60631efb6b6` |
 | `docs/architecture/cio/LOOP_CLOSURE_2026-08-27.md` | Closing the CIO learning loop — implementation record | review_required | OK | `1dae6e4d91c2` |
 | `docs/architecture/cio/OPENCLAW_CIO_ARCHITECTURE_FEEDBACK_2026-08-08.md` | OpenClaw + Hermes CIO Architecture — Audit Feedback | review_required | OK | `55031b0d25ba` |
@@ -433,7 +433,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/cio/PHASE_2_TRIGGER_OWNERSHIP.md` | Phase 2 Trigger Ownership — Trade AI CIO | review_required | OK | `37a58cdad564` |
 | `docs/architecture/cio/PHASE_MINUS_1_DEPENDENCY_GRAPH.md` | CIO Phase -1 Dependency Graph | review_required | OK | `f070b02eaf30` |
 | `docs/architecture/cio/PHASE_MINUS_1_FINAL_ACCEPTANCE.md` | CIO Phase -1 Final Acceptance Report | review_required | OK | `6f150fa78ddf` |
-| `docs/architecture/cio/SPECIALIST_MATURITY_CATALOG.md` | Specialist Maturity Catalog | review_required | OK | `32a81864e4b7` |
+| `docs/architecture/cio/SPECIALIST_MATURITY_CATALOG.md` | Specialist Maturity Catalog | review_required | OK | `98aaa9379997` |
 | `docs/atm/PHASE180A_ATM_CURRENT_CONFIGURATION_AUDIT.md` | Phase 180A: ATM Current Configuration Audit | review_required | OK | `2d3ef26142a3` |
 | `docs/atm/PHASE180B_ATM_PAPER_SCALE_UP_RISK_POLICY.md` | Phase 180B: ATM Paper Scale-Up Risk Policy | review_required | OK | `ec9342bcaa35` |
 | `docs/atm/PHASE180C_ATM_PAPER_VOLUME_RAMP_SCHEDULE.md` | Phase 180C: ATM Paper Trade Volume Ramp Schedule | review_required | OK | `1f087f81f7ed` |
@@ -524,7 +524,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/audits/CIO_DILIGENCE_GAP_REGISTER.md` | CIO Diligence Gap Register | review_required | OK | `bda3d68b2c3f` |
 | `docs/audits/CIO_PIPELINE_DIAGRAM_VERIFICATION_2026-08-27.md` | Is the CIO pipeline diagram the true state? — measured verification | review_required | OK | `91e849bb4976` |
 | `docs/audits/CIO_PLATFORM_AUDIT_2026-08-27.md` | CIO Platform Comprehensive Audit — Phase 1: Findings | review_required | OK | `10d02758c227` |
-| `docs/audits/CIO_PLATFORM_DILIGENCE_MASTER_PLAN_2026-08-30.md` | Trade AI Platform — Enterprise Due Diligence, Validation, Remediation & Execution Master Plan | review_required | OK | `184a336e0de8` |
+| `docs/audits/CIO_PLATFORM_DILIGENCE_MASTER_PLAN_2026-08-30.md` | Trade AI Platform — Enterprise Due Diligence, Validation, Remediation & Execution Master Plan | review_required | OK | `4c59080608e4` |
 | `docs/audits/CIO_PLATFORM_REMEDIATION_2026-08-27.md` | CIO Platform Comprehensive Audit — Phase 2: Remediation Plan | review_required | OK | `2224490a6526` |
 | `docs/audits/EXECUTION_LINK_2026-06-26.md` | Proposal Execution Link Audit — 2026-06-26 | review_required | OK | `fa7e72d022a2` |
 | `docs/audits/FCNTX_144_ACCEPTANCE_2026-07-14.md` | FCNTX Event #144 — A–G Acceptance Fixture (Part H) | review_required | OK | `212809f92fec` |
@@ -657,7 +657,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/cio/ARCHITECTURE.md` | Architecture — Track A vs Track B | review_required | OK | `2dffd8834f47` |
 | `docs/cio/AUTHORITY.md` | Authority — READ_ONLY_ADVISORY | review_required | OK | `5ed5e4f198e6` |
 | `docs/cio/CATALYST_AND_HERMES.md` | Catalyst domain + Hermes research de-duplication | review_required | OK | `65dfcba21b19` |
-| `docs/cio/CIO_DESK_OPERATING_PACKET.md` | Trade AI — CIO Desk Operating Packet | review_required | OK | `a4c2fd9086f4` |
+| `docs/cio/CIO_DESK_OPERATING_PACKET.md` | Trade AI — CIO Desk Operating Packet | review_required | OK | `6d3c1e290b04` |
 | `docs/cio/CIO_NOTIFICATION_POLICY.md` | CIO Notification Policy — Signal over Spam | review_required | OK | `40a0bb623a7c` |
 | `docs/cio/CIO_NOTIFICATION_REPLAY_ACCEPTANCE.md` | CIO Notification Replay Acceptance | review_required | OK | `76573f672e2d` |
 | `docs/cio/CIO_NOTIFICATION_RUNTIME_TOPOLOGY.md` | CIO Notification Runtime Topology | review_required | OK | `ab46eaffc931` |
@@ -701,10 +701,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/design/ACTIVE_TRADER_T2_JIT_AND_MOMENTUM_EXIT_v1.md` | Active Trader T2 JIT and Momentum Exit — Design v1 | current_phase_keep | OK | `514faa88f6da` |
 | `docs/design/AT_CONFIG_TAB_S1_CONTRACT.md` | Active Trader Configuration Tab — S1 API Contract (`/api/v3/active-trader/config`) | current_phase_keep | OK | `530dc26eff0b` |
 | `docs/design/ActiveTrader_Implementation_Pack_2026-07-27_v1/README_ActiveTrader_Implementation_Pack.md` | README_ActiveTrader_Implementation_Pack.md | current_phase_keep | OK | `f4650b24fd31` |
-| `docs/design/ActiveTrader_Implementation_Pack_2026-07-27_v1/code/ActiveTrader_React_TypeScript_Code_Reference.md` | ActiveTrader_React_TypeScript_Code_Reference.md | current_phase_keep | OK | `ccd5cc75ccf1` |
+| `docs/design/ActiveTrader_Implementation_Pack_2026-07-27_v1/code/ActiveTrader_React_TypeScript_Code_Reference.md` | ActiveTrader_React_TypeScript_Code_Reference.md | current_phase_keep | OK | `614e3fad33f1` |
 | `docs/design/ActiveTrader_Implementation_Pack_2026-07-27_v1/code/TradingHub.integration.patch.md` | TradingHub integration patch | current_phase_keep | OK | `6232314a8612` |
-| `docs/design/ActiveTrader_Implementation_Pack_2026-07-27_v1/documents/ACTIVE_TRADER_CODEX_BUILD_PROMPT_and_IMAGE_PROMPTS.md` | ACTIVE_TRADER_CODEX_BUILD_PROMPT_and_IMAGE_PROMPTS.md | current_phase_keep | OK | `b0b630558e12` |
-| `docs/design/ActiveTrader_Implementation_Pack_2026-07-27_v1/documents/ActiveTrader_Image_Prompts_and_Codex_Build_Prompt.md` | ActiveTrader_Image_Prompts_and_Codex_Build_Prompt.md | current_phase_keep | OK | `b0b630558e12` |
+| `docs/design/ActiveTrader_Implementation_Pack_2026-07-27_v1/documents/ACTIVE_TRADER_CODEX_BUILD_PROMPT_and_IMAGE_PROMPTS.md` | ACTIVE_TRADER_CODEX_BUILD_PROMPT_and_IMAGE_PROMPTS.md | current_phase_keep | OK | `9b721d368314` |
+| `docs/design/ActiveTrader_Implementation_Pack_2026-07-27_v1/documents/ActiveTrader_Image_Prompts_and_Codex_Build_Prompt.md` | ActiveTrader_Image_Prompts_and_Codex_Build_Prompt.md | current_phase_keep | OK | `9b721d368314` |
 | `docs/design/ActiveTrader_Implementation_Pack_2026-07-27_v1/documents/Momentum_Scalp_ActiveTrader_Implementation_Spec_v0.2.md` | Momentum_Scalp_ActiveTrader_Implementation_Spec_v0.2.md | current_phase_keep | OK | `ee4014134c97` |
 | `docs/design/ActiveTrader_Implementation_Pack_2026-07-27_v1/graphics/ActiveTrader_Mockups_Graphics_Atlas.md` | ActiveTrader_Mockups_Graphics_Atlas.md | current_phase_keep | OK | `491a9a78fec1` |
 | `docs/design/HERMES_MATURITY_5_DESIGN.md` | Hermes Maturity-5 Design — Event-Driven Scope + Outcome-Gated Learning | current_phase_keep | OK | `c13dc9382b44` |
@@ -721,7 +721,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/diligence/current/CLOUD_OAUTH_USAGE.md` | Cloud-OAuth Lane Usage | review_required | OK | `b3d997cc8507` |
 | `docs/diligence/current/CONTROL_MATRIX.md` | Control Matrix | review_required | OK | `7440aa4d4e27` |
 | `docs/diligence/current/CURRENT_EXECUTION_STATE.md` | Current Execution State | review_required | OK | `a28fa617391c` |
-| `docs/diligence/current/DAY_SCALP_SOURCE_INVENTORY_2026-08-19.md` | Day-Scalp Source Inventory — 2026-08-19 | review_required | OK | `a47e6748b8f2` |
+| `docs/diligence/current/DAY_SCALP_SOURCE_INVENTORY_2026-08-19.md` | Day-Scalp Source Inventory — 2026-08-19 | review_required | OK | `c715aec44e9b` |
 | `docs/diligence/current/HEALTH_MONITORING_MATRIX.md` | Health Monitoring Matrix (Execution Hardening) | review_required | OK | `ccf1993f5747` |
 | `docs/diligence/current/JOB_SCHEDULE_AUDIT.md` | Job Schedule Audit & Contention Map | review_required | OK | `8e2052047d46` |
 | `docs/diligence/current/JOB_SCHEDULE_TIERED_PRIORITIZATION.md` | Job-Schedule Tiered Prioritization + GPU/LLM Optimization | review_required | OK | `b3d0e3838497` |
@@ -777,7 +777,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/feeds/PHASE72E_OPS_BACKLOG_RECOVERY_UPDATE_DESIGN.md` | Phase 72E — Ops Backlog Recovery Update Design | review_required | OK | `cab37d5456e9` |
 | `docs/feeds/PHASE75A_THIRD_CLEAN_RUN_EVIDENCE.md` | Phase 75A — Third Clean Run Evidence | review_required | OK | `ab8bf7f62f3f` |
 | `docs/feeds/PHASE77A_RESEARCH_ONLY_FEED_FALLBACK_POLICY.md` | Phase 77A — Research-Only Feed Fallback Policy | review_required | OK | `68cedb0b557e` |
-| `docs/financial-senses/ACCEPTANCE.md` | Acceptance profile | review_required | OK | `11e32720c525` |
+| `docs/financial-senses/ACCEPTANCE.md` | Acceptance profile | review_required | OK | `35455570693f` |
 | `docs/financial-senses/ADR/001-reuse-existing-sec-pipeline.md` | ADR-001 — Reuse the existing SEC pipeline | review_required | OK | `f10bb9692756` |
 | `docs/financial-senses/ADR/002-provider-adapters-not-second-mcp-gateway.md` | ADR-002 — Provider adapters, not a second MCP gateway | review_required | OK | `99065f6c47a7` |
 | `docs/financial-senses/ADR/003-vintage-aware-macro.md` | ADR-003 — Vintage-aware macro | review_required | OK | `d7bfed8265ac` |
@@ -786,27 +786,27 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/financial-senses/ADR/006-claim-graph-before-narrative.md` | ADR-006 — Claim graph before narrative | review_required | OK | `67aa732718a9` |
 | `docs/financial-senses/ADR/007-independent-critic-shadow-only.md` | ADR-007 — Independent CIO critic, shadow only | review_required | OK | `d1e062d930cb` |
 | `docs/financial-senses/ADR/008-openbb-optional-plumbing-only.md` | ADR-008 — OpenBB optional plumbing only | review_required | OK | `775ac58e5977` |
-| `docs/financial-senses/ARCHITECTURE.md` | Architecture | review_required | OK | `735d394929d9` |
-| `docs/financial-senses/CLAIM_EVIDENCE_GRAPH.md` | Claim / evidence graph | review_required | OK | `4d51d00f1d8a` |
+| `docs/financial-senses/ARCHITECTURE.md` | Architecture | review_required | OK | `15add8d48919` |
+| `docs/financial-senses/CLAIM_EVIDENCE_GRAPH.md` | Claim / evidence graph | review_required | OK | `da88d0a36f39` |
 | `docs/financial-senses/DEPLOYMENT_NOT_AUTHORIZED.md` | Deployment NOT authorized | review_required | OK | `1714841159ea` |
-| `docs/financial-senses/EXISTING_CAPABILITY_INVENTORY.md` | Existing capability inventory (Phase 0) | review_required | OK | `18b4a91e9b70` |
-| `docs/financial-senses/FACTOR_EXPOSURE_MODEL.md` | Factor / overlap model | review_required | OK | `d7b72b05ca33` |
-| `docs/financial-senses/FRED_ALFRED_PROVIDER.md` | FRED / ALFRED provider | review_required | OK | `13d90b840551` |
-| `docs/financial-senses/IMPLEMENTATION_LOG.md` | Implementation log | review_required | OK | `05b7c87ce8f9` |
-| `docs/financial-senses/INDEPENDENT_CIO_CRITIC.md` | Independent CIO critic (shadow-only) | review_required | OK | `7bd49522bd3e` |
-| `docs/financial-senses/INSTRUMENT_IDENTITY_CONTRACT.md` | Instrument identity contract | review_required | OK | `b1002158ae4e` |
-| `docs/financial-senses/INTEGRATION_WITH_AGENT_INTELLIGENCE_FOUNDATION.md` | Integration with the Agent Intelligence Foundation | review_required | OK | `546d7363fa1b` |
-| `docs/financial-senses/MACRO_VINTAGE_POLICY.md` | Macro vintage policy | review_required | OK | `69d5853d3eeb` |
-| `docs/financial-senses/OPENBB_DUE_DILIGENCE.md` | OpenBB due diligence | review_required | OK | `02f535066d08` |
-| `docs/financial-senses/OPENFIGI_INSTRUMENT_IDENTITY.md` | OpenFIGI instrument identity | review_required | OK | `b0ff5ccf0992` |
-| `docs/financial-senses/PARALLEL_WORKTREE_AND_MERGE_STRATEGY.md` | Parallel worktree and merge strategy | review_required | OK | `694889591303` |
-| `docs/financial-senses/PORTFOLIO_STRESS_ENGINE.md` | Portfolio stress engine | review_required | OK | `6bfa26d74f44` |
-| `docs/financial-senses/README.md` | Financial Senses — read-only financial intelligence providers | review_required | OK | `be1285d61d8b` |
-| `docs/financial-senses/SECURITY_AND_SOURCE_GOVERNANCE.md` | Security and source governance | review_required | OK | `425c0d19101e` |
-| `docs/financial-senses/SEC_EDGAR_PROVIDER.md` | SEC EDGAR provider | review_required | OK | `13087ba4e1e2` |
-| `docs/financial-senses/SEC_EXISTING_PIPELINE_COMPATIBILITY.md` | SEC existing pipeline compatibility | review_required | OK | `0618e8f37a40` |
-| `docs/financial-senses/SEC_FILING_DIFF_INTELLIGENCE.md` | SEC filing diff intelligence | review_required | OK | `cff830eaa4cc` |
-| `docs/financial-senses/TEST_AND_DRY_RUN_PLAN.md` | Test and dry-run plan | review_required | OK | `3faa93f98e4f` |
+| `docs/financial-senses/EXISTING_CAPABILITY_INVENTORY.md` | Existing capability inventory (Phase 0) | review_required | OK | `56ff24b55f4b` |
+| `docs/financial-senses/FACTOR_EXPOSURE_MODEL.md` | Factor / overlap model | review_required | OK | `786c2ef25800` |
+| `docs/financial-senses/FRED_ALFRED_PROVIDER.md` | FRED / ALFRED provider | review_required | OK | `08fbcf1a2ae3` |
+| `docs/financial-senses/IMPLEMENTATION_LOG.md` | Implementation log | review_required | OK | `82dd7bff9ef7` |
+| `docs/financial-senses/INDEPENDENT_CIO_CRITIC.md` | Independent CIO critic (shadow-only) | review_required | OK | `abcf75f3790d` |
+| `docs/financial-senses/INSTRUMENT_IDENTITY_CONTRACT.md` | Instrument identity contract | review_required | OK | `16aa65b76829` |
+| `docs/financial-senses/INTEGRATION_WITH_AGENT_INTELLIGENCE_FOUNDATION.md` | Integration with the Agent Intelligence Foundation | review_required | OK | `168a9c8480d7` |
+| `docs/financial-senses/MACRO_VINTAGE_POLICY.md` | Macro vintage policy | review_required | OK | `a483daca5696` |
+| `docs/financial-senses/OPENBB_DUE_DILIGENCE.md` | OpenBB due diligence | review_required | OK | `ed0a92630d3e` |
+| `docs/financial-senses/OPENFIGI_INSTRUMENT_IDENTITY.md` | OpenFIGI instrument identity | review_required | OK | `24ce58f7596d` |
+| `docs/financial-senses/PARALLEL_WORKTREE_AND_MERGE_STRATEGY.md` | Parallel worktree and merge strategy | review_required | OK | `380ca95d8f21` |
+| `docs/financial-senses/PORTFOLIO_STRESS_ENGINE.md` | Portfolio stress engine | review_required | OK | `aca5fca4f630` |
+| `docs/financial-senses/README.md` | Financial Senses — read-only financial intelligence providers | review_required | OK | `a349bade0fd3` |
+| `docs/financial-senses/SECURITY_AND_SOURCE_GOVERNANCE.md` | Security and source governance | review_required | OK | `a0c697e35562` |
+| `docs/financial-senses/SEC_EDGAR_PROVIDER.md` | SEC EDGAR provider | review_required | OK | `1feb5591e772` |
+| `docs/financial-senses/SEC_EXISTING_PIPELINE_COMPATIBILITY.md` | SEC existing pipeline compatibility | review_required | OK | `84de4761bed2` |
+| `docs/financial-senses/SEC_FILING_DIFF_INTELLIGENCE.md` | SEC filing diff intelligence | review_required | OK | `54342b36e125` |
+| `docs/financial-senses/TEST_AND_DRY_RUN_PLAN.md` | Test and dry-run plan | review_required | OK | `57920902f3d6` |
 | `docs/governance/PHASE111A_AUTHORITY_BOUNDARY_SCORECARD.md` | Phase 111A — Authority Boundary Scorecard | review_required | OK | `c138020b5406` |
 | `docs/governance/PHASE111B_PROGRESSIVE_AUTHORITY_LADDER.md` | Phase 111B — Progressive Hermes Authority Ladder | review_required | OK | `76838566a709` |
 | `docs/governance/PHASE113A_PROPOSAL_AUTHORITY_CONTROL_COMPARISON.md` | Phase 113A — Proposal Authority Control Comparison | review_required | OK | `fe605e2d90c0` |
@@ -1134,7 +1134,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/implementation/ACTIVE_TRADER_CURRENT_GUARDRAILS.md` | Active Trader — Current guardrails (Stage 0) | review_required | OK | `6c94f1907575` |
 | `docs/implementation/ACTIVE_TRADER_NEAR_READY_v1.md` | Active Trader — Stage 1b: Near-Ready Candidate Read Model (v1) | review_required | OK | `19dc8b2f79f9` |
 | `docs/implementation/ACTIVE_TRADER_ROUTE_API_DB_MAP.md` | Active Trader — Route / API / DB map (Stage 0 inventory) | review_required | OK | `b2093b575ff0` |
-| `docs/implementation/ACTIVE_TRADER_STAGE0_BASELINE.md` | Active Trader Stage 0 — Baseline | review_required | OK | `a7dacb3a8d37` |
+| `docs/implementation/ACTIVE_TRADER_STAGE0_BASELINE.md` | Active Trader Stage 0 — Baseline | review_required | OK | `1dbd606d89d5` |
 | `docs/implementation/ACTIVE_TRADER_VENUE_ELIGIBILITY_v1.md` | Active Trader — Venue Eligibility & Schwab Compliance-Block Prompt (Stage 1a) | review_required | OK | `8f4ed9463ca3` |
 | `docs/incidents/DAY_SCALP_PIPELINE_FIXES_2026-08-19.md` | Day-Scalp Pipeline — Fixes & Enhancements (2026-08-19) | review_required | OK | `c6c4a11b63fb` |
 | `docs/incidents/DAY_SCALP_PIPELINE_OUTAGE_2026-08-19.md` | Day-Scalp Pipeline Outage — Root Cause & Remediation Plan (2026-08-19) | review_required | OK | `304b9f0e8db6` |
@@ -1172,7 +1172,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/infra/searxng_phase18_source_discovery_dryrun/dry_run_summary.md` | SearXNG Source Discovery Dry-Run Summary | review_required | OK | `a1c25dfbfbb7` |
 | `docs/integrity-system.md` | File Integrity Verification System | review_required | OK | `13f21d16d3eb` |
 | `docs/intelligence_maturity_20260622.md` | Intelligence Engine & Command Center — Maturity Audit (2026-06-22) | review_required | OK | `2f8a3a13e5a2` |
-| `docs/investment-office/ALEX_CIO_OPERATING_MODEL.md` | Alex (CIO) Operating Model — Autonomous Orchestration Lifecycle | review_required | OK | `c3697405bc2e` |
+| `docs/investment-office/ALEX_CIO_OPERATING_MODEL.md` | Alex (CIO) Operating Model — Autonomous Orchestration Lifecycle | review_required | OK | `6dfe2d2ad393` |
 | `docs/investment-office/BOOK_KNOWLEDGE_INVENTORY.md` | Book & Research Knowledge — Inventory (PR-R1) | review_required | MISSING HEADER | `b8306b434a05` |
 | `docs/investment-office/CANON_IMPLEMENTATION_AUDIT_2026-08-21.md` | Investigation Report: Canonical Investment Frameworks — Claimed vs Actual | review_required | OK | `9499c8131df5` |
 | `docs/investment-office/CIO_AND_ADVISORY_LIVING_STATUS.md` | CIO + Advisory — Living Operator Status | review_required | OK | `30a4510a36cd` |
@@ -1181,13 +1181,13 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/investment-office/CIO_MATURITY_AND_GAP_ANALYSIS_2026-08-20.md` | CIO Maturity & Gap Analysis — 2026-08-20 | review_required | OK | `e00f131afe61` |
 | `docs/investment-office/CIO_OPERATOR_PRODUCT.md` | CIO Operator Product (proactive Alex) | review_required | OK | `86dd8c1ebde7` |
 | `docs/investment-office/CIO_RESEARCH_LIVE_WIRE.md` | CIO Research Live Wire | review_required | OK | `ae701dab7a92` |
-| `docs/investment-office/EVIDENCE_AND_PROVENANCE.md` | Evidence & Provenance — Trade AI Investment Office | review_required | OK | `93ff6bd45842` |
-| `docs/investment-office/EXECUTIVE_ROLE_CHARTER.md` | Executive Role Charter — Trade AI Investment Office | review_required | OK | `5bb7c8a64380` |
+| `docs/investment-office/EVIDENCE_AND_PROVENANCE.md` | Evidence & Provenance — Trade AI Investment Office | review_required | OK | `8acf81bfb7dd` |
+| `docs/investment-office/EXECUTIVE_ROLE_CHARTER.md` | Executive Role Charter — Trade AI Investment Office | review_required | OK | `88ecdb8803c6` |
 | `docs/investment-office/FINAL_MATURITY_GAP_REGISTER_V2.md` | FINAL_MATURITY_GAP_REGISTER@v2 | review_required | OK | `1c5334958bc2` |
 | `docs/investment-office/OPERATOR_STEPS_1_3.md` | Operator steps 1–3 (post Phase 13) — executed 2026-08-14 | review_required | OK | `1f74f46afbf7` |
-| `docs/investment-office/OPERATOR_UX.md` | Operator UX — the private investment office home (`/v3/cio`) | review_required | OK | `86fc8d95614c` |
+| `docs/investment-office/OPERATOR_UX.md` | Operator UX — the private investment office home (`/v3/cio`) | review_required | OK | `60882857ebff` |
 | `docs/investment-office/PHASE10_GIT_RELEASE_CI_DRIVE.md` | PHASE 10 CLOSEOUT — Git / Release Manifest / CI / Drive Truth | review_required | OK | `bfd694399b25` |
-| `docs/investment-office/PHASE10_OUTCOME_LEARNING.md` | Phase 10 — Outcome Learning: close the disposition → learning → calibration loop | review_required | OK | `e31f2f67f368` |
+| `docs/investment-office/PHASE10_OUTCOME_LEARNING.md` | Phase 10 — Outcome Learning: close the disposition → learning → calibration loop | review_required | OK | `daf804c7ba33` |
 | `docs/investment-office/PHASE10_TELEGRAM_DRY_CANARY.md` | PHASE 10 — Telegram DRY Canary (acceptance measurement) | review_required | OK | `d47b00d226e7` |
 | `docs/investment-office/PHASE11_16_RESEARCH_BRAIN.md` | PHASES 11–16 — Research-brain foundation (dry-testable) | review_required | OK | `79434ca71b67` |
 | `docs/investment-office/PHASE11_ADVERSARIAL_SUITE.md` | PHASE 11 CLOSEOUT — Adversarial QA + Safety Scan (+ ops truth) | review_required | OK | `69eddbf40463` |
@@ -1204,23 +1204,23 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/investment-office/PHASE3_DECISION_SEMANTICS.md` | PHASE 3 CLOSEOUT — Decision Semantics Hygiene | review_required | OK | `2a59daea298b` |
 | `docs/investment-office/PHASE3_FRESHNESS_MATERIALITY_GATE.md` | PHASE 3 CLOSEOUT — Freshness & Materiality Gate | review_required | OK | `d5ddccab6067` |
 | `docs/investment-office/PHASE4_5_ATTENTION_AND_SIZING.md` | PHASE 4–5 CLOSEOUT — Attention KPIs + Institutional Sizing | review_required | OK | `7a1721ace7aa` |
-| `docs/investment-office/PHASE4_ADVISORY_COMMITTEE.md` | Phase 4 — Advisory Desk Analyst Committee & `InvestmentDecision@v1` | review_required | OK | `74decfdf17d1` |
+| `docs/investment-office/PHASE4_ADVISORY_COMMITTEE.md` | Phase 4 — Advisory Desk Analyst Committee & `InvestmentDecision@v1` | review_required | OK | `c4df7a934bdc` |
 | `docs/investment-office/PHASE4_FRESHNESS_LOOPHOLE.md` | PHASE 4 — Freshness loophole closed | review_required | OK | `8373bcb309b6` |
 | `docs/investment-office/PHASE4_REPORT_ARCHITECTURE.md` | PHASE 4 CLOSEOUT — One Reporting Architecture | review_required | OK | `50551ade8a8a` |
 | `docs/investment-office/PHASE5_CIO_UX.md` | PHASE 5 — CIO UX (attention KPIs) | review_required | OK | `9f5efc90468d` |
 | `docs/investment-office/PHASE5_INSTITUTIONAL_VISUALS.md` | PHASE 5 CLOSEOUT — Institutional Visual Quality + Chart Suite | review_required | OK | `8337d0089a37` |
-| `docs/investment-office/PHASE5_TWO_WAY_LOOP.md` | Phase 5 — Mature the two-way Watch / Defense / Rotation / Re-Entry loop | review_required | OK | `9987d59daa2f` |
+| `docs/investment-office/PHASE5_TWO_WAY_LOOP.md` | Phase 5 — Mature the two-way Watch / Defense / Rotation / Re-Entry loop | review_required | OK | `d55fedea873f` |
 | `docs/investment-office/PHASE6_21_REST_CLOSEOUT.md` | PHASES 6–21 CLOSEOUT — Rest of CIO Acceptance (v3.0) | review_required | OK | `e2468e083d95` |
 | `docs/investment-office/PHASE6_ANALYTIC_COMPLETENESS.md` | PHASE 6 CLOSEOUT — Analytic Completeness + Methodology Truth | review_required | OK | `c62e46be3158` |
-| `docs/investment-office/PHASE6_CAPITAL_PLAN.md` | Phase 6 — Capital plan and portfolio decision engine | review_required | OK | `4dfb9b6ac429` |
+| `docs/investment-office/PHASE6_CAPITAL_PLAN.md` | Phase 6 — Capital plan and portfolio decision engine | review_required | OK | `7c5de44f4951` |
 | `docs/investment-office/PHASE6_SIZING_V2.md` | PHASE 6 — Institutional Sizing v2 (Candidate Set) | review_required | OK | `c4eba359f833` |
 | `docs/investment-office/PHASE7_ADVISORY_PROVENANCE_UI.md` | PHASE 7 — Wire `/v3/advisory` provenance UI | review_required | OK | `f618476d897e` |
-| `docs/investment-office/PHASE7_INSTITUTIONAL_REPORT.md` | Phase 7 — Institutional Report v2 | review_required | OK | `e4edfcde5f7b` |
+| `docs/investment-office/PHASE7_INSTITUTIONAL_REPORT.md` | Phase 7 — Institutional Report v2 | review_required | OK | `03a27c47deb0` |
 | `docs/investment-office/PHASE7_OUTPUT_PIPELINE.md` | PHASE 7 CLOSEOUT — Output Pipeline (HTML / PDF / DOCX + Immutable Manifest) | review_required | OK | `217dba16902c` |
 | `docs/investment-office/PHASE8_9_LIVE_REPORT.md` | PHASES 8–9 — Live report path + plan/report decision parity | review_required | OK | `41910045f049` |
-| `docs/investment-office/PHASE8_COMMAND_CENTER.md` | Phase 8 — Command Center UX Convergence: Alex is the front door | review_required | OK | `b68e017fa4bd` |
+| `docs/investment-office/PHASE8_COMMAND_CENTER.md` | Phase 8 — Command Center UX Convergence: Alex is the front door | review_required | OK | `e7e473e381fc` |
 | `docs/investment-office/PHASE8_OFFICE_REPORT_CONSISTENCY.md` | PHASE 8 CLOSEOUT — Alex / Command Center / Report Consistency | review_required | OK | `fd6705897497` |
-| `docs/investment-office/PHASE9_FULL_SYSTEM_DRYRUN.md` | Phase 9 — Full-System Integration Dry-Run | review_required | OK | `19d918d1dbcf` |
+| `docs/investment-office/PHASE9_FULL_SYSTEM_DRYRUN.md` | Phase 9 — Full-System Integration Dry-Run | review_required | OK | `4e0ebd405403` |
 | `docs/investment-office/PHASE9_TELEGRAM_ALEX_PRODUCT.md` | PHASE 9 CLOSEOUT — Telegram Alex Product Behavior + Dedupe | review_required | OK | `4bb5c158d844` |
 | `docs/investment-office/R1_FORMULA_AND_REFERENCE_AUDIT.md` | R1 Formula & Reference Audit | review_required | MISSING HEADER | `28f1eabfe2fc` |
 | `docs/investment-office/R2_DETERMINISTIC_MECHANICS.md` | R2 Deterministic Mechanics | review_required | MISSING HEADER | `2a740a68865c` |
@@ -1792,7 +1792,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/runbooks/AIF_FINANCIAL_SENSES_SHADOW.md` | Runbook — AIF ↔ Financial Senses shadow | review_required | OK | `8509647d1d08` |
 | `docs/runbooks/BARE_METAL_RECOVERY.md` | Bare-Metal Recovery Runbook (2026-07-17 backup-scope audit) | review_required | OK | `80d205a4c45f` |
 | `docs/runbooks/DB_HANG_PREVENTION.md` | DB-induced dashboard hang — prevention & recovery | review_required | OK | `078bf2e6e7d1` |
-| `docs/runbooks/FINNHUB_KEY_ROTATION.md` | Finnhub API Key Rotation Runbook | review_required | OK | `51339b4e11b9` |
+| `docs/runbooks/FINNHUB_KEY_ROTATION.md` | Finnhub API Key Rotation Runbook | review_required | OK | `b3f47d44596c` |
 | `docs/runbooks/KEY_ROTATION.md` | Key Rotation Runbook (2026-07-18) | review_required | OK | `986b4883e260` |
 | `docs/runbooks/OPTIONS_FIRST_POSITION_ACCEPTANCE.md` | First Real Option Position — Acceptance Runbook (v1.1 Phase 10) | review_required | OK | `bb13ee87064a` |
 | `docs/runbooks/PLAYWRIGHT_ARTIFACTS_POLICY.md` | Playwright / visual-review artifact policy | review_required | OK | `fed6d1aae523` |
