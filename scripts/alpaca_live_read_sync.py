@@ -142,6 +142,10 @@ def _account_to_cash_row(account_key: str, acct: dict | None) -> list:
         "day_change_pct": 0,
         "source": "alpaca_live_read",
         "as_of": now.date().isoformat(),
+        # Stamp the broker confirmation time here for the same reason as the Schwab
+        # rows: portfolio_repricer._preserve_broker_snapshot is write-once and can
+        # only backfill this field when absent, never refresh it.
+        "broker_position_as_of": now.date().isoformat(),
         "updated_at": now.isoformat(),
     }]
 

@@ -471,7 +471,16 @@ def _build_account_rows(account_key, live, existing_by_key):
         is_new = prior is None
         row.update({"account": account_key, "account_id": account_key, "symbol": sym,
                     "price": price, "market_value": round(mv, 2),
-                    "as_of": as_of, "updated_at": now, "is_cash": (sym == "CASH")})
+                    "as_of": as_of, "updated_at": now, "is_cash": (sym == "CASH"),
+                    # The broker confirmed this position NOW. portfolio_repricer's
+                    # _preserve_broker_snapshot is deliberately write-once ("never
+                    # overwrite with a later mark"), so it can only ever backfill this
+                    # field when absent — it cannot refresh it. Nothing else set it, so
+                    # it froze at the first backfill (observed 2026-08-14) while the
+                    # rows beneath it kept updating daily, and every freshness consumer
+                    # read a 18-day-old stamp on same-day data. The broker sync is the
+                    # only writer that knows the real confirmation time; it stamps it.
+                    "broker_position_as_of": as_of})
         # Share drift policy (approval-based for DRIP-like increases)
         try:
             from share_reconciliation import stamp_broker_qty
@@ -541,6 +550,7 @@ def _cash_rows_for_account(label: str, hold: list, account_key: str, st) -> list
         "source": "schwab_api",
         "updated_at": now,
         "as_of": as_of,
+        "broker_position_as_of": as_of,   # see the equity-row note above
         "day_change": 0,
         "day_change_pct": 0,
     })
