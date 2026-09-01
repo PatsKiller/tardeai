@@ -948,6 +948,7 @@ UNLISTED_BASELINE: frozenset = frozenset([
     "tests/test_alarm_fires_stop_path.py",
     "tests/test_alarm_fires_batch3.py",
     "tests/test_alarm_fires_batch4.py",
+    "tests/test_alarm_fires_batch5.py",
     "tests/test_p1_digest_sender.py",
     "tests/test_alarm_coverage.py",
     "tests/test_store_cadence.py",

@@ -38,6 +38,7 @@ GATES = [
         "tests/test_alarm_fires_stop_path.py",
         "tests/test_alarm_fires_batch3.py",
         "tests/test_alarm_fires_batch4.py",
+        "tests/test_alarm_fires_batch5.py",
         "tests/test_alarm_coverage.py",
     ]),
     # C5: declared cadence vs observed output for stores feeding operator surfaces.

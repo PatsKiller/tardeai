@@ -7,10 +7,13 @@
 # COVERS entries may be a whole file, or `file:line` for partial coverage. A file
 # is only declared whole when the sites funnel through one tested path.
 #
-# The gate fails when a file exceeds its entry, or when an unlisted file gains a
-# call site. It can only shrink.
+# BATCHING STOPPED AT 2026-09-01 by operator decision. The remaining sites are
+# routine notifications inside orchestrators these tests cannot drive; every one
+# routes through the chokepoint, so its worst case is a four-hour digest delay
+# rather than silence. The gate below still refuses NEW untested sites, so the
+# tail shrinks as those files are touched for other reasons.
 #
-# transport=send_telegram  total_sites=142  covered=15  uncovered=127
+# transport=send_telegram  total_sites=142  covered=16  uncovered=126
 
 scripts/advisory_telegram_brief.py 1
 scripts/aegis_overnight.py 3
@@ -102,7 +105,7 @@ scripts/stop_drift_alert.py 1
 scripts/stop_health_check.py 1
 scripts/stop_over_consensus_monitor.py 1
 scripts/strategy_weekly_review.py 2
-scripts/system_health_agent.py 3
+scripts/system_health_agent.py 2
 scripts/system_health_alerts.py 1
 scripts/system_rollup_snapshot.py 1
 scripts/telegram_cio_summary.py 1
