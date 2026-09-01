@@ -1277,3 +1277,39 @@ point-in-time snapshot of a file that was still being written.
 The night's one-sentence version, unchanged by any of the above: **the cortex is still not wired —
 the loader landed, the writer never existed, and the store nothing writes is already speaking to
 the operator in stale numbers.**
+
+---
+
+### Post-close addendum — 2026-09-01 00:08 ET · a duplicate the coordinator made, and did not delete
+
+Re-syncing this log after stitch 9 produced a defect worth recording, because the resolution is the
+repository's own doctrine applied to the coordinator.
+
+`gog drive upload` does not replace by name; it creates. The attempt to remove the stale copy first
+was **refused**, and correctly so:
+
+```
+$ gog drive delete 1iEXO_Hpx7FYjuyUs-C0lCFOec2-1tFhI
+refusing to trash drive file … without --force (non-interactive)
+```
+
+**`--force` was not passed.** §0 rule 6 is *never delete* — it does not carve out "files you
+created yourself two minutes ago," and a tool refusing a destructive action non-interactively is a
+guard doing its job, not an obstacle to route around (§0 rule 3).
+
+So the coordinator had made a duplicate and could not remove it. The resolution is §14: **superseded
+documents say so, in the name, not silently.** The stale copy was **renamed**, not trashed:
+
+```
+1iEXO_Hpx7FYjuyUs-C0lCFOec2-1tFhI   SUPERSEDED-0406Z_CIO_OVERNIGHT_STITCH_2026-09-01.md   65.8 KB
+19bfau3delG8fZGX6YNSOnWNmvcdk1GWX   CIO_OVERNIGHT_STITCH_2026-09-01.md                    71.4 KB
+```
+
+The folder now holds **11 current files plus 1 explicitly-marked superseded copy**, and a reader
+opening it cannot mistake which is authoritative. Nothing was destroyed. The repository remains the
+source of truth; every Drive copy is a point-in-time snapshot.
+
+**Correction 12**, and the last one: E's *"11 files, zero duplicates"* was true when E measured it
+and was made false by the coordinator's own re-sync eleven minutes later. E's figure was not wrong;
+it was overtaken. The distinction matters, and mis-attributing this to E would be the exact error
+this wave spent the night documenting.
