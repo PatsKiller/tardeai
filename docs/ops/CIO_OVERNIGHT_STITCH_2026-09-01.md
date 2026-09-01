@@ -547,3 +547,156 @@ interfered with.** The 43 would-expire plans B itemised are what it is likely to
 
 - **A: DONE. B: DONE.** C and D still running. E still held.
 - Morning amendment queue now holds **two** §13.4 corrections plus the 928–930 cron fix.
+---
+
+## Stitch 4 — 2026-08-31 23:38 ET · Worker D lands · three cash totals in one payload
+
+**Worker D: DONE.** Marked against reproduced proof. File:
+`docs/audits/CIO_SURFACE_ASOF_2026-09-01.md` (1,237 lines). GETs only, no POST, no store write, no
+code edit, no git write. Measured at pin `d276657b7`, server PID 2076495 on port 7777, cwd pinned to
+the concrete release directory so symlink rotation could not re-point the measurements. Re-verified
+unrotated at close.
+
+### The `as_of` headline
+
+| surface | leaf paths | value-bearing | **no evidence clock of their own** |
+|---|---|---|---|
+| `/api/v3/cio/home` | 2,254 | 2,098 | **1,140 — 54.3%** |
+| `/api/v2/overview` | 188 | 183 | **182; compliance 0 of 183** |
+
+D split the 1,140 rather than reporting a single number: 589 inherit only the root envelope, 543
+sit under a block stamped with *composition* time — within 0.6s of the envelope, which D calls a
+**false pass** rather than a pass — and 8 hang off root. That distinction is the brief's
+`INHERITED` requirement doing real work: a block-level timestamp covering a field computed at a
+different moment is a defect, not compliance.
+
+### Class A is 22, not zero — and mislabelled, which is worse
+
+`[VERIFIED]` by the coordinator against the live payload:
+
+```
+$ curl -s http://127.0.0.1:7777/api/v3/cio/home | ... count of '"class": "A"'
+22
+```
+
+The AS-IS doc's headline — *"Agent-originated fields reaching any operator surface: zero"* — is
+false as stated. But D did not stop at the refutation, and the second half is the finding:
+`class: "A"` is a **hardcoded literal** at `cio_investment_product.py:917,963`, and the content it
+labels is a pure f-string at `hermes_case_summary.py:68-98` copied out of a stored record. That is
+T-over-S wearing an A label.
+
+**Both readings are defects, and a mislabelled A is worse than an absent one** — a zero is honest
+about the system's maturity, whereas a false A tells the operator the agent formed a view when it
+recited a template. Counted *by producer* rather than by label, the AS-IS doc's other sentence —
+"every sentence the operator reads is a rule, a threshold, a template, or a constant" — is
+substantively correct. Both things are true at once and the document says so.
+
+Near-miss, as briefed: `operator_product.executive_summary`, the clause
+`[D] Nothing requires action today.` — the §9.1 named trap. The codebase self-diagnoses it at
+`cio_p90_voice.py:24-35` and ships it anyway.
+
+### The three-way-branch field, found and quantified
+
+`capital_plan.cash_earmarked_redeploy_usd`, branch at `cio_capital_plan.py:388-396`. Raw earmark
+**$1,026,129.22** across 38 open events exceeds cash, so the renderer emits `min(raw, cash)`.
+
+**It reads as a total; it is a ceiling.** $395,338.80 of earmark is invisible on the surface, and
+`cash_free_unearmarked_usd = 0.00` is *forced by the clamp*, not measured. `maturities_capped_to_cash`
+and `maturities_raw_usd` are computed and then dropped by the renderer.
+
+Coordinator corroboration D did not claim: in the live payload
+`cash_earmarked_redeploy_usd == cash_total_usd == 630790.42` **exactly**. That equality is the
+fingerprint of the clamp — visible in the payload without reading the branch at all.
+
+### THE FINDING OF THE NIGHT — three live values for total cash, in one response body
+
+`[VERIFIED]` coordinator re-measurement, single GET of `/api/v3/cio/home`:
+
+```
+630791.10   temperament.cash · operator_product.temperament.cash
+630790.42   capital_plan.cash_total_usd · capital_plan.cash_earmarked_redeploy_usd
+            capital_plan.sources[2].usd · cash.cash_usd · operator_product.cash.cash_usd
+630784.82   cash_letter.cash_usd · 6× decisions[*]/opportunities[*]
+            .cc_narrative.evidence_refs[*].total_cash
+'Cash sleeve 630784.82.'   ← cash_letter.what, the sentence the operator reads
+```
+
+and `/api/v2/overview` → `data.total_cash = 630791.10`.
+
+**This is worse than D reported it.** D framed part of it as a cross-surface disagreement. It is
+not: `/api/v3/cio/home` **alone** states total cash three different ways in one body. A reader can
+find the contradiction without leaving a single page.
+
+Compounding defects D found around it:
+
+- `cash_letter` pairs the **stale** total with a **live** `cash_investable_usd`, so the block does
+  not reconcile with itself: `630,784.82 − 256,595.22 = 374,189.60`, but it displays `374,195.20`.
+  Both are stamped under an `as_of` belonging to neither. Root cause: precedence at
+  `cio_record_narrative.py:103-105`.
+- The `630784.82` figure comes from the **stale `SLEEVE:CASH` InstrumentRecord** — the same store
+  stitch 3 showed has not been written since 2026-08-30. **The dead writer is now visibly leaking
+  into the operator's sentence.** That connection is the wave's, not any single worker's, and it is
+  the strongest argument that the missing writer is not a theoretical gap.
+- `/api/v2/overview`'s `total_cash` inherits `2026-08-29` when the oldest contributing balance is
+  `2026-08-03` — **26 days too fresh**. The offending row is literally the $500 moomoo balance that
+  `AGENTS.md` §9.1's "27-day-old $500" rule appears to have been written about.
+- The surface ships `consistency.decision_field_parity.ok = false` **inline**, on the page, and
+  nothing acts on it.
+- A code comment at `api_v2.py:2593-2601` asserts these totals agreed "to the cent, gap 0.00" on
+  2026-08-29. Measured tonight the gap is **$0.68**. A policy comment that outlived its policy —
+  §3, by name.
+
+Per the brief D did **not** declare M4 observed, and listed the five things that would remain to be
+shown. Correct: this is an M4 *failure* case, and naming it is not the same as proving the proof.
+
+### The half-refutation, kept because it is a correction in our favour
+
+The AS-IS doc says "most payload blocks — including every cash number — carry no `as_of` of their
+own." D found that **half wrong**: `/api/v3/cio/home` *does* give cash a correct oldest-balance
+stamp via `cash_evidence_as_of` (`cio_capital_plan.py:841-890`), which D assessed as a faithful
+§9.1 implementation. The AS-IS claim holds only for `/api/v2/overview`. Recording the half that is
+already right matters: it is the difference between "nobody implemented this" and "somebody
+implemented it correctly in one place and it was never carried to the other."
+
+### Coordinator correction TO Worker D — the brief was right
+
+D reported: *"Provenance classes are §13.5 (`AGENTS.md:785-793`), not §13.4."* The line numbers are
+right; the attribution is not.
+
+```
+$ grep -n "^## 13\.\|^### Provenance" AGENTS.md
+689:## 13.4 · The type vocabulary — what already exists
+785:### Provenance classes — every operator-facing field carries one
+834:## 13.5 · Pre-build check
+```
+
+785 falls between 689 and 834, so **"### Provenance classes" is a subsection of §13.4** and the
+original brief's citation was correct. §13.5 is "Pre-build check" and contains no provenance
+classes. Sent back to D to revert the citation and record the round trip in its Corrections
+section rather than silently reverting.
+
+**The mechanism of the error is worth keeping:** D resolved the nearest enclosing `###` rather than
+the nearest `##`. That is a reproducible way to mis-cite this file, and it is now written down.
+This is also the multi-agent protocol working in the direction it is usually not tested in — §11
+says the finding wins over the brief, but only when the finding survives re-measurement, and this
+one did not.
+
+### D's two self-flagged caveats, endorsed
+
+1. The ~106 `D` declarations it did not trace to producers should be treated as **unverified** —
+   because the one class it *did* audit end to end turned out to be mislabelled. That is the right
+   inference to draw from its own finding, and it is the opposite of the convenient one.
+2. `/api/v3/cio/brain/capital-plan` returns a **fourth** cash presentation, with
+   `investable_cash_usd` and `reserved_cash_usd` as `null` where `/home` states them as known.
+   Flagged, not pursued, named as the first place to look next. Left for morning deliberately.
+
+Eight proposals sit in "Proposed morning diffs"; **three are flagged OPERATOR-ONLY per §17** — the
+earmark label change, the choice of a canonical cash producer, and the `as_of` rename. Proposed and
+stopped.
+
+### Open at stitch 4
+
+- **A: DONE. B: DONE. D: DONE** (one citation fix outstanding). **C: still running. E: still held.**
+- Three of the AS-IS document's headline claims have now been refuted or halved in one night, and
+  two §13.4 dark contracts falsified. The morning amendment queue holds: two §13.4 corrections, the
+  AS-IS class-A claim, the AS-IS cash-`as_of` claim, and the 928–930 cron fix.
