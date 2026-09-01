@@ -1,5 +1,9 @@
 # Trade AI Platform — Enterprise Due Diligence, Validation, Remediation & Execution Master Plan
 
+Status:      HISTORICAL
+as_of:       2026-08-30T00:33:54-04:00
+Measured at: efcc51365 / not measured
+
 **Document type:** Phase 1–9 master plan (planning only; no remediation code in this turn)  
 **Authority rails (immutable for all phases):** `READ_ONLY_ADVISORY` · `MBI_BEHAVIOR = 0` · no broker/order/stop/2FA/risk mutations without explicit operator-approved 2FA path · INTERDICT left as found unless a phase explicitly re-scopes notify  
 **As-of:** 2026-08-30  

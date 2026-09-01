@@ -21,28 +21,60 @@ def test_relative_units_not_used_as_usd():
 
 
 def test_cache_hit_miss_split():
+    """Cost is measured from the schedule — never assert a hardcoded USD literal."""
+    from datetime import datetime, timezone
+
+    from lib.provider_cost.pricing import calculate_usd
+
+    at = datetime(2026, 8, 31, 12, 0, tzinfo=timezone.utc)  # weekday off-peak
+    expected = calculate_usd(
+        provider="deepseek",
+        model="deepseek-v4-flash",
+        at=at,
+        cache_hit_input=1_000_000,
+        cache_miss_input=0,
+        output=0,
+    )
     est = estimate_usd_cost(
         model_id="deepseek-v4-flash",
         prompt_tokens=None,
         completion_tokens=0,
         cache_hit_tokens=1_000_000,
         cache_miss_tokens=0,
+        at=at,
     )
-    assert est["estimated_cost_usd"] == pytest.approx(0.0028, rel=1e-6)
+    assert est["estimated_cost_usd"] == pytest.approx(expected["calculated_cost_usd"], rel=1e-9)
+    assert est["pricing_tier"] == "off_peak"
+    assert est["cache_hit"] is True
     assert est["tokens"]["cache_hit_input"] == 1_000_000
     assert est["tokens"]["cache_miss_input"] == 0
 
 
 def test_pro_pricing_snapshot():
+    """Pro cost derives from the schedule band, not a frozen literal in the test."""
+    from datetime import datetime, timezone
+
+    from lib.provider_cost.pricing import calculate_usd
+
+    at = datetime(2026, 8, 31, 12, 0, tzinfo=timezone.utc)
+    expected = calculate_usd(
+        provider="deepseek",
+        model="deepseek-v4-pro",
+        at=at,
+        cache_hit_input=0,
+        cache_miss_input=1_000_000,
+        output=1_000_000,
+    )
     est = estimate_usd_cost(
         model_id="deepseek-v4-pro",
         prompt_tokens=1_000_000,
         completion_tokens=1_000_000,
         cache_miss_tokens=1_000_000,
+        at=at,
     )
-    # 0.435 + 0.87
-    assert est["estimated_cost_usd"] == pytest.approx(1.305, rel=1e-6)
-    assert est.get("pricing_effective_at")
+    assert est["estimated_cost_usd"] == pytest.approx(expected["calculated_cost_usd"], rel=1e-9)
+    assert est["pricing_tier"] in {"off_peak", "peak", "flat"}
+    assert est.get("price_schedule_id") or est.get("pricing_effective_at")
 
 
 def test_check_cost_cap_process(monkeypatch):

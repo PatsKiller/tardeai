@@ -13468,27 +13468,59 @@ def trade_ai_summary():
         "latest_run_go_count", "latest_run_wait_count", "latest_run_no_go_count",
         "go_count", "wait_count", "avoid_count",
         "universe_go", "universe_wait", "universe_nogo",
-        "stale", "cache_age_sec", "cached_at",
+        # Empty-universe detectors in surfaceFreshness need scanned counts;
+        # without them summary looked like scanned=0 while GO/WAIT were live.
+        "ticker_count", "current_run_scanned", "latest_run_symbols_scanned",
+        "stale", "cache_age_sec", "cached_at", "cache_missing",
     )
     return {k: d.get(k) for k in keys}
+
+
+def _refresh_trade_ai_cache_age(data: dict, now: float) -> dict:
+    """Recompute cache_age_sec / stale from _cached_ts (request-path, not durable).
+
+    `stale` here means warm-cache TTL exceeded (~600s) — a refresh signal for
+    warm_caches consumers. Operator chrome must NOT treat it as SETUPS STALE
+    by itself (see tradeAiSurfaceFreshness). Always recompute on serve so
+    in-memory hits and JSON body-cache etags cannot freeze a pre-TTL snapshot.
+    """
+    if not isinstance(data, dict):
+        return data
+    try:
+        age = float(now) - float(data.get("_cached_ts") or 0)
+    except (TypeError, ValueError):
+        age = 1e9
+    if age < 0:
+        age = 0.0
+    data["cached_at"] = data.get("_cached_at") or data.get("cached_at")
+    data["cache_age_sec"] = round(age)
+    data["stale"] = bool(data.get("cache_missing")) or age > 600
+    return data
 
 
 def _trade_ai_with_etag(data, disk=None):
     """Shallow-copy + attach content ETag so json_response can 304 / body-cache.
 
     Must not mutate the in-memory cache dict — json_response pops __etag__.
+
+    ETag includes a minute age-band: /api/v2 JSON body cache keys by etag alone
+    (_stamp_serving age_bucket is /api/v3-only), so a fixed mtime+size etag used
+    to freeze stale=false / cache_age_sec from the first post-warm serialize while
+    /trade-ai/summary (no etag) showed live age — header SETUPS STALE vs Trading
+    page not STALE SESSION with the same cached_at (2026-09-01).
     """
     if not isinstance(data, dict):
         return data
     out = dict(data)
     try:
+        age_band = int(out.get("cache_age_sec") or 0) // 60
         if disk is not None and getattr(disk, "exists", lambda: False)() and disk.exists():
             st = disk.stat()
-            out["__etag__"] = f'W/"tai-{int(st.st_mtime)}-{st.st_size}"'
+            out["__etag__"] = f'W/"tai-{int(st.st_mtime)}-{st.st_size}-m{age_band}"'
         else:
             n = len(out.get("tickers") or [])
             ts = int(_TRADE_AI_CACHE.get("ts") or 0)
-            out["__etag__"] = f'W/"tai-mem-{ts}-{n}"'
+            out["__etag__"] = f'W/"tai-mem-{ts}-{n}-m{age_band}"'
     except Exception:
         out["__etag__"] = 'W/"tai-fallback"'
     return out
@@ -13504,8 +13536,9 @@ def trade_ai(force=False):
     NEVER fall through to _compute_trade_ai on the live request path if any cache exists — a
     torn mid-write read used to parse-fail and trigger full recompute under load.
 
-    Always attaches __etag__ (disk mtime+size) so concurrent CC polls 304 / reuse a serialized
-    body instead of re-json.dumps a ~1.7MB payload under load (scanner timeout 2026-07-17).
+    Always attaches __etag__ (disk mtime+size + age-band) so concurrent CC polls 304 / reuse a
+    serialized body instead of re-json.dumps a ~1.7MB payload under load (scanner timeout
+    2026-07-17), without freezing TTL flags across minutes.
     """
     import time as _t, json as _j, datetime as _dt
     # Defense-in-depth: only a literal True forces the heavy compute. The route dispatcher
@@ -13515,9 +13548,12 @@ def trade_ai(force=False):
     _disk = PROJECT_ROOT / "data" / "runtime" / "trade_ai_cache.json"
     _now = _t.time()
     if not force:
-        # 1) in-memory fresh (<2m)
+        # 1) in-memory fresh (<2m) — still refresh TTL fields so age/stale move
         if _TRADE_AI_CACHE["data"] and (_now - _TRADE_AI_CACHE["ts"] < 120):
-            return _trade_ai_with_etag(_TRADE_AI_CACHE["data"], _disk)
+            _d = dict(_TRADE_AI_CACHE["data"])
+            _refresh_trade_ai_cache_age(_d, _now)
+            _TRADE_AI_CACHE["data"] = _d
+            return _trade_ai_with_etag(_d, _disk)
         # 2) disk cache — serve fresh OR stale without a heavy recompute in the request path
         for _attempt in (1, 2):
             try:
@@ -13527,16 +13563,14 @@ def trade_ai(force=False):
                         raise ValueError("empty trade_ai cache")
                     _d = _j.loads(_raw)
                     _d = _normalize_trade_ai_session_date(_d)
-                    _age = _now - float(_d.get("_cached_ts") or 0)
-                    _d["cached_at"] = _d.get("_cached_at")
-                    _d["cache_age_sec"] = round(_age)
-                    _d["stale"] = _age > 600
+                    _refresh_trade_ai_cache_age(_d, _now)
                     # Persist session date bump so warm_caches consumers stay current
                     if _d.get("session_date_normalized"):
                         try:
                             _write_trade_ai_cache(_disk, _d)
                         except Exception:
                             pass
+                    _age = float(_d.get("cache_age_sec") or 0)
                     _TRADE_AI_CACHE.update(ts=_now - min(_age, 119), data=_d)
                     return _trade_ai_with_etag(_d, _disk)
             except Exception:
@@ -13573,11 +13607,10 @@ def trade_ai(force=False):
                 if isinstance(_old, dict) and _old.get("tickers"):
                     print("  [trade_ai] compute returned 0 tickers — refusing to overwrite "
                           "non-empty cache (fail-closed; check DB connectivity)")
-                    _age = _now - float(_old.get("_cached_ts") or 0)
-                    _old["cached_at"] = _old.get("_cached_at")
-                    _old["cache_age_sec"] = round(_age)
+                    _refresh_trade_ai_cache_age(_old, _now)
                     _old["stale"] = True
                     _old["cache_error"] = "empty_compute_kept_last_good"
+                    _age = float(_old.get("cache_age_sec") or 0)
                     _TRADE_AI_CACHE.update(ts=_now - min(_age, 119), data=_old)
                     return _trade_ai_with_etag(_old, _disk)
         except Exception:
@@ -13588,6 +13621,7 @@ def trade_ai(force=False):
         _write_trade_ai_cache(_disk, data)
     except Exception:
         pass
+    _refresh_trade_ai_cache_age(data, _now)
     _TRADE_AI_CACHE.update(ts=_now, data=data)
     return _trade_ai_with_etag(data, _disk)
 
@@ -32925,6 +32959,76 @@ def _schwab_token_health(query=None):
             "message": msg}
 
 
+def _finviz_credential_health(query=None):
+    """GET /api/v2/data-sources/finviz/credential-health — live FINVIZ_COOKIE probe + last_error.
+
+    Mirrors Schwab token-health for the site-wide FinvizCookieBanner. Uses
+    secret_validators._finviz_cookie (Elite CSV export) and data_source_health.last_error.
+    Never returns cookie material.
+    """
+    from datetime import datetime, timezone
+    as_of = datetime.now(timezone.utc).isoformat()
+    last_error = None
+    try:
+        row = _db_query(
+            "SELECT last_error, status, last_success_at FROM data_source_health "
+            "WHERE source_key = %s LIMIT 1",
+            ("finviz",),
+            fetch="one",
+        ) or {}
+        last_error = row.get("last_error")
+    except Exception:
+        row = {}
+        last_error = None
+    try:
+        import sys as _sys
+        _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        import secret_validators as _sv
+        from credential_monitor import is_finviz_cookie_failure_text
+        cookie = _sv._key("FINVIZ_COOKIE")
+        if not cookie:
+            return {
+                "ok": False,
+                "status": "missing",
+                "detail": "FINVIZ_COOKIE not set",
+                "last_error": last_error,
+                "as_of": as_of,
+                "show_banner": True,
+                "message": "Finviz Elite cookie expired — screener and social scalp empty",
+                "admin_secrets_path": "/v3/system?tab=Admin",
+            }
+        ok, detail = _sv._finviz_cookie(cookie)
+        err_signal = is_finviz_cookie_failure_text(last_error or "") or is_finviz_cookie_failure_text(detail or "")
+        healthy = bool(ok) and not is_finviz_cookie_failure_text(last_error or "")
+        if healthy:
+            status = "ok"
+            message = detail
+        else:
+            status = "expired" if (not ok or err_signal) else "error"
+            message = "Finviz Elite cookie expired — screener and social scalp empty"
+        return {
+            "ok": healthy,
+            "status": status,
+            "detail": detail,
+            "last_error": last_error,
+            "as_of": as_of,
+            "show_banner": not healthy,
+            "message": message,
+            "admin_secrets_path": "/v3/system?tab=Admin",
+        }
+    except Exception as e:
+        return {
+            "ok": False,
+            "status": "check_failed",
+            "detail": str(e)[:160],
+            "last_error": last_error,
+            "as_of": as_of,
+            "show_banner": True,
+            "message": "Finviz Elite cookie expired — screener and social scalp empty",
+            "admin_secrets_path": "/v3/system?tab=Admin",
+        }
+
+
 def _schwab_reauth_url(query=None):
     """GET /api/v2/brokers/schwab/reauth-url — build Schwab OAuth authorize URL for manual login.
     Operator opens the URL on their phone, completes 2FA, then pastes the 127.0.0.1?code=... redirect
@@ -36137,6 +36241,7 @@ ROUTES = {
     "/api/v2/time-exit-proposals": _time_exit_proposals_list,
     "/api/v2/system/schwab-status": _schwab_status,
     "/api/v2/brokers/schwab/token-health": _schwab_token_health,
+    "/api/v2/data-sources/finviz/credential-health": _finviz_credential_health,
     "/api/v2/brokers/schwab/reauth-url": _schwab_reauth_url,
     "/api/v2/holdings/synthetic-stops": _synthetic_stops_list,
     "/api/v2/holdings/live-stops": lambda: _holdings_live_stops(_current_query),

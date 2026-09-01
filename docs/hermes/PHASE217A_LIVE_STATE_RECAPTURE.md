@@ -1,4 +1,9 @@
 # PHASE 217A — Live State Recapture (2026-06-07)
+
+Status:      HISTORICAL
+as_of:       2026-06-07T18:49:05-04:00
+Measured at: efcc51365 / not measured
+
 - Hermes v0.16.0; profiles default/tradeai/tradeai12b/dev/serverops; tradeai+tradeai12b tools=0.
 - Timers: hermes-deep-research-local (enabled, next 02:30), hermes-external-feedback (enabled, next 04:00),
   hermes-update-check (enabled, Mon 03:00). gateway: failed/disabled.

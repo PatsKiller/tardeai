@@ -1,5 +1,9 @@
 # Trade AI v12 — System Maturity Audit (2026-06-11)
 
+Status:      HISTORICAL
+as_of:       2026-06-11T15:08:32-04:00
+Measured at: efcc51365 / not measured
+
 **Method:** scores synthesized from the two same-day deep reviews (SYSTEM_DEEP_REVIEW + INGESTION_INTELLIGENCE
 _REVIEW: 6 code-tracing audits, DB quantification) plus the day's verified fixes. Scale: 10 = institutional
 prop-desk grade; 5 = works but unproven/fragile; 2 = schema or aspiration only. Scores reflect state AFTER

@@ -1,5 +1,9 @@
 # Dashboard Visual Audit — Operator Workflow
 
+Status:      HISTORICAL
+as_of:       2026-06-06T12:55:41-04:00
+Measured at: efcc51365 / not measured
+
 ## When to use
 - After any significant frontend change (V3+ sessions)
 - Before market open Monday if Friday touched UI

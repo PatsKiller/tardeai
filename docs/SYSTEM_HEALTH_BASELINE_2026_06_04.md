@@ -1,5 +1,9 @@
 # System Health Baseline — 2026-06-04 (post catalyst/signal/watchdog work)
 
+Status:      HISTORICAL
+as_of:       2026-06-04T20:44:22-04:00
+Measured at: efcc51365 / not measured
+
 **Purpose:** the "where does everything actually stand" snapshot the freshness monitor is judged
 against going forward. Read-only; nothing changed to produce it. Numbers are live from Postgres /
 the scripts on 2026-06-04.

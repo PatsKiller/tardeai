@@ -176,8 +176,59 @@ def estimate_usd_cost(
     cache_miss_tokens: int | None = None,
     at: Any = None,
 ) -> dict[str, Any]:
-    """Estimate USD from registry price snapshot. Not billed actual unless provider-verified."""
+    """Estimate USD from the effective-dated price schedule (never a code literal).
+
+    AGENTS.md §9.2: record measured cost, rate tier, and cache hit. Accounting
+    prefers ``provider_cost.pricing.calculate_usd`` so emit and client share one
+    table. Registry snapshots remain a fallback only when no schedule matches.
+    """
+    from datetime import datetime, timezone
+
     reject_legacy_model_id(model_id)
+    when = at or datetime.now(timezone.utc)
+    hit = int(cache_hit_tokens or 0)
+    miss = int(cache_miss_tokens if cache_miss_tokens is not None else (prompt_tokens or 0))
+    out = int(completion_tokens or 0)
+
+    priced: dict[str, Any] | None = None
+    try:
+        try:
+            from scripts.lib.provider_cost.pricing import calculate_usd
+        except ImportError:  # pragma: no cover
+            from lib.provider_cost.pricing import calculate_usd  # type: ignore
+        # DeepSeek is the only paid provider on this path today.
+        provider = "deepseek"
+        if str(model_id or "").startswith("grok"):
+            provider = "xai"
+        priced = calculate_usd(
+            provider=provider,
+            model=model_id,
+            at=when,
+            cache_hit_input=hit,
+            cache_miss_input=miss,
+            output=out,
+        )
+    except Exception:  # noqa: BLE001
+        priced = None
+
+    if priced and priced.get("calculated_cost_usd") is not None:
+        return {
+            "estimated_cost_usd": priced["calculated_cost_usd"],
+            "cost_basis": "provider_usage_x_price_schedule",
+            "pricing_tier": priced.get("band"),
+            "price_schedule_id": priced.get("price_schedule_id"),
+            "cache_hit": bool(priced.get("cache_hit")),
+            "pricing_effective_at": None,
+            "tokens": {
+                "cache_hit_input": hit,
+                "cache_miss_input": miss,
+                "output": out,
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+            },
+        }
+
+    # Fallback: registry snapshot (still no hardcoded rate literals in code).
     reg = load_registry()
     pricing = None
     effective = None
@@ -185,12 +236,8 @@ def estimate_usd_cost(
     for prov in (reg.get("providers") or {}).values():
         for m in (prov.get("models") or {}).values():
             if m.get("model_id") == model_id:
-                # DeepSeek bills DOUBLE during peak windows (01:00-04:00 and
-                # 06:00-10:00 UTC, Mon-Fri). Billing everything at the off-peak
-                # rate understated real cost by up to 2x on top of the snapshot
-                # itself being 1.5x-4.7x low before 2026-08-30.
                 peak = m.get("pricing_peak_usd_per_million_tokens")
-                if peak and _in_peak_window(prov, at=at):
+                if peak and _in_peak_window(prov, at=when):
                     pricing, tier = peak, "peak"
                 else:
                     pricing = m.get("pricing_snapshot_usd_per_million_tokens") or {}
@@ -202,12 +249,10 @@ def estimate_usd_cost(
         return {
             "estimated_cost_usd": None,
             "cost_basis": "unavailable",
+            "pricing_tier": None,
+            "cache_hit": hit > 0,
             "pricing_effective_at": None,
         }
-    # Prefer explicit cache split; else treat all prompt as cache-miss
-    hit = int(cache_hit_tokens or 0)
-    miss = int(cache_miss_tokens if cache_miss_tokens is not None else (prompt_tokens or 0))
-    out = int(completion_tokens or 0)
     usd = (
         hit / 1_000_000 * float(pricing.get("cache_hit_input") or 0)
         + miss / 1_000_000 * float(pricing.get("cache_miss_input") or 0)
@@ -217,6 +262,7 @@ def estimate_usd_cost(
         "estimated_cost_usd": round(usd, 8),
         "cost_basis": "provider_usage_x_registry_snapshot",
         "pricing_tier": tier,
+        "cache_hit": hit > 0,
         "pricing_effective_at": effective,
         "tokens": {
             "cache_hit_input": hit,

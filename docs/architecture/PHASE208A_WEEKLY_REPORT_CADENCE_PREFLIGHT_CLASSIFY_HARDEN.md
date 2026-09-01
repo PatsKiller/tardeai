@@ -1,5 +1,9 @@
 # Phase 208A — Weekly Report Cadence: Preflight + Classification + Harden + Dry-Run — 2026-06-07
 
+Status:      HISTORICAL
+as_of:       2026-06-07T11:18:44-04:00
+Measured at: efcc51365 / not measured
+
 Follows the proven daily-cadence pattern (Phase 207).
 
 ## Preflight (verified)

@@ -1,5 +1,9 @@
 # Agent Collaboration Decision Cockpit — Apply Report
 
+Status:      HISTORICAL
+as_of:       2026-05-25T13:05:19-04:00
+Measured at: efcc51365 / not measured
+
 | Field | Value |
 |-------|-------|
 | Timestamp | 2026-05-25T12:55:58-04:00 |

@@ -1,5 +1,9 @@
 # Stage-1 Translation Review Log
 
+Status:      ACTIVE
+as_of:       2026-06-11T18:20:34-04:00
+Measured at: efcc51365 / not measured
+
 **Run:** repeatable via `scripts/brokers/translation_review.py` · **Cases:** 30 · **Defects:** 0 · **Guard grants:** 0 expected/0 allowed
 
 Real recent symbols/prices from paper_trades ground every case. Every preview persisted as

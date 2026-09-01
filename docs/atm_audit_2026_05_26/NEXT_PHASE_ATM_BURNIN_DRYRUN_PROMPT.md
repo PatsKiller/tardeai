@@ -1,5 +1,9 @@
 # ATM Dry-run Burn-in — Next Phase Prompt
 
+Status:      HISTORICAL
+as_of:       2026-05-26T11:21:21-04:00
+Measured at: efcc51365 / not measured
+
 **Prerequisite:** John approves decision package
 **Mode:** dry_run ONLY — no active execution
 

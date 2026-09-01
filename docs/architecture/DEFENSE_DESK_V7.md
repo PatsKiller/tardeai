@@ -1,5 +1,9 @@
 # Defense Desk v7 — Execute Through the Rail · Validate the Chain · Watch Every Play (2026-07-18)
 
+Status:      ACTIVE
+as_of:       2026-07-18T15:02:40-04:00
+Measured at: efcc51365 / not measured
+
 Session 7. The desk stages and arms; the EXISTING approvals + per-order-2FA pipeline
 owns execution. `autonomous_live_submit_allowed` stays False.
 

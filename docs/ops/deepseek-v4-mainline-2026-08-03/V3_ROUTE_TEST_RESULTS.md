@@ -1,5 +1,9 @@
 # V3 route/subtab maturity results
 
+Status:      HISTORICAL
+as_of:       2026-08-03T11:40:56-04:00
+Measured at: efcc51365 / not measured
+
 - Generated: 2026-08-03T14:37:30.258508+00:00
 - Pass: **14/20**
 - Screenshots: `/tmp/deepseek-v4-mainline-v3-screenshots` (outside git)

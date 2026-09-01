@@ -1,5 +1,9 @@
 # Options v1.2/v1.2.1 + Costs — Phase 0 Read-Only Truth Audit (2026-07-19)
 
+Status:      HISTORICAL
+as_of:       2026-07-19T15:38:06-04:00
+Measured at: efcc51365 / not measured
+
 ## 1. Schema truth (live DB vs committed builders)
 
 Audited all 10 lifecycle tables + trade_instances/trade_closed/trade_transactions.

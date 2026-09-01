@@ -1,5 +1,9 @@
 # CIO institutional corpus map (2026-08-29)
 
+Status:      HISTORICAL
+as_of:       2026-08-29T16:53:32-04:00
+Measured at: efcc51365 / not measured
+
 > **SUPERSEDED IN TWO PLACES — read this first.**
 >
 > 1. **`CORPUS_UNLOCATED` is retracted.** The 20–30 publications were catalogued

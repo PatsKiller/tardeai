@@ -1,5 +1,9 @@
 # Phase 207I — Legacy Daily Report Retirement Decision — 2026-06-07
 
+Status:      HISTORICAL
+as_of:       2026-06-07T11:15:11-04:00
+Measured at: efcc51365 / not measured
+
 ## Decision: RETIRED (operator-approved 2026-06-07).
 
 > **Update — operator approved immediate retirement.** After all gate conditions passed, the operator

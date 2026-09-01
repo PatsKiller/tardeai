@@ -1,5 +1,9 @@
 # Implementation log
 
+Status:      ACTIVE
+as_of:       2026-08-17T13:10:42-04:00
+Measured at: efcc51365 / not measured
+
 Timestamps in UTC-4 (local). Updated after every phase.
 
 ## 2026-08-16 — Phase 0 (preflight + inventory)

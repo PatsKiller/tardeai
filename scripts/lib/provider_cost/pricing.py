@@ -73,9 +73,20 @@ def resolve_schedule(
 
 
 def is_peak(dt: Any, schedule: dict[str, Any]) -> bool:
+    """True inside a peak pricing window.
+
+    Peak is weekday-only by default (Mon–Fri UTC), matching DeepSeek's published
+    schedule and AGENTS.md §12. Weekend hours inside the UTC clock windows are
+    off-peak — treating Sat/Sun as peak overstates measured cost and can defer
+    bulk work for a surcharge that is never charged.
+    """
     if not schedule.get("peak_enabled"):
         return False
-    minutes = parse_dt(dt).hour * 60 + parse_dt(dt).minute
+    when = parse_dt(dt)
+    days = str(schedule.get("peak_days") or "Mon-Fri")
+    if days == "Mon-Fri" and when.weekday() >= 5:
+        return False
+    minutes = when.hour * 60 + when.minute
     for start, end in schedule.get("peak_windows_utc_half_open") or ():
         if start <= minutes < end:
             return True
@@ -92,6 +103,7 @@ def calculate_usd(
     output: int = 0,
     schedules: Optional[list[dict[str, Any]]] = None,
 ) -> dict[str, Any]:
+    """Measured USD from the effective-dated schedule. Never invents a rate literal."""
     try:
         sched = resolve_schedule(provider=provider, model=model, at=at, schedules=schedules)
     except PriceUnknownError as exc:
@@ -99,25 +111,37 @@ def calculate_usd(
             "calculated_cost_usd": None,
             "cost_source": PRICE_UNKNOWN,
             "price_schedule_id": None,
+            "band": None,
+            "cache_hit": bool(int(cache_hit_input or 0) > 0),
             "reason": str(exc),
         }
     if sched.get("peak_enabled"):
         band = "peak" if is_peak(at, sched) else "off_peak"
         prices = sched.get(band) or {}
     else:
+        band = "flat"
         prices = {
             "input_cache_hit": sched.get("input_cache_hit"),
             "input_cache_miss": sched.get("input_cache_miss"),
             "output": sched.get("output"),
         }
+    hit = int(cache_hit_input or 0)
+    miss = int(cache_miss_input or 0)
+    out = int(output or 0)
     usd = (
-        int(cache_hit_input or 0) / 1_000_000 * float(prices.get("input_cache_hit") or 0)
-        + int(cache_miss_input or 0) / 1_000_000 * float(prices.get("input_cache_miss") or 0)
-        + int(output or 0) / 1_000_000 * float(prices.get("output") or 0)
+        hit / 1_000_000 * float(prices.get("input_cache_hit") or 0)
+        + miss / 1_000_000 * float(prices.get("input_cache_miss") or 0)
+        + out / 1_000_000 * float(prices.get("output") or 0)
     )
     return {
         "calculated_cost_usd": round(usd, 8),
         "cost_source": "LOCAL_CALCULATED",
         "price_schedule_id": sched.get("schedule_id"),
-        "band": "peak" if is_peak(at, sched) else "off_peak" if sched.get("peak_enabled") else "flat",
+        "band": band,
+        "cache_hit": hit > 0,
+        "tokens": {
+            "cache_hit_input": hit,
+            "cache_miss_input": miss,
+            "output": out,
+        },
     }

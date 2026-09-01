@@ -1,3 +1,6 @@
+Status:      HISTORICAL
+as_of:       2026-06-05T12:02:41-04:00
+Measured at: efcc51365 / not measured
 
 ---
 ## STOP-on-mismatch update (apply completed; Option B chosen)

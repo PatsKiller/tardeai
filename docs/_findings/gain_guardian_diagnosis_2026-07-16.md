@@ -1,5 +1,9 @@
 # Gain Guardian (Holdings Exit Intelligence) — Phase 0 Diagnosis — 2026-07-16
 
+Status:      HISTORICAL
+as_of:       2026-07-16T11:22:33-04:00
+Measured at: efcc51365 / not measured
+
 Read-only diagnosis. All items verified against live code + live DB (user `trade_ai` via .env; role `johnclaw` does not exist). No code written, no tables created. Note: another session is mid-edit on `scripts/lib/research_intelligence*.py` (RI v3 stub gate + lane filters landed at 45bfa56b; Workstream E staged-idea lifecycle NOT landed) — findings on that file reflect the tree as read today.
 
 ## Iron-rule sanity

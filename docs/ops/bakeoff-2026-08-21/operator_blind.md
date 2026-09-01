@@ -1,5 +1,9 @@
 # Blind ranking sheet — Lane bake-off 2026-08-21
 
+Status:      ACTIVE
+as_of:       2026-08-21T19:09:35-04:00
+Measured at: efcc51365 / not measured
+
 Do **not** look at `lane_key.json` until you finish.
 For each symbol: rank A/B/C (1=best) and usable Y/N.
 

@@ -1,5 +1,9 @@
 # CIO Memory Shadow Measure — Phase 2 start (2026-08-21)
 
+Status:      HISTORICAL
+as_of:       2026-08-21T12:00:01-04:00
+Measured at: efcc51365 / not measured
+
 **READ_ONLY_ADVISORY.** `MEMORY_BEHAVIOR_INFLUENCE` stays **0**.
 
 ## Window
@@ -52,8 +56,8 @@ systemctl --user start tradeai-cio-memory-shadow-measure.service   # manual run
 
 ## Metrics
 
-`memory_retrieval_rate` · `memory_changed_decision` · `memory_changed_notification` ·  
-`operator_recall_hit` / `memory_false_positive` may stay `UNAVAILABLE` until labeled corpus exists ·  
+`memory_retrieval_rate` · `memory_changed_decision` · `memory_changed_notification` ·
+`operator_recall_hit` / `memory_false_positive` may stay `UNAVAILABLE` until labeled corpus exists ·
 `truth_override_attempts` must remain 0.
 
 ## Promotion gate

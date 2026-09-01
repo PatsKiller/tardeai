@@ -1,5 +1,9 @@
 # Phase 206 — Hermes Legacy/Retired Agent Visibility — Closeout — 2026-06-07
 
+Status:      HISTORICAL
+as_of:       2026-06-07T10:37:15-04:00
+Measured at: efcc51365 / not measured
+
 ## Outcome
 Command Center v3 → System → Hermes now shows a **read-only "Legacy / Retired Agents"** audit section
 below the active profiles, inventorying the retired sidecar artifacts. No runtime behavior changed.

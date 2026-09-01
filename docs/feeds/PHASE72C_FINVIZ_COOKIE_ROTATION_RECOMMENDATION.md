@@ -1,5 +1,9 @@
 # Phase 72C — Cookie Rotation Recommendation
 
+Status:      HISTORICAL
+as_of:       2026-06-01T12:21:58-04:00
+Measured at: efcc51365 / not measured
+
 | Check | Result |
 |-------|--------|
 | Raw cookie in repo/docs/logs | NO |

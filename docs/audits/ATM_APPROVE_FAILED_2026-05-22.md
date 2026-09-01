@@ -1,5 +1,9 @@
 # ATM approve_proposal_failed Investigation — 2026-05-22
 
+Status:      HISTORICAL
+as_of:       2026-05-22T15:47:55-04:00
+Measured at: efcc51365 / not measured
+
 ## Summary
 
 - Total ATM evaluations today: 82 decisions across 17 cycles (09:45–12:45 ET)

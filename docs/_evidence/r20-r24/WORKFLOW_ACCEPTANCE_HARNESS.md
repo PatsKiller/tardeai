@@ -1,5 +1,9 @@
 # Workflow Acceptance Harness
 
+Status:      ACTIVE
+as_of:       2026-08-26T23:06:29-04:00
+Measured at: efcc51365 / not measured
+
 This harness is local, deterministic, and side-effect free. It exercises the
 append-only lineage projection with a sanitized workflow and does not invoke a
 provider, scheduler, broker, Telegram, or production store.

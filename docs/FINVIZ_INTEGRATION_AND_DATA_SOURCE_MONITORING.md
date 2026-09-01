@@ -1,5 +1,9 @@
 # Finviz Integration + Data-Source Health Monitoring
 
+Status:      ACTIVE
+as_of:       2026-07-07T22:03:50-04:00
+Measured at: efcc51365 / not measured
+
 _Last updated: 2026-06-20_
 
 Full use of Finviz Elite (one `FINVIZ_API_TOKEN`, no extra creds) across screeners, technicals/fundamentals,

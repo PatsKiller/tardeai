@@ -1,5 +1,9 @@
 # DB-induced dashboard hang — prevention & recovery
 
+Status:      ACTIVE
+as_of:       2026-07-17T08:55:29-04:00
+Measured at: efcc51365 / not measured
+
 **Symptom:** Command Center shows `⟳ Reconnecting to backend… showing last-known data`, all KPIs `—`,
 `0 holdings · $0`. The server (`scripts/portfolio_server.py`, port 7777) is **alive but blocked** — the
 port stays bound while HTTP requests time out.

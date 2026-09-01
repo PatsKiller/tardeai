@@ -1,5 +1,9 @@
 # Bare-Metal Recovery Runbook (2026-07-17 backup-scope audit)
 
+Status:      ACTIVE
+as_of:       2026-07-17T12:17:33-04:00
+Measured at: efcc51365 / not measured
+
 Rebuild this box (ms01-openclaw) from nothing but the offsite backups. Every dependency here
 is either in git, in an encrypted Drive backup, or re-pullable by name from a manifest inside
 the nightly `ops_backup` (crontab, systemd units, dpkg list, pip freezes, ollama models,

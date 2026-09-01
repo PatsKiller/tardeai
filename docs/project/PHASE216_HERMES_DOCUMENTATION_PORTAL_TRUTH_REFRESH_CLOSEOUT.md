@@ -1,4 +1,9 @@
 # PHASE 216 — Hermes Documentation Portal-Truth Refresh — CLOSEOUT (2026-06-07)
+
+Status:      HISTORICAL
+as_of:       2026-06-07T17:50:18-04:00
+Measured at: efcc51365 / not measured
+
 - Phase 216 complete: **YES**
 - Markdown generated: **YES** (HERMES_AGENTS_WORKFLOWS_SOULS_AND_SELF_LEARNING_MATRIX.md, 20 sections)
 - Word generated: **YES** (.docx, 39,845 bytes, title page + 3 tables + footer)

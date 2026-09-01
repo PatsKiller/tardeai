@@ -1,5 +1,9 @@
 # TradeInView Gap Audit — 2026-06-27
 
+Status:      HISTORICAL
+as_of:       2026-07-11T12:24:43-04:00
+Measured at: efcc51365 / not measured
+
 Baseline audit vs TradeZella/TradesViz-style spec. See `TRADE_IN_VIEW_IMPLEMENTATION_PLAN.md` for delivery status.
 
 ## Maturity (post-implementation)

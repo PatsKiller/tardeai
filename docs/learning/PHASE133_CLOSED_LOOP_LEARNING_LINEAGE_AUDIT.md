@@ -1,5 +1,9 @@
 # Phase 133 — Closed-Loop Learning Lineage Audit
 
+Status:      HISTORICAL
+as_of:       2026-06-01T17:47:21-04:00
+Measured at: efcc51365 / not measured
+
 ## The Question
 Is TradeAI truly learning from journal/backtest outcomes, or merely reporting results?
 

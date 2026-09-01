@@ -1,5 +1,9 @@
 # Migration: afterhours readiness tables
 
+Status:      ACTIVE
+as_of:       2026-05-19T21:01:07-04:00
+Measured at: efcc51365 / not measured
+
 Mode: **apply**
 
 Table `afterhours_candidate_snapshot` existed: False

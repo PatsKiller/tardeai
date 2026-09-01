@@ -1,5 +1,9 @@
 # Agent-runtime persistence slice — runbook
 
+Status:      ACTIVE
+as_of:       2026-07-25T18:33:51-04:00
+Measured at: efcc51365 / not measured
+
 Scope: the production-inactive PostgreSQL persistence / concurrency / replay slice for
 the governed agent runtime (MVL). LAB/SHADOW only. No broker, order, approval, 2FA,
 scheduler, service, provider, or config-promotion authority. Never contacts production

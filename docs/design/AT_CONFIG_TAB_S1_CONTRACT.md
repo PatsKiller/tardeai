@@ -1,5 +1,9 @@
 # Active Trader Configuration Tab — S1 API Contract (`/api/v3/active-trader/config`)
 
+Status:      ACTIVE
+as_of:       2026-07-28T09:41:43-04:00
+Measured at: efcc51365 / not measured
+
 Stage: **AT-CFG-S1** · Contract id: `active-trader-at-cfg-s1-read-v1` · **READ-ONLY, GET-only.**
 
 This document is the STABLE shape the React frontend is built against. Backend:

@@ -1,5 +1,9 @@
 # Phase 208D — Hermes Job-to-Agent Call Graph (2026-06-07)
 
+Status:      HISTORICAL
+as_of:       2026-06-07T11:28:53-04:00
+Measured at: efcc51365 / not measured
+
 Script: `scripts/audit_hermes_job_call_graph.py` → `data/hermes/hermes_job_call_graph_latest.json` (read-only).
 
 ## Required conclusions

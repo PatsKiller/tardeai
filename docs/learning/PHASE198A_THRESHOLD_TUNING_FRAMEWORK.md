@@ -1,5 +1,9 @@
 # PHASE 198A — Advisory Threshold Tuning Framework
 
+Status:      HISTORICAL
+as_of:       2026-06-02T13:48:02-04:00
+Measured at: efcc51365 / not measured
+
 **Alpaca paper only · learning/backtest · recommendation only (no auto-apply, not GO/WAIT)**
 
 ---

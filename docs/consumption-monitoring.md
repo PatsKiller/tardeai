@@ -1,5 +1,9 @@
 # LLM Consumption Monitoring (Command Center v3)
 
+Status:      ACTIVE
+as_of:       2026-07-08T11:12:16-04:00
+Measured at: efcc51365 / not measured
+
 Tracks and controls **free OAuth** usage for Grok (xAI proxy `:8645`) and ChatGPT (codex proxy `:8646`). No metered API keys.
 
 ## UI
@@ -158,8 +162,8 @@ All pages should use `lib.oauth_lane_status` (via `llm_lane.available` or `GET /
 
 ## Database
 
-Tables: `llm_consumption_log`, `llm_process_config`  
-Migration: `migrations/2026_07_08_llm_consumption_monitoring.sql`  
+Tables: `llm_consumption_log`, `llm_process_config`
+Migration: `migrations/2026_07_08_llm_consumption_monitoring.sql`
 Schema also auto-created by `lib.llm_consumption.ensure_schema()`.
 
 ## Fail-open

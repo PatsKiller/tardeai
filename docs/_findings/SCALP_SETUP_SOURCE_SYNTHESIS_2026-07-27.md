@@ -1,5 +1,9 @@
 # Scalp Setup — Source Synthesis (2026-07-27)
 
+Status:      HISTORICAL
+as_of:       2026-07-27T23:45:01-04:00
+Measured at: efcc51365 / not measured
+
 Three external articles were reviewed as **educational source material, not proof of edge**. No article
 win-rate or target is presented as a Trade AI fact — Trade AI performance comes only from its own recorded
 outcomes. Sources map to the three architectural layers, not to three competing engines.

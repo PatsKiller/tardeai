@@ -1,5 +1,9 @@
 # Momentum Scalp Lifecycle
 
+Status:      ACTIVE
+as_of:       2026-06-30T18:10:44-04:00
+Measured at: efcc51365 / not measured
+
 _Source of truth for the intraday momentum_scalp lifecycle. Generated/validated by
 `scripts/strategy_config_validator.py momentum_scalp` and the P0 tests below._
 

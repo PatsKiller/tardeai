@@ -1781,6 +1781,10 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
                 append_section(_morning_bundle, "hermes", _hm)
             send_morning_command_bundle(_morning_bundle, root)
         except Exception as _mce:
+            # B3: "Bundle send failed" must not be followed by
+            # "all pipeline stages completed". Record it as a stage failure so
+            # _report_stage_failures surfaces it and the exit code degrades.
+            _stage_failed("morning_command_bundle", _mce)
             print(f"  [morning-command] Bundle send failed: {_mce}")
 
     # ── Gmail Daily Digest ───────────────────────────────────────────────────

@@ -1,5 +1,9 @@
 # Implementation Constraints
 
+Status:      HISTORICAL
+as_of:       2026-05-25T10:45:00-04:00
+Measured at: efcc51365 / not measured
+
 Generated: 2026-05-25
 
 ---

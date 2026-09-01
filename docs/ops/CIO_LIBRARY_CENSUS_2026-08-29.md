@@ -1,5 +1,9 @@
 # CIO library census (2026-08-29)
 
+Status:      HISTORICAL
+as_of:       2026-08-29T09:50:42-04:00
+Measured at: efcc51365 / not measured
+
 Answer to "where are the 20–30 institutional publications".
 
 ## They were never missing — they were catalogued

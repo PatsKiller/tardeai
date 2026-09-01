@@ -1,5 +1,9 @@
 # Session 2026-05-30 Summary
 
+Status:      HISTORICAL
+as_of:       2026-05-30T21:22:07-04:00
+Measured at: efcc51365 / not measured
+
 ## Executive Summary
 
 45 commits. Hermes sidecar fully installed through Phase 2A (embedding pilot). Google Drive cleaned. System Access, System Applications, and Hermes Chat pages added. Two-step browse proxy with headless Chromium. 7 research rows staged, 2 embedded into content_embeddings (RAG score 0.741). Prompt/validator hardened with 9/9 tests.

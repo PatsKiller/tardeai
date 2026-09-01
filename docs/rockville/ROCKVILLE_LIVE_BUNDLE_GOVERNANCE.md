@@ -1,5 +1,9 @@
 # ROCKVILLE_LIVE_BUNDLE_GOVERNANCE
 
+Status:      ACTIVE
+as_of:       2026-08-04T22:19:03-04:00
+Measured at: efcc51365 / not measured
+
 ## Approved-style build (design-guard PASS)
 
 - Source: `feat/rockville-watch-cio-v1` (working tree post-correction)

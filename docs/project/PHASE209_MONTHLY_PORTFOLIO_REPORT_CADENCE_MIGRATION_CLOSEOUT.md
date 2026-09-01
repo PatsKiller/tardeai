@@ -1,5 +1,9 @@
 # Phase 209 — Monthly Portfolio Report Cadence Migration — Closeout — 2026-06-07
 
+Status:      HISTORICAL
+as_of:       2026-06-07T13:20:39-04:00
+Measured at: efcc51365 / not measured
+
 ## Outcome
 The monthly portfolio-report cadence is **migrated** into the cadence-aware controller, scheduled,
 validated, and the **legacy monthly timer retired** (operator-approved). Advisory-draft aware.

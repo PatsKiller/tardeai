@@ -1,5 +1,9 @@
 # Hermes Promotion Operator Checklist
 
+Status:      ACTIVE
+as_of:       2026-05-31T16:29:03-04:00
+Measured at: efcc51365 / not measured
+
 Use before every promotion batch.
 
 ## Pre-Promotion

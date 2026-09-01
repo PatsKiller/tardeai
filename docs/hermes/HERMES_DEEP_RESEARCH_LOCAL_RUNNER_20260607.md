@@ -1,5 +1,9 @@
 # Hermes Deep Research (Local) — Overnight Runner (2026-06-07)
 
+Status:      ACTIVE
+as_of:       2026-06-07T13:11:03-04:00
+Measured at: efcc51365 / not measured
+
 Implements the Phase 210C internal deep-research lane. `scripts/hermes_deep_research_local.py`.
 
 ## What it does

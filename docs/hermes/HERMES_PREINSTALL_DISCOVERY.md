@@ -1,5 +1,9 @@
 # Hermes Preinstall Discovery — 2026-05-30
 
+Status:      ACTIVE
+as_of:       2026-05-29T23:33:07-04:00
+Measured at: efcc51365 / not measured
+
 ## Status: PREINSTALL ONLY — Hermes is NOT installed
 
 ---

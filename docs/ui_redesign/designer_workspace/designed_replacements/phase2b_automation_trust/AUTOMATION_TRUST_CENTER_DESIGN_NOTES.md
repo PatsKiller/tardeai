@@ -1,5 +1,9 @@
 # Automation Trust Center -- Design Notes
 
+Status:      HISTORICAL
+as_of:       2026-05-25T14:00:12-04:00
+Measured at: efcc51365 / not measured
+
 ## Phase 2b: Automation Trust Center Family
 
 This phase redesigns 4 pages that together form the "Automation Trust Center" -- the operational backbone of the Command Center. These pages let the operator verify that automation (crons, agents, LLM queue, pipelines) is running correctly and trustworthy.

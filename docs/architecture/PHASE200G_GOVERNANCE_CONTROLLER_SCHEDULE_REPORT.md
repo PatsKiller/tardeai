@@ -1,5 +1,9 @@
 # Phase 200G — Governance Controller Schedule (legacy kept active)
 
+Status:      HISTORICAL
+as_of:       2026-06-04T23:19:30-04:00
+Measured at: efcc51365 / not measured
+
 Diff passed (200F), so the governance controller is scheduled via a **systemd user timer** (project
 convention — the PHASE41 governance jobs already use user timers). **Legacy cron + PHASE41 timers
 remain active as parallel observation; nothing retired yet.**

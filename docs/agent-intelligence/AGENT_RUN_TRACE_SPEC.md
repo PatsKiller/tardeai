@@ -1,5 +1,9 @@
 # AgentRunTrace@v1 — Specification
 
+Status:      ACTIVE
+as_of:       2026-08-16T22:03:26-04:00
+Measured at: efcc51365 / not measured
+
 Structured, redacted, append-only trace of one agent run.
 Implemented in `scripts/lib/agent_run_trace.py`.
 

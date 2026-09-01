@@ -1,5 +1,9 @@
 # PHASE 194A — MFE/MAE Units Fix (Data-Integrity)
 
+Status:      HISTORICAL
+as_of:       2026-06-02T12:59:18-04:00
+Measured at: efcc51365 / not measured
+
 **Alpaca paper only · data-quality fix · no execution / no stop / no order / no GO-WAIT changes**
 
 ---

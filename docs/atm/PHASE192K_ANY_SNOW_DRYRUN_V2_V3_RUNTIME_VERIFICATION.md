@@ -1,5 +1,9 @@
 # PHASE 192K — ANY/SNOW Dry-Run + v2/v3 Runtime Verification
 
+Status:      HISTORICAL
+as_of:       2026-06-02T12:10:31-04:00
+Measured at: efcc51365 / not measured
+
 **Run:** 2026-06-02 ~11:45 ET · Alpaca **paper** only · **No order submitted.**
 
 ---

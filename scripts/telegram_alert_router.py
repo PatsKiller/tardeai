@@ -7,16 +7,34 @@ Pure functions + in-memory dedupe. No trades. No orders. No DB writes.
 Loaded by telegram_alert.py to gate outbound Telegram sends.
 """
 import hashlib
+import logging
 import os
 import re
 import time
 import yaml
 from pathlib import Path
 
+log = logging.getLogger(__name__)
+
 PROJ = Path(__file__).resolve().parent.parent
 _POLICY_PATH = PROJ / "config" / "operator_alert_policy.yaml"
 
-# In-memory dedupe cache: {dedupe_key: last_sent_ts}
+# B2, 2026-08-31: THESE DICTS CANNOT HOLD A CROSS-INVOCATION GUARANTEE.
+#
+# Every producer that reaches this module is a one-shot cron or systemd process.
+# A module-level dict is empty at the start of each one, so `_dedupe_cache` was
+# always empty when consulted and `mark_sent()` wrote to a dict that died
+# microseconds later. The "max 2 health telegrams per day" cap was unenforceable
+# for the same reason: `_health_daily_count` reset on every invocation, so the
+# check passed unconditionally on a cold start.
+#
+# A guarantee that spans invocations, whose state does not, is not a weak
+# guarantee -- it is the absence of one, wearing its name (AGENTS.md §7).
+#
+# The durable content-keyed store in cio_telegram_transport already exists and is
+# TTL-bounded (#770), so per §13.5 these delegate to it rather than adding a third
+# mechanism. The dicts remain ONLY as a same-process fast path; correctness comes
+# from the durable layer.
 _dedupe_cache: dict = {}
 _suppression_log: list = []
 
@@ -363,7 +381,48 @@ def is_deduplicated(message: str, window_minutes: int = None) -> bool:
     last_sent = _dedupe_cache.get(key, 0)
     if now - last_sent < window_minutes * 60:
         return True
-    return False
+    # The durable check is the one that actually spans invocations. The dict
+    # above is a same-process fast path and is empty in every cron invocation.
+    return _durable_recently_sent(key, window_minutes * 60)
+
+
+def _durable_recently_sent(key: str, ttl_seconds: float) -> bool:
+    """Was this key sent within the window, according to durable state?
+
+    B2. Delegates to the store the CIO transport already maintains, so a cron
+    producer can see what a systemd producer sent. Fail-open on any error: a
+    dedupe lookup that cannot run must not silently suppress a real message.
+    """
+    try:
+        from scripts.lib.cio_telegram_transport import was_recently_sent
+    except ImportError:
+        try:
+            from lib.cio_telegram_transport import was_recently_sent
+        except ImportError:
+            return False
+    try:
+        return bool(was_recently_sent(key, ttl=int(ttl_seconds)))
+    except Exception:
+        return False
+
+
+def durable_mark_sent(key: str, meta: dict | None = None) -> None:
+    """Record a send where the next invocation can see it.
+
+    B2. `mark_sent()` writes to a module-level dict that does not survive the
+    process. This is the half that makes the guarantee real.
+    """
+    try:
+        from scripts.lib.cio_telegram_transport import mark_sent as _durable
+    except ImportError:
+        try:
+            from lib.cio_telegram_transport import mark_sent as _durable
+        except ImportError:
+            return
+    try:
+        _durable(key, meta=meta or {})
+    except Exception as e:
+        log.warning("durable dedupe mark failed: %s", type(e).__name__)
 
 
 def _health_telegram_allowed(message: str) -> bool:

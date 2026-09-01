@@ -1,5 +1,9 @@
 # CIO cash fossil — Saturday proof (2026-08-29)
 
+Status:      HISTORICAL
+as_of:       2026-08-29T08:38:23-04:00
+Measured at: efcc51365 / not measured
+
 Authorized by operator John Whiting to prove, without waiting for Monday
 16:10, that the repricer writer from #635 closes the `total_cash` gap on the
 served product.

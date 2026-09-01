@@ -1,5 +1,9 @@
 # Watch Desk v4 — Phase 0 Diagnosis (2026-07-16, post-close)
 
+Status:      HISTORICAL
+as_of:       2026-07-16T17:06:11-04:00
+Measured at: efcc51365 / not measured
+
 Repo tip at session start: `bd8849cf` (prompt said 3adaaf4 — Engine Room v1 shipped in
 between; its WS-1 topology item in the prompt's operator list is ALREADY DONE).
 DB via trade_ai creds (prompt's `psql -U johnclaw` fails — role doesn't exist; recurring).

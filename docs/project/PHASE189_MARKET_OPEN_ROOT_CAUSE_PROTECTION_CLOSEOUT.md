@@ -1,5 +1,9 @@
 # PHASE 189 — Market-Open Watch + Protection Root-Cause Investigation — CLOSEOUT
 
+Status:      HISTORICAL
+as_of:       2026-06-02T09:35:38-04:00
+Measured at: efcc51365 / not measured
+
 **Run:** 2026-06-02 ~09:10 ET (premarket; watch fires 09:30 ET)
 **Scope:** Alpaca **paper** only. Investigation + scheduling + docs. **No trades, no stop
 changes, no strategy-config changes, no GO/WAIT changes, no live anything.**

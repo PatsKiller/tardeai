@@ -11,6 +11,7 @@ retry into editMessageText.
 """
 from __future__ import annotations
 
+import logging
 from typing import Any, Callable, Optional
 
 import requests
@@ -82,6 +83,66 @@ def _base_payload(
     return payload
 
 
+def _interdicted() -> bool:
+    """Is outbound Telegram delivery interdicted right now?
+
+    C4, 2026-08-31. This check lived only in `send_message`, which then delegates
+    to `deliver_text` -- and `deliver_text` is exported and callable directly. Any
+    caller reaching it bypassed the interdict entirely, so a control named for
+    stopping delivery did not cover every path that delivers.
+
+    AGENTS.md §7, severity 2: the restriction existed, but not in the thing named
+    for it. Someone hardening delivery by setting CIO_TELEGRAM_INTERDICT would
+    have changed nothing for those callers, which is how a careful person makes a
+    change that silently does not take.
+
+    The check now sits at the LOWEST COMMON LAYER -- the function that actually
+    performs the HTTP -- so no caller can reach a send that skips it.
+    """
+    import os
+    return bool(
+        os.environ.get("PYTEST_CURRENT_TEST")
+        or os.environ.get("CIO_TELEGRAM_INTERDICT", "").lower()
+        in ("1", "true", "yes", "on")
+    )
+
+
+def _interdicted_result() -> dict:
+    return {
+        "ok": False,
+        "status_code": 0,
+        "response": {"ok": False, "description": "INTERDICTED_TEST_OR_FLAG"},
+        "interdicted": True,
+    }
+
+
+
+_log = logging.getLogger(__name__)
+
+
+def escape_markdown(text: str) -> str:
+    """THE shared Markdown V1 escaper. Use this; do not write another.
+
+    D1, 2026-08-31. 126 producers send with parse_mode="Markdown". Exactly one
+    escaper existed -- `_esc_md`, private, in telegram_proposal_alert_policy --
+    reachable by 2 of them. The other 124 escaped nothing, so whether an
+    identifier survived was decided by underscore parity: an even count parsed
+    and Telegram ate the underscores (READ_ONLY_ADVISORY -> READONLYADVISORY), an
+    odd count 400'd and the plaintext retry preserved them.
+
+    Placed on the transport so every producer already importing it can reach it,
+    rather than adding a 127th convention. Migrating the producers is a separate
+    wave; this is the thing they migrate TO.
+    """
+    return (
+        str(text)
+        .replace("_", "\\_")
+        .replace("*", "\\*")
+        .replace("[", "\\[")
+        .replace("`", "\\`")
+    )
+
+
 def deliver_text(
     *,
     token: str,
@@ -100,6 +161,8 @@ def deliver_text(
       attempt, if no message exists yet, send plaintext ONCE. If a message_id
       exists, edit it. Never sendMessage twice for the same key.
     """
+    if _interdicted():
+        return _interdicted_result()
     poster = post or _http_post
     edit_id = None
     if idempotency_key:
@@ -181,12 +244,30 @@ def deliver_text(
     mid = _message_id_from(body2) if ok2 else None
     if ok2:
         _remember(mid)
+    # D1, 2026-08-31: THE FALLBACK IS NO LONGER SILENT.
+    #
+    # `plain_fallback: True` was returned and never logged or persisted by any
+    # caller. So the first send failing -- typically a Markdown parse 400 -- and
+    # the request being silently changed was invisible: the operator saw
+    # `READ_ONLY_ADVISORY` render as READONLYADVISORY on an even underscore count
+    # and intact on an odd one, and nothing recorded which had happened.
+    #
+    # A retry that silently alters the request is a failure swallow (AGENTS.md
+    # §9.1). It stays a retry -- dropping the message would be worse -- but it
+    # now says so.
+    _log.warning(
+        "telegram parse_mode fallback: first send failed (code=%s), resent as "
+        "plain text. Original parse_mode=%r. Identifiers with underscores may "
+        "render differently between attempts. chat=%s ok=%s",
+        code, parse_mode, chat_id, bool(ok2),
+    )
     return {
         "ok": bool(ok2),
         "status_code": code2,
         "response": body2,
         "edited": False,
         "plain_fallback": True,
+        "plain_fallback_reason": f"first_send_failed_code_{code}",
         "message_id": mid,
     }
 
@@ -201,17 +282,11 @@ def send_message(
     parse_mode: str | None = "Markdown",
     idempotency_key: str | None = None,
 ) -> dict:
-    # Phase 1 network interdiction: never hit Telegram API under pytest / CI flags
-    import os
-    if os.environ.get("PYTEST_CURRENT_TEST") or os.environ.get("CIO_TELEGRAM_INTERDICT", "").lower() in (
-        "1", "true", "yes", "on",
-    ):
-        return {
-            "ok": False,
-            "status_code": 0,
-            "response": {"ok": False, "description": "INTERDICTED_TEST_OR_FLAG"},
-            "interdicted": True,
-        }
+    # C4: the interdict now lives in deliver_text, the lowest common layer, so it
+    # cannot be bypassed by calling that directly. Kept here as an early return
+    # only to avoid building a request that will be discarded.
+    if _interdicted():
+        return _interdicted_result()
     return deliver_text(
         token=token,
         chat_id=chat_id,

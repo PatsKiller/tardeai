@@ -1,5 +1,9 @@
 # Phase 210G — External Escalation Trigger Policy (2026-06-07)
 
+Status:      HISTORICAL
+as_of:       2026-06-07T13:38:00-04:00
+Measured at: efcc51365 / not measured
+
 ## Triggers
 TradeAI vs Hermes score delta > 8; Hermes flags stop/protection defect; weak evidence + high portfolio
 impact; repeated operator/Hermes disagreement; new strategy underperforming; high-$ position with profit-

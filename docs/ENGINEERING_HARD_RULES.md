@@ -1,5 +1,12 @@
 # Engineering Hard Rules (enforced)
 
+Status:      ACTIVE
+as_of:       2026-08-30T22:01:17-04:00
+Measured at: efcc51365 / not measured
+
+> Cited by `AGENTS.md` §13. `AGENTS.md` is the single source of truth for agent behaviour;
+> this file is the mechanically enforced subset.
+
 Non-negotiable operator standards. The first two are **mechanically enforced** by a git hook so they
 cannot regress through review oversight. Install hooks once after clone: `bash scripts/install_git_hooks.sh`.
 

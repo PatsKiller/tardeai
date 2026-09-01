@@ -1,5 +1,9 @@
 # Phase 203H — Empty Scanner Fix Report
 
+Status:      HISTORICAL
+as_of:       2026-06-05T11:54:29-04:00
+Measured at: efcc51365 / not measured
+
 Two minimal, safe fixes (no scoring/threshold/trading change; no v2 UI).
 
 ## Fix 1 (root) — backend valid-JSON serialization

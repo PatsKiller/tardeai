@@ -1,5 +1,9 @@
 # Social Scalp Route Matrix
 
+Status:      ACTIVE
+as_of:       2026-06-28T19:24:33-04:00
+Measured at: efcc51365 / not measured
+
 _Deterministic routing for social-discovery candidates. Implemented in
 `scripts/social_route_policy.py::route_social_candidate`; covered by
 `tests/test_social_route_policy.py`._

@@ -1,5 +1,9 @@
 # Cost Basis + Income Repair from June 5 CSVs (2026-06-05)
 
+Status:      ACTIVE
+as_of:       2026-06-05T17:27:45-04:00
+Measured at: efcc51365 / not measured
+
 Repaired Schwab/Fidelity cost basis using the latest (June 5) Schwab transaction CSVs, an explicit
 owner transfer-basis override for V, the Fidelity Positions PDF basis, and a new income/dividend ledger.
 

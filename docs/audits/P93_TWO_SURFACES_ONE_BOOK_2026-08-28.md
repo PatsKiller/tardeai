@@ -1,5 +1,9 @@
 # P9.3 — the two surfaces disagree about the same book
 
+Status:      HISTORICAL
+as_of:       2026-08-28T09:21:19-04:00
+Measured at: efcc51365 / not measured
+
 **Two independent computations, not a time gap.** But the sharper finding is that they
 are not two computations of the *same* quantity — they are two different quantities
 sharing one name and one voice.

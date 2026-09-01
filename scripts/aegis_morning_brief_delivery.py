@@ -251,6 +251,33 @@ def _get_rotation_plan_brief() -> list:
     return []
 
 
+def _overnight_synthesis_age() -> str:
+    """How long since the last overnight synthesis, for the absence line.
+
+    Silence and staleness read identically otherwise. "none in the last 18h"
+    could mean the lane ran and found nothing; appending the true age of the
+    last row distinguishes a quiet night from a lane that stopped months ago.
+    """
+    try:
+        row = _db_query(
+            "SELECT max(generated_at) AS last_at FROM risk_synthesis_results",
+            fetch="one",
+        )
+        last = (row or {}).get("last_at")
+        if not last:
+            return " (no synthesis has ever been recorded)"
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc)
+        if getattr(last, "tzinfo", None) is None:
+            last = last.replace(tzinfo=timezone.utc)
+        days = (now - last).days
+        if days >= 2:
+            return f" (last was {days}d ago — lane may be retired)"
+        return f" (last was {last:%Y-%m-%d %H:%M})"
+    except Exception:
+        return ""
+
+
 def send_telegram_brief(brief: dict, summary: str) -> dict:
     """Send compact morning brief to Telegram."""
     sections = brief.get("sections", [])
@@ -281,23 +308,43 @@ def send_telegram_brief(brief: dict, summary: str) -> dict:
         lines.append(f"*Steph Queue:* {pending} pending" + (f", {needs_john} need John" if needs_john else ""))
         lines.append("")
 
-    # Overnight risk synthesis (from deep LLM window)
+    # Overnight risk synthesis (from the deep LLM window).
+    #
+    # This is the ONLY model-assisted field on any operator surface, and it sat
+    # behind a bare `except Exception: pass`, so the brief rendered complete
+    # while the section silently vanished. It has produced nothing since
+    # 2026-05-23: the deep overnight LLM window was retired on 2026-06-01
+    # (cron tagged PHASE102-RETIRED) and re-enabling it is a tracked P1 with
+    # ~1,900 jobs pending. Absence is now stated rather than hidden -- a brief
+    # that looks complete while its only judgment field is missing is exactly
+    # the defect this work is about.
+    _risk = None
+    _risk_error = None
     try:
         _risk = _db_query(
             """SELECT LEFT(narrative, 200) as preview,
-                      top_risks->0->>'action' as priority_action
+                      top_risks->0->>'action' as priority_action,
+                      generated_at
                FROM risk_synthesis_results
                WHERE generated_at > NOW() - INTERVAL '18 hours'
                  AND morning_brief_ready = TRUE
                ORDER BY generated_at DESC LIMIT 1""",
             fetch="one"
         )
-        if _risk and _risk.get("priority_action"):
-            lines.append(f"*Overnight Risk Analysis:*")
-            lines.append(f"  {_risk['priority_action']}")
-            lines.append("")
-    except Exception:
-        pass
+    except Exception as e:
+        _risk_error = f"{type(e).__name__}: {str(e)[:80]}"
+
+    if _risk and _risk.get("priority_action"):
+        lines.append("*Overnight Risk Analysis:*")
+        lines.append(f"  {_risk['priority_action']}")
+        lines.append("")
+    elif _risk_error:
+        lines.append(f"*Overnight Risk Analysis:* unavailable — query failed ({_risk_error})")
+        lines.append("")
+    else:
+        _last = _overnight_synthesis_age()
+        lines.append(f"*Overnight Risk Analysis:* none in the last 18h{_last}")
+        lines.append("")
 
     # Event intelligence digest (Level 3)
     event_digest, event_total = _get_event_digest()

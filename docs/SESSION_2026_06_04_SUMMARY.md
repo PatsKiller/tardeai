@@ -1,5 +1,9 @@
 # Session Summary — 2026-06-04
 
+Status:      HISTORICAL
+as_of:       2026-06-04T21:38:20-04:00
+Measured at: efcc51365 / not measured
+
 **Doc name:** `docs/SESSION_2026_06_04_SUMMARY.md` (session index; links to detailed docs).
 **Theme:** premarket proposal correctness → catalyst pipeline repair → Hermes catalyst integration → ops fix.
 **Discipline:** paper only / live blocked; verify-first; backups per IRON RULE; all changes synced to Drive.

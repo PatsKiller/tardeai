@@ -1,5 +1,9 @@
 # Wave 3D-critique on DeepSeek — **both live lanes are blocked, for opposite reasons**
 
+Status:      HISTORICAL
+as_of:       2026-08-29T16:53:32-04:00
+Measured at: efcc51365 / not measured
+
 > **SUPERSEDED.** Both blockers were later cleared and the hop ran.
 >
 > * **grok** — the operator authorised `maria_research_critique += grok`. The

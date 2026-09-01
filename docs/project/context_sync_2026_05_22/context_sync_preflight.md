@@ -1,5 +1,9 @@
 # Context Sync Preflight — 2026-05-22
 
+Status:      ACTIVE
+as_of:       2026-05-22T16:02:12-04:00
+Measured at: efcc51365 / not measured
+
 ## Time / Git
 - Date: Fri May 22 15:57:23 EDT 2026
 - HEAD: de74a20 fix(nav): move ATM to Trading, Backtesting to Strategy, add missing pages

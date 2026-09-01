@@ -1,5 +1,9 @@
 # Phase 186H: Alpaca Extended-Hours Capability Audit
 
+Status:      HISTORICAL
+as_of:       2026-06-02T01:02:56-04:00
+Measured at: efcc51365 / not measured
+
 **Date**: 2026-06-02
 
 ## Alpaca Adapter Extended-Hours Support

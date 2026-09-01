@@ -1,5 +1,9 @@
 # Phase 5 Self-Improvement Polish — Apply Report
 
+Status:      HISTORICAL
+as_of:       2026-05-25T18:07:25-04:00
+Measured at: efcc51365 / not measured
+
 | Field | Value |
 |-------|-------|
 | Timestamp | 2026-05-25T18:07:25-04:00 |

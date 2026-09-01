@@ -1,5 +1,9 @@
 # Phase 205 — Legacy Backup Path Retirement (2026-06-06, operator-approved)
 
+Status:      HISTORICAL
+as_of:       2026-06-06T08:41:23-04:00
+Measured at: efcc51365 / not measured
+
 Operator approved retiring the legacy backup path after the backup-cadence timer's first auto-fire
 (Sat 2026-06-06 02:30:42 EDT) compared CLEAN (PASS, 0 unacceptable). Retired REVERSIBLY.
 

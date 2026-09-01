@@ -1,5 +1,9 @@
 # CURRENT rollback (exact-main phase2)
 
+Status:      ACTIVE
+as_of:       2026-08-25T09:10:05-04:00
+Measured at: efcc51365 / not measured
+
 Do not run unless operator-authorized.
 
 ```bash

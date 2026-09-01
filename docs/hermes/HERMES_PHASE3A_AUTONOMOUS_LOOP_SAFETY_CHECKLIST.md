@@ -1,5 +1,9 @@
 # Hermes Autonomous Loop Safety Checklist
 
+Status:      HISTORICAL
+as_of:       2026-05-30T22:19:50-04:00
+Measured at: efcc51365 / not measured
+
 Must pass ALL checks before any autonomous loop activation.
 
 ---

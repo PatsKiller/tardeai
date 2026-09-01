@@ -1,5 +1,9 @@
 # AFTERHOURS-READY-1 — Completion Matrix
 
+Status:      ACTIVE
+as_of:       2026-05-19T21:01:07-04:00
+Measured at: efcc51365 / not measured
+
 | Deliverable | Status | Evidence |
 |---|---|---|
 | 17:30 underfilled root cause | done | Intentional narrow pass with --allow-underfilled |

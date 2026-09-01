@@ -22,14 +22,16 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
-sys.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
+# G2: scripts-only + lib — never also put scripts/lib or root on path
+_SCRIPTS = Path(__file__).resolve().parent
+if str(_SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(_SCRIPTS))
 HOLDINGS_PATH = PROJECT_ROOT / "data" / "portfolios" / "state" / "holdings.json"
 # MIN_TOTAL retained as a deprecated alias for import compatibility. It is NOT
 # applied. Validation is coverage + relative-drop (see holdings_sanity).
 MIN_TOTAL = None
 BASIS_DIVERGENCE_PCT = 2.0     # flag if API avg price differs from stored basis by > this %
-from holdings_sanity import (  # noqa: E402
+from lib.holdings_sanity import (  # noqa: E402
     CATASTROPHIC_DROP_FRACTION,
     REASON_VALID_COMPLETE,
     validate_payload,
@@ -373,6 +375,40 @@ def protected_holdings_write(new_holdings, source="schwab_sync", account_key="sc
         except Exception as _e:
             print(f"  [transfer-normalize] detect failed (non-fatal): {str(_e)[:120]}")
 
+    # G1 — resolution-layer dual-write. When the primary path is one of the
+    # durable write targets (served/persistent + checkout), mirror the validated
+    # bytes to the other targets so cron→dev and release readers cannot diverge
+    # on the next write. Never runs for an arbitrary target_path (tests / one-offs),
+    # and never merges two historically divergent copies — it writes ONE new
+    # payload. report_authoritative_divergence reports existing forks.
+    try:
+        # scripts-only spelling (G2): this file runs with scripts/ on sys.path.
+        from lib.persistent_state_root import portfolio_state_write_targets
+
+        durable = [
+            (d / "holdings.json").resolve()
+            for d in portfolio_state_write_targets(PROJECT_ROOT)
+        ]
+        hp_res = HP.resolve()
+        if hp_res in durable:
+            primary_bytes = HP.read_bytes()
+            for other in durable:
+                if other == hp_res:
+                    continue
+                try:
+                    other.parent.mkdir(parents=True, exist_ok=True)
+                    fd2, tmp2 = tempfile.mkstemp(dir=str(other.parent), suffix=".tmp")
+                    with os.fdopen(fd2, "wb") as f:
+                        f.write(primary_bytes)
+                    os.replace(tmp2, other)
+                except OSError as e:
+                    print(
+                        f"  [holdings-guard] secondary write failed for {other}: "
+                        f"{type(e).__name__}: {e}"
+                    )
+    except Exception as _e:
+        print(f"  [holdings-guard] secondary mirror skipped (non-fatal): {str(_e)[:120]}")
+
     return {"wrote": True, "status": "ok", "total_value": v, "position_count": n, "basis_flags": flagged}
 
 
@@ -566,6 +602,9 @@ def sync_schwab_positions(account_key, dry_run=True):
 
 
 if __name__ == "__main__":
+    # G2: after imports settle — refuse dual lib.X / scripts.lib.X identity
+    from lib import assert_single_import_identity
+    assert_single_import_identity()
     import argparse
     ap = argparse.ArgumentParser()
     ap.add_argument("account", nargs="?", default=None, help="one account, or omit for all 3 Schwab accounts")

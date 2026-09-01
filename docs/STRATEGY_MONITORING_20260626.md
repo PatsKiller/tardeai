@@ -1,5 +1,9 @@
 # Strategy & Monitoring — Audit Remediation (2026-06-26)
 
+Status:      ACTIVE
+as_of:       2026-06-26T21:35:28-04:00
+Measured at: efcc51365 / not measured
+
 Backup taken before changes: `backups/pre-strategy-monitoring-*/` (crontab-live, `atm_config.yaml`, `pullback_macd_screener.yaml`).
 
 ## Implemented

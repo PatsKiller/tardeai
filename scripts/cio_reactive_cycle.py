@@ -28,11 +28,12 @@ import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(ROOT / "scripts"))
+# G2: root-only + scripts.lib — never also put scripts/ on path
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 os.chdir(ROOT)
 
@@ -54,6 +55,50 @@ def _enabled() -> bool:
 
 def _hash(s: str) -> str:
     return hashlib.sha256(s.encode()).hexdigest()[:16]
+
+
+# A wake raised from a two-week-old event is analysis about a portfolio that no
+# longer exists. The situation backlog on this bus is 1,100 events reaching back
+# 15 days; routing `situation.raised` correctly started draining it at 12 per
+# cycle, which is "processing a historical backlog" — operator-only under the
+# wave rules, and the exact failure S1 names: fluent, confident, wrong, and
+# delivered as if current.
+#
+# So the cycle only wakes on events young enough to still be about today. Older
+# ones are counted and reported as stale, never silently dropped.
+EVENT_MAX_AGE_HOURS = float(os.environ.get("CIO_REACTIVE_EVENT_MAX_AGE_HOURS", "48"))
+
+
+def _event_age_hours(ev: Any, now: datetime) -> Optional[float]:
+    """Age of an event in hours, or None when it carries no usable timestamp."""
+    raw = getattr(ev, "timestamp", None)
+    if raw is None and isinstance(ev, dict):
+        raw = ev.get("timestamp") or ev.get("occurred_at")
+    if not raw:
+        return None
+    try:
+        d = datetime.fromisoformat(str(raw).strip().replace("Z", "+00:00"))
+    except Exception:
+        return None
+    if d.tzinfo is None:
+        d = d.replace(tzinfo=timezone.utc)
+    return (now - d).total_seconds() / 3600.0
+
+
+def _known_agents() -> frozenset[str]:
+    """Agents allowed to be named as a wake's target.
+
+    Sourced from the routing table so the allowlist cannot drift away from the
+    subscriptions it is meant to mirror.
+    """
+    try:
+        from scripts.lib.cio_event_bus import AGENT_EVENT_ROUTING
+        return frozenset(AGENT_EVENT_ROUTING)
+    except Exception:
+        return frozenset({"alex", "steph", "hermes", "morgan"})
+
+
+KNOWN_AGENTS = _known_agents()
 
 
 def run_once(*, max_wakes: int = 12, dispatch: bool = False) -> dict[str, Any]:
@@ -82,6 +127,7 @@ def run_once(*, max_wakes: int = 12, dispatch: bool = False) -> dict[str, Any]:
         "enabled": _enabled(),
         "event_enqueued": [],
         "event_skipped": [],
+        "event_stale": [],
         "cursor_advanced": [],
         "goal_enqueue": {},
         "dispatch": {},
@@ -109,7 +155,8 @@ def run_once(*, max_wakes: int = 12, dispatch: bool = False) -> dict[str, Any]:
 
     bus = CIOEventBus()
     wake_store = CIOWakeJobStore()
-    hour = datetime.now(timezone.utc).strftime("%Y%m%d%H")
+    _now_dt = datetime.now(timezone.utc)
+    hour = _now_dt.strftime("%Y%m%d%H")
     enqueued_n = 0
     recent_types: list[str] = []
 
@@ -130,6 +177,20 @@ def run_once(*, max_wakes: int = 12, dispatch: bool = False) -> dict[str, Any]:
             if not et or not eid:
                 continue
             recent_types.append(str(et))
+
+            # Freshness bound. An unstamped event is allowed through — refusing
+            # it would silently drop live events for a missing field — but a
+            # demonstrably old one is not.
+            _age = _event_age_hours(ev, _now_dt)
+            if _age is not None and _age > EVENT_MAX_AGE_HOURS:
+                out["event_stale"].append({
+                    "event_id": eid, "event_type": str(et),
+                    "age_hours": round(_age, 1),
+                    "max_age_hours": EVENT_MAX_AGE_HOURS,
+                })
+                last_id = eid          # advance past it; do not re-read forever
+                continue
+
             wake_job_id = f"wake_ev_{agent_id}_{_hash(eid)}_{hour}"
             # Dedup: if already in store as pending/active, skip
             try:
@@ -145,6 +206,28 @@ def run_once(*, max_wakes: int = 12, dispatch: bool = False) -> dict[str, Any]:
 
             priority = EVENT_PRIORITY.get(str(et), "NORMAL")
             reason = str(et).upper().replace(".", "_")
+            # Carry the event's own subject onto the wake. Without this the wake
+            # is subject-less and the record consult in the dispatcher has
+            # nothing to load by — which is exactly why `load-by-subject` was
+            # never called: 0 of 1,513 wakes carried a subject.
+            _payload = getattr(ev, "payload", None)
+            if _payload is None and isinstance(ev, dict):
+                _payload = ev.get("payload")
+            _payload = _payload if isinstance(_payload, dict) else {}
+            _symbols = [str(s) for s in (_payload.get("symbols") or []) if s]
+            _situation = _payload.get("situation_type")
+            # `owner_agent` is payload data, and target_agent chooses which agent
+            # handles the wake. Dispatching on whatever the payload says would let
+            # an event pick its own handler — including one that does not exist,
+            # or one that was never meant to receive that class of work. Validate
+            # against the known agent set and fall back to the subscription that
+            # actually matched, recording the rejected value rather than
+            # discarding it silently.
+            _claimed_owner = str(_payload.get("owner_agent") or "").strip() or None
+            if _claimed_owner and _claimed_owner in KNOWN_AGENTS:
+                _owner, _owner_rejected = _claimed_owner, None
+            else:
+                _owner, _owner_rejected = None, _claimed_owner
             wake_payload = {
                 "wake_job_id": wake_job_id,
                 "trigger_type": "EVENT_BUS",
@@ -155,11 +238,23 @@ def run_once(*, max_wakes: int = 12, dispatch: bool = False) -> dict[str, Any]:
                 "wake_intent": "NEW_RUN",
                 "idempotency_key": wake_job_id,
                 "context": {
-                    "target_agent": agent_id,
+                    # The payload names its owner; prefer it over the routing
+                    # key so a morgan-owned situation does not arrive as alex's.
+                    "target_agent": _owner or agent_id,
+                    "routed_via_agent": agent_id,
+                    # Present only when the payload named an agent we do not know.
+                    "owner_agent_rejected": _owner_rejected,
                     "event_type": et,
                     "event_id": eid,
                     "priority": priority,
                     "authority": "READ_ONLY_ADVISORY",
+                    "symbols": _symbols,
+                    # First symbol is the wake's subject; a multi-symbol
+                    # situation still resolves to one record to consult.
+                    "symbol": _symbols[0] if _symbols else None,
+                    "situation_type": _situation,
+                    "plan_id": _payload.get("plan_id"),
+                    "shadow": _payload.get("shadow"),
                 },
             }
             try:
@@ -223,7 +318,7 @@ def run_once(*, max_wakes: int = 12, dispatch: bool = False) -> dict[str, Any]:
     # Shadow/advisory + fail-soft: stages feedback only (firewalled); the app-role
     # drain (watch_directives_service) governs promotion. Never wedges the cycle.
     try:
-        from lib.two_way_curation import (
+        from scripts.lib.two_way_curation import (
             CIO_CURATION_SITUATIONS,
             cio_situation_to_feedback,
             emit_all,
@@ -234,7 +329,7 @@ def run_once(*, max_wakes: int = 12, dispatch: bool = False) -> dict[str, Any]:
         plans_to_emit: list[dict] = list(_situations.get("plans_detail") or [])
         # Re-seed from open plans of curation types (materiality + rate limit).
         try:
-            from lib.cio_plans import CIOPlanStore
+            from scripts.lib.cio_plans import CIOPlanStore
             for _op in CIOPlanStore().list_open_plans(limit=40) or []:
                 st = str(_op.get("situation_type") or "")
                 if st not in CIO_CURATION_SITUATIONS:
@@ -271,7 +366,7 @@ def run_once(*, max_wakes: int = 12, dispatch: bool = False) -> dict[str, Any]:
                 import psycopg2
                 import psycopg2.extras
                 import directive_promotion as _dp
-                from lib.two_way_curation import drain_curation_sources as _drain_cs
+                from scripts.lib.two_way_curation import drain_curation_sources as _drain_cs
 
                 _conn = psycopg2.connect(
                     host=os.getenv("DB_HOST", "localhost"),
@@ -320,10 +415,7 @@ def run_once(*, max_wakes: int = 12, dispatch: bool = False) -> dict[str, Any]:
 
     # Restart-safe cheap retry of research→product reassessment. Never reruns paid LLM.
     try:
-        try:
-            from lib.cio_product_reassessment import retry_pending_reassessments
-        except Exception:
-            from scripts.lib.cio_product_reassessment import retry_pending_reassessments  # type: ignore
+        from scripts.lib.cio_product_reassessment import retry_pending_reassessments
         out["reassessment_retry"] = retry_pending_reassessments(limit=3)
     except Exception as exc:
         out.setdefault("errors", []).append(f"reassessment_retry:{exc}")
@@ -337,6 +429,9 @@ def run_once(*, max_wakes: int = 12, dispatch: bool = False) -> dict[str, Any]:
 
 
 def main() -> int:
+    # G2: after imports settle — refuse dual lib.X / scripts.lib.X identity
+    from scripts.lib import assert_single_import_identity
+    assert_single_import_identity()
     ap = argparse.ArgumentParser()
     ap.add_argument("--once", action="store_true", default=True)
     ap.add_argument("--json", action="store_true")

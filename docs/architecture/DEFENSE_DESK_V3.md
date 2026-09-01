@@ -1,5 +1,9 @@
 # Defense Desk v3 — Recommendations First · W/M/Q Rotation · Dashboard (2026-07-18)
 
+Status:      ACTIVE
+as_of:       2026-07-18T10:11:36-04:00
+Measured at: efcc51365 / not measured
+
 Session 3. The cut line INVERTED: WS-R (recommendations) shipped first, design painted
 after. Operator verdict on v2 was 1/10 — no recommendations, text too small, colors
 regressed, no month/quarter view. v3 answers each, graded at the bottom against the

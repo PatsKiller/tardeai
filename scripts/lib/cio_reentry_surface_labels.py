@@ -1,8 +1,10 @@
 """Scope labels for the two independent re-entry books.
 
-They answer different questions and must not be merged (#584 / P9.3).
-Labels are T (template). Precedence is not a winner — each surface is
-authoritative only for its own question.
+They answer different questions and score different populations; they must not
+be merged (#584 / P9.3 / overnight B6). Labels are T (template).
+
+``precedence`` is a disclaimer of authority, not a winner rule — each surface
+is authoritative only for its own question. No merge, no precedence contest.
 
 READ_ONLY_ADVISORY.
 """
@@ -17,6 +19,7 @@ SURFACE_A: dict[str, Any] = {
     "name": "former_holdings_reentry",
     "scope": "former holdings vs exit trigger",
     "question": "which former holdings are near their re-entry trigger?",
+    "population": "former holdings (exited / previously traded)",
     "precedence": "answers former-holdings vs exit trigger only; not cash-stage R:R",
     "not_this_book": "candidates vs cash-stage R:R under desk thesis",
     "producer": "cio_investment_product.build_reentry_book",
@@ -29,6 +32,7 @@ SURFACE_B: dict[str, Any] = {
     "name": "desk_cash_stage_reentry",
     "scope": "candidates vs cash-stage R:R under desk thesis",
     "question": "which candidates have acceptable risk-reward at the current cash stage?",
+    "population": "desk cash-stage candidates under desk thesis",
     "precedence": "answers cash-stage R:R under desk thesis only; not former-holdings vs exit trigger",
     "not_this_book": "former holdings vs exit trigger",
     "producer": "cio_desk_depth.build_reentry_book",
@@ -43,6 +47,7 @@ def stamp(book: dict[str, Any], surface: dict[str, Any]) -> dict[str, Any]:
     out["surface"] = surface["surface"]
     out["scope"] = surface["scope"]
     out["question"] = surface["question"]
+    out["population"] = surface["population"]
     out["precedence"] = surface["precedence"]
     out["not_this_book"] = surface["not_this_book"]
     out["surface_name"] = surface["name"]
@@ -53,5 +58,6 @@ def stamp(book: dict[str, Any], surface: dict[str, Any]) -> dict[str, Any]:
 def banner(surface: dict[str, Any]) -> str:
     return (
         f"Surface {surface['surface']} · {surface['scope']} "
+        f"— scores {surface['population']} "
         f"(not {surface['not_this_book']})"
     )

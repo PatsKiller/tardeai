@@ -1,5 +1,9 @@
 # Post-Reboot / OS-Upgrade Recovery (2026-07-02)
 
+Status:      HISTORICAL
+as_of:       2026-07-02T00:41:17-04:00
+Measured at: efcc51365 / not measured
+
 Operator runbook after the **Python 3.14 OS upgrade** on `ms01-openclaw`. Documents root causes,
 fixes applied on `main`, and verification commands. **No SQL schema migrations were required** —
 issues were venv, code paths, and systemd/process ownership.

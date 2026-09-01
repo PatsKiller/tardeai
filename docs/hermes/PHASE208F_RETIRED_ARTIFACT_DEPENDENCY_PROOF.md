@@ -1,5 +1,9 @@
 # Phase 208F — Retired Hermes Artifact Dependency Proof (2026-06-07)
 
+Status:      HISTORICAL
+as_of:       2026-06-07T11:31:05-04:00
+Measured at: efcc51365 / not measured
+
 ## Proven: retired artifacts are AUDIT-ONLY; nothing active depends on them.
 
 1. **Retired dirs exist for rollback/audit only** — `.hermes.RETIRED_20260606_2140`,

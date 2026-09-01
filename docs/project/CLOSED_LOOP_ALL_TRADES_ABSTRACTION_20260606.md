@@ -1,5 +1,9 @@
 # Closed-Loop All-Trades Abstraction (2026-06-06)
 
+Status:      ACTIVE
+as_of:       2026-06-06T00:08:45-04:00
+Measured at: efcc51365 / not measured
+
 > **Canonical model note:** Paper trades are the first executable source and first backfilled source. The canonical learning loop is all-trades, broker/account neutral (`trade_instances`). `paper_trade_id` is a compatibility key; `trade_instance_id` is the canonical key going forward. See `CLOSED_LOOP_ALL_TRADES_ABSTRACTION_20260606.md`.
 
 ## Why

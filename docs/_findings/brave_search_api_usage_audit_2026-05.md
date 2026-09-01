@@ -1,5 +1,9 @@
 # Brave Search API Usage Audit — May 2026
 
+Status:      HISTORICAL
+as_of:       2026-05-24T11:04:01-04:00
+Measured at: efcc51365 / not measured
+
 ## Current Status
 - **Plan:** Free tier ($5.00/month credit)
 - **Requests this month:** 1,000 (limit reached, 100%)

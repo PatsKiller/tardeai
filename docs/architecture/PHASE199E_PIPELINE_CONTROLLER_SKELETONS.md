@@ -1,5 +1,9 @@
 # Phase 199E — Pipeline Controller Skeletons (DRY-RUN, no schedules wired)
 
+Status:      HISTORICAL
+as_of:       2026-06-04T22:43:09-04:00
+Measured at: efcc51365 / not measured
+
 Seven controller skeletons under `scripts/pipelines/`, one per target pipeline (199C). **No active
 cron/timer is replaced or scheduled.** Each is `DRY_RUN=1` by default and, even with `--apply`, does
 NOT execute child steps in this design phase — wiring happens only after the approved migration (199D).

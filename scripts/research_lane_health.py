@@ -24,8 +24,9 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(ROOT / "scripts"))
+# G2: root-only + scripts.lib — never also put scripts/ on path
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from scripts.lib.research_lane_health import collect_report  # noqa: E402
 
@@ -146,11 +147,27 @@ def _alert(report: dict) -> int:
             last = int(prev.get("last_alert") or 0)
         except (TypeError, ValueError):
             last = 0
-        if now - last < ALERT_DEDUP_SEC:
-            state[lane] = {**prev, **{k: row.get(k) for k in ("ok", "firing", "error_streak")},
-                           "last_alert": last, "suppressed": True}
-            continue
         reasons = ",".join(row.get("firing") or [])
+        # B6, 2026-08-31: THE KEY NOW CONTAINS THE CONTENT.
+        #
+        # It was the lane name and a 6h window. Eight lanes with independent
+        # staggered windows, all continuously firing, produced ~25 byte-identical
+        # messages in 36 hours: every 6h each lane re-sent REGARDLESS OF WHETHER
+        # ANYTHING CHANGED. AGENTS.md §9.1 -- the window was declared, the content
+        # was not in the key.
+        #
+        # Now: a lane whose firing reasons are unchanged does not re-send at all.
+        # A lane whose reasons CHANGE re-sends immediately, window or not, because
+        # that is new information. The window only bounds a genuinely new state.
+        sig = f"{lane}|{reasons}"
+        unchanged = prev.get("signature") == sig
+        if unchanged:
+            state[lane] = {**prev, **{k: row.get(k) for k in ("ok", "firing", "error_streak")},
+                           "last_alert": last, "suppressed": True,
+                           "signature": sig,
+                           "since": prev.get("since") or last or now}
+            continue
+        since = now if not unchanged else (prev.get("since") or now)
         extra = ""
         if lane == "drive-sync":
             extra = (f"  uploaded={row.get('uploaded')} failed={row.get('failed')} "
@@ -161,13 +178,25 @@ def _alert(report: dict) -> int:
                 f"  substantive={row.get('thesis_substantive', row.get('thesis_current'))}"
                 f"/{row.get('thesis_held')} coverage={row.get('thesis_coverage')}"
             )
+        # B6: state duration in the body. A repeat that says "unchanged since
+        # 08-30 09:06" is actionable; a byte-identical repeat is not, and is why
+        # 25 messages could not be told apart.
+        prev_since = prev.get("since")
+        dur = ""
+        if prev_since:
+            try:
+                hours = max(0, (now - int(prev_since)) / 3600.0)
+                dur = f"  (state held {hours:.0f}h)" if hours >= 1 else "  (new)"
+            except (TypeError, ValueError):
+                dur = ""
         lines.append(
             f"  • {lane}: {reasons}  streak={row.get('error_streak')}  "
             f"ok_24h={row.get('non_error_24h')} attempts_24h={row.get('attempts_24h')}"
-            + extra + extra2
+            + extra + extra2 + dur
         )
         hints.append(f"  {lane}: {fix_hint(row)}")
-        state[lane] = {**row, "last_alert": now, "suppressed": False}
+        state[lane] = {**row, "last_alert": now, "suppressed": False,
+                       "signature": sig, "since": since}
         sent += 1
     _save_state(report.get("as_of"), state)
     if not lines:
@@ -206,6 +235,9 @@ def _deliver_telegram(msg: str) -> None:
 
 
 def main() -> int:
+    # G2: after imports settle — refuse dual lib.X / scripts.lib.X identity
+    from scripts.lib import assert_single_import_identity
+    assert_single_import_identity()
     ap = argparse.ArgumentParser()
     ap.add_argument("--alert", action="store_true")
     args = ap.parse_args()

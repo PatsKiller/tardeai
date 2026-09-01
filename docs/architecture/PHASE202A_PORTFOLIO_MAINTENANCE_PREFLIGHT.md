@@ -1,5 +1,9 @@
 # Phase 202A — Portfolio-Maintenance P0-Safe Migration Preflight
 
+Status:      HISTORICAL
+as_of:       2026-06-05T10:59:04-04:00
+Measured at: efcc51365 / not measured
+
 P0-safe portfolio-maintenance cron/timer migration pilot. Same pattern as Phase 200/201. **db_retention
 and price-cache are NOT migrated** (destructive / feeds trading) — inventory/diff-plan only.
 

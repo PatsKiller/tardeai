@@ -1,5 +1,9 @@
 # ActiveTrader — Live Data Architecture (2026-07-28)
 
+Status:      ACTIVE
+as_of:       2026-07-28T09:41:43-04:00
+Measured at: efcc51365 / not measured
+
 Why the ActiveTrader tab showed **DATA STALE / 2026-07-13** while momentum scalps were
 demonstrably firing from 7am, and what now feeds it. Read-only surface; no order path.
 

@@ -1,5 +1,9 @@
 # Phase 199I — State-of-Repo Snapshot Generator
 
+Status:      HISTORICAL
+as_of:       2026-06-04T22:51:02-04:00
+Measured at: efcc51365 / not measured
+
 `scripts/generate_state_of_repo_snapshot.py` → `docs/project/STATE_OF_REPO_LATEST.md`. Read-only;
 DB facts degrade gracefully to "unknown" if the DB is unavailable. Mutates no runtime state.
 

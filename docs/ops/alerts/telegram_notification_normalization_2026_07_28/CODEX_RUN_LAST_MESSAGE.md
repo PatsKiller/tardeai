@@ -1,3 +1,7 @@
+Status:      ACTIVE
+as_of:       2026-07-29T12:56:50-04:00
+Measured at: efcc51365 / not measured
+
 Implemented the notification-normalization foundation and wrote the required artifacts under:
 
 `docs/ops/alerts/telegram_notification_normalization_2026_07_28/`

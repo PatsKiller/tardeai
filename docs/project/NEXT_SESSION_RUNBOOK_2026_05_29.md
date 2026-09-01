@@ -1,5 +1,9 @@
 # Next Session Runbook — 2026-05-29
 
+Status:      HISTORICAL
+as_of:       2026-05-29T10:03:57-04:00
+Measured at: efcc51365 / not measured
+
 ## Pre-Flight
 
 ```bash

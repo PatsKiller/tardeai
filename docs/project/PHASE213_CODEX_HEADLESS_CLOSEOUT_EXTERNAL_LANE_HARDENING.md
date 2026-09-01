@@ -1,4 +1,9 @@
 # PHASE 213 — Codex Headless Closeout & External Lane Hardening — CLOSEOUT (2026-06-07)
+
+Status:      HISTORICAL
+as_of:       2026-06-07T16:43:49-04:00
+Measured at: efcc51365 / not measured
+
 - Phase 213 complete: **YES**
 - Hermes version: **0.16.0** · newer Hermes available: **NO**
 - Codex interactive ready: **YES** (`hermes -p dev chat`, openai-codex/gpt-5-codex, free)

@@ -1,5 +1,9 @@
 # Arch4 Safety Verification
 
+Status:      HISTORICAL
+as_of:       2026-05-19T16:51:15-04:00
+Measured at: efcc51365 / not measured
+
 **Generated:** 2026-05-19T20:37:37.227255+00:00
 **Verdict:** **PASS**
 

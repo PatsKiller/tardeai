@@ -1,5 +1,9 @@
 # PHASE 191E — Hermes Profit-Protection Second-Opinion Rule
 
+Status:      HISTORICAL
+as_of:       2026-06-02T11:12:46-04:00
+Measured at: efcc51365 / not measured
+
 **Implemented:** `scripts/hermes_profit_protection_check.py` + 5 new finding types
 (migration `2026_06_02_phase191_profit_protection.sql`). **Advisory only — no trade mutation.**
 

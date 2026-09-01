@@ -1,5 +1,9 @@
 # Monday ATM Burn-in Command Packet — 2026-05-26
 
+Status:      HISTORICAL
+as_of:       2026-05-22T20:13:41-04:00
+Measured at: efcc51365 / not measured
+
 **Window:** After 09:35 ET Monday
 **ATM mode:** active (limited paper caps already set)
 

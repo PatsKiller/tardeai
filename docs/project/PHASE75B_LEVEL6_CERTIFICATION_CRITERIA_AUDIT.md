@@ -1,5 +1,9 @@
 # Phase 75B — Level 6 Certification Criteria Audit
 
+Status:      HISTORICAL
+as_of:       2026-06-01T12:36:07-04:00
+Measured at: efcc51365 / not measured
+
 | Criterion | Status |
 |-----------|--------|
 | 3 clean Finviz runs | **2/3** (3rd at 14:00) |

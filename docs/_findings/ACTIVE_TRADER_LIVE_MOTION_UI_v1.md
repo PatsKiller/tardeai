@@ -1,5 +1,9 @@
 # Active Trader Live Motion UI v1 — Findings
 
+Status:      HISTORICAL
+as_of:       2026-07-29T10:00:15-04:00
+Measured at: efcc51365 / not measured
+
 Bounded front-end tranche for the Active Trader aggregate motion surface. The UI is read-only and account agnostic: it displays market-state evidence but does not bind an account, venue, environment, route, or execution authority.
 
 ## Stack

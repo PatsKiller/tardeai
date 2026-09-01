@@ -1,5 +1,9 @@
 # Schwab Token Revoked Early — Concurrent-Refresh Race (2026-06-21)
 
+Status:      HISTORICAL
+as_of:       2026-06-21T21:45:21-04:00
+Measured at: efcc51365 / not measured
+
 ## Symptom
 The Schwab refresh token died with `invalid_grant` ("refresh token invalid, expired or revoked") even
 though the DB nominal expiry said ~2 days remained. The NOC protective stop fully passed 2FA but every

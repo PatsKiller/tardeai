@@ -1,5 +1,9 @@
 # PHASE 193A — Profit-Protection Advisory Close-Loop Reconciler Design
 
+Status:      HISTORICAL
+as_of:       2026-06-02T12:45:21-04:00
+Measured at: efcc51365 / not measured
+
 **Alpaca paper only · learning telemetry · no execution / no stop or order mutation**
 
 ---

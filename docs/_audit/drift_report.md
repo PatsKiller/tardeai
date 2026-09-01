@@ -1,5 +1,9 @@
 # Documentation Drift Report
 
+Status:      ACTIVE
+as_of:       2026-06-22T11:33:45-04:00
+Measured at: efcc51365 / not measured
+
 ## 2026-06-22 — A1A consolidation (live-facts pointers)
 
 **Policy change:** Canonical active docs no longer hard-code scale counts. Use `docs/LIVE_SYSTEM_FACTS.md`

@@ -1,5 +1,9 @@
 # PHASE 191C — Root Cause: Why the Profit-Protection Advisory Did Not Show
 
+Status:      HISTORICAL
+as_of:       2026-06-02T11:12:46-04:00
+Measured at: efcc51365 / not measured
+
 **Alpaca paper only · evidence-based**
 
 ---

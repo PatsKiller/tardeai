@@ -1,5 +1,9 @@
 # SCREENER-ARCH-4 — Strategy-Fit Audit Data Model
 
+Status:      HISTORICAL
+as_of:       2026-05-19T16:51:15-04:00
+Measured at: efcc51365 / not measured
+
 ## Table: universe_strategy_fit_audit
 
 | Column | Type | Purpose |
