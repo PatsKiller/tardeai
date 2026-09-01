@@ -251,11 +251,7 @@ a new blind spot on the very lane that just gained a write. AGENTS.md §9.1: sil
 never be indistinguishable from a dead system. This is the pattern crontab line 928 already
 uses, reused rather than reinvented.
 
-**Not added: `timeout`.** Line 928 pairs `flock` with `timeout 45m`. That is a second control
-with its own failure mode — killing a run mid-append — and it was not what was asked for.
-**Standing risk, unresolved: with `-n` and no timeout, a hung dispatcher holds the lock and
-every later cycle skips forever.** The skip line makes that visible in the log, but nothing
-alerts on it. Proposed, not done.
+**`timeout` added in a second pass**, on operator instruction. See the section below.
 
 ### Proof the control engages
 
@@ -287,6 +283,98 @@ Anchored on unique line CONTENT and then asserted to be at line 949, rather than
 line number. `~/backups` was not touched; the backup went to a new sibling directory.
 `MAILTO` is unset and nothing parses this log for exit status, so the trailing test's
 non-zero exit on a healthy run is inert — and matches line 928.
+
+## Crontab line 949 — `timeout` added (operator-authorized, second pass)
+
+Final installed form:
+
+```
+*/5 * * * * cd …/CURRENT && flock -n -E 99 -o /tmp/cio_wake_dispatch.lock \
+  timeout -k 60s 15m PY scripts/cio_wake_dispatch_entrypoint.py >> logs/… 2>&1; rc=$?; \
+  [ $rc -eq 99 ] && echo "… [flock] skipped …" >> logs/…; \
+  { [ $rc -eq 124 ] || [ $rc -eq 137 ]; } && echo "… [timeout] KILLED after 15m (rc=$rc) …" >> logs/…
+```
+
+### Why 15 minutes
+
+Measured, not guessed, over 1377 logged completions:
+
+```
+median 107s · p90 204s · p99 262s · longest directly observed 5m28s
+```
+
+**The historical metric is right-censored at 300s** — it measures completion-since-the-nearest
+`*/5` boundary, so any run over 5 minutes wraps and is under-reported. 299s is therefore not
+the max, and 42 of 1377 runs completed >4min after a boundary. 15m is ~3.4x p99 and ~2.7x the
+longest run actually seen, and still releases a hung lock within three cycles. Line 928 uses
+45m for a much heavier job.
+
+### Two defects the positive control caught before install
+
+Both would have shipped as controls whose name exceeds their code.
+
+**1 · `-k` escalation exits 137, not 124.** The first draft logged only `rc -eq 124`, so the
+*worst* case — a process ignoring SIGTERM and needing SIGKILL — would have been **silent**,
+which is precisely what the log line exists to prevent. Both codes are now logged, and `rc` is
+printed so the two are distinguishable.
+
+**2 · `timeout` alone does NOT release the lock.** `timeout` kills only its direct child. A
+surviving grandchild inherits the flock file descriptor and keeps the lock held:
+
+```
+without -o   hard hang killed → rc 137 → lock STILL HELD    (timeout defeated)
+with    -o   hard hang killed → rc 137 → lock FREE          (orphan still alive)
+```
+
+This matters concretely: the entrypoint spawns subprocesses, so without `-o` a hung cycle
+would have left the lock held forever — reintroducing the exact failure the timeout was added
+to fix, while appearing to fix it. `flock -o` (`--close`) closes the descriptor before exec so
+the command's children cannot hold it. Verified `-o` still excludes concurrent runs (rc 99,
+command did not run) and still frees on normal exit.
+
+Final dry run of the exact form, four states, scratch lock and log:
+
+```
+1 normal        rc 0    no incident line
+2 overtime      rc 124  logged
+3 hard hang     rc 137  logged
+4 lock after 3  FREE, despite two surviving orphans
+```
+
+### Kill safety
+
+`timeout` sends SIGTERM first, and `InstrumentRecordStore._load()` wraps `json.loads` in
+`try/except: continue`, so a torn line would be **skipped rather than fatal**. The residual
+cost of a kill is losing one appended record version, not a corrupt store. Named because it is
+a real if bounded cost, not because it was observed.
+
+### The install was rejected once, correctly
+
+The first attempt carried the full rationale as a crontab comment and cron refused it:
+
+```
+"crontab.candidate2":949: command too long   (1706 chars; limit 1000, longest existing line 925)
+errors in crontab file, can't install.
+```
+
+**The live crontab was unchanged — 0 lines differing — so the failure was fail-closed, not
+partial.** Putting 1700 characters of reasoning in a crontab comment was the wrong call; the
+reasoning belongs here. The comment now preserves the original 24/7 note verbatim and points
+at this document. Space was reclaimed by using the relative `logs/cio_wake_dispatcher.log` in
+the echo branches — verified to be the **same inode** as the absolute path (4131997), and
+unreachable if `cd` fails since `rc` would then be 1 and no branch fires. Final line: 884
+chars.
+
+### Change safety
+
+```
+backup    crontab.20260901-134051.pre-timeout.bak   sha 9e0525727567cbe3
+diff      exactly 1 line removed, 1 added; 1013 lines before and after
+bash -n   syntax OK on the command portion before install
+readback  byte-identical to the candidate (ec50dc2ab3949e82)
+```
+
+Both backups retained: `crontab.20260901-133122.bak` is the original pre-flock state.
 
 ## Not done, by instruction
 
