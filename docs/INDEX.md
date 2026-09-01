@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `9d0a7c49a37c8d3ac48a9114d82889891e4779776ccf283fae585e2945157420`
+**Tree fingerprint:** `9712cafbd0f1f9a267cefe34332762468bab54b018d0a436ed4f9154f5c77668`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,10 +12,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2314 |
-| Markdown (excl. this INDEX) | 1946 |
+| Files under `docs/` (excl. this INDEX) | 2315 |
+| Markdown (excl. this INDEX) | 1947 |
 | **MISSING HEADER** | **11** |
-| Header OK | 1935 |
+| Header OK | 1936 |
 | Duplicate groups | 5 |
 
 ### By status_guess
@@ -30,7 +30,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_raw_sync | 8 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 6 |
-| review_required | 1952 |
+| review_required | 1953 |
 
 ## Markdown tree
 
@@ -1422,6 +1422,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/CIO_V_SWEEP_2026-08-30.md` | CIO validation sweep V1–V5 — 2026-08-30 | review_required | OK | `4b89fcaba4ca` |
 | `docs/ops/CIO_WAKE_LIVE_DECIDE_2026-09-01.md` | The scheduled wake now calls `decide_after_load` and writes cognition back | review_required | OK | `b67ae0047fdc` |
 | `docs/ops/CIO_WAKE_PERSIST_APPEND_2026-09-01.md` | Wake research persist — retain research hits | review_required | OK | `69b7ce6cd479` |
+| `docs/ops/CIO_WATCH_INSTRUMENT_ADMIT_2026-09-01.md` | Admit WATCH instrument records (cognition only) | review_required | OK | `80397b8b0caf` |
 | `docs/ops/CIO_WATCH_S7_WIRE_2026-08-20.md` | CIO Watch → S7 wire (Fix #2) — 2026-08-20 | review_required | OK | `755cfda40584` |
 | `docs/ops/CIO_WAVE2C_ITEMS_101_130_2026-08-29.md` | CIO Wave 2C — items 101–130 (holdings truth / dust / CUSIP) | review_required | OK | `88b5d61d807f` |
 | `docs/ops/CIO_WAVE2C_ITEMS_131_160_2026-08-29.md` | CIO Wave 2C — items 131–160 (reentry / watch / new names) | review_required | OK | `158ded509fdc` |

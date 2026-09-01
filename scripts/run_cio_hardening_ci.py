@@ -314,6 +314,9 @@ GATES = [
         "tests/test_cash_letter_rows.py",
         "tests/test_cio_cc_record_narrative_slice_c.py",
     ]),
+    ("watch_instrument_admit", [
+        "tests/test_cio_watch_instrument_admit.py",
+    ]),
     ("overnight_g4_archive_mechanism", [
         "tests/test_overnight_g4_archive_mechanism.py",
     ]),
