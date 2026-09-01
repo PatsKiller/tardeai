@@ -117,7 +117,7 @@ with local paths. It may not report the 23:05 run as though it had carried this 
 
 ---
 
-## Stitch 1 — 2026-08-31 23:22 ET · a ruled-out timer, and a coordinator error
+## Stitch 1 — 2026-08-31 23:18 ET · a ruled-out timer, and a coordinator error
 
 ### CORRECTION: 2026-09-01 is NOT a holiday
 
@@ -194,7 +194,7 @@ splits. Flagged into Worker C's store-split sweep.
   rather than left blank.
 ---
 
-## Standing operator instruction — 2026-08-31 23:26 ET
+## Standing operator instruction — 2026-08-31 23:19 ET
 
 **Wake the operator if a worker aborts on a pin.** Recorded here so the trigger survives a context
 compaction and is not left as a conversational aside.
@@ -357,7 +357,7 @@ recorded, not touched, and carried to the morning packet.
   recorded rather than hidden — though both items are *discoveries*, not deferrals the wave created.
 ---
 
-## Stitch 3 — 2026-08-31 23:34 ET · the writer never existed · Worker B lands
+## Stitch 3 — 2026-08-31 23:31 ET · the writer never existed · Worker B lands
 
 ### THE WRITER THAT STOPPED — it did not stop. There has never been one.
 
@@ -549,7 +549,7 @@ interfered with.** The 43 would-expire plans B itemised are what it is likely to
 - Morning amendment queue now holds **two** §13.4 corrections plus the 928–930 cron fix.
 ---
 
-## Stitch 4 — 2026-08-31 23:38 ET · Worker D lands · three cash totals in one payload
+## Stitch 4 — 2026-08-31 23:33 ET · Worker D lands · three cash totals in one payload
 
 **Worker D: DONE.** Marked against reproduced proof. File:
 `docs/audits/CIO_SURFACE_ASOF_2026-09-01.md` (1,237 lines). GETs only, no POST, no store write, no
@@ -702,7 +702,7 @@ stopped.
   AS-IS class-A claim, the AS-IS cash-`as_of` claim, and the 928–930 cron fix.
 ---
 
-## Stitch 5 — 2026-08-31 23:45 ET · D's correction lands and deepens the finding
+## Stitch 5 — 2026-08-31 23:35 ET · D's correction lands and deepens the finding
 
 **Worker D: DONE, deliverable committed.** `docs/audits/CIO_SURFACE_ASOF_2026-09-01.md`,
 now 1,324 lines. Citation reverted; two round trips recorded rather than deleted.
@@ -777,3 +777,41 @@ without reading `cio_capital_plan.py` at all.
 - **Unpushed vs `origin/main`: 8 commits, docs only.** Trap recorded for E: local `main` is stale
   at `1b8002903`, far behind `origin/main` at `d276657b7`; diffing against local `main` reports
   **132**. The honest baseline is `origin/main`, and the honest number is single digits.
+---
+
+## Coordinator correction — 2026-08-31 23:37 ET · the stitch log mis-stamped itself
+
+Every stitch header carried a hand-estimated time rather than a measured one. Checked against
+`git log`, which is authoritative:
+
+```
+$ git log --format="%h  %ad  %s" --date=format-local:'%H:%M' origin/main..HEAD --reverse
+dddfd7cb6  23:14  stitch 0        claimed 23:12
+3ffef60d5  23:18  stitch 1        claimed 23:22   ← 4 min AFTER its own commit
+b8832f8c8  23:26  stitch 2        claimed 23:26   ok
+158f6d6dc  23:31  stitch 3        claimed 23:34   ← 3 min after
+340525e4f  23:33  stitch 4        claimed 23:38   ← 5 min after
+afa8dd212  23:35  stitch 5        claimed 23:45   ← 10 min after
+```
+
+**Four of six headers claimed a time later than the commit that contains them — physically
+impossible.** The drift grew monotonically, which is the signature of estimating forward from the
+last estimate instead of reading the clock.
+
+Headers corrected to their commit times. The claimed values are preserved above so the error is
+auditable rather than erased.
+
+**This is the wave's own standard turned on the wave.** §4 requires every measurement to carry
+value + `as_of` + root, and §14 says a document with no trustworthy `as_of` cannot be compared to a
+later one. The coordinator spent the night enforcing that on four workers — correcting D's
+citation, correcting A's holiday premise, re-measuring every headline count — while its own
+document invented its timestamps. A coordinator that only audits downward is an incomplete
+instrument.
+
+Nothing downstream depended on these values: no verdict, count, hash or pin was derived from a
+stitch header, and every measurement inside the stitches carries its own separately-sourced `as_of`
+and root. The defect is in the log's self-description, not in its evidence. Recorded because the
+next reader has no way to know that without being told, and because an error found by the party
+that made it is the cheapest kind there is.
+
+Going forward every stitch header is stamped from `TZ=America/New_York date`, read at write time.
