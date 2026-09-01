@@ -815,3 +815,153 @@ next reader has no way to know that without being told, and because an error fou
 that made it is the cheapest kind there is.
 
 Going forward every stitch header is stamped from `TZ=America/New_York date`, read at write time.
+---
+
+## Stitch 6 — 2026-08-31 23:40 ET · Worker C lands · the frozen `CURRENT`
+
+**Worker C: DONE.** `docs/audits/CIO_DARK_CONTRACTS_2026-09-01.md`, 1,164 lines, 69 `[VERIFIED]`,
+13 `[CODE]`. Pin `d276657b7` re-verified at 23:12, 23:22 and 23:36 — it did not rotate, so every
+runtime claim is attributable to one pin. Two PINs reached, both **proposed and stopped**, neither
+an abort: positive-controlling the Telegram gate (requires a live send) and an `--apply` catalyst
+rebuild.
+
+### THE ABANDONED-TREE WRITER — traced to the process, live
+
+C's §2.4d found a 20 MB log appended tonight into a release promoted away on 2026-08-26. It
+attributed the cause to daemons "holding open handles." **The mechanism is different, and worse.**
+
+`[VERIFIED]` No process held the file open when checked between cycles. The writer re-opens by
+path. Caught in the act at 23:38:11:
+
+```
+$ pgrep -af escalation
+2446485 …/.venv/bin/python \
+  /home/johnclaw/trade-ai-releases/portfolio-server/40360117-main-exact-phase2-20260826-202631/scripts/claude_escalation_handler.py --tier1-only
+  cwd: …/40360117-main-exact-phase2-20260826-202631
+
+$ ps -o pid,lstart,cmd -p 3637980          # its parent
+3637980  Wed Aug 26 20:38:03 2026  …/.venv/bin/python /home/johnclaw/.config/tradeai/bin/health_agent_daemon_current.py
+  cwd: …/40360117-main-exact-phase2-20260826-202631
+  parent: systemd --user (pid 7039)
+```
+
+**The root cause is one line in the wrapper** (`/home/johnclaw/.config/tradeai/bin/health_agent_daemon_current.py`,
+mtime 2026-08-17):
+
+```python
+CURRENT = Path("/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT").resolve()
+...
+lpr.get_live_project_root = lambda: CURRENT
+```
+
+**`.resolve()` runs once, at daemon start.** It follows the symlink and freezes the concrete
+directory for the life of the process. The daemon started **2026-08-26 20:38:03** — twelve minutes
+after release `40360117` was promoted at `20:26:31` — and has held that resolution for **five days
+and at least twelve subsequent promotes**, including tonight's. Every subprocess inherits the
+frozen root through the `get_live_project_root` override, so each 10-minute escalation cycle opens
+the stale path fresh. That is why no handle was held.
+
+**The name exceeds the code, and it is the wrapper's own docstring that promises it:** *"Host
+overlay: run exact-main CURRENT health daemon."* It runs whatever `CURRENT` was when the daemon
+started. The file is even named `health_agent_daemon_**current**.py`. This is `AGENTS.md` §7
+"Controls whose name exceeds their code" and §8 "**Resolve `CURRENT` to a concrete directory before
+verifying** — it has rotated three times in fifteen minutes," and the wave was told that rule and
+applied it to its own measurements all night while a production daemon has been violating it for
+five days.
+
+**The bitter part:** the wrapper exists *to fix a root-resolution bug* — its docstring cites #349,
+"CURRENT/scripts/health_agent_daemon.py rebases PROJECT_ROOT to the git checkout whenever that tree
+exists. That made #349 collectors dead on a live exact-main release." It fixed that one and
+introduced a different one. A repair verified by the symptom it targeted.
+
+**Consequences, none of them acted on tonight:**
+
+1. **Five-day-old code is running in production.** Any fix landed in `claude_escalation_handler.py`
+   since 2026-08-26 is not running. Twelve promotes have gone past it.
+2. **It is invisible to anyone reading `CURRENT/logs`.** C's warning generalises: *a lane can be
+   running, logging, and completely invisible to an auditor reading the served release.* That
+   applies to this document.
+3. `[VERIFIED]` It is failing loudly into that invisible log:
+   `❌ retry_cmd failed (rc=127, 0.1s)` — 127 is *command not found*, consistent with a stale tree
+   whose referenced paths have moved — and
+   `SKIP Tier2/3 LLM — 19 remaining unfixed; Tier1 resolved=0`. **Nineteen unfixed escalations, zero
+   resolved, reported to a file nobody reads.**
+
+**Not restarted, not killed, not touched.** Restarting a production daemon is not in this wave's
+authority and is not a docs-only action. Proposed for the morning; the operator decides.
+
+### C's node movement — four advanced, four regressed
+
+**Advanced:** OUTCOME edge `✗ → ▓` (corroborates B independently); LESSON `▓` with the first
+outcome-derived lesson, **n=1 of 345** — the AS-IS sentence "the system learns from what it read,
+not what happened" is now false *by exactly one*; `SpecialistArtifact@v1-lite` `░ → ▓` (formal type
+exists, N=100 gate still fails, **instrument bind regressed 64→59%**); `MODEL_CALL_RECORDED` phantom
+receipt stopped 2026-08-28.
+
+**Regressed:** `CIOCouncilSynthesis@v1` `█ → ░` (one artifact, 5 days stale, `DISPUTED` count 0,
+sole caller not in crontab); NOTIFICATION POLICY IMMEDIATE and COMMAND_CENTER_ONLY `█ → ✗` — **zero
+all-time across 2,046 scanner wakes**, only SUPPRESSED (4,611) and DIGEST (38) have ever fired;
+`DeliveryReceipt@v1` `█ → ░` — **n=1 and that row is `would_send: false`; 114 real deliveries
+produced zero receipts**; OPERATOR turn / S0 `▓ → ✗` — **zero `operator_turns` on any record**, turn
+store absent in every root.
+
+C's synthesis: *three of the four regressions share one shape — a correct, tested module whose only
+caller is a report script not in crontab.* That is §3's defect, found three more times in one night.
+
+The S0 regression compounds stitch 3: the record store has no writer **and** no operator turn has
+ever landed on it. A and C reached that from opposite directions.
+
+### Splits: 315 measured against 4 claimed
+
+Plus a class the AS-IS doc has no category for: **267 per-release copies of one CIO store, 197
+distinct**, inode-verified as genuinely separate files. Two of seven declared `PERSISTENT_TREES`
+are unwired. Cause named in one artifact: `"legacy_read_only": false` plus **266 PROJ-rooted cron
+lines against 45 at CURRENT**. Three operator-only decisions proposed and stopped; nothing merged,
+nothing chosen.
+
+### `load-by-subject` — C splits the question and finds the sharper half
+
+C refused to answer (a)/(b) as one question. Pre-claim consult at `cio_wake_subject.py:168` is
+**(b) CODE-WIRED, RUNTIME-UNPROVEN**, capped there with the M5 verdict handed to Worker A
+explicitly — exactly as briefed.
+
+**But PR #810's own contract is (a): dark.** `decide_after_load` — the module whose title is "load
+InstrumentRecord before `ResearchNeedDecision.decide()`" — has two non-test callers: one behind
+`--dry-run`, **which the cron does not pass**, and one unscheduled report.
+
+**The PR written to close the filing-cabinet defect reproduced it.** That is the single most
+important sentence C produced, and it sharpens stitch 2: the telemetry that made `load-by-subject`
+look wired is a *different, shallower* consult than the one #810 shipped.
+
+### Telegram — the gate is named, and it is ENABLED
+
+`telegram_transport._interdicted()` at `scripts/telegram_transport.py:86`, enforced at
+`deliver_text:164`. **ENABLED, not interdicted**, proven at rung 1: an unattended systemd fire put a
+message on the operator's device at 20:22:02 ET, journal and `mark_sent` ledger agreeing to the
+millisecond.
+
+**The gate has never been observed firing**, and C found why it structurally cannot be:
+`_interdicted_result()` **writes no log line** — it is silent by construction. A guard verified by
+presence, and one that cannot be verified any other way without a live send. Pinned, proposed,
+stopped.
+
+C also found `AGENTS.md` §13.4/§7 is **one day stale**: "does not gate the family that reaches the
+operator" was true until commit C4 (dated in-code 2026-08-31) moved the check to the lowest common
+layer. It now *does* gate the CIO family — but still does not gate **46 chokepoint bypasses**.
+
+### C's two self-caught errors, both kept
+
+1. **It nearly scored `load-by-subject` as (c).** The `record_consult` telemetry fires every 5
+   minutes *on an empty set* — the same trap A identified from the other side. Two workers
+   independently nearly mis-scored the same node the same way, which is a finding about the
+   instrument, not about either worker.
+2. **It published a zero that was a detector artifact.** `find -newermt "-90 minutes"` silently
+   matched nothing; an inode check then collapsed a "six stranded writes" finding to **one write
+   seen through six aliases.** A surviving mutation that was an invalid mutation — §8, by name.
+
+### Open at stitch 6
+
+- **A, B, C, D: all DONE.** All deliverables committed. **E: spawning now.**
+- Morning queue: two §13.4 dark-contract amendments, a third §13.4/§7 staleness correction, the
+  AS-IS class-A and cash-`as_of` claims, the 928–930 cron fix, the frozen-`CURRENT` daemon, and
+  three operator-only store decisions.
