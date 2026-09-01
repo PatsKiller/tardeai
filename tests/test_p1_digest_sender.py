@@ -126,3 +126,42 @@ def test_collect_is_bounded_by_time_not_only_by_watermark(sender):
     assert "sent_at >" in seen["sql"], seen["sql"]
     assert "id > " in seen["sql"], seen["sql"]
     assert len(seen["params"]) == 2
+
+
+# ── embedded foreign markup must not break the digest ────────────────────────
+FAILING_BODIES = [
+    (1, NOW, "health_agent", "⚠️ <b>Health Agent: DEGRADED — 70/100</b>", "b"),
+    (2, NOW, "trade_ai_live", "⚡ *Trade AI v12.1d [0900]* | 2026-08-31", "b"),
+]
+
+
+def test_foreign_html_is_stripped_from_embedded_titles(sender):
+    """The first live send 400'd on these exact bodies."""
+    text = sender.render({"rows": FAILING_BODIES, "since_hours": 24, "watermark": 0})
+    assert "<b>" not in text and "</b>" not in text, text
+
+
+def test_embedded_titles_are_escaped_by_the_shared_escaper(sender):
+    """A title is DATA. Unescaped, it is markup, and Telegram rejects the message.
+
+    Asserted by DELEGATION, not by re-deriving the escaper's rules here. An earlier
+    version of this test required every `[`, `]`, `*` and `_` to be backslashed and
+    failed on correct output, because Markdown V1 escapes an opening bracket and
+    leaves the closing one alone. A test that re-implements the thing it checks will
+    disagree with it, and the test is usually the one that is wrong.
+    """
+    from telegram_transport import escape_markdown
+
+    raw = "⚡ *Trade AI v12.1d [0900]* | 2026-08-31"
+    assert sender._safe(raw) == escape_markdown(raw), "not delegating to the shared escaper"
+    assert sender._safe("<b>x</b>") == escape_markdown("x"), "HTML must be stripped first"
+
+    text = sender.render({"rows": FAILING_BODIES, "since_hours": 24, "watermark": 0})
+    assert "\\*" in text, "the literal asterisk from the title is not escaped"
+
+
+def test_the_escaper_is_the_shared_one_not_a_new_convention(sender):
+    src = (ROOT / "scripts" / "p1_digest_sender.py").read_text(encoding="utf-8")
+    assert "from telegram_transport import escape_markdown" in src, (
+        "use the shared escaper; a 127th private convention is the defect it replaced"
+    )
