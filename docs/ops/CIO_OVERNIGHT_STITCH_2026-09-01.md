@@ -1061,3 +1061,116 @@ was for A–D — if E aborts on a pin instead of landing, that fires first and 
 If E lands with `DRIVE_SYNC=FAILED`, the notification says so explicitly rather than reporting a
 bare completion. A failed sync with truthful local paths is a complete deliverable under §14, but
 it is not something the operator should discover in the morning by reading carefully.
+---
+
+## Stitch 8 — 2026-09-01 00:01 ET · Worker E lands · wave closed
+
+**Worker E: DONE.** `docs/ops/CIO_OVERNIGHT_CLOSEOUT_2026-09-01.md` (1,436 lines),
+`docs/briefs/WAVE_OVERNIGHT_2026-09-01.md` (224 lines). No git write. No pin aborted; E stopped at
+the daemon restart and at push/PR, both correctly.
+
+### M1–M5 — zero of five, and that is the honest result
+
+| | verdict |
+|---|---|
+| M1 | NOT_OBSERVED — no completed request ever changed a record field |
+| M2 | NOT_OBSERVED — closest of the five; `next_research_question` **did** change on `HELD:SCHD` and both questions are quotable, but the writer was the migration and the council store's last write (2026-08-26) is **four days before** the change, so no critique verdict is attributable |
+| M3 | NOT_OBSERVED — **0 of 131 records carry `operator_turns`** |
+| M4 | NOT_OBSERVED (failure case) — 14 cash statements, 3 values, one body |
+| M5 | NOT_OBSERVED at `d276657b7`; `M5_CANDIDATE @ pin 1d64cb59f, as_of 2026-08-31T07:12 ET` recorded separately and **never merged** |
+
+`[VERIFIED]` No M-proof is recorded as OBSERVED anywhere in the closeout, and no percentage appears.
+§15: *a truthful three-of-five is worth more than a claimed five* — this is a truthful zero.
+
+E's M2 reasoning is the one to keep: it had a quotable before-and-after on a real field and still
+refused the proof, because the writer was a migration and the only plausible critique source
+predates the change by four days. That is the wave declining its single best chance at a non-zero
+scoreboard on a timestamp.
+
+### DRIVE_SYNC=OK — verified by the coordinator, not taken on report
+
+`[VERIFIED]` `gog drive ls --parent 1Ur6VXRgl2HfVwbDTqdGlkPnLS_Q_85nc` → **11 files, no
+duplicates**, uploaded 03:54–03:59 UTC:
+
+```
+CIO_OVERNIGHT_CLOSEOUT_2026-09-01.md   88.3 KB      CIO_DARK_CONTRACTS_2026-09-01.md      74.8 KB
+WAVE_OVERNIGHT_2026-09-01.md           14.8 KB      CIO_OUTCOME_DRY_2026-09-01.md         25.6 KB
+PROJECT_THE_DESK_V2.md                 17.4 KB      CIO_OUTCOME_EDGE_CENSUS_2026-09-01.md 37.0 KB
+CIO_FUTURE_STATE_FULL_MATURITY.md      16.6 KB      CIO_M5_TIMER_WATCH_2026-09-01.md      40.5 KB
+CIO_ASIS_VS_SPEC_2026-08-30.md         11.7 KB      CIO_OVERNIGHT_STITCH_2026-09-01.md    59.4 KB
+CIO_SURFACE_ASOF_2026-09-01.md         66.3 KB
+```
+
+Folder: <https://drive.google.com/drive/folders/1Ur6VXRgl2HfVwbDTqdGlkPnLS_Q_85nc>
+E verified by read-back **plus a full download-and-`sha256` round trip**. No `.env`, keys,
+credentials or `holdings.json` — checked by filename and content scan. The 23:05 hourly sync is
+explicitly disclaimed in the closeout as not this wave's.
+
+### E contradicted the coordinator four times, and was right each time
+
+1. **`origin/main` moved three times during the wave** — `d276657b7` → `db115caec` → `8c4d109f5`
+   → `2b9dc0de0`. The coordinator's brief handed E `d276657b7` as a fixed baseline. It was not
+   fixed. `[VERIFIED]` `origin/main` is now `2b9dc0de0` ("fix(finviz): cap momentum-class screens
+   at 100M float — measured, not assumed (#811)").
+2. **PR #715 — titled "M3: the wake records what it would have decided without the operator turn" —
+   merged to `origin/main` at 23:39:06, during this wave**, into a release that is not served.
+   E recorded it under M3 as a pointer and **explicitly did not count it as evidence**. Exactly
+   right: a merge is not a deploy, and an unserved release proves nothing at runtime.
+3. **The file set is 11, not 9.** The coordinator's brief said "six documents plus three
+   architecture docs" and thereby omitted the closeout and the brief — *the two documents the
+   packet exists to deliver*.
+4. **`docs/briefs/README.md` defines a brief as the operator's pre-wave instruction, verbatim, and
+   forbids measured values.** File 2 is the opposite of all three. E wrote it at the assigned path
+   with the conflict named at the top rather than silently complying or silently relocating.
+
+### Coordinator correction TO E — the offset is 126, not 129
+
+The closeout's §1.1 states a "129-commit stale-`main` offset". `[VERIFIED]`:
+
+```
+138 - 12 = 126        (now)
+136 - 10 = 126        (E's own earlier pair)
+$ git rev-list --count main..origin/main
+130
+```
+
+**The offset is 126.** E's structural point is correct and important — it is a *constant offset,
+not a rate*, so re-measuring never rescues the wrong baseline — but the number is wrong by three,
+and it is wrong in a document whose §1.1 exists to stop someone quoting a wrong commit count.
+
+The 130 is a *different, also true* quantity: local `main` is 130 commits behind `origin/main`.
+The 4-commit gap between 130 and 126 is precisely the work that landed on `origin/main` **during
+this wave** and is not in this branch — which is E's own finding (1) showing up in the arithmetic.
+Sent back for correction.
+
+### Operator-only list: grew by 16, closed 0 — all discovered, none created
+
+E's finding on its own tally is the sharpest methodological observation of the night:
+
+> *the wave's shape determined the direction before a single measurement was taken* — a docs-only
+> census with push, promote, cron, `--apply` and live-send all pinned is **structurally incapable
+> of closing a §17 item.**
+
+§17 says a growing deferred list is a finding about how the wave was run. It is, and E named the
+mechanism rather than apologising for the number. Its recommendation — give the next wave authority
+over the *reversible* items, which §17's own final paragraph already excludes from
+escalate-never-resolve — is the correct read of the rule and is carried to the operator.
+
+### Two pieces of evidence E found that nobody asked for
+
+- **16,356 `rc=127` failures** in the frozen daemon's invisible log. The coordinator had the
+  pattern; E measured the count.
+- **The same three `wake_ev_*` ids that fired empty tonight produced *"The disposition was recorded
+  earlier and nobody replayed it"* exactly 24 hours earlier** — M5's own sentence, from a pin that
+  no longer serves.
+
+That second one is the wave's closing image. The system said the M5 sentence yesterday, from a
+release that is gone, and tonight the same wakes resolve to no subject at all.
+
+### Wave closed
+
+- **A, B, C, D, E: all DONE.** Six documents plus this log, all committed, all on Drive.
+- **12 commits, docs only, nothing pushed, merged, deployed or scheduled.** No cron, daemon, store
+  or code touched.
+- The sampler continues to 08:00 ET. Its remaining ticks are evidence for the morning, not a reason
+  to wake anyone.
