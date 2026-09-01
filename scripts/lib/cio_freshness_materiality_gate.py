@@ -452,6 +452,30 @@ def _freshness_record(
     }
 
 
+def _cash_ts_from_rows(rows, doc):
+    """The cash block's own clock: oldest contributing balance, or None.
+
+    Delegates to cio_capital_plan.cash_evidence_as_of -- the one derivation. A
+    second implementation here is how two surfaces start disagreeing about the age
+    of the same dollars.
+    """
+    # Cash evidence comes from the WHOLE BOOK, not from the position under
+    # evaluation. `rows` here is the merged position rows -- for a decision about
+    # one symbol that is that symbol, which contains no cash, so deriving from it
+    # reported every book as undated. The document's holdings are the cash source.
+    book = (doc or {}).get("holdings")
+    if not isinstance(book, list) or not book:
+        book = rows or []
+    try:
+        from scripts.lib.cio_capital_plan import cash_evidence_as_of
+        ev = cash_evidence_as_of(book, doc or {})
+    except Exception:  # noqa: BLE001 -- a clock we cannot derive is absent, not "now"
+        return None
+    if not isinstance(ev, dict) or ev.get("unstamped"):
+        return None
+    return ev.get("as_of")
+
+
 def collect_evidence_timestamps(
     *,
     decision: dict[str, Any],
@@ -502,7 +526,15 @@ def collect_evidence_timestamps(
     mv_ts = quote_ts
     if mv_ts is None:
         mv_ts = pos.get("broker_position_as_of") or pos.get("source_as_of")
-    cash_ts = holdings_ts
+    # PP3. `cash_ts = holdings_ts` borrowed the holdings document's REPRICING clock
+    # for the cash figure. Repricing is about equity marks; it says nothing about
+    # when a cash balance was last confirmed. Live, that substitution presented cash
+    # last confirmed 2026-08-03 as being as fresh as this morning's marks.
+    #
+    # Derived from the cash rows themselves via the SAME function the capital plan
+    # and the operator product use, so the surfaces cannot drift. No stamp anywhere
+    # yields None -- a visible absence, never a borrowed clock.
+    cash_ts = _cash_ts_from_rows(rows, doc)
     # advisory / desk
     advisory_ts = (
         decision.get("advisory_as_of")
