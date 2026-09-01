@@ -189,6 +189,9 @@ GATES = [
     ("governance_section_zero_parity", [
         "tests/test_agents_section_zero_parity.py",
     ]),
+    ("guard_push_auth", [
+        "tests/test_guard_push_auth.py",
+    ]),
     ("agents_type_vocabulary", [
         "tests/test_agents_type_vocabulary.py",
     ]),
