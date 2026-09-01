@@ -1,5 +1,9 @@
 # New Component: SeverityBadge.tsx
 
+Status:      HISTORICAL
+as_of:       2026-05-25T13:05:19-04:00
+Measured at: efcc51365 / not measured
+
 - **Target repo path:** apps/command-center-v2/src/components/SeverityBadge.tsx
 - **Design purpose:** Replace inline severity `<span>` elements with a shared component. Used for alert severity, mission priority, risk level, and blocker importance across Agent Collaboration, Alerts, Risk, and Pipeline pages.
 

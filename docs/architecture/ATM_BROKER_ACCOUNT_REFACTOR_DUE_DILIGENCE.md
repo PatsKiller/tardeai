@@ -1,5 +1,9 @@
 # ATM Controls → Broker/Account Automation — Due Diligence (Phase 1)
 
+Status:      ACTIVE
+as_of:       2026-06-05T13:39:17-04:00
+Measured at: efcc51365 / not measured
+
 ## Current components
 - Frontend: `apps/command-center-v3/src/components/ATMControlPanel.tsx` (217 lines) — hard-codes
   `alpaca_paper` (×2), `atm_config`, and a "Schwab Live Readiness" box. Mounted in TradingHub "ATM Controls" tab.

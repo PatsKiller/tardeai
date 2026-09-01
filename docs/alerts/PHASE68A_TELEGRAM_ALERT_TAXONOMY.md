@@ -1,5 +1,9 @@
 # Phase 68A — Telegram Alert Taxonomy
 
+Status:      HISTORICAL
+as_of:       2026-06-01T11:52:54-04:00
+Measured at: efcc51365 / not measured
+
 | Alert Type | Severity | Description |
 |-----------|----------|-------------|
 | credential_expired | CRITICAL | Cookie/token invalid, ingestion blocked |

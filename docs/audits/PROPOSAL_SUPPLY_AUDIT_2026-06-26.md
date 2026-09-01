@@ -1,5 +1,9 @@
 # Proposal Supply Funnel Audit — 2026-06-26
 
+Status:      HISTORICAL
+as_of:       2026-06-25T22:26:32-04:00
+Measured at: efcc51365 / not measured
+
 Window: last **5** days · generated 2026-06-26T02:13:50.564778+00:00
 
 ## Funnel attrition

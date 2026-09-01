@@ -1,5 +1,9 @@
 # Phase 207 — Daily Portfolio Report Cadence Migration — Closeout — 2026-06-07
 
+Status:      HISTORICAL
+as_of:       2026-06-07T11:12:12-04:00
+Measured at: efcc51365 / not measured
+
 ## Outcome
 The daily portfolio-report cadence is migrated into the cadence-aware controller and **scheduled in
 parallel** with the legacy timer (systemd `tradeai-portfolio-daily-cadence.timer`, Mon-Fri 07:30).

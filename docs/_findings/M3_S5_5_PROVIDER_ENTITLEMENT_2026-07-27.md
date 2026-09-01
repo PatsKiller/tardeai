@@ -1,5 +1,9 @@
 # M3-S5.5 — Provider Entitlement Proof & Observation Fabric (2026-07-27)
 
+Status:      HISTORICAL
+as_of:       2026-07-27T18:39:56-04:00
+Measured at: efcc51365 / not measured
+
 **Stage:** M3-S5.5 preparation (multi-source observation fabric + entitlement proof). **Shadow-only.**
 No execution, no order path, no proposals, engine flag OFF, `multi_source.enabled` OFF.
 **Base:** origin/main `392d9957` (= the prompt's `fa0ec680` M3-S5 + doc-only PR #231 which added the

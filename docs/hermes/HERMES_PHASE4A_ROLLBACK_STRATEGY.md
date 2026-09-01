@@ -1,5 +1,9 @@
 # Phase 4A Rollback Strategy
 
+Status:      HISTORICAL
+as_of:       2026-05-31T09:56:33-04:00
+Measured at: efcc51365 / not measured
+
 ## Phase 4A: No rollback needed
 No DB writes occurred. Dry-run outputs are in docs/hermes/phase4a_dryrun/ only.
 

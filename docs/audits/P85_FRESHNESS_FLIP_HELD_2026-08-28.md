@@ -1,5 +1,9 @@
 # P8.5 — the freshness flip: **not applied**
 
+Status:      HISTORICAL
+as_of:       2026-08-30T15:13:36-04:00
+Measured at: efcc51365 / not measured
+
 The brief's condition was explicit: *"Flip it, and confirm the PASS count before and
 after is unchanged. If it is not unchanged, stop and report rather than proceeding."*
 

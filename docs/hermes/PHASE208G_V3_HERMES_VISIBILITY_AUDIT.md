@@ -1,5 +1,9 @@
 # Phase 208G — v3 Hermes Visibility Audit (2026-06-07)
 
+Status:      HISTORICAL
+as_of:       2026-06-07T11:33:46-04:00
+Measured at: efcc51365 / not measured
+
 ## What v3 already shows (good)
 - **System → Hermes** (HermesPanel): global profiles (model/tools/status/purpose), View/Edit SOUL,
   terminal commands, Codex-dev readiness, gateway disabled warning, **Legacy/Retired Agents** section

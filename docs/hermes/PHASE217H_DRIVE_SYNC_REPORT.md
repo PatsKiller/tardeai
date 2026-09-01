@@ -1,4 +1,9 @@
 # PHASE 217H — Drive Sync Report (2026-06-07)
+
+Status:      HISTORICAL
+as_of:       2026-06-30T09:35:11-04:00
+Measured at: efcc51365 / not measured
+
 Synced via scripts/sync-docs-to-drive.sh (gog CLI, docs/ tree): canonical Markdown + Word matrix, QA report,
 217A–C reconciliation docs, closeout. Canonical status JSON lives in data/runtime (gitignored runtime; not
 synced to the docs Drive tree by design). Drive link emitted by the sync run (see session log).

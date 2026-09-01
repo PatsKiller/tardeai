@@ -1,5 +1,9 @@
 # Hermes Identity Editor — Command Center v3 (2026-06-07)
 
+Status:      ACTIVE
+as_of:       2026-06-07T14:11:35-04:00
+Measured at: efcc51365 / not measured
+
 Edit Hermes profile **identity (model/provider) + SOUL** from the UI, with hard safety guards. Available on
 **System → Hermes** (Profiles table → "Edit Identity") and the **/v3/hermes** graph ("Global Hermes profiles
 · edit identity" strip → ✎ Identity). Shared component: `apps/command-center-v3/src/components/HermesSoulEditor.tsx`.

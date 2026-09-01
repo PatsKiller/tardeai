@@ -1,6 +1,10 @@
 # Agentic LAB Provisioning Checkpoint — 2026-07-24
 
-**Scope:** PR #163 only  
+Status:      HISTORICAL
+as_of:       2026-07-24T18:22:19-04:00
+Measured at: efcc51365 / not measured
+
+**Scope:** PR #163 only
 **Disposition:** `PASS_LAB_CANDIDATE — NEW EMPTY TARGET AUTHORIZED — EXECUTION PENDING`
 
 ## Sanitized evidence reviewed

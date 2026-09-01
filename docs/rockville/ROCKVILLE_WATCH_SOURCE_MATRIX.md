@@ -1,5 +1,9 @@
 # ROCKVILLE_WATCH_SOURCE_MATRIX
 
+Status:      ACTIVE
+as_of:       2026-08-04T21:35:08-04:00
+Measured at: efcc51365 / not measured
+
 | Concern | Authority | Module / path |
 |---------|-----------|---------------|
 | Exact model policy | Server SSOT | `config/rockville/ROCKVILLE_WATCH_CIO_MODEL_POLICY.json` |

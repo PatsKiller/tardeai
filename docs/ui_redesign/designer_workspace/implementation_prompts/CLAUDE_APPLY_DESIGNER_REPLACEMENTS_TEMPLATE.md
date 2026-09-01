@@ -1,5 +1,9 @@
 # Claude Code — Apply Designer Replacement Files
 
+Status:      HISTORICAL
+as_of:       2026-05-25T11:54:23-04:00
+Measured at: efcc51365 / not measured
+
 ## Context
 The designer has provided complete replacement TSX/CSS files in:
 `docs/ui_redesign/designer_workspace/designed_replacements/`

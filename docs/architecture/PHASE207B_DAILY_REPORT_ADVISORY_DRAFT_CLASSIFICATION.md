@@ -1,5 +1,9 @@
 # Phase 207B — Daily Report Advisory-Draft Classification — 2026-06-07
 
+Status:      DRAFT
+as_of:       2026-06-07T10:47:33-04:00
+Measured at: efcc51365 / not measured
+
 ## Launcher chain
 `portfolio-daily.timer` → `linux_launchers/run_portfolio.sh` → (daily):
 - `python scripts/portfolio_orchestrator.py --project-root . --run-label morning --run-type daily`

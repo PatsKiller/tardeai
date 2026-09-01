@@ -1,5 +1,9 @@
 # PHASE 190H — Protection Verification Runtime Test
 
+Status:      HISTORICAL
+as_of:       2026-06-02T10:33:34-04:00
+Measured at: efcc51365 / not measured
+
 **Run:** 2026-06-02 ~10:20 ET · Alpaca **paper** only · Live endpoint blocked
 
 ---

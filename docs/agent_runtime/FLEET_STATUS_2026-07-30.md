@@ -1,5 +1,9 @@
 # Agent-Runtime Fleet Status — 2026-07-30
 
+Status:      HISTORICAL
+as_of:       2026-07-30T15:33:44-04:00
+Measured at: efcc51365 / not measured
+
 Report for the "enable the SHADOW fleet as far as is safely possible" task. Scope
 covered Tasks A–E. **Everything remains LAB / SHADOW / read-only / zero financial
 authority.** Nothing was promoted, no authority was granted, and no hollow

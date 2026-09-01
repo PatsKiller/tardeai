@@ -1,5 +1,9 @@
 # Market Opportunities Phase 3 - Design Notes
 
+Status:      HISTORICAL
+as_of:       2026-05-25T14:16:20-04:00
+Measured at: efcc51365 / not measured
+
 ## Overview
 
 Phase 3 replaces two pages under the "Market Opportunities" umbrella:

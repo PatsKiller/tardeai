@@ -1,5 +1,9 @@
 # CIO Investment Intelligence Card (Phase A) — 2026-08-21
 
+Status:      HISTORICAL
+as_of:       2026-08-21T10:44:16-04:00
+Measured at: efcc51365 / not measured
+
 **READ_ONLY_ADVISORY.** Replaces raw product-diff Telegram dumps with per-ticker narrative cards.
 
 ## Problem

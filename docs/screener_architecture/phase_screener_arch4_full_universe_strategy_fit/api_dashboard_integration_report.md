@@ -1,5 +1,9 @@
 # SCREENER-ARCH-4 — API/Dashboard Integration
 
+Status:      ACTIVE
+as_of:       2026-05-19T16:51:15-04:00
+Measured at: efcc51365 / not measured
+
 ## API Endpoint
 
 ### GET /api/v2/strategy-fit/summary

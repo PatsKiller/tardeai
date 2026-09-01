@@ -1,5 +1,9 @@
 # Active Trader — Route / API / DB map (Stage 0 inventory)
 
+Status:      ACTIVE
+as_of:       2026-07-27T12:13:37-04:00
+Measured at: efcc51365 / not measured
+
 Honest map of **current** production surfaces vs **Active Trader Next** targets.
 Stage 0 does not replace `/v3` TradingHub.
 
@@ -30,7 +34,7 @@ Stage 0 does not replace `/v3` TradingHub.
 
 `venues.*.data` / `venues.*.execution` are **always false** at Stage 0 (read-only inventory).
 
-Contract: `active-trader-stage0-read-api-v1`  
+Contract: `active-trader-stage0-read-api-v1`
 Code: `scripts/active_trader/read_http.py` · mount via `scripts/active_trader_read_boot.py` in `portfolio_server.py`
 
 ### Existing operator APIs (not AT Stage 0)

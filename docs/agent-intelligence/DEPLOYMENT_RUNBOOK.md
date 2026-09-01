@@ -1,5 +1,9 @@
 # Deployment Runbook — Controlled Read-Only Activation (Phase 12)
 
+Status:      ACTIVE
+as_of:       2026-08-17T23:11:04-04:00
+Measured at: efcc51365 / not measured
+
 `READ_ONLY_ADVISORY`. This runbook governs how the Agent Intelligence
 Foundation's capabilities are turned **on** in production. Activation is
 *advisory-context only*: it may change how a recommendation is worded, what is

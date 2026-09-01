@@ -1,5 +1,9 @@
 # Advisory Cache Quality — 2026-06-01
 
+Status:      HISTORICAL
+as_of:       2026-06-01T12:50:21-04:00
+Measured at: efcc51365 / not measured
+
 Sections: 10 | KEEP: 3 | REFRESH: 6 | RETIRE: 1
 
 - [4.0] hermes_ticker_thesis_challenge_APAM → KEEP

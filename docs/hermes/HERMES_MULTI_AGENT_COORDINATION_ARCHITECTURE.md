@@ -1,4 +1,9 @@
 # Hermes Multi-Agent Coordination Architecture
+
+Status:      ACTIVE
+as_of:       2026-07-03T14:20:20-04:00
+Measured at: efcc51365 / not measured
+
 **v2.1 · Production-ready · 2026-07-03 · Trade AI v12**
 
 ---
@@ -152,8 +157,8 @@ Graft gates (`min_graded_samples: 3`) apply to both SQL signals and bus feedback
 
 ## 3. Outcome & Feedback Agent (Specification)
 
-**Module:** `scripts/hermes_outcome_feedback_agent.py`  
-**Config:** `config/hermes_outcome_feedback.yaml`  
+**Module:** `scripts/hermes_outcome_feedback_agent.py`
+**Config:** `config/hermes_outcome_feedback.yaml`
 **Output:** `state/hermes/outcome_bus.json` (+ `state/hermes/outcome_bus_history/`)
 
 ### Run order & dependencies

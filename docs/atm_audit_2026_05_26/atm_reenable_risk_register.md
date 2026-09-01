@@ -1,5 +1,9 @@
 # ATM Re-enable Risk Register
 
+Status:      HISTORICAL
+as_of:       2026-05-26T11:21:21-04:00
+Measured at: efcc51365 / not measured
+
 | # | Risk | Severity | Likelihood | Mitigation | Detection |
 |---|------|----------|------------|------------|-----------|
 | 1 | Strategy proof insufficient | HIGH | CERTAIN | Dry-run only until baselines | Maturity board |

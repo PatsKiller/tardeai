@@ -1,5 +1,9 @@
 # PHASE 196 — Intraday MFE for Same-Day Scalps — CLOSEOUT
 
+Status:      HISTORICAL
+as_of:       2026-06-02T13:15:12-04:00
+Measured at: efcc51365 / not measured
+
 **Run:** 2026-06-02 ~13:10–13:25 ET · Alpaca **paper** only · data-quality; no execution
 
 ---

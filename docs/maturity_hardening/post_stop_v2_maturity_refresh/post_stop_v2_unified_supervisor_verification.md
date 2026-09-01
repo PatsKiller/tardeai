@@ -1,5 +1,9 @@
 # Unified Stop Supervisor Report
 
+Status:      ACTIVE
+as_of:       2026-05-22T17:31:22-04:00
+Measured at: efcc51365 / not measured
+
 Generated: 2026-05-22T21:28:42.572177+00:00
 Mode: DRY RUN
 Market hours: False

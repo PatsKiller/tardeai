@@ -1,5 +1,9 @@
 # Alpaca Live Accounts (Taxable + IRA) — Roadmap
 
+Status:      ACTIVE
+as_of:       2026-07-21T13:55:05-04:00
+Measured at: efcc51365 / not measured
+
 **Canonical account keys (D1, 2026-07-21):**
 
 | account_key | environment | credential_slot | Status |

@@ -1,5 +1,9 @@
 # Hermes Identity Profiles — Due Diligence + Seeded Identities (2026-06-07)
 
+Status:      ACTIVE
+as_of:       2026-06-07T12:05:16-04:00
+Measured at: efcc51365 / not measured
+
 Each of the 5 Hermes profiles now has a researched identity (label + purpose + description metadata +
 role-specific SOUL), applied via the validated API (`POST /api/v2/hermes/identity` + `/soul`, backup-first,
 SOUL safety-validated). Reproducible: `scripts/seed_hermes_identities.py --apply`.

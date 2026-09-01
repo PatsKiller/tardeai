@@ -1,5 +1,9 @@
 # Phase 208K — Operator Answer: Why Retired, Is It Safe (2026-06-07)
 
+Status:      HISTORICAL
+as_of:       2026-06-07T11:34:47-04:00
+Measured at: efcc51365 / not measured
+
 **Why were the old agents retired?** The Trade-AI-gated **sidecar** Hermes install (v0.15.2, its own
 gateway + `.hermes` runtime + venv) was superseded by a **global** Hermes install (v0.16.0, `~/.local/bin/
 hermes`) with named profiles (default/tradeai/tradeai12b/dev/serverops). The sidecar's always-on gateway

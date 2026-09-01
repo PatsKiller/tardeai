@@ -1,5 +1,9 @@
 # Schwab API — Phase 1 Read-Only Foundation (canonical)
 
+Status:      HISTORICAL
+as_of:       2026-06-11T22:24:42-04:00
+Measured at: efcc51365 / not measured
+
 ## CURRENT STATE (2026-06-10) — single source of truth
 
 | Capability | State |

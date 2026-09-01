@@ -1,5 +1,9 @@
 # MAP-3 → MAP-4 Implementation Plan
 
+Status:      ACTIVE
+as_of:       2026-05-21T10:27:57-04:00
+Measured at: efcc51365 / not measured
+
 ## MAP-4 Goal
 Enable family-specific promotion in production for approved families.
 

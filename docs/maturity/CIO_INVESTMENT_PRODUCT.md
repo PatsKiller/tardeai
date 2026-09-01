@@ -1,5 +1,9 @@
 # CIO Investment Intelligence Product (Program 3.5)
 
+Status:      ACTIVE
+as_of:       2026-08-18T08:46:57-04:00
+Measured at: efcc51365 / not measured
+
 READ_ONLY_ADVISORY. This is the missing synthesis layer between desks and Alex.
 
 ## Gap

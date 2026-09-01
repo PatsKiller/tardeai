@@ -1,5 +1,9 @@
 # STOP-V2.3 Safety Audit
 
+Status:      HISTORICAL
+as_of:       2026-05-22T17:20:29-04:00
+Measured at: efcc51365 / not measured
+
 | # | Check | Result |
 |---|-------|--------|
 | 1 | ALPACA_MODE=paper | YES |

@@ -1,5 +1,9 @@
 # Phase 199 — Runtime Control Plane Consolidation + v3 Canonical UI Governance — CLOSEOUT
 
+Status:      HISTORICAL
+as_of:       2026-06-04T22:58:58-04:00
+Measured at: efcc51365 / not measured
+
 Date: 2026-06-04 · Branch: `main` · Read-only / design-first phase. No runtime mutation.
 
 ## Final checklist

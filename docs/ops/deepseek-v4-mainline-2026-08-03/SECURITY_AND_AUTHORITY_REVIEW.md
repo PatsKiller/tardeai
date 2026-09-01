@@ -1,5 +1,9 @@
 # Security and authority review — DeepSeek V4 mainline
 
+Status:      ACTIVE
+as_of:       2026-08-03T11:40:56-04:00
+Measured at: efcc51365 / not measured
+
 **Base:** `origin/main` = `ddef4613ec362e6c32307160aba8f4a56b835a20`
 **Tip:** see FINAL_REPORT final SHA
 **Method:** `git diff --name-only origin/main...HEAD` + targeted safety pytest

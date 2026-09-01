@@ -1,5 +1,9 @@
 # Direct Telegram Sender Audit
 
+Status:      HISTORICAL
+as_of:       2026-08-11T09:45:10-04:00
+Measured at: efcc51365 / not measured
+
 **Generated:** 2026-08-10T22:33:38.136997+00:00
 **Total files with Telegram references:** 161
 **Approved central components:** 10

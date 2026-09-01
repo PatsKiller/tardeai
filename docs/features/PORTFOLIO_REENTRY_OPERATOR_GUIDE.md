@@ -1,5 +1,9 @@
 # Portfolio Re-Entry and Rotation Intelligence — Operator Guide
 
+Status:      ACTIVE
+as_of:       2026-07-23T16:51:42-04:00
+Measured at: efcc51365 / not measured
+
 ## Purpose
 
 The Re-Entry workstation preserves every real-account exposure-reducing transaction, separates the long-term ticker mandate from the reason for each exit, and monitors confirmed source-to-destination rotations. It is advisory only. It never moves capital, submits an order, requests 2FA, or confirms a rotation automatically.

@@ -1,8 +1,12 @@
 # CI Evidence — Release Readiness Proof
 
-**Status: PASS**  
-_Generated: 2026-08-30T21:51:56.263338+00:00_  
-_Source: `python3 scripts/run_release_ci_equivalent.py --json`_  
+Status:      ACTIVE
+as_of:       2026-08-30T17:58:41-04:00
+Measured at: efcc51365 / not measured
+
+**Status: PASS**
+_Generated: 2026-08-30T21:51:56.263338+00:00_
+_Source: `python3 scripts/run_release_ci_equivalent.py --json`_
 _Steps: 17 passed / 0 failed / 0 warn in 35.47s_
 
 No broker writes are performed — every step is a read-only validator or test.

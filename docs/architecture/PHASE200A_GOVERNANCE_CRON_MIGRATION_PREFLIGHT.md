@@ -1,5 +1,9 @@
 # Phase 200A — Governance Cron Migration Pilot: Preflight
 
+Status:      HISTORICAL
+as_of:       2026-06-04T23:11:24-04:00
+Measured at: efcc51365 / not measured
+
 P0 cron migration pilot, **governance pipeline ONLY**. Parallel-run + diff-first; no cron retired
 until diff passes (operator approval for governance-only retirement is granted in the Phase 200 prompt).
 

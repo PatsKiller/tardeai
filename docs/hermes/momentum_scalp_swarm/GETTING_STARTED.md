@@ -1,5 +1,9 @@
 # Getting Started — Momentum Scalp Hermes Swarm
 
+Status:      ACTIVE
+as_of:       2026-07-02T18:59:48-04:00
+Measured at: efcc51365 / not measured
+
 **Recommended first iteration:** Orchestrator + Live Monitor + Stop Adjustment (Phase 1).
 
 ---

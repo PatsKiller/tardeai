@@ -1,5 +1,9 @@
 # Phase 202G — Cadence-Aware Portfolio Controller Redesign (Option B)
 
+Status:      HISTORICAL
+as_of:       2026-06-05T12:05:10-04:00
+Measured at: efcc51365 / not measured
+
 `scripts/pipelines/run_portfolio_maintenance_pipeline.sh` rewritten: each cadence runs ONLY its own
 steps, with its own lock/log/summary — preserving the distinct legacy schedules. Bundled scheduling
 is abandoned.

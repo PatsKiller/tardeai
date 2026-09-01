@@ -1,5 +1,9 @@
 # Reporting & Prospectus Generation Module
 
+Status:      ACTIVE
+as_of:       2026-06-24T12:44:46-04:00
+Measured at: efcc51365 / not measured
+
 Trade AI v12 produces analyst-firm quality reports from synthesized intelligence (Layer 4, Hermes, news, ensemble validation, portfolio state, health agent, journal).
 
 ## Architecture
@@ -16,8 +20,8 @@ reporting_engine.py         # Orchestration, registry, eligibility, batch, Grok 
 
 Symbol holding/watchlist reports use **schema v3.0** (`meta.version: "3.0"`). Legacy section ids (`recommendation`, `fundamental_news`, `agent_synthesis`, etc.) still work as aliases.
 
-**Output:** `data/portfolios/reports/analyst/`  
-**Registry:** `data/portfolios/reports/analyst/registry.json`  
+**Output:** `data/portfolios/reports/analyst/`
+**Registry:** `data/portfolios/reports/analyst/registry.json`
 **Prospectus batch logs:** `data/portfolios/reports/analyst/prospectus/batch_*.json`
 
 ### Canonical living-doc paths

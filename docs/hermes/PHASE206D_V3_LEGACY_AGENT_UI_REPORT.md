@@ -1,5 +1,9 @@
 # Phase 206D — v3 Hermes UI: Legacy / Retired Agents Section — 2026-06-07
 
+Status:      HISTORICAL
+as_of:       2026-06-07T10:32:19-04:00
+Measured at: efcc51365 / not measured
+
 ## Change
 `apps/command-center-v3/src/components/HermesPanel.tsx` (Command Center v3 → System → Hermes) only.
 Added a read-only **"Legacy / Retired Agents — Read Only"** card directly below the active Profiles matrix.

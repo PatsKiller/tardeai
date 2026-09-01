@@ -1,5 +1,9 @@
 # Watch Desk v3 — From Watching to Learning (2026-07-16 evening)
 
+Status:      ACTIVE
+as_of:       2026-07-16T15:19:37-04:00
+Measured at: efcc51365 / not measured
+
 **Builds on v2.** Diagnosis: `docs/_findings/watch_desk_v3_diagnosis_2026-07-16.md`. Advisory/paper, governed promotion, zero cloud LLM in request paths — v2 constraints verbatim.
 
 ## WS-A — Source scoreboard (P0)

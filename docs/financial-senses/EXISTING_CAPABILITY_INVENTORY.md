@@ -1,5 +1,9 @@
 # Existing capability inventory (Phase 0)
 
+Status:      ACTIVE
+as_of:       2026-08-16T22:32:42-04:00
+Measured at: efcc51365 / not measured
+
 Inventory of what Trade AI already has, what this branch reuses, and what is
 genuinely missing. This is the evidence that the SEC adapter is a facade over
 the existing pipeline, not a second ingestion system.

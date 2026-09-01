@@ -1,5 +1,9 @@
 # RI v3.0 Phase 0 Diagnosis — 2026-07-16
 
+Status:      HISTORICAL
+as_of:       2026-07-16T10:23:31-04:00
+Measured at: efcc51365 / not measured
+
 All items verified against live code + live DB (user `trade_ai`, not `johnclaw` — prompt's psql commands were wrong on user). Documentation drift confirmed in several places; live schema wins below.
 
 | # | Item | Expected (prompt) | Actual (live) | Adapt / Flag |

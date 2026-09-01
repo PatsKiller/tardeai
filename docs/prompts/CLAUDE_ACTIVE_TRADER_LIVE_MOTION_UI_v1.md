@@ -1,5 +1,9 @@
 # Claude Code Prompt — Active Trader Live Motion UI v1
 
+Status:      ACTIVE
+as_of:       2026-07-28T20:28:00-04:00
+Measured at: efcc51365 / not measured
+
 ## Immutable start point
 
 - Repository: `PatsKiller/tardeai`

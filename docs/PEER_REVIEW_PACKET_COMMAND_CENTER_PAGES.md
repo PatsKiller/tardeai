@@ -1,5 +1,9 @@
 # Peer-Review Packet — Command Center v3 Intelligence Pages
 
+Status:      ACTIVE
+as_of:       2026-07-03T16:15:07-04:00
+Measured at: efcc51365 / not measured
+
 _Generated 2026-06-21. Guided entry point for reviewers of the 6 intelligence pages._
 
 This maps each page → its React component tree → backend endpoints → the modules that serve

@@ -1,5 +1,9 @@
 # Agent Maturity Observability Baseline v1
 
+Status:      HISTORICAL
+as_of:       2026-07-30T11:19:37-04:00
+Measured at: efcc51365 / not measured
+
 Timestamp: 2026-07-30T09:08:15-04:00
 
 Hostname: ms01-openclaw

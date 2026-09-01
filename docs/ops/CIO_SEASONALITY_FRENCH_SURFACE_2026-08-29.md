@@ -1,5 +1,9 @@
 # Seasonality surface moved to Ken French (2026-08-29)
 
+Status:      HISTORICAL
+as_of:       2026-08-29T10:22:51-04:00
+Measured at: efcc51365 / not measured
+
 Wave 3A.3, operator decisions 1 and 2: swap the operator-visible seasonality
 consumer off the synthetic file and re-grade off real market data. Numbers were
 expected to move. They moved.

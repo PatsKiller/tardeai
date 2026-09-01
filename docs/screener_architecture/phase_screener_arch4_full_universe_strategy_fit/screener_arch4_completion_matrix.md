@@ -1,5 +1,9 @@
 # SCREENER-ARCH-4 — Completion Matrix
 
+Status:      ACTIVE
+as_of:       2026-05-19T16:51:15-04:00
+Measured at: efcc51365 / not measured
+
 | Deliverable | Status | Evidence |
 |---|---|---|
 | Universe/strategy baseline | done | 1,139 catalog, 23 strategies |

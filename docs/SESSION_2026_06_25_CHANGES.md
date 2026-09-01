@@ -1,5 +1,9 @@
 # Session 2026-06-25 — Changes Log
 
+Status:      HISTORICAL
+as_of:       2026-06-25T22:01:27-04:00
+Measured at: efcc51365 / not measured
+
 Comprehensive record of the 2026-06-25 working session. All changes merged to `main`
 (branch `analyst-report-v4-design` → PR #3 → merged; subsequent commits direct to `main`).
 

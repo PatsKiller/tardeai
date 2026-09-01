@@ -1,5 +1,9 @@
 # Phase 200E — Governance Controller Parallel Run (--apply)
 
+Status:      HISTORICAL
+as_of:       2026-06-04T23:15:16-04:00
+Measured at: efcc51365 / not measured
+
 One real `--apply` run of the governance controller, **legacy cron left fully intact** (435 lines,
 unchanged). Governance reporting only — no trading state mutated.
 

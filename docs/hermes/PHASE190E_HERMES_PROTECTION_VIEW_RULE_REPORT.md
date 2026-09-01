@@ -1,5 +1,9 @@
 # PHASE 190E — Hermes Protection Safe View & Rule Report
 
+Status:      HISTORICAL
+as_of:       2026-06-02T10:33:34-04:00
+Measured at: efcc51365 / not measured
+
 **Alpaca paper only · advisory only (no trade mutation).**
 
 ---

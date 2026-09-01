@@ -1,5 +1,9 @@
 # Phase 206C — Legacy/Retired Agent API — 2026-06-07
 
+Status:      HISTORICAL
+as_of:       2026-06-07T10:29:34-04:00
+Measured at: efcc51365 / not measured
+
 ## Endpoint
 `GET /api/v2/hermes/legacy-agents` → `scripts/api_v2.py::_hermes_legacy_agents`. READ-ONLY. Registered in
 the v2 route table (consumed by v3). Backed by `data/hermes/legacy_agent_inventory_latest.json` (built by

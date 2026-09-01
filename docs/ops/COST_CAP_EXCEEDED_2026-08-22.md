@@ -1,5 +1,9 @@
 # COST_CAP_EXCEEDED 2026-08-22 — what did not run, and why 895 ≠ 312
 
+Status:      HISTORICAL
+as_of:       2026-08-23T09:38:47-04:00
+Measured at: efcc51365 / not measured
+
 **Do not raise the cap.** 895 sent vs ~312 scheduled demand is extra producers + retry-on-cap + skip-gate not live on the crontab tree. The 600-call cap bound; the extras are the bug.
 
 READ_ONLY_ADVISORY. Numbers from live `hermes_external_research` / `llm_cost_reservations` ET Saturday 2026-08-22.

@@ -1,5 +1,9 @@
 # Phase 209 — Hermes/TradeAI Workflow Matrix — CLOSEOUT (2026-06-07)
 
+Status:      HISTORICAL
+as_of:       2026-06-07T12:31:47-04:00
+Measured at: efcc51365 / not measured
+
 - Phase 209 complete: **YES** (209A–209L).
 - Workflows audited: **19** · graph nodes mapped: **9** · profiles mapped: **5** · DB tables/views: **6 tables + 13 safe views** · timers/crons: **9 timers + cron**.
 - Who owns librarian: **hermes_autonomous_librarian_backlog_loop.py** via **hermes-librarian-backlog-loop.timer** (reads hermes_research_intelligence + validation findings; writes status updates; routes to embed/promote/backlog).

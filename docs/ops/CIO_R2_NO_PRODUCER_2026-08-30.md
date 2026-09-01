@@ -1,5 +1,9 @@
 # The two NO_PRODUCER rows — P4's evidence and the scoreboard pin
 
+Status:      HISTORICAL
+as_of:       2026-08-30T19:40:14-04:00
+Measured at: efcc51365 / not measured
+
 Agent **R2**, Wave A-RECONCILE, 2026-08-30. Authority **READ_ONLY_ADVISORY**,
 `MBI_BEHAVIOR=0`, `MBI_COGNITION=1`. Nothing promoted, merged, deployed or
 notified. No cron or systemd unit installed. No vendor call.

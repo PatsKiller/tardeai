@@ -1,5 +1,9 @@
 # Phase 206F — Legacy Agent → Future Profile Mapping Plan (NO migration) — 2026-06-07
 
+Status:      HISTORICAL
+as_of:       2026-06-07T10:33:09-04:00
+Measured at: efcc51365 / not measured
+
 Planning only. **No agent is migrated or rebuilt.** This records what *could* be done later, per item,
 for operator decision. Source: `data/hermes/legacy_agent_inventory_latest.json` (24 items).
 

@@ -1,8 +1,12 @@
 # Validation Taxonomy Audit
 
-**Status: PASS** | files scanned: 34 | violations: 0  
-_Generated: 2026-06-29T02:48:13.921189+00:00_  
-_Source: `python3 scripts/audit_validation_taxonomy.py --json`_  
+Status:      HISTORICAL
+as_of:       2026-06-28T22:49:34-04:00
+Measured at: efcc51365 / not measured
+
+**Status: PASS** | files scanned: 34 | violations: 0
+_Generated: 2026-06-29T02:48:13.921189+00:00_
+_Source: `python3 scripts/audit_validation_taxonomy.py --json`_
 
 Operator-facing lifecycle term is **validation**. Forbidden operator-facing phrases: `paper fast path`, `paper approval`, `paper sample`, `paper-ready`, `paper maturity`, `paper submit`, `paper-only`.
 

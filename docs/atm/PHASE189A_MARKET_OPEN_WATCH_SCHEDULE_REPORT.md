@@ -1,5 +1,9 @@
 # PHASE 189A — Market-Open Watch Schedule Report
 
+Status:      HISTORICAL
+as_of:       2026-06-02T09:13:00-04:00
+Measured at: efcc51365 / not measured
+
 **Run:** 2026-06-02 ~09:08 ET · Alpaca **paper** only
 
 | Field | Value |

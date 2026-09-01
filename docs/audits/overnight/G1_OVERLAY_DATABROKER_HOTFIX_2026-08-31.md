@@ -1,5 +1,9 @@
 # G1 overlay hotfix — state/data_broker path
 
+Status:      HISTORICAL
+as_of:       2026-08-31T02:12:48-04:00
+Measured at: efcc51365 / not measured
+
 G1 added `state/data_broker` to `OVERLAY_RELS`. On GOOD_PERSISTENT_ROOT the durable
 files live at `data/portfolios/state/data_broker`, so `overlay_is_safe` refused
 exact-main prepare (`REFUSE_EMPTY_SOURCE_TREE_OVERLAY`).

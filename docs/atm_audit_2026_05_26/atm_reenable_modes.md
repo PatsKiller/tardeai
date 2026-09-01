@@ -1,5 +1,9 @@
 # ATM Re-enable Modes
 
+Status:      HISTORICAL
+as_of:       2026-05-26T11:21:21-04:00
+Measured at: efcc51365 / not measured
+
 ## Mode 0 — Frozen (CURRENT)
 ATM active execution disabled. Proposal generation continues.
 Stop supervisor running. No ATM approval cycles fire.

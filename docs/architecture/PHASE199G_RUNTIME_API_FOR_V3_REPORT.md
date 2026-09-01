@@ -1,5 +1,9 @@
 # Phase 199G — Read-only Runtime Control Plane API for v3
 
+Status:      HISTORICAL
+as_of:       2026-06-04T22:46:54-04:00
+Measured at: efcc51365 / not measured
+
 Two read-only endpoints added to the shared backend (`scripts/api_v2.py`) for the v3 Queue Control
 Tower. **Read-only — no destructive runtime controls, no enable/disable of crons, no job
 modification, no live trading, no strategy mutation.**

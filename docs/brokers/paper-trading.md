@@ -1,8 +1,12 @@
 # Paper Trading (Alpaca) — As-Is Operator Procedures
 
-**Environment ID:** `paper` · **Vendor:** Alpaca Markets paper API  
-**Taxonomy:** `docs/brokers/trading-environments.md`  
-**Audit:** `docs/brokers/ALPACA_DUE_DILIGENCE_AUDIT_2026-07-21.md`  
+Status:      ACTIVE
+as_of:       2026-07-21T12:07:44-04:00
+Measured at: efcc51365 / not measured
+
+**Environment ID:** `paper` · **Vendor:** Alpaca Markets paper API
+**Taxonomy:** `docs/brokers/trading-environments.md`
+**Audit:** `docs/brokers/ALPACA_DUE_DILIGENCE_AUDIT_2026-07-21.md`
 **Last verified against code:** 2026-07-21
 
 ## 1. Purpose

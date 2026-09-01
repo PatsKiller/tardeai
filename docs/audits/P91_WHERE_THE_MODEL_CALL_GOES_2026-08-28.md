@@ -1,5 +1,9 @@
 # P9.1 — where does the model call go?
 
+Status:      HISTORICAL
+as_of:       2026-08-28T09:21:13-04:00
+Measured at: efcc51365 / not measured
+
 **Answer: there is no model call.** `CIO_RUN_MODEL_CALL_RECORDED` is a receipt for
 inference that never happens, and the "synthesis" it accompanies is deterministic.
 

@@ -1,5 +1,9 @@
 # Code Fix Verification Matrix (2026-05-24)
 
+Status:      HISTORICAL
+as_of:       2026-05-24T10:35:08-04:00
+Measured at: efcc51365 / not measured
+
 All 11 claimed fixes verified against live source code AND live API responses.
 
 | # | Claimed Fix | Code Verified | API Verified | Result |

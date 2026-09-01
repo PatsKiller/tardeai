@@ -1,5 +1,9 @@
 # Sector Leaders Card - Design Spec v1
 
+Status:      ACTIVE
+as_of:       2026-07-29T13:13:15-04:00
+Measured at: efcc51365 / not measured
+
 > ## CHANGE LOG — implementation corrections
 >
 > This doc is the approved design. Where the build diverges, the divergence is recorded here so the

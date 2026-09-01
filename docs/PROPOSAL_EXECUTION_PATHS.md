@@ -1,5 +1,9 @@
 # Proposal Execution Paths
 
+Status:      HISTORICAL
+as_of:       2026-07-21T12:07:44-04:00
+Measured at: efcc51365 / not measured
+
 Every signal becomes a **broker-agnostic proposal** first. You choose how to execute — two different methods, same review queue.
 
 ## Path A — Paper auto (testing)

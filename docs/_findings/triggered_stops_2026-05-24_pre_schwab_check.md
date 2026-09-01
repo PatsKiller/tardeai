@@ -1,5 +1,9 @@
 # 7 Triggered Stops — Pre-Schwab Verification
 
+Status:      HISTORICAL
+as_of:       2026-05-23T19:19:59-04:00
+Measured at: efcc51365 / not measured
+
 Generated Sunday evening 2026-05-23 before market open Monday 2026-05-25 09:35 ET.
 
 ## Positions with Price Below Stop

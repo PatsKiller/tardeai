@@ -1,5 +1,9 @@
 # Authority — READ_ONLY_ADVISORY
 
+Status:      ACTIVE
+as_of:       2026-08-27T10:52:34-04:00
+Measured at: efcc51365 / not measured
+
 **Contract:** The CIO desk is **advisory only**. No component on the situation→plan→Telegram path or the WakeDispatcher→RunWorker path may place orders, change stops, mutate risk limits, or perform 2FA / broker auth.
 
 This is enforced in product language, tool allowlists, and store metadata (`authority: READ_ONLY_ADVISORY` on thesis, plans, learning rows).
@@ -38,7 +42,7 @@ This is enforced in product language, tool allowlists, and store metadata (`auth
 
 RunWorker encodes this as explicit allow/deny tool sets in [`scripts/lib/cio_run_worker.py`](../../scripts/lib/cio_run_worker.py):
 
-- `ADVISORY_ONLY_TOOLS` — health, snapshot, handoff, hermes challenge, governed synthesis, action write, notification enqueue  
+- `ADVISORY_ONLY_TOOLS` — health, snapshot, handoff, hermes challenge, governed synthesis, action write, notification enqueue
 - `FORBIDDEN_TOOLS` — broker_*, risk_*, execute paths, infrastructure, authority_escalate, etc.
 
 Situation and Telegram code paths never call broker APIs for execution.
@@ -101,6 +105,6 @@ the platform is CIO-gated; it is not, today, by design.
 
 ## Related
 
-- [ARCHITECTURE.md](./ARCHITECTURE.md) — Track A / Track B  
-- [SITUATIONS.md](./SITUATIONS.md) — plan options are advisories, not tickets  
-- [THESIS.md](./THESIS.md) — pin always cites authority  
+- [ARCHITECTURE.md](./ARCHITECTURE.md) — Track A / Track B
+- [SITUATIONS.md](./SITUATIONS.md) — plan options are advisories, not tickets
+- [THESIS.md](./THESIS.md) — pin always cites authority

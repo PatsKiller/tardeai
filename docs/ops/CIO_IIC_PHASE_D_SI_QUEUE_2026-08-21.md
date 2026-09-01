@@ -1,5 +1,9 @@
 # CIO IIC Phase D — Symbol Intelligence dossier + research queue age (2026-08-21)
 
+Status:      HISTORICAL
+as_of:       2026-08-21T10:18:36-04:00
+Measured at: efcc51365 / not measured
+
 **READ_ONLY_ADVISORY.** No broker / orders / stops.
 
 ## Answer (operator ask)

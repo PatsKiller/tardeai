@@ -1,5 +1,9 @@
 # R20 Data-Plane Repair Closeout
 
+Status:      ACTIVE
+as_of:       2026-08-26T21:15:40-04:00
+Measured at: efcc51365 / not measured
+
 ## Scope
 
 This change reconnects read-only Command Center projections to canonical durable

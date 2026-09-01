@@ -1,5 +1,9 @@
 # Closed-Loop Step 6 — Lessons → Scoring (Shadow-First Evidence) (2026-06-05)
 
+Status:      ACTIVE
+as_of:       2026-06-05T22:42:05-04:00
+Measured at: efcc51365 / not measured
+
 ## Audit item
 "Lessons appear not applied to production scoring." Plan: feed lesson rollups into a shadow channel,
 compare vs production using realized outcomes, and **only graft after evidence — never silently alter

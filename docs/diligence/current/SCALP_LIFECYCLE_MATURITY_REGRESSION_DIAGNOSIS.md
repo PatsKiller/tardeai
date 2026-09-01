@@ -1,5 +1,9 @@
 # Scalp Lifecycle Maturity — 3.25 Regression Diagnosis
 
+Status:      ACTIVE
+as_of:       2026-06-28T22:49:34-04:00
+Measured at: efcc51365 / not measured
+
 _Why `SCALP_LIFECYCLE_MATURITY.md` regressed to 3.25/5 after PR #20, and the fix. No scores were
 inflated — the underlying alert/liquidity/trace behavior was already correct; the detector was fragile._
 

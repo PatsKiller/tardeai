@@ -1,5 +1,9 @@
 # Control-plane contract change log
 
+Status:      ACTIVE
+as_of:       2026-08-26T13:52:03-04:00
+Measured at: efcc51365 / not measured
+
 Integrator-owned. Workers must not edit this file.
 
 ## 2026-08-26 — CONTRACT_CHANGE-001 freeze ControlPlane@v1.0.0

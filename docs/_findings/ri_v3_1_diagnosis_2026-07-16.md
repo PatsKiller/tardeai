@@ -1,5 +1,9 @@
 # RI v3.1 Phase 0 Diagnosis — 2026-07-16
 
+Status:      HISTORICAL
+as_of:       2026-07-16T12:12:54-04:00
+Measured at: efcc51365 / not measured
+
 All verified live (DB user `trade_ai`, port 7777, feed route `/api/v2/research-intelligence`).
 
 | # | Item | Expected (prompt) | Actual (live) | Adapt / Flag |

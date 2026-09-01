@@ -1,5 +1,9 @@
 # OpenFIGI instrument identity
 
+Status:      ACTIVE
+as_of:       2026-08-17T11:10:54-04:00
+Measured at: efcc51365 / not measured
+
 Canonical instrument identity via OpenFIGI, fail-closed on ambiguity.
 
 ## `InstrumentIdentity@v1` fields

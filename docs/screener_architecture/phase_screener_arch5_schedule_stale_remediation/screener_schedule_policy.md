@@ -1,5 +1,9 @@
 # SCREENER-ARCH-5 — Schedule Policy
 
+Status:      ACTIVE
+as_of:       2026-05-19T19:29:16-04:00
+Measured at: efcc51365 / not measured
+
 ## Current Coverage
 
 27 active screeners across 5 session types:

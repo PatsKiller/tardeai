@@ -1,5 +1,9 @@
 # Phase 209A — Monthly Report Cadence: Preflight + Classify + Harden + Dry-Run — 2026-06-07
 
+Status:      HISTORICAL
+as_of:       2026-06-07T11:38:52-04:00
+Measured at: efcc51365 / not measured
+
 Follows the proven daily/weekly pattern (Phases 207–208).
 
 ## Preflight (verified)

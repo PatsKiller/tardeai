@@ -1,5 +1,9 @@
 # Scalp Multi-Setup Taxonomy — Integration Architecture (2026-07-27)
 
+Status:      HISTORICAL
+as_of:       2026-07-27T23:45:01-04:00
+Measured at: efcc51365 / not measured
+
 How the named-setup taxonomy extends the existing `momentum_scalp_intraday` engine. Additive, SHADOW,
 deterministic. No parallel scalping system was built.
 

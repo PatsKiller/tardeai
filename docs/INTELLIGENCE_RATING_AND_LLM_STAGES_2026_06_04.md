@@ -1,5 +1,9 @@
 # Article Quality Rating Framework + LLM Enhancement Stages — 2026-06-04
 
+Status:      HISTORICAL
+as_of:       2026-06-21T13:36:53-04:00
+Measured at: efcc51365 / not measured
+
 Defines (A) the single article-quality rating framework both TradeAI and Hermes now use, and
 (B) precisely where/when LLM enhancement is applied in each system, with the target split.
 

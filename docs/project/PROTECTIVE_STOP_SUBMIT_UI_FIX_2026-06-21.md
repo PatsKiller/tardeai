@@ -1,5 +1,9 @@
 # Protective-Stop Submit — Confirm Response Handling Fix (2026-06-21)
 
+Status:      HISTORICAL
+as_of:       2026-06-21T21:09:37-04:00
+Measured at: efcc51365 / not measured
+
 ## Symptom
 After typing the ticker / entering the 6-digit code, the NOC protective-stop modal "appeared unable to
 submit" — it showed a generic failure and never reported what actually went wrong.

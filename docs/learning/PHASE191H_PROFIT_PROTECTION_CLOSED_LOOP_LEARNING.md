@@ -1,5 +1,9 @@
 # PHASE 191H — Profit-Protection Closed-Loop Learning Integration
 
+Status:      HISTORICAL
+as_of:       2026-06-02T11:12:46-04:00
+Measured at: efcc51365 / not measured
+
 **Design + capture schema.** Advisory only; learning feeds journaling/backtesting, not execution.
 
 ---

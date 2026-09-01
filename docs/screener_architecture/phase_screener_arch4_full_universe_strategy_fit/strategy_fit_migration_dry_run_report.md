@@ -1,5 +1,9 @@
 # Migration: universe_strategy_fit_audit
 
+Status:      ACTIVE
+as_of:       2026-05-19T16:51:15-04:00
+Measured at: efcc51365 / not measured
+
 Mode: **dry_run**
 
 Table existed: False

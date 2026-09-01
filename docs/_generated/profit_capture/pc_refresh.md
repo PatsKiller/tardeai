@@ -1,5 +1,9 @@
 # Profit-Capture All-Trades Analysis
 
+Status:      ACTIVE
+as_of:       2026-06-14T03:30:37-04:00
+Measured at: efcc51365 / not measured
+
 Generated: 2026-06-14T07:30:02.991769+00:00
 
 **Advisory / analytics only. No broker, order, stop, proposal, GO/WAIT or strategy changes.**

@@ -1,5 +1,9 @@
 # Phase 199J — Runtime Control Plane Validation
 
+Status:      HISTORICAL
+as_of:       2026-06-04T22:56:59-04:00
+Measured at: efcc51365 / not measured
+
 All checks run against the live box (read-only / dry-run). Results below.
 
 ## Tests

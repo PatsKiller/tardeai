@@ -1,5 +1,9 @@
 # Phase 181E: Paper Trade Backtest Comparison Integration
 
+Status:      HISTORICAL
+as_of:       2026-06-01T23:29:18-04:00
+Measured at: efcc51365 / not measured
+
 **Date**: 2026-06-01
 **Status**: DESIGNED — Not yet implemented
 

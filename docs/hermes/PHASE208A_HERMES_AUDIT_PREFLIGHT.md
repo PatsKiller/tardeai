@@ -1,5 +1,9 @@
 # Phase 208A — Hermes End-to-End Audit Preflight (2026-06-07)
 
+Status:      HISTORICAL
+as_of:       2026-06-07T11:25:20-04:00
+Measured at: efcc51365 / not measured
+
 Safety snapshot before the audit. Read-only.
 
 ## Host / git

@@ -1,5 +1,9 @@
 # ATM Re-enable Operator Runbook
 
+Status:      HISTORICAL
+as_of:       2026-05-26T11:21:21-04:00
+Measured at: efcc51365 / not measured
+
 ## Check ATM Mode
 Dashboard: `/v2/automated-trade-mode` → status banner shows mode
 API: `curl http://localhost:7777/api/v2/atm/status`

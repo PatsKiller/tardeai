@@ -1,5 +1,9 @@
 # CIO leftover closeout (2026-08-29)
 
+Status:      HISTORICAL
+as_of:       2026-08-29T15:08:51-04:00
+Measured at: efcc51365 / not measured
+
 No new wave. Four leftovers closed.
 
 > The instruction arrived with a header saying "fix the question_id contract and
