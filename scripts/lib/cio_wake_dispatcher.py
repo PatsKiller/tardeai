@@ -176,6 +176,9 @@ class CIOWakeDispatcher:
 
         for wake in wakes:
             wake_job_id = wake.get("wake_job_id", "")
+            # Reset per wake: a stale value here would attach one wake's subject
+            # to the next wake's dispatch record.
+            _subject_key = None
 
             # Idempotency: skip already-dispatched wakes
             if wake_job_id in self._dispatched:
@@ -197,6 +200,7 @@ class CIOWakeDispatcher:
                     _d = _subject_decide(wake, store=_rec_store,
                                          known_keys=_known_keys)
                     subject_decisions.append(_d)
+                    _subject_key = _d.get("subject_key")
                     if _d["verdict"] == _SKIP_CADENCE:
                         log.info("wake %s skipped by record: %s",
                                  wake_job_id, _d["reason"])
@@ -359,6 +363,10 @@ class CIOWakeDispatcher:
                 "wake_job_id": wake_job_id,
                 "run_id": run_id,
                 "wake_intent": wake_intent,
+                # Carried so the scheduled entrypoint can rehydrate this wake's
+                # record without a second pass over the store. None when the
+                # wake resolved no subject -- the caller must not invent one.
+                "subject_key": _subject_key,
             })
 
         return {
