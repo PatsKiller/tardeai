@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `7fc27a2a613169f69b60f54b2819e87f340f4ccf89733b52df67ccd8564e250a`
+**Tree fingerprint:** `ce7283e6812da57d9b5ecbf6ddfe616fdfd0cf74567ed89634a6b6e5ff083c4c`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,10 +12,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2281 |
-| Markdown (excl. this INDEX) | 1913 |
+| Files under `docs/` (excl. this INDEX) | 2282 |
+| Markdown (excl. this INDEX) | 1914 |
 | **MISSING HEADER** | **1034** |
-| Header OK | 879 |
+| Header OK | 880 |
 | Duplicate groups | 8 |
 
 ### By status_guess
@@ -30,7 +30,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_raw_sync | 8 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 12 |
-| review_required | 1913 |
+| review_required | 1914 |
 
 ## Markdown tree
 
@@ -599,6 +599,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/audits/overnight/G4_ARCHIVE_MECHANISM_2026-08-31.md` | Overnight G4 — Archive mechanism | review_required | OK | `81e760481cc0` |
 | `docs/audits/overnight/G5_DUPLICATION_RECOMMENDATIONS_2026-08-31.md` | G5 — Duplication cluster recommendations (from Census Part 3) | review_required | OK | `0b081115c5fc` |
 | `docs/audits/overnight/G6_MISSING_STORES_2026-08-31.md` | Overnight G6 — Missing CanonicalStoreRegistry stores | review_required | OK | `8d97c7c5491f` |
+| `docs/audits/overnight/W1_OUTCOME_DERIVED_STAMP_2026-09-01.md` | W1 — OUTCOME_DERIVED stamp amendment | review_required | OK | `86d51b77d5a2` |
 | `docs/audits/overnight/W2_UNDECLARED_CENSUS_2026-09-01.md` | W2 Undeclared Census — 2026-09-01 (batch2 + batch3) | review_required | OK | `ac5563053af8` |
 | `docs/audits/overnight/W3_3A_POPULATION_2026-09-01.md` | Night Three Wave 3a — project `population` onto operator / home surfaces | review_required | OK | `66b4016fcb90` |
 | `docs/audits/overnight/W3_3B_FROZEN_FIELDS_2026-09-01.md` | Night Three Wave 3b — frozen fields that imply judgment but never move | review_required | OK | `8b4f5b2161b8` |
