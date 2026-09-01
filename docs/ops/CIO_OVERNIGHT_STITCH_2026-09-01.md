@@ -1469,3 +1469,116 @@ silently folded into it.
 against the **19** unfixed recorded at ~00:00. The escalation lane is now correctly rooted, still
 failing, and further behind. That is a separate open item for the operator and it is **not** closed
 by this restart.
+
+---
+
+## P0 (2) — 2026-09-01 08:21 ET · portfolio positions stale since 2026-08-29
+
+Raised on operator instruction after the Command Center header showed `PORTFOLIO ⚠ STALE ·
+as_of 3.3d`. Diagnosed read-only. **Nothing was changed.** This predates everything the overnight
+wave examined and feeds the risk and re-entry surfaces.
+
+### It is NOT the release boundary — §18's first check passes
+
+```
+$ ls -ld CURRENT/data/portfolios/state
+lrwxrwxrwx … -> /home/johnclaw/trade-ai-releases/persistent-state/data/portfolios/state
+```
+
+A symlink into persistent state, as `DATA_DIRS_TO_LINK` intends. **Do not go looking for a broken
+promote.** §18's "if it is a regular file, remove and re-link" remedy does not apply and must not be
+attempted here.
+
+### Three timestamps in one file, three producers `[VERIFIED]` 08:16 ET
+
+```
+updated_at     2026-08-14           18 days
+as_of          2026-08-29            3.3 days   ← the field the UI reads
+last_repriced  2026-09-01 06:15     TODAY
+generated_at   2026-09-01 06:15     TODAY
+file mtime     2026-09-01 06:15:02  TODAY       (232,841 bytes, 30 positions)
+```
+
+**The file is fresh. The prices are fresh. The positions are not.** `as_of` is written by
+`portfolio_loader.py` (`:164, :315, :336, :401, :603`, each `= today`); `last_repriced` by the
+repricer. The price lane is alive; the position lane is not.
+
+**The Command Center is correct.** After a night spent cataloguing guards that never fire, this one
+fired accurately: it is telling the operator they are looking at Friday's positions at Tuesday's
+prices. Worth recording as the counter-example — the same defect class Worker D found on the API
+surface (a field stamped with a clock belonging to a different producer), except here the surface
+got it *right* and the store is the problem.
+
+### The position writer has not logged in four weeks `[VERIFIED]`
+
+crontab 893 — **live, uncommented**: `*/15 9-16 * * 1-5 … moomoo_live_read_sync.py >>
+logs/moomoo_live_read_sync.log`. Comment: *"positions + cash -> holdings.json via
+protected_holdings_write."*
+
+The split-aware sweep (Worker C's traversal lesson applied — `-printf` over all release roots, not
+a naive `find` under `CURRENT`) finds **exactly one such log on the box**:
+
+```
+2026-08-03+15:00:02   53,076   …/trade-ai-v12-rebuild/logs/moomoo_live_read_sync.log
+```
+
+**Last written 2026-08-03.** Zero entries for Monday 2026-08-31, a weekday inside its window. The
+earlier caveat — that C's 315 splits meant the log might be somewhere unexamined — is **resolved**:
+there is no second copy.
+
+### The gateway is down, and has been far longer than the staleness
+
+`moomoo_opend_health.log`, written **08:20:01 today** — the health probe is alive:
+
+```json
+"quote": {"ok": false, "detail": "port closed — not probed"},
+"fail_streak": 2180,
+"note": "Data plane only — no order path, no trade unlock. A listening port does NOT imply a
+         successful login; the quote round-trip is the real gate."
+```
+
+Probe cadence is `*/5 6-17 * * 1-5` — 144 probes per weekday. **2180 / 144 ≈ 15 weekdays ≈ three
+calendar weeks**, placing the streak's start near 2026-08-11.
+
+### THE DATES DO NOT CLOSE — stated rather than smoothed
+
+**The moomoo gateway has been down ~3 weeks. The positions went stale 3.3 days ago. Those are not
+the same event, and one does not straightforwardly explain the other.**
+
+Something kept positions current until 2026-08-29 while moomoo was already failing — plausibly a
+second broker path — and that something stopped on 2026-08-29. **This diagnosis names the gateway
+outage and does not claim it as the cause of the `as_of` date.** Determining what wrote positions
+between ~08-11 and 08-29, and why it stopped, is the open work.
+
+This restraint is deliberate and recent: three hours ago the frozen-daemon P0 asserted `rc=127` was
+*"consistent with a stale tree whose paths have moved."* The restart disproved it — 11 `rc=127` in
+the first three minutes on the correct root. **Two defects sharing a log are not one defect.** The
+same trap is available here: a down gateway and stale positions share a subsystem, and that is not
+evidence they share a cause.
+
+### The alarm nobody receives
+
+```
+$ grep -rn "fail_streak" CURRENT/scripts/*opend* | grep -iE "alert|telegram|notify|critical"
+(empty)
+```
+
+**2,180 consecutive failures, recorded faithfully, surfaced to nobody.** This is `AGENTS.md` §8
+verbatim — *"a durable audit went CRITICAL and is surfaced by nothing"* — and it is the third
+instance this engagement has produced, after the 16,906 `rc=127` failures and the notification
+policy whose IMMEDIATE and COMMAND_CENTER_ONLY paths have fired zero times in 2,046 wakes.
+
+### Proposed, and stopped
+
+Restoring a broker data plane touches the broker subsystem — **§17 and §0 rule 2, out of scope for
+any agent**, regardless of it being read-only ("Data plane only — no order path"). The operator
+decides. The three questions to take into it:
+
+1. What wrote positions between the gateway failing (~08-11) and 2026-08-29, and what stopped it?
+2. Why does `moomoo_live_read_sync.py` produce no log at all when it fails, given cron 893 is live
+   and in-window? A job that fails silently is indistinguishable from one that never ran.
+3. Why does a 2,180-failure streak reach no operator surface when the probe writing it runs every
+   five minutes?
+
+**Not touched:** no broker path, no reauth, no `holdings.json` write, no cron edit, no service
+restart. Diagnosis only.
