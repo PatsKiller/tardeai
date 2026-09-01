@@ -1,5 +1,9 @@
 # Hermes Discovery Inbox — Current Coverage & Discovery Mechanics (2026-07-05)
 
+Status:      ACTIVE
+as_of:       2026-07-05T09:30:03-04:00
+Measured at: efcc51365 / not measured
+
 What the Discovery Inbox watches today, and exactly how new items enter it. Companion to the
 mission log and the Discovery tab (Hermes → Discovery). All intake is advisory-only; promotion is
 operator-gated (autonomous promotion OFF).

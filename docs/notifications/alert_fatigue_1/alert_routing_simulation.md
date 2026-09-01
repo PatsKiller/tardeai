@@ -1,5 +1,9 @@
 # Alert Routing Simulation
 
+Status:      ACTIVE
+as_of:       2026-05-22T20:28:24-04:00
+Measured at: efcc51365 / not measured
+
 Passed: 14/14
 
 | Message | Expected | Actual | Level | Pass |

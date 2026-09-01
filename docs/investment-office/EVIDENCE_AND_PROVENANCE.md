@@ -1,5 +1,9 @@
 # Evidence & Provenance — Trade AI Investment Office
 
+Status:      ACTIVE
+as_of:       2026-08-13T16:08:46-04:00
+Measured at: efcc51365 / not measured
+
 > Canonical evidence spine for the converged investment office.
 > Every material fact an agent or Alex (CIO) states must trace to an
 > `EvidenceRef@v1` envelope. No LLM establishes portfolio facts; LLMs synthesize

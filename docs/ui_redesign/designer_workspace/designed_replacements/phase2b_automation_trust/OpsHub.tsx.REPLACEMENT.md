@@ -1,5 +1,9 @@
 # OpsHub.tsx Replacement
 
+Status:      HISTORICAL
+as_of:       2026-05-25T14:00:12-04:00
+Measured at: efcc51365 / not measured
+
 - **Target**: `apps/command-center-v2/src/pages/OpsHub.tsx`
 - **Original SHA256**: `662fa85e8ad4a39b557eb2df591d3ab08df1a600a5f83b28f4cb67d637b776ad`
 

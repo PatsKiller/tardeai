@@ -1,5 +1,9 @@
 # R21.1 Detail Endpoints
 
+Status:      ACTIVE
+as_of:       2026-08-26T12:48:44-04:00
+Measured at: efcc51365 / not measured
+
 Implemented additively on R21 baseline `084674c5`.
 
 - `GET /api/v3/control-plane/agents/{agent_id}` returns registered detail, runtime state, bounded recent artifacts, routes, provenance and explicit unknown/unavailable status.

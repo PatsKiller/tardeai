@@ -1,5 +1,9 @@
 # Wave 3A — institutional library home + seasonality off fixtures (2026-08-29)
 
+Status:      HISTORICAL
+as_of:       2026-08-29T09:18:51-04:00
+Measured at: efcc51365 / not measured
+
 Companion: `CIO_LIBRARY_CENSUS_2026-08-29.md`.
 
 ## Headline: the series backing every `grade=B` label is synthetic

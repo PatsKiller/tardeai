@@ -1,5 +1,9 @@
 # Operator Rollout Checklist
 
+Status:      ACTIVE
+as_of:       2026-07-29T12:56:50-04:00
+Measured at: efcc51365 / not measured
+
 Preflight:
 
 - Confirm migration can apply and rollback on lab PostgreSQL.

@@ -1,5 +1,9 @@
 # Phase 77E — Next Automation Roadmap
 
+Status:      HISTORICAL
+as_of:       2026-06-01T12:38:00-04:00
+Measured at: efcc51365 / not measured
+
 | Phase | Description |
 |-------|-------------|
 | 78 | 7-day clean observation certification |

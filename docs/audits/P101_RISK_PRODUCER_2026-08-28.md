@@ -1,5 +1,9 @@
 # P10.1 — `risk_management.json` has a producer. It writes to the wrong tree.
 
+Status:      HISTORICAL
+as_of:       2026-08-30T15:13:40-04:00
+Measured at: efcc51365 / not measured
+
 P8.5 recorded, explicitly as unproven, that no scheduled writer could be identified. **That
 was wrong**, and the method that produced it is the same pattern-matching that has now
 misled this work three times. Corrected below.

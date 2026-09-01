@@ -1,4 +1,9 @@
 # PHASE 217 — Portal / System / Doc Alignment — CLOSEOUT (2026-06-07)
+
+Status:      HISTORICAL
+as_of:       2026-06-07T18:49:05-04:00
+Measured at: efcc51365 / not measured
+
 - Phase 217 complete: **YES**
 - Canonical status JSON generated: **YES** (data/runtime/hermes_canonical_status_latest.json via build_hermes_canonical_status.py)
 - Portal labels updated: **YES** (researcher-matrix now reads canonical: deep lane built+scheduled, lanes live, serverops HOLD/P1)

@@ -50,6 +50,36 @@ def _log(msg: str):
         pass
 
 
+# Reasons a phase legitimately did nothing. Not "ignore these" — they are still
+# reported with their cause on the brief line; they just do not make the whole
+# run read as faulted.
+#
+# `semantic_duplicate` is on this list with a caveat: on 2026-08-30 it fired
+# because the brief hashed identically to 08-29's (MORNING:...:ec5a2e56de503f25
+# both nights). Identical content two days running is correct to dedup and is
+# ALSO a signal worth watching — if it persists, the question is why the product
+# is not moving, not why delivery skipped.
+BENIGN_NO_EFFECT = frozenset({"already_sent", "semantic_duplicate"})
+
+
+def _phase_did_nothing(result: dict) -> bool:
+    """True when a phase's own payload says the work did not happen.
+
+    Deliberately conservative: only an EXPLICIT negative counts. A phase that
+    reports nothing about delivery is not assumed to have failed, because
+    treating silence as failure would make every phase without this key look
+    broken. `delivered: False` is a statement; a missing key is not.
+    """
+    if not isinstance(result, dict):
+        return False
+    if result.get("error"):
+        return True
+    for key in ("delivered", "published", "sent"):
+        if key in result and result[key] is False:
+            return True
+    return False
+
+
 def _run_phase(name: str, func, *args, timeout_min: int = 30) -> dict:
     """Run a phase with timing, error handling, and hard timeout."""
     import signal
@@ -66,15 +96,33 @@ def _run_phase(name: str, func, *args, timeout_min: int = 30) -> dict:
     try:
         result = func(*args) or {}
         elapsed = time.time() - start
-        _log(f"  PHASE COMPLETE: {name} — {elapsed:.1f}s — {result}")
+        # A phase reports COMPLETE only when it completed. Two shapes were
+        # reporting COMPLETE while doing nothing, both observed on the live log:
+        #
+        #   2026-08-27/28  PHASE FAILED: morning_brief_delivery — No module
+        #                  named 'scripts'   ...and the run still ended
+        #                  "AEGIS OVERNIGHT COMPLETE" with a brief count.
+        #   2026-08-30     PHASE COMPLETE: morning_brief_delivery —
+        #                  {'delivered': False, 'reason': 'semantic_duplicate'}
+        #
+        # The second is the harder one: the phase did not raise, so nothing was
+        # wrong from `try`'s point of view, yet its own payload says the work did
+        # not happen. A success claim has to be conditional on the payload, not
+        # merely on the absence of an exception.
+        if _phase_did_nothing(result):
+            result = {**result, "phase_status": "NO_EFFECT"}
+            _log(f"  PHASE NO EFFECT: {name} — {elapsed:.1f}s — {result}")
+        else:
+            result = {**result, "phase_status": "COMPLETE"}
+            _log(f"  PHASE COMPLETE: {name} — {elapsed:.1f}s — {result}")
     except TimeoutError as e:
         elapsed = time.time() - start
         _log(f"  PHASE TIMEOUT: {name} — {elapsed:.1f}s — {e}")
-        result = {"error": str(e), "timeout": True}
+        result = {"error": str(e), "timeout": True, "phase_status": "TIMEOUT"}
     except Exception as e:
         elapsed = time.time() - start
         _log(f"  PHASE FAILED: {name} — {elapsed:.1f}s — {e}")
-        result = {"error": str(e)}
+        result = {"error": str(e), "phase_status": "FAILED"}
     finally:
         signal.alarm(0)
         signal.signal(signal.SIGALRM, old_handler)
@@ -260,15 +308,45 @@ def main():
 
     # ── COMPLETE — Send synthesis summary to Telegram ────────────────────
     elapsed_total = time.time() - start_total
-    _log(f"AEGIS OVERNIGHT COMPLETE — {run_id} — {elapsed_total:.0f}s total")
+    # The run is COMPLETE only if every phase was. Naming the failed phases in
+    # the headline is the point: on 2026-08-27 and 08-28 this line read
+    # "AEGIS OVERNIGHT COMPLETE" while morning_brief_delivery had failed with
+    # "No module named 'scripts'", and nothing downstream disagreed.
+    # INCOMPLETE is for faults, not for quiet days. A phase that did nothing
+    # BECAUSE the work was already done is a legitimate no-op: shouting
+    # INCOMPLETE at it every night is how a digest gets muted, and a muted
+    # digest is worse than none because it still looks like coverage. The
+    # no-effect reason is still reported on the brief line either way, so
+    # "0 delivered" is never silent.
+    _bad = {n: r for n, r in results.items()
+            if isinstance(r, dict)
+            and (r.get("phase_status") in ("FAILED", "TIMEOUT")
+                 or (r.get("phase_status") == "NO_EFFECT"
+                     and str(r.get("reason") or "") not in BENIGN_NO_EFFECT))}
+    _headline = ("AEGIS OVERNIGHT COMPLETE" if not _bad
+                 else f"AEGIS OVERNIGHT INCOMPLETE — {len(_bad)} phase(s): "
+                      + ", ".join(f"{n}={r.get('phase_status')}" for n, r in _bad.items()))
+    _log(f"{_headline} — {run_id} — {elapsed_total:.0f}s total")
     _log(f"{'='*60}")
 
     try:
         synth = results.get("synthesis", {})
+        # `briefs` is the SYNTHESIS count — briefs generated. Reporting it under
+        # a bare "Briefs:" label is what let the digest say "Briefs: 15" on a
+        # night when delivery returned {'delivered': False}. The operator reads
+        # that number as briefs received.
+        _bd = results.get("brief_delivery") or {}
+        _delivered = 1 if _bd.get("delivered") is True else 0
+        _generated = synth.get("briefs", 0)
+        _brief_line = (f"Briefs: {_delivered} delivered / {_generated} generated"
+                       if _delivered or not _bd
+                       else f"Briefs: 0 delivered / {_generated} generated — "
+                            f"delivery {_bd.get('phase_status','?')}: "
+                            f"{_bd.get('reason') or _bd.get('error') or 'no reason given'}")
         from telegram_alert import send_telegram
         send_telegram(
-            f"Aegis Overnight Complete ({int(elapsed_total/60)}min)\n"
-            f"Briefs: {synth.get('briefs',0)} | Stops: {synth.get('stop_coverage',{}).get('total',0)}\n"
+            f"{_headline.split(' — ')[0].title()} ({int(elapsed_total/60)}min)\n"
+            f"{_brief_line} | Stops: {synth.get('stop_coverage',{}).get('total',0)}\n"
             f"Triggered: {synth.get('stop_coverage',{}).get('triggered',0)} | "
             f"Escalations: {synth.get('steph_escalations',0)}\n"
             f"Steph reviews: {synth.get('steph_reviews',0)} | "

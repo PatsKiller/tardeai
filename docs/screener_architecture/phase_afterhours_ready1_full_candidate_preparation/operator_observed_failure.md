@@ -1,5 +1,9 @@
 # Operator Observed Failure
 
+Status:      ACTIVE
+as_of:       2026-05-19T21:01:07-04:00
+Measured at: efcc51365 / not measured
+
 - Route: /v2/paper-proposals
 - Time shown: 17:30 ET
 - Run state: RUN_UNDERFILLED

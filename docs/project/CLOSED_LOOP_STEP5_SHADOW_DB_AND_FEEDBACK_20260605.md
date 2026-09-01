@@ -1,5 +1,9 @@
 # Closed-Loop Step 5 — Shadow Scores → DB + Loop-Closure Flag (2026-06-05)
 
+Status:      ACTIVE
+as_of:       2026-06-05T22:38:02-04:00
+Measured at: efcc51365 / not measured
+
 ## Gaps fixed (from certification audit)
 - Shadow scores were **file-based** (`data/learning/shadow_scores/*.json`), not DB-linked to candidates.
 - `proposal_outcome_chain.outcome_fed_back` was set on only **5%** of chains — the loop rarely recorded

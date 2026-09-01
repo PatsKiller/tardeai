@@ -1,5 +1,9 @@
 # Research Ingestion + Ticker Extraction + Connector Audit — 2026-06-20
 
+Status:      HISTORICAL
+as_of:       2026-06-20T22:34:50-04:00
+Measured at: efcc51365 / not measured
+
 Audit of **how new articles are written**, **how new tickers are extracted from research**, and a **test of
 the API/RSS connectors**. Validated against the live DB. Advisory pipeline; free LLM lanes only.
 

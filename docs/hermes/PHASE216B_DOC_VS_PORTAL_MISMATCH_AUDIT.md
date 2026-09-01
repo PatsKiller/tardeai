@@ -1,4 +1,9 @@
 # PHASE 216B — Doc vs Portal Mismatch Audit (2026-06-07)
+
+Status:      HISTORICAL
+as_of:       2026-06-07T17:50:18-04:00
+Measured at: efcc51365 / not measured
+
 Compared stale architecture/matrix docs to live portal (216A). Mismatches found: **6**.
 
 | # | Stale doc claim | Live portal truth | Resolution |

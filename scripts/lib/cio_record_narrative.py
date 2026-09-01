@@ -28,7 +28,11 @@ import re
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from scripts.lib.cio_instrument_record import CASH_SLEEVE, content_hash
+from scripts.lib.cio_instrument_record import (
+    CASH_SLEEVE,
+    content_hash,
+    normalize_writer_author,
+)
 
 SCHEMA = "CashSleeveLetter@v1"
 AUTHORITY = "READ_ONLY_ADVISORY"
@@ -113,6 +117,11 @@ def build_cash_letter(
         + (" · worst-six-months window" if regime.get("worst_six_months_window") else "")
     )
 
+    # Passthrough: writer names the author, never the migration copy step.
+    stamps = normalize_writer_author(
+        writer=narrative.get("writer") or "deterministic_fallback",
+        author=narrative.get("author"),
+    )
     letter = {
         "schema": SCHEMA,
         "authority": AUTHORITY,
@@ -132,10 +141,15 @@ def build_cash_letter(
         "standalone_sell": False,
         "financial_action": False,
         "next_eligible_at": rec.get("next_eligible_at"),
-        "writer": narrative.get("writer") or "deterministic_fallback",
+        "writer": stamps["writer"],
+        "author": stamps["author"],
         "as_of": now.isoformat(),
         "from_record": bool(record),
     }
+    if stamps.get("copy_step"):
+        letter["copy_step"] = stamps["copy_step"]
+    elif narrative.get("copy_step"):
+        letter["copy_step"] = narrative.get("copy_step")
     # The guard runs on what actually reaches the reader.
     assert_no_instruction(" ".join(str(letter[k]) for k in ("what", "month_context")))
     return letter
@@ -160,11 +174,23 @@ def narrative_for(
         out["from_record"] = True
         out["subject_key"] = subject_key
         out["next_eligible_at"] = (rec or {}).get("next_eligible_at")
+        stamps = normalize_writer_author(
+            writer=out.get("writer"), author=out.get("author"))
+        out["writer"] = stamps["writer"]
+        out["author"] = stamps["author"]
+        if stamps.get("copy_step"):
+            out["copy_step"] = stamps["copy_step"]
         return out
     if fallback:
         out = dict(fallback)
         out["from_record"] = False
         out["subject_key"] = subject_key
+        stamps = normalize_writer_author(
+            writer=out.get("writer"), author=out.get("author"))
+        out["writer"] = stamps["writer"]
+        out["author"] = stamps["author"]
+        if stamps.get("copy_step"):
+            out["copy_step"] = stamps["copy_step"]
         return out
     return None
 
@@ -183,7 +209,9 @@ def record_narratives(store: Any, *, kinds: tuple[str, ...] = ("HELD", "EXIT", "
         if not str(nar.get("what") or "").strip():
             continue
         key = str(rec.get("subject_key"))
-        out[key] = {
+        stamps = normalize_writer_author(
+            writer=nar.get("writer"), author=nar.get("author"))
+        row = {
             "subject_key": key,
             "kind": rec.get("kind"),
             "symbols": rec.get("symbols") or [],
@@ -191,11 +219,15 @@ def record_narratives(store: Any, *, kinds: tuple[str, ...] = ("HELD", "EXIT", "
             "thesis_fit": nar.get("thesis_fit"),
             "recommendation_option_id": nar.get("recommendation_option_id"),
             "risks": list(nar.get("risks") or [])[:4],
-            "writer": nar.get("writer"),
+            "writer": stamps["writer"],
+            "author": stamps["author"],
             "as_of": nar.get("as_of"),
             "next_eligible_at": rec.get("next_eligible_at"),
             "next_research_question": rec.get("next_research_question"),
             "notify_priority": rec.get("notify_priority"),
             "from_record": True,
         }
+        if stamps.get("copy_step") or nar.get("copy_step"):
+            row["copy_step"] = stamps.get("copy_step") or nar.get("copy_step")
+        out[key] = row
     return out

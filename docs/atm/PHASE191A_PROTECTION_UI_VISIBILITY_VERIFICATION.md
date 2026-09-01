@@ -1,5 +1,9 @@
 # PHASE 191A — Protection UI Visibility Verification
 
+Status:      HISTORICAL
+as_of:       2026-06-02T11:12:46-04:00
+Measured at: efcc51365 / not measured
+
 **Run:** 2026-06-02 ~11:00 ET · Alpaca **paper** only · Live endpoint blocked
 
 ---

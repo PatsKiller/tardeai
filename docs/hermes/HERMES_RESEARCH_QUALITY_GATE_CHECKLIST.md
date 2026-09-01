@@ -1,5 +1,9 @@
 # Hermes Research Quality Gate Checklist
 
+Status:      ACTIVE
+as_of:       2026-05-30T20:20:52-04:00
+Measured at: efcc51365 / not measured
+
 Reusable checklist for validating Hermes research before ingestion, embedding, or promotion.
 
 ---

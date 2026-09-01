@@ -1,4 +1,9 @@
 # Phase 204A — secrets_state_backup Failure Snapshot
+
+Status:      HISTORICAL
+as_of:       2026-06-05T12:08:22-04:00
+Measured at: efcc51365 / not measured
+
 - **Failing command:** `bash scripts/backup_secrets_state.sh` (NO argument), invoked by the OLD
   bundled controller (Phase 202C). **rc=2.**
 - **stderr:** `usage: scripts/backup_secrets_state.sh {env|data}` (script line 29: `*) ... exit 2`).

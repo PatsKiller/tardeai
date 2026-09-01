@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# Push when the operator has granted git-push in the Cursor approval ledger.
+#
+#   bin/guard grant git-push --for 30m --uses 10 --reason "overnight run"
+#   bin/agent-push -u origin HEAD
+#
+# Sets TRADEAI_REMOTE_PUSH_AUTHORIZED for the pre-push hook. The hook also
+# peeks the ledger directly, so plain ``git push`` works once a grant exists.
+set -euo pipefail
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$(git -C "$HERE" rev-parse --show-toplevel 2>/dev/null || dirname "$HERE")"
+# shellcheck source=/dev/null
+source "$ROOT/.cursor/hooks/guard-lib.sh"
+
+if ! grant_active git-push; then
+  echo "No active git-push grant." >&2
+  echo "Operator: bin/guard grant git-push --for 30m --uses 10 --reason \"...\"" >&2
+  echo "Then ask the agent to retry git push." >&2
+  exit 1
+fi
+
+export TRADEAI_REMOTE_PUSH_AUTHORIZED=1
+exec git push "$@"

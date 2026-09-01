@@ -1,5 +1,9 @@
 # CIO Maturity & Gap Analysis — 2026-08-20
 
+Status:      HISTORICAL
+as_of:       2026-08-20T14:36:41-04:00
+Measured at: efcc51365 / not measured
+
 | Field | Value |
 |---|---|
 | **Document** | `CIO_MATURITY_AND_GAP_ANALYSIS_2026-08-20.md` |

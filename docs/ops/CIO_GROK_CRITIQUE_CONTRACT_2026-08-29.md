@@ -1,5 +1,9 @@
 # Grok critique call site — contract (2026-08-29)
 
+Status:      HISTORICAL
+as_of:       2026-08-29T13:44:50-04:00
+Measured at: efcc51365 / not measured
+
 The missing lane. `research_quality.critique()` is a deterministic lint;
 `ResearchNeedDecision@v2` routes VALID artifacts to `grok_critique`; the Grok
 OAuth proxy is up on 8645. Nothing connected them. This specifies the join

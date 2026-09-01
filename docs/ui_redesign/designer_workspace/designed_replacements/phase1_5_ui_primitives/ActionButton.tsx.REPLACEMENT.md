@@ -1,5 +1,9 @@
 # New Component: ActionButton.tsx
 
+Status:      HISTORICAL
+as_of:       2026-05-25T13:05:19-04:00
+Measured at: efcc51365 / not measured
+
 - **Target repo path:** apps/command-center-v2/src/components/ActionButton.tsx
 - **Design purpose:** Replace inline `<button style={{...}}>` elements across pages with a shared component. Supports primary/secondary/danger/ghost variants with loading and disabled states. Safety-critical: does not execute anything itself — just renders a button with consistent styling.
 

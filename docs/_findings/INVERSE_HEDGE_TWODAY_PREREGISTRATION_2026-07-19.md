@@ -1,5 +1,9 @@
 # Inverse-ETF Hedge — Two-Day Entry Rule: PRE-REGISTERED Backtest Specification
 
+Status:      HISTORICAL
+as_of:       2026-07-19T17:00:15-04:00
+Measured at: efcc51365 / not measured
+
 **Registered 2026-07-19, BEFORE any performance results were computed.** Committed
 to git as the tamper-evident record; the results memo must cite this SHA.
 

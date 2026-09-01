@@ -1,5 +1,9 @@
 # PipelineHub.tsx Replacement
 
+Status:      HISTORICAL
+as_of:       2026-05-25T14:00:12-04:00
+Measured at: efcc51365 / not measured
+
 - **Target**: `apps/command-center-v2/src/pages/PipelineHub.tsx`
 - **Original SHA256**: `58a46df8622af09ccd98ff1e794704c13cf38a2dc5b51cc78078268cd6bdba55`
 

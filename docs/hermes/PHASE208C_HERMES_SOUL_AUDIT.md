@@ -1,5 +1,9 @@
 # Phase 208C — Hermes SOUL Audit (2026-06-07)
 
+Status:      HISTORICAL
+as_of:       2026-06-07T11:27:54-04:00
+Measured at: efcc51365 / not measured
+
 Script: `scripts/audit_hermes_souls.py` → `data/hermes/hermes_soul_audit_latest.json` (read-only, no secrets).
 
 ## Required conclusions

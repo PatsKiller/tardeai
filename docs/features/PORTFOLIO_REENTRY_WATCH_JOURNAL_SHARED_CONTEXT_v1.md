@@ -1,5 +1,9 @@
 # Portfolio Re-Entry, Watch and Journal Shared Context v1
 
+Status:      ACTIVE
+as_of:       2026-07-23T19:21:05-04:00
+Measured at: efcc51365 / not measured
+
 ## Purpose
 
 Re-Entry classification is a first-class operator state, not a label isolated to one page. The same symbol context is visible on Re-Entry, Watch and TradeInView/Journal while preserving the distinction between deterministic source evidence and operator confirmation.

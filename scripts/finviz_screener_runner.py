@@ -86,37 +86,72 @@ def _get_finviz_cookie():
     return ""
 
 
-def _fetch_screener_tickers(url: str, cookie: str) -> list:
+def _get_finviz_token():
+    for line in (PROJECT_ROOT / ".env").read_text().splitlines():
+        if line.startswith("FINVIZ_API_TOKEN="): return line.split("=", 1)[1].strip().strip('"\'')
+    return os.getenv("FINVIZ_API_TOKEN", "").strip()
+
+
+def _append_auth_token(url: str, token: str) -> str:
+    if not token or "auth=" in url:
+        return url
+    sep = "&" if "?" in url else "?"
+    return f"{url}{sep}auth={token}"
+
+
+def _csv_has_tickers(content: str) -> list:
+    tickers = []
+    lines = content.strip().split("\n")
+    if len(lines) > 1:
+        for line in lines[1:]:
+            parts = line.split(",")
+            if len(parts) >= 2:
+                ticker = parts[1].strip().strip('"')
+                if re.match(r'^[A-Z]{1,6}$', ticker):
+                    tickers.append(ticker)
+    return tickers
+
+
+def _fetch_screener_tickers(url: str, cookie: str, token: str = "") -> list:
     """Fetch tickers from a Finviz screener URL. Returns list of ticker strings."""
     tickers = []
     rate_limited = False
-    try:
-        # Convert to export URL for CSV download
-        export_url = url.replace("/screener.ashx?", "/export?").replace("elite.finviz.com", "elite.finviz.com")
-        if "elite.finviz.com" not in export_url:
-            export_url = export_url.replace("finviz.com", "elite.finviz.com")
+    export_url = url.replace("/screener.ashx?", "/export?").replace("elite.finviz.com", "elite.finviz.com")
+    if "elite.finviz.com" not in export_url:
+        export_url = export_url.replace("finviz.com", "elite.finviz.com")
 
+    def _try_csv(export: str, *, use_cookie: bool) -> list:
         headers = {
             "User-Agent": "Mozilla/5.0",
-            "Cookie": cookie,
             "Referer": "https://elite.finviz.com/screener.ashx",
         }
-        content = _http_get(export_url, headers)
+        if use_cookie and cookie:
+            headers["Cookie"] = cookie
+        fetch_url = _append_auth_token(export, token) if (not use_cookie and token) else export
+        content = _http_get(fetch_url, headers)
+        return _csv_has_tickers(content)
 
-        # CSV format: first column is "No.", second is "Ticker"
-        lines = content.strip().split("\n")
-        if len(lines) > 1:
-            for line in lines[1:]:  # Skip header
-                parts = line.split(",")
-                if len(parts) >= 2:
-                    ticker = parts[1].strip().strip('"')
-                    if re.match(r'^[A-Z]{1,6}$', ticker):
-                        tickers.append(ticker)
+    try:
+        if cookie:
+            tickers = _try_csv(export_url, use_cookie=True)
+        if not tickers and token:
+            if cookie:
+                print("  [screener] Cookie CSV empty — retrying export with FINVIZ_API_TOKEN")
+            else:
+                print("  [screener] No FINVIZ_COOKIE — using FINVIZ_API_TOKEN")
+            tickers = _try_csv(export_url, use_cookie=False)
     except _RateLimited:
         rate_limited = True
         print("  [screener] Fetch error: HTTP 429 — global cooldown set, skipping HTML fallback")
     except Exception as e:
         print(f"  [screener] Fetch error: {e}")
+        if token and not tickers:
+            try:
+                tickers = _try_csv(export_url, use_cookie=False)
+            except _RateLimited:
+                rate_limited = True
+            except Exception as e2:
+                print(f"  [screener] Token fallback error: {e2}")
 
     # Fallback: scrape HTML only if the CSV genuinely failed (NOT on 429 — a fallback request would
     # just hammer the rate limit again and prolong the cooldown).
@@ -126,15 +161,14 @@ def _fetch_screener_tickers(url: str, cookie: str) -> list:
                 "User-Agent": "Mozilla/5.0",
                 "Cookie": cookie if cookie else "",
             })
-            # Extract tickers from screener HTML
             ticker_pattern = re.findall(r'quote\.ashx\?t=([A-Z]{1,6})', html)
-            tickers = list(dict.fromkeys(ticker_pattern))  # dedup preserving order
+            tickers = list(dict.fromkeys(ticker_pattern))
         except _RateLimited:
             print("  [screener] HTML fallback skipped — HTTP 429 (global cooldown set)")
         except Exception as e:
             print(f"  [screener] HTML fallback error: {e}")
 
-    return tickers  # Full CSV result — capping handled by caller with screener_id context
+    return tickers
 
 
 def _sp_name(prefix: str, screener_id: str) -> str:
@@ -210,6 +244,7 @@ def run_screener(screener_id: str = None, dry_run: bool = False) -> dict:
     conn = _get_conn()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cookie = _get_finviz_cookie()
+    token = _get_finviz_token()
     _run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
 
     if screener_id:
@@ -233,7 +268,7 @@ def run_screener(screener_id: str = None, dry_run: bool = False) -> dict:
         url = s["finviz_url"]
 
         print(f"  [{sid}] Fetching {s['display_name']}...")
-        tickers = _fetch_screener_tickers(url, cookie)
+        tickers = _fetch_screener_tickers(url, cookie, token)
         # HTTP can outlive PG idle_session_timeout — never reuse a dead handle.
         conn = _refresh_conn(conn)
         try:

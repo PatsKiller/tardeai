@@ -1,5 +1,9 @@
 # PHASE 188A — ELMT Market-Open Revalidation Watch
 
+Status:      HISTORICAL
+as_of:       2026-06-02T08:17:52-04:00
+Measured at: efcc51365 / not measured
+
 **Run:** 2026-06-02 ~08:25 ET (premarket)
 **Account:** Alpaca **paper** only · Live endpoint blocked · `ALPACA_MODE=paper`
 **Verdict:** ⏸️ **HELD — revalidation deferred to market open. No live quote available yet.**

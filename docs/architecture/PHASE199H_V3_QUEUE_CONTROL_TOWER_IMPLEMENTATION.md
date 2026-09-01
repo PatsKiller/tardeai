@@ -1,5 +1,9 @@
 # Phase 199H — v3 Runtime Queue Control Tower (Control Plane) Implementation
 
+Status:      HISTORICAL
+as_of:       2026-06-04T22:49:50-04:00
+Measured at: efcc51365 / not measured
+
 v3-only. Adds a **Control Plane** tab to the v3 `SystemHub` showing the runtime control plane by
 owner pipeline. Read-only; no cron enable/disable from the UI. **No Command Center v2 UI changed.**
 

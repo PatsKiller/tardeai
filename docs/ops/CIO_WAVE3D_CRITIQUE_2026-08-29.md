@@ -1,5 +1,9 @@
 # CIO Wave 3D-critique — lane built, one call attempted, **refused by policy**
 
+Status:      HISTORICAL
+as_of:       2026-08-29T13:44:50-04:00
+Measured at: efcc51365 / not measured
+
     call site        BUILT and proven to fail closed
     live call        attempted, refused before reaching the proxy
     vendor HTTP      0     provider_cost events delta  0

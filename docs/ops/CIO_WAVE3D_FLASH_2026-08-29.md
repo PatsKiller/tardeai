@@ -1,5 +1,9 @@
 # CIO Wave 3D-flash — **STOPPED at step 1: zero flash-eligible**
 
+Status:      HISTORICAL
+as_of:       2026-08-29T13:03:43-04:00
+Measured at: efcc51365 / not measured
+
     live vendor calls  0        cost_usd  0.00
     queue before       0        queue after  0        (nothing enqueued)
     telegram_sent      false    attached  n/a         MBI  0

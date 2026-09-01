@@ -1,5 +1,9 @@
 # ATM Cron Map — Audit 2026-05-26
 
+Status:      HISTORICAL
+as_of:       2026-05-26T11:21:21-04:00
+Measured at: efcc51365 / not measured
+
 Generated from live crontab. 181 active jobs total.
 
 ## Key ATM/Pipeline Jobs

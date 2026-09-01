@@ -1,5 +1,9 @@
 # Home v2 (Command Brain) — Phase 0 Diagnosis (2026-07-17)
 
+Status:      HISTORICAL
+as_of:       2026-07-17T12:45:48-04:00
+Measured at: efcc51365 / not measured
+
 ## Flag-backs (session contract)
 - `scripts/top_gainer_awareness.py` DOES NOT EXIST — the prompt's `load_finviz_top_gainers`
   lives as inline logic in api_v2/portfolio_dashboard. WS-A builds its own `market_movers`

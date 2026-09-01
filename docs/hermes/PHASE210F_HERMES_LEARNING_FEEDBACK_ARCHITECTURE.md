@@ -1,5 +1,9 @@
 # Phase 210F — Hermes Learning Feedback Architecture (2026-06-07)
 
+Status:      HISTORICAL
+as_of:       2026-06-07T12:45:15-04:00
+Measured at: efcc51365 / not measured
+
 Standard chain: **Observe → Normalize → Evaluate → Learn → Promote → Apply (safely).**
 
 ## Observe

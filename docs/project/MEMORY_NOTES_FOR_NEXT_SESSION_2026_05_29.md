@@ -1,5 +1,9 @@
 # Memory Notes for Next Session — 2026-05-29
 
+Status:      HISTORICAL
+as_of:       2026-05-29T20:41:58-04:00
+Measured at: efcc51365 / not measured
+
 Durable context for the next Trade AI session.
 
 ## Classifier State — COMPLETE

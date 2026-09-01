@@ -1,5 +1,9 @@
 # Hermes Global Profile Migration v1.8 Closeout — 2026-06-06
 
+Status:      ACTIVE
+as_of:       2026-06-06T23:38:03-04:00
+Measured at: efcc51365 / not measured
+
 ## Status
 
 COMPLETE.

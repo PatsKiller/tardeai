@@ -1,5 +1,9 @@
 # ATM Burn-in Day 1 — Deferral Report
 
+Status:      ACTIVE
+as_of:       2026-05-22T19:21:56-04:00
+Measured at: efcc51365 / not measured
+
 **Attempted:** 2026-05-22 22:57 ET (Friday)
 **Result:** DEFERRED to Monday 2026-05-26
 

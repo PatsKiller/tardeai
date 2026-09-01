@@ -1,5 +1,9 @@
 # LLM Routing Matrix — Local vs Cloud-OAuth (+ local-LLM optimization assessment)
 
+Status:      ACTIVE
+as_of:       2026-06-29T09:41:32-04:00
+Measured at: efcc51365 / not measured
+
 _2026-06-29. Built during the Monday-morning overload/outage investigation. Read-only analysis +
 the routing plan. No broker writes; operator/2FA untouched._
 

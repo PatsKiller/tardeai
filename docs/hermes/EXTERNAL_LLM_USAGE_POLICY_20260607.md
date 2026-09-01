@@ -1,5 +1,9 @@
 # External LLM Usage Policy & Approval Process (2026-06-07)
 
+Status:      ACTIVE
+as_of:       2026-07-05T09:57:58-04:00
+Measured at: efcc51365 / not measured
+
 Governs all external/cloud LLM use (Claude/Anthropic, ChatGPT/OpenAI, Grok/xAI, consensus panel) by Hermes.
 Internal local models (gemma3 via Ollama) are NOT covered here. **Advisory-only; paper-only; live trading PROHIBITED.**
 

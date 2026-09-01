@@ -1,5 +1,9 @@
 # Phase 208 — Hermes End-to-End Agent Audit — CLOSEOUT (2026-06-07)
 
+Status:      HISTORICAL
+as_of:       2026-06-07T11:35:15-04:00
+Measured at: efcc51365 / not measured
+
 - Phase 208 complete: **YES** (208A–208L).
 - Why old agents retired: sidecar (v0.15.2, own gateway+runtime) superseded by global Hermes v0.16.0 + profiles; always-on `--accept-hooks` gateway was an unwanted autonomous surface → rename-retired, gateway stopped/disabled.
 - Keeping retired safe: **YES** (208F proof — no active dependency; mtimes untouched).

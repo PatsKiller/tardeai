@@ -1,5 +1,9 @@
 # Phase 131 — Exit Reason Forensics and Stop Quality Review
 
+Status:      HISTORICAL
+as_of:       2026-06-01T17:44:25-04:00
+Measured at: efcc51365 / not measured
+
 ## 131A — Affected Trade Inventory
 
 24 closed paper trades analyzed. 14 distinct exit_reason values across 14 close paths.

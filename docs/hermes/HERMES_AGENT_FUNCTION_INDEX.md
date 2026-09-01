@@ -1,5 +1,9 @@
 # Hermes/TradeAI Agent → Function Index (2026-06-07)
 
+Status:      ACTIVE
+as_of:       2026-06-07T12:50:46-04:00
+Measured at: efcc51365 / not measured
+
 Quick "who handles X" reference. All agents are advisory/staging-only; none touch broker/trading.
 
 | Function | Owning agent | Script | Trigger |

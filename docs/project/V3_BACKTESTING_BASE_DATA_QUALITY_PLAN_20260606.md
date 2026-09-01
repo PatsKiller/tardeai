@@ -1,5 +1,9 @@
 # v3 Backtesting Base Data Quality Scorecard (2026-06-06)
 
+Status:      ACTIVE
+as_of:       2026-06-06T11:36:30-04:00
+Measured at: efcc51365 / not measured
+
 ADVISORY ONLY — does not affect GO/WAIT or any trading behaviour. Surfaces how trustworthy each
 Backtesting tab's underlying data is. `scripts/validate_backtesting_base_data_quality.py` (read-only).
 

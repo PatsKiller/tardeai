@@ -11,6 +11,8 @@
     "current_pin": "015a7891",
     "origin_main": "015a7891",
     "origin_main_full": "015a7891a60a013119eff7554278c98696c6db9f",
+    "origin_main_provenance": "hand_stamped_no_producer",
+    "origin_main_note": "No script or workflow reads or writes this file (grep -rn DILIGENCE_SCOREBOARD scripts/ .github/ exits 1, verified 2026-08-30), so every NOW value including this pin is typed by hand. A real producer for the quantity exists at scripts/cio_release_manifest.py::git_origin_main() (git rev-parse origin/main) but it writes the release manifest. It is deliberately NOT wired here: this pin records the tip the NOW figures were measured at, so refreshing it alone would give stale figures a current pin. Restamp it only together with the numbers beneath it.",
     "current_pr": 702,
     "health": 200,
     "cio": 200,
@@ -40,7 +42,7 @@
       "instrument": "scripts/cio_event_lifecycle_census.py"
     },
     "telegram_sent": false,
-    "phase_cursor": "COMPLETE",
+    "phase_cursor": "P4_PENDING_REVERIFICATION",
     "packages_done_out_of_order": [],
     "packages_done_out_of_order_historical": [
       "P1-WS3",
@@ -179,7 +181,13 @@
     },
     "P4": {
       "title": "Research free / residual / model gov",
-      "status": "DONE",
+      "status": "NEEDS_REVERIFICATION",
+      "status_changed_at": "2026-08-30",
+      "status_changed_by": "wave_a_reconcile_r2",
+      "status_note": "DONE was awarded on an evidence JSON that carried four keys its named producer does not emit (live_overlay_root, stores_live_overlay, live_budget_report, free_first.note_live) and a stores block measured against a worktree with no data/, so all six stores read exists:false. The keys are struck and the file is now verbatim output of scripts/cio_research_governance_census.py --root <live release>. Code invariants (daily_cap 5, hop 1, C/D not corpus_hit) reproduce today. Re-adjudication is the coordinator's, not this agent's.",
+      "evidence_regenerated_at": "2026-08-30T18:02:26Z",
+      "evidence_producer": "scripts/cio_research_governance_census.py",
+      "finding_note": "docs/ops/CIO_R2_NO_PRODUCER_2026-08-30.md",
       "pr": 687,
       "sha": "d959111c",
       "merge_sha": "3e9b58d4",

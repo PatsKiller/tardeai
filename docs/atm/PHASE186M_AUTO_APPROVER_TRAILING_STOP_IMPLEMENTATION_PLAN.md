@@ -1,5 +1,9 @@
 # Phase 186M: Auto-Approver & Trailing Stop Implementation Plan
 
+Status:      HISTORICAL
+as_of:       2026-06-02T01:02:56-04:00
+Measured at: efcc51365 / not measured
+
 **Date**: 2026-06-02
 
 ## Implementation Steps (ordered by priority)

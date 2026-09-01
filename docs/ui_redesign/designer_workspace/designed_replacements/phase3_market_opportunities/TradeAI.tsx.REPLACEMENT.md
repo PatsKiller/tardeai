@@ -1,5 +1,9 @@
 # TradeAI.tsx Replacement
 
+Status:      HISTORICAL
+as_of:       2026-05-25T14:16:20-04:00
+Measured at: efcc51365 / not measured
+
 **Target repo path:** `apps/command-center-v2/src/pages/TradeAI.tsx`
 
 **Original SHA256:** `100acd120f2bba7fa9dba07bb675e2c9e66e199a92f922b79d07c470e626e907`

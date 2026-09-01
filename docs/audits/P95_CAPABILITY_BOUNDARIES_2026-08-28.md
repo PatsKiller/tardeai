@@ -1,5 +1,9 @@
 # P9.5 — capability boundaries
 
+Status:      HISTORICAL
+as_of:       2026-08-28T09:21:26-04:00
+Measured at: efcc51365 / not measured
+
 What the operator expected, sorted into exactly one bucket each. **No code. No
 recommendation** — scoping is the operator's.
 

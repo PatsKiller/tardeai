@@ -1,5 +1,9 @@
 # Active Trader Live Motion Endpoint — v1
 
+Status:      HISTORICAL
+as_of:       2026-07-29T09:06:18-04:00
+Measured at: efcc51365 / not measured
+
 **Endpoint:** `GET /api/v3/active-trader/motion`
 **Contract emitted:** `active-trader-motion-snapshot-v1`
 **Stacked on:** PR #250 (`agent/active-trader-t2-jit-policy-v1`) — merges AFTER #250.

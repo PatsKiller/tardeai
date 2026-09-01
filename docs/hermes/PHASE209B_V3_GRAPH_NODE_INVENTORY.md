@@ -1,5 +1,9 @@
 # Phase 209B — v3 Hermes Graph Node Inventory (2026-06-07)
 
+Status:      HISTORICAL
+as_of:       2026-06-07T12:28:03-04:00
+Measured at: efcc51365 / not measured
+
 Source: HermesHub.tsx `HERMES_AGENTS` (graph) + `/api/v2/hermes/infra` (live health) + owner matrix (209C).
 Script: `scripts/audit_hermes_workflow_owners.py`; data: `data/hermes/hermes_graph_node_inventory_latest.json`.
 

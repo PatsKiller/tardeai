@@ -1,5 +1,9 @@
 # Implementation Notes / PR Summary — Schwab Integration Phase (research + dormant scaffold)
 
+Status:      ACTIVE
+as_of:       2026-06-11T16:47:18-04:00
+Measured at: efcc51365 / not measured
+
 ## PR summary draft
 Adds a broker abstraction layer (`scripts/brokers/`) with a canonical order-intent model, per-broker
 capability registry, PURE translators (Schwab OTOCO/trailing/ladders; Alpaca bracket parity), a fail-closed

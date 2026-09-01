@@ -1,5 +1,9 @@
 # Phase 201F — Portfolio-Maintenance Migration Preflight (design only)
 
+Status:      HISTORICAL
+as_of:       2026-06-05T10:45:19-04:00
+Measured at: efcc51365 / not measured
+
 Inventory of portfolio-maintenance jobs for a future pilot. **No runtime change in Phase 201.**
 
 ## Candidates

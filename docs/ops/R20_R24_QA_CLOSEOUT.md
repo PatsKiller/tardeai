@@ -1,5 +1,9 @@
 # R20-R24 QA Closeout
 
+Status:      ACTIVE
+as_of:       2026-08-26T13:41:17-04:00
+Measured at: efcc51365 / not measured
+
 ## Scope
 
 Read-only validation of the `convergence/r20-r24` integration snapshot at `fc42f279`. QA ran in isolated worktree `wt-r20-r24-qa` on 2026-08-26. No feature code, production route, database, broker, order, stop, risk, 2FA, push, PR, or CI action was performed.

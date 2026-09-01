@@ -1,5 +1,9 @@
 # Validation Checklist — 4-Layer Stop Policy Enforcement
 
+Status:      ACTIVE
+as_of:       2026-07-02T18:53:06-04:00
+Measured at: efcc51365 / not measured
+
 Use this checklist to prove the swarm correctly enforces policy before 4.4 → 4.5 gate.
 
 ---

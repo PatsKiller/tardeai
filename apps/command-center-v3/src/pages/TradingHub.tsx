@@ -43,6 +43,7 @@ import OptionsHub from './OptionsHub'
 import { useTerminalUi } from '../lib/terminalUi'
 import { hubTitle, hubSubtitle, hubTab, hubFilterSelect, hubKpiChip, hubPanel } from '../lib/terminalHubChrome'
 import { runLabel } from '../lib/homeLabels'
+import { tradeAiSurfaceFreshness } from '../lib/surfaceFreshness'
 import { BB, TYPE } from '../lib/watchTokens'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
@@ -53,45 +54,13 @@ const decisionColor = (d?: string) => d === 'GO' ? '#22c55e' : d === 'WAIT' ? '#
 
 const NY_TZ = 'America/New_York'
 
-/** Calendar date YYYY-MM-DD in America/New_York (session day for US equities). */
-function nyCalendarDate(d: Date = new Date()): string {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: NY_TZ,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(d)
-}
-
-/** Latest scanner run calendar day from timestamp (preferred) or run_date. */
-function latestRunNyDate(tradeAi: any): string | null {
-  const ts = tradeAi?.latest_run_timestamp
-  if (ts) {
-    const parsed = new Date(ts)
-    if (!Number.isNaN(parsed.getTime())) return nyCalendarDate(parsed)
-  }
-  const raw = tradeAi?.run_date
-  if (raw) {
-    const m = String(raw).match(/(\d{4}-\d{2}-\d{2})/)
-    if (m) return m[1]
-  }
-  return null
-}
-
 /**
- * STALE SESSION: latest scan is not from today's America/New_York calendar day.
- * Also when current_run_scanned is 0 and the latest run is not today (same session rule).
- * Does not invent a scan or call the orchestrator — display-only honesty.
+ * STALE SESSION / empty-cache honesty for the Trade AI scanner surface.
+ * Delegates to tradeAiSurfaceFreshness so session-normalized run_date cannot
+ * hide a multi-day empty stale cache (bisect 2026-08-28). Display-only.
  */
 function isTradeAiStaleSession(tradeAi: any): boolean {
-  if (!tradeAi) return false
-  const todayNy = nyCalendarDate()
-  const runNy = latestRunNyDate(tradeAi)
-  const notToday = !runNy || runNy < todayNy
-  if (notToday) return true
-  const scanned = Number(tradeAi.current_run_scanned ?? tradeAi.latest_run_symbols_scanned ?? 0)
-  if (scanned === 0 && runNy !== todayNy) return true
-  return false
+  return tradeAiSurfaceFreshness(tradeAi).stale
 }
 
 /** Screener run health tiers — not binary green/red (underfill ≠ failed ≠ stale). */
@@ -502,6 +471,7 @@ export default function TradingHub({ onDrill }: Props) {
         // can't silently disagree.
         const universeScope = 'Full scan universe — latest scan per symbol, today + yesterday, all runs (wider than the header SETUPS strip, which counts the latest run only)'
         const staleSession = isTradeAiStaleSession(tradeAi)
+        const setupsFresh = tradeAiSurfaceFreshness(tradeAi)
         const healthTier = classifyRunHealth(tradeAi?.run_health_status)
         const healthCodes = runHealthReasonCodes(tradeAi)
         const healthFloor = Number(tradeAi?.expected_min_symbols)
@@ -564,20 +534,22 @@ export default function TradingHub({ onDrill }: Props) {
                 }}
               >
                 <div style={{ fontWeight: 800, color: BB.amber, fontSize: TYPE.md, marginBottom: 4 }}>
-                  STALE SESSION — latest scan is not from today’s America/New_York session
+                  {setupsFresh.surfaceLabel || 'STALE SESSION'} — not a live scan claim (HTTP 200 ≠ live)
                 </div>
                 <div style={{ color: 'var(--text1)', fontSize: TYPE.sm }}>
                   Last run: <b>{setupsRunLabel}</b>
                   {' · '}
                   <b>{runTsDisplay}</b>
+                  {setupsFresh.asOf && <> · cache as_of <b>{String(setupsFresh.asOf).slice(0, 19).replace('T', ' ')}</b></>}
+                  {setupsFresh.reason && <> · {setupsFresh.reason}</>}
                   {' · '}
                   universe <b>{goN}</b> GO / <b>{waitN}</b> WAIT
                   {universeN != null && <> · {universeN} symbols in panel</>}
                   {scannedN != null && <> · current-run scanned {scannedN}</>}
                 </div>
                 <div style={{ marginTop: 4, color: 'var(--text2)', fontSize: TYPE.sm }}>
-                  Actionable may be empty (or show prior-day names) because this scan is old — not because the API failed.
-                  Header SETUPS also shows STALE for the same reason. No new scan is started from this page.
+                  Empty or prior-day rows here are upstream data (or an empty stale cache), not a missing route.
+                  Header SETUPS shows the same STALE surface. No new scan is started from this page.
                 </div>
               </div>
             )}

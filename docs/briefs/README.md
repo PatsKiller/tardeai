@@ -1,5 +1,9 @@
 # Wave briefs
 
+Status:      ACTIVE
+as_of:       2026-08-30T22:01:17-04:00
+Measured at: efcc51365 / not measured
+
 A **brief** is the instruction that starts a wave of work: what the wave is for,
 what it must not do, and what would count as having finished. It is written by
 the operator and it is the authority for that wave. These files exist so a
@@ -43,6 +47,6 @@ that is not the operator's.
 
 Briefs do not restate the authority rails, the evidence vocabulary, the
 multi-agent protocol, the deploy protocol, the maturity proofs, or the
-operator-only list. Those live in `/CLAUDE.md` and load automatically. A brief
-references them; when a brief and `CLAUDE.md` disagree, the safer instruction
+operator-only list. Those live in `/AGENTS.md` and load automatically. A brief
+references them; when a brief and `AGENTS.md` disagree, the safer instruction
 wins and the disagreement is itself a finding worth reporting.

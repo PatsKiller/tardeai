@@ -1,5 +1,9 @@
 # Schwab Token Health Check — Re-auth Needed Up Front (2026-06-21)
 
+Status:      HISTORICAL
+as_of:       2026-06-21T21:20:56-04:00
+Measured at: efcc51365 / not measured
+
 ## Why
 The NOC protective stop failed at submit with `invalid_grant: "Refresh token is invalid, expired or
 revoked"` — Schwab had revoked the refresh token server-side, but the DB freshness timestamp still read

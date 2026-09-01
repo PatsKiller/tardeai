@@ -1,5 +1,9 @@
 # Pipeline Verification
 
+Status:      ACTIVE
+as_of:       2026-05-21T15:13:01-04:00
+Measured at: efcc51365 / not measured
+
 All pipeline jobs executed manually after fix on 2026-05-21.
 
 | Job | Status | Notes |

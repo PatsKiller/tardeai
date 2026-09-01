@@ -1,5 +1,9 @@
 # PHASE 191 — ATM Profit-Protection Intelligence — CLOSEOUT
 
+Status:      HISTORICAL
+as_of:       2026-06-02T11:12:46-04:00
+Measured at: efcc51365 / not measured
+
 **Run:** 2026-06-02 ~10:50–11:15 ET · Alpaca **paper** only · Live endpoint blocked
 **Advisory only — no stops moved, no take-profit orders created, no broker orders modified.**
 

@@ -1,4 +1,9 @@
 # PHASE 212E — Codex Headless Test (current build, all command shapes) (2026-06-07)
+
+Status:      HISTORICAL
+as_of:       2026-06-07T15:33:32-04:00
+Measured at: efcc51365 / not measured
+
 No newer build, so tested every headless **command shape** on v0.16.0 against the authed openai-codex / gpt-5-codex:
 
 | Command | Result |

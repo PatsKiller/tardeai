@@ -1,5 +1,9 @@
 # Options Lifecycle v1.1 — Integration Audit (read-only, 2026-07-19)
 
+Status:      HISTORICAL
+as_of:       2026-07-19T10:39:52-04:00
+Measured at: efcc51365 / not measured
+
 ## Canonical map (source → identity → journal path)
 
 | Flow | Canonical source | Identity | Journal identity today | Gap |

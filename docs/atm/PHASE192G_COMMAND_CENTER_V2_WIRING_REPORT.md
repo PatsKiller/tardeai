@@ -1,5 +1,9 @@
 # PHASE 192G — Command Center v2 Wiring Report
 
+Status:      HISTORICAL
+as_of:       2026-06-02T12:10:31-04:00
+Measured at: efcc51365 / not measured
+
 **App:** `apps/command-center-v2` · Alpaca paper only
 
 ---

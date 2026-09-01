@@ -1,5 +1,9 @@
 # Phase 210H — v3 Research & Learning Matrix Visibility Design (2026-06-07)
 
+Status:      HISTORICAL
+as_of:       2026-06-07T12:45:15-04:00
+Measured at: efcc51365 / not measured
+
 Read-only by default; no execution actions unless separately approved. Cards:
 - **Workflow Matrix** (built 209I): /api/v2/hermes/workflow-matrix.
 - **Researcher Responsibility Matrix**: /api/v2/hermes/researcher-matrix (210I) — identity/model/role/safety.

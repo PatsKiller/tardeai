@@ -1,5 +1,9 @@
 # Phase 201A — Automatic Governance Controller Cycle Observation
 
+Status:      HISTORICAL
+as_of:       2026-06-05T10:06:29-04:00
+Measured at: efcc51365 / not measured
+
 The governance controller's **first unattended (systemd-timer-driven) cycle** fired Fri 2026-06-05
 07:40 and ran clean.
 

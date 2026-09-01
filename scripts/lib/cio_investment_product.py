@@ -72,6 +72,8 @@ CASE_SUMMARY_CAP = 10
 CASE_CONTENT_MAX = 400
 CASH_ATTENTION_BAND_PCT = 20.0
 NEW_NAME_SOURCE_PREFIXES = ("defense", "advisory")
+# W3 3b — standing-policy constant (class T). Unconditional across inputs.
+# Lives on standing_policy_template; must not render as situation guidance.
 PORTFOLIO_IMPLICATION_CONSTANT = (
     "Preserve quality growth exposure, keep cash for dislocations, "
     "and do not force lower-quality replacements. Re-entries need "
@@ -79,6 +81,39 @@ PORTFOLIO_IMPLICATION_CONSTANT = (
 )
 CASE_SUMMARY_BANNER = "A-context · NON_AUTHORITATIVE · does not change action"
 EARNINGS_REL = Path("data") / "portfolios" / "state" / "earnings_dates.json"
+
+
+def _earnings_dates_path(root: Path | str | None = None) -> Path:
+    """Resolve earnings_dates.json for the collector.
+
+    Explicit ``root`` is a pin (tests / dry-run) — only that tree is consulted.
+    When ``root`` is omitted, try the process checkout, then the served
+    persistent-state copy, then the hub legacy tree. Prefer a real file; never
+    invent dates. Return the primary candidate when none exist so callers can
+    report a precise missing-path reason.
+    """
+    if root is not None:
+        return resolve_root(root) / EARNINGS_REL
+    primary = resolve_root(None) / EARNINGS_REL
+    candidates: list[Path] = [primary]
+    try:
+        from scripts.lib.persistent_state_root import good_persistent_root
+
+        persistent = good_persistent_root() / EARNINGS_REL
+        if persistent not in candidates:
+            candidates.append(persistent)
+    except Exception:
+        pass
+    try:
+        legacy = Path("/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild") / EARNINGS_REL
+        if legacy not in candidates:
+            candidates.append(legacy)
+    except Exception:
+        pass
+    for path in candidates:
+        if path.is_file():
+            return path
+    return primary
 
 
 def _now() -> datetime:
@@ -753,8 +788,7 @@ def collect_earnings_events(
     parseable dated events) — then quality=DATA_UNAVAILABLE, not a fake quiet night.
     """
     as_of = _iso(now)
-    base = resolve_root(root)
-    path = base / EARNINGS_REL
+    path = _earnings_dates_path(root)
     source = str(path)
     if not path.is_file():
         return {
@@ -1314,8 +1348,14 @@ def build_temperament(
             f"Temperament {title}. Regime source as-of {regime.get('as_of') or 'n/a'}. "
             f"FS receipts in store: {fs_n}. Ratified lessons available: {ratified}."
         ),
-        "portfolio_implication": PORTFOLIO_IMPLICATION_CONSTANT,
+        # W3 3b — constant is standing policy, not situation guidance. Write the
+        # honest template field at source; leave portfolio_implication empty so
+        # judgment surfaces never render the constant as guidance (B5/W3 3b).
+        "portfolio_implication": None,
+        "standing_policy_template": PORTFOLIO_IMPLICATION_CONSTANT,
         "portfolio_implication_class": "T",
+        "portfolio_implication_is_guidance": False,
+        "portfolio_implication_role": "standing_policy_template",
         "authority": AUTHORITY,
     }
 

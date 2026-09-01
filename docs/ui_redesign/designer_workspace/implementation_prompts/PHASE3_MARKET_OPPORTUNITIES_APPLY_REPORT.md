@@ -1,5 +1,9 @@
 # Phase 3 Market Opportunities — Apply Report
 
+Status:      HISTORICAL
+as_of:       2026-05-25T14:21:11-04:00
+Measured at: efcc51365 / not measured
+
 ## Summary
 2 pages redesigned as the Market Opportunities family.
 

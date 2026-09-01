@@ -1,5 +1,9 @@
 # Phase 201H — Portfolio-Maintenance Migration Plan (no runtime change)
 
+Status:      HISTORICAL
+as_of:       2026-06-05T10:45:19-04:00
+Measured at: efcc51365 / not measured
+
 Plan only. Same proven pattern as governance (Phase 200). **Not executed in Phase 201.**
 
 ## Pattern (per the governance pilot)

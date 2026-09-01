@@ -1,5 +1,9 @@
 # Phase 113C — Proposal Draft Quality Scorecard
 
+Status:      DRAFT
+as_of:       2026-06-01T15:53:13-04:00
+Measured at: efcc51365 / not measured
+
 ## Scoring Dimensions (0-10 each, weighted)
 
 | Dimension | Weight | What It Measures | Fail Threshold |

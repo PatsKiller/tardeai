@@ -1,4 +1,9 @@
 # Phase 203F — v3 trade-ai Frontend Mapping Audit
+
+Status:      HISTORICAL
+as_of:       2026-06-05T11:54:29-04:00
+Measured at: efcc51365 / not measured
+
 - Components: `TradingHub.tsx` (Trade AI tab) + `MetricStrip.tsx`. Both read field names that
   **match** the API: go_count, wait_count, avoid_count/universe_nogo, universe_count, ticker_count,
   tickers, run_history, latest_run_label, latest_run_timestamp. **Mapping is correct.**

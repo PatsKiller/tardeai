@@ -1,5 +1,9 @@
 # UI Redesign Session Closeout Report
 
+Status:      HISTORICAL
+as_of:       2026-05-25T13:05:19-04:00
+Measured at: efcc51365 / not measured
+
 ## Session Summary
 
 | Field | Value |

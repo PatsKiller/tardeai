@@ -1,5 +1,9 @@
 # PHASE 197 — Surface Profit-Protection Outcomes in v3 Journal Hub — CLOSEOUT
 
+Status:      HISTORICAL
+as_of:       2026-06-02T13:29:36-04:00
+Measured at: efcc51365 / not measured
+
 **Run:** 2026-06-02 ~13:30 ET · Alpaca **paper** only · read-only UI; no execution
 
 ---

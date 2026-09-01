@@ -1,5 +1,9 @@
 # BETA Watchlist Trust Incident — 2026-07-20
 
+Status:      HISTORICAL
+as_of:       2026-07-20T13:57:13-04:00
+Measured at: efcc51365 / not measured
+
 **Starting SHA:** `aa5e7ac117f335b4c279b9e902e6557edf176c78` · working tree clean
 **Orders submitted during this investigation:** none · **2FA codes sent:** none
 **BETA position:** 0 shares, $0 — never traded, in any account, ever

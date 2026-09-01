@@ -24,17 +24,45 @@ from datetime import datetime, timezone
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
-for line in (ROOT / ".env").read_text().splitlines():
-    if "=" in line and not line.startswith("#"):
-        k, v = line.split("=", 1)
-        os.environ.setdefault(k.strip(), v.strip())
-
-import psycopg2
+sys.path.insert(0, str(ROOT))
+_env_path = ROOT / ".env"
+if _env_path.is_file():
+    for line in _env_path.read_text().splitlines():
+        if "=" in line and not line.startswith("#"):
+            k, v = line.split("=", 1)
+            os.environ.setdefault(k.strip(), v.strip())
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [catalyst-momentum] %(message)s")
 log = logging.getLogger("catalyst_momentum")
 PY = str(ROOT / ".venv" / "bin" / "python")
-KILL = ROOT / "data" / "runtime" / "HERMES_DISABLED"
+# Kill switch: prefer served-state root, fall back to checkout (legacy).
+# E5: resolution layer, not cron cwd — CURRENT/data/runtime is a symlink into
+# persistent-state, so the served path is what operators and other pins see.
+# psycopg2 is imported lazily inside main() so unit tests can import path
+# helpers without a Postgres driver in CI.
+
+
+def _served_state_root() -> Path:
+    try:
+        from scripts.lib.canonical_store_registry import production_state_root
+        return Path(production_state_root())
+    except Exception:
+        try:
+            from lib.canonical_store_registry import production_state_root  # type: ignore
+            return Path(production_state_root())
+        except Exception:
+            return Path.home() / "trade-ai-releases" / "persistent-state"
+
+
+def _kill_paths() -> list[Path]:
+    root = _served_state_root()
+    return [
+        root / "data" / "runtime" / "HERMES_DISABLED",
+        ROOT / "data" / "runtime" / "HERMES_DISABLED",
+    ]
+
+
+LAST_RUN_RELATIVE = Path("data") / "cio" / "catalyst_momentum_last_run.json"
 DB = dict(host=os.getenv("DB_HOST", "127.0.0.1"), port=int(os.getenv("DB_PORT", "5432")),
           dbname=os.getenv("DB_NAME", "trade_ai"), user=os.getenv("DB_USER", "trade_ai"),
           password=os.getenv("DB_PASSWORD", ""))
@@ -48,7 +76,21 @@ BANDS = {
 
 
 def kill_active():
-    return KILL.exists()
+    return any(p.exists() for p in _kill_paths())
+
+
+def _write_last_run(payload: dict) -> Path | None:
+    """Persist last-run marker on the served state root (not checkout)."""
+    try:
+        path = _served_state_root() / LAST_RUN_RELATIVE
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(path.suffix + ".tmp")
+        tmp.write_text(json.dumps(payload, indent=2, sort_keys=True, default=str), encoding="utf-8")
+        tmp.replace(path)
+        return path
+    except Exception as exc:
+        log.warning("could not write served last-run marker: %s", exc)
+        return None
 
 
 def main():
@@ -64,6 +106,9 @@ def main():
 
     band = BANDS[args.band]
     log.info("Catalyst Momentum Engine — band=%s (apply=%s, gen_proposals=%s)", args.band, args.apply, args.generate_proposals and band["gen_proposals"])
+    log.info("  served_state_root=%s", _served_state_root())
+
+    import psycopg2  # lazy — keep module importable in CI without Postgres driver
 
     from hermes_momentum_candidate_reader import get_momentum_candidates
     from hermes_momentum_catalyst_researcher import search_catalyst, classify_catalyst
@@ -113,6 +158,26 @@ def main():
                 log.warning("  proposal[%s] failed: %s", sym, e)
 
     log.info("Done: %d staged (advisory), %d catalyst-confirmed, %d gated proposals attempted", staged, len(gated), proposals)
+    marker = {
+        "schema": "CatalystMomentumLastRun@v1",
+        "generated_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "band": args.band,
+        "apply": bool(args.apply),
+        "candidates": len(cands),
+        "staged": staged,
+        "catalyst_confirmed": len(gated),
+        "proposals_attempted": proposals,
+        "served_state_root": str(_served_state_root()),
+        "scheduled": True,
+        "authority": "READ_ONLY_ADVISORY",
+        "note": (
+            "Engine is scheduled. hermes_momentum_catalyst_researcher still writes "
+            "checkout-relative jsonl; consumers must resolve via production_state_root."
+        ),
+    }
+    path = _write_last_run(marker)
+    if path:
+        log.info("  wrote served last-run marker %s", path)
     conn.close()
     return 0
 

@@ -1,5 +1,9 @@
 # State of the Repo — 2026-06-02 Consolidated
 
+Status:      HISTORICAL
+as_of:       2026-06-02T14:03:58-04:00
+Measured at: efcc51365 / not measured
+
 **Generated:** 2026-06-02 ~13:00 ET
 **Purpose:** Single source of truth for resuming as one workstream after parallel session consolidation.
 

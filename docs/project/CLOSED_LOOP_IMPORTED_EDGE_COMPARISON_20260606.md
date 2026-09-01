@@ -1,5 +1,9 @@
 # Closed-Loop Imported Trade Edge Comparison (2026-06-06)
 
+Status:      ACTIVE
+as_of:       2026-06-05T23:59:40-04:00
+Measured at: efcc51365 / not measured
+
 > Imported trades generally lack proposal-time expected edge. Their canonical edge comparison uses per-trade backtest evidence, not fabricated proposal snapshots.
 
 ## Root gap (from all-trades cert re-audit)

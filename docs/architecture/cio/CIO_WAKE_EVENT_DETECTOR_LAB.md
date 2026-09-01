@@ -1,5 +1,9 @@
 # CIO Wake/Event Detector Lab (P-1.6)
 
+Status:      ACTIVE
+as_of:       2026-08-08T18:02:23-04:00
+Measured at: efcc51365 / not measured
+
 ## Overview
 
 The CIO Wake/Event Detector is a **deterministic, restart-safe** engine that creates durable, idempotent wake jobs for material CIO work. It reads action ledger (P-1.3), handoff queue (P-1.4), and schedule definitions to determine when the CIO agent (Alex) needs to wake and perform work.

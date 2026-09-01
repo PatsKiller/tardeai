@@ -51,6 +51,44 @@ def _get_conn():
     return psycopg2.connect(host="localhost", dbname="trade_ai", user="trade_ai", password=pw)
 
 
+def is_finviz_cookie_failure_text(text: str) -> bool:
+    """True when a last_error / message indicates cookie or empty-screener failure.
+
+    Used by health_agent (classify findings) and the credential-health API so
+    cookie/zero-row failures are never auto-retried as quote ingest.
+    """
+    t = (text or "").lower()
+    markers = (
+        "cookie", "login", "sign in", "zero row", "0 row", "0 ticker",
+        "no ticker", "expired", "empty export", "html shell", "aspxauth",
+    )
+    return any(m in t for m in markers)
+
+
+def classify_finviz_export_body(data: str) -> dict:
+    """Classify an Elite export body. Requires CSV ``Ticker`` in the first ~500 chars.
+
+    HTML/login shells previously false-positived as OK when ``Ticker`` appeared
+    anywhere later in the page (AGENTS.md §13.6 / stale-data RCA).
+    """
+    raw = data or ""
+    head = raw[:500]
+    head_l = head.lower()
+    if "<html" in head_l or "<!doctype" in head_l:
+        if "login" in head_l or "sign in" in head_l:
+            return {"name": "Finviz", "status": "expired",
+                    "error": "Cookie expired — login page returned"}
+        return {"name": "Finviz", "status": "error",
+                "error": f"HTML shell instead of CSV ({len(raw)} bytes)"}
+    if "Ticker" in head and len(raw) > 50:
+        return {"name": "Finviz", "status": "ok", "detail": f"{len(raw)} bytes"}
+    if "login" in head_l or "sign in" in head_l:
+        return {"name": "Finviz", "status": "expired",
+                "error": "Cookie expired — login page returned"}
+    return {"name": "Finviz", "status": "error",
+            "error": f"No CSV Ticker header in first 500 chars ({len(raw)} bytes)"}
+
+
 def check_finviz() -> dict:
     """Check Finviz cookie validity."""
     cookie = _env("FINVIZ_COOKIE")
@@ -67,11 +105,7 @@ def check_finviz() -> dict:
         })
         with urllib.request.urlopen(req, timeout=10) as resp:
             data = resp.read().decode("utf-8", errors="ignore")
-            if "Ticker" in data and len(data) > 50:
-                return {"name": "Finviz", "status": "ok", "detail": f"{len(data)} bytes"}
-            if "login" in data.lower() or "sign in" in data.lower():
-                return {"name": "Finviz", "status": "expired", "error": "Cookie expired — login page returned"}
-            return {"name": "Finviz", "status": "error", "error": f"Unexpected response ({len(data)} bytes)"}
+            return classify_finviz_export_body(data)
     except urllib.error.HTTPError as e:
         return {"name": "Finviz", "status": "error", "error": f"HTTP {e.code}"}
     except Exception as e:
@@ -146,6 +180,14 @@ def check_brave() -> dict:
     key = _env("BRAVE_SEARCH_API_KEY")
     if not key:
         return {"name": "Brave Search", "status": "missing", "error": "BRAVE_SEARCH_API_KEY not set"}
+    # Counted, never denied — see secret_validators._brave. A liveness probe
+    # consumes a real credit, so it must reach the ledger; denying it would
+    # report a healthy key as dead, which is the worse failure.
+    try:
+        from scripts.lib.search_budget import note as _sb_note
+        _sb_note("brave", "credential_monitor")
+    except Exception:
+        pass
     try:
         url = "https://api.search.brave.com/res/v1/web/search?q=test&count=1"
         req = urllib.request.Request(url, headers={

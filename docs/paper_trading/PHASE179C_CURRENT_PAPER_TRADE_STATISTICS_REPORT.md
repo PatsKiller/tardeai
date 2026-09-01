@@ -1,5 +1,9 @@
 # Phase 179C: Current Paper Trade Statistics Report
 
+Status:      HISTORICAL
+as_of:       2026-06-01T23:21:01-04:00
+Measured at: efcc51365 / not measured
+
 **Date**: 2026-06-01
 **Mode**: PAPER ONLY — Live trading PROHIBITED — Level 7 PROHIBITED
 

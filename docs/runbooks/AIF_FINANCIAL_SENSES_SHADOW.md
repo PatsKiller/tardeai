@@ -1,5 +1,9 @@
 # Runbook — AIF ↔ Financial Senses shadow
 
+Status:      ACTIVE
+as_of:       2026-08-17T17:24:31-04:00
+Measured at: efcc51365 / not measured
+
 READ_ONLY_ADVISORY. Do not enable behavior influence.
 
 ## Enable shadow (read-only observation)

@@ -1,5 +1,9 @@
 # Protective Stop Integration Runbook — 2026-06-30
 
+Status:      HISTORICAL
+as_of:       2026-07-04T21:03:01-04:00
+Measured at: efcc51365 / not measured
+
 ## Scope
 
 Integration branch: `fix/stop-execution-journal-reentry-integration`.

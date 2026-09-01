@@ -1,5 +1,9 @@
 # Phase 207F — Daily Output Diff Report — 2026-06-07
 
+Status:      HISTORICAL
+as_of:       2026-06-07T11:00:34-04:00
+Measured at: efcc51365 / not measured
+
 `scripts/compare_portfolio_daily_outputs.py` (READ-ONLY) → **PASS (0 unacceptable)**.
 
 ## Method

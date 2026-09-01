@@ -1,5 +1,9 @@
 # Hermes Phase 1F Rollback SQL
 
+Status:      HISTORICAL
+as_of:       2026-05-30T19:38:32-04:00
+Measured at: efcc51365 / not measured
+
 **Source:** `docs/hermes/HERMES_PHASE1F_BATCH_RESEARCH_INGESTION_ROLLBACK.sql`
 
 **WARNING:** Rollback only. Do not run without explicit operator approval.

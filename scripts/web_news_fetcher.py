@@ -1,8 +1,8 @@
-"""web_news_fetcher.py — Fetch live news for tickers via web search.
+"""web_news_fetcher.py — Fetch live news for tickers via Finviz/Yahoo (not search API).
 
-Tries Brave Search API first, falls back to DuckDuckGo HTML scrape.
-Provides fresh web search results to supplement DB-stored news.
-Used by incubator_llm_screener.py and portfolio_ai_analyst.py.
+F2 (2026-08-31): Brave Search API is reserved for residual-web. This module
+feeds incubator_llm_screener.py and portfolio_ai_analyst.py — bulk news — so
+it uses Finviz export + Yahoo RSS, with DuckDuckGo HTML scrape as last resort.
 
 Usage:
     from web_news_fetcher import fetch_web_news
@@ -25,48 +25,44 @@ _cache: Dict[str, tuple] = {}  # symbol -> (timestamp, results)
 _CACHE_TTL = 600  # 10 min cache per symbol
 
 
-def _get_brave_key() -> str:
-    key = os.getenv("BRAVE_API_KEY", "").strip() or os.getenv("BRAVE_SEARCH_API_KEY", "").strip()
-    if not key:
-        try:
-            env_path = Path(__file__).resolve().parent.parent / ".env"
-            if env_path.exists():
-                for line in env_path.read_text().splitlines():
-                    if line.startswith("BRAVE_API_KEY=") or line.startswith("BRAVE_SEARCH_API_KEY="):
-                        key = line.split("=", 1)[1].strip().strip('"')
-                        break
-        except Exception:
-            pass
-    return key
+def _finviz_yahoo_news(symbol: str, max_results: int = 5) -> List[Dict]:
+    """F2 primary path: Finviz Elite news export, then Yahoo RSS/search."""
+    sym = (symbol or "").upper().strip()
+    if not sym:
+        return []
+    out: List[Dict] = []
+    try:
+        from finviz_news import fetch_finviz_news
+        for a in fetch_finviz_news(sym, lookback_hours=72)[:max_results]:
+            out.append({
+                "title": a.get("headline") or a.get("title") or "",
+                "url": a.get("url") or "",
+                "snippet": str(a.get("original_source") or a.get("source") or "")[:150],
+                "age": "",
+                "source": "finviz_news",
+            })
+    except Exception as e:
+        print(f"  [web-news] Finviz failed: {e}")
+    if len(out) >= max_results:
+        return out[:max_results]
+    try:
+        from yahoo_news import fetch_yahoo_news
+        for a in fetch_yahoo_news(sym, lookback_hours=72)[: max(0, max_results - len(out))]:
+            out.append({
+                "title": a.get("headline") or a.get("title") or "",
+                "url": a.get("url") or "",
+                "snippet": str(a.get("source") or "yahoo")[:150],
+                "age": "",
+                "source": "yahoo_news",
+            })
+    except Exception as e:
+        print(f"  [web-news] Yahoo failed: {e}")
+    return out[:max_results]
 
 
 def _brave_search(query: str, max_results: int = 5) -> List[Dict]:
-    """Search via Brave Search API. Returns results or empty on failure."""
-    key = _get_brave_key()
-    if not key:
-        return []
-    try:
-        url = (f"https://api.search.brave.com/res/v1/web/search"
-               f"?q={urllib.parse.quote(query)}&count={max_results}&freshness=pw")
-        req = urllib.request.Request(url, headers={
-            "Accept": "application/json",
-            "X-Subscription-Token": key,
-        })
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            data = json.loads(resp.read())
-        results = []
-        for r in (data.get("web", {}).get("results", []))[:max_results]:
-            results.append({
-                "title": r.get("title", ""),
-                "url": r.get("url", ""),
-                "snippet": r.get("description", "")[:150],
-                "age": r.get("age", ""),
-                "source": "brave",
-            })
-        return results
-    except Exception as e:
-        print(f"  [web-news] Brave failed: {e}")
-        return []
+    """Retired for bulk news (F2). Kept as named stub so imports do not fail open."""
+    return []
 
 
 def _ddg_search(query: str, max_results: int = 5) -> List[Dict]:
@@ -109,9 +105,9 @@ def _ddg_search(query: str, max_results: int = 5) -> List[Dict]:
 
 
 def fetch_web_news(symbol: str, query_extra: str = "", max_results: int = 5) -> List[Dict]:
-    """Search for recent news about a stock ticker.
+    """Fetch recent news about a stock ticker without the paid search API.
 
-    Tries Brave first, falls back to DuckDuckGo.
+    Order: Finviz → Yahoo → DuckDuckGo HTML scrape. Brave is not called.
     Returns list of dicts with: title, url, snippet, age, source
     """
     # Check cache
@@ -121,10 +117,9 @@ def fetch_web_news(symbol: str, query_extra: str = "", max_results: int = 5) -> 
 
     query = f"{symbol} stock news {query_extra}".strip()
 
-    # Try Brave first
-    results = _brave_search(query, max_results)
+    results = _finviz_yahoo_news(symbol, max_results)
 
-    # Fallback to DuckDuckGo
+    # Last-resort scrape (not a search API credit)
     if not results:
         results = _ddg_search(query, max_results)
 

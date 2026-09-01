@@ -1,5 +1,9 @@
 # PHASE 191I — Profit-Protection Alert Policy
 
+Status:      HISTORICAL
+as_of:       2026-06-02T11:12:46-04:00
+Measured at: efcc51365 / not measured
+
 **Alpaca paper only.** Defines when a profit-protection advisory is **actionable** (Telegram) vs
 **informational** (digest/dashboard only). No routine noise.
 

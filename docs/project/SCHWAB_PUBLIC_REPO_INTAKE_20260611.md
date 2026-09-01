@@ -1,5 +1,9 @@
 # Schwab Public Repo Intake Memo (read-only review)
 
+Status:      ACTIVE
+as_of:       2026-06-10T22:29:34-04:00
+Measured at: efcc51365 / not measured
+
 **Prepared:** 2026-06-11 · **Type:** reference review only — **no code adopted, no dependencies added, no
 production changes.** Metadata pulled live from the GitHub API on 2026-06-11.
 

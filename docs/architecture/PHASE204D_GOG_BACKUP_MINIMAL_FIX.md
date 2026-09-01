@@ -1,4 +1,9 @@
 # Phase 204D — Minimal Fix for secrets_state_backup
+
+Status:      HISTORICAL
+as_of:       2026-06-05T12:08:22-04:00
+Measured at: efcc51365 / not measured
+
 **Fix:** the cadence-aware controller's `backup` cadence calls the script correctly with BOTH legacy
 arguments — `backup_secrets_state.sh env` and `backup_secrets_state.sh data` — matching the legacy
 cron exactly (replacing the old single no-arg call). Implemented in

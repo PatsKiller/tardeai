@@ -1,5 +1,9 @@
 # Phase 208J — Hermes Agent Risk Register (2026-06-07)
 
+Status:      HISTORICAL
+as_of:       2026-06-07T11:34:47-04:00
+Measured at: efcc51365 / not measured
+
 | ID | Risk | Level | Status / Action |
 |----|------|-------|-----------------|
 | R1 | Disabled `hermes-gateway.service` unit still has sidecar ExecStart | P2 | Inert (disabled). Repoint/remove unit file (operator-approved). |

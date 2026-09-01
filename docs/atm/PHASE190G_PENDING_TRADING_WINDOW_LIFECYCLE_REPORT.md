@@ -1,5 +1,9 @@
 # PHASE 190G — PENDING_TRADING_WINDOW Lifecycle Report
 
+Status:      HISTORICAL
+as_of:       2026-06-02T10:33:34-04:00
+Measured at: efcc51365 / not measured
+
 **Scope:** DESIGN + safe advisory analyzer. **No GO/WAIT/NO-GO logic changed** (hard constraint).
 **File:** `scripts/pending_trading_window.py` (advisory, dry-run; no status mutation).
 

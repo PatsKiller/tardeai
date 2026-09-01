@@ -1,5 +1,9 @@
 # News Ingestion Gap — 2026-05-24
 
+Status:      HISTORICAL
+as_of:       2026-05-23T15:34:57-04:00
+Measured at: efcc51365 / not measured
+
 ## Observed
 - News articles by day (last 10 days):
   - 5/23: 192 (manual run during investigation)

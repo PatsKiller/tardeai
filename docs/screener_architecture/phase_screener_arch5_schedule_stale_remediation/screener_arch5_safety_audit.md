@@ -1,5 +1,9 @@
 # SCREENER-ARCH-5 — Safety Audit
 
+Status:      HISTORICAL
+as_of:       2026-05-19T19:29:16-04:00
+Measured at: efcc51365 / not measured
+
 | Check | Status |
 |-------|--------|
 | ALPACA_MODE=paper | PASS |

@@ -1,5 +1,9 @@
 # Wave 3D — the one live hop, executed (2026-08-29)
 
+Status:      HISTORICAL
+as_of:       2026-08-29T14:33:31-04:00
+Measured at: efcc51365 / not measured
+
     plan_id       plan_477c33c065ec  (SPCX)
     research_id   res_557cfaab8c34
     lane          deepseek-v4-flash      process_id  hermes_external_research

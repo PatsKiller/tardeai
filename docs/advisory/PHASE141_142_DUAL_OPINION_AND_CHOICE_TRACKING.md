@@ -1,5 +1,9 @@
 # Phases 141-142 — Dual-Opinion Advisory + Operator Choice Tracking
 
+Status:      HISTORICAL
+as_of:       2026-06-01T20:37:17-04:00
+Measured at: efcc51365 / not measured
+
 ## Phase 141 — Dual-Opinion Advisory (COMPLETE)
 
 ### Results
