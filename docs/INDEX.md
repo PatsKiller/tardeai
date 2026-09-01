@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `3a69efc246964f1c0e02b3f904128f3f44f30ef5ace9b36cd821ec80e2311d83`
+**Tree fingerprint:** `74ff1f4851b3faeb08138a18da69cc5894b103ea9f21883cc7d70f6ca9f412e0`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,10 +12,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2301 |
-| Markdown (excl. this INDEX) | 1933 |
+| Files under `docs/` (excl. this INDEX) | 2302 |
+| Markdown (excl. this INDEX) | 1934 |
 | **MISSING HEADER** | **11** |
-| Header OK | 1922 |
+| Header OK | 1923 |
 | Duplicate groups | 5 |
 
 ### By status_guess
@@ -30,7 +30,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_raw_sync | 8 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 6 |
-| review_required | 1939 |
+| review_required | 1940 |
 
 ## Markdown tree
 
@@ -1331,6 +1331,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/CANON_SOURCE_ACQUISITION_QUEUE_2026-08-23.md` | Canon Source Acquisition Queue - 2026-08-23 | review_required | OK | `a49f0fc9b389` |
 | `docs/ops/CIO_ADVISORY_TRUTH_HARDENING_CLOSEOUT_2026-08-20.md` | CIO/Advisory truth + presentation hardening — closeout 2026-08-20 | review_required | OK | `1661c226ddf4` |
 | `docs/ops/CIO_AFTERNOON_FIVE_2026-09-01.md` | Afternoon five — closeout | review_required | OK | `58bb7c12e239` |
+| `docs/ops/CIO_BANNER_DATA_ASOF_2026-09-01.md` | PORTFOLIO chip — freshness is `data_as_of`, not the loader run | review_required | OK | `e52ceb650854` |
 | `docs/ops/CIO_CASH_SATURDAY_PROOF_2026-08-29.md` | CIO cash fossil — Saturday proof (2026-08-29) | review_required | OK | `cc534b5312c6` |
 | `docs/ops/CIO_CASH_TOTALS_WRITER_2026-08-29.md` | The $52,677.32 cash gap — writer identified | review_required | OK | `32eedd37d074` |
 | `docs/ops/CIO_CLOSED_LOOP_LINEAGE_CLOSEOUT_2026-08-20.md` | CIO Closed-Loop Lineage — Phase A Closeout (2026-08-20) | review_required | OK | `116d9ec54867` |
