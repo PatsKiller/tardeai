@@ -142,6 +142,43 @@ check('garbage → null', parseTimestamp('not-a-date') == null)
   check('UNDATED does not invent a date', undated.dataAsOf === null)
 }
 
+// ---- GAP 3: UNDATED must not render the LOADER's date ----
+// #825 pinned `dataAsOf === null` on the UNDATED branch but never `asOf`, and
+// `asOf` was still set to `overview.as_of`. The chip therefore printed a date --
+// the loader-run date -- underneath a label saying the data is UNDATED. That is
+// the original defect wearing an honest label, and no assertion could see it.
+{
+  const LOADER = '2026-09-01T12:00:00Z'
+  const undated = overviewSurfaceFreshness({
+    as_of: LOADER,
+    pricing: { last_repriced: '2026-09-01T12:00:00Z' },
+  }, now)
+
+  check('UNDATED renders no date at all', undated.asOf === null)
+  // The load-bearing one: naming the exact value that used to leak through.
+  check('UNDATED does not borrow the loader-run date', undated.asOf !== LOADER)
+  check('UNDATED still says UNDATED on the surface',
+    !!undated.surfaceLabel && undated.surfaceLabel.includes('UNDATED'))
+  check('UNDATED still reports stale', undated.stale === true)
+
+  // An account with no date must still be named -- a block that cannot say WHEN
+  // should at least say WHO, so the operator knows which feed to chase.
+  const undatedAcct = overviewSurfaceFreshness({
+    as_of: LOADER, data_as_of_account: 'moomoo_taxable_live',
+  }, now)
+  check('UNDATED still names the responsible account',
+    undatedAcct.dataAsOfAccount === 'moomoo_taxable_live')
+  check('UNDATED with an account still renders no date', undatedAcct.asOf === null)
+
+  // And a DATED block must still expose the data clock through asOf, so the fix
+  // above cannot be satisfied by blanking asOf everywhere.
+  const dated = overviewSurfaceFreshness({
+    as_of: LOADER, data_as_of: '2026-08-03', data_as_of_account: 'moomoo_taxable_live',
+  }, now)
+  check('a dated block still exposes the data clock', dated.asOf === '2026-08-03')
+  check('a dated block never exposes the loader clock', dated.asOf !== LOADER)
+}
+
 // ---- WI provenance (not a second model) ----
 check('WI dataSource is decision_projection', WI_SYNOPSIS_PROVENANCE.dataSource === 'decision_projection')
 check('WI liveClaim false', WI_SYNOPSIS_PROVENANCE.liveClaim === false)
