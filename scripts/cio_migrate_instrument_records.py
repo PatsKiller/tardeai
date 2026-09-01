@@ -226,6 +226,17 @@ def main() -> int:
     except Exception:                                            # noqa: BLE001
         _refuse("previously_traded_unavailable")
 
+    # ── WATCH records from the operator watchlist (cognition only, cap 20) ─
+    # Existing admit path: new_record + apply_cognition. No S7 fire, no Maria.
+    watch_admit: dict = {}
+    try:
+        from scripts.lib.cio_watch_instrument_admit import admit_watch_records
+        watch_admit = admit_watch_records(
+            root=Path(data_root), store=store, apply=bool(args.apply))
+        minted.extend(watch_admit.get("admitted") or [])
+    except Exception:                                            # noqa: BLE001
+        _refuse("watch_admit_unavailable")
+
     out = {
         "schema": "InstrumentRecordMigration@v1",
         "authority": "READ_ONLY_ADVISORY",
@@ -234,6 +245,12 @@ def main() -> int:
         "by_kind": {k: sum(1 for m in minted if m.startswith(k + ":"))
                     for k in ("HELD", "EXIT", "WATCH", "SECTOR", "SLEEVE")},
         "exits_with_plan": exits,
+        "watch_admit": {
+            "admitted_n": watch_admit.get("admitted_n", 0),
+            "cap": watch_admit.get("cap"),
+            "s7_fired": watch_admit.get("s7_fired", False),
+            "maria_invoked": watch_admit.get("maria_invoked", False),
+        },
         "refused": refused,
         "apply": bool(args.apply),
         "financial_action": False,
