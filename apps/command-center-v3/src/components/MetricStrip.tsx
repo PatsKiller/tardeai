@@ -181,7 +181,7 @@ export default function MetricStrip({ onDrill }: Props) {
             {t.value}{(t as any).stale && !String(t.value).includes('STALE') && <span style={{ fontSize: TYPE.xs, color: BB.amber }}>{(t as any).stale}</span>}
           </div>
           {(t as any).asOf && (
-            <div style={{ fontSize: 8, color: (t as any).stale ? BB.amber : 'var(--text3)', marginTop: 1 }} data-surface-as-of>
+            <div style={{ fontSize: TYPE.xs, color: (t as any).stale ? BB.amber : 'var(--text3)', marginTop: 1 }} data-surface-as-of>
               as_of {String((t as any).asOf).slice(0, 16).replace('T', ' ')}
             </div>
           )}

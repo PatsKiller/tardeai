@@ -618,7 +618,7 @@ export default function WatchIntelligenceUnified() {
                     {c.operator_meaning || c.one_line_thesis || '—'}
                   </div>
                   <div
-                    style={{ fontSize: 8, color: BB.text3, marginTop: 3, lineHeight: 1.35 }}
+                    style={{ fontSize: TYPE.xs, color: BB.text3, marginTop: 3, lineHeight: 1.35 }}
                     data-wi-synopsis-provenance
                     data-source={WI_SYNOPSIS_PROVENANCE.dataSource}
                     data-live-claim={String(WI_SYNOPSIS_PROVENANCE.liveClaim)}
@@ -685,7 +685,7 @@ export default function WatchIntelligenceUnified() {
                     {sel.operator_meaning}
                   </div>
                   <div
-                    style={{ fontSize: 8, color: BB.text3, marginTop: 3, lineHeight: 1.35 }}
+                    style={{ fontSize: TYPE.xs, color: BB.text3, marginTop: 3, lineHeight: 1.35 }}
                     data-wi-synopsis-provenance
                     data-source={WI_SYNOPSIS_PROVENANCE.dataSource}
                   >
