@@ -207,15 +207,6 @@ PY
     "data/runtime"
     "data/health"
     "data/cio"
-    # reports/ holds run_summary.json, which the scalp scanner reads via
-    # PROJECT_ROOT/reports/2026-*/*/run_summary.json -- and PROJECT_ROOT is the
-    # RELEASE dir. It was never in the linked set, so every release served a
-    # reports/ that did not exist: the glob returned zero runs and the panel fell
-    # back to a stale record. Observed 2026-09-01 09:58 -- the API reported
-    # run_label "1730" from 2026-08-31 with an empty timestamp and 0 symbols
-    # scanned, while $PROJ/reports held today's 09:00 run with 53 tickers.
-    # Same shape as the logs/ fork below: not in the list, therefore forked.
-    "reports"
     # logs/ is gitignored, so each release started it EMPTY. That orphaned more
     # than logs: claude_escalation_queue.json, health_agent.jsonl,
     # health_agent_remediation.jsonl, claude_escalation_retry_cmd.jsonl and
@@ -233,8 +224,31 @@ PY
       mkdir -p "$(dirname "$target")"
       ln -sfn "$source" "$target"
       log "  symlink $rel → canonical"
+    else
+      # A missing source used to skip in silence. That is how reports/ was added
+      # to this list on 2026-09-01 and linked nothing: the overlay root has no
+      # reports/ (the pipeline writes it under CANONICAL_SOURCE), the test for it
+      # is [[ -e ]], and a false test logged nothing at all. The release then
+      # served an absent directory and the scanner read it as zero runs.
+      log "  WARN $rel missing at overlay source $source — release will serve it ABSENT"
     fi
   done
+
+  # reports/ is NOT persistent state: the pipeline writes run_summary.json under
+  # CANONICAL_SOURCE/reports/2026-*/*/. The scalp scanner reads it through
+  # PROJECT_ROOT/reports, and PROJECT_ROOT is the RELEASE dir, so without this
+  # link every release serves an absent reports/ and the panel falls back to a
+  # stale run (2026-09-01: run_label "1730" from the day before, empty timestamp,
+  # 0 symbols scanned, while CANONICAL_SOURCE held that morning's 53-ticker run).
+  local reports_src="${CANONICAL_SOURCE}/reports"
+  local reports_dst="${dest}/reports"
+  if [[ -e "$reports_src" ]]; then
+    rm -rf "$reports_dst"
+    ln -sfn "$reports_src" "$reports_dst"
+    log "  symlink reports → $reports_src"
+  else
+    log "  WARN reports missing at $reports_src — scalp scanner will read zero runs"
+  fi
   # Gitignored Fernet key for Schwab OAuth ciphertext. Never rsync from git.
   # Prefer the stable home copy so a rebuild checkout wipe cannot drop it.
   local cred_dest="${dest}/config/broker_credentials.env"
