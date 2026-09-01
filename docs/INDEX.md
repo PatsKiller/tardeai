@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `01c35d90c69b6eb48e4161e5af07203fbd2e4925023614a420fd42a385507f71`
+**Tree fingerprint:** `d0592dabce53fa98223d92fdd15dcb76aaeb5b6262b134fd3bb842d1dc5bb9c1`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -1345,8 +1345,8 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/CIO_DILIGENCE_P8_MBI_PARTITION_2026-08-30.md` | CIO Diligence P8 — outcome/lesson MBI partition | review_required | OK | `bc3fad2cbb08` |
 | `docs/ops/CIO_DILIGENCE_P9_REGISTRY_LIFECYCLE_2026-08-30.md` | CIO Diligence P9 — registry / orphan / 99.99% path | review_required | OK | `969b5126353d` |
 | `docs/ops/CIO_DILIGENCE_SCOREBOARD.md` | CIO Platform Diligence — living scoreboard | review_required | OK | `97ecddcae5e2` |
-| `docs/ops/CIO_DISCARDED_MEMBER_AGGREGATES_2026-08-30.md` | Aggregates that discard their members — system inventory | review_required | MISSING HEADER | `08850909a0de` |
 | `docs/ops/CIO_FIELD_SCOPED_LINT_2026-08-29.md` | Field-scoped instruction lint (2026-08-29) | review_required | OK | `4ba171f0d82e` |
+| `docs/ops/CIO_GATE_EXECUTION_HISTORY_2026-08-30.md` | CIO Gate Execution History — 2026-08-30 | review_required | MISSING HEADER | `66e24bdfdb12` |
 | `docs/ops/CIO_GROK_CRITIQUE_CONTRACT_2026-08-29.md` | Grok critique call site — contract (2026-08-29) | review_required | OK | `131628d68083` |
 | `docs/ops/CIO_GROK_HOP_RESULT_2026-08-29.md` | Grok critique hop — executed, verdict REJECT (2026-08-29) | review_required | OK | `83734dc263ed` |
 | `docs/ops/CIO_HELD_THESIS_COVERAGE_2026-08-20.md` | Held-book thesis coverage (Phase 1) — 2026-08-20 | review_required | OK | `f6e7911ca1a5` |
