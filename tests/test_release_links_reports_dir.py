@@ -35,17 +35,43 @@ def _linked_dirs(text: str, opener: str) -> list:
     return re.findall(r'"([^"]+)"', block)
 
 
-@pytest.mark.parametrize("path,opener", [
-    (PHASE2, "local dirs=("),
-    (LEGACY, "DATA_DIRS_TO_LINK=("),
-], ids=["phase2", "legacy"])
-def test_reports_is_linked_into_the_release(path, opener):
-    if not path.exists():
-        pytest.skip(f"{path.name} absent")
-    dirs = _linked_dirs(path.read_text(), opener)
-    assert "reports" in dirs, (
-        f"{path.name} does not link reports/ — the scalp scanner reads "
-        "PROJECT_ROOT/reports and will serve an absent directory as zero runs"
+def test_legacy_deploy_links_reports_from_canonical_source():
+    """deploy_portfolio_server.sh links DATA_DIRS_TO_LINK from CANONICAL_SOURCE,
+    which is where the pipeline writes reports/ — so listing it there is correct."""
+    if not LEGACY.exists():
+        pytest.skip("deploy_portfolio_server.sh absent")
+    assert "reports" in _linked_dirs(LEGACY.read_text(), "DATA_DIRS_TO_LINK=(")
+
+
+def test_phase2_links_reports_from_canonical_source_not_the_overlay():
+    """reports/ must NOT be in the phase2 overlay list.
+
+    That list links from `overlay_src` (persistent-state), which has no reports/.
+    Adding it there on 2026-09-01 linked nothing: the `[[ -e "$source" ]]` test
+    was false and the branch had no else, so the deploy skipped in silence and the
+    release still served an absent reports/. It needs its own link from
+    CANONICAL_SOURCE, where the pipeline actually writes.
+    """
+    if not PHASE2.exists():
+        pytest.skip("cio_phase2_exact_main_deploy.sh absent")
+    text = PHASE2.read_text()
+    assert "reports" not in _linked_dirs(text, "local dirs=("), (
+        "reports/ is in the overlay list; the overlay root has no reports/ so this "
+        "silently links nothing"
+    )
+    assert 'reports_src="${CANONICAL_SOURCE}/reports"' in text, (
+        "phase2 must link reports/ explicitly from CANONICAL_SOURCE"
+    )
+
+
+def test_a_missing_overlay_source_is_reported_not_skipped_silently():
+    """The silent skip is what hid this for a full deploy cycle."""
+    if not PHASE2.exists():
+        pytest.skip("cio_phase2_exact_main_deploy.sh absent")
+    text = PHASE2.read_text()
+    assert "will serve it ABSENT" in text, (
+        "a listed dir missing at the overlay source must log a WARN; a false "
+        "[[ -e ]] with no else is indistinguishable from success"
     )
 
 
