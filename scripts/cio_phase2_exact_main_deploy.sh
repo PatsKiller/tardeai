@@ -438,8 +438,42 @@ cmd_promote() {
     fi
     die "promote health failed — not claiming promote OK"
   fi
+  restart_root_frozen_units "$dir"
   write_deploy_receipt true promote ok false "promote_ok"
   log "PROMOTE OK live=$sha"
+}
+
+# Long-lived daemons that resolve CURRENT once, at start, and hold that concrete
+# directory for their whole lifetime. A promote silently strands them on the old
+# release: tradeai-health-agent ran 5d 11h against a tree promoted away on
+# 2026-08-26, executing stale auto-remediation and logging 20MB into an orphaned
+# logs/ dir that no CURRENT-based audit could see (2026-09-01). Restarting after
+# CURRENT moves is what makes the promote actually reach them.
+#
+# Correctness is checked by READING BACK each unit's cwd, not by "is-active":
+# the unit stays active across a promote precisely while being wrong, so
+# activeness is the one signal that cannot detect this.
+restart_root_frozen_units() {
+  local dir="$1"
+  local units="${TRADEAI_CURRENT_BOUND_UNITS:-tradeai-health-agent.service}"
+  local u pid cwd
+  for u in $units; do
+    systemctl --user list-unit-files "$u" >/dev/null 2>&1 || { log "  skip $u (not installed)"; continue; }
+    systemctl --user is-active --quiet "$u" || { log "  skip $u (not running)"; continue; }
+    if ! systemctl --user restart "$u" 2>/dev/null; then
+      log "  WARN $u restart failed — it may still serve the PREVIOUS release"
+      continue
+    fi
+    sleep 3
+    pid="$(systemctl --user show -p MainPID --value "$u" 2>/dev/null || true)"
+    cwd=""
+    [[ -n "$pid" && "$pid" != "0" ]] && cwd="$(readlink "/proc/${pid}/cwd" 2>/dev/null || true)"
+    if [[ "$cwd" == "$dir" ]]; then
+      log "  $u re-resolved → $dir"
+    else
+      log "  WARN $u cwd='$cwd' != '$dir' — still on a stale release"
+    fi
+  done
 }
 
 cmd_rollback() {

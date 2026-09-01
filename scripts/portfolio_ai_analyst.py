@@ -6,6 +6,7 @@ Refreshes monthly. Daily runs use cached analysis.
 from __future__ import annotations
 import json, os, sys, time
 from datetime import datetime, timedelta
+import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 import requests
@@ -32,6 +33,7 @@ SONNET = os.getenv("CLAUDE_ESCALATION_MODEL","claude-sonnet-4-20250514")
 from local_llm_config import get_local_llm_model as _get_llm_model, get_local_llm_base_url as _get_llm_base_url
 OLLAMA_MODEL = _get_llm_model()
 _OLLAMA_BASE = _get_llm_base_url().rstrip("/")
+model_used: str | None = None
 _USE_OLLAMA = True  # default to local LLM (GPU-accelerated qwen3:14b)
 
 _AI_RULES = """/no_think
@@ -63,46 +65,63 @@ STRICT RULES — READ FIRST:
 8. Rating BULLISH/NEUTRAL/BEARISH must be justified by actual SMA200/VIX/beta data.
 """
 
-def _ollama(prompt: str, max_tokens: int = 500) -> str:
-    """Use centralized local_llm.generate() with toll gate and GPU.
-    Uses higher num_predict (800) for narrative sections."""
-    import re as _re
-    if len(prompt) > 6000: prompt = prompt[:6000] + "\n[Be concise.]"
-    try:
-        from local_llm import generate, model_used, _gate, _try_ollama, OLLAMA_MODEL
-        import json as _j
-        # Use toll gate but with higher num_predict for narrative output
-        if not _gate.acquire():
-            # Fall through to cloud
-            from local_llm import _try_openai, _try_anthropic, FALLBACK_OPENAI, FALLBACK_ANTHROPIC
-            result = _try_openai(prompt) or _try_anthropic(prompt)
-            return result or "Analysis unavailable — all LLMs failed"
+# Generation lane chain. Free-first per AGENTS.md 12: the Grok OAuth lane (:8645)
+# carries the work, and the governed DeepSeek Flash lane is the paid rollover.
+#
+# This replaces a direct call into local_llm's retired local path. That module's
+# own docstring says "Local generative inference is retired ... the module name
+# remains temporarily so existing advisory jobs can migrate" -- this job never
+# migrated. It kept POSTing to OLLAMA_URL, whose value is the literal sentinel
+# "LOCAL_GENERATIVE_ENDPOINT_RETIRED", so every call failed and the caller cached
+# "Analysis unavailable - all LLMs failed" over real analyses (2026-09-01 07:32).
+# The lane was never broken; this was the one job still addressing a decommissioned
+# endpoint while every other consumer had moved to llm_lane.
+_LANE_CHAIN = (
+    ("grok", "grok-3-mini"),            # free OAuth proxy :8645
+    ("deepseek-flash", "deepseek-v4-flash"),  # governed paid rollover, off-peak default
+)
+
+
+def _generate_via_lanes(prompt: str, max_tokens: int = 500) -> str:
+    """Generate through the governed lanes, free-first, with the reason on failure.
+
+    AGENTS.md 12: "Never route on a readiness flag alone. Probe live." -- llm_lane
+    .available() probes the lane rather than reading a cached flag, and a lane that
+    probes healthy but returns empty still falls through to the next one.
+    """
+    global model_used
+    if len(prompt) > 6000:
+        prompt = prompt[:6000] + "\n[Be concise.]"
+    errors = []
+    for lane, model in _LANE_CHAIN:
         try:
-            import urllib.request
-            from local_llm import OLLAMA_URL
-            payload = _j.dumps({
-                "model": OLLAMA_MODEL, "stream": False,
-                "messages": [{"role": "user", "content": prompt}],
-                "think": False,
-                "options": {"temperature": 0.3, "num_predict": 1200}
-            }).encode()
-            req = urllib.request.Request(
-                OLLAMA_URL, data=payload,
-                headers={"Content-Type": "application/json"}, method="POST"
+            import llm_lane
+            if not llm_lane.available(lane):
+                errors.append(f"{lane}=unavailable")
+                continue
+            raw = llm_lane.generate(
+                prompt, lane=lane, timeout=300, model=model,
+                process_id="portfolio_ai_analyst",
+                task_summary="ai_analyst_section",
             )
-            with urllib.request.urlopen(req, timeout=300) as resp:
-                data = _j.loads(resp.read())
-                text = data.get("message", {}).get("content", "").strip()
-                duration = round(data.get("total_duration", 0) / 1e9, 1)
-                tokens = data.get("eval_count", 0)
-                print(f"  [local-llm] Ollama OK — {duration}s, {tokens} tokens")
-                if text:
-                    text = _re.sub(r"<think>.*?</think>", "", text, flags=_re.DOTALL).strip()
-                return text or "Analysis unavailable — LLM returned empty"
-        finally:
-            _gate.release()
-    except Exception as e:
-        return f"LLM error: {e}"
+            text = re.sub(r"<think>.*?</think>", "", str(raw or ""),
+                          flags=re.DOTALL).strip()
+            if text:
+                model_used = model
+                print(f"  [ai] lane={lane} model={model} OK - {len(text)} chars")
+                return text
+            errors.append(f"{lane}=empty")
+        except Exception as exc:  # noqa: BLE001 - lane errors are reported, not raised
+            errors.append(f"{lane}={type(exc).__name__}")
+    # Keep the "Analysis unavailable" prefix: _is_failure_text keys on it, and the
+    # fail-closed cache guard depends on this string being recognised as a failure.
+    return "Analysis unavailable - all LLMs failed (" + ", ".join(errors) + ")"
+
+
+# Historical name. Kept so any out-of-tree caller keeps working; the body no longer
+# touches Ollama, so the alias is explicit rather than a name that outlived its code.
+_ollama = _generate_via_lanes
+
 
 def _ai(prompt: str, model: str = None, max_tokens: int = 1500) -> str:
     """Route to local LLM (daily/weekly) or Claude (monthly/manual)."""
@@ -1214,7 +1233,8 @@ def run_ai_analysis(portfolio, analysis, rebalancing, state_dir, force_refresh=F
     _self_mod._CURRENT_ROOT = str(root)
     global _USE_OLLAMA
     _USE_OLLAMA = run_type in ("daily", "weekly")  # local LLM for daily+weekly, Claude for monthly/manual
-    print(f"  [ai] Running AI analysis (mode: {run_type}, engine: {'Local ' + OLLAMA_MODEL if _USE_OLLAMA else 'Claude Sonnet'})...")
+    _chain = " -> ".join(l for l, _m in _LANE_CHAIN)
+    print(f"  [ai] Running AI analysis (mode: {run_type}, lanes: {_chain})...")
 
     # ── Freshness check (Phase 0) ────────────────────────────────────────────
     _freshness_warning = ""
@@ -1276,7 +1296,7 @@ def run_ai_analysis(portfolio, analysis, rebalancing, state_dir, force_refresh=F
     personal = _load_personal_situation()
 
     # Daily: executive summary (Haiku, cheap)
-    print(f"  [ai] Executive summary ({'Ollama ' + OLLAMA_MODEL if _USE_OLLAMA else 'Haiku'})...")
+    print(f"  [ai] Executive summary (lanes: {' -> '.join(l for l, _m in _LANE_CHAIN)})...")
     exec_text, exec_structured = _exec_summary(portfolio, analysis, rebalancing, personal)
     results["executive_summary"] = exec_text
     if exec_structured:
@@ -1297,7 +1317,7 @@ def run_ai_analysis(portfolio, analysis, rebalancing, state_dir, force_refresh=F
         ]
         for key, label, fn, n_args in sections:
             if force_refresh or _should_refresh(state_dir, key, 30):
-                print(f"  [ai] {label} ({'Ollama ' + OLLAMA_MODEL if _USE_OLLAMA else 'Sonnet 4.6'})...")
+                print(f"  [ai] {label} (lanes: {' -> '.join(l for l, _m in _LANE_CHAIN)})...")
                 try:
                     if n_args == 3: text = fn(portfolio, analysis, rebalancing)
                     elif n_args == 2:
@@ -1325,7 +1345,10 @@ def run_ai_analysis(portfolio, analysis, rebalancing, state_dir, force_refresh=F
 
     results["generated_at"] = datetime.now().isoformat()
     results["run_type"] = run_type
-    results["model"] = OLLAMA_MODEL if _USE_OLLAMA else SONNET
+    # Record the lane that actually produced text, not a configured default. The
+    # 2026-09-01 stubs recorded model="nomic-embed-text" -- an embedding model that
+    # was never called -- because this read a config value rather than the result.
+    results["model"] = model_used or "none"
     n = len([k for k in results if k not in ("generated_at","run_type","model")])
     print(f"  [ai] ✅ {n} AI sections")
     return results
@@ -1357,5 +1380,27 @@ if __name__ == "__main__":
             print(f"  [ai] Dividend data loaded: ${analysis['dividends']['total_annual_income']:,.0f}/yr from {analysis['dividends']['payers']} payers")
     result = run_ai_analysis(port, analysis, risk, sd, force_refresh=True, run_type=args.run_type, root=str(root))
     out = sd / "ai_analysis_cache.json"
+    # The aggregate file bypassed _save_cache and so bypassed the fail-closed
+    # guard: on 2026-09-01 07:33:30 it was written with every section reading
+    # "Analysis unavailable — all LLMs failed", over a copy holding six real
+    # analyses. Fixing the per-section path alone left this one fail-open.
+    # Merge section-wise: a failed section never replaces good prior text.
+    try:
+        prior_agg = json.loads(Path(out).read_text()) if Path(out).exists() else {}
+    except Exception:
+        prior_agg = {}
+    if isinstance(prior_agg, dict):
+        preserved = []
+        for _k, _v in list(result.items()):
+            if isinstance(_v, str) and _is_failure_text(_v):
+                _old = prior_agg.get(_k)
+                if isinstance(_old, str) and not _is_failure_text(_old):
+                    result[_k] = _old
+                    preserved.append(_k)
+        if preserved:
+            result["stale_since_failure"] = True
+            result["last_failure_ts"] = datetime.now().isoformat()
+            result["preserved_sections"] = sorted(preserved)
+            print(f"  [ai] aggregate: {len(preserved)} section(s) PRESERVED, not overwritten")
     json.dump(result, open(out,"w"), indent=2)
     print(f"[ai_analyst] Done — {len(result)} sections → {out}")

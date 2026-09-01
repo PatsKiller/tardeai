@@ -2,7 +2,7 @@
   "version": 4,
   "default_mode": "manual",
   "lane_policies": {
-    "grok_only": "Grok only — single lane",
+    "grok_only": "Grok only \u2014 single lane",
     "chatgpt_only": "ChatGPT only",
     "either": "Operator picks Grok OR ChatGPT (one is enough)",
     "both_preferred": "Best with both lanes; either alone still useful",
@@ -31,7 +31,7 @@
       "name": "Broker Proposal Cloud Oversight",
       "category": "Trading",
       "lane_policy": "both_preferred",
-      "description": "Per-proposal second opinion — pick Grok, ChatGPT, or both via card buttons"
+      "description": "Per-proposal second opinion \u2014 pick Grok, ChatGPT, or both via card buttons"
     },
     {
       "id": "cloud_review",
@@ -39,7 +39,7 @@
       "category": "Hermes",
       "lane_policy": "both_preferred",
       "default_mode": "automated",
-      "description": "Reviews local LLM output — auto uses both when available"
+      "description": "Reviews local LLM output \u2014 auto uses both when available"
     },
     {
       "id": "oauth_lane_keepalive",
@@ -97,7 +97,7 @@
       "fallback_allowed": false,
       "advisory_only": true,
       "output_schema": "watch_narrative.v1",
-      "notes": " | 2026-08-20: daily_soft_cap 120→240 after overnight request-cap exhaustion; containment re-armed + offpeak wrapper now overrides containment (issue #283). cost cap unchanged 2.0."
+      "notes": " | 2026-08-20: daily_soft_cap 120\u2192240 after overnight request-cap exhaustion; containment re-armed + offpeak wrapper now overrides containment (issue #283). cost cap unchanged 2.0."
     },
     {
       "id": "watchlist_risk_flash_narrative",
@@ -129,7 +129,7 @@
       "category": "Watch",
       "lane_policy": "deepseek_only",
       "default_mode": "automated",
-      "description": "Governed cio_synthesis via exact deepseek-v4-flash FAST only — Pro/PRO_* forbidden on this path (issue #283).",
+      "description": "Governed cio_synthesis via exact deepseek-v4-flash FAST only \u2014 Pro/PRO_* forbidden on this path (issue #283).",
       "allowed_lanes": [
         "deepseek-flash",
         "deepseek-v4-flash",
@@ -147,7 +147,7 @@
       "fallback_allowed": false,
       "advisory_only": true,
       "output_schema": "cio_synthesis.v1",
-      "notes": "2026-08-20: max_output_tokens 800→1600 — living-thesis synthesis JSON (11 keys + cited evidence lists) was being truncated mid-object at 800 tokens, causing parse:no_json_object. Cost cap unchanged 1.0."
+      "notes": "2026-08-20: max_output_tokens 800\u21921600 \u2014 living-thesis synthesis JSON (11 keys + cited evidence lists) was being truncated mid-object at 800 tokens, causing parse:no_json_object. Cost cap unchanged 1.0."
     },
     {
       "id": "watchlist_agent_debate_flash",
@@ -212,7 +212,7 @@
       "name": "Rotation Independent Oversight",
       "category": "Rotation",
       "lane_policy": "ensemble",
-      "description": "Grok + ChatGPT oversight on rotation engine — run both for full picture"
+      "description": "Grok + ChatGPT oversight on rotation engine \u2014 run both for full picture"
     },
     {
       "id": "watchlist_cio_synthesis",
@@ -220,7 +220,7 @@
       "category": "Watch",
       "lane_policy": "ensemble",
       "default_mode": "manual",
-      "description": "CIO view — Grok primary + ChatGPT reconcile when both run",
+      "description": "CIO view \u2014 Grok primary + ChatGPT reconcile when both run",
       "deepseek_default_policy": "PRO_THINK",
       "deepseek_allowed_policies": [
         "FAST_THINK",
@@ -239,7 +239,7 @@
       "lane_policy": "either",
       "default_mode": "automated",
       "daily_soft_cap": 80,
-      "description": "OAuth Maria narratives for portfolio holdings, top WAIT setups, and manual refresh — ~30-80 calls/day",
+      "description": "OAuth Maria narratives for portfolio holdings, top WAIT setups, and manual refresh \u2014 ~30-80 calls/day",
       "deepseek_default_policy": "FAST",
       "deepseek_allowed_policies": [
         "FAST",
@@ -426,14 +426,14 @@
       "name": "Hermes Scalp Post-Trade Review",
       "category": "Trading",
       "lane_policy": "either",
-      "description": "OAuth enrichment — grok preferred"
+      "description": "OAuth enrichment \u2014 grok preferred"
     },
     {
       "id": "portfolio_ask",
       "name": "Portfolio Ask",
       "category": "Portfolio",
       "lane_policy": "either",
-      "description": "Q&A — Grok or ChatGPT",
+      "description": "Q&A \u2014 Grok or ChatGPT",
       "deepseek_default_policy": "FAST",
       "deepseek_allowed_policies": [
         "FAST",
@@ -452,7 +452,7 @@
       "name": "Journal Ask",
       "category": "Journal",
       "lane_policy": "either",
-      "description": "Q&A — Grok or ChatGPT",
+      "description": "Q&A \u2014 Grok or ChatGPT",
       "deepseek_default_policy": "FAST",
       "deepseek_allowed_policies": [
         "FAST",
@@ -464,7 +464,7 @@
       "name": "Strategy Planner",
       "category": "Strategy",
       "lane_policy": "either",
-      "description": "What-if planning — Grok default, ChatGPT ok",
+      "description": "What-if planning \u2014 Grok default, ChatGPT ok",
       "deepseek_default_policy": "PRO_THINK",
       "deepseek_allowed_policies": [
         "FAST_THINK",
@@ -539,7 +539,7 @@
       ],
       "output_schema": "pipeline_diagnosis.v1",
       "fallback": "DETERMINISTIC_DIAGNOSIS",
-      "description": "Health narrative — Fast default; deterministic fallback on model failure"
+      "description": "Health narrative \u2014 Fast default; deterministic fallback on model failure"
     },
     {
       "id": "architecture_review",
@@ -562,7 +562,7 @@
       "category": "CIO",
       "lane_policy": "deepseek_only",
       "default_mode": "automated",
-      "description": "Alex CIO autonomous advisory synthesis — platform-wide portfolio/wealth CIO reasoning via governed DeepSeek V4 Pro",
+      "description": "Alex CIO autonomous advisory synthesis \u2014 platform-wide portfolio/wealth CIO reasoning via governed DeepSeek V4 Pro",
       "allowed_lanes": [
         "pro",
         "deepseek-v4-pro"
@@ -583,7 +583,7 @@
       "circuit_breaker": true,
       "registered_by": "P-1.2A",
       "registered_at": "2026-08-08T13:48:00Z",
-      "notes": " | 2026-08-11 P2b soak: raised daily_cost_cap_usd 0.02→0.15 for plan enrichment under global 0.25 | 2026-08-12: raised 0.15→0.40 / soft 80→100 so a Pro synthesis (~$0.0324/call at 32000×16384) is no longer capped to ~4 calls/day."
+      "notes": " | 2026-08-11 P2b soak: raised daily_cost_cap_usd 0.02\u21920.15 for plan enrichment under global 0.25 | 2026-08-12: raised 0.15\u21920.40 / soft 80\u2192100 so a Pro synthesis (~$0.0324/call at 32000\u00d716384) is no longer capped to ~4 calls/day."
     },
     {
       "id": "alex_cio_escalation",
@@ -591,7 +591,7 @@
       "category": "CIO",
       "lane_policy": "deepseek_only",
       "default_mode": "automated",
-      "description": "Alex CIO complex escalation — deterministic-reason-gated, thinking-enabled DeepSeek V4 Pro for multi-agent reconciliation and critical decisions. PRO_THINK requires a deterministic escalation reason (specialist_disagreement, conflicting_evidence, unresolved_contradictions, material_risk, or insufficient_evidence). Operator confirmation is NOT required for PRO_THINK.",
+      "description": "Alex CIO complex escalation \u2014 deterministic-reason-gated, thinking-enabled DeepSeek V4 Pro for multi-agent reconciliation and critical decisions. PRO_THINK requires a deterministic escalation reason (specialist_disagreement, conflicting_evidence, unresolved_contradictions, material_risk, or insufficient_evidence). Operator confirmation is NOT required for PRO_THINK.",
       "allowed_lanes": [
         "pro_think"
       ],
@@ -647,7 +647,7 @@
       "circuit_breaker": true,
       "registered_by": "advisory-desk-p0",
       "registered_at": "2026-08-11T12:00:00Z",
-      "notes": " | 2026-08-12: raised daily_cost_cap_usd 0.05→0.20→0.30 and daily_soft_cap 80→200 to cover 12 watchlist + 20 holding Flash opinions under global 0.50. Local/Ollama fallback lane removed — DeepSeek is the sole default lane."
+      "notes": " | 2026-08-12: raised daily_cost_cap_usd 0.05\u21920.20\u21920.30 and daily_soft_cap 80\u2192200 to cover 12 watchlist + 20 holding Flash opinions under global 0.50. Local/Ollama fallback lane removed \u2014 DeepSeek is the sole default lane."
     },
     {
       "id": "advisory_desk_synthesis",
@@ -675,7 +675,7 @@
       "circuit_breaker": true,
       "registered_by": "advisory-desk-p0",
       "registered_at": "2026-08-11T12:00:00Z",
-      "notes": " | 2026-08-12: raised daily_cost_cap_usd 0.03→0.06→0.10 — a single Pro synthesis projects $0.0168 (32000 input × 1.15 headroom), so the old cap blocked the daily synthesis after ~1 call (COST_CAP_EXCEEDED → degraded)."
+      "notes": " | 2026-08-12: raised daily_cost_cap_usd 0.03\u21920.06\u21920.10 \u2014 a single Pro synthesis projects $0.0168 (32000 input \u00d7 1.15 headroom), so the old cap blocked the daily synthesis after ~1 call (COST_CAP_EXCEEDED \u2192 degraded)."
     },
     {
       "id": "reflective_critic_flash",
@@ -704,7 +704,7 @@
       "circuit_breaker": true,
       "registered_by": "P-2-reflective-migration",
       "registered_at": "2026-08-12T21:15:00Z",
-      "notes": "2026-08-12: reflective critics migrated from local Ollama gemma3 to governed DeepSeek Flash. Tiny payloads (~8000 in x ~512-1024 out, ~$0.0015/call). Cap $0.10/day covers ~66 calls/day — far above the event-driven volume these critics actually receive."
+      "notes": "2026-08-12: reflective critics migrated from local Ollama gemma3 to governed DeepSeek Flash. Tiny payloads (~8000 in x ~512-1024 out, ~$0.0015/call). Cap $0.10/day covers ~66 calls/day \u2014 far above the event-driven volume these critics actually receive."
     },
     {
       "id": "guardian_risk_critique",
@@ -712,7 +712,7 @@
       "category": "CIO",
       "lane_policy": "deepseek_only",
       "default_mode": "manual",
-      "description": "Guardian risk critique — deterministic-first risk analysis reading Trade AI risk data. Read-only. No risk limit changes, no stop modifications, no execution.",
+      "description": "Guardian risk critique \u2014 deterministic-first risk analysis reading Trade AI risk data. Read-only. No risk limit changes, no stop modifications, no execution.",
       "allowed_lanes": [
         "fast",
         "deepseek-v4-flash"
@@ -739,7 +739,7 @@
       "category": "CIO",
       "lane_policy": "deepseek_only",
       "default_mode": "manual",
-      "description": "Ledger tax/account-constraint critique — deterministic-first constraint validation reading Trade AI account data. Flags wash-sale proximity, IRA limits, account-type mismatches. Read-only. No execution.",
+      "description": "Ledger tax/account-constraint critique \u2014 deterministic-first constraint validation reading Trade AI account data. Flags wash-sale proximity, IRA limits, account-type mismatches. Read-only. No execution.",
       "allowed_lanes": [
         "fast",
         "deepseek-v4-flash"
@@ -766,7 +766,7 @@
       "category": "CIO",
       "lane_policy": "deepseek_only",
       "default_mode": "manual",
-      "description": "Steph allocation and wealth planning — deterministic-first portfolio/wealth analysis reading Trade AI holdings and allocation data. Read-only advisory. No execution.",
+      "description": "Steph allocation and wealth planning \u2014 deterministic-first portfolio/wealth analysis reading Trade AI holdings and allocation data. Read-only advisory. No execution.",
       "allowed_lanes": [
         "pro",
         "fast",
@@ -796,7 +796,7 @@
       "category": "CIO",
       "lane_policy": "either",
       "default_mode": "automated",
-      "description": "Maria research critique — deterministic-first fundamental and catalyst analysis reading Trade AI research data. Read-only advisory. No execution.",
+      "description": "Maria research critique \u2014 deterministic-first fundamental and catalyst analysis reading Trade AI research data. Read-only advisory. No execution.",
       "allowed_lanes": [
         "fast",
         "deepseek-v4-flash",
@@ -825,7 +825,7 @@
       "category": "CIO",
       "lane_policy": "deepseek_only",
       "default_mode": "automated",
-      "description": "Morgan wealth synthesis — deterministic-first multi-account wealth and goal-tracking analysis reading Trade AI portfolio/income/retirement data. Read-only advisory. No execution.",
+      "description": "Morgan wealth synthesis \u2014 deterministic-first multi-account wealth and goal-tracking analysis reading Trade AI portfolio/income/retirement data. Read-only advisory. No execution.",
       "allowed_lanes": [
         "fast",
         "deepseek-v4-flash"
@@ -845,6 +845,22 @@
       "circuit_breaker": true,
       "registered_by": "D1B",
       "registered_at": "2026-08-10T20:05:00Z"
+    },
+    {
+      "id": "portfolio_ai_analyst",
+      "name": "Portfolio AI Analyst Page",
+      "category": "Portfolio",
+      "lane_policy": "grok_only",
+      "default_mode": "automated",
+      "advisory_only": true,
+      "tools_allowed": false,
+      "fallback_allowed": false,
+      "description": "AI Analyst page sections (bond/dividend/IRA/Roth/V/defense/deep-holdings) through the governed free OAuth lane. Advisory only, no tools. Was calling local_llm's retired local endpoint and failing closed on every run.",
+      "notes": "Registered 2026-09-01 after PROCESS_NOT_REGISTERED blocked every call. The job had never migrated off local generative inference, so its cache was overwritten with 'Analysis unavailable' stubs. DeepSeek Flash rollover is NOT granted here - that needs allowed_lanes plus a daily_cost_cap_usd set by the operator.",
+      "registered_at": "2026-09-01T13:17:05.692333+00:00",
+      "registered_by": "operator-authorised (grok primary)",
+      "last_modified_at": "2026-09-01T13:17:05.692368+00:00",
+      "last_modified_by": "operator-authorised (grok primary)"
     }
   ],
   "default_deepseek_policy": "FAST",
