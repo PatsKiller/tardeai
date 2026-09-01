@@ -20,8 +20,8 @@ reporting_engine.py         # Orchestration, registry, eligibility, batch, Grok 
 
 Symbol holding/watchlist reports use **schema v3.0** (`meta.version: "3.0"`). Legacy section ids (`recommendation`, `fundamental_news`, `agent_synthesis`, etc.) still work as aliases.
 
-**Output:** `data/portfolios/reports/analyst/`  
-**Registry:** `data/portfolios/reports/analyst/registry.json`  
+**Output:** `data/portfolios/reports/analyst/`
+**Registry:** `data/portfolios/reports/analyst/registry.json`
 **Prospectus batch logs:** `data/portfolios/reports/analyst/prospectus/batch_*.json`
 
 ### Canonical living-doc paths

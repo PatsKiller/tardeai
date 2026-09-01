@@ -37,7 +37,7 @@ source-domain chip · headline · relative time → outbound noopener links + ac
 
 ## WS-D — Plain English + everything clickable (P0)
 `lib/homeLabels.ts`: STATE_LABELS dictionary, `plain()`, `runLabel()` ("0400 2026-07-17" →
-"4:00 AM scan · Jul 17"), `count()` (4.0→4, applied in RiskGauge for unit=''), 
+"4:00 AM scan · Jul 17"), `count()` (4.0→4, applied in RiskGauge for unit=''),
 `thresholdSentence()` ("Heat 8.9% — above your 5% ceiling"), `plainAlert()` rewrite rules
 (journal-sync/repriced/agent-backlog/kill-switch classes) with the raw-chip fallback for
 unknown shapes. Raw strings ALWAYS in tooltips. D3: transfer-distorted period %s (the Roth

@@ -4,8 +4,8 @@ Status:      ACTIVE
 as_of:       2026-06-27T22:07:55-04:00
 Measured at: efcc51365 / not measured
 
-_Generated: 2026-06-28T02:06:07.238286+00:00_  
-_Source: `brokers.kill_switches.status()`_  
+_Generated: 2026-06-28T02:06:07.238286+00:00_
+_Source: `brokers.kill_switches.status()`_
 **Status: PASS**
 
 Kill switches hard-block live submit. They are re-checked at submit time and after approval.

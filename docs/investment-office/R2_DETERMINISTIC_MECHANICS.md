@@ -1,9 +1,5 @@
 # R2 Deterministic Mechanics
 
-Status:      ACTIVE
-as_of:       2026-08-14T22:33:07-04:00
-Measured at: efcc51365 / not measured
-
 Additive, unwired research-governance package. Authority: `READ_ONLY_ADVISORY`.
 
 **Deterministic math is not financial truth.** A formula may be deterministic;

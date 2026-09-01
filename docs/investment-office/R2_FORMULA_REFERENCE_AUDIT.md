@@ -1,9 +1,5 @@
 # R2 Formula Reference Audit
 
-Status:      HISTORICAL
-as_of:       2026-08-14T22:33:07-04:00
-Measured at: efcc51365 / not measured
-
 Honest registry. Canon books (`thau_bond_book`, `tuckman_serrat_fixed_income`,
 `ferri_etf_book`, `damodaran_on_valuation`, `expectations_investing_rappaport_mauboussin`)
 are `SOURCE_CLAIM_INCOMPLETE` / `NOT_FOUND_IN_FILE_LIBRARY`. This file does

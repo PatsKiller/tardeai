@@ -153,8 +153,8 @@ cron entry was disabled in the first place — see
 
 ## Deep links pattern (generic)
 
-- Prefer **path-based** links: `/v3/cio`, `/v3/cio?plan=<plan_id>`.  
-- Deployments may prefix a private network base (Tailscale or LAN). Document the **pattern**, not a hard-coded internal IP, as the primary story in shared docs.  
+- Prefer **path-based** links: `/v3/cio`, `/v3/cio?plan=<plan_id>`.
+- Deployments may prefix a private network base (Tailscale or LAN). Document the **pattern**, not a hard-coded internal IP, as the primary story in shared docs.
 - Absolute URLs are config (`cc_deep_links` / env), not thesis content.
 
 ---
@@ -191,7 +191,7 @@ none of this window's work changed the Track A/B split itself.
 
 ## Related
 
-- [THESIS.md](./THESIS.md)  
-- [SITUATIONS.md](./SITUATIONS.md)  
-- [AUTHORITY.md](./AUTHORITY.md)  
-- [WAKE_TRACES_P5.md](./WAKE_TRACES_P5.md)  
+- [THESIS.md](./THESIS.md)
+- [SITUATIONS.md](./SITUATIONS.md)
+- [AUTHORITY.md](./AUTHORITY.md)
+- [WAKE_TRACES_P5.md](./WAKE_TRACES_P5.md)

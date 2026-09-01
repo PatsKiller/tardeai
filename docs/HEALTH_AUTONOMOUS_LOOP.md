@@ -24,8 +24,8 @@ Measured at: efcc51365 / not measured
 
 ## Root-cause memory (iterative autonomous fixes)
 
-Durable store: `data/runtime/health_root_cause_memory.json`  
-Audit trail: `logs/health_root_cause_memory.jsonl`  
+Durable store: `data/runtime/health_root_cause_memory.json`
+Audit trail: `logs/health_root_cause_memory.jsonl`
 Module: `scripts/lib/health_root_cause_memory.py`
 
 For hard residuals the agent **records** error → root_cause → how_to_fix, then walks a **strategy ladder** so the same thrashing command is not re-run forever:

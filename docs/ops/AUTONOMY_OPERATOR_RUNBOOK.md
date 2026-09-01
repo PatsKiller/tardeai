@@ -90,7 +90,7 @@ export PYTHONPATH=$PWD/scripts
 ## Ack / rate (existing Telegram /cio path)
 
 - `/cio ack <action_id>` — acknowledge ledger item
-- `/cio rate <action_id> <score>` — usefulness feedback into outcome store  
+- `/cio rate <action_id> <score>` — usefulness feedback into outcome store
 (Do not expect these to trade.)
 
 ## Emergency disable

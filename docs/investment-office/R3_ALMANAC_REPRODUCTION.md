@@ -1,9 +1,5 @@
 # R3 Almanac Reproduction
 
-Status:      ACTIVE
-as_of:       2026-08-15T08:06:05-04:00
-Measured at: efcc51365 / not measured
-
 Governed Stock Almanac reproduction (RGA-15).
 
 - Public STA investor-alert citations only (title / URL / date).

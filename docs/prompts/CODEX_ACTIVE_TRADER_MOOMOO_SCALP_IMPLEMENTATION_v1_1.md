@@ -6,10 +6,10 @@ Measured at: efcc51365 / not measured
 
 ## Active Trader Next · Moomoo Live Momentum Scalp · Trade AI Architecture v3.3
 
-**Repository:** `PatsKiller/tardeai`  
-**Controlling architecture:** `docs/architecture/TRADE_AI_MASTER_AGENTIC_FINANCIAL_SYSTEM_ARCHITECTURE_v3_3.md`  
-**Execution style:** staged, additive, quasi-parallel, evidence-gated  
-**Primary rule:** Do not reinterpret financial guardrails. Implement the architecture exactly.  
+**Repository:** `PatsKiller/tardeai`
+**Controlling architecture:** `docs/architecture/TRADE_AI_MASTER_AGENTIC_FINANCIAL_SYSTEM_ARCHITECTURE_v3_3.md`
+**Execution style:** staged, additive, quasi-parallel, evidence-gated
+**Primary rule:** Do not reinterpret financial guardrails. Implement the architecture exactly.
 **Live authority:** architecture-owner approved only through the v3.3 session-scoped authorization envelope.
 
 ---

@@ -4,7 +4,7 @@ Status:      ACTIVE
 as_of:       2026-08-12T10:17:19-04:00
 Measured at: efcc51365 / not measured
 
-**Source of truth:** [`scripts/lib/data_broker/reentry_decision_desk.py`](../../scripts/lib/data_broker/reentry_decision_desk.py) — deterministic, no LLM.  
+**Source of truth:** [`scripts/lib/data_broker/reentry_decision_desk.py`](../../scripts/lib/data_broker/reentry_decision_desk.py) — deterministic, no LLM.
 **Desk-note display filters:** [`scripts/lib/cio_desk_depth.py`](../../scripts/lib/cio_desk_depth.py) (`CORE_MIN_RR`, `MAX_SANE_RR`) — presentation/governance only; does **not** change READY/NEAR/BLOCK states.
 
 ---
@@ -107,6 +107,6 @@ STAGE_0/1/2                    → cash / quality / opt-in (no execution)
 
 ## Related
 
-- [DESK_NOTE.md](./DESK_NOTE.md) — section 5 re-entry book  
-- [ARCHITECTURE.md](./ARCHITECTURE.md) — Track A vs reentry desk composition  
-- [ROADMAP_GAPS.md](./ROADMAP_GAPS.md) — product depth notes  
+- [DESK_NOTE.md](./DESK_NOTE.md) — section 5 re-entry book
+- [ARCHITECTURE.md](./ARCHITECTURE.md) — Track A vs reentry desk composition
+- [ROADMAP_GAPS.md](./ROADMAP_GAPS.md) — product depth notes

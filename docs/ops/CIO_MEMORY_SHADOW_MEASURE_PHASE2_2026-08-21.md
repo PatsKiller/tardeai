@@ -56,8 +56,8 @@ systemctl --user start tradeai-cio-memory-shadow-measure.service   # manual run
 
 ## Metrics
 
-`memory_retrieval_rate` · `memory_changed_decision` · `memory_changed_notification` ·  
-`operator_recall_hit` / `memory_false_positive` may stay `UNAVAILABLE` until labeled corpus exists ·  
+`memory_retrieval_rate` · `memory_changed_decision` · `memory_changed_notification` ·
+`operator_recall_hit` / `memory_false_positive` may stay `UNAVAILABLE` until labeled corpus exists ·
 `truth_override_attempts` must remain 0.
 
 ## Promotion gate

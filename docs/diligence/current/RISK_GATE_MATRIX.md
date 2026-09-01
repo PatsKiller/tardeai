@@ -4,8 +4,8 @@ Status:      ACTIVE
 as_of:       2026-06-27T22:07:55-04:00
 Measured at: efcc51365 / not measured
 
-_Generated: 2026-06-28T02:06:07.289854+00:00_  
-_Source: `options_desk_enterprise.evaluate_hard_risk_blocks (see OPTIONS_RISK_BLOCK_MATRIX.md)`_  
+_Generated: 2026-06-28T02:06:07.289854+00:00_
+_Source: `options_desk_enterprise.evaluate_hard_risk_blocks (see OPTIONS_RISK_BLOCK_MATRIX.md)`_
 **Status: PASS**
 
 Hard blocks on the live options path. Full fixture-verified matrix with stable codes is in `OPTIONS_RISK_BLOCK_MATRIX.md`.

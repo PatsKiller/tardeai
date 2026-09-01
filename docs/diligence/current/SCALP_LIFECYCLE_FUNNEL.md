@@ -4,9 +4,9 @@ Status:      ACTIVE
 as_of:       2026-06-28T18:07:57-04:00
 Measured at: efcc51365 / not measured
 
-**Status: PASS**  
-_Generated: 2026-06-28T21:58:55.084558+00:00 | window: 30d_  
-_Source: `python3 scripts/scalp_lifecycle_funnel_report.py --days N --json`_  
+**Status: PASS**
+_Generated: 2026-06-28T21:58:55.084558+00:00 | window: 30d_
+_Source: `python3 scripts/scalp_lifecycle_funnel_report.py --days N --json`_
 
 Read-only. No broker writes. Social-only signals are advisory (WATCH/WAIT) only.
 

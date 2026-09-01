@@ -4,8 +4,8 @@ Status:      ACTIVE
 as_of:       2026-06-27T22:07:55-04:00
 Measured at: efcc51365 / not measured
 
-_Generated: 2026-06-28T02:06:07.289660+00:00_  
-_Source: `audit_ledger.verify_chain() + audit_ledger.coverage_report()`_  
+_Generated: 2026-06-28T02:06:07.289660+00:00_
+_Source: `audit_ledger.verify_chain() + audit_ledger.coverage_report()`_
 **Status: WARN**
 
 Append-only hash-chained ledger. Chain verification does not mutate rows. Coverage tracks the expected live-adjacent event types; missing critical events warn/fail per release mode.

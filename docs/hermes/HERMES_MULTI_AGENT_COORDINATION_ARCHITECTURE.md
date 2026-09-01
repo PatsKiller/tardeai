@@ -157,8 +157,8 @@ Graft gates (`min_graded_samples: 3`) apply to both SQL signals and bus feedback
 
 ## 3. Outcome & Feedback Agent (Specification)
 
-**Module:** `scripts/hermes_outcome_feedback_agent.py`  
-**Config:** `config/hermes_outcome_feedback.yaml`  
+**Module:** `scripts/hermes_outcome_feedback_agent.py`
+**Config:** `config/hermes_outcome_feedback.yaml`
 **Output:** `state/hermes/outcome_bus.json` (+ `state/hermes/outcome_bus_history/`)
 
 ### Run order & dependencies

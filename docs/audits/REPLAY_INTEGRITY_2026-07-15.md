@@ -4,8 +4,8 @@ Status:      HISTORICAL
 as_of:       2026-07-16T11:44:07-04:00
 Measured at: efcc51365 / not measured
 
-**Audited:** 2026-07-15T19:27:04.077903+00:00  
-**Trades:** 103 · OK 86 · WARN 17 · FAIL 0  
+**Audited:** 2026-07-15T19:27:04.077903+00:00
+**Trades:** 103 · OK 86 · WARN 17 · FAIL 0
 **Scale fix:** `volume_isolated_overlay_v3.4` (volume on isolated overlay scale; candle autoscale from OHLC only)
 
 ## Summary

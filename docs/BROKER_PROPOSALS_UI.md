@@ -123,7 +123,7 @@ Manual: `python3 scripts/broker_proposal_curator.py --apply` (add `--symbol RTX`
 
 ## Refresh prices + recalibrate (manual)
 
-**Per card:** `↻ Refresh prices`  
+**Per card:** `↻ Refresh prices`
 **Queue:** `↻ Refresh all prices` (batch API `refresh-prices-batch`)
 
 ```bash

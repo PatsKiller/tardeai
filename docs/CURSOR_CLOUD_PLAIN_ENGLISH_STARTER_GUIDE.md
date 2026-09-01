@@ -4,8 +4,8 @@ Status:      ACTIVE
 as_of:       2026-07-30T10:50:09-04:00
 Measured at: efcc51365 / not measured
 
-**Project:** Trade AI (`PatsKiller/tardeai`)  
-**Audience:** A new Cursor user setting up the repository for the first time  
+**Project:** Trade AI (`PatsKiller/tardeai`)
+**Audience:** A new Cursor user setting up the repository for the first time
 **Last reviewed:** 2026-07-30
 
 ---

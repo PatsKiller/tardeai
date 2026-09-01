@@ -27,7 +27,7 @@ Does **not** flip `MEMORY_BEHAVIOR_INFLUENCE`.
 
 See `scripts/lib/agent_decision_payload.py` (`DecisionPayload@v1`).
 
-Origins: `DETERMINISTIC_RANK` | `FRESH_RESEARCH` | `MEMORY_INFLUENCED` | `OPERATOR_ASK` | `SYNTHESIZED`  
+Origins: `DETERMINISTIC_RANK` | `FRESH_RESEARCH` | `MEMORY_INFLUENCED` | `OPERATOR_ASK` | `SYNTHESIZED`
 (`SYNTHESIZED` must never count toward AIF-28 promotion arithmetic.)
 
 ## Enable (after promote)

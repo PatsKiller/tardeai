@@ -4,9 +4,9 @@ Status:      ACTIVE
 as_of:       2026-06-28T22:49:34-04:00
 Measured at: efcc51365 / not measured
 
-**Status: PASS** | window: 30d  
-_Generated: 2026-06-29T02:48:12.773382+00:00_  
-_Source: `python3 scripts/momentum_scalp_source_maturity_report.py --days N --json`_  
+**Status: PASS** | window: 30d
+_Generated: 2026-06-29T02:48:12.773382+00:00_
+_Source: `python3 scripts/momentum_scalp_source_maturity_report.py --days N --json`_
 
 **Combined source maturity: 4.5/5**
 

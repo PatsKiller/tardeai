@@ -4,10 +4,10 @@ Status:      ACTIVE
 as_of:       2026-07-27T11:56:39-04:00
 Measured at: efcc51365 / not measured
 
-**Packet:** E (`scripts/operator_packets/packet_e_promotion_gate.{sh,py}`)  
-**Phase:** 10  
-**Ack token:** `PROMOTE-AGENT-OPERATIONAL-E`  
-**Environment:** SHADOW / LAB evidence only  
+**Packet:** E (`scripts/operator_packets/packet_e_promotion_gate.{sh,py}`)
+**Phase:** 10
+**Ack token:** `PROMOTE-AGENT-OPERATIONAL-E`
+**Environment:** SHADOW / LAB evidence only
 
 ## Hard invariants
 
@@ -148,6 +148,6 @@ Until Phase 11 is implemented and a sign-off file is accepted:
 - `docs/agent_runtime/LANE_D_SHADOW_AGENTS.md` — SHADOW fleet + maturity gates
 - `docs/agent_runtime/AGENT_PERMISSION_MATRIX.md` — denied authorities
 - Packet D runner: `scripts/operator_packets/packet_d_shadow_acceptance.py`
-- **Next strategic unlock (market data, not agent promotion):**  
-  Moomoo Stage 0 read-plane foundation — `docs/operations/MOOMOO_STAGE0_FOUNDATION_v1.md`  
+- **Next strategic unlock (market data, not agent promotion):**
+  Moomoo Stage 0 read-plane foundation — `docs/operations/MOOMOO_STAGE0_FOUNDATION_v1.md`
   (Packet F; quotes/history/subscription scaffolds only; **no** order path, **no** agent OPERATIONAL)

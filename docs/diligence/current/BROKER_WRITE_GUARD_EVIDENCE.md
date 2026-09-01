@@ -4,8 +4,8 @@ Status:      ACTIVE
 as_of:       2026-06-27T22:07:55-04:00
 Measured at: efcc51365 / not measured
 
-_Generated: 2026-06-28T02:06:07.103153+00:00_  
-_Source: `python3 scripts/validate_schwab_write_policy.py + scripts/broker_write_scanner.py + tests/test_no_broker_write_bypass.py`_  
+_Generated: 2026-06-28T02:06:07.103153+00:00_
+_Source: `python3 scripts/validate_schwab_write_policy.py + scripts/broker_write_scanner.py + tests/test_no_broker_write_bypass.py`_
 **Status: PASS**
 
 All broker writes route through the single approved transport boundary behind execution readiness + per-order operator 2FA. The scanner finds no direct client writes, raw HTTP to order endpoints, or schwab-py imports outside the boundary.

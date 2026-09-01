@@ -4,9 +4,9 @@ Status:      ACTIVE
 as_of:       2026-06-28T18:07:57-04:00
 Measured at: efcc51365 / not measured
 
-**Status: PASS** | window: 30d  
-_Generated: 2026-06-28T21:58:55.662063+00:00_  
-_Source: `python3 scripts/momentum_scalp_freshness_sla_report.py --days N --json`_  
+**Status: PASS** | window: 30d
+_Generated: 2026-06-28T21:58:55.662063+00:00_
+_Source: `python3 scripts/momentum_scalp_freshness_sla_report.py --days N --json`_
 
 ## Latency created → first ATM (49 proposals)
 

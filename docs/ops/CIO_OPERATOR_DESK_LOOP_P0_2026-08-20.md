@@ -8,7 +8,7 @@ Measured at: efcc51365 / not measured
 
 ## P0 bug (live proof)
 
-Ask: `alex what llm you using`  
+Ask: `alex what llm you using`
 Got: full re-entry READY/NEAR dump (DHX/MOGU…).
 
 Cause: `analyze_operator_intent` defaulted unmatched text to
@@ -16,8 +16,8 @@ Cause: `analyze_operator_intent` defaulted unmatched text to
 
 ## Fix
 
-1. **`meta_system` intent** — LLM/model/DeepSeek/Flash/authority/status asks  
-   Needs: `runtime_llm` / `runtime_status` only.  
+1. **`meta_system` intent** — LLM/model/DeepSeek/Flash/authority/status asks
+   Needs: `runtime_llm` / `runtime_status` only.
    Answer from `config/cio_llm_policy.yaml` + `call_governed_llm` facts (`deepseek-v4-flash`).
 2. **Removed** default `reentry_ready`/`portfolio`. Unmatched → `unclear` clarifier.
 3. **Gather** attaches re-entry / portfolio / risk / research **only** when those needs are set.

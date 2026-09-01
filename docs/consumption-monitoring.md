@@ -162,8 +162,8 @@ All pages should use `lib.oauth_lane_status` (via `llm_lane.available` or `GET /
 
 ## Database
 
-Tables: `llm_consumption_log`, `llm_process_config`  
-Migration: `migrations/2026_07_08_llm_consumption_monitoring.sql`  
+Tables: `llm_consumption_log`, `llm_process_config`
+Migration: `migrations/2026_07_08_llm_consumption_monitoring.sql`
 Schema also auto-created by `lib.llm_consumption.ensure_schema()`.
 
 ## Fail-open

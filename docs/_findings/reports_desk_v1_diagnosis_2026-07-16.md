@@ -33,7 +33,7 @@ plenty for WS-D rollups; weekend dips visible (80 on Sat 07-12).
 ## 0.4 `<b>` leak: confirmed — telegram_outbox.body stores raw Telegram HTML
 (`<b>Pre-Market Brief…</b>`); fix in ONE formatter at render.
 
-## 0.5 Morning brief structure: `fetch` from `/api/v2/aegis/chat-context` (:65) → 
+## 0.5 Morning brief structure: `fetch` from `/api/v2/aegis/chat-context` (:65) →
 `brief.get("sections",[])` used as DATA in both telegram (:214) and markdown (:387)
 renderers; .md export at data/portfolios/reports/ + docs/ copy. → WS-B persists
 `brief.json` sidecar next to the .md — purely additive, Telegram path untouched.

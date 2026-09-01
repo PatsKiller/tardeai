@@ -20,15 +20,15 @@ Gap was evidence plumbing + status vocabulary, not a missing producer.
 
 ## Fix
 
-1. `project_reentry_desk_for_cio` / `normalize_reentry_s3_status` in  
-   `scripts/lib/data_broker/reentry_decision_desk.py`  
-   - Maps `intel.state` → top-level `READY` \| `NEAR` \| `BLOCK`  
-   - `READY TO REVIEW` / `IN_ZONE` → `READY`  
-   - `NEAR ENTRY` / `OVERSOLD REVIEW` → `NEAR`  
+1. `project_reentry_desk_for_cio` / `normalize_reentry_s3_status` in
+   `scripts/lib/data_broker/reentry_decision_desk.py`
+   - Maps `intel.state` → top-level `READY` \| `NEAR` \| `BLOCK`
+   - `READY TO REVIEW` / `IN_ZONE` → `READY`
+   - `NEAR ENTRY` / `OVERSOLD REVIEW` → `NEAR`
    - WAIT / HELD / MISSING* → `BLOCK` (desk-visible, not S3)
-2. `_domain_reentry` in `scripts/lib/data_broker/cio_portfolio.py`  
-   - Reads `data/runtime/reentry_decision_desk_latest.json` (zero provider calls)  
-   - Registers collectors `reentry` + `reentry_decision_desk`  
+2. `_domain_reentry` in `scripts/lib/data_broker/cio_portfolio.py`
+   - Reads `data/runtime/reentry_decision_desk_latest.json` (zero provider calls)
+   - Registers collectors `reentry` + `reentry_decision_desk`
    - Fail-soft → `DATA_UNAVAILABLE` (no raise)
 
 `eval_s3` unchanged. `max_plans_per_pass` / dedup unchanged. Notify unchanged (default off).
@@ -58,10 +58,10 @@ PY
 
 ## Non-goals (still)
 
-- Always-on Telegram / `CIO_SITUATION_NOTIFY` enable  
-- S7 / watch wire (Fix #2)  
-- S1 open-plan cap redesign  
-- Force-enqueue Hermes / thesis acquisition / LLM caps  
+- Always-on Telegram / `CIO_SITUATION_NOTIFY` enable
+- S7 / watch wire (Fix #2)
+- S1 open-plan cap redesign
+- Force-enqueue Hermes / thesis acquisition / LLM caps
 
 ## Follow-on
 

@@ -15,8 +15,8 @@ GET /api/v3/data-broker
 GET /api/v3/data-broker/catalog
 ```
 
-Contract: `watch_intelligence.broker.v1`  
-Module: `lib.data_broker.watch_intelligence`  
+Contract: `watch_intelligence.broker.v1`
+Module: `lib.data_broker.watch_intelligence`
 Primary UI: `/v3/watch`
 
 Endpoints:

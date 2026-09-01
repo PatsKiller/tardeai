@@ -36,10 +36,10 @@ Account equity (API): ~**$1.144M** (incl. cash).
 
 ## UI expectation after hard-refresh
 
-- Filters: **All**, **schwab_rollover_ira**, **schwab_taxable**, **schwab_roth** only  
-- **No** “Fidelity Rollover IRA” active book / no **F** broker badge on those tickers  
-- Former F names (ANET, ARKX, DIVI, …) under **Schwab Rollover IRA**  
-- **Sync Schwab** remains SSOT; **Sync SnapTrade** no longer writes Fidelity IRA  
+- Filters: **All**, **schwab_rollover_ira**, **schwab_taxable**, **schwab_roth** only
+- **No** “Fidelity Rollover IRA” active book / no **F** broker badge on those tickers
+- Former F names (ANET, ARKX, DIVI, …) under **Schwab Rollover IRA**
+- **Sync Schwab** remains SSOT; **Sync SnapTrade** no longer writes Fidelity IRA
 - **Sync Fidelity GTC stops** is legacy for closed account — stop targets should be managed on Schwab
 
 ## Verify
@@ -65,9 +65,9 @@ print(sync_schwab_positions('schwab_rollover_ira', dry_run=True))
 
 ## Follow-ups
 
-1. Re-arm **protective stops** on Schwab for positions that had Fidelity manual GTC stops (`config/fidelity_rollover_stops.json` is historical).  
-2. Confirm SnapTrade still links a closed Fidelity account — leave unmapped.  
-3. ~~Optional: hide closed `fidelity_rollover_ira` from account chips~~ — chips are derived from live holdings only; 0 Fidelity rows → no chip (verified 2026-07-16 evening).  
+1. Re-arm **protective stops** on Schwab for positions that had Fidelity manual GTC stops (`config/fidelity_rollover_stops.json` is historical).
+2. Confirm SnapTrade still links a closed Fidelity account — leave unmapped.
+3. ~~Optional: hide closed `fidelity_rollover_ira` from account chips~~ — chips are derived from live holdings only; 0 Fidelity rows → no chip (verified 2026-07-16 evening).
 4. 401k **loan** tax treatment still operator-owned (YAML note retained).
 
 ## Post-migration verification (2026-07-16 ~23:20 ET)

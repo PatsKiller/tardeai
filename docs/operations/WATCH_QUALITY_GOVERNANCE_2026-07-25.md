@@ -38,8 +38,8 @@ A later layer cannot waive an earlier failure. Models never create, repair or mo
 
 ## Quality admission contract
 
-Policy: `config/watch_quality_policy.json`  
-Engine: `scripts/watch_quality_policy.py`  
+Policy: `config/watch_quality_policy.json`
+Engine: `scripts/watch_quality_policy.py`
 Version: `watch-quality-admission-v1`
 
 States:

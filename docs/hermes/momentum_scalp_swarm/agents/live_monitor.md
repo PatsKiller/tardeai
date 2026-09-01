@@ -12,8 +12,8 @@ Continuously monitor all open momentum scalps. Run regime detection in real time
 
 ## Implementation
 
-Daemon: `scripts/hermes_scalp_live_monitor.py`  
-Wraps: `scalp_stop_monitor.run()` + `momentum_scalp_regime.detect_regime()`  
+Daemon: `scripts/hermes_scalp_live_monitor.py`
+Wraps: `scalp_stop_monitor.run()` + `momentum_scalp_regime.detect_regime()`
 Interval: 30 seconds (configurable)
 
 ## Stoplight Rules (regime-adjusted R thresholds)

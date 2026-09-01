@@ -34,7 +34,7 @@ Stage 0 does not replace `/v3` TradingHub.
 
 `venues.*.data` / `venues.*.execution` are **always false** at Stage 0 (read-only inventory).
 
-Contract: `active-trader-stage0-read-api-v1`  
+Contract: `active-trader-stage0-read-api-v1`
 Code: `scripts/active_trader/read_http.py` · mount via `scripts/active_trader_read_boot.py` in `portfolio_server.py`
 
 ### Existing operator APIs (not AT Stage 0)

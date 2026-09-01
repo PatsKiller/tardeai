@@ -1,9 +1,5 @@
 # Book & Research Knowledge — Inventory (PR-R1)
 
-Status:      ACTIVE
-as_of:       2026-08-21T11:08:50-04:00
-Measured at: efcc51365 / not measured
-
 Source registry + existing-code map + gaps. This document is informational; it
 does not grant authority and does not claim any full text has been read.
 

@@ -4,8 +4,8 @@ Status:      ACTIVE
 as_of:       2026-06-27T22:07:55-04:00
 Measured at: efcc51365 / not measured
 
-_Generated: 2026-06-28T02:04:35.876605+00:00_  
-_Source: `python3 scripts/execution_state.py --json`_  
+_Generated: 2026-06-28T02:04:35.876605+00:00_
+_Source: `python3 scripts/execution_state.py --json`_
 **Status: PASS**
 
 Autonomous live submit remains disabled. Operator-approved broker submit path is gated by deterministic controls. No order is treated as live before broker acknowledgement.

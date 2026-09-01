@@ -4,9 +4,9 @@ Status:      ACTIVE
 as_of:       2026-06-28T13:03:00-04:00
 Measured at: efcc51365 / not measured
 
-**Status: PASS** | window: 30d  
-_Generated: 2026-06-28T17:01:13.356160+00:00_  
-_Source: `python3 scripts/replay_social_route_policy.py --days N --json`_  
+**Status: PASS** | window: 30d
+_Generated: 2026-06-28T17:01:13.356160+00:00_
+_Source: `python3 scripts/replay_social_route_policy.py --days N --json`_
 
 Replayed **1457** social scan rows.
 

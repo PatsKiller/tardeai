@@ -39,11 +39,11 @@ Risk-aware observe-only desk under a living thesis. Prefer Data Broker multi-dom
 
 ### Principles
 
-1. Evidence before narrative — numbers only from Data Broker domains  
-2. Thesis is governing context, not a footer tag  
-3. Cash buffer is intentional optionality until data quality supports deploy  
-4. Concentration and deep drawdowns deserve multi-domain synthesis  
-5. Operator disposition is the ground truth for future enrichment  
+1. Evidence before narrative — numbers only from Data Broker domains
+2. Thesis is governing context, not a footer tag
+3. Cash buffer is intentional optionality until data quality supports deploy
+4. Concentration and deep drawdowns deserve multi-domain synthesis
+5. Operator disposition is the ground truth for future enrichment
 6. Highest-signal action may be non-action under `defensive_observe`
 
 ### Risk posture (structured)
@@ -59,17 +59,17 @@ Risk-aware observe-only desk under a living thesis. Prefer Data Broker multi-dom
 
 ### Escalation rules (live)
 
-1. S1 deep DD ≥25% from basis → full material note + Hermes `research_gap`  
-2. S5 cash_pct above band (min 20%) → staged deployment options only; never force fills  
-3. S6 single-name weight ≥12% (fire ~16.5%) → Morgan-style size & thesis review  
-4. S8 defensive regime → material; Hermes high priority  
-5. Operator request for research → material / Hermes path  
-6. Thesis drift vs linked symbols (SCHD, SPCX) → material multi-domain review  
+1. S1 deep DD ≥25% from basis → full material note + Hermes `research_gap`
+2. S5 cash_pct above band (min 20%) → staged deployment options only; never force fills
+3. S6 single-name weight ≥12% (fire ~16.5%) → Morgan-style size & thesis review
+4. S8 defensive regime → material; Hermes high priority
+5. Operator request for research → material / Hermes path
+6. Thesis drift vs linked symbols (SCHD, SPCX) → material multi-domain review
 
 ### Linked / watch symbols
 
-- **Linked:** SCHD, SPCX  
-- **Watch:** SCHD, SPCX  
+- **Linked:** SCHD, SPCX
+- **Watch:** SCHD, SPCX
 
 ### Learning log (on thesis)
 
@@ -100,7 +100,7 @@ Risk-aware observe-only desk under a living thesis. Prefer Data Broker multi-dom
 | Stops active | 25 |
 | Top weights | SCHD **17.5%**, V 9.4%, JEPI 6.7%, DIVI 3.5%, XLI 2.9%, ARKX 2.7%, XAR 2.3%, SPCX 2.1%, BND 2.1% |
 
-Open plans (count): **35** — pins: desk@v4 ×11, desk@v1 ×24. Types: S1×11, S2×9, S6×8, S0×4, S5×2, S4×1.  
+Open plans (count): **35** — pins: desk@v4 ×11, desk@v1 ×24. Types: S1×11, S2×9, S6×8, S0×4, S5×2, S4×1.
 *(Many routine plans still carry older pins until re-enrich; material desk note uses desk@v4.)*
 
 ---
@@ -109,29 +109,29 @@ Open plans (count): **35** — pins: desk@v4 ×11, desk@v1 ×24. Types: S1×11, 
 
 ### What this desk **is**
 
-- **Advisory only.** Situations → plans with options, evidence refs, thesis pin, recommendations.  
-- **Operator-final.** Dispositions (ack / rate / defer / done / reject) are first-class.  
-- **Evidence-bound.** Numeric claims come from Data Broker domains or are marked `DATA_UNAVAILABLE`.  
+- **Advisory only.** Situations → plans with options, evidence refs, thesis pin, recommendations.
+- **Operator-final.** Dispositions (ack / rate / defer / done / reject) are first-class.
+- **Evidence-bound.** Numeric claims come from Data Broker domains or are marked `DATA_UNAVAILABLE`.
 - **Pinned.** Every plan and Telegram reply should cite the exact `desk@vN` used for the advice.
 
 ### What chat / situations **can** do
 
-- Raise and list situations/plans (`S0`–`S8`)  
-- Enrich plans (LLM or template) under policy  
-- Notify operator on material types (when notify flags allow; once-per-fingerprint ledger)  
-- Deep-link to Command Center `/v3/cio` plan pages  
-- Record operator dispositions into learning store + thesis `learning_log`  
-- Generate desk synthesis note (v1.1) from thesis + snapshot + material plans  
-- Enqueue Hermes research on material path (READ_ONLY research gap; fingerprint de-dupe + TTL reuse)  
+- Raise and list situations/plans (`S0`–`S8`)
+- Enrich plans (LLM or template) under policy
+- Notify operator on material types (when notify flags allow; once-per-fingerprint ledger)
+- Deep-link to Command Center `/v3/cio` plan pages
+- Record operator dispositions into learning store + thesis `learning_log`
+- Generate desk synthesis note (v1.1) from thesis + snapshot + material plans
+- Enqueue Hermes research on material path (READ_ONLY research gap; fingerprint de-dupe + TTL reuse)
 - Attach structured **catalyst calendar** on plans (severity gates revisit / warm / Telegram; never orders)
 
 ### What chat / situations **cannot** do
 
-- Place, modify, or cancel **orders**  
-- Create, move, or cancel **stops**  
-- Broker login, **2FA**, or account mutation  
-- Auto-execute any recommendation  
-- Force cash deployment fills  
+- Place, modify, or cancel **orders**
+- Create, move, or cancel **stops**
+- Broker login, **2FA**, or account mutation
+- Auto-execute any recommendation
+- Force cash deployment fills
 - Act outside allowlisted Telegram chat IDs (CIO bot only — not main OpenClaw bot)
 
 ### Enforcement language (keep consistent)
@@ -142,9 +142,9 @@ Open plans (count): **35** — pins: desk@v4 ×11, desk@v1 ×24. Types: S1×11, 
 
 ## 3. Situation catalog — S0–S8
 
-**Config:** `config/cio_situations.yaml`  
-**Detector:** `scripts/lib/cio_situation_detector.py` (`situation-catalog-v1.0.0`)  
-**Plans:** `data/cio/cio_plans.jsonl` · projection `cio_plans_projection.json`  
+**Config:** `config/cio_situations.yaml`
+**Detector:** `scripts/lib/cio_situation_detector.py` (`situation-catalog-v1.0.0`)
+**Plans:** `data/cio/cio_plans.jsonl` · projection `cio_plans_projection.json`
 **Policy:** detector may run with notify gated; material notify prefers multi-domain evidence.
 
 | Code | Name | Fire (summary, live thresholds) | Owner | Operator disposition |
@@ -173,34 +173,34 @@ Telegram: `/cio ack|rate|defer|done|reject <plan_id>` or reply keywords on plan 
 
 ### Detector ops knobs (live config)
 
-- `dedup_hours`: 12  
-- `max_plans_per_pass`: 5  
-- `max_notify_per_pass`: 3  
-- Notify situation types (policy): S1 / S2 / S5 / S6 / S8 (see `config/cio_llm_policy.yaml`)  
+- `dedup_hours`: 12
+- `max_plans_per_pass`: 5
+- `max_notify_per_pass`: 3
+- Notify situation types (policy): S1 / S2 / S5 / S6 / S8 (see `config/cio_llm_policy.yaml`)
 - Once-per-fingerprint notify ledger: `data/cio/cio_plan_notify_ledger.json`
 
 ---
 
 ## 4. Desk note product (v1.1)
 
-**Code:** `scripts/lib/cio_desk_synthesis.py`  
-**Latest render:** `data/cio/cio_desk_note_latest.md`  
+**Code:** `scripts/lib/cio_desk_synthesis.py`
+**Latest render:** `data/cio/cio_desk_note_latest.md`
 **Authority:** READ_ONLY · pins live `desk@vN`
 
 ### 7-section structure
 
-1. **Thesis header** — full summary, structured risk posture, principles  
-2. **Portfolio snapshot** — book, cash vs band, heat, stops, top weights  
-3. **Material situations** — desk-filtered; distinct thesis-fit per situation; multi-domain evidence; plan_id + pin  
-4. **Cross-position view** — concentration cluster, cash runway, correlated sleeves, heat  
-5. **Desk recommendations** (+ **5b deeper analysis** — what would change the call)  
-6. **Learning log** — operator biases active on this note  
-7. **Revisit + ack** — plan ids, revisit triggers, `/cio thesis`, READ_ONLY footer  
+1. **Thesis header** — full summary, structured risk posture, principles
+2. **Portfolio snapshot** — book, cash vs band, heat, stops, top weights
+3. **Material situations** — desk-filtered; distinct thesis-fit per situation; multi-domain evidence; plan_id + pin
+4. **Cross-position view** — concentration cluster, cash runway, correlated sleeves, heat
+5. **Desk recommendations** (+ **5b deeper analysis** — what would change the call)
+6. **Learning log** — operator biases active on this note
+7. **Revisit + ack** — plan ids, revisit triggers, `/cio thesis`, READ_ONLY footer
 
 ### Artifact path
 
-- Working note: `data/cio/cio_desk_note_latest.md`  
-- API surface: Command Center **`/v3/cio`** (plans + desk hub when release dist is current)  
+- Working note: `data/cio/cio_desk_note_latest.md`
+- API surface: Command Center **`/v3/cio`** (plans + desk hub when release dist is current)
 - Telegram: dedicated `@tradeai_cio_bot` (not main OpenClaw)
 
 ### Regenerate commands
@@ -246,15 +246,15 @@ v1.1 fixes (live): no mid-sentence truncation; distinct thesis-fit; API/CLI snap
 
 ### How it works (live)
 
-1. Operator issues **ack / rate / defer / done / reject** on a `plan_id` (Telegram `/cio …` or thread reply).  
-2. Event lands in durable store: `data/cio/cio_operator_learning.jsonl`.  
-3. Material dispositions can append to thesis `learning_log` (head of governing doc).  
-4. Enrichment / desk note reads recent dispositions so future recs **honor operator bias** (e.g. do not re-push trim SCHD after defer “wait for price buffer”).  
+1. Operator issues **ack / rate / defer / done / reject** on a `plan_id` (Telegram `/cio …` or thread reply).
+2. Event lands in durable store: `data/cio/cio_operator_learning.jsonl`.
+3. Material dispositions can append to thesis `learning_log` (head of governing doc).
+4. Enrichment / desk note reads recent dispositions so future recs **honor operator bias** (e.g. do not re-push trim SCHD after defer “wait for price buffer”).
 
 ### Current highlights (live)
 
-- **SCHD · S6 · defer** — “wait for price buffer” · `plan_79fe9e72f2d4` · pin at disposition `desk@v2` · 2026-08-11T21:33Z  
-- Desk note v1.1 still surfaces this as active bias under `desk@v4`  
+- **SCHD · S6 · defer** — “wait for price buffer” · `plan_79fe9e72f2d4` · pin at disposition `desk@v2` · 2026-08-11T21:33Z
+- Desk note v1.1 still surfaces this as active bias under `desk@v4`
 - Learning store currently thin (seed + SCHD defer); continuous quality learning is **not** fully closed-loop yet (see §6)
 
 ---
@@ -297,21 +297,21 @@ PYTHONPATH=scripts .venv/bin/python scripts/lib/cio_desk_synthesis.py
 
 ### Telegram CIO bot (dedicated)
 
-- **Bot:** `@tradeai_cio_bot` only — do **not** wire main OpenClaw bot  
-- **Env:** `~/.config/tradeai/cio-telegram.env`  
-  - `TELEGRAM_CIO_BOT_TOKEN`  
-  - `TELEGRAM_CIO_CHAT_IDS` (allowlist)  
-  - `CIO_LLM_ENRICH=1` (or `0` for template-only)  
-  - `CIO_SITUATION_NOTIFY=1` when operator wants plan push  
-- **Unit:** `tradeai-cio-telegram.service` (user systemd)  
-- **Code:** `scripts/cio_telegram_bot.py`, `scripts/lib/cio_telegram_converse.py`  
-- **Commands:** `/cio thesis`, `/cio ack|rate|defer|done|reject <plan_id>`, free-text → S0 plans  
+- **Bot:** `@tradeai_cio_bot` only — do **not** wire main OpenClaw bot
+- **Env:** `~/.config/tradeai/cio-telegram.env`
+  - `TELEGRAM_CIO_BOT_TOKEN`
+  - `TELEGRAM_CIO_CHAT_IDS` (allowlist)
+  - `CIO_LLM_ENRICH=1` (or `0` for template-only)
+  - `CIO_SITUATION_NOTIFY=1` when operator wants plan push
+- **Unit:** `tradeai-cio-telegram.service` (user systemd)
+- **Code:** `scripts/cio_telegram_bot.py`, `scripts/lib/cio_telegram_converse.py`
+- **Commands:** `/cio thesis`, `/cio ack|rate|defer|done|reject <plan_id>`, free-text → S0 plans
 
 ### Command Center `/v3/cio`
 
-- Hub route: CC v3 **`/v3/cio`** (and `?plan=<plan_id>` deep links)  
-- API: `scripts/api_v3_cio.py` (+ portfolio server release tree when serving dist)  
-- Tailscale / LAN base used for absolute deep links when configured  
+- Hub route: CC v3 **`/v3/cio`** (and `?plan=<plan_id>` deep links)
+- API: `scripts/api_v3_cio.py` (+ portfolio server release tree when serving dist)
+- Tailscale / LAN base used for absolute deep links when configured
 
 ### Key data paths under `data/cio/`
 
@@ -329,18 +329,18 @@ PYTHONPATH=scripts .venv/bin/python scripts/lib/cio_desk_synthesis.py
 
 ### Related in-repo docs (`docs/cio/`)
 
-- `DESK_THESIS_V2.md` — governing thesis OS  
-- `SITUATION_CATALOG_V1.md` — S1–S8 freeze + live wiring notes  
-- `P2B_PLAN_ENRICHMENT.md` — LLM/template enrichment  
-- `THESIS_STORE_P3.md` — pin store  
-- `CIO_TELEGRAM_CONVERSE_RUNBOOK.md` — bot ops  
+- `DESK_THESIS_V2.md` — governing thesis OS
+- `SITUATION_CATALOG_V1.md` — S1–S8 freeze + live wiring notes
+- `P2B_PLAN_ENRICHMENT.md` — LLM/template enrichment
+- `THESIS_STORE_P3.md` — pin store
+- `CIO_TELEGRAM_CONVERSE_RUNBOOK.md` — bot ops
 - This file: **`CIO_DESK_OPERATING_PACKET.md`** — operator/architect packet (Drive mirror)
 
 ### Drive sync
 
-- Canonical Drive root: **Trade_AI_Docs_v2** (`scripts/sync-docs-to-drive.py` / hourly `.sh`)  
-- Folder: `docs/cio/`  
-- Refresh this Google Doc header (**pin + as_of**) whenever `desk@vN` advances or material behavior changes  
+- Canonical Drive root: **Trade_AI_Docs_v2** (`scripts/sync-docs-to-drive.py` / hourly `.sh`)
+- Folder: `docs/cio/`
+- Refresh this Google Doc header (**pin + as_of**) whenever `desk@vN` advances or material behavior changes
 
 ---
 
@@ -348,9 +348,9 @@ PYTHONPATH=scripts .venv/bin/python scripts/lib/cio_desk_synthesis.py
 
 As of desk note render **2026-08-12T03:20:12Z** under **desk@v4**:
 
-1. **S6 SCHD** — weight ~17.6% vs fire ≈16.5% · hold_with_thesis · honor defer · `plan_05a414a3d105`  
-2. **S1 SPCX** — deep DD ~26.9% from basis · small book weight ~2.1% · awareness-only hold · `plan_51e03253ba2d`  
-3. **S5 cash** — ~45% cash · quality PARTIAL · hold_cash / stage · `plan_1b8d534354fb`  
+1. **S6 SCHD** — weight ~17.6% vs fire ≈16.5% · hold_with_thesis · honor defer · `plan_05a414a3d105`
+2. **S1 SPCX** — deep DD ~26.9% from basis · small book weight ~2.1% · awareness-only hold · `plan_51e03253ba2d`
+3. **S5 cash** — ~45% cash · quality PARTIAL · hold_cash / stage · `plan_1b8d534354fb`
 
 All remain **READ_ONLY_ADVISORY**.
 

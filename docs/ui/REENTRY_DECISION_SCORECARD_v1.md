@@ -4,8 +4,8 @@ Status:      ACTIVE
 as_of:       2026-07-31T12:52:12-04:00
 Measured at: efcc51365 / not measured
 
-**Route:** `/v3/portfolio/re-entry`  
-**Library:** `apps/command-center-v3/src/lib/reentryDecisionScorecard.ts`  
+**Route:** `/v3/portfolio/re-entry`
+**Library:** `apps/command-center-v3/src/lib/reentryDecisionScorecard.ts`
 **UI:** `ReEntryCommandHeader` + expanded row scorecard in `ReEntryCurrentIntelligence`
 
 ## Purpose
@@ -41,12 +41,12 @@ Deep-link: `?lane=NOW|NEAR|WATCH|ALL` (default NOW). Optional `?symbol=SYM` focu
 
 Clauses (omit when unavailable):
 
-1. **Location** — `$px inside $low–$high (mid/low/high-zone)` or % above/below zone  
-2. **Momentum** — `RSI 26.1 oversold — calm retest`  
-3. **Vs exit** — `% vs exit avg $X · Nd since exit`  
-4. **Structure** — resistance side, support, stop, target, **R:R**  
-5. **Classify** — `Unclassified — classify before size` when AUTO-TAGGED/UNCLASSIFIED READY  
-6. **Soft context** — MA/MACD/P/E n/a, Street rec, mandate/flags, event gaps, resistance-suspect  
+1. **Location** — `$px inside $low–$high (mid/low/high-zone)` or % above/below zone
+2. **Momentum** — `RSI 26.1 oversold — calm retest`
+3. **Vs exit** — `% vs exit avg $X · Nd since exit`
+4. **Structure** — resistance side, support, stop, target, **R:R**
+5. **Classify** — `Unclassified — classify before size` when AUTO-TAGGED/UNCLASSIFIED READY
+6. **Soft context** — MA/MACD/P/E n/a, Street rec, mandate/flags, event gaps, resistance-suspect
 
 Collapsed row also shows **highlight chips** (in zone, RSI band, R:R, vs exit, unclassified).
 

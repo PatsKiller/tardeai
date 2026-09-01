@@ -48,7 +48,7 @@ spread_pct = (quote.ask - quote.bid) / quote.mid * 100
 
 if spread_pct > 1.0:
     REJECT "spread_too_wide_extended_hours"
-    
+
 if quote.age_seconds > 30:
     REJECT "stale_quote_extended_hours"
 ```

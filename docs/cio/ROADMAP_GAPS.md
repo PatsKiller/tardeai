@@ -4,7 +4,7 @@ Status:      ACTIVE
 as_of:       2026-08-12T14:39:24-04:00
 Measured at: efcc51365 / not measured
 
-This file is the **only** place aspirational CIO / FA product should live.  
+This file is the **only** place aspirational CIO / FA product should live.
 Everything else in `docs/cio/` documents **live** behavior.
 
 If a capability is listed here, **do not** claim it as shipped in README maturity, thesis, or desk notes.
@@ -88,15 +88,15 @@ Measured against the Morgan Stanley Full Portfolio Report field template:
 
 ## How to promote a gap to “live”
 
-1. Ship code on `feature/advisory-desk-v1` (or successor) with tests.  
-2. Move description from this file into the relevant live doc (SITUATIONS, DESK_NOTE, LEARNING_LOOP).  
-3. Update [README.md](./README.md) maturity paragraph downward-honest still.  
+1. Ship code on `feature/advisory-desk-v1` (or successor) with tests.
+2. Move description from this file into the relevant live doc (SITUATIONS, DESK_NOTE, LEARNING_LOOP).
+3. Update [README.md](./README.md) maturity paragraph downward-honest still.
 4. Bump external operating packet pin/as_of if thesis or operator-facing behavior changed.
 
 ---
 
 ## Related
 
-- [README.md](./README.md) maturity  
-- [DESK_NOTE.md](./DESK_NOTE.md) quality bar table  
-- [ARCHITECTURE.md](./ARCHITECTURE.md)  
+- [README.md](./README.md) maturity
+- [DESK_NOTE.md](./DESK_NOTE.md) quality bar table
+- [ARCHITECTURE.md](./ARCHITECTURE.md)

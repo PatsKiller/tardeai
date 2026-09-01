@@ -36,6 +36,6 @@ mv data/runtime/rockville data/runtime/rockville.bak.$(date +%Y%m%d)
 
 ## Verification after rollback
 
-- `/v3/watch` loads prior card  
-- No CIO panel if flags off  
-- FTH may still show DETERMINISTIC FAIL header if operator_presentation fix retained (recommended keep)  
+- `/v3/watch` loads prior card
+- No CIO panel if flags off
+- FTH may still show DETERMINISTIC FAIL header if operator_presentation fix retained (recommended keep)

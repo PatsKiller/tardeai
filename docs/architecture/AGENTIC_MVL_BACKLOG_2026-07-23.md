@@ -4,7 +4,7 @@ Status:      HISTORICAL
 as_of:       2026-07-23T21:44:03-04:00
 Measured at: efcc51365 / not measured
 
-**Controlling sequence:** prove the Minimum Viable Loop before general orchestration.  
+**Controlling sequence:** prove the Minimum Viable Loop before general orchestration.
 **Hard exclusions:** no Active Trader Session 1 branch/timer/marker changes; no broker/order/2FA/config-promotion authority.
 
 ## P0 — Required before any shadow activation

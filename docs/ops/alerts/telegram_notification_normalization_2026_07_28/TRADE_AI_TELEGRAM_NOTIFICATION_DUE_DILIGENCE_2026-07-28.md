@@ -4,10 +4,10 @@ Status:      HISTORICAL
 as_of:       2026-07-29T12:56:50-04:00
 Measured at: efcc51365 / not measured
 
-**Review date:** 2026-07-28  
-**Source chats:** `TradeAI Proposal Decisions` and `tradeai_bigjohn718_bot`  
-**Data window:** 2026-05-18 through 2026-07-28  
-**Freshness window used for active-state analysis:** trailing seven days, ending 2026-07-28 16:05:02 EDT  
+**Review date:** 2026-07-28
+**Source chats:** `TradeAI Proposal Decisions` and `tradeai_bigjohn718_bot`
+**Data window:** 2026-05-18 through 2026-07-28
+**Freshness window used for active-state analysis:** trailing seven days, ending 2026-07-28 16:05:02 EDT
 **Repository configuration reviewed:** `PatsKiller/tardeai`, connector snapshot at commit `a51ddd72f75b9fbe5dac749bc786396c9b558104`
 
 ## Executive verdict

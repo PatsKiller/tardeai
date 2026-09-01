@@ -4,16 +4,16 @@ Status:      HISTORICAL
 as_of:       2026-08-30T00:33:54-04:00
 Measured at: efcc51365 / not measured
 
-**Document type:** Phase 1–9 master plan (planning only; no remediation code in this turn)  
-**Authority rails (immutable for all phases):** `READ_ONLY_ADVISORY` · `MBI_BEHAVIOR = 0` · no broker/order/stop/2FA/risk mutations without explicit operator-approved 2FA path · INTERDICT left as found unless a phase explicitly re-scopes notify  
-**As-of:** 2026-08-30  
-**Live pin at plan authorship:** `be09945b` (`CURRENT` exact-main release); Wave 2 scoreboard also tracks later pins through `#623` / `53794d82` — re-measure NOW at Phase 0 kickoff  
-**Primary diagram:** operator-supplied end-to-end event → InstrumentRecord → research → specialists → CIO synthesis → product → notification → outcome → cognition loop  
-**Prior art (must reuse, not redo):**  
-- `docs/audits/CIO_PLATFORM_AUDIT_2026-08-27.md` + remediation closeout  
-- `docs/audits/CIO_PIPELINE_DIAGRAM_VERIFICATION_2026-08-27.md`  
-- `docs/architecture/cio/EXTERNAL_DIAGRAM_TYPE_MAPPING.md`  
-- Wave 2 living scoreboard + Wave 3A–3E ops notes  
+**Document type:** Phase 1–9 master plan (planning only; no remediation code in this turn)
+**Authority rails (immutable for all phases):** `READ_ONLY_ADVISORY` · `MBI_BEHAVIOR = 0` · no broker/order/stop/2FA/risk mutations without explicit operator-approved 2FA path · INTERDICT left as found unless a phase explicitly re-scopes notify
+**As-of:** 2026-08-30
+**Live pin at plan authorship:** `be09945b` (`CURRENT` exact-main release); Wave 2 scoreboard also tracks later pins through `#623` / `53794d82` — re-measure NOW at Phase 0 kickoff
+**Primary diagram:** operator-supplied end-to-end event → InstrumentRecord → research → specialists → CIO synthesis → product → notification → outcome → cognition loop
+**Prior art (must reuse, not redo):**
+- `docs/audits/CIO_PLATFORM_AUDIT_2026-08-27.md` + remediation closeout
+- `docs/audits/CIO_PIPELINE_DIAGRAM_VERIFICATION_2026-08-27.md`
+- `docs/architecture/cio/EXTERNAL_DIAGRAM_TYPE_MAPPING.md`
+- Wave 2 living scoreboard + Wave 3A–3E ops notes
 
 ---
 
@@ -23,12 +23,12 @@ Measured at: efcc51365 / not measured
 
 Produce a governed, evidence-based program that:
 
-1. Validates every workflow stage against specification **and** against live behavior.  
-2. Verifies data integrity, identity, and persistence.  
-3. Confirms determinism where required (council, product, MBI=0).  
-4. Identifies broken processes, gaps, risks, and enhancements with severity.  
-5. Documents remediation actions with owners, gates, and rollback.  
-6. Yields an **approved** execution roadmap (30 / 60 / 90 + beyond).  
+1. Validates every workflow stage against specification **and** against live behavior.
+2. Verifies data integrity, identity, and persistence.
+3. Confirms determinism where required (council, product, MBI=0).
+4. Identifies broken processes, gaps, risks, and enhancements with severity.
+5. Documents remediation actions with owners, gates, and rollback.
+6. Yields an **approved** execution roadmap (30 / 60 / 90 + beyond).
 7. Establishes ongoing governance and control standards.
 
 ### 0.2 What is already true (do not rediscover as “missing”)
@@ -58,10 +58,10 @@ Produce a governed, evidence-based program that:
 
 ### 0.4 Success definition for the **program** (not a single PR)
 
-- Living **As-Built vs Diagram** matrix maintained on GitHub (SoT).  
-- Severity-ranked **Gap Register** with evidence links (script output, PR, pin).  
-- Phase exit gates: green local acceptance, health/cio 200, exact-main promote, no MBI/notify/broker regressions.  
-- Approved roadmap signed off phase-by-phase (operator “continue” / phase exit).  
+- Living **As-Built vs Diagram** matrix maintained on GitHub (SoT).
+- Severity-ranked **Gap Register** with evidence links (script output, PR, pin).
+- Phase exit gates: green local acceptance, health/cio 200, exact-main promote, no MBI/notify/broker regressions.
+- Approved roadmap signed off phase-by-phase (operator “continue” / phase exit).
 - No phase may raise `MBI_BEHAVIOR`, enable notify-on, or scrub history without an explicit operator decision recorded on the scoreboard.
 
 ---
@@ -70,16 +70,16 @@ Produce a governed, evidence-based program that:
 
 ### 1.1 Authority
 
-- Default: **READ_ONLY_ADVISORY**.  
-- `MBI_BEHAVIOR = 0` immutable unless operator amends this charter.  
-- `MBI_COGNITION = 1` allowed only for next question / narrative / priority (as InstrumentRecord docs state).  
-- Telegram: INTERDICT left as found; Wave 3E pattern = CC render without producer.  
-- Exact-main deploy: HEAD == origin/main merge commit; `cio_phase2_exact_main_deploy.sh` prepare/promote.  
+- Default: **READ_ONLY_ADVISORY**.
+- `MBI_BEHAVIOR = 0` immutable unless operator amends this charter.
+- `MBI_COGNITION = 1` allowed only for next question / narrative / priority (as InstrumentRecord docs state).
+- Telegram: INTERDICT left as found; Wave 3E pattern = CC render without producer.
+- Exact-main deploy: HEAD == origin/main merge commit; `cio_phase2_exact_main_deploy.sh` prepare/promote.
 - One PR per remediation slice unless operator allows a batched closeout PR.
 
 ### 1.2 Evidence standard
 
-Every finding must cite at least two of: **doc claim · code path · live store/API measure**.  
+Every finding must cite at least two of: **doc claim · code path · live store/API measure**.
 No “file exists ⇒ working.” Prefer `cio_lineage_completion_report.py`, census scripts, `/api/v3/cio/home`, registry integrity tools.
 
 ### 1.3 Severity rubric (operator framework)
@@ -115,9 +115,9 @@ No “file exists ⇒ working.” Prefer `cio_lineage_completion_report.py`, cen
 
 **Tasks:**
 
-1. Refresh `EXTERNAL_DIAGRAM_TYPE_MAPPING.md` for Wave 3 types (`InstrumentRecord@v1`, `SpecialistArtifact@v1-lite`, `CIOCouncilSynthesis@v1`).  
-2. Produce **as-built** architecture doc + data-flow + dependency diagram (code-derived, not aspirational redraw).  
-3. Failure-point inventory (per stage: crash, silent skip, dual-write, id fork).  
+1. Refresh `EXTERNAL_DIAGRAM_TYPE_MAPPING.md` for Wave 3 types (`InstrumentRecord@v1`, `SpecialistArtifact@v1-lite`, `CIOCouncilSynthesis@v1`).
+2. Produce **as-built** architecture doc + data-flow + dependency diagram (code-derived, not aspirational redraw).
+3. Failure-point inventory (per stage: crash, silent skip, dual-write, id fork).
 4. Risk register seeded from Aug 27 Critical/High leftovers + Wave 2 leftovers (ROTATE-as-action, notify-on, history DELETE, etc.).
 
 **Deliverables:** as-built doc · diagrams · failure inventory · risk register.
@@ -130,9 +130,9 @@ No “file exists ⇒ working.” Prefer `cio_lineage_completion_report.py`, cen
 
 **Method:**
 
-- Inventory producers (cron/systemd/API) vs consumers.  
-- Sample N events per family from live stores; measure drop rate.  
-- Build/extend a **lifecycle census** script (read-only) with stage timestamps.  
+- Inventory producers (cron/systemd/API) vs consumers.
+- Sample N events per family from live stores; measure drop rate.
+- Build/extend a **lifecycle census** script (read-only) with stage timestamps.
 - Target **99.99%** is a **program KPI after instrumentation** — Phase 1 measures baseline; Phase 9 hardens to target.
 
 **Failure tests:** duplicate / late / missing / out-of-order / restart mid-pipeline.
@@ -273,14 +273,14 @@ Flash · Pro · Grok critique · corpus reuse — one class per cycle · no redu
 
 For each component:
 
-1. Diagram claim  
-2. Code contract  
-3. Live measure  
-4. Gap (if any)  
-5. Severity 1–4  
-6. Remediation option(s)  
-7. Test / rollback  
-8. Scoreboard row  
+1. Diagram claim
+2. Code contract
+3. Live measure
+4. Gap (if any)
+5. Severity 1–4
+6. Remediation option(s)
+7. Test / rollback
+8. Scoreboard row
 
 **Seeded Sev 1/2 themes (update with fresh evidence at Phase 0):**
 
@@ -373,20 +373,20 @@ Each package: **dry → tests → ops note → scoreboard → one PR → exact-m
 
 ## 7. Out of scope unless operator amends charter
 
-- Enabling notify-on / lowering INTERDICT without canary plan  
-- ROTATE-as-action · book merge · AGENT_COMMITMENT as policy  
-- `cio_run` LLM as default product path  
-- Historical `ticker_prices` DELETE  
-- Broker/stop/cash/2FA mutations  
-- Claiming 99.99% before instrumentation baseline exists  
+- Enabling notify-on / lowering INTERDICT without canary plan
+- ROTATE-as-action · book merge · AGENT_COMMITMENT as policy
+- `cio_run` LLM as default product path
+- Historical `ticker_prices` DELETE
+- Broker/stop/cash/2FA mutations
+- Claiming 99.99% before instrumentation baseline exists
 
 ---
 
 ## 8. Immediate next action after plan approval
 
-1. Open kickoff PR that copies this plan to `docs/audits/CIO_PLATFORM_DILIGENCE_MASTER_PLAN_2026-08-30.md`.  
-2. Create `CIO_DILIGENCE_SCOREBOARD.md` + `.json` (NOW pin, rails, phase cursor).  
-3. Re-measure lineage + diagram verification on **then-current** pin; seed gap register.  
+1. Open kickoff PR that copies this plan to `docs/audits/CIO_PLATFORM_DILIGENCE_MASTER_PLAN_2026-08-30.md`.
+2. Create `CIO_DILIGENCE_SCOREBOARD.md` + `.json` (NOW pin, rails, phase cursor).
+3. Re-measure lineage + diagram verification on **then-current** pin; seed gap register.
 4. Stop for operator approval of Phase 1 WS1 start.
 
 **Approval question for exit:** Approve this Phase 1–9 master plan as the diligence charter?

@@ -30,7 +30,7 @@ These hubs are working well -- each uses TabPage to group related sub-pages:
 ### Family 1: Trading & Screening
 **Current:** 3 separate pages
 - Trade AI (`/trade-ai`) -- screener results
-- Prospects (`/prospects`) -- prospect discovery  
+- Prospects (`/prospects`) -- prospect discovery
 - Strategy Desk (`/strategy-desk`) -- strategy overview
 
 **Proposal:** Create "Trading Hub" with 3 tabs

@@ -4,8 +4,8 @@ Status:      ACTIVE
 as_of:       2026-06-27T23:31:05-04:00
 Measured at: efcc51365 / not measured
 
-**Status: PASS** | sample: 3 (confidence: low)  
-_Generated: 2026-06-28T03:26:17.372230+00:00_  
+**Status: PASS** | sample: 3 (confidence: low)
+_Generated: 2026-06-28T03:26:17.372230+00:00_
 
 Advisory/ranking only. Deterministic gates always win. Weights bounded [0.5, 1.2].
 

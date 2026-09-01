@@ -6,8 +6,8 @@ Measured at: efcc51365 / not measured
 
 How the Trade AI v12 system monitors active positions, generates execution adjustments, conducts after-hours research, and carries insights forward into the next trading session.
 
-**Last verified:** 2026-05-26 (Extended hours, trailing stop V2.4, alert fatigue fix, TCA populated)  
-**Source of truth:** Actual crontab, script source code, and Alpaca API integration  
+**Last verified:** 2026-05-26 (Extended hours, trailing stop V2.4, alert fatigue fix, TCA populated)
+**Source of truth:** Actual crontab, script source code, and Alpaca API integration
 **Sections:** 17 (monitoring, alerts, execution, pre-market, intraday, after-hours, regime, MFE/MAE, page, data hygiene, gaps)
 
 ---
@@ -46,8 +46,8 @@ All reviews persist to `paper_trade_multi_reviews` table, index findings into RA
 
 ## 2. Position Management Layer
 
-**Script:** `scripts/paper_trade_monitor.py`  
-**Schedule:** `*/5 9-16 * * 1-5` (every 5 min, market hours, weekdays)  
+**Script:** `scripts/paper_trade_monitor.py`
+**Schedule:** `*/5 9-16 * * 1-5` (every 5 min, market hours, weekdays)
 **Lock:** `/tmp/paper_monitor.lock`
 
 ### What it does each cycle
@@ -128,8 +128,8 @@ Stops only move UP (profit protection), never down. 4-tier system enforced in `o
 
 ## 3. Situational Alert Layer
 
-**Script:** `scripts/open_trade_monitor.py`  
-**Schedule:** Every 2 minutes during market hours (`*/2 9-16 * * 1-5`)  
+**Script:** `scripts/open_trade_monitor.py`
+**Schedule:** Every 2 minutes during market hours (`*/2 9-16 * * 1-5`)
 **Deduplication:** 30-minute window per trade per alert type
 
 ### Alert types generated
@@ -202,8 +202,8 @@ Checks `news_articles` table for headlines since trade entry containing:
 
 ## 4. Execution Safety Net
 
-**Script:** `scripts/paper_execution_sweep.py`  
-**Schedule:** `*/5 9-16 * * 1-5` (every 5 min, market hours)  
+**Script:** `scripts/paper_execution_sweep.py`
+**Schedule:** `*/5 9-16 * * 1-5` (every 5 min, market hours)
 **Lock:** `/tmp/paper_sweep.lock`
 
 ### Purpose
@@ -258,8 +258,8 @@ Bracket order to Alpaca:
 
 ### Continuous Runner
 
-**Script:** `scripts/continuous_runner.py`  
-**Schedule:** systemd timer fires at 4:00 AM ET weekdays  
+**Script:** `scripts/continuous_runner.py`
+**Schedule:** systemd timer fires at 4:00 AM ET weekdays
 **Cycle frequency varies by time of day:**
 
 | Window (ET) | Cycle | Notes |
@@ -483,7 +483,7 @@ This data feeds the Plan vs Performance page's regime impact analysis and regime
 
 ## 13. Market Regime Pipeline
 
-**Schedule:** 2x daily (6:30/6:35 AM pre-market, 4:05 PM post-close)  
+**Schedule:** 2x daily (6:30/6:35 AM pre-market, 4:05 PM post-close)
 **Scripts:** `market_regime_collector.py` → `market_regime_classifier.py`
 
 ### Indicators collected
@@ -521,7 +521,7 @@ Stored in `paper_trades.max_favorable_excursion` and `paper_trades.max_adverse_e
 
 ## 15. Plan vs Performance Page
 
-**Route:** `/v2/plan-vs-performance`  
+**Route:** `/v2/plan-vs-performance`
 **API:** `GET /api/v2/plan-vs-performance`
 
 ### Tabs

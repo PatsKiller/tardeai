@@ -36,7 +36,7 @@ Operator note: "This page is good -- enhance only"
 
 ### Functional Enhancements
 - Add refresh button per section (currently page-level only)
-- Add ability to mark warnings as "acknowledged" 
+- Add ability to mark warnings as "acknowledged"
 - Add a "since last visit" delta indicator
 - Show the most recent self-improvement action taken by each agent
 - Add a mini timeline of recent system improvements

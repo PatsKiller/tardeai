@@ -14,7 +14,7 @@ Local → free OAuth (Grok/ChatGPT) → **DeepSeek Flash on free-OAuth bottlenec
 
 ### Not allowed for Hermes bulk
 
-- DeepSeek Pro as default or bottleneck rollover  
-- Silent paid fallback when local fails  
+- DeepSeek Pro as default or bottleneck rollover
+- Silent paid fallback when local fails
 
-Config: `config/hermes_research_budget.yaml` → `cloud_unavailable.free_oauth_bottleneck_rollover`.  
+Config: `config/hermes_research_budget.yaml` → `cloud_unavailable.free_oauth_bottleneck_rollover`.

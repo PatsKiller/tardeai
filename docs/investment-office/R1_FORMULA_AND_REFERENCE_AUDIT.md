@@ -1,9 +1,5 @@
 # R1 Formula & Reference Audit
 
-Status:      HISTORICAL
-as_of:       2026-08-14T22:06:15-04:00
-Measured at: efcc51365 / not measured
-
 Research governance — PR #312, branch `feature/research-governance-v1`.
 
 This is the authoritative R1 record of **which formula is implemented, against

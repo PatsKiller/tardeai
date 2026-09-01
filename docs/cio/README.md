@@ -4,13 +4,13 @@ Status:      ACTIVE
 as_of:       2026-08-18T18:44:41-04:00
 Measured at: efcc51365 / not measured
 
-**CURRENT OPERATOR TRUTH (living sheet, R6.8 — not R7):**  
-[`docs/investment-office/CIO_AND_ADVISORY_LIVING_STATUS.md`](../investment-office/CIO_AND_ADVISORY_LIVING_STATUS.md)  
+**CURRENT OPERATOR TRUTH (living sheet, R6.8 — not R7):**
+[`docs/investment-office/CIO_AND_ADVISORY_LIVING_STATUS.md`](../investment-office/CIO_AND_ADVISORY_LIVING_STATUS.md)
 This sheet overrides older architecture/planning docs when they disagree. Drive: same filename, replaced in place.
 
 Code-adjacent documentation for the Trade AI **CIO / Financial Advisor desk** on `feature/advisory-desk-v1` (repo: [PatsKiller/tardeai](https://github.com/PatsKiller/tardeai)).
 
-**Audience:** architects and operators who need the thesis, authority model, situation catalog, learning loop, and known gaps **without host access**.  
+**Audience:** architects and operators who need the thesis, authority model, situation catalog, learning loop, and known gaps **without host access**.
 **Authority everywhere:** `READ_ONLY_ADVISORY` — no orders, stops, or 2FA from chat or situations.
 
 ---

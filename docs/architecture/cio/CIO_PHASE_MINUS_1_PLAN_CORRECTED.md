@@ -288,7 +288,7 @@ The inbound operator path is: `Telegram/Maria → operator command/message ingre
 - Crontab entries use process-scoped override: `AGENT_JOBS_P0_CONTAINED=0 AGENT_JOBS_P0_CONTAINMENT_FLAG=/tmp/tradeai_agent_jobs_p0_worker_absent`
 - CECO Review Authorization Audit (2026-08-04) documented flag as "remained active" at that time — flag has since been cleared
 
-**Correction:** 
+**Correction:**
 1. Replace all references to `P0_CONTAINED` with the canonical `AGENT_JOBS_P0_CONTAINED`
 2. Replace `~/.config/` containment check with canonical path `~/.local/state/tradeai/AGENT_JOBS_P0_CONTAINED`
 3. Document the canonical fail-closed behavior
