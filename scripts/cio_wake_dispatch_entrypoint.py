@@ -147,10 +147,13 @@ def main(argv: list[str] | None = None):
     consult = result.get("record_consult") or {}
     log.info(
         "record_consult: wakes=%s subject_resolved=%s record_found=%s "
-        "changed_by_record=%s skipped_cadence_not_due=%s no_subject=%s",
+        "changed_by_record=%s skipped_cadence_not_due=%s no_subject=%s "
+        "research_preflight=%s research_decide=%s research_loaded=%s research_err=%s",
         consult.get("wakes_considered"), consult.get("subject_resolved"),
         consult.get("record_found"), consult.get("decisions_changed_by_record"),
         consult.get("skipped_cadence_not_due"), consult.get("no_subject"),
+        consult.get("research_preflight_called"), consult.get("research_decide_called"),
+        consult.get("research_record_loaded"), consult.get("research_errors"),
     )
     for ch in (consult.get("changed") or []):
         log.info("record_changed_decision: subject=%s without_record=%s "

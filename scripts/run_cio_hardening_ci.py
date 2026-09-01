@@ -184,6 +184,10 @@ GATES = [
     ("release_links_reports", [
         "tests/test_release_links_reports_dir.py",
     ]),
+    # #810's contract must run on the scheduled wake, not only under --dry-run.
+    ("live_wake_decide_after_load", [
+        "tests/test_live_wake_calls_decide_after_load.py",
+    ]),
     # "latest" must mean most recent, not biggest.
     ("scalp_latest_run_recency", [
         "tests/test_scalp_latest_run_is_most_recent.py",

@@ -216,6 +216,18 @@ def summarise(decisions: list[dict[str, Any]]) -> dict[str, Any]:
         # The common case, reported so its size is visible rather than implied.
         "no_subject": sum(1 for d in decisions if d.get("verdict") == NO_SUBJECT),
         "no_record": sum(1 for d in decisions if d.get("verdict") == NO_RECORD),
+        # PR #810's contract, now reached on the LIVE path (it was --dry-run only,
+        # and the installed cron passes no flag). Counted here so the M5 evidence
+        # line shows whether the deeper load-then-decide actually ran, rather than
+        # only the shallower subject consult that made the node look wired.
+        "research_preflight_called": sum(1 for d in decisions
+                                         if d.get("research_decision") is not None),
+        "research_decide_called": sum(1 for d in decisions
+                                      if d.get("research_decide_called")),
+        "research_record_loaded": sum(1 for d in decisions
+                                      if d.get("research_record_loaded")),
+        "research_errors": sum(1 for d in decisions
+                               if d.get("research_decision") == "error"),
         "changed": [{"wake_job_id": d.get("wake_job_id"),
                      "subject_key": d.get("subject_key"),
                      "without_record": d.get("without_record"),

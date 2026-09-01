@@ -164,6 +164,13 @@ class CIOWakeDispatcher:
             from scripts.lib.cio_wake_subject import decide as _subject_decide
             from scripts.lib.cio_wake_subject import SKIP_CADENCE as _SKIP_CADENCE
             from scripts.lib.cio_instrument_record import InstrumentRecordStore
+            # PR #810's contract. It existed only behind --dry-run, which the
+            # installed cron does not pass, so the deeper load-then-decide never
+            # ran on a scheduled wake -- the PR written to close the
+            # filing-cabinet defect reproduced it. decide_after_load is
+            # READ-ONLY: it loads the record and returns a decision. It writes
+            # nothing, so wiring it here adds no store write to the claim path.
+            from scripts.lib.cio_research_preflight import decide_after_load as _decide_after_load
             _rec_store = InstrumentRecordStore()
             _known_keys = {str(r.get("subject_key")) for r in _rec_store.all()
                            if r.get("subject_key")}
@@ -172,6 +179,7 @@ class CIOWakeDispatcher:
             # still runs, and says so, rather than silently losing the check.
             log.warning("record consult unavailable, wakes proceed unfiltered: %s", exc)
             _subject_decide = None
+            _decide_after_load = None
             _rec_store = None
 
         for wake in wakes:
@@ -202,6 +210,37 @@ class CIOWakeDispatcher:
                                  wake_job_id, _d["reason"])
                         skipped.append(wake_job_id)
                         continue
+
+                    # Research preflight on the SAME wake, after the cadence
+                    # gate so a deferred subject never reaches it. Read-only.
+                    _sk = _d.get("subject_key")
+                    if _decide_after_load is not None and _sk:
+                        try:
+                            _sym = str(_sk).split(":")[-1]
+                            _r = _decide_after_load(
+                                _sk,
+                                plan={"material": True, "symbols": [_sym]},
+                            )
+                            # Carry it on the same decision row so it lands in
+                            # the existing record_consult telemetry rather than
+                            # a second, parallel evidence channel.
+                            _d["research_decision"] = _r.get("decision")
+                            _d["research_reason"] = _r.get("reason")
+                            _d["research_decide_called"] = _r.get("decide_called")
+                            _d["research_record_loaded"] = _r.get("record_loaded")
+                            log.info(
+                                "research_preflight: subject=%s decision=%s "
+                                "decide_called=%s record_loaded=%s reason=%s",
+                                _sk, _r.get("decision"), _r.get("decide_called"),
+                                _r.get("record_loaded"), _r.get("reason"),
+                            )
+                        except Exception as exc:
+                            # Named, never bare: a preflight failure must not
+                            # take the cycle down, and must not be silent.
+                            log.warning("research preflight failed for %s: %s",
+                                        wake_job_id, exc)
+                            _d["research_decision"] = "error"
+                            _d["research_reason"] = f"{type(exc).__name__}: {exc}"[:160]
                 except Exception as exc:
                     log.warning("record consult failed for %s: %s", wake_job_id, exc)
 
