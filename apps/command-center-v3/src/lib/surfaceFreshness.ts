@@ -91,8 +91,12 @@ export function tradeAiSurfaceFreshness(
       : ageHoursFrom(cachedAt, nowMs)
 
   const apiStale = tradeAi.stale === true
-  // API marks stale after 600s; chrome uses a looser glance threshold (6h) so
-  // brief warm-cache lag is not amber noise, but multi-hour empty caches are.
+  const cacheMissing = tradeAi.cache_missing === true
+  // API marks stale after ~600s (warm-cache TTL / "please refresh"). That is a
+  // transport signal — NOT operator chrome STALE. Chrome uses a 6h glance
+  // threshold so brief warm lag is not amber noise; multi-hour empty / prior
+  // caches still surface. Bare `apiStale` used to paint SETUPS STALE at ~10–21m
+  // after a good Finviz recovery with tickers>0 (2026-09-01).
   const cacheOld = ageFromCache != null && ageFromCache >= 6
   const go = Number(tradeAi.go_count ?? 0)
   const wait = Number(tradeAi.wait_count ?? 0)
@@ -121,8 +125,10 @@ export function tradeAiSurfaceFreshness(
     }
   }
 
+  // Do NOT OR bare apiStale: RUN_UNDERFILLED / cache-TTL stale must not become
+  // the SETUPS STALE badge when the scan universe is present and <6h old.
   const stale =
-    apiStale
+    cacheMissing
     || cacheOld
     || runDatePrior
     || (emptyUniverse && (apiStale || cacheOld || ageFromCache == null))
@@ -139,8 +145,9 @@ export function tradeAiSurfaceFreshness(
   }
 
   const bits: string[] = []
+  if (cacheMissing) bits.push('cache missing')
   if (emptyUniverse) bits.push('empty scan')
-  if (apiStale || cacheOld) bits.push(`cache ${fmtAgeHours(ageFromCache) || 'old'}`)
+  if (cacheOld || (emptyUniverse && apiStale)) bits.push(`cache ${fmtAgeHours(ageFromCache) || 'old'}`)
   else if (runDatePrior) bits.push('prior session')
   const reason = bits.join(' · ') || 'stale'
   return {
