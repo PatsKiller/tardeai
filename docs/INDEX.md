@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `68228295623b9aa793eca57e6cbbf27b953e3455d1cbd6ab2d5f74216631d428`
+**Tree fingerprint:** `a29d168ebaec6a37371cd4b955e615eedec25aeced1b5dd4a3a09738a8715d15`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,10 +12,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2286 |
-| Markdown (excl. this INDEX) | 1918 |
+| Files under `docs/` (excl. this INDEX) | 2287 |
+| Markdown (excl. this INDEX) | 1919 |
 | **MISSING HEADER** | **9** |
-| Header OK | 1909 |
+| Header OK | 1910 |
 | Duplicate groups | 5 |
 
 ### By status_guess
@@ -30,7 +30,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_raw_sync | 8 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 6 |
-| review_required | 1924 |
+| review_required | 1925 |
 
 ## Markdown tree
 
@@ -1368,6 +1368,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/CIO_OPERATOR_FREEFORM_AGENT_2026-08-20.md` | CIO operator freeform agent (2026-08-20) | review_required | OK | `078178808736` |
 | `docs/ops/CIO_OPERATOR_JUDGMENTS_2026-08-29.md` | CIO — operator judgments of 2026-08-29, implemented | review_required | OK | `df4583ed25f8` |
 | `docs/ops/CIO_OUTCOME_LEARNING_CLOSEOUT_2026-08-20.md` | CIO Outcome Learning — Phase D thin closeout (2026-08-20) | review_required | OK | `7e74dd4f5c1a` |
+| `docs/ops/CIO_P1_LOAD_BY_SUBJECT_2026-08-31.md` | CIO P1 — scheduled wake loads InstrumentRecord before decide (M5) | review_required | OK | `0a5f0262eb60` |
 | `docs/ops/CIO_PERSISTENT_COGNITION_CONSUMPTION_2026-08-24.md` | CIO persistent cognition consumption | review_required | OK | `db8705624d47` |
 | `docs/ops/CIO_PERSISTENT_SPINE_2026-08-30.md` | CIO persistent spine — closeout | review_required | OK | `9e912a952d0c` |
 | `docs/ops/CIO_PHASE1_2_MEASURE_CLOSEOUT_2026-08-21.md` | CIO Phase 1–2 Measure Closeout — 2026-08-21 | review_required | OK | `da19fe1563fb` |
