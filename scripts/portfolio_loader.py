@@ -33,6 +33,28 @@ MUTUAL_FUND_TICKERS = frozenset({
 })
 
 
+def _positions_fingerprint(holdings) -> str:
+    """Stable fingerprint of the position LIST (which positions exist, not their marks).
+
+    positions_built_at is documented as "when the position list was constructed", but
+    both writers set it with `if generated_at and not positions_built_at` — write-once.
+    It captured whatever generated_at happened to hold at the 2026-07-20 migration and
+    then froze: observed still reading 2026-07-17 on 2026-09-01, 46 days later, while
+    the list underneath had changed. A field that cannot distinguish "the list has not
+    been rebuilt in 46 days" from "the list is rebuilt constantly and the stamp is
+    pinned to the first build" is not a freshness signal.
+
+    Fingerprinting the (symbol, account) set makes the stamp mean what it says: it
+    moves when the list actually changes and holds steady when only marks move.
+    """
+    import hashlib
+    keys = sorted(
+        f"{(h or {}).get('symbol') or ''}|{(h or {}).get('account') or (h or {}).get('account_id') or ''}"
+        for h in (holdings or [])
+    )
+    return hashlib.sha256("\n".join(keys).encode("utf-8")).hexdigest()[:16]
+
+
 def _is_proprietary(sym: str) -> bool:
     """Fidelity institutional funds use hyphenated symbols — no Yahoo price."""
     return "-" in sym and len(sym) > 5
@@ -322,8 +344,10 @@ def load_all_portfolios(project_root_str: str) -> Dict:
     # freshness field would call live data three days stale. generated_at now
     # means "these contents are current as of", and the original build time is
     # preserved under positions_built_at (2026-07-20).
-    if current.get("generated_at") and not updated.get("positions_built_at"):
-        updated["positions_built_at"] = current["generated_at"]
+    _fp = _positions_fingerprint(updated.get("holdings") or [])
+    if current.get("positions_fingerprint") != _fp or not updated.get("positions_built_at"):
+        updated["positions_built_at"] = _now_iso
+    updated["positions_fingerprint"] = _fp
     updated["generated_at"] = _now_iso
     updated["_freshness_note"] = (
         "generated_at = contents current as of (updated every reprice). "

@@ -50,6 +50,28 @@ def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _positions_fingerprint(holdings) -> str:
+    """Stable fingerprint of the position LIST (which positions exist, not their marks).
+
+    positions_built_at is documented as "when the position list was constructed", but
+    both writers set it with `if generated_at and not positions_built_at` — write-once.
+    It captured whatever generated_at happened to hold at the 2026-07-20 migration and
+    then froze: observed still reading 2026-07-17 on 2026-09-01, 46 days later, while
+    the list underneath had changed. A field that cannot distinguish "the list has not
+    been rebuilt in 46 days" from "the list is rebuilt constantly and the stamp is
+    pinned to the first build" is not a freshness signal.
+
+    Fingerprinting the (symbol, account) set makes the stamp mean what it says: it
+    moves when the list actually changes and holds steady when only marks move.
+    """
+    import hashlib
+    keys = sorted(
+        f"{(h or {}).get('symbol') or ''}|{(h or {}).get('account') or (h or {}).get('account_id') or ''}"
+        for h in (holdings or [])
+    )
+    return hashlib.sha256("\n".join(keys).encode("utf-8")).hexdigest()[:16]
+
+
 def _preserve_broker_snapshot(h: Dict[str, Any], shares: float) -> None:
     """Capture broker facts once. Never overwrite them with a later mark."""
     if h.get("broker_shares") is None and shares:
@@ -721,8 +743,10 @@ def reprice_portfolio(portfolio: Dict[str, Any], state_dir: Path) -> Dict[str, A
     # the obvious freshness field would call live data three days stale.
     # generated_at now means "these contents are current as of"; the original
     # build time is preserved once under positions_built_at.
-    if portfolio.get("generated_at") and not portfolio.get("positions_built_at"):
-        portfolio["positions_built_at"] = portfolio["generated_at"]
+    _fp = _positions_fingerprint(portfolio.get("holdings") or [])
+    if portfolio.get("positions_fingerprint") != _fp or not portfolio.get("positions_built_at"):
+        portfolio["positions_built_at"] = now_str
+        portfolio["positions_fingerprint"] = _fp
     portfolio["generated_at"] = now_str
     portfolio["_freshness_note"] = (
         "generated_at = contents current as of (refreshed every reprice). "
