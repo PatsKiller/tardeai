@@ -94,7 +94,7 @@ READ_ONLY_ADVISORY
 > `agent_feature_flags.py` — "memory may shape advisory context (default 0)" — but it is a
 > different control, and most of its read sites copy it into a payload for reporting.
 >
-> **The rail is the unconditional raise at `scripts/lib/cio_instrument_record.py:343`.** It
+> **The rail is the unconditional raise at `scripts/lib/cio_instrument_record.py:390`.** It
 > consults no environment variable and no flag. `BEHAVIOR_FIELDS` is the list; the raise is the
 > enforcement; `"MBI_BEHAVIOR=0"` appears only inside the error string.
 >
@@ -338,7 +338,7 @@ some code path reads it.**
 | `BehaviorWriteRefused` | behaviour writes are refused | InstrumentRecord path only; broker transport not covered |
 | `shadow` (situation detector) | detections are held back | written into a payload, a plan's `extra`, and a run summary. Gates no emission, no plan, no routing. `notify` is the real gate. |
 | `BLOCKED_ACTIONS_WHEN_NOT_READY` | these actions are blocked | defined once, read nowhere |
-| `MBI_BEHAVIOR` | an env var holding the behaviour rail at 0 | not an env var; nothing reads it. All 51 occurrences are prose. The rail is an unconditional raise at `cio_instrument_record.py:343`. |
+| `MBI_BEHAVIOR` | an env var holding the behaviour rail at 0 | not an env var; nothing reads it. All 51 occurrences are prose. The rail is an unconditional raise at `cio_instrument_record.py:390`. |
 
 Three severities:
 
@@ -709,10 +709,17 @@ EXIT:SYM        a former position, in the re-entry book
 WATCH:SYM       watched, not held
 SECTOR:name     a sector as a first-class subject
 SLEEVE:CASH     the cash sleeve
+INDUSTRY:name   Finviz-derived industry — SPECIFIED, no producer yet
+THEME:slug      operator-declared theme — SPECIFIED, no producer yet
+EVENT:slug      dated watchable event — SPECIFIED, no producer yet
 ```
 
 A subject key names an `InstrumentRecord@v1`. **Records can be woken, hold a thesis, carry operator
 turns, and have a cadence. Tags cannot.** If a thing needs research on a schedule, it is a record.
+`INDUSTRY:` / `THEME:` / `EVENT:` are registered prefixes, not shipped
+records. Do not mint them until Phase 1 of
+`docs/architecture/PROJECT_THE_DESK_V2.md` names a scheduled consumer.
+Do not invent a parallel type for any of them.
 
 ### `InstrumentRecord@v1` — the persistent unit
 
@@ -725,6 +732,9 @@ operator_turns[]                   ack / defer / reject / question land HERE
 lessons[]                          cognition only → next question, priority
 analyst · earnings_next
 next_eligible_at · notify_priority
+commitments[]                  SPECIFIED — AgentView staked; no producer
+priors                         SPECIFIED — belief + strength; no producer
+scored_lessons[]               SPECIFIED — outcome-derived only; no producer
 ```
 
 Loaded by `load-by-subject` on every wake. `plan_id` on every wake. An operator ack or defer writes
@@ -792,6 +802,23 @@ MBI_COGNITION = 1    cognition MAY move next_research_question, next_eligible_at
                      notify_priority, cc_narrative. A write moving none of these raises
                      CognitionNoOp and is a FAILED persist.
 ```
+
+### Dark contracts — do not report these as LIVE
+
+These mechanisms exist in code or spec. They are not scheduled consumers.
+An agent that ships a feature on top of them without wiring the consumer
+is repeating the filing-cabinet defect.
+
+- `load-by-subject` — built, tested, **no scheduled wake consumes it**.
+  Wiring that call is P1 / M5. Until a cron loads the record before
+  `decide()`, persistence is unwired.
+- `OUTCOME` edge — checkpoints exist; settlement is dark. Lessons on
+  disk today are **research-derived**. Do not call them scored.
+- `AgentView@v1` / `AGENT_COMMITMENT@v1` — types registered, **no producer**.
+- librarian grade/stale-out law — tested; **index file absent**.
+- `CIO_TELEGRAM_INTERDICT` — name exceeds code. Before claiming Telegram
+  is interdicted or enabled, grep the **actual send gate** that reaches
+  the operator family and name that symbol. INTERDICT is not that gate.
 
 ### Before proposing anything new
 
@@ -966,7 +993,7 @@ Propose and stop.
 Collapsing the two holdings copies · changing what is ranked onto an operator surface · any new
 production cron or systemd entry · **weakening the behaviour rail in any form** — editing
 `BEHAVIOR_FIELDS`, altering or conditionalising the unconditional raise at
-`scripts/lib/cio_instrument_record.py:343`, or routing a cognition write around it; there is no
+`scripts/lib/cio_instrument_record.py:390`, or routing a cognition write around it; there is no
 variable to raise, the control surface is the code · re-enabling the retired
 overnight LLM window · merging divergent copies of any authoritative store · branch-protection or
 required-context changes · provisioning or funding any model or data plan · deleting anything ·
@@ -1060,8 +1087,9 @@ warning at boot if `holdings.json` is more than 7 days old.
 | `config/lane_registry.json` | which lanes exist and what proves they ran | when a lane looks silent |
 | `.claude/skills/*/SKILL.md` | **domain knowledge only** | for context on a subsystem, never for a behavioural rule |
 | `config/*.yaml`, `config/*.json` policy | **trading and system policy** — the operator's | never edit without the operator |
-| `CIO_ASIS_VS_SPEC_2026-08-30.md` | which pipeline nodes are LIVE / PARTIAL / UNWIRED / DARK | before claiming any stage works |
-| `CIO_FUTURE_STATE_FULL_MATURITY.md` | the target: judgment, commitment, scoring, self-repair | before designing anything new |
+| `docs/architecture/CIO_ASIS_VS_SPEC_2026-08-30.md` | dated LIVE/PARTIAL/UNWIRED/DARK map | before claiming a stage works |
+| `docs/architecture/CIO_FUTURE_STATE_FULL_MATURITY.md` | judgment / commitment / scoring / self-repair target | before designing anything new |
+| `docs/architecture/PROJECT_THE_DESK_V2.md` | extensions only; no new subsystem | before adding a type or subject prefix |
 
 ## How each tool discovers this file
 
