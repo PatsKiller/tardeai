@@ -1044,3 +1044,20 @@ the symptom it targeted**, which is §8 almost verbatim.
 - A, B, C, D: **DONE**, all deliverables committed. **E: running**, P0 routed.
 - Discovered, not created: this belongs in the *discovered* column when E tallies whether the
   operator-only list grew.
+---
+
+## Standing operator instruction (2) — 2026-08-31 23:44 ET
+
+**Wake the operator when Worker E lands.** Recorded so it survives a context compaction.
+
+Fires a push notification the moment E reports, carrying: the M1–M5 verdicts, `DRIVE_SYNC` status
+(`OK` or `FAILED`), the honest unpushed commit count against `origin/main`, and confirmation that
+the frozen-daemon P0 took the top slot. E is the last worker; when it lands the morning packet is
+complete and the wave has nothing further to produce before 08:00.
+
+This supersedes nothing. The wake-on-pin-abort trigger recorded earlier remains armed for E as it
+was for A–D — if E aborts on a pin instead of landing, that fires first and says so.
+
+If E lands with `DRIVE_SYNC=FAILED`, the notification says so explicitly rather than reporting a
+bare completion. A failed sync with truthful local paths is a complete deliverable under §14, but
+it is not something the operator should discover in the morning by reading carefully.
