@@ -18,6 +18,12 @@ REPO = Path(__file__).resolve().parents[1]
 
 # Ordered, explicit suite list (Phase 10.2)
 GATES = [
+    # The P1 digest tier had no delivery: a P1_DIGEST verdict archived the message
+    # and returned False, and nothing pushed the archive. 4,387 rows since
+    # 2026-07-02 against 1,707 delivered.
+    ("p1_digest_sender", [
+        "tests/test_p1_digest_sender.py",
+    ]),
     # The gog credential broker: an unapproved agent must be refused ON APPROVAL,
     # and the broker must never read the operator-only ~/.openclaw/credentials path.
     ("gog_broker_approval", [
