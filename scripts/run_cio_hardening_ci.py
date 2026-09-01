@@ -306,6 +306,9 @@ GATES = [
     ("cio_p1_load_by_subject", [
         "tests/test_cio_p1_load_by_subject.py",
     ]),
+    ("wake_research_persist_hits", [
+        "tests/test_wake_research_persist_hits.py",
+    ]),
     ("overnight_g4_archive_mechanism", [
         "tests/test_overnight_g4_archive_mechanism.py",
     ]),

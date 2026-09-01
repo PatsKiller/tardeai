@@ -345,12 +345,14 @@ def main(argv: list[str] | None = None):
     # Durable evidence, beside the consult artifact: a scheduled unattended run
     # must leave proof it consulted and wrote back, not only a log line that
     # rotates. A log line is not a durable surface (AGENTS.md 9.1).
+    # Last-cycle-only overwrite erased the 13:35 research hit (LITMUS_WAKE);
+    # write_cycle keeps current="now" and retains hits (cap 20).
     try:
-        import json as _json
         from datetime import datetime as _dt, timezone as _tz
+        from scripts.lib.wake_research_persist import write_cycle
+
         _p = _PROJECT / "data" / "cio" / "wake_research_persist.json"
-        _p.parent.mkdir(parents=True, exist_ok=True)
-        _p.write_text(_json.dumps({
+        write_cycle(_p, {
             "schema": "WakeResearchPersist@v1",
             "authority": "READ_ONLY_ADVISORY",
             "as_of": _dt.now(_tz.utc).replace(microsecond=0).isoformat(),
@@ -365,7 +367,7 @@ def main(argv: list[str] | None = None):
                              if r.get("reason") == "no_record"),
             "research": research_rows,
             "persist": persist_rows,
-        }, indent=2, default=str) + "\n", encoding="utf-8")
+        })
     except Exception:
         log.exception("research/persist artifact write failed (fail-soft)")
 
