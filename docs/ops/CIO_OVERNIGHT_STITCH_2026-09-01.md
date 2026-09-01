@@ -700,3 +700,80 @@ stopped.
 - Three of the AS-IS document's headline claims have now been refuted or halved in one night, and
   two §13.4 dark contracts falsified. The morning amendment queue holds: two §13.4 corrections, the
   AS-IS class-A claim, the AS-IS cash-`as_of` claim, and the 928–930 cron fix.
+---
+
+## Stitch 5 — 2026-08-31 23:45 ET · D's correction lands and deepens the finding
+
+**Worker D: DONE, deliverable committed.** `docs/audits/CIO_SURFACE_ASOF_2026-09-01.md`,
+now 1,324 lines. Citation reverted; two round trips recorded rather than deleted.
+
+### The citation round trip, closed honestly
+
+D reverted §13.5 → §13.4 at five sites (546, 566, 576, 579, 1096) after re-running the grep itself.
+The two "correction" entries are **struck through and marked WITHDRAWN rather than deleted**, in
+both §0 and §8 — a reader who saw the wrong claim can find out what happened to it.
+
+D named the mechanism precisely: it resolved the nearest `###` heading and treated it as a peer of
+the `##` sections, when a line range alone cannot distinguish a subsection from a sibling. And it
+recorded why this particular error stings: *it landed in a section whose whole purpose was
+correcting someone else, and a confident correction is exactly the claim that gets re-used without
+re-checking.* §11's "the finding wins" is not a licence to skip verifying the finding.
+
+That is the maturity bar applied to the wave's own reasoning, not just to the system.
+
+### The cash finding is bigger than either of us had it
+
+The coordinator told D the three values sat in one body. D reproduced it, then found the
+coordinator had **also** understated it. `[VERIFIED]`, single GET of `/api/v3/cio/home`:
+
+```
+TOTAL statements of total cash in ONE response body: 14      distinct values: 3
+   630,791.10  ×2    temperament.cash · operator_product.temperament.cash
+   630,790.42  ×5    capital_plan.cash_total_usd · .cash_earmarked_redeploy_usd
+                     .sources[2].usd · cash.cash_usd · operator_product.cash.cash_usd
+   630,784.82  ×7    cash_letter.cash_usd
+                     cio_now.decisions[2].cc_narrative.evidence_refs[3].total_cash
+                     cio_now.decisions[3].cc_narrative.evidence_refs[1].total_cash
+                     opportunities.watch[1].cc_narrative.evidence_refs[1].total_cash
+                     opportunities.reentry[0].cc_narrative.evidence_refs[2].total_cash
+                     opportunities.reentry[3].cc_narrative.evidence_refs[2].total_cash
+                     opportunities.reentry[4].cc_narrative.evidence_refs[2].total_cash
+```
+
+**Fourteen statements of one quantity, three answers, one page.**
+
+Two consequences neither of us had before, both D's:
+
+1. **It kills the tidy explanation.** The comfortable story was "the CIO surface uses the row sum,
+   overview uses the stored field" — two producers, one boundary, one reconciliation to write.
+   False: `/api/v3/cio/home` carries **all three producers at once**. There is no boundary to
+   reconcile across; the disagreement is internal to a single composition.
+2. **The stalest value is the one cited as evidence.** `630,784.82` appears **six times as
+   `evidence_refs[*].total_cash`** — it is the number individual decisions and re-entry candidates
+   point at *to justify themselves*. And it originates in the stale `SLEEVE:CASH`
+   InstrumentRecord — the store stitch 3 proved no production process has written since
+   2026-08-30.
+
+So the chain closes end to end: **a store with no writer → a record 36 hours stale → the number six
+live decisions cite as their evidence → the sentence the operator reads.** No single worker could
+see that; A found the dead writer, D found the leak, and it is the wave that connects them.
+
+D also found `temperament` is stamped `as_of: 2026-08-03` — the cash-*evidence* clock — while
+carrying the *stored-field* value. A timestamp belonging to a different producer than the number it
+sits beside. Added to the inherited-not-theirs table.
+
+### The clamp fingerprint, promoted to a rule
+
+`cash_earmarked_redeploy_usd == cash_total_usd == 630790.42` **exactly**. D added this as its own
+row with the right generalisation: an earmark equal to cash **to the cent** should be read as
+`min(raw, cash)` having returned `cash` until proven otherwise, because a genuine coincidence to
+the cent is vanishingly unlikely. That is a detector someone can apply to this surface next month
+without reading `cio_capital_plan.py` at all.
+
+### Open at stitch 5
+
+- **A: DONE. B: DONE. D: DONE.** All three deliverables committed.
+- **C: still running.** E: still held.
+- **Unpushed vs `origin/main`: 8 commits, docs only.** Trap recorded for E: local `main` is stale
+  at `1b8002903`, far behind `origin/main` at `d276657b7`; diffing against local `main` reports
+  **132**. The honest baseline is `origin/main`, and the honest number is single digits.
