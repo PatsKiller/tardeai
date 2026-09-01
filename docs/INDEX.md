@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `e182b390ce749bd6fb9688fc509d6f557e217d62de92d96b5c4b516e83c61baa`
+**Tree fingerprint:** `9b5ec6c80c2c5517a9a7a09cd100a86ab2e3d28a90140437c5d62ff40a823b55`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,10 +12,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2282 |
-| Markdown (excl. this INDEX) | 1914 |
+| Files under `docs/` (excl. this INDEX) | 2283 |
+| Markdown (excl. this INDEX) | 1915 |
 | **MISSING HEADER** | **9** |
-| Header OK | 1905 |
+| Header OK | 1906 |
 | Duplicate groups | 5 |
 
 ### By status_guess
@@ -30,7 +30,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_raw_sync | 8 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 6 |
-| review_required | 1920 |
+| review_required | 1921 |
 
 ## Markdown tree
 
@@ -548,6 +548,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/audits/REPLAY_INTEGRITY_2026-07-15.md` | Replay chart integrity audit — 2026-07-15 | review_required | OK | `ffa7ae34ab5f` |
 | `docs/audits/REPLAY_INTEGRITY_LATEST.md` | Replay chart integrity audit — 2026-07-15 | review_required | OK | `eda2fd4b85bb` |
 | `docs/audits/REPLAY_SCALE_FIX_2026-06-27.md` | Replay price-scale fix — 2026-06-27 | review_required | OK | `47f67ee8a8ab` |
+| `docs/audits/STALE_DATA_RCA_AND_REMEDIATION_PLAN_2026-09-01.md` | STALE_DATA_RCA_AND_REMEDIATION_PLAN_2026-09-01 | review_required | OK | `f243325fcec6` |
 | `docs/audits/STOP_MGMT_DISCOVERY_2026-05-23.md` | Stop Management System Discovery — 2026-05-23 | review_required | OK | `05cb7b189dc7` |
 | `docs/audits/STORAGE_SAFEGUARDS_AUDIT_2026-08-11.md` | Storage Safeguards Audit — 2026-08-11 | review_required | OK | `cdedb00b3ff6` |
 | `docs/audits/SUPPLY_TRIAGE_2026-05-22.md` | Supply Triage — 2026-05-22 (Session A, Revised) | review_required | OK | `f6b9feb41d5f` |

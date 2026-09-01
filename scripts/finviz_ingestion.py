@@ -209,16 +209,33 @@ def pick_active_screeners(
 # Download
 # ──────────────────────────────────────────────────────────────────────
 
-def make_session() -> requests.Session:
+def make_session(*, use_cookie: bool = True) -> requests.Session:
     session = requests.Session()
     session.headers.update({
         "User-Agent": optional_env("FINVIZ_USER_AGENT", "Mozilla/5.0"),
         "Accept": "text/csv,*/*",
     })
-    cookie = optional_env("FINVIZ_COOKIE")
-    if cookie:
-        session.headers["Cookie"] = cookie
+    if use_cookie:
+        cookie = optional_env("FINVIZ_COOKIE")
+        if cookie:
+            session.headers["Cookie"] = cookie
     return session
+
+
+def _append_auth_token(url: str, token: str) -> str:
+    if not token or "auth=" in url:
+        return url
+    sep = "&" if "?" in url else "?"
+    return f"{url}{sep}auth={token}"
+
+
+def _csv_ok(resp: requests.Response | None) -> bool:
+    return bool(resp and resp.status_code == 200 and "Ticker" in (resp.text or "")[:300])
+
+
+def _login_page(resp: requests.Response | None) -> bool:
+    body_l = ((resp.text if resp else "") or "")[:800].lower()
+    return "login" in body_l or "sign in" in body_l
 
 
 def finviz_export_url(url: str) -> str:
@@ -242,74 +259,115 @@ def finviz_export_url(url: str) -> str:
 _FINVIZ_VERSION_FALLBACKS = ["v=152", "v=151", "v=141", "v=111"]
 
 
+def _fetch_screener_export(
+    export_url: str,
+    name: str,
+    *,
+    use_cookie: bool,
+    token: str,
+) -> tuple[requests.Response | None, str, bool, bool]:
+    """Try version fallbacks for one auth mode. Returns (resp, used_version, csv_ok, rate_limited)."""
+    import time
+
+    session = make_session(use_cookie=use_cookie)
+    resp: requests.Response | None = None
+    used_version = "v=152"
+    csv_ok = False
+    rate_limited = False
+    auth_label = "cookie" if use_cookie else "token"
+    for version in _FINVIZ_VERSION_FALLBACKS:
+        try_url = export_url.replace("v=152", version) if version != "v=152" else export_url
+        if not use_cookie and token:
+            try_url = _append_auth_token(try_url, token)
+        for attempt in range(3):
+            try:
+                from finviz_throttle import acquire as _fv_acquire
+                _fv_acquire()
+            except Exception:
+                pass
+            resp = session.get(try_url, timeout=60)
+            if resp.status_code == 429:
+                rate_limited = True
+                wait = (10, 30, 60)[attempt]
+                try:
+                    from finviz_throttle import cooldown as _fv_cd
+                    _fv_cd(float(resp.headers.get("Retry-After") or wait))
+                except Exception:
+                    pass
+                print(
+                    f"  [finviz] 429 on {name} ({auth_label}, {version}) "
+                    f"— backing off {wait}s (attempt {attempt+1}/3)"
+                )
+                time.sleep(wait)
+                continue
+            rate_limited = False
+            break
+        if rate_limited:
+            print(f"  [finviz] {name}: persistent rate-limit ({auth_label}) — skipping this screener this run")
+            return None, used_version, False, True
+        if _csv_ok(resp):
+            used_version = version
+            csv_ok = True
+            return resp, used_version, True, False
+        if version != "v=111":
+            print(
+                f"  [finviz] {name}: {auth_label} {version} failed "
+                f"(HTTP {resp.status_code if resp else '?'}) → trying next version"
+            )
+    return resp, used_version, False, False
+
+
 def download_screener_csvs(
     screeners: Dict[str, Dict[str, Any]],
     raw_dir: Path,
 ) -> List[Dict[str, Any]]:
-    if not optional_env("FINVIZ_COOKIE"):
-        raise RuntimeError("FINVIZ_COOKIE is required for live Finviz downloads.")
+    cookie = optional_env("FINVIZ_COOKIE")
+    token = optional_env("FINVIZ_API_TOKEN")
+    if not cookie and not token:
+        raise RuntimeError("FINVIZ_COOKIE or FINVIZ_API_TOKEN is required for live Finviz downloads.")
     import time
     _RATE_LIMITED_SCREENERS.clear()   # per-run reset (long-lived processes reuse this module)
-    session = make_session()
     rows: List[Dict[str, Any]] = []
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     for i, (name, entry) in enumerate(screeners.items()):
         export_url = finviz_export_url(entry["finviz_url"])
-        # Delay between requests to avoid Finviz 429 rate-limit
-        # First request fires immediately; subsequent ones wait 1.5 seconds
-        # GLOBAL cross-process throttle (replaces per-process sleep): all Finviz callers share one limiter
-        try:
-            from finviz_throttle import acquire as _fv_acquire
-            _fv_acquire()
-        except Exception:
-            if i > 0:
+        if i > 0:
+            try:
+                from finviz_throttle import acquire as _fv_acquire
+                _fv_acquire()
+            except Exception:
                 time.sleep(3.5)
-        # Try Elite v=152 first, fallback through versions on failure
         resp = None
         used_version = "v=152"
         csv_ok = False
         rate_limited = False
-        for version in _FINVIZ_VERSION_FALLBACKS:
-            try_url = export_url.replace("v=152", version) if version != "v=152" else export_url
-            for attempt in range(3):
-                resp = session.get(try_url, timeout=60)
-                if resp.status_code == 429:
-                    # 429 = SLOW DOWN. It applies to every view version equally — version-hopping while
-                    # rate-limited both hammers harder and (on fallback success) returns a different column
-                    # set with no float -> the misleading 'all-zero float_shares' alert. Back off properly.
-                    rate_limited = True
-                    wait = (10, 30, 60)[attempt]
-                    try:                      # propagate to ALL processes (honor Retry-After when present)
-                        from finviz_throttle import cooldown as _fv_cd
-                        _fv_cd(float(resp.headers.get('Retry-After') or wait))
-                    except Exception:
-                        pass
-                    print(f"  [finviz] 429 on {name} ({version}) — backing off {wait}s (attempt {attempt+1}/3)")
-                    time.sleep(wait)
-                    continue
-                rate_limited = False
-                break
-            if rate_limited:
-                # persistent 429: do NOT try other versions; skip this screener cleanly
-                print(f"  [finviz] {name}: persistent rate-limit — skipping this screener this run")
-                _RATE_LIMITED_SCREENERS.append(name)
-                resp = None
-                break
-            if resp and resp.status_code == 200 and "Ticker" in resp.text[:300]:
-                used_version = version
-                csv_ok = True
-                break
-            elif version != "v=111":
-                print(f"  [finviz] {name}: {version} failed (HTTP {resp.status_code if resp else '?'}) → trying next version")
+        auth_used = "none"
+
+        if cookie:
+            resp, used_version, csv_ok, rate_limited = _fetch_screener_export(
+                export_url, name, use_cookie=True, token=token,
+            )
+            auth_used = "cookie"
+        if not csv_ok and not rate_limited and token and (not cookie or _login_page(resp) or not _csv_ok(resp)):
+            if cookie and _login_page(resp):
+                print(f"  [finviz] {name}: cookie auth returned login page — retrying with FINVIZ_API_TOKEN")
+            elif not cookie:
+                print(f"  [finviz] {name}: no FINVIZ_COOKIE — using FINVIZ_API_TOKEN")
+            else:
+                print(f"  [finviz] {name}: cookie auth failed — retrying with FINVIZ_API_TOKEN")
+            resp, used_version, csv_ok, rate_limited = _fetch_screener_export(
+                export_url, name, use_cookie=False, token=token,
+            )
+            if csv_ok:
+                auth_used = "token"
+
         if rate_limited:
-            continue   # next screener; partial run is better than a poisoned frame
+            _RATE_LIMITED_SCREENERS.append(name)
+            continue
         if not resp or resp.status_code != 200:
             raise RuntimeError(f"Finviz download failed for {name} after all version fallbacks")
         if not csv_ok:
-            # HTTP 200 without a CSV header is often rate-limit / transient HTML — NOT cookie expiry.
-            body = resp.text or ""
-            body_l = body[:800].lower()
-            if "login" in body_l or "sign in" in body_l:
+            if auth_used == "cookie" and _login_page(resp) and not token:
                 _msg = (f"🔴 *FINVIZ COOKIE EXPIRED*\n"
                         f"Screener `{name}` returned login page instead of CSV.\n\n"
                         f"To fix, reply:\n`update FINVIZ_COOKIE YOUR_NEW_COOKIE_VALUE`\n\n"
