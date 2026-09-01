@@ -355,6 +355,29 @@ def apply_after_cycle(
         nxt_at = decision.get("next_eligible_at")
         outcome = outcome or decision.get("decision")
 
+    # LITMUS_WAKE / FIRST_FIRE defect 2: a decide_after_load cadence write used
+    # to move next_eligible_at while leaving cc_narrative.writer as the prior
+    # migration:deterministic stamp — so the store attributed a live wake to a
+    # migration. When the decision is what actually moves the cadence and no
+    # more-specific rule already authored a narrative, restamp the existing
+    # prose under the live path. Same next_eligible_at → no narrative rebuild
+    # (preserves cognition_noop on cadence_not_due skips).
+    if (
+        decision is not None
+        and narrative is None
+        and nxt_at is not None
+        and nxt_at != rec.get("next_eligible_at")
+    ):
+        old = dict(rec.get("cc_narrative") or {})
+        narrative = cc_narrative(
+            what=str(old.get("what") or ""),
+            thesis_fit=str(old.get("thesis_fit") or ""),
+            recommendation_option_id=old.get("recommendation_option_id"),
+            risks=list(old.get("risks") or []),
+            evidence_refs=list(old.get("evidence_refs") or []),
+            writer="cognition:decide_after_load",
+        )
+
     # Routine cadence, last. Precedence, most specific first:
     #   moved event (due now) > rejection (+1d) > operator defer (+7d)
     #   > the caller's own decision > this default.
