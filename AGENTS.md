@@ -364,6 +364,27 @@ question:
 | a source grep for a fixed string | the string appearing anywhere | the difference between code and a comment quoting it |
 | `attempts_24h` on a research lane | **rows the child wrote** | a child that never started — `subprocess.run` raising `FileNotFoundError` writes no row, so *called and failing quietly* and *no caller* read identically |
 
+## Caches and derived stores — fail closed, never open
+
+- **A cache that fails OPEN converts a transient outage into permanent data loss.** When a producer
+  cannot produce, it must **preserve the prior value and record the failure beside it** — never
+  write its own error string into the slot the value occupies. *Cause: 2026-09-01, all seven
+  `ai_*.json` analyst caches were overwritten between 07:32 and 07:33 with
+  `"Analysis unavailable — all LLMs failed"`, destroying analyses from 2026-08-11. `_save_cache`
+  wrote whatever string it was handed, so an LLM outage was persisted as though it were the
+  analysis, and each daily run destroyed another copy.*
+- **The failure is invisible from outside.** The file keeps its normal name, shape, size class and
+  a *fresh* mtime, so every staleness check reads it as current. A monitor asking "was this
+  refreshed today?" answers yes. **Freshness and validity are different questions; a fail-open
+  cache is maximally fresh and entirely worthless.**
+- **Never conclude "the newest copy wins" when reconciling divergent stores.** A newer *and
+  smaller* file is the signature of exactly this defect. *Cause: the same seven files were newer on
+  one root and 20–30× smaller; a "newest wins" merge — the obvious plan — would have destroyed the
+  last surviving copies. They existed only because a second, diverging tree was not written by the
+  failing job.*
+- **A store that survives only because something else is broken is not backed up.** If a divergence
+  is the only thing preserving data, fix the destroyer **before** removing the divergence.
+
 ## Investigation method
 
 - **Follow symbols to the actual write call.** Filename greps have produced three wrong
@@ -554,6 +575,10 @@ Scattered rules, consolidated. Each states the failure that produced it.
   the detector finds it. §7 has the class; this is the obligation it implies. *Cause: an
   origination scan returned zero because generated prose is maximally variable and could never
   land in an invariance bucket.*
+- **A producer that can fail needs a preserve-on-failure test.** Assert that a failed run leaves
+  the prior value intact, and mutation-test it by neutering the guard — a fail-open write and a
+  fail-closed write are indistinguishable on a successful run, so a test exercising only the happy
+  path proves nothing. See §7 "Caches and derived stores".
 - **A skipped test is a failure wearing better manners.** Fix the name guess or delete it; never
   leave a green skip. *Cause: a "no fake alpha" test was wrapped in `if alpha is not None`, so the
   gate was green precisely when there was no alpha.*

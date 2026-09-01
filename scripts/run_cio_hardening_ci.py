@@ -173,6 +173,13 @@ GATES = [
         "tests/test_ci_test_coverage_gate.py",
         "tests/test_wake_turn_effect.py",
     ]),
+    # A failed producer must never overwrite good cached content. Registered here
+    # so the guard runs behind the required context: the 2026-09-01 data loss was
+    # invisible precisely because a fail-open write and a fail-closed write are
+    # indistinguishable on a successful run.
+    ("ai_analyst_cache_fail_closed", [
+        "tests/test_ai_analyst_cache_fails_closed.py",
+    ]),
     ("scripts_lib_bootstrap", [
         "tests/test_scripts_lib_bootstrap.py",
     ]),
