@@ -365,6 +365,24 @@ the echo branches — verified to be the **same inode** as the absolute path (41
 unreachable if `cd` fails since `rc` would then be 1 and no branch fires. Final line: 884
 chars.
 
+### Confirmed in production
+
+Verified with a detector keyed on `comm=flock`, which structurally cannot match this
+session's own shell — a text `ps | grep` had already produced one false positive by matching
+its own command line.
+
+```
+13:50:05  in flight: flock -n -E 99 -o /tmp/cio_wake_dispatch.lock timeout -k 60s 15m
+                     PY scripts/cio_wake_dispatch_entrypoint.py
+          flock -o PRESENT · timeout PRESENT
+13:53:58  entrypoint complete: runs=0 research=0 persisted=0
+          incident lines: 0   (no overlap, no hang)
+```
+
+The lane runs and completes normally under both controls. No `[flock]` skip has fired yet
+because no overlap has occurred since install — **absence of a skip is not evidence the lock
+is dead**; the mechanism was positive-controlled directly, in all four states, before install.
+
 ### Change safety
 
 ```
