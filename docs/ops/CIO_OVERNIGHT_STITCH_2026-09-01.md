@@ -1422,3 +1422,50 @@ systemd and the wrapper freeze the root independently, the first alone may not b
 `rc=127` failures and the 19 unfixed escalations are untouched findings for the morning; whether
 five-day-old remediation logic left anything needing repair is a question this restart does not
 answer.
+
+### P0 CONFIRMED — 2026-09-01 08:18 ET · the durable artifact exists
+
+The check the previous section left open has fired. `[VERIFIED]`:
+
+```
+NEW LOG APPEARED 08:17:54
+-rw-rw-r-- 10033 Sep  1 08:17  persistent-state/logs/claude_escalation_daemon.log
+stale before=20798401 after=20798401  FROZEN
+```
+
+The file `[VERIFIED]` did not exist at 08:16:28 and exists now — **an artifact that could not exist
+if the restart had not worked** (§0 rule 8). It is growing (10,033 → 13,544 bytes by 08:18:05) while
+the orphaned copy stays frozen at 20,798,401.
+
+The new log's own first line settles the root without inference:
+
+```
+[claude-escalation] start dry_run=False tier1_only=True
+  root=/home/johnclaw/trade-ai-releases/portfolio-server/d276657b7-main-exact-phase2-20260831-225546
+```
+
+**Status: MITIGATED → CONFIRMED.** Five days of writes into an orphaned tree have stopped, and the
+lane is logging where an auditor reading the served release will find it.
+
+### CORRECTION — `rc=127` was NOT caused by the staleness
+
+The P0 write-up stated the `rc=127` failures were *"consistent with a stale tree whose referenced
+paths have moved."* **That inference is wrong, and the fix disproved it.**
+
+```
+$ grep -c "rc=127" persistent-state/logs/claude_escalation_daemon.log      → 11
+```
+
+**Eleven `rc=127` failures in the first three minutes on the correct root.** The retry commands
+fail identically at `d276657b7` as they did at `40360117`. The staleness and the failures were two
+independent defects that happened to share a log; fixing the root fixed the root and nothing else.
+
+This is the §8 trap in a new costume: a plausible causal story attached to two symptoms found
+together. The restart was a genuine fix for a genuine problem and it is now confirmed — but had
+nobody re-measured `rc=127` afterwards, the P0 would have been closed with a second live defect
+silently folded into it.
+
+**The backlog also grew, not shrank:** `Processing 37 escalation(s) (tier3 cap 20, LLM SKIPPED)` —
+against the **19** unfixed recorded at ~00:00. The escalation lane is now correctly rooted, still
+failing, and further behind. That is a separate open item for the operator and it is **not** closed
+by this restart.
