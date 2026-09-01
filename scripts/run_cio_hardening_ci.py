@@ -180,6 +180,10 @@ GATES = [
     ("ai_analyst_cache_fail_closed", [
         "tests/test_ai_analyst_cache_fails_closed.py",
     ]),
+    # A freshness field must describe the DATA, not the run that wrote it.
+    ("holdings_data_clock", [
+        "tests/test_holdings_data_clock.py",
+    ]),
     ("scripts_lib_bootstrap", [
         "tests/test_scripts_lib_bootstrap.py",
     ]),

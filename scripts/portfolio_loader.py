@@ -33,6 +33,32 @@ MUTUAL_FUND_TICKERS = frozenset({
 })
 
 
+def compute_data_as_of(holdings) -> dict:
+    """The OLDEST contributing row date -- the real freshness of the data.
+
+    `as_of` is written by portfolio_loader as `= today`: it records when the LOADER
+    RAN, not when any data was fetched. On 2026-09-01 it read 2026-08-29 while the
+    Schwab rows carried 2026-08-31 and the moomoo/alpaca CASH rows carried
+    2026-08-03/04 -- older than 28 of 30 rows and newer than the other 2, so it was
+    wrong in both directions at once and described nothing in the file.
+
+    AGENTS.md 9.1: "A 27-day-old $500 makes the block 27 days old." The honest clock
+    for a block is its OLDEST component, and the account that owns it must be named
+    so a stale $500 cash row cannot hide behind 28 fresh equity rows.
+    """
+    oldest, worst = None, None
+    for h in (holdings or []):
+        if not isinstance(h, dict):
+            continue
+        d = h.get("broker_position_as_of") or h.get("as_of")
+        if not d:
+            continue
+        d = str(d)[:10]
+        if oldest is None or d < oldest:
+            oldest, worst = d, (h.get("account") or h.get("account_id") or "?")
+    return {"data_as_of": oldest, "data_as_of_account": worst}
+
+
 def _positions_fingerprint(holdings) -> str:
     """Stable fingerprint of the position LIST (which positions exist, not their marks).
 
@@ -348,6 +374,11 @@ def load_all_portfolios(project_root_str: str) -> Dict:
     if current.get("positions_fingerprint") != _fp or not updated.get("positions_built_at"):
         updated["positions_built_at"] = _now_iso
     updated["positions_fingerprint"] = _fp
+    # A real data clock beside the loader-run date. `as_of` stays what it always
+    # was (when this ran) so nothing downstream shifts meaning underneath it;
+    # data_as_of is the oldest contributing row and is what a freshness banner
+    # should read.
+    updated.update(compute_data_as_of(updated.get("holdings") or []))
     updated["generated_at"] = _now_iso
     updated["_freshness_note"] = (
         "generated_at = contents current as of (updated every reprice). "
