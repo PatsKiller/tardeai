@@ -115,3 +115,80 @@ with local paths. It may not report the 23:05 run as though it had carried this 
 - No worker has reported. No verdict exists yet. Nothing is marked DONE; the coordinator marks
   work against the proof, never the worker (AGENTS.md §11).
 
+---
+
+## Stitch 1 — 2026-08-31 23:22 ET · a ruled-out timer, and a coordinator error
+
+### CORRECTION: 2026-09-01 is NOT a holiday
+
+In stitch 0 and in Worker A's dispatch brief the coordinator asserted that 2026-09-01 is Labor Day,
+a US market holiday. **That is wrong.**
+
+```
+$ date -d 2026-09-01 +%A
+Tuesday
+$ date -d 2026-09-07 +%A
+Monday        # Labor Day 2026 is the first Monday of September: 2026-09-07
+```
+
+The error is kept here rather than edited out, because of what it would have caused. It handed
+Worker A a ready-made excuse: a night of zero CIO wakes could have been written off as "a holiday
+eve with no events" and closed as benign. It is not a holiday eve. This is an ordinary overnight
+into an ordinary Tuesday session, and **if wake volume is zero all night, the reason is either real
+or UNKNOWN — it is no longer explainable by the calendar.**
+
+That makes Worker A's required split — `NOT_OBSERVED for want of input` versus `NOT_OBSERVED for
+want of wiring` — harder to resolve and considerably more valuable. The correction was sent to
+Worker A with instructions to record it in its own Corrections section rather than silently drop
+it. AGENTS.md §14: keep the corrections in.
+
+### `tradeai-continuous.timer` — ruled out as a CIO wake driver
+
+The 23:09 sampler tick surfaced a second scheduled entity firing inside the watch window. The
+question — does it touch the CIO wake path — was traced to exhaustion. **It does not.**
+
+| level | evidence | tag |
+|---|---|---|
+| timer | `OnCalendar=Mon..Fri 04:00`, `Persistent=true`, `Unit=tradeai-continuous.service`. Tuesday matches, so it **fires at 04:00 ET tonight**, inside the window. | `[VERIFIED]` |
+| service | resolved `ExecStart=/usr/bin/flock -n -E 0 /run/lock/tradeai-continuous.lock …/linux_launchers/run_continuous.sh`; `WorkingDirectory=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild` — the **main checkout, not the served release** | `[VERIFIED]` |
+| last natural fire | `Active: inactive (dead) since Mon 2026-08-31 11:31:05 EDT`, `Duration: 7h 31min`, Main PID 711485, `status=0/SUCCESS` | `[VERIFIED]` |
+| launcher | `run_continuous.sh` (20 lines) runs `scripts/system_preflight_check.py` then `scripts/continuous_runner.py --project-root .` | `[CODE]` |
+| runner | `continuous_runner.py` (966 lines): **zero** matches for `cio\|wake\|instrument.?record\|subject_key\|decide(`, case-insensitive | `[CODE]` |
+| fan-out | `trade_ai_orchestrator.py` (1254), `morning_digest.py` (303), `system_preflight_check.py` (214), `strategy_signal_sync.py` (the orchestrator's only subprocess, at `trade_ai_orchestrator.py:954`): **zero** matches each | `[CODE]` |
+| **its own natural-run log** | `grep -ciE "cio\|wake_dispatch\|instrument_record" logs/run_continuous-20260831-040000.log` → **`0`**. File 149725 bytes, 04:00 → 11:31 unattended. Tagged output: 420 `[finviz]`, 7 `[telegram]`. | `[VERIFIED]` |
+
+The last row is what settles it. Source reading is `[CODE]` and proves only what the code says;
+the log of an unattended natural fire is rung-1 evidence that the lane, in practice, ran Finviz
+and Telegram and touched nothing named CIO.
+
+**Conclusion, to be stated affirmatively rather than assumed:** the CIO wake path has exactly
+**one** scheduled driver — crontab line 934, `*/5 * * * *`, `cio_wake_dispatch_entrypoint.py`, run
+from the served release. `tradeai-continuous` is a different lane, on a different root, and is
+ruled out by both its source and its own runtime log. "The wake is cron-driven only" is otherwise
+a claim a reader would assume rather than know.
+
+### Blind spot recorded, not papered over
+
+`/etc/systemd/system/tradeai-continuous.service.d/singleton.conf` is **not readable**:
+
+```
+Failed to chase '/etc/systemd/system/tradeai-continuous.service.d/singleton.conf': Permission denied
+```
+
+Its effect — the `flock` singleton wrapper — is inferred from the ExecStart that `systemctl status`
+resolved, **not read from the file**. Per AGENTS.md §0 rule 3 this was not routed around: no sudo,
+no alternate read path. A drop-in we cannot read could in principle alter more than we can see, and
+that is stated as a limit rather than assumed away.
+
+### The root split worth carrying to Worker C
+
+`tradeai-continuous` runs from the main checkout; the CIO wake runs from the served release. Two
+scheduled lanes on two different roots is exactly the shape that produces checkout-relative store
+splits. Flagged into Worker C's store-split sweep.
+
+### Open at stitch 1
+
+- A, B, C, D still running. None has reported. Nothing marked DONE.
+- E remains held until A–D land, so its closeout is written against real verdicts. If a worker
+  stalls or aborts on a pin, E is still spawned before 08:00 with that gap named as a finding
+  rather than left blank.
