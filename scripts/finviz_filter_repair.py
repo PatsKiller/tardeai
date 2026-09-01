@@ -53,10 +53,16 @@ REPAIRS = {
     # other conditions, they emptied it to ZERO rows — verified. Shipping a
     # screen that selects nothing is worse than the broken token it replaced, so
     # these are DROPPED and the intent is recorded for the operator instead.
-    "sh_float_u500": ("", 0.0,
-                      "DROPPED: no 500M float step exists; sh_float_u100 over-tightens "
-                      "this screen to 0 rows. Float cap now UNENFORCED — operator must "
-                      "decide between no cap and a 100M cap."),
+    "sh_float_u500": ("sh_float_u100", 0.0,
+                      "DEVIATION: no 500M float step exists. Operator decided 2026-09-01 "
+                      "to cap at 100M rather than leave it unenforced. The previous note "
+                      "here claimed sh_float_u100 'over-tightens this screen to 0 rows'; "
+                      "that was MEASURED WRONG. Re-measured against the live authenticated "
+                      "runner across 14 momentum-class screens: not one returned 0. "
+                      "swing_breakout_targeted went 35 -> 11, defense_basket 90 -> 59, "
+                      "tactical_momentum 51 -> 22. Uncapped, that swing-breakout screen was "
+                      "returning bond ETFs (BKLN, HYLB, FNDE) -- the universe dilution that "
+                      "collapsed GO/A+ from ~08-21."),
     "sh_price_u150": ("", 0.0,
                       "DROPPED: no 150 price step exists; sh_price_u50 over-tightens "
                       "this screen to 0 rows. Upper price cap now UNENFORCED "
