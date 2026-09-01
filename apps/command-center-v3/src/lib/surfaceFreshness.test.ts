@@ -40,6 +40,24 @@ check('garbage → null', parseTimestamp('not-a-date') == null)
   check('fresh has no surfaceLabel', f.surfaceLabel == null)
 }
 
+// ---- tradeAi: API TTL stale (600s) must NOT paint chrome STALE when data exists ----
+{
+  const f = tradeAiSurfaceFreshness({
+    stale: true, // API warm-cache TTL only (~10m)
+    cached_at: '2026-08-31T16:29:00Z',
+    cache_age_sec: 21 * 60,
+    go_count: 1,
+    wait_count: 7,
+    avoid_count: 30,
+    ticker_count: 38,
+    current_run_scanned: 38,
+    run_date: '2026-08-31',
+    run_health_status: 'RUN_UNDERFILLED',
+  }, now)
+  check('TTL-stale populated scan is not chrome STALE', f.stale === false)
+  check('TTL-stale populated has no surfaceLabel', f.surfaceLabel == null)
+}
+
 // ---- tradeAi: empty + API stale (bisect case) ----
 {
   const f = tradeAiSurfaceFreshness({
