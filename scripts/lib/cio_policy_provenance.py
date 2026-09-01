@@ -55,6 +55,43 @@ def confirmed_cash_range(policy: dict[str, Any] | None) -> dict[str, Any] | None
     return None
 
 
+CASH_FRESH_SEC = 48 * 3600   # mirrors cio_freshness_materiality_gate.CASH_FRESH_SEC
+
+
+def _cash_freshness(value: Any, cash_as_of: Any) -> tuple[str, str | None]:
+    """(freshness, effective_at) for a cash figure.
+
+    PP4. This was `freshness="CURRENT" if value is not None` -- presence as proof.
+    A balance last confirmed 27 days ago was labelled CURRENT purely because it
+    existed, which is the same defect as a health check that reads OK because its
+    condition needs input to be false.
+
+    Four states, because three cannot express the difference between "we know it is
+    fresh", "we know it is old" and "nothing told us when":
+
+        UNAVAILABLE  no value at all
+        UNDATED      a value with no stamp anywhere -- a visible absence
+        CURRENT      stamped, and within CASH_FRESH_SEC
+        STALE        stamped, and older
+    """
+    if value is None:
+        return "UNAVAILABLE", None
+    stamp = cash_as_of.get("as_of") if isinstance(cash_as_of, dict) else cash_as_of
+    if isinstance(cash_as_of, dict) and cash_as_of.get("unstamped"):
+        stamp = None
+    if not stamp:
+        return "UNDATED", None
+    try:
+        from datetime import datetime, timezone
+        ts = datetime.fromisoformat(str(stamp).replace("Z", "+00:00"))
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+        age = (datetime.now(timezone.utc) - ts).total_seconds()
+    except (TypeError, ValueError):
+        return "UNDATED", None
+    return ("CURRENT" if age <= CASH_FRESH_SEC else "STALE"), str(stamp)
+
+
 def audit_cash_posture_policy(
     *,
     cash_total_usd: Any,
@@ -63,6 +100,7 @@ def audit_cash_posture_policy(
     live_status: str | None,
     policy: dict[str, Any] | None,
     capital_plan_version: str | None = None,
+    cash_as_of: dict[str, Any] | str | None = None,
 ) -> dict[str, Any]:
     """Explain ABOVE_BAND / IN_BAND without inventing operator policy."""
     confirmed = confirmed_cash_range(policy)
@@ -73,6 +111,9 @@ def audit_cash_posture_policy(
     except (TypeError, ValueError, ZeroDivisionError):
         cash_pct = None
 
+    _cash_fresh, _cash_eff = _cash_freshness(cash_total_usd, cash_as_of)
+    _pct_fresh, _pct_eff = _cash_freshness(cash_pct, cash_as_of)
+
     facts = [
         _field(
             field="observed_cash_usd",
@@ -80,9 +121,9 @@ def audit_cash_posture_policy(
             source="verified_holdings_or_capital_plan",
             authority=AUTHORITY,
             version=capital_plan_version,
-            effective_at=None,
+            effective_at=_cash_eff,
             confirmed_by_operator=False,
-            freshness="CURRENT" if cash_total_usd is not None else "UNAVAILABLE",
+            freshness=_cash_fresh,
             kind=KIND_FACT,
         ),
         _field(
@@ -91,9 +132,9 @@ def audit_cash_posture_policy(
             source="observed_cash / portfolio_value",
             authority=AUTHORITY,
             version=capital_plan_version,
-            effective_at=None,
+            effective_at=_pct_eff,
             confirmed_by_operator=False,
-            freshness="CURRENT" if cash_pct is not None else "UNAVAILABLE",
+            freshness=_pct_fresh,
             kind=KIND_FACT,
         ),
     ]
