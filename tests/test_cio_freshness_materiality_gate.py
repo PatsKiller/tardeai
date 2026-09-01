@@ -35,7 +35,12 @@ def _fresh_holdings():
         "as_of": "2026-08-14",
         "portfolio_totals": {"total_value": 100_000.0},
         "holdings": [
-            {"symbol": "CASH", "is_cash": True, "market_value": 20_000.0, "account": "ira"},
+            {"symbol": "CASH", "is_cash": True, "market_value": 20_000.0, "account": "ira",
+             # Dated deliberately. This row carried no stamp, and the cash clock
+             # silently inherited the holdings REPRICING clock, so undated cash
+             # looked fresh. The cash clock is now derived from the row itself, so a
+             # fixture whose subject is "dated clocks" has to date its cash.
+             "as_of": (NOW - timedelta(hours=1)).isoformat()},
             {
                 "symbol": "SCHD",
                 "account": "ira",
@@ -224,7 +229,12 @@ def test_capital_plan_attaches_freshness_gate():
         "portfolio_totals": {"total_value": 100_000.0},
         "config": {"accounts": {"ira": {"taxable": False}}},
         "holdings": [
-            {"symbol": "CASH", "is_cash": True, "market_value": 20_000.0, "account": "ira"},
+            {"symbol": "CASH", "is_cash": True, "market_value": 20_000.0, "account": "ira",
+             # Dated deliberately. This row carried no stamp, and the cash clock
+             # silently inherited the holdings REPRICING clock, so undated cash
+             # looked fresh. The cash clock is now derived from the row itself, so a
+             # fixture whose subject is "dated clocks" has to date its cash.
+             "as_of": (NOW - timedelta(hours=1)).isoformat()},
             {
                 "symbol": "SCHD",
                 "account": "ira",

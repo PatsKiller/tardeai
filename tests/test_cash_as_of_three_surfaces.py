@@ -4,12 +4,10 @@ Main already stamped two of five publication points (the capital plan and the
 operator product). Three still borrowed a clock:
 
   PP2  the cash letter stamped `now` beside the cash figure
-  PP3  the freshness board reads `holdings_ts` -- NOT FIXED HERE, see the PR body:
-       correcting it changes ACT_NOW/WATCH/REVALIDATE outcomes on live money
-       decisions and needs an operator ruling, not a test-fixture adjustment
+  PP3  the freshness board read `holdings_ts` -- the document's REPRICING clock
   PP4  provenance labelled any non-None figure CURRENT: presence as proof
 
-PP2 and PP4 now read cio_capital_plan.cash_evidence_as_of, the derivation the two
+All three now read cio_capital_plan.cash_evidence_as_of, the derivation the two
 covered surfaces already use. The last test here is the one that keeps that true.
 """
 from __future__ import annotations
@@ -107,6 +105,7 @@ def test_every_surface_reads_the_one_derivation(monkeypatch):
     the shared function does, and this fails.
     """
     import scripts.lib.cio_capital_plan as CP
+    import scripts.lib.cio_freshness_materiality_gate as FG
     import scripts.lib.cio_record_narrative as RN
     from scripts.lib.cio_policy_provenance import _cash_freshness
 
@@ -115,6 +114,9 @@ def test_every_surface_reads_the_one_derivation(monkeypatch):
         CP, "cash_evidence_as_of",
         lambda rows, doc=None: {"as_of": SENTINEL, "unstamped": False}, raising=True)
 
+    assert FG._cash_ts_from_rows(CASH_ROWS, {"holdings": CASH_ROWS}) == SENTINEL, (
+        "the freshness board did not follow the shared derivation"
+    )
     plan = {"cash_as_of": CP.cash_evidence_as_of(CASH_ROWS, DOC)}
     assert RN._cash_letter_as_of(plan, NOW) == SENTINEL, (
         "the cash letter did not follow the shared derivation"
@@ -129,3 +131,41 @@ def test_no_dollar_amount_moved():
     ev = _evidence()
     total = sum(a["settled_cash_usd"] for a in ev["by_account"])
     assert total == pytest.approx(625784.0), total
+
+
+# ── PP3 · the freshness board ────────────────────────────────────────────────
+def test_pp3_the_cash_clock_is_not_the_repricing_clock():
+    """Through collect_evidence_timestamps, the surface's real entry point.
+
+    Testing the helper let a call-site mutation survive once already, so this
+    drives what the board publishes.
+    """
+    from scripts.lib.cio_freshness_materiality_gate import collect_evidence_timestamps
+    doc = dict(DOC)
+    doc["holdings"] = CASH_ROWS
+    stamps = collect_evidence_timestamps(decision={}, holdings_doc=doc)
+    assert stamps["cash"] == OLD, stamps.get("cash")
+    assert stamps["cash"] != doc["last_repriced"], "the repricing clock was borrowed again"
+
+
+def test_pp3_cash_evidence_comes_from_the_book_not_the_position():
+    """The bug that made every book look undated.
+
+    `rows` inside the collector is the MERGED POSITION ROWS -- for a decision about
+    one symbol that is that symbol, which holds no cash. Deriving cash from it
+    reported undated everywhere, which read as a policy change and was a defect.
+    """
+    from scripts.lib.cio_freshness_materiality_gate import collect_evidence_timestamps
+    doc = dict(DOC)
+    doc["holdings"] = CASH_ROWS
+    equity = {"symbol": "SCHD", "account": "ira", "market_value": 10_000.0}
+    stamps = collect_evidence_timestamps(
+        decision={}, holdings_doc=doc, position_row=equity)
+    assert stamps["cash"] == OLD, (
+        "cash was derived from the position under evaluation, not the book"
+    )
+
+
+def test_pp3_no_cash_rows_is_absence_not_a_borrowed_clock():
+    from scripts.lib.cio_freshness_materiality_gate import _cash_ts_from_rows
+    assert _cash_ts_from_rows([], {"last_repriced": NOW.isoformat()}) is None
