@@ -1582,3 +1582,80 @@ decides. The three questions to take into it:
 
 **Not touched:** no broker path, no reauth, no `holdings.json` write, no cron edit, no service
 restart. Diagnosis only.
+
+### P0 (2) AMENDED — 2026-09-01 08:27 ET · the staleness is 18 days, not 3.3, and the guard understates it
+
+The question "what wrote positions between 2026-08-11 and 2026-08-29" has an answer that invalidates
+its own premise. `[VERIFIED]` from `holdings.json`, per-position broker stamps:
+
+```
+=== broker_position_as_of BY ACCOUNT ===
+  schwab_rollover_ira    2026-08-14 ×14
+  schwab_taxable         2026-08-14 ×12
+  schwab_roth            2026-08-14 × 2
+  alpaca_taxable_live    2026-08-04 × 1
+  moomoo_taxable_live    2026-08-03 × 1
+
+positions_built_at  2026-07-17T03:19:26Z      ← 46 days
+reconciled_at       2026-08-14T21:25:43Z
+updated_at          2026-08-14T21:25:43Z
+as_of               2026-08-29                ← the field the UI reads
+last_repriced       2026-09-01 06:15          reprice_source: finviz_afterhours
+```
+
+**Nothing refreshed broker positions after 2026-08-14.** There is no writer to find between 08-11
+and 08-29, because the window is empty. Every one of the 30 positions carries a broker stamp of
+2026-08-14 or older, and the moomoo and alpaca rows are 28–29 days old, consistent with the moomoo
+gateway outage already recorded.
+
+### Two corrections to what the coordinator told the operator
+
+**1. "The Command Center is correct" — directionally right, quantitatively wrong, and wrong in the
+dangerous direction.** The banner reports `as_of 3.3d`. The broker position data underneath is
+**18 days** old. **The guard understates the problem by roughly five times.**
+
+That reverses the compliment paid to it an hour ago. It was cited as the counter-example to a night
+of guards that never fire — a guard that fired accurately. It fires, and it is *directionally*
+honest, but an alarm that reports 3.3 days when the data is 18 days old is a **worse** failure mode
+than silence in one specific way: an operator who sees "3.3d" and judges it tolerable has been given
+a number precise enough to act on and wrong enough to mislead. §16 — *a metric whose floor makes
+failure unreportable* — has a sibling here: a metric whose scale makes failure look survivable.
+
+**2. `as_of` is not the position date, and it is fresher than the data it labels.** It is written by
+`portfolio_loader.py` (`= today` at five sites) and reflects **when the loader last ran**, not when
+positions were last fetched from a broker. `as_of: 2026-08-29` therefore says the loader ran on
+08-29 — it says nothing about the 08-14 positions it was loading. The `_freshness_note` in the file
+documents three of the four clocks and **does not mention `as_of` at all**, which is precisely the
+field the operator surface chose to display.
+
+### What `schwab_position_sync` was doing — an open question, not an answer
+
+`[VERIFIED]` `schwab_position_sync.log` was last written **2026-08-31 16:52** (yesterday), with
+`"wrote": true, "status": "ok"` — 4,527 successful writes against 594 failures across its history,
+and its crontab entry 567 (`7,22,37,52 9-16 * * 1-5`) is live.
+
+**So a writer was running and succeeding through yesterday, while `broker_position_as_of` stayed at
+08-14.** What it wrote is therefore *not* fresh broker positions. One visible candidate in the same
+log is `"source": "dividend_reinvestment"`, and its tail is a basis-divergence report
+(`SCHD api_avg 350,458.01 vs stored_basis 12,687.73, divergence 2,662%`).
+
+**This is not established and is not claimed.** A successful write is not evidence of what was
+written. The honest statement: *a live, succeeding writer coexists with position data that has not
+advanced in 18 days, and the reconciliation between those two facts is the open work.*
+
+That restraint is the third application in one morning of the same lesson — `rc=127` was assumed to
+follow from the stale tree and did not; the gateway outage was assumed to explain the `as_of` date
+and did not; a succeeding sync is now assumed by nobody to mean fresh positions.
+
+### The revised questions for the operator
+
+1. **Why has no broker position stamp advanced since 2026-08-14**, when `schwab_position_sync` runs
+   every 15 minutes in-window and reports `wrote: true` as recently as yesterday 16:52?
+2. **Why does the operator surface display `as_of`** — a loader-run date — rather than
+   `broker_position_as_of`, the field that would have shown 18 days three weeks ago?
+3. The moomoo (08-03) and alpaca (08-04) rows are ~4 weeks stale and predate everything else. The
+   moomoo gateway outage is recorded; **alpaca is unexplained** and was not investigated.
+4. `positions_built_at` is **2026-07-17** — the position *list* is 46 days old. Whether that is by
+   design or a fourth staleness is unknown.
+
+**Nothing touched.** No broker path, no reauth, no holdings write, no cron, no service.
