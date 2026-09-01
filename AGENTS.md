@@ -258,6 +258,15 @@ served release. Both are required.
   time-based TTL, 71 sends from silently losing its own history; and a weekend
   gate that asked whether today is Saturday rather than whether the lookback
   window contained hours the writer runs.*
+- **Finviz HTTP 200 without a CSV header is not cookie expiry by default.** A
+  rate-limit or transient HTML page can return 200 with no `Ticker` header; only
+  a login/sign-in body is cookie expiry. Screener paths must try `FINVIZ_API_TOKEN`
+  `&auth=` backstop before declaring auth dead — see §13.6.
+- **Session-cache heal is not data recovery.** `heal_trade_ai_session_cache.py`
+  patches `run_date` in place; when upstream producers return zero tickers it
+  preserves **0** tickers and clears `stale` without restoring content. That is
+  a session anchor, not a Finviz fix — see §13.6 and
+  `docs/audits/STALE_DATA_RCA_AND_REMEDIATION_PLAN_2026-09-01.md`.
 
 **Detector shape, further instances** — each a working tool answering an adjacent
 question:
@@ -423,6 +432,9 @@ Descending strength. **Only the first two settle a claim about runtime.**
 - **A test that exercises a helper is not a test of the wiring.** *Cause: reverting the docs
   inventory to `rglob` left the git-aware helper correct and unused, and the test that called the
   helper directly stayed green. Three pins this session tested a part rather than the caller.*
+- **A Finviz health probe that tries only cookie auth can false-positive "cookie expired"**
+  when `FINVIZ_API_TOKEN` would succeed on the same export URL with `&auth=`. Probe both auth
+  modes before surfacing `data_source_stale` — §13.6.
 
 ## Know what CI green means
 
@@ -529,6 +541,10 @@ accumulates the divergence this document exists to remove.
 - **Retirement carries its reason**: `# RETIRED <date> lane=<id> reason=<why> owner=<who>
   review_by=<date>`. **Never invent a reason**; an honest `UNKNOWN` is itself a finding.
 - **After install, verify durable evidence on the natural schedule** — a hand-run does not close it.
+- **Data-source lanes declare which credential each path uses.** Screener CSV (`finviz_ingestion.py`,
+  `finviz_screener_runner.py`) prefers `FINVIZ_COOKIE` and falls back to `FINVIZ_API_TOKEN` with
+  `&auth=`; per-ticker enrichment prefers token first. Do not assume one credential covers all
+  paths — §13.6.
 
 ## 9.4 Store writes
 
@@ -800,6 +816,59 @@ Before building a new type, store, field, subsystem, or parallel mechanism:
 3. If a match exists, **extend it**. Do not clone it under a new `@v1` name or a parallel store.
 4. If you still propose something new, state in the PR body which of §13.4's five questions you
    ruled out and why. A PR without that statement is incomplete.
+
+## 13.6 · Operator surface data producers
+
+Read this before touching Finviz auth, screener ingestion, social scalp gates, or stale-data
+auto-remediation. Full RCA: `docs/audits/STALE_DATA_RCA_AND_REMEDIATION_PLAN_2026-09-01.md`.
+
+### Finviz credentials — two paths, one operator surface
+
+| secret | transport | primary use |
+|---|---|---|
+| `FINVIZ_COOKIE` | `Cookie:` header on Elite export/screener URLs | Screener CSV bulk download (`finviz_ingestion.py`, `finviz_screener_runner.py`) |
+| `FINVIZ_API_TOKEN` | `&auth=` query param on Elite export URLs | Per-ticker enrichment (`finviz_enrichment.py`, `symbol_enrichment.py`, `social_scalp_scanner.fetch_finviz_base`) |
+
+They are **not interchangeable by default** — each producer historically required one or the other.
+`[VERIFIED]` 2026-09-01: Elite screener **export** URLs accept `&auth=FINVIZ_API_TOKEN` as a
+backstop when cookie auth returns a login page or no CSV header. Screener paths must retry with
+token auth before raising cookie expiry or returning zero rows.
+
+### Screener path vs enrichment path
+
+- **Screener path** — multi-row CSV from saved screener URLs in `assets/screeners.yaml` or
+  `finviz_screeners` DB table. Writers: `finviz_ingestion.py` (orchestrator / Trade AI universe),
+  `finviz_screener_runner.py` (watchlist discovery). Auth: cookie first, token `&auth=` fallback.
+- **Enrichment path** — batched per-ticker export views (`v=111`, `v=121`, …) for fundamentals
+  already in the candidate set. Writers: `finviz_enrichment.py`, `symbol_enrichment.py`. Auth:
+  token first, cookie second.
+
+A green enrichment run does **not** prove screener CSV auth works, and vice versa.
+
+### Social ingest vs social_scalp Finviz gate
+
+- **`social_ingest.py`** — Stocktwits/Reddit discovery; **no Finviz dependency**. Silence here
+  does not explain Finviz screener staleness.
+- **`social_scalp_scanner.py`** — requires Finviz base fields (price, RVOL, gap) via
+  `fetch_finviz_base` before GO/WAIT scoring. Token-first, cookie fallback — same token as
+  enrichment, **not** the screener cookie path. Zero candidates with live social mentions often
+  means this gate failed even when `social_ingest` is healthy.
+
+### Auto-remediation — same store only
+
+§0 rule 5 applies: **never auto-remediate divergent copies of an authoritative store.** Health
+Agent remediation commands in `config/health_agent_policy.json` must target the **same store the
+detector read** — not a sibling cache, not a release-local copy, not a stale `.bak`. When two
+paths disagree, report both paths with hashes and timestamps; do not pick one.
+
+### Cache heal trap
+
+`heal_trade_ai_session_cache.py` patches `trade_ai_cache.json` `run_date` to today and writes a
+zero-ticker `HEALTH_AUTOHEAL` package so Command Center stops showing session stale. It **does
+not** refetch Finviz screeners or restore tickers. When upstream producers are dead, heal
+preserves **0 tickers** (`preserved_tickers:0`) while clearing the stale flag — the Trade AI
+page looks "fresh" and empty. Treat heal as a session anchor only; fix the producer (§13.6
+auth paths above) before declaring recovery.
 
 ---
 
