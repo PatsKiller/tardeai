@@ -1,5 +1,9 @@
 # Session 2026-06-02 — V3 Backtest Intelligence
 
+Status:      HISTORICAL
+as_of:       2026-06-03T09:51:24-04:00
+Measured at: efcc51365 / not measured
+
 **Scope:** Full port of the v2 Backtesting page into the v3 Strategy → Backtest tab, then a "Backtest Intelligence" layer (entry-quality grading, edge decay, capture/left-on-table, potential-over-time). Read-only UI throughout. All changes confined to `apps/command-center-v3/` plus additive backend (one new table, one new script, one new endpoint, three cron lines).
 
 ---

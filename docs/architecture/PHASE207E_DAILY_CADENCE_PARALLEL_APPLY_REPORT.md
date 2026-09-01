@@ -1,5 +1,9 @@
 # Phase 207E — Daily Cadence Parallel Apply Report — 2026-06-07
 
+Status:      HISTORICAL
+as_of:       2026-06-07T10:58:44-04:00
+Measured at: efcc51365 / not measured
+
 Single parallel apply: `run_portfolio_maintenance_pipeline.sh --cadence daily --apply`. Legacy
 `portfolio-daily.timer` left active (next Mon 07:00) — no conflict (separate cadence lock).
 

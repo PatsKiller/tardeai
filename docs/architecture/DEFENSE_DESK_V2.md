@@ -1,5 +1,9 @@
 # Defense Desk v2 — Whole Market · Industries · The Rotation Picture (2026-07-18)
 
+Status:      ACTIVE
+as_of:       2026-07-18T00:18:51-04:00
+Measured at: efcc51365 / not measured
+
 Session 2 of the Defense Desk. Ships **A2 (market layer) + B2 (industry layer) + C2
 (coverage completion) + D2 (design rebuild)**. E2 (the v1 engines: WS-B positioning,
 WS-C move-out, WS-D2–D5 hedge/short desks) fell below the explicit cut line — see §E2.

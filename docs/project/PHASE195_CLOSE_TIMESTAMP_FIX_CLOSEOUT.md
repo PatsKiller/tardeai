@@ -1,5 +1,9 @@
 # PHASE 195 — Close-Timestamp Capture Fix — CLOSEOUT
 
+Status:      HISTORICAL
+as_of:       2026-06-02T13:07:10-04:00
+Measured at: efcc51365 / not measured
+
 **Run:** 2026-06-02 ~13:00–13:20 ET · Alpaca **paper** only · data-quality; no execution
 
 ---

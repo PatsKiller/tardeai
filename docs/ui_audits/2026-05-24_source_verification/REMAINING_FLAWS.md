@@ -1,5 +1,9 @@
 # Remaining Flaws — Post-Verification Assessment (2026-05-24)
 
+Status:      HISTORICAL
+as_of:       2026-05-24T10:35:08-04:00
+Measured at: efcc51365 / not measured
+
 ## 1. Route Duplication — RESOLVED (legacy redirects)
 
 All duplicates are **intentional legacy redirects** in App.tsx:

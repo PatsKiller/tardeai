@@ -1,5 +1,9 @@
 # Phase 209D — Hermes DB Read/Write Lineage (2026-06-07)
 
+Status:      HISTORICAL
+as_of:       2026-06-07T12:28:03-04:00
+Measured at: efcc51365 / not measured
+
 Script: `scripts/audit_hermes_db_lineage.py` → `data/hermes/hermes_db_lineage_latest.json`.
 
 | Table | Rows | Writes/24h | Code writers | Role |

@@ -1,3 +1,7 @@
+Status:      ACTIVE
+as_of:       2026-05-19T21:01:07-04:00
+Measured at: efcc51365 / not measured
+
 After-Hours Readiness -- 2026-05-19
 Screeners: 1311 symbols
 Ready: 39 | Pending check: 0 | Needs data: 619 | Blocked: 331

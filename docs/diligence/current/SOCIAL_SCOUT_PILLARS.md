@@ -1,5 +1,9 @@
 # Social Scout Pillars
 
+Status:      ACTIVE
+as_of:       2026-06-28T22:23:05-04:00
+Measured at: efcc51365 / not measured
+
 _Operator-awareness surfacing for partial social setups. Implemented in
 `scripts/social_scout_pillars.py::evaluate_social_scout_pillars`, wired through
 `scripts/social_route_policy.py::route_social_candidate`; covered by

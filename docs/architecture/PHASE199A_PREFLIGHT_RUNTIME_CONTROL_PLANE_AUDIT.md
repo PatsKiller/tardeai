@@ -1,5 +1,9 @@
 # Phase 199A — Preflight: Runtime Control Plane Audit (2026-06-04)
 
+Status:      HISTORICAL
+as_of:       2026-06-04T22:35:00-04:00
+Measured at: efcc51365 / not measured
+
 Preflight safety + repo state before the Runtime Control Plane Consolidation + v3 Canonical UI
 Governance phase (199A–199K). **Design-first / read-only** unless a step is explicitly low-risk
 (docs / new scripts / new read-only API / v3 UI) and approved.

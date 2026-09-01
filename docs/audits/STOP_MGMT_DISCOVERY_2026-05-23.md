@@ -1,5 +1,9 @@
 # Stop Management System Discovery — 2026-05-23
 
+Status:      HISTORICAL
+as_of:       2026-05-22T15:47:55-04:00
+Measured at: efcc51365 / not measured
+
 ## TL;DR (3 sentences for John)
 
 The system has two active monitors that manage stops using **identical R-multiple

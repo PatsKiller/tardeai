@@ -1,5 +1,9 @@
 # Agent Maturity Observability Rollback v1
 
+Status:      ACTIVE
+as_of:       2026-07-30T11:19:37-04:00
+Measured at: efcc51365 / not measured
+
 This tranche is additive and read-only.
 
 Rollback scope:

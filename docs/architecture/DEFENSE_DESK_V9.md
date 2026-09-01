@@ -1,5 +1,9 @@
 # Defense Desk v9 — The Adjudication Layer (2026-07-18 evening)
 
+Status:      ACTIVE
+as_of:       2026-07-18T17:59:53-04:00
+Measured at: efcc51365 / not measured
+
 The layer that judges everything else: pre-registered promote criteria (locked
 before evidence), a console that assembles evidence nightly, a seat league that
 audits the auditors, governance rows with living revoke criteria, governed tuning

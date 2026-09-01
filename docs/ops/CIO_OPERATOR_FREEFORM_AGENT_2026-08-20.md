@@ -1,5 +1,9 @@
 # CIO operator freeform agent (2026-08-20)
 
+Status:      HISTORICAL
+as_of:       2026-08-20T19:50:59-04:00
+Measured at: efcc51365 / not measured
+
 **READ_ONLY_ADVISORY.** Dual mode: desk intents unchanged + Flash freeform catch-all.
 
 ## Behavior

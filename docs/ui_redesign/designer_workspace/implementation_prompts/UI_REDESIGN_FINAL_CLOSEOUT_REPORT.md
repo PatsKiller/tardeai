@@ -1,5 +1,9 @@
 # UI Redesign Final Closeout Report
 
+Status:      HISTORICAL
+as_of:       2026-05-25T14:30:49-04:00
+Measured at: efcc51365 / not measured
+
 | Field | Value |
 |-------|-------|
 | Timestamp | 2026-05-25T14:30:39-04:00 |

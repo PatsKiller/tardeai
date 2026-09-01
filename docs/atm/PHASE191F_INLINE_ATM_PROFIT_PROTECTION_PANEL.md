@@ -1,5 +1,9 @@
 # PHASE 191F — Inline ATM/Open-Trade Profit-Protection Panel
 
+Status:      HISTORICAL
+as_of:       2026-06-02T11:12:46-04:00
+Measured at: efcc51365 / not measured
+
 **Endpoint:** `GET /api/v2/atm/profit-protection-advisory` (`api_v2.py` → `_atm_profit_protection_advisory()`,
 additive route). **Read-only / advisory-only.** Live on next `tradeai-portfolio-server` restart.
 

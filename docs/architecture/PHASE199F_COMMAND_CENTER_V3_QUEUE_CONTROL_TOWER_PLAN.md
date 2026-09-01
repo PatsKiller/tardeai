@@ -1,5 +1,9 @@
 # Phase 199F — Command Center v3 Queue Control Tower Enhancement Plan
 
+Status:      HISTORICAL
+as_of:       2026-06-04T22:44:11-04:00
+Measured at: efcc51365 / not measured
+
 v3 is canonical. **No v2 UI work.** This plans enhancements to the EXISTING v3 Queue Control Tower
 (in `SystemHub`) to add a pipeline-ownership view over the 199C model.
 

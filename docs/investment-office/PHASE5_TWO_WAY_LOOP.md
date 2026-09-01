@@ -1,5 +1,9 @@
 # Phase 5 — Mature the two-way Watch / Defense / Rotation / Re-Entry loop
 
+Status:      HISTORICAL
+as_of:       2026-08-13T20:51:51-04:00
+Measured at: efcc51365 / not measured
+
 > Goal (from the convergence prompt): complete the institutional idea lifecycle so
 > the office finds replacements and future opportunities without operator
 > scavenger hunts. Everything stays `READ_ONLY_ADVISORY` — no execution authority.

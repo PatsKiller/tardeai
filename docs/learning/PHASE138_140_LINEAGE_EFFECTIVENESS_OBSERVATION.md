@@ -1,5 +1,9 @@
 # Phases 138-140 — Lineage, Effectiveness, Observation
 
+Status:      HISTORICAL
+as_of:       2026-06-01T18:14:58-04:00
+Measured at: efcc51365 / not measured
+
 ## Phase 138 — Decision Lineage (COMPLETE)
 - 27 candidates processed
 - 16 with learning links (59.3%)

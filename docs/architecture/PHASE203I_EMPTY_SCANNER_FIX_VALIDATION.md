@@ -1,4 +1,9 @@
 # Phase 203I — Empty Scanner Fix Validation
+
+Status:      HISTORICAL
+as_of:       2026-06-05T11:54:29-04:00
+Measured at: efcc51365 / not measured
+
 - **API valid JSON:** `/api/v2/trade-ai` NaN/Inf tokens **0** (was 68); 761 `vs_sector_pct:null`.
 - **Browser parse:** in-browser `fetch + JSON.parse` → **parsed:true, go_count 0, universe_count 1598**
   (was parse-FALSE).

@@ -1,5 +1,9 @@
 # Phase 68D — Alert-to-Hermes Backlog Design
 
+Status:      HISTORICAL
+as_of:       2026-06-01T11:52:54-04:00
+Measured at: efcc51365 / not measured
+
 ## Mapping
 
 | Alert Type | Backlog Type | Owner |

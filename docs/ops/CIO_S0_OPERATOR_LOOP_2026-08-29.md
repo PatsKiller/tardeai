@@ -1,5 +1,9 @@
 # S0 operator loop — mint, attach, turn_id, rehydrate (2026-08-29)
 
+Status:      HISTORICAL
+as_of:       2026-08-29T15:44:47-04:00
+Measured at: efcc51365 / not measured
+
 > The instruction arrived headed "re-run the critique on SPCX", with a body
 > whose pins say **no `--backend live`** and **"No Grok hop unless a separate
 > prompt says so"**. A critique re-run is exactly that hop, so the body was

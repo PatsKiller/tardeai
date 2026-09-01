@@ -1,5 +1,9 @@
 # Maturity Control Plane v1 — architecture map
 
+Status:      ACTIVE
+as_of:       2026-08-21T14:10:43-04:00
+Measured at: efcc51365 / not measured
+
 READ_ONLY_ADVISORY. AUTO-PROMOTION TO TRADING: DISABLED.
 
 ## Existing surfaces (8d18a668)

@@ -1,5 +1,9 @@
 # Command Center — Complete Page Matrix
 
+Status:      ACTIVE
+as_of:       2026-08-11T08:38:52-04:00
+Measured at: efcc51365 / not measured
+
 Generated: 2026-05-27 | Total pages: 67 | Nav groups: 11
 
 ## Navigation Structure

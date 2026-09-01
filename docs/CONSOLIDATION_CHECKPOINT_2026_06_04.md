@@ -1,5 +1,9 @@
 # Consolidation & Verification Checkpoint — 2026-06-04
 
+Status:      HISTORICAL
+as_of:       2026-06-04T20:44:22-04:00
+Measured at: efcc51365 / not measured
+
 Read-only snapshot after a very long session. Nothing built here. Purpose: confirm everything
 added/touched actually landed and got verified, and surface what's "wired but unproven" before any
 further building. The risk now is that *building* outruns *verification* — this checks that.

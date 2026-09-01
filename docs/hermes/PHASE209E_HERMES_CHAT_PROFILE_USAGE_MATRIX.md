@@ -1,5 +1,9 @@
 # Phase 209E — Hermes Chat Profile Usage Matrix (2026-06-07)
 
+Status:      HISTORICAL
+as_of:       2026-06-07T12:29:04-04:00
+Measured at: efcc51365 / not measured
+
 | Profile | Model | Provider | Tools | Status | Use in chat | Used by automation | Safety boundary | Promotion criteria |
 |---------|-------|----------|-------|--------|-------------|--------------------|-----------------|--------------------|
 | default | gemma3:4b | custom (Ollama) | 0 | active | general non-trading help | no | no broker/trading/secrets | n/a |

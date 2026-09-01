@@ -1,5 +1,9 @@
 # Pre-Burn-In Findings (2026-05-25)
 
+Status:      HISTORICAL
+as_of:       2026-05-23T16:41:31-04:00
+Measured at: efcc51365 / not measured
+
 Three findings from final Sunday audit before Monday 09:35 ET ATM burn-in.
 
 ## F1: Portfolio Heat 7.1% (ACCEPTED)

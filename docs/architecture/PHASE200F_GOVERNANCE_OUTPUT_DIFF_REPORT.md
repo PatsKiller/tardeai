@@ -1,5 +1,9 @@
 # Phase 200F — Governance Output Diff Report
 
+Status:      HISTORICAL
+as_of:       2026-06-04T23:17:36-04:00
+Measured at: efcc51365 / not measured
+
 `scripts/compare_governance_pipeline_outputs.py` compares legacy governance-job outputs against the
 controller's outputs, classifying diffs as ACCEPTABLE (timestamp / run_id / audit-state) vs
 UNACCEPTABLE (structural / non-dynamic value changes). Read-only.

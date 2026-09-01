@@ -1,5 +1,9 @@
 # ATM — alpaca_paper AUTO_LIVE Policy-Mode Verification (2026-06-05)
 
+Status:      ACTIVE
+as_of:       2026-06-05T15:39:25-04:00
+Measured at: efcc51365 / not measured
+
 **Operator request:** "set alpaca paper to AUTO_LIVE and verify" (explicitly approved; paper account
 routes only to Alpaca paper mode, so AUTO_LIVE carries no real-money risk; live accounts stay blocked).
 

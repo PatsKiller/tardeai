@@ -1,5 +1,9 @@
 # PHASE 188B — SNOW Open Position Detail Review
 
+Status:      HISTORICAL
+as_of:       2026-06-02T08:17:52-04:00
+Measured at: efcc51365 / not measured
+
 **Run:** 2026-06-02 ~08:25 ET (premarket) · Alpaca **paper** only · Live endpoint blocked
 **Headline:** SNOW shows a large **stale** unrealized gain and carries **no stop and no take-profit**.
 

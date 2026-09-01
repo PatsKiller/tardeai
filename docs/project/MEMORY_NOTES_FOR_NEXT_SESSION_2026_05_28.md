@@ -1,5 +1,9 @@
 # Memory Notes for Next Session — 2026-05-28
 
+Status:      HISTORICAL
+as_of:       2026-05-28T23:16:50-04:00
+Measured at: efcc51365 / not measured
+
 Durable context for the next Trade AI session. Read this before starting any LLM, classifier, or backtesting work.
 
 ## Local LLM Model Policy

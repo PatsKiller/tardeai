@@ -1,5 +1,9 @@
 # Pre-Deploy State Guard (canonical)
 
+Status:      ACTIVE
+as_of:       2026-06-10T11:19:14-04:00
+Measured at: efcc51365 / not measured
+
 **Prepared:** 2026-06-10 · **Closes:** the deploy/zip-extraction wipe vector that `holdings_guard.py`
 (Python-write protection) cannot reach. `scripts/pre_deploy_state_guard.py`.
 

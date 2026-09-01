@@ -2,6 +2,10 @@
 
 # Hermes Researcher Responsibility Matrix (2026-06-07)
 
+Status:      ACTIVE
+as_of:       2026-06-07T18:49:05-04:00
+Measured at: efcc51365 / not measured
+
 ## Table 1 — Identity / Model Matrix
 | Identity | Model | Provider | Tools | Runtime | Auto/Manual | Purpose | Writes | Safety | Learning feedback | v3 |
 |----------|-------|----------|-------|---------|-------------|---------|--------|--------|-------------------|----|

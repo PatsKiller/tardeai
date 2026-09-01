@@ -1,5 +1,9 @@
 # Documentation Consolidation — 2026-06-22 (A1A)
 
+Status:      HISTORICAL
+as_of:       2026-06-22T11:33:45-04:00
+Measured at: efcc51365 / not measured
+
 **Operator request:** Align `/docs` with live system; purge outdated counts; commit pending runtime/config changes.
 
 ## What changed

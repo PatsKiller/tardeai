@@ -1,5 +1,9 @@
 # Active Trader Stage 0 — Baseline
 
+Status:      HISTORICAL
+as_of:       2026-07-27T12:13:37-04:00
+Measured at: efcc51365 / not measured
+
 **Packet:** G (`scripts/operator_packets/packet_g_active_trader_stage0.{sh,py}`)  
 **Stage:** 0 — baseline inventory + **read-only** health/status scaffolds  
 **Program:** `docs/prompts/CODEX_ACTIVE_TRADER_MOOMOO_SCALP_IMPLEMENTATION_v1_1.md`  

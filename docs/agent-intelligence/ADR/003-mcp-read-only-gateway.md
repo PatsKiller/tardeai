@@ -1,5 +1,9 @@
 # ADR-003 — Internal read-only MCP gateway
 
+Status:      ACTIVE
+as_of:       2026-08-16T23:13:39-04:00
+Measured at: efcc51365 / not measured
+
 - **Status**: Accepted
 - **Date**: 2026-08-17
 

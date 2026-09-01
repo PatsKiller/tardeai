@@ -1,5 +1,9 @@
 # Executive Role Charter — Trade AI Investment Office
 
+Status:      ACTIVE
+as_of:       2026-08-13T15:38:32-04:00
+Measured at: efcc51365 / not measured
+
 > Canonical source of truth for executive/specialist role identity in the converged product.
 > Operates under the existing `READ_ONLY_ADVISORY` constitution. No broker/order/2FA authority anywhere.
 

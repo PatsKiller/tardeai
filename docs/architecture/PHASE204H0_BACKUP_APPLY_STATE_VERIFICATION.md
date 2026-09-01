@@ -1,5 +1,9 @@
 # Phase 204H0 — Backup-Apply State Verification (resume from stale checkpoint) — 2026-06-07
 
+Status:      HISTORICAL
+as_of:       2026-06-07T10:18:54-04:00
+Measured at: efcc51365 / not measured
+
 ## Why this doc
 A resume prompt arrived built on a checkpoint that assumed the refined backup `--apply` may not have
 completed and that legacy backup cron must "remain active / not be retired in this phase." Per the

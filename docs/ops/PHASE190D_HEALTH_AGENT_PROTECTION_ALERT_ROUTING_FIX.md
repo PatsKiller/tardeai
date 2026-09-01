@@ -1,5 +1,9 @@
 # PHASE 190D — Health-Agent Protection Alert Routing Fix
 
+Status:      HISTORICAL
+as_of:       2026-06-02T10:33:34-04:00
+Measured at: efcc51365 / not measured
+
 **Files:** `scripts/protection_alerts.py` (new), `scripts/unified_stop_supervisor.py` (hook)
 **Alpaca paper only.**
 

@@ -1,5 +1,9 @@
 # Schwab OAuth Reauth (manual-first)
 
+Status:      ACTIVE
+as_of:       2026-08-11T08:38:52-04:00
+Measured at: efcc51365 / not measured
+
 **Why this exists (2026-07-22; manual-first 2026-08-11).** Schwab refresh tokens have a FIXED
 7-day lifetime from the browser login. Rotation does NOT extend it — proven from
 `broker_oauth_token_audit`: every login dies at exactly login+7d despite hundreds of successful

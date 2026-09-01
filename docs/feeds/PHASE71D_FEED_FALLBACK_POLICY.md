@@ -1,5 +1,9 @@
 # Phase 71D — Feed Fallback Policy
 
+Status:      HISTORICAL
+as_of:       2026-06-01T11:55:37-04:00
+Measured at: efcc51365 / not measured
+
 | Feed | Primary | Fallback | Scope |
 |------|---------|----------|-------|
 | Finviz screener | FINVIZ_COOKIE (CSV) | FINVIZ_API_TOKEN (if supported) | Symbol scanning |

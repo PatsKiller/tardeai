@@ -1,4 +1,9 @@
 # Phase 204B — gog Backup: Controller vs Legacy Environment Diff
+
+Status:      HISTORICAL
+as_of:       2026-06-05T12:08:22-04:00
+Measured at: efcc51365 / not measured
+
 | Aspect | Legacy cron | Old bundled controller | Diff matters? |
 |--------|-------------|------------------------|---------------|
 | **Argument** | `env` and `data` (two calls) | **none** | **YES — root cause** |

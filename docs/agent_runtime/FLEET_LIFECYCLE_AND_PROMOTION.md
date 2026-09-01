@@ -1,5 +1,9 @@
 # Agent-Runtime Fleet — Lifecycle & Promotion (why only 4 of 16 are SHADOW)
 
+Status:      ACTIVE
+as_of:       2026-07-30T14:45:05-04:00
+Measured at: efcc51365 / not measured
+
 Answers "why are all of these not SHADOW?" for the `/v3/agents` Maturity scoreboard,
 and records the per-agent promotion assessment. **Nothing here promotes an agent** —
 promotion requires evidence none of the DESIGNED agents currently have.

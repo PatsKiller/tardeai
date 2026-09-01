@@ -1,5 +1,9 @@
 # Job-Schedule Tiered Prioritization + GPU/LLM Optimization
 
+Status:      ACTIVE
+as_of:       2026-07-01T22:06:48-04:00
+Measured at: efcc51365 / not measured
+
 _2026-06-29. Root-cause + design + fixes for the Monday GPU/LLM overload that hung the dashboard
 (`ERR_CONNECTION_RESET`). Source/scheduler/server/monitoring hardening only — no live trades, no broker
 writes, operator/2FA untouched, no gate weakened. LLMs remain advisory only._

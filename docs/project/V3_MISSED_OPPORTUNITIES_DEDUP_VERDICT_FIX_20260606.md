@@ -1,5 +1,9 @@
 # v3 Missed-Opportunities Dedupe + Verdict Fix (2026-06-06)
 
+Status:      ACTIVE
+as_of:       2026-06-06T10:16:08-04:00
+Measured at: efcc51365 / not measured
+
 ## Root cause
 - endpoint: `/api/v2/backtesting/missed-opportunities`
 - bad join: `paper_trade_proposals ptp LEFT JOIN strategy_backtest_trades sbt ON symbol + strategy LIKE +

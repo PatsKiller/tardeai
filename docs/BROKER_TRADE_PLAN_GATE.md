@@ -1,5 +1,9 @@
 # Broker Trade Plan Gate — No Gambling on Generic 2×R
 
+Status:      ACTIVE
+as_of:       2026-06-24T13:45:49-04:00
+Measured at: efcc51365 / not measured
+
 Path B (live Schwab/Fidelity) requires an **authoritative trade plan** before Auto route or promote.
 Generic `entry + 2×risk` geometry without a technical anchor is blocked — same standard as the
 Proposals tab when `trade_plans` exist.

@@ -1,5 +1,9 @@
 # Active Trader Motion Runtime v1
 
+Status:      HISTORICAL
+as_of:       2026-07-29T09:39:38-04:00
+Measured at: efcc51365 / not measured
+
 ## Status
 
 Repository implementation only. The service unit is **default-disabled**, is not enabled by this change, and carries no execution authority. Host installation, activation, restart, and HTTP proof require an operator with production-host access.

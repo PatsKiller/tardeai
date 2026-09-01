@@ -1,5 +1,9 @@
 # Phase 7 — Institutional Report v2
 
+Status:      HISTORICAL
+as_of:       2026-08-13T18:27:19-04:00
+Measured at: efcc51365 / not measured
+
 **"Morgan Stanley completeness + Trade AI CIO intelligence."**
 
 ## Goal

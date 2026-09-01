@@ -1,5 +1,9 @@
 # Sender Inventory
 
+Status:      ACTIVE
+as_of:       2026-07-29T12:56:50-04:00
+Measured at: efcc51365 / not measured
+
 Source inventory was taken with repository grep plus the direct sender audit.
 
 Current direct `sendMessage` endpoint literals:

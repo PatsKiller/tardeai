@@ -1,4 +1,9 @@
 # PHASE 213E — Hermes Update Monitor Plan (2026-06-07)
+
+Status:      HISTORICAL
+as_of:       2026-06-07T16:47:53-04:00
+Measured at: efcc51365 / not measured
+
 `scripts/check_hermes_update_available.py` — READ-ONLY. Compares installed hermes-agent vs published pip
 versions; writes `data/runtime/hermes_update_status.json`; if a newer build exists, flags
 `codex_headless_retest_recommended` + marks the chatgpt capability `retest_recommended` (quietly). **Never

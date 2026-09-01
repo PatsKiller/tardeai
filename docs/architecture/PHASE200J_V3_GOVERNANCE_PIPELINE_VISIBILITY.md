@@ -1,5 +1,9 @@
 # Phase 200J — v3 Governance Pipeline Visibility
 
+Status:      HISTORICAL
+as_of:       2026-06-04T23:25:21-04:00
+Measured at: efcc51365 / not measured
+
 v3 Queue Control Tower (SystemHub → Control Plane) now shows the governance controller status.
 Read-only; **no v2 UI changed**.
 

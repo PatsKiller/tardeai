@@ -1,5 +1,9 @@
 # Phase 115B — Proposal Draft Score Results
 
+Status:      DRAFT
+as_of:       2026-06-01T16:27:11-04:00
+Measured at: efcc51365 / not measured
+
 ## Scoring Thresholds (from Phase 113C + 115A)
 - **7.0+**: Strong sandbox candidate
 - **6.5–6.9**: Pass with limits

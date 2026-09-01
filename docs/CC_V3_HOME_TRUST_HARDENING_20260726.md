@@ -1,5 +1,9 @@
 # CC v3 Home Trust Hardening — 2026-07-26
 
+Status:      ACTIVE
+as_of:       2026-07-26T15:33:45-04:00
+Measured at: efcc51365 / not measured
+
 **Branch:** `grok/home-trust-harden-20260726` (owned isolation lane — does not collide with Watch/Defense/Agent PRs)
 
 ## Problem statement (operator Home snapshot)

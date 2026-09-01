@@ -1,5 +1,9 @@
 # Docs Audit Summary
 
+Status:      ACTIVE
+as_of:       2026-06-07T17:25:33-04:00
+Measured at: efcc51365 / not measured
+
 ## By bucket
 
 | Bucket | Files | Size |

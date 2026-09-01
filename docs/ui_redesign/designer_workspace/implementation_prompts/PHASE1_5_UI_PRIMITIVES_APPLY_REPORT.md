@@ -1,5 +1,9 @@
 # Phase 1.5 UI Primitives Apply Report
 
+Status:      HISTORICAL
+as_of:       2026-05-25T12:22:50-04:00
+Measured at: efcc51365 / not measured
+
 ## Summary
 5 shared UI primitive components added to production. No page files changed.
 

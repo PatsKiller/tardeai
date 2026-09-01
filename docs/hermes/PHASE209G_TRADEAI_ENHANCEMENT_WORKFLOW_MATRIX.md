@@ -1,5 +1,9 @@
 # Phase 209G — TradeAI Enhancement Workflow Matrix (2026-06-07)
 
+Status:      HISTORICAL
+as_of:       2026-06-07T12:29:04-04:00
+Measured at: efcc51365 / not measured
+
 | Workflow | Owner | Trigger | Profile/Model | Writes to | v3 page | Safety | Health |
 |----------|-------|---------|---------------|-----------|---------|--------|--------|
 | Source discovery | hermes_scheduled_source_discovery_dryrun.py | timer | Ollama gemma3 | hermes_research_intelligence | /v3/hermes | staging only | success |

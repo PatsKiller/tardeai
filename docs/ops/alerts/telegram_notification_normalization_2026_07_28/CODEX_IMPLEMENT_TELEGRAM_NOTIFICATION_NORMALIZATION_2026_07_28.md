@@ -1,5 +1,9 @@
 # CODEX IMPLEMENTATION PROMPT — Trade AI Telegram Notification Normalization
 
+Status:      HISTORICAL
+as_of:       2026-07-29T12:56:50-04:00
+Measured at: efcc51365 / not measured
+
 ## Authority and objective
 
 You are the implementation agent for the Trade AI notification-normalization program.

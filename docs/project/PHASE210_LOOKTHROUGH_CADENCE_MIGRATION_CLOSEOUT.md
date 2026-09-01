@@ -1,5 +1,9 @@
 # Phase 210 — Lookthrough Cadence Migration — Closeout — 2026-06-07
 
+Status:      HISTORICAL
+as_of:       2026-06-07T16:58:08-04:00
+Measured at: efcc51365 / not measured
+
 ## Outcome
 The lookthrough cadence (the **last** report-family cadence) is **migrated**, scheduled, validated, and the
 **legacy lookthrough timer retired** (operator-approved). **All portfolio report cadences are now

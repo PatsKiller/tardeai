@@ -1,5 +1,9 @@
 # Inverse-ETF Hedge Stoplights — Research Memorandum & Results (2026-07-19)
 
+Status:      HISTORICAL
+as_of:       2026-07-19T18:22:46-04:00
+Measured at: efcc51365 / not measured
+
 Pre-registration: `INVERSE_HEDGE_TWODAY_PREREGISTRATION_2026-07-19.md` @ commit
 `f2988645` (committed BEFORE results). Backtest code:
 `scripts/research/inverse_hedge_backtest.py` (reproducible: Schwab daily

@@ -1,5 +1,9 @@
 # Factor / overlap model
 
+Status:      ACTIVE
+as_of:       2026-08-17T12:35:13-04:00
+Measured at: efcc51365 / not measured
+
 Detects when several holdings represent essentially the same economic bet.
 
 ## Loadings

@@ -1,5 +1,9 @@
 # Phase 202B — P0-Safe Portfolio-Maintenance Job Selection
 
+Status:      HISTORICAL
+as_of:       2026-06-05T10:59:04-04:00
+Measured at: efcc51365 / not measured
+
 6 P0-safe jobs selected for the controller (reports + backups + read-only snapshot). All verified:
 0 broker refs, 0 proposal/GO-WAIT/strategy refs, no production-data deletion.
 

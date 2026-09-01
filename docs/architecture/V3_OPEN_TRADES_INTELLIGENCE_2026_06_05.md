@@ -1,5 +1,9 @@
 # v3 Open Trades — Actionable Position Intelligence (2026-06-05)
 
+Status:      HISTORICAL
+as_of:       2026-06-05T17:27:45-04:00
+Measured at: efcc51365 / not measured
+
 Read-only refactor of Trading → Open Trades from a paper-only Alpaca card list into an all-account
 position command surface with filter/sort, technicals, news/Hermes research, sector-relative perf,
 and inline protection. NO writes anywhere.

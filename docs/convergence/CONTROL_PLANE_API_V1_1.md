@@ -1,5 +1,9 @@
 # CONTROL_PLANE_API_V1.1
 
+Status:      ACTIVE
+as_of:       2026-08-26T13:52:03-04:00
+Measured at: efcc51365 / not measured
+
 Additive freeze on CONTROL_PLANE_API_V1_BASELINE (`084674c5`).
 
 | Layer | Status | Commit |

@@ -1,5 +1,9 @@
 # Phase 111B — Progressive Hermes Authority Ladder
 
+Status:      HISTORICAL
+as_of:       2026-06-01T15:19:56-04:00
+Measured at: efcc51365 / not measured
+
 | Level | Name | Allowed | Prohibited |
 |-------|------|---------|-----------|
 | 6A | Advisory Only | Advisory cache, embeddings, recommendations | All execution writes |

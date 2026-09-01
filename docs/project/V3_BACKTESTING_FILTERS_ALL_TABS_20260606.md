@@ -1,5 +1,9 @@
 # v3 Backtesting — Account/Strategy Filters Apply to All Tabs (2026-06-06)
 
+Status:      ACTIVE
+as_of:       2026-06-06T11:16:21-04:00
+Measured at: efcc51365 / not measured
+
 ## Issue
 The Backtesting filter bar (date/broker/account/strategy/run-type) renders above the tab menu and worked
 for Trades/Missed/Results/Runs/Optimization, but several tabs fetched their data WITHOUT the filter

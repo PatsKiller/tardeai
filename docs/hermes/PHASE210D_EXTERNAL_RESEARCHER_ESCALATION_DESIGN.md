@@ -1,5 +1,9 @@
 # Phase 210D — External Researcher Escalation Design (2026-06-07)
 
+Status:      HISTORICAL
+as_of:       2026-06-07T13:31:30-04:00
+Measured at: efcc51365 / not measured
+
 All external lanes are **advisory-only, no credentials in-app, no broker/trading mutation, full context block
 in, structured evidence + uncertainty out, cost-controlled, source-scored, stored for learning feedback.**
 None are enabled in this phase (design only; operator-driven auth required).

@@ -1,5 +1,9 @@
 # Hermes tradeai Tool Policy — Operator Decision (2026-06-07)
 
+Status:      ACTIVE
+as_of:       2026-06-07T11:42:35-04:00
+Measured at: efcc51365 / not measured
+
 ## Decision
 **Leave `tradeai` and `tradeai12b` fully tool-less (0 enabled toolsets) as designed.** No read/write/search/
 file/terminal/browser tools will be added to the Trade AI advisory profiles.

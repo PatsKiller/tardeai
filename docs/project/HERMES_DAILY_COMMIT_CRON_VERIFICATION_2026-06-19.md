@@ -1,5 +1,9 @@
 # Hermes Daily Commit Cron — Verification (2026-06-19)
 
+Status:      HISTORICAL
+as_of:       2026-06-19T17:12:22-04:00
+Measured at: efcc51365 / not measured
+
 ## Purpose
 `scripts/verify_hermes_daily_commit_cron.sh` is a **read-only** verifier that confirms the Hermes daily
 report auto-commit path is **installed, safe, and observable**. It does NOT stage, commit, push, sync

@@ -1,5 +1,9 @@
 # AgentPipeline.tsx Replacement
 
+Status:      HISTORICAL
+as_of:       2026-05-25T14:00:12-04:00
+Measured at: efcc51365 / not measured
+
 - **Target**: `apps/command-center-v2/src/pages/AgentPipeline.tsx`
 - **Original SHA256**: `184f18a89be83638d15287ab586a94e104ed79b75239c27058d4887e58714aa1`
 

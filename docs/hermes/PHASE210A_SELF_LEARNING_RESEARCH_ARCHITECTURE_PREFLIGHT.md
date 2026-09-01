@@ -1,5 +1,9 @@
 # Phase 210A — Self-Learning Research Architecture Preflight (2026-06-07)
 
+Status:      HISTORICAL
+as_of:       2026-06-07T12:41:25-04:00
+Measured at: efcc51365 / not measured
+
 ## Models available (Ollama)
 gemma3:4b · gemma3:12b · gemma3:12b-ctx4k · gemma3:27b · gemma3-overnight:latest · qwen3-embedding:8b.
 **Internal deep-research lane = gemma3:27b / gemma3-overnight (BATCH_OVERNIGHT).** gemma4 = NOT present →

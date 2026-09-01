@@ -1,9 +1,13 @@
 # POST-FIX SOURCE MANIFEST
 
-**Export Timestamp:** 2026-05-26T15:50Z  
-**Git Commit:** `c1286d314deb377df49713e1646f139db7f43643` (main)  
-**Git Branch:** `main`  
-**Export Tool:** Claude Code automated export  
+Status:      HISTORICAL
+as_of:       2026-05-26T15:26:25-04:00
+Measured at: efcc51365 / not measured
+
+**Export Timestamp:** 2026-05-26T15:50Z
+**Git Commit:** `c1286d314deb377df49713e1646f139db7f43643` (main)
+**Git Branch:** `main`
+**Export Tool:** Claude Code automated export
 
 ---
 
@@ -247,7 +251,7 @@ None. All 100 exported files contain source content.
 
 Target: `Trade_AI_Docs_v2/atm_audit_2026_05_26/designer_review/`
 
-Initial sync completed 2026-05-26 17:10Z — 1,552 uploaded, 729 unchanged.  
+Initial sync completed 2026-05-26 17:10Z — 1,552 uploaded, 729 unchanged.
 Hourly cron confirmed 2026-05-26 18:05Z — 0 uploaded, 2,286 unchanged, 0 failed.
 
 ---
@@ -283,8 +287,8 @@ pages, and full crontab export.
 
 ### safe_flock.sh Event Log
 
-Production events written to `logs/safe_flock_events.jsonl` (JSONL format).  
-Schema: `ts`, `component`, `event_type`, `severity`, `lock_file`, `pid_file`, `command`, `message`, `exit_code`.  
+Production events written to `logs/safe_flock_events.jsonl` (JSONL format).
+Schema: `ts`, `component`, `event_type`, `severity`, `lock_file`, `pid_file`, `command`, `message`, `exit_code`.
 Event types: `started`, `completed`, `lock_skip`, `stale_lock_cleared`.
 
 ---

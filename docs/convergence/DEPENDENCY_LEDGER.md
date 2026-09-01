@@ -1,5 +1,9 @@
 # Dependency Ledger
 
+Status:      ACTIVE
+as_of:       2026-08-26T13:27:06-04:00
+Measured at: efcc51365 / not measured
+
 HTTP freeze: **CONTROL_PLANE_API_V1_BASELINE** (`084674c5`).
 Field vocabulary: ControlPlane@v1.0.0.
 

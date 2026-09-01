@@ -1,5 +1,9 @@
 # Reports Desk v3 — Phase 0 Diagnosis (2026-07-17)
 
+Status:      HISTORICAL
+as_of:       2026-07-17T11:03:10-04:00
+Measured at: efcc51365 / not measured
+
 ## Version-numbering flag-back (session contract)
 No `reports-v2` commits exist. The prompt's "v2" baseline (Library, structured brief, coverage
 truth, analytics + parity line) matches the `reports-v1` ship (f6b481db..14caffb9, 2026-07-16)

@@ -1,5 +1,9 @@
 # v3 LLM-Review Ollama Health Gate + Retry (2026-06-06)
 
+Status:      ACTIVE
+as_of:       2026-06-06T10:38:55-04:00
+Measured at: efcc51365 / not measured
+
 ## Root cause
 `trade_llm_reviews`: 2102 rows, 1778 errors. The `--structured --apply` backtest-review path ran even when
 Ollama was unavailable and only *warned* (advisory preflight), grinding through the batch and writing a

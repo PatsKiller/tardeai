@@ -1,5 +1,9 @@
 # ATM Executor ← automation_mode Wiring (2026-06-05)
 
+Status:      HISTORICAL
+as_of:       2026-06-05T15:54:23-04:00
+Measured at: efcc51365 / not measured
+
 The auto-approver/executor (`scripts/atm_auto_approver.py`) now reads the per-account
 `account_automation_policies.automation_mode` (broker/account model) and gates auto-approval on it.
 

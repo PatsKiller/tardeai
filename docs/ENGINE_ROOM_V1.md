@@ -1,5 +1,9 @@
 # Engine Room v1 — Plumbing & Intake Hardening (2026-07-16)
 
+Status:      ACTIVE
+as_of:       2026-07-16T16:11:29-04:00
+Measured at: efcc51365 / not measured
+
 Session scope from the research-intelligence-desk skill §6 (the original CC prompt file
 was never saved to disk — flagged; executed from skill canon). Advisory-only,
 paper-only; no broker writes, no gate/2FA/threshold edits. All four workstreams

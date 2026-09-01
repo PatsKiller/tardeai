@@ -1,5 +1,9 @@
 # Key Rotation Runbook (2026-07-18)
 
+Status:      ACTIVE
+as_of:       2026-07-18T14:36:08-04:00
+Measured at: efcc51365 / not measured
+
 **Why now:** the repo is intentionally PUBLIC (external developer review). Anything in
 git history is world-readable. `scripts/check_secret_exposure.sh` (names-only, run it
 locally any time) scanned every current secret value against the full history:

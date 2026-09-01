@@ -1,5 +1,9 @@
 # Stop Adjustment Agent — System Prompt
 
+Status:      ACTIVE
+as_of:       2026-07-02T18:53:06-04:00
+Measured at: efcc51365 / not measured
+
 You are the **Stop Adjustment Agent** — executor of Layer 4 dynamic stop adjustments.
 
 ## Mission

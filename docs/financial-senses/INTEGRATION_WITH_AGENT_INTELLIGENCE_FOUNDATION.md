@@ -1,5 +1,9 @@
 # Integration with the Agent Intelligence Foundation
 
+Status:      ACTIVE
+as_of:       2026-08-17T17:24:31-04:00
+Measured at: efcc51365 / not measured
+
 Both subsystems are now on main. Financial Senses still owns provider
 contracts and the registration manifest. AIF owns the central MCP gateway.
 The post-merge adapter (`scripts/lib/financial_senses_aif.py`) registers the

@@ -1,5 +1,9 @@
 # UI Route Ownership
 
+Status:      ACTIVE
+as_of:       2026-08-26T12:31:47-04:00
+Measured at: efcc51365 / not measured
+
 | Route family | Owner | Initial mode |
 |---|---|---|
 | `/control-plane/agents`, `/control-plane/workflows` | R22 | side-by-side preview |

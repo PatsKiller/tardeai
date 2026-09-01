@@ -1,5 +1,9 @@
 # Phase 208H — Hermes Visibility Fix Report (2026-06-07)
 
+Status:      HISTORICAL
+as_of:       2026-06-07T11:33:46-04:00
+Measured at: efcc51365 / not measured
+
 ## Applied (low-risk, read-only visibility only)
 - `/api/v2/hermes/profiles-status`: added `soul_hash` (sha256[:16]) + `soul_mtime` per profile.
 - HermesPanel profile rows now display `SOUL <hash> · <date>` (with full modified-time tooltip) under the

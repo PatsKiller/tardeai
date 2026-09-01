@@ -1,6 +1,10 @@
 # CC v3 Actionability Sprint — Layered Document
 
-**Build marker:** `cc-v3 actionability-sprint 2026-07-02`  
+Status:      HISTORICAL
+as_of:       2026-07-02T18:42:35-04:00
+Measured at: efcc51365 / not measured
+
+**Build marker:** `cc-v3 actionability-sprint 2026-07-02`
 **Approved:** 2026-07-02 (all defaults)
 
 ---

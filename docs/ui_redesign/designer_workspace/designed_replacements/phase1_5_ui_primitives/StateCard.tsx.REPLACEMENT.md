@@ -1,5 +1,9 @@
 # New Component: StateCard.tsx
 
+Status:      HISTORICAL
+as_of:       2026-05-25T13:05:19-04:00
+Measured at: efcc51365 / not measured
+
 - **Target repo path:** apps/command-center-v2/src/components/StateCard.tsx
 - **Design purpose:** Reusable summary card for dashboards showing a metric + status + optional action. Replaces the pattern of `<div style={{...}}><div style={{...}}>label</div><div style={{...}}>value</div></div>` found in Agent Collaboration summary strip, Self-Improvement component health cards, System Health tiles, and Pipeline status cards.
 

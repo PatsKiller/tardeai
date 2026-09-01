@@ -1,5 +1,9 @@
 # After-Hours Readiness Runtime Verification
 
+Status:      ACTIVE
+as_of:       2026-05-19T21:01:07-04:00
+Measured at: efcc51365 / not measured
+
 Date: 2026-05-19
 
 Verdict: **PASS**

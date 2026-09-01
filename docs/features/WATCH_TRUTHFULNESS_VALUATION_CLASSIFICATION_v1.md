@@ -1,5 +1,9 @@
 # Watch Truthfulness, Valuation, and Re-Entry Classification v1
 
+Status:      ACTIVE
+as_of:       2026-07-23T20:05:54-04:00
+Measured at: efcc51365 / not measured
+
 ## Observed production defects
 
 The July 23 saved production pages established four separate facts:

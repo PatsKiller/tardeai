@@ -1,5 +1,9 @@
 # Deployment & Operations — MS-01
 
+Status:      ACTIVE
+as_of:       2026-07-02T18:56:18-04:00
+Measured at: efcc51365 / not measured
+
 ---
 
 ## Hermes Tools Profile

@@ -1,5 +1,9 @@
 # SCREENER-MAP-1 Safety Audit
 
+Status:      HISTORICAL
+as_of:       2026-05-21T09:57:21-04:00
+Measured at: efcc51365 / not measured
+
 | Check | Status |
 |-------|--------|
 | ALPACA_MODE=paper | Verified |

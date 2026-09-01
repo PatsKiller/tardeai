@@ -1,5 +1,9 @@
 # Hermes Autonomous Loop — Operator Runbook
 
+Status:      ACTIVE
+as_of:       2026-05-31T09:43:27-04:00
+Measured at: efcc51365 / not measured
+
 ---
 
 ## Current Configuration

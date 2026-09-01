@@ -1,5 +1,9 @@
 # Phase 112 — Self-Learning Dashboard Actionability Fix
 
+Status:      HISTORICAL
+as_of:       2026-06-01T15:50:38-04:00
+Measured at: efcc51365 / not measured
+
 ## Defects Fixed
 
 ### 1. Drilldown Filter Correctness (112A-B)

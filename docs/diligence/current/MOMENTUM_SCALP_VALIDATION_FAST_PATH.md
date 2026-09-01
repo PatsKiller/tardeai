@@ -1,5 +1,9 @@
 # Momentum Scalp Validation Fast Path
 
+Status:      ACTIVE
+as_of:       2026-06-28T21:45:10-04:00
+Measured at: efcc51365 / not measured
+
 _Canonical operator-facing doc. Source: `scripts/momentum_scalp_validation_fast_path.py`; covered by
 `tests/test_momentum_scalp_validation_fast_path.py`._
 

@@ -1,5 +1,9 @@
 # Phases 143-144 — Inline Dual-Opinion Advisory + Journal/Backtest Intelligence
 
+Status:      HISTORICAL
+as_of:       2026-06-01T20:50:24-04:00
+Measured at: efcc51365 / not measured
+
 ## Phase 143 — Inline Panels (COMPLETE)
 
 ### Reusable Component

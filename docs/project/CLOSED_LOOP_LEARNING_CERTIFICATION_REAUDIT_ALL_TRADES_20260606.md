@@ -1,5 +1,9 @@
 # Closed-Loop Learning Certification — ALL-TRADES RE-AUDIT (2026-06-06)
 
+Status:      ACTIVE
+as_of:       2026-06-06T10:57:07-04:00
+Measured at: efcc51365 / not measured
+
 Commit audited: **db1aae3**. SELECT-only audit (no trading/GO-WAIT/strategy/order/broker/Phase-205 changes).
 
 ## Verdicts

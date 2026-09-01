@@ -1,5 +1,9 @@
 # Defense Desk v6 — The Core Registry · Funded Rotation Pairs · Ladders You Can Read (2026-07-18)
 
+Status:      ACTIVE
+as_of:       2026-07-18T11:39:47-04:00
+Measured at: efcc51365 / not measured
+
 Session 6. The disconnected voices connect: trims now FUND rotate-ins in one card,
 the operator owns a ★CORE registry the engines enforce, and ladders read at arm's
 length. **The operator confirmed the core seed live mid-session (12 holdings)** —

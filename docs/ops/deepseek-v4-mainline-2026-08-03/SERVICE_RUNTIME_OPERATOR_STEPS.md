@@ -1,5 +1,9 @@
 # Service-runtime DeepSeek credential wiring (operator-approved only)
 
+Status:      ACTIVE
+as_of:       2026-08-03T11:40:56-04:00
+Measured at: efcc51365 / not measured
+
 ## Canonical secret
 
 | Item | Value |

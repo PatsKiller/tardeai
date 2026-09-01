@@ -1,5 +1,9 @@
 # Phase 209K — Operator Guide: Hermes / TradeAI Workflows (2026-06-07)
 
+Status:      HISTORICAL
+as_of:       2026-06-07T12:31:23-04:00
+Measured at: efcc51365 / not measured
+
 1. **What the graph means** — /v3/hermes is the *research-agent* graph (a live Trade-AI research pipeline),
    separate from the global Hermes *chat profiles* (System → Hermes). Nodes = fleet agents; edges = handoffs.
 2. **Who handles Librarian** — `hermes_autonomous_librarian_backlog_loop.py` via `hermes-librarian-backlog-loop.timer`.

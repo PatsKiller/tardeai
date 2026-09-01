@@ -1,7 +1,11 @@
 # ATM-SAFE-1 — Execution Containment Phase
 
-**Priority:** P0  
-**Prerequisite:** Context sync 2026-05-22 complete  
+Status:      ACTIVE
+as_of:       2026-05-22T16:02:12-04:00
+Measured at: efcc51365 / not measured
+
+**Priority:** P0
+**Prerequisite:** Context sync 2026-05-22 complete
 **Must complete before:** Any further ATM enhancements, maturity re-scoring, or feature work
 
 ---

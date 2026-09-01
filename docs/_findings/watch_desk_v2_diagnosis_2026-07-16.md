@@ -1,5 +1,9 @@
 # Watch Desk v2 Phase 0 Diagnosis — 2026-07-16
 
+Status:      HISTORICAL
+as_of:       2026-07-16T14:22:41-04:00
+Measured at: efcc51365 / not measured
+
 (DB user is `trade_ai`, not `johnclaw`; port 7777. Routes: /api/v2/watchlist/items, /screener-finds/candidates, /watchpool, /sectors/monitor, /pullback-macd/candidates.)
 
 | # | Item | Actual (live) | Decision |

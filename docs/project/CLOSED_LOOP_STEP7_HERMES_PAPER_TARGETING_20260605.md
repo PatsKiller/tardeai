@@ -2,6 +2,10 @@
 
 # Closed-Loop Step 7 — Hermes Paper-Loop Targeting (2026-06-05)
 
+Status:      ACTIVE
+as_of:       2026-06-05T23:46:56-04:00
+Measured at: efcc51365 / not measured
+
 ## Gap (from re-audit v2)
 Hermes related_trade_id was 2/1256 — the **write-path** (Step 2) was correct, but **targeting** sent the
 challenger at live Schwab held positions (no paper_trade to link). Root cause: the closed-trade tier

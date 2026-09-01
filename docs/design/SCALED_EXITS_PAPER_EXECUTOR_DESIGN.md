@@ -1,5 +1,9 @@
 # Scaled Exits for the Paper Executor — Design Spec (SX)
 
+Status:      ACTIVE
+as_of:       2026-06-12T18:06:36-04:00
+Measured at: efcc51365 / not measured
+
 **Status: DESIGN ONLY — no implementation authorized by this document.**
 **Date: 2026-06-12 · Owner: operator · Scope: Alpaca PAPER pipeline only. Schwab is explicitly out of scope (no write path exists; see ENGINEERING_HARD_RULES).**
 

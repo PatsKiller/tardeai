@@ -1,5 +1,9 @@
 # CIO IIC Telegram — actionable visual + raw dump kill (2026-08-21)
 
+Status:      HISTORICAL
+as_of:       2026-08-21T10:25:48-04:00
+Measured at: efcc51365 / not measured
+
 **READ_ONLY_ADVISORY.** Telegram has no text colors — hierarchy uses **severity emoji + HTML `<b>`**.
 
 ## Why

@@ -1,5 +1,9 @@
 # Phase 91B — Drill-Through UX Architecture
 
+Status:      HISTORICAL
+as_of:       2026-06-01T13:50:58-04:00
+Measured at: efcc51365 / not measured
+
 ## Drill-Through Map
 
 | Source | Click Action | Target View | Filters |

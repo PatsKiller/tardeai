@@ -1,5 +1,9 @@
 # ATM Re-enable Gate Checklist
 
+Status:      HISTORICAL
+as_of:       2026-05-26T11:21:21-04:00
+Measured at: efcc51365 / not measured
+
 ## Safety Gates
 - [x] ALPACA_MODE=paper
 - [x] LLM_DISABLE_LIVE_EXECUTION=true

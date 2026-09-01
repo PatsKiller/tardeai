@@ -1,9 +1,13 @@
 # Rotation Intelligence Production Readiness — 2026-06-19
 
+Status:      HISTORICAL
+as_of:       2026-06-19T12:48:08-04:00
+Measured at: efcc51365 / not measured
+
 ## Status
 
-**Target state:** 8.x advisory-production-ready  
-**Scope:** Rotation Intelligence, local LLM validation, free/OAuth Grok second opinion, Command Center v3 integration.  
+**Target state:** 8.x advisory-production-ready
+**Scope:** Rotation Intelligence, local LLM validation, free/OAuth Grok second opinion, Command Center v3 integration.
 **Safety class:** Advisory only. No broker action.
 
 This document defines what moved the rotation workflow from a controlled pilot toward advisory production readiness, and what must remain true before it can be trusted by an operator.

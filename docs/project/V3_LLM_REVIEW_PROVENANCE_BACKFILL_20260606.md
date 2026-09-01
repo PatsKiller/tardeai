@@ -1,5 +1,9 @@
 # v3 LLM-Review Provenance Backfill (2026-06-06)
 
+Status:      ACTIVE
+as_of:       2026-06-06T11:30:56-04:00
+Measured at: efcc51365 / not measured
+
 ## Root cause
 trade_llm_reviews rows lacked provenance: strategy_id 4/2105, account 4, trade_instance_id 4,
 source_system 0, provenance_kind 0. So account/strategy filters were technically wired but returned

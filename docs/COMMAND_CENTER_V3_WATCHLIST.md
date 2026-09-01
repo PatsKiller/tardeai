@@ -1,5 +1,9 @@
 # Command Center v3 — Watchlist Hub
 
+Status:      ACTIVE
+as_of:       2026-07-22T10:35:40-04:00
+Measured at: efcc51365 / not measured
+
 _Last updated 2026-07-21 (operator decision card + RTH few-hour plan refresh). Route: `/v3/watch`._
 
 Decision-first watchlist: one full-width card per symbol with CIO view, plan levels, data-quality

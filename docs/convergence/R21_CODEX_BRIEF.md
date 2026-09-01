@@ -1,5 +1,9 @@
 # R21 Codex brief — CONTROL_PLANE_BACKEND
 
+Status:      ACTIVE
+as_of:       2026-08-26T13:11:11-04:00
+Measured at: efcc51365 / not measured
+
 **Summary freeze (accepted):** CONTROL_PLANE_API_V1_BASELINE @ `084674c5`
 **Do not rename** summary routes or envelope keys (`ok/as_of/source_sha/freshness/data_quality/evidence_class/data`).
 

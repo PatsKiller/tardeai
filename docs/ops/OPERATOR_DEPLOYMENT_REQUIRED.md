@@ -1,5 +1,9 @@
 # OPERATOR_DEPLOYMENT_REQUIRED
 
+Status:      ACTIVE
+as_of:       2026-08-25T09:10:05-04:00
+Measured at: efcc51365 / not measured
+
 Canonical deploy (`cio_phase2_exact_main_deploy.sh`) **refuses** unless `HEAD == origin/main`.
 
 PR #506 head `5947d801` is **not** on protected main `9a1e2da5`.

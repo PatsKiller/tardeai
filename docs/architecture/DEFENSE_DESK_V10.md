@@ -1,5 +1,9 @@
 # Defense Desk v10 — Cross-Desk Consistency & Stop Re-Entry Watch (2026-08-06)
 
+Status:      ACTIVE
+as_of:       2026-08-06T16:47:35-04:00
+Measured at: efcc51365 / not measured
+
 ## What changed
 
 Three gaps closed between the Watchlist (CIO), Defense (stance engine), and

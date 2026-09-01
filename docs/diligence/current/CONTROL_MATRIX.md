@@ -1,7 +1,11 @@
 # Control Matrix
 
-_Generated: 2026-06-28T02:06:07.289836+00:00_  
-_Source: `scripts/export_diligence_evidence.py (static control map)`_  
+Status:      ACTIVE
+as_of:       2026-06-27T22:07:55-04:00
+Measured at: efcc51365 / not measured
+
+_Generated: 2026-06-28T02:06:07.289836+00:00_
+_Source: `scripts/export_diligence_evidence.py (static control map)`_
 **Status: PASS**
 
 LLMs are advisory only. They may not set policy, DB arm, approval, kill switch, or live eligibility. Broker truth is authoritative after submit.

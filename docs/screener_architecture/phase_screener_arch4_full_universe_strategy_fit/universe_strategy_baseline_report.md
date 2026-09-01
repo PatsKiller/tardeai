@@ -1,5 +1,9 @@
 # SCREENER-ARCH-4 Universe & Strategy Baseline
 
+Status:      HISTORICAL
+as_of:       2026-05-19T16:51:15-04:00
+Measured at: efcc51365 / not measured
+
 ## Catalog
 | Metric | Value |
 |--------|-------|

@@ -1,5 +1,9 @@
 # PHASE 188C — Open-Position Trailing & Profit-Protection Eligibility Audit
 
+Status:      HISTORICAL
+as_of:       2026-06-02T08:17:52-04:00
+Measured at: efcc51365 / not measured
+
 **Run:** 2026-06-02 ~08:25 ET (premarket) · Alpaca **paper** only · Live endpoint blocked
 **Engine:** STOP-V2.3 `scripts/strategy_trailing_policy.recommend_stop()` (recommendation-only;
 does not move stops). All quotes STALE (yesterday 16:00 ET) — R values below are computed on the

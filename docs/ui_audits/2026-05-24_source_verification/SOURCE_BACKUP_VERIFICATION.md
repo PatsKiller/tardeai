@@ -1,5 +1,9 @@
 # Source Backup Verification (2026-05-24)
 
+Status:      HISTORICAL
+as_of:       2026-05-24T10:35:08-04:00
+Measured at: efcc51365 / not measured
+
 ## Backup File
 - **Path:** docs/backups/trade_ai_backup_20260524.zip
 - **Size:** 2.9GB (3,053.6 MB)

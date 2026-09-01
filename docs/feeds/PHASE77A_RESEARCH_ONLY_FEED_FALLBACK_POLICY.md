@@ -1,5 +1,9 @@
 # Phase 77A — Research-Only Feed Fallback Policy
 
+Status:      HISTORICAL
+as_of:       2026-06-01T12:38:00-04:00
+Measured at: efcc51365 / not measured
+
 ## Allowed Fallback (Finviz Degraded)
 
 - Create Hermes research backlog item for degraded feed

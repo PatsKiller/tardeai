@@ -1,5 +1,9 @@
 # Hermes Research-Graph Kill-Switch Repoint — 2026-06-06
 
+Status:      ACTIVE
+as_of:       2026-06-07T00:03:46-04:00
+Measured at: efcc51365 / not measured
+
 ## Summary
 Repointed the live Hermes Research Agent Graph / Coordinator emergency kill-switch from the retired
 sidecar path to a live, non-retired runtime path. All live readers, the Command Center API/UI, and the

@@ -1,5 +1,9 @@
 # Strategy Scoreboard — R:R, Expectancy & Self-Healing Freshness (2026-06-08)
 
+Status:      ACTIVE
+as_of:       2026-06-08T09:17:48-04:00
+Measured at: efcc51365 / not measured
+
 Strategy Hub scoreboard (`/api/v2/paper-trade-readiness`, real paper trades) enhanced:
 - **R:R column** — realized payoff ratio = avg win / avg loss; color-coded (≥2 green, ≥1 amber, <1 red).
 - **Expectancy column** — per-trade $ expectancy = net P&L / closed trades (green if >0).

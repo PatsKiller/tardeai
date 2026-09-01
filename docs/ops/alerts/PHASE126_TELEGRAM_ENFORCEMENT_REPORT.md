@@ -1,5 +1,9 @@
 # Phase 126 — Telegram Actionable-Only Enforcement Report
 
+Status:      HISTORICAL
+as_of:       2026-06-01T17:34:15-04:00
+Measured at: efcc51365 / not measured
+
 ## Telegram Send Path Inventory
 
 | Path | Count | Gated? |

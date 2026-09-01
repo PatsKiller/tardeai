@@ -1,5 +1,9 @@
 # PHASE 196A — Intraday MFE for Same-Day Scalps
 
+Status:      HISTORICAL
+as_of:       2026-06-02T13:15:12-04:00
+Measured at: efcc51365 / not measured
+
 **Alpaca paper only · data-quality fix · no execution / no stop / no order / no GO-WAIT changes**
 
 ---

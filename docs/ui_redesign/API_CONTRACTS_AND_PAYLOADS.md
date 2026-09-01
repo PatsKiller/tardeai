@@ -1,5 +1,9 @@
 # API Contracts and Payloads
 
+Status:      HISTORICAL
+as_of:       2026-05-25T10:45:00-04:00
+Measured at: efcc51365 / not measured
+
 Generated: 2026-05-25
 Server: `http://127.0.0.1:7777`
 API Module: `scripts/api_v2.py`
