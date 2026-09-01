@@ -180,6 +180,10 @@ GATES = [
     ("ai_analyst_cache_fail_closed", [
         "tests/test_ai_analyst_cache_fails_closed.py",
     ]),
+    # "latest" must mean most recent, not biggest.
+    ("scalp_latest_run_recency", [
+        "tests/test_scalp_latest_run_is_most_recent.py",
+    ]),
     # A freshness field must describe the DATA, not the run that wrote it.
     ("holdings_data_clock", [
         "tests/test_holdings_data_clock.py",
