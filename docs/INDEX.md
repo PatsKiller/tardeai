@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `1b7f5cd486b15ecbf3d5b17eb72f5d92eb463b89119d82f4808032417c0a3c84`
+**Tree fingerprint:** `28f0838754bc4a98ffafbd033c9e6efd9fbc8758fe4db693729bb1b2fcb5513a`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,10 +12,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2289 |
-| Markdown (excl. this INDEX) | 1921 |
+| Files under `docs/` (excl. this INDEX) | 2290 |
+| Markdown (excl. this INDEX) | 1922 |
 | **MISSING HEADER** | **11** |
-| Header OK | 1910 |
+| Header OK | 1911 |
 | Duplicate groups | 5 |
 
 ### By status_guess
@@ -30,7 +30,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_raw_sync | 8 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 6 |
-| review_required | 1927 |
+| review_required | 1928 |
 
 ## Markdown tree
 
@@ -1402,6 +1402,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/CIO_S0_OPERATOR_LOOP_2026-08-29.md` | S0 operator loop — mint, attach, turn_id, rehydrate (2026-08-29) | review_required | OK | `ddc0c50a5f66` |
 | `docs/ops/CIO_S6_DUST_RULE_2026-08-29.md` | CIO — teach the S6 detector the dust rule | review_required | OK | `f450917a844c` |
 | `docs/ops/CIO_SEASONALITY_FRENCH_SURFACE_2026-08-29.md` | Seasonality surface moved to Ken French (2026-08-29) | review_required | OK | `a5875177ae22` |
+| `docs/ops/CIO_SURFACE_INVENTORY_2026-08-30.md` | CIO Surface Inventory — every number, its producer, and where two surfaces disagree | review_required | OK | `65de441bdc8f` |
 | `docs/ops/CIO_UI_AUDIT_2026-08-22.md` | UI audit — /v3/advisory + CIO Office tabs (every tab) | review_required | OK | `720fd845b5e3` |
 | `docs/ops/CIO_V_SWEEP_2026-08-30.md` | CIO validation sweep V1–V5 — 2026-08-30 | review_required | OK | `4b89fcaba4ca` |
 | `docs/ops/CIO_WATCH_S7_WIRE_2026-08-20.md` | CIO Watch → S7 wire (Fix #2) — 2026-08-20 | review_required | OK | `755cfda40584` |
