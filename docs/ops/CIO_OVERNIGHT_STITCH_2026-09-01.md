@@ -1313,3 +1313,31 @@ source of truth; every Drive copy is a point-in-time snapshot.
 and was made false by the coordinator's own re-sync eleven minutes later. E's figure was not wrong;
 it was overtaken. The distinction matters, and mis-attributing this to E would be the exact error
 this wave spent the night documenting.
+
+---
+
+### Open gap carried to morning — 2026-09-01 00:16 ET
+
+**Worker A's watch document covers 23:23 and stops; its brief specified every 30–60 min until
+08:00.** The wave's investigators all finished by 00:05, so the doc is complete as an *analysis* and
+incomplete as a *watch*. Stated here rather than discovered in the morning.
+
+The evidence is still being collected — the read-only sampler ticks every 30 minutes to 08:00 and
+is unaffected by the workers finishing. What is missing is curation of those ticks into A's
+document. A final pass before 08:00 will append them and re-verify the verdict against anything
+that fired overnight.
+
+**Three scheduled events land inside the uncurated window**, each already documented as a finding
+and none to be interfered with:
+
+| ~time ET | event | why it matters |
+|---|---|---|
+| 04:00 | `tradeai-continuous.timer` | ruled out as a CIO wake driver (stitch 1); a natural fire that should leave the record store untouched — if it does not, that ruling is wrong |
+| 05:00 | crontab 928, `cio_event_detector` | the `NameError: 'wakes_created'` quoting bug fires again; wakes still created, telemetry still lost |
+| 06:52 | crontab 997, `cio_draft_plan_hygiene.py --apply` | the only `--apply` in the window; Worker B itemised the **43** plans it would likely act on |
+
+**The M5 verdict is not expected to move, and the reason is structural rather than hopeful:**
+stitch 3 established the record store has no production writer, so no new disposition can be
+created overnight for a later wake to honour. `skipped_cadence_not_due ≥ 1` is unsatisfiable at any
+wake volume. If it *does* move, that contradicts stitch 3 and the finding wins — which is precisely
+why the ticks are still worth reading rather than assumed.
