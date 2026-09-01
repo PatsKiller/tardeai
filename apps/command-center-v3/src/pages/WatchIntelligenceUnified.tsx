@@ -7,6 +7,7 @@ import { useCallback, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { BB, TYPE } from '../lib/watchTokens'
+import { WI_SYNOPSIS_PROVENANCE } from '../lib/surfaceFreshness'
 
 type Card = {
   symbol: string
@@ -613,7 +614,19 @@ export default function WatchIntelligenceUnified() {
                   {c.company_summary && (
                     <div style={{ fontSize: TYPE.sm, color: BB.text2, marginTop: 8, lineHeight: 1.4 }} data-company-summary>{c.company_summary}</div>
                   )}
-                  <div style={{ fontSize: TYPE.sm, color: BB.text1, marginTop: 8 }}>{c.operator_meaning || c.one_line_thesis || '—'}</div>
+                  <div style={{ fontSize: TYPE.sm, color: BB.text1, marginTop: 8 }} data-wi-synopsis>
+                    {c.operator_meaning || c.one_line_thesis || '—'}
+                  </div>
+                  <div
+                    style={{ fontSize: TYPE.xs, color: BB.text3, marginTop: 3, lineHeight: 1.35 }}
+                    data-wi-synopsis-provenance
+                    data-source={WI_SYNOPSIS_PROVENANCE.dataSource}
+                    data-live-claim={String(WI_SYNOPSIS_PROVENANCE.liveClaim)}
+                    data-spine={String(WI_SYNOPSIS_PROVENANCE.spine)}
+                    title={WI_SYNOPSIS_PROVENANCE.schema}
+                  >
+                    {WI_SYNOPSIS_PROVENANCE.surfaceNote}
+                  </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6, marginTop: 8 }}>
                     <Fact k="Support" v={c.support != null ? String(c.support) : '—'} />
                     <Fact k="Resistance" v={c.resistance != null ? String(c.resistance) : '—'} />
@@ -668,7 +681,16 @@ export default function WatchIntelligenceUnified() {
                 <div style={{ padding: 14, borderBottom: `1px solid ${BB.border}` }}>
                   <div style={{ fontSize: TYPE.xl, fontWeight: 950 }}>{sel.symbol}</div>
                   <div style={{ fontSize: TYPE.xs, color: BB.text3 }}>{sel.company}</div>
-                  <div style={{ marginTop: 8, fontSize: TYPE.md, fontWeight: 800 }}>{sel.operator_meaning}</div>
+                  <div style={{ marginTop: 8, fontSize: TYPE.md, fontWeight: 800 }} data-wi-synopsis>
+                    {sel.operator_meaning}
+                  </div>
+                  <div
+                    style={{ fontSize: TYPE.xs, color: BB.text3, marginTop: 3, lineHeight: 1.35 }}
+                    data-wi-synopsis-provenance
+                    data-source={WI_SYNOPSIS_PROVENANCE.dataSource}
+                  >
+                    {WI_SYNOPSIS_PROVENANCE.surfaceNote}
+                  </div>
                 </div>
                 <div style={{ padding: 12 }}>
                   <div style={{ fontSize: TYPE.xs, color: BB.text3, fontWeight: 900, marginBottom: 6 }}>WHAT THE COMPANY DOES</div>

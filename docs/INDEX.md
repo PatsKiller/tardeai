@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `941044fef87f17b8d65f907bd3de990656cafd4d7799dd89b6b2b551a3ba7a05`
+**Tree fingerprint:** `7fc27a2a613169f69b60f54b2819e87f340f4ccf89733b52df67ccd8564e250a`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,10 +12,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2274 |
-| Markdown (excl. this INDEX) | 1906 |
+| Files under `docs/` (excl. this INDEX) | 2281 |
+| Markdown (excl. this INDEX) | 1913 |
 | **MISSING HEADER** | **1034** |
-| Header OK | 872 |
+| Header OK | 879 |
 | Duplicate groups | 8 |
 
 ### By status_guess
@@ -30,7 +30,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_raw_sync | 8 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 12 |
-| review_required | 1906 |
+| review_required | 1913 |
 
 ## Markdown tree
 
@@ -578,6 +578,11 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/audits/overnight/B2_B3_FAILURE_SURFACES_2026-08-31.md` | B2 + B3 — Failure surfaces (2026-08-31) | review_required | OK | `fcff0b5c0734` |
 | `docs/audits/overnight/B4_B5_ASOF_PROVENANCE_2026-08-31.md` | B4 + B5 — Per-block `as_of` and provenance at display | review_required | OK | `3c0e9517e74f` |
 | `docs/audits/overnight/B6_REENTRY_SCOPE_2026-08-31.md` | Overnight B6 — Surface scope labels (re-entry books) | review_required | OK | `99641ec30a8b` |
+| `docs/audits/overnight/BISECT_TRADE_REGRESSION_2026-09-01.md` | BISECT_TRADE_REGRESSION_2026-09-01 | review_required | OK | `de9b6a69614a` |
+| `docs/audits/overnight/CC_PAGE_CENSUS_2026-09-01.md` | CC_PAGE_CENSUS_2026-09-01 | review_required | OK | `7f383b2fd7bb` |
+| `docs/audits/overnight/CC_REMEDIATION_2026-09-01.md` | CC_REMEDIATION_2026-09-01 | review_required | OK | `eb2a0c6ed996` |
+| `docs/audits/overnight/CC_WATCH_INTELLIGENCE_WIRING_2026-09-01.md` | CC_WATCH_INTELLIGENCE_WIRING_2026-09-01 | review_required | OK | `33db1b23e28a` |
+| `docs/audits/overnight/CC_WI_SPINE_WIRING_PROPOSAL_2026-09-01.md` | CC_WI_SPINE_WIRING_PROPOSAL_2026-09-01 | review_required | OK | `c38e52d5e340` |
 | `docs/audits/overnight/CENSUS_PART5_LEVEL_SET_2026-08-31.md` | Census Part 5 — Operator level-set | review_required | OK | `a9c50f171387` |
 | `docs/audits/overnight/D1_M5_CADENCE_2026-08-31.md` | Overnight D1 — M5 cadence via normal-path `next_eligible_at` | review_required | OK | `694d9d635dd3` |
 | `docs/audits/overnight/D2_PENDING_DATA_2026-08-31.md` | D2 — OUTCOME_PENDING_DATA triage (2026-08-31) | review_required | OK | `df13db77ddaa` |
@@ -594,9 +599,11 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/audits/overnight/G4_ARCHIVE_MECHANISM_2026-08-31.md` | Overnight G4 — Archive mechanism | review_required | OK | `81e760481cc0` |
 | `docs/audits/overnight/G5_DUPLICATION_RECOMMENDATIONS_2026-08-31.md` | G5 — Duplication cluster recommendations (from Census Part 3) | review_required | OK | `0b081115c5fc` |
 | `docs/audits/overnight/G6_MISSING_STORES_2026-08-31.md` | Overnight G6 — Missing CanonicalStoreRegistry stores | review_required | OK | `8d97c7c5491f` |
+| `docs/audits/overnight/W2_UNDECLARED_CENSUS_2026-09-01.md` | W2 Undeclared Census — 2026-09-01 (batch2 + batch3) | review_required | OK | `ac5563053af8` |
 | `docs/audits/overnight/W3_3A_POPULATION_2026-09-01.md` | Night Three Wave 3a — project `population` onto operator / home surfaces | review_required | OK | `66b4016fcb90` |
 | `docs/audits/overnight/W3_3B_FROZEN_FIELDS_2026-09-01.md` | Night Three Wave 3b — frozen fields that imply judgment but never move | review_required | OK | `8b4f5b2161b8` |
 | `docs/audits/overnight/W3_3C_PROVENANCE_2026-09-01.md` | Night Three Wave 3c — provenance markers: writer=author; honest footer | review_required | OK | `bdc03913e77d` |
+| `docs/audits/overnight/W3_BRAVE_LEGACY_REPOINT_2026-09-01.md` | WAVE 3 — Brave legacy callers + overnight-deep + deepseek | review_required | OK | `136d3a442b90` |
 | `docs/audits/overnight/W5_SEARCH_COST_PROOFS_2026-09-01.md` | Night Three Wave 5 — Search / cost proofs (5a–5d) | review_required | OK | `de36a3e5b06d` |
 | `docs/audits/overnight/W6_STRUCTURE_PROOFS_2026-09-01.md` | Night Three Wave 6 — Structure proofs (G1 / G4 / G3) | review_required | OK | `3c93ef8a1431` |
 | `docs/audits/overnight/WAVE_E_CATALYST_2026-08-31.md` | WAVE E — Catalyst pipeline (E1→E5) · 2026-08-31 | review_required | OK | `c700329a997a` |

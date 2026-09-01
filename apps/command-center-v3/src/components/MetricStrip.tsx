@@ -2,7 +2,8 @@ import { useApi } from '../hooks/useApi'
 import { useNavigate } from 'react-router-dom'
 import { fmt$ } from '../lib/format'
 import { pricingStampLine } from '../lib/pricingStamp'
-import { isScanStale, runLabel } from '../lib/homeLabels'
+import { runLabel } from '../lib/homeLabels'
+import { overviewSurfaceFreshness, tradeAiSurfaceFreshness } from '../lib/surfaceFreshness'
 import { BB, T, TYPE } from '../lib/watchTokens'
 import type { DrillContext } from './DetailDrawer'
 
@@ -30,8 +31,18 @@ export default function MetricStrip({ onDrill }: Props) {
   const goCount = tradeAi?.go_count ?? 0
   const waitCount = tradeAi?.wait_count ?? 0
   const avoidCount = tradeAi?.avoid_count ?? 0
-  const scanStale = isScanStale(tradeAi?.run_date)
+  // Prefer API stale + cached_at over session-normalized run_date (heal can label "today"
+  // while the cache stays empty for days — census/bisect 2026-08-28).
+  const setupsFresh = tradeAiSurfaceFreshness(tradeAi)
+  const overviewFresh = overviewSurfaceFreshness(overview)
+  const scanStale = setupsFresh.stale
   const setupsRun = runLabel(tradeAi?.run_label ?? tradeAi?.latest_run_label, tradeAi?.run_date)
+  const setupsAsOfMark = setupsFresh.asOf
+    ? ` · as_of ${String(setupsFresh.asOf).slice(0, 19).replace('T', ' ')}`
+    : ''
+  const overviewAsOfMark = overviewFresh.asOf
+    ? ` · as_of ${String(overviewFresh.asOf).slice(0, 19).replace('T', ' ')}`
+    : ''
   const operatorLive = !!gate?.operator_live_via_2fa_allowed
   const autoLive = gate?.status === 'AUTHORIZED'
   const liveBadge = operatorLive ? '2FA LIVE' : autoLive ? 'AUTO LIVE' : 'AUTO BLOCKED'
@@ -59,7 +70,10 @@ export default function MetricStrip({ onDrill }: Props) {
   const priceStamp = pricingStampLine(overview?.pricing ?? { last_repriced: overview?.last_repriced, reprice_source: overview?.reprice_source })
 
   const setupsValue = (() => {
-    if (scanStale) return `STALE · ${setupsRun}`
+    if (scanStale) {
+      // Visible STALE on the value itself — not only a tooltip (Wave 3 census finding).
+      return setupsFresh.surfaceLabel || `STALE · ${setupsRun}`
+    }
     if (tradeAi?.latest_run_label || tradeAi?.run_label) {
       return `${goCount} GO · ${waitCount} WAIT · ${avoidCount} NOGO`
     }
@@ -69,17 +83,21 @@ export default function MetricStrip({ onDrill }: Props) {
   const tiles = [
     {
       label: 'PORTFOLIO', value: portfolioVal != null ? fmt$(portfolioVal, 0) : '—',
-      color: 'var(--text0)',
-      tip: `Total portfolio equity across all linked broker accounts (Schwab, Fidelity, Alpaca, Moomoo). Refreshes every 2 min via /api/v2/overview.`,
-      drill: { title: 'Portfolio', subtitle: 'From /api/v2/overview', endpoint: '/api/v2/overview',
-        rows: overview ? [{ portfolio_value: overview.portfolio_value, total_cash: overview.total_cash, position_count: overview.position_count, today_change: overview.today_change, today_pct: overview.today_pct, as_of: overview.as_of }] : [] },
+      stale: overviewFresh.stale ? (overviewFresh.surfaceLabel?.replace(/^STALE · /, ' · ') || overviewAsOfMark) : null,
+      asOf: overviewFresh.asOf,
+      color: overviewFresh.stale ? BB.amber : 'var(--text0)',
+      tip: `Total portfolio equity across all linked broker accounts (Schwab, Fidelity, Alpaca, Moomoo). Refreshes every 2 min via /api/v2/overview.${overviewAsOfMark}${overviewFresh.stale ? ` · ${overviewFresh.reason}` : ''}`,
+      drill: { title: 'Portfolio', subtitle: overviewFresh.stale ? `STALE${overviewAsOfMark}` : 'From /api/v2/overview', endpoint: '/api/v2/overview',
+        rows: overview ? [{ portfolio_value: overview.portfolio_value, total_cash: overview.total_cash, position_count: overview.position_count, today_change: overview.today_change, today_pct: overview.today_pct, as_of: overview.as_of, surface_stale: overviewFresh.stale, surface_reason: overviewFresh.reason }] : [] },
     },
     {
       label: 'TODAY', value: todayChange != null ? `${todayChange >= 0 ? '+' : ''}${fmt$(todayChange, 0)}${todayPct != null ? ` ${todayPct >= 0 ? '+' : ''}${todayPct}%` : ''}` : '—',
-      color: todayChange == null ? 'var(--text3)' : todayChange >= 0 ? BB.green : BB.red,
-      drill: { title: "Today's Move", subtitle: 'By account · from /api/v2/overview', endpoint: '/api/v2/overview',
+      stale: overviewFresh.stale ? (overviewFresh.surfaceLabel?.replace(/^STALE · /, ' · ') || overviewAsOfMark) : null,
+      asOf: overviewFresh.asOf,
+      color: overviewFresh.stale ? BB.amber : todayChange == null ? 'var(--text3)' : todayChange >= 0 ? BB.green : BB.red,
+      drill: { title: "Today's Move", subtitle: overviewFresh.stale ? `STALE${overviewAsOfMark}` : 'By account · from /api/v2/overview', endpoint: '/api/v2/overview',
         rows: overview ? [
-          { today_change: overview.today_change, today_pct: overview.today_pct, portfolio_value: overview.portfolio_value, as_of: overview.as_of },
+          { today_change: overview.today_change, today_pct: overview.today_pct, portfolio_value: overview.portfolio_value, as_of: overview.as_of, surface_stale: overviewFresh.stale },
           ...Object.entries(overview.today_by_account ?? {})
             .sort((a: any, b: any) => Math.abs(b[1].change) - Math.abs(a[1].change))
             .map(([acct, d]: any) => ({
@@ -88,7 +106,7 @@ export default function MetricStrip({ onDrill }: Props) {
               account_value: d.value, top_movers: d.top_movers || null,
             })),
         ] : [] },
-      tip: `Today's net change ($ and %) across all linked accounts. Click to see per-account breakdown. Refreshes every 2 min.`,
+      tip: `Today's net change ($ and %) across all linked accounts. Click to see per-account breakdown. Refreshes every 2 min.${overviewAsOfMark}`,
     },
     {
       label: 'TRADING', value: winRate != null ? `${winRate}%${winTrades ? ` · ${winTrades}` : ''}${journalPnl != null ? ` · ${fmt$(journalPnl, 0)}` : ''}` : '—',
@@ -123,13 +141,15 @@ export default function MetricStrip({ onDrill }: Props) {
     {
       label: 'SETUPS · LATEST RUN',
       value: setupsValue,
-      stale: scanStale ? ' · prior session' : null,
+      // Extra amber mark when value already contains STALE (keeps label chip + as_of visible).
+      stale: scanStale ? `${setupsAsOfMark || ' · stale'}` : null,
+      asOf: setupsFresh.asOf,
       color: scanStale ? BB.amber : goCount > 0 ? BB.green : 'var(--text3)',
       tip: scanStale
-        ? `Latest scan is from a prior session (${setupsRun}). Counts may be zero because the scanner has not run today — not because the universe is empty. Trading → Trade AI shows the full scan history.`
+        ? `Scanner surface is STALE (${setupsFresh.reason || 'prior/empty cache'}). ${setupsRun}${setupsAsOfMark}. HTTP 200 is not a live claim — Trading → Trade AI shows the same payload.`
         : 'Latest scanner run only — Trading → Trade AI shows the full scan universe (today + yesterday, all runs)',
-      drill: { title: 'Trade Setups', subtitle: scanStale ? `STALE — last ${setupsRun}` : 'Latest scanner run only — Trading → Trade AI shows the full scan universe (today + yesterday, all runs)', endpoint: '/api/v2/trade-ai',
-        rows: tradeAi ? [{ scope: scanStale ? 'stale prior session' : 'latest run only', go_count: tradeAi.go_count, wait_count: tradeAi.wait_count, avoid_count: tradeAi.avoid_count, universe_go: tradeAi.universe_go, universe_wait: tradeAi.universe_wait, universe_nogo: tradeAi.universe_nogo, run_label: tradeAi.run_label, run_date: tradeAi.run_date, vix: tradeAi.vix, market_regime: tradeAi.market_regime, run_health_status: tradeAi.run_health_status }] : [] },
+      drill: { title: 'Trade Setups', subtitle: scanStale ? (setupsFresh.surfaceLabel || `STALE — last ${setupsRun}`) : 'Latest scanner run only — Trading → Trade AI shows the full scan universe (today + yesterday, all runs)', endpoint: '/api/v2/trade-ai',
+        rows: tradeAi ? [{ scope: scanStale ? 'stale' : 'latest run only', go_count: tradeAi.go_count, wait_count: tradeAi.wait_count, avoid_count: tradeAi.avoid_count, universe_go: tradeAi.universe_go, universe_wait: tradeAi.universe_wait, universe_nogo: tradeAi.universe_nogo, run_label: tradeAi.run_label, run_date: tradeAi.run_date, cached_at: tradeAi.cached_at, cache_age_sec: tradeAi.cache_age_sec, stale: tradeAi.stale, surface_stale: setupsFresh.stale, surface_reason: setupsFresh.reason, vix: tradeAi.vix, market_regime: tradeAi.market_regime, run_health_status: tradeAi.run_health_status }] : [] },
     },
   ]
 
@@ -155,11 +175,16 @@ export default function MetricStrip({ onDrill }: Props) {
           style={{ padding: '4px 20px', cursor: 'pointer', textAlign: 'center', borderRight: '1px solid var(--border)' }}
         >
           <div style={{ fontSize: TYPE.xs, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.5px' }}>
-            {t.label}{(t as any).stale && <span style={{ color: BB.amber, fontWeight: 800 }}>{' '}⚠ STALE</span>}
+            {t.label}{(t as any).stale && <span style={{ color: BB.amber, fontWeight: 800 }} data-surface-stale>{' '}⚠ STALE</span>}
           </div>
           <div style={{ fontSize: TYPE.lg, fontWeight: 700, color: t.color, fontFamily: 'monospace' }}>
             {t.value}{(t as any).stale && !String(t.value).includes('STALE') && <span style={{ fontSize: TYPE.xs, color: BB.amber }}>{(t as any).stale}</span>}
           </div>
+          {(t as any).asOf && (
+            <div style={{ fontSize: TYPE.xs, color: (t as any).stale ? BB.amber : 'var(--text3)', marginTop: 1 }} data-surface-as-of>
+              as_of {String((t as any).asOf).slice(0, 16).replace('T', ' ')}
+            </div>
+          )}
         </div>
       ))}
       {approvals != null && approvals > 0 && (

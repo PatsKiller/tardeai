@@ -1,0 +1,16 @@
+# Agents approved to broker the gog keyring credential via Bitwarden.
+#
+# One agent id per line. Comments and blank lines ignored. Matching is exact.
+# The caller declares itself with TRADEAI_AGENT=<id>; scripts/gog_broker.sh
+# refuses to run for any id not listed here.
+#
+# THIS IS AN APPROVAL LIST, NOT A SECURITY BOUNDARY. Any process running as this
+# user can read the keyring directly; the list records who the operator intends
+# to use the broker, and makes an unapproved caller fail loudly instead of
+# silently succeeding. Do not describe it as access control.
+#
+# Operator edits this file. Agents must not add themselves.
+
+claude-code
+cursor
+grok
