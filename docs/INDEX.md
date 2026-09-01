@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `f7931ac55ec8afab5a1fb5d307f255685e2ac4835c34690e0806e20b8b7b562f`
+**Tree fingerprint:** `5ceef2cc2e682fc162e5a728a05c98c05899d8ed2690f63e2cae94526d1a8b5d`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -1337,7 +1337,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/CIO_CASH_TOTALS_WRITER_2026-08-29.md` | The $52,677.32 cash gap — writer identified | review_required | OK | `32eedd37d074` |
 | `docs/ops/CIO_CLOSED_LOOP_LINEAGE_CLOSEOUT_2026-08-20.md` | CIO Closed-Loop Lineage — Phase A Closeout (2026-08-20) | review_required | OK | `116d9ec54867` |
 | `docs/ops/CIO_COMMAND_CENTER_MODEL_2026-08-29.md` | Command Center — the mental model, verified (2026-08-29) | review_required | OK | `c1fbaec9602f` |
-| `docs/ops/CIO_DATA_ASOF_GAPS_2026-09-01.md` | Three gaps #825 left, closed | review_required | OK | `2c953408156d` |
+| `docs/ops/CIO_DATA_ASOF_GAPS_2026-09-01.md` | Three gaps #825 left, closed | review_required | OK | `9530afc6c0db` |
 | `docs/ops/CIO_DECISION_PAYLOAD_PHASE1_2026-08-21.md` | CIO DecisionPayload@v1 — Phase 1 (2026-08-21) | review_required | OK | `aaad54832ed4` |
 | `docs/ops/CIO_DESK_MEMO_CONTINUOUS_2026-08-20.md` | CIO desk memo continuous regen — Phase C (2026-08-20) | review_required | OK | `e5c2420c9f49` |
 | `docs/ops/CIO_DILIGENCE_GAP_REGISTER_CLOSEOUT_2026-08-30.md` | CIO Diligence — gap register closeout (PR-G) | review_required | OK | `31158a804cc9` |
