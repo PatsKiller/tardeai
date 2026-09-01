@@ -35,6 +35,7 @@ NO_CONSUMER_REASON = (
 import argparse
 import json
 import os
+import re
 import sys
 from collections import Counter
 from datetime import datetime, timedelta, timezone
@@ -50,6 +51,29 @@ STATE = Path(os.environ.get(
 MAX_LINES = 25          # a digest longer than this is a wall, not a report
 MAX_BODY = 3000         # keep well inside the transport's split threshold
 DEFAULT_WINDOW_H = 24
+
+
+_TAG = re.compile(r"<[^>]{1,40}>")
+
+
+def _safe(text: str) -> str:
+    """Neutralise a foreign producer's markup before embedding it.
+
+    THE FIRST LIVE SEND FAILED ON THIS. The digest quotes other producers' titles
+    verbatim, and those titles carry their own markup -- `<b>Health Agent...</b>`
+    from an HTML producer, `*Trade AI v12.1d [0900]*` from a Markdown one. Telegram
+    parsed the digest as Markdown, rejected it with a 400, and it arrived only via
+    the plaintext fallback: two API calls per chat instead of one.
+
+    An embedded title is DATA, not markup. HTML tags are stripped (they are another
+    producer's parse_mode and mean nothing here) and the remainder goes through the
+    shared escaper rather than a 127th private convention.
+    """
+    try:
+        from telegram_transport import escape_markdown
+    except Exception:                      # transport unavailable: strip, never trust
+        return _TAG.sub("", text or "")
+    return escape_markdown(_TAG.sub("", text or ""))
 
 
 def _db_query(sql, params=None):
@@ -111,7 +135,7 @@ def render(collected: dict) -> str:
         newest = max((r for r in rows if (r[2] or "unclassified") == kind),
                      key=lambda r: r[0])
         title = (newest[3] or (newest[4] or "")[:80] or "—").strip().splitlines()[0]
-        lines.append(f"• {kind} ×{n} — {title[:90]}")
+        lines.append(f"• {_safe(kind)} ×{n} — {_safe(title[:90])}")
     if len(kinds) > MAX_LINES:
         lines.append(f"…and {len(kinds) - MAX_LINES} more kinds")
     lines.append("")
