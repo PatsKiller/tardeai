@@ -1341,3 +1341,84 @@ stitch 3 established the record store has no production writer, so no new dispos
 created overnight for a later wake to honour. `skipped_cadence_not_due ≥ 1` is unsatisfiable at any
 wake volume. If it *does* move, that contradicts stitch 3 and the finding wins — which is precisely
 why the ticks are still worth reading rather than assumed.
+
+---
+
+## P0 EXECUTED — 2026-09-01 08:14 ET · operator authorised the daemon restart
+
+**This is the first and only action in this engagement that changed live system state.** It was
+performed on explicit operator instruction, after the wave had closed, against the §17 item the
+packet raised. Everything before this point was read-only, docs-only and local.
+
+### Before `[VERIFIED]` 08:13:27 ET
+
+```
+MainPID   3637980       ExecMainStartTimestamp  Wed 2026-08-26 20:38:03 EDT
+cwd       .../40360117-main-exact-phase2-20260826-202631
+CURRENT   .../d276657b7-main-exact-phase2-20260831-225546     ← 5 days newer
+stale log 20,798,401 bytes      rc=127 count  16,906
+```
+
+The `rc=127` count had grown **16,356 → 16,906** since Worker E measured it at ~00:00 — **550 more
+failed remediation commands in eight hours**, into a log nothing reads.
+
+### The action
+
+```
+$ systemctl --user restart tradeai-health-agent.service
+exit=0
+```
+
+`exit=0` is not evidence of work (§0 rule 8). Three independent confirmations follow.
+
+### After `[VERIFIED]` 08:13:54 ET
+
+**1 — new process, new start time.** `MainPID 2868223`, `ExecMainStartTimestamp Tue 2026-09-01
+08:13:54 EDT`, `NRestarts 0`, `active running`. The unit's own epitaph for the old process:
+`Consumed 2h 49min 55s CPU time over 5d 11h 35min 50s wall clock` — confirming the 5½-day uptime
+that caused the staleness.
+
+**2 — the cwd read-back, which was the whole point.** This is the check the P0 insisted could not be
+substituted with "service is active":
+
+```
+new cwd  .../d276657b7-main-exact-phase2-20260831-225546
+CURRENT  .../d276657b7-main-exact-phase2-20260831-225546
+PASS — daemon re-resolved to the served release
+```
+
+**3 — the daemon's own self-report**, independent of any inference from `/proc`:
+
+```json
+{"daemon": "health_agent_daemon",
+ "project_root": "/home/johnclaw/trade-ai-releases/portfolio-server/d276657b7-main-exact-phase2-20260831-225546",
+ "lock": "/tmp/health_agent.lock", "mode": "loop"}
+```
+
+`project_root` is now the served release. The daemon says so itself.
+
+**4 — the stale log stopped growing.** Frozen at `20,798,401` bytes, mtime `08:07:46` — before the
+restart. It had been appended to every ten minutes for five days.
+
+### Still outstanding — the durable artifact
+
+Confirmation is **not complete**. A restart proving the *root* is right is not the same as proving
+the *work* now lands in the right place. The escalation cycle runs every ten minutes; the proof is
+`persistent-state/logs/claude_escalation_daemon.log` coming into existence — a file that
+`[VERIFIED]` did **not** exist at 08:14 — while the stale copy stays frozen. A background check is
+watching for exactly that and will be recorded when it fires.
+
+Until it does, the honest status is **mitigated, not confirmed.**
+
+### What this does NOT fix — unchanged from the P0 as raised
+
+The restart resets the clock. `.resolve()` still runs once at start, and the unit's
+`WorkingDirectory` still points at the `CURRENT` symlink, so **this daemon will silently re-freeze
+from the next promote onward.** The durable fix remains a proposal with two candidate shapes,
+deliberately not chosen: re-resolve per cycle, or a post-promote restart hook — and because both
+systemd and the wrapper freeze the root independently, the first alone may not be sufficient.
+
+**Nothing else was touched.** No push, no merge, no deploy, no cron, no store, no code. The 16,906
+`rc=127` failures and the 19 unfixed escalations are untouched findings for the morning; whether
+five-day-old remediation logic left anything needing repair is a question this restart does not
+answer.
