@@ -134,6 +134,29 @@ is expected to exercise naturally; until a cycle with `dispatched > 0` writes
 `research_called > 0`, **M5 remains NOT_OBSERVED** and the hand-run positive control in
 `CIO_WAKE_LIVE_DECIDE_2026-09-01.md` is the only proof the write path works.
 
+### Second observation — a dispatching cycle, 13:19
+
+```
+dispatched 2 · research_called 0 · persisted 0
+cognition_persist subject=None persisted=False reason=no_subject   (x2)
+wake_goal_goal_f2664540d8c1_2026090117 / wake_goal_goal_695a5dbe2401_2026090117
+```
+
+The plumbing is now proven end-to-end under the real timer: the dispatcher carried
+`subject_key` through to the entrypoint, `apply_cycle_and_persist` was invoked per wake, and
+the outcome was recorded honestly rather than silently skipped.
+
+`subject_key: null` is **correct here, and cross-checked from an independent code path**:
+the pre-existing consult reports `subject_resolved: 0, no_subject: 2` for those same two
+wakes. They are `wake_goal_goal_*` — goal wakes that resolve no subject — and the new code
+declined to invent one, as its comment requires.
+
+**Still not exercised: `decide_after_load` and the persist with a real subject.** Event
+wakes do resolve subjects on this box (`subject_resolved: 3` at both 12:38 and 12:44), so
+the path is expected to run naturally when an event wake next dispatches. Until a cycle
+records `research_called > 0`, **M5 remains NOT_OBSERVED** and the hand-run positive control
+is still the only proof the write path works.
+
 ## Mistakes made in this session
 
 1. **Duplicated PR A** rather than checking what #825 was.
