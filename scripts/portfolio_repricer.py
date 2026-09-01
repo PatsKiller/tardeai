@@ -50,6 +50,54 @@ def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def compute_data_as_of(holdings) -> dict:
+    """The OLDEST contributing row date -- the real freshness of the data.
+
+    `as_of` is written by portfolio_loader as `= today`: it records when the LOADER
+    RAN, not when any data was fetched. On 2026-09-01 it read 2026-08-29 while the
+    Schwab rows carried 2026-08-31 and the moomoo/alpaca CASH rows carried
+    2026-08-03/04 -- older than 28 of 30 rows and newer than the other 2, so it was
+    wrong in both directions at once and described nothing in the file.
+
+    AGENTS.md 9.1: "A 27-day-old $500 makes the block 27 days old." The honest clock
+    for a block is its OLDEST component, and the account that owns it must be named
+    so a stale $500 cash row cannot hide behind 28 fresh equity rows.
+    """
+    oldest, worst = None, None
+    for h in (holdings or []):
+        if not isinstance(h, dict):
+            continue
+        d = h.get("broker_position_as_of") or h.get("as_of")
+        if not d:
+            continue
+        d = str(d)[:10]
+        if oldest is None or d < oldest:
+            oldest, worst = d, (h.get("account") or h.get("account_id") or "?")
+    return {"data_as_of": oldest, "data_as_of_account": worst}
+
+
+def _positions_fingerprint(holdings) -> str:
+    """Stable fingerprint of the position LIST (which positions exist, not their marks).
+
+    positions_built_at is documented as "when the position list was constructed", but
+    both writers set it with `if generated_at and not positions_built_at` — write-once.
+    It captured whatever generated_at happened to hold at the 2026-07-20 migration and
+    then froze: observed still reading 2026-07-17 on 2026-09-01, 46 days later, while
+    the list underneath had changed. A field that cannot distinguish "the list has not
+    been rebuilt in 46 days" from "the list is rebuilt constantly and the stamp is
+    pinned to the first build" is not a freshness signal.
+
+    Fingerprinting the (symbol, account) set makes the stamp mean what it says: it
+    moves when the list actually changes and holds steady when only marks move.
+    """
+    import hashlib
+    keys = sorted(
+        f"{(h or {}).get('symbol') or ''}|{(h or {}).get('account') or (h or {}).get('account_id') or ''}"
+        for h in (holdings or [])
+    )
+    return hashlib.sha256("\n".join(keys).encode("utf-8")).hexdigest()[:16]
+
+
 def _preserve_broker_snapshot(h: Dict[str, Any], shares: float) -> None:
     """Capture broker facts once. Never overwrite them with a later mark."""
     if h.get("broker_shares") is None and shares:
@@ -721,8 +769,15 @@ def reprice_portfolio(portfolio: Dict[str, Any], state_dir: Path) -> Dict[str, A
     # the obvious freshness field would call live data three days stale.
     # generated_at now means "these contents are current as of"; the original
     # build time is preserved once under positions_built_at.
-    if portfolio.get("generated_at") and not portfolio.get("positions_built_at"):
-        portfolio["positions_built_at"] = portfolio["generated_at"]
+    _fp = _positions_fingerprint(portfolio.get("holdings") or [])
+    if portfolio.get("positions_fingerprint") != _fp or not portfolio.get("positions_built_at"):
+        portfolio["positions_built_at"] = now_str
+        portfolio["positions_fingerprint"] = _fp
+    # A real data clock beside the loader-run date. `as_of` stays what it always
+    # was (when this ran) so nothing downstream shifts meaning underneath it;
+    # data_as_of is the oldest contributing row and is what a freshness banner
+    # should read.
+    portfolio.update(compute_data_as_of(portfolio.get("holdings") or []))
     portfolio["generated_at"] = now_str
     portfolio["_freshness_note"] = (
         "generated_at = contents current as of (refreshed every reprice). "
