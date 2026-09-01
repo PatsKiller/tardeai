@@ -17,6 +17,7 @@ from scripts.lib.cio_instrument_record import (
     load_instrument_record_for_wake,
 )
 from scripts.lib.cio_rehydrate import gate_input_from_record
+from scripts.lib.wake_research_persist import observe_last_hit
 
 SCHEMA = "ResearchPreflight@v1"
 AUTHORITY = "READ_ONLY_ADVISORY"
@@ -77,6 +78,29 @@ def should_skip_cadence(
     return True, "cadence_not_due"
 
 
+def _flag_duplicate_research(out: dict[str, Any], base: dict[str, Any],
+                             record_next_eligible: Any) -> dict[str, Any]:
+    """Research is about to fire for a subject a retained hit already covered.
+
+    Only interesting when the RECORD is silent about cadence: if the record
+    carries `next_eligible_at` the gate already had memory to reason from and a
+    fresh research call is the gate's own decision, not a lost one. When the
+    record carries nothing and a hit exists, the desk looked and the memory did
+    not survive -- the shape a failed cognition persist leaves behind.
+
+    Observation only. It changes no routing and no cadence: inventing a
+    re-research interval here would be policy this module has no basis for.
+    """
+    if str(out.get("decision") or "").strip().lower() == "skip":
+        return out
+    if not base.get("last_hit_at"):
+        return out
+    if record_next_eligible:
+        return out
+    out["duplicate_research_suspected"] = True
+    return out
+
+
 def decide_after_load(
     subject_key: str,
     *,
@@ -86,6 +110,7 @@ def decide_after_load(
     root: Any = None,
     decide_fn: Optional[Callable[..., dict[str, Any]]] = None,
     gate_extra: Optional[dict[str, Any]] = None,
+    hits_path: Any = None,
 ) -> dict[str, Any]:
     """Identity/materiality already done by the caller. Load, then maybe decide.
 
@@ -107,7 +132,24 @@ def decide_after_load(
         "decide_called": False,
         "record_loaded": False,
         "record_status": None,
+        # The durable evidence that research already fired for this subject.
+        # The record is the memory; this is the cross-check. When a cognition
+        # persist fails the record forgets, and only the retained hit still
+        # shows the desk looked -- which is exactly when re-researching the
+        # same subject is most likely and least visible.
+        "last_hit_at": None,
+        "last_hit_decision": None,
+        # False means the document could not be read -- NOT that there is no
+        # hit. Two states cannot express "no input" (AGENTS.md 8).
+        "last_hit_readable": False,
+        "duplicate_research_suspected": False,
     }
+
+    consult = observe_last_hit(subject_key, path=hits_path)
+    base["last_hit_readable"] = bool(consult.get("readable"))
+    _hit = consult.get("hit") or {}
+    base["last_hit_at"] = _hit.get("as_of")
+    base["last_hit_decision"] = _hit.get("decision")
 
     if not bool(plan.get("material", True)):
         return {
@@ -135,7 +177,7 @@ def decide_after_load(
         out = dict(decide_fn(inp, now=now))
         out.update(base)
         out["decide_called"] = True
-        return out
+        return _flag_duplicate_research(out, base, None)
 
     rec = dict(wake["record"])
     base["record_loaded"] = True
@@ -156,7 +198,7 @@ def decide_after_load(
     out = dict(decide_fn(inp, now=now))
     out.update(base)
     out["decide_called"] = True
-    return out
+    return _flag_duplicate_research(out, base, rec.get("next_eligible_at"))
 
 def _default_decide(inp: dict[str, Any], *, now: Optional[datetime] = None) -> dict[str, Any]:
     from scripts.lib.cio_research_gate import decide as _decide

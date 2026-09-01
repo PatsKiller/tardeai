@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 from scripts.lib.atomic_json_store import atomic_write_json
 
@@ -74,6 +74,82 @@ def hit_from_cycle(cycle: dict[str, Any]) -> dict[str, Any]:
         "decisions": decisions,
         "unattended": bool(cycle.get("unattended", True)),
     }
+
+
+DEFAULT_PATH = Path("data/cio/wake_research_persist.json")
+
+
+def _hit_sort_key(hit: dict[str, Any]) -> str:
+    """Newest last. `as_of` is an ISO string; a missing one sorts oldest."""
+    return str(hit.get("as_of") or "")
+
+
+def last_hit_for_subject(doc: dict[str, Any], subject_key: Any) -> Optional[dict[str, Any]]:
+    """The most recent retained cycle in which THIS subject was researched.
+
+    Returns None when no retained hit names the subject. That is a real
+    negative -- we looked and it is not there -- and the caller must not
+    confuse it with an unreadable document, which is a different thing.
+
+    `decision` is best-effort. `hit_from_cycle` appends a decision for every
+    research row but only appends a subject_key when it is non-empty, so the
+    two lists are index-aligned ONLY while every row carries a subject. That
+    holds today (the entrypoint appends a research row only inside
+    `if subject_key:`) and it is not guaranteed by the shape, so the decision
+    is read positionally only when the lengths agree and reported as None
+    otherwise. Reading a decision off a misaligned index would attribute one
+    subject's outcome to another.
+    """
+    if not subject_key:
+        return None
+    hits = doc.get("hits") or []
+    if not isinstance(hits, list):
+        return None
+    best: Optional[dict[str, Any]] = None
+    for hit in hits:
+        if not isinstance(hit, dict):
+            continue
+        subjects = hit.get("subjects") or []
+        if not isinstance(subjects, list) or subject_key not in subjects:
+            continue
+        if best is None or _hit_sort_key(hit) >= _hit_sort_key(best):
+            best = hit
+    if best is None:
+        return None
+    decisions = best.get("decisions") or []
+    subjects = best.get("subjects") or []
+    decision = None
+    if isinstance(decisions, list) and len(decisions) == len(subjects):
+        # last occurrence: the most recent decision for the subject in that cycle
+        idx = len(subjects) - 1 - subjects[::-1].index(subject_key)
+        decision = decisions[idx]
+    return {
+        "as_of": best.get("as_of"),
+        "decision": decision,
+        "research_called": best.get("research_called"),
+        "persisted": best.get("persisted"),
+        "unattended": best.get("unattended"),
+    }
+
+
+def observe_last_hit(subject_key: Any, *, path: Path | str | None = None
+                     ) -> dict[str, Any]:
+    """Read-only consult. Never raises.
+
+    `readable` distinguishes "the document could not be read" from "the
+    document was read and holds no hit for this subject". Collapsing those two
+    is how a monitor starts lying -- the same distinction `lane_registry`
+    draws between UNVERIFIABLE and SILENT.
+    """
+    out: dict[str, Any] = {"readable": False, "hit": None, "detail": None}
+    try:
+        doc = load_document(path or DEFAULT_PATH)
+    except Exception as exc:                       # named, never bare
+        out["detail"] = f"{type(exc).__name__}: {exc}"
+        return out
+    out["readable"] = True
+    out["hit"] = last_hit_for_subject(doc, subject_key)
+    return out
 
 
 def load_document(path: Path | str) -> dict[str, Any]:
