@@ -799,3 +799,117 @@ no remaining fire in this window can satisfy criterion (d) unless a deferral is
 written to `cio_instrument_records.jsonl` first — so the next pass should watch
 that file's mtime as closely as it watches the log. The sampler continues to
 08:00 ET; nothing in this lane restarts or modifies it.*
+
+---
+
+# 11. COORDINATOR WATCH CONTINUATION — 23:23 → 08:09 ET
+
+**Author: coordinator, not Worker A.** A's analysis above ends at 23:23 ET. This section curates the
+detached read-only sampler's remaining ticks and closes the watch its brief specified. A's verdict
+is re-tested against the full window, not restated.
+
+**Watch complete: 18 ticks, 2026-08-31T23:09:58 → 2026-09-01T07:39 ET, every 30 minutes.** The
+sampler invoked no job; it read `systemctl list-timers`, the crontab, and only the dispatcher log
+bytes new since the previous tick.
+
+## 11.1 Constants across all 18 ticks `[VERIFIED]`
+
+| quantity | value | moved? |
+|---|---|---|
+| `CURRENT` pin | `d276657b7-main-exact-phase2-20260831-225546` | **no** |
+| crontab sha256 | `bd0bcb96eb1d4e00b5c8e136d0fa30857578aa7830dfe665e09b0dd7f09c287a` | **no** |
+| CIO wake driver | crontab line 934, `*/5 * * * *` | **no** |
+| matching systemd timers | `tradeai-continuous.timer` only | **no** |
+
+The pin held for the entire window. Every measurement in this document is attributable to one
+release — worth stating, because twelve promotes landed on 2026-08-31 and A had to discard its
+strongest evidence for belonging to a different pin.
+
+## 11.2 The full-window measurement `[VERIFIED]`, as_of 2026-09-01T08:09 ET
+
+Read from `persistent-state/logs/cio_wake_dispatcher.log`, restricted to fires at or after the
+22:55 promote:
+
+```
+$ awk '$0 >= "2026-08-31 22:55"' … | grep -c "record_consult:"                    → 111
+$ … | grep "record_consult:" | grep -vc "record_found=0"                          →  11
+$ … | grep "record_consult:" | grep -v "skipped_cadence_not_due=0" | wc -l        →   0
+```
+
+**111 natural unattended fires. 11 loaded at least one record. Zero honoured a disposition.**
+
+The eleven, in full:
+
+```
+23:58:06  wakes=3 subject_resolved=3 record_found=3 changed_by_record=0 skipped=0 no_subject=0
+01:28:07  wakes=5 subject_resolved=3 record_found=3 changed_by_record=0 skipped=0 no_subject=2
+04:33:29  wakes=5 subject_resolved=1 record_found=1 changed_by_record=0 skipped=0 no_subject=4
+04:38:11  wakes=5 subject_resolved=1 record_found=1 changed_by_record=0 skipped=0 no_subject=4
+04:43:12  wakes=5 subject_resolved=1 record_found=1 changed_by_record=0 skipped=0 no_subject=4
+04:48:19  wakes=3 subject_resolved=3 record_found=3 changed_by_record=0 skipped=0 no_subject=0
+06:03:21  wakes=3 subject_resolved=3 record_found=3 changed_by_record=0 skipped=0 no_subject=0
+06:18:11  wakes=4 subject_resolved=3 record_found=3 changed_by_record=0 skipped=0 no_subject=1
+07:28:37  wakes=5 subject_resolved=2 record_found=2 changed_by_record=0 skipped=0 no_subject=3
+07:33:38  wakes=1 subject_resolved=1 record_found=1 changed_by_record=0 skipped=0 no_subject=0
+08:08:27  wakes=3 subject_resolved=3 record_found=3 changed_by_record=0 skipped=0 no_subject=0
+```
+
+`subject_resolved == record_found` on every line — 24 = 24 across the window. Consistent with A's
+finding that `NO_RECORD` has never fired.
+
+## 11.3 CORRECTION — a coordinator claim the full window refutes
+
+At 23:39 the coordinator wrote, in the stitch log and to the operator, that *"the consult runs, on
+an empty set, every time."* **The full window shows that is false.** It was true of the sample then
+in hand — five consecutive fires with `no_subject=N` — and it was generalised from five fires to a
+property of the mechanism.
+
+**Across 111 fires the consult resolved subjects and loaded records on 11 of them.** The record
+load is not hypothetical at this pin: it is observed, unattended, on schedule, eleven times, with
+the command and output quoted. That is rung 1 evidence for the *load*.
+
+This is the same error the wave documented in others — generalising from a sample taken at one
+moment — and it is recorded here rather than quietly dropped, because the corrected reading
+strengthens the system's position and the original weakened it unfairly.
+
+## 11.4 M5 verdict: `NOT_OBSERVED` — CONFIRMED, and the reason is now proven rather than predicted
+
+The verdict stands at pin `d276657b7`. Criterion (d) was never met: **zero fires in 111 recorded
+`skipped_cadence_not_due ≥ 1` or `changed_by_record ≥ 1`.**
+
+Stitch 3 predicted precisely this, structurally: the record store has no production writer, so no
+new disposition could be created overnight for a later wake to honour, making (d) unsatisfiable at
+any wake volume. **The night ran the experiment and the prediction held.**
+
+`[VERIFIED]` the store did not move:
+
+```
+$ ls -l …/persistent-state/data/cio/cio_instrument_records.jsonl
+Aug 30 10:58        # unchanged across the entire window; ~45.2h silent as of 08:09
+```
+
+The distinction that matters for the morning: **the loader works and is proven; the writer does not
+exist.** M5 is not blocked on the wake, the timer, the queue, or the consult. Every one of those
+was observed working. It is blocked on the absence of anything that writes a disposition.
+
+## 11.5 The three scheduled events, all as predicted `[VERIFIED]`
+
+| event | prediction | outcome |
+|---|---|---|
+| 04:00 `tradeai-continuous.timer` | fires; does not touch the CIO record store | **Fired** — `Active: active (running) since Tue 2026-09-01 04:00:00 EDT`. Record store mtime still `Aug 30 10:58`. **The stitch-1 ruling holds.** |
+| 05:00 crontab 928 detector | `NameError` again; wakes created, telemetry lost | **Confirmed** — `NameError: name 'wakes_created' is not defined`; count **2 → 3** |
+| 06:52 crontab 997 `--apply` | acts on the plans B itemised | **Ran** — `plan_… S3_REENTRY_CANDIDATE ['DIVI'] / ['KTOS'] / ['ARKQ']`, matching B's census |
+
+None was interfered with. All three were observed, not caused.
+
+## 11.6 What this continuation could not see
+
+The sampler captured only log bytes matching its filter, so a wake failing before it reached the
+`record_consult` line would be invisible here. The `no_record` counter A identified as missing is
+still missing, so a memory outage and a quiet queue remain indistinguishable in the line format —
+mitigated only empirically by `subject_resolved == record_found`. And per Worker C, this
+continuation read `persistent-state/logs` only; the `logs/` directories of the other 301 release
+trees were not swept, and a lane writing into one of those would not appear.
+
+**Watch closed 08:09 ET.** The sampler completed its 18th and final tick at 07:39 and exited on its
+own stop condition.
