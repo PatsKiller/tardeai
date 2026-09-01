@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `d0592dabce53fa98223d92fdd15dcb76aaeb5b6262b134fd3bb842d1dc5bb9c1`
+**Tree fingerprint:** `1b7f5cd486b15ecbf3d5b17eb72f5d92eb463b89119d82f4808032417c0a3c84`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,9 +12,9 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2288 |
-| Markdown (excl. this INDEX) | 1920 |
-| **MISSING HEADER** | **10** |
+| Files under `docs/` (excl. this INDEX) | 2289 |
+| Markdown (excl. this INDEX) | 1921 |
+| **MISSING HEADER** | **11** |
 | Header OK | 1910 |
 | Duplicate groups | 5 |
 
@@ -30,7 +30,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_raw_sync | 8 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 6 |
-| review_required | 1926 |
+| review_required | 1927 |
 
 ## Markdown tree
 
@@ -1345,6 +1345,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/CIO_DILIGENCE_P8_MBI_PARTITION_2026-08-30.md` | CIO Diligence P8 — outcome/lesson MBI partition | review_required | OK | `bc3fad2cbb08` |
 | `docs/ops/CIO_DILIGENCE_P9_REGISTRY_LIFECYCLE_2026-08-30.md` | CIO Diligence P9 — registry / orphan / 99.99% path | review_required | OK | `969b5126353d` |
 | `docs/ops/CIO_DILIGENCE_SCOREBOARD.md` | CIO Platform Diligence — living scoreboard | review_required | OK | `97ecddcae5e2` |
+| `docs/ops/CIO_DISCARDED_MEMBER_AGGREGATES_2026-08-30.md` | Aggregates that discard their members — system inventory | review_required | MISSING HEADER | `08850909a0de` |
 | `docs/ops/CIO_FIELD_SCOPED_LINT_2026-08-29.md` | Field-scoped instruction lint (2026-08-29) | review_required | OK | `4ba171f0d82e` |
 | `docs/ops/CIO_GATE_EXECUTION_HISTORY_2026-08-30.md` | CIO Gate Execution History — 2026-08-30 | review_required | MISSING HEADER | `66e24bdfdb12` |
 | `docs/ops/CIO_GROK_CRITIQUE_CONTRACT_2026-08-29.md` | Grok critique call site — contract (2026-08-29) | review_required | OK | `131628d68083` |
