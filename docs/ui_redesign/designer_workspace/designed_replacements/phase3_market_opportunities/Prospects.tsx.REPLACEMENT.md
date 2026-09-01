@@ -1,5 +1,9 @@
 # Prospects.tsx Replacement
 
+Status:      HISTORICAL
+as_of:       2026-05-25T14:16:20-04:00
+Measured at: efcc51365 / not measured
+
 **Target repo path:** `apps/command-center-v2/src/pages/Prospects.tsx`
 
 **Original SHA256:** `b2d6fd13148ad576ddfbc9d5af777fa28f3a3727de868c8ef36bf2b8bbdd8de4`

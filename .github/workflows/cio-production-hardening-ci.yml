@@ -65,6 +65,15 @@ jobs:
       - name: Line-ending churn guard
         run: python3 scripts/check_line_endings.py --range origin/main...HEAD
 
+      # The hardening runner uses an explicit allowlist: 49 of 1,009 test files,
+      # so every green run reported on 4.9% of the suite and said nothing about
+      # the rest. Discovery cannot simply be switched on -- the unlisted suite
+      # does not pass and six files cannot be imported at all. The gap is made
+      # visible and bounded instead: today's unlisted set is a named baseline
+      # that may shrink, and a NEW unlisted test file fails here.
+      - name: Test coverage guard (no new test file outside CI)
+        run: python3 scripts/check_test_coverage.py --fail-on-new
+
       - name: Report HTML export smoke
         run: |
           python3 - <<'PY'

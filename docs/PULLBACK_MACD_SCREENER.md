@@ -1,5 +1,9 @@
 # Pullback / MACD Screener
 
+Status:      ACTIVE
+as_of:       2026-07-07T10:46:01-04:00
+Measured at: efcc51365 / not measured
+
 Daily S&P 500 scan for **uptrend names that have pulled back ~20% off their 52-week high and whose
 MACD is approaching a bullish cross** — a counter-trend dip-buy discovery tool. Advisory only:
 auto-generated proposals require operator approval; nothing auto-executes.

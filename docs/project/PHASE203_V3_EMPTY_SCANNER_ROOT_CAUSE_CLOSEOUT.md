@@ -1,5 +1,9 @@
 # Phase 203 — v3 Empty Scanner Root-Cause — CLOSEOUT
 
+Status:      HISTORICAL
+as_of:       2026-06-05T11:56:48-04:00
+Measured at: efcc51365 / not measured
+
 Date: 2026-06-05 · Branch: main. Investigation-first; fix applied only after root cause proven.
 
 ## Final checklist

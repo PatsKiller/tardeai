@@ -1,5 +1,9 @@
 # Phase 96E — Dashboard Implementation Backlog
 
+Status:      HISTORICAL
+as_of:       2026-06-01T14:10:23-04:00
+Measured at: efcc51365 / not measured
+
 ## Chart Library
 
 - **recharts** (already installed) — use for bar charts, timelines

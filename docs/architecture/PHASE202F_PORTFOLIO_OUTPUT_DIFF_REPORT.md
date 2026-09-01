@@ -1,3 +1,6 @@
+Status:      HISTORICAL
+as_of:       2026-06-05T12:04:01-04:00
+Measured at: efcc51365 / not measured
 
 ---
 ## 202F-REVISED — diff is EVIDENCE ONLY (does NOT authorize bundled scheduling)

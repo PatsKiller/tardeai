@@ -1,5 +1,9 @@
 # Hermes Governance Panel
 
+Status:      ACTIVE
+as_of:       2026-06-29T13:28:47-04:00
+Measured at: efcc51365 / not measured
+
 Read-only operator view of Hermes research scope and budget posture.
 
 **Location:** Command Center v3 → **System → Hermes** tab → "Hermes Research Governance" card

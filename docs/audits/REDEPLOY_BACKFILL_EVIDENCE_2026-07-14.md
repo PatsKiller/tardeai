@@ -1,5 +1,9 @@
 # Redeploy Historical Backfill Evidence — 2026-07-14
 
+Status:      HISTORICAL
+as_of:       2026-07-14T00:05:24-04:00
+Measured at: efcc51365 / not measured
+
 Part B acceptance evidence for the portfolio-wide capital-allocation book.
 All runs **dry-run** (`apply=False`), read-only, against production `trade_ai`.
 

@@ -1,5 +1,9 @@
 # R20 Hermes lineage and queue persistence
 
+Status:      ACTIVE
+as_of:       2026-08-26T21:12:25-04:00
+Measured at: efcc51365 / not measured
+
 The Hermes request/result lifecycle now emits a durable, append-only lineage projection at
 `data/cio/cio_workflow_lineage.jsonl`. Requests, completed results, and checkpoints retain
 the existing plan/research/result identifiers and are joined by a deterministic `workflow_id`.

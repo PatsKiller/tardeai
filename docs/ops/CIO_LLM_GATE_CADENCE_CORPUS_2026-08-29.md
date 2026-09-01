@@ -1,5 +1,9 @@
 # CIO LLM gate + cadence + institutional corpus (2026-08-29)
 
+Status:      HISTORICAL
+as_of:       2026-08-29T08:37:51-04:00
+Measured at: efcc51365 / not measured
+
 Implements the diagram law that was missing in code: **free-first → residual →
 LLM only if unresolved AND material**, outcomes changing the *next* gate, and
 not everything running every day.

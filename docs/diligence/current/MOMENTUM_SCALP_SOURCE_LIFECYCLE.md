@@ -1,5 +1,9 @@
 # Momentum Scalp Source Lifecycle
 
+Status:      ACTIVE
+as_of:       2026-06-29T08:03:38-04:00
+Measured at: efcc51365 / not measured
+
 _Inventory of the discovery → scan → signal → proposal → validation path for momentum_scalp, and the
 cadence/latency gaps this hardening closes. Source/scheduler/reporting only — no broker writes._
 

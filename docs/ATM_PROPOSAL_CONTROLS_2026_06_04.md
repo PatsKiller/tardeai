@@ -1,5 +1,9 @@
 # Editable ATM + Proposal Controls — PAPER-ONLY, GATE-INTERLOCKED (2026-06-04)
 
+Status:      HISTORICAL
+as_of:       2026-06-04T21:38:20-04:00
+Measured at: efcc51365 / not measured
+
 The #2 "arm-execution" work, scoped safely. Every control operates on paper and is **physically
 blocked from arming any LIVE account until the live-trading gate passes**. No live-money switch was
 built; the live Schwab arm stays a deliberate, out-of-band, later step (after gate + Schwab adapter +

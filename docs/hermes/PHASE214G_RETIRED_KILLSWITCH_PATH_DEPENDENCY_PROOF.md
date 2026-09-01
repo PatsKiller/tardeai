@@ -1,4 +1,9 @@
 # PHASE 214G — Retired Kill-Switch Path Dependency Proof (2026-06-07)
+
+Status:      HISTORICAL
+as_of:       2026-06-07T17:19:21-04:00
+Measured at: efcc51365 / not measured
+
 - Active code reading retired `.hermes/DISABLED`: **0** (3 textual matches are docstrings/comments only).
 - Coordinator inline `KILL_FILES` removed (0); uses shared helper (1 import).
 - Retired sidecar gateway: failed/disabled (unchanged). Retired directories: untouched (not deleted).

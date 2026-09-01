@@ -1,5 +1,9 @@
 # Redeploy semantic-integrity release — defect-to-code map (Phase 0)
 
+Status:      HISTORICAL
+as_of:       2026-07-14T11:28:27-04:00
+Measured at: efcc51365 / not measured
+
 Operator review 2026-07-14 (post-Phase-13). 23 defects → root causes. Advisory-only throughout.
 
 | # | Defect | Root cause (file:symbol) | Fix |

@@ -1,5 +1,9 @@
 # Instrument identity contract
 
+Status:      ACTIVE
+as_of:       2026-08-16T22:32:42-04:00
+Measured at: efcc51365 / not measured
+
 `identity.resolve` input and output contract.
 
 ## Input (one of)

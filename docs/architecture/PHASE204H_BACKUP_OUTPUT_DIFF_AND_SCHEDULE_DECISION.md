@@ -1,4 +1,9 @@
 # Phase 204H — Backup Output Diff & Schedule Decision
+
+Status:      HISTORICAL
+as_of:       2026-06-05T12:23:09-04:00
+Measured at: efcc51365 / not measured
+
 - **Refined backup apply completed: YES** (overall ok, dry_run=false, run_ts 2026-06-05T16:21:35Z).
 - **Exit code:** 0.
 - **pg backup OK: YES** — 999 MB, fresh (`trade_ai_20260605_121534.sql.gz`), 361s.

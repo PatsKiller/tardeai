@@ -1,5 +1,9 @@
 # Phase 201G — Portfolio-Maintenance Migration Risk Model
 
+Status:      HISTORICAL
+as_of:       2026-06-05T10:45:19-04:00
+Measured at: efcc51365 / not measured
+
 Classification of the 201F candidates. Design only.
 
 ## P0-safe (reports / backups / read-only — migrate first)

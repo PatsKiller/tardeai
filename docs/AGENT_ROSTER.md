@@ -1,5 +1,9 @@
 # Trade AI v12 — Agent Roster
 
+Status:      ACTIVE
+as_of:       2026-08-13T15:38:32-04:00
+Measured at: efcc51365 / not measured
+
 > **⚠️ Model policy (validated 2026-08-09):** DeepSeek V4 Pro = primary CIO/synthesis; DeepSeek V4 Flash = routine agents; gemma3:12b = local chat primary; gemma3:4b = local fallback; gemma3:27b = overnight deep; **qwen3-embedding:8b = embeddings (active)**; **qwen3:14b (chat) is DISABLED + uninstalled.** All agent model references below have been updated. See `docs/LLM_FLEET_STRATEGY_v4_1_FINAL.md` and `docs/v4_1_deployment_log.md`.
 
 

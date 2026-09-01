@@ -1,10 +1,14 @@
 # PHASE 12 — Independent Architecture Review (Read-Only)
 
-**UTC:** 2026-08-14  
-**Reviewer posture:** fresh senior reviewer (not the implementer’s success claims)  
-**Branch under review:** `wt/cio-phase1-notify` @ `41a6e40c` (content pin `8675dfd0`)  
-**Base:** `origin/main` @ `c330a117`  
-**Authority target:** `READ_ONLY_ADVISORY` — no broker / order / stop / 2FA  
+Status:      HISTORICAL
+as_of:       2026-08-14T08:34:19-04:00
+Measured at: efcc51365 / not measured
+
+**UTC:** 2026-08-14
+**Reviewer posture:** fresh senior reviewer (not the implementer’s success claims)
+**Branch under review:** `wt/cio-phase1-notify` @ `41a6e40c` (content pin `8675dfd0`)
+**Base:** `origin/main` @ `c330a117`
+**Authority target:** `READ_ONLY_ADVISORY` — no broker / order / stop / 2FA
 
 ## Scope
 
@@ -137,8 +141,8 @@ surfaces load.”
 
 ### Decision
 
-**GO for Phase 13 controlled portfolio-server canary with documented rollback.**  
-**NO-GO for live Telegram send** until operator sets the Phase 9 triple env gate.  
+**GO for Phase 13 controlled portfolio-server canary with documented rollback.**
+**NO-GO for live Telegram send** until operator sets the Phase 9 triple env gate.
 **NO-GO for silent main merge** — open PR after canary.
 
 ## Reviewer sign-off

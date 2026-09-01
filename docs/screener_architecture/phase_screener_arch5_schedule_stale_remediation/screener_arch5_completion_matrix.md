@@ -1,5 +1,9 @@
 # SCREENER-ARCH-5 — Completion Matrix
 
+Status:      ACTIVE
+as_of:       2026-05-19T19:29:16-04:00
+Measured at: efcc51365 / not measured
+
 | Deliverable | Status | Evidence |
 |---|---|---|
 | Schedule baseline report | done | 27 active, 0 stale, 5 sessions |

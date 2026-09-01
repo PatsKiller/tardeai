@@ -1,5 +1,9 @@
 # Stage 0 Baseline
 
+Status:      HISTORICAL
+as_of:       2026-07-29T12:56:50-04:00
+Measured at: efcc51365 / not measured
+
 Date: 2026-07-28
 
 START SHA: `a51ddd72f75b9fbe5dac749bc786396c9b558104`

@@ -1,5 +1,9 @@
 # Profit-Protection Shadow Threshold Recommendations (advisory only)
 
+Status:      ACTIVE
+as_of:       2026-06-14T03:30:37-04:00
+Measured at: efcc51365 / not measured
+
 run_id: ppsr_auto_20260614  |  MIN_SAMPLE: 20
 
 **Shadow only. No config / strategy / GO-WAIT / executor mutation.**

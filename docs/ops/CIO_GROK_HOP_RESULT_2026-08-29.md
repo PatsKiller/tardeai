@@ -1,5 +1,9 @@
 # Grok critique hop — executed, verdict REJECT (2026-08-29)
 
+Status:      HISTORICAL
+as_of:       2026-08-29T16:11:51-04:00
+Measured at: efcc51365 / not measured
+
     plan_477c33c065ec (SPCX) / res_557cfaab8c34
     lane grok · process maria_research_critique · model grok-3
     verdict REJECT · attachable false · ATTACHED: NO

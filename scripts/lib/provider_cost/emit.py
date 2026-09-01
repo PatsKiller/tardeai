@@ -116,6 +116,8 @@ def emit_cost_event(
                 "calculated_cost_usd": None,
                 "cost_source": PRICE_UNKNOWN,
                 "price_schedule_id": None,
+                "band": None,
+                "cache_hit": None,
             }
         elif outcome == OUTCOME_ATTEMPT and usage_unknown:
             request_sent = True if request_sent is None else bool(request_sent)
@@ -124,6 +126,8 @@ def emit_cost_event(
                 "calculated_cost_usd": None,
                 "cost_source": PRICE_UNKNOWN,
                 "price_schedule_id": None,
+                "band": None,
+                "cache_hit": None,
             }
         else:
             miss = cache_miss_tokens if cache_miss_tokens is not None else prompt_tokens
@@ -132,6 +136,8 @@ def emit_cost_event(
                     "calculated_cost_usd": None,
                     "cost_source": PRICE_UNKNOWN,
                     "price_schedule_id": None,
+                    "band": None,
+                    "cache_hit": None,
                 }
                 usage_unknown = True
             else:
@@ -147,6 +153,10 @@ def emit_cost_event(
                 request_sent = True
             if possibly_billable is None:
                 possibly_billable = True
+
+        # Explicit cache-hit bit for §9.2 surfaces (None when usage unknown).
+        if priced.get("cache_hit") is None and cache_hit_tokens is not None:
+            priced["cache_hit"] = int(cache_hit_tokens or 0) > 0
 
         ev = ProviderCostEvent(
             event_id=event_id_for(
@@ -183,6 +193,8 @@ def emit_cost_event(
             calculated_cost_usd=priced.get("calculated_cost_usd"),
             cost_source=priced.get("cost_source"),
             price_schedule_id=priced.get("price_schedule_id"),
+            rate_tier=priced.get("band"),
+            cache_hit=priced.get("cache_hit"),
             environment=attr.get("environment"),
             is_test=test,
             evidence_refs=list(evidence_refs or ["provider_cost.emit_cost_event"]),

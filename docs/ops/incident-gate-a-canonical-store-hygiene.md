@@ -1,5 +1,9 @@
 # Gate A Canonical Store Hygiene Incident
 
+Status:      HISTORICAL
+as_of:       2026-08-09T22:25:47-04:00
+Measured at: efcc51365 / not measured
+
 **Incident ID**: INC-2026-08-09-GATE-A-STORES
 **Classification**: Development hygiene violation (not a runtime integrity failure)
 **Severity**: LOW (canonical content matched R0.1 baseline after cleanup)

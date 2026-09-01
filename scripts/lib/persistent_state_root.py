@@ -27,6 +27,8 @@ GOOD_PERSISTENT_ROOT = Path.home() / "trade-ai-releases" / "persistent-state"
 DEFAULT_LEGACY_SOURCE = Path("/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild")
 
 # Trees that must survive deploy. CACHE exceptions are documented, not copied.
+# G1: logs joins the set — release-local logs/ forks orphan escalation queues
+# and append-only health history on every promote (#569).
 PERSISTENT_TREES = (
     "data/cio",
     "data/portfolios/state",
@@ -34,6 +36,7 @@ PERSISTENT_TREES = (
     "data/hermes",
     "data/health",
     "data/runtime",
+    "logs",
 )
 PERSISTENT_FILES: tuple[str, ...] = ()
 CACHE_EXCLUDES = (
@@ -57,6 +60,56 @@ def good_persistent_root() -> Path:
     return Path(env) if env else GOOD_PERSISTENT_ROOT
 
 
+def _realpath_key(path: Path) -> str:
+    try:
+        return str(path.resolve())
+    except OSError:
+        return str(path)
+
+
+def durable_write_targets(
+    rel: str,
+    checkout_root: Path | str,
+    *,
+    require_persistent_dir: bool = True,
+) -> list[Path]:
+    """Resolution-layer dual-write targets for a checkout-relative path.
+
+    WAVE G1 — five instances of the same defect: a writer whose path resolves
+    from `Path(__file__)` / cron cwd lands in the hub tree, while the served
+    release reads GOOD_PERSISTENT_ROOT (or a symlink into it). Fix the path
+    here, not the cron's `cd`.
+
+    Returns the served/persistent copy first (when present), then the checkout
+    copy. Deduped by realpath so a release whose tree already symlinks the
+    persistent root yields one target. Callers that still have hub-tree readers
+    must write both; collapsing to one copy is an irreversible operator
+    decision (same hold as the two holdings copies).
+    """
+    rel_path = Path(rel)
+    targets: list[Path] = []
+    seen: set[str] = set()
+
+    def _add(path: Path) -> None:
+        key = _realpath_key(path)
+        if key not in seen:
+            seen.add(key)
+            targets.append(path)
+
+    persistent = good_persistent_root() / rel_path
+    if require_persistent_dir:
+        # Directory form (state dirs, logs/, runtime/).
+        if persistent.is_dir() or is_provisioned():
+            _add(persistent)
+    else:
+        # File form (evening packet JSON, risk_management.json, …).
+        if persistent.parent.is_dir() or is_provisioned():
+            _add(persistent)
+
+    _add(Path(checkout_root) / rel_path)
+    return targets
+
+
 def portfolio_state_write_targets(checkout_root: Path | str) -> list[Path]:
     """State dirs a portfolio writer must update, served copy first.
 
@@ -72,23 +125,100 @@ def portfolio_state_write_targets(checkout_root: Path | str) -> list[Path]:
     realpath, so a checkout already symlinked at the persistent root yields one
     target rather than two writes to the same inode.
     """
-    targets: list[Path] = []
-    seen: set[str] = set()
+    return durable_write_targets("data/portfolios/state", checkout_root)
 
-    def _add(path: Path) -> None:
-        try:
-            key = str(path.resolve())
-        except OSError:
-            key = str(path)
-        if key not in seen:
-            seen.add(key)
-            targets.append(path)
 
-    persistent = good_persistent_root() / "data" / "portfolios" / "state"
-    if persistent.is_dir():
-        _add(persistent)
-    _add(Path(checkout_root) / "data" / "portfolios" / "state")
-    return targets
+def resolve_durable_dir(rel: str, checkout_root: Path | str | None = None) -> Path:
+    """Single directory resolution independent of cron cwd.
+
+    Prefers the persistent root when provisioned; else the checkout (or
+    DEFAULT_LEGACY_SOURCE). This is the cron→dev-tree fix at the resolution
+    layer: callers ask for a logical rel and get the served path.
+    """
+    checkout = Path(checkout_root) if checkout_root else DEFAULT_LEGACY_SOURCE
+    targets = durable_write_targets(rel, checkout)
+    return targets[0]
+
+
+def logs_root(checkout_root: Path | str | None = None) -> Path:
+    """Canonical logs/ directory — persistent when provisioned, else checkout."""
+    return resolve_durable_dir("logs", checkout_root)
+
+
+def evening_packet_rel() -> str:
+    return "data/runtime/aegis_evening_packet.json"
+
+
+def evening_packet_write_targets(checkout_root: Path | str) -> list[Path]:
+    """Paths that must receive the evening packet, served copy first."""
+    return durable_write_targets(
+        evening_packet_rel(), checkout_root, require_persistent_dir=False
+    )
+
+
+def evening_packet_path(checkout_root: Path | str | None = None) -> Path:
+    """Primary evening-packet path (persistent/runtime when available)."""
+    checkout = Path(checkout_root) if checkout_root else DEFAULT_LEGACY_SOURCE
+    return evening_packet_write_targets(checkout)[0]
+
+
+def report_authoritative_divergence(
+    *paths: Path | str,
+    label: str = "",
+) -> dict[str, Any]:
+    """Compare authoritative copies by byte identity. NEVER merges them.
+
+    AGENTS.md §9.4 / WAVE G1: divergent holdings / risk / packet copies are
+    reported to the operator. Auto-remediation is forbidden — detection must
+    not become resolution.
+    """
+    rows: list[dict[str, Any]] = []
+    for raw in paths:
+        path = Path(raw)
+        row: dict[str, Any] = {
+            "path": str(path),
+            "exists": path.is_file(),
+            "sha256": sha256_file(path) if path.is_file() else None,
+            "bytes": path.stat().st_size if path.is_file() else None,
+            "mtime": (
+                datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
+                .replace(microsecond=0)
+                .isoformat()
+                if path.is_file()
+                else None
+            ),
+            "realpath": str(Path(os.path.realpath(path))) if path.exists() or path.is_symlink() else str(path),
+        }
+        rows.append(row)
+
+    shas = {r["sha256"] for r in rows if r["sha256"]}
+    identical = len(shas) <= 1 and all(r["exists"] for r in rows) and len(rows) >= 1
+    present = [r for r in rows if r["exists"]]
+    if len(present) < 2:
+        identical = True  # nothing to diverge against
+
+    return {
+        "schema": "AuthoritativeDivergenceReport@v1",
+        "label": label or "unspecified",
+        "as_of": _now(),
+        "copies": rows,
+        "identical": identical,
+        "diverged": not identical and len(present) >= 2,
+        "auto_remediate": False,
+        "action": (
+            "REPORT_BOTH_ESCALATE"
+            if (not identical and len(present) >= 2)
+            else "NONE"
+        ),
+        "authority": AUTHORITY,
+        "memory_behavior_influence": MBI,
+        "financial_action": False,
+        "note": (
+            "Never merge divergent authoritative copies. Report both; escalate. "
+            "Future dual-writes from one in-memory object prevent re-divergence; "
+            "they do not reconcile historical forks."
+        ),
+    }
 
 
 def stamp_path(root: Path | None = None) -> Path:

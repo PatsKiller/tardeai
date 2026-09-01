@@ -1,5 +1,9 @@
 # Hermes LLM Auth / OAuth — Status & Guided Login (2026-06-07, updated 2026-07-02)
 
+Status:      ACTIVE
+as_of:       2026-07-02T00:41:17-04:00
+Measured at: efcc51365 / not measured
+
 Read-only auth status per LLM lane + the exact login commands. **No credentials are entered or stored in
 the app.** External OAuth logins authenticate in your **browser via Google SSO** at the provider's prompt.
 Endpoint: `GET /api/v2/hermes/llm-auth-status` · `GET /api/v2/llm/oauth-lanes`. UI: System → Hermes → "LLM Auth / OAuth" card.

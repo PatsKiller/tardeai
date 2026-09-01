@@ -1,5 +1,9 @@
 # Git Hygiene — protect the live primary tree (2026-07-01)
 
+Status:      ACTIVE
+as_of:       2026-07-01T18:02:15-04:00
+Measured at: efcc51365 / not measured
+
 ## Problem
 `portfolio_server.py` **hot-reloads code from the primary working tree** (`PROJECT_ROOT =
 /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild`). Multiple long-running interactive coding

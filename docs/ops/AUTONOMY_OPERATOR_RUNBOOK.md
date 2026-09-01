@@ -1,5 +1,9 @@
 # Autonomy Operator Runbook (READ_ONLY_ADVISORY)
 
+Status:      ACTIVE
+as_of:       2026-08-11T14:15:27-04:00
+Measured at: efcc51365 / not measured
+
 ## How agents wake
 
 1. **Timers** (backstop): `tradeai-agent-runtime@alex|morgan|steph|hermes.timer`
@@ -86,7 +90,7 @@ export PYTHONPATH=$PWD/scripts
 ## Ack / rate (existing Telegram /cio path)
 
 - `/cio ack <action_id>` — acknowledge ledger item
-- `/cio rate <action_id> <score>` — usefulness feedback into outcome store  
+- `/cio rate <action_id> <score>` — usefulness feedback into outcome store
 (Do not expect these to trade.)
 
 ## Emergency disable

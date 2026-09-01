@@ -1,4 +1,9 @@
 # PHASE 217B — Canonical Status Builder (2026-06-07)
+
+Status:      HISTORICAL
+as_of:       2026-06-07T18:49:05-04:00
+Measured at: efcc51365 / not measured
+
 `scripts/build_hermes_canonical_status.py` (read-only) merges live /api/v2/hermes/* + systemd timer state into
 `data/runtime/hermes_canonical_status_latest.json`. Normalized fields: portal counts, profiles[], llm_lanes[],
 self_learning_loops, graph_nodes[], retired_agents, gateway_status, kill_switch, deep_research_lane

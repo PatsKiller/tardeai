@@ -33,21 +33,71 @@ def test_policy_file_exists_and_is_mandatory() -> None:
     assert "DEPLOYMENT REMAINS SEPARATE" in text
 
 
+def _longest_shared_run(a: str, b: str) -> int:
+    import difflib
+    sm = difflib.SequenceMatcher(None, a, b)
+    return max((m.size for m in sm.get_matching_blocks()), default=0)
+
+
 def test_adapters_point_at_canonical_policy_without_duplicating_it() -> None:
-    policy_len = len(POLICY.read_text(encoding="utf-8"))
+    """Hierarchy after #734 (AGENTS.md behaviour hub):
+
+    - ``AGENTS.md`` is the behaviour hub — SoT for how agents work. It
+      references ``AI_WORK_POLICY.md`` and never restates it.
+    - ``AI_WORK_POLICY.md`` owns push / CI cost / deploy authorization.
+    - Three tool adapters (``CLAUDE.md``, Cursor rule, Copilot) are pointers
+      only. They carry ``AGENTS.md`` §0 verbatim so an agent that stops after
+      fifteen lines still knows the irreversible-harm rules.
+
+    That deliberate §0 duplication puts each adapter near ~2.5 KB. A
+    compactness cap keyed to "thin pointer" size (``len < policy/5``) is the
+    wrong property — it is exactly what §0 is designed to exceed — and is not
+    asserted here. ``CLAUDE.md`` is an adapter, not a governance SoT; §0
+    byte-identity across hub + adapters is guarded by
+    ``tests/test_agents_section_zero_parity.py``.
+    """
+    policy = POLICY.read_text(encoding="utf-8")
+    hub = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+
+    # Behaviour hub — not an adapter, not a second push-policy.
+    assert "single source of truth for how agents work" in hub
+    assert "AI_WORK_POLICY.md" in hub
+    assert "never duplicates it" in hub
+    assert "git commit" in hub
+    hub_run = _longest_shared_run(policy, hub)
+    assert hub_run < 400, (
+        f"AGENTS.md restates {hub_run} verbatim characters of AI_WORK_POLICY.md; "
+        "the hub references the policy, it does not copy it"
+    )
+
+    # Policy names the split: behaviour hub vs push/CI/deploy vs adapters.
+    assert "canonical agent-behaviour standard" in policy
+    assert "pointers only" in policy
+
     adapters = {
-        "AGENTS.md": ROOT / "AGENTS.md",
         "CLAUDE.md": ROOT / "CLAUDE.md",
         "copilot": ROOT / ".github/copilot-instructions.md",
         "cursor": ROOT / ".cursor/rules/00-tradeai-work-policy.mdc",
     }
+    section_zero_marker = "## The ten rules, verbatim from `AGENTS.md` §0"
     for name, path in adapters.items():
         blob = path.read_text(encoding="utf-8")
+        assert "AGENTS.md" in blob, name
         assert "AI_WORK_POLICY.md" in blob, name
         assert "git commit" in blob, name
-        # Adapters must stay compact. AGENTS.md also has pre-existing runtime notes.
-        if name != "AGENTS.md":
-            assert len(blob) < policy_len / 5, name
+        assert "single source of truth" in blob, name
+        assert section_zero_marker in blob, (
+            f"{name} must carry AGENTS.md §0 verbatim; size caps that fight "
+            "that duplication are the defect this test no longer encodes"
+        )
+        # Do not restate the push/CI/deploy policy. No byte-length cap: §0
+        # duplication is intentional and is what makes a pointer succeed when
+        # the agent does not follow the pointer.
+        run = _longest_shared_run(policy, blob)
+        assert run < 400, (
+            f"{name} restates {run} verbatim characters of AI_WORK_POLICY.md; "
+            "adapters point at the policy, they do not copy it"
+        )
 
 
 def test_pre_push_blocks_without_authorization() -> None:

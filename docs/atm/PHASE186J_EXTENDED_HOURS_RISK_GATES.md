@@ -1,5 +1,9 @@
 # Phase 186J: Extended-Hours Risk Gates
 
+Status:      HISTORICAL
+as_of:       2026-06-02T01:02:56-04:00
+Measured at: efcc51365 / not measured
+
 **Date**: 2026-06-02
 
 ## Context
@@ -44,7 +48,7 @@ spread_pct = (quote.ask - quote.bid) / quote.mid * 100
 
 if spread_pct > 1.0:
     REJECT "spread_too_wide_extended_hours"
-    
+
 if quote.age_seconds > 30:
     REJECT "stale_quote_extended_hours"
 ```

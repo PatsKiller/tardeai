@@ -1,5 +1,9 @@
 # Agent Intelligence Foundation
 
+Status:      ACTIVE
+as_of:       2026-08-16T23:43:00-04:00
+Measured at: efcc51365 / not measured
+
 `READ_ONLY_ADVISORY` program to make Trade AI's agents context-aware,
 self-observing, memory-assisted, and proactively advisory — without granting
 autonomous trading authority.

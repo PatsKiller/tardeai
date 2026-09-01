@@ -1,5 +1,9 @@
 # Phase 127-128 — Catalyst Quality Scoring and Advisory Overlay Design
 
+Status:      HISTORICAL
+as_of:       2026-06-01T17:36:28-04:00
+Measured at: efcc51365 / not measured
+
 ## Pilot Inventory (Phase 127A)
 
 | Ticker | Catalyst Type | Confidence | Sources | Domains |

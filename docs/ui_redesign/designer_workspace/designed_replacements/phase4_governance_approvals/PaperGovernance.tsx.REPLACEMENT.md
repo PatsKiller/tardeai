@@ -1,5 +1,9 @@
 # PaperGovernance.tsx Replacement
 
+Status:      HISTORICAL
+as_of:       2026-05-25T15:07:30-04:00
+Measured at: efcc51365 / not measured
+
 - **Target**: `apps/command-center-v2/src/pages/PaperGovernance.tsx`
 
 ## Changes

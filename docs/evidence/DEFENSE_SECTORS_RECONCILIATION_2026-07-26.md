@@ -1,5 +1,9 @@
 # Defense/Sectors Production Reconciliation (Lane C)
 
+Status:      HISTORICAL
+as_of:       2026-07-26T11:30:00-04:00
+Measured at: efcc51365 / not measured
+
 Branch `codex/defense-sectors-production-reconciliation-v1`, based exactly on
 `origin/main` (20a24027017a5ecb0a207ac8960ed7e2f995e54d). Draft PR only — nothing
 merged, deployed, scheduled, or promoted.

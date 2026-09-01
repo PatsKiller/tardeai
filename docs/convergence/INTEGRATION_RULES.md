@@ -1,5 +1,12 @@
 # Integration Rules
 
+Status:      ACTIVE
+as_of:       2026-08-30T22:01:17-04:00
+Measured at: efcc51365 / not measured
+
+> Cited by `AGENTS.md` §13, which carries these rules. `AGENTS.md` is the single source of
+> truth for agent behaviour.
+
 - One canonical source of truth per concept; extend existing contracts instead of cloning.
 - No concurrent edits to shared files.
 - No frontend business logic for runtime, materiality, notification, or maturity decisions.

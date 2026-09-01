@@ -1,5 +1,9 @@
 # Maria Watchlist Fabrication — Audit & Fix (2026-06-19)
 
+Status:      HISTORICAL
+as_of:       2026-06-19T21:51:53-04:00
+Measured at: efcc51365 / not measured
+
 The OpenClaw personal-assistant agent **Maria** fabricated watchlist responses. This documents the audit,
 root cause, fix, and verification. (Maria's SOUL lives in `~/.openclaw/` — outside this repo — and is
 backed up by `scripts/full_system_backup.py` ("OpenClaw configs … SOULs, workspaces"). This note is the

@@ -1,5 +1,9 @@
 # Hermes Command Center Panel — 2026-06-06
 
+Status:      ACTIVE
+as_of:       2026-06-07T14:32:18-04:00
+Measured at: efcc51365 / not measured
+
 ## Feature overview
 A Hermes management area under Command Center → **System → Hermes** tab. Read-only global Hermes/profile
 status + safe editing of profile SOUL/identity files + terminal-call reference + a guarded future Codex/dev

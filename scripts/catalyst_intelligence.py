@@ -81,14 +81,31 @@ def _ollama_analyze(symbol: str, headlines: List[str],
             last = memory_context["recent"][-1]
             mem_str += f"Last seen {last.get('date')}: score {last.get('score')}, flag {last.get('flag')}."
 
-    # Enrich with Brave Search (pre-market Stage 6 — 2000 free queries/mo)
+    # F2: Finviz/Yahoo enrich — Brave search API reserved for residual-web.
+    # Consumer: trade_ai_orchestrator.analyze_all_catalysts. Empty → no WEB NEWS.
     brave_context = ""
     try:
-        from brave_search import search_ticker, format_results_for_prompt
-        _brave = search_ticker(symbol, context="news today catalyst",
-                               project_root=str(Path(__file__).parent.parent))
-        if _brave:
-            brave_context = "\nWEB NEWS: " + format_results_for_prompt(_brave, max_chars=400)
+        articles = []
+        try:
+            from finviz_news import fetch_finviz_news
+            articles = list(fetch_finviz_news(symbol, lookback_hours=48) or [])[:3]
+        except Exception:
+            articles = []
+        if not articles:
+            try:
+                from yahoo_news import fetch_yahoo_news
+                articles = list(fetch_yahoo_news(symbol, lookback_hours=48) or [])[:3]
+            except Exception:
+                articles = []
+        if articles:
+            bits = []
+            for a in articles:
+                title = (a.get("headline") or a.get("title") or "")[:100]
+                src = a.get("source") or a.get("original_source") or ""
+                if title:
+                    bits.append(f"{title} ({src})" if src else title)
+            if bits:
+                brave_context = "\nWEB NEWS: " + " | ".join(bits)[:400]
     except Exception:
         pass
 

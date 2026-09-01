@@ -94,10 +94,41 @@ def check_health(conn):
         msg = f"CRITICAL: {go_count} GO/A+ scans but 0 strategy_signals. Strategy Desk is empty!"
         log.error(msg)
         try:
-            from telegram_alert import send_alert
-            send_alert(msg)
-        except Exception:
-            pass
+            # send_telegram, NOT send_alert -- `send_alert` has never existed in
+            # telegram_alert.py, so this dedicated signal-flow alarm raised ImportError
+            # into `except Exception: pass` and reported a CRITICAL to nobody, silently,
+            # for the whole 24-day Strategy Desk outage.
+            from telegram_alert import send_telegram
+            # BYPASS_ROUTER_REASON: the router classifies this CRITICAL as P1_DIGEST
+            # and suppresses it into report_capture's "reports_archive" channel of
+            # telegram_outbox.
+            #
+            # CORRECTION to an earlier version of this comment, which said "nothing
+            # delivers that archive". That overstated it. The rows ARE readable --
+            # reports_portal.py surfaces telegram_outbox in the v3 Reports portal.
+            # What is true is narrower and still decisive: nothing PUSHES them. The
+            # only active digest cron, alert_daily_digest, reads alert_events, a
+            # different table. So a routed CRITICAL reaches a pull surface nobody was
+            # watching -- demonstrated by 24 days of exactly that -- and never pages.
+            # An interrupt-class alarm must page, not wait to be looked up.
+            #
+            # This was NOT caught by repairing the import in #787. That fix made
+            # send_telegram resolve; the message was then suppressed one layer lower
+            # and the alarm stayed silent. Presence of a working import is not
+            # evidence an alarm fires -- which is the whole point of C1, and it
+            # caught my own remediation.
+            #
+            # "Strategy Desk is empty" is an operator-interrupt condition, not a
+            # digest line.
+            if not send_telegram(msg, bypass_router=True):
+                log.error("ALERT NOT DELIVERED (send_telegram returned False): %s", msg)
+        except Exception as exc:
+            # ALARM-DELIVERY-DECLARED: logs the exception type and message rather than
+            # recording to a durable surface. This is the handler that swallowed an
+            # ImportError for 24 days; naming the failure is the fix that mattered.
+            # Durable recording (signal_flow_audit delivery column) is remaining debt,
+            # tracked in the C3 baseline rather than silently accepted.
+            log.error("ALERT NOT DELIVERED (%s: %s): %s", type(exc).__name__, exc, msg)
     elif status == "WARN":
         msg = f"WARNING: {go_count} GO/A+ scans but only {signal_count} strategy_signals."
         log.warning(msg)

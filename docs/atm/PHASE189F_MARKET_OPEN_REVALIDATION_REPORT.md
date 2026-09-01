@@ -1,5 +1,9 @@
 # PHASE 189F — Market-Open Revalidation Report (post-open, authoritative)
 
+Status:      HISTORICAL
+as_of:       2026-06-02T09:35:38-04:00
+Measured at: efcc51365 / not measured
+
 **Watch fired:** ✅ YES — cron `atm-market-open-watch-0930` ran **2026-06-02 09:30:02 ET**
 (`logs/atm_market_open_watch.log`). **Revised with fresh live re-quotes pulled 09:32 ET.**
 Alpaca **paper** only · Live endpoint blocked · READ-ONLY (no orders/stops/mutations).

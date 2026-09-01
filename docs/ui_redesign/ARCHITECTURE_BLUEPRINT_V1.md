@@ -1,5 +1,9 @@
 # Trade AI Command Center -- Architecture Blueprint v1
 
+Status:      HISTORICAL
+as_of:       2026-05-25T11:12:43-04:00
+Measured at: efcc51365 / not measured
+
 ## Mental Model
 - **Decide** -- Command, Agent Collaboration, Inbox, Daily Brief
 - **Trade** -- Trade AI, Prospects, Strategy Desk, Incubator, ATM Mode

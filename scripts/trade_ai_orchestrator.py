@@ -42,7 +42,11 @@ from __future__ import annotations
 import argparse, json, os, sys, traceback
 from datetime import datetime
 from pathlib import Path
-from dotenv import load_dotenv
+try:
+    from dotenv import load_dotenv
+except ImportError:  # CI hardening image has no python-dotenv; .env is optional
+    def load_dotenv(*_a, **_k):
+        return False
 
 # NEW: Dashboard generator for single persistent file
 try:
@@ -89,9 +93,74 @@ def _ensure(path: Path) -> Path:
     path.mkdir(parents=True, exist_ok=True)
     return path
 
+# Stage errors accumulate so a failure summary can name what broke — not just
+# an exit code. Health-recovery success rows already carry `rc=` /
+# `rate_limit_hits=`; failing runs historically stored only `{"errors": "2"}`.
+_STAGE_ERRORS: list[dict] = []
+
+
 def _ok(s, m):   print(f"  \u2705  {s:<24}  {m}")
-def _err(s, m):  print(f"  \u274c  {s:<24}  {m}")
+def _err(s, m):
+    _STAGE_ERRORS.append({"stage": s, "error": str(m)[:300]})
+    print(f"  \u274c  {s:<24}  {m}")
 def _skip(s, m): print(f"  \u23ed\ufe0f  {s:<24}  {m}")
+
+
+def _count_rate_limit_hits(root: Path, hours: int = 2) -> int:
+    """Same sensor the health-recovery success note already quotes.
+
+    Failing runs used to leave this off the summary entirely, so a
+    yfinance-rate-limit death looked identical to an argparse exit.
+    """
+    import re
+    n = 0
+    cutoff = datetime.now().timestamp() - hours * 3600
+    for name in ("screener_pm.log", "portfolio_orchestrator.log", "trade_ai_orchestrator.log"):
+        p = root / "logs" / name
+        try:
+            if not p.is_file() or p.stat().st_mtime < cutoff:
+                continue
+            text = p.read_text(errors="ignore")[-400_000:]
+            n += len(re.findall(r"Too Many Requests|Rate limited", text, re.I))
+        except Exception:
+            continue
+    return n
+
+
+def format_failure_diagnostic(
+    *,
+    rc: str,
+    rate_limit_hits: int,
+    reasons=None,
+    symbols: int = 0,
+    stage_errors: int | None = None,
+    extra: str = "",
+) -> str:
+    """Match the health-recovery success note shape: `rc=...; rate_limit_hits=...`.
+
+    PipelineRun.run_fail stores SystemExit's string in summary.errors — so the
+    failure path must put the diagnostic HERE, or the row stays opaque.
+    """
+    parts = [f"rc={rc}", f"rate_limit_hits={rate_limit_hits}", f"symbols={symbols}"]
+    if reasons is not None:
+        parts.append(f"reasons={list(reasons)}")
+    if stage_errors is None:
+        stage_errors = len(_STAGE_ERRORS)
+    parts.append(f"stage_errors={stage_errors}")
+    if extra:
+        parts.append(extra)
+    return "; ".join(parts)
+
+
+def write_failure_run_summary(output_dir: Path, payload: dict) -> Path:
+    """Failure must reach a surface, not just a log line / pipeline_runs.errors."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    path = output_dir / "run_summary.json"
+    doc = dict(payload)
+    doc.setdefault("status", "FAILED")
+    doc.setdefault("generated_at", datetime.now().isoformat(timespec="seconds"))
+    path.write_text(json.dumps(doc, indent=2, default=str))
+    return path
 
 
 def _inject_sector_scores(tickers, sectors):
@@ -120,6 +189,7 @@ def _inject_sector_scores(tickers, sectors):
 
 
 def run_pipeline(root, run_label, date_str, use_llm=True, send_alerts=True, skip_market_check=False, institutional=False, min_symbols=40, allow_underfilled=False):
+    _STAGE_ERRORS.clear()
     print(f"\n{'='*66}")
     print(f"  \u26a1 Trade AI v12  |  Run {run_label}  |  {date_str}")
     print(f"{'='*66}\n")
@@ -133,6 +203,11 @@ def run_pipeline(root, run_label, date_str, use_llm=True, send_alerts=True, skip
         return 0
 
     output_dir = _ensure(root / os.getenv("REPORT_OUTPUT_DIR","reports") / date_str / run_label)
+    # Publish gate: RUN_FAILED / RUN_UNDERFILLED must not stamp dashboard/PDF/live
+    # as a successful run (B3). allow_underfilled keeps the old continue-anyway path.
+    _publish_artifacts = True
+    _health_status = None
+    _health_reasons = []
 
     # 1 Weekly hygiene
     try:
@@ -577,35 +652,40 @@ def run_pipeline(root, run_label, date_str, use_llm=True, send_alerts=True, skip
     else:
         _skip("trade_plans", "--no-llm flag set")
 
-    # 15 HTML dashboard
+    # 15 HTML dashboard — skipped on RUN_FAILED when publish is refused (B3)
     html_path: str | None = None
-    try:
-        from html_dashboard import generate_html_dashboard
-        html_path = generate_html_dashboard(
-            scored, market_snapshot, delta, calendar,
-            options_flow, options_summary, output_dir, run_label, date_str,
-            trade_plans=trade_plans, halt_data=halt_data,
-            institutional=institutional,
-        )
-        _ok("html_dashboard", Path(html_path).name)
-    except Exception as exc:
-        _err("html_dashboard", str(exc))
-
-    # 16 PDF
     pdf_path: str | None = None
-    if os.getenv("GENERATE_PDF","true").lower() == "true":
-        try:
-            from pdf_generator import generate_pdf
-            pdf_path = generate_pdf(scored, delta, output_dir, run_label, date_str,
-                                    market_snapshot=market_snapshot, calendar=calendar,
-                                    options_summary=options_summary)
-            _ok("pdf_generator", Path(pdf_path).name)
-        except Exception as exc:
-            _err("pdf_generator", str(exc))
-
-    # 17 Word doc
     docx_path: str | None = None
-    if os.getenv("GENERATE_DOCX","true").lower() == "true":
+    if not _publish_artifacts:
+        _skip("html_dashboard", f"publish refused after {_health_status}")
+        _skip("pdf_generator", f"publish refused after {_health_status}")
+        _skip("docx_generator", f"publish refused after {_health_status}")
+    else:
+        try:
+            from html_dashboard import generate_html_dashboard
+            html_path = generate_html_dashboard(
+                scored, market_snapshot, delta, calendar,
+                options_flow, options_summary, output_dir, run_label, date_str,
+                trade_plans=trade_plans, halt_data=halt_data,
+                institutional=institutional,
+            )
+            _ok("html_dashboard", Path(html_path).name)
+        except Exception as exc:
+            _err("html_dashboard", str(exc))
+
+        # 16 PDF
+        if os.getenv("GENERATE_PDF","true").lower() == "true":
+            try:
+                from pdf_generator import generate_pdf
+                pdf_path = generate_pdf(scored, delta, output_dir, run_label, date_str,
+                                        market_snapshot=market_snapshot, calendar=calendar,
+                                        options_summary=options_summary)
+                _ok("pdf_generator", Path(pdf_path).name)
+            except Exception as exc:
+                _err("pdf_generator", str(exc))
+
+    # 17 Word doc (also gated by publish refusal)
+    if _publish_artifacts and os.getenv("GENERATE_DOCX","true").lower() == "true":
         try:
             from docx_generator import generate_docx
             docx_path = generate_docx(scored, delta, output_dir, run_label, date_str)
@@ -782,7 +862,11 @@ def run_pipeline(root, run_label, date_str, use_llm=True, send_alerts=True, skip
         else:
             _err("run_health", f"{_health_status} — {len(scored)} symbols (min {min_symbols}) — {_health_reasons}")
             if not allow_underfilled:
-                print(f"\n  ⚠️  Run is {_health_status}. Use --allow-underfilled to proceed anyway.\n")
+                # B3: a failure branch that only printed used to keep publishing
+                # dashboard / PDF / dashboard_live as if the run succeeded.
+                _publish_artifacts = False
+                print(f"\n  ⚠️  Run is {_health_status}. Refusing to publish dashboard/PDF/live "
+                      f"(use --allow-underfilled to proceed anyway).\n")
     except Exception as exc:
         _err("run_health", str(exc))
 
@@ -832,14 +916,35 @@ def run_pipeline(root, run_label, date_str, use_llm=True, send_alerts=True, skip
         _sync_inserted = sync_result.get("inserted", 0)
         _sync_total = sync_result.get("strategy_signals_after", 0)
         _sync_go = sync_result.get("go_count", 0) + sync_result.get("aplus_count", 0)
-        _ok("strategy_signal_sync", f"{_sync_inserted} inserted  {_sync_total} total  ({_sync_go} GO/A+ scans)")
-        # Health alert if GO scans exist but no signals written
-        if _sync_go > 0 and _sync_total == 0:
+        _sync_errors = sync_result.get("errors", 0)
+        # errors MUST appear in the summary line. Between 2026-08-08 and 2026-08-31 every
+        # insert raised (ON CONFLICT naming a non-existent constraint) and this line still
+        # read "0 inserted  0 total" with a green tick -- a total outage was indistinguishable
+        # from a quiet day in the one line a human reads.
+        _sync_msg = f"{_sync_inserted} inserted  {_sync_total} total  ({_sync_go} GO/A+ scans)"
+        if _sync_errors:
+            _sync_msg += f"  {_sync_errors} ERRORS"
+        # Zero-rows alert: GO/A+ scans arrived but nothing was written, or writes errored.
+        if (_sync_go > 0 and _sync_total == 0) or _sync_errors:
+            _err("strategy_signal_sync", _sync_msg)
+            _alert_text = (f"⚠️ Signal flow warning: {_sync_go} GO/A+ scans, "
+                           f"{_sync_inserted} inserted, {_sync_errors} errors — "
+                           f"0 strategy_signals written. Strategy Desk will be empty.")
             try:
-                from telegram_alert import send_alert
-                send_alert(f"⚠️ Signal flow warning: {_sync_go} GO/A+ scans but 0 strategy_signals written. Strategy Desk will be empty.")
-            except Exception:
-                print(f"  ⚠️ ALERT: {_sync_go} GO/A+ scans but 0 strategy_signals — Strategy Desk empty!")
+                # send_telegram, NOT send_alert. `send_alert` has never existed in
+                # telegram_alert.py (git log -S "def send_alert" returns no commit), so this
+                # alarm raised ImportError and printed to a log file 171 times while the
+                # Strategy Desk sat empty for 24 days. An alarm that cannot raise is not an alarm.
+                from telegram_alert import send_telegram
+                _alert_ok = send_telegram(_alert_text)
+                if not _alert_ok:
+                    print(f"  ⚠️ ALERT NOT DELIVERED (send_telegram returned False): {_alert_text}")
+            except Exception as _alert_exc:
+                # Record WHY, and name the symbol. A bare `except Exception: print(...)` is what
+                # laundered the ImportError into a log line nobody read.
+                print(f"  ⚠️ ALERT NOT DELIVERED ({type(_alert_exc).__name__}: {_alert_exc}): {_alert_text}")
+        else:
+            _ok("strategy_signal_sync", _sync_msg)
     except Exception as exc:
         _err("strategy_signal_sync", f"{exc}  — continuing without signal sync")
         # Fallback: try subprocess
@@ -975,7 +1080,8 @@ def run_pipeline(root, run_label, date_str, use_llm=True, send_alerts=True, skip
         _err("run_summary", str(exc))
 
     # Copy dated dashboard to dashboard_live.html (persistent live view)
-    if html_path:
+    # B3: RUN_FAILED must not refresh dashboard_live as a success surface.
+    if html_path and _publish_artifacts:
         try:
             import shutil
             live_path = root / "reports" / "dashboard_live.html"
@@ -983,9 +1089,13 @@ def run_pipeline(root, run_label, date_str, use_llm=True, send_alerts=True, skip
             _ok("persistent_dashboard", "dashboard_live.html updated")
         except Exception as exc:
             _err("persistent_dashboard", str(exc))
+    elif not _publish_artifacts:
+        _skip("persistent_dashboard", f"publish refused after {_health_status}")
 
     # 21 Alerts
-    if send_alerts:
+    if not _publish_artifacts:
+        _skip("alerting", f"publish refused after {_health_status}")
+    elif send_alerts:
         try:
             from alerting import send_all_alerts
             send_all_alerts(
@@ -1003,6 +1113,41 @@ def run_pipeline(root, run_label, date_str, use_llm=True, send_alerts=True, skip
             _err("alerting", str(exc))
     else:
         _skip("alerting", "--no-alerts flag set")
+
+    # B2+B3 failure surface: when publish was refused, write the same diagnostic
+    # fields the health-recovery SUCCESS path already carries, then exit non-zero
+    # with that string so PipelineRun.run_fail does not store a bare "2".
+    if not _publish_artifacts:
+        _rl = _count_rate_limit_hits(Path(root))
+        _diag = format_failure_diagnostic(
+            rc=str(_health_status or "RUN_FAILED"),
+            rate_limit_hits=_rl,
+            reasons=_health_reasons,
+            symbols=len(scored),
+        )
+        write_failure_run_summary(output_dir, {
+            "version": "12.0",
+            "date": date_str,
+            "run_label": run_label,
+            "status": "FAILED",
+            "health_status": _health_status,
+            "reason_codes": list(_health_reasons or []),
+            "ticker_count": len(scored),
+            "rate_limit_hits": _rl,
+            "stage_errors": list(_STAGE_ERRORS),
+            "diagnostic": _diag,
+            "published_dashboard": False,
+            "published_pdf": False,
+            "published_dashboard_live": False,
+        })
+        print(f"\n{'='*66}")
+        print(f"  \u274c v12 FAILED  |  {date_str} {run_label}")
+        print(f"  {_diag}")
+        print(f"  \U0001f4c1 Output: {output_dir}")
+        print(f"{'='*66}\n")
+        # Non-zero int keeps cron/monitoring honest; the string is what
+        # PipelineRun records. Prefer the string via SystemExit in main().
+        return _diag
 
     go_syms = [t["symbol"] for t in scored if t.get("decision") == "GO"][:5]
     print(f"\n{'='*66}")
@@ -1058,6 +1203,52 @@ def main():
                         min_symbols=args.min_symbols,
                         allow_underfilled=args.allow_underfilled)
 
+
+def _enrich_opaque_exit(code_or_msg, root: Path | None = None) -> str | int:
+    """Turn a bare exit code into the diagnostic success-recovery already uses.
+
+    Observed live: failed pipeline_runs rows with summary `{"errors": "2"}` —
+    argparse/SystemExit code with no rc= / rate_limit_hits=. The health-recovery
+    SUCCESS path already writes those fields; failing runs must too (B2).
+    """
+    if isinstance(code_or_msg, str) and "rc=" in code_or_msg:
+        return code_or_msg
+    root = root or Path(".")
+    try:
+        rl = _count_rate_limit_hits(root)
+    except Exception:
+        rl = -1
+    if code_or_msg in (0, None):
+        return code_or_msg
+    rc_label = f"exit_{code_or_msg}" if not isinstance(code_or_msg, str) else code_or_msg
+    return format_failure_diagnostic(
+        rc=str(rc_label),
+        rate_limit_hits=rl,
+        reasons=None,
+        symbols=0,
+        stage_errors=len(_STAGE_ERRORS),
+    )
+
+
 if __name__ == "__main__":
     with PipelineRun("trade_ai_orchestrator") as _run:
-        raise SystemExit(main())
+        _root_guess = Path(".").resolve()
+        try:
+            _result = main()
+        except SystemExit as _se:
+            # argparse exits 2 before run_pipeline; enrich so the row is legible.
+            _code = _se.code
+            if _code in (0, None):
+                raise
+            raise SystemExit(_enrich_opaque_exit(_code, _root_guess)) from _se
+        except Exception as _exc:
+            _diag = format_failure_diagnostic(
+                rc=type(_exc).__name__,
+                rate_limit_hits=_count_rate_limit_hits(_root_guess),
+                extra=f"error={str(_exc)[:200]}",
+            )
+            raise SystemExit(_diag) from _exc
+        if _result in (0, None):
+            raise SystemExit(0)
+        # Non-zero / diagnostic string from run_pipeline (already formatted).
+        raise SystemExit(_enrich_opaque_exit(_result, _root_guess))

@@ -1,5 +1,9 @@
 # ADR-004 — Mem0 (or local test double) as the memory adapter
 
+Status:      ACTIVE
+as_of:       2026-08-16T23:13:46-04:00
+Measured at: efcc51365 / not measured
+
 - **Status**: Accepted
 - **Date**: 2026-08-17
 

@@ -1,5 +1,9 @@
 # PHASE 189E — Corrected Market-Open Operator Digest
 
+Status:      HISTORICAL
+as_of:       2026-06-02T09:35:38-04:00
+Measured at: efcc51365 / not measured
+
 **Run:** 2026-06-02 09:32 ET (post-open) · Alpaca **paper** only · Live endpoint blocked
 
 > **Framing correction (supersedes Phase 188's "naked positions"):** No position is naked. All 6

@@ -1,5 +1,9 @@
 # Phase 199C — Runtime Pipeline Ownership Model (target architecture)
 
+Status:      HISTORICAL
+as_of:       2026-06-04T22:39:43-04:00
+Measured at: efcc51365 / not measured
+
 Design only. Defines the seven target pipelines that the ~211 cron lines + 32 timers + 30 services
 should consolidate into, each with a single owner, a clear trigger window, and explicit allowed /
 prohibited writes. **No runtime change here** — this is the model 199D plans migration toward and

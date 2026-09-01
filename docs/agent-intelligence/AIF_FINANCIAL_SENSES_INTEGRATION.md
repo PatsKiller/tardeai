@@ -1,5 +1,9 @@
 # AIF ↔ Financial Senses — governed read-only integration
 
+Status:      ACTIVE
+as_of:       2026-08-17T17:24:31-04:00
+Measured at: efcc51365 / not measured
+
 READ_ONLY_ADVISORY. MEMORY_BEHAVIOR_INFLUENCE = 0. No broker / order / stop /
 2FA / risk-policy authority. No auto-promotion.
 

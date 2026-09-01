@@ -1,5 +1,9 @@
 # Context Sync Doc Inventory — 2026-05-22
 
+Status:      ACTIVE
+as_of:       2026-05-22T16:02:12-04:00
+Measured at: efcc51365 / not measured
+
 ## Docs Found Locally (matched to Drive topics)
 
 ### ATM v1 Design / Build

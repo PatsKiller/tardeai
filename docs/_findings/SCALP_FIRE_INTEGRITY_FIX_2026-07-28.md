@@ -1,5 +1,9 @@
 # Scalp Fire Integrity — Gate Persistence, Stop Floor, and Canonical Setup Identity
 
+Status:      HISTORICAL
+as_of:       2026-07-28T11:51:51-04:00
+Measured at: efcc51365 / not measured
+
 Date: 2026-07-28
 Branch: `agent/scalp-fire-integrity-v1`
 Scope: three defects in the momentum-scalp fire path (detector → shadow logger → ActiveTrader

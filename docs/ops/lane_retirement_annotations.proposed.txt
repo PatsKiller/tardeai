@@ -1,0 +1,84 @@
+# Proposed annotations for existing commented cron entries.
+# PROPOSAL ONLY — applying these edits the live crontab, which is operator-only.
+# Convention: # RETIRED <date> lane=<id> reason=<why> owner=<who> review_by=<date>
+# Generated 2026-08-30 from live `crontab -l`. Reasons are recorded, never invented:
+# where the cause could not be established the entry says reason=UNKNOWN.
+
+# RETIRED 2026-08-19 lane=watchlist-agent-jobs reason=replaced_by_run_watchlist_agent_jobs_offpeak.sh owner=platform
+#   was: OFFPEAK_SOAK 2026-08-19 replaced by run_watchlist_agent_jobs_offpeak.sh: */10 * * * 0,6 cd $PROJ && flock -n -E 99 /tmp/tradeai_watchlist_agent_jobs.l
+
+# RETIRED 2026-08-19 lane=watchlist-agent-jobs reason=replaced_by_run_watchlist_agent_jobs_offpeak.sh owner=platform
+#   was: TRADEAI_OFFPEAK_SOAK DeepSeek off-peak drain (limit 8, soak cap 2.00)
+
+# RETIRED 2026-08-19 lane=watchlist-agent-jobs reason=replaced_by_run_watchlist_agent_jobs_offpeak.sh owner=platform
+#   was: RETARGETED_ET_BULK was: */15 0-1 * * 1-6 /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/run_watchlist_agent_jobs_offpeak.sh >> /home
+
+# RETIRED 2026-08-19 lane=watchlist-agent-jobs reason=replaced_by_run_watchlist_agent_jobs_offpeak.sh owner=platform
+#   was: RETARGETED_ET_BULK was: */15 0-1 * * 0 /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/run_watchlist_agent_jobs_offpeak.sh >> /home/j
+
+# RETIRED 2026-08-19 lane=watchlist-agent-jobs reason=replaced_by_run_watchlist_agent_jobs_offpeak.sh owner=platform
+#   was: OFFPEAK_SOAK 2026-08-19 replaced by run_watchlist_agent_jobs_offpeak.sh: */5 0-5 * * 1-6 cd $PROJ && { [ -f /tmp/tradeai_deep_llm_window.lock ] && ech
+
+# RETIRED 2026-08-19 lane=watchlist-agent-jobs reason=replaced_by_run_watchlist_agent_jobs_offpeak.sh owner=platform
+#   was: OFFPEAK_SOAK 2026-08-19 replaced by run_watchlist_agent_jobs_offpeak.sh: */5 20-23 * * 1-5 cd $PROJ && { [ -f /tmp/tradeai_deep_llm_window.lock ] && e
+
+# RETIRED 2026-06-11 lane=orchestrator-0900-1000 reason=claimed_redundant_with_continuous_runner__CLAIM_FALSE_REVERTED owner=platform
+#   was: RETIRED 2026-06-11 (redundant: continuous_runner covers 04:00-11:00 at 10-15min cycles) — restore from backups/crontab_pre_cadence_fix_20260611.txt
+
+# RETIRED 2026-06-11 lane=orchestrator-0900-1000 reason=claimed_redundant_with_continuous_runner__CLAIM_FALSE_REVERTED owner=platform
+#   was: RETIRED 2026-06-11 (redundant: continuous_runner covers 04:00-11:00 at 10-15min cycles)
+
+# RETIRED 2026-06-01 lane=deep_overnight_llm reason=UNKNOWN owner=cio review_by=2026-09-15
+#   was: PHASE102-RETIRED 0 16 * * 5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && flock -n /tmp/tradeai_deep_llm_window.lock bash scripts/run
+
+# RETIRED 2026-06-01 lane=deep_overnight_llm reason=UNKNOWN owner=cio review_by=2026-09-15
+#   was: PHASE102-RETIRED 0 20 * * 1-5 cd $PROJ && bash scripts/market_day_gate.sh $PY scripts/overnight_batch.py --telegram >> logs/overnight_batch.log 2>&1
+
+# RETIRED 2026-06-01 lane=deep_overnight_llm reason=UNKNOWN owner=cio review_by=2026-09-15
+#   was: PHASE102-RETIRED 0 23 * * * cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && ./scripts/run_deep_overnight_llm_window.sh --enable-hybrid-
+
+# RETIRED <date-unknown> lane=<see config/lane_registry.json> reason=UNKNOWN owner=platform review_by=2026-09-15
+#   was: 0 5 * * 1-5 cd $PROJ && $PY scripts/run_alex_daily.py --daily --telegram >> logs/alex_daily.log 2>&1  # DISABLED 2026-08-08 — agent_runtime@alex.timer
+
+# RETIRED <date-unknown> lane=<see config/lane_registry.json> reason=UNKNOWN owner=platform review_by=2026-09-15
+#   was: 0 7 * * 1-5 cd $PROJ && $PY scripts/cio_decision_engine.py --run >> logs/cio_decisions.log 2>&1  # DISABLED 2026-08-08 >> logs/cio_decisions.log 2>&1
+
+# RETIRED <date-unknown> lane=<see config/lane_registry.json> reason=UNKNOWN owner=platform review_by=2026-09-15
+#   was: 0 8 * * 0 cd $PROJ && $PY scripts/run_alex_daily.py --weekly --telegram >> logs/alex_weekly.log 2>&1  # DISABLED 2026-08-08 >> logs/alex_weekly.log 2>
+
+# RETIRED <date-unknown> lane=<see config/lane_registry.json> reason=UNKNOWN owner=platform review_by=2026-09-15
+#   was: 0 9 1 * * cd $PROJ && $PY scripts/run_alex_daily.py --monthly --telegram >> logs/alex_monthly.log 2>&1  # DISABLED 2026-08-08 >> logs/alex_monthly.log
+
+# RETIRED 2026-08-23 lane=r9-local-generative reason=local_generative_removed_from_production_graph owner=platform
+#   was: R9_DISABLED_LOCAL_GENERATIVE 2026-08-23 30 21 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && .venv/bin/python scripts/gemma3_c
+
+# RETIRED <date-unknown> lane=<see config/lane_registry.json> reason=UNKNOWN owner=platform review_by=2026-09-15
+#   was: 15 7 * * 1-5 cd $PROJ && $PY scripts/alex_hygiene.py >> logs/alex_hygiene.log 2>&1  # DISABLED 2026-08-08 >> logs/alex_hygiene.log 2>&1
+
+# RETIRED <date-unknown> lane=<see config/lane_registry.json> reason=UNKNOWN owner=platform review_by=2026-09-15
+#   was: 0 6 * * 1 cd $PROJ && timeout 10m $PY scripts/alex_gov_research.py --refresh >> logs/alex_gov_research.log 2>&1  # DISABLED 2026-08-08 >> logs/alex_go
+
+# RETIRED 2026-06-01 lane=deep_overnight_llm reason=UNKNOWN owner=cio review_by=2026-09-15
+#   was: PHASE102-RETIRED 35 6 * * 1-5 cd $PROJ && $PY scripts/overnight_batch.py --tax-sweep >> logs/tax_sweep.log 2>&1
+
+# RETIRED <date-unknown> lane=<see config/lane_registry.json> reason=UNKNOWN owner=platform review_by=2026-09-15
+#   was: touch data/runtime/HERMES_DISABLED to halt. flock prevents overlap.
+
+# RETIRED 2026-06-06 lane=portfolio-backup-cron reason=folded_into_tradeai-portfolio-backup-cadence_0230 owner=platform
+#   was: [RETIRED 2026-06-06 — covered by tradeai-portfolio-backup-cadence @02:30] 30 5 * * *   cd $PROJ && flock -n /tmp/backup_env.lock  bash scripts/backup_
+
+# RETIRED 2026-06-06 lane=portfolio-backup-cron reason=folded_into_tradeai-portfolio-backup-cadence_0230 owner=platform
+#   was: [RETIRED 2026-06-06 — folded into tradeai-portfolio-backup-cadence @02:30 with weekly staleness gate] 45 5 * * 0   cd $PROJ && flock -n /tmp/backup_da
+
+# RETIRED <date-unknown> lane=<see config/lane_registry.json> reason=UNKNOWN owner=platform review_by=2026-09-15
+#   was: ── Schwab L2 stream capture (read-only, Rule-9 isolated; daemon self-terminates at close; kill: data/state/STREAM_DISABLED) ──
+
+# RETIRED 2026-08-23 lane=r9-local-generative reason=local_generative_removed_from_production_graph owner=platform
+#   was: R9_DISABLED_LOCAL_GENERATIVE 2026-08-23 35 6 * * * cd $PROJ && LLM_HEALTH_SKIP_MODELS="gemma3-overnight,gemma3:27b" flock -n /tmp/model_fleet_health.l
+
+# RETIRED <date-unknown> lane=<see config/lane_registry.json> reason=UNKNOWN owner=platform review_by=2026-09-15
+#   was: DISABLED 2026-08-11 manual CC reauth page: */17 8-21 * * * cd $PROJ && flock -n /tmp/schwab_auto_reauth.lock $PY scripts/schwab_auto_reauth.py --check
+
+# RETIRED 2026-08-23 lane=r9-local-generative reason=local_generative_removed_from_production_graph owner=platform
+#   was: R9_DISABLED_LOCAL_GENERATIVE 2026-08-23 15 10,15 * * 6,7 cd $PROJ && flock -n /tmp/entry_planner.lock $PY scripts/watchlist_entry_planner.py --main-la
+

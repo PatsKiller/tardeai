@@ -1,5 +1,9 @@
 # Defense Desk v2 — Phase 0 Diagnosis (2026-07-18)
 
+Status:      HISTORICAL
+as_of:       2026-07-18T00:18:51-04:00
+Measured at: efcc51365 / not measured
+
 ## Capability matrix (v2 additions over v1 diagnosis)
 | Capability | Verdict | Evidence |
 |---|---|---|

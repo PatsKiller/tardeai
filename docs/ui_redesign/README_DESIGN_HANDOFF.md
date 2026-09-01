@@ -1,5 +1,9 @@
 # Trade AI Command Center v2 -- UI/UX Design Handoff Package
 
+Status:      HISTORICAL
+as_of:       2026-05-25T10:45:00-04:00
+Measured at: efcc51365 / not measured
+
 Generated: 2026-05-25 (Memorial Day)
 Baseline commit: `8e938dca` on `main`
 Server: `http://127.0.0.1:7777/v2/`

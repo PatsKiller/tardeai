@@ -1,5 +1,9 @@
 # Layer-4 Inference / Synthesis Engine
 
+Status:      ACTIVE
+as_of:       2026-06-21T14:37:29-04:00
+Measured at: efcc51365 / not measured
+
 _Activated 2026-06-21._
 
 Cross-source synthesis that fuses news + regime + cross-market (regional) + portfolio + valuation (CEF/ETF

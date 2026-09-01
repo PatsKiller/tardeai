@@ -1,5 +1,9 @@
 # Phases 160-164 — Evidence Remediation, Escalation, Waiting Room, UX, Closeout
 
+Status:      HISTORICAL
+as_of:       2026-06-01T21:34:02-04:00
+Measured at: efcc51365 / not measured
+
 ## Phase 160 — Evidence Remediation (COMPLETE)
 - 10/10 weak-evidence cases processed
 - 10/10 improved with SearXNG sources (27 total sources added)

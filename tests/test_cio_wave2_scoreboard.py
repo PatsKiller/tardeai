@@ -23,8 +23,11 @@ def test_scoreboard_json_has_now_and_fifty_slices():
     assert data.get("authority") == "READ_ONLY_ADVISORY"
     assert data.get("memory_behavior_influence") in {0, "0"}
     now = data["now"]
-    assert now["health"] == 200
-    assert now["cio"] == 200
+    # Recorded probe results, not policy floors: pinned to 200 these could only
+    # fail when the scoreboard honestly recorded an outage.
+    for probe in ("health", "cio"):
+        assert isinstance(now[probe], int)
+        assert 100 <= now[probe] <= 599, (probe, now[probe])
     assert "current_pin" in now
     slices = data["slices"]
     assert "00" in slices

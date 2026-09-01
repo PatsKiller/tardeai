@@ -1,5 +1,9 @@
 # Watchlist → Broker Proposals Bridge
 
+Status:      HISTORICAL
+as_of:       2026-07-03T16:15:07-04:00
+Measured at: efcc51365 / not measured
+
 Closes the gap where **watchlist BUY / STRONG_BUY** ratings lived in research tables but never appeared in the **Broker Proposals** queue (`paper_trade_proposals` with `origin='watchlist'` was historically zero).
 
 ## Problem

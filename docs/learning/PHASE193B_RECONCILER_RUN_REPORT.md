@@ -1,5 +1,9 @@
 # PHASE 193B — Reconciler Run Report
 
+Status:      HISTORICAL
+as_of:       2026-06-02T12:59:18-04:00
+Measured at: efcc51365 / not measured
+
 > **⚠️ CORRECTION (Phase 194):** the "41.7% (10/24) gave back profit" figure below was computed on
 > the `max_favorable_excursion` column, which Phase 194 found was **unit-corrupted** (R-multiple
 > written into a %-column by `trade_execution_analyzer.py`). That figure is **RETRACTED**. The

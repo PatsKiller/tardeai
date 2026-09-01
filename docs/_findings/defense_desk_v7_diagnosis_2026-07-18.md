@@ -1,5 +1,9 @@
 # Defense Desk v7 — Phase 0 Diagnosis + EXEC Branch Decision (2026-07-18)
 
+Status:      HISTORICAL
+as_of:       2026-07-18T14:57:41-04:00
+Measured at: efcc51365 / not measured
+
 ## Findings
 | Question | Verdict | Evidence |
 |---|---|---|

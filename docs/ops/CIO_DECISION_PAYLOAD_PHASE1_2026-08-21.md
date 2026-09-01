@@ -1,5 +1,9 @@
 # CIO DecisionPayload@v1 — Phase 1 (2026-08-21)
 
+Status:      HISTORICAL
+as_of:       2026-08-21T11:34:32-04:00
+Measured at: efcc51365 / not measured
+
 **READ_ONLY_ADVISORY.** Flag-gated capture only — does not change decisions.
 
 ## Flag
@@ -23,7 +27,7 @@ Does **not** flip `MEMORY_BEHAVIOR_INFLUENCE`.
 
 See `scripts/lib/agent_decision_payload.py` (`DecisionPayload@v1`).
 
-Origins: `DETERMINISTIC_RANK` | `FRESH_RESEARCH` | `MEMORY_INFLUENCED` | `OPERATOR_ASK` | `SYNTHESIZED`  
+Origins: `DETERMINISTIC_RANK` | `FRESH_RESEARCH` | `MEMORY_INFLUENCED` | `OPERATOR_ASK` | `SYNTHESIZED`
 (`SYNTHESIZED` must never count toward AIF-28 promotion arithmetic.)
 
 ## Enable (after promote)

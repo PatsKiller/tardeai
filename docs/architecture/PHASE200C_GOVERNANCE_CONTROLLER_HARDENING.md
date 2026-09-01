@@ -1,5 +1,9 @@
 # Phase 200C — Governance Controller Hardening
 
+Status:      HISTORICAL
+as_of:       2026-06-04T23:13:34-04:00
+Measured at: efcc51365 / not measured
+
 `scripts/pipelines/run_governance_pipeline.sh` upgraded from a dry-run skeleton (199E) to a real
 executor for the **governance reporting** steps. No schedule wired yet (that's 200G).
 

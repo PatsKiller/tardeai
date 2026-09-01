@@ -137,8 +137,36 @@ def run(as_json: bool = False, *, single_symbol: str | None = None):
     except Exception:
         _cc = None
     LLM_BUDGET = int(os.environ.get("CATALYST_LLM_BUDGET", "25"))
+    # E1/E2: research-directive slugs and non-universe tokens must never mint
+    # catalyst_events rows (and therefore never reach identity resolution).
+    try:
+        from lib.hermes_discovery.symbol_validation import (
+            gate_catalyst_symbol,
+            is_research_directive_slug,
+        )
+    except Exception:
+        try:
+            from hermes_discovery.symbol_validation import (  # type: ignore
+                gate_catalyst_symbol,
+                is_research_directive_slug,
+            )
+        except Exception:
+            gate_catalyst_symbol = None  # type: ignore
+            is_research_directive_slug = None  # type: ignore
+
     created = []
+    skipped = {"research_directive_slug": 0, "not_in_ticker_universe": 0}
     for nid, symbol, strategy_type, title, summary, source, source_url, published_at in rows:
+        # Filter BEFORE classify/LLM spend — junk must not reach identity later.
+        if is_research_directive_slug is not None and is_research_directive_slug(symbol):
+            skipped["research_directive_slug"] += 1
+            continue
+        if gate_catalyst_symbol is not None:
+            ok, reason = gate_catalyst_symbol(symbol)
+            if not ok:
+                skipped["not_in_ticker_universe"] += 1
+                continue
+
         if _cc:
             cls = _cc(title, summary, symbol, source=source, allow_llm=(LLM_BUDGET > 0))
             if cls.get("method") == "llm":
@@ -186,9 +214,15 @@ def run(as_json: bool = False, *, single_symbol: str | None = None):
     conn.close()
 
     if as_json:
-        print(json.dumps({"created": len(created), "catalysts": created}, default=str))
+        print(json.dumps({
+            "created": len(created),
+            "skipped": skipped,
+            "catalysts": created,
+        }, default=str))
     else:
         print(f"[news_to_catalyst] Created {len(created)} catalyst events from unprocessed news.")
+        print(f"[news_to_catalyst] Skipped research_directive_slug={skipped['research_directive_slug']} "
+              f"not_in_ticker_universe={skipped['not_in_ticker_universe']}")
         for c in created[:20]:
             print(f"  {c['symbol']:>8} | {c['catalyst_type']:<20} | sev={c['severity']:<6} | score={c['impact_score']}")
         if len(created) > 20:

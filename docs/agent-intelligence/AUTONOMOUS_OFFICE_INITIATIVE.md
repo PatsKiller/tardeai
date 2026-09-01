@@ -1,5 +1,9 @@
 # Autonomous Office Initiative — Phase 6
 
+Status:      ACTIVE
+as_of:       2026-08-16T23:13:53-04:00
+Measured at: efcc51365 / not measured
+
 `READ_ONLY_ADVISORY`. This phase gives Alex (and participating specialists) an
 *autonomous advisory office*: a canonical vocabulary for why an agent woke, a
 hard boundary for what an agent may do on its own once awake, a notification

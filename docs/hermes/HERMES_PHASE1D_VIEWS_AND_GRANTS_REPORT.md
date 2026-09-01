@@ -1,5 +1,9 @@
 # Hermes Phase 1D: Safe Views and Read Grants — 2026-05-30
 
+Status:      HISTORICAL
+as_of:       2026-05-30T17:43:12-04:00
+Measured at: efcc51365 / not measured
+
 ## Status: APPLIED
 
 ## Views Created (8)

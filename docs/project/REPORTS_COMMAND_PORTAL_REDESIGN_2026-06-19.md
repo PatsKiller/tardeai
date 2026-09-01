@@ -1,5 +1,9 @@
 # Reports Command Portal — Redesign (2026-06-19)
 
+Status:      HISTORICAL
+as_of:       2026-06-19T19:00:48-04:00
+Measured at: efcc51365 / not measured
+
 Redesign of `/v3/reports` from a single-column report *reader* into an operator **Reports Command
 Portal**: visual summaries, deterministic action extraction, advanced search/filter/quick-views, and a
 split-pane (list + reader + metadata) layout — while preserving the existing fully-readable report bodies

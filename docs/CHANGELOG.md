@@ -1,5 +1,9 @@
 # Changelog
 
+Status:      ACTIVE
+as_of:       2026-08-27T17:07:44-04:00
+Measured at: efcc51365 / not measured
+
 ## 2026-08-27 (evening) — CIO learning loop closed end to end (4 PRs, `5b9738fd` → `2cf31a8e`)
 
 MATURITY_IMPACT: the decision→outcome→lesson chain resolves for the first time; the evidence gate that blocked 54 of 55 runs for 17 days now passes 4 of 5 run purposes. Execution posture UNCHANGED (all `READ_ONLY_ADVISORY`, `memory_behavior_influence` 0, no broker authority). Full record: `docs/architecture/cio/LOOP_CLOSURE_2026-08-27.md`.
@@ -488,7 +492,7 @@ Docs: `docs/brokers/ALPACA_DUE_DILIGENCE_AUDIT_2026-07-21.md`,
 
 ## 2026-07-21 — Operator decision card + RTH few-hour plan refresh
 
-Docs: `docs/architecture/DECISION_PACKET_OPERATOR_CARD_AND_RTH_REFRESH.md` · watchlist: `docs/COMMAND_CENTER_V3_WATCHLIST.md`.  
+Docs: `docs/architecture/DECISION_PACKET_OPERATOR_CARD_AND_RTH_REFRESH.md` · watchlist: `docs/COMMAND_CENTER_V3_WATCHLIST.md`.
 Commit: `b2fbcd90`.
 
 - **Operator card** — `DecisionPacketBand` + `operatorDecisionCard.ts` replace audit-dense packet UI with one primary state (READY / WAIT / REFRESH / BLOCKED / NO TRADE / MANAGE POSITION), one CTA, mechanics line, Details drawer. No orders / no 2FA.
@@ -1419,7 +1423,7 @@ broker writes.**
 - **`qty_available` fails closed.** `apply_paper_protection_adjustment.py` no longer assumes `avail=shares`
   on a failed position read; unreadable qty → `BROKER_QTY_UNKNOWN` / `DEFER_RECHECK` (no order placed) with a
   bounded recheck cap (6) that turns terminal instead of looping the ATM pass.
-- **Tests:** new `tests/test_oco_dd_gaps.py` **14/14**. Existing `test_schwab_oco_bracket` 12, 
+- **Tests:** new `tests/test_oco_dd_gaps.py` **14/14**. Existing `test_schwab_oco_bracket` 12,
   `test_protective_policy_oco` 6, `test_no_broker_write_bypass` 9 green; Schwab no-write validator 27/27.
 
 ## 2026-06-29 - Hermes governance: post-deployment verification + LOCAL_LLM policy restored

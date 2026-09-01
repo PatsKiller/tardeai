@@ -1,5 +1,9 @@
 # Reports Desk v1 — Total Rebuild (2026-07-16, night)
 
+Status:      ACTIVE
+as_of:       2026-07-16T18:02:11-04:00
+Measured at: efcc51365 / not measured
+
 Commits `f6b481db..7921fd19` (`reports-v1:` prefix, one per WS). Thesis held: the
 reports already generate on timers — this was 60% wiring artifacts into a library,
 30% rendering discipline, 10% new analytics. No new reporting engine; the only new

@@ -1,5 +1,9 @@
 # Phase 201B — PHASE41 Governance Timer Overlap Inventory
 
+Status:      HISTORICAL
+as_of:       2026-06-05T10:06:29-04:00
+Measured at: efcc51365 / not measured
+
 Redundant PHASE41 governance **systemd user timers** now covered by the governance controller. No
 timer stopped/disabled in this phase (inventory only).
 

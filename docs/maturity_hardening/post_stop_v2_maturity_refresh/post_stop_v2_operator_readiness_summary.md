@@ -1,5 +1,9 @@
 # Operator Readiness — Post STOP-V2
 
+Status:      ACTIVE
+as_of:       2026-05-22T17:31:22-04:00
+Measured at: efcc51365 / not measured
+
 **Maturity:** 7.0 / 10.0 (up from 6.2)
 **ATM:** dry_run (frozen) | **Live:** BLOCKED | **Stop Protection:** 5/5 verified
 

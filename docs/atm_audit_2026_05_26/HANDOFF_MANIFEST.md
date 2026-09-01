@@ -1,5 +1,9 @@
 # ATM Audit Handoff Manifest
 
+Status:      HISTORICAL
+as_of:       2026-05-26T11:21:21-04:00
+Measured at: efcc51365 / not measured
+
 **Timestamp:** 2026-05-26T11:15:00Z
 **Git Branch:** main
 **Git Commit:** df15b0c (fix: ATM pipeline recovery, System Health Agent, 5 root cause fixes)

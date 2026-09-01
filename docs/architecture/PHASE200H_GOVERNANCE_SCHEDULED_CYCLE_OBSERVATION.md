@@ -1,5 +1,9 @@
 # Phase 200H — Governance Scheduled-Cycle Observation
 
+Status:      HISTORICAL
+as_of:       2026-06-04T23:20:22-04:00
+Measured at: efcc51365 / not measured
+
 One scheduled-path cycle triggered via systemd (`systemctl --user start
 tradeai-governance-pipeline.service`) to observe the controller exactly as the timer will run it
 (next automatic fire Fri 07:40).

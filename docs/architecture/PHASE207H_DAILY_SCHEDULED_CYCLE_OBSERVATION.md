@@ -1,5 +1,9 @@
 # Phase 207H — Daily Scheduled-Equivalent Cycle Observation — 2026-06-07
 
+Status:      HISTORICAL
+as_of:       2026-06-07T11:08:33-04:00
+Measured at: efcc51365 / not measured
+
 The real timer fires Mon 2026-06-08 07:30 (19h away), so a **scheduled-equivalent** cycle was run via
 the exact systemd unit the timer triggers: `systemctl --user start tradeai-portfolio-daily-cadence.service`.
 

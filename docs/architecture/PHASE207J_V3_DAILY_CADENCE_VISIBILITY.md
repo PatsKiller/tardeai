@@ -1,5 +1,9 @@
 # Phase 207J — v3 Daily Cadence Visibility — 2026-06-07
 
+Status:      HISTORICAL
+as_of:       2026-06-07T11:11:11-04:00
+Measured at: efcc51365 / not measured
+
 ## Finding
 No existing endpoint consumed the `portfolio_maintenance_*_last_run.json` cadence summaries, so v3 could
 not surface the migration status. Added a **read-only** endpoint so v3 can consume it:

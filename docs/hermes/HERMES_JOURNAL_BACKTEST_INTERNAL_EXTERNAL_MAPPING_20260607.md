@@ -1,5 +1,9 @@
 # Hermes Journal-Review & Backtesting — Internal Owner → External Escalation (2026-06-07)
 
+Status:      ACTIVE
+as_of:       2026-06-07T13:38:00-04:00
+Measured at: efcc51365 / not measured
+
 Maps the journal-review and backtesting workflows Hermes is involved in to their INTERNAL agent/owner and
 the conditions that ESCALATE a finding to an EXTERNAL researcher lane. All advisory; escalation is
 operator-gated per EXTERNAL_LLM_USAGE_POLICY_20260607.md.

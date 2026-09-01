@@ -143,6 +143,47 @@ def new_record(kind: str, name: str, **fields: Any) -> dict[str, Any]:
     return rec
 
 
+def normalize_writer_author(
+    *,
+    writer: Optional[str] = None,
+    author: Optional[str] = None,
+) -> dict[str, Any]:
+    """AGENTS §9.2 — ``writer`` names the **author**, not the copy step.
+
+    Legacy seed stamped ``migration:deterministic`` (the migration *lane*).
+    That asserts the wrong thing on generated prose: migration copied the
+    blob; it did not author it. Strip a ``migration:`` prefix so writer and
+    author name the prose author. When a copy-step prefix was present, keep
+    it as ``copy_step`` so the hand that touched the record is still visible
+    without polluting authorship.
+    """
+    raw_writer = str(writer or "").strip()
+    raw_author = str(author or "").strip()
+    copy_step: Optional[str] = None
+
+    def _strip_migration(value: str) -> tuple[str, Optional[str]]:
+        if value.lower().startswith("migration:"):
+            rest = value.split(":", 1)[1].strip() or "deterministic"
+            return rest, "migration"
+        return value, None
+
+    # Prefer an already-honest author over a copy-step writer.
+    if raw_author and not raw_author.lower().startswith("migration:"):
+        author_name = raw_author
+        if raw_writer.lower().startswith("migration:"):
+            copy_step = "migration"
+    else:
+        primary = raw_writer or raw_author or "deterministic"
+        author_name, copy_step = _strip_migration(primary)
+        if not author_name:
+            author_name = "deterministic"
+
+    out: dict[str, Any] = {"writer": author_name, "author": author_name}
+    if copy_step:
+        out["copy_step"] = copy_step
+    return out
+
+
 def cc_narrative(
     *,
     what: str = "",
@@ -151,17 +192,23 @@ def cc_narrative(
     risks: Optional[list[str]] = None,
     evidence_refs: Optional[list[dict[str, Any]]] = None,
     writer: str = "deterministic",
+    author: Optional[str] = None,
     as_of: Optional[str] = None,
 ) -> dict[str, Any]:
-    return {
+    stamps = normalize_writer_author(writer=writer, author=author)
+    out: dict[str, Any] = {
         "what": what,
         "thesis_fit": thesis_fit,
         "recommendation_option_id": recommendation_option_id,
         "risks": list(risks or []),
         "evidence_refs": list(evidence_refs or []),
         "as_of": as_of or _now(),
-        "writer": writer,
+        "writer": stamps["writer"],
+        "author": stamps["author"],
     }
+    if stamps.get("copy_step"):
+        out["copy_step"] = stamps["copy_step"]
+    return out
 
 
 class InstrumentRecordStore:

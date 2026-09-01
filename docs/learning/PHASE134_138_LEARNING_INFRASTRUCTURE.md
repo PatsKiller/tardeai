@@ -1,5 +1,9 @@
 # Phases 134-138 — Strategy Learning Infrastructure
 
+Status:      HISTORICAL
+as_of:       2026-06-01T17:52:57-04:00
+Measured at: efcc51365 / not measured
+
 ## Phase 134 — Learning Queue (COMPLETE)
 
 ### Lesson Sources Found

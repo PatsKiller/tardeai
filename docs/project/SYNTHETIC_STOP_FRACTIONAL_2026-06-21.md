@@ -1,5 +1,9 @@
 # Synthetic Stops for Fractional Positions (2026-06-21)
 
+Status:      HISTORICAL
+as_of:       2026-06-21T22:21:37-04:00
+Measured at: efcc51365 / not measured
+
 ## Problem
 Schwab REJECTS a resting STOP order on a fractional share quantity (policy 2025-05-21: fractional orders
 must use Market-Day / Limit-Day / Limit-GTC). So fractional holdings — e.g. TDG 0.7169, NOC 1.2262,

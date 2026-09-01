@@ -1,5 +1,9 @@
 # PHASE 192F — Shared UI Component / v2-v3 Plan
 
+Status:      HISTORICAL
+as_of:       2026-06-02T12:10:31-04:00
+Measured at: efcc51365 / not measured
+
 **Decision (operator):** *Backend + v2 now; v3 gets an integration plan + placeholder* (v3 is
 actively being rebuilt today — avoid source conflict).
 

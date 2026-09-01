@@ -1,5 +1,9 @@
 # Defense Desk v1 — Sector Momentum · Posture · (Hedge/Short foundations) — 2026-07-17
 
+Status:      ACTIVE
+as_of:       2026-07-17T23:47:44-04:00
+Measured at: efcc51365 / not measured
+
 Commits `c332fd6f..fbfb2598`. Operator intent: "the system doesn't tell me when sector
 momentum is changing… tell me what to be careful of and give me short-side plays."
 This session shipped the **visibility core (A+E+F) + D1** per the prompt's time-box clause;

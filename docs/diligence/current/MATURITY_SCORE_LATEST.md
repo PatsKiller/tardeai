@@ -1,5 +1,9 @@
 # Trade AI — Maturity Score
 
+Status:      ACTIVE
+as_of:       2026-06-27T22:07:55-04:00
+Measured at: efcc51365 / not measured
+
 _Generated: 2026-06-28T02:07:44.233618+00:00_
 _Source: `python3 scripts/compute_maturity_score.py --json`_
 

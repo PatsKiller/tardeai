@@ -1,5 +1,9 @@
 # PHASE 188 — Market-Open ELMT & SNOW Profit-Protection Review — CLOSEOUT
 
+Status:      HISTORICAL
+as_of:       2026-06-02T08:17:52-04:00
+Measured at: efcc51365 / not measured
+
 **Run:** 2026-06-02 ~08:25 ET (premarket)
 **Scope:** Alpaca **paper** account/environment only. Audit + recommendations + docs. **No
 trades, no stop changes, no config changes, no logic changes.**

@@ -1,5 +1,9 @@
 # Phase 6 — Capital plan and portfolio decision engine
 
+Status:      HISTORICAL
+as_of:       2026-08-13T21:48:42-04:00
+Measured at: efcc51365 / not measured
+
 > Goal (from the convergence prompt): make Alex capable of answering "what should
 > I do with my money?" in explicit dollars while staying advisory-only. Everything
 > here is `READ_ONLY_ADVISORY` — no execution authority.

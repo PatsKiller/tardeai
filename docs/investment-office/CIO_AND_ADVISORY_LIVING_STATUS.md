@@ -1,5 +1,9 @@
 # CIO + Advisory — Living Operator Status
 
+Status:      ACTIVE
+as_of:       2026-08-18T21:19:02-04:00
+Measured at: efcc51365 / not measured
+
 | Field | Value |
 |---|---|
 | **Document name** | `CIO_AND_ADVISORY_LIVING_STATUS.md` |

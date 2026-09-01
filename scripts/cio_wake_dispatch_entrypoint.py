@@ -16,9 +16,11 @@ CIOWakeDispatcher is the sole wake owner.
 
 Usage:
     python3 scripts/cio_wake_dispatch_entrypoint.py
+    python3 scripts/cio_wake_dispatch_entrypoint.py --dry-run
 """
 from __future__ import annotations
 
+import argparse
 import logging
 import sys
 from pathlib import Path
@@ -31,7 +33,72 @@ if str(_PROJECT) not in sys.path:
 log = logging.getLogger("tradeai.cio_wake_dispatch_entrypoint")
 
 
-def main():
+def dry_run_record_consult(*, max_wakes: int = 5) -> list[dict]:
+    """P1 dry-run: load-by-subject + cadence verdict. No claim, no run, no Telegram.
+
+    Prints one line per PENDING wake: subject_key, wake verdict, research
+    preflight decision, and whether ResearchNeedDecision.decide would be called.
+    """
+    from scripts.lib.cio_wake_jobs import CIOWakeJobStore
+    from scripts.lib.cio_wake_subject import decide as wake_decide
+    from scripts.lib.cio_instrument_record import InstrumentRecordStore
+    from scripts.lib.cio_research_preflight import decide_after_load
+
+    wake_store = CIOWakeJobStore()
+    wakes = wake_store.list_wakes(status="PENDING", limit=max_wakes)
+    try:
+        store = InstrumentRecordStore()
+        known = {str(r.get("subject_key")) for r in store.all() if r.get("subject_key")}
+    except Exception as exc:
+        log.warning("record store unavailable for dry-run: %s", exc)
+        store, known = None, set()
+
+    rows: list[dict] = []
+    for wake in wakes:
+        wd = wake_decide(wake, store=store, known_keys=known)
+        sk = wd.get("subject_key")
+        research = None
+        if sk:
+            research = decide_after_load(
+                sk, plan={"material": True, "symbols": [str(sk).split(":")[-1]]},
+            )
+        row = {
+            "wake_job_id": wake.get("wake_job_id"),
+            "subject_key": sk,
+            "wake_verdict": wd.get("verdict"),
+            "wake_reason": wd.get("reason"),
+            "record_found": wd.get("record_found"),
+            "research_decision": (research or {}).get("decision"),
+            "research_reason": (research or {}).get("reason"),
+            "decide_called": (research or {}).get("decide_called"),
+            "record_loaded": (research or {}).get("record_loaded"),
+        }
+        rows.append(row)
+        print(
+            f"P1_DRY subject_key={row['subject_key']!r} "
+            f"wake_verdict={row['wake_verdict']} "
+            f"research={row['research_decision']}/{row['research_reason']} "
+            f"decide_called={row['decide_called']} "
+            f"record_loaded={row['record_loaded']} "
+            f"wake={row['wake_job_id']}"
+        )
+    if not rows:
+        print("P1_DRY no PENDING wakes")
+    return rows
+
+
+def main(argv: list[str] | None = None):
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Consult records only — no claim, no run mint, no Telegram",
+    )
+    args = ap.parse_args(argv)
+    if args.dry_run:
+        dry_run_record_consult()
+        return
+
     from scripts.lib.cio_wake_jobs import CIOWakeJobStore
     from scripts.lib.cio_run import CIORunStore
     from scripts.lib.cio_run_worker import CIORunWorker
@@ -71,6 +138,40 @@ def main():
         result["skipped_count"],
         result["error_count"],
     )
+
+    # ── Step 1b: M5 evidence ──────────────────────────────────────────
+    # The record consult happens inside poll_and_dispatch, before any claim.
+    # Emit what it changed, to the log AND to a durable artifact, so the proof
+    # comes from a scheduled unattended run rather than from running this by
+    # hand. A lane whose only evidence is a hand-run has not proven a schedule.
+    consult = result.get("record_consult") or {}
+    log.info(
+        "record_consult: wakes=%s subject_resolved=%s record_found=%s "
+        "changed_by_record=%s skipped_cadence_not_due=%s no_subject=%s",
+        consult.get("wakes_considered"), consult.get("subject_resolved"),
+        consult.get("record_found"), consult.get("decisions_changed_by_record"),
+        consult.get("skipped_cadence_not_due"), consult.get("no_subject"),
+    )
+    for ch in (consult.get("changed") or []):
+        log.info("record_changed_decision: subject=%s without_record=%s "
+                 "with_record=%s reason=%s",
+                 ch.get("subject_key"), ch.get("without_record"),
+                 ch.get("with_record"), ch.get("reason"))
+    try:
+        import json as _json
+        from datetime import datetime as _dt, timezone as _tz
+        _p = _PROJECT / "data" / "cio" / "wake_record_consult.json"
+        _p.parent.mkdir(parents=True, exist_ok=True)
+        _p.write_text(_json.dumps({
+            "schema": "WakeRecordConsult@v1",
+            "authority": "READ_ONLY_ADVISORY",
+            "as_of": _dt.now(_tz.utc).replace(microsecond=0).isoformat(),
+            "unattended": True,
+            "entrypoint": "cron: */5 * * * * cio_wake_dispatch_entrypoint.py",
+            **consult,
+        }, indent=2, default=str) + "\n", encoding="utf-8")
+    except Exception:
+        log.exception("record_consult artifact write failed (fail-soft)")
 
     # ── Step 1b: Persist today's investment books even if no wake fires ─
     try:
@@ -140,4 +241,4 @@ def main():
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(message)s")
-    main()
+    main(sys.argv[1:])

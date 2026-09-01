@@ -1,5 +1,9 @@
 # CURRENT cutover — execute after 2026-08-27 close
 
+Status:      HISTORICAL
+as_of:       2026-08-23T10:07:19-04:00
+Measured at: efcc51365 / not measured
+
 **Do not run during the DecisionPayload burn-in.** Dual-root: serve CURRENT,
 most systemd + crontab still `WorkingDirectory` / `cd $PROJ` =
 `~/trade-ai-v12-rebuild/trade-ai-v12-rebuild` (often a dirty feature branch).

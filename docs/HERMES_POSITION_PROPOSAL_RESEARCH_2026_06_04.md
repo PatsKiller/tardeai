@@ -1,5 +1,9 @@
 # Hermes auto-research of held positions + open proposals — 2026-06-04
 
+Status:      HISTORICAL
+as_of:       2026-06-04T20:44:22-04:00
+Measured at: efcc51365 / not measured
+
 Closes the gap found this session: Hermes's 24/7 loop only researched **closed trades** (retrospective
 reflection). It did **not** research currently-held positions or open proposals — those were covered
 only by TradeAI's daily/intraday enrichment crons, not by the always-on engine.

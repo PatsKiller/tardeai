@@ -1,5 +1,9 @@
 # New Component: AgentChip.tsx
 
+Status:      HISTORICAL
+as_of:       2026-05-25T13:05:19-04:00
+Measured at: efcc51365 / not measured
+
 - **Target repo path:** apps/command-center-v2/src/components/AgentChip.tsx
 - **Design purpose:** Replace 6+ per-page inline agent chip implementations with a shared component. Each agent has a stable color and role tooltip. Unknown agents get a neutral style instead of crashing.
 

@@ -1,5 +1,9 @@
 # Research Prioritization & Refresh Methodology (all Hermes lanes, 24/7)
 
+Status:      ACTIVE
+as_of:       2026-08-22T13:20:44-04:00
+Measured at: efcc51365 / not measured
+
 How the always-on Hermes fleet decides **what gets researched, by which lane, in what order, and how
 often** — so every tracked symbol is refreshed at least *X* times per *Y* days, exposure-weighted, with
 event-awareness. This governs **all** research lanes (local gemma, overnight deep, external OAuth,

@@ -18,13 +18,16 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
-from watchlist_priority import (
+# G2: scripts-only + lib — never put scripts/lib (bare dual) or root on path
+_SCRIPTS = Path(__file__).resolve().parent
+if str(_SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(_SCRIPTS))
+from lib.watchlist_priority import (
     WATCHLIST_TOP_N, holdings_list, is_off_hours_et, job_priority_params,
     off_hours_scope_params, request_type_sla_params, sql_job_priority_case,
     sql_off_hours_scope, sql_request_type_sla_case,
 )
-from cio_agent_contract import (
+from lib.cio_agent_contract import (
     AGENT_JSON_CONTRACT_VERSION,
     GLOBAL_RULES_G1_G10,
     build_base_json_instruction,
@@ -37,7 +40,7 @@ from cio_agent_contract import (
     parse_agent_result,
     parse_synthesis_result,
 )
-from hermes_discovery.symbol_validation import gate_watchlist_symbol
+from lib.hermes_discovery.symbol_validation import gate_watchlist_symbol
 _last_rag_sources = []  # Set by _build_prompt(), read by result saver
 _last_peer_agents = []  # Set by _get_peer_agent_notes(), read by result saver
 _batch_results_cache = {}  # {symbol: [{agent, recommendation, confidence, summary}]}
@@ -190,7 +193,7 @@ def _attempt_symbol_enrichment(symbol: str, missing: list) -> bool:
 # for Maria agent_narrative on: portfolio holdings, top-N WAIT setups, manual refresh jobs.
 # Steph/Risk/tail research use governed cloud routing. Daily cap via llm_consumption_log (~80/day);
 # per-run cap prevents a single cron burst from draining the budget.
-from maria_oauth_priority import (
+from lib.maria_oauth_priority import (
     MARIA_OAUTH_DAILY_CAP,
     MARIA_OAUTH_PROCESS_ID,
     MARIA_OAUTH_RUN_CAP,
@@ -233,10 +236,7 @@ def _wait_setup_symbol_set(conn) -> frozenset[str]:
 def _job_provider_lane() -> str:
     """AUTO_QUEUE vs MANUAL_OPERATOR vs CHALLENGE. Holdings/WAIT do not force OAuth."""
     payload = {}
-    try:
-        from agent_job_provider_policy import classify_job_lane
-    except ImportError:
-        from lib.agent_job_provider_policy import classify_job_lane  # type: ignore
+    from lib.agent_job_provider_policy import classify_job_lane
     return classify_job_lane(
         submitted_from=_CURRENT_JOB_SUBMITTED_FROM,
         request_type=_CURRENT_JOB_REQUEST_TYPE,
@@ -256,15 +256,12 @@ def _prefer_maria_oauth() -> bool:
     if _MARIA_OAUTH_RUN_CALLS >= MARIA_OAUTH_RUN_CAP:
         return False
     try:
-        from llm_consumption import over_daily_cap
+        from lib.llm_consumption import over_daily_cap
         if over_daily_cap(MARIA_OAUTH_PROCESS_ID):
             return False
     except Exception:
         pass
-    try:
-        from agent_job_provider_policy import oauth_may_preempt_flash
-    except ImportError:
-        from lib.agent_job_provider_policy import oauth_may_preempt_flash  # type: ignore
+    from lib.agent_job_provider_policy import oauth_may_preempt_flash
     return oauth_may_preempt_flash(_job_provider_lane())
 
 
@@ -299,20 +296,12 @@ def _llm(prompt: str, max_tokens: int = 800, task_type: str = "agent_narrative",
     """
     global _MARIA_OAUTH_RUN_CALLS
     _llm._fallback_chain = []  # Gate-B.2: explicit provider provenance
-    try:
-        from agent_job_provider_policy import (
-            first_provider_attempt,
-            is_hard_policy_failure,
-            oauth_soft_fallback_permitted,
-            requested_provider_policy,
-        )
-    except ImportError:
-        from lib.agent_job_provider_policy import (  # type: ignore
-            first_provider_attempt,
-            is_hard_policy_failure,
-            oauth_soft_fallback_permitted,
-            requested_provider_policy,
-        )
+    from lib.agent_job_provider_policy import (
+        first_provider_attempt,
+        is_hard_policy_failure,
+        oauth_soft_fallback_permitted,
+        requested_provider_policy,
+    )
     job_lane = _job_provider_lane()
     _llm._requested_policy = requested_provider_policy(job_lane)
     _llm._first_attempt = first_provider_attempt(job_lane)
@@ -326,8 +315,8 @@ def _llm(prompt: str, max_tokens: int = 800, task_type: str = "agent_narrative",
         if (_CURRENT_AGENT or "").lower() != "maria":
             return None
         try:
-            from llm_consumption import gate_and_generate
-            from maria_oauth_priority import is_manual_refresh
+            from lib.llm_consumption import gate_and_generate
+            from lib.maria_oauth_priority import is_manual_refresh
             cloud_prompt = _strip_local_tokens(prompt)
             manual = is_manual_refresh(
                 _CURRENT_JOB_SUBMITTED_FROM,
@@ -2120,7 +2109,7 @@ CRITICAL INSTRUCTIONS:
             if not cur2.fetchone():
                 from datetime import datetime as _dtt, timezone as _tzz
                 try:
-                    from agent_job_enqueue_governance import EnqueueRequest, governed_enqueue
+                    from lib.agent_job_enqueue_governance import EnqueueRequest, governed_enqueue
                     governed_enqueue(cur2, EnqueueRequest(
                         symbol=symbol,
                         requested_agent="full_chain",
@@ -2457,7 +2446,7 @@ def process_jobs(limit: int = 10):
             print(f"[watchlist-agent] Off-hours: expired {len(expired)} aged tail jobs (outside daily priority)")
 
     try:
-        from agent_job_enqueue_governance import govern_existing_queued
+        from lib.agent_job_enqueue_governance import govern_existing_queued
         gov = govern_existing_queued(cur)
         conn.commit()
         if gov.get("superseded") or gov.get("stale_deferred"):
@@ -2907,7 +2896,7 @@ def _auto_queue_new_symbols():
         for agent in agents_to_queue:
             job_id = f"auto_{symbol.lower()}_{agent}_{uuid.uuid4().hex[:6]}"
             try:
-                from agent_job_enqueue_governance import EnqueueRequest, governed_enqueue
+                from lib.agent_job_enqueue_governance import EnqueueRequest, governed_enqueue
                 res = governed_enqueue(cur, EnqueueRequest(
                     symbol=symbol,
                     requested_agent=agent,
@@ -3071,6 +3060,8 @@ if __name__ == "__main__":
     import argparse
     from lib.agent_jobs_lock import OverlapError, acquire_jobs_lock, OVERLAP_EXIT
     from lib.agent_flash_governance import reset_run_budget
+    from lib import assert_single_import_identity
+    assert_single_import_identity()
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--limit", type=int, default=10)

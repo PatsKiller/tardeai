@@ -80,11 +80,63 @@ APPROVED_TOOLING = {
     "tests/conftest.py",
     "tests/test_cio_phase1_notification_containment.py",
     "tests/test_telegram_p0_card_gate.py",
+    # 2026-08-31: tests that ASSERT the interdict and the ratchet. A test proving
+    # deliver_text is interdictable must name deliver_text, a token and a chat id;
+    # a test proving the ratchet can go red must plant the pattern it detects.
+    # Named individually, following this file's own convention -- never a blanket
+    # tests/ exclusion, which would let a real producer hide in a test path.
+    "tests/test_notification_integrity_waves_cdeg.py",
+    "tests/test_telegram_chokepoint_ratchet.py",
+    # 2026-08-31 (C1): the alarm-firing capture self-test imports telegram_transport
+    # in order to make the real send_message RAISE if it is ever reached, proving the
+    # harness sends nothing. It is the strongest possible non-caller: the import
+    # exists to forbid the call. Named individually, per this file's convention.
+    "tests/test_alarm_capture_selftest.py",
 }
 APPROVED = APPROVED_OUTBOUND | APPROVED_DELIVERY | APPROVED_INBOUND | APPROVED_TOOLING
 
 BOT_METHODS = ("sendMessage", "sendDocument", "sendPhoto", "getUpdates", "getMe",
                "answerCallbackQuery", "editMessageText", "setWebhook", "deleteWebhook")
+
+# Names on telegram_transport that do NOT send. Importing one of these is not a
+# bypass -- it is the migration this repo asked for.
+#
+# escape_markdown's own docstring says it was "placed on the transport so every
+# producer already importing it can reach it, rather than adding a 127th
+# convention". But `transport_import` matched ANY `from telegram_transport import
+# ...`, so adopting the shared escaper tripped this guard. The rule penalised the
+# exact migration it exists to encourage, and the first producer to adopt it (the
+# P1 digest sender) was flagged as a new bypass for importing a string function.
+#
+# Sending capability is what matters: send_message, deliver_text, _http_post and
+# the endpoint constants stay flagged.
+TRANSPORT_NON_SENDING = {
+    "escape_markdown", "smart_split", "MAX_MSG_LEN",
+}
+
+
+def _transport_import_is_sending(text: str) -> bool:
+    """True when a file imports something from telegram_transport that can SEND.
+
+    Parsed, not pattern-matched: the regex could not see WHICH names were imported,
+    so it had to treat every import as a bypass.
+    """
+    import ast as _ast
+    try:
+        tree = _ast.parse(text)
+    except SyntaxError:
+        return True          # unparseable: fail closed, keep the old verdict
+    for node in _ast.walk(tree):
+        if isinstance(node, _ast.ImportFrom) and node.module == "telegram_transport":
+            for alias in node.names:
+                if alias.name == "*" or alias.name not in TRANSPORT_NON_SENDING:
+                    return True
+        elif isinstance(node, _ast.Import):
+            for alias in node.names:
+                if alias.name == "telegram_transport":
+                    return True   # whole-module import exposes the senders
+    return False
+
 
 PATTERNS: dict[str, re.Pattern] = {
     "transport_import": re.compile(
@@ -111,6 +163,10 @@ def scan_file(path: Path) -> dict[str, int]:
     hits: dict[str, int] = {}
     for name, rx in PATTERNS.items():
         n = len(rx.findall(text))
+        if n and name == "transport_import" and not _transport_import_is_sending(text):
+            # Importing only non-sending helpers (escape_markdown, smart_split,
+            # MAX_MSG_LEN) is not a bypass. See TRANSPORT_NON_SENDING.
+            continue
         if n:
             hits[name] = n
     if "raw_endpoint" in hits:

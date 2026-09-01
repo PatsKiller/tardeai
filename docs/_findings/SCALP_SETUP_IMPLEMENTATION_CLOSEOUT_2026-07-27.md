@@ -1,5 +1,9 @@
 # Scalp Multi-Setup Taxonomy — Implementation Closeout (2026-07-27)
 
+Status:      HISTORICAL
+as_of:       2026-07-27T23:45:01-04:00
+Measured at: efcc51365 / not measured
+
 ```
 START_MAIN:          21366635ce6e2a8610e0ea1ea716036016df299b
 BRANCH:              agent/scalp-multi-setup-taxonomy-v1

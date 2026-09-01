@@ -1,5 +1,9 @@
 # Hermes dev Profile — Codex/ChatGPT Setup — 2026-06-06
 
+Status:      ACTIVE
+as_of:       2026-06-07T14:32:18-04:00
+Measured at: efcc51365 / not measured
+
 ## Purpose
 Prepare the Hermes `dev` profile for **future human-invoked** ChatGPT/Codex development assistance.
 Not Trade AI runtime; not an autonomous gateway. tradeai/tradeai12b are unchanged and remain local/restricted.

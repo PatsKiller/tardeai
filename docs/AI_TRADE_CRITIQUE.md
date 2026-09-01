@@ -1,5 +1,9 @@
 # AI Trade Critique — Persistence & System Integration
 
+Status:      ACTIVE
+as_of:       2026-06-27T21:25:04-04:00
+Measured at: efcc51365 / not measured
+
 ## Overview
 
 The AI Trade Critique is a first-class, persistent data asset stored per trade and indexed for search, aggregation, coaching, and risk insights.

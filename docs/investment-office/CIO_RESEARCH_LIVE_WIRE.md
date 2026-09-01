@@ -1,5 +1,9 @@
 # CIO Research Live Wire
 
+Status:      ACTIVE
+as_of:       2026-08-15T08:58:06-04:00
+Measured at: efcc51365 / not measured
+
 Live hook: `retrieve_research_context` now attaches a governed Almanac
 decision-use audit (`governed_audit` + `governed_almanac`) before the
 capital-plan / strategy-context envelope is composed.

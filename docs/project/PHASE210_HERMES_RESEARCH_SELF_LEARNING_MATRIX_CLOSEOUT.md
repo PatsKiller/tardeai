@@ -1,5 +1,9 @@
 # Phase 210 — Hermes Research & Self-Learning Architecture — CLOSEOUT (2026-06-07)
 
+Status:      HISTORICAL
+as_of:       2026-06-07T12:56:42-04:00
+Measured at: efcc51365 / not measured
+
 - Phase 210 complete: **YES** (A–M). Markdown: YES. Word docx: YES. v3 matrix visible: YES.
 - Self-learning loops audited: **10** (all advisory-only; 8 feed prompts; **0 mutate scoring directly** — operator-gated).
 - Internal deep research lane designed: YES — **gemma3:27b / gemma3-overnight (BATCH_OVERNIGHT)** confirmed; **gemma4 deferred** (not installed).

@@ -1,5 +1,9 @@
 # Portfolio Re-Entry Intelligence
 
+Status:      ACTIVE
+as_of:       2026-07-23T12:56:26-04:00
+Measured at: efcc51365 / not measured
+
 ## Purpose
 
 `/v3/portfolio/re-entry` is an advisory, persistent monitor for symbols exited during the trailing twelve months. It answers:

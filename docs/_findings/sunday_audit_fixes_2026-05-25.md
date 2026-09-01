@@ -1,5 +1,9 @@
 # Sunday Night Audit Fixes (2026-05-25)
 
+Status:      HISTORICAL
+as_of:       2026-05-23T18:21:30-04:00
+Measured at: efcc51365 / not measured
+
 Five findings from visual audit of 65 dashboard screenshots (audit_7777_20260523_1737.tgz).
 
 ## B-1: Agent Worker Stuck (BLOCKING → RESOLVED)

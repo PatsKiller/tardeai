@@ -1,5 +1,9 @@
 # Post-STOP-V2 Scoring Rationale
 
+Status:      ACTIVE
+as_of:       2026-05-22T17:31:22-04:00
+Measured at: efcc51365 / not measured
+
 | Area | Pre-STOP-V2 | Post-STOP-V2 | Reason | Evidence |
 |------|------------|-------------|--------|----------|
 | Execution Safety | 7.5 | 8.5 | Broker stops verified, race eliminated, trailing tiers | V2.1: 5/5 reconciled, V2.2: one monitor, V2.3: 4 families |

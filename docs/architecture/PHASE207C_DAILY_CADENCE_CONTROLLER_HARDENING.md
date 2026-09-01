@@ -1,5 +1,9 @@
 # Phase 207C — Daily Cadence Controller Hardening — 2026-06-07
 
+Status:      HISTORICAL
+as_of:       2026-06-07T10:50:07-04:00
+Measured at: efcc51365 / not measured
+
 ## Already-present (verified, no change needed)
 `scripts/pipelines/run_portfolio_maintenance_pipeline.sh --cadence daily`:
 - runs **only** `run_daily()` → `bash linux_launchers/run_portfolio.sh` (case isolation; no backup/

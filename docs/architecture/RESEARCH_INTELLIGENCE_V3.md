@@ -1,5 +1,9 @@
 # Research Intelligence v3.0 — Decision Desk
 
+Status:      ACTIVE
+as_of:       2026-07-16T11:10:02-04:00
+Measured at: efcc51365 / not measured
+
 **Shipped:** 2026-07-16 (commits `45bfa56b`, `a6fd0962`, `e5e7507c`, `27cb0e67`, `9649cd8a`)
 **Surface:** CC v3 → Intel → Research Intel (`apps/command-center-v3/src/pages/ResearchIntelligenceHub.tsx`)
 **Backend:** `scripts/lib/research_intelligence.py` (feed builder), `_narrative.py`, `_portfolio.py`, `_stage.py`; routes in `scripts/api_v2.py`; queue in `scripts/research_intelligence_queue.py`

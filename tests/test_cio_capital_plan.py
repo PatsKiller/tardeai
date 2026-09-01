@@ -550,9 +550,12 @@ def test_phase2_account_cash_breakdown():
         {"symbol": "NVDA", "market_value": 10_000.0, "account": "schwab_taxable"},
     ]
     ac = cp.account_cash_breakdown(rows)
+    # Each account now carries the stamp its balance was last confirmed
+    # at; None where the row has none, never a substituted clock.
     assert ac == [
-        {"account": "moomoo", "settled_cash_usd": 500.0},
-        {"account": "schwab_taxable", "settled_cash_usd": 37_894.31},
+        {"account": "moomoo", "settled_cash_usd": 500.0, "as_of": None},
+        {"account": "schwab_taxable", "settled_cash_usd": 37_894.31,
+         "as_of": None},
     ]
 
 
