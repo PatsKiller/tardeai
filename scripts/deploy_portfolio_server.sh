@@ -173,6 +173,11 @@ DATA_DIRS_TO_LINK=(
     "data/runtime"
     "data/health"
     "data/cio"
+    # reports/ carries run_summary.json, read by the scalp scanner through
+    # PROJECT_ROOT/reports/... where PROJECT_ROOT is the release dir. Omitted
+    # here, every release served an absent reports/ and the scanner silently
+    # fell back to a stale run (2026-09-01: run_label "1730" from the day before).
+    "reports"
 )
 for rel in "${DATA_DIRS_TO_LINK[@]}"; do
     target="${RELEASE_DIR}/${rel}"

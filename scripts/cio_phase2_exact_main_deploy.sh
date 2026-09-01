@@ -207,6 +207,15 @@ PY
     "data/runtime"
     "data/health"
     "data/cio"
+    # reports/ holds run_summary.json, which the scalp scanner reads via
+    # PROJECT_ROOT/reports/2026-*/*/run_summary.json -- and PROJECT_ROOT is the
+    # RELEASE dir. It was never in the linked set, so every release served a
+    # reports/ that did not exist: the glob returned zero runs and the panel fell
+    # back to a stale record. Observed 2026-09-01 09:58 -- the API reported
+    # run_label "1730" from 2026-08-31 with an empty timestamp and 0 symbols
+    # scanned, while $PROJ/reports held today's 09:00 run with 53 tickers.
+    # Same shape as the logs/ fork below: not in the list, therefore forked.
+    "reports"
     # logs/ is gitignored, so each release started it EMPTY. That orphaned more
     # than logs: claude_escalation_queue.json, health_agent.jsonl,
     # health_agent_remediation.jsonl, claude_escalation_retry_cmd.jsonl and
