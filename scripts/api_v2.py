@@ -11532,11 +11532,26 @@ def _compute_trade_ai():
 
     # Prefer real packages (with tickers) over empty session-heal anchors
     def _run_rank(rs):
+        """Rank runs so that `latest` means MOST RECENT, not BIGGEST.
+
+        This used to return (heal, tc, date, generated_at) -- raw ticker_count
+        ranked ABOVE date, so a large stale run beat a small fresh one. Observed
+        2026-09-01 09:45: the panel showed run_label "1730" (a 17:30 run) with
+        latest_run_timestamp empty and latest_run_symbols_scanned 0, because a
+        38-ticker evening package outranked the morning's 10-ticker run. The
+        variable is called `latest`; it was returning the largest.
+
+        The intent of ranking by count was only to prefer real packages over empty
+        session-heal anchors -- so keep that as a BOOLEAN (non-empty beats empty)
+        and let date decide among real runs. Size becomes the last tiebreak, where
+        it cannot mask recency.
+        """
         tc = int(rs.get("ticker_count") or len(rs.get("tickers") or []) or 0)
         lbl = str(rs.get("run_label") or "")
         heal = 0 if lbl == "HEALTH_AUTOHEAL" or rs.get("session_heal") else 1
         date = str(rs.get("date") or rs.get("run_date") or "")
-        return (heal, tc, date, str(rs.get("generated_at") or ""))
+        has_tickers = 1 if tc > 0 else 0
+        return (heal, has_tickers, date, str(rs.get("generated_at") or ""), tc)
 
     all_runs.sort(key=_run_rank, reverse=True)
     latest = all_runs[0] if all_runs else {}

@@ -180,6 +180,10 @@ GATES = [
     ("ai_analyst_cache_fail_closed", [
         "tests/test_ai_analyst_cache_fails_closed.py",
     ]),
+    # "latest" must mean most recent, not biggest.
+    ("scalp_latest_run_recency", [
+        "tests/test_scalp_latest_run_is_most_recent.py",
+    ]),
     ("scripts_lib_bootstrap", [
         "tests/test_scripts_lib_bootstrap.py",
     ]),
