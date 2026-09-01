@@ -590,6 +590,10 @@ def scan_office(
             live_status=str(cash_blob.get("cash_posture_status") or ""),
             policy=policy_doc.get("policy") if isinstance(policy_doc.get("policy"), dict) else policy_doc,
             capital_plan_version=str(cash_blob.get("version") or ""),
+            # PP4. Without this the provenance audit cannot know how old the cash is
+            # and labelled any non-None figure CURRENT. The capital plan already
+            # carries the evidence; passing it is what makes the label answerable.
+            cash_as_of=cash_blob.get("cash_as_of"),
         )
         policy_gap = policy_prov.get("policy_status") == "POLICY_GAP"
         sit_office = office.get("situation_office") if isinstance(office.get("situation_office"), dict) else None

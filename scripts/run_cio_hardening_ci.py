@@ -18,6 +18,11 @@ REPO = Path(__file__).resolve().parents[1]
 
 # Ordered, explicit suite list (Phase 10.2)
 GATES = [
+    # Cash age is the age of the dollars. PP2 (the cash letter) and PP4 (provenance)
+    # stopped borrowing a clock; PP3 (the freshness board) is reported, not changed.
+    ("cash_as_of_surfaces", [
+        "tests/test_cash_as_of_three_surfaces.py",
+    ]),
     # The P1 digest tier had no delivery: a P1_DIGEST verdict archived the message
     # and returned False, and nothing pushed the archive. 4,387 rows since
     # 2026-07-02 against 1,707 delivered.

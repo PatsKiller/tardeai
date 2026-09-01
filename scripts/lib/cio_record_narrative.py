@@ -87,6 +87,21 @@ def regime_summary(
     return out
 
 
+def _cash_letter_as_of(capital_plan, now):
+    """The age of the money in this letter, or None. Never the build clock.
+
+    Reads the capital plan's own cash evidence -- the same derivation the operator
+    product and the freshness board use -- so the letter cannot disagree with the
+    block it describes. An unstamped or missing plan yields None, a visible absence,
+    because "we do not know how old this is" and "it is current" are different
+    statements and only one of them is honest here.
+    """
+    ev = (capital_plan or {}).get("cash_as_of")
+    if isinstance(ev, dict):
+        return None if ev.get("unstamped") else ev.get("as_of")
+    return ev or None
+
+
 def build_cash_letter(
     record: Optional[dict[str, Any]],
     *,
@@ -143,7 +158,13 @@ def build_cash_letter(
         "next_eligible_at": rec.get("next_eligible_at"),
         "writer": stamps["writer"],
         "author": stamps["author"],
-        "as_of": now.isoformat(),
+        # PP2. This was `now.isoformat()` -- the build clock, printed directly beside
+        # the cash figure, so a balance last confirmed weeks ago read as of this
+        # second. `as_of` on a cash letter is the age of the dollars above it; the
+        # moment the letter was composed is a separate field and is kept.
+        "as_of": _cash_letter_as_of(cp, now),
+        "cash_as_of": cp.get("cash_as_of"),
+        "composed_at": now.isoformat(),
         "from_record": bool(record),
     }
     if stamps.get("copy_step"):
