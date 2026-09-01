@@ -237,6 +237,10 @@ GATES = [
     ("overnight_g3_docs_index", [
         "tests/test_overnight_g3_docs_index.py",
     ]),
+    ("finviz_data_producers", [
+        "tests/test_finviz_token_screener_fallback.py",
+        "tests/test_agents_data_producers.py",
+    ]),
     ("lane_registry", [
         "tests/test_lane_registry.py",
     ]),
