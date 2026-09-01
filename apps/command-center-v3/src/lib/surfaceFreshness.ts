@@ -221,7 +221,13 @@ export function overviewSurfaceFreshness(
     return {
       stale: true,
       reason: 'data_as_of UNDATED',
-      asOf: (typeof overview.as_of === 'string' && overview.as_of) || null,
+      // GAP 3. This used to fall back to `overview.as_of` -- the LOADER-RUN
+      // date. A block labelled 'data UNDATED' then still rendered a date in
+      // the slot a reader now believes is the money's clock, which is the
+      // original defect wearing an honest label. `asOf` is the block's own
+      // as-of; when the money has no date, the honest value is none.
+      // The loader stamp is still on the payload for anyone who wants it.
+      asOf: null,
       ageHours: null,
       surfaceLabel: 'STALE · data UNDATED',
       dataAsOf: null,

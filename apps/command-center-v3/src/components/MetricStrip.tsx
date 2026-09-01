@@ -40,9 +40,16 @@ export default function MetricStrip({ onDrill }: Props) {
   const setupsAsOfMark = setupsFresh.asOf
     ? ` · as_of ${String(setupsFresh.asOf).slice(0, 19).replace('T', ' ')}`
     : ''
-  const overviewAsOfMark = overviewFresh.asOf
-    ? ` · as_of ${String(overviewFresh.asOf).slice(0, 19).replace('T', ' ')}`
-    : ''
+  // GAP 2. This said "as_of" while the value is the DATA clock, so the chip
+  // named the one field it is specifically not reporting. It also went blank
+  // when the money had no date -- and after the UNDATED fix that silence would
+  // be the whole rendering. Silence must never be indistinguishable from a
+  // healthy block (AGENTS.md 9.1), so UNDATED is stated.
+  const overviewAcct = overviewFresh.dataAsOfAccount
+  const overviewAcctMark = overviewAcct ? ` (${overviewAcct})` : ''
+  const overviewAsOfMark = overviewFresh.dataAsOf
+    ? ` · data_as_of ${String(overviewFresh.dataAsOf).slice(0, 19).replace('T', ' ')}${overviewAcctMark}`
+    : ` · data_as_of UNDATED${overviewAcctMark}`
   const operatorLive = !!gate?.operator_live_via_2fa_allowed
   const autoLive = gate?.status === 'AUTHORIZED'
   const liveBadge = operatorLive ? '2FA LIVE' : autoLive ? 'AUTO LIVE' : 'AUTO BLOCKED'
@@ -85,6 +92,9 @@ export default function MetricStrip({ onDrill }: Props) {
       label: 'PORTFOLIO', value: portfolioVal != null ? fmt$(portfolioVal, 0) : '—',
       stale: overviewFresh.stale ? (overviewFresh.surfaceLabel?.replace(/^STALE · /, ' · ') || overviewAsOfMark) : null,
       asOf: overviewFresh.asOf,
+      asOfLabel: 'data_as_of',
+      asOfNote: overviewAcct,
+      undated: !overviewFresh.dataAsOf,
       color: overviewFresh.stale ? BB.amber : 'var(--text0)',
       tip: `Total portfolio equity across all linked broker accounts (Schwab, Fidelity, Alpaca, Moomoo). Refreshes every 2 min via /api/v2/overview.${overviewAsOfMark}${overviewFresh.stale ? ` · ${overviewFresh.reason}` : ''}`,
       drill: { title: 'Portfolio', subtitle: overviewFresh.stale ? `STALE${overviewAsOfMark}` : 'From /api/v2/overview', endpoint: '/api/v2/overview',
@@ -94,6 +104,9 @@ export default function MetricStrip({ onDrill }: Props) {
       label: 'TODAY', value: todayChange != null ? `${todayChange >= 0 ? '+' : ''}${fmt$(todayChange, 0)}${todayPct != null ? ` ${todayPct >= 0 ? '+' : ''}${todayPct}%` : ''}` : '—',
       stale: overviewFresh.stale ? (overviewFresh.surfaceLabel?.replace(/^STALE · /, ' · ') || overviewAsOfMark) : null,
       asOf: overviewFresh.asOf,
+      asOfLabel: 'data_as_of',
+      asOfNote: overviewAcct,
+      undated: !overviewFresh.dataAsOf,
       color: overviewFresh.stale ? BB.amber : todayChange == null ? 'var(--text3)' : todayChange >= 0 ? BB.green : BB.red,
       drill: { title: "Today's Move", subtitle: overviewFresh.stale ? `STALE${overviewAsOfMark}` : 'By account · from /api/v2/overview', endpoint: '/api/v2/overview',
         rows: overview ? [
@@ -182,7 +195,13 @@ export default function MetricStrip({ onDrill }: Props) {
           </div>
           {(t as any).asOf && (
             <div style={{ fontSize: TYPE.xs, color: (t as any).stale ? BB.amber : 'var(--text3)', marginTop: 1 }} data-surface-as-of>
-              as_of {String((t as any).asOf).slice(0, 16).replace('T', ' ')}
+              {(t as any).asOfLabel || 'as_of'} {String((t as any).asOf).slice(0, 16).replace('T', ' ')}
+              {(t as any).asOfNote ? ` · ${(t as any).asOfNote}` : ''}
+            </div>
+          )}
+          {!(t as any).asOf && (t as any).undated && (
+            <div style={{ fontSize: TYPE.xs, color: BB.amber, marginTop: 1 }} data-surface-as-of data-surface-undated>
+              {(t as any).asOfLabel || 'as_of'} UNDATED
             </div>
           )}
         </div>
