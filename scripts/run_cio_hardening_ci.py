@@ -273,6 +273,9 @@ GATES = [
     ("overnight_d1_m5_cadence", [
         "tests/test_overnight_d1_m5_cadence.py",
     ]),
+    ("cio_p1_load_by_subject", [
+        "tests/test_cio_p1_load_by_subject.py",
+    ]),
     ("overnight_g4_archive_mechanism", [
         "tests/test_overnight_g4_archive_mechanism.py",
     ]),
