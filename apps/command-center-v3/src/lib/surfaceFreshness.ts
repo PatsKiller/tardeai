@@ -18,6 +18,19 @@ export type SurfaceFreshness = {
   ageHours: number | null
   /** Visible chrome fragment, e.g. "STALE · cache 85h". Null when live. */
   surfaceLabel: string | null
+  /**
+   * Oldest contributing DATA date, and the account that owns it.
+   *
+   * Distinct from `asOf`: `as_of` on the overview payload records when the
+   * LOADER RAN (portfolio_loader writes it `= today`), not when any data was
+   * fetched. On 2026-09-01 it read 2026-08-29 while the Schwab rows carried
+   * 08-31 and the moomoo/alpaca CASH rows carried 08-03/04 — older than 28 of
+   * 30 rows and newer than the other 2. One number, wrong in both directions.
+   *
+   * null means the producer did not supply one. That is UNDATED, never "today".
+   */
+  dataAsOf: string | null
+  dataAsOfAccount: string | null
 }
 
 const HOUR_MS = 3_600_000
@@ -77,6 +90,8 @@ export function tradeAiSurfaceFreshness(
       asOf: null,
       ageHours: null,
       surfaceLabel: 'STALE · no scan payload',
+      dataAsOf: null,
+      dataAsOfAccount: null,
     }
   }
 
@@ -141,7 +156,10 @@ export function tradeAiSurfaceFreshness(
     || null
 
   if (!stale) {
-    return { stale: false, reason: null, asOf, ageHours: ageFromCache, surfaceLabel: null }
+    // tradeAiSurfaceFreshness has no data clock of its own; the scanner surface
+    // dates itself from its run/cache stamps. Explicitly null rather than absent.
+    return { stale: false, reason: null, asOf, ageHours: ageFromCache, surfaceLabel: null,
+             dataAsOf: null, dataAsOfAccount: null }
   }
 
   const bits: string[] = []
@@ -156,6 +174,8 @@ export function tradeAiSurfaceFreshness(
     asOf,
     ageHours: ageFromCache,
     surfaceLabel: `STALE · ${reason}`,
+    dataAsOf: null,
+    dataAsOfAccount: null,
   }
 }
 
@@ -176,38 +196,59 @@ export function overviewSurfaceFreshness(
       asOf: null,
       ageHours: null,
       surfaceLabel: 'STALE · no overview',
+      dataAsOf: null,
+      dataAsOfAccount: null,
     }
   }
   const pricing = (overview.pricing && typeof overview.pricing === 'object')
     ? (overview.pricing as Record<string, unknown>)
     : {}
-  const stamps = [
-    parseTimestamp(overview.as_of, nowMs),
-    parseTimestamp(pricing.last_repriced ?? overview.last_repriced, nowMs),
-  ].filter((d): d is Date => !!d)
-
-  // Oldest contributing stamp drives block age.
-  const oldest = stamps.length
-    ? new Date(Math.min(...stamps.map(d => d.getTime())))
+  const dataAsOf = typeof overview.data_as_of === 'string' && overview.data_as_of
+    ? overview.data_as_of
     : null
-  const age = ageHoursFrom(oldest, nowMs)
-  const asOf =
-    (typeof overview.as_of === 'string' && overview.as_of)
-    || (typeof pricing.last_repriced === 'string' && pricing.last_repriced)
-    || (typeof overview.last_repriced === 'string' && overview.last_repriced)
-    || (oldest ? oldest.toISOString() : null)
+  const dataAsOfAccount = typeof overview.data_as_of_account === 'string' && overview.data_as_of_account
+    ? overview.data_as_of_account
+    : null
 
-  const stale = age != null && age >= 36
-  if (!stale) {
-    return { stale: false, reason: null, asOf, ageHours: age, surfaceLabel: null }
+  // The DATA clock leads. `as_of` is the loader-run date and cannot date the
+  // data; it stays on the payload and is reported, but it no longer sets age.
+  const dataStamp = parseTimestamp(dataAsOf, nowMs)
+
+  // No data clock is UNDATED — fail closed. A missing clock that falls back to
+  // a loader-run date reports fresh while the data underneath is a month old,
+  // which is exactly the defect this replaces.
+  if (!dataStamp) {
+    return {
+      stale: true,
+      reason: 'data_as_of UNDATED',
+      asOf: (typeof overview.as_of === 'string' && overview.as_of) || null,
+      ageHours: null,
+      surfaceLabel: 'STALE · data UNDATED',
+      dataAsOf: null,
+      dataAsOfAccount,
+    }
   }
-  const reason = `as_of ${fmtAgeHours(age)}`
+
+  const age = ageHoursFrom(dataStamp, nowMs)
+  const stale = age != null && age >= 36
+  const acct = dataAsOfAccount ? ` · ${dataAsOfAccount}` : ''
+
+  if (!stale) {
+    return {
+      stale: false, reason: null, asOf: dataAsOf, ageHours: age,
+      surfaceLabel: null, dataAsOf, dataAsOfAccount,
+    }
+  }
+  // Name the account so a stale $500 cash row cannot hide behind 28 fresh rows.
+  const reason = `data ${fmtAgeHours(age)}${acct}`
   return {
     stale: true,
     reason,
-    asOf,
+    asOf: dataAsOf,
     ageHours: age,
     surfaceLabel: `STALE · ${reason}`,
+    dataAsOf,
+    dataAsOfAccount,
   }
 }
 

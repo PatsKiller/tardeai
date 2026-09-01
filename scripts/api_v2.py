@@ -2629,6 +2629,16 @@ def overview():
         "position_count": len(active_positions),
         "account_count": len(h.get("account_summaries", {})),
         "as_of": h.get("as_of", ""),
+        # as_of records WHEN THE LOADER RAN, not when any data was fetched: it is
+        # written `= today` by portfolio_loader. On 2026-09-01 it read 2026-08-29
+        # while the Schwab rows carried 08-31 and the moomoo/alpaca CASH rows
+        # carried 08-03/04 -- older than 28 of 30 rows and newer than the other 2,
+        # so it was wrong in both directions at once and described nothing in the
+        # file. data_as_of is the OLDEST contributing row, with the account that
+        # owns it, so a stale $500 cash row cannot hide behind 28 fresh equity
+        # rows (AGENTS.md 9.1: "a 27-day-old $500 makes the block 27 days old").
+        "data_as_of": h.get("data_as_of"),
+        "data_as_of_account": h.get("data_as_of_account"),
         "last_repriced": h.get("last_repriced", ""),
         "periods": {k: {"change_pct": v.get("change_pct"), "change": v.get("change"),
                         "estimated": v.get("source") == "repriced"}

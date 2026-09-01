@@ -95,21 +95,51 @@ check('garbage → null', parseTimestamp('not-a-date') == null)
   check('prior run_date is stale', f.stale === true)
 }
 
-// ---- overview ----
+// ---- overview: the PORTFOLIO chip dates the DATA, not the loader run ----
+// as_of is written `= today` by portfolio_loader: it records WHEN THE LOADER RAN.
+// On 2026-09-01 it read 2026-08-29 while the Schwab rows carried 08-31 and the
+// moomoo/alpaca CASH rows carried 08-03/04 -- older than 28 of 30 rows and newer
+// than the other 2. The chip showed "3.4d" and described nothing in the payload.
 {
   const live = overviewSurfaceFreshness({
     as_of: '2026-08-31T12:00:00Z',
+    data_as_of: '2026-08-31',
+    data_as_of_account: 'schwab_taxable',
     pricing: { last_repriced: '2026-08-31T12:45:00Z' },
   }, now)
-  check('overview same-day not stale', live.stale === false)
+  check('overview fresh data -> not stale', live.stale === false)
+  check('overview fresh reports dataAsOf', live.dataAsOf === '2026-08-31')
 
-  const old = overviewSurfaceFreshness({
-    as_of: '2026-08-29T00:00:00Z',
-    pricing: { last_repriced: '2026-08-29T00:00:00Z' },
+  // THE REGRESSION: loader ran recently, data is a month old.
+  const real = overviewSurfaceFreshness({
+    as_of: '2026-08-29',                 // loader ran 3 days ago
+    data_as_of: '2026-08-03',            // oldest contributing row: 29 days
+    data_as_of_account: 'moomoo_taxable_live',
+    pricing: { last_repriced: '2026-09-01T16:00:00Z' },  // prices fresh today
   }, now)
-  check('overview >36h is stale', old.stale === true)
-  check('overview uses oldest contributor', old.ageHours != null && old.ageHours > 36)
-  check('overview surfaceLabel visible', !!old.surfaceLabel && old.surfaceLabel.includes('STALE'))
+  check('stale data beats a recent loader run', real.stale === true)
+  check('age is dated from data_as_of, not as_of',
+    real.ageHours != null && real.ageHours > 24 * 20)
+  check('chip names the account that owns the stale row',
+    !!real.reason && real.reason.includes('moomoo_taxable_live'))
+  check('chip reports data_as_of as its asOf', real.asOf === '2026-08-03')
+
+  // MUTATION: point the chip back at as_of. The 2026-08-29 loader date is ~3.4d,
+  // which is under no plausible month-scale threshold -- so a chip reading as_of
+  // cannot produce this age, and this check fails if the binding regresses.
+  const asOfAge = (now.getTime() - Date.parse('2026-08-29')) / 3_600_000
+  check('mutation: as_of would under-report the age by weeks',
+    asOfAge < 24 * 10 && real.ageHours! > 24 * 20)
+
+  // Missing clock is UNDATED -- never "today", never silent.
+  const undated = overviewSurfaceFreshness({
+    as_of: '2026-09-01T12:00:00Z',
+    pricing: { last_repriced: '2026-09-01T12:00:00Z' },
+  }, now)
+  check('no data_as_of -> UNDATED, not fresh', undated.stale === true)
+  check('UNDATED says so', !!undated.reason && undated.reason.includes('UNDATED'))
+  check('UNDATED does not invent an age', undated.ageHours === null)
+  check('UNDATED does not invent a date', undated.dataAsOf === null)
 }
 
 // ---- WI provenance (not a second model) ----
