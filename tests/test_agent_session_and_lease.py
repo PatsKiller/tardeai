@@ -52,6 +52,8 @@ def test_mutating_unknown_client_fails(tmp_path: Path):
         docs_read=["AGENTS.md"],
         mode="mutating",
         acknowledge_dirty=True,
+        expected_worktree=ROOT,
+        cwd=ROOT,
         coordination_root_path=tmp_path / "coord",
     )
     assert receipt["ok"] is False
@@ -64,6 +66,9 @@ def test_read_only_unknown_ok(tmp_path: Path):
         repo_root=ROOT,
         claimed_paths=[],
         mode="read_only",
+        expected_worktree=ROOT,
+        cwd=ROOT,
+        acknowledge_dirty=True,  # identity fail-closed on dirty before receipt write
         coordination_root_path=tmp_path / "coord",
     )
     assert receipt["ok"] is True
@@ -139,6 +144,8 @@ def test_mutating_requires_docs_attestation(tmp_path: Path):
         docs_read=[],  # missing attestation
         mode="mutating",
         acknowledge_dirty=True,
+        expected_worktree=ROOT,
+        cwd=ROOT,
         coordination_root_path=tmp_path / "coord",
     )
     assert receipt["ok"] is False
@@ -154,6 +161,8 @@ def test_mutating_with_docs_and_claims_ok(tmp_path: Path):
         docs_searched=["agent registry", "session receipt", "lease"],
         mode="mutating",
         acknowledge_dirty=True,
+        expected_worktree=ROOT,
+        cwd=ROOT,
         coordination_root_path=tmp_path / "coord",
         task_scope="sop-1.2.0-local",
     )

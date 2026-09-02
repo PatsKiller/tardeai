@@ -1636,11 +1636,13 @@ They bind coding/governance agents only. They are **not** trading authorization.
 |---|---|
 | Client registry | `config/agent_clients.yaml` — unknown clients fail closed to ADVISORY (no mutate/remote/production/financial) |
 | Session receipt | `scripts/agent_session_start.py` + `AgentSessionReceipt@v1` before mutating work |
+| Worktree identity | `scripts/lib/agent_worktree_identity.py` — fail closed before any write when cwd/toplevel/worktree-list/gitdir/HEAD/dirty disagree with the expected registered worktree (blocks release-dir borrowed gitdir) |
 | File/state leases | `scripts/lib/agent_file_lease.py` — atomic flock leases; no overlapping claims |
 | Safe worktree | `scripts/new-worktree.sh` — no default `.env` link; never instruct `git add -A` |
 | Changed-file quality | `scripts/agent_changed_file_quality.py` |
 | Dedicated CI | `.github/workflows/agent-governance.yml` (job name `agent-governance`) — enable as required context by operator |
 | Evidence | `docs/implementation/maturity-program/sop-1.2.0-20260902/` |
+| Verifier runbook | `docs/implementation/maturity-program/sop-1.2.0-20260902/VERIFIER_RUNBOOK.md` — independent verifiers **must** use the governed launcher with `--verifier --expected-worktree --expected-head` |
 
 Operator activation phrase (after review):
 `APPROVE_AGENTS_POLICY_1_2_0 <pr_number> <head_sha>`

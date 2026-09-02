@@ -1,0 +1,21 @@
+=== ADVERSARIAL WORKTREE IDENTITY 2026-09-02 ===
+Case: verifier launched from release dir with borrowed gitdir → wrong HEAD + phantom dirty.
+Protections were ABSENT before this commit; now fail-closed in agent_worktree_identity
+before any receipt/lease write.
+
+Module: scripts/lib/agent_worktree_identity.py
+Launcher: scripts/agent_session_start.py --verifier --expected-worktree --expected-head
+Tests: tests/test_agent_worktree_identity.py
+Runbook: VERIFIER_RUNBOOK.md
+
+Error codes covered:
+  CWD_NE_EXPECTED_WORKTREE
+  TOPLEVEL_NE_EXPECTED_WORKTREE
+  EXPECTED_NOT_IN_WORKTREE_LIST
+  GITDIR_BELONGS_TO_OTHER_WORKTREE
+  BORROWED_GITDIR_OR_RELEASE_DIR
+  HEAD_NE_EXPECTED
+  DIRTY_UNACKNOWLEDGED
+
+Positive: clean registered detached worktree accepted in read-only verifier mode.
+Negative: release-dir borrow + wrong expected HEAD fails with no coordination writes.

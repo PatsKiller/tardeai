@@ -4,6 +4,10 @@
 Read-only by default. Mutating mode requires a MECHANICAL registered client,
 hooks, documentation attestation, dirty acknowledgment, and successful leases.
 
+Worktree / Git identity is asserted fail-closed **before any write** (leases,
+receipt files, generated artifacts). Verifier mode requires
+``--expected-worktree`` + ``--expected-head`` and is read-only.
+
 Does not authorize remote sync, deployment, production, or financial authority.
 """
 
@@ -30,9 +34,36 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--acknowledge-dirty", action="store_true")
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--root", default=None, help="repo root (default: detect)")
+    ap.add_argument(
+        "--expected-worktree",
+        default=None,
+        help="canonical registered worktree path that must equal cwd and git toplevel",
+    )
+    ap.add_argument(
+        "--expected-head",
+        default=None,
+        help="expected HEAD SHA (full or unique prefix); required with --verifier",
+    )
+    ap.add_argument(
+        "--verifier",
+        action="store_true",
+        help="read-only verifier mode: require --expected-worktree and --expected-head",
+    )
     args = ap.parse_args(argv)
 
     root = Path(args.root).resolve() if args.root else ROOT
+    expected_wt = Path(args.expected_worktree).resolve() if args.expected_worktree else root
+    if args.verifier:
+        if not args.expected_worktree:
+            print("error: --verifier requires --expected-worktree", file=sys.stderr)
+            return 2
+        if not args.expected_head:
+            print("error: --verifier requires --expected-head", file=sys.stderr)
+            return 2
+        if args.mode == "mutating":
+            print("error: --verifier cannot combine with --mode mutating", file=sys.stderr)
+            return 2
+
     from scripts.lib.agent_session_receipt import start_session
 
     receipt = start_session(
@@ -42,9 +73,13 @@ def main(argv: list[str] | None = None) -> int:
         claimed_stores=list(args.store),
         docs_read=list(args.doc_read),
         docs_searched=list(args.doc_search),
-        mode=args.mode,
+        mode="read_only" if args.verifier else args.mode,
         task_scope=args.task_scope,
         acknowledge_dirty=bool(args.acknowledge_dirty),
+        expected_worktree=expected_wt,
+        expected_head=args.expected_head,
+        cwd=Path.cwd(),
+        verifier=bool(args.verifier),
     )
     if args.json:
         print(json.dumps(receipt, indent=2, default=str))
@@ -52,7 +87,7 @@ def main(argv: list[str] | None = None) -> int:
         print(
             f"ok={receipt.get('ok')} session={receipt.get('session_id')} "
             f"agent={receipt.get('agent_id')} mode={receipt.get('mode')} "
-            f"errors={receipt.get('errors')}"
+            f"verifier={receipt.get('verifier')} errors={receipt.get('errors')}"
         )
     return 0 if receipt.get("ok") else 1
 

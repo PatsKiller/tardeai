@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `f744c0d8dd6d2dc017a512fd4692e96bbf4b0955da474e4801294bd0c504e194`
+**Tree fingerprint:** `6e89291524851ca6a7c35236598361b604d6e05eb908b1ccd2fd73bb9cc4f8d6`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,10 +12,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2343 |
-| Markdown (excl. this INDEX) | 1956 |
+| Files under `docs/` (excl. this INDEX) | 2345 |
+| Markdown (excl. this INDEX) | 1957 |
 | **MISSING HEADER** | **11** |
-| Header OK | 1945 |
+| Header OK | 1946 |
 | Duplicate groups | 5 |
 
 ### By status_guess
@@ -27,10 +27,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | archive_session_handoff | 3 |
 | archive_superseded | 20 |
 | artifact_code_snapshot | 3 |
-| artifact_raw_sync | 25 |
+| artifact_raw_sync | 26 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 6 |
-| review_required | 1964 |
+| review_required | 1965 |
 
 ## Markdown tree
 
@@ -1154,9 +1154,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/implementation/maturity-program/mp-20260901-210554/STAGE_01_AGENTS_POLICY_RECONCILIATION.md` | Stage 1 · Constitutional cleanup and conflict matrix | review_required | OK | `2d04326c1ac7` |
 | `docs/implementation/maturity-program/mp-20260901-210554/STAGE_01_DRIVE_MIRROR_VERIFICATION.md` | Stage 1.6 · Drive mirror | review_required | OK | `4dd677d4c67b` |
 | `docs/implementation/maturity-program/sop-1.2.0-20260902/EAC13CFD0_DRIVE_MANIFEST_DISPOSITION.md` | eac13cfd0 Drive-manifest disposition | review_required | OK | `0bef5edf4cc3` |
-| `docs/implementation/maturity-program/sop-1.2.0-20260902/MATURITY_SCORECARD.md` | Maturity scorecard — Multi-Agent SOP 1.2.0 (completion pass) | review_required | OK | `0592cda6dfdd` |
+| `docs/implementation/maturity-program/sop-1.2.0-20260902/MATURITY_SCORECARD.md` | Maturity scorecard — Multi-Agent SOP 1.2.0 (completion pass) | review_required | OK | `0ed14a4340e4` |
 | `docs/implementation/maturity-program/sop-1.2.0-20260902/STAGE_00_PREFLIGHT.md` | Stage 0 · Fresh-state preflight and constitutional read | review_required | OK | `d565bb67c3fa` |
 | `docs/implementation/maturity-program/sop-1.2.0-20260902/STAGE_01_PR_COLLISION.md` | Stage 1 · Open-PR collision / convergence inventory | review_required | OK | `b072654894ad` |
+| `docs/implementation/maturity-program/sop-1.2.0-20260902/VERIFIER_RUNBOOK.md` | SOP 1.2.0 · Independent verifier runbook | review_required | OK | `8084ced22cfd` |
 | `docs/incidents/DAY_SCALP_PIPELINE_FIXES_2026-08-19.md` | Day-Scalp Pipeline — Fixes & Enhancements (2026-08-19) | review_required | OK | `c6c4a11b63fb` |
 | `docs/incidents/DAY_SCALP_PIPELINE_OUTAGE_2026-08-19.md` | Day-Scalp Pipeline Outage — Root Cause & Remediation Plan (2026-08-19) | review_required | OK | `304b9f0e8db6` |
 | `docs/incidents/PHASE67A_FINVIZ_AGENT_STALENESS_INCIDENT_INVENTORY.md` | Phase 67A — Finviz & Agent Staleness Incident Inventory | review_required | OK | `4e6a66d54dd5` |

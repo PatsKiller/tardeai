@@ -32,6 +32,8 @@ jobs:
         run: pytest tests/test_agent_clients_registry.py -q
       - name: Session receipt + leases
         run: pytest tests/test_agent_session_and_lease.py -q
+      - name: Worktree identity adversarial (borrowed gitdir)
+        run: pytest tests/test_agent_worktree_identity.py -q
       - name: Policy hooks (existing)
         run: pytest tests/test_ai_work_policy_hooks.py tests/test_agents_policy_v1.py -q
       - name: Registry validate via quality command

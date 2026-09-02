@@ -330,6 +330,7 @@ GATES = [
     ("agent_governance_sop", [
         "tests/test_agent_clients_registry.py",
         "tests/test_agent_session_and_lease.py",
+        "tests/test_agent_worktree_identity.py",
         "tests/test_agents_drive_mirror_policy.py",
     ]),
     ("wake_writer_stamp", [

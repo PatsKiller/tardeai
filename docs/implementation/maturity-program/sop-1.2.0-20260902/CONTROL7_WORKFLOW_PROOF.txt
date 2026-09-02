@@ -62,3 +62,7 @@ HAS_pull_request True
 HAS_push True
 HAS_workflow_dispatch True
 push_branches {'branches': ['main']}
+
+=== ADDED STEP (adversarial identity) ===
+      - name: Worktree identity adversarial (borrowed gitdir)
+        run: pytest tests/test_agent_worktree_identity.py -q
