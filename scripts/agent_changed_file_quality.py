@@ -10,8 +10,6 @@ legacy files.
 from __future__ import annotations
 
 import argparse
-import os
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -20,8 +18,11 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-# Pinned Ruff version declared for governance CI / local gates.
-PINNED_RUFF_VERSION = "0.16.2"
+from scripts.lib.sop_toolchain import (  # noqa: E402
+    PINNED_RUFF_VERSION,
+    resolve_ruff_bin as _resolve_ruff_bin,
+    ruff_version_string,
+)
 
 
 def _run(cmd: list[str], *, env: dict[str, str] | None = None) -> int:
@@ -30,32 +31,12 @@ def _run(cmd: list[str], *, env: dict[str, str] | None = None) -> int:
 
 
 def resolve_ruff_bin() -> Path | None:
-    """Prefer repo/.venv, then the interpreter's bin, then PATH.
-
-    Does not invent a silent success when Ruff is absent.
-    """
-    candidates: list[Path] = [
-        ROOT / ".venv" / "bin" / "ruff",
-        Path(sys.executable).resolve().parent / "ruff",
-        Path("/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/ruff"),
-    ]
-    which = shutil.which("ruff")
-    if which:
-        candidates.append(Path(which))
-    seen: set[str] = set()
-    for c in candidates:
-        key = str(c)
-        if key in seen:
-            continue
-        seen.add(key)
-        if c.is_file() and os.access(c, os.X_OK):
-            return c
-    return None
+    """Canonical Ruff discovery (shared with runtime attestation)."""
+    return _resolve_ruff_bin(root=ROOT)
 
 
 def ruff_version(bin_path: Path) -> str:
-    out = subprocess.check_output([str(bin_path), "--version"], cwd=str(ROOT), text=True).strip()
-    return out
+    return ruff_version_string(bin_path, cwd=ROOT)
 
 
 def main(argv: list[str] | None = None) -> int:

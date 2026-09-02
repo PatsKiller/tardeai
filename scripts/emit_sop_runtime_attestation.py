@@ -22,13 +22,13 @@ sys.path.insert(0, str(ROOT))
 
 from scripts.lib.sop_evidence_integrity import (  # noqa: E402
     EXPECTED_CORE_TESTS,
-    PINNED_RUFF,
     RUNTIME_ATTESTATION_SCHEMA,
     control_surface_digest,
     validate_in_repo_evidence,
     validate_runtime_attestation,
     workflow_facts,
 )
+from scripts.lib.sop_toolchain import collect_tool_versions  # noqa: E402
 
 DEFAULT_OUT_DIR = ROOT / "artifacts" / "sop-attestations"
 
@@ -42,17 +42,9 @@ def _run(cmd: list[str]) -> int:
     return subprocess.call(cmd, cwd=str(ROOT))
 
 
-def _tool_versions() -> dict[str, str]:
-    vers: dict[str, str] = {"python": sys.version.split()[0], "pinned_ruff": PINNED_RUFF}
-    try:
-        vers["ruff"] = subprocess.check_output(["ruff", "--version"], text=True).strip()
-    except (OSError, subprocess.CalledProcessError):
-        vers["ruff"] = "MISSING"
-    try:
-        vers["shellcheck"] = subprocess.check_output(["shellcheck", "--version"], text=True).splitlines()[0]
-    except (OSError, subprocess.CalledProcessError):
-        vers["shellcheck"] = "MISSING"
-    return vers
+def _tool_versions() -> dict:
+    """Same canonical discovery as the quality gate (never bare PATH-only)."""
+    return collect_tool_versions(root=ROOT)
 
 
 def _docs_index_fingerprint() -> str:

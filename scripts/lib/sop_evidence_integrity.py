@@ -21,11 +21,12 @@ import re
 from pathlib import Path
 from typing import Any
 
+from scripts.lib.sop_toolchain import PINNED_RUFF_VERSION as PINNED_RUFF  # noqa: E402
+
 ROOT = Path(__file__).resolve().parents[2]
 MANIFEST_REL = "config/sop_120_control_surface.manifest.json"
 EVIDENCE_DIR_REL = "docs/implementation/maturity-program/sop-1.2.0-20260902"
 RUNTIME_ATTESTATION_SCHEMA = "SopRuntimeAttestation@v1"
-PINNED_RUFF = "0.16.2"
 EXPECTED_CORE_TESTS = 120
 
 # Authoritative (current) evidence basenames — must be non-empty and coherent.
@@ -318,7 +319,26 @@ def validate_in_repo_evidence(root: Path | None = None) -> list[str]:
     return out
 
 
-def validate_runtime_attestation(data: dict[str, Any], *, root: Path | None = None) -> list[str]:
+def validate_runtime_attestation(
+    data: dict[str, Any],
+    *,
+    root: Path | None = None,
+    require_ruff: bool = True,
+    changed_python: bool = True,
+) -> list[str]:
+    """Validate a runtime attestation.
+
+    When ``require_ruff`` / ``changed_python`` are true (default for SOP
+    governance attestations), Ruff must be present, match the pinned version,
+    and must not be recorded as MISSING while commands claim PASS.
+    """
+    from scripts.lib.sop_toolchain import (
+        PINNED_RUFF_VERSION,
+        collect_tool_versions,
+        parse_ruff_version,
+        resolve_ruff_bin,
+    )
+
     root = root or ROOT
     errors: list[str] = []
     if data.get("schema") != RUNTIME_ATTESTATION_SCHEMA:
@@ -355,4 +375,53 @@ def validate_runtime_attestation(data: dict[str, Any], *, root: Path | None = No
     counts = data.get("test_counts") or {}
     if int(counts.get("core", -1)) != EXPECTED_CORE_TESTS:
         errors.append("ATTESTATION_TEST_COUNT")
-    return errors
+
+    tools = data.get("tool_versions") or {}
+    recorded_ruff = str(tools.get("ruff") or "")
+    live = collect_tool_versions(root=root)
+    resolved = resolve_ruff_bin(root=root)
+
+    if require_ruff or changed_python:
+        if recorded_ruff.upper() == "MISSING" or not recorded_ruff:
+            errors.append("ATTESTATION_RUFF_RECORDED_MISSING")
+        if resolved is None:
+            errors.append("ATTESTATION_RUFF_TOOL_MISSING")
+        else:
+            live_parsed = parse_ruff_version(str(live.get("ruff_raw") or live.get("ruff") or ""))
+            rec_parsed = parse_ruff_version(recorded_ruff) or (
+                recorded_ruff if re.fullmatch(r"\d+\.\d+\.\d+", recorded_ruff) else None
+            )
+            if live_parsed and rec_parsed and live_parsed != rec_parsed:
+                errors.append("ATTESTATION_RUFF_VERSION_MISMATCH")
+            if rec_parsed and rec_parsed != PINNED_RUFF_VERSION:
+                errors.append("ATTESTATION_RUFF_PIN_MISMATCH")
+            if recorded_ruff.upper() == "MISSING" and live_parsed:
+                errors.append("ATTESTATION_RUFF_FALSE_MISSING")
+
+    # Required command PASS cannot coexist with missing tool.
+    cmds = data.get("commands") or []
+    ruff_related = {"ruff_check", "ruff_format", "quality", "pytest_core", "shellcheck"}
+    for c in cmds:
+        if not isinstance(c, dict):
+            continue
+        name = str(c.get("name") or "")
+        exit_code = c.get("exit")
+        if (
+            exit_code == 0
+            and recorded_ruff.upper() == "MISSING"
+            and (name in ruff_related or "ruff" in name or name == "pytest_core")
+        ):
+            # pytest_core itself does not need ruff, but quality/ruff commands do.
+            if name in {"ruff_check", "ruff_format", "quality"} or "ruff" in name:
+                errors.append(f"ATTESTATION_PASS_WITH_MISSING_TOOL:{name}")
+        if exit_code == 0 and name == "shellcheck" and str(tools.get("shellcheck") or "").upper() == "MISSING":
+            errors.append("ATTESTATION_PASS_WITH_MISSING_TOOL:shellcheck")
+
+    if changed_python and recorded_ruff.upper() == "MISSING":
+        errors.append("ATTESTATION_CHANGED_PYTHON_REQUIRES_RUFF")
+
+    out: list[str] = []
+    for e in errors:
+        if e not in out:
+            out.append(e)
+    return out

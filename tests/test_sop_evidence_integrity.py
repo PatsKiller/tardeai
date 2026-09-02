@@ -183,7 +183,13 @@ def test_runtime_attestation_schema_roundtrip():
         "commands": [],
         "test_counts": {"core": EXPECTED_CORE_TESTS},
         "docs_index_fingerprint": "deadbeef",
-        "tool_versions": {"ruff": "0.16.2"},
+        "tool_versions": {
+            "python": "3.14.4",
+            "pinned_ruff": "0.16.2",
+            "ruff": "0.16.2",
+            "ruff_raw": "ruff 0.16.2",
+            "shellcheck": "ShellCheck - shell script analysis tool",
+        },
         "clean_state": True,
         "authority_non_regression": "PASS",
     }
