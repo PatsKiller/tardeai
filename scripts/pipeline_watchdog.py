@@ -138,6 +138,7 @@ def handle_pipeline_issues(conn, issues, no_telegram=False):
 
         if retries_today < MAX_RETRIES and issue.get('command'):
             log.info(f"[watchdog] Retrying {script} (attempt {retries_today+1})")
+            rid = None
             try:
                 from pipeline_registry import run_start, run_complete, run_fail
                 rid = run_start(script, run_label=f'retry_{retries_today+1}', triggered_by='watchdog')
@@ -154,7 +155,19 @@ def handle_pipeline_issues(conn, issues, no_telegram=False):
                             send_telegram(f"CRITICAL: {script} failed {MAX_RETRIES}x. Manual check needed.", urgent=True)
                             log_action(conn, 'alert', script, 'max_retries', True, '')
             except Exception as e:
-                log.error(f"[watchdog] Retry failed for {script}: {e}")
+                # A retry that raises (typically a subprocess timeout at 300s) is still just a failed
+                # retry: handle it like the returncode!=0 branch above — mark the run failed (so it is
+                # not left stuck 'running'), record the action, and escalate at max retries — instead
+                # of emitting a raw ERROR line every cycle (which floods execution_health log_errors).
+                emsg = str(e)[:200]
+                if rid is not None:
+                    run_fail(rid, emsg)
+                log_action(conn, 'retry', script, issue['issue'], False, emsg[-100:])
+                log.warning(f"[watchdog] Retry error for {script}: {emsg}")
+                if retries_today + 1 >= MAX_RETRIES and not no_telegram:
+                    if not was_alerted_recently(conn, script):
+                        send_telegram(f"CRITICAL: {script} failed {MAX_RETRIES}x. Manual check needed.", urgent=True)
+                        log_action(conn, 'alert', script, 'max_retries', True, '')
 
 
 # ── FUNCTION 2: GO Signal Coverage ──
