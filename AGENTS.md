@@ -1086,7 +1086,7 @@ is repeating the filing-cabinet defect.
 
 **A PR introducing a new `@v1` type, store, or subsystem without that statement is incomplete.**
 
-# 13.5 · Before you build — the pre-build check
+## 13.5 · Pre-build check
 
 **The failure this prevents.** This system's most expensive recurring pattern is not broken code.
 It is **rebuilding something that already exists and is merely unwired.** `load-by-subject` was
@@ -1101,7 +1101,7 @@ first; it doubles the surface and guarantees they will disagree.
 
 ## The check — run it before writing any new module, contract, store, gate, metric, operator field, or scheduled job
 
-0. **Read §13.4 first.** This check is unusable without the type vocabulary: an agent that has not
+0. **Read §13.4.** First, and without exception: this check is unusable without the type vocabulary — an agent that has not
    read it searches for the wrong names and concludes, honestly and wrongly, that nothing exists.
    Prefer an exact name match over a synonym. If a match exists, **extend it** — do not clone it
    under a new `@v1` name or a parallel store.
@@ -1192,7 +1192,7 @@ auth paths above) before declaring recovery.
 
 ---
 
-# 13.7 · Conformance checklist — before the first line is written
+## 13.7 · Conformance checklist — before the first line is written
 
 > **Renumbered 2026-09-01 (PATCH).** This section and §13.6 "Operator surface data producers"
 > both carried the number 13.6. They are **different sections**, not duplicates — one is Finviz
