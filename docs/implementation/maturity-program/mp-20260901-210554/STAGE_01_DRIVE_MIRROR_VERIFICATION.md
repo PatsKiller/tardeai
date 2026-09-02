@@ -66,7 +66,18 @@ exist — the "absent field renders as affirmative" defect §9.1 forbids.
 
 ## Finding
 
-**There is no credential-free path-based Drive uploader in this repository.** Every existing
-uploader reads `~/.openclaw/credentials/gog_keyring_password`. Any future agent asked to mirror
+**CORRECTED 2026-09-01.** This section originally read *"There is no credential-free
+path-based Drive uploader in this repository."* **That was wrong.** `scripts/gog_broker.sh`
+already existed and brokers the keyring secret from Bitwarden without reading the credential
+path. It was missed because the search was `scripts/*drive*` — **by filename, not by
+capability** — which is the detector-shape mistake §7 describes, made while writing a report
+about detector shape.
+
+`scripts/mirror_agents_md_to_drive.sh` (PR #842, merged `c02cfc92c`) now performs the
+byte-exact mirror through that broker. It still requires the operator to unlock the vault once
+(`export BW_SESSION=$(bw unlock --raw)`); it will not prompt and will not fall back to a weaker
+source.
+
+Any future agent asked to mirror
 a governed document byte-exactly hits this same wall. That is a gap worth closing deliberately
 rather than rediscovering.

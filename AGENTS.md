@@ -1,12 +1,12 @@
 # AGENTS.md — Trade AI: the operating standard for every agent
 
 ```
-Policy-Version:      1.0.0
+Policy-Version:      1.1.0
 Versioning-Scheme:   Semantic Versioning 2.0.0
 Policy-Schema:       TradeAI-Agent-Operating-Standard/v1
 Status:              ACTIVE
 Effective-Date:      2026-09-01
-Last-Reviewed:       2026-09-01T21:44:07-04:00
+Last-Reviewed:       2026-09-01T22:13:39-04:00
 Canonical-Repo-Path: AGENTS.md
 Drive-Mirror-Path:   Trade_AI_Docs_v2/governance/agent-policy/AGENTS.md
 Supersedes:          UNVERSIONED
@@ -858,6 +858,47 @@ or fix forward."
 
 # 12 · Model lanes — which to use, and why
 
+## The daily provider spend cap
+
+```
+LLM_GLOBAL_DAILY_USD_CAP = 0.50     ratified by the operator 2026-09-01
+```
+
+**Free-first is not advice, it is the order of operations.** Persistent cognition, the record's
+own lessons, RAG, structured sources and local lanes are consulted *before* any paid call. A paid
+call that could have been answered from memory is a defect, not a cost.
+
+### What the number is, and what it is not  `[VERIFIED]` 2026-09-01
+
+The value is ratified. **Its enforcement is partial, and this section says so rather than implying
+a guarantee the runtime does not provide.**
+
+| | measured on `origin/main` |
+|---|---|
+| crontab lines that **set** `LLM_GLOBAL_DAILY_USD_CAP=0.50` | **6** |
+| active crontab lines that invoke an LLM-spending script | **84** |
+| python modules that **read** the variable | 11 |
+| per-process `daily_cost_cap_usd` values in `config/llm_process_registry.json` | 11 caps, **summing to $11.45/day** |
+
+So roughly **78 of 84 LLM-invoking lanes run with the global cap unset** and fall back to their
+per-process cap — `gate_d_bundle_2_advisory_canary.py:367` states the fallback plainly:
+*"LLM_GLOBAL_DAILY_USD_CAP not set. Will default to bridge's internal cap."*
+
+**Therefore: $0.50 is the ruling policy ceiling, not a universally enforced control.** Any claim
+that daily provider spend cannot exceed $0.50 is false today. Closing that gap — setting the
+variable on every LLM lane, or moving the check into the shared transport so it cannot be omitted
+— is named debt, not a closed item.
+
+### Provenance of the number
+
+`0.25 → 0.50` is dated in `config/llm_process_registry.json` change notes
+(*"2026-08-11 P2b soak: … under global 0.25"* → *"2026-08-12: … under global 0.50"*), so the move
+was attributed but never operator-ratified and never documented here. Both are now fixed:
+the operator ratified **0.50** on 2026-09-01, and this is the entry that records it.
+
+---
+
+
 | lane | cost | transport |
 |---|---|---|
 | free-first: persistent cognition, RAG, record lessons | $0 | no model at all |
@@ -1587,6 +1628,7 @@ write-up, not just the final state. Say `UNKNOWN` when it is true.
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
+| 1.1.0 | 2026-09-01 | ACTIVE | MINOR | Records the ratified daily provider spend cap ($0.50) in §12, with measured evidence that it binds on 6 of ~84 LLM lanes and is therefore policy rather than a universally enforced control. | **RATIFIED** by the operator, 2026-09-01 |
 | 1.0.0 | 2026-09-01 | ACTIVE | MAJOR | Formal baseline. Document-control block and version policy; §13.5 duplicate merged; §13.6 numbering collision renumbered to §13.7 and section order restored; two "Where things go" tables merged; §2B role authority profiles added. | **APPROVED** — `APPROVE_AGENTS_POLICY_1_0_0 841 0f00f928a6b3892ef838c8737cebfcb622fd53ae` |
 
 **Why MAJOR.** §2B adds role authority profiles, which is authority semantics. The deduplication
