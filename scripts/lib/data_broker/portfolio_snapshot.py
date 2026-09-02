@@ -199,21 +199,39 @@ def read_portfolio_snapshot() -> dict[str, Any] | None:
         return None
 
 
-def get_portfolio_snapshot(max_age_s: float = DEFAULT_MAX_AGE_S) -> dict[str, Any]:
-    """Return the on-disk snapshot if fresh enough, else recompute + publish + return."""
+def get_portfolio_snapshot(
+    max_age_s: float = DEFAULT_MAX_AGE_S,
+    *,
+    write_on_miss: bool = True,
+) -> dict[str, Any]:
+    """Return the on-disk snapshot if fresh enough, else recompute and return.
+
+    ``write_on_miss=False`` recomputes in memory and publishes nothing. A read
+    request must not mutate a store: the audit
+    (cc-truth-v1-20260902T202759Z) found that ``GET /api/v2/overview`` wrote
+    ``portfolio_snapshot.json`` on every cache miss, which means the snapshot
+    was refreshed by whoever happened to browse rather than on a schedule, and
+    a plain GET was not a read.
+
+    The default stays ``True`` so the four existing callers keep their current
+    behaviour exactly; only the overview read path opts out.
+    """
     cached = read_portfolio_snapshot()
     if cached and max_age_s > 0:
         try:
             computed_at = datetime.fromisoformat(cached["computed_at"])
             age = (datetime.now(timezone.utc) - computed_at).total_seconds()
             if age <= max_age_s:
-                cached["_cache"] = {"hit": True, "age_seconds": round(age, 1)}
+                cached["_cache"] = {"hit": True, "age_seconds": round(age, 1), "wrote": False}
                 return cached
         except Exception:
             pass
     fresh = build_portfolio_snapshot()
-    write_portfolio_snapshot(fresh)
-    fresh["_cache"] = {"hit": False, "age_seconds": 0}
+    wrote = False
+    if write_on_miss:
+        write_portfolio_snapshot(fresh)
+        wrote = True
+    fresh["_cache"] = {"hit": False, "age_seconds": 0, "wrote": wrote}
     return fresh
 
 
