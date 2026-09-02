@@ -1,0 +1,243 @@
+{
+  "schema": "TradeAITemporalCloudVsSelfHostScorecard@v1",
+  "as_of": "2026-08-23",
+  "access_date": "2026-08-23",
+  "authority": "READ_ONLY_ADVISORY",
+  "scope": "PRODUCTION_ARCHITECTURE_OPTION_ANALYSIS_ONLY",
+  "versions_reviewed": {
+    "temporal_server": "v1.31.2",
+    "temporal_python_sdk": "1.31.0"
+  },
+  "scoring_method": {
+    "scale": "0.0-5.0",
+    "direction": "higher_is_better_for_every_dimension",
+    "formula": "sum(weight_percent * score / 5)",
+    "maximum": 100,
+    "weight_total_percent": 100,
+    "comparison_baseline": "post-#472 selected-workflow use case; #461-#472 remain unmerged and undeployed"
+  },
+  "options": {
+    "SELF_HOSTED": {
+      "topology": "Dedicated internal-only Temporal Service with isolated Temporal persistence and Visibility databases, separately deployed immutable Trade AI Workers, authenticated UI, mTLS, custom Authorizer/ClaimMapper, metrics, backups, sequential upgrades, and restore testing.",
+      "data_location": "Workflow history and orchestration metadata remain on operator-managed infrastructure.",
+      "material_burdens": [
+        "capacity and shard planning",
+        "availability engineering",
+        "persistence and Visibility operation",
+        "mTLS and certificate lifecycle",
+        "custom authorization plus audit-log capability",
+        "monitoring and incident response",
+        "database backup and restore",
+        "sequential server and schema upgrades",
+        "security patching and cost management"
+      ],
+      "official_caveat": "Temporal states that self-hosting requires significant ongoing engineering; self-hosted Temporal does not provide RBAC or audit logging out of the box."
+    },
+    "TEMPORAL_CLOUD": {
+      "topology": "Trade AI Workers remain on the existing governed host/release infrastructure and connect outbound to one private, authenticated Cloud Namespace; Temporal manages service persistence, replication, upgrades, availability, and Visibility.",
+      "data_location": "Workflow state, Event History, task metadata, Schedules, Memo, and Search Attributes leave the server for Temporal Cloud. Application code, canonical Trade AI records, secrets, and Activity execution remain local. Client-side Payload Codec encryption is mandatory for non-public payload fields.",
+      "official_minimum_plan_cost": "Essentials is the greater of USD 100/month or 5% of consumption spend; Actions and storage are separately metered under the current published model.",
+      "cost_status": "WORKLOAD_SPECIFIC_MONTHLY_TOTAL_UNMEASURED_UNTIL_POC_ACTION_AND_STORAGE_COUNTS",
+      "material_burdens_retained": [
+        "Worker release and scaling",
+        "Cloud namespace identity and credentials",
+        "Payload Codec and encryption-key lifecycle",
+        "network dependency and incident handling",
+        "usage and storage cost monitoring",
+        "Workflow and Activity compatibility/versioning"
+      ]
+    },
+    "NO_TEMPORAL": {
+      "topology": "Retain post-#472 PostgreSQL, cron/systemd, CIO event, job-table, and outbox architecture; continue improving its durable state transitions and source-root governance.",
+      "data_location": "No new orchestration metadata leaves the current environment.",
+      "material_burdens": [
+        "custom crash continuation",
+        "custom durable timer and long-wait handling",
+        "cross-job causal tracing",
+        "scheduler and worker source-root governance",
+        "manual version-compatibility conventions"
+      ]
+    }
+  },
+  "dimensions": [
+    {
+      "dimension": "reliability",
+      "weight_percent": 12,
+      "SELF_HOSTED": 3.0,
+      "TEMPORAL_CLOUD": 4.8,
+      "NO_TEMPORAL": 3.0,
+      "rationale": "Cloud includes managed persistence, upgrades, and baseline multi-zone availability. Self-host reliability is only as strong as the new platform operation; no-Temporal reflects the improved but still custom post-#472 path."
+    },
+    {
+      "dimension": "privacy",
+      "weight_percent": 10,
+      "SELF_HOSTED": 5.0,
+      "TEMPORAL_CLOUD": 3.0,
+      "NO_TEMPORAL": 5.0,
+      "rationale": "Cloud stores orchestration metadata and ciphertext outside the host. Payload encryption reduces content exposure but not all metadata exposure."
+    },
+    {
+      "dimension": "security",
+      "weight_percent": 10,
+      "SELF_HOSTED": 2.8,
+      "TEMPORAL_CLOUD": 4.6,
+      "NO_TEMPORAL": 4.2,
+      "rationale": "Cloud supplies managed namespace authentication, encryption, roles, and audit logging. Self-host security requires mTLS plus custom authorization and audit design, while the default noop Authorizer is unsafe."
+    },
+    {
+      "dimension": "operator_effort",
+      "weight_percent": 10,
+      "SELF_HOSTED": 2.0,
+      "TEMPORAL_CLOUD": 4.5,
+      "NO_TEMPORAL": 3.5,
+      "rationale": "Cloud removes service operation but leaves Worker, codec, key, network, cost, and workflow incident duties."
+    },
+    {
+      "dimension": "maintenance",
+      "weight_percent": 8,
+      "SELF_HOSTED": 1.5,
+      "TEMPORAL_CLOUD": 5.0,
+      "NO_TEMPORAL": 4.0,
+      "rationale": "Self-host releases may occur frequently and official guidance requires sequential minor upgrades plus schema work."
+    },
+    {
+      "dimension": "cost",
+      "weight_percent": 10,
+      "SELF_HOSTED": 3.5,
+      "TEMPORAL_CLOUD": 2.8,
+      "NO_TEMPORAL": 5.0,
+      "rationale": "No Temporal has no new platform fee. Cloud has a published minimum plus consumption. Self-host avoids a subscription but consumes server capacity and skilled operator time."
+    },
+    {
+      "dimension": "backup_and_recovery",
+      "weight_percent": 6,
+      "SELF_HOSTED": 2.0,
+      "TEMPORAL_CLOUD": 4.8,
+      "NO_TEMPORAL": 4.0,
+      "rationale": "Cloud owns service persistence and replication. Self-host requires separate database-native backup, restore, and schema-compatibility tests; Archival is not a substitute for database disaster recovery."
+    },
+    {
+      "dimension": "low_upgrade_risk",
+      "weight_percent": 6,
+      "SELF_HOSTED": 2.0,
+      "TEMPORAL_CLOUD": 5.0,
+      "NO_TEMPORAL": 4.0,
+      "rationale": "Cloud owns service upgrades. Self-host official procedure requires sequential server versions and compatible persistence/Visibility schema upgrades."
+    },
+    {
+      "dimension": "latency",
+      "weight_percent": 5,
+      "SELF_HOSTED": 4.8,
+      "TEMPORAL_CLOUD": 4.0,
+      "NO_TEMPORAL": 5.0,
+      "rationale": "A local service has the lowest Temporal latency; Cloud adds WAN scheduling latency, acceptable only for advisory/research."
+    },
+    {
+      "dimension": "limited_failure_domains",
+      "weight_percent": 7,
+      "SELF_HOSTED": 2.8,
+      "TEMPORAL_CLOUD": 4.2,
+      "NO_TEMPORAL": 4.0,
+      "rationale": "Self-hosting adds service, persistence, Visibility, certificates, and upgrades to the same operator domain. Cloud adds network/vendor dependency but isolates service operation."
+    },
+    {
+      "dimension": "offline_behavior",
+      "weight_percent": 5,
+      "SELF_HOSTED": 5.0,
+      "TEMPORAL_CLOUD": 1.0,
+      "NO_TEMPORAL": 5.0,
+      "rationale": "Cloud workflow progress depends on external connectivity. This is acceptable only because canonical state and every financial protection path stay outside Temporal."
+    },
+    {
+      "dimension": "observability",
+      "weight_percent": 5,
+      "SELF_HOSTED": 4.0,
+      "TEMPORAL_CLOUD": 4.5,
+      "NO_TEMPORAL": 3.2,
+      "rationale": "Both Temporal options expose Event History and Visibility; Cloud reduces the platform-monitoring work."
+    },
+    {
+      "dimension": "development_simplicity",
+      "weight_percent": 6,
+      "SELF_HOSTED": 3.0,
+      "TEMPORAL_CLOUD": 4.5,
+      "NO_TEMPORAL": 4.0,
+      "rationale": "Temporal domain code is similar in either deployment, but self-host adds infrastructure. No Temporal avoids SDK constraints but retains custom orchestration code."
+    }
+  ],
+  "weighted_results": {
+    "SELF_HOSTED": 62.32,
+    "TEMPORAL_CLOUD": 81.86,
+    "NO_TEMPORAL": 82.2,
+    "calculation_status": "VERIFIED_WEIGHT_TOTAL_100"
+  },
+  "decision": {
+    "current_decision": "TEMPORAL_POC_ONLY",
+    "selected_temporal_service_if_adopted": "TEMPORAL_CLOUD",
+    "conditional_target_if_all_poc_gates_pass": "ADOPT_TEMPORAL_SELECTED_WORKFLOWS",
+    "recommendation_kind": "CURRENT_DECISION_WITH_CONDITIONAL_TARGET",
+    "current_go_no_go_status": "TEMPORAL_POC_ONLY",
+    "production_status": "HOLD",
+    "current_go_no_go_reason": "T0 localhost runtime, idempotency, restart, replay and same-code version-routing gates passed. Cloud security, cost, T1 shadow comparison, incompatible-code evolution, migration and rollback remain unproven and unauthorized.",
+    "present_action": "ISOLATED_POC_ONLY_NO_PRODUCTION_INSTALL",
+    "why": "NO_TEMPORAL narrowly scores above Temporal Cloud at the production-option level because it preserves privacy, offline operation, and low platform cost. Therefore the current decision is POC only, not adoption. The architectural-fit score separately shows that selected long-running workflows may gain enough durability to test. If the runtime, idempotency, security, cost, versioning, migration, and rollback gates all pass, Cloud is the conditional Temporal service because self-hosting adds disproportionate security, upgrade, backup, and incident burden for a one-user system.",
+    "rejected_options": {
+      "SELF_HOSTED": "Rejected as the initial production option because documented operational-integrity gaps make a new control-plane, persistence, authorization, audit, certificate, monitoring, backup, and sequential-upgrade burden disproportionate.",
+      "IMMEDIATE_CLOUD_ADOPTION": "Rejected because the current score favors no Temporal narrowly and no accepted encrypted Cloud payload design, workload cost measurement, T1 shadow comparison, or migration proof exists despite the successful localhost T0 POC.",
+      "BROAD_TEMPORAL_ADOPTION": "Rejected because simple stateless cron, ingestion, maintenance, domain databases, canonical event meaning, notification outbox, and every financial control are better kept outside Temporal."
+    },
+    "required_cost_proof": [
+      "measure Actions per NOC, NEED_DATA, outcome, and portfolio-CIO Workflow",
+      "measure active and retained Event History storage",
+      "project monthly Actions and storage under current material-symbol cadence",
+      "include the current USD 100/month Essentials minimum and Worker/codec operator time",
+      "compare with measured cron/job incident and repair burden"
+    ]
+  },
+  "official_sources": [
+    {
+      "topic": "Cloud managed service architecture, data boundary, availability, and portability",
+      "url": "https://docs.temporal.io/cloud/overview"
+    },
+    {
+      "topic": "Cloud authentication, encryption, namespace isolation, roles, and audit logs",
+      "url": "https://docs.temporal.io/cloud/security"
+    },
+    {
+      "topic": "Cloud pricing",
+      "url": "https://docs.temporal.io/cloud/pricing"
+    },
+    {
+      "topic": "self-host production effort, RBAC/audit limitation, availability, monitoring, upgrades, and cost",
+      "url": "https://docs.temporal.io/self-hosted-guide/production-checklist"
+    },
+    {
+      "topic": "self-host internal-network deployment and schema management",
+      "url": "https://docs.temporal.io/self-hosted-guide/deployment"
+    },
+    {
+      "topic": "self-host mTLS, authentication, authorization plugins, and unsafe noop Authorizer default",
+      "url": "https://docs.temporal.io/self-hosted-guide/security"
+    },
+    {
+      "topic": "self-host monitoring",
+      "url": "https://docs.temporal.io/self-hosted-guide/monitoring"
+    },
+    {
+      "topic": "PostgreSQL Visibility support",
+      "url": "https://docs.temporal.io/self-hosted-guide/visibility"
+    },
+    {
+      "topic": "sequential server and database-schema upgrades",
+      "url": "https://docs.temporal.io/self-hosted-guide/upgrade-server"
+    },
+    {
+      "topic": "Event History Archival providers and limitations",
+      "url": "https://docs.temporal.io/self-hosted-guide/archival"
+    },
+    {
+      "topic": "client-side payload encryption",
+      "url": "https://docs.temporal.io/production-deployment/data-encryption"
+    }
+  ]
+}
