@@ -4,9 +4,9 @@
 Policy-Version:      1.0.0
 Versioning-Scheme:   Semantic Versioning 2.0.0
 Policy-Schema:       TradeAI-Agent-Operating-Standard/v1
-Status:              PROPOSED
-Effective-Date:      PENDING
-Last-Reviewed:       2026-09-01T21:21:56-04:00
+Status:              ACTIVE
+Effective-Date:      2026-09-01
+Last-Reviewed:       2026-09-01T21:44:07-04:00
 Canonical-Repo-Path: AGENTS.md
 Drive-Mirror-Path:   Trade_AI_Docs_v2/governance/agent-policy/AGENTS.md
 Supersedes:          UNVERSIONED
@@ -1587,7 +1587,7 @@ write-up, not just the final state. Say `UNKNOWN` when it is true.
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
-| 1.0.0 | 2026-09-01 | PROPOSED | MAJOR | Formal baseline. Document-control block and version policy; §13.5 duplicate merged; §13.6 numbering collision renumbered to §13.7 and section order restored; two "Where things go" tables merged; §2B role authority profiles added. | PENDING — `APPROVE_AGENTS_POLICY_1_0_0 <pr> <sha>` |
+| 1.0.0 | 2026-09-01 | ACTIVE | MAJOR | Formal baseline. Document-control block and version policy; §13.5 duplicate merged; §13.6 numbering collision renumbered to §13.7 and section order restored; two "Where things go" tables merged; §2B role authority profiles added. | **APPROVED** — `APPROVE_AGENTS_POLICY_1_0_0 841 0f00f928a6b3892ef838c8737cebfcb622fd53ae` |
 
 **Why MAJOR.** §2B adds role authority profiles, which is authority semantics. The deduplication
 alone would have been PATCH; the higher class wins, per the version policy above.

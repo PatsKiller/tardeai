@@ -253,3 +253,17 @@ def test_a_proposed_policy_is_not_dated_effective():
         assert cb["Effective-Date"] == "PENDING", (
             f"PROPOSED policy claims Effective-Date {cb['Effective-Date']!r}"
         )
+
+
+def test_an_active_policy_carries_a_real_effective_date():
+    """The pair of the PROPOSED rule. Flipping Status to ACTIVE while leaving
+    Effective-Date PENDING would publish a policy that is in force on no date --
+    the same absent-renders-affirmative defect, mirrored."""
+    cb = _control_block()
+    if cb["Status"] == "ACTIVE":
+        assert cb["Effective-Date"] != "PENDING", (
+            "ACTIVE policy still says Effective-Date: PENDING"
+        )
+        assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", cb["Effective-Date"]), (
+            f"Effective-Date is not an ISO date: {cb['Effective-Date']!r}"
+        )
