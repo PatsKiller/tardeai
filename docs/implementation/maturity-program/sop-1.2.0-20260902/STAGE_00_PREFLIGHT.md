@@ -1,9 +1,9 @@
-Status:      ACTIVE  
-as_of:       2026-09-02T09:05:00-04:00  
-run_id:      sop-1.2.0-20260902  
-prompt_version: 1.0.0  
-Canonical repo path: docs/implementation/maturity-program/sop-1.2.0-20260902/STAGE_00_PREFLIGHT.md  
-Authority:   Stage 0 measurement + proposed claims only. No remote sync. No PR. No promote.  
+Status:      ACTIVE
+as_of:       2026-09-02T09:05:00-04:00
+run_id:      sop-1.2.0-20260902
+prompt_version: 1.0.0
+Canonical repo path: docs/implementation/maturity-program/sop-1.2.0-20260902/STAGE_00_PREFLIGHT.md
+Authority:   Stage 0 measurement + proposed claims only. No remote sync. No PR. No promote.
 Verdict:     **PASS (preflight isolation)** · **STOPPED_ON_AUTHORITY_BOUNDARY** before AGENTS.md 1.2.0 activation / remote / Drive write / branch-protection
 
 # Stage 0 · Fresh-state preflight and constitutional read
@@ -43,7 +43,7 @@ core.hooksPath       .githooks
 | known prior (prompt) | 1.1.0 | ACTIVE | matches byte-exact |
 | prompt target | **1.2.0** | initially **PROPOSED** | not present on tip |
 
-`AI_WORK_POLICY.md` present; SHA-256 `e98d583a4fe2568b4264edcf4bc30dd00eb0f2015935677618780cdc5b77b97a`.  
+`AI_WORK_POLICY.md` present; SHA-256 `e98d583a4fe2568b4264edcf4bc30dd00eb0f2015935677618780cdc5b77b97a`.
 Version history on tip: 1.0.0 MAJOR approved (#841); 1.1.0 MINOR ratified (#843).
 
 **Authority note:** drafting `Policy-Version: 1.2.0` / `Status: PROPOSED` is in-scope for local governance work. Making it **ACTIVE**, pushing, or opening a PR that asserts activation requires operator authorization with the correct change class (MINOR vs MAJOR). Touching authority-bearing sections (§0, role authority, financial rails) → stop for classified approval.
@@ -123,14 +123,14 @@ No PRs mutated. Overlap matrix → Stage 1 deliverable.
 
 ## Unresolved / blockers
 
-1. **CURRENT ≠ origin/main** — served pin lags; not remediated.  
-2. **Hub checkout ≠ origin/main** — routed around; optional `FAST_FORWARD_CANONICAL_CHECKOUT` still operator-only.  
-3. **No mechanical lease service yet** — Stage 4 must implement or bind to a found coordinator.  
-4. **`new-worktree.sh` violates SOP Stage 5 defaults** — must harden without breaking documented automation that expects `.env` (opt-in only).  
+1. **CURRENT ≠ origin/main** — served pin lags; not remediated.
+2. **Hub checkout ≠ origin/main** — routed around; optional `FAST_FORWARD_CANONICAL_CHECKOUT` still operator-only.
+3. **No mechanical lease service yet** — Stage 4 must implement or bind to a found coordinator.
+4. **`new-worktree.sh` violates SOP Stage 5 defaults** — must harden without breaking documented automation that expects `.env` (opt-in only).
 5. **Policy 1.2.0 change class** — declare MINOR vs MAJOR before editing authority-bearing AGENTS sections.
 
 ## Next
 
-Proceed to **Stage 1** (open-PR collision inventory, local docs only).  
+Proceed to **Stage 1** (open-PR collision inventory, local docs only).
 Do **not** push, open PR, write Drive, or activate policy.
 )

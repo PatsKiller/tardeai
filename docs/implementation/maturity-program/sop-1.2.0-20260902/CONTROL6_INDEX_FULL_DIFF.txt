@@ -4,15 +4,15 @@ index c25f880eb..b31d236a4 100644
 +++ b/docs/INDEX.md
 @@ -2,7 +2,7 @@
  # Docs Index
- 
+
  **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
 -**Tree fingerprint:** `f84ceee965b2957dc20d5f97f9286665fb74334ee5b85a1ee8251e812734abf7`
 +**Tree fingerprint:** `e804b46ad29e7f2413fa8ed6ad8e8d40b5c040a343a1141875cd8a5eca8c65ff`
- 
+
  Hand-maintained narrative indexes remain authoritative for *what is current*:
  `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
 @@ -12,10 +12,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
- 
+
  | Metric | Count |
  |--------|------:|
 -| Files under `docs/` (excl. this INDEX) | 2321 |
@@ -23,7 +23,7 @@ index c25f880eb..b31d236a4 100644
 -| Header OK | 1941 |
 +| Header OK | 1944 |
  | Duplicate groups | 5 |
- 
+
  ### By status_guess
 @@ -30,7 +30,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
  | artifact_raw_sync | 8 |
@@ -31,9 +31,9 @@ index c25f880eb..b31d236a4 100644
  | delete_candidate_duplicate | 6 |
 -| review_required | 1959 |
 +| review_required | 1963 |
- 
+
  ## Markdown tree
- 
+
 @@ -1153,6 +1153,9 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
  | `docs/implementation/maturity-program/mp-20260901-210554/STAGE_00_PREFLIGHT.md` | Stage 0 · Pre-flight | review_required | OK | `a502f2f7191b` |
  | `docs/implementation/maturity-program/mp-20260901-210554/STAGE_01_AGENTS_POLICY_RECONCILIATION.md` | Stage 1 · Constitutional cleanup and conflict matrix | review_required | OK | `2d04326c1ac7` |

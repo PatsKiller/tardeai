@@ -1642,7 +1642,7 @@ They bind coding/governance agents only. They are **not** trading authorization.
 | Dedicated CI | `.github/workflows/agent-governance.yml` (job name `agent-governance`) — enable as required context by operator |
 | Evidence | `docs/implementation/maturity-program/sop-1.2.0-20260902/` |
 
-Operator activation phrase (after review):  
+Operator activation phrase (after review):
 `APPROVE_AGENTS_POLICY_1_2_0 <pr_number> <head_sha>`
 
 ---

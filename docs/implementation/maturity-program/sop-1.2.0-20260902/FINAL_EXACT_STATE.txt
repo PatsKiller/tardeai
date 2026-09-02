@@ -11,56 +11,56 @@ dfcfd2fe9 governance(agents): complete SOP 1.2.0 Controls 6–7 evidence
 26c31f487 governance(agents): PROPOSED 1.2.0 Multi-Agent SOP seven controls
 === diff --check ===
 AGENTS.md:1645: trailing whitespace.
-+Operator activation phrase (after review):  
++Operator activation phrase (after review):
 docs/implementation/maturity-program/sop-1.2.0-20260902/CONTROL6_INDEX_CHECK.txt:6: trailing whitespace.
-+ 
++
 docs/implementation/maturity-program/sop-1.2.0-20260902/CONTROL6_INDEX_CHECK.txt:10: trailing whitespace.
-+ 
++
 docs/implementation/maturity-program/sop-1.2.0-20260902/CONTROL6_INDEX_CHECK.txt:14: trailing whitespace.
-+ 
++
 docs/implementation/maturity-program/sop-1.2.0-20260902/CONTROL6_INDEX_CHECK.txt:25: trailing whitespace.
-+ 
++
 docs/implementation/maturity-program/sop-1.2.0-20260902/CONTROL6_INDEX_CHECK.txt:33: trailing whitespace.
-+ 
++
 docs/implementation/maturity-program/sop-1.2.0-20260902/CONTROL6_INDEX_CHECK.txt:35: trailing whitespace.
-+ 
++
 docs/implementation/maturity-program/sop-1.2.0-20260902/CONTROL6_INDEX_CHECK.txt:46: new blank line at EOF.
 docs/implementation/maturity-program/sop-1.2.0-20260902/CONTROL6_INDEX_FULL_DIFF.txt:7: trailing whitespace.
-+ 
++
 docs/implementation/maturity-program/sop-1.2.0-20260902/CONTROL6_INDEX_FULL_DIFF.txt:11: trailing whitespace.
-+ 
++
 docs/implementation/maturity-program/sop-1.2.0-20260902/CONTROL6_INDEX_FULL_DIFF.txt:15: trailing whitespace.
-+ 
++
 docs/implementation/maturity-program/sop-1.2.0-20260902/CONTROL6_INDEX_FULL_DIFF.txt:26: trailing whitespace.
-+ 
++
 docs/implementation/maturity-program/sop-1.2.0-20260902/CONTROL6_INDEX_FULL_DIFF.txt:34: trailing whitespace.
-+ 
++
 docs/implementation/maturity-program/sop-1.2.0-20260902/CONTROL6_INDEX_FULL_DIFF.txt:36: trailing whitespace.
-+ 
++
 docs/implementation/maturity-program/sop-1.2.0-20260902/STAGE_00_PREFLIGHT.md:1: trailing whitespace.
-+Status:      ACTIVE  
++Status:      ACTIVE
 docs/implementation/maturity-program/sop-1.2.0-20260902/STAGE_00_PREFLIGHT.md:2: trailing whitespace.
-+as_of:       2026-09-02T09:05:00-04:00  
++as_of:       2026-09-02T09:05:00-04:00
 docs/implementation/maturity-program/sop-1.2.0-20260902/STAGE_00_PREFLIGHT.md:3: trailing whitespace.
-+run_id:      sop-1.2.0-20260902  
++run_id:      sop-1.2.0-20260902
 docs/implementation/maturity-program/sop-1.2.0-20260902/STAGE_00_PREFLIGHT.md:4: trailing whitespace.
-+prompt_version: 1.0.0  
++prompt_version: 1.0.0
 docs/implementation/maturity-program/sop-1.2.0-20260902/STAGE_00_PREFLIGHT.md:5: trailing whitespace.
-+Canonical repo path: docs/implementation/maturity-program/sop-1.2.0-20260902/STAGE_00_PREFLIGHT.md  
++Canonical repo path: docs/implementation/maturity-program/sop-1.2.0-20260902/STAGE_00_PREFLIGHT.md
 docs/implementation/maturity-program/sop-1.2.0-20260902/STAGE_00_PREFLIGHT.md:6: trailing whitespace.
-+Authority:   Stage 0 measurement + proposed claims only. No remote sync. No PR. No promote.  
++Authority:   Stage 0 measurement + proposed claims only. No remote sync. No PR. No promote.
 docs/implementation/maturity-program/sop-1.2.0-20260902/STAGE_00_PREFLIGHT.md:46: trailing whitespace.
-+`AI_WORK_POLICY.md` present; SHA-256 `e98d583a4fe2568b4264edcf4bc30dd00eb0f2015935677618780cdc5b77b97a`.  
++`AI_WORK_POLICY.md` present; SHA-256 `e98d583a4fe2568b4264edcf4bc30dd00eb0f2015935677618780cdc5b77b97a`.
 docs/implementation/maturity-program/sop-1.2.0-20260902/STAGE_00_PREFLIGHT.md:126: trailing whitespace.
-+1. **CURRENT ≠ origin/main** — served pin lags; not remediated.  
++1. **CURRENT ≠ origin/main** — served pin lags; not remediated.
 docs/implementation/maturity-program/sop-1.2.0-20260902/STAGE_00_PREFLIGHT.md:127: trailing whitespace.
-+2. **Hub checkout ≠ origin/main** — routed around; optional `FAST_FORWARD_CANONICAL_CHECKOUT` still operator-only.  
++2. **Hub checkout ≠ origin/main** — routed around; optional `FAST_FORWARD_CANONICAL_CHECKOUT` still operator-only.
 docs/implementation/maturity-program/sop-1.2.0-20260902/STAGE_00_PREFLIGHT.md:128: trailing whitespace.
-+3. **No mechanical lease service yet** — Stage 4 must implement or bind to a found coordinator.  
++3. **No mechanical lease service yet** — Stage 4 must implement or bind to a found coordinator.
 docs/implementation/maturity-program/sop-1.2.0-20260902/STAGE_00_PREFLIGHT.md:129: trailing whitespace.
-+4. **`new-worktree.sh` violates SOP Stage 5 defaults** — must harden without breaking documented automation that expects `.env` (opt-in only).  
++4. **`new-worktree.sh` violates SOP Stage 5 defaults** — must harden without breaking documented automation that expects `.env` (opt-in only).
 docs/implementation/maturity-program/sop-1.2.0-20260902/STAGE_00_PREFLIGHT.md:134: trailing whitespace.
-+Proceed to **Stage 1** (open-PR collision inventory, local docs only).  
++Proceed to **Stage 1** (open-PR collision inventory, local docs only).
 DIFF_CHECK_EXIT=2
 === diff --stat ===
  .github/workflows/agent-governance.yml             |   45 +

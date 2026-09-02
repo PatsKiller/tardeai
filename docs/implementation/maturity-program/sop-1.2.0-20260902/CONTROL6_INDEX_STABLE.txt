@@ -1,0 +1,1 @@
+[PASS] docs/INDEX.md matches inventory (MISSING HEADER=11, md=1956, fingerprint=f911f0babeda)
