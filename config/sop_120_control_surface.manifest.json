@@ -4,6 +4,7 @@
   "description": "Sorted paths whose content forms the SOP 1.2.0 control-surface digest. Excludes volatile evidence outputs under docs/implementation/maturity-program/sop-1.2.0-20260902/ and docs/INDEX.md.",
   "paths": [
     ".github/workflows/agent-governance.yml",
+    ".github/workflows/cio-production-hardening-ci.yml",
     "AGENTS.md",
     "config/agent_clients.schema.json",
     "config/agent_clients.yaml",
@@ -17,6 +18,7 @@
     "scripts/lib/agent_session_receipt.py",
     "scripts/lib/agent_worktree_identity.py",
     "scripts/lib/agents_drive_mirror_policy.py",
+    "scripts/lib/sop_attestation_base.py",
     "scripts/lib/sop_evidence_integrity.py",
     "scripts/lib/sop_toolchain.py",
     "scripts/new-worktree.sh",
@@ -29,6 +31,7 @@
     "tests/test_agent_session_and_lease.py",
     "tests/test_agent_worktree_identity.py",
     "tests/test_agents_drive_mirror_policy.py",
+    "tests/test_sop_attestation_base.py",
     "tests/test_sop_evidence_integrity.py",
     "tests/test_sop_toolchain.py"
   ]

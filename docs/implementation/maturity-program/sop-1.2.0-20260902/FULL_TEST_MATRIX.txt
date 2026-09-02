@@ -1,6 +1,6 @@
 === FULL TEST MATRIX (reproducible; Layer 1) ===
 schema=SopFullTestMatrix@v1
-control_surface_digest=b0d43614e744236ca7a07e8e7148c77d3c5932fcf0343368c0a9b94683dfa9c9
+control_surface_digest=7d2f3372d31dffd77ca04c4a67327127b2a9d7a60831e4ca16e6b2eaf10fb6da
 manifest=config/sop_120_control_surface.manifest.json
 base_ref=origin/main
 expected_pytest_core=120
@@ -48,3 +48,5 @@ command_toolchain=python3 -m pytest tests/test_sop_toolchain.py -q
 expected_EXIT_toolchain=0
 expected_count_toolchain=15
 EXIT_hooks_hermetic=0
+EXIT_attestation_base=0
+cio_hardening_ruff_pin=0.16.2

@@ -4,13 +4,16 @@
 Writes under ``artifacts/sop-attestations/`` (gitignored via ``artifacts/``).
 Never writes into tracked ``docs/``. Exact HEAD belongs here — not in committed
 evidence blobs.
+
+Base SHA resolution is explicit: prefer ``--base-sha`` /
+``SOP_ATTESTATION_BASE_SHA``, else ``origin/main`` when present. Never use a
+raising ``git`` call as an existence predicate.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
-import os
 import re
 import subprocess
 import sys
@@ -20,6 +23,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+from scripts.lib.sop_attestation_base import (  # noqa: E402
+    AttestationBaseError,
+    resolve_attestation_base_sha,
+    resolve_attestation_head_sha,
+)
 from scripts.lib.sop_evidence_integrity import (  # noqa: E402
     EXPECTED_CORE_TESTS,
     RUNTIME_ATTESTATION_SCHEMA,
@@ -59,11 +67,18 @@ def _docs_index_fingerprint() -> str:
     return m.group(1) if m else f"CHECK_EXIT_{proc.returncode}"
 
 
-def build_attestation(*, run_commands: bool) -> dict:
-    head = os.environ.get("GITHUB_SHA") or _git(["rev-parse", "HEAD"])
-    if len(head) > 40:
-        head = head[:40]
-    base = _git(["merge-base", "HEAD", "origin/main"]) if _git(["rev-parse", "--verify", "origin/main"]) else ""
+def build_attestation(
+    *,
+    run_commands: bool,
+    base_sha: str | None = None,
+    head_sha: str | None = None,
+) -> dict:
+    try:
+        head = resolve_attestation_head_sha(cwd=ROOT, explicit=head_sha)
+        base = resolve_attestation_base_sha(cwd=ROOT, explicit=base_sha, head_sha=head)
+    except AttestationBaseError as exc:
+        raise SystemExit(f"ERROR: {exc}") from exc
+
     digest = control_surface_digest(ROOT)
     wf = workflow_facts(ROOT)
     agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
@@ -141,9 +156,28 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--out-dir", default=str(DEFAULT_OUT_DIR))
     ap.add_argument("--skip-commands", action="store_true", help="schema-only emit (tests)")
     ap.add_argument("--validate-only", action="store_true")
+    ap.add_argument(
+        "--base-sha",
+        default=None,
+        help="exact base tip or ancestor (CI: pull_request.base.sha)",
+    )
+    ap.add_argument(
+        "--head-sha",
+        default=None,
+        help="exact source HEAD override (default: git rev-parse HEAD)",
+    )
     args = ap.parse_args(argv)
 
-    att = build_attestation(run_commands=not args.skip_commands)
+    try:
+        att = build_attestation(
+            run_commands=not args.skip_commands,
+            base_sha=args.base_sha,
+            head_sha=args.head_sha,
+        )
+    except SystemExit as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
     errs = validate_runtime_attestation(att, root=ROOT)
 
     out_dir = Path(args.out_dir)
@@ -163,7 +197,13 @@ def main(argv: list[str] | None = None) -> int:
 
     print(
         json.dumps(
-            {"ok": not errs, "errors": errs, "head_sha": att["head_sha"], "digest": att["control_surface_digest"]},
+            {
+                "ok": not errs,
+                "errors": errs,
+                "head_sha": att["head_sha"],
+                "base_sha": att["base_sha"],
+                "digest": att["control_surface_digest"],
+            },
             indent=2,
         )
     )

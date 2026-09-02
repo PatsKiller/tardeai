@@ -3,7 +3,7 @@ as_of:       2026-09-02T18:00:00Z
 run_id:      sop-1.2.0-20260902
 worktree:    /home/johnclaw/trade-ai-worktrees/agent-sop-1.2.0
 base_sha:    4bcba2cf7168f1cc9b1b7ffd18ab749b2eed44a9
-control_surface_digest=b0d43614e744236ca7a07e8e7148c77d3c5932fcf0343368c0a9b94683dfa9c9
+control_surface_digest=7d2f3372d31dffd77ca04c4a67327127b2a9d7a60831e4ca16e6b2eaf10fb6da
 Authority:   local Layer-1 evidence + runtime attestation. INDEPENDENT_VERIFICATION_PENDING. No remote.
 
 # Maturity scorecard — Multi-Agent SOP 1.2.0
@@ -34,6 +34,6 @@ Authority:   local Layer-1 evidence + runtime attestation. INDEPENDENT_VERIFICAT
 | 4 | File/store leases | PASS | agent_file_lease canonical + UTC/boot TTL |
 | 5 | Safe worktree | PASS | new-worktree.sh + identity adversarial |
 | 6 | Doc index + quality | PASS | check-index command + fail-closed Ruff |
-| 7 | agent-governance CI | PASS | CONTROL7_WORKFLOW_PROOF.txt (blob a1499ae0fa87…) |
+| 7 | agent-governance CI | PASS | CONTROL7_WORKFLOW_PROOF.txt (blob c03a4ef8c6f7…) |
 
 Historical CONTROL6_* / FINAL_EXACT_STATE.txt are SUPERSEDED_NON_AUTHORITATIVE.

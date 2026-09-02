@@ -576,6 +576,7 @@ GATES = [
             "tests/test_agent_changed_file_quality.py",
             "tests/test_sop_evidence_integrity.py",
             "tests/test_sop_toolchain.py",
+            "tests/test_sop_attestation_base.py",
             "tests/test_agents_drive_mirror_policy.py",
         ],
     ),

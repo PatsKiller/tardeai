@@ -1,9 +1,9 @@
 === CONTROL7 WORKFLOW PROOF (reproducible; Layer 1) ===
 schema=SopControl7WorkflowProof@v1
-control_surface_digest=b0d43614e744236ca7a07e8e7148c77d3c5932fcf0343368c0a9b94683dfa9c9
+control_surface_digest=7d2f3372d31dffd77ca04c4a67327127b2a9d7a60831e4ca16e6b2eaf10fb6da
 workflow_path=.github/workflows/agent-governance.yml
-workflow_blob_sha256=a1499ae0fa874a3ba44dff087ee51a0b2242e4b292525df65ebde70b9ba73e68
-workflow_lines=87
+workflow_blob_sha256=c03a4ef8c6f74a40fcb801c5e3e2ec5a2efd476972139677f1029894fb7d72f2
+workflow_lines=125
 path_filters=absent
 triggers=pull_request,push[main],workflow_dispatch
 ruff_install=pip install "ruff==0.16.2"
@@ -45,7 +45,21 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
+      # Check out the PR head commit (not GitHub's synthetic merge SHA).
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Fetch PR base for attestation merge-base
+        if: github.event_name == 'pull_request'
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "${{ github.event.pull_request.base.sha }}"
+          echo "PR_HEAD=$(git rev-parse HEAD)"
+          echo "PR_BASE=${{ github.event.pull_request.base.sha }}"
+          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -56,6 +70,14 @@ jobs:
           pip install jsonschema || true
           # Ruff is required for changed-Python quality — never `|| true`.
           pip install "ruff==0.16.2"
+          python - <<'PY'
+          from scripts.lib.sop_toolchain import PINNED_RUFF_VERSION, resolve_ruff_bin, ruff_version_string
+          b = resolve_ruff_bin()
+          assert b is not None, "ruff missing after pip install"
+          raw = ruff_version_string(b)
+          assert PINNED_RUFF_VERSION in raw, raw
+          print("ruff_ok", b, raw)
+          PY
       - name: Install AI work-policy hooks (CI prerequisite)
         run: |
           set -euo pipefail
@@ -89,7 +111,7 @@ jobs:
         run: pytest tests/test_agent_changed_file_quality.py -q
       - name: Evidence integrity (control-surface digest)
         run: |
-          pytest tests/test_sop_evidence_integrity.py -q
+          pytest tests/test_sop_evidence_integrity.py tests/test_sop_attestation_base.py -q
           python scripts/validate_sop_evidence_integrity.py
       - name: Policy hooks (existing)
         run: pytest tests/test_ai_work_policy_hooks.py tests/test_agents_policy_v1.py -q
@@ -103,9 +125,25 @@ jobs:
           ! grep -q 'git add -A' scripts/new-worktree.sh
           ! grep -q 'git add \.' scripts/new-worktree.sh
       - name: Emit runtime exact-head attestation
+        env:
+          SOP_ATTESTATION_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
         run: |
+          set -euo pipefail
           mkdir -p artifacts/sop-attestations
-          python scripts/emit_sop_runtime_attestation.py --out-dir artifacts/sop-attestations
+          HEAD_SHA="$(git rev-parse HEAD)"
+          echo "attesting_head=$HEAD_SHA"
+          if [ -n "${SOP_ATTESTATION_BASE_SHA}" ]; then
+            python scripts/emit_sop_runtime_attestation.py \
+              --out-dir artifacts/sop-attestations \
+              --base-sha "${SOP_ATTESTATION_BASE_SHA}" \
+              --head-sha "${HEAD_SHA}"
+          else
+            # push/main: origin/main should exist after checkout with fetch-depth 0
+            git rev-parse --verify origin/main^{commit}
+            python scripts/emit_sop_runtime_attestation.py \
+              --out-dir artifacts/sop-attestations \
+              --head-sha "${HEAD_SHA}"
+          fi
       - name: Upload runtime attestation
         uses: actions/upload-artifact@v4
         with:
