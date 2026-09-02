@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `6e89291524851ca6a7c35236598361b604d6e05eb908b1ccd2fd73bb9cc4f8d6`
+**Tree fingerprint:** `4d7130e2c8ea87a6b1c76beaaa4a3f7d51826671d9769e037fc2f2723f562590`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -1154,7 +1154,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/implementation/maturity-program/mp-20260901-210554/STAGE_01_AGENTS_POLICY_RECONCILIATION.md` | Stage 1 · Constitutional cleanup and conflict matrix | review_required | OK | `2d04326c1ac7` |
 | `docs/implementation/maturity-program/mp-20260901-210554/STAGE_01_DRIVE_MIRROR_VERIFICATION.md` | Stage 1.6 · Drive mirror | review_required | OK | `4dd677d4c67b` |
 | `docs/implementation/maturity-program/sop-1.2.0-20260902/EAC13CFD0_DRIVE_MANIFEST_DISPOSITION.md` | eac13cfd0 Drive-manifest disposition | review_required | OK | `0bef5edf4cc3` |
-| `docs/implementation/maturity-program/sop-1.2.0-20260902/MATURITY_SCORECARD.md` | Maturity scorecard — Multi-Agent SOP 1.2.0 (completion pass) | review_required | OK | `0ed14a4340e4` |
+| `docs/implementation/maturity-program/sop-1.2.0-20260902/MATURITY_SCORECARD.md` | Maturity scorecard — Multi-Agent SOP 1.2.0 (completion pass) | review_required | OK | `e897570741b0` |
 | `docs/implementation/maturity-program/sop-1.2.0-20260902/STAGE_00_PREFLIGHT.md` | Stage 0 · Fresh-state preflight and constitutional read | review_required | OK | `d565bb67c3fa` |
 | `docs/implementation/maturity-program/sop-1.2.0-20260902/STAGE_01_PR_COLLISION.md` | Stage 1 · Open-PR collision / convergence inventory | review_required | OK | `b072654894ad` |
 | `docs/implementation/maturity-program/sop-1.2.0-20260902/VERIFIER_RUNBOOK.md` | SOP 1.2.0 · Independent verifier runbook | review_required | OK | `8084ced22cfd` |

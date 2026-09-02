@@ -1,1 +1,6 @@
-5:**Tree fingerprint:** `e804b46ad29e7f2413fa8ed6ad8e8d40b5c040a343a1141875cd8a5eca8c65ff`
+=== CONTROL6 INDEX FINGERPRINT ===
+source_head=675121bcdf69a1586323252b5f7a64c6074ac70f
+verify_command=python3 scripts/report_docs_inventory.py --check-index
+do_not_embed_fingerprint_in_this_file=true
+reason=embedding the tree fingerprint here changes the tree and invalidates itself
+after_evidence_commit_run_check_index_and_compare_to_docs_INDEX_Tree_fingerprint_line

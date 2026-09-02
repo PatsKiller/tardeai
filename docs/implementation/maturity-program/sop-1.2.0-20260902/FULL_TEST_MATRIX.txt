@@ -1,23 +1,30 @@
-=== FULL TEST MATRIX 2026-09-02T13:49:07Z ===
-HEAD_pre=3d391adb61d4186cae44325e02cbe0031c2b0102
-origin/main=4bcba2cf7168f1cc9b1b7ffd18ab749b2eed44a9
-merge-base=4bcba2cf7168f1cc9b1b7ffd18ab749b2eed44a9
+=== FULL TEST MATRIX ===
+source_head=675121bcdf69a1586323252b5f7a64c6074ac70f
+source_tree=2e18cea57e39e0e9484afee3b8a30bf7b1b55cdb
+origin_main=4bcba2cf7168f1cc9b1b7ffd18ab749b2eed44a9
+merge_base=4bcba2cf7168f1cc9b1b7ffd18ab749b2eed44a9
+ruff=ruff 0.16.2 pinned=0.16.2
+python=Python 3.14.4
 
-EXIT_clients=0    # 3 passed
-EXIT_session=0    # 13 passed
-EXIT_identity=0   # 8 passed — adversarial borrowed-gitdir + clean verifier
-EXIT_drive=0      # 6 passed
-EXIT_policy=0     # 58 passed
-EXIT_index=0
+EXIT_lease_canonical=0   # 29 passed
+EXIT_session=0           # 13 passed
+EXIT_identity=0          # 8 passed
+EXIT_quality_unit=0      # 3 passed
+EXIT_clients=0           # 3 passed
+EXIT_drive=0             # 6 passed
+EXIT_policy=0            # 58 passed
+PYTEST_CORE=120         # 29+13+8+3+3+6+58
 EXIT_quality=0
+EXIT_missing_ruff=2
+EXIT_ruff_check=0
+EXIT_ruff_format=0
+EXIT_shellcheck=0
+EXIT_wt_link=0 EXIT_wt_addmsg=0 EXIT_wt_no_adda=0 EXIT_wt_no_adddot=0
+EXIT_diffcheck=0
 EXIT_secrets=0
 EXIT_positive_control=1
-EXIT_ruff_check=0
-EXIT_shellcheck=0
-EXIT_tsc=NOT_APPLICABLE
-EXIT_wt_link=0 EXIT_wt_addmsg=0 EXIT_wt_no_adda=0 EXIT_wt_no_adda2=0 EXIT_wt_no_adddot=0
-EXIT_diffcheck=0
+EXIT_index=run_check_index_after_evidence_commit
 
-PYTEST_TOTAL=88  # 3+13+8+6+58
-ADVERSARIAL_BORROWED_GITDIR=PASS
-VERIFIER_CLEAN_DETACHED=PASS
+verifier_alias_regression=PASS
+durable_boot_id_ttl=PASS
+ruff_fail_closed=PASS

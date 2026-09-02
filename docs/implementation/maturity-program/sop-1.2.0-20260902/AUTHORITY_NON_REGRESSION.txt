@@ -4,3 +4,8 @@
 82:3. **Never route around a permission denial.** Stop and report. No alternate remote, no
 275:**No profile grants**: broker execution, order actions, stop or risk-policy changes, 2FA, secret
 no_forbidden_paths_in_diff
+
+=== CORRECTIVE TRANCHE AUTHORITY CHECK ===
+No production/order/scheduler/guardrail/MBI_BEHAVIOR edits in this tranche.
+Scope: lease path canonicalization, durable TTL, Ruff quality fail-closed, evidence.
+AGENTS.md Policy-Version remains 1.2.0 PROPOSED / PENDING.

@@ -1,4 +1,10 @@
-=== COMPLETE WORKFLOW ===
+=== CONTROL7 WORKFLOW PROOF ===
+source_head=675121bcdf69a1586323252b5f7a64c6074ac70f
+workflow_path=.github/workflows/agent-governance.yml
+workflow_lines=52
+note=snapshot of tracked workflow at source_head; evidence commit may follow
+
+=== BEGIN WORKFLOW ===
 name: agent-governance
 
 # SOP Stage 7 — dedicated always-on governance CI.
@@ -28,41 +34,37 @@ jobs:
           python -m pip install --upgrade pip
           pip install pyyaml pytest
           pip install jsonschema || true
-          pip install ruff || true
+          # Ruff is required for changed-Python quality — never `|| true`.
+          pip install "ruff==0.16.2"
       - name: Agent clients registry
         run: pytest tests/test_agent_clients_registry.py -q
       - name: Session receipt + leases
         run: pytest tests/test_agent_session_and_lease.py -q
+      - name: File lease canonical + durable TTL
+        run: pytest tests/test_agent_file_lease_canonical.py -q
+      - name: Worktree identity adversarial (borrowed gitdir)
+        run: pytest tests/test_agent_worktree_identity.py -q
+      - name: Changed-file quality gate (Ruff required)
+        run: pytest tests/test_agent_changed_file_quality.py -q
       - name: Policy hooks (existing)
         run: pytest tests/test_ai_work_policy_hooks.py tests/test_agents_policy_v1.py -q
       - name: Registry validate via quality command
-        run: python scripts/agent_changed_file_quality.py --paths config/agent_clients.yaml config/agent_clients.schema.json
+        run: python scripts/agent_changed_file_quality.py --paths config/agent_clients.yaml config/agent_clients.schema.json scripts/agent_changed_file_quality.py
       - name: new-worktree SOP constraints
         run: |
           grep -q 'TRADEAI_WORKTREE_LINK_ENV' scripts/new-worktree.sh
-          grep -q 'never git add -A' scripts/new-worktree.sh
+          grep -qE 'never use add-all|add-dot' scripts/new-worktree.sh
           ! grep -q 'git add -A &&' scripts/new-worktree.sh
+          ! grep -q 'git add -A' scripts/new-worktree.sh
+          ! grep -q 'git add \.' scripts/new-worktree.sh
+=== END WORKFLOW ===
 
-=== PARSE ===
-triggers_raw_keys ['name', True, 'concurrency', 'jobs']
-on= {
-  "pull_request": null,
-  "push": {
-    "branches": [
-      "main"
-    ]
-  },
-  "workflow_dispatch": null
-}
-HAS_PATH_FILTERS False
-job_names ['agent-governance']
-job agent-governance name_field= agent-governance
-trigger_keys ['pull_request', 'push', 'workflow_dispatch']
-HAS_pull_request True
-HAS_push True
-HAS_workflow_dispatch True
-push_branches {'branches': ['main']}
-
-=== ADDED STEP (adversarial identity) ===
-      - name: Worktree identity adversarial (borrowed gitdir)
-        run: pytest tests/test_agent_worktree_identity.py -q
+=== LOCAL EQUIVALENT COMMANDS ===
+pytest tests/test_agent_clients_registry.py -q
+pytest tests/test_agent_session_and_lease.py -q
+pytest tests/test_agent_file_lease_canonical.py -q
+pytest tests/test_agent_worktree_identity.py -q
+pytest tests/test_agent_changed_file_quality.py -q
+pytest tests/test_ai_work_policy_hooks.py tests/test_agents_policy_v1.py -q
+python scripts/agent_changed_file_quality.py --paths <changed>
+new-worktree greps (TRADEAI_WORKTREE_LINK_ENV; never add-all/add-dot)

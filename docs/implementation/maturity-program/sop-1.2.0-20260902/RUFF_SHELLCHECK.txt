@@ -1,18 +1,9 @@
-=== RUFF + SHELLCHECK re-verify 2026-09-02T13:25:50Z ===
-HEAD=efa5591e6b91b5123333b8a92f5a0e1efcb7ef16
+=== RUFF + SHELLCHECK ===
+source_head=675121bcdf69a1586323252b5f7a64c6074ac70f
+ruff=ruff 0.16.2 pinned=0.16.2
 shellcheck=ShellCheck - shell script analysis tool
-ruff=ruff 0.16.2
-
-=== SHELLCHECK (changed .sh vs origin/main) ===
-SH_FILES=scripts/new-worktree.sh
-EXIT_shellcheck=0
-
-=== RUFF CHECK (changed .py vs origin/main) ===
-[1;32mAll checks passed![0m
 EXIT_ruff_check=0
-
-=== RUFF FORMAT --check note ===
-EXIT_ruff_format=1 on scripts/run_cio_hardening_ci.py only
-Cause: pre-existing whole-file style vs ruff; SOP delta is +5 lines (agent_governance_sop gate).
-Declined mass-reformat (unrelated churn). Quality floor uses ruff check, which PASSes.
-NOT_A_GATE_FAILURE for Control 6 quality command.
+EXIT_ruff_format=0
+EXIT_shellcheck=0
+EXIT_missing_ruff_negative=2
+quality_gate=fail_closed_when_py_changed_and_ruff_missing
