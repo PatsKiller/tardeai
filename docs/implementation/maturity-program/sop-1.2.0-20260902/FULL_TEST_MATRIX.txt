@@ -1,0 +1,56 @@
+=== FULL TEST MATRIX 2026-09-02T13:14:38Z ===
++ agent clients
+...                                                                      [100%]
+3 passed in 0.22s
+EXIT=0
++ session+lease
+.............                                                            [100%]
+13 passed in 0.78s
+EXIT=0
++ drive mirror policy
+......                                                                   [100%]
+6 passed in 0.16s
+EXIT=0
++ policy hooks+agents
+..........................................................               [100%]
+58 passed in 2.22s
+EXIT=0
++ INDEX check
+[PASS] docs/INDEX.md matches inventory (MISSING HEADER=11, md=1955, fingerprint=e804b46ad29e)
+EXIT=0
++ quality cmd
++ git diff --check config/agent_clients.yaml config/agent_clients.schema.json scripts/lib/agent_file_lease.py
+Traceback (most recent call last):
+  File "/home/johnclaw/trade-ai-worktrees/agent-sop-1.2.0/scripts/agent_changed_file_quality.py", line 79, in <module>
+    raise SystemExit(main())
+                     ~~~~^^
+  File "/home/johnclaw/trade-ai-worktrees/agent-sop-1.2.0/scripts/agent_changed_file_quality.py", line 49, in main
+    ruff = subprocess.call(["ruff", "--version"], cwd=ROOT, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+  File "/usr/lib/python3.14/subprocess.py", line 396, in call
+    with Popen(*popenargs, **kwargs) as p:
+         ~~~~~^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.14/subprocess.py", line 1039, in __init__
+    self._execute_child(args, executable, preexec_fn, close_fds,
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                        pass_fds, cwd, env,
+                        ^^^^^^^^^^^^^^^^^^^
+    ...<5 lines>...
+                        gid, gids, uid, umask,
+                        ^^^^^^^^^^^^^^^^^^^^^^
+                        start_new_session, process_group)
+                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.14/subprocess.py", line 1990, in _execute_child
+    raise child_exception_type(errno_num, err_msg, err_filename)
+FileNotFoundError: [Errno 2] No such file or directory: 'ruff'
+EXIT=1
++ secrets scan
+  ✓ no secrets or hardcoded values in staged change (0 files scanned)
+EXIT_secrets=0
+  ✓ no secrets or hardcoded values in staged change (0 files scanned)
+EXIT_positive_control_expect_nonzero=0
++ ruff
+EXIT_ruff=1
++ shellcheck
+EXIT_shellcheck=1
++ tsc
+NOT_APPLICABLE: no TypeScript paths in this tranche

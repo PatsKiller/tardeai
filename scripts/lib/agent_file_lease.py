@@ -87,31 +87,61 @@ class LeaseCoordinator:
         except Exception:  # noqa: BLE001
             pass
 
-    def _read_all(self) -> list[Lease]:
+    def _parse_lease(self, d: dict[str, Any]) -> Lease:
+        return Lease(
+            lease_id=d["lease_id"],
+            session_id=d["session_id"],
+            agent_id=d["agent_id"],
+            paths=list(d.get("paths") or []),
+            stores=list(d.get("stores") or []),
+            issued_at=float(d["issued_at"]),
+            expires_at=float(d["expires_at"]),
+            heartbeat_s=float(d.get("heartbeat_s") or HEARTBEAT_S),
+            deployment=bool(d.get("deployment")),
+            production=bool(d.get("production")),
+        )
+
+    def _read_all(self, *, include_expired: bool = False) -> list[Lease]:
         now = time.monotonic()
         out: list[Lease] = []
         for p in self.leases_dir.glob("*.json"):
             try:
                 d = json.loads(p.read_text(encoding="utf-8"))
-                lease = Lease(
-                    lease_id=d["lease_id"],
-                    session_id=d["session_id"],
-                    agent_id=d["agent_id"],
-                    paths=list(d.get("paths") or []),
-                    stores=list(d.get("stores") or []),
-                    issued_at=float(d["issued_at"]),
-                    expires_at=float(d["expires_at"]),
-                    heartbeat_s=float(d.get("heartbeat_s") or HEARTBEAT_S),
-                    deployment=bool(d.get("deployment")),
-                    production=bool(d.get("production")),
-                )
-                if lease.expires_at < now:
+                lease = self._parse_lease(d)
+                if lease.expires_at < now and not include_expired:
                     # abandoned — leave file for audit; skip as active
                     continue
                 out.append(lease)
             except Exception:  # noqa: BLE001
                 continue
         return out
+
+    def recover_abandoned(self) -> list[dict[str, Any]]:
+        """Move expired lease files to audit/abandoned without deleting peers."""
+        self._lock()
+        try:
+            now = time.monotonic()
+            audit = self.root / "abandoned"
+            audit.mkdir(parents=True, exist_ok=True)
+            recovered: list[dict[str, Any]] = []
+            for p in list(self.leases_dir.glob("*.json")):
+                try:
+                    d = json.loads(p.read_text(encoding="utf-8"))
+                    if float(d.get("expires_at") or 0) >= now:
+                        continue
+                    d["recovered_at_monotonic"] = now
+                    d["recovery_event"] = "ABANDONED_TTL_EXPIRED"
+                    dest = audit / f"{d.get('lease_id')}.{int(time.time())}.json"
+                    tmp = dest.with_suffix(".tmp")
+                    tmp.write_text(json.dumps(d, indent=2) + "\n", encoding="utf-8")
+                    os.replace(tmp, dest)
+                    p.unlink()
+                    recovered.append(d)
+                except Exception:  # noqa: BLE001
+                    continue
+            return recovered
+        finally:
+            self._unlock()
 
     def list_active(self) -> list[dict[str, Any]]:
         self._lock()

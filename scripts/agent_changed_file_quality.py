@@ -12,6 +12,8 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 
 def _run(cmd: list[str]) -> int:
@@ -43,13 +45,20 @@ def main(argv: list[str] | None = None) -> int:
 
     py = [p for p in paths if p.suffix == ".py" and p.exists()]
     if py:
-        # ruff if present
-        ruff = subprocess.call(["ruff", "--version"], cwd=ROOT, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        # ruff if present — missing binary is NOT_APPLICABLE, never a crash
+        try:
+            ruff = subprocess.call(
+                ["ruff", "--version"], cwd=ROOT,
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except FileNotFoundError:
+            ruff = 127
         if ruff == 0:
             if _run(["ruff", "check", *[str(p) for p in py]]) != 0:
                 rc = 1
         else:
             print("NOT_APPLICABLE: ruff not installed")
+            # Missing optional linter is not a silent PASS for the overall
+            # gate when CI also installs ruff optionally — record explicitly.
     else:
         print("NOT_APPLICABLE: no python paths")
 
