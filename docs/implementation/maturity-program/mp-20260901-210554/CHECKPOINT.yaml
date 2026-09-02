@@ -1,0 +1,51 @@
+schema: TradeAIMaturityProgramCheckpoint@v1
+run_id: mp-20260901-210554
+prompt_version: 1.0.0
+base_sha: 6d6609915171fe6a153daf71d413df88b6483864
+branch: governance/agents-policy-v1
+current_stage: STAGE_01_AGENTS_POLICY
+state: WAITING_OPERATOR
+last_green_stage: STAGE_00_PREFLIGHT
+stage_commits:
+  - 67e9c347089113a933d20e5ad23b5b102221b017
+pull_requests:
+  - number: 841
+    state: DRAFT
+    title: 'AGENTS.md policy v1.0.0'
+served_pins_observed:
+  - sha: 6d6609915171fe6a153daf71d413df88b6483864
+    dir: portfolio-server/6d6609915-main-exact-phase2-20260901-182421
+    method: BUILD_SHA_FILE_CONTENT
+    as_of: 2026-09-01T21:08:48-04:00
+drive_folder_id: 1spBGi8OgIpDE1p2tlIXzk8fJLqxqMCCU
+drive_agents_file_id: NOT_UPLOADED_MECHANISM_BLOCKED
+drive_manifest_file_id: NOT_UPLOADED_MECHANISM_BLOCKED
+agents_policy_version: 1.0.0-PROPOSED
+content_sha256: 73f30f6a0ac1da38d1ff8201e5ab1f60cc46ed3d8b82f5510188dab1cbb12300
+maturity_proofs:
+  M1: NOT_OBSERVED
+  M2: NOT_OBSERVED
+  M3: NOT_OBSERVED
+  M4: NOT_OBSERVED
+  M5: NOT_OBSERVED
+mv_loop_started_at: null
+mv_loop_observation_days: 0
+measured_cost_usd: 0.00
+pending_operator_actions:
+  - id: APPROVE_AGENTS_POLICY_1_0_0
+    detail: "PR #841 draft; phrase: APPROVE_AGENTS_POLICY_1_0_0 841 <head_sha>"
+    blocking: STAGE_02
+  - id: CHOOSE_DRIVE_MIRROR_MECHANISM
+    detail: "no credential-free path-based uploader exists; MCP tool is inline-only and cannot guarantee byte-exactness"
+    blocking: STAGE_01_COMPLETION
+  - id: RATIFY_DAILY_USD_CAP
+    detail: "runtime enforces 0.50; config notes date 0.25->0.50; AGENTS.md documents neither"
+    blocking: STAGE_05
+  - id: FAST_FORWARD_CANONICAL_CHECKOUT
+    detail: "canonical checkout 0a591048b lags origin/main 6d6609915 by 20 commits; program section 1 forbids fast-forward without separate approval"
+    blocking: STAGE_01
+  - id: OPTIONAL_CLOSE_PR_150
+    detail: "stale DRAFT #150 holds a nominal claim on AGENTS.md (0 files in current diff, last updated 2026-07-27)"
+    blocking: NONE
+failure: null
+updated_at: 2026-09-01T21:39:25-04:00

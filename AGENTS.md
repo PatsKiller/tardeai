@@ -1,5 +1,27 @@
 # AGENTS.md — Trade AI: the operating standard for every agent
 
+```
+Policy-Version:      1.0.0
+Versioning-Scheme:   Semantic Versioning 2.0.0
+Policy-Schema:       TradeAI-Agent-Operating-Standard/v1
+Status:              ACTIVE
+Effective-Date:      2026-09-01
+Last-Reviewed:       2026-09-01T21:44:07-04:00
+Canonical-Repo-Path: AGENTS.md
+Drive-Mirror-Path:   Trade_AI_Docs_v2/governance/agent-policy/AGENTS.md
+Supersedes:          UNVERSIONED
+Approval-Class:      OPERATOR_REQUIRED_FOR_SECTIONS_0_2_17_AND_ROLE_AUTHORITY
+```
+
+**1.0.0 is the first formal baseline, not a rewrite.** The document was previously unversioned;
+`Supersedes: UNVERSIONED` records that literally. It is **not** called 2.0.0 because no prior
+formal 1.x policy exists to supersede — measured, not assumed: `Policy-Version:` appeared zero
+times in this file before this change.
+
+This block carries no commit SHA and no hash of this file. Both would be self-referential: the
+content hash cannot exist until the content commit exists. They live in the external mirror
+manifest, `docs/ops/AGENTS_DRIVE_MIRROR_MANIFEST.json`, which is written after that commit.
+
 **This file is the single source of truth for how agents work in this repository.** Every tool
 adapter — `CLAUDE.md`, `.cursor/rules/`, `.github/copilot-instructions.md` — points here and
 restates nothing except the block immediately below.
@@ -13,6 +35,34 @@ is a finding worth reporting.
 
 Every rule below was written after a specific failure in this repository, and most after the same
 class of failure recurred. None is theoretical.
+
+---
+
+# Document version policy
+
+This section is unnumbered on purpose: it governs the document, not the agent.
+
+**Change classes.** Every semantic change picks exactly one, and the class decides who approves it.
+
+| class | what it changes | examples |
+|---|---|---|
+| **MAJOR** | authority rails, operator-only boundaries, agent role authority, broker access, egress policy, financial safety semantics | weakening §2, widening §17, granting a role broker reach |
+| **MINOR** | adds a mandatory operating, validation, evidence, deployment or incident rule **without weakening authority** | a new required gate, a new proof obligation |
+| **PATCH** | citations, wording, stale measurements, duplication, formatting — **no change to required behaviour** | fixing a `file:line`, merging a duplicated section |
+
+**Rules.**
+
+- Every semantic change updates `Policy-Version`, `Last-Reviewed`, and the version history table.
+- A version is `ACTIVE` only after the required approval **and** merge. Until then it is `PROPOSED`
+  and the previously active text governs.
+- **`Status: PROPOSED` requires `Effective-Date: PENDING`.** A date on an unapproved policy asserts
+  it is already in force. An absent approval must never render as an affirmative one (§9.1).
+- MAJOR and any change to §0, §2, §17, or the role authority profiles require explicit operator
+  approval (§20).
+- Adding a rule is not a MINOR if it *removes* a restriction elsewhere. Classify by the weakest
+  guarantee after the change, not by the diff size.
+- **The class is not the author's preference.** If a change could be read as either, it takes the
+  higher class — the same safer-or-more-restrictive rule this file applies everywhere else.
 
 ---
 
@@ -183,6 +233,50 @@ The Drive sync already excludes `.env`, keys and credentials; that rule belongs 
 the tool, because a rule living only in a tool is lost when the tool changes. An agent must not
 paste credentials, tokens or account identifiers into any chat context — including its own status
 reports, where they are easiest to leak by accident.
+
+---
+
+# 2B · Role authority profiles
+
+These separate **identity** from **authority**. They do not weaken the universal safety floor in
+§0 and §2 — every profile inherits it. A profile can only ever be *narrower* than the floor.
+
+**Amending this section is operator-only** (§17, §20). It is `Approval-Class` material because a
+role that grants itself reach is indistinguishable, from inside, from one that was granted it.
+
+```
+ADVISORY_AGENT
+  read-only financial authority
+  no broker subsystem access
+  no behavior writes
+  -> the default. An agent with no declared profile is this one.
+
+EXECUTION_ENGINEERING_AGENT
+  may edit declared adapter, contract, fixture and simulation files
+  no live credentials, endpoints, 2FA, deploy, live flags, or real broker calls
+  mocks / replay only, until separately authorized
+  -> BLOCKED until the §7 authority reconciliation is approved (see below)
+
+RELEASE_COORDINATOR
+  integrates reviewed code and evidence
+  no merge and no deploy without exact-SHA operator approval
+
+LIVE_CANARY_CONTROLLER
+  a deterministic service, never an LLM agent
+  exact signed session envelope and operator ceremony required
+```
+
+**Fail closed.** An undeclared or unrecognised profile resolves to `ADVISORY_AGENT`, never to the
+widest one. A profile that cannot be resolved is not a licence to proceed.
+
+**No profile grants**: broker execution, order actions, stop or risk-policy changes, 2FA, secret
+reads, scheduler changes, live flags, or promotion of itself or another agent. Those are §17
+operator-only regardless of profile, and `BehaviorWriteRefused` applies to every one of them.
+
+**`EXECUTION_ENGINEERING_AGENT` is defined but not granted.** Defining a role is not activating
+it. It stays blocked until an operator-approved reconciliation between this file and
+architecture v3.3 explicitly authorizes it, with a declared file set and a proof that live
+credentials and endpoints are unreachable from that scope.
 
 ---
 
@@ -994,16 +1088,54 @@ is repeating the filing-cabinet defect.
 
 ## 13.5 · Pre-build check
 
-Before building a new type, store, field, subsystem, or parallel mechanism:
+**The failure this prevents.** This system's most expensive recurring pattern is not broken code.
+It is **rebuilding something that already exists and is merely unwired.** `load-by-subject` was
+built, correct, tested, and called by nothing. `store_consistency.py` the same. The librarian's
+grading law shipped with no index file. Two independent re-entry books, two identity-minting
+schemes, three `place_order` definitions, ~37 identity/memory/lineage modules with known
+duplicates. Each cost the effort of building it **and** the effort of later finding it.
 
-1. **Read §13.4.** The pre-build search is unusable without knowing what already exists. An agent
-   that has not read the type vocabulary will search for the wrong names and conclude, honestly and
-   wrongly, that nothing exists.
-2. Search the hub for the registered id types, subject keys, pipeline stages, and artifact types
-   named in §13.4. Prefer an exact name match over a synonym.
-3. If a match exists, **extend it**. Do not clone it under a new `@v1` name or a parallel store.
-4. If you still propose something new, state in the PR body which of §13.4's five questions you
-   ruled out and why. A PR without that statement is incomplete.
+**An unwired thing is not an absent thing.** If a search turns up a module that does the job and
+nothing calls it, **wire it — do not write a second one.** A second implementation does not fix the
+first; it doubles the surface and guarantees they will disagree.
+
+## The check — run it before writing any new module, contract, store, gate, metric, operator field, or scheduled job
+
+0. **Read §13.4.** First, and without exception: this check is unusable without the type vocabulary — an agent that has not
+   read it searches for the wrong names and concludes, honestly and wrongly, that nothing exists.
+   Prefer an exact name match over a synonym. If a match exists, **extend it** — do not clone it
+   under a new `@v1` name or a parallel store.
+1. **Read the documentation index** (§14.1) for the concept, by name **and by synonym**.
+2. **Search for the capability, not the filename.** Filename greps have produced three wrong
+   conclusions here. Search the behaviour: the write call, the schema literal, the route, the field.
+3. **If you still propose something new, say what you ruled out.** State in the PR body which of
+   §13.4's five questions you answered and why none of them covered it. A PR without that
+   statement is incomplete.
+3. **Check the registries** — `config/lane_registry.json` for a scheduled job,
+   `CanonicalStoreRegistry` for a store, the provenance matrix for an operator field.
+4. **Check the dark inventory.** The census verdicts `DARK`, `LIVE_UNCONSUMED`, `ONE_SHOT`,
+   `ORPHANED` are a list of things that exist and do not run. Look there before concluding absence.
+5. **Check `archive/` and its manifest.** Something may have been retired deliberately. Rebuilding
+   it without reading the reason repeats whatever caused the retirement.
+
+## Record the search
+
+**State in the PR body what you searched and what you found.** Naming the search makes it
+auditable; without it, "nothing exists" is a `[DOC-CLAIM]` about your own diligence.
+
+> Searched the index for *cadence*, *eligibility*, *next-look*; searched for writes to
+> `next_eligible_at`; checked the lane registry for a scheduler. Found `cio_residual_web:654`
+> writes it on completion and is `NEVER_SCHEDULED`. **Wiring that rather than adding a writer.**
+
+## The rule that follows
+
+- **Exists and wired** → extend it. One canonical source of truth per concept (§13).
+- **Exists and unwired** → wire it, and say why it was unwired if that can be established.
+- **Exists and wrong** → fix in place, or replace it and **delete the original in the same PR**.
+  Two implementations of one concept must never both be live.
+- **Nothing exists** → build it, having stated where you looked.
+
+---
 
 ## 13.6 · Operator surface data producers
 
@@ -1060,51 +1192,13 @@ auth paths above) before declaring recovery.
 
 ---
 
-# 13.5 · Before you build — the pre-build check
+## 13.7 · Conformance checklist — before the first line is written
 
-**The failure this prevents.** This system's most expensive recurring pattern is not broken code.
-It is **rebuilding something that already exists and is merely unwired.** `load-by-subject` was
-built, correct, tested, and called by nothing. `store_consistency.py` the same. The librarian's
-grading law shipped with no index file. Two independent re-entry books, two identity-minting
-schemes, three `place_order` definitions, ~37 identity/memory/lineage modules with known
-duplicates. Each cost the effort of building it **and** the effort of later finding it.
-
-**An unwired thing is not an absent thing.** If a search turns up a module that does the job and
-nothing calls it, **wire it — do not write a second one.** A second implementation does not fix the
-first; it doubles the surface and guarantees they will disagree.
-
-## The check — run it before writing any new module, contract, store, gate, metric, operator field, or scheduled job
-
-1. **Read the documentation index** (§14.1) for the concept, by name **and by synonym**.
-2. **Search for the capability, not the filename.** Filename greps have produced three wrong
-   conclusions here. Search the behaviour: the write call, the schema literal, the route, the field.
-3. **Check the registries** — `config/lane_registry.json` for a scheduled job,
-   `CanonicalStoreRegistry` for a store, the provenance matrix for an operator field.
-4. **Check the dark inventory.** The census verdicts `DARK`, `LIVE_UNCONSUMED`, `ONE_SHOT`,
-   `ORPHANED` are a list of things that exist and do not run. Look there before concluding absence.
-5. **Check `archive/` and its manifest.** Something may have been retired deliberately. Rebuilding
-   it without reading the reason repeats whatever caused the retirement.
-
-## Record the search
-
-**State in the PR body what you searched and what you found.** Naming the search makes it
-auditable; without it, "nothing exists" is a `[DOC-CLAIM]` about your own diligence.
-
-> Searched the index for *cadence*, *eligibility*, *next-look*; searched for writes to
-> `next_eligible_at`; checked the lane registry for a scheduler. Found `cio_residual_web:654`
-> writes it on completion and is `NEVER_SCHEDULED`. **Wiring that rather than adding a writer.**
-
-## The rule that follows
-
-- **Exists and wired** → extend it. One canonical source of truth per concept (§13).
-- **Exists and unwired** → wire it, and say why it was unwired if that can be established.
-- **Exists and wrong** → fix in place, or replace it and **delete the original in the same PR**.
-  Two implementations of one concept must never both be live.
-- **Nothing exists** → build it, having stated where you looked.
-
----
-
-# 13.6 · Conformance checklist — before the first line is written
+> **Renumbered 2026-09-01 (PATCH).** This section and §13.6 "Operator surface data producers"
+> both carried the number 13.6. They are **different sections**, not duplicates — one is Finviz
+> auth and screener/enrichment producers, the other is a pre-build conformance checklist.
+> Merging them would have destroyed content, so the collision was resolved by renumbering the
+> later one into the free §13.7.
 
 Every item is a defect this system has already produced. A new artifact that cannot answer these
 is not ready to be built.
@@ -1165,18 +1259,6 @@ Measured at: <commit sha> / <live pin>, or "not measured"
 - **Do not invent a reason.** `UNKNOWN` is a legitimate and expected entry, and its count is itself
   a measurement.
 
-## Where things go
-
-| kind | location | naming |
-|---|---|---|
-| audits and censuses | `docs/audits/` | `<SUBJECT>_<YYYY-MM-DD>.md` |
-| operational runbooks, conventions, incidents | `docs/ops/` | `<SUBJECT>.md`, incidents dated |
-| wave briefs | `docs/briefs/` | `WAVE_<n>_<slug>.md` — see that README |
-| architecture and ADRs | `docs/architecture/` | `<SUBJECT>.md` |
-| domain knowledge | `.claude/skills/*/SKILL.md` | never behavioural rules |
-
-**Drive** holds the durable audit corpus. **Never sync `.env`, keys, or credentials** — the sync
-excludes them and `check_no_secrets.py` blocks them at commit.
 
 ## 14.1 · The documentation directory
 
@@ -1217,6 +1299,14 @@ documentation debt.
 | `config/` | lane registry, store registry, **domain policy** | scheduling, storing, touching policy |
 | `.claude/skills/` | domain knowledge — never behavioural rules | context on a subsystem |
 | `archive/` | retired code, with manifest and tripwire | **before rebuilding something that seems absent** |
+
+**Naming.** Audits `<SUBJECT>_<YYYY-MM-DD>.md` · ops `<SUBJECT>.md` with incidents dated ·
+briefs `WAVE_<n>_<slug>.md` (see that README) · architecture `<SUBJECT>.md` ·
+`.claude/skills/*/SKILL.md` carries domain knowledge and **never behavioural rules**.
+
+**Drive** holds the durable audit corpus. **Never sync `.env`, keys, or credentials** — the sync
+excludes them and `check_no_secrets.py` blocks them at commit. The one governed exception is the
+`AGENTS.md` policy mirror and its manifest (§2B), which is content-hash verified on every update.
 
 **Every new document is indexed by the generator, not by hand.** If the generator does not pick it
 up, it is in the wrong place or missing its header — both are findings.
@@ -1490,3 +1580,17 @@ Correct your own prior claims out loud when measurement refutes them. Keep the f
 write-up, not just the final state. Say `UNKNOWN` when it is true.
 
 **When a finding contradicts this file, the finding wins.**
+
+---
+
+# Version history
+
+| Version | Date | Status | Change class | Summary | Approval |
+|---|---|---|---|---|---|
+| 1.0.0 | 2026-09-01 | ACTIVE | MAJOR | Formal baseline. Document-control block and version policy; §13.5 duplicate merged; §13.6 numbering collision renumbered to §13.7 and section order restored; two "Where things go" tables merged; §2B role authority profiles added. | **APPROVED** — `APPROVE_AGENTS_POLICY_1_0_0 841 0f00f928a6b3892ef838c8737cebfcb622fd53ae` |
+
+**Why MAJOR.** §2B adds role authority profiles, which is authority semantics. The deduplication
+alone would have been PATCH; the higher class wins, per the version policy above.
+
+**No prior version to supersede.** `Policy-Version:` appeared zero times in this file before
+1.0.0, measured on `origin/main` at the base of this change.

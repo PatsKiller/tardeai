@@ -173,6 +173,7 @@ UNLISTED_BASELINE: frozenset = frozenset([
     "tests/test_agent_untrusted_data.py",
     "tests/test_agent_wake_taxonomy.py",
     "tests/test_ai_work_policy_hooks.py",
+    "tests/test_agents_policy_v1.py",
     "tests/test_aif_financial_senses_adversarial.py",
     "tests/test_aif_financial_senses_contract.py",
     "tests/test_aif_financial_senses_replay.py",
