@@ -1,0 +1,10 @@
+{
+  "run_id": "run-log-only-001",
+  "correlation_id": "run-log-only-001",
+  "success": true,
+  "ok": true,
+  "ts": "2026-09-02T18:10:00+00:00",
+  "provider_at": "2026-09-02T18:10:00+00:00",
+  "trace_id": "trace:run-log-only-001",
+  "model_version": "hermes-worker@test"
+}

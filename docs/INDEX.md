@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `da0d42c11c39d54d3f3c039dbf6e39f019b7982a05cc314bf65c41214bb6746b`
+**Tree fingerprint:** `033849165441515cd1b9b3c7a4a2c96571a53a00a445bc0b7bab90535ee99130`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,10 +12,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2347 |
-| Markdown (excl. this INDEX) | 1959 |
+| Files under `docs/` (excl. this INDEX) | 2348 |
+| Markdown (excl. this INDEX) | 1960 |
 | **MISSING HEADER** | **11** |
-| Header OK | 1948 |
+| Header OK | 1949 |
 | Duplicate groups | 5 |
 
 ### By status_guess
@@ -30,7 +30,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_raw_sync | 26 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 6 |
-| review_required | 1967 |
+| review_required | 1968 |
 
 ## Markdown tree
 
@@ -1531,6 +1531,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/RESEARCH_LANE_HEALTH.md` | Research lane health + P0 outage (2026-08-21) | review_required | OK | `6c3418e95711` |
 | `docs/ops/RESEARCH_LIFECYCLE_AS_OF_2026-08-22.md` | Research and thesis lifecycle — as of 2026-08-22 night | review_required | OK | `cb17e74f5174` |
 | `docs/ops/RESEARCH_LIFECYCLE_STANDARD.md` | Research Algorithm and Re-Research Methodology | review_required | OK | `38f982802e43` |
+| `docs/ops/RESEARCH_PROVENANCE_AND_ELIGIBILITY_CONTRACT.md` | Research Provenance and Eligibility Contract | review_required | OK | `d6d7103a7793` |
 | `docs/ops/RESEARCH_QUALITY_AND_THESIS_GAP_2026-08-22.md` | Research quality, thesis mint gap, alarms — 2026-08-22 | review_required | OK | `6310c0e41813` |
 | `docs/ops/RESEARCH_TIER_LLM_CADENCE.md` | Research tiers, watchlist, and when each gets an LLM | review_required | OK | `28c7d73a7129` |
 | `docs/ops/ROLLBACK_COMMANDS.md` | CURRENT rollback (exact-main phase2) | review_required | OK | `ec18ccb0ad96` |
