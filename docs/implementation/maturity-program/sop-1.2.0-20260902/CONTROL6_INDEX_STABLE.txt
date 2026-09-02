@@ -1,1 +1,5 @@
+STATUS: SUPERSEDED_NON_AUTHORITATIVE
+This artifact is retained for audit history only.
+Authoritative evidence: EVIDENCE_ARCHITECTURE.md + CURRENT evidence files bound to control_surface_digest.
+---
 [PASS] docs/INDEX.md matches inventory (MISSING HEADER=11, md=1956, fingerprint=f911f0babeda)

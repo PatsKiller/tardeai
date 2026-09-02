@@ -1,3 +1,7 @@
+STATUS: SUPERSEDED_NON_AUTHORITATIVE
+This artifact is retained for audit history only.
+Authoritative evidence: EVIDENCE_ARCHITECTURE.md + CURRENT evidence files bound to control_surface_digest.
+---
 diff --git a/docs/INDEX.md b/docs/INDEX.md
 index c25f880eb..b31d236a4 100644
 --- a/docs/INDEX.md

@@ -1,2 +1,6 @@
+STATUS: SUPERSEDED_NON_AUTHORITATIVE
+This artifact is retained for audit history only.
+Authoritative evidence: EVIDENCE_ARCHITECTURE.md + CURRENT evidence files bound to control_surface_digest.
+---
 ......................                                                   [100%]
 22 passed in 1.11s

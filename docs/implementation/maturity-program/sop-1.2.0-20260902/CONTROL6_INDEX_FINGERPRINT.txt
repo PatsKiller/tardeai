@@ -1,6 +1,8 @@
-=== CONTROL6 INDEX FINGERPRINT ===
-source_head=675121bcdf69a1586323252b5f7a64c6074ac70f
+=== CONTROL6 INDEX FINGERPRINT (reproducible; Layer 1) ===
+schema=SopControl6IndexEvidence@v1
+control_surface_digest=d521ce0b4763483d1f1ae466d52e57972455bd1b09a6f49ac6d14754ca31bfd1
 verify_command=python3 scripts/report_docs_inventory.py --check-index
-do_not_embed_fingerprint_in_this_file=true
-reason=embedding the tree fingerprint here changes the tree and invalidates itself
-after_evidence_commit_run_check_index_and_compare_to_docs_INDEX_Tree_fingerprint_line
+do_not_embed_live_fingerprint=true
+reason=A committed live fingerprint is circular: editing evidence changes the tree fingerprint.
+live_fingerprint_emission=runtime attestation field docs_index_fingerprint OR CI logs
+note=Does not embed containing commit SHA.

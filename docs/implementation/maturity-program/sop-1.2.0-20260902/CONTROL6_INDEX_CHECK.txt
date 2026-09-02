@@ -1,3 +1,7 @@
+STATUS: SUPERSEDED_NON_AUTHORITATIVE
+This artifact is retained for audit history only.
+Authoritative evidence: EVIDENCE_ARCHITECTURE.md + CURRENT evidence files bound to control_surface_digest.
+---
 [FAIL] docs/INDEX.md drift — regenerate with --write-index
 --- a/docs/INDEX.md
 +++ b/docs/INDEX.md (regenerated)

@@ -9,3 +9,9 @@ no_forbidden_paths_in_diff
 No production/order/scheduler/guardrail/MBI_BEHAVIOR edits in this tranche.
 Scope: lease path canonicalization, durable TTL, Ruff quality fail-closed, evidence.
 AGENTS.md Policy-Version remains 1.2.0 PROPOSED / PENDING.
+
+=== EVIDENCE ARCHITECTURE TRANCHE ===
+control_surface_digest=d521ce0b4763483d1f1ae466d52e57972455bd1b09a6f49ac6d14754ca31bfd1
+No production/order/scheduler/guardrail/MBI_BEHAVIOR edits.
+Layer-1 evidence binds to digest; exact HEAD is runtime attestation only.
+AGENTS.md remains 1.2.0 PROPOSED / PENDING.

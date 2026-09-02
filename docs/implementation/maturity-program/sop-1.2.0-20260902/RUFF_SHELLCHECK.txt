@@ -1,9 +1,16 @@
-=== RUFF + SHELLCHECK ===
-source_head=675121bcdf69a1586323252b5f7a64c6074ac70f
-ruff=ruff 0.16.2 pinned=0.16.2
-shellcheck=ShellCheck - shell script analysis tool
+=== RUFF + SHELLCHECK (reproducible; Layer 1) ===
+schema=SopRuffShellcheckEvidence@v1
+control_surface_digest=d521ce0b4763483d1f1ae466d52e57972455bd1b09a6f49ac6d14754ca31bfd1
+note=Does not embed containing commit SHA.
+
+# Changed-file scope for the quality gate (governance Python on the control surface)
+changed_python_scope=scripts/agent_changed_file_quality.py scripts/agent_session_start.py scripts/emit_sop_runtime_attestation.py scripts/lib/agent_clients_registry.py scripts/lib/agent_file_lease.py scripts/lib/agent_session_receipt.py scripts/lib/agent_worktree_identity.py scripts/lib/agents_drive_mirror_policy.py scripts/lib/sop_evidence_integrity.py scripts/run_cio_hardening_ci.py scripts/validate_sop_evidence_integrity.py tests/test_agent_changed_file_quality.py tests/test_agent_clients_registry.py tests/test_agent_file_lease_canonical.py tests/test_agent_session_and_lease.py tests/test_agent_worktree_identity.py tests/test_agents_drive_mirror_policy.py tests/test_sop_evidence_integrity.py
+changed_shell_scope=scripts/new-worktree.sh
+
+required_ruff_version=0.16.2
 EXIT_ruff_check=0
 EXIT_ruff_format=0
 EXIT_shellcheck=0
 EXIT_missing_ruff_negative=2
 quality_gate=fail_closed_when_py_changed_and_ruff_missing
+command_missing_ruff_negative=resolve_ruff_bin returns None with changed .py paths -> exit 2 BLOCKED

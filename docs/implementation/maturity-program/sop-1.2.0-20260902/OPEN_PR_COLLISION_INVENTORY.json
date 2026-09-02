@@ -1,3 +1,7 @@
+STATUS: SUPERSEDED_NON_AUTHORITATIVE
+This artifact is retained for audit history only.
+Authoritative evidence: EVIDENCE_ARCHITECTURE.md + CURRENT evidence files bound to control_surface_digest.
+---
 {
   "schema": "OpenPRCollisionInventory@v1",
   "as_of": "2026-09-02T13:00:06+00:00",

@@ -78,3 +78,11 @@ without a successful governed launcher receipt** showing matching
 Only then run the seven-control matrix inside the **same** worktree. Still no push,
 PR, Drive write, branch-protection change, or deploy unless a later operator phrase
 explicitly authorizes remote sync.
+
+## Evidence layers (exact HEAD)
+
+Committed evidence binds to ``control_surface_digest`` only (Layer 1). After a
+successful launcher receipt, verifiers must also obtain a **runtime exact-head
+attestation** via ``python3 scripts/emit_sop_runtime_attestation.py`` (writes
+under ``artifacts/sop-attestations/``, never into tracked docs). See
+``EVIDENCE_ARCHITECTURE.md``.

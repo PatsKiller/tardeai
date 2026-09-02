@@ -1,8 +1,28 @@
-=== CONTROL7 WORKFLOW PROOF ===
-source_head=675121bcdf69a1586323252b5f7a64c6074ac70f
+=== CONTROL7 WORKFLOW PROOF (reproducible; Layer 1) ===
+schema=SopControl7WorkflowProof@v1
+control_surface_digest=d521ce0b4763483d1f1ae466d52e57972455bd1b09a6f49ac6d14754ca31bfd1
 workflow_path=.github/workflows/agent-governance.yml
-workflow_lines=52
-note=snapshot of tracked workflow at source_head; evidence commit may follow
+workflow_blob_sha256=1a678dd522ca9e7395abfe80abc163003773e6f73524c1c6b365886e57c0ff03
+workflow_lines=66
+path_filters=absent
+triggers=pull_request,push[main],workflow_dispatch
+ruff_install=pip install "ruff==0.16.2"
+ruff_or_true=absent
+note=Does not embed containing commit SHA. Exact HEAD is runtime attestation only.
+
+steps:
+  - Install minimal deps
+  - Agent clients registry
+  - Session receipt + leases
+  - File lease canonical + durable TTL
+  - Worktree identity adversarial (borrowed gitdir)
+  - Changed-file quality gate (Ruff required)
+  - Evidence integrity (control-surface digest)
+  - Policy hooks (existing)
+  - Registry validate via quality command
+  - new-worktree SOP constraints
+  - Emit runtime exact-head attestation
+  - Upload runtime attestation
 
 === BEGIN WORKFLOW ===
 name: agent-governance
@@ -46,6 +66,10 @@ jobs:
         run: pytest tests/test_agent_worktree_identity.py -q
       - name: Changed-file quality gate (Ruff required)
         run: pytest tests/test_agent_changed_file_quality.py -q
+      - name: Evidence integrity (control-surface digest)
+        run: |
+          pytest tests/test_sop_evidence_integrity.py -q
+          python scripts/validate_sop_evidence_integrity.py
       - name: Policy hooks (existing)
         run: pytest tests/test_ai_work_policy_hooks.py tests/test_agents_policy_v1.py -q
       - name: Registry validate via quality command
@@ -57,14 +81,14 @@ jobs:
           ! grep -q 'git add -A &&' scripts/new-worktree.sh
           ! grep -q 'git add -A' scripts/new-worktree.sh
           ! grep -q 'git add \.' scripts/new-worktree.sh
+      - name: Emit runtime exact-head attestation
+        run: |
+          mkdir -p artifacts/sop-attestations
+          python scripts/emit_sop_runtime_attestation.py --out-dir artifacts/sop-attestations
+      - name: Upload runtime attestation
+        uses: actions/upload-artifact@v4
+        with:
+          name: sop-runtime-attestation
+          path: artifacts/sop-attestations/runtime-attestation.json
+          if-no-files-found: error
 === END WORKFLOW ===
-
-=== LOCAL EQUIVALENT COMMANDS ===
-pytest tests/test_agent_clients_registry.py -q
-pytest tests/test_agent_session_and_lease.py -q
-pytest tests/test_agent_file_lease_canonical.py -q
-pytest tests/test_agent_worktree_identity.py -q
-pytest tests/test_agent_changed_file_quality.py -q
-pytest tests/test_ai_work_policy_hooks.py tests/test_agents_policy_v1.py -q
-python scripts/agent_changed_file_quality.py --paths <changed>
-new-worktree greps (TRADEAI_WORKTREE_LINK_ENV; never add-all/add-dot)
