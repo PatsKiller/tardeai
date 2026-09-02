@@ -33,6 +33,8 @@ export type SurfaceFreshness = {
   dataAsOfAccount: string | null
 }
 
+import { businessDateToSessionInstant, etCalendarDate } from './observationEnvelope.ts'
+
 const HOUR_MS = 3_600_000
 
 /** Parse ISO / date-only / epoch-ish values. Returns null when unusable. */
@@ -46,10 +48,14 @@ export function parseTimestamp(raw: unknown, nowMs = Date.now()): Date | null {
   }
   const s = String(raw).trim()
   if (!s) return null
-  // Date-only → local midnight (session calendar), same as isScanStale.
+  // Date-only is a BUSINESS DATE, not an instant, and never local midnight.
+  // `new Date('2026-09-01T00:00:00')` binds to the browser's zone, so the same
+  // payload aged differently in Los Angeles and Tokyo -- and a 36h threshold is
+  // decided by a swing that large. businessDateToSessionInstant anchors to
+  // 16:00 America/New_York, the session close the date actually refers to, and
+  // measures the zone offset for that date so DST needs no table.
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
-    const d = new Date(`${s}T00:00:00`)
-    return Number.isNaN(d.getTime()) ? null : d
+    return businessDateToSessionInstant(s)
   }
   const d = new Date(s)
   if (Number.isNaN(d.getTime())) return null
@@ -133,10 +139,13 @@ export function tradeAiSurfaceFreshness(
   if (typeof runDateRaw === 'string' && /^\d{4}-\d{2}-\d{2}/.test(runDateRaw)) {
     const m = runDateRaw.match(/(\d{4}-\d{2}-\d{2})/)
     if (m) {
-      const scan = new Date(`${m[1]}T00:00:00`)
-      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-      const scanDay = new Date(scan.getFullYear(), scan.getMonth(), scan.getDate())
-      runDatePrior = scanDay.getTime() < today.getTime()
+      // Compare SESSION dates as dates, in the market's zone. The previous
+      // form built local midnight and decomposed `now` with getFullYear()/
+      // getMonth()/getDate() -- both host-zone reads -- so a Tokyo browser at
+      // 16:50Z was already on "tomorrow" and flagged the current session's scan
+      // as prior. Four assertions in this file's own suite failed under
+      // TZ=Asia/Tokyo on HEAD for exactly that reason.
+      runDatePrior = m[1] < etCalendarDate(now)
     }
   }
 

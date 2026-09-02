@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { businessDateToSessionInstant, etCalendarDate } from '../../lib/observationEnvelope.ts'
 import { useApi } from '../../hooks/useApi'
 import { BB, T, TYPE, numStyle, heatRamp } from '../../lib/watchTokens'
 
@@ -45,16 +46,37 @@ function squarify(items: { size: number; payload: any }[], x: number, y: number,
   return out
 }
 
-function ageHint(asOf?: string): string {
-  if (!asOf) return ''
-  const m = String(asOf).match(/(\d{4}-\d{2}-\d{2})/)
-  if (!m) return ''
-  const snap = new Date(`${m[1]}T12:00:00`)
-  const today = new Date()
-  const lag = Math.floor((today.getTime() - snap.getTime()) / 86400000)
-  if (lag <= 0) return ''
-  if (lag === 1) return ' · snapshot 1d behind live prices'
-  return ` · snapshot ${lag}d behind live prices`
+/**
+ * Session lag for the book snapshot.
+ *
+ * Replaces a day-floored hint that rebuilt the date as `T12:00:00` with no zone
+ * suffix -- browser-local noon -- and returned '' for lag <= 0, so a same-day
+ * OR FUTURE-DATED snapshot was indistinguishable from a verified-current book.
+ * Now: the date is an explicit business date in the market's zone, an absent
+ * date is UNDATED rather than blank, and a future date is named as skew instead
+ * of rendering as clean.
+ */
+function bookSessionState(asOf?: string): { label: string; attention: boolean; aria: string } {
+  const m = asOf ? String(asOf).match(/(\d{4}-\d{2}-\d{2})/) : null
+  if (!m) {
+    return { label: ' · session UNDATED', attention: true, aria: 'book snapshot has no session date' }
+  }
+  const today = etCalendarDate(new Date())
+  if (m[1] > today) {
+    return { label: ' · session AHEAD of today', attention: true, aria: 'book snapshot is dated in the future' }
+  }
+  const snap = businessDateToSessionInstant(m[1])
+  if (!snap) {
+    return { label: ' · session UNDATED', attention: true, aria: 'book snapshot session date is unusable' }
+  }
+  if (m[1] === today) return { label: '', attention: false, aria: 'book snapshot is current session' }
+  const lag = Math.round((businessDateToSessionInstant(today)!.getTime() - snap.getTime()) / 86400000)
+  const d = lag === 1 ? '1d' : `${lag}d`
+  return {
+    label: ` · snapshot ${d} behind live prices`,
+    attention: true,
+    aria: `book snapshot is ${d} behind live prices`,
+  }
 }
 
 export default function BookTreemap({ onDrillSymbol }: { onDrillSymbol?: (symbol: string) => void }) {
@@ -101,18 +123,22 @@ export default function BookTreemap({ onDrillSymbol }: { onDrillSymbol?: (symbol
 
   if (!data?.ok) return <div style={{ background: BB.bg, border: `1px solid ${BB.border}`, borderRadius: 2, padding: 14, fontSize: TYPE.sm, color: BB.text3 }}>Book map: {data?.error || 'loading…'}</div>
 
-  const lag = ageHint(data.as_of)
+  const session = bookSessionState(data.as_of)
 
   return (
     <div style={{ background: BB.bg, border: `1px solid ${BB.border}`, borderLeft: `3px solid ${BB.green}`, borderRadius: 2, padding: '10px 12px' }}>
       <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap', marginBottom: 6 }}>
         <span style={{ fontSize: TYPE.xs, fontWeight: 800, letterSpacing: '.06em', color: BB.text2 }}>YOUR BOOK</span>
-        <span style={{ fontSize: 8.5, fontWeight: 700, color: lag ? BB.amber : BB.text3, textTransform: 'uppercase' }}>
-          · holdings.json {String(data.as_of || '')} · ${Math.round(data.total_value).toLocaleString()} · day{' '}
+        <span
+          style={{ fontSize: 8.5, fontWeight: 700, color: session.attention ? BB.amber : BB.text3, textTransform: 'uppercase' }}
+          aria-label={session.aria}
+          title={session.aria}
+        >
+          · holdings.json {data.as_of ? `session ${String(data.as_of)}` : 'session UNDATED'} · ${Math.round(data.total_value).toLocaleString()} · day{' '}
           <b style={{ color: data.total_day_change >= 0 ? BB.green : BB.red }}>
             {data.total_day_change >= 0 ? '+' : ''}${Math.round(data.total_day_change).toLocaleString()}
           </b>
-          {lag}
+          {session.label}
         </span>
         <span style={{ flex: 1 }} />
         {(['value', 'impact'] as const).map(m => (
