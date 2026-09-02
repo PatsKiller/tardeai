@@ -1,5 +1,5 @@
 Status:      ACTIVE
-as_of:       2026-09-02T10:30:00-04:00
+as_of:       2026-09-02T13:30:00Z
 run_id:      sop-1.2.0-20260902
 worktree:    /home/johnclaw/trade-ai-worktrees/agent-sop-1.2.0
 base_sha:    4bcba2cf7168f1cc9b1b7ffd18ab749b2eed44a9
@@ -30,5 +30,5 @@ Authority:   local evidence. INDEPENDENT_VERIFICATION_PENDING. No remote.
 | 3 | Session receipt | PASS | scripts/agent_session_start.py |
 | 4 | File/store leases | PASS | scripts/lib/agent_file_lease.py |
 | 5 | Safe worktree | PASS | scripts/new-worktree.sh |
-| 6 | Doc index + quality | PASS | CONTROL6_INDEX_RECHECK.txt fingerprint e804b46ad29e |
+| 6 | Doc index + quality | PASS | INDEX fingerprint=see_docs_INDEX; quality EXIT=0; shellcheck EXIT=0 on new-worktree.sh |
 | 7 | agent-governance CI | PASS | CONTROL7_WORKFLOW_PROOF.txt (required-context enablement still operator) |

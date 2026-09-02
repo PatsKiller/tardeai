@@ -1,56 +1,21 @@
-=== FULL TEST MATRIX 2026-09-02T13:14:38Z ===
-+ agent clients
-...                                                                      [100%]
-3 passed in 0.22s
-EXIT=0
-+ session+lease
-.............                                                            [100%]
-13 passed in 0.78s
-EXIT=0
-+ drive mirror policy
-......                                                                   [100%]
-6 passed in 0.16s
-EXIT=0
-+ policy hooks+agents
-..........................................................               [100%]
-58 passed in 2.22s
-EXIT=0
-+ INDEX check
-[PASS] docs/INDEX.md matches inventory (MISSING HEADER=11, md=1955, fingerprint=e804b46ad29e)
-EXIT=0
-+ quality cmd
-+ git diff --check config/agent_clients.yaml config/agent_clients.schema.json scripts/lib/agent_file_lease.py
-Traceback (most recent call last):
-  File "/home/johnclaw/trade-ai-worktrees/agent-sop-1.2.0/scripts/agent_changed_file_quality.py", line 79, in <module>
-    raise SystemExit(main())
-                     ~~~~^^
-  File "/home/johnclaw/trade-ai-worktrees/agent-sop-1.2.0/scripts/agent_changed_file_quality.py", line 49, in main
-    ruff = subprocess.call(["ruff", "--version"], cwd=ROOT, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-  File "/usr/lib/python3.14/subprocess.py", line 396, in call
-    with Popen(*popenargs, **kwargs) as p:
-         ~~~~~^^^^^^^^^^^^^^^^^^^^^^
-  File "/usr/lib/python3.14/subprocess.py", line 1039, in __init__
-    self._execute_child(args, executable, preexec_fn, close_fds,
-    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-                        pass_fds, cwd, env,
-                        ^^^^^^^^^^^^^^^^^^^
-    ...<5 lines>...
-                        gid, gids, uid, umask,
-                        ^^^^^^^^^^^^^^^^^^^^^^
-                        start_new_session, process_group)
-                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/usr/lib/python3.14/subprocess.py", line 1990, in _execute_child
-    raise child_exception_type(errno_num, err_msg, err_filename)
-FileNotFoundError: [Errno 2] No such file or directory: 'ruff'
-EXIT=1
-+ secrets scan
-  ✓ no secrets or hardcoded values in staged change (0 files scanned)
-EXIT_secrets=0
-  ✓ no secrets or hardcoded values in staged change (0 files scanned)
-EXIT_positive_control_expect_nonzero=0
-+ ruff
-EXIT_ruff=1
-+ shellcheck
-EXIT_shellcheck=1
-+ tsc
-NOT_APPLICABLE: no TypeScript paths in this tranche
+=== FULL TEST MATRIX 2026-09-02T13:25:30Z ===
+HEAD=efa5591e6b91b5123333b8a92f5a0e1efcb7ef16
+origin/main=4bcba2cf7168f1cc9b1b7ffd18ab749b2eed44a9
+merge-base=4bcba2cf7168f1cc9b1b7ffd18ab749b2eed44a9
+
+EXIT_clients=0   # test_agent_clients_registry.py 3 passed
+EXIT_session=0   # test_agent_session_and_lease.py 13 passed
+EXIT_drive=0     # test_agents_drive_mirror_policy.py 6 passed
+EXIT_policy=0    # test_ai_work_policy_hooks.py + test_agents_policy_v1.py 58 passed
+EXIT_index=0     # --check-index PASS fingerprint=see_docs_INDEX md=1956
+EXIT_quality=0   # agent_changed_file_quality.py all changed paths
+EXIT_secrets=0   # check_no_secrets.py --tree
+EXIT_positive_control=1  # expect nonzero; GIT_INDEX_FILE probe blocked
+EXIT_ruff_check=0
+EXIT_ruff_format=1  # informational; see RUFF_SHELLCHECK.txt — not quality-cmd gate
+EXIT_shellcheck=0  # scripts/new-worktree.sh
+EXIT_tsc=NOT_APPLICABLE
+EXIT_wt_link=0 EXIT_wt_addmsg=0 EXIT_wt_no_adda=0 EXIT_wt_no_adda2=0 EXIT_wt_no_adddot=0
+EXIT_diffcheck=0
+
+PYTEST_TOTAL=80  # 3+13+6+58
