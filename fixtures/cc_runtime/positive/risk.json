@@ -1,0 +1,76 @@
+{
+  "ok": true,
+  "data": {
+    "position_count": 15,
+    "pct_protected": 0.33,
+    "unprotected_count": 10,
+    "protected_count": 5,
+    "total_risk_dollars": 12000,
+    "stop_health": {
+      "unprotected_count": 10,
+      "protected_count": 5
+    },
+    "positions": [
+      {
+        "symbol": "T0",
+        "has_stop": true
+      },
+      {
+        "symbol": "T1",
+        "has_stop": true
+      },
+      {
+        "symbol": "T2",
+        "has_stop": true
+      },
+      {
+        "symbol": "T3",
+        "has_stop": true
+      },
+      {
+        "symbol": "T4",
+        "has_stop": true
+      },
+      {
+        "symbol": "T5",
+        "has_stop": false
+      },
+      {
+        "symbol": "T6",
+        "has_stop": false
+      },
+      {
+        "symbol": "T7",
+        "has_stop": false
+      },
+      {
+        "symbol": "T8",
+        "has_stop": false
+      },
+      {
+        "symbol": "T9",
+        "has_stop": false
+      },
+      {
+        "symbol": "T10",
+        "has_stop": false
+      },
+      {
+        "symbol": "T11",
+        "has_stop": false
+      },
+      {
+        "symbol": "T12",
+        "has_stop": false
+      },
+      {
+        "symbol": "T13",
+        "has_stop": false
+      },
+      {
+        "symbol": "T14",
+        "has_stop": false
+      }
+    ]
+  }
+}

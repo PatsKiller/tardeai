@@ -1,0 +1,15 @@
+{
+  "ok": true,
+  "data": {
+    "vix": 16.34,
+    "go_count": 1,
+    "wait_count": 3,
+    "avoid_count": 0,
+    "run_date": "2026-09-02",
+    "run_label": "1600",
+    "cached_at": "2026-09-02T20:00:00Z",
+    "cache_age_sec": 3600,
+    "stale": false,
+    "ticker_count": 50
+  }
+}

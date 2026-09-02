@@ -1,0 +1,9 @@
+{
+  "git_sha": "cd049cb4eb20add7a24de28b5a5e42eafcc4d673",
+  "build_sha": "cd049cb4eb20",
+  "source_sha": "cd049cb4eb20add7a24de28b5a5e42eafcc4d673",
+  "ui_version": "3.14+harness",
+  "built_at": "2026-09-02T21:00:00Z",
+  "release_label": "hermetic-fixture",
+  "branch": "verification"
+}

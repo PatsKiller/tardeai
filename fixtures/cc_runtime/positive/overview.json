@@ -1,0 +1,44 @@
+{
+  "ok": true,
+  "data": {
+    "portfolio_value": 1280958.39,
+    "derived_total_value": 1280958.39,
+    "total_cash": 630290.46,
+    "today_change": 3981.58,
+    "today_pct": 0.31,
+    "reprice_source": "finviz_afterhours",
+    "pricing": {
+      "last_repriced": "2026-09-02 16:45:02 ET",
+      "reprice_source": "finviz_afterhours",
+      "holdings_as_of": "2026-09-02"
+    },
+    "position_count": 15,
+    "account_count": 6,
+    "as_of": "2026-09-02",
+    "data_as_of": "2026-09-01",
+    "data_as_of_account": "alpaca_taxable_live",
+    "last_repriced": "2026-09-02 16:45:02 ET",
+    "pipeline_status": "ok",
+    "pipeline_completed": "2026-09-02T20:00:00Z",
+    "pending_approvals": 2,
+    "journal": {
+      "trade_count": 169,
+      "total_pnl": 55366.06,
+      "win_rate": 53.3,
+      "realized_count": 175,
+      "realized_pnl": 169925.7,
+      "realized_win_rate": 52.6,
+      "last_close_date": "2026-08-25",
+      "last_ingested_at": "2026-09-02T18:00:00Z",
+      "source": "journal"
+    },
+    "trade_ai": {
+      "vix": 16.34,
+      "go_count": 1,
+      "wait_count": 3,
+      "no_go_count": 0,
+      "run_date": "2026-09-02",
+      "run_label": "1600"
+    }
+  }
+}

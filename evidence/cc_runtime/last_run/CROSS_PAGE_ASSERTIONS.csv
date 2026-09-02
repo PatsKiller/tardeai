@@ -1,0 +1,16 @@
+semantic_concept,endpoint_a,value_a,endpoint_b,value_b,consistent,notes
+portfolio_value,overview,1280958.39,performance,1280958.39,YES,
+position_count,overview,15,risk,15,YES,must match
+cash,overview.total_cash,630290.46,—,,PRESENT,
+day_pnl,overview.today_change,3981.58,—,,PRESENT,
+realized_pnl,overview.journal.realized_pnl,169925.7,—,,PRESENT,
+prices,overview.pricing.last_repriced,2026-09-02 16:45:02 ET,reprice_source,finviz_afterhours,PRESENT,
+stops_protection,risk.stop_health,10,pct_protected,0.33,PRESENT,
+regime_vix,risk-regime,NEUTRAL,trade-ai.vix,16.34,PRESENT,
+setups,trade-ai.go_count,1,run_date,2026-09-02,PRESENT,
+last_run,pipeline_completed|cached_at,2026-09-02T20:00:00Z,—,,PRESENT,
+proposals,paper-proposals,3,health/proposals,3,PRESENT,
+approvals,overview.pending_approvals,2,—,,PRESENT,
+journal,overview.journal.win_rate,53.3,—,,PRESENT,
+research_state,research-intelligence/freshness,current,—,,PRESENT,
+build_sha,build-meta,cd049cb4eb20add7a24de28b5a5e42eafcc4d673,—,,PRESENT,

@@ -1,0 +1,8 @@
+{
+  "ok": true,
+  "data": {
+    "regime_label": "NEUTRAL",
+    "confidence": 0.6,
+    "volatility_state": "normal"
+  }
+}
