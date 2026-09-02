@@ -43,4 +43,3 @@
  | `docs/incidents/DAY_SCALP_PIPELINE_FIXES_2026-08-19.md` | Day-Scalp Pipeline — Fixes & Enhancements (2026-08-19) | review_required | OK | `c6c4a11b63fb` |
  | `docs/incidents/DAY_SCALP_PIPELINE_OUTAGE_2026-08-19.md` | Day-Scalp Pipeline Outage — Root Cause & Remediation Plan (2026-08-19) | review_required | OK | `304b9f0e8db6` |
  | `docs/incidents/PHASE67A_FINVIZ_AGENT_STALENESS_INCIDENT_INVENTORY.md` | Phase 67A — Finviz & Agent Staleness Incident Inventory | review_required | OK | `4e6a66d54dd5` |
-
