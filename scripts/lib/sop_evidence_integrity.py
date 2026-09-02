@@ -336,6 +336,7 @@ def validate_runtime_attestation(
         PINNED_RUFF_VERSION,
         collect_tool_versions,
         parse_ruff_version,
+        parse_shellcheck_version,
         resolve_ruff_bin,
     )
 
@@ -416,6 +417,20 @@ def validate_runtime_attestation(
                 errors.append(f"ATTESTATION_PASS_WITH_MISSING_TOOL:{name}")
         if exit_code == 0 and name == "shellcheck" and str(tools.get("shellcheck") or "").upper() == "MISSING":
             errors.append("ATTESTATION_PASS_WITH_MISSING_TOOL:shellcheck")
+
+    # ShellCheck must be recorded as an exact version, not a banner, and must
+    # agree with the live tool. A banner-only or hand-edited value fails closed.
+    recorded_sc = str(tools.get("shellcheck") or "")
+    live_sc = parse_shellcheck_version(str(live.get("shellcheck_raw") or live.get("shellcheck") or ""))
+    if not recorded_sc or recorded_sc.upper() == "MISSING":
+        if live_sc:
+            errors.append("ATTESTATION_SHELLCHECK_FALSE_MISSING")
+    else:
+        rec_sc = parse_shellcheck_version(recorded_sc)
+        if rec_sc is None:
+            errors.append("ATTESTATION_SHELLCHECK_VERSION_UNPARSEABLE")
+        elif live_sc and rec_sc != live_sc:
+            errors.append("ATTESTATION_SHELLCHECK_VERSION_MISMATCH")
 
     if changed_python and recorded_ruff.upper() == "MISSING":
         errors.append("ATTESTATION_CHANGED_PYTHON_REQUIRES_RUFF")

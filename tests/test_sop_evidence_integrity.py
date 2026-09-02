@@ -16,6 +16,7 @@ from scripts.lib.sop_evidence_integrity import (
     validate_runtime_attestation,
     workflow_facts,
 )
+from scripts.lib.sop_toolchain import collect_tool_versions
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -188,7 +189,7 @@ def test_runtime_attestation_schema_roundtrip():
             "pinned_ruff": "0.16.2",
             "ruff": "0.16.2",
             "ruff_raw": "ruff 0.16.2",
-            "shellcheck": "ShellCheck - shell script analysis tool",
+            "shellcheck": collect_tool_versions(root=ROOT)["shellcheck"],
         },
         "clean_state": True,
         "authority_non_regression": "PASS",

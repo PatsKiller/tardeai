@@ -1,6 +1,6 @@
 === CONTROL7 LOCAL EQUIVALENT (reproducible; Layer 1) ===
 schema=SopControl7LocalEquivalent@v1
-control_surface_digest=8d6cb401a83bd3e73c44869e0789339f080a4f75d83f4f551ac8d8b632ddf8e1
+control_surface_digest=7cb0bf4db3ed7ef14dae85d57709086ad4ab9c9e6c363e967591b296c44d7550
 note=Command specification with expected successful exits. Does not embed containing commit SHA.
 historical_failure_artifact=SUPERSEDED — prior ModuleNotFoundError/EXIT_quality=1 capture is non-authoritative.
 
@@ -35,6 +35,10 @@ expected_count_policy=58
 command_evidence_tests=python3 -m pytest tests/test_sop_evidence_integrity.py -q
 expected_EXIT_evidence_tests=0
 
+command_toolchain=python3 -m pytest tests/test_sop_toolchain.py -q
+expected_EXIT_toolchain=0
+expected_count_toolchain=15
+
 command_quality=PYTHONPATH=. python3 scripts/agent_changed_file_quality.py --paths config/agent_clients.yaml config/agent_clients.schema.json scripts/agent_changed_file_quality.py
 expected_EXIT_quality=0
 
@@ -55,3 +59,4 @@ EXIT_policy=0
 EXIT_quality=0
 EXIT_evidence_integrity=0
 EXIT_worktree_grep=0
+EXIT_toolchain=0

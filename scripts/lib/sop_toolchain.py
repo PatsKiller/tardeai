@@ -20,6 +20,11 @@ ROOT = Path(__file__).resolve().parents[2]
 # Keep in sync with agent-governance CI pin and pyproject comment.
 PINNED_RUFF_VERSION = "0.16.2"
 
+# ShellCheck carries no hard pin: agent-governance CI installs no ShellCheck, so
+# the runner's distro version varies. It is instead captured exactly and checked
+# against the live tool, which is what a hand-edited or stale attestation fails.
+
+
 _HUB_RUFF = Path("/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/ruff")
 
 
@@ -84,15 +89,40 @@ def resolve_shellcheck_bin() -> Path | None:
     return None
 
 
+def parse_shellcheck_version(raw: str) -> str | None:
+    """Extract ``X.Y.Z`` (or ``X.Y``) from a ShellCheck version block.
+
+    Returns ``None`` for the banner line alone, so a recorded value carrying no
+    version fails closed instead of passing as "present".
+    """
+    if not raw or raw == "MISSING":
+        return None
+    m = re.search(r"(?im)^\s*version:\s*(\d+\.\d+(?:\.\d+)?)\s*$", raw)
+    if m:
+        return m.group(1)
+    m = re.search(r"\b(\d+\.\d+(?:\.\d+)?)\b", raw)
+    return m.group(1) if m else None
+
+
 def shellcheck_version_string(bin_path: Path | None = None) -> str:
+    """Raw ShellCheck version evidence (e.g. ``version: 0.11.0``).
+
+    ``shellcheck --version`` prints a banner on line 1 and the version on a
+    later line, so returning line 0 records no version at all. Prefer the
+    ``version:`` line so attestation carries the exact version.
+    """
     bin_path = bin_path or resolve_shellcheck_bin()
     if bin_path is None:
         return "MISSING"
     try:
         out = subprocess.check_output([str(bin_path), "--version"], text=True)
-        return out.splitlines()[0].strip() if out.strip() else "MISSING"
     except (OSError, subprocess.CalledProcessError):
         return "MISSING"
+    lines = [ln.strip() for ln in out.splitlines() if ln.strip()]
+    for line in lines:
+        if line.lower().startswith("version:"):
+            return line
+    return lines[0] if lines else "MISSING"
 
 
 def python_version_string() -> str:
@@ -116,6 +146,7 @@ def collect_tool_versions(*, root: Path | None = None) -> dict[str, Any]:
 
     sc_bin = resolve_shellcheck_bin()
     sc_raw = shellcheck_version_string(sc_bin)
+    sc_parsed = parse_shellcheck_version(sc_raw)
 
     return {
         "python": python_version_string(),
@@ -123,6 +154,7 @@ def collect_tool_versions(*, root: Path | None = None) -> dict[str, Any]:
         "ruff": ruff_raw if ruff_parsed is None and ruff_raw == "MISSING" else (ruff_parsed or ruff_raw),
         "ruff_raw": ruff_raw,
         "ruff_bin": str(ruff_bin) if ruff_bin else None,
-        "shellcheck": sc_raw,
+        "shellcheck": sc_parsed or sc_raw,
+        "shellcheck_raw": sc_raw,
         "shellcheck_bin": str(sc_bin) if sc_bin else None,
     }

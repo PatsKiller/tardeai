@@ -3,7 +3,7 @@ as_of:       2026-09-02T18:00:00Z
 run_id:      sop-1.2.0-20260902
 worktree:    /home/johnclaw/trade-ai-worktrees/agent-sop-1.2.0
 base_sha:    4bcba2cf7168f1cc9b1b7ffd18ab749b2eed44a9
-control_surface_digest=8d6cb401a83bd3e73c44869e0789339f080a4f75d83f4f551ac8d8b632ddf8e1
+control_surface_digest=7cb0bf4db3ed7ef14dae85d57709086ad4ab9c9e6c363e967591b296c44d7550
 Authority:   local Layer-1 evidence + runtime attestation. INDEPENDENT_VERIFICATION_PENDING. No remote.
 
 # Maturity scorecard — Multi-Agent SOP 1.2.0
@@ -19,6 +19,7 @@ Authority:   local Layer-1 evidence + runtime attestation. INDEPENDENT_VERIFICAT
 | Safe worktree / identity | PASS | tests/test_agent_worktree_identity.py + VERIFIER_RUNBOOK.md |
 | Drive mirror fixtures | PASS | tests/test_agents_drive_mirror_policy.py |
 | Evidence integrity | PASS | tests/test_sop_evidence_integrity.py + validate_sop_evidence_integrity.py |
+| Toolchain version capture | PASS | tests/test_sop_toolchain.py (Ruff pinned + ShellCheck exact version) |
 | eac13cfd0 disposition | RETAIN historical | EAC13CFD0_DRIVE_MANIFEST_DISPOSITION.md |
 | Independent verification | INDEPENDENT_VERIFICATION_PENDING | must use governed launcher + runtime attestation |
 | Autonomous financial readiness | NOT_APPLICABLE | |

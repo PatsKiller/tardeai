@@ -1,10 +1,10 @@
 === RUFF + SHELLCHECK (reproducible; Layer 1) ===
 schema=SopRuffShellcheckEvidence@v1
-control_surface_digest=8d6cb401a83bd3e73c44869e0789339f080a4f75d83f4f551ac8d8b632ddf8e1
+control_surface_digest=7cb0bf4db3ed7ef14dae85d57709086ad4ab9c9e6c363e967591b296c44d7550
 note=Does not embed containing commit SHA.
 
 # Changed-file scope for the quality gate (governance Python on the control surface)
-changed_python_scope=scripts/agent_changed_file_quality.py scripts/agent_session_start.py scripts/emit_sop_runtime_attestation.py scripts/lib/agent_clients_registry.py scripts/lib/agent_file_lease.py scripts/lib/agent_session_receipt.py scripts/lib/agent_worktree_identity.py scripts/lib/agents_drive_mirror_policy.py scripts/lib/sop_evidence_integrity.py scripts/run_cio_hardening_ci.py scripts/validate_sop_evidence_integrity.py tests/test_agent_changed_file_quality.py tests/test_agent_clients_registry.py tests/test_agent_file_lease_canonical.py tests/test_agent_session_and_lease.py tests/test_agent_worktree_identity.py tests/test_agents_drive_mirror_policy.py tests/test_sop_evidence_integrity.py
+changed_python_scope=scripts/agent_changed_file_quality.py scripts/agent_session_start.py scripts/emit_sop_runtime_attestation.py scripts/lib/agent_clients_registry.py scripts/lib/agent_file_lease.py scripts/lib/agent_session_receipt.py scripts/lib/agent_worktree_identity.py scripts/lib/agents_drive_mirror_policy.py scripts/lib/sop_evidence_integrity.py scripts/lib/sop_toolchain.py scripts/run_cio_hardening_ci.py scripts/validate_sop_evidence_integrity.py tests/test_agent_changed_file_quality.py tests/test_agent_clients_registry.py tests/test_agent_file_lease_canonical.py tests/test_agent_session_and_lease.py tests/test_agent_worktree_identity.py tests/test_agents_drive_mirror_policy.py tests/test_sop_evidence_integrity.py tests/test_sop_toolchain.py
 changed_shell_scope=scripts/new-worktree.sh
 
 required_ruff_version=0.16.2
@@ -14,3 +14,13 @@ EXIT_shellcheck=0
 EXIT_missing_ruff_negative=2
 quality_gate=fail_closed_when_py_changed_and_ruff_missing
 command_missing_ruff_negative=resolve_ruff_bin returns None with changed .py paths -> exit 2 BLOCKED
+
+# ShellCheck version capture (Layer 2 carries the exact version; Layer 1 stays
+# environment-agnostic because agent-governance CI installs no pinned ShellCheck).
+shellcheck_version_capture=exact_version_required
+shellcheck_banner_alone=rejected
+command_shellcheck_version=shellcheck --version -> version line, not the line-0 banner
+attestation_shellcheck_errors=ATTESTATION_SHELLCHECK_VERSION_UNPARSEABLE,ATTESTATION_SHELLCHECK_VERSION_MISMATCH,ATTESTATION_SHELLCHECK_FALSE_MISSING
+EXIT_shellcheck_banner_negative=1
+EXIT_shellcheck_version_mismatch_negative=1
+EXIT_shellcheck_false_missing_negative=1

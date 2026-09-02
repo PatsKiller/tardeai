@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 
 import pytest
@@ -64,6 +65,10 @@ def test_collect_tool_versions_records_pinned_ruff(monkeypatch: pytest.MonkeyPat
     assert tc.parse_ruff_version(str(vers["ruff_raw"])) == "0.16.2" or vers["ruff"] == "0.16.2"
     assert vers["python"]
     assert vers["shellcheck"] != "MISSING"
+    # Must be an exact version, not the `shellcheck --version` banner line.
+    assert re.fullmatch(r"\d+\.\d+(?:\.\d+)?", vers["shellcheck"]), vers["shellcheck"]
+    assert "shell script analysis tool" not in vers["shellcheck"]
+    assert tc.parse_shellcheck_version(vers["shellcheck_raw"]) == vers["shellcheck"]
 
 
 def _base_att(*, ruff: str = "0.16.2") -> dict:
@@ -86,7 +91,8 @@ def _base_att(*, ruff: str = "0.16.2") -> dict:
             "pinned_ruff": "0.16.2",
             "ruff": ruff,
             "ruff_raw": f"ruff {ruff}" if ruff != "MISSING" else "MISSING",
-            "shellcheck": "ShellCheck - shell script analysis tool",
+            # Live value: the recorded ShellCheck version must match the tool.
+            "shellcheck": tc.collect_tool_versions(root=ROOT)["shellcheck"],
         },
         "clean_state": True,
         "authority_non_regression": "PASS",
@@ -120,6 +126,8 @@ def test_attestation_pass_conflicts_with_missing_tool():
 
 
 def test_attestation_ruff_missing_with_changed_python(monkeypatch: pytest.MonkeyPatch):
+    # Capture live tool versions BEFORE patching, or the stub recurses into itself.
+    live = tc.collect_tool_versions(root=ROOT)
     monkeypatch.setattr(tc, "resolve_ruff_bin", lambda root=None: None)
     monkeypatch.setattr(
         tc,
@@ -129,10 +137,64 @@ def test_attestation_ruff_missing_with_changed_python(monkeypatch: pytest.Monkey
             "pinned_ruff": "0.16.2",
             "ruff": "MISSING",
             "ruff_raw": "MISSING",
-            "shellcheck": "ShellCheck - shell script analysis tool",
+            "shellcheck": live["shellcheck"],
+            "shellcheck_raw": live["shellcheck_raw"],
         },
     )
     att = _base_att(ruff="MISSING")
     errs = validate_runtime_attestation(att, root=ROOT, changed_python=True, require_ruff=True)
     assert "ATTESTATION_RUFF_TOOL_MISSING" in errs
     assert "ATTESTATION_CHANGED_PYTHON_REQUIRES_RUFF" in errs
+
+
+def test_parse_shellcheck_version_rejects_banner_only():
+    """The banner line carries no version and must not read as 'present'."""
+    assert tc.parse_shellcheck_version("ShellCheck - shell script analysis tool") is None
+    assert tc.parse_shellcheck_version("MISSING") is None
+    assert tc.parse_shellcheck_version("") is None
+    assert tc.parse_shellcheck_version("version: 0.11.0") == "0.11.0"
+    assert (
+        tc.parse_shellcheck_version("ShellCheck - shell script analysis tool\nversion: 0.9.0\nlicense: GPLv3\n")
+        == "0.9.0"
+    )
+
+
+def test_shellcheck_version_string_is_the_version_line():
+    """Regression: line 0 is the banner; the version lives on a later line."""
+    raw = tc.shellcheck_version_string()
+    if raw == "MISSING":
+        pytest.skip("shellcheck not installed")
+    assert raw.lower().startswith("version:"), raw
+    assert tc.parse_shellcheck_version(raw) is not None
+
+
+def test_attestation_rejects_banner_only_shellcheck():
+    att = _base_att()
+    att["tool_versions"]["shellcheck"] = "ShellCheck - shell script analysis tool"
+    errs = validate_runtime_attestation(att, root=ROOT)
+    assert "ATTESTATION_SHELLCHECK_VERSION_UNPARSEABLE" in errs
+
+
+def test_attestation_rejects_mismatched_shellcheck_version():
+    live = tc.collect_tool_versions(root=ROOT)["shellcheck"]
+    if live == "MISSING":
+        pytest.skip("shellcheck not installed")
+    att = _base_att()
+    att["tool_versions"]["shellcheck"] = "9.9.9"
+    errs = validate_runtime_attestation(att, root=ROOT)
+    assert "ATTESTATION_SHELLCHECK_VERSION_MISMATCH" in errs
+
+
+def test_attestation_rejects_falsely_missing_shellcheck():
+    live = tc.collect_tool_versions(root=ROOT)["shellcheck"]
+    if live == "MISSING":
+        pytest.skip("shellcheck not installed")
+    att = _base_att()
+    att["tool_versions"]["shellcheck"] = "MISSING"
+    errs = validate_runtime_attestation(att, root=ROOT)
+    assert "ATTESTATION_SHELLCHECK_FALSE_MISSING" in errs
+
+
+def test_attestation_accepts_live_shellcheck_version():
+    att = _base_att()
+    assert validate_runtime_attestation(att, root=ROOT) == []
