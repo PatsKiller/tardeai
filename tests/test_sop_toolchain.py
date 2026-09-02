@@ -43,7 +43,9 @@ def test_ruff_found_directly_on_path(tmp_path: Path, monkeypatch: pytest.MonkeyP
     fake.parent.mkdir(parents=True)
     fake.write_text("#!/bin/sh\necho ruff 0.16.2\n", encoding="utf-8")
     fake.chmod(0o755)
+    # Isolate every candidate above PATH so only shutil.which can win.
     monkeypatch.setattr(tc, "_HUB_RUFF", tmp_path / "missing-hub-ruff")
+    monkeypatch.setattr(tc.sys, "executable", str(tmp_path / "missing-python"))
     monkeypatch.setattr(tc.shutil, "which", lambda _name: str(fake))
     # No root .venv
     got = tc.resolve_ruff_bin(root=tmp_path / "empty-root")

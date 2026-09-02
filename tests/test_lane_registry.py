@@ -127,8 +127,18 @@ def _gate(registry=None, extra=(), discovery=None):
                           text=True, timeout=300).returncode
 
 
-def test_the_gate_is_green_on_this_tree():
-    assert _gate() == 0
+def test_the_gate_is_green_on_this_tree(tmp_path):
+    """Green on the committed registry with empty injected discovery.
+
+    Must not inspect the runner's live crontab/systemd (CI hosts differ).
+    Undeclared-job fail-closed is covered by the mutation test below.
+    """
+    disco = tmp_path / "discovery.json"
+    disco.write_text(
+        json.dumps({"cron": [], "cron_commented": [], "systemd": []}),
+        encoding="utf-8",
+    )
+    assert _gate(discovery=disco) == 0
 
 
 def test_a_scheduled_job_with_no_row_fails_the_build(tmp_path):
