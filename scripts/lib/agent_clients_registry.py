@@ -1,4 +1,5 @@
 """Load and validate AgentClientsRegistry@v1 (coding/governance clients)."""
+
 from __future__ import annotations
 
 import json
@@ -45,9 +46,17 @@ def validate_registry(reg: dict[str, Any], *, schema_path: Path | None = None) -
         return errors
     seen: set[str] = set()
     required = (
-        "agent_id", "display_name", "adapter_type", "adapter_version",
-        "instruction_discovery", "launcher", "enforcement_level",
-        "hook_bootstrap", "validation_test", "last_verified", "limitations",
+        "agent_id",
+        "display_name",
+        "adapter_type",
+        "adapter_version",
+        "instruction_discovery",
+        "launcher",
+        "enforcement_level",
+        "hook_bootstrap",
+        "validation_test",
+        "last_verified",
+        "limitations",
     )
     for i, c in enumerate(clients):
         if not isinstance(c, dict):
@@ -71,6 +80,7 @@ def validate_registry(reg: dict[str, Any], *, schema_path: Path | None = None) -
     if sp.is_file():
         try:
             import jsonschema  # type: ignore
+
             schema = json.loads(sp.read_text(encoding="utf-8"))
             jsonschema.validate(reg, schema)
         except ImportError:

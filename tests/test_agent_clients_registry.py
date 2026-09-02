@@ -1,4 +1,5 @@
 """AgentClientsRegistry@v1 validation and unknown-client fail-closed."""
+
 from __future__ import annotations
 
 from pathlib import Path

@@ -4,6 +4,7 @@
 Exit 0 only when all applicable gates pass. Skipped tools → NOT_APPLICABLE
 printed, never silent success. Does not mass-format legacy files.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -29,10 +30,8 @@ def main(argv: list[str] | None = None) -> int:
     if not paths:
         # default: git diff against merge-base with origin/main if available
         try:
-            base = subprocess.check_output(
-                ["git", "merge-base", "HEAD", "origin/main"], cwd=ROOT, text=True).strip()
-            out = subprocess.check_output(
-                ["git", "diff", "--name-only", base], cwd=ROOT, text=True)
+            base = subprocess.check_output(["git", "merge-base", "HEAD", "origin/main"], cwd=ROOT, text=True).strip()
+            out = subprocess.check_output(["git", "diff", "--name-only", base], cwd=ROOT, text=True)
             paths = [Path(p) for p in out.splitlines() if p.strip()]
         except Exception:  # noqa: BLE001
             print("NOT_APPLICABLE: no paths and merge-base unavailable")
@@ -48,8 +47,8 @@ def main(argv: list[str] | None = None) -> int:
         # ruff if present — missing binary is NOT_APPLICABLE, never a crash
         try:
             ruff = subprocess.call(
-                ["ruff", "--version"], cwd=ROOT,
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                ["ruff", "--version"], cwd=ROOT, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+            )
         except FileNotFoundError:
             ruff = 127
         if ruff == 0:
@@ -65,6 +64,7 @@ def main(argv: list[str] | None = None) -> int:
     # registry validate when touched
     if any("agent_clients" in str(p) for p in paths):
         from scripts.lib.agent_clients_registry import load_registry, validate_registry
+
         errs = validate_registry(load_registry())
         if errs:
             print("FAIL registry", errs)

@@ -6,6 +6,7 @@ hooks, documentation attestation, dirty acknowledgment, and successful leases.
 
 Does not authorize remote sync, deployment, production, or financial authority.
 """
+
 from __future__ import annotations
 
 import argparse

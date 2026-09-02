@@ -3,6 +3,7 @@
 Host-local store under the common Git directory (not committed source, not
 checkout-relative production state). Uses flock for atomicity.
 """
+
 from __future__ import annotations
 
 import json
@@ -21,8 +22,8 @@ HEARTBEAT_S = 60
 def coordination_root(git_common_dir: Path | str | None = None) -> Path:
     if git_common_dir is None:
         import subprocess
-        raw = subprocess.check_output(
-            ["git", "rev-parse", "--git-common-dir"], text=True).strip()
+
+        raw = subprocess.check_output(["git", "rev-parse", "--git-common-dir"], text=True).strip()
         git_common_dir = Path(raw).resolve()
     root = Path(git_common_dir) / "tradeai-agent-coordination"
     root.mkdir(parents=True, exist_ok=True)
@@ -76,11 +77,13 @@ class LeaseCoordinator:
 
     def _lock(self):
         import fcntl
+
         self._lock_fh = open(self.lock_path, "a+", encoding="utf-8")
         fcntl.flock(self._lock_fh.fileno(), fcntl.LOCK_EX)
 
     def _unlock(self):
         import fcntl
+
         try:
             fcntl.flock(self._lock_fh.fileno(), fcntl.LOCK_UN)
             self._lock_fh.close()
@@ -169,18 +172,15 @@ class LeaseCoordinator:
             if deployment or production:
                 for a in active:
                     if a.deployment or a.production:
-                        raise RuntimeError(
-                            "refusing simultaneous deployment/production lease")
+                        raise RuntimeError("refusing simultaneous deployment/production lease")
             for a in active:
                 for p in norm_paths:
                     for q in a.paths:
                         if paths_overlap(p, q):
-                            raise RuntimeError(
-                                f"overlap with lease {a.lease_id} path {q}")
+                            raise RuntimeError(f"overlap with lease {a.lease_id} path {q}")
                 for s in stores_l:
                     if s in a.stores:
-                        raise RuntimeError(
-                            f"overlap with lease {a.lease_id} store {s}")
+                        raise RuntimeError(f"overlap with lease {a.lease_id} store {s}")
             now = time.monotonic()
             lease = Lease(
                 lease_id=str(uuid.uuid4()),
@@ -213,8 +213,10 @@ class LeaseCoordinator:
             d["expires_at"] = now + float(ttl_s)
             path.write_text(json.dumps(d, indent=2) + "\n", encoding="utf-8")
             return Lease(
-                lease_id=d["lease_id"], session_id=d["session_id"],
-                agent_id=d["agent_id"], paths=list(d["paths"]),
+                lease_id=d["lease_id"],
+                session_id=d["session_id"],
+                agent_id=d["agent_id"],
+                paths=list(d["paths"]),
                 stores=list(d.get("stores") or []),
                 issued_at=float(d["issued_at"]),
                 expires_at=float(d["expires_at"]),

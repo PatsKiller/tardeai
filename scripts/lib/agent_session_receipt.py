@@ -1,4 +1,5 @@
 """Mandatory agent session receipt (SOP Stage 3)."""
+
 from __future__ import annotations
 
 import json

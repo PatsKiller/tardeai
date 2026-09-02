@@ -3,6 +3,7 @@
 No network. No credentials. Used by tests to prove create/update/duplicate/
 readback/hash-mismatch behavior without writing to Drive.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -35,15 +36,19 @@ def decide_mirror_action(
     """
     live = [f for f in matching_files if not f.get("trashed")]
     if len(live) > 1:
-        return MirrorDecision("stop_duplicate", None,
-                              f"{len(live)} AGENTS.md files; operator must reconcile")
+        return MirrorDecision("stop_duplicate", None, f"{len(live)} AGENTS.md files; operator must reconcile")
     if not readback_ok:
-        return MirrorDecision("reject_readback", stable_file_id or (live[0].get("id") if live else None),
-                              "readback download failed; manifest not written")
+        return MirrorDecision(
+            "reject_readback",
+            stable_file_id or (live[0].get("id") if live else None),
+            "readback download failed; manifest not written",
+        )
     if remote_sha is not None and remote_sha != local_sha:
-        return MirrorDecision("reject_hash_mismatch",
-                              stable_file_id or (live[0].get("id") if live else None),
-                              f"BYTE MISMATCH local={local_sha} remote={remote_sha}")
+        return MirrorDecision(
+            "reject_hash_mismatch",
+            stable_file_id or (live[0].get("id") if live else None),
+            f"BYTE MISMATCH local={local_sha} remote={remote_sha}",
+        )
     if len(live) == 0 and not stable_file_id:
         return MirrorDecision("create", None, "zero matching files — create exactly one")
     if stable_file_id:

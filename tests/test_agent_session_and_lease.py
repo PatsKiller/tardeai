@@ -1,4 +1,5 @@
 """Session receipt fail-closed + atomic lease overlap tests."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -80,14 +81,14 @@ def test_new_worktree_forbids_add_all_and_default_env_link():
     assert "TRADEAI_WORKTREE_LINK_ENV:-0" in src
     # Default must NOT symlink .env unless opt-in flag is set
     assert 'ln -sf "$PROJECT_ROOT/.env"' in src
-    assert 'TRADEAI_WORKTREE_LINK_ENV:-0}" = "1"' in src or \
-        '${TRADEAI_WORKTREE_LINK_ENV:-0}' in src
+    assert 'TRADEAI_WORKTREE_LINK_ENV:-0}" = "1"' in src or "${TRADEAI_WORKTREE_LINK_ENV:-0}" in src
 
 
 def test_lease_ttl_expires_and_allows_reacquire(tmp_path: Path):
     coord = LeaseCoordinator(root=tmp_path / "coord")
     a = coord.acquire(session_id="s1", agent_id="grok", paths=["docs/a.md"], ttl_s=0.05)
     import time
+
     time.sleep(0.08)
     # expired lease is not active — new acquire must succeed
     b = coord.acquire(session_id="s2", agent_id="codex", paths=["docs/a.md"], ttl_s=60)
@@ -98,6 +99,7 @@ def test_lease_heartbeat_extends_ttl(tmp_path: Path):
     coord = LeaseCoordinator(root=tmp_path / "coord")
     a = coord.acquire(session_id="s1", agent_id="grok", paths=["docs/a.md"], ttl_s=0.2)
     import time
+
     time.sleep(0.05)
     a2 = coord.heartbeat(a.lease_id, ttl_s=2.0)
     time.sleep(0.25)
@@ -111,6 +113,7 @@ def test_recover_abandoned_moves_expired(tmp_path: Path):
     coord = LeaseCoordinator(root=tmp_path / "coord")
     a = coord.acquire(session_id="s1", agent_id="grok", paths=["docs/a.md"], ttl_s=0.05)
     import time
+
     time.sleep(0.08)
     recovered = coord.recover_abandoned()
     assert any(r.get("lease_id") == a.lease_id for r in recovered)
