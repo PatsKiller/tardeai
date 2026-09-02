@@ -573,6 +573,7 @@ GATES = [
             "tests/test_agent_worktree_identity.py",
             "tests/test_agent_file_lease_canonical.py",
             "tests/test_agent_changed_file_quality.py",
+            "tests/test_sop_evidence_integrity.py",
             "tests/test_agents_drive_mirror_policy.py",
         ],
     ),

@@ -39,6 +39,10 @@ jobs:
         run: pytest tests/test_agent_worktree_identity.py -q
       - name: Changed-file quality gate (Ruff required)
         run: pytest tests/test_agent_changed_file_quality.py -q
+      - name: Evidence integrity (control-surface digest)
+        run: |
+          pytest tests/test_sop_evidence_integrity.py -q
+          python scripts/validate_sop_evidence_integrity.py
       - name: Policy hooks (existing)
         run: pytest tests/test_ai_work_policy_hooks.py tests/test_agents_policy_v1.py -q
       - name: Registry validate via quality command
@@ -50,3 +54,13 @@ jobs:
           ! grep -q 'git add -A &&' scripts/new-worktree.sh
           ! grep -q 'git add -A' scripts/new-worktree.sh
           ! grep -q 'git add \.' scripts/new-worktree.sh
+      - name: Emit runtime exact-head attestation
+        run: |
+          mkdir -p artifacts/sop-attestations
+          python scripts/emit_sop_runtime_attestation.py --out-dir artifacts/sop-attestations
+      - name: Upload runtime attestation
+        uses: actions/upload-artifact@v4
+        with:
+          name: sop-runtime-attestation
+          path: artifacts/sop-attestations/runtime-attestation.json
+          if-no-files-found: error
