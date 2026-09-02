@@ -1,3 +1,6 @@
+# Governance / SOP quality gate pins Ruff 0.16.2 (see agent_changed_file_quality.PINNED_RUFF_VERSION
+# and .github/workflows/agent-governance.yml). Install: pip install 'ruff==0.16.2'
+
 [tool.ruff]
 # Python version
 target-version = "py310"

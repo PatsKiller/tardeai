@@ -1,0 +1,8 @@
+=== CONTROL6 INDEX FINGERPRINT (reproducible; Layer 1) ===
+schema=SopControl6IndexEvidence@v1
+control_surface_digest=c01ee58a05fb9368dda75ed05cfcf6610d6b86498762da7be412a8dc9ab4c3f6
+verify_command=python3 scripts/report_docs_inventory.py --check-index
+do_not_embed_live_fingerprint=true
+reason=A committed live fingerprint is circular: editing evidence changes the tree fingerprint.
+live_fingerprint_emission=runtime attestation field docs_index_fingerprint OR CI logs
+note=Does not embed containing commit SHA.

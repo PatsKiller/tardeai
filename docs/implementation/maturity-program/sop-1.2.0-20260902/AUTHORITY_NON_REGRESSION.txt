@@ -1,0 +1,23 @@
+=== authority non-regression ===
+77:1. **`MBI_BEHAVIOR = 0`.** The agent never sizes, orders, stops, weights, or writes to a broker.
+80:2. **The broker execution subsystem is out of scope.** Do not modify, disable, test against,
+82:3. **Never route around a permission denial.** Stop and report. No alternate remote, no
+275:**No profile grants**: broker execution, order actions, stop or risk-policy changes, 2FA, secret
+no_forbidden_paths_in_diff
+
+=== CORRECTIVE TRANCHE AUTHORITY CHECK ===
+No production/order/scheduler/guardrail/MBI_BEHAVIOR edits in this tranche.
+Scope: lease path canonicalization, durable TTL, Ruff quality fail-closed, evidence.
+AGENTS.md Policy-Version remains 1.2.0 PROPOSED / PENDING.
+
+=== EVIDENCE ARCHITECTURE TRANCHE ===
+control_surface_digest=c01ee58a05fb9368dda75ed05cfcf6610d6b86498762da7be412a8dc9ab4c3f6
+No production/order/scheduler/guardrail/MBI_BEHAVIOR edits.
+Layer-1 evidence binds to digest; exact HEAD is runtime attestation only.
+AGENTS.md remains 1.2.0 PROPOSED / PENDING.
+
+=== SHELLCHECK VERSION CAPTURE TRANCHE ===
+No production/order/scheduler/guardrail/MBI_BEHAVIOR edits.
+Scope: exact ShellCheck version capture + fail-closed attestation validation.
+Additive monitoring and error strings only (AGENTS.md 17 deferred-list exclusion).
+AGENTS.md remains 1.2.0 PROPOSED / PENDING.

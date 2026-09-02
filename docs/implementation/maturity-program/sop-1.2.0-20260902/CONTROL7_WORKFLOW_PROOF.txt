@@ -1,0 +1,153 @@
+=== CONTROL7 WORKFLOW PROOF (reproducible; Layer 1) ===
+schema=SopControl7WorkflowProof@v1
+control_surface_digest=c01ee58a05fb9368dda75ed05cfcf6610d6b86498762da7be412a8dc9ab4c3f6
+workflow_path=.github/workflows/agent-governance.yml
+workflow_blob_sha256=c03a4ef8c6f74a40fcb801c5e3e2ec5a2efd476972139677f1029894fb7d72f2
+workflow_lines=125
+path_filters=absent
+triggers=pull_request,push[main],workflow_dispatch
+ruff_install=pip install "ruff==0.16.2"
+ruff_or_true=absent
+note=Does not embed containing commit SHA. Exact HEAD is runtime attestation only.
+
+steps:
+  - Install minimal deps
+  - Agent clients registry
+  - Session receipt + leases
+  - File lease canonical + durable TTL
+  - Worktree identity adversarial (borrowed gitdir)
+  - Changed-file quality gate (Ruff required)
+  - Evidence integrity (control-surface digest)
+  - Policy hooks (existing)
+  - Registry validate via quality command
+  - new-worktree SOP constraints
+  - Emit runtime exact-head attestation
+  - Upload runtime attestation
+
+=== BEGIN WORKFLOW ===
+name: agent-governance
+
+# SOP Stage 7 — dedicated always-on governance CI.
+# No path filters: intended to be a required context once operator enables it.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: agent-governance-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  agent-governance:
+    name: agent-governance
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      # Check out the PR head commit (not GitHub's synthetic merge SHA).
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Fetch PR base for attestation merge-base
+        if: github.event_name == 'pull_request'
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "${{ github.event.pull_request.base.sha }}"
+          echo "PR_HEAD=$(git rev-parse HEAD)"
+          echo "PR_BASE=${{ github.event.pull_request.base.sha }}"
+          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install minimal deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyyaml pytest
+          pip install jsonschema || true
+          # Ruff is required for changed-Python quality — never `|| true`.
+          pip install "ruff==0.16.2"
+          python - <<'PY'
+          from scripts.lib.sop_toolchain import PINNED_RUFF_VERSION, resolve_ruff_bin, ruff_version_string
+          b = resolve_ruff_bin()
+          assert b is not None, "ruff missing after pip install"
+          raw = ruff_version_string(b)
+          assert PINNED_RUFF_VERSION in raw, raw
+          print("ruff_ok", b, raw)
+          PY
+      - name: Install AI work-policy hooks (CI prerequisite)
+        run: |
+          set -euo pipefail
+          # GitHub Actions checkouts have no ambient core.hooksPath. Establish
+          # the canonical hook prerequisite before any mutating session tests.
+          if git config --get core.hooksPath >/dev/null 2>&1; then
+            echo "ERROR: expected core.hooksPath unset before installer" >&2
+            exit 1
+          fi
+          ./scripts/install_ai_work_policy.sh
+          hp="$(git config --get core.hooksPath)"
+          test "$hp" = ".githooks"
+          test -x .githooks/pre-commit
+          test -x .githooks/pre-push
+          if TRADEAI_REMOTE_PUSH_AUTHORIZED=0 .githooks/pre-push >/dev/null 2>&1; then
+            echo "ERROR: pre-push allowed unauthorized push" >&2
+            exit 1
+          fi
+          echo "CI hooks prerequisite OK (hooksPath=$hp)"
+      - name: Agent clients registry
+        run: pytest tests/test_agent_clients_registry.py -q
+      - name: Session receipt + leases
+        run: pytest tests/test_agent_session_and_lease.py -q
+      - name: Hooks CI hermetic regression
+        run: pytest tests/test_agent_hooks_ci_hermetic.py -q
+      - name: File lease canonical + durable TTL
+        run: pytest tests/test_agent_file_lease_canonical.py -q
+      - name: Worktree identity adversarial (borrowed gitdir)
+        run: pytest tests/test_agent_worktree_identity.py -q
+      - name: Changed-file quality gate (Ruff required)
+        run: pytest tests/test_agent_changed_file_quality.py -q
+      - name: Evidence integrity (control-surface digest)
+        run: |
+          pytest tests/test_sop_evidence_integrity.py tests/test_sop_attestation_base.py -q
+          python scripts/validate_sop_evidence_integrity.py
+      - name: Policy hooks (existing)
+        run: pytest tests/test_ai_work_policy_hooks.py tests/test_agents_policy_v1.py -q
+      - name: Registry validate via quality command
+        run: python scripts/agent_changed_file_quality.py --paths config/agent_clients.yaml config/agent_clients.schema.json scripts/agent_changed_file_quality.py
+      - name: new-worktree SOP constraints
+        run: |
+          grep -q 'TRADEAI_WORKTREE_LINK_ENV' scripts/new-worktree.sh
+          grep -qE 'never use add-all|add-dot' scripts/new-worktree.sh
+          ! grep -q 'git add -A &&' scripts/new-worktree.sh
+          ! grep -q 'git add -A' scripts/new-worktree.sh
+          ! grep -q 'git add \.' scripts/new-worktree.sh
+      - name: Emit runtime exact-head attestation
+        env:
+          SOP_ATTESTATION_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/sop-attestations
+          HEAD_SHA="$(git rev-parse HEAD)"
+          echo "attesting_head=$HEAD_SHA"
+          if [ -n "${SOP_ATTESTATION_BASE_SHA}" ]; then
+            python scripts/emit_sop_runtime_attestation.py \
+              --out-dir artifacts/sop-attestations \
+              --base-sha "${SOP_ATTESTATION_BASE_SHA}" \
+              --head-sha "${HEAD_SHA}"
+          else
+            # push/main: origin/main should exist after checkout with fetch-depth 0
+            git rev-parse --verify origin/main^{commit}
+            python scripts/emit_sop_runtime_attestation.py \
+              --out-dir artifacts/sop-attestations \
+              --head-sha "${HEAD_SHA}"
+          fi
+      - name: Upload runtime attestation
+        uses: actions/upload-artifact@v4
+        with:
+          name: sop-runtime-attestation
+          path: artifacts/sop-attestations/runtime-attestation.json
+          if-no-files-found: error
+=== END WORKFLOW ===

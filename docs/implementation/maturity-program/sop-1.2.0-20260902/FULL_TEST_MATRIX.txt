@@ -1,0 +1,52 @@
+=== FULL TEST MATRIX (reproducible; Layer 1) ===
+schema=SopFullTestMatrix@v1
+control_surface_digest=c01ee58a05fb9368dda75ed05cfcf6610d6b86498762da7be412a8dc9ab4c3f6
+manifest=config/sop_120_control_surface.manifest.json
+base_ref=origin/main
+expected_pytest_core=120
+PYTEST_CORE=120
+note=Does not embed containing commit SHA. Exact HEAD is runtime attestation only.
+
+# Core pytest suites (sum = 120)
+# test_agent_file_lease_canonical.py          29
+# test_agent_session_and_lease.py             13
+# test_agent_worktree_identity.py              8
+# test_agent_changed_file_quality.py           3
+# test_agent_clients_registry.py               3
+# test_agents_drive_mirror_policy.py           6
+# test_ai_work_policy_hooks.py + policy_v1    58
+
+command_pytest_core=python3 -m pytest tests/test_agent_file_lease_canonical.py tests/test_agent_session_and_lease.py tests/test_agent_worktree_identity.py tests/test_agent_changed_file_quality.py tests/test_agent_clients_registry.py tests/test_agents_drive_mirror_policy.py tests/test_ai_work_policy_hooks.py tests/test_agents_policy_v1.py -q
+expected_EXIT_pytest_core=0
+
+EXIT_lease_canonical=0
+EXIT_session=0
+EXIT_identity=0
+EXIT_quality_unit=0
+EXIT_clients=0
+EXIT_drive=0
+EXIT_policy=0
+EXIT_quality=0
+EXIT_missing_ruff=2
+EXIT_ruff_check=0
+EXIT_ruff_format=0
+EXIT_shellcheck=0
+EXIT_diffcheck=0
+EXIT_secrets=0
+EXIT_positive_control=1
+EXIT_evidence_integrity=0
+EXIT_index_check=0
+
+tool_ruff_required=0.16.2
+tool_shellcheck_required=present_with_exact_version
+verifier_alias_regression=PASS
+durable_boot_id_ttl=PASS
+ruff_fail_closed=PASS
+shellcheck_version_capture=PASS
+shellcheck_version_validation=PASS
+command_toolchain=python3 -m pytest tests/test_sop_toolchain.py -q
+expected_EXIT_toolchain=0
+expected_count_toolchain=15
+EXIT_hooks_hermetic=0
+EXIT_attestation_base=0
+cio_hardening_ruff_pin=0.16.2

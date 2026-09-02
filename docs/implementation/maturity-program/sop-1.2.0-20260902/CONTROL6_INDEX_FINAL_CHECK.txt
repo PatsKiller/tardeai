@@ -1,0 +1,6 @@
+STATUS: SUPERSEDED_NON_AUTHORITATIVE
+This artifact is retained for audit history only.
+Authoritative evidence: EVIDENCE_ARCHITECTURE.md + CURRENT evidence files bound to control_surface_digest.
+---
+historical_name=CONTROL6_INDEX_FINAL_CHECK.txt
+original_content=empty_one_byte_retired

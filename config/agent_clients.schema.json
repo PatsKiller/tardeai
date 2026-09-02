@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://trade-ai.local/schemas/agent_clients.schema.json",
+  "title": "AgentClientsRegistry",
+  "type": "object",
+  "required": ["schema", "version", "authority", "unknown_client_default", "clients"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": { "const": "AgentClientsRegistry@v1" },
+    "version": { "type": "string" },
+    "authority": { "type": "string" },
+    "unknown_client_default": {
+      "type": "object",
+      "required": ["enforcement_level", "mutating", "remote_sync", "production", "financial"],
+      "properties": {
+        "enforcement_level": { "enum": ["ADVISORY", "MECHANICAL", "UNSUPPORTED"] },
+        "mutating": { "type": "boolean" },
+        "remote_sync": { "type": "boolean" },
+        "production": { "type": "boolean" },
+        "financial": { "type": "boolean" }
+      }
+    },
+    "clients": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "agent_id",
+          "display_name",
+          "adapter_type",
+          "adapter_version",
+          "instruction_discovery",
+          "launcher",
+          "enforcement_level",
+          "hook_bootstrap",
+          "validation_test",
+          "last_verified",
+          "limitations"
+        ],
+        "properties": {
+          "agent_id": { "type": "string", "minLength": 1 },
+          "display_name": { "type": "string" },
+          "adapter_type": { "type": "string" },
+          "adapter_version": { "type": "string" },
+          "instruction_discovery": { "type": "array", "items": { "type": "string" } },
+          "launcher": { "type": "string" },
+          "enforcement_level": { "enum": ["MECHANICAL", "ADVISORY", "UNSUPPORTED"] },
+          "hook_bootstrap": { "type": "string" },
+          "validation_test": { "type": "string" },
+          "last_verified": { "type": "string" },
+          "limitations": { "type": "string" }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,94 @@
+STATUS: SUPERSEDED_NON_AUTHORITATIVE
+This artifact is retained for audit history only.
+Authoritative evidence: EVIDENCE_ARCHITECTURE.md + CURRENT evidence files bound to control_surface_digest.
+---
+INTERPRETATION: This file is a historical precommit/control-surface snapshot.
+It must NOT be read as the final exact HEAD of the branch.
+Exact-head proof is runtime attestation only (artifacts/sop-attestations/).
+---
+date_utc=2026-09-02T13:16:42Z
+## governance/agent-sop-1.2.0
+ M docs/implementation/maturity-program/sop-1.2.0-20260902/FINAL_EXACT_STATE.txt
+HEAD=3dd4fca281818764d6efabe57fc600f80b07e245
+origin/main=4bcba2cf7168f1cc9b1b7ffd18ab749b2eed44a9
+merge-base=4bcba2cf7168f1cc9b1b7ffd18ab749b2eed44a9
+3dd4fca28 (HEAD -> governance/agent-sop-1.2.0) fix(governance): strip evidence trailing whitespace; stabilize docs INDEX
+dbf196d04 docs(ops): record final exact-state evidence for SOP 1.2.0
+941e8f18d docs(ops): refresh docs/INDEX.md after Control 6–7 evidence docs
+dfcfd2fe9 governance(agents): complete SOP 1.2.0 Controls 6–7 evidence
+26c31f487 governance(agents): PROPOSED 1.2.0 Multi-Agent SOP seven controls
+docs/implementation/maturity-program/sop-1.2.0-20260902/CONTROL6_INDEX_CHECK.txt:46: new blank line at EOF.
+DIFF_CHECK=2
+ .github/workflows/agent-governance.yml             |   45 +
+ AGENTS.md                                          |   34 +-
+ config/agent_clients.schema.json                   |   56 +
+ config/agent_clients.yaml                          |  114 ++
+ docs/INDEX.md                                      |   16 +-
+ .../AUTHORITY_NON_REGRESSION.txt                   |    6 +
+ .../sop-1.2.0-20260902/CONTROL6_INDEX_CHECK.txt    |   46 +
+ .../sop-1.2.0-20260902/CONTROL6_INDEX_DIFFSTAT.txt |    2 +
+ .../CONTROL6_INDEX_FINAL_CHECK.txt                 |    1 +
+ .../CONTROL6_INDEX_FINGERPRINT.txt                 |    1 +
+ .../CONTROL6_INDEX_FULL_DIFF.txt                   |   46 +
+ .../sop-1.2.0-20260902/CONTROL6_INDEX_RECHECK.txt  |    1 +
+ .../sop-1.2.0-20260902/CONTROL6_INDEX_STABLE.txt   |    1 +
+ .../sop-1.2.0-20260902/CONTROL6_INDEX_WRITE.txt    |    1 +
+ .../CONTROL7_LOCAL_EQUIVALENT.txt                  |   26 +
+ .../sop-1.2.0-20260902/CONTROL7_WORKFLOW_PROOF.txt |   64 +
+ .../EAC13CFD0_DRIVE_MANIFEST_DISPOSITION.md        |   24 +
+ .../sop-1.2.0-20260902/EXTENDED_TESTS.txt          |    2 +
+ .../sop-1.2.0-20260902/FINAL_EXACT_STATE.txt       |  142 ++
+ .../sop-1.2.0-20260902/FULL_TEST_MATRIX.txt        |   56 +
+ .../sop-1.2.0-20260902/MATURITY_SCORECARD.md       |   34 +
+ .../OPEN_PR_COLLISION_INVENTORY.json               | 1509 ++++++++++++++++++++
+ .../SECRETS_POSITIVE_CONTROL.txt                   |    5 +
+ .../sop-1.2.0-20260902/STAGE_00_PREFLIGHT.md       |  136 ++
+ .../sop-1.2.0-20260902/STAGE_01_PR_COLLISION.md    |   85 ++
+ scripts/agent_changed_file_quality.py              |   86 ++
+ scripts/agent_session_start.py                     |   60 +
+ scripts/lib/agent_clients_registry.py              |  114 ++
+ scripts/lib/agent_file_lease.py                    |  244 ++++
+ scripts/lib/agent_session_receipt.py               |  155 ++
+ scripts/lib/agents_drive_mirror_policy.py          |   53 +
+ scripts/new-worktree.sh                            |   27 +-
+ scripts/run_cio_hardening_ci.py                    |    5 +
+ tests/test_agent_clients_registry.py               |   34 +
+ tests/test_agent_session_and_lease.py              |  160 +++
+ tests/test_agents_drive_mirror_policy.py           |   43 +
+ 36 files changed, 3414 insertions(+), 20 deletions(-)
+A	.github/workflows/agent-governance.yml
+M	AGENTS.md
+A	config/agent_clients.schema.json
+A	config/agent_clients.yaml
+M	docs/INDEX.md
+A	docs/implementation/maturity-program/sop-1.2.0-20260902/AUTHORITY_NON_REGRESSION.txt
+A	docs/implementation/maturity-program/sop-1.2.0-20260902/CONTROL6_INDEX_CHECK.txt
+A	docs/implementation/maturity-program/sop-1.2.0-20260902/CONTROL6_INDEX_DIFFSTAT.txt
+A	docs/implementation/maturity-program/sop-1.2.0-20260902/CONTROL6_INDEX_FINAL_CHECK.txt
+A	docs/implementation/maturity-program/sop-1.2.0-20260902/CONTROL6_INDEX_FINGERPRINT.txt
+A	docs/implementation/maturity-program/sop-1.2.0-20260902/CONTROL6_INDEX_FULL_DIFF.txt
+A	docs/implementation/maturity-program/sop-1.2.0-20260902/CONTROL6_INDEX_RECHECK.txt
+A	docs/implementation/maturity-program/sop-1.2.0-20260902/CONTROL6_INDEX_STABLE.txt
+A	docs/implementation/maturity-program/sop-1.2.0-20260902/CONTROL6_INDEX_WRITE.txt
+A	docs/implementation/maturity-program/sop-1.2.0-20260902/CONTROL7_LOCAL_EQUIVALENT.txt
+A	docs/implementation/maturity-program/sop-1.2.0-20260902/CONTROL7_WORKFLOW_PROOF.txt
+A	docs/implementation/maturity-program/sop-1.2.0-20260902/EAC13CFD0_DRIVE_MANIFEST_DISPOSITION.md
+A	docs/implementation/maturity-program/sop-1.2.0-20260902/EXTENDED_TESTS.txt
+A	docs/implementation/maturity-program/sop-1.2.0-20260902/FINAL_EXACT_STATE.txt
+A	docs/implementation/maturity-program/sop-1.2.0-20260902/FULL_TEST_MATRIX.txt
+A	docs/implementation/maturity-program/sop-1.2.0-20260902/MATURITY_SCORECARD.md
+A	docs/implementation/maturity-program/sop-1.2.0-20260902/OPEN_PR_COLLISION_INVENTORY.json
+A	docs/implementation/maturity-program/sop-1.2.0-20260902/SECRETS_POSITIVE_CONTROL.txt
+A	docs/implementation/maturity-program/sop-1.2.0-20260902/STAGE_00_PREFLIGHT.md
+A	docs/implementation/maturity-program/sop-1.2.0-20260902/STAGE_01_PR_COLLISION.md
+A	scripts/agent_changed_file_quality.py
+A	scripts/agent_session_start.py
+A	scripts/lib/agent_clients_registry.py
+A	scripts/lib/agent_file_lease.py
+A	scripts/lib/agent_session_receipt.py
+A	scripts/lib/agents_drive_mirror_policy.py
+M	scripts/new-worktree.sh
+M	scripts/run_cio_hardening_ci.py
+A	tests/test_agent_clients_registry.py
+A	tests/test_agent_session_and_lease.py
+A	tests/test_agents_drive_mirror_policy.py

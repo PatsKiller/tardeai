@@ -21,22 +21,31 @@ ALLOW_MAINTREE_GIT=1 git fetch origin main -q || true
 if [ -e "$wt" ]; then echo "worktree path already exists: $wt" >&2; exit 1; fi
 
 ALLOW_MAINTREE_GIT=1 git worktree add -b "$branch" "$wt" "$base"
-# gitignored files the worktree needs for running python/DB scripts
-ln -sf "$PROJECT_ROOT/.env" "$wt/.env" 2>/dev/null || true
 
+# SOP Stage 5: never copy/symlink .env by default. Opt-in only:
+#   TRADEAI_WORKTREE_LINK_ENV=1 scripts/new-worktree.sh ...
+if [ "${TRADEAI_WORKTREE_LINK_ENV:-0}" = "1" ]; then
+  ln -sf "$PROJECT_ROOT/.env" "$wt/.env" 2>/dev/null || true
+  env_note="symlinked (.env) via TRADEAI_WORKTREE_LINK_ENV=1"
+else
+  env_note="NOT linked (default). Use PROJECT_ROOT/.venv; set TRADEAI_WORKTREE_LINK_ENV=1 only if required"
+fi
+
+# Refuse force-remove guidance when dirty — print safe cleanup only.
 cat <<EOF
 
 ✅ worktree ready
    dir:    $wt
    branch: $branch (off $base)
-   .env:   symlinked from PROJECT_ROOT (DB/creds work; .venv: use $PROJECT_ROOT/.venv/bin/python)
+   .env:   $env_note
+   python: $PROJECT_ROOT/.venv/bin/python
 
-Next:
+Next (explicit paths only — never use add-all / add-dot):
    cd $wt
-   # ...edit, then commit here (never in PROJECT_ROOT):
-   git add -A && git commit -m "..." && git push -u origin $branch
-   gh pr create --base main --head $branch
+   git add path/to/file1 path/to/file2
+   git commit -m "..."
+   # Remote push requires operator authorization (AI_WORK_POLICY).
 
-When merged/done:
-   git -C "$PROJECT_ROOT" worktree remove "$wt" --force
+Cleanup (refuses dirty trees — do not --force while dirty):
+   git -C "$PROJECT_ROOT" worktree remove "$wt"
 EOF

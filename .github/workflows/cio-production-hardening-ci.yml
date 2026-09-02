@@ -46,6 +46,17 @@ jobs:
           pip install pytest pyyaml requests
           # Optional render smoke deps (fail-soft if unavailable)
           pip install python-docx || true
+          # agent_governance_sop requires pinned Ruff (quality + toolchain tests).
+          # Never optional: missing Ruff must fail closed, not skip.
+          pip install "ruff==0.16.2"
+          python3 - <<'PY'
+          from scripts.lib.sop_toolchain import PINNED_RUFF_VERSION, resolve_ruff_bin, ruff_version_string
+          b = resolve_ruff_bin()
+          assert b is not None, "ruff missing after pip install"
+          raw = ruff_version_string(b)
+          assert PINNED_RUFF_VERSION in raw, raw
+          print("cio_hardening_ruff_ok", b, raw)
+          PY
 
       - name: CIO hardening gates (unit + manifest)
         run: python3 scripts/run_cio_hardening_ci.py

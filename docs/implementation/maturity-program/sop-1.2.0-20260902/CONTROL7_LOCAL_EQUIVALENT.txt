@@ -1,0 +1,62 @@
+=== CONTROL7 LOCAL EQUIVALENT (reproducible; Layer 1) ===
+schema=SopControl7LocalEquivalent@v1
+control_surface_digest=c01ee58a05fb9368dda75ed05cfcf6610d6b86498762da7be412a8dc9ab4c3f6
+note=Command specification with expected successful exits. Does not embed containing commit SHA.
+historical_failure_artifact=SUPERSEDED — prior ModuleNotFoundError/EXIT_quality=1 capture is non-authoritative.
+
+command_clients=python3 -m pytest tests/test_agent_clients_registry.py -q
+expected_EXIT_clients=0
+expected_count_clients=3
+
+command_session=python3 -m pytest tests/test_agent_session_and_lease.py -q
+expected_EXIT_session=0
+expected_count_session=13
+
+command_lease_canonical=python3 -m pytest tests/test_agent_file_lease_canonical.py -q
+expected_EXIT_lease_canonical=0
+expected_count_lease_canonical=29
+
+command_identity=python3 -m pytest tests/test_agent_worktree_identity.py -q
+expected_EXIT_identity=0
+expected_count_identity=8
+
+command_quality_unit=python3 -m pytest tests/test_agent_changed_file_quality.py -q
+expected_EXIT_quality_unit=0
+expected_count_quality_unit=3
+
+command_drive=python3 -m pytest tests/test_agents_drive_mirror_policy.py -q
+expected_EXIT_drive=0
+expected_count_drive=6
+
+command_policy=python3 -m pytest tests/test_ai_work_policy_hooks.py tests/test_agents_policy_v1.py -q
+expected_EXIT_policy=0
+expected_count_policy=58
+
+command_evidence_tests=python3 -m pytest tests/test_sop_evidence_integrity.py -q
+expected_EXIT_evidence_tests=0
+
+command_toolchain=python3 -m pytest tests/test_sop_toolchain.py -q
+expected_EXIT_toolchain=0
+expected_count_toolchain=15
+
+command_quality=PYTHONPATH=. python3 scripts/agent_changed_file_quality.py --paths config/agent_clients.yaml config/agent_clients.schema.json scripts/agent_changed_file_quality.py
+expected_EXIT_quality=0
+
+command_evidence_validator=python3 scripts/validate_sop_evidence_integrity.py
+expected_EXIT_evidence_integrity=0
+
+command_worktree_greps=grep TRADEAI_WORKTREE_LINK_ENV; never add-all/add-dot; reject git add -A / git add .
+expected_EXIT_worktree_grep=0
+
+# Recorded successful semantics for scorecard PASS citations
+EXIT_clients=0
+EXIT_session=0
+EXIT_lease_canonical=0
+EXIT_identity=0
+EXIT_quality_unit=0
+EXIT_drive=0
+EXIT_policy=0
+EXIT_quality=0
+EXIT_evidence_integrity=0
+EXIT_worktree_grep=0
+EXIT_toolchain=0
