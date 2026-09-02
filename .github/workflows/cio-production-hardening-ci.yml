@@ -14,6 +14,8 @@ on:
       - "scripts/run_cio_acceptance.py"
       - "scripts/telegram_transport.py"
       - "tests/test_cio_*.py"
+      - "tests/test_canonical_observation.py"
+      - "tests/test_overview_observation_contract.py"
       - "docs/investment-office/**"
       - ".github/workflows/cio-production-hardening-ci.yml"
   pull_request:

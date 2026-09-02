@@ -11,7 +11,7 @@ Scope: lease path canonicalization, durable TTL, Ruff quality fail-closed, evide
 AGENTS.md Policy-Version remains 1.2.0 PROPOSED / PENDING.
 
 === EVIDENCE ARCHITECTURE TRANCHE ===
-control_surface_digest=c01ee58a05fb9368dda75ed05cfcf6610d6b86498762da7be412a8dc9ab4c3f6
+control_surface_digest=79efa815c8aedae9a2a3ee507f9b8d9600012e33caa7cd4c8bd863d85ab9815f
 No production/order/scheduler/guardrail/MBI_BEHAVIOR edits.
 Layer-1 evidence binds to digest; exact HEAD is runtime attestation only.
 AGENTS.md remains 1.2.0 PROPOSED / PENDING.
@@ -20,4 +20,20 @@ AGENTS.md remains 1.2.0 PROPOSED / PENDING.
 No production/order/scheduler/guardrail/MBI_BEHAVIOR edits.
 Scope: exact ShellCheck version capture + fail-closed attestation validation.
 Additive monitoring and error strings only (AGENTS.md 17 deferred-list exclusion).
+AGENTS.md remains 1.2.0 PROPOSED / PENDING.
+
+=== OBSERVATION-CONTRACT CI REGISTRATION TRANCHE ===
+control_surface_digest=79efa815c8aedae9a2a3ee507f9b8d9600012e33caa7cd4c8bd863d85ab9815f
+No production/order/scheduler/guardrail/MBI_BEHAVIOR edits.
+Scope: register tests/test_canonical_observation.py and
+tests/test_overview_observation_contract.py in the authoritative runner GATES,
+add both to the cio-hardening push path filter, and re-stamp the Layer-1 digest.
+No test, gate or validator was weakened, skipped, mocked or excluded; one gate
+was ADDED and the coverage gate moved from 133 to 135 CI-run files.
+Structural check over the full lane range: 0 diff lines matching MBI_BEHAVIOR,
+BehaviorWriteRefused, place_order, risk_limit, execution_protection,
+ENABLE_TELEGRAM or ALPACA_MODE.
+Path note: scripts/lib/data_broker/ matches a filename search for "broker" but
+is the internal read-model registry, not a brokerage integration, and it is
+untouched by this tranche.
 AGENTS.md remains 1.2.0 PROPOSED / PENDING.
