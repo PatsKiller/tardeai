@@ -267,3 +267,39 @@ def test_an_active_policy_carries_a_real_effective_date():
         assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", cb["Effective-Date"]), (
             f"Effective-Date is not an ISO date: {cb['Effective-Date']!r}"
         )
+
+
+# ---------------------------------------------------------- budget cap (1.1.0) --
+
+CAP = "0.50"
+
+
+def test_the_ratified_cap_is_documented():
+    """AGENTS.md documented NEITHER 0.25 nor 0.50 before 1.1.0, while runtime
+    enforced 0.50 -- the gap that made the Stage 5 budget gate unenforceable."""
+    t = _flat()
+    assert "LLM_GLOBAL_DAILY_USD_CAP = 0.50" in t, "the ruling cap is not stated"
+    assert "ratified by the operator" in t, "the cap carries no approval reference"
+
+
+def test_the_cap_matches_what_runtime_enforces():
+    """A documented cap that disagrees with the enforced one is worse than none."""
+    reg = (ROOT / "config" / "lane_registry.json").read_text(encoding="utf-8")
+    assert f"LLM_GLOBAL_DAILY_USD_CAP={CAP}" in reg, (
+        "AGENTS.md states a cap the lane registry does not set"
+    )
+
+
+def test_the_cap_does_not_claim_to_be_universally_enforced():
+    """It binds on 6 of ~84 LLM lanes. Stating it as a guarantee would be a
+    control whose name exceeds its code (AGENTS.md 7)."""
+    t = _flat()
+    assert "not a universally enforced control" in t, (
+        "the cap section must not imply enforcement it does not have"
+    )
+    assert "named debt" in t, "the enforcement gap must be recorded as open"
+
+
+def test_free_first_precedes_paid_calls():
+    t = _flat()
+    assert "Free-first is not advice, it is the order of operations" in t
