@@ -19,7 +19,7 @@ def test_paths_overlap_parent_child():
 
 
 def test_lease_overlap_refused(tmp_path: Path):
-    coord = LeaseCoordinator(root=tmp_path / "coord")
+    coord = LeaseCoordinator(root=tmp_path / "coord", boot_id="boot-test")
     a = coord.acquire(session_id="s1", agent_id="grok", paths=["docs/ops/x.md"])
     with pytest.raises(RuntimeError, match="overlap"):
         coord.acquire(session_id="s2", agent_id="codex", paths=["docs/ops/x.md"])
@@ -31,14 +31,14 @@ def test_lease_overlap_refused(tmp_path: Path):
 
 
 def test_disjoint_leases_ok(tmp_path: Path):
-    coord = LeaseCoordinator(root=tmp_path / "coord")
+    coord = LeaseCoordinator(root=tmp_path / "coord", boot_id="boot-test")
     a = coord.acquire(session_id="s1", agent_id="grok", paths=["docs/a.md"])
     b = coord.acquire(session_id="s2", agent_id="codex", paths=["docs/b.md"])
     assert a.lease_id != b.lease_id
 
 
 def test_deployment_lease_exclusive(tmp_path: Path):
-    coord = LeaseCoordinator(root=tmp_path / "coord")
+    coord = LeaseCoordinator(root=tmp_path / "coord", boot_id="boot-test")
     coord.acquire(session_id="s1", agent_id="grok", paths=["docs/a.md"], deployment=True)
     with pytest.raises(RuntimeError, match="deployment"):
         coord.acquire(session_id="s2", agent_id="codex", paths=["docs/b.md"], production=True)
@@ -90,7 +90,7 @@ def test_new_worktree_forbids_add_all_and_default_env_link():
 
 
 def test_lease_ttl_expires_and_allows_reacquire(tmp_path: Path):
-    coord = LeaseCoordinator(root=tmp_path / "coord")
+    coord = LeaseCoordinator(root=tmp_path / "coord", boot_id="boot-test")
     a = coord.acquire(session_id="s1", agent_id="grok", paths=["docs/a.md"], ttl_s=0.05)
     import time
 
@@ -101,7 +101,7 @@ def test_lease_ttl_expires_and_allows_reacquire(tmp_path: Path):
 
 
 def test_lease_heartbeat_extends_ttl(tmp_path: Path):
-    coord = LeaseCoordinator(root=tmp_path / "coord")
+    coord = LeaseCoordinator(root=tmp_path / "coord", boot_id="boot-test")
     a = coord.acquire(session_id="s1", agent_id="grok", paths=["docs/a.md"], ttl_s=0.2)
     import time
 
@@ -111,11 +111,11 @@ def test_lease_heartbeat_extends_ttl(tmp_path: Path):
     # still active due to heartbeat
     with pytest.raises(RuntimeError, match="overlap"):
         coord.acquire(session_id="s2", agent_id="codex", paths=["docs/a.md"])
-    assert a2.expires_at > a.expires_at
+    assert a2.expires_at_utc > a.expires_at_utc
 
 
 def test_recover_abandoned_moves_expired(tmp_path: Path):
-    coord = LeaseCoordinator(root=tmp_path / "coord")
+    coord = LeaseCoordinator(root=tmp_path / "coord", boot_id="boot-test")
     a = coord.acquire(session_id="s1", agent_id="grok", paths=["docs/a.md"], ttl_s=0.05)
     import time
 
@@ -129,7 +129,7 @@ def test_recover_abandoned_moves_expired(tmp_path: Path):
 
 
 def test_path_traversal_rejected(tmp_path: Path):
-    coord = LeaseCoordinator(root=tmp_path / "coord")
+    coord = LeaseCoordinator(root=tmp_path / "coord", boot_id="boot-test")
     with pytest.raises(ValueError):
         coord.acquire(session_id="s1", agent_id="grok", paths=["../etc/passwd"])
     with pytest.raises(ValueError):
