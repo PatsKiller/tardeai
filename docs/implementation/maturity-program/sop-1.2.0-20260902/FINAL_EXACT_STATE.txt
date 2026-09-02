@@ -1,68 +1,16 @@
-=== FINAL EXACT STATE ===
-date_utc=2026-09-02T13:16:16Z
+date_utc=2026-09-02T13:16:42Z
 ## governance/agent-sop-1.2.0
-?? docs/implementation/maturity-program/sop-1.2.0-20260902/FINAL_EXACT_STATE.txt
-HEAD=941e8f18ded7384c3aac6771fbec141803d0b6cb
+ M docs/implementation/maturity-program/sop-1.2.0-20260902/FINAL_EXACT_STATE.txt
+HEAD=3dd4fca281818764d6efabe57fc600f80b07e245
 origin/main=4bcba2cf7168f1cc9b1b7ffd18ab749b2eed44a9
 merge-base=4bcba2cf7168f1cc9b1b7ffd18ab749b2eed44a9
-=== commits origin/main..HEAD ===
-941e8f18d (HEAD -> governance/agent-sop-1.2.0) docs(ops): refresh docs/INDEX.md after Control 6–7 evidence docs
+3dd4fca28 (HEAD -> governance/agent-sop-1.2.0) fix(governance): strip evidence trailing whitespace; stabilize docs INDEX
+dbf196d04 docs(ops): record final exact-state evidence for SOP 1.2.0
+941e8f18d docs(ops): refresh docs/INDEX.md after Control 6–7 evidence docs
 dfcfd2fe9 governance(agents): complete SOP 1.2.0 Controls 6–7 evidence
 26c31f487 governance(agents): PROPOSED 1.2.0 Multi-Agent SOP seven controls
-=== diff --check ===
-AGENTS.md:1645: trailing whitespace.
-+Operator activation phrase (after review):
-docs/implementation/maturity-program/sop-1.2.0-20260902/CONTROL6_INDEX_CHECK.txt:6: trailing whitespace.
-+
-docs/implementation/maturity-program/sop-1.2.0-20260902/CONTROL6_INDEX_CHECK.txt:10: trailing whitespace.
-+
-docs/implementation/maturity-program/sop-1.2.0-20260902/CONTROL6_INDEX_CHECK.txt:14: trailing whitespace.
-+
-docs/implementation/maturity-program/sop-1.2.0-20260902/CONTROL6_INDEX_CHECK.txt:25: trailing whitespace.
-+
-docs/implementation/maturity-program/sop-1.2.0-20260902/CONTROL6_INDEX_CHECK.txt:33: trailing whitespace.
-+
-docs/implementation/maturity-program/sop-1.2.0-20260902/CONTROL6_INDEX_CHECK.txt:35: trailing whitespace.
-+
 docs/implementation/maturity-program/sop-1.2.0-20260902/CONTROL6_INDEX_CHECK.txt:46: new blank line at EOF.
-docs/implementation/maturity-program/sop-1.2.0-20260902/CONTROL6_INDEX_FULL_DIFF.txt:7: trailing whitespace.
-+
-docs/implementation/maturity-program/sop-1.2.0-20260902/CONTROL6_INDEX_FULL_DIFF.txt:11: trailing whitespace.
-+
-docs/implementation/maturity-program/sop-1.2.0-20260902/CONTROL6_INDEX_FULL_DIFF.txt:15: trailing whitespace.
-+
-docs/implementation/maturity-program/sop-1.2.0-20260902/CONTROL6_INDEX_FULL_DIFF.txt:26: trailing whitespace.
-+
-docs/implementation/maturity-program/sop-1.2.0-20260902/CONTROL6_INDEX_FULL_DIFF.txt:34: trailing whitespace.
-+
-docs/implementation/maturity-program/sop-1.2.0-20260902/CONTROL6_INDEX_FULL_DIFF.txt:36: trailing whitespace.
-+
-docs/implementation/maturity-program/sop-1.2.0-20260902/STAGE_00_PREFLIGHT.md:1: trailing whitespace.
-+Status:      ACTIVE
-docs/implementation/maturity-program/sop-1.2.0-20260902/STAGE_00_PREFLIGHT.md:2: trailing whitespace.
-+as_of:       2026-09-02T09:05:00-04:00
-docs/implementation/maturity-program/sop-1.2.0-20260902/STAGE_00_PREFLIGHT.md:3: trailing whitespace.
-+run_id:      sop-1.2.0-20260902
-docs/implementation/maturity-program/sop-1.2.0-20260902/STAGE_00_PREFLIGHT.md:4: trailing whitespace.
-+prompt_version: 1.0.0
-docs/implementation/maturity-program/sop-1.2.0-20260902/STAGE_00_PREFLIGHT.md:5: trailing whitespace.
-+Canonical repo path: docs/implementation/maturity-program/sop-1.2.0-20260902/STAGE_00_PREFLIGHT.md
-docs/implementation/maturity-program/sop-1.2.0-20260902/STAGE_00_PREFLIGHT.md:6: trailing whitespace.
-+Authority:   Stage 0 measurement + proposed claims only. No remote sync. No PR. No promote.
-docs/implementation/maturity-program/sop-1.2.0-20260902/STAGE_00_PREFLIGHT.md:46: trailing whitespace.
-+`AI_WORK_POLICY.md` present; SHA-256 `e98d583a4fe2568b4264edcf4bc30dd00eb0f2015935677618780cdc5b77b97a`.
-docs/implementation/maturity-program/sop-1.2.0-20260902/STAGE_00_PREFLIGHT.md:126: trailing whitespace.
-+1. **CURRENT ≠ origin/main** — served pin lags; not remediated.
-docs/implementation/maturity-program/sop-1.2.0-20260902/STAGE_00_PREFLIGHT.md:127: trailing whitespace.
-+2. **Hub checkout ≠ origin/main** — routed around; optional `FAST_FORWARD_CANONICAL_CHECKOUT` still operator-only.
-docs/implementation/maturity-program/sop-1.2.0-20260902/STAGE_00_PREFLIGHT.md:128: trailing whitespace.
-+3. **No mechanical lease service yet** — Stage 4 must implement or bind to a found coordinator.
-docs/implementation/maturity-program/sop-1.2.0-20260902/STAGE_00_PREFLIGHT.md:129: trailing whitespace.
-+4. **`new-worktree.sh` violates SOP Stage 5 defaults** — must harden without breaking documented automation that expects `.env` (opt-in only).
-docs/implementation/maturity-program/sop-1.2.0-20260902/STAGE_00_PREFLIGHT.md:134: trailing whitespace.
-+Proceed to **Stage 1** (open-PR collision inventory, local docs only).
-DIFF_CHECK_EXIT=2
-=== diff --stat ===
+DIFF_CHECK=2
  .github/workflows/agent-governance.yml             |   45 +
  AGENTS.md                                          |   34 +-
  config/agent_clients.schema.json                   |   56 +
@@ -71,15 +19,17 @@ DIFF_CHECK_EXIT=2
  .../AUTHORITY_NON_REGRESSION.txt                   |    6 +
  .../sop-1.2.0-20260902/CONTROL6_INDEX_CHECK.txt    |   46 +
  .../sop-1.2.0-20260902/CONTROL6_INDEX_DIFFSTAT.txt |    2 +
- .../CONTROL6_INDEX_FINAL_CHECK.txt                 |    0
+ .../CONTROL6_INDEX_FINAL_CHECK.txt                 |    1 +
  .../CONTROL6_INDEX_FINGERPRINT.txt                 |    1 +
  .../CONTROL6_INDEX_FULL_DIFF.txt                   |   46 +
  .../sop-1.2.0-20260902/CONTROL6_INDEX_RECHECK.txt  |    1 +
+ .../sop-1.2.0-20260902/CONTROL6_INDEX_STABLE.txt   |    1 +
  .../sop-1.2.0-20260902/CONTROL6_INDEX_WRITE.txt    |    1 +
  .../CONTROL7_LOCAL_EQUIVALENT.txt                  |   26 +
  .../sop-1.2.0-20260902/CONTROL7_WORKFLOW_PROOF.txt |   64 +
  .../EAC13CFD0_DRIVE_MANIFEST_DISPOSITION.md        |   24 +
  .../sop-1.2.0-20260902/EXTENDED_TESTS.txt          |    2 +
+ .../sop-1.2.0-20260902/FINAL_EXACT_STATE.txt       |  142 ++
  .../sop-1.2.0-20260902/FULL_TEST_MATRIX.txt        |   56 +
  .../sop-1.2.0-20260902/MATURITY_SCORECARD.md       |   34 +
  .../OPEN_PR_COLLISION_INVENTORY.json               | 1509 ++++++++++++++++++++
@@ -97,8 +47,7 @@ DIFF_CHECK_EXIT=2
  tests/test_agent_clients_registry.py               |   34 +
  tests/test_agent_session_and_lease.py              |  160 +++
  tests/test_agents_drive_mirror_policy.py           |   43 +
- 34 files changed, 3270 insertions(+), 20 deletions(-)
-=== name-status ===
+ 36 files changed, 3414 insertions(+), 20 deletions(-)
 A	.github/workflows/agent-governance.yml
 M	AGENTS.md
 A	config/agent_clients.schema.json
@@ -111,11 +60,13 @@ A	docs/implementation/maturity-program/sop-1.2.0-20260902/CONTROL6_INDEX_FINAL_C
 A	docs/implementation/maturity-program/sop-1.2.0-20260902/CONTROL6_INDEX_FINGERPRINT.txt
 A	docs/implementation/maturity-program/sop-1.2.0-20260902/CONTROL6_INDEX_FULL_DIFF.txt
 A	docs/implementation/maturity-program/sop-1.2.0-20260902/CONTROL6_INDEX_RECHECK.txt
+A	docs/implementation/maturity-program/sop-1.2.0-20260902/CONTROL6_INDEX_STABLE.txt
 A	docs/implementation/maturity-program/sop-1.2.0-20260902/CONTROL6_INDEX_WRITE.txt
 A	docs/implementation/maturity-program/sop-1.2.0-20260902/CONTROL7_LOCAL_EQUIVALENT.txt
 A	docs/implementation/maturity-program/sop-1.2.0-20260902/CONTROL7_WORKFLOW_PROOF.txt
 A	docs/implementation/maturity-program/sop-1.2.0-20260902/EAC13CFD0_DRIVE_MANIFEST_DISPOSITION.md
 A	docs/implementation/maturity-program/sop-1.2.0-20260902/EXTENDED_TESTS.txt
+A	docs/implementation/maturity-program/sop-1.2.0-20260902/FINAL_EXACT_STATE.txt
 A	docs/implementation/maturity-program/sop-1.2.0-20260902/FULL_TEST_MATRIX.txt
 A	docs/implementation/maturity-program/sop-1.2.0-20260902/MATURITY_SCORECARD.md
 A	docs/implementation/maturity-program/sop-1.2.0-20260902/OPEN_PR_COLLISION_INVENTORY.json
@@ -133,10 +84,3 @@ M	scripts/run_cio_hardening_ci.py
 A	tests/test_agent_clients_registry.py
 A	tests/test_agent_session_and_lease.py
 A	tests/test_agents_drive_mirror_policy.py
-=== untracked ===
-?? docs/implementation/maturity-program/sop-1.2.0-20260902/FINAL_EXACT_STATE.txt
-=== AGENTS header ===
-4:Policy-Version:      1.2.0
-7:Status:              PROPOSED
-8:Effective-Date:      PENDING
-1277:Status:      ACTIVE | SUPERSEDED BY <path> | HISTORICAL | DRAFT
