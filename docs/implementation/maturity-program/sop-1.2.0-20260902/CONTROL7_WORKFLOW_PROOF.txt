@@ -1,9 +1,9 @@
 === CONTROL7 WORKFLOW PROOF (reproducible; Layer 1) ===
 schema=SopControl7WorkflowProof@v1
-control_surface_digest=7cb0bf4db3ed7ef14dae85d57709086ad4ab9c9e6c363e967591b296c44d7550
+control_surface_digest=b0d43614e744236ca7a07e8e7148c77d3c5932fcf0343368c0a9b94683dfa9c9
 workflow_path=.github/workflows/agent-governance.yml
-workflow_blob_sha256=1a678dd522ca9e7395abfe80abc163003773e6f73524c1c6b365886e57c0ff03
-workflow_lines=66
+workflow_blob_sha256=a1499ae0fa874a3ba44dff087ee51a0b2242e4b292525df65ebde70b9ba73e68
+workflow_lines=87
 path_filters=absent
 triggers=pull_request,push[main],workflow_dispatch
 ruff_install=pip install "ruff==0.16.2"
@@ -56,10 +56,31 @@ jobs:
           pip install jsonschema || true
           # Ruff is required for changed-Python quality — never `|| true`.
           pip install "ruff==0.16.2"
+      - name: Install AI work-policy hooks (CI prerequisite)
+        run: |
+          set -euo pipefail
+          # GitHub Actions checkouts have no ambient core.hooksPath. Establish
+          # the canonical hook prerequisite before any mutating session tests.
+          if git config --get core.hooksPath >/dev/null 2>&1; then
+            echo "ERROR: expected core.hooksPath unset before installer" >&2
+            exit 1
+          fi
+          ./scripts/install_ai_work_policy.sh
+          hp="$(git config --get core.hooksPath)"
+          test "$hp" = ".githooks"
+          test -x .githooks/pre-commit
+          test -x .githooks/pre-push
+          if TRADEAI_REMOTE_PUSH_AUTHORIZED=0 .githooks/pre-push >/dev/null 2>&1; then
+            echo "ERROR: pre-push allowed unauthorized push" >&2
+            exit 1
+          fi
+          echo "CI hooks prerequisite OK (hooksPath=$hp)"
       - name: Agent clients registry
         run: pytest tests/test_agent_clients_registry.py -q
       - name: Session receipt + leases
         run: pytest tests/test_agent_session_and_lease.py -q
+      - name: Hooks CI hermetic regression
+        run: pytest tests/test_agent_hooks_ci_hermetic.py -q
       - name: File lease canonical + durable TTL
         run: pytest tests/test_agent_file_lease_canonical.py -q
       - name: Worktree identity adversarial (borrowed gitdir)

@@ -153,16 +153,58 @@ def test_mutating_requires_docs_attestation(tmp_path: Path):
 
 
 def test_mutating_with_docs_and_claims_ok(tmp_path: Path):
+    """Hermetic: isolated hooked worktree — no ambient operator hooksPath required.
+
+    CI runners have no ``core.hooksPath`` until ``install_ai_work_policy.sh`` runs.
+    This test builds its own hooked repository and must not depend on the
+    developer's checkout configuration.
+    """
+    import os
+    import shutil
+    import subprocess
+
+    def _run(cmd: list[str], *, cwd: Path) -> None:
+        subprocess.run(cmd, cwd=str(cwd), check=True, capture_output=True, text=True)
+
+    main = tmp_path / "main"
+    main.mkdir()
+    _run(["git", "init"], cwd=main)
+    _run(["git", "config", "user.email", "hermetic@example.test"], cwd=main)
+    _run(["git", "config", "user.name", "Hermetic"], cwd=main)
+    (main / "AI_WORK_POLICY.md").write_text("# policy\n", encoding="utf-8")
+    (main / "AGENTS.md").write_text("Policy-Version: 1.2.0\nStatus: PROPOSED\n", encoding="utf-8")
+    (main / "docs").mkdir()
+    (main / "docs" / "INDEX.md").write_text("# idx\n", encoding="utf-8")
+    hooks = main / ".githooks"
+    hooks.mkdir()
+    for name in ("pre-commit", "pre-push"):
+        shutil.copy2(ROOT / ".githooks" / name, hooks / name)
+        os.chmod(hooks / name, 0o755)
+    _run(["git", "add", "AI_WORK_POLICY.md", "AGENTS.md", "docs", ".githooks"], cwd=main)
+    _run(["git", "commit", "-m", "seed"], cwd=main)
+    wt = tmp_path / "wt"
+    _run(["git", "worktree", "add", str(wt), "HEAD"], cwd=main)
+    # Canonical installer — worktree-local hooksPath (does not touch global config).
+    subprocess.run(
+        ["bash", str(ROOT / "scripts" / "install_ai_work_policy.sh")],
+        cwd=str(wt),
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    hp = subprocess.check_output(["git", "config", "--get", "core.hooksPath"], cwd=str(wt), text=True).strip()
+    assert hp == ".githooks"
+
     receipt = start_session(
         agent_id="grok",
-        repo_root=ROOT,
-        claimed_paths=["docs/implementation/maturity-program/sop-1.2.0-20260902/STAGE_00_PREFLIGHT.md"],
+        repo_root=wt,
+        claimed_paths=["docs/INDEX.md"],
         docs_read=["AGENTS.md", "AI_WORK_POLICY.md", "docs/INDEX.md"],
         docs_searched=["agent registry", "session receipt", "lease"],
         mode="mutating",
         acknowledge_dirty=True,
-        expected_worktree=ROOT,
-        cwd=ROOT,
+        expected_worktree=wt,
+        cwd=wt,
         coordination_root_path=tmp_path / "coord",
         task_scope="sop-1.2.0-local",
     )
@@ -170,3 +212,4 @@ def test_mutating_with_docs_and_claims_ok(tmp_path: Path):
     assert receipt.get("lease")
     assert receipt["denials"]["remote_sync"] is True
     assert receipt["documentation_read"]
+    assert receipt["hook_installation"]["core.hooksPath"] == ".githooks"

@@ -1,6 +1,6 @@
 === RUFF + SHELLCHECK (reproducible; Layer 1) ===
 schema=SopRuffShellcheckEvidence@v1
-control_surface_digest=7cb0bf4db3ed7ef14dae85d57709086ad4ab9c9e6c363e967591b296c44d7550
+control_surface_digest=b0d43614e744236ca7a07e8e7148c77d3c5932fcf0343368c0a9b94683dfa9c9
 note=Does not embed containing commit SHA.
 
 # Changed-file scope for the quality gate (governance Python on the control surface)
@@ -24,3 +24,4 @@ attestation_shellcheck_errors=ATTESTATION_SHELLCHECK_VERSION_UNPARSEABLE,ATTESTA
 EXIT_shellcheck_banner_negative=1
 EXIT_shellcheck_version_mismatch_negative=1
 EXIT_shellcheck_false_missing_negative=1
+hooks_ci_prerequisite=install_ai_work_policy.sh+self-test

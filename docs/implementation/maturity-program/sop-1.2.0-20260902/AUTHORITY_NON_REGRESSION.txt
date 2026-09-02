@@ -11,7 +11,7 @@ Scope: lease path canonicalization, durable TTL, Ruff quality fail-closed, evide
 AGENTS.md Policy-Version remains 1.2.0 PROPOSED / PENDING.
 
 === EVIDENCE ARCHITECTURE TRANCHE ===
-control_surface_digest=7cb0bf4db3ed7ef14dae85d57709086ad4ab9c9e6c363e967591b296c44d7550
+control_surface_digest=b0d43614e744236ca7a07e8e7148c77d3c5932fcf0343368c0a9b94683dfa9c9
 No production/order/scheduler/guardrail/MBI_BEHAVIOR edits.
 Layer-1 evidence binds to digest; exact HEAD is runtime attestation only.
 AGENTS.md remains 1.2.0 PROPOSED / PENDING.

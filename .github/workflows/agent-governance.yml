@@ -29,10 +29,31 @@ jobs:
           pip install jsonschema || true
           # Ruff is required for changed-Python quality — never `|| true`.
           pip install "ruff==0.16.2"
+      - name: Install AI work-policy hooks (CI prerequisite)
+        run: |
+          set -euo pipefail
+          # GitHub Actions checkouts have no ambient core.hooksPath. Establish
+          # the canonical hook prerequisite before any mutating session tests.
+          if git config --get core.hooksPath >/dev/null 2>&1; then
+            echo "ERROR: expected core.hooksPath unset before installer" >&2
+            exit 1
+          fi
+          ./scripts/install_ai_work_policy.sh
+          hp="$(git config --get core.hooksPath)"
+          test "$hp" = ".githooks"
+          test -x .githooks/pre-commit
+          test -x .githooks/pre-push
+          if TRADEAI_REMOTE_PUSH_AUTHORIZED=0 .githooks/pre-push >/dev/null 2>&1; then
+            echo "ERROR: pre-push allowed unauthorized push" >&2
+            exit 1
+          fi
+          echo "CI hooks prerequisite OK (hooksPath=$hp)"
       - name: Agent clients registry
         run: pytest tests/test_agent_clients_registry.py -q
       - name: Session receipt + leases
         run: pytest tests/test_agent_session_and_lease.py -q
+      - name: Hooks CI hermetic regression
+        run: pytest tests/test_agent_hooks_ci_hermetic.py -q
       - name: File lease canonical + durable TTL
         run: pytest tests/test_agent_file_lease_canonical.py -q
       - name: Worktree identity adversarial (borrowed gitdir)
