@@ -1,17 +1,20 @@
 # AGENTS.md — Trade AI: the operating standard for every agent
 
 ```
-Policy-Version:      1.1.0
+Policy-Version:      1.2.0
 Versioning-Scheme:   Semantic Versioning 2.0.0
 Policy-Schema:       TradeAI-Agent-Operating-Standard/v1
-Status:              ACTIVE
-Effective-Date:      2026-09-01
-Last-Reviewed:       2026-09-01T22:13:39-04:00
+Status:              PROPOSED
+Effective-Date:      PENDING
+Last-Reviewed:       2026-09-02T09:30:00-04:00
 Canonical-Repo-Path: AGENTS.md
 Drive-Mirror-Path:   Trade_AI_Docs_v2/governance/agent-policy/AGENTS.md
-Supersedes:          UNVERSIONED
+Supersedes:          1.1.0
 Approval-Class:      OPERATOR_REQUIRED_FOR_SECTIONS_0_2_17_AND_ROLE_AUTHORITY
 ```
+
+**Until this PROPOSED 1.2.0 is approved and merged, Policy-Version 1.1.0 ACTIVE remains the
+governing text.** `Effective-Date: PENDING` is mandatory for PROPOSED (§ document version policy).
 
 **1.0.0 is the first formal baseline, not a rewrite.** The document was previously unversioned;
 `Supersedes: UNVERSIONED` records that literally. It is **not** called 2.0.0 because no prior
@@ -1624,10 +1627,31 @@ write-up, not just the final state. Say `UNKNOWN` when it is true.
 
 ---
 
+# Multi-Agent SOP controls (1.2.0)
+
+These controls are **mechanical additions** that do not weaken §0, §2, §17, or role authority.
+They bind coding/governance agents only. They are **not** trading authorization.
+
+| control | mechanism |
+|---|---|
+| Client registry | `config/agent_clients.yaml` — unknown clients fail closed to ADVISORY (no mutate/remote/production/financial) |
+| Session receipt | `scripts/agent_session_start.py` + `AgentSessionReceipt@v1` before mutating work |
+| File/state leases | `scripts/lib/agent_file_lease.py` — atomic flock leases; no overlapping claims |
+| Safe worktree | `scripts/new-worktree.sh` — no default `.env` link; never instruct `git add -A` |
+| Changed-file quality | `scripts/agent_changed_file_quality.py` |
+| Dedicated CI | `.github/workflows/agent-governance.yml` (job name `agent-governance`) — enable as required context by operator |
+| Evidence | `docs/implementation/maturity-program/sop-1.2.0-20260902/` |
+
+Operator activation phrase (after review):  
+`APPROVE_AGENTS_POLICY_1_2_0 <pr_number> <head_sha>`
+
+---
+
 # Version history
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
+| 1.2.0 | 2026-09-02 | PROPOSED | MINOR | Multi-Agent SOP seven controls: client registry, session receipts, atomic leases, safe worktree defaults, changed-file quality floor, dedicated `agent-governance` CI. Does not weaken §0/§2/§17 or financial rails. | **PENDING** — `APPROVE_AGENTS_POLICY_1_2_0 <pr> <sha>` |
 | 1.1.0 | 2026-09-01 | ACTIVE | MINOR | Records the ratified daily provider spend cap ($0.50) in §12, with measured evidence that it binds on 6 of ~84 LLM lanes and is therefore policy rather than a universally enforced control. | **RATIFIED** by the operator, 2026-09-01 |
 | 1.0.0 | 2026-09-01 | ACTIVE | MAJOR | Formal baseline. Document-control block and version policy; §13.5 duplicate merged; §13.6 numbering collision renumbered to §13.7 and section order restored; two "Where things go" tables merged; §2B role authority profiles added. | **APPROVED** — `APPROVE_AGENTS_POLICY_1_0_0 841 0f00f928a6b3892ef838c8737cebfcb622fd53ae` |
 

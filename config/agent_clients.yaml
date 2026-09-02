@@ -1,0 +1,114 @@
+# AgentClientsRegistry@v1 — coding/governance clients (not the trading router).
+# Distinct from config/agents.yaml (market research / portfolio agent routing).
+# Unknown clients fail closed to ADVISORY: read-only investigation only.
+schema: AgentClientsRegistry@v1
+version: "1.0.0"
+authority: READ_ONLY_ADVISORY
+unknown_client_default:
+  enforcement_level: ADVISORY
+  mutating: false
+  remote_sync: false
+  production: false
+  financial: false
+clients:
+  - agent_id: codex
+    display_name: Codex CLI / VS Code
+    adapter_type: thin_root_policy
+    adapter_version: "1.0.0"
+    instruction_discovery:
+      - AGENTS.md
+      - AI_WORK_POLICY.md
+    launcher: scripts/agent_session_start.py --agent codex
+    enforcement_level: MECHANICAL
+    hook_bootstrap: core.hooksPath=.githooks + install_ai_work_policy.sh
+    validation_test: tests/test_agent_clients_registry.py
+    last_verified: "2026-09-02"
+    limitations: Remote sync still requires TRADEAI_REMOTE_PUSH_AUTHORIZED + operator intent.
+
+  - agent_id: claude_code
+    display_name: Claude Code
+    adapter_type: thin_root_policy
+    adapter_version: "1.0.0"
+    instruction_discovery:
+      - AGENTS.md
+      - CLAUDE.md
+      - AI_WORK_POLICY.md
+    launcher: scripts/agent_session_start.py --agent claude_code
+    enforcement_level: MECHANICAL
+    hook_bootstrap: core.hooksPath=.githooks + install_ai_work_policy.sh
+    validation_test: tests/test_agent_clients_registry.py
+    last_verified: "2026-09-02"
+    limitations: CLAUDE.md must remain a thin pointer to AGENTS.md (no divergent authority).
+
+  - agent_id: cursor
+    display_name: Cursor
+    adapter_type: thin_root_policy
+    adapter_version: "1.0.0"
+    instruction_discovery:
+      - AGENTS.md
+      - .cursor/rules/
+      - AI_WORK_POLICY.md
+    launcher: scripts/agent_session_start.py --agent cursor
+    enforcement_level: MECHANICAL
+    hook_bootstrap: core.hooksPath=.githooks + install_ai_work_policy.sh
+    validation_test: tests/test_agent_clients_registry.py
+    last_verified: "2026-09-02"
+    limitations: Nested .cursor rules must not contradict AGENTS.md §0.
+
+  - agent_id: github_copilot
+    display_name: GitHub Copilot
+    adapter_type: thin_root_policy
+    adapter_version: "1.0.0"
+    instruction_discovery:
+      - AGENTS.md
+      - .github/copilot-instructions.md
+      - AI_WORK_POLICY.md
+    launcher: scripts/agent_session_start.py --agent github_copilot
+    enforcement_level: ADVISORY
+    hook_bootstrap: core.hooksPath=.githooks (IDE may not invoke launcher)
+    validation_test: tests/test_agent_clients_registry.py
+    last_verified: "2026-09-02"
+    limitations: IDE inline edits may bypass session launcher; treat as ADVISORY until IDE hook proven.
+
+  - agent_id: grok
+    display_name: Grok Build / Grok CLI
+    adapter_type: thin_root_policy
+    adapter_version: "1.0.0"
+    instruction_discovery:
+      - AGENTS.md
+      - AI_WORK_POLICY.md
+    launcher: scripts/agent_session_start.py --agent grok
+    enforcement_level: MECHANICAL
+    hook_bootstrap: core.hooksPath=.githooks + install_ai_work_policy.sh
+    validation_test: tests/test_agent_clients_registry.py
+    last_verified: "2026-09-02"
+    limitations: Same remote-sync gate as other MECHANICAL clients.
+
+  - agent_id: bill
+    display_name: Bill
+    adapter_type: thin_root_policy
+    adapter_version: "1.0.0"
+    instruction_discovery:
+      - AGENTS.md
+      - AI_WORK_POLICY.md
+    launcher: scripts/agent_session_start.py --agent bill
+    enforcement_level: ADVISORY
+    hook_bootstrap: core.hooksPath=.githooks
+    validation_test: tests/test_agent_clients_registry.py
+    last_verified: "2026-09-02"
+    limitations: Client surface not independently hook-verified this tranche; ADVISORY until MECHANICAL proof.
+
+  - agent_id: quad_code
+    display_name: Quad Code
+    adapter_type: thin_root_policy
+    adapter_version: "1.0.0"
+    instruction_discovery:
+      - AGENTS.md
+      - CLAUDE.md
+      - AI_WORK_POLICY.md
+    launcher: scripts/agent_session_start.py --agent quad_code
+    enforcement_level: ADVISORY
+    hook_bootstrap: core.hooksPath=.githooks
+    validation_test: tests/test_agent_clients_registry.py
+    last_verified: "2026-09-02"
+    limitations: "Inventory did not prove a separate binary from Claude Code; treated as Claude-Code-compatible alias until operator confirms otherwise."

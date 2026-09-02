@@ -1,0 +1,43 @@
+name: agent-governance
+
+# SOP Stage 7 — dedicated always-on governance CI.
+# No path filters: intended to be a required context once operator enables it.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: agent-governance-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  agent-governance:
+    name: agent-governance
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install minimal deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyyaml pytest
+          pip install jsonschema || true
+          pip install ruff || true
+      - name: Agent clients registry
+        run: pytest tests/test_agent_clients_registry.py -q
+      - name: Session receipt + leases
+        run: pytest tests/test_agent_session_and_lease.py -q
+      - name: Policy hooks (existing)
+        run: pytest tests/test_ai_work_policy_hooks.py tests/test_agents_policy_v1.py -q
+      - name: Registry validate via quality command
+        run: python scripts/agent_changed_file_quality.py --paths config/agent_clients.yaml config/agent_clients.schema.json
+      - name: new-worktree SOP constraints
+        run: |
+          grep -q 'TRADEAI_WORKTREE_LINK_ENV' scripts/new-worktree.sh
+          grep -q 'never git add -A' scripts/new-worktree.sh
+          ! grep -q 'git add -A &&' scripts/new-worktree.sh

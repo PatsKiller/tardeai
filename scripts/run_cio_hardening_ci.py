@@ -327,6 +327,10 @@ GATES = [
     ("watch_instrument_admit", [
         "tests/test_cio_watch_instrument_admit.py",
     ]),
+    ("agent_governance_sop", [
+        "tests/test_agent_clients_registry.py",
+        "tests/test_agent_session_and_lease.py",
+    ]),
     ("wake_writer_stamp", [
         "tests/test_wake_writer_stamp.py",
     ]),
