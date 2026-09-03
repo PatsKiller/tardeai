@@ -1,0 +1,15 @@
+{
+  "schema": "R14ADeployment@v1",
+  "PRE_DEPLOY_SHA": "1afb1479676aeb67b64791e58e946753a2854ddf",
+  "MAIN_SHA": "4d0859a5a18e5e64f9ebacae19f53c82e290a9d2",
+  "CURRENT_SHA": "4d0859a5a18e5e64f9ebacae19f53c82e290a9d2",
+  "SOURCE_COMMIT": "4d0859a5a18e5e64f9ebacae19f53c82e290a9d2",
+  "current_exact_main": true,
+  "hybrid": false,
+  "release_path": "/home/johnclaw/trade-ai-releases/portfolio-server/4d0859a5-main-exact-phase2-20260825-091745",
+  "rollback_path": "/home/johnclaw/trade-ai-releases/portfolio-server/1afb1479-main-exact-phase2-20260824-230917",
+  "pr506_merged": true,
+  "merge_sha": "4d0859a5a18e5e64f9ebacae19f53c82e290a9d2",
+  "promote_ok": true,
+  "authority": "READ_ONLY_ADVISORY"
+}
