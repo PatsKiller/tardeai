@@ -12,6 +12,7 @@ wrote. The alert path was wired, scheduled and reaching a channel, and reported
 `monthly_pct: 17.6, monthly_alert: "ok"` while the provider was at its ceiling.
 A working alarm on an unrepresentative sensor.
 """
+
 from __future__ import annotations
 
 import json
@@ -26,6 +27,7 @@ NOW = datetime(2026, 8, 30, 12, 0, tzinfo=timezone.utc)
 
 
 # ── never fail open ────────────────────────────────────────────────────────
+
 
 def test_an_unreadable_ledger_denies_rather_than_resetting_the_counter(tmp_path):
     """The exact old bug: `_load_budget()` swallowed every exception and
@@ -69,6 +71,7 @@ def test_a_missing_ledger_is_a_fresh_budget_not_an_error(tmp_path):
 
 # ── per provider ───────────────────────────────────────────────────────────
 
+
 def test_providers_have_separate_counters(tmp_path):
     for _ in range(5):
         sb.record("brave", caller="t", now=NOW, root=tmp_path)
@@ -102,6 +105,7 @@ def test_a_malformed_env_override_keeps_the_safe_default(tmp_path, monkeypatch):
 
 # ── the ledger survives a process, and is not release-relative ────────────
 
+
 def test_the_ledger_lives_under_the_canonical_state_root_not_a_release(tmp_path):
     """The original counter was `_PROJECT_ROOT/data/portfolios/state/...` where
     _PROJECT_ROOT is wherever the module was imported from."""
@@ -117,6 +121,7 @@ def test_counts_persist_across_a_fresh_read(tmp_path):
 
 
 # ── guard() and note() ────────────────────────────────────────────────────
+
 
 def test_guard_counts_the_call_it_permits(tmp_path, monkeypatch):
     monkeypatch.setattr(sb, "budget_path", lambda root=None: tmp_path / "b.json")
@@ -140,16 +145,19 @@ def test_note_counts_but_never_denies(tmp_path, monkeypatch):
     monkeypatch.setattr(sb, "budget_path", lambda root=None: tmp_path / "b.json")
     monkeypatch.setenv("SEARCH_BUDGET_BRAVE_DAILY", "0")
     assert sb.check("brave")["allowed"] is False
-    sb.note("brave", "secret_validators")               # must not raise
+    sb.note("brave", "secret_validators")  # must not raise
     assert sb.status("brave")["monthly_used"] == 1
 
 
 # ── pool degradation is never silent ──────────────────────────────────────
 
+
 def _probe(serving, unresponsive, results=10, reachable=True):
     return lambda *a, **k: {
-        "reachable": reachable, "results": results,
-        "serving_engines": sorted(serving), "engine_counts": {e: 1 for e in serving},
+        "reachable": reachable,
+        "results": results,
+        "serving_engines": sorted(serving),
+        "engine_counts": {e: 1 for e in serving},
         "unresponsive": [{"engine": e, "reason": r} for e, r in unresponsive],
     }
 
@@ -157,9 +165,13 @@ def _probe(serving, unresponsive, results=10, reachable=True):
 def test_ten_results_from_one_engine_is_impaired(monkeypatch):
     """The measured failure: 10 results, all from bing, three engines down —
     a response indistinguishable from a healthy one."""
-    monkeypatch.setattr(sh, "probe_searxng", _probe(
-        ["bing"], [("duckduckgo", "CAPTCHA"), ("startpage", "CAPTCHA"),
-                   ("brave", "too many requests")], results=10))
+    monkeypatch.setattr(
+        sh,
+        "probe_searxng",
+        _probe(
+            ["bing"], [("duckduckgo", "CAPTCHA"), ("startpage", "CAPTCHA"), ("brave", "too many requests")], results=10
+        ),
+    )
     h = sh.pool_health(now=NOW)
     assert h["impaired"] is True
     assert h["results"] == 10, "result COUNT looked healthy — that is the point"
@@ -169,8 +181,7 @@ def test_ten_results_from_one_engine_is_impaired(monkeypatch):
 
 
 def test_a_healthy_pool_is_not_flagged(monkeypatch):
-    monkeypatch.setattr(sh, "probe_searxng", _probe(
-        ["bing", "brave"], [("startpage", "CAPTCHA")], results=23))
+    monkeypatch.setattr(sh, "probe_searxng", _probe(["bing", "brave"], [("startpage", "CAPTCHA")], results=23))
     h = sh.pool_health(now=NOW)
     assert h["impaired"] is False
     assert "healthy" in h["degradation_note"]
@@ -205,20 +216,56 @@ def test_impairment_is_decided_by_engines_not_by_result_count(monkeypatch):
 
 # ── the weekend skip must not silence on-demand research ──────────────────
 
-def test_the_weekend_skip_applies_to_bulk_jobs_but_not_on_demand_research():
+
+def test_the_weekend_skip_applies_to_bulk_jobs_but_not_on_demand_research(tmp_path, monkeypatch):
     """Re-pointing web_research through the budgeted client made every
     interactive lookup return [] on a Saturday — the silent-empty failure this
     budget work exists to remove. The skip is a spend heuristic for scheduled
-    bulk jobs, whose subject matter does not move when the market is closed."""
-    import sys
-    from pathlib import Path
-    root = Path(__file__).resolve().parent.parent
-    if str(root / "scripts") not in sys.path:
-        sys.path.insert(0, str(root / "scripts"))
-    import brave_search as bs
+    bulk jobs, whose subject matter does not move when the market is closed.
 
-    assert bs.SKIP_WEEKENDS is True
-    assert "web_research" in bs.ON_DEMAND_CALLERS
-    assert "intel_query" in bs.ON_DEMAND_CALLERS
-    assert "portfolio_news" not in bs.ON_DEMAND_CALLERS
-    assert "aegis_social_sentiment" not in bs.ON_DEMAND_CALLERS
+    The exemption used to be a **caller-name allowlist** on
+    ``brave_search.ON_DEMAND_CALLERS``, so a new on-demand caller was silenced
+    until someone remembered to add its name. It is now keyed on the request's
+    declared **priority** in the canonical router, which every caller must
+    supply. This test asserts the behaviour the incident was about rather than
+    the constants that used to implement it, and additionally pins the part the
+    old assertions could not reach: that a deferral is distinguishable from an
+    empty result.
+    """
+    import sys
+    from datetime import datetime, timezone
+    from pathlib import Path
+
+    root_dir = Path(__file__).resolve().parent.parent
+    if str(root_dir) not in sys.path:
+        sys.path.insert(0, str(root_dir))
+    from scripts.lib import brave_research_router as R
+
+    monkeypatch.setenv("SEARCH_BUDGET_BRAVE_DAILY", "25")
+    monkeypatch.setenv("SEARCH_BUDGET_BRAVE_MONTHLY", "850")
+    saturday = datetime(2026, 9, 5, 12, 0, tzinfo=timezone.utc)
+
+    assert R.SKIP_WEEKENDS is True
+
+    # Scheduled bulk research is deferred...
+    bulk = R.evaluate_gates(
+        purpose=R.Purpose.LONG_TAIL_DISCOVERY,
+        priority=R.Priority.COLD_UNIVERSE,
+        caller="portfolio_news",
+        root=tmp_path,
+        now=saturday,
+    )
+    assert bulk is not None and bulk[0] is R.Status.DENIED_WEEKEND
+
+    # ...but on-demand / capital-backed research is never silenced.
+    for pri in (R.Priority.HELD_CAPITAL, R.Priority.URGENT_CATALYST):
+        assert (
+            R.evaluate_gates(
+                purpose=R.Purpose.EVIDENCE_GAP, priority=pri, caller="web_research", root=tmp_path, now=saturday
+            )
+            is None
+        ), f"{pri.name} was silenced on a weekend — the original incident"
+
+    # And the deferral is a named, explained outcome, not a bare [].
+    note = R.Outcome(status=R.Status.DENIED_WEEKEND).degradation_note()
+    assert "markets are closed" in note

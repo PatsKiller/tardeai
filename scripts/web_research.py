@@ -10,87 +10,80 @@ Usage:
     results = search_web("SCHD dividend growth 2026")
     brief = research_symbol_web("V", focus="earnings guidance")
 """
-import json, os, urllib.request, urllib.parse
+
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
-def _get_api_key() -> str:
-    key = os.environ.get("BRAVE_SEARCH_API_KEY", "")
-    if not key:
-        for line in (PROJECT_ROOT / ".env").read_text().splitlines():
-            if line.startswith("BRAVE_SEARCH_API_KEY="):
-                key = line.split("=", 1)[1].strip()
-    return key
-
-
 def search_web(query: str, count: int = 5, freshness: str = "pw") -> list:
-    """Search the web via Brave Search API.
+    """Search the web through the governed Brave research router.
 
     Args:
         query: Search query
         count: Number of results (max 20)
         freshness: 'pd' (past day), 'pw' (past week), 'pm' (past month), 'py' (past year)
 
-    Returns list of {title, url, description, age}
+    Returns a list of {title, url, description, age, attribution}. Results are
+    ``SEARCH_DISCOVERY`` artifacts, never verified fact.
+
+    Use :func:`search_web_outcome` when the caller needs to distinguish "nothing
+    was published" from "we were not allowed to ask" — this wrapper flattens
+    both to ``[]`` for the legacy callers that expect a list.
+
+    The private key read and ``urlopen`` that used to sit below the router
+    import are gone. They were reachable whenever the import failed, which made
+    the module fail *open*: an unimportable budget silently became an
+    unbudgeted call, which is the exact inversion the ledger exists to prevent.
     """
-    # Routed through the one budgeted Brave client. This module used to hold its
-    # own key read and its own urlopen, so none of its calls were ever counted:
-    # measured 2026-08-30 the ledger saw ~150 of ~1,000 monthly calls, and the
-    # budget alert reported "ok" at 17.6% while the provider was at its ceiling.
+    return search_web_outcome(query, count=count, freshness=freshness).get("results", [])
+
+
+def search_web_outcome(
+    query: str, count: int = 5, freshness: str = "pw", *, caller: str = "web_research", purpose: str = "EVIDENCE_GAP"
+) -> dict:
+    """Routed search that preserves *why* there are no results."""
     try:
-        from brave_search import search as _budgeted_search
+        from scripts.lib import brave_research_router as _router
     except ImportError:
         try:
-            from scripts.brave_search import search as _budgeted_search  # type: ignore
+            from lib import brave_research_router as _router  # type: ignore
         except ImportError:
-            _budgeted_search = None  # type: ignore
-    if _budgeted_search is not None:
-        return _budgeted_search(query, count=count, freshness=freshness,
-                                project_root=str(PROJECT_ROOT),
-                                caller="web_research")
+            return {
+                "results": [],
+                "status": "ROUTER_UNAVAILABLE",
+                "degraded": True,
+                "note": "Search router unavailable — denied (never fail open).",
+            }
 
-    key = _get_api_key()
-    if not key:
-        return []
-
-    params = urllib.parse.urlencode({
-        "q": query,
-        "count": min(count, 20),
-        "freshness": freshness,
-    })
-    url = f"https://api.search.brave.com/res/v1/web/search?{params}"
-
-    try:
-        req = urllib.request.Request(url, headers={
-            "Accept": "application/json",
-            "X-Subscription-Token": key,
-        })
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            data = json.loads(resp.read())
-            results = []
-            for r in data.get("web", {}).get("results", [])[:count]:
-                results.append({
-                    "title": r.get("title", ""),
-                    "url": r.get("url", ""),
-                    "description": r.get("description", ""),
-                    "age": r.get("age", ""),
-                })
-            return results
-    except urllib.error.HTTPError as e:
-        if e.code == 402:
-            print(f"[web-research] Brave API 402: Usage limit exceeded — add credits at search.brave.com/account")
-        else:
-            print(f"[web-research] Brave API HTTP {e.code}: {e.reason}")
-        return []
-    except Exception as e:
-        print(f"[web-research] Brave API error: {e}")
-        return []
+    outcome = _router.search(
+        query,
+        purpose=_router.Purpose(purpose),
+        priority=_router.Priority.WATCHLIST,
+        caller=caller,
+        count=count,
+        freshness=freshness,
+    )
+    return {
+        "results": [
+            {
+                "title": r.title,
+                "url": r.url,
+                "description": r.description,
+                "age": r.age,
+                "attribution": r.attribution,
+                "is_primary_source": r.is_primary_source,
+            }
+            for r in outcome.results
+        ],
+        "status": outcome.status.value,
+        "degraded": outcome.degraded,
+        "note": outcome.degradation_note(),
+        "fingerprint": outcome.fingerprint,
+    }
 
 
-def research_symbol_web(symbol: str, focus: str = "", count: int = 5,
-                        return_sources: bool = False):
+def research_symbol_web(symbol: str, focus: str = "", count: int = 5, return_sources: bool = False):
     """Research a symbol via web search and return formatted context.
 
     With return_sources=True returns (context_text, sources[]) so writers can
@@ -131,13 +124,15 @@ def research_symbol_web(symbol: str, focus: str = "", count: int = 5,
             lines.append(f"    {desc}")
     text = "\n".join(lines)
     if return_sources:
-        return text, [{"title": r["title"][:120], "url": r["url"], "as_of": r.get("age") or None}
-                      for r in all_results[:8]]
+        return text, [
+            {"title": r["title"][:120], "url": r["url"], "as_of": r.get("age") or None} for r in all_results[:8]
+        ]
     return text
 
 
 if __name__ == "__main__":
     import sys
+
     if len(sys.argv) > 1:
         query = " ".join(sys.argv[1:])
         print(f"Searching: {query}")

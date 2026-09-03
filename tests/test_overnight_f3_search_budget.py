@@ -7,6 +7,7 @@ Rails:
   * durable file under production_state_root/data/runtime — survives cron
   * concurrent processes cannot both spend the last unit (flocked try_consume)
 """
+
 from __future__ import annotations
 
 import json
@@ -26,6 +27,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 # ── durable path ───────────────────────────────────────────────────────────
 
+
 def test_ledger_path_is_under_runtime_not_a_release_checkout():
     """STORE SET: data/runtime via production_state_root — not portfolio-server/."""
     p = sb.budget_path()
@@ -39,6 +41,7 @@ def test_budget_path_honours_explicit_root(tmp_path: Path):
 
 
 # ── never fail open ────────────────────────────────────────────────────────
+
 
 def test_corrupt_ledger_denies_check_and_try_consume(tmp_path: Path):
     ledger = sb.budget_path(tmp_path)
@@ -72,6 +75,7 @@ def test_record_refuses_to_rebuild_a_corrupt_ledger_as_zeros(tmp_path: Path):
 
 # ── per provider daily + monthly ───────────────────────────────────────────
 
+
 def test_providers_are_independent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("SEARCH_BUDGET_BRAVE_DAILY", "2")
     for _ in range(2):
@@ -91,6 +95,7 @@ def test_monthly_cap_binds_when_daily_does_not(tmp_path: Path, monkeypatch: pyte
 
 
 # ── survives process (fresh interpreter) ───────────────────────────────────
+
 
 def test_counts_survive_a_fresh_python_process(tmp_path: Path):
     """Cron starts a new process every invocation. In-memory state is gone;
@@ -125,9 +130,7 @@ def test_counts_survive_a_fresh_python_process(tmp_path: Path):
     assert proc.stdout.strip().startswith("1 1")
 
 
-def test_try_consume_serializes_last_unit_across_processes(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-):
+def test_try_consume_serializes_last_unit_across_processes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """Two processes racing the last unit: exactly one may spend."""
     monkeypatch.setenv("SEARCH_BUDGET_BRAVE_DAILY", "1")
     monkeypatch.setenv("SEARCH_BUDGET_BRAVE_MONTHLY", "100")
@@ -165,17 +168,36 @@ def test_try_consume_serializes_last_unit_across_processes(
 
 # ── representative caller: brave_search never fail-open on missing shared ──
 
+
 def test_brave_search_source_denies_when_shared_unavailable():
-    """Representative caller wire (F3): ImportError of the shared module must
-    DENY — not assign ``_shared_check = None`` and fall through to a
-    release-relative local ledger."""
+    """Representative caller wire (F3): an unavailable budget must DENY — never
+    fall through to an unbudgeted client.
+
+    ``brave_search`` no longer owns a budget to check; it is a compatibility
+    shim over ``scripts.lib.brave_research_router``, which is the single
+    consumer of the ledger. The F3 invariant is unchanged and is asserted here
+    structurally, which is stronger than the old string match on
+    ``_check_budget``: the module must contain **no** provider URL and **no**
+    HTTP client of its own, so there is nothing left to fall through *to*.
+    """
+    import ast
+
     src = (ROOT / "scripts" / "brave_search.py").read_text(encoding="utf-8")
-    body = src.split("def _check_budget", 1)[1].split("def _record_shared", 1)[0]
-    assert "never fail open" in body
-    assert "_shared_check = None" not in body
-    assert "shared budget unavailable — DENY" in body
-    # Shared check is mandatory — verdict consulted unconditionally after import.
-    assert 'verdict = _shared_check("brave")' in body
+
+    assert "api.search.brave.com" not in src, "shim regained a direct provider URL — that is the bypass F3 removed"
+    for client in ("urlopen", "requests.get", "http.client", "httpx"):
+        assert client not in src, f"shim regained an HTTP client ({client})"
+
+    # The router is the only search path, and an unavailable router denies.
+    assert "brave_research_router" in src
+    assert "refusing to \n" not in src  # guard against a truncated edit
+    assert "refusing to " in src and "unbudgeted client" in src
+
+    tree = ast.parse(src)
+    fns = {n.name for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)}
+    assert {"search", "search_news", "get_budget_status"} <= fns, (
+        "compatibility surface was dropped rather than delegated"
+    )
 
 
 def test_guard_returns_false_when_over_so_callers_return_empty(tmp_path: Path, monkeypatch):

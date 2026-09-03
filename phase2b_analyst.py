@@ -8,30 +8,31 @@ Fixes:
 4. portfolio_weekly_report.py: inject analyst data + Brave search into prompts
 5. portfolio_weekly_report.py: add rebalancing WHY section with source citations
 """
+
 import ast, re
 from pathlib import Path
 
-root = Path('.')
+root = Path(".")
 ok = []
 fail = []
 
 # ═══════════════════════════════════════════════════════════
 # FIX 1: finviz_enrichment.py — add view 121, fix recom
 # ═══════════════════════════════════════════════════════════
-path = root / 'scripts/finviz_enrichment.py'
+path = root / "scripts/finviz_enrichment.py"
 c = path.read_text()
 
 # Add view 121 (Valuation) to VIEWS dict
-old_views_end = '''    171: {  # Technical — RSI, SMA, ATR, Beta (NO COOKIE NEEDED)
+old_views_end = """    171: {  # Technical — RSI, SMA, ATR, Beta (NO COOKIE NEEDED)
         1: "ticker", 2: "beta", 3: "atr",
         4: "sma20_pct", 5: "sma50_pct", 6: "sma200_pct",
         7: "week52_high_pct", 8: "week52_low_pct",
         9: "rsi", 10: "price", 11: "change_pct",
         12: "change_from_open_pct", 13: "gap_pct", 14: "volume",
     },
-}'''
+}"""
 
-new_views_end = '''    121: {  # Valuation — EPS, Forward PE, Target Price
+new_views_end = """    121: {  # Valuation — EPS, Forward PE, Target Price
         1: "ticker", 2: "market_cap_b3",
         3: "pe2", 4: "forward_pe", 5: "peg",
         6: "ps", 7: "pb", 8: "pc", 9: "pfcf",
@@ -47,7 +48,7 @@ new_views_end = '''    121: {  # Valuation — EPS, Forward PE, Target Price
         9: "rsi", 10: "price", 11: "change_pct",
         12: "change_from_open_pct", 13: "gap_pct", 14: "volume",
     },
-}'''
+}"""
 
 if old_views_end in c:
     c = c.replace(old_views_end, new_views_end)
@@ -65,8 +66,8 @@ else:
     fail.append("Fix 1b: SKIP_DUPLICATES marker not found")
 
 # Add view 121 to default views list
-old_default_views = 'views = [111, 131, 141, 171]  # skip 161 by default (fundamentals slow)'
-new_default_views = 'views = [111, 121, 131, 141, 171]  # 121=valuation/EPS, skip 161 (fundamentals slow)'
+old_default_views = "views = [111, 131, 141, 171]  # skip 161 by default (fundamentals slow)"
+new_default_views = "views = [111, 121, 131, 141, 171]  # 121=valuation/EPS, skip 161 (fundamentals slow)"
 if old_default_views in c:
     c = c.replace(old_default_views, new_default_views)
     ok.append("Fix 1c: View 121 added to default enrichment views")
@@ -75,10 +76,10 @@ else:
 
 # Fix recom parsing — it's stored as % string, need to strip % and parse as float
 # Add post-processing to convert recom to proper score + text label
-old_postproc_marker = '    return results'
+old_postproc_marker = "    return results"
 # Find it in the enrich function (not just any return)
 # Add analyst rating computation after all views are merged
-old_merge_end = '''    for sym, data in results.items():
+old_merge_end = """    for sym, data in results.items():
         # Compute derived fields
         price = data.get("price", 0) or 0
         sma200 = data.get("sma200_pct")
@@ -92,9 +93,9 @@ old_merge_end = '''    for sym, data in results.items():
             "above_200" if sma200 and sma200 > 0
             else "below_200" if sma200 and sma200 < 0
             else "at_200" if sma200 is not None else None
-        )'''
+        )"""
 
-new_merge_end = '''    for sym, data in results.items():
+new_merge_end = """    for sym, data in results.items():
         # Compute derived fields
         price = data.get("price", 0) or 0
         sma200 = data.get("sma200_pct")
@@ -124,7 +125,7 @@ new_merge_end = '''    for sym, data in results.items():
                 )
             except (ValueError, TypeError):
                 data["recom_score"] = None
-                data["analyst_rating"] = None'''
+                data["analyst_rating"] = None"""
 
 if old_merge_end in c:
     c = c.replace(old_merge_end, new_merge_end)
@@ -142,12 +143,12 @@ except SyntaxError as e:
 # ═══════════════════════════════════════════════════════════
 # FIX 2: portfolio_weekly_report.py — analyst intelligence section
 # ═══════════════════════════════════════════════════════════
-path = root / 'scripts/portfolio_weekly_report.py'
+path = root / "scripts/portfolio_weekly_report.py"
 c = path.read_text()
 
 # Add analyst intelligence builder function
-if '_build_analyst_intelligence' not in c:
-    insert_before = 'def _generate_narrative'
+if "_build_analyst_intelligence" not in c:
+    insert_before = "def _generate_narrative"
     analyst_func = '''def _build_analyst_intelligence(holdings_data: Dict, enrichment: Dict) -> Dict:
     """Build analyst intelligence: ratings, targets, rebalancing WHY, Brave commentary."""
     holdings = holdings_data.get("holdings", [])
@@ -274,57 +275,80 @@ def _build_rebalance_rationale(risk_data: Dict, holdings_data: Dict,
 
 
 def _get_brave_analyst_commentary(symbols: list, brave_api_key: str) -> Dict:
-    """Fetch recent analyst commentary from Brave Search for key holdings."""
-    if not brave_api_key or not symbols:
+    """Analyst commentary discovered via the governed Brave research router.
+
+    This function used to hold its own key read, its own ``urlopen`` and its own
+    cap ("top 5 to stay within 2000/mo free tier"). Three things were wrong with
+    that:
+
+    * **It bypassed the ledger entirely.** None of these calls were counted, so
+      the budget alarm reported a healthy percentage against an unrepresentative
+      sensor while the provider approached its ceiling.
+    * **The tier was invented, and disagreed with the other invented tier.**
+      ``brave_search`` hardcoded 1,000/month; this said 2,000. Measured live
+      2026-09-03 the plan publishes ``50;w=1, 0;w=2592000`` — 50 requests per
+      *second* and no metered monthly window at all. Neither number was real.
+    * **``except Exception: pass`` erased the reason.** A 401, a rate-limit and
+      a genuinely quiet week were indistinguishable, so a silent bypass looked
+      exactly like a stock nobody wrote about.
+
+    Commentary is discovery evidence: every snippet is attributed
+    ``SEARCH_DISCOVERY`` and is never analyst fact.
+    """
+    if not symbols:
         return {}
 
-    commentary = {}
-    import urllib.request, urllib.parse
-
-    for sym in symbols[:5]:  # Limit to top 5 to stay within 2000/mo free tier
+    try:
+        from scripts.lib import brave_research_router as _router
+    except ImportError:                                      # pragma: no cover
         try:
-            query = f"{sym} stock analyst rating price target 2026"
-            url = f"https://api.search.brave.com/res/v1/web/search?q={urllib.parse.quote(query)}&count=3&freshness=pw"
-            req = urllib.request.Request(url, headers={
-                "Accept": "application/json",
-                "Accept-Encoding": "gzip",
-                "X-Subscription-Token": brave_api_key
-            })
-            with urllib.request.urlopen(req, timeout=10) as r:
-                import json, gzip
-                data_raw = r.read()
-                try:
-                    data = json.loads(gzip.decompress(data_raw))
-                except Exception:
-                    data = json.loads(data_raw)
+            from lib import brave_research_router as _router  # type: ignore
+        except ImportError:
+            print("  [brave] research router unavailable — DENY (never fail open)")
+            return {}
 
-                results = data.get("web", {}).get("results", [])
-                snippets = []
-                for res in results[:3]:
-                    title = res.get("title","")
-                    desc  = res.get("description","")
-                    url_r = res.get("url","")
-                    # Only include from reputable sources
-                    src_domain = url_r.split("/")[2] if "/" in url_r else ""
-                    reputable = any(d in src_domain for d in [
-                        "reuters", "bloomberg", "wsj", "barrons", "marketwatch",
-                        "cnbc", "seekingalpha", "zacks", "tipranks", "benzinga",
-                        "fool", "finviz", "nasdaq", "investing"
-                    ])
-                    if reputable:
-                        snippets.append({
-                            "title": title[:100],
-                            "snippet": desc[:200],
-                            "source": src_domain,
-                            "url": url_r
-                        })
+    REPUTABLE = (
+        "reuters", "bloomberg", "wsj", "barrons", "marketwatch", "cnbc",
+        "seekingalpha", "zacks", "tipranks", "benzinga", "fool", "finviz",
+        "nasdaq", "investing",
+    )
 
-                if snippets:
-                    commentary[sym] = snippets
-        except Exception as _e:
-            pass  # Brave search optional — fail silently
+    commentary: Dict = {}
+    for sym in symbols:
+        outcome = _router.search(
+            f"{sym} stock analyst rating price target 2026",
+            purpose=_router.Purpose.EVIDENCE_GAP,
+            priority=_router.Priority.HELD_CAPITAL,
+            caller="phase2b_analyst",
+            count=3, freshness="pw",
+        )
+        if outcome.status in (_router.Status.DENIED_BUDGET,
+                              _router.Status.DENIED_RESERVE,
+                              _router.Status.DENIED_PURPOSE_QUOTA,
+                              _router.Status.BUDGET_UNAVAILABLE):
+            # Budget is a run-level condition, not a per-symbol one: stop rather
+            # than burn the loop re-asking a question already answered "no".
+            print(f"  [brave] {outcome.status.value} at {sym} — "
+                  f"{outcome.degradation_note()}")
+            break
+        if outcome.degraded:
+            print(f"  [brave] {sym}: {outcome.status.value} — "
+                  f"{outcome.degradation_note()}")
+            continue
+
+        snippets = [
+            {"title": r.title[:100], "snippet": r.description[:200],
+             "source": r.source_domain, "url": r.url,
+             "attribution": r.attribution}
+            for r in outcome.results
+            if any(d in (r.source_domain or "") for d in REPUTABLE)
+        ]
+        if snippets:
+            commentary[sym] = snippets
+            _router.record_adoption(outcome.fingerprint, purpose=outcome.purpose)
 
     return commentary
+
 
 
 '''
@@ -336,8 +360,8 @@ def _get_brave_analyst_commentary(symbols: list, brave_api_key: str) -> Dict:
 
 # Wire analyst data into the main run_weekly_report function
 # Find where data is loaded and add analyst + rebalance rationale
-old_data_load = '''    risk_data = _load_state("risk_management.json")'''
-new_data_load = '''    risk_data = _load_state("risk_management.json")
+old_data_load = """    risk_data = _load_state("risk_management.json")"""
+new_data_load = """    risk_data = _load_state("risk_management.json")
     holdings_raw = _load_state("holdings.json")
 
     # Build analyst intelligence
@@ -351,10 +375,10 @@ new_data_load = '''    risk_data = _load_state("risk_management.json")
     top_syms = [p["symbol"] for p in analyst_intel.get("positions", [])[:5]]
     brave_commentary = _get_brave_analyst_commentary(top_syms, brave_key)
     if brave_commentary:
-        print(f"[weekly-report] Brave: {len(brave_commentary)} symbols with commentary")'''
+        print(f"[weekly-report] Brave: {len(brave_commentary)} symbols with commentary")"""
 
-if old_data_load in c and '_build_analyst_intelligence' in c:
-    if 'analyst_intel' not in c:
+if old_data_load in c and "_build_analyst_intelligence" in c:
+    if "analyst_intel" not in c:
         c = c.replace(old_data_load, new_data_load)
         ok.append("Fix 2b: Analyst data wired into weekly run")
     else:
@@ -363,19 +387,19 @@ else:
     fail.append("Fix 2b: risk_data marker not found")
 
 # Add analyst section to JSON output
-old_json_end = '''        "narratives": narratives,
+old_json_end = """        "narratives": narratives,
         "html_path": str(html_path),
         "docx_path": str(docx_path) if docx_path else "",
-    }'''
-new_json_end = '''        "narratives": narratives,
+    }"""
+new_json_end = """        "narratives": narratives,
         "html_path": str(html_path),
         "docx_path": str(docx_path) if docx_path else "",
         "analyst_positions": analyst_intel.get("positions", [])[:10] if 'analyst_intel' in dir() else [],
         "rebal_rationale": rebal_rationale[:8] if 'rebal_rationale' in dir() else [],
         "brave_commentary": brave_commentary if 'brave_commentary' in dir() else {},
-    }'''
+    }"""
 
-if old_json_end in c and 'analyst_positions' not in c:
+if old_json_end in c and "analyst_positions" not in c:
     c = c.replace(old_json_end, new_json_end)
     ok.append("Fix 2c: Analyst data added to weekly JSON")
 else:
@@ -383,9 +407,9 @@ else:
 
 # Add analyst-aware prompt to _generate_narrative
 # Add a 6th narrative section for analyst intelligence
-old_action_return = '''    narratives["action"] = _ollama(prompt5)
+old_action_return = """    narratives["action"] = _ollama(prompt5)
 
-    return narratives'''
+    return narratives"""
 
 new_action_return = '''    narratives["action"] = _ollama(prompt5)
 
@@ -451,15 +475,17 @@ try:
 except SyntaxError as e:
     fail.append(f"❌ portfolio_weekly_report.py SYNTAX ERROR line {e.lineno}: {e.msg}")
     lines = c.splitlines()
-    for i in range(max(0,e.lineno-4), min(len(lines),e.lineno+3)):
-        fail.append(f"  {i+1}: {lines[i]}")
+    for i in range(max(0, e.lineno - 4), min(len(lines), e.lineno + 3)):
+        fail.append(f"  {i + 1}: {lines[i]}")
 
 # ═══════════════════════════════════════════════════════════
 # REPORT
 # ═══════════════════════════════════════════════════════════
-print("\n" + "="*60)
+print("\n" + "=" * 60)
 print("PHASE 2b RESULTS — Analyst Intelligence")
-print("="*60)
-for msg in ok:   print(f"  ✅ {msg}")
-for msg in fail: print(f"  ❌ {msg}")
+print("=" * 60)
+for msg in ok:
+    print(f"  ✅ {msg}")
+for msg in fail:
+    print(f"  ❌ {msg}")
 print(f"\n{len(ok)} OK, {len(fail)} failed")
