@@ -12,6 +12,7 @@ import {
   worstTransport,
   stateLabel,
   stateAriaLabel,
+  freshnessFromOverviewObservation,
 } from './observationEnvelope.ts'
 
 declare const process: { exit(code?: number): never; env: Record<string, string | undefined> }
@@ -187,6 +188,18 @@ function check(name: string, cond: boolean) {
   check('every transport/freshness pair has a non-empty aria label', ok)
   check('fresh+OK speaks as current', stateAriaLabel('OK', 'FRESH') === 'data current')
   check('partial speaks its cause', stateAriaLabel('PARTIAL', 'FRESH').includes('mixed sources'))
+}
+
+// ── backend observation block reconciliation ─────────────────────────────────
+{
+  check('server FRESH maps', freshnessFromOverviewObservation({ surface_status: 'FRESH' }) === 'FRESH')
+  check('server STALE maps', freshnessFromOverviewObservation({ surface_status: 'stale' }) === 'STALE')
+  check('absent observation fails closed', freshnessFromOverviewObservation(null) === 'UNKNOWN')
+  check('unrecognised status fails closed', freshnessFromOverviewObservation({ surface_status: 'weird' }) === 'UNKNOWN')
+  check('fallback used only when observation absent',
+    freshnessFromOverviewObservation(undefined, 'FRESH') === 'FRESH')
+  check('server STALE beats fallback FRESH',
+    freshnessFromOverviewObservation({ surface_status: 'STALE' }, 'FRESH') === 'STALE')
 }
 
 console.log(`\nobservationEnvelope: ${pass} passed, ${fail} failed`)

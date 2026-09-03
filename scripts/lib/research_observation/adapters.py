@@ -206,3 +206,36 @@ def wrap_error(
         source_hash=payload_source_hash({"status": "ERROR", "error": error}),
         payload={"status": "ERROR", "error": error},
     )
+
+
+def project_to_canonical_clocks(obs: ResearchObservation) -> dict[str, Any]:
+    """Map ResearchObservation clocks onto the backend ObservationEnvelope names.
+
+    Mechanical reconciliation for Command Center: research and portfolio use the
+    same four-clock vocabulary (provider / observed / received / normalized /
+    business_date) without composing ResearchObservation into the portfolio
+    envelope object.
+    """
+    return {
+        "dataset": "research",
+        "source_identity": obs.source_identity,
+        "provider_timestamp": obs.provider_at,
+        "observed_at": obs.observed_at,
+        "received_at": obs.received_at,
+        "normalized_at": obs.normalized_at,
+        "business_date": obs.business_date,
+        "market_session": obs.session or "UNKNOWN",
+        "freshness": {
+            "status": str(
+                obs.freshness_status.value if hasattr(obs.freshness_status, "value") else obs.freshness_status
+            )
+        },
+        "quality": str(obs.quality_status.value if hasattr(obs.quality_status, "value") else obs.quality_status),
+        "entitlement": str(
+            obs.entitlement_status.value if hasattr(obs.entitlement_status, "value") else obs.entitlement_status
+        ),
+        "fallback": str(obs.fallback_state.value if hasattr(obs.fallback_state, "value") else obs.fallback_state),
+        "trace_id": obs.trace_id,
+        "source_hash": obs.source_hash,
+        "contract_bridge": "research_observation→canonical_observation.clocks",
+    }

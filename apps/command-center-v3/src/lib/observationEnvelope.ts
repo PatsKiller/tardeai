@@ -138,6 +138,20 @@ export function formatBusinessDate(businessDate: string | null): string {
   return businessDate ? `session ${businessDate}` : 'session UNDATED'
 }
 
+/**
+ * Prefer the backend canonical observation block when present.
+ * Maps server surface_status (FRESH|STALE|UNKNOWN|…) onto the client enum;
+ * fails closed to UNKNOWN for any unrecognised or absent verdict.
+ */
+export function freshnessFromOverviewObservation(
+  observation: { surface_status?: string | null } | null | undefined,
+  fallback?: FreshnessStatus,
+): FreshnessStatus {
+  const raw = (observation?.surface_status ?? '').toString().trim().toUpperCase()
+  if (raw === 'FRESH' || raw === 'STALE' || raw === 'UNKNOWN') return raw
+  return fallback ?? 'UNKNOWN'
+}
+
 /** Build an envelope, failing closed on absence. */
 export function makeEnvelope<T>(input: {
   identity: string

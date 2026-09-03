@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { makeEnvelope, coalesceEnvelopes, stateLabel, stateAriaLabel, formatBusinessDate } from '../lib/observationEnvelope.ts'
+import { makeEnvelope, coalesceEnvelopes, stateLabel, stateAriaLabel, formatBusinessDate, freshnessFromOverviewObservation } from '../lib/observationEnvelope.ts'
 import { useApi } from '../hooks/useApi'
 import MarketMoversBoard from '../components/home/MarketMoversBoard'
 import BookTreemap from '../components/home/BookTreemap'
@@ -133,20 +133,22 @@ export default function HomeHub({ onDrill }: Props) {
   // discarded it, and was never read -- Home had no client freshness logic at
   // all while appearing to have some.
 
-  // The server's own verdict is echoed, never recomputed here. But a status
-  // with no completion timestamp behind it cannot be corroborated, so it is
-  // rendered UNKNOWN rather than as an affirmative "fresh".
+  // Prefer overview.observation.surface_status (computed:canonical_observation).
+  // Legacy fallback only when the observation block is absent: a bare
+  // pipeline_status string with no completion stamp stays UNKNOWN.
+  const serverFreshness = freshnessFromOverviewObservation(
+    overview?.observation,
+    (pipelineStatus === 'fresh' && pipelineCompleted) ? 'FRESH' : 'UNKNOWN',
+  )
+  const holdingsEnv = overview?.observation?.envelopes?.holdings
   const freshnessEnvelope = makeEnvelope<string>({
-    identity: 'overview.pipeline',
-    sourceLabel: '/api/v2/overview.pipeline_status',
+    identity: 'overview.observation',
+    sourceLabel: '/api/v2/overview.observation.surface_status',
     value: pipelineStatus ?? null,
-    businessDate: dataAsOf ?? null,
-    observedAt: lastRepriced ?? null,
+    businessDate: holdingsEnv?.business_date ?? dataAsOf ?? null,
+    observedAt: holdingsEnv?.observed_at ?? lastRepriced ?? null,
     lastRefreshAt: pipelineCompleted ?? null,
-    // A status string with no completion timestamp behind it is uncorroborated.
-    // Backend F2 proved this field is written as an unconditional literal, so
-    // "fresh" alone is not evidence of anything.
-    freshness: (pipelineStatus === 'fresh' && pipelineCompleted) ? 'FRESH' : 'UNKNOWN',
+    freshness: serverFreshness,
   })
 
   const freshnessChip = stateLabel(freshnessEnvelope.transport, freshnessEnvelope.freshness)

@@ -41,6 +41,7 @@ from .adapters import (
     wrap_no_data,
     wrap_gap,
     wrap_error,
+    project_to_canonical_clocks,
 )
 from .consumer_gate import (
     ConsumerGateResult,
@@ -70,6 +71,7 @@ __all__ = [
     "wrap_no_data",
     "wrap_gap",
     "wrap_error",
+    "project_to_canonical_clocks",
     "ConsumerGateResult",
     "gate_for_consumer",
     "assert_eligible_or_raise",

@@ -592,6 +592,21 @@ GATES = [
         ],
     ),
     (
+        "research_observation_contract",
+        [
+            "tests/test_research_observation_contract.py",
+            "tests/test_research_eligibility_policy.py",
+            "tests/test_research_observation_join.py",
+            "tests/test_research_consumer_gate.py",
+        ],
+    ),
+    (
+        "cc_runtime_harness",
+        [
+            "tests/test_cc_runtime_harness.py",
+        ],
+    ),
+    (
         "wake_writer_stamp",
         [
             "tests/test_wake_writer_stamp.py",

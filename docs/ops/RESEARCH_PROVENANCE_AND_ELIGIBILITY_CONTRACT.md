@@ -1,11 +1,11 @@
 # Research Provenance and Eligibility Contract
 
-Status: ACTIVE  
-Authority: READ_ONLY_ADVISORY  
-MBI_BEHAVIOR: 0  
-Schema: ResearchObservation@v1  
-As of: 2026-09-02  
-Campaign: cc-remediation-v1-20260902T224409Z  
+Status: ACTIVE
+Authority: READ_ONLY_ADVISORY
+MBI_BEHAVIOR: 0
+Schema: ResearchObservation@v1
+As of: 2026-09-02
+Campaign: cc-remediation-v1-20260902T224409Z
 
 ## Purpose
 

@@ -29,4 +29,3 @@ Each control must be detected for the expected reason.
 ## attempted_live_write — PASS
 - expected: POST refused to live/preview; harness detects attempt
 - detected: True
-
