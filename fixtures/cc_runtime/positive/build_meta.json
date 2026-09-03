@@ -1,9 +1,10 @@
 {
-  "git_sha": "cd049cb4eb20add7a24de28b5a5e42eafcc4d673",
-  "build_sha": "cd049cb4eb20",
-  "source_sha": "cd049cb4eb20add7a24de28b5a5e42eafcc4d673",
+  "git_sha": "5da658497bf683e9093dbf28278f281c6b62c52f",
+  "build_sha": "5da658497bf683e9093dbf28278f281c6b62c52f",
+  "source_sha": "5da658497bf683e9093dbf28278f281c6b62c52f",
   "ui_version": "3.14+harness",
   "built_at": "2026-09-02T21:00:00Z",
-  "release_label": "hermetic-fixture",
-  "branch": "verification"
+  "release_label": "integration-candidate",
+  "branch": "integration/cc-truth-cc-remediation-v1-20260902T224409Z",
+  "release_sha": "5da658497bf683e9093dbf28278f281c6b62c52f"
 }
