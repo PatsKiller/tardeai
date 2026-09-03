@@ -37,8 +37,17 @@ from lib.quote_selection_contract import (  # noqa: E402
 )
 
 
-def _cand(provider, *, value=100.0, health="ok", freshness="CURRENT",
-          entitlement="proven", authenticated=True, obs=None, src_hash=None):
+def _cand(
+    provider,
+    *,
+    value=100.0,
+    health="ok",
+    freshness="CURRENT",
+    entitlement="proven",
+    authenticated=True,
+    obs=None,
+    src_hash=None,
+):
     return {
         "provider": provider,
         "value": value,
@@ -52,6 +61,7 @@ def _cand(provider, *, value=100.0, health="ok", freshness="CURRENT",
 
 
 # ── provider capability matrix is data, not prose ────────────────────────────
+
 
 def test_moomoo_is_data_only_and_never_a_quote_fallback():
     cap = provider_capability("moomoo")
@@ -70,18 +80,21 @@ def test_broker_account_providers_are_scope_own_positions():
 
 # ── eligibility: fail closed on every axis ───────────────────────────────────
 
+
 @pytest.mark.parametrize(
     "kw,expect",
     [
-        ({"entitlement": None}, False),          # unentitled
-        ({"authenticated": False}, False),       # unauthenticated
-        ({"health": "unknown"}, False),          # unhealthy
-        ({"health": "unavailable"}, False),      # unhealthy
-        ({"freshness": "UNAVAILABLE"}, False),   # no freshness
-        ({"value": None}, False),                # no price
-        ({"value": 0.0}, False),                 # non-positive price
-        ({"entitlement": "proven", "authenticated": True, "health": "ok",
-          "freshness": "CURRENT", "value": 100.0}, True),  # fully proven
+        ({"entitlement": None}, False),  # unentitled
+        ({"authenticated": False}, False),  # unauthenticated
+        ({"health": "unknown"}, False),  # unhealthy
+        ({"health": "unavailable"}, False),  # unhealthy
+        ({"freshness": "UNAVAILABLE"}, False),  # no freshness
+        ({"value": None}, False),  # no price
+        ({"value": 0.0}, False),  # non-positive price
+        (
+            {"entitlement": "proven", "authenticated": True, "health": "ok", "freshness": "CURRENT", "value": 100.0},
+            True,
+        ),  # fully proven
     ],
 )
 def test_eligibility_axes(kw, expect):
@@ -90,26 +103,32 @@ def test_eligibility_axes(kw, expect):
 
 
 def test_data_only_provider_is_never_eligible():
-    rec = candidate_eligibility("moomoo", authenticated=True, entitlement="proven",
-                                health="ok", freshness="CURRENT", value=123.0)
+    rec = candidate_eligibility(
+        "moomoo", authenticated=True, entitlement="proven", health="ok", freshness="CURRENT", value=123.0
+    )
     assert rec["eligible"] is False
     assert rec["rejected_reason"] == "role=data_only"
 
 
 def test_unknown_provider_is_not_eligible():
-    rec = candidate_eligibility("ghost", authenticated=True, entitlement="proven",
-                                health="ok", freshness="CURRENT", value=123.0)
+    rec = candidate_eligibility(
+        "ghost", authenticated=True, entitlement="proven", health="ok", freshness="CURRENT", value=123.0
+    )
     assert rec["eligible"] is False
     assert rec["rejected_reason"] == "provider_unknown"
 
 
 # ── selection: Finviz preferred, deterministic fallback, fail closed ─────────
 
+
 def test_finviz_selected_when_eligible():
-    sel = select_quote("AAPL", [
-        _cand("finviz", value=201.5, obs="2026-09-03T14:30:00Z"),
-        _cand("yahoo_cache", value=201.2),
-    ])
+    sel = select_quote(
+        "AAPL",
+        [
+            _cand("finviz", value=201.5, obs="2026-09-03T14:30:00Z"),
+            _cand("yahoo_cache", value=201.2),
+        ],
+    )
     assert sel["status"] == STATUS_SELECTED
     assert sel["selected_provider"] == "finviz"
     assert sel["selected_value"] == 201.5
@@ -118,12 +137,14 @@ def test_finviz_selected_when_eligible():
 
 
 def test_finviz_unavailable_falls_back_to_eligible_alternate_with_reason():
-    sel = select_quote("AAPL", [
-        _cand("finviz", value=None, health="unavailable"),
-        _cand("yahoo_cache", value=199.9, obs="2026-09-03T14:30:00Z"),
-        _cand("schwab", value=199.8, authenticated=True, entitlement="proven",
-              health="ok", freshness="CURRENT"),
-    ])
+    sel = select_quote(
+        "AAPL",
+        [
+            _cand("finviz", value=None, health="unavailable"),
+            _cand("yahoo_cache", value=199.9, obs="2026-09-03T14:30:00Z"),
+            _cand("schwab", value=199.8, authenticated=True, entitlement="proven", health="ok", freshness="CURRENT"),
+        ],
+    )
     assert sel["selected_provider"] == "yahoo_cache"
     assert sel["selected_value"] == 199.9
     assert sel["fallback_used"] is True
@@ -132,11 +153,14 @@ def test_finviz_unavailable_falls_back_to_eligible_alternate_with_reason():
 
 
 def test_all_candidates_unavailable_is_explicit_unavailable_no_price():
-    sel = select_quote("AAPL", [
-        _cand("finviz", value=None, health="unavailable"),
-        _cand("yahoo_cache", value=None, health="unavailable"),
-        _cand("schwab", value=None, health="unavailable"),
-    ])
+    sel = select_quote(
+        "AAPL",
+        [
+            _cand("finviz", value=None, health="unavailable"),
+            _cand("yahoo_cache", value=None, health="unavailable"),
+            _cand("schwab", value=None, health="unavailable"),
+        ],
+    )
     assert sel["status"] == STATUS_UNAVAILABLE
     assert sel["selected_provider"] is None
     assert sel["selected_value"] is None
@@ -145,12 +169,14 @@ def test_all_candidates_unavailable_is_explicit_unavailable_no_price():
 
 def test_ineligible_provider_is_never_selected_even_if_offered():
     # moomoo offers a price but is data-only → must be rejected, not selected.
-    sel = select_quote("AAPL", [
-        _cand("finviz", value=None, health="unavailable"),
-        _cand("moomoo", value=777.0, authenticated=True, entitlement="proven",
-              health="ok", freshness="CURRENT"),
-        _cand("yahoo_cache", value=None, health="unavailable"),
-    ])
+    sel = select_quote(
+        "AAPL",
+        [
+            _cand("finviz", value=None, health="unavailable"),
+            _cand("moomoo", value=777.0, authenticated=True, entitlement="proven", health="ok", freshness="CURRENT"),
+            _cand("yahoo_cache", value=None, health="unavailable"),
+        ],
+    )
     assert sel["status"] == STATUS_UNAVAILABLE
     assert sel["selected_value"] is None
     # The moomoo candidate must be present but ineligible.
@@ -159,9 +185,12 @@ def test_ineligible_provider_is_never_selected_even_if_offered():
 
 
 def test_stale_selected_quote_degrades_not_fabricates():
-    sel = select_quote("AAPL", [
-        _cand("finviz", value=201.5, freshness=FRESHNESS_STALE),
-    ])
+    sel = select_quote(
+        "AAPL",
+        [
+            _cand("finviz", value=201.5, freshness=FRESHNESS_STALE),
+        ],
+    )
     assert sel["selected_provider"] == "finviz"
     assert sel["selected_value"] == 201.5
     assert sel["status"] == STATUS_DEGRADED
@@ -175,6 +204,7 @@ def test_observation_time_is_carried_through():
 
 
 # ── aggregate projection (header/portfolio surface) ─────────────────────────
+
 
 def test_project_finviz_primary_no_fallback():
     proj = project_quote_selection(

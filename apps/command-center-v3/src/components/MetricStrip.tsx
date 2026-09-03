@@ -4,6 +4,7 @@ import { fmt$ } from '../lib/format'
 import { pricingStampLine } from '../lib/pricingStamp'
 import { runLabel } from '../lib/homeLabels'
 import { overviewSurfaceFreshness, tradeAiSurfaceFreshness } from '../lib/surfaceFreshness'
+import { renderSetupCounts } from '../lib/setupRunSummary'
 import { BB, T, TYPE } from '../lib/watchTokens'
 import type { DrillContext } from './DetailDrawer'
 
@@ -39,9 +40,6 @@ export default function MetricStrip({ onDrill }: Props) {
   const winTrades = overview?.journal?.trade_count
   const regimeLabel = regime?.regime_label ?? '—'
   const regimeConf = regime?.confidence
-  const goCount = tradeAi?.go_count ?? 0
-  const waitCount = tradeAi?.wait_count ?? 0
-  const avoidCount = tradeAi?.avoid_count ?? 0
   // Prefer API stale + cached_at over session-normalized run_date (heal can label "today"
   // while the cache stays empty for days — census/bisect 2026-08-28).
   const setupsFresh = tradeAiSurfaceFreshness(tradeAi)
@@ -106,28 +104,22 @@ export default function MetricStrip({ onDrill }: Props) {
     return ` · quotes ${quoteSel.selected_provider ?? '—'}`
   })()
 
-  // Canonical run-scoped summary (cc-header-truth-v2 Phase 2 C). One taxonomy,
-  // one reconciliation, identical to the Trading page. The population is shown
-  // alongside the counts so "1 GO · 0 WAIT · 24 NOGO" is never read as the whole
-  // universe when it is 25 classified of 352 scanned.
-  const setupSummary = tradeAi?.setup_run_summary
+  // Canonical run-scoped summary (cc-header-truth-v2 corrective pass). One
+  // taxonomy, one reconciliation, identical to HomeHub and the Trading page.
+  // setup_run_summary is the SOLE source of the GO/WAIT/NOGO counts: the legacy
+  // go_count / wait_count / avoid_count fallback is gone, so a mixed-source or
+  // differently-scoped count can never masquerade as the same number. The
+  // GO+WAIT+NOGO == classified_count invariant is re-derived client-side and a
+  // PARTIAL / COUNT_MISMATCH verdict is surfaced, never hidden.
+  const setupRun = renderSetupCounts(tradeAi?.setup_run_summary, {
+    stale: scanStale,
+    staleLabel: setupsFresh.surfaceLabel || `STALE · ${setupsRun}`,
+  })
   const setupsValue = (() => {
-    if (scanStale) {
-      // Visible STALE on the value itself — not only a tooltip (Wave 3 census finding).
-      return setupsFresh.surfaceLabel || `STALE · ${setupsRun}`
-    }
-    if (setupSummary?.classified_count != null && setupSummary?.scanned_count != null) {
-      const counts = `${setupSummary.go_count} GO · ${setupSummary.wait_count} WAIT · ${setupSummary.nogo_count} NOGO`
-      const pop = `${setupSummary.classified_count} classified / ${setupSummary.scanned_count} scanned`
-      if (setupSummary.count_integrity && setupSummary.count_integrity !== 'RECONCILED') {
-        return `${counts} · ${setupSummary.count_integrity}`
-      }
-      return `${counts} · ${pop}`
-    }
-    if (tradeAi?.latest_run_label || tradeAi?.run_label) {
-      return `${goCount} GO · ${waitCount} WAIT · ${avoidCount} NOGO`
-    }
-    return '— before first run'
+    if (scanStale) return setupRun.counts
+    const pop = setupRun.population
+    const integrity = setupRun.degraded ? ` · ${setupRun.integrity}` : ''
+    return pop ? `${setupRun.counts} · ${pop}${integrity}` : `${setupRun.counts}${integrity}`
   })()
 
   const tiles = [
@@ -200,12 +192,12 @@ export default function MetricStrip({ onDrill }: Props) {
       // Extra amber mark when value already contains STALE (keeps label chip + as_of visible).
       stale: scanStale ? `${setupsAsOfMark || ' · stale'}` : null,
       asOf: setupsFresh.asOf,
-      color: scanStale ? BB.amber : goCount > 0 ? BB.green : 'var(--text3)',
+      color: scanStale ? BB.amber : setupRun.degraded ? BB.amber : setupRun.goPositive ? BB.green : 'var(--text3)',
       tip: scanStale
         ? `Scanner surface is STALE (${setupsFresh.reason || 'prior/empty cache'}). ${setupsRun}${setupsAsOfMark}. HTTP 200 is not a live claim — Trading → Trade AI shows the same payload.`
-        : `Latest scanner run · ${setupSummary?.classified_count ?? goCount} classified / ${setupSummary?.scanned_count ?? '?'} scanned · run ${setupSummary?.run_id ?? tradeAi?.run_id ?? setupsRun}${setupSummary?.count_integrity && setupSummary.count_integrity !== 'RECONCILED' ? ` · ${setupSummary.count_integrity}` : ''}`,
-      drill: { title: 'Trade Setups', subtitle: scanStale ? (setupsFresh.surfaceLabel || `STALE — last ${setupsRun}`) : `Latest scanner run · run ${setupSummary?.run_id ?? tradeAi?.run_id ?? ''} · ${setupSummary?.classified_count ?? goCount} classified / ${setupSummary?.scanned_count ?? '?'} scanned`, endpoint: '/api/v2/trade-ai',
-        rows: tradeAi ? [{ scope: scanStale ? 'stale' : 'latest run only', run_id: tradeAi.run_id, setup_run_summary: tradeAi.setup_run_summary, go_count: tradeAi.go_count, wait_count: tradeAi.wait_count, avoid_count: tradeAi.avoid_count, universe_go: tradeAi.universe_go, universe_wait: tradeAi.universe_wait, universe_nogo: tradeAi.universe_nogo, run_label: tradeAi.run_label, run_date: tradeAi.run_date, cached_at: tradeAi.cached_at, cache_age_sec: tradeAi.cache_age_sec, stale: tradeAi.stale, surface_stale: setupsFresh.stale, surface_reason: setupsFresh.reason, vix: tradeAi.vix, vix_source: tradeAi.vix_source, market_regime: tradeAi.market_regime, run_health_status: tradeAi.run_health_status }] : [] },
+        : `Latest scanner run · ${setupRun.population || '—'}${setupRun.runId ? ` · run ${setupRun.runId}` : ''}${setupRun.runTimestamp ? ` · ${setupRun.runTimestamp}` : ''}${setupRun.integrity !== 'RECONCILED' ? ` · ${setupRun.integrity}` : ''}`,
+      drill: { title: 'Trade Setups', subtitle: scanStale ? (setupsFresh.surfaceLabel || `STALE — last ${setupsRun}`) : `Latest scanner run · ${setupRun.population || '—'}${setupRun.runId ? ` · run ${setupRun.runId}` : ''}`, endpoint: '/api/v2/trade-ai',
+        rows: tradeAi ? [{ scope: scanStale ? 'stale' : 'latest run only', run_id: tradeAi.run_id, setup_run_summary: tradeAi.setup_run_summary, universe_go: tradeAi.universe_go, universe_wait: tradeAi.universe_wait, universe_nogo: tradeAi.universe_nogo, run_label: tradeAi.run_label, run_date: tradeAi.run_date, cached_at: tradeAi.cached_at, cache_age_sec: tradeAi.cache_age_sec, stale: tradeAi.stale, surface_stale: setupsFresh.stale, surface_reason: setupsFresh.reason, vix: tradeAi.vix, vix_source: tradeAi.vix_source, market_regime: tradeAi.market_regime, run_health_status: tradeAi.run_health_status }] : [] },
     },
   ]
 

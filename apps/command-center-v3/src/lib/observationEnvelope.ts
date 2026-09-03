@@ -260,6 +260,64 @@ export function stateLabel(
 }
 
 /**
+ * Retain a last-good observation after a failed or 304 refresh.
+ *
+ * The whole envelope travels together: value, identity, sourceLabel, business
+ * date, observation clock, last-refresh clock, freshness and note are preserved
+ * verbatim — a 304 may advance `receivedAt` and nothing else. Dropping the
+ * provider/observed-time/quality in favour of just the value is exactly the
+ * defect this replaces: a retained number must not look like a fresh one.
+ */
+export function retainObservation<T>(
+  env: ObservationEnvelope<T>,
+  receivedAtIso: string,
+): ObservationEnvelope<T> {
+  return {
+    ...env,
+    receivedAt: normIso(receivedAtIso),
+    transport: worstTransport(env.transport, 'RETAINED'),
+    note: env.note ?? 'retained last-good body',
+  }
+}
+
+/**
+ * Age of an observation from its DATA clock, in hours; null when undatable.
+ *
+ * The data clock is observedAt → lastRefreshAt → business-date session instant
+ * → receivedAt, in that order. A 304 only moves receivedAt, so the age keeps
+ * growing from the original observation: transport liveness is not data
+ * freshness.
+ */
+export function observationAgeHours<T>(
+  env: ObservationEnvelope<T>,
+  nowMs: number = Date.now(),
+): number | null {
+  const ts =
+    env.observedAt
+    || env.lastRefreshAt
+    || (env.businessDate ? businessDateToSessionInstant(env.businessDate)?.toISOString() ?? null : null)
+    || env.receivedAt
+  if (!ts) return null
+  const ms = nowMs - new Date(ts).getTime()
+  return ms >= 0 ? ms / 3_600_000 : null
+}
+
+/**
+ * Whether an observation has aged past a staleness threshold (hours) as of
+ * `nowMs`, using its DATA clock. A retained observation ages with every 304;
+ * once it crosses the threshold it is stale no matter how recently the 304
+ * arrived.
+ */
+export function isObservationStale<T>(
+  env: ObservationEnvelope<T>,
+  nowMs: number = Date.now(),
+  thresholdHours: number,
+): boolean {
+  const age = observationAgeHours(env, nowMs)
+  return age != null && age >= thresholdHours
+}
+
+/**
  * Accessible description for the state chip. Screen readers get the same
  * distinction sighted users get from colour.
  */

@@ -1,24 +1,7 @@
 /** Drop-in Home trust render helpers — keeps HomeHub patches small and testable. */
 import { Link } from 'react-router-dom'
-import { isValidBriefingProse, briefingProse, runLabel, isScanStale } from '../../lib/homeLabels'
+import { isValidBriefingProse, briefingProse } from '../../lib/homeLabels'
 import { BB, T, TYPE } from '../../lib/watchTokens'
-
-export function setupStateLabel(opts: {
-  go: number; wait: number; avoid: number
-  runLabel?: string | null; runDate?: string | null
-}): { value: string; color: string } {
-  const stale = isScanStale(opts.runDate)
-  if (stale) {
-    return {
-      value: `STALE · ${runLabel(opts.runLabel, opts.runDate)}`,
-      color: BB.amber,
-    }
-  }
-  return {
-    value: `${opts.go} GO · ${opts.wait} WAIT · ${opts.avoid} NO GO`,
-    color: opts.go > 0 ? BB.green : 'var(--text2)',
-  }
-}
 
 export function HermesGatewayLine({ status, loopActive }: { status?: string; loopActive?: boolean }) {
   const ok = status === 'ok'

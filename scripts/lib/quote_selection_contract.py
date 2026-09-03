@@ -244,10 +244,7 @@ def select_quote(
                 fallback_used = True
                 pref_rec = by_provider.get(preferred)
                 if pref_rec is not None:
-                    fallback_reason = (
-                        f"{preferred} rejected: "
-                        + (pref_rec.get("rejected_reason") or "unavailable")
-                    )
+                    fallback_reason = f"{preferred} rejected: " + (pref_rec.get("rejected_reason") or "unavailable")
                 else:
                     fallback_reason = f"{preferred} not offered as a candidate"
                 break
@@ -255,9 +252,7 @@ def select_quote(
     if selected is None:
         # No eligible candidate: fail closed. Never fabricate a price.
         pref_reason = (
-            by_provider.get(preferred, {}).get("rejected_reason")
-            if preferred in by_provider
-            else "not_offered"
+            by_provider.get(preferred, {}).get("rejected_reason") if preferred in by_provider else "not_offered"
         )
         return {
             "contract_version": QUOTE_SELECTION_CONTRACT_VERSION,
@@ -278,9 +273,7 @@ def select_quote(
 
     # Whole-envelope freshness: the selected provider's freshness.
     freshness = selected.get("freshness")
-    quality = (
-        "DEGRADED" if fallback_used or freshness == FRESHNESS_STALE else "OK"
-    )
+    quality = "DEGRADED" if fallback_used or freshness == FRESHNESS_STALE else "OK"
     status = STATUS_DEGRADED if (fallback_used or freshness == FRESHNESS_STALE) else STATUS_SELECTED
 
     selected_value = selected.get("value")
@@ -288,7 +281,8 @@ def select_quote(
     if not src_hash and selected_value is not None:
         blob = json.dumps(
             [sym, selected["provider"], selected_value, selected.get("observation_time")],
-            sort_keys=True, default=str,
+            sort_keys=True,
+            default=str,
         )
         src_hash = hashlib.sha256(blob.encode("utf-8")).hexdigest()
 
@@ -399,18 +393,18 @@ def project_quote_selection(
         cap = provider_capability(provider)
         selected = provider == primary_provider
         freshness = primary_freshness if selected else FRESHNESS_UNAVAILABLE
-        candidates.append({
-            "provider": provider,
-            "role": cap.get("role"),
-            "quote_capable": cap.get("quote_capable"),
-            "scope": cap.get("scope"),
-            "auth_required": cap.get("auth_required"),
-            "selected": selected,
-            "freshness": freshness,
-            "used_as_fallback": provider in fallback_rows or (
-                provider == "yahoo_cache" and bool(fallback_rows)
-            ),
-        })
+        candidates.append(
+            {
+                "provider": provider,
+                "role": cap.get("role"),
+                "quote_capable": cap.get("quote_capable"),
+                "scope": cap.get("scope"),
+                "auth_required": cap.get("auth_required"),
+                "selected": selected,
+                "freshness": freshness,
+                "used_as_fallback": provider in fallback_rows or (provider == "yahoo_cache" and bool(fallback_rows)),
+            }
+        )
 
     if primary_provider is None:
         status = STATUS_UNAVAILABLE
@@ -427,9 +421,7 @@ def project_quote_selection(
         "scope": "aggregate_portfolio_quote",
         "selected_provider": primary_provider,
         "selected_observation_time": str(last_repriced or "") or None,
-        "selection_reason": (
-            f"repricer_source={reprice_source}" if reprice_source else "no_repricer_source"
-        ),
+        "selection_reason": (f"repricer_source={reprice_source}" if reprice_source else "no_repricer_source"),
         "fallback_used": fallback_used,
         "fallback_reason": (
             " · ".join(f"{k}({v})" for k, v in sorted(fallback_rows.items())) if fallback_rows else None

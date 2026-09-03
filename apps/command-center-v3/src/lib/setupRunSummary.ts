@@ -1,0 +1,160 @@
+/**
+ * setupRunSummary.ts — client half of the run-scoped GO/WAIT/NOGO contract.
+ *
+ * The backend serves one canonical `setup_run_summary` (SetupRunSummary@v1,
+ * scripts/lib/setup_run_contract.py) identically from /api/v2/overview and
+ * /api/v2/trade-ai/summary. This module is what every Home surface renders, so
+ * a single scanner run is never split across two taxonomies that disagree.
+ *
+ * It replaces the legacy `go_count` / `wait_count` / `avoid_count` triple,
+ * which:
+ *   * lumped AVOID, NO_GO, disqualified, filtered-out, unclassified and error
+ *     rows under one "NOGO" label;
+ *   * read its "scanned" population from a different store than its classified
+ *     counts (run_summary.json `ticker_count` vs trade_ai_scans rows).
+ *
+ * Enforced here (never trusted from the wire, never silently dropped):
+ *   * GO + WAIT + NOGO == classified_count
+ *   * classified + excluded + unclassified == scanned_count
+ *   * a server PARTIAL / COUNT_MISMATCH / DATA_UNAVAILABLE verdict is surfaced,
+ *     never rendered as an authoritative-looking number.
+ *
+ * Pure functions. No network, no React, no side effects.
+ */
+
+export type SetupRunSummary = {
+  contract_version?: string | null
+  run_id?: string | null
+  run_label?: string | null
+  run_date?: string | null
+  run_timestamp?: string | null
+  source?: string | null
+  calculation_version?: string | null
+  scanned_count?: number | null
+  classified_count?: number | null
+  go_count?: number | null
+  wait_count?: number | null
+  nogo_count?: number | null
+  excluded_count?: number | null
+  unclassified_count?: number | null
+  reconciled_scanned?: number | null
+  freshness_status?: string | null
+  quality?: string | null
+  count_integrity?: string | null
+  count_integrity_reason?: string | null
+}
+
+export const RECONCILED = 'RECONCILED'
+export const COUNT_MISMATCH = 'COUNT_MISMATCH'
+export const PARTIAL = 'PARTIAL'
+export const DATA_UNAVAILABLE = 'DATA_UNAVAILABLE'
+
+/**
+ * Compute the reconciliation verdict for a setup_run_summary.
+ *
+ * GO + WAIT + NOGO == classified_count is re-derived from the counts on every
+ * call — never trusted from `count_integrity` — so a summary whose triple does
+ * not partition its own classified count cannot render as a healthy taxonomy.
+ */
+export function setupIntegrity(s: SetupRunSummary | null | undefined): string {
+  if (!s) return DATA_UNAVAILABLE
+  const go = Number(s.go_count ?? 0)
+  const wait = Number(s.wait_count ?? 0)
+  const nogo = Number(s.nogo_count ?? 0)
+  const classified = Number(s.classified_count ?? NaN)
+  const sum = go + wait + nogo
+
+  // Invariant 1: the three labels partition classified_count.
+  if (!Number.isFinite(classified)) {
+    // A missing classified_count can never be RECONCILED: the counts needed to
+    // confirm the partition are absent. Surface a residual NEGATIVE verdict, or
+    // PARTIAL — never trust a RECONCILED wire string the counts cannot confirm.
+    return s.count_integrity && s.count_integrity !== RECONCILED
+      ? s.count_integrity
+      : PARTIAL
+  }
+  if (sum !== classified) return COUNT_MISMATCH
+
+  // Invariant 2: the tally reconciles against the scanned population.
+  if (s.scanned_count == null) return DATA_UNAVAILABLE
+  const scanned = Number(s.scanned_count)
+  const excluded = Number(s.excluded_count ?? 0)
+  const unclassified = Number(s.unclassified_count ?? 0)
+  if (classified + excluded + unclassified !== scanned) return COUNT_MISMATCH
+
+  // Residual server verdict (e.g. two scanned contracts disagreeing) is the
+  // only case left where count_integrity says something the counts alone do not.
+  if (s.count_integrity && s.count_integrity !== RECONCILED) return s.count_integrity
+  return RECONCILED
+}
+
+export type SetupCountsRender = {
+  /** "2 GO · 1 WAIT · 24 NOGO" — the three canonical labels only. */
+  counts: string
+  /** "25 classified / 352 scanned · 3 excluded" — the population the tally is drawn from. */
+  population: string
+  integrity: string
+  /** true when integrity !== RECONCILED (amber, not green). */
+  degraded: boolean
+  /** true when go_count > 0 (green when not degraded). */
+  goPositive: boolean
+  runId: string | null
+  runTimestamp: string | null
+}
+
+/**
+ * Render a setup_run_summary into operator-facing fragments. When reconciliation
+ * fails the integrity verdict is exposed by the caller as an explicit badge, and
+ * this function never emits an authoritative-looking count.
+ */
+export function renderSetupCounts(
+  s: SetupRunSummary | null | undefined,
+  opts: { stale?: boolean; staleLabel?: string | null } = {},
+): SetupCountsRender {
+  const integrity = setupIntegrity(s)
+  const runId = s?.run_id ?? null
+  const runTimestamp = s?.run_timestamp ?? null
+
+  if (opts.stale) {
+    return {
+      counts: opts.staleLabel ?? 'STALE',
+      population: '',
+      integrity,
+      degraded: true,
+      goPositive: false,
+      runId,
+      runTimestamp,
+    }
+  }
+
+  if (!s || s.classified_count == null || s.scanned_count == null) {
+    return {
+      counts: '— before first run',
+      population: '',
+      integrity,
+      degraded: integrity !== RECONCILED,
+      goPositive: false,
+      runId,
+      runTimestamp,
+    }
+  }
+
+  const go = Number(s.go_count ?? 0)
+  const wait = Number(s.wait_count ?? 0)
+  const nogo = Number(s.nogo_count ?? 0)
+  const excluded = Number(s.excluded_count ?? 0)
+  const counts = `${go} GO · ${wait} WAIT · ${nogo} NOGO`
+  const population =
+    `${s.classified_count} classified / ${s.scanned_count} scanned` +
+    (s.excluded_count != null ? ` · ${excluded} excluded` : '')
+
+  return {
+    counts,
+    population,
+    integrity,
+    degraded: integrity !== RECONCILED,
+    goPositive: go > 0,
+    runId,
+    runTimestamp,
+  }
+}
