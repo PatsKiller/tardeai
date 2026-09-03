@@ -41,6 +41,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -52,6 +53,7 @@ from lib.state_migration import (  # noqa: E402
     IDENTICAL_BIND,
     MANUAL_CONFLICT,
     REBUILD_DERIVED,
+    build_manifest,
     manifest_hash,
     serialize,
     sha256_file,
@@ -156,7 +158,19 @@ def rail_disk(target: Path, payload_bytes: int) -> dict[str, Any]:
 
 
 def affected_producers(row: dict[str, Any]) -> list[str]:
-    return list(row.get("producer_schedule") or [])
+    """Normalise producer_schedule to "systemd: <unit>" / "cron: <entry>" strings.
+
+    The field carries a structured advisory record now and a flat list in older
+    manifests. Both must resolve, because list(dict) yields the dict's KEYS -- which
+    would have left rail_producers_quiesced with nothing to check and turned a safety
+    rail into a silent no-op on every real manifest.
+    """
+    sched = row.get("producer_schedule") or []
+    if isinstance(sched, dict):
+        out = [f"systemd: {u['unit']}" for u in sched.get("systemd", [])]
+        out += [f"cron: {c['entry']}" for c in sched.get("cron", [])]
+        return out
+    return list(sched)
 
 
 def rail_producers_quiesced(row: dict[str, Any], check: bool = True) -> dict[str, Any]:
@@ -367,9 +381,118 @@ def migrate_store(row: dict[str, Any], args: argparse.Namespace, stamp: str) -> 
     return receipt
 
 
+def _verify_quiesced(args: Any) -> int:
+    """Prove nothing writes the targets while producers are meant to be stopped.
+
+    Discovery cannot be trusted to name every producer: it greps for the literal
+    filename, so any writer that assembles its path at runtime is invisible to it.
+    Watching the bytes is the check that does not care how a producer was found.
+    """
+    doc = json.loads(Path(args.manifest).read_text())
+    rows = [r for r in doc["stores"] if not args.only or r["store"] in args.only]
+    watched = []
+    for r in rows:
+        for side in ("producer_path", "served_path"):
+            p = Path(r[side])
+            if p.exists():
+                watched.append((r["store"], side, p, sha256_file(p), p.stat().st_mtime_ns))
+
+    print(f"watching {len(watched)} files for {args.verify_quiesced}s ...")
+    time.sleep(args.verify_quiesced)
+
+    moved = []
+    for store, side, p, before_hash, before_mtime in watched:
+        now_hash = sha256_file(p) if p.exists() else None
+        now_mtime = p.stat().st_mtime_ns if p.exists() else None
+        if now_hash != before_hash or now_mtime != before_mtime:
+            moved.append(
+                {
+                    "store": store,
+                    "side": side,
+                    "path": str(p),
+                    "sha256_before": before_hash,
+                    "sha256_after": now_hash,
+                    "mtime_changed": now_mtime != before_mtime,
+                }
+            )
+
+    result = {
+        "schema": "StateQuiescenceProof@v1",
+        "generated_at_utc": _now(),
+        "watched_files": len(watched),
+        "watch_seconds": args.verify_quiesced,
+        "quiesced": not moved,
+        "still_writing": moved,
+    }
+    if args.out:
+        Path(args.out).write_text(json.dumps(result, indent=2) + "\n")
+    print(json.dumps(result, indent=2))
+    if moved:
+        print(
+            f"REFUSE: {len(moved)} file(s) changed while producers were meant to be stopped. "
+            "A producer is still running and is not in the pause list.",
+            file=sys.stderr,
+        )
+        return 2
+    print("quiesced: no target changed during the watch window")
+    return 0
+
+
+def _emit_manifest(args: Any) -> int:
+    """Rebuild the manifest from live state. Reads stores; writes only the manifest file.
+
+    The roots default to whatever the existing manifest was built against, so a
+    regeneration cannot silently retarget a different pair of roots.
+    """
+    out = Path(args.manifest)
+    prev = json.loads(out.read_text()) if out.exists() else {}
+    producer_root = Path(args.producer_root or prev.get("producer_root") or "")
+    served_root = Path(args.served_root or prev.get("served_root") or "")
+    if not producer_root.is_dir() or not served_root.is_dir():
+        print("refusing: --producer-root and --served-root must both name existing directories", file=sys.stderr)
+        return 2
+
+    names = [r["store"] for r in prev.get("stores", [])] or sorted(
+        p.name for p in served_root.glob("*.json") if (producer_root / p.name).exists()
+    )
+    fresh = build_manifest(names, producer_root, served_root)
+    out.write_text(json.dumps(fresh, indent=2, sort_keys=False) + "\n")
+
+    changed = fresh["manifest_sha256"] != prev.get("manifest_sha256")
+    print(f"manifest: {out}")
+    print(f"stores: {fresh['store_count']}  strategies: {fresh['strategy_counts']}")
+    print(f"manifest_sha256: {fresh['manifest_sha256']}" + ("  (CHANGED)" if changed else "  (unchanged)"))
+    if fresh["requires_operator"]:
+        print("requires_operator (refused until adjudicated): " + ", ".join(fresh["requires_operator"]))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--manifest", required=True)
+    ap.add_argument(
+        "--emit-manifest",
+        action="store_true",
+        help=(
+            "Rebuild the manifest at --manifest from live state and exit. Reads state and "
+            "writes only that evidence file; it never touches a state store. Step 7 of the "
+            "production sequence, because a manifest goes stale as soon as a producer runs."
+        ),
+    )
+    ap.add_argument("--producer-root", help="with --emit-manifest; defaults to the manifest's own producer_root")
+    ap.add_argument(
+        "--verify-quiesced",
+        type=int,
+        metavar="SECONDS",
+        help=(
+            "Watch every target for SECONDS and refuse if any byte changes. This is the "
+            "empirical quiescence gate. It does not rely on the producer_schedule, which "
+            "is a grep heuristic and is known to MISS producers that build their paths "
+            "dynamically -- health_agent_status.json has no discoverable writer and is "
+            "nonetheless rewritten every five minutes by a live timer."
+        ),
+    )
+    ap.add_argument("--served-root", help="with --emit-manifest; defaults to the manifest's own served_root")
     ap.add_argument("--apply", action="store_true", help="perform writes; every safeguard becomes mandatory")
     ap.add_argument("--expected-deployed-sha")
     ap.add_argument("--expected-manifest-sha256")
@@ -380,6 +503,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--only", nargs="*", help="restrict to these stores")
     ap.add_argument("--out", help="write the receipt here")
     args = ap.parse_args(argv)
+
+    if args.emit_manifest:
+        return _emit_manifest(args)
+
+    if args.verify_quiesced:
+        return _verify_quiesced(args)
 
     doc = json.loads(Path(args.manifest).read_text())
     rows = [r for r in doc["stores"] if not args.only or r["store"] in args.only]

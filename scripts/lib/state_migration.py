@@ -474,21 +474,96 @@ def _grep_files(needle: str, *paths: str) -> list[str]:
     return sorted({p for p in out.splitlines() if p.strip()})
 
 
-def _producer_schedule(writers: list[str]) -> list[str]:
-    """systemd timers / cron entries that run any of these writers."""
-    hits: list[str] = []
+WRITE_IDIOMS = (
+    "open(",
+    ".write_text",
+    ".write_bytes",
+    "json.dump",
+    "atomic_write",
+    "write_json",
+    "save_json",
+    "os.replace",
+    "shutil.move",
+    ".unlink",
+)
+WRITE_PROXIMITY_LINES = 8
+
+
+def _classify_reference(path: Path, needle: str) -> str:
+    """WRITER if the store name sits near a write idiom in this file, else MENTION.
+
+    This is a heuristic and is labelled as one. It exists so that an operator-facing
+    pause list is not built from every file that merely reads or names a store —
+    api_v2.py mentions all 88 stores and writes almost none of them.
+    """
+    try:
+        lines = (ROOT / path).read_text(errors="replace").splitlines()
+    except Exception:  # noqa: BLE001
+        return "MENTION"
+    hits = [i for i, ln in enumerate(lines) if needle in ln]
+    for i in hits:
+        lo = max(0, i - WRITE_PROXIMITY_LINES)
+        hi = min(len(lines), i + WRITE_PROXIMITY_LINES + 1)
+        window = "\n".join(lines[lo:hi])
+        if any(idiom in window for idiom in WRITE_IDIOMS):
+            return "WRITER"
+    return "MENTION"
+
+
+def _split_writers(files: list[str], needle: str) -> tuple[list[str], list[str]]:
+    """Split files that name a store into probable writers and mere mentions."""
+    writers, mentions = [], []
+    for f in files:
+        (writers if _classify_reference(Path(f), needle) == "WRITER" else mentions).append(f)
+    return writers, mentions
+
+
+def _token_match(stem: str, haystack: str) -> bool:
+    """True only on a whole-token match.
+
+    A substring test made the stem "runner" match "glib-pacrunner.service", which put an
+    unrelated system unit on an operator's pause list. Schedules are matched on token
+    boundaries so a stem can only match a real invocation of that script.
+    """
+    # Script stems use "_" and "-" internally, so both count as word characters here.
+    # Otherwise the stem "health_agent" matches the different script
+    # "health_agent_llm_review.py" and pauses a job that writes something else.
+    pattern = r"(?<![A-Za-z0-9_-])" + re.escape(stem) + r"(?![A-Za-z0-9_-])"
+    return re.search(pattern, haystack) is not None
+
+
+def _producer_schedule(writers: list[str]) -> dict[str, Any]:
+    """systemd units / cron entries that run any of these writers.
+
+    ADVISORY. Returned as a structured record, never a bare list, so the caller cannot
+    mistake a heuristic for a verified inventory. The operator must confirm the pause
+    list against the running system before quiescing anything.
+    """
     stems = {Path(w).stem for w in writers}
+    record: dict[str, Any] = {
+        "authority": "ADVISORY_HEURISTIC",
+        "match_rule": "whole-token match of a confirmed-writer script stem",
+        "requires_operator_confirmation": True,
+        "matched_writer_stems": sorted(stems),
+        "cron": [],
+        "systemd": [],
+        "truncated": False,
+    }
     if not stems:
-        return hits
+        return record
+
     try:
         cron = subprocess.run(["crontab", "-l"], capture_output=True, text=True, timeout=30).stdout
     except Exception:  # noqa: BLE001
         cron = ""
     for line in cron.splitlines():
-        if line.strip().startswith("#"):
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
             continue
-        if any(s in line for s in stems):
-            hits.append("cron: " + re.sub(r"\s+", " ", line.strip())[:140])
+        matched = sorted(s for s in stems if _token_match(s, stripped))
+        if matched:
+            record["cron"].append({"entry": re.sub(r"\s+", " ", stripped), "matched_stems": matched})
+
     try:
         units = subprocess.run(
             ["systemctl", "--user", "list-unit-files", "--type=service", "--plain", "--no-pager"],
@@ -499,10 +574,15 @@ def _producer_schedule(writers: list[str]) -> list[str]:
     except Exception:  # noqa: BLE001
         units = ""
     for line in units.splitlines():
-        name = line.split()[0] if line.split() else ""
-        if name.endswith(".service") and any(s.replace("_", "-") in name for s in stems):
-            hits.append("systemd: " + name)
-    return hits[:20]
+        parts = line.split()
+        name = parts[0] if parts else ""
+        if not name.endswith(".service"):
+            continue
+        matched = sorted(s for s in stems if _token_match(s.replace("_", "-"), name) or _token_match(s, name))
+        if matched:
+            record["systemd"].append({"unit": name, "matched_stems": matched})
+
+    return record
 
 
 def discover_store(name: str, producer_root: Path, served_root: Path) -> dict[str, Any]:
@@ -518,7 +598,8 @@ def discover_store(name: str, producer_root: Path, served_root: Path) -> dict[st
     strategy, why = select_strategy(name, kind, cmp_, p_doc, s_doc)
     planned, plan_note = plan_content(strategy, p_doc, s_doc, cmp_)
 
-    writers = _grep_files(name)
+    referencing = _grep_files(name)
+    writers, mentions = _split_writers(referencing, name)
     consumers = _grep_files(name, "scripts/", "apps/")
 
     return {
@@ -558,6 +639,11 @@ def discover_store(name: str, producer_root: Path, served_root: Path) -> dict[st
         "planned_content_sha256": (content_sha256(planned) if planned is not None else None),
         "requires_operator": strategy == MANUAL_CONFLICT,
         "producers": writers,
+        "producers_rule": (
+            "files whose reference to this store sits within "
+            f"{WRITE_PROXIMITY_LINES} lines of a write idiom; heuristic, not proof"
+        ),
+        "mentions_only": mentions,
         "consumers": consumers,
         "producer_schedule": _producer_schedule(writers),
         "rollback_strategy": (

@@ -18,6 +18,7 @@ import json
 import os
 import shutil
 import subprocess
+import time
 import sys
 from pathlib import Path
 
@@ -27,6 +28,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(0, str(ROOT))
 
+from lib import state_migration  # noqa: E402
 from lib.state_migration import (  # noqa: E402
     MANUAL_CONFLICT,
     build_manifest,
@@ -566,3 +568,150 @@ def test_every_financial_store_fails_closed():
         assert r["strategy"] == MANUAL_CONFLICT, f"{r['store']} must fail closed"
         assert r["requires_operator"] is True
         assert "FAIL CLOSED" in r["strategy_reason"]
+
+
+# ── producer-schedule discovery: two defects found while reviewing the operator-facing
+# pause list in the v4 handoff. Both produced an inventory an operator would have acted on.
+
+
+class TestProducerScheduleDiscovery:
+    """The pause list is operator-facing. A false entry gets a real service stopped."""
+
+    def test_token_match_rejects_substring_inside_a_longer_word(self):
+        # The defect verbatim: stem "runner" matched "glib-pacrunner.service", putting an
+        # unrelated system unit on the list of things to quiesce before a migration.
+        assert not state_migration._token_match("runner", "glib-pacrunner.service")
+
+    def test_token_match_accepts_a_real_invocation(self):
+        assert state_migration._token_match(
+            "portfolio_orchestrator",
+            "0 7 * * 1-5 cd $PROJ && $PY scripts/portfolio_orchestrator.py >> logs/x.log",
+        )
+
+    def test_token_match_accepts_a_hyphenated_unit_name(self):
+        assert state_migration._token_match("portfolio-server", "portfolio-server.service")
+
+    def test_token_match_rejects_a_prefix_of_a_longer_stem(self):
+        assert not state_migration._token_match("health_agent", "health_agent_llm_review.py")
+
+    def test_write_idiom_near_the_reference_is_a_writer(self, tmp_path, monkeypatch):
+        f = tmp_path / "writer_like.py"
+        f.write_text('p = root / "stops.json"\nwith open(p, "w") as fh:\n    fh.write(data)\n')
+        monkeypatch.setattr(state_migration, "ROOT", tmp_path)
+        assert state_migration._classify_reference(Path("writer_like.py"), "stops.json") == "WRITER"
+
+    def test_a_bare_reference_is_only_a_mention(self, tmp_path, monkeypatch):
+        # api_v2.py names every store and writes almost none. Treating a mention as a
+        # producer is what inflated the pause list to most of the crontab.
+        f = tmp_path / "reader_like.py"
+        f.write_text('ROUTES = {\n    "/api/v2/stops": "stops.json",\n}\n')
+        monkeypatch.setattr(state_migration, "ROOT", tmp_path)
+        assert state_migration._classify_reference(Path("reader_like.py"), "stops.json") == "MENTION"
+
+    def test_a_distant_write_idiom_does_not_make_it_a_writer(self, tmp_path, monkeypatch):
+        f = tmp_path / "distant.py"
+        f.write_text('x = "stops.json"\n' + "\n" * 40 + 'open(other, "w")\n')
+        monkeypatch.setattr(state_migration, "ROOT", tmp_path)
+        assert state_migration._classify_reference(Path("distant.py"), "stops.json") == "MENTION"
+
+    def test_split_writers_partitions_without_losing_a_file(self, tmp_path, monkeypatch):
+        (tmp_path / "w.py").write_text('p="stops.json"\nopen(p,"w")\n')
+        (tmp_path / "m.py").write_text('LABEL = "stops.json"\n')
+        monkeypatch.setattr(state_migration, "ROOT", tmp_path)
+        writers, mentions = state_migration._split_writers(["w.py", "m.py"], "stops.json")
+        assert writers == ["w.py"]
+        assert mentions == ["m.py"]
+        assert sorted(writers + mentions) == ["m.py", "w.py"]
+
+    def test_schedule_is_a_structured_advisory_record_not_a_bare_list(self):
+        rec = state_migration._producer_schedule([])
+        assert isinstance(rec, dict)
+        assert rec["authority"] == "ADVISORY_HEURISTIC"
+        assert rec["requires_operator_confirmation"] is True
+
+    def test_unreadable_file_is_a_mention_not_a_writer(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(state_migration, "ROOT", tmp_path)
+        assert state_migration._classify_reference(Path("nope.py"), "stops.json") == "MENTION"
+
+
+from scripts import migrate_state_stores as mss  # noqa: E402
+
+
+@needs_sources
+class TestQuiescenceGate:
+    """Discovery misses producers. Watching the bytes does not.
+
+    Proven on production data during the campaign: health_agent_status.json has no
+    discoverable writer -- it is not named in any cron line or unit file the grep can
+    reach -- and a live timer rewrote it twice during this session. A pause list built
+    from discovery would have declared it safe to migrate.
+    """
+
+    def test_a_changing_file_is_caught(self, replica, manifest, monkeypatch):
+        _producer, served = replica
+        _doc, manifest_path = manifest
+        target = served / "correlation.json"
+        original = target.read_bytes()
+
+        real_sleep = time.sleep
+
+        def touch_then_sleep(_seconds):
+            target.write_bytes(original.replace(b"{", b"{ ", 1))
+            real_sleep(0)
+
+        monkeypatch.setattr(mss.time, "sleep", touch_then_sleep)
+        rc = mss.main(["--manifest", str(manifest_path), "--verify-quiesced", "1", "--only", "correlation.json"])
+        assert rc == 2, "a file that changed during the watch must refuse"
+
+    def test_a_still_file_passes(self, manifest, monkeypatch):
+        _doc, manifest_path = manifest
+        monkeypatch.setattr(mss.time, "sleep", lambda _s: None)
+        rc = mss.main(["--manifest", str(manifest_path), "--verify-quiesced", "1", "--only", "correlation.json"])
+        assert rc == 0
+
+    def test_the_gate_writes_nothing(self, replica, manifest, monkeypatch):
+        _producer, served = replica
+        _doc, manifest_path = manifest
+        before = {p: p.read_bytes() for p in served.glob("*.json")}
+        monkeypatch.setattr(mss.time, "sleep", lambda _s: None)
+        mss.main(["--manifest", str(manifest_path), "--verify-quiesced", "1"])
+        for p, b in before.items():
+            assert p.read_bytes() == b, f"{p} was modified by a read-only gate"
+
+
+@needs_sources
+class TestEmitManifest:
+    def test_regeneration_refuses_a_root_that_is_not_a_directory(self, manifest, tmp_path):
+        _doc, manifest_path = manifest
+        rc = mss.main(
+            [
+                "--manifest",
+                str(manifest_path),
+                "--emit-manifest",
+                "--producer-root",
+                str(tmp_path / "nope"),
+                "--served-root",
+                str(tmp_path / "also-nope"),
+            ]
+        )
+        assert rc == 2
+
+    def test_regeneration_keeps_the_same_roots_and_stores(self, replica, manifest):
+        producer, served = replica
+        _doc, manifest_path = manifest
+        before = json.loads(manifest_path.read_text())
+        rc = mss.main(["--manifest", str(manifest_path), "--emit-manifest"])
+        assert rc == 0
+        after = json.loads(manifest_path.read_text())
+        assert after["producer_root"] == before["producer_root"] == str(producer)
+        assert after["served_root"] == before["served_root"] == str(served)
+        assert [r["store"] for r in after["stores"]] == [r["store"] for r in before["stores"]]
+
+    def test_regeneration_still_fails_closed_on_financial_stores(self, manifest):
+        _doc, manifest_path = manifest
+        mss.main(["--manifest", str(manifest_path), "--emit-manifest"])
+        after = json.loads(manifest_path.read_text())
+        for row in after["stores"]:
+            if row["financial_truth_store"] and row["comparison"].get("conflicting"):
+                assert row["strategy"] == MANUAL_CONFLICT
+                assert row["requires_operator"] is True
