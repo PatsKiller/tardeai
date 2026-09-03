@@ -25,6 +25,8 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 from lib import effective_truth as et  # noqa: E402
 from lib import operator_control_contract as occ  # noqa: E402
+from lib import protection_truth as pt  # noqa: E402
+from lib import state_root_disposition as srdisp  # noqa: E402
 from lib import state_root_divergence as srd  # noqa: E402
 from lib import whole_site_truth as wst  # noqa: E402
 
@@ -229,6 +231,57 @@ def main(argv: list[str] | None = None) -> int:
     _write_csv(out / "STATE_ROOT_DISPOSITION.csv", disp_rows)
     _write_json(out / "STATE_ROOT_DISPOSITION.json", disp_summary)
 
+    # ── 8. authoritative per-store verdict + migration plans (v2 taxonomy) ───
+    auth = srdisp.state_root_disposition(scan)
+    _write_json(out / "STATE_ROOT_DISPOSITION_V2.json", {k: v for k, v in auth.items() if k != "stores"})
+    _write_csv(
+        out / "STATE_ROOT_DISPOSITION_V2.csv",
+        [
+            {
+                "store": r["store"],
+                "disposition": r["disposition"],
+                "cc_critical": r["cc_critical"],
+                "blocking": r["blocking"],
+                "verdict": r["verdict"],
+                "direction": r["direction"],
+                "owner": r["owner"],
+                "canonical_target": r["canonical_target"],
+                "producer_sha256": (r["producer"] or {}).get("sha256"),
+                "served_sha256": (r["served"] or {}).get("sha256"),
+                "producer_schema": (r["producer"] or {}).get("schema"),
+                "served_schema": (r["served"] or {}).get("schema"),
+                "skew_seconds": r["skew_seconds"],
+                "executable_by_this_lane": r.get("executable_by_this_lane"),
+                "evidence": r["evidence"],
+                "migration_plan": " | ".join(r.get("migration_plan") or []),
+            }
+            for r in auth["stores"]
+        ],
+    )
+
+    # ── 9. protection coverage recomputed over one population ───────────────
+    try:
+        import urllib.request
+
+        with urllib.request.urlopen("http://127.0.0.1:7777/api/v2/risk", timeout=30) as fh:
+            risk = json.loads(fh.read()).get("data") or {}
+        prot = pt.protection_truth(
+            risk.get("positions"),
+            legacy={
+                "pct_protected": risk.get("pct_protected"),
+                "total_protected_mv": risk.get("total_protected_mv"),
+                "total_unprotected_mv": risk.get("total_unprotected_mv"),
+            },
+            observation={"source": "/api/v2/risk (served)", "position_count": risk.get("position_count")},
+        )
+    except Exception as exc:  # noqa: BLE001
+        prot = {
+            "schema": "ProtectionTruth@v1",
+            "status": "UNAVAILABLE",
+            "reason": f"served risk endpoint unreachable: {type(exc).__name__}: {exc}",
+        }
+    _write_json(out / "PROTECTION_TRUTH.json", prot)
+
     summary = {
         "schema": "WholeSiteEvidence@v1",
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
@@ -244,6 +297,18 @@ def main(argv: list[str] | None = None) -> int:
         "state_root_diverged": scan["diverged_count"],
         "state_root_disposition": disp_summary["disposition_counts"],
         "state_root_deferred": disp_summary["deferred_count"],
+        "state_root_disposition_v2": auth["disposition_counts"],
+        "state_root_cc_critical": auth["cc_critical_count"],
+        "state_root_cc_critical_converged": auth["cc_critical_converged"],
+        "state_root_blocking": auth["blocking_count"],
+        "state_root_ready": auth["ready"],
+        "protection_truth": {
+            "status": prot.get("status"),
+            "counts": prot.get("counts"),
+            "coverage_pct": (prot.get("coverage") or {}).get("any_stop_pct_of_included"),
+            "legacy_verdict": (prot.get("legacy_comparison") or {}).get("verdict"),
+            "legacy_pct": (prot.get("legacy_comparison") or {}).get("legacy_pct_protected"),
+        },
         "v3_next_lineage": wst.v3_next_lineage(root=ROOT)["lineage"],
         "write_gate_effective_in_this_process": wst.operator_identity_boundary(ROOT)["write_gate_effective"],
         "feature_flag_deltas": flags.get("delta_count", flags.get("status")),

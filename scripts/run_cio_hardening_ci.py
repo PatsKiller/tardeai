@@ -656,6 +656,55 @@ GATES = [
         ],
     ),
     (
+        # cc-whole-site-residual-v1 (2026-09-03): detection is not resolution. Every
+        # audited store gets one verdict from a closed taxonomy, Command Center
+        # criticality is derived from the surface, and each open fork carries an
+        # executable migration plan this lane is forbidden to run (AGENTS.md rule 5).
+        "state_root_disposition",
+        [
+            "tests/test_state_root_disposition.py",
+        ],
+    ),
+    (
+        # cc-whole-site-residual-v1 (2026-09-03): stop coverage over ONE population.
+        # The served Risk surface published 0.39% while the same rows it returns say
+        # 11.92%: four broker-held stops read as NO STOP, and the percentage divided
+        # by the whole portfolio rather than the population it summed.
+        "protection_truth",
+        [
+            "tests/test_protection_truth.py",
+        ],
+    ),
+    (
+        # cc-whole-site-residual-v1 (2026-09-03): validation must never dirty the
+        # candidate worktree, the committed ledger is the expectation rather than a
+        # file the run just wrote, and no control may carry a hardcoded commit SHA.
+        "ci_fixture_immutability",
+        [
+            "tests/test_ci_fixture_immutability.py",
+        ],
+    ),
+    (
+        # cc-whole-site-residual-v1 (2026-09-03): 401/403 are authorization answers,
+        # not connectivity. They must not consume the transient retry ladder.
+        "useapi_authorization_contract",
+        [
+            "tests/test_useapi_authorization_contract.py",
+        ],
+    ),
+    (
+        # cc-whole-site-residual-v1 (2026-09-03): operator controls proven against a
+        # DISPOSABLE PostgreSQL cluster -- its own initdb data directory in a temp
+        # path, loopback-only on a dynamic port, test-only role and database,
+        # destroyed afterwards. The real admin_write guard runs its full
+        # ACCESS -> CONFIRM -> APPLY -> AUDIT chain; nothing is mocked. Skips
+        # cleanly on a host without PostgreSQL server binaries.
+        "operator_control_isolated_db",
+        [
+            "tests/test_operator_control_isolated_db.py",
+        ],
+    ),
+    (
         # cc-whole-site-residual-v1 (2026-09-03): the browser/state matrix caught
         # /v3/strategy throwing and rendering the ENTIRE shell blank. Every route is
         # now wrapped so one page's failure is contained and stated.

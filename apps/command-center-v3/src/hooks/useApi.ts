@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import type { TransportState } from '../lib/observationEnvelope.ts'
+import { classifyStatus, classifyError, countsAsConnectionFailure } from '../lib/httpOutcome'
 
 // ── Global connection health ─────────────────────────────────────────────────────────────────────────
 // useApi consumers register/clear when they enter/leave a failed state, so a single top-level indicator
@@ -73,8 +74,16 @@ export function useApi<T>(path: string, intervalMs?: number, options?: UseApiOpt
   const dataRef = useRef<T | null>(null)       // latest good data, readable inside the fetch closure
   const failingRef = useRef(false)             // this hook's current contribution to the global fail count
   const manualRef = useRef(false)              // true when user-triggered refetch
+  // A terminal outcome (401/403/404/validation) is remembered so the polling
+  // interval does not quietly re-issue a request that cannot succeed. Only an
+  // explicit operator action — refetch() — clears it.
+  const terminalRef = useRef<string | null>(null)
+  const [authState, setAuthState] = useState<'OK' | 'UNAUTHORIZED' | 'FORBIDDEN' | null>(null)
 
   const refetch = useCallback(() => {
+    // The explicit credential-refresh contract: an operator asking again is the
+    // only thing that re-arms a terminal outcome.
+    terminalRef.current = null
     manualRef.current = true
     setRefreshing(true)
     setTick(t => t + 1)
@@ -107,6 +116,8 @@ export function useApi<T>(path: string, intervalMs?: number, options?: UseApiOpt
     }
 
     const load = async () => {
+      // A terminal outcome stands until an operator explicitly asks again.
+      if (terminalRef.current) return
       const controller = new AbortController()
       // broker-proposals: 15s hard timeout (P0 2026-07-14) — the endpoint is now bounded
       // server-side (quote budget + background autocal/summary); anything slower should
@@ -161,7 +172,45 @@ export function useApi<T>(path: string, intervalMs?: number, options?: UseApiOpt
           }
           return
         }
-        if (!r.ok) throw new Error(`HTTP ${r.status}`)
+        if (!r.ok) {
+          // 401/403 are authorization answers, not connectivity problems. They are
+          // terminal: no retry, no backoff ladder, no reconnect banner. The
+          // last-good body is kept (dropping it would be a second lie) but the
+          // stale flag is NEVER cleared — nothing just got fresher.
+          const outcome = classifyStatus(r.status, r.headers)
+          if (cancelled) return
+          setError(outcome.message)
+          if (outcome.kind === 'UNAUTHORIZED' || outcome.kind === 'FORBIDDEN') {
+            setAuthState(outcome.kind)
+          }
+          if (dataRef.current != null) {
+            setStale(true)
+            setTransport('RETAINED')
+          } else {
+            setTransport('ERROR')
+          }
+          if (countsAsConnectionFailure(outcome)) {
+            if (!failingRef.current) { failingRef.current = true; _bumpFail(1) }
+          } else {
+            clearFailing()
+          }
+          if (outcome.terminal) {
+            terminalRef.current = outcome.kind
+            clearTimeout(retryRef.current)
+            clearTimeout(slowRetryRef)
+            clearInterval(intervalRef.current)
+            retries = 0
+            return
+          }
+          if (retries < 8) {
+            retries++
+            clearTimeout(retryRef.current)
+            const delay = outcome.retryAfterMs ?? backoffMs(retries)
+            retryRef.current = setTimeout(load, delay)
+          }
+          return
+        }
+        setAuthState('OK')
         const et = r.headers.get('ETag')
         if (et) _etags.set(path, et)
         const json = await r.json()
@@ -178,8 +227,8 @@ export function useApi<T>(path: string, intervalMs?: number, options?: UseApiOpt
       } catch (e: any) {
         clearTimeout(timer)
         if (cancelled) return
-        const msg = e?.name === 'AbortError' ? 'request timed out — server busy, retry' : (e?.message || 'fetch failed')
-        setError(msg)
+        const outcome = classifyError(e)
+        setError(outcome.message)
         // Keep last-good data; flag it stale so the UI can show a 'reconnecting' hint instead of
         // collapsing to zeros. Only mark stale when we actually have prior data to keep showing.
         if (dataRef.current != null) {
@@ -216,9 +265,10 @@ export function useApi<T>(path: string, intervalMs?: number, options?: UseApiOpt
       clearInterval(intervalRef.current)
       clearTimeout(retryRef.current)
       clearTimeout(slowRetryRef)
+      slowRetryRef = undefined
       clearFailing()   // don't leave a stuck failure registered when this hook unmounts / path changes
     }
   }, [path, intervalMs, tick, enabled])
 
-  return { data, loading, refreshing, error, stale, receivedAt, transport, refetch }
+  return { data, loading, refreshing, error, stale, receivedAt, transport, authState, refetch }
 }

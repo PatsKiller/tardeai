@@ -26715,6 +26715,76 @@ def _finviz_store_health():
     return _effective_truth_block("finviz_store_health")
 
 
+def _protection_truth():
+    """GET /api/v2/risk/protection-truth — stop coverage recomputed over one population.
+
+    The served risk payload carries per-position stop facts (`has_stop`,
+    `broker_protected`, `stop_source`) while its aggregate comes from the
+    planned-stops file, so four broker-held stops read as NO STOP and its
+    percentage divides by the whole portfolio rather than the population it sums.
+    This recomputes from the position rows and publishes the numerator, the
+    denominator and the disagreement by name. Read-only.
+    """
+    try:
+        from lib.protection_truth import protection_truth
+
+        risk_payload = globals().get("risk")
+        if not callable(risk_payload):
+            return {
+                "schema": "ProtectionTruth@v1",
+                "status": "UNAVAILABLE",
+                "reason": "the risk payload builder is not available in this process",
+                "authority": "READ_ONLY_ADVISORY",
+            }
+
+        # risk() is the served payload the Risk page reads, so the recomputation
+        # runs over exactly the rows the operator is looking at.
+        risk = risk_payload() or {}
+        rows = risk.get("positions") or []
+        return protection_truth(
+            rows,
+            legacy={
+                "pct_protected": (risk or {}).get("pct_protected"),
+                "total_protected_mv": (risk or {}).get("total_protected_mv"),
+                "total_unprotected_mv": (risk or {}).get("total_unprotected_mv"),
+            },
+            observation={
+                "source": "/api/v2/risk",
+                "position_count": (risk or {}).get("position_count"),
+            },
+        )
+    except Exception as e:  # noqa: BLE001
+        return {
+            "schema": "ProtectionTruth@v1",
+            "status": "UNAVAILABLE",
+            "reason": f"{type(e).__name__}: {e}",
+            "authority": "READ_ONLY_ADVISORY",
+        }
+
+
+def _state_root_disposition():
+    """GET /api/v2/system/state-root-disposition — an authoritative verdict per store.
+
+    Detection alone is not resolution. Every audited store gets one verdict from a
+    closed taxonomy, every Command Center-critical store is flagged, and every
+    unresolved fork carries an owner, a canonical target and an executable
+    migration plan this lane is not permitted to run (AGENTS.md rule 5).
+    Read-only.
+    """
+    try:
+        from lib.state_root_disposition import state_root_disposition
+        from lib.state_root_divergence import scan
+
+        return state_root_disposition(scan(with_hashes=True))
+    except Exception as e:  # noqa: BLE001
+        return {
+            "schema": "StateRootDisposition@v2",
+            "status": "UNAVAILABLE",
+            "reason": f"{type(e).__name__}: {e}",
+            "authority": "READ_ONLY_ADVISORY",
+        }
+
+
 def _governance_pipeline_status():
     """GET /api/v2/system/governance-pipeline-status — Phase 200 governance controller status (read-only)."""
     import json as _j, subprocess as _sp
@@ -45322,6 +45392,8 @@ ROUTES = {
     "/api/v2/system/feature-flag-truth": lambda: _feature_flag_truth(),
     "/api/v2/system/scheduler-truth": lambda: _scheduler_truth(),
     "/api/v2/data-sources/finviz/store-health": lambda: _finviz_store_health(),
+    "/api/v2/risk/protection-truth": lambda: _protection_truth(),
+    "/api/v2/system/state-root-disposition": lambda: _state_root_disposition(),
     "/api/v2/system/portfolio-cadence-status": lambda: _portfolio_cadence_status(),
     "/api/v2/open-trades/intelligence": lambda: _open_trades_intelligence(),
     "/api/v2/broker-proposals": lambda: _broker_proposals(_current_query),

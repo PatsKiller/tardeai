@@ -55,6 +55,13 @@ class HarnessConfig:
     synthetic_now: datetime = SYNTHETIC_NOW
     preview_base_url: str | None = None
     expected_build_sha: str | None = None
+    #: Ordinary CI treats the committed fixtures as an IMMUTABLE expectation and
+    #: writes nothing into fixture_root. Regeneration is a deliberate, separately
+    #: named command (``--regenerate-fixtures``), never a side effect of running
+    #: the suite. Before this flag existed, every harness run — including
+    #: `pytest tests/test_cc_runtime_harness.py` — rewrote the tracked
+    #: fixtures/cc_runtime/route_ledger.json and left the candidate worktree dirty.
+    regenerate_fixtures: bool = False
 
 
 @dataclass
@@ -204,10 +211,26 @@ def run_harness(cfg: HarnessConfig) -> HarnessResult:
         "generated_from": "discover_routes",
         "build_sha_pin": cfg.build_sha,
     }
-    write_json(ledger_path, ledger_obj)
-    ledger = load_route_ledger(ledger_path)
+    # Evidence always goes to the run's own output directory, which is temporary
+    # or ignored. The tracked ledger is touched only on explicit regeneration.
+    write_json(cfg.output_dir / "route_ledger.generated.json", ledger_obj)
+
+    if cfg.regenerate_fixtures:
+        write_json(ledger_path, ledger_obj)
+        ledger = load_route_ledger(ledger_path)
+        ledger_source = "regenerated"
+    elif ledger_path.exists():
+        # The COMMITTED ledger is the expectation. Comparing discovery against a
+        # ledger this function just wrote from that same discovery was vacuous —
+        # the unaccounted-route control could never fail.
+        ledger = load_route_ledger(ledger_path)
+        ledger_source = "committed"
+    else:
+        ledger = ledger_obj
+        ledger_source = "generated_in_memory_no_committed_ledger"
 
     cmp = compare_to_ledger(discovered, ledger)
+    cmp["ledger_source"] = ledger_source
 
     server: FixtureServer | None = None
     base_url: str
@@ -334,6 +357,7 @@ def run_harness(cfg: HarnessConfig) -> HarnessResult:
         base_url=base_url,
         discovered=discovered,
         ledger=ledger,
+        build_sha=cfg.build_sha,
     )
     neg_pass = all(n.get("pass") for n in negatives)
     boundary_pass = all(c.get("pass") for c in boundary_results)

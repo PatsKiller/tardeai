@@ -13,6 +13,7 @@ that "passes" without the mutation being detected is a guard keyed on nothing.
   NC-5  stale-root masking           the checkout root answering for the served root
   NC-6  provider call during load    a live host / mutating method reaching the harness
   NC-7  financial-broker mutation    broker paths declassified from never-invoke
+  NC-8  tracked-fixture mutation     CI rewriting a committed fixture
 
 READ_ONLY with respect to the repository. Run from anywhere:
   python3 scripts/run_whole_site_negative_controls.py
@@ -273,6 +274,61 @@ def nc7_broker_mutation() -> None:
     shutil.rmtree(tmp, ignore_errors=True)
 
 
+# ── NC-8: CI mutating a tracked fixture ──────────────────────────────────────
+def nc8_tracked_fixture_mutation() -> None:
+    """The rail must notice when validation rewrites a tracked file.
+
+    A hermetic run is executed against a COPY of the fixture tree with the
+    regeneration flag forced on — the exact behaviour ordinary CI used to have.
+    The hash comparison must catch it; if it cannot, the immutability rail is
+    keyed on nothing.
+    """
+    import hashlib
+    from datetime import datetime, timezone as _tz
+
+    sys.path.insert(0, str(ROOT))
+    from scripts.cc_runtime_harness.runner import HarnessConfig, run_harness
+
+    src = ROOT / "fixtures" / "cc_runtime"
+    tmp = Path(tempfile.mkdtemp(prefix="wsnc_fx_"))
+    copy_root = tmp / "cc_runtime"
+    shutil.copytree(src, copy_root)
+
+    def tree_hash(root: Path) -> dict[str, str]:
+        return {
+            str(p.relative_to(root)): hashlib.sha256(p.read_bytes()).hexdigest()
+            for p in sorted(root.rglob("*"))
+            if p.is_file()
+        }
+
+    def run(regenerate: bool) -> list[str]:
+        before = tree_hash(copy_root)
+        run_harness(
+            HarnessConfig(
+                mode="hermetic",
+                repo_root=ROOT,
+                fixture_root=copy_root,
+                output_dir=tmp / f"out_{regenerate}",
+                build_sha="e" * 40,
+                synthetic_now=datetime(2026, 9, 2, 21, 0, 0, tzinfo=_tz.utc),
+                regenerate_fixtures=regenerate,
+            )
+        )
+        after = tree_hash(copy_root)
+        return [k for k in before if before[k] != after.get(k)]
+
+    mutated = run(regenerate=True)
+    clean = run(regenerate=False)
+    detected = bool(mutated) and not clean
+    record(
+        "tracked_fixture_mutation",
+        "force the old behaviour (regenerate_fixtures=True) on a copy of the fixture tree",
+        detected,
+        f"regeneration rewrote {mutated or 'nothing'}; the ordinary run rewrote {clean or 'nothing'}",
+    )
+    shutil.rmtree(tmp, ignore_errors=True)
+
+
 def main() -> int:
     print("cc-whole-site-residual-v1 negative controls")
     for fn in (
@@ -283,6 +339,7 @@ def main() -> int:
         nc5_stale_root_masking,
         nc6_provider_call_during_load,
         nc7_broker_mutation,
+        nc8_tracked_fixture_mutation,
     ):
         try:
             fn()

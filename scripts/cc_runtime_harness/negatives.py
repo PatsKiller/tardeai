@@ -28,6 +28,7 @@ def run_negative_controls(
     base_url: str | None = None,
     discovered: DiscoveryResult | None = None,
     ledger: dict[str, Any] | None = None,
+    build_sha: str | None = None,
 ) -> list[dict[str, Any]]:
     results: list[dict[str, Any]] = []
 
@@ -121,7 +122,10 @@ def run_negative_controls(
     )
 
     # 5) wrong build SHA
-    expected_sha = "cd049cb4eb20add7a24de28b5a5e42eafcc4d673"
+    # The identity under test is the build actually being verified. A hardcoded
+    # commit literal here is what stamped an unrelated SHA across the harness
+    # evidence and the tracked route ledger.
+    expected_sha = build_sha or "0" * 40
     wrong = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
     detected = expected_sha != wrong
     # If server available, capture and compare
