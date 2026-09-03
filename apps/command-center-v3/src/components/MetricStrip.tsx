@@ -24,7 +24,18 @@ export default function MetricStrip({ onDrill }: Props) {
   const healthWarn = (health?.findings ?? []).filter((f: any) => f.severity === 'critical' || f.severity === 'warning').length
 
   const portfolioVal = overview?.portfolio_value
-  const winRate = overview?.journal?.win_rate ?? readiness?.win_rate
+  // Canonical aggregate contract (cc-header-truth-v2 Phase 2 A). The header total
+  // is an ALL-ACCOUNTS aggregate; a named account is only ever the oldest/stale
+  // contributor, never the source of the whole total.
+  const portfolioAgg = overview?.portfolio_aggregate
+  const portfolioAsOfNote = portfolioAgg
+    ? `ALL ACCOUNTS · oldest ${portfolioAgg.oldest_observation_account ?? '—'}`
+    : undefined
+  // No source-mixing null-coalesce (cc-header-truth-v2 Phase 2 E). The TRADING
+  // tile must come from one internally-consistent projection — the live broker
+  // journal — and never silently borrow the paper-trade-readiness win rate when
+  // the journal is absent. Paper readiness stays visible in the drill rows only.
+  const winRate = overview?.journal?.win_rate
   const winTrades = overview?.journal?.trade_count
   const regimeLabel = regime?.regime_label ?? '—'
   const regimeConf = regime?.confidence
@@ -62,6 +73,12 @@ export default function MetricStrip({ onDrill }: Props) {
   const longTermTrimPnl = overview?.journal?.long_term_trim_pnl
   const journalLastClose = overview?.journal?.last_close_date
   const journalLastIngested = overview?.journal?.last_ingested_at
+  // Provenance (cc-header-truth-v2 Phase 2 E): TRADING and REALIZED must state
+  // their basis, window, account scope and as-of so a mixed-source or
+  // differently-windowed figure can never masquerade as the same number.
+  const journalScope = overview?.journal?.account_scope ?? 'schwab'
+  const journalWindow = overview?.journal?.time_window ?? 'all-time'
+  const journalAsOf = overview?.journal?.as_of
   const journalIngestedHours = (() => {
     if (!journalLastIngested) return null
     const ms = Date.now() - new Date(String(journalLastIngested)).getTime()
@@ -73,13 +90,39 @@ export default function MetricStrip({ onDrill }: Props) {
   const journalAgeMark = journalStale ? ` · not refreshed ${Math.round(journalIngestedHours)}h` : ''
   const journalRefreshedMark = journalLastIngested ? ` · journal rebuilt ${new Date(String(journalLastIngested)).toLocaleString(undefined, { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' })}` : ''
   const vix = tradeAi?.vix
+  const vixSource = tradeAi?.vix_source
+  const vixObsTime = tradeAi?.vix_observation_time
   const approvals = overview?.pending_approvals ?? overview?.approvals_count
   const priceStamp = pricingStampLine(overview?.pricing ?? { last_repriced: overview?.last_repriced, reprice_source: overview?.reprice_source })
+  // Canonical quote-selection projection (cc-header-truth-v2 Phase 2 B). The
+  // header must distinguish the selected quote provider from an eligible
+  // fallback and must surface DEGRADED/UNAVAILABLE rather than a healthy-looking
+  // price when Finviz is down and a read-only alternate answered.
+  const quoteSel = overview?.quote_selection
+  const quoteStatusMark = (() => {
+    if (!quoteSel) return null
+    if (quoteSel.status === 'UNAVAILABLE') return ' · quotes UNAVAILABLE'
+    if (quoteSel.fallback_used) return ` · quotes DEGRADED (${quoteSel.fallback_reason ?? 'fallback'})`
+    return ` · quotes ${quoteSel.selected_provider ?? '—'}`
+  })()
 
+  // Canonical run-scoped summary (cc-header-truth-v2 Phase 2 C). One taxonomy,
+  // one reconciliation, identical to the Trading page. The population is shown
+  // alongside the counts so "1 GO · 0 WAIT · 24 NOGO" is never read as the whole
+  // universe when it is 25 classified of 352 scanned.
+  const setupSummary = tradeAi?.setup_run_summary
   const setupsValue = (() => {
     if (scanStale) {
       // Visible STALE on the value itself — not only a tooltip (Wave 3 census finding).
       return setupsFresh.surfaceLabel || `STALE · ${setupsRun}`
+    }
+    if (setupSummary?.classified_count != null && setupSummary?.scanned_count != null) {
+      const counts = `${setupSummary.go_count} GO · ${setupSummary.wait_count} WAIT · ${setupSummary.nogo_count} NOGO`
+      const pop = `${setupSummary.classified_count} classified / ${setupSummary.scanned_count} scanned`
+      if (setupSummary.count_integrity && setupSummary.count_integrity !== 'RECONCILED') {
+        return `${counts} · ${setupSummary.count_integrity}`
+      }
+      return `${counts} · ${pop}`
     }
     if (tradeAi?.latest_run_label || tradeAi?.run_label) {
       return `${goCount} GO · ${waitCount} WAIT · ${avoidCount} NOGO`
@@ -93,12 +136,12 @@ export default function MetricStrip({ onDrill }: Props) {
       stale: overviewFresh.stale ? (overviewFresh.surfaceLabel?.replace(/^STALE · /, ' · ') || overviewAsOfMark) : null,
       asOf: overviewFresh.asOf,
       asOfLabel: 'data_as_of',
-      asOfNote: overviewAcct,
+      asOfNote: portfolioAsOfNote ?? overviewAcct,
       undated: !overviewFresh.dataAsOf,
       color: overviewFresh.stale ? BB.amber : 'var(--text0)',
-      tip: `Total portfolio equity across all linked broker accounts (Schwab, Fidelity, Alpaca, Moomoo). Refreshes every 2 min via /api/v2/overview.${overviewAsOfMark}${overviewFresh.stale ? ` · ${overviewFresh.reason}` : ''}`,
-      drill: { title: 'Portfolio', subtitle: overviewFresh.stale ? `STALE${overviewAsOfMark}` : 'From /api/v2/overview', endpoint: '/api/v2/overview',
-        rows: overview ? [{ portfolio_value: overview.portfolio_value, total_cash: overview.total_cash, position_count: overview.position_count, today_change: overview.today_change, today_pct: overview.today_pct, as_of: overview.as_of, surface_stale: overviewFresh.stale, surface_reason: overviewFresh.reason }] : [] },
+      tip: `Total portfolio equity — an ALL-ACCOUNTS aggregate${portfolioAgg?.included_account_count != null ? ` of ${portfolioAgg.included_account_count} account(s)` : ''} (Schwab, Alpaca, Moomoo). No single account is the source of the total; a named account is the oldest/stale contributor. Refreshes every 2 min via /api/v2/overview.${overviewAsOfMark}${overviewFresh.stale ? ` · ${overviewFresh.reason}` : ''}`,
+      drill: { title: 'Portfolio (ALL ACCOUNTS)', subtitle: overviewFresh.stale ? `STALE${overviewAsOfMark}` : `All-account aggregate · ${portfolioAgg?.included_account_count ?? '?'} account(s)`, endpoint: '/api/v2/overview',
+        rows: overview ? [{ portfolio_value: overview.portfolio_value, portfolio_aggregate: overview.portfolio_aggregate, total_cash: overview.total_cash, position_count: overview.position_count, today_change: overview.today_change, today_pct: overview.today_pct, as_of: overview.as_of, surface_stale: overviewFresh.stale, surface_reason: overviewFresh.reason }] : [] },
     },
     {
       label: 'TODAY', value: todayChange != null ? `${todayChange >= 0 ? '+' : ''}${fmt$(todayChange, 0)}${todayPct != null ? ` ${todayPct >= 0 ? '+' : ''}${todayPct}%` : ''}` : '—',
@@ -125,17 +168,17 @@ export default function MetricStrip({ onDrill }: Props) {
       label: 'TRADING', value: winRate != null ? `${winRate}%${winTrades ? ` · ${winTrades}` : ''}${journalPnl != null ? ` · ${fmt$(journalPnl, 0)}` : ''}` : '—',
       stale: journalStale ? journalAgeMark : null,
       color: winRate != null && winRate >= 50 ? BB.green : winRate != null ? BB.amber : 'var(--text3)',
-      tip: `Active trading only (day + swing), broker round-trips${journalLastClose ? ` · last close ${journalLastClose}` : ''}${journalRefreshedMark}. Excludes long-term trims of old holds — those are in REALIZED. Win rate excludes $0 scratches.`,
-      drill: { title: 'Trading (active)', subtitle: `Day + swing round-trips, excludes long-term position trims${journalLastClose ? ` · through ${journalLastClose}` : ''} · REALIZED tile shows all closed incl. trims`, endpoint: '/api/v2/overview',
-        rows: [{ trading_win_rate: overview?.journal?.win_rate, trading_trades: overview?.journal?.trade_count, trading_pnl: overview?.journal?.total_pnl, realized_win_rate: overview?.journal?.realized_win_rate, realized_trades: realizedCount, realized_pnl: realizedPnl, long_term_trim_pnl: longTermTrimPnl, basis: overview?.journal?.basis, last_close_date: overview?.journal?.last_close_date, last_ingested_at: overview?.journal?.last_ingested_at, ledger_last_trade_time: overview?.journal?.ledger_last_trade_time, paper_readiness_win_rate: readiness?.win_rate, paper_usable_trades: readiness?.closed_usable }] },
+      tip: `Active trading only (day + swing), broker round-trips · ${journalScope} · ${journalWindow}${journalAsOf ? ` · as_of ${String(journalAsOf).slice(0, 19).replace('T', ' ')}` : ''}${journalLastClose ? ` · last close ${journalLastClose}` : ''}${journalRefreshedMark}. Excludes long-term trims of old holds — those are in REALIZED. Win rate excludes $0 scratches.`,
+      drill: { title: 'Trading (active)', subtitle: `Day + swing round-trips · ${journalScope} · ${journalWindow} · excludes long-term position trims${journalLastClose ? ` · through ${journalLastClose}` : ''} · REALIZED tile shows all closed incl. trims`, endpoint: '/api/v2/overview',
+        rows: [{ trading_win_rate: overview?.journal?.win_rate, trading_trades: overview?.journal?.trade_count, trading_pnl: overview?.journal?.total_pnl, realized_win_rate: overview?.journal?.realized_win_rate, realized_trades: realizedCount, realized_pnl: realizedPnl, long_term_trim_pnl: longTermTrimPnl, basis: overview?.journal?.basis, account_scope: overview?.journal?.account_scope, time_window: overview?.journal?.time_window, as_of: overview?.journal?.as_of, last_close_date: overview?.journal?.last_close_date, last_ingested_at: overview?.journal?.last_ingested_at, ledger_last_trade_time: overview?.journal?.ledger_last_trade_time, paper_readiness_win_rate: readiness?.win_rate, paper_usable_trades: readiness?.closed_usable }] },
     },
     {
       label: 'REALIZED', value: realizedPnl != null ? fmt$(realizedPnl, 0) : '—',
       stale: journalStale ? journalAgeMark : null,
       color: realizedPnl == null ? 'var(--text3)' : realizedPnl >= 0 ? BB.green : BB.red,
-      tip: `All closed P&L incl. long-term trims of old buy-and-hold lots${longTermTrimPnl ? ` (${fmt$(longTermTrimPnl, 0)} of it is long-term trims)` : ''}${journalLastClose ? ` · last close ${journalLastClose}` : ''}${journalRefreshedMark}. Trading-only P&L is ${journalPnl != null ? fmt$(journalPnl, 0) : '—'}.`,
-      drill: { title: 'Realized P&L (all closed)', subtitle: `Includes long-term position trims — not just trading${journalLastClose ? ` · through ${journalLastClose}` : ''}`, endpoint: '/api/v2/overview',
-        rows: [{ realized_pnl: realizedPnl, realized_trades: realizedCount, long_term_trim_pnl: longTermTrimPnl, trading_pnl: overview?.journal?.total_pnl, trading_trades: overview?.journal?.trade_count, basis: overview?.journal?.basis, last_close_date: overview?.journal?.last_close_date, last_ingested_at: overview?.journal?.last_ingested_at }] },
+      tip: `All closed P&L incl. long-term trims of old buy-and-hold lots · ${journalScope} · ${journalWindow}${journalAsOf ? ` · as_of ${String(journalAsOf).slice(0, 19).replace('T', ' ')}` : ''}${longTermTrimPnl ? ` (${fmt$(longTermTrimPnl, 0)} of it is long-term trims)` : ''}${journalLastClose ? ` · last close ${journalLastClose}` : ''}${journalRefreshedMark}. Trading-only P&L is ${journalPnl != null ? fmt$(journalPnl, 0) : '—'}.`,
+      drill: { title: 'Realized P&L (all closed)', subtitle: `Includes long-term position trims — not just trading · ${journalScope} · ${journalWindow}${journalLastClose ? ` · through ${journalLastClose}` : ''}`, endpoint: '/api/v2/overview',
+        rows: [{ realized_pnl: realizedPnl, realized_trades: realizedCount, long_term_trim_pnl: longTermTrimPnl, trading_pnl: overview?.journal?.total_pnl, trading_trades: overview?.journal?.trade_count, basis: overview?.journal?.basis, account_scope: overview?.journal?.account_scope, time_window: overview?.journal?.time_window, as_of: overview?.journal?.as_of, last_close_date: overview?.journal?.last_close_date, last_ingested_at: overview?.journal?.last_ingested_at }] },
     },
     {
       label: 'REGIME', value: regimeLabel ? `${regimeLabel.replace(/_/g, ' ')}${regimeConf ? ` ${Math.round(regimeConf * 100)}%` : ''}` : '—',
@@ -147,9 +190,9 @@ export default function MetricStrip({ onDrill }: Props) {
     {
       label: 'VIX', value: vix != null ? Number(vix).toFixed(1) : '—',
       color: vix == null ? 'var(--text3)' : vix >= 25 ? BB.red : vix >= 18 ? BB.amber : BB.green,
-      tip: `CBOE Volatility Index. Green <18 (low fear), amber 18-25 (elevated), red ≥25 (high fear). Sourced from latest Trade AI scan.`,
-      drill: { title: 'VIX', subtitle: 'Volatility index (from latest Trade AI run)', endpoint: '/api/v2/trade-ai',
-        rows: tradeAi ? [{ vix: tradeAi.vix, market_regime: tradeAi.market_regime, run_label: tradeAi.run_label }] : [] },
+      tip: `CBOE Volatility Index. Green <18 (low fear), amber 18-25 (elevated), red ≥25 (high fear).${vixSource ? ` · source ${vixSource}` : ''}${vixObsTime ? ` · observed ${String(vixObsTime).slice(0, 19).replace('T', ' ')}` : ''}`,
+      drill: { title: 'VIX', subtitle: `Volatility index · source ${vixSource ?? 'unknown'}${vixObsTime ? ` · observed ${vixObsTime}` : ''}`, endpoint: '/api/v2/trade-ai',
+        rows: tradeAi ? [{ vix: tradeAi.vix, vix_source: tradeAi.vix_source, vix_observation_time: tradeAi.vix_observation_time, market_regime: tradeAi.market_regime, run_label: tradeAi.run_label }] : [] },
     },
     {
       label: 'SETUPS · LATEST RUN',
@@ -160,9 +203,9 @@ export default function MetricStrip({ onDrill }: Props) {
       color: scanStale ? BB.amber : goCount > 0 ? BB.green : 'var(--text3)',
       tip: scanStale
         ? `Scanner surface is STALE (${setupsFresh.reason || 'prior/empty cache'}). ${setupsRun}${setupsAsOfMark}. HTTP 200 is not a live claim — Trading → Trade AI shows the same payload.`
-        : 'Latest scanner run only — Trading → Trade AI shows the full scan universe (today + yesterday, all runs)',
-      drill: { title: 'Trade Setups', subtitle: scanStale ? (setupsFresh.surfaceLabel || `STALE — last ${setupsRun}`) : 'Latest scanner run only — Trading → Trade AI shows the full scan universe (today + yesterday, all runs)', endpoint: '/api/v2/trade-ai',
-        rows: tradeAi ? [{ scope: scanStale ? 'stale' : 'latest run only', go_count: tradeAi.go_count, wait_count: tradeAi.wait_count, avoid_count: tradeAi.avoid_count, universe_go: tradeAi.universe_go, universe_wait: tradeAi.universe_wait, universe_nogo: tradeAi.universe_nogo, run_label: tradeAi.run_label, run_date: tradeAi.run_date, cached_at: tradeAi.cached_at, cache_age_sec: tradeAi.cache_age_sec, stale: tradeAi.stale, surface_stale: setupsFresh.stale, surface_reason: setupsFresh.reason, vix: tradeAi.vix, market_regime: tradeAi.market_regime, run_health_status: tradeAi.run_health_status }] : [] },
+        : `Latest scanner run · ${setupSummary?.classified_count ?? goCount} classified / ${setupSummary?.scanned_count ?? '?'} scanned · run ${setupSummary?.run_id ?? tradeAi?.run_id ?? setupsRun}${setupSummary?.count_integrity && setupSummary.count_integrity !== 'RECONCILED' ? ` · ${setupSummary.count_integrity}` : ''}`,
+      drill: { title: 'Trade Setups', subtitle: scanStale ? (setupsFresh.surfaceLabel || `STALE — last ${setupsRun}`) : `Latest scanner run · run ${setupSummary?.run_id ?? tradeAi?.run_id ?? ''} · ${setupSummary?.classified_count ?? goCount} classified / ${setupSummary?.scanned_count ?? '?'} scanned`, endpoint: '/api/v2/trade-ai',
+        rows: tradeAi ? [{ scope: scanStale ? 'stale' : 'latest run only', run_id: tradeAi.run_id, setup_run_summary: tradeAi.setup_run_summary, go_count: tradeAi.go_count, wait_count: tradeAi.wait_count, avoid_count: tradeAi.avoid_count, universe_go: tradeAi.universe_go, universe_wait: tradeAi.universe_wait, universe_nogo: tradeAi.universe_nogo, run_label: tradeAi.run_label, run_date: tradeAi.run_date, cached_at: tradeAi.cached_at, cache_age_sec: tradeAi.cache_age_sec, stale: tradeAi.stale, surface_stale: setupsFresh.stale, surface_reason: setupsFresh.reason, vix: tradeAi.vix, vix_source: tradeAi.vix_source, market_regime: tradeAi.market_regime, run_health_status: tradeAi.run_health_status }] : [] },
     },
   ]
 
@@ -173,11 +216,11 @@ export default function MetricStrip({ onDrill }: Props) {
         <div style={{ fontSize: TYPE.md, fontWeight: 700, color: T.link }}>Command Center v3</div>
         {priceStamp && (
           <div
-            title={`Holdings repriced via ${overview?.pricing?.reprice_source ?? overview?.reprice_source ?? 'finviz'} · /api/v2/overview`}
-            onClick={() => onDrill({ title: 'Price Freshness', subtitle: priceStamp, endpoint: '/api/v2/overview',
-              rows: overview?.pricing ? [overview.pricing] : [{ last_repriced: overview?.last_repriced, reprice_source: overview?.reprice_source }] })}
+            title={`Holdings repriced via ${quoteSel?.selected_provider ?? overview?.pricing?.reprice_source ?? overview?.reprice_source ?? 'finviz'}${quoteSel?.fallback_used ? ` · fallback ${quoteSel.fallback_reason}` : ''}${quoteSel?.status === 'UNAVAILABLE' ? ' · no eligible quote source' : ''} · /api/v2/overview`}
+            onClick={() => onDrill({ title: 'Price Freshness', subtitle: `${priceStamp}${quoteStatusMark ?? ''}`, endpoint: '/api/v2/overview',
+              rows: [overview?.quote_selection ? { quote_selection: overview.quote_selection } : null, overview?.pricing ?? { last_repriced: overview?.last_repriced, reprice_source: overview?.reprice_source }].filter(Boolean) })}
             style={{ fontSize: TYPE.xs, color: 'var(--text3)', marginTop: 2, cursor: 'pointer', maxWidth: 280 }}
-          >{priceStamp}</div>
+          >{priceStamp}{quoteStatusMark}</div>
         )}
       </div>
       {tiles.map(t => (

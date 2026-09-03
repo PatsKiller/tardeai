@@ -648,7 +648,16 @@ export default function TradingHub({ onDrill }: Props) {
             </div>
             <div style={{ fontSize: 10, color: 'var(--text3)', margin: '0 0 12px' }}>
               Scope: full scan universe (latest scan per symbol · today + yesterday · all runs).
-              Header SETUPS = latest run only: {tradeAi?.go_count ?? 0} GO · {tradeAi?.wait_count ?? 0} WAIT · {tradeAi?.avoid_count ?? 0} NOGO.
+              Header SETUPS = latest run only: {(() => {
+                const ss: any = tradeAi?.setup_run_summary
+                if (ss?.classified_count != null && ss?.scanned_count != null) {
+                  const counts = `${ss.go_count} GO · ${ss.wait_count} WAIT · ${ss.nogo_count} NOGO`
+                  const pop = `${ss.classified_count} classified / ${ss.scanned_count} scanned`
+                  const integrity = ss.count_integrity && ss.count_integrity !== 'RECONCILED' ? ` · ${ss.count_integrity}` : ''
+                  return `${counts} · ${pop}${integrity} · run ${ss.run_id ?? tradeAi?.run_id ?? ''}`
+                }
+                return `${tradeAi?.go_count ?? 0} GO · ${tradeAi?.wait_count ?? 0} WAIT · ${tradeAi?.avoid_count ?? 0} NOGO`
+              })()}.
               {healthTier === 'underfilled' && (
                 <> Current-run health: <b style={{ color: BB.amber }}>UNDERFILLED</b> ({scannedN != null ? scannedN : '—'} scanned).</>
               )}

@@ -592,6 +592,18 @@ GATES = [
         ],
     ),
     (
+        # cc-header-truth-v2 (2026-09-03): one canonical GO/WAIT/NOGO summary,
+        # VIX source+observation, ALL-ACCOUNTS portfolio aggregate, journal
+        # basis/window/scope — all wired into the served endpoints, not just
+        # defined and left unused.
+        "cc_header_truth_v2",
+        [
+            "tests/test_setup_run_contract.py",
+            "tests/test_cc_header_truth_v2_api.py",
+            "tests/test_quote_selection_contract.py",
+        ],
+    ),
+    (
         "research_observation_contract",
         [
             "tests/test_research_observation_contract.py",

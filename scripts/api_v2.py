@@ -2513,12 +2513,11 @@ def overview():
         if a not in today_by_account:
             today_by_account[a] = {"change": 0.0, "value": 0.0, "pct": None, "top_movers": ""}
 
-    # Trade AI run data
-    import glob
-    _runs = sorted(glob.glob(str(PROJECT_ROOT / "reports" / "2026-*" / "*" / "run_summary.json")))
-    tai = {}
-    if _runs:
-        tai = _load_json(Path(_runs[-1])) or {}
+    # Trade AI run data — read from the SAME cached payload the summary
+    # endpoint serves, so overview and /trade-ai/summary can never disagree on
+    # the canonical run identity and counts (cc-header-truth-v2 Phase 2 C).
+    # trade_ai() is cache-backed and never recomputes on the request path.
+    tai = trade_ai() or {}
 
     # Journal stats (exclude flat/zero-pnl trades from win rate, matching v1)
     # Headline journal metrics — the LOCAL journal the operator sees on the Journal page: broker-verified
@@ -2676,8 +2675,81 @@ def overview():
         "not_fresh_datasets": sorted(n for n, e in _envelopes.items() if e.status in NOT_FRESH),
         "position_counts": _position_counts,
     }
+
+    # ── Portfolio aggregate contract (cc-header-truth-v2 Phase 2 A) ──────────
+    # The header total is an ALL-ACCOUNTS aggregate. It must never sit beside an
+    # individual account name as though that account supplied it, and it must name
+    # which account (if any) drives aggregate staleness.
+    _acct_summaries = h.get("account_summaries") or {}
+    _acct_obs = []
+    for _ak, _as in _acct_summaries.items():
+        if not isinstance(_as, dict):
+            continue
+        _obs_time = _as.get("as_of") or _as.get("reported_total_as_of") or ""
+        _acct_obs.append({
+            "account": _ak,
+            "custodian": _as.get("source", ""),
+            "total_value": _as.get("total_value"),
+            "holdings_count": _as.get("holdings_count"),
+            "observation_time": _obs_time,
+            "received_time": _as.get("last_import", ""),
+            "freshness": "UNKNOWN",
+        })
+    _oldest_obs = h.get("data_as_of")
+    _oldest_acct = h.get("data_as_of_account")
+    _acct_times = [o["observation_time"] for o in _acct_obs if o.get("observation_time")]
+    if not _oldest_obs and _acct_times:
+        _oldest_obs = min(_acct_times)
+    _newest_obs = max(_acct_times) if _acct_times else None
+    _agg_state = "UNAVAILABLE"
+    _agg_reason = "no account observations"
+    if _acct_obs:
+        _agg_state = "COMPLETE"
+        _agg_reason = f"{len(_acct_obs)} account(s) contributing"
+        if _oldest_obs:
+            try:
+                _odt = datetime.fromisoformat(str(_oldest_obs).replace("Z", "+00:00"))
+                _age_h = (datetime.now(timezone.utc) - _odt.astimezone(timezone.utc)).total_seconds() / 3600.0
+            except (ValueError, TypeError):
+                _age_h = None
+            if _age_h is None or _age_h > 48:
+                _agg_state = "STALE"
+                _agg_reason = (
+                    f"oldest observation: {_oldest_acct or '?'} {_oldest_obs}"
+                    + (f" ({_age_h:.0f}h)" if _age_h is not None else " (undated)")
+                )
+    _portfolio_aggregate = {
+        "contract_version": "PortfolioAggregate@v1",
+        "portfolio_scope": "ALL_ACCOUNTS",
+        "aggregate_value": total_val,
+        "included_account_count": len(_acct_obs),
+        "oldest_observation_time": _oldest_obs,
+        "oldest_observation_account": _oldest_acct,
+        "newest_observation_time": _newest_obs,
+        "freshness_state": _agg_state,
+        "freshness_reason": _agg_reason,
+        "accounts": _acct_obs,
+        "read_only": True,
+    }
+
+    # Canonical quote-selection projection (cc-header-truth-v2 Phase 2 B).
+    # One source of truth for provider roles; reports what the repricer did.
+    from lib.quote_selection_contract import project_quote_selection
+    _q_src_counts: dict[str, int] = {}
+    for _p in active_positions:
+        _qs = str(_p.get("price_source") or _p.get("canonical_mark_source") or "").lower()
+        _q_src_counts[_qs] = _q_src_counts.get(_qs, 0) + 1
+    _quote_selection = project_quote_selection(
+        reprice_source=h.get("reprice_source", ""),
+        last_repriced=h.get("last_repriced", ""),
+        source_counts=_q_src_counts,
+        has_any_price=bool(total_val),
+    )
+
     return {
         "portfolio_value": total_val,
+        "portfolio_aggregate": _portfolio_aggregate,
+        "quote_selection": _quote_selection,
         "derived_total_value": _derived_total,
         # non-zero while a position is unpriced mid-pipeline (e.g. SPAXX) —
         # UI may show a subtle "repricing…" hint but the total never flips
@@ -2726,12 +2798,17 @@ def overview():
                        for m in movers],
         "trade_ai": {
             "vix": tai.get("vix"),
+            "vix_source": tai.get("vix_source"),
+            "vix_observation_time": tai.get("vix_observation_time"),
             "breadth": tai.get("breadth"),
-            "go_count": tai.get("goCount", tai.get("go_count", 0)),
-            "wait_count": tai.get("waitCount", tai.get("wait_count", 0)),
-            "no_go_count": tai.get("noGoCount", tai.get("no_go_count", 0)),
-            "run_date": tai.get("runDate", tai.get("date", "")),
-            "run_label": tai.get("runLabel", tai.get("run_label", "")),
+            "market_regime": tai.get("market_regime"),
+            "run_id": tai.get("run_id"),
+            "setup_run_summary": tai.get("setup_run_summary"),
+            "go_count": tai.get("go_count", tai.get("current_run_go", 0)),
+            "wait_count": tai.get("wait_count", tai.get("current_run_wait", 0)),
+            "no_go_count": tai.get("avoid_count", tai.get("current_run_nogo", 0)),
+            "run_date": tai.get("run_date", tai.get("date", "")),
+            "run_label": tai.get("run_label", tai.get("run_label", "")),
         },
         "journal": {
             # TRADING = active decisions (day_trade + swing); the headline win-rate/P&L tile.
@@ -2751,6 +2828,14 @@ def overview():
             "last_close_date": j_last_close,
             "last_ingested_at": j_last_ingested,
             "ledger_last_trade_time": j_ledger_last_trade,
+            # Provenance (cc-header-truth-v2 Phase 2 E): the header must state the
+            # basis, window, account scope and as-of so TRADING and REALIZED can
+            # never be mistaken for a mixed-source or differently-windowed figure.
+            "calculation_version": "JournalMetrics@v1",
+            "account_scope": "schwab",
+            "time_window": "all_time",
+            "as_of": j_last_ingested,
+            "quality": "OK" if j_basis == "broker_round_trips" else "DEGRADED",
         },
         "news_count": len(news.get("catalysts", [])),
         "notification_count": (notif_rows or {}).get("cnt", 0),
@@ -11584,24 +11669,39 @@ def _forecast():
         "retirement_age": ret.get("current_age"),
     }
 
-def _vix_effective(run_vix):
-    """v3.1 (WS-F2): the orchestrator's run_summary has carried vix=0 since its
-    fetch died — fall back to the regime collector's vix_close (fresh daily at
-    06:30) so the header tile never shows a dead '—' while real VIX exists."""
+def _vix_observation(run_vix, run_timestamp=None):
+    """Return (value, source, observation_time) for the VIX headline.
+
+    cc-header-truth-v2 (Phase 2 D): VIX must name its source and observation
+    time. The run_summary vix and the regime collector's vix_close are two
+    different sources; a bare float hides which one answered. This returns the
+    source label alongside the value so the surface can name it.
+    """
     try:
         v = float(run_vix or 0)
         if v > 0:
-            return v
+            return v, "trade_ai_run_summary", run_timestamp
     except (TypeError, ValueError):
         pass
     try:
         row = _db_query(
-            """SELECT value FROM market_regime_indicators
+            """SELECT value, created_at FROM market_regime_indicators
                WHERE indicator_key='vix_close' AND created_at > now() - interval '48 hours'
                ORDER BY created_at DESC LIMIT 1""", fetch="one")
-        return float(row["value"]) if row and row.get("value") else None
+        if row and row.get("value") is not None:
+            _ct = row.get("created_at")
+            _obs = _ct.isoformat() if hasattr(_ct, "isoformat") else (str(_ct) if _ct else None)
+            return float(row["value"]), "market_regime_indicators.vix_close", _obs
     except Exception:
-        return None
+        pass
+    return None, None, None
+
+
+def _vix_effective(run_vix):
+    """v3.1 (WS-F2): the orchestrator's run_summary has carried vix=0 since its
+    fetch died — fall back to the regime collector's vix_close (fresh daily at
+    06:30) so the header tile never shows a dead '—' while real VIX exists."""
+    return _vix_observation(run_vix)[0]
 
 
 def _compute_trade_ai():
@@ -12045,10 +12145,32 @@ def _compute_trade_ai():
     except Exception:
         pass
 
+    # Canonical run-scoped setup summary (cc-header-truth-v2 Phase 2 C).
+    # One taxonomy, one reconciliation, served identically by overview and
+    # /trade-ai/summary. AVOID/NO_GO/disqualified/unclassified are NOT lumped.
+    from lib.setup_run_contract import build_setup_run_summary, derive_run_id, tally_decisions
+    _current_run_tally = tally_decisions(_current_run_tickers)
+    _run_id = derive_run_id(_current_run_label, latest.get("date", ""), latest.get("generated_at", ""))
+    _vix_val, _vix_src, _vix_obs = _vix_observation(latest.get("vix"), _latest_run_timestamp)
+    _setup_run_summary = build_setup_run_summary(
+        run_id=_run_id,
+        run_label=_current_run_label,
+        run_date=latest.get("date", ""),
+        run_timestamp=_latest_run_timestamp,
+        source="trade_ai_scans",
+        tally=_current_run_tally,
+        scanned_count=current_run_total,
+        scanned_count_alt=latest.get("ticker_count"),
+        freshness_status=(_run_health_status or "UNKNOWN"),
+        quality="OK" if _run_health_status == "RUN_HEALTHY" else "DEGRADED",
+    )
+
     return {
         "ok": True,
         "run_date": latest.get("date", ""),
         "run_label": latest.get("run_label", ""),
+        "run_id": _run_id,
+        "setup_run_summary": _setup_run_summary,
         "latest_run_label": _latest_run_label,
         "latest_run_timestamp": _latest_run_timestamp,
         "latest_run_symbols_scanned": latest.get("ticker_count", 0),
@@ -12063,7 +12185,9 @@ def _compute_trade_ai():
         "run_health_reason_codes": _run_health_reason_codes,
         "reason_codes": _run_health_reason_codes,  # alias for UI (same envelope)
         "expected_min_symbols": _expected_min_symbols,
-        "vix": _vix_effective(latest.get("vix")),
+        "vix": _vix_val,
+        "vix_source": _vix_src,
+        "vix_observation_time": _vix_obs,
         "breadth": latest.get("breadth", ""),
         "market_regime": latest.get("breadth", latest.get("market_regime", "Neutral")),
         "go_count": current_run_go,
@@ -13569,6 +13693,7 @@ def trade_ai_summary():
     keys = (
         "vix", "market_regime", "breadth", "run_health_status",
         "latest_run_label", "latest_run_timestamp", "run_label", "run_date",
+        "run_id", "setup_run_summary", "vix_source", "vix_observation_time",
         "latest_run_go_count", "latest_run_wait_count", "latest_run_no_go_count",
         "go_count", "wait_count", "avoid_count",
         "universe_go", "universe_wait", "universe_nogo",
