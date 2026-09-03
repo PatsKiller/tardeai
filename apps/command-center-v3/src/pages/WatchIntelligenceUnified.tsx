@@ -512,6 +512,11 @@ export default function WatchIntelligenceUnified() {
 
       {loading && <div style={{ color: BB.text3, fontSize: TYPE.sm }}>Loading broker projection…</div>}
       {error && <div style={{ color: BB.red, fontSize: TYPE.sm }}>Error: {String(error)}</div>}
+      {!loading && !error && cards.length === 0 && (
+        <div style={{ color: BB.amber, fontSize: TYPE.sm }} data-watch-empty>
+          No matching watch intelligence cards for the current filters.
+        </div>
+      )}
 
       {/* 6. Cards + inspector */}
       <div style={{ display: 'grid', gridTemplateColumns: layout === 'table' ? '1fr' : 'minmax(0,1.5fr) minmax(300px,.85fr)', gap: 12, alignItems: 'start' }}>

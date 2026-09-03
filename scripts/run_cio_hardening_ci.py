@@ -604,6 +604,7 @@ GATES = [
         "cc_runtime_harness",
         [
             "tests/test_cc_runtime_harness.py",
+            "tests/test_command_center_live_truth_tranche.py",
         ],
     ),
     (

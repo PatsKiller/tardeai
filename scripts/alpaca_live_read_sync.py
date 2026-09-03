@@ -19,6 +19,7 @@ import logging
 import os
 import sys
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -36,6 +37,30 @@ except Exception:
 
 HOLDINGS_PATH = ROOT / "data" / "portfolios" / "state" / "holdings.json"
 FAIL_STREAK_PATH = ROOT / "data" / "runtime" / "alpaca_live_read_fail_streak.json"
+ET = ZoneInfo("America/New_York")
+
+
+def _observation_fields(account_key: str, now: datetime) -> dict:
+    observed = now.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+    received = observed
+    normalized = observed
+    return {
+        "source_identity": f"alpaca:{account_key}",
+        "account_scope": account_key,
+        "provider_observed_at": observed,
+        "received_at": received,
+        "normalized_at": normalized,
+        "business_date": now.astimezone(ET).date().isoformat(),
+        "market_session": (
+            "premarket" if (now.astimezone(ET).hour, now.astimezone(ET).minute) < (9, 30)
+            else "market" if now.astimezone(ET).hour < 16 else "after_hours"
+        ),
+        "freshness_state": "CURRENT",
+        "quality_state": "VALID",
+        "entitlement_state": "READ_ONLY",
+        "calculation_version": "alpaca-live-read-v2",
+        "contract_version": "CanonicalObservation@v1",
+    }
 
 
 def _conn():
@@ -56,10 +81,12 @@ def _live_read_accounts():
     return [dict(zip(cols, r)) for r in cur.fetchall()]
 
 
-def _positions_to_holdings_rows(account_key: str, positions: list) -> list:
+def _positions_to_holdings_rows(account_key: str, positions: list, *, observed_at: datetime | None = None) -> list:
     """Map Alpaca position objects → holdings.json row shape (Schwab-like)."""
     rows = []
-    now = datetime.now(timezone.utc).isoformat()
+    now_dt = observed_at or datetime.now(timezone.utc)
+    now = now_dt.isoformat()
+    observation = _observation_fields(account_key, now_dt)
     for p in positions or []:
         sym = (p.get("symbol") or "").upper()
         if not sym:
@@ -95,11 +122,13 @@ def _positions_to_holdings_rows(account_key: str, positions: list) -> list:
             "source": "alpaca_live_read",
             "as_of": now,
             "updated_at": now,
+            "observation": observation,
+            **observation,
         })
     return rows
 
 
-def _account_to_cash_row(account_key: str, acct: dict | None) -> list:
+def _account_to_cash_row(account_key: str, acct: dict | None, *, observed_at: datetime | None = None) -> list:
     """Map the Alpaca account's uninvested cash → a holdings.json CASH row.
 
     Positions are emitted separately by _positions_to_holdings_rows, so this MUST use
@@ -122,7 +151,8 @@ def _account_to_cash_row(account_key: str, acct: dict | None) -> list:
         return []
     if abs(cash) < 0.005:
         return []
-    now = datetime.now(timezone.utc)
+    now = observed_at or datetime.now(timezone.utc)
+    observation = _observation_fields(account_key, now)
     # Shape mirrors the Schwab cash rows so the repricer's cash anchor, the Cash
     # bucket and the portfolio UI treat it identically.
     return [{
@@ -147,6 +177,8 @@ def _account_to_cash_row(account_key: str, acct: dict | None) -> list:
         # only backfill this field when absent, never refresh it.
         "broker_position_as_of": now.date().isoformat(),
         "updated_at": now.isoformat(),
+        "observation": observation,
+        **observation,
     }]
 
 
@@ -267,14 +299,19 @@ def sync_one(account_key: str, *, dry_run: bool = False, force: bool = False) ->
             _telegram(f"⚠️ Alpaca live read sync FAILED ×{n} for {account_key}: {str(e)[:120]}")
         return {"account": account_key, "ok": False, "error": str(e)[:200], "fail_streak": n}
 
-    pos_rows = _positions_to_holdings_rows(account_key, positions)
-    cash_rows = _account_to_cash_row(account_key, acct)
+    observation_at = datetime.now(timezone.utc)
+    pos_rows = _positions_to_holdings_rows(account_key, positions, observed_at=observation_at)
+    cash_rows = _account_to_cash_row(account_key, acct, observed_at=observation_at)
     rows = pos_rows + cash_rows
     merge = _merge_account_into_holdings(
         account_key, rows, dry_run=dry_run,
         # acct unreadable → don't let a transient miss delete a real cash balance
         preserve_prior_cash=not cash_rows,
     )
+    aggregate = None
+    if merge.get("wrote") and not dry_run:
+        from portfolio_repricer import recompute_and_publish_portfolio_aggregate
+        aggregate = recompute_and_publish_portfolio_aggregate(HOLDINGS_PATH.parent)
 
     # Attribute fills into a lightweight runtime journal tag file (no P&L rewrite)
     try:
@@ -319,6 +356,7 @@ def sync_one(account_key: str, *, dry_run: bool = False, force: bool = False) ->
         "cash": cash_rows[0]["market_value"] if cash_rows else None,
         "equity_hint": bool(acct),
         "merge": merge,
+        "aggregate": aggregate,
     }
 
 

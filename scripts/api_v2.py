@@ -10,6 +10,7 @@ import re
 from datetime import datetime, timezone, timedelta
 from decimal import Decimal
 from pathlib import Path
+from typing import Any, Optional
 
 log = logging.getLogger(__name__)
 logger = log  # alias used by YAML tuning + john_decide handlers
@@ -28455,16 +28456,24 @@ def _finviz_enrichment(query=None):
         return {"ok": False, "error": "symbol required"}
     sym = sym.upper().strip()
     try:
-        p = PROJECT_ROOT / "data" / "state" / "ticker_enrichment_cache.json"
+        # The governed persistent state root is the same root used by the quote
+        # cache and by the deployed portfolio reader.  The old path was a
+        # checkout-relative legacy location; in an immutable release it did not
+        # exist, so a healthy cache was misreported as service-unavailable.
+        p = PROJECT_ROOT / "data" / "portfolios" / "state" / "ticker_enrichment_cache.json"
         mt = p.stat().st_mtime
         if mt != _FINVIZ_ENRICH_CACHE["mtime"]:
-            _FINVIZ_ENRICH_CACHE["data"] = json.loads(p.read_text())
+            loaded = json.loads(p.read_text())
+            if not isinstance(loaded, dict):
+                raise ValueError("cache root must be an object")
+            _FINVIZ_ENRICH_CACHE["data"] = loaded
             _FINVIZ_ENRICH_CACHE["mtime"] = mt
     except Exception as e:
         return {"ok": False, "error": f"cache unavailable: {str(e)[:60]}"}
     d = _FINVIZ_ENRICH_CACHE["data"].get(sym) or {}
     if not d:
-        return {"ok": True, "symbol": sym, "found": False, "groups": [], "note": "No Finviz enrichment cached."}
+        return {"ok": True, "symbol": sym, "found": False, "cache_available": True,
+                "groups": [], "note": "No Finviz enrichment cached."}
     GROUPS = [
         ("Technicals", [("RSI", "rsi"), ("RSI status", "rsi_status"), ("SMA20 %", "sma20_pct"),
                         ("SMA50 %", "sma50_pct"), ("SMA200 %", "sma200_pct"), ("ATR", "atr"),
@@ -28490,7 +28499,7 @@ def _finviz_enrichment(query=None):
         items = [{"label": lbl, "value": _json_clean(d.get(key))} for lbl, key in fields if d.get(key) is not None]
         if items:
             groups.append({"group": gname, "items": items})
-    return {"ok": True, "symbol": sym, "found": True, "company": d.get("company"),
+    return {"ok": True, "symbol": sym, "found": True, "cache_available": True, "company": d.get("company"),
             "sector": d.get("sector"), "industry": d.get("industry"),
             "cached_at": d.get("cached_at"), "groups": groups,
             "note": "Finviz enrichment (daily). Advisory."}

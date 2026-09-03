@@ -805,6 +805,30 @@ def reprice_portfolio(portfolio: Dict[str, Any], state_dir: Path) -> Dict[str, A
     return portfolio
 
 
+def recompute_and_publish_portfolio_aggregate(state_dir: Path) -> dict[str, Any]:
+    """Publish totals and freshness immediately after a governed state observation.
+
+    This is deliberately the repricer's existing aggregation logic without any
+    provider access.  A broker snapshot must not wait for the next market-price
+    refresh, and a second implementation of portfolio math would create a new
+    authority split.
+    """
+    holdings_path = state_dir / "holdings.json"
+    portfolio = json.loads(holdings_path.read_text(encoding="utf-8"))
+    _recalc_totals(portfolio)
+    portfolio.update(compute_data_as_of(portfolio.get("holdings") or []))
+    portfolio["aggregate_published_at"] = _utc_now_iso()
+    from holdings_guard import protected_holdings_write
+    guard = protected_holdings_write(
+        portfolio, source="alpaca_live_read_sync.aggregate_publish",
+        target_path=str(holdings_path), protect_basis=False,
+    )
+    return {"ok": True, "path": str(holdings_path), "guard": guard,
+            "data_as_of": portfolio.get("data_as_of"),
+            "data_as_of_account": portfolio.get("data_as_of_account"),
+            "total_value": portfolio.get("portfolio_totals", {}).get("total_value")}
+
+
 def _sync_ticker_prices(portfolio, root):
     """Write each held symbol's repriced close into ticker_prices for today (update today's row, else insert)
     so surfaces reading ticker_prices match holdings.json. Best-effort; never breaks repricing."""

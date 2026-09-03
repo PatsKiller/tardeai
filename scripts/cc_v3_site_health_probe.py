@@ -6,6 +6,7 @@ import json
 import sys
 import urllib.error
 import urllib.request
+from pathlib import Path
 BASE = "http://127.0.0.1:7777"
 DEFAULT_TIMEOUT = 20.0
 # Single-threaded API — these endpoints routinely exceed 20s on cold cache.
@@ -97,7 +98,9 @@ ENDPOINTS = [
     "/api/v2/tos-watchlists",
     # POST-only — GET list is /api/v2/watch-directives
     "/api/v2/watch-directives",
-    "/api/v2/finviz-enrichment?symbol=RKLB",
+    # Two-part cache contract: the sentinel proves the governed cache is
+    # readable even when a particular symbol is absent.  A cached-symbol check
+    # is added dynamically below when the cache contains one.
     "/api/v2/plan-vs-performance",
     "/api/v2/execution-quality",
     "/api/v2/health/proposals",
@@ -113,6 +116,20 @@ ENDPOINTS = [
     "/api/v2/trade-integrity-audit",
     "/api/v2/tradeai/fleet",
 ]
+
+
+def _finviz_probe_paths() -> list[str]:
+    paths = ["/api/v2/finviz-enrichment?symbol=__HEALTH_CHECK_MISSING__"]
+    root = Path(__file__).resolve().parents[1]
+    cache = root / "data" / "portfolios" / "state" / "ticker_enrichment_cache.json"
+    try:
+        payload = json.loads(cache.read_text(encoding="utf-8"))
+        symbols = sorted(k for k, v in payload.items() if not str(k).startswith("_") and isinstance(v, dict))
+        if symbols:
+            paths.append(f"/api/v2/finviz-enrichment?symbol={symbols[0]}")
+    except (OSError, ValueError, TypeError):
+        pass
+    return paths
 
 
 def _timeout_for(path: str) -> float:
@@ -156,7 +173,7 @@ def probe(path: str, timeout: float | None = None) -> dict:
 def main() -> int:
     # Single-threaded server — probe sequentially to avoid wedging/killing it.
     results = []
-    for p in ENDPOINTS:
+    for p in ENDPOINTS + _finviz_probe_paths():
         results.append(probe(p))
         import time
         time.sleep(0.15)
