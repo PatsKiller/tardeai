@@ -656,6 +656,40 @@ GATES = [
         ],
     ),
     (
+        # cc-whole-site-residual-v1 (2026-09-03): F12.15, the per-route audit. The
+        # 401/403 classification only protects reads that go through useApi; this
+        # enumerates the ones that do not (100 reads across 49 files, pre-existing)
+        # and pins that this campaign's own five surfaces are not among them.
+        "useapi_route_audit",
+        [
+            "tests/test_useapi_route_audit.py",
+        ],
+    ),
+    (
+        # cc-whole-site-residual-v1 (2026-09-03): the five surfaces that still lied.
+        # Watch counts now come from one population and never render authoritative
+        # while the list is unresolved; Closed Loop's four circulations age on their
+        # own clocks; stale research is not missing research; a MANUAL writer is
+        # never shown as if a schedule mints it; and a re-entry row finally carries
+        # one canonical status instead of gates a consumer has to interpret.
+        "residual_surfaces",
+        [
+            "tests/test_residual_surfaces.py",
+        ],
+    ),
+    (
+        # cc-whole-site-residual-v1 (2026-09-03): the guarded migration door. Every
+        # rail is exercised against an ISOLATED byte-copied replica -- wrong SHA,
+        # wrong manifest, changed hashes, missing/corrupt backup, no disk, active
+        # writer, bad schema, interrupted write, financial conflict -- and every
+        # failure proves the target's bytes came back unchanged. Financial truth
+        # stores fail closed; recency never decides a financial value.
+        "state_migration_rehearsal",
+        [
+            "tests/test_state_migration_rehearsal.py",
+        ],
+    ),
+    (
         # cc-whole-site-residual-v1 (2026-09-03): detection is not resolution. Every
         # audited store gets one verdict from a closed taxonomy, Command Center
         # criticality is derived from the surface, and each open fork carries an

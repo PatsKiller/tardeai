@@ -26785,6 +26785,71 @@ def _state_root_disposition():
         }
 
 
+def _residual_surface(fn_name, loader=None):
+    """Shared read-only wrapper for the five residual-surface projections.
+
+    Fail closed: an import or upstream error becomes an explicit state with a
+    reason, never an empty payload that renders as a healthy zero.
+    """
+    try:
+        from lib import residual_surfaces as _rs
+
+        payload = loader() if loader else None
+        return getattr(_rs, fn_name)(payload)
+    except Exception as e:  # noqa: BLE001
+        return {
+            "state": "ERROR",
+            "state_reason": f"{type(e).__name__}: {e}",
+            "terminal": True,
+            "authority": "READ_ONLY_ADVISORY",
+        }
+
+
+def _watch_projection():
+    """GET /api/v2/watch/projection — one population for every Watch count.
+
+    Summary counts are withheld while the list is unresolved, and an initial
+    filter that eliminates the catalogue is reported as DEGRADED rather than
+    rendering an empty watchlist. Reads an already-built payload; calls no provider.
+    """
+    return _residual_surface("watch_projection", lambda: _wl_items(_current_query or {}))
+
+
+def _closed_loop_separation():
+    """GET /api/v2/closed-loop/separation — four circulations, four clocks.
+
+    CIO decision lineage and Hermes outcome feedback are different loops; one
+    going quiet must not age the other.
+    """
+    return _residual_surface("closed_loop_separation")
+
+
+def _research_provenance():
+    """GET /api/v2/research-intelligence/provenance — stale is not missing.
+
+    Separates stale topics from uncovered categories, and source-acquisition from
+    artifact from consumer-adoption freshness. Evidence, never canonical truth.
+    """
+    return _residual_surface("research_provenance", lambda: _research_intelligence_freshness())
+
+
+def _writer_status():
+    """GET /api/v2/writers/status — eight signals per writer, answered separately.
+
+    A MANUAL writer is never rendered as if a schedule mints its output.
+    """
+    return _residual_surface("writer_status")
+
+
+def _reentry_status_projection():
+    """GET /api/v2/reentry/status — one canonical status per row.
+
+    The served desk carries gates, `held` and `wash_blocked` but no status, so
+    every consumer re-derived its own. This is the single projection.
+    """
+    return _residual_surface("reentry_projection", lambda: _build_reentry_decision_desk_api(_current_query))
+
+
 def _governance_pipeline_status():
     """GET /api/v2/system/governance-pipeline-status — Phase 200 governance controller status (read-only)."""
     import json as _j, subprocess as _sp
@@ -45394,6 +45459,11 @@ ROUTES = {
     "/api/v2/data-sources/finviz/store-health": lambda: _finviz_store_health(),
     "/api/v2/risk/protection-truth": lambda: _protection_truth(),
     "/api/v2/system/state-root-disposition": lambda: _state_root_disposition(),
+    "/api/v2/watch/projection": lambda: _watch_projection(),
+    "/api/v2/closed-loop/separation": lambda: _closed_loop_separation(),
+    "/api/v2/research-intelligence/provenance": lambda: _research_provenance(),
+    "/api/v2/writers/status": lambda: _writer_status(),
+    "/api/v2/reentry/status": lambda: _reentry_status_projection(),
     "/api/v2/system/portfolio-cadence-status": lambda: _portfolio_cadence_status(),
     "/api/v2/open-trades/intelligence": lambda: _open_trades_intelligence(),
     "/api/v2/broker-proposals": lambda: _broker_proposals(_current_query),
