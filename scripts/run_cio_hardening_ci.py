@@ -608,6 +608,18 @@ GATES = [
         ],
     ),
     (
+        "state_root_convergence",
+        [
+            # Producers run under `cd $PROJ`; releases symlink
+            # data/portfolios/state at the persistent root. Measured 2026-09-03:
+            # 59 of 88 stores forked, worst skew 143 days, and no surface said
+            # so. Both files run together -- the producer fix and the report
+            # that makes the next fork visible are one contract.
+            "tests/test_portfolio_news_state_root.py",
+            "tests/test_state_root_divergence.py",
+        ],
+    ),
+    (
         "wake_writer_stamp",
         [
             "tests/test_wake_writer_stamp.py",

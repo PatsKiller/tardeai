@@ -21642,6 +21642,38 @@ def _manual_execution_log(query=None):
     }
 
 
+def _state_root_divergence(query=None):
+    """GET /api/v2/system/state-root-divergence — which state stores have forked.
+
+    Read-only. Producers run under `cd $PROJ`; every deployed release symlinks
+    data/portfolios/state at the persistent root. A producer that resolves its
+    path from the checkout writes a tree the server never reads, reports
+    success, and the served surface silently stops moving. Measured 2026-09-03:
+    59 of 88 stores had forked, the worst by 143 days, and no Command Center
+    surface said so.
+
+    Never merges or repairs a store (AGENTS.md 9.4 / WAVE G1: detection must not
+    become resolution). `?hashes=1` adds byte-identity, which is stronger than
+    mtime but costs a read of every store.
+    """
+    try:
+        from lib.state_root_divergence import scan
+    except Exception as e:  # noqa: BLE001
+        return {"schema": "StateRootDivergenceReport@v1", "status": "UNAVAILABLE",
+                "reason": f"{type(e).__name__}: {e}", "auto_remediate": False}
+    q = query if isinstance(query, dict) else (_current_query or {})
+    want_hashes = (q.get("hashes") or "").lower() in ("1", "true", "yes")
+    try:
+        # Deliberately not PROJECT_ROOT: in a deployed release that path IS the
+        # symlink to the served root, so it would compare a directory with
+        # itself and report CONVERGED while stores were forked.
+        return scan(with_hashes=want_hashes)
+    except Exception as e:  # noqa: BLE001
+        # Fail closed: an error is never an empty, healthy-looking report.
+        return {"schema": "StateRootDivergenceReport@v1", "status": "UNAVAILABLE",
+                "reason": f"{type(e).__name__}: {e}", "auto_remediate": False}
+
+
 def _governance_pipeline_status():
     """GET /api/v2/system/governance-pipeline-status — Phase 200 governance controller status (read-only)."""
     import json as _j, subprocess as _sp
@@ -36128,6 +36160,7 @@ ROUTES = {
     "/api/v2/system/runtime-inventory": lambda: _system_runtime_inventory(),
     "/api/v2/system/pipeline-summary": lambda: _system_pipeline_summary(),
     "/api/v2/system/governance-pipeline-status": lambda: _governance_pipeline_status(),
+    "/api/v2/system/state-root-divergence": lambda: _state_root_divergence(_current_query),
     "/api/v2/system/portfolio-cadence-status": lambda: _portfolio_cadence_status(),
     "/api/v2/open-trades/intelligence": lambda: _open_trades_intelligence(),
     "/api/v2/broker-proposals": lambda: _broker_proposals(_current_query),

@@ -269,9 +269,20 @@ def collect_portfolio_news(portfolio: Dict, state_dir: Path, root: str = ".") ->
     snapshot_path = history_dir / f"{today}.json"
     snapshot_path.write_text(json.dumps(snapshot, indent=2, default=str))
 
-    # Save current state for CC
-    current_path = state_dir / "portfolio_news.json"
-    current_path.write_text(json.dumps(snapshot, indent=2, default=str))
+    # Save current state for CC.
+    # Dual-written from this one snapshot object to every state root a reader
+    # may use. This producer runs under `cd $PROJ`, while every deployed release
+    # symlinks data/portfolios/state at the persistent root, so writing only the
+    # checkout copy stranded the Command Center on an August file while this
+    # process reported success every morning (measured 2026-09-03: served copy
+    # 8 days behind the producer copy). Same fix as
+    # portfolio_stops.save_risk_state and the orchestrator's _freshness /
+    # performance_history writes.
+    from lib.canonical_observation import write_state_json as _wsj
+
+    _news_write = _wsj("portfolio_news.json", snapshot, checkout_root=root)
+    if _news_write["errors"]:
+        print(f"  [portfolio-news] Warning: {_news_write['errors'][0]}")
 
     # Prune history > 90 days
     _prune_history(history_dir)
