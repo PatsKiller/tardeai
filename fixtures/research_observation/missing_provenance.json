@@ -1,0 +1,5 @@
+{
+  "symbol": "XYZ",
+  "answers": {"summary": "no provenance fields"},
+  "note": "negative control — missing run_id, timestamps, hash, entitlement"
+}

@@ -788,10 +788,14 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
         print(f"  [perf-history] ✅ {len(avail)} periods available | {snaps} snapshots"
               + (f" | reconstructed: {','.join(recon)}" if recon else "")
               + (f" | building: {','.join(build)}" if build else ""))
-        # Save for Command Center (reads performance_history.json)
-        ph_path = state_dir / "performance_history.json"
-        import json as _json
-        ph_path.write_text(_json.dumps(perf_history, indent=2))
+        # Save for Command Center (reads performance_history.json).
+        # Dual-written: the Command Center reads the served root, this process
+        # runs under `cd $PROJ`. Writing one root published 7.4-day-old periods
+        # beside a 3-second-old portfolio value.
+        from lib.canonical_observation import write_state_json as _wsj
+        _ph_write = _wsj("performance_history.json", perf_history, checkout_root=root)
+        if _ph_write["errors"]:
+            print(f"  [perf-history] Warning: {_ph_write['errors'][0]}")
     except Exception as e:
         _stage_failed("perf-history", e)
     # 9 — Dashboard
@@ -1087,7 +1091,8 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
                 _ph.setdefault("periods", {})["1D"] = _md_final
         except Exception as _e:
             _soft_fail("performance-history:1D", _e)
-        json.dump(_ph, open(state_dir / "performance_history.json", "w"), indent=2, default=str)
+        from lib.canonical_observation import write_state_json as _wsj2
+        _wsj2("performance_history.json", json.loads(json.dumps(_ph, default=str)), checkout_root=root)
         perf_history = _ph  # update for dashboard rebuild below
     except Exception as e:
         print(f"  [fidelity-perf] Error: {e}")
@@ -1157,11 +1162,25 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
             "steps_completed": 10,
             "pipeline_duration_seconds": round(_duration, 1),
             "run_type": run_type,
-            "status": "fresh",
         }
-        _freshness_path = state_dir / "_freshness.json"
-        _freshness_path.write_text(json.dumps(_freshness, indent=2))
-        print(f"  [freshness] ✅ Manifest written ({_freshness['run_id']}, hash={_holdings_hash})")
+        # The status is MEASURED, not asserted. It was previously the literal
+        # "fresh" with no branch that could ever write anything else, so a file
+        # that stopped moving in August still reported fresh in September
+        # (audit cc-truth-v1-20260902T202759Z). Now it is computed from the run
+        # we just completed and fails closed to unknown/stale.
+        from lib.canonical_observation import orchestrator_freshness_status, write_state_json
+        _fr_status, _fr_verdict = orchestrator_freshness_status(_freshness["completed_at"])
+        _freshness["status"] = _fr_status
+        _freshness["status_computed"] = _fr_verdict
+        # Written to EVERY state root a reader may use, from this one object.
+        # The served API reads persistent-state while this process runs under
+        # `cd $PROJ`; writing only the checkout copy is what stranded this file
+        # for 7.4 days. Same fix as portfolio_stops.save_risk_state.
+        _fr_write = write_state_json("_freshness.json", _freshness, checkout_root=root)
+        print(f"  [freshness] ✅ Manifest written ({_freshness['run_id']}, hash={_holdings_hash}, "
+              f"status={_fr_status}, targets={_fr_write['target_count']})")
+        if _fr_write["errors"]:
+            print(f"  [freshness] Warning: {len(_fr_write['errors'])} target(s) failed: {_fr_write['errors'][0]}")
     except Exception as _fe:
         print(f"  [freshness] Warning: manifest write failed: {_fe}")
 

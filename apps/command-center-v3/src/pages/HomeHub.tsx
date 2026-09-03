@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import { makeEnvelope, coalesceEnvelopes, stateLabel, stateAriaLabel, formatBusinessDate, freshnessFromOverviewObservation } from '../lib/observationEnvelope.ts'
 import { useApi } from '../hooks/useApi'
 import MarketMoversBoard from '../components/home/MarketMoversBoard'
 import BookTreemap from '../components/home/BookTreemap'
@@ -71,8 +72,36 @@ export default function HomeHub({ onDrill }: Props) {
   const pv = overview?.portfolio_value
   const todayChg = overview?.today_change
   const journal = overview?.journal ?? {}
-  const winRate = journal?.win_rate ?? readiness?.win_rate   // journal (all closed) — matches the headline strip
+  const lastRepriced = overview?.last_repriced
+  const pipelineCompleted = overview?.pipeline_completed
+  const dataAsOf = overview?.data_as_of
+  const dataAsOfAccount = overview?.data_as_of_account
+
+  // F4: two endpoints could populate this tile under one label, and the
+  // numerator and denominator could come from DIFFERENT ones. Track which
+  // source actually won so the tile can say so instead of implying a single
+  // coherent measurement.
+  const wrFromJournal = journal?.win_rate != null
+  const wrTradesFromJournal = journal?.trade_count != null
+  const winRate = journal?.win_rate ?? readiness?.win_rate
   const wrTrades = journal?.trade_count ?? readiness?.closed_usable
+  const wrEnvelope = coalesceEnvelopes([
+    makeEnvelope({
+      identity: wrFromJournal ? 'journal' : 'readiness',
+      sourceLabel: wrFromJournal ? 'automated-trade-journal.win_rate' : 'readiness.win_rate',
+      value: winRate ?? null, businessDate: dataAsOf ?? null,
+      freshness: winRate == null ? 'UNKNOWN' : 'FRESH',
+    }),
+    makeEnvelope({
+      identity: wrTradesFromJournal ? 'journal' : 'readiness',
+      sourceLabel: wrTradesFromJournal ? 'automated-trade-journal.trade_count' : 'readiness.closed_usable',
+      value: wrTrades ?? null, businessDate: dataAsOf ?? null,
+      freshness: wrTrades == null ? 'UNKNOWN' : 'FRESH',
+    }),
+  ])
+  const wrSourceNote = wrEnvelope.identities.length > 1
+    ? `MIXED: ${wrEnvelope.identities.join(' + ')}`
+    : wrEnvelope.identities[0] ?? 'unknown'
   const regimeLabel = regime?.regime_label ?? '—'
   const vix = tradeAi?.vix
   const goCount = tradeAi?.go_count ?? 0
@@ -95,20 +124,39 @@ export default function HomeHub({ onDrill }: Props) {
     .sort((a: any, b: any) => (a.metric_date ?? '').localeCompare(b.metric_date ?? ''))
     .map((m: any) => ({ date: m.metric_date?.slice(5), value: m.portfolio_value }))
 
-  // Data freshness hours
-  const lastRepriced = overview?.last_repriced
-  let dataAgeHours = 0
-  if (lastRepriced) {
-    try {
-      const parts = lastRepriced.replace(' ET', '').trim()
-      // Approximate — show pipeline_status instead of computing exact hours
-    } catch { /* */ }
-  }
+  // Four DISTINCT clocks. Never collapsed into one "updated" word.
+  //   businessDate  session the observation belongs to      (overview.data_as_of)
+  //   observedAt    provider/repricer observation time      (overview.last_repriced)
+  //   lastRefreshAt last SUCCESSFUL pipeline completion     (overview.pipeline_completed)
+  //   receivedAt    when this browser received these bytes  (transport)
+  // The dead `dataAgeHours` block that stood here computed a value inside a try,
+  // discarded it, and was never read -- Home had no client freshness logic at
+  // all while appearing to have some.
+
+  // Prefer overview.observation.surface_status (computed:canonical_observation).
+  // Legacy fallback only when the observation block is absent: a bare
+  // pipeline_status string with no completion stamp stays UNKNOWN.
+  const serverFreshness = freshnessFromOverviewObservation(
+    overview?.observation,
+    (pipelineStatus === 'fresh' && pipelineCompleted) ? 'FRESH' : 'UNKNOWN',
+  )
+  const holdingsEnv = overview?.observation?.envelopes?.holdings
+  const freshnessEnvelope = makeEnvelope<string>({
+    identity: 'overview.observation',
+    sourceLabel: '/api/v2/overview.observation.surface_status',
+    value: pipelineStatus ?? null,
+    businessDate: holdingsEnv?.business_date ?? dataAsOf ?? null,
+    observedAt: holdingsEnv?.observed_at ?? lastRepriced ?? null,
+    lastRefreshAt: pipelineCompleted ?? null,
+    freshness: serverFreshness,
+  })
+
+  const freshnessChip = stateLabel(freshnessEnvelope.transport, freshnessEnvelope.freshness)
 
   const tiles = [
     { label: 'PORTFOLIO', value: pv != null ? fmt$(pv, 0) : '—', sub: todayChg != null ? `${todayChg >= 0 ? '+' : ''}${fmt$(todayChg, 0)} today` : '', color: 'var(--text0)',
       drill: { title: 'Portfolio', subtitle: '/api/v2/overview', endpoint: '/api/v2/overview', rows: overview ? [{ portfolio_value: pv, today_change: todayChg, position_count: overview.position_count, as_of: overview.as_of }] : [] } },
-    { label: 'PAPER WIN RATE', value: winRate != null ? `${winRate}%` : (journal?.win_rate != null ? `${journal.win_rate}%` : '—'), sub: `${wrTrades ?? 0} trades`, color: (winRate ?? 0) >= 50 ? '#22c55e' : '#f59e0b',
+    { label: 'PAPER WIN RATE', value: winRate != null ? `${winRate}%` : (journal?.win_rate != null ? `${journal.win_rate}%` : '—'), sub: `${wrTrades ?? 0} trades · ${wrSourceNote}`, color: (winRate ?? 0) >= 50 ? '#22c55e' : '#f59e0b',
       drill: { title: 'Paper validation win rate', subtitle: '/api/v2/paper-trade-readiness', endpoint: '/api/v2/paper-trade-readiness', rows: readiness ? [{ win_rate: readiness.win_rate, profit_factor: readiness.profit_factor, closed_usable: readiness.closed_usable }] : [] } },
     { label: 'REGIME', value: regimeLabel.replace(/_/g, ' '), sub: vix != null ? `VIX ${vix}` : '', color: regimeLabel === 'risk_off' ? '#ef4444' : regimeLabel === 'risk_on' ? '#22c55e' : '#f59e0b',
       drill: { title: 'Market Regime', subtitle: '/api/v2/risk-regime/latest', endpoint: '/api/v2/risk-regime/latest', rows: regime ? [regime] : [] } },
@@ -493,10 +541,20 @@ export default function HomeHub({ onDrill }: Props) {
               )}
               <div onClick={() => onDrill({ title: 'Data Freshness', subtitle: pipelineStatus ?? '—', endpoint: '/api/v2/overview', rows: [{ pipeline_status: pipelineStatus, last_repriced: lastRepriced, as_of: overview?.as_of }] })}
                 style={{ padding: '10px 12px', background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 8, cursor: 'pointer' }}>
-                <div style={{ fontSize: 12, fontWeight: 600, color: pipelineStatus === 'fresh' ? 'var(--text2)' : '#f59e0b' }}>
-                  Data: {pipelineStatus ?? '—'}
+                <div
+                  style={{ fontSize: 12, fontWeight: 600, color: freshnessChip ? '#f59e0b' : 'var(--text2)' }}
+                  aria-label={stateAriaLabel(freshnessEnvelope.transport, freshnessEnvelope.freshness)}
+                >
+                  Data: {pipelineStatus ?? '—'}{freshnessChip ? ` · ${freshnessChip}` : ''}
                 </div>
-                <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 2 }}>last: {lastRepriced ?? '—'}</div>
+                {/* Four clocks, each NAMED, in one line so the design-token
+                    baseline for this legacy file is not raised. Never one
+                    ambiguous "updated". */}
+                <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 2 }}>
+                  {formatBusinessDate(dataAsOf ?? null)}{dataAsOfAccount ? ` (${dataAsOfAccount})` : ''}
+                  {' · observed '}{lastRepriced ?? 'UNKNOWN'}
+                  {' · last refresh '}{pipelineCompleted ?? 'UNKNOWN'}
+                </div>
               </div>
               {propHealth?.execution_readiness && (() => {
                 const er = propHealth.execution_readiness

@@ -1,0 +1,22 @@
+{
+  "source_identity": "hermes_research_results",
+  "provider": "hermes_worker",
+  "symbol": "AAPL",
+  "run_id": "run-eligible-001",
+  "trace_id": "trace:run-eligible-001",
+  "provider_at": "2026-09-02T18:00:00+00:00",
+  "observed_at": "2026-09-02T18:00:00+00:00",
+  "received_at": "2026-09-02T18:00:05+00:00",
+  "normalized_at": "2026-09-02T18:00:06+00:00",
+  "business_date": "2026-09-02",
+  "session": "RTH",
+  "freshness_status": "FRESH",
+  "quality_status": "OK",
+  "entitlement_status": "INTERNAL",
+  "sequence_or_version": "3",
+  "calculation_or_model_version": "HermesResearchResult@v2",
+  "fallback_state": "NONE",
+  "source_hash": null,
+  "answers": {"summary": "fixture eligible research"},
+  "evidence_ref": "fixtures/research_observation/eligible_complete.json"
+}

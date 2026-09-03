@@ -1,0 +1,4000 @@
+{
+  "schema": "CcRuntimeRouteContract@v1",
+  "mode": "hermetic",
+  "base_url_class": "loopback",
+  "discovery": {
+    "basename": "/v3",
+    "route_count": 51,
+    "api_count": 485,
+    "routes": [
+      {
+        "path": "index",
+        "url": "/v3/",
+        "source": "apps/command-center-v3/src/App.tsx"
+      },
+      {
+        "path": "active-trader",
+        "url": "/v3/active-trader",
+        "source": "apps/command-center-v3/src/App.tsx"
+      },
+      {
+        "path": "advisor-changes",
+        "url": "/v3/advisor-changes",
+        "source": "apps/command-center-v3/src/App.tsx"
+      },
+      {
+        "path": "advisory",
+        "url": "/v3/advisory",
+        "source": "apps/command-center-v3/src/App.tsx"
+      },
+      {
+        "path": "agents",
+        "url": "/v3/agents",
+        "source": "apps/command-center-v3/src/App.tsx"
+      },
+      {
+        "path": "cio",
+        "url": "/v3/cio",
+        "source": "apps/command-center-v3/src/App.tsx"
+      },
+      {
+        "path": "closed-loop",
+        "url": "/v3/closed-loop",
+        "source": "apps/command-center-v3/src/App.tsx"
+      },
+      {
+        "path": "consumption",
+        "url": "/v3/consumption",
+        "source": "apps/command-center-v3/src/App.tsx"
+      },
+      {
+        "path": "control-plane",
+        "url": "/v3/control-plane",
+        "source": "apps/command-center-v3/src/App.tsx"
+      },
+      {
+        "path": "control-plane/agents",
+        "url": "/v3/control-plane/agents",
+        "source": "apps/command-center-v3/src/App.tsx"
+      },
+      {
+        "path": "control-plane/audit",
+        "url": "/v3/control-plane/audit",
+        "source": "apps/command-center-v3/src/App.tsx"
+      },
+      {
+        "path": "control-plane/data",
+        "url": "/v3/control-plane/data",
+        "source": "apps/command-center-v3/src/App.tsx"
+      },
+      {
+        "path": "control-plane/identity",
+        "url": "/v3/control-plane/identity",
+        "source": "apps/command-center-v3/src/App.tsx"
+      },
+      {
+        "path": "control-plane/learning",
+        "url": "/v3/control-plane/learning",
+        "source": "apps/command-center-v3/src/App.tsx"
+      },
+      {
+        "path": "control-plane/maturity",
+        "url": "/v3/control-plane/maturity",
+        "source": "apps/command-center-v3/src/App.tsx"
+      },
+      {
+        "path": "control-plane/notifications",
+        "url": "/v3/control-plane/notifications",
+        "source": "apps/command-center-v3/src/App.tsx"
+      },
+      {
+        "path": "control-plane/research",
+        "url": "/v3/control-plane/research",
+        "source": "apps/command-center-v3/src/App.tsx"
+      },
+      {
+        "path": "control-plane/system",
+        "url": "/v3/control-plane/system",
+        "source": "apps/command-center-v3/src/App.tsx"
+      },
+      {
+        "path": "control-plane/workflows",
+        "url": "/v3/control-plane/workflows",
+        "source": "apps/command-center-v3/src/App.tsx"
+      },
+      {
+        "path": "defense",
+        "url": "/v3/defense",
+        "source": "apps/command-center-v3/src/App.tsx"
+      },
+      {
+        "path": "go/order/:intentId",
+        "url": "/v3/go/order/:intentId",
+        "source": "apps/command-center-v3/src/App.tsx"
+      },
+      {
+        "path": "go/proposal/:proposalId",
+        "url": "/v3/go/proposal/:proposalId",
+        "source": "apps/command-center-v3/src/App.tsx"
+      },
+      {
+        "path": "health",
+        "url": "/v3/health",
+        "source": "apps/command-center-v3/src/App.tsx"
+      },
+      {
+        "path": "hermes",
+        "url": "/v3/hermes",
+        "source": "apps/command-center-v3/src/App.tsx"
+      },
+      {
+        "path": "intelligence",
+        "url": "/v3/intelligence",
+        "source": "apps/command-center-v3/src/App.tsx"
+      },
+      {
+        "path": "journal",
+        "url": "/v3/journal",
+        "source": "apps/command-center-v3/src/App.tsx"
+      },
+      {
+        "path": "manual-execution",
+        "url": "/v3/manual-execution",
+        "source": "apps/command-center-v3/src/App.tsx"
+      },
+      {
+        "path": "portfolio",
+        "url": "/v3/portfolio",
+        "source": "apps/command-center-v3/src/App.tsx"
+      },
+      {
+        "path": "portfolio/re-entry",
+        "url": "/v3/portfolio/re-entry",
+        "source": "apps/command-center-v3/src/App.tsx"
+      },
+      {
+        "path": "pullback-macd",
+        "url": "/v3/pullback-macd",
+        "source": "apps/command-center-v3/src/App.tsx"
+      },
+      {
+        "path": "rec-intel",
+        "url": "/v3/rec-intel",
+        "source": "apps/command-center-v3/src/App.tsx"
+      },
+      {
+        "path": "redeploy",
+        "url": "/v3/redeploy",
+        "source": "apps/command-center-v3/src/App.tsx"
+      },
+      {
+        "path": "reports",
+        "url": "/v3/reports",
+        "source": "apps/command-center-v3/src/App.tsx"
+      },
+      {
+        "path": "research",
+        "url": "/v3/research",
+        "source": "apps/command-center-v3/src/App.tsx"
+      },
+      {
+        "path": "research-intelligence",
+        "url": "/v3/research-intelligence",
+        "source": "apps/command-center-v3/src/App.tsx"
+      },
+      {
+        "path": "retirement",
+        "url": "/v3/retirement",
+        "source": "apps/command-center-v3/src/App.tsx"
+      },
+      {
+        "path": "risk",
+        "url": "/v3/risk",
+        "source": "apps/command-center-v3/src/App.tsx"
+      },
+      {
+        "path": "rotation",
+        "url": "/v3/rotation",
+        "source": "apps/command-center-v3/src/App.tsx"
+      },
+      {
+        "path": "sectors",
+        "url": "/v3/sectors",
+        "source": "apps/command-center-v3/src/App.tsx"
+      },
+      {
+        "path": "strategy",
+        "url": "/v3/strategy",
+        "source": "apps/command-center-v3/src/App.tsx"
+      },
+      {
+        "path": "system",
+        "url": "/v3/system",
+        "source": "apps/command-center-v3/src/App.tsx"
+      },
+      {
+        "path": "system/schwab-reauth",
+        "url": "/v3/system/schwab-reauth",
+        "source": "apps/command-center-v3/src/App.tsx"
+      },
+      {
+        "path": "trade-in-view",
+        "url": "/v3/trade-in-view",
+        "source": "apps/command-center-v3/src/App.tsx"
+      },
+      {
+        "path": "trading",
+        "url": "/v3/trading",
+        "source": "apps/command-center-v3/src/App.tsx"
+      },
+      {
+        "path": "trading/active-trader",
+        "url": "/v3/trading/active-trader",
+        "source": "apps/command-center-v3/src/App.tsx"
+      },
+      {
+        "path": "watch",
+        "url": "/v3/watch",
+        "source": "apps/command-center-v3/src/App.tsx"
+      },
+      {
+        "path": "watch-legacy",
+        "url": "/v3/watch-legacy",
+        "source": "apps/command-center-v3/src/App.tsx"
+      },
+      {
+        "path": "watch/discovery",
+        "url": "/v3/watch/discovery",
+        "source": "apps/command-center-v3/src/App.tsx"
+      },
+      {
+        "path": "watch/intelligence/:symbol",
+        "url": "/v3/watch/intelligence/:symbol",
+        "source": "apps/command-center-v3/src/App.tsx"
+      },
+      {
+        "path": "watchlist",
+        "url": "/v3/watchlist",
+        "source": "apps/command-center-v3/src/App.tsx"
+      },
+      {
+        "path": "watchpool",
+        "url": "/v3/watchpool",
+        "source": "apps/command-center-v3/src/App.tsx"
+      }
+    ],
+    "apis": [
+      {
+        "path": "/api/health",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/App.tsx",
+          "apps/command-center-v3/src/hooks/useApi.ts"
+        ]
+      },
+      {
+        "path": "/api/v2/admin/accounts",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/SystemHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/admin/alert/ack",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/SystemHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/admin/alert/resolve",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/SystemHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/admin/audit-log",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/SystemHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/admin/broker-account/api",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/ATMControlPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/admin/broker-account/policy",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/ATMControlPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/admin/cron-retryable",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/SystemHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/admin/cron/retry",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/SystemHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/admin/risk-config",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/SystemHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/admin/secrets",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/SecretsManager.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/admin/strategy-enablement",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/SystemHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/admin/strategy/enablement",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/SystemHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/admin/topic/delete",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/ResearchTopicsModal.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/admin/topic/toggle",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/ResearchTopicsModal.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/admin/topic/upsert",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/ResearchTopicsModal.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/admin/validate-secret",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/SecretsManager.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/agent-calibration/agents",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/AgentsHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/agent-calibration/status",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/AgentsHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/agent-calibration/windows",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/AgentsHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/agent-pipeline",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/AgentsHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/agents/intelligence-feedback",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/CentralIntelligencePages.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/agents/summary",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/AgentsHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/analyst-detail",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/AnalystReviews.tsx",
+          "apps/command-center-v3/src/components/reentry/ReEntryRotationWorkspace.tsx",
+          "apps/command-center-v3/src/components/reentry/ReEntryAnalystEvidence.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/atm/config",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/SystemHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/atm/gate-status",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/PipelineControlTower.tsx",
+          "apps/command-center-v3/src/components/ATMControlPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/atm/profit-capture",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/ProtectionOutcomesPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/atm/protection-adjustment-proposals",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/ProtectionPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/atm/protection-coverage",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/ProtectionPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/atm/setup-advisory",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/BacktestPanel.tsx",
+          "apps/command-center-v3/src/pages/TradingHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/automated-trade-journal",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/JournalHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/backtesting/data-quality",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/BacktestPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/backtesting/execution-hypotheses",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/ExecutionCoachPanel.tsx",
+          "apps/command-center-v3/src/components/ExecutionHypothesesPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/backtesting/filter-options",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/BacktestPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/backtesting/mfe-analysis",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/BacktestPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/backtesting/missed-opportunities",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/BacktestPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/backtesting/result-history",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/BacktestPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/backtesting/results",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/BacktestPanel.tsx",
+          "apps/command-center-v3/src/pages/StrategyHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/backtesting/runs",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/BacktestPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/backtesting/status",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/BacktestPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/backtesting/trade-evaluations",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/BacktestPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/backtesting/trades",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/BacktestPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/backtesting/trailing-optimization",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/BacktestPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/backtesting/trailing-stop-analysis",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/BacktestPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/broker-accounts",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/ATMControlPanel.tsx",
+          "apps/command-center-v3/src/components/AlpacaLiveReadPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/broker-accounts/api-read-toggle",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/AlpacaLiveReadPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/broker-accounts/automation-policy",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/ATMControlPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/broker-accounts/enums",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/ATMControlPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/broker-accounts/readiness",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/ATMControlPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/broker-accounts/test-connection",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/AlpacaLiveReadPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/broker-orders/activity",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/BrokerOrders.tsx",
+          "apps/command-center-v3/src/pages/ManualTosDesk.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/broker-orders/approval-status",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/HoldingProtectionActions.tsx",
+          "apps/command-center-v3/src/components/BrokerOrders.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/broker-orders/approve",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/BrokerOrders.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/broker-orders/capabilities",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/BrokerOrders.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/broker-orders/delete",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/BrokerOrders.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/broker-orders/drafts",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/BrokerOrders.tsx",
+          "apps/command-center-v3/src/pages/ManualTosDesk.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/broker-orders/events",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/BrokerOrders.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/broker-orders/explain",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/BrokerOrders.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/broker-orders/pilot",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/BrokerOrders.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/broker-orders/pilot/cancel",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/BrokerOrders.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/broker-orders/pilot/execute",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/BrokerOrders.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/broker-orders/pilot/preflight",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/BrokerOrders.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/broker-orders/pilot/status",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/BrokerOrders.tsx",
+          "apps/command-center-v3/src/pages/TradingHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/broker-orders/preview",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/BrokerOrders.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/broker-orders/reject",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/BrokerOrders.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/broker-orders/request-approval",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/BrokerOrders.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/broker-orders/shadow-recon",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/BrokerOrders.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/broker-orders/suggest-levels",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/BrokerOrders.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/broker-proposals",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/BrokerProposals.tsx",
+          "apps/command-center-v3/src/pages/TradingHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/broker-proposals/audit",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/QueueHealthPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/broker-proposals/bulk-action",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/BrokerProposals.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/broker-proposals/detail",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/BrokerProposals.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/broker-proposals/evaluate-promote",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/BrokerPromoteModal.tsx",
+          "apps/command-center-v3/src/components/BrokerProposals.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/broker-proposals/manual-submit",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/BrokerProposals.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/broker-proposals/mature-llm-stage-2b",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/BrokerProposals.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/broker-proposals/oversight",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/BrokerPromoteModal.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/broker-proposals/prepare-manual",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/ManualExecutionModal.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/broker-proposals/prepare-promote",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/BrokerPromoteModal.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/broker-proposals/promote-from-paper",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/BrokerPromoteModal.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/broker-proposals/queue-agent-batch",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/BrokerProposals.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/broker-proposals/queue-cloud-batch",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/BrokerProposals.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/broker-proposals/queue-oversight",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/BrokerPromoteModal.tsx",
+          "apps/command-center-v3/src/components/BrokerProposals.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/broker-proposals/reconcile-sleeves",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/BrokerProposals.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/broker-proposals/refresh-prices",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/BrokerProposals.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/broker-proposals/refresh-prices-batch",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/BrokerProposals.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/broker-proposals/requeue",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/QueueHealthPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/broker-proposals/resize-to-cap",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/BrokerProposals.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/broker-proposals/route",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/BrokerRouteConfirmModal.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/broker-proposals/route-preview",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/BrokerRouteConfirmModal.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/broker-proposals/route/confirm",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/BrokerProposals.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/broker-proposals/run-cloud-oversight",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/BrokerPromoteModal.tsx",
+          "apps/command-center-v3/src/components/BrokerProposals.tsx",
+          "apps/command-center-v3/src/lib/cloudLlmRun.ts"
+        ]
+      },
+      {
+        "path": "/api/v2/broker-proposals/summary",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/TradingHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/broker-proposals/validate",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/BrokerProposals.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/broker-reconciliation",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/TradingHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/brokers/schwab/exchange-code",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/SchwabReauthHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/brokers/schwab/reauth-url",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/SchwabReauthHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/brokers/schwab/token-health",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/PositionDecisionCardV4.tsx",
+          "apps/command-center-v3/src/components/HoldingProtectionActions.tsx",
+          "apps/command-center-v3/src/components/BrokerOrders.tsx",
+          "apps/command-center-v3/src/components/PositionDecisionCard.tsx",
+          "apps/command-center-v3/src/components/SchwabReauthBanner.tsx",
+          "apps/command-center-v3/src/pages/SchwabReauthHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/cio-decisions",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/HomeHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/cio/report-v2",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/CioHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/cio/youtube-research-queue",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/CioHub.tsx",
+          "apps/command-center-v3/src/components/intelligence/IntelligenceResearchTab.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/command",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/CentralIntelligencePages.tsx",
+          "apps/command-center-v3/src/pages/HomeHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/consumption/lane-registry",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/ConsumptionHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/consumption/logs",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/ConsumptionHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/consumption/overview",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/ConsumptionHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/consumption/process-mode",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/ConsumptionHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/consumption/processes",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/ConsumptionHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/consumption/run-manual",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/lib/cloudLlmRun.ts"
+        ]
+      },
+      {
+        "path": "/api/v2/consumption/stop-advisory",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/lib/cloudLlmRun.ts"
+        ]
+      },
+      {
+        "path": "/api/v2/consumption/stop-advisory-batch",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/lib/cloudLlmRun.ts"
+        ]
+      },
+      {
+        "path": "/api/v2/correlation",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/RiskHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/data-source-health",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/DataSourceHealth.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/data-sources/finviz/credential-health",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/FinvizCookieBanner.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/defense/cash-alternatives",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/defense/redesign/DefenseRedesign.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/defense/cc/queue-trade",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/defense/RecommendationsRail.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/defense/chain/validate",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/defense/RecommendationsRail.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/defense/core",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/defense/BookStanceStrip.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/defense/core/confirm",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/defense/BookStanceStrip.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/defense/core/toggle",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/defense/BookStanceStrip.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/defense/deepseek-refresh",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/DefenseHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/defense/industries",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/DefenseHub.tsx",
+          "apps/command-center-v3/src/pages/SectorsHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/defense/intent/2fa",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/defense/ExecutionPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/defense/intent/stage",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/defense/RecommendationsRail.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/defense/inverse-stoplights",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/defense/InverseStoplightRail.tsx",
+          "apps/command-center-v3/src/components/defense/redesign/DefenseRedesign.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/defense/oversight/paid",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/DefenseHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/defense/posture",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/DefenseHub.tsx",
+          "apps/command-center-v3/src/pages/SectorsHub.tsx",
+          "apps/command-center-v3/src/pages/HomeHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/defense/recommendations",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/DefenseHub.tsx",
+          "apps/command-center-v3/src/pages/SectorsHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/defense/refresh",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/DefenseHub.tsx",
+          "apps/command-center-v3/src/components/rotation/ActionableSectorDecisionBoard.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/defense/review",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/defense/ReviewConsole.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/defense/review/action",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/defense/ReviewConsole.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/defense/round-trips/confirm",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/defense/RotationPlanPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/defense/sector-leaders",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/defense/SectorLeadersPanel.tsx",
+          "apps/command-center-v3/src/components/defense/redesign/DefenseRedesign.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/deploy/analysis",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/RedeployDesk.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/deploy/detect",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/RedeployPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/deploy/dismiss",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/RedeployPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/deploy/events",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/RedeployPanel.tsx",
+          "apps/command-center-v3/src/pages/HomeHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/deploy/export",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/RedeployEventModal.tsx",
+          "apps/command-center-v3/src/pages/RedeployDesk.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/deploy/lock",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/RedeployEventModal.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/deploy/monitoring",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/RedeployEventModal.tsx",
+          "apps/command-center-v3/src/pages/RedeployDesk.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/deploy/oversight",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/RedeployEventModal.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/deploy/plans",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/RedeployEventModal.tsx",
+          "apps/command-center-v3/src/pages/RedeployDesk.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/deploy/recompute",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/RedeployPanel.tsx",
+          "apps/command-center-v3/src/pages/RedeployDesk.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/deploy/record-fill",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/RedeployEventModal.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/deploy/restore",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/RedeployPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/discovery/add-to-watchlist",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/DiscoveryPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/discovery/run",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/DiscoveryPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/dividends",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/PortfolioHub.tsx",
+          "apps/command-center-v3/src/components/reentry/ReEntryRotationWorkspace.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/entry-desk/ack-copy",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/EntryDeskRow.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/entry-desk/automation",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/ManualTosDesk.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/entry-desk/promote",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/ManualTosDesk.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/entry-desk/technical-grades",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/ManualTosDesk.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/execution-quality",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/TradingHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/execution/current-state",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/ExecutionStatePanel.tsx",
+          "apps/command-center-v3/src/components/PipelineControlTower.tsx",
+          "apps/command-center-v3/src/pages/TradingHub.tsx",
+          "apps/command-center-v3/src/pages/ManualTosDesk.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/execution/kill-switches",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/ExecutionStatePanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/executions/log-manual",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/ManualExecutionModal.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/fidelity-stops/sync",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/StopManagement.tsx",
+          "apps/command-center-v3/src/pages/PortfolioHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/finviz-chart",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/TradingSymbolChart.tsx",
+          "apps/command-center-v3/src/components/reentry/ReEntryMiniChart.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/finviz-enrichment",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/FinvizEnrichmentPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/finviz-strip-map",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/WatchTruthAuditPanel.tsx",
+          "apps/command-center-v3/src/components/BrokerProposals.tsx",
+          "apps/command-center-v3/src/pages/PortfolioHub.tsx",
+          "apps/command-center-v3/src/pages/WatchlistHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/forecast",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/PortfolioHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/health",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/MetricStrip.tsx",
+          "apps/command-center-v3/src/pages/HealthHub.tsx",
+          "apps/command-center-v3/src/pages/HomeHub.tsx",
+          "apps/command-center-v3/src/pages/OpsAutonomyDashboard.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/health/activity",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/HealthHub.tsx",
+          "apps/command-center-v3/src/pages/OpsAutonomyDashboard.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/health/coders",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/HealthHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/health/dispatches",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/HealthHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/health/history",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/HealthHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/health/ops-autonomy",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/OpsAutonomyDashboard.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/health/ops-autonomy/decision",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/OpsAutonomyDashboard.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/health/proposals",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/BrokerProposals.tsx",
+          "apps/command-center-v3/src/pages/HealthHub.tsx",
+          "apps/command-center-v3/src/pages/HomeHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/health/remediate",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/HealthHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/health/remediation",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/RemediationDashboard.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/hermes/advisory-choices",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/HermesHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/hermes/agent-footprint",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/HermesHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/hermes/agent-runstate",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/HermesHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/hermes/catalyst-calibration",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/HermesPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/hermes/closed-loop/evaluations",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/HermesClosedLoopPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/hermes/codex-dev-status",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/HermesPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/hermes/curate-top20",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/WatchlistHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/hermes/discovery-gaps",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/HermesDiscoveryInbox.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/hermes/discovery-inbox",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/HermesDiscoveryInbox.tsx",
+          "apps/command-center-v3/src/pages/ResearchIntelligenceHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/hermes/discovery-scorecard",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/HermesDiscoveryInbox.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/hermes/dual-opinion",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/HermesHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/hermes/external-intel-map",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/WatchlistHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/hermes/health",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/CentralIntelligencePages.tsx",
+          "apps/command-center-v3/src/components/HermesQualitySpotCheck.tsx",
+          "apps/command-center-v3/src/pages/IntelligenceHub.tsx",
+          "apps/command-center-v3/src/pages/HermesHub.tsx",
+          "apps/command-center-v3/src/pages/HomeHub.tsx",
+          "apps/command-center-v3/src/components/intelligence/IntelligenceSourcesTab.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/hermes/holdings-lifecycle",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/HermesClosedLoopPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/hermes/identity",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/HermesSoulEditor.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/hermes/infra",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/HermesHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/hermes/intel",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/WatchlistCard.tsx",
+          "apps/command-center-v3/src/components/DetailDrawer.tsx",
+          "apps/command-center-v3/src/components/WatchlistCardV4.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/hermes/learning-scorecard",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/HermesClosedLoopPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/hermes/legacy-agents",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/HermesPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/hermes/llm-auth-status",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/HermesPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/hermes/loop-detail",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/HermesPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/hermes/maturity-dashboard",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/HermesHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/hermes/outcome-bus",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/HermesClosedLoopPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/hermes/outcome-bus/history",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/HermesClosedLoopPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/hermes/pipeline-quality",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/HermesQualitySpotCheck.tsx",
+          "apps/command-center-v3/src/pages/HermesHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/hermes/profiles-status",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/HermesPanel.tsx",
+          "apps/command-center-v3/src/pages/HermesHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/hermes/promotion-review",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/HermesHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/hermes/provenance",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/HermesHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/hermes/research-backlog",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/HermesHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/hermes/research-governance",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/HermesPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/hermes/researcher-matrix",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/HermesPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/hermes/scalp-swarm/status",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/HermesHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/hermes/scope-governor",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/HermesClosedLoopPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/hermes/self-learning-loops",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/HermesPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/hermes/self-learning-overview",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/HermesHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/hermes/soul",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/HermesSoulEditor.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/hermes/source-maturity",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/HermesPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/hermes/sources",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/HermesHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/hermes/subject-intel",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/DetailDrawer.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/hermes/subject-intel-map",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/CentralIntelligencePages.tsx",
+          "apps/command-center-v3/src/pages/TradingHub.tsx",
+          "apps/command-center-v3/src/pages/SectorsHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/hermes/symbol-journey",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/HermesClosedLoopPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/hermes/terminal-commands",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/HermesPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/hermes/thresholds",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/HermesClosedLoopPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/hermes/thresholds/evaluations",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/HermesClosedLoopPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/hermes/thresholds/proposals",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/ThresholdProposalModal.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/hermes/workflow-matrix",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/HermesPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/holdings/live-stops",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/StopManagement.tsx",
+          "apps/command-center-v3/src/pages/PortfolioHub.tsx",
+          "apps/command-center-v3/src/lib/protectiveStopPreflight.ts"
+        ]
+      },
+      {
+        "path": "/api/v2/holdings/monitored-stops",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/StopManagement.tsx",
+          "apps/command-center-v3/src/pages/PortfolioHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/holdings/protective-stop",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/PositionDecisionCardV4.tsx",
+          "apps/command-center-v3/src/components/HoldingProtectionActions.tsx",
+          "apps/command-center-v3/src/components/PositionDecisionCard.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/holdings/protective-stop/cancel",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/PositionDecisionCardV4.tsx",
+          "apps/command-center-v3/src/components/PositionDecisionCard.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/holdings/protective-stop/confirm",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/PositionDecisionCardV4.tsx",
+          "apps/command-center-v3/src/components/HoldingProtectionActions.tsx",
+          "apps/command-center-v3/src/components/PositionDecisionCard.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/holdings/protective-stop/keep",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/HoldingProtectionActions.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/holdings/protective-stop/refresh-quote",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/HoldingProtectionActions.tsx",
+          "apps/command-center-v3/src/lib/protectiveStopPreflight.ts"
+        ]
+      },
+      {
+        "path": "/api/v2/holdings/protective-stop/reject-intent",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/HoldingProtectionActions.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/holdings/share-drift",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/PortfolioHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/holdings/share-drift/apply",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/ShareReconciliationModal.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/holdings/share-drift/impact",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/ShareReconciliationModal.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/holdings/share-drift/snooze",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/ShareReconciliationModal.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/holdings/share-reconciliation/history",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/HoldingsDetailPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/holdings/stop-readiness",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/HoldingProtectionActions.tsx",
+          "apps/command-center-v3/src/lib/protectiveStopPreflight.ts"
+        ]
+      },
+      {
+        "path": "/api/v2/holdings/stop-snooze",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/PositionDecisionCardV4.tsx",
+          "apps/command-center-v3/src/components/PositionDecisionCard.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/holdings/synthetic-stop",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/PositionDecisionCardV4.tsx",
+          "apps/command-center-v3/src/components/PositionDecisionCard.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/holdings/transfer-history",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/HoldingsDetailPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/inbox",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/OperatorInboxPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/incubator",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/StrategyHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/inference/ensemble",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/EnsembleValidationCard.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/inference/ensemble/request",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/lib/cloudLlmRun.ts"
+        ]
+      },
+      {
+        "path": "/api/v2/inference/latest",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/InferenceLayersPanel.tsx",
+          "apps/command-center-v3/src/components/CentralIntelligencePages.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/inference/regional",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/InferenceLayersPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/inference/sizing",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/InferenceLayersPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/insider-activity",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/InsiderActivity.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/intelligence-sources",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/intelligence/IntelligenceSourcesTab.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/intelligence/library",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/intelligence/IntelligenceSourcesTab.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/journal",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/hooks/useReEntryExitEvidence.ts",
+          "apps/command-center-v3/src/pages/ReEntryPageV3.tsx",
+          "apps/command-center-v3/src/pages/JournalHub.tsx",
+          "apps/command-center-v3/src/components/reentry/ReEntryRotationWorkspace.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/journal/ai-critique",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/tradeinview/AiTradeCritique.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/journal/ai-critique/batch",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/JournalHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/journal/ai-critique/insights",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/tradeinview/AiCritiqueInsightsPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/journal/ai-critique/search",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/tradeinview/AiCritiqueInsightsPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/journal/ai-critique/setups",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/tradeinview/AiCritiqueInsightsPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/journal/ai-critique/summaries",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/JournalHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/journal/analytics",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/lib/psychologyBefore.ts",
+          "apps/command-center-v3/src/lib/setupFamilies.ts",
+          "apps/command-center-v3/src/lib/marketRegimes.ts"
+        ]
+      },
+      {
+        "path": "/api/v2/journal/ask",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/lib/cloudLlmRun.ts"
+        ]
+      },
+      {
+        "path": "/api/v2/journal/attachments",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/tradeinview/TradeInViewDetail.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/journal/backtest-analytics",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/BacktestPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/journal/backtest-summary",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/BacktestPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/journal/behavioral",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/tradeinview/BehavioralPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/journal/bulk-suggest",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/JournalHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/journal/by-ticker",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/hooks/useReEntryExitEvidence.ts",
+          "apps/command-center-v3/src/pages/ReEntryPageV2.tsx",
+          "apps/command-center-v3/src/pages/ReEntryPageV3.tsx",
+          "apps/command-center-v3/src/components/tradeinview/ByTickerPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/journal/closed-trades/lessons",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/JournalHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/journal/costs/by-security",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/tradeinview/CostsPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/journal/costs/reconciliation",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/tradeinview/CostsPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/journal/costs/summary",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/tradeinview/CostsPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/journal/costs/timeseries",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/tradeinview/CostsPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/journal/costs/unmatched",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/tradeinview/CostsPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/journal/daily-execution-coaching/latest",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/ExecutionCoachPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/journal/edge-analytics",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/JournalHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/journal/execution-quality",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/SchwabJournal.tsx",
+          "apps/command-center-v3/src/pages/JournalHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/journal/exit-intelligence",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/tradeinview/ExitIntelligencePanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/journal/export",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/JournalHub.tsx",
+          "apps/command-center-v3/src/components/tradeinview/AdvancedReportsPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/journal/import-csv",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/tradeinview/CsvImportPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/journal/manual-entry",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/tradeinview/ManualEntryPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/journal/monte-carlo",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/tradeinview/MonteCarloPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/journal/options-summary",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/tradeinview/OptionsJournalPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/journal/pivot",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/tradeinview/AdvancedReportsPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/journal/reminder",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/JournalHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/journal/reporting-audit",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/tradeinview/ReportingAuditPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/journal/review",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/JournalHub.tsx",
+          "apps/command-center-v3/src/components/tradeinview/TradeInViewDetail.tsx",
+          "apps/command-center-v3/src/components/tradeinview/BulkTagModal.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/journal/saved-filters",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/tradeinview/SavedFilterBar.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/journal/schwab-round-trips",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/SchwabJournal.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/journal/session-recap",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/tradeinview/SessionRecapPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/journal/tagging-queue",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/JournalHub.tsx",
+          "apps/command-center-v3/src/components/tradeinview/TaggingQueuePanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/journal/tagging-queue/auto-enrich",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/tradeinview/TaggingQueuePanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/journal/tagging-queue/auto-tag",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/tradeinview/TaggingQueuePanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/journal/tagging-queue/backfill-industry",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/tradeinview/TaggingQueuePanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/journal/tagging-queue/bulk-tag",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/tradeinview/TaggingQueuePanel.tsx",
+          "apps/command-center-v3/src/components/tradeinview/BulkTagModal.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/journal/tagging-queue/confirm-auto-tagged",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/tradeinview/TaggingQueuePanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/journal/tagging-queue/skip",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/tradeinview/TaggingQueuePanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/journal/zella-score",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/tradeinview/ZellaScoreCard.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/lifecycle/llm-review-status",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/BacktestPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/live-trading-gate",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/MetricStrip.tsx",
+          "apps/command-center-v3/src/pages/SystemHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/llm-health",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/SystemHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/llm/oauth-lanes",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/hooks/useOAuthLanes.ts",
+          "apps/command-center-v3/src/pages/RotationIntelligence.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/llm/oauth-lanes/keepalive",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/RotationIntelligence.tsx",
+          "apps/command-center-v3/src/pages/ConsumptionHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/local-llm-status",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/SystemHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/lookthrough/design-fill",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/PortfolioHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/market-intelligence",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/CentralIntelligencePages.tsx",
+          "apps/command-center-v3/src/pages/IntelligenceHub.tsx",
+          "apps/command-center-v3/src/components/intelligence/IntelligenceNewsTab.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/market-movers",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/home/MarketMoversBoard.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/morning-brief",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/CentralIntelligencePages.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/news/articles",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/intelligence/IntelligenceNewsTab.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/news/headline-counts",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/home/MajorNewsGrid.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/news/symbol-headlines",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/home/MajorNewsGrid.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/open-trades",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/TradingHub.tsx",
+          "apps/command-center-v3/src/pages/HomeHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/open-trades/intelligence",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/OpenTradesIntelligence.tsx",
+          "apps/command-center-v3/src/components/PositionDecisionCardV4.tsx",
+          "apps/command-center-v3/src/components/CentralIntelligencePages.tsx",
+          "apps/command-center-v3/src/components/PositionDecisionCard.tsx",
+          "apps/command-center-v3/src/pages/TradingHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/openclaw/agent-soul",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/AgentSoulEditor.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/openclaw/status",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/OpenClawPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/options/alpaca-paper/mark-ready",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/OptionsHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/options/alpaca-paper/promote-live-review",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/OptionsHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/options/alpaca-paper/record-outcome",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/OptionsHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/options/alpaca-paper/submit",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/OptionsHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/options/desk/trends",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/OptionsTrendsPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/options/desk/vol-history",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/OptionsTrendsPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/options/ensemble/enqueue",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/OptionsHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/options/execution/status",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/OptionsHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/options/executions/log-manual",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/ManualExecutionModal.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/options/lifecycle",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/options/OptionsLifecycleView.tsx",
+          "apps/command-center-v3/src/components/defense/OptionsLifecycleStrip.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/options/open-positions",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/OptionsHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/options/overview",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/OptionsHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/options/paper-order-status",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/OptionProposalCardV4.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/options/preflight",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/OptionsHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/options/proposals",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/OptionsHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/options/validation",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/OptionsHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/overview",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/MetricStrip.tsx",
+          "apps/command-center-v3/src/components/CentralIntelligencePages.tsx",
+          "apps/command-center-v3/src/pages/PortfolioHub.tsx",
+          "apps/command-center-v3/src/pages/ReportsHub.tsx",
+          "apps/command-center-v3/src/pages/HomeHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/paper-proposals",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/TradingHub.tsx",
+          "apps/command-center-v3/src/pages/ManualTosDesk.tsx",
+          "apps/command-center-v3/src/pages/HomeHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/paper-proposals/lifecycle-inspector",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/ProposalLifecycleTimeline.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/paper-status",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/TradingHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/paper-trade-readiness",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/BacktestPanel.tsx",
+          "apps/command-center-v3/src/components/MetricStrip.tsx",
+          "apps/command-center-v3/src/pages/TradingHub.tsx",
+          "apps/command-center-v3/src/pages/StrategyHub.tsx",
+          "apps/command-center-v3/src/pages/JournalHub.tsx",
+          "apps/command-center-v3/src/pages/HomeHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/paper-trades/scale",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/PositionDecisionCardV4.tsx",
+          "apps/command-center-v3/src/components/PositionDecisionCard.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/plan-vs-performance",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/StrategyHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/portfolio/ask",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/lib/cloudLlmRun.ts"
+        ]
+      },
+      {
+        "path": "/api/v2/portfolio/ask-alert",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/AskAgents.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/portfolio/book-map",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/HomeHub.tsx",
+          "apps/command-center-v3/src/components/home/MajorNewsGrid.tsx",
+          "apps/command-center-v3/src/components/home/BookTreemap.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/portfolio/holdings",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/StopManagement.tsx",
+          "apps/command-center-v3/src/components/StrategyPlanner.tsx",
+          "apps/command-center-v3/src/pages/PortfolioHub.tsx",
+          "apps/command-center-v3/src/pages/ReEntryPageV2.tsx",
+          "apps/command-center-v3/src/pages/ReEntryPageV3.tsx",
+          "apps/command-center-v3/src/pages/WatchlistHub.tsx",
+          "apps/command-center-v3/src/components/reentry/ReEntryCurrentIntelligence.tsx",
+          "apps/command-center-v3/src/components/reentry/ReEntryAnalystLookthroughBoard.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/portfolio/llm-coverage",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/OpenTradesIntelligence.tsx",
+          "apps/command-center-v3/src/components/StopManagement.tsx",
+          "apps/command-center-v3/src/pages/PortfolioHub.tsx",
+          "apps/command-center-v3/src/lib/protectiveStopPreflight.ts"
+        ]
+      },
+      {
+        "path": "/api/v2/portfolio/lookthrough",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/PortfolioHub.tsx",
+          "apps/command-center-v3/src/components/reentry/ReEntryRotationWorkspace.tsx",
+          "apps/command-center-v3/src/components/reentry/ReEntryAnalystLookthroughBoard.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/portfolio/performance",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/PortfolioHub.tsx",
+          "apps/command-center-v3/src/pages/HomeHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/portfolio/stop-policy-migration",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/StopManagement.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/portfolio/sync",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/PortfolioHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/pro-analyst/pills",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/HermesPanel.tsx",
+          "apps/command-center-v3/src/components/ProAnalystPill.tsx",
+          "apps/command-center-v3/src/components/reentry/ReEntryClassificationOverlay.tsx",
+          "apps/command-center-v3/src/components/reentry/ReEntryAnalystEvidence.tsx",
+          "apps/command-center-v3/src/components/reentry/ReEntryCurrentIntelligence.tsx",
+          "apps/command-center-v3/src/components/reentry/ReEntryAnalystLookthroughBoard.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/proposal-accounts",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/WatchlistProposeModal.tsx",
+          "apps/command-center-v3/src/pages/WatchlistHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/proxy/targets",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/PrivateProxyCard.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/pullback-macd/candidates",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/BrokerProposals.tsx",
+          "apps/command-center-v3/src/pages/PullbackMacdHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/pullback-macd/dismiss",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/PullbackMacdHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/pullback-macd/scan",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/PullbackMacdHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/rag/status",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/intelligence/IntelligenceSourcesTab.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/rec-intel/lifecycle",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/RecommendationIntelligence.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/rec-intel/lifecycle-performance",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/RecommendationIntelligence.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/rec-intel/open-positions",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/RecommendationIntelligence.tsx",
+          "apps/command-center-v3/src/components/reentry/ReEntryRotationWorkspace.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/rec-intel/outcomes",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/BrokerProposals.tsx",
+          "apps/command-center-v3/src/pages/WatchlistHub.tsx",
+          "apps/command-center-v3/src/pages/JournalHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/rec-intel/summary",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/RecommendationIntelligence.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/rec-intel/ticker",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/RecommendationIntelligence.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/recovery",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/RiskHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/redeploy/audit",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/RedeployDesk.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/redeploy/book",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/hooks/useReEntryExitEvidence.ts",
+          "apps/command-center-v3/src/pages/ReEntryPageV2.tsx",
+          "apps/command-center-v3/src/pages/ReEntryPageV3.tsx",
+          "apps/command-center-v3/src/pages/RedeployDesk.tsx",
+          "apps/command-center-v3/src/components/reentry/ReEntryRotationWorkspace.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/redeploy/candidates",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/RedeployDesk.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/redeploy/capital-pools",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/RedeployDesk.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/redeploy/history",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/hooks/useReEntryExitEvidence.ts",
+          "apps/command-center-v3/src/pages/ReEntryPageV2.tsx",
+          "apps/command-center-v3/src/pages/ReEntryPageV3.tsx",
+          "apps/command-center-v3/src/components/reentry/ReEntryAnalystEvidence.tsx",
+          "apps/command-center-v3/src/components/reentry/ReEntryAnalystLookthroughBoard.tsx",
+          "apps/command-center-v3/src/components/reentry/AuthoritativeExitUniverse.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/redeploy/performance",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/RedeployDesk.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/redeploy/portfolio-pro-forma",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/RedeployDesk.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/reentry/decision-desk",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/hooks/useReentryDecisionDesk.ts"
+        ]
+      },
+      {
+        "path": "/api/v2/reports/action-items",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/ReportsHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/reports/analyst/eligible",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/reports/ProspectusBatchPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/reports/analyst/export",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/reports/AnalystReportsPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/reports/analyst/generate",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/HoldingReportLinks.tsx",
+          "apps/command-center-v3/src/components/reports/ProspectusBatchPanel.tsx",
+          "apps/command-center-v3/src/components/reports/AnalystReportsPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/reports/analyst/links",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/hooks/useAnalystReportMap.ts"
+        ]
+      },
+      {
+        "path": "/api/v2/reports/analyst/preview",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/reports/AnalystReportsPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/reports/analyst/registry",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/reports/ProspectusBatchPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/reports/analyst/status",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/reports/AnalystReportsPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/reports/analyst/symbols",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/reports/AnalystReportsPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/reports/analytics",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/reports/AlertAnalyticsBand.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/reports/brief/regenerate",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/reports/StructuredBrief.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/reports/catalog",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/ReportsHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/reports/categories",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/ReportsHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/reports/list",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/ReportsHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/reports/portal-summary",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/ReportsHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/reports/purge",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/ReportsHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/reports/search",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/reports/ReportSearch.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/reports/system-rollup",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/reports/SystemRollupTab.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/research-intelligence",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/ResearchIntelligenceHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/research-intelligence/feedback",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/ResearchIntelligenceHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/research-intelligence/freshness",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/ResearchIntelligenceHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/research-intelligence/rebuild",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/ResearchIntelligenceHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/research-intelligence/run-topic",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/ResearchIntelligenceHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/research-intelligence/stage",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/ResearchIntelligenceHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/research-intelligence/stage/promote",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/ResearchIntelligenceHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/research-intelligence/stage/update",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/ResearchIntelligenceHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/research-intelligence/staged",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/ResearchIntelligenceHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/research-topics",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/CentralIntelligencePages.tsx",
+          "apps/command-center-v3/src/components/intelligence/IntelligenceResearchTab.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/research-topics/registry",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/ResearchTopicsModal.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/retirement",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/RetirementHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/retirement/planning-research",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/RetirementHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/risk",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/CentralIntelligencePages.tsx",
+          "apps/command-center-v3/src/pages/RiskHub.tsx",
+          "apps/command-center-v3/src/pages/PortfolioHub.tsx",
+          "apps/command-center-v3/src/pages/ReportsHub.tsx",
+          "apps/command-center-v3/src/pages/HealthHub.tsx",
+          "apps/command-center-v3/src/pages/HomeHub.tsx",
+          "apps/command-center-v3/src/pages/SystemHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/risk-regime/history",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/RiskHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/risk-regime/indicators",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/RiskHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/risk-regime/latest",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/MetricStrip.tsx",
+          "apps/command-center-v3/src/pages/DefenseHub.tsx",
+          "apps/command-center-v3/src/pages/RiskHub.tsx",
+          "apps/command-center-v3/src/pages/PullbackMacdHub.tsx",
+          "apps/command-center-v3/src/pages/ReEntryPageV2.tsx",
+          "apps/command-center-v3/src/pages/ReportsHub.tsx",
+          "apps/command-center-v3/src/pages/ReEntryPageV3.tsx",
+          "apps/command-center-v3/src/pages/HomeHub.tsx",
+          "apps/command-center-v3/src/pages/WatchHub.tsx",
+          "apps/command-center-v3/src/components/reentry/ReEntryClassificationOverlay.tsx",
+          "apps/command-center-v3/src/components/reentry/ReEntryRotationWorkspace.tsx",
+          "apps/command-center-v3/src/components/reentry/ReEntryCurrentIntelligence.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/rotation/ask",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/RotationIntelligence.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/rotation/feedback",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/RotationIntelligence.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/rotation/grok-rebalance-review",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/RotationIntelligence.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/rotation/grok-review",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/RotationIntelligence.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/rotation/oversight",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/lib/cloudLlmRun.ts"
+        ]
+      },
+      {
+        "path": "/api/v2/rotation/propose-etf",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/RedeployPanel.tsx",
+          "apps/command-center-v3/src/pages/PortfolioHub.tsx",
+          "apps/command-center-v3/src/pages/RotationIntelligence.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/rotation/research-gaps",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/RotationIntelligence.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/rotation/summary",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/CentralIntelligencePages.tsx",
+          "apps/command-center-v3/src/pages/PortfolioHub.tsx",
+          "apps/command-center-v3/src/pages/RotationIntelligence.tsx",
+          "apps/command-center-v3/src/components/intelligence/IntelligenceRotationTab.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/scalp/live",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/TradingHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/scalp/stop-intelligence",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/StopIntelligencePanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/scalp/stop-monitor",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/ScalpStopMonitorCard.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/scalp/tighten-all",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/ScalpStopMonitorCard.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/schwab/accounts-live",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/SchwabAccountsMonitor.tsx",
+          "apps/command-center-v3/src/pages/ManualTosDesk.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/schwab/option-chain",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/OptionsHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/schwab/quotes",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/BrokerOrders.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/screener-finds/candidates",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/ScreenerFindsHub.tsx",
+          "apps/command-center-v3/src/pages/WatchpoolHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/search-sources",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/intelligence/IntelligenceSourcesTab.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/sector-performance",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/FinvizSectorPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/sectors/monitor",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/SectorsHub.tsx",
+          "apps/command-center-v3/src/components/rotation/ActionableSectorDecisionBoard.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/setup-advisory/candidates",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/ReEntryPageV2.tsx",
+          "apps/command-center-v3/src/pages/StrategyHub.tsx",
+          "apps/command-center-v3/src/pages/ReEntryPageV3.tsx",
+          "apps/command-center-v3/src/pages/WatchlistHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/shadow/strategy/batch",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/ShadowBatchButton.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/shadow/strategy/build",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/ShadowStrategyButton.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/shadow/strategy/packet",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/ShadowStrategyButton.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/shadow/strategy/status",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/ShadowStrategyButton.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/snaptrade/credentials",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/SnapTradeCredsModal.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/snaptrade/status",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/SnapTradeCredsModal.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/stops/audit",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/StopManagement.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/stops/management",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/StopManagement.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/stops/reentry-watch",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/StopManagement.tsx",
+          "apps/command-center-v3/src/hooks/useReEntryExitEvidence.ts",
+          "apps/command-center-v3/src/pages/ReEntryPageV2.tsx",
+          "apps/command-center-v3/src/pages/ReEntryPageV3.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/strategy-analytics/screeners",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/ScreenerConfigModal.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/strategy-configs",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/StrategyHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/strategy-desk",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/StrategyHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/strategy-intelligence",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/StrategyHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/strategy-leaderboard",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/StrategyHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/strategy/approve",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/StrategyPlanner.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/strategy/plan",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/StrategyPlanner.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/symbol-cards",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/OpenTradesIntelligence.tsx",
+          "apps/command-center-v3/src/components/WatchTruthAuditPanel.tsx",
+          "apps/command-center-v3/src/pages/ManualTosDesk.tsx",
+          "apps/command-center-v3/src/pages/PortfolioHub.tsx",
+          "apps/command-center-v3/src/pages/ReEntryPageV2.tsx",
+          "apps/command-center-v3/src/pages/ReEntryPageV3.tsx",
+          "apps/command-center-v3/src/pages/WatchlistHub.tsx",
+          "apps/command-center-v3/src/components/reentry/ReEntryClassificationOverlay.tsx",
+          "apps/command-center-v3/src/components/reentry/ReEntryRotationWorkspace.tsx",
+          "apps/command-center-v3/src/components/reentry/ReEntryCurrentIntelligence.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/symbol/fib-confluence",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/FibChartsInline.tsx",
+          "apps/command-center-v3/src/components/FibConfluencePanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/system/access-links",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/SystemHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/system/applications",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/SystemHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/system/broker-connectors",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/SystemHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/system/cron-compression",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/SystemHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/system/governance-pipeline-status",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/PipelineControlTower.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/system/llm-retry-health",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/HermesPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/system/metrics-history",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/HomeHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/system/pipeline-health",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/IntelligenceWorkflow.tsx",
+          "apps/command-center-v3/src/pages/SystemHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/system/pipeline-summary",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/PipelineControlTower.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/system/queue-control-tower",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/SystemHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/system/runtime-inventory",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/PipelineControlTower.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/system/scheduled-jobs",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/SystemHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/system/schwab-status",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/SchwabMonitor.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/system/siem",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/SystemHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/tax-lots",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/PortfolioHub.tsx",
+          "apps/command-center-v3/src/components/reentry/ReEntryRotationWorkspace.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/time-exit-proposals",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/TimeExitProposals.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/time-exit-proposals/decide",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/TimeExitProposals.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/tos-watchlists",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/ToSWatchlists.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/tos-watchlists/manage",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/ToSWatchlists.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/trade-ai",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/MetricStrip.tsx",
+          "apps/command-center-v3/src/components/CentralIntelligencePages.tsx",
+          "apps/command-center-v3/src/pages/HomeHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/trade-ai/scanner",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/CentralIntelligencePages.tsx",
+          "apps/command-center-v3/src/pages/TradingHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/trade-ai/summary",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/MetricStrip.tsx",
+          "apps/command-center-v3/src/pages/DefenseHub.tsx",
+          "apps/command-center-v3/src/pages/ReportsHub.tsx",
+          "apps/command-center-v3/src/pages/HomeHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/trade-chart",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/TradeReplayChart.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/trade-integrity-audit",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/SystemHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/tradeai/fleet",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/TradeAIPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/ui/prefs",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/ReEntryPageV2.tsx",
+          "apps/command-center-v3/src/pages/ReEntryPageV3.tsx",
+          "apps/command-center-v3/src/pages/WatchlistHub.tsx",
+          "apps/command-center-v3/src/lib/reentrySharedContext.ts",
+          "apps/command-center-v3/src/components/reentry/ReEntryRotationWorkspace.tsx",
+          "apps/command-center-v3/src/components/reentry/AuthoritativeExitUniverse.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/ui/prefs/get",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/WatchTruthAuditPanel.tsx",
+          "apps/command-center-v3/src/components/SharedIntelligenceBridge.tsx",
+          "apps/command-center-v3/src/hooks/useReEntryExitEvidence.ts",
+          "apps/command-center-v3/src/pages/PortfolioHub.tsx",
+          "apps/command-center-v3/src/pages/ReEntryPageV2.tsx",
+          "apps/command-center-v3/src/pages/ReEntryPageV3.tsx",
+          "apps/command-center-v3/src/pages/WatchlistHub.tsx",
+          "apps/command-center-v3/src/lib/supportResistance.tsx",
+          "apps/command-center-v3/src/components/reentry/ReEntryClassificationOverlay.tsx",
+          "apps/command-center-v3/src/components/reentry/ReEntryRotationWorkspace.tsx",
+          "apps/command-center-v3/src/components/reentry/ReEntryAnalystEvidence.tsx",
+          "apps/command-center-v3/src/components/reentry/ReEntryExitWorkbench.tsx",
+          "apps/command-center-v3/src/components/reentry/ReEntryCurrentIntelligence.tsx",
+          "apps/command-center-v3/src/components/reentry/ReEntryAnalystLookthroughBoard.tsx",
+          "apps/command-center-v3/src/components/reentry/ReEntryExitDetailLedger.tsx",
+          "apps/command-center-v3/src/components/reentry/ReEntryResistanceBoard.tsx",
+          "apps/command-center-v3/src/components/reentry/AuthoritativeExitUniverse.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/upload-csv",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/CsvUpload.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/warrior-audit/latest",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/TradingHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/watch-directives",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/HermesPanel.tsx",
+          "apps/command-center-v3/src/pages/WatchlistHub.tsx",
+          "apps/command-center-v3/src/pages/WatchpoolHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/watch/alerts",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/ReEntryPageV2.tsx",
+          "apps/command-center-v3/src/pages/ReEntryPageV3.tsx",
+          "apps/command-center-v3/src/pages/WatchlistHub.tsx",
+          "apps/command-center-v3/src/components/reentry/ReEntryAlertArmModal.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/watch/alerts/list",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/ReEntryPageV2.tsx",
+          "apps/command-center-v3/src/pages/ReEntryPageV3.tsx",
+          "apps/command-center-v3/src/pages/WatchHub.tsx",
+          "apps/command-center-v3/src/components/reentry/ReEntryCurrentIntelligence.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/watch/decision/premium/estimate",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/WatchlistHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/watch/decision/refresh",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/lib/watchV5.ts"
+        ]
+      },
+      {
+        "path": "/api/v2/watch/decision/refresh/status",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/lib/watchV5.ts"
+        ]
+      },
+      {
+        "path": "/api/v2/watch/decision/summary",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/lib/watchV5.ts"
+        ]
+      },
+      {
+        "path": "/api/v2/watch/directives",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/ResearchIntelligenceHub.tsx",
+          "apps/command-center-v3/src/pages/SectorsHub.tsx",
+          "apps/command-center-v3/src/pages/WatchlistHub.tsx",
+          "apps/command-center-v3/src/pages/WatchpoolHub.tsx",
+          "apps/command-center-v3/src/components/rotation/ActionableSectorDecisionBoard.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/watch/directives/detail",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/WatchpoolHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/watch/directives/merge-plan",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/WatchpoolHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/watch/directives/promote",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/WatchpoolHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/watch/directives/update",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/WatchlistHub.tsx",
+          "apps/command-center-v3/src/pages/WatchpoolHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/watch/provenance",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/SectorsHub.tsx",
+          "apps/command-center-v3/src/pages/WatchpoolHub.tsx",
+          "apps/command-center-v3/src/components/rotation/ActionableSectorDecisionBoard.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/watch/sectors",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/WatchlistHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/watch/ticket-review/premium/estimate",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/WatchTruthAuditPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/watch/ticket-review/premium/run",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/WatchTruthAuditPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/watch/ticket-review/run",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/DecisionPacketBand.tsx",
+          "apps/command-center-v3/src/components/WatchTruthAuditPanel.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/watch/two-way-curation",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/WatchpoolHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/watchlist",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/WatchlistProposeModal.tsx",
+          "apps/command-center-v3/src/pages/WatchlistHub.tsx",
+          "apps/command-center-v3/src/pages/RedeployDesk.tsx",
+          "apps/command-center-v3/src/lib/cloudLlmRun.ts"
+        ]
+      },
+      {
+        "path": "/api/v2/watchlist/items",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/CentralIntelligencePages.tsx",
+          "apps/command-center-v3/src/components/WatchTruthAuditPanel.tsx",
+          "apps/command-center-v3/src/pages/ManualTosDesk.tsx",
+          "apps/command-center-v3/src/pages/ReEntryPageV2.tsx",
+          "apps/command-center-v3/src/pages/ReEntryPageV3.tsx",
+          "apps/command-center-v3/src/pages/WatchlistHub.tsx",
+          "apps/command-center-v3/src/components/reentry/ReEntryClassificationOverlay.tsx",
+          "apps/command-center-v3/src/components/reentry/ReEntryRotationWorkspace.tsx",
+          "apps/command-center-v3/src/components/reentry/ReEntryCurrentIntelligence.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/watchlist/star",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/components/WatchTruthAuditPanel.tsx",
+          "apps/command-center-v3/src/pages/WatchlistHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/watchlist/summary",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/ManualTosDesk.tsx",
+          "apps/command-center-v3/src/pages/WatchlistHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/watchpool",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/WatchpoolHub.tsx"
+        ]
+      },
+      {
+        "path": "/api/v2/weekly-learning",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/pages/AgentsHub.tsx"
+        ]
+      },
+      {
+        "path": "/v3/build-meta.json",
+        "method_hint": "GET",
+        "sources": [
+          "apps/command-center-v3/src/App.tsx",
+          "apps/command-center-v3/src/components/TradingDeskHealth.tsx",
+          "apps/command-center-v3/src/components/PortfolioDeskHealth.tsx",
+          "apps/command-center-v3/src/components/reentry/ReEntryCommandHeader.tsx",
+          "apps/command-center-v3/src/components/reports/AnalystReportsPanel.tsx"
+        ]
+      }
+    ],
+    "spa_shell_urls": [
+      "/v3/",
+      "/v3/active-trader",
+      "/v3/advisor-changes",
+      "/v3/advisory",
+      "/v3/agents",
+      "/v3/cio",
+      "/v3/closed-loop",
+      "/v3/consumption",
+      "/v3/control-plane",
+      "/v3/control-plane/agents",
+      "/v3/control-plane/audit",
+      "/v3/control-plane/data",
+      "/v3/control-plane/identity",
+      "/v3/control-plane/learning",
+      "/v3/control-plane/maturity",
+      "/v3/control-plane/notifications",
+      "/v3/control-plane/research",
+      "/v3/control-plane/system",
+      "/v3/control-plane/workflows",
+      "/v3/defense",
+      "/v3/health",
+      "/v3/hermes",
+      "/v3/intelligence",
+      "/v3/journal",
+      "/v3/manual-execution",
+      "/v3/portfolio",
+      "/v3/portfolio/re-entry",
+      "/v3/pullback-macd",
+      "/v3/rec-intel",
+      "/v3/redeploy",
+      "/v3/reports",
+      "/v3/research",
+      "/v3/research-intelligence",
+      "/v3/retirement",
+      "/v3/risk",
+      "/v3/rotation",
+      "/v3/sectors",
+      "/v3/strategy",
+      "/v3/system",
+      "/v3/system/schwab-reauth",
+      "/v3/trade-in-view",
+      "/v3/trading",
+      "/v3/trading/active-trader",
+      "/v3/watch",
+      "/v3/watch-legacy",
+      "/v3/watch/discovery",
+      "/v3/watchlist",
+      "/v3/watchpool"
+    ]
+  },
+  "ledger_compare": {
+    "ok": true,
+    "unaccounted_pages": [],
+    "unaccounted_apis": [],
+    "missing_from_discovery_routes": [],
+    "discovered_route_count": 51,
+    "ledger_route_count": 51,
+    "discovered_api_count": 485,
+    "ledger_api_count": 19,
+    "required_api_count": 19
+  },
+  "core_apis": [
+    "/api/v2/overview",
+    "/api/v2/risk",
+    "/api/v2/portfolio/performance",
+    "/api/v2/portfolio/book-map",
+    "/api/v2/health",
+    "/api/v2/trade-ai/summary",
+    "/api/v2/risk-regime/latest",
+    "/api/v2/paper-proposals",
+    "/api/v2/health/proposals",
+    "/api/v2/journal",
+    "/api/v2/research-intelligence/freshness",
+    "/api/v2/command",
+    "/api/v2/defense/posture",
+    "/api/v2/hermes/health",
+    "/api/v2/market-movers",
+    "/api/v2/paper-trade-readiness",
+    "/api/v2/system/metrics-history",
+    "/api/health",
+    "/v3/build-meta.json"
+  ],
+  "build_sha": "cd049cb4eb20add7a24de28b5a5e42eafcc4d673"
+}

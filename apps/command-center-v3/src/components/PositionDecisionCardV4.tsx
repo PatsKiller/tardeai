@@ -442,8 +442,11 @@ export default function PositionDecisionCardV4({ p, paMap, expanded, onToggle, o
   const protText = effectiveBrokerStop
     ? `protected — stop ${effectiveBrokerStop.stop_price != null ? `$${Number(effectiveBrokerStop.stop_price).toFixed(2)}` : String(effectiveBrokerStop.order_type || 'working').replace('_', ' ').toLowerCase()} at broker`
     : p.protection_state === 'protected' ? 'protected'
-    : _advStop != null ? `${p.protection_state ?? 'unprotected'} — advised stop $${_advStop.toFixed(2)} not placed`
-    : (p.protection_state ?? 'unprotected')
+    // F5: `?? 'unprotected'` turned an ABSENT field into a definite claim about
+    // risk. Absence is not evidence of exposure any more than it is evidence of
+    // protection; it is absence, and the operator must see that it is unknown.
+    : _advStop != null ? `${p.protection_state ?? 'UNKNOWN'} — advised stop $${_advStop.toFixed(2)} not placed`
+    : (p.protection_state ?? 'UNKNOWN')
   const dataFresh = String(p.data_freshness ?? 'none')
   const newsFresh = String(p.news_freshness ?? 'none')
   const newsAge = p.latest_news_age_hours != null ? ` ${Math.round(p.latest_news_age_hours)}h` : ''

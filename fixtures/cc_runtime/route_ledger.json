@@ -1,0 +1,457 @@
+{
+  "schema": "CcRuntimeRouteLedger@v1",
+  "basename": "/v3",
+  "routes": [
+    {
+      "url": "/v3/",
+      "path": "index"
+    },
+    {
+      "url": "/v3/active-trader",
+      "path": "active-trader"
+    },
+    {
+      "url": "/v3/advisor-changes",
+      "path": "advisor-changes"
+    },
+    {
+      "url": "/v3/advisory",
+      "path": "advisory"
+    },
+    {
+      "url": "/v3/agents",
+      "path": "agents"
+    },
+    {
+      "url": "/v3/cio",
+      "path": "cio"
+    },
+    {
+      "url": "/v3/closed-loop",
+      "path": "closed-loop"
+    },
+    {
+      "url": "/v3/consumption",
+      "path": "consumption"
+    },
+    {
+      "url": "/v3/control-plane",
+      "path": "control-plane"
+    },
+    {
+      "url": "/v3/control-plane/agents",
+      "path": "control-plane/agents"
+    },
+    {
+      "url": "/v3/control-plane/audit",
+      "path": "control-plane/audit"
+    },
+    {
+      "url": "/v3/control-plane/data",
+      "path": "control-plane/data"
+    },
+    {
+      "url": "/v3/control-plane/identity",
+      "path": "control-plane/identity"
+    },
+    {
+      "url": "/v3/control-plane/learning",
+      "path": "control-plane/learning"
+    },
+    {
+      "url": "/v3/control-plane/maturity",
+      "path": "control-plane/maturity"
+    },
+    {
+      "url": "/v3/control-plane/notifications",
+      "path": "control-plane/notifications"
+    },
+    {
+      "url": "/v3/control-plane/research",
+      "path": "control-plane/research"
+    },
+    {
+      "url": "/v3/control-plane/system",
+      "path": "control-plane/system"
+    },
+    {
+      "url": "/v3/control-plane/workflows",
+      "path": "control-plane/workflows"
+    },
+    {
+      "url": "/v3/defense",
+      "path": "defense"
+    },
+    {
+      "url": "/v3/go/order/:intentId",
+      "path": "go/order/:intentId"
+    },
+    {
+      "url": "/v3/go/proposal/:proposalId",
+      "path": "go/proposal/:proposalId"
+    },
+    {
+      "url": "/v3/health",
+      "path": "health"
+    },
+    {
+      "url": "/v3/hermes",
+      "path": "hermes"
+    },
+    {
+      "url": "/v3/intelligence",
+      "path": "intelligence"
+    },
+    {
+      "url": "/v3/journal",
+      "path": "journal"
+    },
+    {
+      "url": "/v3/manual-execution",
+      "path": "manual-execution"
+    },
+    {
+      "url": "/v3/portfolio",
+      "path": "portfolio"
+    },
+    {
+      "url": "/v3/portfolio/re-entry",
+      "path": "portfolio/re-entry"
+    },
+    {
+      "url": "/v3/pullback-macd",
+      "path": "pullback-macd"
+    },
+    {
+      "url": "/v3/rec-intel",
+      "path": "rec-intel"
+    },
+    {
+      "url": "/v3/redeploy",
+      "path": "redeploy"
+    },
+    {
+      "url": "/v3/reports",
+      "path": "reports"
+    },
+    {
+      "url": "/v3/research",
+      "path": "research"
+    },
+    {
+      "url": "/v3/research-intelligence",
+      "path": "research-intelligence"
+    },
+    {
+      "url": "/v3/retirement",
+      "path": "retirement"
+    },
+    {
+      "url": "/v3/risk",
+      "path": "risk"
+    },
+    {
+      "url": "/v3/rotation",
+      "path": "rotation"
+    },
+    {
+      "url": "/v3/sectors",
+      "path": "sectors"
+    },
+    {
+      "url": "/v3/strategy",
+      "path": "strategy"
+    },
+    {
+      "url": "/v3/system",
+      "path": "system"
+    },
+    {
+      "url": "/v3/system/schwab-reauth",
+      "path": "system/schwab-reauth"
+    },
+    {
+      "url": "/v3/trade-in-view",
+      "path": "trade-in-view"
+    },
+    {
+      "url": "/v3/trading",
+      "path": "trading"
+    },
+    {
+      "url": "/v3/trading/active-trader",
+      "path": "trading/active-trader"
+    },
+    {
+      "url": "/v3/watch",
+      "path": "watch"
+    },
+    {
+      "url": "/v3/watch-legacy",
+      "path": "watch-legacy"
+    },
+    {
+      "url": "/v3/watch/discovery",
+      "path": "watch/discovery"
+    },
+    {
+      "url": "/v3/watch/intelligence/:symbol",
+      "path": "watch/intelligence/:symbol"
+    },
+    {
+      "url": "/v3/watchlist",
+      "path": "watchlist"
+    },
+    {
+      "url": "/v3/watchpool",
+      "path": "watchpool"
+    }
+  ],
+  "spa_routes": [
+    {
+      "route": "/v3/"
+    },
+    {
+      "route": "/v3/active-trader"
+    },
+    {
+      "route": "/v3/advisor-changes"
+    },
+    {
+      "route": "/v3/advisory"
+    },
+    {
+      "route": "/v3/agents"
+    },
+    {
+      "route": "/v3/cio"
+    },
+    {
+      "route": "/v3/closed-loop"
+    },
+    {
+      "route": "/v3/consumption"
+    },
+    {
+      "route": "/v3/control-plane"
+    },
+    {
+      "route": "/v3/control-plane/agents"
+    },
+    {
+      "route": "/v3/control-plane/audit"
+    },
+    {
+      "route": "/v3/control-plane/data"
+    },
+    {
+      "route": "/v3/control-plane/identity"
+    },
+    {
+      "route": "/v3/control-plane/learning"
+    },
+    {
+      "route": "/v3/control-plane/maturity"
+    },
+    {
+      "route": "/v3/control-plane/notifications"
+    },
+    {
+      "route": "/v3/control-plane/research"
+    },
+    {
+      "route": "/v3/control-plane/system"
+    },
+    {
+      "route": "/v3/control-plane/workflows"
+    },
+    {
+      "route": "/v3/defense"
+    },
+    {
+      "route": "/v3/health"
+    },
+    {
+      "route": "/v3/hermes"
+    },
+    {
+      "route": "/v3/intelligence"
+    },
+    {
+      "route": "/v3/journal"
+    },
+    {
+      "route": "/v3/manual-execution"
+    },
+    {
+      "route": "/v3/portfolio"
+    },
+    {
+      "route": "/v3/portfolio/re-entry"
+    },
+    {
+      "route": "/v3/pullback-macd"
+    },
+    {
+      "route": "/v3/rec-intel"
+    },
+    {
+      "route": "/v3/redeploy"
+    },
+    {
+      "route": "/v3/reports"
+    },
+    {
+      "route": "/v3/research"
+    },
+    {
+      "route": "/v3/research-intelligence"
+    },
+    {
+      "route": "/v3/retirement"
+    },
+    {
+      "route": "/v3/risk"
+    },
+    {
+      "route": "/v3/rotation"
+    },
+    {
+      "route": "/v3/sectors"
+    },
+    {
+      "route": "/v3/strategy"
+    },
+    {
+      "route": "/v3/system"
+    },
+    {
+      "route": "/v3/system/schwab-reauth"
+    },
+    {
+      "route": "/v3/trade-in-view"
+    },
+    {
+      "route": "/v3/trading"
+    },
+    {
+      "route": "/v3/trading/active-trader"
+    },
+    {
+      "route": "/v3/watch"
+    },
+    {
+      "route": "/v3/watch-legacy"
+    },
+    {
+      "route": "/v3/watch/discovery"
+    },
+    {
+      "route": "/v3/watchlist"
+    },
+    {
+      "route": "/v3/watchpool"
+    }
+  ],
+  "apis": [
+    {
+      "path": "/api/v2/overview",
+      "method": "GET"
+    },
+    {
+      "path": "/api/v2/risk",
+      "method": "GET"
+    },
+    {
+      "path": "/api/v2/portfolio/performance",
+      "method": "GET"
+    },
+    {
+      "path": "/api/v2/portfolio/book-map",
+      "method": "GET"
+    },
+    {
+      "path": "/api/v2/health",
+      "method": "GET"
+    },
+    {
+      "path": "/api/v2/trade-ai/summary",
+      "method": "GET"
+    },
+    {
+      "path": "/api/v2/risk-regime/latest",
+      "method": "GET"
+    },
+    {
+      "path": "/api/v2/paper-proposals",
+      "method": "GET"
+    },
+    {
+      "path": "/api/v2/health/proposals",
+      "method": "GET"
+    },
+    {
+      "path": "/api/v2/journal",
+      "method": "GET"
+    },
+    {
+      "path": "/api/v2/research-intelligence/freshness",
+      "method": "GET"
+    },
+    {
+      "path": "/api/v2/command",
+      "method": "GET"
+    },
+    {
+      "path": "/api/v2/defense/posture",
+      "method": "GET"
+    },
+    {
+      "path": "/api/v2/hermes/health",
+      "method": "GET"
+    },
+    {
+      "path": "/api/v2/market-movers",
+      "method": "GET"
+    },
+    {
+      "path": "/api/v2/paper-trade-readiness",
+      "method": "GET"
+    },
+    {
+      "path": "/api/v2/system/metrics-history",
+      "method": "GET"
+    },
+    {
+      "path": "/api/health",
+      "method": "GET"
+    },
+    {
+      "path": "/v3/build-meta.json",
+      "method": "GET"
+    }
+  ],
+  "required_apis": [
+    "/api/v2/overview",
+    "/api/v2/risk",
+    "/api/v2/portfolio/performance",
+    "/api/v2/portfolio/book-map",
+    "/api/v2/health",
+    "/api/v2/trade-ai/summary",
+    "/api/v2/risk-regime/latest",
+    "/api/v2/paper-proposals",
+    "/api/v2/health/proposals",
+    "/api/v2/journal",
+    "/api/v2/research-intelligence/freshness",
+    "/api/v2/command",
+    "/api/v2/defense/posture",
+    "/api/v2/hermes/health",
+    "/api/v2/market-movers",
+    "/api/v2/paper-trade-readiness",
+    "/api/v2/system/metrics-history",
+    "/api/health",
+    "/v3/build-meta.json"
+  ],
+  "generated_from": "discover_routes",
+  "build_sha_pin": "cd049cb4eb20add7a24de28b5a5e42eafcc4d673"
+}

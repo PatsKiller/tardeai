@@ -2417,10 +2417,35 @@ def _live_portfolio_day_change(holdings_list):
 
 
 def overview():
-    h = _load_json(STATE_DIR / "holdings.json") or {}
-    perf = _load_json(STATE_DIR / "performance_history.json") or {}
-    fresh = _load_json(STATE_DIR / "_freshness.json") or {}
-    news = _load_json(STATE_DIR / "portfolio_news.json") or {}
+    # ── Canonical observation contract ───────────────────────────────────────
+    # This payload is built from four separate stores. Until now it emitted the
+    # value from one and the freshness metadata from another with no check
+    # between them, which is how a 3-second-old portfolio value shipped beside
+    # 7.4-day-old periods and a hardcoded "fresh"
+    # (audit cc-truth-v1-20260902T202759Z). Each store is now read ONCE through
+    # an envelope that carries its own resolved path, hash, clocks and computed
+    # freshness, so value and metadata travel together and a divergent root is
+    # visible in the payload instead of silent.
+    from lib.canonical_observation import (
+        NOT_FRESH,
+        envelope_diagnostics,
+        new_trace_id,
+        observe_state_file,
+        position_count_contract,
+        worst_status,
+    )
+
+    _trace = new_trace_id()
+    h, _env_h = observe_state_file("holdings.json", observed_at_field="last_repriced", trace_id=_trace)
+    perf, _env_perf = observe_state_file("performance_history.json", trace_id=_trace)
+    fresh, _env_fresh = observe_state_file("_freshness.json", trace_id=_trace)
+    news, _env_news = observe_state_file("portfolio_news.json", trace_id=_trace)
+    _envelopes = {
+        "holdings": _env_h,
+        "performance_history": _env_perf,
+        "freshness": _env_fresh,
+        "portfolio_news": _env_news,
+    }
 
     holdings = h.get("holdings", [])
     totals = h.get("portfolio_totals", {})
@@ -2429,7 +2454,10 @@ def overview():
 
     # ── Data Broker Wave B: pre-computed snapshot replaces individual recomputes ──
     from lib.data_broker.portfolio_snapshot import get_portfolio_snapshot
-    snap = get_portfolio_snapshot()
+    # write_on_miss=False: a GET must not mutate a store. This handler used to
+    # publish portfolio_snapshot.json on every cache miss, so the snapshot was
+    # refreshed by whoever browsed rather than on a schedule.
+    snap = get_portfolio_snapshot(write_on_miss=False)
     snap_totals = snap.get("totals", {})
 
     # Sector allocation — sourced from broker snapshot (pre-computed, cached ≤45s)
@@ -2613,6 +2641,40 @@ def overview():
         # No stored value at all is a real gap, not something to silently
         # reconstruct — surface 0 and let the data-quality surface say so.
         _total_cash = 0
+
+    # ── Position-count contract ──────────────────────────────────────────────
+    # The audit measured overview 14 against risk 15. Neither was wrong: they
+    # count different populations, and two unlabeled integers cannot say so, so
+    # a consumer is forced to read one as a contradiction of the other. Publish
+    # every scope BY NAME with its rule, plus an explicit agreement flag.
+    _rm_positions = (_load_json(STATE_DIR / "risk_management.json") or {}).get("positions", [])
+    _position_counts = position_count_contract({
+        "overview.non_cash_over_100": len(active_positions),
+        "holdings.all_rows": len(holdings),
+        "holdings.non_cash": sum(1 for p in holdings if not p.get("is_cash")),
+        "risk.risk_included": sum(1 for p in _rm_positions if not p.get("risk_excluded")),
+    })
+    _position_counts["scope_definitions"] = {
+        "overview.non_cash_over_100": "holdings.json rows where not is_cash and market_value > 100",
+        "holdings.all_rows": "every row in holdings.json including cash",
+        "holdings.non_cash": "holdings.json rows where not is_cash, no value floor",
+        "risk.risk_included": "risk_management.json positions where not risk_excluded (same rule as GET /api/v2/risk)",
+    }
+
+    # ── Surface freshness ────────────────────────────────────────────────────
+    # As fresh as the OLDEST contributing dataset, never as fresh as the newest.
+    _surface_status = worst_status(_envelopes)
+    _observation_block = {
+        "trace_id": _trace,
+        "surface_status": _surface_status,
+        "snapshot_cache": snap.get("_cache", {}),
+        "snapshot_computed_at": snap.get("computed_at"),
+        "read_only": True,
+        "envelopes": {name: env.to_dict() for name, env in _envelopes.items()},
+        "diagnostics": envelope_diagnostics(_envelopes),
+        "not_fresh_datasets": sorted(n for n, e in _envelopes.items() if e.status in NOT_FRESH),
+        "position_counts": _position_counts,
+    }
     return {
         "portfolio_value": total_val,
         "derived_total_value": _derived_total,
@@ -2633,6 +2695,8 @@ def overview():
         },
         "today_by_account": today_by_account,
         "position_count": len(active_positions),
+        # Named scopes so overview and risk can never silently disagree again.
+        "position_counts": _position_counts,
         "account_count": len(h.get("account_summaries", {})),
         "as_of": h.get("as_of", ""),
         # as_of records WHEN THE LOADER RAN, not when any data was fetched: it is
@@ -2690,8 +2754,16 @@ def overview():
         "news_count": len(news.get("catalysts", [])),
         "notification_count": (notif_rows or {}).get("cnt", 0),
         "pending_approvals": (pending_rows or {}).get("cnt", 0),
-        "pipeline_status": fresh.get("status", "unknown"),
+        # COMPUTED from the observation envelopes, not republished from the
+        # file. `fresh["status"]` was a literal written unconditionally by
+        # portfolio_orchestrator.py, so a stranded file reported "fresh"
+        # indefinitely; and the surface is only as fresh as its oldest
+        # contributing dataset (AGENTS.md 9.1). Fails closed to unknown.
+        "pipeline_status": _surface_status.lower(),
+        "pipeline_status_source": "computed:canonical_observation",
+        "pipeline_status_reported": fresh.get("status", "unknown"),
         "pipeline_completed": fresh.get("completed_at", ""),
+        "observation": _observation_block,
         # Sprint 4A additions
         "total_cash": _total_cash,
         "weighted_beta": _weighted_beta(active_positions),

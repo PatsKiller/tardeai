@@ -1,0 +1,15 @@
+{
+  "run_id": "run-stale-001",
+  "provider_at": "2026-08-01T12:00:00+00:00",
+  "observed_at": "2026-08-01T12:00:00+00:00",
+  "received_at": "2026-08-01T12:00:10+00:00",
+  "normalized_at": "2026-08-01T12:00:11+00:00",
+  "quality_status": "OK",
+  "entitlement_status": "INTERNAL",
+  "sequence_or_version": "1",
+  "calculation_or_model_version": "flash_llm@v1",
+  "fallback_state": "NONE",
+  "symbol": "MSFT",
+  "payload": {"note": "stale flash intelligence fixture"},
+  "evidence_ref": "fixtures/research_observation/durable_stale.json"
+}

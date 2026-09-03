@@ -25,6 +25,7 @@ Usage:
     snap = get_portfolio_snapshot()               # cached (<=45s old) or freshly computed
     snap = get_portfolio_snapshot(max_age_s=0)     # force recompute
 """
+
 from __future__ import annotations
 
 import json
@@ -61,6 +62,7 @@ def _day_change(holdings: list[dict], finviz_cache: dict[str, Any]) -> float | N
         from holding_day_change import resolve_holding_day_change
 
         from data_broker.quote_batch import quote_cache_day_maps
+
         day_pct, px = quote_cache_day_maps(finviz_cache)
 
         total = 0.0
@@ -72,8 +74,9 @@ def _day_change(holdings: list[dict], finviz_cache: dict[str, Any]) -> float | N
             shares = float(p.get("shares") or 0)
             mv = (shares * fv_px) if (fv_px and shares) else float(p.get("market_value") or 0)
             price = fv_px or float(p.get("price") or 0)
-            dc, _ = resolve_holding_day_change(p, market_value=mv, price=price, stale_price=price,
-                                                finviz_day_pct=day_pct.get(u))
+            dc, _ = resolve_holding_day_change(
+                p, market_value=mv, price=price, stale_price=price, finviz_day_pct=day_pct.get(u)
+            )
             total += dc or 0
         return round(total, 2)
     except Exception:
@@ -86,8 +89,11 @@ def _sector_allocation(h: dict, active_positions: list[dict]) -> list[tuple[str,
     everything into 'Other'. Mirrors api_v2.overview()'s sector logic exactly."""
     resolved = h.get("resolved_sectors")
     if isinstance(resolved, list) and resolved:
-        return [(r.get("sector") or "Other / Unclassified", r.get("value") or 0)
-                for r in resolved if (r.get("value") or 0) > 0][:13]
+        return [
+            (r.get("sector") or "Other / Unclassified", r.get("value") or 0)
+            for r in resolved
+            if (r.get("value") or 0) > 0
+        ][:13]
     sectors: dict[str, float] = {}
     for p in active_positions:
         s = p.get("sector_type") or "Other"
@@ -144,7 +150,8 @@ def build_portfolio_snapshot() -> dict[str, Any]:
     holdings_mtime = None
     try:
         holdings_mtime = datetime.fromtimestamp(
-            (STATE_DIR / "holdings.json").stat().st_mtime, tz=timezone.utc).isoformat()
+            (STATE_DIR / "holdings.json").stat().st_mtime, tz=timezone.utc
+        ).isoformat()
     except OSError:
         pass
 
@@ -163,9 +170,15 @@ def build_portfolio_snapshot() -> dict[str, Any]:
             "portfolio_totals_raw": totals,
         },
         "sector_allocation": [{"sector": s, "value": v} for s, v in sector_list],
-        "top_movers": [{"symbol": p.get("symbol"), "day_change": p.get("day_change"),
-                         "market_value": p.get("market_value"), "account": p.get("account")}
-                        for p in movers],
+        "top_movers": [
+            {
+                "symbol": p.get("symbol"),
+                "day_change": p.get("day_change"),
+                "market_value": p.get("market_value"),
+                "account": p.get("account"),
+            }
+            for p in movers
+        ],
         "by_account": today_by_account,
         "risk": {
             "portfolio_heat_pct": risk.get("portfolio_heat_pct", 0),
@@ -183,6 +196,7 @@ def write_portfolio_snapshot(snapshot: dict[str, Any] | None = None) -> Path:
     snap = snapshot if snapshot is not None else build_portfolio_snapshot()
     try:
         from lib.data_broker.atomic_json import atomic_write_json
+
         atomic_write_json(SNAPSHOT_PATH, snap)
     except Exception:
         SNAPSHOT_DIR.mkdir(parents=True, exist_ok=True)
@@ -199,21 +213,39 @@ def read_portfolio_snapshot() -> dict[str, Any] | None:
         return None
 
 
-def get_portfolio_snapshot(max_age_s: float = DEFAULT_MAX_AGE_S) -> dict[str, Any]:
-    """Return the on-disk snapshot if fresh enough, else recompute + publish + return."""
+def get_portfolio_snapshot(
+    max_age_s: float = DEFAULT_MAX_AGE_S,
+    *,
+    write_on_miss: bool = True,
+) -> dict[str, Any]:
+    """Return the on-disk snapshot if fresh enough, else recompute and return.
+
+    ``write_on_miss=False`` recomputes in memory and publishes nothing. A read
+    request must not mutate a store: the audit
+    (cc-truth-v1-20260902T202759Z) found that ``GET /api/v2/overview`` wrote
+    ``portfolio_snapshot.json`` on every cache miss, which means the snapshot
+    was refreshed by whoever happened to browse rather than on a schedule, and
+    a plain GET was not a read.
+
+    The default stays ``True`` so the four existing callers keep their current
+    behaviour exactly; only the overview read path opts out.
+    """
     cached = read_portfolio_snapshot()
     if cached and max_age_s > 0:
         try:
             computed_at = datetime.fromisoformat(cached["computed_at"])
             age = (datetime.now(timezone.utc) - computed_at).total_seconds()
             if age <= max_age_s:
-                cached["_cache"] = {"hit": True, "age_seconds": round(age, 1)}
+                cached["_cache"] = {"hit": True, "age_seconds": round(age, 1), "wrote": False}
                 return cached
         except Exception:
             pass
     fresh = build_portfolio_snapshot()
-    write_portfolio_snapshot(fresh)
-    fresh["_cache"] = {"hit": False, "age_seconds": 0}
+    wrote = False
+    if write_on_miss:
+        write_portfolio_snapshot(fresh)
+        wrote = True
+    fresh["_cache"] = {"hit": False, "age_seconds": 0, "wrote": wrote}
     return fresh
 
 

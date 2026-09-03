@@ -581,6 +581,32 @@ GATES = [
         ],
     ),
     (
+        "canonical_observation_contract",
+        [
+            # The producer/API root split and the hardcoded pipeline_status
+            # (audit cc-truth-v1-20260902T202759Z). The two defects conceal each
+            # other -- fixing either alone looks like it worked -- so both files
+            # run in one gate or neither result means anything.
+            "tests/test_canonical_observation.py",
+            "tests/test_overview_observation_contract.py",
+        ],
+    ),
+    (
+        "research_observation_contract",
+        [
+            "tests/test_research_observation_contract.py",
+            "tests/test_research_eligibility_policy.py",
+            "tests/test_research_observation_join.py",
+            "tests/test_research_consumer_gate.py",
+        ],
+    ),
+    (
+        "cc_runtime_harness",
+        [
+            "tests/test_cc_runtime_harness.py",
+        ],
+    ),
+    (
         "wake_writer_stamp",
         [
             "tests/test_wake_writer_stamp.py",
