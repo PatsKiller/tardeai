@@ -1,12 +1,15 @@
 import { Link } from 'react-router-dom'
-import { makeEnvelope, coalesceEnvelopes, stateLabel, stateAriaLabel, formatBusinessDate, freshnessFromOverviewObservation } from '../lib/observationEnvelope.ts'
+import { makeEnvelope, retainObservation, stateLabel, stateAriaLabel, formatBusinessDate, freshnessFromOverviewObservation } from '../lib/observationEnvelope.ts'
 import { useApi } from '../hooks/useApi'
+import { renderSetupCounts } from '../lib/setupRunSummary'
+import { paperWinRate, journalWinRate } from '../lib/homeWinRate'
+import { BB } from '../lib/watchTokens'
 import MarketMoversBoard from '../components/home/MarketMoversBoard'
 import BookTreemap from '../components/home/BookTreemap'
 import MajorNewsGrid from '../components/home/MajorNewsGrid'
 import { plain, plainAlert, runLabel, thresholdSentence } from '../lib/homeLabels'
 import { tradeAiSurfaceFreshness } from '../lib/surfaceFreshness'
-import { setupStateLabel, HermesGatewayLine, AiIntelligenceBriefing, EquityThinNote } from '../components/home/HomeTrustRender'
+import { HermesGatewayLine, AiIntelligenceBriefing, EquityThinNote } from '../components/home/HomeTrustRender'
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import { fmt$, fmtPct } from '../lib/format'
 import type { DrillContext } from '../components/DetailDrawer'
@@ -50,7 +53,7 @@ function acctPretty(a: string) {
 
 export default function HomeHub({ onDrill }: Props) {
   const [terminalUi] = useTerminalUi()
-  const { data: overview, loading: overviewLoading } = useApi<any>('/api/v2/overview', 60_000)
+  const { data: overview, loading: overviewLoading, receivedAt: overviewReceivedAt, transport: overviewTransport } = useApi<any>('/api/v2/overview', 60_000)
   const { data: readiness } = useApi<any>('/api/v2/paper-trade-readiness', 120_000)
   const { data: regime, loading: regimeLoading } = useApi<any>('/api/v2/risk-regime/latest', 120_000)
   // Home only reads header scalars (vix, counts, run label) — the ~500B summary endpoint,
@@ -77,38 +80,25 @@ export default function HomeHub({ onDrill }: Props) {
   const dataAsOf = overview?.data_as_of
   const dataAsOfAccount = overview?.data_as_of_account
 
-  // F4: two endpoints could populate this tile under one label, and the
-  // numerator and denominator could come from DIFFERENT ones. Track which
-  // source actually won so the tile can say so instead of implying a single
-  // coherent measurement.
-  const wrFromJournal = journal?.win_rate != null
-  const wrTradesFromJournal = journal?.trade_count != null
-  const winRate = journal?.win_rate ?? readiness?.win_rate
-  const wrTrades = journal?.trade_count ?? readiness?.closed_usable
-  const wrEnvelope = coalesceEnvelopes([
-    makeEnvelope({
-      identity: wrFromJournal ? 'journal' : 'readiness',
-      sourceLabel: wrFromJournal ? 'automated-trade-journal.win_rate' : 'readiness.win_rate',
-      value: winRate ?? null, businessDate: dataAsOf ?? null,
-      freshness: winRate == null ? 'UNKNOWN' : 'FRESH',
-    }),
-    makeEnvelope({
-      identity: wrTradesFromJournal ? 'journal' : 'readiness',
-      sourceLabel: wrTradesFromJournal ? 'automated-trade-journal.trade_count' : 'readiness.closed_usable',
-      value: wrTrades ?? null, businessDate: dataAsOf ?? null,
-      freshness: wrTrades == null ? 'UNKNOWN' : 'FRESH',
-    }),
-  ])
-  const wrSourceNote = wrEnvelope.identities.length > 1
-    ? `MIXED: ${wrEnvelope.identities.join(' + ')}`
-    : wrEnvelope.identities[0] ?? 'unknown'
+  // cc-header-truth-v2 corrective pass: one metric, one source, never a
+  // null-coalesce. PAPER WIN RATE is paper_trade_statistics only; the
+  // journal/trading win rate (broker round-trips) is a separate tile below.
+  // Neither metric falls back to the other — the mixed-source coalescing that
+  // let the paper tile borrow the journal (or vice versa) is gone.
+  const paperWr = paperWinRate(readiness)
+  const tradingWr = journalWinRate(journal)
   const regimeLabel = regime?.regime_label ?? '—'
   const vix = tradeAi?.vix
-  const goCount = tradeAi?.go_count ?? 0
-  const waitCount = tradeAi?.wait_count ?? 0
-  const avoidCount = tradeAi?.avoid_count ?? 0
   const scanStale = tradeAiSurfaceFreshness(tradeAi).stale
-  const setupLbl = setupStateLabel({ go: goCount, wait: waitCount, avoid: avoidCount, runLabel: tradeAi?.run_label, runDate: tradeAi?.run_date })
+  // Canonical run-scoped taxonomy (SetupRunSummary@v1). The legacy
+  // go_count/wait_count/avoid_count triple is gone from Home: AVOID / NO_GO /
+  // disqualified / filtered-out / unclassified are no longer lumped under one
+  // "NOGO" label, and the scanned population comes from the same run the
+  // classified counts were drawn from.
+  const setupRun = renderSetupCounts(tradeAi?.setup_run_summary, {
+    stale: scanStale,
+    staleLabel: `STALE · ${runLabel(tradeAi?.run_label, tradeAi?.run_date)}`,
+  })
   const journalPnl = journal?.total_pnl
   const positions = risk?.positions ?? []
   const triggered = positions.filter((p: any) => p.triggered)
@@ -141,27 +131,39 @@ export default function HomeHub({ onDrill }: Props) {
     (pipelineStatus === 'fresh' && pipelineCompleted) ? 'FRESH' : 'UNKNOWN',
   )
   const holdingsEnv = overview?.observation?.envelopes?.holdings
-  const freshnessEnvelope = makeEnvelope<string>({
-    identity: 'overview.observation',
-    sourceLabel: '/api/v2/overview.observation.surface_status',
-    value: pipelineStatus ?? null,
-    businessDate: holdingsEnv?.business_date ?? dataAsOf ?? null,
-    observedAt: holdingsEnv?.observed_at ?? lastRepriced ?? null,
-    lastRefreshAt: pipelineCompleted ?? null,
-    freshness: serverFreshness,
-  })
+  const freshnessEnvelope = (() => {
+    let env = makeEnvelope<string>({
+      identity: 'overview.observation',
+      sourceLabel: '/api/v2/overview.observation.surface_status',
+      value: pipelineStatus ?? null,
+      businessDate: holdingsEnv?.business_date ?? dataAsOf ?? null,
+      observedAt: holdingsEnv?.observed_at ?? lastRepriced ?? null,
+      lastRefreshAt: pipelineCompleted ?? null,
+      receivedAt: overviewReceivedAt ?? null,
+      transport: overviewTransport,
+      freshness: serverFreshness,
+    })
+    // A 304 or a failed refetch retains the last-good body: the complete
+    // envelope travels together (observedAt / lastRefreshAt / businessDate are
+    // preserved), only the receipt clock advances. The transport state must be
+    // visible on the chip — transport liveness is not data freshness.
+    if (overviewTransport === 'RETAINED') {
+      env = retainObservation(env, overviewReceivedAt ?? new Date().toISOString())
+    }
+    return env
+  })()
 
   const freshnessChip = stateLabel(freshnessEnvelope.transport, freshnessEnvelope.freshness)
 
   const tiles = [
     { label: 'PORTFOLIO', value: pv != null ? fmt$(pv, 0) : '—', sub: todayChg != null ? `${todayChg >= 0 ? '+' : ''}${fmt$(todayChg, 0)} today` : '', color: 'var(--text0)',
       drill: { title: 'Portfolio', subtitle: '/api/v2/overview', endpoint: '/api/v2/overview', rows: overview ? [{ portfolio_value: pv, today_change: todayChg, position_count: overview.position_count, as_of: overview.as_of }] : [] } },
-    { label: 'PAPER WIN RATE', value: winRate != null ? `${winRate}%` : (journal?.win_rate != null ? `${journal.win_rate}%` : '—'), sub: `${wrTrades ?? 0} trades · ${wrSourceNote}`, color: (winRate ?? 0) >= 50 ? '#22c55e' : '#f59e0b',
-      drill: { title: 'Paper validation win rate', subtitle: '/api/v2/paper-trade-readiness', endpoint: '/api/v2/paper-trade-readiness', rows: readiness ? [{ win_rate: readiness.win_rate, profit_factor: readiness.profit_factor, closed_usable: readiness.closed_usable }] : [] } },
+    { label: 'PAPER WIN RATE', value: paperWr.value != null ? `${paperWr.value}%` : '—', sub: `${paperWr.trades ?? 0} closed usable · ${paperWr.basis ?? 'paper_trade_statistics'}`, color: paperWr.value == null ? 'var(--text3)' : paperWr.value >= 50 ? BB.green : BB.amber,
+      drill: { title: 'Paper validation win rate', subtitle: `paper_trade_statistics · ${paperWr.window ?? 'all_time'} · /api/v2/paper-trade-readiness`, endpoint: '/api/v2/paper-trade-readiness', rows: readiness ? [{ win_rate: readiness.win_rate, profit_factor: readiness.profit_factor, closed_usable: readiness.closed_usable, source: paperWr.source, basis: paperWr.basis, window: paperWr.window, as_of: paperWr.asOf }] : [] } },
     { label: 'REGIME', value: regimeLabel.replace(/_/g, ' '), sub: vix != null ? `VIX ${vix}` : '', color: regimeLabel === 'risk_off' ? '#ef4444' : regimeLabel === 'risk_on' ? '#22c55e' : '#f59e0b',
       drill: { title: 'Market Regime', subtitle: '/api/v2/risk-regime/latest', endpoint: '/api/v2/risk-regime/latest', rows: regime ? [regime] : [] } },
-    { label: 'SETUPS', value: scanStale ? 'STALE' : `${goCount}/${waitCount}/${avoidCount}`, sub: scanStale ? setupLbl.value : 'GO/WAIT/NO · latest run', color: setupLbl.color,
-      drill: { title: 'Trade Setups', subtitle: 'Latest scanner run only — Trading → Trade AI shows the full scan universe', endpoint: '/api/v2/trade-ai', rows: tradeAi ? [{ scope: 'latest run only', go_count: goCount, wait_count: waitCount, avoid_count: avoidCount, vix, run_label: tradeAi.run_label }] : [] } },
+    { label: 'SETUPS', value: scanStale ? 'STALE' : setupRun.degraded ? `${setupRun.counts} · ${setupRun.integrity}` : setupRun.counts, sub: scanStale ? setupRun.counts : `${setupRun.population}${setupRun.runId ? ` · run ${setupRun.runId}` : ''}${setupRun.runTimestamp ? ` · ${setupRun.runTimestamp}` : ''}`, color: scanStale ? BB.amber : setupRun.degraded ? BB.amber : setupRun.goPositive ? BB.green : 'var(--text3)',
+      drill: { title: 'Trade Setups', subtitle: `Latest scanner run · ${setupRun.population || '—'}${setupRun.integrity !== 'RECONCILED' ? ` · ${setupRun.integrity}` : ''}`, endpoint: '/api/v2/trade-ai', rows: tradeAi ? [{ scope: 'latest run only', run_id: tradeAi.run_id, setup_run_summary: tradeAi.setup_run_summary, vix, run_label: tradeAi.run_label, run_date: tradeAi.run_date }] : [] } },
     { label: 'JOURNAL P&L', value: journalPnl != null ? fmt$(journalPnl, 0) : '—', sub: 'cumulative', color: (journalPnl ?? 0) >= 0 ? '#22c55e' : '#ef4444',
       drill: { title: 'Journal P&L', subtitle: '/api/v2/overview → journal', endpoint: '/api/v2/overview', rows: journal ? [journal] : [] } },
   ]
@@ -254,11 +256,11 @@ export default function HomeHub({ onDrill }: Props) {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 16, marginTop: 12 }}>
               {[
                 { label: 'Last Run', value: tradeAi ? runLabel(tradeAi.run_label, tradeAi.run_date) : '—', color: 'var(--text2)', loading: tradeAiLoading },
-                { label: 'Setup State', value: setupLbl.value, color: setupLbl.color, loading: tradeAiLoading },
+                { label: 'Setup State', value: setupRun.degraded && !scanStale ? `${setupRun.counts} · ${setupRun.integrity}` : setupRun.counts, color: scanStale ? BB.amber : setupRun.degraded ? BB.amber : setupRun.goPositive ? BB.green : 'var(--text2)', loading: tradeAiLoading, tip: setupRun.population ? `GO+WAIT+NOGO = ${setupRun.population}` : undefined },
                 { label: 'Journal P&L', value: journalPnl != null ? fmt$(journalPnl, 0) : '—', color: (journalPnl ?? 0) >= 0 ? '#22c55e' : '#ef4444', loading: overviewLoading },
-                { label: `Win Rate (${journal?.trade_count ?? 0} trades)`, value: journal?.win_rate != null ? `${journal.win_rate}%` : '—', color: (journal?.win_rate ?? 0) >= 55 ? '#22c55e' : '#f59e0b', loading: overviewLoading },
+                { label: `Win Rate (${tradingWr.trades ?? 0} trades)`, value: tradingWr.value != null ? `${tradingWr.value}%` : '—', color: tradingWr.value == null ? 'var(--text3)' : tradingWr.value >= 55 ? BB.green : BB.amber, loading: overviewLoading, tip: tradingWr.value != null ? `broker round-trips · ${tradingWr.basis ?? 'unknown basis'} · ${tradingWr.scope ?? 'unknown scope'} · ${tradingWr.window ?? 'unknown window'}${tradingWr.asOf ? ` · as_of ${String(tradingWr.asOf).slice(0, 19).replace('T', ' ')}` : ''}` : undefined },
               ].map(t => (
-                <div key={t.label}>
+                <div key={t.label} title={(t as any).tip}>
                   <div style={{ fontSize: 9, color: 'var(--text3)', textTransform: 'uppercase', marginBottom: 2 }}>{t.label}</div>
                   <div style={{ fontSize: 14, fontWeight: 600, color: t.color, fontFamily: 'monospace' }}>{t.loading ? <Skel w={110} h={14} /> : t.value}</div>
                 </div>

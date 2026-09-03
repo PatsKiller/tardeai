@@ -62,9 +62,13 @@ function BuildMarker() {
       .then(m => {
         const v = m?.ui_version || __ANALYST_UI_VERSION__
         const d = (m?.built_at || '').slice(0, 10) || __BUILD_DATE__
-        setLabel(`cc-v3 ${v} · built ${d}`)
+        // Build identity from the served artifact: the commit this bundle was
+        // built from, never a fabricated or stale SHA (cc-header-truth-v2 Phase 2 G).
+        const sha = m?.git_sha || m?.source_commit || m?.build_sha
+        const shaPart = sha ? ` · ${String(sha).slice(0, 12)}` : ''
+        setLabel(`cc-v3 ${v} · built ${d}${shaPart}`)
       })
-      .catch(() => { /* keep fallback */ })
+      .catch(() => { /* keep fallback — build-time defines of the served bundle */ })
   }, [])
   return <span>Build: {label}</span>
 }
