@@ -48,6 +48,8 @@ import {
   MaturityPage,
   AuditPage,
 } from './pages/control-plane'
+import SurfaceModeBanner from './components/truth/SurfaceModeBanner'
+import RouteErrorBoundary from './components/truth/RouteErrorBoundary'
 
 
 declare const __ANALYST_UI_VERSION__: string
@@ -169,59 +171,59 @@ function Shell() {
         <main className="app-main" style={{ flex: 1, minWidth: 0, minHeight: 0, overflowY: 'auto', padding: '16px 24px' }}>
           <SharedIntelligenceBridge />
           <Routes>
-            <Route index element={<HomeHub onDrill={setDrill} />} />
-            <Route path="portfolio" element={<PortfolioHub onDrill={setDrill} />} />
-            <Route path="portfolio/re-entry" element={<ReEntryPage />} />
-            <Route path="risk" element={<RiskHub onDrill={setDrill} />} />
-            <Route path="trading" element={<TradingHub onDrill={setDrill} />} />
-            <Route path="active-trader" element={<ActiveTraderHub />} />
-            <Route path="trading/active-trader" element={<Navigate to="/active-trader" replace />} />
-            <Route path="go/order/:intentId" element={<GoOrderDeepLink />} />
-            <Route path="go/proposal/:proposalId" element={<GoProposalDeepLink />} />
-            <Route path="manual-execution" element={<Navigate to="/trading?tab=Entry+Desk" replace />} />
-            <Route path="strategy" element={<StrategyHub onDrill={setDrill} />} />
-            <Route path="agents" element={<AgentRuntimeHub onDrill={setDrill} />} />
-            <Route path="intelligence" element={<IntelligenceHub onDrill={setDrill} />} />
-            <Route path="closed-loop" element={<Navigate to="/intelligence?tab=closed-loop" replace />} />
-            <Route path="research-intelligence" element={<ResearchIntelligenceHub onDrill={setDrill} />} />
-            <Route path="research" element={<Navigate to="/research-intelligence" replace />} />
-            <Route path="hermes" element={<HermesHub onDrill={setDrill} />} />
-            <Route path="retirement" element={<RetirementHub onDrill={setDrill} />} />
-            <Route path="journal" element={<JournalHub onDrill={setDrill} />} />
-            <Route path="trade-in-view" element={<Navigate to="/journal" replace />} />
-            <Route path="watch" element={<WatchHub onDrill={setDrill} />} />
-            <Route path="watch/intelligence/:symbol" element={<SymbolIntelligencePage />} />
-            <Route path="watch/discovery" element={<WatchDiscovery onDrill={setDrill} />} />
-            <Route path="watch-legacy" element={<WatchLegacy onDrill={setDrill} />} />
-            <Route path="defense" element={<DefenseHub />} />
+            <Route index element={<RouteErrorBoundary route="/v3/"><HomeHub onDrill={setDrill} /></RouteErrorBoundary>} />
+            <Route path="portfolio" element={<RouteErrorBoundary route="/v3/portfolio"><PortfolioHub onDrill={setDrill} /></RouteErrorBoundary>} />
+            <Route path="portfolio/re-entry" element={<RouteErrorBoundary route="/v3/portfolio/re-entry"><ReEntryPage /></RouteErrorBoundary>} />
+            <Route path="risk" element={<RouteErrorBoundary route="/v3/risk"><RiskHub onDrill={setDrill} /></RouteErrorBoundary>} />
+            <Route path="trading" element={<RouteErrorBoundary route="/v3/trading"><TradingHub onDrill={setDrill} /></RouteErrorBoundary>} />
+            <Route path="active-trader" element={<RouteErrorBoundary route="/v3/active-trader"><ActiveTraderHub /></RouteErrorBoundary>} />
+            <Route path="trading/active-trader" element={<RouteErrorBoundary route="/v3/trading/active-trader"><Navigate to="/active-trader" replace /></RouteErrorBoundary>} />
+            <Route path="go/order/:intentId" element={<RouteErrorBoundary route="/v3/go/order/:intentId"><GoOrderDeepLink /></RouteErrorBoundary>} />
+            <Route path="go/proposal/:proposalId" element={<RouteErrorBoundary route="/v3/go/proposal/:proposalId"><GoProposalDeepLink /></RouteErrorBoundary>} />
+            <Route path="manual-execution" element={<RouteErrorBoundary route="/v3/manual-execution"><Navigate to="/trading?tab=Entry+Desk" replace /></RouteErrorBoundary>} />
+            <Route path="strategy" element={<RouteErrorBoundary route="/v3/strategy"><StrategyHub onDrill={setDrill} /></RouteErrorBoundary>} />
+            <Route path="agents" element={<RouteErrorBoundary route="/v3/agents"><AgentRuntimeHub onDrill={setDrill} /></RouteErrorBoundary>} />
+            <Route path="intelligence" element={<RouteErrorBoundary route="/v3/intelligence"><IntelligenceHub onDrill={setDrill} /></RouteErrorBoundary>} />
+            <Route path="closed-loop" element={<RouteErrorBoundary route="/v3/closed-loop"><Navigate to="/intelligence?tab=closed-loop" replace /></RouteErrorBoundary>} />
+            <Route path="research-intelligence" element={<RouteErrorBoundary route="/v3/research-intelligence"><ResearchIntelligenceHub onDrill={setDrill} /></RouteErrorBoundary>} />
+            <Route path="research" element={<RouteErrorBoundary route="/v3/research"><Navigate to="/research-intelligence" replace /></RouteErrorBoundary>} />
+            <Route path="hermes" element={<RouteErrorBoundary route="/v3/hermes"><HermesHub onDrill={setDrill} /></RouteErrorBoundary>} />
+            <Route path="retirement" element={<RouteErrorBoundary route="/v3/retirement"><RetirementHub onDrill={setDrill} /></RouteErrorBoundary>} />
+            <Route path="journal" element={<RouteErrorBoundary route="/v3/journal"><JournalHub onDrill={setDrill} /></RouteErrorBoundary>} />
+            <Route path="trade-in-view" element={<RouteErrorBoundary route="/v3/trade-in-view"><Navigate to="/journal" replace /></RouteErrorBoundary>} />
+            <Route path="watch" element={<RouteErrorBoundary route="/v3/watch"><WatchHub onDrill={setDrill} /></RouteErrorBoundary>} />
+            <Route path="watch/intelligence/:symbol" element={<RouteErrorBoundary route="/v3/watch/intelligence/:symbol"><SymbolIntelligencePage /></RouteErrorBoundary>} />
+            <Route path="watch/discovery" element={<RouteErrorBoundary route="/v3/watch/discovery"><WatchDiscovery onDrill={setDrill} /></RouteErrorBoundary>} />
+            <Route path="watch-legacy" element={<RouteErrorBoundary route="/v3/watch-legacy"><WatchLegacy onDrill={setDrill} /></RouteErrorBoundary>} />
+            <Route path="defense" element={<RouteErrorBoundary route="/v3/defense"><DefenseHub /></RouteErrorBoundary>} />
             {/* Legacy watchlist/screener nav → primary Intelligence (not the old card wall) */}
-            <Route path="watchlist" element={<Navigate to="/watch?tab=intelligence&view=top_ideas" replace />} />
-            <Route path="watchpool" element={<Navigate to="/watch?tab=watchpool" replace />} />
-            <Route path="sectors" element={<Navigate to="/watch?tab=sectors" replace />} />
-            <Route path="pullback-macd" element={<Navigate to="/watch?tab=pullback-macd" replace />} />
-            <Route path="reports" element={<ReportsHub onDrill={setDrill} />} />
-            <Route path="rotation" element={<RotationIntelligence />} />
-            <Route path="redeploy" element={<RedeployDeskIntegrated />} />
-            <Route path="advisor-changes" element={<Navigate to="/rotation?tab=advisor-guide" replace />} />
-            <Route path="rec-intel" element={<RecommendationIntelligence />} />
-            <Route path="advisory" element={<AdvisoryDeskHub onDrill={setDrill} />} />
-            <Route path="cio" element={<CioHub onDrill={setDrill} />} />
-            <Route path="health" element={<HealthHub onDrill={setDrill} />} />
-            <Route path="consumption" element={<ConsumptionHub />} />
-            <Route path="system" element={<SystemHub onDrill={setDrill} />} />
-            <Route path="system/schwab-reauth" element={<SchwabReauthHub />} />
+            <Route path="watchlist" element={<RouteErrorBoundary route="/v3/watchlist"><Navigate to="/watch?tab=intelligence&view=top_ideas" replace /></RouteErrorBoundary>} />
+            <Route path="watchpool" element={<RouteErrorBoundary route="/v3/watchpool"><Navigate to="/watch?tab=watchpool" replace /></RouteErrorBoundary>} />
+            <Route path="sectors" element={<RouteErrorBoundary route="/v3/sectors"><Navigate to="/watch?tab=sectors" replace /></RouteErrorBoundary>} />
+            <Route path="pullback-macd" element={<RouteErrorBoundary route="/v3/pullback-macd"><Navigate to="/watch?tab=pullback-macd" replace /></RouteErrorBoundary>} />
+            <Route path="reports" element={<RouteErrorBoundary route="/v3/reports"><ReportsHub onDrill={setDrill} /></RouteErrorBoundary>} />
+            <Route path="rotation" element={<RouteErrorBoundary route="/v3/rotation"><RotationIntelligence /></RouteErrorBoundary>} />
+            <Route path="redeploy" element={<RouteErrorBoundary route="/v3/redeploy"><RedeployDeskIntegrated /></RouteErrorBoundary>} />
+            <Route path="advisor-changes" element={<RouteErrorBoundary route="/v3/advisor-changes"><Navigate to="/rotation?tab=advisor-guide" replace /></RouteErrorBoundary>} />
+            <Route path="rec-intel" element={<RouteErrorBoundary route="/v3/rec-intel"><RecommendationIntelligence /></RouteErrorBoundary>} />
+            <Route path="advisory" element={<RouteErrorBoundary route="/v3/advisory"><AdvisoryDeskHub onDrill={setDrill} /></RouteErrorBoundary>} />
+            <Route path="cio" element={<RouteErrorBoundary route="/v3/cio"><CioHub onDrill={setDrill} /></RouteErrorBoundary>} />
+            <Route path="health" element={<RouteErrorBoundary route="/v3/health"><HealthHub onDrill={setDrill} /></RouteErrorBoundary>} />
+            <Route path="consumption" element={<RouteErrorBoundary route="/v3/consumption"><ConsumptionHub /></RouteErrorBoundary>} />
+            <Route path="system" element={<RouteErrorBoundary route="/v3/system"><SystemHub onDrill={setDrill} /></RouteErrorBoundary>} />
+            <Route path="system/schwab-reauth" element={<RouteErrorBoundary route="/v3/system/schwab-reauth"><SchwabReauthHub /></RouteErrorBoundary>} />
             {/* Shadow control-plane namespace. Does not replace live routes. */}
-            <Route path="control-plane" element={<ControlPlaneHub />} />
-            <Route path="control-plane/system" element={<ControlPlaneSystemPage />} />
-            <Route path="control-plane/agents" element={<AgentOfficePage />} />
-            <Route path="control-plane/workflows" element={<WorkflowTracePage />} />
-            <Route path="control-plane/research" element={<ResearchAttentionPage />} />
-            <Route path="control-plane/data" element={<DataIntegrityPage />} />
-            <Route path="control-plane/identity" element={<IdentityPage />} />
-            <Route path="control-plane/notifications" element={<NotificationsPage />} />
-            <Route path="control-plane/learning" element={<LearningPage />} />
-            <Route path="control-plane/maturity" element={<MaturityPage />} />
-            <Route path="control-plane/audit" element={<AuditPage />} />
+            <Route path="control-plane" element={<RouteErrorBoundary route="/v3/control-plane"><><SurfaceModeBanner route="/v3/control-plane" /><ControlPlaneHub /></></RouteErrorBoundary>} />
+            <Route path="control-plane/system" element={<RouteErrorBoundary route="/v3/control-plane/system"><><SurfaceModeBanner route="/v3/control-plane/system" /><ControlPlaneSystemPage /></></RouteErrorBoundary>} />
+            <Route path="control-plane/agents" element={<RouteErrorBoundary route="/v3/control-plane/agents"><><SurfaceModeBanner route="/v3/control-plane/agents" /><AgentOfficePage /></></RouteErrorBoundary>} />
+            <Route path="control-plane/workflows" element={<RouteErrorBoundary route="/v3/control-plane/workflows"><><SurfaceModeBanner route="/v3/control-plane/workflows" /><WorkflowTracePage /></></RouteErrorBoundary>} />
+            <Route path="control-plane/research" element={<RouteErrorBoundary route="/v3/control-plane/research"><><SurfaceModeBanner route="/v3/control-plane/research" /><ResearchAttentionPage /></></RouteErrorBoundary>} />
+            <Route path="control-plane/data" element={<RouteErrorBoundary route="/v3/control-plane/data"><><SurfaceModeBanner route="/v3/control-plane/data" /><DataIntegrityPage /></></RouteErrorBoundary>} />
+            <Route path="control-plane/identity" element={<RouteErrorBoundary route="/v3/control-plane/identity"><><SurfaceModeBanner route="/v3/control-plane/identity" /><IdentityPage /></></RouteErrorBoundary>} />
+            <Route path="control-plane/notifications" element={<RouteErrorBoundary route="/v3/control-plane/notifications"><><SurfaceModeBanner route="/v3/control-plane/notifications" /><NotificationsPage /></></RouteErrorBoundary>} />
+            <Route path="control-plane/learning" element={<RouteErrorBoundary route="/v3/control-plane/learning"><><SurfaceModeBanner route="/v3/control-plane/learning" /><LearningPage /></></RouteErrorBoundary>} />
+            <Route path="control-plane/maturity" element={<RouteErrorBoundary route="/v3/control-plane/maturity"><><SurfaceModeBanner route="/v3/control-plane/maturity" /><MaturityPage /></></RouteErrorBoundary>} />
+            <Route path="control-plane/audit" element={<RouteErrorBoundary route="/v3/control-plane/audit"><><SurfaceModeBanner route="/v3/control-plane/audit" /><AuditPage /></></RouteErrorBoundary>} />
           </Routes>
           <div style={{ marginTop: 18, paddingTop: 8, borderTop: '1px solid rgba(148,163,184,.16)', fontSize: 11, color: 'var(--text3)' }}>
             <BuildMarker />

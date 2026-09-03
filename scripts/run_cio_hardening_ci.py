@@ -633,6 +633,38 @@ GATES = [
         ],
     ),
     (
+        # cc-whole-site-residual-v1 (2026-09-03): the SERVER decides what a
+        # surface is showing. Eleven /v3/control-plane/* routes shipped a
+        # PREVIEW/FIXTURE label compiled into the bundle while live domains
+        # answered behind seven of them; the write token and operator name live
+        # in localStorage; /v3-next is served from outside the repository with no
+        # manifest. All four contracts are read-only and fail closed.
+        "whole_site_surface_truth",
+        [
+            "tests/test_whole_site_truth.py",
+            "tests/test_operator_control_contract.py",
+        ],
+    ),
+    (
+        # cc-whole-site-residual-v1 (2026-09-03): a configured intention is not a
+        # running fact. Feature flags the loader coerces, timers that are disabled
+        # or whose last run failed, and a Finviz store whose "no data" has three
+        # unrelated causes -- each reported DECLARED next to EFFECTIVE.
+        "effective_truth",
+        [
+            "tests/test_effective_truth.py",
+        ],
+    ),
+    (
+        # cc-whole-site-residual-v1 (2026-09-03): the browser/state matrix caught
+        # /v3/strategy throwing and rendering the ENTIRE shell blank. Every route is
+        # now wrapped so one page's failure is contained and stated.
+        "route_error_containment",
+        [
+            "tests/test_route_error_boundary.py",
+        ],
+    ),
+    (
         "wake_writer_stamp",
         [
             "tests/test_wake_writer_stamp.py",

@@ -10,6 +10,7 @@ Surfaces:
 Uses: catalyst_enrichment.py (7 API sources), Finviz/Yahoo enrich (F2; not
       Brave search API), Ollama local LLM (scoring/curation), social_sentiment.py
 """
+
 import json, os, time, hashlib, requests
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -20,6 +21,7 @@ from typing import Dict, List, Optional, Any
 # ═══════════════════════════════════════════════════════════════════
 HISTORY_DAYS = 90
 from local_llm_config import get_local_llm_model, get_local_llm_base_url
+
 OLLAMA_MODEL = get_local_llm_model()
 OLLAMA_URL = get_local_llm_base_url().rstrip("/") + "/api/chat"
 # F2: was Brave-enrich at score>=70. Search API is residual-web only;
@@ -48,10 +50,11 @@ def _env(key, default=""):
 def _ollama(prompt, max_tokens=500):
     """Call local LLM for scoring/curation (routed through local_llm.generate)."""
     import re as _re
+
     try:
         from local_llm import generate
-        text = generate(prompt, timeout=60,
-                        caller="portfolio_news", process_type="STANDARD")
+
+        text = generate(prompt, timeout=60, caller="portfolio_news", process_type="STANDARD")
         return _re.sub(r"<think>.*?</think>", "", text or "", flags=_re.DOTALL).strip()
     except Exception as e:
         return f"LLM error: {e}"
@@ -70,27 +73,33 @@ def _non_search_enrich(symbol: str, title: str = "", count: int = 3):
     out: List[Dict[str, Any]] = []
     try:
         from finviz_news import fetch_finviz_news
+
         for a in fetch_finviz_news(sym, lookback_hours=72)[:count]:
-            out.append({
-                "title": a.get("headline") or a.get("title") or "",
-                "url": a.get("url") or "",
-                "description": str(a.get("original_source") or a.get("source") or "")[:200],
-                "source": "finviz_news",
-                "age": "",
-            })
+            out.append(
+                {
+                    "title": a.get("headline") or a.get("title") or "",
+                    "url": a.get("url") or "",
+                    "description": str(a.get("original_source") or a.get("source") or "")[:200],
+                    "source": "finviz_news",
+                    "age": "",
+                }
+            )
     except Exception:
         pass
     if len(out) < count:
         try:
             from yahoo_news import fetch_yahoo_news
+
             for a in fetch_yahoo_news(sym, lookback_hours=72)[: max(0, count - len(out))]:
-                out.append({
-                    "title": a.get("headline") or a.get("title") or "",
-                    "url": a.get("url") or "",
-                    "description": str(a.get("source") or "yahoo")[:200],
-                    "source": "yahoo_news",
-                    "age": "",
-                })
+                out.append(
+                    {
+                        "title": a.get("headline") or a.get("title") or "",
+                        "url": a.get("url") or "",
+                        "description": str(a.get("source") or "yahoo")[:200],
+                        "source": "yahoo_news",
+                        "age": "",
+                    }
+                )
         except Exception:
             pass
     return out[:count]
@@ -107,9 +116,11 @@ def _brave_search(query, count=3):
 # CORE: Collect news for portfolio holdings
 # ═══════════════════════════════════════════════════════════════════
 
+
 def collect_portfolio_news(portfolio: Dict, state_dir: Path, root: str = ".") -> Dict:
     """Fetch catalyst news for all portfolio holdings, score with LLM, store daily snapshot."""
     import sys
+
     sys.path.insert(0, str(Path(root) / "scripts"))
 
     holdings = portfolio.get("holdings", [])
@@ -154,9 +165,16 @@ def collect_portfolio_news(portfolio: Dict, state_dir: Path, root: str = ".") ->
     # Add directive + AI/topic watchlist symbols from DB (canonical lifecycle statuses)
     try:
         from db_adapter import get_active_watchlist_symbols
-        _db_wl_rows = get_active_watchlist_symbols([
-            "ai_discovered", "ai_watchlist", "topic_research", "hermes", "paper_proposal",
-        ])
+
+        _db_wl_rows = get_active_watchlist_symbols(
+            [
+                "ai_discovered",
+                "ai_watchlist",
+                "topic_research",
+                "hermes",
+                "paper_proposal",
+            ]
+        )
         _ai_added = 0
         for _r in _db_wl_rows:
             _ws = (_r.get("symbol") or "").upper().strip()
@@ -171,7 +189,7 @@ def collect_portfolio_news(portfolio: Dict, state_dir: Path, root: str = ".") ->
         print(f"  [portfolio-news] DB watchlist lookup skipped: {_e_wl_db}")
 
     tickers.sort(key=lambda x: -x["market_value"])
-    tickers = tickers[:MAX_PORTFOLIO_TICKERS + 15]  # allow room for watchlist additions
+    tickers = tickers[: MAX_PORTFOLIO_TICKERS + 15]  # allow room for watchlist additions
     print(f"  [portfolio-news] Scanning {len(tickers)} tickers for news...")
 
     # Fetch catalysts using existing catalyst_enrichment
@@ -179,6 +197,7 @@ def collect_portfolio_news(portfolio: Dict, state_dir: Path, root: str = ".") ->
     sources_summary = {}
     try:
         from catalyst_enrichment import enrich_ticker
+
         for t in tickers:
             sym = t["symbol"]
             try:
@@ -222,8 +241,9 @@ def collect_portfolio_news(portfolio: Dict, state_dir: Path, root: str = ".") ->
 
     # Also score a small batch of watchlist-only articles not already scored
     _scored_urls = set(c.get("url", "") for c in scored)
-    _wl_unscored = [c for c in unique[30:] if c.get("url", "") not in _scored_urls
-                    and c.get("market_value", 0) == 0][:10]  # cap at 10 extra
+    _wl_unscored = [c for c in unique[30:] if c.get("url", "") not in _scored_urls and c.get("market_value", 0) == 0][
+        :10
+    ]  # cap at 10 extra
     if _wl_unscored:
         _wl_scored = _score_catalysts(_wl_unscored, portfolio)
         for _ws in _wl_scored:
@@ -328,7 +348,8 @@ Respond with ONLY a JSON object: {{"score": <number>, "category": "<one of: earn
             response = _ollama(prompt, max_tokens=150)
             # Parse JSON from response
             import re
-            json_match = re.search(r'\{[^}]+\}', response)
+
+            json_match = re.search(r"\{[^}]+\}", response)
             if json_match:
                 data = json.loads(json_match.group())
                 c["llm_score"] = min(100, max(0, int(data.get("score", 30))))
@@ -373,6 +394,7 @@ def _prune_history(history_dir: Path):
 # SYNTHESIS: Weekly and Monthly summaries
 # ═══════════════════════════════════════════════════════════════════
 
+
 def build_weekly_summary(state_dir: Path) -> Dict:
     """Build weekly catalyst summary from last 7 days of snapshots."""
     history_dir = state_dir / "portfolio_news_history"
@@ -408,7 +430,7 @@ def build_weekly_summary(state_dir: Path) -> Dict:
     # Synthesize with LLM
     top_5 = unique[:5]
     catalyst_text = "\n".join(
-        f"- {c.get('portfolio_symbol','?')} ({c.get('llm_score',0)}): {c.get('title','')[:80]} [{c.get('llm_category','?')}]"
+        f"- {c.get('portfolio_symbol', '?')} ({c.get('llm_score', 0)}): {c.get('title', '')[:80]} [{c.get('llm_category', '?')}]"
         for c in top_5
     )
     new_this_week = curr_symbols - prev_symbols
@@ -420,9 +442,9 @@ You are a portfolio strategist writing a weekly news brief.
 TOP CATALYSTS THIS WEEK:
 {catalyst_text}
 
-NEW THIS WEEK: {', '.join(new_this_week) if new_this_week else 'None'}
-RESOLVED FROM LAST WEEK: {', '.join(resolved) if resolved else 'None'}
-STILL ACTIVE: {', '.join(curr_symbols & prev_symbols) if curr_symbols & prev_symbols else 'None'}
+NEW THIS WEEK: {", ".join(new_this_week) if new_this_week else "None"}
+RESOLVED FROM LAST WEEK: {", ".join(resolved) if resolved else "None"}
+STILL ACTIVE: {", ".join(curr_symbols & prev_symbols) if curr_symbols & prev_symbols else "None"}
 
 Respond with ONLY a JSON object:
 {{"top_catalyst": "<ticker: one-line description of most important catalyst>",
@@ -436,9 +458,10 @@ Be specific. Cite tickers. No generic statements."""
 
     synthesis_raw = _ollama(synthesis_prompt, max_tokens=500)
     import re as _re
+
     synthesis = {}
     try:
-        _jm = _re.search(r'\{[\s\S]*\}', synthesis_raw)
+        _jm = _re.search(r"\{[\s\S]*\}", synthesis_raw)
         if _jm:
             synthesis = json.loads(_jm.group())
     except:
@@ -490,6 +513,7 @@ def build_monthly_summary(state_dir: Path) -> Dict:
 
     # Theme analysis
     from collections import Counter
+
     categories = Counter(c.get("llm_category", "unknown") for c in unique)
     by_symbol = Counter(c.get("portfolio_symbol", "?") for c in unique if c.get("llm_score", 0) >= 50)
     by_urgency = Counter(c.get("llm_urgency", "monitor") for c in unique)
@@ -503,7 +527,7 @@ def build_monthly_summary(state_dir: Path) -> Dict:
     # Monthly synthesis
     top_10 = unique[:10]
     catalyst_text = "\n".join(
-        f"- {c.get('portfolio_symbol','?')} ({c.get('llm_score',0)}, {c.get('llm_category','?')}): {c.get('title','')[:80]}"
+        f"- {c.get('portfolio_symbol', '?')} ({c.get('llm_score', 0)}, {c.get('llm_category', '?')}): {c.get('title', '')[:80]}"
         for c in top_10
     )
 
@@ -562,6 +586,7 @@ def _load_range(history_dir: Path, start: str, end: str) -> List[Dict]:
 # ENTRY POINT — called by orchestrator
 # ═══════════════════════════════════════════════════════════════════
 
+
 def run_portfolio_news(portfolio: Dict, state_dir: Path, run_type: str = "daily", root: str = ".") -> Dict:
     """Main entry point. Collects news, builds appropriate summary."""
     state_dir = Path(state_dir)
@@ -574,15 +599,17 @@ def run_portfolio_news(portfolio: Dict, state_dir: Path, run_type: str = "daily"
     if run_type == "weekly":
         print("  [portfolio-news] Building weekly synthesis...")
         summary = build_weekly_summary(state_dir)
-        (state_dir / "portfolio_news_weekly.json").write_text(
-            json.dumps(summary, indent=2, default=str))
-        print(f"  [portfolio-news] ✅ Weekly summary: {summary.get('total_articles',0)} articles, {len(summary.get('new_this_week',[]))} new")
+        (state_dir / "portfolio_news_weekly.json").write_text(json.dumps(summary, indent=2, default=str))
+        print(
+            f"  [portfolio-news] ✅ Weekly summary: {summary.get('total_articles', 0)} articles, {len(summary.get('new_this_week', []))} new"
+        )
 
     elif run_type in ("monthly", "manual"):
         print("  [portfolio-news] Building monthly synthesis...")
         summary = build_monthly_summary(state_dir)
-        (state_dir / "portfolio_news_monthly.json").write_text(
-            json.dumps(summary, indent=2, default=str))
-        print(f"  [portfolio-news] ✅ Monthly summary: {summary.get('total_articles',0)} articles, {len(summary.get('dominant_themes',{}))} themes")
+        (state_dir / "portfolio_news_monthly.json").write_text(json.dumps(summary, indent=2, default=str))
+        print(
+            f"  [portfolio-news] ✅ Monthly summary: {summary.get('total_articles', 0)} articles, {len(summary.get('dominant_themes', {}))} themes"
+        )
 
     return {"snapshot": snapshot, "summary": summary}

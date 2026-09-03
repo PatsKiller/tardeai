@@ -26582,8 +26582,12 @@ def _state_root_divergence(query=None):
     try:
         from lib.state_root_divergence import scan
     except Exception as e:  # noqa: BLE001
-        return {"schema": "StateRootDivergenceReport@v1", "status": "UNAVAILABLE",
-                "reason": f"{type(e).__name__}: {e}", "auto_remediate": False}
+        return {
+            "schema": "StateRootDivergenceReport@v1",
+            "status": "UNAVAILABLE",
+            "reason": f"{type(e).__name__}: {e}",
+            "auto_remediate": False,
+        }
     q = query if isinstance(query, dict) else (_current_query or {})
     want_hashes = (q.get("hashes") or "").lower() in ("1", "true", "yes")
     try:
@@ -26593,8 +26597,122 @@ def _state_root_divergence(query=None):
         return scan(with_hashes=want_hashes)
     except Exception as e:  # noqa: BLE001
         # Fail closed: an error is never an empty, healthy-looking report.
-        return {"schema": "StateRootDivergenceReport@v1", "status": "UNAVAILABLE",
-                "reason": f"{type(e).__name__}: {e}", "auto_remediate": False}
+        return {
+            "schema": "StateRootDivergenceReport@v1",
+            "status": "UNAVAILABLE",
+            "reason": f"{type(e).__name__}: {e}",
+            "auto_remediate": False,
+        }
+
+
+def _whole_site_truth_block(fn_name, **kwargs):
+    """Shared read-only wrapper for the whole-site truth contracts.
+
+    Fail closed: an import or scan error is reported as UNAVAILABLE with the
+    reason, never as an empty report that reads like a healthy one.
+    """
+    try:
+        from lib import whole_site_truth as _wst
+
+        return getattr(_wst, fn_name)(**kwargs)
+    except Exception as e:  # noqa: BLE001
+        return {
+            "schema": "WholeSiteTruth@v1",
+            "contract": fn_name,
+            "status": "UNAVAILABLE",
+            "reason": f"{type(e).__name__}: {e}",
+            "authority": "READ_ONLY_ADVISORY",
+        }
+
+
+def _control_plane_surface_authority():
+    """GET /api/v2/system/control-plane-surface-authority — server-declared data mode.
+
+    Eleven /v3/control-plane/* routes labelled themselves PREVIEW/FIXTURE from a
+    constant compiled into the bundle while live domains answered behind them. A
+    page that ships its own label can ship the wrong one. The server decides here,
+    from what it can actually serve, and the UI renders that decision.
+    """
+    return _whole_site_truth_block("control_plane_surface_authority")
+
+
+def _operator_identity_boundary():
+    """GET /api/v2/system/operator-identity-boundary — where authorization is decided.
+
+    Reports that the browser holds a bearer token and an unverified operator name,
+    whether the server-side gate is DECLARED, and whether it is EFFECTIVE in this
+    process. Declared is not effective: access_ok() returns True when
+    ADMIN_WRITE_TOKEN is unset.
+    """
+    return _whole_site_truth_block("operator_identity_boundary")
+
+
+def _v3_next_lineage():
+    """GET /api/v2/system/v3-next-lineage — git/build/release lineage for /v3-next.
+
+    /v3-next is served from a directory outside the repository. When that directory
+    carries no manifest the honest answer is NONCANONICAL, not silence.
+    """
+    return _whole_site_truth_block("v3_next_lineage")
+
+
+def _route_disposition():
+    """GET /api/v2/system/route-disposition — every registered SPA route, dispositioned.
+
+    A route nothing links to is reachable by URL and invisible in navigation, so
+    nobody re-verifies it. Naming them is the precondition for retiring or owning them.
+    """
+    return _whole_site_truth_block("route_disposition")
+
+
+def _effective_truth_block(fn_name, **kwargs):
+    """Shared read-only wrapper for the declared-vs-effective contracts.
+
+    Fail closed: an import or probe error is UNAVAILABLE with the reason, never an
+    empty report that reads like a healthy one.
+    """
+    try:
+        from lib import effective_truth as _et
+
+        return getattr(_et, fn_name)(**kwargs)
+    except Exception as e:  # noqa: BLE001
+        return {
+            "schema": "EffectiveTruth@v1",
+            "contract": fn_name,
+            "status": "UNAVAILABLE",
+            "reason": f"{type(e).__name__}: {e}",
+            "authority": "READ_ONLY_ADVISORY",
+        }
+
+
+def _feature_flag_truth():
+    """GET /api/v2/system/feature-flag-truth — declared config value vs effective value.
+
+    A config file may say a capability is on while the loader coerces it off for
+    safety. Rendering the file value tells the operator the opposite of the truth,
+    and for the live-session flag that is the dangerous direction.
+    """
+    return _effective_truth_block("feature_flag_truth")
+
+
+def _scheduler_truth():
+    """GET /api/v2/system/scheduler-truth — disabled, failed and never-triggered timers.
+
+    "A unit exists" is not "the job ran". Disabled, failed-last-run and
+    enabled-but-never-triggered are three different failures a unit list renders
+    identically.
+    """
+    return _effective_truth_block("scheduler_truth")
+
+
+def _finviz_store_health():
+    """GET /api/v2/data-sources/finviz/store-health — why there is no number.
+
+    UNCACHED / CACHED_FRESH / CACHED_STALE / BROKEN_STORE / UNREADABLE are distinct
+    causes; only some of them are a provider problem. Collapsing them to an empty
+    render is how a local store fault was read as a Finviz outage.
+    """
+    return _effective_truth_block("finviz_store_health")
 
 
 def _governance_pipeline_status():
@@ -45197,6 +45315,13 @@ ROUTES = {
     "/api/v2/system/pipeline-summary": lambda: _system_pipeline_summary(),
     "/api/v2/system/governance-pipeline-status": lambda: _governance_pipeline_status(),
     "/api/v2/system/state-root-divergence": lambda: _state_root_divergence(_current_query),
+    "/api/v2/system/control-plane-surface-authority": lambda: _control_plane_surface_authority(),
+    "/api/v2/system/operator-identity-boundary": lambda: _operator_identity_boundary(),
+    "/api/v2/system/v3-next-lineage": lambda: _v3_next_lineage(),
+    "/api/v2/system/route-disposition": lambda: _route_disposition(),
+    "/api/v2/system/feature-flag-truth": lambda: _feature_flag_truth(),
+    "/api/v2/system/scheduler-truth": lambda: _scheduler_truth(),
+    "/api/v2/data-sources/finviz/store-health": lambda: _finviz_store_health(),
     "/api/v2/system/portfolio-cadence-status": lambda: _portfolio_cadence_status(),
     "/api/v2/open-trades/intelligence": lambda: _open_trades_intelligence(),
     "/api/v2/broker-proposals": lambda: _broker_proposals(_current_query),
