@@ -1,3 +1,7 @@
+Status: PROPOSED
+Date: 2026-09-03
+Authority: bounded Command Center live-remediation tranche evidence
+
 # Command Center Live Truth Tranche
 
 This tranche closes three release-specific wiring defects observed from the served Command Center:
