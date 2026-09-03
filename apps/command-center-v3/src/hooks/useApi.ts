@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import type { TransportState } from '../lib/observationEnvelope.ts'
 
 // ── Global connection health ─────────────────────────────────────────────────────────────────────────
 // useApi consumers register/clear when they enter/leave a failed state, so a single top-level indicator
@@ -61,6 +62,11 @@ export function useApi<T>(path: string, intervalMs?: number, options?: UseApiOpt
   const [refreshing, setRefreshing] = useState(false) // manual refetch in flight (keeps last data)
   const [error, setError] = useState<string | null>(null)
   const [stale, setStale] = useState(false)   // showing last-good data after a failed refetch
+  // Transport receipt + state (cc-header-truth-v2): a 304 revalidates the body
+  // but advances only `receivedAt`; the data clock must not move. Exposed so
+  // consumers build an envelope that ages rather than resets to "fresh".
+  const [receivedAt, setReceivedAt] = useState<string | null>(null)
+  const [transport, setTransport] = useState<TransportState>('UNKNOWN')
   const [tick, setTick] = useState(0)
   const intervalRef = useRef<ReturnType<typeof setInterval>>()
   const retryRef = useRef<ReturnType<typeof setTimeout>>()
@@ -118,9 +124,14 @@ export function useApi<T>(path: string, intervalMs?: number, options?: UseApiOpt
         const r = await fetch(url, { signal: controller.signal, cache: 'no-store', headers })
         clearTimeout(timer)
         if (r.status === 304) {
-          // Snapshot unchanged — last data is CURRENT, not stale
+          // Snapshot unchanged — the retained body is still the last-good body.
+          // Transport receipt advances; the DATA clock does not. Consumers keep
+          // the complete prior payload and recompute age from the current clock,
+          // so a repeatedly-revalidated observation still ages toward stale.
           setError(null)
           setStale(false)
+          setReceivedAt(new Date().toISOString())
+          setTransport('RETAINED')
           clearFailing()
           retries = 0
           return
@@ -137,8 +148,10 @@ export function useApi<T>(path: string, intervalMs?: number, options?: UseApiOpt
           if (dataRef.current != null) {
             setStale(true)
             setError(null) // last-good is valid; no hard error chip
+            setTransport('RETAINED')
           } else {
             setError('server busy — retrying')
+            setTransport('ERROR')
           }
           // Do NOT _bumpFail for 503-with-data — only hard timeouts/network bump the banner
           if (retries < 10) {
@@ -158,6 +171,8 @@ export function useApi<T>(path: string, intervalMs?: number, options?: UseApiOpt
         setData(next)
         setError(null)
         setStale(false)
+        setReceivedAt(new Date().toISOString())
+        setTransport('OK')
         clearFailing()
         retries = 0
       } catch (e: any) {
@@ -167,7 +182,12 @@ export function useApi<T>(path: string, intervalMs?: number, options?: UseApiOpt
         setError(msg)
         // Keep last-good data; flag it stale so the UI can show a 'reconnecting' hint instead of
         // collapsing to zeros. Only mark stale when we actually have prior data to keep showing.
-        if (dataRef.current != null) setStale(true)
+        if (dataRef.current != null) {
+          setStale(true)
+          setTransport('RETAINED')
+        } else {
+          setTransport('ERROR')
+        }
         if (!failingRef.current) { failingRef.current = true; _bumpFail(1) }
         // Quick backoff retry so a transient failure (e.g. a server-restart window) recovers in
         // seconds, not after the full polling interval.
@@ -200,5 +220,5 @@ export function useApi<T>(path: string, intervalMs?: number, options?: UseApiOpt
     }
   }, [path, intervalMs, tick, enabled])
 
-  return { data, loading, refreshing, error, stale, refetch }
+  return { data, loading, refreshing, error, stale, receivedAt, transport, refetch }
 }
