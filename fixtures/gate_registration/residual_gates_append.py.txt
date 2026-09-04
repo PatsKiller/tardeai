@@ -1,0 +1,93 @@
+    (
+        "state_root_convergence",
+        [
+            # Producers run under `cd $PROJ`; releases symlink
+            # data/portfolios/state at the persistent root. Measured 2026-09-03:
+            # 59 of 88 stores forked, worst skew 143 days, and no surface said
+            # so. Both files run together -- the producer fix and the report
+            # that makes the next fork visible are one contract.
+            "tests/test_portfolio_news_state_root.py",
+            "tests/test_state_root_divergence.py",
+        ],
+    ),
+    (
+        # cc-whole-site-residual-v1 (2026-09-03): the SERVER decides what a
+        # surface is showing. Eleven /v3/control-plane/* routes shipped a
+        # PREVIEW/FIXTURE label compiled into the bundle while live domains
+        # answered behind seven of them; the write token and operator name live
+        # in localStorage; /v3-next is served from outside the repository with no
+        # manifest. All four contracts are read-only and fail closed.
+        "whole_site_surface_truth",
+        [
+            "tests/test_whole_site_truth.py",
+            "tests/test_operator_control_contract.py",
+        ],
+    ),
+    (
+        # cc-whole-site-residual-v1 (2026-09-03): a configured intention is not a
+        # running fact. Feature flags the loader coerces, timers that are disabled
+        # or whose last run failed, and a Finviz store whose "no data" has three
+        # unrelated causes -- each reported DECLARED next to EFFECTIVE.
+        "effective_truth",
+        [
+            "tests/test_effective_truth.py",
+        ],
+    ),
+    (
+        # cc-whole-site-residual-v1 (2026-09-03): detection is not resolution. Every
+        # audited store gets one verdict from a closed taxonomy, Command Center
+        # criticality is derived from the surface, and each open fork carries an
+        # executable migration plan this lane is forbidden to run (AGENTS.md rule 5).
+        "state_root_disposition",
+        [
+            "tests/test_state_root_disposition.py",
+        ],
+    ),
+    (
+        # cc-whole-site-residual-v1 (2026-09-03): stop coverage over ONE population.
+        # The served Risk surface published 0.39% while the same rows it returns say
+        # 11.92%: four broker-held stops read as NO STOP, and the percentage divided
+        # by the whole portfolio rather than the population it summed.
+        "protection_truth",
+        [
+            "tests/test_protection_truth.py",
+        ],
+    ),
+    (
+        # cc-whole-site-residual-v1 (2026-09-03): validation must never dirty the
+        # candidate worktree, the committed ledger is the expectation rather than a
+        # file the run just wrote, and no control may carry a hardcoded commit SHA.
+        "ci_fixture_immutability",
+        [
+            "tests/test_ci_fixture_immutability.py",
+        ],
+    ),
+    (
+        # cc-whole-site-residual-v1 (2026-09-03): 401/403 are authorization answers,
+        # not connectivity. They must not consume the transient retry ladder.
+        "useapi_authorization_contract",
+        [
+            "tests/test_useapi_authorization_contract.py",
+        ],
+    ),
+    (
+        # cc-whole-site-residual-v1 (2026-09-03): operator controls proven against a
+        # DISPOSABLE PostgreSQL cluster -- its own initdb data directory in a temp
+        # path, loopback-only on a dynamic port, test-only role and database,
+        # destroyed afterwards. The real admin_write guard runs its full
+        # ACCESS -> CONFIRM -> APPLY -> AUDIT chain; nothing is mocked. Skips
+        # cleanly on a host without PostgreSQL server binaries.
+        "operator_control_isolated_db",
+        [
+            "tests/test_operator_control_isolated_db.py",
+        ],
+    ),
+    (
+        # cc-whole-site-residual-v1 (2026-09-03): the browser/state matrix caught
+        # /v3/strategy throwing and rendering the ENTIRE shell blank. Every route is
+        # now wrapped so one page's failure is contained and stated.
+        "route_error_containment",
+        [
+            "tests/test_route_error_boundary.py",
+        ],
+    ),

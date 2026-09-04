@@ -1,0 +1,23 @@
+    (
+        # research-truth-brave-claude-v1 (2026-09-03): paid search leaves this
+        # repository in exactly one place. Measured live, the plan publishes
+        # `50;w=1, 0;w=2592000` -- 50 requests per SECOND and no metered monthly
+        # window -- while two files hardcoded contradictory tiers (1,000 and
+        # 2,000/month) neither of which had ever been measured. Four callers
+        # held their own client, so the ledger saw ~15% of real traffic and the
+        # budget alarm read "ok" at 17.6% against an unrepresentative sensor.
+        # The bypass test is the load-bearing one: it fails CI rather than next
+        # month's bill.
+        "brave_research_router",
+        [
+            "tests/test_brave_research_router.py",
+            "tests/test_brave_no_bypass.py",
+            "tests/test_brave_research_provenance.py",
+            "tests/test_brave_research_lanes.py",
+            # Proves this registration and the unmerged residual campaign's
+            # coexist under a real 3-way merge -- the GATES list is a shared
+            # write target, and a merge that keeps one campaign's tuples and
+            # drops another's leaves CI green while those suites stop running.
+            "tests/test_gate_registration_coexistence.py",
+        ],
+    ),

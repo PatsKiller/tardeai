@@ -665,6 +665,11 @@ GATES = [
             "tests/test_brave_no_bypass.py",
             "tests/test_brave_research_provenance.py",
             "tests/test_brave_research_lanes.py",
+            # Proves this registration and the unmerged residual campaign's
+            # coexist under a real 3-way merge -- the GATES list is a shared
+            # write target, and a merge that keeps one campaign's tuples and
+            # drops another's leaves CI green while those suites stop running.
+            "tests/test_gate_registration_coexistence.py",
         ],
     ),
 ]
