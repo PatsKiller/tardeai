@@ -439,3 +439,78 @@ def test_coverage_is_absent_not_invented_when_counts_are_unknown() -> None:
     assert q["covered_symbols"] is None
     assert q["coverage_pct"] is None
     assert q["degraded_symbol_count"] == 0
+
+
+# ──────────────── today's P&L: empty is not missing (defect C) ────────────────
+
+
+def _today_pnl():
+    """Load the producer out of api_v2 without importing the whole server."""
+    import ast
+
+    src = (ROOT / "scripts" / "api_v2.py").read_text()
+    fn = next(n for n in ast.parse(src).body if isinstance(n, ast.FunctionDef) and n.name == "_today_pnl_provenance")
+    ns: dict = {"Any": object}
+    exec(compile(ast.Module(body=[fn], type_ignores=[]), "<api_v2>", "exec"), ns)
+    return ns["_today_pnl_provenance"]
+
+
+def test_an_empty_account_is_not_a_missing_one(clocks: dict) -> None:
+    """TODAY warned "2 acct(s) missing" and flagged STALE over $0 accounts.
+
+    PORTFOLIO called the same two "empty" in the same header. One fact, two
+    characterisations -- and one of them claimed data was absent when only
+    holdings were.
+    """
+    fn = _today_pnl()
+    out = fn(
+        clocks["holdings_envelope"],
+        today_by_account={
+            "schwab_taxable": {"change": -143.4},
+            "alpaca_taxable_live": {"change": 0.0},
+        },
+        account_summaries=clocks["account_summaries"],
+        positions=_position_rows(clocks),
+        total_change=-143.4,
+    )
+    assert out["empty_accounts"] == ["fidelity_rollover_ira", "moomoo_taxable_live"]
+    # A flat account is represented, not missing: a real 0 is data.
+    assert out["zero_change_accounts"] == ["alpaca_taxable_live"]
+    assert out["contributing_accounts"] == ["schwab_taxable"]
+    # schwab_roth and schwab_rollover_ira HOLD positions and did not report.
+    assert out["missing_accounts"] == ["schwab_rollover_ira", "schwab_roth"]
+    assert out["complete"] is False
+    assert out["funded_account_count"] == 4
+
+
+def test_a_funded_account_that_does_not_report_still_breaks_completeness(clocks: dict) -> None:
+    """Negative control: the empty/missing split must not mute a real gap."""
+    fn = _today_pnl()
+    every = {
+        "schwab_rollover_ira": {"change": -3255.28},
+        "schwab_roth": {"change": -335.51},
+        "schwab_taxable": {"change": -143.4},
+        "alpaca_taxable_live": {"change": 0.0},
+    }
+    complete = fn(
+        clocks["holdings_envelope"],
+        today_by_account=every,
+        account_summaries=clocks["account_summaries"],
+        positions=_position_rows(clocks),
+        total_change=-3734.19,
+    )
+    assert complete["complete"] is True
+    assert complete["missing_accounts"] == []
+    assert "2 empty" in complete["coverage_reason"]
+
+    # Drop one FUNDED account and completeness must fail.
+    partial = fn(
+        clocks["holdings_envelope"],
+        today_by_account={k: v for k, v in every.items() if k != "schwab_roth"},
+        account_summaries=clocks["account_summaries"],
+        positions=_position_rows(clocks),
+        total_change=-3398.68,
+    )
+    assert partial["complete"] is False
+    assert partial["missing_accounts"] == ["schwab_roth"]
+    assert "MISSING schwab_roth" in partial["coverage_reason"]

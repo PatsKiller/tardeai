@@ -61,8 +61,13 @@ export default function MetricStrip({ onDrill }: Props) {
   const todayPnl = overview?.today_pnl
   const todayAccountCount = Object.keys(overview?.today_by_account ?? {}).length
   const todayLinked = todayPnl?.linked_account_count ?? null
+  // Funded, not linked: an account holding nothing cannot make the day
+  // incomplete. TODAY warned "2 acct(s) missing" and flagged itself STALE over
+  // the same two $0 accounts PORTFOLIO correctly called empty.
+  const todayFunded = todayPnl?.funded_account_count ?? todayLinked
   const todayRepresented = todayPnl?.represented_account_count ?? todayAccountCount
   const todayMissing: string[] = todayPnl?.missing_accounts ?? []
+  const todayEmpty: string[] = todayPnl?.empty_accounts ?? []
   const todayAsOfNote = (() => {
     const scope = todayPnl?.scope?.replace(/_/g, ' ') || portfolioScopeLabel || 'ALL ACCOUNTS'
     if (todayLinked == null) {
@@ -71,8 +76,10 @@ export default function MetricStrip({ onDrill }: Props) {
     // Coverage is stated as a ratio, and a shortfall names the accounts. "4
     // contributing" alone cannot tell you whether two are missing or there are
     // only four.
-    const cover = `${todayRepresented}/${todayLinked} accts`
-    return todayMissing.length ? `${scope} · ${cover} · missing ${todayMissing.join(', ')}` : `${scope} · ${cover}`
+    const cover = `${todayRepresented}/${todayFunded} funded accts`
+    const emptyPart = todayEmpty.length ? ` · ${todayEmpty.length} empty (${todayEmpty.join(', ')})` : ''
+    const missingPart = todayMissing.length ? ` · MISSING ${todayMissing.join(', ')}` : ''
+    return `${scope} · ${cover}${emptyPart}${missingPart}`
   })()
 
   // ── the six clocks, each named (live capture 2026-09-04, release a7c550d1d) ──
@@ -271,7 +278,7 @@ export default function MetricStrip({ onDrill }: Props) {
     {
       label: 'TODAY', value: todayChange != null ? `${todayChange >= 0 ? '+' : ''}${fmt$(todayChange, 0)}${todayPct != null ? ` ${todayPct >= 0 ? '+' : ''}${todayPct}%` : ''}` : '—',
       // A P&L is stamped with its OWN session, never the position clock.
-      stale: todayPnl?.complete === false ? ` · ${todayMissing.length} acct(s) missing` : null,
+      stale: todayMissing.length ? ` · ${todayMissing.length} funded acct(s) did not report` : null,
       asOf: todayPnl?.session_date ?? null,
       asOfLabel: 'P&L session',
       asOfNote: todayAsOfNote,
@@ -279,7 +286,7 @@ export default function MetricStrip({ onDrill }: Props) {
       color: overviewFresh.stale ? BB.amber : todayChange == null ? 'var(--text3)' : todayChange >= 0 ? BB.green : BB.red,
       drill: { title: "Today's Move", subtitle: `${todayPnl?.session_date ? `session ${todayPnl.session_date}` : 'session UNDATED'} · ${todayPnl?.coverage_reason ?? 'coverage unknown'}`, endpoint: '/api/v2/overview',
         rows: overview ? [
-          { today_change: overview.today_change, today_pct: overview.today_pct, pnl_session_date: todayPnl?.session_date, pnl_session_source: todayPnl?.session_source, pnl_calculated_at: todayPnl?.calculated_at, pnl_mark_source: todayPnl?.mark_source, scope: todayPnl?.scope, linked_accounts: todayLinked, represented_accounts: todayRepresented, contributing_accounts: todayPnl?.contributing_accounts, zero_change_accounts: todayPnl?.zero_change_accounts, missing_accounts: todayMissing, portfolio_value: overview.portfolio_value, surface_stale: overviewFresh.stale },
+          { today_change: overview.today_change, today_pct: overview.today_pct, pnl_session_date: todayPnl?.session_date, pnl_session_source: todayPnl?.session_source, pnl_calculated_at: todayPnl?.calculated_at, pnl_mark_source: todayPnl?.mark_source, scope: todayPnl?.scope, linked_accounts: todayLinked, funded_accounts: todayFunded, represented_accounts: todayRepresented, contributing_accounts: todayPnl?.contributing_accounts, zero_change_accounts: todayPnl?.zero_change_accounts, empty_accounts: todayEmpty, missing_accounts: todayMissing, portfolio_value: overview.portfolio_value, surface_stale: overviewFresh.stale },
           ...Object.entries(overview.today_by_account ?? {})
             .sort((a: any, b: any) => Math.abs(b[1].change) - Math.abs(a[1].change))
             .map(([acct, d]: any) => ({
