@@ -301,3 +301,49 @@ class TestContract:
         assert not qty_matches(5000.2514, 10000.2508)
         assert qty_matches(0.0001, 0.0001)
         assert not qty_matches(1.0, 2.0)
+
+
+class TestLedgerDeterminism:
+    """A digest that moves on every run pins nothing, and the manifest binds this one."""
+
+    def test_the_hash_covers_decisions_not_the_clock(self):
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location("rfc", str(ROOT / "scripts" / "reconcile_financial_conflicts.py"))
+        rfc = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(rfc)
+
+        base = {
+            "schema": "FinancialConflictLedger@v1",
+            "generated_at_utc": "2026-09-03T21:00:00+00:00",
+            "records": [
+                {
+                    "store": "tax_lots.json",
+                    "record_key": "X:acct",
+                    "disposition": "BROKER_VERIFIED",
+                    "canonical_side": "producer",
+                    "decided_at_utc": "2026-09-03T21:00:00+00:00",
+                }
+            ],
+        }
+        later = {
+            **base,
+            "generated_at_utc": "2026-09-03T23:59:59+00:00",
+            "records": [{**base["records"][0], "decided_at_utc": "2026-09-03T23:59:59+00:00"}],
+        }
+        assert rfc.ledger_hash(base) == rfc.ledger_hash(later), (
+            "the same decisions taken at a different moment must hash the same"
+        )
+
+    def test_a_changed_decision_changes_the_hash(self):
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location(
+            "rfc2", str(ROOT / "scripts" / "reconcile_financial_conflicts.py")
+        )
+        rfc = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(rfc)
+
+        a = {"records": [{"record_key": "X", "disposition": "BROKER_VERIFIED", "canonical_side": "producer"}]}
+        b = {"records": [{"record_key": "X", "disposition": "BROKER_VERIFIED", "canonical_side": "served"}]}
+        assert rfc.ledger_hash(a) != rfc.ledger_hash(b), "a different side must change the digest"

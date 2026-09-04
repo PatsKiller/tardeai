@@ -259,9 +259,25 @@ def build_ledger(producer_root: Path, served_root: Path, auth: BrokerAuthority) 
         "auto_migratable_record_count": sum(1 for r in entries if r["disposition"] in AUTO_MIGRATABLE),
         "records": entries,
     }
-    body = {k: v for k, v in ledger.items() if k not in ("generated_at_utc", "ledger_sha256")}
-    ledger["ledger_sha256"] = hashlib.sha256(json.dumps(body, sort_keys=True, default=str).encode()).hexdigest()
+    ledger["ledger_sha256"] = ledger_hash(ledger)
     return ledger
+
+
+#: Fields recording WHEN a decision was made rather than WHAT was decided. They are
+#: excluded from the ledger hash so regenerating against unchanged authority and
+#: unchanged stores reproduces the same digest. A hash that moves on every run pins
+#: nothing -- and the migration manifest binds this value.
+LEDGER_VOLATILE_FIELDS = ("generated_at_utc", "ledger_sha256", "_operator_flags")
+RECORD_VOLATILE_FIELDS = ("decided_at_utc",)
+
+
+def ledger_hash(ledger: dict[str, Any]) -> str:
+    """Hash the decisions, not the clock."""
+    body = {k: v for k, v in ledger.items() if k not in LEDGER_VOLATILE_FIELDS}
+    body["records"] = [
+        {k: v for k, v in r.items() if k not in RECORD_VOLATILE_FIELDS} for r in ledger.get("records", [])
+    ]
+    return hashlib.sha256(json.dumps(body, sort_keys=True, default=str).encode()).hexdigest()
 
 
 def build_operator_review(ledger: dict[str, Any]) -> dict[str, Any]:
