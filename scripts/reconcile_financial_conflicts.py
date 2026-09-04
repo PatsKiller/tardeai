@@ -32,6 +32,7 @@ from lib.financial_reconciliation import (  # noqa: E402
     CLOCK_DERIVED_FIELDS,
     UNRESOLVED_OPERATOR_REVIEW,
     BrokerAuthority,
+    audit_store_integrity,
     is_envelope_key,
     reconcile_clock_derived,
     reconcile_derived_store,
@@ -233,6 +234,14 @@ def build_ledger(producer_root: Path, served_root: Path, auth: BrokerAuthority) 
             "served_sha256": hashlib.sha256(s_path.read_bytes()).hexdigest(),
         }
 
+    # Integrity is a separate question from reconciliation: a record can be identical
+    # on both sides and still be incoherent. Those never reach a conflict ledger.
+    integrity: dict[str, Any] = {}
+    for store in ("tax_lots.json",):
+        s_path = served_root / store
+        if s_path.exists():
+            integrity[store] = audit_store_integrity(store, _load(s_path), auth)
+
     totals: dict[str, int] = {}
     for r in entries:
         totals[r["disposition"]] = totals.get(r["disposition"], 0) + 1
@@ -254,6 +263,8 @@ def build_ledger(producer_root: Path, served_root: Path, auth: BrokerAuthority) 
         ),
         "store_summary": store_summary,
         "disposition_totals": totals,
+        "integrity_audit": integrity,
+        "quarantined_record_count": sum(v["records_quarantined"] for v in integrity.values()),
         "conflicting_record_count": len(entries),
         "unresolved_record_count": sum(1 for r in entries if r["disposition"] == UNRESOLVED_OPERATOR_REVIEW),
         "auto_migratable_record_count": sum(1 for r in entries if r["disposition"] in AUTO_MIGRATABLE),
@@ -401,6 +412,10 @@ def main(argv: list[str] | None = None) -> int:
         for f in review["flags"]:
             for note in f["observations_worth_noting"]:
                 print(f"  note [{f['record_key']}]: {note}")
+    for st, v in (ledger.get("integrity_audit") or {}).items():
+        print(
+            f"integrity {st}: audited={v['records_audited']} quarantined={v['records_quarantined']} {v['defect_counts']}"
+        )
     print(f"unresolved (operator review): {ledger['unresolved_record_count']}")
     if auth.rejected_accounts:
         print(f"accounts refused: {auth.rejected_accounts}")

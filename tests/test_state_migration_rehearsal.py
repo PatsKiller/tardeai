@@ -952,3 +952,78 @@ class TestInterruptionAndRollback:
         assert target.read_bytes() == before, "rollback must restore the exact prior bytes"
         receipt = getattr(exc.value, "receipt", None)
         assert receipt and receipt.get("rollback"), "rollback evidence must survive the exception"
+
+
+@needs_sources
+class TestQuarantineCoexistsWithPromotion:
+    """A record can be broker-verified for quantity and quarantined for basis.
+
+    SCHD in the rollover IRA is the real case: the producer copy reconciles to the
+    broker's share count while the served copy is 5,000 shares short, AND both copies
+    attribute lots to two other accounts. Promoting it fixes a real quantity error.
+    Pretending the basis is therefore sound would be the opposite of what the broker
+    actually certified.
+    """
+
+    def _ledger(self):
+        return {
+            "records": [
+                {
+                    "store": "tax_lots.json",
+                    "record_key": "SCHD:acct",
+                    "disposition": "BROKER_VERIFIED",
+                    "canonical_side": "producer",
+                    "reason": "producer reconciles to the broker position",
+                    "producer_sha256": "p" * 64,
+                    "served_sha256": "s" * 64,
+                    "observations": {},
+                }
+            ],
+            "integrity_audit": {
+                "tax_lots.json": {
+                    "quarantined": [
+                        {
+                            "record_key": "SCHD:acct",
+                            "defects": [
+                                {"defect": "CROSS_ACCOUNT_ATTRIBUTION", "detail": "1 lot claims another account"}
+                            ],
+                        }
+                    ]
+                }
+            },
+        }
+
+    def test_quantity_migrates_and_basis_is_quarantined(self, replica):
+        _p, _s = replica
+        p = {"SCHD:acct": [{"account": "acct", "shares_remaining": 100.0}]}
+        s = {"SCHD:acct": [{"account": "acct", "shares_remaining": 50.0}]}
+        merged, note, unresolved = state_migration.plan_record_level("tax_lots.json", p, s, self._ledger())
+
+        assert merged["SCHD:acct"] == p["SCHD:acct"], "the broker-verified quantity must migrate"
+        assert note["records_quarantined"] == 1
+        row = next(u for u in unresolved if u["record_key"] == "SCHD:acct")
+        assert row["status"] == "RECONCILIATION_REQUIRED"
+        assert row["basis_disposition"] == "RECONCILIATION_REQUIRED"
+        assert "broker-verified" in row["quantity_disposition"]
+        assert row["render_as"] == "UNVERIFIED"
+
+    def test_a_quarantined_record_the_merge_did_not_touch_is_still_surfaced(self, replica):
+        _p, _s = replica
+        led = self._ledger()
+        led["records"] = []  # nothing to reconcile, only an integrity defect
+        p = s = {"SCHD:acct": [{"account": "acct", "shares_remaining": 1.0}]}
+        merged, note, unresolved = state_migration.plan_record_level("tax_lots.json", p, dict(s), led)
+        row = next(u for u in unresolved if u["record_key"] == "SCHD:acct")
+        assert row["quantity_disposition"] == "not migrated"
+        assert row["status"] == "RECONCILIATION_REQUIRED"
+        assert merged["SCHD:acct"] == s["SCHD:acct"], "an untouched record must not be rewritten"
+
+    def test_both_originals_survive_every_quarantine(self, replica):
+        _p, _s = replica
+        p = {"SCHD:acct": [{"account": "acct", "shares_remaining": 100.0}]}
+        s = {"SCHD:acct": [{"account": "acct", "shares_remaining": 50.0}]}
+        _m, _n, unresolved = state_migration.plan_record_level("tax_lots.json", p, s, self._ledger())
+        row = unresolved[0]
+        assert row["producer_value"] == p["SCHD:acct"]
+        assert row["served_value"] == s["SCHD:acct"]
+        assert row["producer_sha256"] and row["served_sha256"]

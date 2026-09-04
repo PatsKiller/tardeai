@@ -775,3 +775,188 @@ def reconcile_derived_store(store: str, producer: dict, served: dict, note: str)
         },
         rule="derived outputs are rebuilt with a versioned calculation; prior outputs are kept as evidence",
     )
+
+
+# ── record integrity ────────────────────────────────────────────────────────────
+#
+# Reconciliation compares two copies. Integrity asks a different question: is this
+# record coherent at all? A record can be byte-identical on both sides and still be
+# unusable -- lots attributed to another account, the same lot appended a hundred
+# times by a producer that never deduplicated. Those never reach a conflict ledger,
+# because nothing disagrees. They still must not be treated as truth.
+
+RECONCILIATION_REQUIRED = "RECONCILIATION_REQUIRED"
+
+#: Integrity defects, most severe first.
+DEFECT_CROSS_ACCOUNT = "CROSS_ACCOUNT_ATTRIBUTION"
+DEFECT_DUPLICATE_OPEN = "DUPLICATE_OPEN_LOTS"
+DEFECT_DUPLICATE_CLOSED = "DUPLICATE_CLOSED_LOTS"
+DEFECT_MALFORMED = "MALFORMED_LOT"
+DEFECT_NEGATIVE = "NEGATIVE_SHARES_REMAINING"
+
+
+def _lot_identity(lot: dict) -> str:
+    return json.dumps(lot, sort_keys=True, default=str)
+
+
+def audit_lot_record(record_key: str, lots: Any, auth: BrokerAuthority | None = None) -> dict[str, Any]:
+    """Integrity of one tax-lot record, independent of any other copy.
+
+    Reports defects; it does not repair them. Repair would mean choosing a share
+    count, and a share count no authority asserts is a number this code must never
+    invent.
+    """
+    symbol, account = split_key(record_key)
+    defects: list[dict[str, Any]] = []
+    if not isinstance(lots, list):
+        return {
+            "record_key": record_key,
+            "defects": [{"defect": DEFECT_MALFORMED, "detail": f"record is {type(lots).__name__}, expected a list"}],
+            "quarantine": True,
+        }
+
+    cross: list[int] = []
+    malformed: list[int] = []
+    negative: list[int] = []
+    seen: dict[str, list[int]] = {}
+    open_total = 0.0
+    open_total_dedup = 0.0
+    dedup_seen: set[str] = set()
+
+    for i, lot in enumerate(lots):
+        if not isinstance(lot, dict):
+            malformed.append(i)
+            continue
+        got = lot.get("account")
+        if account and got and got != account:
+            cross.append(i)
+        try:
+            rem = float(lot.get("shares_remaining") or 0)
+        except (TypeError, ValueError):
+            malformed.append(i)
+            continue
+        if rem < 0:
+            negative.append(i)
+        ident = _lot_identity(lot)
+        seen.setdefault(ident, []).append(i)
+        if not lot.get("closed"):
+            open_total += rem
+            if ident not in dedup_seen:
+                open_total_dedup += rem
+        dedup_seen.add(ident)
+
+    dup_open = dup_closed = 0
+    for ident, idxs in seen.items():
+        if len(idxs) < 2:
+            continue
+        extra = len(idxs) - 1
+        if json.loads(ident).get("closed"):
+            dup_closed += extra
+        else:
+            dup_open += extra
+
+    if cross:
+        by_account: dict[str, int] = {}
+        for i in cross:
+            by_account[str(lots[i].get("account"))] = by_account.get(str(lots[i].get("account")), 0) + 1
+        defects.append(
+            {
+                "defect": DEFECT_CROSS_ACCOUNT,
+                "detail": (
+                    f"{len(cross)} lot(s) claim an account other than {account!r}: {by_account}. "
+                    "A lot belongs to the account that holds it; a record keyed to one account "
+                    "cannot carry another account's basis."
+                ),
+                "lot_indexes": cross[:20],
+            }
+        )
+    if malformed:
+        defects.append(
+            {
+                "defect": DEFECT_MALFORMED,
+                "detail": f"{len(malformed)} lot(s) are not usable objects",
+                "lot_indexes": malformed[:20],
+            }
+        )
+    if negative:
+        defects.append(
+            {
+                "defect": DEFECT_NEGATIVE,
+                "detail": f"{len(negative)} lot(s) hold a negative remainder",
+                "lot_indexes": negative[:20],
+            }
+        )
+    if dup_open:
+        broker_qty = auth.position_qty(symbol, account) if (auth and account) else None
+        defects.append(
+            {
+                "defect": DEFECT_DUPLICATE_OPEN,
+                "detail": (
+                    f"{dup_open} OPEN lot(s) are exact duplicates. The open total is {round(open_total, 4)} "
+                    f"as stored and {round(open_total_dedup, 4)} deduplicated"
+                    + (
+                        f"; the broker holds {broker_qty}"
+                        if broker_qty is not None
+                        else "; the broker holds no position in this security, so neither total can be confirmed"
+                    )
+                    + ". Removing them would change a share quantity, so they are quarantined rather than repaired."
+                ),
+                "open_total_as_stored": round(open_total, 4),
+                "open_total_deduplicated": round(open_total_dedup, 4),
+                "broker_position_qty": broker_qty,
+            }
+        )
+    if dup_closed:
+        defects.append(
+            {
+                "defect": DEFECT_DUPLICATE_CLOSED,
+                "detail": (
+                    f"{dup_closed} CLOSED lot(s) are exact duplicates with no remaining shares. They change "
+                    "no quantity and no basis, but they are not records of distinct events."
+                ),
+            }
+        )
+
+    # Only defects that could misstate a current holding force quarantine. Duplicated
+    # closed lots are noise: they carry no shares and change no computed value.
+    quarantine = any(
+        d["defect"] in (DEFECT_CROSS_ACCOUNT, DEFECT_DUPLICATE_OPEN, DEFECT_MALFORMED, DEFECT_NEGATIVE) for d in defects
+    )
+    return {
+        "record_key": record_key,
+        "symbol": symbol,
+        "account": account,
+        "lot_count": len(lots),
+        "open_total_as_stored": round(open_total, 4),
+        "open_total_deduplicated": round(open_total_dedup, 4),
+        "defects": defects,
+        "quarantine": quarantine,
+        "status": RECONCILIATION_REQUIRED if quarantine else "OK",
+    }
+
+
+def audit_store_integrity(store: str, doc: Any, auth: BrokerAuthority | None = None) -> dict[str, Any]:
+    """Integrity across every record in a store, conflicting or not."""
+    rows: list[dict[str, Any]] = []
+    if isinstance(doc, dict):
+        for key in sorted(doc):
+            if is_envelope_key(key) or ":" not in key:
+                continue
+            rows.append(audit_lot_record(key, doc[key], auth))
+    quarantined = [r for r in rows if r["quarantine"]]
+    counts: dict[str, int] = {}
+    for r in rows:
+        for d in r["defects"]:
+            counts[d["defect"]] = counts.get(d["defect"], 0) + 1
+    return {
+        "store": store,
+        "records_audited": len(rows),
+        "records_quarantined": len(quarantined),
+        "defect_counts": counts,
+        "quarantined": quarantined,
+        "rule": (
+            "a record is quarantined when a defect could misstate a current holding: cross-account "
+            "attribution, duplicated OPEN lots, malformed lots, or a negative remainder. Duplicated "
+            "CLOSED lots are reported and not quarantined -- they carry no shares."
+        ),
+    }

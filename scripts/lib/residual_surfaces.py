@@ -116,7 +116,6 @@ def _envelope(state: str, reason: str, **extra: Any) -> dict[str, Any]:
     return out
 
 
-
 def escalate_envelope(row_states: list[str], *, degraded: set[str], stale: set[str]) -> tuple[str, str]:
     """Derive the summary state from the rows underneath it.
 
@@ -811,6 +810,12 @@ def financial_conflict_state(
                     "store": store,
                     "record_key": key,
                     "render_as": rec.get("render_as", "UNVERIFIED"),
+                    "status": rec.get("status", "UNRESOLVED_OPERATOR_REVIEW"),
+                    "defects": rec.get("defects") or [],
+                    # A record can be settled for one property and unusable for another:
+                    # the broker proves a share count, and has no opinion on the basis.
+                    "quantity_disposition": rec.get("quantity_disposition"),
+                    "basis_disposition": rec.get("basis_disposition"),
                     "reason": rec.get("reason"),
                     "both_originals_preserved": bool(rec.get("producer_sha256") and rec.get("served_sha256")),
                     # Scope is deliberately narrow and explicit.

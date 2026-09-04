@@ -50,6 +50,7 @@ RETIRE_DUPLICATE = "RETIRE_DUPLICATE"
 #: on both sides and rendered UNVERIFIED rather than shown as truth.
 RECORD_LEVEL_MERGE = "RECORD_LEVEL_MERGE"
 UNRESOLVED_OPERATOR_REVIEW_NAME = "UNRESOLVED_OPERATOR_REVIEW"
+RECONCILIATION_REQUIRED_NAME = "RECONCILIATION_REQUIRED"
 
 STRATEGIES = (
     IDENTICAL_BIND,
@@ -365,6 +366,17 @@ def plan_record_level(
     if not isinstance(p_doc, dict) or not isinstance(s_doc, dict):
         return None, {"error": "record-level merge needs two mappings"}, []
 
+    # Integrity quarantine is orthogonal to reconciliation. A record can be
+    # broker-verified for QUANTITY and still be incoherent for BASIS -- SCHD in the
+    # rollover IRA reconciles to the broker's share count while carrying lots
+    # attributed to two other accounts. Promoting it corrects the quantity, which is
+    # strictly better than the served copy being 5,000 shares short; it does not make
+    # the basis trustworthy, and the sidecar has to say both.
+    quarantine = {
+        r["record_key"]: r
+        for r in ((ledger or {}).get("integrity_audit", {}).get(name, {}) or {}).get("quarantined", [])
+    }
+
     merged = dict(s_doc)
     applied: list[dict] = []
     unresolved: list[dict] = []
@@ -417,8 +429,33 @@ def plan_record_level(
             merged.pop(key, None)
         applied.append({"record_key": key, "disposition": disp, "canonical_side": side})
 
+    # Every quarantined record is surfaced, whether or not the merge touched it.
+    already = {u["record_key"] for u in unresolved}
+    for key, row in sorted(quarantine.items()):
+        if key in already:
+            continue
+        promoted = next((a for a in applied if a["record_key"] == key), None)
+        unresolved.append(
+            {
+                "record_key": key,
+                "status": RECONCILIATION_REQUIRED_NAME,
+                "reason": "; ".join(d["detail"] for d in row["defects"]),
+                "defects": [d["defect"] for d in row["defects"]],
+                "producer_value": p_doc.get(key),
+                "served_value": s_doc.get(key),
+                "producer_sha256": content_sha256(p_doc.get(key)) if key in p_doc else None,
+                "served_sha256": content_sha256(s_doc.get(key)) if key in s_doc else None,
+                "render_as": "UNVERIFIED",
+                "quantity_disposition": (
+                    f"broker-verified from the {promoted['canonical_side']} copy" if promoted else "not migrated"
+                ),
+                "basis_disposition": "RECONCILIATION_REQUIRED",
+            }
+        )
+
     note = {
         "strategy": RECORD_LEVEL_MERGE,
+        "records_quarantined": len(quarantine),
         "base": "served copy (the running service reads it)",
         "records_applied": len(applied),
         "records_rebuilt": len(rebuilt),

@@ -8,6 +8,7 @@ a verdict came from the broker, or proves the reconciler declined to invent one.
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -18,6 +19,13 @@ sys.path.append(str(ROOT / "scripts"))
 
 from lib.financial_reconciliation import (  # noqa: E402
     AUTO_MIGRATABLE,
+    DEFECT_CROSS_ACCOUNT,
+    DEFECT_DUPLICATE_CLOSED,
+    DEFECT_DUPLICATE_OPEN,
+    DEFECT_NEGATIVE,
+    RECONCILIATION_REQUIRED,
+    audit_lot_record,
+    audit_store_integrity,
     BROKER_VERIFIED,
     DERIVED_REBUILT,
     DISPOSITIONS,
@@ -347,3 +355,81 @@ class TestLedgerDeterminism:
         a = {"records": [{"record_key": "X", "disposition": "BROKER_VERIFIED", "canonical_side": "producer"}]}
         b = {"records": [{"record_key": "X", "disposition": "BROKER_VERIFIED", "canonical_side": "served"}]}
         assert rfc.ledger_hash(a) != rfc.ledger_hash(b), "a different side must change the digest"
+
+
+class TestRecordIntegrity:
+    """A record can agree with itself on both sides and still be unusable.
+
+    Reconciliation compares copies. Integrity asks whether the record is coherent at
+    all -- and the defects found in production were invisible to reconciliation because
+    both roots carried them identically.
+    """
+
+    def test_cross_account_lots_are_rejected(self):
+        r = audit_lot_record(
+            "SCHD:schwab_taxable",
+            [
+                {"account": "schwab_taxable", "shares_remaining": 1},
+                {"account": "fidelity_rollover_ira", "shares_remaining": 2},
+            ],
+        )
+        assert r["quarantine"] is True
+        assert r["status"] == RECONCILIATION_REQUIRED
+        assert any(d["defect"] == DEFECT_CROSS_ACCOUNT for d in r["defects"])
+        assert "fidelity_rollover_ira" in r["defects"][0]["detail"]
+
+    def test_a_clean_record_is_not_quarantined(self):
+        r = audit_lot_record(
+            "SCHD:schwab_taxable",
+            [{"account": "schwab_taxable", "shares_remaining": 1, "lot_date": "2026-01-01"}],
+        )
+        assert r["quarantine"] is False and r["status"] == "OK"
+
+    def test_duplicated_open_lots_are_quarantined_not_repaired(self):
+        """Deduplicating would change a share count, and no authority asserted the new one."""
+        lot = {"account": "a", "shares_remaining": 100.0, "closed": False, "lot_date": "2026-01-01"}
+        r = audit_lot_record("X:a", [dict(lot), dict(lot), dict(lot)])
+        assert r["quarantine"] is True
+        d = next(x for x in r["defects"] if x["defect"] == DEFECT_DUPLICATE_OPEN)
+        assert d["open_total_as_stored"] == 300.0
+        assert d["open_total_deduplicated"] == 100.0
+        assert "quarantined rather than repaired" in d["detail"]
+
+    def test_duplicated_closed_lots_are_reported_but_not_quarantined(self):
+        """They carry no shares, so they cannot misstate a holding."""
+        lot = {"account": "a", "shares_remaining": 0, "closed": True, "lot_date": "2026-01-01"}
+        r = audit_lot_record("X:a", [dict(lot), dict(lot), dict(lot)])
+        assert any(d["defect"] == DEFECT_DUPLICATE_CLOSED for d in r["defects"])
+        assert r["quarantine"] is False, "noise must not block a record that states no wrong quantity"
+
+    def test_a_malformed_record_is_quarantined(self):
+        assert audit_lot_record("X:a", "not-a-list")["quarantine"] is True
+
+    def test_negative_remainder_is_quarantined(self):
+        r = audit_lot_record("X:a", [{"account": "a", "shares_remaining": -5}])
+        assert r["quarantine"] is True
+        assert any(d["defect"] == DEFECT_NEGATIVE for d in r["defects"])
+
+    def test_the_audit_never_repairs(self):
+        """It reports. Repair would mean inventing a share count."""
+        lot = {"account": "a", "shares_remaining": 7.0, "closed": False}
+        lots = [dict(lot), dict(lot)]
+        before = json.dumps(lots, sort_keys=True)
+        audit_lot_record("X:a", lots)
+        assert json.dumps(lots, sort_keys=True) == before, "the audit mutated its input"
+
+    def test_store_audit_skips_envelope_keys(self):
+        out = audit_store_integrity(
+            "tax_lots.json",
+            {"_agent_metadata": {"x": 1}, "generated_at": "now", "X:a": [{"account": "a", "shares_remaining": 1}]},
+        )
+        assert out["records_audited"] == 1
+
+    def test_broker_quantity_does_not_certify_basis(self):
+        """The operator's rule: a position proves quantity, never cost basis."""
+        auth = _auth(positions=[{"symbol": "SCHD", "qty": 300.0}])
+        lot = {"account": "schwab_taxable", "shares_remaining": 100.0, "closed": False}
+        r = audit_lot_record("SCHD:schwab_taxable", [dict(lot), dict(lot), dict(lot)], auth)
+        assert r["quarantine"] is True, (
+            "the stored total happening to equal the broker position does not make duplicated lots a valid basis"
+        )
