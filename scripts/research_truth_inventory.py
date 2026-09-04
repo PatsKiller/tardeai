@@ -544,7 +544,52 @@ def build() -> dict[str, Any]:
             )
         )
 
-    # ── Command Center surface for Brave ────────────────────────────────────
+    # ── Brave API route + Command Center surface ────────────────────────────
+    api_src = _src("scripts/api_v2.py")
+    route_wired = '"/api/v2/research-intelligence/brave"' in api_src
+    handler_wired = "def _brave_research_effectiveness(" in api_src
+    ui_wired = bool(
+        _src("apps/command-center-v3/src/pages/ResearchIntelligence.tsx")
+        and "research-intelligence/brave" in _src("apps/command-center-v3/src/pages/ResearchIntelligence.tsx")
+    )
+    rows.append(
+        _row(
+            component="brave_effectiveness_api_route",
+            owner="research-acquisition",
+            category="api_surface",
+            configured_provider="n/a",
+            actual_runtime_provider="n/a (reads stored projections)",
+            invocation_path="GET /api/v2/research-intelligence/brave",
+            producer="brave_research_router.effectiveness_report + health",
+            consumer="Command Center / operator",
+            schedule_or_trigger="request",
+            credential_requirement="none",
+            authoritative_store="brave_router_metrics.json + search_budget.json",
+            producer_store="brave_router_metrics.json",
+            served_store="the route payload",
+            last_successful_observation="not asserted (request-scoped)",
+            last_attempted_observation="not asserted (request-scoped)",
+            record_count="n/a",
+            freshness="derived from four separate clocks in the payload",
+            provenance_completeness="COMPLETE — plan state, budget, adoption, clocks",
+            quota_or_budget_enforcement="read-only; makes no provider call",
+            cache_behavior="reads the router cache stats; does not write",
+            retry_behavior="n/a",
+            downstream_ui_surface="none yet (no React page consumes it)",
+            provider_call_on_page_load="NO — proven statically, behaviourally and at the library",
+            test_evidence="tests/test_brave_effectiveness_route.py (9)",
+            runtime_evidence=(
+                "route registered in ROUTES and handler present"
+                if route_wired and handler_wired
+                else "route NOT registered"
+            ),
+            # Wired end to end from producer through store to a served API
+            # payload, with a negative control proving no provider call. The UI
+            # is a separate row precisely so a served route is not mistaken for
+            # a rendered surface.
+            classification="WIRED_AND_WORKING" if (route_wired and handler_wired) else "NOT_IMPLEMENTED",
+        )
+    )
     rows.append(
         _row(
             component="command_center_brave_panel",
@@ -552,27 +597,30 @@ def build() -> dict[str, Any]:
             category="ui_surface",
             configured_provider="n/a",
             actual_runtime_provider="n/a",
-            invocation_path="scripts/api_v2.py (LEASED, not edited)",
-            producer="effectiveness_report()",
-            consumer="Command Center",
+            invocation_path="apps/command-center-v3 (no page consumes the route)",
+            producer="brave_effectiveness_api_route",
+            consumer="none",
             schedule_or_trigger="page load",
             credential_requirement="none",
-            authoritative_store="brave_router_metrics.json",
+            authoritative_store="the API payload",
             producer_store="brave_router_metrics.json",
             served_store="NONE",
             last_successful_observation="never",
             last_attempted_observation="never",
             record_count=0,
             freshness="n/a",
-            provenance_completeness="backend contract complete; no route",
+            provenance_completeness="backend complete; no renderer",
             quota_or_budget_enforcement="n/a",
             cache_behavior="n/a",
             retry_behavior="n/a",
             downstream_ui_surface="NOT WIRED",
             provider_call_on_page_load="NO (by construction)",
-            test_evidence="test_page_load_purpose_is_denied_by_policy",
-            runtime_evidence="api_v2.py + useApi.ts leased by unmerged cc-whole-site-residual-v1",
-            classification="NOT_IMPLEMENTED",
+            test_evidence="none — there is nothing to test yet",
+            runtime_evidence=(
+                "the leased-path blocker is GONE (residual campaign merged); "
+                "this is now an ordinary unstarted frontend task"
+            ),
+            classification="WIRED_AND_WORKING" if ui_wired else "NOT_IMPLEMENTED",
         )
     )
 
