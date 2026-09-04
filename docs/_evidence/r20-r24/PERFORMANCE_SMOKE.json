@@ -2,12 +2,12 @@
   "method": "scripts.control_plane_api.handle x20 mean seconds",
   "n_workflows": 120,
   "measurements_seconds": {
-    "system": 0.0006190612562932074,
-    "agents": 6.094035925343633e-05,
-    "workflows_list": 0.0008023816044442356,
-    "workflow_detail": 0.0011203246540389955,
-    "notifications": 9.049710351973772e-05,
-    "learning": 0.00020358870970085263
+    "system": 2.686964871827513e-05,
+    "agents": 3.200744977220893e-05,
+    "workflows_list": 0.0005471740005305037,
+    "workflow_detail": 0.0007274386996868997,
+    "notifications": 3.128019743598997e-05,
+    "learning": 0.00010760175064206123
   },
   "notes": [
     "Each GET reads at most one JSON file; no JSONL scan.",
