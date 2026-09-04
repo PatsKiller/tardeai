@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "bash ../../scripts/check_design_tokens.sh && node ../../scripts/test_chip_scope.mjs && node ../../scripts/test_metric_strip_labels.mjs && node src/lib/surfaceFreshness.test.ts && node src/lib/observationEnvelope.test.ts && node src/lib/setupRunSummary.test.ts && node src/lib/homeWinRate.test.ts && node src/lib/retainedObservation.test.ts && node src/lib/surfaceAuthority.test.ts && node src/lib/operatorBoundary.test.ts && node src/lib/httpOutcome.test.ts && node src/lib/surfaceProjection.test.ts && tsc && vite build",
+    "build": "bash ../../scripts/check_design_tokens.sh && node ../../scripts/test_chip_scope.mjs && node ../../scripts/test_metric_strip_labels.mjs && node src/lib/surfaceFreshness.test.ts && node src/lib/observationEnvelope.test.ts && node src/lib/setupRunSummary.test.ts && node src/lib/homeWinRate.test.ts && node src/lib/retainedObservation.test.ts && node src/lib/surfaceAuthority.test.ts && node src/lib/operatorBoundary.test.ts && node src/lib/httpOutcome.test.ts && node src/lib/surfaceProjection.test.ts && node src/lib/bookTreemapLayout.test.ts && tsc && vite build",
     "preview": "vite preview",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",

@@ -36,6 +36,18 @@ export default function MetricStrip({ onDrill }: Props) {
   )
     .replace(/_/g, ' ')
     .trim()
+  // TODAY sums today_by_account across every linked account, so its provenance is the
+  // same all-accounts scope as PORTFOLIO. It previously fell back to `overviewAcct` --
+  // a single account name -- and rendered "TODAY -$2,908 · data_as_of ... ·
+  // alpaca_taxable_live" beside "PORTFOLIO ... ALL ACCOUNTS". The number was right and
+  // the attribution named one account it did not come from, which is worse than an
+  // obviously missing label: it reads as authoritative.
+  const todayAccountCount = Object.keys(overview?.today_by_account ?? {}).length
+  const todayAsOfNote =
+    todayAccountCount > 0
+      ? `${portfolioScopeLabel || 'ALL ACCOUNTS'} · ${todayAccountCount} contributing`
+      : portfolioScopeLabel || null
+
   const portfolioAsOfNote =
     portfolioAgg && portfolioScopeLabel
       ? `${portfolioScopeLabel} · oldest ${portfolioAgg.oldest_observation_account ?? '—'}`
@@ -148,7 +160,7 @@ export default function MetricStrip({ onDrill }: Props) {
       stale: overviewFresh.stale ? (overviewFresh.surfaceLabel?.replace(/^STALE · /, ' · ') || overviewAsOfMark) : null,
       asOf: overviewFresh.asOf,
       asOfLabel: 'data_as_of',
-      asOfNote: overviewAcct,
+      asOfNote: todayAsOfNote,
       undated: !overviewFresh.dataAsOf,
       color: overviewFresh.stale ? BB.amber : todayChange == null ? 'var(--text3)' : todayChange >= 0 ? BB.green : BB.red,
       drill: { title: "Today's Move", subtitle: overviewFresh.stale ? `STALE${overviewAsOfMark}` : 'By account · from /api/v2/overview', endpoint: '/api/v2/overview',
@@ -165,7 +177,11 @@ export default function MetricStrip({ onDrill }: Props) {
       tip: `Today's net change ($ and %) across all linked accounts. Click to see per-account breakdown. Refreshes every 2 min.${overviewAsOfMark}`,
     },
     {
-      label: 'TRADING', value: winRate != null ? `${winRate}%${winTrades ? ` · ${winTrades}` : ''}${journalPnl != null ? ` · ${fmt$(journalPnl, 0)}` : ''}` : '—',
+      // "53.3% · 169 · $55,429" was three unlabelled numbers. A reader cannot tell which
+      // is a win rate, which a trade count, and which a P&L -- and the dollar figure sat
+      // beside a REALIZED tile showing a different one. The units are now on the tile
+      // rather than only in the tooltip.
+      label: 'TRADING', value: winRate != null ? `${winRate}% win${winTrades ? ` · ${winTrades} trades` : ''}${journalPnl != null ? ` · ${fmt$(journalPnl, 0)} P&L` : ''}` : '—',
       stale: journalStale ? journalAgeMark : null,
       color: winRate != null && winRate >= 50 ? BB.green : winRate != null ? BB.amber : 'var(--text3)',
       tip: `Active trading only (day + swing), broker round-trips · ${journalScope} · ${journalWindow}${journalAsOf ? ` · as_of ${String(journalAsOf).slice(0, 19).replace('T', ' ')}` : ''}${journalLastClose ? ` · last close ${journalLastClose}` : ''}${journalRefreshedMark}. Excludes long-term trims of old holds — those are in REALIZED. Win rate excludes $0 scratches.`,

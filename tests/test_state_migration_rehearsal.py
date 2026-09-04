@@ -91,6 +91,20 @@ def _sources_present() -> bool:
 
 needs_sources = pytest.mark.skipif(not _sources_present(), reason="state roots not present on this host")
 
+#: The migration manifest is generated evidence and lives under evidence/whole_site/,
+#: which is gitignored. It therefore exists only on the machine that generated it: a
+#: fresh worktree or a hosted runner has no such file.
+#:
+#: Two tests read it directly with no guard, so they passed only where the artifact
+#: happened to be lying around and raised FileNotFoundError anywhere else. That is the
+#: same defect these very tests were rewritten to remove -- asserting on ambient state
+#: rather than a controlled input -- and it is the fourth instance found in this work.
+MANIFEST_PATH = ROOT / "evidence" / "whole_site" / "MIGRATION_MANIFEST.json"
+needs_manifest = pytest.mark.skipif(
+    not MANIFEST_PATH.is_file(),
+    reason=f"{MANIFEST_PATH} is generated evidence, gitignored, and absent on this host",
+)
+
 
 @pytest.fixture
 def replica(tmp_path):
@@ -569,6 +583,7 @@ def test_apply_refuses_when_a_rail_is_missing(manifest, tmp_path, drop, rail):
 
 
 @needs_sources
+@needs_manifest
 def test_every_named_store_has_a_manifest_row():
     doc = json.loads((ROOT / "evidence" / "whole_site" / "MIGRATION_MANIFEST.json").read_text())
     assert {r["store"] for r in doc["stores"]} == set(ALL_STORES)
@@ -601,6 +616,7 @@ def test_every_named_store_has_a_manifest_row():
 
 
 @needs_sources
+@needs_manifest
 def test_every_financial_store_fails_closed():
     """Fail-closed now holds per record, which is strictly stronger than per store.
 
