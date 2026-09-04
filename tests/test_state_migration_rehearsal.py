@@ -117,6 +117,27 @@ def manifest(replica, tmp_path):
     return doc, path
 
 
+def _plant_divergence(replica, name: str, producer_doc, served_doc):
+    """Give a store known, controlled content on each side.
+
+    These tests used to read whatever the live roots happened to contain and assert a
+    strategy from it -- so a successful production migration, which is the whole point
+    of the tool, made them fail. What is under test is the tool's behaviour on a given
+    input, so the input is now supplied rather than observed.
+    """
+    prod, served = replica
+    (prod / name).write_text(json.dumps(producer_doc, indent=1))
+    (served / name).write_text(json.dumps(served_doc, indent=1))
+    doc = build_manifest([name], prod, served)
+    return doc
+
+
+def _write_manifest(doc, tmp_path):
+    path = tmp_path / "planted_manifest.json"
+    path.write_text(json.dumps(doc, indent=1, default=str))
+    return path
+
+
 def _run(args: list[str], out: Path) -> tuple[int, dict]:
     r = subprocess.run(
         [sys.executable, str(TOOL), *args, "--out", str(out)],
@@ -153,7 +174,16 @@ def test_dry_run_writes_nothing(manifest, replica, tmp_path):
 
 @needs_sources
 def test_successful_migration_then_idempotent_repeat(manifest, replica, tmp_path):
-    doc, path = manifest
+    # Planted rather than observed: the live copies may legitimately agree after a
+    # production migration, and a test that needs them to disagree would then fail for
+    # the one reason that means the tool worked.
+    doc = _plant_divergence(
+        replica,
+        "_freshness.json",
+        {"schema": "Freshness@v1", "completed_at": "2026-09-04T12:00:00Z", "rows": {"a": 1}},
+        {"schema": "Freshness@v1", "completed_at": "2026-08-01T12:00:00Z", "rows": {"a": 1}},
+    )
+    path = _write_manifest(doc, tmp_path)
     _, served = replica
     target = _row(doc, "_freshness.json")
     args = [
@@ -370,7 +400,16 @@ def test_an_interrupted_write_leaves_the_target_untouched(replica, monkeypatch):
 
 @needs_sources
 def test_financial_conflict_is_never_applied(manifest, replica, tmp_path):
-    doc, path = manifest
+    # A financial store whose two copies assert different values for the same record,
+    # with no conflict ledger supplied. Planted so the case is tested even after the
+    # live stores have been reconciled.
+    doc = _plant_divergence(
+        replica,
+        "stops.json",
+        {"DIV:schwab_taxable": {"broker_order_id": "1", "stop": 19.13, "qty": 411.0}},
+        {"DIV:schwab_taxable": {"broker_order_id": "1", "stop": 19.24, "qty": 411.0}},
+    )
+    path = _write_manifest(doc, tmp_path)
     _, served = replica
     row = _row(doc, "stops.json")
     assert row["strategy"] == MANUAL_CONFLICT
@@ -877,7 +916,7 @@ class TestRecordLevelMerge:
             apply=True,
             backup_dir=str(tmp_path / "bk"),
             conflict_ledger=None,
-            governed_root=doc["served_root"],
+            governed_root=str(replica[1]),
             only=None,
             out=None,
             expected_deployed_sha=None,
@@ -893,11 +932,20 @@ class TestRecordLevelMerge:
 
 @needs_sources
 class TestInterruptionAndRollback:
+    def _writing_row(self, replica, tmp_path):
+        """A store the migration will actually write, whatever the live copies look like."""
+        doc = _plant_divergence(
+            replica,
+            "_freshness.json",
+            {"schema": "Freshness@v1", "completed_at": "2026-09-04T12:00:00Z", "rows": {"a": 1}},
+            {"schema": "Freshness@v1", "completed_at": "2026-08-01T12:00:00Z", "rows": {"a": 1}},
+        )
+        return dict(_row(doc, "_freshness.json"))
+
     def test_interruption_mid_write_restores_bytes_exactly(self, replica, manifest, tmp_path, monkeypatch):
         """A KeyboardInterrupt during the write must leave the target byte-identical."""
         _producer, served = replica
-        doc, _mp = manifest
-        row = dict(doc["stores"][0])
+        row = self._writing_row(replica, tmp_path)
         target = Path(row["canonical_target"])
         before = target.read_bytes()
 
@@ -909,7 +957,7 @@ class TestInterruptionAndRollback:
             apply=True,
             backup_dir=str(tmp_path / "bk2"),
             conflict_ledger=None,
-            governed_root=doc["served_root"],
+            governed_root=str(replica[1]),
             only=None,
             out=None,
             expected_deployed_sha=None,
@@ -924,8 +972,7 @@ class TestInterruptionAndRollback:
 
     def test_rollback_restores_after_a_validation_failure(self, replica, manifest, tmp_path, monkeypatch):
         _producer, _served = replica
-        doc, _mp = manifest
-        row = dict(doc["stores"][0])
+        row = self._writing_row(replica, tmp_path)
         target = Path(row["canonical_target"])
         before = target.read_bytes()
 
@@ -938,7 +985,7 @@ class TestInterruptionAndRollback:
             apply=True,
             backup_dir=str(tmp_path / "bk3"),
             conflict_ledger=None,
-            governed_root=doc["served_root"],
+            governed_root=str(replica[1]),
             only=None,
             out=None,
             expected_deployed_sha=None,

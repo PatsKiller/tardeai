@@ -109,6 +109,19 @@ def _stat(path: Path) -> dict[str, Any]:
     }
 
 
+#: Files that live beside a store but are not themselves governed state.
+#:
+#: A conflict sidecar records which records inside a store could not be reconciled. It
+#: is written to the served root only, deliberately, so a scanner that treats every
+#: *.json in the directory as a store sees it as a new served-only fork and reports the
+#: migration's own bookkeeping as a divergence it caused.
+SIDECAR_SUFFIXES = (".conflicts.json",)
+
+
+def is_sidecar(name: str) -> bool:
+    return any(name.endswith(sfx) for sfx in SIDECAR_SUFFIXES)
+
+
 def compare_store(
     filename: str,
     *,
@@ -196,7 +209,7 @@ def scan(
     readable = {"producer": prod_dir.is_dir(), "served": served_dir.is_dir()}
     for d in (prod_dir, served_dir):
         if d.is_dir():
-            names |= {p.name for p in d.glob("*.json")}
+            names |= {p.name for p in d.glob("*.json") if not is_sidecar(p.name)}
     if only:
         names &= set(only)
 
