@@ -167,6 +167,22 @@ def test_the_report_never_claims_it_resolved_anything(roots):
     assert "RESOLUTION IS NOT" in rep["note"]
 
 
+#: The live audit reads the real producer and served state roots. They exist on the
+#: operator's host and on no hosted runner, so the test is gated on their presence
+#: rather than asserting a count that can only ever be zero in CI. The gate is the
+#: directories themselves: where they exist the test runs in full, and where they do
+#: not it says so instead of reporting a failure that means "wrong machine".
+_LIVE_ROOTS = (
+    Path("/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/data/portfolios/state"),
+    Path("/home/johnclaw/trade-ai-releases/persistent-state/data/portfolios/state"),
+)
+needs_live_roots = pytest.mark.skipif(
+    not all(p.is_dir() for p in _LIVE_ROOTS),
+    reason="live state roots are not present on this host; the live audit has nothing to audit",
+)
+
+
+@needs_live_roots
 def test_the_live_audit_has_a_verdict_for_every_store():
     from lib.state_root_divergence import scan as live_scan
 

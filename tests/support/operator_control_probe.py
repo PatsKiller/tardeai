@@ -92,6 +92,10 @@ def _count(db) -> int:
     return int(dict(r)["n"]) if r else -1
 
 
+#: Distinct from any failure verdict: the cluster could not be reached at all.
+EXIT_CLUSTER_UNAVAILABLE = 3
+
+
 def main() -> int:
     import db_adapter as db
 
@@ -102,6 +106,30 @@ def main() -> int:
 
     ident = _identity(db)
     out["resolved_identity"] = ident
+
+    # An identity we could not READ is a different thing from an identity that looks
+    # like production, and the two must not share an exit path. Empty fields mean the
+    # cluster never answered -- no server binaries, no socket, no driver -- which is a
+    # statement about this host, not about the target's safety. It still never proceeds;
+    # it exits distinguishably so a caller can skip rather than report a false alarm
+    # about writing to production.
+    if not str(ident.get("dbname") or "") or not str(ident.get("usr") or ""):
+        print(
+            json.dumps(
+                {
+                    "schema": "OperatorControlProbe@v1",
+                    "cluster_unavailable": True,
+                    "reason": (
+                        "the isolated cluster did not report an identity; it is not reachable from "
+                        "this host, so nothing was written and nothing can be concluded"
+                    ),
+                    "resolved_identity": ident,
+                }
+            ),
+            flush=True,
+        )
+        return EXIT_CLUSTER_UNAVAILABLE
+
     rail = assert_not_production(
         ClusterIdentity(
             host=str(ident.get("host") or "127.0.0.1"),

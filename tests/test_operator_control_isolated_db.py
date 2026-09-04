@@ -147,6 +147,11 @@ def probe() -> dict:
             text=True,
             timeout=600,
         )
+        if r.returncode == 3:
+            # The cluster never answered. On this host the matrix cannot run; saying so
+            # is honest, whereas failing would report a production-safety alarm for what
+            # is really an absent PostgreSQL.
+            pytest.skip(f"isolated cluster unreachable on this host: {r.stdout[-300:]}")
         if r.returncode != 0:
             pytest.fail(f"probe exited {r.returncode}\n{r.stderr[-2000:]}")
         data = json.loads(r.stdout)
@@ -337,3 +342,33 @@ def test_no_broker_order_or_financial_path_was_exercised(probe):
         assert banned not in blob, f"probe touched {banned}"
     for row in probe["audit_rows"]:
         assert row["action"].startswith(("probe.", "topic.")), row["action"]
+
+
+class TestUnreachableIsNotUnsafe:
+    """Classifying an unreachable cluster must not soften the production rail.
+
+    CI failed with "target resembles production — dbname='' must start with
+    tradeai_test_". That alarm was technically true and completely misleading: there was
+    no target at all, because no cluster answered. The fix separates the two outcomes.
+    It must not make an empty identity acceptable.
+    """
+
+    def test_an_empty_identity_still_refuses(self):
+        with pytest.raises(ProductionIdentityError):
+            assert_not_production(ClusterIdentity(host="127.0.0.1", port=0, dbname="", user=""))
+
+    def test_a_production_identity_still_refuses(self):
+        with pytest.raises(ProductionIdentityError):
+            assert_not_production(ClusterIdentity(host="127.0.0.1", port=5432, dbname="trade_ai", user="trade_ai"))
+
+    def test_the_unavailable_exit_code_is_distinct_from_success_and_failure(self):
+        from support.operator_control_probe import EXIT_CLUSTER_UNAVAILABLE
+
+        assert EXIT_CLUSTER_UNAVAILABLE not in (0, 1, 2), (
+            "an unreachable cluster must not share an exit code with success or with a "
+            "real refusal, or the caller cannot tell them apart"
+        )
+
+    def test_an_isolated_identity_is_still_accepted(self):
+        verdict = assert_not_production(_isolated_identity())
+        assert verdict["verdict"] == "ISOLATED"
