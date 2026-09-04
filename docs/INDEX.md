@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `7e7d106e13471389271c2fbfb92a59c8eab81036b5b8901b7cf6f4aa7062289a`
+**Tree fingerprint:** `b1a0be287fed14142f4cb8de1be22f196dfed145bc7478a9d0d647d02b859109`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -14,8 +14,8 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 |--------|------:|
 | Files under `docs/` (excl. this INDEX) | 2351 |
 | Markdown (excl. this INDEX) | 1963 |
-| **MISSING HEADER** | **12** |
-| Header OK | 1951 |
+| **MISSING HEADER** | **13** |
+| Header OK | 1950 |
 | Duplicate groups | 5 |
 
 ### By status_guess
@@ -757,7 +757,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/diligence/current/MOMENTUM_SCALP_VALIDATION_FAST_PATH.md` | Momentum Scalp Validation Fast Path | review_required | OK | `3748851b3d6f` |
 | `docs/diligence/current/MOMENTUM_SCALP_VALIDATION_OPS.md` | Momentum Scalp Validation Ops | review_required | OK | `b51f26253575` |
 | `docs/diligence/current/MOMENTUM_SCALP_VALIDATION_TRACKER.md` | Momentum Scalp Validation Tracker | review_required | OK | `ec2e5f4ac157` |
-| `docs/diligence/current/OPTIONS_RISK_BLOCK_MATRIX.md` | Options Hard-Risk Block Matrix | review_required | OK | `d29bfcb3f15c` |
+| `docs/diligence/current/OPTIONS_RISK_BLOCK_MATRIX.md` | Options Hard-Risk Block Matrix | review_required | MISSING HEADER | `84fca6df4615` |
 | `docs/diligence/current/ORDER_LIFECYCLE.md` | Order Lifecycle | review_required | OK | `8bd7b79ca8fe` |
 | `docs/diligence/current/RELEASE_READINESS.md` | Release Readiness | review_required | OK | `356036502fea` |
 | `docs/diligence/current/RISK_GATE_MATRIX.md` | Risk Gate Matrix | review_required | OK | `ceaf05c64e9c` |
@@ -1773,7 +1773,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/project/PROJECT_DOC_INDEX.md` | PROJECT_DOC_INDEX.md | active_keep | OK | `226e98e141db` |
 | `docs/project/PROTECTIVE_STOP_SUBMIT_UI_FIX_2026-06-21.md` | Protective-Stop Submit — Confirm Response Handling Fix (2026-06-21) | current_phase_keep | OK | `fdbc12f84836` |
 | `docs/project/RECOMMENDATION_INTELLIGENCE.md` | Recommendation Intelligence Engine | current_phase_keep | OK | `86fc73d96ca3` |
-| `docs/project/RELEASE_MANIFEST_LATEST.md` | Release Manifest (auto-generated) | current_phase_keep | OK | `323cb66d950c` |
+| `docs/project/RELEASE_MANIFEST_LATEST.md` | Release Manifest (auto-generated) | current_phase_keep | OK | `6916dde0a1c8` |
 | `docs/project/REPORTS_ACTION_TARGET_CONTRACT_2026-06-21.md` | Reports Action Target Contract + 3-Column Briefing (2026-06-21) | current_phase_keep | OK | `14d5ea7ac651` |
 | `docs/project/REPORTS_COMMAND_PORTAL_PHASE2_UX_HARDENING_2026-06-21.md` | Reports Command Portal — Phase 2 UX Hardening (2026-06-21) | current_phase_keep | OK | `fd2e6de7b2be` |
 | `docs/project/REPORTS_COMMAND_PORTAL_REDESIGN_2026-06-19.md` | Reports Command Portal — Redesign (2026-06-19) | current_phase_keep | OK | `d7d3f916e021` |

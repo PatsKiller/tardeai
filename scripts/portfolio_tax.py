@@ -2,6 +2,7 @@
 FIFO tax lot tracking, realized/unrealized gain computation,
 tax loss harvest identification, holding period classification.
 """
+
 from __future__ import annotations
 
 import json
@@ -14,9 +15,9 @@ from typing import Any, Dict, List, Optional, Tuple
 # ── Tax constants ─────────────────────────────────────────────────────────────
 
 LONG_TERM_DAYS = 365  # Held > 1 year = long-term capital gain
-ST_RATE = 0.37        # Short-term = ordinary income (top bracket)
-LT_RATE = 0.20        # Long-term capital gains rate (top bracket)
-NIIT_RATE = 0.038     # Net investment income tax (high income)
+ST_RATE = 0.37  # Short-term = ordinary income (top bracket)
+LT_RATE = 0.20  # Long-term capital gains rate (top bracket)
+NIIT_RATE = 0.038  # Net investment income tax (high income)
 
 # Wash sale window (30 days before/after sale)
 WASH_SALE_DAYS = 30
@@ -24,8 +25,8 @@ WASH_SALE_DAYS = 30
 
 # ── Lot Data Structures ───────────────────────────────────────────────────────
 
-def _make_lot(symbol: str, account: str, date: str, shares: float,
-              cost_per_share: float, action: str = "buy") -> Dict:
+
+def _make_lot(symbol: str, account: str, date: str, shares: float, cost_per_share: float, action: str = "buy") -> Dict:
     return {
         "symbol": symbol,
         "account": account,
@@ -55,6 +56,7 @@ def _holding_period(lot_date: str, as_of: Optional[str] = None) -> str:
 
 # ── Build Lots from Transactions ──────────────────────────────────────────────
 
+
 def build_tax_lots(transactions: List[Dict], existing_lots: Optional[Dict] = None) -> Dict[str, List[Dict]]:
     """
     Build FIFO tax lot queue from transaction history.
@@ -65,9 +67,27 @@ def build_tax_lots(transactions: List[Dict], existing_lots: Optional[Dict] = Non
     """
     lots: Dict[str, List[Dict]] = defaultdict(list)
 
+    # Which keys does the transaction history actually cover? For those, the history is
+    # authoritative and the lot list is rebuilt from it.
+    #
+    # This used to seed `lots` with the PREVIOUS run's output and then replay the whole
+    # transaction history on top, appending a new lot for every buy. Every run therefore
+    # added another full copy of every lot it had already recorded: run N held N copies.
+    # By the time it was found, tax_lots.json was 98% duplicates -- 12,870 of 13,139 rows
+    # -- and AMD:schwab_taxable held 113 identical lots, one per run.
+    #
+    # Seeding cannot simply be dropped, though: a key with no transactions (an account
+    # whose history was never imported) would lose its lots entirely. So existing lots
+    # are carried forward only for keys the transactions do not cover.
+    txn_keys = {
+        f"{str(t.get('symbol', '')).upper()}:{t.get('account', '')}"
+        for t in transactions
+        if str(t.get("txn_type", "")) in ("buy", "reinvest_shares", "sell")
+    }
     if existing_lots:
         for k, v in existing_lots.items():
-            lots[k] = v
+            if k not in txn_keys:
+                lots[k] = v
 
     # Process transactions chronologically
     txns_sorted = sorted(transactions, key=lambda t: t.get("date", ""))
@@ -120,6 +140,7 @@ def _apply_fifo_sell(lot_queue: List[Dict], qty_sold: float, sell_date: str) -> 
 
 # ── Synthetic Lots from Current Holdings ──────────────────────────────────────
 
+
 def build_synthetic_lots_from_holdings(holdings: List[Dict], as_of: str) -> Dict[str, List[Dict]]:
     """
     For accounts without transaction history, create synthetic lots
@@ -150,6 +171,7 @@ def build_synthetic_lots_from_holdings(holdings: List[Dict], as_of: str) -> Dict
 
 
 # ── Unrealized Gain Analysis ──────────────────────────────────────────────────
+
 
 def compute_unrealized_gains(
     holdings: List[Dict],
@@ -194,27 +216,30 @@ def compute_unrealized_gains(
         else:
             tax_est = 0
 
-        results.append({
-            "symbol": sym,
-            "account": h.get("account_display", acct),
-            "account_type": h.get("account_type", ""),
-            "taxable": h.get("account_type") == "taxable",
-            "shares": shares,
-            "market_value": mv,
-            "cost_basis": cb,
-            "unrealized_gain": gl,
-            "unrealized_gain_pct": gl_pct,
-            "holding_period": holding_period,
-            "tax_estimate": tax_est,
-            "tax_rate_applied": (LT_RATE if holding_period == "LONG" else ST_RATE) if gl > 0 else 0,
-            "after_tax_gain": gl - tax_est,
-        })
+        results.append(
+            {
+                "symbol": sym,
+                "account": h.get("account_display", acct),
+                "account_type": h.get("account_type", ""),
+                "taxable": h.get("account_type") == "taxable",
+                "shares": shares,
+                "market_value": mv,
+                "cost_basis": cb,
+                "unrealized_gain": gl,
+                "unrealized_gain_pct": gl_pct,
+                "holding_period": holding_period,
+                "tax_estimate": tax_est,
+                "tax_rate_applied": (LT_RATE if holding_period == "LONG" else ST_RATE) if gl > 0 else 0,
+                "after_tax_gain": gl - tax_est,
+            }
+        )
 
     results.sort(key=lambda x: -(x["unrealized_gain"] or 0))
     return results
 
 
 # ── Tax Loss Harvest Candidates ────────────────────────────────────────────────
+
 
 def find_harvest_candidates(
     unrealized: List[Dict],
@@ -236,11 +261,13 @@ def find_harvest_candidates(
             continue
 
         if gl < -min_loss and gl_pct < -min_loss_pct:
-            candidates.append({
-                **u,
-                "tax_savings_estimate": abs(gl) * ST_RATE,
-                "wash_sale_warning": "Watch 30-day wash sale window if repurchasing same/similar security",
-            })
+            candidates.append(
+                {
+                    **u,
+                    "tax_savings_estimate": abs(gl) * ST_RATE,
+                    "wash_sale_warning": "Watch 30-day wash sale window if repurchasing same/similar security",
+                }
+            )
 
     candidates.sort(key=lambda x: x["unrealized_gain"])
     return candidates
@@ -248,14 +275,15 @@ def find_harvest_candidates(
 
 # ── Realized Gain Summary from Transactions ────────────────────────────────────
 
+
 def compute_realized_gains(transactions: List[Dict]) -> Dict[str, Any]:
     """Compute YTD realized gains from sell transactions."""
     current_year = datetime.now().year
     ytd_gains = []
 
-    sell_txns = [t for t in transactions
-                 if t.get("txn_type") == "sell"
-                 and t.get("date", "").startswith(str(current_year))]
+    sell_txns = [
+        t for t in transactions if t.get("txn_type") == "sell" and t.get("date", "").startswith(str(current_year))
+    ]
 
     total_proceeds = sum(abs(t.get("amount") or 0) for t in sell_txns)
 
@@ -269,12 +297,13 @@ def compute_realized_gains(transactions: List[Dict]) -> Dict[str, Any]:
 
 # ── Dividend Income from Transactions ────────────────────────────────────────
 
+
 def compute_received_dividends(transactions: List[Dict]) -> Dict[str, Any]:
     """Summarize dividends received from transaction history."""
     current_year = datetime.now().year
-    ytd_divs = [t for t in transactions
-                if t.get("txn_type") == "dividend"
-                and t.get("date", "").startswith(str(current_year))]
+    ytd_divs = [
+        t for t in transactions if t.get("txn_type") == "dividend" and t.get("date", "").startswith(str(current_year))
+    ]
 
     by_symbol: Dict[str, float] = defaultdict(float)
     for d in ytd_divs:
@@ -294,6 +323,7 @@ def compute_received_dividends(transactions: List[Dict]) -> Dict[str, Any]:
 
 
 # ── Main Tax Analysis Entry Point ─────────────────────────────────────────────
+
 
 def analyze_taxes(portfolio: Dict, state_dir: Optional[Path] = None) -> Dict[str, Any]:
     """Run complete tax analysis on portfolio."""

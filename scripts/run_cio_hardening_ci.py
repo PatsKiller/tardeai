@@ -692,6 +692,17 @@ GATES = [
         ],
     ),
     (
+        # cc-whole-site-residual-v1 (2026-09-04): the tax-lot rebuild appended the whole
+        # transaction history on top of its own previous output, so run N held N copies
+        # of every lot. tax_lots.json reached 98% duplicates before anyone noticed,
+        # because the duplicates were closed lots carrying zero remaining shares and
+        # every quantity check still reconciled against the broker.
+        "tax_lot_rebuild_idempotency",
+        [
+            "tests/test_tax_lot_rebuild_idempotency.py",
+        ],
+    ),
+    (
         # cc-whole-site-residual-v1 (2026-09-03): record-level reconciliation. A
         # store-level "these two files disagree" is true but blunt. Each divergent
         # record is decided against the authority that governs it -- broker positions
