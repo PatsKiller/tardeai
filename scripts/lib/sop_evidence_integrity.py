@@ -27,7 +27,7 @@ ROOT = Path(__file__).resolve().parents[2]
 MANIFEST_REL = "config/sop_120_control_surface.manifest.json"
 EVIDENCE_DIR_REL = "docs/implementation/maturity-program/sop-1.2.0-20260902"
 RUNTIME_ATTESTATION_SCHEMA = "SopRuntimeAttestation@v1"
-EXPECTED_CORE_TESTS = 120
+EXPECTED_CORE_TESTS = 121
 
 # Authoritative (current) evidence basenames — must be non-empty and coherent.
 CURRENT_EVIDENCE = frozenset(

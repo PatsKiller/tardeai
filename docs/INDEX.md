@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `0f0e314a4481a45dec248e076537b1858131711f7fe23ce531c7da8f05ed134e`
+**Tree fingerprint:** `e4b295ab138eb133e8a3c9c0991e892489661bf96e3ab4ac06c92a753c88a53b`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,11 +12,11 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2350 |
-| Markdown (excl. this INDEX) | 1962 |
-| **MISSING HEADER** | **11** |
+| Files under `docs/` (excl. this INDEX) | 2359 |
+| Markdown (excl. this INDEX) | 1963 |
+| **MISSING HEADER** | **12** |
 | Header OK | 1951 |
-| Duplicate groups | 5 |
+| Duplicate groups | 9 |
 
 ### By status_guess
 
@@ -27,10 +27,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | archive_session_handoff | 3 |
 | archive_superseded | 20 |
 | artifact_code_snapshot | 3 |
-| artifact_raw_sync | 26 |
+| artifact_raw_sync | 34 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 6 |
-| review_required | 1970 |
+| review_required | 1971 |
 
 ## Markdown tree
 
@@ -65,6 +65,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ENGINEERING_HARD_RULES.md` | Engineering Hard Rules (enforced) | review_required | OK | `c9798da3d1f2` |
 | `docs/ENGINE_ROOM_V1.md` | Engine Room v1 — Plumbing & Intake Hardening (2026-07-16) | review_required | OK | `c13ce7b7e784` |
 | `docs/EXECUTIVE_ARCHITECTURE_OVERVIEW.md` | Trade AI v12 — Executive Architecture Overview | review_required | OK | `84fd22510408` |
+| `docs/FINANCIAL_RECONCILIATION.md` | Financial reconciliation and record-level migration | review_required | MISSING HEADER | `67a3455d1e52` |
 | `docs/FINVIZ_INTEGRATION_AND_DATA_SOURCE_MONITORING.md` | Finviz Integration + Data-Source Health Monitoring | review_required | OK | `d2c64a1e13d9` |
 | `docs/FINVIZ_SOURCE_AUTHORITY.md` | Finviz Source Authority & Phase 0 Reconciliation | review_required | OK | `93533d98e174` |
 | `docs/GIT_HYGIENE.md` | Git Hygiene — protect the live primary tree (2026-07-01) | review_required | OK | `bb52d4d23b64` |

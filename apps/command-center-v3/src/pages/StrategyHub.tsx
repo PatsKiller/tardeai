@@ -7,6 +7,7 @@ import type { DrillContext } from '../components/DetailDrawer'
 import StrategyPlanner from '../components/StrategyPlanner'
 import { useTerminalUi } from '../lib/terminalUi'
 import { hubTitle, hubSubtitle, hubTab } from '../lib/terminalHubChrome'
+import { BB, DASH } from '../lib/watchTokens'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 
@@ -25,13 +26,28 @@ export default function StrategyHub({ onDrill }: Props) {
   const { data: incubator } = useApi<any>('/api/v2/incubator', 120_000)
   const { data: incAdv } = useApi<any>('/api/v2/setup-advisory/candidates?entity=incubator', 120_000)
   const incAdvMap: Record<string, any> = {}
-  for (const a of (incAdv?.advisories ?? [])) incAdvMap[a.symbol] = a
+  for (const a of (Array.isArray(incAdv?.advisories) ? incAdv.advisories : [])) incAdvMap[a.symbol] = a
   const advColor = (f?: string) => f === 'caution' ? '#ef4444' : f === 'favorable' ? '#22c55e' : 'var(--text3)'
 
-  const strategies = intel?.strategies ?? []
-  const configMap = configs?.strategies ?? {}
-  const topStrats = readiness?.top_strategies ?? []
-  const btData = btResults ?? []
+  // Wire payloads are shaped by whatever answered, not by what this page hopes
+  // for. `[...btResults]` threw `TypeError: m is not iterable` and rendered the
+  // ENTIRE shell blank when /api/v2/backtesting/results answered with an object
+  // (browser/state matrix, cc-whole-site-residual-v1). A blank page is the least
+  // honest state there is, so every list is narrowed to a real array and a
+  // non-array is disclosed as MALFORMED rather than absorbed as empty.
+  const asRows = (v: unknown): any[] => (Array.isArray(v) ? v : [])
+  const malformed = (label: string, v: unknown): string | null =>
+    v == null || Array.isArray(v) ? null : `${label} answered ${Array.isArray(v) ? 'an array' : typeof v}, expected a list`
+
+  const strategies = asRows(intel?.strategies)
+  const configMap = (configs?.strategies && typeof configs.strategies === 'object') ? configs.strategies : {}
+  const topStrats = asRows(readiness?.top_strategies)
+  const btData = asRows(btResults)
+  const shapeWarnings = [
+    malformed('strategy-intelligence.strategies', intel?.strategies),
+    malformed('paper-trade-readiness.top_strategies', readiness?.top_strategies),
+    malformed('backtesting/results', btResults),
+  ].filter(Boolean) as string[]
 
   // Merge real paper trade win rates with strategy intelligence
   const paperWrMap: Record<string, any> = {}
@@ -104,6 +120,29 @@ export default function StrategyHub({ onDrill }: Props) {
 
   return (
     <div>
+      {shapeWarnings.length > 0 && (
+        <div
+          data-shape-warning="true"
+          role="status"
+          style={{
+            marginBottom: 10,
+            padding: '7px 10px',
+            background: BB.amberDim,
+            borderLeft: `3px solid ${BB.amber}`,
+            fontSize: DASH.data,
+            lineHeight: 1.45,
+          }}
+        >
+          <div style={{ fontWeight: 800, letterSpacing: 0.4, color: BB.amber }}>MALFORMED PAYLOAD</div>
+          {shapeWarnings.map(w => (
+            <div key={w} style={{ color: BB.text2, fontFamily: 'var(--mono)' }}>{w}</div>
+          ))}
+          <div style={{ color: BB.text3 }}>
+            Those sections are shown empty because their source did not answer in the expected shape —
+            not because there is nothing to show.
+          </div>
+        </div>
+      )}
       <div className="hub-title-row">
         <div>
           <div style={hubTitle()}>Strategy Hub</div>
