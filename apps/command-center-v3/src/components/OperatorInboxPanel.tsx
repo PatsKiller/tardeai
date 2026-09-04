@@ -33,7 +33,11 @@ export default function OperatorInboxPanel({ compact, maxItems = 8 }: Props) {
         <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', marginBottom: 10, flexWrap: 'wrap' }}>
           <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)' }}>Operator Inbox</span>
           <span style={{ fontSize: 9, color: 'var(--text3)' }}>
-            {data?.count ?? 0} items · P0 {data?.p0_count ?? 0} · auto-research {data?.auto_research ?? 0} · stops {data?.stops ?? 0} · proposals {data?.proposals ?? 0}
+            {/* `count` is the whole queue; `items` was a page of 80. The panel
+                rendered "82 items" above 80 rows with nothing saying so. */}
+            {data?.total_count ?? data?.count ?? 0} items
+            {data?.truncated ? ` (${data?.displayed_count} shown)` : ''}
+            {' · P0 '}{data?.p0_count ?? 0} · auto-research {data?.auto_research ?? 0} · stops {data?.stops ?? 0} · proposals {data?.proposals ?? 0}
           </span>
         </div>
       )}

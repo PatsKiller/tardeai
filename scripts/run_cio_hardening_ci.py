@@ -604,6 +604,10 @@ GATES = [
             "tests/test_quote_selection_contract.py",
             "tests/test_api_v2_ruff_quality_corrections.py",
             "tests/test_portfolio_aggregate_contract.py",
+            # The 2026-09-04 live capture: the Sep-3/Sep-4 clock contradiction
+            # and the 48/60/0 count contradiction, pinned against verbatim
+            # production fixtures in tests/fixtures/header_truth/.
+            "tests/test_header_truth_regression.py",
         ],
     ),
     (

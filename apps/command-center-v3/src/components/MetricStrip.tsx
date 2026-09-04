@@ -42,16 +42,75 @@ export default function MetricStrip({ onDrill }: Props) {
   // alpaca_taxable_live" beside "PORTFOLIO ... ALL ACCOUNTS". The number was right and
   // the attribution named one account it did not come from, which is worse than an
   // obviously missing label: it reads as authoritative.
+  // TodayPnl@v1. The P&L's own session, calculation time and account coverage
+  // now travel with the number. Before this block existed the tile borrowed
+  // `data_as_of` -- the position observation -- and stamped a 2026-09-04
+  // intraday figure "2026-09-03".
+  const todayPnl = overview?.today_pnl
   const todayAccountCount = Object.keys(overview?.today_by_account ?? {}).length
-  const todayAsOfNote =
-    todayAccountCount > 0
-      ? `${portfolioScopeLabel || 'ALL ACCOUNTS'} · ${todayAccountCount} contributing`
-      : portfolioScopeLabel || null
+  const todayLinked = todayPnl?.linked_account_count ?? null
+  const todayRepresented = todayPnl?.represented_account_count ?? todayAccountCount
+  const todayMissing: string[] = todayPnl?.missing_accounts ?? []
+  const todayAsOfNote = (() => {
+    const scope = todayPnl?.scope?.replace(/_/g, ' ') || portfolioScopeLabel || 'ALL ACCOUNTS'
+    if (todayLinked == null) {
+      return todayAccountCount > 0 ? `${scope} · ${todayAccountCount} contributing` : scope || null
+    }
+    // Coverage is stated as a ratio, and a shortfall names the accounts. "4
+    // contributing" alone cannot tell you whether two are missing or there are
+    // only four.
+    const cover = `${todayRepresented}/${todayLinked} accts`
+    return todayMissing.length ? `${scope} · ${cover} · missing ${todayMissing.join(', ')}` : `${scope} · ${cover}`
+  })()
+
+  // ── the six clocks, each named (live capture 2026-09-04, release a7c550d1d) ──
+  //
+  // The header showed "data_as_of 2026-09-03" beside a book panel saying
+  // "session 2026-09-04" and a status line saying "observed 2026-09-04 13:30:02
+  // ET · last refresh 2026-09-04T07:43:15". Four clocks, one of them named, and
+  // the one that was named belonged to a $5,000 account standing in front of a
+  // $1.28M total. PortfolioAggregate@v2 publishes each separately; nothing here
+  // may collapse two of them back into one word.
+  const cov = portfolioAgg?.coverage
+  const posNewest = portfolioAgg?.position_observation_newest ?? null
+  const posOldest = portfolioAgg?.position_observation_oldest ?? null
+  const posOldestAcct = portfolioAgg?.position_observation_oldest_account ?? null
+  const posOldestAgeH = portfolioAgg?.position_observation_oldest_age_hours ?? null
+  const valuationTime = portfolioAgg?.valuation_time ?? null
+  const quoteObsTime = portfolioAgg?.quote_observation_time ?? null
+
+  const ageMark = (h: number | null) =>
+    h == null ? '' : h >= 48 ? ` (${Math.round(h / 24)}d old)` : ` (${Math.round(h)}h old)`
+
+  // How much of the aggregate VALUE the headline date actually speaks for. On
+  // the captured book this was 0.4% -- the single number that makes a fresh date
+  // over a stale book impossible to state honestly.
+  const coverageMark =
+    cov?.at_newest_pct != null ? ` · covers ${cov.at_newest_pct}% of value` : ''
+  const undatedMark =
+    cov?.accounts_undated
+      ? ` · ${cov.accounts_undated}/${cov.accounts_total} accounts undated`
+      : ''
 
   const portfolioAsOfNote =
     portfolioAgg && portfolioScopeLabel
-      ? `${portfolioScopeLabel} · oldest ${portfolioAgg.oldest_observation_account ?? '—'}`
+      ? `${portfolioScopeLabel} · ${portfolioAgg.included_account_count ?? '?'} accts${coverageMark}${undatedMark}`
       : undefined
+
+  // The oldest contributor, with its exact stamp and age -- never the bare
+  // account name, which says "something is old" and nothing about how old.
+  const oldestLine = posOldest
+    ? `oldest ${posOldestAcct ?? '—'} ${posOldest}${ageMark(posOldestAgeH)}`
+    : cov?.accounts_undated
+      ? `no dated position observation (${cov.accounts_undated} account(s) undated)`
+      : 'oldest —'
+
+  const clockLines = [
+    posNewest ? `positions observed ${posNewest} (newest, ${portfolioAgg?.position_observation_newest_account ?? '—'})${coverageMark}` : 'positions observed UNDATED',
+    oldestLine,
+    valuationTime ? `valued ${valuationTime}` : 'valued UNDATED',
+    quoteObsTime ? `quotes observed ${quoteObsTime}${portfolioAgg?.quote_source ? ` (${portfolioAgg.quote_source})` : ''}` : 'quotes observed UNDATED',
+  ]
   // No source-mixing null-coalesce (cc-header-truth-v2 Phase 2 E). The TRADING
   // tile must come from one internally-consistent projection — the live broker
   // journal — and never silently borrow the paper-trade-readiness win rate when
@@ -117,12 +176,28 @@ export default function MetricStrip({ onDrill }: Props) {
   // fallback and must surface DEGRADED/UNAVAILABLE rather than a healthy-looking
   // price when Finviz is down and a read-only alternate answered.
   const quoteSel = overview?.quote_selection
+  // "quotes DEGRADED (price_cache_nav(1))" said something was wrong and nothing
+  // about how much. A degraded aggregate must state its coverage: how many
+  // symbols the selected provider actually answered for, and how many fell back.
+  const quoteCovered = quoteSel?.covered_symbols ?? quoteSel?.selected_symbol_count ?? null
+  const quoteTotal = quoteSel?.total_symbols ?? quoteSel?.symbol_count ?? null
+  const quoteDegradedN = quoteSel?.degraded_symbol_count ?? null
+  const quoteCoverMark =
+    quoteCovered != null && quoteTotal != null ? ` ${quoteCovered}/${quoteTotal} symbols` : ''
   const quoteStatusMark = (() => {
     if (!quoteSel) return null
     if (quoteSel.status === 'UNAVAILABLE') return ' · quotes UNAVAILABLE'
-    if (quoteSel.fallback_used) return ` · quotes DEGRADED (${quoteSel.fallback_reason ?? 'fallback'})`
-    return ` · quotes ${quoteSel.selected_provider ?? '—'}`
+    if (quoteSel.fallback_used) {
+      const n = quoteDegradedN != null ? `${quoteDegradedN} ` : ''
+      return ` · quotes DEGRADED · ${n}on ${quoteSel.fallback_reason ?? 'fallback'}${quoteCoverMark}`
+    }
+    return ` · quotes ${quoteSel.selected_provider ?? '—'}${quoteCoverMark}`
   })()
+  // Observation time of the SELECTED quote, distinct from the aggregate's
+  // valuation time and from the browser's receipt clock.
+  const quoteObservedMark = quoteSel?.selected_observation_time
+    ? ` · observed ${quoteSel.selected_observation_time}`
+    : ''
 
   // Canonical run-scoped summary (cc-header-truth-v2 corrective pass). One
   // taxonomy, one reconciliation, identical to HomeHub and the Trading page.
@@ -146,26 +221,30 @@ export default function MetricStrip({ onDrill }: Props) {
     {
       label: 'PORTFOLIO', value: portfolioVal != null ? fmt$(portfolioVal, 0) : '—',
       stale: overviewFresh.stale ? (overviewFresh.surfaceLabel?.replace(/^STALE · /, ' · ') || overviewAsOfMark) : null,
-      asOf: overviewFresh.asOf,
-      asOfLabel: 'data_as_of',
+      // The tile shows the POSITION observation. Saying "data_as_of" named no
+      // clock at all; saying "positions observed" names the one on screen and
+      // leaves the other three visibly absent rather than silently merged.
+      asOf: posNewest ?? overviewFresh.asOf,
+      asOfLabel: 'positions observed',
       asOfNote: portfolioAsOfNote ?? overviewAcct,
-      undated: !overviewFresh.dataAsOf,
+      undated: !posNewest && !overviewFresh.dataAsOf,
       color: overviewFresh.stale ? BB.amber : 'var(--text0)',
-      tip: `Total portfolio equity — an ALL-ACCOUNTS aggregate${portfolioAgg?.included_account_count != null ? ` of ${portfolioAgg.included_account_count} account(s)` : ''} (Schwab, Alpaca, Moomoo). No single account is the source of the total; a named account is the oldest/stale contributor. Refreshes every 2 min via /api/v2/overview.${overviewAsOfMark}${overviewFresh.stale ? ` · ${overviewFresh.reason}` : ''}`,
-      drill: { title: 'Portfolio (ALL ACCOUNTS)', subtitle: overviewFresh.stale ? `STALE${overviewAsOfMark}` : `All-account aggregate · ${portfolioAgg?.included_account_count ?? '?'} account(s)`, endpoint: '/api/v2/overview',
-        rows: overview ? [{ portfolio_value: overview.portfolio_value, portfolio_aggregate: overview.portfolio_aggregate, total_cash: overview.total_cash, position_count: overview.position_count, today_change: overview.today_change, today_pct: overview.today_pct, as_of: overview.as_of, surface_stale: overviewFresh.stale, surface_reason: overviewFresh.reason }] : [] },
+      tip: `Total portfolio equity — an ALL-ACCOUNTS aggregate${portfolioAgg?.included_account_count != null ? ` of ${portfolioAgg.included_account_count} account(s)` : ''} (Schwab, Alpaca, Moomoo). No single account is the source of the total.\n\nFOUR SEPARATE CLOCKS:\n · ${clockLines.join('\n · ')}\n\nThe newest position observation dates only ${cov?.at_newest_pct ?? '—'}% of the aggregate value; ${cov?.value_fresh_pct ?? '—'}% is within ${cov?.stale_after_hours ?? 48}h. Refreshes every 2 min via /api/v2/overview.${overviewFresh.stale ? ` · ${overviewFresh.reason}` : ''}`,
+      drill: { title: 'Portfolio (ALL ACCOUNTS)', subtitle: overviewFresh.stale ? `STALE · ${oldestLine}` : `All-account aggregate · ${portfolioAgg?.included_account_count ?? '?'} account(s)${coverageMark}`, endpoint: '/api/v2/overview',
+        rows: overview ? [{ portfolio_value: overview.portfolio_value, positions_observed_newest: posNewest, positions_observed_oldest: posOldest, positions_observed_oldest_account: posOldestAcct, positions_observed_oldest_age_hours: posOldestAgeH, valuation_time: valuationTime, quote_observation_time: quoteObsTime, quote_source: portfolioAgg?.quote_source, coverage: cov, portfolio_aggregate: overview.portfolio_aggregate, total_cash: overview.total_cash, position_count: overview.position_count, today_change: overview.today_change, today_pct: overview.today_pct, as_of: overview.as_of, surface_stale: overviewFresh.stale, surface_reason: overviewFresh.reason }] : [] },
     },
     {
       label: 'TODAY', value: todayChange != null ? `${todayChange >= 0 ? '+' : ''}${fmt$(todayChange, 0)}${todayPct != null ? ` ${todayPct >= 0 ? '+' : ''}${todayPct}%` : ''}` : '—',
-      stale: overviewFresh.stale ? (overviewFresh.surfaceLabel?.replace(/^STALE · /, ' · ') || overviewAsOfMark) : null,
-      asOf: overviewFresh.asOf,
-      asOfLabel: 'data_as_of',
+      // A P&L is stamped with its OWN session, never the position clock.
+      stale: todayPnl?.complete === false ? ` · ${todayMissing.length} acct(s) missing` : null,
+      asOf: todayPnl?.session_date ?? null,
+      asOfLabel: 'P&L session',
       asOfNote: todayAsOfNote,
-      undated: !overviewFresh.dataAsOf,
+      undated: !todayPnl?.session_date,
       color: overviewFresh.stale ? BB.amber : todayChange == null ? 'var(--text3)' : todayChange >= 0 ? BB.green : BB.red,
-      drill: { title: "Today's Move", subtitle: overviewFresh.stale ? `STALE${overviewAsOfMark}` : 'By account · from /api/v2/overview', endpoint: '/api/v2/overview',
+      drill: { title: "Today's Move", subtitle: `${todayPnl?.session_date ? `session ${todayPnl.session_date}` : 'session UNDATED'} · ${todayPnl?.coverage_reason ?? 'coverage unknown'}`, endpoint: '/api/v2/overview',
         rows: overview ? [
-          { today_change: overview.today_change, today_pct: overview.today_pct, portfolio_value: overview.portfolio_value, as_of: overview.as_of, surface_stale: overviewFresh.stale },
+          { today_change: overview.today_change, today_pct: overview.today_pct, pnl_session_date: todayPnl?.session_date, pnl_session_source: todayPnl?.session_source, pnl_calculated_at: todayPnl?.calculated_at, pnl_mark_source: todayPnl?.mark_source, scope: todayPnl?.scope, linked_accounts: todayLinked, represented_accounts: todayRepresented, contributing_accounts: todayPnl?.contributing_accounts, zero_change_accounts: todayPnl?.zero_change_accounts, missing_accounts: todayMissing, portfolio_value: overview.portfolio_value, surface_stale: overviewFresh.stale },
           ...Object.entries(overview.today_by_account ?? {})
             .sort((a: any, b: any) => Math.abs(b[1].change) - Math.abs(a[1].change))
             .map(([acct, d]: any) => ({
@@ -174,7 +253,7 @@ export default function MetricStrip({ onDrill }: Props) {
               account_value: d.value, top_movers: d.top_movers || null,
             })),
         ] : [] },
-      tip: `Today's net change ($ and %) across all linked accounts. Click to see per-account breakdown. Refreshes every 2 min.${overviewAsOfMark}`,
+      tip: `Today's net change ($ and %).\n\n · P&L session: ${todayPnl?.session_date ?? 'UNDATED'}${todayPnl?.session_source ? ` (from ${todayPnl.session_source})` : ''}\n · calculated: ${todayPnl?.calculated_at ?? '—'}\n · marks: ${todayPnl?.mark_source ?? '—'}\n · coverage: ${todayPnl?.coverage_reason ?? '—'}\n\nThis is the P&L's OWN session — not the date the share counts were observed (${posNewest ?? 'UNDATED'}). Click for the per-account breakdown. Refreshes every 2 min.`,
     },
     {
       // "53.3% · 169 · $55,429" was three unlabelled numbers. A reader cannot tell which
@@ -215,7 +294,17 @@ export default function MetricStrip({ onDrill }: Props) {
       value: setupsValue,
       // Extra amber mark when value already contains STALE (keeps label chip + as_of visible).
       stale: scanStale ? `${setupsAsOfMark || ' · stale'}` : null,
-      asOf: setupsFresh.asOf,
+      // The captured header read "as_of 2026-09-04 17:39" with no zone, beside a
+      // Home panel saying "9:00 AM scan · Sep 4" -- two renderings of one run,
+      // eight hours apart, because one was the run's scheduled ET time and the
+      // other a UTC cache stamp. The run's own id and timestamp are shown, and
+      // the zone is stated.
+      asOf: setupRun.runTimestamp ?? setupsFresh.asOf,
+      asOfLabel: setupRun.runTimestamp ? 'run' : 'as_of',
+      asOfNote: [
+        setupRun.runId ? `id ${setupRun.runId}` : null,
+        setupRun.unaccounted ? `${setupRun.unaccounted} UNACCOUNTED` : null,
+      ].filter(Boolean).join(' · ') || null,
       color: scanStale ? BB.amber : setupRun.degraded ? BB.amber : setupRun.goPositive ? BB.green : 'var(--text3)',
       tip: scanStale
         ? `Scanner surface is STALE (${setupsFresh.reason || 'prior/empty cache'}). ${setupsRun}${setupsAsOfMark}. HTTP 200 is not a live claim — Trading → Trade AI shows the same payload.`
@@ -236,7 +325,7 @@ export default function MetricStrip({ onDrill }: Props) {
             onClick={() => onDrill({ title: 'Price Freshness', subtitle: `${priceStamp}${quoteStatusMark ?? ''}`, endpoint: '/api/v2/overview',
               rows: [overview?.quote_selection ? { quote_selection: overview.quote_selection } : null, overview?.pricing ?? { last_repriced: overview?.last_repriced, reprice_source: overview?.reprice_source }].filter(Boolean) })}
             style={{ fontSize: TYPE.xs, color: 'var(--text3)', marginTop: 2, cursor: 'pointer', maxWidth: 280 }}
-          >{priceStamp}{quoteStatusMark}</div>
+          >{priceStamp}{quoteStatusMark}{quoteObservedMark}</div>
         )}
       </div>
       {tiles.map(t => (
