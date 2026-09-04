@@ -35,8 +35,44 @@ check('renderer no longer hardcodes the as_of label',
   !/\n\s*as_of \{String\(\(t as any\)\.asOf\)/.test(code))
 check('renderer takes the label from the tile',
   code.includes("(t as any).asOfLabel || 'as_of'"))
-check('portfolio and today tiles both declare the data_as_of label',
-  (code.match(/asOfLabel: 'data_as_of'/g) || []).length === 2)
+// This previously asserted BOTH tiles carried `asOfLabel: 'data_as_of'`, and it
+// passed while the header was at its most misleading: PORTFOLIO and TODAY showed
+// the same stamp under the same name for two different clocks. `data_as_of` names
+// no clock at all -- it is the position observation, and the operator's capture
+// had it standing over a P&L struck the following session. The assertion is
+// inverted: the tiles must declare DIFFERENT, self-describing labels.
+check('no tile labels a clock "data_as_of" any more',
+  !/asOfLabel: 'data_as_of'/.test(code))
+check('the portfolio tile names the position-observation clock',
+  code.includes("asOfLabel: 'positions observed'"))
+check("the today tile names the P&L's own session",
+  code.includes("asOfLabel: 'P&L session'"))
+check('no two tiles share a static clock label', (() => {
+  // The trailing `|| size > 1` this once carried made it pass for any header
+  // with two distinct labels anywhere -- including the defect. A duplicate is
+  // now the only thing it looks at.
+  const labels = [...code.matchAll(/asOfLabel: '([^']+)'/g)].map(m => m[1])
+  if (labels.length < 2) return false          // vacuous pass is a failure
+  return new Set(labels).size === labels.length
+})())
+check('the portfolio tile states how much value its date covers',
+  code.includes('covers ${cov.at_newest_pct}% of value'))
+check('the oldest contributor carries a stamp and an age, not just a name',
+  code.includes('const oldestLine') && code.includes('ageMark(posOldestAgeH)'))
+check('the four aggregate clocks are rendered as separate lines',
+  code.includes('const clockLines') &&
+  code.includes('positions observed') && code.includes('valued ') &&
+  code.includes('quotes observed '))
+check("today's coverage names the missing accounts rather than only a count",
+  code.includes('missing ${todayMissing.join'))
+check('the setups tile carries its run id',
+  code.includes('id ${setupRun.runId}'))
+check('unaccounted setup rows are shown on the tile face',
+  code.includes('UNACCOUNTED'))
+check('degraded quotes state their symbol coverage',
+  code.includes('quoteCoverMark') && code.includes('quotes DEGRADED'))
+check('the selected quote observation is its own mark',
+  code.includes('quoteObservedMark'))
 check('an UNDATED tile renders a line rather than nothing',
   code.includes('data-surface-undated'))
 check('the overview mark names data_as_of and states UNDATED',

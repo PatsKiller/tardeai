@@ -618,10 +618,15 @@ export default function HomeHub({ onDrill }: Props) {
             )}
             {pendingCount > 0 && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderBottom: '1px solid var(--border)', fontSize: 11, flexWrap: 'wrap' }}>
-                <span style={{ fontSize: 8, fontWeight: 800, color: '#ef4444' }}>P0</span>
-                <span onClick={() => onDrill({ title: 'Pending Proposals', subtitle: `${pendingCount} awaiting review`, endpoint: '/api/v2/paper-proposals', rows: [{ pending_count: pendingCount }] })}
+                {/* This row is the PENDING queue, not the P0 lane. It carried a
+                    red "P0" chip in front of `pending_count`, so the header read
+                    "P0 12 proposals awaiting review" while the operator inbox
+                    beside it said "P0 7" from p0_count. Two different populations
+                    under one label. The chip now names what it is counting. */}
+                <span style={{ fontSize: 8, fontWeight: 800, color: '#f59e0b' }}>PENDING</span>
+                <span onClick={() => onDrill({ title: 'Pending Proposals', subtitle: `${pendingCount} pending · scope: all proposals awaiting review (not P0-only)`, endpoint: '/api/v2/paper-proposals', rows: [{ pending_count: pendingCount, shown_count: proposals?.shown_count, list_limit: proposals?.list_limit, scope: 'status=PENDING, all priorities' }] })}
                   style={{ flex: 1, cursor: 'pointer', color: 'var(--text2)', minWidth: 160 }}>
-                  {pendingCount} proposals awaiting review
+                  {pendingCount} proposals pending review{proposals?.shown_count != null && proposals.shown_count < pendingCount ? ` · ${proposals.shown_count} shown` : ''}
                 </span>
                 <Link to="/trading?tab=Proposals" style={{ fontSize: 10, fontWeight: 700, color: '#60a5fa', textDecoration: 'none' }}>Proposals →</Link>
                 <Link to="/reports?super=ops&category=paper" style={{ fontSize: 9, fontWeight: 600, color: 'var(--text3)', textDecoration: 'none' }}>Reports</Link>

@@ -56,7 +56,23 @@ DECISION_NOGO: frozenset = frozenset(
     }
 )
 
-CLASS_LABELS: tuple[str, ...] = ("go", "wait", "nogo", "excluded", "unclassified")
+# A scanner decision that ESCALATES rather than deciding. The scanner set it
+# deliberately (it has a `manual_review_required` column); the row is fully
+# processed and has a terminal disposition -- it is simply not GO/WAIT/NOGO.
+#
+# Live acceptance 2026-09-04 run 2026-09-04::0900: 12 of 60 rows carried
+# MANUAL_REVIEW (scores 30-38, setup_class squeeze / momentum_runner / ...).
+# v1 had no token for it, so they fell into `unclassified` -- which reads as
+# "the pipeline failed to decide" and made the run permanently PARTIAL. They are
+# NOT nogo: folding an escalation into a rejection is the exact error the
+# taxonomy comment below warns about, one level up.
+DECISION_REVIEW: frozenset = frozenset({"MANUAL_REVIEW", "NEEDS_REVIEW", "OPERATOR_REVIEW", "REVIEW", "ESCALATE"})
+
+# A row the scanner could not process at all. Distinct from `unclassified`
+# (processed, no recognisable decision) and from `review` (processed, escalated).
+DECISION_ERROR: frozenset = frozenset({"ERROR", "FAILED", "FAILURE", "EXCEPTION", "TIMEOUT"})
+
+CLASS_LABELS: tuple[str, ...] = ("go", "wait", "nogo", "review", "excluded", "error", "unclassified")
 
 INTEGRITY_RECONCILED = "RECONCILED"
 INTEGRITY_COUNT_MISMATCH = "COUNT_MISMATCH"
@@ -80,6 +96,10 @@ def classify_decision(decision: Any, *, disqualified: bool = False) -> str:
         return "wait"
     if d in DECISION_NOGO:
         return "nogo"
+    if d in DECISION_REVIEW:
+        return "review"
+    if d in DECISION_ERROR:
+        return "error"
     return "unclassified"
 
 
@@ -135,8 +155,13 @@ def build_setup_run_summary(
     Invariants (enforced, never silently dropped):
 
       * GO + WAIT + NOGO == classified_count
-      * classified_count + excluded_count + unclassified_count == the scanned
+      * classified + excluded + review + error + unclassified == the scanned
         population this tally was drawn from
+
+    Every residual class is named and published. v1 had one residual bucket
+    (`unclassified`) and 12 escalated rows fell into it, so the header could only
+    say "48 classified / 60 scanned / 0 excluded" and leave 12 rows unaccounted
+    with no way to say what they were.
       * if a second scanned-count contract disagrees, the summary is PARTIAL,
         not RECONCILED — two "scanned" numbers cannot both be the run.
 
@@ -147,11 +172,15 @@ def build_setup_run_summary(
     go = int(tally.get("go", 0) or 0)
     wait = int(tally.get("wait", 0) or 0)
     nogo = int(tally.get("nogo", 0) or 0)
+    review = int(tally.get("review", 0) or 0)
     excluded = int(tally.get("excluded", 0) or 0)
+    error = int(tally.get("error", 0) or 0)
     unclassified = int(tally.get("unclassified", 0) or 0)
 
+    # classified stays GO+WAIT+NOGO: an escalation is not a classification.
     classified = go + wait + nogo
-    reconciled_scanned = classified + excluded + unclassified
+    accounted = classified + excluded + review + error + unclassified
+    reconciled_scanned = accounted
 
     # Invariant 1: the three labels partition classified_count by construction,
     # but recompute and assert so a future edit cannot silently break it.
@@ -165,7 +194,8 @@ def build_setup_run_summary(
     elif reconciled_scanned != int(scanned_count):
         integrity = INTEGRITY_COUNT_MISMATCH
         integrity_reasons.append(
-            f"classified({classified})+excluded({excluded})+unclassified({unclassified})"
+            f"classified({classified})+excluded({excluded})+review({review})"
+            f"+error({error})+unclassified({unclassified})"
             f"={reconciled_scanned} != scanned({int(scanned_count)})"
         )
     elif scanned_count_alt is not None and int(scanned_count_alt) != int(scanned_count):
@@ -187,8 +217,12 @@ def build_setup_run_summary(
         "go_count": go,
         "wait_count": wait,
         "nogo_count": nogo,
+        "review_count": review,
         "excluded_count": excluded,
+        "error_count": error,
         "unclassified_count": unclassified,
+        "accounted_count": accounted,
+        "unaccounted_count": (int(scanned_count) - accounted) if scanned_count is not None else None,
         "reconciled_scanned": reconciled_scanned,
         "freshness_status": freshness_status,
         "quality": quality,
