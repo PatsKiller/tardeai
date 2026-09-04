@@ -60,6 +60,7 @@ RESEARCH_SUITES = (
     "tests/test_brave_research_provenance.py",
     "tests/test_brave_research_lanes.py",
     "tests/test_gate_registration_coexistence.py",
+    "tests/test_brave_effectiveness_route.py",
 )
 
 
@@ -236,26 +237,43 @@ def test_a_real_three_way_merge_keeps_both_registrations():
     assert len(names) == len(set(names))
 
 
-def test_the_real_merge_preserves_the_residual_block_verbatim():
-    """Not just present — unmodified. A reformatted tuple is still a rewrite.
+def test_no_gate_tuple_from_main_is_altered_by_this_branch():
+    """The durable form of "preserved verbatim".
 
-    Only the *residual* block is compared byte-for-byte against the merged tree.
-    `git merge-tree` merges committed HEAD, which legitimately lags the working
-    tree while this campaign is mid-edit; asserting this campaign's own block
-    against HEAD would make the test fail for a reason that has nothing to do
-    with coexistence. This campaign's block is instead pinned against the
-    working tree by `test_the_research_fixture_matches_the_working_tree`.
+    The original assertion compared the merged file against the residual
+    campaign's 93-line diff at `49a7be70`. That held while `49a7be70` was that
+    campaign's final SHA — but it kept working after `49a7be70`, reorganised
+    its own GATES entries, and merged a different final state. The frozen block
+    is therefore not contiguous even on `origin/main`, and asserting it would
+    fail for a reason that has nothing to do with this lane.
+
+    What must be true is narrower and permanent: **every gate tuple present on
+    `origin/main` appears in this branch with identical paths.** That catches a
+    dropped tuple, a reordered path list, and a silently edited registration,
+    without freezing another campaign's history.
     """
-    oid = _merge_tree_oid()
-    if oid is None:
-        pytest.skip(f"residual commit {RESIDUAL_SHA[:9]} not reachable")
+    main_src = _git("show", "origin/main:scripts/run_cio_hardening_ci.py")
+    if main_src.returncode != 0:
+        pytest.skip("origin/main not available in this clone")
 
-    merged = _git("show", f"{oid}:scripts/run_cio_hardening_ci.py").stdout
-    fixture = (FIXTURES / "residual_gates_append.py.txt").read_text(encoding="utf-8")
-    assert fixture.strip() in merged, (
-        "the residual campaign's append survived the merge but was altered; it must be preserved verbatim"
-    )
-    assert RESEARCH_GATE in gate_names(merged), "this campaign's registration did not survive the merge"
+    theirs = gate_map(main_src.stdout)
+    mine = gate_map(GATE_FILE.read_text(encoding="utf-8"))
+
+    missing = sorted(set(theirs) - set(mine))
+    assert not missing, f"this branch dropped gates that exist on main: {missing}"
+
+    altered = {name: (paths, mine[name]) for name, paths in theirs.items() if mine[name] != paths}
+    assert not altered, f"this branch altered the suite list of gates it does not own: {sorted(altered)}"
+
+    added = sorted(set(mine) - set(theirs))
+    assert added == [RESEARCH_GATE], f"this branch adds gates beyond its own registration: {added}"
+
+
+def test_the_residual_campaigns_gates_are_all_present():
+    """Named explicitly, so a future merge that loses one is named too."""
+    mine = gate_names(GATE_FILE.read_text(encoding="utf-8"))
+    missing = [g for g in RESIDUAL_GATES if g not in mine]
+    assert not missing, f"residual campaign gates absent from this branch: {missing}"
 
 
 def test_the_research_fixture_matches_the_working_tree():

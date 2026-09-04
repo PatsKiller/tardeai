@@ -19,5 +19,8 @@
             # write target, and a merge that keeps one campaign's tuples and
             # drops another's leaves CI green while those suites stop running.
             "tests/test_gate_registration_coexistence.py",
+            # The deferred surface, now that api_v2.py has merged: rendering
+            # must never reach a paid provider.
+            "tests/test_brave_effectiveness_route.py",
         ],
     ),

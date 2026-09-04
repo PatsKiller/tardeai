@@ -26789,6 +26789,104 @@ def _research_provenance():
     return _residual_surface("research_provenance", lambda: _research_intelligence_freshness())
 
 
+def _brave_research_effectiveness():
+    """GET /api/v2/research-intelligence/brave — paid-search truth, read-only.
+
+    Reads the ledger, the metrics file and the last measured plan allowance.
+    It performs **zero** provider calls: `Purpose.PAGE_LOAD` is `DENIED_POLICY`
+    in the router before any budget or network work, so a rendering path cannot
+    reach Brave even with budget available.
+
+    The plan is reported as **measured**, not as the configured cap. Measured
+    2026-09-03 the provider publishes `50;w=1, 0;w=2592000` — 50 requests per
+    second and no metered monthly window — so the 850/month figure is local cost
+    policy. Two files previously hardcoded 1,000 and 2,000/month; both were
+    invented, and neither had ever been checked against a response header.
+    """
+    try:
+        from scripts.lib.brave_research_router import effectiveness_report, health
+    except ImportError:  # pragma: no cover - import shape varies by release
+        from lib.brave_research_router import effectiveness_report, health  # type: ignore
+
+    rep = effectiveness_report()
+    hb = health()
+    recon = rep.get("allowance_reconciliation") or {}
+
+    # An unmeasured ceiling must read as an assumption, not as the plan.
+    if recon.get("reconciled"):
+        plan_state = "MEASURED"
+    elif recon.get("billing_window_metered") is False:
+        plan_state = "MEASURED_UNMETERED"
+    else:
+        plan_state = "CONFIGURED_NOT_PROVEN"
+
+    if hb.get("firing"):
+        if "brave_key_missing" in hb["firing"]:
+            label = "Configured — inactive"
+        elif "brave_monthly_exhausted" in hb["firing"]:
+            label = "Budget exhausted"
+        elif "brave_producing_not_adopted" in hb["firing"]:
+            label = "Producing — not adopted"
+        elif "brave_allowance_never_measured" in hb["firing"]:
+            label = "Unknown — allowance never measured"
+        else:
+            label = "Degraded"
+    else:
+        label = "Working end to end"
+
+    return {
+        "schema": rep.get("schema"),
+        "authority": "READ_ONLY_ADVISORY",
+        "status_label": label,
+        "firing": hb.get("firing", []),
+        "plan": {
+            "state": plan_state,
+            "rate_limit_per_second": recon.get("rate_limit_per_second"),
+            "billing_window_seconds": recon.get("billing_window_seconds"),
+            "billing_window_metered": recon.get("billing_window_metered"),
+            "configured_monthly_ceiling": recon.get("configured_monthly_limit"),
+            "measured_monthly_limit": recon.get("measured_monthly_limit"),
+            "measured_at": recon.get("measured_at"),
+            "note": recon.get("note"),
+        },
+        "budget": {
+            "monthly_used": rep.get("monthly_used"),
+            "monthly_limit": rep.get("monthly_limit"),
+            "monthly_remaining": rep.get("monthly_remaining"),
+            "reserve_calls": rep.get("reserve_calls"),
+            "reserve_pct": rep.get("reserve_pct"),
+            "denied": rep.get("denied"),
+        },
+        "effectiveness": {
+            "attempted": rep.get("attempted"),
+            "billed": rep.get("billed"),
+            "cache_hits": rep.get("cache_hits"),
+            "cache_hit_rate_pct": rep.get("cache_hit_rate_pct"),
+            "coalesced": rep.get("coalesced"),
+            "coalesce_rate_pct": rep.get("coalesce_rate_pct"),
+            "nonempty_rate_pct": rep.get("nonempty_rate_pct"),
+            "errors": rep.get("errors"),
+            "unique_domains": rep.get("unique_domains"),
+            "top_domains": rep.get("top_domains"),
+            "adopted": rep.get("adopted"),
+            "adoption_rate_pct": rep.get("adoption_rate_pct"),
+            "calls_per_adopted_evidence": rep.get("calls_per_adopted_evidence"),
+            "evidence_gaps_closed": rep.get("evidence_gaps_closed"),
+        },
+        "by_purpose": rep.get("by_purpose", {}),
+        # Four separate clocks. A single "last run" cannot distinguish
+        # "asked and failed" from "asked, answered, and nobody cited it".
+        "clocks": {
+            "last_attempt": hb.get("last_attempt"),
+            "last_success": hb.get("last_success"),
+            "last_nonempty": hb.get("last_nonempty"),
+            "last_adopted": hb.get("last_adopted"),
+        },
+        "provider_call_on_page_load": False,
+        "as_of": rep.get("as_of"),
+    }
+
+
 def _writer_status():
     """GET /api/v2/writers/status — eight signals per writer, answered separately.
 
@@ -45446,6 +45544,7 @@ ROUTES = {
     "/api/v2/watch/projection": lambda: _watch_projection(),
     "/api/v2/closed-loop/separation": lambda: _closed_loop_separation(),
     "/api/v2/research-intelligence/provenance": lambda: _research_provenance(),
+    "/api/v2/research-intelligence/brave": lambda: _brave_research_effectiveness(),
     "/api/v2/writers/status": lambda: _writer_status(),
     "/api/v2/reentry/status": lambda: _reentry_status_projection(),
     "/api/v2/financial/conflicts": lambda: _financial_conflict_state(),
