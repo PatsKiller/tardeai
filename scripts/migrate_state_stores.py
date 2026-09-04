@@ -555,6 +555,11 @@ def _emit_manifest(args: Any) -> int:
     if ledger:
         fresh["conflict_ledger_sha256"] = ledger.get("ledger_sha256")
         fresh["unresolved_record_total"] = sum(r.get("unresolved_record_count", 0) for r in fresh["stores"])
+        # build_manifest hashed the document before these two keys existed, so the
+        # recorded hash has to be recomputed or the manifest fails its own integrity
+        # rail on --apply. Latent until then: dry-run only computes the hash, it does
+        # not compare it to what the file claims.
+        fresh["manifest_sha256"] = manifest_hash(fresh)
     out.write_text(json.dumps(fresh, indent=2, sort_keys=False) + "\n")
 
     changed = fresh["manifest_sha256"] != prev.get("manifest_sha256")

@@ -202,3 +202,33 @@ def test_endpoint_fails_closed_when_scan_raises(monkeypatch):
     assert r["status"] != "CONVERGED"
     assert r["auto_remediate"] is False
     assert "RuntimeError" in r["reason"]
+
+
+class TestSidecarsAreNotStores:
+    """The migration's own bookkeeping must not read as a divergence it caused.
+
+    A conflict sidecar records which records inside a store could not be reconciled.
+    It is written to the served root only, on purpose. A scanner that treats every
+    *.json in the directory as a governed store saw it as a new served-only fork and
+    reported UNKNOWN_BLOCKING — turning correct bookkeeping into a blocking finding.
+    """
+
+    def test_a_conflict_sidecar_is_not_a_store(self):
+        assert srd.is_sidecar("tax_lots.json.conflicts.json")
+        assert srd.is_sidecar("stops.json.conflicts.json")
+
+    def test_a_real_store_is_not_a_sidecar(self):
+        for name in ("tax_lots.json", "stops.json", "_freshness.json", "conflicts.json"):
+            assert not srd.is_sidecar(name), name
+
+    def test_the_scan_excludes_sidecars(self, tmp_path, monkeypatch):
+        prod, served = tmp_path / "producer", tmp_path / "served"
+        prod.mkdir()
+        served.mkdir()
+        (prod / "a.json").write_text("{}")
+        (served / "a.json").write_text("{}")
+        (served / "a.json.conflicts.json").write_text('{"records": []}')
+        monkeypatch.setattr(srd, "_roots", lambda _r=None: (prod, served))
+        rep = srd.scan(with_hashes=False)
+        names = {s["store"] for s in rep["stores"]}
+        assert names == {"a.json"}, f"sidecar leaked into the scan: {names}"
