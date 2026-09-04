@@ -197,6 +197,44 @@ def rail_producers_quiesced(row: dict[str, Any], check: bool = True) -> dict[str
     return {"affected_units": units, "running": running}
 
 
+#: The real state roots. A rehearsal that can reach either of these is not a rehearsal.
+PRODUCTION_ROOTS = (
+    Path("/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/data/portfolios/state"),
+    Path("/home/johnclaw/trade-ai-releases/persistent-state/data/portfolios/state"),
+)
+
+
+def rail_rehearsal_is_isolated(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """Rail: --rehearsal may only write somewhere that is provably not production.
+
+    Rehearsal mode waives the operator-approval rail, because there is no production
+    state to protect in a temp directory and a token invented to satisfy that rail
+    would be a simulated approval on the same code path production uses. Waiving it
+    is only safe if the run genuinely cannot reach production, so this check is
+    stricter than the one it stands in for: every target, producer and served path
+    must resolve outside BOTH real state roots.
+    """
+    offending = []
+    for row in rows:
+        for key in ("canonical_target", "producer_path", "served_path"):
+            val = row.get(key)
+            if not val:
+                continue
+            resolved = Path(val).resolve()
+            for prod in PRODUCTION_ROOTS:
+                try:
+                    resolved.relative_to(prod.resolve())
+                except ValueError:
+                    continue
+                offending.append(f"{row['store']}.{key} -> {resolved}")
+    if offending:
+        raise Refusal(
+            "rehearsal_touches_production",
+            "--rehearsal was given paths inside a real state root: " + "; ".join(offending[:5]),
+        )
+    return {"isolated": True, "checked_paths": len(rows) * 3, "production_roots": [str(p) for p in PRODUCTION_ROOTS]}
+
+
 def rail_approval(token: str | None, expected: str | None) -> None:
     """Rail: a human said yes, immediately before the first write.
 
@@ -564,6 +602,15 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--expected-deployed-sha")
     ap.add_argument("--expected-manifest-sha256")
     ap.add_argument("--approval-token")
+    ap.add_argument(
+        "--rehearsal",
+        action="store_true",
+        help=(
+            "isolated rehearsal: waives ONLY the operator-approval rail, and only after "
+            "proving every path resolves outside both production state roots. Receipts are "
+            "stamped REHEARSAL and can never be read as a production run."
+        ),
+    )
     ap.add_argument("--issued-challenge", help="the challenge the native approval prompt issued")
     ap.add_argument("--backup-dir")
     ap.add_argument("--release-root")
@@ -602,7 +649,11 @@ def main(argv: list[str] | None = None) -> int:
                 args.expected_deployed_sha, deployed_sha(Path(args.release_root) if args.release_root else None)
             )
             receipt["manifest_sha256"] = rail_manifest_hash(doc, args.expected_manifest_sha256)
-            rail_approval(args.approval_token, args.issued_challenge)
+            if args.rehearsal:
+                receipt["mode"] = "rehearsal-apply"
+                receipt["rehearsal"] = rail_rehearsal_is_isolated(rows)
+            else:
+                rail_approval(args.approval_token, args.issued_challenge)
             if not args.backup_dir:
                 raise Refusal("unverified_backup", "--backup-dir is required for --apply")
         else:
