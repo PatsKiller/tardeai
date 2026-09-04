@@ -692,6 +692,18 @@ GATES = [
         ],
     ),
     (
+        # cc-whole-site-residual-v1 (2026-09-04): Phase B1. Asking the transaction
+        # history what Phase A refused to guess showed both candidate share counts were
+        # wrong -- the positions were fully exited, so the answer was zero. Lots are
+        # closed only where the broker reports no position AND the history nets to zero
+        # AND every action in it is classified. The eligibility rule is the safety
+        # mechanism, so most of the suite is about the cases where it must refuse.
+        "exited_tax_lot_closure",
+        [
+            "tests/test_exited_tax_lot_closure.py",
+        ],
+    ),
+    (
         # cc-whole-site-residual-v1 (2026-09-04): Phase A repair of the duplicates that
         # writer defect left behind. It may remove exact-duplicate CLOSED lots and
         # nothing else. The dangerous version is one line shorter -- dedupe everything --
