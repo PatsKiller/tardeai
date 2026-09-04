@@ -117,7 +117,11 @@ def test_overview_publishes_an_all_accounts_aggregate(tree):
     keys = _dict_keys(fn)
     assert "portfolio_aggregate" in keys
     src = ast.dump(fn)
-    assert "ALL_ACCOUNTS" in src, "the aggregate must name its scope explicitly"
+    # Wired through the contract builder — not an inline dict that can drift
+    # from accounts[] clocks (live acceptance rollback 2026-09-03).
+    assert "build_portfolio_aggregate" in src, (
+        "overview must call build_portfolio_aggregate so oldest/newest share accounts[] clocks"
+    )
 
 
 def test_overview_publishes_a_quote_selection_envelope(tree):
