@@ -59,6 +59,13 @@ check('the portfolio tile states how much value its date covers',
   code.includes('covers ${cov.at_newest_pct}% of value'))
 check('the oldest contributor carries a stamp and an age, not just a name',
   code.includes('const oldestLine') && code.includes('ageMark(posOldestAgeH)'))
+// A tooltip is not rendered text. The live audit found the oldest account had
+// vanished from the visible tile entirely -- I had replaced "oldest <name>" with
+// the coverage figure, which answers a different question. Both belong on the face.
+check('the oldest contributor is on the tile FACE, not only in the tooltip',
+  code.includes('const oldestMark') && code.includes('${oldestMark}'))
+check('the visible oldest mark carries the stamp and the age',
+  /oldestMark = posOldest[\s\S]{0,220}\$\{posOldest\}\$\{ageMark\(posOldestAgeH\)\}/.test(code))
 check('the four aggregate clocks are rendered as separate lines',
   code.includes('const clockLines') &&
   code.includes('positions observed') && code.includes('valued ') &&
