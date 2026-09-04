@@ -29,9 +29,17 @@ export default function MetricStrip({ onDrill }: Props) {
   // is an ALL-ACCOUNTS aggregate; a named account is only ever the oldest/stale
   // contributor, never the source of the whole total.
   const portfolioAgg = overview?.portfolio_aggregate
-  const portfolioAsOfNote = portfolioAgg
-    ? `ALL ACCOUNTS · oldest ${portfolioAgg.oldest_observation_account ?? '—'}`
-    : undefined
+  // Read scope from the contract — never hardcode. Live acceptance 2026-09-03
+  // failed when UI said ALL ACCOUNTS while aggregate clocks contradicted rows.
+  const portfolioScopeLabel = String(
+    portfolioAgg?.portfolio_scope ?? portfolioAgg?.aggregate_scope ?? '',
+  )
+    .replace(/_/g, ' ')
+    .trim()
+  const portfolioAsOfNote =
+    portfolioAgg && portfolioScopeLabel
+      ? `${portfolioScopeLabel} · oldest ${portfolioAgg.oldest_observation_account ?? '—'}`
+      : undefined
   // No source-mixing null-coalesce (cc-header-truth-v2 Phase 2 E). The TRADING
   // tile must come from one internally-consistent projection — the live broker
   // journal — and never silently borrow the paper-trade-readiness win rate when
