@@ -12,6 +12,12 @@ An archive nobody reopened is a claim, not evidence.
 
 from __future__ import annotations
 
+NO_CONSUMER_REASON = (
+    "evidence artifact schema. CampaignEvidencePackage@v1 stamps the archive manifest that this same"
+    "script reopens and verifies; the consumer is the verification pass and whoever audits the"
+    "package afterwards."
+)
+
 import argparse
 import hashlib
 import json

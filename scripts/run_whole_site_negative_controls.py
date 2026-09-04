@@ -21,6 +21,11 @@ READ_ONLY with respect to the repository. Run from anywhere:
 
 from __future__ import annotations
 
+NO_CONSUMER_REASON = (
+    "evidence artifact schema. WholeSiteNegativeControls@v1 stamps the negative-control receipt read"
+    "by the operator and the validator; no module imports it."
+)
+
 import json
 import shutil
 import subprocess

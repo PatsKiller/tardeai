@@ -18,6 +18,12 @@ and the rehearsal area, both outside every state root.
 
 from __future__ import annotations
 
+NO_CONSUMER_REASON = (
+    "evidence artifact schema. StateMigrationRehearsal@v1 stamps the rehearsal receipt that gates the"
+    "production migration; it is read by the operator and the validator before approval, never"
+    "imported."
+)
+
 import argparse
 import hashlib
 import json

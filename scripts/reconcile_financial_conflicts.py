@@ -16,6 +16,13 @@ that talks to a broker.
 
 from __future__ import annotations
 
+NO_CONSUMER_REASON = (
+    "evidence artifact schemas. BrokerAuthoritySnapshot@v1, FinancialConflictLedger@v1 and"
+    "OperatorLotReconciliation@v1 stamp JSON files an operator and an independent validator read, and"
+    "that scripts/migrate_state_stores.py binds by hash -- the consumer is a person and a hash"
+    "binding, not an importing module."
+)
+
 import argparse
 import hashlib
 import json
