@@ -3370,6 +3370,9 @@ def overview():
         account_summaries=h.get("account_summaries") or {},
         data_as_of=h.get("data_as_of"),
         data_as_of_account=h.get("data_as_of_account"),
+        # The position rows are the maintained copy of the position clock;
+        # account_summaries.as_of is an abandoned mirror. Both are published.
+        positions=h.get("holdings"),
         valuation_time=h.get("generated_at") or h.get("updated_at"),
         quote_observation_time=h.get("last_repriced"),
         quote_source=h.get("reprice_source"),
