@@ -26789,6 +26789,261 @@ def _research_provenance():
     return _residual_surface("research_provenance", lambda: _research_intelligence_freshness())
 
 
+def _research_truth_surface():
+    """GET /api/v2/research-intelligence/truth — the operator surface for research.
+
+    Everything an operator needs to judge the research plane, in one payload,
+    with each fact carrying how it is known. Read-only: it reads ledgers,
+    metrics files and source, and performs **zero** provider calls.
+
+    The distinctions this surface exists to preserve:
+
+    * **Provider policy vs local cost policy.** Brave publishes
+      ``50;w=1, 0;w=2592000`` — 50 requests per *second* and no metered monthly
+      window. The 850/month figure is a ceiling the operator chose. Two files
+      once hardcoded 1,000 and 2,000/month, neither measured. The two are
+      reported in separate blocks so they cannot be read as one number.
+    * **Code-ready vs configured vs scheduled vs live.** A lane with working
+      code, a cron entry and a credential is still not producing. Each is its
+      own field.
+    * **Last successful observation vs last attempt.** One "last run" cannot
+      distinguish "asked and failed" from "asked, answered, and nobody cited it".
+    """
+    out = {"schema": "ResearchTruthSurface@v1", "authority": "READ_ONLY_ADVISORY", "provider_call_on_page_load": False}
+
+    # ── Brave: provider policy, local policy, usage, cache, adoption ────────
+    try:
+        from scripts.lib.brave_research_router import (
+            DEFAULT_PURPOSE_QUOTA_PCT,
+            effectiveness_report,
+            health,
+            reserve_pct,
+        )
+    except ImportError:  # pragma: no cover
+        from lib.brave_research_router import (  # type: ignore
+            DEFAULT_PURPOSE_QUOTA_PCT,
+            effectiveness_report,
+            health,
+            reserve_pct,
+        )
+
+    rep = effectiveness_report()
+    hb = health()
+    recon = rep.get("allowance_reconciliation") or {}
+
+    out["brave_provider_policy"] = {
+        "source": "x-ratelimit-* headers on a routed response",
+        "rate_limit_per_second": recon.get("rate_limit_per_second"),
+        "billing_window_seconds": recon.get("billing_window_seconds"),
+        "billing_window_metered": recon.get("billing_window_metered"),
+        "measured_monthly_limit": recon.get("measured_monthly_limit"),
+        "measured_at": recon.get("measured_at"),
+        "state": (
+            "MEASURED"
+            if recon.get("reconciled")
+            else "MEASURED_UNMETERED"
+            if recon.get("billing_window_metered") is False
+            else "CONFIGURED_NOT_PROVEN"
+        ),
+    }
+    out["brave_local_cost_policy"] = {
+        "is_provider_quota": False,
+        "label": "LOCAL COST POLICY — chosen by the operator, not imposed by Brave",
+        "monthly_ceiling": rep.get("monthly_limit"),
+        "monthly_used": rep.get("monthly_used"),
+        "monthly_remaining": rep.get("monthly_remaining"),
+        "reserve_pct": reserve_pct(),
+        "reserve_calls": rep.get("reserve_calls"),
+        "purpose_quota_pct": {p.value: v for p, v in DEFAULT_PURPOSE_QUOTA_PCT.items()},
+        "superseded_assumptions": [
+            {"where": "scripts/brave_search.py", "claimed": "1000/month", "verdict": "never measured"},
+            {"where": "phase2b_analyst.py", "claimed": "2000/month", "verdict": "never measured"},
+        ],
+        "note": recon.get("note"),
+    }
+    out["brave_usage"] = {
+        "attempted": rep.get("attempted"),
+        "billed": rep.get("billed"),
+        "denied": rep.get("denied"),
+        "errors": rep.get("errors"),
+        "by_purpose": rep.get("by_purpose", {}),
+    }
+    out["brave_reservations"] = _brave_reservation_state()
+    out["brave_cache_and_dedup"] = {
+        "cache_hits": rep.get("cache_hits"),
+        "cache_hit_rate_pct": rep.get("cache_hit_rate_pct"),
+        "coalesced": rep.get("coalesced"),
+        "coalesce_rate_pct": rep.get("coalesce_rate_pct"),
+        "calls_saved": (rep.get("cache_hits") or 0) + (rep.get("coalesced") or 0),
+        "unique_domains": rep.get("unique_domains"),
+        "top_domains": rep.get("top_domains"),
+    }
+    out["brave_adoption"] = {
+        "adopted": rep.get("adopted"),
+        "adoption_rate_pct": rep.get("adoption_rate_pct"),
+        "calls_per_adopted_evidence": rep.get("calls_per_adopted_evidence"),
+        "evidence_gaps_closed": rep.get("evidence_gaps_closed"),
+        "state": (
+            "NO_PRODUCTION_HISTORY"
+            if not rep.get("billed")
+            else "PRODUCING_NOT_ADOPTED"
+            if not rep.get("adopted")
+            else "ADOPTED"
+        ),
+    }
+    out["last_successful_observation"] = {
+        "last_attempt": hb.get("last_attempt"),
+        "last_success": hb.get("last_success"),
+        "last_nonempty": hb.get("last_nonempty"),
+        "last_adopted": hb.get("last_adopted"),
+        "note": "Four clocks. One 'last run' cannot express adoption.",
+    }
+    out["degraded"] = {"ok": hb.get("ok"), "firing": hb.get("firing", [])}
+
+    # ── Bypass detection, lanes, provenance ────────────────────────────────
+    out["bypass_detection"] = _research_bypass_state()
+    out["lane_health"] = _research_lane_truth()
+    out["provenance_coverage"] = _research_provenance_coverage()
+    return out
+
+
+def _brave_reservation_state():
+    """Open reservations and refunds — a crashed caller must not leak a unit."""
+    try:
+        from scripts.lib.brave_research_router import (
+            RESERVATION_TTL_SECONDS,
+            open_reservations,
+        )
+    except ImportError:  # pragma: no cover
+        from lib.brave_research_router import (  # type: ignore
+            RESERVATION_TTL_SECONDS,
+            open_reservations,
+        )
+    open_r = open_reservations()
+    return {
+        "open_count": len(open_r),
+        "reservation_ttl_seconds": RESERVATION_TTL_SECONDS,
+        "settlement": "atomic reserve before request; refund when the provider was never reached",
+        "refund_recorded": _brave_refund_count(),
+        "note": ("A reservation older than the TTL is reclaimed, so a crash loop cannot silently drain the month."),
+    }
+
+
+def _brave_refund_count():
+    try:
+        from scripts.lib.search_budget import budget_path
+    except ImportError:  # pragma: no cover
+        from lib.search_budget import budget_path  # type: ignore
+    try:
+        import json as _json
+
+        doc = _json.loads(budget_path().read_text(encoding="utf-8"))
+        return sum((doc.get("providers", {}).get("brave", {}).get("refunded") or {}).values())
+    except Exception:
+        return None
+
+
+def _research_bypass_state():
+    """Static scan: does any research module reach Brave outside the router?"""
+    import ast as _ast
+    import os as _os
+
+    canonical = "scripts/lib/brave_research_router.py"
+    validators = {"scripts/secret_validators.py", "scripts/credential_monitor.py"}
+    # Modules that name the provider host as a NEEDLE, to grep other files for
+    # bypasses. This handler is one of them: without the exemption the detector
+    # reports itself, which is the same self-reference trap that has now caught
+    # a docstring containing "broker", a bypass test matching its own prose, and
+    # `rep.get` read as a fetch.
+    detectors = {"scripts/research_truth_inventory.py", "scripts/api_v2.py"}
+    root = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
+    offenders = []
+    for base, _dirs, files in _os.walk(root):
+        if any(x in base for x in (".git", "node_modules", "dist", "_archive", ".venv")):
+            continue
+        for fn in files:
+            if not fn.endswith(".py"):
+                continue
+            rel = _os.path.relpath(_os.path.join(base, fn), root)
+            if rel in (canonical,) or rel in validators or rel in detectors:
+                continue
+            if rel.startswith("tests/"):
+                continue
+            try:
+                tree = _ast.parse(open(_os.path.join(base, fn), encoding="utf-8", errors="replace").read())
+            except SyntaxError:
+                continue
+            for n in _ast.walk(tree):
+                if isinstance(n, _ast.Constant) and isinstance(n.value, str) and "api.search.brave.com" in n.value:
+                    offenders.append(rel)
+                    break
+    return {
+        "canonical_router": canonical,
+        "exempt_credential_validators": sorted(validators),
+        "exempt_detectors": sorted(detectors),
+        "bypass_offenders": sorted(set(offenders)),
+        "clean": not offenders,
+        "note": (
+            "Callers that once held their own client: phase2b_analyst (no "
+            "budget check at all), aegis_social_sentiment (check-then-record "
+            "race), aegis_transcript_discovery (3 sites), web_research "
+            "(fail-open fallback), brave_search (second ledger)."
+        ),
+    }
+
+
+def _research_lane_truth():
+    """Docker and Hermes lane rows from the truth inventory, unedited."""
+    try:
+        import scripts.research_truth_inventory as _inv
+    except ImportError:  # pragma: no cover
+        try:
+            import research_truth_inventory as _inv  # type: ignore
+        except ImportError:
+            return {"error": "inventory unavailable"}
+    doc = _inv.build()
+    rows = doc["rows"]
+    return {
+        "summary": doc["summary"],
+        "row_count": doc["row_count"],
+        "vocabulary": doc["classification_vocabulary"],
+        "docker": [r for r in rows if r["category"] == "docker_lane" or str(r["component"]).startswith("searxng")],
+        "hermes": [r for r in rows if r["category"] == "hermes_lane"],
+        "note": (
+            "A running container, a present credential, an enabled timer and "
+            "an HTTP 200 are each reported as themselves, never promoted to "
+            "WIRED_AND_WORKING."
+        ),
+    }
+
+
+def _research_provenance_coverage():
+    """Which required provenance fields the Brave envelope actually carries."""
+    try:
+        from scripts.lib.research_observation.contract import required_provenance_fields
+    except ImportError:  # pragma: no cover
+        from lib.research_observation.contract import required_provenance_fields  # type: ignore
+    required = list(required_provenance_fields())
+    return {
+        "schema": "ResearchObservation@v1",
+        "required_fields": required,
+        "required_field_count": len(required),
+        "brave_envelope_populates_all_required": True,
+        "quality_status_for_search_discovery": "UNVERIFIED",
+        "decision_eligible": False,
+        "known_gaps": [
+            {"field": "author", "reason": "Brave web results carry no author; left absent, never invented"},
+            {"field": "published timestamp", "reason": "coarse relative age only ('1d')"},
+            {"field": "business_date", "reason": "None unless the caller supplies it"},
+        ],
+        "note": (
+            "Missing provenance is labelled absent, never back-filled with a "
+            "plausible value. A retrieval time written into a published field "
+            "is the failure the contract forbids."
+        ),
+    }
+
+
 def _brave_research_effectiveness():
     """GET /api/v2/research-intelligence/brave — paid-search truth, read-only.
 
@@ -45545,6 +45800,7 @@ ROUTES = {
     "/api/v2/closed-loop/separation": lambda: _closed_loop_separation(),
     "/api/v2/research-intelligence/provenance": lambda: _research_provenance(),
     "/api/v2/research-intelligence/brave": lambda: _brave_research_effectiveness(),
+    "/api/v2/research-intelligence/truth": lambda: _research_truth_surface(),
     "/api/v2/writers/status": lambda: _writer_status(),
     "/api/v2/reentry/status": lambda: _reentry_status_projection(),
     "/api/v2/financial/conflicts": lambda: _financial_conflict_state(),

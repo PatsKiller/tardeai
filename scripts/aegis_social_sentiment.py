@@ -328,8 +328,30 @@ def normalize_sentiment(symbol: str, reddit_data: dict, brave_data: dict, stockt
     # Confidence: social is always lower trust
     confidence = min(0.30 + (mention_count * 0.03), 0.60)
 
+    # Structural integrity of the sample. Forty reposts of one claim read, to a
+    # mention counter, as forty people agreeing; a templated burst reads the
+    # same. The corrected count travels beside the raw one so a consumer can see
+    # the gap rather than inherit the inflated number.
+    integrity = None
+    effective_mentions = mention_count
+    try:
+        from scripts.lib.social_integrity import assess_social_sample
+    except ImportError:  # pragma: no cover
+        try:
+            from lib.social_integrity import assess_social_sample  # type: ignore
+        except ImportError:
+            assess_social_sample = None  # type: ignore
+    if assess_social_sample is not None:
+        integrity = assess_social_sample(social_mentions + b_mentions, symbol=symbol)
+        effective_mentions = integrity["effective_distinct_claims"]
+        if integrity["integrity_degraded"]:
+            # Confidence is a claim about how much the sample supports; an
+            # amplified sample supports less than its size suggests.
+            confidence = confidence * (1.0 - integrity["amplification_ratio"])
+
     return {
         "mention_count": mention_count,
+        "effective_distinct_claims": effective_mentions,
         "bullish_count": bullish_count,
         "bearish_count": bearish_count,
         "neutral_count": neutral_count,
@@ -339,6 +361,11 @@ def normalize_sentiment(symbol: str, reddit_data: dict, brave_data: dict, stockt
         "theme_tags": themes,
         "top_posts_summary": summary,
         "confidence": round(confidence, 2),
+        "integrity": integrity,
+        "amplification_ratio": (integrity or {}).get("amplification_ratio", 0.0),
+        "coordinated_burst_detected": ((integrity or {}).get("burst") or {}).get("detected", False),
+        # Social evidence is awareness-only at every layer it passes through.
+        "can_authorize_order": False,
     }
 
 

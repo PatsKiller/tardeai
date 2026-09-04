@@ -382,12 +382,16 @@ def test_searxng_probe_failure_is_reachable_false_not_an_exception():
     assert p["error"]
 
 
-def test_searxng_and_brave_cannot_share_one_budget_reservation(tmp_path):
+def test_searxng_and_brave_cannot_share_one_budget_reservation(tmp_path, monkeypatch):
     """Docker and Hermes lanes must not both spend the same unit."""
     from scripts.lib import search_budget as SB
 
-    os.environ["SEARCH_BUDGET_BRAVE_DAILY"] = "1"
-    os.environ["SEARCH_BUDGET_BRAVE_MONTHLY"] = "10"
+    # monkeypatch, not os.environ: writing these directly leaked a ceiling of 10
+    # into every later module in the session, and the operator truth-surface
+    # test then read 10 where the documented local policy is 850 — a failure
+    # that appeared only in a particular file ordering.
+    monkeypatch.setenv("SEARCH_BUDGET_BRAVE_DAILY", "1")
+    monkeypatch.setenv("SEARCH_BUDGET_BRAVE_MONTHLY", "10")
     first = SB.try_consume("brave", caller="docker-lane", now=NOW, root=tmp_path)
     second = SB.try_consume("brave", caller="hermes-lane", now=NOW, root=tmp_path)
     assert first["allowed"] is True

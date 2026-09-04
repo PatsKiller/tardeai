@@ -37,6 +37,9 @@ CREDENTIAL_VALIDATORS = {
 #: rather than assumed from membership here.
 HOST_DETECTORS = {
     REPO / "scripts" / "research_truth_inventory.py",
+    # The operator truth surface runs the same bypass scan and therefore names
+    # the host as its needle. Fourth instance of this trap in the campaign.
+    REPO / "scripts" / "api_v2.py",
 }
 
 SKIP_DIRS = {".git", "node_modules", "dist", "build", "_archive", ".venv", "archive", "reference"}

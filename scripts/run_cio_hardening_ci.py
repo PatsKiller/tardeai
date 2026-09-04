@@ -857,6 +857,12 @@ GATES = [
             # The deferred surface, now that api_v2.py has merged: rendering
             # must never reach a paid provider.
             "tests/test_brave_effectiveness_route.py",
+            # Reposts and coordinated bursts: forty echoes of one claim must not
+            # read as forty people agreeing. Awareness-only at every layer.
+            "tests/test_social_integrity.py",
+            # The seven-stage chain, asserted end to end rather than inferred
+            # from seven separate green suites.
+            "tests/test_research_e2e_trace.py",
         ],
     ),
 ]

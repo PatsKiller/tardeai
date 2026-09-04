@@ -167,7 +167,10 @@ def wrap_brave_outcome(
         # freshness + count). Two observations sharing it answered the same
         # question, which is what replay suppression keys on.
         sequence_or_version=getattr(outcome, "fingerprint", "") or "unversioned",
-        freshness_age_seconds=0.0,
+        # Age at the moment of wrapping. It is genuinely ~0 here; what matters
+        # is that a LATER consumer re-derives it with `age_at`, because the
+        # eligibility policy reads this field and nothing else recomputes it.
+        freshness_age_seconds=max(0.0, (now - (_parse_iso(getattr(outcome, "as_of", None)) or now)).total_seconds()),
         fallback_state=FallbackState.NONE,
         raw_evidence_ref=f"brave:{getattr(outcome, 'fingerprint', '')}",
         degraded_label=degraded_label,
@@ -177,6 +180,38 @@ def wrap_brave_outcome(
         durable_output_present=has_results,
         log_success_claimed=status in _SERVED,
     )
+
+
+def _parse_iso(ts):
+    if not ts:
+        return None
+    try:
+        d = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+        return d if d.tzinfo else d.replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
+
+
+def age_at(obs, now: datetime):
+    """Return ``obs`` with ``freshness_age_seconds`` recomputed as of ``now``.
+
+    The eligibility policy decides staleness from ``freshness_age_seconds``
+    alone — ``_clock_reasons`` checks future skew and regression, never age. An
+    observation stamped once at ingest therefore stays permanently "fresh" no
+    matter how old it gets, which is exactly the failure the freshness contract
+    exists to prevent.
+
+    A consumer re-gating stored evidence must call this first. It returns a new
+    observation; the original is never mutated, so the recorded ingest-time age
+    survives alongside the evaluation-time one.
+    """
+    import dataclasses
+
+    observed = _parse_iso(obs.observed_at) or _parse_iso(obs.provider_at)
+    if observed is None:
+        return obs
+    age = max(0.0, (now - observed).total_seconds())
+    return dataclasses.replace(obs, freshness_age_seconds=age)
 
 
 def evidence_gap_signature(query: str, symbol: Optional[str] = None) -> str:

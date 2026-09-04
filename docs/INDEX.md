@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `d03e1cf8fd9c8e9b4ffbee28efd963c5996091bda74e284bb3765208438fbbc8`
+**Tree fingerprint:** `de6aa6afe44030f256e97fa21cbfe2dde07d3f83cb81a5e9c02cf70c2f4eca3f`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,10 +12,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2351 |
-| Markdown (excl. this INDEX) | 1963 |
+| Files under `docs/` (excl. this INDEX) | 2352 |
+| Markdown (excl. this INDEX) | 1964 |
 | **MISSING HEADER** | **12** |
-| Header OK | 1951 |
+| Header OK | 1952 |
 | Duplicate groups | 5 |
 
 ### By status_guess
@@ -30,7 +30,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_raw_sync | 26 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 6 |
-| review_required | 1971 |
+| review_required | 1972 |
 
 ## Markdown tree
 
@@ -1531,6 +1531,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/R9_2_PORTFOLIO_BRAIN_LIVE_CLOSEOUT_2026-08-23.md` | Trade AI v12 R9.2 - Portfolio Brain Live Closeout | review_required | OK | `456bfc103b56` |
 | `docs/ops/RESEARCH_COVERAGE_SNAPSHOT_2026-08-22.md` | Research coverage snapshot — 2026-08-22 10:24 ET | review_required | OK | `99a27d3b83ac` |
 | `docs/ops/RESEARCH_ENGINE_FLASH_FIRST_FAILURE_2026-08-20.md` | Research engine Flash-first failure — 2026-08-20 | review_required | OK | `f096edc0e822` |
+| `docs/ops/RESEARCH_LANE_ACTIVATION_PLAN.md` | Research lane activation plan (NOT ACTIVATED) | review_required | OK | `05d1a28e7dd1` |
 | `docs/ops/RESEARCH_LANE_HEALTH.md` | Research lane health + P0 outage (2026-08-21) | review_required | OK | `6c3418e95711` |
 | `docs/ops/RESEARCH_LIFECYCLE_AS_OF_2026-08-22.md` | Research and thesis lifecycle — as of 2026-08-22 night | review_required | OK | `cb17e74f5174` |
 | `docs/ops/RESEARCH_LIFECYCLE_STANDARD.md` | Research Algorithm and Re-Research Methodology | review_required | OK | `38f982802e43` |

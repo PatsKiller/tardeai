@@ -199,3 +199,117 @@ def test_the_route_is_read_only_advisory():
     assert "READ_ONLY_ADVISORY" in src
     for forbidden in ("place_order", "submit_order", "cancel_order", "broker_write"):
         assert forbidden not in src.lower()
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# The research truth operator surface
+# ═══════════════════════════════════════════════════════════════════════════
+
+TRUTH_ROUTE = "/api/v2/research-intelligence/truth"
+
+
+def _api():
+    import importlib
+
+    scripts_dir = str(REPO / "scripts")
+    if scripts_dir not in sys.path:
+        sys.path.insert(0, scripts_dir)
+    return importlib.import_module("api_v2")
+
+
+def _truth():
+    return _api().ROUTES[TRUTH_ROUTE]()
+
+
+def test_the_truth_route_is_registered():
+    assert TRUTH_ROUTE in _api().ROUTES
+
+
+def test_provider_policy_and_local_cost_policy_are_separate_blocks():
+    """The whole point: 850/month is not a Brave quota, and must not read as one."""
+    p = _truth()
+    assert "brave_provider_policy" in p and "brave_local_cost_policy" in p
+    local = p["brave_local_cost_policy"]
+    assert local["is_provider_quota"] is False
+    assert "LOCAL COST POLICY" in local["label"]
+    assert local["monthly_ceiling"] == 850
+    claimed = {a["claimed"] for a in local["superseded_assumptions"]}
+    assert claimed == {"1000/month", "2000/month"}
+    assert all(a["verdict"] == "never measured" for a in local["superseded_assumptions"])
+
+
+def test_provider_policy_reports_its_own_measurement_state():
+    p = _truth()["brave_provider_policy"]
+    assert p["state"] in ("MEASURED", "MEASURED_UNMETERED", "CONFIGURED_NOT_PROVEN")
+    if p["state"] == "CONFIGURED_NOT_PROVEN":
+        assert p["measured_monthly_limit"] is None, "an unmeasured plan must not publish a limit"
+
+
+def test_the_surface_exposes_every_required_dimension():
+    p = _truth()
+    for k in (
+        "brave_provider_policy",
+        "brave_local_cost_policy",
+        "brave_usage",
+        "brave_reservations",
+        "brave_cache_and_dedup",
+        "bypass_detection",
+        "lane_health",
+        "provenance_coverage",
+        "last_successful_observation",
+        "degraded",
+        "brave_adoption",
+    ):
+        assert k in p, f"operator surface is missing {k}"
+
+
+def test_bypass_detection_is_clean_and_does_not_report_itself():
+    b = _truth()["bypass_detection"]
+    assert b["bypass_offenders"] == [], f"bypass offenders: {b['bypass_offenders']}"
+    assert b["clean"] is True
+    # The detector names the host as a needle; it must exempt itself explicitly.
+    assert "scripts/api_v2.py" in b["exempt_detectors"]
+
+
+def test_lane_health_uses_the_closed_vocabulary_and_does_not_inflate():
+    lh = _truth()["lane_health"]
+    assert lh["row_count"] >= 39
+    assert set(lh["summary"]) <= set(lh["vocabulary"])
+    for row in lh["docker"] + lh["hermes"]:
+        assert row["classification"] != "WIRED_AND_WORKING", (
+            f"{row['component']} promoted to WIRED_AND_WORKING on container/timer state alone"
+        )
+
+
+def test_adoption_state_admits_no_production_history():
+    a = _truth()["brave_adoption"]
+    assert a["state"] in ("NO_PRODUCTION_HISTORY", "PRODUCING_NOT_ADOPTED", "ADOPTED")
+    if not a["adopted"]:
+        assert a["state"] != "ADOPTED"
+
+
+def test_four_clocks_not_one_last_run():
+    c = _truth()["last_successful_observation"]
+    for k in ("last_attempt", "last_success", "last_nonempty", "last_adopted"):
+        assert k in c
+
+
+def test_provenance_coverage_names_its_gaps_rather_than_claiming_completeness():
+    pc = _truth()["provenance_coverage"]
+    assert pc["decision_eligible"] is False
+    assert pc["quality_status_for_search_discovery"] == "UNVERIFIED"
+    gaps = {g["field"] for g in pc["known_gaps"]}
+    assert "author" in gaps
+    assert "never invented" in " ".join(g["reason"] for g in pc["known_gaps"])
+
+
+def test_the_truth_surface_makes_no_provider_call(monkeypatch):
+    monkeypatch.setenv("BRAVE_SEARCH_API_KEY", "test-key-not-real")
+
+    def forbidden(*a, **k):
+        raise AssertionError("the truth surface reached the Brave provider")
+
+    monkeypatch.setattr(R.urllib.request, "urlopen", forbidden)
+    p = _truth()
+    assert p["provider_call_on_page_load"] is False
+    assert p["authority"] == "READ_ONLY_ADVISORY"

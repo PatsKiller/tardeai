@@ -624,6 +624,107 @@ def build() -> dict[str, Any]:
         )
     )
 
+    # ── Social integrity + end-to-end traces (this campaign) ────────────────
+    si_src = _src("scripts/lib/social_integrity.py")
+    si_consumed = "social_integrity" in _src("scripts/aegis_social_sentiment.py")
+    rows.append(
+        _row(
+            component="social_integrity_detection",
+            owner="social-intelligence",
+            category="social",
+            configured_provider="n/a (pure analysis over collected posts)",
+            actual_runtime_provider="n/a",
+            invocation_path="scripts/lib/social_integrity.py::assess_social_sample",
+            producer="repost + bot-burst detectors",
+            consumer=("aegis_social_sentiment" if si_consumed else "NONE — no collector calls it yet"),
+            schedule_or_trigger="on-demand (library)",
+            credential_requirement="none",
+            authoritative_store="n/a (annotates a sample in memory)",
+            producer_store="n/a",
+            served_store="n/a",
+            last_successful_observation="not asserted (library)",
+            last_attempted_observation="not asserted (library)",
+            record_count="n/a",
+            freshness="n/a",
+            provenance_completeness="annotates; does not create observations",
+            quota_or_budget_enforcement="n/a",
+            cache_behavior="n/a",
+            retry_behavior="n/a",
+            downstream_ui_surface="none yet",
+            provider_call_on_page_load="NO",
+            test_evidence="tests/test_social_integrity.py (24, incl. genuine-catalyst negative control)",
+            runtime_evidence=(
+                "implemented and tested; NOT yet wired into a collector"
+                if not si_consumed
+                else "wired into aegis_social_sentiment"
+            ),
+            # Code-ready is not wired. A library nothing calls changes no output.
+            classification="WIRED_AND_WORKING" if si_consumed else "CONFIGURED_NOT_PROVEN",
+        )
+    )
+    trace_src = _src("scripts/research_e2e_trace.py")
+    rows.append(
+        _row(
+            component="research_end_to_end_trace",
+            owner="research-acquisition",
+            category="verification",
+            configured_provider="fixture transport by default",
+            actual_runtime_provider="fixture (no paid call)",
+            invocation_path="scripts/research_e2e_trace.py::run_all",
+            producer="7-stage trace walker",
+            consumer="campaign evidence + operator",
+            schedule_or_trigger="on-demand CLI",
+            credential_requirement="none (fixtures)",
+            authoritative_store="caller-supplied state root",
+            producer_store="isolated state root",
+            served_store="JSON on stdout",
+            last_successful_observation="per run",
+            last_attempted_observation="per run",
+            record_count=3,
+            freshness="deterministic fixtures",
+            provenance_completeness="walks ResearchObservation@v1 end to end",
+            quota_or_budget_enforcement="router gates exercised in-trace",
+            cache_behavior="verifies the durable artifact landed",
+            retry_behavior="n/a",
+            downstream_ui_surface="none (evidence artifact)",
+            provider_call_on_page_load="NO",
+            test_evidence="tests/test_research_e2e_trace.py (17)",
+            runtime_evidence="3 traces: FRESH / GAP / INELIGIBLE; none decision-eligible",
+            classification="WIRED_AND_WORKING" if trace_src else "NOT_IMPLEMENTED",
+        )
+    )
+    truth_route = '"/api/v2/research-intelligence/truth"' in api_src
+    rows.append(
+        _row(
+            component="research_truth_operator_surface",
+            owner="research-acquisition",
+            category="api_surface",
+            configured_provider="n/a",
+            actual_runtime_provider="n/a (reads stored projections)",
+            invocation_path="GET /api/v2/research-intelligence/truth",
+            producer="router health + inventory + bypass scan + provenance contract",
+            consumer="operator",
+            schedule_or_trigger="request",
+            credential_requirement="none",
+            authoritative_store="ledger + metrics + source",
+            producer_store="brave_router_metrics.json",
+            served_store="the route payload",
+            last_successful_observation="request-scoped",
+            last_attempted_observation="request-scoped",
+            record_count="n/a",
+            freshness="four clocks in the payload",
+            provenance_completeness="reports required fields and named gaps",
+            quota_or_budget_enforcement="read-only; makes no provider call",
+            cache_behavior="reports cache savings; does not write",
+            retry_behavior="n/a",
+            downstream_ui_surface="none yet (no React page consumes it)",
+            provider_call_on_page_load="NO — asserted by test",
+            test_evidence="tests/test_brave_effectiveness_route.py (19)",
+            runtime_evidence=("route registered and served" if truth_route else "route NOT registered"),
+            classification="WIRED_AND_WORKING" if truth_route else "NOT_IMPLEMENTED",
+        )
+    )
+
     summary: dict[str, int] = {}
     for r in rows:
         summary[r["classification"]] = summary.get(r["classification"], 0) + 1

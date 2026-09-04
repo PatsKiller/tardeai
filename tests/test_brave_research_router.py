@@ -36,8 +36,34 @@ def root(tmp_path, monkeypatch):
     return tmp_path
 
 
+@pytest.fixture(autouse=True)
+def _isolate_budget_env():
+    """Restore the SEARCH_BUDGET_* overrides after every test in this module.
+
+    `_budget` writes them to `os.environ` directly, which leaked the last test's
+    ceiling into every later module in the same pytest session — the operator
+    truth-surface test then read a ceiling of 1 instead of 850 and failed only
+    when run after this file. Setting them is fine; not putting them back is not.
+    """
+    import os
+
+    keys = ("SEARCH_BUDGET_BRAVE_DAILY", "SEARCH_BUDGET_BRAVE_MONTHLY")
+    saved = {k: os.environ.get(k) for k in keys}
+    try:
+        yield
+    finally:
+        for k, v in saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+
+
 def _budget(root: Path, *, daily: int, monthly: int):
-    """Pin the shared ledger limits for this isolated root."""
+    """Pin the shared ledger limits for this isolated root.
+
+    Restored after each test by ``_isolate_budget_env``.
+    """
     import os
 
     os.environ["SEARCH_BUDGET_BRAVE_DAILY"] = str(daily)

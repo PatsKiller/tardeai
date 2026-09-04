@@ -61,6 +61,8 @@ RESEARCH_SUITES = (
     "tests/test_brave_research_lanes.py",
     "tests/test_gate_registration_coexistence.py",
     "tests/test_brave_effectiveness_route.py",
+    "tests/test_social_integrity.py",
+    "tests/test_research_e2e_trace.py",
 )
 
 
