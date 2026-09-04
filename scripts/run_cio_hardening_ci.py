@@ -578,6 +578,7 @@ GATES = [
             "tests/test_sop_toolchain.py",
             "tests/test_sop_attestation_base.py",
             "tests/test_agents_drive_mirror_policy.py",
+            "tests/test_operator_approval_workflow_docs.py",
         ],
     ),
     (
