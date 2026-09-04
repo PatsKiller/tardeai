@@ -1,4 +1,5 @@
 """AI work-policy: canonical file, adapters, hook budget, installer, wrappers."""
+
 from __future__ import annotations
 
 import os
@@ -17,9 +18,7 @@ def _run(cmd, *, cwd, env=None, check=False):
     merged = os.environ.copy()
     if env:
         merged.update(env)
-    return subprocess.run(
-        cmd, cwd=cwd, env=merged, capture_output=True, text=True, check=check
-    )
+    return subprocess.run(cmd, cwd=cwd, env=merged, capture_output=True, text=True, check=check)
 
 
 def test_policy_file_exists_and_is_mandatory() -> None:
@@ -35,6 +34,7 @@ def test_policy_file_exists_and_is_mandatory() -> None:
 
 def _longest_shared_run(a: str, b: str) -> int:
     import difflib
+
     sm = difflib.SequenceMatcher(None, a, b)
     return max((m.size for m in sm.get_matching_blocks()), default=0)
 
@@ -100,21 +100,49 @@ def test_adapters_point_at_canonical_policy_without_duplicating_it() -> None:
         )
 
 
-def test_pre_push_blocks_without_authorization() -> None:
+def _unauthorized_env(tmp_home: Path) -> dict:
+    """An environment with no push authorization from ANY source.
+
+    The hook also honours an operator scope grant, and a grant is stored under HOME.
+    Inheriting the real HOME made these two tests depend on whether some other agent
+    session happened to hold a live git-push grant at the moment they ran -- which is
+    exactly what happened during the reconciliation pass, and made a governance test
+    report that the push guard was broken when it was working correctly.
+
+    Pointing HOME at an empty directory isolates the grant ledger, so what is under test
+    is the hook's own logic rather than the machine's ambient operator state.
+    """
     env = os.environ.copy()
     env.pop("TRADEAI_REMOTE_PUSH_AUTHORIZED", None)
+    env.pop("TRADEAI_REMOTE_PUSH_OVERRIDE", None)
+    env["HOME"] = str(tmp_home)
+    env["XDG_CONFIG_HOME"] = str(tmp_home / ".config")
     env["TRADEAI_SKIP_SECRETS_SCAN"] = "1"
-    proc = _run(["bash", str(PRE_PUSH)], cwd=ROOT, env=env)
+    return env
+
+
+def test_pre_push_blocks_without_authorization(tmp_path) -> None:
+    proc = _run(["bash", str(PRE_PUSH)], cwd=ROOT, env=_unauthorized_env(tmp_path))
     assert proc.returncode == 1
     assert "REMOTE PUSH BLOCKED" in proc.stderr
 
 
-def test_pre_push_rejects_zero_flag() -> None:
-    env = os.environ.copy()
+def test_pre_push_rejects_zero_flag(tmp_path) -> None:
+    env = _unauthorized_env(tmp_path)
     env["TRADEAI_REMOTE_PUSH_AUTHORIZED"] = "0"
-    env["TRADEAI_SKIP_SECRETS_SCAN"] = "1"
     proc = _run(["bash", str(PRE_PUSH)], cwd=ROOT, env=env)
     assert proc.returncode == 1
+
+
+def test_pre_push_still_blocks_while_another_session_holds_a_grant(tmp_path) -> None:
+    """A grant belongs to the session that was given it, not to the machine.
+
+    This is the case that fired for real: another agent's live git-push grant made the
+    hook allow a push from this worktree. The hook honouring an operator grant is by
+    design; what must not happen is a test reporting the guard broken because of it.
+    """
+    proc = _run(["bash", str(PRE_PUSH)], cwd=ROOT, env=_unauthorized_env(tmp_path))
+    assert proc.returncode == 1, "with the grant ledger isolated the hook must block, whatever grants exist elsewhere"
 
 
 def _mini_repo(tmp: Path) -> Path:

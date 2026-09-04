@@ -623,6 +623,156 @@ GATES = [
         ],
     ),
     (
+        "state_root_convergence",
+        [
+            # Producers run under `cd $PROJ`; releases symlink
+            # data/portfolios/state at the persistent root. Measured 2026-09-03:
+            # 59 of 88 stores forked, worst skew 143 days, and no surface said
+            # so. Both files run together -- the producer fix and the report
+            # that makes the next fork visible are one contract.
+            "tests/test_portfolio_news_state_root.py",
+            "tests/test_state_root_divergence.py",
+        ],
+    ),
+    (
+        # cc-whole-site-residual-v1 (2026-09-03): the SERVER decides what a
+        # surface is showing. Eleven /v3/control-plane/* routes shipped a
+        # PREVIEW/FIXTURE label compiled into the bundle while live domains
+        # answered behind seven of them; the write token and operator name live
+        # in localStorage; /v3-next is served from outside the repository with no
+        # manifest. All four contracts are read-only and fail closed.
+        "whole_site_surface_truth",
+        [
+            "tests/test_whole_site_truth.py",
+            "tests/test_operator_control_contract.py",
+        ],
+    ),
+    (
+        # cc-whole-site-residual-v1 (2026-09-03): a configured intention is not a
+        # running fact. Feature flags the loader coerces, timers that are disabled
+        # or whose last run failed, and a Finviz store whose "no data" has three
+        # unrelated causes -- each reported DECLARED next to EFFECTIVE.
+        "effective_truth",
+        [
+            "tests/test_effective_truth.py",
+        ],
+    ),
+    (
+        # cc-whole-site-residual-v1 (2026-09-03): F12.15, the per-route audit. The
+        # 401/403 classification only protects reads that go through useApi; this
+        # enumerates the ones that do not (100 reads across 49 files, pre-existing)
+        # and pins that this campaign's own five surfaces are not among them.
+        "useapi_route_audit",
+        [
+            "tests/test_useapi_route_audit.py",
+        ],
+    ),
+    (
+        # cc-whole-site-residual-v1 (2026-09-03): the five surfaces that still lied.
+        # Watch counts now come from one population and never render authoritative
+        # while the list is unresolved; Closed Loop's four circulations age on their
+        # own clocks; stale research is not missing research; a MANUAL writer is
+        # never shown as if a schedule mints it; and a re-entry row finally carries
+        # one canonical status instead of gates a consumer has to interpret.
+        "residual_surfaces",
+        [
+            "tests/test_residual_surfaces.py",
+        ],
+    ),
+    (
+        # cc-whole-site-residual-v1 (2026-09-03): the guarded migration door. Every
+        # rail is exercised against an ISOLATED byte-copied replica -- wrong SHA,
+        # wrong manifest, changed hashes, missing/corrupt backup, no disk, active
+        # writer, bad schema, interrupted write, financial conflict -- and every
+        # failure proves the target's bytes came back unchanged. Financial truth
+        # stores fail closed; recency never decides a financial value.
+        "state_migration_rehearsal",
+        [
+            "tests/test_state_migration_rehearsal.py",
+        ],
+    ),
+    (
+        # cc-whole-site-residual-v1 (2026-09-03): record-level reconciliation. A
+        # store-level "these two files disagree" is true but blunt. Each divergent
+        # record is decided against the authority that governs it -- broker positions
+        # for lot totals, live broker order state for stops -- and a verdict may never
+        # cite recency. What no authority can settle stays UNRESOLVED and keeps both
+        # originals; nothing disputed is ever handed a value.
+        "financial_reconciliation",
+        [
+            "tests/test_financial_reconciliation.py",
+        ],
+    ),
+    (
+        # cc-whole-site-residual-v1 (2026-09-03): every surface in every state it can
+        # reach -- populated, empty, partial, stale, malformed, disconnected,
+        # unauthorized, forbidden, error. A surface tested only with good data is only
+        # known to work in the case that never needed it. Failure must never report a
+        # count: an outage and a quiet market must not render identically.
+        "surface_state_matrix",
+        [
+            "tests/test_surface_state_matrix.py",
+        ],
+    ),
+    (
+        # cc-whole-site-residual-v1 (2026-09-03): detection is not resolution. Every
+        # audited store gets one verdict from a closed taxonomy, Command Center
+        # criticality is derived from the surface, and each open fork carries an
+        # executable migration plan this lane is forbidden to run (AGENTS.md rule 5).
+        "state_root_disposition",
+        [
+            "tests/test_state_root_disposition.py",
+        ],
+    ),
+    (
+        # cc-whole-site-residual-v1 (2026-09-03): stop coverage over ONE population.
+        # The served Risk surface published 0.39% while the same rows it returns say
+        # 11.92%: four broker-held stops read as NO STOP, and the percentage divided
+        # by the whole portfolio rather than the population it summed.
+        "protection_truth",
+        [
+            "tests/test_protection_truth.py",
+        ],
+    ),
+    (
+        # cc-whole-site-residual-v1 (2026-09-03): validation must never dirty the
+        # candidate worktree, the committed ledger is the expectation rather than a
+        # file the run just wrote, and no control may carry a hardcoded commit SHA.
+        "ci_fixture_immutability",
+        [
+            "tests/test_ci_fixture_immutability.py",
+        ],
+    ),
+    (
+        # cc-whole-site-residual-v1 (2026-09-03): 401/403 are authorization answers,
+        # not connectivity. They must not consume the transient retry ladder.
+        "useapi_authorization_contract",
+        [
+            "tests/test_useapi_authorization_contract.py",
+        ],
+    ),
+    (
+        # cc-whole-site-residual-v1 (2026-09-03): operator controls proven against a
+        # DISPOSABLE PostgreSQL cluster -- its own initdb data directory in a temp
+        # path, loopback-only on a dynamic port, test-only role and database,
+        # destroyed afterwards. The real admin_write guard runs its full
+        # ACCESS -> CONFIRM -> APPLY -> AUDIT chain; nothing is mocked. Skips
+        # cleanly on a host without PostgreSQL server binaries.
+        "operator_control_isolated_db",
+        [
+            "tests/test_operator_control_isolated_db.py",
+        ],
+    ),
+    (
+        # cc-whole-site-residual-v1 (2026-09-03): the browser/state matrix caught
+        # /v3/strategy throwing and rendering the ENTIRE shell blank. Every route is
+        # now wrapped so one page's failure is contained and stated.
+        "route_error_containment",
+        [
+            "tests/test_route_error_boundary.py",
+        ],
+    ),
+    (
         "wake_writer_stamp",
         [
             "tests/test_wake_writer_stamp.py",

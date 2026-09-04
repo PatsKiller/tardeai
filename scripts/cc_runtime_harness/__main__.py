@@ -29,6 +29,12 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--preview-base-url", default=None, help="Or set CC_RUNTIME_PREVIEW_BASE_URL (never production)")
     p.add_argument("--expected-build-sha", default=None)
     p.add_argument("--json", action="store_true")
+    p.add_argument(
+        "--regenerate-fixtures",
+        action="store_true",
+        help="DELIBERATE fixture regeneration: rewrites the tracked route ledger. "
+        "Never use in CI — ordinary runs treat committed fixtures as immutable.",
+    )
     args = p.parse_args(argv)
 
     root = (args.repo_root or _repo_root()).resolve()
@@ -54,6 +60,7 @@ def main(argv: list[str] | None = None) -> int:
         synthetic_now=SYNTHETIC_NOW,
         preview_base_url=preview,
         expected_build_sha=args.expected_build_sha or build_sha,
+        regenerate_fixtures=bool(args.regenerate_fixtures),
     )
     result = run_harness(cfg)
     payload = {

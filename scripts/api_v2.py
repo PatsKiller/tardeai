@@ -26521,6 +26521,319 @@ def _manual_execution_log(query=None):
     }
 
 
+def _state_root_divergence(query=None):
+    """GET /api/v2/system/state-root-divergence — which state stores have forked.
+
+    Read-only. Producers run under `cd $PROJ`; every deployed release symlinks
+    data/portfolios/state at the persistent root. A producer that resolves its
+    path from the checkout writes a tree the server never reads, reports
+    success, and the served surface silently stops moving. Measured 2026-09-03:
+    59 of 88 stores had forked, the worst by 143 days, and no Command Center
+    surface said so.
+
+    Never merges or repairs a store (AGENTS.md 9.4 / WAVE G1: detection must not
+    become resolution). `?hashes=1` adds byte-identity, which is stronger than
+    mtime but costs a read of every store.
+    """
+    try:
+        from lib.state_root_divergence import scan
+    except Exception as e:  # noqa: BLE001
+        return {
+            "schema": "StateRootDivergenceReport@v1",
+            "status": "UNAVAILABLE",
+            "reason": f"{type(e).__name__}: {e}",
+            "auto_remediate": False,
+        }
+    q = query if isinstance(query, dict) else (_current_query or {})
+    want_hashes = (q.get("hashes") or "").lower() in ("1", "true", "yes")
+    try:
+        # Deliberately not PROJECT_ROOT: in a deployed release that path IS the
+        # symlink to the served root, so it would compare a directory with
+        # itself and report CONVERGED while stores were forked.
+        return scan(with_hashes=want_hashes)
+    except Exception as e:  # noqa: BLE001
+        # Fail closed: an error is never an empty, healthy-looking report.
+        return {
+            "schema": "StateRootDivergenceReport@v1",
+            "status": "UNAVAILABLE",
+            "reason": f"{type(e).__name__}: {e}",
+            "auto_remediate": False,
+        }
+
+
+def _whole_site_truth_block(fn_name, **kwargs):
+    """Shared read-only wrapper for the whole-site truth contracts.
+
+    Fail closed: an import or scan error is reported as UNAVAILABLE with the
+    reason, never as an empty report that reads like a healthy one.
+    """
+    try:
+        from lib import whole_site_truth as _wst
+
+        return getattr(_wst, fn_name)(**kwargs)
+    except Exception as e:  # noqa: BLE001
+        return {
+            "schema": "WholeSiteTruth@v1",
+            "contract": fn_name,
+            "status": "UNAVAILABLE",
+            "reason": f"{type(e).__name__}: {e}",
+            "authority": "READ_ONLY_ADVISORY",
+        }
+
+
+def _control_plane_surface_authority():
+    """GET /api/v2/system/control-plane-surface-authority — server-declared data mode.
+
+    Eleven /v3/control-plane/* routes labelled themselves PREVIEW/FIXTURE from a
+    constant compiled into the bundle while live domains answered behind them. A
+    page that ships its own label can ship the wrong one. The server decides here,
+    from what it can actually serve, and the UI renders that decision.
+    """
+    return _whole_site_truth_block("control_plane_surface_authority")
+
+
+def _operator_identity_boundary():
+    """GET /api/v2/system/operator-identity-boundary — where authorization is decided.
+
+    Reports that the browser holds a bearer token and an unverified operator name,
+    whether the server-side gate is DECLARED, and whether it is EFFECTIVE in this
+    process. Declared is not effective: access_ok() returns True when
+    ADMIN_WRITE_TOKEN is unset.
+    """
+    return _whole_site_truth_block("operator_identity_boundary")
+
+
+def _v3_next_lineage():
+    """GET /api/v2/system/v3-next-lineage — git/build/release lineage for /v3-next.
+
+    /v3-next is served from a directory outside the repository. When that directory
+    carries no manifest the honest answer is NONCANONICAL, not silence.
+    """
+    return _whole_site_truth_block("v3_next_lineage")
+
+
+def _route_disposition():
+    """GET /api/v2/system/route-disposition — every registered SPA route, dispositioned.
+
+    A route nothing links to is reachable by URL and invisible in navigation, so
+    nobody re-verifies it. Naming them is the precondition for retiring or owning them.
+    """
+    return _whole_site_truth_block("route_disposition")
+
+
+def _effective_truth_block(fn_name, **kwargs):
+    """Shared read-only wrapper for the declared-vs-effective contracts.
+
+    Fail closed: an import or probe error is UNAVAILABLE with the reason, never an
+    empty report that reads like a healthy one.
+    """
+    try:
+        from lib import effective_truth as _et
+
+        return getattr(_et, fn_name)(**kwargs)
+    except Exception as e:  # noqa: BLE001
+        return {
+            "schema": "EffectiveTruth@v1",
+            "contract": fn_name,
+            "status": "UNAVAILABLE",
+            "reason": f"{type(e).__name__}: {e}",
+            "authority": "READ_ONLY_ADVISORY",
+        }
+
+
+def _feature_flag_truth():
+    """GET /api/v2/system/feature-flag-truth — declared config value vs effective value.
+
+    A config file may say a capability is on while the loader coerces it off for
+    safety. Rendering the file value tells the operator the opposite of the truth,
+    and for the live-session flag that is the dangerous direction.
+    """
+    return _effective_truth_block("feature_flag_truth")
+
+
+def _scheduler_truth():
+    """GET /api/v2/system/scheduler-truth — disabled, failed and never-triggered timers.
+
+    "A unit exists" is not "the job ran". Disabled, failed-last-run and
+    enabled-but-never-triggered are three different failures a unit list renders
+    identically.
+    """
+    return _effective_truth_block("scheduler_truth")
+
+
+def _finviz_store_health():
+    """GET /api/v2/data-sources/finviz/store-health — why there is no number.
+
+    UNCACHED / CACHED_FRESH / CACHED_STALE / BROKEN_STORE / UNREADABLE are distinct
+    causes; only some of them are a provider problem. Collapsing them to an empty
+    render is how a local store fault was read as a Finviz outage.
+    """
+    return _effective_truth_block("finviz_store_health")
+
+
+def _protection_truth():
+    """GET /api/v2/risk/protection-truth — stop coverage recomputed over one population.
+
+    The served risk payload carries per-position stop facts (`has_stop`,
+    `broker_protected`, `stop_source`) while its aggregate comes from the
+    planned-stops file, so four broker-held stops read as NO STOP and its
+    percentage divides by the whole portfolio rather than the population it sums.
+    This recomputes from the position rows and publishes the numerator, the
+    denominator and the disagreement by name. Read-only.
+    """
+    try:
+        from lib.protection_truth import protection_truth
+
+        risk_payload = globals().get("risk")
+        if not callable(risk_payload):
+            return {
+                "schema": "ProtectionTruth@v1",
+                "status": "UNAVAILABLE",
+                "reason": "the risk payload builder is not available in this process",
+                "authority": "READ_ONLY_ADVISORY",
+            }
+
+        # risk() is the served payload the Risk page reads, so the recomputation
+        # runs over exactly the rows the operator is looking at.
+        risk = risk_payload() or {}
+        rows = risk.get("positions") or []
+        return protection_truth(
+            rows,
+            legacy={
+                "pct_protected": (risk or {}).get("pct_protected"),
+                "total_protected_mv": (risk or {}).get("total_protected_mv"),
+                "total_unprotected_mv": (risk or {}).get("total_unprotected_mv"),
+            },
+            observation={
+                "source": "/api/v2/risk",
+                "position_count": (risk or {}).get("position_count"),
+            },
+        )
+    except Exception as e:  # noqa: BLE001
+        return {
+            "schema": "ProtectionTruth@v1",
+            "status": "UNAVAILABLE",
+            "reason": f"{type(e).__name__}: {e}",
+            "authority": "READ_ONLY_ADVISORY",
+        }
+
+
+def _state_root_disposition():
+    """GET /api/v2/system/state-root-disposition — an authoritative verdict per store.
+
+    Detection alone is not resolution. Every audited store gets one verdict from a
+    closed taxonomy, every Command Center-critical store is flagged, and every
+    unresolved fork carries an owner, a canonical target and an executable
+    migration plan this lane is not permitted to run (AGENTS.md rule 5).
+    Read-only.
+    """
+    try:
+        from lib.state_root_disposition import state_root_disposition
+        from lib.state_root_divergence import scan
+
+        return state_root_disposition(scan(with_hashes=True))
+    except Exception as e:  # noqa: BLE001
+        return {
+            "schema": "StateRootDisposition@v2",
+            "status": "UNAVAILABLE",
+            "reason": f"{type(e).__name__}: {e}",
+            "authority": "READ_ONLY_ADVISORY",
+        }
+
+
+def _residual_surface(fn_name, loader=None):
+    """Shared read-only wrapper for the five residual-surface projections.
+
+    Fail closed: an import or upstream error becomes an explicit state with a
+    reason, never an empty payload that renders as a healthy zero.
+    """
+    try:
+        from lib import residual_surfaces as _rs
+
+        payload = loader() if loader else None
+        return getattr(_rs, fn_name)(payload)
+    except Exception as e:  # noqa: BLE001
+        return {
+            "state": "ERROR",
+            "state_reason": f"{type(e).__name__}: {e}",
+            "terminal": True,
+            "authority": "READ_ONLY_ADVISORY",
+        }
+
+
+def _watch_projection():
+    """GET /api/v2/watch/projection — one population for every Watch count.
+
+    Summary counts are withheld while the list is unresolved, and an initial
+    filter that eliminates the catalogue is reported as DEGRADED rather than
+    rendering an empty watchlist. Reads an already-built payload; calls no provider.
+    """
+    return _residual_surface("watch_projection", lambda: _wl_items(_current_query or {}))
+
+
+def _closed_loop_separation():
+    """GET /api/v2/closed-loop/separation — four circulations, four clocks.
+
+    CIO decision lineage and Hermes outcome feedback are different loops; one
+    going quiet must not age the other.
+    """
+    return _residual_surface("closed_loop_separation")
+
+
+def _research_provenance():
+    """GET /api/v2/research-intelligence/provenance — stale is not missing.
+
+    Separates stale topics from uncovered categories, and source-acquisition from
+    artifact from consumer-adoption freshness. Evidence, never canonical truth.
+    """
+    return _residual_surface("research_provenance", lambda: _research_intelligence_freshness())
+
+
+def _writer_status():
+    """GET /api/v2/writers/status — eight signals per writer, answered separately.
+
+    A MANUAL writer is never rendered as if a schedule mints its output.
+    """
+    return _residual_surface("writer_status")
+
+
+def _financial_conflict_state():
+    """GET /api/v2/financial/conflicts — which financial records are unverified.
+
+    Reads the conflict sidecars written beside each store. A record listed here renders
+    UNVERIFIED and fails its own calculation closed; every other record and every other
+    surface is explicitly declared unaffected, so one disputed historical lot cannot
+    take the site down with it.
+    """
+
+    def _load():
+        import glob as _g
+        import json as _j
+
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        state_dir = os.path.join(root, "data", "portfolios", "state")
+        out = {}
+        for path in sorted(_g.glob(os.path.join(state_dir, "*.json.conflicts.json"))):
+            store = os.path.basename(path)[: -len(".conflicts.json")]
+            try:
+                with open(path) as fh:
+                    out[store] = _j.load(fh)
+            except Exception as exc:  # noqa: BLE001
+                out[store] = {"_unreadable": str(exc)}
+        return out
+
+    return _residual_surface("financial_conflict_state", _load)
+
+
+def _reentry_status_projection():
+    """GET /api/v2/reentry/status — one canonical status per row.
+
+    The served desk carries gates, `held` and `wash_blocked` but no status, so
+    every consumer re-derived its own. This is the single projection.
+    """
+    return _residual_surface("reentry_projection", lambda: _build_reentry_decision_desk_api(_current_query))
+
+
 def _governance_pipeline_status():
     """GET /api/v2/system/governance-pipeline-status — Phase 200 governance controller status (read-only)."""
     import json as _j, subprocess as _sp
@@ -45120,6 +45433,22 @@ ROUTES = {
     "/api/v2/system/runtime-inventory": lambda: _system_runtime_inventory(),
     "/api/v2/system/pipeline-summary": lambda: _system_pipeline_summary(),
     "/api/v2/system/governance-pipeline-status": lambda: _governance_pipeline_status(),
+    "/api/v2/system/state-root-divergence": lambda: _state_root_divergence(_current_query),
+    "/api/v2/system/control-plane-surface-authority": lambda: _control_plane_surface_authority(),
+    "/api/v2/system/operator-identity-boundary": lambda: _operator_identity_boundary(),
+    "/api/v2/system/v3-next-lineage": lambda: _v3_next_lineage(),
+    "/api/v2/system/route-disposition": lambda: _route_disposition(),
+    "/api/v2/system/feature-flag-truth": lambda: _feature_flag_truth(),
+    "/api/v2/system/scheduler-truth": lambda: _scheduler_truth(),
+    "/api/v2/data-sources/finviz/store-health": lambda: _finviz_store_health(),
+    "/api/v2/risk/protection-truth": lambda: _protection_truth(),
+    "/api/v2/system/state-root-disposition": lambda: _state_root_disposition(),
+    "/api/v2/watch/projection": lambda: _watch_projection(),
+    "/api/v2/closed-loop/separation": lambda: _closed_loop_separation(),
+    "/api/v2/research-intelligence/provenance": lambda: _research_provenance(),
+    "/api/v2/writers/status": lambda: _writer_status(),
+    "/api/v2/reentry/status": lambda: _reentry_status_projection(),
+    "/api/v2/financial/conflicts": lambda: _financial_conflict_state(),
     "/api/v2/system/portfolio-cadence-status": lambda: _portfolio_cadence_status(),
     "/api/v2/open-trades/intelligence": lambda: _open_trades_intelligence(),
     "/api/v2/broker-proposals": lambda: _broker_proposals(_current_query),
