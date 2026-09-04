@@ -20,6 +20,8 @@ sys.path.append(str(ROOT / "scripts"))
 from lib.financial_reconciliation import (  # noqa: E402
     AUTO_MIGRATABLE,
     DEFECT_CROSS_ACCOUNT,
+    LIVE_PROTECTIVE_STATES,
+    TERMINAL_ORDER_STATES,
     DEFECT_DUPLICATE_CLOSED,
     DEFECT_DUPLICATE_OPEN,
     DEFECT_NEGATIVE,
@@ -433,3 +435,88 @@ class TestRecordIntegrity:
         assert r["quarantine"] is True, (
             "the stored total happening to equal the broker position does not make duplicated lots a valid basis"
         )
+
+
+class TestOrderStatusClassification:
+    """A stop's status decides whether a position is protected. Guessing is not allowed.
+
+    Found immediately before the production migration: Schwab reports "working" once the
+    session opens, that string was in neither the live nor the terminal set, and the
+    reconciler's fallback treated anything-not-live as terminal. Six live protective
+    stops were therefore reported as superseded -- visible only while the market is
+    open, which is exactly when it matters.
+    """
+
+    def test_working_is_live_protection(self):
+        assert "working" in LIVE_PROTECTIVE_STATES
+
+    def test_every_status_the_broker_actually_returns_is_classified(self):
+        observed = {
+            "working",
+            "replaced",
+            "rejected",
+            "filled",
+            "canceled",
+            "awaiting_stop_condition",
+            "pending_activation",
+        }
+        unclassified = sorted(s for s in observed if s not in LIVE_PROTECTIVE_STATES and s not in TERMINAL_ORDER_STATES)
+        assert not unclassified, f"unclassified broker statuses: {unclassified}"
+
+    def test_live_and_terminal_never_overlap(self):
+        assert not (LIVE_PROTECTIVE_STATES & TERMINAL_ORDER_STATES)
+
+    def test_an_unknown_status_is_unresolved_not_superseded(self):
+        """The unsafe default. An unknown state must never read as 'protects nothing'."""
+        orders = [
+            {
+                "id": "9",
+                "symbol": "X",
+                "side": "sell",
+                "type": "stop",
+                "status": "some_future_schwab_state",
+                "stop_price": "10.0",
+                "qty": "1",
+            }
+        ]
+        v = reconcile_missing_stop_record(
+            "X:schwab_taxable", {"broker_order_id": "9", "stop": 10.0, "qty": 1}, "producer", _auth(orders=orders)
+        )
+        assert v["disposition"] == UNRESOLVED_OPERATOR_REVIEW
+        assert v["disposition"] != STALE_SUPERSEDED_WITH_PROOF
+
+    def test_a_working_stop_is_broker_verified(self):
+        orders = [
+            {
+                "id": "9",
+                "symbol": "ARKX",
+                "side": "sell",
+                "type": "stop",
+                "status": "working",
+                "stop_price": "31.3",
+                "qty": "1000.0",
+            }
+        ]
+        v = reconcile_missing_stop_record(
+            "ARKX:schwab_taxable",
+            {"broker_order_id": "9", "stop": 31.3, "qty": 1000.0},
+            "producer",
+            _auth(orders=orders),
+        )
+        assert v["disposition"] == BROKER_VERIFIED
+
+    def test_a_working_stop_counts_as_live_protective_coverage(self):
+        auth = _auth(
+            orders=[
+                {
+                    "id": "9",
+                    "symbol": "X",
+                    "side": "sell",
+                    "type": "stop",
+                    "status": "working",
+                    "stop_price": "1",
+                    "qty": "1",
+                }
+            ]
+        )
+        assert len(auth.live_protective_orders("X", "schwab_taxable")) == 1
