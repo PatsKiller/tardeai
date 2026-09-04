@@ -44,3 +44,37 @@ check('the overview mark names data_as_of and states UNDATED',
 
 console.log(`\nmetric_strip_labels: ${pass} passed, ${fail} failed`)
 if (fail) process.exit(1)
+
+// ── header truth: TODAY is an all-accounts aggregate and must say so ──────────
+//
+// The live audit of release ee200ec3 recorded "Alpaca-only Today metadata beside an
+// ALL ACCOUNTS aggregate". Re-measured against 2ef5fd115 it was still present:
+//
+//   PORTFOLIO | $1,281,637 | data_as_of 2026-09-03 . ALL ACCOUNTS . oldest fidelity_rollover_ira
+//   TODAY     | -$2,908 -0.23% | data_as_of 2026-09-03 . alpaca_taxable_live
+//
+// The Today VALUE was correct -- it sums today_by_account across every account and
+// reconciles to -2907.70 exactly. Only the attribution was wrong, which is the worse
+// half: a right number credited to one account it did not come from reads as
+// authoritative rather than as obviously missing.
+//
+// Matched against `code`, the comment-stripped source, for the reason stated at the top
+// of this file: these very comments quote the strings under test.
+
+check('the TODAY tile no longer attributes an all-accounts figure to one account',
+  !/label: 'TODAY'[\s\S]{0,400}asOfNote: overviewAcct\b/.test(code))
+check('the TODAY tile uses an all-accounts provenance note',
+  /asOfNote: todayAsOfNote/.test(code))
+check('the TODAY provenance note is derived from the contributing accounts',
+  /todayAccountCount\s*=\s*Object\.keys\(overview\?\.today_by_account/.test(code))
+check('the TODAY note falls back to a scope, never a single account name',
+  /todayAsOfNote[\s\S]{0,240}ALL ACCOUNTS/.test(code))
+
+// "53.3% . 169 . $55,429" was three unlabelled numbers, and the dollar figure sat beside
+// a REALIZED tile showing a different one.
+check('the TRADING tile labels its win rate', /\$\{winRate\}% win/.test(code))
+check('the TRADING tile labels its trade count', /\$\{winTrades\} trades/.test(code))
+check('the TRADING tile labels its P&L', /fmt\$\(journalPnl, 0\)\} P&L/.test(code))
+
+console.log(`\nmetric_strip_header_truth: ${pass} passed, ${fail} failed`)
+if (fail) process.exit(1)

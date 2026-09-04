@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { businessDateToSessionInstant, etCalendarDate } from '../../lib/observationEnvelope.ts'
 import { useApi } from '../../hooks/useApi'
 import { BB, T, TYPE, numStyle, heatRamp } from '../../lib/watchTokens'
+import { squarify } from '../../lib/bookTreemapLayout.ts'
 
 // Home v2 WS-B: operator book as Finviz-style treemap.
 // Freshness (2026-07-26): always show holdings.json as_of; amber lag when behind live prices.
@@ -9,42 +10,6 @@ import { BB, T, TYPE, numStyle, heatRamp } from '../../lib/watchTokens'
 interface Row { symbol: string; account?: string; value: number; day_change: number; day_change_pct?: number; weight_pct?: number; sector: string; stop?: string }
 interface Rect { x: number; y: number; w: number; h: number; row?: Row; group?: string }
 
-function squarify(items: { size: number; payload: any }[], x: number, y: number, w: number, h: number): { x: number; y: number; w: number; h: number; payload: any }[] {
-  const out: { x: number; y: number; w: number; h: number; payload: any }[] = []
-  let rest = items.filter(i => i.size > 0).sort((a, b) => b.size - a.size)
-  const total = rest.reduce((s, i) => s + i.size, 0) || 1
-  let area = w * h
-  rest = rest.map(i => ({ ...i, size: (i.size / total) * area }))
-  let cx = x, cy = y, cw = w, ch = h
-  while (rest.length) {
-    const strip: typeof rest = []
-    const along = Math.min(cw, ch)
-    let best = Infinity
-    for (const it of rest) {
-      strip.push(it)
-      const sum = strip.reduce((s, i) => s + i.size, 0)
-      const thick = sum / along
-      const worst = Math.max(...strip.map(i => {
-        const len = i.size / thick
-        return Math.max(thick / len, len / thick)
-      }))
-      if (worst > best) { strip.pop(); break }
-      best = worst
-    }
-    const sum = strip.reduce((s, i) => s + i.size, 0)
-    const thick = sum / along
-    let off = 0
-    for (const it of strip) {
-      const len = it.size / thick
-      if (cw >= ch) out.push({ x: cx, y: cy + off, w: thick, h: len, payload: it.payload })
-      else out.push({ x: cx + off, y: cy, w: len, h: thick, payload: it.payload })
-      off += len
-    }
-    if (cw >= ch) { cx += thick; cw -= thick } else { cy += thick; ch -= thick }
-    rest = rest.slice(strip.length)
-  }
-  return out
-}
 
 /**
  * Session lag for the book snapshot.
