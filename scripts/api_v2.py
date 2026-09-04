@@ -3286,61 +3286,17 @@ def overview():
     }
 
     # ── Portfolio aggregate contract (cc-header-truth-v2 Phase 2 A) ──────────
-    # The header total is an ALL-ACCOUNTS aggregate. It must never sit beside an
-    # individual account name as though that account supplied it, and it must name
-    # which account (if any) drives aggregate staleness.
-    _acct_summaries = h.get("account_summaries") or {}
-    _acct_obs = []
-    for _ak, _as in _acct_summaries.items():
-        if not isinstance(_as, dict):
-            continue
-        _obs_time = _as.get("as_of") or _as.get("reported_total_as_of") or ""
-        _acct_obs.append(
-            {
-                "account": _ak,
-                "custodian": _as.get("source", ""),
-                "total_value": _as.get("total_value"),
-                "holdings_count": _as.get("holdings_count"),
-                "observation_time": _obs_time,
-                "received_time": _as.get("last_import", ""),
-                "freshness": "UNKNOWN",
-            }
-        )
-    _oldest_obs = h.get("data_as_of")
-    _oldest_acct = h.get("data_as_of_account")
-    _acct_times = [o["observation_time"] for o in _acct_obs if o.get("observation_time")]
-    if not _oldest_obs and _acct_times:
-        _oldest_obs = min(_acct_times)
-    _newest_obs = max(_acct_times) if _acct_times else None
-    _agg_state = "UNAVAILABLE"
-    _agg_reason = "no account observations"
-    if _acct_obs:
-        _agg_state = "COMPLETE"
-        _agg_reason = f"{len(_acct_obs)} account(s) contributing"
-        if _oldest_obs:
-            try:
-                _odt = datetime.fromisoformat(str(_oldest_obs).replace("Z", "+00:00"))
-                _age_h = (datetime.now(timezone.utc) - _odt.astimezone(timezone.utc)).total_seconds() / 3600.0
-            except (ValueError, TypeError):
-                _age_h = None
-            if _age_h is None or _age_h > 48:
-                _agg_state = "STALE"
-                _agg_reason = f"oldest observation: {_oldest_acct or '?'} {_oldest_obs}" + (
-                    f" ({_age_h:.0f}h)" if _age_h is not None else " (undated)"
-                )
-    _portfolio_aggregate = {
-        "contract_version": "PortfolioAggregate@v1",
-        "portfolio_scope": "ALL_ACCOUNTS",
-        "aggregate_value": total_val,
-        "included_account_count": len(_acct_obs),
-        "oldest_observation_time": _oldest_obs,
-        "oldest_observation_account": _oldest_acct,
-        "newest_observation_time": _newest_obs,
-        "freshness_state": _agg_state,
-        "freshness_reason": _agg_reason,
-        "accounts": _acct_obs,
-        "read_only": True,
-    }
+    # The header total is an ALL-ACCOUNTS aggregate. Oldest/newest MUST come from
+    # the same accounts[] observation times (never mix top-level data_as_of for
+    # oldest with account_summaries for newest — live acceptance 2026-09-03).
+    from lib.portfolio_aggregate_contract import build_portfolio_aggregate
+
+    _portfolio_aggregate = build_portfolio_aggregate(
+        aggregate_value=total_val,
+        account_summaries=h.get("account_summaries") or {},
+        data_as_of=h.get("data_as_of"),
+        data_as_of_account=h.get("data_as_of_account"),
+    )
 
     # Canonical quote-selection projection (cc-header-truth-v2 Phase 2 B).
     # One source of truth for provider roles; reports what the repricer did.

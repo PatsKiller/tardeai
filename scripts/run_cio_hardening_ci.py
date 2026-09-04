@@ -602,6 +602,7 @@ GATES = [
             "tests/test_cc_header_truth_v2_api.py",
             "tests/test_quote_selection_contract.py",
             "tests/test_api_v2_ruff_quality_corrections.py",
+            "tests/test_portfolio_aggregate_contract.py",
         ],
     ),
     (
