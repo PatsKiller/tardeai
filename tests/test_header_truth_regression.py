@@ -280,3 +280,55 @@ def test_error_rows_are_not_review_and_not_nogo() -> None:
     assert classify_decision("SOMETHING_NEW") == "unclassified"
     assert classify_decision("GO", disqualified=True) == "excluded"
     assert classify_decision("MANUAL_REVIEW", disqualified=True) == "excluded"
+
+
+# ─────────────────────── quote coverage (defect E) ───────────────────────────
+
+
+def test_a_degraded_quote_aggregate_states_its_extent() -> None:
+    """ "quotes DEGRADED (price_cache_nav(1))" named a fault and not its size.
+
+    One fallback row out of 20 and twenty out of 20 rendered identically. The
+    per-provider tallies were already in hand; the contract discarded them.
+    """
+    from lib.quote_selection_contract import project_quote_selection
+
+    q = project_quote_selection(
+        reprice_source="finviz_live",
+        last_repriced="2026-09-04 15:00:02 ET",
+        source_counts={"finviz": 19, "price_cache_nav": 1},
+        has_any_price=True,
+    )
+    assert q["status"] == "DEGRADED"
+    assert q["total_symbols"] == 20
+    assert q["covered_symbols"] == 19
+    assert q["degraded_symbol_count"] == 1
+    assert q["coverage_pct"] == 95.0
+    assert q["symbols_by_source"] == {"finviz": 19, "price_cache_nav": 1}
+    # The session is separable from the observation instant.
+    assert q["session_date"] == "2026-09-04"
+    assert q["selected_observation_time"] == "2026-09-04 15:00:02 ET"
+
+
+def test_total_vendor_failure_does_not_read_like_one_stale_row() -> None:
+    """The distinction the bare DEGRADED label could not make."""
+    from lib.quote_selection_contract import project_quote_selection
+
+    one_bad = project_quote_selection(reprice_source="finviz_live", source_counts={"finviz": 19, "price_cache_nav": 1})
+    all_bad = project_quote_selection(reprice_source="finviz_live", source_counts={"price_cache_nav": 20})
+    assert one_bad["status"] == all_bad["status"] == "DEGRADED"
+    # Same verdict, and now plainly different situations.
+    assert one_bad["coverage_pct"] == 95.0
+    assert all_bad["coverage_pct"] == 0.0
+    assert all_bad["degraded_symbol_count"] == 20
+
+
+def test_coverage_is_absent_not_invented_when_counts_are_unknown() -> None:
+    """No source counts means no coverage claim -- never a reassuring 100%."""
+    from lib.quote_selection_contract import project_quote_selection
+
+    q = project_quote_selection(reprice_source="finviz_live", source_counts={})
+    assert q["total_symbols"] is None
+    assert q["covered_symbols"] is None
+    assert q["coverage_pct"] is None
+    assert q["degraded_symbol_count"] == 0

@@ -22,7 +22,19 @@ export default function MetricStrip({ onDrill }: Props) {
   const { data: tradeAi } = useApi<any>('/api/v2/trade-ai/summary', 120_000)
   const { data: gate } = useApi<any>('/api/v2/live-trading-gate', 120_000)
   const { data: health } = useApi<any>('/api/v2/health', 120_000)
-  const healthWarn = (health?.findings ?? []).filter((f: any) => f.severity === 'critical' || f.severity === 'warning').length
+  // The badge showed a bare number over a heart. "27" of what, out of what, and
+  // does it reconcile with the page it links to? Each part of the population is
+  // counted separately so the badge can name its own definition rather than
+  // presenting a total whose basis lives only in this expression.
+  const healthFindings = (health?.findings ?? []) as any[]
+  const healthCritical = healthFindings.filter((f: any) => f.severity === 'critical').length
+  const healthWarning = healthFindings.filter((f: any) => f.severity === 'warning').length
+  const healthWarn = healthCritical + healthWarning
+  const healthOther = healthFindings.length - healthWarn
+  const healthPopulation =
+    `${healthWarn} of ${healthFindings.length} findings from /api/v2/health` +
+    ` · ${healthCritical} critical + ${healthWarning} warning` +
+    (healthOther ? ` · ${healthOther} below threshold, not counted` : '')
 
   const portfolioVal = overview?.portfolio_value
   // Canonical aggregate contract (cc-header-truth-v2 Phase 2 A). The header total
@@ -92,9 +104,18 @@ export default function MetricStrip({ onDrill }: Props) {
       ? ` · ${cov.accounts_undated}/${cov.accounts_total} accounts undated`
       : ''
 
+  // The oldest contributor belongs on the FACE, with its stamp and its age.
+  // The old header said "oldest fidelity_rollover_ira" -- a name tells you
+  // something is old and nothing about how old, which is why the operator asked
+  // for the timestamp and age explicitly. Naming coverage is not a substitute
+  // for it: they answer different questions (how much is stale vs how stale).
+  const oldestMark = posOldest
+    ? ` · oldest ${posOldestAcct ?? '—'} ${posOldest}${ageMark(posOldestAgeH)}`
+    : ''
+
   const portfolioAsOfNote =
     portfolioAgg && portfolioScopeLabel
-      ? `${portfolioScopeLabel} · ${portfolioAgg.included_account_count ?? '?'} accts${coverageMark}${undatedMark}`
+      ? `${portfolioScopeLabel} · ${portfolioAgg.included_account_count ?? '?'} accts${coverageMark}${oldestMark}${undatedMark}`
       : undefined
 
   // The oldest contributor, with its exact stamp and age -- never the bare
@@ -364,10 +385,10 @@ export default function MetricStrip({ onDrill }: Props) {
       )}
       {healthWarn > 0 && (
         <div onClick={() => navigate('/health')}
-          title={`${healthWarn} health finding(s) — open Health for remediate + coder dispatch`}
+          title={`${healthPopulation}. Open Health for remediate + coder dispatch — the badge and that page count the same population.`}
           style={{ padding: '4px 12px', borderRadius: 6, fontSize: TYPE.xs, fontWeight: 700, cursor: 'pointer',
             background: BB.redDim, color: BB.red, marginRight: 8 }}>
-          ♥ {healthWarn} HEALTH →
+          ♥ {healthWarn} HEALTH{healthCritical ? ` (${healthCritical} crit)` : ''} →
         </div>
       )}
       <div

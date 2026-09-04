@@ -101,6 +101,31 @@ async function main() {
         /(\d[\d,]*)\s*NO[- ]?GO\b/i,
       ]),
       mentions_all_accounts: /ALL[_ ]ACCOUNTS/i.test(body),
+      // The 2026-09-04 capture's twelve defects, each as a positive observation
+      // of the fix rather than an absence of the old string.
+      clock_labels: {
+        positions_observed: /positions observed/i.test(body),
+        pnl_session: /P&L session/i.test(body),
+        no_bare_data_as_of_on_tiles: !/\bdata_as_of\s+\d{4}-\d{2}-\d{2}/i.test(body),
+        coverage_pct: /covers\s+[\d.]+% of value/i.test(body),
+        oldest_with_stamp: /oldest\s+\S+\s+\d{4}-\d{2}-\d{2}/i.test(body),
+        oldest_with_age: /\(\d+[dh] old\)/i.test(body),
+        undated_accounts: /accounts undated/i.test(body),
+      },
+      count_labels: {
+        run_id: /id\s+\d{4}-\d{2}-\d{2}::\d{4}/.test(body),
+        manual_review: /manual review/i.test(body),
+        unaccounted: /UNACCOUNTED/.test(body),
+        pending_not_p0: /proposals pending review/i.test(body),
+      },
+      // Every distinct "N classified / M scanned" the page renders. Two
+      // different values here is the contradiction, not a rendering detail.
+      population_strings: [...new Set(
+        (body.match(/\d[\d,]*\s+classified\s*\/\s*\d[\d,]*\s+scanned[^\n]*/gi) || [])
+          .map((s) => s.trim()),
+      )],
+      // Every date the page shows, so two clocks disagreeing is visible.
+      dates_rendered: [...new Set(body.match(/\d{4}-\d{2}-\d{2}/g) || [])].sort(),
       mentions_alpaca: /alpaca/i.test(body),
       pnl_labels: (body.match(/[A-Za-z ]{0,24}P&?L[A-Za-z ]{0,24}/gi) || []).slice(0, 12),
       body_excerpt: body.slice(0, 1500),
