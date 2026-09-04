@@ -70,8 +70,18 @@ check('the four aggregate clocks are rendered as separate lines',
   code.includes('const clockLines') &&
   code.includes('positions observed') && code.includes('valued ') &&
   code.includes('quotes observed '))
+check('an empty account cannot make TODAY incomplete', (() => {
+  // The tile flagged STALE off `complete === false`, which an empty account set.
+  // Only a FUNDED account that failed to report may raise the warning.
+  const m = code.match(/stale: today[^\n]*/)
+  return !!m && /todayMissing\.length/.test(m[0]) && !/complete === false/.test(m[0])
+})())
+check('TODAY distinguishes empty accounts from ones that did not report',
+  code.includes('todayEmpty') && code.includes('MISSING ${todayMissing'))
+check("today's coverage is stated over FUNDED accounts, not linked ones",
+  code.includes('funded accts') && code.includes('todayFunded'))
 check("today's coverage names the missing accounts rather than only a count",
-  code.includes('missing ${todayMissing.join'))
+  /MISSING \$\{todayMissing\.join/.test(code))
 check('the setups tile carries its run id',
   code.includes('id ${setupRun.runId}'))
 check('unaccounted setup rows are shown on the tile face',
