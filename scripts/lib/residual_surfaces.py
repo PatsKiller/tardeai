@@ -116,6 +116,34 @@ def _envelope(state: str, reason: str, **extra: Any) -> dict[str, Any]:
     return out
 
 
+
+def escalate_envelope(row_states: list[str], *, degraded: set[str], stale: set[str]) -> tuple[str, str]:
+    """Derive the summary state from the rows underneath it.
+
+    A summary that is hard-coded POPULATED whenever it has any rows is the same defect
+    this module was written to remove: the header stays green while everything below it
+    is stale, unadopted or broken, and a consumer that reads only `state` is misled by
+    a surface whose whole job is to stop that happening.
+
+    Worst-wins, and the reason names the counts so the escalation is checkable.
+    """
+    if not row_states:
+        return LEGITIMATE_EMPTY, "there are no rows, which is a real answer"
+    bad = [s for s in row_states if s in degraded]
+    old = [s for s in row_states if s in stale]
+    total = len(row_states)
+    if bad and len(bad) == total:
+        return DEGRADED, f"all {total} row(s) are in a failed state: {sorted(set(bad))}"
+    if old and len(old) == total:
+        return STALE, f"all {total} row(s) are stale: {sorted(set(old))}"
+    if bad or old:
+        return PARTIAL, (
+            f"{len(bad) + len(old)} of {total} row(s) are degraded or stale "
+            f"({sorted(set(bad + old))}); the rest resolved"
+        )
+    return POPULATED, f"all {total} row(s) resolved"
+
+
 # ── 1. Watch ─────────────────────────────────────────────────────────────────
 
 WATCH_SCHEMA = "WatchProjection@v1"
@@ -293,7 +321,12 @@ def _lane(
 
 
 def closed_loop_separation(
-    lanes: dict[str, dict[str, Any]] | None = None, *, stale_after_hours: float = 72.0, now: datetime | None = None
+    lanes: dict[str, dict[str, Any]] | None = None,
+    *,
+    http_status: int | None = None,
+    error: str | None = None,
+    stale_after_hours: float = 72.0,
+    now: datetime | None = None,
 ) -> dict[str, Any]:
     """Four circulations, each aging on its own clock.
 
@@ -301,6 +334,13 @@ def closed_loop_separation(
     reverse. They are different loops with different producers; one being quiet
     says nothing about the other.
     """
+    transport = classify_transport(http_status, error)
+    if transport:
+        return {
+            **_envelope(transport, f"transport answered {http_status or error!r}"),
+            "schema": CLOSED_LOOP_SCHEMA,
+            "lanes": None,
+        }
     src = lanes or {}
     rows = [_lane(k, label, desc, src.get(k), stale_after_hours, now) for k, label, desc in LANES]
     return {
@@ -324,13 +364,25 @@ RESEARCH_SCHEMA = "ResearchProvenance@v1"
 
 
 def research_provenance(
-    freshness: dict[str, Any] | None, *, expected_categories: Iterable[str] = (), now: datetime | None = None
+    freshness: dict[str, Any] | None,
+    *,
+    http_status: int | None = None,
+    error: str | None = None,
+    expected_categories: Iterable[str] = (),
+    now: datetime | None = None,
 ) -> dict[str, Any]:
     """Stale topics and missing coverage are different problems.
 
     A category with rows that have aged is stale. A category with no rows at all
     is uncovered. Rendering both as "0 fresh" hides which one an operator has.
     """
+    transport = classify_transport(http_status, error)
+    if transport:
+        return {
+            **_envelope(transport, f"transport answered {http_status or error!r}"),
+            "schema": RESEARCH_SCHEMA,
+            "categories": None,
+        }
     if freshness is None:
         return {**_envelope(LOADING, "the freshness projection has not resolved"), "schema": RESEARCH_SCHEMA}
     by_cat = freshness.get("by_category")
@@ -386,7 +438,11 @@ def research_provenance(
     observed = freshness.get("as_of")
     return {
         **_envelope(
-            POPULATED if rows else LEGITIMATE_EMPTY, "stale topics and missing coverage are reported separately"
+            *escalate_envelope(
+                [r["state"] for r in rows],
+                degraded={"MISSING_COVERAGE"},
+                stale={"STALE_TOPICS"},
+            )
         ),
         "schema": RESEARCH_SCHEMA,
         "categories": rows,
@@ -450,7 +506,12 @@ WRITER_STATES = (
 
 
 def writer_status(
-    writers: dict[str, dict[str, Any]] | None, *, stale_after_hours: float = 48.0, now: datetime | None = None
+    writers: dict[str, dict[str, Any]] | None,
+    *,
+    http_status: int | None = None,
+    error: str | None = None,
+    stale_after_hours: float = 48.0,
+    now: datetime | None = None,
 ) -> dict[str, Any]:
     """Eight separate questions about a writer, answered separately.
 
@@ -458,6 +519,13 @@ def writer_status(
     adopted it". A surface that implies automatic thesis minting where the writer
     is manual is the specific lie this replaces.
     """
+    transport = classify_transport(http_status, error)
+    if transport:
+        return {
+            **_envelope(transport, f"transport answered {http_status or error!r}"),
+            "schema": WRITER_SCHEMA,
+            "writers": None,
+        }
     src = writers or {}
     rows = []
     for name, w in sorted(src.items()):
@@ -531,7 +599,13 @@ def writer_status(
     for r in rows:
         counts[r["state"]] = counts.get(r["state"], 0) + 1
     return {
-        **_envelope(POPULATED if rows else LEGITIMATE_EMPTY, "each writer carries its own eight-signal record"),
+        **_envelope(
+            *escalate_envelope(
+                [r["state"] for r in rows],
+                degraded={BROKEN, ABSENT, UNKNOWN_WRITER},
+                stale={STALE_WRITER, PRODUCING_NOT_ADOPTED},
+            )
+        ),
         "schema": WRITER_SCHEMA,
         "writers": rows,
         "state_counts": dict(sorted(counts.items())),
@@ -618,17 +692,21 @@ def reentry_projection(
     now: datetime | None = None,
 ) -> dict[str, Any]:
     transport = classify_transport(http_status, error)
+    # rows is None, never [], whenever the desk did not actually read anything. An
+    # empty list here is a measurement -- "there are no re-entry candidates" -- and a
+    # read that failed has measured nothing. Returning [] makes an outage and a quiet
+    # market render identically, which is the exact defect this surface exists to end.
     if transport:
         return {
             **_envelope(transport, f"transport answered {http_status or error!r}"),
             "schema": REENTRY_SCHEMA,
-            "rows": [],
+            "rows": None,
         }
     if payload is None:
-        return {**_envelope(LOADING, "the desk has not resolved"), "schema": REENTRY_SCHEMA, "rows": []}
+        return {**_envelope(LOADING, "the desk has not resolved"), "schema": REENTRY_SCHEMA, "rows": None}
     rows = payload.get("rows")
     if not isinstance(rows, list):
-        return {**_envelope(MALFORMED, f"rows is {type(rows).__name__}"), "schema": REENTRY_SCHEMA, "rows": []}
+        return {**_envelope(MALFORMED, f"rows is {type(rows).__name__}"), "schema": REENTRY_SCHEMA, "rows": None}
 
     criteria = payload.get("criteria") or {}
     stale_hours = float(criteria.get("stale_hours") or 6.0)
@@ -682,3 +760,104 @@ def reentry_infer_historical(record: dict[str, Any], *, rule_version: str = "1.0
         "never_rewritten_as_observed": True,
         "source_record_date": record.get("date") or record.get("as_of"),
     }
+
+
+# ── 6. Financial record conflicts ────────────────────────────────────────────
+
+CONFLICT_SCHEMA = "FinancialConflictState@v1"
+
+
+def financial_conflict_state(
+    sidecars: dict[str, Any] | None,
+    *,
+    http_status: int | None = None,
+    error: str | None = None,
+) -> dict[str, Any]:
+    """Which financial records are unverified, and what that is allowed to block.
+
+    A record no authority could settle must not be shown as a value. It must also not
+    take the whole application down with it: one disputed historical tax lot is not a
+    reason to stop rendering Watch, Closed Loop, or the other records in its own store.
+
+    So this returns per-record scope. `blocks` names only the calculations that actually
+    consume the disputed record; everything absent from that list is explicitly declared
+    unaffected, which is what lets the rest of the site stay live and honest at once.
+    """
+    transport = classify_transport(http_status, error)
+    if transport:
+        return {
+            **_envelope(transport, f"transport answered {http_status or error!r}"),
+            "schema": CONFLICT_SCHEMA,
+            "conflicts": None,
+        }
+
+    if sidecars is None:
+        return {
+            **_envelope(ERROR, "conflict state was never read; absence of a sidecar is not proof of no conflict"),
+            "schema": CONFLICT_SCHEMA,
+            "conflicts": None,
+        }
+
+    conflicts: list[dict[str, Any]] = []
+    malformed: list[str] = []
+    for store, doc in sorted(sidecars.items()):
+        if not isinstance(doc, dict) or "records" not in doc:
+            malformed.append(store)
+            continue
+        for rec in doc.get("records") or []:
+            key = rec.get("record_key")
+            conflicts.append(
+                {
+                    "store": store,
+                    "record_key": key,
+                    "render_as": rec.get("render_as", "UNVERIFIED"),
+                    "reason": rec.get("reason"),
+                    "both_originals_preserved": bool(rec.get("producer_sha256") and rec.get("served_sha256")),
+                    # Scope is deliberately narrow and explicit.
+                    "blocks": _conflict_blast_radius(store, key),
+                    "does_not_block": (
+                        "every other record in this store, and every surface that does not read this record"
+                    ),
+                }
+            )
+
+    if malformed:
+        return {
+            **_envelope(DEGRADED, f"{len(malformed)} conflict sidecar(s) could not be parsed: {malformed}"),
+            "schema": CONFLICT_SCHEMA,
+            "conflicts": conflicts,
+            "malformed_sidecars": malformed,
+        }
+    if not conflicts:
+        return {
+            **_envelope(LEGITIMATE_EMPTY, "no unresolved financial record conflicts"),
+            "schema": CONFLICT_SCHEMA,
+            "conflicts": [],
+            "unresolved_record_count": 0,
+        }
+    return {
+        **_envelope(
+            DEGRADED,
+            f"{len(conflicts)} financial record(s) are unresolved and render UNVERIFIED; "
+            "the calculations that read them fail closed and nothing else is affected",
+        ),
+        "schema": CONFLICT_SCHEMA,
+        "conflicts": conflicts,
+        "unresolved_record_count": len(conflicts),
+        "no_disputed_value_presented_as_truth": True,
+    }
+
+
+#: What a disputed record in each store is actually allowed to stop.
+_BLAST_RADIUS = {
+    "tax_lots.json": ["cost_basis", "realized_gain_loss", "tax_lot_selection", "holding_period"],
+    "stops.json": ["protection_coverage_for_this_symbol"],
+    "trade_journal.json": ["holding_period_for_this_lot"],
+    "performance_history.json": ["performance_series"],
+    "performance_attribution.json": ["attribution_metrics"],
+}
+
+
+def _conflict_blast_radius(store: str, record_key: str | None) -> list[str]:
+    scoped = _BLAST_RADIUS.get(store, ["unknown_calculation"])
+    return [f"{c}[{record_key}]" for c in scoped]

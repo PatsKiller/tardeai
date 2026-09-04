@@ -45,6 +45,11 @@ VERSIONED_SNAPSHOT_SELECT = "VERSIONED_SNAPSHOT_SELECT"
 REBUILD_DERIVED = "REBUILD_DERIVED"
 MANUAL_CONFLICT = "MANUAL_CONFLICT"
 RETIRE_DUPLICATE = "RETIRE_DUPLICATE"
+#: A financial store where each record has been reconciled against its governing
+#: authority. Records the authority settled migrate; records it could not are preserved
+#: on both sides and rendered UNVERIFIED rather than shown as truth.
+RECORD_LEVEL_MERGE = "RECORD_LEVEL_MERGE"
+UNRESOLVED_OPERATOR_REVIEW_NAME = "UNRESOLVED_OPERATOR_REVIEW"
 
 STRATEGIES = (
     IDENTICAL_BIND,
@@ -335,7 +340,104 @@ def compare_records(p_doc: Any, s_doc: Any) -> dict[str, Any]:
     }
 
 
-def select_strategy(name: str, kind: str, cmp_: dict[str, Any], p_doc: Any, s_doc: Any) -> tuple[str, str]:
+def ledger_index(ledger: dict[str, Any] | None) -> dict[tuple[str, str], dict]:
+    """Index a conflict ledger by (store, record_key)."""
+    if not ledger:
+        return {}
+    return {(r["store"], r["record_key"]): r for r in ledger.get("records", [])}
+
+
+def plan_record_level(
+    name: str, p_doc: Any, s_doc: Any, ledger: dict[str, Any] | None
+) -> tuple[Any | None, dict[str, Any], list[dict]]:
+    """Build merged content from per-record verdicts. Returns (content, note, unresolved).
+
+    The served copy is the base because it is what the running service reads. Each
+    reconciled record is then set to whichever value its authority proved, which is not
+    necessarily the same side twice -- in this campaign tax_lots takes the producer for
+    one record and the served copy for two others.
+
+    Unresolved records are left exactly as the served copy has them and reported
+    separately, so nothing disputed is silently rewritten and nothing disputed is
+    presented as settled.
+    """
+    idx = ledger_index(ledger)
+    if not isinstance(p_doc, dict) or not isinstance(s_doc, dict):
+        return None, {"error": "record-level merge needs two mappings"}, []
+
+    merged = dict(s_doc)
+    applied: list[dict] = []
+    unresolved: list[dict] = []
+    rebuilt: list[str] = []
+
+    for key in sorted(set(p_doc) | set(s_doc)):
+        verdict = idx.get((name, key))
+        if verdict is None:
+            # Not in the ledger: either identical on both sides, or untouched by the
+            # reconciliation. Identical records need no decision.
+            if key in p_doc and key not in s_doc and p_doc[key] == s_doc.get(key):
+                continue
+            if key in s_doc:
+                continue
+            continue
+
+        disp = verdict["disposition"]
+        if disp == UNRESOLVED_OPERATOR_REVIEW_NAME:
+            unresolved.append(
+                {
+                    "record_key": key,
+                    "reason": verdict["reason"],
+                    "producer_value": p_doc.get(key),
+                    "served_value": s_doc.get(key),
+                    "producer_sha256": verdict.get("producer_sha256"),
+                    "served_sha256": verdict.get("served_sha256"),
+                    "render_as": "UNVERIFIED",
+                }
+            )
+            continue
+        if disp == "DERIVED_REBUILT":
+            # The producer restamps these itself; migration must not freeze a stale one.
+            if key in p_doc:
+                merged[key] = p_doc[key]
+            rebuilt.append(key)
+            continue
+
+        side = verdict.get("canonical_side")
+        if side == "producer" and key in p_doc:
+            merged[key] = p_doc[key]
+        elif side == "served" and key in s_doc:
+            merged[key] = s_doc[key]
+        elif side in ("both",):
+            pass
+        elif verdict.get("canonical_value") is not None:
+            merged[key] = verdict["canonical_value"]
+        else:
+            # A settled verdict with nothing to apply means the record should not exist
+            # on the target (superseded with proof).
+            merged.pop(key, None)
+        applied.append({"record_key": key, "disposition": disp, "canonical_side": side})
+
+    note = {
+        "strategy": RECORD_LEVEL_MERGE,
+        "base": "served copy (the running service reads it)",
+        "records_applied": len(applied),
+        "records_rebuilt": len(rebuilt),
+        "records_unresolved": len(unresolved),
+        "applied": applied,
+        "rebuilt": rebuilt,
+        "rule": ("each record follows its own authority; no side wins wholesale and recency decides nothing"),
+    }
+    return merged, note, unresolved
+
+
+def select_strategy(
+    name: str,
+    kind: str,
+    cmp_: dict[str, Any],
+    p_doc: Any,
+    s_doc: Any,
+    ledger: dict[str, Any] | None = None,
+) -> tuple[str, str]:
     """Choose a reconciliation strategy, conservatively. Returns (strategy, why)."""
     financial = name in FINANCIAL_STORES
 
@@ -347,6 +449,36 @@ def select_strategy(name: str, kind: str, cmp_: dict[str, Any], p_doc: Any, s_do
             f"{name} is a {kind}: it is reproducible from canonical upstream inputs, so neither "
             "copy needs to win — regenerating is cheaper and safer than merging"
         )
+
+    if financial and ledger is not None:
+        idx = ledger_index(ledger)
+        mine = [v for (st, _k), v in idx.items() if st == name]
+        # A verdict is only actionable at record level if its key names a record that
+        # actually exists in a copy. Whole-store markers like "*" and "open_lots[*]"
+        # describe the store, not a record, and a record-level merge driven by them
+        # would rewrite the served copy onto itself and call it a migration.
+        addressable = [
+            v
+            for v in mine
+            if (isinstance(p_doc, dict) and v["record_key"] in p_doc)
+            or (isinstance(s_doc, dict) and v["record_key"] in s_doc)
+        ]
+        if mine and not addressable and all(v["disposition"] == "DERIVED_REBUILT" for v in mine):
+            return REBUILD_DERIVED, (
+                f"{name} was reconciled and every divergence is a derived output evaluated over a "
+                "different observation window, not a disputed fact. It is regenerated from canonical "
+                "inputs rather than promoted from either copy."
+            )
+        if addressable:
+            mine = addressable
+            unresolved = [v for v in mine if v["disposition"] == UNRESOLVED_OPERATOR_REVIEW_NAME]
+            return RECORD_LEVEL_MERGE, (
+                f"{name} was reconciled record by record against its governing authority: "
+                f"{len(mine) - len(unresolved)} of {len(mine)} divergent record(s) were settled by "
+                f"broker or canonical evidence, {len(unresolved)} still need a person. Settled "
+                "records migrate; unresolved records keep both originals and render UNVERIFIED. "
+                "No side was chosen for being newer."
+            )
 
     if financial and cmp_.get("conflicting"):
         return MANUAL_CONFLICT, (
@@ -585,7 +717,9 @@ def _producer_schedule(writers: list[str]) -> dict[str, Any]:
     return record
 
 
-def discover_store(name: str, producer_root: Path, served_root: Path) -> dict[str, Any]:
+def discover_store(
+    name: str, producer_root: Path, served_root: Path, ledger: dict[str, Any] | None = None
+) -> dict[str, Any]:
     """Everything a migration needs to know about one store, before any decision."""
     p_path, s_path = producer_root / name, served_root / name
     p_stat, s_stat = _stat(p_path), _stat(s_path)
@@ -595,8 +729,12 @@ def discover_store(name: str, producer_root: Path, served_root: Path) -> dict[st
 
     kind = classify_kind(name, p_doc if p_doc is not None else s_doc)
     cmp_ = compare_records(p_doc, s_doc)
-    strategy, why = select_strategy(name, kind, cmp_, p_doc, s_doc)
-    planned, plan_note = plan_content(strategy, p_doc, s_doc, cmp_)
+    strategy, why = select_strategy(name, kind, cmp_, p_doc, s_doc, ledger)
+    unresolved_records: list[dict] = []
+    if strategy == RECORD_LEVEL_MERGE:
+        planned, plan_note, unresolved_records = plan_record_level(name, p_doc, s_doc, ledger)
+    else:
+        planned, plan_note = plan_content(strategy, p_doc, s_doc, cmp_)
 
     referencing = _grep_files(name)
     writers, mentions = _split_writers(referencing, name)
@@ -638,6 +776,9 @@ def discover_store(name: str, producer_root: Path, served_root: Path) -> dict[st
         # post-write check compares like with like.
         "planned_content_sha256": (content_sha256(planned) if planned is not None else None),
         "requires_operator": strategy == MANUAL_CONFLICT,
+        "unresolved_record_conflicts": unresolved_records,
+        "unresolved_record_count": len(unresolved_records),
+        "has_unresolved_record_conflicts": bool(unresolved_records),
         "producers": writers,
         "producers_rule": (
             "files whose reference to this store sits within "
@@ -657,8 +798,10 @@ def discover_store(name: str, producer_root: Path, served_root: Path) -> dict[st
     }
 
 
-def build_manifest(stores: list[str], producer_root: Path, served_root: Path) -> dict[str, Any]:
-    rows = [discover_store(n, producer_root, served_root) for n in stores]
+def build_manifest(
+    stores: list[str], producer_root: Path, served_root: Path, ledger: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    rows = [discover_store(n, producer_root, served_root, ledger) for n in stores]
     by_strategy: dict[str, int] = {}
     for r in rows:
         by_strategy[r["strategy"]] = by_strategy.get(r["strategy"], 0) + 1

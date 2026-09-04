@@ -19,6 +19,7 @@ import os
 import shutil
 import subprocess
 import time
+from types import SimpleNamespace
 import sys
 from pathlib import Path
 
@@ -549,6 +550,7 @@ def test_every_named_store_has_a_manifest_row():
         ):
             assert r.get(field) is not None, f"{r['store']} missing {field}"
         assert r["strategy"] in (
+            "RECORD_LEVEL_MERGE",
             "IDENTICAL_BIND",
             "AUTHORITATIVE_REPLACE",
             "APPEND_ONLY_UNION",
@@ -561,13 +563,64 @@ def test_every_named_store_has_a_manifest_row():
 
 @needs_sources
 def test_every_financial_store_fails_closed():
+    """Fail-closed now holds per record, which is strictly stronger than per store.
+
+    The earlier form asserted every financial store was MANUAL_CONFLICT. That was the
+    right guarantee while nothing had been reconciled, but it also blocked records the
+    broker can prove -- and blocking a provable record is not safety, it is just a
+    different way to be wrong. Since each record is now reconciled against its
+    authority, the invariant is that no record whose disposition is UNRESOLVED may ever
+    acquire a canonical value, whatever the store around it does.
+    """
     doc = json.loads((ROOT / "evidence" / "whole_site" / "MIGRATION_MANIFEST.json").read_text())
     fin = [r for r in doc["stores"] if r["financial_truth_store"]]
     assert len(fin) == 5
+
     for r in fin:
-        assert r["strategy"] == MANUAL_CONFLICT, f"{r['store']} must fail closed"
-        assert r["requires_operator"] is True
-        assert "FAIL CLOSED" in r["strategy_reason"]
+        if r["strategy"] == MANUAL_CONFLICT:
+            assert r["requires_operator"] is True
+            assert "FAIL CLOSED" in r["strategy_reason"]
+            continue
+
+        assert r["strategy"] in (state_migration.RECORD_LEVEL_MERGE, state_migration.REBUILD_DERIVED), (
+            f"{r['store']} carries {r['strategy']}; a financial store may only move under a "
+            "record-level merge, a derived rebuild, or a whole-store fail-closed"
+        )
+        for unresolved in r.get("unresolved_record_conflicts") or []:
+            assert unresolved["render_as"] == "UNVERIFIED", (
+                f"{r['store']}:{unresolved['record_key']} must render UNVERIFIED, never a value"
+            )
+            assert unresolved.get("producer_sha256") and unresolved.get("served_sha256"), (
+                f"{r['store']}:{unresolved['record_key']} must preserve both originals"
+            )
+
+
+def test_no_unresolved_record_is_ever_given_a_canonical_value():
+    """The one guarantee the whole record-level path rests on."""
+    ledger_path = ROOT / "evidence" / "whole_site" / "CONFLICT_LEDGER.json"
+    if not ledger_path.exists():
+        pytest.skip("no conflict ledger present")
+    ledger = json.loads(ledger_path.read_text())
+    for rec in ledger["records"]:
+        if rec["disposition"] == "UNRESOLVED_OPERATOR_REVIEW":
+            assert rec["canonical_value"] is None, f"{rec['record_key']} was handed a value"
+            assert rec["canonical_side"] is None, f"{rec['record_key']} was handed a side"
+            assert rec["auto_migratable"] is False
+
+
+def test_no_disposition_was_decided_by_recency():
+    """No verdict may cite timestamps as its reason for choosing a side."""
+    ledger_path = ROOT / "evidence" / "whole_site" / "CONFLICT_LEDGER.json"
+    if not ledger_path.exists():
+        pytest.skip("no conflict ledger present")
+    ledger = json.loads(ledger_path.read_text())
+    banned = ("newer", "more recent", "later timestamp", "freshest", "most recent")
+    for rec in ledger["records"]:
+        if rec["canonical_side"] in (None, "rebuild", "both"):
+            continue
+        reason = rec["reason"].lower()
+        assert not any(b in reason for b in banned), f"{rec['record_key']} was decided by recency: {rec['reason']}"
+        assert rec["authorities_queried"], f"{rec['record_key']} names no authority"
 
 
 # ── producer-schedule discovery: two defects found while reviewing the operator-facing
@@ -715,3 +768,187 @@ class TestEmitManifest:
             if row["financial_truth_store"] and row["comparison"].get("conflicting"):
                 assert row["strategy"] == MANUAL_CONFLICT
                 assert row["requires_operator"] is True
+
+
+# ── record-level merge: the strategy that lets settled records move while an
+# unresolved one stays put. Every failure path still restores bytes exactly.
+
+
+def _ledger_for(store, verdicts):
+    return {
+        "schema": "FinancialConflictLedger@v1",
+        "ledger_sha256": "t" * 64,
+        "records": [
+            {
+                "store": store,
+                "record_key": k,
+                "disposition": d,
+                "canonical_side": side,
+                "reason": f"test verdict {d}",
+                "producer_sha256": "p" * 64,
+                "served_sha256": "s" * 64,
+                "observations": {},
+            }
+            for k, d, side in verdicts
+        ],
+    }
+
+
+@needs_sources
+class TestRecordLevelMerge:
+    def test_each_record_follows_its_own_authority(self, replica):
+        producer, served = replica
+        p = {"A:acct": {"stop": 1.0}, "B:acct": {"stop": 2.0}, "C:acct": {"stop": 3.0}}
+        s = {"A:acct": {"stop": 9.0}, "B:acct": {"stop": 9.9}, "C:acct": {"stop": 3.0}}
+        ledger = _ledger_for(
+            "stops.json",
+            [
+                ("A:acct", "BROKER_VERIFIED", "producer"),
+                ("B:acct", "BROKER_VERIFIED", "served"),
+            ],
+        )
+        merged, note, unresolved = state_migration.plan_record_level("stops.json", p, s, ledger)
+
+        # Not one side wholesale: A comes from the producer, B from the served copy.
+        assert merged["A:acct"] == {"stop": 1.0}
+        assert merged["B:acct"] == {"stop": 9.9}
+        assert merged["C:acct"] == {"stop": 3.0}, "an untouched record must be left alone"
+        assert unresolved == []
+        assert note["records_applied"] == 2
+
+    def test_an_unresolved_record_is_left_exactly_as_served_and_reported(self, replica):
+        _producer, _served = replica
+        p = {"X:acct": [{"shares_remaining": 1}]}
+        s = {"X:acct": [{"shares_remaining": 2}]}
+        ledger = _ledger_for("tax_lots.json", [("X:acct", "UNRESOLVED_OPERATOR_REVIEW", None)])
+        merged, note, unresolved = state_migration.plan_record_level("tax_lots.json", p, s, ledger)
+
+        assert merged["X:acct"] == s["X:acct"], "an unresolved record must not be rewritten"
+        assert note["records_unresolved"] == 1
+        assert len(unresolved) == 1
+        u = unresolved[0]
+        assert u["render_as"] == "UNVERIFIED"
+        assert u["producer_value"] == p["X:acct"]
+        assert u["served_value"] == s["X:acct"], "both originals must survive in the report"
+
+    def test_a_settled_record_moves_even_though_another_is_unresolved(self, replica):
+        """The whole point: one disputed lot must not freeze the rest of the store."""
+        _producer, _served = replica
+        p = {"GOOD:acct": [{"shares_remaining": 5}], "BAD:acct": [{"shares_remaining": 1}]}
+        s = {"GOOD:acct": [{"shares_remaining": 4}], "BAD:acct": [{"shares_remaining": 2}]}
+        ledger = _ledger_for(
+            "tax_lots.json",
+            [
+                ("GOOD:acct", "BROKER_VERIFIED", "producer"),
+                ("BAD:acct", "UNRESOLVED_OPERATOR_REVIEW", None),
+            ],
+        )
+        merged, note, unresolved = state_migration.plan_record_level("tax_lots.json", p, s, ledger)
+
+        assert merged["GOOD:acct"] == p["GOOD:acct"], "the settled record must migrate"
+        assert merged["BAD:acct"] == s["BAD:acct"], "the unresolved record must not"
+        assert note["records_applied"] == 1 and note["records_unresolved"] == 1
+
+    def test_recency_never_decides(self, replica):
+        """A verdict with no canonical side must not fall back to either copy."""
+        _producer, _served = replica
+        p, s = {"K:acct": {"v": "newer"}}, {"K:acct": {"v": "older"}}
+        ledger = _ledger_for("stops.json", [("K:acct", "UNRESOLVED_OPERATOR_REVIEW", None)])
+        merged, _n, _u = state_migration.plan_record_level("stops.json", p, s, ledger)
+        assert merged["K:acct"]["v"] == "older", "the served copy stands until an authority speaks"
+
+    def test_merge_refuses_when_the_shapes_are_not_mappings(self, replica):
+        _producer, _served = replica
+        merged, note, unresolved = state_migration.plan_record_level(
+            "stops.json", ["a"], {"b": 1}, _ledger_for("stops.json", [])
+        )
+        assert merged is None and unresolved == [] and "error" in note
+
+    def test_apply_without_a_ledger_is_refused(self, replica, manifest, tmp_path):
+        """A record-level merge with no per-record verdicts has nothing to apply."""
+        doc, manifest_path = manifest
+        row = dict(_row(doc, "stops.json")) if any(r["store"] == "stops.json" for r in doc["stores"]) else None
+        if row is None:
+            pytest.skip("stops.json not in the rehearsal set")
+        row["strategy"] = state_migration.RECORD_LEVEL_MERGE
+        row.pop("planned_content", None)
+        row["planned_content_sha256"] = "0" * 64  # so the refusal we assert is the ledger one
+        args = SimpleNamespace(
+            apply=True,
+            backup_dir=str(tmp_path / "bk"),
+            conflict_ledger=None,
+            governed_root=doc["served_root"],
+            only=None,
+            out=None,
+            expected_deployed_sha=None,
+            expected_manifest_sha256=None,
+            approval_token=None,
+            issued_challenge=None,
+            release_root=None,
+        )
+        with pytest.raises(mss.Refusal) as exc:
+            mss.migrate_store(row, args, "teststamp")
+        assert exc.value.rail in ("missing_conflict_ledger", "running_affected_writer", "missing_operator_approval")
+
+
+@needs_sources
+class TestInterruptionAndRollback:
+    def test_interruption_mid_write_restores_bytes_exactly(self, replica, manifest, tmp_path, monkeypatch):
+        """A KeyboardInterrupt during the write must leave the target byte-identical."""
+        _producer, served = replica
+        doc, _mp = manifest
+        row = dict(doc["stores"][0])
+        target = Path(row["canonical_target"])
+        before = target.read_bytes()
+
+        def boom(*_a, **_k):
+            raise KeyboardInterrupt("operator hit ctrl-c mid-write")
+
+        monkeypatch.setattr(mss, "atomic_write", boom)
+        args = SimpleNamespace(
+            apply=True,
+            backup_dir=str(tmp_path / "bk2"),
+            conflict_ledger=None,
+            governed_root=doc["served_root"],
+            only=None,
+            out=None,
+            expected_deployed_sha=None,
+            expected_manifest_sha256=None,
+            approval_token=None,
+            issued_challenge=None,
+            release_root=None,
+        )
+        with pytest.raises(BaseException):
+            mss.migrate_store(row, args, "stamp2")
+        assert target.read_bytes() == before, "an interrupted migration must leave the bytes untouched"
+
+    def test_rollback_restores_after_a_validation_failure(self, replica, manifest, tmp_path, monkeypatch):
+        _producer, _served = replica
+        doc, _mp = manifest
+        row = dict(doc["stores"][0])
+        target = Path(row["canonical_target"])
+        before = target.read_bytes()
+
+        monkeypatch.setattr(
+            mss,
+            "validate_after",
+            lambda *_a, **_k: (_ for _ in ()).throw(mss.Refusal("post_write_mismatch", "planted")),
+        )
+        args = SimpleNamespace(
+            apply=True,
+            backup_dir=str(tmp_path / "bk3"),
+            conflict_ledger=None,
+            governed_root=doc["served_root"],
+            only=None,
+            out=None,
+            expected_deployed_sha=None,
+            expected_manifest_sha256=None,
+            approval_token=None,
+            issued_challenge=None,
+            release_root=None,
+        )
+        with pytest.raises(mss.Refusal) as exc:
+            mss.migrate_store(row, args, "stamp3")
+        assert target.read_bytes() == before, "rollback must restore the exact prior bytes"
+        receipt = getattr(exc.value, "receipt", None)
+        assert receipt and receipt.get("rollback"), "rollback evidence must survive the exception"

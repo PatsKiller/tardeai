@@ -690,6 +690,29 @@ GATES = [
         ],
     ),
     (
+        # cc-whole-site-residual-v1 (2026-09-03): record-level reconciliation. A
+        # store-level "these two files disagree" is true but blunt. Each divergent
+        # record is decided against the authority that governs it -- broker positions
+        # for lot totals, live broker order state for stops -- and a verdict may never
+        # cite recency. What no authority can settle stays UNRESOLVED and keeps both
+        # originals; nothing disputed is ever handed a value.
+        "financial_reconciliation",
+        [
+            "tests/test_financial_reconciliation.py",
+        ],
+    ),
+    (
+        # cc-whole-site-residual-v1 (2026-09-03): every surface in every state it can
+        # reach -- populated, empty, partial, stale, malformed, disconnected,
+        # unauthorized, forbidden, error. A surface tested only with good data is only
+        # known to work in the case that never needed it. Failure must never report a
+        # count: an outage and a quiet market must not render identically.
+        "surface_state_matrix",
+        [
+            "tests/test_surface_state_matrix.py",
+        ],
+    ),
+    (
         # cc-whole-site-residual-v1 (2026-09-03): detection is not resolution. Every
         # audited store gets one verdict from a closed taxonomy, Command Center
         # criticality is derived from the surface, and each open fork carries an

@@ -26841,6 +26841,34 @@ def _writer_status():
     return _residual_surface("writer_status")
 
 
+def _financial_conflict_state():
+    """GET /api/v2/financial/conflicts — which financial records are unverified.
+
+    Reads the conflict sidecars written beside each store. A record listed here renders
+    UNVERIFIED and fails its own calculation closed; every other record and every other
+    surface is explicitly declared unaffected, so one disputed historical lot cannot
+    take the site down with it.
+    """
+
+    def _load():
+        import glob as _g
+        import json as _j
+
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        state_dir = os.path.join(root, "data", "portfolios", "state")
+        out = {}
+        for path in sorted(_g.glob(os.path.join(state_dir, "*.json.conflicts.json"))):
+            store = os.path.basename(path)[: -len(".conflicts.json")]
+            try:
+                with open(path) as fh:
+                    out[store] = _j.load(fh)
+            except Exception as exc:  # noqa: BLE001
+                out[store] = {"_unreadable": str(exc)}
+        return out
+
+    return _residual_surface("financial_conflict_state", _load)
+
+
 def _reentry_status_projection():
     """GET /api/v2/reentry/status — one canonical status per row.
 
@@ -45464,6 +45492,7 @@ ROUTES = {
     "/api/v2/research-intelligence/provenance": lambda: _research_provenance(),
     "/api/v2/writers/status": lambda: _writer_status(),
     "/api/v2/reentry/status": lambda: _reentry_status_projection(),
+    "/api/v2/financial/conflicts": lambda: _financial_conflict_state(),
     "/api/v2/system/portfolio-cadence-status": lambda: _portfolio_cadence_status(),
     "/api/v2/open-trades/intelligence": lambda: _open_trades_intelligence(),
     "/api/v2/broker-proposals": lambda: _broker_proposals(_current_query),

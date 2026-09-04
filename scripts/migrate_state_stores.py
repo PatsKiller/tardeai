@@ -53,6 +53,7 @@ from lib.state_migration import (  # noqa: E402
     IDENTICAL_BIND,
     MANUAL_CONFLICT,
     REBUILD_DERIVED,
+    RECORD_LEVEL_MERGE,
     build_manifest,
     manifest_hash,
     serialize,
@@ -315,6 +316,39 @@ def deployed_sha(release_root: Path | None) -> str | None:
 # ── driver ───────────────────────────────────────────────────────────────────
 
 
+def conflict_sidecar_path(target: Path) -> Path:
+    """Conflicts live beside the store, never inside it.
+
+    Adding a reserved key to the store itself would put a non-record key into a
+    collection every consumer iterates, and consumers that do not filter it would read
+    the marker as a position. A sibling file changes no schema.
+    """
+    return target.with_suffix(target.suffix + ".conflicts.json")
+
+
+def write_conflict_sidecar(row: dict[str, Any], target: Path, stamp: str) -> dict[str, Any]:
+    """Preserve both originals for every unresolved record and mark it UNVERIFIED."""
+    unresolved = row.get("unresolved_record_conflicts") or []
+    doc = {
+        "schema": "StoreRecordConflicts@v1",
+        "store": row["store"],
+        "generated_at_utc": _now(),
+        "migration_stamp": stamp,
+        "render_rule": (
+            "every record listed here renders UNVERIFIED. The affected calculation or control "
+            "fails closed; unrelated records in this store and every other surface are unaffected."
+        ),
+        "both_originals_preserved": True,
+        "unresolved_record_count": len(unresolved),
+        "records": unresolved,
+    }
+    path = conflict_sidecar_path(target)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(json.dumps(doc, indent=2, default=str) + "\n")
+    os.replace(tmp, path)
+    return {"path": str(path), "unresolved_record_count": len(unresolved)}
+
+
 def migrate_store(row: dict[str, Any], args: argparse.Namespace, stamp: str) -> dict[str, Any]:
     store = row["store"]
     target = Path(row["canonical_target"])
@@ -350,6 +384,9 @@ def migrate_store(row: dict[str, Any], args: argparse.Namespace, stamp: str) -> 
 
     if not args.apply:
         receipt.update({"would_write": str(target), "planned_content_sha256": planned_sha, "applied": False})
+        if row.get("unresolved_record_conflicts"):
+            receipt["would_write_conflict_sidecar"] = str(conflict_sidecar_path(target))
+            receipt["unresolved_record_count"] = row.get("unresolved_record_count", 0)
         return receipt
 
     receipt["disk"] = rail_disk(target, Path(row["producer_path"]).stat().st_size)
@@ -360,7 +397,23 @@ def migrate_store(row: dict[str, Any], args: argparse.Namespace, stamp: str) -> 
 
     p_doc = json.loads(Path(row["producer_path"]).read_text())
     s_doc = json.loads(Path(row["served_path"]).read_text())
-    content, _ = plan_content(row["strategy"], p_doc, s_doc, row["comparison"])
+    if row["strategy"] == RECORD_LEVEL_MERGE:
+        # The plan was computed from the ledger at manifest time; recomputing it here
+        # from the same inputs is what the planned hash is a check on.
+        content = row.get("planned_content")
+        if content is None:
+            from lib.state_migration import ledger_index, plan_record_level  # noqa: PLC0415
+
+            ledger = json.loads(Path(args.conflict_ledger).read_text()) if args.conflict_ledger else None
+            if not ledger_index(ledger):
+                raise Refusal(
+                    "missing_conflict_ledger",
+                    f"{store} is a RECORD_LEVEL_MERGE and --conflict-ledger was not supplied; "
+                    "without per-record verdicts there is nothing to apply",
+                )
+            content, _note, _unres = plan_record_level(store, p_doc, s_doc, ledger)
+    else:
+        content, _ = plan_content(row["strategy"], p_doc, s_doc, row["comparison"])
     if content is None:
         raise Refusal("ambiguous_financial_record", f"{store} has no determinate content")
 
@@ -368,6 +421,8 @@ def migrate_store(row: dict[str, Any], args: argparse.Namespace, stamp: str) -> 
         written = atomic_write(target, content, Path(row["served_path"]))
         receipt["written_sha256"] = written
         receipt["validation"] = validate_after(row, target, planned_sha)
+        if row.get("unresolved_record_conflicts"):
+            receipt["conflict_sidecar"] = write_conflict_sidecar(row, target, stamp)
         receipt["applied"] = True
     except BaseException as exc:  # noqa: BLE001
         receipt["error"] = f"{type(exc).__name__}: {exc}"
@@ -455,13 +510,21 @@ def _emit_manifest(args: Any) -> int:
     names = [r["store"] for r in prev.get("stores", [])] or sorted(
         p.name for p in served_root.glob("*.json") if (producer_root / p.name).exists()
     )
-    fresh = build_manifest(names, producer_root, served_root)
+    ledger = None
+    if getattr(args, "conflict_ledger", None):
+        ledger = json.loads(Path(args.conflict_ledger).read_text())
+    fresh = build_manifest(names, producer_root, served_root, ledger)
+    if ledger:
+        fresh["conflict_ledger_sha256"] = ledger.get("ledger_sha256")
+        fresh["unresolved_record_total"] = sum(r.get("unresolved_record_count", 0) for r in fresh["stores"])
     out.write_text(json.dumps(fresh, indent=2, sort_keys=False) + "\n")
 
     changed = fresh["manifest_sha256"] != prev.get("manifest_sha256")
     print(f"manifest: {out}")
     print(f"stores: {fresh['store_count']}  strategies: {fresh['strategy_counts']}")
     print(f"manifest_sha256: {fresh['manifest_sha256']}" + ("  (CHANGED)" if changed else "  (unchanged)"))
+    if fresh.get("unresolved_record_total"):
+        print(f"unresolved record-level conflicts: {fresh['unresolved_record_total']}")
     if fresh["requires_operator"]:
         print("requires_operator (refused until adjudicated): " + ", ".join(fresh["requires_operator"]))
     return 0
@@ -478,6 +541,10 @@ def main(argv: list[str] | None = None) -> int:
             "writes only that evidence file; it never touches a state store. Step 7 of the "
             "production sequence, because a manifest goes stale as soon as a producer runs."
         ),
+    )
+    ap.add_argument(
+        "--conflict-ledger",
+        help="record-level conflict ledger; lets reconciled financial stores migrate their settled records",
     )
     ap.add_argument("--producer-root", help="with --emit-manifest; defaults to the manifest's own producer_root")
     ap.add_argument(
