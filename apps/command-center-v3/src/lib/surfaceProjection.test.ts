@@ -84,3 +84,17 @@ check('a missing conflict envelope blocks nothing but counts nothing', missing.u
 
 console.log(`\nsurfaceProjection: ${pass} passed, ${fail} failed`)
 if (fail > 0) process.exit(1)
+
+console.log('surfaceProjection: data mode is about the bytes, not the transport')
+const withMode = (state: string, m: string) => ({ ...env(state), data_mode: m })
+check('LIVE is operational truth', projectSurface(withMode('POPULATED', 'LIVE')).isOperationalTruth === true)
+check('STALE is still real data', projectSurface(withMode('STALE', 'STALE')).isOperationalTruth === true)
+check('MOCK is never operational truth', projectSurface(withMode('POPULATED', 'MOCK')).isOperationalTruth === false)
+check('DIVERGED is never operational truth', projectSurface(withMode('POPULATED', 'DIVERGED')).isOperationalTruth === false)
+check('UNAVAILABLE is not operational truth', projectSurface(withMode('ERROR', 'UNAVAILABLE')).isOperationalTruth === false)
+check('a missing data_mode defaults to UNAVAILABLE', projectSurface(env('POPULATED')).dataMode === 'UNAVAILABLE')
+check('a missing envelope is UNAVAILABLE', projectSurface(null).dataMode === 'UNAVAILABLE')
+check('MOCK still reports its state', projectSurface(withMode('POPULATED', 'MOCK')).state === 'POPULATED')
+
+console.log(`\nsurfaceProjection(data mode): ${pass} passed, ${fail} failed`)
+if (fail > 0) process.exit(1)

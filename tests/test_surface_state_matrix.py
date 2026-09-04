@@ -252,3 +252,59 @@ def test_one_unresolved_record_does_not_block_unrelated_surfaces():
     # Unrelated surfaces are unaffected by the same inputs.
     watch, _ = _watch("populated")
     assert watch["state"] == POPULATED
+
+
+# ── data mode: what the bytes ARE, as distinct from how the read went ─────────
+
+from lib.residual_surfaces import (  # noqa: E402
+    DATA_MODES,
+    DIVERGED,
+    LIVE,
+    MOCK,
+    UNAVAILABLE,
+    data_mode,
+)
+
+
+@pytest.mark.parametrize("surface", sorted(SURFACES))
+@pytest.mark.parametrize("state", STATES)
+def test_every_surface_declares_a_data_mode(surface, state):
+    result, _ = SURFACES[surface](state)
+    assert result.get("data_mode") in DATA_MODES, (
+        f"{surface}/{state}: data_mode {result.get('data_mode')!r} is not a declared mode"
+    )
+
+
+def test_a_fixture_is_never_live_however_healthy_the_read():
+    """A green surface serving fixtures is worse than an error: it is believed."""
+    assert data_mode(POPULATED, is_fixture=True) == MOCK
+    assert data_mode(STALE, is_fixture=True) == MOCK
+    assert data_mode(DEGRADED, is_fixture=True) == MOCK
+
+
+def test_a_diverged_store_is_never_live():
+    """Two copies disagreeing is not liveness, however cleanly one of them read."""
+    assert data_mode(POPULATED, is_diverged=True) == DIVERGED
+    assert data_mode(STALE, is_diverged=True) == DIVERGED
+
+
+def test_fixture_outranks_divergence():
+    assert data_mode(POPULATED, is_fixture=True, is_diverged=True) == MOCK
+
+
+def test_divergence_does_not_upgrade_a_failed_read():
+    """A read that failed is unavailable; divergence cannot make it look better."""
+    assert data_mode(ERROR, is_diverged=True) == UNAVAILABLE
+    assert data_mode(FORBIDDEN, is_diverged=True) == UNAVAILABLE
+
+
+def test_a_healthy_read_of_a_converged_store_is_live():
+    assert data_mode(POPULATED) == LIVE
+    assert data_mode(LEGITIMATE_EMPTY) == LIVE
+
+
+@pytest.mark.parametrize("state", ["disconnected", "unauthorized", "forbidden", "error"])
+def test_failed_reads_are_unavailable(state):
+    for surface in SURFACES:
+        result, _ = SURFACES[surface](state)
+        assert result["data_mode"] == UNAVAILABLE, f"{surface}/{state}"

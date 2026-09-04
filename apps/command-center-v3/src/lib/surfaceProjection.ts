@@ -25,8 +25,11 @@ export type SurfaceState =
   | 'ERROR'
   | 'LOADING'
 
+export type DataMode = 'LIVE' | 'STALE' | 'DEGRADED' | 'UNAVAILABLE' | 'MOCK' | 'DIVERGED'
+
 export interface SurfaceEnvelope {
   state?: string
+  data_mode?: string
   state_reason?: string
   schema?: string
   authority?: string
@@ -69,6 +72,10 @@ export interface SurfaceProjection {
   showNotice: boolean
   authority: string
   calculationVersion: string
+  /** What the bytes ARE, as distinct from how the read went. */
+  dataMode: DataMode
+  /** True only for genuinely operational data: not a fixture, not a forked store. */
+  isOperationalTruth: boolean
 }
 
 const LABELS: Record<string, string> = {
@@ -96,10 +103,13 @@ export function projectSurface(env: SurfaceEnvelope | null | undefined): Surface
       showNotice: true,
       authority: 'UNKNOWN',
       calculationVersion: 'UNKNOWN',
+      dataMode: 'UNAVAILABLE',
+      isOperationalTruth: false,
     }
   }
   const state = env.state as SurfaceState
   const measured = !NO_MEASUREMENT.has(state)
+  const mode = (env.data_mode as DataMode) || 'UNAVAILABLE'
   return {
     state,
     reason: env.state_reason || 'no reason was supplied',
@@ -109,6 +119,10 @@ export function projectSurface(env: SurfaceEnvelope | null | undefined): Surface
     showNotice: NEEDS_NOTICE.has(state),
     authority: env.authority || 'UNKNOWN',
     calculationVersion: env.calculation_version || 'UNKNOWN',
+    dataMode: mode,
+    // MOCK and DIVERGED are never operational truth, however clean the read was.
+    // A fixture that renders perfectly is the most dangerous thing this can return.
+    isOperationalTruth: mode === 'LIVE' || mode === 'STALE',
   }
 }
 

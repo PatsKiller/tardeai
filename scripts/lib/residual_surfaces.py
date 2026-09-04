@@ -42,6 +42,55 @@ MALFORMED = "MALFORMED"
 ERROR = "ERROR"
 LOADING = "LOADING"
 
+# ── data mode ────────────────────────────────────────────────────────────────
+#
+# `state` says how the read went. `data_mode` says what the bytes ARE, which is a
+# different question and the one a person actually asks: am I looking at the real
+# thing? Two answers had no way to be expressed at all before, and both are ones a
+# surface must never imply by silence.
+#
+#   MOCK      fixture or preview bytes. Never operational truth, however healthy the
+#             read was. A green surface serving fixtures is worse than an error.
+#   DIVERGED  the store behind this surface is forked between the producer and served
+#             roots, so what is rendered is one of two disagreeing copies. True for
+#             every governed store until the migration lands.
+LIVE = "LIVE"
+MOCK = "MOCK"
+DIVERGED = "DIVERGED"
+UNAVAILABLE = "UNAVAILABLE"
+
+DATA_MODES = (LIVE, STALE, DEGRADED, UNAVAILABLE, MOCK, DIVERGED)
+
+#: How a read outcome maps onto what the bytes are, absent a stronger signal.
+_STATE_TO_MODE = {
+    POPULATED: LIVE,
+    LEGITIMATE_EMPTY: LIVE,
+    PARTIAL: DEGRADED,
+    STALE: STALE,
+    DEGRADED: DEGRADED,
+    MALFORMED: DEGRADED,
+    DISCONNECTED: UNAVAILABLE,
+    UNAUTHORIZED: UNAVAILABLE,
+    FORBIDDEN: UNAVAILABLE,
+    ERROR: UNAVAILABLE,
+    LOADING: UNAVAILABLE,
+}
+
+
+def data_mode(state: str, *, is_fixture: bool = False, is_diverged: bool = False) -> str:
+    """What the bytes are. Fixture wins over everything; divergence over health.
+
+    Order matters. A fixture that reads perfectly is still a fixture, and a diverged
+    store that reads perfectly is still two copies disagreeing -- so neither may be
+    reported as LIVE merely because the transport succeeded.
+    """
+    if is_fixture:
+        return MOCK
+    if is_diverged and _STATE_TO_MODE.get(state) in (LIVE, STALE):
+        return DIVERGED
+    return _STATE_TO_MODE.get(state, UNAVAILABLE)
+
+
 TERMINAL_STATES = (
     POPULATED,
     LEGITIMATE_EMPTY,
@@ -103,9 +152,12 @@ def classify_transport(status: int | None, error: str | None) -> str | None:
     return None
 
 
-def _envelope(state: str, reason: str, **extra: Any) -> dict[str, Any]:
+def _envelope(
+    state: str, reason: str, *, is_fixture: bool = False, is_diverged: bool = False, **extra: Any
+) -> dict[str, Any]:
     out = {
         "state": state,
+        "data_mode": data_mode(state, is_fixture=is_fixture, is_diverged=is_diverged),
         "state_reason": reason,
         "terminal": state in TERMINAL_STATES,
         "authority": AUTHORITY,
