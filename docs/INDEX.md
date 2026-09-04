@@ -1338,6 +1338,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/AUTONOMOUS_ADVISOR_SESSION_CLOSEOUT_2026-08-20.md` | Autonomous Advisor Session Closeout — 2026-08-20 | review_required | OK | `368297046d4f` |
 | `docs/ops/AUTONOMY_OPERATOR_RUNBOOK.md` | Autonomy Operator Runbook (READ_ONLY_ADVISORY) | review_required | OK | `e30957166ceb` |
 | `docs/ops/AUTONOMY_RUNTIME_TRUTH_2026-08-11.md` | Runtime truth — host verification (P0 ops) | delete_candidate_duplicate | OK | `b3ebf94fe56b` |
+| `docs/ops/BRAVE_RESEARCH_ROUTER.md` | Brave Research Router | review_required | OK | `9cfa123479fc` |
 | `docs/ops/CANONICAL_OBSERVATION_CONTRACT.md` | Canonical observation contract | review_required | OK | `f1efae3e4863` |
 | `docs/ops/CANON_SOURCE_ACQUISITION_QUEUE_2026-08-23.md` | Canon Source Acquisition Queue - 2026-08-23 | review_required | OK | `a49f0fc9b389` |
 | `docs/ops/CIO_ADVISORY_TRUTH_HARDENING_CLOSEOUT_2026-08-20.md` | CIO/Advisory truth + presentation hardening — closeout 2026-08-20 | review_required | OK | `1661c226ddf4` |

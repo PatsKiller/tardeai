@@ -32,6 +32,13 @@ CREDENTIAL_VALIDATORS = {
     REPO / "scripts" / "credential_monitor.py",
 }
 
+#: Modules that name the provider host as a **needle** — they grep other files
+#: for bypasses. They must never fetch it, which is asserted separately below
+#: rather than assumed from membership here.
+HOST_DETECTORS = {
+    REPO / "scripts" / "research_truth_inventory.py",
+}
+
 SKIP_DIRS = {".git", "node_modules", "dist", "build", "_archive", ".venv", "archive", "reference"}
 
 PROVIDER_HOST = "api.search.brave.com"
@@ -76,7 +83,7 @@ def _string_constants(path: Path) -> set[str]:
 def test_only_the_router_names_the_provider_endpoint():
     offenders = []
     for path in _python_files():
-        if path == CANONICAL or path in CREDENTIAL_VALIDATORS:
+        if path == CANONICAL or path in CREDENTIAL_VALIDATORS or path in HOST_DETECTORS:
             continue
         if any(PROVIDER_HOST in s for s in _string_constants(path)):
             offenders.append(str(path.relative_to(REPO)))
@@ -84,6 +91,27 @@ def test_only_the_router_names_the_provider_endpoint():
         "these modules build their own Brave request instead of routing "
         f"through brave_research_router: {sorted(offenders)}"
     )
+
+
+def test_host_detectors_compare_against_the_host_but_never_fetch_it():
+    """Membership in HOST_DETECTORS is not a free pass.
+
+    A module allowed to *name* the provider host must use it only as a needle.
+    The moment one of them opens a connection to it, it is a bypass with an
+    exemption, which is worse than an ordinary bypass because the test that
+    would have caught it is the one letting it through.
+    """
+    for path in HOST_DETECTORS:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Constant) or not isinstance(node.value, str):
+                continue
+            if PROVIDER_HOST not in node.value:
+                continue
+            in_comparison = any(isinstance(q, ast.Compare) and node in ast.walk(q) for q in ast.walk(tree))
+            assert in_comparison, f"{path.name} uses the provider host outside a comparison"
+        # And it must not send the credential either.
+        assert PROVIDER_HEADER not in path.read_text(encoding="utf-8"), f"{path.name} sends the subscription header"
 
 
 def test_only_the_router_sends_the_subscription_header():

@@ -11,8 +11,9 @@ Covers source-prompt Phase 9 "Brave" items 1-13.
 from __future__ import annotations
 
 import json
+import time
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -265,7 +266,7 @@ def test_cache_is_durable_across_processes_not_a_module_dict(root, monkeypatch):
         "import sys, json;"
         f"sys.path.insert(0, {str(REPO)!r});"
         "from scripts.lib import brave_research_router as R;"
-        f"c = R.cache_get({fp!r}, 3600, root={str(root)!r});"
+        f"c = R.cache_get({fp!r}, 3600, root={str(root)!r}, now={NOW.timestamp()!r});"
         "print(json.dumps({'hit': c is not None, 'n': len(c or [])}))"
     )
     res = subprocess.run([sys.executable, "-c", probe], capture_output=True, text=True, timeout=60)
@@ -733,3 +734,372 @@ def test_no_forbidden_purpose_has_a_quota():
     """A forbidden purpose must not be allocated spend at all."""
     for p in R.FORBIDDEN_PURPOSES:
         assert p not in R.DEFAULT_PURPOSE_QUOTA_PCT
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Reservation / settlement, circuit breaker, stale-while-revalidate, redaction
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_reservation_spends_before_the_request(root):
+    """Reserving after the request would let two processes take the last unit."""
+    _budget(root, daily=25, monthly=850)
+    rid = R.reserve("c", "EVIDENCE_GAP", root=root, now=NOW)
+    assert rid
+    assert SB.status("brave", now=NOW, root=root)["daily_used"] == 1
+    assert rid in R.open_reservations(root=root)
+
+
+def test_settlement_refunds_only_when_the_provider_was_not_reached(root):
+    _budget(root, daily=25, monthly=850)
+    rid = R.reserve("c", "EVIDENCE_GAP", root=root, now=NOW)
+    assert R.settle(rid, provider_reached=False, caller="c", root=root, now=NOW) is True
+    assert SB.status("brave", now=NOW, root=root)["daily_used"] == 0, "unit not returned"
+
+    rid2 = R.reserve("c", "EVIDENCE_GAP", root=root, now=NOW)
+    assert R.settle(rid2, provider_reached=True, caller="c", root=root, now=NOW) is False
+    assert SB.status("brave", now=NOW, root=root)["daily_used"] == 1, "a billed call was refunded"
+
+
+def test_settlement_is_idempotent_and_cannot_double_refund(root):
+    """A retried settle must not hand back a second unit."""
+    _budget(root, daily=25, monthly=850)
+    rid = R.reserve("c", "EVIDENCE_GAP", root=root, now=NOW)
+    assert R.settle(rid, provider_reached=False, caller="c", root=root, now=NOW) is True
+    assert R.settle(rid, provider_reached=False, caller="c", root=root, now=NOW) is False
+    assert R.settle(rid, provider_reached=False, caller="c", root=root, now=NOW) is False
+    assert SB.status("brave", now=NOW, root=root)["daily_used"] == 0
+
+
+def test_a_crashed_caller_does_not_leak_its_reservation(root):
+    """Reserve, never settle (the process died), then reclaim."""
+    _budget(root, daily=25, monthly=850)
+    crashed = NOW - timedelta(seconds=R.RESERVATION_TTL_SECONDS + 60)
+    R.reserve("crasher", "EVIDENCE_GAP", root=root, now=crashed)
+    assert SB.status("brave", now=NOW, root=root)["daily_used"] == 1
+
+    n = R.reclaim_stale_reservations(root=root, now=NOW)
+    assert n == 1
+    assert SB.status("brave", now=NOW, root=root)["daily_used"] == 0
+    assert R.open_reservations(root=root) == {}
+
+
+def test_reclaim_does_not_touch_a_live_in_flight_reservation(root):
+    """A slow but living request must not have its unit pulled out from under it."""
+    _budget(root, daily=25, monthly=850)
+    R.reserve("live", "EVIDENCE_GAP", root=root, now=NOW)
+    assert R.reclaim_stale_reservations(root=root, now=NOW) == 0
+    assert SB.status("brave", now=NOW, root=root)["daily_used"] == 1
+
+
+def test_transport_failure_returns_the_unit(root, monkeypatch):
+    """End to end: a request that never reached the provider is not billed."""
+    _budget(root, daily=25, monthly=850)
+
+    def unreachable(req, timeout=None):
+        raise OSError("Network is unreachable")
+
+    monkeypatch.setattr(R.urllib.request, "urlopen", unreachable)
+    out = R.search("q", caller="t", root=root, now=NOW)
+    assert out.status is R.Status.TRANSPORT_ERROR
+    assert SB.status("brave", now=NOW, root=root)["daily_used"] == 0, "an unreachable provider still consumed budget"
+
+
+def test_a_billed_failure_keeps_the_unit(root, monkeypatch):
+    """A 429 was served by the provider and is billed; it must not be refunded."""
+    _budget(root, daily=25, monthly=850)
+
+    def limited(req, timeout=None):
+        raise R.urllib.error.HTTPError(req.full_url, 429, "slow down", {}, None)
+
+    monkeypatch.setattr(R.urllib.request, "urlopen", limited)
+    out = R.search("q", caller="t", root=root, now=NOW)
+    assert out.status is R.Status.RATE_LIMITED
+    assert SB.status("brave", now=NOW, root=root)["daily_used"] == 1
+
+
+# ── Circuit breaker ─────────────────────────────────────────────────────────
+
+
+def test_circuit_opens_after_repeated_provider_failures(root, monkeypatch):
+    _budget(root, daily=100, monthly=850)
+
+    def down(req, timeout=None):
+        raise R.urllib.error.HTTPError(req.full_url, 503, "down", {}, None)
+
+    monkeypatch.setattr(R.urllib.request, "urlopen", down)
+    for i in range(R.BREAKER_THRESHOLD):
+        R.search(f"q{i}", caller="t", root=root, now=NOW)
+    assert R.breaker_state(root=root, now=NOW)["state"] == "open"
+
+    spent_before = SB.status("brave", now=NOW, root=root)["daily_used"]
+    out = R.search("q-after", caller="t", root=root, now=NOW)
+    assert out.status is R.Status.CIRCUIT_OPEN
+    assert SB.status("brave", now=NOW, root=root)["daily_used"] == spent_before, "an open circuit still spent budget"
+
+
+def test_circuit_half_opens_after_the_cooldown(root, monkeypatch):
+    _budget(root, daily=100, monthly=850)
+
+    def down(req, timeout=None):
+        raise R.urllib.error.HTTPError(req.full_url, 503, "down", {}, None)
+
+    monkeypatch.setattr(R.urllib.request, "urlopen", down)
+    for i in range(R.BREAKER_THRESHOLD):
+        R.search(f"q{i}", caller="t", root=root, now=NOW)
+    later = NOW + timedelta(seconds=R.BREAKER_COOLDOWN_SECONDS + 1)
+    assert R.breaker_state(root=root, now=later)["state"] == "half_open"
+
+    _patch_transport(monkeypatch, _web_body())
+    out = R.search("recovered", caller="t", root=root, now=later)
+    assert out.status is R.Status.OK
+    assert R.breaker_state(root=root, now=later)["state"] == "closed", "a success did not reset the breaker"
+
+
+def test_credential_and_rate_limit_failures_do_not_trip_the_breaker(root, monkeypatch):
+    """A bad key is not a provider outage; retrying through a breaker won't fix it."""
+    _budget(root, daily=100, monthly=850)
+    for code in (401, 429):
+
+        def err(req, timeout=None, _c=code):
+            raise R.urllib.error.HTTPError(req.full_url, _c, "e", {}, None)
+
+        monkeypatch.setattr(R.urllib.request, "urlopen", err)
+        for i in range(R.BREAKER_THRESHOLD + 2):
+            R.search(f"q{code}{i}", caller="t", root=root, now=NOW)
+    assert R.breaker_state(root=root, now=NOW)["state"] == "closed"
+
+
+# ── Backoff ─────────────────────────────────────────────────────────────────
+
+
+def test_backoff_is_exponential_and_bounded():
+    assert R.backoff_delay(0, rand=1.0) <= R.backoff_delay(3, rand=1.0)
+    assert R.backoff_delay(50, rand=1.0) <= 8.0, "backoff is not capped"
+    for a in range(6):
+        lo, hi = R.backoff_delay(a, rand=0.0), R.backoff_delay(a, rand=1.0)
+        assert lo > 0 and lo <= hi, "jitter is not bounded below"
+        assert hi <= 8.0
+
+
+# ── Stale-while-revalidate ──────────────────────────────────────────────────
+
+
+def test_stale_is_never_served_unless_explicitly_allowed(root, monkeypatch):
+    _budget(root, daily=100, monthly=850)
+    _patch_transport(monkeypatch, _web_body())
+    R.search("swr", caller="t", root=root, now=NOW)
+
+    # +7 days keeps the same weekday: a Saturday would trip the weekend gate
+    # before the transport error this test is about.
+    expired = NOW + timedelta(days=7)
+
+    def down(req, timeout=None):
+        raise OSError("unreachable")
+
+    monkeypatch.setattr(R.urllib.request, "urlopen", down)
+    out = R.search("swr", caller="t", root=root, now=expired)  # allow_stale default False
+    assert out.status is R.Status.TRANSPORT_ERROR
+    assert out.results == [], "a stale answer was served without opt-in"
+
+
+def test_stale_is_served_with_its_age_when_allowed(root, monkeypatch, tmp_path):
+    _budget(root, daily=100, monthly=850)
+    fp = R.fingerprint("swr2", endpoint="web", freshness=None, count=5)
+    old = NOW.timestamp() - (R.DEFAULT_TTL[R.Purpose.EVIDENCE_GAP] + 3600)
+    R.cache_put(
+        fp,
+        [R.Result(title="old", url="https://e.com/1", description="d", source_domain="e.com")],
+        query="swr2",
+        root=root,
+        now=old,
+    )
+
+    def down(req, timeout=None):
+        raise OSError("unreachable")
+
+    monkeypatch.setattr(R.urllib.request, "urlopen", down)
+    out = R.search("swr2", caller="t", root=root, now=NOW, allow_stale=True)
+    assert out.status is R.Status.STALE_SERVED
+    assert out.stale is True
+    assert out.result_age_seconds and out.result_age_seconds > 0
+    assert "older than its freshness window" in out.degradation_note()
+
+
+def test_stale_beyond_grace_is_not_served(root, monkeypatch):
+    _budget(root, daily=100, monthly=850)
+    fp = R.fingerprint("swr3", endpoint="web", freshness=None, count=5)
+    ancient = NOW.timestamp() - (R.DEFAULT_TTL[R.Purpose.EVIDENCE_GAP] + R.STALE_GRACE_SECONDS + 3600)
+    R.cache_put(
+        fp,
+        [R.Result(title="ancient", url="https://e.com/1", description="d", source_domain="e.com")],
+        query="swr3",
+        root=root,
+        now=ancient,
+    )
+
+    def down(req, timeout=None):
+        raise OSError("unreachable")
+
+    monkeypatch.setattr(R.urllib.request, "urlopen", down)
+    out = R.search("swr3", caller="t", root=root, now=NOW, allow_stale=True)
+    assert out.status is R.Status.TRANSPORT_ERROR
+
+
+# ── Cache poisoning ─────────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize("status_code", [401, 402, 429, 500, 503])
+def test_errors_do_not_poison_the_cache(root, monkeypatch, status_code):
+    _budget(root, daily=100, monthly=850)
+
+    def err(req, timeout=None):
+        raise R.urllib.error.HTTPError(req.full_url, status_code, "e", {}, None)
+
+    monkeypatch.setattr(R.urllib.request, "urlopen", err)
+    R.search("poison", caller="t", root=root, now=NOW)
+    fp = R.fingerprint("poison", endpoint="web", freshness=None, count=5)
+    assert R.cache_get(fp, 3600, root=root) is None, f"HTTP {status_code} was written into the cache"
+
+
+def test_a_malformed_body_does_not_poison_the_cache(root, monkeypatch):
+    _budget(root, daily=100, monthly=850)
+    _patch_transport(monkeypatch, b"<html>not json</html>")
+    R.search("malformed", caller="t", root=root, now=NOW)
+    fp = R.fingerprint("malformed", endpoint="web", freshness=None, count=5)
+    assert R.cache_get(fp, 3600, root=root) is None
+
+
+# ── Ledger integrity ────────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        '{"providers": {"brave"',  # truncated
+        "",  # empty
+        "null",  # valid JSON, wrong shape
+        "[]",  # valid JSON, wrong type
+    ],
+)
+def test_unreadable_ledgers_fail_closed(root, monkeypatch, payload):
+    _budget(root, daily=25, monthly=850)
+    ledger = SB.budget_path(root)
+    ledger.parent.mkdir(parents=True, exist_ok=True)
+    ledger.write_text(payload, encoding="utf-8")
+    before = ledger.read_text(encoding="utf-8")
+    _patch_transport(monkeypatch, _web_body())
+    out = R.search("q", caller="t", root=root, now=NOW)
+    assert out.degraded is True, f"payload {payload!r} did not deny"
+    assert ledger.read_text(encoding="utf-8") == before, "corrupt ledger overwritten"
+
+
+def test_month_rollover_separates_periods(root):
+    """A new month must start from zero without touching the prior month."""
+    _budget(root, daily=1000, monthly=5)
+    aug = datetime(2026, 8, 31, 23, 59, tzinfo=timezone.utc)
+    for _ in range(5):
+        SB.try_consume("brave", caller="c", now=aug, root=root)
+    assert SB.check("brave", now=aug, root=root)["allowed"] is False
+
+    sep = datetime(2026, 9, 1, 0, 1, tzinfo=timezone.utc)
+    assert SB.check("brave", now=sep, root=root)["allowed"] is True
+    assert SB.status("brave", now=sep, root=root)["monthly_used"] == 0
+    assert SB.status("brave", now=aug, root=root)["monthly_used"] == 5
+
+
+def test_legacy_quota_constants_cannot_control_runtime(root, monkeypatch):
+    """brave_search's retained DAILY/MONTHLY numbers are documentation only."""
+    import importlib
+
+    bs = importlib.import_module("scripts.brave_search")
+    monkeypatch.setattr(bs, "MONTHLY_BUDGET", 999999, raising=False)
+    monkeypatch.setattr(bs, "DAILY_BUDGET", 999999, raising=False)
+    _budget(root, daily=1, monthly=1)
+    _patch_transport(monkeypatch, _web_body())
+    R.search("a", caller="t", root=root, now=NOW)
+    out = R.search("b", caller="t", root=root, now=NOW)
+    assert out.status is R.Status.DENIED_BUDGET, "a legacy module constant influenced the governed ceiling"
+
+
+# ── Secret redaction ────────────────────────────────────────────────────────
+
+
+def test_the_api_key_never_appears_in_an_outcome(root, monkeypatch):
+    _budget(root, daily=25, monthly=850)
+    secret = "brave-secret-key-abcdef123456"
+    monkeypatch.setenv("BRAVE_SEARCH_API_KEY", secret)
+
+    def leaky(req, timeout=None):
+        raise RuntimeError(f"failed calling {req.full_url}&key={secret}")
+
+    monkeypatch.setattr(R.urllib.request, "urlopen", leaky)
+    out = R.search("q", caller="t", root=root, now=NOW)
+    blob = json.dumps(out.to_dict())
+    assert secret not in blob, "the API key leaked into the outcome"
+    assert "[REDACTED]" in out.reason
+
+
+def test_redaction_covers_common_credential_shapes():
+    secret = "supersecretvalue123"
+    for probe in (
+        f"X-Subscription-Token: {secret}",
+        f"?api_key={secret}&q=x",
+        f"authorization: Bearer {secret}",
+        f"token={secret}",
+    ):
+        assert secret not in R.redact(probe), f"leaked from {probe!r}"
+    assert R.redact_mapping({"X-Subscription-Token": secret, "Accept": "application/json"}) == {
+        "X-Subscription-Token": "[REDACTED]",
+        "Accept": "application/json",
+    }
+
+
+def test_no_secret_reaches_the_metrics_or_allowance_files(root, monkeypatch):
+    secret = "another-secret-key-999"
+    monkeypatch.setenv("BRAVE_SEARCH_API_KEY", secret)
+    _budget(root, daily=25, monthly=850)
+    _patch_transport(monkeypatch, _web_body())
+    R.search("q", caller="t", root=root, now=NOW)
+    for f in (R.metrics_path(root), R.allowance_path(root), R.reservations_path(root)):
+        if f.exists():
+            assert secret not in f.read_text(encoding="utf-8"), f"{f.name} leaked"
+
+
+def test_the_ledger_and_the_gates_agree_on_which_day_it_is(root, monkeypatch):
+    """Regression: reserve() once spent under wall-clock time while the gates
+    evaluated under the injected clock.
+
+    The two disagreed only across a day/month boundary, so it was invisible
+    until UTC midnight passed mid-session: the gate checked an empty bucket and
+    allowed, while the spend landed in yesterday's. A caller with an explicit
+    clock — every scheduled job that pins its run time — could exceed the daily
+    ceiling without any denial being recorded.
+    """
+    _budget(root, daily=2, monthly=100)
+    # A logical clock deliberately on a DIFFERENT calendar day from wall time.
+    other_day = datetime(2026, 1, 15, 12, 0, tzinfo=timezone.utc)
+    _patch_transport(monkeypatch, _web_body())
+
+    a = R.search("q1", caller="t", root=root, now=other_day)
+    b = R.search("q2", caller="t", root=root, now=other_day)
+    assert a.status is R.Status.OK and b.status is R.Status.OK
+
+    # The spend must be visible in the SAME bucket the gate reads.
+    st = SB.status("brave", now=other_day, root=root)
+    assert st["daily_used"] == 2, "spend landed in a different day bucket than the gate"
+
+    c = R.search("q3", caller="t", root=root, now=other_day)
+    assert c.status is R.Status.DENIED_BUDGET
+    assert "DAILY_EXHAUSTED" in c.reason
+
+
+def test_refund_returns_the_unit_to_the_same_bucket_it_came_from(root):
+    _budget(root, daily=5, monthly=50)
+    other_day = datetime(2026, 1, 15, 12, 0, tzinfo=timezone.utc)
+    rid = R.reserve("c", "EVIDENCE_GAP", root=root, now=other_day)
+    assert SB.status("brave", now=other_day, root=root)["daily_used"] == 1
+    R.settle(rid, provider_reached=False, caller="c", root=root, now=other_day)
+    assert SB.status("brave", now=other_day, root=root)["daily_used"] == 0, (
+        "the refund landed in a different bucket than the spend"
+    )

@@ -96,6 +96,8 @@ class Status(str, Enum):
     DENIED_POLICY = "DENIED_POLICY"  # forbidden purpose (e.g. quotes)
     DENIED_NO_EVIDENCE_GAP = "DENIED_NO_EVIDENCE_GAP"
     DENIED_WEEKEND = "DENIED_WEEKEND"
+    CIRCUIT_OPEN = "CIRCUIT_OPEN"
+    STALE_SERVED = "STALE_SERVED"
     BUDGET_UNAVAILABLE = "BUDGET_UNAVAILABLE"
 
     UNAUTHORIZED = "UNAUTHORIZED"  # 401
@@ -322,6 +324,8 @@ class Outcome:
     endpoint: str = "web"
     provider_billed: bool = False
     cache_hit: bool = False
+    stale: bool = False
+    result_age_seconds: Optional[float] = None
     http_status: Optional[int] = None
     latency_ms: Optional[int] = None
     observed_allowance: dict[str, Any] = field(default_factory=dict)
@@ -361,6 +365,8 @@ class Outcome:
             Status.DENIED_POLICY: "Search not permitted for this purpose.",
             Status.DENIED_NO_EVIDENCE_GAP: "No material evidence gap; free sources answered.",
             Status.DENIED_WEEKEND: "Deferred to the next session: markets are closed and this is scheduled background research.",
+            Status.CIRCUIT_OPEN: "Search provider is failing repeatedly; requests are paused until it recovers.",
+            Status.STALE_SERVED: "Showing a previously retrieved answer; the provider is unavailable and this result is older than its freshness window.",
             Status.BUDGET_UNAVAILABLE: "Search budget could not be established.",
             Status.UNAUTHORIZED: "Search provider rejected the credential.",
             Status.PAYMENT_REQUIRED: "Search provider reports the plan is exhausted.",
@@ -1096,6 +1102,7 @@ def search(
     freshness: Optional[str] = None,
     endpoint: str = "web",
     evidence_gap: bool = True,
+    allow_stale: bool = False,
     project_root: Optional[Path] = None,
     root: Optional[Path] = None,
     now: Optional[datetime] = None,
@@ -1109,6 +1116,12 @@ def search(
 
     ``allow_network=False`` runs every gate and cache layer but refuses to make
     a real request — the dry-run mode the negative controls use.
+
+    ``allow_stale=True`` permits a cached answer past its TTL (within
+    :data:`STALE_GRACE_SECONDS`) when the live path is unavailable. It is opt-in
+    per call and never implicit: the returned outcome is ``STALE_SERVED`` and
+    carries ``result_age_seconds``, so a stale answer can never be mistaken for
+    a current observation.
     """
     now = now or datetime.now(timezone.utc)
     purpose = Purpose(purpose) if not isinstance(purpose, Purpose) else purpose
@@ -1127,11 +1140,16 @@ def search(
         latency_ms: Optional[int] = None,
         allowance: Optional[dict] = None,
         budget: Optional[dict] = None,
+        stale: bool = False,
+        age: Optional[float] = None,
     ) -> Outcome:
         o = Outcome(
             status=status,
             results=results or [],
-            reason=reason,
+            # Redacted here rather than at each call site: a urllib error can
+            # carry the full request URL, and this is the one place every
+            # reason string in the module passes through.
+            reason=redact(reason),
             query=query,
             fingerprint=fp,
             purpose=purpose.value,
@@ -1140,6 +1158,8 @@ def search(
             endpoint=endpoint,
             provider_billed=billed,
             cache_hit=cache_hit,
+            stale=stale,
+            result_age_seconds=age,
             http_status=http_status,
             latency_ms=latency_ms,
             observed_allowance=allowance or {},
@@ -1150,10 +1170,15 @@ def search(
         return o
 
     ttl = DEFAULT_TTL.get(purpose, 6 * 3600)
+    # The cache honours the SAME clock as the gates. Reading it off
+    # wall time while everything else uses `now` makes expiry
+    # untestable and lets a caller with an explicit clock see an entry
+    # the rest of the request considers expired.
+    clock = now.timestamp()
 
     # 1. Durable cache — before any gate, because a cache hit costs nothing and
     #    must not be denied by a budget it does not consume.
-    cached = cache_get(fp, ttl, root=root)
+    cached = cache_get(fp, ttl, root=root, now=clock)
     if cached is not None:
         return _out(Status.CACHED, results=rank_results(cached), cache_hit=True, reason=f"cache hit within {ttl}s TTL")
 
@@ -1172,10 +1197,32 @@ def search(
     if not key:
         return _out(Status.DENIED_NO_KEY, reason="BRAVE_SEARCH_API_KEY not configured")
 
+    # Circuit breaker: after repeated provider failures, stop paying for
+    # requests that are failing anyway. A half-open circuit lets exactly one
+    # probe through to discover recovery.
+    bs = breaker_state(root=root, now=now)
+    if bs["state"] == "open":
+        if allow_stale:
+            cached_stale, age = cache_get_stale(fp, ttl, root=root, now=clock)
+            if cached_stale is not None:
+                return _out(
+                    Status.STALE_SERVED,
+                    results=rank_results(cached_stale),
+                    cache_hit=True,
+                    stale=True,
+                    age=age,
+                    reason=f"circuit open; served cached answer aged {int(age)}s",
+                )
+        return _out(
+            Status.CIRCUIT_OPEN,
+            reason=f"{bs.get('consecutive_failures')} consecutive provider "
+            f"failures; paused for {BREAKER_COOLDOWN_SECONDS}s",
+        )
+
     # 3. Coalesce identical in-flight queries.
     with _coalesce_lock(fp, root) as should_work:
         if not should_work:
-            waited = cache_get(fp, ttl, root=root)
+            waited = cache_get(fp, ttl, root=root, now=clock)
             if waited is not None:
                 return _out(
                     Status.COALESCED,
@@ -1186,7 +1233,7 @@ def search(
             # The other caller finished without a usable answer; fall through.
 
         # Re-check the cache: the holder may have filled it while we waited.
-        again = cache_get(fp, ttl, root=root)
+        again = cache_get(fp, ttl, root=root, now=clock)
         if again is not None:
             return _out(
                 Status.CACHED,
@@ -1195,25 +1242,54 @@ def search(
                 reason="cache filled by a concurrent identical query",
             )
 
-        # 4. Atomically consume one budget unit. try_consume (not check) so two
-        #    processes cannot both observe the last unit and both spend it.
-        try:
-            from scripts.lib.search_budget import try_consume
-        except Exception:
+        # 4. Reclaim anything a crashed caller abandoned, then reserve one unit
+        #    atomically. Reserving BEFORE the request is what stops two
+        #    processes both taking the last unit; settle() gives it back when
+        #    the provider was never actually reached.
+        reclaim_stale_reservations(root=root, now=now)
+        rid = reserve(caller, purpose.value, root=root, now=now)
+        if rid is None:
             try:
-                from lib.search_budget import try_consume  # type: ignore
+                from scripts.lib.search_budget import check as _check
             except Exception:
-                return _out(Status.BUDGET_UNAVAILABLE, reason="shared budget module unavailable — DENY")
-        verdict = try_consume(PROVIDER, caller=caller, root=Path(root) if root else None)
-        if not verdict.get("allowed"):
+                from lib.search_budget import check as _check  # type: ignore
+            verdict = _check(PROVIDER, now=now, root=Path(root) if root else None)
             reason = str(verdict.get("reason") or "denied")
             status = Status.BUDGET_UNAVAILABLE if reason.startswith("BUDGET_UNAVAILABLE") else Status.DENIED_BUDGET
             return _out(status, reason=reason, budget=verdict.get("status") or {})
 
-        # 5. Make the one paid request.
-        return _execute(
-            query, fp=fp, key=key, count=count, freshness=freshness, endpoint=endpoint, out=_out, root=root, now=now
+        # 5. Make the one paid request, then settle the reservation. A failure
+        #    that never reached the provider returns its unit; a 429 or a 5xx
+        #    was served and billed, so it does not.
+        outcome = _execute(
+            query,
+            fp=fp,
+            key=key,
+            count=count,
+            freshness=freshness,
+            endpoint=endpoint,
+            out=_out,
+            root=root,
+            now=now,
         )
+        settle(rid, provider_reached=outcome.status in BILLED, caller=caller, root=root, now=now)
+        record_provider_result(outcome.status, root=root, now=now)
+
+        # A provider failure may still be answerable from a stale cache when the
+        # caller opted in. The age travels with the result so a cached answer is
+        # never presented as a current observation.
+        if outcome.degraded and allow_stale:
+            cached_stale, age = cache_get_stale(fp, ttl, root=root, now=clock)
+            if cached_stale is not None:
+                return _out(
+                    Status.STALE_SERVED,
+                    results=rank_results(cached_stale),
+                    cache_hit=True,
+                    stale=True,
+                    age=age,
+                    reason=f"{outcome.status.value}; served cached answer aged {int(age)}s",
+                )
+        return outcome
 
 
 def _execute(
@@ -1315,13 +1391,13 @@ def _execute(
 
     results = rank_results(results)
     if results:
-        cache_put(fp, results, query=query, root=root)
+        cache_put(fp, results, query=query, root=root, now=now.timestamp())
         return out(
             Status.OK, results=results, billed=True, http_status=http_status, latency_ms=latency, allowance=allowance
         )
     # A genuinely empty answer is still cached: re-asking it costs a credit and
     # returns the same nothing.
-    cache_put(fp, [], query=query, root=root)
+    cache_put(fp, [], query=query, root=root, now=now.timestamp())
     return out(
         Status.EMPTY,
         reason="provider returned zero results",
@@ -1359,3 +1435,353 @@ def health(*, root: Optional[Path] = None, now: Optional[datetime] = None) -> di
         "last_adopted": hb.get("last_adopted"),
         "effectiveness": rep,
     }
+
+
+# ── Secret redaction ────────────────────────────────────────────────────────
+
+#: Header and query-parameter names whose values must never reach a log, an
+#: exception message, an evidence file or a metrics record.
+SECRET_KEYS = ("x-subscription-token", "authorization", "api_key", "apikey", "token", "key")
+
+_REDACTED = "[REDACTED]"
+
+
+def redact(text: Any) -> str:
+    """Strip anything that looks like a credential out of ``text``.
+
+    Applied to every reason string the router produces. A urllib error can
+    carry the full request URL, and a caller that puts a key in a query string
+    would otherwise leak it into an evidence archive that gets shared.
+    """
+    s = str(text)
+    key = os.getenv("BRAVE_SEARCH_API_KEY", "").strip()
+    if key and len(key) >= 8:
+        s = s.replace(key, _REDACTED)
+    for k in SECRET_KEYS:
+        # The optional scheme word matters: "authorization: Bearer <token>"
+        # otherwise redacts the literal "Bearer" and leaves the token behind.
+        s = re.sub(
+            rf"({re.escape(k)}\s*[=:]\s*)(?:(bearer|basic|token)\s+)?[^\s,;&'\"\)]+",
+            rf"\1{_REDACTED}",
+            s,
+            flags=re.IGNORECASE,
+        )
+    return s
+
+
+def redact_mapping(d: Any) -> dict[str, Any]:
+    """Redact a headers/params mapping by key name."""
+    out: dict[str, Any] = {}
+    try:
+        items = d.items()
+    except Exception:
+        return out
+    for k, v in items:
+        out[str(k)] = _REDACTED if str(k).lower() in SECRET_KEYS else v
+    return out
+
+
+# ── Reservation / settlement ────────────────────────────────────────────────
+
+
+def reservations_path(root: Optional[Path] = None) -> Path:
+    return _state_root(root) / "data" / "runtime" / "brave_reservations.json"
+
+
+#: A reservation left OPEN longer than this is presumed abandoned by a crashed
+#: caller and is reclaimed. Generous relative to REQUEST_TIMEOUT so a slow but
+#: living request is never reclaimed out from under itself.
+RESERVATION_TTL_SECONDS = 300
+
+
+def _load_reservations(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {"schema": SCHEMA, "open": {}, "settled": 0, "reclaimed": 0}
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+        if isinstance(doc, dict):
+            doc.setdefault("open", {})
+            return doc
+    except Exception:
+        # An unreadable reservation ledger must not be rebuilt as empty: that
+        # would drop the record of units already spent. Signal it instead.
+        raise
+    raise ValueError("reservation ledger malformed")
+
+
+@contextmanager
+def _reservations_lock(root: Optional[Path] = None) -> Iterator[Path]:
+    path = reservations_path(root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lock = path.with_suffix(".json.lock")
+    if not lock.exists():
+        lock.touch()
+    with open(lock, "a+") as lf:
+        fcntl.flock(lf.fileno(), fcntl.LOCK_EX)
+        try:
+            yield path
+        finally:
+            try:
+                fcntl.flock(lf.fileno(), fcntl.LOCK_UN)
+            except Exception:
+                pass
+
+
+def reserve(caller: str, purpose: str, *, root: Optional[Path] = None, now: Optional[datetime] = None) -> Optional[str]:
+    """Consume one budget unit and record an OPEN reservation.
+
+    Returns a reservation id, or ``None`` when the budget denied it. The unit
+    is spent *before* the request so concurrent processes cannot both take the
+    last one; :func:`settle` gives it back when the provider was never reached.
+    """
+    now = now or datetime.now(timezone.utc)
+    try:
+        from scripts.lib.search_budget import try_consume
+    except Exception:
+        try:
+            from lib.search_budget import try_consume  # type: ignore
+        except Exception:
+            return None
+    # `now` is threaded through deliberately: the gates evaluate against the
+    # injected clock, and a ledger counting under wall-clock time would put the
+    # spend in a different day/month bucket than the one the gate just checked.
+    # That disagreement is invisible until a rollover boundary — it surfaced
+    # here when UTC midnight passed mid-session.
+    verdict = try_consume(PROVIDER, caller=caller, now=now, root=Path(root) if root else None)
+    if not verdict.get("allowed"):
+        return None
+    rid = hashlib.sha256(f"{caller}|{purpose}|{now.timestamp()}|{os.getpid()}".encode()).hexdigest()[:24]
+    try:
+        with _reservations_lock(root) as path:
+            try:
+                doc = _load_reservations(path)
+            except Exception:
+                doc = {"schema": SCHEMA, "open": {}, "settled": 0, "reclaimed": 0, "recovered_from_corrupt": True}
+            doc["open"][rid] = {
+                "caller": caller,
+                "purpose": purpose,
+                "at": now.timestamp(),
+                "at_iso": now.replace(microsecond=0).isoformat(),
+            }
+            tmp = path.with_suffix(".tmp")
+            tmp.write_text(json.dumps(doc, indent=2, sort_keys=True), encoding="utf-8")
+            tmp.replace(path)
+    except Exception:
+        pass  # the spend is already counted; that is the safe side
+    return rid
+
+
+def settle(
+    rid: Optional[str],
+    *,
+    provider_reached: bool,
+    caller: str = "default",
+    root: Optional[Path] = None,
+    now: Optional[datetime] = None,
+) -> bool:
+    """Close a reservation. Refunds the unit when the provider was not reached.
+
+    Returns True when a refund happened. Settling an unknown or already-settled
+    id is a no-op returning False — that is what makes settlement idempotent,
+    so a retried settle cannot refund twice.
+    """
+    if not rid:
+        return False
+    refunded = False
+    try:
+        with _reservations_lock(root) as path:
+            try:
+                doc = _load_reservations(path)
+            except Exception:
+                return False
+            entry = doc.get("open", {}).pop(rid, None)
+            if entry is None:
+                return False  # unknown or already settled → never double-refund
+            doc["settled"] = int(doc.get("settled", 0)) + 1
+            tmp = path.with_suffix(".tmp")
+            tmp.write_text(json.dumps(doc, indent=2, sort_keys=True), encoding="utf-8")
+            tmp.replace(path)
+    except Exception:
+        return False
+    if not provider_reached:
+        try:
+            from scripts.lib.search_budget import refund as _refund
+        except Exception:
+            try:
+                from lib.search_budget import refund as _refund  # type: ignore
+            except Exception:
+                return False
+        refunded = bool(_refund(PROVIDER, caller=caller, now=now, root=Path(root) if root else None))
+    return refunded
+
+
+def reclaim_stale_reservations(*, root: Optional[Path] = None, now: Optional[datetime] = None) -> int:
+    """Refund reservations abandoned by a crashed caller. Returns the count.
+
+    Without this, a process killed between reserving and settling leaks one
+    unit permanently, and a crash loop silently drains the month.
+    """
+    now = now or datetime.now(timezone.utc)
+    cutoff = now.timestamp() - RESERVATION_TTL_SECONDS
+    stale: list[tuple[str, str]] = []
+    try:
+        with _reservations_lock(root) as path:
+            try:
+                doc = _load_reservations(path)
+            except Exception:
+                return 0
+            for rid, e in list(doc.get("open", {}).items()):
+                if float(e.get("at", 0)) < cutoff:
+                    stale.append((rid, e.get("caller", "default")))
+                    doc["open"].pop(rid, None)
+            if stale:
+                doc["reclaimed"] = int(doc.get("reclaimed", 0)) + len(stale)
+                tmp = path.with_suffix(".tmp")
+                tmp.write_text(json.dumps(doc, indent=2, sort_keys=True), encoding="utf-8")
+                tmp.replace(path)
+    except Exception:
+        return 0
+    n = 0
+    try:
+        from scripts.lib.search_budget import refund as _refund
+    except Exception:
+        try:
+            from lib.search_budget import refund as _refund  # type: ignore
+        except Exception:
+            return 0
+    for _rid, caller in stale:
+        if _refund(PROVIDER, caller=caller, now=now, root=Path(root) if root else None):
+            n += 1
+    return n
+
+
+def open_reservations(*, root: Optional[Path] = None) -> dict[str, Any]:
+    try:
+        with _reservations_lock(root) as path:
+            try:
+                return dict(_load_reservations(path).get("open", {}))
+            except Exception:
+                return {}
+    except Exception:
+        return {}
+
+
+# ── Circuit breaker ─────────────────────────────────────────────────────────
+
+
+def breaker_path(root: Optional[Path] = None) -> Path:
+    return _state_root(root) / "data" / "runtime" / "brave_circuit_breaker.json"
+
+
+#: Consecutive provider failures before the circuit opens.
+BREAKER_THRESHOLD = 5
+#: How long the circuit stays open before a single probe is allowed through.
+BREAKER_COOLDOWN_SECONDS = 300
+
+#: Failures that indicate the *provider* is unhealthy. A 401 is a credential
+#: problem and a 429 is a rate limit — both are real, but retrying through a
+#: breaker does not help either, and lumping them together would report a
+#: mis-typed key as a provider outage.
+BREAKER_TRIPPING = frozenset({Status.SERVER_ERROR, Status.TIMEOUT, Status.TRANSPORT_ERROR, Status.MALFORMED})
+
+
+def _read_breaker(root: Optional[Path] = None) -> dict[str, Any]:
+    try:
+        p = breaker_path(root)
+        if p.exists():
+            d = json.loads(p.read_text(encoding="utf-8"))
+            if isinstance(d, dict):
+                return d
+    except Exception:
+        pass
+    return {"consecutive_failures": 0, "opened_at": None}
+
+
+def _write_breaker(doc: dict[str, Any], root: Optional[Path] = None) -> None:
+    try:
+        p = breaker_path(root)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        tmp = p.with_suffix(".tmp")
+        tmp.write_text(json.dumps(doc, indent=2, sort_keys=True), encoding="utf-8")
+        tmp.replace(p)
+    except Exception:
+        pass
+
+
+def breaker_state(*, root: Optional[Path] = None, now: Optional[datetime] = None) -> dict[str, Any]:
+    """``closed`` (healthy), ``open`` (refusing), or ``half_open`` (one probe)."""
+    now = now or datetime.now(timezone.utc)
+    d = _read_breaker(root)
+    opened = d.get("opened_at")
+    if not opened:
+        return {"state": "closed", **d}
+    if now.timestamp() - float(opened) >= BREAKER_COOLDOWN_SECONDS:
+        return {"state": "half_open", **d}
+    return {"state": "open", **d}
+
+
+def record_provider_result(status: Status, *, root: Optional[Path] = None, now: Optional[datetime] = None) -> None:
+    """Advance or reset the breaker after a real provider interaction."""
+    now = now or datetime.now(timezone.utc)
+    d = _read_breaker(root)
+    if status in BREAKER_TRIPPING:
+        d["consecutive_failures"] = int(d.get("consecutive_failures", 0)) + 1
+        if d["consecutive_failures"] >= BREAKER_THRESHOLD and not d.get("opened_at"):
+            d["opened_at"] = now.timestamp()
+            d["opened_at_iso"] = now.replace(microsecond=0).isoformat()
+    elif status in (Status.OK, Status.EMPTY):
+        d = {"consecutive_failures": 0, "opened_at": None}
+    _write_breaker(d, root)
+
+
+def backoff_delay(attempt: int, *, base: float = 0.5, cap: float = 8.0, rand: Optional[Any] = None) -> float:
+    """Exponential backoff with bounded jitter (full jitter, capped).
+
+    Jitter is bounded rather than unbounded so a retry storm from many cron
+    processes spreads out without any single caller stalling unpredictably.
+    """
+    import random as _random
+
+    r = rand if rand is not None else _random.random()
+    ceiling = min(cap, base * (2 ** max(0, attempt)))
+    return round(ceiling * (0.5 + 0.5 * float(r)), 4)
+
+
+# ── Stale-while-revalidate ──────────────────────────────────────────────────
+
+#: How far past TTL a cached answer may still be served when the caller has
+#: explicitly opted in AND the live path is unavailable.
+STALE_GRACE_SECONDS = 24 * 3600
+
+
+def cache_get_stale(
+    fp: str, ttl: int, *, root: Optional[Path] = None, now: Optional[float] = None, grace: int = STALE_GRACE_SECONDS
+):
+    """Return ``(results, age_seconds)`` for an expired-but-within-grace entry.
+
+    Never used implicitly. A stale answer is only reachable when the caller
+    passes ``allow_stale=True`` *and* the live path failed, and the result is
+    labelled so its age travels with it — a cached answer that reports its
+    retrieval time as its observation time is how stale research gets presented
+    as current.
+    """
+    now = now if now is not None else time.time()
+    path = _cache_file(fp, root)
+    try:
+        if not path.exists():
+            return None, None
+        doc = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None, None
+    if not isinstance(doc, dict):
+        return None, None
+    stored = float(doc.get("stored_at", 0))
+    age = now - stored
+    if age <= ttl:
+        return None, None  # fresh: the normal path handles it
+    if age > ttl + grace:
+        return None, None  # beyond grace: not servable at all
+    try:
+        return [Result(**r) for r in doc.get("results", [])], age
+    except Exception:
+        return None, None
