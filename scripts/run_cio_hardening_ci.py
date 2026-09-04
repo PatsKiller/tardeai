@@ -692,6 +692,17 @@ GATES = [
         ],
     ),
     (
+        # cc-whole-site-residual-v1 (2026-09-04): Phase A repair of the duplicates that
+        # writer defect left behind. It may remove exact-duplicate CLOSED lots and
+        # nothing else. The dangerous version is one line shorter -- dedupe everything --
+        # and would have rewritten share counts in 15 records by up to 100x for
+        # securities the broker no longer holds, where nothing could confirm the result.
+        "tax_lot_duplicate_repair",
+        [
+            "tests/test_tax_lot_duplicate_repair.py",
+        ],
+    ),
+    (
         # cc-whole-site-residual-v1 (2026-09-04): the tax-lot rebuild appended the whole
         # transaction history on top of its own previous output, so run N held N copies
         # of every lot. tax_lots.json reached 98% duplicates before anyone noticed,
