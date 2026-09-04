@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `de6aa6afe44030f256e97fa21cbfe2dde07d3f83cb81a5e9c02cf70c2f4eca3f`
+**Tree fingerprint:** `30e3da9761b5918dfa66e7cd1bb8060d8cf6485ea38ba520996f2890dd3b8a68`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,11 +12,11 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2352 |
+| Files under `docs/` (excl. this INDEX) | 2360 |
 | Markdown (excl. this INDEX) | 1964 |
 | **MISSING HEADER** | **12** |
 | Header OK | 1952 |
-| Duplicate groups | 5 |
+| Duplicate groups | 9 |
 
 ### By status_guess
 
@@ -27,7 +27,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | archive_session_handoff | 3 |
 | archive_superseded | 20 |
 | artifact_code_snapshot | 3 |
-| artifact_raw_sync | 26 |
+| artifact_raw_sync | 34 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 6 |
 | review_required | 1972 |
@@ -47,7 +47,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/BROKER_TRADE_PLAN_GATE.md` | Broker Trade Plan Gate — No Gambling on Generic 2×R | review_required | OK | `e73e70a22a5c` |
 | `docs/CC_V3_ACTIONABILITY_SPRINT_20260702.md` | CC v3 Actionability Sprint — Layered Document | review_required | OK | `26d05fe916e7` |
 | `docs/CC_V3_HOME_TRUST_HARDENING_20260726.md` | CC v3 Home Trust Hardening — 2026-07-26 | review_required | OK | `401363e962e2` |
-| `docs/CHANGELOG.md` | Changelog | review_required | OK | `14681032bcb0` |
+| `docs/CHANGELOG.md` | Changelog | review_required | OK | `2b8eaaf19f6c` |
 | `docs/CHEAT_SHEET.md` | Trade AI v12 -- Operator Cheat Sheet | active_keep | OK | `5fbf6fb2ebe7` |
 | `docs/CIO_PROMPT_INPUT_AUDIT_2026_07_01.md` | CIO Prompt & Input Audit — 2026-07-01 | review_required | OK | `927dbe10051c` |
 | `docs/CLAUDE_CHALLENGER_AND_ANALYST_LANES.md` | Claude Challenger Cohort (A/B) + Analyst Lanes | review_required | OK | `3159e054b153` |

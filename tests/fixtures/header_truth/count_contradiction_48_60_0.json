@@ -1,0 +1,49 @@
+{
+  "_capture": {
+    "source": "/api/v2/trade-ai (tickers[] + setup_run_summary) and run_history",
+    "captured_at_utc": "2026-09-04T17:43:08Z",
+    "served_release": "a7c550d1d-main-exact-phase2-20260904-133631",
+    "served_commit": "a7c550d1d201e6b44b6f849a6e1f9efe72ce4fe9",
+    "rendered_header": "SETUPS · LATEST RUN — 48 classified / 60 scanned / 0 excluded · PARTIAL · as_of 2026-09-04 17:39",
+    "contradiction": "48 + 0 = 48 of 60. Twelve rows are unaccounted and the header offers no name for them. Separately `scanned` has two values: the DB run rows say 60 and the run summary says 49 (this is what pinned integrity at PARTIAL). Both defects are real and independent: the 12 are MANUAL_REVIEW rows the taxonomy had no token for, and the 60 includes 11 rows from the PREVIOUS day's 0900 run that survived DISTINCT ON (symbol) carrying the same run_label."
+  },
+  "run": {
+    "run_id": "2026-09-04::0900",
+    "run_label": "0900",
+    "run_date": "2026-09-04",
+    "run_timestamp": "2026-09-04T09:52:47",
+    "scanned_count_from_db_rows": 60,
+    "scanned_count_from_run_summary": 49,
+    "run_health_status": "RUN_HEALTHY"
+  },
+  "rendered_summary_v1": {
+    "scanned_count": 60,
+    "classified_count": 48,
+    "go_count": 0,
+    "wait_count": 1,
+    "nogo_count": 47,
+    "excluded_count": 0,
+    "unclassified_count": 12,
+    "count_integrity": "PARTIAL",
+    "count_integrity_reason": "scanned contracts disagree: primary(60) vs alternate(49)"
+  },
+  "decision_tally_observed": { "AVOID": 47, "MANUAL_REVIEW": 12, "WAIT": 1 },
+  "manual_review_rows": [
+    { "symbol": "BRNX", "decision": "MANUAL_REVIEW", "score": 30, "setup_class": "squeeze",            "scan_run_label": "0900", "scan_run_date": "2026-09-04", "disqualified": false },
+    { "symbol": "DBGI", "decision": "MANUAL_REVIEW", "score": 36, "setup_class": "squeeze",            "scan_run_label": "0900", "scan_run_date": "2026-09-04", "disqualified": false },
+    { "symbol": "GELS", "decision": "MANUAL_REVIEW", "score": 36, "setup_class": "low_price_runner",   "scan_run_label": "0900", "scan_run_date": "2026-09-04", "disqualified": false },
+    { "symbol": "IDN",  "decision": "MANUAL_REVIEW", "score": 37, "setup_class": "momentum_runner",    "scan_run_label": "0900", "scan_run_date": "2026-09-04", "disqualified": false },
+    { "symbol": "IOT",  "decision": "MANUAL_REVIEW", "score": 38, "setup_class": "high_rvol_runner",   "scan_run_label": "0900", "scan_run_date": "2026-09-04", "disqualified": false },
+    { "symbol": "KWM",  "decision": "MANUAL_REVIEW", "score": 30, "setup_class": "squeeze",            "scan_run_label": "0900", "scan_run_date": "2026-09-04", "disqualified": false },
+    { "symbol": "MODD", "decision": "MANUAL_REVIEW", "score": 32, "setup_class": "momentum_runner",    "scan_run_label": "0900", "scan_run_date": "2026-09-04", "disqualified": false },
+    { "symbol": "NIKI", "decision": "MANUAL_REVIEW", "score": 30, "setup_class": "squeeze",            "scan_run_label": "0900", "scan_run_date": "2026-09-04", "disqualified": false },
+    { "symbol": "PARA", "decision": "MANUAL_REVIEW", "score": 38, "setup_class": "high_rvol_runner",   "scan_run_label": "0900", "scan_run_date": "2026-09-04", "disqualified": false },
+    { "symbol": "PL",   "decision": "MANUAL_REVIEW", "score": 30, "setup_class": "momentum_runner",    "scan_run_label": "0900", "scan_run_date": "2026-09-04", "disqualified": false },
+    { "symbol": "SGRX", "decision": "MANUAL_REVIEW", "score": 31, "setup_class": "micro_float_runner", "scan_run_label": "0900", "scan_run_date": "2026-09-04", "disqualified": false },
+    { "symbol": "WOOF", "decision": "MANUAL_REVIEW", "score": 37, "setup_class": "momentum_runner",    "scan_run_label": "0900", "scan_run_date": "2026-09-04", "disqualified": false }
+  ],
+  "prior_day_rows_leaking_into_this_run": [
+    { "symbol": "LEAK01", "decision": "AVOID", "scan_run_label": "0900", "scan_run_date": "2026-09-03", "disqualified": false },
+    { "symbol": "LEAK02", "decision": "AVOID", "scan_run_label": "0900", "scan_run_date": "2026-09-03", "disqualified": false }
+  ]
+}

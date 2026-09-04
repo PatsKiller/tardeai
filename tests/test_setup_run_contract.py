@@ -76,7 +76,19 @@ def test_tally_partitions_every_row_into_exactly_one_class():
     ]
     t = tally_decisions(rows)
     assert sum(t.values()) == len(rows)
-    assert t == {"go": 1, "wait": 1, "nogo": 2, "excluded": 1, "unclassified": 1}
+    # review/error joined the taxonomy in v2 (MANUAL_REVIEW was landing in
+    # unclassified). The invariant this test guards -- every row in exactly one
+    # class -- is the sum assertion above; the dict is pinned so a new class
+    # cannot be added without someone stating where existing rows now go.
+    assert t == {
+        "go": 1,
+        "wait": 1,
+        "nogo": 2,
+        "review": 0,
+        "excluded": 1,
+        "error": 0,
+        "unclassified": 1,
+    }
 
 
 # ── run id is deterministic ──────────────────────────────────────────────────

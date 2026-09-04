@@ -2675,6 +2675,77 @@ def _country_flag(c):
     return _COUNTRY_FLAGS.get((c or "").strip().lower(), "🇺🇸") if c else ""
 
 
+def _today_pnl_provenance(
+    holdings: dict,
+    *,
+    today_by_account: dict,
+    account_summaries: dict,
+    total_change: float,
+) -> dict:
+    """Provenance for today's P&L: its session, when it was computed, who is in it.
+
+    A day-change figure is only meaningful against the session it was struck in
+    and the set of accounts that actually contributed one. The overview payload
+    carried NEITHER, so the header reached for the nearest available date --
+    `data_as_of`, the POSITION observation -- and rendered "TODAY -$3,734 ·
+    data_as_of 2026-09-03" over a figure computed from 2026-09-04 intraday
+    marks (live capture, release a7c550d1d).
+
+    The session a P&L belongs to is the session its MARKS were observed in,
+    never the session its share counts were.
+
+    Accounts are split three ways and none is silently dropped:
+      contributing  reported a non-zero day change this session
+      zero_change   linked and priced, but flat (a real 0, not a missing one)
+      missing       linked and NOT represented in the day-change map at all
+    """
+    repriced = str(holdings.get("last_repriced") or "").strip()
+    session = repriced[:10] if len(repriced) >= 10 else None
+
+    contributing: list[str] = []
+    zero_change: list[str] = []
+    missing: list[str] = []
+    for acct in sorted(account_summaries or {}):
+        row = (today_by_account or {}).get(acct)
+        if row is None:
+            missing.append(acct)
+            continue
+        try:
+            changed = float(row.get("change") or 0) != 0.0
+        except (TypeError, ValueError):
+            changed = False
+        (contributing if changed else zero_change).append(acct)
+
+    linked = len(account_summaries or {})
+    represented = len(contributing) + len(zero_change)
+    try:
+        total = round(float(total_change or 0), 2)
+    except (TypeError, ValueError):
+        total = None
+
+    return {
+        "contract_version": "TodayPnl@v1",
+        "total_change": total,
+        # ── clocks ────────────────────────────────────────────────────────────
+        "session_date": session,
+        "session_source": "holdings.last_repriced" if session else None,
+        "calculated_at": str(holdings.get("generated_at") or "") or None,
+        "mark_source": str(holdings.get("reprice_source") or "") or None,
+        # ── coverage ──────────────────────────────────────────────────────────
+        "scope": "ALL_ACCOUNTS",
+        "linked_account_count": linked,
+        "represented_account_count": represented,
+        "contributing_accounts": contributing,
+        "zero_change_accounts": zero_change,
+        "missing_accounts": missing,
+        "complete": not missing,
+        "coverage_reason": (
+            f"{represented}/{linked} linked account(s) represented"
+            + (f"; missing {', '.join(missing)}" if missing else "")
+        ),
+    }
+
+
 def _resolve_country_name(symbol, raw):
     """Headquarters-country name for a scan row. Prefer the scan's own value; when
     it is empty (common for AI/social-sourced symbols that never went through the
@@ -3291,11 +3362,17 @@ def overview():
     # oldest with account_summaries for newest — live acceptance 2026-09-03).
     from lib.portfolio_aggregate_contract import build_portfolio_aggregate
 
+    # v2: the valuation clock and the quote clock are supplied EXPLICITLY. They
+    # are not derived from the position observations and never substitute for
+    # them -- that conflation is what dated a July-observed book "2026-09-03".
     _portfolio_aggregate = build_portfolio_aggregate(
         aggregate_value=total_val,
         account_summaries=h.get("account_summaries") or {},
         data_as_of=h.get("data_as_of"),
         data_as_of_account=h.get("data_as_of_account"),
+        valuation_time=h.get("generated_at") or h.get("updated_at"),
+        quote_observation_time=h.get("last_repriced"),
+        quote_source=h.get("reprice_source"),
     )
 
     # Canonical quote-selection projection (cc-header-truth-v2 Phase 2 B).
@@ -3334,6 +3411,12 @@ def overview():
             "canonical_total_value": totals.get("total_value", 0),
         },
         "today_by_account": today_by_account,
+        "today_pnl": _today_pnl_provenance(
+            h,
+            today_by_account=today_by_account,
+            account_summaries=h.get("account_summaries") or {},
+            total_change=today_change,
+        ),
         "position_count": len(active_positions),
         # Named scopes so overview and risk can never silently disagree again.
         "position_counts": _position_counts,
@@ -14520,6 +14603,7 @@ def _compute_trade_ai():
                 operator_pill, operator_subtitle, operator_color_token,
                 not_validation_ready, not_tradeable,
                 awareness_status, setup_class, manual_review_required, symbol_candidate,
+                run_date AS scan_run_date,
                 scanned_at
             FROM trade_ai_scans
             WHERE run_date >= CURRENT_DATE - INTERVAL '1 day'
@@ -14570,6 +14654,9 @@ def _compute_trade_ai():
                         "source_detail": r.get("source_detail") or "",
                         "run_type": r.get("run_type"),
                         "scan_run_label": r.get("scan_run_label"),
+                        # Run identity is (run_date, run_label). The label alone
+                        # repeats every day -- see the scoping comment below.
+                        "scan_run_date": str(r.get("scan_run_date") or "")[:10],
                         "intelligence_readiness": r.get("intelligence_readiness"),
                         # --- Social Scout operator-awareness fields (P0-5). Awareness only: a scout is
                         # never tradeable / never validation-ready (see route policy + gates). ---
@@ -14917,11 +15004,32 @@ def _compute_trade_ai():
     wait_count = sum(1 for t in tickers if t.get("decision") == "WAIT")
     avoid_count = sum(1 for t in tickers if t.get("decision") not in ("GO", "WAIT"))
 
-    # SCALP-COUNT-1: Current-run counts filtered to latest run_label only
+    # SCALP-COUNT-1: current-run counts scoped to the latest run.
+    #
+    # This filtered on run_label ALONE. The ticker query spans two days
+    # (`run_date >= CURRENT_DATE - INTERVAL '1 day'`) and collapses to one row
+    # per symbol via DISTINCT ON, so a symbol scanned in YESTERDAY's 0900 run and
+    # absent from today's survived the collapse still carrying label '0900' and
+    # was counted into today's run. Run 2026-09-04::0900 reported 60 scanned
+    # against a run_summary ticker_count of 49: eleven of those rows were the
+    # previous day's. That is the entire "60 vs 49" disagreement that pinned
+    # count_integrity at PARTIAL -- the taxonomy was fine, the population was not.
+    #
+    # Run identity is (run_date, run_label). Scope on both. Rows predating the
+    # run_date projection carry no date; they are counted only when the run has
+    # no dated rows at all, so an older cached payload degrades to the previous
+    # behaviour rather than reporting an empty run.
     _current_run_label = latest.get("run_label", "")
-    _current_run_tickers = (
-        [t for t in tickers if t.get("scan_run_label") == _current_run_label] if _current_run_label else tickers
-    )
+    _current_run_date = str(latest.get("date", "") or "")[:10]
+    if _current_run_label:
+        _label_rows = [t for t in tickers if t.get("scan_run_label") == _current_run_label]
+        _dated_rows = [t for t in _label_rows if t.get("scan_run_date")]
+        if _current_run_date and _dated_rows:
+            _current_run_tickers = [t for t in _dated_rows if t.get("scan_run_date") == _current_run_date]
+        else:
+            _current_run_tickers = _label_rows
+    else:
+        _current_run_tickers = tickers
     current_run_go = sum(1 for t in _current_run_tickers if t.get("decision") == "GO")
     current_run_wait = sum(1 for t in _current_run_tickers if t.get("decision") == "WAIT")
     current_run_nogo = sum(1 for t in _current_run_tickers if t.get("decision") not in ("GO", "WAIT"))
@@ -32080,16 +32188,31 @@ def _inbox():
     items.sort(key=lambda x: x.get("at") or "", reverse=True)
     items.sort(key=lambda x: 0 if x.get("priority") == "P0" else 1)
     p0 = sum(1 for i in items if i.get("priority") == "P0")
+    # `count` was len(items) while `items` was items[:80]: the headline number
+    # described the whole queue and the list beside it described a page of it,
+    # with nothing saying so. The live inbox rendered "82 items" over 80 rows.
+    # Every count now names its own scope and the page is stated.
+    _page_limit = 80
+    _page = items[:_page_limit]
     return {
-        "count": len(items),
+        # Whole queue.
+        "total_count": len(items),
         "p0_count": p0,
+        # This page only.
+        "displayed_count": len(_page),
+        "page_limit": _page_limit,
+        "truncated": len(items) > len(_page),
+        "not_displayed_count": len(items) - len(_page),
+        # Per-lane totals (whole queue, not this page).
         "escalations": len(esc),
         "cio_review": len(cio),
         "auto_research": len(auto_ar),
         "proposals": sum(1 for p in props if (p.get("status") or "").upper() == "PENDING"),
         "stops": len(stops),
         "siem": len(siem),
-        "items": items[:80],
+        "items": _page,
+        # Back-compat alias: existing readers keep the whole-queue total.
+        "count": len(items),
     }
 
 

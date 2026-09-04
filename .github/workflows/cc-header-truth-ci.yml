@@ -1,0 +1,71 @@
+name: cc-header-truth-ci
+# Gates the header's clock and count contracts.
+#
+# The previous header-truth cycle shipped with its assertions runnable but
+# ungated: scripts/test_metric_strip_labels.mjs existed and no workflow invoked
+# it, so a regression in the exact file it guards would have merged green. Every
+# path this job asserts about is in the trigger list below, and every assertion
+# it can run, it runs.
+on:
+  pull_request:
+    paths:
+      - 'apps/command-center-v3/src/components/MetricStrip.tsx'
+      - 'apps/command-center-v3/src/components/OperatorInboxPanel.tsx'
+      - 'apps/command-center-v3/src/pages/HomeHub.tsx'
+      - 'apps/command-center-v3/src/lib/setupRunSummary.ts'
+      - 'apps/command-center-v3/src/lib/surfaceFreshness.ts'
+      - 'scripts/lib/portfolio_aggregate_contract.py'
+      - 'scripts/lib/setup_run_contract.py'
+      - 'scripts/test_metric_strip_labels.mjs'
+      - 'tests/test_header_truth_regression.py'
+      - 'tests/test_portfolio_aggregate_contract.py'
+      - 'tests/test_setup_run_contract.py'
+      - 'tests/test_cc_header_truth_v2_api.py'
+      - 'tests/fixtures/header_truth/**'
+      - '.github/workflows/cc-header-truth-ci.yml'
+  workflow_dispatch: {}
+permissions:
+  contents: read
+jobs:
+  header-truth:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/command-center-v3/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install frontend
+        working-directory: apps/command-center-v3
+        run: npm ci --silent
+
+      - name: TypeScript
+        working-directory: apps/command-center-v3
+        run: npx tsc --pretty false
+
+      - name: Header clock and count label guards
+        run: node scripts/test_metric_strip_labels.mjs
+
+      - name: Install focused test dependency
+        run: python -m pip install --disable-pip-version-check pytest
+
+      # The two contradictions from the 2026-09-04 live capture, pinned against
+      # verbatim production fixtures.
+      - name: Header truth regression fixtures
+        run: python -m pytest -q tests/test_header_truth_regression.py
+
+      - name: Producer contracts
+        run: |
+          python -m pytest -q \
+            tests/test_portfolio_aggregate_contract.py \
+            tests/test_setup_run_contract.py \
+            tests/test_cc_header_truth_v2_api.py
+
+      - name: Production build
+        working-directory: apps/command-center-v3
+        run: npm run build
