@@ -664,6 +664,49 @@ def _token_match(stem: str, haystack: str) -> bool:
     return re.search(pattern, haystack) is not None
 
 
+#: Where pre-write copies go. Never inside a state root, so a restore can never be
+#: mistaken for a store, and never deleted by this campaign.
+BACKUP_ROOT = "/home/johnclaw/trade-ai-releases/state-migration-backups"
+
+#: One read per store that a consumer must be able to serve after the write. If the
+#: canary cannot be answered, the migration did not succeed regardless of hashes.
+_CANARY_ROUTES = {
+    "stops.json": "/api/v2/risk/protection-truth",
+    "tax_lots.json": "/api/v2/portfolio/tax-lots",
+    "trade_journal.json": "/api/v2/portfolio/trade-journal",
+    "performance_history.json": "/api/v2/portfolio/performance",
+    "performance_attribution.json": "/api/v2/portfolio/attribution",
+    "portfolio_news.json": "/api/v2/portfolio/news",
+    "health_agent_status.json": "/api/v2/system/health-agent",
+    "snapshot_index.json": "/api/v2/portfolio/snapshots",
+}
+
+
+def _consumer_canary(name: str, consumers: list[str]) -> dict[str, Any]:
+    route = _CANARY_ROUTES.get(name)
+    return {
+        "route": route,
+        "check": (
+            f"GET {route} answers 200 with a parseable body and a non-null payload"
+            if route
+            else "no dedicated route; the store's consumers must load without a new error"
+        ),
+        "consumers_sampled": consumers[:5],
+        "fails_migration_if": "the canary cannot be served after the write, even when hashes match",
+    }
+
+
+def _deployed_sha_hint() -> str | None:
+    """The release the plan is valid against, read from the deployed release pointer."""
+    try:
+        p = Path("/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT")
+        if p.is_symlink() or p.exists():
+            return p.resolve().name
+    except Exception:  # noqa: BLE001
+        pass
+    return None
+
+
 def _producer_schedule(writers: list[str]) -> dict[str, Any]:
     """systemd units / cron entries that run any of these writers.
 
@@ -787,6 +830,14 @@ def discover_store(
         "mentions_only": mentions,
         "consumers": consumers,
         "producer_schedule": _producer_schedule(writers),
+        # The operator-facing migration contract: where the pre-write copy goes, what
+        # a consumer must be able to read afterwards, and which build this plan is
+        # valid against. A manifest without these is not executable by anyone but its
+        # author.
+        "backup_path": str(Path(BACKUP_ROOT) / "{stamp}" / name),
+        "backup_path_template": f"{BACKUP_ROOT}/<UTC stamp>/{name}",
+        "consumer_canary": _consumer_canary(name, consumers),
+        "expected_deployed_sha": _deployed_sha_hint(),
         "rollback_strategy": (
             "restore the timestamped pre-write backup of BOTH sides and re-verify both hashes; "
             "no source or backup is ever deleted"
