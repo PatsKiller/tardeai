@@ -406,6 +406,27 @@ def project_quote_selection(
             }
         )
 
+    # ── coverage (live capture 2026-09-04) ───────────────────────────────────
+    # The header rendered "quotes DEGRADED (price_cache_nav(1))" -- something is
+    # wrong, and nothing about how much. A degraded aggregate that does not state
+    # its coverage lets one fallback row read the same as total vendor failure.
+    # source_counts already holds the per-provider symbol tallies; the contract
+    # was simply discarding them.
+    total_symbols = sum(int(n or 0) for n in source_counts.values()) or None
+    degraded_symbols = sum(fallback_rows.values()) or 0
+    covered_symbols = None
+    if total_symbols is not None:
+        covered_symbols = total_symbols - degraded_symbols
+    coverage_pct = (
+        round(100.0 * covered_symbols / total_symbols, 1)
+        if total_symbols and covered_symbols is not None
+        else None
+    )
+    # The session the selected observation belongs to, separate from the
+    # observation instant itself.
+    _obs = str(last_repriced or "").strip()
+    session_date = _obs[:10] if len(_obs) >= 10 and _obs[4] == "-" else None
+
     if primary_provider is None:
         status = STATUS_UNAVAILABLE
         quality = "UNAVAILABLE"
@@ -429,5 +450,12 @@ def project_quote_selection(
         "freshness": primary_freshness,
         "status": status,
         "quality": quality,
+        # ── coverage: never a degraded verdict without its extent ─────────────
+        "session_date": session_date,
+        "total_symbols": total_symbols,
+        "covered_symbols": covered_symbols,
+        "degraded_symbol_count": degraded_symbols,
+        "coverage_pct": coverage_pct,
+        "symbols_by_source": {str(k): int(v or 0) for k, v in sorted(source_counts.items()) if k},
         "candidates": candidates,
     }
