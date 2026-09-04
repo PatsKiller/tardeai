@@ -414,13 +414,18 @@ def project_quote_selection(
     # was simply discarding them.
     total_symbols = sum(int(n or 0) for n in source_counts.values()) or None
     degraded_symbols = sum(fallback_rows.values()) or 0
+
+    # A position carrying NO price source at all arrives under the empty key.
+    # The first version of this coverage block counted it as covered, so two
+    # unpriced positions rendered "100.0% · SELECTED" -- an unpriced holding
+    # reading as fully quoted, which is worse than the bare DEGRADED label this
+    # replaced. Unpriced is its own class and is never covered.
+    unpriced_symbols = sum(int(n or 0) for k, n in source_counts.items() if not str(k or "").strip())
     covered_symbols = None
     if total_symbols is not None:
-        covered_symbols = total_symbols - degraded_symbols
+        covered_symbols = total_symbols - degraded_symbols - unpriced_symbols
     coverage_pct = (
-        round(100.0 * covered_symbols / total_symbols, 1)
-        if total_symbols and covered_symbols is not None
-        else None
+        round(100.0 * covered_symbols / total_symbols, 1) if total_symbols and covered_symbols is not None else None
     )
     # The session the selected observation belongs to, separate from the
     # observation instant itself.
@@ -430,7 +435,7 @@ def project_quote_selection(
     if primary_provider is None:
         status = STATUS_UNAVAILABLE
         quality = "UNAVAILABLE"
-    elif fallback_used:
+    elif fallback_used or unpriced_symbols:
         status = STATUS_DEGRADED
         quality = "DEGRADED"
     else:
@@ -445,7 +450,11 @@ def project_quote_selection(
         "selection_reason": (f"repricer_source={reprice_source}" if reprice_source else "no_repricer_source"),
         "fallback_used": fallback_used,
         "fallback_reason": (
-            " · ".join(f"{k}({v})" for k, v in sorted(fallback_rows.items())) if fallback_rows else None
+            " · ".join(
+                [f"{k}({v})" for k, v in sorted(fallback_rows.items())]
+                + ([f"no price source({unpriced_symbols})"] if unpriced_symbols else [])
+            )
+            or None
         ),
         "freshness": primary_freshness,
         "status": status,
@@ -455,6 +464,7 @@ def project_quote_selection(
         "total_symbols": total_symbols,
         "covered_symbols": covered_symbols,
         "degraded_symbol_count": degraded_symbols,
+        "unpriced_symbol_count": unpriced_symbols,
         "coverage_pct": coverage_pct,
         "symbols_by_source": {str(k): int(v or 0) for k, v in sorted(source_counts.items()) if k},
         "candidates": candidates,

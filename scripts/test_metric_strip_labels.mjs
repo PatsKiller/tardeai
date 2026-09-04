@@ -76,6 +76,20 @@ check('the setups tile carries its run id',
   code.includes('id ${setupRun.runId}'))
 check('unaccounted setup rows are shown on the tile face',
   code.includes('UNACCOUNTED'))
+// A substring check passes on a mark that is computed and then never rendered,
+// or gated off by a literal. Both of these verify the mark REACHES the note and
+// is driven by the data -- a `false &&` in front of the condition must fail.
+const markIsLive = (name, drivenBy) => {
+  if (!code.includes('${' + name + '}')) return false          // reaches the rendered note
+  const m = code.match(new RegExp('const ' + name + '\\s*=\\s*([^\\n]*)'))
+  return !!m && new RegExp('^' + drivenBy).test(m[1].trim())    // driven by the data, not a literal
+}
+check('a divergence between the two position-clock copies is shown, not resolved',
+  code.includes('observation_divergences') && markIsLive('divergenceMark', 'clockDivergences\\.length'))
+check('accounts holding nothing are named, not counted as unobserved',
+  code.includes('accounts_non_contributing') && markIsLive('emptyMark', 'cov\\?\\.accounts_non_contributing'))
+check('undated is counted over contributors, not over every account row',
+  code.includes('accounts_contributing') && code.includes('contributing undated'))
 check('degraded quotes state their symbol coverage',
   code.includes('quoteCoverMark') && code.includes('quotes DEGRADED'))
 check('the selected quote observation is its own mark',

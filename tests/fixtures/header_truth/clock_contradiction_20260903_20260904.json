@@ -4,10 +4,12 @@
     "captured_at_utc": "2026-09-04T17:43:08Z",
     "served_release": "a7c550d1d-main-exact-phase2-20260904-133631",
     "served_commit": "a7c550d1d201e6b44b6f849a6e1f9efe72ce4fe9",
-    "rendered_header": "PORTFOLIO $1,281,122 · data_as_of 2026-09-03 · ALL ACCOUNTS · oldest fidelity_rollover_ira",
-    "rendered_book_panel": "YOUR BOOK · holdings.json session 2026-09-04",
-    "rendered_status": "Data: stale · STALE / session 2026-09-03 (alpaca_taxable_live) · observed 2026-09-04 13:30:02 ET · last refresh 2026-09-04T07:43:15.751892",
-    "contradiction": "One surface says the session is 2026-09-03 and another says 2026-09-04, from the same store. Neither date is wrong; they are different clocks that were never named. The 2026-09-03 stamp comes from a $5,000 account and was rendered over a $1.28M total whose dominant account had not had its shares observed since 2026-07-17."
+    "rendered_header": "PORTFOLIO $1,281,122 \u00b7 data_as_of 2026-09-03 \u00b7 ALL ACCOUNTS \u00b7 oldest fidelity_rollover_ira",
+    "rendered_book_panel": "YOUR BOOK \u00b7 holdings.json session 2026-09-04",
+    "rendered_status": "Data: stale \u00b7 STALE / session 2026-09-03 (alpaca_taxable_live) \u00b7 observed 2026-09-04 13:30:02 ET \u00b7 last refresh 2026-09-04T07:43:15.751892",
+    "contradiction": "One surface says the session is 2026-09-03 and another says 2026-09-04, from the same store. Neither date is wrong; they are different clocks that were never named. The 2026-09-03 stamp comes from a $5,000 account and was rendered over a $1.28M total whose dominant account had not had its shares observed since 2026-07-17.",
+    "correction_20260904_second_pass": "The v2 fix read account_summaries[acct]['as_of'] as the position clock and reported '99.6% of the book unobserved since July'. That was WRONG, and the fixture as first captured could not show why: it recorded account_summaries and not the position rows. portfolio_loader rewrites total_value / holdings_count / last_repriced / day_change on every run and NEVER touches account_summaries.as_of, so that field is an abandoned mirror -- 2026-07-17 for schwab_rollover_ira, absent entirely for schwab_roth, schwab_taxable and moomoo_taxable_live. The position ROWS are rebuilt from the live broker response on every sync and said 2026-09-04. The book HAD been observed that morning; only the summary was old. The header defect was real -- one field carrying several clocks -- but the severity reported from it was an artifact of reading the abandoned copy.",
+    "position_rows_captured_at_utc": "2026-09-04T19:35:00Z"
   },
   "now_utc": "2026-09-04T17:43:08+00:00",
   "aggregate_value": 1281121.52,
@@ -20,11 +22,69 @@
     "reprice_source": "finviz_live"
   },
   "account_summaries": {
-    "alpaca_taxable_live":   { "source": "alpaca_api",   "total_value": 5000.0,     "holdings_count": 1,  "last_repriced": "2026-09-04" },
-    "fidelity_rollover_ira": { "source": "manual",       "total_value": 0,          "holdings_count": 0,  "as_of": "2026-07-16" },
-    "moomoo_taxable_live":   { "source": "moomoo_api",   "total_value": 0,          "holdings_count": 0 },
-    "schwab_rollover_ira":   { "source": "schwab_api",   "total_value": 1158374.79, "holdings_count": 14, "as_of": "2026-07-17", "last_repriced": "2026-09-04", "last_import": "2026-04-30T22:41:48.742137", "reported_total_as_of": "2026-04-30", "reported_total_value": 549233.46 },
-    "schwab_roth":           { "source": "schwab_api",   "total_value": 50453.82,   "holdings_count": 3 },
-    "schwab_taxable":        { "source": "schwab_api",   "total_value": 67292.91,   "holdings_count": 5 }
+    "alpaca_taxable_live": {
+      "source": "alpaca_api",
+      "total_value": 5000.0,
+      "holdings_count": 1,
+      "last_repriced": "2026-09-04"
+    },
+    "fidelity_rollover_ira": {
+      "source": "manual",
+      "total_value": 0,
+      "holdings_count": 0,
+      "as_of": "2026-07-16"
+    },
+    "moomoo_taxable_live": {
+      "source": "moomoo_api",
+      "total_value": 0,
+      "holdings_count": 0
+    },
+    "schwab_rollover_ira": {
+      "source": "schwab_api",
+      "total_value": 1158374.79,
+      "holdings_count": 14,
+      "as_of": "2026-07-17",
+      "last_repriced": "2026-09-04",
+      "last_import": "2026-04-30T22:41:48.742137",
+      "reported_total_as_of": "2026-04-30",
+      "reported_total_value": 549233.46
+    },
+    "schwab_roth": {
+      "source": "schwab_api",
+      "total_value": 50453.82,
+      "holdings_count": 3
+    },
+    "schwab_taxable": {
+      "source": "schwab_api",
+      "total_value": 67292.91,
+      "holdings_count": 5
+    }
+  },
+  "position_rows_by_account": {
+    "alpaca_taxable_live": {
+      "rows": 1,
+      "broker_position_as_of": "2026-09-03",
+      "source": "alpaca_live_read",
+      "updated_at": "2026-09-03T02:10:51"
+    },
+    "schwab_rollover_ira": {
+      "rows": 14,
+      "broker_position_as_of": "2026-09-04",
+      "source": "schwab_api",
+      "updated_at": "2026-09-04T19:22:18"
+    },
+    "schwab_roth": {
+      "rows": 2,
+      "broker_position_as_of": "2026-09-04",
+      "source": "schwab_api",
+      "updated_at": "2026-09-04T19:22:17"
+    },
+    "schwab_taxable": {
+      "rows": 12,
+      "broker_position_as_of": "2026-09-04",
+      "source": "schwab_api",
+      "updated_at": "2026-09-04T19:22:16"
+    },
+    "_note": "fidelity_rollover_ira and moomoo_taxable_live have NO position rows and $0 value. fidelity was merged into schwab_rollover_ira (operator confirmed 2026-07-16). Its stranded as_of 2026-07-16 was being published as the OLDEST CONTRIBUTOR and pinning the whole book to STALE while contributing nothing to it."
   }
 }

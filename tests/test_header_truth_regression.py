@@ -47,12 +47,52 @@ def clocks() -> dict:
     return _load("clock_contradiction_20260903_20260904.json")
 
 
+def _position_rows(clocks: dict) -> list[dict]:
+    """Expand the captured per-account row counts into holdings rows."""
+    out: list[dict] = []
+    for acct, meta in clocks["position_rows_by_account"].items():
+        if acct.startswith("_"):
+            continue
+        for _ in range(int(meta["rows"])):
+            out.append(
+                {
+                    "account": acct,
+                    "broker_position_as_of": meta["broker_position_as_of"],
+                    "source": meta["source"],
+                    "updated_at": meta["updated_at"],
+                }
+            )
+    return out
+
+
 @pytest.fixture(scope="module")
-def clock_aggregate(clocks: dict) -> dict:
+def summaries_only_aggregate(clocks: dict) -> dict:
+    """What v2 built: account_summaries alone, with no position rows.
+
+    This is the defective reading, kept so the correction below is measurable
+    against it rather than merely asserted.
+    """
     env = clocks["holdings_envelope"]
     return build_portfolio_aggregate(
         aggregate_value=clocks["aggregate_value"],
         account_summaries=clocks["account_summaries"],
+        data_as_of=env["data_as_of"],
+        data_as_of_account=env["data_as_of_account"],
+        valuation_time=env["generated_at"],
+        quote_observation_time=env["last_repriced"],
+        quote_source=env["reprice_source"],
+        now=datetime.fromisoformat(clocks["now_utc"]),
+    )
+
+
+@pytest.fixture(scope="module")
+def clock_aggregate(clocks: dict) -> dict:
+    """The corrected reading: the maintained position rows date the accounts."""
+    env = clocks["holdings_envelope"]
+    return build_portfolio_aggregate(
+        aggregate_value=clocks["aggregate_value"],
+        account_summaries=clocks["account_summaries"],
+        positions=_position_rows(clocks),
         data_as_of=env["data_as_of"],
         data_as_of_account=env["data_as_of_account"],
         valuation_time=env["generated_at"],
@@ -70,43 +110,73 @@ def test_the_two_dates_are_both_published_and_separately_named(clock_aggregate: 
     that says which clock it is.
     """
     agg = clock_aggregate
-    assert agg["position_observation_newest"] == "2026-09-03"
-    assert agg["position_observation_newest_account"] == "alpaca_taxable_live"
+    # Both dates the operator saw are present, each under the clock it belongs
+    # to: 2026-09-03 is when alpaca's positions were last observed, 2026-09-04
+    # is when schwab's were AND when the book was valued.
+    assert agg["position_observation_oldest"] == "2026-09-03"
+    assert agg["position_observation_oldest_account"] == "alpaca_taxable_live"
+    assert agg["position_observation_newest"] == "2026-09-04"
     assert str(agg["valuation_time"]).startswith("2026-09-04")
     assert str(agg["quote_observation_time"]).startswith("2026-09-04")
-    # The contradiction is only a contradiction while the two share one name.
-    assert agg["position_observation_newest"] != str(agg["valuation_time"])[:10]
+    # The position bound and the valuation clock remain separate fields even
+    # when they happen to agree on a date -- that is what stops one standing in
+    # for the other the next time they diverge.
+    assert agg["position_observation_oldest"] != str(agg["valuation_time"])[:10]
 
 
-def test_the_headline_date_cannot_be_stated_without_the_value_it_covers(clock_aggregate: dict) -> None:
-    """2026-09-03 spoke for 0.4% of the book. That number must be published.
+def test_the_headline_date_cannot_be_stated_without_the_value_it_covers(
+    clock_aggregate: dict, summaries_only_aggregate: dict
+) -> None:
+    """Coverage must travel with the date -- and be computed from the LIVE copy.
 
-    This is the test that makes the defect unrenderable rather than merely
-    relabelled: a consumer that wants to print the newest observation now has the
-    coverage figure sitting next to it and no excuse for omitting it.
+    Reading account_summaries.as_of alone made the book look 0.4% observed. That
+    number was an artifact: portfolio_loader never updates that field, so it held
+    2026-07-17 for an account whose positions had been re-synced that morning.
+    Both readings are pinned, because the gap between them IS the defect.
     """
-    cov = clock_aggregate["coverage"]
-    assert cov["at_newest_pct"] == pytest.approx(0.4, abs=0.05)
-    assert cov["value_fresh_pct"] == pytest.approx(0.4, abs=0.05)
-    # 99.6% of the money is behind a stale position observation.
-    assert cov["value_fresh_pct"] < 1.0
-    assert cov["accounts_undated"] == 3
-    assert cov["undated_accounts"] == ["moomoo_taxable_live", "schwab_roth", "schwab_taxable"]
+    stale_read = summaries_only_aggregate["coverage"]
+    assert stale_read["at_newest_pct"] == pytest.approx(0.4, abs=0.05)
+    assert stale_read["value_fresh_pct"] == pytest.approx(0.4, abs=0.05)
+
+    live = clock_aggregate["coverage"]
+    assert live["value_dated_pct"] == 100.0
+    assert live["value_fresh_pct"] == 100.0
+    assert live["at_newest_pct"] == pytest.approx(99.6, abs=0.05)
+    assert live["accounts_undated"] == 0
+
+    # Empty accounts are named, not counted as unobserved coverage.
+    assert live["accounts_contributing"] == 4
+    assert live["non_contributing_accounts"] == ["fidelity_rollover_ira", "moomoo_taxable_live"]
 
 
-def test_the_dominant_account_reports_three_clocks_not_one(clock_aggregate: dict) -> None:
+def test_the_two_copies_of_the_position_clock_are_both_published(clock_aggregate: dict) -> None:
+    """Never auto-remediate a divergent store: report both and say which governs."""
+    row = next(a for a in clock_aggregate["accounts"] if a["account"] == "schwab_rollover_ira")
+    assert row["position_observation_time"] == "2026-09-04"
+    assert row["position_observation_source"] == "holdings.broker_position_as_of"
+    assert row["summary_as_of"] == "2026-07-17"
+    assert row["observation_divergence"] is not None
+    assert "2026-09-04" in row["observation_divergence"]
+    assert "2026-07-17" in row["observation_divergence"]
+
+    reported = {d["account"] for d in clock_aggregate["observation_divergences"]}
+    assert "schwab_rollover_ira" in reported
+
+
+def test_the_dominant_account_reports_every_clock_separately(clock_aggregate: dict) -> None:
     """schwab_rollover_ira is 90% of the book and every clock on it differs.
 
     v1 published `observation_time: 2026-07-17` and nothing else, so the $1.16M
     looked like a July number or a September number depending on which surface
-    you read. All four are now distinct fields.
+    you read.
     """
     row = next(a for a in clock_aggregate["accounts"] if a["account"] == "schwab_rollover_ira")
-    assert row["position_observation_time"] == "2026-07-17"
-    assert row["position_observation_source"] == "account.as_of"
+    assert row["position_observation_time"] == "2026-09-04"  # from the live rows
+    assert row["summary_as_of"] == "2026-07-17"  # the abandoned mirror
     assert row["valuation_time"] == "2026-09-04"
     assert row["reported_total_as_of"] == "2026-04-30"
     assert row["received_time"].startswith("2026-04-30")
+    assert row["position_row_count"] == 14
     # The custodian's own total and the derived total are 2x apart and must not
     # be confusable for one another.
     assert row["reported_total_value"] == 549233.46
@@ -115,14 +185,51 @@ def test_the_dominant_account_reports_three_clocks_not_one(clock_aggregate: dict
     assert row["observation_time"] == row["position_observation_time"]
 
 
-def test_stale_verdict_names_the_account_and_the_age(clock_aggregate: dict) -> None:
+def test_an_empty_account_cannot_date_the_book(clock_aggregate: dict, summaries_only_aggregate: dict) -> None:
+    """fidelity_rollover_ira holds $0 and no rows, and was pinning the book STALE.
+
+    It was merged into schwab_rollover_ira on 2026-07-16 and its stranded stamp
+    outlived it. Being the oldest is only meaningful among accounts that
+    contribute something.
+    """
+    # Reading the abandoned mirror still yields a July bound and a STALE book.
+    assert summaries_only_aggregate["position_observation_oldest"] == "2026-07-17"
+    assert summaries_only_aggregate["freshness_state"] == "STALE"
+    # fidelity is excluded from the bound by the contributor rule alone, so it
+    # is no longer the named oldest even on the defective reading.
+    assert summaries_only_aggregate["position_observation_oldest_account"] != "fidelity_rollover_ira"
+
     agg = clock_aggregate
+    assert agg["position_observation_oldest_account"] == "alpaca_taxable_live"
+    assert agg["position_observation_oldest"] == "2026-09-03"
+    assert agg["position_observation_newest"] == "2026-09-04"
+    assert agg["freshness_state"] == "COMPLETE"
+    # The reason counts contributors, not rows in the dict.
+    assert "4 of 6" in agg["freshness_reason"]
+    assert "2 hold nothing" in agg["freshness_reason"]
+
+    empty = next(a for a in agg["accounts"] if a["account"] == "fidelity_rollover_ira")
+    assert empty["contributes"] is False
+    assert empty["holds_positions"] is False
+    assert empty["position_row_count"] == 0
+    # Still published -- excluded from the bound, never dropped from the list.
+    assert empty["position_observation_time"] == "2026-07-16"
+
+
+def test_a_genuinely_stale_contributor_still_trips_stale(clocks: dict) -> None:
+    """Negative control: excluding empty accounts must not mute a real one.
+
+    An account with VALUE and an old observation is exactly what STALE is for.
+    """
+    agg = build_portfolio_aggregate(
+        aggregate_value=100_000.0,
+        account_summaries={"old_money": {"as_of": "2026-06-01", "total_value": 100_000.0}},
+        positions=[{"account": "old_money", "broker_position_as_of": "2026-06-01"}],
+        now=datetime.fromisoformat(clocks["now_utc"]),
+    )
     assert agg["freshness_state"] == "STALE"
-    assert agg["position_observation_oldest_account"] == "fidelity_rollover_ira"
-    assert agg["position_observation_oldest"] == "2026-07-16"
-    assert agg["position_observation_oldest_age_hours"] > STALE_AFTER_HOURS
-    assert "fidelity_rollover_ira" in agg["freshness_reason"]
-    assert "2026-07-16" in agg["freshness_reason"]
+    assert agg["position_observation_oldest_account"] == "old_money"
+    assert agg["coverage"]["value_fresh_pct"] == 0.0
 
 
 def test_a_caller_without_the_valuation_clock_gets_null_not_a_substitute(clocks: dict) -> None:

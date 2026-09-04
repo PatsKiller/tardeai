@@ -107,27 +107,89 @@ def _num(value: Any) -> Optional[float]:
         return None
 
 
+def _rows_by_account(positions: Any) -> dict[str, list[dict]]:
+    out: dict[str, list[dict]] = {}
+    if not isinstance(positions, list):
+        return out
+    for row in positions:
+        if not isinstance(row, dict):
+            continue
+        acct = str(row.get("account") or "").strip()
+        if not acct:
+            continue
+        out.setdefault(acct, []).append(row)
+    return out
+
+
+def _oldest_row_observation(rows: list[dict]) -> tuple[Optional[str], Optional[str]]:
+    """The account's position observation is its STALEST row.
+
+    An account's book is only as freshly observed as the least recently observed
+    holding in it. Taking the newest would let one re-synced row date the rest.
+    """
+    stamps: list[tuple[str, str, str]] = []
+    for row in rows:
+        raw = row.get("broker_position_as_of") or row.get("as_of") or ""
+        raw = str(raw).strip()
+        if not raw:
+            continue
+        field = "broker_position_as_of" if row.get("broker_position_as_of") else "as_of"
+        stamps.append((_obs_key(raw), raw, field))
+    if not stamps:
+        return None, None
+    stamps.sort(key=lambda t: t[0])
+    return stamps[0][1], f"holdings.{stamps[0][2]}"
+
+
 def build_account_observations(
     account_summaries: Any,
     *,
     data_as_of: Any = None,
     data_as_of_account: Any = None,
+    positions: Any = None,
     now: Optional[datetime] = None,
 ) -> list[dict[str, Any]]:
     """Project account_summaries into the aggregate accounts[] rows.
 
-    Every clock the custodian row carries is published under its own name. The
-    v1 name `observation_time` is retained as an exact alias of
+    Every clock the account carries is published under its own name. The v1 name
+    `observation_time` is retained as an exact alias of
     `position_observation_time` -- it always WAS the position clock, it was just
     never labelled as one.
 
-    When an account's own as_of is empty but it is the named data_as_of_account,
-    stamp that account with data_as_of so the row is dated. Never invent stamps
-    for other accounts, and never borrow the valuation clock to date a position.
+    WHERE THE POSITION CLOCK COMES FROM (2026-09-04, second pass)
+    -------------------------------------------------------------
+    v2 read `account_summaries[acct]["as_of"]`. That field is not maintained.
+    `portfolio_loader.build_account_summaries` rewrites total_value,
+    holdings_count, last_repriced, day_change and display_name on every run and
+    never touches `as_of`, so it holds whatever some earlier path last wrote:
+    2026-07-17 for schwab_rollover_ira, and nothing at all for schwab_roth,
+    schwab_taxable and moomoo_taxable_live.
+
+    The position ROWS are maintained. `schwab_position_sync` rebuilds them from
+    the live broker response on every sync, stamping `broker_position_as_of`,
+    and those rows said 2026-09-04 while the summary said 2026-07-17. Reading
+    the abandoned mirror is what produced "99.6% of the book unobserved since
+    July" -- the book had been observed that morning; only the summary was old.
+
+    So the position clock is derived from the rows, and the summary's `as_of` is
+    published beside it as `summary_as_of` with an explicit
+    `observation_divergence` when the two disagree. Neither copy is edited and
+    neither is silently dropped: a reader can see both and which one governs.
+
+    On the stamp's meaning: `broker_position_as_of` is set to the sync date, not
+    a broker-supplied timestamp. For a pull API that returns *current* positions
+    that is the honest observation instant -- what was observed is the broker's
+    book at the moment of the call. It is still NOT the valuation clock, which
+    is `last_repriced` and is published separately.
+
+    When an account's own stamp is empty and it is the named data_as_of_account,
+    the top-level data_as_of dates it. Never invent stamps for other accounts,
+    and never borrow the valuation clock to date a position.
     """
     summaries = account_summaries if isinstance(account_summaries, dict) else {}
     named = str(data_as_of_account or "").strip()
     fallback = str(data_as_of or "").strip()
+    rows_by_acct = _rows_by_account(positions)
     now_utc = now or datetime.now(timezone.utc)
     if now_utc.tzinfo is None:
         now_utc = now_utc.replace(tzinfo=timezone.utc)
@@ -136,19 +198,31 @@ def build_account_observations(
     for acct, row in summaries.items():
         if not isinstance(row, dict):
             continue
-        # The POSITION clock. reported_total_as_of is a last resort and is also
-        # published separately so a reader can tell which one dated the row.
-        obs = row.get("as_of") or row.get("reported_total_as_of") or ""
-        obs = str(obs).strip() if obs is not None else ""
-        obs_source = "account.as_of" if str(row.get("as_of") or "").strip() else ""
-        if not obs_source and obs:
-            obs_source = "account.reported_total_as_of"
-        if not obs and named and acct == named and fallback:
-            obs = fallback
-            obs_source = "holdings.data_as_of"
+        rows = rows_by_acct.get(acct, [])
+        summary_as_of = str(row.get("as_of") or "").strip()
 
-        valuation = str(row.get("last_repriced") or "").strip()
-        reported_as_of = str(row.get("reported_total_as_of") or "").strip()
+        # 1) the maintained store: the account's own position rows
+        obs, obs_source = _oldest_row_observation(rows)
+        # 2) the unmaintained summary field, only when there are no rows
+        if not obs and summary_as_of:
+            obs, obs_source = summary_as_of, "account_summaries.as_of"
+        if not obs and str(row.get("reported_total_as_of") or "").strip():
+            obs = str(row["reported_total_as_of"]).strip()
+            obs_source = "account_summaries.reported_total_as_of"
+        # 3) the named top-level stamp, for that account only
+        if not obs and named and acct == named and fallback:
+            obs, obs_source = fallback, "holdings.data_as_of"
+
+        divergence = None
+        if obs and summary_as_of and _obs_key(obs) != _obs_key(summary_as_of):
+            divergence = f"positions say {obs} ({obs_source}); account_summaries.as_of says {summary_as_of}"
+
+        value = _num(row.get("total_value")) or 0.0
+        # An account holding nothing contributes nothing, and cannot date the
+        # aggregate. fidelity_rollover_ira -- $0, no rows, as_of 2026-07-16 --
+        # was being named the oldest contributor and driving the whole book to
+        # STALE while contributing not one cent to it.
+        contributes = bool(rows) or abs(value) > 0
 
         out.append(
             {
@@ -156,17 +230,22 @@ def build_account_observations(
                 "custodian": row.get("source", "") or "",
                 "total_value": row.get("total_value"),
                 "holdings_count": row.get("holdings_count"),
-                # ── the four clocks, each named ──────────────────────────────
-                "position_observation_time": obs,
-                "position_observation_source": obs_source,
-                "position_observation_age_hours": _age_hours(obs, now_utc),
-                "valuation_time": valuation,
-                "reported_total_as_of": reported_as_of,
+                # ── the clocks, each named ──────────────────────────────────
+                "position_observation_time": obs or "",
+                "position_observation_source": obs_source or "",
+                "position_observation_age_hours": _age_hours(obs, now_utc) if obs else None,
+                "position_row_count": len(rows),
+                "summary_as_of": summary_as_of or None,
+                "observation_divergence": divergence,
+                "valuation_time": str(row.get("last_repriced") or "").strip(),
+                "reported_total_as_of": str(row.get("reported_total_as_of") or "").strip(),
                 "reported_total_value": row.get("reported_total_value"),
                 "received_time": row.get("last_import", "") or "",
                 "dated": bool(obs),
+                "contributes": contributes,
+                "holds_positions": bool(rows),
                 # v1 alias -- same value, honest name above.
-                "observation_time": obs,
+                "observation_time": obs or "",
                 "freshness": "UNKNOWN",
             }
         )
@@ -182,8 +261,13 @@ def derive_observation_bounds(
     """
     dated: list[tuple[str, str, str]] = []
     for row in accounts:
-        obs = row.get("observation_time")
+        obs = row.get("position_observation_time") or row.get("observation_time")
         if not obs or not str(obs).strip():
+            continue
+        # An account that holds nothing and is worth nothing cannot date the
+        # aggregate. A $0 closed account stamped 2026-07-16 was being published
+        # as the oldest CONTRIBUTOR and pinning the book to STALE.
+        if row.get("contributes") is False:
             continue
         acct = str(row.get("account") or "?")
         raw = str(obs).strip()
@@ -224,15 +308,22 @@ def coverage_by_value(
     newest_val = 0.0
     dated_n = 0
     undated: list[str] = []
+    non_contributing: list[str] = []
 
     newest_key = _obs_key(newest_obs) if newest_obs else None
 
     for row in accounts:
         val = abs(_num(row.get("total_value")) or 0.0)
+        acct = str(row.get("account") or "?")
+        # Empty accounts are named, not counted. Listing three $0 accounts as
+        # "undated" made the book look 50% unobserved when they held nothing.
+        if row.get("contributes") is False:
+            non_contributing.append(acct)
+            continue
         total += val
         obs = row.get("position_observation_time") or ""
         if not obs:
-            undated.append(str(row.get("account") or "?"))
+            undated.append(acct)
             continue
         dated_n += 1
         dated_val += val
@@ -247,8 +338,12 @@ def coverage_by_value(
             return None
         return round(100.0 * part / total, 1)
 
+    contributing_n = len(accounts) - len(non_contributing)
     return {
         "accounts_total": len(accounts),
+        "accounts_contributing": contributing_n,
+        "accounts_non_contributing": len(non_contributing),
+        "non_contributing_accounts": sorted(non_contributing),
         "accounts_dated": dated_n,
         "accounts_undated": len(undated),
         "undated_accounts": sorted(undated),
@@ -266,6 +361,7 @@ def build_portfolio_aggregate(
     account_summaries: Any,
     data_as_of: Any = None,
     data_as_of_account: Any = None,
+    positions: Any = None,
     valuation_time: Any = None,
     quote_observation_time: Any = None,
     quote_source: Any = None,
@@ -286,6 +382,7 @@ def build_portfolio_aggregate(
         account_summaries,
         data_as_of=data_as_of,
         data_as_of_account=data_as_of_account,
+        positions=positions,
         now=now_utc,
     )
     oldest_obs, oldest_acct, newest_obs = derive_observation_bounds(accounts)
@@ -312,7 +409,13 @@ def build_portfolio_aggregate(
     agg_reason = "no account observations"
     if accounts:
         agg_state = "COMPLETE"
-        agg_reason = f"{len(accounts)} account(s) contributing"
+        _contrib = coverage.get("accounts_contributing", len(accounts))
+        _noncontrib = coverage.get("accounts_non_contributing", 0)
+        # Say how many CONTRIBUTE, not how many exist -- the reason read
+        # "6 account(s) contributing" beside a coverage block saying 4.
+        agg_reason = f"{_contrib} of {len(accounts)} account(s) contributing" + (
+            f"; {_noncontrib} hold nothing" if _noncontrib else ""
+        )
         if oldest_obs is None:
             agg_state = "PARTIAL"
             agg_reason = f"{len(accounts)} account(s); no dated observation rows"
@@ -323,11 +426,13 @@ def build_portfolio_aggregate(
                     f" ({oldest_age:.0f}h)" if oldest_age is not None else " (undated)"
                 )
             elif coverage.get("accounts_undated"):
+                # counted over contributors only
                 # Every dated row is fresh, but some value carries no date at
                 # all. That is PARTIAL coverage, not a complete fresh book.
                 agg_state = "PARTIAL"
                 agg_reason = (
-                    f"{coverage['accounts_undated']} of {coverage['accounts_total']} account(s) undated"
+                    f"{coverage['accounts_undated']} of {coverage['accounts_contributing']}"
+                    f" contributing account(s) undated"
                     f" ({coverage.get('value_dated_pct')}% of value dated)"
                 )
 
@@ -352,6 +457,14 @@ def build_portfolio_aggregate(
         "quote_source": str(quote_source or "") or None,
         # ── how much of the value the headline date speaks for ────────────────
         "coverage": coverage,
+        # Divergences between the maintained position rows and the unmaintained
+        # account_summaries.as_of mirror. Reported, never auto-remediated: both
+        # copies stay exactly as their writers left them.
+        "observation_divergences": [
+            {"account": a["account"], "detail": a["observation_divergence"]}
+            for a in accounts
+            if a.get("observation_divergence")
+        ],
         "freshness_state": agg_state,
         "freshness_reason": agg_reason,
         "accounts": accounts,
