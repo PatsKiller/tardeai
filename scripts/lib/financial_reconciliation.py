@@ -69,7 +69,13 @@ BASIS_UNVERIFIED = "BASIS_UNVERIFIED"
 CLOCK_DERIVED_FIELDS = frozenset({"days_held", "age_days", "held_days", "days_open"})
 
 #: Broker order states that constitute live protective coverage.
-LIVE_PROTECTIVE_STATES = frozenset({"pending_activation", "awaiting_stop_condition", "accepted", "new", "open"})
+# "working" belongs here and was missing. A Schwab stop sits in "pending_activation"
+# before the session opens and moves to "working" once it does, so the omission only
+# shows itself while the market is open -- precisely when protective coverage matters.
+# Six live stops were being reported as superseded.
+LIVE_PROTECTIVE_STATES = frozenset(
+    {"pending_activation", "awaiting_stop_condition", "accepted", "new", "open", "working", "queued", "pending"}
+)
 
 #: Terminal states. An order in one of these protects nothing.
 TERMINAL_ORDER_STATES = frozenset({"filled", "canceled", "cancelled", "rejected", "expired", "replaced"})
@@ -433,6 +439,21 @@ def reconcile_missing_stop_record(
         "position_qty": auth.position_qty(symbol, account) if account else None,
     }
 
+    if status not in LIVE_PROTECTIVE_STATES and status not in TERMINAL_ORDER_STATES:
+        # An unrecognised status is not evidence of anything. Treating it as terminal
+        # silently downgrades protection the moment the broker adds a new state string,
+        # which is exactly how "working" turned six live stops into superseded ones.
+        return _verdict(
+            "stops.json",
+            record_key,
+            UNRESOLVED_OPERATOR_REVIEW,
+            f"broker order {oid} reports status {status!r}, which is neither a known live nor a "
+            "known terminal state; protection cannot be concluded either way",
+            authorities=auths,
+            observations=obs,
+            rule=rule,
+            **kw,
+        )
     if status not in LIVE_PROTECTIVE_STATES:
         return _verdict(
             "stops.json",
