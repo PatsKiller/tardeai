@@ -6,7 +6,7 @@ Versioning-Scheme:   Semantic Versioning 2.0.0
 Policy-Schema:       TradeAI-Agent-Operating-Standard/v1
 Status:              PROPOSED
 Effective-Date:      PENDING
-Last-Reviewed:       2026-09-02T09:30:00-04:00
+Last-Reviewed:       2026-09-03T09:30:00-04:00
 Canonical-Repo-Path: AGENTS.md
 Drive-Mirror-Path:   Trade_AI_Docs_v2/governance/agent-policy/AGENTS.md
 Supersedes:          1.1.0
@@ -644,6 +644,98 @@ Descending strength. **Only the first two settle a claim about runtime.**
 `run_cio_hardening_ci.py` uses a hand-maintained allowlist. **59 of 1,027 test files — 5.74% — run
 behind the only required context on `main`** (`as_of` 2026-08-30; the required job runs other real
 gates besides those files). Re-measure rather than quoting this figure.
+
+## Operator approval for remote push and live deployment
+
+Agents cannot grant themselves authority. The human operator must explicitly approve every
+guarded scope through the native interactive guard prompt. A general instruction to continue,
+finish, or deploy is not a guard approval.
+
+Before requesting authority, the agent must:
+
+1. Resolve and print the physical repository or worktree root.
+2. Locate `<repo_root>/bin/guard`, verify that it is the executable guard for that resolved root,
+   and use its absolute path.
+3. Prove the exact branch, HEAD SHA, intended remote, PR state, CI status, deployment target, and
+   rollback release.
+4. Complete all required local validation.
+5. State exactly why each requested scope is necessary.
+
+Never invoke `bin/guard` as a relative path unless the command itself first changes to the proven
+repository root. Prefer this form:
+
+```bash
+GUARD_PATH="<absolute_repo_or_worktree_root>/bin/guard"
+test -x "$GUARD_PATH"
+"$GUARD_PATH" show
+```
+
+Request only the minimum required scopes:
+
+- `git-push` only when a validated local commit must be pushed.
+- `release-write` only after the exact merged commit is ready for governed deployment.
+- Neither scope may be requested during discovery, implementation, ordinary testing, or
+  read-only validation.
+- Never request force-push, history rewriting, production data mutation, credential mutation,
+  scheduler mutation, broker mutation, or trading authority unless a separate task explicitly
+  authorizes that exact action.
+
+The agent must present the native interactive approval request to the operator. The operator types
+`APPROVE` at that prompt. The agent must never type, pipe, simulate, automate, or infer `APPROVE`.
+
+Use a short expiration and the fewest practical uses. The standard examples are 30 minutes and no
+more than three uses:
+
+```bash
+"$GUARD_PATH" grant git-push --for 30m --uses 3 --reason "<specific PR purpose>"
+"$GUARD_PATH" grant release-write --for 30m --uses 3 --reason "<specific exact-SHA deployment purpose>"
+```
+
+Immediately after the operator approves, run:
+
+```bash
+"$GUARD_PATH" show
+```
+
+Verify the requested scopes, remaining duration, remaining uses, and reasons before performing
+any mutation. An absent, expired, mismatched, or overbroad grant is a hard stop.
+
+Push and deployment are separate stages. `git-push` does not authorize merge or deployment, and
+`release-write` does not authorize Git operations. Deployment may begin only after required CI is
+green for the exact PR head and the exact merge SHA is known; deploy only that exact merge SHA
+through the canonical release mechanism.
+
+Live deployment must capture the current release as the rollback target, prove that the candidate
+embeds the exact merge SHA, verify persistent-state mappings before promotion, promote atomically,
+perform semantic live acceptance, and automatically roll back if any required acceptance check
+fails. Files copied or services restarted are never sufficient evidence of deployment success.
+
+Use this safe path-resolution example from an arbitrary starting directory. The candidate path is
+resolved by the agent at runtime; it is not a historical worktree path:
+
+```bash
+CANDIDATE_PATH="/known/candidate/path"
+REPO_ROOT="$(git -C "$CANDIDATE_PATH" rev-parse --show-toplevel)"
+GUARD_PATH="$REPO_ROOT/bin/guard"
+test -x "$GUARD_PATH"
+"$GUARD_PATH" show
+```
+
+In a `finally` or cleanup path, whether the operation succeeds, fails, or rolls back, revoke
+unused grants and show the final state:
+
+```bash
+"$GUARD_PATH" revoke git-push
+"$GUARD_PATH" revoke release-write
+"$GUARD_PATH" show
+```
+
+The evidence package must retain redacted guard grant, use, revocation, push, PR, merge,
+deployment, acceptance, and rollback receipts, including timestamps, scopes, reasons, exact SHAs,
+release IDs, and exit codes. Never include secrets.
+
+If `<repo_root>/bin/guard` is absent or non-executable, stop and report the exact resolved path
+and failure. Do not guess another guard path or bypass governance.
 
 ---
 
@@ -1653,7 +1745,7 @@ Operator activation phrase (after review):
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
-| 1.2.0 | 2026-09-02 | PROPOSED | MINOR | Multi-Agent SOP seven controls: client registry, session receipts, atomic leases, safe worktree defaults, changed-file quality floor, dedicated `agent-governance` CI. Does not weaken §0/§2/§17 or financial rails. | **PENDING** — `APPROVE_AGENTS_POLICY_1_2_0 <pr> <sha>` |
+| 1.2.0 | 2026-09-03 | PROPOSED | MINOR | Multi-Agent SOP controls plus the operator-approval workflow for guarded remote push and live deployment. Does not weaken §0/§2/§17 or financial rails. | **PENDING** — `APPROVE_AGENTS_POLICY_1_2_0 <pr> <sha>` |
 | 1.1.0 | 2026-09-01 | ACTIVE | MINOR | Records the ratified daily provider spend cap ($0.50) in §12, with measured evidence that it binds on 6 of ~84 LLM lanes and is therefore policy rather than a universally enforced control. | **RATIFIED** by the operator, 2026-09-01 |
 | 1.0.0 | 2026-09-01 | ACTIVE | MAJOR | Formal baseline. Document-control block and version policy; §13.5 duplicate merged; §13.6 numbering collision renumbered to §13.7 and section order restored; two "Where things go" tables merged; §2B role authority profiles added. | **APPROVED** — `APPROVE_AGENTS_POLICY_1_0_0 841 0f00f928a6b3892ef838c8737cebfcb622fd53ae` |
 
