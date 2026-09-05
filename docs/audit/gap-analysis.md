@@ -113,6 +113,14 @@ See `docs/audit/live-attest-2026-09-05.md` for quoted evidence. Summary:
 - **F4** test-suite leakage residue in prod DB (`wamid.test_1`); fixed by `edcf137f8` + `c2986912b`.
 - **F5** `retention_class` drift (`operational`, `operational_30d`, `ops_7d`, `inbound_7d`, `none`).
 
+**Remediation (this wave):** F1 and F3 are fixed in code, not yet deployed.
+- F1 → `LEGACY_DELIVERED` terminal delivery status (`delivery.py` + migration `2026_09_05_communication_delivery_legacy_status.sql`); `_best_effort_comms_publish` settles the auto-reserved stub.
+- F3 → `scripts/lib/comms/vocabulary.py` canonical vocabulary; `publish_communication` normalizes `operator_alert`/`ops_alert`/`health*` → `ops` (unknown classes pass through, never coerced).
+
+Ownership is unchanged: `COMMS_GATEWAY_ACTIVE_CLASSES` still owns `ops` only; the
+canary that folds the legacy `operator_alert` producers into gateway ownership is the
+operator-approved Wave B step (proposed, not applied).
+
 ---
 
 ## Recommended close order (unchanged)

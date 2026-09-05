@@ -233,19 +233,26 @@ def _best_effort_comms_publish(
     message_class: str,
     producer: str = "telegram_alert.send_telegram",
 ) -> None:
-    """Record CommunicationEvent without claiming delivery ownership (OFF/SHADOW)."""
+    """Record CommunicationEvent without claiming delivery ownership (OFF/SHADOW).
+
+    F1: the legacy path delivers this class. `publish_communication` auto-reserves
+    a ChannelDelivery stub; settle it to LEGACY_DELIVERED here so the ledger never
+    leaves a phantom in-flight RESERVED row that nothing will ever settle.
+    """
     try:
         from scripts.lib.comms.adapters import from_plain_message
         from scripts.lib.comms.client import publish_communication
+        from scripts.lib.comms.delivery import settle_delivery
     except ImportError:
         try:
             from lib.comms.adapters import from_plain_message  # type: ignore
             from lib.comms.client import publish_communication  # type: ignore
+            from lib.comms.delivery import settle_delivery  # type: ignore
         except ImportError:
             return
     try:
         subject_key = f"telegram:{message_class}:{(message or '')[:48]}"
-        publish_communication(
+        published = publish_communication(
             from_plain_message(
                 producer=producer,
                 body=message,
@@ -253,6 +260,15 @@ def _best_effort_comms_publish(
                 message_class=message_class,
             )
         )
+        for delivery_id in (published.delivery_ids or []):
+            try:
+                settle_delivery(
+                    delivery_id,
+                    status="LEGACY_DELIVERED",
+                    provider_coordinates={"delivery_owner": "legacy"},
+                )
+            except Exception:
+                pass
     except Exception:
         return
 

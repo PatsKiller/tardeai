@@ -12,6 +12,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from scripts.lib.comms.client import (  # noqa: E402
+    memory_store_snapshot,
     publish_communication,
     reset_memory_store,
 )
@@ -164,6 +165,25 @@ def test_status_transitions():
     assert reopened.status == "RESERVED"
 
 
+def test_legacy_delivered_settlement_is_terminal():
+    # Wave A F1: non-owned class → legacy path delivers → settle the
+    # auto-reserved stub to LEGACY_DELIVERED, never leave it RESERVED.
+    d = reserve_delivery(event_id="evt_legacy", channel="telegram")
+    assert d.status == "RESERVED"
+    legacy = settle_delivery(
+        d.delivery_id,
+        status="LEGACY_DELIVERED",
+        provider_coordinates={"delivery_owner": "legacy"},
+    )
+    assert legacy.status == "LEGACY_DELIVERED"
+    assert legacy.completed_at is not None
+    assert legacy.provider_coordinates.get("delivery_owner") == "legacy"
+    # Terminal: no transition out of LEGACY_DELIVERED.
+    with pytest.raises(DeliveryGateError) as ei:
+        settle_delivery(d.delivery_id, status="SENT")
+    assert "status_transition_illegal" in str(ei.value)
+
+
 def test_record_chunk():
     d = reserve_delivery(event_id="evt_chunk", channel="telegram")
     c0 = record_chunk(
@@ -207,6 +227,25 @@ def test_publish_auto_reserves_delivery_stubs():
     assert channels == {"telegram", "slack"}
     assert all(row["status"] == "RESERVED" for row in snap.values())
     assert all(row["event_id"] == result.event_id for row in snap.values())
+
+
+def test_publish_normalizes_message_class_to_canonical():
+    # Wave A F3: publish canonicalizes `operator_alert` → `ops` so the ledger
+    # never stores synonyms for the same concept.
+    ev = CommunicationEvent(
+        direction="OUTBOUND",
+        event_type="health",
+        message_class="operator_alert",
+        producer="ops.watchdog",
+        subject_key="system:watchdog",
+        retention_class="ops_7d",
+        sanitized_body="ok",
+        channels=["telegram"],
+    )
+    result = publish_communication(ev)
+    assert result.ok is True
+    row = memory_store_snapshot()[result.event_id]
+    assert row["message_class"] == "ops"
 
 
 def test_inbound_publish_skips_delivery_when_no_channels():

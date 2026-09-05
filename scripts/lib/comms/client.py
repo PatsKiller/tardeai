@@ -14,6 +14,7 @@ from typing import Any
 from scripts.lib.comms.delivery import attach_delivery_reservation
 from scripts.lib.comms.event import CommunicationEvent, required_missing
 from scripts.lib.comms.mode import get_gateway_mode
+from scripts.lib.comms.vocabulary import normalize_message_class
 
 # In-process fallback when DB unavailable (OFF/SHADOW still record intent).
 _MEM: dict[str, dict[str, Any]] = {}
@@ -250,6 +251,10 @@ def publish_communication(event: CommunicationEvent) -> PublishResult:
     ChannelDelivery@v1 rows per channel without sending.
     """
     mode = get_gateway_mode()
+    # F3: canonicalize the class before identity/validation so the ledger never
+    # stores `operator_alert` alongside `ops` for the same concept. Unknown
+    # classes pass through unchanged (never coerced).
+    event.message_class = normalize_message_class(event.message_class)
     event.mint_identity()
     missing = required_missing(event)
     if missing:
