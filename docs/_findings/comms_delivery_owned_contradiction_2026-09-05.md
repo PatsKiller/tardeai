@@ -93,14 +93,69 @@ banner: derived from mode, not literal
 A bare boolean cannot express "ops yes, risk no", which is exactly the state the
 system is in right now.
 
-Whatever the shape: a test that sets `COMMS_GATEWAY_MODE=ACTIVE` and asserts
-`delivery_owned` is `true` would have caught this, and none exists.
+## THE GUARD WAS GREEN THE WHOLE TIME
+
+**Correction to this finding's first version, which claimed no test existed.** One
+does — `tests/test_communications_portal.py:55`:
+
+```python
+def test_health_empty_ledger_delivery_not_owned():
+    h = portal.health()
+    assert h["delivery_owned"] is False
+    assert h["mode"] == "OFF"
+```
+
+Caught by the `tradeai-wt-final-operator-convergence-b9` session reviewing this
+writeup. It is the more useful fact: the constant was not unguarded, it was
+guarded by a test that only ever exercises the OFF case, so the gate stayed green
+straight through cutover.
+
+One refinement on top of that, because it changes what a fixer should expect.
+This test also asserts `mode == "OFF"`, so it is scoped to OFF *by assertion*,
+not merely by an unset environment. A fix that derives `delivery_owned` from the
+mode would still pass it unchanged — mode is OFF in the test environment, so a
+correct derivation yields `False` there too. **The fixer does not have to weaken
+this assertion**, which removes the obvious reason to hesitate.
+
+The real fail-closed contract already agrees. `tests/test_comms_enforcement_gate.py:31`:
+
+```python
+def test_delivery_owned_illegal_in_off_shadow():
+    assert_delivery_not_owned_in_off_or_shadow("OFF", delivery_owned=False)
+```
+
+Mode-scoped to OFF/SHADOW, and it never required ACTIVE to be `False`. The
+constant conflates that narrow contract with a global one. Nothing in the
+enforcement layer is asking for the current behaviour.
+
+What is still missing is the ACTIVE-side test: set `COMMS_GATEWAY_MODE=ACTIVE`
+with `ACTIVE_CLASSES=ops` and assert `delivery_owned` is `true`.
+
+Supporting the per-class suggestion: `communications_portal.py` references
+`COMMS_GATEWAY_ACTIVE_CLASSES` and `telegram_class_allowed` **zero** times. It
+cannot express per-class ownership even in principle.
+
+## CORRECTION: MAIN IS NOT RED
+
+The first version of this finding said `comms_gateway_phase0` fails 7 tests on
+clean `origin/main`. **That was wrong and is withdrawn.**
+
+CI passes it: `[PASS] comms_gateway_phase0` on `869358d0e`
+(cio-production-hardening-ci run 33945925701, 2026-09-05T05:02:34Z), and the
+`[RUN]` line enumerates all 13 files including the two named —
+`test_communications_portal.py` and `test_comms_subject_memory.py`.
+
+My 7 local failures are environmental, almost certainly no database: the health
+path calls `_events_db_conn()` and subject-memory needs storage. I compared
+against a detached baseline worktree and saw the same failures there, which told
+me they were not introduced by my branch — true — and I then over-read that as
+"main is red", which does not follow. Both environments lacked the same thing.
+
+Left in rather than deleted, because "the finder over-claimed once" is worth
+knowing when weighing the rest of this document.
 
 ## NOT DONE HERE
 
 - no comms code changed
 - no mode or env changed
 - `phase: 7` in the payload may also be stale; not investigated
-- separately: `comms_gateway_phase0` fails 7 tests on clean `origin/main`
-  (`test_communications_portal`, `test_comms_subject_memory`) — verified against a
-  detached baseline worktree, and unrelated to this finding
