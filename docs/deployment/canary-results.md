@@ -1,8 +1,10 @@
 # Communications Gateway — Canary Results
 
-**Status:** Canary **PASS** for message class `ops` → promoted to **ACTIVE** (`COMMS_GATEWAY_ACTIVE_CLASSES=ops`)  
+**Status:** Canary **PASS** for message class `ops` → **attempted ACTIVE, then reverted to CANARY**  
 **Channel focus:** Telegram first  
-**Production mode now:** **ACTIVE** (allowlisted classes only)
+**Production mode now:** **CANARY** (`COMMS_GATEWAY_MODE=CANARY`, `CANARY_CLASSES=ops`,
+`CANARY_CHATS=6993102664,8797974247`) — `[VERIFIED]` at
+`curl -s http://127.0.0.1:7777/api/v2/communications/health` → `"mode": "CANARY"`
 
 ### Telegram canary / ACTIVE env (fail-closed; never repo defaults)
 
@@ -44,9 +46,38 @@ Empty class allowlist → Telegram deliver **blocked**. Repo default remains **O
 
 ---
 
+## Wave A/B sample sends (two verified cases) `[VERIFIED]`
+
+The operator canary exercised two sample sends. Each outcome is the correctness pair the
+gateway must exhibit:
+
+| Sample | message_class | Outcome | Meaning |
+|---|---|---|---|
+| `operator_alert` | normalized → `ops` | **SENT** (gateway-owned, `provider_message_id` populated) | Owned class routes through gateway and settles SENT |
+| `report` | (non-owned) | **fail-closed → `LEGACY_DELIVERED`** | Non-owned class does not route through gateway; the auto-reserved stub settles `LEGACY_DELIVERED` instead of staying `RESERVED` (F1 fix) |
+
+The `report` case demonstrates the F1 fix end-to-end: a class the gateway does not own
+fails closed and records `LEGACY_DELIVERED` rather than leaving a permanently `RESERVED`
+stub.
+
+## Mode revert — ACTIVE → CANARY `[VERIFIED]`
+
+After a ~40-minute ACTIVE-for-`ops` soak, the operator **reverted to CANARY** (the ACTIVE
+posture was judged premature). The live systemd drop-in now reads:
+
+```
+Environment=COMMS_GATEWAY_MODE=CANARY
+Environment=COMMS_GATEWAY_CANARY_CLASSES=ops
+Environment=COMMS_GATEWAY_CANARY_CHATS=6993102664,8797974247
+```
+
+Verified at `curl -s http://127.0.0.1:7777/api/v2/communications/health` →
+`"mode": "CANARY"`, `"owned_classes": ["ops"]`, `"delivery_owned": true`.
+
 ## Decision
 
-**This run’s decision:** **PROMOTE toward ACTIVE** for class `ops` only.
+**This run’s decision:** **HOLD at CANARY** for class `ops` only (filtered to the two
+operator chats). The earlier "PROMOTE toward ACTIVE" was walked back by the operator.
 
 Non-`ops` classes remain legacy-send + best-effort ledger until a new canary row lands.
 
@@ -68,3 +99,4 @@ Systemd: 32-comms-gateway-mode.conf MODE=ACTIVE ACTIVE_CLASSES=ops
 | # | Date | Class | SHA | Decision | Notes |
 |---|---|---|---|---|---|
 | 1 | 2026-09-05 | ops | f579053b8 | PROMOTE ACTIVE | PR #864 Telegram ownership + allowlists |
+| 2 | 2026-09-05 | ops | f88853e89 | **REVERT to CANARY** | ACTIVE ~40 min soak judged premature; CANARY_CHATS=6993102664,8797974247; sample sends: `operator_alert`→SENT, `report`→LEGACY_DELIVERED (fail-closed) |

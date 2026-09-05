@@ -1,14 +1,97 @@
-# Communications Gateway — Live Attestation (re-attest, post #862/#864/#868)
+# Communications Gateway — Live Attestation (re-attest, post #862/#864/#868, then #871/#872/#873)
 
 ```
 Status: ACTIVE
-as_of: 2026-09-05T10:45:00-04:00
-Measured at: served build faf8c05d9cfa149c2efd7cadfb05a5bd7b3644d1
+as_of: 2026-09-05T13:56:00-04:00
+Measured at: served build f88853e89e53fdd63725acccb064ca1395e0bf34
 ```
 
 Supersedes `docs/audit/runtime-attestation.md` (which cited `17e30dcbb` and predated
 production ACTIVE). All values below were read live via HTTP from the served release or
-from `origin/main` at `faf8c05d9`; nothing here is a `[DOC-CLAIM]` about runtime.
+from `origin/main`; nothing here is a `[DOC-CLAIM]` about runtime.
+
+---
+
+## 0. Re-attestation (later 2026-09-05) — served `f88853e89`, mode **CANARY** `[VERIFIED]`
+
+The body of this document (sections 1–7) attests the served build `faf8c05d9` in mode
+**ACTIVE**, read at 10:45 ET. That state has since been superseded. This section re-attests
+the current live state, read at 13:56 ET. **The mode is now CANARY, not ACTIVE** — the
+earlier ACTIVE posture was reverted after a short operator soak (see
+`docs/deployment/canary-results.md`).
+
+### 0.1 Served build identity `[VERIFIED]`
+
+Command: `curl -s http://127.0.0.1:7777/v3/build-meta.json`
+
+| Field | Value |
+|---|---|
+| `git_sha` / `build_sha` / `source_sha` / `source_commit` | `f88853e89e53fdd63725acccb064ca1395e0bf34` |
+| `ui_version` | `3.14+mtoonq76` |
+| `built_at` | `2026-09-05T17:55:09.682Z` |
+| `branch` / `release_label` | `main` / `main-exact-phase2` |
+
+`CURRENT` resolves to
+`~/trade-ai-releases/portfolio-server/f88853e89-main-exact-phase2-20260905-135414`
+(`readlink -f`), so the served SHA is `f88853e89` — the merge of PR #873 (poller rewiring).
+
+### 0.2 Gateway mode and ownership `[VERIFIED]`
+
+Command: `curl -s http://127.0.0.1:7777/api/v2/communications/health`
+
+```json
+"mode": "CANARY",
+"delivery_owned": true,
+"owned_classes": ["ops"],
+"mode_diagnostics": { "mode": "CANARY", "reason": "env:COMMS_GATEWAY_MODE",
+                     "default": "OFF", "delivery_owner": "gateway_canary_or_active",
+                     "valid_modes": ["OFF","SHADOW","CANARY","ACTIVE"] },
+"ledger": { "source": "db", "db_reachable": true, "events_source": "db",
+            "deliveries_source": "db", "subjects_source": "db" }
+```
+
+The host-local systemd drop-in
+`~/.config/systemd/user/portfolio-server.service.d/32-comms-gateway-mode.conf` reads
+`[CODE]`:
+
+```
+Environment=COMMS_GATEWAY_MODE=CANARY
+Environment=COMMS_GATEWAY_CANARY_CLASSES=ops
+Environment=COMMS_GATEWAY_CANARY_CHATS=6993102664,8797974247
+```
+
+So the live posture is **CANARY**, ownership `ops` only, filtered to the two operator
+chats above. There is **no ACTIVE** class today; the `ACTIVE_CLASSES=ops` drop-in from the
+earlier soak was replaced by the CANARY drop-in.
+
+### 0.3 Merge line `[VERIFIED]`
+
+Command: `gh pr view <n> --json number,state,mergeCommit` and `git log origin/main --oneline -8`
+
+| PR | Title | State | Merge SHA |
+|---|---|---|---|
+| #871 | comms: Wave A/B — live re-attest, F1 stub-settle, F3 class vocab | MERGED | `47576f7fa5b8230526df1150b810c5e8f643e8ce` |
+| #872 | fix(comms): surface LEGACY_DELIVERED settle failure | MERGED | `d38003fbb1dc96653f7ef231abd5878936425c89` |
+| #873 | feat(comms): rewire callback poller to gateway inbound checkpoint (Wave C) | MERGED | `f88853e89e53fdd63725acccb064ca1395e0bf34` |
+| #874 | feat(comms): expose agent consumption via portal + CC Agent Memory view (Wave E) | OPEN | — (no merge) |
+
+`origin/main` head is `f88853e89` (merge of #873); the ancestry is
+`…faf8c05d9 → 47576f7fa (#871) → d38003fbb (#872) → f88853e89 (#873)`.
+
+### 0.4 What moved since the `faf8c05d9` attestation
+
+- **Mode**: ACTIVE → **CANARY** (operator reverted after a ~40 min soak; the ACTIVE drop-in
+  was judged premature). CANARY now carries `CANARY_CHATS=6993102664,8797974247`.
+- **F1 fixed and migrated**: non-owned deliveries now settle `LEGACY_DELIVERED` (PR #871
+  code + migration applied to prod DB; PR #872 surfaces settle failures). The
+  `LEGACY_DELIVERED` value is present in the delivery-status constraint.
+- **F3 fixed**: `scripts/lib/comms/vocabulary.py` canonicalizes `operator_alert`/`ops_alert`/
+  `health*` → `ops`; unknown classes pass through, never coerced.
+- **Wave C inbound landed**: `scripts/lib/comms/inbound.py` (claim/commit/checkpoint,
+  quarantine, `build_inbound_event`) with `communication_inbound_checkpoint` and
+  `communication_inbound_quarantine` tables applied to prod; poller rewired in PR #873.
+- **Wave A–F artifacts**: `MessageArtifact@v1`, librarian purge receipts, agent contracts,
+  curation gate — built (see `docs/audit/gap-analysis.md`).
 
 ---
 
