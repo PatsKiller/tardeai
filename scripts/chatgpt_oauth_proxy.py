@@ -24,12 +24,27 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 HERMES = os.environ.get("HERMES_BIN", os.path.expanduser("~/.local/bin/hermes"))
 HOST = os.environ.get("CHATGPT_PROXY_HOST", "127.0.0.1")
 PORT = int(os.environ.get("CHATGPT_PROXY_PORT", "8646"))
-DEFAULT_MODEL = os.environ.get("CHATGPT_PROXY_MODEL", "gpt-5.4")
+# Probed against this account 2026-09-05, one request per slug:
+#   gpt-5.5        200 OK
+#   gpt-5.4-mini   200 OK
+#   gpt-5.4        400 "not supported when using Codex with a ChatGPT account"
+#   gpt-5.3-codex  400        gpt-5.1-codex 400        gpt-5-codex 400
+#
+# The default was gpt-5.4, so EVERY request through this proxy returned 400 —
+# 11 of 11 attempts on 2026-09-05, a 100% error rate that the research-lane
+# monitor reported as an error streak without ever naming the cause. The slug
+# was presumably valid when it was written; the account's Codex model set moved
+# and the constant did not.
+DEFAULT_MODEL = os.environ.get("CHATGPT_PROXY_MODEL", "gpt-5.5")
 AUTH_JSON = os.path.expanduser("~/.hermes/auth.json")
 TIMEOUT = int(os.environ.get("CHATGPT_PROXY_TIMEOUT", "240"))
 KEEPALIVE_INTERVAL = int(os.environ.get("CHATGPT_PROXY_KEEPALIVE_INTERVAL", "25"))
-# ChatGPT-account Codex backend model slugs (others like gpt-5/gpt-5-codex are 400-rejected).
-MODELS = ["gpt-5.4", "gpt-5.4-mini", "gpt-5.5", "gpt-5.3-codex"]
+# Slugs this ChatGPT account's Codex backend actually accepts, verified by
+# request on 2026-09-05. The previous list contained two that 400 —
+# gpt-5.4 and gpt-5.3-codex — and its comment asserted the opposite of what the
+# backend does, which is how the broken default survived: the list looked like
+# evidence and was an assumption. Re-probe before adding a slug here.
+MODELS = ["gpt-5.5", "gpt-5.4-mini"]
 _SESSION_LINE = re.compile(r"\n?session_id:\s*\S+\s*$")
 
 _ANSI = re.compile(r"\x1b\[[0-9;?]*[a-zA-Z]|\x1b\][^\x07]*\x07")
