@@ -158,6 +158,17 @@ check('the TODAY hover note falls back to a scope, never a single account name',
 check('the TRADING tile labels its win rate', /\$\{winRate\}% win/.test(code))
 check('the TRADING tile labels its trade count', /\$\{winTrades\} trades/.test(code))
 check('the TRADING tile labels its P&L', /fmt\$\(journalPnl, 0\)\} P&L/.test(code))
+check('SETUPS face is counts-only; population is a sub line',
+  /setupsSub = scanStale \? null : \(setupRun\.population/.test(code) &&
+  /valueSub: setupsSub/.test(code) &&
+  !/return pop \? `\$\{setupRun\.counts\} · \$\{pop\}/.test(code))
+check('metric strip uses semantic classes (not :last-child sizing)',
+  code.includes('metric-strip-value') &&
+  code.includes('metric-strip-asof') &&
+  code.includes('metric-strip-label'))
+check('prices brand cell is isolated (bg + overflow)',
+  /metric-strip-brand[\s\S]{0,500}background: 'var\(--bg0\)'/.test(code) &&
+  /metric-strip-brand[\s\S]{0,500}overflow: 'hidden'/.test(code))
 
 console.log(`\nmetric_strip_header_truth: ${pass} passed, ${fail} failed`)
 if (fail) process.exit(1)

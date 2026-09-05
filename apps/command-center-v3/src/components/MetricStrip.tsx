@@ -272,16 +272,20 @@ export default function MetricStrip({ onDrill }: Props) {
     stale: scanStale,
     staleLabel: setupsFresh.surfaceLabel || `STALE · ${setupsRun}`,
   })
-  const setupsValue = (() => {
-    if (scanStale) return setupRun.counts
-    const pop = setupRun.population
-    const integrity = setupRun.degraded ? ` · ${setupRun.integrity}` : ''
-    return pop ? `${setupRun.counts} · ${pop}${integrity}` : `${setupRun.counts}${integrity}`
-  })()
+  // Face = counts only. Population (classified/scanned/review) is a secondary
+  // line — stuffing both into one lg monospace string wrapped mid-token and
+  // painted over the run id (live capture 2026-09-04).
+  const setupsValue = scanStale
+    ? setupRun.counts
+    : setupRun.degraded
+      ? `${setupRun.counts} · ${setupRun.integrity}`
+      : setupRun.counts
+  const setupsSub = scanStale ? null : (setupRun.population || null)
 
   const tiles = [
     {
       label: 'PORTFOLIO', value: portfolioVal != null ? fmt$(portfolioVal, 0) : '—',
+      valueSub: null as string | null,
       stale: overviewFresh.stale ? (overviewFresh.surfaceLabel?.replace(/^STALE · /, ' · ') || overviewAsOfMark) : null,
       // The tile shows the POSITION observation. Saying "data_as_of" named no
       // clock at all; saying "positions observed" names the one on screen and
@@ -296,7 +300,9 @@ export default function MetricStrip({ onDrill }: Props) {
         rows: overview ? [{ portfolio_value: overview.portfolio_value, positions_observed_newest: posNewest, positions_observed_oldest: posOldest, positions_observed_oldest_account: posOldestAcct, positions_observed_oldest_age_hours: posOldestAgeH, valuation_time: valuationTime, quote_observation_time: quoteObsTime, quote_source: portfolioAgg?.quote_source, coverage: cov, observation_divergences: clockDivergences, portfolio_aggregate: overview.portfolio_aggregate, total_cash: overview.total_cash, position_count: overview.position_count, today_change: overview.today_change, today_pct: overview.today_pct, as_of: overview.as_of, surface_stale: overviewFresh.stale, surface_reason: overviewFresh.reason }] : [] },
     },
     {
-      label: 'TODAY', value: todayChange != null ? `${todayChange >= 0 ? '+' : ''}${fmt$(todayChange, 0)}${todayPct != null ? ` ${todayPct >= 0 ? '+' : ''}${todayPct}%` : ''}` : '—',
+      label: 'TODAY',
+      value: todayChange != null ? `${todayChange >= 0 ? '+' : ''}${fmt$(todayChange, 0)}${todayPct != null ? ` ${todayPct >= 0 ? '+' : ''}${todayPct}%` : ''}` : '—',
+      valueSub: null as string | null,
       // A P&L is stamped with its OWN session, never the position clock.
       stale: todayMissing.length ? ` · ${todayMissing.length} funded acct(s) did not report` : null,
       asOf: todayPnl?.session_date ?? null,
@@ -318,11 +324,11 @@ export default function MetricStrip({ onDrill }: Props) {
       tip: `Today's net change ($ and %).\n\nACCOUNTS (hover):\n · ${todayHoverAccounts ?? '—'}\n\n · P&L session: ${todayPnl?.session_date ?? 'UNDATED'}${todayPnl?.session_source ? ` (from ${todayPnl.session_source})` : ''}\n · calculated: ${todayPnl?.calculated_at ?? '—'}\n · marks: ${todayPnl?.mark_source ?? '—'}\n · coverage: ${todayPnl?.coverage_reason ?? '—'}\n\nThis is the P&L's OWN session — not the date the share counts were observed (${posNewest ?? 'UNDATED'}). Click for the per-account breakdown. Refreshes every 2 min.`,
     },
     {
-      // "53.3% · 169 · $55,429" was three unlabelled numbers. A reader cannot tell which
-      // is a win rate, which a trade count, and which a P&L -- and the dollar figure sat
-      // beside a REALIZED tile showing a different one. The units are now on the tile
-      // rather than only in the tooltip.
-      label: 'TRADING', value: winRate != null ? `${winRate}% win${winTrades ? ` · ${winTrades} trades` : ''}${journalPnl != null ? ` · ${fmt$(journalPnl, 0)} P&L` : ''}` : '—',
+      // Win rate + trade count on the face; P&L on the sub line so the tile
+      // does not wrap mid-token under terminal density.
+      label: 'TRADING',
+      value: winRate != null ? `${winRate}% win${winTrades ? ` · ${winTrades} trades` : ''}` : '—',
+      valueSub: journalPnl != null ? `${fmt$(journalPnl, 0)} P&L` : null,
       stale: journalStale ? journalAgeMark : null,
       color: winRate != null && winRate >= 50 ? BB.green : winRate != null ? BB.amber : 'var(--text3)',
       tip: `Active trading only (day + swing), broker round-trips · ${journalScope} · ${journalWindow}${journalAsOf ? ` · as_of ${String(journalAsOf).slice(0, 19).replace('T', ' ')}` : ''}${journalLastClose ? ` · last close ${journalLastClose}` : ''}${journalRefreshedMark}. Excludes long-term trims of old holds — those are in REALIZED. Win rate excludes $0 scratches.`,
@@ -331,6 +337,7 @@ export default function MetricStrip({ onDrill }: Props) {
     },
     {
       label: 'REALIZED', value: realizedPnl != null ? fmt$(realizedPnl, 0) : '—',
+      valueSub: null as string | null,
       stale: journalStale ? journalAgeMark : null,
       color: realizedPnl == null ? 'var(--text3)' : realizedPnl >= 0 ? BB.green : BB.red,
       tip: `All closed P&L incl. long-term trims of old buy-and-hold lots · ${journalScope} · ${journalWindow}${journalAsOf ? ` · as_of ${String(journalAsOf).slice(0, 19).replace('T', ' ')}` : ''}${longTermTrimPnl ? ` (${fmt$(longTermTrimPnl, 0)} of it is long-term trims)` : ''}${journalLastClose ? ` · last close ${journalLastClose}` : ''}${journalRefreshedMark}. Trading-only P&L is ${journalPnl != null ? fmt$(journalPnl, 0) : '—'}.`,
@@ -338,7 +345,9 @@ export default function MetricStrip({ onDrill }: Props) {
         rows: [{ realized_pnl: realizedPnl, realized_trades: realizedCount, long_term_trim_pnl: longTermTrimPnl, trading_pnl: overview?.journal?.total_pnl, trading_trades: overview?.journal?.trade_count, basis: overview?.journal?.basis, account_scope: overview?.journal?.account_scope, time_window: overview?.journal?.time_window, as_of: overview?.journal?.as_of, last_close_date: overview?.journal?.last_close_date, last_ingested_at: overview?.journal?.last_ingested_at }] },
     },
     {
-      label: 'REGIME', value: regimeLabel ? `${regimeLabel.replace(/_/g, ' ')}${regimeConf ? ` ${Math.round(regimeConf * 100)}%` : ''}` : '—',
+      label: 'REGIME',
+      value: regimeLabel ? `${regimeLabel.replace(/_/g, ' ')}${regimeConf ? ` ${Math.round(regimeConf * 100)}%` : ''}` : '—',
+      valueSub: null as string | null,
       color: regimeLabel === 'risk_off' ? BB.red : regimeLabel === 'risk_on' ? BB.green : BB.amber,
       tip: `Market regime from /api/v2/risk-regime/latest — weighs trend, breadth, and volatility signals into a risk-on/risk-off label with confidence.`,
       drill: { title: 'Market Regime', subtitle: 'From /api/v2/risk-regime/latest', endpoint: '/api/v2/risk-regime/latest',
@@ -346,6 +355,7 @@ export default function MetricStrip({ onDrill }: Props) {
     },
     {
       label: 'VIX', value: vix != null ? Number(vix).toFixed(1) : '—',
+      valueSub: null as string | null,
       color: vix == null ? 'var(--text3)' : vix >= 25 ? BB.red : vix >= 18 ? BB.amber : BB.green,
       tip: `CBOE Volatility Index. Green <18 (low fear), amber 18-25 (elevated), red ≥25 (high fear).${vixSource ? ` · source ${vixSource}` : ''}${vixObsTime ? ` · observed ${String(vixObsTime).slice(0, 19).replace('T', ' ')}` : ''}`,
       drill: { title: 'VIX', subtitle: `Volatility index · source ${vixSource ?? 'unknown'}${vixObsTime ? ` · observed ${vixObsTime}` : ''}`, endpoint: '/api/v2/trade-ai',
@@ -354,6 +364,7 @@ export default function MetricStrip({ onDrill }: Props) {
     {
       label: 'SETUPS · LATEST RUN',
       value: setupsValue,
+      valueSub: setupsSub,
       // Extra amber mark when value already contains STALE (keeps label chip + as_of visible).
       stale: scanStale ? `${setupsAsOfMark || ' · stale'}` : null,
       // The captured header read "as_of 2026-09-04 17:39" with no zone, beside a
@@ -378,15 +389,22 @@ export default function MetricStrip({ onDrill }: Props) {
 
   return (
     <div className="metric-strip" style={{ display: 'flex', flexDirection: 'column', background: 'var(--bg0)', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
-    <div style={{ display: 'flex', alignItems: 'center', gap: 0, padding: '8px 16px 4px' }}>
+    <div style={{ display: 'flex', alignItems: 'stretch', gap: 0, padding: '8px 12px 6px', minWidth: 0, overflowX: 'auto' }}>
       <div
         data-testid="metric-strip-brand"
         style={{
-          marginRight: 16,
-          flexShrink: 0,
-          maxWidth: 220,
-          minWidth: 0,
+          marginRight: 12,
+          flex: '0 0 168px',
+          maxWidth: 168,
+          minWidth: 140,
           overflow: 'hidden',
+          position: 'relative',
+          zIndex: 1,
+          background: 'var(--bg0)',
+          paddingRight: 8,
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'center',
         }}
       >
         <div style={{ fontSize: TYPE.md, fontWeight: 700, color: T.link, whiteSpace: 'nowrap' }}>Command Center v3</div>
@@ -420,32 +438,90 @@ export default function MetricStrip({ onDrill }: Props) {
           className="metric-strip-tile"
           title={(t as any).tip}
           onClick={() => onDrill(t.drill)}
-          style={{ padding: '4px 20px', cursor: 'pointer', textAlign: 'center', borderRight: '1px solid var(--border)' }}
+          style={{
+            padding: '2px 12px',
+            cursor: 'pointer',
+            textAlign: 'center',
+            borderRight: '1px solid var(--border)',
+            flex: t.label.startsWith('SETUPS') ? '1 1 200px' : '0 0 auto',
+            minWidth: t.label.startsWith('SETUPS') ? 160 : undefined,
+            maxWidth: t.label.startsWith('SETUPS') ? 320 : undefined,
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'center',
+            minHeight: 56,
+          }}
         >
-          <div style={{ fontSize: TYPE.xs, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.5px' }}>
+          <div className="metric-strip-label" style={{ fontSize: TYPE.xs, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.5px', whiteSpace: 'nowrap' }}>
             {t.label}{(t as any).stale && <span style={{ color: BB.amber, fontWeight: 800 }} data-surface-stale>{' '}⚠ STALE</span>}
           </div>
-          <div style={{ fontSize: TYPE.lg, fontWeight: 700, color: t.color, fontFamily: 'monospace' }}>
+          <div
+            className="metric-strip-value"
+            style={{
+              fontSize: t.label.startsWith('SETUPS') ? TYPE.md : TYPE.lg,
+              fontWeight: 700,
+              color: t.color,
+              fontFamily: 'monospace',
+              whiteSpace: 'nowrap',
+              lineHeight: 1.2,
+            }}
+          >
             {t.value}{(t as any).stale && !String(t.value).includes('STALE') && <span style={{ fontSize: TYPE.xs, color: BB.amber }}>{(t as any).stale}</span>}
           </div>
+          {(t as any).valueSub && (
+            <div
+              className="metric-strip-sub"
+              style={{
+                fontSize: TYPE.xs,
+                fontWeight: 600,
+                color: t.label === 'TRADING' ? t.color : 'var(--text2)',
+                fontFamily: 'monospace',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                marginTop: 1,
+                lineHeight: 1.2,
+              }}
+            >
+              {(t as any).valueSub}
+            </div>
+          )}
           {(t as any).asOf && (
-            <div style={{ fontSize: TYPE.xs, color: (t as any).stale ? BB.amber : 'var(--text3)', marginTop: 1 }} data-surface-as-of>
+            <div
+              className="metric-strip-asof"
+              style={{
+                fontSize: TYPE.xs,
+                color: (t as any).stale ? BB.amber : 'var(--text3)',
+                marginTop: 2,
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                lineHeight: 1.2,
+              }}
+              data-surface-as-of
+            >
               {(t as any).asOfLabel || 'as_of'} {String((t as any).asOf).slice(0, 16).replace('T', ' ')}
               {(t as any).asOfNote ? ` · ${(t as any).asOfNote}` : ''}
             </div>
           )}
           {!(t as any).asOf && (t as any).undated && (
-            <div style={{ fontSize: TYPE.xs, color: BB.amber, marginTop: 1 }} data-surface-as-of data-surface-undated>
+            <div
+              className="metric-strip-asof"
+              style={{ fontSize: TYPE.xs, color: BB.amber, marginTop: 2, whiteSpace: 'nowrap' }}
+              data-surface-as-of
+              data-surface-undated
+            >
               {(t as any).asOfLabel || 'as_of'} UNDATED
             </div>
           )}
         </div>
       ))}
+      <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, paddingLeft: 8 }}>
       {approvals != null && approvals > 0 && (
         <div onClick={() => navigate('/')}
           title={`${approvals} pending approvals — Home → Action Inbox has CTAs to Risk and Trading`}
-          style={{ marginLeft: 'auto', padding: '4px 12px', borderRadius: 6, fontSize: TYPE.xs, fontWeight: 700, cursor: 'pointer',
-            background: BB.amberDim, color: BB.amber, marginRight: 8 }}>
+          style={{ padding: '4px 12px', borderRadius: 6, fontSize: TYPE.xs, fontWeight: 700, cursor: 'pointer',
+            background: BB.amberDim, color: BB.amber, whiteSpace: 'nowrap' }}>
           ⚑ {approvals} APPROVALS →
         </div>
       )}
@@ -453,18 +529,19 @@ export default function MetricStrip({ onDrill }: Props) {
         <div onClick={() => navigate('/health')}
           title={`${healthPopulation}. Open Health for remediate + coder dispatch — the badge and that page count the same population.`}
           style={{ padding: '4px 12px', borderRadius: 6, fontSize: TYPE.xs, fontWeight: 700, cursor: 'pointer',
-            background: BB.redDim, color: BB.red, marginRight: 8 }}>
+            background: BB.redDim, color: BB.red, whiteSpace: 'nowrap' }}>
           ♥ {healthWarn} HEALTH{healthCritical ? ` (${healthCritical} crit)` : ''} →
         </div>
       )}
       <div
         title={gate?.operator_status_label || (operatorLive ? 'Schwab operator live via standing unlock + per-order 2FA' : 'Autonomous Alpaca live gate not passed')}
         style={{
-        marginLeft: approvals != null && approvals > 0 ? 0 : 'auto', padding: '4px 14px', borderRadius: 6, fontSize: TYPE.xs, fontWeight: 700,
+        padding: '4px 14px', borderRadius: 6, fontSize: TYPE.xs, fontWeight: 700, whiteSpace: 'nowrap',
         background: operatorLive ? BB.greenDim : liveBadgeBlocked ? BB.amberDim : BB.greenDim,
         color: operatorLive ? BB.green : liveBadgeBlocked ? BB.amber : BB.green,
       }}>
         {liveBadge}
+      </div>
       </div>
     </div>
     </div>

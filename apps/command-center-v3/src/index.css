@@ -256,9 +256,23 @@ body { font-family: var(--sans); background: var(--bg0); color: var(--text0); }
   flex-wrap: nowrap;
   -webkit-overflow-scrolling: touch;
 }
-.metric-strip > div > div[style*="borderRight"] {
+.metric-strip-tile {
   flex-shrink: 0;
 }
+.metric-strip-value {
+  line-height: 1.2;
+}
+.metric-strip-asof,
+.metric-strip-sub {
+  max-width: 100%;
+}
+/* Target semantic classes — :last-child wrongly enlarged asOf to 14px and
+   collided with SETUPS value (header capture 2026-09-04). Floor is TYPE.xs. */
+.cc-terminal-ui .metric-strip-tile { padding: 2px 12px !important; }
+.cc-terminal-ui .metric-strip-label { font-size: 10px !important; letter-spacing: .08em; }
+.cc-terminal-ui .metric-strip-value { font-size: 14px !important; }
+.cc-terminal-ui .metric-strip-sub,
+.cc-terminal-ui .metric-strip-asof { font-size: 10px !important; }
 
 /* ── Mobile responsiveness ──────────────────────────────────────────────────
    The layout uses inline styles; these media queries override with !important
@@ -445,9 +459,6 @@ body { font-family: var(--sans); background: var(--bg0); color: var(--text0); }
 .cc-terminal-ui .wlc-grid > .wlc-cell { padding: 6px 10px; }
 .cc-terminal-ui .hub-title-row { margin-bottom: 8px; }
 .cc-terminal-ui .hub-tabs { gap: 4px !important; }
-.cc-terminal-ui .metric-strip-tile { padding: 2px 14px !important; }
-.cc-terminal-ui .metric-strip-tile > div:first-child { font-size: 7px !important; letter-spacing: .08em; }
-.cc-terminal-ui .metric-strip-tile > div:last-child { font-size: 14px !important; }
 .cc-terminal-ui .cc-panel { border-radius: 2px !important; padding: 8px 10px !important; }
 .cc-terminal-ui .cc-table-dense th,
 .cc-terminal-ui .cc-table-dense td { padding: 2px 6px !important; font-size: 10px !important; }
