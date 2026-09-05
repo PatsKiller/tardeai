@@ -85,6 +85,54 @@ def test_telegram_class_allowed_empty_allowlist_fail_closed(monkeypatch):
     assert telegram_class_allowed("ACTIVE", "operator_alert") is False
 
 
+def test_canary_chat_allowlist_denies_unlisted_chat(monkeypatch):
+    """Negative control: CANARY + CANARY_CHATS filters out unauthorized chats."""
+    from scripts.lib.comms.channel_adapters import _resolve_telegram_chat_ids
+
+    monkeypatch.setenv("COMMS_GATEWAY_MODE", "CANARY")
+    monkeypatch.setenv("COMMS_GATEWAY_CANARY_CHATS", "111,222")
+    mode_mod._cache["mode"] = None
+    mode_mod._cache["why"] = None
+
+    # Mixed: listed chat kept, unlisted chat dropped.
+    ids, err = _resolve_telegram_chat_ids("CANARY", ["111", "333"])
+    assert ids == ["111"]
+    assert err is None
+
+    # Fully unlisted → blocked, not silently sent to a wider set.
+    ids2, err2 = _resolve_telegram_chat_ids("CANARY", ["999"])
+    assert ids2 == []
+    assert err2 == "delivery_blocked_canary_chats"
+
+
+def test_canary_without_chat_allowlist_does_not_filter(monkeypatch):
+    """Documented hazard: no CANARY_CHATS → no filter (blast radius is unbounded)."""
+    from scripts.lib.comms.channel_adapters import _resolve_telegram_chat_ids
+
+    monkeypatch.setenv("COMMS_GATEWAY_MODE", "CANARY")
+    monkeypatch.delenv("COMMS_GATEWAY_CANARY_CHATS", raising=False)
+    mode_mod._cache["mode"] = None
+    mode_mod._cache["why"] = None
+
+    ids, err = _resolve_telegram_chat_ids("CANARY", ["111", "333"])
+    assert ids == ["111", "333"]
+    assert err is None
+
+
+def test_active_mode_ignores_canary_chat_allowlist(monkeypatch):
+    """ACTIVE has no CANARY_CHATS filter; the class allowlist alone gates."""
+    from scripts.lib.comms.channel_adapters import _resolve_telegram_chat_ids
+
+    monkeypatch.setenv("COMMS_GATEWAY_MODE", "ACTIVE")
+    monkeypatch.setenv("COMMS_GATEWAY_CANARY_CHATS", "111")
+    mode_mod._cache["mode"] = None
+    mode_mod._cache["why"] = None
+
+    ids, err = _resolve_telegram_chat_ids("ACTIVE", ["111", "333"])
+    assert ids == ["111", "333"]
+    assert err is None
+
+
 def test_default_deliver_false_records_event_no_network(monkeypatch):
     """deliver=False publishes + reserves only; underlying adapters never called."""
     calls: list[str] = []

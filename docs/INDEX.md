@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `6f362fac3b5a6cc49b80929514a6b78fb719aa59d982560569ba7f22c3779bc1`
+**Tree fingerprint:** `d50c8bbe8d32ec0433b063110a1d718ab09d4b2a948b04ea35e5d1ef0ecb8cea`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,10 +12,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2389 |
-| Markdown (excl. this INDEX) | 1989 |
+| Files under `docs/` (excl. this INDEX) | 2391 |
+| Markdown (excl. this INDEX) | 1991 |
 | **MISSING HEADER** | **19** |
-| Header OK | 1970 |
+| Header OK | 1972 |
 | Duplicate groups | 5 |
 
 ### By status_guess
@@ -30,7 +30,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_raw_sync | 34 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 6 |
-| review_required | 2001 |
+| review_required | 2003 |
 
 ## Markdown tree
 
@@ -533,7 +533,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/audit/PROPOSALS_BROKER_VS_REGULAR_AUDIT_20260624.md` | Proposals Audit — Broker vs Regular (Frontend + Backend) | review_required | OK | `c3f78de62d14` |
 | `docs/audit/_evidence/README.md` | Phase 0 evidence snapshots | review_required | MISSING HEADER | `e17f23a439d9` |
 | `docs/audit/current-state.md` | Communications Gateway — Current State | review_required | MISSING HEADER | `5bf7544d0919` |
-| `docs/audit/gap-analysis.md` | Communications Gateway — Gap Analysis | review_required | MISSING HEADER | `038f73b9adc9` |
+| `docs/audit/gap-analysis.md` | Communications Gateway — Gap Analysis | review_required | MISSING HEADER | `b7fb077e9e04` |
 | `docs/audit/live-attest-2026-09-05.md` | Communications Gateway — Live Attestation (re-attest, post #862/#864/#868) | review_required | OK | `adcc81a51d95` |
 | `docs/audit/phase0-signoff.md` | Phase 0 Sign-off | review_required | OK | `02114eff814d` |
 | `docs/audit/phase9-sender-migration.md` | Phase 9 — High-risk Telegram sender migration | review_required | OK | `3872cbce012e` |
@@ -732,6 +732,8 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/convergence/UI_REPLACEMENT_MATRIX.md` | Command Center Replacement Matrix | review_required | OK | `c5cfc7a821e2` |
 | `docs/convergence/UI_ROUTE_OWNERSHIP.md` | UI Route Ownership | review_required | OK | `fe5a35b48fc7` |
 | `docs/deepseek_audit_2026-08-02.md` | DeepSeek Audit & Fix — Comprehensive Report | review_required | OK | `68d6408f3f5c` |
+| `docs/deployment/canary-operator-alert-packet.md` | Communications Gateway — Wave B Canary Packet: `operator_alert` cohort | review_required | OK | `33895c5a674a` |
+| `docs/deployment/canary-operator-alert-runbook.md` | Communications Gateway — `operator_alert` Canary Runbook (Wave B) | review_required | OK | `d99c80bc906c` |
 | `docs/deployment/canary-results.md` | Communications Gateway — Canary Results | review_required | OK | `e9f1dfef91c6` |
 | `docs/deployment/pre-go-live-checklist.md` | Communications Gateway — Pre Go-Live Checklist | review_required | OK | `4cf39a7859c9` |
 | `docs/deployment/production-activation.md` | Communications Gateway — Production ACTIVE Checklist | review_required | OK | `492a07a9b280` |
