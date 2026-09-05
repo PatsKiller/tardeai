@@ -1,16 +1,33 @@
-"""Communications Gateway — canonical CommunicationEvent client (Phase 1).
+"""Communications Gateway — canonical CommunicationEvent client (Phase 1+5).
 
 Public API:
   - CommunicationEvent
   - publish_communication
   - new_event_id / idempotency_key_for
   - get_gateway_mode / MODE_*
+  - curation (Phase 5): select_curation_mode, CurationReceipt, …
 
 Phase 1 does NOT own provider delivery. Modes default to OFF.
+Phase 5 curation never calls real LLM APIs.
 """
 from __future__ import annotations
 
 from scripts.lib.comms.client import PublishResult, publish_communication
+from scripts.lib.comms.curation import (
+    DETERMINISTIC,
+    HUMAN_EDIT,
+    LLM_CHALLENGE,
+    LLM_SUMMARY,
+    PROTECTED_FACT_KEYS,
+    TEMPLATE,
+    CurationReceipt,
+    apply_llm_curation_result,
+    curate_deterministic,
+    get_curation_receipt,
+    preserve_protected_facts,
+    select_curation_mode,
+    store_curation_receipt,
+)
 from scripts.lib.comms.enforcement import (
     MissingCommunicationEventId,
     assert_delivery_not_owned_in_off_or_shadow,
@@ -45,4 +62,17 @@ __all__ = [
     "VALID_MODES",
     "get_gateway_mode",
     "mode_diagnostics",
+    "DETERMINISTIC",
+    "TEMPLATE",
+    "LLM_SUMMARY",
+    "LLM_CHALLENGE",
+    "HUMAN_EDIT",
+    "PROTECTED_FACT_KEYS",
+    "CurationReceipt",
+    "select_curation_mode",
+    "curate_deterministic",
+    "preserve_protected_facts",
+    "apply_llm_curation_result",
+    "store_curation_receipt",
+    "get_curation_receipt",
 ]

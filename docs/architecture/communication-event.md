@@ -72,15 +72,17 @@ These are construction helpers only. Migrating producers to call `publish_commun
 
 ---
 
-## Non-goals (this phase)
+## Non-goals (Phase 1 ledger)
 
-- Provider transport / chokepoint zeroing (Phase 2)
+- Provider transport / chokepoint zeroing (Phase 2 — static ratchets landed)
 - Delivery receipts settlement (Phase 3)
 - Subject memory retrieval (Phase 4)
-- LLM curation (Phase 5)
 - Librarian retention execution (Phase 6)
 - `/v3/communications` UI (Phase 7)
 - Agent consumption receipts (Phase 8)
+
+Controlled curation + `CurationReceipt@v1` is Phase 5 — see
+`docs/architecture/curation-and-provenance.md`.
 
 ---
 
