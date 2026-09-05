@@ -109,10 +109,28 @@ class ProviderCapacity:
         }
 
     def monthly_limit(self) -> Optional[int]:
-        """The provider's monthly ceiling, or None if it has never said."""
+        """The provider's monthly ceiling, or None if it has never said.
+
+        A reported limit of **0** is NOT a ceiling of zero. Brave returns
+        ``x-ratelimit-limit: 50, 0`` with ``policy: 50;w=1, 0;w=2592000`` on a
+        key whose requests succeed with HTTP 200 — measured 2026-09-05. A window
+        that admits traffic cannot have a real ceiling of zero, so 0 here means
+        "this window is not metered", which is an absence of information and
+        must be reported as None. Returning 0 made ``reconcile`` announce
+        "provider reports 0/month — the local ceiling cannot be honoured" about
+        a key that was serving fine: an invented limit, the exact defect class
+        this module exists to prevent, produced by this module.
+        """
         if not self.observed:
             return None
-        return (self.windows.get("per_month") or {}).get("limit")
+        lim = (self.windows.get("per_month") or {}).get("limit")
+        if lim is not None and lim <= 0:
+            return None
+        return lim
+
+    def monthly_metered(self) -> bool:
+        """True only when the provider states a positive monthly ceiling."""
+        return self.monthly_limit() is not None
 
     def describe(self) -> str:
         if not self.observed:
@@ -243,11 +261,17 @@ def reconcile(capacity: ProviderCapacity, policy: LocalCostPolicy) -> dict[str, 
     local_monthly = policy.monthly_calls
 
     if provider_monthly is None:
-        binding, note = (
-            "local_policy",
-            "provider capacity unobserved — local policy is the only known ceiling",
-        )
-        conflict = None
+        raw_month = (capacity.windows.get("per_month") or {}).get("limit")
+        if capacity.observed and raw_month is not None and raw_month <= 0:
+            # Observed, and the provider declined to meter this window.
+            note = (
+                f"provider reports a per_month window of {raw_month} (unmetered or "
+                "not published in headers) — this is NOT a ceiling of zero; local "
+                "policy is the only numeric ceiling"
+            )
+        else:
+            note = "provider capacity unobserved — local policy is the only known ceiling"
+        binding, conflict = "local_policy", None
     elif local_monthly is None:
         binding, note, conflict = "provider", "no local monthly ceiling set", None
     elif local_monthly > provider_monthly:

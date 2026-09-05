@@ -178,3 +178,60 @@ def test_the_ceilings_did_not_move():
     assert b.MONTHLY_BUDGET == 850
     assert BRAVE_LOCAL_COST_POLICY.daily_calls == b.DAILY_BUDGET
     assert BRAVE_LOCAL_COST_POLICY.monthly_calls == b.MONTHLY_BUDGET
+
+
+# ── Regression: the real headers Brave returned on 2026-09-05 ────────────────
+# Measured live against the configured key. HTTP 200, request served.
+# The first version of reconcile() read the trailing 0 as a ceiling of zero and
+# announced "the local ceiling cannot be honoured" about a working key. A module
+# whose whole purpose is refusing to invent provider limits invented one.
+BRAVE_OBSERVED_20260905 = {
+    "x-ratelimit-limit": "50, 0",
+    "x-ratelimit-remaining": "49, 0",
+    "x-ratelimit-reset": "1, 2175273",
+    "x-ratelimit-policy": "50;w=1, 0;w=2592000",
+}
+
+
+def test_real_brave_headers_parse_both_windows():
+    cap = parse_provider_capacity("brave", BRAVE_OBSERVED_20260905)
+    assert cap.observed is True
+    assert cap.windows["per_second"]["limit"] == 50
+    assert cap.windows["per_second"]["remaining"] == 49
+    # The raw window is preserved verbatim — we do not rewrite what they said.
+    assert cap.windows["per_month"]["limit"] == 0
+
+
+def test_zero_monthly_window_is_not_a_ceiling_of_zero():
+    """0 with a live 200 means 'unmetered', not 'you may make no requests'."""
+    cap = parse_provider_capacity("brave", BRAVE_OBSERVED_20260905)
+    assert cap.monthly_limit() is None
+    assert cap.monthly_metered() is False
+
+
+def test_unmetered_month_does_not_fabricate_a_conflict():
+    cap = parse_provider_capacity("brave", BRAVE_OBSERVED_20260905)
+    rec = reconcile(cap, BRAVE_LOCAL_COST_POLICY)
+    assert rec["conflict"] is None, "a working key must not be reported as over its limit"
+    assert rec["binding_ceiling"] == "local_policy"
+    assert "not a ceiling of zero" in rec["binding_reason"].lower()
+
+
+def test_unmetered_is_distinguishable_from_never_observed():
+    """Both bind to local policy, but for different reasons, and must say so."""
+    observed = reconcile(parse_provider_capacity("brave", BRAVE_OBSERVED_20260905),
+                         BRAVE_LOCAL_COST_POLICY)
+    never = reconcile(ProviderCapacity(provider="brave"), BRAVE_LOCAL_COST_POLICY)
+    assert observed["binding_ceiling"] == never["binding_ceiling"] == "local_policy"
+    assert observed["binding_reason"] != never["binding_reason"]
+    assert "unobserved" in never["binding_reason"]
+    assert "unobserved" not in observed["binding_reason"]
+
+
+def test_a_real_positive_monthly_limit_still_binds_and_still_conflicts():
+    """The zero-guard must not swallow a genuine provider ceiling."""
+    cap = parse_provider_capacity("brave", {"x-ratelimit-limit": "50, 500"})
+    assert cap.monthly_limit() == 500
+    rec = reconcile(cap, BRAVE_LOCAL_COST_POLICY)   # local 850 > provider 500
+    assert rec["binding_ceiling"] == "provider"
+    assert rec["conflict"] is not None
