@@ -1,7 +1,14 @@
 """
 brave_search.py — Brave Search API integration for Ollama web search
 
-Daily budget cap: 30 requests/day (900/month with buffer for 1,000/month free tier).
+Daily budget cap: 25/day, 850/month — a LOCAL cost policy, not a provider plan.
+
+This docstring previously asserted a Brave free-tier monthly quota. No Brave
+response observed by this system has ever stated one: that figure was an
+assumption written as a provider fact, and the ceiling below then read as a
+reservation carved out of it. Provider capacity is now parsed from the
+X-RateLimit-* headers on every response and reported separately — see
+lib/research_provider_truth.py. The ceilings below are unchanged in value.
 Weekend skip: No Brave calls Sat/Sun (use DDG/RSS fallback).
 Cache TTL: 60 min for news, 5 min for web (was 5 min for both).
 Budget tracked in: data/portfolios/state/brave_search_budget.json
@@ -18,7 +25,10 @@ BRAVE_NEWS_URL = "https://api.search.brave.com/res/v1/news/search"
 MAX_RESULTS = 5
 REQUEST_TIMEOUT = 10
 DAILY_BUDGET = 25
-MONTHLY_BUDGET = 850  # Reserve 150 for P0/manual searches out of 1000
+# LOCAL cost policy, owned by the operator — NOT a provider limit. Named and
+# justified in lib/research_provider_truth.BRAVE_LOCAL_COST_POLICY, which is the
+# single place these numbers are explained. Unchanged in value.
+MONTHLY_BUDGET = 850
 SKIP_WEEKENDS = True
 # Callers that answer a question someone is waiting for. These are rate-limited
 # and budgeted like everything else; they are simply not silenced on a weekend.
@@ -194,6 +204,7 @@ def search(query, count=MAX_RESULTS, freshness=None, project_root=".", caller="d
     try:
         req = urllib.request.Request(url, headers=headers, method="GET")
         with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT) as resp:
+            _observe_capacity(resp, project_root)
             raw = resp.read()
             import gzip
             try: raw = gzip.decompress(raw)
@@ -207,6 +218,50 @@ def search(query, count=MAX_RESULTS, freshness=None, project_root=".", caller="d
     except Exception as e:
         print(f"  [brave-search] Error: {e}")
         return []
+
+
+# ── provider capacity observation ────────────────────────────────────────────
+# Every Brave response carries X-RateLimit-Limit / -Remaining / -Reset. This
+# module used to read only resp.read() and drop them, so the one authority that
+# could state Brave's real capacity was received and discarded on every call.
+_CAPACITY_PATH = "data/portfolios/state/brave_provider_capacity.json"
+
+
+def _observe_capacity(resp, project_root: str = ".") -> None:
+    """Record what the provider said about its own limits. Never fails a search."""
+    try:
+        from lib.research_provider_truth import parse_provider_capacity
+    except Exception:
+        try:
+            from scripts.lib.research_provider_truth import parse_provider_capacity  # type: ignore
+        except Exception:
+            return
+    try:
+        cap = parse_provider_capacity("brave", dict(getattr(resp, "headers", {}) or {}))
+        if not cap.observed:
+            return
+        path = Path(project_root) / _CAPACITY_PATH
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(cap.to_dict(), indent=2) + "\n")
+        os.replace(tmp, path)
+    except Exception:
+        # Observation is advisory. A failure here must never break a search or
+        # cause a caller to retry and spend budget twice.
+        pass
+
+
+def observed_capacity(project_root: str = ".") -> dict:
+    """Last observed provider capacity, or an explicit unobserved record."""
+    try:
+        from lib.research_provider_truth import ProviderCapacity
+    except Exception:
+        from scripts.lib.research_provider_truth import ProviderCapacity  # type: ignore
+    try:
+        return json.loads((Path(project_root) / _CAPACITY_PATH).read_text())
+    except Exception:
+        return ProviderCapacity(provider="brave").to_dict()
+
 
 def search_news(query, count=MAX_RESULTS, freshness="pd", project_root=".", caller="default"):
     ck = f"news:{query}:{freshness}"
@@ -222,6 +277,7 @@ def search_news(query, count=MAX_RESULTS, freshness="pd", project_root=".", call
     try:
         req = urllib.request.Request(url, headers=headers, method="GET")
         with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT) as resp:
+            _observe_capacity(resp, project_root)
             raw = resp.read()
             import gzip
             try: raw = gzip.decompress(raw)

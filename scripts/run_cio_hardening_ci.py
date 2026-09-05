@@ -614,6 +614,16 @@ GATES = [
         ],
     ),
     (
+        # Provider capacity is what the provider said; the ceiling is what we
+        # chose. brave_search.py asserted a 1,000/month Brave plan nobody had
+        # measured while discarding the X-RateLimit headers that would have
+        # settled it.
+        "research_provider_truth",
+        [
+            "tests/test_research_provider_truth.py",
+        ],
+    ),
+    (
         "research_observation_contract",
         [
             "tests/test_research_observation_contract.py",
