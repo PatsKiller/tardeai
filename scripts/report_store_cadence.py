@@ -57,12 +57,14 @@ def _db_query(sql: str):
         return None
 
 
-def evaluate(path: Path = STORES, *, db_query=None, found=None) -> dict:
+def evaluate(path: Path = STORES, *, db_query=None, found=None, now=None) -> dict:
     doc = json.loads(path.read_text(encoding="utf-8"))
     rows = doc.get("lanes") or []
     found = found if found is not None else LR.discover_all()
     q = db_query if db_query is not None else _db_query
-    results = [LR.evaluate_lane(r, found=found, root=ROOT, db_query=q) for r in rows]
+    results = [
+        LR.evaluate_lane(r, found=found, root=ROOT, db_query=q, now=now) for r in rows
+    ]
     for res, row in zip(results, rows):
         res["surface"] = row.get("surface")
         res["note"] = row.get("note")

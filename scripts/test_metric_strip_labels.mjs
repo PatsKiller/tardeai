@@ -59,13 +59,16 @@ check('the portfolio tile states how much value its date covers',
   code.includes('covers ${cov.at_newest_pct}% of value'))
 check('the oldest contributor carries a stamp and an age, not just a name',
   code.includes('const oldestLine') && code.includes('ageMark(posOldestAgeH)'))
-// A tooltip is not rendered text. The live audit found the oldest account had
-// vanished from the visible tile entirely -- I had replaced "oldest <name>" with
-// the coverage figure, which answers a different question. Both belong on the face.
-check('the oldest contributor is on the tile FACE, not only in the tooltip',
-  code.includes('const oldestMark') && code.includes('${oldestMark}'))
-check('the visible oldest mark carries the stamp and the age',
-  /oldestMark = posOldest[\s\S]{0,220}\$\{posOldest\}\$\{ageMark\(posOldestAgeH\)\}/.test(code))
+// Operator 2026-09-04: account + date on HOVER only. Face keeps the position date
+// and compact divergence; oldest/empties/coverage live in tip + drill.
+check('the oldest contributor is on HOVER (tip), not concatenated into face asOfNote',
+  code.includes('portfolioHoverAccounts') &&
+  code.includes('ACCOUNTS (hover)') &&
+  !code.includes('const oldestMark') &&
+  /asOfNote: portfolioFaceNote/.test(code))
+check('face portfolio note is divergence-only (no account census)',
+  /portfolioFaceNote = clockDivergences\.length/.test(code) &&
+  !/asOfNote: portfolioAsOfNote/.test(code))
 check('the four aggregate clocks are rendered as separate lines',
   code.includes('const clockLines') &&
   code.includes('positions observed') && code.includes('valued ') &&
@@ -86,18 +89,19 @@ check('the setups tile carries its run id',
   code.includes('id ${setupRun.runId}'))
 check('unaccounted setup rows are shown on the tile face',
   code.includes('UNACCOUNTED'))
-// A substring check passes on a mark that is computed and then never rendered,
-// or gated off by a literal. Both of these verify the mark REACHES the note and
-// is driven by the data -- a `false &&` in front of the condition must fail.
+// Hover still publishes these facts; they must remain data-driven in tip/hover
+// strings even when the face is date-only.
 const markIsLive = (name, drivenBy) => {
-  if (!code.includes('${' + name + '}')) return false          // reaches the rendered note
+  if (!code.includes('${' + name + '}') && !code.includes(name + '.replace')) return false
   const m = code.match(new RegExp('const ' + name + '\\s*=\\s*([^\\n]*)'))
-  return !!m && new RegExp('^' + drivenBy).test(m[1].trim())    // driven by the data, not a literal
+  return !!m && new RegExp('^' + drivenBy).test(m[1].trim())
 }
 check('a divergence between the two position-clock copies is shown, not resolved',
-  code.includes('observation_divergences') && markIsLive('divergenceMark', 'clockDivergences\\.length'))
+  code.includes('observation_divergences') &&
+  (markIsLive('divergenceMark', 'clockDivergences\\.length') || code.includes('portfolioFaceNote')))
 check('accounts holding nothing are named, not counted as unobserved',
-  code.includes('accounts_non_contributing') && markIsLive('emptyMark', 'cov\\?\\.accounts_non_contributing'))
+  code.includes('accounts_non_contributing') &&
+  (markIsLive('emptyMark', 'cov\\?\\.accounts_non_contributing') || code.includes('portfolioHoverAccounts')))
 check('undated is counted over contributors, not over every account row',
   code.includes('accounts_contributing') && code.includes('contributing undated'))
 check('degraded quotes state their symbol coverage',
@@ -130,12 +134,14 @@ if (fail) process.exit(1)
 
 check('the TODAY tile no longer attributes an all-accounts figure to one account',
   !/label: 'TODAY'[\s\S]{0,400}asOfNote: overviewAcct\b/.test(code))
-check('the TODAY tile uses an all-accounts provenance note',
-  /asOfNote: todayAsOfNote/.test(code))
+check('the TODAY tile keeps account census on hover, not face asOfNote',
+  /todayHoverAccounts/.test(code) &&
+  /asOfNote: null/.test(code) &&
+  /ACCOUNTS \(hover\)/.test(code))
 check('the TODAY provenance note is derived from the contributing accounts',
   /todayAccountCount\s*=\s*Object\.keys\(overview\?\.today_by_account/.test(code))
-check('the TODAY note falls back to a scope, never a single account name',
-  /todayAsOfNote[\s\S]{0,240}ALL ACCOUNTS/.test(code))
+check('the TODAY hover note falls back to a scope, never a single account name',
+  /todayHoverAccounts[\s\S]{0,240}ALL ACCOUNTS/.test(code))
 
 // "53.3% . 169 . $55,429" was three unlabelled numbers, and the dollar figure sat beside
 // a REALIZED tile showing a different one.

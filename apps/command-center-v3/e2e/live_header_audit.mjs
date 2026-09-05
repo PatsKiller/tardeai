@@ -107,10 +107,16 @@ async function main() {
         positions_observed: /positions observed/i.test(body),
         pnl_session: /P&L session/i.test(body),
         no_bare_data_as_of_on_tiles: !/\bdata_as_of\s+\d{4}-\d{2}-\d{2}/i.test(body),
-        coverage_pct: /covers\s+[\d.]+% of value/i.test(body),
-        oldest_with_stamp: /oldest\s+\S+\s+\d{4}-\d{2}-\d{2}/i.test(body),
-        oldest_with_age: /\(\d+[dh] old\)/i.test(body),
-        undated_accounts: /accounts undated/i.test(body),
+        // Account census moved to hover (title) after 2026-09-04; face is date-only.
+        // Observe body for dates; title attributes for oldest/coverage when present.
+        coverage_pct_on_face: /covers\s+[\d.]+% of value/i.test(body),
+        oldest_with_stamp_on_face: /oldest\s+\S+\s+\d{4}-\d{2}-\d{2}/i.test(body),
+        oldest_with_age_on_face: /\(\d+[dh] old\)/i.test(body),
+        undated_accounts: /accounts undated|contributing undated/i.test(body),
+      },
+      universe_kpi_labels: {
+        universe_go: /UNIVERSE GO/i.test(body),
+        universe_wait: /UNIVERSE WAIT/i.test(body),
       },
       count_labels: {
         run_id: /id\s+\d{4}-\d{2}-\d{2}::\d{4}/.test(body),
