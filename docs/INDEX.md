@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `3142a75485d4f5eba37acc6ca04a361057affa2a9ff4a645a73c05c5b471ecd1`
+**Tree fingerprint:** `ec9d7e0482204ba6b7a86d71aa276a9b0a520097e09320238c5c2ae3510e5e0c`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -730,9 +730,9 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/convergence/UI_REPLACEMENT_MATRIX.md` | Command Center Replacement Matrix | review_required | OK | `c5cfc7a821e2` |
 | `docs/convergence/UI_ROUTE_OWNERSHIP.md` | UI Route Ownership | review_required | OK | `fe5a35b48fc7` |
 | `docs/deepseek_audit_2026-08-02.md` | DeepSeek Audit & Fix — Comprehensive Report | review_required | OK | `68d6408f3f5c` |
-| `docs/deployment/canary-results.md` | Communications Gateway — Canary Results Template | review_required | OK | `e11eee439a65` |
+| `docs/deployment/canary-results.md` | Communications Gateway — Canary Results Template | review_required | OK | `047e5be7aadb` |
 | `docs/deployment/pre-go-live-checklist.md` | Communications Gateway — Pre Go-Live Checklist | review_required | OK | `dee3ededa3e8` |
-| `docs/deployment/production-activation.md` | Communications Gateway — Production ACTIVE Checklist | review_required | OK | `6635a04ea542` |
+| `docs/deployment/production-activation.md` | Communications Gateway — Production ACTIVE Checklist | review_required | OK | `ee3b4cd07bda` |
 | `docs/deployment/rollback-plan.md` | Communications Gateway — Rollback Plan | review_required | OK | `a593be5e3e17` |
 | `docs/deployment/rollout-plan.md` | Communications Gateway — Rollout Plan | review_required | OK | `cf5f37640df6` |
 | `docs/design/ACTIVE_TRADER_LIVE_DATA_ARCHITECTURE.md` | ActiveTrader — Live Data Architecture (2026-07-28) | current_phase_keep | OK | `bed16d9677d0` |
@@ -1180,7 +1180,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/implementation/maturity-program/mp-20260901-210554/STAGE_01_DRIVE_MIRROR_VERIFICATION.md` | Stage 1.6 · Drive mirror | review_required | OK | `4dd677d4c67b` |
 | `docs/implementation/maturity-program/sop-1.2.0-20260902/EAC13CFD0_DRIVE_MANIFEST_DISPOSITION.md` | eac13cfd0 Drive-manifest disposition | review_required | OK | `0bef5edf4cc3` |
 | `docs/implementation/maturity-program/sop-1.2.0-20260902/EVIDENCE_ARCHITECTURE.md` | SOP 1.2.0 · Evidence architecture | review_required | OK | `ab78ae35e35f` |
-| `docs/implementation/maturity-program/sop-1.2.0-20260902/MATURITY_SCORECARD.md` | Maturity scorecard — Multi-Agent SOP 1.2.0 | review_required | OK | `aaac55c44563` |
+| `docs/implementation/maturity-program/sop-1.2.0-20260902/MATURITY_SCORECARD.md` | Maturity scorecard — Multi-Agent SOP 1.2.0 | review_required | OK | `6afc0c4da4cc` |
 | `docs/implementation/maturity-program/sop-1.2.0-20260902/STAGE_00_PREFLIGHT.md` | Stage 0 · Fresh-state preflight and constitutional read | review_required | OK | `d565bb67c3fa` |
 | `docs/implementation/maturity-program/sop-1.2.0-20260902/STAGE_01_PR_COLLISION.md` | Stage 1 · Open-PR collision / convergence inventory | review_required | OK | `b072654894ad` |
 | `docs/implementation/maturity-program/sop-1.2.0-20260902/VERIFIER_RUNBOOK.md` | SOP 1.2.0 · Independent verifier runbook | review_required | OK | `ba4903599982` |
