@@ -28,7 +28,7 @@ Classification key: **LIVE** · **LIVE BUT PARTIAL** · **BUILT_DARK** · **DISC
 | Generalize CIO lineage + alert outbox | LIVE foundations / ABSENT universal | Two parallel stacks + legacy | Phase 1–3 |
 | Delivery ledger (all channels) | BUILT_DARK | `ChannelDelivery@v1` + migration + auto-RESERVED stubs on publish; no provider settlement ownership yet | Phase 3 done · wire adapters later |
 | Telegram adapter behind gateway only | LIVE BUT PARTIAL | Approved transport exists; bypasses remain | Phase 2, migrate Phase 9 |
-| Email / Slack / WhatsApp gateway adapters | DISCONNECTED / BUILT_DARK | Source-built; not gateway-mediated; activation unproven | Phase 10 |
+| Email / Slack / WhatsApp gateway adapters | BUILT_DARK | `send_via_gateway` records by default; deliver only in CANARY/ACTIVE | Phase 10 done · adoption later |
 | Subject memory / SubjectThread@v1 | BUILT_DARK | Package + migration + publish hook; not CC-visible yet | Phase 4 done · Phase 7 surfaces |
 | `/v3/communications` | BUILT_DARK | Hub+API in tree; not attested on live CURRENT until deploy | Phase 7 done · deploy/attest |
 | Controlled curation + CurationReceipt | BUILT_DARK | Tier policy + receipts + protected-fact fallback; no live LLM wiring | Phase 5 done · use in producers later |

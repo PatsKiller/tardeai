@@ -1,8 +1,9 @@
-"""Communications Gateway — canonical CommunicationEvent client (Phase 1–8).
+"""Communications Gateway — canonical CommunicationEvent client (Phase 1–10).
 
 Public API:
   - CommunicationEvent / publish_communication
   - ChannelDelivery / reserve_delivery / settle_delivery / record_chunk
+  - channel adapters: send_via_gateway (email/slack/whatsapp; deliver=False default)
   - subject memory: subject_key_for, upsert_subject, attach_event_to_subject,
     retrieve_subject_history
   - curation: select_curation_mode, curate_deterministic,
@@ -14,12 +15,13 @@ Public API:
   - new_event_id / idempotency_key_for
   - get_gateway_mode / MODE_*
 
-Does NOT own provider delivery. Modes default to OFF. Phase 3 records
+Does NOT own provider delivery by default. Modes default to OFF. Phase 3 records
 ChannelDelivery@v1 stubs (RESERVED) without sending.
 Phase 4 attaches events to subject threads after publish.
 Phase 5 curation never calls real LLM APIs.
 Phase 6 librarian classifies retention; never auto-promotes chat to knowledge.
 Phase 8 agent consumption receipts never self-certify truth.
+Phase 10 channel adapters send only when deliver=True and mode is CANARY/ACTIVE.
 """
 from __future__ import annotations
 
@@ -37,6 +39,11 @@ from scripts.lib.comms.agent_contracts import (
     get_consumption_receipt,
     list_subscriptions,
     register_subscription,
+)
+from scripts.lib.comms.channel_adapters import (
+    ADAPTER_VERSIONS,
+    SUPPORTED_CHANNELS,
+    send_via_gateway,
 )
 from scripts.lib.comms.client import PublishResult, publish_communication
 from scripts.lib.comms.curation import (
@@ -108,6 +115,13 @@ from scripts.lib.comms.mode import (
     get_gateway_mode,
     mode_diagnostics,
 )
+from scripts.lib.comms.shadow_compare import (
+    compare_legacy_vs_gateway,
+    extract_route_intent,
+    record_shadow_observation,
+    reset_shadow_observations,
+    shadow_report,
+)
 
 __all__ = [
     "CommunicationEvent",
@@ -119,6 +133,9 @@ __all__ = [
     "settle_delivery",
     "record_chunk",
     "attach_delivery_reservation",
+    "send_via_gateway",
+    "SUPPORTED_CHANNELS",
+    "ADAPTER_VERSIONS",
     "new_event_id",
     "idempotency_key_for",
     "required_missing",
@@ -184,4 +201,9 @@ __all__ = [
     "acknowledge_consumption",
     "declare_influence",
     "assert_not_self_certifying_truth",
+    "compare_legacy_vs_gateway",
+    "extract_route_intent",
+    "record_shadow_observation",
+    "shadow_report",
+    "reset_shadow_observations",
 ]
