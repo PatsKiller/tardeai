@@ -63,6 +63,9 @@ APPROVED_INBOUND = {
     "scripts/telegram_command_handler.py",
     "scripts/run_telegram_callback_poller.py",
     "scripts/discover_telegram_chat_id.py",
+    # CIO dedicated long-poll worker — getUpdates only in this file; outbound
+    # replies go through scripts.lib.cio_telegram_converse / cio_telegram_transport.
+    "scripts/cio_telegram_bot.py",
 }
 # Tooling that inspects senders rather than sending, plus the tests that DESCRIBE the
 # forbidden patterns in prose. A test documenting "do not write api.telegram.org/..."
