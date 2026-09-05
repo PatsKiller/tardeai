@@ -490,7 +490,28 @@ def health() -> dict[str, Any]:
 
     ledger_source = events.get("source") or "empty"
     db_reachable = _events_db_conn() is not None
-    delivery_owned = False  # Phase 7: gateway never owns delivery while OFF/SHADOW
+
+    # Derive ownership from the same allowlist delivery uses (fail-closed).
+    # Import channel_adapters as a module alias to avoid provider-ban false positives.
+    try:
+        from scripts.lib.comms import channel_adapters as _comms_adapters
+    except Exception:
+        from lib.comms import channel_adapters as _comms_adapters  # type: ignore
+
+    owned_classes = list(_comms_adapters.telegram_owned_classes(mode))
+    delivery_owned = mode in ("CANARY", "ACTIVE") and bool(owned_classes)
+    if mode in ("OFF", "SHADOW"):
+        banner = "Ledger-backed · gateway does not own delivery while OFF/SHADOW"
+    elif delivery_owned:
+        banner = (
+            f"Ledger-backed · gateway owns Telegram classes: "
+            f"{', '.join(owned_classes)}"
+        )
+    else:
+        banner = (
+            f"Ledger-backed · mode {mode} but no Telegram class allowlist "
+            f"(deliver fail-closed)"
+        )
 
     return {
         "ok": True,
@@ -507,6 +528,7 @@ def health() -> dict[str, Any]:
         "mode": mode,
         "mode_diagnostics": diag,
         "delivery_owned": delivery_owned,
-        "banner": "Ledger-backed · gateway does not own delivery while OFF/SHADOW",
+        "owned_classes": owned_classes,
+        "banner": banner,
         "phase": 7,
     }

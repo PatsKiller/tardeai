@@ -50,14 +50,14 @@ def _smart_split(text: str, limit: int) -> list[str]:
     return smart_split(text, limit)
 
 
-def _raw_send_telegram(
+def _raw_send_telegram_result(
     message: str,
     chat_ids: list = None,
     *,
     reply_markup: dict | None = None,
     thread_id: str | None = None,
-) -> bool:
-    """Low-level Telegram send. No routing — called after router approval."""
+) -> dict:
+    """Low-level Telegram send with provider message ids. No routing."""
     # FQDN/v3 normalization at the send chokepoint: rewrite any internal IP/localhost + legacy /v2/
     # dashboard link to the public Tailscale FQDN + /v3/ so no notification can leak a wrong URL.
     try:
@@ -68,8 +68,9 @@ def _raw_send_telegram(
     token = _token()
     targets = chat_ids or _chat_ids()
     if not token or not targets:
-        return False
+        return {"ok": False, "message_ids": [], "chat_ids": []}
     ok = True
+    message_ids: list[str] = []
     try:
         chunks = _smart_split(message, MAX_MSG_LEN)
         for cid in targets:
@@ -86,6 +87,10 @@ def _raw_send_telegram(
                 if not result.get("ok"):
                     print(f"[telegram] Error to {cid}: {result.get('status_code')}")
                     ok = False
+                    continue
+                mid = result.get("message_id")
+                if mid is not None and str(mid).strip():
+                    message_ids.append(str(mid))
     except Exception as e:
         print(f"[telegram] Error: {e}")
         ok = False
@@ -95,7 +100,29 @@ def _raw_send_telegram(
         capture(message, ok=ok, channel="telegram")
     except Exception:
         pass
-    return ok
+    return {
+        "ok": ok,
+        "message_ids": message_ids,
+        "chat_ids": [str(c) for c in targets],
+    }
+
+
+def _raw_send_telegram(
+    message: str,
+    chat_ids: list = None,
+    *,
+    reply_markup: dict | None = None,
+    thread_id: str | None = None,
+) -> bool:
+    """Low-level Telegram send. No routing — called after router approval."""
+    return bool(
+        _raw_send_telegram_result(
+            message,
+            chat_ids,
+            reply_markup=reply_markup,
+            thread_id=thread_id,
+        ).get("ok")
+    )
 
 
 def _legacy_send(

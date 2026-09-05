@@ -1,4 +1,4 @@
-# `delivery_owned` contradicts the gateway it describes
+# [FIXED 2026-09-05] `delivery_owned` contradicts the gateway it describes
 
 **Date:** 2026-09-05
 **Found by:** the cc-header-final session, while verifying an unrelated deploy
@@ -210,3 +210,8 @@ knowing when weighing the rest of this document.
 - no comms code changed
 - no mode or env changed
 - `phase: 7` in the payload may also be stale; not investigated
+
+
+## Resolution
+
+Fixed: `communications_portal.health()` now derives `delivery_owned` + `owned_classes` from `telegram_owned_classes(mode)` and builds the banner from mode/allowlist. Telegram SENT rows populate `provider_message_id` via `_raw_send_telegram_result`.
