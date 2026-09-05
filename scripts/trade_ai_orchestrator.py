@@ -40,7 +40,7 @@ Full 23-stage pipeline:
 """
 from __future__ import annotations
 import argparse, json, os, sys, traceback
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 try:
     from dotenv import load_dotenv
@@ -1038,7 +1038,20 @@ def run_pipeline(root, run_label, date_str, use_llm=True, send_alerts=True, skip
             "version":           "12.0",
             "date":              date_str,
             "run_label":         run_label,
+            # `generated_at` is naive and host-local: no offset, no Z. It cannot
+            # be converted, and any surface that renders it must say so rather
+            # than infer a zone from the host's TZ. Kept verbatim because
+            # api_v2, db_adapter.save_run_summary, morning_digest,
+            # trade_ai_news_monitor, hermes_tradeai_handshake and
+            # heal_trade_ai_session_cache all read this key — changing its
+            # meaning in place would silently move every one of them.
             "generated_at":      datetime.now().isoformat(timespec="seconds"),
+            # The zoned stamp new readers should prefer. UTC, not
+            # datetime.now().astimezone(): a tz-aware LOCAL stamp is still a
+            # function of host config and breaks the moment the box moves or a
+            # container runs UTC.
+            "generated_at_utc":  datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "generated_at_tz":   "UTC",
             "ticker_count":      len(scored),
             "go_count":          sum(1 for t in scored if t.get("decision") == "GO"),
             "wait_count":        sum(1 for t in scored if t.get("decision") == "WAIT"),

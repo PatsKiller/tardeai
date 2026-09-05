@@ -15145,23 +15145,65 @@ def _compute_trade_ai():
 
     # Run health enrichment (status + reason_codes already in screener_run_health)
     _latest_run_label = latest.get("run_label", "")
-    _latest_run_timestamp = latest.get("generated_at", "")
+    # Prefer the zoned stamp when the producer wrote one. `generated_at` is
+    # naive host-local and cannot be converted; a surface that renders it must
+    # say the zone is unstated rather than infer one from the host's TZ.
+    _latest_run_timestamp = latest.get("generated_at_utc") or latest.get("generated_at", "")
     _run_health_status = None
     _run_health_reason_codes = []
     _expected_min_symbols = None
+    _run_health_scope = None
+    _run_health_run_label = None
     _today_signal_count = 0
+    _RH_COLS = (
+        "status, symbols_scanned, go_count AS rh_go, wait_count AS rh_wait, "
+        "no_go_count, reason_codes, finished_at, expected_min_symbols, "
+        "run_label AS rh_run_label, run_date AS rh_run_date"
+    )
     try:
-        _rh = _db_query(
-            """
-            SELECT status, symbols_scanned, go_count AS rh_go, wait_count AS rh_wait,
-                   no_go_count, reason_codes, finished_at, expected_min_symbols
-            FROM screener_run_health
-            WHERE run_date = CURRENT_DATE
-            ORDER BY finished_at DESC NULLS LAST LIMIT 1
-        """,
-            fetch="one",
-        )
+        # Scope the health row to THIS run, not merely to today.
+        #
+        # This was `WHERE run_date = CURRENT_DATE ORDER BY finished_at DESC LIMIT 1`,
+        # while run_id / run_label come from run_summary.json. On a day with
+        # several runs those describe different runs, so the header printed a
+        # health verdict beside an id it did not belong to — the same defect
+        # class as the cross-day run_label leak fixed in #857.
+        #
+        # A hard join is the WRONG fix: record_screener_run_finish stamps
+        # run_date from the DB server's clock while run_summary uses the
+        # orchestrator's date_str, so around midnight or on a re-run they
+        # legitimately differ. A strict join turns a possibly-wrong verdict into
+        # a silently absent one, which is worse. Scope, fall back, and publish
+        # which of the two happened — never resolve it silently.
+        _rh = None
+        if _latest_run_label and latest.get("date"):
+            _rh = _db_query(
+                f"""
+                SELECT {_RH_COLS}
+                FROM screener_run_health
+                WHERE run_date = %s AND run_label = %s
+                ORDER BY finished_at DESC NULLS LAST LIMIT 1
+            """,
+                [str(latest.get("date"))[:10], str(_latest_run_label)],
+                fetch="one",
+            )
+            if _rh:
+                _run_health_scope = "exact_run"
+        if not _rh:
+            _rh = _db_query(
+                f"""
+                SELECT {_RH_COLS}
+                FROM screener_run_health
+                WHERE run_date = CURRENT_DATE
+                ORDER BY finished_at DESC NULLS LAST LIMIT 1
+            """,
+                fetch="one",
+            )
+            if _rh:
+                # The verdict is real but may describe a different run. Say so.
+                _run_health_scope = "latest_today_unmatched"
         if _rh:
+            _run_health_run_label = _rh.get("rh_run_label")
             _run_health_status = _rh.get("status")
             _rc = _rh.get("reason_codes") or []
             if isinstance(_rc, str):
@@ -15234,6 +15276,11 @@ def _compute_trade_ai():
         "run_health_reason_codes": _run_health_reason_codes,
         "reason_codes": _run_health_reason_codes,  # alias for UI (same envelope)
         "expected_min_symbols": _expected_min_symbols,
+        # 'exact_run' = the health row is this run's. 'latest_today_unmatched' =
+        # it is today's most recent, which may be a different run. Published so a
+        # surface can qualify the verdict instead of implying a match.
+        "run_health_scope": _run_health_scope,
+        "run_health_run_label": _run_health_run_label,
         "vix": _vix_val,
         "vix_source": _vix_src,
         "vix_observation_time": _vix_obs,
@@ -17177,6 +17224,17 @@ def trade_ai_summary():
         "market_regime",
         "breadth",
         "run_health_status",
+        # The panel renders "RUN UNDERFILLED · health floor 40 · UNIVERSE_TOO_SMALL"
+        # from these three. They were absent from this allowlist, so the header
+        # could name neither the floor nor the reason and rendered the same run
+        # as healthy. Same cached dict, different survivors.
+        "run_health_reason_codes",
+        "reason_codes",
+        "expected_min_symbols",
+        # Whether that health row actually belongs to this run — see the scoping
+        # comment at the screener_run_health query.
+        "run_health_scope",
+        "run_health_run_label",
         "latest_run_label",
         "latest_run_timestamp",
         "run_label",
