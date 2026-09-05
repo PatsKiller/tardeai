@@ -738,6 +738,84 @@ def get_consumption_receipt(receipt_id: str) -> dict[str, Any] | None:
         return dict(row) if row else None
 
 
+def list_consumption_receipts(
+    agent_id: str | None = None,
+    *,
+    limit: int = 200,
+) -> list[dict[str, Any]]:
+    """List consumption receipts (DB then memory), newest retrieved_at first.
+
+    Optional ``agent_id`` filter. The Command Center Agent Memory view is backed
+    by this read-only projection so CIO/Advisory/Hermes consumption is auditable
+    without exposing raw transcripts.
+    """
+    lim = max(1, min(int(limit or 200), 1000))
+    aid = _normalize_agent_id(agent_id) if agent_id else None
+
+    conn = _db_conn()
+    if conn is not None:
+        try:
+            with conn.cursor() as cur:
+                if aid:
+                    cur.execute(
+                        """
+                        SELECT receipt_id, agent_id, agent_version, event_id, thread_id,
+                               artifact_ids, purpose, policy_decision, retrieved_at,
+                               acknowledged_at, derived_artifact_ids,
+                               influence_declaration, influence_event_ids, schema_version
+                          FROM communication_agent_consumption_receipts
+                         WHERE agent_id = %s
+                         ORDER BY retrieved_at DESC NULLS LAST
+                         LIMIT %s
+                        """,
+                        (aid, lim),
+                    )
+                else:
+                    cur.execute(
+                        """
+                        SELECT receipt_id, agent_id, agent_version, event_id, thread_id,
+                               artifact_ids, purpose, policy_decision, retrieved_at,
+                               acknowledged_at, derived_artifact_ids,
+                               influence_declaration, influence_event_ids, schema_version
+                          FROM communication_agent_consumption_receipts
+                         ORDER BY retrieved_at DESC NULLS LAST
+                         LIMIT %s
+                        """,
+                        (lim,),
+                    )
+                cols = [
+                    "receipt_id", "agent_id", "agent_version", "event_id",
+                    "thread_id", "artifact_ids", "purpose", "policy_decision",
+                    "retrieved_at", "acknowledged_at", "derived_artifact_ids",
+                    "influence_declaration", "influence_event_ids", "schema_version",
+                ]
+                rows = []
+                for tup in cur.fetchall():
+                    r = dict(zip(cols, tup))
+                    for jk in ("artifact_ids", "derived_artifact_ids", "influence_event_ids"):
+                        if isinstance(r.get(jk), str):
+                            r[jk] = json.loads(r[jk])
+                    r["persisted"] = "db"
+                    rows.append(r)
+            conn.commit()
+            if rows:
+                return rows
+        except Exception:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+
+    with _lock:
+        rows = [dict(r) for r in _RECEIPTS.values()]
+    if aid:
+        rows = [r for r in rows if _normalize_agent_id(r.get("agent_id") or "") == aid]
+    rows.sort(key=lambda r: str(r.get("retrieved_at") or ""), reverse=True)
+    for r in rows:
+        r["persisted"] = r.get("persisted") or "memory"
+    return rows[:lim]
+
+
 def acknowledge_consumption(receipt_id: str) -> dict[str, Any]:
     """Set acknowledged_at on an existing receipt."""
     rid = (receipt_id or "").strip()
