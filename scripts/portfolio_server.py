@@ -1830,7 +1830,16 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
                 "(function(){fetch('/v3/build-meta.json',{cache:'no-store'})"
                 ".then(function(r){return r.json();})"
                 ".then(function(m){var v=m.ui_version||'%s',k='cc_v3_build';"
-                "try{if(sessionStorage.getItem(k)!==v){sessionStorage.setItem(k,v);"
+                # Same first-load guard as the inline injection: record the version
+                # unconditionally, reload only when a PREVIOUS one existed and
+                # differed. Kept symmetric deliberately — the two readers must
+                # agree, which is the whole subject of
+                # tests/test_cc_v3_boot_no_reload_loop.py. In practice the inline
+                # script seeds the key first, but this path also serves markup with
+                # no inline injection, and relying on that ordering is how the two
+                # drifted apart in the first place.
+                "try{var p=sessionStorage.getItem(k);sessionStorage.setItem(k,v);"
+                "if(p!==null&&p!==v){"
                 # strip any STALE _cc_reload before adding a fresh one, so a new version always forces a
                 # fresh-URL reload (the old code skipped the reload whenever _cc_reload was already present,
                 # pinning the browser to a cached bundle). sessionStorage above prevents an infinite loop.
@@ -1937,8 +1946,23 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
                 if _v3_file.name == "index.html":
                     _build_ver = _cc_v3_ui_version()   # MUST match /v3/cc-boot.js exactly
                     _inject = (
+                        # Reload only when a PREVIOUS version was recorded and differs.
+                        #
+                        # This compared `getItem(k) !== v`, and on the first load of any
+                        # session getItem is null — so it always reloaded, cancelling the
+                        # in-flight bundle (net::ERR_ABORTED) for one wasted navigation
+                        # per session. Moving this script earlier in <head> does NOT help:
+                        # Chrome's preload scanner reads ahead of the parser and has
+                        # already begun the module fetch.
+                        #
+                        # A first visit has nothing to bust. Bundle filenames are
+                        # content-hashed, so a new build is a new URL the cache cannot
+                        # answer with stale JS; the reload exists for the case where a
+                        # session already SAW a different version. Recording the version
+                        # without reloading preserves that and drops the false positive.
                         "<script>(function(){var v='%s',k='cc_v3_build';"
-                        "try{if(sessionStorage.getItem(k)!==v){sessionStorage.setItem(k,v);"
+                        "try{var p=sessionStorage.getItem(k);sessionStorage.setItem(k,v);"
+                        "if(p!==null&&p!==v){"
                         # strip any stale _cc_reload, then reload with a fresh one — a new version always
                         # busts the cached bundle (see cc-boot.js above for the full rationale).
                         "var s=location.search.replace(/[?&]_cc_reload=\\d+/,'');if(s.charAt(0)==='&')s='?'+s.slice(1);"

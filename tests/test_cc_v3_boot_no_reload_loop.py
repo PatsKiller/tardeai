@@ -103,6 +103,26 @@ def main() -> int:
     check("a </head> fallback remains for markup with no module script",
           'elif b"</head>" in _body:' in src)
 
+    # 10. NEITHER path may reload on a first visit.
+    #
+    #     Both compared `getItem(k) !== v`, and on the first load of any session
+    #     getItem is null — so both always reloaded, cancelling the in-flight
+    #     bundle for one wasted navigation per session. A first visit has nothing
+    #     to bust: bundle filenames are content-hashed, so a new build is a new
+    #     URL the cache cannot answer with stale JS. Record the version, and
+    #     reload only when a PREVIOUS one existed and differed.
+    #
+    #     Note the earlier attempt at this — moving the inline script ahead of
+    #     the module tag — did NOT work: Chrome's preload scanner reads ahead of
+    #     the parser and had already started the fetch. Ordering is necessary
+    #     hygiene, not the fix.
+    first_load_guards = src.count("if(p!==null&&p!==v)")
+    check("neither boot path reloads on a first visit", first_load_guards >= 2,
+          f"found {first_load_guards} of 2 (inline injection + cc-boot.js)")
+    check("no bare getItem!==v comparison remains",
+          "sessionStorage.getItem(k)!==v" not in src,
+          "that form reloads whenever the key is unset, i.e. every first load")
+
     print(f"\nAll {passed} cc-v3 boot-loop guards passed.")
     return 0
 
