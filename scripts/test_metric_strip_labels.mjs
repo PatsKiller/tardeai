@@ -78,9 +78,29 @@ check('the oldest contributor is on HOVER (tip), not concatenated into face asOf
   code.includes('ACCOUNTS (hover)') &&
   !code.includes('const oldestMark') &&
   /asOfNote: portfolioFaceNote/.test(code))
-check('face portfolio note is divergence-only (no account census)',
-  /portfolioFaceNote = clockDivergences\.length/.test(code) &&
-  !/asOfNote: portfolioAsOfNote/.test(code))
+// This matched the literal shape `portfolioFaceNote = clockDivergences.length`,
+// which breaks on any refactor of the assignment even when the property holds.
+// The property is: the face carries no ACCOUNT CENSUS — that lives on hover.
+const faceNoteBlock = () => {
+  const m = code.match(/const portfolioFaceNote\s*=\s*\[([\s\S]*?)\]\.filter\(/)
+  return m ? m[1] : null
+}
+
+check('face portfolio note carries no account census', (() => {
+  const face = faceNoteBlock()
+  if (!face) return false
+  const census = /oldestLine|oldestMark|emptyMark|undatedMark|portfolioHoverAccounts|funded accts/
+  return !census.test(face) && !/asOfNote: portfolioAsOfNote/.test(code)
+})())
+// And the divergence itself must be UNGATED. A design flag that could hide it
+// would re-create the defect deliberately; scripts/lib/design_features.py
+// refuses to define one, and this asserts the renderer does not invent one.
+check('the divergence mark is not gated on any design flag', (() => {
+  const face = faceNoteBlock()
+  if (!face) return false
+  const entry = face.split(/,\n/).find(e => /clockDivergences\.length/.test(e))
+  return !!entry && !/show[A-Z]/.test(entry)
+})())
 check('the four aggregate clocks are rendered as separate lines',
   code.includes('const clockLines') &&
   code.includes('positions observed') && code.includes('valued ') &&
@@ -165,10 +185,9 @@ check('the source no longer claims the run zone is stated', !/the zone is stated
 // silent. But the AGENTS.md 9.1 concern is real — "no divergence" must stay
 // distinguishable from "the field was never published" — so the check moves to
 // where the answer now lives rather than being dropped.
-check('a divergence-only face still leaves the clock facts stated on hover', (() => {
-  const face = code.match(/const portfolioFaceNote\s*=\s*([\s\S]{0,200}?)\n\n/)
-  if (!face || !/clockDivergences\.length/.test(face[1])) return false
-  // and the tooltip must enumerate the clocks whether or not one diverged
+check('a quiet face still leaves the clock facts stated on hover', (() => {
+  const face = faceNoteBlock()
+  if (!face || !/clockDivergences\.length/.test(face)) return false
   return /const clockLines/.test(code) && code.includes('${clockLines.join')
 })())
 check('quote coverage stays on the face in the healthy state',
