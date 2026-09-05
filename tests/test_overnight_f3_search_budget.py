@@ -175,7 +175,7 @@ def test_brave_search_source_denies_when_shared_unavailable():
     assert "_shared_check = None" not in body
     assert "shared budget unavailable — DENY" in body
     # Shared check is mandatory — verdict consulted unconditionally after import.
-    assert 'verdict = _shared_check("brave")' in body
+    assert '_shared_check("brave"' in body
 
 
 def test_guard_returns_false_when_over_so_callers_return_empty(tmp_path: Path, monkeypatch):
@@ -186,3 +186,63 @@ def test_guard_returns_false_when_over_so_callers_return_empty(tmp_path: Path, m
     st = sb.status("brave", now=NOW, root=tmp_path)
     assert st["daily_used"] == 0
     assert st["denied_today"] == 1
+
+
+# ── Monthly reserve: on-demand callers may not be starved by cron ────────────
+# Added 2026-09-05 with the ceiling raise (25/850 -> 120/1500). A denied Brave
+# call is not a downgrade: brave_search.py returns False and the research is
+# lost, because no fallback provider is wired behind a refusal. So a scheduled
+# bulk job must not be able to consume the allowance an interactive query needs.
+
+def test_on_demand_caller_may_draw_on_the_reserve(tmp_path: Path,
+                                                  monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("SEARCH_BUDGET_BRAVE_MONTHLY", "1000")
+    monkeypatch.setenv("SEARCH_BUDGET_BRAVE_DAILY", "10000")
+    assert sb.effective_monthly_limit("brave", "web_research", 1000) == 1000
+
+
+def test_scheduled_caller_stops_at_the_reserve_line(tmp_path: Path):
+    eff = sb.effective_monthly_limit("brave", "some_cron_job", 1000)
+    assert eff == 1000 - sb.reserve_for("brave", 1000)
+    assert eff < 1000, "a scheduled caller must not reach the full ceiling"
+
+
+def test_reserve_refusal_is_distinguishable_from_exhaustion(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """MONTHLY_RESERVE_ONLY means 'a manual query would still go out'.
+
+    Collapsing it into MONTHLY_EXHAUSTED would tell an operator the month was
+    spent when in fact only the bulk allowance was.
+    """
+    monkeypatch.setenv("SEARCH_BUDGET_BRAVE_MONTHLY", "10")
+    monkeypatch.setenv("SEARCH_BUDGET_BRAVE_DAILY", "10000")
+    # reserve is capped at a fifth => 2 held back, bulk ceiling is 8.
+    for _ in range(8):
+        assert sb.try_consume("brave", caller="cron", now=NOW, root=tmp_path)["allowed"]
+    denied = sb.try_consume("brave", caller="cron", now=NOW, root=tmp_path)
+    assert denied["allowed"] is False
+    assert denied["reason"] == "MONTHLY_RESERVE_ONLY"
+    # ...and the on-demand caller still gets through, which is the whole point.
+    assert sb.try_consume("brave", caller="web_research", now=NOW, root=tmp_path)["allowed"]
+
+
+def test_reserve_can_never_starve_the_whole_budget(tmp_path: Path):
+    """NEGATIVE CONTROL for a bug this suite caught during the ceiling raise.
+
+    The reserve was first written as a flat 200 subtracted from the configured
+    monthly limit. `SEARCH_BUDGET_BRAVE_MONTHLY=150` then produced an effective
+    ceiling of zero: every scheduled call denied, while the ledger reported 0
+    used of 150. A provider switched off by a config value that reads as
+    caution. The reserve is now capped at a fifth of the budget it comes from.
+    """
+    for limit in (1, 2, 10, 150, 199, 1000, 1500):
+        eff = sb.effective_monthly_limit("brave", "cron", limit)
+        assert eff > 0 or limit == 0, f"limit {limit} left no bulk allowance at all"
+        assert sb.reserve_for("brave", limit) <= limit // sb.RESERVE_MAX_SHARE
+        assert eff <= limit
+
+
+def test_unknown_caller_is_treated_as_scheduled(tmp_path: Path):
+    """Fail closed: an unrecognised caller does not get the reserve."""
+    assert sb.effective_monthly_limit("brave", "who_is_this", 1000) < 1000

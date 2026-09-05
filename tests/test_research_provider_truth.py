@@ -121,7 +121,7 @@ def test_unobserved_provider_binds_to_local_policy_for_the_honest_reason():
     assert r["conflict"] is None
     # both authorities survive the reconcile, separately
     assert r["provider_capacity"]["observed"] is False
-    assert r["local_policy"]["monthly_calls"] == 850
+    assert r["local_policy"]["monthly_calls"] == BRAVE_LOCAL_COST_POLICY.monthly_calls
 
 
 def test_provider_stricter_than_policy_is_reported_as_a_conflict():
@@ -129,7 +129,7 @@ def test_provider_stricter_than_policy_is_reported_as_a_conflict():
     r = reconcile(parse_provider_capacity("brave", {"X-RateLimit-Limit": "1, 500"}), BRAVE_LOCAL_COST_POLICY)
     assert r["binding_ceiling"] == "provider"
     assert r["conflict"] is not None
-    assert "850" in r["conflict"] and "500" in r["conflict"]
+    assert "1500" in r["conflict"] and "500" in r["conflict"]
 
 
 def test_policy_stricter_than_provider_is_not_a_conflict():
@@ -144,7 +144,7 @@ def test_summary_states_both_authorities_and_never_one_number():
     r = reconcile(parse_provider_capacity("brave", REAL), BRAVE_LOCAL_COST_POLICY)
     s = r["summary"]
     assert "15000" in s, "provider capacity missing from the summary"
-    assert "850" in s, "local policy missing from the summary"
+    assert "1500" in s, "local policy missing from the summary"
     assert "binding" in s
 
 
@@ -169,15 +169,30 @@ def test_brave_search_observes_the_headers_it_used_to_discard():
         assert ln.strip().startswith("_observe_capacity("), ln
 
 
-def test_the_ceilings_did_not_move():
-    """This change is about naming, not spending. A silent budget change here
-    would be a real behaviour change smuggled in under a truth fix."""
-    import brave_search as b
+def test_the_three_copies_of_the_ceiling_agree():
+    """The ceiling is written in THREE places. They must never drift apart.
 
-    assert b.DAILY_BUDGET == 25
-    assert b.MONTHLY_BUDGET == 850
-    assert BRAVE_LOCAL_COST_POLICY.daily_calls == b.DAILY_BUDGET
-    assert BRAVE_LOCAL_COST_POLICY.monthly_calls == b.MONTHLY_BUDGET
+    Raised 2026-09-05 on explicit operator instruction, from 25/850 to 120/1500,
+    for the Hermes research ramp. The previous version of this test pinned the
+    literals 25 and 850 and failed on that change — which is the behaviour I
+    wanted from it: a budget change must be deliberate and visible, never
+    smuggled in under a refactor. It is updated here, not deleted.
+
+    What it now pins is the property that actually matters and was previously
+    untested: lib/search_budget.DEFAULT_LIMITS is the BINDING ceiling — the
+    shared check runs first, ahead of brave_search's own — and nothing asserted
+    it agreed with the other two. A drift there would mean the documented policy
+    and the enforced policy were different numbers.
+    """
+    import brave_search as b
+    from lib.search_budget import DEFAULT_LIMITS
+
+    binding = DEFAULT_LIMITS["brave"]
+    assert BRAVE_LOCAL_COST_POLICY.daily_calls == b.DAILY_BUDGET == binding["daily"]
+    assert BRAVE_LOCAL_COST_POLICY.monthly_calls == b.MONTHLY_BUDGET == binding["monthly"]
+    # And the reserve must leave a real bulk allowance, not swallow the budget.
+    from lib.search_budget import MONTHLY_RESERVE
+    assert 0 < MONTHLY_RESERVE["brave"] < binding["monthly"] // 2
 
 
 # ── Regression: the real headers Brave returned on 2026-09-05 ────────────────

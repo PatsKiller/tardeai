@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `7163b4bf7d830c13e4f6f56beb146864d254cb1b04568faee49ebe61cf93c524`
+**Tree fingerprint:** `8e19db7ce69d554bf87e2cccf6e987761f6ac3259366787a54260b7718ffcfc9`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,10 +12,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2394 |
-| Markdown (excl. this INDEX) | 1994 |
+| Files under `docs/` (excl. this INDEX) | 2395 |
+| Markdown (excl. this INDEX) | 1995 |
 | **MISSING HEADER** | **19** |
-| Header OK | 1975 |
+| Header OK | 1976 |
 | Duplicate groups | 5 |
 
 ### By status_guess
@@ -30,7 +30,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_raw_sync | 34 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 6 |
-| review_required | 2006 |
+| review_required | 2007 |
 
 ## Markdown tree
 
@@ -169,6 +169,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/_findings/ops_morning_stability_2026-07-16.md` | Findings — Morning Ops Stability (2026-07-16) | review_required | OK | `99fc676a70c5` |
 | `docs/_findings/ops_scanner_500_loop_2026-07-17.md` | Ops: Market Opportunities Scanner 500-loop + Postgres slot exhaustion — 2026-07-17 | review_required | OK | `3946f6f102db` |
 | `docs/_findings/pre_burnin_findings_2026-05-25.md` | Pre-Burn-In Findings (2026-05-25) | review_required | OK | `d0becac9e7c6` |
+| `docs/_findings/pre_persistent_agent_phase0_evidence_ledger_2026-09-05.md` | Phase 0 evidence ledger — pre-persistent-agent truth closeout | review_required | OK | `52201fbdb667` |
 | `docs/_findings/reports_desk_v1_diagnosis_2026-07-16.md` | Reports Desk v2 — Phase 0 Residual Diagnosis (2026-07-16 evening) | review_required | OK | `f0e237b06695` |
 | `docs/_findings/reports_desk_v3_diagnosis_2026-07-17.md` | Reports Desk v3 — Phase 0 Diagnosis (2026-07-17) | review_required | OK | `1231c78a1e34` |
 | `docs/_findings/ri_v3_1_diagnosis_2026-07-16.md` | RI v3.1 Phase 0 Diagnosis — 2026-07-16 | review_required | OK | `3c83b0e51f83` |

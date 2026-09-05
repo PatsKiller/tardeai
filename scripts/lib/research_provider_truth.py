@@ -241,12 +241,18 @@ BRAVE_LOCAL_COST_POLICY = LocalCostPolicy(
     name="LOCAL_MONTHLY_COST_POLICY",
     owner="operator (John) — Trade AI research cost control",
     rationale=(
-        "Self-imposed spend ceiling for Brave research. Chosen locally to bound cost "
-        "and leave manual/P0 headroom. NOT a provider plan: no Brave response observed "
-        "by this system has ever stated a monthly quota."
+        "Self-imposed spend ceiling for Brave research, raised 2026-09-05 for the "
+        "Hermes research ramp. NOT a provider plan: Brave's own headers, observed "
+        "2026-09-05, report 50 req/sec and a per_month window of 0 — unmetered. The "
+        "provider imposes no monthly ceiling on this key, so this number is purely "
+        "our cost choice. The two ceilings do different jobs: daily 120 is a "
+        "runaway-loop breaker (a denial loses the research outright — no fallback "
+        "provider is wired behind a refusal), monthly 1500 is the cost bound, roughly "
+        "1.5 units of a thousand queries. 200 of the month is reserved for on-demand "
+        "and operator queries so a cron job cannot starve an interactive one."
     ),
-    daily_calls=25,
-    monthly_calls=850,
+    daily_calls=120,
+    monthly_calls=1500,
 )
 
 

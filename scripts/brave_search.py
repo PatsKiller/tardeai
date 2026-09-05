@@ -1,7 +1,7 @@
 """
 brave_search.py — Brave Search API integration for Ollama web search
 
-Daily budget cap: 25/day, 850/month — a LOCAL cost policy, not a provider plan.
+Daily budget cap: 120/day, 1500/month — a LOCAL cost policy, not a provider plan.
 
 This docstring previously asserted a Brave free-tier monthly quota. No Brave
 response observed by this system has ever stated one: that figure was an
@@ -24,11 +24,16 @@ BRAVE_API_URL = "https://api.search.brave.com/res/v1/web/search"
 BRAVE_NEWS_URL = "https://api.search.brave.com/res/v1/news/search"
 MAX_RESULTS = 5
 REQUEST_TIMEOUT = 10
-DAILY_BUDGET = 25
+DAILY_BUDGET = 120
 # LOCAL cost policy, owned by the operator — NOT a provider limit. Named and
 # justified in lib/research_provider_truth.BRAVE_LOCAL_COST_POLICY, which is the
-# single place these numbers are explained. Unchanged in value.
-MONTHLY_BUDGET = 850
+# single place these numbers are explained.
+#
+# These mirror lib/search_budget.DEFAULT_LIMITS["brave"], which is the binding
+# ceiling — this module's own check runs second, behind the shared one. Raised
+# 2026-09-05 with the daily/monthly split described there: daily is a runaway
+# breaker, monthly is the cost bound.
+MONTHLY_BUDGET = 1500
 SKIP_WEEKENDS = True
 # Callers that answer a question someone is waiting for. These are rate-limited
 # and budgeted like everything else; they are simply not silenced on a weekend.
@@ -88,7 +93,11 @@ def _check_budget(caller: str = "default") -> bool:
         except ImportError:
             print("  [brave-search] shared budget unavailable — DENY (never fail open)")
             return False
-    verdict = _shared_check("brave")
+    # Pass the caller: the shared ledger holds a monthly reserve that only
+    # on-demand callers may draw on. Omitting it made every call look scheduled,
+    # which would starve interactive research at the reserve line instead of the
+    # real ceiling.
+    verdict = _shared_check("brave", caller=caller.split("/")[-1].replace(".py", ""))
     if not verdict["allowed"]:
         print(f"  [brave-search] denied by shared budget: {verdict['reason']}")
         return False
