@@ -246,3 +246,28 @@ def test_reserve_can_never_starve_the_whole_budget(tmp_path: Path):
 def test_unknown_caller_is_treated_as_scheduled(tmp_path: Path):
     """Fail closed: an unrecognised caller does not get the reserve."""
     assert sb.effective_monthly_limit("brave", "who_is_this", 1000) < 1000
+
+
+def test_l2_ledger_is_not_tree_relative(tmp_path: Path):
+    """Every tree must resolve the SAME L2 ledger.
+
+    `brave_search._BUDGET_FILE` was `Path(__file__).parent.parent / data/...`,
+    so the server (running from a release dir) and cron (running from the dev
+    tree) each kept a private counter and each enforced the ceiling against a
+    fraction of the traffic. Eight copies of that basename exist on this host.
+
+    This pins the property, not the path: the resolved ledger must sit under the
+    same canonical state root that lib/search_budget uses, so it cannot drift
+    back to being relative to the importer.
+    """
+    import brave_search as b
+    from scripts.lib.search_budget import _state_root, budget_path
+
+    root = _state_root()
+    assert b._BUDGET_FILE.is_relative_to(root), (
+        f"L2 ledger {b._BUDGET_FILE} is outside the canonical state root {root}")
+    assert budget_path().is_relative_to(root)
+    # And it must NOT be inside whichever source tree imported the module.
+    src_tree = Path(b.__file__).resolve().parent.parent
+    assert not b._BUDGET_FILE.is_relative_to(src_tree), (
+        "L2 ledger resolved relative to the importing tree — the defect returned")

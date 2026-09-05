@@ -52,7 +52,46 @@ _cache_ttl_web = 300       # 5 min for web search
 _cache_ttl_news = 3600     # 60 min for news search
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
-_BUDGET_FILE = _PROJECT_ROOT / "data" / "portfolios" / "state" / "brave_search_budget.json"
+
+
+def _budget_file() -> Path:
+    """The L2 per-caller ledger, at ONE canonical location for every tree.
+
+    This was `Path(__file__).parent.parent / data/portfolios/state/...` — i.e.
+    resolved relative to whichever tree happened to import this module. That
+    gave every tree a PRIVATE counter, and the copies then disagreed:
+
+        release symlink -> persistent-state/…/brave_search_budget.json
+                           frozen 2026-08-10, no September at all
+        dev tree        -> trade-ai-v12-rebuild/…/brave_search_budget.json
+                           September = 54
+
+    Eight copies of this basename exist on the host. The server process
+    resolves the first; cron jobs running from the dev tree resolve the second.
+    Neither is wrong and neither is complete, so the ceiling each enforces is
+    computed from a fraction of the traffic — the same "working alarm on an
+    unrepresentative sensor" failure that created lib/search_budget.py, one
+    layer down.
+
+    Resolving through the canonical state root, exactly as
+    lib/search_budget.budget_path() does, makes every caller share one counter.
+    The scattered copies are thereby made inert without deleting any of them:
+    nothing resolves to them any more, and they remain readable as history.
+    """
+    try:
+        from scripts.lib.search_budget import _state_root
+    except ImportError:                                  # pragma: no cover
+        try:
+            from lib.search_budget import _state_root    # type: ignore
+        except ImportError:
+            # Never silently fall back to a tree-relative path — that is the
+            # defect. Use the same last-resort constant search_budget uses.
+            return (Path.home() / "trade-ai-releases" / "persistent-state"
+                    / "data" / "portfolios" / "state" / "brave_search_budget.json")
+    return _state_root() / "data" / "portfolios" / "state" / "brave_search_budget.json"
+
+
+_BUDGET_FILE = _budget_file()
 
 
 def _load_budget() -> dict:

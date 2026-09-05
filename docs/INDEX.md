@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `8e19db7ce69d554bf87e2cccf6e987761f6ac3259366787a54260b7718ffcfc9`
+**Tree fingerprint:** `d412be612d73261ce475d4e840cf83669fb285c37ac32346de0f60185a6853db`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,10 +12,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2395 |
-| Markdown (excl. this INDEX) | 1995 |
-| **MISSING HEADER** | **19** |
-| Header OK | 1976 |
+| Files under `docs/` (excl. this INDEX) | 2400 |
+| Markdown (excl. this INDEX) | 2000 |
+| **MISSING HEADER** | **20** |
+| Header OK | 1980 |
 | Duplicate groups | 5 |
 
 ### By status_guess
@@ -30,7 +30,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_raw_sync | 34 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 6 |
-| review_required | 2007 |
+| review_required | 2012 |
 
 ## Markdown tree
 
@@ -105,6 +105,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/PULLBACK_MACD_SCREENER.md` | Pullback / MACD Screener | review_required | OK | `afc1169eccc2` |
 | `docs/RESEARCH_INGEST_TICKER_AUDIT_2026_06_20.md` | Research Ingestion + Ticker Extraction + Connector Audit — 2026-06-20 | review_required | OK | `d78b663bf596` |
 | `docs/RESEARCH_PRIORITIZATION.md` | Research Prioritization & Refresh Methodology (all Hermes lanes, 24/7) | review_required | OK | `139c93ab1bcd` |
+| `docs/RESEARCH_PROVIDER_ROUTING.md` | Research provider routing — when Brave should be used | review_required | OK | `9c61b2f7c573` |
 | `docs/RESEARCH_TOPIC_REGISTRY_2026_06_04.md` | Research Topic Registry — 2026-06-04 | review_required | OK | `f51d95275ab4` |
 | `docs/RESTORE_GUIDE.md` | Trade AI v12 — Restore Guide | active_keep | OK | `e75090b6bb16` |
 | `docs/SCHWAB_AUTO_REAUTH.md` | Schwab OAuth Reauth (manual-first) | review_required | OK | `039c557e4214` |
@@ -168,6 +169,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/_findings/news_ingestion_gap_2026-05-24.md` | News Ingestion Gap — 2026-05-24 | review_required | OK | `20649729d370` |
 | `docs/_findings/ops_morning_stability_2026-07-16.md` | Findings — Morning Ops Stability (2026-07-16) | review_required | OK | `99fc676a70c5` |
 | `docs/_findings/ops_scanner_500_loop_2026-07-17.md` | Ops: Market Opportunities Scanner 500-loop + Postgres slot exhaustion — 2026-07-17 | review_required | OK | `3946f6f102db` |
+| `docs/_findings/phase1_research_router_inventory_2026-09-05.md` | Phase 1 — Research provider truth: Brave caller inventory and ledger reconciliation | review_required | OK | `9f8cfc2430f0` |
+| `docs/_findings/phase2_delivery_reconciliation_2026-09-05.md` | Phase 2 — Delivery reconciliation: the 26 RESERVED rows, the settle path, and the dark inbound plane | review_required | MISSING HEADER | `40fa8b176b00` |
+| `docs/_findings/phase3_documentation_truth_audit_2026-09-05.md` | Phase 3 — Documentation truth audit (inventory + proposals, no rewrites) | review_required | OK | `c7d9f7e0e490` |
+| `docs/_findings/phase4_verification_matrix_2026-09-05.md` | Phase 4 — Verification matrix with negative controls | review_required | OK | `f5bb99c740f9` |
 | `docs/_findings/pre_burnin_findings_2026-05-25.md` | Pre-Burn-In Findings (2026-05-25) | review_required | OK | `d0becac9e7c6` |
 | `docs/_findings/pre_persistent_agent_phase0_evidence_ledger_2026-09-05.md` | Phase 0 evidence ledger — pre-persistent-agent truth closeout | review_required | OK | `52201fbdb667` |
 | `docs/_findings/reports_desk_v1_diagnosis_2026-07-16.md` | Reports Desk v2 — Phase 0 Residual Diagnosis (2026-07-16 evening) | review_required | OK | `f0e237b06695` |

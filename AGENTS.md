@@ -481,6 +481,30 @@ question:
   failing job.*
 - **A store that survives only because something else is broken is not backed up.** If a divergence
   is the only thing preserving data, fix the destroyer **before** removing the divergence.
+- **A counter's path must resolve to ONE location for every caller. Never
+  `Path(__file__).parent / ...` for durable state.** A tree-relative path gives each importing tree
+  a private copy, so every consumer enforces its ceiling against a *fraction* of the traffic while
+  reporting a healthy percentage. *Cause: 2026-09-05, `brave_search._BUDGET_FILE` resolved relative
+  to the importing tree. The server (running from a release dir) and cron (running from the dev
+  tree) kept separate counters — one frozen at 2026-08-10 with no September at all, the other at 54
+  — out of eight copies of that basename on the host. This is the same "working alarm on an
+  unrepresentative sensor" failure that created `lib/search_budget.py`, reproduced one layer down
+  inside the module built to fix it.*
+- **The canonical search/research budget ledger is
+  `production_state_root()/data/runtime/search_budget.json` (`SearchBudget@v1`), written only by
+  `scripts/lib/search_budget.py`.** It is the **binding** ceiling: its check runs ahead of any
+  client's own. `DEFAULT_LIMITS` there is the authoritative per-provider ceiling — not the constants
+  in `brave_search.py`, which are a secondary per-caller cap and must be kept equal to it (pinned by
+  `test_the_three_copies_of_the_ceiling_agree`). **Any operator alarm or dashboard reporting search
+  spend must read this ledger.** One read the secondary counter and reported `monthly_pct: 17.6,
+  "ok"` while the provider sat at its ceiling.
+- **A provider's limits come from the provider's own response headers, never from a comment.**
+  Parse and report them (`lib/research_provider_truth.py`); keep any ceiling *we* chose under an
+  explicitly local name with an owner. *Cause: "1,000/month free tier" and "850 … out of 1000" were
+  asserted in `brave_search.py` for months. Brave's headers, when finally read on 2026-09-05, report
+  50 req/sec and **no metered monthly window at all**. A number we invented was rendered as a
+  provider fact everywhere downstream. A reported limit of `0` is also not a ceiling of zero — a
+  window that admits traffic is unmetered, and reading it as a number invents a different lie.*
 
 ## Investigation method
 
@@ -638,6 +662,48 @@ Descending strength. **Only the first two settle a claim about runtime.**
 - **A Finviz health probe that tries only cookie auth can false-positive "cookie expired"**
   when `FINVIZ_API_TOKEN` would succeed on the same export URL with `&auth=`. Probe both auth
   modes before surfacing `data_source_stale` — §13.6.
+
+## Remote approval by Telegram — when the operator is not at the keyboard
+
+The workflow above needs someone at a terminal. When the operator is away, work that is finished,
+verified and green otherwise waits. This moves the *typing* to Telegram. It moves the *deciding*
+nowhere.
+
+**The rule above is unchanged and unweakened: the agent must never type, pipe, simulate, automate,
+or infer the confirmation word.** What follows is how the operator gives it from their phone.
+
+```bash
+# Agent side. Grants nothing. Sends the operator a message and exits.
+"$GUARD_PATH" request git-push --for 30m --uses 8 --reason "merge PR #NNN, CI green on <sha>"
+```
+
+The operator receives the scope, the window, the uses, the reason and the host, and replies in
+Telegram with `/approve <CODE>` or `/deny <CODE>`. The live callback poller — which already owns
+the single `getUpdates` consumer, so nothing new polls and nothing collides on HTTP 409 — verifies
+and issues the grant.
+
+Properties that make this safe, each pinned by a test in
+`tests/test_guard_remote_approval.py`:
+
+- **The requesting process is not the answering process.** `guard_request_approval.py` mints a
+  PENDING record; only `run_telegram_callback_poller.py` can settle it.
+- **The one-time code is never printed to stdout and never written to disk** — only its SHA-256 is
+  stored. The agent runs the requesting process, so a code in that process's output would be a code
+  the agent could read.
+- **The grant is bound to what was requested.** Scope, window and uses are fixed in the record the
+  operator saw before replying; they cannot be widened afterwards.
+- **A reply from an unlisted chat burns the code** rather than leaving it live for a second try.
+- **Codes expire in 15 minutes and work once.** Silence is not approval, and an expired request is
+  not approval.
+- **`sudo`, `destructive`, `file-delete`, `guard-config` and `frozen-v2` can never be requested
+  remotely**, and no remote window may exceed one hour. `guard-config` is on that list specifically
+  so a phone cannot widen what a phone may do.
+
+**This is auditable, not impregnable, and must not be described as more than that.** The agent runs
+as the same OS user. What the mechanism guarantees is that every legitimately obtained grant carries
+provenance — chat id, message id, update id and the operator's own words — so a grant explained by
+neither an interactive terminal nor an allowlisted Telegram reply is a detectable anomaly.
+`guard_remote_approval.unprovenanced_grants()` finds them.
 
 ## Know what CI green means
 

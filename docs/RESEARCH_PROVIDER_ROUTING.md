@@ -88,16 +88,60 @@ throttled far harder. This key is very likely on a paid plan, which is consisten
 with a card being on file, and inconsistent with the "free tier" comment that was
 in the code.
 
-## Known open item
+## Known open item — two ledgers, and a reconciliation only you can make
 
-Two budget ledgers exist:
+There are two budget layers, and until 2026-09-05 the lower one had **a copy per
+source tree**:
 
-- `data/runtime/search_budget.json` — **live**, `SearchBudget@v1`, canonical.
-- `data/portfolios/state/brave_search_budget.json` — **frozen at 2026-08-10**, the
-  legacy ledger `brave_search.py` reads for its own second-layer check.
+| layer | path | role |
+|---|---|---|
+| **L3** | `production_state_root()/data/runtime/search_budget.json` (`SearchBudget@v1`) | **canonical and binding.** Checked first. Flocked, atomic, UTC. |
+| **L2** | `production_state_root()/data/portfolios/state/brave_search_budget.json` | secondary per-caller cap (`CALLER_CAPS`), which L3 has no equivalent of |
 
-`lib/search_budget.py` documents the split at its docstring and exists because of
-it: four callers once held their own Brave client and never imported the budgeted
-one, so the ledger read 150/month while the provider dashboard read ~1,000. The
-divergence is **reported, not merged** — reconciling two copies of an authoritative
-store is an operator decision (AGENTS.md §0 rule 5).
+**A correction worth recording.** The Phase 1 inventory reported the
+`persistent-state` copy of L2 as "an orphan nothing reads". That is wrong, and
+the check that shows it is the one AGENTS.md §7 already prescribes — *"a root that
+symlinks to the same destination is not a control; vary the destination and
+confirm different inodes"*. The **serving release symlinks
+`data/portfolios/state` → `persistent-state/data/portfolios/state`**, so the
+server process resolves to precisely that file (inode 4390787). It is not an
+orphan; it is what production reads. Deleting it, as first proposed, would have
+removed a file the live server resolves — and because `_load_budget()` rebuilds a
+fresh zero counter on a missing file, that is a **fail-open**: unbudgeted calls.
+
+The real defect was that `_BUDGET_FILE` was `Path(__file__).parent.parent / …`,
+i.e. relative to whichever tree imported it. Eight copies of that basename exist
+on this host; the server resolved one (frozen 2026-08-10, no September) and cron
+running from the dev tree resolved another (September = 54). Each enforced the
+ceiling against a fraction of the traffic. **Fixed** by resolving through the same
+canonical state root L3 uses, so every caller now shares one L2 counter. The
+scattered copies are thereby made inert *without deleting any of them* — nothing
+resolves to them, and they remain readable as history.
+
+**What is still open, and is an operator decision (AGENTS.md §0 rule 5).** The two
+L2 copies disagree about September: the now-canonical file has no September entry,
+the dev-tree copy has 54. L3 — the binding ceiling — has 60 and is unaffected, so
+nothing is over-spending. But the L2 September count now starts from the canonical
+file's view, not from 54. **Neither number was merged into the other.** The
+reconciliation question — is September 54, 60, or the provider-billed figure? — is
+yours to settle against the Brave dashboard.
+
+**A second live defect, reported not fixed.** The operator spend alarm
+(`alert_dispatcher_unified.py:89-111`, cron 08:30/16:30) reads **L2**, the
+under-counted layer, not L3. That is the "working alarm on an unrepresentative
+sensor" failure that created `lib/search_budget.py`, reproduced one layer up. The
+correct sensor already exists and is already scheduled: `lib/search_health.py:127`
+reads L3.
+
+## A dormant bypasser
+
+`phase2b_analyst.py:276-352` holds its own key and its own `urllib` call to
+`api.search.brave.com`, touching neither ledger and passing no gate. It is
+**dormant** — no cron entry, no systemd unit, no importer but itself, last touched
+2026-04-18 — so it is a loaded gun rather than a live leak. It still carries the
+comment `# Limit to top 5 to stay within 2000/mo free tier`: a third invented
+provider limit, and a different number again. Its twin at
+`scripts/portfolio_weekly_report.py:449` was neutered by the F2 sweep; this copy
+was missed because it sits at the repo root, and the guard test at
+`tests/test_overnight_f1_f2_search_bound.py:138-139` points only at the `scripts/`
+path.
