@@ -675,17 +675,20 @@ def send_journal_reminder():
                 f"Unannotated trades have no setup type, entry reason, or lessons.\n"
                 f"👉 https://ms01-openclaw.tail163d14.ts.net/v3/journal"
             )
-            import requests
-            token = os.getenv('TELEGRAM_BOT_TOKEN','')
-            for chat_id in __import__("tg_chat_ids").chat_ids():
-                try:
-                    requests.post(
-                        f'https://api.telegram.org/bot{token}/sendMessage',
-                        json={'chat_id': chat_id, 'text': msg, 'parse_mode': 'Markdown'},
-                        timeout=10
-                    )
-                except Exception:
-                    pass
+            _send_tg(msg)
+            try:
+                root = str(PROJECT_ROOT)
+                if root not in sys.path:
+                    sys.path.insert(0, root)
+                from scripts.lib.comms import CommunicationEvent, publish_communication
+                publish_communication(CommunicationEvent(
+                    direction="OUTBOUND", event_type="alert", message_class="ops",
+                    producer="overnight_batch", subject_key="ops:journal_reminder",
+                    retention_class="operational", severity="info",
+                    sanitized_body=msg[:500], short_summary=msg[:120],
+                ))
+            except Exception:
+                pass
             print(f"[journal_reminder] Sent: {unannotated} unannotated trades")
         else:
             print("[journal_reminder] All trades annotated — no reminder sent")

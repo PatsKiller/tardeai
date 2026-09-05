@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import requests
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -490,29 +491,25 @@ if __name__ == "__main__":
 
 
 def _send_telegram_document(file_path: "Path", caption: str, project_root: "Path") -> bool:
-    """Send a file (PDF/DOCX) via Telegram sendDocument."""
-    _load_env_from_file(project_root)
-    bot_token = _env("TELEGRAM_BOT_TOKEN")
-    chat_ids  = _env("TELEGRAM_CHAT_ID","").split(",")
-    if not bot_token or not chat_ids or not file_path.exists():
+    """Notify via send_telegram chokepoint (no raw Bot API sendDocument)."""
+    if not file_path.exists():
         return False
-    success = True
-    for chat_id in [c.strip() for c in chat_ids if c.strip()]:
-        try:
-            with open(file_path, "rb") as fh:
-                r = requests.post(
-                    f"https://api.telegram.org/bot{bot_token}/sendDocument",
-                    data={"chat_id": chat_id, "caption": caption[:1000], "parse_mode": "HTML"},
-                    files={"document": (file_path.name, fh, "application/octet-stream")},
-                    timeout=60,
-                )
-            if not r.ok:
-                print(f"  [alerts] Document send error: {r.text[:100]}")
-                success = False
-        except Exception as e:
-            print(f"  [alerts] Document send error: {e}")
-            success = False
-    return success
+    note = f"{caption}\nFile: {file_path}"
+    ok = _send_telegram(note, project_root)
+    try:
+        root = str(project_root)
+        if root not in sys.path:
+            sys.path.insert(0, root)
+        from scripts.lib.comms import CommunicationEvent, publish_communication
+        publish_communication(CommunicationEvent(
+            direction="OUTBOUND", event_type="alert", message_class="ops",
+            producer="portfolio_alerts", subject_key="ops:portfolio_report",
+            retention_class="operational", severity="info",
+            sanitized_body=note[:500], short_summary=caption[:120],
+        ))
+    except Exception:
+        pass
+    return ok
 
 
 def _docx_to_pdf(docx_path: "Path") -> "Optional[Path]":
