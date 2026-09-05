@@ -42,6 +42,38 @@ AUTHORITY = "READ_ONLY_ADVISORY"
 ROOT = Path(__file__).resolve().parent.parent.parent
 REGISTRY_PATH = ROOT / "config" / "lane_registry.json"
 
+
+def state_root() -> Path:
+    """Where the running system WRITES, which is not where this code lives.
+
+    Output signals are durable artifacts produced by scheduled jobs. Those jobs
+    run from the deployed tree and write under the canonical state root; this
+    module may be imported from a worktree, a release directory or the dev tree.
+    Resolving a relative output path against the CODE tree therefore asks "did
+    this job write into the checkout I happen to be running from", which is a
+    different question and is almost always answered no.
+
+    Measured 2026-09-05: run from a worktree, this reported 28 of 65 lanes
+    SILENT, including `research-lane-health` — the lane producing the very
+    report — and `warm-caches`, whose cron entry had fired minutes earlier. Both
+    artifacts existed, dated that same day, under the state root. The verdicts
+    were not observations of silence; they were observations of the wrong
+    directory.
+
+    `observe_signal` is careful to distinguish UNVERIFIABLE from SILENT because
+    "conflating the two is how a monitor starts lying". That reasoning has a
+    premise this restores: that we looked where the writer writes.
+    """
+    try:
+        from scripts.lib.canonical_store_registry import production_state_root
+        return Path(production_state_root())
+    except Exception:
+        try:
+            from lib.canonical_store_registry import production_state_root  # type: ignore
+            return Path(production_state_root())
+        except Exception:
+            return Path.home() / "trade-ai-releases" / "persistent-state"
+
 # ── states ─────────────────────────────────────────────────────────────────
 
 STATE_ACTIVE = "ACTIVE"
@@ -191,7 +223,9 @@ def observe_signal(sig: dict[str, Any], *, root: Optional[Path] = None,
     UNVERIFIABLE, which is a different thing from a lane that is silent, and
     conflating the two is how a monitor starts lying.
     """
-    root = Path(root) if root else ROOT
+    # Durable OUTPUT paths resolve against the state root, never the code tree.
+    # An explicit root= still wins, which is what the tests use.
+    root = Path(root) if root else state_root()
     kind = str((sig or {}).get("kind") or "none")
     try:
         if kind == "file_mtime":

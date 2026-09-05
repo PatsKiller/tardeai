@@ -410,3 +410,54 @@ def test_the_lane_that_crashed_is_not_described_as_turned_off():
     h = by["hermes-autonomous-loop"]
     assert "failed" in str(h["state_reason"]).lower()
     assert "503" in str(h["reason_evidence"])
+
+
+# ── Output signals resolve where the WRITER writes ──────────────────────────
+# Measured 2026-09-05: run from a worktree, the registry reported 28 of 65 lanes
+# SILENT — including `research-lane-health`, the lane producing the report, and
+# `warm-caches`, whose cron had fired minutes earlier. Both artifacts existed,
+# dated that day, under the canonical state root. Resolving relative output
+# paths against the CODE tree asks "did this job write into the checkout I am
+# running from", which is a different question. After the fix: LIVE 1 -> 15,
+# SILENT 28 -> 8.
+
+def test_output_signals_resolve_against_the_state_root_not_the_code_tree():
+    from scripts.lib import lane_registry as lr
+
+    sig = {"kind": "file_mtime", "path": "data/runtime/example.json"}
+    obs = lr.observe_signal(sig, db_query=None)
+    detail = str(obs["detail"])
+    assert str(lr.state_root()) in detail, detail
+    assert str(lr.ROOT) not in detail, (
+        "output signal resolved against the code tree — a job that writes to the "
+        "state root will read as SILENT from any worktree")
+
+
+def test_an_explicit_root_still_wins_so_tests_stay_hermetic(tmp_path):
+    from scripts.lib import lane_registry as lr
+
+    sig = {"kind": "file_mtime", "path": "data/runtime/example.json"}
+    obs = lr.observe_signal(sig, root=tmp_path, db_query=None)
+    assert str(tmp_path) in str(obs["detail"])
+
+
+def test_the_registry_file_itself_is_still_code_relative():
+    """The registry is CONFIG and ships with the code. Only durable OUTPUT
+    moves to the state root; moving the declaration too would mean a checkout
+    could not read its own lane list."""
+    from scripts.lib import lane_registry as lr
+
+    assert str(lr.ROOT) in str(lr.REGISTRY_PATH)
+    assert lr.REGISTRY_PATH.name == "lane_registry.json"
+
+
+def test_absent_is_still_reported_as_silence_not_unverifiable(tmp_path):
+    """The distinction the module is careful about must survive the fix: having
+    looked and found nothing is silence; being unable to look is not."""
+    from scripts.lib import lane_registry as lr
+
+    obs = lr.observe_signal({"kind": "file_mtime", "path": "nope.json"},
+                            root=tmp_path, db_query=None)
+    assert obs["readable"] is True
+    assert obs["last_output_at"] is None
+    assert "(absent)" in str(obs["detail"])
