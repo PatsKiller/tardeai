@@ -338,8 +338,18 @@ def backend_release_info(deploy: Path) -> dict[str, Any]:
 
 
 def frontend_build_sha() -> str:
-    # Prefer CC v3 package or build-meta if present
+    # Prefer the BUILT stamp, then the tracked one, then a package version.
+    #
+    # dist/build-meta.json leads because it is what vite actually produced on this
+    # machine, so it reports the artifact that exists rather than a stamp left by
+    # some past deploy. The repo copy is now generated-and-ignored
+    # (see .gitignore), so on a fresh clone it is absent; without dist ahead of it
+    # this function would silently fall through to package.json's "3.0.0" and
+    # publish that as frontend_build_sha — a version string masquerading as a
+    # commit. validate_committed() only checks the field is non-empty, so nothing
+    # would have caught it.
     for p in (
+        REPO / "apps/command-center-v3/dist/build-meta.json",
         REPO / "apps/command-center-v3/build-meta.json",
         REPO / "apps/command-center-v3/package.json",
         REPO / "package.json",

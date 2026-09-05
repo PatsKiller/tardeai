@@ -13,7 +13,10 @@ const FULL_UI_VERSION = `${UI_VERSION}+${BUILD_STAMP}`
 // Build identity must come from the exact served artifact (cc-header-truth-v2
 // Phase 2 G): the commit this tree is built from, never a hardcoded date or a
 // claim that unserved code is live. Read HEAD at build time; fall back to the
-// checked-in build-meta.json only if git is unavailable, and label it as such.
+// If git is unavailable the SHAs are written as null and labelled as such (see the
+// else-branch below) — the checked-in build-meta.json is NEVER read. This comment
+// previously claimed it was a fallback source, which is why that file was believed
+// load-bearing at build time. It is not: it is output, not input.
 function resolveGitIdentity() {
   try {
     const sha = execSync('git rev-parse HEAD', { encoding: 'utf8' }).trim()
