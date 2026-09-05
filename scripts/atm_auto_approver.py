@@ -33,19 +33,23 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(message
 
 
 def _telegram_both(msg: str):
-    """Send to both operator chat IDs."""
+    """Send via telegram_alert.send_telegram chokepoint (no raw Bot API)."""
     try:
-        token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-        chat_ids = [c.strip() for c in os.environ.get("TELEGRAM_CHAT_ID", "").split(",") if c.strip()]
-        if not token or not chat_ids:
-            return
-        import requests
-        for cid in chat_ids:
-            try:
-                requests.post(f"https://api.telegram.org/bot{token}/sendMessage",
-                              json={"chat_id": cid, "text": msg}, timeout=10)
-            except Exception:
-                pass
+        from telegram_alert import send_telegram
+        send_telegram(msg)
+        try:
+            root = str(PROJECT_ROOT)
+            if root not in sys.path:
+                sys.path.insert(0, root)
+            from scripts.lib.comms import CommunicationEvent, publish_communication
+            publish_communication(CommunicationEvent(
+                direction="OUTBOUND", event_type="alert", message_class="ops",
+                producer="atm_auto_approver", subject_key="ops:atm",
+                retention_class="operational", severity="urgent",
+                sanitized_body=msg[:500], short_summary=msg[:120],
+            ))
+        except Exception:
+            pass
     except Exception:
         pass
 
@@ -70,11 +74,7 @@ def _telegram_expiry_batch(expired_lines: list[str]):
         return
     msg = (f"ATM expired {len(fresh)} proposal(s) this cycle:\n"
            + "\n".join(f"  - {e}" for e in fresh))
-    try:
-        from telegram_alert import send_telegram
-        send_telegram(msg)
-    except Exception:
-        _telegram_both(msg)
+    _telegram_both(msg)
 
 
 def _get_atm_state(conn) -> dict:

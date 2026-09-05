@@ -94,7 +94,6 @@ def main():
 
     from telegram_proposal_alert_policy import (
         build_proposal_alert_packet, should_send_alert, format_telegram_message,
-        build_proposal_inline_keyboard
     )
 
     # Load proposals
@@ -235,30 +234,34 @@ def main():
 
         if check["send"] and not args.dry_run and _router_ok:
             try:
-                # ALERT-3: Route to dedicated proposal channel
-                from telegram_alert_routing_policy import telegram_destination_for_alert, redact_telegram_destination
-                dest = telegram_destination_for_alert(packet)
-                result["destination"] = redact_telegram_destination(dest)
+                # Destination metadata for audit only — delivery goes through
+                # telegram_alert.send_telegram (no token/chat/transport bypass).
+                try:
+                    from telegram_alert_routing_policy import (
+                        telegram_destination_for_alert, redact_telegram_destination,
+                    )
+                    dest = telegram_destination_for_alert(packet)
+                    result["destination"] = redact_telegram_destination(dest)
+                except Exception:
+                    result["destination"] = {"configured": False}
 
                 from telegram_alert import send_telegram
-                from telegram_transport import send_message as _tg_send
-                token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-                if dest.get("chat_id") and token:
-                    keyboard = build_proposal_inline_keyboard(packet)
-                    # T2: one send (or edit). Markdown parse failure must not
-                    # post a second plaintext copy.
-                    resp = _tg_send(
-                        token=token,
-                        chat_id=str(dest["chat_id"]),
-                        text=message,
-                        parse_mode="Markdown",
-                        reply_markup=keyboard,
-                        thread_id=str(dest["thread_id"]) if dest.get("thread_id") else None,
-                        idempotency_key=check.get("idempotency_key"),
-                    )
-                    ok = bool(resp.get("ok"))
-                else:
-                    ok = send_telegram(message)  # Fallback to default
+                ok = bool(send_telegram(message))
+                try:
+                    root = str(PROJ)
+                    if root not in sys.path:
+                        sys.path.insert(0, root)
+                    from scripts.lib.comms import CommunicationEvent, publish_communication
+                    publish_communication(CommunicationEvent(
+                        direction="OUTBOUND", event_type="alert",
+                        message_class="proposal",
+                        producer="send_telegram_proposal_alert",
+                        subject_key=f"proposal:{pr.get('symbol') or 'unknown'}",
+                        retention_class="operational", severity="urgent",
+                        sanitized_body=message[:500], short_summary=message[:120],
+                    ))
+                except Exception:
+                    pass
 
                 result["sent"] = ok
                 sent_count += 1 if ok else 0

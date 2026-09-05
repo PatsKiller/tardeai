@@ -99,6 +99,19 @@ def _send_telegram(message: str) -> None:
     """Send Telegram message via the shared chokepoint (captures to Reports portal)."""
     from telegram_alert import send_telegram
     ok = send_telegram(message, bypass_router=True)
+    try:
+        root = str(PROJECT_ROOT)
+        if root not in sys.path:
+            sys.path.insert(0, root)
+        from scripts.lib.comms import CommunicationEvent, publish_communication
+        publish_communication(CommunicationEvent(
+            direction="OUTBOUND", event_type="alert", message_class="report",
+            producer="portfolio_monthly_report", subject_key="ops:monthly_report",
+            retention_class="operational", severity="info",
+            sanitized_body=message[:500], short_summary=message[:120],
+        ))
+    except Exception:
+        pass
     if ok:
         print("  [monthly-report] Telegram sent")
     else:
@@ -106,35 +119,13 @@ def _send_telegram(message: str) -> None:
 
 
 def _send_telegram_doc(doc_path: Path, caption: str = "") -> None:
-    """Send DOCX file to Telegram using requests multipart upload."""
+    """Announce DOCX availability via send_telegram (no raw sendDocument bypass)."""
     if not doc_path.exists():
         print(f"  [monthly-report] DOCX not found: {doc_path}")
         return
-    bot_token = _get_env("TELEGRAM_BOT_TOKEN")
-    chat_id = _get_env("TELEGRAM_CHAT_ID")
-    if not bot_token or not chat_id:
-        return
-    try:
-        import requests
-        for cid in str(chat_id).split(","):
-            cid = cid.strip()
-            if not cid:
-                continue
-            url = f"https://api.telegram.org/bot{bot_token}/sendDocument"
-            with open(doc_path, "rb") as fh:
-                resp = requests.post(
-                    url,
-                    data={"chat_id": cid, "caption": caption},
-                    files={"document": (doc_path.name, fh,
-                           "application/vnd.openxmlformats-officedocument.wordprocessingml.document")},
-                    timeout=30
-                )
-            if resp.ok:
-                print(f"  [monthly-report] DOCX sent to {cid}")
-            else:
-                print(f"  [monthly-report] DOCX error {cid}: {resp.text[:100]}")
-    except Exception as e:
-        print(f"  [monthly-report] DOCX send error: {e}")
+    note = caption or f"Monthly portfolio DOCX ready: {doc_path.name}"
+    msg = f"{note}\nFile: {doc_path}"
+    _send_telegram(msg)
 
 
 def _build_weekly_context(weeklies: List[Dict]) -> str:
