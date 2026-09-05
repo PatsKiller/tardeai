@@ -55,8 +55,20 @@ check('no two tiles share a static clock label', (() => {
   if (labels.length < 2) return false          // vacuous pass is a failure
   return new Set(labels).size === labels.length
 })())
-check('the portfolio tile states how much value its date covers',
-  code.includes('covers ${cov.at_newest_pct}% of value'))
+// Coverage-% moved OFF the tile face by operator decision (exception-driven
+// header): it answers "how much of the book is stale", which is a drill
+// question, while "how stale" (oldestMark) stays reachable on the face when it
+// matters. The string is NOT deleted — it must still reach the tooltip. A bare
+// includes() would keep passing while the fact left the surface entirely, so
+// both halves are asserted: still composed, and no longer on the face composer.
+check('the value coverage the headline date speaks for still reaches the tooltip',
+  code.includes('covers ${cov.at_newest_pct}% of value')
+  && /const coverageMark/.test(code)
+  // origin/main renamed the off-face carrier to portfolioHoverAccounts; the
+  // property asserted is unchanged — coverage must still reach the hover.
+  && code.includes('${portfolioHoverAccounts'))
+check('coverage-% no longer competes for tile-face width',
+  !/const portfolioFaceNote[\s\S]{0,400}coverageMark/.test(code))
 check('the oldest contributor carries a stamp and an age, not just a name',
   code.includes('const oldestLine') && code.includes('ageMark(posOldestAgeH)'))
 // Operator 2026-09-04: account + date on HOVER only. Face keeps the position date
@@ -113,6 +125,57 @@ check('an UNDATED tile renders a line rather than nothing',
 check('the overview mark names data_as_of and states UNDATED',
   code.includes('· data_as_of ') && code.includes('data_as_of UNDATED'))
 
+
+// ── the exception-driven redesign (2026-09-05) ───────────────────────────────
+// These exist because the layout defect they guard was invisible to every
+// source-shape check that came before: the strings were all correct and the
+// header was still unreadable.
+
+check('every tile renders a fixed three-element subtree, so no ordinal CSS rule can retarget the value',
+  code.includes('className="ms-label"') && code.includes('className="ms-value"') && code.includes('className="ms-meta"'))
+check('the value line states its own size rather than inheriting an ordinal override',
+  /fontSize: \(t as any\)\.valueSize \?\? VALUE_BIG/.test(code))
+check('no line in a tile may wrap', (() => {
+  const m = code.match(/const NOWRAP = \{[^}]*\}/)
+  return !!m && /whiteSpace: 'nowrap'/.test(m[0]) && /textOverflow: 'ellipsis'/.test(m[0])
+})())
+check('the price stamp is clipped, not spilled',
+  /data-price-stamp/.test(code) && code.includes('priceStampShort') && code.includes('...NOWRAP'))
+check('the full price stamp survives in the title rather than being dropped',
+  markIsLive('priceStampFull', 'quoteSel|`\\$\\{priceStamp'))
+check('run health is read from freshness_status, never inferred from reconciliation',
+  code.includes('setupRun.healthDegraded') && code.includes('setupRun.runHealthStatus'))
+check('run health and reconciliation stay separately named on the tile', (() => {
+  // Both must be READ, and the tile's tone must be driven by the health one —
+  // a tile that only ever consults reconciliation is the defect this replaces.
+  if (!code.includes('setupRun.degraded') || !code.includes('setupRun.healthDegraded')) return false
+  const tone = code.match(/const setupsTone[\s\S]{0,300}?\n  \)/)
+  return !!tone && /healthDegraded/.test(tone[0]) && /setupRun\.degraded/.test(tone[0])
+})())
+check('the underfill floor is stated beside the scanned count',
+  code.includes('scannedVsFloor') && /expected_min_symbols/.test(code))
+check('the two run clocks are named scheduled vs finished',
+  code.includes('runSlot') && code.includes('slot`') && code.includes('finished '))
+check('an unzoned run stamp is marked unzoned, never given an assumed zone',
+  code.includes('runFinishedZoned') && code.includes('unzoned'))
+check('the source no longer claims the run zone is stated', !/the zone is stated/.test(raw))
+// I had put a literal "clocks ok" zero-state on the face. origin/main's later
+// operator decision makes the face divergence-only, and that is defensible: the
+// meta line is never blank (it carries the position date), so the tile is not
+// silent. But the AGENTS.md 9.1 concern is real — "no divergence" must stay
+// distinguishable from "the field was never published" — so the check moves to
+// where the answer now lives rather than being dropped.
+check('a divergence-only face still leaves the clock facts stated on hover', (() => {
+  const face = code.match(/const portfolioFaceNote\s*=\s*([\s\S]{0,200}?)\n\n/)
+  if (!face || !/clockDivergences\.length/.test(face[1])) return false
+  // and the tooltip must enumerate the clocks whether or not one diverged
+  return /const clockLines/.test(code) && code.includes('${clockLines.join')
+})())
+check('quote coverage stays on the face in the healthy state',
+  code.includes('quoteCoverMark') && code.includes('${quoteCoverMark'))
+check('a tile signals state through a rail, at zero width cost',
+  code.includes('rowRail(') && /tone === 'bad' \? 'breach'/.test(code))
+
 console.log(`\nmetric_strip_labels: ${pass} passed, ${fail} failed`)
 if (fail) process.exit(1)
 
@@ -140,8 +203,18 @@ check('the TODAY tile keeps account census on hover, not face asOfNote',
   /ACCOUNTS \(hover\)/.test(code))
 check('the TODAY provenance note is derived from the contributing accounts',
   /todayAccountCount\s*=\s*Object\.keys\(overview\?\.today_by_account/.test(code))
-check('the TODAY hover note falls back to a scope, never a single account name',
-  /todayHoverAccounts[\s\S]{0,240}ALL ACCOUNTS/.test(code))
+// origin/main moved the TODAY account census to hover and retargeted this rail
+// at `todayHoverAccounts`. That target is right. The 240-character proximity
+// match is not: proximity is not the property that matters, and it silently
+// passes or fails on unrelated refactors. Their target, checked by mechanism —
+// the hover note derives from a scope label that falls back to ALL ACCOUNTS,
+// never to an account name.
+check('the TODAY hover note falls back to a scope, never a single account name', (() => {
+  const block = code.match(/const todayHoverAccounts[\s\S]{0,600}?\n  \}\)\(\)/)
+  if (!block) return false
+  const scope = block[0].match(/const scope\s*=\s*([^\n]*)/)
+  return !!scope && /ALL ACCOUNTS/.test(scope[1]) && !/overviewAcct/.test(block[0])
+})())
 
 // "53.3% . 169 . $55,429" was three unlabelled numbers, and the dollar figure sat beside
 // a REALIZED tile showing a different one.

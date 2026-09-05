@@ -8,6 +8,16 @@ import {
   type TradingTab,
 } from '../lib/tradingDeepLink'
 import { buildTradingTriage } from '../lib/tradingCommandTriage'
+// One classifier, shared with MetricStrip. These four lived here unexported,
+// which is why the header could not see the run health this panel renders.
+import {
+  classifyRunHealth,
+  runHealthReasonCodes,
+  reasonCodeOneLiner,
+  hasReasonGloss,
+  runHealthChipColor,
+  type RunHealthTier,
+} from '../lib/runHealth'
 import TradingDeskHealth from '../components/TradingDeskHealth'
 import TradingCommandTriage from '../components/TradingCommandTriage'
 import { Link } from 'react-router-dom'
@@ -64,42 +74,6 @@ function isTradeAiStaleSession(tradeAi: any): boolean {
   return tradeAiSurfaceFreshness(tradeAi).stale
 }
 
-/** Screener run health tiers — not binary green/red (underfill ≠ failed ≠ stale). */
-type RunHealthTier = 'healthy' | 'underfilled' | 'partial' | 'failed' | 'unknown'
-
-function classifyRunHealth(status?: string | null): RunHealthTier {
-  const s = String(status || '').toUpperCase()
-  if (!s) return 'unknown'
-  if (s === 'RUN_HEALTHY' || s === 'HEALTHY') return 'healthy'
-  if (s === 'RUN_UNDERFILLED' || s.includes('UNDERFILL')) return 'underfilled'
-  if (s === 'RUN_PARTIAL' || s.includes('PARTIAL')) return 'partial'
-  if (s === 'RUN_FAILED' || s.includes('FAILED') || s.includes('CSV_EMPTY')) return 'failed'
-  return 'unknown'
-}
-
-function runHealthReasonCodes(tradeAi: any): string[] {
-  const raw = tradeAi?.run_health_reason_codes ?? tradeAi?.reason_codes ?? []
-  if (!Array.isArray(raw)) return []
-  return raw.map((x: any) => String(x ?? '').trim()).filter(Boolean)
-}
-
-function reasonCodeOneLiner(code: string): string {
-  const c = code.toUpperCase()
-  if (c === 'ROW_LIMIT_10_DETECTED') {
-    return 'Finviz export returned ≤10 raw rows for active screeners (thin premarket filters or row cap)'
-  }
-  if (c === 'CSV_EMPTY') return 'No CSV rows ingested'
-  if (c === 'FINVIZ_AUTH_FAILED' || c === 'FINVIZ_AUTH_MISSING') return 'Finviz auth problem'
-  if (c === 'ONLY_ONE_SCREENER_RETURNED') return 'Only one screener returned rows'
-  return code
-}
-
-function runHealthChipColor(tier: RunHealthTier): string {
-  if (tier === 'healthy') return BB.green
-  if (tier === 'underfilled' || tier === 'partial') return BB.amber
-  if (tier === 'failed') return BB.red
-  return 'var(--text3)'
-}
 
 /** Rank for scalp signal selection: GO > WAIT > others. */
 function scalpDecisionRank(decision?: string): number {
@@ -606,7 +580,9 @@ export default function TradingHub({ onDrill }: Props) {
                     {healthCodes.map((code, i) => (
                       <span key={code}>
                         {i > 0 ? ' · ' : ''}
-                        <b>{code}</b> — {reasonCodeOneLiner(code)}
+                        {/* A code with no gloss returns itself, which rendered
+                            "UNIVERSE_TOO_SMALL — UNIVERSE_TOO_SMALL" live. */}
+                        <b>{code}</b>{hasReasonGloss(code) ? <> — {reasonCodeOneLiner(code)}</> : null}
                       </span>
                     ))}
                   </div>
@@ -649,7 +625,9 @@ export default function TradingHub({ onDrill }: Props) {
                     {healthCodes.map((code, i) => (
                       <span key={code}>
                         {i > 0 ? ' · ' : ''}
-                        <b>{code}</b> — {reasonCodeOneLiner(code)}
+                        {/* A code with no gloss returns itself, which rendered
+                            "UNIVERSE_TOO_SMALL — UNIVERSE_TOO_SMALL" live. */}
+                        <b>{code}</b>{hasReasonGloss(code) ? <> — {reasonCodeOneLiner(code)}</> : null}
                       </span>
                     ))}
                   </div>
