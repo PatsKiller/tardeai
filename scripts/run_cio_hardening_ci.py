@@ -625,6 +625,15 @@ GATES = [
         ],
     ),
     (
+        # A curated alert must be more useful than the JSON and never less true.
+        # The alert that prompted this had a `Fix:` section restating its own
+        # trigger, and showed 2 of 6 firing lanes.
+        "alert_curation",
+        [
+            "tests/test_alert_curation.py",
+        ],
+    ),
+    (
         # Phase 5 release discipline. READY must be earned by every item; absent
         # evidence blocks rather than abstains. A closeout that reads green
         # because nobody looked is worse than none, because it ends the looking.

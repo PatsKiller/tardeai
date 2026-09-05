@@ -99,6 +99,16 @@ def fix_hint(row: dict) -> str:
             "Alias `deepseek` is not available(); writer is deepseek-flash. "
             "Weekday scheduler; streak stays until a successful send."
         )
+    if lane == "chatgpt":
+        return (
+            "Proxy is pinned to a model this ChatGPT account cannot use: "
+            "chatgpt_oauth_proxy.py:27 DEFAULT_MODEL=gpt-5.4, backend returns 400 "
+            "'not supported when using Codex with a ChatGPT account'. Probed "
+            "2026-09-05: gpt-5.5 and gpt-5.4-mini WORK; gpt-5.4, gpt-5.3-codex, "
+            "gpt-5.1-codex, gpt-5-codex are rejected. Fix: export "
+            "CHATGPT_PROXY_MODEL=gpt-5.5 and restart the proxy. The MODELS list at "
+            ":32 and its comment at :31 are both stale."
+        )
     if lane == "overnight-deep":
         return (
             "Overnight: OnCalendar 22–05:35 ET, ExecStart --model chatgpt --apply "
@@ -125,8 +135,15 @@ def fix_hint(row: dict) -> str:
             "THIN rows count toward coverage_pct, not this alarm. Dry-run: "
             "scripts/thesis_mint_from_research.py. Apply after 8/27."
         )
+    # NEVER return `firing` here. That is what this function did, so every lane
+    # without a branch above printed its own trigger under a heading that
+    # promises a cause — "Fix: error_streak:11>=5" tells the operator nothing and
+    # convinces them there is nothing to learn. An undiagnosed lane must say so.
     if firing:
-        return firing
+        return (f"CAUSE NOT DIAGNOSED for `{lane}` — the tokens above are the "
+                f"trigger, not the reason. Read the lane's RAW rows: the "
+                f"[ERROR] text carries the real cause. Add a branch to "
+                f"fix_hint() once it is known.")
     return "see research_lane_health.py JSON"
 
 
