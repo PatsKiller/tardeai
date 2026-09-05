@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `0510dcdf877ce0bae9478119c7e214b3d66c5b9de1dee46c967cf05a826a1c0a`
+**Tree fingerprint:** `dee184ca04c2c3991a9e43592a6ebcaf5a1713f1c87e4993af07c5975a00cd4d`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,10 +12,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2386 |
-| Markdown (excl. this INDEX) | 1986 |
+| Files under `docs/` (excl. this INDEX) | 2387 |
+| Markdown (excl. this INDEX) | 1987 |
 | **MISSING HEADER** | **19** |
-| Header OK | 1967 |
+| Header OK | 1968 |
 | Duplicate groups | 5 |
 
 ### By status_guess
@@ -30,7 +30,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_raw_sync | 34 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 6 |
-| review_required | 1998 |
+| review_required | 1999 |
 
 ## Markdown tree
 
@@ -731,6 +731,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/convergence/UI_ROUTE_OWNERSHIP.md` | UI Route Ownership | review_required | OK | `fe5a35b48fc7` |
 | `docs/deepseek_audit_2026-08-02.md` | DeepSeek Audit & Fix — Comprehensive Report | review_required | OK | `68d6408f3f5c` |
 | `docs/deployment/canary-results.md` | Communications Gateway — Canary Results Template | review_required | OK | `e11eee439a65` |
+| `docs/deployment/pre-go-live-checklist.md` | Communications Gateway — Pre Go-Live Checklist | review_required | OK | `ab939406d6bc` |
 | `docs/deployment/production-activation.md` | Communications Gateway — Production ACTIVE Checklist | review_required | OK | `6635a04ea542` |
 | `docs/deployment/rollback-plan.md` | Communications Gateway — Rollback Plan | review_required | OK | `a593be5e3e17` |
 | `docs/deployment/rollout-plan.md` | Communications Gateway — Rollout Plan | review_required | OK | `cf5f37640df6` |
