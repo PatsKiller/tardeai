@@ -397,7 +397,13 @@ export default function TradingHub({ onDrill }: Props) {
             : type === 'WAIT' ? tickers.filter(isScreenerWaitRow)
             : tickers.filter((t: any) => t.decision === type && !isAwarenessRow(t))
           const syms = sortTickerList(subset, tradeSort).map((t: any) => t.symbol)
-          return { type, label: type === 'ALL' ? 'Universe' : type, syms, text: syms.join(','), color: type === 'GO' ? '#22c55e' : type === 'WAIT' ? '#f59e0b' : 'var(--text2)' }
+          return {
+            type,
+            label: type === 'ALL' ? 'Universe' : type === 'WAIT' ? 'WAIT (screener)' : type,
+            syms,
+            text: syms.join(','),
+            color: type === 'GO' ? '#22c55e' : type === 'WAIT' ? '#f59e0b' : 'var(--text2)',
+          }
         })
         const doCopy = (type: string, text: string) => {
           const done = () => { setCopied(type); setTimeout(() => setCopied(null), 1500) }
@@ -444,7 +450,9 @@ export default function TradingHub({ onDrill }: Props) {
         // SETUPS strip, which counts the LATEST RUN only (go_count/wait_count/avoid_count).
         // Both scopes come from /api/v2/trade-ai; label them so identical-looking numbers
         // can't silently disagree.
-        const universeScope = 'Full scan universe — latest scan per symbol, today + yesterday, all runs (wider than the header SETUPS strip, which counts the latest run only)'
+        const universeScope = 'UNIVERSE scope — latest scan per symbol, today + yesterday, all runs (wider than header SETUPS · LATEST RUN)'
+        const setupRunUi = renderSetupCounts(tradeAi?.setup_run_summary, {})
+        const latestRunScope = `LATEST RUN only — same contract as header SETUPS${setupRunUi.runId ? ` · ${setupRunUi.runId}` : ''}`
         const staleSession = isTradeAiStaleSession(tradeAi)
         const setupsFresh = tradeAiSurfaceFreshness(tradeAi)
         const healthTier = classifyRunHealth(tradeAi?.run_health_status)
@@ -465,12 +473,23 @@ export default function TradingHub({ onDrill }: Props) {
           : (tradeAi?.run_date ? String(tradeAi.run_date) : 'timestamp unavailable')
         const healthStatusLabel = String(tradeAi?.run_health_status || 'UNKNOWN')
         const kpis = [
-          { label: 'GO', value: goN, color: '#22c55e', title: universeScope },
-          { label: 'WAIT', value: waitN, color: '#f59e0b', title: universeScope },
-          { label: 'NO-GO', value: noGoN, color: '#ef4444', title: universeScope },
+          { label: 'UNIVERSE GO', value: goN, color: '#22c55e', title: universeScope },
+          { label: 'UNIVERSE WAIT', value: waitN, color: '#f59e0b', title: universeScope },
+          { label: 'UNIVERSE NO-GO', value: noGoN, color: '#ef4444', title: universeScope },
           { label: 'Universe', value: universeN, color: 'var(--text0)', title: universeScope },
           { label: 'VIX', value: tradeAi?.vix != null ? Number(tradeAi.vix).toFixed(1) : '—', color: '#60a5fa', title: undefined as string | undefined },
           { label: 'Regime', value: tradeAi?.market_regime ?? '—', color: '#a855f7', title: undefined as string | undefined },
+        ]
+        const latestRunKpis = [
+          { label: 'RUN GO', value: tradeAi?.setup_run_summary?.go_count ?? '—', color: BB.green, title: latestRunScope },
+          { label: 'RUN WAIT', value: tradeAi?.setup_run_summary?.wait_count ?? '—', color: BB.amber, title: latestRunScope },
+          { label: 'RUN NOGO', value: tradeAi?.setup_run_summary?.nogo_count ?? '—', color: BB.red, title: latestRunScope },
+          {
+            label: 'RUN SCANNED',
+            value: tradeAi?.setup_run_summary?.scanned_count ?? scannedN ?? '—',
+            color: 'var(--text0)',
+            title: latestRunScope,
+          },
         ]
         return (
           <div className={terminalUi ? 'cc-panel' : undefined} style={terminalUi ? hubPanel(terminalUi) : { background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
@@ -571,6 +590,7 @@ export default function TradingHub({ onDrill }: Props) {
                 <div style={{ marginTop: 4, color: 'var(--text2)', fontSize: TYPE.sm }}>
                   Panel universe may still include social/prior-day overlay; <b>current-run scanned</b> is the health numerator.
                   Underfill is not the same as STALE SESSION or RUN FAILED. No scan is started from this page.
+                  {' '}Header SETUPS / RUN chips below answer the latest-run question ({setupRunUi.counts}); UNIVERSE chips answer today+yesterday.
                 </div>
               </div>
             )}
@@ -617,6 +637,19 @@ export default function TradingHub({ onDrill }: Props) {
                 </div>
               </div>
             )}
+            {(healthTier === 'underfilled' || healthTier === 'failed') && (
+              <div
+                data-testid="trade-ai-latest-run-kpis"
+                style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: terminalUi ? 4 : 8, margin: '10px 0 4px' }}
+              >
+                {latestRunKpis.map(k => (
+                  <div key={k.label} title={k.title} style={{ ...(terminalUi ? hubKpiChip(false, true) : { background: 'var(--bg2)', borderRadius: 8, padding: '8px 6px' }), textAlign: 'center', cursor: 'help', border: `1px solid ${BB.amber}` }}>
+                    <div style={{ fontSize: TYPE.md, fontWeight: 700, color: k.color }}>{k.value}</div>
+                    <div style={{ fontSize: TYPE.xs, color: 'var(--text3)', textTransform: 'uppercase' }}>{k.label}</div>
+                  </div>
+                ))}
+              </div>
+            )}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: terminalUi ? 4 : 8, margin: '10px 0 6px' }}>
               {kpis.map(k => (
                 <div key={k.label} title={k.title} style={{ ...(terminalUi ? hubKpiChip(false, true) : { background: 'var(--bg2)', borderRadius: 8, padding: '8px 6px' }), textAlign: 'center', cursor: k.title ? 'help' : 'default' }}>
@@ -626,13 +659,13 @@ export default function TradingHub({ onDrill }: Props) {
               ))}
             </div>
             <div style={{ fontSize: 10, color: 'var(--text3)', margin: '0 0 12px' }}>
-              Scope: full scan universe (latest scan per symbol · today + yesterday · all runs).
-              Header SETUPS = latest run only: {(() => {
-                const run = renderSetupCounts(tradeAi?.setup_run_summary, {})
-                if (!run.population) return run.counts
-                const integrity = run.degraded ? ` · ${run.integrity}` : ''
-                return `${run.counts} · ${run.population}${integrity} · run ${run.runId ?? tradeAi?.run_id ?? ''}`
+              Scope: <b>UNIVERSE</b> chips = latest scan per symbol · today + yesterday · all runs.
+              Header <b>SETUPS · LATEST RUN</b> = {(() => {
+                if (!setupRunUi.population) return setupRunUi.counts
+                const integrity = setupRunUi.degraded ? ` · ${setupRunUi.integrity}` : ''
+                return `${setupRunUi.counts} · ${setupRunUi.population}${integrity} · run ${setupRunUi.runId ?? tradeAi?.run_id ?? ''}`
               })()}.
+              WAIT copy list is screener WAIT only (excludes awareness) — may be lower than UNIVERSE WAIT.
               {healthTier === 'underfilled' && (
                 <> Current-run health: <b style={{ color: BB.amber }}>UNDERFILLED</b> ({scannedN != null ? scannedN : '—'} scanned).</>
               )}

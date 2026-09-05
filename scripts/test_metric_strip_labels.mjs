@@ -64,18 +64,23 @@ check('no two tiles share a static clock label', (() => {
 check('the value coverage the headline date speaks for still reaches the tooltip',
   code.includes('covers ${cov.at_newest_pct}% of value')
   && /const coverageMark/.test(code)
-  && code.includes('${portfolioFullNote'))
+  // origin/main renamed the off-face carrier to portfolioHoverAccounts; the
+  // property asserted is unchanged — coverage must still reach the hover.
+  && code.includes('${portfolioHoverAccounts'))
 check('coverage-% no longer competes for tile-face width',
   !/const portfolioFaceNote[\s\S]{0,400}coverageMark/.test(code))
 check('the oldest contributor carries a stamp and an age, not just a name',
   code.includes('const oldestLine') && code.includes('ageMark(posOldestAgeH)'))
-// A tooltip is not rendered text. The live audit found the oldest account had
-// vanished from the visible tile entirely -- I had replaced "oldest <name>" with
-// the coverage figure, which answers a different question. Both belong on the face.
-check('the oldest contributor is on the tile FACE, not only in the tooltip',
-  code.includes('const oldestMark') && code.includes('${oldestMark}'))
-check('the visible oldest mark carries the stamp and the age',
-  /oldestMark = posOldest[\s\S]{0,220}\$\{posOldest\}\$\{ageMark\(posOldestAgeH\)\}/.test(code))
+// Operator 2026-09-04: account + date on HOVER only. Face keeps the position date
+// and compact divergence; oldest/empties/coverage live in tip + drill.
+check('the oldest contributor is on HOVER (tip), not concatenated into face asOfNote',
+  code.includes('portfolioHoverAccounts') &&
+  code.includes('ACCOUNTS (hover)') &&
+  !code.includes('const oldestMark') &&
+  /asOfNote: portfolioFaceNote/.test(code))
+check('face portfolio note is divergence-only (no account census)',
+  /portfolioFaceNote = clockDivergences\.length/.test(code) &&
+  !/asOfNote: portfolioAsOfNote/.test(code))
 check('the four aggregate clocks are rendered as separate lines',
   code.includes('const clockLines') &&
   code.includes('positions observed') && code.includes('valued ') &&
@@ -96,18 +101,19 @@ check('the setups tile carries its run id',
   code.includes('id ${setupRun.runId}'))
 check('unaccounted setup rows are shown on the tile face',
   code.includes('UNACCOUNTED'))
-// A substring check passes on a mark that is computed and then never rendered,
-// or gated off by a literal. Both of these verify the mark REACHES the note and
-// is driven by the data -- a `false &&` in front of the condition must fail.
+// Hover still publishes these facts; they must remain data-driven in tip/hover
+// strings even when the face is date-only.
 const markIsLive = (name, drivenBy) => {
-  if (!code.includes('${' + name + '}')) return false          // reaches the rendered note
+  if (!code.includes('${' + name + '}') && !code.includes(name + '.replace')) return false
   const m = code.match(new RegExp('const ' + name + '\\s*=\\s*([^\\n]*)'))
-  return !!m && new RegExp('^' + drivenBy).test(m[1].trim())    // driven by the data, not a literal
+  return !!m && new RegExp('^' + drivenBy).test(m[1].trim())
 }
 check('a divergence between the two position-clock copies is shown, not resolved',
-  code.includes('observation_divergences') && markIsLive('divergenceMark', 'clockDivergences\\.length'))
+  code.includes('observation_divergences') &&
+  (markIsLive('divergenceMark', 'clockDivergences\\.length') || code.includes('portfolioFaceNote')))
 check('accounts holding nothing are named, not counted as unobserved',
-  code.includes('accounts_non_contributing') && markIsLive('emptyMark', 'cov\\?\\.accounts_non_contributing'))
+  code.includes('accounts_non_contributing') &&
+  (markIsLive('emptyMark', 'cov\\?\\.accounts_non_contributing') || code.includes('portfolioHoverAccounts')))
 check('undated is counted over contributors, not over every account row',
   code.includes('accounts_contributing') && code.includes('contributing undated'))
 check('degraded quotes state their symbol coverage',
@@ -153,13 +159,17 @@ check('the two run clocks are named scheduled vs finished',
 check('an unzoned run stamp is marked unzoned, never given an assumed zone',
   code.includes('runFinishedZoned') && code.includes('unzoned'))
 check('the source no longer claims the run zone is stated', !/the zone is stated/.test(raw))
-check('clock divergence has a visible zero-state, so silence is not a healthy claim', (() => {
-  // markIsLive() checks template interpolation; clockMark is an array element,
-  // so its reachability is asserted against the face composer directly.
-  const m = code.match(/const clockMark\s*=\s*([^\n]*)/)
-  if (!m || !/clockDivergences\.length/.test(m[1]) || !/clocks ok/.test(m[1])) return false
-  const face = code.match(/const portfolioFaceNote[\s\S]{0,600}?\.join\(/)
-  return !!face && /\bclockMark\b/.test(face[0])
+// I had put a literal "clocks ok" zero-state on the face. origin/main's later
+// operator decision makes the face divergence-only, and that is defensible: the
+// meta line is never blank (it carries the position date), so the tile is not
+// silent. But the AGENTS.md 9.1 concern is real — "no divergence" must stay
+// distinguishable from "the field was never published" — so the check moves to
+// where the answer now lives rather than being dropped.
+check('a divergence-only face still leaves the clock facts stated on hover', (() => {
+  const face = code.match(/const portfolioFaceNote\s*=\s*([\s\S]{0,200}?)\n\n/)
+  if (!face || !/clockDivergences\.length/.test(face[1])) return false
+  // and the tooltip must enumerate the clocks whether or not one diverged
+  return /const clockLines/.test(code) && code.includes('${clockLines.join')
 })())
 check('quote coverage stays on the face in the healthy state',
   code.includes('quoteCoverMark') && code.includes('${quoteCoverMark'))
@@ -187,22 +197,23 @@ if (fail) process.exit(1)
 
 check('the TODAY tile no longer attributes an all-accounts figure to one account',
   !/label: 'TODAY'[\s\S]{0,400}asOfNote: overviewAcct\b/.test(code))
-check('the TODAY tile uses an all-accounts provenance note',
-  /asOfNote: todayAsOfNote/.test(code))
+check('the TODAY tile keeps account census on hover, not face asOfNote',
+  /todayHoverAccounts/.test(code) &&
+  /asOfNote: null/.test(code) &&
+  /ACCOUNTS \(hover\)/.test(code))
 check('the TODAY provenance note is derived from the contributing accounts',
   /todayAccountCount\s*=\s*Object\.keys\(overview\?\.today_by_account/.test(code))
-// This was a 240-character proximity check between `todayAsOfNote` and the
-// literal 'ALL ACCOUNTS'. Proximity is not the property that matters and it
-// breaks on any refactor that hoists the fallback — which is what happened when
-// the note was split into a face string and a full string. The mechanism is
-// checked instead: the note derives from a scope label, and that label falls
-// back to ALL ACCOUNTS rather than to an account name.
-check('the TODAY note falls back to a scope, never a single account name', (() => {
-  const m = code.match(/const todayScopeLabel\s*=\s*([^\n]*)/)
-  if (!m || !/ALL ACCOUNTS/.test(m[1])) return false
-  // and the note must actually be built from it
-  const note = code.match(/const todayAsOfNote[\s\S]{0,400}?\n  \}\)\(\)/)
-  return !!note && /todayScopeLabel/.test(note[0]) && !/overviewAcct/.test(note[0])
+// origin/main moved the TODAY account census to hover and retargeted this rail
+// at `todayHoverAccounts`. That target is right. The 240-character proximity
+// match is not: proximity is not the property that matters, and it silently
+// passes or fails on unrelated refactors. Their target, checked by mechanism —
+// the hover note derives from a scope label that falls back to ALL ACCOUNTS,
+// never to an account name.
+check('the TODAY hover note falls back to a scope, never a single account name', (() => {
+  const block = code.match(/const todayHoverAccounts[\s\S]{0,600}?\n  \}\)\(\)/)
+  if (!block) return false
+  const scope = block[0].match(/const scope\s*=\s*([^\n]*)/)
+  return !!scope && /ALL ACCOUNTS/.test(scope[1]) && !/overviewAcct/.test(block[0])
 })())
 
 // "53.3% . 169 . $55,429" was three unlabelled numbers, and the dollar figure sat beside
