@@ -36,6 +36,23 @@ function isProvider(url) {
   }
 }
 
+// PROVIDER_HOSTS is an allowlist of DATA vendors. It answers "did the browser
+// reach a market-data provider directly", which is not the same question as "did
+// the browser reach anything off this box". flagcdn.com served country flags on
+// /v3/portfolio for months and was never counted, because it is an image CDN and
+// not on the list — it surfaced only as an anonymous ERR_BLOCKED_BY_ORB in the
+// failed-request pile. Any third-party origin is worth naming on a surface that
+// shows positions; the next one should not need its own allowlist entry to be seen.
+function isThirdParty(url, base) {
+  try {
+    const u = new URL(url)
+    if (u.protocol === 'data:' || u.protocol === 'blob:') return false
+    return u.host !== new URL(base).host
+  } catch {
+    return false
+  }
+}
+
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
 async function main() {
@@ -48,6 +65,7 @@ async function main() {
     consoleErrors: [],
     failed: [],
     provider_requests: [],
+    third_party_requests: [],
     mutation_requests: [],
   }
 
@@ -68,6 +86,7 @@ async function main() {
       const rec = { url: r.url(), method: r.method() }
       requests.push(rec)
       if (isProvider(rec.url)) out.provider_requests.push({ route, ...rec })
+      if (isThirdParty(rec.url, BASE)) out.third_party_requests.push({ route, ...rec })
       if (rec.method !== 'GET' && rec.method !== 'HEAD' && rec.method !== 'OPTIONS') {
         out.mutation_requests.push({ route, ...rec })
       }
@@ -142,6 +161,7 @@ async function main() {
   }
 
   out.provider_call_count = out.provider_requests.length
+  out.third_party_call_count = out.third_party_requests.length
   out.mutation_count = out.mutation_requests.length
   out.total_console_errors = out.consoleErrors.length
 
@@ -156,6 +176,8 @@ async function main() {
     )
   }
   console.log(`provider calls on load: ${out.provider_call_count}  non-read requests: ${out.mutation_count}`)
+  console.log(`third-party origins: ${out.third_party_call_count}` +
+    (out.third_party_call_count ? `  ${[...new Set(out.third_party_requests.map(r => { try { return new URL(r.url).host } catch { return '?' } }))].join(', ')}` : ''))
 }
 
 function extract(text, patterns) {

@@ -86,6 +86,23 @@ def main() -> int:
     keys = set(re.findall(r"k\s*=\s*'([a-z0-9_]+)'", src))
     check("both scripts use one sessionStorage key", len(keys) <= 1, f"keys={keys}")
 
+    # 8. ORDERING. The reload decision must be made BEFORE the module script,
+    #    not appended at </head>.
+    #
+    #    Appended at </head> the inline check landed after <script type="module">,
+    #    so Chrome's preload scanner had already started the 4.4 MB bundle when the
+    #    check ran and called location.replace() — cancelling it. Every route
+    #    showed net::ERR_ABORTED on a URL that serves 200 directly: one wasted
+    #    navigation and re-parse per browser session. Not a loop, so the guards
+    #    above never saw it, but the same family of defect.
+    inject_before_module = '_body.find(b\'<script type="module"\')' in src
+    check("the reload check is injected before the module script, not at </head>",
+          inject_before_module,
+          "appending at </head> puts it after the bundle tag and aborts the in-flight fetch")
+    # and the </head> path must remain as the fallback for markup with no module tag
+    check("a </head> fallback remains for markup with no module script",
+          'elif b"</head>" in _body:' in src)
+
     print(f"\nAll {passed} cc-v3 boot-loop guards passed.")
     return 0
 

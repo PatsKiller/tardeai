@@ -1,0 +1,63 @@
+name: cc-surface-agreement-ci
+# Gates the browser checks that were runnable but ungated.
+#
+# scripts/test_metric_strip_labels.mjs shipped one campaign runnable and invoked
+# by no workflow, so a regression in the file it guards would have merged green.
+# e2e/run_health_agreement.spec.ts guards the two surfaces that already drifted
+# once — the run-health helpers lived unexported inside TradingHub.tsx, so the
+# panel could see RUN_UNDERFILLED and the header could not. Same trap, gated this
+# time.
+#
+# Hermetic by construction: the spec stubs every API call from one fixture, so it
+# needs the preview and no backend.
+on:
+  pull_request:
+    paths:
+      - 'apps/command-center-v3/src/components/MetricStrip.tsx'
+      - 'apps/command-center-v3/src/pages/TradingHub.tsx'
+      - 'apps/command-center-v3/src/lib/runHealth.ts'
+      - 'apps/command-center-v3/src/lib/setupRunSummary.ts'
+      - 'apps/command-center-v3/e2e/run_health_agreement.spec.ts'
+      - '.github/workflows/cc-surface-agreement-ci.yml'
+  workflow_dispatch: {}
+permissions:
+  contents: read
+jobs:
+  surface-agreement:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: apps/command-center-v3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/command-center-v3/package-lock.json
+      - run: npm ci
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Build UI
+        run: npm run build
+      - name: Start preview
+        run: |
+          npm run preview -- --host 127.0.0.1 --port 4173 --strictPort > /tmp/cc-preview.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl --fail --silent http://127.0.0.1:4173/v3/ >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/cc-preview.log
+          exit 1
+      - name: Header and Trading panel must state the same run
+        env:
+          PLAYWRIGHT_BASE_URL: http://127.0.0.1:4173
+        run: npx playwright test e2e/run_health_agreement.spec.ts --project=chromium --reporter=line
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cc-surface-agreement-playwright
+          path: apps/command-center-v3/playwright-report
+          if-no-files-found: ignore
