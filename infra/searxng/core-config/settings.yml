@@ -33,11 +33,33 @@ outgoing:
   request_timeout: 6.0
   max_request_timeout: 15.0
 
+# ENGINE POOL, and why three are off.
+#
+# Measured 2026-09-05: of the engines enabled here, only `bing` was serving.
+# brave, duckduckgo and startpage were all returning anti-bot refusals —
+# "too many requests", "CAPTCHA", "Suspended: CAPTCHA" — contributing ZERO
+# results while still costing a 6s request_timeout each on every search.
+#
+# These are SCRAPERS. SearXNG's `brave` engine has base_url
+# "https://search.brave.com/" — the public website — and sends no subscription
+# token. It is NOT the Brave Search API and cannot use an API key, so the paid
+# Brave subscription this project holds does not and cannot affect it. That API
+# is reached separately by scripts/brave_search.py through the budgeted lane and
+# is unaffected by anything here.
+#
+# Leaving a permanently-blocked engine enabled has two costs: latency on every
+# query, and an `engine_pool_impaired` alarm that is red forever and therefore
+# means nothing. Re-enable any of these if the block lifts.
 engines:
   - name: duckduckgo
     engine: duckduckgo
     shortcut: ddg
-    disabled: false
+    disabled: true          # CAPTCHA, measured 2026-09-05
+
+  - name: startpage
+    engine: startpage
+    shortcut: sp
+    disabled: true          # "Suspended: CAPTCHA", measured 2026-09-05
 
   - name: google
     engine: google
@@ -52,7 +74,8 @@ engines:
   - name: brave
     engine: brave
     shortcut: br
-    disabled: false
+    disabled: true          # "too many requests" — anonymous scraper, not the
+                            # paid API. See the note above the engine list.
 
   - name: wikipedia
     engine: wikipedia
