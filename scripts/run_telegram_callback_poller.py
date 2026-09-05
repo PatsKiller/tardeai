@@ -28,6 +28,34 @@ log = logging.getLogger(__name__)
 OFFSET_FILE = PROJECT_ROOT / "data" / "portfolios" / "state" / ".telegram_callback_offset"
 
 
+def _inbound_api():
+    """Lazy import of the gateway inbound half (Wave C).
+
+    Returns a dict of callables, or None when the gateway package is absent
+    (the poller then degrades to the legacy file-offset path so it never dies
+    on an import).
+    """
+    try:
+        from scripts.lib.comms.inbound import (  # noqa: F401
+            build_inbound_event,
+            claim_update,
+            commit_checkpoint,
+            get_checkpoint_offset,
+            quarantine_callback,
+        )
+        from scripts.lib.comms.client import publish_communication
+        return {
+            "build_inbound_event": build_inbound_event,
+            "claim_update": claim_update,
+            "commit_checkpoint": commit_checkpoint,
+            "get_checkpoint_offset": get_checkpoint_offset,
+            "quarantine_callback": quarantine_callback,
+            "publish_communication": publish_communication,
+        }
+    except Exception:
+        return None
+
+
 def _token():
     return os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
 
@@ -64,7 +92,13 @@ def poll_once(timeout=25):
         log.error("No TELEGRAM_BOT_TOKEN")
         return 0
 
-    offset = _get_offset()
+    inbound = _inbound_api()
+    if inbound is not None:
+        # Wave C: single-consumer durable checkpoint. The offset is advanced only
+        # after the inbound CommunicationEvent is persisted, never before.
+        offset = inbound["get_checkpoint_offset"]()
+    else:
+        offset = _get_offset()
     from urllib.parse import urlencode
     params = urlencode({
         "offset": offset + 1,
@@ -92,7 +126,34 @@ def poll_once(timeout=25):
     processed = 0
 
     for update in results:
-        _save_offset(update["update_id"])
+        uid = update.get("update_id")
+
+        if inbound is not None:
+            # Replay denial: skip updates already committed by a prior poll.
+            claim = inbound["claim_update"](uid)
+            if claim.already_processed:
+                continue
+            # Persist a canonical INBOUND event before business processing (C3).
+            try:
+                event = inbound["build_inbound_event"](update)
+                published = inbound["publish_communication"](event)
+            except Exception as e:
+                log.error(f"inbound event persist failed: {e}")
+                published = None
+            if published is None or not getattr(published, "ok", False):
+                # Unresolvable update — quarantine it and do NOT advance the
+                # checkpoint, so it is re-delivered rather than silently dropped.
+                try:
+                    inbound["quarantine_callback"](
+                        "inbound_persist_failed",
+                        provider_coordinates={"update_id": uid},
+                        update_id=uid,
+                    )
+                except Exception:
+                    pass
+                continue
+        else:
+            _save_offset(uid)
 
         # Handle callback queries (inline button presses)
         if "callback_query" in update:
@@ -106,15 +167,21 @@ def poll_once(timeout=25):
                     log.info(f"callback: {cb.get('data', '?')} from chat={chat_id}")
                 except Exception as e:
                     log.error(f"callback error: {e}")
+            if inbound is not None:
+                inbound["commit_checkpoint"](uid)
             continue
 
         # Handle messages (commands)
         msg = update.get("message", {})
         if not msg:
+            if inbound is not None:
+                inbound["commit_checkpoint"](uid)
             continue
         chat_id = str(msg.get("chat", {}).get("id", ""))
         text = (msg.get("text") or "").strip()
         if chat_id not in allowed or not text:
+            if inbound is not None:
+                inbound["commit_checkpoint"](uid)
             continue
 
         # Route all recognized commands
@@ -157,6 +224,11 @@ def poll_once(timeout=25):
                 handled = True
             except Exception as e:
                 log.error(f"schwab callback error: {e}")
+
+        if inbound is not None:
+            # The inbound event is persisted; advance the durable checkpoint so
+            # a crash or a replayed poll does not re-deliver the same update.
+            inbound["commit_checkpoint"](uid)
 
         if handled:
             processed += 1
