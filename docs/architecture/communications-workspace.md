@@ -1,5 +1,8 @@
 # Communications Workspace — Phase 7
 
+**Status:** Communications Gateway program documentation (Phases 0–11).
+**Date:** 2026-09-05
+
 **Route:** `/v3/communications`  
 **UI:** `apps/command-center-v3/src/pages/CommunicationsHub.tsx`  
 **Portal:** `scripts/communications_portal.py`  

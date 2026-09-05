@@ -1,5 +1,8 @@
 # Communications Gateway — Rollout Plan
 
+**Status:** Communications Gateway program documentation (Phases 0–11).
+**Date:** 2026-09-05
+
 **Modes:** `OFF` → `SHADOW` → `CANARY` → `ACTIVE` via `COMMS_GATEWAY_MODE`  
 **Default forever until operator flip:** **OFF**  
 **First channel:** **Telegram**  

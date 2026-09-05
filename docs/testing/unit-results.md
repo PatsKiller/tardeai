@@ -1,5 +1,8 @@
 # Communications Gateway — Unit Results Packet
 
+**Status:** Communications Gateway program documentation (Phases 0–11).
+**Date:** 2026-09-05
+
 **Purpose:** Record how to run the Phase 1–11 unit suite and capture CI output.  
 **Production mode:** remains **OFF** (`COMMS_GATEWAY_MODE` unset / default).
 

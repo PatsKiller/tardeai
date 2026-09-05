@@ -1,5 +1,8 @@
 # Communications Gateway — Rollback Plan
 
+**Status:** Communications Gateway program documentation (Phases 0–11).
+**Date:** 2026-09-05
+
 **Primary control:** revert `COMMS_GATEWAY_MODE` to **OFF**  
 **Ledger:** keep CommunicationEvent / ChannelDelivery / subject / curation / retention / agent rows  
 **Double-send:** prevented by idempotency keys on event + delivery attempt

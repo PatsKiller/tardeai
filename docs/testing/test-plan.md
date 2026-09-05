@@ -1,5 +1,8 @@
 # Communications Gateway — Test Plan (Phase 11)
 
+**Status:** Communications Gateway program documentation (Phases 0–11).
+**Date:** 2026-09-05
+
 **Scope:** Unit / integration / e2e / chaos / security / retention / agent matrix  
 **Gateway modes:** `OFF` (default) · `SHADOW` · `CANARY` · `ACTIVE` via `COMMS_GATEWAY_MODE`  
 **Constraint:** Production remains **OFF**. This plan maps coverage; it does not authorize ACTIVE.

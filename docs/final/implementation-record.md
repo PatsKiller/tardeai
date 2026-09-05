@@ -1,5 +1,8 @@
 # Communications Gateway — Implementation Record (Phases 0–11)
 
+**Status:** Communications Gateway program documentation (Phases 0–11).
+**Date:** 2026-09-05
+
 **As of:** 2026-09-04 (Phase 11 docs + SHADOW compare helper)  
 **Production activation:** **none** — `COMMS_GATEWAY_MODE` defaults to **OFF**  
 **Worktree:** `wt/comms-gateway-phase0` (`tradeai-wt-comms-gateway-phase0`)
