@@ -115,13 +115,6 @@ from scripts.lib.comms.mode import (
     get_gateway_mode,
     mode_diagnostics,
 )
-from scripts.lib.comms.shadow_compare import (
-    compare_legacy_vs_gateway,
-    extract_route_intent,
-    record_shadow_observation,
-    reset_shadow_observations,
-    shadow_report,
-)
 
 __all__ = [
     "CommunicationEvent",
@@ -201,9 +194,4 @@ __all__ = [
     "acknowledge_consumption",
     "declare_influence",
     "assert_not_self_certifying_truth",
-    "compare_legacy_vs_gateway",
-    "extract_route_intent",
-    "record_shadow_observation",
-    "shadow_report",
-    "reset_shadow_observations",
-]
+                    ]

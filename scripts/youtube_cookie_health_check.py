@@ -63,16 +63,25 @@ def _transcript_age_h():
 
 def _send_telegram(msg):
     try:
-        import requests
-        token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
-        chat_ids = [c.strip() for c in os.getenv("TELEGRAM_CHAT_ID", "").split(",") if c.strip()]
-        if not token or not chat_ids:
-            print("[cookie-health] no Telegram config — skipping send")
-            return False
-        for cid in chat_ids:
-            requests.post(f"https://api.telegram.org/bot{token}/sendMessage",
-                          json={"chat_id": cid, "text": msg}, timeout=10)
-        return True
+        from telegram_alert import send_telegram
+        ok = bool(send_telegram(msg))
+        try:
+            root = str(PROJECT_ROOT)
+            if root not in sys.path:
+                sys.path.insert(0, root)
+            from scripts.lib.comms import CommunicationEvent, publish_communication
+            publish_communication(CommunicationEvent(
+                direction="OUTBOUND", event_type="alert", message_class="ops",
+                producer="youtube_cookie_health_check",
+                subject_key="ops:youtube_cookies",
+                retention_class="operational", severity="warning",
+                sanitized_body=msg[:500], short_summary=msg[:120],
+            ))
+        except Exception:
+            pass
+        if not ok:
+            print("[cookie-health] send_telegram returned False")
+        return ok
     except Exception as e:
         print(f"[cookie-health] telegram error: {e}")
         return False
