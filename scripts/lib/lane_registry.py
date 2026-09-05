@@ -174,7 +174,17 @@ def validate_row(row: dict[str, Any]) -> list[str]:
     return errs
 
 
-SCHEDULER_KINDS = ("cron", "systemd", "none")
+#: "event" is for a lane nothing schedules — another lane emits it. It has no
+#: scheduler that could go missing, so it cannot earn ORPHANED, and its liveness
+#: is judged purely on output freshness against its declared cadence. That is a
+#: stronger signal for such a lane than scheduler presence, not a weaker one: if
+#: the emitter stops, the lane goes SLOW and then SILENT on schedule.
+#:
+#: Added 2026-09-05 because cio-situation-detector was declared kind="cron" with
+#: the prose expression "emitted from the reactive cycle / heartbeat hooks".
+#: Matched against crontab it was never found, so the lane reported ORPHANED
+#: permanently while its output was 0.21h old against a 24h cadence.
+SCHEDULER_KINDS = ("cron", "systemd", "event", "none")
 OUTPUT_SIGNAL_KINDS = ("file_mtime", "json_key", "db_max", "none")
 
 
@@ -393,6 +403,21 @@ def _scheduler_present(row: dict[str, Any], found: dict[str, Any]) -> bool:
     if kind == "cron":
         marker = str(sched.get("match") or expr)
         return any(marker in c["expression"] for c in found.get("cron") or [])
+    if kind == "event":
+        # Hook-driven: nothing schedules it, another lane emits it. There is no
+        # scheduler to be missing, so ORPHANED is not a verdict this lane can
+        # earn and asking the question produces a permanent false positive.
+        #
+        # Measured 2026-09-05: cio-situation-detector was declared kind="cron"
+        # with the expression "emitted from the reactive cycle / heartbeat
+        # hooks" — prose, matched against crontab, never found. It reported
+        # ORPHANED while its output was 0.21h old against a 24h cadence.
+        #
+        # This is not a hole. An event-driven lane is still judged on output
+        # freshness, which is the ONLY meaningful liveness signal for it and a
+        # stronger one than scheduler presence: if the emitter stops, the lane
+        # goes SLOW and then SILENT on its declared cadence.
+        return True
     return False
 
 
