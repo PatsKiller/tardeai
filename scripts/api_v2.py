@@ -2053,6 +2053,66 @@ def _stops_lifecycle_api():
         }
 
 
+def _communications_health(query=None):
+    """GET /api/v2/communications/health — ledger mode + delivery_owned=false."""
+    import sys as _s
+
+    _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    import communications_portal as _cp
+
+    return _cp.health()
+
+
+def _communications_events(query=None):
+    """GET /api/v2/communications/events?limit=&subject_key=&status= — ledger list."""
+    import sys as _s
+
+    _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    import communications_portal as _cp
+
+    q = query or {}
+    return _cp.list_events(
+        limit=int(q.get("limit") or 100),
+        subject_key=q.get("subject_key") or None,
+        status=q.get("status") or None,
+    )
+
+
+def _communications_event(event_id: str):
+    """GET /api/v2/communications/events/<event_id> — single ledger row."""
+    import sys as _s
+
+    _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    import communications_portal as _cp
+
+    return _cp.get_event(event_id)
+
+
+def _communications_deliveries(query=None):
+    """GET /api/v2/communications/deliveries?event_id=&limit= — ChannelDelivery stubs."""
+    import sys as _s
+
+    _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    import communications_portal as _cp
+
+    q = query or {}
+    return _cp.list_deliveries(
+        event_id=q.get("event_id") or None,
+        limit=int(q.get("limit") or 200),
+    )
+
+
+def _communications_subjects(query=None):
+    """GET /api/v2/communications/subjects?limit= — subject/thread projections."""
+    import sys as _s
+
+    _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    import communications_portal as _cp
+
+    q = query or {}
+    return _cp.list_subjects(limit=int(q.get("limit") or 50))
+
+
 def _reports_categories(query=None):
     """GET /api/v2/reports/categories — portal tabs with counts + last-activity."""
     import sys as _s
@@ -46030,6 +46090,10 @@ ROUTES = {
     "/api/v2/broker-orders/activity": _broker_orders_activity,
     "/api/v2/broker-orders/pilot/status": _pilot_status,
     "/api/v2/stops/lifecycle": lambda: _stops_lifecycle_api(),
+    "/api/v2/communications/health": _communications_health,
+    "/api/v2/communications/events": _communications_events,
+    "/api/v2/communications/deliveries": _communications_deliveries,
+    "/api/v2/communications/subjects": _communications_subjects,
     "/api/v2/reports/catalog": _reports_catalog_route,
     "/api/v2/reports/system-rollup": _reports_system_rollup,
     "/api/v2/reports/categories": _reports_categories,
@@ -51579,6 +51643,17 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             return 200, {"ok": True, "data": (handler(query) if _np >= 1 else handler())}
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
+
+    # Communications ledger event detail
+    if base_path.startswith("/api/v2/communications/events/"):
+        eid = base_path[len("/api/v2/communications/events/") :].strip("/")
+        if eid and "/" not in eid:
+            try:
+                payload = _communications_event(eid)
+                status = 200 if payload.get("ok") else 404
+                return status, {"ok": bool(payload.get("ok")), "data": payload}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
 
     # Per-symbol CIO decisions
     # Task detail (john_decision_queue items with P&L)

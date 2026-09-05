@@ -30,6 +30,7 @@ const SECTIONS: { label: string; hubs: Hub[] }[] = [
       { to: '/advisory', label: 'Advisory Desk' },
       { to: '/cio', label: 'CIO Desk' },
       { to: '/reports', label: 'Reports', hardNav: true },
+      { to: '/communications', label: 'Communications' },
       { to: '/rotation', label: 'Rotation' },
       { to: '/rec-intel', label: 'Rec Intelligence' },
     ],

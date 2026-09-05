@@ -78,7 +78,7 @@ These are construction helpers only. Migrating producers to call `publish_commun
 - Delivery receipts settlement (Phase 3)
 - Subject memory retrieval (Phase 4)
 - Librarian retention execution (Phase 6)
-- `/v3/communications` UI (Phase 7)
+- ~~`/v3/communications` UI (Phase 7)~~ — see `docs/architecture/communications-workspace.md`
 - Agent consumption receipts (Phase 8)
 
 Controlled curation + `CurationReceipt@v1` is Phase 5 — see
