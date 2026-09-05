@@ -815,10 +815,7 @@ def send_telegram_report_notice(pdf_path: Path, caption: str) -> bool:
         from telegram_alert import send_telegram_document
         ok = bool(send_telegram_document(str(pdf_path), caption=caption, bypass_router=True))
         try:
-            root = str(PROJECT_ROOT)
-            if root not in sys.path:
-                sys.path.insert(0, root)
-            from scripts.lib.comms import CommunicationEvent, publish_communication
+            from lib.comms import CommunicationEvent, publish_communication
             publish_communication(CommunicationEvent(
                 direction="OUTBOUND", event_type="alert", message_class="ops",
                 producer="portfolio_report_ms", subject_key="ops:portfolio_report_ms",
@@ -826,6 +823,7 @@ def send_telegram_report_notice(pdf_path: Path, caption: str) -> bool:
                 sanitized_body=(caption or "")[:500], short_summary=(caption or "")[:120],
             ))
         except Exception:
+            # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
             pass
         return ok
     except Exception as e:

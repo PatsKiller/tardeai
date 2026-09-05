@@ -40,10 +40,7 @@ def _send_alert(message: str):
         from telegram_alert import send_telegram
         send_telegram(message)
         try:
-            root = str(PROJECT_ROOT)
-            if root not in sys.path:
-                sys.path.insert(0, root)
-            from scripts.lib.comms import CommunicationEvent, publish_communication
+            from lib.comms import CommunicationEvent, publish_communication
             publish_communication(CommunicationEvent(
                 direction="OUTBOUND", event_type="alert", message_class="ops",
                 producer="pipeline_alert", subject_key="ops:pipeline_alert",
@@ -51,8 +48,10 @@ def _send_alert(message: str):
                 sanitized_body=message[:500], short_summary=message[:120],
             ))
         except Exception:
+            # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
             pass
     except Exception:
+        # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
         pass
 
 

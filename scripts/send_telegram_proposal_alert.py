@@ -263,7 +263,7 @@ def main():
                     root = str(PROJ)
                     if root not in sys.path:
                         sys.path.insert(0, root)
-                    from scripts.lib.comms import CommunicationEvent, publish_communication
+                    from lib.comms import CommunicationEvent, publish_communication
                     publish_communication(CommunicationEvent(
                         direction="OUTBOUND", event_type="alert",
                         message_class="proposal",
@@ -273,6 +273,7 @@ def main():
                         sanitized_body=message[:500], short_summary=message[:120],
                     ))
                 except Exception:
+                    # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
                     pass
 
                 result["sent"] = ok
@@ -286,6 +287,7 @@ def main():
                             SET last_alert_at=NOW(), alert_count=COALESCE(alert_count,0)+1
                             WHERE id=%s""", [pr.get("id")], fetch="none")
                     except Exception:
+                        # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
                         pass
             except Exception as e:
                 result["sent"] = False

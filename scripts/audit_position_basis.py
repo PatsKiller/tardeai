@@ -176,10 +176,7 @@ def _tg_send(text: str, *, producer: str, subject_key: str) -> bool:
         from telegram_alert import send_telegram
         ok = bool(send_telegram(text))
         try:
-            root = str(PROJECT_ROOT)
-            if root not in sys.path:
-                sys.path.insert(0, root)
-            from scripts.lib.comms import CommunicationEvent, publish_communication
+            from lib.comms import CommunicationEvent, publish_communication
             publish_communication(CommunicationEvent(
                 direction="OUTBOUND", event_type="alert", message_class="ops",
                 producer=producer, subject_key=subject_key,
@@ -187,6 +184,7 @@ def _tg_send(text: str, *, producer: str, subject_key: str) -> bool:
                 sanitized_body=text[:500], short_summary=text[:120],
             ))
         except Exception:
+            # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
             pass
         return ok
     except Exception:

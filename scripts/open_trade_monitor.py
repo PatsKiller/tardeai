@@ -290,10 +290,7 @@ def send_telegram(message, dry_run=False, no_telegram=False):
         log.error("STOP-PATH NOTIFICATION NOT DELIVERED: %s", message[:120])
         return
     try:
-        root = str(PROJECT_ROOT)
-        if root not in sys.path:
-            sys.path.insert(0, root)
-        from scripts.lib.comms import CommunicationEvent, publish_communication
+        from lib.comms import CommunicationEvent, publish_communication
         publish_communication(CommunicationEvent(
             direction="OUTBOUND", event_type="alert", message_class="ops",
             producer="open_trade_monitor", subject_key="ops:open_trade",
@@ -301,6 +298,7 @@ def send_telegram(message, dry_run=False, no_telegram=False):
             sanitized_body=message[:500], short_summary=message[:120],
         ))
     except Exception:
+        # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
         pass
 
 
@@ -331,10 +329,7 @@ def send_telegram_with_buttons(message, buttons, dry_run=False, no_telegram=Fals
             receipt["error"] = "send_telegram_false"
             log.error("STOP-PATH BUTTON ALERT NOT DELIVERED: %s", message[:120])
         try:
-            root = str(PROJECT_ROOT)
-            if root not in sys.path:
-                sys.path.insert(0, root)
-            from scripts.lib.comms import CommunicationEvent, publish_communication
+            from lib.comms import CommunicationEvent, publish_communication
             publish_communication(CommunicationEvent(
                 direction="OUTBOUND", event_type="alert", message_class="ops",
                 producer="open_trade_monitor", subject_key="ops:open_trade",
@@ -342,6 +337,7 @@ def send_telegram_with_buttons(message, buttons, dry_run=False, no_telegram=Fals
                 sanitized_body=message[:500], short_summary=message[:120],
             ))
         except Exception:
+            # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
             pass
     except Exception as e:
         log.error("send_telegram_with_buttons failed: %s", e)

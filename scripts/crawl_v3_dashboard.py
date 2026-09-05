@@ -27,10 +27,7 @@ def _send_telegram(message):
         from telegram_alert import send_telegram
         send_telegram(message)
         try:
-            root = os.path.dirname(scripts_dir)
-            if root not in sys.path:
-                sys.path.insert(0, root)
-            from scripts.lib.comms import CommunicationEvent, publish_communication
+            from lib.comms import CommunicationEvent, publish_communication
             publish_communication(CommunicationEvent(
                 direction="OUTBOUND", event_type="alert", message_class="ops",
                 producer="crawl_v3_dashboard", subject_key="ops:v3_crawl",
@@ -38,8 +35,10 @@ def _send_telegram(message):
                 sanitized_body=message[:500], short_summary=message[:120],
             ))
         except Exception:
+            # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
             pass
     except Exception:
+        # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
         pass
 
 

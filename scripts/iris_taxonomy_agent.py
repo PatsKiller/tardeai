@@ -953,10 +953,7 @@ def _send_telegram_msg(message):
         from telegram_alert import send_telegram
         ok = bool(send_telegram(message))
         try:
-            root = str(PROJECT_ROOT)
-            if root not in sys.path:
-                sys.path.insert(0, root)
-            from scripts.lib.comms import CommunicationEvent, publish_communication
+            from lib.comms import CommunicationEvent, publish_communication
             publish_communication(CommunicationEvent(
                 direction="OUTBOUND", event_type="alert", message_class="ops",
                 producer="iris_taxonomy_agent", subject_key="ops:iris",
@@ -964,6 +961,7 @@ def _send_telegram_msg(message):
                 sanitized_body=message[:500], short_summary=message[:120],
             ))
         except Exception:
+            # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
             pass
         return ok
     except Exception as e:

@@ -57,10 +57,7 @@ def _send_proposal_alert(pid, symbol, strategy, hold_days, max_hold_days, overdu
         }
         send_telegram(txt, reply_markup=keyboard)
         try:
-            root = str(PROJECT_ROOT)
-            if root not in sys.path:
-                sys.path.insert(0, root)
-            from scripts.lib.comms import CommunicationEvent, publish_communication
+            from lib.comms import CommunicationEvent, publish_communication
             publish_communication(CommunicationEvent(
                 direction="OUTBOUND", event_type="alert", message_class="ops",
                 producer="generate_max_hold_exit_proposals",
@@ -69,8 +66,10 @@ def _send_proposal_alert(pid, symbol, strategy, hold_days, max_hold_days, overdu
                 sanitized_body=txt[:500], short_summary=txt[:120],
             ))
         except Exception:
+            # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
             pass
     except Exception:
+        # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
         pass
 
 

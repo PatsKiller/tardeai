@@ -46,7 +46,7 @@ def _telegram_alert(msg: str, root: Path):
             project_root = str(root)
             if project_root not in sys.path:
                 sys.path.insert(0, project_root)
-            from scripts.lib.comms import CommunicationEvent, publish_communication
+            from lib.comms import CommunicationEvent, publish_communication
             publish_communication(CommunicationEvent(
                 direction="OUTBOUND", event_type="alert", message_class="ops",
                 producer="phase3_lookthrough_fetcher",
@@ -55,12 +55,14 @@ def _telegram_alert(msg: str, root: Path):
                 sanitized_body=text[:500], short_summary=text[:120],
             ))
         except Exception:
+            # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
             pass
         if ok:
             print(f"  [telegram] sent: {msg[:60]}")
         else:
             print(f"  [telegram] send_telegram returned False: {msg[:60]}")
     except Exception as e:
+        # ALARM-DELIVERY-DECLARED: best-effort advisory notify after chokepoint migration; never blocks caller
         print(f"  [telegram] failed: {e}")
 
 

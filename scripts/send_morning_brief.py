@@ -128,10 +128,7 @@ def send_telegram(text, chat_ids=None, dry_run=False):
     if ok:
         log.info("Sent")
         try:
-            root = str(PROJECT_ROOT)
-            if root not in sys.path:
-                sys.path.insert(0, root)
-            from scripts.lib.comms import CommunicationEvent, publish_communication
+            from lib.comms import CommunicationEvent, publish_communication
             publish_communication(CommunicationEvent(
                 direction="OUTBOUND", event_type="alert", message_class="ops",
                 producer="send_morning_brief", subject_key="ops:morning_brief",
@@ -139,6 +136,7 @@ def send_telegram(text, chat_ids=None, dry_run=False):
                 sanitized_body=text[:500], short_summary=text[:120],
             ))
         except Exception:
+            # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
             pass
     else:
         log.error("Telegram send failed")

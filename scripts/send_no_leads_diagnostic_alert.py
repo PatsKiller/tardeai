@@ -68,7 +68,7 @@ _Diagnostic only — no trade, no order_"""
             try:
                 if str(PROJ) not in sys.path:
                     sys.path.insert(0, str(PROJ))
-                from scripts.lib.comms import CommunicationEvent, publish_communication
+                from lib.comms import CommunicationEvent, publish_communication
                 publish_communication(CommunicationEvent(
                     direction="OUTBOUND", event_type="alert", message_class="ops",
                     producer="send_no_leads_diagnostic_alert",
@@ -77,6 +77,7 @@ _Diagnostic only — no trade, no order_"""
                     sanitized_body=msg[:500], short_summary=msg[:120],
                 ))
             except Exception:
+                # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
                 pass
         except Exception as e:
             result["error"] = str(e)[:80]

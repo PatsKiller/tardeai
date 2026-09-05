@@ -5698,10 +5698,12 @@ def _orchestration():
         lambda: (bool(_db_query("SELECT 1", fetch="one")), "Connected"),
         "Check DB_HOST/DB_NAME/DB_USER/DB_PASSWORD in .env",
     )
+
     def _telegram_bot_env_check():
         # Read token only via the approved delivery module (not a producer getenv).
         try:
             from telegram_alert import _token as _tg_token
+
             t = _tg_token() or ""
             return (bool(t), f"Token: ...{t[-8:]}" if len(t) >= 8 else ("configured" if t else "missing"))
         except Exception as e:

@@ -35,10 +35,7 @@ def friendly_status(status) -> str:
 
 def _shadow_publish(msg: str, *, producer: str, subject_key: str, severity: str = "info") -> None:
     try:
-        root = str(PROJECT_ROOT)
-        if root not in sys.path:
-            sys.path.insert(0, root)
-        from scripts.lib.comms import CommunicationEvent, publish_communication
+        from lib.comms import CommunicationEvent, publish_communication
         publish_communication(CommunicationEvent(
             direction="OUTBOUND", event_type="alert", message_class="ops",
             producer=producer, subject_key=subject_key,
@@ -46,6 +43,7 @@ def _shadow_publish(msg: str, *, producer: str, subject_key: str, severity: str 
             sanitized_body=msg[:500], short_summary=msg[:120],
         ))
     except Exception:
+        # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
         pass
 
 
@@ -408,6 +406,7 @@ def send_stop_alert(symbol, account=""):
             subject_key=f"stop:{symbol}", severity="critical",
         )
     except Exception:
+        # ALARM-DELIVERY-DECLARED: best-effort advisory notify after chokepoint migration; never blocks caller
         log.exception(f"send_stop_alert failed for {symbol}")
 
     # Email notification
@@ -418,4 +417,5 @@ def send_stop_alert(symbol, account=""):
             data.get("current_pnl_dollars", 0), data.get("current_pnl_pct", 0),
             data.get("regime_label", ""), data.get("portfolio_triggered_count", 0))
     except Exception:
+        # ALARM-DELIVERY-DECLARED: best-effort advisory notify after chokepoint migration; never blocks caller
         pass

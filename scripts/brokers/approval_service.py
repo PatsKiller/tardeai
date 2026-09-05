@@ -403,7 +403,7 @@ def _post_telegram_approval(plain: str) -> bool:
             root = str(_P(__file__).resolve().parents[2])
             if root not in sys.path:
                 sys.path.insert(0, root)
-            from scripts.lib.comms import CommunicationEvent, publish_communication
+            from lib.comms import CommunicationEvent, publish_communication
             publish_communication(CommunicationEvent(
                 direction="OUTBOUND", event_type="alert", message_class="approval",
                 producer="approval_service", subject_key="ops:trade_approval",
@@ -411,6 +411,7 @@ def _post_telegram_approval(plain: str) -> bool:
                 sanitized_body=plain[:500], short_summary=plain[:120],
             ))
         except Exception:
+            # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
             pass
         if not ok:
             print("[approval_service] send_telegram returned False", file=sys.stderr)

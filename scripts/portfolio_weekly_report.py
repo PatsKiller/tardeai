@@ -115,7 +115,7 @@ def _send_telegram(message: str) -> None:
             root = str(_P(__file__).resolve().parent.parent)
             if root not in _sys.path:
                 _sys.path.insert(0, root)
-            from scripts.lib.comms import CommunicationEvent, publish_communication
+            from lib.comms import CommunicationEvent, publish_communication
             publish_communication(CommunicationEvent(
                 direction="OUTBOUND", event_type="alert", message_class="ops",
                 producer="portfolio_weekly_report", subject_key="ops:portfolio_weekly",
@@ -123,6 +123,7 @@ def _send_telegram(message: str) -> None:
                 sanitized_body=message[:500], short_summary=message[:120],
             ))
         except Exception:
+            # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
             pass
     else:
         print("  [weekly-report] Telegram not sent")

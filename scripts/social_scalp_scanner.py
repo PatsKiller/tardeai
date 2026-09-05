@@ -711,10 +711,7 @@ def send_scalp_alert(symbol: str, score: int, grade: str, decision: str,
     )
     send_telegram(msg)
     try:
-        root = str(ROOT)
-        if root not in sys.path:
-            sys.path.insert(0, root)
-        from scripts.lib.comms import CommunicationEvent, publish_communication
+        from lib.comms import CommunicationEvent, publish_communication
         publish_communication(CommunicationEvent(
             direction="OUTBOUND", event_type="alert", message_class="ops",
             producer="social_scalp_scanner", subject_key=f"scalp:{symbol}",
@@ -722,6 +719,7 @@ def send_scalp_alert(symbol: str, score: int, grade: str, decision: str,
             sanitized_body=msg[:500], short_summary=msg[:120],
         ))
     except Exception:
+        # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
         pass
 
 

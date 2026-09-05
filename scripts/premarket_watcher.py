@@ -393,10 +393,7 @@ def send_telegram(message):
         from telegram_alert import send_telegram as _central_send
         _central_send(message)
         try:
-            root = str(PROJECT_ROOT)
-            if root not in sys.path:
-                sys.path.insert(0, root)
-            from scripts.lib.comms import CommunicationEvent, publish_communication
+            from lib.comms import CommunicationEvent, publish_communication
             publish_communication(CommunicationEvent(
                 direction="OUTBOUND", event_type="alert", message_class="ops",
                 producer="premarket_watcher", subject_key="ops:premarket",
@@ -404,6 +401,7 @@ def send_telegram(message):
                 sanitized_body=message[:500], short_summary=message[:120],
             ))
         except Exception:
+            # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
             pass
     except Exception as e:
         log.warning(f"telegram send failed: {e}")

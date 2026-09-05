@@ -217,10 +217,7 @@ def _telegram_ev(text: str) -> dict:
         from telegram_alert import send_telegram
         ok = bool(send_telegram(text))
         try:
-            root = str(ROOT)
-            if root not in sys.path:
-                sys.path.insert(0, root)
-            from scripts.lib.comms import CommunicationEvent, publish_communication
+            from lib.comms import CommunicationEvent, publish_communication
             publish_communication(CommunicationEvent(
                 direction="OUTBOUND", event_type="alert", message_class="ops",
                 producer="options_lifecycle_alerts", subject_key="ops:options_lifecycle",
@@ -228,6 +225,7 @@ def _telegram_ev(text: str) -> dict:
                 sanitized_body=text[:500], short_summary=text[:120],
             ))
         except Exception:
+            # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
             pass
         return {"ok": ok, "message_id": None, "error": None if ok else "send_telegram_failed"}
     except Exception as e:

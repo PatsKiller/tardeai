@@ -168,7 +168,7 @@ def send_eod_alert():
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         if root not in sys.path:
             sys.path.insert(0, root)
-        from scripts.lib.comms import CommunicationEvent, publish_communication
+        from lib.comms import CommunicationEvent, publish_communication
         publish_communication(CommunicationEvent(
             direction="OUTBOUND", event_type="alert", message_class="ops",
             producer="eod_open_trade_alert", subject_key="ops:eod_open_trades",
@@ -176,6 +176,7 @@ def send_eod_alert():
             sanitized_body=message[:500], short_summary=message[:120],
         ))
     except Exception:
+        # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
         pass
     log.info("  Sent" if ok else "  Send failed")
     return ok

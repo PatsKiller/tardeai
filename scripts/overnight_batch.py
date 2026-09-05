@@ -677,10 +677,7 @@ def send_journal_reminder():
             )
             _send_tg(msg)
             try:
-                root = str(PROJECT_ROOT)
-                if root not in sys.path:
-                    sys.path.insert(0, root)
-                from scripts.lib.comms import CommunicationEvent, publish_communication
+                from lib.comms import CommunicationEvent, publish_communication
                 publish_communication(CommunicationEvent(
                     direction="OUTBOUND", event_type="alert", message_class="ops",
                     producer="overnight_batch", subject_key="ops:journal_reminder",
@@ -688,6 +685,7 @@ def send_journal_reminder():
                     sanitized_body=msg[:500], short_summary=msg[:120],
                 ))
             except Exception:
+                # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
                 pass
             print(f"[journal_reminder] Sent: {unannotated} unannotated trades")
         else:

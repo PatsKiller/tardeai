@@ -504,7 +504,7 @@ def _send_telegram_document(file_path: "Path", caption: str, project_root: "Path
         root = str(project_root)
         if root not in sys.path:
             sys.path.insert(0, root)
-        from scripts.lib.comms import CommunicationEvent, publish_communication
+        from lib.comms import CommunicationEvent, publish_communication
         publish_communication(CommunicationEvent(
             direction="OUTBOUND", event_type="alert", message_class="ops",
             producer="portfolio_alerts", subject_key="ops:portfolio_report",
@@ -512,6 +512,7 @@ def _send_telegram_document(file_path: "Path", caption: str, project_root: "Path
             sanitized_body=(caption or "")[:500], short_summary=(caption or "")[:120],
         ))
     except Exception:
+        # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
         pass
     return ok
 

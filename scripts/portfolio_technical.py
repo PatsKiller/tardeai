@@ -232,7 +232,7 @@ def _send_telegram(message: str, root: Path) -> bool:
             root_s = str(root)
             if root_s not in sys.path:
                 sys.path.insert(0, root_s)
-            from scripts.lib.comms import CommunicationEvent, publish_communication
+            from lib.comms import CommunicationEvent, publish_communication
             publish_communication(CommunicationEvent(
                 direction="OUTBOUND", event_type="alert", message_class="ops",
                 producer="portfolio_technical",
@@ -241,6 +241,7 @@ def _send_telegram(message: str, root: Path) -> bool:
                 sanitized_body=message[:500], short_summary=message[:120],
             ))
         except Exception:
+            # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
             pass
         return ok
     except Exception:

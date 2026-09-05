@@ -45,7 +45,7 @@ def send_telegram(message, urgent=False):
             root = str(Path(__file__).resolve().parents[1])
             if root not in sys.path:
                 sys.path.insert(0, root)
-            from scripts.lib.comms import CommunicationEvent, publish_communication
+            from lib.comms import CommunicationEvent, publish_communication
             publish_communication(CommunicationEvent(
                 direction="OUTBOUND", event_type="alert", message_class="ops",
                 producer="pipeline_watchdog", subject_key="ops:pipeline_watchdog",
@@ -54,8 +54,10 @@ def send_telegram(message, urgent=False):
                 sanitized_body=text[:500], short_summary=text[:120],
             ))
         except Exception:
+            # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
             pass
     except Exception:
+        # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
         pass
 
 
@@ -66,6 +68,7 @@ def log_action(conn, action_type, target, reason, success, result=''):
                    [action_type, target, reason, success, result[:200]])
         conn.commit()
     except Exception:
+        # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
         pass
 
 

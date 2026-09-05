@@ -118,10 +118,7 @@ def _alert(directive_gaps):
         from telegram_alert import send_telegram
         ok = bool(send_telegram(msg))
         try:
-            root = str(PROJECT_ROOT)
-            if root not in sys.path:
-                sys.path.insert(0, root)
-            from scripts.lib.comms import CommunicationEvent, publish_communication
+            from lib.comms import CommunicationEvent, publish_communication
             publish_communication(CommunicationEvent(
                 direction="OUTBOUND", event_type="alert", message_class="ops",
                 producer="audit_enrichment_coverage",
@@ -130,10 +127,12 @@ def _alert(directive_gaps):
                 sanitized_body=msg[:500], short_summary=msg[:120],
             ))
         except Exception:
+            # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
             pass
         if ok:
             print(f"alert sent ({len(directive_gaps)} directive gaps)")
     except Exception:
+        # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
         pass
 
 

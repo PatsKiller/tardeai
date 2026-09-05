@@ -100,10 +100,7 @@ def _send_telegram(message: str) -> None:
     from telegram_alert import send_telegram
     ok = send_telegram(message, bypass_router=True)
     try:
-        root = str(PROJECT_ROOT)
-        if root not in sys.path:
-            sys.path.insert(0, root)
-        from scripts.lib.comms import CommunicationEvent, publish_communication
+        from lib.comms import CommunicationEvent, publish_communication
         publish_communication(CommunicationEvent(
             direction="OUTBOUND", event_type="alert", message_class="report",
             producer="portfolio_monthly_report", subject_key="ops:monthly_report",
@@ -111,6 +108,7 @@ def _send_telegram(message: str) -> None:
             sanitized_body=message[:500], short_summary=message[:120],
         ))
     except Exception:
+        # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
         pass
     if ok:
         print("  [monthly-report] Telegram sent")
@@ -132,10 +130,7 @@ def _send_telegram_doc(doc_path: Path, caption: str = "") -> None:
         print(f"  [monthly-report] Telegram document error: {type(e).__name__}: {str(e)[:120]}")
         return
     try:
-        root = str(PROJECT_ROOT)
-        if root not in sys.path:
-            sys.path.insert(0, root)
-        from scripts.lib.comms import CommunicationEvent, publish_communication
+        from lib.comms import CommunicationEvent, publish_communication
         publish_communication(CommunicationEvent(
             direction="OUTBOUND", event_type="alert", message_class="report",
             producer="portfolio_monthly_report", subject_key="ops:monthly_report",
@@ -143,6 +138,7 @@ def _send_telegram_doc(doc_path: Path, caption: str = "") -> None:
             sanitized_body=note[:500], short_summary=note[:120],
         ))
     except Exception:
+        # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
         pass
 
 
