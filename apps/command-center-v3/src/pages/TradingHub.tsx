@@ -20,7 +20,7 @@ import {
   pageSlice, toggleSelectedSymbol, selectSymbols, deselectSymbols, dedupeSymbols,
   formatThinkorswimSymbols, selectionStorageKey, getSocialScoutPill, getTopGainerPill,
   getSqueezePill, getRunnerPill, getMicroFloatPill, getLowPricePill,
-  getSocialAwarenessPill, isSocialAwarenessRow,
+  getSocialAwarenessPill, isSocialAwarenessRow, isCurrentRunRow,
   isSqueezeRow, isRunnerRow, isMicroFloatRow, isManualReviewRow,
   sortTickerList, type ScannerSortMode, type TosFormat,
 } from '../lib/scannerSelection'
@@ -45,7 +45,7 @@ import { hubTitle, hubSubtitle, hubTab, hubFilterSelect, hubKpiChip, hubPanel } 
 import { runLabel } from '../lib/homeLabels'
 import { tradeAiSurfaceFreshness } from '../lib/surfaceFreshness'
 import { renderSetupCounts } from '../lib/setupRunSummary'
-import { BB, TYPE } from '../lib/watchTokens'
+import { BB, T, TYPE } from '../lib/watchTokens'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 const TABS = TRADING_TABS
@@ -392,6 +392,18 @@ export default function TradingHub({ onDrill }: Props) {
           )
         }
         const tickers: any[] = sortTickerList(tradeAi?.tickers ?? [], tradeSort)
+        // Latest-run scope = header SETUPS · LATEST RUN. Universe ticks keep prior
+        // runs (DH/GPRK @ 1000 while SETUPS is 1730); bare "GO (3)" beside "1 GO"
+        // is what the operator still read as unbroken after the KPI-only relabel.
+        // Run identity is (run_date, run_label) — same as api_v2 SCALP-COUNT-1.
+        const currentRunLabel = String(
+          tradeAi?.run_label || tradeAi?.latest_run_label || tradeAi?.setup_run_summary?.run_label || '',
+        ).trim()
+        const currentRunDate = String(
+          tradeAi?.run_date || tradeAi?.setup_run_summary?.run_date || '',
+        ).trim().slice(0, 10)
+        const rowOnCurrentRun = (t: any) =>
+          isCurrentRunRow(t, { run_label: currentRunLabel, run_date: currentRunDate })
         const isScoutRow = (t: any) => t.scout_status === 'SOCIAL_SCOUT'
         const isAwarenessRow = (t: any) => isSocialAwarenessRow(t)
         const isScreenerWaitRow = (t: any) => (t.decision || '').toUpperCase() === 'WAIT' && !isAwarenessRow(t)
@@ -399,16 +411,22 @@ export default function TradingHub({ onDrill }: Props) {
           const d = (t.decision || '').toUpperCase()
           return d === 'GO' || d === 'WAIT' || d === 'MANUAL_REVIEW' || isManualReviewRow(t)
         }
+        const isLatestRunGo = (t: any) =>
+          (t.decision || '').toUpperCase() === 'GO' && !isAwarenessRow(t) && rowOnCurrentRun(t)
+        const isLatestRunWait = (t: any) => isScreenerWaitRow(t) && rowOnCurrentRun(t)
         const filtered = tradeFilter === 'ACTIONABLE' ? tickers.filter(isActionableRow)
           : tradeFilter === 'SCOUT' ? tickers.filter(isScoutRow)
           : tradeFilter === 'AWARENESS' ? tickers.filter(isAwarenessRow)
           : tradeFilter === 'MANUAL' ? tickers.filter(isManualReviewRow)
-          : tradeFilter === 'WAIT' ? tickers.filter(isScreenerWaitRow)
+          : tradeFilter === 'WAIT' ? tickers.filter(isLatestRunWait)
+          : tradeFilter === 'GO' ? tickers.filter(isLatestRunGo)
           : tickers.filter((t: any) => t.decision === tradeFilter)
         const actionableCount = tickers.filter(isActionableRow).length
         const scoutCount = tickers.filter(isScoutRow).length
         const awarenessCount = tickers.filter(isAwarenessRow).length
         const manualCount = tickers.filter(isManualReviewRow).length
+        const latestRunGoCount = tickers.filter(isLatestRunGo).length
+        const latestRunWaitCount = tickers.filter(isLatestRunWait).length
         const sortLabels: Record<ScannerSortMode, string> = {
           awareness: 'Awareness rank', score: 'Score', rvol: 'RVOL', change: 'Change %', symbol: 'Symbol A–Z',
         }
@@ -419,16 +437,21 @@ export default function TradingHub({ onDrill }: Props) {
         const pageSymbols = pageRows.map((t: any) => t.symbol)
         const tosText = formatThinkorswimSymbols(selectedSyms, tosFormat)
         const copyBoxes = (['GO', 'WAIT', 'ALL'] as const).map(type => {
+          // GO/WAIT copy lists match header SETUPS (latest run). Universe copy stays wide.
           const subset = type === 'ALL' ? tickers
-            : type === 'WAIT' ? tickers.filter(isScreenerWaitRow)
-            : tickers.filter((t: any) => t.decision === type && !isAwarenessRow(t))
+            : type === 'WAIT' ? tickers.filter(isLatestRunWait)
+            : tickers.filter(isLatestRunGo)
           const syms = sortTickerList(subset, tradeSort).map((t: any) => t.symbol)
           return {
             type,
-            label: type === 'ALL' ? 'Universe' : type === 'WAIT' ? 'WAIT (screener)' : type,
+            label: type === 'ALL'
+              ? 'Universe'
+              : type === 'WAIT'
+                ? `WAIT (run ${currentRunLabel || 'latest'})`
+                : `GO (run ${currentRunLabel || 'latest'})`,
             syms,
             text: syms.join(','),
-            color: type === 'GO' ? '#22c55e' : type === 'WAIT' ? '#f59e0b' : 'var(--text2)',
+            color: type === 'GO' ? BB.green : type === 'WAIT' ? BB.amber : 'var(--text2)',
           }
         })
         const doCopy = (type: string, text: string) => {
@@ -659,19 +682,18 @@ export default function TradingHub({ onDrill }: Props) {
                 </div>
               </div>
             )}
-            {(healthTier === 'underfilled' || healthTier === 'failed') && (
-              <div
-                data-testid="trade-ai-latest-run-kpis"
-                style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: terminalUi ? 4 : 8, margin: '10px 0 4px' }}
-              >
-                {latestRunKpis.map(k => (
-                  <div key={k.label} title={k.title} style={{ ...(terminalUi ? hubKpiChip(false, true) : { background: 'var(--bg2)', borderRadius: 8, padding: '8px 6px' }), textAlign: 'center', cursor: 'help', border: `1px solid ${BB.amber}` }}>
-                    <div style={{ fontSize: TYPE.md, fontWeight: 700, color: k.color }}>{k.value}</div>
-                    <div style={{ fontSize: TYPE.xs, color: 'var(--text3)', textTransform: 'uppercase' }}>{k.label}</div>
-                  </div>
-                ))}
-              </div>
-            )}
+            {/* Latest-run chips always match header SETUPS; universe chips stay wider. */}
+            <div
+              data-testid="trade-ai-latest-run-kpis"
+              style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: terminalUi ? 4 : 8, margin: '10px 0 4px' }}
+            >
+              {latestRunKpis.map(k => (
+                <div key={k.label} title={k.title} style={{ ...(terminalUi ? hubKpiChip(false, true) : { background: 'var(--bg2)', borderRadius: 8, padding: '8px 6px' }), textAlign: 'center', cursor: 'help', border: healthTier === 'underfilled' || healthTier === 'failed' ? `1px solid ${BB.amber}` : '1px solid var(--border)' }}>
+                  <div style={{ fontSize: TYPE.md, fontWeight: 700, color: k.color }}>{k.value}</div>
+                  <div style={{ fontSize: TYPE.xs, color: 'var(--text3)', textTransform: 'uppercase' }}>{k.label}</div>
+                </div>
+              ))}
+            </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: terminalUi ? 4 : 8, margin: '10px 0 6px' }}>
               {kpis.map(k => (
                 <div key={k.label} title={k.title} style={{ ...(terminalUi ? hubKpiChip(false, true) : { background: 'var(--bg2)', borderRadius: 8, padding: '8px 6px' }), textAlign: 'center', cursor: k.title ? 'help' : 'default' }}>
@@ -681,13 +703,8 @@ export default function TradingHub({ onDrill }: Props) {
               ))}
             </div>
             <div style={{ fontSize: 10, color: 'var(--text3)', margin: '0 0 12px' }}>
-              Scope: <b>UNIVERSE</b> chips = latest scan per symbol · today + yesterday · all runs.
-              Header <b>SETUPS · LATEST RUN</b> = {(() => {
-                if (!setupRunUi.population) return setupRunUi.counts
-                const integrity = setupRunUi.degraded ? ` · ${setupRunUi.integrity}` : ''
-                return `${setupRunUi.counts} · ${setupRunUi.population}${integrity} · run ${setupRunUi.runId ?? tradeAi?.run_id ?? ''}`
-              })()}.
-              WAIT copy list is screener WAIT only (excludes awareness) — may be lower than UNIVERSE WAIT.
+              <b>GO/WAIT copy + GO/WAIT filters</b> = latest run {currentRunLabel || '—'} (same as header SETUPS: {setupRunUi.counts}).
+              {' '}<b>UNIVERSE</b> chips / Universe copy = today+yesterday all runs ({goN} GO / {waitN} WAIT / {universeN} symbols).
               {healthTier === 'underfilled' && (
                 <> Current-run health: <b style={{ color: BB.amber }}>UNDERFILLED</b> ({scannedN != null ? scannedN : '—'} scanned).</>
               )}
@@ -722,11 +739,23 @@ export default function TradingHub({ onDrill }: Props) {
             <div style={{ display: 'flex', gap: 4, marginBottom: 8, flexWrap: 'wrap', alignItems: 'center' }}>
               {(['ACTIONABLE', 'GO', 'WAIT', 'AWARENESS', 'MANUAL', 'SCOUT'] as const).map(f => {
                 const active = tradeFilter === f
-                const fc = f === 'GO' ? '#22c55e' : f === 'WAIT' ? '#f59e0b' : f === 'AWARENESS' ? 'var(--social-awareness)' : f === 'SCOUT' ? 'var(--social-scout)' : f === 'MANUAL' ? 'var(--squeeze)' : '#60a5fa'
-                const count = f === 'ACTIONABLE' ? actionableCount : f === 'SCOUT' ? scoutCount : f === 'AWARENESS' ? awarenessCount : f === 'MANUAL' ? manualCount : f === 'WAIT' ? tickers.filter(isScreenerWaitRow).length : tickers.filter((t: any) => t.decision === f).length
-                const label = f === 'ACTIONABLE' ? 'Actionable' : f === 'SCOUT' ? 'Social Scouts' : f === 'AWARENESS' ? 'Social Awareness' : f === 'MANUAL' ? 'Manual' : f
+                const fc = f === 'GO' ? BB.green : f === 'WAIT' ? BB.amber : f === 'AWARENESS' ? 'var(--social-awareness)' : f === 'SCOUT' ? 'var(--social-scout)' : f === 'MANUAL' ? 'var(--squeeze)' : T.link
+                const count = f === 'ACTIONABLE' ? actionableCount
+                  : f === 'SCOUT' ? scoutCount
+                  : f === 'AWARENESS' ? awarenessCount
+                  : f === 'MANUAL' ? manualCount
+                  : f === 'WAIT' ? latestRunWaitCount
+                  : f === 'GO' ? latestRunGoCount
+                  : tickers.filter((t: any) => t.decision === f).length
+                const label = f === 'ACTIONABLE' ? 'Actionable'
+                  : f === 'SCOUT' ? 'Social Scouts'
+                  : f === 'AWARENESS' ? 'Social Awareness'
+                  : f === 'MANUAL' ? 'Manual'
+                  : f === 'GO' ? `GO · ${currentRunLabel || 'run'}`
+                  : f === 'WAIT' ? `WAIT · ${currentRunLabel || 'run'}`
+                  : f
                 return (
-                  <button key={f} onClick={() => { setTradeFilter(f); setScannerPage(1) }} title={f === 'ACTIONABLE' ? 'GO + WAIT + MANUAL_REVIEW — what matters today; hides 1500+ NO-GO universe noise' : f === 'SCOUT' ? 'Partial social setups (≥2/5 pillars) — awareness only, never GO/validation/tradeable' : f === 'AWARENESS' ? 'Pre-market StockTwits — Finviz overlay when available; awareness only, not tradeable' : f === 'MANUAL' ? 'Squeeze · Runner · Micro-float · Low-price — Entry Desk only; never auto GO' : undefined}
+                  <button key={f} onClick={() => { setTradeFilter(f); setScannerPage(1) }} title={f === 'ACTIONABLE' ? 'GO + WAIT + MANUAL_REVIEW — what matters today; hides 1500+ NO-GO universe noise' : f === 'GO' ? `Latest run ${currentRunLabel || '—'} only — same scope as header SETUPS (not UNIVERSE GO)` : f === 'WAIT' ? `Screener WAIT on latest run ${currentRunLabel || '—'} only — same scope as header SETUPS` : f === 'SCOUT' ? 'Partial social setups (≥2/5 pillars) — awareness only, never GO/validation/tradeable' : f === 'AWARENESS' ? 'Pre-market StockTwits — Finviz overlay when available; awareness only, not tradeable' : f === 'MANUAL' ? 'Squeeze · Runner · Micro-float · Low-price — Entry Desk only; never auto GO' : undefined}
                     style={{ ...hubKpiChip(active, terminalUi), fontFamily: 'monospace', color: active ? fc : (terminalUi ? undefined : 'var(--text3)') }}>{label} ({count})</button>
                 )
               })}

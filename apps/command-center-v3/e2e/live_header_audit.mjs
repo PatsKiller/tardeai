@@ -117,6 +117,8 @@ async function main() {
       universe_kpi_labels: {
         universe_go: /UNIVERSE GO/i.test(body),
         universe_wait: /UNIVERSE WAIT/i.test(body),
+        run_go: /RUN GO/i.test(body),
+        go_copy_latest_run: /GO \(run\s+\d{3,4}\)/i.test(body),
       },
       count_labels: {
         run_id: /id\s+\d{4}-\d{2}-\d{2}::\d{4}/.test(body),

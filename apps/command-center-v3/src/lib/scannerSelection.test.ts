@@ -6,7 +6,7 @@ import {
   pageSlice, paginateTopN, toggleSelectedSymbol, selectSymbols, deselectSymbols,
   dedupeSymbols, formatThinkorswimSymbols, selectionStorageKey, getSocialScoutPill, getTopGainerPill,
   getSqueezePill, getRunnerPill, isSqueezeRow, isRunnerRow, scannerSortKey, buildPillTooltip, missingPillarHints,
-  isSocialAwarenessRow, getSocialAwarenessPill,
+  isSocialAwarenessRow, getSocialAwarenessPill, isCurrentRunRow,
 } from './scannerSelection.ts'
 
 declare const process: { exit(code?: number): never }
@@ -174,6 +174,15 @@ check('social awareness pill', !!(aware.isAwareness && aware.text?.includes('SOC
 check('social awareness catalyst in hints', aware.hints?.some(h => h.includes('QTEX')) ?? false)
 check('isSocialAwarenessRow', isSocialAwarenessRow({ symbol: 'HITI', source: 'social', price: 0, rvol: 0 }))
 check('awareness not when finviz data', !isSocialAwarenessRow({ symbol: 'EHGO', source: 'social', price: 2.16, rvol: 10 }))
+
+// ---- latest-run scope (date + label) — pins GO-copy vs header SETUPS ----
+const cur = { run_label: '1730', run_date: '2026-09-04' }
+check('current run includes matching date+label', isCurrentRunRow({ scan_run_label: '1730', scan_run_date: '2026-09-04' }, cur))
+check('current run excludes earlier label same day', !isCurrentRunRow({ scan_run_label: '1000', scan_run_date: '2026-09-04' }, cur))
+check('current run excludes yesterday same label', !isCurrentRunRow({ scan_run_label: '1730', scan_run_date: '2026-09-03' }, cur))
+check('current run excludes unlabeled rows', !isCurrentRunRow({ symbol: 'DH' } as any, cur))
+check('no current label → all rows current', isCurrentRunRow({ scan_run_label: '1000' }, { run_label: '', run_date: '2026-09-04' }))
+check('label-only degrade when row undated', isCurrentRunRow({ scan_run_label: '1730' }, cur))
 
 console.log(`\n${pass} passed, ${fail} failed`)
 if (fail > 0) process.exit(1)

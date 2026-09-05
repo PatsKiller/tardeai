@@ -58,6 +58,32 @@ export interface ScannerRow {
   social_sentiment?: string
   run_type?: string
   source_detail?: string
+  /** Latest-run identity is (scan_run_date, scan_run_label) — see api_v2 SCALP-COUNT-1. */
+  scan_run_label?: string
+  scan_run_date?: string
+  run_label?: string
+}
+
+/**
+ * Whether a ticker row belongs to the latest scanner run (header SETUPS scope).
+ *
+ * Mirrors scripts/api_v2.py current-run filter: identity is (run_date, run_label).
+ * Label alone repeats daily; yesterday's same label must not enter today's GO copy.
+ * Rows without a label are never counted into a labeled current run.
+ */
+export function isCurrentRunRow(
+  row: Pick<ScannerRow, 'scan_run_label' | 'scan_run_date' | 'run_label'>,
+  current: { run_label?: string | null; run_date?: string | null },
+): boolean {
+  const currentLabel = String(current?.run_label || '').trim()
+  if (!currentLabel) return true
+  const rowLabel = String(row?.scan_run_label || row?.run_label || '').trim()
+  if (rowLabel !== currentLabel) return false
+  const currentDate = String(current?.run_date || '').trim().slice(0, 10)
+  const rowDate = String(row?.scan_run_date || '').trim().slice(0, 10)
+  if (currentDate && rowDate) return rowDate === currentDate
+  // Dated rows absent (older payload): degrade to label-only, matching api_v2.
+  return true
 }
 
 export interface SocialAwarenessPill extends PillDetail {
