@@ -30,7 +30,12 @@ from scripts.lib.comms.agent_contracts import (  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
-def _clean():
+def _clean(monkeypatch):
+    # Same defect as the other comms suites: these assert the in-memory ledger,
+    # and on a box where localhost Postgres answers the DB branch wins — the
+    # assertions fail and the run writes to production. agent_contracts carries
+    # its own _db_conn (:91), separate from client/delivery/subject_memory/librarian.
+    monkeypatch.setattr("scripts.lib.comms.agent_contracts._db_conn", lambda: None)
     reset_agent_contracts_memory()
     yield
     reset_agent_contracts_memory()

@@ -34,6 +34,11 @@ def _clean(monkeypatch):
     # Unit tests assert in-memory ledger; force no DB even when localhost has one.
     monkeypatch.setattr("scripts.lib.comms.client._db_conn", lambda: None)
     monkeypatch.setattr("scripts.lib.comms.delivery._db_conn", lambda: None)
+    # subject_memory carries its own _db_conn, and attach_event_to_subject
+    # INSERTs into communication_thread_membership. Stubbing only client+delivery
+    # leaves that path live: this file's own comment says "force no DB even when
+    # localhost has one", and it was still writing 11 rows per run.
+    monkeypatch.setattr("scripts.lib.comms.subject_memory._db_conn", lambda: None)
     reset_memory_store()
     reset_memory_deliveries()
     yield
