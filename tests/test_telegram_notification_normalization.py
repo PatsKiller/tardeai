@@ -176,10 +176,18 @@ def test_telegram_chokepoint_ratchet_reload_is_monotonic():
 
 
 def test_telegram_chokepoint_baseline_is_honest():
-    """The baseline must record real debt, not assert a false zero."""
+    """Baseline may be empty after migration; approved transport must never be listed as debt."""
     import json
+    import subprocess
     base = json.loads((ROOT / "config" / "telegram_chokepoint_baseline.json").read_text())
     files = base.get("files", {})
-    # If this ever legitimately reaches zero, delete this assertion with the manifest update.
-    assert files, "baseline is empty — either migration is complete (update the manifest) or the scan broke"
     assert "scripts/telegram_transport.py" not in files, "the approved transport must not be a violation"
+    # Empty baseline is valid only when the live scan also reports zero bypasses.
+    if not files:
+        r = subprocess.run(
+            [sys.executable, str(ROOT / "scripts" / "check_telegram_chokepoint.py")],
+            capture_output=True, text=True, cwd=str(ROOT),
+        )
+        assert r.returncode == 0, r.stderr
+        assert "zero bypasses" in (r.stdout + r.stderr).lower()
+

@@ -6,9 +6,9 @@ import { hubTitle, hubSubtitle, hubTab, hubPanel, hubStrip } from '../lib/termin
 type Tab = 'events' | 'deliveries' | 'subjects' | 'retention' | 'agents'
 
 const MUTED = 'var(--text3)'
-const TEXT = 'var(--text0, #f8fafc)'
-const AMBER = 'var(--amber, #f59e0b)'
-const GREEN = 'var(--green, #22c55e)'
+const TEXT = 'var(--text0)'
+const AMBER = 'var(--amber)'
+const GREEN = 'var(--green)'
 const BORDER = 'var(--border)'
 
 function fmtWhen(s?: string | null) {
@@ -134,7 +134,7 @@ export default function CommunicationsHub() {
                 style={{
                   fontSize: 10,
                   padding: '3px 8px',
-                  background: 'var(--bg1, #111)',
+                  background: 'var(--bg1)',
                   border: `1px solid ${BORDER}`,
                   borderRadius: 2,
                   color: TEXT,
