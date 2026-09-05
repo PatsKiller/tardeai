@@ -267,8 +267,14 @@ def _best_effort_comms_publish(
                     status="LEGACY_DELIVERED",
                     provider_coordinates={"delivery_owner": "legacy"},
                 )
-            except Exception:
-                pass
+            except Exception as e:
+                # Never swallow a settle failure silently (§7): a RESERVED stub
+                # left un-settled is a phantom in-flight row. Surface it rather
+                # than letting the ledger claim a queue that never drains.
+                print(
+                    f"[telegram] comms settle LEGACY_DELIVERED failed for "
+                    f"{delivery_id}: {type(e).__name__}: {str(e)[:160]}"
+                )
     except Exception:
         return
 
