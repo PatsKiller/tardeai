@@ -31,6 +31,10 @@
       "path": "closed-loop"
     },
     {
+      "url": "/v3/communications",
+      "path": "communications"
+    },
+    {
       "url": "/v3/consumption",
       "path": "consumption"
     },
@@ -228,6 +232,10 @@
     },
     {
       "route": "/v3/closed-loop"
+    },
+    {
+      "url": "/v3/communications",
+      "path": "communications"
     },
     {
       "route": "/v3/consumption"
