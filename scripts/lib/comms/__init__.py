@@ -1,13 +1,15 @@
-"""Communications Gateway — canonical CommunicationEvent client (Phase 1+5).
+"""Communications Gateway — canonical CommunicationEvent client (Phase 1–5).
 
 Public API:
-  - CommunicationEvent
-  - publish_communication
+  - CommunicationEvent / publish_communication
+  - ChannelDelivery / reserve_delivery / settle_delivery / record_chunk
+  - curation: select_curation_mode, curate_deterministic,
+    apply_llm_curation_result, CurationReceipt, …
   - new_event_id / idempotency_key_for
   - get_gateway_mode / MODE_*
-  - curation (Phase 5): select_curation_mode, CurationReceipt, …
 
-Phase 1 does NOT own provider delivery. Modes default to OFF.
+Does NOT own provider delivery. Modes default to OFF. Phase 3 records
+ChannelDelivery@v1 stubs (RESERVED) without sending.
 Phase 5 curation never calls real LLM APIs.
 """
 from __future__ import annotations
@@ -27,6 +29,14 @@ from scripts.lib.comms.curation import (
     preserve_protected_facts,
     select_curation_mode,
     store_curation_receipt,
+)
+from scripts.lib.comms.delivery import (
+    ChannelDelivery,
+    DeliveryGateError,
+    attach_delivery_reservation,
+    record_chunk,
+    reserve_delivery,
+    settle_delivery,
 )
 from scripts.lib.comms.enforcement import (
     MissingCommunicationEventId,
@@ -49,6 +59,12 @@ __all__ = [
     "CommunicationEvent",
     "PublishResult",
     "publish_communication",
+    "ChannelDelivery",
+    "DeliveryGateError",
+    "reserve_delivery",
+    "settle_delivery",
+    "record_chunk",
+    "attach_delivery_reservation",
     "new_event_id",
     "idempotency_key_for",
     "required_missing",

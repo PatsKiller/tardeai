@@ -1,4 +1,8 @@
-"""publish_communication — Phase 1 ledger write. Never calls providers."""
+"""publish_communication — Phase 1 ledger write. Never calls providers.
+
+Phase 3: after a successful persist, auto-reserves ChannelDelivery@v1 stubs
+per channel (RESERVED only; no provider I/O, delivery_owned stays False).
+"""
 from __future__ import annotations
 
 import json
@@ -7,6 +11,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
+from scripts.lib.comms.delivery import attach_delivery_reservation
 from scripts.lib.comms.event import CommunicationEvent, required_missing
 from scripts.lib.comms.mode import get_gateway_mode
 
@@ -30,7 +35,8 @@ class PublishResult:
     duplicate: bool = False
     outbox_channels: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
-    delivery_owned: bool = False  # Phase 1 always False
+    delivery_owned: bool = False  # Phase 1–3 always False (SHADOW stubs only)
+    delivery_ids: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -43,6 +49,7 @@ class PublishResult:
             "outbox_channels": list(self.outbox_channels),
             "errors": list(self.errors),
             "delivery_owned": self.delivery_owned,
+            "delivery_ids": list(self.delivery_ids),
         }
 
 
@@ -85,6 +92,23 @@ def _channels_for(event: CommunicationEvent) -> list[str]:
     if isinstance(ch, list) and ch:
         return [str(x) for x in ch]
     return ["telegram"] if event.direction == "OUTBOUND" else []
+
+
+def _reserve_deliveries(result: PublishResult, channels: list[str]) -> PublishResult:
+    """Phase 3: RESERVED stubs per channel. Never sends; never claims ownership."""
+    if not result.ok or not result.event_id or not channels:
+        return result
+    delivery_ids: list[str] = []
+    for ch in channels:
+        try:
+            stub = attach_delivery_reservation(result.event_id, ch)
+            if stub.delivery_id:
+                delivery_ids.append(stub.delivery_id)
+        except Exception as e:
+            result.errors.append(f"delivery_reserve:{ch}:{type(e).__name__}")
+    result.delivery_ids = delivery_ids
+    result.delivery_owned = False
+    return result
 
 
 def _persist_memory(event: CommunicationEvent, channels: list[str]) -> PublishResult:
@@ -221,7 +245,9 @@ def publish_communication(event: CommunicationEvent) -> PublishResult:
     """Mint identity, fail closed on required fields, persist ledger row.
 
     Never performs Telegram/Email/Slack/WhatsApp provider calls.
-    delivery_owned is always False in Phase 1.
+    delivery_owned is always False in Phase 1–3 (SHADOW stubs only).
+    After persist, attaches SubjectThread membership (Phase 4) then reserves
+    ChannelDelivery@v1 rows per channel without sending.
     """
     mode = get_gateway_mode()
     event.mint_identity()
@@ -255,7 +281,7 @@ def publish_communication(event: CommunicationEvent) -> PublishResult:
 
     if result.ok and result.event_id and event.subject_key:
         _attach_subject_memory(event, result.event_id, channels)
-    return result
+    return _reserve_deliveries(result, channels)
 
 
 def _attach_subject_memory(
