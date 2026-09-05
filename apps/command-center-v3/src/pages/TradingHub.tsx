@@ -507,9 +507,9 @@ export default function TradingHub({ onDrill }: Props) {
           { label: 'Regime', value: tradeAi?.market_regime ?? '—', color: '#a855f7', title: undefined as string | undefined },
         ]
         const latestRunKpis = [
-          { label: 'RUN GO', value: tradeAi?.setup_run_summary?.go_count ?? '—', color: '#22c55e', title: latestRunScope },
-          { label: 'RUN WAIT', value: tradeAi?.setup_run_summary?.wait_count ?? '—', color: '#f59e0b', title: latestRunScope },
-          { label: 'RUN NOGO', value: tradeAi?.setup_run_summary?.nogo_count ?? '—', color: '#ef4444', title: latestRunScope },
+          { label: 'RUN GO', value: tradeAi?.setup_run_summary?.go_count ?? '—', color: BB.green, title: latestRunScope },
+          { label: 'RUN WAIT', value: tradeAi?.setup_run_summary?.wait_count ?? '—', color: BB.amber, title: latestRunScope },
+          { label: 'RUN NOGO', value: tradeAi?.setup_run_summary?.nogo_count ?? '—', color: BB.red, title: latestRunScope },
           {
             label: 'RUN SCANNED',
             value: tradeAi?.setup_run_summary?.scanned_count ?? scannedN ?? '—',
@@ -666,8 +666,8 @@ export default function TradingHub({ onDrill }: Props) {
               >
                 {latestRunKpis.map(k => (
                   <div key={k.label} title={k.title} style={{ ...(terminalUi ? hubKpiChip(false, true) : { background: 'var(--bg2)', borderRadius: 8, padding: '8px 6px' }), textAlign: 'center', cursor: 'help', border: `1px solid ${BB.amber}` }}>
-                    <div style={{ fontSize: terminalUi ? 14 : 17, fontWeight: 700, color: k.color }}>{k.value}</div>
-                    <div style={{ fontSize: terminalUi ? 7 : 8, color: 'var(--text3)', textTransform: 'uppercase' }}>{k.label}</div>
+                    <div style={{ fontSize: TYPE.md, fontWeight: 700, color: k.color }}>{k.value}</div>
+                    <div style={{ fontSize: TYPE.xs, color: 'var(--text3)', textTransform: 'uppercase' }}>{k.label}</div>
                   </div>
                 ))}
               </div>

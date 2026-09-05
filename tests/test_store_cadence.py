@@ -118,7 +118,14 @@ def test_a_missing_scheduler_is_ORPHANED():
 
 
 def test_findings_are_actually_flagged_not_just_labelled():
-    """A verdict nobody counts is the defect repeating."""
-    out = RSC.evaluate(STORES, db_query=_q(NOW - timedelta(hours=900)), found=FOUND)
+    """A verdict nobody counts is the defect repeating.
+
+    Pin ``now`` to a weekday inside ``active_days``. Without that pin, a
+    weekend CI run (or Friday UTC rolling into Saturday) marks every stale
+    store EXPECTED_SILENT / ok=True and this positive control goes blind.
+    """
+    out = RSC.evaluate(
+        STORES, db_query=_q(NOW - timedelta(hours=900)), found=FOUND, now=NOW
+    )
     assert out["findings"] > 0
     assert all(r["verdict"] == "SILENT" for r in out["results"] if not r["ok"])
