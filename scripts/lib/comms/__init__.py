@@ -1,4 +1,4 @@
-"""Communications Gateway — canonical CommunicationEvent client (Phase 1–10).
+"""Communications Gateway — canonical CommunicationEvent client (Phase 1–11).
 
 Public API:
   - CommunicationEvent / publish_communication
@@ -12,6 +12,8 @@ Public API:
     execute_expiry_pass, propose_knowledge_candidate, …
   - agent contracts: register_subscription, emit_consumption_receipt,
     acknowledge_consumption, declare_influence, AgentConsumptionReceipt, …
+  - SHADOW compare: compare_legacy_vs_gateway, record_shadow_observation,
+    shadow_report
   - new_event_id / idempotency_key_for
   - get_gateway_mode / MODE_*
 
@@ -22,6 +24,7 @@ Phase 5 curation never calls real LLM APIs.
 Phase 6 librarian classifies retention; never auto-promotes chat to knowledge.
 Phase 8 agent consumption receipts never self-certify truth.
 Phase 10 channel adapters send only when deliver=True and mode is CANARY/ACTIVE.
+Phase 11 SHADOW compare never claims delivery ownership or flips ACTIVE.
 """
 from __future__ import annotations
 
@@ -115,6 +118,13 @@ from scripts.lib.comms.mode import (
     get_gateway_mode,
     mode_diagnostics,
 )
+from scripts.lib.comms.shadow_compare import (
+    compare_legacy_vs_gateway,
+    extract_route_intent,
+    record_shadow_observation,
+    reset_shadow_observations,
+    shadow_report,
+)
 
 __all__ = [
     "CommunicationEvent",
@@ -194,4 +204,9 @@ __all__ = [
     "acknowledge_consumption",
     "declare_influence",
     "assert_not_self_certifying_truth",
-                    ]
+    "compare_legacy_vs_gateway",
+    "extract_route_intent",
+    "record_shadow_observation",
+    "shadow_report",
+    "reset_shadow_observations",
+]
