@@ -1351,23 +1351,29 @@ def cmd_plan_detail(plan_id: str) -> str:
 
 
 def send_cio_message(chat_id: str, text: str, *, reply_to: Optional[str] = None) -> dict[str, Any]:
-    """Single governed sender for CIO bot (uses TELEGRAM_CIO_BOT_TOKEN only)."""
-    token = cio_bot_token()
-    if not token:
-        return {"ok": False, "error": "TELEGRAM_CIO_BOT_TOKEN unset"}
+    """CIO converse egress via approved cio_telegram_transport (no raw Bot API).
+
+    chat_id/reply_to retained for call-site compatibility; transport fans out to
+    the CIO allowlist after inbound allowlist gating.
+    """
+    _ = (chat_id, reply_to)
     try:
-        from telegram_transport import send_message, smart_split, MAX_MSG_LEN
-        chunks = smart_split(text, MAX_MSG_LEN)
-        last: dict[str, Any] = {}
-        for chunk in chunks:
-            last = send_message(token=token, chat_id=str(chat_id), text=chunk)
-        # extract message_id if present
-        mid = None
-        try:
-            mid = (last.get("response") or {}).get("result", {}).get("message_id")
-        except Exception:
-            mid = None
-        return {"ok": bool(last.get("ok")), "message_id": mid, "raw": last}
+        from scripts.lib.cio_telegram_transport import send_cio_message as _transport_send
+        res = _transport_send(
+            text,
+            kind="cio_converse",
+            require_live_auth=False,
+            force=False,
+        )
+        mids = res.get("message_ids") or []
+        out: dict[str, Any] = {
+            "ok": bool(res.get("delivered")),
+            "message_id": mids[0] if mids else None,
+            "raw": res,
+        }
+        if not out["ok"]:
+            out["error"] = res.get("reason") or "send_failed"
+        return out
     except Exception as exc:
         return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
 

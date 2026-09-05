@@ -18,6 +18,7 @@ import requests
 
 TELEGRAM_SEND_MESSAGE_API = "https://api.telegram.org/bot{token}/sendMessage"
 TELEGRAM_EDIT_MESSAGE_API = "https://api.telegram.org/bot{token}/editMessageText"
+TELEGRAM_SEND_DOCUMENT_API = "https://api.telegram.org/bot{token}/sendDocument"
 MAX_MSG_LEN = 4000
 
 
@@ -296,3 +297,63 @@ def send_message(
         parse_mode=parse_mode,
         idempotency_key=idempotency_key,
     )
+
+
+def send_document(
+    *,
+    token: str,
+    chat_id: str,
+    file_path: str,
+    caption: str | None = None,
+    thread_id: str | None = None,
+    reply_markup: dict | None = None,
+) -> dict:
+    """Send a document via Bot API. Only callable from approved delivery modules."""
+    if _interdicted():
+        return _interdicted_result()
+    from pathlib import Path
+
+    path = Path(file_path)
+    if not path.is_file():
+        return {
+            "ok": False,
+            "status_code": 0,
+            "response": {"ok": False, "description": "file_missing"},
+            "message_id": None,
+        }
+    url = TELEGRAM_SEND_DOCUMENT_API.format(token=token)
+    data: dict[str, Any] = {"chat_id": chat_id}
+    if caption:
+        data["caption"] = caption[:1024]
+    if thread_id:
+        data["message_thread_id"] = thread_id
+    if reply_markup:
+        import json as _json
+
+        data["reply_markup"] = _json.dumps(reply_markup)
+    try:
+        with path.open("rb") as fh:
+            resp = requests.post(
+                url,
+                data=data,
+                files={"document": (path.name, fh)},
+                timeout=60,
+            )
+        body = _safe_json(resp)
+        ok = bool(getattr(resp, "ok", False)) and bool(body.get("ok", getattr(resp, "ok", False)))
+        # Prefer API ok flag when present.
+        if isinstance(body, dict) and "ok" in body:
+            ok = bool(body.get("ok"))
+        return {
+            "ok": ok,
+            "status_code": int(getattr(resp, "status_code", 0) or 0),
+            "response": body,
+            "message_id": _message_id_from(body) if ok else None,
+        }
+    except Exception as e:
+        return {
+            "ok": False,
+            "status_code": 0,
+            "response": {"ok": False, "description": f"{type(e).__name__}:{e}"},
+            "message_id": None,
+        }

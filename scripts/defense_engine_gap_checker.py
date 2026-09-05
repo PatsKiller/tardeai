@@ -93,64 +93,44 @@ def update_ledger(result: dict) -> list:
 
 
 def send_telegram_alert(gaps: list, all_stale: list):
-    """Fire Telegram alert for new gaps. Returns True if sent."""
+    """Fire Telegram alert for new gaps via send_telegram chokepoint. Returns True if sent."""
     if not gaps:
         return False
+    gap_lines = [f"  {g['sector']} ({g['etf']}): last refresh {g['as_of']} — {g['days_stale']}d stale"
+                 for g in sorted(all_stale, key=lambda x: x.get('days_stale', 0) or 0, reverse=True)]
+    msg = (
+        "Defense Engine Gap Alert\n"
+        f"{len(all_stale)} sector(s) stale >{STALE_DAYS}d\n\n"
+        + "\n".join(gap_lines) + "\n\n"
+        "Action: POST /api/v2/defense/refresh or verify sector_momentum_engine cron"
+    )
     try:
-        import requests
-        bot_token = _read_token()
-        if not bot_token:
-            print("[gap-checker] no TELEGRAM_BOT_TOKEN — skipping alert", flush=True)
-            return False
-        chat_id = _read_chat_id()
-        if not chat_id:
-            return False
-
-        gap_lines = [f"  {g['sector']} ({g['etf']}): last refresh {g['as_of']} — {g['days_stale']}d stale"
-                     for g in sorted(all_stale, key=lambda x: x.get('days_stale', 0) or 0, reverse=True)]
-        msg = (
-            "Defense Engine Gap Alert\n"
-            f"{len(all_stale)} sector(s) stale >{STALE_DAYS}d\n\n"
-            + "\n".join(gap_lines) + "\n\n"
-            "Action: POST /api/v2/defense/refresh or verify sector_momentum_engine cron"
-        )
-        resp = requests.post(
-            f"https://api.telegram.org/bot{bot_token}/sendMessage",
-            json={"chat_id": chat_id, "text": msg[:4096], "parse_mode": "Markdown"},
-            timeout=10)
-        if resp.status_code == 200:
+        scripts_dir = str(ROOT / "scripts")
+        if scripts_dir not in sys.path:
+            sys.path.insert(0, scripts_dir)
+        from telegram_alert import send_telegram
+        ok = bool(send_telegram(msg[:4096]))
+        try:
+            from lib.comms import CommunicationEvent, publish_communication
+            publish_communication(CommunicationEvent(
+                direction="OUTBOUND", event_type="alert", message_class="ops",
+                producer="defense_engine_gap_checker",
+                subject_key="ops:defense_engine_gap",
+                retention_class="operational", severity="warning",
+                sanitized_body=msg[:500], short_summary=msg[:120],
+            ))
+        except Exception:
+            # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
+            pass
+        if ok:
             print(f"[gap-checker] alert sent: {len(all_stale)} stale sectors", flush=True)
-            return True
-        print(f"[gap-checker] Telegram send failed: {resp.status_code} {resp.text[:200]}", flush=True)
+        else:
+            print("[gap-checker] send_telegram returned False", flush=True)
+        return ok
     except Exception as e:
+        # ALARM-DELIVERY-DECLARED: best-effort advisory notify after chokepoint migration; never blocks caller
         print(f"[gap-checker] Telegram send error: {e}", flush=True)
     return False
-
-
-def _read_token() -> str | None:
-    import os
-    tok = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
-    if tok:
-        return tok
-    try:
-        cfg = json.loads((ROOT / "config" / "telegram.json").read_text())
-        return cfg.get("bot_token") or cfg.get("botToken") or cfg.get("token")
-    except Exception:
-        pass
-    return None
-
-
-def _read_chat_id() -> str | None:
-    import os
-    cid = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
-    if cid:
-        return cid
-    try:
-        cfg = json.loads((ROOT / "config" / "telegram.json").read_text())
-        return str(cfg.get("chat_id") or cfg.get("chatId") or "")
-    except Exception:
-        pass
-    return None
 
 
 def main() -> int:

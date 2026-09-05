@@ -106,33 +106,33 @@ def _table_exists(cur, name):
 
 
 def _alert(directive_gaps):
-    import os
-    tok = os.getenv("TELEGRAM_BOT_TOKEN", "")
-    if not tok:
-        try:
-            for l in (PROJECT_ROOT / ".env").read_text().splitlines():
-                if l.startswith("TELEGRAM_BOT_TOKEN="):
-                    tok = l.split("=", 1)[1].strip()
-        except Exception:
-            pass
-    try:
-        from tg_chat_ids import chat_ids
-        chat = (chat_ids() or [None])[0]
-    except Exception:
-        chat = None
-    if not (tok and chat):
-        return
+    """Send via telegram_alert.send_telegram chokepoint (no raw Bot API)."""
     lines = [f"• {g['symbol']}: missing {', '.join(g['missing'])}" for g in directive_gaps[:12]]
+    msg = (
+        "⚠️ *ENRICHMENT COVERAGE GAPS — operator-directive symbols*\n"
+        + "\n".join(lines)
+        + "\n\nFix: the relevant fetcher skipped the canonical watch "
+          "universe (scripts/watch_universe.py)."
+    )
     try:
-        import requests
-        requests.post(f"https://api.telegram.org/bot{tok}/sendMessage",
-                      json={"chat_id": chat, "parse_mode": "Markdown",
-                            "text": "⚠️ *ENRICHMENT COVERAGE GAPS — operator-directive symbols*\n"
-                                    + "\n".join(lines)
-                                    + "\n\nFix: the relevant fetcher skipped the canonical watch "
-                                      "universe (scripts/watch_universe.py)."}, timeout=10)
-        print(f"alert sent ({len(directive_gaps)} directive gaps)")
+        from telegram_alert import send_telegram
+        ok = bool(send_telegram(msg))
+        try:
+            from lib.comms import CommunicationEvent, publish_communication
+            publish_communication(CommunicationEvent(
+                direction="OUTBOUND", event_type="alert", message_class="ops",
+                producer="audit_enrichment_coverage",
+                subject_key="ops:enrichment_coverage",
+                retention_class="operational", severity="warning",
+                sanitized_body=msg[:500], short_summary=msg[:120],
+            ))
+        except Exception:
+            # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
+            pass
+        if ok:
+            print(f"alert sent ({len(directive_gaps)} directive gaps)")
     except Exception:
+        # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
         pass
 
 

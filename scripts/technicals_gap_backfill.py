@@ -143,30 +143,29 @@ def run(symbols=None, alert=False):
 
 
 def _alert(dead):
-    import os
-    tok = os.getenv("TELEGRAM_BOT_TOKEN", "")
-    if not tok:
+    """Send via telegram_alert.send_telegram chokepoint (no raw Bot API)."""
+    msg = (
+        "⚠️ *TECHNICALS GAP* — no price series found for held symbols: "
+        + ", ".join(dead)
+        + "\n(delisted or unmapped — flagged, not faked)"
+    )
+    try:
+        from telegram_alert import send_telegram
+        send_telegram(msg)
         try:
-            for l in (PROJECT_ROOT / ".env").read_text().splitlines():
-                if l.startswith("TELEGRAM_BOT_TOKEN="):
-                    tok = l.split("=", 1)[1].strip()
+            from lib.comms import CommunicationEvent, publish_communication
+            publish_communication(CommunicationEvent(
+                direction="OUTBOUND", event_type="alert", message_class="ops",
+                producer="technicals_gap_backfill",
+                subject_key="ops:technicals_gap",
+                retention_class="operational", severity="warning",
+                sanitized_body=msg[:500], short_summary=msg[:120],
+            ))
         except Exception:
+            # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
             pass
-    try:
-        from tg_chat_ids import chat_ids
-        chat = (chat_ids() or [None])[0]
     except Exception:
-        chat = None
-    if not (tok and chat):
-        return
-    try:
-        import requests
-        requests.post(f"https://api.telegram.org/bot{tok}/sendMessage",
-                      json={"chat_id": chat, "parse_mode": "Markdown",
-                            "text": "⚠️ *TECHNICALS GAP* — no price series found for held symbols: "
-                                    + ", ".join(dead) + "\n(delisted or unmapped — flagged, not faked)"},
-                      timeout=10)
-    except Exception:
+        # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
         pass
 
 

@@ -18,7 +18,6 @@ for line in (ROOT / '.env').read_text().splitlines():
 
 import psycopg2
 from psycopg2.extras import RealDictCursor
-import requests
 
 DB_CONFIG = {
     'host': os.getenv('DB_HOST', 'localhost'),
@@ -27,8 +26,6 @@ DB_CONFIG = {
     'user': os.getenv('DB_USER', 'trade_ai'),
     'password': os.getenv('DB_PASSWORD', '')
 }
-TELEGRAM_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '')
-TELEGRAM_CHATS = [c.strip() for c in os.getenv('TELEGRAM_CHAT_ID', '').split(',') if c.strip()]
 HOLDINGS_PATH = ROOT / 'data' / 'portfolios' / 'state' / 'holdings.json'
 
 
@@ -174,13 +171,26 @@ def evaluate_reentry_signals():
 
 
 def send_telegram_msg(msg):
-    if not TELEGRAM_TOKEN: return
-    for cid in TELEGRAM_CHATS:
+    """Send via telegram_alert.send_telegram chokepoint (no raw Bot API)."""
+    try:
+        from telegram_alert import send_telegram
+        ok = bool(send_telegram(msg))
         try:
-            requests.post(f'https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage',
-                          json={'chat_id': cid, 'text': msg, 'parse_mode': 'Markdown'}, timeout=10)
-        except Exception as e:
-            log.error(f"Telegram {cid}: {e}")
+            from lib.comms import CommunicationEvent, publish_communication
+            publish_communication(CommunicationEvent(
+                direction="OUTBOUND", event_type="alert", message_class="ops",
+                producer="previously_traded_watchlist",
+                subject_key="ops:prev_traded_watchlist",
+                retention_class="operational", severity="info",
+                sanitized_body=msg[:500], short_summary=msg[:120],
+            ))
+        except Exception:
+            # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
+            pass
+        return ok
+    except Exception as e:
+        log.error(f"Telegram send failed: {e}")
+        return False
 
 
 def send_weekly_telegram(dry_run=False):

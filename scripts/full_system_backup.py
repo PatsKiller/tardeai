@@ -459,27 +459,27 @@ If the NVMe dies tomorrow, this zip + a fresh Ubuntu install = full recovery.
 
 
 def _notify_telegram(message):
-    """Send backup status to all Telegram recipients."""
-    import urllib.request, urllib.parse
-    token, chat_ids_raw = "", ""
+    """Send backup status via telegram_alert.send_telegram chokepoint (no raw Bot API)."""
     try:
-        for line in (PROJECT_ROOT / ".env").read_text().splitlines():
-            if line.startswith("TELEGRAM_BOT_TOKEN="): token = line.split("=", 1)[1].strip()
-            if line.startswith("TELEGRAM_CHAT_ID="): chat_ids_raw = line.split("=", 1)[1].strip()
-    except Exception:
-        return
-    if not token or not chat_ids_raw:
-        return
-    for cid in chat_ids_raw.split(","):
-        cid = cid.strip()
-        if not cid:
-            continue
+        scripts_dir = str(PROJECT_ROOT / "scripts")
+        if scripts_dir not in sys.path:
+            sys.path.insert(0, scripts_dir)
+        from telegram_alert import send_telegram
+        send_telegram(message)
         try:
-            data = urllib.parse.urlencode({"chat_id": cid, "text": message}).encode()
-            req = urllib.request.Request(f"https://api.telegram.org/bot{token}/sendMessage", data=data)
-            urllib.request.urlopen(req, timeout=10)
+            from lib.comms import CommunicationEvent, publish_communication
+            publish_communication(CommunicationEvent(
+                direction="OUTBOUND", event_type="alert", message_class="ops",
+                producer="full_system_backup", subject_key="ops:system_backup",
+                retention_class="operational", severity="info",
+                sanitized_body=message[:500], short_summary=message[:120],
+            ))
         except Exception:
+            # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
             pass
+    except Exception:
+        # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
+        pass
 
 
 if __name__ == "__main__":

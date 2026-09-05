@@ -202,6 +202,9 @@ def test_deliver_plain_fallback_is_one_visible_message(tmp_path, monkeypatch):
     """Markdown 400 then plaintext 200 = one posted message, not two."""
     from lib import telegram_send_idempotency as idm
     monkeypatch.setattr(idm, "_DEFAULT", tmp_path / "idemp.json")
+    # deliver_text interdicts when PYTEST_CURRENT_TEST is set — clear for this unit.
+    monkeypatch.setenv("PYTEST_CURRENT_TEST", "")
+    monkeypatch.delenv("CIO_TELEGRAM_INTERDICT", raising=False)
     calls = []
 
     def post(url, payload):
@@ -252,7 +255,9 @@ def test_second_send_edits_not_posts(tmp_path, monkeypatch):
     assert sum(1 for u in calls if "editMessageText" in u) == 1
 
 
-def test_first_success_does_not_fallback_send():
+def test_first_success_does_not_fallback_send(monkeypatch):
+    monkeypatch.setenv("PYTEST_CURRENT_TEST", "")
+    monkeypatch.delenv("CIO_TELEGRAM_INTERDICT", raising=False)
     calls = []
 
     def post(url, payload):

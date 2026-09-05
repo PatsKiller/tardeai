@@ -92,26 +92,29 @@ def main():
 
         if not args.dry_run:
             try:
-                from telegram_alert_routing_policy import telegram_destination_for_alert
                 for line in Path(PROJ / '.env').read_text().splitlines():
                     if '=' in line and not line.strip().startswith('#'):
                         k, v = line.split('=', 1)
                         os.environ.setdefault(k.strip(), v.strip())
-                dest = telegram_destination_for_alert(packet)
-                token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-                if dest.get("chat_id") and token:
-                    from telegram_transport import send_message as _tg_send
-                    from lib.telegram_card_gate import idempotency_key as _ikey
-                    resp = _tg_send(
-                        token=token,
-                        chat_id=str(dest["chat_id"]),
-                        text=message,
-                        parse_mode="Markdown",
-                        idempotency_key=_ikey("watchpool", c.get("symbol"), check.get("key")),
-                    )
-                    r_ok = bool(resp.get("ok"))
-                    result["sent"] = r_ok
-                    sent_count += 1 if r_ok else 0
+                from telegram_alert import send_telegram
+                r_ok = bool(send_telegram(message))
+                result["sent"] = r_ok
+                sent_count += 1 if r_ok else 0
+                try:
+                    if str(PROJ) not in sys.path:
+                        sys.path.insert(0, str(PROJ))
+                    from lib.comms import CommunicationEvent, publish_communication
+                    publish_communication(CommunicationEvent(
+                        direction="OUTBOUND", event_type="alert", message_class="ops",
+                        producer="send_watchpool_maturity_alerts",
+                        subject_key=f"symbol:{(c.get('symbol') or 'unknown').upper()}",
+                        retention_class="operational", severity="info",
+                        entity_refs={"symbol": c.get("symbol")},
+                        sanitized_body=message[:500], short_summary=message[:120],
+                    ))
+                except Exception:
+                    # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
+                    pass
             except Exception as e:
                 result["error"] = str(e)[:80]
             _log_alert(check["key"], c["symbol"], alert_type, result["sent"], "sent" if result["sent"] else "error")

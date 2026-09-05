@@ -15,8 +15,6 @@ sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 log = logging.getLogger(__name__)
 
-TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-
 # Agnostic status labels — simulation or live destination; never paper-only framing.
 STATUS_LABELS = {
     "APPROVED_FOR_PAPER_TEST": "Approved · route-eligible",
@@ -35,25 +33,18 @@ def friendly_status(status) -> str:
     return STATUS_LABELS.get(str(status or "").upper(), str(status or "?"))
 
 
-def _token():
-    t = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-    if not t:
-        for line in (PROJECT_ROOT / ".env").read_text().splitlines():
-            if line.startswith("TELEGRAM_BOT_TOKEN="):
-                t = line.split("=", 1)[1].strip()
-    return t
-
-
-def _chat_targets():
-    """Return list of chat IDs to send to. Prefers decisions group."""
-    targets = []
-    g = os.environ.get("TRADEAI_PROPOSAL_ALERT_CHAT_ID", "").strip()
-    if g:
-        targets.append(g)
-    else:
-        std = os.environ.get("TELEGRAM_CHAT_ID", "")
-        targets.extend(c.strip() for c in std.split(",") if c.strip())
-    return targets
+def _shadow_publish(msg: str, *, producer: str, subject_key: str, severity: str = "info") -> None:
+    try:
+        from lib.comms import CommunicationEvent, publish_communication
+        publish_communication(CommunicationEvent(
+            direction="OUTBOUND", event_type="alert", message_class="ops",
+            producer=producer, subject_key=subject_key,
+            retention_class="operational", severity=severity,
+            sanitized_body=msg[:500], short_summary=msg[:120],
+        ))
+    except Exception:
+        # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
+        pass
 
 
 def format_proposal_alert(proposal, alert_type, current_price):
@@ -146,56 +137,20 @@ def format_proposal_alert(proposal, alert_type, current_price):
 
 
 def send_proposal_alert(proposal, alert_type, current_price):
-    """Send alert to dedicated decisions group or fallback standard chats."""
-    # ALERT-FATIGUE-1: Check router before sending
-    try:
-        from telegram_alert_router import should_send_telegram
-        msg_preview, _ = format_proposal_alert(proposal, alert_type, current_price)
-        if not should_send_telegram(msg_preview):
-            log.info(f"[alert_router] Suppressed {alert_type} for {proposal.get('symbol', '?')} — non-actionable")
-            return
-    except ImportError:
-        pass  # router not available, fall through to original behavior
-
-    import urllib.request
-    token = _token()
-    if not token:
-        log.error("No TELEGRAM_BOT_TOKEN")
-        return
-
+    """Send alert via telegram_alert chokepoint with inline keyboard restored."""
     msg, keyboard = format_proposal_alert(proposal, alert_type, current_price)
-    targets = _chat_targets()
-    if not targets:
-        log.error("No Telegram chat targets configured")
-        return
-
-    for chat_id in targets:
-        payload = {
-            "chat_id": chat_id,
-            "text": msg,
-            "parse_mode": "Markdown",
-        }
-        if keyboard:
-            payload["reply_markup"] = json.dumps(keyboard)
-
-        try:
-            data = json.dumps(payload).encode()
-            req = urllib.request.Request(
-                f"https://api.telegram.org/bot{token}/sendMessage",
-                data=data,
-                headers={"Content-Type": "application/json"},
-                method="POST",
-            )
-            resp = urllib.request.urlopen(req, timeout=10)
-            result = json.loads(resp.read())
-            if result.get("ok"):
-                msg_id = result.get("result", {}).get("message_id")
-                if msg_id:
-                    _store_proposal_message_link(proposal.get("id"), chat_id, msg_id)
-            else:
-                log.error(f"send_proposal_alert failed chat={chat_id} resp={result}")
-        except Exception:
-            log.exception(f"send_proposal_alert exception chat={chat_id}")
+    try:
+        from telegram_alert import send_telegram
+        ok = bool(send_telegram(msg, reply_markup=keyboard))
+        if not ok:
+            log.info(f"send_proposal_alert not accepted for {proposal.get('symbol', '?')} ({alert_type})")
+        _shadow_publish(
+            msg, producer="proposal_alerter",
+            subject_key=f"proposal:{proposal.get('id', '?')}",
+            severity="info",
+        )
+    except Exception:
+        log.exception(f"send_proposal_alert exception for {proposal.get('symbol', '?')}")
 
     # Email notification
     try:
@@ -421,8 +376,7 @@ def format_stop_alert(data):
 
 
 def send_stop_alert(symbol, account=""):
-    """Assemble and send a rich stop-triggered decision alert."""
-    import urllib.request
+    """Assemble and send a rich stop-triggered decision alert via send_telegram."""
     try:
         from stop_alert_assembler import assemble_stop_alert_data
         data = assemble_stop_alert_data(symbol, account)
@@ -433,34 +387,27 @@ def send_stop_alert(symbol, account=""):
     if not data:
         try:
             from telegram_alert import send_telegram
-            send_telegram(f"\U0001f6a8 STOP TRIGGERED: {symbol} \u2014 data assembly failed, check /v3/risk")
+            fail_msg = f"\U0001f6a8 STOP TRIGGERED: {symbol} \u2014 data assembly failed, check /v3/risk"
+            send_telegram(fail_msg)
+            _shadow_publish(
+                fail_msg, producer="proposal_alerter",
+                subject_key=f"stop:{symbol}", severity="critical",
+            )
         except Exception:
             pass
         return
 
     msg, keyboard = format_stop_alert(data)
-    token = _token()
-    if not token:
-        return
-
-    targets = _chat_targets()
-    for chat_id in targets:
-        payload = json.dumps({
-            "chat_id": chat_id,
-            "text": msg,
-            "parse_mode": "Markdown",
-            "reply_markup": json.dumps(keyboard),
-        }).encode()
-        try:
-            req = urllib.request.Request(
-                f"https://api.telegram.org/bot{token}/sendMessage",
-                data=payload,
-                headers={"Content-Type": "application/json"},
-                method="POST",
-            )
-            urllib.request.urlopen(req, timeout=10)
-        except Exception:
-            log.exception(f"send_stop_alert failed chat={chat_id}")
+    try:
+        from telegram_alert import send_telegram
+        send_telegram(msg, reply_markup=keyboard)
+        _shadow_publish(
+            msg, producer="proposal_alerter",
+            subject_key=f"stop:{symbol}", severity="critical",
+        )
+    except Exception:
+        # ALARM-DELIVERY-DECLARED: best-effort advisory notify after chokepoint migration; never blocks caller
+        log.exception(f"send_stop_alert failed for {symbol}")
 
     # Email notification
     try:
@@ -470,4 +417,5 @@ def send_stop_alert(symbol, account=""):
             data.get("current_pnl_dollars", 0), data.get("current_pnl_pct", 0),
             data.get("regime_label", ""), data.get("portfolio_triggered_count", 0))
     except Exception:
+        # ALARM-DELIVERY-DECLARED: best-effort advisory notify after chokepoint migration; never blocks caller
         pass

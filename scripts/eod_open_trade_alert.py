@@ -40,10 +40,6 @@ def _fmt_signed_r(n: float) -> str:
 def _fmt_abs(n: float) -> str:
     return f"{abs(float(n or 0)):.0f}"
 
-BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN', '')
-CHAT_IDS = [c.strip() for c in os.environ.get('TELEGRAM_CHAT_ID', '').split(',') if c.strip()]
-
-
 def get_open_trades() -> list:
     conn = get_connection()
     if not conn:
@@ -160,13 +156,6 @@ def format_message(rows, trail_map) -> str:
 
 
 def send_eod_alert():
-    if not BOT_TOKEN:
-        log.error("TELEGRAM_BOT_TOKEN not set")
-        return False
-    if not CHAT_IDS:
-        log.error("TELEGRAM_CHAT_ID not set")
-        return False
-
     rows, trail_map = get_open_trades()
     message = format_message(rows, trail_map)
     log.info(f"Sending EOD alert: {len(rows)} open trades")
@@ -174,7 +163,21 @@ def send_eod_alert():
     # Route through the central Telegram chokepoint so the report is FQDN-normalized AND
     # persisted to telegram_outbox for the v3 Reports portal. bypass_router: scheduled report.
     from telegram_alert import send_telegram
-    ok = send_telegram(message, bypass_router=True)
+    ok = bool(send_telegram(message, bypass_router=True))
+    try:
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        if root not in sys.path:
+            sys.path.insert(0, root)
+        from lib.comms import CommunicationEvent, publish_communication
+        publish_communication(CommunicationEvent(
+            direction="OUTBOUND", event_type="alert", message_class="ops",
+            producer="eod_open_trade_alert", subject_key="ops:eod_open_trades",
+            retention_class="operational", severity="info",
+            sanitized_body=message[:500], short_summary=message[:120],
+        ))
+    except Exception:
+        # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
+        pass
     log.info("  Sent" if ok else "  Send failed")
     return ok
 

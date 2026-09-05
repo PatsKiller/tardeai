@@ -13,7 +13,9 @@
 # rather than silence. The gate below still refuses NEW untested sites, so the
 # tail shrinks as those files are touched for other reasons.
 #
-# transport=send_telegram  total_sites=142  covered=16  uncovered=126
+# Updated 2026-09-04 for comms-gateway bypass migration (shadow publish sites
+# now call send_telegram via the chokepoint; counts re-baselined, not newly untested).
+# transport=send_telegram  total_sites=169  covered=15  uncovered=154
 
 scripts/advisory_telegram_brief.py 1
 scripts/aegis_overnight.py 3
@@ -26,19 +28,27 @@ scripts/alpaca_live_read_sync.py 1
 scripts/alpaca_stop_manager.py 1
 scripts/api_v2.py 3
 scripts/atm_auto_approver.py 1
+scripts/audit_enrichment_coverage.py 1
+scripts/audit_position_basis.py 1
 scripts/auto_research.py 1
+scripts/brokers/approval_service.py 1
 scripts/cio_event_brief.py 1
 scripts/claude_escalation_handler.py 1
 scripts/cloud_consensus_verdict.py 1
 scripts/continuous_runner.py 1
+scripts/crawl_v3_dashboard.py 1
 scripts/credential_monitor.py 1
 scripts/cron_self_heal.py 1
+scripts/defense_engine_gap_checker.py 1
 scripts/defense_execution.py 1
 scripts/defense_weekly_paid_review.py 2
 scripts/eod_open_trade_alert.py 1
 scripts/finviz_health_check.py 1
 scripts/finviz_ingestion.py 2
+scripts/freshness_watchdog_heartbeat.py 1
+scripts/full_system_backup.py 1
 scripts/generate_daily_intelligence_report.py 1
+scripts/generate_max_hold_exit_proposals.py 1
 scripts/generate_weekly_docx.py 1
 scripts/health_agent.py 1
 scripts/hermes_backlog_drain.py 1
@@ -47,7 +57,9 @@ scripts/hermes_score_alerts.py 1
 scripts/incubator_llm_screener.py 1
 scripts/incubator_proposal_promoter.py 2
 scripts/inference_telegram.py 1
+scripts/intel_table_staleness_monitor.py 1
 scripts/interlock_parity_monitor.py 1
+scripts/iris_taxonomy_agent.py 1
 scripts/lib/cio_operator_renderers.py 2
 scripts/lib/gain_guardian_publish.py 1
 scripts/lib/hermes_outcome_bus/alert_notifications.py 1
@@ -56,11 +68,14 @@ scripts/moomoo/opend_health.py 1
 scripts/morning_digest.py 1
 scripts/nightly_integrity_sweep.py 1
 scripts/oauth_lane_keepalive.py 1
+scripts/options_lifecycle_alerts.py 1
 scripts/overnight_batch.py 1
 scripts/overnight_digest_telegram.py 1
 scripts/oversight_weekly_digest.py 1
 scripts/paper_performance_governance.py 1
 scripts/paper_trade_monitor.py 1
+scripts/phase3_lookthrough_fetcher.py 1
+scripts/pipeline_alert.py 1
 scripts/pipeline_freshness_slo.py 1
 scripts/pipeline_health_monitor.py 1
 scripts/pipeline_watchdog.py 2
@@ -70,12 +85,16 @@ scripts/portfolio_live_monitor.py 1
 scripts/portfolio_monthly_report.py 1
 scripts/portfolio_monthly_synthesis.py 1
 scripts/portfolio_orchestrator.py 1
+scripts/portfolio_technical.py 1
 scripts/portfolio_weekly_report.py 1
 scripts/premarket_watcher.py 1
+scripts/previously_traded_watchlist.py 1
+scripts/pro_analyst_monitor.py 1
 scripts/process_reaper.py 1
 scripts/process_watchlist_agent_jobs.py 2
-scripts/proposal_alerter.py 1
+scripts/proposal_alerter.py 3
 scripts/proposal_paper_submitter.py 2
+scripts/protection_alerts.py 1
 scripts/pullback_macd_screener.py 1
 scripts/rebalance_verifier.py 2
 scripts/recovery_watch_daily.py 2
@@ -90,14 +109,18 @@ scripts/run_proactive_quote_refresh.py 1
 scripts/scalp_critic_agent.py 1
 scripts/scalp_outcome_scorer.py 1
 scripts/schwab_auto_reauth.py 1
+scripts/schwab_position_sync.py 1
+scripts/schwab_token_manager.py 1
 scripts/secrets/render_env.py 1
 scripts/secrets/rotation_daemon.py 1
 scripts/secrets_admin.py 1
 scripts/send_alert_digest.py 1
 scripts/send_closed_trade_digest.py 2
 scripts/send_morning_brief.py 1
+scripts/send_no_leads_diagnostic_alert.py 1
 scripts/send_screener_schedule_health_alert.py 1
 scripts/send_telegram_proposal_alert.py 1
+scripts/send_watchpool_maturity_alerts.py 1
 scripts/siem_critical_notify.py 1
 scripts/social_scalp_scanner.py 2
 scripts/stop_decision_brief.py 1
@@ -105,21 +128,26 @@ scripts/stop_drift_alert.py 1
 scripts/stop_health_check.py 1
 scripts/stop_over_consensus_monitor.py 1
 scripts/strategy_weekly_review.py 2
+scripts/system_freshness_monitor.py 1
 scripts/system_health_agent.py 2
 scripts/system_health_alerts.py 1
 scripts/system_rollup_snapshot.py 1
+scripts/technicals_gap_backfill.py 1
 scripts/telegram_cio_summary.py 1
 scripts/telegram_command_handler.py 1
 scripts/telegram_reply_processor.py 1
 scripts/telegram_smart_alerts.py 1
+scripts/trade_ai_news_monitor.py 1
 scripts/trade_ai_orchestrator.py 1
 scripts/verify_fib_proposals.py 1
 scripts/verify_hermes_daily.py 1
 scripts/warrior_weekly_audit_cron.py 1
 scripts/watch_alerts_eval.py 1
 scripts/watch_directive_hygiene.py 1
+scripts/watch_directives_service.py 1
 scripts/watchlist_entry_planner.py 1
 scripts/weekly_learning_digest_delivery.py 1
 scripts/weekly_summary_local.py 1
 scripts/youtube_backfill_manager.py 1
+scripts/youtube_cookie_health_check.py 1
 scripts/youtube_transcript_ingest.py 1

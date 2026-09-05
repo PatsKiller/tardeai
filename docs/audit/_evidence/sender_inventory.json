@@ -1,0 +1,3175 @@
+{
+  "generated_at_utc": "2026-09-05T01:16:05.466532+00:00",
+  "attested_SOURCE_COMMIT": "17e30dcbb9a091f2fb9916f3c0d4ccabd5c5e72e",
+  "root": "/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT",
+  "disposition_enum": [
+    "MIGRATE",
+    "REMOVE",
+    "DISABLE",
+    "EXEMPT_WITH_EXPIRY"
+  ],
+  "counts": {
+    "senders_classified": 224,
+    "excluded_non_senders": 0,
+    "by_disposition": {
+      "MIGRATE": 166,
+      "EXEMPT_WITH_EXPIRY": 58
+    },
+    "migrate_with_baseline_bypass": 44,
+    "owners_tbd": 0,
+    "unclassified": 0,
+    "owners_by": {
+      "advisory": 3,
+      "ops": 102,
+      "broker": 23,
+      "risk": 9,
+      "research": 12,
+      "cio": 12,
+      "hermes": 5
+    }
+  },
+  "senders": [
+    {
+      "path": "scripts/alert_outbox.py",
+      "disposition": "EXEMPT_WITH_EXPIRY",
+      "owner": "comms-gateway",
+      "expiry": "2026-12-31",
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": true,
+      "in_crontab": false,
+      "patterns": [
+        "publish_event",
+        "publish_legacy_message"
+      ],
+      "notes": "Approved outbound adapter/chokepoint until CommunicationEvent transport supersedes."
+    },
+    {
+      "path": "scripts/audit_direct_telegram_senders.py",
+      "disposition": "EXEMPT_WITH_EXPIRY",
+      "owner": "comms-gateway",
+      "expiry": "2026-12-31",
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": true,
+      "in_crontab": false,
+      "patterns": [
+        "api.telegram.org",
+        "send_telegram"
+      ],
+      "notes": "Approved audit/tooling scanner."
+    },
+    {
+      "path": "scripts/check_telegram_chokepoint.py",
+      "disposition": "EXEMPT_WITH_EXPIRY",
+      "owner": "comms-gateway",
+      "expiry": "2026-12-31",
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": true,
+      "in_crontab": false,
+      "patterns": [
+        "api.telegram.org",
+        "publish_event",
+        "send_telegram"
+      ],
+      "notes": "Approved audit/tooling scanner."
+    },
+    {
+      "path": "scripts/cio_telegram_bot.py",
+      "disposition": "EXEMPT_WITH_EXPIRY",
+      "owner": "comms-gateway",
+      "expiry": "2026-12-31",
+      "chokepoint_baseline_violations": 1,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "api.telegram.org",
+        "send_cio_message"
+      ],
+      "notes": "Approved inbound handler/poller; Phase 1 must mint CommunicationEvent on intake."
+    },
+    {
+      "path": "scripts/discover_telegram_chat_id.py",
+      "disposition": "EXEMPT_WITH_EXPIRY",
+      "owner": "comms-gateway",
+      "expiry": "2026-12-31",
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": true,
+      "in_crontab": false,
+      "patterns": [
+        "api.telegram.org"
+      ],
+      "notes": "Approved inbound handler/poller; Phase 1 must mint CommunicationEvent on intake."
+    },
+    {
+      "path": "scripts/lib/autonomy_watchdog/telegram_system.py",
+      "disposition": "EXEMPT_WITH_EXPIRY",
+      "owner": "comms-gateway",
+      "expiry": "2026-12-31",
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "api.telegram.org"
+      ],
+      "notes": "Approved outbound adapter/chokepoint until CommunicationEvent transport supersedes."
+    },
+    {
+      "path": "scripts/lib/cio_notification_delivery.py",
+      "disposition": "EXEMPT_WITH_EXPIRY",
+      "owner": "comms-gateway",
+      "expiry": "2026-12-31",
+      "chokepoint_baseline_violations": 3,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_cio_message"
+      ],
+      "notes": "Approved outbound adapter/chokepoint until CommunicationEvent transport supersedes."
+    },
+    {
+      "path": "scripts/lib/cio_telegram_transport.py",
+      "disposition": "EXEMPT_WITH_EXPIRY",
+      "owner": "comms-gateway",
+      "expiry": "2026-12-31",
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_cio_message",
+        "send_telegram"
+      ],
+      "notes": "Approved outbound adapter/chokepoint until CommunicationEvent transport supersedes."
+    },
+    {
+      "path": "scripts/run_telegram_callback_poller.py",
+      "disposition": "EXEMPT_WITH_EXPIRY",
+      "owner": "comms-gateway",
+      "expiry": "2026-12-31",
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": true,
+      "in_crontab": false,
+      "patterns": [
+        "api.telegram.org"
+      ],
+      "notes": "Approved inbound handler/poller; Phase 1 must mint CommunicationEvent on intake."
+    },
+    {
+      "path": "scripts/secret_validators.py",
+      "disposition": "EXEMPT_WITH_EXPIRY",
+      "owner": "comms-gateway",
+      "expiry": "2026-12-31",
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": true,
+      "in_crontab": false,
+      "patterns": [
+        "api.telegram.org"
+      ],
+      "notes": "Approved audit/tooling scanner."
+    },
+    {
+      "path": "scripts/secrets/rotation_probes.py",
+      "disposition": "EXEMPT_WITH_EXPIRY",
+      "owner": "comms-gateway",
+      "expiry": "2026-12-31",
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": true,
+      "in_crontab": false,
+      "patterns": [
+        "api.telegram.org"
+      ],
+      "notes": "Approved audit/tooling scanner."
+    },
+    {
+      "path": "scripts/telegram_alert.py",
+      "disposition": "EXEMPT_WITH_EXPIRY",
+      "owner": "comms-gateway",
+      "expiry": "2026-12-31",
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": true,
+      "in_crontab": false,
+      "patterns": [
+        "api.telegram.org",
+        "publish_legacy_message",
+        "publish_operator_message",
+        "send_telegram",
+        "twilio"
+      ],
+      "notes": "Approved outbound adapter/chokepoint until CommunicationEvent transport supersedes."
+    },
+    {
+      "path": "scripts/telegram_callback_handler.py",
+      "disposition": "EXEMPT_WITH_EXPIRY",
+      "owner": "comms-gateway",
+      "expiry": "2026-12-31",
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": true,
+      "in_crontab": false,
+      "patterns": [
+        "api.telegram.org",
+        "send_email"
+      ],
+      "notes": "Approved inbound handler/poller; Phase 1 must mint CommunicationEvent on intake."
+    },
+    {
+      "path": "scripts/telegram_command_handler.py",
+      "disposition": "EXEMPT_WITH_EXPIRY",
+      "owner": "comms-gateway",
+      "expiry": "2026-12-31",
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": true,
+      "in_crontab": false,
+      "patterns": [
+        "api.telegram.org",
+        "send_telegram"
+      ],
+      "notes": "Approved inbound handler/poller; Phase 1 must mint CommunicationEvent on intake."
+    },
+    {
+      "path": "scripts/telegram_reply_processor.py",
+      "disposition": "EXEMPT_WITH_EXPIRY",
+      "owner": "comms-gateway",
+      "expiry": "2026-12-31",
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": true,
+      "in_crontab": false,
+      "patterns": [
+        "api.telegram.org",
+        "send_telegram"
+      ],
+      "notes": "Approved inbound handler/poller; Phase 1 must mint CommunicationEvent on intake."
+    },
+    {
+      "path": "scripts/telegram_transport.py",
+      "disposition": "EXEMPT_WITH_EXPIRY",
+      "owner": "comms-gateway",
+      "expiry": "2026-12-31",
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": true,
+      "in_crontab": false,
+      "patterns": [
+        "api.telegram.org"
+      ],
+      "notes": "Approved outbound adapter/chokepoint until CommunicationEvent transport supersedes."
+    },
+    {
+      "path": "tests/conftest.py",
+      "disposition": "EXEMPT_WITH_EXPIRY",
+      "owner": "comms-gateway",
+      "expiry": "2026-12-31",
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "api.telegram.org",
+        "publish_event",
+        "send_telegram"
+      ],
+      "notes": "Test/tooling mention of provider patterns; must not gain real send capability."
+    },
+    {
+      "path": "tests/financial_senses/test_security_source_governance.py",
+      "disposition": "EXEMPT_WITH_EXPIRY",
+      "owner": "comms-gateway",
+      "expiry": "2026-12-31",
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Test/tooling mention of provider patterns; must not gain real send capability."
+    },
+    {
+      "path": "tests/test_active_trader_session_control.py",
+      "disposition": "EXEMPT_WITH_EXPIRY",
+      "owner": "comms-gateway",
+      "expiry": "2026-12-31",
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "smtplib",
+        "twilio"
+      ],
+      "notes": "Test/tooling mention of provider patterns; must not gain real send capability."
+    },
+    {
+      "path": "tests/test_alarm_capture_selftest.py",
+      "disposition": "EXEMPT_WITH_EXPIRY",
+      "owner": "comms-gateway",
+      "expiry": "2026-12-31",
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Test/tooling mention of provider patterns; must not gain real send capability."
+    },
+    {
+      "path": "tests/test_alarm_coverage.py",
+      "disposition": "EXEMPT_WITH_EXPIRY",
+      "owner": "comms-gateway",
+      "expiry": "2026-12-31",
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Test/tooling mention of provider patterns; must not gain real send capability."
+    },
+    {
+      "path": "tests/test_alarm_fires.py",
+      "disposition": "EXEMPT_WITH_EXPIRY",
+      "owner": "comms-gateway",
+      "expiry": "2026-12-31",
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Test/tooling mention of provider patterns; must not gain real send capability."
+    },
+    {
+      "path": "tests/test_alarm_fires_batch4.py",
+      "disposition": "EXEMPT_WITH_EXPIRY",
+      "owner": "comms-gateway",
+      "expiry": "2026-12-31",
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Test/tooling mention of provider patterns; must not gain real send capability."
+    },
+    {
+      "path": "tests/test_alarm_fires_stop_path.py",
+      "disposition": "EXEMPT_WITH_EXPIRY",
+      "owner": "comms-gateway",
+      "expiry": "2026-12-31",
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Test/tooling mention of provider patterns; must not gain real send capability."
+    },
+    {
+      "path": "tests/test_alarm_imports_resolve.py",
+      "disposition": "EXEMPT_WITH_EXPIRY",
+      "owner": "comms-gateway",
+      "expiry": "2026-12-31",
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Test/tooling mention of provider patterns; must not gain real send capability."
+    },
+    {
+      "path": "tests/test_alert_delivery_recording_db.py",
+      "disposition": "EXEMPT_WITH_EXPIRY",
+      "owner": "comms-gateway",
+      "expiry": "2026-12-31",
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "publish_event"
+      ],
+      "notes": "Test/tooling mention of provider patterns; must not gain real send capability."
+    },
+    {
+      "path": "tests/test_alert_normalization_blockers.py",
+      "disposition": "EXEMPT_WITH_EXPIRY",
+      "owner": "comms-gateway",
+      "expiry": "2026-12-31",
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": true,
+      "in_crontab": false,
+      "patterns": [
+        "publish_legacy_message",
+        "publish_operator_message",
+        "send_telegram"
+      ],
+      "notes": "Test/tooling mention of provider patterns; must not gain real send capability."
+    },
+    {
+      "path": "tests/test_alpaca_paper_host_lock.py",
+      "disposition": "EXEMPT_WITH_EXPIRY",
+      "owner": "comms-gateway",
+      "expiry": "2026-12-31",
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Test/tooling mention of provider patterns; must not gain real send capability."
+    },
+    {
+      "path": "tests/test_atm_expiry_telegram_dedup.py",
+      "disposition": "EXEMPT_WITH_EXPIRY",
+      "owner": "comms-gateway",
+      "expiry": "2026-12-31",
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Test/tooling mention of provider patterns; must not gain real send capability."
+    },
+    {
+      "path": "tests/test_autonomy_watchdog.py",
+      "disposition": "EXEMPT_WITH_EXPIRY",
+      "owner": "comms-gateway",
+      "expiry": "2026-12-31",
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Test/tooling mention of provider patterns; must not gain real send capability."
+    },
+    {
+      "path": "tests/test_brief_reports_truthfully.py",
+      "disposition": "EXEMPT_WITH_EXPIRY",
+      "owner": "comms-gateway",
+      "expiry": "2026-12-31",
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "publish_operator_message"
+      ],
+      "notes": "Test/tooling mention of provider patterns; must not gain real send capability."
+    },
+    {
+      "path": "tests/test_cio_action_ledger.py",
+      "disposition": "EXEMPT_WITH_EXPIRY",
+      "owner": "comms-gateway",
+      "expiry": "2026-12-31",
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "api.telegram.org",
+        "send_cio_message"
+      ],
+      "notes": "Test/tooling mention of provider patterns; must not gain real send capability."
+    },
+    {
+      "path": "tests/test_cio_agent_handoff_queue.py",
+      "disposition": "EXEMPT_WITH_EXPIRY",
+      "owner": "comms-gateway",
+      "expiry": "2026-12-31",
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "api.telegram.org",
+        "send_cio_message",
+        "send_telegram"
+      ],
+      "notes": "Test/tooling mention of provider patterns; must not gain real send capability."
+    },
+    {
+      "path": "tests/test_cio_cc_record_narrative_slice_c.py",
+      "disposition": "EXEMPT_WITH_EXPIRY",
+      "owner": "comms-gateway",
+      "expiry": "2026-12-31",
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "smtplib"
+      ],
+      "notes": "Test/tooling mention of provider patterns; must not gain real send capability."
+    },
+    {
+      "path": "tests/test_cio_diligence_p7_notification_matrix.py",
+      "disposition": "EXEMPT_WITH_EXPIRY",
+      "owner": "comms-gateway",
+      "expiry": "2026-12-31",
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "api.telegram.org",
+        "send_cio_message"
+      ],
+      "notes": "Test/tooling mention of provider patterns; must not gain real send capability."
+    },
+    {
+      "path": "tests/test_cio_phase11_adversarial.py",
+      "disposition": "EXEMPT_WITH_EXPIRY",
+      "owner": "comms-gateway",
+      "expiry": "2026-12-31",
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_cio_message",
+        "send_telegram"
+      ],
+      "notes": "Test/tooling mention of provider patterns; must not gain real send capability."
+    },
+    {
+      "path": "tests/test_cio_phase1_notification_containment.py",
+      "disposition": "EXEMPT_WITH_EXPIRY",
+      "owner": "comms-gateway",
+      "expiry": "2026-12-31",
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_cio_message",
+        "send_telegram"
+      ],
+      "notes": "Test/tooling mention of provider patterns; must not gain real send capability."
+    },
+    {
+      "path": "tests/test_cio_pipeline_slice13_qa_alert_dedupe.py",
+      "disposition": "EXEMPT_WITH_EXPIRY",
+      "owner": "comms-gateway",
+      "expiry": "2026-12-31",
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Test/tooling mention of provider patterns; must not gain real send capability."
+    },
+    {
+      "path": "tests/test_cio_plan_enrichment_p2b.py",
+      "disposition": "EXEMPT_WITH_EXPIRY",
+      "owner": "comms-gateway",
+      "expiry": "2026-12-31",
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_cio_message"
+      ],
+      "notes": "Test/tooling mention of provider patterns; must not gain real send capability."
+    },
+    {
+      "path": "tests/test_cio_product_reassessment.py",
+      "disposition": "EXEMPT_WITH_EXPIRY",
+      "owner": "comms-gateway",
+      "expiry": "2026-12-31",
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Test/tooling mention of provider patterns; must not gain real send capability."
+    },
+    {
+      "path": "tests/test_cio_raw_product_dump_suppress.py",
+      "disposition": "EXEMPT_WITH_EXPIRY",
+      "owner": "comms-gateway",
+      "expiry": "2026-12-31",
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_cio_message"
+      ],
+      "notes": "Test/tooling mention of provider patterns; must not gain real send capability."
+    },
+    {
+      "path": "tests/test_cio_s0_operator_loop.py",
+      "disposition": "EXEMPT_WITH_EXPIRY",
+      "owner": "comms-gateway",
+      "expiry": "2026-12-31",
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "api.telegram.org",
+        "send_cio_message"
+      ],
+      "notes": "Test/tooling mention of provider patterns; must not gain real send capability."
+    },
+    {
+      "path": "tests/test_cio_telegram_plain_ids.py",
+      "disposition": "EXEMPT_WITH_EXPIRY",
+      "owner": "comms-gateway",
+      "expiry": "2026-12-31",
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_cio_message"
+      ],
+      "notes": "Test/tooling mention of provider patterns; must not gain real send capability."
+    },
+    {
+      "path": "tests/test_cio_wave3b_council_policy.py",
+      "disposition": "EXEMPT_WITH_EXPIRY",
+      "owner": "comms-gateway",
+      "expiry": "2026-12-31",
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "api.telegram.org",
+        "send_cio_message"
+      ],
+      "notes": "Test/tooling mention of provider patterns; must not gain real send capability."
+    },
+    {
+      "path": "tests/test_cio_wave3c_silent_loop.py",
+      "disposition": "EXEMPT_WITH_EXPIRY",
+      "owner": "comms-gateway",
+      "expiry": "2026-12-31",
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "api.telegram.org",
+        "send_cio_message"
+      ],
+      "notes": "Test/tooling mention of provider patterns; must not gain real send capability."
+    },
+    {
+      "path": "tests/test_cio_wave3e_cc_block.py",
+      "disposition": "EXEMPT_WITH_EXPIRY",
+      "owner": "comms-gateway",
+      "expiry": "2026-12-31",
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "api.telegram.org",
+        "send_cio_message"
+      ],
+      "notes": "Test/tooling mention of provider patterns; must not gain real send capability."
+    },
+    {
+      "path": "tests/test_defense_weekly_oversight.py",
+      "disposition": "EXEMPT_WITH_EXPIRY",
+      "owner": "comms-gateway",
+      "expiry": "2026-12-31",
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Test/tooling mention of provider patterns; must not gain real send capability."
+    },
+    {
+      "path": "tests/test_health_agent_verdict_wiring.py",
+      "disposition": "EXEMPT_WITH_EXPIRY",
+      "owner": "comms-gateway",
+      "expiry": "2026-12-31",
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Test/tooling mention of provider patterns; must not gain real send capability."
+    },
+    {
+      "path": "tests/test_no_swallowed_alarms.py",
+      "disposition": "EXEMPT_WITH_EXPIRY",
+      "owner": "comms-gateway",
+      "expiry": "2026-12-31",
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Test/tooling mention of provider patterns; must not gain real send capability."
+    },
+    {
+      "path": "tests/test_oco_dd_gaps.py",
+      "disposition": "EXEMPT_WITH_EXPIRY",
+      "owner": "comms-gateway",
+      "expiry": "2026-12-31",
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Test/tooling mention of provider patterns; must not gain real send capability."
+    },
+    {
+      "path": "tests/test_options_paper_position_monitor.py",
+      "disposition": "EXEMPT_WITH_EXPIRY",
+      "owner": "comms-gateway",
+      "expiry": "2026-12-31",
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Test/tooling mention of provider patterns; must not gain real send capability."
+    },
+    {
+      "path": "tests/test_orchestrator_stage_failures.py",
+      "disposition": "EXEMPT_WITH_EXPIRY",
+      "owner": "comms-gateway",
+      "expiry": "2026-12-31",
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Test/tooling mention of provider patterns; must not gain real send capability."
+    },
+    {
+      "path": "tests/test_p1_digest_sender.py",
+      "disposition": "EXEMPT_WITH_EXPIRY",
+      "owner": "comms-gateway",
+      "expiry": "2026-12-31",
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Test/tooling mention of provider patterns; must not gain real send capability."
+    },
+    {
+      "path": "tests/test_portfolio_level_qa_alerts.py",
+      "disposition": "EXEMPT_WITH_EXPIRY",
+      "owner": "comms-gateway",
+      "expiry": "2026-12-31",
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Test/tooling mention of provider patterns; must not gain real send capability."
+    },
+    {
+      "path": "tests/test_signal_sync_onconflict_regression.py",
+      "disposition": "EXEMPT_WITH_EXPIRY",
+      "owner": "comms-gateway",
+      "expiry": "2026-12-31",
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Test/tooling mention of provider patterns; must not gain real send capability."
+    },
+    {
+      "path": "tests/test_stop_path_notification_imports.py",
+      "disposition": "EXEMPT_WITH_EXPIRY",
+      "owner": "comms-gateway",
+      "expiry": "2026-12-31",
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Test/tooling mention of provider patterns; must not gain real send capability."
+    },
+    {
+      "path": "tests/test_telegram_notification_normalization.py",
+      "disposition": "EXEMPT_WITH_EXPIRY",
+      "owner": "comms-gateway",
+      "expiry": "2026-12-31",
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": true,
+      "in_crontab": false,
+      "patterns": [
+        "api.telegram.org",
+        "publish_event",
+        "publish_legacy_message"
+      ],
+      "notes": "Test/tooling mention of provider patterns; must not gain real send capability."
+    },
+    {
+      "path": "tests/test_youtube_channel_discovery_asset_classes.py",
+      "disposition": "EXEMPT_WITH_EXPIRY",
+      "owner": "comms-gateway",
+      "expiry": "2026-12-31",
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Test/tooling mention of provider patterns; must not gain real send capability."
+    },
+    {
+      "path": "scripts/advisory_telegram_brief.py",
+      "disposition": "MIGRATE",
+      "owner": "advisory",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/aegis_morning_brief_delivery.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": true,
+      "patterns": [
+        "publish_operator_message",
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/aegis_overnight.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": true,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/agent_event_router.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": true,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/agent_watchlist_engine.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": true,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/alert_daily_digest.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": true,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/alert_dispatcher.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/alerting.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "SLACK_WEBHOOK",
+        "send_email",
+        "send_slack",
+        "send_telegram",
+        "send_whatsapp",
+        "smtplib",
+        "twilio"
+      ],
+      "notes": "Email sender \u2014 route through gateway email adapter. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/alex_retirement_advisor.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/alpaca_live_read_sync.py",
+      "disposition": "MIGRATE",
+      "owner": "broker",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": true,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/alpaca_stop_manager.py",
+      "disposition": "MIGRATE",
+      "owner": "risk",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": true,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/api_v2.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": 2,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Chokepoint baseline bypass \u2014 direct Bot API or credential selection outside approved transport. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/atm_auto_approver.py",
+      "disposition": "MIGRATE",
+      "owner": "broker",
+      "expiry": null,
+      "chokepoint_baseline_violations": 4,
+      "approved_boundary": false,
+      "in_crontab": true,
+      "patterns": [
+        "api.telegram.org",
+        "send_telegram"
+      ],
+      "notes": "Chokepoint baseline bypass \u2014 direct Bot API or credential selection outside approved transport. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/audit_enrichment_coverage.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": 3,
+      "approved_boundary": false,
+      "in_crontab": true,
+      "patterns": [
+        "api.telegram.org"
+      ],
+      "notes": "Chokepoint baseline bypass \u2014 direct Bot API or credential selection outside approved transport. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/audit_position_basis.py",
+      "disposition": "MIGRATE",
+      "owner": "broker",
+      "expiry": null,
+      "chokepoint_baseline_violations": 6,
+      "approved_boundary": false,
+      "in_crontab": true,
+      "patterns": [
+        "api.telegram.org"
+      ],
+      "notes": "Chokepoint baseline bypass \u2014 direct Bot API or credential selection outside approved transport. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/auto_research.py",
+      "disposition": "MIGRATE",
+      "owner": "research",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": true,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/autonomy_watchdog.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/brokers/approval_service.py",
+      "disposition": "MIGRATE",
+      "owner": "broker",
+      "expiry": null,
+      "chokepoint_baseline_violations": 4,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "api.telegram.org",
+        "send_email"
+      ],
+      "notes": "Chokepoint baseline bypass \u2014 direct Bot API or credential selection outside approved transport. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/check_secret_exposure.sh",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "SLACK_WEBHOOK"
+      ],
+      "notes": "Slack sender \u2014 gateway-mediate; currently not production-activated. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/cio_event_brief.py",
+      "disposition": "MIGRATE",
+      "owner": "cio",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/claude_escalation_handler.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": true,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/cloud_consensus_verdict.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": true,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/continuous_runner.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_slack",
+        "send_telegram",
+        "send_whatsapp"
+      ],
+      "notes": "Slack sender \u2014 gateway-mediate; currently not production-activated. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/crawl_v3_dashboard.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": 4,
+      "approved_boundary": false,
+      "in_crontab": true,
+      "patterns": [
+        "api.telegram.org"
+      ],
+      "notes": "Chokepoint baseline bypass \u2014 direct Bot API or credential selection outside approved transport. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/credential_monitor.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/cron_self_heal.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": true,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/defense_engine_gap_checker.py",
+      "disposition": "MIGRATE",
+      "owner": "risk",
+      "expiry": null,
+      "chokepoint_baseline_violations": 3,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "api.telegram.org"
+      ],
+      "notes": "Chokepoint baseline bypass \u2014 direct Bot API or credential selection outside approved transport. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/defense_execution.py",
+      "disposition": "MIGRATE",
+      "owner": "risk",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/defense_weekly_paid_review.py",
+      "disposition": "MIGRATE",
+      "owner": "risk",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": true,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/email_notifier.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_email"
+      ],
+      "notes": "Email sender \u2014 route through gateway email adapter. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/eod_open_trade_alert.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": 2,
+      "approved_boundary": false,
+      "in_crontab": true,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Chokepoint baseline bypass \u2014 direct Bot API or credential selection outside approved transport. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/finviz_health_check.py",
+      "disposition": "MIGRATE",
+      "owner": "research",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": true,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/finviz_industry_groups.py",
+      "disposition": "MIGRATE",
+      "owner": "research",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": true,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/finviz_ingestion.py",
+      "disposition": "MIGRATE",
+      "owner": "research",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/freshness_watchdog_heartbeat.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": 4,
+      "approved_boundary": false,
+      "in_crontab": true,
+      "patterns": [
+        "api.telegram.org"
+      ],
+      "notes": "Chokepoint baseline bypass \u2014 direct Bot API or credential selection outside approved transport. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/full_system_backup.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": 2,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "api.telegram.org"
+      ],
+      "notes": "Chokepoint baseline bypass \u2014 direct Bot API or credential selection outside approved transport. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/generate_daily_intelligence_report.py",
+      "disposition": "MIGRATE",
+      "owner": "research",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/generate_max_hold_exit_proposals.py",
+      "disposition": "MIGRATE",
+      "owner": "broker",
+      "expiry": null,
+      "chokepoint_baseline_violations": 3,
+      "approved_boundary": false,
+      "in_crontab": true,
+      "patterns": [
+        "api.telegram.org"
+      ],
+      "notes": "Chokepoint baseline bypass \u2014 direct Bot API or credential selection outside approved transport. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/generate_weekly_docx.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": true,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/health_agent.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": true,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/hermes_backlog_drain.py",
+      "disposition": "MIGRATE",
+      "owner": "hermes",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": true,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/hermes_discovery_ingestors.py",
+      "disposition": "MIGRATE",
+      "owner": "hermes",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": true,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/hermes_score_alerts.py",
+      "disposition": "MIGRATE",
+      "owner": "hermes",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": true,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/incubator_llm_screener.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": true,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/incubator_proposal_promoter.py",
+      "disposition": "MIGRATE",
+      "owner": "broker",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": true,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/inference_layer_engine.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/inference_telegram.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/intel_auto_discovery.py",
+      "disposition": "MIGRATE",
+      "owner": "research",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": true,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/intel_table_staleness_monitor.py",
+      "disposition": "MIGRATE",
+      "owner": "research",
+      "expiry": null,
+      "chokepoint_baseline_violations": 4,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "api.telegram.org"
+      ],
+      "notes": "Chokepoint baseline bypass \u2014 direct Bot API or credential selection outside approved transport. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/interlock_parity_monitor.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/iris_taxonomy_agent.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": 2,
+      "approved_boundary": false,
+      "in_crontab": true,
+      "patterns": [
+        "api.telegram.org",
+        "send_telegram"
+      ],
+      "notes": "Chokepoint baseline bypass \u2014 direct Bot API or credential selection outside approved transport. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/iterate_research_topics.py",
+      "disposition": "MIGRATE",
+      "owner": "research",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": true,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/lib/advisory/notification_broker.py",
+      "disposition": "MIGRATE",
+      "owner": "advisory",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/lib/advisory/promotion_gate.py",
+      "disposition": "MIGRATE",
+      "owner": "advisory",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "publish_operator_message",
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/lib/alarm_firing_coverage.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/lib/alarm_swallow_scan.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "publish_operator_message",
+        "send_email",
+        "send_telegram"
+      ],
+      "notes": "Email sender \u2014 route through gateway email adapter. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/lib/autonomy_watchdog/engine.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/lib/cio_agent_handoff_queue.py",
+      "disposition": "MIGRATE",
+      "owner": "cio",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/lib/cio_alex_telegram.py",
+      "disposition": "MIGRATE",
+      "owner": "cio",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_cio_message"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/lib/cio_operator_renderers.py",
+      "disposition": "MIGRATE",
+      "owner": "cio",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/lib/cio_plan_enrichment.py",
+      "disposition": "MIGRATE",
+      "owner": "cio",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_cio_message"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/lib/cio_telegram_canary.py",
+      "disposition": "MIGRATE",
+      "owner": "cio",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_cio_message"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/lib/cio_telegram_converse.py",
+      "disposition": "MIGRATE",
+      "owner": "cio",
+      "expiry": null,
+      "chokepoint_baseline_violations": 1,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_cio_message"
+      ],
+      "notes": "Chokepoint baseline bypass \u2014 direct Bot API or credential selection outside approved transport. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/lib/cio_theses.py",
+      "disposition": "MIGRATE",
+      "owner": "cio",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/lib/gain_guardian_publish.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/lib/hermes_outcome_bus/alert_notifications.py",
+      "disposition": "MIGRATE",
+      "owner": "hermes",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/lib/options_pipeline/paper_position_alerts.py",
+      "disposition": "MIGRATE",
+      "owner": "broker",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/moomoo/opend_health.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": true,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/morning_digest.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/nightly_integrity_sweep.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": true,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/oauth_lane_keepalive.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": true,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/open_trade_monitor.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": 4,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "api.telegram.org",
+        "send_telegram"
+      ],
+      "notes": "Chokepoint baseline bypass \u2014 direct Bot API or credential selection outside approved transport. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/options_lifecycle_alerts.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": 3,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "api.telegram.org"
+      ],
+      "notes": "Chokepoint baseline bypass \u2014 direct Bot API or credential selection outside approved transport. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/overnight_batch.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": 2,
+      "approved_boundary": false,
+      "in_crontab": true,
+      "patterns": [
+        "api.telegram.org",
+        "send_telegram"
+      ],
+      "notes": "Chokepoint baseline bypass \u2014 direct Bot API or credential selection outside approved transport. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/overnight_digest_telegram.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/oversight_weekly_digest.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": true,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/p1_digest_sender.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": true,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/paper_performance_governance.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": true,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/paper_trade_monitor.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": true,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/phase3_lookthrough_fetcher.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": 3,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "api.telegram.org"
+      ],
+      "notes": "Chokepoint baseline bypass \u2014 direct Bot API or credential selection outside approved transport. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/pipeline_alert.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": 3,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "api.telegram.org"
+      ],
+      "notes": "Chokepoint baseline bypass \u2014 direct Bot API or credential selection outside approved transport. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/pipeline_freshness_slo.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": true,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/pipeline_health_monitor.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": 4,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "api.telegram.org",
+        "send_telegram"
+      ],
+      "notes": "Chokepoint baseline bypass \u2014 direct Bot API or credential selection outside approved transport. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/pipeline_watchdog.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": 4,
+      "approved_boundary": false,
+      "in_crontab": true,
+      "patterns": [
+        "api.telegram.org",
+        "send_telegram"
+      ],
+      "notes": "Chokepoint baseline bypass \u2014 direct Bot API or credential selection outside approved transport. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/portfolio_alerts.py",
+      "disposition": "MIGRATE",
+      "owner": "broker",
+      "expiry": null,
+      "chokepoint_baseline_violations": 1,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "api.telegram.org",
+        "send_telegram"
+      ],
+      "notes": "Chokepoint baseline bypass \u2014 direct Bot API or credential selection outside approved transport. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/portfolio_level_qa.py",
+      "disposition": "MIGRATE",
+      "owner": "broker",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": true,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/portfolio_live_monitor.py",
+      "disposition": "MIGRATE",
+      "owner": "broker",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": true,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/portfolio_monthly_report.py",
+      "disposition": "MIGRATE",
+      "owner": "broker",
+      "expiry": null,
+      "chokepoint_baseline_violations": 1,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "api.telegram.org",
+        "send_telegram"
+      ],
+      "notes": "Chokepoint baseline bypass \u2014 direct Bot API or credential selection outside approved transport. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/portfolio_monthly_synthesis.py",
+      "disposition": "MIGRATE",
+      "owner": "broker",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/portfolio_orchestrator.py",
+      "disposition": "MIGRATE",
+      "owner": "broker",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": true,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/portfolio_report_ms.py",
+      "disposition": "MIGRATE",
+      "owner": "broker",
+      "expiry": null,
+      "chokepoint_baseline_violations": 3,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "api.telegram.org",
+        "send_email"
+      ],
+      "notes": "Chokepoint baseline bypass \u2014 direct Bot API or credential selection outside approved transport. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/portfolio_technical.py",
+      "disposition": "MIGRATE",
+      "owner": "broker",
+      "expiry": null,
+      "chokepoint_baseline_violations": 1,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "api.telegram.org"
+      ],
+      "notes": "Chokepoint baseline bypass \u2014 direct Bot API or credential selection outside approved transport. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/portfolio_weekly_report.py",
+      "disposition": "MIGRATE",
+      "owner": "broker",
+      "expiry": null,
+      "chokepoint_baseline_violations": 1,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "api.telegram.org",
+        "send_telegram"
+      ],
+      "notes": "Chokepoint baseline bypass \u2014 direct Bot API or credential selection outside approved transport. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/premarket_watcher.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": 4,
+      "approved_boundary": false,
+      "in_crontab": true,
+      "patterns": [
+        "api.telegram.org",
+        "send_telegram"
+      ],
+      "notes": "Chokepoint baseline bypass \u2014 direct Bot API or credential selection outside approved transport. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/previously_traded_watchlist.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": 4,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "api.telegram.org"
+      ],
+      "notes": "Chokepoint baseline bypass \u2014 direct Bot API or credential selection outside approved transport. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/pro_analyst_monitor.py",
+      "disposition": "MIGRATE",
+      "owner": "research",
+      "expiry": null,
+      "chokepoint_baseline_violations": 4,
+      "approved_boundary": false,
+      "in_crontab": true,
+      "patterns": [
+        "api.telegram.org"
+      ],
+      "notes": "Chokepoint baseline bypass \u2014 direct Bot API or credential selection outside approved transport. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/process_reaper.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": true,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/process_watchlist_agent_jobs.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/proposal_alerter.py",
+      "disposition": "MIGRATE",
+      "owner": "broker",
+      "expiry": null,
+      "chokepoint_baseline_violations": 6,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "api.telegram.org",
+        "send_telegram"
+      ],
+      "notes": "Chokepoint baseline bypass \u2014 direct Bot API or credential selection outside approved transport. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/proposal_paper_submitter.py",
+      "disposition": "MIGRATE",
+      "owner": "broker",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/protection_alerts.py",
+      "disposition": "MIGRATE",
+      "owner": "risk",
+      "expiry": null,
+      "chokepoint_baseline_violations": 4,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "api.telegram.org"
+      ],
+      "notes": "Chokepoint baseline bypass \u2014 direct Bot API or credential selection outside approved transport. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/pullback_macd_screener.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/rebalance_verifier.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": true,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/recovery_watch_daily.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": true,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/rerun_cio_dual_consensus.py",
+      "disposition": "MIGRATE",
+      "owner": "cio",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": true,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/research_intelligence_queue.py",
+      "disposition": "MIGRATE",
+      "owner": "research",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": true,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/research_lane_health.py",
+      "disposition": "MIGRATE",
+      "owner": "research",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/rotation_autopilot.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/rotation_rebalance_digest.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": true,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/run_alex_daily.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/run_cio_hardening_ci.py",
+      "disposition": "MIGRATE",
+      "owner": "cio",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/run_paper_canary_chain.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": true,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/run_proactive_quote_refresh.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/scalp_critic_agent.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/scalp_outcome_scorer.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/schwab_auto_reauth.py",
+      "disposition": "MIGRATE",
+      "owner": "broker",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_email",
+        "send_telegram"
+      ],
+      "notes": "Email sender \u2014 route through gateway email adapter. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/schwab_position_sync.py",
+      "disposition": "MIGRATE",
+      "owner": "broker",
+      "expiry": null,
+      "chokepoint_baseline_violations": 3,
+      "approved_boundary": false,
+      "in_crontab": true,
+      "patterns": [
+        "api.telegram.org"
+      ],
+      "notes": "Chokepoint baseline bypass \u2014 direct Bot API or credential selection outside approved transport. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/schwab_token_manager.py",
+      "disposition": "MIGRATE",
+      "owner": "broker",
+      "expiry": null,
+      "chokepoint_baseline_violations": 3,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "api.telegram.org"
+      ],
+      "notes": "Chokepoint baseline bypass \u2014 direct Bot API or credential selection outside approved transport. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/secrets/render_env.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/secrets/rotation_daemon.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/secrets_admin.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/sector_momentum_engine.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": true,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/send_agent_brief.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "publish_operator_message"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/send_alert_digest.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": true,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/send_closed_trade_digest.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/send_morning_brief.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": 1,
+      "approved_boundary": false,
+      "in_crontab": true,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Chokepoint baseline bypass \u2014 direct Bot API or credential selection outside approved transport. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/send_no_leads_diagnostic_alert.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": 5,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "api.telegram.org"
+      ],
+      "notes": "Chokepoint baseline bypass \u2014 direct Bot API or credential selection outside approved transport. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/send_operator_alert.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "publish_operator_message",
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/send_screener_schedule_health_alert.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/send_telegram_proposal_alert.py",
+      "disposition": "MIGRATE",
+      "owner": "broker",
+      "expiry": null,
+      "chokepoint_baseline_violations": 5,
+      "approved_boundary": false,
+      "in_crontab": true,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Chokepoint baseline bypass \u2014 direct Bot API or credential selection outside approved transport. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/send_watchpool_maturity_alerts.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": 5,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [],
+      "notes": "Chokepoint baseline bypass \u2014 direct Bot API or credential selection outside approved transport. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/session18_signal_flow_health.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/siem_critical_notify.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": true,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/social_scalp_scanner.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": 1,
+      "approved_boundary": false,
+      "in_crontab": true,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Chokepoint baseline bypass \u2014 direct Bot API or credential selection outside approved transport. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/stop_decision_brief.py",
+      "disposition": "MIGRATE",
+      "owner": "risk",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/stop_drift_alert.py",
+      "disposition": "MIGRATE",
+      "owner": "risk",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": true,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/stop_health_check.py",
+      "disposition": "MIGRATE",
+      "owner": "risk",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": true,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/stop_over_consensus_monitor.py",
+      "disposition": "MIGRATE",
+      "owner": "risk",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/strategy_weekly_review.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": true,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/sync_cio_delivery.sh",
+      "disposition": "MIGRATE",
+      "owner": "cio",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_email"
+      ],
+      "notes": "Email sender \u2014 route through gateway email adapter. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/system_freshness_monitor.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": 4,
+      "approved_boundary": false,
+      "in_crontab": true,
+      "patterns": [
+        "api.telegram.org"
+      ],
+      "notes": "Chokepoint baseline bypass \u2014 direct Bot API or credential selection outside approved transport. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/system_health_agent.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": true,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/system_health_alerts.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": 1,
+      "approved_boundary": false,
+      "in_crontab": true,
+      "patterns": [
+        "api.telegram.org",
+        "send_telegram"
+      ],
+      "notes": "Chokepoint baseline bypass \u2014 direct Bot API or credential selection outside approved transport. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/system_rollup_snapshot.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": true,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/technicals_gap_backfill.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": 3,
+      "approved_boundary": false,
+      "in_crontab": true,
+      "patterns": [
+        "api.telegram.org"
+      ],
+      "notes": "Chokepoint baseline bypass \u2014 direct Bot API or credential selection outside approved transport. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/telegram_alert_router.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/telegram_cio_summary.py",
+      "disposition": "MIGRATE",
+      "owner": "cio",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/telegram_poller_watchdog.sh",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/telegram_smart_alerts.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": true,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/trade_ai_news_monitor.py",
+      "disposition": "MIGRATE",
+      "owner": "research",
+      "expiry": null,
+      "chokepoint_baseline_violations": 4,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "api.telegram.org"
+      ],
+      "notes": "Chokepoint baseline bypass \u2014 direct Bot API or credential selection outside approved transport. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/trade_ai_orchestrator.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": true,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/update_docx_reports_portal_20260616.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/verify_fib_proposals.py",
+      "disposition": "MIGRATE",
+      "owner": "broker",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/verify_hermes_daily.py",
+      "disposition": "MIGRATE",
+      "owner": "hermes",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/warrior_weekly_audit_cron.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/watch_alerts_eval.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": true,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/watch_directive_hygiene.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": true,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/watch_directives_service.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": 3,
+      "approved_boundary": false,
+      "in_crontab": true,
+      "patterns": [
+        "api.telegram.org"
+      ],
+      "notes": "Chokepoint baseline bypass \u2014 direct Bot API or credential selection outside approved transport. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/watchlist_entry_planner.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": true,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/watchlist_hygiene.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": true,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/weekly_learning_digest_delivery.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/weekly_summary_local.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/youtube_backfill_manager.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": false,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/youtube_channel_discovery.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": true,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/youtube_cookie_health_check.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": 4,
+      "approved_boundary": false,
+      "in_crontab": true,
+      "patterns": [
+        "api.telegram.org"
+      ],
+      "notes": "Chokepoint baseline bypass \u2014 direct Bot API or credential selection outside approved transport. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    },
+    {
+      "path": "scripts/youtube_transcript_ingest.py",
+      "disposition": "MIGRATE",
+      "owner": "ops",
+      "expiry": null,
+      "chokepoint_baseline_violations": null,
+      "approved_boundary": false,
+      "in_crontab": true,
+      "patterns": [
+        "send_telegram"
+      ],
+      "notes": "Uses wrapper/outbox today; must mint universal CommunicationEvent and eliminate dual-path. [provisional owner by path heuristic 2026-09-05; confirm at Phase 0 sign-off]"
+    }
+  ],
+  "migrate_risk_order": [
+    "scripts/audit_position_basis.py",
+    "scripts/send_telegram_proposal_alert.py",
+    "scripts/atm_auto_approver.py",
+    "scripts/crawl_v3_dashboard.py",
+    "scripts/freshness_watchdog_heartbeat.py",
+    "scripts/pipeline_watchdog.py",
+    "scripts/premarket_watcher.py",
+    "scripts/pro_analyst_monitor.py",
+    "scripts/system_freshness_monitor.py",
+    "scripts/youtube_cookie_health_check.py",
+    "scripts/audit_enrichment_coverage.py",
+    "scripts/generate_max_hold_exit_proposals.py",
+    "scripts/schwab_position_sync.py",
+    "scripts/technicals_gap_backfill.py",
+    "scripts/watch_directives_service.py",
+    "scripts/eod_open_trade_alert.py",
+    "scripts/iris_taxonomy_agent.py",
+    "scripts/overnight_batch.py",
+    "scripts/send_morning_brief.py",
+    "scripts/social_scalp_scanner.py",
+    "scripts/system_health_alerts.py",
+    "scripts/proposal_alerter.py",
+    "scripts/send_no_leads_diagnostic_alert.py",
+    "scripts/send_watchpool_maturity_alerts.py",
+    "scripts/brokers/approval_service.py",
+    "scripts/intel_table_staleness_monitor.py",
+    "scripts/open_trade_monitor.py",
+    "scripts/pipeline_health_monitor.py",
+    "scripts/previously_traded_watchlist.py",
+    "scripts/protection_alerts.py",
+    "scripts/trade_ai_news_monitor.py",
+    "scripts/defense_engine_gap_checker.py",
+    "scripts/options_lifecycle_alerts.py",
+    "scripts/phase3_lookthrough_fetcher.py",
+    "scripts/pipeline_alert.py",
+    "scripts/portfolio_report_ms.py",
+    "scripts/schwab_token_manager.py",
+    "scripts/api_v2.py",
+    "scripts/full_system_backup.py",
+    "scripts/lib/cio_telegram_converse.py",
+    "scripts/portfolio_alerts.py",
+    "scripts/portfolio_monthly_report.py",
+    "scripts/portfolio_technical.py",
+    "scripts/portfolio_weekly_report.py",
+    "scripts/aegis_morning_brief_delivery.py",
+    "scripts/aegis_overnight.py",
+    "scripts/agent_event_router.py",
+    "scripts/agent_watchlist_engine.py",
+    "scripts/alert_daily_digest.py",
+    "scripts/alpaca_live_read_sync.py",
+    "scripts/alpaca_stop_manager.py",
+    "scripts/auto_research.py",
+    "scripts/claude_escalation_handler.py",
+    "scripts/cloud_consensus_verdict.py",
+    "scripts/cron_self_heal.py",
+    "scripts/defense_weekly_paid_review.py",
+    "scripts/finviz_health_check.py",
+    "scripts/finviz_industry_groups.py",
+    "scripts/generate_weekly_docx.py",
+    "scripts/health_agent.py",
+    "scripts/hermes_backlog_drain.py",
+    "scripts/hermes_discovery_ingestors.py",
+    "scripts/hermes_score_alerts.py",
+    "scripts/incubator_llm_screener.py",
+    "scripts/incubator_proposal_promoter.py",
+    "scripts/intel_auto_discovery.py",
+    "scripts/iterate_research_topics.py",
+    "scripts/moomoo/opend_health.py",
+    "scripts/nightly_integrity_sweep.py",
+    "scripts/oauth_lane_keepalive.py",
+    "scripts/oversight_weekly_digest.py",
+    "scripts/p1_digest_sender.py",
+    "scripts/paper_performance_governance.py",
+    "scripts/paper_trade_monitor.py",
+    "scripts/pipeline_freshness_slo.py",
+    "scripts/portfolio_level_qa.py",
+    "scripts/portfolio_live_monitor.py",
+    "scripts/portfolio_orchestrator.py",
+    "scripts/process_reaper.py",
+    "scripts/rebalance_verifier.py",
+    "scripts/recovery_watch_daily.py",
+    "scripts/rerun_cio_dual_consensus.py",
+    "scripts/research_intelligence_queue.py",
+    "scripts/rotation_rebalance_digest.py",
+    "scripts/run_paper_canary_chain.py",
+    "scripts/sector_momentum_engine.py",
+    "scripts/send_alert_digest.py",
+    "scripts/siem_critical_notify.py",
+    "scripts/stop_drift_alert.py",
+    "scripts/stop_health_check.py",
+    "scripts/strategy_weekly_review.py",
+    "scripts/system_health_agent.py",
+    "scripts/system_rollup_snapshot.py",
+    "scripts/telegram_smart_alerts.py",
+    "scripts/trade_ai_orchestrator.py",
+    "scripts/watch_alerts_eval.py",
+    "scripts/watch_directive_hygiene.py",
+    "scripts/watchlist_entry_planner.py",
+    "scripts/watchlist_hygiene.py",
+    "scripts/youtube_channel_discovery.py",
+    "scripts/youtube_transcript_ingest.py",
+    "scripts/advisory_telegram_brief.py",
+    "scripts/alert_dispatcher.py",
+    "scripts/alerting.py",
+    "scripts/alex_retirement_advisor.py",
+    "scripts/autonomy_watchdog.py",
+    "scripts/check_secret_exposure.sh",
+    "scripts/cio_event_brief.py",
+    "scripts/continuous_runner.py",
+    "scripts/credential_monitor.py",
+    "scripts/defense_execution.py",
+    "scripts/email_notifier.py",
+    "scripts/finviz_ingestion.py",
+    "scripts/generate_daily_intelligence_report.py",
+    "scripts/inference_layer_engine.py",
+    "scripts/inference_telegram.py",
+    "scripts/interlock_parity_monitor.py",
+    "scripts/lib/advisory/notification_broker.py",
+    "scripts/lib/advisory/promotion_gate.py",
+    "scripts/lib/alarm_firing_coverage.py",
+    "scripts/lib/alarm_swallow_scan.py",
+    "scripts/lib/autonomy_watchdog/engine.py",
+    "scripts/lib/cio_agent_handoff_queue.py",
+    "scripts/lib/cio_alex_telegram.py",
+    "scripts/lib/cio_operator_renderers.py",
+    "scripts/lib/cio_plan_enrichment.py",
+    "scripts/lib/cio_telegram_canary.py",
+    "scripts/lib/cio_theses.py",
+    "scripts/lib/gain_guardian_publish.py",
+    "scripts/lib/hermes_outcome_bus/alert_notifications.py",
+    "scripts/lib/options_pipeline/paper_position_alerts.py",
+    "scripts/morning_digest.py",
+    "scripts/overnight_digest_telegram.py",
+    "scripts/portfolio_monthly_synthesis.py",
+    "scripts/process_watchlist_agent_jobs.py",
+    "scripts/proposal_paper_submitter.py",
+    "scripts/pullback_macd_screener.py",
+    "scripts/research_lane_health.py",
+    "scripts/rotation_autopilot.py",
+    "scripts/run_alex_daily.py",
+    "scripts/run_cio_hardening_ci.py",
+    "scripts/run_proactive_quote_refresh.py",
+    "scripts/scalp_critic_agent.py",
+    "scripts/scalp_outcome_scorer.py",
+    "scripts/schwab_auto_reauth.py",
+    "scripts/secrets/render_env.py",
+    "scripts/secrets/rotation_daemon.py",
+    "scripts/secrets_admin.py",
+    "scripts/send_agent_brief.py",
+    "scripts/send_closed_trade_digest.py",
+    "scripts/send_operator_alert.py",
+    "scripts/send_screener_schedule_health_alert.py",
+    "scripts/session18_signal_flow_health.py",
+    "scripts/stop_decision_brief.py",
+    "scripts/stop_over_consensus_monitor.py",
+    "scripts/sync_cio_delivery.sh",
+    "scripts/telegram_alert_router.py",
+    "scripts/telegram_cio_summary.py",
+    "scripts/telegram_poller_watchdog.sh",
+    "scripts/update_docx_reports_portal_20260616.py",
+    "scripts/verify_fib_proposals.py",
+    "scripts/verify_hermes_daily.py",
+    "scripts/warrior_weekly_audit_cron.py",
+    "scripts/weekly_learning_digest_delivery.py",
+    "scripts/weekly_summary_local.py",
+    "scripts/youtube_backfill_manager.py"
+  ],
+  "notes": [
+    "Approved adapters/inbound/tooling mapped to EXEMPT_WITH_EXPIRY with expiry 2026-12-31.",
+    "Owners marked TBD must be assigned before Phase 0 operator sign-off.",
+    "REMOVE/DISABLE require observation evidence; none auto-assigned by this scanner.",
+    "Provisional MIGRATE owners assigned by path heuristic 2026-09-05; operator confirmation still required for Phase 0 formal sign-off."
+  ]
+}

@@ -34,29 +34,36 @@ def _load_env(root: Path):
 
 
 def _telegram_alert(msg: str, root: Path):
-    """Send Telegram alert for stale data to all configured chat IDs."""
-    token = os.getenv("TELEGRAM_BOT_TOKEN", "")
-    chat_ids_raw = os.getenv("TELEGRAM_CHAT_ID", "")
-    if not token or not chat_ids_raw:
-        print(f"  [telegram] no credentials — alert: {msg}")
-        return
-    import urllib.request, urllib.parse
-    for cid in chat_ids_raw.split(","):
-        cid = cid.strip()
-        if not cid:
-            continue
+    """Send via telegram_alert.send_telegram chokepoint (no raw Bot API)."""
+    text = f"📊 Portfolio Look-Through Alert\n{msg}"
+    try:
+        scripts_dir = str(Path(__file__).resolve().parent)
+        if scripts_dir not in sys.path:
+            sys.path.insert(0, scripts_dir)
+        from telegram_alert import send_telegram
+        ok = bool(send_telegram(text))
         try:
-            url = f"https://api.telegram.org/bot{token}/sendMessage"
-            data = urllib.parse.urlencode({
-                "chat_id": cid,
-                "text": f"📊 Portfolio Look-Through Alert\n{msg}",
-                "parse_mode": "HTML"
-            }).encode()
-            req = urllib.request.Request(url, data=data, method="POST")
-            urllib.request.urlopen(req, timeout=10)
-            print(f"  [telegram] sent to {cid}: {msg[:60]}")
-        except Exception as e:
-            print(f"  [telegram] failed for {cid}: {e}")
+            project_root = str(root)
+            if project_root not in sys.path:
+                sys.path.insert(0, project_root)
+            from lib.comms import CommunicationEvent, publish_communication
+            publish_communication(CommunicationEvent(
+                direction="OUTBOUND", event_type="alert", message_class="ops",
+                producer="phase3_lookthrough_fetcher",
+                subject_key="ops:lookthrough",
+                retention_class="operational", severity="warning",
+                sanitized_body=text[:500], short_summary=text[:120],
+            ))
+        except Exception:
+            # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
+            pass
+        if ok:
+            print(f"  [telegram] sent: {msg[:60]}")
+        else:
+            print(f"  [telegram] send_telegram returned False: {msg[:60]}")
+    except Exception as e:
+        # ALARM-DELIVERY-DECLARED: best-effort advisory notify after chokepoint migration; never blocks caller
+        print(f"  [telegram] failed: {e}")
 
 
 def _days_old(date_str: str) -> int:

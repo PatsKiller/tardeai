@@ -29,6 +29,7 @@ import RecommendationIntelligence from './pages/RecommendationIntelligence'
 import ResearchIntelligenceHub from './pages/ResearchIntelligenceHub'
 import RedeployDeskIntegrated from './pages/RedeployDeskIntegrated'
 import HealthHub from './pages/HealthHub'
+import CommunicationsHub from './pages/CommunicationsHub'
 import ConsumptionHub from './pages/ConsumptionHub'
 import SchwabReauthHub from './pages/SchwabReauthHub'
 import SchwabReauthBanner from './components/SchwabReauthBanner'
@@ -209,6 +210,7 @@ function Shell() {
             <Route path="advisory" element={<RouteErrorBoundary route="/v3/advisory"><AdvisoryDeskHub onDrill={setDrill} /></RouteErrorBoundary>} />
             <Route path="cio" element={<RouteErrorBoundary route="/v3/cio"><CioHub onDrill={setDrill} /></RouteErrorBoundary>} />
             <Route path="health" element={<RouteErrorBoundary route="/v3/health"><HealthHub onDrill={setDrill} /></RouteErrorBoundary>} />
+            <Route path="communications" element={<RouteErrorBoundary route="/v3/communications"><CommunicationsHub /></RouteErrorBoundary>} />
             <Route path="consumption" element={<RouteErrorBoundary route="/v3/consumption"><ConsumptionHub /></RouteErrorBoundary>} />
             <Route path="system" element={<RouteErrorBoundary route="/v3/system"><SystemHub onDrill={setDrill} /></RouteErrorBoundary>} />
             <Route path="system/schwab-reauth" element={<RouteErrorBoundary route="/v3/system/schwab-reauth"><SchwabReauthHub /></RouteErrorBoundary>} />

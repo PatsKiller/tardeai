@@ -10,7 +10,7 @@ import os
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
-import psycopg2, requests
+import psycopg2
 
 log = logging.getLogger(__name__)
 PROJECT_ROOT = '/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild'
@@ -34,14 +34,30 @@ DB_CONFIG = dict(host='127.0.0.1', port=5432, dbname='trade_ai', user='trade_ai'
 
 def send_telegram(message, urgent=False):
     try:
-        bot_token = os.getenv('TELEGRAM_BOT_TOKEN', '')
-        chat_ids = [c.strip() for c in os.getenv('TELEGRAM_CHAT_ID', '').split(',') if c.strip()]
-        if not bot_token or not chat_ids: return
+        scripts_dir = str(Path(__file__).resolve().parent)
+        if scripts_dir not in sys.path:
+            sys.path.insert(0, scripts_dir)
+        from telegram_alert import send_telegram as _tg
         prefix = '🚨' if urgent else '⚠️'
-        for cid in chat_ids:
-            requests.post(f"https://api.telegram.org/bot{bot_token}/sendMessage",
-                         json={'chat_id': cid, 'text': f"{prefix} WATCHDOG: {message}"}, timeout=8)
+        text = f"{prefix} WATCHDOG: {message}"
+        _tg(text)
+        try:
+            root = str(Path(__file__).resolve().parents[1])
+            if root not in sys.path:
+                sys.path.insert(0, root)
+            from lib.comms import CommunicationEvent, publish_communication
+            publish_communication(CommunicationEvent(
+                direction="OUTBOUND", event_type="alert", message_class="ops",
+                producer="pipeline_watchdog", subject_key="ops:pipeline_watchdog",
+                retention_class="operational",
+                severity="critical" if urgent else "warning",
+                sanitized_body=text[:500], short_summary=text[:120],
+            ))
+        except Exception:
+            # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
+            pass
     except Exception:
+        # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
         pass
 
 
@@ -52,6 +68,7 @@ def log_action(conn, action_type, target, reason, success, result=''):
                    [action_type, target, reason, success, result[:200]])
         conn.commit()
     except Exception:
+        # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
         pass
 
 

@@ -15,27 +15,31 @@ import argparse
 import os
 import sys
 import time
-import urllib.parse
 import urllib.request
 
 
 def _send_telegram(message):
-    """Alert on confirmed issues. Env-driven (TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID); no-op if unset."""
-    token = os.getenv("TELEGRAM_BOT_TOKEN", "")
-    chat_ids = os.getenv("TELEGRAM_CHAT_ID", "")
-    if not token or not chat_ids:
-        return
-    for cid in chat_ids.split(","):
-        cid = cid.strip()
-        if not cid:
-            continue
+    """Alert on confirmed issues via telegram_alert chokepoint."""
+    try:
+        scripts_dir = os.path.dirname(os.path.abspath(__file__))
+        if scripts_dir not in sys.path:
+            sys.path.insert(0, scripts_dir)
+        from telegram_alert import send_telegram
+        send_telegram(message)
         try:
-            data = urllib.parse.urlencode({"chat_id": cid, "text": message[:4000]}).encode()
-            urllib.request.urlopen(
-                urllib.request.Request(f"https://api.telegram.org/bot{token}/sendMessage", data=data),
-                timeout=10)
+            from lib.comms import CommunicationEvent, publish_communication
+            publish_communication(CommunicationEvent(
+                direction="OUTBOUND", event_type="alert", message_class="ops",
+                producer="crawl_v3_dashboard", subject_key="ops:v3_crawl",
+                retention_class="operational", severity="warning",
+                sanitized_body=message[:500], short_summary=message[:120],
+            ))
         except Exception:
+            # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
             pass
+    except Exception:
+        # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
+        pass
 
 
 def _server_up(base, tries=20, gap=2.0):

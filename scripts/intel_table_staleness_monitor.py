@@ -123,22 +123,29 @@ def emit_siem(cur, f):
 
 
 def telegram(msg):
-    import urllib.request
-    token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-    if not token:
-        return []
-    ids = [c.strip() for c in os.environ.get("TELEGRAM_CHAT_ID", "").split(",") if c.strip()]
-    out = []
-    for cid in ids:
+    """Send via telegram_alert.send_telegram chokepoint (no raw Bot API)."""
+    try:
+        scripts_dir = os.path.join(ROOT, "scripts")
+        if scripts_dir not in sys.path:
+            sys.path.insert(0, scripts_dir)
+        from telegram_alert import send_telegram
+        ok = bool(send_telegram(msg))
         try:
-            data = json.dumps({"chat_id": cid, "text": msg}).encode()
-            req = urllib.request.Request(f"https://api.telegram.org/bot{token}/sendMessage",
-                                         data=data, headers={"Content-Type": "application/json"})
-            r = urllib.request.urlopen(req, timeout=15)
-            out.append((cid, json.loads(r.read()).get("result", {}).get("message_id")))
-        except Exception as e:
-            out.append((cid, f"ERR:{e}"))
-    return out
+            if ROOT not in sys.path:
+                sys.path.insert(0, ROOT)
+            from lib.comms import CommunicationEvent, publish_communication
+            publish_communication(CommunicationEvent(
+                direction="OUTBOUND", event_type="alert", message_class="ops",
+                producer="intel_table_staleness_monitor", subject_key="ops:intel_staleness",
+                retention_class="operational", severity="warning",
+                sanitized_body=msg[:500], short_summary=msg[:120],
+            ))
+        except Exception:
+            # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
+            pass
+        return ["send_telegram:ok" if ok else "send_telegram:fail"]
+    except Exception as e:
+        return [f"ERR:{e}"]
 
 
 def run(send=False, as_json=False):

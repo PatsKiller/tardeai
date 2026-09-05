@@ -1,0 +1,16 @@
+[telegram-chokepoint] producers bypassing the chokepoint: 45
+    chat_id_selection      24
+    http_to_telegram       26
+    raw_endpoint           40
+    token_for_delivery     39
+    transport_import       4
+  top offenders:
+    scripts/proposal_alerter.py  (6)  methods=sendMessage
+    scripts/audit_position_basis.py  (6)  methods=sendMessage
+    scripts/send_no_leads_diagnostic_alert.py  (5)  methods=sendMessage
+    scripts/trade_ai_news_monitor.py  (4)  methods=sendMessage
+    scripts/pro_analyst_monitor.py  (4)  methods=sendMessage
+    scripts/pipeline_watchdog.py  (4)  methods=sendMessage
+    scripts/crawl_v3_dashboard.py  (4)  methods=sendMessage
+    scripts/atm_auto_approver.py  (4)  methods=sendMessage
+[telegram-chokepoint] pass (ratchet): 45 known files, 133 violations — NOT zero, tracked as a release blocker

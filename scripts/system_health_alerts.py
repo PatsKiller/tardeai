@@ -19,8 +19,6 @@ import json
 import os
 import subprocess
 import sys
-import urllib.parse
-import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -148,61 +146,31 @@ def get_agent_reliability():
         return [{"agent": "system", "error": str(exc)}]
 
 
-def telegram_config():
-    token_keys = [
-        "TELEGRAM_BOT_TOKEN",
-        "TG_BOT_TOKEN",
-        "TELEGRAM_TOKEN",
-        "BOT_TOKEN",
-    ]
-    chat_keys = [
-        "TELEGRAM_CHAT_ID",
-        "TG_CHAT_ID",
-        "TELEGRAM_USER_ID",
-        "CHAT_ID",
-    ]
-
-    token = next((os.environ.get(k) for k in token_keys if os.environ.get(k)), None)
-    chat_id = next((os.environ.get(k) for k in chat_keys if os.environ.get(k)), None)
-    return token, chat_id
-
-
 def send_telegram(text):
-    """Send via the centralized telegram_alert router (outbox, dedup, report capture).
-    Falls back to direct urllib only if the router import fails (e.g. missing deps)."""
+    """Send via the centralized telegram_alert router (outbox, dedup, report capture)."""
     try:
+        scripts_dir = str(Path(__file__).resolve().parent)
+        if scripts_dir not in sys.path:
+            sys.path.insert(0, scripts_dir)
         from telegram_alert import send_telegram as router_send
         ok = router_send(text)
-        return {"sent": ok, "via": "router"}
-    except Exception:
-        pass
-
-    # Fallback: direct urllib to Telegram (legacy path — no router/outbox/dedup)
-    token, chat_id = telegram_config()
-    if not token or not chat_id:
-        return {"sent": False, "reason": "missing Telegram token/chat id in .env"}
-
-    url = f"https://api.telegram.org/bot{token}/sendMessage"
-    chat_ids = [c.strip() for c in chat_id.split(",") if c.strip()]
-    last_result = {"sent": False, "reason": "no chat IDs"}
-
-    for cid in chat_ids:
-        data = urllib.parse.urlencode({
-            "chat_id": cid,
-            "text": text[:3900],
-            "parse_mode": "HTML",
-            "disable_web_page_preview": "true",
-        }).encode()
-
         try:
-            req = urllib.request.Request(url, data=data)
-            with urllib.request.urlopen(req, timeout=20) as resp:
-                body = resp.read().decode("utf-8", errors="replace")
-            last_result = {"sent": True, "response": body[:500]}
-        except Exception as exc:
-            last_result = {"sent": False, "reason": f"chat_id {cid}: {exc}"}
-
-    return last_result
+            root = str(Path(__file__).resolve().parents[1])
+            if root not in sys.path:
+                sys.path.insert(0, root)
+            from lib.comms import CommunicationEvent, publish_communication
+            publish_communication(CommunicationEvent(
+                direction="OUTBOUND", event_type="alert", message_class="ops",
+                producer="system_health_alerts", subject_key="ops:system_health",
+                retention_class="operational", severity="warning",
+                sanitized_body=text[:500], short_summary=text[:120],
+            ))
+        except Exception:
+            # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
+            pass
+        return {"sent": ok, "via": "router"}
+    except Exception as exc:
+        return {"sent": False, "reason": str(exc)[:200]}
 
 
 def build_alert():

@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `e97fd78fab2775479deb6ac740b09b7c92fb09af5f2f417b9ae8a9e8e86f585c`
+**Tree fingerprint:** `3142a75485d4f5eba37acc6ca04a361057affa2a9ff4a645a73c05c5b471ecd1`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,10 +12,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2350 |
-| Markdown (excl. this INDEX) | 1962 |
-| **MISSING HEADER** | **12** |
-| Header OK | 1950 |
+| Files under `docs/` (excl. this INDEX) | 2387 |
+| Markdown (excl. this INDEX) | 1987 |
+| **MISSING HEADER** | **19** |
+| Header OK | 1968 |
 | Duplicate groups | 5 |
 
 ### By status_guess
@@ -27,10 +27,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | archive_session_handoff | 3 |
 | archive_superseded | 20 |
 | artifact_code_snapshot | 3 |
-| artifact_raw_sync | 26 |
+| artifact_raw_sync | 34 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 6 |
-| review_required | 1970 |
+| review_required | 1999 |
 
 ## Markdown tree
 
@@ -395,6 +395,8 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/WATCH_DESK_V2.md` | Watch Desk v2 — Truth & Directive Governance (P0 workstreams, 2026-07-16) | review_required | OK | `be5f8cd47049` |
 | `docs/architecture/WATCH_DESK_V3.md` | Watch Desk v3 — From Watching to Learning (2026-07-16 evening) | review_required | OK | `ea65c14610d0` |
 | `docs/architecture/WATCH_DESK_V4.md` | Watch Desk v4 — Terminal Grade (2026-07-16, evening) | review_required | OK | `018c8ea82d4c` |
+| `docs/architecture/agent-contracts.md` | Agent Consumption Contracts — AgentConsumptionReceipt@v1 | review_required | OK | `deec32e44f01` |
+| `docs/architecture/channel-adapters.md` | Gateway Channel Adapters — Phase 10 | review_required | OK | `2457155850f5` |
 | `docs/architecture/cio/ADR_ALEX_AUTHORITY_MANIFEST.md` | ADR: Alex Authority Manifest | review_required | OK | `8bf7e2366689` |
 | `docs/architecture/cio/ADR_CIO_STATE_ARCHITECTURE.md` | ADR: CIO State Architecture | review_required | OK | `78b3c731e31d` |
 | `docs/architecture/cio/ADR_CONTAINMENT_SPECIFICATION.md` | ADR: Containment Specification | review_required | OK | `e090bef207bf` |
@@ -438,6 +440,13 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/cio/PHASE_MINUS_1_DEPENDENCY_GRAPH.md` | CIO Phase -1 Dependency Graph | review_required | OK | `f070b02eaf30` |
 | `docs/architecture/cio/PHASE_MINUS_1_FINAL_ACCEPTANCE.md` | CIO Phase -1 Final Acceptance Report | review_required | OK | `6f150fa78ddf` |
 | `docs/architecture/cio/SPECIALIST_MATURITY_CATALOG.md` | Specialist Maturity Catalog | review_required | OK | `98aaa9379997` |
+| `docs/architecture/communication-event.md` | CommunicationEvent@v2 — Architecture | review_required | OK | `b01accbb7a09` |
+| `docs/architecture/communications-workspace.md` | Communications Workspace — Phase 7 | review_required | OK | `ef24c2e77a8e` |
+| `docs/architecture/curation-and-provenance.md` | Controlled Curation and Provenance (Phase 5) | review_required | OK | `3e135a9b0d64` |
+| `docs/architecture/delivery-ledger.md` | ChannelDelivery@v1 — Delivery Ledger | review_required | OK | `c1ee03bda33f` |
+| `docs/architecture/gateway-enforcement.md` | Communications Gateway Enforcement (Phase 2) | review_required | OK | `d27d4e832ef1` |
+| `docs/architecture/retention.md` | Librarian Retention — RetentionDecision@v1 (Phase 6) | review_required | OK | `ca8630975a92` |
+| `docs/architecture/subject-memory.md` | Subject Memory / SubjectThread@v1 — Architecture | review_required | OK | `dc0fb229b08c` |
 | `docs/atm/PHASE180A_ATM_CURRENT_CONFIGURATION_AUDIT.md` | Phase 180A: ATM Current Configuration Audit | review_required | OK | `2d3ef26142a3` |
 | `docs/atm/PHASE180B_ATM_PAPER_SCALE_UP_RISK_POLICY.md` | Phase 180B: ATM Paper Scale-Up Risk Policy | review_required | OK | `ec9342bcaa35` |
 | `docs/atm/PHASE180C_ATM_PAPER_VOLUME_RAMP_SCHEDULE.md` | Phase 180C: ATM Paper Trade Volume Ramp Schedule | review_required | OK | `1f087f81f7ed` |
@@ -521,6 +530,14 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/atm_audit_2026_05_26/schema_snapshot/SCHEMA_FINDINGS.md` | Schema Findings -- ATM Audit 2026-05-26 | review_required | OK | `c47df933fc27` |
 | `docs/atm_audit_2026_05_26/schema_snapshot/table_schemas.md` | Schema Snapshot -- ATM Audit 2026-05-26 | review_required | OK | `ba858d82d79f` |
 | `docs/audit/PROPOSALS_BROKER_VS_REGULAR_AUDIT_20260624.md` | Proposals Audit — Broker vs Regular (Frontend + Backend) | review_required | OK | `c3f78de62d14` |
+| `docs/audit/_evidence/README.md` | Phase 0 evidence snapshots | review_required | MISSING HEADER | `e17f23a439d9` |
+| `docs/audit/current-state.md` | Communications Gateway — Current State | review_required | MISSING HEADER | `5bf7544d0919` |
+| `docs/audit/gap-analysis.md` | Communications Gateway — Gap Analysis | review_required | MISSING HEADER | `0e8ae75cc074` |
+| `docs/audit/phase0-signoff.md` | Phase 0 Sign-off | review_required | OK | `02114eff814d` |
+| `docs/audit/phase9-sender-migration.md` | Phase 9 — High-risk Telegram sender migration | review_required | OK | `3872cbce012e` |
+| `docs/audit/runtime-attestation.md` | Communications Gateway — Runtime Attestation | review_required | MISSING HEADER | `68b98afb64a9` |
+| `docs/audit/sender-inventory.md` | Communications Gateway — Sender Inventory | review_required | MISSING HEADER | `af5b68183139` |
+| `docs/audit/telegram-bypass-zero-closeout.md` | Telegram chokepoint — zero bypass closeout | review_required | OK | `73423300bcac` |
 | `docs/audits/ATM_APPROVE_FAILED_2026-05-22.md` | ATM approve_proposal_failed Investigation — 2026-05-22 | review_required | OK | `9f1bdc8d2d08` |
 | `docs/audits/CENSUS_PART1_BACKEND_2026-08-30.md` | CENSUS — PART 1: BACKEND | review_required | OK | `18392c652fe2` |
 | `docs/audits/CENSUS_PART2_COMMAND_CENTER_2026-08-30.md` | CENSUS PART 2 — The Command Center / operator surface | review_required | OK | `a01d2b2b3eee` |
@@ -713,6 +730,11 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/convergence/UI_REPLACEMENT_MATRIX.md` | Command Center Replacement Matrix | review_required | OK | `c5cfc7a821e2` |
 | `docs/convergence/UI_ROUTE_OWNERSHIP.md` | UI Route Ownership | review_required | OK | `fe5a35b48fc7` |
 | `docs/deepseek_audit_2026-08-02.md` | DeepSeek Audit & Fix — Comprehensive Report | review_required | OK | `68d6408f3f5c` |
+| `docs/deployment/canary-results.md` | Communications Gateway — Canary Results Template | review_required | OK | `e11eee439a65` |
+| `docs/deployment/pre-go-live-checklist.md` | Communications Gateway — Pre Go-Live Checklist | review_required | OK | `dee3ededa3e8` |
+| `docs/deployment/production-activation.md` | Communications Gateway — Production ACTIVE Checklist | review_required | OK | `6635a04ea542` |
+| `docs/deployment/rollback-plan.md` | Communications Gateway — Rollback Plan | review_required | OK | `a593be5e3e17` |
+| `docs/deployment/rollout-plan.md` | Communications Gateway — Rollout Plan | review_required | OK | `cf5f37640df6` |
 | `docs/design/ACTIVE_TRADER_LIVE_DATA_ARCHITECTURE.md` | ActiveTrader — Live Data Architecture (2026-07-28) | current_phase_keep | OK | `bed16d9677d0` |
 | `docs/design/ACTIVE_TRADER_T2_JIT_AND_MOMENTUM_EXIT_v1.md` | Active Trader T2 JIT and Momentum Exit — Design v1 | current_phase_keep | OK | `514faa88f6da` |
 | `docs/design/AT_CONFIG_TAB_S1_CONTRACT.md` | Active Trader Configuration Tab — S1 API Contract (`/api/v3/active-trader/config`) | current_phase_keep | OK | `530dc26eff0b` |
@@ -757,7 +779,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/diligence/current/MOMENTUM_SCALP_VALIDATION_FAST_PATH.md` | Momentum Scalp Validation Fast Path | review_required | OK | `3748851b3d6f` |
 | `docs/diligence/current/MOMENTUM_SCALP_VALIDATION_OPS.md` | Momentum Scalp Validation Ops | review_required | OK | `b51f26253575` |
 | `docs/diligence/current/MOMENTUM_SCALP_VALIDATION_TRACKER.md` | Momentum Scalp Validation Tracker | review_required | OK | `ec2e5f4ac157` |
-| `docs/diligence/current/OPTIONS_RISK_BLOCK_MATRIX.md` | Options Hard-Risk Block Matrix | review_required | OK | `d29bfcb3f15c` |
+| `docs/diligence/current/OPTIONS_RISK_BLOCK_MATRIX.md` | Options Hard-Risk Block Matrix | review_required | MISSING HEADER | `905817589ea1` |
 | `docs/diligence/current/ORDER_LIFECYCLE.md` | Order Lifecycle | review_required | OK | `8bd7b79ca8fe` |
 | `docs/diligence/current/RELEASE_READINESS.md` | Release Readiness | review_required | OK | `356036502fea` |
 | `docs/diligence/current/RISK_GATE_MATRIX.md` | Risk Gate Matrix | review_required | OK | `ceaf05c64e9c` |
@@ -793,6 +815,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/feeds/PHASE72E_OPS_BACKLOG_RECOVERY_UPDATE_DESIGN.md` | Phase 72E — Ops Backlog Recovery Update Design | review_required | OK | `cab37d5456e9` |
 | `docs/feeds/PHASE75A_THIRD_CLEAN_RUN_EVIDENCE.md` | Phase 75A — Third Clean Run Evidence | review_required | OK | `ab8bf7f62f3f` |
 | `docs/feeds/PHASE77A_RESEARCH_ONLY_FEED_FALLBACK_POLICY.md` | Phase 77A — Research-Only Feed Fallback Policy | review_required | OK | `68cedb0b557e` |
+| `docs/final/implementation-record.md` | Communications Gateway — Implementation Record (Phases 0–11) | review_required | OK | `ed23d3c4ddb2` |
 | `docs/financial-senses/ACCEPTANCE.md` | Acceptance profile | review_required | OK | `35455570693f` |
 | `docs/financial-senses/ADR/001-reuse-existing-sec-pipeline.md` | ADR-001 — Reuse the existing SEC pipeline | review_required | OK | `f10bb9692756` |
 | `docs/financial-senses/ADR/002-provider-adapters-not-second-mcp-gateway.md` | ADR-002 — Provider adapters, not a second MCP gateway | review_required | OK | `99065f6c47a7` |
@@ -1157,7 +1180,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/implementation/maturity-program/mp-20260901-210554/STAGE_01_DRIVE_MIRROR_VERIFICATION.md` | Stage 1.6 · Drive mirror | review_required | OK | `4dd677d4c67b` |
 | `docs/implementation/maturity-program/sop-1.2.0-20260902/EAC13CFD0_DRIVE_MANIFEST_DISPOSITION.md` | eac13cfd0 Drive-manifest disposition | review_required | OK | `0bef5edf4cc3` |
 | `docs/implementation/maturity-program/sop-1.2.0-20260902/EVIDENCE_ARCHITECTURE.md` | SOP 1.2.0 · Evidence architecture | review_required | OK | `ab78ae35e35f` |
-| `docs/implementation/maturity-program/sop-1.2.0-20260902/MATURITY_SCORECARD.md` | Maturity scorecard — Multi-Agent SOP 1.2.0 | review_required | OK | `2d5b943836d3` |
+| `docs/implementation/maturity-program/sop-1.2.0-20260902/MATURITY_SCORECARD.md` | Maturity scorecard — Multi-Agent SOP 1.2.0 | review_required | OK | `aaac55c44563` |
 | `docs/implementation/maturity-program/sop-1.2.0-20260902/STAGE_00_PREFLIGHT.md` | Stage 0 · Fresh-state preflight and constitutional read | review_required | OK | `d565bb67c3fa` |
 | `docs/implementation/maturity-program/sop-1.2.0-20260902/STAGE_01_PR_COLLISION.md` | Stage 1 · Open-PR collision / convergence inventory | review_required | OK | `b072654894ad` |
 | `docs/implementation/maturity-program/sop-1.2.0-20260902/VERIFIER_RUNBOOK.md` | SOP 1.2.0 · Independent verifier runbook | review_required | OK | `ba4903599982` |
@@ -1587,7 +1610,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/paper_trading/PHASE186K_STOP_TO_TRAILING_CONVERSION_AUDIT.md` | Phase 186K: Hard-Stop to Trailing-Stop Conversion Audit | review_required | OK | `7910d9e429be` |
 | `docs/paper_trading/PHASE186L_TRAILING_STOP_ALGORITHM_SPECIFICATION.md` | Phase 186L: Trailing Stop Algorithm Specification | review_required | OK | `4b3ba04029af` |
 | `docs/patches/2026-06-15_stage2b_intent_persistence_fix.md` | Stage 2b Schwab Pilot Hotfix — Intent Persistence Before Approval | review_required | OK | `0f35a94b1ef8` |
-| `docs/project/CI_EVIDENCE_LATEST.md` | CI Evidence — Release Readiness Proof | current_phase_keep | OK | `e84553763352` |
+| `docs/project/CI_EVIDENCE_LATEST.md` | CI Evidence — Release Readiness Proof | current_phase_keep | MISSING HEADER | `c681fe6477dd` |
 | `docs/project/CLOSED_LOOP_ALL_TRADES_ABSTRACTION_20260606.md` | Closed-Loop All-Trades Abstraction (2026-06-06) | current_phase_keep | OK | `82b9d6a350f7` |
 | `docs/project/CLOSED_LOOP_ALL_TRADES_ABSTRACTION_DUE_DILIGENCE_20260606.md` | Closed-Loop All-Trades Abstraction — Due Diligence (2026-06-06) | current_phase_keep | OK | `06306949c580` |
 | `docs/project/CLOSED_LOOP_IMPORTED_EDGE_COMPARISON_20260606.md` | Closed-Loop Imported Trade Edge Comparison (2026-06-06) | current_phase_keep | OK | `d1472f1967df` |
@@ -1772,7 +1795,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/project/PROJECT_DOC_INDEX.md` | PROJECT_DOC_INDEX.md | active_keep | OK | `226e98e141db` |
 | `docs/project/PROTECTIVE_STOP_SUBMIT_UI_FIX_2026-06-21.md` | Protective-Stop Submit — Confirm Response Handling Fix (2026-06-21) | current_phase_keep | OK | `fdbc12f84836` |
 | `docs/project/RECOMMENDATION_INTELLIGENCE.md` | Recommendation Intelligence Engine | current_phase_keep | OK | `86fc73d96ca3` |
-| `docs/project/RELEASE_MANIFEST_LATEST.md` | Release Manifest (auto-generated) | current_phase_keep | OK | `323cb66d950c` |
+| `docs/project/RELEASE_MANIFEST_LATEST.md` | Release Manifest (auto-generated) | current_phase_keep | OK | `cf2b773b2a23` |
 | `docs/project/REPORTS_ACTION_TARGET_CONTRACT_2026-06-21.md` | Reports Action Target Contract + 3-Column Briefing (2026-06-21) | current_phase_keep | OK | `14d5ea7ac651` |
 | `docs/project/REPORTS_COMMAND_PORTAL_PHASE2_UX_HARDENING_2026-06-21.md` | Reports Command Portal — Phase 2 UX Hardening (2026-06-21) | current_phase_keep | OK | `fd2e6de7b2be` |
 | `docs/project/REPORTS_COMMAND_PORTAL_REDESIGN_2026-06-19.md` | Reports Command Portal — Redesign (2026-06-19) | current_phase_keep | OK | `d7d3f916e021` |
@@ -1912,6 +1935,8 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/strategy/BOT_MATURITY_ROADMAP_v1.md` | Automated Trade Bot Maturity Roadmap v1 | current_phase_keep | OK | `597378911cfd` |
 | `docs/strategy/SCREENER_REFERENCE.md` | Trade AI v12 — Screener Reference | current_phase_keep | OK | `8836ce913693` |
 | `docs/system/SYSTEM_ACCESS_AND_APPLICATIONS_PAGE_REPORT.md` | System Access & Applications Pages Report — Trade AI v12 | review_required | OK | `cbe0b6e04fb0` |
+| `docs/testing/test-plan.md` | Communications Gateway — Test Plan (Phase 11) | review_required | OK | `339231375ca1` |
+| `docs/testing/unit-results.md` | Communications Gateway — Unit Results Packet | review_required | OK | `ab7c5138fdc8` |
 | `docs/trade_in_view_profit_capture.md` | Profit-Capture All-Trades Analysis | review_required | OK | `3628798fab7a` |
 | `docs/ui/PHASE111C_SYS_CLASSIFICATION_AUDIT.md` | Phase 111C — SYS Classification Audit | review_required | OK | `5d2b43556700` |
 | `docs/ui/PHASE112_DASHBOARD_ACTIONABILITY_REPORT.md` | Phase 112 — Self-Learning Dashboard Actionability Fix | review_required | OK | `506e1cb20ed0` |

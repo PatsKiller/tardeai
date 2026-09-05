@@ -146,24 +146,6 @@ def intent_deep_link(intent_id: str) -> str | None:
     return f"https://{host}/v3/go/order/{iid}"
 
 
-def _approval_chat() -> str | None:
-    """Approval requests route to the PROPOSALS chat (operator clarification 2026-06-11: same account that
-    receives proposal approvals/stop warnings): env TELEGRAM_APPROVAL_CHAT_ID overrides, else the FIRST
-    configured chat (TRADEAI_PROPOSAL_ALERT_CHAT_ID ordering in tg_chat_ids). Never hardcoded."""
-    v = os.getenv("TELEGRAM_APPROVAL_CHAT_ID", "").strip()
-    if v:
-        return v
-    try:
-        import sys as _sys
-        from pathlib import Path as _P
-        _sys.path.insert(0, str(_P(__file__).resolve().parent.parent))
-        from tg_chat_ids import chat_ids
-        ids = chat_ids()
-        return ids[0] if ids else None
-    except Exception:
-        return None
-
-
 def _load_intent_any(intent_id: str):
     """Rehydrate ANY persisted OrderIntent (not just protective) from broker_order_intents. None on miss."""
     try:
@@ -183,10 +165,6 @@ def _load_intent_any(intent_id: str):
 def _acct_label(acct: str | None) -> str:
     """Display account for Telegram/HTML — underscores break legacy Markdown (_schwab_taxable_)."""
     return str(acct or "broker").replace("_", " ")
-
-
-def _tg_html(s: str) -> str:
-    return str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
 def _intent_qty(intent) -> float | None:
@@ -398,63 +376,49 @@ def execution_notice(intent_id: str) -> str:
     return _execution_notice(_load_intent_any(intent_id))
 
 
-def _approval_telegram_payload(intent, code: str) -> tuple[str, str, dict] | None:
-    """Build (html_text, plain_text, inline_keyboard) for a 2FA approval ping."""
-    chat = _approval_chat()
-    token = os.getenv("TELEGRAM_BOT_TOKEN", "")
-    if not (chat and token):
-        return None
+def _approval_telegram_payload(intent, code: str) -> str:
+    """Build plain-text body for a 2FA approval ping (routed via send_telegram)."""
     is_test = intent.instrument.symbol in ("TEST", "ZZGUARD") or (intent.meta.thesis or "").startswith("scaffold")
     link = intent_deep_link(intent.intent_id)
     summ = intent_action_summary(intent)
     sym = intent.instrument.symbol
     title = summ["action_label"].upper() + " APPROVAL" + (" — ⚠️ SCAFFOLD TEST" if is_test else "")
     notice = _execution_notice(intent)
-    # Body: bare URL on its own line (Telegram auto-linkifies; survives HTML/Markdown parse failures).
-    # Prefer inline URL button below — that is the reliable tap target.
-    # Prefer URL button + bare path URL (no &). Avoid HTML <a href> with &amp; mangling.
-    link_line_html = (f"Open in Command Center:\n<code>{_tg_html(link)}</code>\n" if link else "")
-    html = (f"🔐 <b>{_tg_html(title)}</b>\n\n"
-            f"<b>{_tg_html(summ['headline'])}</b>\n"
-            f"<i>{_tg_html(summ['detail'])}</i>\n"
-            f"intent <code>{_tg_html(intent.intent_id[:8])}</code> · expires {TTL_MIN}min\n"
-            f"manual fallback code: <code>{_tg_html(code)}</code>\n"
-            + link_line_html
-            + f"<i>2nd factor: type ticker <b>{_tg_html(sym)}</b> in web OR tap {_tg_html(summ['approve_btn'])} here</i>\n"
-            f"<i>{_tg_html(notice)}</i>")
-    plain = (f"🔐 {title}\n\n{summ['headline']}\n{summ['detail']}\n"
-             f"intent {intent.intent_id[:8]} · expires {TTL_MIN}min\nmanual fallback code: {code}\n"
-             + (f"Open in Command Center:\n{link}\n" if link else "")
-             + f"2nd factor: type ticker {sym} in web OR tap {summ['approve_btn']} in Telegram\n{notice}")
-    rows = [[
-        {"text": f"✅ {summ['approve_btn']}", "callback_data": f"bkapprove:{intent.intent_id}:{code}"},
-        {"text": "❌ Reject", "callback_data": f"bkreject:{intent.intent_id}"},
-    ]]
-    if link:
-        # URL button is the reliable tap target (full path, no query &)
-        rows.append([{"text": "🔎 Open in Command Center", "url": link}])
-    kb = {"inline_keyboard": rows}
-    return html, plain, kb
+    return (f"🔐 {title}\n\n{summ['headline']}\n{summ['detail']}\n"
+            f"intent {intent.intent_id[:8]} · expires {TTL_MIN}min\nmanual fallback code: {code}\n"
+            + (f"Open in Command Center:\n{link}\n" if link else "")
+            + f"2nd factor: type ticker {sym} in web OR reply with code {code}\n{notice}")
 
 
-def _post_telegram_approval(chat: str, token: str, html: str, plain: str, kb: dict) -> bool:
-    """Send approval message; HTML first, plain-text fallback. Logs failures (never silent)."""
-    import requests
-    url = f"https://api.telegram.org/bot{token}/sendMessage"
-    for mode, text in (("HTML", html), (None, plain)):
+def _post_telegram_approval(plain: str) -> bool:
+    """Send approval message via telegram_alert.send_telegram chokepoint (no raw Bot API)."""
+    try:
+        from pathlib import Path as _P
+        scripts_dir = str(_P(__file__).resolve().parents[1])
+        if scripts_dir not in sys.path:
+            sys.path.insert(0, scripts_dir)
+        from telegram_alert import send_telegram
+        ok = bool(send_telegram(plain))
         try:
-            payload = {"chat_id": chat, "text": text, "reply_markup": kb}
-            if mode:
-                payload["parse_mode"] = mode
-            r = requests.post(url, json=payload, timeout=10)
-            body = r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
-            if r.ok and body.get("ok"):
-                return True
-            err = body.get("description") or r.text[:200]
-            print(f"[approval_service] telegram send failed ({mode or 'plain'}): {err}", file=sys.stderr)
-        except Exception as e:
-            print(f"[approval_service] telegram send error ({mode or 'plain'}): {e}", file=sys.stderr)
-    return False
+            root = str(_P(__file__).resolve().parents[2])
+            if root not in sys.path:
+                sys.path.insert(0, root)
+            from lib.comms import CommunicationEvent, publish_communication
+            publish_communication(CommunicationEvent(
+                direction="OUTBOUND", event_type="alert", message_class="approval",
+                producer="approval_service", subject_key="ops:trade_approval",
+                retention_class="operational", severity="urgent",
+                sanitized_body=plain[:500], short_summary=plain[:120],
+            ))
+        except Exception:
+            # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
+            pass
+        if not ok:
+            print("[approval_service] send_telegram returned False", file=sys.stderr)
+        return ok
+    except Exception as e:
+        print(f"[approval_service] telegram send error: {e}", file=sys.stderr)
+        return False
 
 
 def resend_pending_telegram(intent_id: str) -> dict:
@@ -473,32 +437,16 @@ def resend_pending_telegram(intent_id: str) -> dict:
         return {"ok": False, "reason": f"telegram channel not pending ({status})"}
     if expires and expires < dt.datetime.now(dt.timezone.utc):
         return {"ok": False, "reason": "approval expired"}
-    chat = _approval_chat()
-    token = os.getenv("TELEGRAM_BOT_TOKEN", "")
-    built = _approval_telegram_payload(intent, code)
-    if not built:
-        return {"ok": False, "reason": "telegram not configured (token/chat missing)"}
-    html, plain, kb = built
-    sent = _post_telegram_approval(chat, token, html, plain, kb)
+    plain = _approval_telegram_payload(intent, code)
+    sent = _post_telegram_approval(plain)
     return {"ok": sent, "intent_id": intent_id, "code": code}
 
 
 def _send_approval_request(intent, code: str) -> None:
-    """Inline-button approval message (operator request 2026-06-11): one-tap Approve/Reject, code kept as
-    manual fallback. TEST-fixture intents are labeled so scaffold smoke never reads like a real plan."""
-    chat = _approval_chat()
-    token = os.getenv("TELEGRAM_BOT_TOKEN", "")
-    if not (chat and token):
-        print("[approval_service] telegram skipped: TELEGRAM_BOT_TOKEN or approval chat not set",
-              file=sys.stderr)
-        _send_approval_email(intent, code,
-                             intent.instrument.symbol in ("TEST", "ZZGUARD")
-                             or (intent.meta.thesis or "").startswith("scaffold"))
-        return
-    built = _approval_telegram_payload(intent, code)
-    if built:
-        html, plain, kb = built
-        _post_telegram_approval(chat, token, html, plain, kb)
+    """Approval ping via send_telegram chokepoint; code kept as manual fallback.
+    TEST-fixture intents are labeled so scaffold smoke never reads like a real plan."""
+    plain = _approval_telegram_payload(intent, code)
+    _post_telegram_approval(plain)
     is_test = intent.instrument.symbol in ("TEST", "ZZGUARD") or (intent.meta.thesis or "").startswith("scaffold")
     _send_approval_email(intent, code, is_test)
 

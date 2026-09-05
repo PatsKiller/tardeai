@@ -12,8 +12,9 @@ Sections mirror the MS report:
   Cover → Accounts → Investment Summary → Style → Portfolio X-Ray →
   Change in Value → Unrealized G/L Detail → Disclosures
 
-Delivery: HTML + landscape-letter PDF (Playwright). Telegram `sendDocument`
-carries the PDF; email carries a plain-text summary + body link.
+Delivery: HTML + landscape-letter PDF (Playwright). Telegram carries a text
+alert (path/link) via `telegram_alert.send_telegram`; email carries a
+plain-text summary + body link.
 
 CLI:
   python portfolio_report_ms.py [--ad-hoc] [--dry-run] [--no-send]
@@ -807,46 +808,34 @@ def render_pdf(html: str, out_path: Path) -> Path:
     return out_path
 
 
-def _telegram_env() -> tuple[str, list[str]]:
-    import os
+def send_telegram_report_notice(pdf_path: Path, caption: str) -> bool:
+    """Send PDF via telegram_alert.send_telegram_document chokepoint."""
     sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
     try:
-        from telegram_alert import _token, _chat_ids
-        return _token(), _chat_ids()
-    except Exception:
-        return os.getenv("TELEGRAM_BOT_TOKEN", ""), [c.strip() for c in os.getenv("TELEGRAM_CHAT_ID", "").split(",") if c.strip()]
-
-
-def send_telegram_document(pdf_path: Path, caption: str) -> bool:
-    token, chat_ids = _telegram_env()
-    if not token or not chat_ids:
-        print("[report] telegram document skipped — no token/chat_id")
-        return False
-    import requests
-    ok = True
-    for cid in chat_ids:
+        from telegram_alert import send_telegram_document
+        ok = bool(send_telegram_document(str(pdf_path), caption=caption, bypass_router=True))
         try:
-            with open(pdf_path, "rb") as fh:
-                r = requests.post(
-                    f"https://api.telegram.org/bot{token}/sendDocument",
-                    data={"chat_id": cid, "caption": caption[:1024]},
-                    files={"document": (pdf_path.name, fh, "application/pdf")},
-                    timeout=30,
-                )
-            if not r.json().get("ok"):
-                print(f"[report] telegram document error to {cid}: {r.text[:120]}")
-                ok = False
-        except Exception as e:
-            print(f"[report] telegram document error: {type(e).__name__}: {str(e)[:120]}")
-            ok = False
-    return ok
+            from lib.comms import CommunicationEvent, publish_communication
+            publish_communication(CommunicationEvent(
+                direction="OUTBOUND", event_type="alert", message_class="ops",
+                producer="portfolio_report_ms", subject_key="ops:portfolio_report_ms",
+                retention_class="operational", severity="info",
+                sanitized_body=(caption or "")[:500], short_summary=(caption or "")[:120],
+            ))
+        except Exception:
+            # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
+            pass
+        return ok
+    except Exception as e:
+        print(f"[report] telegram document error: {type(e).__name__}: {str(e)[:120]}")
+        return False
 
 
 def deliver(ctx: dict, pdf_path: Path, *, send: bool) -> dict[str, Any]:
     result = {"telegram_doc": False, "email": False}
     caption = f"📑 *Portfolio Report* — {ctx['as_of']}\nGoverning thesis {ctx['thesis'].get('thesis_version') or 'desk@?'} · READ_ONLY_ADVISORY"
     if send:
-        result["telegram_doc"] = send_telegram_document(pdf_path, caption)
+        result["telegram_doc"] = send_telegram_report_notice(pdf_path, caption)
         try:
             sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
             from email_notifier import send_email
