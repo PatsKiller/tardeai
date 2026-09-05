@@ -625,6 +625,15 @@ GATES = [
         ],
     ),
     (
+        # If one LLM lane fails the next must be tried, and the substitution
+        # said out loud. chatgpt failed 11/11 on 2026-09-05 while grok was
+        # healthy and never asked, because generate() takes one lane.
+        "llm_fallback",
+        [
+            "tests/test_llm_fallback.py",
+        ],
+    ),
+    (
         # A weekday-only freshness check must not page for the weekend. Second
         # fix in the same gate: G1 asked whether TODAY was Saturday; this one
         # counted calendar weekday hours instead of hours the writer could run.
