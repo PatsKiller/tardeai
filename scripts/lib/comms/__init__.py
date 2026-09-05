@@ -3,6 +3,8 @@
 Public API:
   - CommunicationEvent / publish_communication
   - ChannelDelivery / reserve_delivery / settle_delivery / record_chunk
+  - subject memory: subject_key_for, upsert_subject, attach_event_to_subject,
+    retrieve_subject_history
   - curation: select_curation_mode, curate_deterministic,
     apply_llm_curation_result, CurationReceipt, …
   - new_event_id / idempotency_key_for
@@ -10,6 +12,7 @@ Public API:
 
 Does NOT own provider delivery. Modes default to OFF. Phase 3 records
 ChannelDelivery@v1 stubs (RESERVED) without sending.
+Phase 4 attaches events to subject threads after publish.
 Phase 5 curation never calls real LLM APIs.
 """
 from __future__ import annotations
@@ -37,6 +40,13 @@ from scripts.lib.comms.delivery import (
     record_chunk,
     reserve_delivery,
     settle_delivery,
+)
+from scripts.lib.comms.subject_memory import (
+    attach_event_to_subject,
+    get_subject,
+    retrieve_subject_history,
+    subject_key_for,
+    upsert_subject,
 )
 from scripts.lib.comms.enforcement import (
     MissingCommunicationEventId,
@@ -91,4 +101,9 @@ __all__ = [
     "apply_llm_curation_result",
     "store_curation_receipt",
     "get_curation_receipt",
+    "subject_key_for",
+    "upsert_subject",
+    "attach_event_to_subject",
+    "retrieve_subject_history",
+    "get_subject",
 ]

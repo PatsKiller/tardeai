@@ -26,12 +26,12 @@ Classification key: **LIVE** · **LIVE BUT PARTIAL** · **BUILT_DARK** · **DISC
 |---|---|---|---|
 | CommunicationEvent@v2 ledger | BUILT_DARK | Schema + client + tests landed; not wired to producers; mode OFF | Phase 1 done · adoption Phase 5+ |
 | Generalize CIO lineage + alert outbox | LIVE foundations / ABSENT universal | Two parallel stacks + legacy | Phase 1–3 |
-| Delivery ledger (all channels) | LIVE BUT PARTIAL (alert deliveries / CIO receipts) | Not universal; Telegram-centric | Phase 3 |
-| Telegram adapter behind gateway only | LIVE BUT PARTIAL | Approved transport exists; bypasses remain | Phase 2–3, 5, 9 |
+| Delivery ledger (all channels) | BUILT_DARK | `ChannelDelivery@v1` + migration + auto-RESERVED stubs on publish; no provider settlement ownership yet | Phase 3 done · wire adapters later |
+| Telegram adapter behind gateway only | LIVE BUT PARTIAL | Approved transport exists; bypasses remain | Phase 2, migrate Phase 9 |
 | Email / Slack / WhatsApp gateway adapters | DISCONNECTED / BUILT_DARK | Source-built; not gateway-mediated; activation unproven | Phase 10 |
-| Subject memory / SubjectThread@v1 | ABSENT | Greenfield (≠ `cio_rehydrate`) | Phase 4 |
+| Subject memory / SubjectThread@v1 | BUILT_DARK | Package + migration + publish hook; not CC-visible yet | Phase 4 done · Phase 7 surfaces |
 | `/v3/communications` | ABSENT | Reports ≠ communications workspace | Phase 7 / PR-6 |
-| Controlled curation + CurationReceipt | ABSENT / partial deterministic templates | No universal protected-fact contract | Phase 5 |
+| Controlled curation + CurationReceipt | BUILT_DARK | Tier policy + receipts + protected-fact fallback; no live LLM wiring | Phase 5 done · use in producers later |
 
 ---
 
@@ -54,10 +54,10 @@ Classification key: **LIVE** · **LIVE BUT PARTIAL** · **BUILT_DARK** · **DISC
 | Contract | Status |
 |---|---|
 | CommunicationEvent@v2 | BUILT_DARK (code+migration; not producer-adopted) |
-| SubjectThread@v1 | ABSENT |
+| SubjectThread@v1 | BUILT_DARK (`subject_memory` + SQL) |
 | MessageArtifact@v1 | ABSENT |
-| CurationReceipt@v1 | ABSENT |
-| ChannelDelivery@v1 | PARTIAL analogs only (`alert_notification_deliveries`, CIO receipt fields) |
+| CurationReceipt@v1 | BUILT_DARK (`curation.py`) |
+| ChannelDelivery@v1 | BUILT_DARK (`delivery.py` + SQL; SHADOW stubs) |
 | RetentionDecision@v1 | ABSENT for comms |
 | AgentConsumptionReceipt@v1 | ABSENT |
 
