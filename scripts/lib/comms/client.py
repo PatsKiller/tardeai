@@ -241,7 +241,7 @@ def publish_communication(event: CommunicationEvent) -> PublishResult:
     conn = _db_conn()
     if conn is not None:
         try:
-            return _persist_db(conn, event, channels)
+            result = _persist_db(conn, event, channels)
         except Exception as e:
             try:
                 conn.rollback()
@@ -250,8 +250,34 @@ def publish_communication(event: CommunicationEvent) -> PublishResult:
             # Degrade to memory rather than drop the logical event in OFF/SHADOW.
             result = _persist_memory(event, channels)
             result.errors.append(f"db_fallback:{type(e).__name__}")
-            return result
-    return _persist_memory(event, channels)
+    else:
+        result = _persist_memory(event, channels)
+
+    if result.ok and result.event_id and event.subject_key:
+        _attach_subject_memory(event, result.event_id, channels)
+    return result
+
+
+def _attach_subject_memory(
+    event: CommunicationEvent, event_id: str, channels: list[str]
+) -> None:
+    """Best-effort SubjectThread membership after successful publish.
+
+    Lazy import avoids circular imports with subject_memory → client snapshot.
+    Never raises into publish_communication.
+    """
+    try:
+        from scripts.lib.comms.subject_memory import attach_event_to_subject
+
+        ch = channels[0] if channels else None
+        attach_event_to_subject(
+            event.subject_key,
+            event_id,
+            channel=ch,
+            provider_coordinates=event.provider_coordinates or None,
+        )
+    except Exception:
+        return
 
 
 def memory_store_snapshot() -> dict[str, dict[str, Any]]:
