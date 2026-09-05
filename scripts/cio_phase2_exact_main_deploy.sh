@@ -317,7 +317,18 @@ build_frontend() {
   )
   mkdir -p "${dest}/apps/command-center-v3/dist"
   rsync -a --delete "${cc}/dist/" "${dest}/apps/command-center-v3/dist/"
-  write_build_meta "$dest" "$CONTENT_SHA" "$cc"
+  # Stamp the RELEASE only. Passing "$cc" here also wrote the source worktree's
+  # tracked apps/command-center-v3/build-meta.json — and cmd_prepare calls
+  # require_head_is_origin_main (:399), which dies on a dirty tree. So every
+  # successful prepare dirtied the tree the NEXT prepare refuses to run on. The
+  # deploy poisoned its own precondition; the only remedies were a churn commit
+  # or a manual checkout, and the git history shows both.
+  #
+  # The $cc/dist write this drops was redundant: vite wrote that exact file
+  # seconds earlier in this same function, with the same SHA — require_head_is_origin_main
+  # guarantees HEAD == origin/main == CONTENT_SHA. Same shape the `stamp`
+  # subcommand already uses.
+  write_build_meta "$dest" "$CONTENT_SHA"
 }
 
 overlay_main() {

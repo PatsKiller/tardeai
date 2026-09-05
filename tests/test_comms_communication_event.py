@@ -25,6 +25,11 @@ from scripts.lib.comms.mode import MODE_OFF, get_gateway_mode, mode_diagnostics 
 @pytest.fixture(autouse=True)
 def _clean_mem(monkeypatch):
     monkeypatch.delenv("COMMS_GATEWAY_MODE", raising=False)
+    # Same defect as the other comms suites: this asserts the in-memory ledger,
+    # and on a box where localhost Postgres answers the DB branch wins — the
+    # assertions fail and the run writes to production.
+    monkeypatch.setattr("scripts.lib.comms.client._db_conn", lambda: None)
+    monkeypatch.setattr("scripts.lib.comms.subject_memory._db_conn", lambda: None)
     reset_memory_store()
     yield
     reset_memory_store()

@@ -503,6 +503,11 @@ export default function TradingHub({ onDrill }: Props) {
                   <span
                     style={{ marginLeft: 6, color: runHealthChipColor(healthTier), fontWeight: 800 }}
                     data-testid="trade-ai-run-health-chip"
+                    data-run-id={tradeAi?.run_id ?? ''}
+                    data-run-scanned={scannedN != null ? String(scannedN) : ''}
+                    data-run-floor={healthFloor && isFinite(healthFloor) ? String(healthFloor) : ''}
+                    data-run-health={healthTier}
+                    data-run-integrity={tradeAi?.setup_run_summary?.count_integrity ?? ''}
                     title={healthCodes.length ? healthCodes.join(', ') : healthStatusLabel}
                   >
                     · {healthStatusLabel}

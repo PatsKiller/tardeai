@@ -483,6 +483,20 @@ export default function MetricStrip({ onDrill }: Props) {
       tone: setupsTone,
       valueSize: VALUE_COMPACT,
       minWidth: 230, maxWidth: 330,
+      // Machine-readable run facts, mirroring the Trading panel's own attributes
+      // and sourced from the same classifier both surfaces import.
+      //
+      // Without these, checking the two agree meant scraping rendered prose —
+      // which gave a FALSE disagreement during the post-deploy audit: the panel
+      // prints "RUN_HEALTHY" while the header prints "run 1087/40", both correct
+      // for an exception-driven surface. Values are comparable; wording is not.
+      factAttrs: {
+        'data-run-id': setupRun.runId ?? '',
+        'data-run-scanned': runScanned != null ? String(runScanned) : '',
+        'data-run-floor': runFloor != null ? String(runFloor) : '',
+        'data-run-health': setupRun.runHealth,
+        'data-run-integrity': setupRun.integrity,
+      },
       color: scanStale ? BB.amber : setupRun.degraded ? BB.amber : setupRun.goPositive ? BB.green : 'var(--text3)',
       tip: scanStale
         ? `Scanner surface is STALE (${setupsFresh.reason || 'prior/empty cache'}). ${setupsRun}${setupsAsOfMark}. HTTP 200 is not a live claim — Trading → Trade AI shows the same payload.`
@@ -563,7 +577,11 @@ export default function MetricStrip({ onDrill }: Props) {
             ...(showTileRails ? rowRail(tone === 'bad' ? 'breach' : tone === 'warn' ? 'attention' : 'neutral') : {}),
           }}
         >
-          <div className="ms-label" style={{ ...NOWRAP, fontSize: TYPE.xs, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.5px' }}>
+          <div
+            className="ms-label"
+            {...((t as any).factAttrs ?? {})}
+            style={{ ...NOWRAP, fontSize: TYPE.xs, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.5px' }}
+          >
             {t.label}
             {showStateDots && <span style={{ color: toneColor(tone), fontWeight: 800 }} data-tile-tone={tone}>{' '}{toneGlyph(tone)}</span>}
             {(t as any).stale && <span style={{ color: BB.amber, fontWeight: 800 }} data-surface-stale>{' '}⚠ STALE</span>}

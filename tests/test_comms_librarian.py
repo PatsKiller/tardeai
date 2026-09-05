@@ -35,7 +35,15 @@ from scripts.lib.comms.librarian import (  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
-def _clean():
+def _clean(monkeypatch):
+    # Same defect as tests/test_communications_portal.py: these assert the
+    # in-memory ledger, every call site is
+    # `conn = _db_conn(); if conn is not None: <db> else: <memory>`, and on a box
+    # where localhost Postgres answers the DB branch wins — the assertions fail
+    # AND the run writes into the production trade_ai database. Matches
+    # tests/test_comms_channel_adapters.py:34-36.
+    # librarian.py carries its own _db_conn (:328), separate from client/delivery.
+    monkeypatch.setattr("scripts.lib.comms.librarian._db_conn", lambda: None)
     reset_librarian_memory()
     yield
     reset_librarian_memory()

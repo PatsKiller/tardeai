@@ -1949,7 +1949,20 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
                     _boot = b'<script src="/v3/cc-boot.js"></script>'
                     if _boot not in _body and b"</head>" in _body:
                         _body = _body.replace(b"</head>", _boot + b"</head>", 1)
-                    if b"</head>" in _body:
+                    # Inject the version check BEFORE the module script, not at
+                    # </head>.
+                    #
+                    # Appended at </head> it landed *after* <script type="module">,
+                    # so Chrome's preload scanner had already begun fetching the
+                    # 4.4 MB bundle by the time this ran; on the first load of a
+                    # browser session it then calls location.replace() and cancels
+                    # that fetch. Every route showed net::ERR_ABORTED on a URL that
+                    # serves 200 when requested directly. Deciding to redirect
+                    # before the fetch starts costs nothing and wastes nothing.
+                    _mod = _body.find(b'<script type="module"')
+                    if _mod != -1:
+                        _body = _body[:_mod] + _inject + _body[_mod:]
+                    elif b"</head>" in _body:
                         _body = _body.replace(b"</head>", _inject + b"</head>", 1)
                 self.send_header("Content-Length", str(len(_body)))
                 self.end_headers()

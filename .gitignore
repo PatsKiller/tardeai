@@ -202,3 +202,10 @@ data/runtime/schwab_auto_reauth_state.json
 # `python3 -m scripts.cc_browser_matrix`; committing timestamped copies would be
 # runtime churn, and the campaign archive is the durable record.
 evidence/whole_site/
+
+# Generated build stamp. Written by the deploy (cio_phase2_exact_main_deploy.sh),
+# never by hand, and it records the commit it was built FROM — so it is always one
+# behind the commit that would contain it and can never be committed cleanly.
+# Its dist twin is already ignored by the bare `dist/` rule above; this restores
+# the symmetry. Release copies are authored by the deploy and are unaffected.
+apps/command-center-v3/build-meta.json
