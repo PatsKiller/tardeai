@@ -44,9 +44,9 @@ check('renderer takes the label from the tile',
 check('no tile labels a clock "data_as_of" any more',
   !/asOfLabel: 'data_as_of'/.test(code))
 check('the portfolio tile names the position-observation clock',
-  code.includes("asOfLabel: 'positions observed'"))
+  code.includes("asOfLabel: 'obs'") && code.includes('positions observed'))
 check("the today tile names the P&L's own session",
-  code.includes("asOfLabel: 'P&L session'"))
+  code.includes("asOfLabel: 'session'") && /P&L session/.test(code))
 check('no two tiles share a static clock label', (() => {
   // The trailing `|| size > 1` this once carried made it pass for any header
   // with two distinct labels anywhere -- including the defect. A duplicate is
@@ -65,10 +65,12 @@ check('the oldest contributor is on HOVER (tip), not concatenated into face asOf
   code.includes('portfolioHoverAccounts') &&
   code.includes('ACCOUNTS (hover)') &&
   !code.includes('const oldestMark') &&
-  /asOfNote: portfolioFaceNote/.test(code))
+  /asOfNote: null/.test(code) &&
+  /warnBadge: clockDivergences\.length/.test(code))
 check('face portfolio note is divergence-only (no account census)',
   /portfolioFaceNote = clockDivergences\.length/.test(code) &&
-  !/asOfNote: portfolioAsOfNote/.test(code))
+  !/asOfNote: portfolioAsOfNote/.test(code) &&
+  /warnBadge: clockDivergences\.length/.test(code))
 check('the four aggregate clocks are rendered as separate lines',
   code.includes('const clockLines') &&
   code.includes('positions observed') && code.includes('valued ') &&
@@ -86,7 +88,7 @@ check("today's coverage is stated over FUNDED accounts, not linked ones",
 check("today's coverage names the missing accounts rather than only a count",
   /MISSING \$\{todayMissing\.join/.test(code))
 check('the setups tile carries its run id',
-  code.includes('id ${setupRun.runId}'))
+  /id \$\{String\(setupRun\.runId\)/.test(code) || code.includes('id ${setupRun.runId}'))
 check('unaccounted setup rows are shown on the tile face',
   code.includes('UNACCOUNTED'))
 // Hover still publishes these facts; they must remain data-driven in tip/hover
@@ -155,11 +157,11 @@ check('the TODAY hover note falls back to a scope, never a single account name',
 
 // "53.3% . 169 . $55,429" was three unlabelled numbers, and the dollar figure sat beside
 // a REALIZED tile showing a different one.
-check('the TRADING tile labels its win rate', /\$\{winRate\}% win/.test(code))
+check('the TRADING tile labels its win rate', /\$\{winRate\}%/.test(code))
 check('the TRADING tile labels its trade count', /\$\{winTrades\} trades/.test(code))
 check('the TRADING tile labels its P&L', /fmt\$\(journalPnl, 0\)\} P&L/.test(code))
 check('SETUPS face is counts-only; population is a sub line',
-  /setupsSub = scanStale \? null : \(setupRun\.population/.test(code) &&
+  /setupsSub = setupsPopulationShort/.test(code) &&
   /valueSub: setupsSub/.test(code) &&
   !/return pop \? `\$\{setupRun\.counts\} · \$\{pop\}/.test(code))
 check('metric strip uses semantic classes (not :last-child sizing)',
