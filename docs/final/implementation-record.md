@@ -3,8 +3,8 @@
 **Status:** Communications Gateway program documentation (Phases 0–11).
 **Date:** 2026-09-05
 
-**As of:** 2026-09-04 (Phase 11 docs + SHADOW compare helper)  
-**Production activation:** **none** — `COMMS_GATEWAY_MODE` defaults to **OFF**  
+**As of:** 2026-09-05 (re-attest `docs/audit/live-attest-2026-09-05.md`)  
+**Production activation:** **ACTIVE for Telegram `ops` only** (`COMMS_GATEWAY_ACTIVE_CLASSES=ops`) — see `docs/deployment/production-activation.md`. Default remains **OFF** for every other class and channel.  
 **Worktree:** `wt/comms-gateway-phase0` (`tradeai-wt-comms-gateway-phase0`)
 
 Classification: **designed** · **built** (code+tests in tree, often BUILT_DARK) · **tested** · **activated** · **deferred**
@@ -22,11 +22,11 @@ Classification: **designed** · **built** (code+tests in tree, often BUILT_DARK)
 | 4 | Subject memory | yes | yes | yes | **no** | broader CC wiring |
 | 5 | Controlled curation receipts | yes | yes (no live LLM) | yes | **no** | producer use |
 | 6 | Librarian retention | yes | yes (dry_run expiry) | yes | **no** | prod schedule |
-| 7 | `/v3/communications` workspace | yes | yes (BUILT_DARK) | portal tests | **no** (deploy attest open) | live CURRENT attest |
+| 7 | `/v3/communications` workspace | yes | yes (BUILT_DARK) | portal tests | **yes (LIVE, HTTP 200)** | live CURRENT attest |
 | 8 | Agent consumption contracts | yes | yes | yes | **no** | subscribe real agents |
-| 9 | Migrate Telegram senders / zero bypass | yes | yes (high-risk cohort) | ratchet + migration note | **no** (mode still OFF) | remaining bypass cohort / empty baseline |
+| 9 | Migrate Telegram senders / zero bypass | yes | yes (high-risk cohort) | ratchet + migration note | **partial (ops ACTIVE)** | remaining bypass cohort / empty baseline |
 | 10 | Channel adapters (email/Slack/WhatsApp) | yes | yes (`channel_adapters.py`, deliver=False default) | yes | **no** | real deliver only CANARY/ACTIVE later |
-| 11 | Rollout/rollback docs + SHADOW compare | yes | docs + `shadow_compare.py` | unit tests | **no ACTIVE** | canary/ACTIVE await evidence |
+| 11 | Rollout/rollback docs + SHADOW compare | yes | docs + `shadow_compare.py` | unit tests | **ops ACTIVE** | canary/ACTIVE evidence recorded |
 
 ---
 
@@ -82,16 +82,21 @@ Classification: **designed** · **built** (code+tests in tree, often BUILT_DARK)
 
 ## Activated in production
 
-**Nothing.** No production host is authorized to run `COMMS_GATEWAY_MODE=ACTIVE` as of this record. Default remains OFF. SHADOW/CANARY are future controlled enablements per `docs/deployment/rollout-plan.md`.
+**Telegram `ops` only.** `COMMS_GATEWAY_MODE=ACTIVE` with `COMMS_GATEWAY_ACTIVE_CLASSES=ops`
+(via systemd `32-comms-gateway-mode.conf`, signed 2026-09-05T04:31:30Z). Owned `ops`
+deliveries settle `SENT` with `provider_message_id`; every other class stays legacy-send +
+best-effort ledger. Repo default remains OFF. See `docs/deployment/production-activation.md`
+and the live re-attestation in `docs/audit/live-attest-2026-09-05.md`.
 
 ---
 
 ## Deferred (explicit)
 
-1. **Phase 9 remainder** — Finish Telegram bypass zeroing; empty chokepoint baseline (cohort migration landed; not production ACTIVE).  
-2. **Phase 10 activation** — Adapters built with `deliver=False` default; CANARY/ACTIVE deliver still gated.  
-3. **ACTIVE cutover** — Blocked on `docs/deployment/production-activation.md` (all unchecked).  
-4. Live LLM curation wiring; scheduled librarian expiry on prod; full agent subscription wiring.
+1. **Telegram class widening** — `ops` is ACTIVE; `operator_alert` / `health` / `research` /
+   `digest` / `protection_incident` still legacy (canary ladder pending — Wave B).
+2. **Phase 10 activation** — Adapters built with `deliver=False` default; CANARY/ACTIVE deliver still gated.
+3. **Inbound completeness** — `operator_command` rows exist; durable update_id checkpoint + callback quarantine not re-attested (Wave C).
+4. Live LLM curation wiring; scheduled librarian expiry on prod; full agent subscription wiring (Waves D/E/F).
 
 ---
 

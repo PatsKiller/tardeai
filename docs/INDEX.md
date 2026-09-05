@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `8fcedb31ac34a1bdc54352bb4edbc9c7bb72ebb7b715de20d29cf21989ee4f5b`
+**Tree fingerprint:** `6f362fac3b5a6cc49b80929514a6b78fb719aa59d982560569ba7f22c3779bc1`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,10 +12,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2388 |
-| Markdown (excl. this INDEX) | 1988 |
+| Files under `docs/` (excl. this INDEX) | 2389 |
+| Markdown (excl. this INDEX) | 1989 |
 | **MISSING HEADER** | **19** |
-| Header OK | 1969 |
+| Header OK | 1970 |
 | Duplicate groups | 5 |
 
 ### By status_guess
@@ -30,7 +30,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_raw_sync | 34 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 6 |
-| review_required | 2000 |
+| review_required | 2001 |
 
 ## Markdown tree
 
@@ -533,7 +533,8 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/audit/PROPOSALS_BROKER_VS_REGULAR_AUDIT_20260624.md` | Proposals Audit — Broker vs Regular (Frontend + Backend) | review_required | OK | `c3f78de62d14` |
 | `docs/audit/_evidence/README.md` | Phase 0 evidence snapshots | review_required | MISSING HEADER | `e17f23a439d9` |
 | `docs/audit/current-state.md` | Communications Gateway — Current State | review_required | MISSING HEADER | `5bf7544d0919` |
-| `docs/audit/gap-analysis.md` | Communications Gateway — Gap Analysis | review_required | MISSING HEADER | `0e8ae75cc074` |
+| `docs/audit/gap-analysis.md` | Communications Gateway — Gap Analysis | review_required | MISSING HEADER | `038f73b9adc9` |
+| `docs/audit/live-attest-2026-09-05.md` | Communications Gateway — Live Attestation (re-attest, post #862/#864/#868) | review_required | OK | `adcc81a51d95` |
 | `docs/audit/phase0-signoff.md` | Phase 0 Sign-off | review_required | OK | `02114eff814d` |
 | `docs/audit/phase9-sender-migration.md` | Phase 9 — High-risk Telegram sender migration | review_required | OK | `3872cbce012e` |
 | `docs/audit/runtime-attestation.md` | Communications Gateway — Runtime Attestation | review_required | MISSING HEADER | `68b98afb64a9` |
@@ -816,7 +817,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/feeds/PHASE72E_OPS_BACKLOG_RECOVERY_UPDATE_DESIGN.md` | Phase 72E — Ops Backlog Recovery Update Design | review_required | OK | `cab37d5456e9` |
 | `docs/feeds/PHASE75A_THIRD_CLEAN_RUN_EVIDENCE.md` | Phase 75A — Third Clean Run Evidence | review_required | OK | `ab8bf7f62f3f` |
 | `docs/feeds/PHASE77A_RESEARCH_ONLY_FEED_FALLBACK_POLICY.md` | Phase 77A — Research-Only Feed Fallback Policy | review_required | OK | `68cedb0b557e` |
-| `docs/final/implementation-record.md` | Communications Gateway — Implementation Record (Phases 0–11) | review_required | OK | `ed23d3c4ddb2` |
+| `docs/final/implementation-record.md` | Communications Gateway — Implementation Record (Phases 0–11) | review_required | OK | `9cb8d57b0742` |
 | `docs/financial-senses/ACCEPTANCE.md` | Acceptance profile | review_required | OK | `35455570693f` |
 | `docs/financial-senses/ADR/001-reuse-existing-sec-pipeline.md` | ADR-001 — Reuse the existing SEC pipeline | review_required | OK | `f10bb9692756` |
 | `docs/financial-senses/ADR/002-provider-adapters-not-second-mcp-gateway.md` | ADR-002 — Provider adapters, not a second MCP gateway | review_required | OK | `99065f6c47a7` |
