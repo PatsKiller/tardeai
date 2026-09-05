@@ -50,15 +50,18 @@ def test_the_ratchet_holds_on_this_tree():
         f"stdout:\n{r.stdout[-3000:]}\nstderr:\n{r.stderr[-2000:]}")
 
 
-def test_the_ratchet_reports_its_debt_rather_than_claiming_zero():
-    """The guard must not read as clean while 133 violations stand.
+def test_the_ratchet_reports_debt_or_explicit_zero():
+    """While debt remains, the guard must print a violation count.
 
-    A guard that says 'pass' with no number is indistinguishable from a guard
-    with nothing to find -- and this one is carrying real inherited debt.
+    After the bypass cohort migrations emptied the baseline, an explicit
+    ``pass: zero bypasses`` line is the honest clean signal — still distinct
+    from a silent vacuous pass.
     """
     r = _run()
     out = (r.stdout + r.stderr).lower()
-    assert "violation" in out, "the ratchet must state its outstanding count"
+    assert ("violation" in out) or ("zero bypasses" in out), (
+        "the ratchet must state outstanding debt or an explicit zero-bypass pass"
+    )
 
 
 def test_the_checker_can_go_red(tmp_path):

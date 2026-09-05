@@ -1,0 +1,15 @@
+Fri 2026-09-04 21:14:58 EDT       1min 49s Fri 2026-09-04 21:12:58 EDT            10s ago tradeai-cio-reactive.timer                    tradeai-cio-reactive.service
+Fri 2026-09-04 21:15:21 EDT       2min 12s Fri 2026-09-04 21:00:18 EDT          12min ago tradeai-hermes-cio-worker.timer               tradeai-hermes-cio-worker.service
+Fri 2026-09-04 21:17:52 EDT       4min 43s Fri 2026-09-04 21:12:52 EDT            16s ago tradeai-cio-delivery.timer                    tradeai-cio-delivery.service
+Fri 2026-09-04 21:22:40 EDT           9min Fri 2026-09-04 21:12:40 EDT            28s ago tradeai-cio-material-scan.timer               tradeai-cio-material-scan.service
+Fri 2026-09-04 21:25:40 EDT          12min Fri 2026-09-04 20:25:40 EDT          47min ago tradeai-cio-defer-revisit.timer               tradeai-cio-defer-revisit.service
+Fri 2026-09-04 21:40:00 EDT          26min Thu 2026-09-03 21:40:16 EDT            23h ago tradeai-advisory-lessons-reflect.timer        tradeai-advisory-lessons-reflect.service
+Fri 2026-09-04 21:45:00 EDT          31min Thu 2026-09-03 21:45:13 EDT            23h ago tradeai-advisory-shadow-seed.timer            tradeai-advisory-shadow-seed.service
+Fri 2026-09-04 21:50:00 EDT          36min Thu 2026-09-03 21:50:03 EDT            23h ago tradeai-cio-nightly-reflection.timer          tradeai-cio-nightly-reflection.service
+Fri 2026-09-04 22:00:00 EDT          46min Fri 2026-09-04 21:00:16 EDT          12min ago tradeai-advisory-notif-broker.timer           tradeai-advisory-notif-broker.service
+Sat 2026-09-05 00:00:00 EDT       2h 46min Fri 2026-09-04 21:00:16 EDT          12min ago snap.firmware-updater.firmware-notifier.timer snap.firmware-updater.firmware-notifier.service
+Sat 2026-09-05 04:00:53 EDT             6h Fri 2026-09-04 18:00:41 EDT       3h 12min ago hermes-advisory-cache-worker.timer            hermes-advisory-cache-worker.service
+Sat 2026-09-05 06:20:00 EDT             9h Fri 2026-09-04 06:20:01 EDT            14h ago tradeai-cio-memory-shadow-measure.timer       tradeai-cio-memory-shadow-measure.service
+Sat 2026-09-05 17:45:00 EDT            20h Fri 2026-09-04 17:45:01 EDT       3h 28min ago tradeai-cio-desk-memo-regen.timer             tradeai-cio-desk-memo-regen.service
+Sat 2026-09-05 18:30:00 EDT            21h Fri 2026-09-04 18:30:00 EDT       2h 43min ago tradeai-advisory-outcome-scorer.timer         tradeai-advisory-outcome-scorer.service
+Mon 2026-09-07 09:15:00 EDT         2 days Fri 2026-09-04 09:15:00 EDT            11h ago tradeai-advisory-shadow-session.timer         tradeai-advisory-shadow-session.service

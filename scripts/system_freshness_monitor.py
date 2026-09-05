@@ -226,21 +226,29 @@ def emit_siem(cur, f, extra=None):
 
 
 def telegram(msg):
-    import urllib.request
-    token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-    if not token:
-        return []
-    out = []
-    for cid in [c.strip() for c in os.environ.get("TELEGRAM_CHAT_ID", "").split(",") if c.strip()]:
+    """Send via telegram_alert.send_telegram chokepoint (no raw Bot API)."""
+    try:
+        scripts_dir = os.path.dirname(os.path.abspath(__file__))
+        if scripts_dir not in sys.path:
+            sys.path.insert(0, scripts_dir)
+        from telegram_alert import send_telegram
+        ok = bool(send_telegram(msg))
         try:
-            data = json.dumps({"chat_id": cid, "text": msg}).encode()
-            req = urllib.request.Request(f"https://api.telegram.org/bot{token}/sendMessage",
-                                         data=data, headers={"Content-Type": "application/json"})
-            urllib.request.urlopen(req, timeout=15)
-            out.append(cid)
-        except Exception as ex:
-            out.append(f"ERR:{ex}")
-    return out
+            if ROOT not in sys.path:
+                sys.path.insert(0, ROOT)
+            from lib.comms import CommunicationEvent, publish_communication
+            publish_communication(CommunicationEvent(
+                direction="OUTBOUND", event_type="alert", message_class="ops",
+                producer="system_freshness_monitor", subject_key="ops:system_freshness",
+                retention_class="operational", severity="urgent",
+                sanitized_body=msg[:500], short_summary=msg[:120],
+            ))
+        except Exception:
+            # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
+            pass
+        return ["send_telegram:ok" if ok else "send_telegram:fail"]
+    except Exception as ex:
+        return [f"ERR:{ex}"]
 
 
 # ---- narrow safe auto-fix ----
@@ -256,6 +264,7 @@ def _save_state(s):
         os.makedirs(os.path.dirname(STATE), exist_ok=True)
         json.dump(s, open(STATE, "w"))
     except Exception:
+        # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
         pass
 
 

@@ -84,16 +84,23 @@ def _resolve(d, conn=None):
 
 
 def _notify(msg):
-    """Best-effort Telegram to BOTH operator chat IDs (advisory; never raises)."""
+    """Best-effort Telegram via chokepoint (advisory; never raises)."""
     try:
-        import requests
-        tok = os.getenv("TELEGRAM_BOT_TOKEN", "")
-        if not tok:
-            return
-        for cid in __import__("tg_chat_ids").chat_ids():
-            requests.post(f"https://api.telegram.org/bot{tok}/sendMessage",
-                          json={"chat_id": cid, "text": msg}, timeout=8)
+        from telegram_alert import send_telegram
+        send_telegram(msg)
+        try:
+            from lib.comms import CommunicationEvent, publish_communication
+            publish_communication(CommunicationEvent(
+                direction="OUTBOUND", event_type="alert", message_class="ops",
+                producer="watch_directives_service", subject_key="ops:watch_directives",
+                retention_class="operational", severity="info",
+                sanitized_body=msg[:500], short_summary=msg[:120],
+            ))
+        except Exception:
+            # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
+            pass
     except Exception:
+        # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
         pass
 
 

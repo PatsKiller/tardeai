@@ -278,97 +278,67 @@ def send_telegram(message, dry_run=False, no_telegram=False):
     # bypass_router=True is deliberate and measured, not convenience: the router's
     # own should_send_telegram() returns False for a stop-close body, so routing
     # this through the default path would replace a silent failure with a
-    # different silent failure that looks fixed. The sibling sender in this file,
-    # send_telegram_with_buttons, already bypasses and demonstrably delivers.
+    # different silent failure that looks fixed.
     try:
-        from telegram_alert import send_telegram
+        from telegram_alert import send_telegram as _send
     except ImportError as e:
         log.error(
             "STOP-PATH NOTIFICATION UNDELIVERABLE - sender import failed: %s - "
             "message was: %s", e, message[:120])
         return
-    if not send_telegram(message, bypass_router=True):
+    if not _send(message, bypass_router=True):
         log.error("STOP-PATH NOTIFICATION NOT DELIVERED: %s", message[:120])
+        return
+    try:
+        from lib.comms import CommunicationEvent, publish_communication
+        publish_communication(CommunicationEvent(
+            direction="OUTBOUND", event_type="alert", message_class="ops",
+            producer="open_trade_monitor", subject_key="ops:open_trade",
+            retention_class="operational", severity="urgent",
+            sanitized_body=message[:500], short_summary=message[:120],
+        ))
+    except Exception:
+        # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
+        pass
 
 
 def send_telegram_with_buttons(message, buttons, dry_run=False, no_telegram=False):
-    """Send with an inline keyboard, and RETURN A RECEIPT.
+    """Send stop-path alert with inline keyboard via telegram_alert chokepoint.
 
-    B5, 2026-08-31. This returned None. open_trade_alerts.sent_telegram was 0 of
-    864 rows and alert_events.telegram_sent_at 0 of 932: no durable record of
-    what was delivered existed anywhere, which is why nobody could establish
-    which producer emitted 25 repeats, or whether any specific POST succeeded.
-
-    A send with no receipt is not a send.
+    Rebuilds Telegram reply_markup from the buttons list and sends through
+    send_telegram(..., reply_markup=...). No producer Bot API / token selection.
     """
     receipt = {"ok": False, "message_id": None, "error": None}
-    """Send a Telegram message with inline keyboard buttons.
-
-    buttons: list of rows, each row is list of (text, callback_data) tuples.
-    Example: [[("Stop Out", "stopout:42"), ("Trail 5%", "trail:42:5")]]
-    """
     if dry_run or no_telegram:
         log.info(f"[telegram-skip] {message[:100]} [+buttons]")
         receipt["error"] = "dry_run" if dry_run else "no_telegram"
         return receipt
     try:
-        import urllib.request
-        token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-        if not token:
-            for line in (PROJECT_ROOT / ".env").read_text().splitlines():
-                if line.startswith("TELEGRAM_BOT_TOKEN="):
-                    token = line.split("=", 1)[1].strip()
-        if not token:
-            log.error("No TELEGRAM_BOT_TOKEN for button alert -- message NOT delivered")
-            receipt["error"] = "no_token"
-            return receipt
-
-        chat_ids = []
-        cid = os.environ.get("TRADEAI_PROPOSAL_ALERT_CHAT_ID", "").strip()
-        if cid:
-            chat_ids.append(cid)
-        for c in os.environ.get("TELEGRAM_CHAT_ID", "").split(","):
-            if c.strip() and c.strip() not in chat_ids:
-                chat_ids.append(c.strip())
-
-        keyboard = {"inline_keyboard": [
-            [{"text": text, "callback_data": cb} for text, cb in row]
-            for row in buttons
-        ]}
-
-        # C3, 2026-08-31: was a hand-built urllib POST straight to
-        # api.telegram.org -- one of 46 producers the chokepoint ratchet tracks.
-        # Now routed through telegram_transport, which is the actual chokepoint:
-        # it carries the interdict at its lowest layer (#775), idempotency, and
-        # the parse-mode fallback.
-        #
-        # NOT routed through telegram_alert_router. Measured on this tree, the
-        # router is runtime_mode=OFF and should_send_telegram() returns False for
-        # every operator-facing class -- morning brief, lane health, stop warning,
-        # stop-hit-close. Routing there would silence them, which is the trap A4
-        # avoided: replacing loud messages with zero and calling it a fix.
-        #
-        # Chat-id selection is unchanged, deliberately: this is a transport swap,
-        # not a routing change.
-        from telegram_transport import send_message as _transport_send
-        for chat_id in chat_ids:
-            res = _transport_send(
-                token=token,
-                chat_id=chat_id,
-                text=message,
-                reply_markup=keyboard,
-                parse_mode=None,
-            )
-            if res.get("ok"):
-                receipt["ok"] = True
-                mid = (res.get("response") or {}).get("result", {}).get("message_id")
-                if mid is not None:
-                    receipt["message_id"] = mid
-            elif res.get("interdicted"):
-                receipt["error"] = "interdicted"
-            else:
-                receipt["error"] = str(res.get("response") or res.get("status_code"))
-                log.error("Button alert send failed for %s: %s", chat_id, receipt["error"])
+        keyboard = None
+        if buttons:
+            keyboard = {
+                "inline_keyboard": [
+                    [{"text": str(text), "callback_data": str(cb)} for text, cb in row]
+                    for row in buttons
+                ]
+            }
+        from telegram_alert import send_telegram as _send
+        ok = bool(_send(message, bypass_router=True, reply_markup=keyboard))
+        receipt["ok"] = ok
+        if not ok:
+            receipt["error"] = "send_telegram_false"
+            log.error("STOP-PATH BUTTON ALERT NOT DELIVERED: %s", message[:120])
+        try:
+            from lib.comms import CommunicationEvent, publish_communication
+            publish_communication(CommunicationEvent(
+                direction="OUTBOUND", event_type="alert", message_class="ops",
+                producer="open_trade_monitor", subject_key="ops:open_trade",
+                retention_class="operational", severity="urgent",
+                sanitized_body=message[:500], short_summary=message[:120],
+            ))
+        except Exception:
+            # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
+            pass
     except Exception as e:
         log.error("send_telegram_with_buttons failed: %s", e)
         receipt["error"] = f"{type(e).__name__}: {e}"

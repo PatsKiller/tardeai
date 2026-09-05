@@ -837,6 +837,24 @@ GATES = [
             "tests/test_cio_brain_snapshot.py",
         ],
     ),
+    (
+        # comms-gateway-phase0: gateway contracts, portal, rich send, provider ratchet
+        "comms_gateway_phase0",
+        [
+            "tests/test_comms_agent_contracts.py",
+            "tests/test_comms_channel_adapters.py",
+            "tests/test_comms_communication_event.py",
+            "tests/test_comms_curation.py",
+            "tests/test_comms_delivery_ledger.py",
+            "tests/test_comms_enforcement_gate.py",
+            "tests/test_comms_librarian.py",
+            "tests/test_comms_shadow_compare.py",
+            "tests/test_comms_subject_memory.py",
+            "tests/test_communications_portal.py",
+            "tests/test_provider_chokepoint_ratchet.py",
+            "tests/test_telegram_alert_rich_send.py",
+        ],
+    ),
 ]
 
 

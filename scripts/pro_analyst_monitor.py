@@ -8,7 +8,7 @@ and flags growth/regression. Lets you watch the analyst layer's coverage expand.
   python3 scripts/pro_analyst_monitor.py            # snapshot + append + status
   python3 scripts/pro_analyst_monitor.py --dry-run
 """
-import os, sys, json, urllib.request
+import os, sys, json
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -18,6 +18,7 @@ HIST = ROOT / "data" / "runtime" / "pro_analyst_coverage_history.json"
 for _ln in (ROOT / ".env").read_text().splitlines():
     if "=" in _ln and not _ln.strip().startswith("#"):
         _k, _, _v = _ln.partition("="); os.environ.setdefault(_k.strip(), _v.strip().strip("'\""))
+sys.path.insert(0, str(ROOT / "scripts"))
 
 
 def _siem_alert(symbol, internal, street):
@@ -41,17 +42,24 @@ def _siem_alert(symbol, internal, street):
 
 
 def _telegram(msg):
-    token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-    if not token:
-        return
-    for cid in [c.strip() for c in os.environ.get("TELEGRAM_CHAT_ID", "").split(",") if c.strip()]:
+    """Send via telegram_alert chokepoint (no raw Bot API)."""
+    try:
+        from telegram_alert import send_telegram
+        send_telegram(msg)
         try:
-            data = json.dumps({"chat_id": cid, "text": msg}).encode()
-            req = urllib.request.Request(f"https://api.telegram.org/bot{token}/sendMessage", data=data,
-                                         headers={"Content-Type": "application/json"})
-            urllib.request.urlopen(req, timeout=15)
+            from lib.comms import CommunicationEvent, publish_communication
+            publish_communication(CommunicationEvent(
+                direction="OUTBOUND", event_type="alert", message_class="ops",
+                producer="pro_analyst_monitor", subject_key="ops:pro_analyst",
+                retention_class="operational", severity="warning",
+                sanitized_body=msg[:500], short_summary=msg[:120],
+            ))
         except Exception:
+            # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
             pass
+    except Exception:
+        # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
+        pass
 
 
 def main():

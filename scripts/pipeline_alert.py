@@ -32,23 +32,26 @@ if _env_path.exists():
 
 
 def _send_alert(message: str):
-    """Send Telegram alert to all configured chat IDs."""
+    """Send via telegram_alert.send_telegram chokepoint (no raw Bot API)."""
     try:
-        import requests
-        token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
-        chat_ids = [c.strip() for c in os.getenv("TELEGRAM_CHAT_ID", "").split(",") if c.strip()]
-        if not token or not chat_ids:
-            return
-        for cid in chat_ids:
-            try:
-                requests.post(
-                    f"https://api.telegram.org/bot{token}/sendMessage",
-                    json={"chat_id": cid, "text": message},
-                    timeout=10,
-                )
-            except Exception:
-                pass
+        scripts_dir = str(Path(__file__).resolve().parent)
+        if scripts_dir not in sys.path:
+            sys.path.insert(0, scripts_dir)
+        from telegram_alert import send_telegram
+        send_telegram(message)
+        try:
+            from lib.comms import CommunicationEvent, publish_communication
+            publish_communication(CommunicationEvent(
+                direction="OUTBOUND", event_type="alert", message_class="ops",
+                producer="pipeline_alert", subject_key="ops:pipeline_alert",
+                retention_class="operational", severity="urgent",
+                sanitized_body=message[:500], short_summary=message[:120],
+            ))
+        except Exception:
+            # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
+            pass
     except Exception:
+        # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
         pass
 
 

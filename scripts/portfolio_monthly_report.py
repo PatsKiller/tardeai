@@ -99,6 +99,17 @@ def _send_telegram(message: str) -> None:
     """Send Telegram message via the shared chokepoint (captures to Reports portal)."""
     from telegram_alert import send_telegram
     ok = send_telegram(message, bypass_router=True)
+    try:
+        from lib.comms import CommunicationEvent, publish_communication
+        publish_communication(CommunicationEvent(
+            direction="OUTBOUND", event_type="alert", message_class="report",
+            producer="portfolio_monthly_report", subject_key="ops:monthly_report",
+            retention_class="operational", severity="info",
+            sanitized_body=message[:500], short_summary=message[:120],
+        ))
+    except Exception:
+        # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
+        pass
     if ok:
         print("  [monthly-report] Telegram sent")
     else:
@@ -106,35 +117,29 @@ def _send_telegram(message: str) -> None:
 
 
 def _send_telegram_doc(doc_path: Path, caption: str = "") -> None:
-    """Send DOCX file to Telegram using requests multipart upload."""
+    """Send DOCX via telegram_alert.send_telegram_document chokepoint."""
     if not doc_path.exists():
         print(f"  [monthly-report] DOCX not found: {doc_path}")
         return
-    bot_token = _get_env("TELEGRAM_BOT_TOKEN")
-    chat_id = _get_env("TELEGRAM_CHAT_ID")
-    if not bot_token or not chat_id:
+    note = caption or f"Monthly portfolio DOCX ready: {doc_path.name}"
+    try:
+        from telegram_alert import send_telegram_document
+        ok = bool(send_telegram_document(str(doc_path), caption=note, bypass_router=True))
+        print("  [monthly-report] Telegram document sent" if ok else "  [monthly-report] Telegram document not sent")
+    except Exception as e:
+        print(f"  [monthly-report] Telegram document error: {type(e).__name__}: {str(e)[:120]}")
         return
     try:
-        import requests
-        for cid in str(chat_id).split(","):
-            cid = cid.strip()
-            if not cid:
-                continue
-            url = f"https://api.telegram.org/bot{bot_token}/sendDocument"
-            with open(doc_path, "rb") as fh:
-                resp = requests.post(
-                    url,
-                    data={"chat_id": cid, "caption": caption},
-                    files={"document": (doc_path.name, fh,
-                           "application/vnd.openxmlformats-officedocument.wordprocessingml.document")},
-                    timeout=30
-                )
-            if resp.ok:
-                print(f"  [monthly-report] DOCX sent to {cid}")
-            else:
-                print(f"  [monthly-report] DOCX error {cid}: {resp.text[:100]}")
-    except Exception as e:
-        print(f"  [monthly-report] DOCX send error: {e}")
+        from lib.comms import CommunicationEvent, publish_communication
+        publish_communication(CommunicationEvent(
+            direction="OUTBOUND", event_type="alert", message_class="report",
+            producer="portfolio_monthly_report", subject_key="ops:monthly_report",
+            retention_class="operational", severity="info",
+            sanitized_body=note[:500], short_summary=note[:120],
+        ))
+    except Exception:
+        # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
+        pass
 
 
 def _build_weekly_context(weeklies: List[Dict]) -> str:

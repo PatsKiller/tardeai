@@ -170,68 +170,49 @@ def main():
               "(hierarchy: csv tax lot > broker API averagePrice; reconstruction is Fidelity-only).")
 
 
+def _tg_send(text: str, *, producer: str, subject_key: str) -> bool:
+    """Send via telegram_alert chokepoint (no raw Bot API / token selection)."""
+    try:
+        from telegram_alert import send_telegram
+        ok = bool(send_telegram(text))
+        try:
+            from lib.comms import CommunicationEvent, publish_communication
+            publish_communication(CommunicationEvent(
+                direction="OUTBOUND", event_type="alert", message_class="ops",
+                producer=producer, subject_key=subject_key,
+                retention_class="operational", severity="warning",
+                sanitized_body=text[:500], short_summary=text[:120],
+            ))
+        except Exception:
+            # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
+            pass
+        return ok
+    except Exception:
+        return False
+
+
 def _alert_unreachable(api_errors):
     """One honest line when the audit cannot run — never per-symbol noise."""
-    import os
-    tok = os.getenv("TELEGRAM_BOT_TOKEN", "")
-    if not tok:
-        try:
-            for l in (PROJECT_ROOT / ".env").read_text().splitlines():
-                if l.startswith("TELEGRAM_BOT_TOKEN="):
-                    tok = l.split("=", 1)[1].strip()
-        except Exception:
-            pass
-    try:
-        from tg_chat_ids import chat_ids
-        chat = (chat_ids() or [None])[0]
-    except Exception:
-        chat = None
-    if not (tok and chat):
-        return
-    try:
-        import requests
-        requests.post(f"https://api.telegram.org/bot{tok}/sendMessage",
-                      json={"chat_id": chat, "parse_mode": "Markdown",
-                            "text": "⚠️ *BASIS AUDIT SKIPPED* — Schwab API unreachable from the audit "
-                                    f"environment ({', '.join(f'{k}:{v}' for k, v in list(api_errors.items())[:4])}). "
-                                    "No holdings flags issued (absence of API data proves nothing). "
-                                    "Check creds/.env sourcing or server load."}, timeout=10)
-    except Exception:
-        pass
+    text = (
+        "⚠️ *BASIS AUDIT SKIPPED* — Schwab API unreachable from the audit "
+        f"environment ({', '.join(f'{k}:{v}' for k, v in list(api_errors.items())[:4])}). "
+        "No holdings flags issued (absence of API data proves nothing). "
+        "Check creds/.env sourcing or server load."
+    )
+    _tg_send(text, producer="audit_position_basis", subject_key="ops:basis_audit")
 
 
 def _send_alert(flagged, api_errors):
-    """Telegram alarm (the 'why didn't an agent catch this' control, operator 2026-06-12). Token/chat
-    from env or .env — never hardcoded."""
-    import os
-    tok = os.getenv("TELEGRAM_BOT_TOKEN", "")
-    if not tok:
-        try:
-            for l in (PROJECT_ROOT / ".env").read_text().splitlines():
-                if l.startswith("TELEGRAM_BOT_TOKEN="):
-                    tok = l.split("=", 1)[1].strip()
-        except Exception:
-            pass
-    try:
-        from tg_chat_ids import chat_ids
-        chat = (chat_ids() or [None])[0]
-    except Exception:
-        chat = None
-    if not (tok and chat):
-        print("⚠ alert requested but telegram token/chat unavailable")
-        return
+    """Telegram alarm via chokepoint (operator control, 2026-06-12)."""
     lines = [f"• {r['account'].replace('schwab_','')} {r['symbol']}: {'; '.join(r['flags'])[:120]}" for r in flagged[:10]]
     if api_errors:
         lines.append(f"• API errors: {api_errors}")
     text = ("⛔ *POSITION BASIS AUDIT — discrepancies found*\n" + "\n".join(lines) +
             f"\n\nRun: `python3 scripts/audit_position_basis.py` · fix: `sync_basis_from_broker.py`")
-    try:
-        import requests
-        requests.post(f"https://api.telegram.org/bot{tok}/sendMessage",
-                      json={"chat_id": chat, "text": text, "parse_mode": "Markdown"}, timeout=10)
+    if _tg_send(text, producer="audit_position_basis", subject_key="ops:basis_audit"):
         print(f"alert sent ({len(flagged)} flagged)")
-    except Exception as e:
-        print(f"⚠ alert send failed: {e}")
+    else:
+        print("⚠ alert requested but telegram send failed or unconfigured")
 
 
 if __name__ == "__main__":

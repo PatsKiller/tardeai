@@ -94,7 +94,6 @@ def main():
 
     from telegram_proposal_alert_policy import (
         build_proposal_alert_packet, should_send_alert, format_telegram_message,
-        build_proposal_inline_keyboard
     )
 
     # Load proposals
@@ -235,30 +234,47 @@ def main():
 
         if check["send"] and not args.dry_run and _router_ok:
             try:
-                # ALERT-3: Route to dedicated proposal channel
-                from telegram_alert_routing_policy import telegram_destination_for_alert, redact_telegram_destination
-                dest = telegram_destination_for_alert(packet)
-                result["destination"] = redact_telegram_destination(dest)
+                # Destination + keyboard via telegram_alert chokepoint (no raw Bot API).
+                dest: dict = {}
+                try:
+                    from telegram_alert_routing_policy import (
+                        telegram_destination_for_alert, redact_telegram_destination,
+                    )
+                    dest = telegram_destination_for_alert(packet) or {}
+                    result["destination"] = redact_telegram_destination(dest)
+                except Exception:
+                    result["destination"] = {"configured": False}
 
                 from telegram_alert import send_telegram
-                from telegram_transport import send_message as _tg_send
-                token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-                if dest.get("chat_id") and token:
+                try:
+                    from telegram_proposal_alert_policy import build_proposal_inline_keyboard
                     keyboard = build_proposal_inline_keyboard(packet)
-                    # T2: one send (or edit). Markdown parse failure must not
-                    # post a second plaintext copy.
-                    resp = _tg_send(
-                        token=token,
-                        chat_id=str(dest["chat_id"]),
-                        text=message,
-                        parse_mode="Markdown",
-                        reply_markup=keyboard,
-                        thread_id=str(dest["thread_id"]) if dest.get("thread_id") else None,
-                        idempotency_key=check.get("idempotency_key"),
-                    )
-                    ok = bool(resp.get("ok"))
-                else:
-                    ok = send_telegram(message)  # Fallback to default
+                except Exception:
+                    keyboard = None
+                chat_ids = [str(dest["chat_id"])] if dest.get("chat_id") else None
+                thread_id = str(dest["thread_id"]) if dest.get("thread_id") else None
+                ok = bool(send_telegram(
+                    message,
+                    reply_markup=keyboard,
+                    chat_ids=chat_ids,
+                    thread_id=thread_id,
+                ))
+                try:
+                    root = str(PROJ)
+                    if root not in sys.path:
+                        sys.path.insert(0, root)
+                    from lib.comms import CommunicationEvent, publish_communication
+                    publish_communication(CommunicationEvent(
+                        direction="OUTBOUND", event_type="alert",
+                        message_class="proposal",
+                        producer="send_telegram_proposal_alert",
+                        subject_key=f"proposal:{pr.get('symbol') or 'unknown'}",
+                        retention_class="operational", severity="urgent",
+                        sanitized_body=message[:500], short_summary=message[:120],
+                    ))
+                except Exception:
+                    # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
+                    pass
 
                 result["sent"] = ok
                 sent_count += 1 if ok else 0
@@ -271,6 +287,7 @@ def main():
                             SET last_alert_at=NOW(), alert_count=COALESCE(alert_count,0)+1
                             WHERE id=%s""", [pr.get("id")], fetch="none")
                     except Exception:
+                        # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
                         pass
             except Exception as e:
                 result["sent"] = False

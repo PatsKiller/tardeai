@@ -385,24 +385,26 @@ def run_premarket_scan(symbols, conn, dry_run=False):
 
 
 def send_telegram(message):
-    # Route through central alert router to respect P0-P3 classification
+    """Route through central alert router (no raw Bot API fallback)."""
     try:
+        scripts_dir = str(Path(__file__).resolve().parent)
+        if scripts_dir not in sys.path:
+            sys.path.insert(0, scripts_dir)
         from telegram_alert import send_telegram as _central_send
         _central_send(message)
-        return
-    except ImportError:
-        pass
-    # Fallback: direct send only if central router unavailable
-    bot_token = os.getenv('TELEGRAM_BOT_TOKEN', '')
-    chat_ids = [c.strip() for c in os.getenv('TELEGRAM_CHAT_ID', '').split(',') if c.strip()]
-    if not bot_token or not chat_ids:
-        return
-    for cid in chat_ids:
         try:
-            requests.post(f"https://api.telegram.org/bot{bot_token}/sendMessage",
-                         json={'chat_id': cid, 'text': message}, timeout=10)
+            from lib.comms import CommunicationEvent, publish_communication
+            publish_communication(CommunicationEvent(
+                direction="OUTBOUND", event_type="alert", message_class="ops",
+                producer="premarket_watcher", subject_key="ops:premarket",
+                retention_class="operational", severity="info",
+                sanitized_body=message[:500], short_summary=message[:120],
+            ))
         except Exception:
+            # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
             pass
+    except Exception as e:
+        log.warning(f"telegram send failed: {e}")
 
 
 def main():

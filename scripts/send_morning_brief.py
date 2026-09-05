@@ -117,10 +117,9 @@ def format_telegram(data):
 def send_telegram(text, chat_ids=None, dry_run=False):
     """Send text to Telegram via the shared chokepoint (captures to Reports portal)."""
     if dry_run:
-        targets = chat_ids if chat_ids is not None else [
-            c.strip() for c in os.getenv("TELEGRAM_CHAT_ID", "").split(",") if c.strip()
-        ]
-        log.info(f"DRY RUN — would send to {targets}:")
+        # chat_ids is optional CLI override for logging only — chokepoint owns delivery targets.
+        suffix = f" (cli chat_id={chat_ids})" if chat_ids else ""
+        log.info(f"DRY RUN — would send via telegram_alert.send_telegram{suffix}:")
         print(text)
         return True
 
@@ -128,6 +127,17 @@ def send_telegram(text, chat_ids=None, dry_run=False):
     ok = _send(text, bypass_router=True)
     if ok:
         log.info("Sent")
+        try:
+            from lib.comms import CommunicationEvent, publish_communication
+            publish_communication(CommunicationEvent(
+                direction="OUTBOUND", event_type="alert", message_class="ops",
+                producer="send_morning_brief", subject_key="ops:morning_brief",
+                retention_class="operational", severity="info",
+                sanitized_body=text[:500], short_summary=text[:120],
+            ))
+        except Exception:
+            # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
+            pass
     else:
         log.error("Telegram send failed")
     return ok

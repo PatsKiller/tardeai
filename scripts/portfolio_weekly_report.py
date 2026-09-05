@@ -109,35 +109,24 @@ def _send_telegram(message: str) -> None:
     ok = send_telegram(message, bypass_router=True)
     if ok:
         print("  [weekly-report] Telegram sent")
+        try:
+            import sys as _sys
+            from pathlib import Path as _P
+            root = str(_P(__file__).resolve().parent.parent)
+            if root not in _sys.path:
+                _sys.path.insert(0, root)
+            from lib.comms import CommunicationEvent, publish_communication
+            publish_communication(CommunicationEvent(
+                direction="OUTBOUND", event_type="alert", message_class="ops",
+                producer="portfolio_weekly_report", subject_key="ops:portfolio_weekly",
+                retention_class="operational", severity="info",
+                sanitized_body=message[:500], short_summary=message[:120],
+            ))
+        except Exception:
+            # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
+            pass
     else:
         print("  [weekly-report] Telegram not sent")
-
-
-def _send_telegram_doc(bot_token, chat_id, doc_path, caption=""):
-    """Send DOCX file to Telegram using requests multipart upload."""
-    from pathlib import Path as _P
-    doc = _P(doc_path)
-    if not doc.exists():
-        print(f"  [weekly-report] DOCX not found: {doc}")
-        return
-    try:
-        import requests as _r
-        for cid in str(chat_id).split(","):
-            cid = cid.strip()
-            if not cid:
-                continue
-            url = f"https://api.telegram.org/bot{bot_token}/sendDocument"
-            with open(doc, "rb") as fh:
-                resp = _r.post(url, data={"chat_id": cid, "caption": caption},
-                               files={"document": (doc.name, fh,
-                               "application/vnd.openxmlformats-officedocument.wordprocessingml.document")},
-                               timeout=30)
-            if resp.ok:
-                print(f"  [weekly-report] DOCX sent to {cid}")
-            else:
-                print(f"  [weekly-report] DOCX error {cid}: {resp.text[:100]}")
-    except Exception as e:
-        print(f"  [weekly-report] DOCX send error: {e}")
 
 
 def _build_performance_section(data: Dict) -> Dict:
@@ -1111,13 +1100,17 @@ def run_weekly_report(project_root: str = ".") -> Optional[Path]:
         f"<a href='https://ms01-openclaw.tail163d14.ts.net/reports/weekly/weekly_{date_str}.html'>📄 Full Report</a>"
     )
     _send_telegram(tg_msg)
-
-    # Send DOCX attachment
     if docx_path and Path(docx_path).exists():
-        bot_token = _get_env("TELEGRAM_BOT_TOKEN")
-        chat_id   = _get_env("TELEGRAM_CHAT_ID")
-        caption   = f"📊 Portfolio Brief — {date_str} | ${perf_data.get('total_value',0):,.0f}"
-        _send_telegram_doc(bot_token, chat_id, docx_path, caption)
+        try:
+            from telegram_alert import send_telegram_document
+            ok = bool(send_telegram_document(
+                str(docx_path),
+                caption=f"Weekly portfolio DOCX — {date_str}",
+                bypass_router=True,
+            ))
+            print("  [weekly-report] Telegram DOCX sent" if ok else "  [weekly-report] Telegram DOCX not sent")
+        except Exception as e:
+            print(f"  [weekly-report] Telegram DOCX error: {type(e).__name__}: {str(e)[:120]}")
     print(f"[weekly-report] Done. Report: {html_path}")
     return html_path
 

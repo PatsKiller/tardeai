@@ -36,9 +36,6 @@ from lib.holdings_sanity import (  # noqa: E402
     REASON_VALID_COMPLETE,
     validate_payload,
 )
-from tg_chat_ids import chat_ids  # no hardcoded chat IDs
-
-
 def _conn():
     from db_adapter import _get_conn
     return _get_conn()
@@ -141,22 +138,26 @@ def _last_good_total(path=None):
 
 
 def _alert(msg, source=""):
-    """Loud alert on a blocked/restored holdings write (existing Telegram path, both chat IDs).
+    """Loud alert on a blocked/restored holdings write via telegram_alert chokepoint.
     Suppressed for test/proof sources so verification runs never spam the operator's Telegram."""
     if "test" in (source or "").lower() or "proof" in (source or "").lower():
         return
     try:
-        import requests
-        tok = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-        if not tok:
-            for l in (PROJECT_ROOT / ".env").read_text().splitlines():
-                if l.startswith("TELEGRAM_BOT_TOKEN="):
-                    tok = l.split("=", 1)[1].strip()
-        if not tok:
-            return
-        for cid in chat_ids():
-            requests.post(f"https://api.telegram.org/bot{tok}/sendMessage", json={"chat_id": cid, "text": msg}, timeout=8)
+        from telegram_alert import send_telegram
+        send_telegram(msg)
+        try:
+            from lib.comms import CommunicationEvent, publish_communication
+            publish_communication(CommunicationEvent(
+                direction="OUTBOUND", event_type="alert", message_class="ops",
+                producer="schwab_position_sync", subject_key="ops:holdings_guard",
+                retention_class="operational", severity="critical",
+                sanitized_body=msg[:500], short_summary=msg[:120],
+            ))
+        except Exception:
+            # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
+            pass
     except Exception:
+        # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
         pass
 
 

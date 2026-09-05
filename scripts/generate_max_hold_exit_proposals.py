@@ -40,36 +40,36 @@ def _strategy_max_hold(strategy):
     return val
 
 
-from tg_chat_ids import chat_ids  # no hardcoded chat IDs
-
-
-def _tg_token():
-    import os
-    tok = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-    if not tok:
-        for l in (PROJECT_ROOT / ".env").read_text().splitlines():
-            if l.startswith("TELEGRAM_BOT_TOKEN="):
-                tok = l.split("=", 1)[1].strip()
-    return tok
-
-
 def _send_proposal_alert(pid, symbol, strategy, hold_days, max_hold_days, overdue_by, upnl):
-    """Telegram alert with one-tap inline approve/reject (handled by telegram_callback_handler)."""
+    """Telegram alert via chokepoint with one-tap approve/reject keyboard."""
     try:
-        import requests
-        tok = _tg_token()
-        if not tok:
-            return
-        txt = (f"⏳ *Time-exit proposal: {symbol}*\n"
+        from telegram_alert import send_telegram
+        txt = (f"⏳ *Time-exit proposal: {symbol}* (id={pid})\n"
                f"Strategy: {strategy} — held {hold_days}d > max {max_hold_days}d (+{overdue_by})\n"
                + (f"Unrealized: {upnl}%\n" if upnl is not None else "")
-               + "Past strategy max-hold. *Close now* (paper, gated) or *Dismiss*.")
-        markup = {"inline_keyboard": [[{"text": "✅ Close now", "callback_data": f"texitapprove:{pid}"},
-                                       {"text": "✖ Dismiss", "callback_data": f"texitreject:{pid}"}]]}
-        for cid in chat_ids():
-            requests.post(f"https://api.telegram.org/bot{tok}/sendMessage",
-                          json={"chat_id": cid, "text": txt, "parse_mode": "Markdown", "reply_markup": markup}, timeout=8)
+               + "Past strategy max-hold. Approve/dismiss via buttons or /v3 time-exit proposals "
+               f"(proposal id {pid}).")
+        keyboard = {
+            "inline_keyboard": [[
+                {"text": "✅ Close now", "callback_data": f"texitapprove:{pid}"},
+                {"text": "✖ Dismiss", "callback_data": f"texitreject:{pid}"},
+            ]]
+        }
+        send_telegram(txt, reply_markup=keyboard)
+        try:
+            from lib.comms import CommunicationEvent, publish_communication
+            publish_communication(CommunicationEvent(
+                direction="OUTBOUND", event_type="alert", message_class="ops",
+                producer="generate_max_hold_exit_proposals",
+                subject_key=f"proposal:time_exit:{pid}",
+                retention_class="operational", severity="warning",
+                sanitized_body=txt[:500], short_summary=txt[:120],
+            ))
+        except Exception:
+            # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
+            pass
     except Exception:
+        # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
         pass
 
 

@@ -7,7 +7,7 @@ import json, logging, os, sys, subprocess
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
-import psycopg2, requests
+import psycopg2
 
 log = logging.getLogger(__name__)
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -110,16 +110,26 @@ def check_go_ticker_intelligence(conn, no_heal=False):
 
 
 def send_telegram(message):
-    bot_token = os.getenv('TELEGRAM_BOT_TOKEN', '')
-    chat_ids = [c.strip() for c in os.getenv('TELEGRAM_CHAT_ID', '').split(',') if c.strip()]
-    if not bot_token or not chat_ids:
-        return
-    for cid in chat_ids:
+    try:
+        scripts_dir = str(Path(__file__).resolve().parent)
+        if scripts_dir not in sys.path:
+            sys.path.insert(0, scripts_dir)
+        from telegram_alert import send_telegram as _tg
+        _tg(message)
         try:
-            requests.post(f"https://api.telegram.org/bot{bot_token}/sendMessage",
-                         json={'chat_id': cid, 'text': message}, timeout=10)
+            from lib.comms import CommunicationEvent, publish_communication
+            publish_communication(CommunicationEvent(
+                direction="OUTBOUND", event_type="alert", message_class="ops",
+                producer="pipeline_health_monitor", subject_key="ops:pipeline_health",
+                retention_class="operational", severity="info",
+                sanitized_body=message[:500], short_summary=message[:120],
+            ))
         except Exception:
+            # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
             pass
+    except Exception:
+        # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
+        pass
 
 
 def main():

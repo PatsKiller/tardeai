@@ -63,17 +63,22 @@ _Diagnostic only — no trade, no order_"""
                 if '=' in line and not line.strip().startswith('#'):
                     k, v = line.split('=', 1)
                     os.environ.setdefault(k.strip(), v.strip())
-            from telegram_alert_routing_policy import telegram_destination_for_alert
-            import requests
-            dest = telegram_destination_for_alert({"alert_type": "WATCHPOOL_NO_GO_EXPLAINED"})
-            token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-            if dest.get("chat_id") and token:
-                payload = {"chat_id": dest["chat_id"], "text": msg, "parse_mode": "Markdown"}
-                r = requests.post(f"https://api.telegram.org/bot{token}/sendMessage", json=payload, timeout=10)
-                if not r.ok:
-                    payload.pop("parse_mode", None)
-                    r = requests.post(f"https://api.telegram.org/bot{token}/sendMessage", json=payload, timeout=10)
-                result["sent"] = r.ok
+            from telegram_alert import send_telegram
+            result["sent"] = bool(send_telegram(msg))
+            try:
+                if str(PROJ) not in sys.path:
+                    sys.path.insert(0, str(PROJ))
+                from lib.comms import CommunicationEvent, publish_communication
+                publish_communication(CommunicationEvent(
+                    direction="OUTBOUND", event_type="alert", message_class="ops",
+                    producer="send_no_leads_diagnostic_alert",
+                    subject_key="ops:no_leads_diagnostic",
+                    retention_class="operational", severity="info",
+                    sanitized_body=msg[:500], short_summary=msg[:120],
+                ))
+            except Exception:
+                # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
+                pass
         except Exception as e:
             result["error"] = str(e)[:80]
 

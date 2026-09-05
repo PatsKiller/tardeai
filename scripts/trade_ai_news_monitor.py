@@ -36,8 +36,6 @@ for line in (PROJECT_ROOT / ".env").read_text().splitlines():
 import requests
 from db_adapter import _execute, _get_conn
 
-TELEGRAM_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '')
-TELEGRAM_CHATS = [c.strip() for c in os.getenv('TELEGRAM_CHAT_ID', '').split(',') if c.strip()]
 FINNHUB_KEY = os.getenv('FINNHUB_API_KEY', '')
 
 
@@ -177,7 +175,8 @@ def re_critique_ticker(symbol: str, new_headline: str) -> dict:
 
 
 def send_verdict_change_telegram(changes: list):
-    if not changes or not TELEGRAM_TOKEN: return
+    if not changes:
+        return
     lines = ["🔄 *Iris Update — Verdict Changed*\n"]
     for c in changes:
         em = '🚫' if c.get('disqualified') else '⬇'
@@ -189,13 +188,23 @@ def send_verdict_change_telegram(changes: list):
         lines.append("")
     lines.append("_http://192.168.50.16:7777/v3/trading_")
     msg = '\n'.join(lines)
-    for cid in TELEGRAM_CHATS:
+    try:
+        from telegram_alert import send_telegram
+        send_telegram(msg)
         try:
-            requests.post(f'https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage',
-                          json={'chat_id': cid, 'text': msg, 'parse_mode': 'Markdown',
-                                'disable_web_page_preview': True}, timeout=10)
-        except Exception as e:
-            log.error(f"Telegram {cid}: {e}")
+            from lib.comms import CommunicationEvent, publish_communication
+            publish_communication(CommunicationEvent(
+                direction="OUTBOUND", event_type="alert", message_class="ops",
+                producer="trade_ai_news_monitor", subject_key="ops:iris_verdict",
+                retention_class="operational", severity="info",
+                sanitized_body=msg[:500], short_summary=msg[:120],
+            ))
+        except Exception:
+            # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
+            pass
+    except Exception as e:
+        # ALARM-DELIVERY-DECLARED: best-effort advisory notify after chokepoint migration; never blocks caller
+        log.error(f"Telegram send failed: {e}")
 
 
 def main():

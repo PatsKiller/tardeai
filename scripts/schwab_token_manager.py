@@ -76,7 +76,7 @@ REAUTH_LEAD_DAYS = 1         # re-auth should happen at least 1 day before expir
 ACCESS_REFRESH_MARGIN_S = 300  # refresh the ~29-min access token when <5 min remain
 HTTP_REFRESH_APPROVAL_KEY = "schwab_http_refresh_approved"  # system_controls gate — operator must approve
 ALERT_DAYS = {5, 6}          # day-5 and day-6 of the 7-day window (i.e. 2 and 1 days remaining)
-from tg_chat_ids import chat_ids  # no hardcoded chat IDs
+
 RATE_PER_MIN = 100           # conservative shared cap; exact Schwab per-minute number is an architect open-item
 
 
@@ -573,18 +573,23 @@ def health(account_key, broker="schwab", environment="live"):
 
 
 def _telegram(msg):
+    """Send via telegram_alert.send_telegram chokepoint (no raw Bot API)."""
     try:
-        import requests
-        tok = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-        if not tok:
-            for l in (PROJECT_ROOT / ".env").read_text().splitlines():
-                if l.startswith("TELEGRAM_BOT_TOKEN="):
-                    tok = l.split("=", 1)[1].strip()
-        if not tok:
-            return
-        for cid in chat_ids():
-            requests.post(f"https://api.telegram.org/bot{tok}/sendMessage", json={"chat_id": cid, "text": msg}, timeout=8)
+        from telegram_alert import send_telegram
+        send_telegram(msg)
+        try:
+            from lib.comms import CommunicationEvent, publish_communication
+            publish_communication(CommunicationEvent(
+                direction="OUTBOUND", event_type="alert", message_class="ops",
+                producer="schwab_token_manager", subject_key="ops:schwab_token",
+                retention_class="operational", severity="urgent",
+                sanitized_body=msg[:500], short_summary=msg[:120],
+            ))
+        except Exception:
+            # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
+            pass
     except Exception:
+        # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
         pass
 
 

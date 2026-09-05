@@ -212,33 +212,22 @@ URGENCY_RANK = {"green": 0, "amber": 1, "red": 2}
 
 
 def _telegram_ev(text: str) -> dict:
-    """Send with delivery evidence: {ok, message_id, error}."""
+    """Send via telegram_alert.send_telegram chokepoint. Evidence: {ok, message_id, error}."""
     try:
-        from telegram_alert_router import should_send_telegram, mark_sent
-        if not should_send_telegram(text):
-            return {"ok": False, "message_id": None, "error": "router_suppressed"}
-        import requests
-        tok = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-        if not tok:
-            for l in (ROOT / ".env").read_text().splitlines():
-                if l.startswith("TELEGRAM_BOT_TOKEN="):
-                    tok = l.split("=", 1)[1].strip()
-        from tg_chat_ids import chat_ids
-        ok, mid, err = False, None, None
-        for chat in chat_ids() or []:
-            r = requests.post(f"https://api.telegram.org/bot{tok}/sendMessage",
-                              json={"chat_id": chat, "text": text}, timeout=10)
-            if r.ok:
-                ok = True
-                try:
-                    mid = str(r.json().get("result", {}).get("message_id"))
-                except Exception:
-                    pass
-            else:
-                err = f"http {r.status_code}"
-        if ok:
-            mark_sent(text)
-        return {"ok": ok, "message_id": mid, "error": err}
+        from telegram_alert import send_telegram
+        ok = bool(send_telegram(text))
+        try:
+            from lib.comms import CommunicationEvent, publish_communication
+            publish_communication(CommunicationEvent(
+                direction="OUTBOUND", event_type="alert", message_class="ops",
+                producer="options_lifecycle_alerts", subject_key="ops:options_lifecycle",
+                retention_class="operational", severity="warning",
+                sanitized_body=text[:500], short_summary=text[:120],
+            ))
+        except Exception:
+            # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
+            pass
+        return {"ok": ok, "message_id": None, "error": None if ok else "send_telegram_failed"}
     except Exception as e:
         return {"ok": False, "message_id": None, "error": str(e)[:80]}
 

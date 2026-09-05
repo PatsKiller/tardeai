@@ -948,25 +948,25 @@ def detect_superseded_regulatory_data():
 
 
 def _send_telegram_msg(message):
-    """Send a message via Telegram to all configured chat IDs."""
-    import urllib.request, urllib.parse
-    token = _env("TELEGRAM_BOT_TOKEN")
-    chat_ids_raw = _env("TELEGRAM_CHAT_ID")
-    if not token or not chat_ids_raw:
-        return False
-    success = False
-    for cid in chat_ids_raw.split(","):
-        cid = cid.strip()
-        if not cid:
-            continue
+    """Send via telegram_alert chokepoint (no raw Bot API / token selection)."""
+    try:
+        from telegram_alert import send_telegram
+        ok = bool(send_telegram(message))
         try:
-            data = urllib.parse.urlencode({"chat_id": cid, "text": message}).encode()
-            req = urllib.request.Request(f"https://api.telegram.org/bot{token}/sendMessage", data=data)
-            with urllib.request.urlopen(req, timeout=10) as r:
-                success = True
-        except Exception as e:
-            print(f"  [hygiene] Telegram send to {cid} failed: {e}")
-    return success
+            from lib.comms import CommunicationEvent, publish_communication
+            publish_communication(CommunicationEvent(
+                direction="OUTBOUND", event_type="alert", message_class="ops",
+                producer="iris_taxonomy_agent", subject_key="ops:iris",
+                retention_class="operational", severity="info",
+                sanitized_body=message[:500], short_summary=message[:120],
+            ))
+        except Exception:
+            # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
+            pass
+        return ok
+    except Exception as e:
+        print(f"  [hygiene] Telegram send failed: {e}")
+        return False
 
 
 def send_hygiene_escalation_to_john(pending_id, content_type, content_id,

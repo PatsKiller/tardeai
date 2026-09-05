@@ -40,6 +40,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import time
 import requests
 import yaml
@@ -220,28 +221,29 @@ def _mark_cookie_alert_fired(state_dir: Path) -> None:
 # ── Telegram alert ────────────────────────────────────────────────────────────
 
 def _send_telegram(message: str, root: Path) -> bool:
-    """Send Telegram message via existing alert infrastructure."""
+    """Send via telegram_alert.send_telegram chokepoint (no raw Bot API)."""
     try:
-        _load_env_file(root)
-        token = _env("TELEGRAM_BOT_TOKEN")
-        chat_ids_raw = _env("TELEGRAM_CHAT_ID")
-        if not token or not chat_ids_raw:
-            return False
-        chat_ids = [c.strip() for c in chat_ids_raw.split(",") if c.strip()]
-        url = f"https://api.telegram.org/bot{token}/sendMessage"
-        success = False
-        for chat_id in chat_ids:
-            try:
-                r = requests.post(url, json={
-                    "chat_id": chat_id,
-                    "text": message,
-                    "parse_mode": "HTML"
-                }, timeout=10)
-                if r.ok:
-                    success = True
-            except Exception:
-                pass
-        return success
+        scripts_dir = str(root / "scripts")
+        if scripts_dir not in sys.path:
+            sys.path.insert(0, scripts_dir)
+        from telegram_alert import send_telegram
+        ok = bool(send_telegram(message))
+        try:
+            root_s = str(root)
+            if root_s not in sys.path:
+                sys.path.insert(0, root_s)
+            from lib.comms import CommunicationEvent, publish_communication
+            publish_communication(CommunicationEvent(
+                direction="OUTBOUND", event_type="alert", message_class="ops",
+                producer="portfolio_technical",
+                subject_key="ops:finviz_cookie",
+                retention_class="operational", severity="warning",
+                sanitized_body=message[:500], short_summary=message[:120],
+            ))
+        except Exception:
+            # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
+            pass
+        return ok
     except Exception:
         return False
 
