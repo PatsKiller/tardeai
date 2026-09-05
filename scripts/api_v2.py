@@ -2681,6 +2681,7 @@ def _today_pnl_provenance(
     today_by_account: dict,
     account_summaries: dict,
     total_change: float,
+    positions: Any = None,
 ) -> dict:
     """Provenance for today's P&L: its session, when it was computed, who is in it.
 
@@ -2694,21 +2695,47 @@ def _today_pnl_provenance(
     The session a P&L belongs to is the session its MARKS were observed in,
     never the session its share counts were.
 
-    Accounts are split three ways and none is silently dropped:
+    Accounts are split four ways and none is silently dropped:
       contributing  reported a non-zero day change this session
       zero_change   linked and priced, but flat (a real 0, not a missing one)
-      missing       linked and NOT represented in the day-change map at all
+      empty         linked, holds no positions and no value -- nothing to report
+      missing       linked, HOLDS something, and still did not report
+
+    The empty/missing split matters: fidelity_rollover_ira and
+    moomoo_taxable_live hold $0 and no positions, and lumping them under
+    "missing" made TODAY warn "2 acct(s) missing" and flag itself STALE over
+    accounts with nothing to contribute -- while PORTFOLIO, correctly, called
+    the same two "empty". One header, two characterisations of one fact.
+    Absence of data and absence of holdings are not the same claim.
     """
     repriced = str(holdings.get("last_repriced") or "").strip()
     session = repriced[:10] if len(repriced) >= 10 else None
 
+    held_by_acct: dict[str, int] = {}
+    for _r in positions or []:
+        if isinstance(_r, dict):
+            _a = str(_r.get("account") or "").strip()
+            if _a:
+                held_by_acct[_a] = held_by_acct.get(_a, 0) + 1
+
     contributing: list[str] = []
     zero_change: list[str] = []
+    empty: list[str] = []
     missing: list[str] = []
     for acct in sorted(account_summaries or {}):
         row = (today_by_account or {}).get(acct)
         if row is None:
-            missing.append(acct)
+            summary = (account_summaries or {}).get(acct) or {}
+            try:
+                value = abs(float(summary.get("total_value") or 0))
+            except (TypeError, ValueError):
+                value = 0.0
+            # Nothing held and nothing worth: there is no day change to be
+            # missing. Named, never counted as absent data.
+            if not held_by_acct.get(acct) and value == 0.0:
+                empty.append(acct)
+            else:
+                missing.append(acct)
             continue
         try:
             changed = float(row.get("change") or 0) != 0.0
@@ -2717,6 +2744,7 @@ def _today_pnl_provenance(
         (contributing if changed else zero_change).append(acct)
 
     linked = len(account_summaries or {})
+    funded = linked - len(empty)
     represented = len(contributing) + len(zero_change)
     try:
         total = round(float(total_change or 0), 2)
@@ -2734,14 +2762,19 @@ def _today_pnl_provenance(
         # ── coverage ──────────────────────────────────────────────────────────
         "scope": "ALL_ACCOUNTS",
         "linked_account_count": linked,
+        "funded_account_count": funded,
         "represented_account_count": represented,
         "contributing_accounts": contributing,
         "zero_change_accounts": zero_change,
+        "empty_accounts": empty,
         "missing_accounts": missing,
+        # Complete means every FUNDED account reported. An empty account cannot
+        # make the day incomplete.
         "complete": not missing,
         "coverage_reason": (
-            f"{represented}/{linked} linked account(s) represented"
-            + (f"; missing {', '.join(missing)}" if missing else "")
+            f"{represented}/{funded} funded account(s) represented"
+            + (f"; {len(empty)} empty ({', '.join(empty)})" if empty else "")
+            + (f"; MISSING {', '.join(missing)}" if missing else "")
         ),
     }
 
@@ -3370,6 +3403,9 @@ def overview():
         account_summaries=h.get("account_summaries") or {},
         data_as_of=h.get("data_as_of"),
         data_as_of_account=h.get("data_as_of_account"),
+        # The position rows are the maintained copy of the position clock;
+        # account_summaries.as_of is an abandoned mirror. Both are published.
+        positions=h.get("holdings"),
         valuation_time=h.get("generated_at") or h.get("updated_at"),
         quote_observation_time=h.get("last_repriced"),
         quote_source=h.get("reprice_source"),
@@ -3415,6 +3451,7 @@ def overview():
             h,
             today_by_account=today_by_account,
             account_summaries=h.get("account_summaries") or {},
+            positions=h.get("holdings"),
             total_change=today_change,
         ),
         "position_count": len(active_positions),

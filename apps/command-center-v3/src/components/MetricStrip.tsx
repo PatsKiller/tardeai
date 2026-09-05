@@ -61,8 +61,13 @@ export default function MetricStrip({ onDrill }: Props) {
   const todayPnl = overview?.today_pnl
   const todayAccountCount = Object.keys(overview?.today_by_account ?? {}).length
   const todayLinked = todayPnl?.linked_account_count ?? null
+  // Funded, not linked: an account holding nothing cannot make the day
+  // incomplete. TODAY warned "2 acct(s) missing" and flagged itself STALE over
+  // the same two $0 accounts PORTFOLIO correctly called empty.
+  const todayFunded = todayPnl?.funded_account_count ?? todayLinked
   const todayRepresented = todayPnl?.represented_account_count ?? todayAccountCount
   const todayMissing: string[] = todayPnl?.missing_accounts ?? []
+  const todayEmpty: string[] = todayPnl?.empty_accounts ?? []
   const todayAsOfNote = (() => {
     const scope = todayPnl?.scope?.replace(/_/g, ' ') || portfolioScopeLabel || 'ALL ACCOUNTS'
     if (todayLinked == null) {
@@ -71,8 +76,10 @@ export default function MetricStrip({ onDrill }: Props) {
     // Coverage is stated as a ratio, and a shortfall names the accounts. "4
     // contributing" alone cannot tell you whether two are missing or there are
     // only four.
-    const cover = `${todayRepresented}/${todayLinked} accts`
-    return todayMissing.length ? `${scope} · ${cover} · missing ${todayMissing.join(', ')}` : `${scope} · ${cover}`
+    const cover = `${todayRepresented}/${todayFunded} funded accts`
+    const emptyPart = todayEmpty.length ? ` · ${todayEmpty.length} empty (${todayEmpty.join(', ')})` : ''
+    const missingPart = todayMissing.length ? ` · MISSING ${todayMissing.join(', ')}` : ''
+    return `${scope} · ${cover}${emptyPart}${missingPart}`
   })()
 
   // ── the six clocks, each named (live capture 2026-09-04, release a7c550d1d) ──
@@ -99,10 +106,24 @@ export default function MetricStrip({ onDrill }: Props) {
   // over a stale book impossible to state honestly.
   const coverageMark =
     cov?.at_newest_pct != null ? ` · covers ${cov.at_newest_pct}% of value` : ''
+  // Undated is now counted over CONTRIBUTORS. Listing three $0 accounts as
+  // "undated" made a fully-observed book look half-unobserved.
   const undatedMark =
     cov?.accounts_undated
-      ? ` · ${cov.accounts_undated}/${cov.accounts_total} accounts undated`
+      ? ` · ${cov.accounts_undated}/${cov.accounts_contributing ?? cov.accounts_total} contributing undated`
       : ''
+  // Accounts holding nothing are named, not counted against coverage.
+  const emptyMark =
+    cov?.accounts_non_contributing
+      ? ` · ${cov.accounts_non_contributing} empty (${(cov.non_contributing_accounts ?? []).join(', ')})`
+      : ''
+  // Two copies of the position clock disagreeing is reported on the surface,
+  // never silently resolved. account_summaries.as_of is not maintained; the
+  // position rows are. Both are published and the divergence is stated.
+  const clockDivergences = (portfolioAgg?.observation_divergences ?? []) as { account: string; detail: string }[]
+  const divergenceMark = clockDivergences.length
+    ? ` · ⚠ ${clockDivergences.length} clock divergence${clockDivergences.length > 1 ? 's' : ''}`
+    : ''
 
   // The oldest contributor belongs on the FACE, with its stamp and its age.
   // The old header said "oldest fidelity_rollover_ira" -- a name tells you
@@ -115,7 +136,7 @@ export default function MetricStrip({ onDrill }: Props) {
 
   const portfolioAsOfNote =
     portfolioAgg && portfolioScopeLabel
-      ? `${portfolioScopeLabel} · ${portfolioAgg.included_account_count ?? '?'} accts${coverageMark}${oldestMark}${undatedMark}`
+      ? `${portfolioScopeLabel} · ${cov?.accounts_contributing ?? portfolioAgg.included_account_count ?? '?'} funded accts${coverageMark}${oldestMark}${undatedMark}${emptyMark}${divergenceMark}`
       : undefined
 
   // The oldest contributor, with its exact stamp and age -- never the bare
@@ -250,14 +271,14 @@ export default function MetricStrip({ onDrill }: Props) {
       asOfNote: portfolioAsOfNote ?? overviewAcct,
       undated: !posNewest && !overviewFresh.dataAsOf,
       color: overviewFresh.stale ? BB.amber : 'var(--text0)',
-      tip: `Total portfolio equity — an ALL-ACCOUNTS aggregate${portfolioAgg?.included_account_count != null ? ` of ${portfolioAgg.included_account_count} account(s)` : ''} (Schwab, Alpaca, Moomoo). No single account is the source of the total.\n\nFOUR SEPARATE CLOCKS:\n · ${clockLines.join('\n · ')}\n\nThe newest position observation dates only ${cov?.at_newest_pct ?? '—'}% of the aggregate value; ${cov?.value_fresh_pct ?? '—'}% is within ${cov?.stale_after_hours ?? 48}h. Refreshes every 2 min via /api/v2/overview.${overviewFresh.stale ? ` · ${overviewFresh.reason}` : ''}`,
+      tip: `Total portfolio equity — an ALL-ACCOUNTS aggregate${portfolioAgg?.included_account_count != null ? ` of ${portfolioAgg.included_account_count} account(s)` : ''} (Schwab, Alpaca, Moomoo). No single account is the source of the total.\n\nFOUR SEPARATE CLOCKS:\n · ${clockLines.join('\n · ')}\n\nThe newest position observation dates ${cov?.at_newest_pct ?? '—'}% of the aggregate value; ${cov?.value_fresh_pct ?? '—'}% is within ${cov?.stale_after_hours ?? 48}h.${clockDivergences.length ? `\n\nCLOCK DIVERGENCE — two copies of the position clock disagree:\n · ${clockDivergences.map(d => `${d.account}: ${d.detail}`).join('\n · ')}\naccount_summaries.as_of is not maintained by the loader; the position rows are. Neither copy is edited.` : ''} Refreshes every 2 min via /api/v2/overview.${overviewFresh.stale ? ` · ${overviewFresh.reason}` : ''}`,
       drill: { title: 'Portfolio (ALL ACCOUNTS)', subtitle: overviewFresh.stale ? `STALE · ${oldestLine}` : `All-account aggregate · ${portfolioAgg?.included_account_count ?? '?'} account(s)${coverageMark}`, endpoint: '/api/v2/overview',
-        rows: overview ? [{ portfolio_value: overview.portfolio_value, positions_observed_newest: posNewest, positions_observed_oldest: posOldest, positions_observed_oldest_account: posOldestAcct, positions_observed_oldest_age_hours: posOldestAgeH, valuation_time: valuationTime, quote_observation_time: quoteObsTime, quote_source: portfolioAgg?.quote_source, coverage: cov, portfolio_aggregate: overview.portfolio_aggregate, total_cash: overview.total_cash, position_count: overview.position_count, today_change: overview.today_change, today_pct: overview.today_pct, as_of: overview.as_of, surface_stale: overviewFresh.stale, surface_reason: overviewFresh.reason }] : [] },
+        rows: overview ? [{ portfolio_value: overview.portfolio_value, positions_observed_newest: posNewest, positions_observed_oldest: posOldest, positions_observed_oldest_account: posOldestAcct, positions_observed_oldest_age_hours: posOldestAgeH, valuation_time: valuationTime, quote_observation_time: quoteObsTime, quote_source: portfolioAgg?.quote_source, coverage: cov, observation_divergences: clockDivergences, portfolio_aggregate: overview.portfolio_aggregate, total_cash: overview.total_cash, position_count: overview.position_count, today_change: overview.today_change, today_pct: overview.today_pct, as_of: overview.as_of, surface_stale: overviewFresh.stale, surface_reason: overviewFresh.reason }] : [] },
     },
     {
       label: 'TODAY', value: todayChange != null ? `${todayChange >= 0 ? '+' : ''}${fmt$(todayChange, 0)}${todayPct != null ? ` ${todayPct >= 0 ? '+' : ''}${todayPct}%` : ''}` : '—',
       // A P&L is stamped with its OWN session, never the position clock.
-      stale: todayPnl?.complete === false ? ` · ${todayMissing.length} acct(s) missing` : null,
+      stale: todayMissing.length ? ` · ${todayMissing.length} funded acct(s) did not report` : null,
       asOf: todayPnl?.session_date ?? null,
       asOfLabel: 'P&L session',
       asOfNote: todayAsOfNote,
@@ -265,7 +286,7 @@ export default function MetricStrip({ onDrill }: Props) {
       color: overviewFresh.stale ? BB.amber : todayChange == null ? 'var(--text3)' : todayChange >= 0 ? BB.green : BB.red,
       drill: { title: "Today's Move", subtitle: `${todayPnl?.session_date ? `session ${todayPnl.session_date}` : 'session UNDATED'} · ${todayPnl?.coverage_reason ?? 'coverage unknown'}`, endpoint: '/api/v2/overview',
         rows: overview ? [
-          { today_change: overview.today_change, today_pct: overview.today_pct, pnl_session_date: todayPnl?.session_date, pnl_session_source: todayPnl?.session_source, pnl_calculated_at: todayPnl?.calculated_at, pnl_mark_source: todayPnl?.mark_source, scope: todayPnl?.scope, linked_accounts: todayLinked, represented_accounts: todayRepresented, contributing_accounts: todayPnl?.contributing_accounts, zero_change_accounts: todayPnl?.zero_change_accounts, missing_accounts: todayMissing, portfolio_value: overview.portfolio_value, surface_stale: overviewFresh.stale },
+          { today_change: overview.today_change, today_pct: overview.today_pct, pnl_session_date: todayPnl?.session_date, pnl_session_source: todayPnl?.session_source, pnl_calculated_at: todayPnl?.calculated_at, pnl_mark_source: todayPnl?.mark_source, scope: todayPnl?.scope, linked_accounts: todayLinked, funded_accounts: todayFunded, represented_accounts: todayRepresented, contributing_accounts: todayPnl?.contributing_accounts, zero_change_accounts: todayPnl?.zero_change_accounts, empty_accounts: todayEmpty, missing_accounts: todayMissing, portfolio_value: overview.portfolio_value, surface_stale: overviewFresh.stale },
           ...Object.entries(overview.today_by_account ?? {})
             .sort((a: any, b: any) => Math.abs(b[1].change) - Math.abs(a[1].change))
             .map(([acct, d]: any) => ({
