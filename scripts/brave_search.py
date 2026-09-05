@@ -15,7 +15,7 @@ Budget tracked in: data/portfolios/state/brave_search_budget.json
 """
 from __future__ import annotations
 import json, os, time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 import urllib.request, urllib.parse, urllib.error
@@ -38,13 +38,8 @@ SKIP_WEEKENDS = True
 # Callers that answer a question someone is waiting for. These are rate-limited
 # and budgeted like everything else; they are simply not silenced on a weekend.
 ON_DEMAND_CALLERS = frozenset({"web_research", "intel_query", "manual"})
-CALLER_CAPS = {
-    "portfolio_news": 10,
-    "catalyst_intelligence": 10,
-    "topic_ingestion": 5,
-    "web_news_fetcher": 5,
-    "default": 25,
-}
+# CALLER_CAPS moved to lib/search_budget.CALLER_DAILY_CAPS, where it binds
+# for every caller rather than only the ones importing this client.
 MONTHLY_WARN_PCT = 70
 MONTHLY_CRITICAL_PCT = 90
 _search_cache: Dict[str, Any] = {}
@@ -94,95 +89,6 @@ def _budget_file() -> Path:
 _BUDGET_FILE = _budget_file()
 
 
-def _load_budget() -> dict:
-    try:
-        if _BUDGET_FILE.exists():
-            return json.loads(_BUDGET_FILE.read_text())
-    except Exception:
-        pass
-    return {}
-
-
-def _save_budget(data: dict):
-    try:
-        _BUDGET_FILE.parent.mkdir(parents=True, exist_ok=True)
-        _BUDGET_FILE.write_text(json.dumps(data, indent=2))
-    except Exception:
-        pass
-
-
-def _check_budget(caller: str = "default") -> bool:
-    """Return True if we can make a Brave API call today.
-
-    Delegates to the shared per-provider budget, which DENIES when it cannot
-    establish state. The local ledger below is kept as a secondary per-caller
-    cap; it is no longer the only thing standing between a bulk caller and the
-    monthly allowance, because three other modules used to bypass it entirely.
-    """
-    # Shared per-provider ledger is mandatory. Falling through to the local
-    # release-relative counter when the shared module cannot be imported was
-    # fail-open: concurrent cron jobs under different releases each saw their
-    # own near-empty file and spent. WAVE F3: DENY when the shared budget is
-    # unavailable — never fail open.
-    try:
-        from scripts.lib.search_budget import check as _shared_check
-    except ImportError:                                  # pragma: no cover
-        try:
-            from lib.search_budget import check as _shared_check  # type: ignore
-        except ImportError:
-            print("  [brave-search] shared budget unavailable — DENY (never fail open)")
-            return False
-    # Pass the caller: the shared ledger holds a monthly reserve that only
-    # on-demand callers may draw on. Omitting it made every call look scheduled,
-    # which would starve interactive research at the reserve line instead of the
-    # real ceiling.
-    verdict = _shared_check("brave", caller=caller.split("/")[-1].replace(".py", ""))
-    if not verdict["allowed"]:
-        print(f"  [brave-search] denied by shared budget: {verdict['reason']}")
-        return False
-
-    today = datetime.now().strftime("%Y-%m-%d")
-    month = datetime.now().strftime("%Y-%m")
-    is_weekend = datetime.now().weekday() >= 5
-
-    # The weekend skip is a spend heuristic for SCHEDULED bulk jobs, whose
-    # subject matter does not move when the market is closed. It must not apply
-    # to on-demand research: re-pointing web_research through this client made
-    # every interactive lookup return [] on a Saturday, which is precisely the
-    # silent-empty failure this budget work exists to remove.
-    if SKIP_WEEKENDS and is_weekend and caller not in ON_DEMAND_CALLERS:
-        return False
-
-    budget = _load_budget()
-    if budget.get("date") != today:
-        # Preserve monthly counter, reset daily
-        monthly = budget.get("monthly_calls", {})
-        budget = {"date": today, "calls": 0, "skipped_weekend": 0, "skipped_budget": 0,
-                  "caller_calls": {}, "monthly_calls": monthly}
-
-    # Monthly budget check
-    month_total = budget.get("monthly_calls", {}).get(month, 0)
-    if month_total >= MONTHLY_BUDGET:
-        budget["skipped_budget"] = budget.get("skipped_budget", 0) + 1
-        _save_budget(budget)
-        return False
-
-    # Daily budget check
-    if budget["calls"] >= DAILY_BUDGET:
-        budget["skipped_budget"] = budget.get("skipped_budget", 0) + 1
-        _save_budget(budget)
-        return False
-
-    # Per-caller cap check
-    caller_key = caller.split("/")[-1].replace(".py", "")
-    cap = CALLER_CAPS.get(caller_key, CALLER_CAPS["default"])
-    caller_today = budget.get("caller_calls", {}).get(caller_key, 0)
-    if caller_today >= cap:
-        return False
-
-    return True
-
-
 def _record_shared(provider: str, caller: str) -> None:
     """Count the call in the shared per-provider ledger. Best effort."""
     try:
@@ -198,25 +104,74 @@ def _record_shared(provider: str, caller: str) -> None:
         pass
 
 
-def _record_call(caller: str = "default"):
-    """Record a successful Brave API call against today's budget."""
-    today = datetime.now().strftime("%Y-%m-%d")
-    month = datetime.now().strftime("%Y-%m")
-    budget = _load_budget()
-    if budget.get("date") != today:
-        monthly = budget.get("monthly_calls", {})
-        budget = {"date": today, "calls": 0, "skipped_weekend": 0, "skipped_budget": 0,
-                  "caller_calls": {}, "monthly_calls": monthly}
-    budget["calls"] = budget.get("calls", 0) + 1
-    budget["last_call"] = datetime.now().isoformat()
-    # Track per-caller
+def _reserve(caller: str = "default") -> bool:
+    """Atomically reserve one unit BEFORE the request. False means do not call.
+
+    Replaces the check-then-call-then-record sequence this module used, which
+    was a textbook check-to-use gap: two processes could both observe an
+    under-limit counter, both call, and both record. lib/search_budget says so
+    at its own `check` docstring — "prefer try_consume / guard at the call site
+    so concurrent cron processes cannot both spend the last unit" — and the two
+    aegis callers that bypass this client were already using guard() correctly,
+    which made them more correct than the sanctioned path.
+
+    Reserving before the request means a request that never happens has been
+    counted, so every failure path must _refund.
+    """
     caller_key = caller.split("/")[-1].replace(".py", "")
-    cc = budget.setdefault("caller_calls", {})
-    cc[caller_key] = cc.get(caller_key, 0) + 1
-    # Track monthly
-    mc = budget.setdefault("monthly_calls", {})
-    mc[month] = mc.get(month, 0) + 1
-    _save_budget(budget)
+    try:
+        from scripts.lib.search_budget import try_consume
+    except ImportError:                                  # pragma: no cover
+        try:
+            from lib.search_budget import try_consume    # type: ignore
+        except ImportError:
+            print("  [brave-search] shared budget unavailable — DENY (never fail open)")
+            return False
+    try:
+        verdict = try_consume("brave", caller=caller_key)
+    except Exception as exc:                             # noqa: BLE001
+        print(f"  [brave-search] budget error — DENY (never fail open): {exc}")
+        return False
+    if not verdict.get("allowed"):
+        print(f"  [brave-search] denied by budget: {verdict.get('reason')}")
+        return False
+    return True
+
+
+def _refund(caller: str = "default") -> None:
+    """Return the unit reserved for a request that did not happen."""
+    caller_key = caller.split("/")[-1].replace(".py", "")
+    try:
+        from scripts.lib.search_budget import refund
+    except ImportError:                                  # pragma: no cover
+        try:
+            from lib.search_budget import refund         # type: ignore
+        except ImportError:
+            return
+    try:
+        refund("brave", caller=caller_key)
+    except Exception:
+        pass
+
+
+def _record_call(caller: str = "default"):
+    """RETIRED — the second ledger no longer counts.
+
+    This wrote data/portfolios/state/brave_search_budget.json under an unlocked
+    read-modify-write whose _save_budget swallowed every exception, so a failed
+    write was invisible. That file existed as a second counter only because it
+    held CALLER_CAPS, which the canonical ledger lacked; those caps now live in
+    lib/search_budget.CALLER_DAILY_CAPS and bind for every caller, including the
+    ones that never imported this client.
+
+    Counting in two places is what let the two disagree: through 2026-09-04 they
+    agreed exactly (52 each), and on 2026-09-05 the canonical ledger recorded 6
+    calls the other never saw. The file is left in place, unwritten, as history.
+    Nothing here reconciles the two numbers — that is an operator call against
+    the provider's own dashboard.
+    """
+    return None
+
 
 def _get_api_key(project_root: str = ".") -> Optional[str]:
     key = os.getenv("BRAVE_SEARCH_API_KEY", "")
@@ -241,10 +196,14 @@ def search(query, count=MAX_RESULTS, freshness=None, project_root=".", caller="d
     ck = f"web:{query}:{freshness}"
     cached = _cached(ck, _cache_ttl_web)
     if cached is not None: return cached
-    if not _check_budget(caller):
+    # Reserve BEFORE the request. Every path out of here that does not make a
+    # successful call must refund, or the ledger charges for work never done.
+    if not _reserve(caller):
         return []
     api_key = _get_api_key(project_root)
-    if not api_key: return []
+    if not api_key:
+        _refund(caller)
+        return []
     params = {"q": query, "count": min(count,20), "text_decorations": "false", "search_lang": "en", "country": "US"}
     if freshness: params["freshness"] = freshness
     url = f"{BRAVE_API_URL}?{urllib.parse.urlencode(params)}"
@@ -259,12 +218,12 @@ def search(query, count=MAX_RESULTS, freshness=None, project_root=".", caller="d
             except Exception: pass
             data = json.loads(raw)
         results = [{"title": i.get("title",""), "url": i.get("url",""), "description": i.get("description",""), "age": i.get("age","")} for i in data.get("web",{}).get("results",[])]
-        _record_shared("brave", caller)
-        _record_call(caller)
+        # Already counted at reservation; nothing to record here.
         _cache_set(ck, results)
         return results
     except Exception as e:
         print(f"  [brave-search] Error: {e}")
+        _refund(caller)
         return []
 
 
@@ -315,10 +274,14 @@ def search_news(query, count=MAX_RESULTS, freshness="pd", project_root=".", call
     ck = f"news:{query}:{freshness}"
     cached = _cached(ck, _cache_ttl_news)
     if cached is not None: return cached
-    if not _check_budget(caller):
+    # Reserve BEFORE the request. Every path out of here that does not make a
+    # successful call must refund, or the ledger charges for work never done.
+    if not _reserve(caller):
         return []
     api_key = _get_api_key(project_root)
-    if not api_key: return []
+    if not api_key:
+        _refund(caller)
+        return []
     params = {"q": query, "count": min(count,20), "search_lang": "en", "country": "US", "freshness": freshness}
     url = f"{BRAVE_NEWS_URL}?{urllib.parse.urlencode(params)}"
     headers = {"Accept": "application/json", "Accept-Encoding": "gzip", "X-Subscription-Token": api_key}
@@ -332,12 +295,12 @@ def search_news(query, count=MAX_RESULTS, freshness="pd", project_root=".", call
             except Exception: pass
             data = json.loads(raw)
         results = [{"title": i.get("title",""), "url": i.get("url",""), "description": i.get("description",""), "age": i.get("age",""), "source": i.get("meta_url",{}).get("hostname","")} for i in data.get("results",[])]
-        _record_shared("brave", caller)
-        _record_call(caller)
+        # Already counted at reservation; nothing to record here.
         _cache_set(ck, results)
         return results
     except Exception as e:
         print(f"  [brave-search] News error: {e}")
+        _refund(caller)
         return []
 
 def search_ticker(symbol, context="news catalyst", freshness="pd", project_root="."):
@@ -358,32 +321,60 @@ def inject_search_context(base_prompt, query, search_type="news", project_root="
     return f"RECENT WEB SEARCH RESULTS for '{query}':\n{format_results_for_prompt(results)}\n\n{base_prompt}"
 
 def get_budget_status() -> dict:
-    """Return current budget status for monitoring/alerting."""
-    budget = _load_budget()
-    today = datetime.now().strftime("%Y-%m-%d")
-    month = datetime.now().strftime("%Y-%m")
-    if budget.get("date") != today:
-        monthly = budget.get("monthly_calls", {})
-        budget = {"date": today, "calls": 0, "caller_calls": {}, "monthly_calls": monthly}
-    month_total = budget.get("monthly_calls", {}).get(month, 0)
-    month_pct = round(month_total / MONTHLY_BUDGET * 100, 1) if MONTHLY_BUDGET else 0
+    """Budget status for monitoring/alerting, read from the BINDING ledger.
+
+    This used to read the legacy per-tree file. That is the sensor defect
+    lib/search_budget.py was written to fix, reproduced one layer up: the alarm
+    was wired, scheduled and reaching a channel while reporting a percentage
+    computed from a counter that saw a fraction of the traffic. On 2026-08-30 it
+    reported `monthly_pct: 17.6, "ok"` from a ledger reading 150/month while the
+    provider dashboard read roughly 1,000.
+
+    An alarm on an unrepresentative sensor is worse than no alarm, because it
+    answers the question that would otherwise be asked.
+    """
+    try:
+        from scripts.lib.search_budget import status as _shared_status
+    except ImportError:                                  # pragma: no cover
+        from lib.search_budget import status as _shared_status  # type: ignore
+
+    st = _shared_status("brave")
+    month_total = int(st.get("monthly_used", 0))
+    month_limit = int(st.get("monthly_limit", 0)) or MONTHLY_BUDGET
+    month_pct = round(month_total / month_limit * 100, 1) if month_limit else 0.0
     alert_level = "ok"
     if month_pct >= MONTHLY_CRITICAL_PCT:
         alert_level = "critical"
     elif month_pct >= MONTHLY_WARN_PCT:
         alert_level = "warning"
+    daily_used = int(st.get("daily_used", 0))
+    daily_limit = int(st.get("daily_limit", 0)) or DAILY_BUDGET
     return {
-        "date": budget.get("date"), "calls_today": budget.get("calls", 0),
-        "daily_limit": DAILY_BUDGET, "daily_remaining": max(0, DAILY_BUDGET - budget.get("calls", 0)),
-        "monthly_total": month_total, "monthly_limit": MONTHLY_BUDGET,
-        "monthly_pct": month_pct, "monthly_alert": alert_level,
-        "caller_caps": CALLER_CAPS,
-        "caller_today": budget.get("caller_calls", {}),
-        "skipped_budget": budget.get("skipped_budget", 0),
-        "last_call": budget.get("last_call"),
+        "source": "search_budget.json (canonical, flocked)",
+        "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+        "calls_today": daily_used,
+        "daily_limit": daily_limit,
+        "daily_remaining": max(0, daily_limit - daily_used),
+        "monthly_total": month_total,
+        "monthly_limit": month_limit,
+        "monthly_pct": month_pct,
+        "monthly_alert": alert_level,
+        "caller_caps": dict(_caller_daily_caps()),
+        "last_call": st.get("last_call"),
         "is_weekend": datetime.now().weekday() >= 5,
         "skip_weekends": SKIP_WEEKENDS,
     }
+
+
+def _caller_daily_caps() -> dict:
+    try:
+        from scripts.lib.search_budget import CALLER_DAILY_CAPS
+    except ImportError:                                  # pragma: no cover
+        try:
+            from lib.search_budget import CALLER_DAILY_CAPS  # type: ignore
+        except ImportError:
+            return {}
+    return CALLER_DAILY_CAPS
 
 
 def test_connection(project_root="."):

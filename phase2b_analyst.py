@@ -274,55 +274,67 @@ def _build_rebalance_rationale(risk_data: Dict, holdings_data: Dict,
 
 
 def _get_brave_analyst_commentary(symbols: list, brave_api_key: str) -> Dict:
-    """Fetch recent analyst commentary from Brave Search for key holdings."""
-    if not brave_api_key or not symbols:
+    """Analyst commentary for key holdings, through the BUDGETED Brave client.
+
+    This held its own key and its own `urllib` request straight to
+    api.search.brave.com, touching neither budget ledger and passing no gate. It
+    was dormant — no cron entry, no systemd unit, no importer — which made it a
+    loaded gun rather than a live leak: any future caller would have spent
+    unmetered. Its twin at scripts/portfolio_weekly_report.py:449 was neutered by
+    the F2 sweep; this copy was missed because it sits at the repo root, and the
+    guard test pointed only at the scripts/ path.
+
+    It also carried `# Limit to top 5 to stay within 2000/mo free tier` — a
+    provider plan asserted in a comment, and a different invented number again
+    from the 1,000 removed from brave_search.py. Brave's own headers, observed
+    2026-09-05, report no metered monthly window at all.
+
+    `brave_api_key` is now unused and kept only so existing call sites do not
+    break: the budgeted client resolves credentials itself. Passing a key here
+    no longer buys an ungoverned request.
+    """
+    if not symbols:
         return {}
 
-    commentary = {}
-    import urllib.request, urllib.parse
-
-    for sym in symbols[:5]:  # Limit to top 5 to stay within 2000/mo free tier
+    try:
+        from scripts.brave_search import search as _budgeted_search
+    except ImportError:                                  # pragma: no cover
         try:
-            query = f"{sym} stock analyst rating price target 2026"
-            url = f"https://api.search.brave.com/res/v1/web/search?q={urllib.parse.quote(query)}&count=3&freshness=pw"
-            req = urllib.request.Request(url, headers={
-                "Accept": "application/json",
-                "Accept-Encoding": "gzip",
-                "X-Subscription-Token": brave_api_key
-            })
-            with urllib.request.urlopen(req, timeout=10) as r:
-                import json, gzip
-                data_raw = r.read()
-                try:
-                    data = json.loads(gzip.decompress(data_raw))
-                except Exception:
-                    data = json.loads(data_raw)
+            from brave_search import search as _budgeted_search  # type: ignore
+        except ImportError:
+            return {}
 
-                results = data.get("web", {}).get("results", [])
-                snippets = []
-                for res in results[:3]:
-                    title = res.get("title","")
-                    desc  = res.get("description","")
-                    url_r = res.get("url","")
-                    # Only include from reputable sources
-                    src_domain = url_r.split("/")[2] if "/" in url_r else ""
-                    reputable = any(d in src_domain for d in [
-                        "reuters", "bloomberg", "wsj", "barrons", "marketwatch",
-                        "cnbc", "seekingalpha", "zacks", "tipranks", "benzinga",
-                        "fool", "finviz", "nasdaq", "investing"
-                    ])
-                    if reputable:
-                        snippets.append({
-                            "title": title[:100],
-                            "snippet": desc[:200],
-                            "source": src_domain,
-                            "url": url_r
-                        })
+    REPUTABLE = (
+        "reuters", "bloomberg", "wsj", "barrons", "marketwatch", "cnbc",
+        "seekingalpha", "zacks", "tipranks", "benzinga", "fool", "finviz",
+        "nasdaq", "investing",
+    )
 
-                if snippets:
-                    commentary[sym] = snippets
-        except Exception as _e:
-            pass  # Brave search optional — fail silently
+    commentary: Dict = {}
+    # The cap stays at five, for the reason that is actually true: this is a
+    # supporting detail on a report, and five symbols is enough of it. It is not
+    # derived from any provider plan. The real ceiling is enforced by
+    # lib/search_budget, which will refuse this caller when it should.
+    for sym in symbols[:5]:
+        try:
+            results = _budgeted_search(
+                f"{sym} stock analyst rating price target 2026",
+                count=3, freshness="pw", caller="phase2b_analyst")
+        except Exception:
+            continue
+        snippets = []
+        for res in (results or [])[:3]:
+            url_r = res.get("url", "")
+            src_domain = url_r.split("/")[2] if url_r.count("/") >= 2 else ""
+            if any(d in src_domain for d in REPUTABLE):
+                snippets.append({
+                    "title": res.get("title", "")[:100],
+                    "snippet": res.get("description", "")[:200],
+                    "source": src_domain,
+                    "url": url_r,
+                })
+        if snippets:
+            commentary[sym] = snippets
 
     return commentary
 
