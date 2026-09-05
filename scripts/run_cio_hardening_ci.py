@@ -625,6 +625,15 @@ GATES = [
         ],
     ),
     (
+        # A weekday-only freshness check must not page for the weekend. Second
+        # fix in the same gate: G1 asked whether TODAY was Saturday; this one
+        # counted calendar weekday hours instead of hours the writer could run.
+        "freshness_weekend_gate",
+        [
+            "tests/test_freshness_weekend_gate.py",
+        ],
+    ),
+    (
         # A curated alert must be more useful than the JSON and never less true.
         # The alert that prompted this had a `Fix:` section restating its own
         # trigger, and showed 2 of 6 firing lanes.
