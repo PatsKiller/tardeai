@@ -10,8 +10,10 @@
 - [x] Provider chokepoint (Slack/SMTP/Twilio/Meta): **zero**
 - [x] Inline keyboards + sendDocument restored via approved APIs
 - [x] Unit/comms/portal/docs-index tests passing locally
-- [ ] CI on PR #862 all green (frontend design tokens + cio-hardening + others)
-- [ ] No unresolved review threads blocking merge
+- [x] CI on PR #862 all green (frontend design tokens + cio-hardening + others)
+- [x] No unresolved review threads blocking merge
+
+Note: tip was green at `0d340460f`; after update-from-main CI must re-confirm.
 
 ## Must be done before production ACTIVE (not this merge)
 
