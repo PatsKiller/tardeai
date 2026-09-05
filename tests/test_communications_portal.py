@@ -29,6 +29,21 @@ def _clean(monkeypatch):
     reset_memory_store()
     reset_memory_deliveries()
     reset_subject_memory()
+    # Force the in-memory ledger. These tests assert `source == "memory"`, and
+    # every call site is `conn = _db_conn(); if conn is not None: <db> else: <memory>`
+    # — so on a box where localhost Postgres answers, the DB branch wins, the
+    # assertions fail, AND the test run WRITES INTO THE PRODUCTION trade_ai
+    # database. That is the pollution class tests/conftest.py:97-115 already
+    # documents for alert_outbox after the 2026-07-29 incident.
+    #
+    # Same three-line shape as tests/test_comms_channel_adapters.py:34-36, whose
+    # comment names this exact bug. The subject_memory stub is the one both
+    # existing exemplars omit and this suite needs; the portal helpers
+    # late-import _db_conn inside the function body, so stubbing these three
+    # covers all five portal helpers.
+    monkeypatch.setattr("scripts.lib.comms.client._db_conn", lambda: None)
+    monkeypatch.setattr("scripts.lib.comms.delivery._db_conn", lambda: None)
+    monkeypatch.setattr("scripts.lib.comms.subject_memory._db_conn", lambda: None)
     yield
     reset_memory_store()
     reset_memory_deliveries()
