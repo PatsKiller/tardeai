@@ -21,6 +21,7 @@ from scripts.lib.comms.identity import new_event_id
 SCHEMA_VERSION = "RetentionDecision@v1"
 POLICY_VERSION = SCHEMA_VERSION
 DECIDED_BY_DEFAULT = "comms.librarian"
+PURGE_RECEIPT_SCHEMA = "PurgeReceipt@v1"
 
 # ---------------------------------------------------------------------------
 # Retention actions (RetentionDecision@v1)
@@ -154,6 +155,7 @@ _DECISIONS: dict[str, dict[str, Any]] = {}  # decision_id → row
 _DECISIONS_BY_EVENT: dict[str, list[str]] = {}  # event_id → [decision_id…]
 _TOMBSTONES: dict[str, dict[str, Any]] = {}  # event_id → row
 _CANDIDATES: dict[str, dict[str, Any]] = {}  # candidate_id → row
+_PURGE_RECEIPTS: dict[str, dict[str, Any]] = {}  # receipt_id → row
 _lock = threading.Lock()
 
 
@@ -225,6 +227,124 @@ def _parse_ttl_from_class_name(retention_class: str) -> int | None:
     return None
 
 
+def _as_str_list(value: Any) -> list[str]:
+    """Normalise an optional string-or-list into a list of strings."""
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [value]
+    return [str(v) for v in value]
+
+
+def _content_hashes_from_receipt(receipt: Any) -> list[str]:
+    """Collect content hashes carried on a decision receipt, if present."""
+    hashes: list[str] = []
+    if isinstance(receipt, dict):
+        val = receipt.get("content_hash")
+        if val:
+            hashes.append(str(val))
+    return hashes
+
+
+def record_purge_receipt(
+    *,
+    decision_id: str,
+    action: str,
+    retention_class: str,
+    event_ids: Any = None,
+    artifact_ids: Any = None,
+    content_hashes: Any = None,
+    tombstone: bool = False,
+    decided_by: str | None = None,
+    policy_version: str | None = None,
+    decided_at: datetime | None = None,
+    dry_run: bool = False,
+    note: str | None = None,
+) -> dict[str, Any]:
+    """Record a durable purge/compaction/redaction receipt (PurgeReceipt@v1).
+
+    Written for every destructive lifecycle action — KEEP, COMPACT, REDACT,
+    DELETE_CONTENT_KEEP_TOMBSTONE, DELETE_ALL_ALLOWED, HOLD — including the
+    dry-run "would-delete" path, so a destruction is auditable even when it did
+    not happen. Scheduling and the retention-class table are operator-owned and
+    are never wired here.
+    """
+    action_n = (action or "").strip()
+    if not action_n:
+        raise ValueError("action required for purge receipt")
+
+    row = {
+        "receipt_id": f"pr_{new_event_id()}",
+        "decision_id": decision_id,
+        "action": action_n,
+        "retention_class": (retention_class or "").strip() or "unknown",
+        "event_ids": _as_str_list(event_ids),
+        "artifact_ids": _as_str_list(artifact_ids),
+        "content_hashes": _as_str_list(content_hashes),
+        "tombstone": bool(tombstone),
+        "decided_by": (decided_by or "").strip() or DECIDED_BY_DEFAULT,
+        "policy_version": (policy_version or "").strip() or POLICY_VERSION,
+        "decided_at": decided_at,
+        "dry_run": bool(dry_run),
+        "note": note,
+        "schema": PURGE_RECEIPT_SCHEMA,
+        "receipt_at": _now(),
+        "persisted": "memory",
+    }
+
+    conn = _db_conn()
+    if conn is not None:
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO communication_purge_receipts (
+                        receipt_id, decision_id, action, retention_class,
+                        event_ids, artifact_ids, content_hashes, tombstone,
+                        decided_by, policy_version, decided_at, dry_run, note,
+                        receipt_at
+                    ) VALUES (
+                        %(receipt_id)s, %(decision_id)s, %(action)s,
+                        %(retention_class)s, %(event_ids)s::jsonb,
+                        %(artifact_ids)s::jsonb, %(content_hashes)s::jsonb,
+                        %(tombstone)s, %(decided_by)s, %(policy_version)s,
+                        %(decided_at)s, %(dry_run)s, %(note)s, %(receipt_at)s
+                    )
+                    """,
+                    {
+                        **row,
+                        "event_ids": json.dumps(row["event_ids"], default=str),
+                        "artifact_ids": json.dumps(row["artifact_ids"], default=str),
+                        "content_hashes": json.dumps(row["content_hashes"], default=str),
+                    },
+                )
+            conn.commit()
+            row["persisted"] = "db"
+        except Exception:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            row["persisted"] = "memory"
+
+    with _lock:
+        _PURGE_RECEIPTS[row["receipt_id"]] = copy.deepcopy(row)
+    return copy.deepcopy(row)
+
+
+def get_purge_receipt(receipt_id: str) -> dict[str, Any] | None:
+    """Return one purge receipt by id, or None."""
+    with _lock:
+        row = _PURGE_RECEIPTS.get(receipt_id)
+        return copy.deepcopy(row) if row else None
+
+
+def list_purge_receipts() -> list[dict[str, Any]]:
+    """Return all in-memory purge receipts, in insertion order."""
+    with _lock:
+        return [copy.deepcopy(r) for r in _PURGE_RECEIPTS.values()]
+
+
 def classify_retention(
     event_like: dict[str, Any] | CommunicationEvent,
 ) -> RetentionDecision:
@@ -261,6 +381,7 @@ def classify_retention(
                 "schema": SCHEMA_VERSION,
                 "source_retention_class": retention_class,
                 "legal_hold": True,
+                "content_hash": ev.get("content_hash"),
             },
         )
 
@@ -321,6 +442,7 @@ def classify_retention(
             "source_retention_class": retention_class,
             "message_class": ev.get("message_class"),
             "direction": ev.get("direction"),
+            "content_hash": ev.get("content_hash"),
         },
     )
 
@@ -374,6 +496,22 @@ def apply_retention_decision(
             raise ValueError("decision or event_like required")
         decision = classify_retention(event_like)
     decision.mint_identity()
+
+    if decision.action == HOLD or decision.legal_hold:
+        record_purge_receipt(
+            decision_id=decision.decision_id,
+            action=decision.action,
+            retention_class=decision.retention_class,
+            event_ids=[decision.event_id],
+            artifact_ids=[],
+            content_hashes=_content_hashes_from_receipt(decision.receipt),
+            tombstone=False,
+            decided_by=decision.decided_by,
+            policy_version=decision.policy_version,
+            decided_at=decision.decided_at,
+            dry_run=False,
+            note="hold: retention suspended; deletes blocked",
+        )
 
     conn = _db_conn()
     if conn is not None:
@@ -486,12 +624,23 @@ def _execute_one(
     now: datetime,
     dry_run: bool,
 ) -> dict[str, Any]:
-    """Apply one expired decision. Legal hold always blocks purge."""
+    """Apply one expired decision. Legal hold always blocks purge.
+
+    Every branch records a PurgeReceipt@v1 — including the dry-run
+    "would-delete" path, which records intent without deleting.
+    """
     event_id = decision_row["event_id"]
     action = decision_row["action"]
+    retention_class = decision_row.get("retention_class") or "unknown"
     legal_hold = bool(decision_row.get("legal_hold", False))
+    decided_by = decision_row.get("decided_by") or DECIDED_BY_DEFAULT
+    policy_version = decision_row.get("policy_version") or POLICY_VERSION
+    decided_at = decision_row.get("decided_at")
+    content_hashes = _content_hashes_from_receipt(decision_row.get("receipt"))
+    decision_id = decision_row.get("decision_id")
+
     result: dict[str, Any] = {
-        "decision_id": decision_row.get("decision_id"),
+        "decision_id": decision_id,
         "event_id": event_id,
         "action": action,
         "legal_hold": legal_hold,
@@ -504,20 +653,72 @@ def _execute_one(
     if legal_hold or action == HOLD:
         result["blocked"] = True
         result["reason"] = "legal_hold_blocks_delete"
+        record_purge_receipt(
+            decision_id=decision_id,
+            action=HOLD,
+            retention_class=retention_class,
+            event_ids=[event_id],
+            content_hashes=content_hashes,
+            tombstone=False,
+            decided_by=decided_by,
+            policy_version=policy_version,
+            decided_at=decided_at,
+            dry_run=dry_run,
+            note="legal_hold_blocks_delete",
+        )
         return result
 
     if action == KEEP:
         result["blocked"] = True
         result["reason"] = "keep_not_executable"
+        record_purge_receipt(
+            decision_id=decision_id,
+            action=KEEP,
+            retention_class=retention_class,
+            event_ids=[event_id],
+            content_hashes=content_hashes,
+            tombstone=False,
+            decided_by=decided_by,
+            policy_version=policy_version,
+            decided_at=decided_at,
+            dry_run=dry_run,
+            note="keep_not_executable",
+        )
         return result
 
     if action not in _PURGE_ACTIONS:
         result["blocked"] = True
         result["reason"] = f"action_not_executable:{action}"
+        record_purge_receipt(
+            decision_id=decision_id,
+            action=action,
+            retention_class=retention_class,
+            event_ids=[event_id],
+            content_hashes=content_hashes,
+            tombstone=False,
+            decided_by=decided_by,
+            policy_version=policy_version,
+            decided_at=decided_at,
+            dry_run=dry_run,
+            note=f"action_not_executable:{action}",
+        )
         return result
 
     if dry_run:
         result["reason"] = "dry_run"
+        record_purge_receipt(
+            decision_id=decision_id,
+            action=action,
+            retention_class=retention_class,
+            event_ids=[event_id],
+            content_hashes=content_hashes,
+            tombstone=False,
+            decided_by=decided_by,
+            policy_version=policy_version,
+            decided_at=decided_at,
+            dry_run=True,
+            note="would-delete (dry-run)",
+        )
         return result
 
     note = f"expiry_pass action={action} at {now.isoformat()}"
@@ -566,6 +767,19 @@ def _execute_one(
 
     result["executed"] = True
     result["reason"] = "tombstone_written"
+    record_purge_receipt(
+        decision_id=decision_id,
+        action=action,
+        retention_class=retention_class,
+        event_ids=[event_id],
+        content_hashes=content_hashes,
+        tombstone=True,
+        decided_by=decided_by,
+        policy_version=policy_version,
+        decided_at=decided_at,
+        dry_run=False,
+        note=note,
+    )
     return result
 
 
@@ -780,6 +994,7 @@ def memory_librarian_snapshot() -> dict[str, Any]:
             "decisions": {k: copy.deepcopy(v) for k, v in _DECISIONS.items()},
             "tombstones": {k: copy.deepcopy(v) for k, v in _TOMBSTONES.items()},
             "candidates": {k: copy.deepcopy(v) for k, v in _CANDIDATES.items()},
+            "purge_receipts": {k: copy.deepcopy(v) for k, v in _PURGE_RECEIPTS.items()},
         }
 
 
@@ -790,3 +1005,4 @@ def reset_librarian_memory() -> None:
         _DECISIONS_BY_EVENT.clear()
         _TOMBSTONES.clear()
         _CANDIDATES.clear()
+        _PURGE_RECEIPTS.clear()

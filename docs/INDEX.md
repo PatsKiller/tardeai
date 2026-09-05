@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `050f0e73bc7b396f9f5e7bc4919993258bc59c005d2b0fda86a8de2a7b15b897`
+**Tree fingerprint:** `9f87c407206125e8e28f4b758ea2a1c362ed1cae2aabe6793dd7af4fadb57247`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,10 +12,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2391 |
-| Markdown (excl. this INDEX) | 1991 |
+| Files under `docs/` (excl. this INDEX) | 2394 |
+| Markdown (excl. this INDEX) | 1994 |
 | **MISSING HEADER** | **19** |
-| Header OK | 1972 |
+| Header OK | 1975 |
 | Duplicate groups | 5 |
 
 ### By status_guess
@@ -30,7 +30,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_raw_sync | 34 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 6 |
-| review_required | 2003 |
+| review_required | 2006 |
 
 ## Markdown tree
 
@@ -397,6 +397,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/WATCH_DESK_V3.md` | Watch Desk v3 — From Watching to Learning (2026-07-16 evening) | review_required | OK | `ea65c14610d0` |
 | `docs/architecture/WATCH_DESK_V4.md` | Watch Desk v4 — Terminal Grade (2026-07-16, evening) | review_required | OK | `018c8ea82d4c` |
 | `docs/architecture/agent-contracts.md` | Agent Consumption Contracts — AgentConsumptionReceipt@v1 | review_required | OK | `deec32e44f01` |
+| `docs/architecture/agent-memory-view-proposal.md` | Command Center — Agent Memory view (proposal) | review_required | OK | `7b90f4d8e3d6` |
 | `docs/architecture/channel-adapters.md` | Gateway Channel Adapters — Phase 10 | review_required | OK | `2457155850f5` |
 | `docs/architecture/cio/ADR_ALEX_AUTHORITY_MANIFEST.md` | ADR: Alex Authority Manifest | review_required | OK | `8bf7e2366689` |
 | `docs/architecture/cio/ADR_CIO_STATE_ARCHITECTURE.md` | ADR: CIO State Architecture | review_required | OK | `78b3c731e31d` |
@@ -540,6 +541,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/audit/runtime-attestation.md` | Communications Gateway — Runtime Attestation | review_required | MISSING HEADER | `68b98afb64a9` |
 | `docs/audit/sender-inventory.md` | Communications Gateway — Sender Inventory | review_required | MISSING HEADER | `af5b68183139` |
 | `docs/audit/telegram-bypass-zero-closeout.md` | Telegram chokepoint — zero bypass closeout | review_required | OK | `73423300bcac` |
+| `docs/audit/wave-c-inbound-implementation.md` | Wave C — Communications Gateway, inbound half (implementation) | review_required | OK | `ca9edc237fc0` |
 | `docs/audits/ATM_APPROVE_FAILED_2026-05-22.md` | ATM approve_proposal_failed Investigation — 2026-05-22 | review_required | OK | `9f1bdc8d2d08` |
 | `docs/audits/CENSUS_PART1_BACKEND_2026-08-30.md` | CENSUS — PART 1: BACKEND | review_required | OK | `18392c652fe2` |
 | `docs/audits/CENSUS_PART2_COMMAND_CENTER_2026-08-30.md` | CENSUS PART 2 — The Command Center / operator surface | review_required | OK | `a01d2b2b3eee` |
@@ -737,6 +739,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/deployment/canary-results.md` | Communications Gateway — Canary Results | review_required | OK | `e9f1dfef91c6` |
 | `docs/deployment/pre-go-live-checklist.md` | Communications Gateway — Pre Go-Live Checklist | review_required | OK | `4cf39a7859c9` |
 | `docs/deployment/production-activation.md` | Communications Gateway — Production ACTIVE Checklist | review_required | OK | `492a07a9b280` |
+| `docs/deployment/retention-policy-proposal.md` | Communications Gateway — Retention Policy (PROPOSED) | review_required | OK | `427c510c17d5` |
 | `docs/deployment/rollback-plan.md` | Communications Gateway — Rollback Plan | review_required | OK | `a593be5e3e17` |
 | `docs/deployment/rollout-plan.md` | Communications Gateway — Rollout Plan | review_required | OK | `cf5f37640df6` |
 | `docs/design/ACTIVE_TRADER_LIVE_DATA_ARCHITECTURE.md` | ActiveTrader — Live Data Architecture (2026-07-28) | current_phase_keep | OK | `bed16d9677d0` |
@@ -1184,7 +1187,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/implementation/maturity-program/mp-20260901-210554/STAGE_01_DRIVE_MIRROR_VERIFICATION.md` | Stage 1.6 · Drive mirror | review_required | OK | `4dd677d4c67b` |
 | `docs/implementation/maturity-program/sop-1.2.0-20260902/EAC13CFD0_DRIVE_MANIFEST_DISPOSITION.md` | eac13cfd0 Drive-manifest disposition | review_required | OK | `0bef5edf4cc3` |
 | `docs/implementation/maturity-program/sop-1.2.0-20260902/EVIDENCE_ARCHITECTURE.md` | SOP 1.2.0 · Evidence architecture | review_required | OK | `ab78ae35e35f` |
-| `docs/implementation/maturity-program/sop-1.2.0-20260902/MATURITY_SCORECARD.md` | Maturity scorecard — Multi-Agent SOP 1.2.0 | review_required | OK | `6afc0c4da4cc` |
+| `docs/implementation/maturity-program/sop-1.2.0-20260902/MATURITY_SCORECARD.md` | Maturity scorecard — Multi-Agent SOP 1.2.0 | review_required | OK | `0e7f9d59bf76` |
 | `docs/implementation/maturity-program/sop-1.2.0-20260902/STAGE_00_PREFLIGHT.md` | Stage 0 · Fresh-state preflight and constitutional read | review_required | OK | `d565bb67c3fa` |
 | `docs/implementation/maturity-program/sop-1.2.0-20260902/STAGE_01_PR_COLLISION.md` | Stage 1 · Open-PR collision / convergence inventory | review_required | OK | `b072654894ad` |
 | `docs/implementation/maturity-program/sop-1.2.0-20260902/VERIFIER_RUNBOOK.md` | SOP 1.2.0 · Independent verifier runbook | review_required | OK | `ba4903599982` |
