@@ -461,6 +461,13 @@ body { font-family: var(--sans); background: var(--bg0); color: var(--text0); }
 .cc-terminal-ui .hub-title-row { margin-bottom: 8px; }
 .cc-terminal-ui .hub-tabs { gap: 4px !important; }
 .cc-terminal-ui .metric-strip-tile { padding: 2px 14px !important; }
+/* density comes from config/design_features.yaml via data-density on the row.
+   It was applied as an inline style and the !important above silently beat it,
+   so the flag was inert — settable, documented, and changing nothing. Padding
+   has one owner (this file) and the flag selects between its values, rather
+   than two owners racing. compact tightens spacing ONLY; it never removes a
+   line, because a line that disappears is content that disappears. */
+.cc-terminal-ui [data-density="compact"] .metric-strip-tile { padding: 1px 8px !important; }
 /* The two font-size rules that stood here are GONE, not re-pointed.
 
    They were `> div:first-child { font-size: 7px !important }` and

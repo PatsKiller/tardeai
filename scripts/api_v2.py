@@ -17211,6 +17211,24 @@ def _market_movers(query=None):
     return dict(d)
 
 
+def design_features():
+    """GET /api/v2/design-features — how surfaces LOOK, from config/design_features.yaml.
+
+    Presentation only. `protected_signals` is served alongside the flags so a
+    client can see which signals are structurally not configurable rather than
+    inferring it from their absence — and so a UI that tries to gate one on a
+    flag has no flag to gate it on.
+
+    Never fails the request: a bad config degrades to the shipped defaults and
+    reports why in `errors`.
+    """
+    from lib.design_features import load_design_features
+
+    out = load_design_features()
+    out["read_only"] = True
+    return out
+
+
 def trade_ai_summary():
     """GET /api/v2/trade-ai/summary — header-strip scalars only (~500 B).
 
@@ -45942,6 +45960,7 @@ ROUTES = {
     "/api/v2/news/symbol-headlines": _symbol_headlines,
     "/api/v2/news/headline-counts": _headline_counts,
     "/api/v2/trade-ai": lambda: trade_ai(),
+    "/api/v2/design-features": design_features,
     "/api/v2/trade-ai/summary": trade_ai_summary,
     "/api/v2/trade-ai/scanner": trade_ai_scanner,
     "/api/v2/warrior-audit/latest": warrior_audit_latest,

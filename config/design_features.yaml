@@ -1,0 +1,41 @@
+# design_features.yaml — how Command Center surfaces LOOK.
+#
+# Presentation only. Nothing here can change what a surface is willing to say.
+#
+# Anything that reports a FAULT is deliberately absent from this file and cannot
+# be added to it: naming one is a load error, not an override. The list is in
+# scripts/lib/design_features.py (PROTECTED_SIGNALS) and covers clock
+# divergence, run health, quote coverage, unaccounted rows, missing funded
+# accounts, stale surfaces and undated values.
+#
+# The header once rendered an underfilled run in healthy green by accident. A
+# switch that could do that on purpose, from a config file, is not a feature.
+#
+# Unknown keys are ignored and reported. A malformed value falls back to the
+# shipped default rather than taking the surface down.
+
+schema: DesignFeatures@v1
+
+header:
+  # ● / ▲ glyph beside each tile label.
+  state_dots: true
+
+  # 3px coloured spine down the left edge of a tile.
+  tile_rails: true
+
+  # Provenance on tiles with no fault to report — "schwab · all_time",
+  # "bearish · broad · neutral". Off leaves those meta lines empty; the tile
+  # keeps its height either way.
+  quiet_provenance: true
+
+  # "covers 99.6% of value" inline on the PORTFOLIO face.
+  # Off (the default) keeps it in the tooltip and the drill.
+  coverage_pct_on_face: false
+
+  # Scheduled-slot and finished-at clocks on the SETUPS face.
+  # The UNDERFILLED verdict beside them is protected and always shows.
+  run_clocks_on_face: true
+
+  # normal | compact. compact tightens padding only — it never removes a line,
+  # because removing a line is how content gets lost.
+  density: normal

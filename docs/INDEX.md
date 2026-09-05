@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `ec9d7e0482204ba6b7a86d71aa276a9b0a520097e09320238c5c2ae3510e5e0c`
+**Tree fingerprint:** `51a5cb7284b3a20f5c2d18d833ac6a37a0e600bf31da296e3e5764cc068b343a`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -731,7 +731,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/convergence/UI_ROUTE_OWNERSHIP.md` | UI Route Ownership | review_required | OK | `fe5a35b48fc7` |
 | `docs/deepseek_audit_2026-08-02.md` | DeepSeek Audit & Fix — Comprehensive Report | review_required | OK | `68d6408f3f5c` |
 | `docs/deployment/canary-results.md` | Communications Gateway — Canary Results Template | review_required | OK | `047e5be7aadb` |
-| `docs/deployment/pre-go-live-checklist.md` | Communications Gateway — Pre Go-Live Checklist | review_required | OK | `dee3ededa3e8` |
+| `docs/deployment/pre-go-live-checklist.md` | Communications Gateway — Pre Go-Live Checklist | review_required | OK | `db70fa4ee263` |
 | `docs/deployment/production-activation.md` | Communications Gateway — Production ACTIVE Checklist | review_required | OK | `ee3b4cd07bda` |
 | `docs/deployment/rollback-plan.md` | Communications Gateway — Rollback Plan | review_required | OK | `a593be5e3e17` |
 | `docs/deployment/rollout-plan.md` | Communications Gateway — Rollout Plan | review_required | OK | `cf5f37640df6` |

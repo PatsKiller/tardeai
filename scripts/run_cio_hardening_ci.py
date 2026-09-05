@@ -608,6 +608,9 @@ GATES = [
             # and the 48/60/0 count contradiction, pinned against verbatim
             # production fixtures in tests/fixtures/header_truth/.
             "tests/test_header_truth_regression.py",
+            # Design toggles, and the fault signals the loader refuses to make
+            # configurable — the exemption is the thing under test.
+            "tests/test_design_features.py",
         ],
     ),
     (

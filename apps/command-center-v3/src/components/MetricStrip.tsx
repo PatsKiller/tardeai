@@ -54,6 +54,17 @@ export default function MetricStrip({ onDrill }: Props) {
   const { data: tradeAi } = useApi<any>('/api/v2/trade-ai/summary', 120_000)
   const { data: gate } = useApi<any>('/api/v2/live-trading-gate', 120_000)
   const { data: health } = useApi<any>('/api/v2/health', 120_000)
+  // Presentation flags from config/design_features.yaml. Cosmetics only: the
+  // loader REFUSES to define a flag for a fault signal, so there is no flag here
+  // that could gate a divergence, an underfilled run or degraded quotes. See
+  // PROTECTED_SIGNALS in scripts/lib/design_features.py.
+  const { data: designCfg } = useApi<any>('/api/v2/design-features', 600_000)
+  const dx = designCfg?.header ?? {}
+  const showStateDots = dx.state_dots !== false
+  const showTileRails = dx.tile_rails !== false
+  const showQuietProvenance = dx.quiet_provenance !== false
+  const showCoveragePctOnFace = dx.coverage_pct_on_face === true
+  const showRunClocksOnFace = dx.run_clocks_on_face !== false
   // The badge showed a bare number over a heart. "27" of what, out of what, and
   // does it reconcile with the page it links to? Each part of the population is
   // counted separately so the badge can name its own definition rather than
@@ -178,9 +189,16 @@ export default function MetricStrip({ onDrill }: Props) {
     : null
 
   // Face may only carry compact non-account warnings so divergence is not silent.
-  const portfolioFaceNote = clockDivergences.length
-    ? `⚠ ${clockDivergences.length} clock divergence${clockDivergences.length > 1 ? 's' : ''}`
-    : null
+  const portfolioFaceNote = [
+    // FAULT — never gated on a flag. There is no design flag for this, by
+    // construction: `clock_divergence` is a PROTECTED_SIGNAL and the loader
+    // refuses to define it.
+    clockDivergences.length
+      ? `⚠ ${clockDivergences.length} clock divergence${clockDivergences.length > 1 ? 's' : ''}`
+      : null,
+    // cosmetic, opt-in
+    showCoveragePctOnFace && cov?.at_newest_pct != null ? `covers ${cov.at_newest_pct}% of value` : null,
+  ].filter(Boolean).join(' · ') || null
 
   // Is anything actually wrong with the position clock? Drives the tile's tone,
   // which is what makes the strip quiet when healthy and loud when not.
@@ -397,7 +415,7 @@ export default function MetricStrip({ onDrill }: Props) {
       label: 'TRADING', value: winRate != null ? `${winRate}% win${winTrades ? ` · ${winTrades} trades` : ''}${journalPnl != null ? ` · ${fmt$(journalPnl, 0)} P&L` : ''}` : '—',
       // These four rendered a bare em-dash. They have provenance worth stating;
       // an empty line is a wasted one, and the height is fixed either way.
-      asOfNote: `${journalScope} · ${journalWindow}${journalLastClose ? ` · thru ${journalLastClose}` : ''}`,
+      asOfNote: showQuietProvenance ? `${journalScope} · ${journalWindow}${journalLastClose ? ` · thru ${journalLastClose}` : ''}` : null,
       tone: journalStale ? 'warn' : 'ok', valueSize: VALUE_COMPACT, minWidth: 200, maxWidth: 265,
       stale: journalStale ? journalAgeMark : null,
       color: winRate != null && winRate >= 50 ? BB.green : winRate != null ? BB.amber : 'var(--text3)',
@@ -407,7 +425,7 @@ export default function MetricStrip({ onDrill }: Props) {
     },
     {
       label: 'REALIZED', value: realizedPnl != null ? fmt$(realizedPnl, 0) : '—',
-      asOfNote: `all closed${realizedCount ? ` · ${realizedCount} trades` : ''}${longTermTrimPnl ? ' · incl trims' : ''}`,
+      asOfNote: showQuietProvenance ? `all closed${realizedCount ? ` · ${realizedCount} trades` : ''}${longTermTrimPnl ? ' · incl trims' : ''}` : null,
       tone: journalStale ? 'warn' : 'ok', minWidth: 140, maxWidth: 200,
       stale: journalStale ? journalAgeMark : null,
       color: realizedPnl == null ? 'var(--text3)' : realizedPnl >= 0 ? BB.green : BB.red,
@@ -417,7 +435,7 @@ export default function MetricStrip({ onDrill }: Props) {
     },
     {
       label: 'REGIME', value: regimeLabel ? `${regimeLabel.replace(/_/g, ' ')}${regimeConf ? ` ${Math.round(regimeConf * 100)}%` : ''}` : '—',
-      asOfNote: [regime?.trend_state, regime?.breadth_state, regime?.volatility_state].filter(Boolean).join(' · ') || 'risk-regime/latest',
+      asOfNote: showQuietProvenance ? ([regime?.trend_state, regime?.breadth_state, regime?.volatility_state].filter(Boolean).join(' · ') || 'risk-regime/latest') : null,
       valueSize: VALUE_COMPACT, minWidth: 150, maxWidth: 215,
       color: regimeLabel === 'risk_off' ? BB.red : regimeLabel === 'risk_on' ? BB.green : BB.amber,
       tip: `Market regime from /api/v2/risk-regime/latest — weighs trend, breadth, and volatility signals into a risk-on/risk-off label with confidence.`,
@@ -426,7 +444,7 @@ export default function MetricStrip({ onDrill }: Props) {
     },
     {
       label: 'VIX', value: vix != null ? Number(vix).toFixed(1) : '—',
-      asOfNote: `${vixSource ?? 'source —'}${vixObsTime ? ` · ${String(vixObsTime).slice(11, 16)}` : ''}`,
+      asOfNote: showQuietProvenance ? `${vixSource ?? 'source —'}${vixObsTime ? ` · ${String(vixObsTime).slice(11, 16)}` : ''}` : null,
       minWidth: 110, maxWidth: 160,
       color: vix == null ? 'var(--text3)' : vix >= 25 ? BB.red : vix >= 18 ? BB.amber : BB.green,
       tip: `CBOE Volatility Index. Green <18 (low fear), amber 18-25 (elevated), red ≥25 (high fear).${vixSource ? ` · source ${vixSource}` : ''}${vixObsTime ? ` · observed ${String(vixObsTime).slice(0, 19).replace('T', ' ')}` : ''}`,
@@ -459,8 +477,8 @@ export default function MetricStrip({ onDrill }: Props) {
         setupRun.degraded && !setupRun.healthDegraded ? setupRun.integrity : null,
         !setupRun.healthDegraded && !setupRun.unaccounted ? runHealthMark : null,
         setupRun.population || null,
-        runSlot ? `${runSlot} slot` : null,
-        runFinishedMark,
+        showRunClocksOnFace && runSlot ? `${runSlot} slot` : null,
+        showRunClocksOnFace ? runFinishedMark : null,
       ].filter(Boolean).join(' · ') || (setupRun.runId ? `id ${setupRun.runId}` : null),
       tone: setupsTone,
       valueSize: VALUE_COMPACT,
@@ -491,7 +509,7 @@ export default function MetricStrip({ onDrill }: Props) {
 
   return (
     <div className="metric-strip" style={{ display: 'flex', flexDirection: 'column', background: 'var(--bg0)', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
-    <div className="metric-strip-row" style={{ display: 'flex', alignItems: 'center', gap: 0, padding: '8px 16px 4px' }}>
+    <div className="metric-strip-row" data-density={dx.density === 'compact' ? 'compact' : 'normal'} style={{ display: 'flex', alignItems: 'center', gap: 0, padding: '8px 16px 4px' }}>
       {/* Fixed width, and min-width:0 so the flex algorithm may actually shrink
           it. The stamp had maxWidth:280 with overflow:visible, so its 603px of
           text painted straight over the PORTFOLIO tile — a 323px spill that no
@@ -534,19 +552,20 @@ export default function MetricStrip({ onDrill }: Props) {
           title={(t as any).tip}
           onClick={() => onDrill(t.drill)}
           style={{
-            padding: '4px 20px', cursor: 'pointer', textAlign: 'center',
+            // padding is owned by index.css, selected by data-density on the row.
+            cursor: 'pointer', textAlign: 'center',
             // index.css keys `flex-shrink: 0` off this inline borderRight. Removing
             // it makes tiles squash instead of the strip scrolling.
             borderRight: '1px solid var(--border)',
             flex: '0 0 auto', minWidth: (t as any).minWidth ?? 106, maxWidth: (t as any).maxWidth ?? 210,
             // The rail is the state signal that costs no width and no height —
             // seven quiet slate spines, one amber one you cannot miss.
-            ...rowRail(tone === 'bad' ? 'breach' : tone === 'warn' ? 'attention' : 'neutral'),
+            ...(showTileRails ? rowRail(tone === 'bad' ? 'breach' : tone === 'warn' ? 'attention' : 'neutral') : {}),
           }}
         >
           <div className="ms-label" style={{ ...NOWRAP, fontSize: TYPE.xs, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.5px' }}>
             {t.label}
-            <span style={{ color: toneColor(tone), fontWeight: 800 }} data-tile-tone={tone}>{' '}{toneGlyph(tone)}</span>
+            {showStateDots && <span style={{ color: toneColor(tone), fontWeight: 800 }} data-tile-tone={tone}>{' '}{toneGlyph(tone)}</span>}
             {(t as any).stale && <span style={{ color: BB.amber, fontWeight: 800 }} data-surface-stale>{' '}⚠ STALE</span>}
           </div>
           <div className="ms-value" style={{ ...NOWRAP, ...numStyle, fontSize: (t as any).valueSize ?? VALUE_BIG, fontWeight: 700, color: t.color }}>
