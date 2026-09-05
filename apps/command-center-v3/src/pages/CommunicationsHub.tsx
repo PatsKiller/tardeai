@@ -79,7 +79,7 @@ export default function CommunicationsHub() {
           <div style={hubSubtitle(terminalUi)}>
             CommunicationEvent ledger · ChannelDelivery stubs · subject threads
             {healthLoading ? '' : <> · mode <span style={{ color: AMBER }}>{mode}</span></>}
-            <> · source <span style={{ color: TEXT }}>{source}</span></>}
+            <> · source <span style={{ color: TEXT }}>{source}</span></>
           </div>
         </div>
         <div className="hub-tabs" style={{ display: 'flex', gap: terminalUi ? 4 : 6, flexWrap: 'wrap' }}>
