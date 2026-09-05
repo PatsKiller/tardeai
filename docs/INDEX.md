@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `d412be612d73261ce475d4e840cf83669fb285c37ac32346de0f60185a6853db`
+**Tree fingerprint:** `63cefb3eff0f11bff9fe733c31c2e1b2e8281f2bad4f311d805d5fbb3c820be6`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,10 +12,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2400 |
-| Markdown (excl. this INDEX) | 2000 |
+| Files under `docs/` (excl. this INDEX) | 2402 |
+| Markdown (excl. this INDEX) | 2001 |
 | **MISSING HEADER** | **20** |
-| Header OK | 1980 |
+| Header OK | 1981 |
 | Duplicate groups | 5 |
 
 ### By status_guess
@@ -27,10 +27,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | archive_session_handoff | 3 |
 | archive_superseded | 20 |
 | artifact_code_snapshot | 3 |
-| artifact_raw_sync | 34 |
+| artifact_raw_sync | 35 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 6 |
-| review_required | 2012 |
+| review_required | 2013 |
 
 ## Markdown tree
 
@@ -156,6 +156,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/_findings/alpaca_taxonomy_audit_2026-07-21.md` | FINDINGS: Alpaca Paper/Live Taxonomy & Multi-Account Readiness Audit | review_required | OK | `8212d11b2f89` |
 | `docs/_findings/bitwarden_env_posture_recon_2026-07-21.md` | RECON: Bitwarden + Env Posture Inventory (read-only) | review_required | OK | `a0d867f98a49` |
 | `docs/_findings/brave_search_api_usage_audit_2026-05.md` | Brave Search API Usage Audit — May 2026 | review_required | OK | `943f66776820` |
+| `docs/_findings/brave_september_reconciliation_2026-09-05.md` | Brave September count — reconciliation | review_required | OK | `df9b2ff5811f` |
 | `docs/_findings/comms_delivery_owned_contradiction_2026-09-05.md` | [FIXED 2026-09-05] `delivery_owned` contradicts the gateway it describes | review_required | OK | `abcdea80bf73` |
 | `docs/_findings/defense_desk_v1_diagnosis_2026-07-17.md` | Defense Desk v1 — Phase 0 Diagnosis (2026-07-17) | review_required | OK | `97acf7b2dff3` |
 | `docs/_findings/defense_desk_v2_diagnosis_2026-07-18.md` | Defense Desk v2 — Phase 0 Diagnosis (2026-07-18) | review_required | OK | `5dc0e9420a52` |

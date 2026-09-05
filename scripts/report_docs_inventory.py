@@ -363,7 +363,14 @@ def check_index(inventory: list[dict], summary: dict) -> int:
             n=3,
         )
     )
-    print(f"[FAIL] {INDEX_RELPATH} drift — regenerate with --write-index", file=sys.stderr)
+    # The index is built from `git ls-files`, so a NEW doc that is still
+    # untracked is invisible to --write-index: regenerating before `git add`
+    # produces an index that passes locally and drifts the moment the file is
+    # committed. Say so here, because the obvious reading of "regenerate" is to
+    # do it again in the same wrong order.
+    print(f"[FAIL] {INDEX_RELPATH} drift — regenerate with --write-index "
+          "AFTER `git add` (the index is built from git ls-files, so untracked "
+          "docs are not in it yet)", file=sys.stderr)
     print(diff[:4000], file=sys.stderr)
     if len(diff) > 4000:
         print(f"... diff truncated ({len(diff)} bytes total)", file=sys.stderr)

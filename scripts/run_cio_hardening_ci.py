@@ -625,6 +625,15 @@ GATES = [
         ],
     ),
     (
+        # Phase 5 release discipline. READY must be earned by every item; absent
+        # evidence blocks rather than abstains. A closeout that reads green
+        # because nobody looked is worse than none, because it ends the looking.
+        "campaign_closeout",
+        [
+            "tests/test_campaign_closeout.py",
+        ],
+    ),
+    (
         # Remote (Telegram) operator approval for guard scopes. The operator
         # types APPROVE on their phone; the agent never does. Every refusal path
         # is pinned here because the refusals are what make it safe.

@@ -160,6 +160,27 @@ def _save(path: Path, doc: dict[str, Any]) -> None:
     tmp.replace(path)                      # atomic; a torn ledger reads as unavailable
 
 
+#: Per-caller DAILY caps. These lived in brave_search.CALLER_CAPS, which is the
+#: only reason that second ledger still counted anything — and counting in two
+#: places is what let the two disagree. Enforced here, they bind for every
+#: caller including the ones that never imported the brave client.
+#:
+#: A caller absent from this map gets "default". A cap is per provider-day and is
+#: checked after the monthly/reserve ceilings, so the message an operator sees
+#: names the tightest real constraint.
+CALLER_DAILY_CAPS: dict[str, int] = {
+    "portfolio_news": 10,
+    "catalyst_intelligence": 10,
+    "topic_ingestion": 5,
+    "web_news_fetcher": 5,
+    "default": 25,
+}
+
+
+def caller_daily_cap(caller: str) -> int:
+    return CALLER_DAILY_CAPS.get(caller, CALLER_DAILY_CAPS["default"])
+
+
 #: Monthly units held back from SCHEDULED bulk callers so an on-demand or
 #: operator query is never starved by a cron job that ran first.
 #:
@@ -259,7 +280,18 @@ def _apply_record(doc: dict[str, Any], provider: str, *, allowed: bool,
         p.setdefault("monthly", {})[month] = int(p.get("monthly", {}).get(month, 0)) + 1
         p.setdefault("callers", {}).setdefault(month, {})
         p["callers"][month][caller] = int(p["callers"][month].get(caller, 0)) + 1
+        # Per-caller DAILY, so caller_daily_cap can be enforced here rather than
+        # in a second ledger that drifts from this one.
+        p.setdefault("caller_daily", {}).setdefault(day, {})
+        p["caller_daily"][day][caller] = int(p["caller_daily"][day].get(caller, 0)) + 1
         p["last_call"] = now.isoformat()
+
+
+def _caller_daily_used(doc: dict[str, Any], provider: str, caller: str,
+                       now: datetime) -> int:
+    day, _ = _keys(now)
+    p = (doc.get("providers") or {}).get(provider) or {}
+    return int(((p.get("caller_daily") or {}).get(day) or {}).get(caller, 0))
 
 
 def status(provider: str, *, now: Optional[datetime] = None,
@@ -297,6 +329,13 @@ def check(provider: str, *, caller: str = "default",
         return {"allowed": False, "reason": "MONTHLY_RESERVE_ONLY", "status": st}
     if st["daily_used"] >= st["daily_limit"]:
         return {"allowed": False, "reason": "DAILY_EXHAUSTED", "status": st}
+    try:
+        used = _caller_daily_used(_load(budget_path(root)), provider, caller,
+                                  now or datetime.now(timezone.utc))
+    except Exception:
+        return {"allowed": False, "reason": "BUDGET_UNAVAILABLE", "status": st}
+    if used >= caller_daily_cap(caller):
+        return {"allowed": False, "reason": "CALLER_DAILY_CAP", "status": st}
     return {"allowed": True, "reason": "OK", "status": st}
 
 
@@ -332,6 +371,14 @@ def try_consume(provider: str, *, caller: str = "default",
                           else "MONTHLY_RESERVE_ONLY")
                 return {"allowed": False, "reason": reason, "status":
                         _status_from_doc(provider, doc, now, path)}
+            if _caller_daily_used(doc, provider, caller, now) >= caller_daily_cap(caller):
+                _apply_record(doc, provider, allowed=False, caller=caller, now=now)
+                try:
+                    _save(path, doc)
+                except Exception:
+                    pass
+                return {"allowed": False, "reason": "CALLER_DAILY_CAP",
+                        "status": _status_from_doc(provider, doc, now, path)}
             if st["daily_used"] >= st["daily_limit"]:
                 _apply_record(doc, provider, allowed=False, caller=caller, now=now)
                 try:
@@ -379,6 +426,58 @@ def record(provider: str, *, allowed: bool = True, caller: str = "default",
                 pass
     except Exception:
         pass
+
+
+def refund(provider: str, *, caller: str = "default",
+           now: Optional[datetime] = None, root: Optional[Path] = None) -> bool:
+    """Give back one unit reserved by ``try_consume`` that never became a call.
+
+    ``try_consume`` spends BEFORE the request, because a check that is separate
+    from the spend lets two processes both observe an under-limit counter and
+    both call. The cost of that correctness is that a request which never
+    happened — connection refused, timeout, non-200 — has already been counted.
+    This reverses exactly one unit.
+
+    Refunds never go below zero, and a refund is not recorded as a denial: a
+    denial means the budget refused, and conflating the two would make the
+    denial history useless for the one thing it is read for. Returns whether a
+    unit was actually returned, so a caller cannot report a refund that did not
+    happen.
+    """
+    now = now or datetime.now(timezone.utc)
+    path = budget_path(root)
+    day, month = _keys(now)
+    try:
+        with _exclusive(path):
+            try:
+                doc = _load(path)
+            except BudgetUnavailable:
+                return False              # never rebuild a corrupt ledger
+            p = (doc.get("providers") or {}).get(provider)
+            if not p:
+                return False
+            if int((p.get("daily") or {}).get(day, 0)) <= 0:
+                # Nothing recorded today to give back. Refunding anyway would
+                # invent credit, which is the same class of error as inventing a
+                # provider limit.
+                return False
+            p["daily"][day] -= 1
+            if int((p.get("monthly") or {}).get(month, 0)) > 0:
+                p["monthly"][month] -= 1
+            cm = (p.get("callers") or {}).get(month) or {}
+            if int(cm.get(caller, 0)) > 0:
+                cm[caller] -= 1
+            cd = (p.get("caller_daily") or {}).get(day) or {}
+            if int(cd.get(caller, 0)) > 0:
+                cd[caller] -= 1
+            p.setdefault("refunds", {})[day] = int((p.get("refunds") or {}).get(day, 0)) + 1
+            try:
+                _save(path, doc)
+            except Exception:
+                return False
+            return True
+    except Exception:
+        return False
 
 
 def guard(provider: str, caller: str = "default", *,

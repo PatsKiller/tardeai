@@ -168,14 +168,37 @@ def test_try_consume_serializes_last_unit_across_processes(
 def test_brave_search_source_denies_when_shared_unavailable():
     """Representative caller wire (F3): ImportError of the shared module must
     DENY — not assign ``_shared_check = None`` and fall through to a
-    release-relative local ledger."""
+    release-relative local ledger.
+
+    Retargeted from `_check_budget` to `_reserve`. The client no longer checks
+    and then separately records: it reserves atomically through `try_consume`,
+    because check-then-call-then-record let two processes both observe an
+    under-limit counter and both spend. The fail-closed property this test
+    exists for is unchanged and now lives in the reservation.
+    """
     src = (ROOT / "scripts" / "brave_search.py").read_text(encoding="utf-8")
-    body = src.split("def _check_budget", 1)[1].split("def _record_shared", 1)[0]
+    assert "def _check_budget" not in src, (
+        "the check-then-record path returned; it is the check-to-use gap")
+    body = src.split("def _reserve", 1)[1].split("def _refund", 1)[0]
     assert "never fail open" in body
     assert "_shared_check = None" not in body
-    assert "shared budget unavailable — DENY" in body
-    # Shared check is mandatory — verdict consulted unconditionally after import.
-    assert '_shared_check("brave"' in body
+    assert "shared budget unavailable" in body
+    # The shared ledger is mandatory: the verdict is consulted unconditionally.
+    assert 'try_consume("brave"' in body
+
+
+def test_every_brave_failure_path_refunds():
+    """A reservation is taken BEFORE the request, so each way out that does not
+    make a successful call must give the unit back — otherwise the ledger
+    charges for work that never happened."""
+    src = (ROOT / "scripts" / "brave_search.py").read_text(encoding="utf-8")
+    for fn in ("def search(", "def search_news("):
+        body = src.split(fn, 1)[1].split("\ndef ", 1)[0]
+        assert "_reserve(caller)" in body, f"{fn} does not reserve"
+        # missing-key path and exception path both refund
+        assert body.count("_refund(caller)") >= 2, (
+            f"{fn} has {body.count('_refund(caller)')} refund sites; "
+            "the missing-key path and the exception path both need one")
 
 
 def test_guard_returns_false_when_over_so_callers_return_empty(tmp_path: Path, monkeypatch):
@@ -299,3 +322,114 @@ def test_l2_ledger_path_is_not_built_from_this_modules_location():
         "_budget_file() derives the ledger path from this module's location — "
         "that is the defect that gave every importing tree a private counter")
     assert "_state_root" in code
+
+
+# ── One ledger: caller caps moved here, refunds added ───────────────────────
+# The second ledger (brave_search_budget.json) counted for exactly one reason —
+# it held CALLER_CAPS. Counting in two places is what let them disagree: they
+# matched exactly (52 each) through 2026-09-04 and parted by six on 09-05.
+
+def test_caller_daily_cap_binds_in_the_canonical_ledger(tmp_path: Path,
+                                                        monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("SEARCH_BUDGET_BRAVE_DAILY", "10000")
+    monkeypatch.setenv("SEARCH_BUDGET_BRAVE_MONTHLY", "10000")
+    cap = sb.caller_daily_cap("topic_ingestion")
+    for _ in range(cap):
+        assert sb.try_consume("brave", caller="topic_ingestion", now=NOW,
+                              root=tmp_path)["allowed"]
+    blocked = sb.try_consume("brave", caller="topic_ingestion", now=NOW, root=tmp_path)
+    assert blocked["allowed"] is False
+    assert blocked["reason"] == "CALLER_DAILY_CAP"
+
+
+def test_one_callers_cap_does_not_bind_another(tmp_path: Path,
+                                               monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("SEARCH_BUDGET_BRAVE_DAILY", "10000")
+    monkeypatch.setenv("SEARCH_BUDGET_BRAVE_MONTHLY", "10000")
+    for _ in range(sb.caller_daily_cap("topic_ingestion")):
+        sb.try_consume("brave", caller="topic_ingestion", now=NOW, root=tmp_path)
+    assert sb.try_consume("brave", caller="web_research", now=NOW, root=tmp_path)["allowed"]
+
+
+def test_an_unknown_caller_gets_the_default_cap(tmp_path: Path):
+    assert sb.caller_daily_cap("never_seen_before") == sb.CALLER_DAILY_CAPS["default"]
+
+
+def test_refund_returns_exactly_one_unit(tmp_path: Path):
+    sb.try_consume("brave", caller="web_research", now=NOW, root=tmp_path)
+    before = sb.status("brave", now=NOW, root=tmp_path)["monthly_used"]
+    assert sb.refund("brave", caller="web_research", now=NOW, root=tmp_path) is True
+    after = sb.status("brave", now=NOW, root=tmp_path)["monthly_used"]
+    assert after == before - 1
+
+
+def test_refund_never_invents_credit(tmp_path: Path):
+    """A refund with nothing recorded is the same error class as an invented
+    provider limit: a number produced from no observation."""
+    assert sb.refund("brave", caller="web_research", now=NOW, root=tmp_path) is False
+    assert sb.status("brave", now=NOW, root=tmp_path)["monthly_used"] == 0
+    sb.try_consume("brave", caller="web_research", now=NOW, root=tmp_path)
+    assert sb.refund("brave", caller="web_research", now=NOW, root=tmp_path) is True
+    assert sb.refund("brave", caller="web_research", now=NOW, root=tmp_path) is False
+    assert sb.status("brave", now=NOW, root=tmp_path)["monthly_used"] == 0
+
+
+def test_a_refund_is_not_recorded_as_a_denial(tmp_path: Path):
+    """Denial history answers 'did the budget refuse us'. A refund is the budget
+    agreeing and the request failing; conflating them ruins that history."""
+    import json
+    sb.try_consume("brave", caller="web_research", now=NOW, root=tmp_path)
+    sb.refund("brave", caller="web_research", now=NOW, root=tmp_path)
+    doc = json.loads(sb.budget_path(tmp_path).read_text())
+    p = doc["providers"]["brave"]
+    day = NOW.strftime("%Y-%m-%d")
+    assert int((p.get("refunds") or {}).get(day, 0)) == 1
+    assert int((p.get("denied") or {}).get(day, 0)) == 0
+
+
+def test_refund_frees_the_callers_cap_too(tmp_path: Path,
+                                          monkeypatch: pytest.MonkeyPatch):
+    """Or a caller that fails its whole allowance is locked out for the day
+    having made no successful call."""
+    monkeypatch.setenv("SEARCH_BUDGET_BRAVE_DAILY", "10000")
+    monkeypatch.setenv("SEARCH_BUDGET_BRAVE_MONTHLY", "10000")
+    cap = sb.caller_daily_cap("topic_ingestion")
+    for _ in range(cap):
+        sb.try_consume("brave", caller="topic_ingestion", now=NOW, root=tmp_path)
+    assert sb.try_consume("brave", caller="topic_ingestion", now=NOW,
+                          root=tmp_path)["reason"] == "CALLER_DAILY_CAP"
+    sb.refund("brave", caller="topic_ingestion", now=NOW, root=tmp_path)
+    assert sb.try_consume("brave", caller="topic_ingestion", now=NOW,
+                          root=tmp_path)["allowed"] is True
+
+
+def test_refund_on_a_corrupt_ledger_returns_false_and_does_not_rebuild(tmp_path: Path):
+    p = sb.budget_path(tmp_path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text("{not json")
+    assert sb.refund("brave", caller="web_research", now=NOW, root=tmp_path) is False
+    assert p.read_text() == "{not json"
+
+
+def test_brave_client_has_no_live_writer_for_the_retired_ledger():
+    """The retired ledger must have no live write path left in the client."""
+    import inspect
+
+    import brave_search as b
+
+    src = inspect.getsource(b)
+    live = [ln for ln in src.splitlines()
+            if "_save_budget(" in ln and not ln.strip().startswith("#")]
+    assert live == [], f"the retired ledger still has a writer: {live}"
+    assert b._record_call("web_research") is None
+
+
+def test_the_alarm_sensor_reads_the_binding_ledger():
+    """The 2026-08-30 failure was an alarm computing a percentage from a counter
+    that saw a fraction of the traffic. It must read the one that binds."""
+    import brave_search as b
+
+    st = b.get_budget_status()
+    assert "search_budget.json" in st["source"]
+    assert st["monthly_limit"] == sb.DEFAULT_LIMITS["brave"]["monthly"]
+    assert st["daily_limit"] == sb.DEFAULT_LIMITS["brave"]["daily"]
