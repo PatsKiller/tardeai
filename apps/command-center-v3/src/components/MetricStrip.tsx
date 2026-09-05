@@ -509,7 +509,7 @@ export default function MetricStrip({ onDrill }: Props) {
 
   return (
     <div className="metric-strip" style={{ display: 'flex', flexDirection: 'column', background: 'var(--bg0)', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
-    <div className="metric-strip-row" style={{ display: 'flex', alignItems: 'center', gap: 0, padding: '8px 16px 4px' }}>
+    <div className="metric-strip-row" data-density={dx.density === 'compact' ? 'compact' : 'normal'} style={{ display: 'flex', alignItems: 'center', gap: 0, padding: '8px 16px 4px' }}>
       {/* Fixed width, and min-width:0 so the flex algorithm may actually shrink
           it. The stamp had maxWidth:280 with overflow:visible, so its 603px of
           text painted straight over the PORTFOLIO tile — a 323px spill that no
@@ -552,9 +552,8 @@ export default function MetricStrip({ onDrill }: Props) {
           title={(t as any).tip}
           onClick={() => onDrill(t.drill)}
           style={{
-            // density is padding ONLY — it never removes a line, because a line
-            // that disappears is content that disappears.
-            padding: dx.density === 'compact' ? '2px 12px' : '4px 20px', cursor: 'pointer', textAlign: 'center',
+            // padding is owned by index.css, selected by data-density on the row.
+            cursor: 'pointer', textAlign: 'center',
             // index.css keys `flex-shrink: 0` off this inline borderRight. Removing
             // it makes tiles squash instead of the strip scrolling.
             borderRight: '1px solid var(--border)',
