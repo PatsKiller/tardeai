@@ -14,6 +14,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 import scripts.lib.comms.mode as mode_mod  # noqa: E402
 from scripts.lib.comms.channel_adapters import send_via_gateway  # noqa: E402
+from scripts.lib.comms.channel_adapters import telegram_class_allowed  # noqa: E402
 from scripts.lib.comms.client import memory_store_snapshot, reset_memory_store  # noqa: E402
 from scripts.lib.comms.delivery import (  # noqa: E402
     memory_delivery_snapshot,
@@ -46,6 +47,42 @@ def _clean(monkeypatch):
     reset_memory_deliveries()
     mode_mod._cache["mode"] = None
     mode_mod._cache["why"] = None
+
+
+def test_telegram_class_allowed_normalizes_operator_alert(monkeypatch):
+    """Wave B: `operator_alert` folds into `ops` ownership, agreeing with the ledger."""
+    monkeypatch.setenv("COMMS_GATEWAY_MODE", "ACTIVE")
+    monkeypatch.setenv("COMMS_GATEWAY_ACTIVE_CLASSES", "ops")
+    mode_mod._cache["mode"] = None
+    mode_mod._cache["why"] = None
+
+    assert telegram_class_allowed("ACTIVE", "operator_alert") is True
+    assert telegram_class_allowed("ACTIVE", "ops_alert") is True
+    assert telegram_class_allowed("ACTIVE", "health") is True
+    assert telegram_class_allowed("ACTIVE", "ops") is True
+
+
+def test_telegram_class_allowed_protected_and_unknown_fail_closed(monkeypatch):
+    monkeypatch.setenv("COMMS_GATEWAY_MODE", "ACTIVE")
+    monkeypatch.setenv("COMMS_GATEWAY_ACTIVE_CLASSES", "ops")
+    mode_mod._cache["mode"] = None
+    mode_mod._cache["why"] = None
+
+    # Protected classes never alias into ops and are not allowlisted.
+    assert telegram_class_allowed("ACTIVE", "approval") is False
+    assert telegram_class_allowed("ACTIVE", "protection_incident") is False
+    # Unknown passes through unchanged and is not allowlisted.
+    assert telegram_class_allowed("ACTIVE", "something_new") is False
+    # Blank stays blank, never coerced to a valid class.
+    assert telegram_class_allowed("ACTIVE", "") is False
+
+
+def test_telegram_class_allowed_empty_allowlist_fail_closed(monkeypatch):
+    monkeypatch.setenv("COMMS_GATEWAY_MODE", "ACTIVE")
+    monkeypatch.delenv("COMMS_GATEWAY_ACTIVE_CLASSES", raising=False)
+    mode_mod._cache["mode"] = None
+    mode_mod._cache["why"] = None
+    assert telegram_class_allowed("ACTIVE", "operator_alert") is False
 
 
 def test_default_deliver_false_records_event_no_network(monkeypatch):
