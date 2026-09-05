@@ -183,6 +183,119 @@ def publish_operator_message(message: str, *, bypass_router: bool = False,
                                   bypass_router=bypass_router)
 
 
+def _comms_gateway_owns(message_class: str) -> bool:
+    """True when COMMS_GATEWAY_MODE is CANARY/ACTIVE and class is allowlisted."""
+    try:
+        from scripts.lib.comms.channel_adapters import telegram_class_allowed
+        from scripts.lib.comms.mode import MODE_ACTIVE, MODE_CANARY, get_gateway_mode
+    except ImportError:
+        try:
+            from lib.comms.channel_adapters import telegram_class_allowed  # type: ignore
+            from lib.comms.mode import MODE_ACTIVE, MODE_CANARY, get_gateway_mode  # type: ignore
+        except ImportError:
+            return False
+    mode = get_gateway_mode(refresh=True)
+    if mode not in (MODE_CANARY, MODE_ACTIVE):
+        return False
+    return telegram_class_allowed(mode, message_class)
+
+
+def _best_effort_comms_publish(
+    message: str,
+    *,
+    message_class: str,
+    producer: str = "telegram_alert.send_telegram",
+) -> None:
+    """Record CommunicationEvent without claiming delivery ownership (OFF/SHADOW)."""
+    try:
+        from scripts.lib.comms.adapters import from_plain_message
+        from scripts.lib.comms.client import publish_communication
+    except ImportError:
+        try:
+            from lib.comms.adapters import from_plain_message  # type: ignore
+            from lib.comms.client import publish_communication  # type: ignore
+        except ImportError:
+            return
+    try:
+        subject_key = f"telegram:{message_class}:{(message or '')[:48]}"
+        publish_communication(
+            from_plain_message(
+                producer=producer,
+                body=message,
+                subject_key=subject_key,
+                message_class=message_class,
+            )
+        )
+    except Exception:
+        return
+
+
+def _send_via_comms_gateway(
+    message: str,
+    *,
+    message_class: str,
+    reply_markup: dict | None = None,
+    chat_ids: list | None = None,
+    thread_id: str | None = None,
+    producer: str = "telegram_alert.send_telegram",
+) -> bool:
+    """Publish CommunicationEvent then gateway-deliver. No legacy dual-send.
+
+    Order: ``publish_communication`` → ``send_via_gateway(..., deliver=True,
+    event_id=...)`` so ``require_event_id`` binds the same observation. Never
+    also calls ``_legacy_send`` for the same message.
+    """
+    try:
+        from scripts.lib.comms.adapters import from_plain_message
+        from scripts.lib.comms.channel_adapters import send_via_gateway
+        from scripts.lib.comms.client import publish_communication
+    except ImportError:
+        from lib.comms.adapters import from_plain_message  # type: ignore
+        from lib.comms.channel_adapters import send_via_gateway  # type: ignore
+        from lib.comms.client import publish_communication  # type: ignore
+
+    subject_key = f"telegram:{message_class}:{(message or '')[:48]}"
+    published = publish_communication(
+        from_plain_message(
+            producer=producer,
+            body=message,
+            subject_key=subject_key,
+            message_class=message_class,
+        )
+    )
+    if not published.ok or not published.event_id:
+        print(
+            f"[telegram] gateway publish failed — refusing dual-send for "
+            f"owned class {message_class}"
+        )
+        return False
+
+    # Reuse the reservation minted by publish_communication when present.
+    existing_dlv = (
+        published.delivery_ids[0] if published.delivery_ids else None
+    )
+    result = send_via_gateway(
+        "telegram",
+        body=message,
+        producer=producer,
+        subject_key=subject_key,
+        message_class=message_class,
+        deliver=True,
+        event_id=published.event_id,
+        reply_markup=reply_markup,
+        chat_ids=chat_ids,
+        thread_id=thread_id,
+        _existing_delivery_id=existing_dlv,
+    )
+    if not result.get("delivered"):
+        print(
+            f"[telegram] gateway deliver blocked/failed "
+            f"({result.get('error')}): {message[:60]}..."
+        )
+        return False
+    return True
+
+
 def send_telegram(
     message: str,
     bypass_router: bool = False,
@@ -190,6 +303,8 @@ def send_telegram(
     reply_markup: dict | None = None,
     chat_ids: list | None = None,
     thread_id: str | None = None,
+    message_class: str = "operator_alert",
+    _gateway_owned: bool = False,
 ) -> bool:
     """Send/publish an operator alert. Returns True when the event was ACCEPTED.
 
@@ -200,8 +315,12 @@ def send_telegram(
     the storm this normalization exists to stop. Callers needing delivery detail
     should use publish_operator_message() and read `delivered`.
 
-    ``reply_markup`` / explicit ``chat_ids`` / ``thread_id`` force the legacy
-    transport path (outbox does not yet own keyboard or destination overrides).
+    When ``COMMS_GATEWAY_MODE`` is CANARY/ACTIVE and ``message_class`` is
+    allowlisted, the communications gateway owns delivery (publish then
+    ``send_via_gateway(deliver=True)``) — no legacy dual-send.
+
+    ``_gateway_owned=True`` skips gateway re-entry (recursion guard if a provider
+    path ever called ``send_telegram``). Prefer ``_raw_send_telegram`` instead.
     """
     if not _enabled():
         return False
@@ -211,8 +330,9 @@ def send_telegram(
         wrap_send_hook(message, producer="send_telegram", bypass_router=bypass_router)
     except Exception:
         pass
-    # Keyboards / explicit destinations stay on legacy transport until outbox owns them.
-    if reply_markup is not None or chat_ids is not None or thread_id is not None:
+
+    # Recursion guard: never re-enter send_via_gateway from a gateway-owned call.
+    if _gateway_owned:
         return _legacy_send(
             message,
             bypass_router,
@@ -220,6 +340,36 @@ def send_telegram(
             chat_ids=chat_ids,
             thread_id=thread_id,
         )
+
+    mc = (message_class or "operator_alert").strip() or "operator_alert"
+    if _comms_gateway_owns(mc):
+        try:
+            return _send_via_comms_gateway(
+                message,
+                message_class=mc,
+                reply_markup=reply_markup,
+                chat_ids=chat_ids,
+                thread_id=thread_id,
+            )
+        except Exception as e:
+            print(
+                f"[telegram] gateway-owned send failed ({type(e).__name__}: {str(e)[:160]}) "
+                f"— not dual-sending legacy for owned class"
+            )
+            return False
+
+    # OFF/SHADOW or class not allowlisted: legacy send + best-effort ledger publish.
+    # Keyboards / explicit destinations stay on legacy transport until outbox owns them.
+    if reply_markup is not None or chat_ids is not None or thread_id is not None:
+        ok = _legacy_send(
+            message,
+            bypass_router,
+            reply_markup=reply_markup,
+            chat_ids=chat_ids,
+            thread_id=thread_id,
+        )
+        _best_effort_comms_publish(message, message_class=mc)
+        return ok
     try:
         result = publish_operator_message(message, bypass_router=bypass_router)
     except Exception as e:
@@ -227,7 +377,10 @@ def send_telegram(
         # fall back to legacy delivery so the operator still gets the alert.
         print(f"[telegram] normalized publish failed ({type(e).__name__}: {str(e)[:160]}) "
               f"— falling back to legacy delivery")
-        return _legacy_send(message, bypass_router)
+        ok = _legacy_send(message, bypass_router)
+        _best_effort_comms_publish(message, message_class=mc)
+        return ok
+    _best_effort_comms_publish(message, message_class=mc)
     if not result.get("delivered") and result.get("route_mode") not in (None, "LEGACY"):
         print(f"[telegram] {result.get('route_mode')} ({result.get('reason')}): {message[:60]}...")
     return bool(result.get("accepted"))
@@ -239,11 +392,16 @@ def send_telegram_document(
     *,
     bypass_router: bool = True,
     chat_ids: list | None = None,
+    message_class: str = "operator_alert",
 ) -> bool:
     """Send a file via the approved transport sendDocument chokepoint.
 
     Producers must call this instead of raw Bot API sendDocument. Credentials and
     chat selection stay inside telegram_alert / telegram_transport.
+
+    Document bytes are not yet gateway-mediated: when COMMS owns the class we
+    still send via the approved chokepoint and publish a CommunicationEvent for
+    the caption (no dual text send). OFF/SHADOW keeps legacy + best-effort publish.
     """
     if not _enabled():
         return False
@@ -274,6 +432,24 @@ def send_telegram_document(
     if not token or not targets:
         print("[telegram] document skipped — TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID not set")
         return False
+
+    mc = (message_class or "operator_alert").strip() or "operator_alert"
+    # Optional CANARY chat filter when gateway owns the class.
+    if _comms_gateway_owns(mc):
+        try:
+            from scripts.lib.comms.channel_adapters import _telegram_canary_chats
+            from scripts.lib.comms.mode import MODE_CANARY, get_gateway_mode
+        except ImportError:
+            from lib.comms.channel_adapters import _telegram_canary_chats  # type: ignore
+            from lib.comms.mode import MODE_CANARY, get_gateway_mode  # type: ignore
+        if get_gateway_mode(refresh=True) == MODE_CANARY:
+            allow = _telegram_canary_chats()
+            if allow:
+                targets = [c for c in targets if c in allow]
+                if not targets:
+                    print("[telegram] document blocked — no chat in COMMS_GATEWAY_CANARY_CHATS")
+                    return False
+
     ok = True
     for cid in targets:
         result = send_document(token=token, chat_id=cid, file_path=str(path), caption=cap)
@@ -285,6 +461,10 @@ def send_telegram_document(
         capture(cap, ok=ok, channel="telegram_document")
     except Exception:
         pass
+    # Ledger: always best-effort for documents (gateway does not yet own file bytes).
+    _best_effort_comms_publish(
+        cap, message_class=mc, producer="telegram_alert.send_telegram_document"
+    )
     return ok
 
 

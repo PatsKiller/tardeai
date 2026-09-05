@@ -46,6 +46,15 @@ Use this list only when operator-approved cutover is intentionally started after
 - [ ] Non-Telegram channels **not** activated unless Phase 10 adapters are gateway-mediated and canaried.  
 - [ ] Operator sign-off recorded (name, UTC time, SHA).
 
+### Telegram ACTIVE env (documented only — gates above remain unchecked)
+
+| Env | Purpose |
+|---|---|
+| `COMMS_GATEWAY_MODE=ACTIVE` | Operator-only host flip; **not** a repo / unit-test production default |
+| `COMMS_GATEWAY_ACTIVE_CLASSES` | Comma-separated classes Telegram gateway may deliver. **Unset/empty → fail-closed (no Telegram deliver).** |
+
+Checking boxes above is still required before any ACTIVE cutover. Shipping these env notes does not constitute activation.
+
 ---
 
 ## Post-activation verification (still unchecked until done)

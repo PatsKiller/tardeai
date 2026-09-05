@@ -850,6 +850,7 @@ GATES = [
             "tests/test_comms_librarian.py",
             "tests/test_comms_shadow_compare.py",
             "tests/test_comms_subject_memory.py",
+            "tests/test_comms_telegram_canary_active.py",
             "tests/test_communications_portal.py",
             "tests/test_provider_chokepoint_ratchet.py",
             "tests/test_telegram_alert_rich_send.py",

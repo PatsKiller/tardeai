@@ -3,7 +3,7 @@
 Public API:
   - CommunicationEvent / publish_communication
   - ChannelDelivery / reserve_delivery / settle_delivery / record_chunk
-  - channel adapters: send_via_gateway (email/slack/whatsapp; deliver=False default)
+  - channel adapters: send_via_gateway (email/slack/whatsapp/telegram; deliver=False default)
   - subject memory: subject_key_for, upsert_subject, attach_event_to_subject,
     retrieve_subject_history
   - curation: select_curation_mode, curate_deterministic,
