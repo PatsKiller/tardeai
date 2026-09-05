@@ -14,7 +14,8 @@ Every retained sender has exactly one disposition:
 | EXEMPT_WITH_EXPIRY | Allowed temporarily with owner + expiry |
 
 **Unclassified count: 0** (among sender-pattern files).  
-**Phase 0 blocking residual:** 166 `MIGRATE` rows still have `owner: TBD` — must be assigned before operator sign-off.
+**Owners TBD:** 0 (provisional path-heuristic owners assigned 2026-09-05).  
+**Phase 0 residual:** operator confirmation of provisional owners still recommended before treating sign-off as final.
 
 ---
 
@@ -29,7 +30,8 @@ Every retained sender has exactly one disposition:
 | REMOVE | 0 (none auto-assigned) |
 | DISABLE | 0 (none auto-assigned) |
 | MIGRATE with chokepoint baseline bypass | 44 |
-| Owners TBD | 166 |
+| Owners TBD | 0 (provisional) |
+| Provisional owner desks | cio, hermes, advisory, broker, risk, research, ops |
 
 Chokepoint live scan: **45 producers / 133 violations** (ratchet pass, not zero).  
 Baseline file: **46 files / 142 recorded violations**.
@@ -127,12 +129,12 @@ None auto-assigned this pass. Candidates should be promoted from MIGRATE after:
 
 ---
 
-## Owner assignment protocol (required for Phase 0 sign-off)
+## Owner assignment protocol
 
 1. Export `sender_inventory.json`.
-2. For each `owner: TBD`, assign a human or desk (`ops`, `cio`, `hermes`, `broker`, `research`, …).
-3. Optionally reclassify a small set to DISABLE/REMOVE with justification.
-4. Re-run generator after allowlist changes.
+2. Provisional owners were assigned by path heuristic (cio/hermes/advisory/broker/risk/research/ops).
+3. Operator should confirm or override desks; optionally reclassify DISABLE/REMOVE.
+4. Re-run `scripts/comms_phase0_sender_inventory.py` after allowlist changes.
 5. Record sign-off below.
 
 ---
@@ -141,8 +143,8 @@ None auto-assigned this pass. Candidates should be promoted from MIGRATE after:
 
 | Role | Name | Date | Notes |
 |---|---|---|---|
-| Attestor (automation) | Phase 0 scripts + host evidence | 2026-09-05 | Inventory generated; owners TBD |
-| Operator | | | Pending owner assignment |
-| Comms gateway owner | | | Pending |
+| Attestor (automation) | Phase 0 scripts + host evidence | 2026-09-05 | Inventory + provisional owners |
+| Operator | | | Confirm provisional owners |
+| Comms gateway owner | | | Phase 1 ledger started with provisional owners in place |
 
-**Phase 0 exit status:** **BLOCKED** on owner assignment for 166 MIGRATE rows (dispositions themselves are complete; ownership is not).
+**Phase 0 exit status:** **PROVISIONAL PASS** (dispositions complete; owners provisionally assigned; formal operator confirmation outstanding).

@@ -14,7 +14,7 @@ Classification key: **LIVE** · **LIVE BUT PARTIAL** · **BUILT_DARK** · **DISC
 | Exact live SHA attestation | LIVE | Continuous re-attest on each deploy | Phase 0 (ongoing) |
 | Sender disposition ledger | LIVE BUT PARTIAL | 166 MIGRATE owners TBD | Phase 0 sign-off |
 | Zero bypass traffic | LIVE BUT PARTIAL | 45 producers / 133 violations; ratchet ≠ zero | Phase 2 + PR-9 |
-| Universal `event_id` before provider call | ABSENT | No CommunicationEvent; many direct sends | Phase 1–2 |
+| Universal `event_id` before provider call | BUILT_DARK (Phase 1 client OFF) | Ledger + `publish_communication` exist; producers not yet migrated; delivery not owned | Phase 1 done · migrate Phase 5+ · enforce Phase 2 |
 | Fail closed on missing provenance / protected facts / retention / recipient policy | ABSENT / partial CIO only | Not universal | Phase 1 + 5 |
 | Dual-path CIO residual eliminated | LIVE BUT PARTIAL | Scanner direct-send vs outbox worker | Phase 2–3 / CIO cutover |
 
@@ -24,7 +24,7 @@ Classification key: **LIVE** · **LIVE BUT PARTIAL** · **BUILT_DARK** · **DISC
 
 | Target capability | Class | Gap | Close-in phase |
 |---|---|---|---|
-| CommunicationEvent@v2 ledger | ABSENT | Design only | Phase 1 |
+| CommunicationEvent@v2 ledger | BUILT_DARK | Schema + client + tests landed; not wired to producers; mode OFF | Phase 1 done · adoption Phase 5+ |
 | Generalize CIO lineage + alert outbox | LIVE foundations / ABSENT universal | Two parallel stacks + legacy | Phase 1–3 |
 | Delivery ledger (all channels) | LIVE BUT PARTIAL (alert deliveries / CIO receipts) | Not universal; Telegram-centric | Phase 3 |
 | Telegram adapter behind gateway only | LIVE BUT PARTIAL | Approved transport exists; bypasses remain | Phase 2–3, 5, 9 |
@@ -53,7 +53,7 @@ Classification key: **LIVE** · **LIVE BUT PARTIAL** · **BUILT_DARK** · **DISC
 
 | Contract | Status |
 |---|---|
-| CommunicationEvent@v2 | ABSENT |
+| CommunicationEvent@v2 | BUILT_DARK (code+migration; not producer-adopted) |
 | SubjectThread@v1 | ABSENT |
 | MessageArtifact@v1 | ABSENT |
 | CurationReceipt@v1 | ABSENT |
