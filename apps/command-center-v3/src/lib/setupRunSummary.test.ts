@@ -172,3 +172,49 @@ if (fail > 0) process.exit(1)
     u.degraded === true)
   check('unaccounted count is exposed to callers', u.unaccounted === 12)
 }
+
+// ── run health is not count reconciliation (2026-09-05) ──────────────────────
+// The live 2026-09-04::1730 run was RECONCILED and RUN_UNDERFILLED at once:
+// 21 = 12 classified + 9 manual review, nothing unaccounted, while the run had
+// scanned 21 symbols against a health floor of 40. The tile painted green
+// because only reconciliation was rendered.
+{
+  const underfilled: SetupRunSummary = {
+    contract_version: 'SetupRunSummary@v1',
+    run_id: '2026-09-04::1730', run_label: '1730', run_date: '2026-09-04',
+    run_timestamp: '2026-09-04T21:22:44',
+    scanned_count: 21, classified_count: 12,
+    go_count: 1, wait_count: 1, nogo_count: 10,
+    review_count: 9, excluded_count: 0, error_count: 0, unclassified_count: 0,
+    accounted_count: 21, unaccounted_count: 0,
+    count_integrity: 'RECONCILED',
+    freshness_status: 'RUN_UNDERFILLED', quality: 'DEGRADED',
+  }
+  const r = renderSetupCounts(underfilled, {})
+  check('a reconciled run can still be an unhealthy one', r.integrity === RECONCILED && r.healthDegraded === true)
+  check('reconciliation stays false-negative-free: degraded is about the tally only', r.degraded === false)
+  check('the raw producer status is carried, not re-derived', r.runHealthStatus === 'RUN_UNDERFILLED')
+  check('the health tier matches the classifier the Trading panel uses', r.runHealth === 'underfilled')
+
+  // Negative control the other way: a healthy run whose tally does NOT add up
+  // must still be degraded. Neither signal may mask the other.
+  const mismatched: SetupRunSummary = {
+    ...underfilled, freshness_status: 'RUN_HEALTHY', quality: 'OK',
+    review_count: 0, accounted_count: 12, unaccounted_count: 9,
+  }
+  const m = renderSetupCounts(mismatched, {})
+  check('a healthy run with an unaccounted tally is still degraded', m.degraded === true)
+  check('a healthy run is not health-degraded', m.healthDegraded === false)
+  check('the two verdicts are independent', m.degraded !== m.healthDegraded)
+
+  // Health must survive the early-return branches, or a stale surface silently
+  // forgets that the last run it saw was underfilled.
+  const staleRender = renderSetupCounts(underfilled, { stale: true, staleLabel: 'STALE' })
+  check('a stale surface still reports the run health it last saw',
+    staleRender.healthDegraded === true && staleRender.runHealthStatus === 'RUN_UNDERFILLED')
+
+  const missing = renderSetupCounts(null, {})
+  check('an absent summary reports unknown health, never healthy',
+    missing.runHealth === 'unknown' && missing.healthDegraded === false && missing.runHealthStatus === null)
+}
+

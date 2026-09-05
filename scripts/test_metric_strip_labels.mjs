@@ -55,8 +55,18 @@ check('no two tiles share a static clock label', (() => {
   if (labels.length < 2) return false          // vacuous pass is a failure
   return new Set(labels).size === labels.length
 })())
-check('the portfolio tile states how much value its date covers',
-  code.includes('covers ${cov.at_newest_pct}% of value'))
+// Coverage-% moved OFF the tile face by operator decision (exception-driven
+// header): it answers "how much of the book is stale", which is a drill
+// question, while "how stale" (oldestMark) stays reachable on the face when it
+// matters. The string is NOT deleted — it must still reach the tooltip. A bare
+// includes() would keep passing while the fact left the surface entirely, so
+// both halves are asserted: still composed, and no longer on the face composer.
+check('the value coverage the headline date speaks for still reaches the tooltip',
+  code.includes('covers ${cov.at_newest_pct}% of value')
+  && /const coverageMark/.test(code)
+  && code.includes('${portfolioFullNote'))
+check('coverage-% no longer competes for tile-face width',
+  !/const portfolioFaceNote[\s\S]{0,400}coverageMark/.test(code))
 check('the oldest contributor carries a stamp and an age, not just a name',
   code.includes('const oldestLine') && code.includes('ageMark(posOldestAgeH)'))
 // A tooltip is not rendered text. The live audit found the oldest account had
@@ -109,6 +119,53 @@ check('an UNDATED tile renders a line rather than nothing',
 check('the overview mark names data_as_of and states UNDATED',
   code.includes('· data_as_of ') && code.includes('data_as_of UNDATED'))
 
+
+// ── the exception-driven redesign (2026-09-05) ───────────────────────────────
+// These exist because the layout defect they guard was invisible to every
+// source-shape check that came before: the strings were all correct and the
+// header was still unreadable.
+
+check('every tile renders a fixed three-element subtree, so no ordinal CSS rule can retarget the value',
+  code.includes('className="ms-label"') && code.includes('className="ms-value"') && code.includes('className="ms-meta"'))
+check('the value line states its own size rather than inheriting an ordinal override',
+  /fontSize: \(t as any\)\.valueSize \?\? VALUE_BIG/.test(code))
+check('no line in a tile may wrap', (() => {
+  const m = code.match(/const NOWRAP = \{[^}]*\}/)
+  return !!m && /whiteSpace: 'nowrap'/.test(m[0]) && /textOverflow: 'ellipsis'/.test(m[0])
+})())
+check('the price stamp is clipped, not spilled',
+  /data-price-stamp/.test(code) && code.includes('priceStampShort') && code.includes('...NOWRAP'))
+check('the full price stamp survives in the title rather than being dropped',
+  markIsLive('priceStampFull', 'quoteSel|`\\$\\{priceStamp'))
+check('run health is read from freshness_status, never inferred from reconciliation',
+  code.includes('setupRun.healthDegraded') && code.includes('setupRun.runHealthStatus'))
+check('run health and reconciliation stay separately named on the tile', (() => {
+  // Both must be READ, and the tile's tone must be driven by the health one —
+  // a tile that only ever consults reconciliation is the defect this replaces.
+  if (!code.includes('setupRun.degraded') || !code.includes('setupRun.healthDegraded')) return false
+  const tone = code.match(/const setupsTone[\s\S]{0,300}?\n  \)/)
+  return !!tone && /healthDegraded/.test(tone[0]) && /setupRun\.degraded/.test(tone[0])
+})())
+check('the underfill floor is stated beside the scanned count',
+  code.includes('scannedVsFloor') && /expected_min_symbols/.test(code))
+check('the two run clocks are named scheduled vs finished',
+  code.includes('runSlot') && code.includes('slot`') && code.includes('finished '))
+check('an unzoned run stamp is marked unzoned, never given an assumed zone',
+  code.includes('runFinishedZoned') && code.includes('unzoned'))
+check('the source no longer claims the run zone is stated', !/the zone is stated/.test(raw))
+check('clock divergence has a visible zero-state, so silence is not a healthy claim', (() => {
+  // markIsLive() checks template interpolation; clockMark is an array element,
+  // so its reachability is asserted against the face composer directly.
+  const m = code.match(/const clockMark\s*=\s*([^\n]*)/)
+  if (!m || !/clockDivergences\.length/.test(m[1]) || !/clocks ok/.test(m[1])) return false
+  const face = code.match(/const portfolioFaceNote[\s\S]{0,600}?\.join\(/)
+  return !!face && /\bclockMark\b/.test(face[0])
+})())
+check('quote coverage stays on the face in the healthy state',
+  code.includes('quoteCoverMark') && code.includes('${quoteCoverMark'))
+check('a tile signals state through a rail, at zero width cost',
+  code.includes('rowRail(') && /tone === 'bad' \? 'breach'/.test(code))
+
 console.log(`\nmetric_strip_labels: ${pass} passed, ${fail} failed`)
 if (fail) process.exit(1)
 
@@ -134,8 +191,19 @@ check('the TODAY tile uses an all-accounts provenance note',
   /asOfNote: todayAsOfNote/.test(code))
 check('the TODAY provenance note is derived from the contributing accounts',
   /todayAccountCount\s*=\s*Object\.keys\(overview\?\.today_by_account/.test(code))
-check('the TODAY note falls back to a scope, never a single account name',
-  /todayAsOfNote[\s\S]{0,240}ALL ACCOUNTS/.test(code))
+// This was a 240-character proximity check between `todayAsOfNote` and the
+// literal 'ALL ACCOUNTS'. Proximity is not the property that matters and it
+// breaks on any refactor that hoists the fallback — which is what happened when
+// the note was split into a face string and a full string. The mechanism is
+// checked instead: the note derives from a scope label, and that label falls
+// back to ALL ACCOUNTS rather than to an account name.
+check('the TODAY note falls back to a scope, never a single account name', (() => {
+  const m = code.match(/const todayScopeLabel\s*=\s*([^\n]*)/)
+  if (!m || !/ALL ACCOUNTS/.test(m[1])) return false
+  // and the note must actually be built from it
+  const note = code.match(/const todayAsOfNote[\s\S]{0,400}?\n  \}\)\(\)/)
+  return !!note && /todayScopeLabel/.test(note[0]) && !/overviewAcct/.test(note[0])
+})())
 
 // "53.3% . 169 . $55,429" was three unlabelled numbers, and the dollar figure sat beside
 // a REALIZED tile showing a different one.

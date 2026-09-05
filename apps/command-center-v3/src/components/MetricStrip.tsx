@@ -5,13 +5,45 @@ import { pricingStampLine } from '../lib/pricingStamp'
 import { runLabel } from '../lib/homeLabels'
 import { overviewSurfaceFreshness, tradeAiSurfaceFreshness } from '../lib/surfaceFreshness'
 import { renderSetupCounts } from '../lib/setupRunSummary'
-import { BB, T, TYPE } from '../lib/watchTokens'
+// Same classifier the Trading panel uses, so the two surfaces cannot disagree
+// about one run — the header said healthy while the panel said UNDERFILLED.
+import { runHealthReasonCodes, reasonCodeOneLiner, runHealthLabel } from '../lib/runHealth'
+import { BB, T, TYPE, numStyle, rowRail } from '../lib/watchTokens'
 import type { DrillContext } from './DetailDrawer'
 
 
 interface Props {
   onDrill: (ctx: DrillContext) => void
 }
+
+/**
+ * Exception-driven severity. A tile is quiet when nothing is wrong and loud when
+ * something is — the header stopped being readable when every true fact was
+ * rendered at the same weight, in the same colour, on the same line.
+ *
+ * Only three signals stay visible even when healthy (operator's call): quote
+ * coverage, run health, and a clock divergence. Everything else moves to the
+ * tooltip and the drill.
+ */
+type Tone = 'ok' | 'warn' | 'bad'
+
+const toneColor = (t: Tone): string =>
+  t === 'bad' ? BB.red : t === 'warn' ? BB.amber : 'var(--text3)'
+
+// A filled dot reads as "checked and fine"; the triangles read as "look here".
+const toneGlyph = (t: Tone): string => (t === 'bad' ? '▲' : t === 'warn' ? '▲' : '●')
+
+const worseTone = (...tones: Tone[]): Tone =>
+  tones.includes('bad') ? 'bad' : tones.includes('warn') ? 'warn' : 'ok'
+
+// Every line is nowrap + ellipsis. Truncation is what locks the row height;
+// wrapping is what made the strip 141px tall at 1440.
+const NOWRAP = { whiteSpace: 'nowrap' as const, overflow: 'hidden' as const, textOverflow: 'ellipsis' as const }
+
+// The CSS no longer dictates a value size, so each tile states its own. Money
+// tiles get prominence; compound tiles carry more glyphs and take less.
+const VALUE_BIG = TYPE.lg
+const VALUE_COMPACT = TYPE.md
 
 export default function MetricStrip({ onDrill }: Props) {
   const navigate = useNavigate()
@@ -68,10 +100,15 @@ export default function MetricStrip({ onDrill }: Props) {
   const todayRepresented = todayPnl?.represented_account_count ?? todayAccountCount
   const todayMissing: string[] = todayPnl?.missing_accounts ?? []
   const todayEmpty: string[] = todayPnl?.empty_accounts ?? []
-  const todayAsOfNote = (() => {
-    const scope = todayPnl?.scope?.replace(/_/g, ' ') || portfolioScopeLabel || 'ALL ACCOUNTS'
+  // The composer stays the single source of the TODAY note — it is what stops
+  // the tile attributing an all-accounts figure to one account. It now returns
+  // the FACE string (exception-driven) and the FULL string separately, rather
+  // than concatenating every fact unconditionally, which is what pushed this
+  // line past the tile width.
+  const todayScopeLabel = todayPnl?.scope?.replace(/_/g, ' ') || portfolioScopeLabel || 'ALL ACCOUNTS'
+  const todayFullNote = (() => {
     if (todayLinked == null) {
-      return todayAccountCount > 0 ? `${scope} · ${todayAccountCount} contributing` : scope || null
+      return todayAccountCount > 0 ? `${todayScopeLabel} · ${todayAccountCount} contributing` : todayScopeLabel || null
     }
     // Coverage is stated as a ratio, and a shortfall names the accounts. "4
     // contributing" alone cannot tell you whether two are missing or there are
@@ -79,7 +116,13 @@ export default function MetricStrip({ onDrill }: Props) {
     const cover = `${todayRepresented}/${todayFunded} funded accts`
     const emptyPart = todayEmpty.length ? ` · ${todayEmpty.length} empty (${todayEmpty.join(', ')})` : ''
     const missingPart = todayMissing.length ? ` · MISSING ${todayMissing.join(', ')}` : ''
-    return `${scope} · ${cover}${emptyPart}${missingPart}`
+    return `${todayScopeLabel} · ${cover}${emptyPart}${missingPart}`
+  })()
+  const todayAsOfNote = (() => {
+    if (todayLinked == null) return todayFullNote
+    // Loud: name the funded accounts that did not report. Quiet: the ratio.
+    if (todayMissing.length) return `▲ MISSING ${todayMissing.join(', ')}`
+    return `${todayScopeLabel} · ${todayRepresented}/${todayFunded} funded accts`
   })()
 
   // ── the six clocks, each named (live capture 2026-09-04, release a7c550d1d) ──
@@ -134,10 +177,39 @@ export default function MetricStrip({ onDrill }: Props) {
     ? ` · oldest ${posOldestAcct ?? '—'} ${posOldest}${ageMark(posOldestAgeH)}`
     : ''
 
-  const portfolioAsOfNote =
+  // The FULL provenance, unchanged and unabridged. It is what the tooltip and
+  // the drill carry. Nothing that left the face left the surface.
+  const portfolioFullNote =
     portfolioAgg && portfolioScopeLabel
       ? `${portfolioScopeLabel} · ${cov?.accounts_contributing ?? portfolioAgg.included_account_count ?? '?'} funded accts${coverageMark}${oldestMark}${undatedMark}${emptyMark}${divergenceMark}`
       : undefined
+  const portfolioAsOfNote = portfolioFullNote
+
+  // Is anything actually wrong with the position clock?
+  const portfolioStaleObs =
+    posOldestAgeH != null && cov?.stale_after_hours != null && posOldestAgeH > cov.stale_after_hours
+  const portfolioTone: Tone = worseTone(
+    clockDivergences.length ? 'warn' : 'ok',
+    portfolioStaleObs ? 'warn' : 'ok',
+    cov?.accounts_undated ? 'warn' : 'ok',
+    // surface staleness is OR'd in at the tile, where overviewFresh is in scope
+  )
+
+  // The FACE. Quiet state is the scope and nothing else; a fault takes the room
+  // the scope was using rather than being appended to it. Appending is how the
+  // line reached 210 characters and wrapped to three.
+  //
+  // The clock-divergence signal has a visible ZERO STATE ("clocks ok") because
+  // AGENTS.md 9.1 applies: silence must never be indistinguishable from a
+  // healthy block. Without it, "no divergence" and "the field was never
+  // published" render identically.
+  const clockMark = clockDivergences.length ? `▲ ${clockDivergences.length} clock divergence` : 'clocks ok'
+  const portfolioFaceNote = [
+    clockMark,
+    portfolioStaleObs && posOldest ? `oldest ${posOldest}` : null,
+    cov?.accounts_undated ? `${cov.accounts_undated} undated` : null,
+    portfolioTone === 'ok' ? `${portfolioScopeLabel || 'ALL ACCOUNTS'} · ${cov?.accounts_contributing ?? '?'} funded` : null,
+  ].filter(Boolean).join(' · ')
 
   // The oldest contributor, with its exact stamp and age -- never the bare
   // account name, which says "something is old" and nothing about how old.
@@ -240,6 +312,16 @@ export default function MetricStrip({ onDrill }: Props) {
   const quoteObservedMark = quoteSel?.selected_observation_time
     ? ` · observed ${quoteSel.selected_observation_time}`
     : ''
+  const quoteTone: Tone =
+    quoteSel?.status === 'UNAVAILABLE' ? 'bad'
+      : quoteSel?.fallback_used || (quoteSel?.unpriced_symbol_count ?? 0) > 0 ? 'warn'
+        : 'ok'
+  // The FACE keeps coverage — the operator pinned it visible even when healthy,
+  // and the standing rule is that a quote surface may never read live while part
+  // of the aggregate depends on degraded input without stating its extent.
+  // Everything else about the quote moves into the title and the drill.
+  const priceStampShort = `${priceStamp}${quoteCoverMark || ''}${quoteTone === 'ok' ? '' : ' DEGRADED'}`
+  const priceStampFull = `${priceStamp}${quoteStatusMark ?? ''}${quoteObservedMark}`
 
   // Canonical run-scoped summary (cc-header-truth-v2 corrective pass). One
   // taxonomy, one reconciliation, identical to HomeHub and the Trading page.
@@ -252,12 +334,42 @@ export default function MetricStrip({ onDrill }: Props) {
     stale: scanStale,
     staleLabel: setupsFresh.surfaceLabel || `STALE · ${setupsRun}`,
   })
-  const setupsValue = (() => {
-    if (scanStale) return setupRun.counts
-    const pop = setupRun.population
-    const integrity = setupRun.degraded ? ` · ${setupRun.integrity}` : ''
-    return pop ? `${setupRun.counts} · ${pop}${integrity}` : `${setupRun.counts}${integrity}`
-  })()
+  // ── run health, and the two run clocks ────────────────────────────────────
+  // freshness_status answers "did the run scan enough to be worth trusting?".
+  // count_integrity answers "does the tally add up?". Run 2026-09-04::1730 was
+  // RECONCILED and RUN_UNDERFILLED at once — 21 scanned against a floor of 40 —
+  // and the tile painted green because only reconciliation was rendered.
+  const runFloor = tradeAi?.expected_min_symbols
+  const runScanned = tradeAi?.current_run_scanned ?? tradeAi?.latest_run_symbols_scanned ?? tradeAi?.ticker_count
+  const scannedVsFloor = runScanned != null && runFloor != null ? `${runScanned}/${runFloor}` : null
+  const runReasonCodes = runHealthReasonCodes(tradeAi)
+  const runHealthMark = setupRun.healthDegraded
+    ? `▲ RUN ${runHealthLabel(setupRun.runHealthStatus)}${scannedVsFloor ? ` ${scannedVsFloor}` : ''}`
+    : scannedVsFloor
+      ? `run ${scannedVsFloor}`
+      : null
+
+  // run_label "1730" is a SCHEDULED ET slot; run_timestamp is the COMPLETION
+  // stamp, written by datetime.now() with no tzinfo — naive, host-local, no
+  // offset. It cannot be converted, so it is shown as published and labelled
+  // "unzoned" rather than assuming a zone the producer never stated.
+  const runSlot = tradeAi?.run_label ?? setupRun.runId?.split('::')[1] ?? null
+  const runFinishedRaw = setupRun.runTimestamp ? String(setupRun.runTimestamp) : null
+  const runFinishedZoned = !!(runFinishedRaw && /(Z|[+-]\d{2}:?\d{2})$/.test(runFinishedRaw))
+  const runFinishedMark = runFinishedRaw
+    ? `finished ${runFinishedRaw.slice(11, 16)}${runFinishedZoned ? '' : ' unzoned'}`
+    : null
+
+  const setupsTone: Tone = worseTone(
+    setupRun.runHealth === 'failed' ? 'bad' : setupRun.healthDegraded ? 'warn' : 'ok',
+    setupRun.degraded ? 'warn' : 'ok',
+    scanStale ? 'warn' : 'ok',
+  )
+
+  // The value is the DECISION triple and nothing else. The population it was
+  // drawn from is provenance and moves to line 3 — concatenating them made a
+  // 69-character value that could not fit any sane tile width.
+  const setupsValue = setupRun.counts
 
   const tiles = [
     {
@@ -268,10 +380,15 @@ export default function MetricStrip({ onDrill }: Props) {
       // leaves the other three visibly absent rather than silently merged.
       asOf: posNewest ?? overviewFresh.asOf,
       asOfLabel: 'positions observed',
-      asOfNote: portfolioAsOfNote ?? overviewAcct,
+      // FACE gets the exception (or the scope when quiet); the full 210-char
+      // provenance goes to `tip` and the drill, which is what `portfolioFullNote` is.
+      asOfNote: portfolioFaceNote || portfolioAsOfNote || overviewAcct,
+      tone: worseTone(portfolioTone, overviewFresh.stale ? 'warn' : 'ok'),
+      valueSize: VALUE_BIG,
+      minWidth: 175, maxWidth: 265,
       undated: !posNewest && !overviewFresh.dataAsOf,
       color: overviewFresh.stale ? BB.amber : 'var(--text0)',
-      tip: `Total portfolio equity — an ALL-ACCOUNTS aggregate${portfolioAgg?.included_account_count != null ? ` of ${portfolioAgg.included_account_count} account(s)` : ''} (Schwab, Alpaca, Moomoo). No single account is the source of the total.\n\nFOUR SEPARATE CLOCKS:\n · ${clockLines.join('\n · ')}\n\nThe newest position observation dates ${cov?.at_newest_pct ?? '—'}% of the aggregate value; ${cov?.value_fresh_pct ?? '—'}% is within ${cov?.stale_after_hours ?? 48}h.${clockDivergences.length ? `\n\nCLOCK DIVERGENCE — two copies of the position clock disagree:\n · ${clockDivergences.map(d => `${d.account}: ${d.detail}`).join('\n · ')}\naccount_summaries.as_of is not maintained by the loader; the position rows are. Neither copy is edited.` : ''} Refreshes every 2 min via /api/v2/overview.${overviewFresh.stale ? ` · ${overviewFresh.reason}` : ''}`,
+      tip: `Total portfolio equity — an ALL-ACCOUNTS aggregate${portfolioAgg?.included_account_count != null ? ` of ${portfolioAgg.included_account_count} account(s)` : ''} (Schwab, Alpaca, Moomoo). No single account is the source of the total.\n\nFOUR SEPARATE CLOCKS:\n · ${clockLines.join('\n · ')}\n\nPROVENANCE: ${portfolioFullNote ?? '—'}\n\nThe newest position observation dates ${cov?.at_newest_pct ?? '—'}% of the aggregate value; ${cov?.value_fresh_pct ?? '—'}% is within ${cov?.stale_after_hours ?? 48}h.${clockDivergences.length ? `\n\nCLOCK DIVERGENCE — two copies of the position clock disagree:\n · ${clockDivergences.map(d => `${d.account}: ${d.detail}`).join('\n · ')}\naccount_summaries.as_of is not maintained by the loader; the position rows are. Neither copy is edited.` : ''} Refreshes every 2 min via /api/v2/overview.${overviewFresh.stale ? ` · ${overviewFresh.reason}` : ''}`,
       drill: { title: 'Portfolio (ALL ACCOUNTS)', subtitle: overviewFresh.stale ? `STALE · ${oldestLine}` : `All-account aggregate · ${portfolioAgg?.included_account_count ?? '?'} account(s)${coverageMark}`, endpoint: '/api/v2/overview',
         rows: overview ? [{ portfolio_value: overview.portfolio_value, positions_observed_newest: posNewest, positions_observed_oldest: posOldest, positions_observed_oldest_account: posOldestAcct, positions_observed_oldest_age_hours: posOldestAgeH, valuation_time: valuationTime, quote_observation_time: quoteObsTime, quote_source: portfolioAgg?.quote_source, coverage: cov, observation_divergences: clockDivergences, portfolio_aggregate: overview.portfolio_aggregate, total_cash: overview.total_cash, position_count: overview.position_count, today_change: overview.today_change, today_pct: overview.today_pct, as_of: overview.as_of, surface_stale: overviewFresh.stale, surface_reason: overviewFresh.reason }] : [] },
     },
@@ -281,7 +398,11 @@ export default function MetricStrip({ onDrill }: Props) {
       stale: todayMissing.length ? ` · ${todayMissing.length} funded acct(s) did not report` : null,
       asOf: todayPnl?.session_date ?? null,
       asOfLabel: 'P&L session',
+      // Quiet: the coverage ratio. Loud: the accounts that did not report.
       asOfNote: todayAsOfNote,
+      tone: worseTone(todayMissing.length ? 'warn' : 'ok', overviewFresh.stale ? 'warn' : 'ok'),
+      valueSize: VALUE_BIG,
+      minWidth: 150, maxWidth: 225,
       undated: !todayPnl?.session_date,
       color: overviewFresh.stale ? BB.amber : todayChange == null ? 'var(--text3)' : todayChange >= 0 ? BB.green : BB.red,
       drill: { title: "Today's Move", subtitle: `${todayPnl?.session_date ? `session ${todayPnl.session_date}` : 'session UNDATED'} · ${todayPnl?.coverage_reason ?? 'coverage unknown'}`, endpoint: '/api/v2/overview',
@@ -295,7 +416,7 @@ export default function MetricStrip({ onDrill }: Props) {
               account_value: d.value, top_movers: d.top_movers || null,
             })),
         ] : [] },
-      tip: `Today's net change ($ and %).\n\n · P&L session: ${todayPnl?.session_date ?? 'UNDATED'}${todayPnl?.session_source ? ` (from ${todayPnl.session_source})` : ''}\n · calculated: ${todayPnl?.calculated_at ?? '—'}\n · marks: ${todayPnl?.mark_source ?? '—'}\n · coverage: ${todayPnl?.coverage_reason ?? '—'}\n\nThis is the P&L's OWN session — not the date the share counts were observed (${posNewest ?? 'UNDATED'}). Click for the per-account breakdown. Refreshes every 2 min.`,
+      tip: `Today's net change ($ and %).\n\n · P&L session: ${todayPnl?.session_date ?? 'UNDATED'}${todayPnl?.session_source ? ` (from ${todayPnl.session_source})` : ''}\n · calculated: ${todayPnl?.calculated_at ?? '—'}\n · marks: ${todayPnl?.mark_source ?? '—'}\n · coverage: ${todayPnl?.coverage_reason ?? '—'}\n · accounts: ${todayFullNote ?? '—'}\n\nThis is the P&L's OWN session — not the date the share counts were observed (${posNewest ?? 'UNDATED'}). Click for the per-account breakdown. Refreshes every 2 min.`,
     },
     {
       // "53.3% · 169 · $55,429" was three unlabelled numbers. A reader cannot tell which
@@ -303,6 +424,10 @@ export default function MetricStrip({ onDrill }: Props) {
       // beside a REALIZED tile showing a different one. The units are now on the tile
       // rather than only in the tooltip.
       label: 'TRADING', value: winRate != null ? `${winRate}% win${winTrades ? ` · ${winTrades} trades` : ''}${journalPnl != null ? ` · ${fmt$(journalPnl, 0)} P&L` : ''}` : '—',
+      // These four rendered a bare em-dash. They have provenance worth stating;
+      // an empty line is a wasted one, and the height is fixed either way.
+      asOfNote: `${journalScope} · ${journalWindow}${journalLastClose ? ` · thru ${journalLastClose}` : ''}`,
+      tone: journalStale ? 'warn' : 'ok', valueSize: VALUE_COMPACT, minWidth: 200, maxWidth: 265,
       stale: journalStale ? journalAgeMark : null,
       color: winRate != null && winRate >= 50 ? BB.green : winRate != null ? BB.amber : 'var(--text3)',
       tip: `Active trading only (day + swing), broker round-trips · ${journalScope} · ${journalWindow}${journalAsOf ? ` · as_of ${String(journalAsOf).slice(0, 19).replace('T', ' ')}` : ''}${journalLastClose ? ` · last close ${journalLastClose}` : ''}${journalRefreshedMark}. Excludes long-term trims of old holds — those are in REALIZED. Win rate excludes $0 scratches.`,
@@ -311,6 +436,8 @@ export default function MetricStrip({ onDrill }: Props) {
     },
     {
       label: 'REALIZED', value: realizedPnl != null ? fmt$(realizedPnl, 0) : '—',
+      asOfNote: `all closed${realizedCount ? ` · ${realizedCount} trades` : ''}${longTermTrimPnl ? ' · incl trims' : ''}`,
+      tone: journalStale ? 'warn' : 'ok', minWidth: 140, maxWidth: 200,
       stale: journalStale ? journalAgeMark : null,
       color: realizedPnl == null ? 'var(--text3)' : realizedPnl >= 0 ? BB.green : BB.red,
       tip: `All closed P&L incl. long-term trims of old buy-and-hold lots · ${journalScope} · ${journalWindow}${journalAsOf ? ` · as_of ${String(journalAsOf).slice(0, 19).replace('T', ' ')}` : ''}${longTermTrimPnl ? ` (${fmt$(longTermTrimPnl, 0)} of it is long-term trims)` : ''}${journalLastClose ? ` · last close ${journalLastClose}` : ''}${journalRefreshedMark}. Trading-only P&L is ${journalPnl != null ? fmt$(journalPnl, 0) : '—'}.`,
@@ -319,6 +446,8 @@ export default function MetricStrip({ onDrill }: Props) {
     },
     {
       label: 'REGIME', value: regimeLabel ? `${regimeLabel.replace(/_/g, ' ')}${regimeConf ? ` ${Math.round(regimeConf * 100)}%` : ''}` : '—',
+      asOfNote: [regime?.trend_state, regime?.breadth_state, regime?.volatility_state].filter(Boolean).join(' · ') || 'risk-regime/latest',
+      valueSize: VALUE_COMPACT, minWidth: 150, maxWidth: 215,
       color: regimeLabel === 'risk_off' ? BB.red : regimeLabel === 'risk_on' ? BB.green : BB.amber,
       tip: `Market regime from /api/v2/risk-regime/latest — weighs trend, breadth, and volatility signals into a risk-on/risk-off label with confidence.`,
       drill: { title: 'Market Regime', subtitle: 'From /api/v2/risk-regime/latest', endpoint: '/api/v2/risk-regime/latest',
@@ -326,6 +455,8 @@ export default function MetricStrip({ onDrill }: Props) {
     },
     {
       label: 'VIX', value: vix != null ? Number(vix).toFixed(1) : '—',
+      asOfNote: `${vixSource ?? 'source —'}${vixObsTime ? ` · ${String(vixObsTime).slice(11, 16)}` : ''}`,
+      minWidth: 110, maxWidth: 160,
       color: vix == null ? 'var(--text3)' : vix >= 25 ? BB.red : vix >= 18 ? BB.amber : BB.green,
       tip: `CBOE Volatility Index. Green <18 (low fear), amber 18-25 (elevated), red ≥25 (high fear).${vixSource ? ` · source ${vixSource}` : ''}${vixObsTime ? ` · observed ${String(vixObsTime).slice(0, 19).replace('T', ' ')}` : ''}`,
       drill: { title: 'VIX', subtitle: `Volatility index · source ${vixSource ?? 'unknown'}${vixObsTime ? ` · observed ${vixObsTime}` : ''}`, endpoint: '/api/v2/trade-ai',
@@ -336,66 +467,136 @@ export default function MetricStrip({ onDrill }: Props) {
       value: setupsValue,
       // Extra amber mark when value already contains STALE (keeps label chip + as_of visible).
       stale: scanStale ? `${setupsAsOfMark || ' · stale'}` : null,
-      // The captured header read "as_of 2026-09-04 17:39" with no zone, beside a
-      // Home panel saying "9:00 AM scan · Sep 4" -- two renderings of one run,
-      // eight hours apart, because one was the run's scheduled ET time and the
-      // other a UTC cache stamp. The run's own id and timestamp are shown, and
-      // the zone is stated.
-      asOf: setupRun.runTimestamp ?? setupsFresh.asOf,
-      asOfLabel: setupRun.runTimestamp ? 'run' : 'as_of',
+      // The run has TWO clocks and they are not the same kind of thing:
+      // run_label "1730" is the SCHEDULED ET slot, run_timestamp is when the run
+      // FINISHED. The header used to print the completion time beside an id
+      // built from the scheduled label, neither named. Worse, an earlier comment
+      // here asserted this stamp carried a timezone. It never did, and still
+      // cannot: the producer writes datetime.now() with no tzinfo, so the stamp
+      // has no offset and is shown as published, marked unzoned.
+      asOf: null,
+      asOfLabel: 'run',
+      // Run health leads when it is bad — an underfilled run is the single most
+      // important thing about a scan, ahead of how its counts partitioned.
+      // Face order is severity order, and it stops at what fits: run health,
+      // then the reconciliation residual, then the clocks. The run id is in the
+      // tooltip and the drill — it identifies the run but tells you nothing
+      // about it, so it is the first thing to lose the width contest.
       asOfNote: [
-        setupRun.runId ? `id ${setupRun.runId}` : null,
+        setupRun.healthDegraded ? runHealthMark : null,
         setupRun.unaccounted ? `${setupRun.unaccounted} UNACCOUNTED` : null,
-      ].filter(Boolean).join(' · ') || null,
+        setupRun.degraded && !setupRun.healthDegraded ? setupRun.integrity : null,
+        !setupRun.healthDegraded && !setupRun.unaccounted ? runHealthMark : null,
+        setupRun.population || null,
+        runSlot ? `${runSlot} slot` : null,
+        runFinishedMark,
+      ].filter(Boolean).join(' · ') || (setupRun.runId ? `id ${setupRun.runId}` : null),
+      tone: setupsTone,
+      valueSize: VALUE_COMPACT,
+      minWidth: 230, maxWidth: 330,
       color: scanStale ? BB.amber : setupRun.degraded ? BB.amber : setupRun.goPositive ? BB.green : 'var(--text3)',
       tip: scanStale
         ? `Scanner surface is STALE (${setupsFresh.reason || 'prior/empty cache'}). ${setupsRun}${setupsAsOfMark}. HTTP 200 is not a live claim — Trading → Trade AI shows the same payload.`
-        : `Latest scanner run · ${setupRun.population || '—'}${setupRun.runId ? ` · run ${setupRun.runId}` : ''}${setupRun.runTimestamp ? ` · ${setupRun.runTimestamp}` : ''}${setupRun.integrity !== 'RECONCILED' ? ` · ${setupRun.integrity}` : ''}`,
+        : `Latest scanner run · ${setupRun.population || '—'}\n\n`
+          + `RUN HEALTH: ${setupRun.runHealthStatus ?? 'not reported'}`
+          + `${scannedVsFloor ? ` — scanned ${scannedVsFloor} against the health floor` : ''}`
+          + `${runReasonCodes.length ? `\n · ${runReasonCodes.map(c => reasonCodeOneLiner(c)).join('\n · ')}` : ''}`
+          + `\n\nRECONCILIATION: ${setupRun.integrity}. Separate from run health — a run can`
+          + ` reconcile perfectly and still have scanned too little to be worth trusting.`
+          + `\n\nCLOCKS: scheduled slot ${runSlot ?? '—'} (ET) · finished ${runFinishedRaw ?? '—'}`
+          + `${runFinishedRaw && !runFinishedZoned ? ' — the producer writes this with no timezone, so it is shown as published and cannot be converted' : ''}`
+          + `\nrun id ${setupRun.runId ?? '—'}`,
       drill: { title: 'Trade Setups', subtitle: scanStale ? (setupsFresh.surfaceLabel || `STALE — last ${setupsRun}`) : `Latest scanner run · ${setupRun.population || '—'}${setupRun.runId ? ` · run ${setupRun.runId}` : ''}`, endpoint: '/api/v2/trade-ai',
-        rows: tradeAi ? [{ scope: scanStale ? 'stale' : 'latest run only', run_id: tradeAi.run_id, setup_run_summary: tradeAi.setup_run_summary, universe_go: tradeAi.universe_go, universe_wait: tradeAi.universe_wait, universe_nogo: tradeAi.universe_nogo, run_label: tradeAi.run_label, run_date: tradeAi.run_date, cached_at: tradeAi.cached_at, cache_age_sec: tradeAi.cache_age_sec, stale: tradeAi.stale, surface_stale: setupsFresh.stale, surface_reason: setupsFresh.reason, vix: tradeAi.vix, vix_source: tradeAi.vix_source, market_regime: tradeAi.market_regime, run_health_status: tradeAi.run_health_status }] : [] },
+        rows: tradeAi ? [{ scope: scanStale ? 'stale' : 'latest run only', run_id: tradeAi.run_id, setup_run_summary: tradeAi.setup_run_summary, universe_go: tradeAi.universe_go, universe_wait: tradeAi.universe_wait, universe_nogo: tradeAi.universe_nogo, run_label: tradeAi.run_label, run_date: tradeAi.run_date, cached_at: tradeAi.cached_at, cache_age_sec: tradeAi.cache_age_sec, stale: tradeAi.stale, surface_stale: setupsFresh.stale, surface_reason: setupsFresh.reason, vix: tradeAi.vix, vix_source: tradeAi.vix_source, market_regime: tradeAi.market_regime, run_health_status: tradeAi.run_health_status,
+          run_health_reason_codes: runReasonCodes, expected_min_symbols: runFloor,
+          current_run_scanned: runScanned, scanned_vs_floor: scannedVsFloor,
+          freshness_status: setupRun.runHealthStatus, run_health_tier: setupRun.runHealth,
+          health_degraded: setupRun.healthDegraded, count_integrity: setupRun.integrity,
+          reconciliation_degraded: setupRun.degraded,
+          run_scheduled_slot_et: runSlot, run_finished_stamp: runFinishedRaw,
+          run_finished_zone_stated: runFinishedZoned }] : [] },
     },
   ]
 
   return (
     <div className="metric-strip" style={{ display: 'flex', flexDirection: 'column', background: 'var(--bg0)', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
-    <div style={{ display: 'flex', alignItems: 'center', gap: 0, padding: '8px 16px 4px' }}>
-      <div style={{ marginRight: 24, whiteSpace: 'nowrap' }}>
-        <div style={{ fontSize: TYPE.md, fontWeight: 700, color: T.link }}>Command Center v3</div>
+    <div className="metric-strip-row" style={{ display: 'flex', alignItems: 'center', gap: 0, padding: '8px 16px 4px' }}>
+      {/* Fixed width, and min-width:0 so the flex algorithm may actually shrink
+          it. The stamp had maxWidth:280 with overflow:visible, so its 603px of
+          text painted straight over the PORTFOLIO tile — a 323px spill that no
+          bounding-box check catches, because the box was the right size and the
+          paint was not. */}
+      <div style={{ flex: '0 0 210px', width: 210, minWidth: 0, marginRight: 20 }}>
+        <div style={{ ...NOWRAP, fontSize: TYPE.md, fontWeight: 700, color: T.link }}>Command Center v3</div>
         {priceStamp && (
           <div
-            title={`Holdings repriced via ${quoteSel?.selected_provider ?? overview?.pricing?.reprice_source ?? overview?.reprice_source ?? 'finviz'}${quoteSel?.fallback_used ? ` · fallback ${quoteSel.fallback_reason}` : ''}${quoteSel?.status === 'UNAVAILABLE' ? ' · no eligible quote source' : ''} · /api/v2/overview`}
+            title={`${priceStampFull}\n\nHoldings repriced via ${quoteSel?.selected_provider ?? overview?.pricing?.reprice_source ?? overview?.reprice_source ?? 'finviz'}${quoteSel?.fallback_used ? ` · fallback ${quoteSel.fallback_reason}` : ''}${quoteSel?.status === 'UNAVAILABLE' ? ' · no eligible quote source' : ''}${(quoteSel?.unpriced_symbol_count ?? 0) > 0 ? ` · ${quoteSel.unpriced_symbol_count} position(s) with NO price source` : ''} · /api/v2/overview`}
             onClick={() => onDrill({ title: 'Price Freshness', subtitle: `${priceStamp}${quoteStatusMark ?? ''}`, endpoint: '/api/v2/overview',
               rows: [overview?.quote_selection ? { quote_selection: overview.quote_selection } : null, overview?.pricing ?? { last_repriced: overview?.last_repriced, reprice_source: overview?.reprice_source }].filter(Boolean) })}
-            style={{ fontSize: TYPE.xs, color: 'var(--text3)', marginTop: 2, cursor: 'pointer', maxWidth: 280 }}
-          >{priceStamp}{quoteStatusMark}{quoteObservedMark}</div>
+            data-price-stamp
+            style={{ ...NOWRAP, fontSize: TYPE.xs, color: quoteTone === 'ok' ? 'var(--text3)' : BB.amber, marginTop: 2, cursor: 'pointer', minWidth: 0 }}
+          >{priceStampShort}</div>
         )}
       </div>
-      {tiles.map(t => (
+      {tiles.map(t => {
+        // Exception-driven: the tone decides whether this tile is quiet or loud.
+        // 'ok' renders a dim dot and grey meta; 'warn'/'bad' recolour the meta
+        // line and swap the glyph. No extra line, so height is invariant.
+        const tone: Tone = (t as any).tone ?? 'ok'
+        const asOfRaw = (t as any).asOf
+        const metaUndated = !asOfRaw && !!(t as any).undated
+        const metaLabel = (t as any).asOfLabel || 'as_of'
+        const metaText = metaUndated
+          ? `${metaLabel} UNDATED`
+          : asOfRaw
+            ? `${metaLabel} ${String(asOfRaw).slice(0, 16).replace('T', ' ')}` +
+              ((t as any).asOfNote ? ` · ${(t as any).asOfNote}` : '')
+            : (t as any).asOfNote || '—'
+        const metaColor = metaUndated || tone === 'warn'
+          ? BB.amber
+          : tone === 'bad'
+            ? BB.red
+            : 'var(--text3)'
+        return (
         <div key={t.label}
           className="metric-strip-tile"
           title={(t as any).tip}
           onClick={() => onDrill(t.drill)}
-          style={{ padding: '4px 20px', cursor: 'pointer', textAlign: 'center', borderRight: '1px solid var(--border)' }}
+          style={{
+            padding: '4px 20px', cursor: 'pointer', textAlign: 'center',
+            // index.css keys `flex-shrink: 0` off this inline borderRight. Removing
+            // it makes tiles squash instead of the strip scrolling.
+            borderRight: '1px solid var(--border)',
+            flex: '0 0 auto', minWidth: (t as any).minWidth ?? 106, maxWidth: (t as any).maxWidth ?? 210,
+            // The rail is the state signal that costs no width and no height —
+            // seven quiet slate spines, one amber one you cannot miss.
+            ...rowRail(tone === 'bad' ? 'breach' : tone === 'warn' ? 'attention' : 'neutral'),
+          }}
         >
-          <div style={{ fontSize: TYPE.xs, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.5px' }}>
-            {t.label}{(t as any).stale && <span style={{ color: BB.amber, fontWeight: 800 }} data-surface-stale>{' '}⚠ STALE</span>}
+          <div className="ms-label" style={{ ...NOWRAP, fontSize: TYPE.xs, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.5px' }}>
+            {t.label}
+            <span style={{ color: toneColor(tone), fontWeight: 800 }} data-tile-tone={tone}>{' '}{toneGlyph(tone)}</span>
+            {(t as any).stale && <span style={{ color: BB.amber, fontWeight: 800 }} data-surface-stale>{' '}⚠ STALE</span>}
           </div>
-          <div style={{ fontSize: TYPE.lg, fontWeight: 700, color: t.color, fontFamily: 'monospace' }}>
-            {t.value}{(t as any).stale && !String(t.value).includes('STALE') && <span style={{ fontSize: TYPE.xs, color: BB.amber }}>{(t as any).stale}</span>}
+          <div className="ms-value" style={{ ...NOWRAP, ...numStyle, fontSize: (t as any).valueSize ?? VALUE_BIG, fontWeight: 700, color: t.color }}>
+            {t.value}
           </div>
-          {(t as any).asOf && (
-            <div style={{ fontSize: TYPE.xs, color: (t as any).stale ? BB.amber : 'var(--text3)', marginTop: 1 }} data-surface-as-of>
-              {(t as any).asOfLabel || 'as_of'} {String((t as any).asOf).slice(0, 16).replace('T', ' ')}
-              {(t as any).asOfNote ? ` · ${(t as any).asOfNote}` : ''}
-            </div>
-          )}
-          {!(t as any).asOf && (t as any).undated && (
-            <div style={{ fontSize: TYPE.xs, color: BB.amber, marginTop: 1 }} data-surface-as-of data-surface-undated>
-              {(t as any).asOfLabel || 'as_of'} UNDATED
-            </div>
-          )}
+          {/* Exactly one meta line, always, so tile height never varies with
+              content. A fault RECOLOURS this line and prepends a glyph; it never
+              adds a fourth line, because a line that appears only sometimes is a
+              line that reflows the whole strip. Truncated, never wrapped — the
+              full text lives in `title` and in the drill. */}
+          <div
+            className="ms-meta"
+            data-surface-as-of
+            {...(metaUndated ? { 'data-surface-undated': '' } : {})}
+            style={{ ...NOWRAP, fontSize: TYPE.xs, color: metaColor, marginTop: 1 }}
+          >
+            {metaText}
+          </div>
         </div>
-      ))}
+        )
+      })}
       {approvals != null && approvals > 0 && (
         <div onClick={() => navigate('/')}
           title={`${approvals} pending approvals — Home → Action Inbox has CTAs to Risk and Trading`}

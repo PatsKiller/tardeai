@@ -1,3 +1,5 @@
+import { classifyRunHealth, isRunHealthDegraded, type RunHealthTier } from './runHealth.ts'
+
 /**
  * setupRunSummary.ts — client half of the run-scoped GO/WAIT/NOGO contract.
  *
@@ -18,6 +20,16 @@
  *   * classified + excluded + review + error + unclassified == scanned_count
  *   * a server PARTIAL / COUNT_MISMATCH / DATA_UNAVAILABLE verdict is surfaced,
  *     never rendered as an authoritative-looking number.
+ *
+ * RUN HEALTH IS NOT COUNT RECONCILIATION (live capture 2026-09-04, 741207cc2).
+ * `degraded` here has always meant "the tally does not reconcile". The run's own
+ * health lived on `freshness_status` / `quality`, declared on the type below and
+ * read by nothing, so the header painted run 2026-09-04::1730 healthy green:
+ * count_integrity RECONCILED, unaccounted 0 — while freshness_status said
+ * RUN_UNDERFILLED and the run had scanned 21 symbols against a floor of 40.
+ * Both facts were true. The tile could only say one of them.
+ * `healthDegraded` is therefore a SEPARATE field, never folded into `degraded`:
+ * a run can reconcile perfectly and still be worthless.
  *
  * v2 (live capture 2026-09-04, release a7c550d1d) — THE RESIDUAL WAS UNNAMED.
  * The header rendered "48 classified / 60 scanned / 0 excluded". 48 + 0 is 48;
@@ -110,6 +122,12 @@ export type SetupCountsRender = {
   population: string
   /** scanned − accounted. Non-zero means rows the summary cannot name; always rendered. */
   unaccounted: number
+  /** Run health tier from freshness_status — orthogonal to `integrity`. */
+  runHealth: RunHealthTier
+  /** Raw producer status, e.g. RUN_UNDERFILLED. Null when the run never reported one. */
+  runHealthStatus: string | null
+  /** True when the RUN is unhealthy. Never merged into `degraded` (reconciliation). */
+  healthDegraded: boolean
   integrity: string
   /** true when integrity !== RECONCILED (amber, not green). */
   degraded: boolean
@@ -131,12 +149,21 @@ export function renderSetupCounts(
   const integrity = setupIntegrity(s)
   const runId = s?.run_id ?? null
   const runTimestamp = s?.run_timestamp ?? null
+  // Run health rides alongside reconciliation on every return path, including
+  // the stale and pre-run branches — a stale surface can still report that the
+  // last run it saw was underfilled.
+  const runHealthStatus = s?.freshness_status ?? null
+  const runHealth = classifyRunHealth(runHealthStatus)
+  const healthDegraded = isRunHealthDegraded(runHealth)
 
   if (opts.stale) {
     return {
       counts: opts.staleLabel ?? 'STALE',
       population: '',
       unaccounted: 0,
+      runHealth,
+      runHealthStatus,
+      healthDegraded,
       integrity,
       degraded: true,
       goPositive: false,
@@ -150,6 +177,9 @@ export function renderSetupCounts(
       counts: '— before first run',
       population: '',
       unaccounted: 0,
+      runHealth,
+      runHealthStatus,
+      healthDegraded,
       integrity,
       degraded: integrity !== RECONCILED,
       goPositive: false,
@@ -192,7 +222,12 @@ export function renderSetupCounts(
     counts,
     population,
     unaccounted,
+    runHealth,
+    runHealthStatus,
+    healthDegraded,
     integrity,
+    // Reconciliation ONLY. Run health is healthDegraded, deliberately separate:
+    // folding them here is how "RECONCILED" came to mean "fine".
     degraded: integrity !== RECONCILED || unaccounted !== 0,
     goPositive: go > 0,
     runId,

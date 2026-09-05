@@ -259,6 +259,21 @@ body { font-family: var(--sans); background: var(--bg0); color: var(--text0); }
 .metric-strip > div > div[style*="borderRight"] {
   flex-shrink: 0;
 }
+/* The row's height is DECLARED, not emergent.
+   Without this the strip measured 65px at three widths and 61px at 2000px —
+   the 4px is the horizontal scrollbar, which appears only when the tiles
+   overflow. "Locked to one row" has to mean the height does not move when the
+   viewport does, so the scrollbar is taken out of the flow. Scoped above the
+   820px breakpoint so the existing mobile wrap is untouched. */
+@media (min-width: 821px) {
+  .metric-strip .metric-strip-row {
+    height: 62px;
+    box-sizing: content-box;
+    overflow-y: hidden;
+    scrollbar-width: none;
+  }
+  .metric-strip .metric-strip-row::-webkit-scrollbar { height: 0; }
+}
 
 /* ── Mobile responsiveness ──────────────────────────────────────────────────
    The layout uses inline styles; these media queries override with !important
@@ -446,8 +461,23 @@ body { font-family: var(--sans); background: var(--bg0); color: var(--text0); }
 .cc-terminal-ui .hub-title-row { margin-bottom: 8px; }
 .cc-terminal-ui .hub-tabs { gap: 4px !important; }
 .cc-terminal-ui .metric-strip-tile { padding: 2px 14px !important; }
-.cc-terminal-ui .metric-strip-tile > div:first-child { font-size: 7px !important; letter-spacing: .08em; }
-.cc-terminal-ui .metric-strip-tile > div:last-child { font-size: 14px !important; }
+/* The two font-size rules that stood here are GONE, not re-pointed.
+
+   They were `> div:first-child { font-size: 7px !important }` and
+   `> div:last-child { font-size: 14px !important }` — ordinal selectors over a
+   variable-length subtree. Tile children are [label, value, meta], so:
+     - on 2-child tiles (TRADING/REALIZED/REGIME/VIX) `:last-child` was the
+       VALUE, and `!important` beat the non-important inline 18px -> 14px;
+     - on 3-child tiles (PORTFOLIO/TODAY/SETUPS) `:last-child` was the META,
+       which rendered at 14px while the value escaped to 18px.
+   Measured live on 741207cc2. The header had two different value sizes and
+   neither was chosen; the meta line was styled as if it were a value, which is
+   why those three tiles wrapped to three lines and made the strip 141px tall.
+
+   Re-pointing them at .ms-label/.ms-value would leave two sources of truth for
+   the type scale, one of them invisible to check_design_tokens.sh (it reads
+   .tsx only). The scale now lives once, inline, in watchTokens' TYPE. 7px was
+   also below the house floor of 10 that the guard enforces everywhere else. */
 .cc-terminal-ui .cc-panel { border-radius: 2px !important; padding: 8px 10px !important; }
 .cc-terminal-ui .cc-table-dense th,
 .cc-terminal-ui .cc-table-dense td { padding: 2px 6px !important; font-size: 10px !important; }
