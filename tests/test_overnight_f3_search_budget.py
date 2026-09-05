@@ -248,26 +248,54 @@ def test_unknown_caller_is_treated_as_scheduled(tmp_path: Path):
     assert sb.effective_monthly_limit("brave", "who_is_this", 1000) < 1000
 
 
-def test_l2_ledger_is_not_tree_relative(tmp_path: Path):
+def test_l2_ledger_resolves_through_the_canonical_state_root(tmp_path: Path):
     """Every tree must resolve the SAME L2 ledger.
 
     `brave_search._BUDGET_FILE` was `Path(__file__).parent.parent / data/...`,
     so the server (running from a release dir) and cron (running from the dev
     tree) each kept a private counter and each enforced the ceiling against a
-    fraction of the traffic. Eight copies of that basename exist on this host.
+    fraction of the traffic. Eight copies of that basename exist on that host.
 
-    This pins the property, not the path: the resolved ledger must sit under the
-    same canonical state root that lib/search_budget uses, so it cannot drift
-    back to being relative to the importer.
+    The first version of this test asserted the ledger was NOT under the
+    importing source tree. That passed locally and failed in CI, correctly: on a
+    runner the canonical state root can itself resolve inside the checkout, so
+    "outside the tree" is a property of the machine, not of the code. It was
+    pinning the environment.
+
+    What actually matters, and holds everywhere, is that the path is CONSTRUCTED
+    from the shared canonical root rather than from this module's own location.
     """
     import brave_search as b
     from scripts.lib.search_budget import _state_root, budget_path
 
     root = _state_root()
-    assert b._BUDGET_FILE.is_relative_to(root), (
-        f"L2 ledger {b._BUDGET_FILE} is outside the canonical state root {root}")
+    assert b._BUDGET_FILE == root / "data" / "portfolios" / "state" / "brave_search_budget.json"
     assert budget_path().is_relative_to(root)
-    # And it must NOT be inside whichever source tree imported the module.
-    src_tree = Path(b.__file__).resolve().parent.parent
-    assert not b._BUDGET_FILE.is_relative_to(src_tree), (
-        "L2 ledger resolved relative to the importing tree — the defect returned")
+
+
+def test_l2_ledger_path_is_not_built_from_this_modules_location():
+    """The source-level half: no `Path(__file__)`-derived budget path.
+
+    Complements the resolution test above, which cannot tell a correct
+    construction from a coincidence when the canonical root happens to sit
+    inside the checkout — exactly the CI case.
+    """
+    import ast
+    import inspect
+    import textwrap
+
+    import brave_search as b
+
+    # The docstring QUOTES the old defect, so scan the code body only — a
+    # substring check over the raw source would flag the very comment that
+    # explains why the defect is gone.
+    fn = ast.parse(textwrap.dedent(inspect.getsource(b._budget_file))).body[0]
+    if (fn.body and isinstance(fn.body[0], ast.Expr)
+            and isinstance(fn.body[0].value, ast.Constant)):
+        fn.body = fn.body[1:]                      # drop the docstring
+    code = ast.unparse(ast.Module(body=fn.body, type_ignores=[]))
+
+    assert "__file__" not in code, (
+        "_budget_file() derives the ledger path from this module's location — "
+        "that is the defect that gave every importing tree a private counter")
+    assert "_state_root" in code
