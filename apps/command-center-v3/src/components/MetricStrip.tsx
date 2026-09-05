@@ -229,7 +229,16 @@ export default function MetricStrip({ onDrill }: Props) {
   const quoteDegradedN = quoteSel?.degraded_symbol_count ?? null
   const quoteCoverMark =
     quoteCovered != null && quoteTotal != null ? ` ${quoteCovered}/${quoteTotal} symbols` : ''
-  const quoteStatusMark = (() => {
+  // Face: short status only. Coverage / fallback reason / observation time live
+  // on hover — live capture 2026-09-04 showed the full line painting over PORTFOLIO
+  // (brand cell whiteSpace:nowrap + maxWidth without ellipsis).
+  const quoteStatusFace = (() => {
+    if (!quoteSel) return null
+    if (quoteSel.status === 'UNAVAILABLE') return ' · quotes UNAVAILABLE'
+    if (quoteSel.fallback_used) return ' · quotes DEGRADED'
+    return null
+  })()
+  const quoteStatusTip = (() => {
     if (!quoteSel) return null
     if (quoteSel.status === 'UNAVAILABLE') return ' · quotes UNAVAILABLE'
     if (quoteSel.fallback_used) {
@@ -243,6 +252,14 @@ export default function MetricStrip({ onDrill }: Props) {
   const quoteObservedMark = quoteSel?.selected_observation_time
     ? ` · observed ${quoteSel.selected_observation_time}`
     : ''
+  const pricesFace = [priceStamp, quoteStatusFace].filter(Boolean).join('')
+  const pricesTip =
+    `Holdings repriced via ${quoteSel?.selected_provider ?? overview?.pricing?.reprice_source ?? overview?.reprice_source ?? 'finviz'}` +
+    (quoteStatusTip ?? '') +
+    quoteObservedMark +
+    (quoteSel?.fallback_used ? ` · fallback ${quoteSel.fallback_reason}` : '') +
+    (quoteSel?.status === 'UNAVAILABLE' ? ' · no eligible quote source' : '') +
+    ' · /api/v2/overview'
 
   // Canonical run-scoped summary (cc-header-truth-v2 corrective pass). One
   // taxonomy, one reconciliation, identical to HomeHub and the Trading page.
@@ -362,15 +379,40 @@ export default function MetricStrip({ onDrill }: Props) {
   return (
     <div className="metric-strip" style={{ display: 'flex', flexDirection: 'column', background: 'var(--bg0)', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
     <div style={{ display: 'flex', alignItems: 'center', gap: 0, padding: '8px 16px 4px' }}>
-      <div style={{ marginRight: 24, whiteSpace: 'nowrap' }}>
-        <div style={{ fontSize: TYPE.md, fontWeight: 700, color: T.link }}>Command Center v3</div>
-        {priceStamp && (
+      <div
+        data-testid="metric-strip-brand"
+        style={{
+          marginRight: 16,
+          flexShrink: 0,
+          maxWidth: 220,
+          minWidth: 0,
+          overflow: 'hidden',
+        }}
+      >
+        <div style={{ fontSize: TYPE.md, fontWeight: 700, color: T.link, whiteSpace: 'nowrap' }}>Command Center v3</div>
+        {pricesFace && (
           <div
-            title={`Holdings repriced via ${quoteSel?.selected_provider ?? overview?.pricing?.reprice_source ?? overview?.reprice_source ?? 'finviz'}${quoteSel?.fallback_used ? ` · fallback ${quoteSel.fallback_reason}` : ''}${quoteSel?.status === 'UNAVAILABLE' ? ' · no eligible quote source' : ''} · /api/v2/overview`}
-            onClick={() => onDrill({ title: 'Price Freshness', subtitle: `${priceStamp}${quoteStatusMark ?? ''}`, endpoint: '/api/v2/overview',
-              rows: [overview?.quote_selection ? { quote_selection: overview.quote_selection } : null, overview?.pricing ?? { last_repriced: overview?.last_repriced, reprice_source: overview?.reprice_source }].filter(Boolean) })}
-            style={{ fontSize: TYPE.xs, color: 'var(--text3)', marginTop: 2, cursor: 'pointer', maxWidth: 280 }}
-          >{priceStamp}{quoteStatusMark}{quoteObservedMark}</div>
+            data-testid="metric-strip-prices"
+            title={pricesTip}
+            onClick={() => onDrill({
+              title: 'Price Freshness',
+              subtitle: `${priceStamp ?? ''}${quoteStatusTip ?? ''}${quoteObservedMark}`,
+              endpoint: '/api/v2/overview',
+              rows: [
+                overview?.quote_selection ? { quote_selection: overview.quote_selection } : null,
+                overview?.pricing ?? { last_repriced: overview?.last_repriced, reprice_source: overview?.reprice_source },
+              ].filter(Boolean),
+            })}
+            style={{
+              fontSize: TYPE.xs,
+              color: quoteSel?.fallback_used || quoteSel?.status === 'UNAVAILABLE' ? BB.amber : 'var(--text3)',
+              marginTop: 2,
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+            }}
+          >{pricesFace}</div>
         )}
       </div>
       {tiles.map(t => (

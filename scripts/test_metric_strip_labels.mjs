@@ -106,6 +106,16 @@ check('undated is counted over contributors, not over every account row',
   code.includes('accounts_contributing') && code.includes('contributing undated'))
 check('degraded quotes state their symbol coverage',
   code.includes('quoteCoverMark') && code.includes('quotes DEGRADED'))
+check('degraded quote coverage is tip-only (face stays short)',
+  code.includes('quoteStatusFace') &&
+  code.includes('quoteStatusTip') &&
+  code.includes('pricesFace') &&
+  /quoteStatusTip[\s\S]*quoteCoverMark/.test(code) &&
+  !/pricesFace[\s\S]*quoteObservedMark/.test(code.split('const pricesFace')[1]?.slice(0, 200) || 'quoteObservedMark'))
+check('prices face cannot paint over tiles (ellipsis + overflow)',
+  code.includes('data-testid="metric-strip-prices"') &&
+  code.includes("textOverflow: 'ellipsis'") &&
+  /metric-strip-brand[\s\S]{0,400}overflow: 'hidden'/.test(code))
 check('the selected quote observation is its own mark',
   code.includes('quoteObservedMark'))
 check('an UNDATED tile renders a line rather than nothing',
