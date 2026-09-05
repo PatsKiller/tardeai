@@ -475,6 +475,90 @@ def list_subjects(limit: int = 50) -> dict[str, Any]:
     }
 
 
+def list_agent_consumption(
+    agent_id: str | None = None,
+    limit: int = 200,
+) -> dict[str, Any]:
+    """Read-only agent consumption projection (Wave E).
+
+    Returns subscriptions + consumption receipts so the Command Center Agent
+    Memory view can show which CIO/Advisory/Hermes agents consumed which events
+    and what they derived. Never writes, never calls providers.
+    """
+    lim = max(1, min(int(limit or 200), 1000))
+    aid = (agent_id or "").strip() or None
+    try:
+        from scripts.lib.comms.agent_contracts import (  # noqa: F401
+            list_consumption_receipts,
+            list_subscriptions,
+        )
+    except Exception:
+        try:
+            from lib.comms.agent_contracts import (  # noqa: F401
+                list_consumption_receipts,
+                list_subscriptions,
+            )
+        except Exception:
+            return {
+                "ok": True,
+                "subscriptions": [],
+                "receipts": [],
+                "total_receipts": 0,
+                "total_subscriptions": 0,
+                "source": "empty",
+                "note": "agent_contracts unavailable",
+            }
+
+    subscriptions = list_subscriptions(aid) if aid else list_subscriptions(None)
+    receipts = list_consumption_receipts(aid, limit=lim)
+
+    def _iso(v: Any) -> str | None:
+        if v is None:
+            return None
+        return v.isoformat() if hasattr(v, "isoformat") else str(v)
+
+    subs = [
+        {
+            "subscription_id": s.get("subscription_id"),
+            "agent_id": s.get("agent_id"),
+            "agent_version": s.get("agent_version"),
+            "filter": s.get("filter"),
+            "enabled": s.get("enabled"),
+            "created_at": _iso(s.get("created_at")),
+            "persisted": s.get("persisted") or "memory",
+        }
+        for s in subscriptions
+    ]
+    recs = [
+        {
+            "receipt_id": r.get("receipt_id"),
+            "agent_id": r.get("agent_id"),
+            "agent_version": r.get("agent_version"),
+            "event_id": r.get("event_id"),
+            "thread_id": r.get("thread_id"),
+            "purpose": r.get("purpose"),
+            "policy_decision": r.get("policy_decision"),
+            "retrieved_at": _iso(r.get("retrieved_at")),
+            "acknowledged_at": _iso(r.get("acknowledged_at")),
+            "derived_artifact_ids": r.get("derived_artifact_ids") or [],
+            "influence_declaration": r.get("influence_declaration"),
+            "influence_event_ids": r.get("influence_event_ids") or [],
+            "persisted": r.get("persisted") or "memory",
+        }
+        for r in receipts
+    ]
+
+    return {
+        "ok": True,
+        "subscriptions": subs,
+        "receipts": recs,
+        "total_receipts": len(recs),
+        "total_subscriptions": len(subs),
+        "source": "db" if any(r.get("persisted") == "db" for r in recs) else ("memory" if recs else "empty"),
+        "filters": {"agent_id": aid},
+    }
+
+
 def health() -> dict[str, Any]:
     """Ledger health for the communications workspace banner."""
     try:
