@@ -128,12 +128,54 @@ Mode-scoped to OFF/SHADOW, and it never required ACTIVE to be `False`. The
 constant conflates that narrow contract with a global one. Nothing in the
 enforcement layer is asking for the current behaviour.
 
-What is still missing is the ACTIVE-side test: set `COMMS_GATEWAY_MODE=ACTIVE`
-with `ACTIVE_CLASSES=ops` and assert `delivery_owned` is `true`.
+All THREE assertions in that test survive a correct fix. The third pins the
+banner, and is `or`-shaped:
+
+```python
+assert "OFF/SHADOW" in h["banner"] or "does not own delivery" in h["banner"]
+```
+
+Under OFF, any correct derivation still produces "does not own delivery", so it
+passes unchanged too. Stated explicitly because *"will this fight the safety
+tests?"* is the first question anyone opening this will ask, and the answer is
+demonstrably **no, for all three**.
 
 Supporting the per-class suggestion: `communications_portal.py` references
 `COMMS_GATEWAY_ACTIVE_CLASSES` and `telegram_class_allowed` **zero** times. It
 cannot express per-class ownership even in principle.
+
+## THE MISSING TEST NEEDS NO SCAFFOLDING, AND FAILS TODAY
+
+`tests/test_comms_telegram_canary_active.py:21` already has the harness — an
+autouse fixture that clears `COMMS_GATEWAY_MODE` and
+`COMMS_GATEWAY_ACTIVE_CLASSES`, **resets the mode cache** (which matters,
+`get_gateway_mode` memoises), and stubs `_db_conn` to `None` on both
+`comms.client` and `comms.delivery`. So the ACTIVE-side test can be written in
+that file with no new scaffolding and **no database**.
+
+Also why the local failures split the way they do: the canary file stubs the DB
+and `test_communications_portal.py` does not. The 7 local failures and the
+missing test have the same root.
+
+Run against that harness, the defect reproduces as a unit test:
+
+```
+mode           = ACTIVE
+delivery_owned = False        <-- never reads mode
+banner         = Ledger-backed · gateway does not own delivery while OFF/SHADOW
+
+AssertionError: delivery_owned is a constant; it never reads mode
+```
+
+Confirmed not-coverage: the `"delivery_owned": True` at
+`test_comms_telegram_canary_active.py:181` is a **mock return** from a stubbed
+`send_via_gateway`, never an assertion against `portal.health()`. The health
+endpoint has zero ACTIVE-mode coverage.
+
+The harness discovery, the third-assertion catch and the mock/coverage
+distinction are all from the `tradeai-wt-final-operator-convergence-b9` session.
+The reproduction above was run here to confirm them; the probe was a scratch file
+and is not committed — no comms test file was touched.
 
 ## CORRECTION: MAIN IS NOT RED
 

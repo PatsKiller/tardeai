@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `54e8250558701b19055d5b5a4c2f96bf099aca13c3a67936e6b37edaf77efdef`
+**Tree fingerprint:** `5a46af4a292a35b55044b610763fe923185db8b36b386f3247c33491e0845598`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -155,7 +155,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/_findings/alpaca_taxonomy_audit_2026-07-21.md` | FINDINGS: Alpaca Paper/Live Taxonomy & Multi-Account Readiness Audit | review_required | OK | `8212d11b2f89` |
 | `docs/_findings/bitwarden_env_posture_recon_2026-07-21.md` | RECON: Bitwarden + Env Posture Inventory (read-only) | review_required | OK | `a0d867f98a49` |
 | `docs/_findings/brave_search_api_usage_audit_2026-05.md` | Brave Search API Usage Audit — May 2026 | review_required | OK | `943f66776820` |
-| `docs/_findings/comms_delivery_owned_contradiction_2026-09-05.md` | `delivery_owned` contradicts the gateway it describes | review_required | OK | `d952c58e87bb` |
+| `docs/_findings/comms_delivery_owned_contradiction_2026-09-05.md` | `delivery_owned` contradicts the gateway it describes | review_required | OK | `9844efa547ec` |
 | `docs/_findings/defense_desk_v1_diagnosis_2026-07-17.md` | Defense Desk v1 — Phase 0 Diagnosis (2026-07-17) | review_required | OK | `97acf7b2dff3` |
 | `docs/_findings/defense_desk_v2_diagnosis_2026-07-18.md` | Defense Desk v2 — Phase 0 Diagnosis (2026-07-18) | review_required | OK | `5dc0e9420a52` |
 | `docs/_findings/defense_desk_v7_diagnosis_2026-07-18.md` | Defense Desk v7 — Phase 0 Diagnosis + EXEC Branch Decision (2026-07-18) | review_required | OK | `4ff42d3ab9bc` |
