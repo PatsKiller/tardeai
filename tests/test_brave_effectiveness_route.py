@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import ast
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -30,6 +31,12 @@ ROUTE = "/api/v2/research-intelligence/brave"
 HANDLER = "_brave_research_effectiveness"
 
 from scripts.lib import brave_research_router as R  # noqa: E402
+
+#: A pinned WEEKDAY. The router defers scheduled low-priority work at weekends,
+#: so a test that calls search() on the wall clock silently changes behaviour
+#: every Saturday. This suite went green on Friday and red after UTC midnight —
+#: the router was right; the test had no clock.
+WEEKDAY = datetime(2026, 9, 4, 12, 0, 0, tzinfo=timezone.utc)
 
 
 # ── wiring ──────────────────────────────────────────────────────────────────
@@ -123,8 +130,17 @@ def test_rendering_the_surface_never_reaches_the_network(monkeypatch, tmp_path):
     assert via_route["provider_call_on_page_load"] is False
 
 
+SATURDAY = datetime(2026, 9, 5, 12, 0, 0, tzinfo=timezone.utc)
+
+
 def test_page_load_purpose_is_still_denied_at_the_library(tmp_path, monkeypatch):
-    """The library guarantee the route depends on."""
+    """The library guarantee the route depends on.
+
+    Run on BOTH a weekday and a Saturday. A forbidden purpose must be refused
+    for the *policy* reason, never merely because the weekend gate happened to
+    fire first — otherwise the guarantee would silently weaken to "denied on
+    weekends" and nobody would notice until a Monday.
+    """
     monkeypatch.setenv("SEARCH_BUDGET_BRAVE_DAILY", "25")
     monkeypatch.setenv("SEARCH_BUDGET_BRAVE_MONTHLY", "850")
     monkeypatch.setenv("BRAVE_SEARCH_API_KEY", "test-key-not-real")
@@ -133,8 +149,18 @@ def test_page_load_purpose_is_still_denied_at_the_library(tmp_path, monkeypatch)
         raise AssertionError("PAGE_LOAD reached the provider")
 
     monkeypatch.setattr(R.urllib.request, "urlopen", forbidden)
-    out = R.search("render", purpose=R.Purpose.PAGE_LOAD, priority=R.Priority.HELD_CAPITAL, caller="ui", root=tmp_path)
-    assert out.status is R.Status.DENIED_POLICY
+    for when, label in ((WEEKDAY, "weekday"), (SATURDAY, "saturday")):
+        out = R.search(
+            "render",
+            purpose=R.Purpose.PAGE_LOAD,
+            priority=R.Priority.HELD_CAPITAL,
+            caller="ui",
+            root=tmp_path,
+            now=when,
+        )
+        assert out.status is R.Status.DENIED_POLICY, (
+            f"on a {label} PAGE_LOAD was refused as {out.status.value}, not by policy"
+        )
 
 
 # ── the payload tells the truth ─────────────────────────────────────────────
@@ -188,8 +214,8 @@ def test_the_handler_labels_producing_but_not_adopted(tmp_path, monkeypatch):
             return False
 
     monkeypatch.setattr(R.urllib.request, "urlopen", lambda req, timeout=None: Resp())
-    R.search("spend", caller="t", root=tmp_path)
-    hb = R.health(root=tmp_path)
+    R.search("spend", caller="t", root=tmp_path, now=WEEKDAY)
+    hb = R.health(root=tmp_path, now=WEEKDAY)
     assert "brave_producing_not_adopted" in hb["firing"]
     assert hb["ok"] is False
 
