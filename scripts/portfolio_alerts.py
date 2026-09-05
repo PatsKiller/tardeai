@@ -491,11 +491,15 @@ if __name__ == "__main__":
 
 
 def _send_telegram_document(file_path: "Path", caption: str, project_root: "Path") -> bool:
-    """Notify via send_telegram chokepoint (no raw Bot API sendDocument)."""
+    """Send file via telegram_alert.send_telegram_document chokepoint."""
     if not file_path.exists():
         return False
-    note = f"{caption}\nFile: {file_path}"
-    ok = _send_telegram(note, project_root)
+    sys.path.insert(0, str(project_root / "scripts"))
+    try:
+        from telegram_alert import send_telegram_document
+        ok = bool(send_telegram_document(str(file_path), caption=caption or file_path.name, bypass_router=True))
+    except Exception:
+        ok = False
     try:
         root = str(project_root)
         if root not in sys.path:
@@ -505,7 +509,7 @@ def _send_telegram_document(file_path: "Path", caption: str, project_root: "Path
             direction="OUTBOUND", event_type="alert", message_class="ops",
             producer="portfolio_alerts", subject_key="ops:portfolio_report",
             retention_class="operational", severity="info",
-            sanitized_body=note[:500], short_summary=caption[:120],
+            sanitized_body=(caption or "")[:500], short_summary=(caption or "")[:120],
         ))
     except Exception:
         pass

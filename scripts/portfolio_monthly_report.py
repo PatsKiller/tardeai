@@ -119,13 +119,31 @@ def _send_telegram(message: str) -> None:
 
 
 def _send_telegram_doc(doc_path: Path, caption: str = "") -> None:
-    """Announce DOCX availability via send_telegram (no raw sendDocument bypass)."""
+    """Send DOCX via telegram_alert.send_telegram_document chokepoint."""
     if not doc_path.exists():
         print(f"  [monthly-report] DOCX not found: {doc_path}")
         return
     note = caption or f"Monthly portfolio DOCX ready: {doc_path.name}"
-    msg = f"{note}\nFile: {doc_path}"
-    _send_telegram(msg)
+    try:
+        from telegram_alert import send_telegram_document
+        ok = bool(send_telegram_document(str(doc_path), caption=note, bypass_router=True))
+        print("  [monthly-report] Telegram document sent" if ok else "  [monthly-report] Telegram document not sent")
+    except Exception as e:
+        print(f"  [monthly-report] Telegram document error: {type(e).__name__}: {str(e)[:120]}")
+        return
+    try:
+        root = str(PROJECT_ROOT)
+        if root not in sys.path:
+            sys.path.insert(0, root)
+        from scripts.lib.comms import CommunicationEvent, publish_communication
+        publish_communication(CommunicationEvent(
+            direction="OUTBOUND", event_type="alert", message_class="report",
+            producer="portfolio_monthly_report", subject_key="ops:monthly_report",
+            retention_class="operational", severity="info",
+            sanitized_body=note[:500], short_summary=note[:120],
+        ))
+    except Exception:
+        pass
 
 
 def _build_weekly_context(weeklies: List[Dict]) -> str:

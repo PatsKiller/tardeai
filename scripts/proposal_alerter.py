@@ -139,11 +139,11 @@ def format_proposal_alert(proposal, alert_type, current_price):
 
 
 def send_proposal_alert(proposal, alert_type, current_price):
-    """Send alert via telegram_alert.send_telegram chokepoint (no raw Bot API)."""
-    msg, _keyboard = format_proposal_alert(proposal, alert_type, current_price)
+    """Send alert via telegram_alert chokepoint with inline keyboard restored."""
+    msg, keyboard = format_proposal_alert(proposal, alert_type, current_price)
     try:
         from telegram_alert import send_telegram
-        ok = bool(send_telegram(msg))
+        ok = bool(send_telegram(msg, reply_markup=keyboard))
         if not ok:
             log.info(f"send_proposal_alert not accepted for {proposal.get('symbol', '?')} ({alert_type})")
         _shadow_publish(
@@ -399,10 +399,10 @@ def send_stop_alert(symbol, account=""):
             pass
         return
 
-    msg, _keyboard = format_stop_alert(data)
+    msg, keyboard = format_stop_alert(data)
     try:
         from telegram_alert import send_telegram
-        send_telegram(msg)
+        send_telegram(msg, reply_markup=keyboard)
         _shadow_publish(
             msg, producer="proposal_alerter",
             subject_key=f"stop:{symbol}", severity="critical",

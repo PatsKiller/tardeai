@@ -41,15 +41,21 @@ def _strategy_max_hold(strategy):
 
 
 def _send_proposal_alert(pid, symbol, strategy, hold_days, max_hold_days, overdue_by, upnl):
-    """Telegram alert via chokepoint; approve/reject via CC time-exit proposals UI/API."""
+    """Telegram alert via chokepoint with one-tap approve/reject keyboard."""
     try:
         from telegram_alert import send_telegram
         txt = (f"⏳ *Time-exit proposal: {symbol}* (id={pid})\n"
                f"Strategy: {strategy} — held {hold_days}d > max {max_hold_days}d (+{overdue_by})\n"
                + (f"Unrealized: {upnl}%\n" if upnl is not None else "")
-               + "Past strategy max-hold. Approve/dismiss via /v3 time-exit proposals "
+               + "Past strategy max-hold. Approve/dismiss via buttons or /v3 time-exit proposals "
                f"(proposal id {pid}).")
-        send_telegram(txt)
+        keyboard = {
+            "inline_keyboard": [[
+                {"text": "✅ Close now", "callback_data": f"texitapprove:{pid}"},
+                {"text": "✖ Dismiss", "callback_data": f"texitreject:{pid}"},
+            ]]
+        }
+        send_telegram(txt, reply_markup=keyboard)
         try:
             root = str(PROJECT_ROOT)
             if root not in sys.path:

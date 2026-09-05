@@ -1098,9 +1098,18 @@ def run_weekly_report(project_root: str = ".") -> Optional[Path]:
         f"🎯 {_clean_md(safe_action)[:200]}\n\n"
         f"<a href='https://ms01-openclaw.tail163d14.ts.net/reports/weekly/weekly_{date_str}.html'>📄 Full Report</a>"
     )
-    if docx_path and Path(docx_path).exists():
-        tg_msg = tg_msg + f"\n\nDOCX: {docx_path}"
     _send_telegram(tg_msg)
+    if docx_path and Path(docx_path).exists():
+        try:
+            from telegram_alert import send_telegram_document
+            ok = bool(send_telegram_document(
+                str(docx_path),
+                caption=f"Weekly portfolio DOCX — {date_str}",
+                bypass_router=True,
+            ))
+            print("  [weekly-report] Telegram DOCX sent" if ok else "  [weekly-report] Telegram DOCX not sent")
+        except Exception as e:
+            print(f"  [weekly-report] Telegram DOCX error: {type(e).__name__}: {str(e)[:120]}")
     print(f"[weekly-report] Done. Report: {html_path}")
     return html_path
 

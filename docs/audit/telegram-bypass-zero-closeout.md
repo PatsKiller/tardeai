@@ -24,7 +24,13 @@ Four parallel agents migrated remaining producers to `telegram_alert.send_telegr
 - `670172259` cohort 4
 - (this) baseline refresh to empty
 
+## Caveat remediation (follow-up)
+Inline keyboards and `sendDocument` were restored through the approved chokepoint:
+- `telegram_transport.send_document`
+- `telegram_alert.send_telegram(..., reply_markup=..., chat_ids=..., thread_id=...)`
+- `telegram_alert.send_telegram_document(...)`
+Producers (`proposal_alerter`, `open_trade_monitor`, proposal/time-exit alerts, portfolio report DOCX/PDF paths) again use those APIs — still **zero** static bypasses.
+
 ## Honest residual
 - Zero **static** bypass ≠ production ACTIVE.
-- Some migrations flattened inline keyboards / `sendDocument` into text+path notices via wrapper.
-- Runtime egress policy and producer→CommunicationEvent adoption remain separate gates.
+- Runtime egress policy and universal CommunicationEvent adoption remain separate gates.

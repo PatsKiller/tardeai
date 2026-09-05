@@ -16,7 +16,7 @@ No cost. No Twilio account needed.
 from __future__ import annotations
 import os
 from typing import Any, Dict, List, Optional
-from telegram_transport import MAX_MSG_LEN, send_message, smart_split
+from telegram_transport import MAX_MSG_LEN, send_document, send_message, smart_split
 
 
 def _env(k: str, default: str = "") -> str:
@@ -50,7 +50,13 @@ def _smart_split(text: str, limit: int) -> list[str]:
     return smart_split(text, limit)
 
 
-def _raw_send_telegram(message: str, chat_ids: list = None) -> bool:
+def _raw_send_telegram(
+    message: str,
+    chat_ids: list = None,
+    *,
+    reply_markup: dict | None = None,
+    thread_id: str | None = None,
+) -> bool:
     """Low-level Telegram send. No routing — called after router approval."""
     # FQDN/v3 normalization at the send chokepoint: rewrite any internal IP/localhost + legacy /v2/
     # dashboard link to the public Tailscale FQDN + /v3/ so no notification can leak a wrong URL.
@@ -67,8 +73,16 @@ def _raw_send_telegram(message: str, chat_ids: list = None) -> bool:
     try:
         chunks = _smart_split(message, MAX_MSG_LEN)
         for cid in targets:
-            for chunk in chunks:
-                result = send_message(token=token, chat_id=cid, text=chunk)
+            for i, chunk in enumerate(chunks):
+                # Attach keyboard only on the final chunk so buttons stay with the full body.
+                markup = reply_markup if (reply_markup and i == len(chunks) - 1) else None
+                result = send_message(
+                    token=token,
+                    chat_id=cid,
+                    text=chunk,
+                    reply_markup=markup,
+                    thread_id=thread_id,
+                )
                 if not result.get("ok"):
                     print(f"[telegram] Error to {cid}: {result.get('status_code')}")
                     ok = False
@@ -84,9 +98,17 @@ def _raw_send_telegram(message: str, chat_ids: list = None) -> bool:
     return ok
 
 
-def _legacy_send(message: str, bypass_router: bool) -> bool:
+def _legacy_send(
+    message: str,
+    bypass_router: bool,
+    *,
+    reply_markup: dict | None = None,
+    chat_ids: list | None = None,
+    thread_id: str | None = None,
+) -> bool:
     """Pre-normalization behaviour, unchanged. Requires no new table."""
-    if not _token() or not _chat_ids():
+    targets = chat_ids or _chat_ids()
+    if not _token() or not targets:
         print("[telegram] Skipped — TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID not set")
         return False
     if not bypass_router:
@@ -104,7 +126,9 @@ def _legacy_send(message: str, bypass_router: bool) -> bool:
             mark_sent(message)
         except ImportError:
             pass  # Router not available — send normally
-    return _raw_send_telegram(message)
+    return _raw_send_telegram(
+        message, chat_ids=targets, reply_markup=reply_markup, thread_id=thread_id
+    )
 
 
 def publish_operator_message(message: str, *, bypass_router: bool = False,
@@ -159,7 +183,14 @@ def publish_operator_message(message: str, *, bypass_router: bool = False,
                                   bypass_router=bypass_router)
 
 
-def send_telegram(message: str, bypass_router: bool = False) -> bool:
+def send_telegram(
+    message: str,
+    bypass_router: bool = False,
+    *,
+    reply_markup: dict | None = None,
+    chat_ids: list | None = None,
+    thread_id: str | None = None,
+) -> bool:
     """Send/publish an operator alert. Returns True when the event was ACCEPTED.
 
     Accepted means the platform has taken responsibility for the event — delivered
@@ -168,6 +199,9 @@ def send_telegram(message: str, bypass_router: bool = False) -> bool:
     event made callers treat normal routing as failure and retry, which is exactly
     the storm this normalization exists to stop. Callers needing delivery detail
     should use publish_operator_message() and read `delivered`.
+
+    ``reply_markup`` / explicit ``chat_ids`` / ``thread_id`` force the legacy
+    transport path (outbox does not yet own keyboard or destination overrides).
     """
     if not _enabled():
         return False
@@ -177,6 +211,15 @@ def send_telegram(message: str, bypass_router: bool = False) -> bool:
         wrap_send_hook(message, producer="send_telegram", bypass_router=bypass_router)
     except Exception:
         pass
+    # Keyboards / explicit destinations stay on legacy transport until outbox owns them.
+    if reply_markup is not None or chat_ids is not None or thread_id is not None:
+        return _legacy_send(
+            message,
+            bypass_router,
+            reply_markup=reply_markup,
+            chat_ids=chat_ids,
+            thread_id=thread_id,
+        )
     try:
         result = publish_operator_message(message, bypass_router=bypass_router)
     except Exception as e:
@@ -188,6 +231,61 @@ def send_telegram(message: str, bypass_router: bool = False) -> bool:
     if not result.get("delivered") and result.get("route_mode") not in (None, "LEGACY"):
         print(f"[telegram] {result.get('route_mode')} ({result.get('reason')}): {message[:60]}...")
     return bool(result.get("accepted"))
+
+
+def send_telegram_document(
+    file_path: str,
+    caption: str = "",
+    *,
+    bypass_router: bool = True,
+    chat_ids: list | None = None,
+) -> bool:
+    """Send a file via the approved transport sendDocument chokepoint.
+
+    Producers must call this instead of raw Bot API sendDocument. Credentials and
+    chat selection stay inside telegram_alert / telegram_transport.
+    """
+    if not _enabled():
+        return False
+    from pathlib import Path
+
+    path = Path(file_path)
+    if not path.is_file():
+        print(f"[telegram] document missing: {file_path}")
+        return False
+    cap = caption or path.name
+    try:
+        from notification_url_builder import publicize_message
+        cap = publicize_message(cap)
+    except Exception:
+        pass
+    if not bypass_router:
+        try:
+            from telegram_alert_router import should_send_telegram, mark_sent, classify_alert
+            if not should_send_telegram(cap):
+                level = classify_alert(cap)
+                print(f"[telegram] document suppressed ({level}): {cap[:60]}...")
+                return False
+            mark_sent(cap)
+        except ImportError:
+            pass
+    token = _token()
+    targets = chat_ids or _chat_ids()
+    if not token or not targets:
+        print("[telegram] document skipped — TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID not set")
+        return False
+    ok = True
+    for cid in targets:
+        result = send_document(token=token, chat_id=cid, file_path=str(path), caption=cap)
+        if not result.get("ok"):
+            print(f"[telegram] document error to {cid}: {result.get('status_code')}")
+            ok = False
+    try:
+        from report_capture import capture
+        capture(cap, ok=ok, channel="telegram_document")
+    except Exception:
+        pass
+    return ok
 
 
 def build_telegram_message(

@@ -809,12 +809,11 @@ def render_pdf(html: str, out_path: Path) -> Path:
 
 
 def send_telegram_report_notice(pdf_path: Path, caption: str) -> bool:
-    """Notify via telegram_alert chokepoint (text + path; no raw sendDocument)."""
+    """Send PDF via telegram_alert.send_telegram_document chokepoint."""
     sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
     try:
-        from telegram_alert import send_telegram
-        text = f"{caption}\nPDF: {pdf_path}"
-        ok = bool(send_telegram(text, bypass_router=True))
+        from telegram_alert import send_telegram_document
+        ok = bool(send_telegram_document(str(pdf_path), caption=caption, bypass_router=True))
         try:
             root = str(PROJECT_ROOT)
             if root not in sys.path:
@@ -824,13 +823,13 @@ def send_telegram_report_notice(pdf_path: Path, caption: str) -> bool:
                 direction="OUTBOUND", event_type="alert", message_class="ops",
                 producer="portfolio_report_ms", subject_key="ops:portfolio_report_ms",
                 retention_class="operational", severity="info",
-                sanitized_body=text[:500], short_summary=text[:120],
+                sanitized_body=(caption or "")[:500], short_summary=(caption or "")[:120],
             ))
         except Exception:
             pass
         return ok
     except Exception as e:
-        print(f"[report] telegram notice error: {type(e).__name__}: {str(e)[:120]}")
+        print(f"[report] telegram document error: {type(e).__name__}: {str(e)[:120]}")
         return False
 
 

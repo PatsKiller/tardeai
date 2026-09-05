@@ -305,11 +305,10 @@ def send_telegram(message, dry_run=False, no_telegram=False):
 
 
 def send_telegram_with_buttons(message, buttons, dry_run=False, no_telegram=False):
-    """Send stop-path alert via telegram_alert.send_telegram and RETURN A RECEIPT.
+    """Send stop-path alert with inline keyboard via telegram_alert chokepoint.
 
-    Inline keyboards are flattened into the body text so this producer no longer
-    selects tokens/chats or imports telegram_transport. A send with no receipt
-    is not a send.
+    Rebuilds Telegram reply_markup from the buttons list and sends through
+    send_telegram(..., reply_markup=...). No producer Bot API / token selection.
     """
     receipt = {"ok": False, "message_id": None, "error": None}
     if dry_run or no_telegram:
@@ -317,15 +316,16 @@ def send_telegram_with_buttons(message, buttons, dry_run=False, no_telegram=Fals
         receipt["error"] = "dry_run" if dry_run else "no_telegram"
         return receipt
     try:
-        action_lines = []
-        for row in buttons or []:
-            for text, cb in row:
-                action_lines.append(f"  • {text} (`{cb}`)")
-        body = message
-        if action_lines:
-            body = message + "\n\nActions:\n" + "\n".join(action_lines)
+        keyboard = None
+        if buttons:
+            keyboard = {
+                "inline_keyboard": [
+                    [{"text": str(text), "callback_data": str(cb)} for text, cb in row]
+                    for row in buttons
+                ]
+            }
         from telegram_alert import send_telegram as _send
-        ok = bool(_send(body, bypass_router=True))
+        ok = bool(_send(message, bypass_router=True, reply_markup=keyboard))
         receipt["ok"] = ok
         if not ok:
             receipt["error"] = "send_telegram_false"
@@ -339,7 +339,7 @@ def send_telegram_with_buttons(message, buttons, dry_run=False, no_telegram=Fals
                 direction="OUTBOUND", event_type="alert", message_class="ops",
                 producer="open_trade_monitor", subject_key="ops:open_trade",
                 retention_class="operational", severity="urgent",
-                sanitized_body=body[:500], short_summary=body[:120],
+                sanitized_body=message[:500], short_summary=message[:120],
             ))
         except Exception:
             pass

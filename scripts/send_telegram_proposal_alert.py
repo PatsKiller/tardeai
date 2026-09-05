@@ -234,19 +234,31 @@ def main():
 
         if check["send"] and not args.dry_run and _router_ok:
             try:
-                # Destination metadata for audit only — delivery goes through
-                # telegram_alert.send_telegram (no token/chat/transport bypass).
+                # Destination + keyboard via telegram_alert chokepoint (no raw Bot API).
+                dest: dict = {}
                 try:
                     from telegram_alert_routing_policy import (
                         telegram_destination_for_alert, redact_telegram_destination,
                     )
-                    dest = telegram_destination_for_alert(packet)
+                    dest = telegram_destination_for_alert(packet) or {}
                     result["destination"] = redact_telegram_destination(dest)
                 except Exception:
                     result["destination"] = {"configured": False}
 
                 from telegram_alert import send_telegram
-                ok = bool(send_telegram(message))
+                try:
+                    from telegram_proposal_alert_policy import build_proposal_inline_keyboard
+                    keyboard = build_proposal_inline_keyboard(packet)
+                except Exception:
+                    keyboard = None
+                chat_ids = [str(dest["chat_id"])] if dest.get("chat_id") else None
+                thread_id = str(dest["thread_id"]) if dest.get("thread_id") else None
+                ok = bool(send_telegram(
+                    message,
+                    reply_markup=keyboard,
+                    chat_ids=chat_ids,
+                    thread_id=thread_id,
+                ))
                 try:
                     root = str(PROJ)
                     if root not in sys.path:
