@@ -26,8 +26,14 @@ from scripts.lib.comms.mode import MODE_ACTIVE, MODE_OFF, get_gateway_mode  # no
 @pytest.fixture(autouse=True)
 def _clean(monkeypatch):
     monkeypatch.delenv("COMMS_GATEWAY_MODE", raising=False)
+    monkeypatch.delenv("COMMS_GATEWAY_CANARY_CLASSES", raising=False)
+    monkeypatch.delenv("COMMS_GATEWAY_CANARY_CHATS", raising=False)
+    monkeypatch.delenv("COMMS_GATEWAY_ACTIVE_CLASSES", raising=False)
     mode_mod._cache["mode"] = None
     mode_mod._cache["why"] = None
+    # Unit tests assert in-memory ledger; force no DB even when localhost has one.
+    monkeypatch.setattr("scripts.lib.comms.client._db_conn", lambda: None)
+    monkeypatch.setattr("scripts.lib.comms.delivery._db_conn", lambda: None)
     reset_memory_store()
     reset_memory_deliveries()
     yield
@@ -231,3 +237,157 @@ def test_unsupported_channel():
     assert result["ok"] is False
     assert result["error"] == "unsupported_channel"
     assert memory_store_snapshot() == {}
+
+
+def test_telegram_supported_record_only(monkeypatch):
+    import scripts.lib.comms.channel_adapters as ca
+
+    monkeypatch.setattr(
+        ca,
+        "_provider_send_telegram",
+        MagicMock(side_effect=AssertionError("no net")),
+    )
+    result = send_via_gateway(
+        "telegram",
+        body="tg body",
+        producer="ops.test",
+        subject_key="test:channel_adapters:tg_record",
+        message_class="operator_alert",
+    )
+    assert result["ok"] is True
+    assert result["delivered"] is False
+    assert result["channel"] == "telegram"
+    assert result["event_id"]
+
+
+def test_telegram_canary_empty_allowlist_blocks_deliver(monkeypatch):
+    monkeypatch.setenv("COMMS_GATEWAY_MODE", "CANARY")
+    monkeypatch.delenv("COMMS_GATEWAY_CANARY_CLASSES", raising=False)
+    mode_mod._cache["mode"] = None
+
+    import scripts.lib.comms.channel_adapters as ca
+
+    mock_tg = MagicMock(side_effect=AssertionError("must not send"))
+    monkeypatch.setattr(ca, "_provider_send_telegram", mock_tg)
+
+    result = send_via_gateway(
+        "telegram",
+        body="blocked",
+        producer="ops.test",
+        subject_key="test:channel_adapters:tg_canary_empty",
+        message_class="operator_alert",
+        deliver=True,
+    )
+    assert result["ok"] is False
+    assert result["error"] == "delivery_blocked_allowlist"
+    assert result["delivered"] is False
+    assert result["delivery_owned"] is False
+    assert result["event_id"]
+    mock_tg.assert_not_called()
+
+
+def test_telegram_active_empty_allowlist_blocks_deliver(monkeypatch):
+    monkeypatch.setenv("COMMS_GATEWAY_MODE", "ACTIVE")
+    monkeypatch.delenv("COMMS_GATEWAY_ACTIVE_CLASSES", raising=False)
+    mode_mod._cache["mode"] = None
+
+    import scripts.lib.comms.channel_adapters as ca
+
+    mock_tg = MagicMock(side_effect=AssertionError("must not send"))
+    monkeypatch.setattr(ca, "_provider_send_telegram", mock_tg)
+
+    result = send_via_gateway(
+        "telegram",
+        body="blocked active",
+        producer="ops.test",
+        subject_key="test:channel_adapters:tg_active_empty",
+        message_class="ops",
+        deliver=True,
+    )
+    assert result["ok"] is False
+    assert result["error"] == "delivery_blocked_allowlist"
+    assert result["delivered"] is False
+    assert result["delivery_owned"] is False
+    mock_tg.assert_not_called()
+
+
+def test_telegram_canary_allowlist_delivers(monkeypatch):
+    monkeypatch.setenv("COMMS_GATEWAY_MODE", "CANARY")
+    monkeypatch.setenv("COMMS_GATEWAY_CANARY_CLASSES", "ops,operator_alert")
+    monkeypatch.delenv("COMMS_GATEWAY_CANARY_CHATS", raising=False)
+    mode_mod._cache["mode"] = None
+
+    import scripts.lib.comms.channel_adapters as ca
+
+    mock_tg = MagicMock(return_value={"ok": True, "provider_message_id": None})
+    monkeypatch.setattr(ca, "_provider_send_telegram", mock_tg)
+
+    result = send_via_gateway(
+        "telegram",
+        body="canary ok",
+        producer="ops.test",
+        subject_key="test:channel_adapters:tg_canary_ok",
+        message_class="operator_alert",
+        deliver=True,
+    )
+    assert result["ok"] is True
+    assert result["delivered"] is True
+    assert result["delivery_owned"] is True
+    mock_tg.assert_called_once()
+    assert memory_delivery_snapshot()[result["delivery_id"]]["status"] == "SENT"
+
+
+def test_telegram_canary_class_not_allowlisted_blocks(monkeypatch):
+    monkeypatch.setenv("COMMS_GATEWAY_MODE", "CANARY")
+    monkeypatch.setenv("COMMS_GATEWAY_CANARY_CLASSES", "ops")
+    mode_mod._cache["mode"] = None
+
+    import scripts.lib.comms.channel_adapters as ca
+
+    mock_tg = MagicMock(side_effect=AssertionError("must not send"))
+    monkeypatch.setattr(ca, "_provider_send_telegram", mock_tg)
+
+    result = send_via_gateway(
+        "telegram",
+        body="wrong class",
+        producer="ops.test",
+        subject_key="test:channel_adapters:tg_wrong_class",
+        message_class="research_digest",
+        deliver=True,
+    )
+    assert result["ok"] is False
+    assert result["error"] == "delivery_blocked_allowlist"
+    mock_tg.assert_not_called()
+
+
+def test_telegram_provider_uses_raw_not_send_telegram(monkeypatch):
+    """Recursion safety: provider path must call _raw_send_telegram, not send_telegram."""
+    monkeypatch.setenv("COMMS_GATEWAY_MODE", "CANARY")
+    monkeypatch.setenv("COMMS_GATEWAY_CANARY_CLASSES", "operator_alert")
+    mode_mod._cache["mode"] = None
+
+    import scripts.telegram_alert as ta
+    import scripts.lib.comms.channel_adapters as ca
+
+    calls = {"raw": 0, "send": 0}
+
+    def _raw(*_a, **_k):
+        calls["raw"] += 1
+        return True
+
+    def _send(*_a, **_k):
+        calls["send"] += 1
+        raise AssertionError("send_telegram must not be called from provider path")
+
+    monkeypatch.setattr(ta, "_raw_send_telegram", _raw)
+    monkeypatch.setattr(ta, "send_telegram", _send)
+    monkeypatch.setattr(ta, "_chat_ids", lambda: ["999"])
+
+    result = ca._provider_send_telegram(
+        body="no recurse",
+        kwargs={},
+        mode="CANARY",
+    )
+    assert result["ok"] is True
+    assert calls["raw"] == 1
+    assert calls["send"] == 0

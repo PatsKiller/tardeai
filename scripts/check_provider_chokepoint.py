@@ -55,6 +55,7 @@ APPROVED_TOOLING = {
     "tests/test_comms_communication_event.py",
     "tests/test_communications_portal.py",
     "tests/test_comms_channel_adapters.py",
+    "tests/test_comms_telegram_canary_active.py",
     "tests/test_comms_shadow_compare.py",
     "tests/test_cio_whatsapp_p4.py",
     "tests/test_active_trader_session_control.py",
