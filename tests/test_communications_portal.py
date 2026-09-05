@@ -26,6 +26,14 @@ import communications_portal as portal  # noqa: E402
 @pytest.fixture(autouse=True)
 def _clean(monkeypatch):
     monkeypatch.delenv("COMMS_GATEWAY_MODE", raising=False)
+    monkeypatch.delenv("COMMS_GATEWAY_CANARY_CLASSES", raising=False)
+    monkeypatch.delenv("COMMS_GATEWAY_ACTIVE_CLASSES", raising=False)
+    # Hermetic: force memory/empty path even when a live DSN is present.
+    monkeypatch.setattr(portal, "_events_db_conn", lambda: None)
+    monkeypatch.setattr(portal, "_deliveries_db_conn", lambda: None)
+    monkeypatch.setattr(portal, "_subjects_db_conn", lambda: None)
+    monkeypatch.setattr("scripts.lib.comms.client._db_conn", lambda: None)
+    monkeypatch.setattr("scripts.lib.comms.delivery._db_conn", lambda: None)
     reset_memory_store()
     reset_memory_deliveries()
     reset_subject_memory()
@@ -72,10 +80,34 @@ def test_health_empty_ledger_delivery_not_owned():
     h = portal.health()
     assert h["ok"] is True
     assert h["delivery_owned"] is False
+    assert h["owned_classes"] == []
     assert h["mode"] == "OFF"
     assert "ledger" in h
     assert h["ledger"]["source"] in ("empty", "memory", "db")
     assert "OFF/SHADOW" in h["banner"] or "does not own delivery" in h["banner"]
+
+
+def test_health_active_ops_reports_delivery_owned(monkeypatch):
+    """ACTIVE + allowlist must not lie with delivery_owned=false."""
+    monkeypatch.setenv("COMMS_GATEWAY_MODE", "ACTIVE")
+    monkeypatch.setenv("COMMS_GATEWAY_ACTIVE_CLASSES", "ops")
+    h = portal.health()
+    assert h["ok"] is True
+    assert h["mode"] == "ACTIVE"
+    assert h["delivery_owned"] is True
+    assert h["owned_classes"] == ["ops"]
+    assert "ops" in h["banner"]
+    assert "OFF/SHADOW" not in h["banner"]
+
+
+def test_health_active_empty_allowlist_fail_closed(monkeypatch):
+    monkeypatch.setenv("COMMS_GATEWAY_MODE", "ACTIVE")
+    monkeypatch.delenv("COMMS_GATEWAY_ACTIVE_CLASSES", raising=False)
+    h = portal.health()
+    assert h["mode"] == "ACTIVE"
+    assert h["delivery_owned"] is False
+    assert h["owned_classes"] == []
+    assert "fail-closed" in h["banner"] or "allowlist" in h["banner"]
 
 
 def test_list_events_empty_honest_source():

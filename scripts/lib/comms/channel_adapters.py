@@ -51,16 +51,25 @@ def _csv_env(name: str) -> frozenset[str]:
     return frozenset(part.strip() for part in raw.split(",") if part.strip())
 
 
+def telegram_owned_classes(mode: str | None = None) -> list[str]:
+    """Message classes the gateway owns for Telegram under the current/given mode.
+
+    Fail-closed: OFF/SHADOW → []; CANARY/ACTIVE → sorted allowlist (empty if unset).
+    """
+    m = (mode or get_gateway_mode(refresh=True) or "").strip().upper()
+    if m == MODE_CANARY:
+        return sorted(_csv_env(ENV_CANARY_CLASSES))
+    if m == MODE_ACTIVE:
+        return sorted(_csv_env(ENV_ACTIVE_CLASSES))
+    return []
+
+
 def telegram_class_allowed(mode: str, message_class: str) -> bool:
     """Fail-closed class gate for Telegram deliver under CANARY/ACTIVE."""
     mc = (message_class or "").strip()
     if not mc:
         return False
-    if mode == MODE_CANARY:
-        return mc in _csv_env(ENV_CANARY_CLASSES)
-    if mode == MODE_ACTIVE:
-        return mc in _csv_env(ENV_ACTIVE_CLASSES)
-    return False
+    return mc in set(telegram_owned_classes(mode))
 
 
 def _telegram_canary_chats() -> frozenset[str]:
@@ -135,9 +144,15 @@ def _provider_send_telegram(
 
     # Import raw sender — bypasses send_telegram / send_via_gateway re-entry.
     try:
-        from scripts.telegram_alert import _raw_send_telegram, _chat_ids as _default_chats
+        from scripts.telegram_alert import (
+            _raw_send_telegram_result,
+            _chat_ids as _default_chats,
+        )
     except ImportError:  # pragma: no cover - scripts/ on path in some runners
-        from telegram_alert import _raw_send_telegram, _chat_ids as _default_chats  # type: ignore
+        from telegram_alert import (  # type: ignore
+            _raw_send_telegram_result,
+            _chat_ids as _default_chats,
+        )
 
     targets = chat_ids
     if targets is None:
@@ -148,15 +163,27 @@ def _provider_send_telegram(
             if not targets:
                 return {"ok": False, "error": "delivery_blocked_canary_chats"}
 
-    ok = _raw_send_telegram(
+    result = _raw_send_telegram_result(
         body,
         chat_ids=targets,
         reply_markup=kwargs.get("reply_markup"),
         thread_id=kwargs.get("thread_id"),
     )
-    if not ok:
+    if not result.get("ok"):
         return {"ok": False, "error": "telegram_send_failed"}
-    return {"ok": True, "provider_message_id": None}
+    mids = [str(m) for m in (result.get("message_ids") or []) if str(m).strip()]
+    # One ChannelDelivery row may cover multiple chats/chunks — join ids stably.
+    provider_message_id = ",".join(mids) if mids else None
+    return {
+        "ok": True,
+        "provider_message_id": provider_message_id,
+        "provider_coordinates": {
+            "channel": "telegram",
+            "adapter_version": ADAPTER_VERSIONS["telegram"],
+            "message_ids": mids,
+            "chat_ids": list(result.get("chat_ids") or targets or []),
+        },
+    }
 
 
 def _provider_send(
@@ -366,12 +393,19 @@ def send_via_gateway(
     delivery_id = base["delivery_id"]
     send_error: str | None = None
     provider_message_id: str | None = None
+    provider_coordinates: dict[str, Any] = {
+        "channel": ch,
+        "adapter_version": ADAPTER_VERSIONS.get(ch),
+    }
     try:
         result = _provider_send(
             ch, body=body, subject=subject, kwargs=kwargs, mode=mode
         )
         if result.get("ok"):
             provider_message_id = result.get("provider_message_id")
+            extra_coords = result.get("provider_coordinates")
+            if isinstance(extra_coords, dict) and extra_coords:
+                provider_coordinates = {**provider_coordinates, **extra_coords}
         else:
             send_error = str(result.get("error") or "provider_failed")
     except Exception as exc:
@@ -384,20 +418,14 @@ def send_via_gateway(
                     delivery_id,
                     status="FAILED",
                     error_taxonomy=send_error[:200],
-                    provider_coordinates={
-                        "channel": ch,
-                        "adapter_version": ADAPTER_VERSIONS.get(ch),
-                    },
+                    provider_coordinates=provider_coordinates,
                 )
             else:
                 settle_delivery(
                     delivery_id,
                     status="SENT",
                     provider_message_id=provider_message_id,
-                    provider_coordinates={
-                        "channel": ch,
-                        "adapter_version": ADAPTER_VERSIONS.get(ch),
-                    },
+                    provider_coordinates=provider_coordinates,
                 )
         except Exception as exc:
             base["errors"].append(f"settle_failed:{type(exc).__name__}")
