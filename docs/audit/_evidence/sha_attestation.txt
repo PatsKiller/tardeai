@@ -1,0 +1,8 @@
+attested_at_utc=2026-09-05T01:13:05Z
+CURRENT_realpath=/home/johnclaw/trade-ai-releases/portfolio-server/17e30dcbb-main-exact-phase2-20260904-210453
+SOURCE_COMMIT=17e30dcbb9a091f2fb9916f3c0d4ccabd5c5e72e
+GIT_SHA=17e30dcbb9a091f2fb9916f3c0d4ccabd5c5e72e
+BUILD_SHA=17e30dcbb9a091f2fb9916f3c0d4ccabd5c5e72e
+phase0_worktree_HEAD=17e30dcbb9a091f2fb9916f3c0d4ccabd5c5e72e
+planning_baseline_SHA=741207cc2f0e0ee5fe6445f750e608ddcfbbd3ee
+sha_drift=741207cc..17e30dcbb (CC header only; no comms file delta)

@@ -1,0 +1,17 @@
+{
+  "mode": "OFF",
+  "reason": "policy:runtime_mode",
+  "default": "OFF",
+  "env_var": "TELEGRAM_NORMALIZATION_MODE",
+  "policy_path": "/home/johnclaw/trade-ai-releases/portfolio-server/17e30dcbb-main-exact-phase2-20260904-210453/config/operator_alert_policy.yaml",
+  "tables_required": [
+    "alert_notification_events",
+    "alert_notification_deliveries",
+    "alert_digest_queue",
+    "operator_alert_preferences",
+    "operator_alert_preference_audit"
+  ],
+  "tables_missing": [],
+  "migration_applied": true,
+  "delivery_owner": "legacy_router_and_legacy_sender"
+}
