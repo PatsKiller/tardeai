@@ -56,6 +56,7 @@ GATES = [
             "tests/test_alarm_fires_batch3.py",
             "tests/test_alarm_fires_batch4.py",
             "tests/test_alarm_fires_batch5.py",
+            "tests/test_alarm_fires_guard_approval.py",
             "tests/test_alarm_coverage.py",
         ],
     ),
@@ -611,6 +612,34 @@ GATES = [
             # Design toggles, and the fault signals the loader refuses to make
             # configurable — the exemption is the thing under test.
             "tests/test_design_features.py",
+        ],
+    ),
+    (
+        # Provider capacity is what the provider said; the ceiling is what we
+        # chose. brave_search.py asserted a 1,000/month Brave plan nobody had
+        # measured while discarding the X-RateLimit headers that would have
+        # settled it.
+        "research_provider_truth",
+        [
+            "tests/test_research_provider_truth.py",
+        ],
+    ),
+    (
+        # Remote (Telegram) operator approval for guard scopes. The operator
+        # types APPROVE on their phone; the agent never does. Every refusal path
+        # is pinned here because the refusals are what make it safe.
+        "guard_remote_approval",
+        [
+            "tests/test_guard_remote_approval.py",
+        ],
+    ),
+    (
+        # 2026-07-28 /v3 blank-page reload loop. This file was named test_*.py,
+        # lived in tests/, defined no test function, and was listed in no gate —
+        # so its eleven assertions ran only when someone typed the path.
+        "cc_v3_boot_no_reload_loop",
+        [
+            "tests/test_cc_v3_boot_no_reload_loop.py",
         ],
     ),
     (

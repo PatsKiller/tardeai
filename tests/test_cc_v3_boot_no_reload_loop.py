@@ -127,5 +127,22 @@ def main() -> int:
     return 0
 
 
+def test_cc_v3_boot_has_no_reload_loop():
+    """pytest entry point for the guards above.
+
+    This file sits in `tests/`, is named `test_*.py`, and until now defined no
+    function starting with `test_` — so `pytest tests/` collected **zero** from
+    it and `run_cio_hardening_ci.py` did not list it at all. Eleven assertions
+    guarding the 2026-07-28 blank-page outage ran only when a human typed the
+    path by hand.
+
+    That is the worst version of the problem this whole campaign is about: not a
+    missing guard, but a guard that is present, passing, counted by eye, and
+    executing nothing. A file named like a test and living among tests is read
+    as covered by everyone who looks at the directory.
+    """
+    assert main() == 0
+
+
 if __name__ == "__main__":
     raise SystemExit(main())

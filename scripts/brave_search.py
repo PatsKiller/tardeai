@@ -1,7 +1,14 @@
 """
 brave_search.py — Brave Search API integration for Ollama web search
 
-Daily budget cap: 30 requests/day (900/month with buffer for 1,000/month free tier).
+Daily budget cap: 120/day, 1500/month — a LOCAL cost policy, not a provider plan.
+
+This docstring previously asserted a Brave free-tier monthly quota. No Brave
+response observed by this system has ever stated one: that figure was an
+assumption written as a provider fact, and the ceiling below then read as a
+reservation carved out of it. Provider capacity is now parsed from the
+X-RateLimit-* headers on every response and reported separately — see
+lib/research_provider_truth.py. The ceilings below are unchanged in value.
 Weekend skip: No Brave calls Sat/Sun (use DDG/RSS fallback).
 Cache TTL: 60 min for news, 5 min for web (was 5 min for both).
 Budget tracked in: data/portfolios/state/brave_search_budget.json
@@ -17,8 +24,16 @@ BRAVE_API_URL = "https://api.search.brave.com/res/v1/web/search"
 BRAVE_NEWS_URL = "https://api.search.brave.com/res/v1/news/search"
 MAX_RESULTS = 5
 REQUEST_TIMEOUT = 10
-DAILY_BUDGET = 25
-MONTHLY_BUDGET = 850  # Reserve 150 for P0/manual searches out of 1000
+DAILY_BUDGET = 120
+# LOCAL cost policy, owned by the operator — NOT a provider limit. Named and
+# justified in lib/research_provider_truth.BRAVE_LOCAL_COST_POLICY, which is the
+# single place these numbers are explained.
+#
+# These mirror lib/search_budget.DEFAULT_LIMITS["brave"], which is the binding
+# ceiling — this module's own check runs second, behind the shared one. Raised
+# 2026-09-05 with the daily/monthly split described there: daily is a runaway
+# breaker, monthly is the cost bound.
+MONTHLY_BUDGET = 1500
 SKIP_WEEKENDS = True
 # Callers that answer a question someone is waiting for. These are rate-limited
 # and budgeted like everything else; they are simply not silenced on a weekend.
@@ -37,7 +52,46 @@ _cache_ttl_web = 300       # 5 min for web search
 _cache_ttl_news = 3600     # 60 min for news search
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
-_BUDGET_FILE = _PROJECT_ROOT / "data" / "portfolios" / "state" / "brave_search_budget.json"
+
+
+def _budget_file() -> Path:
+    """The L2 per-caller ledger, at ONE canonical location for every tree.
+
+    This was `Path(__file__).parent.parent / data/portfolios/state/...` — i.e.
+    resolved relative to whichever tree happened to import this module. That
+    gave every tree a PRIVATE counter, and the copies then disagreed:
+
+        release symlink -> persistent-state/…/brave_search_budget.json
+                           frozen 2026-08-10, no September at all
+        dev tree        -> trade-ai-v12-rebuild/…/brave_search_budget.json
+                           September = 54
+
+    Eight copies of this basename exist on the host. The server process
+    resolves the first; cron jobs running from the dev tree resolve the second.
+    Neither is wrong and neither is complete, so the ceiling each enforces is
+    computed from a fraction of the traffic — the same "working alarm on an
+    unrepresentative sensor" failure that created lib/search_budget.py, one
+    layer down.
+
+    Resolving through the canonical state root, exactly as
+    lib/search_budget.budget_path() does, makes every caller share one counter.
+    The scattered copies are thereby made inert without deleting any of them:
+    nothing resolves to them any more, and they remain readable as history.
+    """
+    try:
+        from scripts.lib.search_budget import _state_root
+    except ImportError:                                  # pragma: no cover
+        try:
+            from lib.search_budget import _state_root    # type: ignore
+        except ImportError:
+            # Never silently fall back to a tree-relative path — that is the
+            # defect. Use the same last-resort constant search_budget uses.
+            return (Path.home() / "trade-ai-releases" / "persistent-state"
+                    / "data" / "portfolios" / "state" / "brave_search_budget.json")
+    return _state_root() / "data" / "portfolios" / "state" / "brave_search_budget.json"
+
+
+_BUDGET_FILE = _budget_file()
 
 
 def _load_budget() -> dict:
@@ -78,7 +132,11 @@ def _check_budget(caller: str = "default") -> bool:
         except ImportError:
             print("  [brave-search] shared budget unavailable — DENY (never fail open)")
             return False
-    verdict = _shared_check("brave")
+    # Pass the caller: the shared ledger holds a monthly reserve that only
+    # on-demand callers may draw on. Omitting it made every call look scheduled,
+    # which would starve interactive research at the reserve line instead of the
+    # real ceiling.
+    verdict = _shared_check("brave", caller=caller.split("/")[-1].replace(".py", ""))
     if not verdict["allowed"]:
         print(f"  [brave-search] denied by shared budget: {verdict['reason']}")
         return False
@@ -194,6 +252,7 @@ def search(query, count=MAX_RESULTS, freshness=None, project_root=".", caller="d
     try:
         req = urllib.request.Request(url, headers=headers, method="GET")
         with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT) as resp:
+            _observe_capacity(resp, project_root)
             raw = resp.read()
             import gzip
             try: raw = gzip.decompress(raw)
@@ -207,6 +266,50 @@ def search(query, count=MAX_RESULTS, freshness=None, project_root=".", caller="d
     except Exception as e:
         print(f"  [brave-search] Error: {e}")
         return []
+
+
+# ── provider capacity observation ────────────────────────────────────────────
+# Every Brave response carries X-RateLimit-Limit / -Remaining / -Reset. This
+# module used to read only resp.read() and drop them, so the one authority that
+# could state Brave's real capacity was received and discarded on every call.
+_CAPACITY_PATH = "data/portfolios/state/brave_provider_capacity.json"
+
+
+def _observe_capacity(resp, project_root: str = ".") -> None:
+    """Record what the provider said about its own limits. Never fails a search."""
+    try:
+        from lib.research_provider_truth import parse_provider_capacity
+    except Exception:
+        try:
+            from scripts.lib.research_provider_truth import parse_provider_capacity  # type: ignore
+        except Exception:
+            return
+    try:
+        cap = parse_provider_capacity("brave", dict(getattr(resp, "headers", {}) or {}))
+        if not cap.observed:
+            return
+        path = Path(project_root) / _CAPACITY_PATH
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(cap.to_dict(), indent=2) + "\n")
+        os.replace(tmp, path)
+    except Exception:
+        # Observation is advisory. A failure here must never break a search or
+        # cause a caller to retry and spend budget twice.
+        pass
+
+
+def observed_capacity(project_root: str = ".") -> dict:
+    """Last observed provider capacity, or an explicit unobserved record."""
+    try:
+        from lib.research_provider_truth import ProviderCapacity
+    except Exception:
+        from scripts.lib.research_provider_truth import ProviderCapacity  # type: ignore
+    try:
+        return json.loads((Path(project_root) / _CAPACITY_PATH).read_text())
+    except Exception:
+        return ProviderCapacity(provider="brave").to_dict()
+
 
 def search_news(query, count=MAX_RESULTS, freshness="pd", project_root=".", caller="default"):
     ck = f"news:{query}:{freshness}"
@@ -222,6 +325,7 @@ def search_news(query, count=MAX_RESULTS, freshness="pd", project_root=".", call
     try:
         req = urllib.request.Request(url, headers=headers, method="GET")
         with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT) as resp:
+            _observe_capacity(resp, project_root)
             raw = resp.read()
             import gzip
             try: raw = gzip.decompress(raw)

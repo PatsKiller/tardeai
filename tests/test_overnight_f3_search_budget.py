@@ -175,7 +175,7 @@ def test_brave_search_source_denies_when_shared_unavailable():
     assert "_shared_check = None" not in body
     assert "shared budget unavailable — DENY" in body
     # Shared check is mandatory — verdict consulted unconditionally after import.
-    assert 'verdict = _shared_check("brave")' in body
+    assert '_shared_check("brave"' in body
 
 
 def test_guard_returns_false_when_over_so_callers_return_empty(tmp_path: Path, monkeypatch):
@@ -186,3 +186,116 @@ def test_guard_returns_false_when_over_so_callers_return_empty(tmp_path: Path, m
     st = sb.status("brave", now=NOW, root=tmp_path)
     assert st["daily_used"] == 0
     assert st["denied_today"] == 1
+
+
+# ── Monthly reserve: on-demand callers may not be starved by cron ────────────
+# Added 2026-09-05 with the ceiling raise (25/850 -> 120/1500). A denied Brave
+# call is not a downgrade: brave_search.py returns False and the research is
+# lost, because no fallback provider is wired behind a refusal. So a scheduled
+# bulk job must not be able to consume the allowance an interactive query needs.
+
+def test_on_demand_caller_may_draw_on_the_reserve(tmp_path: Path,
+                                                  monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("SEARCH_BUDGET_BRAVE_MONTHLY", "1000")
+    monkeypatch.setenv("SEARCH_BUDGET_BRAVE_DAILY", "10000")
+    assert sb.effective_monthly_limit("brave", "web_research", 1000) == 1000
+
+
+def test_scheduled_caller_stops_at_the_reserve_line(tmp_path: Path):
+    eff = sb.effective_monthly_limit("brave", "some_cron_job", 1000)
+    assert eff == 1000 - sb.reserve_for("brave", 1000)
+    assert eff < 1000, "a scheduled caller must not reach the full ceiling"
+
+
+def test_reserve_refusal_is_distinguishable_from_exhaustion(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """MONTHLY_RESERVE_ONLY means 'a manual query would still go out'.
+
+    Collapsing it into MONTHLY_EXHAUSTED would tell an operator the month was
+    spent when in fact only the bulk allowance was.
+    """
+    monkeypatch.setenv("SEARCH_BUDGET_BRAVE_MONTHLY", "10")
+    monkeypatch.setenv("SEARCH_BUDGET_BRAVE_DAILY", "10000")
+    # reserve is capped at a fifth => 2 held back, bulk ceiling is 8.
+    for _ in range(8):
+        assert sb.try_consume("brave", caller="cron", now=NOW, root=tmp_path)["allowed"]
+    denied = sb.try_consume("brave", caller="cron", now=NOW, root=tmp_path)
+    assert denied["allowed"] is False
+    assert denied["reason"] == "MONTHLY_RESERVE_ONLY"
+    # ...and the on-demand caller still gets through, which is the whole point.
+    assert sb.try_consume("brave", caller="web_research", now=NOW, root=tmp_path)["allowed"]
+
+
+def test_reserve_can_never_starve_the_whole_budget(tmp_path: Path):
+    """NEGATIVE CONTROL for a bug this suite caught during the ceiling raise.
+
+    The reserve was first written as a flat 200 subtracted from the configured
+    monthly limit. `SEARCH_BUDGET_BRAVE_MONTHLY=150` then produced an effective
+    ceiling of zero: every scheduled call denied, while the ledger reported 0
+    used of 150. A provider switched off by a config value that reads as
+    caution. The reserve is now capped at a fifth of the budget it comes from.
+    """
+    for limit in (1, 2, 10, 150, 199, 1000, 1500):
+        eff = sb.effective_monthly_limit("brave", "cron", limit)
+        assert eff > 0 or limit == 0, f"limit {limit} left no bulk allowance at all"
+        assert sb.reserve_for("brave", limit) <= limit // sb.RESERVE_MAX_SHARE
+        assert eff <= limit
+
+
+def test_unknown_caller_is_treated_as_scheduled(tmp_path: Path):
+    """Fail closed: an unrecognised caller does not get the reserve."""
+    assert sb.effective_monthly_limit("brave", "who_is_this", 1000) < 1000
+
+
+def test_l2_ledger_resolves_through_the_canonical_state_root(tmp_path: Path):
+    """Every tree must resolve the SAME L2 ledger.
+
+    `brave_search._BUDGET_FILE` was `Path(__file__).parent.parent / data/...`,
+    so the server (running from a release dir) and cron (running from the dev
+    tree) each kept a private counter and each enforced the ceiling against a
+    fraction of the traffic. Eight copies of that basename exist on that host.
+
+    The first version of this test asserted the ledger was NOT under the
+    importing source tree. That passed locally and failed in CI, correctly: on a
+    runner the canonical state root can itself resolve inside the checkout, so
+    "outside the tree" is a property of the machine, not of the code. It was
+    pinning the environment.
+
+    What actually matters, and holds everywhere, is that the path is CONSTRUCTED
+    from the shared canonical root rather than from this module's own location.
+    """
+    import brave_search as b
+    from scripts.lib.search_budget import _state_root, budget_path
+
+    root = _state_root()
+    assert b._BUDGET_FILE == root / "data" / "portfolios" / "state" / "brave_search_budget.json"
+    assert budget_path().is_relative_to(root)
+
+
+def test_l2_ledger_path_is_not_built_from_this_modules_location():
+    """The source-level half: no `Path(__file__)`-derived budget path.
+
+    Complements the resolution test above, which cannot tell a correct
+    construction from a coincidence when the canonical root happens to sit
+    inside the checkout — exactly the CI case.
+    """
+    import ast
+    import inspect
+    import textwrap
+
+    import brave_search as b
+
+    # The docstring QUOTES the old defect, so scan the code body only — a
+    # substring check over the raw source would flag the very comment that
+    # explains why the defect is gone.
+    fn = ast.parse(textwrap.dedent(inspect.getsource(b._budget_file))).body[0]
+    if (fn.body and isinstance(fn.body[0], ast.Expr)
+            and isinstance(fn.body[0].value, ast.Constant)):
+        fn.body = fn.body[1:]                      # drop the docstring
+    code = ast.unparse(ast.Module(body=fn.body, type_ignores=[]))
+
+    assert "__file__" not in code, (
+        "_budget_file() derives the ledger path from this module's location — "
+        "that is the defect that gave every importing tree a private counter")
+    assert "_state_root" in code

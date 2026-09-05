@@ -217,6 +217,16 @@ def poll_once(timeout=25):
                 handled = True
             except Exception as e:
                 log.error(f"atm command error: {e}")
+        # Guard scope approval — operator answers a /approve or /deny code.
+        # Placed BEFORE the Schwab branch deliberately: that branch matches the
+        # bare substring "code=" anywhere in the message, which is broad enough
+        # to swallow a message that merely mentions a code.
+        elif lower.startswith("/approve") or lower.startswith("/deny"):
+            try:
+                _handle_guard_approval(msg, text, chat_id)
+                handled = True
+            except Exception as e:
+                log.error(f"guard approval error: {e}")
         # Schwab OAuth callback — operator pastes the 127.0.0.1?code=... URL
         elif "127.0.0.1?code=" in text or "code=" in text.lower():
             try:
@@ -658,6 +668,103 @@ def _handle_atm_command(msg, text, chat_id):
 
 
 # ── Schwab OAuth callback auto-exchange ──────────────────────────────────────────────
+
+def _handle_guard_approval(msg, text, chat_id):
+    """Operator answers a guard approval request from their phone.
+
+    This is the ONLY path that converts a PENDING request into a real grant, and
+    it runs here rather than in the requesting process for two reasons. First,
+    this daemon already owns the single `getUpdates` consumer — a second one
+    collides with HTTP 409, which is why the telegram_command_handler cron entry
+    is disabled. Second, the process that ASKS must not be the process that
+    ANSWERS; keeping them apart is what makes the approval the operator's.
+
+    The agent never types APPROVE. The operator types it, on their own device,
+    against a scope and window fixed before they saw it.
+    """
+    import re
+    import subprocess
+
+    try:
+        from scripts.lib import guard_remote_approval as gra
+    except ImportError:
+        from lib import guard_remote_approval as gra          # type: ignore
+
+    parts = text.strip().split()
+    verb = parts[0].lower().lstrip("/")
+    code = parts[1].strip() if len(parts) > 1 else ""
+    reply_to = (msg or {}).get("message_id")
+
+    if not re.fullmatch(r"[A-Za-z0-9]{4,12}", code or ""):
+        _send_reply(chat_id, reply_to,
+                    "⚠️ Usage: `/approve <CODE>` or `/deny <CODE>`")
+        return
+
+    allowed = _allowed_chats()
+
+    if verb == "deny":
+        out = gra.deny(code, chat_id=chat_id, allowed_chats=allowed)
+        if out.get("ok"):
+            r = out["request"]
+            _send_reply(chat_id, reply_to,
+                        f"\U0001f6d1 Denied `{r['scope']}`. Nothing was granted.")
+        else:
+            _send_reply(chat_id, reply_to, f"⚠️ Not denied: {out.get('reason')}")
+        return
+
+    frm = (msg or {}).get("from") or {}
+    out = gra.verify_and_consume(
+        code, chat_id=chat_id, allowed_chats=allowed,
+        telegram={"update_id": (msg or {}).get("_update_id"),
+                  "message_id": reply_to,
+                  "from_id": frm.get("id"),
+                  "from_username": frm.get("username"),
+                  "text": text[:200]},
+    )
+    if not out.get("ok"):
+        _send_reply(chat_id, reply_to, f"❌ Not approved: {out.get('reason')}")
+        log.warning(f"guard approval refused: {out.get('reason')}")
+        return
+
+    r = out["request"]
+    # The reason carries the request id so the grant in the approval ledger is
+    # traceable back to the Telegram message that authorised it.
+    reason = f"{r['reason']} [remote_request_id={r['request_id']} chat={chat_id}]"
+    guard_bin = Path(__file__).resolve().parent.parent / "bin" / "guard"
+    if not guard_bin.is_file():
+        _send_reply(chat_id, reply_to,
+                    f"⚠️ Approved, but `bin/guard` was not found at {guard_bin}. "
+                    "Nothing granted.")
+        log.error(f"guard binary missing at {guard_bin}")
+        return
+
+    # Bare seconds, no unit suffix — see parse_dur in bin/guard.
+    cmd = [str(guard_bin), "grant", r["scope"],
+           "--for", str(int(r["seconds"])),
+           "--uses", str(int(r["uses"])),
+           "--reason", reason,
+           "--yes"]
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+    except Exception as e:                                    # noqa: BLE001
+        _send_reply(chat_id, reply_to, f"⚠️ Approved, but the grant failed: {e}")
+        log.error(f"guard grant failed: {e}")
+        return
+
+    if proc.returncode != 0:
+        detail = (proc.stderr or proc.stdout or "").strip()[:300]
+        _send_reply(chat_id, reply_to,
+                    f"⚠️ Approved, but the grant failed:\n`{detail}`")
+        log.error(f"guard grant rc={proc.returncode}: {detail}")
+        return
+
+    mins = int(r["seconds"]) // 60
+    _send_reply(chat_id, reply_to,
+                f"✅ Granted `{r['scope']}` for {mins} min, {r['uses']} uses.\n"
+                f"Revoke any time with `/deny` on a new request, or "
+                f"`bin/guard revoke {r['scope']}` at the machine.")
+    log.info(f"guard scope {r['scope']} granted remotely, request {r['request_id']}")
+
 
 def _send_reply(chat_id, reply_to_message_id, text):
     """Send a reply to a specific message in the operator chat."""
