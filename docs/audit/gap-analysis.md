@@ -30,7 +30,7 @@ Classification key: **LIVE** · **LIVE BUT PARTIAL** · **BUILT_DARK** · **DISC
 | Telegram adapter behind gateway only | LIVE BUT PARTIAL | Approved transport exists; bypasses remain | Phase 2, migrate Phase 9 |
 | Email / Slack / WhatsApp gateway adapters | DISCONNECTED / BUILT_DARK | Source-built; not gateway-mediated; activation unproven | Phase 10 |
 | Subject memory / SubjectThread@v1 | BUILT_DARK | Package + migration + publish hook; not CC-visible yet | Phase 4 done · Phase 7 surfaces |
-| `/v3/communications` | ABSENT | Reports ≠ communications workspace | Phase 7 / PR-6 |
+| `/v3/communications` | BUILT_DARK | Hub+API in tree; not attested on live CURRENT until deploy | Phase 7 done · deploy/attest |
 | Controlled curation + CurationReceipt | BUILT_DARK | Tier policy + receipts + protected-fact fallback; no live LLM wiring | Phase 5 done · use in producers later |
 
 ---
@@ -39,9 +39,9 @@ Classification key: **LIVE** · **LIVE BUT PARTIAL** · **BUILT_DARK** · **DISC
 
 | Target capability | Class | Gap | Close-in phase |
 |---|---|---|---|
-| Librarian retention for communications | ABSENT (Hermes librarian is research-scoped) | No universal TTL enforcement / tombstones for messages | Phase 6 |
+| Librarian retention for communications | BUILT_DARK | RetentionDecision@v1 + dry_run expiry; not scheduled on prod | Phase 6 done · schedule later |
 | Knowledge promotion with provenance | DESIGN_ONLY / partial research paths | Chat must not auto-become truth | Phase 6 |
-| AgentConsumptionReceipt (all agents) | ABSENT / CIO partial | No universal contract | Phase 8 |
+| AgentConsumptionReceipt (all agents) | BUILT_DARK | agent_contracts module + receipts; producers not subscribed yet | Phase 8 done · wire agents |
 | CIO governed subscription | LIVE BUT PARTIAL | Best consumer; still dual-path | Phase 8 |
 | Hermes / Advisory consumption | LIVE BUT PARTIAL / BUILT_DARK | Not one ledger | Phase 8 |
 | Darwin / Maria first-class contracts | ABSENT | No dedicated governed senders | Phase 8 (later) |
@@ -58,7 +58,7 @@ Classification key: **LIVE** · **LIVE BUT PARTIAL** · **BUILT_DARK** · **DISC
 | MessageArtifact@v1 | ABSENT |
 | CurationReceipt@v1 | BUILT_DARK (`curation.py`) |
 | ChannelDelivery@v1 | BUILT_DARK (`delivery.py` + SQL; SHADOW stubs) |
-| RetentionDecision@v1 | ABSENT for comms |
+| RetentionDecision@v1 | BUILT_DARK (`librarian.py`) |
 | AgentConsumptionReceipt@v1 | ABSENT |
 
 Existing near-analogs to **adapt**, not keep as parallel truths:
