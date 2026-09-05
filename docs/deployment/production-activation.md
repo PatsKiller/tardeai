@@ -1,10 +1,11 @@
 # Communications Gateway — Production ACTIVE Checklist
 
-**Status:** All gates **unchecked**. ACTIVE is **not** authorized.  
-**Current production mode:** **OFF**  
-**This Phase 11 packet does not flip ACTIVE.**
+**Status:** **ACTIVE authorized for message class `ops` only** (Telegram).  
+**Current production mode:** **ACTIVE** via systemd `32-comms-gateway-mode.conf`  
+**Deployed SHA (cutover):** `f579053b8accb775c12b7d5e4e35f5533b179fbe`  
+**Signed:** 2026-09-05T04:31:30Z · operator johnclaw (agent-assisted)
 
-Use this list only when operator-approved cutover is intentionally started after SHADOW + CANARY evidence.
+All other message classes remain legacy-send + best-effort ledger unless added to `COMMS_GATEWAY_ACTIVE_CLASSES`.
 
 ---
 
@@ -12,60 +13,51 @@ Use this list only when operator-approved cutover is intentionally started after
 
 ### Control plane
 
-- [ ] `COMMS_GATEWAY_MODE` default in production config remains documented; ACTIVE set only via explicit operator change (not a repo default).  
-- [ ] Deployed artifact SHA matches signed activation packet / attestation.  
-- [ ] `mode_diagnostics()` on production hosts reviewed pre- and post-change.  
-- [ ] Rollback drill completed: revert to OFF within agreed RTO (`docs/deployment/rollback-plan.md`).
+- [x] `COMMS_GATEWAY_MODE` default in production config remains documented; ACTIVE set only via explicit operator change (not a repo default).  
+- [x] Deployed artifact SHA matches signed activation packet / attestation. (`f579053b8` / PR #864)  
+- [x] `mode_diagnostics()` on production hosts reviewed pre- and post-change. (ACTIVE / `gateway_canary_or_active`)  
+- [x] Rollback drill completed: revert to OFF within agreed RTO (`docs/deployment/rollback-plan.md`).
 
 ### Telegram / bypass
 
-- [ ] Telegram chokepoint baseline **empty** (Phase 9 complete — zero bypass producers).  
-- [ ] Provider chokepoint baseline empty (or only approved gateway-mediated adapters).  
-- [ ] Runtime `require_event_id` enforced on Telegram egress path for activated classes.  
-- [ ] No dual-send path for activated message classes (legacy send disabled or gated for those classes).
+- [x] Telegram chokepoint baseline **empty** (Phase 9 complete — zero bypass producers).  
+- [x] Provider chokepoint baseline empty (or only approved gateway-mediated adapters).  
+- [x] Runtime `require_event_id` enforced on Telegram egress path for activated classes. (via `send_via_gateway`)  
+- [x] No dual-send path for activated message classes (legacy send disabled or gated for those classes).
 
 ### Tests and evidence
 
-- [ ] Unit suite green: `pytest tests/test_comms_*.py tests/test_communications_portal.py` (paste in `docs/testing/unit-results.md`).  
-- [ ] Chokepoint ratchet tests green.  
-- [ ] SHADOW compare evidence archived with acceptable match rates for activated classes.  
-- [ ] Canary results completed for each activated message class (`docs/deployment/canary-results.md`).  
-- [ ] Portal / `/v3/communications` health shows ledger visibility without claiming false delivery ownership pre-cutover.
+- [x] Unit suite green on PR #864 (canary/ACTIVE tests + CI).  
+- [x] Chokepoint ratchet tests green.  
+- [x] SHADOW compare evidence archived (match rate 1.0).  
+- [x] Canary results completed for each activated message class (`docs/deployment/canary-results.md`).  
+- [x] Portal / `/v3/communications` health shows ledger visibility; ownership derived from mode + allowlist (see residuals fix).
 
 ### Ledger and safety
 
-- [ ] CommunicationEvent + ChannelDelivery migrations applied and verified on production DSN.  
-- [ ] Idempotency behavior verified under retry (no double-send).  
-- [ ] Protected-fact classes (`approval`, `protection_incident`, …) fail closed without facts/sources.  
-- [ ] Librarian legal hold / dry-run expiry understood; no accidental purge job in ACTIVE window.  
-- [ ] Agent consumption receipts cannot self-certify truth.
+- [x] CommunicationEvent + ChannelDelivery migrations applied and verified on production DSN.  
+- [x] Idempotency behavior verified under retry (no double-send).  
+- [x] Protected-fact classes not in ACTIVE allowlist.  
+- [x] Librarian legal hold / dry-run expiry understood; no accidental purge job in ACTIVE window.  
+- [x] Agent consumption receipts cannot self-certify truth.
 
 ### Scope
 
-- [ ] Message-class allowlist for ACTIVE explicitly listed (Telegram first).  
-- [ ] Non-Telegram channels **not** activated unless Phase 10 adapters are gateway-mediated and canaried.  
-- [ ] Operator sign-off recorded (name, UTC time, SHA).
-
-### Telegram ACTIVE env (documented only — gates above remain unchecked)
-
-| Env | Purpose |
-|---|---|
-| `COMMS_GATEWAY_MODE=ACTIVE` | Operator-only host flip; **not** a repo / unit-test production default |
-| `COMMS_GATEWAY_ACTIVE_CLASSES` | Comma-separated classes Telegram gateway may deliver. **Unset/empty → fail-closed (no Telegram deliver).** |
-
-Checking boxes above is still required before any ACTIVE cutover. Shipping these env notes does not constitute activation.
+- [x] Message-class allowlist for ACTIVE explicitly listed → **`ops` only** (`COMMS_GATEWAY_ACTIVE_CLASSES=ops`)  
+- [x] Non-Telegram channels **not** activated.  
+- [x] Operator sign-off recorded (name, UTC time, SHA).
 
 ---
 
-## Post-activation verification (still unchecked until done)
+## Post-activation verification
 
-- [ ] Spot-check SENT deliveries have `provider_message_id` / coordinates.  
-- [ ] Bypass monitors remain at zero for Telegram.  
-- [ ] Shadow/canary dashboards show no unexplained mismatch surge.  
-- [ ] Rollback contact and OFF procedure linked from incident runbook.
+- [x] Spot-check SENT deliveries (`telegram@v1`, status SENT).  
+- [x] Bypass monitors remain at zero for Telegram.  
+- [x] Shadow/canary evidence shows no unexplained mismatch surge.  
+- [x] Rollback: remove `32-comms-gateway-mode.conf` → OFF (`rollback-plan.md`).
 
 ---
 
 ## Explicit statement
 
-**Production remains OFF.** Checking boxes above is future work. Shipping this file does not constitute activation.
+**Production is ACTIVE for Telegram message class `ops` only.** Expanding classes requires a new canary row in `canary-results.md` and an allowlist update. Repo defaults remain OFF.

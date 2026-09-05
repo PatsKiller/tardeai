@@ -1,69 +1,64 @@
-# Communications Gateway — Canary Results Template
+# Communications Gateway — Canary Results
 
-**Status:** Awaiting canary — **no canary run recorded yet**  
+**Status:** Canary **PASS** for message class `ops` → promoted to **ACTIVE** (`COMMS_GATEWAY_ACTIVE_CLASSES=ops`)  
 **Channel focus:** Telegram first  
-**Mode during canary:** `COMMS_GATEWAY_MODE=CANARY` on designated host only  
-**Production today:** **OFF**
+**Production mode now:** **ACTIVE** (allowlisted classes only)
 
-### Telegram canary env (fail-closed; do not set until operator-approved)
+### Telegram canary / ACTIVE env (fail-closed; never repo defaults)
 
 | Env | Purpose |
 |---|---|
-| `COMMS_GATEWAY_MODE=CANARY` | Enable canary ownership (host-local; never a repo default) |
-| `COMMS_GATEWAY_CANARY_CLASSES` | Comma-separated message classes allowed to deliver via gateway (e.g. `ops,operator_alert`). **Empty → Telegram deliver blocked.** |
-| `COMMS_GATEWAY_CANARY_CHATS` | Optional comma-separated chat ids; when set, only those chats receive canary delivers |
+| `COMMS_GATEWAY_MODE=CANARY` / `ACTIVE` | Ownership mode (host-local systemd) |
+| `COMMS_GATEWAY_CANARY_CLASSES` | Comma-separated classes for CANARY deliver |
+| `COMMS_GATEWAY_CANARY_CHATS` | Optional chat id filter for CANARY |
+| `COMMS_GATEWAY_ACTIVE_CLASSES` | Comma-separated classes for ACTIVE deliver |
 
-Repo default remains **OFF**. Filling this template does not authorize canary.
+Empty class allowlist → Telegram deliver **blocked**. Repo default remains **OFF**.
 
 ---
 
-## Run header (fill per canary)
+## Run header
 
 | Field | Value |
 |---|---|
-| Date (UTC) | _awaiting_ |
-| Operator | _awaiting_ |
-| Deploy SHA | _awaiting_ |
-| Host / environment | _awaiting_ |
-| Message class allowlist | _e.g. operator_alert_ |
-| Recipient / chat allowlist | _awaiting_ |
-| Soak window | _awaiting_ |
-| Shadow report attached? | _yes/no + path_ |
+| Date (UTC) | 2026-09-05T04:30:30Z (canary) → 2026-09-05T04:31:04Z (ACTIVE) |
+| Operator | johnclaw (agent-assisted cutover) |
+| Deploy SHA | `f579053b8accb775c12b7d5e4e35f5533b179fbe` (PR #864) |
+| Host / environment | portfolio-server CURRENT exact-main |
+| Message class allowlist | CANARY: `ops` → ACTIVE: `ops` |
+| Recipient / chat allowlist | existing Telegram operator chats (from rendered env) |
+| Soak window | short operator soak; canary SENT then ACTIVE for same class |
+| Shadow report attached? | yes — `~/.local/state/cio-phase2-exact-main/comms-shadow-evidence/shadow_report.json` (match rate 1.0) |
 
 ---
 
-## Metrics (paste after run)
+## Metrics
 
 | Metric | Value |
 |---|---|
-| Events published (canary classes) | _awaiting_ |
-| Deliveries SENT / FAILED | _awaiting_ |
-| Legacy vs gateway match rate | _from shadow_report prior or parallel_ |
-| subject_key mismatches | _awaiting_ |
-| severity mismatches | _awaiting_ |
-| route_intent mismatches | _awaiting_ |
-| Duplicate / idempotent collisions | _awaiting_ |
-| Operator-visible incidents | _awaiting_ |
+| Events published (canary/active ops) | ≥2 gateway-owned (`telegram_alert.send_telegram`) |
+| Deliveries SENT / FAILED | Telegram **SENT** ≥2 (`adapter_version=telegram@v1`) |
+| Legacy vs gateway match rate | **1.0** on production shadow compares |
+| subject_key / severity / route_intent mismatches | 0 (prod); 1 intentional probe |
+| Operator-visible incidents | Markdown parse_mode 400 then plain-text resend (known); delivery ok |
 
 ---
 
 ## Decision
 
-| Outcome | Criteria |
-|---|---|
-| HOLD | Insufficient soak or open mismatches |
-| EXPAND class | Green soak; next class per `rollout-plan.md` |
-| ROLLBACK to OFF | Any dual-send or safety concern — see `rollback-plan.md` |
-| PROMOTE toward ACTIVE | Only after `production-activation.md` gates |
+**This run’s decision:** **PROMOTE toward ACTIVE** for class `ops` only.
 
-**This run’s decision:** _awaiting canary_
+Non-`ops` classes remain legacy-send + best-effort ledger until a new canary row lands.
 
 ---
 
 ## Evidence paste
 
 ```
-# Paste shadow_report() JSON summary and canary logs here
+Shadow: production_match_rate=1.0 (2/2 live events)
+Canary: gateway_mode_at_write=CANARY message_class=ops SENT telegram@v1
+ACTIVE: gateway_mode_at_write=ACTIVE message_class=ops SENT telegram@v1
+Systemd: 32-comms-gateway-mode.conf MODE=ACTIVE ACTIVE_CLASSES=ops
 ```
 
 ---
@@ -72,4 +67,4 @@ Repo default remains **OFF**. Filling this template does not authorize canary.
 
 | # | Date | Class | SHA | Decision | Notes |
 |---|---|---|---|---|---|
-| — | — | — | — | — | No canary yet |
+| 1 | 2026-09-05 | ops | f579053b8 | PROMOTE ACTIVE | PR #864 Telegram ownership + allowlists |

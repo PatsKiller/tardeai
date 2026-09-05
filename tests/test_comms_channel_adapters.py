@@ -361,7 +361,7 @@ def test_telegram_canary_class_not_allowlisted_blocks(monkeypatch):
 
 
 def test_telegram_provider_uses_raw_not_send_telegram(monkeypatch):
-    """Recursion safety: provider path must call _raw_send_telegram, not send_telegram."""
+    """Recursion safety: provider path must call _raw_send_telegram_result, not send_telegram."""
     monkeypatch.setenv("COMMS_GATEWAY_MODE", "CANARY")
     monkeypatch.setenv("COMMS_GATEWAY_CANARY_CLASSES", "operator_alert")
     mode_mod._cache["mode"] = None
@@ -371,15 +371,19 @@ def test_telegram_provider_uses_raw_not_send_telegram(monkeypatch):
 
     calls = {"raw": 0, "send": 0}
 
-    def _raw(*_a, **_k):
+    def _raw_result(*_a, **_k):
         calls["raw"] += 1
-        return True
+        return {
+            "ok": True,
+            "message_ids": ["4242"],
+            "chat_ids": ["999"],
+        }
 
     def _send(*_a, **_k):
         calls["send"] += 1
         raise AssertionError("send_telegram must not be called from provider path")
 
-    monkeypatch.setattr(ta, "_raw_send_telegram", _raw)
+    monkeypatch.setattr(ta, "_raw_send_telegram_result", _raw_result)
     monkeypatch.setattr(ta, "send_telegram", _send)
     monkeypatch.setattr(ta, "_chat_ids", lambda: ["999"])
 
@@ -389,5 +393,26 @@ def test_telegram_provider_uses_raw_not_send_telegram(monkeypatch):
         mode="CANARY",
     )
     assert result["ok"] is True
+    assert result.get("provider_message_id") == "4242"
     assert calls["raw"] == 1
     assert calls["send"] == 0
+
+
+def test_telegram_provider_joins_multiple_message_ids(monkeypatch):
+    import scripts.telegram_alert as ta
+    import scripts.lib.comms.channel_adapters as ca
+
+    monkeypatch.setattr(
+        ta,
+        "_raw_send_telegram_result",
+        lambda *_a, **_k: {
+            "ok": True,
+            "message_ids": ["11", "22"],
+            "chat_ids": ["1", "2"],
+        },
+    )
+    monkeypatch.setattr(ta, "_chat_ids", lambda: ["1", "2"])
+    result = ca._provider_send_telegram(body="multi", kwargs={}, mode="ACTIVE")
+    assert result["ok"] is True
+    assert result["provider_message_id"] == "11,22"
+    assert result["provider_coordinates"]["message_ids"] == ["11", "22"]

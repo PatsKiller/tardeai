@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `7ac8b8ca9a57165a1a99f1bc2f4b4177942b74cc693e7248f71ba2d06d9395cd`
+**Tree fingerprint:** `8fcedb31ac34a1bdc54352bb4edbc9c7bb72ebb7b715de20d29cf21989ee4f5b`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -155,7 +155,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/_findings/alpaca_taxonomy_audit_2026-07-21.md` | FINDINGS: Alpaca Paper/Live Taxonomy & Multi-Account Readiness Audit | review_required | OK | `8212d11b2f89` |
 | `docs/_findings/bitwarden_env_posture_recon_2026-07-21.md` | RECON: Bitwarden + Env Posture Inventory (read-only) | review_required | OK | `a0d867f98a49` |
 | `docs/_findings/brave_search_api_usage_audit_2026-05.md` | Brave Search API Usage Audit — May 2026 | review_required | OK | `943f66776820` |
-| `docs/_findings/comms_delivery_owned_contradiction_2026-09-05.md` | `delivery_owned` contradicts the gateway it describes | review_required | OK | `48e4a68d9f5d` |
+| `docs/_findings/comms_delivery_owned_contradiction_2026-09-05.md` | [FIXED 2026-09-05] `delivery_owned` contradicts the gateway it describes | review_required | OK | `abcdea80bf73` |
 | `docs/_findings/defense_desk_v1_diagnosis_2026-07-17.md` | Defense Desk v1 — Phase 0 Diagnosis (2026-07-17) | review_required | OK | `97acf7b2dff3` |
 | `docs/_findings/defense_desk_v2_diagnosis_2026-07-18.md` | Defense Desk v2 — Phase 0 Diagnosis (2026-07-18) | review_required | OK | `5dc0e9420a52` |
 | `docs/_findings/defense_desk_v7_diagnosis_2026-07-18.md` | Defense Desk v7 — Phase 0 Diagnosis + EXEC Branch Decision (2026-07-18) | review_required | OK | `4ff42d3ab9bc` |
@@ -731,9 +731,9 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/convergence/UI_REPLACEMENT_MATRIX.md` | Command Center Replacement Matrix | review_required | OK | `c5cfc7a821e2` |
 | `docs/convergence/UI_ROUTE_OWNERSHIP.md` | UI Route Ownership | review_required | OK | `fe5a35b48fc7` |
 | `docs/deepseek_audit_2026-08-02.md` | DeepSeek Audit & Fix — Comprehensive Report | review_required | OK | `68d6408f3f5c` |
-| `docs/deployment/canary-results.md` | Communications Gateway — Canary Results Template | review_required | OK | `047e5be7aadb` |
-| `docs/deployment/pre-go-live-checklist.md` | Communications Gateway — Pre Go-Live Checklist | review_required | OK | `db70fa4ee263` |
-| `docs/deployment/production-activation.md` | Communications Gateway — Production ACTIVE Checklist | review_required | OK | `ee3b4cd07bda` |
+| `docs/deployment/canary-results.md` | Communications Gateway — Canary Results | review_required | OK | `e9f1dfef91c6` |
+| `docs/deployment/pre-go-live-checklist.md` | Communications Gateway — Pre Go-Live Checklist | review_required | OK | `4cf39a7859c9` |
+| `docs/deployment/production-activation.md` | Communications Gateway — Production ACTIVE Checklist | review_required | OK | `492a07a9b280` |
 | `docs/deployment/rollback-plan.md` | Communications Gateway — Rollback Plan | review_required | OK | `a593be5e3e17` |
 | `docs/deployment/rollout-plan.md` | Communications Gateway — Rollout Plan | review_required | OK | `cf5f37640df6` |
 | `docs/design/ACTIVE_TRADER_LIVE_DATA_ARCHITECTURE.md` | ActiveTrader — Live Data Architecture (2026-07-28) | current_phase_keep | OK | `bed16d9677d0` |
