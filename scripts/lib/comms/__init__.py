@@ -1,4 +1,4 @@
-"""Communications Gateway — canonical CommunicationEvent client (Phase 1–5).
+"""Communications Gateway — canonical CommunicationEvent client (Phase 1–8).
 
 Public API:
   - CommunicationEvent / publish_communication
@@ -7,6 +7,10 @@ Public API:
     retrieve_subject_history
   - curation: select_curation_mode, curate_deterministic,
     apply_llm_curation_result, CurationReceipt, …
+  - librarian: classify_retention, apply_retention_decision,
+    execute_expiry_pass, propose_knowledge_candidate, …
+  - agent contracts: register_subscription, emit_consumption_receipt,
+    acknowledge_consumption, declare_influence, AgentConsumptionReceipt, …
   - new_event_id / idempotency_key_for
   - get_gateway_mode / MODE_*
 
@@ -14,9 +18,26 @@ Does NOT own provider delivery. Modes default to OFF. Phase 3 records
 ChannelDelivery@v1 stubs (RESERVED) without sending.
 Phase 4 attaches events to subject threads after publish.
 Phase 5 curation never calls real LLM APIs.
+Phase 6 librarian classifies retention; never auto-promotes chat to knowledge.
+Phase 8 agent consumption receipts never self-certify truth.
 """
 from __future__ import annotations
 
+from scripts.lib.comms.agent_contracts import (
+    KNOWN_AGENTS,
+    SCHEMA_VERSION as AGENT_CONSUMPTION_SCHEMA_VERSION,
+    SELF_CERTIFYING_STATUSES,
+    AgentConsumptionReceipt,
+    AgentContractError,
+    acknowledge_consumption,
+    assert_not_self_certifying_truth,
+    declare_influence,
+    eligible_events_for_agent,
+    emit_consumption_receipt,
+    get_consumption_receipt,
+    list_subscriptions,
+    register_subscription,
+)
 from scripts.lib.comms.client import PublishResult, publish_communication
 from scripts.lib.comms.curation import (
     DETERMINISTIC,
@@ -55,6 +76,29 @@ from scripts.lib.comms.enforcement import (
 )
 from scripts.lib.comms.event import CommunicationEvent, required_missing
 from scripts.lib.comms.identity import idempotency_key_for, new_event_id
+from scripts.lib.comms.librarian import (
+    ACCEPTED,
+    CANDIDATE,
+    COMPACT,
+    DELETE_ALL_ALLOWED,
+    DELETE_CONTENT_KEEP_TOMBSTONE,
+    DISPUTED,
+    HOLD,
+    KEEP,
+    KNOWLEDGE_STATUSES,
+    REDACT,
+    REJECTED,
+    RETENTION_ACTIONS,
+    RETRACTED,
+    SUPERSEDED,
+    RetentionDecision,
+    apply_retention_decision,
+    classify_retention,
+    decide_knowledge_candidate,
+    execute_expiry_pass,
+    propose_knowledge_candidate,
+    reset_librarian_memory,
+)
 from scripts.lib.comms.mode import (
     MODE_ACTIVE,
     MODE_CANARY,
@@ -106,4 +150,38 @@ __all__ = [
     "attach_event_to_subject",
     "retrieve_subject_history",
     "get_subject",
+    "KEEP",
+    "COMPACT",
+    "REDACT",
+    "DELETE_CONTENT_KEEP_TOMBSTONE",
+    "DELETE_ALL_ALLOWED",
+    "HOLD",
+    "RETENTION_ACTIONS",
+    "CANDIDATE",
+    "ACCEPTED",
+    "DISPUTED",
+    "SUPERSEDED",
+    "RETRACTED",
+    "REJECTED",
+    "KNOWLEDGE_STATUSES",
+    "RetentionDecision",
+    "classify_retention",
+    "apply_retention_decision",
+    "execute_expiry_pass",
+    "propose_knowledge_candidate",
+    "decide_knowledge_candidate",
+    "reset_librarian_memory",
+    "KNOWN_AGENTS",
+    "SELF_CERTIFYING_STATUSES",
+    "AGENT_CONSUMPTION_SCHEMA_VERSION",
+    "AgentConsumptionReceipt",
+    "AgentContractError",
+    "register_subscription",
+    "list_subscriptions",
+    "eligible_events_for_agent",
+    "emit_consumption_receipt",
+    "get_consumption_receipt",
+    "acknowledge_consumption",
+    "declare_influence",
+    "assert_not_self_certifying_truth",
 ]
