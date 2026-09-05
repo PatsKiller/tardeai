@@ -33,6 +33,22 @@ SELF_CERTIFYING_STATUSES = frozenset(
     }
 )
 
+# knowledge_eligibility values that make an event ineligible for policy
+# consumption (mirrors subject_memory._INELIGIBLE — do not let the two drift).
+INELIGIBLE_KNOWLEDGE_ELIGIBILITY = frozenset(
+    {"", "ineligible", "none", "denied", "blocked"}
+)
+
+# knowledge_status values that mark content as unauthorized for consumption as
+# fact (Librarian terminal-negative statuses plus defensive denies).
+UNAUTHORIZED_KNOWLEDGE_STATUSES = frozenset(
+    {"retracted", "rejected", "blocked", "denied"}
+)
+
+# Only the Librarian knowledge gate stamps this status; a consuming agent never
+# sets it. It is the sole knowledge_status treated as verified institutional truth.
+VERIFIED_KNOWLEDGE_STATUS = "accepted"
+
 _SUBSCRIPTIONS: dict[str, dict[str, Any]] = {}  # subscription_id -> row
 _RECEIPTS: dict[str, dict[str, Any]] = {}  # receipt_id -> row
 _lock = threading.Lock()
@@ -342,16 +358,142 @@ def _filter_matches(filt: dict[str, Any], event: dict[str, Any]) -> bool:
     return True
 
 
+def _parse_dt(value: Any) -> datetime | None:
+    """Normalise an event timestamp (datetime or ISO-8601 string) to aware UTC."""
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        dt = value
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+    if isinstance(value, (int, float)):
+        return datetime.fromtimestamp(value, tz=timezone.utc)
+    try:
+        dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+def event_is_expired(event: dict[str, Any], *, now: datetime | None = None) -> bool:
+    """True when the event carries an explicit expires_at in the past."""
+    if not isinstance(event, dict):
+        return False
+    expires = _parse_dt(_event_field(event, "expires_at"))
+    if expires is None:
+        return False
+    when = now or _now()
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=timezone.utc)
+    return expires <= when
+
+
+def event_is_knowledge_eligible(event: dict[str, Any]) -> bool:
+    """True when the event may be retrieved/consumed under knowledge policy.
+
+    Excludes ineligible knowledge_eligibility and unauthorized (terminal-negative)
+    knowledge_status values.
+    """
+    if not isinstance(event, dict):
+        return False
+    eligibility = str(
+        _event_field(event, "knowledge_eligibility", default="") or ""
+    ).strip().lower()
+    status = str(
+        _event_field(event, "knowledge_status", default="") or ""
+    ).strip().lower()
+    if eligibility in INELIGIBLE_KNOWLEDGE_ELIGIBILITY:
+        return False
+    if status in UNAUTHORIZED_KNOWLEDGE_STATUSES:
+        return False
+    return True
+
+
+def event_is_verified_fact(event: dict[str, Any]) -> bool:
+    """True only when the event itself has been gated to institutional truth.
+
+    A Hermes hypothesis or a research/advisory artifact carries provenance; it is
+    a verified fact only when its own knowledge_status is ACCEPTED (Librarian gate).
+    """
+    if not event_is_knowledge_eligible(event):
+        return False
+    status = str(
+        _event_field(event, "knowledge_status", default="") or ""
+    ).strip().lower()
+    return status == VERIFIED_KNOWLEDGE_STATUS
+
+
+def event_policy_eligibility(
+    event: dict[str, Any],
+    *,
+    now: datetime | None = None,
+) -> tuple[bool, str]:
+    """Return (eligible, reason) for subscription/consumption policy.
+
+    An event is eligible when it has not expired and its knowledge provenance
+    permits consumption.
+    """
+    if not isinstance(event, dict):
+        return (False, "not_an_event")
+    if event_is_expired(event, now=now):
+        return (False, "expired")
+    if not event_is_knowledge_eligible(event):
+        return (False, "unauthorized_knowledge_status")
+    return (True, "eligible")
+
+
+def assert_no_truth_claim_without_knowledge_gate(
+    event: dict[str, Any] | None,
+    *,
+    claimed_status: Any = None,
+    agent_id: str | None = None,
+) -> None:
+    """Reject consuming a non-knowledge-eligible event as institutional truth.
+
+    A Hermes hypothesis is never Librarian truth; a research/advisory artifact
+    carries its provenance and cannot be consumed as a verified fact without a
+    knowledge-status gate. If ``claimed_status`` asserts a truthy status but the
+    event has not itself been gated to ACCEPTED, raise.
+    """
+    raw = "" if claimed_status is None else str(claimed_status).strip()
+    if not raw:
+        return
+    if raw.upper() not in SELF_CERTIFYING_STATUSES:
+        return
+    if event_is_verified_fact(event or {}):
+        return
+    aid = _normalize_agent_id(agent_id) if agent_id else "unknown"
+    status = ""
+    if isinstance(event, dict):
+        status = str(_event_field(event, "knowledge_status", default="") or "")
+    raise AgentContractError(
+        f"truth_claim_rejected_without_knowledge_gate: agent={aid!r} "
+        f"claimed_status={raw!r}; event knowledge_status={(status or 'none')!r}; "
+        "a research/advisory artifact (or Hermes hypothesis) carries provenance and "
+        "cannot be consumed as verified fact without the Librarian knowledge-status gate"
+    )
+
+
 def eligible_events_for_agent(
     agent_id: str,
     events: list[dict],
     *,
     allow_unknown: bool = False,
+    eligible_only: bool = False,
+    now: datetime | None = None,
 ) -> list:
-    """Return events matching any enabled subscription filter for the agent.
+    """Return events matching any enabled subscription filter.
 
     Agents with no enabled subscription receive an empty list.
     Empty filter dimensions match all values for that dimension.
+
+    ``eligible_only=True`` (opt-in) additionally excludes expired and
+    unauthorized content; the default (False) preserves the pre-Wave-E contract
+    of filter-matching only. Callers that need policy-scoped reads pass True
+    explicitly rather than depending on a silently changed default.
     """
     aid = _require_known_agent(agent_id, allow_unknown=allow_unknown)
     subs = [s for s in list_subscriptions(aid) if s.get("enabled")]
@@ -363,6 +505,10 @@ def eligible_events_for_agent(
         if not isinstance(ev, dict):
             continue
         eid = str(_event_field(ev, "event_id", default="") or "")
+        if eligible_only:
+            ok, _reason = event_policy_eligibility(ev, now=now)
+            if not ok:
+                continue
         matched = False
         for sub in subs:
             filt = sub.get("filter") or {}
@@ -396,6 +542,7 @@ def emit_consumption_receipt(
     influence_event_ids: list[Any] | None = None,
     knowledge_status: Any = None,
     claimed_knowledge_status: Any = None,
+    event: dict[str, Any] | None = None,
     allow_unknown: bool = False,
 ) -> AgentConsumptionReceipt:
     """Emit AgentConsumptionReceipt@v1 for agent retrieval/use of an event.
@@ -411,6 +558,16 @@ def emit_consumption_receipt(
     purp = (purpose or "").strip()
     if not purp:
         raise AgentContractError("purpose required")
+
+    # Knowledge-status gate: a consumed event must itself be a verified fact
+    # before any truth claim can stand. A Hermes hypothesis / research artifact
+    # carries provenance and cannot be consumed as truth without the gate.
+    if event is not None:
+        assert_no_truth_claim_without_knowledge_gate(
+            event,
+            claimed_status=knowledge_status or claimed_knowledge_status,
+            agent_id=aid,
+        )
 
     # Explicit anti-self-certification: consumers never stamp institutional truth.
     for claimed in (knowledge_status, claimed_knowledge_status):

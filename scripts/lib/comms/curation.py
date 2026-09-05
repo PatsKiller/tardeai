@@ -15,7 +15,7 @@ import hashlib
 import json
 import threading
 from dataclasses import asdict, dataclass, field
-from typing import Any
+from typing import Any, Callable
 
 from scripts.lib.comms.event import CommunicationEvent
 from scripts.lib.comms.identity import protected_facts_hash_for
@@ -40,6 +40,11 @@ VALID_CURATION_MODES = (
 
 FALLBACK_REASON_PROTECTED_FACT_MUTATION = "protected_fact_mutation"
 FALLBACK_REASON_CURATION_UNAVAILABLE = "CURATION_UNAVAILABLE"
+FALLBACK_REASON_LLM_DECLINED = "LLM_DECLINED"
+FALLBACK_REASON_NO_MATERIAL_CHANGE = "no_material_change"
+# The two "unavailable/declined" states a deterministic fallback may declare.
+CURATION_UNAVAILABLE = "CURATION_UNAVAILABLE"
+LLM_DECLINED = "LLM_DECLINED"
 POLICY_ALLOW = "allow"
 POLICY_DENY_DETERMINISTIC = "deny_deterministic"
 POLICY_FALLBACK_DETERMINISTIC = "fallback_deterministic"
@@ -422,6 +427,217 @@ def apply_llm_curation_result(
         protected_facts=facts_after,
     )
     return body_out, receipt
+
+
+# ---------------------------------------------------------------------------
+# Wave F — material-change gate + governed curation
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class MaterialChangeDecision:
+    """Whether a new curation pass is warranted by new evidence."""
+
+    proceed: bool
+    reason: str
+    prior_evidence_hash: str | None
+    current_evidence_hash: str
+
+
+@dataclass
+class LLMCurationResult:
+    """Precomputed output from an (external, injected) LLM curator callable."""
+
+    curated_body: str
+    protected_facts_after: dict[str, Any] | None = None
+    short_summary: str | None = None
+    retrieved_context_ids: list[str] | None = None
+
+
+class LLMDeclined(Exception):
+    """A curator callable refused to produce output; forces deterministic fallback."""
+
+
+def evidence_hash_for(
+    *,
+    protected_facts: dict[str, Any] | None = None,
+    source_body: str | None = None,
+    authoritative_sources: list[dict[str, Any]] | None = None,
+) -> str:
+    """Canonical hash of the evidence that would feed a curation pass.
+
+    Stable across process restarts: two identical evidence sets hash equal, so a
+    prior curated output can be safely reused when the hash has not moved.
+    """
+    material = {
+        "protected_facts": protected_facts or {},
+        "source_body": source_body or "",
+        "authoritative_sources": authoritative_sources or [],
+    }
+    return _hash_material(material)
+
+
+def material_change_gate(
+    *,
+    prior_evidence_hash: str | None,
+    current_evidence_hash: str,
+) -> MaterialChangeDecision:
+    """No new evidence => no new synthesis/LLM.
+
+    ``prior_evidence_hash is None`` means first curation — proceed. Identical
+    prior and current hashes mean the evidence has not moved — block.
+    """
+    if prior_evidence_hash is None:
+        return MaterialChangeDecision(True, "first_curation", prior_evidence_hash, current_evidence_hash)
+    if prior_evidence_hash != current_evidence_hash:
+        return MaterialChangeDecision(True, "new_evidence", prior_evidence_hash, current_evidence_hash)
+    return MaterialChangeDecision(False, "no_new_evidence", prior_evidence_hash, current_evidence_hash)
+
+
+def curate_deterministic_fallback(
+    event: CommunicationEvent,
+    *,
+    fallback_reason: str,
+    provider: str | None = None,
+    model: str | None = None,
+    requested_mode: str | None = None,
+) -> tuple[dict[str, Any], CurationReceipt]:
+    """Deterministic fallback that *declares* its unavailability.
+
+    The body is prefixed with a ``[REASON]`` marker so uncurated text is never
+    presented as reviewed. ``fallback_reason`` must be one of
+    CURATION_UNAVAILABLE / LLM_DECLINED / no_material_change. Fact preservation
+    is trivially true (no LLM touched the facts).
+    """
+    allowed = {
+        FALLBACK_REASON_CURATION_UNAVAILABLE,
+        FALLBACK_REASON_LLM_DECLINED,
+        FALLBACK_REASON_NO_MATERIAL_CHANGE,
+    }
+    if fallback_reason not in allowed:
+        raise ValueError(f"fallback_reason must be one of {sorted(allowed)}")
+
+    facts = dict(event.protected_facts or {})
+    before_hash = protected_facts_hash_for(facts)
+
+    marker = f"[{fallback_reason}]"
+    raw = event.sanitized_body or ""
+    body_text = f"{marker} {raw}".strip() if raw else marker
+    summary = event.short_summary or body_text[:160]
+
+    output_hash = _hash_material({"sanitized_body": body_text, "short_summary": summary})
+    receipt = CurationReceipt(
+        curation_mode=DETERMINISTIC,
+        provider=provider,
+        model=model,
+        input_hashes={
+            "protected_facts": before_hash,
+            "requested_mode": _hash_material(requested_mode or ""),
+        },
+        output_hash=output_hash,
+        retrieved_context_ids=[],
+        latency_ms=0,
+        token_cost=0.0,
+        fallback_reason=fallback_reason,
+        fact_preservation_ok=True,
+        protected_facts_before_hash=before_hash,
+        protected_facts_after_hash=before_hash,
+        policy_decision=POLICY_FALLBACK_DETERMINISTIC,
+        event_id=event.event_id,
+    )
+    body = _body_fields(
+        sanitized_body=body_text,
+        short_summary=summary,
+        curation_mode=DETERMINISTIC,
+        protected_facts=facts,
+    )
+    return body, receipt
+
+
+def curate_governed(
+    event: CommunicationEvent,
+    *,
+    prior_evidence_hash: str | None = None,
+    current_evidence_hash: str | None = None,
+    llm_curator: Callable[[], LLMCurationResult] | None = None,
+    requested_mode: str | None = None,
+    provider: str | None = None,
+    model: str | None = None,
+    prior_body: dict[str, Any] | None = None,
+    prior_receipt: CurationReceipt | None = None,
+) -> tuple[MaterialChangeDecision, dict[str, Any], CurationReceipt]:
+    """Governed curation: gate → (reuse | LLM | deterministic fallback).
+
+    - Material-change gate: no new evidence reuses ``prior_body``/``prior_receipt``
+      (or a ``no_material_change`` fallback when none supplied) and never calls the
+      curator.
+    - LLM path: the curator callable is invoked only for LLM-capable classes.
+      ``llm_curator=None`` => CURATION_UNAVAILABLE; ``LLMDeclined`` => LLM_DECLINED.
+    - Protected-fact mutation in the curator output is detected by
+      ``apply_llm_curation_result`` and forces a deterministic fallback that
+      restores the original facts.
+
+    This module never calls a real LLM; ``llm_curator`` is supplied by the caller.
+    """
+    current = current_evidence_hash if current_evidence_hash else evidence_hash_for(
+        protected_facts=event.protected_facts,
+        source_body=event.sanitized_body,
+        authoritative_sources=event.authoritative_sources,
+    )
+    decision = material_change_gate(
+        prior_evidence_hash=prior_evidence_hash, current_evidence_hash=current
+    )
+
+    if not decision.proceed:
+        if prior_body is not None and prior_receipt is not None:
+            return decision, prior_body, prior_receipt
+        body, receipt = curate_deterministic_fallback(
+            event,
+            fallback_reason=FALLBACK_REASON_NO_MATERIAL_CHANGE,
+            provider=provider,
+            model=model,
+            requested_mode=requested_mode,
+        )
+        return decision, body, receipt
+
+    mode = requested_mode or select_curation_mode(event.message_class)
+    if mode not in (LLM_SUMMARY, LLM_CHALLENGE, HUMAN_EDIT):
+        body, receipt = curate_deterministic(event)
+        return decision, body, receipt
+
+    if llm_curator is None:
+        body, receipt = curate_deterministic_fallback(
+            event,
+            fallback_reason=FALLBACK_REASON_CURATION_UNAVAILABLE,
+            provider=provider,
+            model=model,
+            requested_mode=mode,
+        )
+        return decision, body, receipt
+
+    try:
+        result = llm_curator()
+    except LLMDeclined:
+        body, receipt = curate_deterministic_fallback(
+            event,
+            fallback_reason=FALLBACK_REASON_LLM_DECLINED,
+            provider=provider,
+            model=model,
+            requested_mode=mode,
+        )
+        return decision, body, receipt
+
+    body, receipt = apply_llm_curation_result(
+        event=event,
+        curated_body=result.curated_body,
+        protected_facts_after=result.protected_facts_after,
+        provider=provider,
+        model=model,
+        short_summary=result.short_summary,
+        retrieved_context_ids=result.retrieved_context_ids,
+        requested_mode=mode,
+    )
+    return decision, body, receipt
 
 
 def store_curation_receipt(event_id: str, receipt: CurationReceipt) -> None:

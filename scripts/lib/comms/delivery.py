@@ -29,13 +29,33 @@ DELIVERY_STATUSES = frozenset(
         "EXPIRED",
         "CANCELLED",
         "UNKNOWN",
+        # Gateway did not own this class: the legacy path delivered and the
+        # gateway's auto-reserved stub is settled here rather than left as a
+        # phantom in-flight RESERVED row (Wave A F1).
+        "LEGACY_DELIVERED",
+    }
+)
+
+# Terminal statuses (set completed_at). LEGACY_DELIVERED is terminal: the
+# legacy path already delivered; the gateway records it and never re-opens.
+_TERMINAL_STATUSES = frozenset(
+    {
+        "SENT",
+        "DELIVERED",
+        "ACKNOWLEDGED",
+        "FAILED",
+        "BOUNCED",
+        "SUPPRESSED",
+        "EXPIRED",
+        "CANCELLED",
+        "LEGACY_DELIVERED",
     }
 )
 
 # Allowed status transitions (from → to). UNKNOWN is a catch-all sink.
 _TRANSITIONS: dict[str, frozenset[str]] = {
     "RESERVED": frozenset(
-        {"SENDING", "SENT", "FAILED", "SUPPRESSED", "EXPIRED", "CANCELLED", "UNKNOWN"}
+        {"SENDING", "SENT", "FAILED", "SUPPRESSED", "EXPIRED", "CANCELLED", "UNKNOWN", "LEGACY_DELIVERED"}
     ),
     "SENDING": frozenset({"SENT", "FAILED", "CANCELLED", "UNKNOWN"}),
     "SENT": frozenset({"DELIVERED", "ACKNOWLEDGED", "BOUNCED", "FAILED", "UNKNOWN"}),
@@ -390,16 +410,7 @@ def settle_delivery(
         now = datetime.now(timezone.utc)
         if new_status in ("SENT", "DELIVERED", "ACKNOWLEDGED") and mem.sent_at is None:
             mem.sent_at = sent_at or now
-        if new_status in (
-            "SENT",
-            "DELIVERED",
-            "ACKNOWLEDGED",
-            "FAILED",
-            "BOUNCED",
-            "SUPPRESSED",
-            "EXPIRED",
-            "CANCELLED",
-        ):
+        if new_status in _TERMINAL_STATUSES:
             mem.completed_at = completed_at or now
         elif sent_at is not None:
             mem.sent_at = sent_at
@@ -433,16 +444,7 @@ def settle_delivery(
             new_completed = mapped.get("completed_at")
             if new_status in ("SENT", "DELIVERED", "ACKNOWLEDGED") and new_sent is None:
                 new_sent = sent_at or now
-            if new_status in (
-                "SENT",
-                "DELIVERED",
-                "ACKNOWLEDGED",
-                "FAILED",
-                "BOUNCED",
-                "SUPPRESSED",
-                "EXPIRED",
-                "CANCELLED",
-            ):
+            if new_status in _TERMINAL_STATUSES:
                 new_completed = completed_at or now
             coords = (
                 json.dumps(provider_coordinates)

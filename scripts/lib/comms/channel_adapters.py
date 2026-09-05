@@ -24,6 +24,7 @@ from scripts.lib.comms.delivery import settle_delivery
 from scripts.lib.comms.enforcement import require_event_id
 from scripts.lib.comms.event import CommunicationEvent
 from scripts.lib.comms.mode import MODE_ACTIVE, MODE_CANARY, get_gateway_mode
+from scripts.lib.comms.vocabulary import normalize_message_class
 
 SUPPORTED_CHANNELS = frozenset(
     {"email", "slack", "whatsapp_twilio", "whatsapp_meta", "telegram"}
@@ -65,8 +66,13 @@ def telegram_owned_classes(mode: str | None = None) -> list[str]:
 
 
 def telegram_class_allowed(mode: str, message_class: str) -> bool:
-    """Fail-closed class gate for Telegram deliver under CANARY/ACTIVE."""
-    mc = (message_class or "").strip()
+    """Fail-closed class gate for Telegram deliver under CANARY/ACTIVE.
+
+    Wave B: normalizes the class before the allowlist check so ownership agrees
+    with the ledger (F3). `operator_alert`/`ops_alert`/`health*` fold into `ops`;
+    unknown classes pass through unchanged; protected classes never alias away.
+    """
+    mc = normalize_message_class(message_class)
     if not mc:
         return False
     return mc in set(telegram_owned_classes(mode))

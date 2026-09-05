@@ -14,6 +14,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 import scripts.lib.comms.mode as mode_mod  # noqa: E402
 from scripts.lib.comms.channel_adapters import send_via_gateway  # noqa: E402
+from scripts.lib.comms.channel_adapters import telegram_class_allowed  # noqa: E402
 from scripts.lib.comms.client import memory_store_snapshot, reset_memory_store  # noqa: E402
 from scripts.lib.comms.delivery import (  # noqa: E402
     memory_delivery_snapshot,
@@ -46,6 +47,90 @@ def _clean(monkeypatch):
     reset_memory_deliveries()
     mode_mod._cache["mode"] = None
     mode_mod._cache["why"] = None
+
+
+def test_telegram_class_allowed_normalizes_operator_alert(monkeypatch):
+    """Wave B: `operator_alert` folds into `ops` ownership, agreeing with the ledger."""
+    monkeypatch.setenv("COMMS_GATEWAY_MODE", "ACTIVE")
+    monkeypatch.setenv("COMMS_GATEWAY_ACTIVE_CLASSES", "ops")
+    mode_mod._cache["mode"] = None
+    mode_mod._cache["why"] = None
+
+    assert telegram_class_allowed("ACTIVE", "operator_alert") is True
+    assert telegram_class_allowed("ACTIVE", "ops_alert") is True
+    assert telegram_class_allowed("ACTIVE", "health") is True
+    assert telegram_class_allowed("ACTIVE", "ops") is True
+
+
+def test_telegram_class_allowed_protected_and_unknown_fail_closed(monkeypatch):
+    monkeypatch.setenv("COMMS_GATEWAY_MODE", "ACTIVE")
+    monkeypatch.setenv("COMMS_GATEWAY_ACTIVE_CLASSES", "ops")
+    mode_mod._cache["mode"] = None
+    mode_mod._cache["why"] = None
+
+    # Protected classes never alias into ops and are not allowlisted.
+    assert telegram_class_allowed("ACTIVE", "approval") is False
+    assert telegram_class_allowed("ACTIVE", "protection_incident") is False
+    # Unknown passes through unchanged and is not allowlisted.
+    assert telegram_class_allowed("ACTIVE", "something_new") is False
+    # Blank stays blank, never coerced to a valid class.
+    assert telegram_class_allowed("ACTIVE", "") is False
+
+
+def test_telegram_class_allowed_empty_allowlist_fail_closed(monkeypatch):
+    monkeypatch.setenv("COMMS_GATEWAY_MODE", "ACTIVE")
+    monkeypatch.delenv("COMMS_GATEWAY_ACTIVE_CLASSES", raising=False)
+    mode_mod._cache["mode"] = None
+    mode_mod._cache["why"] = None
+    assert telegram_class_allowed("ACTIVE", "operator_alert") is False
+
+
+def test_canary_chat_allowlist_denies_unlisted_chat(monkeypatch):
+    """Negative control: CANARY + CANARY_CHATS filters out unauthorized chats."""
+    from scripts.lib.comms.channel_adapters import _resolve_telegram_chat_ids
+
+    monkeypatch.setenv("COMMS_GATEWAY_MODE", "CANARY")
+    monkeypatch.setenv("COMMS_GATEWAY_CANARY_CHATS", "111,222")
+    mode_mod._cache["mode"] = None
+    mode_mod._cache["why"] = None
+
+    # Mixed: listed chat kept, unlisted chat dropped.
+    ids, err = _resolve_telegram_chat_ids("CANARY", ["111", "333"])
+    assert ids == ["111"]
+    assert err is None
+
+    # Fully unlisted → blocked, not silently sent to a wider set.
+    ids2, err2 = _resolve_telegram_chat_ids("CANARY", ["999"])
+    assert ids2 == []
+    assert err2 == "delivery_blocked_canary_chats"
+
+
+def test_canary_without_chat_allowlist_does_not_filter(monkeypatch):
+    """Documented hazard: no CANARY_CHATS → no filter (blast radius is unbounded)."""
+    from scripts.lib.comms.channel_adapters import _resolve_telegram_chat_ids
+
+    monkeypatch.setenv("COMMS_GATEWAY_MODE", "CANARY")
+    monkeypatch.delenv("COMMS_GATEWAY_CANARY_CHATS", raising=False)
+    mode_mod._cache["mode"] = None
+    mode_mod._cache["why"] = None
+
+    ids, err = _resolve_telegram_chat_ids("CANARY", ["111", "333"])
+    assert ids == ["111", "333"]
+    assert err is None
+
+
+def test_active_mode_ignores_canary_chat_allowlist(monkeypatch):
+    """ACTIVE has no CANARY_CHATS filter; the class allowlist alone gates."""
+    from scripts.lib.comms.channel_adapters import _resolve_telegram_chat_ids
+
+    monkeypatch.setenv("COMMS_GATEWAY_MODE", "ACTIVE")
+    monkeypatch.setenv("COMMS_GATEWAY_CANARY_CHATS", "111")
+    mode_mod._cache["mode"] = None
+    mode_mod._cache["why"] = None
+
+    ids, err = _resolve_telegram_chat_ids("ACTIVE", ["111", "333"])
+    assert ids == ["111", "333"]
+    assert err is None
 
 
 def test_default_deliver_false_records_event_no_network(monkeypatch):
