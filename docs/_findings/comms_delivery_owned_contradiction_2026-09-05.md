@@ -148,10 +148,19 @@ cannot express per-class ownership even in principle.
 
 `tests/test_comms_telegram_canary_active.py:21` already has the harness — an
 autouse fixture that clears `COMMS_GATEWAY_MODE` and
-`COMMS_GATEWAY_ACTIVE_CLASSES`, **resets the mode cache** (which matters,
-`get_gateway_mode` memoises), and stubs `_db_conn` to `None` on both
-`comms.client` and `comms.delivery`. So the ACTIVE-side test can be written in
-that file with no new scaffolding and **no database**.
+`COMMS_GATEWAY_ACTIVE_CLASSES`, resets the mode cache, and stubs `_db_conn` to
+`None` on both `comms.client` and `comms.delivery`. So the ACTIVE-side test can
+be written in that file with no new scaffolding and **no database**.
+
+On the cache reset, precisely: `resolve_mode` memoises
+(`scripts/lib/comms/mode.py:29-30` returns the cached value unless `refresh`),
+but `health()` calls `get_gateway_mode(refresh=True)` at `:485`, so **this**
+assertion reads fresh env whether or not the cache was reset. The reset is
+load-bearing for cross-test isolation — the fixture is autouse because a prior
+test leaves a mode cached — and for any assertion reaching the mode through a
+default `refresh=False` path. Note that `telegram_class_allowed(mode, ...)` is
+not such a path: it takes the mode as a parameter and never consults the cache.
+The risk sits with whoever *fetches* the mode to pass in.
 
 Also why the local failures split the way they do: the canary file stubs the DB
 and `test_communications_portal.py` does not. The 7 local failures and the
