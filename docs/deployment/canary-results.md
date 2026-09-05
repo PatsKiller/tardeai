@@ -5,6 +5,16 @@
 **Mode during canary:** `COMMS_GATEWAY_MODE=CANARY` on designated host only  
 **Production today:** **OFF**
 
+### Telegram canary env (fail-closed; do not set until operator-approved)
+
+| Env | Purpose |
+|---|---|
+| `COMMS_GATEWAY_MODE=CANARY` | Enable canary ownership (host-local; never a repo default) |
+| `COMMS_GATEWAY_CANARY_CLASSES` | Comma-separated message classes allowed to deliver via gateway (e.g. `ops,operator_alert`). **Empty → Telegram deliver blocked.** |
+| `COMMS_GATEWAY_CANARY_CHATS` | Optional comma-separated chat ids; when set, only those chats receive canary delivers |
+
+Repo default remains **OFF**. Filling this template does not authorize canary.
+
 ---
 
 ## Run header (fill per canary)

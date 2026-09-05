@@ -1,13 +1,22 @@
-"""Gateway channel adapters for Email / Slack / WhatsApp (Phase 10).
+"""Gateway channel adapters for Email / Slack / WhatsApp / Telegram.
 
 Typed client over CommunicationEvent + ChannelDelivery. Default is SHADOW
 record-only (`deliver=False`). Real provider I/O happens only when
 `deliver=True` AND `COMMS_GATEWAY_MODE` is CANARY or ACTIVE, after
 `require_event_id`. Underlying sends stay in approved adapters
-(`scripts/alerting.py`, `scripts/lib/cio_whatsapp_egress.py`) via lazy import.
+(`scripts/alerting.py`, `scripts/lib/cio_whatsapp_egress.py`,
+`telegram_alert._raw_send_telegram` / `telegram_transport`) via lazy import.
+
+Telegram deliver is fail-closed on message-class allowlists:
+  CANARY → COMMS_GATEWAY_CANARY_CLASSES (optional COMMS_GATEWAY_CANARY_CHATS)
+  ACTIVE → COMMS_GATEWAY_ACTIVE_CLASSES
+Empty allowlist for the active mode blocks Telegram deliver (does not
+activate all classes). Other channels keep prior Phase 10 behavior.
+COMMS_GATEWAY_MODE default remains OFF — this module never flips it.
 """
 from __future__ import annotations
 
+import os
 from typing import Any
 
 from scripts.lib.comms.client import publish_communication
@@ -17,7 +26,7 @@ from scripts.lib.comms.event import CommunicationEvent
 from scripts.lib.comms.mode import MODE_ACTIVE, MODE_CANARY, get_gateway_mode
 
 SUPPORTED_CHANNELS = frozenset(
-    {"email", "slack", "whatsapp_twilio", "whatsapp_meta"}
+    {"email", "slack", "whatsapp_twilio", "whatsapp_meta", "telegram"}
 )
 
 ADAPTER_VERSIONS = {
@@ -25,9 +34,60 @@ ADAPTER_VERSIONS = {
     "slack": "slack@v1",
     "whatsapp_twilio": "whatsapp_twilio@v1",
     "whatsapp_meta": "whatsapp_meta@v1",
+    "telegram": "telegram@v1",
 }
 
 _DELIVERABLE_MODES = frozenset({MODE_CANARY, MODE_ACTIVE})
+
+ENV_CANARY_CLASSES = "COMMS_GATEWAY_CANARY_CLASSES"
+ENV_CANARY_CHATS = "COMMS_GATEWAY_CANARY_CHATS"
+ENV_ACTIVE_CLASSES = "COMMS_GATEWAY_ACTIVE_CLASSES"
+
+
+def _csv_env(name: str) -> frozenset[str]:
+    raw = (os.getenv(name) or "").strip()
+    if not raw:
+        return frozenset()
+    return frozenset(part.strip() for part in raw.split(",") if part.strip())
+
+
+def telegram_class_allowed(mode: str, message_class: str) -> bool:
+    """Fail-closed class gate for Telegram deliver under CANARY/ACTIVE."""
+    mc = (message_class or "").strip()
+    if not mc:
+        return False
+    if mode == MODE_CANARY:
+        return mc in _csv_env(ENV_CANARY_CLASSES)
+    if mode == MODE_ACTIVE:
+        return mc in _csv_env(ENV_ACTIVE_CLASSES)
+    return False
+
+
+def _telegram_canary_chats() -> frozenset[str]:
+    return _csv_env(ENV_CANARY_CHATS)
+
+
+def _resolve_telegram_chat_ids(
+    mode: str, requested: list[Any] | None
+) -> tuple[list[str] | None, str | None]:
+    """Apply optional CANARY chat allowlist. None requested → use env default chats.
+
+    Returns (chat_ids_or_None, error). None chat_ids means caller should use
+    telegram_alert default TELEGRAM_CHAT_ID list (still subject to canary filter
+    when that list is resolved inside the provider send).
+    """
+    allow = _telegram_canary_chats() if mode == MODE_CANARY else frozenset()
+    if requested is not None:
+        ids = [str(c).strip() for c in requested if str(c).strip()]
+        if mode == MODE_CANARY and allow:
+            ids = [c for c in ids if c in allow]
+            if not ids:
+                return [], "delivery_blocked_canary_chats"
+        return ids, None
+    if mode == MODE_CANARY and allow:
+        # Defer to provider: filter default chat list against allow.
+        return None, None
+    return None, None
 
 
 def _build_event(
@@ -62,12 +122,50 @@ def _build_event(
     )
 
 
+def _provider_send_telegram(
+    *,
+    body: str,
+    kwargs: dict[str, Any],
+    mode: str,
+) -> dict[str, Any]:
+    """Deliver via approved low-level path — never call send_telegram (no recursion)."""
+    chat_ids, chat_err = _resolve_telegram_chat_ids(mode, kwargs.get("chat_ids"))
+    if chat_err:
+        return {"ok": False, "error": chat_err}
+
+    # Import raw sender — bypasses send_telegram / send_via_gateway re-entry.
+    try:
+        from scripts.telegram_alert import _raw_send_telegram, _chat_ids as _default_chats
+    except ImportError:  # pragma: no cover - scripts/ on path in some runners
+        from telegram_alert import _raw_send_telegram, _chat_ids as _default_chats  # type: ignore
+
+    targets = chat_ids
+    if targets is None:
+        targets = list(_default_chats())
+        allow = _telegram_canary_chats() if mode == MODE_CANARY else frozenset()
+        if allow:
+            targets = [c for c in targets if c in allow]
+            if not targets:
+                return {"ok": False, "error": "delivery_blocked_canary_chats"}
+
+    ok = _raw_send_telegram(
+        body,
+        chat_ids=targets,
+        reply_markup=kwargs.get("reply_markup"),
+        thread_id=kwargs.get("thread_id"),
+    )
+    if not ok:
+        return {"ok": False, "error": "telegram_send_failed"}
+    return {"ok": True, "provider_message_id": None}
+
+
 def _provider_send(
     channel: str,
     *,
     body: str,
     subject: str | None,
     kwargs: dict[str, Any],
+    mode: str | None = None,
 ) -> dict[str, Any]:
     """Invoke approved underlying adapter. Lazy-import to avoid heavy deps."""
     if channel == "email":
@@ -122,6 +220,11 @@ def _provider_send(
             "provider_result": result,
         }
 
+    if channel == "telegram":
+        return _provider_send_telegram(
+            body=body, kwargs=kwargs, mode=mode or get_gateway_mode(refresh=True)
+        )
+
     return {"ok": False, "error": f"unsupported_channel:{channel}"}
 
 
@@ -138,6 +241,7 @@ def send_via_gateway(
     deliver: bool = False,
     severity: str = "info",
     payload: dict[str, Any] | None = None,
+    event_id: str | None = None,
     **kwargs: Any,
 ) -> dict[str, Any]:
     """Publish + reserve a channel delivery; optionally send via approved adapter.
@@ -145,6 +249,12 @@ def send_via_gateway(
     Default ``deliver=False`` records the CommunicationEvent and ChannelDelivery
     stub only (no network). Real send requires ``deliver=True`` and gateway mode
     CANARY or ACTIVE; otherwise returns ``error=delivery_blocked_mode``.
+
+    Telegram additionally requires a non-empty class allowlist for the mode
+    (``COMMS_GATEWAY_CANARY_CLASSES`` / ``COMMS_GATEWAY_ACTIVE_CLASSES``).
+
+    Optional ``event_id``: when provided, skip minting a new event and bind
+    deliver/`require_event_id` to that id (caller already published).
     """
     ch = str(channel or "").strip().lower()
     mode = get_gateway_mode(refresh=True)
@@ -166,32 +276,60 @@ def send_via_gateway(
         base["errors"].append(f"unsupported_channel:{ch}")
         return base
 
-    event = _build_event(
-        ch,
-        body=body,
-        subject=subject,
-        producer=producer,
-        subject_key=subject_key,
-        event_type=event_type,
-        message_class=message_class,
-        retention_class=retention_class,
-        severity=severity,
-        payload=payload,
-    )
-    published = publish_communication(event)
-    base["event_id"] = published.event_id
-    base["delivery_ids"] = list(published.delivery_ids or [])
-    base["delivery_id"] = (
-        published.delivery_ids[0] if published.delivery_ids else None
-    )
-    base["gateway_mode"] = published.gateway_mode or mode
-    if published.errors:
-        base["errors"].extend(list(published.errors))
+    pre_id = (event_id or "").strip() or None
+    existing_dlv = kwargs.pop("_existing_delivery_id", None)
+    if existing_dlv is not None:
+        existing_dlv = str(existing_dlv).strip() or None
+    if pre_id:
+        # Caller already published — reuse their reservation or mint one.
+        base["event_id"] = pre_id
+        if existing_dlv:
+            base["delivery_id"] = existing_dlv
+            base["delivery_ids"] = [existing_dlv]
+        else:
+            from scripts.lib.comms.delivery import reserve_delivery
 
-    if not published.ok or not published.event_id:
-        base["error"] = "publish_failed"
-        base["errors"].append("publish_failed")
-        return base
+            try:
+                reserved = reserve_delivery(
+                    event_id=pre_id,
+                    channel=ch,
+                    adapter_version=ADAPTER_VERSIONS.get(ch),
+                )
+                base["delivery_id"] = reserved.delivery_id
+                base["delivery_ids"] = (
+                    [reserved.delivery_id] if reserved.delivery_id else []
+                )
+            except Exception as exc:
+                base["error"] = "reserve_failed"
+                base["errors"].append(f"reserve_failed:{type(exc).__name__}")
+                return base
+    else:
+        event = _build_event(
+            ch,
+            body=body,
+            subject=subject,
+            producer=producer,
+            subject_key=subject_key,
+            event_type=event_type,
+            message_class=message_class,
+            retention_class=retention_class,
+            severity=severity,
+            payload=payload,
+        )
+        published = publish_communication(event)
+        base["event_id"] = published.event_id
+        base["delivery_ids"] = list(published.delivery_ids or [])
+        base["delivery_id"] = (
+            published.delivery_ids[0] if published.delivery_ids else None
+        )
+        base["gateway_mode"] = published.gateway_mode or mode
+        if published.errors:
+            base["errors"].extend(list(published.errors))
+
+        if not published.ok or not published.event_id:
+            base["error"] = "publish_failed"
+            base["errors"].append("publish_failed")
+            return base
 
     if not deliver:
         base["ok"] = True
@@ -210,15 +348,28 @@ def send_via_gateway(
         base["delivered"] = False
         return base
 
-    # Gateway owns this attempt once mode allows deliver.
+    # Telegram: fail-closed class allowlist (does not apply to other channels).
+    if ch == "telegram" and not telegram_class_allowed(mode, message_class):
+        base["ok"] = False
+        base["error"] = "delivery_blocked_allowlist"
+        base["errors"].append(
+            f"delivery_blocked_allowlist:{mode}:{message_class or ''}"
+        )
+        base["delivery_owned"] = False
+        base["delivered"] = False
+        return base
+
+    # Gateway owns this attempt once mode (and telegram allowlist) allow deliver.
     base["delivery_owned"] = True
-    require_event_id(published.event_id, adapter=ch)
+    require_event_id(base["event_id"], adapter=ch)
 
     delivery_id = base["delivery_id"]
     send_error: str | None = None
     provider_message_id: str | None = None
     try:
-        result = _provider_send(ch, body=body, subject=subject, kwargs=kwargs)
+        result = _provider_send(
+            ch, body=body, subject=subject, kwargs=kwargs, mode=mode
+        )
         if result.get("ok"):
             provider_message_id = result.get("provider_message_id")
         else:
