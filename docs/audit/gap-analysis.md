@@ -13,7 +13,7 @@ Classification key: **LIVE** · **LIVE BUT PARTIAL** · **BUILT_DARK** · **DISC
 |---|---|---|---|
 | Exact live SHA attestation | LIVE | Continuous re-attest on each deploy | Phase 0 (ongoing) |
 | Sender disposition ledger | LIVE BUT PARTIAL | 166 MIGRATE owners TBD | Phase 0 sign-off |
-| Zero bypass traffic | LIVE BUT PARTIAL | 45 producers / 133 violations; ratchet ≠ zero | Phase 2 + PR-9 |
+| Zero bypass traffic | LIVE BUT PARTIAL | Telegram: 45 producers / 133 violations (ratchet). Slack/SMTP/Twilio/Meta: static ratchet + approved adapters landed Phase 2; Telegram zero still Phase 9 | Phase 2 done (static) · PR-9 for Telegram zero |
 | Universal `event_id` before provider call | BUILT_DARK (Phase 1 client OFF) | Ledger + `publish_communication` exist; producers not yet migrated; delivery not owned | Phase 1 done · migrate Phase 5+ · enforce Phase 2 |
 | Fail closed on missing provenance / protected facts / retention / recipient policy | ABSENT / partial CIO only | Not universal | Phase 1 + 5 |
 | Dual-path CIO residual eliminated | LIVE BUT PARTIAL | Scanner direct-send vs outbox worker | Phase 2–3 / CIO cutover |

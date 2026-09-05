@@ -52,7 +52,7 @@ while IFS= read -r p; do
     # part of CIO hardening. Without this, Integrator local-acceptance could
     # skip tests/test_telegram_notification_normalization.py while independent
     # QA ran it as the full notification suite.
-    scripts/check_telegram_chokepoint.py|scripts/evaluate_telegram*|config/telegram_chokepoint_baseline.json|tests/test_telegram*|tests/fixtures/telegram*|scripts/lib/autonomy_watchdog/telegram*|scripts/telegram_transport.py|scripts/telegram_alert.py|scripts/alert_outbox.py) cio=1; policy_only=0 ;;
+    scripts/check_telegram_chokepoint.py|scripts/check_provider_chokepoint.py|scripts/check_comms_gateway_enforcement.py|scripts/evaluate_telegram*|config/telegram_chokepoint_baseline.json|config/provider_chokepoint_baseline.json|tests/test_telegram*|tests/test_provider_chokepoint*|tests/test_comms_*|tests/fixtures/telegram*|scripts/lib/autonomy_watchdog/telegram*|scripts/lib/comms/*|scripts/telegram_transport.py|scripts/telegram_alert.py|scripts/alert_outbox.py) cio=1; policy_only=0 ;;
     apps/command-center-v3/*) frontend=1; policy_only=0 ;;
     tests/*) tests=1; policy_only=0 ;;
     *) policy_only=0 ;;

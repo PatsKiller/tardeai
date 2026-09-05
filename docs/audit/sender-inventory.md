@@ -144,7 +144,7 @@ None auto-assigned this pass. Candidates should be promoted from MIGRATE after:
 | Role | Name | Date | Notes |
 |---|---|---|---|
 | Attestor (automation) | Phase 0 scripts + host evidence | 2026-09-05 | Inventory + provisional owners |
-| Operator | | | Confirm provisional owners |
-| Comms gateway owner | | | Phase 1 ledger started with provisional owners in place |
+| Operator | Accepted | 2026-09-05 | Approved provisional desks, exemptions, and baseline; proceed Phase 2 |
+| Comms gateway owner | Accepted via operator | 2026-09-05 | Phase 0 closed; Phase 1 ledger already landed; Phase 2 enforcement next |
 
-**Phase 0 exit status:** **PROVISIONAL PASS** (dispositions complete; owners provisionally assigned; formal operator confirmation outstanding).
+**Phase 0 exit status:** **ACCEPTED** (operator approved owners/exemptions 2026-09-05).

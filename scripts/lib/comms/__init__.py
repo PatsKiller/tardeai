@@ -11,6 +11,11 @@ Phase 1 does NOT own provider delivery. Modes default to OFF.
 from __future__ import annotations
 
 from scripts.lib.comms.client import PublishResult, publish_communication
+from scripts.lib.comms.enforcement import (
+    MissingCommunicationEventId,
+    assert_delivery_not_owned_in_off_or_shadow,
+    require_event_id,
+)
 from scripts.lib.comms.event import CommunicationEvent, required_missing
 from scripts.lib.comms.identity import idempotency_key_for, new_event_id
 from scripts.lib.comms.mode import (
@@ -30,6 +35,9 @@ __all__ = [
     "new_event_id",
     "idempotency_key_for",
     "required_missing",
+    "require_event_id",
+    "MissingCommunicationEventId",
+    "assert_delivery_not_owned_in_off_or_shadow",
     "MODE_OFF",
     "MODE_SHADOW",
     "MODE_CANARY",
