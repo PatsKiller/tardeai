@@ -854,6 +854,38 @@ pointed at macro data by accident.
 *(`fred_economic_data` also does not exist as a table at all — `fred_data_ingest` declares it as
 output and it was never created. The integrity sweep reports that as `declared_output_missing`.)*
 
+### The governed model bridge — read this before diagnosing a paid-lane outage
+
+Full reference: **`docs/architecture/GOVERNED_MODEL_BRIDGE.md`**.
+
+Every paid model call goes through one process, `cio-governed-bridge.service` on `:8766`. It is a
+systemd **user** unit — restarting it is `systemctl --user restart cio-governed-bridge`, scope
+`service`, one process, a few seconds. **Not sudo, not a reboot.**
+
+**There are FOUR caps and only three are about money.** On 2026-09-06 the usefulness backfill died
+after exactly 200 calls having spent **$0.0742 of a $0.30 budget** — 25% of the money, 100% of the
+`daily_soft_cap` REQUEST COUNT. Every caller saw `HTTP 500`, which reads like a broken provider.
+
+**Read the error body, not the status.** The bridge's own log records only
+`"POST /v1/chat/completions" 500 -` with no reason; the cause is in the JSON:
+`{"code": "RESERVATION_FAILED", "message": "COST_CAP_EXCEEDED: daily request cap"}`. A `curl`
+without `X-TradeAI-Agent` returns 401 and looks like auth instead, and `GET /health` returns 501
+because it is POST-only — neither is the fault you are chasing.
+
+**Projections run ~17× actual**, so a dollar cap bites 17× early: 200 reservations projected
+$1.2639 against $0.0742 real, because `HERMES_CLOUD_MAX_TOKENS` (default 4096) reserves for a
+60-token answer. **Fixing the estimate is worth more than raising the cap** — at the true rate,
+$0.50/day buys ~8,000 calls; against the projection it buys ~470.
+
+**Caller identity is server-side and never taken from the caller** (`CALLER_PROCESS_MAP`), so a job
+cannot be given its own budget by relabelling it — that needs a code change *and* a restart. Caps
+themselves are rows in `llm_process_config`, read per request, changeable without a restart.
+Record previous values when changing one: `advisory_desk_opinion` was `200 / $0.30` before
+2026-09-06.
+
+**It had been running 10 days from the 2026-08-27 release** and logs into *that* release's `logs/`,
+so a bridge code change is not live until restart and `journalctl` shows almost nothing.
+
 ### LLM lane escalation — free, then one paid lane, then ASK
 
 Operator policy, 2026-09-06. `lib/llm_escalation.run_with_escalation`:

@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `115a9eee27f36c1d01b8cd5cc1b4634b6235c275072c40ebcbbcb3599a5f7501`
+**Tree fingerprint:** `349a66241d2315d66e7d6b5975f866ba2d35a7b1c694bf2c54f2d6b366213388`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,10 +12,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2404 |
-| Markdown (excl. this INDEX) | 2003 |
+| Files under `docs/` (excl. this INDEX) | 2405 |
+| Markdown (excl. this INDEX) | 2004 |
 | **MISSING HEADER** | **20** |
-| Header OK | 1983 |
+| Header OK | 1984 |
 | Duplicate groups | 5 |
 
 ### By status_guess
@@ -30,7 +30,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_raw_sync | 35 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 6 |
-| review_required | 2015 |
+| review_required | 2016 |
 
 ## Markdown tree
 
@@ -292,6 +292,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/EXECUTION_QUALITY.md` | Replay-Aware Execution Quality (design) | review_required | OK | `685082a5cd95` |
 | `docs/architecture/GAIN_GUARDIAN.md` | Gain Guardian — Holdings Exit Intelligence (Live Book, Advisory-Only) | review_required | OK | `1d3bec366edc` |
 | `docs/architecture/GOOGLE_NOTES_BITEMPORAL_DDL_ARCHITECT_RECONCILIATION_2026-08-24.md` | Google Notes bitemporal DDL — architect reconciliation | review_required | OK | `8d29266fc3e6` |
+| `docs/architecture/GOVERNED_MODEL_BRIDGE.md` | The governed model bridge — caps, callers, and how it fails | review_required | OK | `7ef8f731bf1b` |
 | `docs/architecture/HERMES_PERSISTENT_TICKER_INTELLIGENCE_ARCHITECTURE_2026-08-23.md` | Hermes Persistent Ticker Intelligence Architecture | review_required | OK | `3a4320625b1e` |
 | `docs/architecture/HOME_COMMAND_BRAIN_V2.md` | Home v2 — The Command Brain (2026-07-17) | review_required | OK | `6e695df9a86e` |
 | `docs/architecture/HYBRID_EVIDENCE_REFRESH_AND_HERMES_BRIDGE_2026-08-23.md` | Hybrid Evidence Refresh and Hermes Bridge | review_required | OK | `9c55a507faab` |
