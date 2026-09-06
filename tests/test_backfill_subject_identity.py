@@ -146,10 +146,26 @@ def test_an_unknown_status_is_not_treated_as_confirmed(mod, monkeypatch):
 
 
 def test_an_already_confirmed_row_is_protected(mod):
-    """One-way rank: a backfill may raise confidence, never lower it."""
+    """One-way rank: a backfill may raise confidence, never lower it.
+
+    Scoped to backfill() specifically. An earlier version split on the first
+    "UPDATE {table} SET" in the file, which silently became classify_remainder's
+    topic update once that was added above it — a guard that keeps passing while
+    pointing at the wrong statement.
+    """
     src = SCRIPT.read_text(encoding="utf-8")
-    update = src.split("UPDATE {table} SET", 1)[1].split("counts[", 1)[0]
+    fn = src.split("def backfill(", 1)[1].split("\ndef ", 1)[0]
+    update = fn.split("UPDATE {table} SET", 1)[1].split("counts[", 1)[0]
     assert "<> 'CONFIRMED'" in update
+
+
+def test_the_topic_update_cannot_overwrite_a_resolved_row(mod):
+    """It needs no CONFIRMED guard because it only ever fills rows that have no
+    subject at all — but that predicate must actually be there."""
+    src = SCRIPT.read_text(encoding="utf-8")
+    fn = src.split("def classify_remainder", 1)[1]
+    topic_update = fn.split("SET subject_guid=", 1)[1].split("topic_rows", 1)[0]
+    assert "subject_guid IS NULL" in topic_update
 
 
 def test_the_rank_order_is_written_down(mod):
@@ -286,3 +302,78 @@ def test_the_envelope_never_mints():
 
 def test_the_script_parses():
     ast.parse(SCRIPT.read_text(encoding="utf-8"))
+
+
+# ── topics are subjects too, and the remainder is classified not abandoned ──
+#
+# The unresolved population was never "symbols we failed to look up". It was two
+# populations wearing one column:
+#
+#   d107_energy_transition, su_industry_insurance_brokers  — research THEMES, filed
+#     under `symbol` because the catalyst engine has one column for both.
+#   ASSET, NEW, NEED, TO, STUDY, FIND                      — English words a ticker
+#     extractor mistook for symbols. An upstream defect.
+#
+# Giving a theme a SECURITY guid fabricates identity. Leaving either NULL makes the
+# rows permanently unjoinable AND indistinguishable from rows nobody examined yet.
+
+def test_a_topic_gets_a_deterministic_guid_of_its_own(mod):
+    a = mod.topic_guid("d107_energy_transition")
+    b = mod.topic_guid("d107_energy_transition")
+    assert a == b, "same topic must always mint the same guid"
+    assert a != mod.topic_guid("d98_consumer_defensive")
+
+
+def test_a_topic_guid_is_not_a_security_guid(mod):
+    """Different namespace. A theme must never collide with a company."""
+    src = SCRIPT.read_text(encoding="utf-8")
+    assert 'f"tradeai:{TOPIC_NAMESPACE}:{topic_id}"' in src
+    assert mod.TOPIC_NAMESPACE == "topic"
+
+
+def test_examined_and_unresolvable_is_recorded_not_left_null(mod):
+    """The whole point: identity_status IS NULL must mean exactly one thing —
+    nobody has looked at this row yet. A column that cannot separate 'looked and
+    could not resolve' from 'never looked' cannot measure its own coverage."""
+    src = SCRIPT.read_text(encoding="utf-8")
+    fn = src.split("def classify_remainder", 1)[1]
+    assert "identity_status IS NULL" in fn
+    assert "UNRESOLVABLE" in fn
+
+
+def test_a_limited_pass_never_marks_the_remainder_unresolvable(mod):
+    """Under --limit the remainder has NOT been examined. Marking it unresolvable
+    would be a lie that every later run inherits and never revisits."""
+    src = SCRIPT.read_text(encoding="utf-8")
+    assert "not args.limit" in src
+    guard = src.split("if not res.get(\"skipped\") and not args.limit", 1)[1][:400]
+    assert "classify_remainder" in guard
+
+
+def test_a_dry_run_classifies_nothing(mod):
+    class Cur(FakeCur):
+        def execute(self, sql, params=None):
+            if "to_regclass" in sql:
+                self._result = [(None,)]
+            else:
+                super().execute(sql, params)
+
+    cur = Cur(["subject_guid", "symbol"], [])
+    res = mod.classify_remainder(cur, "t", "symbol", apply=False)
+    assert res["unresolvable_rows"] == 0
+    assert cur.updates == []
+
+
+def test_a_missing_topic_table_is_survived_not_fatal(mod):
+    """Not every deployment has topic_monitor. Its absence means 'no topics to
+    resolve', not 'this run failed'."""
+    class Cur(FakeCur):
+        def execute(self, sql, params=None):
+            if "to_regclass" in sql:
+                self._result = [(None,)]
+            else:
+                super().execute(sql, params)
+
+    res = mod.classify_remainder(Cur(["subject_guid", "symbol"], []), "t", "symbol",
+                                 apply=True)
+    assert res["topics"] == 0
