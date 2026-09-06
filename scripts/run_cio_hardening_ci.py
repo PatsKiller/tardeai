@@ -588,6 +588,16 @@ GATES = [
         ],
     ),
     (
+        "inbound_identity_tagging",
+        [
+            # Tagging was one-way: research and news carried GUIDs, the inbound
+            # path carried nothing and stored nothing. Pins that a ticker
+            # resolves, that a company NAME is recorded as a measured gap rather
+            # than dropped, and that no model runs in the deterministic path.
+            "tests/test_inbound_identity_tagger.py",
+        ],
+    ),
+    (
         "generated_file_merge",
         [
             # 6 of 6 consecutive merges conflicted on the same five generated
