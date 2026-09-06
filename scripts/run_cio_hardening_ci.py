@@ -628,6 +628,10 @@ GATES = [
             # that it never repairs, that a commented cron is not scheduled, and
             # that populations aggregate instead of emitting 309 alarms.
             "tests/test_deterministic_integrity.py",
+            # The sweep's own alarm, OBSERVED firing. test_alarm_coverage caught
+            # this missing on 2026-09-06: a new send_telegram site with no firing
+            # test, in the session that documented the rule.
+            "tests/test_integrity_sweep_alarm_fires.py",
             # The one place a model touches identity: proposes CANDIDATE, never
             # commits, never mints a GUID, free lanes only.
             "tests/test_identity_resolution_advisor.py",
