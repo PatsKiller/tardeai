@@ -795,6 +795,80 @@ A sentinel says *today's classifier could not do this*. That expires; it is not 
 row. `NO_MATCH_TTL_DAYS` (default 30) re-admits them and `taxonomy_tagged_at` records when.
 **A sentinel without a TTL destroys a corpus while reporting success.**
 
+### The daily integrity sweep — run it, read it, do not automate its fixes
+
+`scripts/run_integrity_checks.py` (lib/`deterministic_integrity`). Every check exists because
+the defect it detects was real on 2026-09-06 and had been silently true for weeks or months.
+Run cold against `main` it rediscovered, unprompted, every defect a full session had found by
+hand — plus `db_retention.py` unscheduled and a second CIO-shaped outage nobody had seen.
+
+**It reports and never repairs, deliberately.** The obvious fix for one of its findings —
+re-enabling `taxonomy_tagger` — would have foreclosed a 32,060-row corpus. An auto-fixer would
+have taken that action. A test fails if `INSERT`/`UPDATE`/`DELETE`/`rmtree` appears in the engine.
+
+**Exit 0 means the check RAN.** Findings live in the JSON, so a crashed sweep and a sweep that
+found something are never confused.
+
+**Populations aggregate.** The first run emitted 314 individual alarms; 309 scripts that work
+today from the dev tree are a debt, not an outage. Population checks collapse to one finding with
+a count and a sample, one severity lower — and **spot-check before quoting a sweep number**, which
+is how the two false positives below were caught before shipping.
+
+### `output_tables` — a declaration nothing validated
+
+**This is the root cause of "runs fine, produces nothing", and it is worth understanding before
+adding any new pipeline.**
+
+`pipeline_stage_owner_map` declares, for all **31** pipelines, what each one produces:
+
+```python
+"cio_decision_engine": { "output_tables": ["cio_decisions"] }
+```
+
+Exactly **one** place read that field — `api_v2.py`, forwarding it to a display payload. Nothing
+joined *"the run reported success"* to *"the thing it declares it produces actually grew"*. So the
+declaration drifted until it was fiction:
+
+- **~20 pipelines declare an output table that DOES NOT EXIST** — `fred_economic_data`,
+  `sec_filings`, `symbol_metadata`, `technical_indicators`, `agent_job_results`…
+- `symbol_enrichment` declares `symbol_metadata` and actually writes `iris_taxonomy_proposals`,
+  `news_articles` and `trade_ai_scans`.
+- `social_ingest`: 34 successful runs in 7 days, `social_mentions` **never written** — a second
+  instance of the `cio_decision_engine` defect, found by the check rather than by a person.
+
+`check_declared_output_not_produced` now enforces it, and **measures the store, not the
+self-report** — `rows_produced` defaulted to 0 for 16 of 20 callers and is precisely the field
+that cannot be trusted. A test fails if it is read there.
+
+**A declaration nothing validates is not a contract, it is a comment.** If you add a pipeline,
+its `output_tables` must name a table that exists and that it actually writes.
+
+### Two false positives worth copying the fix for
+
+Both were introduced by me and caught before shipping, and both are the shape that makes an alarm
+ignorable:
+
+- **Assuming a column name.** The check assumed `created_at` and reported `trade_ai_scans` — a
+  healthy table using `scanned_at` — as unreadable on its first run. Discover the column.
+- **Collapsing two states.** "Table does not exist" and "table has no timestamp" are different
+  findings with different fixes; reporting both as the latter understated eight P1s as cosmetics.
+
+### The PR collision surface — a workflow cost, not a code defect
+
+Measured over six consecutive merges: **6 of 6 touched the same five files.**
+
+| file | touched by | fixable? |
+|---|---|---|
+| the four SOP digest evidence files | 6/6 | **no — leave it.** The binding is the control |
+| `docs/INDEX.md` | 6/6 | yes — could be generated at CI time rather than committed |
+| `AGENTS.md` | 5/6 | no — real content, resolve by hand |
+| `scripts/run_cio_hardening_ci.py` | 4/6 | yes — the group list could be a directory scan |
+
+So any two concurrent PRs conflict **by construction**, regardless of what they change. Four
+conflict resolutions on 2026-09-06 were all this; none were a real disagreement about code.
+**Expect it, resolve generated files by RECOMPUTING them rather than picking a side** — a
+hand-merged digest is a hash that matches nothing.
+
 ### `rows_produced` — unknown is not zero
 
 `PipelineRun` defaulted `_rows = 0`, and `run_complete(rows_processed=0)` matched it. **20
