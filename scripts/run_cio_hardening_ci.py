@@ -588,6 +588,16 @@ GATES = [
         ],
     ),
     (
+        "generated_file_merge",
+        [
+            # 6 of 6 consecutive merges conflicted on the same five generated
+            # files. Runs REAL git merges in a temp repo: the conflict exists
+            # without the driver, the driver resolves it, and a genuine code
+            # conflict still stops the merge.
+            "tests/test_generated_file_merge_driver.py",
+        ],
+    ),
+    (
         "identity_custodian",
         [
             # Nothing watched the GUID spine at all until 2026-09-06. Pins that

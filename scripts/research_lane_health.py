@@ -122,6 +122,42 @@ def fix_hint(row: dict) -> str:
             "!= origin/main (pin behind #455+). Targeted gog --replace until D4 8/27. "
             "zero_uploaded_with_failures = 404 dead parents. Canonical docs 1BMxbxU9… / ops 1a7vr2gn…"
         )
+    if lane == "identity-spine":
+        # The custodian already COMPUTES the precise remediation for each of its
+        # alarms. Without this branch the operator got "CAUSE NOT DIAGNOSED" on a
+        # finding whose cause was fully known and already in the JSON — an alarm
+        # that reaches the phone and then withholds what it knows.
+        if "producer_unscheduled" in firing:
+            producers = [f.split(":", 1)[1] for f in (row.get("firing") or [])
+                         if str(f).startswith("producer_unscheduled:")]
+            return (
+                f"Identity producer not scheduled: {', '.join(producers) or 'unknown'}. "
+                "cron AND systemd were both checked, and a COMMENTED cron does not "
+                "count. The data it maintains ages silently. Schedule it, or record "
+                "it in AGENTS.md as deliberately manual."
+            )
+        if "coverage_regressed" in firing:
+            return (
+                "CONFIRMED entity count FELL. The registry rank is one-way, so it "
+                "cannot fall on its own — a source feed stopped publishing "
+                "identifiers (CUSIP). Check Schwab instruments before re-minting; "
+                "re-minting on a degraded feed writes the degradation in."
+            )
+        if "registry_stale" in firing:
+            return (
+                "identity_registry has not been re-minted within its window. The "
+                "minter runs weekdays 05:50 ET and the grace already covers a "
+                "weekend, so this is a real miss. Run mint_identity_registry.py "
+                "--apply (idempotent, incremental)."
+            )
+        if "registry_unreadable" in firing:
+            return (
+                "identity_registry is missing or unparseable. Everything joining "
+                "subject_guid/issuer_guid degrades silently. Do NOT re-mint over "
+                "it — inspect first; the file is the durable spine."
+            )
+        return "identity-spine firing; see the lane JSON `counts` and `firing`."
+
     if lane == "current-pin":
         return "CURRENT scripts/+docs/ must match SOURCE_COMMIT (git archive hashes). No docs overlay."
     if lane == "process-freshness":
