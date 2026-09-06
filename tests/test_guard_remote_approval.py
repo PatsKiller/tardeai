@@ -211,3 +211,105 @@ def test_unprovenanced_grants_are_detectable():
     odd = gra.unprovenanced_grants(grants)
     assert len(odd) == 2
     assert {g["tier"] for g in odd} == {"release-write", "db-write"}
+
+
+# ── Approval by BUTTON: the tap is the authority ────────────────────────────
+# Requested 2026-09-05. A callback carries no code, and must not need one: the
+# lock moves from "knows a secret" to "is the operator", which is what was
+# actually wanted. Telegram delivers callback_query with the sender's user id
+# from an allowlisted chat, and callbacks originate at Telegram's servers, so
+# the bot token cannot fabricate one.
+
+def test_a_button_tap_settles_without_any_code(_isolated_store):
+    req = _mint()
+    out = gra.settle_by_request_id(req["request_id"], approve=True,
+                                   chat_id=ALLOWED_CHAT, allowed_chats=ALLOWED,
+                                   telegram={"from_id": 77, "message_id": 4})
+    assert out["ok"] is True
+    assert out["request"]["status"] == "APPROVED"
+    assert out["request"]["settled_via"] == "telegram_button"
+    assert out["request"]["telegram"]["from_id"] == 77
+
+
+def test_a_tap_from_an_unlisted_chat_settles_nothing(_isolated_store):
+    req = _mint()
+    out = gra.settle_by_request_id(req["request_id"], approve=True,
+                                   chat_id=OTHER, allowed_chats=ALLOWED)
+    assert out["ok"] is False and out["reason"] == "CHAT_NOT_ALLOWED"
+    # and it must remain answerable by the real operator
+    good = gra.settle_by_request_id(req["request_id"], approve=True,
+                                    chat_id=ALLOWED_CHAT, allowed_chats=ALLOWED)
+    assert good["ok"] is True
+
+
+def test_a_button_tap_is_single_use(_isolated_store):
+    req = _mint()
+    assert gra.settle_by_request_id(req["request_id"], approve=True,
+                                    chat_id=ALLOWED_CHAT, allowed_chats=ALLOWED)["ok"]
+    again = gra.settle_by_request_id(req["request_id"], approve=True,
+                                     chat_id=ALLOWED_CHAT, allowed_chats=ALLOWED)
+    assert again["ok"] is False
+    assert again["reason"] == "REQUEST_ALREADY_APPROVED"
+
+
+def test_deny_button_grants_nothing(_isolated_store):
+    req = _mint()
+    out = gra.settle_by_request_id(req["request_id"], approve=False,
+                                   chat_id=ALLOWED_CHAT, allowed_chats=ALLOWED)
+    assert out["request"]["status"] == "DENIED_BY_OPERATOR"
+
+
+def test_an_expired_request_cannot_be_tapped(_isolated_store):
+    req = _mint(ttl=1)
+    time.sleep(1.1)
+    out = gra.settle_by_request_id(req["request_id"], approve=True,
+                                   chat_id=ALLOWED_CHAT, allowed_chats=ALLOWED)
+    assert out["ok"] is False and out["reason"] == "REQUEST_EXPIRED"
+
+
+def test_an_unknown_request_id_settles_nothing(_isolated_store):
+    out = gra.settle_by_request_id("deadbeefdeadbeef", approve=True,
+                                   chat_id=ALLOWED_CHAT, allowed_chats=ALLOWED)
+    assert out["ok"] is False and out["reason"] == "UNKNOWN_REQUEST"
+
+
+# ── the tailnet link must never carry authority ─────────────────────────────
+
+def test_the_authority_buttons_are_callbacks_not_urls():
+    """A URL that approves is approvable by any holder of the link — a preview
+    crawler, a prefetch, a forward. And this agent can read the HMAC key, so a
+    signed approve-URL would let it walk through its own front door."""
+    import guard_request_approval as g
+
+    kb = g._keyboard("abc123")["inline_keyboard"]
+    authority = kb[0]
+    assert len(authority) == 2
+    for btn in authority:
+        assert "callback_data" in btn, f"authority button carries a URL: {btn}"
+        assert "url" not in btn
+    assert authority[0]["callback_data"] == "gapprove:abc123"
+    assert authority[1]["callback_data"] == "gdeny:abc123"
+
+
+def test_any_url_button_is_read_only_and_tls():
+    import guard_request_approval as g
+
+    for row in g._keyboard("abc123")["inline_keyboard"]:
+        for btn in row:
+            if "url" not in btn:
+                continue
+            assert btn["url"].startswith("https://"), "plaintext link in a chat message"
+            for verb in ("approve", "deny", "grant", "token="):
+                assert verb not in btn["url"].lower(), (
+                    f"tailnet button looks like an action, not a view: {btn['url']}")
+
+
+def test_callback_data_fits_telegrams_64_byte_limit():
+    """A silently truncated callback_data is a button that settles the wrong
+    request, or nothing at all."""
+    import guard_request_approval as g
+
+    for row in g._keyboard("a" * 16)["inline_keyboard"]:
+        for btn in row:
+            if "callback_data" in btn:
+                assert len(btn["callback_data"].encode("utf-8")) <= 64

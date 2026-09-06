@@ -253,6 +253,64 @@ def verify_and_consume(code: str, *, chat_id: Any, allowed_chats: Any,
     return {"ok": True, "request": rec}
 
 
+def settle_by_request_id(request_id: str, *, approve: bool, chat_id: Any,
+                        allowed_chats: Any,
+                        telegram: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+    """Settle a PENDING request identified by id rather than by code.
+
+    This exists for the Telegram inline BUTTON. A tap carries no secret, and
+    that is the point: the authority is Telegram's authentication of the person
+    who tapped, not knowledge of a string. Telegram delivers `callback_query`
+    with the sender's own user id, from a chat on the allowlist, and a bot token
+    cannot fabricate one — callbacks originate at Telegram's servers, not at
+    whoever holds the token.
+
+    So the button is not a weaker door than the code. It is the same door with
+    the lock moved from "knows a secret" to "is the operator", which is the
+    property actually wanted. What must NEVER carry this authority is a plain
+    URL: any holder of the link, any prefetcher, any preview crawler would be
+    able to approve, and this agent could mint its own signed token and walk
+    straight through. See `guard_request_approval` for why the tailnet button is
+    read-only.
+    """
+    allowed = {str(c).strip() for c in (allowed_chats or set()) if str(c).strip()}
+    chat = str(chat_id).strip()
+    if not allowed:
+        return {"ok": False, "reason": "NO_CHAT_ALLOWLIST_CONFIGURED"}
+    if chat not in allowed:
+        return {"ok": False, "reason": "CHAT_NOT_ALLOWED"}
+
+    doc = _load()
+    if doc.get("corrupt"):
+        return {"ok": False, "reason": "REQUEST_STORE_CORRUPT"}
+    rec = next((r for r in doc["requests"]
+                if r.get("request_id") == str(request_id).strip()), None)
+    if rec is None:
+        return {"ok": False, "reason": "UNKNOWN_REQUEST"}
+    if rec.get("status") != "PENDING":
+        return {"ok": False, "reason": f"REQUEST_ALREADY_{rec.get('status')}"}
+    if _now() >= int(rec.get("expires_at", 0)):
+        rec["status"] = "EXPIRED"
+        _save(doc)
+        return {"ok": False, "reason": "REQUEST_EXPIRED"}
+    if rec.get("scope") in REMOTE_FORBIDDEN_SCOPES:
+        rec["status"] = "DENIED_FORBIDDEN_SCOPE"
+        _save(doc)
+        return {"ok": False, "reason": "SCOPE_FORBIDDEN_REMOTELY"}
+
+    rec["status"] = "APPROVED" if approve else "DENIED_BY_OPERATOR"
+    rec["approved_at" if approve else "denied_at"] = _now()
+    rec["approved_by_chat"] = chat
+    rec["settled_via"] = "telegram_button"
+    rec["telegram"] = (
+        {k: telegram.get(k) for k in
+         ("update_id", "message_id", "from_id", "from_username", "text")}
+        if telegram else {"note": "no telegram metadata supplied"}
+    )
+    _save(doc)
+    return {"ok": True, "request": rec}
+
+
 def deny(code: str, *, chat_id: Any, allowed_chats: Any) -> dict[str, Any]:
     """Operator explicitly refuses. Burns the code."""
     allowed = {str(c).strip() for c in (allowed_chats or set()) if str(c).strip()}
