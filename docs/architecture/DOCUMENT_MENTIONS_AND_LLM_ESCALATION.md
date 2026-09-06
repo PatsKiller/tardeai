@@ -146,6 +146,28 @@ Implementation notes:
 - the notification must **bypass the router** — an escalation prompt suppressed into a digest is
   the failure already recorded for approval requests
 
+## 5b. What shipped, 2026-09-06
+
+| source | mention rows | subject | mentioned |
+|---|---|---|---|
+| `news_articles` | 13,578 | 7,099 | 6,479 |
+| `catalyst_events` | 11,006 | 6,454 | 4,552 |
+| `hermes_external_research` | 6,910 | 3,444 | 3,466 |
+| `research_insights` | 5,539 | 2,850 | 2,689 |
+| `sec_form4` | 3,561 | 3,561 | 0 |
+
+**40,594 rows, all `role_source='deterministic'`.** The model residual — several mentions with
+none matching the filed symbol — is 3–6% on news and catalysts, higher (~15%) on curated web
+research where the question text names many issuers.
+
+Two things learned building it:
+
+- **`research_insights` stores JSON.** `COALESCE(json_col, '')` is an invalid-input error, not an
+  empty string; the text expression casts with `::text`.
+- **`sec_form4` has no prose.** Its body is `"P"` / `"S"`, so extraction found 0 mentions in 300
+  rows and reported them unmentioned — false. `subject_is_own_symbol` handles sources whose
+  subject is structural rather than textual.
+
 ## 6. Order of work
 
 1. `document_mentions` + the deterministic extractor over `news_articles`

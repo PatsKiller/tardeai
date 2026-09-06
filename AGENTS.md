@@ -764,6 +764,53 @@ Tag with `lib/research_identity.resolve()`; do not hand-roll a lookup.
 | `lib/catalyst_graph.py` | binds events to entities (452 nodes / 1,110 edges live) | — |
 | `taxonomy_tagger.py` | the 3-axis taxonomy (content / sector / lifecycle) | see the sentinel rule below |
 
+### Document mentions — subject vs. passing reference
+
+`document_mentions`, one row per **(document, issuer, role)**. Tagging by the row's `symbol`
+column alone was one tag per document and never read the body: **58% of tagged news articles
+mention other tickers.**
+
+    "Morgan Stanley estimates Apple foldable iPhone could generate…"
+
+mentions `MS` and `NDAQ`; the article is **about Apple**. Morgan Stanley is the *source of the
+estimate*. Recording all three as subjects attaches the article to issuers it is not about, and
+every join inherits it. **`role='mentioned'` is not a lesser tag** — "every document mentioning
+this issuer" is a legitimate query; it must simply not be confused with "about".
+
+**Deterministic decides the role wherever it can, and refuses where it cannot:**
+
+| case | role |
+|---|---|
+| exactly one mention | that one is `subject` |
+| a mention equals the row's own `symbol` | that one `subject`, rest `mentioned` |
+| several mentions, none is the filed symbol | **undecided — never guessed** |
+
+Measured over 400 documents per store, the deterministic rules decide **94–97%**. The undecided
+remainder is the model's residual, it is COUNTED, and `role_source` (`deterministic` / `model` /
+`operator`) is mandatory — without it a model's guess and a fact are indistinguishable a month
+later and the model cannot be re-audited separately.
+
+Live coverage (2026-09-06): `news_articles` 13,578 · `catalyst_events` 11,006 ·
+`hermes_external_research` 6,910 · `research_insights` 5,539 · `sec_form4` 3,561.
+
+**Sources with no prose.** `sec_form4` rows are transactions ("P", "S"), not text. Scanning the
+body found 0 mentions in 300 rows and called them all unmentioned, which is false — the filing IS
+about that issuer. Such sources use `subject_is_own_symbol`. `filer_name` is **never** scanned: a
+director is a person, and a person's name must not resolve to a company.
+
+### Macro data has NO issuer, and must never be given one
+
+`NO_ISSUER_BY_DESIGN` — FRED series, CPI, unemployment, `topic_monitor`. These belong to no
+company. Forcing a security GUID onto them would be the same invented-mapping error as a
+hand-rolled ticker table, and every join through it would be false. Macro needs its own identity
+axis (series id); that is a separate design and not yet built.
+
+A test asserts no `NO_ISSUER_BY_DESIGN` table can appear in `SOURCES`, so the extractor cannot be
+pointed at macro data by accident.
+
+*(`fred_economic_data` also does not exist as a table at all — `fred_data_ingest` declares it as
+output and it was never created. The integrity sweep reports that as `declared_output_missing`.)*
+
 ### LLM lane escalation — free, then one paid lane, then ASK
 
 Operator policy, 2026-09-06. `lib/llm_escalation.run_with_escalation`:

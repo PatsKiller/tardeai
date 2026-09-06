@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `25baf862c641bbbba77ba07df7e0597d7fe4d6abc30ac37e7a9356e5f1095c62`
+**Tree fingerprint:** `8be398675874e5c47198b62e4424e0987ea04a293807aa12a3d673a66f3cd6df`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -288,7 +288,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/DEFENSE_DESK_V7.md` | Defense Desk v7 — Execute Through the Rail · Validate the Chain · Watch Every Play (2026-07-18) | review_required | OK | `41e88f593ca8` |
 | `docs/architecture/DEFENSE_DESK_V8.md` | Defense Desk v8 — Real Accounts · Quiet Alerts · The Oversight Stack (2026-07-18) | review_required | OK | `a491bff63084` |
 | `docs/architecture/DEFENSE_DESK_V9.md` | Defense Desk v9 — The Adjudication Layer (2026-07-18 evening) | review_required | OK | `cadd848574d7` |
-| `docs/architecture/DOCUMENT_MENTIONS_AND_LLM_ESCALATION.md` | Document mentions, subject vs. passing reference, and LLM escalation | review_required | OK | `2fbd12a1153e` |
+| `docs/architecture/DOCUMENT_MENTIONS_AND_LLM_ESCALATION.md` | Document mentions, subject vs. passing reference, and LLM escalation | review_required | OK | `a54c4035c298` |
 | `docs/architecture/EXECUTION_QUALITY.md` | Replay-Aware Execution Quality (design) | review_required | OK | `685082a5cd95` |
 | `docs/architecture/GAIN_GUARDIAN.md` | Gain Guardian — Holdings Exit Intelligence (Live Book, Advisory-Only) | review_required | OK | `1d3bec366edc` |
 | `docs/architecture/GOOGLE_NOTES_BITEMPORAL_DDL_ARCHITECT_RECONCILIATION_2026-08-24.md` | Google Notes bitemporal DDL — architect reconciliation | review_required | OK | `8d29266fc3e6` |
