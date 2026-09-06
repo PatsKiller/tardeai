@@ -215,6 +215,27 @@ PY
     # append-only history from zero; 147 of 160 release dirs hold such a fork.
     # It also made every "did that cron job run?" check return a false ABSENT.
     "logs"
+    # Added 2026-09-05. Every one of these is a REAL DIRECTORY inside each
+    # release, holding files written that same day, with NO copy under the
+    # canonical root. So each deploy orphaned them, and every monitor that looked
+    # at the canonical root reported the producing lane SILENT.
+    #
+    #   data/audit           cio_material_scan_last.json  (39KB, written 20:03)
+    #                        cio_defer_revisit_last.json
+    #   data/paper_trading   paper_trade_statistics_latest.json
+    #   data/state           finviz_throttle.json
+    #   state/hermes         hermes_api_requests.jsonl
+    #
+    # cio-material-scan is the clearest case: its systemd service ran at 20:03,
+    # exited SUCCESS, and wrote a 39KB receipt into a directory that disappears on
+    # the next promote. Copies of that receipt sit orphaned in at least four
+    # superseded release dirs. AGENTS.md says exit code 0 is not evidence of work;
+    # this is that failure from the other side — the work happened and the
+    # evidence was thrown away.
+    "data/audit"
+    "data/paper_trading"
+    "data/state"
+    "state/hermes"
   )
   for rel in "${dirs[@]}"; do
     local target="${dest}/${rel}"
@@ -230,7 +251,28 @@ PY
       # reports/ (the pipeline writes it under CANONICAL_SOURCE), the test for it
       # is [[ -e ]], and a false test logged nothing at all. The release then
       # served an absent directory and the scanner read it as zero runs.
-      log "  WARN $rel missing at overlay source $source — release will serve it ABSENT"
+      #
+      # 2026-09-05: skipping is also how a directory stays orphaned forever. A
+      # path on this list is DECLARED durable, so if the canonical source does
+      # not exist yet we create it and link anyway — otherwise adding a name to
+      # the list above fixes nothing while looking as though it did, which is
+      # exactly what happened to reports/.
+      mkdir -p "$source"
+      if [[ -d "$target" && ! -L "$target" ]] && compgen -G "$target/*" >/dev/null 2>&1; then
+        # The release already holds release-local contents here. Two populated
+        # copies is a divergence, and a machine choosing one can destroy the
+        # other (AGENTS.md 0.5). Link the canonical location, and PRESERVE the
+        # release-local copy under a dated name for the operator to reconcile.
+        # Nothing is merged and nothing is deleted.
+        local stash="${target}.release-local-$(date -u +%Y%m%dT%H%M%SZ)"
+        mv "$target" "$stash"
+        log "  RECONCILE $rel had release-local contents — preserved at $stash"
+        log "            canonical source created empty; nothing merged, nothing deleted"
+      fi
+      rm -rf "$target"
+      mkdir -p "$(dirname "$target")"
+      ln -sfn "$source" "$target"
+      log "  symlink $rel → canonical (source created)"
     fi
   done
 
