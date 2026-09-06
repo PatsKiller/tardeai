@@ -44,8 +44,76 @@ def parse_duration(text: str) -> int:
     return int(t)
 
 
-def _send(message: str) -> tuple[bool, str]:
-    """Send through the house chokepoint. No direct Bot API call from here."""
+def _tailnet_base() -> str:
+    """Public base for operator links — Tailscale HTTPS when available."""
+    try:
+        from notification_url_builder import get_public_base_url
+    except ImportError:                                   # pragma: no cover
+        try:
+            from scripts.notification_url_builder import get_public_base_url  # type: ignore
+        except ImportError:
+            return ""
+    try:
+        return get_public_base_url().rstrip("/")
+    except Exception:                                     # noqa: BLE001
+        return ""
+
+
+def _keyboard(request_id: str) -> dict:
+    """Approve / Deny as CALLBACK buttons, plus a read-only tailnet link.
+
+    The two authority buttons carry `callback_data`, not a URL. That is a
+    deliberate security choice and the reason the tailnet button opens the
+    dashboard rather than granting anything:
+
+      * A callback is delivered by Telegram with the sender's own user id, from
+        a chat on the allowlist. It originates at Telegram's servers, so holding
+        the bot token does not let anything fabricate one. The lock moves from
+        "knows a secret" to "is the operator", which is the property actually
+        wanted — and it is why a tap needs no code.
+      * A URL that grants authority is the opposite. Any holder of the link
+        approves: a preview crawler, a prefetching browser, a mis-tap, anyone the
+        message is forwarded to. Worse, this agent can read the HMAC key and
+        mint its own signed token, so a signed approve-URL would let the agent
+        walk through its own front door. The one guarantee this whole mechanism
+        exists to provide would be gone.
+
+    So the tailnet link is `/v3/` — somewhere to LOOK, never somewhere to ACT.
+    """
+    row = [
+        {"text": "\u2705 Approve", "callback_data": f"gapprove:{request_id}"},
+        {"text": "\U0001f6d1 Deny", "callback_data": f"gdeny:{request_id}"},
+    ]
+    keyboard = [row]
+    base = _tailnet_base()
+    if base.startswith("https://"):
+        # Only a TLS tailnet URL is offered. A bare-LAN or plaintext link in a
+        # chat message is a different kind of mistake.
+        keyboard.append([{"text": "\U0001f517 Open dashboard", "url": f"{base}/v3/"}])
+    return {"inline_keyboard": keyboard}
+
+
+def _send(message: str, reply_markup: dict | None = None) -> tuple[bool, str]:
+    """Send through the house chokepoint, INTERRUPT class. Never a digest.
+
+    An approval prompt is not a notification. It is a question with a fifteen
+    minute fuse, and a digested question is an expired one. The first version
+    called `send_telegram(message)` with default routing and the alert router
+    classified it P1_DIGEST:
+
+        [telegram] Suppressed (P1_DIGEST): 🔐 *Approval requested* ...
+        request_id=43c4ff0b6b4bc005 ... telegram=sent
+
+    The operator never saw the code, and this process reported `telegram=sent`.
+    That second part is the worse half. `send_telegram` documents that it
+    "returns True when the event was ACCEPTED", and accepted explicitly includes
+    archived-for-digest — so a truthy return was read as delivered. A confident
+    line that is not true, in the tool whose whole purpose is asking a human a
+    question.
+
+    `bypass_router=True` is the same thing research_lane_health.py:251 does for
+    its own alarms, and for the same reason: some messages are not summarisable.
+    """
     try:
         from telegram_alert import send_telegram
     except ImportError:
@@ -54,10 +122,14 @@ def _send(message: str) -> tuple[bool, str]:
         except ImportError as exc:
             return False, f"telegram_alert unavailable: {exc}"
     try:
-        ok = send_telegram(message)
-        return bool(ok), "sent" if ok else "send_telegram returned falsey"
+        ok = send_telegram(message, bypass_router=True, reply_markup=reply_markup)
     except Exception as exc:                              # noqa: BLE001
         return False, f"{type(exc).__name__}: {exc}"
+    if not ok:
+        return False, "send_telegram returned falsey — not accepted"
+    # Truthy means ACCEPTED, which is a weaker claim than delivered. Say the
+    # weaker thing rather than the flattering one.
+    return True, "accepted for interrupt delivery (router bypassed)"
 
 
 def main() -> int:
@@ -99,18 +171,18 @@ def main() -> int:
         f"*Uses:*   {args.uses}\n"
         f"*Reason:* {args.reason}\n"
         f"*Host:*   {host}\n\n"
-        f"Reply with one of:\n"
+        f"Tap a button below, or reply:\n"
         f"`/approve {req['code']}`\n"
         f"`/deny {req['code']}`\n\n"
         f"_Code expires in {ttl // 60} min and works once._"
     )
-    ok, detail = _send(body)
+    ok, detail = _send(body, reply_markup=_keyboard(req["request_id"]))
 
     # The code is NOT printed. An agent running this must not be able to read it
     # out of its own stdout — that is the property that keeps the approval the
     # operator's to give.
     print(f"request_id={req['request_id']} scope={req['scope']} "
-          f"window={seconds}s uses={args.uses} telegram={'sent' if ok else 'FAILED'}")
+          f"window={seconds}s uses={args.uses} telegram={detail if ok else 'FAILED'}")
     if not ok:
         print(f"TELEGRAM SEND FAILED: {detail}", file=sys.stderr)
         print("The request is minted but the operator was not notified. "
