@@ -204,3 +204,43 @@ def tag_inbound(text: str, *, registry: Optional[dict[str, Any]] = None,
         "unresolved_mentions": unresolved,
         "financial_action": False,
     }
+
+
+def persist(tag: dict[str, Any], *, conn, question_text: str,
+            chat_id: Any = None, message_id: Any = None,
+            channel: str = "telegram") -> int:
+    """Write a tagged question to `inbound_operator_questions`. Returns rows written.
+
+    GRAIN: one row per (question, resolved entity). A question resolving to two
+    symbols writes two rows.
+
+    A question that resolved NOTHING still writes one row with null guids. That
+    is deliberate: an unanswerable question is the measurement of what the spine
+    cannot reach, and dropping it would make coverage look better than it is —
+    the same reason unresolved_mentions is carried rather than discarded.
+    """
+    rows = tag.get("resolved") or [None]
+    cur = conn.cursor()
+    written = 0
+    for r in rows:
+        cur.execute(
+            """INSERT INTO inbound_operator_questions
+                 (channel, chat_id, message_id, question_text,
+                  symbol, subject_guid, issuer_guid, identity_status,
+                  matched_via, matched_text, topics, unresolved_mentions)
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+            (channel,
+             str(chat_id) if chat_id is not None else None,
+             int(message_id) if message_id is not None else None,
+             question_text,
+             (r or {}).get("symbol"),
+             (r or {}).get("subject_guid"),
+             (r or {}).get("issuer_guid"),
+             (r or {}).get("identity_status"),
+             (r or {}).get("matched_via"),
+             (r or {}).get("matched_text"),
+             list(tag.get("topics") or []),
+             list(tag.get("unresolved_mentions") or [])))
+        written += 1
+    conn.commit()
+    return written

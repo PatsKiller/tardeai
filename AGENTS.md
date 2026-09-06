@@ -650,6 +650,73 @@ event_guid(issuer, EARNINGS, 2026Q3)   the earnings event, stable across every m
 
 `issuer_guid` — not `subject_guid` — is the join for "everything about this company". Prefer it.
 
+### Company names and CUSIPs — WHERE THEY COME FROM. Do not build a map.
+
+**Read this before writing anything that turns a name or a ticker into an identity.
+I nearly hand-rolled a ticker-to-name table on 2026-09-06; the operator stopped it, and the
+data was already on disk.**
+
+| you need | source | how |
+|---|---|---|
+| CUSIP | Schwab `/marketdata/v1/instruments?projection=fundamental` | `scripts/sweep_schwab_instruments.py` |
+| company name | **the same record** — its `description` field | `lib/schwab_instrument_evidence.load()` |
+| name → symbol | index over that feed | `lib/company_name_index.resolve_name("Visa")` |
+| symbol → identity | the registry | `lib/research_identity.resolve(doc, "V")` |
+
+Already swept and on disk: **4,997 instruments, 4,997 with a description.**
+
+```json
+"V":   {"description": "VISA INC A",           "identifiers": {"cusip": "92826C839"}}
+"NOC": {"description": "NORTHROP GRUMMAN COR", "identifiers": {"cusip": "666807102"}}
+"NSC": {"description": "NORFOLK SOUTHN CORP",  "identifiers": {"cusip": "655844108"}}
+```
+
+**Alpaca has no `cusip` field.** Schwab `instruments` is the source, and it carries the name in
+the same record — so the name and the identifier never disagree. That is the point: one feed, one
+truth.
+
+**Never hardcode a symbol-to-name pair.** If the broker does not carry a name, neither do we, and
+"unresolved" is the correct answer. `tests/test_company_name_index.py` fails if a mapping is
+hardcoded.
+
+#### The three traps in that feed
+
+1. **It CONTRACTS, it does not merely truncate.** `NORFOLK SOUTHN CORP`, `NORTHROP GRUMMAN COR`.
+   `SOUTHN` is not a prefix of `SOUTHERN` and vice versa, so no token rule matches them and fuzzy
+   matching would be a guess. Resolution narrows by **leading tokens** until exactly one instrument
+   matches: `NORFOLK SOUTHERN` → `NORFOLK` → NSC.
+2. **Ambiguity must return nothing.** `JPMorgan` alone matches seven instruments — the bank plus
+   six ETFs. `Apple` is APPLE INC; `Apple Hospitality` is APLE. A wrong symbol on a financial
+   question is worse than no symbol: it attaches the operator's intent to the wrong issuer and
+   every join downstream inherits the error.
+3. **Similar names are different companies.** `Norfolk` resolves to Norfolk Southern (NSC) and
+   **must not** resolve to Northrop Grumman (NOC). Do not add "helpful" fuzziness across issuers.
+
+Suffix stripping (INC, CORP/COR, CO, LTD, PLC, class letters) happens from the **end only**, so
+`CO` inside `COCA COLA` survives.
+
+**A name the feed does not carry is genuine ambiguity, and that is the one identity job a model
+may do** — `lib/identity_resolution_advisor` proposes `CANDIDATE`, never CONFIRMED. See the
+custodian section.
+
+### Tagging is TWO-WAY — inbound questions carry identity too
+
+Until 2026-09-06 it was discovery-only: `cio_telegram_bot`, `telegram_callback_handler` and
+`run_telegram_callback_poller` all had `identity_registry=0`, and inbound messages were not stored
+at all — only `communication_inbound_checkpoint` with the last `update_id`.
+
+`lib/inbound_identity_tagger.tag_inbound(text)` resolves an operator question by **ticker or
+company name** onto the same `issuer_guid`, records the **topics** asked (analyst_target,
+support_resistance, earnings, valuation, position, risk), and keeps unresolved mentions as a
+measured gap. Persisted to `inbound_operator_questions`, one row per (question, resolved entity),
+and **one row with null guids when nothing resolved** — an unanswerable question is the
+measurement of what the spine cannot reach.
+
+    "analyst target for Visa, support and resistance"  -> V   issuer 8dfc96ee  via=company_name
+    "analyst target for $V and support resistance"     -> V   issuer 8dfc96ee  via=ticker
+
+Both spellings land on one issuer. `matched_via` and `matched_text` are recorded on both paths.
+
 ### The identifier model — what each ID is, and which one to join on
 
 Audited 2026-09-06. `identity_registry` holds **10,279 entities**: 5,014 CONFIRMED (all

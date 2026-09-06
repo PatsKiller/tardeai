@@ -123,13 +123,33 @@ def resolve_name(name: Any) -> Optional[dict[str, Any]]:
     exact, first = _build()
 
     hits = exact.get(norm)
+    matched_on = "exact"
+
     if not hits:
-        head = norm.split(" ", 1)[0]
-        # Only fall back to a single-word head when the query IS that one word;
-        # "NORTHROP" -> NOC is wanted, but "APPLE HOSPITALITY" must not collapse
-        # to APPLE.
-        if norm == head:
-            hits = first.get(head)
+        # PROGRESSIVE PREFIX. The feed CONTRACTS words, it does not merely
+        # truncate: "NORFOLK SOUTHN CORP" for Norfolk Southern. "SOUTHN" is not a
+        # prefix of "SOUTHERN" and "SOUTHERN" is not a prefix of "SOUTHN", so no
+        # token rule matches them and fuzzy matching would be a guess.
+        #
+        # Narrowing works instead: drop trailing query tokens until the LEADING
+        # tokens identify exactly one instrument. "NORFOLK SOUTHERN" -> "NORFOLK"
+        # -> NSC. "NORTHROP" -> NOC. And "APPLE HOSPITALITY" -> "APPLE" stays
+        # ambiguous (AAPL and APLE), so it resolves to nothing — narrowing must
+        # never widen into a guess.
+        tokens = norm.split()
+        for k in range(len(tokens), 0, -1):
+            prefix = " ".join(tokens[:k])
+            cands = sorted({sym for name, syms in exact.items()
+                            if name == prefix or name.startswith(prefix + " ")
+                            for sym in syms})
+            if len(cands) == 1:
+                hits, matched_on = cands, ("exact" if k == len(tokens) else "name_prefix")
+                break
+            if len(cands) > 1:
+                # Ambiguous at this width; a SHORTER prefix can only be more
+                # ambiguous, so stop rather than keep shrinking into a guess.
+                return None
+
     if not hits or len(set(hits)) != 1:
         return None                      # unknown, or ambiguous — never guess
 
@@ -141,7 +161,7 @@ def resolve_name(name: Any) -> Optional[dict[str, Any]]:
         "symbol": sym,
         "description": rec.get("description"),
         "cusip": (rec.get("identifiers") or {}).get("cusip"),
-        "matched_on": "exact" if exact.get(norm) else "first_token",
+        "matched_on": matched_on,
         "source": "schwab_instruments",
         "financial_action": False,
     }

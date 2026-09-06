@@ -103,10 +103,30 @@ def test_no_model_runs_in_the_tagger():
         assert banned not in low
 
 
-def test_it_writes_nothing():
+def test_resolution_is_pure_and_persistence_is_explicit():
+    """Superseded by design: the module now has persist(), so "writes nothing" is
+    false. The invariant that must hold is narrower and more useful — TAGGING is
+    pure, and the ONLY writer is persist(), which a caller must invoke on purpose.
+
+    Resolution running as a side effect of a write would make it impossible to
+    tag a question without storing it.
+    """
+    import ast, inspect
+
     src = (ROOT / "scripts" / "lib" / "inbound_identity_tagger.py").read_text(encoding="utf-8")
-    for banned in ("INSERT INTO", "UPDATE ", "write_text", "commit()"):
-        assert banned not in src
+    tree = ast.parse(src)
+    writers = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef):
+            body = ast.unparse(node)
+            if "INSERT INTO" in body or "commit()" in body:
+                writers.append(node.name)
+    assert writers == ["persist"], f"only persist() may write; found {writers}"
+
+    # And tag_inbound must not reach a database at all.
+    tag_src = inspect.getsource(T.tag_inbound)
+    for banned in ("INSERT", "UPDATE ", "commit", "cursor("):
+        assert banned not in tag_src
 
 
 def test_the_same_issuer_is_not_tagged_twice():
@@ -179,3 +199,48 @@ def test_an_unknown_company_is_still_a_measured_gap(monkeypatch):
     r = _tag_named("Alex what about Nonesuch Holdings?", monkeypatch)
     assert r["resolved"] == []
     assert "Nonesuch Holdings" in r["unresolved_mentions"]
+
+
+# ── persistence: the loop only closes if it is written down ────────────────
+
+class _Cur:
+    def __init__(self): self.rows = []
+    def execute(self, sql, params): self.rows.append(params)
+
+
+class _Conn:
+    def __init__(self): self._c = _Cur(); self.committed = False
+    def cursor(self): return self._c
+    def commit(self): self.committed = True
+
+
+def test_each_resolved_entity_gets_its_own_row():
+    conn = _Conn()
+    tag = {"resolved": [{"symbol": "V", "subject_guid": "s-v", "issuer_guid": "i-v",
+                         "identity_status": "CONFIRMED", "matched_via": "ticker",
+                         "matched_text": "V"},
+                        {"symbol": "NOC", "subject_guid": "s-noc", "issuer_guid": "i-noc",
+                         "identity_status": "CONFIRMED", "matched_via": "ticker",
+                         "matched_text": "NOC"}],
+           "topics": ["risk"], "unresolved_mentions": []}
+    assert T.persist(tag, conn=conn, question_text="q") == 2
+    assert conn.committed
+
+
+def test_an_unresolved_question_is_still_recorded():
+    """One row with null guids. An unanswerable question is the measurement of
+    what the spine cannot reach; dropping it makes coverage look better than it is."""
+    conn = _Conn()
+    tag = {"resolved": [], "topics": [], "unresolved_mentions": ["Nonesuch Holdings"]}
+    assert T.persist(tag, conn=conn, question_text="what about Nonesuch Holdings?") == 1
+    params = conn._c.rows[0]
+    assert None in params            # guids are null
+    assert ["Nonesuch Holdings"] in params
+
+
+def test_the_operators_words_are_kept_verbatim():
+    conn = _Conn()
+    q = "Alex what is the analyst target for Visa?"
+    T.persist({"resolved": [], "topics": [], "unresolved_mentions": []},
+              conn=conn, question_text=q)
+    assert q in conn._c.rows[0]

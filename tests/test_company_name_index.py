@@ -131,3 +131,61 @@ def test_no_model_runs_here():
     low = SRC.lower()
     for banned in ("openai", "anthropic", "deepseek", "grok", "prompt", "completion"):
         assert banned not in low
+
+
+# ── the feed CONTRACTS words; narrowing is the only honest way through ─────
+
+def test_a_contracted_broker_name_resolves_by_narrowing():
+    """NSC is "NORFOLK SOUTHN CORP". SOUTHN is not a prefix of SOUTHERN and
+    SOUTHERN is not a prefix of SOUTHN, so no token rule matches them and fuzzy
+    matching would be a guess. Narrowing by LEADING tokens is exact at every step."""
+    import lib.company_name_index as M
+    orig = M._instruments
+    M._instruments = lambda: {
+        "NSC": {"description": "NORFOLK SOUTHN CORP", "identifiers": {"cusip": "655844108"}},
+        "NOC": {"description": "NORTHROP GRUMMAN COR", "identifiers": {"cusip": "666807102"}},
+    }
+    M.refresh()
+    try:
+        assert M.resolve_name("Norfolk Southern")["symbol"] == "NSC"
+        assert M.resolve_name("Norfolk Southern Corporation")["symbol"] == "NSC"
+        assert M.resolve_name("Norfolk")["symbol"] == "NSC"
+        assert M.resolve_name("Northrop")["symbol"] == "NOC"
+        # THE ONE THAT MATTERS: similar names are DIFFERENT COMPANIES.
+        assert M.resolve_name("Norfolk")["symbol"] != "NOC"
+    finally:
+        M._instruments = orig
+        M.refresh()
+
+
+def test_narrowing_records_that_it_narrowed():
+    import lib.company_name_index as M
+    orig = M._instruments
+    M._instruments = lambda: {"NSC": {"description": "NORFOLK SOUTHN CORP",
+                                      "identifiers": {"cusip": "1"}}}
+    M.refresh()
+    try:
+        assert M.resolve_name("Norfolk Southern")["matched_on"] == "name_prefix"
+        assert M.resolve_name("Norfolk")["matched_on"] == "exact"
+    finally:
+        M._instruments = orig
+        M.refresh()
+
+
+def test_narrowing_stops_at_ambiguity_instead_of_widening():
+    """A shorter prefix can only be MORE ambiguous. Once ambiguous, stop — do not
+    keep shrinking until something wins."""
+    import lib.company_name_index as M
+    orig = M._instruments
+    M._instruments = lambda: {
+        "AAPL": {"description": "APPLE INC", "identifiers": {"cusip": "1"}},
+        "APLE": {"description": "APPLE HOSPITALITY RE REIT", "identifiers": {"cusip": "2"}},
+    }
+    M.refresh()
+    try:
+        assert M.resolve_name("Apple Computer Something") is None
+        assert M.resolve_name("Apple")["symbol"] == "AAPL"          # exact wins
+        assert M.resolve_name("Apple Hospitality")["symbol"] == "APLE"
+    finally:
+        M._instruments = orig
+        M.refresh()
