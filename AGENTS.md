@@ -657,6 +657,63 @@ capacity, it is that built capacity goes unused. `tests/test_identity_memory_mod
 the structural guard — every identity/memory module must have a production consumer or be declared
 `KNOWN_DARK`. **That list may shrink and must never grow.**
 
+## Research lanes — current state, and what must stay on
+
+**Audited 2026-09-06.** A lane that fires and produces nothing reports success, so this table
+records what each lane is *for* and what state it is deliberately in. Changing a row from OFF to ON
+without reading the reason is how the tagger nearly burnt the corpus.
+
+| lane | state | note |
+|---|---|---|
+| `hermes-deep-research-local` | **ON**, hourly 22:00–05:35 ET | never executed once before 2026-09-06; see below |
+| `taxonomy_tagger` cron | **OFF — deliberate** | heuristic hit rate ~15%, 0% on sector. Do **not** re-enable until the classifier improves; see the sentinel rule |
+| `hermes_advisory_event_enqueue` | **KNOWN DARK** | no caller — no cron, no timer, no importer. `hermes_advisory_events` last written 2026-07-14, 2,509 rows. The consumer timer still fires every ~10h and finds nothing |
+| `tradeai-research-lane-health` | ON, ~15 min | the alarm surface for all of the above |
+| RI overnight (cron 02:15 / 05:15) | ON | gated to non-trading hours |
+
+### Three failure shapes this system produces repeatedly
+
+1. **The schedule and the gate never overlap.** `hermes-deep-research-local.timer` runs 22:00–05:35
+   ET behind a peak guard permitting 10:00–21:00 ET. Every fire since the lane existed logged
+   `SKIPPED_DEEPSEEK_PEAK` and exited 0 — `result=success`, `attempts_24h=0`, and the lane had
+   **never once run**. A skip is not a failure, so nothing alarmed and the health surface read the
+   successes.
+2. **The gate reads what was configured, not what will happen.** `flash = primary_provider() ==
+   "bridge_flash"` was computed at entry; the overnight branch then rewrote `args.model` to a free
+   OAuth lane; the guard never re-read it. A spend control was refusing a run that cost nothing.
+   It now keys on the **effective** model — unchanged for real DeepSeek runs, which is its point.
+3. **One bug hides the next.** Fixing (1) and (2) let the lane reach a database for the first time,
+   where it immediately died on `DB_PASSWORD not found in .env`. `hermes_staging_ingest` resolved
+   `.env` as `dirname(__file__)/../.env` — **relative to whatever tree it runs from** — and a
+   RELEASE has no `.env`, because secrets are deliberately not deployed. Every scheduled run from a
+   release would have failed there, and nothing had ever got far enough to find out.
+   **Credentials come from `lib/env_bootstrap` (tmpfs render, then disk), never from a path relative
+   to a source file.** Repairing an outer gate is not evidence the lane works; run it and look at
+   what it wrote.
+
+### The `no_match` sentinel — never add one without a shelf life
+
+`taxonomy_tagger` selects `WHERE category_content IS NULL` and writes `no_match` when its heuristic
+fails, so a marked row was **never reconsidered by any classifier, ever**. Measured on a bounded
+20-row run: 17 sentinels, 1 usable tag, 0 sectors — re-enabling the hourly cron at `--limit 500`
+would have consumed a 32,060-row backlog in ~64 hours and permanently foreclosed ~85% of it,
+including against a better classifier later. **The obvious fix — switch the cron back on — would
+have destroyed the corpus it was meant to enrich.**
+
+A sentinel says *today's classifier could not do this*. That expires; it is not a fact about the
+row. `NO_MATCH_TTL_DAYS` (default 30) re-admits them and `taxonomy_tagged_at` records when.
+**A sentinel without a TTL destroys a corpus while reporting success.**
+
+### Before declaring a research lane healthy
+
+- **Count durable rows, not invocations.** `tagged 3 this run` measured `content +1, sector +0`.
+- **Ask which component produced the result.** A pool that falls back serves a substitute and the
+  output is indistinguishable from success.
+- **A sub-second "Finished" on a drain worker means an empty queue, not work done.**
+- **`zero_non_error_24h` on a healthy lane usually means unemployed, not broken** — the `deepseek`
+  lane alarms while reporting "No queued jobs". Distinguish *nothing succeeded* from *nothing
+  arrived* before chasing it.
+
 ## Data and identity
 
 - **Never mint a placeholder identity.** `None` for unresolvable. Never a ticker as a GUID.
@@ -939,6 +996,32 @@ accumulates the divergence this document exists to remove.
   action today" reads as a verdict and is `do_n == 0`.
 - **Test sends never go to a live channel without the operator's word**, and a test must not write
   a dedupe marker that suppresses the real send. Back up the marker; restore it by content.
+
+### The delivery ledger must say what happened — added 2026-09-05
+
+- **`accepted` is not `delivered`.** `send_telegram` returning True can mean "handed to the router",
+  and the router may classify a message `P1_DIGEST` and archive it into a store nothing delivers.
+  `_best_effort_comms_publish` takes `delivered: bool | None` and settles **three different words** —
+  `True → LEGACY_DELIVERED`, `False → SUPPRESSED`, `None → UNKNOWN` — with `observed_delivered`
+  recorded beside the status. It hardcoded `LEGACY_DELIVERED`, so the Communications page showed the
+  operator a delivered alert they never received, rendered identically beside a genuine one.
+  **The default is `None`. A caller that forgets must land on UNKNOWN, never on delivered.**
+- **Every call site passes what it knows.** A guard that inspects one function cannot see the caller
+  beside it — the first version of that test read only `send_telegram` and passed while
+  `send_telegram_document` settled every row, including failed sends, as delivered. Scope such a
+  guard to the module.
+- **Anything the operator must act on bypasses the router.** Approval requests are sent with
+  `bypass_router=True` and report *accepted for interrupt delivery*, never *sent*. The first version
+  printed `telegram=sent` while the router suppressed the prompt into an archive — an approval
+  request the operator was never shown, reported as sent.
+- **An alert is curated before it is sent** (`lib/alert_curation.py`, `AlertCuration@v1`): headline,
+  plain English, action, evidence. **The model writes prose only.** `validate_curation` rejects a
+  curation that invents a number or drops a lane, and the recommended action is never model-authored.
+  Raw JSON reaching the operator is a defect, not a fallback.
+- **Curation model order is fixed** (`lib/llm_fallback.py`): free lanes first — `grok`, then
+  `chatgpt`; the paid `deepseek-flash` is opt-in and last; **local models are never in the chain**
+  (`NEVER_CHAIN`) for judgment. Kwargs pass through so the consumption gate cannot be bypassed by
+  falling back.
 - **Every alarm has a test that observes it firing, and that test is mutation-tested.** Inject the
   condition, capture the message at the transport — captured, never sent — and confirm breaking the
   alarm turns the test red. Record router suppression separately from delivery: a message built and
@@ -1197,6 +1280,48 @@ Budget state **persists to disk or DB, per provider**. An in-memory cache does n
 invocations — that is how a 1,000-call monthly budget vanished in three weeks. Web search serves the
 residual-web lane (≤1 hop per `subject_key` per day, budget N=3), **not bulk news** — news belongs
 on RSS and Finviz. When the engine pool is degraded, the research output says so.
+
+### The engine pool — measured 2026-09-05/06, not assumed
+
+The pool reached 2026-09-05 with six declared engines and **one that worked**. Four were behind
+anti-bot walls and one did not exist in the image at all.
+
+| engine | state | why |
+|---|---|---|
+| `brave` | disabled | scrapes search.brave.com — "too many requests", raises |
+| `duckduckgo` / `startpage` | disabled | CAPTCHA, raises |
+| `google` | disabled | **0 results, no error** — a consent page that parses empty |
+| `yahoo news` | disabled | measured 0 results with an HTTP error |
+| `yahoo_finance` | removed | no such engine module; failed at every container start |
+| `braveapi` | ENABLED, keyed | api.search.brave.com — the product this project pays for |
+| `seznam` / `yep` / `yandex` | enabled | verified by query, then ranked on a finance query |
+
+- **`brave` and `braveapi` are different engines.** The first scrapes and is rate-limited to
+  nothing; the second is the paid API, measured at 50 req/s with an **unmetered** monthly window.
+  A reported monthly limit of `0` means unmetered, not a ceiling of zero — reading it as a ceiling
+  once declared a working key over-limit.
+- **`inactive:` is a gate separate from `disabled:`.** SearXNG ships `braveapi` and `yahoo news`
+  `inactive: true`, meaning *never registered*. Clearing only `disabled` leaves the engine a ghost:
+  configured, absent from `/config`, no error, no log line.
+- **Rank on a real query, not on a non-empty response.** `bing` returns results and answered
+  "federal reserve policy" with an ammunition retailer.
+- **Change the pool only through `scripts/install_searxng_config.sh`.** It injects the key from the
+  environment (never argv), carries forward the instance `secret_key`, validates the YAML *before*
+  replacing anything, restores `977:977 / 0644`, rolls back on a non-200, then verifies each engine
+  actually **registered** and reports per-engine attribution. `chown`-ing the config to the human is
+  what took SearXNG down on 2026-09-05: it came back mode 600 and the worker, which is not uid 977,
+  could not read it.
+- **`braveapi` bypasses `lib/search_budget`** — it calls the provider directly, so those calls are
+  not counted. Enabling it silently reopens the unbudgeted-caller problem the ledger exists to close.
+
+### One ledger, and it is `lib/search_budget`
+
+There were two counters. `brave_search_budget.json` was frozen and read like a live ledger — it is
+what made me report Brave as unused while the real ledger showed September traffic. **The second
+counter was removed rather than reconciled**: two numbers for one quantity is a defect, and picking
+whichever looks right is not a fix. Provider ceilings come from **response headers**, never from a
+constant in code.
+
 
 ---
 
