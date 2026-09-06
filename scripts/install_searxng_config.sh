@@ -105,31 +105,10 @@ else:
 PY
 fi
 
-# yahoo_news: enabled so it CAN be measured. It is unverified — `engines=`
-# selects by configured name, so it could not be probed before being listed.
-# Step 6 measures it and says plainly whether it earns its place.
-if ! grep -q 'engine: yahoo_news' "$TMP"; then
-  python3 - "$TMP" <<'PY'
-import re, sys
-p = sys.argv[1]
-s = open(p).read()
-entry = (
-    "  # Added 2026-09-05 UNVERIFIED. `engines=` selects by configured NAME, so\n"
-    "  # this could not be probed before being listed — a probe for yahoo_news\n"
-    "  # returned ten results from bing, the same attribution trap that made\n"
-    "  # google look healthy. Measured immediately after install; remove it if\n"
-    "  # it contributes nothing.\n"
-    "  - name: yahoo news\n"
-    "    engine: yahoo_news\n"
-    "    shortcut: yhn\n"
-    "    inactive: false\n"
-    "    disabled: false\n\n"
-)
-s = re.sub(r'^(  - name: seznam)', entry + r'\1', s, count=1, flags=re.M)
-open(p, 'w').write(s)
-print("  yahoo news: added (unverified, will be measured)")
-PY
-fi
+# yahoo_news is no longer injected here. It was added enabled on 2026-09-06
+# purely to measure it, returned 0 results with an HTTP error, and now sits
+# in the template disabled with that measurement recorded. The installer
+# installs the reviewed template; it does not invent engines.
 
 # ── 3. validate BEFORE replacing anything ───────────────────────────────────
 python3 - "$TMP" <<'PY' || exit 1
