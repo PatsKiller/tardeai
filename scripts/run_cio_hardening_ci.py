@@ -625,6 +625,14 @@ GATES = [
         ],
     ),
     (
+        # The overnight lane's schedule (22:00-05:35 ET) and its DeepSeek peak
+        # guard (10:00-21:00 ET) never overlapped, so it had never once run.
+        "overnight_deep_peak_guard",
+        [
+            "tests/test_overnight_deep_peak_guard.py",
+        ],
+    ),
+    (
         # Every SearXNG engine in the pool was verified by query before being
         # listed. The pool had six declared engines and one that worked; google
         # failed SILENTLY (0 results, no error) and read as healthy.
