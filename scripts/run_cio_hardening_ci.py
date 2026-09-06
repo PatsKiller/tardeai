@@ -625,6 +625,15 @@ GATES = [
         ],
     ),
     (
+        # Two always-on health findings that were never about the system: an
+        # expected-release pin nothing ever wrote, and a validator whose only
+        # caller passed an argument it did not accept.
+        "release_pin_and_validator",
+        [
+            "tests/test_release_pin_and_validator.py",
+        ],
+    ),
+    (
         # The Communications ledger must not report a delivery that did not
         # happen. Two adjacent rows both read LEGACY_DELIVERED: one arrived,
         # one was router-suppressed and never did.

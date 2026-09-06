@@ -515,8 +515,38 @@ cmd_promote() {
     die "promote health failed — not claiming promote OK"
   fi
   restart_root_frozen_units "$dir"
+  write_expected_release_pin "$dir"
   write_deploy_receipt true promote ok false "promote_ok"
   log "PROMOTE OK live=$sha"
+}
+
+# The health inspector compares the live release against an EXPECTED pin. Nothing
+# ever wrote that pin: it was created 2026-08-07 and every promote since left it
+# untouched, so the inspector reported
+#
+#   [P0] Release pin mismatch: expected .../20260807-124637, live <today's release>
+#
+# on every run for a month. A P0 that is always on is not a control — the one
+# time the pin genuinely disagrees, it reads exactly like the previous thirty.
+#
+# Written to both places a reader looks. The health-inspect skill checks the dev
+# tree FIRST (its TRADEAI_ROOT), which is why writing only the releases-dir copy
+# would fix nothing.
+write_expected_release_pin() {
+  local dir="$1" wrote=0 p
+  for p in "${HOME}/trade-ai-v12-rebuild/trade-ai-v12-rebuild/data/runtime/expected_release_pin.txt" \
+           "${RELEASES_BASE}/EXPECTED_RELEASE"; do
+    mkdir -p "$(dirname "$p")" 2>/dev/null || continue
+    if printf '%s\n' "$dir" >"$p" 2>/dev/null; then
+      wrote=$((wrote + 1))
+      log "  expected-release pin → $p"
+    else
+      # Never silent: an unwritable pin means the inspector keeps comparing
+      # against a stale value, which is the defect this function exists to end.
+      log "  WARN could not write expected-release pin at $p"
+    fi
+  done
+  [[ $wrote -gt 0 ]] || log "  WARN no expected-release pin written — health inspector will report a stale mismatch"
 }
 
 # Long-lived daemons that resolve CURRENT once, at start, and hold that concrete
