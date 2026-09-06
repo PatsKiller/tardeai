@@ -111,6 +111,70 @@ def add_columns(cur, table: str, *, apply: bool) -> list[str]:
     return [c for c, _ in missing]
 
 
+#: Topic slugs are SUBJECTS TOO, just not securities. catalyst_events and
+#: news_articles carry rows whose "symbol" is a research theme — d107_energy_transition,
+#: su_industry_insurance_brokers — because the catalyst engine files theme research under
+#: the same column as company research.
+#:
+#: Giving those a SECURITY guid would be fabricating identity. Leaving them NULL makes a
+#: third of the corpus permanently unjoinable and indistinguishable from rows nobody has
+#: looked at yet. They get their own deterministic guid instead, minted the way the rest
+#: of the spine mints, so theme research is retrievable alongside the companies it
+#: touches — which is most of its value.
+TOPIC_NAMESPACE = "topic"
+
+
+def topic_guid(topic_id: str) -> str:
+    """Deterministic, and identical to how security_identity mints."""
+    import uuid
+
+    return str(uuid.uuid5(uuid.NAMESPACE_URL, f"tradeai:{TOPIC_NAMESPACE}:{topic_id}"))
+
+
+#: A symbol that is neither a security nor a known topic. Recorded rather than left
+#: NULL: "examined and unresolvable" and "never examined" are different states, and a
+#: column that cannot tell them apart cannot measure its own coverage. Values like
+#: ASSET, NEW, NEED, TO and STUDY are English words a ticker extractor mistook for
+#: symbols — an upstream defect, but one this layer must not silently absorb.
+UNRESOLVABLE = "UNRESOLVABLE"
+
+
+def classify_remainder(cur, table: str, symbol_col: str, *, apply: bool) -> dict:
+    """Resolve topics, then mark whatever is left as examined-and-unresolvable.
+
+    After this runs, `identity_status IS NULL` means exactly one thing: nobody has
+    looked at this row yet. That is what makes coverage measurable.
+    """
+    counts = {"topics": 0, "topic_rows": 0, "unresolvable_rows": 0}
+    now = datetime.now(timezone.utc)
+
+    cur.execute("SELECT to_regclass('public.topic_monitor')")
+    has_topics = cur.fetchall()[0][0] is not None
+    if has_topics:
+        cur.execute(
+            f'SELECT DISTINCT t.topic_id FROM {table} x '
+            f'JOIN topic_monitor t ON t.topic_id = x.{symbol_col} '
+            f'WHERE x.subject_guid IS NULL')
+        for (tid,) in cur.fetchall():
+            counts["topics"] += 1
+            if not apply:
+                continue
+            cur.execute(
+                f'UPDATE {table} SET subject_guid=%s, identity_status=%s, identity_tagged_at=%s '
+                f'WHERE {symbol_col}=%s AND subject_guid IS NULL',
+                (topic_guid(tid), "CONFIRMED", now, tid))
+            counts["topic_rows"] += cur.rowcount
+
+    if apply:
+        # Everything still unresolved has now been looked at by both resolvers.
+        cur.execute(
+            f'UPDATE {table} SET identity_status=%s, identity_tagged_at=%s '
+            f'WHERE subject_guid IS NULL AND identity_status IS NULL',
+            (UNRESOLVABLE, now))
+        counts["unresolvable_rows"] = cur.rowcount
+    return counts
+
+
 def backfill(cur, table: str, symbol_col: str, *, apply: bool, limit: int | None) -> dict:
     """Resolve and stamp. Returns honest per-outcome counts.
 
@@ -201,13 +265,23 @@ def main() -> int:
         res = backfill(cur, t, TARGETS[t], apply=args.apply, limit=args.limit)
         if args.apply:
             conn.commit()
+        if not res.get("skipped") and not args.limit:
+            # Only on a full pass. Under --limit the remainder has not actually been
+            # examined, and marking it UNRESOLVABLE would be a lie the next run
+            # inherits.
+            res.update(classify_remainder(cur, t, TARGETS[t], apply=args.apply))
+            if args.apply:
+                conn.commit()
         results.append(res)
         if res.get("skipped"):
             print(f"  {t}: SKIPPED — {res['skipped']}")
         else:
             print(f"  {t}: symbols={res['symbols_seen']} resolved={res['resolved']} "
                   f"unresolved={res['unresolved']} n/a={res['not_applicable']} "
-                  f"rows_stamped={res['rows_stamped']}")
+                  f"rows_stamped={res['rows_stamped']}"
+                  + (f" | topics={res.get('topics', 0)} topic_rows={res.get('topic_rows', 0)}"
+                     f" unresolvable={res.get('unresolvable_rows', 0)}"
+                     if "topics" in res else ""))
     conn.close()
     import json
     print("RESULT: " + json.dumps({"schema": "SubjectIdentityBackfill@v1",
