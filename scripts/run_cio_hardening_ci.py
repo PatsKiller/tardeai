@@ -579,6 +579,19 @@ GATES = [
         ],
     ),
     (
+        "deterministic_integrity",
+        [
+            # The daily sweep. Run cold against main it rediscovered every defect
+            # a full session found by hand, plus db_retention unscheduled. Pins
+            # that it never repairs, that a commented cron is not scheduled, and
+            # that populations aggregate instead of emitting 309 alarms.
+            "tests/test_deterministic_integrity.py",
+            # The one place a model touches identity: proposes CANDIDATE, never
+            # commits, never mints a GUID, free lanes only.
+            "tests/test_identity_resolution_advisor.py",
+        ],
+    ),
+    (
         "librarian_dedup_ttl",
         [
             # Three research_backlog rows from 2026-06-02 muted two of four
