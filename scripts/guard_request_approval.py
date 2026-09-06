@@ -45,7 +45,26 @@ def parse_duration(text: str) -> int:
 
 
 def _send(message: str) -> tuple[bool, str]:
-    """Send through the house chokepoint. No direct Bot API call from here."""
+    """Send through the house chokepoint, INTERRUPT class. Never a digest.
+
+    An approval prompt is not a notification. It is a question with a fifteen
+    minute fuse, and a digested question is an expired one. The first version
+    called `send_telegram(message)` with default routing and the alert router
+    classified it P1_DIGEST:
+
+        [telegram] Suppressed (P1_DIGEST): 🔐 *Approval requested* ...
+        request_id=43c4ff0b6b4bc005 ... telegram=sent
+
+    The operator never saw the code, and this process reported `telegram=sent`.
+    That second part is the worse half. `send_telegram` documents that it
+    "returns True when the event was ACCEPTED", and accepted explicitly includes
+    archived-for-digest — so a truthy return was read as delivered. A confident
+    line that is not true, in the tool whose whole purpose is asking a human a
+    question.
+
+    `bypass_router=True` is the same thing research_lane_health.py:251 does for
+    its own alarms, and for the same reason: some messages are not summarisable.
+    """
     try:
         from telegram_alert import send_telegram
     except ImportError:
@@ -54,10 +73,14 @@ def _send(message: str) -> tuple[bool, str]:
         except ImportError as exc:
             return False, f"telegram_alert unavailable: {exc}"
     try:
-        ok = send_telegram(message)
-        return bool(ok), "sent" if ok else "send_telegram returned falsey"
+        ok = send_telegram(message, bypass_router=True)
     except Exception as exc:                              # noqa: BLE001
         return False, f"{type(exc).__name__}: {exc}"
+    if not ok:
+        return False, "send_telegram returned falsey — not accepted"
+    # Truthy means ACCEPTED, which is a weaker claim than delivered. Say the
+    # weaker thing rather than the flattering one.
+    return True, "accepted for interrupt delivery (router bypassed)"
 
 
 def main() -> int:
@@ -110,7 +133,7 @@ def main() -> int:
     # out of its own stdout — that is the property that keeps the approval the
     # operator's to give.
     print(f"request_id={req['request_id']} scope={req['scope']} "
-          f"window={seconds}s uses={args.uses} telegram={'sent' if ok else 'FAILED'}")
+          f"window={seconds}s uses={args.uses} telegram={detail if ok else 'FAILED'}")
     if not ok:
         print(f"TELEGRAM SEND FAILED: {detail}", file=sys.stderr)
         print("The request is minted but the operator was not notified. "

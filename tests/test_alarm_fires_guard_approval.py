@@ -113,3 +113,40 @@ def test_a_forbidden_scope_never_reaches_the_transport(sent, monkeypatch, capsys
     assert rc == 2
     assert sent == [], "a forbidden scope was announced to the operator anyway"
     assert "REFUSED" in capsys.readouterr().err
+
+
+# ── An approval prompt is a question, not a notification ────────────────────
+# 2026-09-05, live: the first real `bin/guard request` printed
+#     [telegram] Suppressed (P1_DIGEST): 🔐 *Approval requested* ...
+#     request_id=43c4ff0b6b4bc005 ... telegram=sent
+# The router digested it, the operator never saw the code, and this process
+# reported "sent". A question with a 15-minute fuse cannot be summarised later,
+# and a truthy send_telegram means ACCEPTED, not delivered.
+
+def test_the_approval_prompt_bypasses_the_digest_router(sent, monkeypatch):
+    """It must be interrupt-class, like research_lane_health's own alarms."""
+    seen = {}
+
+    import telegram_alert
+
+    def capture(msg, *a, **kw):
+        seen.update(kw)
+        seen["msg"] = msg
+        return True
+
+    monkeypatch.setattr(telegram_alert, "send_telegram", capture)
+    _run(monkeypatch, "git-push", "--for", "10m", "--reason", "prompt routing")
+    assert seen.get("bypass_router") is True, (
+        "the approval prompt went through default routing; the alert router "
+        "classifies it P1_DIGEST and the operator never sees the code")
+
+
+def test_it_does_not_claim_delivered_when_it_only_knows_accepted(sent, monkeypatch, capsys):
+    """send_telegram documents that True means ACCEPTED, which includes
+    archived-for-digest. Reporting that as 'sent' is the confident-and-untrue
+    line this whole session has been removing."""
+    _run(monkeypatch, "git-push", "--for", "10m", "--reason", "wording")
+    out = capsys.readouterr().out
+    assert "telegram=sent" not in out, (
+        "still reports 'sent' — a weaker word is the honest one here")
+    assert "accepted" in out.lower()
