@@ -567,6 +567,18 @@ GATES = [
         ],
     ),
     (
+        "research_identity_tagging",
+        [
+            # The GUID/sector tags downstream agents are told to trust. Pins the
+            # GICS allowlist (a fund mandate is not a sector), the one-way
+            # identity rank (a feed that stops publishing CUSIPs must not be able
+            # to downgrade a CONFIRMED entity), and that an unresolvable symbol
+            # yields NO tag rather than a null-subject one that would inflate
+            # apparent coverage.
+            "tests/test_research_identity_tagging.py",
+        ],
+    ),
+    (
         "librarian_dedup_ttl",
         [
             # Three research_backlog rows from 2026-06-02 muted two of four
