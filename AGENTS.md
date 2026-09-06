@@ -764,6 +764,34 @@ Tag with `lib/research_identity.resolve()`; do not hand-roll a lookup.
 | `lib/catalyst_graph.py` | binds events to entities (452 nodes / 1,110 edges live) | — |
 | `taxonomy_tagger.py` | the 3-axis taxonomy (content / sector / lifecycle) | see the sentinel rule below |
 
+### LLM lane escalation — free, then one paid lane, then ASK
+
+Operator policy, 2026-09-06. `lib/llm_escalation.run_with_escalation`:
+
+```
+1. FREE OAUTH        grok -> chatgpt
+2. DEEPSEEK FLASH    the ONE paid lane enterable automatically
+3. NOTIFY + STOP     Telegram, and the run yields nothing
+4. further paid      never automatic; explicit operator re-run only
+```
+
+**Step 3 is a hard stop, not a warning.** An escalation that notifies and then pays anyway
+defeats the point — silently walking up a cost ladder is how a backlog becomes a bill nobody
+authorised, and this system already carries a daily provider spend cap for the same reason.
+
+- **One notification per RUN, not per call.** A 2,000-document batch that lost its free lanes
+  would otherwise send 2,000 identical messages, which is indistinguishable from a broken loop
+  and trains the operator to ignore the channel.
+- **The notification bypasses the router.** An escalation prompt classified `P1_DIGEST` and
+  archived is a decision the operator never sees — exactly what happened to guard approvals on
+  2026-09-05.
+- **A failed notification still stops the run.** Telegram being down is not permission to spend.
+- `process_id=` is passed on every attempt, so a fallback cannot become a way around the gate,
+  and `NEVER_CHAIN` is unchanged — local models never make judgment calls.
+
+Design and the mentions work that motivated it:
+`docs/architecture/DOCUMENT_MENTIONS_AND_LLM_ESCALATION.md`.
+
 ### Who keeps identity fresh — and why no model may
 
 **A deterministic custodian, `lib/identity_health.py`, lane `identity-spine`.** It alarms on
