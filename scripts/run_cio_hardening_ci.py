@@ -646,6 +646,21 @@ GATES = [
         ],
     ),
     (
+        "subject_identity_spine",
+        [
+            # Stage 0. ~336,000 rows could not be joined to a subject: three tables
+            # had no subject_guid column at all, two had one and never filled it. A
+            # dossier keyed on identity therefore read a third of the corpus, and
+            # under-answering is indistinguishable from answering. Pins that the
+            # backfill stays free (no model on any row), that it distinguishes
+            # "registry unreadable" from "symbol unknown" and stops rather than
+            # writing the former as the latter, and that unknown is the LOWEST rank
+            # — a guard that coalesced NULL to CONFIRMED reported 23 symbols
+            # resolved while writing zero rows.
+            "tests/test_backfill_subject_identity.py",
+        ],
+    ),
+    (
         "llm_escalation",
         [
             # Operator policy: free OAuth -> deepseek-flash -> ASK -> further paid.
