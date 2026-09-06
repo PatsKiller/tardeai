@@ -221,19 +221,44 @@ def test_every_target_table_names_its_symbol_column(mod):
 
 # ── the envelope preserves what lookup_subject established ──────────────────
 
-def test_the_envelope_keeps_the_four_lookup_states():
-    from scripts.lib.cio_subject_guid import lookup_identity_envelope
+def test_the_envelope_keeps_the_four_lookup_states(monkeypatch):
+    """NOT_APPLICABLE needs no registry; UNRESOLVED is stubbed so the assertion does
+    not depend on a registry file that CI does not have."""
+    import scripts.lib.cio_subject_guid as csg
 
-    assert lookup_identity_envelope("CASH")["identity_lookup"] == "NOT_APPLICABLE"
-    assert lookup_identity_envelope("ZZZZNOTAREALTICKER")["identity_lookup"] == "UNRESOLVED"
+    assert csg.lookup_identity_envelope("CASH")["identity_lookup"] == "NOT_APPLICABLE"
+
+    fake = type(sys)("scripts.lib.identity_registry")
+    fake.load_cached = lambda root=None: {}
+    fake.lookup_symbol = lambda reg, sym: None          # registry answered: no entity
+    monkeypatch.setitem(sys.modules, "scripts.lib.identity_registry", fake)
+    assert csg.lookup_identity_envelope("ZZZZ")["identity_lookup"] == "UNRESOLVED"
 
 
-def test_the_envelope_carries_the_issuer_not_just_the_subject():
-    """The join a dossier needs: security -> issuer."""
-    from scripts.lib.cio_subject_guid import lookup_identity_envelope
+def test_the_envelope_carries_the_issuer_not_just_the_subject(monkeypatch):
+    """The join a dossier needs: security -> issuer.
 
-    env = lookup_identity_envelope("AAPL")
-    assert env["subject_guid"] and env["issuer_guid"]
+    Stubbed, not read from the live registry. The first version of this asserted
+    against real AAPL data: it passed here, where the registry file exists, and
+    failed in CI, where it does not — a test that only holds in the environment
+    that least needs it.
+    """
+    import scripts.lib.cio_subject_guid as csg
+
+    monkeypatch.setattr(csg, "lookup_subject",
+                        lambda s, **k: {"subject_guid": "sub-1", "identity_status": "CONFIRMED",
+                                        "identity_lookup": "RESOLVED",
+                                        "identity_lookup_failed": False},
+                        raising=False)
+    fake = type(sys)("scripts.lib.identity_registry")
+    fake.load_cached = lambda root=None: {}
+    fake.lookup_symbol = lambda reg, sym: {"issuer_guid": "iss-1", "security_guid": "sec-1",
+                                           "listing_guid": "lst-1"}
+    monkeypatch.setitem(sys.modules, "scripts.lib.identity_registry", fake)
+
+    env = csg.lookup_identity_envelope("AAPL")
+    assert env["subject_guid"] == "sub-1"
+    assert env["issuer_guid"] == "iss-1"
     assert env["subject_guid"] != env["issuer_guid"]
 
 
