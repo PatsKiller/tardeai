@@ -758,11 +758,18 @@ Properties that make this safe, each pinned by a test in
   so a phone cannot widen what a phone may do.
 
 **Two reply paths, one settlement.** The operator may type `/approve <CODE>`, or tap **Approve** on
-the inline keyboard the request carries. The button sends a `callback_query`, which Telegram stamps
-with the sender's user id — so it authenticates the approver exactly as a reply does. Both paths
-land in `settle_by_request_id`, which records `settled_via` and the originating `from_id`. Proven
-end to end 2026-09-06: request `28e47322a7` settled `APPROVED` / `telegram_button`, `from_id`
-recorded.
+the inline keyboard the request carries. The button sends a `callback_query`, which originates at
+Telegram's servers — a bot token cannot fabricate one — so it is not a weaker door than the code.
+Both paths land in `settle_by_request_id`. Proven end to end 2026-09-06: `28e47322a7` and
+`7f112670b7`, both `APPROVED` / `telegram_button`, from two different allowlisted chats.
+
+**Know which identifier is enforced.** The gate is `chat_id` against `TELEGRAM_CHAT_ID`
+(`approved_by_chat`); `from_id` is recorded as metadata and gated on nothing. In a 1:1 chat
+Telegram makes the two equal, which is why every settlement so far shows them matching and why it
+is easy to believe the *sender* is authenticated. **They diverge in a group.** If a group chat is
+ever added to the allowlist, `chat_id` is the group and every member of it can approve — the
+control would still pass its own test while meaning something entirely different. Keep the
+allowlist to 1:1 chats, or gate `from_id` too before adding one.
 
 **Any link in that message is read-only, and must stay so.** A URL button carries no sender
 identity — anyone holding the link is anonymous to the receiver — so a link can never be the
