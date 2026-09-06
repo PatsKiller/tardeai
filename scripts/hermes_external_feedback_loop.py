@@ -18,9 +18,25 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 KILL = ROOT / "data" / "runtime" / "HERMES_DISABLED"
 sys.path.insert(0, str(ROOT / "scripts"))
-for ln in (ROOT / ".env").read_text().splitlines():
-    if "=" in ln and not ln.strip().startswith("#"):
-        k, _, v = ln.partition("="); os.environ.setdefault(k.strip(), v.strip())
+# Credentials from the canonical loader, NOT a path relative to this file.
+# `ROOT / ".env"` resolves inside whatever tree this runs from, and a RELEASE has
+# no .env because secrets are deliberately not deployed — so this raised
+# FileNotFoundError at IMPORT time when run from CURRENT, before main() was ever
+# reached. Seventh instance of this shape found on 2026-09-06; the integrity
+# sweep reports the population as `tree_relative_secret`.
+try:
+    sys.path.insert(0, str(ROOT / "scripts" / "lib"))
+    from env_bootstrap import load_env
+    load_env()
+except Exception as _exc:  # noqa: BLE001 — fall back to the legacy read, loudly
+    print(f"[feedback-loop] env_bootstrap unavailable ({type(_exc).__name__})",
+          file=sys.stderr)
+    _legacy = ROOT / ".env"
+    if _legacy.is_file():
+        for ln in _legacy.read_text().splitlines():
+            if "=" in ln and not ln.strip().startswith("#"):
+                k, _, v = ln.partition("=")
+                os.environ.setdefault(k.strip(), v.strip())
 import psycopg2
 
 
