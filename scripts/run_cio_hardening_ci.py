@@ -625,6 +625,23 @@ GATES = [
         ],
     ),
     (
+        # Durable data directories must survive a promote. data/audit held a
+        # 39KB receipt written the same day and was a real dir inside the
+        # release, so every deploy discarded it and the lane read SILENT.
+        "deploy_durable_dirs",
+        [
+            "tests/test_deploy_durable_dirs.py",
+        ],
+    ),
+    (
+        # An uninitialised inbound checkpoint returned 0, so replay-denial could
+        # never say no — on a path carrying approve/reject callbacks.
+        "inbound_checkpoint_seed",
+        [
+            "tests/test_inbound_checkpoint_seed.py",
+        ],
+    ),
+    (
         # If one LLM lane fails the next must be tried, and the substitution
         # said out loud. chatgpt failed 11/11 on 2026-09-05 while grok was
         # healthy and never asked, because generate() takes one lane.
