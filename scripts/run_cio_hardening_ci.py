@@ -579,6 +579,16 @@ GATES = [
         ],
     ),
     (
+        "librarian_dedup_ttl",
+        [
+            # Three research_backlog rows from 2026-06-02 muted two of four
+            # detectors for 96 days, which is why hermes_advisory_events took its
+            # last write on 2026-07-14 while 108,102 catalysts matched. Pins that
+            # every dedup COUNT is time-bounded.
+            "tests/test_librarian_dedup_ttl.py",
+        ],
+    ),
+    (
         "agent_governance_sop",
         [
             "tests/test_agent_clients_registry.py",

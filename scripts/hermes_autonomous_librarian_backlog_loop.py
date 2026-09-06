@@ -53,8 +53,27 @@ QUESTION_BY_FINDING = {
 }
 
 def get_db():
+    """Credentials from the canonical loader, not from a tree-relative path.
+
+    `(PR/".env")` resolves inside whatever tree this runs from, and a RELEASE has
+    no .env because secrets are deliberately not deployed — so running this from
+    a release raised FileNotFoundError before it reached a query. It survived
+    only because the timer happens to set WorkingDirectory to the dev tree; any
+    invocation from CURRENT died. Fifth instance of this shape (2026-09-06).
+    """
     import psycopg2
-    db_pass = [l.split("=",1)[1] for l in (PR/".env").read_text().splitlines() if l.startswith("DB_PASSWORD=")][0]
+
+    db_pass = os.environ.get("DB_PASSWORD")
+    if not db_pass:
+        try:
+            sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+            from env_bootstrap import load_env  # noqa: PLC0415
+            load_env()
+            db_pass = os.environ.get("DB_PASSWORD")
+        except Exception as exc:
+            print(f"WARN: env_bootstrap unavailable ({type(exc).__name__})", file=sys.stderr)
+    if not db_pass:
+        raise RuntimeError("DB_PASSWORD not resolvable (env, tmpfs render, or .env)")
     return psycopg2.connect(host="localhost", dbname="trade_ai", user="trade_ai", password=db_pass)
 
 def check_kill_switch():
@@ -62,6 +81,24 @@ def check_kill_switch():
         if (PR / "data" / "runtime" / f).exists():
             return True
     return False
+
+#: How long a filed backlog item suppresses re-detection of the same class.
+#:
+#: Measured 2026-09-06: the loop had reported "0 findings" on every run since
+#: 2026-07-14 while its own detectors matched 1,673 weak strategies, 108,102
+#: generic low-confidence catalysts and 315 underfilled screener runs. The cause
+#: was three research_backlog rows filed on 2026-06-02: the catalyst guard fires
+#: only when fewer than 2 exist (there were exactly 2) and the screener guard only
+#: when none exist (there was 1). Both conditions became permanently false, so two
+#: of four detectors were switched off for 96 days by three rows, and
+#: hermes_advisory_events — whose only automatic producer is this loop — took its
+#: last write on 2026-07-14.
+#:
+#: A filed backlog item means "this was already raised RECENTLY", which expires.
+#: Dedup without a shelf life is not dedup, it is a permanent mute. Same defect as
+#: taxonomy_tagger's no_match sentinel; see AGENTS.md.
+BACKLOG_DEDUP_TTL_DAYS = int(os.environ.get("LIBRARIAN_BACKLOG_DEDUP_TTL_DAYS", "30"))
+
 
 def main():
     start = time.time()
@@ -92,7 +129,11 @@ def main():
     for sid, wr, pf, ss in cur.fetchall():
         key = f"bt_weak_{(sid or 'unknown')[:20]}"
         # Check not already in backlog
-        cur.execute("SELECT COUNT(*) FROM hermes_research_intelligence WHERE research_type='research_backlog' AND topic LIKE %s", (f"%{(sid or '')[:20]}%",))
+        cur.execute(
+            "SELECT COUNT(*) FROM hermes_research_intelligence "
+            "WHERE research_type='research_backlog' AND topic LIKE %s "
+            "AND created_at > now() - make_interval(days => %s)",
+            (f"%{(sid or '')[:20]}%", BACKLOG_DEDUP_TTL_DAYS))
         if cur.fetchone()[0] == 0:
             wr_f = float(wr) if wr is not None else 0.0
             wr_pct = wr_f * 100 if wr_f <= 1 else wr_f
@@ -107,7 +148,11 @@ def main():
         SELECT COUNT(*) FROM hermes_v_catalyst_quality_context WHERE catalyst_type='other' AND confidence < 0.4
     """)
     generic_count = cur.fetchone()[0]
-    cur.execute("SELECT COUNT(*) FROM hermes_research_intelligence WHERE research_type='research_backlog' AND topic LIKE '%catalyst%'")
+    cur.execute(
+        "SELECT COUNT(*) FROM hermes_research_intelligence "
+        "WHERE research_type='research_backlog' AND topic LIKE '%%catalyst%%' "
+        "AND created_at > now() - make_interval(days => %s)",
+        (BACKLOG_DEDUP_TTL_DAYS,))
     existing_cat = cur.fetchone()[0]
     if generic_count > 10 and existing_cat < 2:
         findings.append({"type": "catalyst_quality_gap", "detail": f"{generic_count} generic low-conf catalysts", "priority": "medium"})
@@ -119,7 +164,11 @@ def main():
     """)
     underfilled = cur.fetchone()[0]
     if underfilled > 2:
-        cur.execute("SELECT COUNT(*) FROM hermes_research_intelligence WHERE research_type='research_backlog' AND topic LIKE '%screener%underfill%'")
+        cur.execute(
+            "SELECT COUNT(*) FROM hermes_research_intelligence "
+            "WHERE research_type='research_backlog' AND topic LIKE '%%screener%%underfill%%' "
+            "AND created_at > now() - make_interval(days => %s)",
+            (BACKLOG_DEDUP_TTL_DAYS,))
         if cur.fetchone()[0] == 0:
             findings.append({"type": "screener_underfilled", "detail": f"{underfilled} underfilled runs in 7 days", "priority": "low"})
 
