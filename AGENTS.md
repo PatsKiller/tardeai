@@ -650,6 +650,42 @@ event_guid(issuer, EARNINGS, 2026Q3)   the earnings event, stable across every m
 
 `issuer_guid` — not `subject_guid` — is the join for "everything about this company". Prefer it.
 
+### The identifier model — what each ID is, and which one to join on
+
+Audited 2026-09-06. `identity_registry` holds **10,279 entities**: 5,014 CONFIRMED (all
+CUSIP-based), 22 CANDIDATE, 5,243 `UNRESOLVED_WITH_REASON`. The only external identifier in
+the registry today is **CUSIP** — Alpaca exposes none; Schwab `instruments` is the source.
+
+| id | scope | stability | join on it when |
+|---|---|---|---|
+| `issuer_guid` | the **company** | survives ticker change, re-listing, share-class split | "everything about this company" — **the default** |
+| `security_guid` | one security of that issuer | survives a ticker change | you mean this specific instrument, not the issuer |
+| `listing_guid` | one listing of that security | changes on re-listing | venue-specific facts |
+| `ticker_alias_guid` | the **symbol string** | *unstable by design* | almost never — it is the alias, not the identity |
+| `subject_guid` | what a row is *about* | = `security_guid` today | tagging a document, article or finding |
+| `event_guid` | `(issuer, event_type, period)` | stable across every mention | earnings, ratings, catalysts — `SecurityEvent@v1` |
+| `cusip` | external, issuer+issue | the registry's `identity_basis` | reconciling against a broker or filing |
+
+**Prefer `issuer_guid`.** It is the join that answers the question an agent actually asks, and
+the one that does not break when a ticker is reassigned.
+
+**Which stores must carry identity, and which must not.** A GUID belongs on anything carrying
+**judgment or narrative** about a security — research, news, catalysts, decisions,
+recommendations, scores — because that is what an agent reasons over and what has to survive a
+symbol change. It does **not** belong on raw market data keyed by symbol+timestamp
+(`market_quotes` at 28.6M rows, `ticker_prices`, `schwab_stream_*`): the cost is real and the
+symbol is sufficient for a price at an instant.
+
+Coverage as of 2026-09-06 — `hermes_research_intelligence` and `news_articles` carry
+`subject_guid` + `issuer_guid` + `gics_sector`. **Not yet tagged, in priority order:**
+`catalyst_events` (135,919 — the lifecycle spine, and the highest-value gap),
+`agent_recommendation_registry` (454,058), `fused_signals` (750,739),
+`hermes_score_history` (166,367). Four other tables carry a bare `cusip` and no GUID:
+`econfirm_evidence`, `fund_expense_rate_history`, `investment_cost_events`.
+
+**Before adding a store to that list**, re-read the additive-only and no-downgrade rules below.
+Tag with `lib/research_identity.resolve()`; do not hand-roll a lookup.
+
 ### The modules — none of these is new, all of them are load-bearing
 
 | module | role | do not |
@@ -660,6 +696,28 @@ event_guid(issuer, EARNINGS, 2026Q3)   the earnings event, stable across every m
 | `lib/research_identity.py` | the adapter: symbol → identity tag for research rows | write a tag with a null `subject_guid` — indistinguishable downstream from untagged, and it inflates apparent coverage |
 | `lib/catalyst_graph.py` | binds events to entities (452 nodes / 1,110 edges live) | — |
 | `taxonomy_tagger.py` | the 3-axis taxonomy (content / sector / lifecycle) | see the sentinel rule below |
+
+### Who keeps identity fresh — and why no model may
+
+**A deterministic custodian, `lib/identity_health.py`, lane `identity-spine`.** It alarms on
+`registry_stale` (80h grace, so a weekday-only minter does not page on a Sunday),
+`coverage_regressed` (CONFIRMED falling — the rank is one-way, so a fall means a feed stopped
+publishing identifiers), `producer_unscheduled`, and `registry_unreadable`. Coverage is reported
+even when nothing fires, so a slow decline is visible before it becomes an alarm.
+
+**No model runs in that lane, and none may.** `uuid5` is a pure function of (namespace, name):
+the same input yields the same GUID forever. That determinism *is* the value of the spine, and a
+model in the path destroys auditability while adding nothing — every identity failure found on
+2026-09-06 was a count, a clock or a scheduler lookup, and an LLM would have caught none of them.
+
+**The one legitimate model role is proposal, never commitment.** 5,243 of 10,279 entities are
+`UNRESOLVED_WITH_REASON` (no CUSIP), and `catalyst_graph` skips 35,928 rows as
+`symbol_not_registered`. Deciding whether a symbol in a filing is the same issuer as one in the
+registry — across name variants, share classes and corporate actions — is genuine ambiguity, and
+that is what a model is for. Its output is written **`CANDIDATE` only**; deterministic evidence
+(a CUSIP from Schwab `instruments`) is the sole thing that promotes to `CONFIRMED`. The one-way
+rank means a model can never downgrade a confirmed entity or invent a spine. Run it on a **free
+OAuth lane** — this is batch reconciliation, not latency-sensitive, and there is no reason to pay.
 
 ### Rules that must hold
 
@@ -736,6 +794,36 @@ have destroyed the corpus it was meant to enrich.**
 A sentinel says *today's classifier could not do this*. That expires; it is not a fact about the
 row. `NO_MATCH_TTL_DAYS` (default 30) re-admits them and `taxonomy_tagged_at` records when.
 **A sentinel without a TTL destroys a corpus while reporting success.**
+
+### `rows_produced` — unknown is not zero
+
+`PipelineRun` defaulted `_rows = 0`, and `run_complete(rows_processed=0)` matched it. **20
+scripts use PipelineRun; 4 call `.rows()`.** The other 16 wrote `{"rows_produced": 0}` on every
+successful run, so `pipeline_zero_rows` fired on five pipelines that had *never* recorded a
+non-zero in their history — only 7 of 44 pipeline keys ever had.
+
+0 meant both *I produced nothing* and *nobody told me*, so the alarm could neither fire on a
+real outage nor stop firing on a healthy pipeline. Unknown is now `None` → JSON `null`, which
+the detector's `COALESCE(..., -1) = 0` correctly ignores. **An explicit `.rows(0)` still fires,
+because that is a measurement.**
+
+### Dark-producer audit, 2026-09-06
+
+Across 129 stores with >100 rows, only two had no write in 14 days. One was inert; the other
+was a chain worth reading in full, because every link reported success:
+
+```
+strategy_rule_engine.py --all   scheduled NOWHERE  (cron=0, timers=0)
+  -> strategy_rule_evaluations   0 rows
+    -> cio_decision_engine       INNER JOINs it -> 0 decisions, always
+                                 3,010 runs/week, every one "success"
+      -> cio_decisions           last written 2026-08-07
+```
+
+`evaluate_all()` exists, works, and is called by nothing — proven by running it on one symbol:
+0 → 1 rows. **The producer was never scheduled, and four layers of "success" sat on top of an
+empty table.** When a consumer inner-joins a table, an empty producer is indistinguishable from
+a quiet market; check the producer's schedule before believing the consumer.
 
 ### Before declaring a research lane healthy
 

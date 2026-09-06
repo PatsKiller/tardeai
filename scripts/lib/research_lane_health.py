@@ -438,6 +438,18 @@ def collect_report(*, now: Optional[datetime] = None) -> dict[str, Any]:
         except Exception:
             from search_health import collect_search_health  # type: ignore
         lanes.append(collect_search_health(now=now))
+    try:
+        from scripts.lib.identity_health import collect_identity_health
+    except Exception:
+        try:
+            from lib.identity_health import collect_identity_health  # type: ignore
+        except Exception:
+            collect_identity_health = None                            # type: ignore
+    if collect_identity_health is not None:
+        # The GUID spine had no custodian at all until 2026-09-06: no freshness
+        # check, no coverage regression alarm, and build_catalyst_graph had no
+        # scheduler. Deterministic only — no model runs in this lane.
+        lanes.append(collect_identity_health(now=now))
     firing = [r for r in lanes if not r["ok"]]
     return {
         "schema": SCHEMA,

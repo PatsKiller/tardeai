@@ -579,6 +579,25 @@ GATES = [
         ],
     ),
     (
+        "pipeline_rows_unknown",
+        [
+            # 16 of 20 PipelineRun users never call .rows(), so a default of 0
+            # made pipeline_zero_rows fire on five pipelines that had never
+            # reported a row. Pins that unknown stays distinct from zero.
+            "tests/test_pipeline_rows_unknown.py",
+        ],
+    ),
+    (
+        "identity_custodian",
+        [
+            # Nothing watched the GUID spine at all until 2026-09-06. Pins that
+            # the custodian stays deterministic (no model, no network), that its
+            # freshness grace survives a weekend, and that a commented cron does
+            # not count as scheduled.
+            "tests/test_identity_health.py",
+        ],
+    ),
+    (
         "deterministic_integrity",
         [
             # The daily sweep. Run cold against main it rediscovered every defect
