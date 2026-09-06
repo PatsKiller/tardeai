@@ -151,6 +151,18 @@ engines:
     inactive: false
     disabled: true
 
+  # Measured 2026-09-06 after being installed enabled specifically to test it:
+  #     engines=yahoo news -> 0 results, unresp=[['yahoo news', 'HTTP error']]
+  # It fails LOUDLY, which is the one good thing about it — unlike google, it
+  # lands in unresponsive_engines rather than pretending to work. Kept listed
+  # and disabled so the measurement survives; an engine deleted outright gets
+  # re-added by the next person who notices the pool is small.
+  - name: yahoo news
+    engine: yahoo_news
+    shortcut: yhn
+    inactive: false
+    disabled: true
+
   - name: seznam
     engine: seznam
     shortcut: sz

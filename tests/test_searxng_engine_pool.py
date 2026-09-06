@@ -30,9 +30,10 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 SETTINGS = ROOT / "infra" / "searxng" / "core-config" / "settings.yml"
 
-#: Measured blocked on 2026-09-05. Each cost a request and a timeout per query
-#: while contributing nothing.
-MEASURED_BLOCKED = ("brave", "duckduckgo", "startpage", "google")
+#: Measured blocked. Each cost a request and a timeout per query while
+#: contributing nothing. `yahoo news` joined them on 2026-09-06 after being
+#: installed enabled specifically to test it: 0 results, HTTP error.
+MEASURED_BLOCKED = ("brave", "duckduckgo", "startpage", "google", "yahoo news")
 
 #: Verified by query on 2026-09-05, then ranked on "nvidia quarterly earnings".
 VERIFIED_WORKING = ("seznam", "yep", "yandex")
@@ -197,3 +198,22 @@ def test_the_installer_verifies_engines_actually_registered():
     src = (ROOT / "scripts" / "install_searxng_config.sh").read_text(encoding="utf-8")
     assert "MISSING FROM RUNNING CONFIG" in src
     assert "/config" in src
+
+
+def test_the_installer_no_longer_invents_engines():
+    """It briefly injected `yahoo news` so the engine could be measured at all,
+    because `engines=` selects by configured name. That measurement is done —
+    0 results, HTTP error — and the entry now lives in the reviewed template,
+    disabled. The installer installs what was reviewed; it does not add engines
+    of its own."""
+    src = (ROOT / "scripts" / "install_searxng_config.sh").read_text(encoding="utf-8")
+    assert "does not invent engines" in src
+    assert "name: yahoo news" not in src, "installer still injects an engine entry"
+
+
+def test_braveapi_stays_disabled_in_the_template(by_name: dict):
+    """The template must never ship a keyed engine enabled — without a key it
+    would be another silent zero-result contributor. The installer enables it
+    only after injecting the key from the host."""
+    assert by_name["braveapi"].get("disabled") is True
+    assert by_name["braveapi"].get("api_key") == ""
