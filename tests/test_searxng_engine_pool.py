@@ -159,3 +159,41 @@ def test_the_budget_bypass_is_disclosed():
     search_budget was built to close."""
     text = SETTINGS.read_text(encoding="utf-8")
     assert "search_budget" in text and "NOT counted" in text
+
+
+# ── `inactive` is a separate gate from `disabled` ───────────────────────────
+# Measured 2026-09-06: braveapi and `yahoo news` installed cleanly, passed YAML
+# validation, and were ABSENT from the running config with no error and no log
+# line. SearXNG's defaults ship both with `inactive: true`, which means "never
+# registered" — not "registered but off". Clearing only `disabled` leaves the
+# engine a ghost: configured, invisible, silent.
+
+def test_no_enabled_engine_is_left_inactive(cfg: dict):
+    """The exact defect. An engine both enabled and inactive is configured to do
+    nothing, and says nothing about it."""
+    ghosts = [e["name"] for e in cfg["engines"]
+              if not e.get("disabled") and e.get("inactive") is True]
+    assert not ghosts, f"enabled but inactive, will never register: {ghosts}"
+
+
+def test_engines_that_default_to_inactive_override_it_explicitly(by_name: dict):
+    """braveapi ships inactive in SearXNG's defaults, so the entry must say
+    inactive: false or it silently does not exist."""
+    assert by_name["braveapi"].get("inactive") is False, (
+        "braveapi inherits inactive: true from SearXNG defaults and will not register")
+
+
+def test_the_installer_validates_the_inactive_gate():
+    """The dry run passed while shipping two ghost engines, because it checked
+    `disabled` and not `inactive`. That gap is closed."""
+    src = (ROOT / "scripts" / "install_searxng_config.sh").read_text(encoding="utf-8")
+    assert 'e.get("inactive") is True' in src, "installer does not check the inactive gate"
+    assert "enabled but inactive" in src
+
+
+def test_the_installer_verifies_engines_actually_registered():
+    """Config-says-so is not registered-in-fact. The installer now compares its
+    intended set against /config and names anything missing."""
+    src = (ROOT / "scripts" / "install_searxng_config.sh").read_text(encoding="utf-8")
+    assert "MISSING FROM RUNNING CONFIG" in src
+    assert "/config" in src

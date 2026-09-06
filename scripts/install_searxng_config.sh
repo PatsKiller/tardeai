@@ -89,6 +89,14 @@ if block:
     b = block.group(1)
     nb = b.replace('api_key: ""', 'api_key: "%s"' % os.environ["BRAVE_KEY"])
     nb = nb.replace('disabled: true', 'disabled: false')
+    # `inactive` is a separate gate from `disabled`. SearXNG defaults ship
+    # braveapi inactive: true, which means NEVER REGISTERED — clearing only
+    # `disabled` leaves it silently absent, which is what happened on the
+    # 2026-09-06 03:42 install.
+    if 'inactive:' not in nb:
+        nb = nb.replace('engine: braveapi\n', 'engine: braveapi\n    inactive: false\n')
+    else:
+        nb = nb.replace('inactive: true', 'inactive: false')
     s = s.replace(b, nb)
     open(p, 'w').write(s)
     print("  braveapi: key injected, enabled")
@@ -113,7 +121,8 @@ entry = (
     "  # it contributes nothing.\n"
     "  - name: yahoo news\n"
     "    engine: yahoo_news\n"
-    "    shortcut: ynews\n"
+    "    shortcut: yhn\n"
+    "    inactive: false\n"
     "    disabled: false\n\n"
 )
 s = re.sub(r'^(  - name: seznam)', entry + r'\1', s, count=1, flags=re.M)
@@ -133,6 +142,12 @@ names = [e["name"] for e in d["engines"]]
 assert len(names) == len(set(names)), "duplicate engine name"
 sc = [e["shortcut"] for e in d["engines"]]
 assert len(sc) == len(set(sc)), "duplicate shortcut"
+# `inactive` is a SEPARATE gate from `disabled`. An engine left inactive is
+# never registered and never logs anything — it simply is not there. This is
+# the check that would have caught braveapi and `yahoo news` on 2026-09-06.
+ghosts = [e["name"] for e in d["engines"]
+          if not e.get("disabled") and e.get("inactive") is True]
+assert not ghosts, "enabled but inactive (will never register): %s" % ghosts
 print("  candidate YAML valid: %d engines" % len(names))
 PY
 
@@ -175,6 +190,24 @@ fi
 say "searxng up (HTTP 200)"
 
 # ── 6. measure what actually serves, per engine ────────────────────────────
+say "did every intended engine actually REGISTER?"
+python3 - "$TMP" <<'PY'
+import json, sys, urllib.request, yaml
+want = [e["name"] for e in yaml.safe_load(open(sys.argv[1]))["engines"]
+        if not e.get("disabled")]
+try:
+    with urllib.request.urlopen("http://127.0.0.1:18888/config", timeout=25) as r:
+        loaded = {e["name"] for e in json.loads(r.read()).get("engines", [])}
+except Exception as exc:
+    print("    could not read /config: %s" % type(exc).__name__); raise SystemExit(0)
+missing = [n for n in want if n not in loaded]
+for n in want:
+    print("    %-14s %s" % (n, "registered" if n in loaded else "MISSING FROM RUNNING CONFIG"))
+if missing:
+    print("    ^ these are configured but not registered. SearXNG skips an engine")
+    print("      marked `inactive: true` silently — no error, no log line.")
+PY
+
 say "measuring each enabled engine (attribution, not result count):"
 python3 - <<'PY'
 import json, urllib.parse, urllib.request, collections

@@ -136,11 +136,19 @@ engines:
   #
   # Budget note: this bypasses scripts/brave_search.py, so calls made here are
   # NOT counted by lib/search_budget. Enable it deliberately.
+  # `inactive: false` is REQUIRED and is not the same as `disabled`.
+  # SearXNG's defaults ship this engine with `inactive: true`, which means it is
+  # never registered at all — not "registered but off". Setting only
+  # `disabled: false` leaves inactive in place, and the engine is skipped
+  # SILENTLY: it appears in no /config listing and logs nothing. Measured
+  # 2026-09-06 — braveapi and `yahoo news` both installed cleanly, both absent
+  # from the running config, with no error anywhere.
   - name: braveapi
     engine: braveapi
     shortcut: bapi
     api_key: ""
     results_per_page: 20
+    inactive: false
     disabled: true
 
   - name: seznam
