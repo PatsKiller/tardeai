@@ -661,6 +661,21 @@ GATES = [
         ],
     ),
     (
+        "material_change_detector",
+        [
+            # Stage 1. Every research job here is schedule-triggered, so a sweep
+            # treats every name identically and structurally cannot notice that ONE
+            # name is behaving unlike itself — which is why three watchlist names up
+            # 15-40% on 2026-09-05 produced no alert. Pins that the threshold is
+            # relative to each symbol's own average daily move (a fixed percent
+            # cannot be right for two different names at once), that corrupt data is
+            # skipped rather than alarmed on (a NaN compares False to every
+            # threshold, so the first run emitted BHVN at magnitude NaN), and that
+            # what could NOT be evaluated is counted and reported.
+            "tests/test_material_change_detector.py",
+        ],
+    ),
+    (
         "llm_escalation",
         [
             # Operator policy: free OAuth -> deepseek-flash -> ASK -> further paid.
