@@ -514,6 +514,24 @@ question:
 - **File `atime` is not evidence of a live consumer.** This filesystem is `relatime`.
 - **A root that symlinks to the same destination is not a control.** Vary the destination and
   confirm different inodes before concluding anything from a null result.
+- **Ask which component produced the result, not whether results appeared.** A pool that falls
+  back serves you a substitute, and the substitute's output is indistinguishable from success.
+  *Cause: `google` was reported working twice in one session — `!go` returned ten results, every
+  one of them served by bing after a silent fallback. Isolated with `engines=google` it returned
+  zero, with an empty `unresponsive_engines`. Three of six engines were in that state.*
+- **The component that fails loudly is rarely the one to investigate.** A dependency that raises
+  lands in an error list and gets fixed. One that returns zero *successfully* reads as healthy
+  coverage and survives every audit. *Cause: `brave`, `duckduckgo` and `startpage` all raised and
+  were visible in `unresponsive_engines`; `google` returned a consent page that parsed to zero
+  results and outlived them all.*
+- **Configured is not registered.** Confirm the thing you enabled exists in the running process,
+  by name — not in the file you wrote. *Cause: SearXNG's `inactive:` is a gate separate from
+  `disabled:`, meaning "never registered" rather than "registered but off". Two engines installed
+  cleanly, passed YAML validation, and were absent from `/config` with no error and no log line.
+  The installer now diffs its intended set against the running config.*
+- **A log that has just rotated is not an empty log.** Check the `.1` file and the rotation
+  timestamp before concluding a job never ran. *Cause: nearly reported a cron as never firing,
+  four minutes after logrotate ran; `syslog.1` held 308 invocations of it.*
 
 ## Scope — verify it, never assume it
 
@@ -582,6 +600,21 @@ Three severities:
 
 A mechanical sweep flags 212 candidates, 125 never read in a conditional. **Do not quote that
 number.** Spot-checking four, three were legitimate. The sweep is a candidate generator, not a count.
+
+A fourth severity, found 2026-09-06:
+
+4. **The control exists, fires correctly, and is always on.** A finding that is present on every
+   run carries no information, and the run where it is real is indistinguishable from the thirty
+   before it. *Cause: `expected_release_pin.txt` was written once on 2026-08-07 and by no code
+   afterwards — the deploy script contained zero references to it. Every promote for a month left
+   it stale, so the health inspector reported the same P0 on every run for thirty days. `promote`
+   now writes the pin it is measured against, in both places the reader looks.*
+
+Its companion shape: **a parameter accepted and discarded, or never accepted at all.** The health
+inspector had always called `PortfolioValidator(live_dir=...)`; `__init__` took no arguments. The
+P2 therefore reported a `TypeError` instead of a portfolio check, and portfolio validation had
+never once run from that path. **A finding that names an exception in the checker is not a finding
+about the system** — read the message before believing the subject.
 
 ## The identity and tagging spine — CRITICAL PATH, keep it on
 
@@ -793,6 +826,31 @@ Descending strength. **Only the first two settle a claim about runtime.**
 - **A Finviz health probe that tries only cookie auth can false-positive "cookie expired"**
   when `FINVIZ_API_TOKEN` would succeed on the same export URL with `&auth=`. Probe both auth
   modes before surfacing `data_source_stale` — §13.6.
+- **A schedule and the gate it must pass can be disjoint.** Check that the window a job runs in
+  intersects every condition it has to satisfy, or it is a job that can never succeed and never
+  complains. *Cause: `hermes-deep-research-local.timer` runs `OnCalendar` 22:00–05:35 ET behind a
+  peak guard permitting 10:00–21:00 ET. The windows do not intersect, so every fire since the lane
+  existed logged `SKIPPED_DEEPSEEK_PEAK` and exited 0 — `result=success` on every run,
+  `attempts_24h=0`, and the lane had never once executed. A skip is not a failure, so nothing
+  alarmed; the health surface read the successes.*
+- **A gate must re-read what the run will actually do, not what was configured at entry.** A
+  variable computed at the top of a function and tested at the bottom is stale if anything between
+  them changes its subject. *Cause: the same lane. `flash = primary_provider() == "bridge_flash"`
+  was computed at entry; the overnight branch then rewrote `args.model` to a free OAuth lane; the
+  guard never re-read it. A spend control was refusing a run that cost nothing, protecting against
+  spend that could not occur. It now keys on the effective model — unchanged for real DeepSeek
+  runs, which is the point of it.*
+- **`accepted` is not `delivered`.** A send function returning True may mean only "handed to the
+  router", and the router may archive to a digest nothing reads. Record the observed outcome, and
+  give the unobserved case its own word. *Cause: `_best_effort_comms_publish` hardcoded
+  `LEGACY_DELIVERED`, so the Communications page showed the operator a delivered alert they never
+  received — adjacent to a genuine one, rendered identically.*
+- **A test that compares two runtime paths tests the deployment, not the code.** Assert on the
+  constructed value and on the source that constructs it. *Cause: twice in one session — "this
+  state file is not under the code tree" was true locally and false in CI, where tree and state
+  root coincide. Both rewritten to assert the resolved path plus an AST check of the resolver.*
+- **A guard that reads prose will pass on a comment describing the defect.** Strip comments,
+  docstrings and log strings — or walk the AST — before asserting a pattern is absent from source.
 
 ## Remote approval by Telegram — when the operator is not at the keyboard
 
@@ -829,6 +887,30 @@ Properties that make this safe, each pinned by a test in
 - **`sudo`, `destructive`, `file-delete`, `guard-config` and `frozen-v2` can never be requested
   remotely**, and no remote window may exceed one hour. `guard-config` is on that list specifically
   so a phone cannot widen what a phone may do.
+
+**Two reply paths, one settlement.** The operator may type `/approve <CODE>`, or tap **Approve** on
+the inline keyboard the request carries. The button sends a `callback_query`, which originates at
+Telegram's servers — a bot token cannot fabricate one — so it is not a weaker door than the code.
+Both paths land in `settle_by_request_id`. Proven end to end 2026-09-06: `28e47322a7` and
+`7f112670b7`, both `APPROVED` / `telegram_button`, from two different allowlisted chats.
+
+**Know which identifier is enforced.** The gate is `chat_id` against `TELEGRAM_CHAT_ID`
+(`approved_by_chat`); `from_id` is recorded as metadata and gated on nothing. In a 1:1 chat
+Telegram makes the two equal, which is why every settlement so far shows them matching and why it
+is easy to believe the *sender* is authenticated. **They diverge in a group.** If a group chat is
+ever added to the allowlist, `chat_id` is the group and every member of it can approve — the
+control would still pass its own test while meaning something entirely different. Keep the
+allowlist to 1:1 chats, or gate `from_id` too before adding one.
+
+**Any link in that message is read-only, and must stay so.** A URL button carries no sender
+identity — anyone holding the link is anonymous to the receiver — so a link can never be the
+approval path. The tailnet FQDN in the message shows status; it grants nothing.
+
+**The request must not be routed.** The first version printed `telegram=sent` while the router
+classified the prompt `P1_DIGEST` and suppressed it into an archive nothing delivers — an approval
+request the operator was never shown, reported as sent. Requests now go with `bypass_router=True`
+and report *accepted for interrupt delivery*, never *sent*. See `accepted` is not `delivered`,
+above: this is that rule applied to the one message class where silence blocks the work.
 
 **This is auditable, not impregnable, and must not be described as more than that.** The agent runs
 as the same OS user. What the mechanism guarantees is that every legitimately obtained grant carries
