@@ -854,6 +854,31 @@ pointed at macro data by accident.
 *(`fred_economic_data` also does not exist as a table at all — `fred_data_ingest` declares it as
 output and it was never created. The integrity sweep reports that as `declared_output_missing`.)*
 
+### Changing an LLM spend cap — `/caps` on Telegram
+
+**There is no Command Center admin page for these**, and that absence is what caused the drift
+below. `lib/llm_cap_admin` + the poller's `/caps` command are the operator surface.
+
+```
+/caps                                   list every process cap, with drift flagged
+/cap <process_id> <requests> [dollars]  set one
+```
+
+- **Writes the registry AND the database in one call.** It is not possible to update only one,
+  because that is the failure it exists to prevent: on 2026-09-06 a hand-written `UPDATE` left
+  `config/llm_process_registry.json` saying `200 / $0.30` while the database said `100000 / $1.25`,
+  and `sync_cio_process_caps.py` is scheduled nowhere so nothing would have caught it.
+- **Database first**, then the registry. A registry promising a cap the bridge is not enforcing is
+  worse than the reverse — the operator would believe a limit that does not exist.
+- **Ceilings hold even for the operator** (`MAX_REQUESTS`, `MAX_DOLLARS`). A cap is only worth
+  having if it holds when someone is in a hurry, and that is exactly when caps get raised. Raising
+  the ceilings is a code change and a review.
+- **Drift is reported, never silently reconciled.** Picking a winner is how the wrong number
+  becomes authoritative.
+- **The GLOBAL cap is NOT settable here.** `LLM_GLOBAL_DAILY_USD_CAP` lives in the bridge's
+  environment; changing it needs `systemctl --user set-environment` (or `.env`, which is
+  never-grantable) **and** a bridge restart. The reply says so, so nobody believes they changed it.
+
 ### The governed model bridge — read this before diagnosing a paid-lane outage
 
 Full reference: **`docs/architecture/GOVERNED_MODEL_BRIDGE.md`**.
