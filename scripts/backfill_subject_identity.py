@@ -73,6 +73,18 @@ RANK = {"CONFIRMED": 3, "CANDIDATE": 2, "UNRESOLVED": 1, None: 0, "": 0}
 
 BATCH = int(os.getenv("IDENTITY_BACKFILL_BATCH", "2000"))
 
+#: SubjectIdentityBackfill@v1 is a run receipt, and nothing reads it yet. Its
+#: consumer is stage 1 of docs/architecture/MATERIAL_CHANGE_TO_QUESTIONS.md — the
+#: material-change detector, which needs to know how much of the corpus is actually
+#: joinable before it can honestly report what it did and did not see. Declaring the
+#: gap here rather than leaving it silent is the point of check_dark_contracts: the
+#: recurring defect in this codebase is a versioned contract whose caller was never
+#: wired, and which passes its own tests forever.
+NO_CONSUMER_REASON = (
+    "run receipt for a stage-0 backfill; consumer is the stage-1 material-change "
+    "detector, which is not built yet (docs/architecture/MATERIAL_CHANGE_TO_QUESTIONS.md)"
+)
+
 
 def _db():
     import psycopg2
