@@ -617,6 +617,21 @@ GATES = [
         ],
     ),
     (
+        "governed_bridge_cap_semantics",
+        [
+            # A budget decision must not be reported as a server fault. The
+            # request-count cap is enforced only inside reserve_projected_cost,
+            # whose failures were all flattened to RESERVATION_FAILED/500 — a
+            # code classify_failure() rates RETRYABLE_TRANSIENT. On 2026-09-06
+            # the caller duly retried, spent its whole 46,106-row queue on a
+            # refusal that could not change, and reported a normal result.
+            # Pins the code->status map against the reservation's actual raise
+            # sites, that the traceback is logged, and that the consuming loop
+            # stops on a refusal without writing the rows it abandons.
+            "tests/test_cap_breach_is_not_a_server_fault.py",
+        ],
+    ),
+    (
         "llm_escalation",
         [
             # Operator policy: free OAuth -> deepseek-flash -> ASK -> further paid.
