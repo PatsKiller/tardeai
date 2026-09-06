@@ -31,6 +31,7 @@ set -uo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TEMPLATE="${REPO_ROOT}/infra/searxng/core-config/settings.yml"
 LIVE_DIR="${SEARXNG_CONFIG_DIR:-${HOME}/trade-ai-v12-rebuild/trade-ai-v12-rebuild/infra/searxng/core-config}"
+
 LIVE="${LIVE_DIR}/settings.yml"
 ENV_FILE="${TRADEAI_ENV:-${HOME}/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.env}"
 DRY=0
@@ -41,6 +42,31 @@ die() { printf '  ERROR: %s\n' "$*" >&2; exit 1; }
 
 [[ -f "$TEMPLATE" ]] || die "template missing: $TEMPLATE"
 [[ -f "$LIVE" ]] || die "live config missing: $LIVE"
+
+# The live config directory moved OUT of the repository on 2026-09-06 (see the
+# comment on the volume in infra/searxng/docker-compose.yml). The default above is
+# kept only so a fresh clone that has not set SEARXNG_CONFIG_DIR still resolves to
+# something; it is NOT authoritative any more.
+#
+# Installing into a directory the container does not mount is the exact failure this
+# script exists to prevent: it validates, reports success, restarts, and changes
+# nothing about what SearXNG actually serves. So ask the container where its config
+# really comes from, and refuse to write anywhere else.
+ACTUAL_MOUNT="$(docker inspect searxng \
+  --format '{{range .Mounts}}{{if eq .Destination "/etc/searxng"}}{{.Source}}{{end}}{{end}}' 2>/dev/null \
+  || sg docker -c 'docker inspect searxng --format "{{range .Mounts}}{{if eq .Destination \"/etc/searxng\"}}{{.Source}}{{end}}{{end}}"' 2>/dev/null)"
+if [[ -n "$ACTUAL_MOUNT" ]]; then
+  if [[ "$(readlink -f "$LIVE_DIR" 2>/dev/null)" != "$(readlink -f "$ACTUAL_MOUNT" 2>/dev/null)" ]]; then
+    printf '  ERROR: LIVE_DIR is not the directory the container serves.\n' >&2
+    printf '         LIVE_DIR      = %s\n' "$LIVE_DIR" >&2
+    printf '         container has = %s\n' "$ACTUAL_MOUNT" >&2
+    printf '         Set SEARXNG_CONFIG_DIR=%s and re-run.\n' "$ACTUAL_MOUNT" >&2
+    exit 1
+  fi
+  say "live dir confirmed against the container mount: $LIVE_DIR"
+else
+  say "WARN could not read the container mount — LIVE_DIR unverified: $LIVE_DIR"
+fi
 
 # ── 1. the key, read but never echoed ───────────────────────────────────────
 KEY="$(grep -m1 '^BRAVE_SEARCH_API_KEY=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- | tr -d '"'"'"' \r')"
