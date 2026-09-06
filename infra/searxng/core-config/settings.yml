@@ -64,7 +64,13 @@ engines:
   - name: google
     engine: google
     shortcut: g
-    disabled: false
+    # Measured 2026-09-05: `engines=google` returns 0 results on every query and
+    # reports NO error, so it never appears in unresponsive_engines. Google
+    # serves scrapers a consent/block page that parses to zero rather than
+    # failing loudly. Same wall as brave/duckduckgo/startpage, but silent — it
+    # looked like a working second engine for as long as nobody checked which
+    # engine the results came from.
+    disabled: true
 
   - name: bing
     engine: bing
@@ -82,8 +88,45 @@ engines:
     shortcut: wp
     disabled: false
 
-  - name: yahoo finance
-    engine: yahoo_finance
-    shortcut: yf
+  # REMOVED 2026-09-05: `engine: yahoo_finance` does not exist in this image.
+  # Every container start logged
+  #   Cannot load engine "yahoo_finance"
+  #   FileNotFoundError: /usr/local/searxng/searx/engines/yahoo_finance.py
+  #   loading engine yahoo finance failed: set engine to inactive!
+  # A declared engine that cannot load is worse than an absent one: it appears
+  # in the config as coverage that does not exist.
+
+  # ── ENGINES ADDED 2026-09-05, each verified by query before being listed ──
+  #
+  # Tested twelve candidates against "federal reserve interest rate" and then
+  # ranked the survivors on "nvidia quarterly earnings", because returning
+  # results is not the bar — bing returns results and answered "federal reserve
+  # policy" with federalpremium.com, an ammunition retailer.
+  #
+  #   REJECTED, no results:   mojeek (silent, like google), crowdview
+  #   REJECTED, hard failure: qwant/access denied, yahoo/HTTP protocol error,
+  #                           presearch/timeout, searchmysite/access denied
+  #   REJECTED, poor index:   mwmbl (top hits were 2017 United Airlines and
+  #                           2019 Sony), wiby (olivebiodiesel.com)
+  #
+  # The three below returned investor.nvidia.com, CNBC, investing.com and
+  # marketbeat — better finance results than the incumbent bing, which returned
+  # the nvidia.com homepage and geforcenow.com.
+  - name: seznam
+    engine: seznam
+    shortcut: sz
     disabled: false
-    categories: news
+
+  - name: yep
+    engine: yep
+    shortcut: yp
+    disabled: false
+
+  # Yandex is Russian-operated. It returned the best finance results of the set
+  # and is listed for that reason, but this is a data-sovereignty call the
+  # operator may want to make differently: set disabled: true to drop it and the
+  # pool still has seznam + yep + bing.
+  - name: yandex
+    engine: yandex
+    shortcut: yd
+    disabled: false
