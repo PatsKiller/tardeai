@@ -121,7 +121,8 @@ def test_resolution_is_pure_and_persistence_is_explicit():
             body = ast.unparse(node)
             if "INSERT INTO" in body or "commit()" in body:
                 writers.append(node.name)
-    assert writers == ["persist"], f"only persist() may write; found {writers}"
+    assert set(writers) <= {"persist", "persist_turn"}, (
+        f"only the persist writers may write; found {writers}")
 
     # And tag_inbound must not reach a database at all.
     tag_src = inspect.getsource(T.tag_inbound)
@@ -223,7 +224,7 @@ def test_each_resolved_entity_gets_its_own_row():
                          "identity_status": "CONFIRMED", "matched_via": "ticker",
                          "matched_text": "NOC"}],
            "topics": ["risk"], "unresolved_mentions": []}
-    assert T.persist(tag, conn=conn, question_text="q") == 2
+    assert T.persist_turn(tag, conn=conn, text="q", role="operator") == 2
     assert conn.committed
 
 
@@ -232,7 +233,8 @@ def test_an_unresolved_question_is_still_recorded():
     what the spine cannot reach; dropping it makes coverage look better than it is."""
     conn = _Conn()
     tag = {"resolved": [], "topics": [], "unresolved_mentions": ["Nonesuch Holdings"]}
-    assert T.persist(tag, conn=conn, question_text="what about Nonesuch Holdings?") == 1
+    assert T.persist_turn(tag, conn=conn, text="what about Nonesuch Holdings?",
+                          role="operator") == 1
     params = conn._c.rows[0]
     assert None in params            # guids are null
     assert ["Nonesuch Holdings"] in params
@@ -241,8 +243,8 @@ def test_an_unresolved_question_is_still_recorded():
 def test_the_operators_words_are_kept_verbatim():
     conn = _Conn()
     q = "Alex what is the analyst target for Visa?"
-    T.persist({"resolved": [], "topics": [], "unresolved_mentions": []},
-              conn=conn, question_text=q)
+    T.persist_turn({"resolved": [], "topics": [], "unresolved_mentions": []},
+                   conn=conn, text=q, role="operator")
     assert q in conn._c.rows[0]
 
 
@@ -253,16 +255,16 @@ def test_the_live_bot_actually_calls_the_tagger():
     module existing is not the same as the bot calling it — that gap is the
     single most repeated defect in this codebase."""
     src = (ROOT / "scripts" / "lib" / "cio_telegram_converse.py").read_text(encoding="utf-8")
-    assert "_best_effort_tag_inbound" in src
+    assert "_best_effort_capture_turn" in src
     fn = src.split("def process_telegram_message", 1)[1].split("\ndef ", 1)[0]
-    assert "_best_effort_tag_inbound" in fn, "the tagger is defined but never called"
+    assert "_best_effort_capture_turn" in fn, "the tagger is defined but never called"
 
 
 def test_tagging_is_allowlist_gated():
     """Storing arbitrary inbound text is not something to do by accident."""
     src = (ROOT / "scripts" / "lib" / "cio_telegram_converse.py").read_text(encoding="utf-8")
     fn = src.split("def process_telegram_message", 1)[1].split("\ndef ", 1)[0]
-    call = fn.split("_best_effort_tag_inbound", 1)[0].rsplit("if ", 1)[-1]
+    call = fn.split("_best_effort_capture_turn", 1)[0].rsplit("if ", 1)[-1]
     assert "allowlist_chat_ids" in call, "inbound tagging must be allowlist-gated"
 
 
@@ -270,7 +272,7 @@ def test_a_tagging_failure_cannot_cost_the_operator_their_answer():
     """The reply is the product; the tag is bookkeeping. A DB outage must not
     turn into silence on the operator's phone."""
     src = (ROOT / "scripts" / "lib" / "cio_telegram_converse.py").read_text(encoding="utf-8")
-    fn = src.split("def _best_effort_tag_inbound", 1)[1].split("\ndef ", 1)[0]
+    fn = src.split("def _best_effort_capture_turn", 1)[1].split("\ndef ", 1)[0]
     assert "except Exception" in fn
     assert "raise" not in fn.replace("raises", "")
 
@@ -279,5 +281,96 @@ def test_the_failure_is_not_silent():
     """Best-effort must not mean invisible — a tagger that has been failing for a
     month with nobody told is the shape this codebase produces most often."""
     src = (ROOT / "scripts" / "lib" / "cio_telegram_converse.py").read_text(encoding="utf-8")
-    fn = src.split("def _best_effort_tag_inbound", 1)[1].split("\ndef ", 1)[0]
+    fn = src.split("def _best_effort_capture_turn", 1)[1].split("\ndef ", 1)[0]
     assert "inbound-tag" in fn and "stderr" in fn
+
+
+# ── the whole exchange, both halves, one thread ────────────────────────────
+
+def test_a_sentence_initial_english_word_is_not_a_company():
+    """The agent's OWN replies poisoned the corpus on the first four-turn test:
+
+        "You are 3.2% below resistance"  -> YOU (Clear Secure)
+        "On the weekly WMT support is"   -> ON  (ON Semiconductor)
+
+    Both are real tickers, so a Walmart question got attached to two unrelated
+    issuers. A lone capitalised English word in sentence position is punctuation,
+    not a company."""
+    for text in ("WMT support 78.40. You are 3.2% below resistance.",
+                 "On the weekly WMT support is 71.90."):
+        r = T.tag_inbound(text, registry=REG)
+        assert all(x["symbol"] != "YOU" for x in r["resolved"])
+        assert all(x["symbol"] != "ON" for x in r["resolved"])
+
+
+def test_a_real_company_still_resolves_at_the_start_of_a_sentence():
+    """The suppression must not cost a genuine mention: "Walmart is down today"
+    is sentence-initial and still a company."""
+    assert T.extract_name_mentions("Walmart is down today, what is support?") == ["Walmart"]
+
+
+def test_a_midsentence_capital_is_still_a_candidate():
+    assert "Visa" in T.extract_name_mentions("what is the target for Visa today")
+
+
+def test_role_is_mandatory_and_constrained():
+    """Without role the corpus is unreadable — an agent cannot tell its own words
+    from the operator's and would learn from its own output."""
+    conn = _Conn()
+    tag = {"resolved": [], "topics": [], "unresolved_mentions": []}
+    with pytest.raises(ValueError):
+        T.persist_turn(tag, conn=conn, text="x", role="bot")
+    assert T.persist_turn(tag, conn=conn, text="x", role="agent") == 1
+    assert T.persist_turn(tag, conn=conn, text="x", role="operator") == 1
+
+
+class _ThreadCur:
+    def __init__(self, parent_thread): self._p = parent_thread; self.rows = []
+    def execute(self, sql, params=None):
+        self.rows.append((sql, params))
+    def fetchone(self): return (self._p,) if self._p else None
+
+
+class _ThreadConn:
+    def __init__(self, parent_thread=None): self._c = _ThreadCur(parent_thread)
+    def cursor(self): return self._c
+    def commit(self): pass
+
+
+def test_a_reply_inherits_its_parents_thread():
+    """A five-message back-and-forth must be one WHERE clause, not a
+    reconstruction."""
+    conn = _ThreadConn(parent_thread="95001")
+    assert T.thread_root(conn, chat_id="c", message_id=95003,
+                         reply_to_message_id=95002) == "95001"
+
+
+def test_a_message_replying_to_nothing_is_its_own_root():
+    conn = _ThreadConn()
+    assert T.thread_root(conn, chat_id="c", message_id=95001,
+                         reply_to_message_id=None) == "95001"
+
+
+def test_an_orphaned_reply_roots_on_its_parent_not_itself():
+    """Parent missing (bot restarted, or it predates capture). Rooting on the
+    parent still groups siblings that answer the same turn — better than a new
+    thread per message."""
+    conn = _ThreadConn(parent_thread=None)
+    assert T.thread_root(conn, chat_id="c", message_id=95009,
+                         reply_to_message_id=95002) == "95002"
+
+
+def test_the_bot_captures_BOTH_halves():
+    """A question without its answer loses what the agent actually said about the
+    issuer — most of the value."""
+    src = (ROOT / "scripts" / "lib" / "cio_telegram_converse.py").read_text(encoding="utf-8")
+    assert 'role="operator"' in src, "the operator turn is not captured"
+    assert 'role="agent"' in src, "the agent turn is not captured"
+
+
+def test_the_agent_turn_is_captured_at_the_single_send_chokepoint():
+    """Wiring it at each call site would miss whichever branch someone adds next."""
+    src = (ROOT / "scripts" / "lib" / "cio_telegram_converse.py").read_text(encoding="utf-8")
+    send = src.split("def _send(", 1)[1].split("\n    return process_operator_message", 1)[0]
+    assert "_best_effort_capture_turn" in send
+    assert 'role="agent"' in send

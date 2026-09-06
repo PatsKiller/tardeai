@@ -1381,12 +1381,18 @@ def send_cio_message(chat_id: str, text: str, *, reply_to: Optional[str] = None)
 # ── Main update processor ───────────────────────────────────────────────────
 
 
-def _best_effort_tag_inbound(text: str, *, chat_id: str,
-                             message_id: Any = None) -> None:
-    """Resolve the question to issuer/subject GUIDs and store it. Never raises.
+def _best_effort_capture_turn(text: str, *, role: str, chat_id: str,
+                              message_id: Any = None,
+                              reply_to_message_id: Any = None) -> None:
+    """Store ONE conversation turn — operator or agent — with identity tags.
+
+    BOTH halves are captured. A question without its answer loses what the agent
+    actually said about the issuer, and a follow-up ("no, I meant the weekly") is
+    meaningless without the turn it replies to.
 
     Deterministic: ticker or company name, the latter resolved through the broker
-    instrument feed that also supplies the CUSIP. No model runs here.
+    instrument feed that also supplies the CUSIP. No model runs here. Never raises
+    — the reply is the product, the tag is bookkeeping.
     """
     conn = None
     try:
@@ -1394,7 +1400,11 @@ def _best_effort_tag_inbound(text: str, *, chat_id: str,
 
         import psycopg2
 
-        from scripts.lib.inbound_identity_tagger import persist, tag_inbound
+        from scripts.lib.inbound_identity_tagger import (
+            persist_turn,
+            tag_inbound,
+            thread_root,
+        )
 
         tag = tag_inbound(text)
         conn = psycopg2.connect(
@@ -1403,8 +1413,12 @@ def _best_effort_tag_inbound(text: str, *, chat_id: str,
             user=os.environ.get("DB_USER", "trade_ai"),
             password=os.environ.get("DB_PASSWORD") or os.environ.get("POSTGRES_PASSWORD"),
         )
-        persist(tag, conn=conn, question_text=text,
-                chat_id=chat_id, message_id=message_id, channel="telegram")
+        root = thread_root(conn, chat_id=chat_id, message_id=message_id,
+                           reply_to_message_id=reply_to_message_id)
+        persist_turn(tag, conn=conn, text=text, role=role,
+                     chat_id=chat_id, message_id=message_id,
+                     thread_id=root, reply_to_message_id=reply_to_message_id,
+                     channel="telegram")
     except Exception as exc:  # noqa: BLE001 — bookkeeping must not break the reply
         # No module logger here; stderr is what the systemd unit captures.
         try:
@@ -1442,7 +1456,20 @@ def process_telegram_message(
     reply_to = msg.get("reply_to_message") or {}
 
     def _send(cid: str, body: str, reply_to: Optional[str] = None) -> dict[str, Any]:
-        return send_cio_message(cid, body, reply_to=reply_to)
+        res = send_cio_message(cid, body, reply_to=reply_to)
+        # The AGENT half. Captured here rather than at the call site because this
+        # is the single point every reply passes through — wiring it upstream
+        # would miss whichever branch someone adds next.
+        try:
+            if body and cid in (allowlist_chat_ids() or set()):
+                _best_effort_capture_turn(
+                    body, role="agent", chat_id=cid,
+                    message_id=(res or {}).get("message_id")
+                    if isinstance(res, dict) else None,
+                    reply_to_message_id=message_id)
+        except Exception:
+            pass
+        return res
 
     # Tag and persist the question against the identity spine. Until 2026-09-06
     # tagging was DISCOVERY-ONLY: research and news carried issuer_guid, the
@@ -1454,7 +1481,9 @@ def process_telegram_message(
     # do by accident, and BEST-EFFORT: a tagging failure must never cost the
     # operator their answer. The reply is the product; the tag is bookkeeping.
     if text and chat_id in (allowlist_chat_ids() or set()):
-        _best_effort_tag_inbound(text, chat_id=chat_id, message_id=message_id)
+        _best_effort_capture_turn(
+            text, role="operator", chat_id=chat_id, message_id=message_id,
+            reply_to_message_id=reply_to.get("message_id"))
 
     return process_operator_message(
         channel="telegram",
