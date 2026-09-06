@@ -751,11 +751,35 @@ Properties that make this safe, each pinned by a test in
 - **The grant is bound to what was requested.** Scope, window and uses are fixed in the record the
   operator saw before replying; they cannot be widened afterwards.
 - **A reply from an unlisted chat burns the code** rather than leaving it live for a second try.
-- **Codes expire in 15 minutes and work once.** Silence is not approval, and an expired request is
-  not approval.
+- **Codes work once, and the answer deadline is 4 hours by default (12h ceiling).** Silence is not
+  approval, and an expired request is not approval. *It was 15 minutes, which is the right number
+  for someone at their desk and the wrong one everywhere else: on 2026-09-06 a request for work the
+  operator had explicitly asked for expired unanswered overnight. The grant window was never the
+  constraint — the answer deadline was. Set it with `--ttl`.*
 - **`sudo`, `destructive`, `file-delete`, `guard-config` and `frozen-v2` can never be requested
-  remotely**, and no remote window may exceed one hour. `guard-config` is on that list specifically
-  so a phone cannot widen what a phone may do.
+  remotely**, and no remote window may exceed **12 hours** or **500 uses**. `guard-config` is on
+  that list specifically so a phone cannot widen what a phone may do — **raising the 12-hour ceiling
+  itself required a keyboard, and that is the property that makes every other limit here real.**
+
+### The 12-hour window — raised 2026-09-06, and what still bounds it
+
+Remote approval was capped at one hour, on the reasoning that it is for finishing a piece of work
+rather than handing over the machine. The operator raised it to **12 hours** so an overnight or
+full-day autonomous run can be authorised from a phone instead of requiring a keyboard they are not
+at. `bin/guard grant ... --for 12h --uses 40` is now requestable remotely.
+
+**This is a real widening and it is recorded as one.** A stolen or misdelivered code buys twelve
+hours instead of one. Four things bound it, and none of them may be relaxed to make a change pass:
+
+| bound | value | why it holds |
+|---|---|---|
+| `REMOTE_FORBIDDEN_SCOPES` | unchanged | `sudo`, `destructive`, `file-delete`, `frozen-v2`, `guard-config` |
+| `MAX_GRANT_SECONDS` | 12h | raised at the keyboard, because `guard-config` is remote-forbidden |
+| `MAX_GRANT_USES` | 500 | **was unbounded** — `int(uses)` with no check. Harmless against one hour, not against twelve |
+| settlement | chat allowlist | a reply from an unlisted chat burns the code; SHA-256 only on disk; single use |
+
+The one that carries the weight is `guard-config`. **A phone cannot widen what a phone may do** — so
+this ceiling could only ever be raised by someone at the machine, which is exactly what happened.
 
 **Two reply paths, one settlement.** The operator may type `/approve <CODE>`, or tap **Approve** on
 the inline keyboard the request carries. The button sends a `callback_query`, which originates at

@@ -140,7 +140,10 @@ def main() -> int:
                     help="grant window if approved (default 30m)")
     ap.add_argument("--uses", type=int, default=10, help="uses if approved (default 10)")
     ap.add_argument("--reason", required=True, help="what the grant is for — the operator reads this")
-    ap.add_argument("--ttl", default="15m", help="how long the operator has to answer (default 15m)")
+    ap.add_argument("--ttl", default="4h",
+                    help="how long the operator has to answer (default 4h; max 12h). "
+                         "15m was the old default and it expired unanswered overnight "
+                         "on work the operator had explicitly asked for.")
     ap.add_argument("--dry-run", action="store_true",
                     help="show what would be asked; mints nothing, sends nothing")
     args = ap.parse_args()

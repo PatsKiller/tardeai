@@ -54,14 +54,49 @@ from typing import Any, Optional
 
 SCHEMA = "GuardRemoteApproval@v1"
 
-#: How long the operator has to answer before a request goes stale. Short on
-#: purpose: a code that stays valid for hours is a standing authorisation.
-DEFAULT_REQUEST_TTL_SECONDS = 900          # 15 minutes
+#: How long the operator has to answer before a request goes stale.
+#:
+#: Was 900s. Fifteen minutes is the right number for someone at their desk and
+#: the wrong one for every other case: on 2026-09-06 a request for work the
+#: operator had explicitly asked for expired unanswered overnight, and the window
+#: length was never the constraint — the ANSWER DEADLINE was. A request nobody
+#: can reach in time is not a control, it is a dropped message.
+#:
+#: The countervailing risk is real: an outstanding code is a bearer secret, and a
+#: longer TTL means a longer theft window. What bounds it is not the clock — it is
+#: that settling requires a reply from a chat on TELEGRAM_CHAT_ID, the code is
+#: stored only as SHA-256, it works exactly once, and REMOTE_FORBIDDEN_SCOPES
+#: still refuses the scopes that matter.
+DEFAULT_REQUEST_TTL_SECONDS = int(
+    os.environ.get("GUARD_REMOTE_REQUEST_TTL_SECONDS", "14400"))   # 4 hours
+
+#: Ceiling on the answer deadline. A request may not outlive the longest window
+#: it could grant.
+MAX_REQUEST_TTL_SECONDS = int(
+    os.environ.get("GUARD_REMOTE_MAX_REQUEST_TTL_SECONDS", "43200"))  # 12 hours
 
 #: A grant window this mechanism will never exceed, whatever is asked for.
-#: Remote approval is for finishing a piece of work, not for handing over the
-#: machine. Anything longer is a decision to make at the keyboard.
-MAX_GRANT_SECONDS = 3600                   # 1 hour
+#:
+#: Raised from 3600 to 43200 on 2026-09-06 at the operator's explicit direction,
+#: so an overnight or full-day autonomous run can be authorised from a phone
+#: instead of requiring a keyboard the operator is not at.
+#:
+#: This is a real widening and it is recorded as one. A stolen or misdelivered
+#: code now buys twelve hours rather than one. The rails that make that
+#: acceptable are unchanged and MUST STAY unchanged:
+#:   · REMOTE_FORBIDDEN_SCOPES still refuses sudo, destructive, file-delete,
+#:     frozen-v2 and — critically — guard-config, so a phone still cannot widen
+#:     what a phone may do. Raising THIS constant required a keyboard.
+#:   · The grant is bound to the scope, window and uses the operator saw.
+#:   · A reply from an unlisted chat burns the code.
+MAX_GRANT_SECONDS = int(
+    os.environ.get("GUARD_REMOTE_MAX_GRANT_SECONDS", "43200"))     # 12 hours
+
+#: Uses a remote grant may carry. Previously UNBOUNDED — `int(uses)` with no
+#: check — which mattered little against a one-hour window and matters a great
+#: deal against twelve. Generous enough for a long autonomous run (500 over 12h
+#: is ~40/hour) while still being a number rather than infinity.
+MAX_GRANT_USES = int(os.environ.get("GUARD_REMOTE_MAX_GRANT_USES", "500"))
 
 #: Scopes that may NEVER be granted remotely, regardless of what is requested.
 #: These either move money, change who can approve, or destroy things. A phone
@@ -146,6 +181,20 @@ def mint_request(scope: str, *, seconds: int, uses: int, reason: str,
     seconds = int(seconds)
     if seconds <= 0:
         raise ValueError("grant window must be positive")
+    uses = int(uses)
+    if uses <= 0:
+        raise ValueError("grant uses must be positive")
+    if uses > MAX_GRANT_USES:
+        raise ValueError(
+            f"requested {uses} uses exceeds the remote maximum {MAX_GRANT_USES} — "
+            "approve an unbounded grant at the keyboard")
+    ttl = int(ttl)
+    if ttl <= 0:
+        raise ValueError("answer deadline must be positive")
+    if ttl > MAX_REQUEST_TTL_SECONDS:
+        raise ValueError(
+            f"answer deadline {ttl}s exceeds the remote maximum "
+            f"{MAX_REQUEST_TTL_SECONDS}s")
     if seconds > MAX_GRANT_SECONDS:
         raise ValueError(
             f"requested window {seconds}s exceeds the remote maximum "
@@ -157,11 +206,11 @@ def mint_request(scope: str, *, seconds: int, uses: int, reason: str,
         "request_id": secrets.token_hex(8),
         "scope": scope,
         "seconds": seconds,
-        "uses": int(uses),
+        "uses": uses,
         "reason": str(reason),
         "code_sha256": code_fingerprint(code),
         "created_at": now,
-        "expires_at": now + int(ttl),
+        "expires_at": now + ttl,
         "status": "PENDING",
     }
     doc = _load()
