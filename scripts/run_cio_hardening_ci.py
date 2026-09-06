@@ -579,6 +579,16 @@ GATES = [
         ],
     ),
     (
+        "identity_custodian",
+        [
+            # Nothing watched the GUID spine at all until 2026-09-06. Pins that
+            # the custodian stays deterministic (no model, no network), that its
+            # freshness grace survives a weekend, and that a commented cron does
+            # not count as scheduled.
+            "tests/test_identity_health.py",
+        ],
+    ),
+    (
         "librarian_dedup_ttl",
         [
             # Three research_backlog rows from 2026-06-02 muted two of four
