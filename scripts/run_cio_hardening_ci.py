@@ -595,6 +595,9 @@ GATES = [
             # resolves, that a company NAME is recorded as a measured gap rather
             # than dropped, and that no model runs in the deterministic path.
             "tests/test_inbound_identity_tagger.py",
+            # Company names come from the broker instrument feed, never a
+            # hand-rolled map. A test fails if a symbol->name pair is hardcoded.
+            "tests/test_company_name_index.py",
         ],
     ),
     (

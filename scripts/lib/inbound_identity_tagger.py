@@ -89,20 +89,30 @@ _NAME_STOPWORDS = frozenset({
     "Friday", "Saturday", "Sunday",
 })
 
-#: A capitalised word mid-sentence is a plausible company NAME. It cannot be
-#: resolved — no company-name index exists in this system — but it must still be
-#: COUNTED, because "Visa" is what an operator actually types and pretending the
-#: question had no subject makes coverage look better than it is.
-_NAME_LIKE = re.compile(r"\b([A-Z][a-z]{2,15})\b")
+#: A capitalised RUN is a plausible company name — "Visa", "Northrop Grumman",
+#: "JPMorgan Chase". Runs are matched longest-first so a two-word company is not
+#: split into two unresolvable single words.
+_NAME_RUN = re.compile(r"\b([A-Z][A-Za-z.&\-]{1,15}(?:\s+[A-Z][A-Za-z.&\-]{1,15}){0,3})\b")
 
 
 def extract_name_mentions(text: str) -> list[str]:
+    """Capitalised runs, longest first, with leading agent/question words peeled.
+
+    "Alex what is the target for Northrop Grumman" must yield "Northrop Grumman",
+    not "Alex" — so a run is trimmed from the left while its head is a stopword.
+    """
     out: list[str] = []
-    for m in _NAME_LIKE.finditer(text or ""):
-        w = m.group(1)
-        if w in _NAME_STOPWORDS or w in out:
+    for m in _NAME_RUN.finditer(text or ""):
+        words = m.group(1).split()
+        while words and words[0] in _NAME_STOPWORDS:
+            words.pop(0)
+        while words and words[-1] in _NAME_STOPWORDS:
+            words.pop()
+        if not words:
             continue
-        out.append(w)
+        phrase = " ".join(words)
+        if phrase not in out:
+            out.append(phrase)
     return out
 
 
@@ -150,20 +160,37 @@ def tag_inbound(text: str, *, registry: Optional[dict[str, Any]] = None,
             "subject_guid": tag["subject_guid"],
             "issuer_guid": tag["issuer_guid"],
             "identity_status": tag["identity_status"],
+            # Uniform shape across both paths. A consumer must never have to ask
+            # which branch produced a row before it can read it.
+            "matched_via": "ticker",
+            "matched_text": cand,
         })
 
-    # Capitalised words that may be company names. Tried against the registry
-    # first — a name that happens to be a registered alias should resolve, not be
-    # filed as a gap — then recorded as unresolved so the shortfall is visible.
+    # Company names, resolved through the BROKER FEED — the same authoritative
+    # record that supplies the CUSIP. Nothing here invents a mapping: if Schwab
+    # does not carry the name, neither do we, and the mention is recorded as a
+    # measured gap rather than guessed at.
+    try:
+        from lib.company_name_index import resolve_name  # noqa: PLC0415
+    except Exception:
+        resolve_name = None                                # type: ignore
+
     for name in extract_name_mentions(text):
-        tag = RI.resolve(doc, name)
+        tag = RI.resolve(doc, name)          # a name that is also a ticker alias
+        via = "ticker_alias"
+        if tag is None and resolve_name is not None:
+            hit = resolve_name(name)
+            if hit:
+                tag = RI.resolve(doc, hit["symbol"])
+                via = "company_name"
         if tag is not None:
             if not any(r["subject_guid"] == tag["subject_guid"] for r in resolved):
                 resolved.append({
                     "symbol": tag["symbol"], "subject_guid": tag["subject_guid"],
                     "issuer_guid": tag["issuer_guid"],
-                    "identity_status": tag["identity_status"]})
-        elif name.upper() not in unresolved:
+                    "identity_status": tag["identity_status"],
+                    "matched_via": via, "matched_text": name})
+        elif name not in unresolved:
             unresolved.append(name)
 
     return {

@@ -63,14 +63,19 @@ def test_a_bare_ticker_resolves_too():
 
 # ── the honest gap ─────────────────────────────────────────────────────────
 
-def test_a_company_name_is_recorded_as_a_gap_not_silently_dropped():
-    """`V` resolves; `VISA` does not — the registry holds ticker aliases only and
-    no company-name index exists anywhere. "Visa" is what an operator types, so
-    pretending the question had no subject would make coverage look better than
-    it is."""
-    r = _tag("Alex what is the analyst target for Visa?")
+def test_an_unresolvable_name_is_recorded_as_a_gap_not_silently_dropped():
+    """Superseded, deliberately: this test used to assert that "Visa" was
+    UNRESOLVABLE, because the registry held ticker aliases only. That premise is
+    now false — company names resolve through the broker instrument feed — and a
+    test whose premise the fix invalidated must be rewritten, not deleted.
+
+    What must still hold is the honest part: a name the FEED does not carry is
+    recorded as a measured gap rather than dropped, because pretending the
+    question had no subject makes coverage look better than it is.
+    """
+    r = _tag("Alex what about Nonesuch Holdings?")
     assert r["resolved"] == []
-    assert "Visa" in r["unresolved_mentions"]
+    assert "Nonesuch Holdings" in r["unresolved_mentions"]
 
 
 def test_the_agent_name_is_not_a_company():
@@ -120,3 +125,57 @@ def test_output_is_advisory_and_carries_provenance():
     assert r["authority"] == "READ_ONLY_ADVISORY"
     assert r["financial_action"] is False
     assert r["schema"] == "InboundIdentityTag@v1"
+
+
+# ── company names, resolved through the BROKER FEED ────────────────────────
+#
+# The operator's constraint: do not invent a ticker-to-name map. The name comes
+# from the same authoritative record as the CUSIP. "Visa" resolving to V is a
+# lookup against Schwab's instrument feed, not a table someone typed.
+
+def _tag_named(text, monkeypatch):
+    import lib.company_name_index as C
+    monkeypatch.setattr(C, "_instruments", lambda: {
+        "V": {"description": "VISA INC A", "identifiers": {"cusip": "92826C839"}},
+        "NOC": {"description": "NORTHROP GRUMMAN COR", "identifiers": {"cusip": "666807102"}},
+    })
+    C.refresh()
+    return T.tag_inbound(text, registry=REG)
+
+
+def test_a_company_name_now_resolves_to_the_same_issuer_as_its_ticker(monkeypatch):
+    """The point of the whole exercise: both spellings land on ONE issuer_guid."""
+    by_name = _tag_named("Alex what is the analyst target for Visa?", monkeypatch)
+    by_ticker = T.tag_inbound("Alex what is the analyst target for $V?", registry=REG)
+    assert by_name["resolved"] and by_ticker["resolved"]
+    assert by_name["resolved"][0]["issuer_guid"] == by_ticker["resolved"][0]["issuer_guid"]
+
+
+def test_the_match_path_is_recorded(monkeypatch):
+    """A consumer must be able to tell a deterministic ticker hit from a
+    name lookup without re-deriving it."""
+    r = _tag_named("What is the target for Visa?", monkeypatch)
+    assert r["resolved"][0]["matched_via"] == "company_name"
+    assert r["resolved"][0]["matched_text"] == "Visa"
+    t = T.tag_inbound("target for $V", registry=REG)
+    assert t["resolved"][0]["matched_via"] == "ticker"
+
+
+def test_a_multiword_company_is_not_split(monkeypatch):
+    r = _tag_named("Alex how is my Northrop Grumman position?", monkeypatch)
+    assert [x["symbol"] for x in r["resolved"]] == ["NOC"]
+    assert "position" in r["topics"]
+
+
+def test_the_agent_name_is_peeled_off_a_run(monkeypatch):
+    """'Alex what is the target for Northrop Grumman' must yield the company,
+    not 'Alex'."""
+    r = _tag_named("Alex what is the target for Northrop Grumman", monkeypatch)
+    assert [x["symbol"] for x in r["resolved"]] == ["NOC"]
+    assert not any("Alex" in m for m in r["unresolved_mentions"])
+
+
+def test_an_unknown_company_is_still_a_measured_gap(monkeypatch):
+    r = _tag_named("Alex what about Nonesuch Holdings?", monkeypatch)
+    assert r["resolved"] == []
+    assert "Nonesuch Holdings" in r["unresolved_mentions"]
