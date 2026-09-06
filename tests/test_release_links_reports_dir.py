@@ -65,13 +65,32 @@ def test_phase2_links_reports_from_canonical_source_not_the_overlay():
 
 
 def test_a_missing_overlay_source_is_reported_not_skipped_silently():
-    """The silent skip is what hid this for a full deploy cycle."""
+    """The silent skip is what hid this for a full deploy cycle.
+
+    This originally required the literal WARN string "will serve it ABSENT".
+    2026-09-05 replaced warning with something stronger: a path on the durable
+    list is DECLARED durable, so a missing canonical source is now CREATED and
+    linked rather than reported and left broken. Warning was better than silence
+    and worse than fixing — reports/ sat warned-about and unlinked for four days.
+
+    So the property is unchanged and the bar is raised: the else-branch must
+    still never be silent, and must now also leave the directory linked. The old
+    literal is no longer the only acceptable way to satisfy it.
+    """
     if not PHASE2.exists():
         pytest.skip("cio_phase2_exact_main_deploy.sh absent")
     text = PHASE2.read_text()
-    assert "will serve it ABSENT" in text, (
-        "a listed dir missing at the overlay source must log a WARN; a false "
-        "[[ -e ]] with no else is indistinguishable from success"
+    body = re.search(r'for rel in "\$\{dirs\[@\]\}"; do(.*?)\n  done', text, re.S)
+    assert body, "could not locate the durable-directory link loop"
+    else_branch = body.group(1).split("else", 1)[1]
+
+    assert "log " in else_branch, (
+        "a listed dir missing at the overlay source leaves no trace; a false "
+        "[[ -e ]] with a silent else is indistinguishable from success"
+    )
+    assert 'ln -sfn "$source" "$target"' in else_branch, (
+        "a missing canonical source is reported but still not linked — the "
+        "directory stays orphaned and the list entry does nothing"
     )
 
 
