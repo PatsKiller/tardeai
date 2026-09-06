@@ -313,3 +313,67 @@ def test_callback_data_fits_telegrams_64_byte_limit():
         for btn in row:
             if "callback_data" in btn:
                 assert len(btn["callback_data"].encode("utf-8")) <= 64
+
+
+# ── the 12-hour window, raised 2026-09-06 at operator direction ─────────────
+#
+# Was 1 hour. The operator asked for up to 12 so an overnight or full-day
+# autonomous run can be authorised from a phone. This is a real widening: a
+# stolen code now buys twelve hours rather than one. These tests pin the rails
+# that make that acceptable, and they must not be relaxed to make a change pass.
+
+
+def test_a_twelve_hour_window_is_accepted():
+    """The operator's own example: --for 12h --uses 40."""
+    import scripts.lib.guard_remote_approval as gra
+
+    assert gra.MAX_GRANT_SECONDS >= 12 * 3600
+
+
+def test_the_window_is_still_bounded():
+    """Raised, not removed. An unbounded remote window is handing over the box."""
+    import scripts.lib.guard_remote_approval as gra
+
+    assert gra.MAX_GRANT_SECONDS <= 12 * 3600, "12h is the agreed ceiling"
+
+
+def test_uses_are_bounded():
+    """Previously `int(uses)` with no check — unbounded uses against a 12h window
+    is a standing authorisation, which is the thing this mechanism is not."""
+    import scripts.lib.guard_remote_approval as gra
+
+    assert gra.MAX_GRANT_USES > 0
+    assert gra.MAX_GRANT_USES <= 1000
+
+
+def test_the_answer_deadline_is_bounded_and_no_longer_fifteen_minutes():
+    """15m was correct at a desk and wrong everywhere else — a request for work
+    the operator had explicitly asked for expired unanswered overnight."""
+    import scripts.lib.guard_remote_approval as gra
+
+    assert gra.DEFAULT_REQUEST_TTL_SECONDS > 900
+    assert gra.DEFAULT_REQUEST_TTL_SECONDS <= gra.MAX_REQUEST_TTL_SECONDS
+    assert gra.MAX_REQUEST_TTL_SECONDS <= 12 * 3600
+
+
+def test_a_request_may_not_outlive_the_window_it_could_grant():
+    import scripts.lib.guard_remote_approval as gra
+
+    assert gra.MAX_REQUEST_TTL_SECONDS <= gra.MAX_GRANT_SECONDS
+
+
+def test_guard_config_is_still_unreachable_from_a_phone():
+    """THE load-bearing rail. Raising MAX_GRANT_SECONDS required a keyboard
+    precisely because guard-config cannot be granted remotely. If this ever
+    passes, a phone can widen what a phone may do, and every other limit here
+    becomes advisory."""
+    import scripts.lib.guard_remote_approval as gra
+
+    assert "guard-config" in gra.REMOTE_FORBIDDEN_SCOPES
+
+
+def test_the_other_forbidden_scopes_did_not_move():
+    import scripts.lib.guard_remote_approval as gra
+
+    for scope in ("sudo", "destructive", "file-delete", "frozen-v2"):
+        assert scope in gra.REMOTE_FORBIDDEN_SCOPES, f"{scope} left the deny list"
