@@ -244,7 +244,26 @@ def main():
         elif lane == LANE_NONE:
             print("US_OVERNIGHT: skipping judgmental LLM (US_OVERNIGHT_LLM=off)")
             return
-    if flash and is_deepseek_offpeak is not None:
+    # The DeepSeek peak guard must key on the EFFECTIVE model, not on the
+    # configured provider. `flash` is computed above from primary_provider()
+    # BEFORE the overnight branch may rewrite args.model to "chatgpt", so during
+    # the overnight window it still reads True while the run costs nothing.
+    #
+    # This timer runs OnCalendar 22:00-05:35 ET. The guard permits 10:00-21:00
+    # ET. Those windows never overlap, so every single invocation logged
+    #
+    #   SKIPPED_DEEPSEEK_PEAK: window=as-needed-only bulk Flash/Pro is
+    #   10:00-21:00 America/New_York; outside that is as-needed only.
+    #
+    # and exited 0. The lane has therefore never run: attempts_24h=0 with
+    # Result=success on every timer fire. A cost control was refusing a free
+    # lane, and the schedule and the guard were mutually exclusive by
+    # construction.
+    #
+    # The guard is UNCHANGED for real DeepSeek runs — that spend ceiling is the
+    # point of it. It simply no longer fires when nothing DeepSeek is invoked.
+    uses_deepseek = str(args.model or "").startswith("deepseek")
+    if flash and uses_deepseek and is_deepseek_offpeak is not None:
         if (
             args.apply
             and not is_deepseek_offpeak()
