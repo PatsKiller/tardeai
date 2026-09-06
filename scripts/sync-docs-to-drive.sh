@@ -388,6 +388,14 @@ find "$SRC/docs" -type f \
 find "$SRC/config/strategies" -name "*.yaml" -type f >> "$CANDIDATES" 2>/dev/null || true
 [ -f "$SRC/.env.example" ] && echo "$SRC/.env.example" >> "$CANDIDATES"
 
+# Root governance docs. The sweep above is scoped to $SRC/docs, so AGENTS.md —
+# the single source of truth for agent behaviour, and the file most edited during
+# an incident — had NEVER been synced to Drive. Everything under docs/ went up
+# hourly while the document that governs all of it did not.
+for _gov in AGENTS.md CLAUDE.md AI_WORK_POLICY.md; do
+  [ -f "$SRC/$_gov" ] && echo "$SRC/$_gov" >> "$CANDIDATES"
+done
+
 TOTAL=$(wc -l < "$CANDIDATES")
 UPLOADED=0
 SKIPPED=0

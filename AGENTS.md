@@ -650,6 +650,73 @@ event_guid(issuer, EARNINGS, 2026Q3)   the earnings event, stable across every m
 
 `issuer_guid` — not `subject_guid` — is the join for "everything about this company". Prefer it.
 
+### Company names and CUSIPs — WHERE THEY COME FROM. Do not build a map.
+
+**Read this before writing anything that turns a name or a ticker into an identity.
+I nearly hand-rolled a ticker-to-name table on 2026-09-06; the operator stopped it, and the
+data was already on disk.**
+
+| you need | source | how |
+|---|---|---|
+| CUSIP | Schwab `/marketdata/v1/instruments?projection=fundamental` | `scripts/sweep_schwab_instruments.py` |
+| company name | **the same record** — its `description` field | `lib/schwab_instrument_evidence.load()` |
+| name → symbol | index over that feed | `lib/company_name_index.resolve_name("Visa")` |
+| symbol → identity | the registry | `lib/research_identity.resolve(doc, "V")` |
+
+Already swept and on disk: **4,997 instruments, 4,997 with a description.**
+
+```json
+"V":   {"description": "VISA INC A",           "identifiers": {"cusip": "92826C839"}}
+"NOC": {"description": "NORTHROP GRUMMAN COR", "identifiers": {"cusip": "666807102"}}
+"NSC": {"description": "NORFOLK SOUTHN CORP",  "identifiers": {"cusip": "655844108"}}
+```
+
+**Alpaca has no `cusip` field.** Schwab `instruments` is the source, and it carries the name in
+the same record — so the name and the identifier never disagree. That is the point: one feed, one
+truth.
+
+**Never hardcode a symbol-to-name pair.** If the broker does not carry a name, neither do we, and
+"unresolved" is the correct answer. `tests/test_company_name_index.py` fails if a mapping is
+hardcoded.
+
+#### The three traps in that feed
+
+1. **It CONTRACTS, it does not merely truncate.** `NORFOLK SOUTHN CORP`, `NORTHROP GRUMMAN COR`.
+   `SOUTHN` is not a prefix of `SOUTHERN` and vice versa, so no token rule matches them and fuzzy
+   matching would be a guess. Resolution narrows by **leading tokens** until exactly one instrument
+   matches: `NORFOLK SOUTHERN` → `NORFOLK` → NSC.
+2. **Ambiguity must return nothing.** `JPMorgan` alone matches seven instruments — the bank plus
+   six ETFs. `Apple` is APPLE INC; `Apple Hospitality` is APLE. A wrong symbol on a financial
+   question is worse than no symbol: it attaches the operator's intent to the wrong issuer and
+   every join downstream inherits the error.
+3. **Similar names are different companies.** `Norfolk` resolves to Norfolk Southern (NSC) and
+   **must not** resolve to Northrop Grumman (NOC). Do not add "helpful" fuzziness across issuers.
+
+Suffix stripping (INC, CORP/COR, CO, LTD, PLC, class letters) happens from the **end only**, so
+`CO` inside `COCA COLA` survives.
+
+**A name the feed does not carry is genuine ambiguity, and that is the one identity job a model
+may do** — `lib/identity_resolution_advisor` proposes `CANDIDATE`, never CONFIRMED. See the
+custodian section.
+
+### Tagging is TWO-WAY — inbound questions carry identity too
+
+Until 2026-09-06 it was discovery-only: `cio_telegram_bot`, `telegram_callback_handler` and
+`run_telegram_callback_poller` all had `identity_registry=0`, and inbound messages were not stored
+at all — only `communication_inbound_checkpoint` with the last `update_id`.
+
+`lib/inbound_identity_tagger.tag_inbound(text)` resolves an operator question by **ticker or
+company name** onto the same `issuer_guid`, records the **topics** asked (analyst_target,
+support_resistance, earnings, valuation, position, risk), and keeps unresolved mentions as a
+measured gap. Persisted to `inbound_operator_questions`, one row per (question, resolved entity),
+and **one row with null guids when nothing resolved** — an unanswerable question is the
+measurement of what the spine cannot reach.
+
+    "analyst target for Visa, support and resistance"  -> V   issuer 8dfc96ee  via=company_name
+    "analyst target for $V and support resistance"     -> V   issuer 8dfc96ee  via=ticker
+
+Both spellings land on one issuer. `matched_via` and `matched_text` are recorded on both paths.
+
 ### The identifier model — what each ID is, and which one to join on
 
 Audited 2026-09-06. `identity_registry` holds **10,279 entities**: 5,014 CONFIRMED (all
@@ -794,6 +861,80 @@ have destroyed the corpus it was meant to enrich.**
 A sentinel says *today's classifier could not do this*. That expires; it is not a fact about the
 row. `NO_MATCH_TTL_DAYS` (default 30) re-admits them and `taxonomy_tagged_at` records when.
 **A sentinel without a TTL destroys a corpus while reporting success.**
+
+### The daily integrity sweep — run it, read it, do not automate its fixes
+
+`scripts/run_integrity_checks.py` (lib/`deterministic_integrity`). Every check exists because
+the defect it detects was real on 2026-09-06 and had been silently true for weeks or months.
+Run cold against `main` it rediscovered, unprompted, every defect a full session had found by
+hand — plus `db_retention.py` unscheduled and a second CIO-shaped outage nobody had seen.
+
+**It reports and never repairs, deliberately.** The obvious fix for one of its findings —
+re-enabling `taxonomy_tagger` — would have foreclosed a 32,060-row corpus. An auto-fixer would
+have taken that action. A test fails if `INSERT`/`UPDATE`/`DELETE`/`rmtree` appears in the engine.
+
+**Exit 0 means the check RAN.** Findings live in the JSON, so a crashed sweep and a sweep that
+found something are never confused.
+
+**Populations aggregate.** The first run emitted 314 individual alarms; 309 scripts that work
+today from the dev tree are a debt, not an outage. Population checks collapse to one finding with
+a count and a sample, one severity lower — and **spot-check before quoting a sweep number**, which
+is how the two false positives below were caught before shipping.
+
+### `output_tables` — a declaration nothing validated
+
+**This is the root cause of "runs fine, produces nothing", and it is worth understanding before
+adding any new pipeline.**
+
+`pipeline_stage_owner_map` declares, for all **31** pipelines, what each one produces:
+
+```python
+"cio_decision_engine": { "output_tables": ["cio_decisions"] }
+```
+
+Exactly **one** place read that field — `api_v2.py`, forwarding it to a display payload. Nothing
+joined *"the run reported success"* to *"the thing it declares it produces actually grew"*. So the
+declaration drifted until it was fiction:
+
+- **~20 pipelines declare an output table that DOES NOT EXIST** — `fred_economic_data`,
+  `sec_filings`, `symbol_metadata`, `technical_indicators`, `agent_job_results`…
+- `symbol_enrichment` declares `symbol_metadata` and actually writes `iris_taxonomy_proposals`,
+  `news_articles` and `trade_ai_scans`.
+- `social_ingest`: 34 successful runs in 7 days, `social_mentions` **never written** — a second
+  instance of the `cio_decision_engine` defect, found by the check rather than by a person.
+
+`check_declared_output_not_produced` now enforces it, and **measures the store, not the
+self-report** — `rows_produced` defaulted to 0 for 16 of 20 callers and is precisely the field
+that cannot be trusted. A test fails if it is read there.
+
+**A declaration nothing validates is not a contract, it is a comment.** If you add a pipeline,
+its `output_tables` must name a table that exists and that it actually writes.
+
+### Two false positives worth copying the fix for
+
+Both were introduced by me and caught before shipping, and both are the shape that makes an alarm
+ignorable:
+
+- **Assuming a column name.** The check assumed `created_at` and reported `trade_ai_scans` — a
+  healthy table using `scanned_at` — as unreadable on its first run. Discover the column.
+- **Collapsing two states.** "Table does not exist" and "table has no timestamp" are different
+  findings with different fixes; reporting both as the latter understated eight P1s as cosmetics.
+
+### The PR collision surface — a workflow cost, not a code defect
+
+Measured over six consecutive merges: **6 of 6 touched the same five files.**
+
+| file | touched by | fixable? |
+|---|---|---|
+| the four SOP digest evidence files | 6/6 | **no — leave it.** The binding is the control |
+| `docs/INDEX.md` | 6/6 | yes — could be generated at CI time rather than committed |
+| `AGENTS.md` | 5/6 | no — real content, resolve by hand |
+| `scripts/run_cio_hardening_ci.py` | 4/6 | yes — the group list could be a directory scan |
+
+So any two concurrent PRs conflict **by construction**, regardless of what they change. Four
+conflict resolutions on 2026-09-06 were all this; none were a real disagreement about code.
+**Expect it, resolve generated files by RECOMPUTING them rather than picking a side** — a
+hand-merged digest is a hash that matches nothing.
 
 ### `rows_produced` — unknown is not zero
 

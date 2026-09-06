@@ -588,6 +588,29 @@ GATES = [
         ],
     ),
     (
+        "inbound_identity_tagging",
+        [
+            # Tagging was one-way: research and news carried GUIDs, the inbound
+            # path carried nothing and stored nothing. Pins that a ticker
+            # resolves, that a company NAME is recorded as a measured gap rather
+            # than dropped, and that no model runs in the deterministic path.
+            "tests/test_inbound_identity_tagger.py",
+            # Company names come from the broker instrument feed, never a
+            # hand-rolled map. A test fails if a symbol->name pair is hardcoded.
+            "tests/test_company_name_index.py",
+        ],
+    ),
+    (
+        "generated_file_merge",
+        [
+            # 6 of 6 consecutive merges conflicted on the same five generated
+            # files. Runs REAL git merges in a temp repo: the conflict exists
+            # without the driver, the driver resolves it, and a genuine code
+            # conflict still stops the merge.
+            "tests/test_generated_file_merge_driver.py",
+        ],
+    ),
+    (
         "identity_custodian",
         [
             # Nothing watched the GUID spine at all until 2026-09-06. Pins that
@@ -595,6 +618,23 @@ GATES = [
             # freshness grace survives a weekend, and that a commented cron does
             # not count as scheduled.
             "tests/test_identity_health.py",
+        ],
+    ),
+    (
+        "deterministic_integrity",
+        [
+            # The daily sweep. Run cold against main it rediscovered every defect
+            # a full session found by hand, plus db_retention unscheduled. Pins
+            # that it never repairs, that a commented cron is not scheduled, and
+            # that populations aggregate instead of emitting 309 alarms.
+            "tests/test_deterministic_integrity.py",
+            # The sweep's own alarm, OBSERVED firing. test_alarm_coverage caught
+            # this missing on 2026-09-06: a new send_telegram site with no firing
+            # test, in the session that documented the rule.
+            "tests/test_integrity_sweep_alarm_fires.py",
+            # The one place a model touches identity: proposes CANDIDATE, never
+            # commits, never mints a GUID, free lanes only.
+            "tests/test_identity_resolution_advisor.py",
         ],
     ),
     (
