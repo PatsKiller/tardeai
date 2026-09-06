@@ -588,6 +588,16 @@ GATES = [
         ],
     ),
     (
+        "mentions_retention",
+        [
+            # I shipped document_mentions with NO retention on the day AGENTS.md
+            # gained "every suppression needs a shelf life". Pins that windows are
+            # READ from db_retention (never copied), that an unwindowed source is
+            # reported rather than guessed, and that no model runs in the pruner.
+            "tests/test_mentions_retention.py",
+        ],
+    ),
+    (
         "document_mentions",
         [
             # Subject vs passing mention. The canonical case: an Apple article

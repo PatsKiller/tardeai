@@ -798,6 +798,49 @@ body found 0 mentions in 300 rows and called them all unmentioned, which is fals
 about that issuer. Such sources use `subject_is_own_symbol`. `filer_name` is **never** scanned: a
 director is a person, and a person's name must not resolve to a company.
 
+### Mentions: scheduling, retention, and who decides relevance
+
+Design: `docs/architecture/MENTIONS_SCHEDULING_AND_RETENTION.md`.
+
+**A mention has no lifetime of its own.** It is a derived fact — *this document mentions this
+issuer, in this role* — so its relevance is entirely the document's:
+
+- source document purged → **its mentions must go.** Referential integrity, not judgment: an
+  orphan points at a `source_id` that no longer exists and will match nothing, or a recycled id.
+- document retained → its mentions are exactly as relevant as it is.
+
+**No model decides retention here, and none should.** Asking one *"is this 90-day-old mention
+still relevant?"* forty thousand times is expensive, non-deterministic, and answers a question a
+foreign key already answers. **The date rule is not an approximation of the judgment — it IS the
+judgment**, because the mention has no life of its own.
+
+Judgment about whether a **document** is worth keeping past its window is real curation, and it
+already lives at the document layer (`usefulness_score`, `learning_candidate`,
+`deep_curation_verdict`, `retirement_relevance`). Curate the document; the mentions follow. A
+second opinion at the mention layer would let a mention outlive the document it describes.
+
+| job | cadence | script |
+|---|---|---|
+| tag new documents | hourly | `backfill_document_mentions.py --all --apply` |
+| retire orphaned + aged mentions | daily | `prune_document_mentions.py --apply` |
+
+**Retention is INHERITED, never invented.** The pruner READS `db_retention.POLICIES` for each
+source, so the two can never disagree; if it cannot read them it **refuses rather than defaulting**
+— a wrong window silently deletes evidence. A source with no declared window is **reported as
+growing unbounded**, not given a guess. `hermes_external_research` (48,456 rows) is currently in
+that state and needs an operator decision.
+
+**Deleting a mention is not the "never delete" rule.** That rule protects authoritative state. A
+mention is a **projection** — re-runnable from its source by the extractor — and once the document
+is gone it is a dangling pointer, not evidence.
+
+Guardrails for anyone extending this:
+- **never give a mention a lifetime longer than its document.** If you want to, change the
+  document's retention.
+- **never add a model to the pruner.**
+- **a new source goes in `SOURCES` and gets a retention window in the same change**, or it grows
+  unbounded.
+
 ### Macro data has NO issuer, and must never be given one
 
 `NO_ISSUER_BY_DESIGN` — FRED series, CPI, unemployment, `topic_monitor`. These belong to no
