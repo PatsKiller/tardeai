@@ -607,6 +607,16 @@ GATES = [
         ],
     ),
     (
+        "llm_cap_admin",
+        [
+            # The spend caps had NO operator surface — not the Command Center,
+            # not api_v2. Pins that a change writes BOTH the registry and the DB,
+            # that ceilings hold even for the operator, and that drift is
+            # reported rather than silently reconciled.
+            "tests/test_llm_cap_admin.py",
+        ],
+    ),
+    (
         "llm_escalation",
         [
             # Operator policy: free OAuth -> deepseek-flash -> ASK -> further paid.

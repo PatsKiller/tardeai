@@ -312,6 +312,39 @@ PY
   else
     log "  WARN config/broker_credentials.env missing — Schwab token encrypt will fail closed"
   fi
+
+  # ── .env at the release root ──────────────────────────────────────────────
+  # 378 scripts resolve credentials as `PROJECT_ROOT / ".env"` — relative to
+  # their own file. The rsync above deliberately excludes .env, so a release had
+  # none, and every one of those scripts raised FileNotFoundError the moment it
+  # ran from CURRENT. Seven instances were found by hand on 2026-09-06 before it
+  # was clear the population was 378.
+  #
+  # Rewriting 378 files is a large, risky diff for a problem the deploy can close
+  # once. This is the SAME shape already used for broker_credentials.env above:
+  # excluded from the rsync, then SYMLINKED to the canonical secret. Never a
+  # copy — the bytes stay in one place with one set of permissions.
+  #
+  # The scripts stay a debt: the integrity sweep keeps reporting them as
+  # `tree_relative_secret`. They simply no longer FAIL, and any script migrated
+  # to env_bootstrap works either way.
+  local env_dest="${dest}/.env"
+  local env_src=""
+  for cand in \
+    "${HOME}/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.env" \
+    "${CANONICAL_SOURCE}/.env"
+  do
+    if [[ -e "$cand" ]]; then
+      env_src="$(readlink -f "$cand")"
+      break
+    fi
+  done
+  if [[ -n "$env_src" ]]; then
+    ln -sfn "$env_src" "$env_dest"
+    log "  symlink .env -> canonical secrets (378 scripts resolve it tree-relative)"
+  else
+    log "  WARN .env not found - tree-relative scripts will fail from this release"
+  fi
 }
 
 write_build_meta() {

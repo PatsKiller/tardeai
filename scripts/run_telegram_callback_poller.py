@@ -221,6 +221,16 @@ def poll_once(timeout=25):
         # Placed BEFORE the Schwab branch deliberately: that branch matches the
         # bare substring "code=" anywhere in the message, which is broad enough
         # to swallow a message that merely mentions a code.
+        # LLM spend caps. There is no admin page for these anywhere — not in the
+        # Command Center, not in api_v2 — so before this the only way to change a
+        # cap was a hand-written UPDATE against production, which on 2026-09-06
+        # promptly left the registry and the database disagreeing.
+        elif lower.startswith("/caps") or lower.startswith("/cap "):
+            try:
+                _handle_llm_caps(msg, text, chat_id)
+                handled = True
+            except Exception as e:
+                log.error(f"llm caps command error: {e}")
         elif lower.startswith("/approve") or lower.startswith("/deny"):
             try:
                 _handle_guard_approval(msg, text, chat_id)
@@ -668,6 +678,87 @@ def _handle_atm_command(msg, text, chat_id):
 
 
 # ── Schwab OAuth callback auto-exchange ──────────────────────────────────────────────
+
+def _handle_llm_caps(msg, text, chat_id):
+    """`/caps` to list, `/cap <process_id> <requests> [dollars]` to set.
+
+    Allowlist-gated by the SAME check every other command here uses. A chat
+    message must not be able to raise a spend limit from an unknown chat, and
+    the module's own MAX_* ceilings bound it even for the operator — a cap is
+    only worth having if it holds when someone is in a hurry, and that is
+    exactly when caps get raised.
+    """
+    import os
+
+    import psycopg2
+
+    from scripts.lib.llm_cap_admin import MAX_DOLLARS, MAX_REQUESTS, list_caps, set_caps
+
+    # The dispatch loop already gates on _allowed_chats(); re-checking here is
+    # deliberate. This is the one command that can raise a spend limit, and a
+    # future refactor of the loop must not silently open it.
+    if str(chat_id) not in {str(c) for c in _allowed_chats()}:
+        log.warning("llm caps command from non-allowlisted chat %s", chat_id)
+        return
+
+    conn = None
+    try:
+        conn = psycopg2.connect(
+            host=os.environ.get("DB_HOST", "localhost"),
+            dbname=os.environ.get("DB_NAME", "trade_ai"),
+            user=os.environ.get("DB_USER", "trade_ai"),
+            password=os.environ.get("DB_PASSWORD") or os.environ.get("POSTGRES_PASSWORD"))
+    except Exception as exc:
+        _send(chat_id, f"caps: database unavailable ({type(exc).__name__})")
+        return
+
+    try:
+        parts = text.split()
+        if parts[0].lower() == "/caps":
+            rows = list_caps(conn)
+            lines = ["*LLM spend caps*  (requests / dollars per day)", ""]
+            for r in rows:
+                if r["db_requests"] is None:
+                    continue
+                flag = "  ⚠️ REGISTRY DISAGREES" if r["drift"] else ""
+                lines.append(f"`{r['process_id']}`  {r['db_requests']} / ${r['db_dollars']}{flag}")
+            lines += ["", "Set with: `/cap <process_id> <requests> [dollars]`",
+                      f"Ceilings: {MAX_REQUESTS} requests, ${MAX_DOLLARS}",
+                      "",
+                      "The GLOBAL cap (LLM_GLOBAL_DAILY_USD_CAP) is not settable here —",
+                      "it lives in the bridge's environment and needs a restart."]
+            _send(chat_id, "\n".join(lines)[:3800])
+            return
+
+        if len(parts) < 3:
+            _send(chat_id, "Usage: `/cap <process_id> <requests> [dollars]`")
+            return
+        pid = parts[1]
+        try:
+            reqs = int(parts[2])
+            dollars = float(parts[3]) if len(parts) > 3 else None
+        except ValueError:
+            _send(chat_id, "requests must be a whole number, dollars a decimal")
+            return
+
+        res = set_caps(pid, requests=reqs, dollars=dollars, conn=conn,
+                       actor=f"telegram:{chat_id}")
+        if not res.get("ok"):
+            _send(chat_id, f"caps NOT changed: {res.get('error')}")
+            return
+        b, a = res["before"], res["after"]
+        _send(chat_id,
+              f"*{pid}* updated\n"
+              f"was: {b['requests']} / ${b['dollars']}\n"
+              f"now: {a['requests']} / ${a['dollars']}\n\n"
+              f"Registry and database both written. Revert with:\n"
+              f"`/cap {pid} {b['requests']} {b['dollars']}`")
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
 
 def _handle_guard_approval(msg, text, chat_id):
     """Operator answers a guard approval request from their phone.
