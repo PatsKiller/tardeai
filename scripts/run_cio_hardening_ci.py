@@ -588,6 +588,25 @@ GATES = [
         ],
     ),
     (
+        "document_mentions",
+        [
+            # Subject vs passing mention. The canonical case: an Apple article
+            # that cites Morgan Stanley must never be filed under MS. Also pins
+            # that macro sources (FRED) can never be given an issuer.
+            "tests/test_document_mentions.py",
+        ],
+    ),
+    (
+        "llm_escalation",
+        [
+            # Operator policy: free OAuth -> deepseek-flash -> ASK -> further paid.
+            # Step 3 is a hard STOP. Pins that a gated lane is never entered
+            # without an explicit re-run, and that a failed notification does not
+            # become permission to spend.
+            "tests/test_llm_escalation.py",
+        ],
+    ),
+    (
         "inbound_identity_tagging",
         [
             # Tagging was one-way: research and news carried GUIDs, the inbound
