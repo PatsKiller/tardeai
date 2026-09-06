@@ -236,6 +236,106 @@ def check_empty_join_inputs(conn, pairs: Iterable[tuple[str, str]]) -> list[dict
     return out
 
 
+# ── C4b: a pipeline that succeeded without touching what it declares ────────
+
+#: Timestamp columns in preference order. Assuming `created_at` made the very
+#: first run report a healthy table (trade_ai_scans, which uses `scanned_at`) as
+#: unreadable — a false positive is how an alarm becomes ignorable, so the column
+#: is discovered rather than assumed.
+_TS_COLUMNS = ("created_at", "inserted_at", "scanned_at", "fetched_at",
+               "collected_at", "recorded_at", "updated_at", "run_date", "ts")
+
+
+def _columns(cur, table: str) -> set[str]:
+    try:
+        cur.execute("""SELECT column_name FROM information_schema.columns
+                        WHERE table_name = %s AND table_schema = 'public'""", (table,))
+        return {r[0] for r in cur.fetchall()}
+    except Exception:
+        return set()
+
+
+def _timestamp_column(cur, table: str) -> Optional[str]:
+    """None means no usable timestamp. An EMPTY column set means the table does
+    not exist, which is a different and more serious finding — collapsing the two
+    reported eight nonexistent tables as merely 'untimestamped'."""
+    have = _columns(cur, table)
+    for c in _TS_COLUMNS:
+        if c in have:
+            return c
+    return None
+
+def check_declared_output_not_produced(conn, owner_map: dict[str, Any],
+                                       *, days: int = 7) -> list[dict[str, Any]]:
+    """THE defect class this whole engine exists for.
+
+    All 31 pipelines in pipeline_stage_owner_map declare `output_tables`. Exactly
+    one place reads that field, and it only forwards it to a display payload.
+    Nothing has ever joined "the run reported success" to "the thing it declares
+    it produces actually grew".
+
+    That gap is why cio_decision_engine ran 3,010 times a week for 30 days,
+    reported success every time, and wrote nothing to cio_decisions.
+
+    This does NOT trust the pipeline's self-reported rows_produced — that field
+    defaulted to 0 for 16 of 20 callers and is exactly what cannot be relied on.
+    It measures the STORE.
+    """
+    out: list[dict[str, Any]] = []
+    cur = conn.cursor()
+    for key, meta in (owner_map or {}).items():
+        tables = (meta or {}).get("output_tables") or []
+        if not tables:
+            continue
+        try:
+            cur.execute("""
+                SELECT count(*), max(started_at) FROM pipeline_runs
+                 WHERE pipeline_key = %s AND status = 'success'
+                   AND started_at > now() - make_interval(days => %s)
+            """, (key, days))
+            runs, last_run = cur.fetchone()
+        except Exception:
+            continue
+        if not runs or last_run is None:
+            continue                     # never ran: a different finding
+        for t in tables:
+            cols = _columns(cur, t)
+            if not cols:
+                out.append(_finding(
+                    "declared_output_missing", P1, f"{key} -> {t}",
+                    f"{runs} successful runs in {days}d declaring output table {t}, "
+                    "which DOES NOT EXIST",
+                    "the declaration is stale or the pipeline was never built — "
+                    "a pipeline cannot produce into a table that is not there"))
+                continue
+            col = _timestamp_column(cur, t)
+            if col is None:
+                out.append(_finding(
+                    "declared_output_untimestamped", P2, f"{key} -> {t}",
+                    "declared output table has no usable timestamp column, so "
+                    "'did it grow' cannot be answered for it",
+                    "add a created_at, or name the real column in the owner map"))
+                continue
+            try:
+                cur.execute(f"SELECT max({col}) FROM {t}")
+                newest = cur.fetchone()[0]
+            except Exception:
+                out.append(_finding(
+                    "declared_output_unreadable", P2, f"{key} -> {t}",
+                    "declares this output table; it cannot be read",
+                    "fix the declaration or the table"))
+                continue
+            if newest is None or newest < last_run:
+                age = "never written" if newest is None else f"newest row {newest:%Y-%m-%d}"
+                out.append(_finding(
+                    "declared_output_not_produced", P0, f"{key} -> {t}",
+                    f"{runs} successful runs in {days}d, but {t} has not grown since "
+                    f"({age}; last run {last_run:%Y-%m-%d %H:%M})",
+                    "the pipeline reports success without producing; check its input, "
+                    "not its exit code — a consumer of an empty producer looks identical"))
+    return out
+
+
 # ── C5: stores that stopped ─────────────────────────────────────────────────
 
 def check_stale_stores(conn, max_age_days: int = 14,
@@ -318,6 +418,7 @@ def _aggregate(findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
 def run_all(*, conn=None, producers: Iterable[str] = (),
             watch_crons: Iterable[str] = (),
             join_pairs: Iterable[tuple[str, str]] = (),
+            owner_map: Optional[dict[str, Any]] = None,
             now: Optional[datetime] = None) -> dict[str, Any]:
     now = now or datetime.now(timezone.utc)
     findings: list[dict[str, Any]] = []
@@ -329,6 +430,8 @@ def run_all(*, conn=None, producers: Iterable[str] = (),
     if conn is not None:
         findings += check_empty_join_inputs(conn, join_pairs)
         findings += check_stale_stores(conn)
+        if owner_map:
+            findings += check_declared_output_not_produced(conn, owner_map)
     findings = _aggregate(findings)
     by_sev = {s: sum(1 for f in findings if f["severity"] == s) for s in (P0, P1, P2)}
     return {

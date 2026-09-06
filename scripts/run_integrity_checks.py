@@ -46,6 +46,21 @@ JOIN_PAIRS = (
 )
 
 
+def _owner_map():
+    """Every pipeline declares `output_tables`; until now exactly one place read
+    that field, and only to forward it to a display payload. This is what makes
+    the declaration load-bearing instead of decorative."""
+    try:
+        import pipeline_stage_owner_map as M
+        for v in vars(M).values():
+            if isinstance(v, dict) and any(
+                    isinstance(x, dict) and "output_tables" in x for x in v.values()):
+                return v
+    except Exception as exc:
+        print(f"[integrity] owner map unavailable ({type(exc).__name__})", file=sys.stderr)
+    return {}
+
+
 def _conn():
     try:
         import psycopg2
@@ -73,7 +88,8 @@ def main() -> int:
     conn = _conn()
     try:
         report = run_all(conn=conn, producers=PRODUCERS,
-                         watch_crons=WATCH_CRONS, join_pairs=JOIN_PAIRS)
+                         watch_crons=WATCH_CRONS, join_pairs=JOIN_PAIRS,
+                         owner_map=_owner_map())
     finally:
         if conn is not None:
             try:
