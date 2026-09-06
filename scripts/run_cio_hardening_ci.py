@@ -625,6 +625,15 @@ GATES = [
         ],
     ),
     (
+        # The Communications ledger must not report a delivery that did not
+        # happen. Two adjacent rows both read LEGACY_DELIVERED: one arrived,
+        # one was router-suppressed and never did.
+        "comms_ledger_truth",
+        [
+            "tests/test_comms_ledger_says_what_happened.py",
+        ],
+    ),
+    (
         # Durable data directories must survive a promote. data/audit held a
         # 39KB receipt written the same day and was a real dir inside the
         # release, so every deploy discarded it and the lane read SILENT.
