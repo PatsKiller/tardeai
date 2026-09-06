@@ -244,3 +244,40 @@ def test_the_operators_words_are_kept_verbatim():
     T.persist({"resolved": [], "topics": [], "unresolved_mentions": []},
               conn=conn, question_text=q)
     assert q in conn._c.rows[0]
+
+
+# ── the wiring: built-but-not-called is the failure mode of this whole system ─
+
+def test_the_live_bot_actually_calls_the_tagger():
+    """Until 2026-09-06 all three inbound paths had identity_registry=0. The
+    module existing is not the same as the bot calling it — that gap is the
+    single most repeated defect in this codebase."""
+    src = (ROOT / "scripts" / "lib" / "cio_telegram_converse.py").read_text(encoding="utf-8")
+    assert "_best_effort_tag_inbound" in src
+    fn = src.split("def process_telegram_message", 1)[1].split("\ndef ", 1)[0]
+    assert "_best_effort_tag_inbound" in fn, "the tagger is defined but never called"
+
+
+def test_tagging_is_allowlist_gated():
+    """Storing arbitrary inbound text is not something to do by accident."""
+    src = (ROOT / "scripts" / "lib" / "cio_telegram_converse.py").read_text(encoding="utf-8")
+    fn = src.split("def process_telegram_message", 1)[1].split("\ndef ", 1)[0]
+    call = fn.split("_best_effort_tag_inbound", 1)[0].rsplit("if ", 1)[-1]
+    assert "allowlist_chat_ids" in call, "inbound tagging must be allowlist-gated"
+
+
+def test_a_tagging_failure_cannot_cost_the_operator_their_answer():
+    """The reply is the product; the tag is bookkeeping. A DB outage must not
+    turn into silence on the operator's phone."""
+    src = (ROOT / "scripts" / "lib" / "cio_telegram_converse.py").read_text(encoding="utf-8")
+    fn = src.split("def _best_effort_tag_inbound", 1)[1].split("\ndef ", 1)[0]
+    assert "except Exception" in fn
+    assert "raise" not in fn.replace("raises", "")
+
+
+def test_the_failure_is_not_silent():
+    """Best-effort must not mean invisible — a tagger that has been failing for a
+    month with nobody told is the shape this codebase produces most often."""
+    src = (ROOT / "scripts" / "lib" / "cio_telegram_converse.py").read_text(encoding="utf-8")
+    fn = src.split("def _best_effort_tag_inbound", 1)[1].split("\ndef ", 1)[0]
+    assert "inbound-tag" in fn and "stderr" in fn
