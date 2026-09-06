@@ -632,6 +632,20 @@ GATES = [
         ],
     ),
     (
+        "runtime_state_survives_checkout",
+        [
+            # Two files were classified as runtime state and still owned by git.
+            # SearXNG's live config was bind-mounted rw into the repo, so the
+            # container chowned it 977:977 and `git checkout` could not unlink it —
+            # one file blocked 70 others and left 18 merged commits not running on
+            # the tree that actually executes. hermes_score_weights was declared
+            # "runtime_state_with_release_seed" in the release manifest, but nothing
+            # enforced it, so the same checkout reverted v11 to the v9 seed and
+            # discarded nine grafts of learning.
+            "tests/test_runtime_state_survives_checkout.py",
+        ],
+    ),
+    (
         "llm_escalation",
         [
             # Operator policy: free OAuth -> deepseek-flash -> ASK -> further paid.
