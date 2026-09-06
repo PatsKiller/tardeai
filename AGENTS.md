@@ -697,6 +697,28 @@ Tag with `lib/research_identity.resolve()`; do not hand-roll a lookup.
 | `lib/catalyst_graph.py` | binds events to entities (452 nodes / 1,110 edges live) | — |
 | `taxonomy_tagger.py` | the 3-axis taxonomy (content / sector / lifecycle) | see the sentinel rule below |
 
+### Who keeps identity fresh — and why no model may
+
+**A deterministic custodian, `lib/identity_health.py`, lane `identity-spine`.** It alarms on
+`registry_stale` (80h grace, so a weekday-only minter does not page on a Sunday),
+`coverage_regressed` (CONFIRMED falling — the rank is one-way, so a fall means a feed stopped
+publishing identifiers), `producer_unscheduled`, and `registry_unreadable`. Coverage is reported
+even when nothing fires, so a slow decline is visible before it becomes an alarm.
+
+**No model runs in that lane, and none may.** `uuid5` is a pure function of (namespace, name):
+the same input yields the same GUID forever. That determinism *is* the value of the spine, and a
+model in the path destroys auditability while adding nothing — every identity failure found on
+2026-09-06 was a count, a clock or a scheduler lookup, and an LLM would have caught none of them.
+
+**The one legitimate model role is proposal, never commitment.** 5,243 of 10,279 entities are
+`UNRESOLVED_WITH_REASON` (no CUSIP), and `catalyst_graph` skips 35,928 rows as
+`symbol_not_registered`. Deciding whether a symbol in a filing is the same issuer as one in the
+registry — across name variants, share classes and corporate actions — is genuine ambiguity, and
+that is what a model is for. Its output is written **`CANDIDATE` only**; deterministic evidence
+(a CUSIP from Schwab `instruments`) is the sole thing that promotes to `CONFIRMED`. The one-way
+rank means a model can never downgrade a confirmed entity or invent a spine. Run it on a **free
+OAuth lane** — this is batch reconciliation, not latency-sensitive, and there is no reason to pay.
+
 ### Rules that must hold
 
 - **Identity status travels with the tag.** A CUSIP-confirmed tag and a bare-ticker-alias tag are
