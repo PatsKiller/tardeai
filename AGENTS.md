@@ -583,6 +583,80 @@ Three severities:
 A mechanical sweep flags 212 candidates, 125 never read in a conditional. **Do not quote that
 number.** Spot-checking four, three were legitimate. The sweep is a candidate generator, not a count.
 
+## The identity and tagging spine — CRITICAL PATH, keep it on
+
+**This is the substrate the agents' persistent memory is built on. If you find any part of it
+disabled, commented out, or unscheduled, that is an incident — not a cleanup opportunity.**
+
+It went dark once already, exactly that way: `taxonomy_tagger`'s cron was commented out on
+2026-07-02 after a lock timeout, the code was fixed the same day, and only the code half came
+back. Sector tagging sat at 5% for two months and nothing reported a problem, because a job that
+does not run does not fail. Nothing in this file told anyone it mattered. That is what this
+section is for.
+
+### What it is for
+
+An agent deciding anything about a security must be able to see everything the system knows about
+it — the earnings, the analyst notes, the news, the sector-wide catalysts — and to know that they
+all refer to the *same* company. That requires a durable identifier on every artifact. `symbol` is
+not one: **a ticker is an alias, not an identity.** Tickers are reassigned after delisting, so two
+companies can collide on one symbol years apart, and a share-class change silently splits one
+issuer's history in two.
+
+Worked example, `V`:
+
+```
+issuer_guid   8dfc96ee-…   Visa the ISSUER — survives ticker change, re-listing, share-class split
+security_guid d1871bc6-…   this specific security   (identity_basis: cusip, status: CONFIRMED)
+listing_guid  fc9e4477-…   this listing
+gics_sector   Financial    sector fan-out: a catalyst on one financial reaches agents reasoning
+                           about another
+event_guid(issuer, EARNINGS, 2026Q3)   the earnings event, stable across every mention of it
+                           SCHEDULED → OCCURRED → POST_EVENT → SUPERSEDED
+```
+
+`issuer_guid` — not `subject_guid` — is the join for "everything about this company". Prefer it.
+
+### The modules — none of these is new, all of them are load-bearing
+
+| module | role | do not |
+|---|---|---|
+| `lib/identity_registry.py` | `IdentityRegistry@v1`, the minted entity store (10,279 entities) | re-mint, rewrite or delete a GUID; supersession is one-way by rank CONFIRMED>CANDIDATE>UNRESOLVED |
+| `lib/security_identity.py` | ROOT GUID AUTHORITY — issuer→security→listing→ticker_alias, UUIDv5 | recompute a ticker-alias GUID locally; delegate to `memory_fact.subject_from_security` or the registry and the substrate drift onto two GUIDs for one ticker |
+| `lib/event_identity.py` | `SecurityEvent@v1` — the event lifecycle above | invent a parallel event id; earnings is not a timeless catalyst |
+| `lib/research_identity.py` | the adapter: symbol → identity tag for research rows | write a tag with a null `subject_guid` — indistinguishable downstream from untagged, and it inflates apparent coverage |
+| `lib/catalyst_graph.py` | binds events to entities (452 nodes / 1,110 edges live) | — |
+| `taxonomy_tagger.py` | the 3-axis taxonomy (content / sector / lifecycle) | see the sentinel rule below |
+
+### Rules that must hold
+
+- **Identity status travels with the tag.** A CUSIP-confirmed tag and a bare-ticker-alias tag are
+  not equal evidence. Carry `identity_status` so an agent can weigh it, and **never downgrade** an
+  existing tag — a feed that stops publishing CUSIPs must not be able to degrade the corpus.
+- **GICS and the thesis vocabulary are different axes and get different columns.** `category_sector`
+  holds `ai_chips`, `ai_datacenter`, `defense` — a thesis vocabulary that does not map onto GICS
+  (`ai_chips` has no GICS equivalent; GICS `Technology` has no thesis slug). GICS lives in
+  `gics_sector`. Merging them collides two vocabularies in one field.
+- **Every "unclassifiable" marker needs a shelf life.** A sentinel says *today's classifier could
+  not do it*, which expires; it is not a fact about the row. `taxonomy_tagger` selects
+  `WHERE category_content IS NULL`, so a `no_match` written there was permanent — measured
+  2026-09-06, a bounded 20-row run produced 17 sentinels, 1 usable tag and 0 sectors, and running
+  it hourly would have foreclosed ~85% of a 32,060-row backlog in ~64 hours, including against any
+  better classifier later. `NO_MATCH_TTL_DAYS` (default 30) re-admits them.
+  **Adding a sentinel without a TTL is how you destroy a corpus while reporting success.**
+- **Schema changes here are additive.** Add columns; never drop, rename or repurpose one. Downstream
+  agents are told to trust these tags.
+- **`ADD COLUMN IF NOT EXISTS` still takes ACCESS EXCLUSIVE.** Run DDL once, off-peak, never from a
+  recurring job — nine recorded `LockNotAvailable` failures against live readers say so.
+
+### Before changing anything here
+
+Run `ls scripts/lib/ | grep -E 'identity|memory|catalyst'` first. Every one of these already
+existed and was dark before it was wired; the constraint on this system has never been build
+capacity, it is that built capacity goes unused. `tests/test_identity_memory_module_wiring.py` is
+the structural guard — every identity/memory module must have a production consumer or be declared
+`KNOWN_DARK`. **That list may shrink and must never grow.**
+
 ## Data and identity
 
 - **Never mint a placeholder identity.** `None` for unresolvable. Never a ticker as a GUID.
