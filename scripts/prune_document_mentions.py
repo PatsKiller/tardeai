@@ -39,6 +39,31 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
 
+#: Anything the OPERATOR asked about is kept far longer, and is NEVER deleted
+#: without asking. Operator direction 2026-09-06, and the reasoning is sound: a
+#: document the operator personally raised is evidence of what they were
+#: thinking, and is not interchangeable with the other 113,000 news rows. 90 days
+#: is right for bulk content and wrong for the handful of issuers someone asked
+#: about.
+OPERATOR_RETENTION_DAYS = int(os.environ.get("MENTION_OPERATOR_RETENTION_DAYS", "365"))
+
+
+def operator_issuers(conn) -> set[str]:
+    """Issuers the OPERATOR asked about, from the conversation store.
+
+    role='operator' only. If the AGENT mentioning an issuer counted, every issuer
+    the bot ever named would be protected and the rule would mean nothing.
+    """
+    try:
+        cur = conn.cursor()
+        cur.execute("""SELECT DISTINCT issuer_guid::text
+                         FROM operator_conversation_turns
+                        WHERE role = 'operator' AND issuer_guid IS NOT NULL""")
+        return {r[0] for r in cur.fetchall() if r[0]}
+    except Exception:
+        return set()
+
+
 def retention_windows() -> dict[str, tuple[str, int]]:
     """(timestamp column, days) per source, READ from db_retention.
 
@@ -73,8 +98,11 @@ def plan(conn) -> dict:
     from lib.document_mentions import SOURCES
 
     cur = conn.cursor()
-    out = {"orphans": {}, "aged": {}, "unwindowed": []}
+    out = {"orphans": {}, "aged": {}, "unwindowed": [],
+           "operator_protected": 0, "operator_needs_review": []}
     windows = retention_windows()
+    protected = operator_issuers(conn)
+    out["operator_issuers"] = len(protected)
 
     for table, spec in SOURCES.items():
         idcol = spec["id"]
@@ -90,12 +118,37 @@ def plan(conn) -> dict:
             out["unwindowed"].append(table)
             continue
         tscol, days = windows[table]
+        plist = list(protected) or [""]
+        # Ordinary aging EXCLUDES operator-touched issuers.
         cur.execute(f"""SELECT count(*) FROM document_mentions m
                           JOIN {table} s ON s.{idcol} = m.source_id
                          WHERE m.source_table = %s
-                           AND s.{tscol} < now() - make_interval(days => %s)""",
-                    (table, days))
+                           AND s.{tscol} < now() - make_interval(days => %s)
+                           AND (m.issuer_guid IS NULL
+                                OR NOT (m.issuer_guid::text = ANY(%s)))""",
+                    (table, days, plist))
         out["aged"][table] = cur.fetchone()[0]
+
+        if protected:
+            cur.execute(f"""SELECT count(*) FROM document_mentions m
+                              JOIN {table} s ON s.{idcol} = m.source_id
+                             WHERE m.source_table = %s
+                               AND s.{tscol} < now() - make_interval(days => %s)
+                               AND m.issuer_guid::text = ANY(%s)""",
+                        (table, days, list(protected)))
+            out["operator_protected"] += cur.fetchone()[0]
+
+            # Past even the operator window: ASK. Never auto-delete.
+            cur.execute(f"""SELECT m.symbol, count(*) FROM document_mentions m
+                              JOIN {table} s ON s.{idcol} = m.source_id
+                             WHERE m.source_table = %s
+                               AND s.{tscol} < now() - make_interval(days => %s)
+                               AND m.issuer_guid::text = ANY(%s)
+                             GROUP BY m.symbol ORDER BY 2 DESC LIMIT 20""",
+                        (table, OPERATOR_RETENTION_DAYS, list(protected)))
+            for sym, n in cur.fetchall():
+                out["operator_needs_review"].append(
+                    {"source_table": table, "symbol": sym, "rows": n})
     return out
 
 
@@ -109,6 +162,7 @@ def prune(conn, *, apply: bool) -> dict:
 
     cur = conn.cursor()
     windows = retention_windows()
+    protected = operator_issuers(conn)
     for table, spec in SOURCES.items():
         idcol = spec["id"]
         cur.execute(f"""DELETE FROM document_mentions m
@@ -119,12 +173,17 @@ def prune(conn, *, apply: bool) -> dict:
         if table not in windows:
             continue
         tscol, days = windows[table]
+        # NEVER delete an operator-touched issuer here. Past the operator window
+        # it is REPORTED for review, still not deleted — "ask before deleting"
+        # means the pruner has NO PATH to removing it.
         cur.execute(f"""DELETE FROM document_mentions m
                          USING {table} s
                          WHERE s.{idcol} = m.source_id
                            AND m.source_table = %s
-                           AND s.{tscol} < now() - make_interval(days => %s)""",
-                    (table, days))
+                           AND s.{tscol} < now() - make_interval(days => %s)
+                           AND (m.issuer_guid IS NULL
+                                OR NOT (m.issuer_guid::text = ANY(%s)))""",
+                    (table, days, list(protected) or [""]))
         p["deleted"] += max(cur.rowcount or 0, 0)
     conn.commit()
     return p
@@ -149,6 +208,11 @@ def main() -> int:
         print(f"[{'APPLY' if a.apply else 'DRY RUN — nothing deleted'}]")
         for t in sorted(set(res["orphans"]) | set(res["aged"])):
             print(f"  {t}: orphans={res['orphans'].get(t, 0)} aged={res['aged'].get(t, 0)}")
+        print(f"  operator issuers protected: {res.get('operator_issuers', 0)} "
+              f"({res.get('operator_protected', 0)} rows held past the normal window)")
+        for r in res.get("operator_needs_review", []):
+            print(f"  ASK OPERATOR: {r['symbol']} in {r['source_table']} — {r['rows']} rows "
+                  f"past {OPERATOR_RETENTION_DAYS}d, NOT deleted")
         if res["unwindowed"]:
             print(f"  NO RETENTION WINDOW (grows unbounded): {', '.join(res['unwindowed'])}")
         if a.apply:

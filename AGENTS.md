@@ -824,6 +824,17 @@ second opinion at the mention layer would let a mention outlive the document it 
 | tag new documents | hourly | `backfill_document_mentions.py --all --apply` |
 | retire orphaned + aged mentions | daily | `prune_document_mentions.py --apply` |
 
+**Anything the OPERATOR asked about is protected.** Issuers appearing in
+`operator_conversation_turns WHERE role='operator'` are held for
+`MENTION_OPERATOR_RETENTION_DAYS` (365) instead of the source's ordinary window, and past even
+that they are **reported for review, never deleted** — "ask before deleting" means the pruner has
+**no code path** that can remove them, not that it asks and proceeds.
+
+Only **operator** turns confer protection. If an agent mentioning an issuer counted, every issuer
+the bot ever named would be protected and the rule would mean nothing. Measured live 2026-09-06:
+3 operator issuers (WMT, NSC, V) protected; 1 agent-only issuer correctly not. The held count is
+printed on every run, because a protection nobody can see is indistinguishable from none.
+
 **Retention is INHERITED, never invented.** The pruner READS `db_retention.POLICIES` for each
 source, so the two can never disagree; if it cannot read them it **refuses rather than defaulting**
 — a wrong window silently deletes evidence. A source with no declared window is **reported as

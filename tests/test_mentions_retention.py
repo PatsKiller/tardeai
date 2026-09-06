@@ -149,3 +149,63 @@ def test_deleting_a_projection_is_documented_as_distinct_from_the_never_delete_r
     next reader will think this violates the rule."""
     assert "never delete" in SRC.lower() or "NEVER DELETE" in SRC
     assert "projection" in SRC.lower()
+
+
+# ── operator-touched issuers: longer window, and ASK before deleting ───────
+#
+# Operator direction 2026-09-06. A document the operator personally raised is
+# evidence of what they were thinking; it is not interchangeable with the other
+# 113,000 news rows. 90 days is right for bulk content and wrong for the handful
+# of issuers someone actually asked about.
+
+def test_the_operator_window_is_much_longer_than_content():
+    mod = _pruner()
+    assert mod.OPERATOR_RETENTION_DAYS >= 365
+
+
+def test_only_OPERATOR_turns_confer_protection():
+    """If the AGENT mentioning an issuer counted, every issuer the bot ever named
+    would be protected and the rule would mean nothing. Measured live: 3 operator
+    issuers vs 1 agent-only, and the agent-only one is NOT protected."""
+    fn = SRC.split("def operator_issuers", 1)[1].split("\ndef ", 1)[0]
+    assert "role = 'operator'" in fn or 'role = "operator"' in fn
+    assert "'agent'" not in fn
+
+
+def test_the_ordinary_window_excludes_protected_issuers():
+    """Live proof: aged went 2925 -> 2922 when protection was added — exactly the
+    three rows for WMT, NSC and V."""
+    for block in ("def plan", "def prune"):
+        fn = SRC.split(block, 1)[1].split("\ndef ", 1)[0]
+        assert "NOT (m.issuer_guid::text = ANY(" in fn, (
+            f"{block} does not exclude operator-touched issuers from aging")
+
+
+def test_there_is_NO_code_path_that_deletes_a_protected_issuer():
+    """'Ask before deleting' means the pruner cannot remove them at all — not
+    that it asks and then proceeds. If a DELETE ever loses its exclusion, an
+    operator's own history is silently purged."""
+    fn = SRC.split("def prune", 1)[1].split("\ndef ", 1)[0]
+    deletes = [seg for seg in fn.split("DELETE FROM")[1:]]
+    assert deletes, "no DELETE found — did the pruner change shape?"
+    # the aged delete must carry the exclusion; the orphan delete need not,
+    # because an orphan's document is already gone.
+    aged = [d for d in deletes if "make_interval" in d]
+    assert aged, "no aged DELETE found"
+    for d in aged:
+        assert "NOT (m.issuer_guid::text = ANY(" in d, (
+            "an aged DELETE can remove an operator-touched issuer")
+
+
+def test_rows_past_the_operator_window_are_REPORTED_not_removed():
+    fn = SRC.split("def plan", 1)[1].split("\ndef ", 1)[0]
+    assert "operator_needs_review" in fn
+    assert "OPERATOR_RETENTION_DAYS" in fn
+    assert "ASK OPERATOR" in SRC
+
+
+def test_the_held_count_is_visible_not_silent():
+    """A protection nobody can see is indistinguishable from no protection — and
+    a sudden drop to 0 protected issuers is how this would fail quietly."""
+    assert "operator issuers protected" in SRC
+    assert "held past the normal window" in SRC
