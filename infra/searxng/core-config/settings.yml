@@ -112,6 +112,37 @@ engines:
   # The three below returned investor.nvidia.com, CNBC, investing.com and
   # marketbeat — better finance results than the incumbent bing, which returned
   # the nvidia.com homepage and geforcenow.com.
+  # ── Brave, through the PAID API rather than the blocked scraper ──
+  #
+  # The `brave` engine above is a scraper of search.brave.com and is rate-limited
+  # to nothing. `braveapi` is a different engine shipping with SearXNG that calls
+  # api.search.brave.com — the product this project already pays for, measured
+  # 2026-09-05 at 50 req/sec with an unmetered monthly window.
+  #
+  # DISABLED HERE ON PURPOSE. It is mandatory-keyed, SearXNG performs no
+  # environment substitution in settings.yml (checked: the loader only reads
+  # SEARXNG_SETTINGS_PATH), and THIS REPOSITORY IS PUBLIC. A literal key here
+  # would be a published credential.
+  #
+  # To enable, on the host only — never committed:
+  #   1. sudo chmod 644 <this file>       (it is owned by the container user)
+  #   2. set api_key to the value of BRAVE_SEARCH_API_KEY from the project .env
+  #   3. set disabled: false
+  #   4. sg docker -c 'docker restart searxng'
+  #
+  # The live file already diverges from this one — SearXNG injects `secret_key`
+  # at startup — so it is instance config carrying secrets, and this file is the
+  # template. That split is inherent, not drift.
+  #
+  # Budget note: this bypasses scripts/brave_search.py, so calls made here are
+  # NOT counted by lib/search_budget. Enable it deliberately.
+  - name: braveapi
+    engine: braveapi
+    shortcut: bapi
+    api_key: ""
+    results_per_page: 20
+    disabled: true
+
   - name: seznam
     engine: seznam
     shortcut: sz

@@ -112,3 +112,50 @@ def test_yandex_is_flagged_rather_than_quietly_included():
     operator call, and the config must say so rather than slipping it in."""
     text = SETTINGS.read_text(encoding="utf-8")
     assert "sovereignty" in text.lower() or "russian" in text.lower()
+
+
+# ── the paid Brave API, and the secret that must not be committed ───────────
+
+def test_braveapi_is_present_and_distinct_from_the_scraper(by_name: dict):
+    """`brave` scrapes search.brave.com and is rate-limited to nothing.
+    `braveapi` calls api.search.brave.com — the product this project pays for,
+    measured at 50 req/sec with an unmetered monthly window."""
+    assert "braveapi" in by_name
+    assert by_name["braveapi"]["engine"] == "braveapi"
+    assert by_name["brave"]["engine"] == "brave"
+
+
+def test_no_api_key_is_committed(cfg: dict):
+    """THIS REPOSITORY IS PUBLIC. A literal key here is a published credential.
+
+    SearXNG performs no environment substitution in settings.yml — the loader
+    only reads SEARXNG_SETTINGS_PATH — so the key cannot be indirected here and
+    must be injected on the host.
+    """
+    for e in cfg["engines"]:
+        key = e.get("api_key")
+        if key is None:
+            continue
+        assert key == "", (
+            f"{e['name']} carries a literal api_key in a public repository")
+
+
+def test_braveapi_ships_disabled_so_a_keyless_engine_never_runs(by_name: dict):
+    """A keyed engine enabled without its key fails on every query — another
+    silent contributor of zero results, which is the defect this file exists to
+    stop repeating."""
+    assert by_name["braveapi"].get("disabled") is True
+
+
+def test_the_host_side_enable_procedure_is_written_down():
+    text = SETTINGS.read_text(encoding="utf-8")
+    for marker in ("BRAVE_SEARCH_API_KEY", "PUBLIC", "docker restart searxng"):
+        assert marker in text, f"enabling instructions omit {marker!r}"
+
+
+def test_the_budget_bypass_is_disclosed():
+    """braveapi calls the provider directly, so lib/search_budget does not count
+    them. Enabling it silently would reopen the unbudgeted-caller problem that
+    search_budget was built to close."""
+    text = SETTINGS.read_text(encoding="utf-8")
+    assert "search_budget" in text and "NOT counted" in text
