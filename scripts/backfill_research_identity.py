@@ -174,7 +174,7 @@ def main() -> int:
         s = run(t, a.limit, a.apply)
         if s.get("error"):
             print(f"  {s['table']}: {s['error']} — missing columns: {', '.join(s['missing'])}")
-            print(f"     apply sql/research_identity_tags.sql first (needs a db-write grant)")
+            print("     apply sql/research_identity_tags.sql first (needs a db-write grant)")
             continue
         print(f"  {s['table']}: considered={s['considered']} "
               f"guid={s['guid']} sector={s['sector']} unresolved={s['unresolved']} "
