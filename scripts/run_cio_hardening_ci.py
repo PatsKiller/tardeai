@@ -625,6 +625,15 @@ GATES = [
         ],
     ),
     (
+        # Every SearXNG engine in the pool was verified by query before being
+        # listed. The pool had six declared engines and one that worked; google
+        # failed SILENTLY (0 results, no error) and read as healthy.
+        "searxng_engine_pool",
+        [
+            "tests/test_searxng_engine_pool.py",
+        ],
+    ),
+    (
         # Two always-on health findings that were never about the system: an
         # expected-release pin nothing ever wrote, and a validator whose only
         # caller passed an argument it did not accept.
