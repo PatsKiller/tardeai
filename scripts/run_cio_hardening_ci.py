@@ -705,6 +705,20 @@ GATES = [
         ],
     ),
     (
+        "price_spike_quarantine",
+        [
+            # A previous one-sided detector ate real history. Six of seven jumps over
+            # 50% are reverse splits in micro-caps (NXTT 0.0616 -> 6.42, then 5.88-7.95
+            # all week) and a reverting spike is an ordinary micro-cap pump with
+            # exactly the SHAPE of corruption. Only a second source disagreeing ON THE
+            # SAME DATE convicts. Pins that corroboration is keyed on (symbol, date) —
+            # keyed on symbol alone this reported CONTRADICTED=82 and would have
+            # deleted 82 rows on a July-vs-September comparison; keyed correctly it is
+            # 0 — and that a row is archived before it is deleted.
+            "tests/test_quarantine_price_spikes.py",
+        ],
+    ),
+    (
         "llm_escalation",
         [
             # Operator policy: free OAuth -> deepseek-flash -> ASK -> further paid.
