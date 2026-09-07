@@ -431,3 +431,69 @@ def test_a_missing_optional_source_is_reported_not_silent(mod):
     narrower universe looks identical to a quiet market."""
     src = SCRIPT.read_text(encoding="utf-8")
     assert "not applied" in src and "WARN optional source" in src
+
+
+# ── not every catalyst is a reason to look ──────────────────────────────────
+#
+# The first version fired on ANY catalyst filed against a tracked name. Measured over
+# 30 days, catalyst_type is 87% `other` — 27,567 of 31,600 rows — an unclassified
+# bucket. Treating those as equal to an earnings miss is how a trigger becomes noise,
+# and a noisy trigger is one the operator learns to ignore: the same failure as a
+# muted alarm, reached from the opposite direction. Materiality cut it 7 fires -> 2.
+
+def test_unclassified_catalysts_never_fire(mod):
+    """`other` is 87% of the table and is deliberately absent from the map. Admitting
+    it at a low weight would still let 27,567 rows through."""
+    assert "other" not in mod.CATALYST_MATERIALITY
+    assert "news_momentum" not in mod.CATALYST_MATERIALITY
+
+
+def test_a_miss_outranks_a_buyback(mod):
+    """Weight is materiality — how much a reasonable analyst would want to
+    re-examine a position on hearing it."""
+    m = mod.CATALYST_MATERIALITY
+    assert m["earnings_miss"] > m["earnings_beat"], (
+        "bad news warrants more re-examination than good news of the same size")
+    assert m["earnings_miss"] > m["buyback"]
+    assert m["offering_dilution"] > m["analyst_upgrade"]
+    assert m["merger_acquisition"] >= m["analyst_downgrade"]
+
+
+def test_only_material_types_are_queried(mod):
+    """Filtered in SQL, not after — 27,567 rows should never leave the database."""
+    src = SCRIPT.read_text(encoding="utf-8")
+    fn = src.split("def new_catalysts(", 1)[1].split("\ndef ", 1)[0]
+    assert "catalyst_type = ANY(%s)" in fn
+    assert "CATALYST_MIN_MATERIALITY" in fn
+
+
+def test_repetition_matters_but_not_linearly(mod):
+    """Five downgrades are worse than one, but not five times worse — otherwise a
+    single noisy name dominates the whole queue."""
+    src = SCRIPT.read_text(encoding="utf-8")
+    assert "min(int(n), 3)" in src
+
+
+def test_one_change_per_symbol_not_one_per_catalyst_type(mod):
+    """A name with an earnings miss AND a downgrade is one thing to look at, not two
+    alerts."""
+    src = SCRIPT.read_text(encoding="utf-8")
+    fn = src.split("def new_catalysts(", 1)[1].split("\ndef ", 1)[0]
+    assert "by_symbol" in fn and "score > cur_best" in fn
+
+
+def test_what_was_below_materiality_is_counted(mod):
+    src = SCRIPT.read_text(encoding="utf-8")
+    assert '"below_materiality"' in src and '"types_seen"' in src
+
+
+# ── the optional-source time column must be NAMED, never guessed ────────────
+
+def test_the_operator_tier_reads_the_right_time_column(mod):
+    """The highest precedence tier silently never applied: the query said created_at
+    and inbound_operator_questions calls it received_at. The SAVEPOINT caught the
+    error and warned, so nothing broke — it just quietly did nothing, which is the
+    worst way for a control to fail."""
+    src = SCRIPT.read_text(encoding="utf-8")
+    assert '("inbound_operator_questions", "operator", "received_at")' in src
+    assert "created_at > now() - interval '30 days'" not in src
