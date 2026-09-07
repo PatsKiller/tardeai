@@ -57,6 +57,33 @@ def _rate(question, recommendation, dissent, outcome):
     return usefulness, str(data.get("rationale", ""))[:240], pack
 
 
+#: A governance refusal is not a provider fault, and retrying it cannot help.
+#: The bridge reports these as non-retryable; match on both the machine code and
+#: the HTTP status, because a client that only sees urllib's HTTPError string
+#: never gets to read the response body carrying the code.
+TERMINAL_MARKERS = (
+    "COST_CAP_EXCEEDED",
+    "COST_CONFIGURATION_INVALID",
+    "POLICY_NOT_ALLOWED",
+    "PROCESS_NOT_REGISTERED",
+    "HTTP Error 429",
+    "HTTP Error 403",
+)
+
+#: Stop after this many consecutive provider failures. Defence in depth: on
+#: 2026-09-06 the bridge reported a hard request-cap breach as HTTP 500, which
+#: reads as transient, and this loop consumed all 46,106 remaining rows marking
+#: them FAILED_PROVIDER in a few minutes. A queue that fails this many times in
+#: a row is not going to recover within the same run.
+MAX_CONSECUTIVE_FAILURES = 10
+
+
+def _is_terminal(message: str) -> bool:
+    """True when retrying is pointless because governance refused the request."""
+    upper = message.upper()
+    return any(m.upper() in upper for m in TERMINAL_MARKERS)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--apply", action="store_true")
@@ -73,13 +100,27 @@ def main():
     rows = cur.fetchall()
     print(f"Hermes External Feedback Loop — eligible={len(rows)} apply={args.apply} model={args.model}")
     scored = 0
+    consecutive_failures = 0
+    aborted = None
     for rid, lane, symbol, question, rec, dissent, created in rows:
         outcome = _outcome(cur, symbol, created)
         try:
             u, rationale, pack = _rate(question, rec, dissent, outcome)
         except Exception as exc:
-            print(f"  id={rid} FAILED_PROVIDER {type(exc).__name__}: {str(exc)[:100]}")
+            message = str(exc)
+            print(f"  id={rid} FAILED_PROVIDER {type(exc).__name__}: {message[:100]}")
+            # Stop, rather than spending the rest of the queue on a refusal that
+            # will not change. The rows are left unscored and stay eligible.
+            if _is_terminal(message):
+                aborted = f"governance refused the request: {message[:120]}"
+                break
+            consecutive_failures += 1
+            if consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
+                aborted = (f"{consecutive_failures} consecutive provider failures; "
+                           f"last: {message[:120]}")
+                break
             continue
+        consecutive_failures = 0
         fb = {"usefulness_feedback": {"scored_by": f"{pack['provider']}:{pack['model']}", "scored_at": datetime.now().isoformat(),
               "outcome": outcome, "rationale": rationale}}
         print(f"  id={rid} lane={lane} sym={symbol or '-'} usefulness={u:.2f} outcome={outcome} :: {rationale[:80]}")
@@ -97,6 +138,10 @@ def main():
     cur.execute("""SELECT lane, count(*), round(avg(usefulness_score)::numeric,3)
                    FROM hermes_external_research WHERE usefulness_score IS NOT NULL GROUP BY lane ORDER BY 3 DESC""")
     agg = [{"lane": r[0], "scored": int(r[1]), "avg_usefulness": float(r[2])} for r in cur.fetchall()]
+    if aborted:
+        print(f"ABORT: {aborted}")
+        print(f"  stopped after {scored} scored; {len(rows) - scored} eligible rows left unscored "
+              f"(still eligible — they were never written)")
     c.close()
     print("RESULT:", json.dumps({"scored_now": scored, "per_lane_usefulness": agg}))
 

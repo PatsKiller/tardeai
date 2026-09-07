@@ -112,6 +112,53 @@ def handle_callback_query(cb):
     action = parts[0]
     now_short = datetime.now().strftime("%H:%M ET")
 
+    # ── Guard scope approval (gapprove:<request_id> / gdeny:<request_id>) ──
+    # The tap IS the authority. Telegram delivers this callback with the
+    # sender's own user id from a chat already checked against the allowlist
+    # above, and callbacks originate at Telegram's servers — holding the bot
+    # token does not let anything fabricate one. So no code is carried or
+    # needed. See scripts/lib/guard_remote_approval.settle_by_request_id.
+    if action in ("gapprove", "gdeny"):
+        import subprocess
+        from pathlib import Path as _Path
+        try:
+            from scripts.lib import guard_remote_approval as _gra
+        except ImportError:
+            from lib import guard_remote_approval as _gra  # type: ignore
+
+        rid = parts[1] if len(parts) > 1 else ""
+        out = _gra.settle_by_request_id(
+            rid, approve=(action == "gapprove"), chat_id=chat_id,
+            allowed_chats=_allowed_chat_ids(),
+            telegram={"message_id": message_id, "from_id": user_id,
+                      "from_username": user.get("username"), "text": data},
+        )
+        if not out.get("ok"):
+            answer_callback(cb_id, f"Not settled: {out.get('reason')}", show_alert=True)
+            return
+        r = out["request"]
+        if action == "gdeny":
+            answer_callback(cb_id, f"Denied {r['scope']}. Nothing granted.")
+            return
+
+        guard_bin = _Path(__file__).resolve().parent.parent / "bin" / "guard"
+        if not guard_bin.is_file():
+            answer_callback(cb_id, "Approved, but bin/guard not found", show_alert=True)
+            return
+        reason = f"{r['reason']} [remote_request_id={r['request_id']} chat={chat_id} via=button]"
+        proc = subprocess.run(
+            [str(guard_bin), "grant", r["scope"], "--for", str(int(r["seconds"])),
+             "--uses", str(int(r["uses"])), "--reason", reason, "--yes"],
+            capture_output=True, text=True, timeout=30)
+        if proc.returncode != 0:
+            detail = (proc.stderr or proc.stdout or "").strip()[:150]
+            answer_callback(cb_id, f"Approved, grant failed: {detail}", show_alert=True)
+            return
+        answer_callback(cb_id,
+                        f"Granted {r['scope']} for {int(r['seconds']) // 60} min "
+                        f"({r['uses']} uses) — {now_short}")
+        return
+
     # ── Broker-order 2FA buttons (bkapprove:<intent_uuid>:<code>, bkreject:<intent_uuid>) ──
     if action in ("bkapprove", "bkreject"):
         try:

@@ -258,14 +258,50 @@ def get_checkpoint_offset() -> int:
             conn.commit()
             if row:
                 return int(row[0])
-            return 0
+            # No checkpoint row yet. Returning 0 here is the MAXIMALLY UNSAFE
+            # default on this path: the poller then requests offset = 0 + 1,
+            # Telegram replays its whole retained backlog, and claim_update
+            # denies none of it because `u <= 0` is false for every update.
+            # Among that backlog are approve/reject callbacks.
+            #
+            # Measured 2026-09-05: the DB checkpoint held 0 rows while the
+            # legacy poller's own file recorded 113864091. The cutover created
+            # the tables and never seeded them, so replay-denial has been
+            # inoperative since — not failing, just never able to say no.
+            #
+            # For replay denial a HIGHER offset is the safe direction: it denies
+            # more. So an uninitialised checkpoint takes the highest value any
+            # source knows about rather than assuming nothing has happened.
+            return _seed_offset()
         except Exception:
             try:
                 conn.rollback()
             except Exception:
                 pass
     with _lock:
-        return int(_read_checkpoint_file().get("committed_update_id") or 0)
+        return max(int(_read_checkpoint_file().get("committed_update_id") or 0),
+                   _legacy_offset())
+
+
+def _legacy_offset() -> int:
+    """The pre-gateway poller's durable offset, or 0 when it cannot be read.
+
+    This is a READ of a file the legacy path still owns. Nothing here writes it:
+    the two offsets converge because commit_checkpoint advances the DB one, not
+    because this module edits the old file.
+    """
+    try:
+        raw = (_state_dir() / ".telegram_callback_offset").read_text(encoding="utf-8")
+        return int(raw.strip() or 0)
+    except Exception:
+        return 0
+
+
+def _seed_offset() -> int:
+    """Highest offset any source knows, for an uninitialised checkpoint."""
+    with _lock:
+        file_cp = int(_read_checkpoint_file().get("committed_update_id") or 0)
+    return max(0, file_cp, _legacy_offset())
 
 
 def claim_update(update_id: int) -> ClaimResult:

@@ -103,37 +103,52 @@ def _age_hours(cur, table, ts_col="created_at", agg="max"):
 # run, so an empty table is expected rather than a finding.
 MIN_WEEKDAY_HOURS_IN_WINDOW = 6
 
+#: The hours of a weekday during which a weekday-only writer actually produces.
+#: Market-data and daily-batch writers run in the morning and finish by the
+#: close; nothing lands at 22:00. Counting 22:00 as "an opportunity to produce"
+#: is what makes a Saturday-evening window look like a working weekday.
+PRODUCTIVE_HOUR_START = 6
+PRODUCTIVE_HOUR_END = 17          # exclusive
+
 
 def _window_covers_a_weekday(hours: float) -> bool:
-    """Does the lookback window contain any hour the writer was scheduled to run?
+    """Did the writer have a real opportunity to produce inside this window?
 
-    G1, 2026-08-31. The gate was `weekend = datetime.now().weekday() >= 5` -- it
-    asked whether TODAY is Saturday, not whether the WINDOW contains weekday
-    hours. At Monday 00:00 today is Monday, so the check ran against a 30-hour
-    window that was entirely weekend, and paged "fused_signals 0 rows in 30h"
-    against a writer scheduled weekdays only. Four consecutive Sat/Sun pairs read
-    exactly 0 against 12k-20k every weekday.
+    G1, 2026-08-31 fixed the first version of this, which asked whether TODAY is
+    Saturday rather than whether the WINDOW contains weekday hours. At Monday
+    00:00 that paged "fused_signals 0 rows in 30h" against a weekday-only writer.
 
-    A correct implementation already exists in system_health_agent
-    (_weekday_only_schedule + _is_trading_day_cached), which walks the schedule
-    across the window rather than sampling one day.
+    G2, 2026-09-05 fixes what that left. The replacement counted CALENDAR weekday
+    hours, which is not the same as hours the writer could have run:
 
-    AGENTS.md §7, detector shape: the detector keyed on the calendar day and
-    structurally could not see its own window.
+        Saturday 18:00, ticker_prices, max_age_h=26
+          window  = Friday 16:00 -> Saturday 18:00
+          weekday hours in window = 8   (Friday 16:00-23:59)
+          8 >= 6, so the check ran and paged P1
+
+    Every one of those 8 hours is AFTER the market close, and price_db_sync runs
+    at 07:20. The writer had no opportunity in that window at all. The last row
+    was Friday 15:55 — exactly right for a Saturday evening — and the monitor
+    called it a silent failure. It fires every weekend by construction.
+
+    So the count is now restricted to weekday hours inside the daily window when
+    such a writer actually produces. This is still an approximation of a
+    schedule, and it is deliberately a conservative one: it can delay a genuine
+    Monday-morning finding by a few hours, which is the right direction for a
+    detector whose false positives train the operator to ignore it.
+
+    AGENTS.md §7, detector shape: the detector could not see the difference
+    between "a weekday passed" and "the writer could have run".
     """
     now = datetime.now()
     step = timedelta(hours=1)
     t = now - timedelta(hours=max(1.0, float(hours)))
-    weekday_hours = 0
+    productive = 0
     while t <= now:
-        if t.weekday() < 5:
-            weekday_hours += 1
+        if t.weekday() < 5 and PRODUCTIVE_HOUR_START <= t.hour < PRODUCTIVE_HOUR_END:
+            productive += 1
         t += step
-    # A single boundary hour is not an opportunity to produce. At Monday 00:00 a
-    # 30h window contains one hour of Monday and 29 of weekend -- which is
-    # exactly the false page this fixes. Require enough weekday time that a
-    # weekday-scheduled writer could plausibly have run.
-    return weekday_hours >= MIN_WEEKDAY_HOURS_IN_WINDOW
+    return productive >= MIN_WEEKDAY_HOURS_IN_WINDOW
 
 
 def detect(cur):

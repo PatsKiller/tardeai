@@ -4,6 +4,8 @@
 #   guard show                          list active grants
 #   guard scopes                        list every scope and what it covers
 #   guard grant <tier> [opts]           approve a whole scope (displays it first)
+#   guard request <tier> [opts]         ask the operator by TELEGRAM (agent-callable;
+#                                       grants nothing — they reply /approve <CODE>)
 #   guard plan <file.md> [opts]         approve a plan: display it, grant its scopes
 #   guard revoke <tier> | --all         cancel
 #   guard log [n]                       what ran under auto-accept
@@ -38,7 +40,26 @@ _ledger_require_valid() {
 ALL_TIERS="db-write cron git-push maintree service deps sudo state-write release-write openclaw telegram llm destructive config-write frozen-v2 guard-config file-delete"
 BOLD=$'\e[1m'; RED=$'\e[31m'; YEL=$'\e[33m'; GRN=$'\e[32m'; OFF=$'\e[0m'
 
-parse_dur() { case "$1" in *m) echo $(( ${1%m} * 60 ));; *h) echo $(( ${1%h} * 3600 ));; *) echo "$1";; esac; }
+# Accepts 30m / 2h / 45s / a bare number of seconds. An unparseable duration
+# EXITS rather than echoing itself through: "1800s" used to fall to the default
+# branch and be returned verbatim, so cmd_grant printed the whole "APPROVING A
+# WHOLE SCOPE" banner and only then died on `value too great for base` at the
+# expiry arithmetic. A duration that cannot be read must stop before anything is
+# shown — never display an approval and then fail computing its window.
+parse_dur() {
+  local v
+  case "$1" in
+    *m) v=$(( ${1%m} * 60 ));;
+    *h) v=$(( ${1%h} * 3600 ));;
+    *s) v="${1%s}";;
+    *)  v="$1";;
+  esac
+  if [[ ! "$v" =~ ^[0-9]+$ ]]; then
+    echo "unparseable duration: '$1' (use 30m, 2h, 45s, or a number of seconds)" >&2
+    exit 1
+  fi
+  echo "$v"
+}
 
 cmd_scopes() {
   echo "${BOLD}Scopes that can be granted${OFF}"
@@ -188,6 +209,15 @@ case "${1:-show}" in
   show)   cmd_show ;;
   scopes) cmd_scopes ;;
   grant)  shift; cmd_grant "$@" ;;
+  # Ask the operator by Telegram instead of at this terminal. Mints a PENDING
+  # request and notifies; grants nothing. The reply is handled by the live
+  # callback poller — see scripts/lib/guard_remote_approval.py.
+  request) shift
+    _py="$(command -v python3 || true)"
+    for _c in "$HOME/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python" ; do
+      [[ -x "$_c" ]] && _py="$_c" && break
+    done
+    exec "$_py" "$ROOT/scripts/guard_request_approval.py" "$@" ;;
   plan)   shift; cmd_plan  "$@" ;;
   revoke) shift; cmd_revoke "$@" ;;
   log)    shift; cmd_log   "$@" ;;

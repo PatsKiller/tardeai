@@ -2,7 +2,7 @@
   "schema": "LaneRegistry@v1",
   "authority": "READ_ONLY_ADVISORY",
   "seeded_at": "2026-08-30",
-  "note": "Declared lanes below. `undeclared_baseline` is inherited debt, captured so the CI gate is green on day one and can only shrink \u2014 the precedent that made the dark-contract gate adoptable. A NEW scheduled job not in either list fails CI. Wave2-2026-09-01 batch1: shrink wake-dispatch duplicate; retire cron-freshness-watcher; promote due-checkpoints,cio-delivery,cio-defer-revisit,autonomy-watchdog,hermes-momentum-catalyst-morning. as_of=2026-08-31T16:58:07+00:00. Wave2-2026-09-01 batch2: promote portfolio-backup-cadence,portfolio-daily-cadence,portfolio-weekly-cadence,portfolio-monthly-cadence,portfolio-lookthrough-cadence,governance-pipeline,cio-nightly-reflection,cio-memory-shadow-measure,cio-desk-memo-regen,sm-render,tax-lots-rebuild,provider-cost-reconcile,free-first-circulation,holdings-agent-enqueue,hermes-update-check,portfolio-price-cache,agent-runtime-health; retire at-observation-01,at-observation-01-closeout. as_of=2026-08-31T17:06:54+00:00. Wave2 batch3: promote advisory-shadow-seed,cio-material-scan. as_of=2026-08-31T17:08:11+00:00. Wave-2026-09-01 portfolio-repricer: declare portfolio-repricer ACTIVE (*/15 market hours \u2192 holdings.json); remove 3 portfolio_repricer cron lines from undeclared_baseline. as_of=2026-09-01T20:41:10+00:00.",
+  "note": "Declared lanes below. `undeclared_baseline` is inherited debt, captured so the CI gate is green on day one and can only shrink — the precedent that made the dark-contract gate adoptable. A NEW scheduled job not in either list fails CI. Wave2-2026-09-01 batch1: shrink wake-dispatch duplicate; retire cron-freshness-watcher; promote due-checkpoints,cio-delivery,cio-defer-revisit,autonomy-watchdog,hermes-momentum-catalyst-morning. as_of=2026-08-31T16:58:07+00:00. Wave2-2026-09-01 batch2: promote portfolio-backup-cadence,portfolio-daily-cadence,portfolio-weekly-cadence,portfolio-monthly-cadence,portfolio-lookthrough-cadence,governance-pipeline,cio-nightly-reflection,cio-memory-shadow-measure,cio-desk-memo-regen,sm-render,tax-lots-rebuild,provider-cost-reconcile,free-first-circulation,holdings-agent-enqueue,hermes-update-check,portfolio-price-cache,agent-runtime-health; retire at-observation-01,at-observation-01-closeout. as_of=2026-08-31T17:06:54+00:00. Wave2 batch3: promote advisory-shadow-seed,cio-material-scan. as_of=2026-08-31T17:08:11+00:00. Wave-2026-09-01 portfolio-repricer: declare portfolio-repricer ACTIVE (*/15 market hours → holdings.json); remove 3 portfolio_repricer cron lines from undeclared_baseline. as_of=2026-09-01T20:41:10+00:00.",
   "lanes": [
     {
       "lane_id": "research-lane-health",
@@ -56,7 +56,7 @@
       "expected_cadence_hours": 24.0,
       "state": "RETIRED",
       "state_since": "2026-06-01",
-      "state_reason": "PHASE102-RETIRED. Closeout records only 'Global queue covers all jobs' \u2014 unverified supersession; sibling continuous_runner claim found false and reverted. Actual cause: UNKNOWN",
+      "state_reason": "PHASE102-RETIRED. Closeout records only 'Global queue covers all jobs' — unverified supersession; sibling continuous_runner claim found false and reverted. Actual cause: UNKNOWN",
       "output_signal": {
         "kind": "db_max",
         "table": "deep_overnight_llm_results",
@@ -64,7 +64,7 @@
       },
       "note": "1588 done / 268 failed / 1928 pending, frozen since 2026-05-31. The 1,588 completed outputs are a calibration set and must not be deleted.",
       "reason_confidence": "UNKNOWN",
-      "reason_evidence": "Re-investigated 2026-08-31 (Wave 2b). PHASE102 closeout commit 1a843fc3 (2026-06-01) + docs/project/PHASE102_OLD_OVERNIGHT_RETIREMENT_CLOSEOUT.md give one reason: 'Global queue covers all jobs' \u2014 a supersession claim never verified. Sibling claim ('continuous_runner covers 04:00-11:00', 2026-06-11) was found FALSE and reverted (docs/CHANGELOG.md ~3432). PHASE58_OLD_OVERNIGHT_MONOPOLY_RETIREMENT_CLOSEOUT.md is DESIGN ONLY / not applied. Lane last completed job 2026-05-23 \u2014 nine days BEFORE retirement \u2014 so the retirement may not explain the silence. No PR beyond 1a843fc3 establishes a verified successor for this lane's outputs. Remains UNKNOWN."
+      "reason_evidence": "Re-investigated 2026-08-31 (Wave 2b). PHASE102 closeout commit 1a843fc3 (2026-06-01) + docs/project/PHASE102_OLD_OVERNIGHT_RETIREMENT_CLOSEOUT.md give one reason: 'Global queue covers all jobs' — a supersession claim never verified. Sibling claim ('continuous_runner covers 04:00-11:00', 2026-06-11) was found FALSE and reverted (docs/CHANGELOG.md ~3432). PHASE58_OLD_OVERNIGHT_MONOPOLY_RETIREMENT_CLOSEOUT.md is DESIGN ONLY / not applied. Lane last completed job 2026-05-23 — nine days BEFORE retirement — so the retirement may not explain the silence. No PR beyond 1a843fc3 establishes a verified successor for this lane's outputs. Remains UNKNOWN."
     },
     {
       "lane_id": "overnight-batch",
@@ -81,7 +81,7 @@
         "path": "logs/overnight_batch.log"
       },
       "reason_confidence": "UNKNOWN",
-      "reason_evidence": "Re-investigated 2026-08-31 (Wave 2b). Crontab tag is only 'PHASE102-RETIRED' with no reason text. PHASE102 closeout (1a843fc3) asserts 'Global queue covers all jobs' without verifying coverage of overnight_batch outputs. Partial reversal WITHOUT registry update: '# RESTORED 2026-07-04 weekly (tax_agent staleness max 7d; sweep was retired as collateral of overnight_batch Phase 102 retirement)' then active '35 6 * * 1 \u2026 overnight_batch.py --tax-sweep'; and '40 5 * * * \u2026 overnight_batch.py --outcomes'. docs/MASTER_SYSTEM_DOCUMENTATION.md: agent-performance scorer rehomed to update_agent_performance.py (cron 0 20 * * 1-5) \u2014 documents WHERE a piece went, not WHY the monopoly path was retired. Coverage of the --telegram overnight path by the global queue remains unverified. Remains UNKNOWN."
+      "reason_evidence": "Re-investigated 2026-08-31 (Wave 2b). Crontab tag is only 'PHASE102-RETIRED' with no reason text. PHASE102 closeout (1a843fc3) asserts 'Global queue covers all jobs' without verifying coverage of overnight_batch outputs. Partial reversal WITHOUT registry update: '# RESTORED 2026-07-04 weekly (tax_agent staleness max 7d; sweep was retired as collateral of overnight_batch Phase 102 retirement)' then active '35 6 * * 1 … overnight_batch.py --tax-sweep'; and '40 5 * * * … overnight_batch.py --outcomes'. docs/MASTER_SYSTEM_DOCUMENTATION.md: agent-performance scorer rehomed to update_agent_performance.py (cron 0 20 * * 1-5) — documents WHERE a piece went, not WHY the monopoly path was retired. Coverage of the --telegram overnight path by the global queue remains unverified. Remains UNKNOWN."
     },
     {
       "lane_id": "portfolio-backup-cron",
@@ -92,13 +92,13 @@
       "expected_cadence_hours": 24.0,
       "state": "RETIRED",
       "state_since": "2026-06-06",
-      "state_reason": "Folded into tradeai-portfolio-backup-cadence @02:30 with weekly staleness checks. Reason recorded in the cron comment \u2014 recoverable.",
+      "state_reason": "Folded into tradeai-portfolio-backup-cadence @02:30 with weekly staleness checks. Reason recorded in the cron comment — recoverable.",
       "output_signal": {
         "kind": "file_mtime",
         "path": "data/runtime/portfolio_maintenance_backup_last_run.json"
       },
       "reason_confidence": "ESTABLISHED",
-      "reason_evidence": "The cron comment states it verbatim: '[RETIRED 2026-06-06 \u2014 folded into tradeai-portfolio-backup-cadence @02:30 with weekly staleness checks]'. That successor timer is enabled and last ran 2026-08-30T11:07.",
+      "reason_evidence": "The cron comment states it verbatim: '[RETIRED 2026-06-06 — folded into tradeai-portfolio-backup-cadence @02:30 with weekly staleness checks]'. That successor timer is enabled and last ran 2026-08-30T11:07.",
       "superseded_by": "tradeai-portfolio-backup-cadence.timer"
     },
     {
@@ -116,7 +116,7 @@
         "path": "data/cio/residual_web_results.jsonl"
       },
       "reason_confidence": "ESTABLISHED",
-      "reason_evidence": "scripts/lib/cio_residual_web.py::_live_transport carries the reason in source: 'The live transport. NOT taken by this PR \u2014 the operator sequences it.' No cron entry and no timer exists, so the lane has never been scheduled \u2014 deliberate, not lost."
+      "reason_evidence": "scripts/lib/cio_residual_web.py::_live_transport carries the reason in source: 'The live transport. NOT taken by this PR — the operator sequences it.' No cron entry and no timer exists, so the lane has never been scheduled — deliberate, not lost."
     },
     {
       "lane_id": "tradeai-continuous",
@@ -129,7 +129,7 @@
       "state": "PAUSED",
       "state_since": "2026-08-21",
       "review_by": "2026-09-15",
-      "state_reason": "Did not survive the 2026-08-21 host reboot. The timer is `disabled`, so it was running transiently (started, never `systemctl --user enable`d) and nothing brought it back. Not a decision \u2014 an unnoticed consequence of a restart.",
+      "state_reason": "Did not survive the 2026-08-21 host reboot. The timer is `disabled`, so it was running transiently (started, never `systemctl --user enable`d) and nothing brought it back. Not a decision — an unnoticed consequence of a restart.",
       "output_signal": {
         "kind": "file_mtime",
         "path": "logs/continuous.log"
@@ -148,7 +148,7 @@
       "state": "PAUSED",
       "state_since": "2026-08-22",
       "review_by": "2026-09-15",
-      "state_reason": "It FAILED; nobody turned it off. Exited 1 on 2026-08-22 after both its subjects returned HTTP 503 from an upstream, and because the timer is `disabled` nothing restarted it. The reboot does not explain this one \u2014 it ran a day after the reboot.",
+      "state_reason": "It FAILED; nobody turned it off. Exited 1 on 2026-08-22 after both its subjects returned HTTP 503 from an upstream, and because the timer is `disabled` nothing restarted it. The reboot does not explain this one — it ran a day after the reboot.",
       "output_signal": {
         "kind": "file_mtime",
         "path": "logs/hermes-autonomous-loop.log"
@@ -167,13 +167,13 @@
       "state": "PAUSED",
       "state_since": "2026-08-18",
       "review_by": "2026-09-15",
-      "state_reason": "Last run SUCCEEDED on 2026-08-18 and it never ran again \u2014 so it was disabled out of band, not crashed. Coincides exactly with the Flash-first governance migration (PRs #386/#398/#401/#406, 2026-08-18 to 08-20), which is documented to have failed on 08-20. Correlation in date and subject matter is strong; CAUSATION IS NOT ESTABLISHED and is not asserted here.",
+      "state_reason": "Last run SUCCEEDED on 2026-08-18 and it never ran again — so it was disabled out of band, not crashed. Coincides exactly with the Flash-first governance migration (PRs #386/#398/#401/#406, 2026-08-18 to 08-20), which is documented to have failed on 08-20. Correlation in date and subject matter is strong; CAUSATION IS NOT ESTABLISHED and is not asserted here.",
       "output_signal": {
         "kind": "file_mtime",
         "path": "logs/flash-llm-intelligence.log"
       },
       "reason_confidence": "CORRELATED",
-      "reason_evidence": "journalctl shows 'Finished ... service' on 2026-08-18 then nothing. No commit in that window touches any systemd unit file \u2014 enablement lives in ~/.config/systemd/user/*.wants/ symlinks, which git does not track, so a `systemctl --user disable` leaves no trace in the repository. docs/ops/RESEARCH_ENGINE_FLASH_FIRST_FAILURE_2026-08-20.md records the migration failing with COST_CONFIGURATION_INVALID and open circuit breakers (failed=312, completed=8, zero DeepSeek Flash)."
+      "reason_evidence": "journalctl shows 'Finished ... service' on 2026-08-18 then nothing. No commit in that window touches any systemd unit file — enablement lives in ~/.config/systemd/user/*.wants/ symlinks, which git does not track, so a `systemctl --user disable` leaves no trace in the repository. docs/ops/RESEARCH_ENGINE_FLASH_FIRST_FAILURE_2026-08-20.md records the migration failing with COST_CONFIGURATION_INVALID and open circuit breakers (failed=312, completed=8, zero DeepSeek Flash)."
     },
     {
       "lane_id": "tradeai-flash-watchlist-daily",
@@ -186,13 +186,13 @@
       "state": "PAUSED",
       "state_since": "2026-08-18",
       "review_by": "2026-09-15",
-      "state_reason": "Last run SUCCEEDED on 2026-08-18 and it never ran again \u2014 so it was disabled out of band, not crashed. Coincides exactly with the Flash-first governance migration (PRs #386/#398/#401/#406, 2026-08-18 to 08-20), which is documented to have failed on 08-20. Correlation in date and subject matter is strong; CAUSATION IS NOT ESTABLISHED and is not asserted here.",
+      "state_reason": "Last run SUCCEEDED on 2026-08-18 and it never ran again — so it was disabled out of band, not crashed. Coincides exactly with the Flash-first governance migration (PRs #386/#398/#401/#406, 2026-08-18 to 08-20), which is documented to have failed on 08-20. Correlation in date and subject matter is strong; CAUSATION IS NOT ESTABLISHED and is not asserted here.",
       "output_signal": {
         "kind": "file_mtime",
         "path": "logs/flash-watchlist-daily.log"
       },
       "reason_confidence": "CORRELATED",
-      "reason_evidence": "journalctl shows 'Finished ... service' on 2026-08-18 then nothing. No commit in that window touches any systemd unit file \u2014 enablement lives in ~/.config/systemd/user/*.wants/ symlinks, which git does not track, so a `systemctl --user disable` leaves no trace in the repository. docs/ops/RESEARCH_ENGINE_FLASH_FIRST_FAILURE_2026-08-20.md records the migration failing with COST_CONFIGURATION_INVALID and open circuit breakers (failed=312, completed=8, zero DeepSeek Flash)."
+      "reason_evidence": "journalctl shows 'Finished ... service' on 2026-08-18 then nothing. No commit in that window touches any systemd unit file — enablement lives in ~/.config/systemd/user/*.wants/ symlinks, which git does not track, so a `systemctl --user disable` leaves no trace in the repository. docs/ops/RESEARCH_ENGINE_FLASH_FIRST_FAILURE_2026-08-20.md records the migration failing with COST_CONFIGURATION_INVALID and open circuit breakers (failed=312, completed=8, zero DeepSeek Flash)."
     },
     {
       "lane_id": "tradeai-hermes-research-remediation",
@@ -205,13 +205,13 @@
       "state": "PAUSED",
       "state_since": "2026-08-18",
       "review_by": "2026-09-15",
-      "state_reason": "Last run SUCCEEDED on 2026-08-18 and it never ran again \u2014 so it was disabled out of band, not crashed. Coincides exactly with the Flash-first governance migration (PRs #386/#398/#401/#406, 2026-08-18 to 08-20), which is documented to have failed on 08-20. Correlation in date and subject matter is strong; CAUSATION IS NOT ESTABLISHED and is not asserted here.",
+      "state_reason": "Last run SUCCEEDED on 2026-08-18 and it never ran again — so it was disabled out of band, not crashed. Coincides exactly with the Flash-first governance migration (PRs #386/#398/#401/#406, 2026-08-18 to 08-20), which is documented to have failed on 08-20. Correlation in date and subject matter is strong; CAUSATION IS NOT ESTABLISHED and is not asserted here.",
       "output_signal": {
         "kind": "file_mtime",
         "path": "logs/hermes-research-remediation.log"
       },
       "reason_confidence": "CORRELATED",
-      "reason_evidence": "journalctl shows 'Finished ... service' on 2026-08-18 then nothing. No commit in that window touches any systemd unit file \u2014 enablement lives in ~/.config/systemd/user/*.wants/ symlinks, which git does not track, so a `systemctl --user disable` leaves no trace in the repository. docs/ops/RESEARCH_ENGINE_FLASH_FIRST_FAILURE_2026-08-20.md records the migration failing with COST_CONFIGURATION_INVALID and open circuit breakers (failed=312, completed=8, zero DeepSeek Flash)."
+      "reason_evidence": "journalctl shows 'Finished ... service' on 2026-08-18 then nothing. No commit in that window touches any systemd unit file — enablement lives in ~/.config/systemd/user/*.wants/ symlinks, which git does not track, so a `systemctl --user disable` leaves no trace in the repository. docs/ops/RESEARCH_ENGINE_FLASH_FIRST_FAILURE_2026-08-20.md records the migration failing with COST_CONFIGURATION_INVALID and open circuit breakers (failed=312, completed=8, zero DeepSeek Flash)."
     },
     {
       "lane_id": "tradeai-intelligence-remediation",
@@ -224,13 +224,13 @@
       "state": "PAUSED",
       "state_since": "2026-08-18",
       "review_by": "2026-09-15",
-      "state_reason": "Last run SUCCEEDED on 2026-08-18 and it never ran again \u2014 so it was disabled out of band, not crashed. Coincides exactly with the Flash-first governance migration (PRs #386/#398/#401/#406, 2026-08-18 to 08-20), which is documented to have failed on 08-20. Correlation in date and subject matter is strong; CAUSATION IS NOT ESTABLISHED and is not asserted here.",
+      "state_reason": "Last run SUCCEEDED on 2026-08-18 and it never ran again — so it was disabled out of band, not crashed. Coincides exactly with the Flash-first governance migration (PRs #386/#398/#401/#406, 2026-08-18 to 08-20), which is documented to have failed on 08-20. Correlation in date and subject matter is strong; CAUSATION IS NOT ESTABLISHED and is not asserted here.",
       "output_signal": {
         "kind": "file_mtime",
         "path": "logs/intelligence-remediation.log"
       },
       "reason_confidence": "CORRELATED",
-      "reason_evidence": "journalctl shows 'Finished ... service' on 2026-08-18 then nothing. No commit in that window touches any systemd unit file \u2014 enablement lives in ~/.config/systemd/user/*.wants/ symlinks, which git does not track, so a `systemctl --user disable` leaves no trace in the repository. docs/ops/RESEARCH_ENGINE_FLASH_FIRST_FAILURE_2026-08-20.md records the migration failing with COST_CONFIGURATION_INVALID and open circuit breakers (failed=312, completed=8, zero DeepSeek Flash)."
+      "reason_evidence": "journalctl shows 'Finished ... service' on 2026-08-18 then nothing. No commit in that window touches any systemd unit file — enablement lives in ~/.config/systemd/user/*.wants/ symlinks, which git does not track, so a `systemctl --user disable` leaves no trace in the repository. docs/ops/RESEARCH_ENGINE_FLASH_FIRST_FAILURE_2026-08-20.md records the migration failing with COST_CONFIGURATION_INVALID and open circuit breakers (failed=312, completed=8, zero DeepSeek Flash)."
     },
     {
       "lane_id": "tradeai-main-desk-free-llm-weekly",
@@ -249,7 +249,7 @@
         "path": "logs/main-desk-free-llm-weekly.log"
       },
       "reason_confidence": "ESTABLISHED",
-      "reason_evidence": "OnCalendar=Sun *-*-* 18:15. Ran 2026-08-09 and 2026-08-16 \u2014 the last two Sundays before the 08-21 reboot \u2014 and has missed 08-23 and 08-30 since. is-enabled=disabled."
+      "reason_evidence": "OnCalendar=Sun *-*-* 18:15. Ran 2026-08-09 and 2026-08-16 — the last two Sundays before the 08-21 reboot — and has missed 08-23 and 08-30 since. is-enabled=disabled."
     },
     {
       "lane_id": "portfolio-backup",
@@ -261,7 +261,7 @@
       "expected_cadence_hours": 24.0,
       "state": "NEVER_SCHEDULED",
       "state_since": "2026-06-06",
-      "state_reason": "Superseded by tradeai-portfolio-backup-cadence.timer, the controller-owned cadence migration. The cron comment for the sibling records it: '[RETIRED 2026-06-06 \u2014 folded into tradeai-portfolio-backup-cadence @02:30]'.",
+      "state_reason": "Superseded by tradeai-portfolio-backup-cadence.timer, the controller-owned cadence migration. The cron comment for the sibling records it: '[RETIRED 2026-06-06 — folded into tradeai-portfolio-backup-cadence @02:30]'.",
       "output_signal": {
         "kind": "file_mtime",
         "path": "logs/portfolio-backup.log"
@@ -280,7 +280,7 @@
       "expected_cadence_hours": 24.0,
       "state": "NEVER_SCHEDULED",
       "state_since": "2026-06-06",
-      "state_reason": "Superseded by tradeai-portfolio-daily-cadence.timer, the controller-owned cadence migration. The cron comment for the sibling records it: '[RETIRED 2026-06-06 \u2014 folded into tradeai-portfolio-backup-cadence @02:30]'.",
+      "state_reason": "Superseded by tradeai-portfolio-daily-cadence.timer, the controller-owned cadence migration. The cron comment for the sibling records it: '[RETIRED 2026-06-06 — folded into tradeai-portfolio-backup-cadence @02:30]'.",
       "output_signal": {
         "kind": "file_mtime",
         "path": "logs/portfolio-daily.log"
@@ -299,7 +299,7 @@
       "expected_cadence_hours": 24.0,
       "state": "NEVER_SCHEDULED",
       "state_since": "2026-06-06",
-      "state_reason": "Superseded by tradeai-portfolio-weekly-cadence.timer, the controller-owned cadence migration. The cron comment for the sibling records it: '[RETIRED 2026-06-06 \u2014 folded into tradeai-portfolio-backup-cadence @02:30]'.",
+      "state_reason": "Superseded by tradeai-portfolio-weekly-cadence.timer, the controller-owned cadence migration. The cron comment for the sibling records it: '[RETIRED 2026-06-06 — folded into tradeai-portfolio-backup-cadence @02:30]'.",
       "output_signal": {
         "kind": "file_mtime",
         "path": "logs/portfolio-weekly.log"
@@ -318,7 +318,7 @@
       "expected_cadence_hours": 24.0,
       "state": "NEVER_SCHEDULED",
       "state_since": "2026-06-06",
-      "state_reason": "Superseded by tradeai-portfolio-monthly-cadence.timer, the controller-owned cadence migration. The cron comment for the sibling records it: '[RETIRED 2026-06-06 \u2014 folded into tradeai-portfolio-backup-cadence @02:30]'.",
+      "state_reason": "Superseded by tradeai-portfolio-monthly-cadence.timer, the controller-owned cadence migration. The cron comment for the sibling records it: '[RETIRED 2026-06-06 — folded into tradeai-portfolio-backup-cadence @02:30]'.",
       "output_signal": {
         "kind": "file_mtime",
         "path": "logs/portfolio-monthly.log"
@@ -337,7 +337,7 @@
       "expected_cadence_hours": 24.0,
       "state": "NEVER_SCHEDULED",
       "state_since": "2026-06-06",
-      "state_reason": "Superseded by tradeai-portfolio-lookthrough-cadence.timer, the controller-owned cadence migration. The cron comment for the sibling records it: '[RETIRED 2026-06-06 \u2014 folded into tradeai-portfolio-backup-cadence @02:30]'.",
+      "state_reason": "Superseded by tradeai-portfolio-lookthrough-cadence.timer, the controller-owned cadence migration. The cron comment for the sibling records it: '[RETIRED 2026-06-06 — folded into tradeai-portfolio-backup-cadence @02:30]'.",
       "output_signal": {
         "kind": "file_mtime",
         "path": "logs/portfolio-lookthrough.log"
@@ -419,7 +419,7 @@
         "path": "logs/operator-readiness.log"
       },
       "reason_confidence": "ESTABLISHED",
-      "reason_evidence": "docs/architecture/PHASE201C_GOVERNANCE_TIMER_RETIREMENT_DECISION_GATE.md: 'ALL CONDITIONS PASS \u2192 APPROVED to retire the 4 redundant PHASE41 governance timers (201D): \u2026 tradeai-operator-readiness.timer'. docs/architecture/PHASE201D_PHASE41_GOVERNANCE_TIMER_RETIREMENT_REPORT.md records stop+disable. docs/project/PHASE201_GOVERNANCE_TIMER_RETIREMENT_PORTFOLIO_PREFLIGHT_CLOSEOUT.md: 'PHASE41 governance timers retired | 4'. docs/operations/SCHEDULED_JOBS_REFERENCE.md: consolidated into tradeai-governance-pipeline. scripts/pipelines/run_governance_pipeline.sh gov_step operator_readiness invokes report_operator_readiness_summary.py. journalctl 2026-08-31T07:40: operator_readiness status=ok. Prior #722 UNKNOWN missed these docs ('no successor by name').",
+      "reason_evidence": "docs/architecture/PHASE201C_GOVERNANCE_TIMER_RETIREMENT_DECISION_GATE.md: 'ALL CONDITIONS PASS → APPROVED to retire the 4 redundant PHASE41 governance timers (201D): … tradeai-operator-readiness.timer'. docs/architecture/PHASE201D_PHASE41_GOVERNANCE_TIMER_RETIREMENT_REPORT.md records stop+disable. docs/project/PHASE201_GOVERNANCE_TIMER_RETIREMENT_PORTFOLIO_PREFLIGHT_CLOSEOUT.md: 'PHASE41 governance timers retired | 4'. docs/operations/SCHEDULED_JOBS_REFERENCE.md: consolidated into tradeai-governance-pipeline. scripts/pipelines/run_governance_pipeline.sh gov_step operator_readiness invokes report_operator_readiness_summary.py. journalctl 2026-08-31T07:40: operator_readiness status=ok. Prior #722 UNKNOWN missed these docs ('no successor by name').",
       "superseded_by": "tradeai-governance-pipeline.timer"
     },
     {
@@ -438,7 +438,7 @@
         "path": "logs/flash-portfolio-risk-hourly.log"
       },
       "reason_confidence": "ESTABLISHED",
-      "reason_evidence": "config/systemd/flash-cadence/README.md (commit eed471bc4, 2026-08-03): 'Install timers (optional \u2014 operator)' with example enable only for tradeai-flash-watchlist-daily.timer. stat Birth of ~/.config/systemd/user/tradeai-flash-portfolio-risk-hourly.timer = 2026-08-03 00:35:20. systemctl --user is-enabled=disabled; journalctl --user -u tradeai-flash-portfolio-risk.service: No entries. Sibling flash-watchlist-daily / flash-llm-intelligence from the same commit were enabled and ran until 2026-08-18 (now PAUSED/CORRELATED)."
+      "reason_evidence": "config/systemd/flash-cadence/README.md (commit eed471bc4, 2026-08-03): 'Install timers (optional — operator)' with example enable only for tradeai-flash-watchlist-daily.timer. stat Birth of ~/.config/systemd/user/tradeai-flash-portfolio-risk-hourly.timer = 2026-08-03 00:35:20. systemctl --user is-enabled=disabled; journalctl --user -u tradeai-flash-portfolio-risk.service: No entries. Sibling flash-watchlist-daily / flash-llm-intelligence from the same commit were enabled and ran until 2026-08-18 (now PAUSED/CORRELATED)."
     },
     {
       "lane_id": "tradeai-flash-portfolio-risk-weekend",
@@ -456,7 +456,7 @@
         "path": "logs/flash-portfolio-risk-weekend.log"
       },
       "reason_confidence": "ESTABLISHED",
-      "reason_evidence": "config/systemd/flash-cadence/README.md (eed471bc4): 'Install timers (optional \u2014 operator)'; schedule table lists 'Portfolio risk-ish Flash \u2014 Hourly 07\u201319 weekdays; 10:00 weekends' as the intended cadence IF installed. stat Birth ~/.config/systemd/user/tradeai-flash-portfolio-risk-weekend.timer = 2026-08-03. is-enabled=disabled; journal empty for tradeai-flash-portfolio-risk.service."
+      "reason_evidence": "config/systemd/flash-cadence/README.md (eed471bc4): 'Install timers (optional — operator)'; schedule table lists 'Portfolio risk-ish Flash — Hourly 07–19 weekdays; 10:00 weekends' as the intended cadence IF installed. stat Birth ~/.config/systemd/user/tradeai-flash-portfolio-risk-weekend.timer = 2026-08-03. is-enabled=disabled; journal empty for tradeai-flash-portfolio-risk.service."
     },
     {
       "lane_id": "alex-daily",
@@ -468,13 +468,13 @@
       "state": "PAUSED",
       "state_since": "2026-08-08",
       "review_by": "2026-09-15",
-      "state_reason": "Superseded by the agent runtime. The cron line records it: 'DISABLED 2026-08-08 \u2014 agent_runtime@alex.timer now shadow-live'.",
+      "state_reason": "Superseded by the agent runtime. The cron line records it: 'DISABLED 2026-08-08 — agent_runtime@alex.timer now shadow-live'.",
       "output_signal": {
         "kind": "file_mtime",
         "path": "logs/alex_daily.log"
       },
       "reason_confidence": "ESTABLISHED",
-      "reason_evidence": "tradeai-agent-runtime@alex.timer is enabled and fired 2026-08-30T18:31 completing 2 jobs. NOTE: the unit is 'SHADOW, prepare-only', so the successor prepares work rather than acting on it \u2014 equivalence of OUTPUT is not established, only that the successor runs.",
+      "reason_evidence": "tradeai-agent-runtime@alex.timer is enabled and fired 2026-08-30T18:31 completing 2 jobs. NOTE: the unit is 'SHADOW, prepare-only', so the successor prepares work rather than acting on it — equivalence of OUTPUT is not established, only that the successor runs.",
       "superseded_by": "tradeai-agent-runtime@alex.timer"
     },
     {
@@ -559,13 +559,13 @@
       "state": "PAUSED",
       "state_since": "2026-08-08",
       "review_by": "2026-09-15",
-      "state_reason": "Cron line commented 2026-08-08 with bare tag 'DISABLED 2026-08-08' and no reason. Same calendar day as the alex family but a different subsystem \u2014 alex supersession does NOT transfer. No authoring commit/PR found. Actual cause: UNKNOWN",
+      "state_reason": "Cron line commented 2026-08-08 with bare tag 'DISABLED 2026-08-08' and no reason. Same calendar day as the alex family but a different subsystem — alex supersession does NOT transfer. No authoring commit/PR found. Actual cause: UNKNOWN",
       "output_signal": {
         "kind": "file_mtime",
         "path": "logs/cio_decision_engine.log"
       },
       "reason_confidence": "UNKNOWN",
-      "reason_evidence": "Re-investigated 2026-08-31 (Wave 2b). Live crontab: '#0 7 * * 1-5 $PY scripts/cio_decision_engine.py --run  # DISABLED 2026-08-08'. No commit/PR found that performed the disable (git log -S 'DISABLED 2026-08-08' and Aug 7\u20139 window yield no authoring commit; last log mtime 2026-08-07 07:00). docs/cio/CIO_NOTIFICATION_RUNTIME_TOPOLOGY.md claims alex + cio_decision_engine were 'moved to agent-runtime@*.timer shadow-live' \u2014 but the alex cron line alone records agent_runtime@alex supersession; this line carries no successor, and alex supersession does NOT transfer. docs/cio/ARCHITECTURE.md + docs/audits/CIO_PLATFORM_REMEDIATION_2026-08-27.md Fix C1 still treat the disable reason as unknown ('check the commit/PR that disabled it before re-enabling'). Operator chose C1 option (b): document mechanical independence rather than re-enable (PR #526). Remains UNKNOWN."
+      "reason_evidence": "Re-investigated 2026-08-31 (Wave 2b). Live crontab: '#0 7 * * 1-5 $PY scripts/cio_decision_engine.py --run  # DISABLED 2026-08-08'. No commit/PR found that performed the disable (git log -S 'DISABLED 2026-08-08' and Aug 7–9 window yield no authoring commit; last log mtime 2026-08-07 07:00). docs/cio/CIO_NOTIFICATION_RUNTIME_TOPOLOGY.md claims alex + cio_decision_engine were 'moved to agent-runtime@*.timer shadow-live' — but the alex cron line alone records agent_runtime@alex supersession; this line carries no successor, and alex supersession does NOT transfer. docs/cio/ARCHITECTURE.md + docs/audits/CIO_PLATFORM_REMEDIATION_2026-08-27.md Fix C1 still treat the disable reason as unknown ('check the commit/PR that disabled it before re-enabling'). Operator chose C1 option (b): document mechanical independence rather than re-enable (PR #526). Remains UNKNOWN."
     },
     {
       "lane_id": "cio-wake-dispatch",
@@ -582,15 +582,15 @@
         "path": "data/cio/wake_record_consult.json",
         "key": "as_of"
       },
-      "note": "M5. The durable artifact proves the record was consulted on a SCHEDULE, unattended \u2014 a hand-run leaves no trace here."
+      "note": "M5. The durable artifact proves the record was consulted on a SCHEDULE, unattended — a hand-run leaves no trace here."
     },
     {
       "lane_id": "cio-situation-detector",
       "owner": "cio",
       "scheduler": {
-        "kind": "cron",
+        "kind": "event",
         "expression": "emitted from the reactive cycle / heartbeat hooks",
-        "match": "cio_situation_detector"
+        "emitted_by": "cio-reactive-cycle"
       },
       "expected_cadence_hours": 24.0,
       "state": "ACTIVE",
@@ -598,7 +598,7 @@
         "kind": "file_mtime",
         "path": "data/cio/cio_events.jsonl"
       },
-      "note": "Emits situation.raised \u2014 the only high-volume bus event that names a subject. shadow=true is its default posture since 2026-08-11 (0241722b, 'SHADOW default; no broker calls') and has never been changed. ESTABLISHED 2026-08-30: shadow is a LABEL ONLY \u2014 it appears in exactly three places, all of which write it into a payload/plan/summary. It gates no emission, no plan creation and no routing. What gates operator notification is `notify`, a separate flag that has its own canary doc (CIO_MATERIAL_NOTIFY_CANARY_2026-08-20.md) and remains false. Consuming situation.raised is therefore NOT a promotion out of shadow."
+      "note": "Emits situation.raised — the only high-volume bus event that names a subject. shadow=true is its default posture since 2026-08-11 (0241722b, 'SHADOW default; no broker calls') and has never been changed. ESTABLISHED 2026-08-30: shadow is a LABEL ONLY — it appears in exactly three places, all of which write it into a payload/plan/summary. It gates no emission, no plan creation and no routing. What gates operator notification is `notify`, a separate flag that has its own canary doc (CIO_MATERIAL_NOTIFY_CANARY_2026-08-20.md) and remains false. Consuming situation.raised is therefore NOT a promotion out of shadow."
     },
     {
       "lane_id": "docs-index",
@@ -616,7 +616,7 @@
       },
       "reason_confidence": "ESTABLISHED",
       "reason_evidence": "WAVE G3 2026-08-31 wired report_docs_inventory.py to emit the durable artifact docs/INDEX.md; hardening CI runs --check-index (regenerate+diff).",
-      "note": "Hand-maintained docs/DOCUMENTATION_INDEX.md and docs/project/PROJECT_DOC_INDEX.md remain. This lane is the regenerable tree listing \u2014 not a third narrative index."
+      "note": "Hand-maintained docs/DOCUMENTATION_INDEX.md and docs/project/PROJECT_DOC_INDEX.md remain. This lane is the regenerable tree listing — not a third narrative index."
     },
     {
       "lane_id": "cron-freshness-watcher",
@@ -832,7 +832,7 @@
         "kind": "file_mtime",
         "path": "data/cio/memory_shadow_measure_latest.json"
       },
-      "note": "run_memory_shadow_measure.py \u2192 memory_shadow_measure_latest.json."
+      "note": "run_memory_shadow_measure.py → memory_shadow_measure_latest.json."
     },
     {
       "lane_id": "cio-desk-memo-regen",
@@ -892,7 +892,7 @@
         "kind": "file_mtime",
         "path": "data/runtime/provider_cost/latest_reconciliation.json"
       },
-      "note": "run_provider_cost_daily.sh \u2192 data/runtime/provider_cost/latest_reconciliation.json."
+      "note": "run_provider_cost_daily.sh → data/runtime/provider_cost/latest_reconciliation.json."
     },
     {
       "lane_id": "free-first-circulation",
@@ -952,7 +952,7 @@
         "kind": "file_mtime",
         "path": "data/portfolios/state/price_cache.json"
       },
-      "note": "run_price_cache.sh / portfolio_price_cache.py \u2192 price_cache.json."
+      "note": "run_price_cache.sh / portfolio_price_cache.py → price_cache.json."
     },
     {
       "lane_id": "agent-runtime-health",
@@ -984,7 +984,7 @@
       "reason_evidence": [
         "systemctl --user cat at-observation-01.timer: OnCalendar=2026-07-27 06:55:00 Persistent=false",
         "systemctl --user show: ActiveState=active SubState=elapsed NextElapseUSecRealtime empty",
-        "Unit description: Active Trader Session 1 capture \u2014 Mon 2026-07-27"
+        "Unit description: Active Trader Session 1 capture — Mon 2026-07-27"
       ],
       "output_signal": {
         "kind": "none"
@@ -1006,7 +1006,7 @@
       "reason_evidence": [
         "systemctl --user cat at-observation-01-closeout.timer: OnCalendar=2026-07-27 10:12:00 Persistent=false",
         "systemctl --user show: ActiveState=active SubState=elapsed NextElapseUSecRealtime empty",
-        "Unit description: Active Trader Session 1 closeout \u2014 Mon 2026-07-27"
+        "Unit description: Active Trader Session 1 closeout — Mon 2026-07-27"
       ],
       "output_signal": {
         "kind": "none"
@@ -1120,12 +1120,12 @@
         "kind": "file_mtime",
         "path": "data/portfolios/state/holdings.json"
       },
-      "note": "Writes holdings.json and data_as_of (LITMUS_LANES F7 / #831). Cadence matches the installed */15 9-16 market-hours cron, not a fake 24h. Artifact is the holdings.json CURRENT serves (persistent-state via symlink), not $PROJ. Three cron lines (*/15 9-16, 5 9 open, 10 16 postclose) share match=portfolio_repricer.py. F3 live_monitor and F5 warm_caches stay loose \u2014 out of scope."
+      "note": "Writes holdings.json and data_as_of (LITMUS_LANES F7 / #831). Cadence matches the installed */15 9-16 market-hours cron, not a fake 24h. Artifact is the holdings.json CURRENT serves (persistent-state via symlink), not $PROJ. Three cron lines (*/15 9-16, 5 9 open, 10 16 postclose) share match=portfolio_repricer.py. F3 live_monitor and F5 warm_caches stay loose — out of scope."
     }
   ],
   "undeclared_baseline": [
     "*/10 * * * * cd $PROJ && flock -n /tmp/tradeai_escalation_handler.lock $PY scripts/claude_escalation_handler.py --tier1-only >> logs/claude_escalation.log 2>&1",
-    "*/10 12-15 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && bash /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/linux_launchers/run_options_monitor.sh  # noon-close (was 10-15): protect morning scalp GPU window \u2014 operator 2026-07-17",
+    "*/10 12-15 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && bash /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/linux_launchers/run_options_monitor.sh  # noon-close (was 10-15): protect morning scalp GPU window — operator 2026-07-17",
     "*/10 4-11 * * 1-5 cd $PROJ && flock -n /tmp/hermes_news_bridge.lock $PY scripts/hermes_news_bridge.py >> logs/hermes_news_bridge.log 2>&1",
     "*/10 4-11 * * 1-5 cd $PROJ && flock -n /tmp/news_to_catalyst.lock $PY scripts/news_to_catalyst.py >> logs/news_to_catalyst.log 2>&1",
     "*/10 4-19 * * 1-5 cd $PROJ && timeout 10m $PY scripts/proposal_enrichment_loop.py --run --limit 15 >> logs/proposal_enrichment.log 2>&1",
@@ -1143,7 +1143,7 @@
     "*/15 4-16 * * 1-5 cd $PROJ && bash $PROJ/linux_launchers/run_rotation_autopilot.sh cron >> logs/rotation_autopilot.log 2>&1",
     "*/15 4-19 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/tradeai_atm.lock bash scripts/market_day_gate.sh $PY scripts/atm_auto_approver.py >> logs/atm.log 2>&1",
     "*/15 6-11 * * 1-5 cd $PROJ && flock -n /tmp/tradeai_finviz_momentum_scalp.lock timeout 150 $PY scripts/run_finviz_momentum_scalp_scan.py --window early --apply >> logs/finviz_momentum_scalp_scan.log 2>&1",
-    "*/15 6-16 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && flock -n /tmp/finviz_market_movers.lock bash -c \"set -a; . ./.env; set +a; .venv/bin/python scripts/finviz_market_movers.py\" >> logs/finviz_market_movers.log 2>&1  # Home v2 WS-A: Finviz signal board (throttled). 06:00-close every 15min \u2014 premarket coverage added 2026-07-28 so the TradeAI top-gainer injection is fresh during the 6am-noon scalp window",
+    "*/15 6-16 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && flock -n /tmp/finviz_market_movers.lock bash -c \"set -a; . ./.env; set +a; .venv/bin/python scripts/finviz_market_movers.py\" >> logs/finviz_market_movers.log 2>&1  # Home v2 WS-A: Finviz signal board (throttled). 06:00-close every 15min — premarket coverage added 2026-07-28 so the TradeAI top-gainer injection is fresh during the 6am-noon scalp window",
     "*/15 6-17 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && flock -n /tmp/eligible_prewarm.lock .venv/bin/python -c \"import sys;sys.path.insert(0,'scripts');import reporting_engine as r;r.eligible_report_payload(use_cache=False)\" >> logs/eligible_prewarm.log 2>&1  # R0: pre-warm analyst /eligible cache out of request path",
     "*/15 6-19 * * 1-5 /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/run_governed_agent_flash_market.sh >> /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/governed_agent_flash_market.log 2>&1 # TRADEAI_GOVERNED_WORKER market-15m-v2",
     "*/15 6-20 * * 1-5 cd $PROJ && $PY scripts/cron_self_heal.py --apply >> logs/cron_self_heal.log 2>&1",
@@ -1172,14 +1172,14 @@
     "*/3 9-16 * * 1-5 cd $PROJ && bash linux_launchers/run_ensemble_worker.sh",
     "*/30 * * * * cd $PROJ && bash $PROJ/scripts/llm_priority_guard.sh && flock -n /tmp/hermes_directive_discovery.lock $PY scripts/hermes_directive_discovery.py --apply >> logs/hermes_directive_discovery.log 2>&1  # Hermes directive discovery producer (near 24/7)",
     "*/30 * * * * cd $PROJ && flock -n /tmp/freshness_watchdog_heartbeat.lock $PY scripts/freshness_watchdog_heartbeat.py --send >> logs/freshness_watchdog_heartbeat.log 2>&1",
-    "*/30 * * * * cd $PROJ && flock -n /tmp/oauth_keepalive.lock $PY scripts/oauth_lane_keepalive.py >> logs/oauth_lane_keepalive.log 2>&1  # keep free-OAuth LLM lanes warm + alert on stale (every 30min \u2014 2026-08-02)",
+    "*/30 * * * * cd $PROJ && flock -n /tmp/oauth_keepalive.lock $PY scripts/oauth_lane_keepalive.py >> logs/oauth_lane_keepalive.log 2>&1  # keep free-OAuth LLM lanes warm + alert on stale (every 30min — 2026-08-02)",
     "*/30 * * * * cd $PROJ && timeout 5m $PY scripts/agent_event_router.py >> logs/agent_event_router.log 2>&1",
     "*/30 * * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/pipeline_liveness_report.py --fail-on-finding >> logs/pipeline_liveness.log 2>&1",
     "*/30 10-15 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/tradeai_wl_bridge.lock bash scripts/market_day_gate.sh $PY scripts/watchlist_proposal_bridge.py --apply --max-new 5 >> logs/watchlist_proposal_bridge.log 2>&1",
     "*/30 4-16 * * 1-5 cd $PROJ && flock -n /tmp/signal_fusion_active.lock $PY scripts/signal_fusion.py --active >> logs/signal_fusion.log 2>&1",
     "*/30 4-9 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/catalyst_premarket.lock $PY scripts/catalyst_momentum_engine.py --band premarket_scalp --apply --generate-proposals >> logs/catalyst_momentum_engine.log 2>&1",
     "*/30 6-16 * * 1-5 cd $PROJ && flock -n /tmp/materialize_cards.lock $PY scripts/materialize_watchlist_strategy_cards.py >> logs/watchlist_strategy_cards.log 2>&1",
-    "*/30 6-19 * * 1-5 cd $PROJ && bash $PROJ/scripts/llm_priority_guard.sh && flock -n /tmp/proposal_llm_review_worker.lock timeout 25m $PY scripts/proposal_llm_review_worker.py --run --limit 4 >> logs/proposal_llm_review_worker.log 2>&1  # stage-2b LLM review queue drain (was UNSCHEDULED \u2014 rows sat PENDING for days; added 2026-07-04)",
+    "*/30 6-19 * * 1-5 cd $PROJ && bash $PROJ/scripts/llm_priority_guard.sh && flock -n /tmp/proposal_llm_review_worker.lock timeout 25m $PY scripts/proposal_llm_review_worker.py --run --limit 4 >> logs/proposal_llm_review_worker.log 2>&1  # stage-2b LLM review queue drain (was UNSCHEDULED — rows sat PENDING for days; added 2026-07-04)",
     "*/30 8-18 * * 1-5 cd $PROJ && flock -n /tmp/ask_alerts.lock $PY scripts/ask_alerts.py --check >> logs/ask_alerts.log 2>&1  # fire ask-box alerts (IPO news / price) to Telegram",
     "*/30 9-15 * * 1-5 cd $PROJ && flock -n /tmp/watchlist_sweep.lock $PY scripts/watchlist_enrichment_sweep.py --once >> logs/watchlist_sweep.log 2>&1  # E-1 intraday watchlist enrichment",
     "*/30 9-15 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && bash /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/safe_flock.sh /tmp/tradeai_atp2_reval.lock bash scripts/market_day_gate.sh .venv/bin/python scripts/run_automated_trade_proposal_revalidation.py --apply --limit 50 >> logs/atp2_proposal_revalidation_cron.log 2>&1",
@@ -1315,10 +1315,10 @@
     "0 8 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && bash scripts/market_day_gate.sh .venv/bin/python scripts/send_alert_digest.py morning >> logs/alert_digest.log 2>&1",
     "0 8 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && bash scripts/market_day_gate.sh .venv/bin/python scripts/send_morning_brief.py >> logs/morning_brief.log 2>&1",
     "0 8 * * 6 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && flock -n /tmp/oversight_weekly.lock bash -c \"set -a; . ./.env; set +a; .venv/bin/python scripts/oversight_weekly_digest.py\" >> logs/oversight_weekly.log 2>&1  # Defense v9 WS-E: Saturday 08:00 oversight weekly (deterministic, no LLM calls)",
-    "0 8,20 * * * cd $PROJ && bash $PROJ/scripts/llm_priority_guard.sh && flock -n /tmp/enh_report.lock $PY scripts/hermes_subject_enhance.py --type report --lanes grok,chatgpt --apply --limit 1 >> logs/hermes_enh.log 2>&1  # H-enh report (Grok+ChatGPT) \u2014 daily second-read of the morning brief",
+    "0 8,20 * * * cd $PROJ && bash $PROJ/scripts/llm_priority_guard.sh && flock -n /tmp/enh_report.lock $PY scripts/hermes_subject_enhance.py --type report --lanes grok,chatgpt --apply --limit 1 >> logs/hermes_enh.log 2>&1  # H-enh report (Grok+ChatGPT) — daily second-read of the morning brief",
     "0 8,20 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && .venv/bin/python scripts/paper_performance_governance.py --apply >> logs/governance.log 2>&1",
     "0 9 * * 0 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/exit_outcomes.lock .venv/bin/python scripts/reconcile_exit_advisory_outcomes.py >> logs/exit_outcomes.log 2>&1",
-    "0 9 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/screener_pm.lock $PY scripts/trade_ai_orchestrator.py --run-label 0900 --no-llm --no-alerts --allow-underfilled >> logs/screener_pm.log 2>&1  # RESTORED 2026-06-12: retirement failed \u2014 continuous_runner does not emit 0900 run artifacts",
+    "0 9 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/screener_pm.lock $PY scripts/trade_ai_orchestrator.py --run-label 0900 --no-llm --no-alerts --allow-underfilled >> logs/screener_pm.log 2>&1  # RESTORED 2026-06-12: retirement failed — continuous_runner does not emit 0900 run artifacts",
     "0 9 * * 1-5 cd $PROJ && timeout 5m $PY scripts/aegis_transcript_discovery.py >> logs/aegis_transcript.log 2>&1",
     "0 9 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && ./scripts/run_scheduled_atp2_research_cycle.sh --cycle premarket_9am >> logs/atp2_research_cycle_cron.log 2>&1",
     "0 9 1 * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && python3 -c \"from scripts.lib.cio_event_detector import run_cio_event_detector_once; r=run_cio_event_detector_once(); print(f'Wakes: {r.get(\"wakes_created\",0)}')\" >> logs/cio_detector_monthly.log 2>&1",
@@ -1350,7 +1350,7 @@
     "15 */4 * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/cio_lineage_completion_report.py --fail-on-finding >> logs/lineage_completion.log 2>&1",
     "15 */6 * * * cd $PROJ && flock -n /tmp/paper_advisory.lock $PY scripts/paper_trade_advisory.py --apply --limit 6 >> logs/paper_trade_advisory.log 2>&1  # external Grok+ChatGPT post-mortem advisory on new closed paper trades (curated prompt, free OAuth lanes)",
     "15 1 * * * cd $PROJ && flock -n /tmp/tradeai_rotate_logs.lock bash scripts/rotate_runtime_logs.sh >> logs/rotate_runtime_logs.log 2>&1",
-    "15 10 * * 0 cd $PROJ && export $(grep -E \"^[A-Za-z_][A-Za-z0-9_]*=\" $TRADEAI_ENV | cut -d= -f1) 2>/dev/null; set -a; . <(grep -E \"^[A-Za-z_][A-Za-z0-9_]*=\" $TRADEAI_ENV) 2>/dev/null; set +a; SHADOW_BATCH_TOP_N=100 SHADOW_BATCH_CONCURRENCY=2 flock -n -E 99 /tmp/shadow_batch_weekly.lock timeout 45m $PY scripts/shadow_batch_generator.py --run >> logs/shadow_batch_weekly.log 2>&1; rc=$?; [ $rc -eq 99 ] && echo \"$(date +\\%Y-\\%m-\\%d\\ \\%H:\\%M:\\%S) [flock] shadow_batch_weekly skipped \u2014 previous still running\" >> $PROJ/logs/shadow_batch_weekly.log  # weekly top-100 shadow review: full LLM critique of highest-evidence symbols; idempotent (fresh<12h skipped)",
+    "15 10 * * 0 cd $PROJ && export $(grep -E \"^[A-Za-z_][A-Za-z0-9_]*=\" $TRADEAI_ENV | cut -d= -f1) 2>/dev/null; set -a; . <(grep -E \"^[A-Za-z_][A-Za-z0-9_]*=\" $TRADEAI_ENV) 2>/dev/null; set +a; SHADOW_BATCH_TOP_N=100 SHADOW_BATCH_CONCURRENCY=2 flock -n -E 99 /tmp/shadow_batch_weekly.lock timeout 45m $PY scripts/shadow_batch_generator.py --run >> logs/shadow_batch_weekly.log 2>&1; rc=$?; [ $rc -eq 99 ] && echo \"$(date +\\%Y-\\%m-\\%d\\ \\%H:\\%M:\\%S) [flock] shadow_batch_weekly skipped — previous still running\" >> $PROJ/logs/shadow_batch_weekly.log  # weekly top-100 shadow review: full LLM critique of highest-evidence symbols; idempotent (fresh<12h skipped)",
     "15 10 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/deploy_recompute.py --apply --limit 100 >> /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/deploy_redeploy_cron.log 2>&1",
     "15 10 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && flock -n /tmp/inv_stoplights.lock bash -c \"set -a; . ./.env; set +a; .venv/bin/python scripts/defense_inverse_stoplights.py\" >> logs/inverse_stoplights.log 2>&1",
     "15 10,16 * * 1-5 cd $PROJ && flock -n /tmp/finviz_sector.lock $PY scripts/finviz_sector_research.py >> logs/finviz_sector.log 2>&1",
@@ -1380,7 +1380,7 @@
     "15 8 * * 1-5 cd $PROJ && flock -n /tmp/reentry_resistance.lock $PY scripts/refresh_reentry_resistance.py >> logs/reentry_resistance.log 2>&1",
     "15 8 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/daily_incubator_refresh.py --apply >> logs/incubator_refresh.log 2>&1",
     "15 8 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && flock -n -E 99 /tmp/tradeai_stale_proposal_sweeper.lock ./scripts/run_scheduled_stale_proposal_sweeper.sh --dry-run >> logs/stale_proposal_sweeper.log 2>&1",
-    "15 9 * * 1-5 cd $PROJ && export $(grep -E \"^[A-Za-z_][A-Za-z0-9_]*=\" $TRADEAI_ENV | cut -d= -f1) 2>/dev/null; set -a; . <(grep -E \"^[A-Za-z_][A-Za-z0-9_]*=\" $TRADEAI_ENV) 2>/dev/null; set +a; SHADOW_BATCH_TOP_N=300 SHADOW_BATCH_HARD_CAP=400 SHADOW_BATCH_CONCURRENCY=4 flock -n -E 99 /tmp/shadow_batch.lock timeout 60m $PY scripts/shadow_batch_generator.py --run >> logs/shadow_batch.log 2>&1; rc=$?; [ $rc -eq 99 ] && echo \"$(date +\\%Y-\\%m-\\%d\\\\ \\%H:\\%M:\\%S) [flock] shadow_batch skipped \u2014 previous still running\" >> $PROJ/logs/shadow_batch.log  # daily shadow decision-packet refresh: 300 symbols (6x old rate); idempotent (fresh<12h skipped)",
+    "15 9 * * 1-5 cd $PROJ && export $(grep -E \"^[A-Za-z_][A-Za-z0-9_]*=\" $TRADEAI_ENV | cut -d= -f1) 2>/dev/null; set -a; . <(grep -E \"^[A-Za-z_][A-Za-z0-9_]*=\" $TRADEAI_ENV) 2>/dev/null; set +a; SHADOW_BATCH_TOP_N=300 SHADOW_BATCH_HARD_CAP=400 SHADOW_BATCH_CONCURRENCY=4 flock -n -E 99 /tmp/shadow_batch.lock timeout 60m $PY scripts/shadow_batch_generator.py --run >> logs/shadow_batch.log 2>&1; rc=$?; [ $rc -eq 99 ] && echo \"$(date +\\%Y-\\%m-\\%d\\\\ \\%H:\\%M:\\%S) [flock] shadow_batch skipped — previous still running\" >> $PROJ/logs/shadow_batch.log  # daily shadow decision-packet refresh: 300 symbols (6x old rate); idempotent (fresh<12h skipped)",
     "15 9 * * 1-5 cd $PROJ && flock -n /tmp/tradeai_sec_form4_ctx.lock $PY scripts/run_sec_form4_momentum_context.py --apply >> logs/sec_form4_momentum_context.log 2>&1",
     "15 9 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && flock -n /tmp/opening_intel.lock .venv/bin/python scripts/opening_intelligence.py --persist --render >> logs/opening_intelligence.log 2>&1",
     "15,45 * * * * cd $PROJ && bash $PROJ/scripts/llm_priority_guard.sh && flock -n /tmp/hermes_alerts.lock $PY scripts/hermes_score_alerts.py --send >> logs/hermes_alerts.log 2>&1  # H-5 Hermes score alerts (near 24/7)",
@@ -1390,7 +1390,7 @@
     "20 * * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/resolve_due_checkpoints.py --apply >> logs/resolve_due_checkpoints.log 2>&1",
     "20 * * * * cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && bash /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/non_trading_hours_gate.sh bash -c 'bash /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/llm_priority_guard.sh && flock -n /tmp/topic_synth.lock /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/topic_research_synthesizer.py --max 15 --apply' >> /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/topic_research_synth.log 2>&1",
     "20 */2 * * * cd $PROJ && bash $PROJ/scripts/llm_priority_guard.sh && flock -n /tmp/enh_pos.lock $PY scripts/hermes_subject_enhance.py --type position --lanes grok,chatgpt --apply >> logs/hermes_enh.log 2>&1  # H-enh position (Grok+ChatGPT)",
-    "20 */3 * * * cd $PROJ && flock -n /tmp/hermes_analyst_signal.lock $PY scripts/hermes_analyst_signal_discovery.py --run --json >> logs/hermes_analyst_signal.log 2>&1  # analyst-signal discovery feeder \u2014 LIVE (analyst_signal_enabled=true since 2026-07-30)",
+    "20 */3 * * * cd $PROJ && flock -n /tmp/hermes_analyst_signal.lock $PY scripts/hermes_analyst_signal_discovery.py --run --json >> logs/hermes_analyst_signal.log 2>&1  # analyst-signal discovery feeder — LIVE (analyst_signal_enabled=true since 2026-07-30)",
     "20 */4 * * * cd $PROJ && flock -n /tmp/pipeline_freshness.lock $PY scripts/pipeline_freshness_monitor.py --send >> logs/pipeline_freshness.log 2>&1",
     "20 10 * * 1-5 cd $PROJ && flock -n /tmp/maxhold_exit.lock $PY scripts/generate_max_hold_exit_proposals.py --apply >> logs/maxhold_exit.log 2>&1  # max-hold time-exit proposals (advisory, approval-gated)",
     "20 10 * * 1-5 cd $PROJ && flock -n /tmp/two_way_desk_emit.lock bash scripts/run_scheduled_two_way_curation.sh desk-emit",
@@ -1405,31 +1405,31 @@
     "20 2 * * * cd $PROJ && bash \"$HOME/.config/tradeai/bin/run_with_deepseek_offpeak.sh\" --official -- bash $PROJ/scripts/llm_priority_guard.sh && $PY scripts/hermes_backlog_drain.py --apply --max-rows 25 --max-runtime 3000 --telegram-summary >> logs/hermes_backlog_drain_nightly.log 2>&1",
     "20 6 * * * cd $PROJ && flock -n /tmp/watch_directives_monitor.lock $PY scripts/watch_directives_monitor.py >> logs/watch_directives_monitor.log 2>&1",
     "20 6 * * 1,4 cd $PROJ && bash $PROJ/scripts/llm_priority_guard.sh && flock -n /tmp/hermes_synthesizer.lock timeout 20m $PY scripts/hermes_cross_source_synthesizer.py --apply --json >> logs/hermes_synthesizer.log 2>&1  # Phase 4 cross-source synthesis: off-hours, llm_priority_guard-wrapped (2026-08-04)",
-    "20 6 * * 1-5 cd $PROJ && flock -n /tmp/bt_aggregator.lock $PY scripts/backtest_results_aggregator.py >> logs/backtest_results_aggregator.log 2>&1  # aggregate backtest runs \u2192 strategy_backtest_results (after 06:00 strategy_backtester)",
+    "20 6 * * 1-5 cd $PROJ && flock -n /tmp/bt_aggregator.lock $PY scripts/backtest_results_aggregator.py >> logs/backtest_results_aggregator.log 2>&1  # aggregate backtest runs → strategy_backtest_results (after 06:00 strategy_backtester)",
     "20 7 * * * cd $PROJ && $PY scripts/iris_proposal_curator.py --apply >> logs/iris_proposal_curator.log 2>&1",
     "20 7 * * * cd $PROJ && flock -n /tmp/hermes_maturity_gates.lock $PY scripts/hermes_maturity_gates.py --snapshot >> logs/hermes_maturity_gates.log 2>&1",
     "20 7 * * 1-5 cd $PROJ && $PY scripts/price_db_sync.py >> logs/price_db_sync.log 2>&1",
     "20 7 * * 1-5 cd $PROJ && flock -n /tmp/llm_enrichment.lock $PY scripts/llm_intelligence_enrichment.py >> logs/llm_enrichment.log 2>&1",
     "20 7 * * 1-6 cd $PROJ && flock -n /tmp/snaptrade_activity_ingest.lock $PY scripts/snaptrade_activity_ingest.py --apply >> logs/snaptrade_activity_ingest.log 2>&1",
     "20 9 * * 1-5 /usr/bin/flock -n /tmp/tradeai_quote_refresh.lock /usr/bin/bash /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/run_scheduled_quote_refresh.sh --mode incubator --limit 100 >> /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/proactive_quote_refresh_cron.log 2>&1",
-    "22 10 20 7 * [ \"$(date +\\%F)\" = \"2026-07-20\" ] && flock -n /tmp/tradeai_paper_canary.lock /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/run_paper_canary_chain.py >> /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/paper_canary_chain.log 2>&1  # ABSOLUTE-PATH canary primary \u2014 the one guaranteed slot; script self-loads .env",
+    "22 10 20 7 * [ \"$(date +\\%F)\" = \"2026-07-20\" ] && flock -n /tmp/tradeai_paper_canary.lock /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/run_paper_canary_chain.py >> /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/paper_canary_chain.log 2>&1  # ABSOLUTE-PATH canary primary — the one guaranteed slot; script self-loads .env",
     "25 11 * * * cd $PROJ && bash \"$HOME/.config/tradeai/bin/run_with_deepseek_offpeak.sh\" -- bash $PROJ/scripts/safe_flock.sh /tmp/hermes_outcome_feedback.lock $PY scripts/hermes_outcome_feedback_agent.py --apply >> logs/hermes_outcome_feedback.log 2>&1  # RETARGETED_OFFPEAK 2026-08-21 was 03:25 ET Peak B",
     "25 11,14 * * 1-5 cd $PROJ && bash $PROJ/scripts/llm_priority_guard.sh && flock -n /tmp/enh_sec.lock $PY scripts/hermes_subject_enhance.py --type sector --lanes grok,chatgpt --apply --limit 11 >> logs/hermes_enh.log 2>&1  # H-enh sector (Grok+ChatGPT)",
     "25 16 * * 1-5 cd $PROJ && flock -n /tmp/strategy_tilt.lock $PY scripts/strategy_tilt.py >> logs/strategy_tilt.log 2>&1  # per-strategy allocation tilt refresh (post-close)",
     "25 16 * * 1-5 cd $PROJ && flock -n /tmp/two_way_options_edge.lock bash scripts/run_scheduled_two_way_curation.sh options-edge",
     "25 17 * * 1-5 cd $PROJ && flock -n /tmp/plan_drift_reval.lock $PY scripts/plan_drift_revalidator.py --apply >> logs/plan_drift_revalidator.log 2>&1",
     "25 17 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && flock -n /tmp/sector_momentum.lock bash -c \"set -a; . ./.env; set +a; .venv/bin/python scripts/sector_momentum_engine.py\" >> logs/sector_momentum.log 2>&1  # Defense Desk WS-A: nightly sector momentum states + transition alerts",
-    "25 4 * * * cd $PROJ && bash \"$HOME/.config/tradeai/bin/run_with_deepseek_offpeak.sh\" --official -- flock -n /tmp/hermes_industry_novelty.lock $PY scripts/hermes_industry_novelty_discovery.py --run --json >> logs/hermes_industry_novelty.log 2>&1  # industry/sector novelty discovery \u2014 LIVE (industry_novelty_enabled=true since 2026-08-04)",
+    "25 4 * * * cd $PROJ && bash \"$HOME/.config/tradeai/bin/run_with_deepseek_offpeak.sh\" --official -- flock -n /tmp/hermes_industry_novelty.lock $PY scripts/hermes_industry_novelty_discovery.py --run --json >> logs/hermes_industry_novelty.log 2>&1  # industry/sector novelty discovery — LIVE (industry_novelty_enabled=true since 2026-08-04)",
     "25 6 * * 1-5 $PROJ/scripts/agent_intelligence_cron.sh daily",
     "25 6-15 * * 1-5 cd $PROJ && flock -n /tmp/hermes_scalp_catalyst.lock timeout 5m $PY scripts/hermes_momentum_catalyst_researcher.py --source scalp --apply >> logs/hermes_scalp_catalyst.log 2>&1  # Hermes catalyst research on the day scalp candidates (feeds social_scalp_scanner GO gate)",
-    "25 6-18/3 * * 1-5 cd $PROJ && timeout 2m $PY scripts/finviz_health_check.py >> logs/finviz_health_check.log 2>&1  # Finviz data-source health probe \u2014 its only reporter (candidate_discovery_orchestrator) was orphaned, row went zombie-stale (2026-07-06 audit)",
+    "25 6-18/3 * * 1-5 cd $PROJ && timeout 2m $PY scripts/finviz_health_check.py >> logs/finviz_health_check.log 2>&1  # Finviz data-source health probe — its only reporter (candidate_discovery_orchestrator) was orphaned, row went zombie-stale (2026-07-06 audit)",
     "25 7 * * 1 cd $PROJ && flock -n /tmp/fee_efficiency.lock bash -c \"set -a; . ./.env; set +a; $PY scripts/fee_efficiency_analyzer.py --emit\" >> logs/fee_efficiency.log 2>&1  # weekly portfolio fee/cost-efficiency findings -> Reports",
     "25 7 * * 1-5 cd $PROJ && bash scripts/market_day_gate.sh $PY scripts/system_health_alerts.py >> logs/system_health_alerts_cron.log 2>&1",
     "25 8 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && flock -n -E 99 /tmp/tradeai_stale_proposal_sweeper.lock ./scripts/run_scheduled_stale_proposal_sweeper.sh --apply >> logs/stale_proposal_sweeper.log 2>&1",
     "25 8 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && flock -n /tmp/opening_intel.lock .venv/bin/python scripts/opening_intelligence.py --persist >> logs/opening_intelligence.log 2>&1",
     "25,55 * * * * cd $PROJ && bash $PROJ/scripts/llm_priority_guard.sh && flock -n /tmp/directive_kw_enhancer.lock $PY scripts/directive_keyword_enhancer.py --backfill --apply >> logs/directive_keyword_enhancer.log 2>&1  # LLM auto-enhance keyword-less trend/sector directives (local+oauth)",
     "3,18,33,48 9-16 * * 1-5 cd $PROJ && flock -n /tmp/schwab_intraday.lock bash -c \"sleep $((RANDOM \\% 15)); $PY scripts/schwab_transaction_ingest.py --apply && $PY scripts/schwab_journal_builder.py --apply\" >> logs/schwab_ingest.log 2>&1  # intraday Schwab journal sync (staggered off :45 expiry window; 2026-07-15)",
-    "30 */6 * * * cd $PROJ && flock -n /tmp/wire_lessons.lock $PY scripts/wire_advisory_lessons.py >> logs/wire_advisory_lessons.log 2>&1  # wire external advisory lessons \u2192 trade_lesson_memory \u2192 strategy_lesson_rollup (learning loop)",
+    "30 */6 * * * cd $PROJ && flock -n /tmp/wire_lessons.lock $PY scripts/wire_advisory_lessons.py >> logs/wire_advisory_lessons.log 2>&1  # wire external advisory lessons → trade_lesson_memory → strategy_lesson_rollup (learning loop)",
     "30 0 * * * cd $PROJ && flock -n /tmp/news_priority_overnight.lock timeout 45m $PY scripts/news_ingestion.py --priority >> logs/news_ingestion.log 2>&1",
     "30 0 * * 2-6 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && ./scripts/run_scheduled_atp2_research_cycle.sh --cycle overnight >> logs/atp2_research_cycle_cron.log 2>&1",
     "30 10 * * 0 cd $PROJ && $PY scripts/strategy_weekly_review.py >> logs/strategy_weekly_review.log 2>&1",
@@ -1502,7 +1502,7 @@
     "30 9-15 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/catalyst_swing.lock $PY scripts/catalyst_momentum_engine.py --band market_swing --apply --generate-proposals >> logs/catalyst_momentum_engine.log 2>&1",
     "31 9 * * 1-5 cd $PROJ && flock -n /tmp/schwab_stream.lock bash -c \"set -a; . ./.env; set +a; $PY scripts/schwab_stream_daemon.py\" >> logs/schwab_stream.log 2>&1",
     "31 9 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && flock -n /tmp/opening_intel.lock .venv/bin/python scripts/opening_intelligence.py --persist >> logs/opening_intelligence.log 2>&1",
-    "33 16 * * 1-5 cd $PROJ && flock -n /tmp/basis_sync.lock bash -c \"set -a; . ./.env; set +a; $PY scripts/sync_basis_from_broker.py --apply\" >> logs/basis_sync.log 2>&1  # daily basis self-heal (repricer reverts SSOT values \u2014 root fix pending)",
+    "33 16 * * 1-5 cd $PROJ && flock -n /tmp/basis_sync.lock bash -c \"set -a; . ./.env; set +a; $PY scripts/sync_basis_from_broker.py --apply\" >> logs/basis_sync.log 2>&1  # daily basis self-heal (repricer reverts SSOT values — root fix pending)",
     "35 11 * * * cd $PROJ && bash \"$HOME/.config/tradeai/bin/run_with_deepseek_offpeak.sh\" -- bash $PROJ/scripts/safe_flock.sh /tmp/hermes_outcome_learning.lock $PY scripts/hermes_outcome_learning.py --apply >> logs/hermes_outcome_learning.log 2>&1  # RETARGETED_OFFPEAK 2026-08-21 was 03:35 ET Peak B",
     "35 16 * * 1-5 cd $PROJ && flock -n /tmp/basis_audit.lock bash -c \"set -a; . ./.env; set +a; $PY scripts/audit_position_basis.py --alert\" >> logs/position_basis_audit.log 2>&1  # basis drift alarm (holdings vs broker)",
     "35 17 * * 1-5 cd $PROJ && bash scripts/market_day_gate.sh flock -n /tmp/snaptrade_sync.lock $PY scripts/snaptrade_sync.py --apply >> logs/snaptrade_sync.log 2>&1  # after Fidelity fund NAV update",
@@ -1572,7 +1572,7 @@
     "5 10 * * 1-5 cd $PROJ && bash scripts/market_day_gate.sh flock -n /tmp/fidelity_stop_sync.lock $PY scripts/fidelity_stop_sync.py --apply --trading-days-only >> logs/fidelity_stop_sync.log 2>&1",
     "5 10 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && ./scripts/run_scheduled_watchpool_alerts.sh --mode maturity --limit 50 >> logs/watchpool_alerts_cron.log 2>&1",
     "5 10,15 * * 1-5 cd $PROJ && bash scripts/market_day_gate.sh $PY scripts/grok_stop_review.py --apply >> logs/grok_stop_review_cron.log 2>&1",
-    "5 10-15/2 * * 1-5 cd $PROJ && flock -n /tmp/proposal_backtest.lock $PY scripts/proposal_backtest_engine.py --all-pending --apply >> logs/proposal_backtest_engine.log 2>&1  # backtest active proposals \u2192 proposal_backtest_snapshots (Backtest field on cards)",
+    "5 10-15/2 * * 1-5 cd $PROJ && flock -n /tmp/proposal_backtest.lock $PY scripts/proposal_backtest_engine.py --all-pending --apply >> logs/proposal_backtest_engine.log 2>&1  # backtest active proposals → proposal_backtest_snapshots (Backtest field on cards)",
     "5 11 * * * cd $PROJ && bash \"$HOME/.config/tradeai/bin/run_with_deepseek_offpeak.sh\" -- bash $PROJ/scripts/safe_flock.sh /tmp/hermes_tag_engine.lock $PY scripts/hermes_tag_engine.py --apply >> logs/hermes_tag_engine.log 2>&1  # RETARGETED_OFFPEAK 2026-08-21 was 03:05 ET Peak B",
     "5 16 * * 1,3,5 cd /home/johnclaw/tradeai-wt-watch-review-automation && TRADEAI_RUNTIME_ROOT=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/data/runtime PYTHONPATH=scripts flock -n -E 99 /tmp/tradeai_watch_review_maria.lock timeout 45m /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/run_watch_review_workers.py --mode execute --allow-execute --role maria >> /home/johnclaw/tradeai-wt-watch-review-automation/logs/watch_review_maria.log 2>&1; rc=$?; [ $rc -eq 99 ] && echo \"$(date +\\%Y-\\%m-\\%d\\ \\%H:\\%M:\\%S) [flock] maria skipped\" >> /home/johnclaw/tradeai-wt-watch-review-automation/logs/watch_review_maria.log",
     "5 16 * * 1-5 cd $PROJ && $PY scripts/market_regime_collector.py --apply >> logs/regime_collector.log 2>&1 && $PY scripts/market_regime_classifier.py --apply >> logs/regime_classifier.log 2>&1",

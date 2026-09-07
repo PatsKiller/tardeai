@@ -65,6 +65,26 @@ CALLER_TASK_PROCESS_MAP: dict[str, dict[str, str]] = {
     },
 }
 
+# ── Reservation failure codes → HTTP status ────────────────────────────
+# reserve_projected_cost() raises RuntimeError("<MACHINE_CODE>: detail") for
+# every governance outcome. Flattening those into RESERVATION_FAILED/500 is a
+# defect, not a simplification: classify_failure() lists RESERVATION_FAILED
+# under RETRYABLE_TRANSIENT, so a hard cap breach was returned to callers with
+# a retry policy that says "retry this". On 2026-09-06 that cost 46,106 rows —
+# the caller read HTTP 500, treated it as a transient provider fault, and burned
+# its entire remaining queue marking rows FAILED_PROVIDER in a few minutes.
+#
+# The request-count cap is enforced ONLY inside reserve_projected_cost; the
+# check_cost_cap() pre-flight above covers dollar caps alone. So without this
+# map there is no path by which a count breach can be reported as anything but
+# a server fault.
+_RESERVATION_CODE_STATUS: dict[str, int] = {
+    "COST_CAP_EXCEEDED": 429,            # -> NON_RETRYABLE_COST. Budget, not fault.
+    "COST_CONFIGURATION_INVALID": 500,   # -> NON_RETRYABLE_COST by code.
+    "COST_PERSISTENCE_UNAVAILABLE": 503, # -> RETRYABLE_TRANSIENT. A ledger blip.
+}
+
+
 # ── Server-side caller → authorized task_types ─────────────────────────
 # Caller-supplied process_id/model_id are never trusted.
 # Each caller's task_type → server-selected policy.
@@ -846,8 +866,21 @@ def execute_governed_call(
             },
         )
     except RuntimeError as e:
+        # Preserve the machine code the reservation raised rather than reporting
+        # every governance outcome as a server fault.
+        code, _, detail = str(e).partition(":")
+        code = code.strip().upper()
+        status = _RESERVATION_CODE_STATUS.get(code)
+        if status is not None:
+            log.warning("reservation refused for %s: %s (HTTP %d)", process_id, e, status)
+            return _error(code, detail.strip() or str(e), status=status)
+        # An unmapped RuntimeError is a genuine fault. Log the traceback: this
+        # handler previously discarded it, which is why 2.7 MB of bridge log
+        # held zero tracebacks while every request 500'd for 50 minutes.
+        log.exception("reservation failed for %s: unmapped RuntimeError", process_id)
         return _error("RESERVATION_FAILED", str(e), status=500)
     except Exception as e:
+        log.exception("reservation failed for %s", process_id)
         return _error("RESERVATION_FAILED", f"Unexpected reservation error: {type(e).__name__}",
                       status=500)
 

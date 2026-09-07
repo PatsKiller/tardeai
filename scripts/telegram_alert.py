@@ -232,12 +232,32 @@ def _best_effort_comms_publish(
     *,
     message_class: str,
     producer: str = "telegram_alert.send_telegram",
+    delivered: bool | None = None,
 ) -> None:
     """Record CommunicationEvent without claiming delivery ownership (OFF/SHADOW).
 
-    F1: the legacy path delivers this class. `publish_communication` auto-reserves
-    a ChannelDelivery stub; settle it to LEGACY_DELIVERED here so the ledger never
-    leaves a phantom in-flight RESERVED row that nothing will ever settle.
+    F1: `publish_communication` auto-reserves a ChannelDelivery stub; settle it
+    here so the ledger never leaves a phantom in-flight RESERVED row that nothing
+    will ever settle.
+
+    `delivered` is what the CALLER actually observed. It used to be absent, and
+    every row settled LEGACY_DELIVERED on the strength of this docstring's old
+    claim that "the legacy path delivers this class".
+
+    Measured 2026-09-05, two adjacent rows, both LEGACY_DELIVERED, both with
+    provider_message_id NULL:
+
+        21:35:36  approval request      — arrived in Telegram
+        21:39:43  Health Inspector      — router suppressed it; never arrived
+
+    The Communications page showed the operator a delivered alert they never
+    received. The caller knew: `send_telegram` reads `result["delivered"]` on the
+    very next line and simply did not pass it. A status asserted identically for
+    a delivered and an undelivered message carries no information, and is worse
+    than no status because the surface renders it as fact.
+
+    None means genuinely unknown, and settles UNKNOWN rather than borrowing the
+    flattering value.
     """
     try:
         from scripts.lib.comms.adapters import from_plain_message
@@ -260,19 +280,30 @@ def _best_effort_comms_publish(
                 message_class=message_class,
             )
         )
+        # Say what was observed, not what is convenient. SUPPRESSED and UNKNOWN
+        # are already valid terminal statuses; using LEGACY_DELIVERED for all
+        # three is what let the Communications page show a delivered alert the
+        # operator never received.
+        if delivered is True:
+            status = "LEGACY_DELIVERED"
+        elif delivered is False:
+            status = "SUPPRESSED"
+        else:
+            status = "UNKNOWN"
         for delivery_id in (published.delivery_ids or []):
             try:
                 settle_delivery(
                     delivery_id,
-                    status="LEGACY_DELIVERED",
-                    provider_coordinates={"delivery_owner": "legacy"},
+                    status=status,
+                    provider_coordinates={"delivery_owner": "legacy",
+                                          "observed_delivered": delivered},
                 )
             except Exception as e:
                 # Never swallow a settle failure silently (§7): a RESERVED stub
                 # left un-settled is a phantom in-flight row. Surface it rather
                 # than letting the ledger claim a queue that never drains.
                 print(
-                    f"[telegram] comms settle LEGACY_DELIVERED failed for "
+                    f"[telegram] comms settle {status} failed for "
                     f"{delivery_id}: {type(e).__name__}: {str(e)[:160]}"
                 )
     except Exception:
@@ -417,7 +448,7 @@ def send_telegram(
             chat_ids=chat_ids,
             thread_id=thread_id,
         )
-        _best_effort_comms_publish(message, message_class=mc)
+        _best_effort_comms_publish(message, message_class=mc, delivered=bool(ok))
         return ok
     try:
         result = publish_operator_message(message, bypass_router=bypass_router)
@@ -427,9 +458,12 @@ def send_telegram(
         print(f"[telegram] normalized publish failed ({type(e).__name__}: {str(e)[:160]}) "
               f"— falling back to legacy delivery")
         ok = _legacy_send(message, bypass_router)
-        _best_effort_comms_publish(message, message_class=mc)
+        _best_effort_comms_publish(message, message_class=mc, delivered=bool(ok))
         return ok
-    _best_effort_comms_publish(message, message_class=mc)
+    # The answer is right here in `result`; the old code read it on the NEXT line
+    # and still published without it.
+    _best_effort_comms_publish(message, message_class=mc,
+                               delivered=bool(result.get("delivered")))
     if not result.get("delivered") and result.get("route_mode") not in (None, "LEGACY"):
         print(f"[telegram] {result.get('route_mode')} ({result.get('reason')}): {message[:60]}...")
     return bool(result.get("accepted"))
@@ -510,9 +544,13 @@ def send_telegram_document(
         capture(cap, ok=ok, channel="telegram_document")
     except Exception:
         pass
-    # Ledger: always best-effort for documents (gateway does not yet own file bytes).
+    # Ledger: best-effort for documents (gateway does not yet own file bytes),
+    # but the OUTCOME is still known — `ok` is False whenever any target errored,
+    # a few lines above. Publishing without it settled every document row
+    # LEGACY_DELIVERED including failed sends.
     _best_effort_comms_publish(
-        cap, message_class=mc, producer="telegram_alert.send_telegram_document"
+        cap, message_class=mc, producer="telegram_alert.send_telegram_document",
+        delivered=bool(ok),
     )
     return ok
 

@@ -52,7 +52,22 @@ def run_start(script_name: str, run_label: str = None, triggered_by: str = 'cron
         return None
 
 
-def run_complete(run_id: Optional[int], rows_processed: int = 0):
+def run_complete(run_id: Optional[int], rows_processed: Optional[int] = None):
+    """Record success. `rows_processed=None` means NOT MEASURED, and is written
+    as JSON null rather than 0.
+
+    Measured 2026-09-06: 20 scripts use PipelineRun and only 4 ever call
+    `.rows()`. The other 16 wrote `{"rows_produced": 0}` on every successful run,
+    because the default was 0 — so `pipeline_zero_rows` fired on five pipelines
+    that had NEVER reported a row in their entire history, including
+    cio_decision_engine at 3,010 runs in 7 days. Only 7 of 44 pipeline keys had
+    ever recorded a non-zero.
+
+    0 meant both "I produced nothing" and "nobody told me", so the alarm carried
+    no information in either direction: it could not fire on a real outage and it
+    could not stop firing on a healthy pipeline. AGENTS.md — two states cannot
+    express "no input". Unknown now has its own value.
+    """
     if not run_id: return
     try:
         conn = _get_conn()
@@ -60,7 +75,7 @@ def run_complete(run_id: Optional[int], rows_processed: int = 0):
         cur = conn.cursor()
         cur.execute("""UPDATE pipeline_runs SET status='success', finished_at=NOW(),
             duration_seconds=EXTRACT(EPOCH FROM (NOW()-started_at)),
-            summary=jsonb_build_object('rows_produced', %s) WHERE id=%s""",
+            summary=jsonb_build_object('rows_produced', %s::bigint) WHERE id=%s""",
             [rows_processed, run_id])
         conn.commit(); conn.close()
     except Exception:
@@ -93,7 +108,8 @@ class PipelineRun:
         else:
             self.triggered_by = triggered_by
         self.run_id = None
-        self._rows = 0
+        #: None = not measured. Do NOT default this to 0 — see run_complete().
+        self._rows = None
 
     def __enter__(self):
         self.run_id = run_start(self.script_name, self.run_label, self.triggered_by)

@@ -151,16 +151,43 @@ def check_pipeline_critical() -> list:
         # error instead of two the orchestrator began exiting 0. AGENTS.md §3 --
         # a green obtained by the wrong artifact is worse than a red, because a
         # red gets investigated.
+        # A QUIET RUN IS NOT A DARK PIPELINE.
+        #
+        # This counted zero-row runs in 24h and fired at two or more, regardless of
+        # whether the SAME pipeline had also produced plenty. Measured 2026-09-07:
+        #
+        #     cio_decision_engine  102 runs, 100 zero, 1 non-zero  -> 20 decisions today
+        #     news_ingestion        37 runs,  13 zero, 19 non-zero -> 395 articles today
+        #
+        # Both were alarmed on. A decision engine that decides nothing on 100 of 102
+        # runs is behaving correctly — most fifteen-minute windows contain no
+        # decision. Firing there is the mirror image of the defect this alarm was
+        # built for: rows_produced was made honest, and honest zeros then became
+        # false alarms.
+        #
+        # The alarm is about DARKNESS: a pipeline that has produced nothing AT ALL,
+        # not one that had a quiet afternoon. So it now requires zero non-zero runs
+        # across a week as well as today. A pipeline that produced even once in seven
+        # days is alive, and its quiet runs are information, not an incident.
         cur.execute("""
-            SELECT pipeline_key, COUNT(*) AS n, MAX(started_at) AS last_at
-            FROM pipeline_runs
-            WHERE status = 'success'
-              AND started_at > NOW() - INTERVAL '24 hours'
-              AND COALESCE(trigger_source, 'cron') != 'manual_test'
-              AND COALESCE((summary->>'rows_produced')::bigint, -1) = 0
-            GROUP BY pipeline_key
-            HAVING COUNT(*) >= 2
-            ORDER BY MAX(started_at) DESC LIMIT 5
+            SELECT z.pipeline_key, z.n, z.last_at
+            FROM (
+                SELECT pipeline_key, COUNT(*) AS n, MAX(started_at) AS last_at
+                FROM pipeline_runs
+                WHERE status = 'success'
+                  AND started_at > NOW() - INTERVAL '24 hours'
+                  AND COALESCE(trigger_source, 'cron') != 'manual_test'
+                  AND COALESCE((summary->>'rows_produced')::bigint, -1) = 0
+                GROUP BY pipeline_key
+                HAVING COUNT(*) >= 2
+            ) z
+            WHERE NOT EXISTS (
+                SELECT 1 FROM pipeline_runs p
+                WHERE p.pipeline_key = z.pipeline_key
+                  AND p.started_at > NOW() - INTERVAL '7 days'
+                  AND COALESCE((p.summary->>'rows_produced')::bigint, 0) > 0
+            )
+            ORDER BY z.last_at DESC LIMIT 5
         """)
         for key, n, last_at in cur.fetchall():
             alerts.append({

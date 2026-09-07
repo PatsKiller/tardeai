@@ -14,6 +14,7 @@
 
 | Document | Purpose | Status |
 |----------|---------|--------|
+| `docs/architecture/MATERIAL_CHANGE_TO_QUESTIONS.md` | **Material-change intelligence** — why a schedule-triggered sweep cannot notice one name behaving unlike itself, and the identity -> detect -> notify -> characterize -> interrogate -> route loop that can. Stages 0-2 SHIPPED 2026-09-06 (PRs #904-#907) and free; 3-5 designed and prototyped. Carries the guard rails: average-daily-move not ATR, unknown is the lowest rank, ACCEPTED is not DELIVERED, held is not dropped | Active |
 | `docs/architecture/TRADEAI_SYSTEM_STATE_AND_AUTONOMY_2026-08-20.md` | **Master record** — LIVE architecture, timers, notify gates, freeform/desk loop, thesis SLA, autonomy directive gap matrix, roadmap | Active |
 | `docs/audits/CIO_PLATFORM_AUDIT_2026-08-27.md` | **Phase 1 findings** — is CIO Desk actually the authoritative data/decision source? 11 evidence-based investigations, doc claim vs code vs live state | Active (closed out) |
 | `docs/audits/CIO_PLATFORM_REMEDIATION_2026-08-27.md` | **Phase 2 plan + closeout status** — item→PR→merge-commit map for the 19 PRs merged 2026-08-27, and the ranked list of what remains | Active |

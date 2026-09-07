@@ -56,6 +56,7 @@ GATES = [
             "tests/test_alarm_fires_batch3.py",
             "tests/test_alarm_fires_batch4.py",
             "tests/test_alarm_fires_batch5.py",
+            "tests/test_alarm_fires_guard_approval.py",
             "tests/test_alarm_coverage.py",
         ],
     ),
@@ -566,6 +567,228 @@ GATES = [
         ],
     ),
     (
+        "research_identity_tagging",
+        [
+            # The GUID/sector tags downstream agents are told to trust. Pins the
+            # GICS allowlist (a fund mandate is not a sector), the one-way
+            # identity rank (a feed that stops publishing CUSIPs must not be able
+            # to downgrade a CONFIRMED entity), and that an unresolvable symbol
+            # yields NO tag rather than a null-subject one that would inflate
+            # apparent coverage.
+            "tests/test_research_identity_tagging.py",
+        ],
+    ),
+    (
+        "pipeline_rows_unknown",
+        [
+            # 16 of 20 PipelineRun users never call .rows(), so a default of 0
+            # made pipeline_zero_rows fire on five pipelines that had never
+            # reported a row. Pins that unknown stays distinct from zero.
+            "tests/test_pipeline_rows_unknown.py",
+        ],
+    ),
+    (
+        "mentions_retention",
+        [
+            # I shipped document_mentions with NO retention on the day AGENTS.md
+            # gained "every suppression needs a shelf life". Pins that windows are
+            # READ from db_retention (never copied), that an unwindowed source is
+            # reported rather than guessed, and that no model runs in the pruner.
+            "tests/test_mentions_retention.py",
+        ],
+    ),
+    (
+        "document_mentions",
+        [
+            # Subject vs passing mention. The canonical case: an Apple article
+            # that cites Morgan Stanley must never be filed under MS. Also pins
+            # that macro sources (FRED) can never be given an issuer.
+            "tests/test_document_mentions.py",
+        ],
+    ),
+    (
+        "llm_cap_admin",
+        [
+            # The spend caps had NO operator surface — not the Command Center,
+            # not api_v2. Pins that a change writes BOTH the registry and the DB,
+            # that ceilings hold even for the operator, and that drift is
+            # reported rather than silently reconciled.
+            "tests/test_llm_cap_admin.py",
+        ],
+    ),
+    (
+        "governed_bridge_cap_semantics",
+        [
+            # A budget decision must not be reported as a server fault. The
+            # request-count cap is enforced only inside reserve_projected_cost,
+            # whose failures were all flattened to RESERVATION_FAILED/500 — a
+            # code classify_failure() rates RETRYABLE_TRANSIENT. On 2026-09-06
+            # the caller duly retried, spent its whole 46,106-row queue on a
+            # refusal that could not change, and reported a normal result.
+            # Pins the code->status map against the reservation's actual raise
+            # sites, that the traceback is logged, and that the consuming loop
+            # stops on a refusal without writing the rows it abandons.
+            "tests/test_cap_breach_is_not_a_server_fault.py",
+        ],
+    ),
+    (
+        "runtime_state_survives_checkout",
+        [
+            # Two files were classified as runtime state and still owned by git.
+            # SearXNG's live config was bind-mounted rw into the repo, so the
+            # container chowned it 977:977 and `git checkout` could not unlink it —
+            # one file blocked 70 others and left 18 merged commits not running on
+            # the tree that actually executes. hermes_score_weights was declared
+            # "runtime_state_with_release_seed" in the release manifest, but nothing
+            # enforced it, so the same checkout reverted v11 to the v9 seed and
+            # discarded nine grafts of learning.
+            "tests/test_runtime_state_survives_checkout.py",
+        ],
+    ),
+    (
+        "subject_identity_spine",
+        [
+            # Stage 0. ~336,000 rows could not be joined to a subject: three tables
+            # had no subject_guid column at all, two had one and never filled it. A
+            # dossier keyed on identity therefore read a third of the corpus, and
+            # under-answering is indistinguishable from answering. Pins that the
+            # backfill stays free (no model on any row), that it distinguishes
+            # "registry unreadable" from "symbol unknown" and stops rather than
+            # writing the former as the latter, and that unknown is the LOWEST rank
+            # — a guard that coalesced NULL to CONFIRMED reported 23 symbols
+            # resolved while writing zero rows.
+            "tests/test_backfill_subject_identity.py",
+        ],
+    ),
+    (
+        "material_change_detector",
+        [
+            # Stage 1. Every research job here is schedule-triggered, so a sweep
+            # treats every name identically and structurally cannot notice that ONE
+            # name is behaving unlike itself — which is why three watchlist names up
+            # 15-40% on 2026-09-05 produced no alert. Pins that the threshold is
+            # relative to each symbol's own average daily move (a fixed percent
+            # cannot be right for two different names at once), that corrupt data is
+            # skipped rather than alarmed on (a NaN compares False to every
+            # threshold, so the first run emitted BHVN at magnitude NaN), and that
+            # what could NOT be evaluated is counted and reported.
+            "tests/test_material_change_detector.py",
+        ],
+    ),
+    (
+        "material_change_notify",
+        [
+            # Stage 2 — the alert that would have arrived on Friday. Pins that a
+            # change is announced EXACTLY once (change_guid is uuid and psycopg2
+            # sends text[]; the first live run sent the alert then failed on the
+            # UPDATE, so the next run re-announced all three), that a change outside
+            # market hours is HELD rather than dropped, and that a send the platform
+            # did not accept leaves the change pending instead of silently
+            # consuming it.
+            "tests/test_notify_material_change.py",
+        ],
+    ),
+    (
+        "due_diligence_questions",
+        [
+            # Stages 3-5 — the loop that closes it. Before 2026-09-06 ZERO research
+            # rows had ever been requested because a name moved. Pins the operator's
+            # curation order (flash -> free OAuth -> deepseek pro -> ASK, inverted
+            # from the house default because curation emits a parsed contract), that
+            # research lanes are RANKED BY MEASURED delivery and quality rather than
+            # hardcoded (the shipped default was claude, dead since 2026-08-01;
+            # replacing it with grok picked the worst lane at 0.470 vs chatgpt's
+            # 0.616), that grounding is enforced in code rather than requested in the
+            # prompt, and that a change suppressed as UNCORROBORATED is never
+            # reasoned about.
+            "tests/test_due_diligence_questions.py",
+        ],
+    ),
+    (
+        "price_spike_quarantine",
+        [
+            # A previous one-sided detector ate real history. Six of seven jumps over
+            # 50% are reverse splits in micro-caps (NXTT 0.0616 -> 6.42, then 5.88-7.95
+            # all week) and a reverting spike is an ordinary micro-cap pump with
+            # exactly the SHAPE of corruption. Only a second source disagreeing ON THE
+            # SAME DATE convicts. Pins that corroboration is keyed on (symbol, date) —
+            # keyed on symbol alone this reported CONTRADICTED=82 and would have
+            # deleted 82 rows on a July-vs-September comparison; keyed correctly it is
+            # 0 — and that a row is archived before it is deleted.
+            "tests/test_quarantine_price_spikes.py",
+        ],
+    ),
+    (
+        "llm_escalation",
+        [
+            # Operator policy: free OAuth -> deepseek-flash -> ASK -> further paid.
+            # Step 3 is a hard STOP. Pins that a gated lane is never entered
+            # without an explicit re-run, and that a failed notification does not
+            # become permission to spend.
+            "tests/test_llm_escalation.py",
+        ],
+    ),
+    (
+        "inbound_identity_tagging",
+        [
+            # Tagging was one-way: research and news carried GUIDs, the inbound
+            # path carried nothing and stored nothing. Pins that a ticker
+            # resolves, that a company NAME is recorded as a measured gap rather
+            # than dropped, and that no model runs in the deterministic path.
+            "tests/test_inbound_identity_tagger.py",
+            # Company names come from the broker instrument feed, never a
+            # hand-rolled map. A test fails if a symbol->name pair is hardcoded.
+            "tests/test_company_name_index.py",
+        ],
+    ),
+    (
+        "generated_file_merge",
+        [
+            # 6 of 6 consecutive merges conflicted on the same five generated
+            # files. Runs REAL git merges in a temp repo: the conflict exists
+            # without the driver, the driver resolves it, and a genuine code
+            # conflict still stops the merge.
+            "tests/test_generated_file_merge_driver.py",
+        ],
+    ),
+    (
+        "identity_custodian",
+        [
+            # Nothing watched the GUID spine at all until 2026-09-06. Pins that
+            # the custodian stays deterministic (no model, no network), that its
+            # freshness grace survives a weekend, and that a commented cron does
+            # not count as scheduled.
+            "tests/test_identity_health.py",
+        ],
+    ),
+    (
+        "deterministic_integrity",
+        [
+            # The daily sweep. Run cold against main it rediscovered every defect
+            # a full session found by hand, plus db_retention unscheduled. Pins
+            # that it never repairs, that a commented cron is not scheduled, and
+            # that populations aggregate instead of emitting 309 alarms.
+            "tests/test_deterministic_integrity.py",
+            # The sweep's own alarm, OBSERVED firing. test_alarm_coverage caught
+            # this missing on 2026-09-06: a new send_telegram site with no firing
+            # test, in the session that documented the rule.
+            "tests/test_integrity_sweep_alarm_fires.py",
+            # The one place a model touches identity: proposes CANDIDATE, never
+            # commits, never mints a GUID, free lanes only.
+            "tests/test_identity_resolution_advisor.py",
+        ],
+    ),
+    (
+        "librarian_dedup_ttl",
+        [
+            # Three research_backlog rows from 2026-06-02 muted two of four
+            # detectors for 96 days, which is why hermes_advisory_events took its
+            # last write on 2026-07-14 while 108,102 catalysts matched. Pins that
+            # every dedup COUNT is time-bounded.
+            "tests/test_librarian_dedup_ttl.py",
+        ],
+    ),
+    (
         "agent_governance_sop",
         [
             "tests/test_agent_clients_registry.py",
@@ -611,6 +834,122 @@ GATES = [
             # Design toggles, and the fault signals the loader refuses to make
             # configurable — the exemption is the thing under test.
             "tests/test_design_features.py",
+        ],
+    ),
+    (
+        # Provider capacity is what the provider said; the ceiling is what we
+        # chose. brave_search.py asserted a 1,000/month Brave plan nobody had
+        # measured while discarding the X-RateLimit headers that would have
+        # settled it.
+        "research_provider_truth",
+        [
+            "tests/test_research_provider_truth.py",
+        ],
+    ),
+    (
+        # The overnight lane's schedule (22:00-05:35 ET) and its DeepSeek peak
+        # guard (10:00-21:00 ET) never overlapped, so it had never once run.
+        "overnight_deep_peak_guard",
+        [
+            "tests/test_overnight_deep_peak_guard.py",
+        ],
+    ),
+    (
+        # Every SearXNG engine in the pool was verified by query before being
+        # listed. The pool had six declared engines and one that worked; google
+        # failed SILENTLY (0 results, no error) and read as healthy.
+        "searxng_engine_pool",
+        [
+            "tests/test_searxng_engine_pool.py",
+        ],
+    ),
+    (
+        # Two always-on health findings that were never about the system: an
+        # expected-release pin nothing ever wrote, and a validator whose only
+        # caller passed an argument it did not accept.
+        "release_pin_and_validator",
+        [
+            "tests/test_release_pin_and_validator.py",
+        ],
+    ),
+    (
+        # The Communications ledger must not report a delivery that did not
+        # happen. Two adjacent rows both read LEGACY_DELIVERED: one arrived,
+        # one was router-suppressed and never did.
+        "comms_ledger_truth",
+        [
+            "tests/test_comms_ledger_says_what_happened.py",
+        ],
+    ),
+    (
+        # Durable data directories must survive a promote. data/audit held a
+        # 39KB receipt written the same day and was a real dir inside the
+        # release, so every deploy discarded it and the lane read SILENT.
+        "deploy_durable_dirs",
+        [
+            "tests/test_deploy_durable_dirs.py",
+        ],
+    ),
+    (
+        # An uninitialised inbound checkpoint returned 0, so replay-denial could
+        # never say no — on a path carrying approve/reject callbacks.
+        "inbound_checkpoint_seed",
+        [
+            "tests/test_inbound_checkpoint_seed.py",
+        ],
+    ),
+    (
+        # If one LLM lane fails the next must be tried, and the substitution
+        # said out loud. chatgpt failed 11/11 on 2026-09-05 while grok was
+        # healthy and never asked, because generate() takes one lane.
+        "llm_fallback",
+        [
+            "tests/test_llm_fallback.py",
+        ],
+    ),
+    (
+        # A weekday-only freshness check must not page for the weekend. Second
+        # fix in the same gate: G1 asked whether TODAY was Saturday; this one
+        # counted calendar weekday hours instead of hours the writer could run.
+        "freshness_weekend_gate",
+        [
+            "tests/test_freshness_weekend_gate.py",
+        ],
+    ),
+    (
+        # A curated alert must be more useful than the JSON and never less true.
+        # The alert that prompted this had a `Fix:` section restating its own
+        # trigger, and showed 2 of 6 firing lanes.
+        "alert_curation",
+        [
+            "tests/test_alert_curation.py",
+        ],
+    ),
+    (
+        # Phase 5 release discipline. READY must be earned by every item; absent
+        # evidence blocks rather than abstains. A closeout that reads green
+        # because nobody looked is worse than none, because it ends the looking.
+        "campaign_closeout",
+        [
+            "tests/test_campaign_closeout.py",
+        ],
+    ),
+    (
+        # Remote (Telegram) operator approval for guard scopes. The operator
+        # types APPROVE on their phone; the agent never does. Every refusal path
+        # is pinned here because the refusals are what make it safe.
+        "guard_remote_approval",
+        [
+            "tests/test_guard_remote_approval.py",
+        ],
+    ),
+    (
+        # 2026-07-28 /v3 blank-page reload loop. This file was named test_*.py,
+        # lived in tests/, defined no test function, and was listed in no gate —
+        # so its eleven assertions ran only when someone typed the path.
+        "cc_v3_boot_no_reload_loop",
+        [
+            "tests/test_cc_v3_boot_no_reload_loop.py",
         ],
     ),
     (

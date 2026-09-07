@@ -215,6 +215,27 @@ PY
     # append-only history from zero; 147 of 160 release dirs hold such a fork.
     # It also made every "did that cron job run?" check return a false ABSENT.
     "logs"
+    # Added 2026-09-05. Every one of these is a REAL DIRECTORY inside each
+    # release, holding files written that same day, with NO copy under the
+    # canonical root. So each deploy orphaned them, and every monitor that looked
+    # at the canonical root reported the producing lane SILENT.
+    #
+    #   data/audit           cio_material_scan_last.json  (39KB, written 20:03)
+    #                        cio_defer_revisit_last.json
+    #   data/paper_trading   paper_trade_statistics_latest.json
+    #   data/state           finviz_throttle.json
+    #   state/hermes         hermes_api_requests.jsonl
+    #
+    # cio-material-scan is the clearest case: its systemd service ran at 20:03,
+    # exited SUCCESS, and wrote a 39KB receipt into a directory that disappears on
+    # the next promote. Copies of that receipt sit orphaned in at least four
+    # superseded release dirs. AGENTS.md says exit code 0 is not evidence of work;
+    # this is that failure from the other side — the work happened and the
+    # evidence was thrown away.
+    "data/audit"
+    "data/paper_trading"
+    "data/state"
+    "state/hermes"
   )
   for rel in "${dirs[@]}"; do
     local target="${dest}/${rel}"
@@ -230,7 +251,28 @@ PY
       # reports/ (the pipeline writes it under CANONICAL_SOURCE), the test for it
       # is [[ -e ]], and a false test logged nothing at all. The release then
       # served an absent directory and the scanner read it as zero runs.
-      log "  WARN $rel missing at overlay source $source — release will serve it ABSENT"
+      #
+      # 2026-09-05: skipping is also how a directory stays orphaned forever. A
+      # path on this list is DECLARED durable, so if the canonical source does
+      # not exist yet we create it and link anyway — otherwise adding a name to
+      # the list above fixes nothing while looking as though it did, which is
+      # exactly what happened to reports/.
+      mkdir -p "$source"
+      if [[ -d "$target" && ! -L "$target" ]] && compgen -G "$target/*" >/dev/null 2>&1; then
+        # The release already holds release-local contents here. Two populated
+        # copies is a divergence, and a machine choosing one can destroy the
+        # other (AGENTS.md 0.5). Link the canonical location, and PRESERVE the
+        # release-local copy under a dated name for the operator to reconcile.
+        # Nothing is merged and nothing is deleted.
+        local stash="${target}.release-local-$(date -u +%Y%m%dT%H%M%SZ)"
+        mv "$target" "$stash"
+        log "  RECONCILE $rel had release-local contents — preserved at $stash"
+        log "            canonical source created empty; nothing merged, nothing deleted"
+      fi
+      rm -rf "$target"
+      mkdir -p "$(dirname "$target")"
+      ln -sfn "$source" "$target"
+      log "  symlink $rel → canonical (source created)"
     fi
   done
 
@@ -269,6 +311,39 @@ PY
     log "  symlink config/broker_credentials.env → stable secrets file"
   else
     log "  WARN config/broker_credentials.env missing — Schwab token encrypt will fail closed"
+  fi
+
+  # ── .env at the release root ──────────────────────────────────────────────
+  # 378 scripts resolve credentials as `PROJECT_ROOT / ".env"` — relative to
+  # their own file. The rsync above deliberately excludes .env, so a release had
+  # none, and every one of those scripts raised FileNotFoundError the moment it
+  # ran from CURRENT. Seven instances were found by hand on 2026-09-06 before it
+  # was clear the population was 378.
+  #
+  # Rewriting 378 files is a large, risky diff for a problem the deploy can close
+  # once. This is the SAME shape already used for broker_credentials.env above:
+  # excluded from the rsync, then SYMLINKED to the canonical secret. Never a
+  # copy — the bytes stay in one place with one set of permissions.
+  #
+  # The scripts stay a debt: the integrity sweep keeps reporting them as
+  # `tree_relative_secret`. They simply no longer FAIL, and any script migrated
+  # to env_bootstrap works either way.
+  local env_dest="${dest}/.env"
+  local env_src=""
+  for cand in \
+    "${HOME}/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.env" \
+    "${CANONICAL_SOURCE}/.env"
+  do
+    if [[ -e "$cand" ]]; then
+      env_src="$(readlink -f "$cand")"
+      break
+    fi
+  done
+  if [[ -n "$env_src" ]]; then
+    ln -sfn "$env_src" "$env_dest"
+    log "  symlink .env -> canonical secrets (378 scripts resolve it tree-relative)"
+  else
+    log "  WARN .env not found - tree-relative scripts will fail from this release"
   fi
 }
 
@@ -473,8 +548,38 @@ cmd_promote() {
     die "promote health failed — not claiming promote OK"
   fi
   restart_root_frozen_units "$dir"
+  write_expected_release_pin "$dir"
   write_deploy_receipt true promote ok false "promote_ok"
   log "PROMOTE OK live=$sha"
+}
+
+# The health inspector compares the live release against an EXPECTED pin. Nothing
+# ever wrote that pin: it was created 2026-08-07 and every promote since left it
+# untouched, so the inspector reported
+#
+#   [P0] Release pin mismatch: expected .../20260807-124637, live <today's release>
+#
+# on every run for a month. A P0 that is always on is not a control — the one
+# time the pin genuinely disagrees, it reads exactly like the previous thirty.
+#
+# Written to both places a reader looks. The health-inspect skill checks the dev
+# tree FIRST (its TRADEAI_ROOT), which is why writing only the releases-dir copy
+# would fix nothing.
+write_expected_release_pin() {
+  local dir="$1" wrote=0 p
+  for p in "${HOME}/trade-ai-v12-rebuild/trade-ai-v12-rebuild/data/runtime/expected_release_pin.txt" \
+           "${RELEASES_BASE}/EXPECTED_RELEASE"; do
+    mkdir -p "$(dirname "$p")" 2>/dev/null || continue
+    if printf '%s\n' "$dir" >"$p" 2>/dev/null; then
+      wrote=$((wrote + 1))
+      log "  expected-release pin → $p"
+    else
+      # Never silent: an unwritable pin means the inspector keeps comparing
+      # against a stale value, which is the defect this function exists to end.
+      log "  WARN could not write expected-release pin at $p"
+    fi
+  done
+  [[ $wrote -gt 0 ]] || log "  WARN no expected-release pin written — health inspector will report a stale mismatch"
 }
 
 # Long-lived daemons that resolve CURRENT once, at start, and hold that concrete

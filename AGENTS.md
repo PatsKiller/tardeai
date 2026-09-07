@@ -481,6 +481,30 @@ question:
   failing job.*
 - **A store that survives only because something else is broken is not backed up.** If a divergence
   is the only thing preserving data, fix the destroyer **before** removing the divergence.
+- **A counter's path must resolve to ONE location for every caller. Never
+  `Path(__file__).parent / ...` for durable state.** A tree-relative path gives each importing tree
+  a private copy, so every consumer enforces its ceiling against a *fraction* of the traffic while
+  reporting a healthy percentage. *Cause: 2026-09-05, `brave_search._BUDGET_FILE` resolved relative
+  to the importing tree. The server (running from a release dir) and cron (running from the dev
+  tree) kept separate counters — one frozen at 2026-08-10 with no September at all, the other at 54
+  — out of eight copies of that basename on the host. This is the same "working alarm on an
+  unrepresentative sensor" failure that created `lib/search_budget.py`, reproduced one layer down
+  inside the module built to fix it.*
+- **The canonical search/research budget ledger is
+  `production_state_root()/data/runtime/search_budget.json` (`SearchBudget@v1`), written only by
+  `scripts/lib/search_budget.py`.** It is the **binding** ceiling: its check runs ahead of any
+  client's own. `DEFAULT_LIMITS` there is the authoritative per-provider ceiling — not the constants
+  in `brave_search.py`, which are a secondary per-caller cap and must be kept equal to it (pinned by
+  `test_the_three_copies_of_the_ceiling_agree`). **Any operator alarm or dashboard reporting search
+  spend must read this ledger.** One read the secondary counter and reported `monthly_pct: 17.6,
+  "ok"` while the provider sat at its ceiling.
+- **A provider's limits come from the provider's own response headers, never from a comment.**
+  Parse and report them (`lib/research_provider_truth.py`); keep any ceiling *we* chose under an
+  explicitly local name with an owner. *Cause: "1,000/month free tier" and "850 … out of 1000" were
+  asserted in `brave_search.py` for months. Brave's headers, when finally read on 2026-09-05, report
+  50 req/sec and **no metered monthly window at all**. A number we invented was rendered as a
+  provider fact everywhere downstream. A reported limit of `0` is also not a ceiling of zero — a
+  window that admits traffic is unmetered, and reading it as a number invents a different lie.*
 
 ## Investigation method
 
@@ -490,6 +514,24 @@ question:
 - **File `atime` is not evidence of a live consumer.** This filesystem is `relatime`.
 - **A root that symlinks to the same destination is not a control.** Vary the destination and
   confirm different inodes before concluding anything from a null result.
+- **Ask which component produced the result, not whether results appeared.** A pool that falls
+  back serves you a substitute, and the substitute's output is indistinguishable from success.
+  *Cause: `google` was reported working twice in one session — `!go` returned ten results, every
+  one of them served by bing after a silent fallback. Isolated with `engines=google` it returned
+  zero, with an empty `unresponsive_engines`. Three of six engines were in that state.*
+- **The component that fails loudly is rarely the one to investigate.** A dependency that raises
+  lands in an error list and gets fixed. One that returns zero *successfully* reads as healthy
+  coverage and survives every audit. *Cause: `brave`, `duckduckgo` and `startpage` all raised and
+  were visible in `unresponsive_engines`; `google` returned a consent page that parsed to zero
+  results and outlived them all.*
+- **Configured is not registered.** Confirm the thing you enabled exists in the running process,
+  by name — not in the file you wrote. *Cause: SearXNG's `inactive:` is a gate separate from
+  `disabled:`, meaning "never registered" rather than "registered but off". Two engines installed
+  cleanly, passed YAML validation, and were absent from `/config` with no error and no log line.
+  The installer now diffs its intended set against the running config.*
+- **A log that has just rotated is not an empty log.** Check the `.1` file and the rotation
+  timestamp before concluding a job never ran. *Cause: nearly reported a cron as never firing,
+  four minutes after logrotate ran; `syslog.1` held 308 invocations of it.*
 
 ## Scope — verify it, never assume it
 
@@ -558,6 +600,556 @@ Three severities:
 
 A mechanical sweep flags 212 candidates, 125 never read in a conditional. **Do not quote that
 number.** Spot-checking four, three were legitimate. The sweep is a candidate generator, not a count.
+
+A fourth severity, found 2026-09-06:
+
+4. **The control exists, fires correctly, and is always on.** A finding that is present on every
+   run carries no information, and the run where it is real is indistinguishable from the thirty
+   before it. *Cause: `expected_release_pin.txt` was written once on 2026-08-07 and by no code
+   afterwards — the deploy script contained zero references to it. Every promote for a month left
+   it stale, so the health inspector reported the same P0 on every run for thirty days. `promote`
+   now writes the pin it is measured against, in both places the reader looks.*
+
+Its companion shape: **a parameter accepted and discarded, or never accepted at all.** The health
+inspector had always called `PortfolioValidator(live_dir=...)`; `__init__` took no arguments. The
+P2 therefore reported a `TypeError` instead of a portfolio check, and portfolio validation had
+never once run from that path. **A finding that names an exception in the checker is not a finding
+about the system** — read the message before believing the subject.
+
+## The identity and tagging spine — CRITICAL PATH, keep it on
+
+**This is the substrate the agents' persistent memory is built on. If you find any part of it
+disabled, commented out, or unscheduled, that is an incident — not a cleanup opportunity.**
+
+It went dark once already, exactly that way: `taxonomy_tagger`'s cron was commented out on
+2026-07-02 after a lock timeout, the code was fixed the same day, and only the code half came
+back. Sector tagging sat at 5% for two months and nothing reported a problem, because a job that
+does not run does not fail. Nothing in this file told anyone it mattered. That is what this
+section is for.
+
+### What it is for
+
+An agent deciding anything about a security must be able to see everything the system knows about
+it — the earnings, the analyst notes, the news, the sector-wide catalysts — and to know that they
+all refer to the *same* company. That requires a durable identifier on every artifact. `symbol` is
+not one: **a ticker is an alias, not an identity.** Tickers are reassigned after delisting, so two
+companies can collide on one symbol years apart, and a share-class change silently splits one
+issuer's history in two.
+
+Worked example, `V`:
+
+```
+issuer_guid   8dfc96ee-…   Visa the ISSUER — survives ticker change, re-listing, share-class split
+security_guid d1871bc6-…   this specific security   (identity_basis: cusip, status: CONFIRMED)
+listing_guid  fc9e4477-…   this listing
+gics_sector   Financial    sector fan-out: a catalyst on one financial reaches agents reasoning
+                           about another
+event_guid(issuer, EARNINGS, 2026Q3)   the earnings event, stable across every mention of it
+                           SCHEDULED → OCCURRED → POST_EVENT → SUPERSEDED
+```
+
+`issuer_guid` — not `subject_guid` — is the join for "everything about this company". Prefer it.
+
+### Company names and CUSIPs — WHERE THEY COME FROM. Do not build a map.
+
+**Read this before writing anything that turns a name or a ticker into an identity.
+I nearly hand-rolled a ticker-to-name table on 2026-09-06; the operator stopped it, and the
+data was already on disk.**
+
+| you need | source | how |
+|---|---|---|
+| CUSIP | Schwab `/marketdata/v1/instruments?projection=fundamental` | `scripts/sweep_schwab_instruments.py` |
+| company name | **the same record** — its `description` field | `lib/schwab_instrument_evidence.load()` |
+| name → symbol | index over that feed | `lib/company_name_index.resolve_name("Visa")` |
+| symbol → identity | the registry | `lib/research_identity.resolve(doc, "V")` |
+
+Already swept and on disk: **4,997 instruments, 4,997 with a description.**
+
+```json
+"V":   {"description": "VISA INC A",           "identifiers": {"cusip": "92826C839"}}
+"NOC": {"description": "NORTHROP GRUMMAN COR", "identifiers": {"cusip": "666807102"}}
+"NSC": {"description": "NORFOLK SOUTHN CORP",  "identifiers": {"cusip": "655844108"}}
+```
+
+**Alpaca has no `cusip` field.** Schwab `instruments` is the source, and it carries the name in
+the same record — so the name and the identifier never disagree. That is the point: one feed, one
+truth.
+
+**Never hardcode a symbol-to-name pair.** If the broker does not carry a name, neither do we, and
+"unresolved" is the correct answer. `tests/test_company_name_index.py` fails if a mapping is
+hardcoded.
+
+#### The three traps in that feed
+
+1. **It CONTRACTS, it does not merely truncate.** `NORFOLK SOUTHN CORP`, `NORTHROP GRUMMAN COR`.
+   `SOUTHN` is not a prefix of `SOUTHERN` and vice versa, so no token rule matches them and fuzzy
+   matching would be a guess. Resolution narrows by **leading tokens** until exactly one instrument
+   matches: `NORFOLK SOUTHERN` → `NORFOLK` → NSC.
+2. **Ambiguity must return nothing.** `JPMorgan` alone matches seven instruments — the bank plus
+   six ETFs. `Apple` is APPLE INC; `Apple Hospitality` is APLE. A wrong symbol on a financial
+   question is worse than no symbol: it attaches the operator's intent to the wrong issuer and
+   every join downstream inherits the error.
+3. **Similar names are different companies.** `Norfolk` resolves to Norfolk Southern (NSC) and
+   **must not** resolve to Northrop Grumman (NOC). Do not add "helpful" fuzziness across issuers.
+
+Suffix stripping (INC, CORP/COR, CO, LTD, PLC, class letters) happens from the **end only**, so
+`CO` inside `COCA COLA` survives.
+
+**A name the feed does not carry is genuine ambiguity, and that is the one identity job a model
+may do** — `lib/identity_resolution_advisor` proposes `CANDIDATE`, never CONFIRMED. See the
+custodian section.
+
+### Tagging is TWO-WAY — inbound questions carry identity too
+
+Until 2026-09-06 it was discovery-only: `cio_telegram_bot`, `telegram_callback_handler` and
+`run_telegram_callback_poller` all had `identity_registry=0`, and inbound messages were not stored
+at all — only `communication_inbound_checkpoint` with the last `update_id`.
+
+`lib/inbound_identity_tagger.tag_inbound(text)` resolves an operator question by **ticker or
+company name** onto the same `issuer_guid`, records the **topics** asked (analyst_target,
+support_resistance, earnings, valuation, position, risk), and keeps unresolved mentions as a
+measured gap. Persisted to `inbound_operator_questions`, one row per (question, resolved entity),
+and **one row with null guids when nothing resolved** — an unanswerable question is the
+measurement of what the spine cannot reach.
+
+    "analyst target for Visa, support and resistance"  -> V   issuer 8dfc96ee  via=company_name
+    "analyst target for $V and support resistance"     -> V   issuer 8dfc96ee  via=ticker
+
+Both spellings land on one issuer. `matched_via` and `matched_text` are recorded on both paths.
+
+### The identifier model — what each ID is, and which one to join on
+
+Audited 2026-09-06. `identity_registry` holds **10,279 entities**: 5,014 CONFIRMED (all
+CUSIP-based), 22 CANDIDATE, 5,243 `UNRESOLVED_WITH_REASON`. The only external identifier in
+the registry today is **CUSIP** — Alpaca exposes none; Schwab `instruments` is the source.
+
+| id | scope | stability | join on it when |
+|---|---|---|---|
+| `issuer_guid` | the **company** | survives ticker change, re-listing, share-class split | "everything about this company" — **the default** |
+| `security_guid` | one security of that issuer | survives a ticker change | you mean this specific instrument, not the issuer |
+| `listing_guid` | one listing of that security | changes on re-listing | venue-specific facts |
+| `ticker_alias_guid` | the **symbol string** | *unstable by design* | almost never — it is the alias, not the identity |
+| `subject_guid` | what a row is *about* | = `security_guid` today | tagging a document, article or finding |
+| `event_guid` | `(issuer, event_type, period)` | stable across every mention | earnings, ratings, catalysts — `SecurityEvent@v1` |
+| `cusip` | external, issuer+issue | the registry's `identity_basis` | reconciling against a broker or filing |
+
+**Prefer `issuer_guid`.** It is the join that answers the question an agent actually asks, and
+the one that does not break when a ticker is reassigned.
+
+**Which stores must carry identity, and which must not.** A GUID belongs on anything carrying
+**judgment or narrative** about a security — research, news, catalysts, decisions,
+recommendations, scores — because that is what an agent reasons over and what has to survive a
+symbol change. It does **not** belong on raw market data keyed by symbol+timestamp
+(`market_quotes` at 28.6M rows, `ticker_prices`, `schwab_stream_*`): the cost is real and the
+symbol is sufficient for a price at an instant.
+
+Coverage as of 2026-09-06 — `hermes_research_intelligence` and `news_articles` carry
+`subject_guid` + `issuer_guid` + `gics_sector`. **Not yet tagged, in priority order:**
+`catalyst_events` (135,919 — the lifecycle spine, and the highest-value gap),
+`agent_recommendation_registry` (454,058), `fused_signals` (750,739),
+`hermes_score_history` (166,367). Four other tables carry a bare `cusip` and no GUID:
+`econfirm_evidence`, `fund_expense_rate_history`, `investment_cost_events`.
+
+**Before adding a store to that list**, re-read the additive-only and no-downgrade rules below.
+Tag with `lib/research_identity.resolve()`; do not hand-roll a lookup.
+
+### The modules — none of these is new, all of them are load-bearing
+
+| module | role | do not |
+|---|---|---|
+| `lib/identity_registry.py` | `IdentityRegistry@v1`, the minted entity store (10,279 entities) | re-mint, rewrite or delete a GUID; supersession is one-way by rank CONFIRMED>CANDIDATE>UNRESOLVED |
+| `lib/security_identity.py` | ROOT GUID AUTHORITY — issuer→security→listing→ticker_alias, UUIDv5 | recompute a ticker-alias GUID locally; delegate to `memory_fact.subject_from_security` or the registry and the substrate drift onto two GUIDs for one ticker |
+| `lib/event_identity.py` | `SecurityEvent@v1` — the event lifecycle above | invent a parallel event id; earnings is not a timeless catalyst |
+| `lib/research_identity.py` | the adapter: symbol → identity tag for research rows | write a tag with a null `subject_guid` — indistinguishable downstream from untagged, and it inflates apparent coverage |
+| `lib/catalyst_graph.py` | binds events to entities (452 nodes / 1,110 edges live) | — |
+| `taxonomy_tagger.py` | the 3-axis taxonomy (content / sector / lifecycle) | see the sentinel rule below |
+
+### Document mentions — subject vs. passing reference
+
+`document_mentions`, one row per **(document, issuer, role)**. Tagging by the row's `symbol`
+column alone was one tag per document and never read the body: **58% of tagged news articles
+mention other tickers.**
+
+    "Morgan Stanley estimates Apple foldable iPhone could generate…"
+
+mentions `MS` and `NDAQ`; the article is **about Apple**. Morgan Stanley is the *source of the
+estimate*. Recording all three as subjects attaches the article to issuers it is not about, and
+every join inherits it. **`role='mentioned'` is not a lesser tag** — "every document mentioning
+this issuer" is a legitimate query; it must simply not be confused with "about".
+
+**Deterministic decides the role wherever it can, and refuses where it cannot:**
+
+| case | role |
+|---|---|
+| exactly one mention | that one is `subject` |
+| a mention equals the row's own `symbol` | that one `subject`, rest `mentioned` |
+| several mentions, none is the filed symbol | **undecided — never guessed** |
+
+Measured over 400 documents per store, the deterministic rules decide **94–97%**. The undecided
+remainder is the model's residual, it is COUNTED, and `role_source` (`deterministic` / `model` /
+`operator`) is mandatory — without it a model's guess and a fact are indistinguishable a month
+later and the model cannot be re-audited separately.
+
+Live coverage (2026-09-06): `news_articles` 13,578 · `catalyst_events` 11,006 ·
+`hermes_external_research` 6,910 · `research_insights` 5,539 · `sec_form4` 3,561.
+
+**Sources with no prose.** `sec_form4` rows are transactions ("P", "S"), not text. Scanning the
+body found 0 mentions in 300 rows and called them all unmentioned, which is false — the filing IS
+about that issuer. Such sources use `subject_is_own_symbol`. `filer_name` is **never** scanned: a
+director is a person, and a person's name must not resolve to a company.
+
+### Mentions: scheduling, retention, and who decides relevance
+
+Design: `docs/architecture/MENTIONS_SCHEDULING_AND_RETENTION.md`.
+
+**A mention has no lifetime of its own.** It is a derived fact — *this document mentions this
+issuer, in this role* — so its relevance is entirely the document's:
+
+- source document purged → **its mentions must go.** Referential integrity, not judgment: an
+  orphan points at a `source_id` that no longer exists and will match nothing, or a recycled id.
+- document retained → its mentions are exactly as relevant as it is.
+
+**No model decides retention here, and none should.** Asking one *"is this 90-day-old mention
+still relevant?"* forty thousand times is expensive, non-deterministic, and answers a question a
+foreign key already answers. **The date rule is not an approximation of the judgment — it IS the
+judgment**, because the mention has no life of its own.
+
+Judgment about whether a **document** is worth keeping past its window is real curation, and it
+already lives at the document layer (`usefulness_score`, `learning_candidate`,
+`deep_curation_verdict`, `retirement_relevance`). Curate the document; the mentions follow. A
+second opinion at the mention layer would let a mention outlive the document it describes.
+
+| job | cadence | script |
+|---|---|---|
+| tag new documents | hourly | `backfill_document_mentions.py --all --apply` |
+| retire orphaned + aged mentions | daily | `prune_document_mentions.py --apply` |
+
+**Retention is INHERITED, never invented.** The pruner READS `db_retention.POLICIES` for each
+source, so the two can never disagree; if it cannot read them it **refuses rather than defaulting**
+— a wrong window silently deletes evidence. A source with no declared window is **reported as
+growing unbounded**, not given a guess. `hermes_external_research` (48,456 rows) is currently in
+that state and needs an operator decision.
+
+**Deleting a mention is not the "never delete" rule.** That rule protects authoritative state. A
+mention is a **projection** — re-runnable from its source by the extractor — and once the document
+is gone it is a dangling pointer, not evidence.
+
+Guardrails for anyone extending this:
+- **never give a mention a lifetime longer than its document.** If you want to, change the
+  document's retention.
+- **never add a model to the pruner.**
+- **a new source goes in `SOURCES` and gets a retention window in the same change**, or it grows
+  unbounded.
+
+### Macro data has NO issuer, and must never be given one
+
+`NO_ISSUER_BY_DESIGN` — FRED series, CPI, unemployment, `topic_monitor`. These belong to no
+company. Forcing a security GUID onto them would be the same invented-mapping error as a
+hand-rolled ticker table, and every join through it would be false. Macro needs its own identity
+axis (series id); that is a separate design and not yet built.
+
+A test asserts no `NO_ISSUER_BY_DESIGN` table can appear in `SOURCES`, so the extractor cannot be
+pointed at macro data by accident.
+
+*(`fred_economic_data` also does not exist as a table at all — `fred_data_ingest` declares it as
+output and it was never created. The integrity sweep reports that as `declared_output_missing`.)*
+
+### Changing an LLM spend cap — `/caps` on Telegram
+
+**There is no Command Center admin page for these**, and that absence is what caused the drift
+below. `lib/llm_cap_admin` + the poller's `/caps` command are the operator surface.
+
+```
+/caps                                   list every process cap, with drift flagged
+/cap <process_id> <requests> [dollars]  set one
+```
+
+- **Writes the registry AND the database in one call.** It is not possible to update only one,
+  because that is the failure it exists to prevent: on 2026-09-06 a hand-written `UPDATE` left
+  `config/llm_process_registry.json` saying `200 / $0.30` while the database said `100000 / $1.25`,
+  and `sync_cio_process_caps.py` is scheduled nowhere so nothing would have caught it.
+- **Database first**, then the registry. A registry promising a cap the bridge is not enforcing is
+  worse than the reverse — the operator would believe a limit that does not exist.
+- **Ceilings hold even for the operator** (`MAX_REQUESTS`, `MAX_DOLLARS`). A cap is only worth
+  having if it holds when someone is in a hurry, and that is exactly when caps get raised. Raising
+  the ceilings is a code change and a review.
+- **Drift is reported, never silently reconciled.** Picking a winner is how the wrong number
+  becomes authoritative.
+- **The GLOBAL cap is NOT settable here.** `LLM_GLOBAL_DAILY_USD_CAP` lives in the bridge's
+  environment; changing it needs `systemctl --user set-environment` (or `.env`, which is
+  never-grantable) **and** a bridge restart. The reply says so, so nobody believes they changed it.
+
+### The governed model bridge — read this before diagnosing a paid-lane outage
+
+Full reference: **`docs/architecture/GOVERNED_MODEL_BRIDGE.md`**.
+
+Every paid model call goes through one process, `cio-governed-bridge.service` on `:8766`. It is a
+systemd **user** unit — restarting it is `systemctl --user restart cio-governed-bridge`, scope
+`service`, one process, a few seconds. **Not sudo, not a reboot.**
+
+**There are FOUR caps and only three are about money.** On 2026-09-06 the usefulness backfill died
+after exactly 200 calls having spent **$0.0742 of a $0.30 budget** — 25% of the money, 100% of the
+`daily_soft_cap` REQUEST COUNT. Every caller saw `HTTP 500`, which reads like a broken provider.
+
+**Read the error body, not the status.** The bridge's own log records only
+`"POST /v1/chat/completions" 500 -` with no reason; the cause is in the JSON:
+`{"code": "RESERVATION_FAILED", "message": "COST_CAP_EXCEEDED: daily request cap"}`. A `curl`
+without `X-TradeAI-Agent` returns 401 and looks like auth instead, and `GET /health` returns 501
+because it is POST-only — neither is the fault you are chasing.
+
+**Projections run ~17× actual**, so a dollar cap bites 17× early: 200 reservations projected
+$1.2639 against $0.0742 real, because `HERMES_CLOUD_MAX_TOKENS` (default 4096) reserves for a
+60-token answer. **Fixing the estimate is worth more than raising the cap** — at the true rate,
+$0.50/day buys ~8,000 calls; against the projection it buys ~470.
+
+**Caller identity is server-side and never taken from the caller** (`CALLER_PROCESS_MAP`), so a job
+cannot be given its own budget by relabelling it — that needs a code change *and* a restart. Caps
+themselves are rows in `llm_process_config`, read per request, changeable without a restart.
+Record previous values when changing one: `advisory_desk_opinion` was `200 / $0.30` before
+2026-09-06.
+
+**It had been running 10 days from the 2026-08-27 release** and logs into *that* release's `logs/`,
+so a bridge code change is not live until restart and `journalctl` shows almost nothing.
+
+### LLM lane escalation — free, then one paid lane, then ASK
+
+Operator policy, 2026-09-06. `lib/llm_escalation.run_with_escalation`:
+
+```
+1. FREE OAUTH        grok -> chatgpt
+2. DEEPSEEK FLASH    the ONE paid lane enterable automatically
+3. NOTIFY + STOP     Telegram, and the run yields nothing
+4. further paid      never automatic; explicit operator re-run only
+```
+
+**Step 3 is a hard stop, not a warning.** An escalation that notifies and then pays anyway
+defeats the point — silently walking up a cost ladder is how a backlog becomes a bill nobody
+authorised, and this system already carries a daily provider spend cap for the same reason.
+
+- **One notification per RUN, not per call.** A 2,000-document batch that lost its free lanes
+  would otherwise send 2,000 identical messages, which is indistinguishable from a broken loop
+  and trains the operator to ignore the channel.
+- **The notification bypasses the router.** An escalation prompt classified `P1_DIGEST` and
+  archived is a decision the operator never sees — exactly what happened to guard approvals on
+  2026-09-05.
+- **A failed notification still stops the run.** Telegram being down is not permission to spend.
+- `process_id=` is passed on every attempt, so a fallback cannot become a way around the gate,
+  and `NEVER_CHAIN` is unchanged — local models never make judgment calls.
+
+Design and the mentions work that motivated it:
+`docs/architecture/DOCUMENT_MENTIONS_AND_LLM_ESCALATION.md`.
+
+### Who keeps identity fresh — and why no model may
+
+**A deterministic custodian, `lib/identity_health.py`, lane `identity-spine`.** It alarms on
+`registry_stale` (80h grace, so a weekday-only minter does not page on a Sunday),
+`coverage_regressed` (CONFIRMED falling — the rank is one-way, so a fall means a feed stopped
+publishing identifiers), `producer_unscheduled`, and `registry_unreadable`. Coverage is reported
+even when nothing fires, so a slow decline is visible before it becomes an alarm.
+
+**No model runs in that lane, and none may.** `uuid5` is a pure function of (namespace, name):
+the same input yields the same GUID forever. That determinism *is* the value of the spine, and a
+model in the path destroys auditability while adding nothing — every identity failure found on
+2026-09-06 was a count, a clock or a scheduler lookup, and an LLM would have caught none of them.
+
+**The one legitimate model role is proposal, never commitment.** 5,243 of 10,279 entities are
+`UNRESOLVED_WITH_REASON` (no CUSIP), and `catalyst_graph` skips 35,928 rows as
+`symbol_not_registered`. Deciding whether a symbol in a filing is the same issuer as one in the
+registry — across name variants, share classes and corporate actions — is genuine ambiguity, and
+that is what a model is for. Its output is written **`CANDIDATE` only**; deterministic evidence
+(a CUSIP from Schwab `instruments`) is the sole thing that promotes to `CONFIRMED`. The one-way
+rank means a model can never downgrade a confirmed entity or invent a spine. Run it on a **free
+OAuth lane** — this is batch reconciliation, not latency-sensitive, and there is no reason to pay.
+
+### Rules that must hold
+
+- **Identity status travels with the tag.** A CUSIP-confirmed tag and a bare-ticker-alias tag are
+  not equal evidence. Carry `identity_status` so an agent can weigh it, and **never downgrade** an
+  existing tag — a feed that stops publishing CUSIPs must not be able to degrade the corpus.
+- **GICS and the thesis vocabulary are different axes and get different columns.** `category_sector`
+  holds `ai_chips`, `ai_datacenter`, `defense` — a thesis vocabulary that does not map onto GICS
+  (`ai_chips` has no GICS equivalent; GICS `Technology` has no thesis slug). GICS lives in
+  `gics_sector`. Merging them collides two vocabularies in one field.
+- **Every "unclassifiable" marker needs a shelf life.** A sentinel says *today's classifier could
+  not do it*, which expires; it is not a fact about the row. `taxonomy_tagger` selects
+  `WHERE category_content IS NULL`, so a `no_match` written there was permanent — measured
+  2026-09-06, a bounded 20-row run produced 17 sentinels, 1 usable tag and 0 sectors, and running
+  it hourly would have foreclosed ~85% of a 32,060-row backlog in ~64 hours, including against any
+  better classifier later. `NO_MATCH_TTL_DAYS` (default 30) re-admits them.
+  **Adding a sentinel without a TTL is how you destroy a corpus while reporting success.**
+- **Schema changes here are additive.** Add columns; never drop, rename or repurpose one. Downstream
+  agents are told to trust these tags.
+- **`ADD COLUMN IF NOT EXISTS` still takes ACCESS EXCLUSIVE.** Run DDL once, off-peak, never from a
+  recurring job — nine recorded `LockNotAvailable` failures against live readers say so.
+
+### Before changing anything here
+
+Run `ls scripts/lib/ | grep -E 'identity|memory|catalyst'` first. Every one of these already
+existed and was dark before it was wired; the constraint on this system has never been build
+capacity, it is that built capacity goes unused. `tests/test_identity_memory_module_wiring.py` is
+the structural guard — every identity/memory module must have a production consumer or be declared
+`KNOWN_DARK`. **That list may shrink and must never grow.**
+
+## Research lanes — current state, and what must stay on
+
+**Audited 2026-09-06.** A lane that fires and produces nothing reports success, so this table
+records what each lane is *for* and what state it is deliberately in. Changing a row from OFF to ON
+without reading the reason is how the tagger nearly burnt the corpus.
+
+| lane | state | note |
+|---|---|---|
+| `hermes-deep-research-local` | **ON**, hourly 22:00–05:35 ET | never executed once before 2026-09-06; see below |
+| `taxonomy_tagger` cron | **OFF — deliberate** | heuristic hit rate ~15%, 0% on sector. Do **not** re-enable until the classifier improves; see the sentinel rule |
+| `hermes_advisory_event_enqueue` | **KNOWN DARK** | no caller — no cron, no timer, no importer. `hermes_advisory_events` last written 2026-07-14, 2,509 rows. The consumer timer still fires every ~10h and finds nothing |
+| `tradeai-research-lane-health` | ON, ~15 min | the alarm surface for all of the above |
+| RI overnight (cron 02:15 / 05:15) | ON | gated to non-trading hours |
+
+### Three failure shapes this system produces repeatedly
+
+1. **The schedule and the gate never overlap.** `hermes-deep-research-local.timer` runs 22:00–05:35
+   ET behind a peak guard permitting 10:00–21:00 ET. Every fire since the lane existed logged
+   `SKIPPED_DEEPSEEK_PEAK` and exited 0 — `result=success`, `attempts_24h=0`, and the lane had
+   **never once run**. A skip is not a failure, so nothing alarmed and the health surface read the
+   successes.
+2. **The gate reads what was configured, not what will happen.** `flash = primary_provider() ==
+   "bridge_flash"` was computed at entry; the overnight branch then rewrote `args.model` to a free
+   OAuth lane; the guard never re-read it. A spend control was refusing a run that cost nothing.
+   It now keys on the **effective** model — unchanged for real DeepSeek runs, which is its point.
+3. **One bug hides the next.** Fixing (1) and (2) let the lane reach a database for the first time,
+   where it immediately died on `DB_PASSWORD not found in .env`. `hermes_staging_ingest` resolved
+   `.env` as `dirname(__file__)/../.env` — **relative to whatever tree it runs from** — and a
+   RELEASE has no `.env`, because secrets are deliberately not deployed. Every scheduled run from a
+   release would have failed there, and nothing had ever got far enough to find out.
+   **Credentials come from `lib/env_bootstrap` (tmpfs render, then disk), never from a path relative
+   to a source file.** Repairing an outer gate is not evidence the lane works; run it and look at
+   what it wrote.
+
+### The `no_match` sentinel — never add one without a shelf life
+
+`taxonomy_tagger` selects `WHERE category_content IS NULL` and writes `no_match` when its heuristic
+fails, so a marked row was **never reconsidered by any classifier, ever**. Measured on a bounded
+20-row run: 17 sentinels, 1 usable tag, 0 sectors — re-enabling the hourly cron at `--limit 500`
+would have consumed a 32,060-row backlog in ~64 hours and permanently foreclosed ~85% of it,
+including against a better classifier later. **The obvious fix — switch the cron back on — would
+have destroyed the corpus it was meant to enrich.**
+
+A sentinel says *today's classifier could not do this*. That expires; it is not a fact about the
+row. `NO_MATCH_TTL_DAYS` (default 30) re-admits them and `taxonomy_tagged_at` records when.
+**A sentinel without a TTL destroys a corpus while reporting success.**
+
+### The daily integrity sweep — run it, read it, do not automate its fixes
+
+`scripts/run_integrity_checks.py` (lib/`deterministic_integrity`). Every check exists because
+the defect it detects was real on 2026-09-06 and had been silently true for weeks or months.
+Run cold against `main` it rediscovered, unprompted, every defect a full session had found by
+hand — plus `db_retention.py` unscheduled and a second CIO-shaped outage nobody had seen.
+
+**It reports and never repairs, deliberately.** The obvious fix for one of its findings —
+re-enabling `taxonomy_tagger` — would have foreclosed a 32,060-row corpus. An auto-fixer would
+have taken that action. A test fails if `INSERT`/`UPDATE`/`DELETE`/`rmtree` appears in the engine.
+
+**Exit 0 means the check RAN.** Findings live in the JSON, so a crashed sweep and a sweep that
+found something are never confused.
+
+**Populations aggregate.** The first run emitted 314 individual alarms; 309 scripts that work
+today from the dev tree are a debt, not an outage. Population checks collapse to one finding with
+a count and a sample, one severity lower — and **spot-check before quoting a sweep number**, which
+is how the two false positives below were caught before shipping.
+
+### `output_tables` — a declaration nothing validated
+
+**This is the root cause of "runs fine, produces nothing", and it is worth understanding before
+adding any new pipeline.**
+
+`pipeline_stage_owner_map` declares, for all **31** pipelines, what each one produces:
+
+```python
+"cio_decision_engine": { "output_tables": ["cio_decisions"] }
+```
+
+Exactly **one** place read that field — `api_v2.py`, forwarding it to a display payload. Nothing
+joined *"the run reported success"* to *"the thing it declares it produces actually grew"*. So the
+declaration drifted until it was fiction:
+
+- **~20 pipelines declare an output table that DOES NOT EXIST** — `fred_economic_data`,
+  `sec_filings`, `symbol_metadata`, `technical_indicators`, `agent_job_results`…
+- `symbol_enrichment` declares `symbol_metadata` and actually writes `iris_taxonomy_proposals`,
+  `news_articles` and `trade_ai_scans`.
+- `social_ingest`: 34 successful runs in 7 days, `social_mentions` **never written** — a second
+  instance of the `cio_decision_engine` defect, found by the check rather than by a person.
+
+`check_declared_output_not_produced` now enforces it, and **measures the store, not the
+self-report** — `rows_produced` defaulted to 0 for 16 of 20 callers and is precisely the field
+that cannot be trusted. A test fails if it is read there.
+
+**A declaration nothing validates is not a contract, it is a comment.** If you add a pipeline,
+its `output_tables` must name a table that exists and that it actually writes.
+
+### Two false positives worth copying the fix for
+
+Both were introduced by me and caught before shipping, and both are the shape that makes an alarm
+ignorable:
+
+- **Assuming a column name.** The check assumed `created_at` and reported `trade_ai_scans` — a
+  healthy table using `scanned_at` — as unreadable on its first run. Discover the column.
+- **Collapsing two states.** "Table does not exist" and "table has no timestamp" are different
+  findings with different fixes; reporting both as the latter understated eight P1s as cosmetics.
+
+### The PR collision surface — a workflow cost, not a code defect
+
+Measured over six consecutive merges: **6 of 6 touched the same five files.**
+
+| file | touched by | fixable? |
+|---|---|---|
+| the four SOP digest evidence files | 6/6 | **no — leave it.** The binding is the control |
+| `docs/INDEX.md` | 6/6 | yes — could be generated at CI time rather than committed |
+| `AGENTS.md` | 5/6 | no — real content, resolve by hand |
+| `scripts/run_cio_hardening_ci.py` | 4/6 | yes — the group list could be a directory scan |
+
+So any two concurrent PRs conflict **by construction**, regardless of what they change. Four
+conflict resolutions on 2026-09-06 were all this; none were a real disagreement about code.
+**Expect it, resolve generated files by RECOMPUTING them rather than picking a side** — a
+hand-merged digest is a hash that matches nothing.
+
+### `rows_produced` — unknown is not zero
+
+`PipelineRun` defaulted `_rows = 0`, and `run_complete(rows_processed=0)` matched it. **20
+scripts use PipelineRun; 4 call `.rows()`.** The other 16 wrote `{"rows_produced": 0}` on every
+successful run, so `pipeline_zero_rows` fired on five pipelines that had *never* recorded a
+non-zero in their history — only 7 of 44 pipeline keys ever had.
+
+0 meant both *I produced nothing* and *nobody told me*, so the alarm could neither fire on a
+real outage nor stop firing on a healthy pipeline. Unknown is now `None` → JSON `null`, which
+the detector's `COALESCE(..., -1) = 0` correctly ignores. **An explicit `.rows(0)` still fires,
+because that is a measurement.**
+
+### Dark-producer audit, 2026-09-06
+
+Across 129 stores with >100 rows, only two had no write in 14 days. One was inert; the other
+was a chain worth reading in full, because every link reported success:
+
+```
+strategy_rule_engine.py --all   scheduled NOWHERE  (cron=0, timers=0)
+  -> strategy_rule_evaluations   0 rows
+    -> cio_decision_engine       INNER JOINs it -> 0 decisions, always
+                                 3,010 runs/week, every one "success"
+      -> cio_decisions           last written 2026-08-07
+```
+
+`evaluate_all()` exists, works, and is called by nothing — proven by running it on one symbol:
+0 → 1 rows. **The producer was never scheduled, and four layers of "success" sat on top of an
+empty table.** When a consumer inner-joins a table, an empty producer is indistinguishable from
+a quiet market; check the producer's schedule before believing the consumer.
+
+### Before declaring a research lane healthy
+
+- **Count durable rows, not invocations.** `tagged 3 this run` measured `content +1, sector +0`.
+- **Ask which component produced the result.** A pool that falls back serves a substitute and the
+  output is indistinguishable from success.
+- **A sub-second "Finished" on a drain worker means an empty queue, not work done.**
+- **`zero_non_error_24h` on a healthy lane usually means unemployed, not broken** — the `deepseek`
+  lane alarms while reporting "No queued jobs". Distinguish *nothing succeeded* from *nothing
+  arrived* before chasing it.
 
 ## Data and identity
 
@@ -638,6 +1230,121 @@ Descending strength. **Only the first two settle a claim about runtime.**
 - **A Finviz health probe that tries only cookie auth can false-positive "cookie expired"**
   when `FINVIZ_API_TOKEN` would succeed on the same export URL with `&auth=`. Probe both auth
   modes before surfacing `data_source_stale` — §13.6.
+- **A schedule and the gate it must pass can be disjoint.** Check that the window a job runs in
+  intersects every condition it has to satisfy, or it is a job that can never succeed and never
+  complains. *Cause: `hermes-deep-research-local.timer` runs `OnCalendar` 22:00–05:35 ET behind a
+  peak guard permitting 10:00–21:00 ET. The windows do not intersect, so every fire since the lane
+  existed logged `SKIPPED_DEEPSEEK_PEAK` and exited 0 — `result=success` on every run,
+  `attempts_24h=0`, and the lane had never once executed. A skip is not a failure, so nothing
+  alarmed; the health surface read the successes.*
+- **A gate must re-read what the run will actually do, not what was configured at entry.** A
+  variable computed at the top of a function and tested at the bottom is stale if anything between
+  them changes its subject. *Cause: the same lane. `flash = primary_provider() == "bridge_flash"`
+  was computed at entry; the overnight branch then rewrote `args.model` to a free OAuth lane; the
+  guard never re-read it. A spend control was refusing a run that cost nothing, protecting against
+  spend that could not occur. It now keys on the effective model — unchanged for real DeepSeek
+  runs, which is the point of it.*
+- **`accepted` is not `delivered`.** A send function returning True may mean only "handed to the
+  router", and the router may archive to a digest nothing reads. Record the observed outcome, and
+  give the unobserved case its own word. *Cause: `_best_effort_comms_publish` hardcoded
+  `LEGACY_DELIVERED`, so the Communications page showed the operator a delivered alert they never
+  received — adjacent to a genuine one, rendered identically.*
+- **A test that compares two runtime paths tests the deployment, not the code.** Assert on the
+  constructed value and on the source that constructs it. *Cause: twice in one session — "this
+  state file is not under the code tree" was true locally and false in CI, where tree and state
+  root coincide. Both rewritten to assert the resolved path plus an AST check of the resolver.*
+- **A guard that reads prose will pass on a comment describing the defect.** Strip comments,
+  docstrings and log strings — or walk the AST — before asserting a pattern is absent from source.
+
+## Remote approval by Telegram — when the operator is not at the keyboard
+
+The workflow above needs someone at a terminal. When the operator is away, work that is finished,
+verified and green otherwise waits. This moves the *typing* to Telegram. It moves the *deciding*
+nowhere.
+
+**The rule above is unchanged and unweakened: the agent must never type, pipe, simulate, automate,
+or infer the confirmation word.** What follows is how the operator gives it from their phone.
+
+```bash
+# Agent side. Grants nothing. Sends the operator a message and exits.
+"$GUARD_PATH" request git-push --for 30m --uses 8 --reason "merge PR #NNN, CI green on <sha>"
+```
+
+The operator receives the scope, the window, the uses, the reason and the host, and replies in
+Telegram with `/approve <CODE>` or `/deny <CODE>`. The live callback poller — which already owns
+the single `getUpdates` consumer, so nothing new polls and nothing collides on HTTP 409 — verifies
+and issues the grant.
+
+Properties that make this safe, each pinned by a test in
+`tests/test_guard_remote_approval.py`:
+
+- **The requesting process is not the answering process.** `guard_request_approval.py` mints a
+  PENDING record; only `run_telegram_callback_poller.py` can settle it.
+- **The one-time code is never printed to stdout and never written to disk** — only its SHA-256 is
+  stored. The agent runs the requesting process, so a code in that process's output would be a code
+  the agent could read.
+- **The grant is bound to what was requested.** Scope, window and uses are fixed in the record the
+  operator saw before replying; they cannot be widened afterwards.
+- **A reply from an unlisted chat burns the code** rather than leaving it live for a second try.
+- **Codes work once, and the answer deadline is 4 hours by default (12h ceiling).** Silence is not
+  approval, and an expired request is not approval. *It was 15 minutes, which is the right number
+  for someone at their desk and the wrong one everywhere else: on 2026-09-06 a request for work the
+  operator had explicitly asked for expired unanswered overnight. The grant window was never the
+  constraint — the answer deadline was. Set it with `--ttl`.*
+- **`sudo`, `destructive`, `file-delete`, `guard-config` and `frozen-v2` can never be requested
+  remotely**, and no remote window may exceed **12 hours** or **500 uses**. `guard-config` is on
+  that list specifically so a phone cannot widen what a phone may do — **raising the 12-hour ceiling
+  itself required a keyboard, and that is the property that makes every other limit here real.**
+
+### The 12-hour window — raised 2026-09-06, and what still bounds it
+
+Remote approval was capped at one hour, on the reasoning that it is for finishing a piece of work
+rather than handing over the machine. The operator raised it to **12 hours** so an overnight or
+full-day autonomous run can be authorised from a phone instead of requiring a keyboard they are not
+at. `bin/guard grant ... --for 12h --uses 40` is now requestable remotely.
+
+**This is a real widening and it is recorded as one.** A stolen or misdelivered code buys twelve
+hours instead of one. Four things bound it, and none of them may be relaxed to make a change pass:
+
+| bound | value | why it holds |
+|---|---|---|
+| `REMOTE_FORBIDDEN_SCOPES` | unchanged | `sudo`, `destructive`, `file-delete`, `frozen-v2`, `guard-config` |
+| `MAX_GRANT_SECONDS` | 12h | raised at the keyboard, because `guard-config` is remote-forbidden |
+| `MAX_GRANT_USES` | 500 | **was unbounded** — `int(uses)` with no check. Harmless against one hour, not against twelve |
+| settlement | chat allowlist | a reply from an unlisted chat burns the code; SHA-256 only on disk; single use |
+
+The one that carries the weight is `guard-config`. **A phone cannot widen what a phone may do** — so
+this ceiling could only ever be raised by someone at the machine, which is exactly what happened.
+
+**Two reply paths, one settlement.** The operator may type `/approve <CODE>`, or tap **Approve** on
+the inline keyboard the request carries. The button sends a `callback_query`, which originates at
+Telegram's servers — a bot token cannot fabricate one — so it is not a weaker door than the code.
+Both paths land in `settle_by_request_id`. Proven end to end 2026-09-06: `28e47322a7` and
+`7f112670b7`, both `APPROVED` / `telegram_button`, from two different allowlisted chats.
+
+**Know which identifier is enforced.** The gate is `chat_id` against `TELEGRAM_CHAT_ID`
+(`approved_by_chat`); `from_id` is recorded as metadata and gated on nothing. In a 1:1 chat
+Telegram makes the two equal, which is why every settlement so far shows them matching and why it
+is easy to believe the *sender* is authenticated. **They diverge in a group.** If a group chat is
+ever added to the allowlist, `chat_id` is the group and every member of it can approve — the
+control would still pass its own test while meaning something entirely different. Keep the
+allowlist to 1:1 chats, or gate `from_id` too before adding one.
+
+**Any link in that message is read-only, and must stay so.** A URL button carries no sender
+identity — anyone holding the link is anonymous to the receiver — so a link can never be the
+approval path. The tailnet FQDN in the message shows status; it grants nothing.
+
+**The request must not be routed.** The first version printed `telegram=sent` while the router
+classified the prompt `P1_DIGEST` and suppressed it into an archive nothing delivers — an approval
+request the operator was never shown, reported as sent. Requests now go with `bypass_router=True`
+and report *accepted for interrupt delivery*, never *sent*. See `accepted` is not `delivered`,
+above: this is that rule applied to the one message class where silence blocks the work.
+
+**This is auditable, not impregnable, and must not be described as more than that.** The agent runs
+as the same OS user. What the mechanism guarantees is that every legitimately obtained grant carries
+provenance — chat id, message id, update id and the operator's own words — so a grant explained by
+neither an interactive terminal nor an allowlisted Telegram reply is a detectable anomaly.
+`guard_remote_approval.unprovenanced_grants()` finds them.
 
 ## Know what CI green means
 
@@ -799,6 +1506,32 @@ accumulates the divergence this document exists to remove.
   action today" reads as a verdict and is `do_n == 0`.
 - **Test sends never go to a live channel without the operator's word**, and a test must not write
   a dedupe marker that suppresses the real send. Back up the marker; restore it by content.
+
+### The delivery ledger must say what happened — added 2026-09-05
+
+- **`accepted` is not `delivered`.** `send_telegram` returning True can mean "handed to the router",
+  and the router may classify a message `P1_DIGEST` and archive it into a store nothing delivers.
+  `_best_effort_comms_publish` takes `delivered: bool | None` and settles **three different words** —
+  `True → LEGACY_DELIVERED`, `False → SUPPRESSED`, `None → UNKNOWN` — with `observed_delivered`
+  recorded beside the status. It hardcoded `LEGACY_DELIVERED`, so the Communications page showed the
+  operator a delivered alert they never received, rendered identically beside a genuine one.
+  **The default is `None`. A caller that forgets must land on UNKNOWN, never on delivered.**
+- **Every call site passes what it knows.** A guard that inspects one function cannot see the caller
+  beside it — the first version of that test read only `send_telegram` and passed while
+  `send_telegram_document` settled every row, including failed sends, as delivered. Scope such a
+  guard to the module.
+- **Anything the operator must act on bypasses the router.** Approval requests are sent with
+  `bypass_router=True` and report *accepted for interrupt delivery*, never *sent*. The first version
+  printed `telegram=sent` while the router suppressed the prompt into an archive — an approval
+  request the operator was never shown, reported as sent.
+- **An alert is curated before it is sent** (`lib/alert_curation.py`, `AlertCuration@v1`): headline,
+  plain English, action, evidence. **The model writes prose only.** `validate_curation` rejects a
+  curation that invents a number or drops a lane, and the recommended action is never model-authored.
+  Raw JSON reaching the operator is a defect, not a fallback.
+- **Curation model order is fixed** (`lib/llm_fallback.py`): free lanes first — `grok`, then
+  `chatgpt`; the paid `deepseek-flash` is opt-in and last; **local models are never in the chain**
+  (`NEVER_CHAIN`) for judgment. Kwargs pass through so the consumption gate cannot be bypassed by
+  falling back.
 - **Every alarm has a test that observes it firing, and that test is mutation-tested.** Inject the
   condition, capture the message at the transport — captured, never sent — and confirm breaking the
   alarm turns the test red. Record router suppression separately from delivery: a message built and
@@ -1057,6 +1790,48 @@ Budget state **persists to disk or DB, per provider**. An in-memory cache does n
 invocations — that is how a 1,000-call monthly budget vanished in three weeks. Web search serves the
 residual-web lane (≤1 hop per `subject_key` per day, budget N=3), **not bulk news** — news belongs
 on RSS and Finviz. When the engine pool is degraded, the research output says so.
+
+### The engine pool — measured 2026-09-05/06, not assumed
+
+The pool reached 2026-09-05 with six declared engines and **one that worked**. Four were behind
+anti-bot walls and one did not exist in the image at all.
+
+| engine | state | why |
+|---|---|---|
+| `brave` | disabled | scrapes search.brave.com — "too many requests", raises |
+| `duckduckgo` / `startpage` | disabled | CAPTCHA, raises |
+| `google` | disabled | **0 results, no error** — a consent page that parses empty |
+| `yahoo news` | disabled | measured 0 results with an HTTP error |
+| `yahoo_finance` | removed | no such engine module; failed at every container start |
+| `braveapi` | ENABLED, keyed | api.search.brave.com — the product this project pays for |
+| `seznam` / `yep` / `yandex` | enabled | verified by query, then ranked on a finance query |
+
+- **`brave` and `braveapi` are different engines.** The first scrapes and is rate-limited to
+  nothing; the second is the paid API, measured at 50 req/s with an **unmetered** monthly window.
+  A reported monthly limit of `0` means unmetered, not a ceiling of zero — reading it as a ceiling
+  once declared a working key over-limit.
+- **`inactive:` is a gate separate from `disabled:`.** SearXNG ships `braveapi` and `yahoo news`
+  `inactive: true`, meaning *never registered*. Clearing only `disabled` leaves the engine a ghost:
+  configured, absent from `/config`, no error, no log line.
+- **Rank on a real query, not on a non-empty response.** `bing` returns results and answered
+  "federal reserve policy" with an ammunition retailer.
+- **Change the pool only through `scripts/install_searxng_config.sh`.** It injects the key from the
+  environment (never argv), carries forward the instance `secret_key`, validates the YAML *before*
+  replacing anything, restores `977:977 / 0644`, rolls back on a non-200, then verifies each engine
+  actually **registered** and reports per-engine attribution. `chown`-ing the config to the human is
+  what took SearXNG down on 2026-09-05: it came back mode 600 and the worker, which is not uid 977,
+  could not read it.
+- **`braveapi` bypasses `lib/search_budget`** — it calls the provider directly, so those calls are
+  not counted. Enabling it silently reopens the unbudgeted-caller problem the ledger exists to close.
+
+### One ledger, and it is `lib/search_budget`
+
+There were two counters. `brave_search_budget.json` was frozen and read like a live ledger — it is
+what made me report Brave as unused while the real ledger showed September traffic. **The second
+counter was removed rather than reconciled**: two numbers for one quantity is a defect, and picking
+whichever looks right is not a fix. Provider ceilings come from **response headers**, never from a
+constant in code.
+
 
 ---
 
@@ -1516,6 +2291,149 @@ run.**
 
 Orientation, not architecture. §10 cannot be followed without knowing there are several trees and
 which one you are standing in — that confusion produced four checkout-relative splits.
+
+## Material-change intelligence `[VERIFIED]` 2026-09-06
+
+Design: `docs/architecture/MATERIAL_CHANGE_TO_QUESTIONS.md`. Stages 0-2 are live; 3-5 are
+designed and prototyped. **Advisory only** — none of it sizes, orders, stops, or writes to
+a broker.
+
+The gap it closes: every research job here is schedule-triggered (`*/30 4-9`, `30 9-15`,
+`0 18,22`). A sweep treats every name identically on every pass, so it structurally cannot
+notice that ONE name is behaving unlike ITSELF. Three watchlist names were up 15-40% on
+2026-09-05 and nothing said so.
+
+| script | contract | what it does |
+|---|---|---|
+| `backfill_subject_identity.py` | `SubjectIdentityBackfill@v1` | puts the corpus on the identity spine; cron `*/30` |
+| `material_change_detector.py` | `MaterialChange@v1` | fires when a move exceeds K x the symbol's own average daily move |
+| `notify_material_change.py` | `MaterialChangeNotice@v1` | tells the operator, exactly once per change |
+| `due_diligence_questions.py` | `SubjectStateNarrative@v1`, `DueDiligenceQuestion@v1` | reads the dossier, says what it looks like, asks what to ask, routes it out |
+
+**Stages 0-2 are FREE — no model on any row.** Detection stays deterministic so the one
+paid step only ever runs on things that actually moved. If you are tempted to "improve"
+stage 0, 1 or 2 with a model, a test will stop you, and it is right to.
+
+**The loop is closed.** Before 2026-09-06, ZERO rows in `hermes_external_research` had
+ever been requested because a name moved — research was swept on a clock and never
+driven by a change. The first row carrying `trigger_source='material_change'` was
+written that day.
+
+### TWO LANE POLICIES, POINTING OPPOSITE WAYS — do not "unify" them
+
+| call | order | why |
+|---|---|---|
+| **curation** (`due_diligence_questions`) | **deepseek-flash → chatgpt → grok → deepseek-pro → ASK** | emits strict JSON whose citations this code parses; consistency beats free |
+| **research** (`hermes_external_researcher`) | **all lanes, RANKED by measured delivery then quality** | the answer is prose; pick whoever answers best |
+
+**Measured, not assumed.** Four-way bake-off on one real dossier (AOUT, 30 items,
+identical prompt), 2026-09-06 — all four returned valid JSON with zero ungrounded
+citations and zero questions about our own scoring, so the escalation is safe, but they
+are not equal:
+
+| lane | secs | narrative | questions | citations |
+|---|---|---|---|---|
+| deepseek-flash | 6.4 | 4 | 4 | 15 |
+| deepseek-pro | 5.9 | 4 | 4 | 15 |
+| chatgpt-oauth | 19.1 | 1 | 4 | 15 |
+| grok-oauth | **28.3** | 3 | **2** | **8** |
+
+DeepSeek is 3-5x faster AND more complete than either free lane. Grok is the weakest
+curator on every axis that matters, so chatgpt is the first OAuth escalation.
+
+Curation is INVERTED from the house default on operator instruction (2026-09-06).
+Flash costs $0.000133 and answers the same way every time; the OAuth lanes are free but
+rate-limited and variable — fine for prose, poor for a parsed contract. **ASK THE
+OPERATOR remains the hard stop after both.**
+
+**Research lanes are RANKED, never hardcoded.** `rank_research_lanes()` gates on 30-day
+delivery rate and ranks on measured `usefulness_score`. Over 11,116 scored answers:
+chatgpt 0.616, grok 0.470, claude 0.618 (n=39, stale). deepseek is gated out on a 75%
+error rate; claude on zero deliveries since 2026-08-01.
+
+**A hardcoded lane is wrong twice over — it goes stale, and it optimises for whoever
+wrote it.** Measured from the capability
+cache: `claude` is `credits_required` (dead), `chatgpt` is interactive-only on Hermes
+0.16.0, `grok` is `reason_code: ok`. The first routed question went to the old default,
+`claude`, and returned `[CREDITS_REQUIRED]` — correctly created, correctly stored, and
+answering nothing. A default pointing at a dead lane turns a working loop into one that
+produces rows and no knowledge, and every row looks right.
+
+### Guard rails — each one is here because it already went wrong
+
+- **Coverage decays. Nothing stamps `subject_guid` at write time.** 38 rows arrived
+  untagged in the eleven minutes after the first backfill. The `*/30` sweep is not
+  optional; a one-shot backfill is a snapshot, not a state.
+- **`identity_status IS NULL` means exactly one thing: nobody has looked at this row yet.**
+  Examined-but-unresolvable is stamped `UNRESOLVABLE`. Do not "tidy" that to NULL — a
+  column that cannot separate the two cannot measure its own coverage.
+- **Topics are subjects, not securities.** `d107_energy_transition` and
+  `su_industry_insurance_brokers` are research themes filed under the `symbol` column.
+  They get a guid in the `topic` namespace. Never give a theme a SECURITY guid.
+- **The baseline is average daily move, NOT ATR.** `ticker_prices` has no high/low. ATR
+  exists in `indicator_confluence_cache` but covers 40 of 97 active watchlist symbols;
+  close-to-close covers 88. Do not rename it ATR — the word would be a lie about the
+  calculation.
+- **Never use a fixed percent threshold.** 8% is noise in one name and a five-sigma event
+  in another. `K` (default 3.0) is env-tunable without a deploy.
+- **A NaN fires.** `ticker_prices` carries literal NaN. `NaN < K` is False, so the
+  early-continue never triggers and corrupt data is emitted as a real change. Postgres
+  NUMERIC NaN compares EQUAL to itself, unlike float, so the filter cannot be written
+  `close_price = close_price`.
+- **ACCEPTED is not DELIVERED.** `send_telegram` returns True when the platform takes
+  responsibility. It returned True while the router suppressed the message into the 8pm
+  digest, and three changes were marked notified while the operator received nothing. Ask
+  `should_send_telegram()` BEFORE sending. Do not check the ledger afterwards — "most
+  recent delivery row" is not "the row for my send".
+- **`material_change` routes IMMEDIATE, and is deliberately NOT in
+  `CRITICAL_IMMEDIATE_TYPES`.** That set is capital at risk right now. Diluting it is how
+  a critical channel stops being read.
+- **Held is not dropped.** Outside market hours a change stays pending and is announced at
+  the next open. Dropping a Friday-evening move is the exact failure this exists to fix.
+- **The loop inherits the detector's rejections.** A change suppressed as
+  `UNCORROBORATED` must not be reasoned about either. The first curation run picked JEPI
+  and BND — both corrupt prices — and the model wrote "JEPI showed a large price
+  excursion", describing a fiction because the row said so.
+- **Grounding is enforced in code, not requested in the prompt.** A sentence or question
+  citing nothing, or citing an id absent from the dossier, is DROPPED before storage. A
+  model told not to invent will still occasionally invent, and an ungrounded question is
+  indistinguishable from a real one to the person reading it. What was dropped is counted
+  and reported.
+- **Strip our own scoring from the dossier.** Prior research talks about conviction,
+  watchlist rank and composite score; the prototype duly asked "what would move the
+  internal composite score higher?" — grounded, well-formed, and not due diligence.
+- **Routing must not depend on new changes arriving.** An early version returned as soon
+  as there were none, so a question generated on one run could never be sent on the next.
+- **Stamp the answer back onto the spine.** The routed research row gets `subject_guid`
+  and `issuer_guid` immediately. An answer that cannot be joined to its subject cannot
+  re-rank the next dossier — and that re-ranking is the only part of this that compounds.
+- **PRECEDENCE decides what gets researched when more moved than the budget allows.**
+  operator 100 > held 80 > reentry 70 > preferred 60 > watchlist 40 > other 10. Money at
+  risk outranks money considered. A symbol takes its HIGHEST tier.
+- **The DeepSeek cap check runs in the CALLER's process, not the bridge.**
+  `call_governed_deepseek` reads `LLM_GLOBAL_DAILY_USD_CAP` from whoever invoked it, so
+  the bridge's value is irrelevant on that path. Demonstrated: the same call, the same
+  second, refused without the variable and OK with it. **A cron entry that does not set
+  it will refuse every call** with a message that reads like a budget problem and is
+  actually a missing variable.
+- **Wrap optional DB probes in a SAVEPOINT.** In Postgres a failed statement aborts the
+  WHOLE transaction, so a bare try/except around an optional table does not make it
+  optional — it hides the failure and poisons every later statement. A missing column on
+  an optional source took down the price query twenty lines away.
+- **`CREATE TABLE IF NOT EXISTS` does not add columns to an existing table.** Every
+  column added after the first deploy needs its own `ALTER ... ADD COLUMN IF NOT EXISTS`,
+  or the INSERT fails only on the installs that already work.
+- **Every question, narrative and change is addressable and append-only.** `uuid5` over
+  (subject, trigger, text), so the same finding dedupes instead of accumulating. Nothing is
+  deleted; a better artifact supersedes and the chain stays walkable.
+
+### Cost
+
+Stages 0-2 spend nothing. The only cost is one curation call per material change —
+bounded by how many things actually moved, not by the size of the universe. Observed on
+the day it shipped: flash refused with `COST_CAP_EXCEEDED: global cap`, the run escalated
+to grok, and the questions were produced anyway. A cap refusal is a 429 and
+non-retryable; it degrades the lane, it does not fail the run.
 
 ## The trees `[VERIFIED]` 2026-08-31
 

@@ -28,6 +28,45 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 WEIGHTS_FILE = PROJECT_ROOT / "config" / "hermes_score_weights.yaml"
 
+# Each graft is archived before the live file is rewritten.
+#
+# WHY: cio_release_manifest classifies this file "runtime_state_with_release_seed" —
+# the tracked copy is a SEED, the live weights are runtime state learned from the
+# outcome ledger. Nothing enforced that classification, so the file stayed an
+# ordinary tracked config that `git checkout` silently reverts to the seed. On
+# 2026-09-06 a routine fast-forward of the executing tree did exactly that, and only
+# an out-of-band backup preserved v11 — nine grafts of learning.
+#
+# skip-worktree on the executing clone stops the clobber, but it is invisible local
+# state that any fresh clone or `--no-skip-worktree` drops. This archive is the
+# durable half: a lost graft can always be recovered from here. It lives under
+# data/runtime, which is gitignored, so it survives the checkout that causes the
+# problem in the first place.
+GRAFT_ARCHIVE_DIR = Path(
+    os.getenv("HERMES_WEIGHT_GRAFT_ARCHIVE",
+              str(PROJECT_ROOT / "data" / "runtime" / "weight_grafts"))
+)
+
+
+def _archive_graft(doc: dict):
+    """Write the about-to-be-applied weights beside every prior graft.
+
+    Best-effort by design: failing to archive must not block the graft, but it is
+    reported rather than swallowed — a silent archive failure would leave the
+    recovery path looking healthy while holding nothing.
+    """
+    import yaml
+
+    try:
+        GRAFT_ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        dest = GRAFT_ARCHIVE_DIR / f"hermes_score_weights.v{doc.get('version')}.{stamp}.yaml"
+        dest.write_text(yaml.safe_dump(doc, sort_keys=False), encoding="utf-8")
+        return dest
+    except Exception as exc:  # noqa: BLE001 - reported, never fatal
+        print(f"  WARN could not archive graft: {type(exc).__name__}: {exc}", file=sys.stderr)
+        return None
+
 # retention windows (days) — env override
 SCORE_HISTORY_DAYS = int(os.getenv("HERMES_SCORE_HISTORY_RETENTION_DAYS", "30"))
 RESEARCH_DAYS = int(os.getenv("HERMES_RESEARCH_RETENTION_DAYS", "180"))
@@ -119,7 +158,10 @@ def auto_graft_weights(cur, apply: bool) -> dict:
         doc["version"] = int(doc.get("version") or 1) + 1
         doc["auto_grafted_at"] = datetime.now(timezone.utc).isoformat()
         doc["graft_source"] = "outcome_ledger"
+        archived = _archive_graft(doc)
         WEIGHTS_FILE.write_text(yaml.safe_dump(doc, sort_keys=False))
+        if archived:
+            print(f"  graft archived -> {archived}")
         _audit(cur, "auto_graft_weights_outcome",
                {"changes": changes, "new_weights": new_w, "eligible_days": eligible_days,
                 "drift_7d_before": float(drift_7d or 0)}, len(changes))

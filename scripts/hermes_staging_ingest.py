@@ -90,15 +90,30 @@ def get_db_connection():
         # Fall back to subprocess psql
         return None
 
-    env_path = os.path.join(os.path.dirname(__file__), '..', '.env')
-    db_pass = None
-    if os.path.exists(env_path):
-        with open(env_path) as f:
-            for line in f:
-                if line.startswith('DB_PASSWORD='):
-                    db_pass = line.strip().split('=', 1)[1]
+    # Credentials come from the canonical loader, NOT from a path relative to this
+    # file. `os.path.dirname(__file__)/../.env` resolves inside whatever tree the
+    # code happens to be running from — and a RELEASE has no .env, because secrets
+    # are deliberately not deployed. So every scheduled run from a release died
+    # here with "DB_PASSWORD not found in .env" while the credential sat in the
+    # environment and on disk.
+    #
+    # This was invisible for the lane's entire life: an outer DeepSeek peak guard
+    # skipped the run before it ever reached a database. Fixing that guard on
+    # 2026-09-06 exposed this on the very next timer fire (01:35:53).
+    #
+    # env_bootstrap is the house loader — tmpfs SM render first, disk .env second.
+    db_pass = os.environ.get("DB_PASSWORD")
     if not db_pass:
-        print("ERROR: DB_PASSWORD not found in .env", file=sys.stderr)
+        try:
+            sys.path.insert(0, os.path.join(os.path.dirname(__file__), "lib"))
+            from env_bootstrap import load_env  # noqa: PLC0415
+            load_env()
+            db_pass = os.environ.get("DB_PASSWORD")
+        except Exception as exc:                       # loader absent or unreadable
+            print(f"WARN: env_bootstrap unavailable ({type(exc).__name__})", file=sys.stderr)
+    if not db_pass:
+        print("ERROR: DB_PASSWORD not resolvable (env, tmpfs render, or .env)",
+              file=sys.stderr)
         sys.exit(1)
 
     return psycopg2.connect(

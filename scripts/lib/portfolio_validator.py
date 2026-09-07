@@ -7,8 +7,28 @@ import json, os
 class PortfolioValidator:
     TOLERANCE_PCT = 1.0
 
-    def __init__(self):
+    def __init__(self, live_dir=None):
+        """`live_dir` is the release the caller is validating.
+
+        The health inspector has always called this as
+        `PortfolioValidator(live_dir=live_dir)` — every other validator in that
+        module takes it — while __init__ accepted nothing, so every run raised
+
+            Portfolio validation failed: PortfolioValidator.__init__() got an
+            unexpected keyword argument 'live_dir'
+
+        and the P2 finding reported the TypeError instead of a portfolio check.
+        Portfolio validation has therefore never actually run from that path.
+
+        It is recorded rather than ignored. This validator reads the API rather
+        than the filesystem, so live_dir does not change what it measures — but
+        it does say WHICH deployment the numbers were taken against, and a
+        finding that cannot name its subject is the weaker finding. Accepting a
+        parameter only to discard it would fix the traceback and keep the
+        silence.
+        """
         self.findings = []
+        self.live_dir = live_dir
 
     def _api(self, path):
         import urllib.request
@@ -39,6 +59,21 @@ class PortfolioValidator:
             return {'total_value': total, 'today_pnl': pnl, 'source': 'schwab_accounts'}
         return None
 
+    def _tag(self, finding):
+        """Stamp the release under validation onto a finding."""
+        if self.live_dir:
+            finding.setdefault("live_dir", self.live_dir)
+        return finding
+
+    def _tagged(self):
+        """Every finding leaves here naming the deployment it was taken from.
+
+        Applied at the exits rather than at each append: three return points is
+        a smaller surface than every raise site, and a finding added later
+        cannot forget to be tagged.
+        """
+        return [self._tag(f) for f in self.findings]
+
     def validate(self):
         displayed = self.get_displayed_portfolio()
         broker = self.get_broker_portfolio()
@@ -48,14 +83,14 @@ class PortfolioValidator:
                 'severity': 'P1', 'type': 'portfolio_data_unavailable',
                 'message': 'Cannot read portfolio value from /api/v2/risk'
             })
-            return self.findings
+            return self._tagged()
 
         if not broker:
             self.findings.append({
                 'severity': 'P2', 'type': 'broker_data_unavailable',
                 'message': 'Cannot reach Schwab for portfolio validation'
             })
-            return self.findings
+            return self._tagged()
 
         if displayed.get('total_value') and broker.get('total_value'):
             dv = float(displayed['total_value'])
@@ -85,4 +120,4 @@ class PortfolioValidator:
                     'message': f'P&L: ${dp:,.0f} displayed vs ${bp:,.0f} broker (${pnl_diff:,.0f} diff)'
                 })
 
-        return self.findings
+        return self._tagged()

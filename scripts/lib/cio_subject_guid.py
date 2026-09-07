@@ -70,6 +70,41 @@ def lookup_subject(symbol: str, *, root=None) -> dict[str, Any]:
     }
 
 
+def lookup_identity_envelope(symbol: str, *, root=None) -> dict[str, Any]:
+    """The full spine for one symbol, not just ``subject_guid``.
+
+    ``lookup_subject`` answers "which subject is this", which is what a product row
+    needs. Joining a corpus needs more: the issuer a security belongs to, and the
+    identifiers that let a later reader re-resolve the row without guessing.
+
+    Built ON ``lookup_subject`` rather than beside it, so the four outcomes it
+    distinguishes are preserved exactly — in particular that a registry which cannot
+    be READ is not the same as a symbol that is UNKNOWN. Collapsing those two is how
+    a backfill silently marks a third of a corpus unresolvable and reports success.
+
+    Never mints. A miss leaves the guids ``None`` and says why.
+    """
+    base = lookup_subject(symbol, root=root)
+    out = dict(base)
+    out["issuer_guid"] = None
+    out["security_guid"] = None
+    out["listing_guid"] = None
+    if not base.get("subject_guid"):
+        return out
+    try:
+        from scripts.lib.identity_registry import load_cached, lookup_symbol
+
+        ent = lookup_symbol(load_cached(root), str(symbol or "").strip().upper())
+    except Exception:
+        # The subject resolved; only the enrichment failed. Report the subject
+        # rather than discarding a good answer because a second read failed.
+        return out
+    if isinstance(ent, dict):
+        for key in ("issuer_guid", "security_guid", "listing_guid"):
+            out[key] = ent.get(key) or None
+    return out
+
+
 def stamp_row(row: dict[str, Any], *, root=None) -> dict[str, Any]:
     out = dict(row or {})
     symbols = list(out.get("symbols") or [])

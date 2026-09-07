@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `a33638cbe6eedb2bc94d2e3a54b9f99dfb38f6fb53fdb03f5b1397ce2990b509`
+**Tree fingerprint:** `72ff1348e728db858e604bc7ae4ec9f4bd9ed39f8d924e67e335da4c1084b620`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,10 +12,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2396 |
-| Markdown (excl. this INDEX) | 1996 |
-| **MISSING HEADER** | **19** |
-| Header OK | 1977 |
+| Files under `docs/` (excl. this INDEX) | 2408 |
+| Markdown (excl. this INDEX) | 2007 |
+| **MISSING HEADER** | **20** |
+| Header OK | 1987 |
 | Duplicate groups | 5 |
 
 ### By status_guess
@@ -27,10 +27,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | archive_session_handoff | 3 |
 | archive_superseded | 20 |
 | artifact_code_snapshot | 3 |
-| artifact_raw_sync | 34 |
+| artifact_raw_sync | 35 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 6 |
-| review_required | 2008 |
+| review_required | 2019 |
 
 ## Markdown tree
 
@@ -61,7 +61,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/CURSOR_CLOUD_PLAIN_ENGLISH_STARTER_GUIDE.md` | Cursor Cloud Plain-English Starter Guide | review_required | OK | `c7ab9524a7e1` |
 | `docs/DAILY_OPS_LOG.md` | DAILY_OPS_LOG.md | review_required | OK | `80578251dbf0` |
 | `docs/DASHBOARD_AUDIT_WORKFLOW.md` | Dashboard Visual Audit — Operator Workflow | review_required | OK | `4f878d49e6a9` |
-| `docs/DOCUMENTATION_INDEX.md` | Trade AI v12 — Documentation Index | review_required | OK | `5939f2eb8717` |
+| `docs/DOCUMENTATION_INDEX.md` | Trade AI v12 — Documentation Index | review_required | OK | `d452a0286652` |
 | `docs/ENGINEERING_HARD_RULES.md` | Engineering Hard Rules (enforced) | review_required | OK | `c9798da3d1f2` |
 | `docs/ENGINE_ROOM_V1.md` | Engine Room v1 — Plumbing & Intake Hardening (2026-07-16) | review_required | OK | `c13ce7b7e784` |
 | `docs/EXECUTIVE_ARCHITECTURE_OVERVIEW.md` | Trade AI v12 — Executive Architecture Overview | review_required | OK | `84fd22510408` |
@@ -105,6 +105,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/PULLBACK_MACD_SCREENER.md` | Pullback / MACD Screener | review_required | OK | `afc1169eccc2` |
 | `docs/RESEARCH_INGEST_TICKER_AUDIT_2026_06_20.md` | Research Ingestion + Ticker Extraction + Connector Audit — 2026-06-20 | review_required | OK | `d78b663bf596` |
 | `docs/RESEARCH_PRIORITIZATION.md` | Research Prioritization & Refresh Methodology (all Hermes lanes, 24/7) | review_required | OK | `139c93ab1bcd` |
+| `docs/RESEARCH_PROVIDER_ROUTING.md` | Research provider routing — when Brave should be used | review_required | OK | `9c61b2f7c573` |
 | `docs/RESEARCH_TOPIC_REGISTRY_2026_06_04.md` | Research Topic Registry — 2026-06-04 | review_required | OK | `f51d95275ab4` |
 | `docs/RESTORE_GUIDE.md` | Trade AI v12 — Restore Guide | active_keep | OK | `e75090b6bb16` |
 | `docs/SCHWAB_AUTO_REAUTH.md` | Schwab OAuth Reauth (manual-first) | review_required | OK | `039c557e4214` |
@@ -155,6 +156,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/_findings/alpaca_taxonomy_audit_2026-07-21.md` | FINDINGS: Alpaca Paper/Live Taxonomy & Multi-Account Readiness Audit | review_required | OK | `8212d11b2f89` |
 | `docs/_findings/bitwarden_env_posture_recon_2026-07-21.md` | RECON: Bitwarden + Env Posture Inventory (read-only) | review_required | OK | `a0d867f98a49` |
 | `docs/_findings/brave_search_api_usage_audit_2026-05.md` | Brave Search API Usage Audit — May 2026 | review_required | OK | `943f66776820` |
+| `docs/_findings/brave_september_reconciliation_2026-09-05.md` | Brave September count — reconciliation | review_required | OK | `df9b2ff5811f` |
 | `docs/_findings/comms_delivery_owned_contradiction_2026-09-05.md` | [FIXED 2026-09-05] `delivery_owned` contradicts the gateway it describes | review_required | OK | `abcdea80bf73` |
 | `docs/_findings/defense_desk_v1_diagnosis_2026-07-17.md` | Defense Desk v1 — Phase 0 Diagnosis (2026-07-17) | review_required | OK | `97acf7b2dff3` |
 | `docs/_findings/defense_desk_v2_diagnosis_2026-07-18.md` | Defense Desk v2 — Phase 0 Diagnosis (2026-07-18) | review_required | OK | `5dc0e9420a52` |
@@ -168,7 +170,12 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/_findings/news_ingestion_gap_2026-05-24.md` | News Ingestion Gap — 2026-05-24 | review_required | OK | `20649729d370` |
 | `docs/_findings/ops_morning_stability_2026-07-16.md` | Findings — Morning Ops Stability (2026-07-16) | review_required | OK | `99fc676a70c5` |
 | `docs/_findings/ops_scanner_500_loop_2026-07-17.md` | Ops: Market Opportunities Scanner 500-loop + Postgres slot exhaustion — 2026-07-17 | review_required | OK | `3946f6f102db` |
+| `docs/_findings/phase1_research_router_inventory_2026-09-05.md` | Phase 1 — Research provider truth: Brave caller inventory and ledger reconciliation | review_required | OK | `9f8cfc2430f0` |
+| `docs/_findings/phase2_delivery_reconciliation_2026-09-05.md` | Phase 2 — Delivery reconciliation: the 26 RESERVED rows, the settle path, and the dark inbound plane | review_required | MISSING HEADER | `40fa8b176b00` |
+| `docs/_findings/phase3_documentation_truth_audit_2026-09-05.md` | Phase 3 — Documentation truth audit (inventory + proposals, no rewrites) | review_required | OK | `c7d9f7e0e490` |
+| `docs/_findings/phase4_verification_matrix_2026-09-05.md` | Phase 4 — Verification matrix with negative controls | review_required | OK | `f5bb99c740f9` |
 | `docs/_findings/pre_burnin_findings_2026-05-25.md` | Pre-Burn-In Findings (2026-05-25) | review_required | OK | `d0becac9e7c6` |
+| `docs/_findings/pre_persistent_agent_phase0_evidence_ledger_2026-09-05.md` | Phase 0 evidence ledger — pre-persistent-agent truth closeout | review_required | OK | `52201fbdb667` |
 | `docs/_findings/reports_desk_v1_diagnosis_2026-07-16.md` | Reports Desk v2 — Phase 0 Residual Diagnosis (2026-07-16 evening) | review_required | OK | `f0e237b06695` |
 | `docs/_findings/reports_desk_v3_diagnosis_2026-07-17.md` | Reports Desk v3 — Phase 0 Diagnosis (2026-07-17) | review_required | OK | `1231c78a1e34` |
 | `docs/_findings/ri_v3_1_diagnosis_2026-07-16.md` | RI v3.1 Phase 0 Diagnosis — 2026-07-16 | review_required | OK | `3c83b0e51f83` |
@@ -281,13 +288,17 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/DEFENSE_DESK_V7.md` | Defense Desk v7 — Execute Through the Rail · Validate the Chain · Watch Every Play (2026-07-18) | review_required | OK | `41e88f593ca8` |
 | `docs/architecture/DEFENSE_DESK_V8.md` | Defense Desk v8 — Real Accounts · Quiet Alerts · The Oversight Stack (2026-07-18) | review_required | OK | `a491bff63084` |
 | `docs/architecture/DEFENSE_DESK_V9.md` | Defense Desk v9 — The Adjudication Layer (2026-07-18 evening) | review_required | OK | `cadd848574d7` |
+| `docs/architecture/DOCUMENT_MENTIONS_AND_LLM_ESCALATION.md` | Document mentions, subject vs. passing reference, and LLM escalation | review_required | OK | `a54c4035c298` |
 | `docs/architecture/EXECUTION_QUALITY.md` | Replay-Aware Execution Quality (design) | review_required | OK | `685082a5cd95` |
 | `docs/architecture/GAIN_GUARDIAN.md` | Gain Guardian — Holdings Exit Intelligence (Live Book, Advisory-Only) | review_required | OK | `1d3bec366edc` |
 | `docs/architecture/GOOGLE_NOTES_BITEMPORAL_DDL_ARCHITECT_RECONCILIATION_2026-08-24.md` | Google Notes bitemporal DDL — architect reconciliation | review_required | OK | `8d29266fc3e6` |
+| `docs/architecture/GOVERNED_MODEL_BRIDGE.md` | The governed model bridge — caps, callers, and how it fails | review_required | OK | `7ef8f731bf1b` |
 | `docs/architecture/HERMES_PERSISTENT_TICKER_INTELLIGENCE_ARCHITECTURE_2026-08-23.md` | Hermes Persistent Ticker Intelligence Architecture | review_required | OK | `3a4320625b1e` |
 | `docs/architecture/HOME_COMMAND_BRAIN_V2.md` | Home v2 — The Command Brain (2026-07-17) | review_required | OK | `6e695df9a86e` |
 | `docs/architecture/HYBRID_EVIDENCE_REFRESH_AND_HERMES_BRIDGE_2026-08-23.md` | Hybrid Evidence Refresh and Hermes Bridge | review_required | OK | `9c55a507faab` |
 | `docs/architecture/M2_PRODUCTION_SHADOW_MIGRATION_DESIGN_2026-08-24.md` | M2 production shadow migration — DESIGN ONLY | review_required | OK | `18aa33439911` |
+| `docs/architecture/MATERIAL_CHANGE_TO_QUESTIONS.md` | Material change → due-diligence questions | review_required | OK | `665175b2ce35` |
+| `docs/architecture/MENTIONS_SCHEDULING_AND_RETENTION.md` | Mentions: scheduling, retention, and who decides relevance | review_required | OK | `44f38a74e254` |
 | `docs/architecture/OPENCLAW_HERMES_UPGRADE_ROLLBACK_PLAN_2026-07-23.md` | OpenClaw and Hermes Shadow Upgrade / Rollback Plan — 2026-07-23 | review_required | OK | `9fd429af3119` |
 | `docs/architecture/PHASE199A_PREFLIGHT_RUNTIME_CONTROL_PLANE_AUDIT.md` | Phase 199A — Preflight: Runtime Control Plane Audit (2026-06-04) | review_required | OK | `22f3223c1a13` |
 | `docs/architecture/PHASE199B_RUNTIME_JOB_INVENTORY.md` | Phase 199B — Runtime Job Inventory | review_required | OK | `1bb895bc901f` |

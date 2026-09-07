@@ -234,6 +234,10 @@ if __name__ == "__main__":
             decisions = build_cio_decisions()
             critical = [d for d in decisions if d["priority"] in ("high", "critical")]
             hr = [d for d in decisions if d["human_review_required"]]
+            # Report what was produced. Without this the run records
+            # rows_produced=0 and pipeline_zero_rows fires on a working engine —
+            # which it did, on 3,010 runs in 7 days.
+            _run.rows(len(decisions))
             print(f"[cio] Generated {len(decisions)} decisions: {len(critical)} high/critical, {len(hr)} need human review")
             if "--json" in sys.argv:
                 print(json.dumps(decisions[:10], indent=2, default=str))

@@ -99,6 +99,16 @@ def fix_hint(row: dict) -> str:
             "Alias `deepseek` is not available(); writer is deepseek-flash. "
             "Weekday scheduler; streak stays until a successful send."
         )
+    if lane == "chatgpt":
+        return (
+            "Proxy is pinned to a model this ChatGPT account cannot use: "
+            "chatgpt_oauth_proxy.py:27 DEFAULT_MODEL=gpt-5.4, backend returns 400 "
+            "'not supported when using Codex with a ChatGPT account'. Probed "
+            "2026-09-05: gpt-5.5 and gpt-5.4-mini WORK; gpt-5.4, gpt-5.3-codex, "
+            "gpt-5.1-codex, gpt-5-codex are rejected. Fix: export "
+            "CHATGPT_PROXY_MODEL=gpt-5.5 and restart the proxy. The MODELS list at "
+            ":32 and its comment at :31 are both stale."
+        )
     if lane == "overnight-deep":
         return (
             "Overnight: OnCalendar 22–05:35 ET, ExecStart --model chatgpt --apply "
@@ -112,6 +122,42 @@ def fix_hint(row: dict) -> str:
             "!= origin/main (pin behind #455+). Targeted gog --replace until D4 8/27. "
             "zero_uploaded_with_failures = 404 dead parents. Canonical docs 1BMxbxU9… / ops 1a7vr2gn…"
         )
+    if lane == "identity-spine":
+        # The custodian already COMPUTES the precise remediation for each of its
+        # alarms. Without this branch the operator got "CAUSE NOT DIAGNOSED" on a
+        # finding whose cause was fully known and already in the JSON — an alarm
+        # that reaches the phone and then withholds what it knows.
+        if "producer_unscheduled" in firing:
+            producers = [f.split(":", 1)[1] for f in (row.get("firing") or [])
+                         if str(f).startswith("producer_unscheduled:")]
+            return (
+                f"Identity producer not scheduled: {', '.join(producers) or 'unknown'}. "
+                "cron AND systemd were both checked, and a COMMENTED cron does not "
+                "count. The data it maintains ages silently. Schedule it, or record "
+                "it in AGENTS.md as deliberately manual."
+            )
+        if "coverage_regressed" in firing:
+            return (
+                "CONFIRMED entity count FELL. The registry rank is one-way, so it "
+                "cannot fall on its own — a source feed stopped publishing "
+                "identifiers (CUSIP). Check Schwab instruments before re-minting; "
+                "re-minting on a degraded feed writes the degradation in."
+            )
+        if "registry_stale" in firing:
+            return (
+                "identity_registry has not been re-minted within its window. The "
+                "minter runs weekdays 05:50 ET and the grace already covers a "
+                "weekend, so this is a real miss. Run mint_identity_registry.py "
+                "--apply (idempotent, incremental)."
+            )
+        if "registry_unreadable" in firing:
+            return (
+                "identity_registry is missing or unparseable. Everything joining "
+                "subject_guid/issuer_guid degrades silently. Do NOT re-mint over "
+                "it — inspect first; the file is the durable spine."
+            )
+        return "identity-spine firing; see the lane JSON `counts` and `firing`."
+
     if lane == "current-pin":
         return "CURRENT scripts/+docs/ must match SOURCE_COMMIT (git archive hashes). No docs overlay."
     if lane == "process-freshness":
@@ -125,8 +171,15 @@ def fix_hint(row: dict) -> str:
             "THIN rows count toward coverage_pct, not this alarm. Dry-run: "
             "scripts/thesis_mint_from_research.py. Apply after 8/27."
         )
+    # NEVER return `firing` here. That is what this function did, so every lane
+    # without a branch above printed its own trigger under a heading that
+    # promises a cause — "Fix: error_streak:11>=5" tells the operator nothing and
+    # convinces them there is nothing to learn. An undiagnosed lane must say so.
     if firing:
-        return firing
+        return (f"CAUSE NOT DIAGNOSED for `{lane}` — the tokens above are the "
+                f"trigger, not the reason. Read the lane's RAW rows: the "
+                f"[ERROR] text carries the real cause. Add a branch to "
+                f"fix_hint() once it is known.")
     return "see research_lane_health.py JSON"
 
 

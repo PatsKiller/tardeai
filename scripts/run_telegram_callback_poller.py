@@ -28,6 +28,34 @@ log = logging.getLogger(__name__)
 OFFSET_FILE = PROJECT_ROOT / "data" / "portfolios" / "state" / ".telegram_callback_offset"
 
 
+def _inbound_api():
+    """Lazy import of the gateway inbound half (Wave C).
+
+    Returns a dict of callables, or None when the gateway package is absent
+    (the poller then degrades to the legacy file-offset path so it never dies
+    on an import).
+    """
+    try:
+        from scripts.lib.comms.inbound import (  # noqa: F401
+            build_inbound_event,
+            claim_update,
+            commit_checkpoint,
+            get_checkpoint_offset,
+            quarantine_callback,
+        )
+        from scripts.lib.comms.client import publish_communication
+        return {
+            "build_inbound_event": build_inbound_event,
+            "claim_update": claim_update,
+            "commit_checkpoint": commit_checkpoint,
+            "get_checkpoint_offset": get_checkpoint_offset,
+            "quarantine_callback": quarantine_callback,
+            "publish_communication": publish_communication,
+        }
+    except Exception:
+        return None
+
+
 def _token():
     return os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
 
@@ -64,7 +92,13 @@ def poll_once(timeout=25):
         log.error("No TELEGRAM_BOT_TOKEN")
         return 0
 
-    offset = _get_offset()
+    inbound = _inbound_api()
+    if inbound is not None:
+        # Wave C: single-consumer durable checkpoint. The offset is advanced only
+        # after the inbound CommunicationEvent is persisted, never before.
+        offset = inbound["get_checkpoint_offset"]()
+    else:
+        offset = _get_offset()
     from urllib.parse import urlencode
     params = urlencode({
         "offset": offset + 1,
@@ -92,7 +126,34 @@ def poll_once(timeout=25):
     processed = 0
 
     for update in results:
-        _save_offset(update["update_id"])
+        uid = update.get("update_id")
+
+        if inbound is not None:
+            # Replay denial: skip updates already committed by a prior poll.
+            claim = inbound["claim_update"](uid)
+            if claim.already_processed:
+                continue
+            # Persist a canonical INBOUND event before business processing (C3).
+            try:
+                event = inbound["build_inbound_event"](update)
+                published = inbound["publish_communication"](event)
+            except Exception as e:
+                log.error(f"inbound event persist failed: {e}")
+                published = None
+            if published is None or not getattr(published, "ok", False):
+                # Unresolvable update — quarantine it and do NOT advance the
+                # checkpoint, so it is re-delivered rather than silently dropped.
+                try:
+                    inbound["quarantine_callback"](
+                        "inbound_persist_failed",
+                        provider_coordinates={"update_id": uid},
+                        update_id=uid,
+                    )
+                except Exception:
+                    pass
+                continue
+        else:
+            _save_offset(uid)
 
         # Handle callback queries (inline button presses)
         if "callback_query" in update:
@@ -106,15 +167,21 @@ def poll_once(timeout=25):
                     log.info(f"callback: {cb.get('data', '?')} from chat={chat_id}")
                 except Exception as e:
                     log.error(f"callback error: {e}")
+            if inbound is not None:
+                inbound["commit_checkpoint"](uid)
             continue
 
         # Handle messages (commands)
         msg = update.get("message", {})
         if not msg:
+            if inbound is not None:
+                inbound["commit_checkpoint"](uid)
             continue
         chat_id = str(msg.get("chat", {}).get("id", ""))
         text = (msg.get("text") or "").strip()
         if chat_id not in allowed or not text:
+            if inbound is not None:
+                inbound["commit_checkpoint"](uid)
             continue
 
         # Route all recognized commands
@@ -150,6 +217,26 @@ def poll_once(timeout=25):
                 handled = True
             except Exception as e:
                 log.error(f"atm command error: {e}")
+        # Guard scope approval — operator answers a /approve or /deny code.
+        # Placed BEFORE the Schwab branch deliberately: that branch matches the
+        # bare substring "code=" anywhere in the message, which is broad enough
+        # to swallow a message that merely mentions a code.
+        # LLM spend caps. There is no admin page for these anywhere — not in the
+        # Command Center, not in api_v2 — so before this the only way to change a
+        # cap was a hand-written UPDATE against production, which on 2026-09-06
+        # promptly left the registry and the database disagreeing.
+        elif lower.startswith("/caps") or lower.startswith("/cap "):
+            try:
+                _handle_llm_caps(msg, text, chat_id)
+                handled = True
+            except Exception as e:
+                log.error(f"llm caps command error: {e}")
+        elif lower.startswith("/approve") or lower.startswith("/deny"):
+            try:
+                _handle_guard_approval(msg, text, chat_id)
+                handled = True
+            except Exception as e:
+                log.error(f"guard approval error: {e}")
         # Schwab OAuth callback — operator pastes the 127.0.0.1?code=... URL
         elif "127.0.0.1?code=" in text or "code=" in text.lower():
             try:
@@ -157,6 +244,11 @@ def poll_once(timeout=25):
                 handled = True
             except Exception as e:
                 log.error(f"schwab callback error: {e}")
+
+        if inbound is not None:
+            # The inbound event is persisted; advance the durable checkpoint so
+            # a crash or a replayed poll does not re-deliver the same update.
+            inbound["commit_checkpoint"](uid)
 
         if handled:
             processed += 1
@@ -586,6 +678,184 @@ def _handle_atm_command(msg, text, chat_id):
 
 
 # ── Schwab OAuth callback auto-exchange ──────────────────────────────────────────────
+
+def _handle_llm_caps(msg, text, chat_id):
+    """`/caps` to list, `/cap <process_id> <requests> [dollars]` to set.
+
+    Allowlist-gated by the SAME check every other command here uses. A chat
+    message must not be able to raise a spend limit from an unknown chat, and
+    the module's own MAX_* ceilings bound it even for the operator — a cap is
+    only worth having if it holds when someone is in a hurry, and that is
+    exactly when caps get raised.
+    """
+    import os
+
+    import psycopg2
+
+    from scripts.lib.llm_cap_admin import MAX_DOLLARS, MAX_REQUESTS, list_caps, set_caps
+
+    # The dispatch loop already gates on _allowed_chats(); re-checking here is
+    # deliberate. This is the one command that can raise a spend limit, and a
+    # future refactor of the loop must not silently open it.
+    if str(chat_id) not in {str(c) for c in _allowed_chats()}:
+        log.warning("llm caps command from non-allowlisted chat %s", chat_id)
+        return
+
+    conn = None
+    try:
+        conn = psycopg2.connect(
+            host=os.environ.get("DB_HOST", "localhost"),
+            dbname=os.environ.get("DB_NAME", "trade_ai"),
+            user=os.environ.get("DB_USER", "trade_ai"),
+            password=os.environ.get("DB_PASSWORD") or os.environ.get("POSTGRES_PASSWORD"))
+    except Exception as exc:
+        _send(chat_id, f"caps: database unavailable ({type(exc).__name__})")
+        return
+
+    try:
+        parts = text.split()
+        if parts[0].lower() == "/caps":
+            rows = list_caps(conn)
+            lines = ["*LLM spend caps*  (requests / dollars per day)", ""]
+            for r in rows:
+                if r["db_requests"] is None:
+                    continue
+                flag = "  ⚠️ REGISTRY DISAGREES" if r["drift"] else ""
+                lines.append(f"`{r['process_id']}`  {r['db_requests']} / ${r['db_dollars']}{flag}")
+            lines += ["", "Set with: `/cap <process_id> <requests> [dollars]`",
+                      f"Ceilings: {MAX_REQUESTS} requests, ${MAX_DOLLARS}",
+                      "",
+                      "The GLOBAL cap (LLM_GLOBAL_DAILY_USD_CAP) is not settable here —",
+                      "it lives in the bridge's environment and needs a restart."]
+            _send(chat_id, "\n".join(lines)[:3800])
+            return
+
+        if len(parts) < 3:
+            _send(chat_id, "Usage: `/cap <process_id> <requests> [dollars]`")
+            return
+        pid = parts[1]
+        try:
+            reqs = int(parts[2])
+            dollars = float(parts[3]) if len(parts) > 3 else None
+        except ValueError:
+            _send(chat_id, "requests must be a whole number, dollars a decimal")
+            return
+
+        res = set_caps(pid, requests=reqs, dollars=dollars, conn=conn,
+                       actor=f"telegram:{chat_id}")
+        if not res.get("ok"):
+            _send(chat_id, f"caps NOT changed: {res.get('error')}")
+            return
+        b, a = res["before"], res["after"]
+        _send(chat_id,
+              f"*{pid}* updated\n"
+              f"was: {b['requests']} / ${b['dollars']}\n"
+              f"now: {a['requests']} / ${a['dollars']}\n\n"
+              f"Registry and database both written. Revert with:\n"
+              f"`/cap {pid} {b['requests']} {b['dollars']}`")
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
+def _handle_guard_approval(msg, text, chat_id):
+    """Operator answers a guard approval request from their phone.
+
+    This is the ONLY path that converts a PENDING request into a real grant, and
+    it runs here rather than in the requesting process for two reasons. First,
+    this daemon already owns the single `getUpdates` consumer — a second one
+    collides with HTTP 409, which is why the telegram_command_handler cron entry
+    is disabled. Second, the process that ASKS must not be the process that
+    ANSWERS; keeping them apart is what makes the approval the operator's.
+
+    The agent never types APPROVE. The operator types it, on their own device,
+    against a scope and window fixed before they saw it.
+    """
+    import re
+    import subprocess
+
+    try:
+        from scripts.lib import guard_remote_approval as gra
+    except ImportError:
+        from lib import guard_remote_approval as gra          # type: ignore
+
+    parts = text.strip().split()
+    verb = parts[0].lower().lstrip("/")
+    code = parts[1].strip() if len(parts) > 1 else ""
+    reply_to = (msg or {}).get("message_id")
+
+    if not re.fullmatch(r"[A-Za-z0-9]{4,12}", code or ""):
+        _send_reply(chat_id, reply_to,
+                    "⚠️ Usage: `/approve <CODE>` or `/deny <CODE>`")
+        return
+
+    allowed = _allowed_chats()
+
+    if verb == "deny":
+        out = gra.deny(code, chat_id=chat_id, allowed_chats=allowed)
+        if out.get("ok"):
+            r = out["request"]
+            _send_reply(chat_id, reply_to,
+                        f"\U0001f6d1 Denied `{r['scope']}`. Nothing was granted.")
+        else:
+            _send_reply(chat_id, reply_to, f"⚠️ Not denied: {out.get('reason')}")
+        return
+
+    frm = (msg or {}).get("from") or {}
+    out = gra.verify_and_consume(
+        code, chat_id=chat_id, allowed_chats=allowed,
+        telegram={"update_id": (msg or {}).get("_update_id"),
+                  "message_id": reply_to,
+                  "from_id": frm.get("id"),
+                  "from_username": frm.get("username"),
+                  "text": text[:200]},
+    )
+    if not out.get("ok"):
+        _send_reply(chat_id, reply_to, f"❌ Not approved: {out.get('reason')}")
+        log.warning(f"guard approval refused: {out.get('reason')}")
+        return
+
+    r = out["request"]
+    # The reason carries the request id so the grant in the approval ledger is
+    # traceable back to the Telegram message that authorised it.
+    reason = f"{r['reason']} [remote_request_id={r['request_id']} chat={chat_id}]"
+    guard_bin = Path(__file__).resolve().parent.parent / "bin" / "guard"
+    if not guard_bin.is_file():
+        _send_reply(chat_id, reply_to,
+                    f"⚠️ Approved, but `bin/guard` was not found at {guard_bin}. "
+                    "Nothing granted.")
+        log.error(f"guard binary missing at {guard_bin}")
+        return
+
+    # Bare seconds, no unit suffix — see parse_dur in bin/guard.
+    cmd = [str(guard_bin), "grant", r["scope"],
+           "--for", str(int(r["seconds"])),
+           "--uses", str(int(r["uses"])),
+           "--reason", reason,
+           "--yes"]
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+    except Exception as e:                                    # noqa: BLE001
+        _send_reply(chat_id, reply_to, f"⚠️ Approved, but the grant failed: {e}")
+        log.error(f"guard grant failed: {e}")
+        return
+
+    if proc.returncode != 0:
+        detail = (proc.stderr or proc.stdout or "").strip()[:300]
+        _send_reply(chat_id, reply_to,
+                    f"⚠️ Approved, but the grant failed:\n`{detail}`")
+        log.error(f"guard grant rc={proc.returncode}: {detail}")
+        return
+
+    mins = int(r["seconds"]) // 60
+    _send_reply(chat_id, reply_to,
+                f"✅ Granted `{r['scope']}` for {mins} min, {r['uses']} uses.\n"
+                f"Revoke any time with `/deny` on a new request, or "
+                f"`bin/guard revoke {r['scope']}` at the machine.")
+    log.info(f"guard scope {r['scope']} granted remotely, request {r['request_id']}")
+
 
 def _send_reply(chat_id, reply_to_message_id, text):
     """Send a reply to a specific message in the operator chat."""

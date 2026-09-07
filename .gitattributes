@@ -1,0 +1,12 @@
+# Generated artifacts: recompute on merge, never line-merge.
+#
+# 6 of 6 consecutive merges on 2026-09-06 conflicted on exactly these files, and
+# none of those conflicts was a disagreement about code. A hand-merged digest is
+# a hash that matches nothing; a line-merged index describes neither tree.
+#
+# Enable once per clone:   bash scripts/setup_merge_drivers.sh
+docs/INDEX.md                                                        merge=regenerate
+docs/implementation/maturity-program/*/FULL_TEST_MATRIX.txt          merge=regenerate
+docs/implementation/maturity-program/*/RUFF_SHELLCHECK.txt           merge=regenerate
+docs/implementation/maturity-program/*/CONTROL7_WORKFLOW_PROOF.txt   merge=regenerate
+docs/implementation/maturity-program/*/CONTROL7_LOCAL_EQUIVALENT.txt merge=regenerate

@@ -1,0 +1,53 @@
+==============================================================================
+CAMPAIGN CLOSEOUT — pre-persistent-agent-truth-closeout-20260905
+generated 2026-09-05T21:30:12.235117+00:00
+==============================================================================
+
+  MARKER: PRE_PERSISTENT_AGENT_TRUTH_BLOCKED
+  5 of 10 items do not close — OPEN: P0_inbound_persist_before_process, P1_brave_september_count, P2_cost_basis_exceptions, PARTIAL: P1_delivery_reconciliation, UNMEASURED: P1_drive_truth_index
+
+  CLOSED=5  OPEN=3  PARTIAL=1  UNMEASURED=1
+
+------------------------------------------------------------------------------
+[  ok  ]  P0  P0_serving_sha_attestation
+         claim: the serving build is tied to an exact source commit
+         CLOSED: serving release f88853e89-main-exact-phase2-20260905-135414 agrees across 2 independent stamps on f88853e89 (build_meta, release_dir); deployment currency: serving is BEHIND origin/main 88ddd643b288 (merged, not deployed)
+
+[  ok  ]  P0  P0_research_single_ledger
+         claim: search spend is counted in exactly one place
+         CLOSED: brave_search reserves via try_consume and refunds on failure; the legacy ledger has no live writer
+
+[  ok  ]  P0  P0_provider_limits_observed
+         claim: no provider plan is asserted from a comment
+         CLOSED: no free-tier provider plan asserted in any comment of the audited clients, and no ungoverned Brave endpoint; capacity is parsed from response headers by lib/research_provider_truth
+
+[  ok  ] SUP  SUP_remote_approval_controls
+         claim: remote approval cannot be self-granted by an agent
+         CLOSED: remote approval stores only a code fingerprint, binds scope/window at mint, enforces a chat allowlist and a maximum window, and forbids sudo/destructive/file-delete/guard-config/frozen-v2
+
+[BLOCKS]  P0  P0_inbound_persist_before_process
+         claim: inbound persist-before-process is proven by durable rows
+         OPEN: communication_inbound_checkpoint holds 0 rows: the migration is applied and the poller is live, but the path has never been exercised. The DB checkpoint is 0 while .telegram_callback_offset holds 113864091, so replay of approve/reject callbacks is not denied by claim_update.
+
+[BLOCKS]  P1  P1_delivery_reconciliation
+         claim: every delivery has an evidenced terminal disposition
+         PARTIAL: measured 2026-09-05: 26 RESERVED / 23 LEGACY_DELIVERED / 8 SENT of 57. Only 2 rows carry real provider evidence. 18 rows settled during the session by idempotency collision, not by evidence. 5 genuine operator alerts remain UNKNOWN with no honest terminal available.
+
+[BLOCKS]  P1  P1_brave_september_count
+         claim: the September Brave figure is reconciled against the provider
+         OPEN: the DIVERGENCE is closed — one counter now, validated by 20 dry-run properties. The NUMBER is not: L3 reports 60 and is the counter to trust (flocked, atomic), but the provider-billed figure is unmeasurable from this host. Requires the operator's Brave dashboard.
+
+[BLOCKS]  P1  P1_drive_truth_index
+         claim: the Drive corpus has a current truth index with supersession
+         UNMEASURED: requires Drive access, which this host does not have in this session. Not assessed rather than assumed.
+
+[  ok  ]  P2  P2_non_telegram_channels_dark
+         claim: email/slack/whatsapp are truthfully dark
+         CLOSED: channel_adapters.py:274 `deliver: bool = False` by default and the module is documented record-only at :4; send_via_gateway has non-test callers in exactly one file.
+
+[BLOCKS]  P2  P2_cost_basis_exceptions
+         claim: FCNTX and SCHD cost-basis exceptions are adjudicated
+         OPEN: unchanged this campaign; still requires statement adjudication.
+
+------------------------------------------------------------------------------
+READ_ONLY_ADVISORY — this attestation grants nothing and authorizes no deployment.
