@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `5939e8a282b6908649a78de21893e172ca18be95859a50bf70c406cf2c0eb86d`
+**Tree fingerprint:** `5b568af68d5cbc5bf284a198a0f2616d48e43e96b6fbdaf8efe7aaac190dd079`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -834,7 +834,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/feeds/PHASE72E_OPS_BACKLOG_RECOVERY_UPDATE_DESIGN.md` | Phase 72E — Ops Backlog Recovery Update Design | review_required | OK | `cab37d5456e9` |
 | `docs/feeds/PHASE75A_THIRD_CLEAN_RUN_EVIDENCE.md` | Phase 75A — Third Clean Run Evidence | review_required | OK | `ab8bf7f62f3f` |
 | `docs/feeds/PHASE77A_RESEARCH_ONLY_FEED_FALLBACK_POLICY.md` | Phase 77A — Research-Only Feed Fallback Policy | review_required | OK | `68cedb0b557e` |
-| `docs/final/implementation-record.md` | Communications Gateway — Implementation Record (Phases 0–11) | review_required | OK | `7f1fc515593b` |
+| `docs/final/implementation-record.md` | Communications Gateway — Implementation Record (Phases 0–11) | review_required | OK | `2149e5d1efe0` |
 | `docs/financial-senses/ACCEPTANCE.md` | Acceptance profile | review_required | OK | `35455570693f` |
 | `docs/financial-senses/ADR/001-reuse-existing-sec-pipeline.md` | ADR-001 — Reuse the existing SEC pipeline | review_required | OK | `f10bb9692756` |
 | `docs/financial-senses/ADR/002-provider-adapters-not-second-mcp-gateway.md` | ADR-002 — Provider adapters, not a second MCP gateway | review_required | OK | `99065f6c47a7` |
