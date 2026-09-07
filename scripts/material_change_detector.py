@@ -146,10 +146,64 @@ def universe(cur) -> dict[str, str]:
     return out
 
 
+#: A move must be confirmed by a SECOND source before it is called a change.
+#:
+#: Measured 2026-09-06. portfolio_repricer wrote closes into ticker_prices that are not
+#: market moves at all:
+#:
+#:     NOC   528.37 -> 119.32  (-77%)   watchlist_items.change_pct says  -2.44%
+#:     SCHG   35.83 ->   8.15  (-77%)                                    +0.28%
+#:     JEPI   57.42 ->  22.41  (-61%)                                    -0.08%
+#:     BND    71.92 ->  55.64  (-23%)                                    -0.57%
+#:     AOUT                     +45.4%                                  +45.44%  <- real
+#:
+#: Six of eight excursions were corrupt data faithfully reported. The real one agreed
+#: with the independent source to four decimal places; every corrupt one disagreed by
+#: an order of magnitude. So agreement between two independently-written sources is
+#: the discriminator, and it costs nothing.
+#:
+#: Tolerance is a RATIO, not a percentage-point difference: a 2pp disagreement is
+#: nothing on a 45% move and everything on a 0.5% one.
+CORROBORATION_RATIO = float(os.getenv("MATERIAL_CHANGE_CORROBORATION_RATIO", "2.0"))
+#: Below this the two sources are both saying "nothing happened" and the ratio between
+#: them is meaningless.
+CORROBORATION_FLOOR_PCT = float(os.getenv("MATERIAL_CHANGE_CORROBORATION_FLOOR", "1.0"))
+
+
+def corroborate(cur, symbols: list[str]) -> dict[str, float]:
+    """Independent per-symbol move, written by a different pipeline."""
+    if not symbols:
+        return {}
+    cur.execute(
+        """SELECT upper(symbol), max(abs(change_pct))
+             FROM watchlist_items
+            WHERE symbol = ANY(%s) AND change_pct IS NOT NULL
+            GROUP BY 1""", (symbols,))
+    return {r[0]: float(r[1]) for r in cur.fetchall()}
+
+
+def agrees(observed: float, independent: float | None) -> tuple[bool, str]:
+    """Do two independently-written sources tell the same story?
+
+    Returns (agrees, reason). A symbol with NO independent source is NOT corroborated
+    — reported, never alarmed on. Firing on a single source is exactly how six corrupt
+    rows became six operator alerts.
+    """
+    if independent is None:
+        return False, "no_independent_source"
+    if observed < CORROBORATION_FLOOR_PCT and independent < CORROBORATION_FLOOR_PCT:
+        return False, "both_below_floor"
+    lo, hi = sorted((max(observed, 1e-9), max(independent, 1e-9)))
+    if hi / lo > CORROBORATION_RATIO:
+        return False, f"disagree_{observed:.2f}_vs_{independent:.2f}"
+    return True, "corroborated"
+
+
 def price_excursions(cur, syms: dict[str, str]) -> tuple[list[dict], dict]:
     """|latest move| / the symbol's own average daily move >= K."""
-    stats = {"evaluated": 0, "not_evaluable": 0, "fired": 0}
+    stats = {"evaluated": 0, "not_evaluable": 0, "fired": 0, "uncorroborated": 0}
     found: list[dict] = []
+    candidates: list[tuple] = []
     if not syms:
         return found, stats
 
@@ -194,6 +248,17 @@ def price_excursions(cur, syms: dict[str, str]) -> tuple[list[dict], dict]:
         if ratio < K:
             continue
         stats["fired"] += 1
+        candidates.append((sym, ratio, baseline, latest, latest_date, n))
+
+    # Second source, one query for all candidates.
+    independent = corroborate(cur, [c[0] for c in candidates])
+    for sym, ratio, baseline, latest, latest_date, n in candidates:
+        ok, why = agrees(float(latest or 0), independent.get(sym))
+        if not ok:
+            stats["fired"] -= 1
+            stats["uncorroborated"] += 1
+            stats.setdefault("uncorroborated_detail", []).append(f"{sym}:{why}")
+            continue
         found.append({
             "symbol": sym, "kind": "price_excursion",
             "magnitude": round(ratio, 2),
@@ -203,8 +268,10 @@ def price_excursions(cur, syms: dict[str, str]) -> tuple[list[dict], dict]:
             "universe_reason": syms[sym],
             "evidence": {"source": "ticker_prices", "observations": int(n),
                          "baseline_days": BASELINE_DAYS,
+                         "independent_pct": independent.get(sym),
                          "note": "close-to-close average daily move; ticker_prices "
-                                 "has no high/low so this is not ATR"},
+                                 "has no high/low so this is not ATR. Confirmed "
+                                 "against watchlist_items.change_pct."},
         })
     return found, stats
 

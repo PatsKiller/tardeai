@@ -50,14 +50,30 @@ def mod():
 
 
 class Cur:
-    """Returns canned rows for the price query."""
+    """Serves both sources: ticker_prices, and the corroborating watchlist_items.
 
-    def __init__(self, rows):
+    `independent` defaults to agreeing with whatever the price query reports, so a
+    test that is not ABOUT corroboration does not have to restate it. Tests that are
+    about it pass explicit values.
+    """
+
+    def __init__(self, rows, independent=None):
         self._rows = rows
+        self._independent = independent
         self._result = []
 
     def execute(self, sql, params=None):
-        self._result = self._rows if "ticker_prices" in sql else []
+        if "ticker_prices" in sql:
+            self._result = self._rows
+        elif "watchlist_items" in sql:
+            if self._independent is not None:
+                self._result = [(k.upper(), v) for k, v in self._independent.items()]
+            else:
+                # Agree with the price source by default.
+                self._result = [(r[0].upper(), r[3]) for r in self._rows
+                                if r[3] is not None]
+        else:
+            self._result = []
 
     def fetchall(self):
         return self._result
@@ -228,3 +244,98 @@ def test_it_is_advisory_only(mod):
     for banned in ("place_order(", "submit_order(", "cancel_order(",
                    "position_size(", "import broker", "from broker"):
         assert banned not in src, f"stage 1 reaches execution via {banned!r}"
+
+
+# ── a move needs a second source before it is called a change ───────────────
+#
+# Measured 2026-09-06, the first live run of this detector. portfolio_repricer had
+# written closes into ticker_prices that were not market moves at all:
+#
+#     NOC   528.37 -> 119.32  (-77%)   watchlist_items.change_pct says  -2.44%
+#     SCHG   35.83 ->   8.15  (-77%)                                    +0.28%
+#     JEPI   57.42 ->  22.41  (-61%)                                    -0.08%
+#     BND    71.92 ->  55.64  (-23%)                                    -0.57%
+#     AOUT                     +45.4%                                  +45.44%  <- real
+#
+# Six of eight excursions were corrupt data, faithfully reported. The one real move
+# agreed with the independent source to four decimal places; every corrupt one
+# disagreed by an order of magnitude. Corroboration costs nothing and separates them
+# perfectly.
+
+def test_a_corroborated_move_fires(mod):
+    ok, why = mod.agrees(45.4363, 45.4363)
+    assert ok and why == "corroborated"
+
+
+def test_sources_that_disagree_by_an_order_of_magnitude_do_not_fire(mod):
+    """The exact six."""
+    for observed, independent in ((22.64, 0.57), (60.97, 0.08), (77.20, 0.44),
+                                  (77.42, 2.44), (50.80, 0.82), (77.25, 0.28)):
+        ok, why = mod.agrees(observed, independent)
+        assert not ok, f"{observed} vs {independent} was accepted"
+        assert why.startswith("disagree")
+
+
+def test_no_second_source_is_not_corroboration(mod):
+    """Firing on a single source is how six corrupt rows became six alerts."""
+    ok, why = mod.agrees(45.0, None)
+    assert not ok and why == "no_independent_source"
+
+
+def test_tolerance_is_a_ratio_not_a_percentage_point_gap(mod):
+    """2pp is nothing on a 45% move and everything on a 0.5% one, so a fixed
+    percentage-point tolerance cannot be right for both."""
+    assert mod.agrees(45.0, 43.0)[0] is True
+    assert mod.agrees(3.0, 1.0)[0] is False
+
+
+def test_two_quiet_sources_are_not_a_disagreement(mod):
+    """Below the floor both are saying 'nothing happened' and the ratio between them
+    is meaningless — 0.02 vs 0.01 is not a 2x conflict."""
+    ok, why = mod.agrees(0.02, 0.01)
+    assert not ok and why == "both_below_floor"
+
+
+def test_uncorroborated_candidates_are_counted_not_hidden(mod):
+    """What was rejected, and why, must reach the result. A detector that quietly
+    drops candidates cannot be audited."""
+    src = SCRIPT.read_text(encoding="utf-8")
+    assert '"uncorroborated"' in src
+    assert "uncorroborated_detail" in src
+
+
+def test_the_independent_value_is_recorded_on_the_change(mod):
+    """So a later reader can see what the second source said, not just that it agreed."""
+    src = SCRIPT.read_text(encoding="utf-8")
+    assert '"independent_pct"' in src
+
+
+def test_corroboration_is_free(mod):
+    """One extra query, no model."""
+    src = SCRIPT.read_text(encoding="utf-8")
+    fn = src.split("def corroborate(", 1)[1].split("\ndef ", 1)[0]
+    assert "watchlist_items" in fn
+    for banned in ("llm", "model", "chat"):
+        assert banned not in fn.lower()
+
+
+def test_the_end_to_end_path_rejects_a_corrupt_move(mod):
+    """The whole chain: a big ratio that a second source does not confirm must not
+    become a change, and must be counted as uncorroborated rather than vanishing."""
+    rows = [("NOC", 60, 1.9803, 77.42, "2026-09-04")]
+    found, stats = mod.price_excursions(Cur(rows, independent={"NOC": 2.44}),
+                                        {"NOC": "held"})
+    assert found == [], "a corrupt move became an operator alert"
+    assert stats["uncorroborated"] == 1
+    assert stats["fired"] == 0
+    assert any("NOC" in d for d in stats["uncorroborated_detail"])
+
+
+def test_the_end_to_end_path_accepts_the_real_one(mod):
+    """AOUT, whose two sources agreed to four decimal places."""
+    rows = [("AOUT", 66, 3.0438, 45.4363, "2026-09-04")]
+    found, stats = mod.price_excursions(Cur(rows, independent={"AOUT": 45.4363}),
+                                        {"AOUT": "watchlist"})
+    assert len(found) == 1
+    assert stats["fired"] == 1 and stats["uncorroborated"] == 0
+    assert found[0]["evidence"]["independent_pct"] == 45.4363
