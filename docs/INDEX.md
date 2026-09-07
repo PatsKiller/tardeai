@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `5b568af68d5cbc5bf284a198a0f2616d48e43e96b6fbdaf8efe7aaac190dd079`
+**Tree fingerprint:** `c666019f8f856243ae7e5eb9e94fa6075a71faa25071ac816f5cc3ddd6ea707e`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -747,9 +747,9 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/deepseek_audit_2026-08-02.md` | DeepSeek Audit & Fix — Comprehensive Report | review_required | OK | `68d6408f3f5c` |
 | `docs/deployment/canary-operator-alert-packet.md` | Communications Gateway — Wave B Canary Packet: `operator_alert` cohort | review_required | OK | `6235373f7c8f` |
 | `docs/deployment/canary-operator-alert-runbook.md` | Communications Gateway — `operator_alert` Canary Runbook (Wave B) | review_required | OK | `120e9556172f` |
-| `docs/deployment/canary-results.md` | Communications Gateway — Canary Results | review_required | OK | `db69c3781c4b` |
+| `docs/deployment/canary-results.md` | Communications Gateway — Canary Results | review_required | OK | `6682df91dc14` |
 | `docs/deployment/pre-go-live-checklist.md` | Communications Gateway — Pre Go-Live Checklist | review_required | OK | `4cf39a7859c9` |
-| `docs/deployment/production-activation.md` | Communications Gateway — Production Mode Checklist (ACTIVE attempted → reverted to CANARY) | review_required | OK | `59fb1276517e` |
+| `docs/deployment/production-activation.md` | Communications Gateway — Production Mode Checklist (ACTIVE attempted → reverted to CANARY) | review_required | OK | `b40f345b51e5` |
 | `docs/deployment/retention-policy-proposal.md` | Communications Gateway — Retention Policy (PROPOSED) | review_required | OK | `427c510c17d5` |
 | `docs/deployment/rollback-plan.md` | Communications Gateway — Rollback Plan | review_required | OK | `a593be5e3e17` |
 | `docs/deployment/rollout-plan.md` | Communications Gateway — Rollout Plan | review_required | OK | `cf5f37640df6` |

@@ -74,6 +74,16 @@ Environment=COMMS_GATEWAY_CANARY_CHATS=6993102664,8797974247
 Verified at `curl -s http://127.0.0.1:7777/api/v2/communications/health` →
 `"mode": "CANARY"`, `"owned_classes": ["ops"]`, `"delivery_owned": true`.
 
+> **`CONTRADICTED` correction (2026-09-07, maturity audit):** the `delivery_owned=true`
+> above is a **process-local** reading. The `COMMS_GATEWAY_MODE=CANARY` drop-in is applied
+> only to `portfolio-server.service`; the cron/agent producer processes that actually send
+> alerts resolve `COMMS_GATEWAY_MODE=OFF` and route legacy. The independent validation
+> measured 200/200 events `gateway_mode_at_write=OFF` and 163/200 deliveries
+> `delivery_owner=legacy` (zero gateway-owned). So "gateway owns ops delivery" is **not yet
+> true end-to-end** — the gateway ledger is live, but delivery ownership is
+> `WIRED_BUT_DARK`. The two sample sends recorded in the table below ran from a process that
+> did export the mode; production producers do not. This is an open gap, not a closed canary.
+
 ## Decision
 
 **This run’s decision:** **HOLD at CANARY** for class `ops` only (filtered to the two

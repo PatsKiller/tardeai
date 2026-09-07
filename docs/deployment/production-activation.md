@@ -74,3 +74,11 @@ All other message classes remain legacy-send + best-effort ledger unless added t
 classes requires a new canary row in `canary-results.md` and an allowlist update; moving
 back to ACTIVE requires re-checking the gates above against the then-current SHA. Repo
 defaults remain OFF.
+
+> **`CONTRADICTED` correction (2026-09-07):** "CANARY owns ops delivery" is **process-local**.
+> `COMMS_GATEWAY_MODE=CANARY` is exported only to `portfolio-server.service`; the cron/agent
+> producers that send alerts resolve `OFF` and use legacy delivery. Independent validation:
+> 200/200 events `gateway_mode_at_write=OFF`, 163/200 deliveries `delivery_owner=legacy`,
+> zero gateway-owned. The gateway ledger is live; delivery ownership is `WIRED_BUT_DARK`.
+> Closing it requires exporting the mode to the producer processes (or moving the gate into
+> the shared transport), which is an operator decision (§17), not a closed item.
