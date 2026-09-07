@@ -7,6 +7,27 @@ from typing import Any
 
 SCHEMA = "SelfRepairProposal@v1"
 AUTHORITY = "READ_ONLY_ADVISORY"
+
+# Declared for scripts/check_dark_contracts.py. The guard's rule is not "wire a
+# consumer" — it is "do not be silent about not having one":
+#
+#     "A module may legitimately have no consumer yet. What it may not do is be
+#      silent about it."
+#
+# Zero consumers is the CORRECT state here and wiring one would be the wrong
+# fix. Self-repair is shadow-only by mandate: it emits proposals for operator
+# review and never performs a repair (AUTHORITY = READ_ONLY_ADVISORY above, and
+# AGENTS.md §0.1 MBI_BEHAVIOR=0). An autonomous consumer of SelfRepairProposal@v1
+# would turn a proposal into an action, which is exactly what this module exists
+# not to do.
+#
+# Authored by the INTEGRATION OWNER, not by lane D — the lane D session had
+# exited before this regression was found, so this is not lane testimony. See
+# returns/LANE_D_FINDINGS_R2.md and control/CAMPAIGN_MANIFEST.json.
+NO_CONSUMER_REASON = (
+    "shadow-only self-repair; proposals await operator review, no autonomous "
+    "consumer by design (campaign m2-canary-20260907)"
+)
 MAX_EDGES = 100
 
 

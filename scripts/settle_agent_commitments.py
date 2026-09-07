@@ -18,6 +18,20 @@ COMMITMENT_SCHEMA = "Commitment@v1"
 OUTCOME_SCHEMA = "Outcome@v1"
 PROPOSAL_SCHEMA = "BeliefProposal@v1"
 CALIBRATION_SCHEMA = "Calibration@v1"
+
+# Declared for scripts/check_dark_contracts.py. Zero consumers is the CORRECT
+# state: Lane D of campaign m2-canary-20260907 is shadow-only. It settles
+# commitments and emits belief/calibration PROPOSALS for operator review; an
+# autonomous consumer would turn a proposal into an action, which AGENTS.md §0.1
+# (MBI_BEHAVIOR=0 — never size, order, stop or weight) forbids outright.
+#
+# Authored by the INTEGRATION OWNER, not lane D — the lane D session had exited
+# before this regression was found. See returns/LANE_D_FINDINGS_R2.md.
+NO_CONSUMER_REASON = (
+    "shadow-only outcomes and learning; settlement and belief/calibration "
+    "proposals await operator review, no autonomous consumer by design "
+    "(campaign m2-canary-20260907)"
+)
 AUTHORITY = "READ_ONLY_ADVISORY"
 MIN_SAMPLES = 5
 
