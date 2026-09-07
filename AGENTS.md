@@ -2308,10 +2308,56 @@ notice that ONE name is behaving unlike ITSELF. Three watchlist names were up 15
 | `backfill_subject_identity.py` | `SubjectIdentityBackfill@v1` | puts the corpus on the identity spine; cron `*/30` |
 | `material_change_detector.py` | `MaterialChange@v1` | fires when a move exceeds K x the symbol's own average daily move |
 | `notify_material_change.py` | `MaterialChangeNotice@v1` | tells the operator, exactly once per change |
+| `due_diligence_questions.py` | `SubjectStateNarrative@v1`, `DueDiligenceQuestion@v1` | reads the dossier, says what it looks like, asks what to ask, routes it out |
 
-**All three are FREE — no model on any row.** Detection stays deterministic so the
-expensive judgement step (stages 3-4) only ever runs on things that actually moved. If you
-are tempted to "improve" any of them with a model, a test will stop you, and it is right to.
+**Stages 0-2 are FREE — no model on any row.** Detection stays deterministic so the one
+paid step only ever runs on things that actually moved. If you are tempted to "improve"
+stage 0, 1 or 2 with a model, a test will stop you, and it is right to.
+
+**The loop is closed.** Before 2026-09-06, ZERO rows in `hermes_external_research` had
+ever been requested because a name moved — research was swept on a clock and never
+driven by a change. The first row carrying `trigger_source='material_change'` was
+written that day.
+
+### TWO LANE POLICIES, POINTING OPPOSITE WAYS — do not "unify" them
+
+| call | order | why |
+|---|---|---|
+| **curation** (`due_diligence_questions`) | **deepseek-flash → chatgpt → grok → deepseek-pro → ASK** | emits strict JSON whose citations this code parses; consistency beats free |
+| **research** (`hermes_external_researcher`) | **all lanes, RANKED by measured delivery then quality** | the answer is prose; pick whoever answers best |
+
+**Measured, not assumed.** Four-way bake-off on one real dossier (AOUT, 30 items,
+identical prompt), 2026-09-06 — all four returned valid JSON with zero ungrounded
+citations and zero questions about our own scoring, so the escalation is safe, but they
+are not equal:
+
+| lane | secs | narrative | questions | citations |
+|---|---|---|---|---|
+| deepseek-flash | 6.4 | 4 | 4 | 15 |
+| deepseek-pro | 5.9 | 4 | 4 | 15 |
+| chatgpt-oauth | 19.1 | 1 | 4 | 15 |
+| grok-oauth | **28.3** | 3 | **2** | **8** |
+
+DeepSeek is 3-5x faster AND more complete than either free lane. Grok is the weakest
+curator on every axis that matters, so chatgpt is the first OAuth escalation.
+
+Curation is INVERTED from the house default on operator instruction (2026-09-06).
+Flash costs $0.000133 and answers the same way every time; the OAuth lanes are free but
+rate-limited and variable — fine for prose, poor for a parsed contract. **ASK THE
+OPERATOR remains the hard stop after both.**
+
+**Research lanes are RANKED, never hardcoded.** `rank_research_lanes()` gates on 30-day
+delivery rate and ranks on measured `usefulness_score`. Over 11,116 scored answers:
+chatgpt 0.616, grok 0.470, claude 0.618 (n=39, stale). deepseek is gated out on a 75%
+error rate; claude on zero deliveries since 2026-08-01.
+
+**A hardcoded lane is wrong twice over — it goes stale, and it optimises for whoever
+wrote it.** Measured from the capability
+cache: `claude` is `credits_required` (dead), `chatgpt` is interactive-only on Hermes
+0.16.0, `grok` is `reason_code: ok`. The first routed question went to the old default,
+`claude`, and returned `[CREDITS_REQUIRED]` — correctly created, correctly stored, and
+answering nothing. A default pointing at a dead lane turns a working loop into one that
+produces rows and no knowledge, and every row looks right.
 
 ### Guard rails — each one is here because it already went wrong
 
@@ -2344,20 +2390,50 @@ are tempted to "improve" any of them with a model, a test will stop you, and it 
   a critical channel stops being read.
 - **Held is not dropped.** Outside market hours a change stays pending and is announced at
   the next open. Dropping a Friday-evening move is the exact failure this exists to fix.
+- **The loop inherits the detector's rejections.** A change suppressed as
+  `UNCORROBORATED` must not be reasoned about either. The first curation run picked JEPI
+  and BND — both corrupt prices — and the model wrote "JEPI showed a large price
+  excursion", describing a fiction because the row said so.
+- **Grounding is enforced in code, not requested in the prompt.** A sentence or question
+  citing nothing, or citing an id absent from the dossier, is DROPPED before storage. A
+  model told not to invent will still occasionally invent, and an ungrounded question is
+  indistinguishable from a real one to the person reading it. What was dropped is counted
+  and reported.
+- **Strip our own scoring from the dossier.** Prior research talks about conviction,
+  watchlist rank and composite score; the prototype duly asked "what would move the
+  internal composite score higher?" — grounded, well-formed, and not due diligence.
+- **Routing must not depend on new changes arriving.** An early version returned as soon
+  as there were none, so a question generated on one run could never be sent on the next.
+- **Stamp the answer back onto the spine.** The routed research row gets `subject_guid`
+  and `issuer_guid` immediately. An answer that cannot be joined to its subject cannot
+  re-rank the next dossier — and that re-ranking is the only part of this that compounds.
+- **PRECEDENCE decides what gets researched when more moved than the budget allows.**
+  operator 100 > held 80 > reentry 70 > preferred 60 > watchlist 40 > other 10. Money at
+  risk outranks money considered. A symbol takes its HIGHEST tier.
+- **The DeepSeek cap check runs in the CALLER's process, not the bridge.**
+  `call_governed_deepseek` reads `LLM_GLOBAL_DAILY_USD_CAP` from whoever invoked it, so
+  the bridge's value is irrelevant on that path. Demonstrated: the same call, the same
+  second, refused without the variable and OK with it. **A cron entry that does not set
+  it will refuse every call** with a message that reads like a budget problem and is
+  actually a missing variable.
+- **Wrap optional DB probes in a SAVEPOINT.** In Postgres a failed statement aborts the
+  WHOLE transaction, so a bare try/except around an optional table does not make it
+  optional — it hides the failure and poisons every later statement. A missing column on
+  an optional source took down the price query twenty lines away.
+- **`CREATE TABLE IF NOT EXISTS` does not add columns to an existing table.** Every
+  column added after the first deploy needs its own `ALTER ... ADD COLUMN IF NOT EXISTS`,
+  or the INSERT fails only on the installs that already work.
 - **Every question, narrative and change is addressable and append-only.** `uuid5` over
   (subject, trigger, text), so the same finding dedupes instead of accumulating. Nothing is
   deleted; a better artifact supersedes and the chain stays walkable.
 
-### Lane policy for stages 3-5
+### Cost
 
-Free OAuth first (Grok, ChatGPT), then `deepseek-flash`, then **ASK THE OPERATOR** before
-any further paid lane. That third step is a hard STOP, not a preference, and a failed
-notification is never permission to spend. Measured: the question prototype ran twice on
-the free lane at $0.00, with zero ungrounded citations.
-
-Known weakness, unfixed: the prototype produced one question about the system's OWN
-scoring rather than about the company. Constrain the prompt and filter internal-scoring
-text out of the dossier when wiring stage 3.
+Stages 0-2 spend nothing. The only cost is one curation call per material change —
+bounded by how many things actually moved, not by the size of the universe. Observed on
+the day it shipped: flash refused with `COST_CAP_EXCEEDED: global cap`, the run escalated
+to grok, and the questions were produced anyway. A cap refusal is a 429 and
+non-retryable; it degrades the lane, it does not fail the run.
 
 ## The trees `[VERIFIED]` 2026-08-31
 

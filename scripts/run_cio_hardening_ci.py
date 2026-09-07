@@ -689,6 +689,22 @@ GATES = [
         ],
     ),
     (
+        "due_diligence_questions",
+        [
+            # Stages 3-5 — the loop that closes it. Before 2026-09-06 ZERO research
+            # rows had ever been requested because a name moved. Pins the operator's
+            # curation order (flash -> free OAuth -> deepseek pro -> ASK, inverted
+            # from the house default because curation emits a parsed contract), that
+            # research lanes are RANKED BY MEASURED delivery and quality rather than
+            # hardcoded (the shipped default was claude, dead since 2026-08-01;
+            # replacing it with grok picked the worst lane at 0.470 vs chatgpt's
+            # 0.616), that grounding is enforced in code rather than requested in the
+            # prompt, and that a change suppressed as UNCORROBORATED is never
+            # reasoned about.
+            "tests/test_due_diligence_questions.py",
+        ],
+    ),
+    (
         "llm_escalation",
         [
             # Operator policy: free OAuth -> deepseek-flash -> ASK -> further paid.

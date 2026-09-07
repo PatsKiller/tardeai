@@ -8,8 +8,20 @@ not built. **Authority:** advisory only — never sizes, orders, stops, or write
 | 0 | identity spine reaches the corpus | **shipped** — PR #904, #905 | free |
 | 1 | `material_change_detector.py` | **shipped** — PR #906 | free |
 | 2 | `notify_material_change.py` | **shipped** — PR #907 | free |
-| 3-4 | narrative + questions | prototyped, output verified | ~$0 on free lanes |
-| 5 | route to lanes, close the loop | designed | — |
+| 3-4 | `due_diligence_questions.py` — narrative + questions | **shipped** | ~$0.0001/change |
+| 5 | routing to research, in the same script | **shipped** | free (grok lane) |
+
+**The loop is closed.** First proof, 2026-09-06 — the first row in this system's
+history carrying `trigger_source='material_change'`:
+
+```
+lane=grok  status=sent  subject_guid=12572890  trigger=material_change
+Q: What details on sales growth and profitability appear in the Q1 earnings call?
+A: AOUT remains under the INSUFFICIENT_DATA thesis state. The packet provides no
+   information from the Q1 earnings call... requiring further primary research.
+```
+
+Before that, **zero** research rows had ever been requested because a name moved.
 
 ### Running it
 
@@ -20,6 +32,9 @@ python3 scripts/material_change_detector.py                   # dry run
 python3 scripts/material_change_detector.py --apply
 python3 scripts/notify_material_change.py                     # dry run, prints the message
 python3 scripts/notify_material_change.py --apply
+python3 scripts/due_diligence_questions.py                    # dry run
+python3 scripts/due_diligence_questions.py --apply            # narrative + questions
+python3 scripts/due_diligence_questions.py --apply --route    # + send out for research
 ```
 
 Scheduled: the identity sweep runs `*/30`. **Coverage decays without it** — nothing
@@ -305,25 +320,22 @@ Two rules make this a cycle rather than a queue:
 `supersedes_guid` chain stays walkable, so "what did we think in July, and what changed"
 is answerable from the graph rather than reconstructed from memory.
 
-## Lane policy — free first, always
+## Lane policy — see "Two different lane policies" below
 
-Standing operator policy, unchanged from `LlmEscalation@v1`:
+This section previously read "free first, always". That is still the house default and
+still governs the research call, but it is **no longer true of curation**, which the
+operator inverted on 2026-09-06 to run deepseek-flash first. Leaving the old blanket
+statement here would contradict the section below, so it is superseded rather than
+kept: a document that disagrees with itself is worse than one that says less.
 
-1. **Free OAuth lanes first** (Grok, ChatGPT). Today they carry ~500 calls/day at $0.00.
-2. **`deepseek-flash`** when the free lanes fail or are exhausted. Measured on the
-   usefulness backfill at **$0.000133/row**.
-3. **Ask the operator before any further paid lane.** This is a hard STOP, not a
-   preference: `run_with_escalation()` notifies and stops rather than escalating on its
-   own, and a failed notification is never treated as permission to spend.
+Unchanged in both directions: **ASK THE OPERATOR is the hard stop** before any lane
+beyond flash and the free OAuth pair. `run_with_escalation()` notifies and stops
+rather than escalating on its own, and a failed notification is never treated as
+permission to spend.
 
-Stage 0 spends nothing at all — identity resolution is a registry lookup, a pure function
-of the symbol, with no model on any row. Stages 1–2 also spend nothing. The first cost
-in this design is stage 3/4's single call per material change, which is bounded by how
-many things actually moved, not by the size of the universe.
-
-Governance is the existing bridge: four caps, reservations, and a cap refusal that
-returns `429` and **stops** rather than being retried — so a budget ceiling can never
-again look like an outage, and can never consume a queue.
+Stages 0-2 spend nothing at all. The first cost in this design is the single curation
+call per material change, bounded by how many things actually moved — not by the size
+of the universe.
 
 ## Notification — the operator's actual ask
 
@@ -336,6 +348,80 @@ asking."
 Signal discipline: **notify on the change, not on the sweep.** A detector that fires
 every fifteen minutes trains the operator to ignore it, and a muted alarm is worse than
 no alarm — this system has already lost detectors that way.
+
+## Two different lane policies, and why they point opposite ways
+
+This layer makes two kinds of model call, and they want opposite things.
+
+### Curation — flash FIRST, OAuth as escalation
+
+`due_diligence_questions.py` reads a bounded dossier and must emit strict JSON whose
+citations this code parses and enforces. That is a contract, not prose.
+
+    deepseek-flash  ->  free OAuth (grok / chatgpt)  ->  ASK THE OPERATOR
+
+Inverted from the house default on operator instruction (2026-09-06), and it is the
+right trade here. Flash costs $0.000133 a call and answers the same way every time.
+The OAuth lanes are free but rate-limited and variable — fine for prose, poor for a
+structure that gets parsed. They stay as the escalation, so nothing is lost when
+flash is unavailable, and **ASK is still the hard stop after both**.
+
+Observed the day it shipped: flash refused with `COST_CAP_EXCEEDED: global cap`
+(the day's $7 ceiling, spent by the usefulness backfill), the run escalated to grok,
+and the questions were produced anyway. A cap refusal is a 429 and non-retryable —
+it degrades the lane, it does not fail the run.
+
+### Research — free, and it must be a lane that actually answers
+
+The question that goes out is executed by `hermes_external_researcher.py` through
+the normal research lanes and free web providers.
+
+Measured from the capability cache, 2026-09-06:
+
+| lane | state |
+|---|---|
+| `claude` | **credits_required** — dead, "credit balance is too low" |
+| `chatgpt` | ready but interactive-only on Hermes 0.16.0 |
+| `grok` | **`reason_code: ok`**, headless ready over the xai-oauth proxy |
+
+The cache's own guidance is explicit: *"use Grok lane for free automation"*.
+
+The first routed question went to the default lane, `claude`, and came back
+`[CREDITS_REQUIRED]`. The request was correctly created, correctly stored, and
+answered nothing. **A default pointing at a dead lane turns a working loop into one
+that produces rows and no knowledge** — the failure is invisible because every row
+looks right. `DDQ_RESEARCH_LANE` now defaults to `grok`.
+
+## What the loop actually does, end to end
+
+1. **Detect** — deterministic, free. A move beyond K x the symbol's own average daily
+   move, corroborated by a second source.
+2. **Notify** — the operator hears about it immediately, once.
+3. **Assemble** — every item we hold on that `subject_guid`, prior research ranked by
+   `usefulness_score`. Our own scoring chatter is stripped out: the prototype asked
+   "what would move the internal composite score higher?", which is grounded,
+   well-formed, and about this system rather than the company.
+4. **Curate** — ONE call, two outputs: a narrative saying what this looks like, and
+   the questions worth asking. **Grounding is enforced in code** — a sentence or
+   question citing nothing, or citing an id not in the dossier, is dropped before it
+   is stored. A model told not to invent will still occasionally invent.
+5. **Route** — the top questions go out through the free research lane. The answer
+   lands in `hermes_external_research` **stamped with the subject and issuer guid**,
+   because an answer that cannot be joined to its subject cannot re-rank the next
+   dossier — and that re-ranking is the only part of this that compounds.
+
+### The loop inherits the detector's rejections
+
+The first curation run picked JEPI and BND — both corrupt prices already suppressed
+as `UNCORROBORATED` — and the model faithfully wrote *"JEPI showed a large price
+excursion"*, describing a fiction because the row said so. A change the notifier
+refused to announce must not be reasoned about either.
+
+### Routing cannot depend on new changes arriving
+
+An early version returned as soon as there were no new changes, so a question
+generated on one run could never be sent on the next: the backlog was unreachable by
+design.
 
 ## Routing: why a material change pages instead of being digested
 

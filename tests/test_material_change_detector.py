@@ -44,6 +44,15 @@ sys.path.insert(0, str(ROOT / "scripts"))
 SCRIPT = ROOT / "scripts" / "material_change_detector.py"
 
 
+def W(symbol: str, tier: str = "watchlist") -> dict:
+    """universe() returns {symbol: {reasons, precedence, tier}} since precedence
+    landed. Built here so a shape change breaks one helper, not fifteen tests."""
+    import material_change_detector as M
+
+    return {symbol: {"reasons": [tier], "precedence": M.PRECEDENCE[tier],
+                     "tier": tier}}
+
+
 @pytest.fixture(scope="module")
 def mod():
     return pytest.importorskip("material_change_detector")
@@ -63,7 +72,11 @@ class Cur:
         self._result = []
 
     def execute(self, sql, params=None):
-        if "ticker_prices" in sql:
+        if "SAVEPOINT" in sql.upper() or "ROLLBACK" in sql.upper():
+            self._result = []
+        elif "to_regclass" in sql:
+            self._result = [(None,)]          # optional sources absent
+        elif "ticker_prices" in sql:
             self._result = self._rows
         elif "watchlist_items" in sql:
             if self._independent is not None:
@@ -112,7 +125,7 @@ def test_a_nan_move_does_not_fire(mod):
     emitted with magnitude NaN. Corrupt data must never manufacture an alert.
     """
     rows = [("BHVN", 40, float("nan"), float("nan"), "2026-08-28")]
-    found, stats = mod.price_excursions(Cur(rows), {"BHVN": "watchlist"})
+    found, stats = mod.price_excursions(Cur(rows), W("BHVN"))
     assert found == [], "a NaN magnitude was emitted as a real change"
     assert stats["not_evaluable"] == 1
     assert stats["fired"] == 0
@@ -137,7 +150,7 @@ def test_a_real_move_still_fires(mod):
     """The negative control for the NaN guard: do not fix corruption by breaking
     detection."""
     rows = [("AOUT", 66, 3.0438, 45.4363, "2026-09-04")]
-    found, stats = mod.price_excursions(Cur(rows), {"AOUT": "watchlist"})
+    found, stats = mod.price_excursions(Cur(rows), W("AOUT"))
     assert len(found) == 1
     assert found[0]["magnitude"] == pytest.approx(14.93, abs=0.01)
     assert stats["fired"] == 1
@@ -145,7 +158,7 @@ def test_a_real_move_still_fires(mod):
 
 def test_a_quiet_name_does_not_fire(mod):
     rows = [("AAPL", 66, 1.25, 0.9, "2026-09-04")]
-    found, _ = mod.price_excursions(Cur(rows), {"AAPL": "watchlist"})
+    found, _ = mod.price_excursions(Cur(rows), W("AAPL"))
     assert found == []
 
 
@@ -155,9 +168,9 @@ def test_the_same_percent_move_fires_for_one_name_and_not_another(mod):
     """The whole reason for normalising. 8% is noise in one name and an event in
     another, and a fixed percent cannot express that."""
     calm = mod.price_excursions(Cur([("CALM", 60, 0.8, 8.0, "2026-09-04")]),
-                                {"CALM": "watchlist"})[0]
+                                W("CALM"))[0]
     wild = mod.price_excursions(Cur([("WILD", 60, 9.0, 8.0, "2026-09-04")]),
-                                {"WILD": "watchlist"})[0]
+                                W("WILD"))[0]
     assert len(calm) == 1, "8% on a 0.8% baseline is a ten-sigma move and must fire"
     assert wild == [], "8% on a 9% baseline is an ordinary day and must not"
 
@@ -171,7 +184,7 @@ def test_k_is_configurable_without_a_deploy(mod):
 
 def test_too_little_history_is_counted_not_silently_dropped(mod):
     rows = [("NEWCO", 4, 2.0, 30.0, "2026-09-04")]
-    found, stats = mod.price_excursions(Cur(rows), {"NEWCO": "watchlist"})
+    found, stats = mod.price_excursions(Cur(rows), W("NEWCO"))
     assert found == []
     assert stats["not_evaluable"] == 1
     assert stats["evaluated"] == 0
@@ -181,7 +194,7 @@ def test_a_zero_baseline_is_not_evaluable_rather_than_infinite(mod):
     """Dividing by a zero baseline yields inf, which beats every threshold and
     would fire on a symbol that has never moved at all."""
     rows = [("FLAT", 60, 0.0, 5.0, "2026-09-04")]
-    found, stats = mod.price_excursions(Cur(rows), {"FLAT": "watchlist"})
+    found, stats = mod.price_excursions(Cur(rows), W("FLAT"))
     assert found == []
     assert stats["not_evaluable"] == 1
 
@@ -209,10 +222,20 @@ def test_unreadable_holdings_degrade_rather_than_crash(mod, monkeypatch, tmp_pat
 
     class C(Cur):
         def execute(self, sql, params=None):
-            self._result = [("AAPL",)] if "watchlist_items" in sql else []
+            u = sql.upper()
+            if "SAVEPOINT" in u or "ROLLBACK" in u:
+                self._result = []
+            elif "to_regclass" in sql:
+                self._result = [(None,)]   # optional sources absent
+            elif "watchlist_items" in sql and "source_tier" in sql:
+                self._result = []          # the PREFERRED query — AAPL is not core/S0
+            elif "watchlist_items" in sql:
+                self._result = [("AAPL",)]
+            else:
+                self._result = []
 
     out = mod.universe(C([]))
-    assert out == {"AAPL": "watchlist"}
+    assert out == W("AAPL")
     assert "WARN" in capsys.readouterr().err
 
 
@@ -223,11 +246,23 @@ def test_a_held_name_is_tracked_even_if_not_on_the_watchlist(mod, monkeypatch, t
 
     class C(Cur):
         def execute(self, sql, params=None):
-            self._result = [("AAPL",)] if "watchlist_items" in sql else []
+            u = sql.upper()
+            if "SAVEPOINT" in u or "ROLLBACK" in u:
+                self._result = []
+            elif "to_regclass" in sql:
+                self._result = [(None,)]   # optional sources absent
+            elif "watchlist_items" in sql and "source_tier" in sql:
+                self._result = []          # the PREFERRED query — AAPL is not core/S0
+            elif "watchlist_items" in sql:
+                self._result = [("AAPL",)]
+            else:
+                self._result = []
 
     out = mod.universe(C([]))
-    assert out["SCHD"] == "held", "held names must be tracked and normalised to upper"
-    assert out["AAPL"] == "watchlist"
+    assert out["SCHD"]["tier"] == "held", "held names must be tracked, upper-cased"
+    assert out["AAPL"]["tier"] == "watchlist"
+    assert out["SCHD"]["precedence"] > out["AAPL"]["precedence"], (
+        "money at risk must outrank money considered")
 
 
 # ── authority ──────────────────────────────────────────────────────────────
@@ -324,7 +359,7 @@ def test_the_end_to_end_path_rejects_a_corrupt_move(mod):
     become a change, and must be counted as uncorroborated rather than vanishing."""
     rows = [("NOC", 60, 1.9803, 77.42, "2026-09-04")]
     found, stats = mod.price_excursions(Cur(rows, independent={"NOC": 2.44}),
-                                        {"NOC": "held"})
+                                        W("NOC", "held"))
     assert found == [], "a corrupt move became an operator alert"
     assert stats["uncorroborated"] == 1
     assert stats["fired"] == 0
@@ -335,7 +370,64 @@ def test_the_end_to_end_path_accepts_the_real_one(mod):
     """AOUT, whose two sources agreed to four decimal places."""
     rows = [("AOUT", 66, 3.0438, 45.4363, "2026-09-04")]
     found, stats = mod.price_excursions(Cur(rows, independent={"AOUT": 45.4363}),
-                                        {"AOUT": "watchlist"})
+                                        W("AOUT"))
     assert len(found) == 1
     assert stats["fired"] == 1 and stats["uncorroborated"] == 0
     assert found[0]["evidence"]["independent_pct"] == 45.4363
+
+
+# ── precedence: what gets looked at first when the queue exceeds the budget ──
+#
+# Operator instruction 2026-09-06. Curation and routing are both capped per run, so
+# this is not cosmetic ordering — it decides what actually gets researched when more
+# moved than we can afford to look at.
+
+def test_money_at_risk_outranks_money_considered(mod):
+    """A held name that moves is a position behaving unlike itself; a watchlist name
+    that moves is an idea behaving unlike itself. Both matter, in that order."""
+    assert mod.PRECEDENCE["held"] > mod.PRECEDENCE["watchlist"]
+    assert mod.PRECEDENCE["operator"] > mod.PRECEDENCE["held"]
+    assert mod.PRECEDENCE["reentry"] > mod.PRECEDENCE["preferred"]
+    assert mod.PRECEDENCE["preferred"] > mod.PRECEDENCE["watchlist"]
+    assert mod.PRECEDENCE["watchlist"] > mod.PRECEDENCE["other"]
+
+
+def test_a_symbol_takes_its_highest_tier(mod):
+    """A name can qualify several ways at once — held AND on the watchlist. The
+    strongest claim wins, or a held name would be ranked as a mere idea."""
+    score, tier = mod.precedence_for({"watchlist", "held"})
+    assert tier == "held" and score == mod.PRECEDENCE["held"]
+    assert mod.precedence_for({"watchlist", "operator", "held"})[1] == "operator"
+    assert mod.precedence_for(set())[1] == "other"
+
+
+def test_changes_are_ordered_by_precedence_before_magnitude(mod):
+    """A 3x move on a holding outranks a 14x move on an idea."""
+    src = SCRIPT.read_text(encoding="utf-8")
+    assert 'changes.sort(key=lambda x: (-(x.get("precedence") or 0), -(x["magnitude"] or 0)))' in src
+
+
+def test_precedence_is_stored_not_just_computed(mod):
+    """It has to survive to the consumer, or the ordering is lost the moment the
+    detector exits."""
+    src = SCRIPT.read_text(encoding="utf-8")
+    assert "precedence        INTEGER" in src
+    assert "ADD COLUMN IF NOT EXISTS precedence" in src, (
+        "CREATE TABLE IF NOT EXISTS does not add columns to an existing table")
+
+
+def test_an_optional_source_failure_is_isolated_by_a_savepoint(mod):
+    """In Postgres a failed statement aborts the WHOLE transaction, so a bare
+    try/except around an optional probe does not make it optional — it hides the
+    failure and poisons every later statement. A missing column on an optional table
+    took down the price query twenty lines away."""
+    src = SCRIPT.read_text(encoding="utf-8")
+    assert "SAVEPOINT opt_src" in src
+    assert "ROLLBACK TO SAVEPOINT opt_src" in src
+
+
+def test_a_missing_optional_source_is_reported_not_silent(mod):
+    """The run continues with a narrower universe — and says so, because a silently
+    narrower universe looks identical to a quiet market."""
+    src = SCRIPT.read_text(encoding="utf-8")
+    assert "not applied" in src and "WARN optional source" in src
