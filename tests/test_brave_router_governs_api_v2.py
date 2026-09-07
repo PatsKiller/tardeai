@@ -1,8 +1,7 @@
 """SFR-C-001 companion: api_v2 must route through brave_router.
 
-Until the integration owner applies the shared-file request, this test is an
-expected failure (strict xfail). When the change lands it must XPASS → remove
-the xfail marker.
+SFR-C-001 was APPLIED on 2026-09-07: api_v2 now reports governed router health
+instead of a hardcoded "402 - needs $5 credit" status. The xfail marker is gone.
 """
 from __future__ import annotations
 
@@ -14,10 +13,9 @@ ROOT = Path(__file__).resolve().parents[1]
 API = ROOT / "scripts" / "api_v2.py"
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="SFR-C-001 pending: api_v2 still direct-calls Brave; integration-owned",
-)
+# SFR-C-001 APPLIED by the integration owner at INTEGRATION_ORDER.md step 10.
+# xfail marker removed per this module's own instruction ("when the change lands
+# it must XPASS -> remove the xfail marker").
 def test_no_direct_brave_call():
     text = API.read_text(encoding="utf-8", errors="replace")
     has_direct = bool(re.search(r"api\.search\.brave\.com", text)) and (

@@ -19,6 +19,28 @@ REPO = Path(__file__).resolve().parents[1]
 
 # Ordered, explicit suite list (Phase 10.2)
 GATES = [
+    # Campaign m2-canary-20260907 — persistent wake, communications consumption,
+    # research transport and shadow outcomes. Registered by the integration owner
+    # at INTEGRATION_ORDER.md step 10 (SFR-A-003).
+    #
+    # These gate the edges the maturity audit found broken: a wake that loads
+    # memory before acting, a receipt that names the object it consumed, and a
+    # research item that changes a later question. They fail closed — a lane
+    # module that stops importing takes the gate red rather than silently
+    # dropping out of coverage.
+    (
+        "campaign_m2_canary_lanes",
+        [
+            "tests/test_persistent_agent_wake.py",
+            "tests/test_replay_determinism_a.py",
+            "tests/test_replay_determinism_b.py",
+            "tests/test_replay_determinism_c.py",
+            "tests/test_replay_determinism_d.py",
+            "tests/test_research_dossier_consumption.py",
+            "tests/test_comms_campaign_gaps_b.py",
+            "tests/test_comms_memory_and_self_repair.py",
+        ],
+    ),
     # Cash age is the age of the dollars. PP2 (the cash letter) and PP4 (provenance)
     # stopped borrowing a clock; PP3 (the freshness board) is reported, not changed.
     (

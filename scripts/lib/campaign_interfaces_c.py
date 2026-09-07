@@ -1,58 +1,35 @@
-"""VENDORED: replaced by campaign_interfaces at integration.
+"""VENDORED SHIM — superseded by scripts/lib/campaign_interfaces.py.
 
-Lane C local copy of CampaignInterfaces@v1 identifier helpers needed to mint
-ResearchObjectId and ConsumptionReceiptId before the integration-owned module
-lands. Do not import this from other lanes.
+Replaced at INTEGRATION_ORDER.md step 5 (campaign m2-canary-20260907). The lane
+vendored this while the canonical module did not yet exist, per
+INTERFACE_CONTRACTS.md §1. It now re-exports from the single source of truth so
+the three lanes cannot drift apart again.
+
+Kept rather than deleted so lane imports keep resolving and lane history stays
+readable (AGENTS.md §0.6).
 """
 from __future__ import annotations
 
-import uuid
-from typing import Optional
+from scripts.lib.campaign_interfaces import *  # noqa: F401,F403
+from scripts.lib.campaign_interfaces import (  # noqa: F401
+    _ns,
+    envelope,
+    mint_wake_id,
+    mint_commitment_id,
+    mint_receipt_id,
+    mint_consumption_receipt_id,
+    mint_communication_event_id,
+    mint_thread_id,
+    mint_research_object_id,
+    mint_outcome_id,
+    mint_belief_proposal_id,
+    mint_view_id,
+    canonical_url,
+    INTERFACE_VERSION,
+)
 
-# Fixed namespaces — must match the integration module when it lands.
-NS_RESEARCH = uuid.UUID("a7c3e910-5b2d-4f81-9c44-1d6e8a0b3f27")
-NS_RECEIPT = uuid.UUID("b8d4f021-6c3e-5092-ad55-2e7f9b1c4038")
-NS_WAKE = uuid.UUID("c9e5a132-7d4f-61a3-be66-3f80ac2d5149")
-
-INTERFACE_VERSION = "CampaignInterfaces@v1"
-
-
-def mint_research_object_id(
-    source_url_canonical: str,
-    published_at: str,
-    subject_guid: str,
-) -> str:
-    key = f"{source_url_canonical}|{published_at}|{subject_guid}"
-    return str(uuid.uuid5(NS_RESEARCH, key))
-
-
-def mint_consumption_receipt_id(
-    agent_id: str,
-    source_kind: str,
-    source_id: str,
-    purpose: str,
-) -> str:
-    key = f"{agent_id}|{source_kind}|{source_id}|{purpose}"
-    return str(uuid.uuid5(NS_RECEIPT, key))
-
-
-def mint_wake_id(
-    agent_id: str,
-    wake_reason: str,
-    schedule_slot_utc: str,
-    subject_guid: str,
-) -> str:
-    key = f"{agent_id}|{wake_reason}|{schedule_slot_utc}|{subject_guid}"
-    return str(uuid.uuid5(NS_WAKE, key))
-
-
-def canonical_url(url: str) -> str:
-    """Normalize a source URL for identity. Strip fragment and trailing slash."""
-    u = (url or "").strip()
-    if not u:
-        raise ValueError("source_url required")
-    if "#" in u:
-        u = u.split("#", 1)[0]
-    if u.endswith("/") and u.count("/") > 2:
-        u = u.rstrip("/")
-    return u
+from scripts.lib.campaign_interfaces import (  # noqa: F401
+    ns_research as NS_RESEARCH,
+    ns_receipt as NS_RECEIPT,
+    ns_wake as NS_WAKE,
+)

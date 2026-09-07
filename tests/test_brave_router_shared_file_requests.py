@@ -33,18 +33,17 @@ def _has_direct_provider_http(rel: str) -> bool:
     return False
 
 
-@pytest.mark.xfail(strict=True, reason="SFR-C-001 pending: api_v2 capability surface still names brave_search directly")
 def test_api_v2_uses_router_surface():
     text = (ROOT / "scripts/api_v2.py").read_text(encoding="utf-8", errors="replace")
     assert "brave_router" in text
 
 
-@pytest.mark.xfail(strict=True, reason="SFR-C-003 pending")
+@pytest.mark.xfail(strict=True, reason="SFR-C-003 REJECTED by integration owner: routing a key-liveness probe through a router that is DISABLED BY DEFAULT would report a healthy key as unverified. Lane C's documented fallback taken; defect 11 stays partial here.")
 def test_secret_validators_routed():
     assert not _has_direct_provider_http("scripts/secret_validators.py")
 
 
-@pytest.mark.xfail(strict=True, reason="SFR-C-004 pending")
+@pytest.mark.xfail(strict=True, reason="SFR-C-004 REJECTED by integration owner: same reason as SFR-C-003 — credential_monitor must not report a healthy key as dead when the router flag is off. Fallback taken; defect 11 partial.")
 def test_credential_monitor_routed():
     assert not _has_direct_provider_http("scripts/credential_monitor.py")
 
