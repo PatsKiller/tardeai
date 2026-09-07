@@ -183,35 +183,29 @@ def fetch_brave_social(symbols: list[str], max_queries: int = 10) -> dict[str, d
         return {}
 
     results: dict[str, dict] = {}
-    # Only query top-priority symbols to stay within budget
+    # Lane C: governed Brave router is the only provider path.
     try:
-        from scripts.lib.search_budget import check as _budget_check, record as _budget_record
+        from scripts.lib.brave_router import search as _governed, router_enabled
     except ImportError:
-        from lib.search_budget import check as _budget_check, record as _budget_record  # type: ignore
+        from lib.brave_router import search as _governed, router_enabled  # type: ignore
+    if not router_enabled():
+        print("  [brave] router OFF — no provider calls")
+        return {}
     for sym in symbols[:max_queries]:
-        # Checked per symbol, not once per run: this loop is the largest single
-        # Brave consumer measured (10 calls x 2 runs x 21 weekdays = 420/month)
-        # and none of it reached the ledger.
-        _verdict = _budget_check('brave')
-        if not _verdict['allowed']:
-            print(f"  [brave] budget denied ({_verdict['reason']}) — stopping at {sym}")
-            break
         try:
-            url = "https://api.search.brave.com/res/v1/web/search"
-            params = {"q": f"{sym} stock sentiment reddit OR stocktwits", "count": 5, "freshness": "pd"}
-            resp = requests.get(url, params=params, timeout=10, headers={"X-Subscription-Token": BRAVE_KEY, "Accept": "application/json"})
-            # Record immediately after the request, before any status branch:
-            # the provider bills the call whether or not we liked the response,
-            # and a counter that only advances on success under-reports usage.
-            _budget_record('brave', allowed=True, caller='aegis_social_sentiment')
-            if resp.status_code != 200:
-                continue
-            data = resp.json()
-            web_results = data.get("web", {}).get("results", [])
+            q = f"{sym} stock sentiment reddit OR stocktwits"
+            resp = _governed(
+                q, kind="web", count=5, freshness="pd",
+                caller="aegis_social_sentiment", purpose="aegis.social",
+                api_key=BRAVE_KEY, enabled=True,
+            )
+            if not resp.ok:
+                print(f"  [brave] governed deny ({resp.reason}) — stopping at {sym}")
+                break
             mentions = []
-            for r in web_results[:3]:
+            for r in (resp.results or [])[:3]:
                 mentions.append({
-                    "title": r.get("title", "")[:100],
+                    "title": (r.get("title") or "")[:100],
                     "url": r.get("url", ""),
                     "description": (r.get("description") or "")[:150],
                     "source": "brave_discovery",
@@ -221,7 +215,6 @@ def fetch_brave_social(symbols: list[str], max_queries: int = 10) -> dict[str, d
             time.sleep(0.5)
         except Exception as e:
             print(f"  [brave] {sym} error: {e}")
-
     return results
 
 

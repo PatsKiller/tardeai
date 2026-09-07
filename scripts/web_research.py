@@ -35,58 +35,28 @@ def search_web(query: str, count: int = 5, freshness: str = "pw") -> list:
 
     Returns list of {title, url, description, age}
     """
-    # Routed through the one budgeted Brave client. This module used to hold its
-    # own key read and its own urlopen, so none of its calls were ever counted:
-    # measured 2026-08-30 the ledger saw ~150 of ~1,000 monthly calls, and the
-    # budget alert reported "ok" at 17.6% while the provider was at its ceiling.
+    # Lane C: ALL Brave traffic goes through the governed router. The previous
+    # direct urlopen fallback is removed — a bypass here is a defect.
     try:
-        from brave_search import search as _budgeted_search
+        from scripts.lib.brave_router import search as _governed, router_enabled
     except ImportError:
         try:
-            from scripts.brave_search import search as _budgeted_search  # type: ignore
+            from lib.brave_router import search as _governed, router_enabled  # type: ignore
         except ImportError:
-            _budgeted_search = None  # type: ignore
-    if _budgeted_search is not None:
-        return _budgeted_search(query, count=count, freshness=freshness,
-                                project_root=str(PROJECT_ROOT),
-                                caller="web_research")
-
-    key = _get_api_key()
-    if not key:
+            from brave_search import search as _budgeted_search
+            return _budgeted_search(
+                query, count=count, freshness=freshness,
+                project_root=str(PROJECT_ROOT), caller="web_research",
+            )
+    if not router_enabled():
+        # OFF-state: no side effect.
         return []
-
-    params = urllib.parse.urlencode({
-        "q": query,
-        "count": min(count, 20),
-        "freshness": freshness,
-    })
-    url = f"https://api.search.brave.com/res/v1/web/search?{params}"
-
-    try:
-        req = urllib.request.Request(url, headers={
-            "Accept": "application/json",
-            "X-Subscription-Token": key,
-        })
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            data = json.loads(resp.read())
-            results = []
-            for r in data.get("web", {}).get("results", [])[:count]:
-                results.append({
-                    "title": r.get("title", ""),
-                    "url": r.get("url", ""),
-                    "description": r.get("description", ""),
-                    "age": r.get("age", ""),
-                })
-            return results
-    except urllib.error.HTTPError as e:
-        if e.code == 402:
-            print(f"[web-research] Brave API 402: Usage limit exceeded — add credits at search.brave.com/account")
-        else:
-            print(f"[web-research] Brave API HTTP {e.code}: {e.reason}")
-        return []
-    except Exception as e:
-        print(f"[web-research] Brave API error: {e}")
-        return []
+    resp = _governed(
+        query, kind="web", count=count, freshness=freshness,
+        caller="web_research", purpose="web_research.search",
+        api_key=_get_api_key(), enabled=True,
+    )
+    return list(resp.results) if resp.ok else []
 
 
 def research_symbol_web(symbol: str, focus: str = "", count: int = 5,
