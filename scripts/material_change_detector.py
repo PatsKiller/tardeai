@@ -194,11 +194,15 @@ def universe(cur) -> dict[str, dict]:
     # optional probe therefore does not make it optional — it hides the failure and
     # poisons everything after it. That is exactly what happened here: a missing
     # column on an optional table took down the price query twenty lines later.
-    for table, why, extra in (
-        ("reentry_directive_hits_staging", "reentry", ""),
-        ("inbound_operator_questions", "operator",
-         " AND created_at > now() - interval '30 days'"),
+    # (table, tier, time column). The time column is NAMED because guessing it is how
+    # the operator tier — the highest one — silently never applied: this used
+    # created_at, and inbound_operator_questions calls it received_at. The savepoint
+    # caught the error and warned, so nothing broke; it just quietly did nothing.
+    for table, why, tcol in (
+        ("reentry_directive_hits_staging", "reentry", None),
+        ("inbound_operator_questions", "operator", "received_at"),
     ):
+        extra = f" AND {tcol} > now() - interval '30 days'" if tcol else ""
         try:
             cur.execute("SAVEPOINT opt_src")
             cur.execute(f"SELECT to_regclass('public.{table}')")
@@ -254,6 +258,48 @@ CORROBORATION_RATIO = float(os.getenv("MATERIAL_CHANGE_CORROBORATION_RATIO", "2.
 #: Below this both sources are saying "nothing happened" and the ratio between them
 #: is meaningless.
 CORROBORATION_FLOOR_PCT = float(os.getenv("MATERIAL_CHANGE_CORROBORATION_FLOOR", "1.0"))
+
+
+#: CATALYST MATERIALITY — not every catalyst is a reason to look.
+#:
+#: The first version of catalyst_new fired on ANY catalyst filed against a tracked
+#: name in 24h. Measured over 30 days, catalyst_type is dominated by a single value:
+#:
+#:     other                 27,567     merger_acquisition       880
+#:     news_momentum            822     earnings_beat            788
+#:     analyst_upgrade          692     geopolitical             295
+#:     buyback                  237     analyst_downgrade        229
+#:     earnings_miss            220     contract_win             201
+#:     insider_buy              192     offering_dilution        152
+#:     guidance_raise            86     fda_approval              78
+#:
+#: 87% of catalysts are `other` — an unclassified bucket. Treating those as equal to
+#: an earnings miss is how a trigger becomes noise, and a noisy trigger is one the
+#: operator learns to ignore. That is the same failure as a muted alarm, arrived at
+#: from the opposite direction.
+#:
+#: Weight is materiality, not confidence: how much a reasonable analyst would want to
+#: re-examine a position on hearing it. `other` is deliberately absent — an
+#: unclassified catalyst is not evidence of anything, and admitting it at a low weight
+#: would still let 27,567 rows through.
+CATALYST_MATERIALITY = {
+    "earnings_miss": 3.0,
+    "guidance_cut": 3.0,
+    "fda_rejection": 3.0,
+    "offering_dilution": 2.5,
+    "earnings_beat": 2.0,
+    "guidance_raise": 2.0,
+    "merger_acquisition": 2.5,
+    "fda_approval": 2.0,
+    "analyst_downgrade": 1.5,
+    "analyst_upgrade": 1.2,
+    "contract_win": 1.2,
+    "insider_buy": 1.2,
+    "buyback": 1.0,
+    "geopolitical": 1.0,
+}
+#: A catalyst must reach this to be worth the operator's attention at all.
+CATALYST_MIN_MATERIALITY = float(os.getenv("MATERIAL_CHANGE_CATALYST_MIN", "1.0"))
 
 
 def corroborate(cur, symbols: list[str]) -> dict[str, float]:
@@ -363,25 +409,46 @@ def price_excursions(cur, syms: dict[str, str]) -> tuple[list[dict], dict]:
     return found, stats
 
 
-def new_catalysts(cur, syms: dict[str, str]) -> tuple[list[dict], dict]:
-    """A catalyst filed against a tracked name inside the window."""
+def new_catalysts(cur, syms: dict[str, dict]) -> tuple[list[dict], dict]:
+    """A MATERIAL catalyst filed against a tracked name inside the window.
+
+    Materiality-weighted, so an earnings miss outranks a buyback and an unclassified
+    `other` never fires at all.
+    """
     cur.execute(
-        """SELECT symbol, count(*), max(published_at), min(id), max(id)
+        """SELECT symbol, catalyst_type, count(*), max(published_at),
+                  min(id), max(id)
              FROM catalyst_events
-            WHERE symbol = ANY(%s) AND published_at > now() - (%s || ' hours')::interval
-            GROUP BY symbol""", (list(syms), NEW_HOURS))
-    out = []
-    for sym, n, latest, lo, hi in cur.fetchall():
-        out.append({
-            "symbol": sym, "kind": "catalyst_new", "magnitude": float(n),
-            "baseline": None, "observed_value": float(n),
-            "observed_at": str(latest),
-            "universe_reason": "+".join((syms.get(sym) or {}).get("reasons", ["?"])),
-            "precedence": (syms.get(sym) or {}).get("precedence", 10),
-            "evidence": {"source": "catalyst_events", "count": int(n),
-                         "id_range": [int(lo), int(hi)], "window_hours": NEW_HOURS},
-        })
-    return out, {"fired": len(out)}
+            WHERE symbol = ANY(%s)
+              AND published_at > now() - (%s || ' hours')::interval
+              AND catalyst_type = ANY(%s)
+            GROUP BY symbol, catalyst_type""",
+        (list(syms), NEW_HOURS,
+         [k for k, v in CATALYST_MATERIALITY.items() if v >= CATALYST_MIN_MATERIALITY]))
+
+    by_symbol: dict[str, dict] = {}
+    stats = {"fired": 0, "below_materiality": 0, "types_seen": {}}
+    for sym, ctype, n, latest, lo, hi in cur.fetchall():
+        weight = CATALYST_MATERIALITY.get(ctype, 0.0)
+        stats["types_seen"][ctype] = stats["types_seen"].get(ctype, 0) + int(n)
+        if weight < CATALYST_MIN_MATERIALITY:
+            stats["below_materiality"] += int(n)
+            continue
+        cur_best = by_symbol.get(sym)
+        score = weight * min(int(n), 3)          # more of the same matters, but not linearly
+        if cur_best is None or score > cur_best["magnitude"]:
+            by_symbol[sym] = {
+                "symbol": sym, "kind": "catalyst_new",
+                "magnitude": round(score, 2), "baseline": None,
+                "observed_value": float(n), "observed_at": str(latest),
+                "universe_reason": "+".join((syms.get(sym) or {}).get("reasons", ["?"])),
+                "precedence": (syms.get(sym) or {}).get("precedence", 10),
+                "evidence": {"source": "catalyst_events", "catalyst_type": ctype,
+                             "materiality": weight, "count": int(n),
+                             "id_range": [int(lo), int(hi)], "window_hours": NEW_HOURS},
+            }
+    stats["fired"] = len(by_symbol)
+    return list(by_symbol.values()), stats
 
 
 def news_bursts(cur, syms: dict[str, str]) -> tuple[list[dict], dict]:
