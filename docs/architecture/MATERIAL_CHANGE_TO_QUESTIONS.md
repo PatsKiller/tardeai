@@ -1,7 +1,41 @@
 # Material change → due-diligence questions
 
-**Status:** proposed, not implemented. **Authority:** advisory only — never sizes, orders,
-stops, or writes to a broker.
+**Status:** stages 0-2 SHIPPED and live (2026-09-06); stages 3-5 designed, prototyped,
+not built. **Authority:** advisory only — never sizes, orders, stops, or writes to a broker.
+
+| stage | what | state | cost |
+|---|---|---|---|
+| 0 | identity spine reaches the corpus | **shipped** — PR #904, #905 | free |
+| 1 | `material_change_detector.py` | **shipped** — PR #906 | free |
+| 2 | `notify_material_change.py` | **shipped** — PR #907 | free |
+| 3-4 | narrative + questions | prototyped, output verified | ~$0 on free lanes |
+| 5 | route to lanes, close the loop | designed | — |
+
+### Running it
+
+```
+python3 scripts/backfill_subject_identity.py --all            # dry run
+python3 scripts/backfill_subject_identity.py --all --apply    # + --add-columns first time
+python3 scripts/material_change_detector.py                   # dry run
+python3 scripts/material_change_detector.py --apply
+python3 scripts/notify_material_change.py                     # dry run, prints the message
+python3 scripts/notify_material_change.py --apply
+```
+
+Scheduled: the identity sweep runs `*/30`. **Coverage decays without it** — nothing
+stamps `subject_guid` at write time, and 38 rows arrived untagged in the eleven minutes
+after the first backfill.
+
+### What it produced on the day it shipped
+
+```
+AOUT: 45.4% — 14.9x its normal daily move (usual 3.0%)
+  tracked as: watchlist   observed 2026-09-04
+  we hold 64 articles, 70 catalysts; no prior research
+```
+
+Verified two ways: `ticker_prices` shows 9.97 -> 14.50, and `watchlist_items.change_pct`
+independently reports 45.4363 from a different source.
 
 ## The gap, stated precisely
 
@@ -302,6 +336,43 @@ asking."
 Signal discipline: **notify on the change, not on the sweep.** A detector that fires
 every fifteen minutes trains the operator to ignore it, and a muted alarm is worse than
 no alarm — this system has already lost detectors that way.
+
+## Routing: why a material change pages instead of being digested
+
+The first live alert classified `P1_DIGEST` and the router queued it **by design** —
+which is how the operator got an "8pm digest, 1 suppressed message" instead of the alert.
+A 45% move is not a digest item.
+
+`operator_alert_policy_v2` therefore carries a `material_change` type routed IMMEDIATE to
+the general channel, deduped on the hour. That is the same shape and the same reasoning
+as `thesis_update`, which already carried the note "the one piece the operator wants as
+text (not noise)".
+
+**It is deliberately NOT in `CRITICAL_IMMEDIATE_TYPES`.** That set is capital at risk right
+now — orphaned stops, protection failures, broker auth. A price move is not that, and
+diluting the critical set is how a critical channel stops being read.
+
+## Two defects this shipped with, and what they cost
+
+Both were found in live running, not in review, and both are pinned by tests now.
+
+**ACCEPTED is not DELIVERED.** `send_telegram` returns True when the platform takes
+responsibility for an event. On the first live run it returned True while the router
+suppressed the message, and the code marked all three changes notified — the operator
+received nothing and the rows were consumed. Consumed-and-silent is the worst outcome
+available here: the row is gone and the silence looks normal.
+
+The first fix was also wrong: it read the most recent `communication_deliveries` row
+*after* sending, but "most recent row" is not "the row for my send", and a stale
+SUPPRESSED row made a successful send look unknown. The working fix asks
+`should_send_telegram()` **before** sending — a pure function of that exact message, with
+nothing to mis-attribute.
+
+**A NaN fires.** `ticker_prices` carries literal NaN in a numeric column. `NaN < K` is
+False, so the early-continue never triggers and corrupt data is emitted as a real change;
+the first detector run duly reported BHVN at magnitude NaN. Excluded in SQL and guarded
+again in Python. Postgres NUMERIC NaN compares EQUAL to itself, unlike float, so the
+filter cannot be written `close_price = close_price`.
 
 ## Guard rails, each one already paid for
 

@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `6822ebc0a46b49ace87935fc4932dbdd1ffe1d21fe026568522f7689f1567f38`
+**Tree fingerprint:** `e2526df65a91cc26fbcc22c6c31b656a622e06ccb4f8b2a2df75b0156e97c6c0`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -61,7 +61,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/CURSOR_CLOUD_PLAIN_ENGLISH_STARTER_GUIDE.md` | Cursor Cloud Plain-English Starter Guide | review_required | OK | `c7ab9524a7e1` |
 | `docs/DAILY_OPS_LOG.md` | DAILY_OPS_LOG.md | review_required | OK | `80578251dbf0` |
 | `docs/DASHBOARD_AUDIT_WORKFLOW.md` | Dashboard Visual Audit — Operator Workflow | review_required | OK | `4f878d49e6a9` |
-| `docs/DOCUMENTATION_INDEX.md` | Trade AI v12 — Documentation Index | review_required | OK | `5939f2eb8717` |
+| `docs/DOCUMENTATION_INDEX.md` | Trade AI v12 — Documentation Index | review_required | OK | `d452a0286652` |
 | `docs/ENGINEERING_HARD_RULES.md` | Engineering Hard Rules (enforced) | review_required | OK | `c9798da3d1f2` |
 | `docs/ENGINE_ROOM_V1.md` | Engine Room v1 — Plumbing & Intake Hardening (2026-07-16) | review_required | OK | `c13ce7b7e784` |
 | `docs/EXECUTIVE_ARCHITECTURE_OVERVIEW.md` | Trade AI v12 — Executive Architecture Overview | review_required | OK | `84fd22510408` |
@@ -297,7 +297,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/HOME_COMMAND_BRAIN_V2.md` | Home v2 — The Command Brain (2026-07-17) | review_required | OK | `6e695df9a86e` |
 | `docs/architecture/HYBRID_EVIDENCE_REFRESH_AND_HERMES_BRIDGE_2026-08-23.md` | Hybrid Evidence Refresh and Hermes Bridge | review_required | OK | `9c55a507faab` |
 | `docs/architecture/M2_PRODUCTION_SHADOW_MIGRATION_DESIGN_2026-08-24.md` | M2 production shadow migration — DESIGN ONLY | review_required | OK | `18aa33439911` |
-| `docs/architecture/MATERIAL_CHANGE_TO_QUESTIONS.md` | Material change → due-diligence questions | review_required | OK | `d9a7976c6308` |
+| `docs/architecture/MATERIAL_CHANGE_TO_QUESTIONS.md` | Material change → due-diligence questions | review_required | OK | `bf493c56cf68` |
 | `docs/architecture/MENTIONS_SCHEDULING_AND_RETENTION.md` | Mentions: scheduling, retention, and who decides relevance | review_required | OK | `44f38a74e254` |
 | `docs/architecture/OPENCLAW_HERMES_UPGRADE_ROLLBACK_PLAN_2026-07-23.md` | OpenClaw and Hermes Shadow Upgrade / Rollback Plan — 2026-07-23 | review_required | OK | `9fd429af3119` |
 | `docs/architecture/PHASE199A_PREFLIGHT_RUNTIME_CONTROL_PLANE_AUDIT.md` | Phase 199A — Preflight: Runtime Control Plane Audit (2026-06-04) | review_required | OK | `22f3223c1a13` |
