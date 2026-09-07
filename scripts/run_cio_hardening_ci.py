@@ -676,6 +676,19 @@ GATES = [
         ],
     ),
     (
+        "material_change_notify",
+        [
+            # Stage 2 — the alert that would have arrived on Friday. Pins that a
+            # change is announced EXACTLY once (change_guid is uuid and psycopg2
+            # sends text[]; the first live run sent the alert then failed on the
+            # UPDATE, so the next run re-announced all three), that a change outside
+            # market hours is HELD rather than dropped, and that a send the platform
+            # did not accept leaves the change pending instead of silently
+            # consuming it.
+            "tests/test_notify_material_change.py",
+        ],
+    ),
+    (
         "llm_escalation",
         [
             # Operator policy: free OAuth -> deepseek-flash -> ASK -> further paid.
