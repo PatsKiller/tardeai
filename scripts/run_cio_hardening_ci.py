@@ -719,6 +719,21 @@ GATES = [
         ],
     ),
     (
+        "research_context_serialization",
+        [
+            # A research packet is JSON by contract, and two things broke that, both
+            # only when a symbol's sector resolved into sector_momentum_state — the
+            # tracked universe the material-change loop routes for. Postgres NUMERIC
+            # arrives as Decimal and killed the whole request; and the packet was
+            # built by running a LINE-ORIENTED redactor over serialized JSON, which
+            # is one line, so a single forbidden marker deleted the document. Pins
+            # that Decimals become numbers rather than strings (default=str would
+            # stop the crash and corrupt the type), and that redaction walks values
+            # rather than punctuation.
+            "tests/test_research_context_serialization.py",
+        ],
+    ),
+    (
         "llm_escalation",
         [
             # Operator policy: free OAuth -> deepseek-flash -> ASK -> further paid.

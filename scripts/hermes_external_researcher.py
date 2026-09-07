@@ -144,7 +144,38 @@ def canonical_prompt_context(symbol, question):
     legacy = safe_context(symbol)
     if legacy:
         context["legacy_safe_context"] = legacy
-    return json.loads(redact(json.dumps(context)))
+    # Redact the VALUES, never the serialized form.
+    #
+    # This was json.loads(redact(json.dumps(context))) — running a line-oriented text
+    # redactor over a JSON document. redact() drops whole LINES containing a
+    # forbidden marker, and serialized JSON is ONE line, so a single match destroys
+    # the entire packet:
+    #
+    #     json.decoder.JSONDecodeError: Expecting ',' delimiter: line 1 column 2475
+    #
+    # Its substitutions can also break quoting mid-string. Redaction is a property of
+    # the values, not of the punctuation between them, so it is applied per string
+    # and the structure is never at risk.
+    return _redact_values(_jsonable_packet(context))
+
+
+def _jsonable_packet(obj):
+    try:
+        from lib.research_prompt_context import _jsonable
+    except ImportError:
+        from scripts.lib.research_prompt_context import _jsonable
+    return _jsonable(obj)
+
+
+def _redact_values(obj):
+    """Apply redact() to every string value, leaving keys and structure intact."""
+    if isinstance(obj, dict):
+        return {k: _redact_values(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_redact_values(v) for v in obj]
+    if isinstance(obj, str):
+        return redact(obj)
+    return obj
 
 
 def reconcile_accepted_research(symbol, rid, parsed, prompt_context, args):

@@ -168,7 +168,35 @@ def _market_regime() -> dict[str, Any] | None:
     row = _db_one(
         "SELECT regime_label, created_at FROM market_regime_snapshots ORDER BY created_at DESC LIMIT 1"
     )
-    return row or None
+    return _jsonable(row) if row else None
+
+
+def _jsonable(value: Any) -> Any:
+    """Postgres NUMERIC arrives as Decimal, and json.dumps refuses it.
+
+    A research context packet is JSON by contract — it is serialized, redacted,
+    re-parsed and stored. One Decimal anywhere in it raises
+
+        TypeError: Object of type Decimal is not JSON serializable
+        when serializing dict item 'rs5'
+
+    which killed the ENTIRE research request, on every lane, for any symbol whose
+    sector had momentum data. Converting at the producer keeps the value numeric;
+    a str() coercion at the serialization boundary would have "fixed" the crash by
+    turning 1.23 into "1.23" and quietly changing the type for every downstream
+    reader.
+    """
+    from decimal import Decimal
+
+    if isinstance(value, Decimal):
+        return float(value)
+    if isinstance(value, dict):
+        return {k: _jsonable(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_jsonable(v) for v in value]
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+    return value
 
 
 def _sector_state(sector: str | None) -> dict[str, Any] | None:
@@ -179,7 +207,7 @@ def _sector_state(sector: str | None) -> dict[str, Any] | None:
            FROM sector_momentum_state WHERE sector=%s ORDER BY as_of DESC LIMIT 1""",
         (sector,),
     )
-    return row or None
+    return _jsonable(row) if row else None
 
 
 def _memory_context(symbol: str) -> dict[str, Any]:
