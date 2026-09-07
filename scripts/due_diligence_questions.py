@@ -199,26 +199,71 @@ def pending_changes(cur, limit: int) -> list[dict]:
     return [dict(zip(cols, r)) for r in cur.fetchall()]
 
 
+#: Two ways a document is linked to a subject, and NEITHER is sufficient alone.
+#:
+#: news_articles.subject_guid is ONE column. Measured 2026-09-07: 5,079 articles
+#: mention more than one security, and 11,602 mentions cannot fit in that column —
+#: invisible to any dossier that joins on it. An article about Morgan Stanley that
+#: discusses Apple is Apple evidence, and the column can only say one of those.
+#:
+#: document_mentions holds them all, with a role. But it is a TEXT EXTRACTION and is
+#: narrower: for AAPL the column yields 422 articles and mentions yields 106. Swapping
+#: one for the other would trade a coverage gap for a bigger one.
+#:
+#: So: UNION. And carry the role, because they are not equal evidence — an article
+#: ABOUT a company outranks one that cites it in passing, and the model should be able
+#: to tell.
+DOSSIER_SQL = {
+    "news": """
+        SELECT n.id, n.published_at::date, left(coalesce(n.title,''),150), m.role
+          FROM news_articles n
+          LEFT JOIN LATERAL (
+              SELECT role FROM document_mentions d
+               WHERE d.source_table='news_articles' AND d.source_id=n.id
+                 AND d.subject_guid=%(sg)s ORDER BY (role='subject') DESC LIMIT 1
+          ) m ON true
+         WHERE n.title IS NOT NULL
+           AND (n.subject_guid=%(sg)s OR m.role IS NOT NULL)
+         ORDER BY (m.role='subject') DESC NULLS LAST, n.published_at DESC NULLS LAST
+         LIMIT %(lim)s""",
+    "catalyst": """
+        SELECT c.id, c.published_at::date, c.catalyst_type,
+               left(coalesce(c.headline,''),150), m.role
+          FROM catalyst_events c
+          LEFT JOIN LATERAL (
+              SELECT role FROM document_mentions d
+               WHERE d.source_table='catalyst_events' AND d.source_id=c.id
+                 AND d.subject_guid=%(sg)s ORDER BY (role='subject') DESC LIMIT 1
+          ) m ON true
+         WHERE (c.subject_guid=%(sg)s OR m.role IS NOT NULL)
+         ORDER BY (m.role='subject') DESC NULLS LAST, c.published_at DESC NULLS LAST
+         LIMIT 10""",
+}
+
+
 def dossier(cur, subject_guid) -> list[dict]:
     """Everything we hold on one subject, ranked, each item citable.
 
-    Prior research is ordered by usefulness_score, not recency. Recency reliably
-    surfaces the most recent noise; usefulness surfaces the work that turned out to
-    be worth having. That ordering is the reason the backfill mattered.
+    Prior research is ordered by usefulness_score, not recency: recency reliably
+    surfaces the most recent noise, usefulness surfaces the work that turned out to be
+    worth having. That ordering is why the backfill mattered.
+
+    Articles and catalysts come from BOTH the subject_guid column and
+    document_mentions — see DOSSIER_SQL. Items where this subject is merely
+    `mentioned` are labelled, so a passing citation is not read as company news.
     """
     items: list[dict] = []
-    cur.execute("""SELECT id, published_at::date, left(coalesce(title,''),150)
-                     FROM news_articles WHERE subject_guid=%s AND title IS NOT NULL
-                    ORDER BY published_at DESC NULLS LAST LIMIT %s""",
-                (subject_guid, DOSSIER_NEWS))
-    items += [{"id": f"news:{r[0]}", "date": str(r[1]), "text": r[2]} for r in cur.fetchall()]
+    args = {"sg": subject_guid, "lim": DOSSIER_NEWS}
 
-    cur.execute("""SELECT id, published_at::date, catalyst_type,
-                          left(coalesce(headline,''),150)
-                     FROM catalyst_events WHERE subject_guid=%s
-                    ORDER BY published_at DESC NULLS LAST LIMIT 10""", (subject_guid,))
-    items += [{"id": f"catalyst:{r[0]}", "date": str(r[1]),
-               "text": f"[{r[2]}] {r[3]}"} for r in cur.fetchall()]
+    cur.execute(DOSSIER_SQL["news"], args)
+    for rid, day, title, role in cur.fetchall():
+        items.append({"id": f"news:{rid}", "date": str(day), "text": title,
+                      "role": role or "subject"})
+
+    cur.execute(DOSSIER_SQL["catalyst"], {"sg": subject_guid})
+    for rid, day, ctype, headline, role in cur.fetchall():
+        items.append({"id": f"catalyst:{rid}", "date": str(day),
+                      "text": f"[{ctype}] {headline}", "role": role or "subject"})
 
     cur.execute("""SELECT id, created_at::date, usefulness_score,
                           left(coalesce(question,''),110), left(coalesce(recommendation,''),220)
@@ -229,15 +274,14 @@ def dossier(cur, subject_guid) -> list[dict]:
     for r in cur.fetchall():
         items.append({"id": f"research:{r[0]}", "date": str(r[1]),
                       "usefulness": float(r[2]) if r[2] is not None else None,
-                      "text": f"ASKED: {r[3]} | ANSWERED: {r[4]}"})
+                      "text": f"ASKED: {r[3]} | ANSWERED: {r[4]}", "role": "subject"})
 
     cur.execute("""SELECT id, created_at::date, thesis_type, left(coalesce(headline,''),150)
                      FROM research_insights WHERE subject_guid=%s
                     ORDER BY created_at DESC LIMIT 6""", (subject_guid,))
     items += [{"id": f"insight:{r[0]}", "date": str(r[1]),
-               "text": f"[{r[2]}] {r[3]}"} for r in cur.fetchall()]
+               "text": f"[{r[2]}] {r[3]}", "role": "subject"} for r in cur.fetchall()]
 
-    # Strip our own scoring chatter — see _INTERNAL_NOISE.
     for it in items:
         it["text"] = _INTERNAL_NOISE.sub("[internal]", it["text"] or "")
     return items
@@ -268,6 +312,8 @@ RULES:
 - Ask about THE COMPANY AND ITS WORLD. Never ask about this system's own scores,
   ranks, conviction levels or watchlist position — those are not due diligence.
 - State absence as a fact about THIS EVIDENCE, not about the world.
+- An item marked "mentions this company in passing" is weaker evidence — the article
+  is about someone else. Do not present it as news about this company.
 - Write about the COMPANY, never about this system's detection. Do not mention
   "catalyst_new", "3.0x spike", "baseline", "observed at", or any trigger mechanic —
   the reader does not know what those are and they crowd out the actual news. Say
@@ -432,6 +478,7 @@ def ask_model(change: dict, items: list[dict]) -> dict:
     """
     ev = "\n".join(
         f'  {i["id"]}  ({i["date"]})'
+        + (" [mentions this company in passing]" if i.get("role") == "mentioned" else "")
         + (f' [usefulness {i["usefulness"]}]' if i.get("usefulness") is not None else "")
         + f'  {i["text"]}' for i in items)
     desc = (f'{change["symbol"]} {change["kind"]}: observed {change["observed_value"]} '

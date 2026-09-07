@@ -317,3 +317,53 @@ def test_a_dead_oauth_lane_falls_through_to_the_next(mod, monkeypatch, capsys):
     assert calls == ["chatgpt", "grok"]
     assert res and res["lane"] == "grok-oauth"
     assert "chatgpt unavailable" in capsys.readouterr().err
+
+
+# ── one column cannot hold a multi-security article ─────────────────────────
+#
+# Measured 2026-09-07: 5,079 news articles mention more than one security, and 11,602
+# mentions cannot fit in news_articles.subject_guid — invisible to any dossier joining
+# on it. NDAQ was the worst case: 0 articles via the column, 1,455 mentions in
+# document_mentions. Its dossier was EMPTY, so curation reported "nothing linked in
+# the corpus yet" and asked nothing, about a company the corpus knew a great deal
+# about. After the union: 30 items.
+#
+# The union is not a swap. document_mentions is a TEXT EXTRACTION and is narrower —
+# AAPL has 422 articles by column and 106 by mentions. Replacing one with the other
+# trades a coverage gap for a bigger one.
+
+def test_the_dossier_reads_both_the_column_and_the_mentions(mod):
+    src = SCRIPT.read_text(encoding="utf-8")
+    news = mod.DOSSIER_SQL["news"]
+    assert "n.subject_guid=%(sg)s OR m.role IS NOT NULL" in news, (
+        "one source only — the multi-security gap is back")
+    assert "document_mentions" in news
+
+
+def test_catalysts_get_the_same_treatment(mod):
+    cat = mod.DOSSIER_SQL["catalyst"]
+    assert "c.subject_guid=%(sg)s OR m.role IS NOT NULL" in cat
+    assert "document_mentions" in cat
+
+
+def test_an_article_ABOUT_the_company_outranks_one_that_cites_it(mod):
+    """They are not equal evidence, and the LIMIT means the ordering decides what the
+    model ever sees."""
+    for key in ("news", "catalyst"):
+        assert "role='subject') DESC" in mod.DOSSIER_SQL[key], (
+            f"{key} does not rank subject above mentioned")
+
+
+def test_a_passing_mention_is_labelled_for_the_model(mod):
+    """An article about Morgan Stanley that cites Apple is not Apple news, and the
+    model has no way to know that unless it is told."""
+    src = SCRIPT.read_text(encoding="utf-8")
+    assert "mentions this company in passing" in src
+    assert "Do not present it as news about this company" in src
+
+
+def test_the_role_survives_onto_every_dossier_item(mod):
+    """A downstream reader that cannot see the role cannot weigh the evidence."""
+    src = SCRIPT.read_text(encoding="utf-8")
+    body = src.split("def dossier(", 1)[1].split("\nPROMPT", 1)[0]
+    assert body.count('"role"') >= 4, "some dossier sources drop the role"
