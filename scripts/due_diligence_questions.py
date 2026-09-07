@@ -268,6 +268,10 @@ RULES:
 - Ask about THE COMPANY AND ITS WORLD. Never ask about this system's own scores,
   ranks, conviction levels or watchlist position — those are not due diligence.
 - State absence as a fact about THIS EVIDENCE, not about the world.
+- Write about the COMPANY, never about this system's detection. Do not mention
+  "catalyst_new", "3.0x spike", "baseline", "observed at", or any trigger mechanic —
+  the reader does not know what those are and they crowd out the actual news. Say
+  what happened to the business or the stock.
 - If the evidence supports no new question, return "questions": [].
 - Describe and ask. Never recommend, size, or advise trading.
 - At most 4 narrative sentences and 4 questions."""

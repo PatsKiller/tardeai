@@ -45,8 +45,19 @@ sys.path.insert(0, str(ROOT / "scripts"))
 SCHEMA = "MaterialChangeNotice@v1"
 AUTHORITY = "READ_ONLY_ADVISORY"
 
-#: Operator choice 2026-09-06: market hours. "always" ignores the window.
-NOTIFY_WINDOW = os.getenv("MATERIAL_CHANGE_NOTIFY_WINDOW", "market")
+#: ALWAYS. Operator decision 2026-09-07, overriding the market-hours default set the
+#: day before: "it's Monday morning now and that has no bearing on it, I should be
+#: receiving it no matter what day of the week."
+#:
+#: The market-hours window was wrong in practice. AOUT burst at 07:13 and SPCX at
+#: 16:41 — both outside it — and 36 consecutive notifier runs reported
+#: HELD_OUTSIDE_WINDOW while the operator saw nothing and reasonably concluded the
+#: layer was dark. News does not wait for the opening bell, and a detector whose
+#: output is invisible for sixteen hours a day is indistinguishable from one that is
+#: not running.
+#:
+#: Set to "market" to restore weekday 09:30-16:00 gating.
+NOTIFY_WINDOW = os.getenv("MATERIAL_CHANGE_NOTIFY_WINDOW", "always")
 MARKET_TZ = ZoneInfo(os.getenv("MATERIAL_CHANGE_TZ", "America/New_York"))
 MARKET_OPEN = time(9, 30)
 MARKET_CLOSE = time(16, 0)
@@ -109,62 +120,149 @@ def in_window(now: datetime | None = None) -> bool:
 def pending(cur, *, limit: int) -> list[dict]:
     cur.execute(
         """SELECT change_guid, symbol, kind, magnitude, baseline, observed_value,
-                  observed_at, universe_reason, subject_guid
+                  observed_at, universe_reason, subject_guid, evidence_json
              FROM material_changes
             WHERE notified_at IS NULL
               AND observed_at > now() - (%s || ' hours')::interval
             ORDER BY magnitude DESC NULLS LAST
             LIMIT %s""", (MAX_AGE_HOURS, limit))
     cols = ["change_guid", "symbol", "kind", "magnitude", "baseline",
-            "observed_value", "observed_at", "universe_reason", "subject_guid"]
+            "observed_value", "observed_at", "universe_reason", "subject_guid",
+            "evidence_json"]
     return [dict(zip(cols, r)) for r in cur.fetchall()]
 
 
-def context(cur, subject_guid) -> dict:
-    """What we already hold on this name — the orientation an alert needs.
+def context(cur, change: dict) -> dict:
+    """WHAT HAPPENED and WHAT IT MEANS — not how many rows we hold.
 
-    A bare "AOUT +45%" is a number. "AOUT moved 14.9x its normal daily range, we
-    hold 12 articles and 3 catalysts on it, last research was 63 days ago" is the
-    beginning of a decision.
+    The first version of this alert reported "we hold 212 articles, 209 catalysts".
+    That is internal plumbing on the operator's phone: it says nothing about the
+    company, nothing about what changed, and nothing about what to do. The operator's
+    verdict was correct — "what am I supposed to do with these".
+
+    So this returns, in order of preference:
+      1. the NARRATIVE the curation step already wrote — plain sentences, grounded in
+         cited evidence, e.g. "shares surged 25.47% after hours on better-than-
+         expected Q2 sales"
+      2. the questions it decided were worth asking
+      3. failing both, the actual HEADLINE that triggered it
     """
-    if not subject_guid:
-        return {}
-    out = {}
-    for label, sql in (
-        ("articles", "SELECT count(*) FROM news_articles WHERE subject_guid=%s"),
-        ("catalysts", "SELECT count(*) FROM catalyst_events WHERE subject_guid=%s"),
-    ):
-        cur.execute(sql, (subject_guid,))
-        out[label] = int(cur.fetchone()[0] or 0)
-    cur.execute("""SELECT max(created_at)::date FROM hermes_external_research
-                    WHERE subject_guid=%s""", (subject_guid,))
+    sg = change.get("subject_guid")
+    out: dict = {}
+
+    cur.execute("""SELECT sentences FROM subject_state_narratives
+                    WHERE change_guid = %s ORDER BY created_at DESC LIMIT 1""",
+                (change["change_guid"],))
     row = cur.fetchone()
-    out["last_research"] = str(row[0]) if row and row[0] else None
+    if row and row[0]:
+        payload = row[0] if isinstance(row[0], list) else json.loads(row[0])
+        out["narrative"] = [n.get("sentence") for n in payload if n.get("sentence")]
+
+    cur.execute("""SELECT question FROM due_diligence_questions
+                    WHERE change_guid = %s ORDER BY created_at LIMIT 2""",
+                (change["change_guid"],))
+    out["questions"] = [r[0] for r in cur.fetchall()]
+
+    # The raw trigger, for when curation has not run yet.
+    ev = change.get("evidence_json") or {}
+    if isinstance(ev, str):
+        try:
+            ev = json.loads(ev)
+        except Exception:  # noqa: BLE001
+            ev = {}
+    rng = ev.get("id_range")
+    if not out.get("narrative") and rng:
+        cur.execute("""SELECT headline FROM catalyst_events
+                        WHERE id BETWEEN %s AND %s AND symbol = %s
+                          AND headline IS NOT NULL
+                        ORDER BY published_at DESC LIMIT 1""",
+                    (rng[0], rng[1], change["symbol"]))
+        r = cur.fetchone()
+        if r:
+            out["headline"] = r[0]
+    if not out.get("narrative") and not out.get("headline") and sg:
+        cur.execute("""SELECT title FROM news_articles
+                        WHERE subject_guid = %s AND title IS NOT NULL
+                        ORDER BY published_at DESC LIMIT 1""", (sg,))
+        r = cur.fetchone()
+        if r:
+            out["headline"] = r[0]
+
+    if sg:
+        cur.execute("""SELECT max(created_at)::date FROM hermes_external_research
+                        WHERE subject_guid = %s""", (sg,))
+        r = cur.fetchone()
+        out["last_research"] = str(r[0]) if r and r[0] else None
     return out
 
 
-def render(changes: list[dict], ctx: dict[str, dict]) -> str:
-    lines = [f"Material change — {len(changes)} tracked name(s)"]
+def dedupe_by_symbol(changes: list[dict]) -> list[dict]:
+    """One line per SYMBOL, strongest signal wins.
+
+    The 2026-09-07 queue listed AOUT twice (two news bursts hours apart) and SPCX
+    twice. A name appearing repeatedly in one alert is not more informative — it is
+    harder to read, and it crowds out the other names.
+    """
+    best: dict[str, dict] = {}
     for c in changes:
-        sym, kind = c["symbol"], c["kind"]
-        mag = float(c["magnitude"] or 0)
-        c_ctx = ctx.get(str(c["subject_guid"]), {})
-        if kind == "price_excursion":
-            head = (f"{sym}: {float(c['observed_value']):.1f}% — "
-                    f"{mag:.1f}x its normal daily move "
-                    f"(usual {float(c['baseline']):.1f}%)")
+        sym = c["symbol"]
+        cur = best.get(sym)
+        if cur is None or (c.get("magnitude") or 0) > (cur.get("magnitude") or 0):
+            c = dict(c)
+            c["also"] = (cur or {}).get("also", 0) + (1 if cur else 0)
+            best[sym] = c
         else:
-            head = f"{sym}: {KIND_LABEL.get(kind, kind)} (x{mag:.1f} vs usual)"
-        lines.append("\n" + head)
-        lines.append(f"  tracked as: {c['universe_reason']}   observed {str(c['observed_at'])[:16]}")
-        if c_ctx:
-            known = f"  we hold {c_ctx.get('articles', 0)} articles, {c_ctx.get('catalysts', 0)} catalysts"
-            known += (f"; last research {c_ctx['last_research']}"
-                      if c_ctx.get("last_research") else "; no prior research")
-            lines.append(known)
+            cur["also"] = cur.get("also", 0) + 1
+    return sorted(best.values(),
+                  key=lambda x: (-(x.get("precedence") or 0), -(x.get("magnitude") or 0)))
+
+
+#: What the magnitude means, in words. "x1.2 vs usual" is noise dressed as signal.
+def _headline_line(c: dict) -> str:
+    sym, kind = c["symbol"], c["kind"]
+    mag = float(c["magnitude"] or 0)
+    if kind == "price_excursion":
+        return (f"{sym} — moved {float(c['observed_value']):.0f}%, "
+                f"{mag:.0f}x its normal daily range")
+    if kind == "news_burst":
+        return f"{sym} — unusual news volume, {mag:.0f}x normal"
+    if kind == "sector_move":
+        return f"{sym} — sector-wide move"
+    ev = c.get("evidence") or {}
+    ctype = str(ev.get("catalyst_type") or "").replace("_", " ")
+    return f"{sym} — {ctype or 'new catalyst'}"
+
+
+def render(changes: list[dict], ctx: dict[str, dict]) -> str:
+    changes = dedupe_by_symbol(changes)
+    lines = [f"Material change — {len(changes)} name(s) worth a look"]
+    for c in changes:
+        info = ctx.get(str(c["change_guid"]), {})
+        lines.append("\n" + _headline_line(c))
+
+        # WHAT HAPPENED. The narrative if we have one, else the actual headline.
+        if info.get("narrative"):
+            for sentence in info["narrative"][:2]:
+                lines.append(f"  {sentence}")
+        elif info.get("headline"):
+            lines.append(f"  {info['headline'][:150]}")
+
+        # WHY IT IS IN FRONT OF YOU.
+        tier = c.get("universe_reason", "")
+        why = ("you hold this" if "held" in tier else
+               "you asked about this" if "operator" in tier else
+               "re-entry candidate" if "reentry" in tier else "on your watchlist")
+        if "operator" in tier:
+            why = "you asked about this"
+        lines.append(f"  · {why}")
+
+        # WHAT TO DO. Never advice — the open question, or the absence of research.
+        if info.get("questions"):
+            lines.append(f"  · open question: {info['questions'][0]}")
+        elif not info.get("last_research"):
+            lines.append("  · never researched — questions are being generated now")
         else:
-            # Absence is a fact about our corpus, not about the world.
-            lines.append("  no identity match — nothing linked in the corpus yet")
+            lines.append(f"  · last researched {info['last_research']}")
     lines.append("\nAdvisory only. No position action taken or implied.")
     return "\n".join(lines)
 
@@ -172,15 +270,14 @@ def render(changes: list[dict], ctx: dict[str, dict]) -> str:
 def route_check(message: str) -> str:
     """Would the router send THIS message, or suppress it?
 
-    Asked BEFORE sending, on purpose. The first attempt at this asked afterwards by
-    reading the most recent communication_deliveries row — but "most recent row" is
-    not "the row for my send", and a stale SUPPRESSED row from an earlier attempt
-    made a successful send look unknown.
+    Asked BEFORE sending, on purpose. An earlier version asked afterwards by reading
+    the most recent communication_deliveries row — but "most recent row" is not "the
+    row for my send", and a stale SUPPRESSED row made a successful send look unknown.
 
-    should_send_telegram() is a pure function of the message and is correlated to
-    exactly this text, so there is nothing to mis-attribute. A router that cannot be
-    imported is treated as "will send" — that is the legacy path's own behaviour, and
-    assuming suppression there would silence every alert on a partial install.
+    should_send_telegram() is a pure function of the message, correlated to exactly
+    this text, so there is nothing to mis-attribute. A router that cannot be imported
+    is treated as "will send" — that is the legacy path's own behaviour, and assuming
+    suppression there would silence every alert on a partial install.
     """
     try:
         from telegram_alert_router import should_send_telegram
@@ -207,8 +304,7 @@ def main() -> int:
 
     open_now = args.ignore_window or in_window()
     rows = pending(cur, limit=MAX_PER_RUN)
-    ctx = {str(r["subject_guid"]): context(cur, r["subject_guid"]) for r in rows
-           if r["subject_guid"]}
+    ctx = {str(r["change_guid"]): context(cur, r) for r in rows}
 
     result = {"schema": SCHEMA, "authority": AUTHORITY, "model_calls": 0,
               "pending": len(rows), "in_window": open_now,

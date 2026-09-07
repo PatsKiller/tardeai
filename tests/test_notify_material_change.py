@@ -42,7 +42,7 @@ SCRIPT = ROOT / "scripts" / "notify_material_change.py"
 ET = ZoneInfo("America/New_York")
 
 #: The alarm site this file drives end to end.
-COVERS = ["scripts/notify_material_change.py:254"]
+COVERS = ["scripts/notify_material_change.py:350"]
 
 
 @pytest.fixture(scope="module")
@@ -93,7 +93,8 @@ def test_a_suppressed_send_leaves_the_change_pending(mod):
     (datetime(2026, 9, 5, 12, 0, tzinfo=ET), False),   # Saturday
     (datetime(2026, 9, 6, 12, 0, tzinfo=ET), False),   # Sunday
 ])
-def test_the_market_window(mod, when, expected):
+def test_the_market_window_when_explicitly_enabled(mod, monkeypatch, when, expected):
+    monkeypatch.setattr(mod, "NOTIFY_WINDOW", "market")
     assert mod.in_window(when) is expected
 
 
@@ -104,9 +105,20 @@ def test_outside_the_window_the_change_is_held_not_dropped(mod):
     assert "notified_at" not in held, "a held change must stay pending"
 
 
-def test_the_window_can_be_disabled(mod, monkeypatch):
-    monkeypatch.setattr(mod, "NOTIFY_WINDOW", "always")
-    assert mod.in_window(datetime(2026, 9, 6, 3, 0, tzinfo=ET)) is True
+def test_alerts_are_not_gated_by_the_clock_by_default(mod):
+    """Operator decision 2026-09-07. The market-hours default held 36 consecutive
+    runs while AOUT burst at 07:13 and SPCX at 16:41 — the operator saw nothing and
+    reasonably concluded the layer was dark. News does not wait for the bell."""
+    assert mod.NOTIFY_WINDOW == "always"
+    assert mod.in_window(datetime(2026, 9, 6, 3, 0, tzinfo=ET)) is True   # Sunday 3am
+    assert mod.in_window(datetime(2026, 9, 7, 7, 13, tzinfo=ET)) is True  # pre-market
+
+
+def test_the_market_window_still_works_when_asked_for(mod, monkeypatch):
+    """The gating is not deleted, just no longer the default."""
+    monkeypatch.setattr(mod, "NOTIFY_WINDOW", "market")
+    assert mod.in_window(datetime(2026, 9, 6, 12, 0, tzinfo=ET)) is False  # Saturday
+    assert mod.in_window(datetime(2026, 9, 4, 10, 0, tzinfo=ET)) is True
 
 
 def test_stale_changes_are_not_announced(mod):
@@ -124,24 +136,52 @@ def test_one_thrashing_name_cannot_dominate(mod):
 # ── what the operator actually reads ────────────────────────────────────────
 
 def test_the_move_is_expressed_relative_to_the_name_itself(mod):
-    """'AOUT +45%' is a number. '14.9x its normal daily move' is intelligence."""
-    msg = mod.render([_row()], {"s-1": {"articles": 64, "catalysts": 70,
-                                        "last_research": None}})
-    assert "14.9x its normal daily move" in msg
-    assert "usual 3.0%" in msg
+    """'AOUT +45%' is a number. '15x its normal daily range' is intelligence."""
+    msg = mod.render([_row()], {"g-1": {}})
+    assert "15x its normal daily range" in msg
+    assert "45%" in msg
 
 
-def test_the_alert_says_what_we_already_hold(mod):
-    msg = mod.render([_row()], {"s-1": {"articles": 64, "catalysts": 70,
-                                        "last_research": None}})
-    assert "64 articles" in msg and "70 catalysts" in msg
-    assert "no prior research" in msg
+def test_the_alert_says_WHAT_HAPPENED_not_how_many_rows_we_hold(mod):
+    """The first version reported "we hold 212 articles, 209 catalysts" — internal
+    plumbing on the operator's phone. It says nothing about the company, nothing
+    about what changed, and nothing about what to do. The operator's verdict was
+    "what am I supposed to do with these"."""
+    msg = mod.render([_row()], {"g-1": {
+        "narrative": ["Shares jumped 14.6% after better-than-expected Q2 sales."],
+        "questions": ["What were the margin percentages?"],
+        "last_research": None}})
+    assert "Shares jumped 14.6%" in msg
+    assert "articles" not in msg and "catalysts" not in msg, "plumbing leaked again"
 
 
-def test_absence_is_stated_as_a_fact_about_the_corpus(mod):
-    """Not about the world. We can only ever say what WE hold."""
-    msg = mod.render([_row(subject_guid=None)], {})
-    assert "nothing linked in the corpus yet" in msg
+def test_the_alert_says_WHY_IT_IS_IN_FRONT_OF_YOU(mod):
+    held = mod.render([_row(universe_reason="held")], {"g-1": {}})
+    asked = mod.render([_row(universe_reason="held+operator")], {"g-1": {}})
+    reentry = mod.render([_row(universe_reason="reentry")], {"g-1": {}})
+    assert "you hold this" in held
+    assert "you asked about this" in asked
+    assert "re-entry candidate" in reentry
+
+
+def test_the_alert_offers_a_question_rather_than_advice(mod):
+    """It must never tell the operator what to do with a position."""
+    msg = mod.render([_row()], {"g-1": {"questions": ["What drove the margin move?"]}})
+    assert "open question: What drove the margin move?" in msg
+    for banned in ("buy", "sell", "trim", "add to"):
+        assert banned not in msg.lower()
+
+
+def test_a_name_never_researched_says_so(mod):
+    """The most actionable thing an alert can say about a mover we have ignored."""
+    msg = mod.render([_row()], {"g-1": {"last_research": None}})
+    assert "never researched" in msg
+
+
+def test_the_headline_is_used_when_curation_has_not_run(mod):
+    """Better a real headline than a magnitude nobody can act on."""
+    msg = mod.render([_row()], {"g-1": {"headline": "Acme cuts full-year guidance"}})
+    assert "Acme cuts full-year guidance" in msg
 
 
 def test_it_never_advises(mod):
@@ -193,6 +233,8 @@ def _drive(mod, monkeypatch, *, rows, route="WILL_SEND", accepted=True):
                 updates.append((sql, params)); self._rows = []
             elif "SELECT change_guid" in sql:
                 self._rows = rows
+            elif "subject_state_narratives" in sql or "due_diligence_questions" in sql:
+                self._rows = []
             else:
                 self._rows = [(0,)]
 
@@ -213,7 +255,7 @@ def _drive(mod, monkeypatch, *, rows, route="WILL_SEND", accepted=True):
 
     monkeypatch.setattr(mod, "_db", lambda: Conn())
     monkeypatch.setattr(mod, "route_check", lambda m: route)
-    monkeypatch.setattr(mod, "context", lambda cur, sg: {})
+    monkeypatch.setattr(mod, "context", lambda cur, change: {})
     fake = type(sys)("telegram_alert")
     fake.send_telegram = lambda msg, **kw: (sent.append(msg), accepted)[1]
     monkeypatch.setitem(sys.modules, "telegram_alert", fake)
@@ -225,17 +267,17 @@ def _drive(mod, monkeypatch, *, rows, route="WILL_SEND", accepted=True):
 def test_the_alarm_reaches_the_transport(mod, monkeypatch):
     """The firing test: inject a pending change, observe the message sent."""
     row = ("g-1", "AOUT", "price_excursion", 14.93, 3.0438, 45.4363,
-           "2026-09-04 00:00:00", "watchlist", None)
+           "2026-09-04 00:00:00", "watchlist", None, None)
     sent, updates = _drive(mod, monkeypatch, rows=[row])
     assert len(sent) == 1, "the alarm did not reach send_telegram"
-    assert "AOUT" in sent[0] and "14.9x its normal daily move" in sent[0]
+    assert "AOUT" in sent[0] and "15x its normal daily range" in sent[0]
     assert updates, "a sent alarm must mark the change notified"
 
 
 def test_a_suppressing_router_neither_sends_nor_consumes(mod, monkeypatch):
     """The incident, reproduced. ACCEPTED-but-suppressed must not consume."""
     row = ("g-1", "AOUT", "price_excursion", 14.93, 3.0438, 45.4363,
-           "2026-09-04 00:00:00", "watchlist", None)
+           "2026-09-04 00:00:00", "watchlist", None, None)
     sent, updates = _drive(mod, monkeypatch, rows=[row], route="WOULD_SUPPRESS")
     assert sent == [], "it sent into a known suppression"
     assert updates == [], "it consumed a change the operator never received"
@@ -243,7 +285,7 @@ def test_a_suppressing_router_neither_sends_nor_consumes(mod, monkeypatch):
 
 def test_an_unaccepted_send_does_not_consume(mod, monkeypatch):
     row = ("g-1", "AOUT", "price_excursion", 14.93, 3.0438, 45.4363,
-           "2026-09-04 00:00:00", "watchlist", None)
+           "2026-09-04 00:00:00", "watchlist", None, None)
     sent, updates = _drive(mod, monkeypatch, rows=[row], accepted=False)
     assert len(sent) == 1
     assert updates == [], "a rejected send must leave the change pending"
@@ -257,3 +299,31 @@ def test_the_body_pages_rather_than_digests(mod):
     msg = mod.render([_row()], {"s-1": {"articles": 64, "catalysts": 70,
                                         "last_research": None}})
     assert classify_alert(msg) == "P0_INTERRUPT"
+
+
+# ── one line per symbol ─────────────────────────────────────────────────────
+
+def test_a_name_appears_once_however_many_signals_produced_it(mod):
+    """The 2026-09-07 queue listed AOUT twice and SPCX twice. A name repeated in one
+    alert is not more informative — it is harder to read and it crowds out the others."""
+    rows = [_row(symbol="AOUT", magnitude=7.7, kind="news_burst"),
+            _row(symbol="AOUT", magnitude=6.5, kind="news_burst"),
+            _row(symbol="SPCX", magnitude=4.0, kind="catalyst_new")]
+    out = mod.dedupe_by_symbol(rows)
+    assert [c["symbol"] for c in out] == ["AOUT", "SPCX"]
+    assert out[0]["magnitude"] == 7.7, "the strongest signal must survive, not the last"
+    assert out[0]["also"] == 1
+
+
+def test_collapsing_rows_keeps_one_line_per_name(mod):
+    rows = [_row(symbol="AOUT", magnitude=7.7), _row(symbol="AOUT", magnitude=6.5)]
+    out = mod.dedupe_by_symbol(rows)
+    assert len(out) == 1 and out[0]["magnitude"] == 7.7
+
+
+def test_precedence_orders_the_alert_not_magnitude_alone(mod):
+    """A held name at 2x outranks a watchlist name at 9x — money at risk first."""
+    rows = [_row(symbol="IDEA", magnitude=9.0, precedence=40),
+            _row(symbol="HELD", magnitude=2.0, precedence=80)]
+    out = mod.dedupe_by_symbol(rows)
+    assert [c["symbol"] for c in out] == ["HELD", "IDEA"]
