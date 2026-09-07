@@ -153,6 +153,18 @@ def route_event(event: AlertEvent) -> RoutingDecision:
         return RoutingDecision(ROUTE_DIGEST, None, "RISK", 24 * 3600, 3600, None)
     if atype in {"proposal_revalidated_or_cancelled"}:
         return RoutingDecision(ROUTE_DIGEST, None, "TRADING", 24 * 3600, 3600, None)
+    if atype == "material_change":
+        # A tracked name behaving unlike ITSELF — AOUT at 14.9x its own average daily
+        # move on 2026-09-04, which the operator saw on the movers board and was never
+        # told about. Same shape as thesis_update and for the same reason: immediate,
+        # general channel, deduped on the hour.
+        #
+        # Deliberately NOT in CRITICAL_IMMEDIATE_TYPES. That set is capital at risk
+        # right now — orphaned stops, protection failures, broker auth. A price move is
+        # not that, and diluting the critical set is how a critical channel stops being
+        # read. But DIGEST made it arrive hours later, which for a 45% move is the same
+        # as not arriving at all.
+        return RoutingDecision(ROUTE_IMMEDIATE, CRITICAL_OPERATIONS, None, 24 * 3600, 3600, None)
     if atype == "thesis_update":
         # A material thesis change is the one piece the operator wants as text (not
         # noise). Immediate to the general channel; deduped on the 60-min window.
@@ -229,6 +241,11 @@ def classify_legacy_message(message: str, *, source_producer: str = "legacy_send
         return ev("paper_proposal", "info")
     if re.search(r"proposal.*(?:blocked|rebuild|watch|expired|stale|revalidated|cancelled|canceled|rejected|deferred)", text, re.I):
         return ev("proposal_blocked_or_rebuild", "info")
+    # MaterialChangeNotice@v1 renders this exact header. Matched BEFORE the
+    # research_update branches, which route to DIGEST and swallowed the first live
+    # alert into the 8pm digest queue instead of sending it.
+    if "material change \u2014" in low or "x its normal daily move" in low:
+        return ev("material_change", "info")
     if re.search(r"research update|holding research|analyst report|catalyst research", text, re.I):
         return ev("research_update", "info")
     if re.search(r"hermes watchlist|rank-only|watchlist alerts", text, re.I):

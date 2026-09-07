@@ -2292,6 +2292,73 @@ run.**
 Orientation, not architecture. §10 cannot be followed without knowing there are several trees and
 which one you are standing in — that confusion produced four checkout-relative splits.
 
+## Material-change intelligence `[VERIFIED]` 2026-09-06
+
+Design: `docs/architecture/MATERIAL_CHANGE_TO_QUESTIONS.md`. Stages 0-2 are live; 3-5 are
+designed and prototyped. **Advisory only** — none of it sizes, orders, stops, or writes to
+a broker.
+
+The gap it closes: every research job here is schedule-triggered (`*/30 4-9`, `30 9-15`,
+`0 18,22`). A sweep treats every name identically on every pass, so it structurally cannot
+notice that ONE name is behaving unlike ITSELF. Three watchlist names were up 15-40% on
+2026-09-05 and nothing said so.
+
+| script | contract | what it does |
+|---|---|---|
+| `backfill_subject_identity.py` | `SubjectIdentityBackfill@v1` | puts the corpus on the identity spine; cron `*/30` |
+| `material_change_detector.py` | `MaterialChange@v1` | fires when a move exceeds K x the symbol's own average daily move |
+| `notify_material_change.py` | `MaterialChangeNotice@v1` | tells the operator, exactly once per change |
+
+**All three are FREE — no model on any row.** Detection stays deterministic so the
+expensive judgement step (stages 3-4) only ever runs on things that actually moved. If you
+are tempted to "improve" any of them with a model, a test will stop you, and it is right to.
+
+### Guard rails — each one is here because it already went wrong
+
+- **Coverage decays. Nothing stamps `subject_guid` at write time.** 38 rows arrived
+  untagged in the eleven minutes after the first backfill. The `*/30` sweep is not
+  optional; a one-shot backfill is a snapshot, not a state.
+- **`identity_status IS NULL` means exactly one thing: nobody has looked at this row yet.**
+  Examined-but-unresolvable is stamped `UNRESOLVABLE`. Do not "tidy" that to NULL — a
+  column that cannot separate the two cannot measure its own coverage.
+- **Topics are subjects, not securities.** `d107_energy_transition` and
+  `su_industry_insurance_brokers` are research themes filed under the `symbol` column.
+  They get a guid in the `topic` namespace. Never give a theme a SECURITY guid.
+- **The baseline is average daily move, NOT ATR.** `ticker_prices` has no high/low. ATR
+  exists in `indicator_confluence_cache` but covers 40 of 97 active watchlist symbols;
+  close-to-close covers 88. Do not rename it ATR — the word would be a lie about the
+  calculation.
+- **Never use a fixed percent threshold.** 8% is noise in one name and a five-sigma event
+  in another. `K` (default 3.0) is env-tunable without a deploy.
+- **A NaN fires.** `ticker_prices` carries literal NaN. `NaN < K` is False, so the
+  early-continue never triggers and corrupt data is emitted as a real change. Postgres
+  NUMERIC NaN compares EQUAL to itself, unlike float, so the filter cannot be written
+  `close_price = close_price`.
+- **ACCEPTED is not DELIVERED.** `send_telegram` returns True when the platform takes
+  responsibility. It returned True while the router suppressed the message into the 8pm
+  digest, and three changes were marked notified while the operator received nothing. Ask
+  `should_send_telegram()` BEFORE sending. Do not check the ledger afterwards — "most
+  recent delivery row" is not "the row for my send".
+- **`material_change` routes IMMEDIATE, and is deliberately NOT in
+  `CRITICAL_IMMEDIATE_TYPES`.** That set is capital at risk right now. Diluting it is how
+  a critical channel stops being read.
+- **Held is not dropped.** Outside market hours a change stays pending and is announced at
+  the next open. Dropping a Friday-evening move is the exact failure this exists to fix.
+- **Every question, narrative and change is addressable and append-only.** `uuid5` over
+  (subject, trigger, text), so the same finding dedupes instead of accumulating. Nothing is
+  deleted; a better artifact supersedes and the chain stays walkable.
+
+### Lane policy for stages 3-5
+
+Free OAuth first (Grok, ChatGPT), then `deepseek-flash`, then **ASK THE OPERATOR** before
+any further paid lane. That third step is a hard STOP, not a preference, and a failed
+notification is never permission to spend. Measured: the question prototype ran twice on
+the free lane at $0.00, with zero ungrounded citations.
+
+Known weakness, unfixed: the prototype produced one question about the system's OWN
+scoring rather than about the company. Constrain the prompt and filter internal-scoring
+text out of the dossier when wiring stage 3.
+
 ## The trees `[VERIFIED]` 2026-08-31
 
 | tree | path | role |
