@@ -30,6 +30,67 @@ SUPPORTED_CHANNELS = frozenset(
     {"email", "slack", "whatsapp_twilio", "whatsapp_meta", "telegram"}
 )
 
+
+def render_for_channel(
+    body: str,
+    channel: str,
+    *,
+    subject: str | None = None,
+    parse_mode: str | None = None,
+) -> dict[str, Any]:
+    """Channel-neutral core → channel-specific formatting (no network I/O).
+
+    Core body is plain text. Adapters wrap channel specifics (HTML parse_mode,
+    email subject/html, slack mrkdwn, whatsapp plain).
+    """
+    ch = str(channel or "").strip().lower()
+    text = body or ""
+    if ch not in SUPPORTED_CHANNELS:
+        return {"ok": False, "error": f"unsupported_channel:{ch}", "channel": ch}
+    if ch == "telegram":
+        mode = parse_mode or "HTML"
+        # Minimal HTML validity: escape bare < that aren't tags we emit.
+        if mode == "HTML":
+            # Reject unbalanced obvious unsafe constructs without rewriting meaning.
+            if "<script" in text.lower() or "javascript:" in text.lower():
+                return {
+                    "ok": False,
+                    "error": "unsafe_html",
+                    "channel": ch,
+                    "parse_mode": mode,
+                }
+        return {
+            "ok": True,
+            "channel": ch,
+            "text": text,
+            "parse_mode": mode,
+            "format": "telegram",
+        }
+    if ch == "email":
+        return {
+            "ok": True,
+            "channel": ch,
+            "subject": subject or "(no subject)",
+            "text": text,
+            "html": f"<pre>{text}</pre>",
+            "format": "email",
+        }
+    if ch == "slack":
+        return {
+            "ok": True,
+            "channel": ch,
+            "text": text,
+            "mrkdwn": True,
+            "format": "slack",
+        }
+    # whatsapp_*
+    return {
+        "ok": True,
+        "channel": ch,
+        "text": text,
+        "format": "whatsapp",
+    }
+
 ADAPTER_VERSIONS = {
     "email": "email@v1",
     "slack": "slack@v1",
@@ -425,6 +486,8 @@ def send_via_gateway(
                     status="FAILED",
                     error_taxonomy=send_error[:200],
                     provider_coordinates=provider_coordinates,
+                    delivery_owner="gateway",
+                    gateway_mode=mode,
                 )
             else:
                 settle_delivery(
@@ -432,19 +495,25 @@ def send_via_gateway(
                     status="SENT",
                     provider_message_id=provider_message_id,
                     provider_coordinates=provider_coordinates,
+                    delivery_owner="gateway",
+                    gateway_mode=mode,
                 )
         except Exception as exc:
             base["errors"].append(f"settle_failed:{type(exc).__name__}")
 
     if send_error:
+        # Recorded fallback reason (never silent) — gateway owned the attempt.
         base["ok"] = False
         base["error"] = send_error
         base["errors"].append(send_error)
         base["delivered"] = False
+        base["fallback_reason"] = f"gateway_provider_failed:{send_error[:120]}"
         return base
 
     base["ok"] = True
     base["delivered"] = True
+    base["delivery_owner"] = "gateway"
+    base["gateway_mode_at_dispatch"] = mode
     if provider_message_id:
         base["provider_message_id"] = provider_message_id
     return base

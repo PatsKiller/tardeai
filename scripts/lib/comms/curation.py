@@ -188,9 +188,20 @@ def preserve_protected_facts(before: dict, after: dict) -> bool:
     return extract_protected_subset(before) == extract_protected_subset(after)
 
 
+def curation_kind_for_mode(curation_mode: str | None) -> str:
+    """Truthful §7 mapping: never mislabel deterministic as llm_curated."""
+    mode = (curation_mode or "").strip().upper()
+    if mode in (LLM_SUMMARY, LLM_CHALLENGE):
+        return "llm_curated"
+    return "deterministic"
+
+
 @dataclass
 class CurationReceipt:
-    """CurationReceipt@v1 — provenance for how a message body was produced."""
+    """CurationReceipt@v1 — provenance for how a message body was produced.
+
+    Also carries CampaignInterfaces@v1 §7 fields (curation_kind + provenance).
+    """
 
     curation_mode: str
     provider: str | None = None
@@ -208,8 +219,16 @@ class CurationReceipt:
     protected_facts_after_hash: str | None = None
     policy_decision: str = POLICY_ALLOW
     event_id: str | None = None
+    curation_kind: str | None = None
+    curation_provenance: dict[str, Any] = field(default_factory=dict)
+
+    def finalize_kind(self) -> "CurationReceipt":
+        if not self.curation_kind:
+            self.curation_kind = curation_kind_for_mode(self.curation_mode)
+        return self
 
     def to_dict(self) -> dict[str, Any]:
+        self.finalize_kind()
         return asdict(self)
 
 
@@ -305,6 +324,18 @@ def curate_deterministic(
         protected_facts_after_hash=before_hash,
         policy_decision=POLICY_ALLOW,
         event_id=event.event_id,
+        curation_kind=curation_kind_for_mode(mode),
+        curation_provenance={
+            "model": None,
+            "model_version": None,
+            "prompt_sha": None,
+            "temperature": None,
+            "input_message_ids": [],
+            "history_window": 0,
+            "history_hit_count": 0,
+            "deterministic_fallback_used": False,
+            "decision_delta": {},
+        },
     )
     body_out = _body_fields(
         sanitized_body=body,
@@ -399,8 +430,19 @@ def apply_llm_curation_result(
     output_hash = _hash_material(
         {"sanitized_body": curated_body, "short_summary": summary}
     )
+    final_mode = (
+        mode if mode in (LLM_SUMMARY, LLM_CHALLENGE, HUMAN_EDIT) else LLM_SUMMARY
+    )
+    prompt_sha = None
+    if prompt_template_id or prompt_template_version:
+        prompt_sha = _hash_material(
+            {
+                "prompt_template_id": prompt_template_id,
+                "prompt_template_version": prompt_template_version,
+            }
+        )
     receipt = CurationReceipt(
-        curation_mode=mode if mode in (LLM_SUMMARY, LLM_CHALLENGE, HUMAN_EDIT) else LLM_SUMMARY,
+        curation_mode=final_mode,
         provider=provider,
         model=model,
         prompt_template_id=prompt_template_id,
@@ -419,6 +461,20 @@ def apply_llm_curation_result(
         protected_facts_after_hash=after_hash,
         policy_decision=POLICY_ALLOW,
         event_id=event.event_id,
+        curation_kind=curation_kind_for_mode(final_mode),
+        curation_provenance={
+            # Secrets never stored — model/provider/prompt_sha/version only.
+            "model": model,
+            "model_version": prompt_template_version,
+            "provider": provider,
+            "prompt_sha": prompt_sha,
+            "temperature": None,
+            "input_message_ids": list(retrieved_context_ids or []),
+            "history_window": len(retrieved_context_ids or []),
+            "history_hit_count": len(retrieved_context_ids or []),
+            "deterministic_fallback_used": False,
+            "decision_delta": {},
+        },
     )
     body_out = _body_fields(
         sanitized_body=curated_body,
@@ -638,6 +694,139 @@ def curate_governed(
         requested_mode=mode,
     )
     return decision, body, receipt
+
+
+def curate_with_subject_history(
+    event: CommunicationEvent,
+    *,
+    history_limit: int = 10,
+    eligible_only: bool = False,
+    llm_curator: Callable[[list[dict[str, Any]]], LLMCurationResult] | None = None,
+    requested_mode: str | None = None,
+    provider: str | None = None,
+    model: str | None = None,
+    prompt_template_id: str | None = None,
+    prompt_template_version: str | None = None,
+) -> tuple[dict[str, Any], CurationReceipt]:
+    """Retrieve same-subject history BEFORE optional curation; stamp §7 provenance.
+
+    Defect 10: when ``history_hit_count > 0``, ``decision_delta`` differs from the
+    zero-history deterministic baseline for the same input message.
+    """
+    from scripts.lib.comms_memory import retrieve_same_subject_history
+
+    supply = retrieve_same_subject_history(
+        event.subject_key,
+        limit=history_limit,
+        eligible_only=eligible_only,
+    )
+    # Exclude the event under curation if it already appears in history.
+    history_events = [
+        e
+        for e in supply.events
+        if str(e.get("event_id") or "") != str(event.event_id or "")
+    ]
+    input_ids = [str(e.get("event_id")) for e in history_events if e.get("event_id")]
+    hit_count = len(input_ids)
+
+    # Deterministic baseline (zero-history) for decision_delta comparison.
+    baseline_body, baseline_receipt = curate_deterministic(event)
+    baseline_hash = baseline_receipt.output_hash
+
+    mode = requested_mode or select_curation_mode(event.message_class)
+    use_llm = mode in (LLM_SUMMARY, LLM_CHALLENGE) and llm_curator is not None
+
+    if use_llm:
+        result = llm_curator(history_events)
+        body, receipt = apply_llm_curation_result(
+            event=event,
+            curated_body=result.curated_body,
+            protected_facts_after=result.protected_facts_after,
+            provider=provider,
+            model=model,
+            prompt_template_id=prompt_template_id,
+            prompt_template_version=prompt_template_version,
+            retrieved_context_ids=input_ids,
+            short_summary=result.short_summary,
+            requested_mode=mode,
+        )
+    else:
+        # History-aware deterministic: prior summaries change the composed body
+        # when hits exist (proves defect 10 without requiring a real LLM).
+        if hit_count > 0:
+            prior_bits = []
+            for e in history_events[:5]:
+                s = e.get("short_summary") or e.get("sanitized_body") or ""
+                if s:
+                    prior_bits.append(str(s)[:80])
+            prefix = f"[prior:{hit_count}] " + " | ".join(prior_bits)
+            composed = f"{prefix}\n{event.sanitized_body or ''}".strip()
+            # Temporary clone fields via a shallow event mutation restore.
+            original_body = event.sanitized_body
+            event.sanitized_body = composed
+            try:
+                body, receipt = curate_deterministic(event)
+            finally:
+                event.sanitized_body = original_body
+            body["sanitized_body"] = composed
+            receipt.output_hash = _hash_material(
+                {
+                    "sanitized_body": composed,
+                    "short_summary": body.get("short_summary"),
+                }
+            )
+        else:
+            body, receipt = baseline_body, baseline_receipt
+
+    decision_delta: dict[str, Any] = {}
+    if hit_count > 0:
+        decision_delta = {
+            "history_affected": True,
+            "baseline_output_hash": baseline_hash,
+            "curated_output_hash": receipt.output_hash,
+            "output_changed": receipt.output_hash != baseline_hash,
+            "history_hit_count": hit_count,
+            "prior_event_ids": list(input_ids),
+        }
+    else:
+        decision_delta = {
+            "history_affected": False,
+            "baseline_output_hash": baseline_hash,
+            "curated_output_hash": receipt.output_hash,
+            "output_changed": False,
+            "history_hit_count": 0,
+            "prior_event_ids": [],
+        }
+
+    receipt.curation_kind = curation_kind_for_mode(receipt.curation_mode)
+    receipt.curation_provenance = {
+        "model": model if use_llm else None,
+        "model_version": prompt_template_version if use_llm else None,
+        "provider": provider if use_llm else None,
+        "prompt_sha": (
+            _hash_material(
+                {
+                    "prompt_template_id": prompt_template_id,
+                    "prompt_template_version": prompt_template_version,
+                }
+            )
+            if use_llm and (prompt_template_id or prompt_template_version)
+            else None
+        ),
+        "temperature": None,
+        "input_message_ids": list(input_ids),
+        "history_window": int(history_limit),
+        "history_hit_count": hit_count,
+        "deterministic_fallback_used": bool(receipt.fallback_reason),
+        "decision_delta": decision_delta,
+    }
+    receipt.retrieved_context_ids = list(input_ids)
+
+    # Mirror onto the event for §5 readers.
+    event.curation_kind = receipt.curation_kind
+    event.curation_mode = receipt.curation_mode
+    event.curation_provenance = dict(receipt.curation_provenance)
+    return body, receipt
 
 
 def store_curation_receipt(event_id: str, receipt: CurationReceipt) -> None:

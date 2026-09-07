@@ -43,7 +43,7 @@ def _clean(monkeypatch):
 
 def test_known_agents_set():
     assert KNOWN_AGENTS == frozenset({"cio", "hermes", "advisory", "darwin", "maria"})
-    assert SCHEMA_VERSION == "AgentConsumptionReceipt@v1"
+    assert SCHEMA_VERSION == "AgentConsumptionReceipt@v2"
 
 
 def test_subscribe_and_filter_eligible_events():

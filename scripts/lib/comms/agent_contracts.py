@@ -1,7 +1,10 @@
-"""Persistent-agent consumption contracts (Phase 8) — AgentConsumptionReceipt@v1.
+"""Persistent-agent consumption contracts — AgentConsumptionReceipt@v2.
 
 CIO, Hermes, Advisory, Darwin, Maria (+ future with allow_unknown) subscribe via
 contracts, acknowledge consumption, emit receipts, and declare influence lineage.
+
+@v2 is source-neutral (CampaignInterfaces@v1 §6) and backward-compatible with
+@v1: event_id maps to (source_kind='comm_event', source_id=event_id).
 
 Agents must not self-certify institutional truth: no helper writes knowledge_status
 ACCEPTED (or other truthy institutional statuses) on behalf of a consuming agent.
@@ -14,9 +17,17 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
+from scripts.lib.campaign_interfaces_b import (
+    EFFECT_KINDS,
+    RECEIPT_SCHEMA,
+    SOURCE_KINDS,
+    envelope,
+    mint_receipt_id,
+)
 from scripts.lib.comms.identity import new_event_id
 
-SCHEMA_VERSION = "AgentConsumptionReceipt@v1"
+SCHEMA_VERSION = "AgentConsumptionReceipt@v2"
+SCHEMA_VERSION_V1 = "AgentConsumptionReceipt@v1"
 
 KNOWN_AGENTS = frozenset({"cio", "hermes", "advisory", "darwin", "maria"})
 
@@ -165,14 +176,23 @@ def _normalize_filter(filt: dict[str, Any] | None) -> dict[str, Any]:
 
 @dataclass
 class AgentConsumptionReceipt:
-    """AgentConsumptionReceipt@v1 — agent retrieved/used a communication artifact."""
+    """AgentConsumptionReceipt@v2 — source-neutral consumption receipt (§6).
+
+    Compatibility: ``event_id`` is an alias for ``source_id`` when
+    ``source_kind='comm_event'``. Uniqueness is
+    ``(agent_id, source_kind, source_id, purpose)``.
+    """
 
     agent_id: str
-    event_id: str
     purpose: str
+    event_id: str | None = None  # @v1 alias → source_id when source_kind=comm_event
+    source_kind: str = "comm_event"
+    source_id: str | None = None
     receipt_id: str | None = None
     agent_version: str | None = None
     thread_id: str | None = None
+    subject_guid: str | None = None
+    wake_id: str | None = None
     artifact_ids: list[Any] = field(default_factory=list)
     policy_decision: str | None = None
     retrieved_at: datetime | None = None
@@ -180,14 +200,57 @@ class AgentConsumptionReceipt:
     derived_artifact_ids: list[Any] = field(default_factory=list)
     influence_declaration: str | None = None
     influence_event_ids: list[Any] = field(default_factory=list)
+    influence_source_ids: list[Any] = field(default_factory=list)
+    effect_kind: str = "none"
+    effect_ref: str | None = None
     schema_version: str = SCHEMA_VERSION
     persisted: str = "none"
+    # §2 envelope
+    source_sha: str | None = None
+    produced_at: datetime | None = None
+    correlation_id: str | None = None
+    idempotency_key: str | None = None
+    parent_id: str | None = None
+    parent_kind: str | None = None
+    retention_class: str = "operational_90d"
+    lifecycle_state: str = "ACKNOWLEDGED"
+    provenance: dict[str, Any] = field(default_factory=dict)
 
     def mint_identity(self) -> "AgentConsumptionReceipt":
+        sk = (self.source_kind or "comm_event").strip() or "comm_event"
+        if sk not in SOURCE_KINDS:
+            raise AgentContractError(f"source_kind_invalid:{sk}")
+        self.source_kind = sk
+        sid = (self.source_id or self.event_id or "").strip()
+        if not sid:
+            raise AgentContractError("source_id (or event_id) required")
+        self.source_id = sid
+        if sk == "comm_event":
+            self.event_id = sid  # keep @v1 alias populated
+        ek = (self.effect_kind or "none").strip() or "none"
+        if ek not in EFFECT_KINDS:
+            raise AgentContractError(f"effect_kind_invalid:{ek}")
+        self.effect_kind = ek
         if not self.receipt_id:
-            self.receipt_id = f"acr_{new_event_id()}"
+            # Deterministic uuid5 mint for replay (not random).
+            self.receipt_id = mint_receipt_id(
+                self.agent_id, self.source_kind, self.source_id, self.purpose
+            )
         if self.retrieved_at is None:
             self.retrieved_at = _now()
+        if self.produced_at is None:
+            self.produced_at = self.retrieved_at
+        if not self.idempotency_key:
+            self.idempotency_key = self.receipt_id
+        if not self.correlation_id:
+            self.correlation_id = self.thread_id or self.source_id
+        if not self.provenance:
+            self.provenance = {
+                "producer": "unknown",
+                "inputs": [self.source_id],
+                "policy_decisions": [],
+                "llm": None,
+            }
         return self
 
     def to_dict(self) -> dict[str, Any]:
@@ -195,6 +258,20 @@ class AgentConsumptionReceipt:
         d = asdict(self)
         d["retrieved_at"] = _iso(self.retrieved_at)
         d["acknowledged_at"] = _iso(self.acknowledged_at)
+        d["produced_at"] = _iso(self.produced_at)
+        # Surface §2 envelope as nested block for consumers that expect it.
+        d["envelope"] = envelope(
+            schema_version=self.schema_version,
+            source_sha=self.source_sha or "",
+            produced_at=_iso(self.produced_at) or "",
+            correlation_id=self.correlation_id or "",
+            idempotency_key=self.idempotency_key or self.receipt_id or "",
+            lifecycle_state=self.lifecycle_state,
+            provenance=dict(self.provenance or {}),
+            parent_id=self.parent_id,
+            parent_kind=self.parent_kind,
+            retention_class=self.retention_class,
+        )
         return d
 
 
@@ -531,29 +608,44 @@ def eligible_events_for_agent(
 def emit_consumption_receipt(
     agent_id: str,
     *,
-    event_id: str,
+    event_id: str | None = None,
     purpose: str,
     agent_version: str | None = None,
     thread_id: str | None = None,
+    subject_guid: str | None = None,
+    wake_id: str | None = None,
+    source_kind: str = "comm_event",
+    source_id: str | None = None,
+    effect_kind: str = "none",
+    effect_ref: str | None = None,
     artifact_ids: list[Any] | None = None,
     policy_decision: str | None = None,
     derived_artifact_ids: list[Any] | None = None,
     influence_declaration: str | None = None,
     influence_event_ids: list[Any] | None = None,
+    influence_source_ids: list[Any] | None = None,
     knowledge_status: Any = None,
     claimed_knowledge_status: Any = None,
     event: dict[str, Any] | None = None,
     allow_unknown: bool = False,
+    source_sha: str | None = None,
+    correlation_id: str | None = None,
+    parent_id: str | None = None,
+    parent_kind: str | None = None,
+    provenance: dict[str, Any] | None = None,
 ) -> AgentConsumptionReceipt:
-    """Emit AgentConsumptionReceipt@v1 for agent retrieval/use of an event.
+    """Emit AgentConsumptionReceipt@v2 for agent retrieval/use of a source.
 
-    Requires agent_id, event_id, purpose. Optional influence_declaration.
+    Requires agent_id, purpose, and source identity (source_id or event_id).
+    ``event_id`` remains the @v1 alias for ``source_kind='comm_event'``.
     Rejects any attempt to claim knowledge_status ACCEPTED / truthy statuses.
     Does not write knowledge_status onto the communication event.
+    Does not write wake tables.
     """
     aid = _require_known_agent(agent_id, allow_unknown=allow_unknown)
-    eid = (event_id or "").strip()
-    if not eid:
+    sk = (source_kind or "comm_event").strip() or "comm_event"
+    sid = (source_id or event_id or "").strip()
+    if not sid:
         raise AgentContractError("event_id required")
     purp = (purpose or "").strip()
     if not purp:
@@ -573,24 +665,49 @@ def emit_consumption_receipt(
     for claimed in (knowledge_status, claimed_knowledge_status):
         assert_not_self_certifying_truth(aid, claimed)
 
+    prov = dict(provenance or {})
+    if not prov.get("producer"):
+        prov["producer"] = "unknown"
+    prov.setdefault("inputs", [sid])
+    prov.setdefault("policy_decisions", [])
+    prov.setdefault("llm", None)
+
     receipt = AgentConsumptionReceipt(
         agent_id=aid,
-        event_id=eid,
+        event_id=sid if sk == "comm_event" else event_id,
+        source_kind=sk,
+        source_id=sid,
         purpose=purp,
         agent_version=(agent_version or "").strip() or None,
         thread_id=(thread_id or None),
+        subject_guid=subject_guid,
+        wake_id=wake_id,
+        effect_kind=effect_kind or "none",
+        effect_ref=effect_ref,
         artifact_ids=list(artifact_ids or []),
         policy_decision=policy_decision,
         derived_artifact_ids=list(derived_artifact_ids or []),
         influence_declaration=influence_declaration,
         influence_event_ids=list(influence_event_ids or []),
+        influence_source_ids=list(
+            influence_source_ids
+            if influence_source_ids is not None
+            else (influence_event_ids or [])
+        ),
+        source_sha=source_sha,
+        correlation_id=correlation_id,
+        parent_id=parent_id or (sid if sk == "comm_event" else None),
+        parent_kind=parent_kind or ("comm_event" if sk == "comm_event" else None),
+        provenance=prov,
     )
     receipt.mint_identity()
     row = receipt.to_dict()
     row["persisted"] = "memory"
 
+    # DB path still uses @v1 columns (event_id); @v2 DDL is integration-owned.
+    # Memory path enforces @v2 uniqueness (agent_id, source_kind, source_id, purpose).
     conn = _db_conn()
-    if conn is not None:
+    if conn is not None and sk == "comm_event":
         try:
             with conn.cursor() as cur:
                 cur.execute(
@@ -616,14 +733,15 @@ def emit_consumption_receipt(
                             EXCLUDED.influence_declaration,
                             communication_agent_consumption_receipts.influence_declaration
                         ),
-                        influence_event_ids = EXCLUDED.influence_event_ids
+                        influence_event_ids = EXCLUDED.influence_event_ids,
+                        schema_version = EXCLUDED.schema_version
                     RETURNING receipt_id
                     """,
                     (
                         receipt.receipt_id,
                         aid,
                         receipt.agent_version,
-                        eid,
+                        sid,
                         receipt.thread_id,
                         json.dumps(receipt.artifact_ids),
                         purp,
@@ -638,8 +756,11 @@ def emit_consumption_receipt(
                 )
                 returned = cur.fetchone()
                 if returned and returned[0]:
-                    receipt.receipt_id = returned[0]
-                    row["receipt_id"] = receipt.receipt_id
+                    # Keep deterministic mint id preferred; DB may return same on conflict.
+                    if returned[0] != receipt.receipt_id:
+                        # Collision on unique key with different receipt_id — keep existing.
+                        receipt.receipt_id = returned[0]
+                        row["receipt_id"] = receipt.receipt_id
             conn.commit()
             row["persisted"] = "db"
             receipt.persisted = "db"
@@ -653,25 +774,38 @@ def emit_consumption_receipt(
                 pass
 
     with _lock:
-        # Soft unique on (agent_id, event_id, purpose) in memory.
+        # Soft unique on (agent_id, source_kind, source_id, purpose) in memory.
         for existing in _RECEIPTS.values():
+            existing_sk = existing.get("source_kind") or "comm_event"
+            existing_sid = existing.get("source_id") or existing.get("event_id")
             if (
                 existing.get("agent_id") == aid
-                and existing.get("event_id") == eid
+                and existing_sk == sk
+                and existing_sid == sid
                 and existing.get("purpose") == purp
             ):
-                # Update in place; keep original receipt_id / retrieved_at.
+                # Update in place; keep original receipt_id / retrieved_at (replay collide).
                 rid = existing["receipt_id"]
                 existing.update(
                     {
                         "agent_version": receipt.agent_version,
                         "thread_id": receipt.thread_id,
+                        "subject_guid": receipt.subject_guid,
+                        "wake_id": receipt.wake_id,
+                        "source_kind": sk,
+                        "source_id": sid,
+                        "event_id": sid if sk == "comm_event" else existing.get("event_id"),
+                        "effect_kind": receipt.effect_kind,
+                        "effect_ref": receipt.effect_ref,
                         "artifact_ids": list(receipt.artifact_ids),
                         "policy_decision": receipt.policy_decision,
                         "derived_artifact_ids": list(receipt.derived_artifact_ids),
                         "influence_declaration": receipt.influence_declaration
                         or existing.get("influence_declaration"),
                         "influence_event_ids": list(receipt.influence_event_ids),
+                        "influence_source_ids": list(receipt.influence_source_ids),
+                        "schema_version": SCHEMA_VERSION,
+                        "provenance": dict(receipt.provenance),
                         "persisted": "memory",
                     }
                 )
