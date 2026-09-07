@@ -302,6 +302,123 @@ CATALYST_MATERIALITY = {
 CATALYST_MIN_MATERIALITY = float(os.getenv("MATERIAL_CHANGE_CATALYST_MIN", "1.0"))
 
 
+#: SECTOR — assembled from five partial sources, because no single one is enough.
+#:
+#: Measured 2026-09-06 against 113 active watchlist symbols:
+#:
+#:     hermes_v_ticker_context        44
+#:     intelligence_entities          46
+#:     news_articles.gics_sector      29
+#:     market_movers                  17
+#:     aegis_symbol_snapshot_nightly  11
+#:     ---------------------------------
+#:     UNION                          64
+#:
+#: 57%, up from the 26% that news_articles alone provides. Still not complete, which
+#: is why what could NOT be resolved is counted and reported rather than quietly
+#: dropped: a sector trigger that silently covers half the universe looks exactly
+#: like one that covers all of it.
+#:
+#: Order is by directness, not by row count. intelligence_entities and
+#: hermes_v_ticker_context carry a per-symbol sector as a fact about the instrument;
+#: news_articles.gics_sector is inferred from an article ABOUT the symbol and is the
+#: weakest, so it goes last.
+SECTOR_SOURCES = (
+    ("intelligence_entities", "entity_id", "sector"),
+    ("hermes_v_ticker_context", "symbol", "sector"),
+    ("market_movers", "symbol", "sector"),
+    ("aegis_symbol_snapshot_nightly", "symbol", "sector"),
+    ("news_articles", "symbol", "gics_sector"),
+)
+
+#: A sector event: this many tracked names in one sector moving materially the same
+#: day. One name moving is a company story; several at once is a sector story, and
+#: they want different questions.
+SECTOR_MIN_NAMES = int(os.getenv("MATERIAL_CHANGE_SECTOR_MIN_NAMES", "3"))
+#: Each contributing name must clear this multiple of its OWN average daily move —
+#: lower than K, because the signal is breadth rather than any single excursion.
+SECTOR_NAME_K = float(os.getenv("MATERIAL_CHANGE_SECTOR_NAME_K", "1.5"))
+
+
+def resolve_sectors(cur, symbols: list[str]) -> tuple[dict[str, str], dict]:
+    """{SYMBOL: sector} from the first source that knows, plus what was unresolved."""
+    out: dict[str, str] = {}
+    per_source: dict[str, int] = {}
+    if not symbols:
+        return out, {"resolved": 0, "unresolved": 0, "per_source": per_source}
+
+    for table, keycol, sectorcol in SECTOR_SOURCES:
+        missing = [s for s in symbols if s not in out]
+        if not missing:
+            break
+        try:
+            cur.execute("SAVEPOINT sec_src")
+            cur.execute(f"SELECT to_regclass('public.{table}')")
+            if cur.fetchall()[0][0] is None:
+                cur.execute("RELEASE SAVEPOINT sec_src")
+                continue
+            cur.execute(
+                f"SELECT DISTINCT upper({keycol}), {sectorcol} FROM {table} "
+                f"WHERE upper({keycol}) = ANY(%s) AND {sectorcol} IS NOT NULL",
+                (missing,))
+            n = 0
+            for sym, sector in cur.fetchall():
+                if sym not in out:
+                    out[sym] = str(sector).strip()
+                    n += 1
+            per_source[table] = n
+            cur.execute("RELEASE SAVEPOINT sec_src")
+        except Exception as exc:  # noqa: BLE001
+            cur.execute("ROLLBACK TO SAVEPOINT sec_src")
+            print(f"  WARN sector source {table} unusable ({type(exc).__name__})",
+                  file=sys.stderr)
+    return out, {"resolved": len(out), "unresolved": len(symbols) - len(out),
+                 "per_source": per_source}
+
+
+def sector_moves(cur, syms: dict[str, dict], excursion_stats: list[dict]) -> tuple[list[dict], dict]:
+    """Several tracked names in one sector moving materially on the same day.
+
+    Built from the SAME per-symbol baselines the price test already computed, so a
+    sector event cannot be manufactured by a different definition of "moved". Only
+    names that passed corroboration are counted — a sector story assembled from six
+    corrupt prices would be six times as wrong.
+    """
+    sectors, sstats = resolve_sectors(cur, sorted(syms))
+    stats = {"fired": 0, "sector_resolved": sstats["resolved"],
+             "sector_unresolved": sstats["unresolved"],
+             "sector_sources": sstats["per_source"]}
+    if not excursion_stats:
+        return [], stats
+
+    by_sector: dict[str, list[dict]] = {}
+    for e in excursion_stats:
+        sec = sectors.get(str(e["symbol"]).upper())
+        if sec:
+            by_sector.setdefault(sec, []).append(e)
+
+    out = []
+    for sector, members in by_sector.items():
+        if len(members) < SECTOR_MIN_NAMES:
+            continue
+        stats["fired"] += 1
+        members.sort(key=lambda m: -m["ratio"])
+        best = members[0]
+        out.append({
+            "symbol": best["symbol"], "kind": "sector_move",
+            "magnitude": round(sum(m["ratio"] for m in members) / len(members), 2),
+            "baseline": None, "observed_value": float(len(members)),
+            "observed_at": best["observed_at"],
+            "universe_reason": "+".join((syms.get(best["symbol"]) or {}).get("reasons", ["?"])),
+            "precedence": max((syms.get(m["symbol"]) or {}).get("precedence", 10)
+                              for m in members),
+            "evidence": {"source": "ticker_prices+sector", "sector": sector,
+                         "names": [m["symbol"] for m in members],
+                         "name_k": SECTOR_NAME_K, "min_names": SECTOR_MIN_NAMES},
+        })
+    return out, stats
+
+
 def corroborate(cur, symbols: list[str]) -> dict[str, float]:
     """Independent per-symbol move, written by a different pipeline."""
     if not symbols:
@@ -336,8 +453,9 @@ def price_excursions(cur, syms: dict[str, str]) -> tuple[list[dict], dict]:
     stats = {"evaluated": 0, "not_evaluable": 0, "fired": 0, "uncorroborated": 0}
     found: list[dict] = []
     candidates: list[tuple] = []
+    contributors: list[dict] = []
     if not syms:
-        return found, stats
+        return found, stats, contributors
 
     cur.execute(
         """
@@ -378,18 +496,31 @@ def price_excursions(cur, syms: dict[str, str]) -> tuple[list[dict], dict]:
             stats["not_evaluable"] += 1
             continue
         if ratio < K:
+            # Below the individual bar, but it may still contribute to a
+            # sector story — that decision needs corroboration too, so it
+            # is made after the second-source check below, not here.
+            candidates.append((sym, ratio, baseline, latest, latest_date, n, False))
             continue
         stats["fired"] += 1
-        candidates.append((sym, ratio, baseline, latest, latest_date, n))
+        candidates.append((sym, ratio, baseline, latest, latest_date, n, True))
 
     # Second source, one query for all candidates.
     independent = corroborate(cur, [c[0] for c in candidates])
-    for sym, ratio, baseline, latest, latest_date, n in candidates:
+    for sym, ratio, baseline, latest, latest_date, n, fires in candidates:
         ok, why = agrees(float(latest or 0), independent.get(sym))
         if not ok:
-            stats["fired"] -= 1
-            stats["uncorroborated"] += 1
-            stats.setdefault("uncorroborated_detail", []).append(f"{sym}:{why}")
+            if fires:
+                stats["fired"] -= 1
+            if fires:
+                stats["uncorroborated"] += 1
+                stats.setdefault("uncorroborated_detail", []).append(f"{sym}:{why}")
+            continue
+        # Corroborated and above the (lower) sector bar — eligible to contribute to a
+        # sector story even when it does not clear K on its own.
+        if ratio >= SECTOR_NAME_K:
+            contributors.append({"symbol": sym, "ratio": round(ratio, 2),
+                                 "observed_at": str(latest_date)})
+        if not fires:
             continue
         found.append({
             "symbol": sym, "kind": "price_excursion",
@@ -406,7 +537,7 @@ def price_excursions(cur, syms: dict[str, str]) -> tuple[list[dict], dict]:
                                  "has no high/low so this is not ATR. Confirmed "
                                  "against watchlist_items.change_pct."},
         })
-    return found, stats
+    return found, stats, contributors
 
 
 def new_catalysts(cur, syms: dict[str, dict]) -> tuple[list[dict], dict]:
@@ -513,7 +644,8 @@ def persist(cur, changes: list[dict], *, apply: bool) -> int:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--apply", action="store_true")
-    ap.add_argument("--kind", choices=["price_excursion", "catalyst_new", "news_burst"])
+    ap.add_argument("--kind", choices=["price_excursion", "catalyst_new",
+                                       "news_burst", "sector_move"])
     args = ap.parse_args()
 
     conn = _db()
@@ -528,10 +660,14 @@ def main() -> int:
 
     changes: list[dict] = []
     stats: dict[str, dict] = {}
+    contributors: list[dict] = []
     if args.kind in (None, "price_excursion"):
-        c, s = price_excursions(cur, syms); changes += c; stats["price_excursion"] = s
+        c, s, contributors = price_excursions(cur, syms)
+        changes += c; stats["price_excursion"] = s
     if args.kind in (None, "catalyst_new"):
         c, s = new_catalysts(cur, syms); changes += c; stats["catalyst_new"] = s
+    if args.kind in (None, "sector_move") and contributors:
+        c, s = sector_moves(cur, syms, contributors); changes += c; stats["sector_move"] = s
     if args.kind in (None, "news_burst"):
         c, s = news_bursts(cur, syms); changes += c; stats["news_burst"] = s
 

@@ -125,7 +125,7 @@ def test_a_nan_move_does_not_fire(mod):
     emitted with magnitude NaN. Corrupt data must never manufacture an alert.
     """
     rows = [("BHVN", 40, float("nan"), float("nan"), "2026-08-28")]
-    found, stats = mod.price_excursions(Cur(rows), W("BHVN"))
+    found, stats, _ = mod.price_excursions(Cur(rows), W("BHVN"))
     assert found == [], "a NaN magnitude was emitted as a real change"
     assert stats["not_evaluable"] == 1
     assert stats["fired"] == 0
@@ -150,7 +150,7 @@ def test_a_real_move_still_fires(mod):
     """The negative control for the NaN guard: do not fix corruption by breaking
     detection."""
     rows = [("AOUT", 66, 3.0438, 45.4363, "2026-09-04")]
-    found, stats = mod.price_excursions(Cur(rows), W("AOUT"))
+    found, stats, _ = mod.price_excursions(Cur(rows), W("AOUT"))
     assert len(found) == 1
     assert found[0]["magnitude"] == pytest.approx(14.93, abs=0.01)
     assert stats["fired"] == 1
@@ -158,7 +158,7 @@ def test_a_real_move_still_fires(mod):
 
 def test_a_quiet_name_does_not_fire(mod):
     rows = [("AAPL", 66, 1.25, 0.9, "2026-09-04")]
-    found, _ = mod.price_excursions(Cur(rows), W("AAPL"))
+    found, _, _c = mod.price_excursions(Cur(rows), W("AAPL"))
     assert found == []
 
 
@@ -170,7 +170,7 @@ def test_the_same_percent_move_fires_for_one_name_and_not_another(mod):
     calm = mod.price_excursions(Cur([("CALM", 60, 0.8, 8.0, "2026-09-04")]),
                                 W("CALM"))[0]
     wild = mod.price_excursions(Cur([("WILD", 60, 9.0, 8.0, "2026-09-04")]),
-                                W("WILD"))[0]
+                                W("WILD"))[0]  # [0] is still `found`
     assert len(calm) == 1, "8% on a 0.8% baseline is a ten-sigma move and must fire"
     assert wild == [], "8% on a 9% baseline is an ordinary day and must not"
 
@@ -184,7 +184,7 @@ def test_k_is_configurable_without_a_deploy(mod):
 
 def test_too_little_history_is_counted_not_silently_dropped(mod):
     rows = [("NEWCO", 4, 2.0, 30.0, "2026-09-04")]
-    found, stats = mod.price_excursions(Cur(rows), W("NEWCO"))
+    found, stats, _ = mod.price_excursions(Cur(rows), W("NEWCO"))
     assert found == []
     assert stats["not_evaluable"] == 1
     assert stats["evaluated"] == 0
@@ -194,7 +194,7 @@ def test_a_zero_baseline_is_not_evaluable_rather_than_infinite(mod):
     """Dividing by a zero baseline yields inf, which beats every threshold and
     would fire on a symbol that has never moved at all."""
     rows = [("FLAT", 60, 0.0, 5.0, "2026-09-04")]
-    found, stats = mod.price_excursions(Cur(rows), W("FLAT"))
+    found, stats, _ = mod.price_excursions(Cur(rows), W("FLAT"))
     assert found == []
     assert stats["not_evaluable"] == 1
 
@@ -358,7 +358,7 @@ def test_the_end_to_end_path_rejects_a_corrupt_move(mod):
     """The whole chain: a big ratio that a second source does not confirm must not
     become a change, and must be counted as uncorroborated rather than vanishing."""
     rows = [("NOC", 60, 1.9803, 77.42, "2026-09-04")]
-    found, stats = mod.price_excursions(Cur(rows, independent={"NOC": 2.44}),
+    found, stats, _ = mod.price_excursions(Cur(rows, independent={"NOC": 2.44}),
                                         W("NOC", "held"))
     assert found == [], "a corrupt move became an operator alert"
     assert stats["uncorroborated"] == 1
@@ -369,7 +369,7 @@ def test_the_end_to_end_path_rejects_a_corrupt_move(mod):
 def test_the_end_to_end_path_accepts_the_real_one(mod):
     """AOUT, whose two sources agreed to four decimal places."""
     rows = [("AOUT", 66, 3.0438, 45.4363, "2026-09-04")]
-    found, stats = mod.price_excursions(Cur(rows, independent={"AOUT": 45.4363}),
+    found, stats, _ = mod.price_excursions(Cur(rows, independent={"AOUT": 45.4363}),
                                         W("AOUT"))
     assert len(found) == 1
     assert stats["fired"] == 1 and stats["uncorroborated"] == 0
@@ -497,3 +497,82 @@ def test_the_operator_tier_reads_the_right_time_column(mod):
     src = SCRIPT.read_text(encoding="utf-8")
     assert '("inbound_operator_questions", "operator", "received_at")' in src
     assert "created_at > now() - interval '30 days'" not in src
+
+
+# ── sector: assembled from five partial sources, none of them enough ────────
+#
+# news_articles.gics_sector alone covers 26% of tracked names. Building a sector
+# trigger on that would cover a quarter of the universe while looking complete — the
+# exact shape of gap this layer exists to close. The union reaches 58%, and what is
+# STILL unresolved is counted and reported rather than quietly dropped.
+
+def test_sector_sources_are_ordered_by_directness_not_row_count(mod):
+    """A per-symbol sector is a fact about the instrument. gics_sector on
+    news_articles is inferred from an article ABOUT the symbol, so it goes last even
+    though it is a large table."""
+    names = [t for t, _k, _c in mod.SECTOR_SOURCES]
+    assert names[0] == "intelligence_entities"
+    assert names[-1] == "news_articles"
+
+
+def test_the_first_source_that_knows_wins(mod):
+    """Not the last, and not a vote — later sources only fill gaps."""
+    class C:
+        def __init__(self): self._r = []
+        def execute(self, sql, params=None):
+            u = sql.upper()
+            if "SAVEPOINT" in u or "ROLLBACK" in u:
+                self._r = []
+            elif "to_regclass" in sql:
+                self._r = [("t",)]
+            elif "intelligence_entities" in sql:
+                self._r = [("AAPL", "Technology")]
+            elif "hermes_v_ticker_context" in sql:
+                self._r = [("AAPL", "WRONG"), ("MSFT", "Technology")]
+            else:
+                self._r = []
+        def fetchall(self): return self._r
+
+    out, stats = mod.resolve_sectors(C(), ["AAPL", "MSFT", "ZZZZ"])
+    assert out["AAPL"] == "Technology", "a later source overwrote an earlier one"
+    assert out["MSFT"] == "Technology"
+    assert stats["unresolved"] == 1
+
+
+def test_what_could_not_be_resolved_is_counted(mod):
+    src = SCRIPT.read_text(encoding="utf-8")
+    assert '"sector_unresolved"' in src and '"sector_sources"' in src
+
+
+def test_a_sector_event_needs_several_names(mod):
+    """One name moving is a company story. Several at once is a sector story, and
+    they want different questions."""
+    assert mod.SECTOR_MIN_NAMES >= 3
+
+
+def test_the_per_name_bar_is_lower_than_the_individual_bar(mod):
+    """The signal is BREADTH, not any single excursion — so a name that does not
+    clear K alone can still contribute."""
+    assert mod.SECTOR_NAME_K < mod.K
+
+
+def test_a_sector_story_cannot_be_built_from_uncorroborated_prices(mod):
+    """Six corrupt prices in one sector would otherwise become a sector event that is
+    six times as wrong. Contributors are collected AFTER the second-source check."""
+    src = SCRIPT.read_text(encoding="utf-8")
+    fn = src.split("def price_excursions(", 1)[1].split("\ndef ", 1)[0]
+    corrob_at = fn.index("ok, why = agrees(")
+    contrib_at = fn.index("contributors.append(")
+    assert corrob_at < contrib_at, (
+        "contributors are collected before corroboration — corrupt prices would count")
+
+
+def test_a_sector_move_inherits_the_highest_precedence_of_its_members(mod):
+    """If a holding is in the sector, the sector event ranks as a holding."""
+    src = SCRIPT.read_text(encoding="utf-8")
+    assert 'precedence": max(' in src
+
+
+def test_sector_sources_are_savepoint_isolated(mod):
+    src = SCRIPT.read_text(encoding="utf-8")
+    assert "SAVEPOINT sec_src" in src and "ROLLBACK TO SAVEPOINT sec_src" in src
