@@ -2,13 +2,25 @@
 
 ```
 Status: ACTIVE
-as_of: 2026-09-05T13:56:00-04:00
-Measured at: served build f88853e89e53fdd63725acccb064ca1395e0bf34
+as_of: 2026-09-07T11:33:00-04:00
+Measured at: served build 3cb740e4c69380fe9355da6b4857a94cf21e6c27 (PR #874 Wave E + docs)
 ```
 
 Supersedes `docs/audit/runtime-attestation.md` (which cited `17e30dcbb` and predated
 production ACTIVE). All values below were read live via HTTP from the served release or
 from `origin/main`; nothing here is a `[DOC-CLAIM]` about runtime.
+
+---
+
+## 0. Re-attestation (2026-09-07) — served `3cb740e4c`, mode **CANARY** `[VERIFIED]`
+
+The `f88853e89` re-attestation below (2026-09-05) was itself superseded. On 2026-09-07
+PR #874 (Wave E agent consumption + docs catch-up, head `d18d81208`) merged to `origin/main`
+as `3cb740e4c69380fe9355da6b4857a94cf21e6c27` and was deployed. Independent read-only
+validation confirmed: two-parent merge ancestry, 10/10 CI green, `SOURCE_COMMIT` == merge
+SHA, `CURRENT` → `3cb740e4c-main-exact-phase2-20260907-105152`, mode **CANARY** /
+`owned_classes=["ops"]`. See `docs/ops/COMMS_GATEWAY_GO_LIVE_RUNBOOK.md` and the validation
+evidence archive `/tmp/pr874-validation-20260907.tar.gz` (sha256 `9f77803d0f60d1b9de0a84ea0b6413f98fae9a4c7d8fb37367e33375ad9d1d92`).
 
 ---
 

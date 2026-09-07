@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `72ff1348e728db858e604bc7ae4ec9f4bd9ed39f8d924e67e335da4c1084b620`
+**Tree fingerprint:** `5939e8a282b6908649a78de21893e172ca18be95859a50bf70c406cf2c0eb86d`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -546,7 +546,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/audit/_evidence/README.md` | Phase 0 evidence snapshots | review_required | MISSING HEADER | `e17f23a439d9` |
 | `docs/audit/current-state.md` | Communications Gateway — Current State | review_required | MISSING HEADER | `5bf7544d0919` |
 | `docs/audit/gap-analysis.md` | Communications Gateway — Gap Analysis | review_required | MISSING HEADER | `af219b786e39` |
-| `docs/audit/live-attest-2026-09-05.md` | Communications Gateway — Live Attestation (re-attest, post #862/#864/#868, then #871/#872/#873) | review_required | OK | `8e9469f8419e` |
+| `docs/audit/live-attest-2026-09-05.md` | Communications Gateway — Live Attestation (re-attest, post #862/#864/#868, then #871/#872/#873) | review_required | OK | `e68820396f59` |
 | `docs/audit/phase0-signoff.md` | Phase 0 Sign-off | review_required | OK | `02114eff814d` |
 | `docs/audit/phase9-sender-migration.md` | Phase 9 — High-risk Telegram sender migration | review_required | OK | `3872cbce012e` |
 | `docs/audit/runtime-attestation.md` | Communications Gateway — Runtime Attestation | review_required | MISSING HEADER | `68b98afb64a9` |
@@ -749,11 +749,11 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/deployment/canary-operator-alert-runbook.md` | Communications Gateway — `operator_alert` Canary Runbook (Wave B) | review_required | OK | `120e9556172f` |
 | `docs/deployment/canary-results.md` | Communications Gateway — Canary Results | review_required | OK | `db69c3781c4b` |
 | `docs/deployment/pre-go-live-checklist.md` | Communications Gateway — Pre Go-Live Checklist | review_required | OK | `4cf39a7859c9` |
-| `docs/deployment/production-activation.md` | Communications Gateway — Production Mode Checklist (ACTIVE attempted → reverted to CANARY) | review_required | OK | `f8e42575d3e3` |
+| `docs/deployment/production-activation.md` | Communications Gateway — Production Mode Checklist (ACTIVE attempted → reverted to CANARY) | review_required | OK | `59fb1276517e` |
 | `docs/deployment/retention-policy-proposal.md` | Communications Gateway — Retention Policy (PROPOSED) | review_required | OK | `427c510c17d5` |
 | `docs/deployment/rollback-plan.md` | Communications Gateway — Rollback Plan | review_required | OK | `a593be5e3e17` |
 | `docs/deployment/rollout-plan.md` | Communications Gateway — Rollout Plan | review_required | OK | `cf5f37640df6` |
-| `docs/deployment/wave-cde-go-live-plan.md` | Communications Gateway — Wave C/D/E Go-Live Plan (guard plan file) | review_required | OK | `599d3da47837` |
+| `docs/deployment/wave-cde-go-live-plan.md` | Communications Gateway — Wave C/D/E Go-Live Plan (guard plan file) | review_required | OK | `ca2cbe6f5e61` |
 | `docs/design/ACTIVE_TRADER_LIVE_DATA_ARCHITECTURE.md` | ActiveTrader — Live Data Architecture (2026-07-28) | current_phase_keep | OK | `bed16d9677d0` |
 | `docs/design/ACTIVE_TRADER_T2_JIT_AND_MOMENTUM_EXIT_v1.md` | Active Trader T2 JIT and Momentum Exit — Design v1 | current_phase_keep | OK | `514faa88f6da` |
 | `docs/design/AT_CONFIG_TAB_S1_CONTRACT.md` | Active Trader Configuration Tab — S1 API Contract (`/api/v3/active-trader/config`) | current_phase_keep | OK | `530dc26eff0b` |
@@ -834,7 +834,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/feeds/PHASE72E_OPS_BACKLOG_RECOVERY_UPDATE_DESIGN.md` | Phase 72E — Ops Backlog Recovery Update Design | review_required | OK | `cab37d5456e9` |
 | `docs/feeds/PHASE75A_THIRD_CLEAN_RUN_EVIDENCE.md` | Phase 75A — Third Clean Run Evidence | review_required | OK | `ab8bf7f62f3f` |
 | `docs/feeds/PHASE77A_RESEARCH_ONLY_FEED_FALLBACK_POLICY.md` | Phase 77A — Research-Only Feed Fallback Policy | review_required | OK | `68cedb0b557e` |
-| `docs/final/implementation-record.md` | Communications Gateway — Implementation Record (Phases 0–11) | review_required | OK | `d1bd70ef3a36` |
+| `docs/final/implementation-record.md` | Communications Gateway — Implementation Record (Phases 0–11) | review_required | OK | `7f1fc515593b` |
 | `docs/financial-senses/ACCEPTANCE.md` | Acceptance profile | review_required | OK | `35455570693f` |
 | `docs/financial-senses/ADR/001-reuse-existing-sec-pipeline.md` | ADR-001 — Reuse the existing SEC pipeline | review_required | OK | `f10bb9692756` |
 | `docs/financial-senses/ADR/002-provider-adapters-not-second-mcp-gateway.md` | ADR-002 — Provider adapters, not a second MCP gateway | review_required | OK | `99065f6c47a7` |
@@ -1517,7 +1517,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/CIO_WAVE3D_HOP_2026-08-29.md` | Wave 3D — the one live hop, executed (2026-08-29) | review_required | OK | `02ef350a1efb` |
 | `docs/ops/CIO_WAVE3E_2026-08-29.md` | CIO Wave 3E — notification decisions on the Command Center (2026-08-29) | review_required | OK | `6fd2ce532756` |
 | `docs/ops/CLOSE_OPERATOR_GAPS_TO_100_2026-08-19.md` | Close remaining operator gaps to 100% | review_required | OK | `9f9aada669d7` |
-| `docs/ops/COMMS_GATEWAY_GO_LIVE_RUNBOOK.md` | Communications Gateway — Go-Live Runbook (single consolidated operator prompt) | review_required | OK | `4cda330608a1` |
+| `docs/ops/COMMS_GATEWAY_GO_LIVE_RUNBOOK.md` | Communications Gateway — Go-Live Runbook (single consolidated operator prompt) | review_required | OK | `7ded3894288a` |
 | `docs/ops/COST_CAP_EXCEEDED_2026-08-22.md` | COST_CAP_EXCEEDED 2026-08-22 — what did not run, and why 895 ≠ 312 | review_required | OK | `e11d852dddbb` |
 | `docs/ops/CURRENT_CUTOVER_AFTER_2026-08-27.md` | CURRENT cutover — execute after 2026-08-27 close | review_required | OK | `ff4d8004bf21` |
 | `docs/ops/DECISION_PAYLOAD_LANDING_2026-08-21.md` | DecisionPayload landing check — 2026-08-21 19:31 ET | review_required | OK | `f3951cc5a623` |

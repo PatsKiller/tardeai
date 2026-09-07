@@ -2,8 +2,8 @@
 
 ```
 Status: ACTIVE
-as_of: 2026-09-05T13:56:00-04:00
-Measured at: served build f88853e89e53fdd63725acccb064ca1395e0bf34
+as_of: 2026-09-07T11:33:00-04:00
+Measured at: served build 3cb740e4c69380fe9355da6b4857a94cf21e6c27 (PR #874 Wave E + docs, merged from d18d81208)
 ```
 
 This is the **one** operator-facing go-live document for the Communications Gateway. It
