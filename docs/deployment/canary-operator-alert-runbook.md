@@ -1,36 +1,40 @@
 # Communications Gateway — `operator_alert` Canary Runbook (Wave B)
 
 ```
-Status: PROPOSED (operator-only — nothing here is applied)
+Status: PROPOSED (operator-only — the widening steps below are not applied)
 as_of: 2026-09-05T15:15:00-04:00
 Companion: canary-operator-alert-packet.md (finding + rationale)
 ```
 
-This is the concrete cutover sequence for the operator. Every line is a review
-artifact; **none of it has been run**. The code it depends on is committed locally
-on `wt/comms-gateway-wave-a-attest` (inert at OFF/SHADOW until deployed + CANARY).
+This is the concrete cutover sequence for the operator. **Status update
+(2026-09-05T13:56:00-04:00):** the deployment precondition is now met (PR #871 merged,
+served SHA `f88853e89`, mode reverted to CANARY `ops`), but the §1–§3 widening steps are
+**still pending** and require operator sign-off (§17). The ownership-gate normalization
+the runbook depends on is **still not committed/deployed**.
 
 ---
 
 ## 0. Preconditions
 
-- [ ] Deploy the branch at `wt/comms-gateway-wave-a-attest` HEAD (release-governed;
-      exact SHA resolved at deploy time). This carries F1, F3, and the
-      ownership-gate normalization — all inert until mode = CANARY/ACTIVE.
-- [ ] Confirm the live `32-comms-gateway-mode.conf` drop-in (the one that already
-      sets `MODE=ACTIVE` + `ACTIVE_CLASSES=ops`) is the file being edited.
-- [ ] Choose a **bounded canary chat-id set** (one or two operator chats, not the
-      full operator family). Record it here:
+- [x] **DONE** — Deploy the branch at `wt/comms-gateway-wave-a-attest` HEAD
+      (release-governed; exact SHA resolved at deploy time). Merged as PR #871
+      (`47576f7fa`) and superseded by #872/#873; served SHA is now `f88853e89`. This
+      carried F1 and F3. **The ownership-gate normalization (§2 of the packet) is NOT
+      in the deployed tree — still pending.**
+- [x] **DONE (changed)** — Confirm the live `32-comms-gateway-mode.conf` drop-in. It no
+      longer sets `MODE=ACTIVE`; it now sets `MODE=CANARY` + `CANARY_CLASSES=ops` +
+      `CANARY_CHATS=6993102664,8797974247` (the ACTIVE posture was reverted).
+- [x] **DONE** — Choose a **bounded canary chat-id set**. Recorded and applied:
 
   ```
-  COMMS_GATEWAY_CANARY_CHATS=<FILL_ME: comma-separated chat ids>
+  COMMS_GATEWAY_CANARY_CHATS=6993102664,8797974247
   ```
 
   > Without `CANARY_CHATS`, CANARY mode applies **no chat filter** — the canary
   > would reach every chat `TELEGRAM_CHAT_ID` resolves to (see
-  > `test_canary_without_chat_allowlist_does_not_filter`). Do not skip this.
+  > `test_canary_without_chat_allowlist_does_not_filter`). This is now set.
 
-## 1. SHADOW stage (parity evidence, no ownership)
+## 1. SHADOW stage (parity evidence, no ownership) — **STILL PENDING**
 
 Drop-in change (same file):
 
@@ -45,7 +49,7 @@ JSON under `~/.local/state/cio-phase2-exact-main/comms-shadow-evidence/`.
 
 **Exit:** match rate ≥ 0.99 or every mismatch triaged + waived per field.
 
-## 2. CANARY stage (bounded ownership)
+## 2. CANARY stage (bounded ownership) — **STILL PENDING** (current CANARY is `ops`, not the `operator_alert` cohort)
 
 Drop-in change (same file):
 
@@ -69,7 +73,7 @@ Soak window ≥ operator-determined. Confirm:
 - unlisted chats receive **nothing** (negative control),
 - zero dual-send (ledger + observed traffic).
 
-## 3. ACTIVE stage (the allowlist is unchanged — `ops`)
+## 3. ACTIVE stage (the allowlist is unchanged — `ops`) — **STILL PENDING**
 
 Only after the soak: revert mode to the current production value; because the
 ownership-gate normalization now folds `operator_alert` → `ops`, the 254-site

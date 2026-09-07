@@ -98,6 +98,10 @@ export default function CommunicationsHub() {
     '/api/v2/communications/subjects?limit=50',
     60_000,
   )
+  const { data: agentsPayload, loading: agentsLoading } = useApi<any>(
+    '/api/v2/communications/agents?limit=200',
+    60_000,
+  )
   const detailPath = selectedId
     ? `/api/v2/communications/events/${encodeURIComponent(selectedId)}`
     : ''
@@ -108,6 +112,8 @@ export default function CommunicationsHub() {
   const events: any[] = eventsPayload?.events || []
   const deliveries: any[] = deliveriesPayload?.deliveries || []
   const subjects: any[] = subjectsPayload?.subjects || []
+  const agentSubscriptions: any[] = agentsPayload?.subscriptions || []
+  const agentReceipts: any[] = agentsPayload?.receipts || []
   const detail = detailPayload?.event ?? null
   const mode = health?.mode || 'OFF'
   const source = eventsPayload?.source || health?.ledger?.source || 'empty'
@@ -476,14 +482,81 @@ export default function CommunicationsHub() {
 
       {tab === 'agents' && (
         <div className="cc-panel" style={hubPanel(terminalUi)}>
-          <div style={{ fontSize: 10, fontWeight: 800, color: MUTED, letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 8 }}>
-            Agent consumption
+          <div style={{ fontSize: 10, fontWeight: 800, color: MUTED, letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 10 }}>
+            Agent consumption · {agentReceipts.length} receipts · {agentSubscriptions.length} subscriptions{agentsLoading ? ' · loading…' : ''} · source {agentsPayload?.source || '—'}
           </div>
-          <p style={{ fontSize: 10, color: MUTED, lineHeight: 1.5, margin: 0 }}>
-            Consumption receipts (AgentConsumptionReceipt@v1) are not yet exposed through this workspace — the
-            CIO/Hermes/Advisory subscription wiring is a later wave. This page remains ledger-read-only and never
-            calls providers.
-          </p>
+
+          <div style={{ fontSize: 10, color: MUTED, fontWeight: 800, marginBottom: 6, letterSpacing: '.06em', textTransform: 'uppercase' }}>
+            Consumption receipts (what each agent read + what it derived)
+          </div>
+          {agentReceipts.length === 0 && !agentsLoading ? (
+            <p style={{ fontSize: 10, color: MUTED, margin: '0 0 12px', lineHeight: 1.5 }}>
+              No consumption receipts recorded yet. CIO/Advisory/Hermes emit a receipt when they read a
+              policy-eligible event — until then this is empty by design, not a failure.
+            </p>
+          ) : (
+            <div style={{ overflowX: 'auto', marginBottom: 14 }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10 }}>
+                <thead>
+                  <tr style={{ color: MUTED, textAlign: 'left' }}>
+                    <th style={{ padding: '4px 6px' }}>agent</th>
+                    <th style={{ padding: '4px 6px' }}>version</th>
+                    <th style={{ padding: '4px 6px' }}>event_id</th>
+                    <th style={{ padding: '4px 6px' }}>purpose</th>
+                    <th style={{ padding: '4px 6px' }}>derived</th>
+                    <th style={{ padding: '4px 6px' }}>influence</th>
+                    <th style={{ padding: '4px 6px' }}>retrieved</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {agentReceipts.map((r) => (
+                    <tr key={r.receipt_id} style={{ borderTop: `1px solid ${BORDER}`, verticalAlign: 'top' }}>
+                      <td style={{ padding: '5px 6px', color: TEXT, fontWeight: 800 }}>{r.agent_id || '—'}</td>
+                      <td style={{ padding: '5px 6px', color: MUTED, fontFamily: MONO }}>{r.agent_version || '—'}</td>
+                      <td style={{ padding: '5px 6px', fontFamily: MONO, cursor: 'pointer', color: AMBER }} onClick={() => { setSelectedId(r.event_id); setTab('events') }} title={r.event_id}>{shortId(r.event_id)}</td>
+                      <td style={{ padding: '5px 6px', color: TEXT2 }}>{r.purpose || '—'}</td>
+                      <td style={{ padding: '5px 6px', color: MUTED }}>{(r.derived_artifact_ids || []).length || '—'}</td>
+                      <td style={{ padding: '5px 6px', color: MUTED, maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.influence_declaration || undefined}>{r.influence_declaration || '—'}</td>
+                      <td style={{ padding: '5px 6px', color: MUTED }}>{fmtWhen(r.retrieved_at)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          <div style={{ fontSize: 10, color: MUTED, fontWeight: 800, marginBottom: 6, letterSpacing: '.06em', textTransform: 'uppercase' }}>
+            Subscriptions
+          </div>
+          {agentSubscriptions.length === 0 ? (
+            <p style={{ fontSize: 10, color: MUTED, margin: 0, lineHeight: 1.5 }}>
+              No agent subscriptions registered. Agents subscribe to message-class / severity / subject-domain
+              scopes; a receipt requires a matching enabled subscription.
+            </p>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10 }}>
+                <thead>
+                  <tr style={{ color: MUTED, textAlign: 'left' }}>
+                    <th style={{ padding: '4px 6px' }}>agent</th>
+                    <th style={{ padding: '4px 6px' }}>version</th>
+                    <th style={{ padding: '4px 6px' }}>filter</th>
+                    <th style={{ padding: '4px 6px' }}>enabled</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {agentSubscriptions.map((s) => (
+                    <tr key={s.subscription_id} style={{ borderTop: `1px solid ${BORDER}` }}>
+                      <td style={{ padding: '5px 6px', color: TEXT, fontWeight: 800 }}>{s.agent_id || '—'}</td>
+                      <td style={{ padding: '5px 6px', color: MUTED, fontFamily: MONO }}>{s.agent_version || '—'}</td>
+                      <td style={{ padding: '5px 6px', color: MUTED, fontFamily: MONO, maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={JSON.stringify(s.filter || {})}>{JSON.stringify(s.filter || {})}</td>
+                      <td style={{ padding: '5px 6px', color: s.enabled === false ? MUTED : GREEN, fontWeight: 800 }}>{s.enabled === false ? 'off' : 'on'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
     </div>

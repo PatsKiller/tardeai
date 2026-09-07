@@ -1,6 +1,7 @@
 # Communications Gateway — Gap Analysis
 
-**Attested SOURCE_COMMIT:** `faf8c05d9cfa149c2efd7cadfb05a5bd7b3644d1` (served; re-attested `docs/audit/live-attest-2026-09-05.md`)  
+**Attested SOURCE_COMMIT:** `f88853e89e53fdd63725acccb064ca1395e0bf34` (served; re-attested `docs/audit/live-attest-2026-09-05.md`)  \
+**Prior attestation:** `faf8c05d9cfa149c2efd7cadfb05a5bd7b3644d1` (superseded by the re-attestation above)  
 **Maps:** design intent (Drive remediation + CommunicationEvent@v2) ↔ runtime/code truth
 
 Classification key: **LIVE** · **LIVE BUT PARTIAL** · **BUILT_DARK** · **DISCONNECTED** · **DESIGN_ONLY** · **ABSENT**
@@ -26,7 +27,7 @@ Classification key: **LIVE** · **LIVE BUT PARTIAL** · **BUILT_DARK** · **DISC
 |---|---|---|---|
 | CommunicationEvent@v2 ledger | LIVE | Schema + client + tests landed; producer-adopted via `telegram_alert`; mode ACTIVE for `ops` | Phase 1 done · adoption Phase 5+ |
 | Generalize CIO lineage + alert outbox | LIVE foundations / ABSENT universal | Two parallel stacks + legacy | Phase 1–3 |
-| Delivery ledger (all channels) | LIVE BUT PARTIAL | `ChannelDelivery@v1` + migration + auto-RESERVED stubs; owned `ops` settles SENT, non-owned stubs stay RESERVED (F1) | Phase 3 done · wire adapters later |
+| Delivery ledger (all channels) | LIVE | `ChannelDelivery@v1` + migration + auto-RESERVED stubs; owned `ops` settles SENT, non-owned stubs settle **`LEGACY_DELIVERED`** (F1 fixed in PR #871 + migration applied; PR #872 surfaces settle failure) | Phase 3 done · wire adapters later |
 | Telegram adapter behind gateway only | LIVE BUT PARTIAL | Approved transport exists; `ops` owned; other classes legacy | Phase 2, migrate Phase 9 |
 | Email / Slack / WhatsApp gateway adapters | BUILT_DARK | `send_via_gateway` records by default; deliver only in CANARY/ACTIVE | Phase 10 done · adoption later |
 | Subject memory / SubjectThread@v1 | LIVE BUT PARTIAL | Package + migration + publish hook; subject_key body-derived (F2), not domain-aware | Phase 4 done · Phase 7 surfaces |
@@ -55,9 +56,9 @@ Classification key: **LIVE** · **LIVE BUT PARTIAL** · **BUILT_DARK** · **DISC
 |---|---|
 | CommunicationEvent@v2 | LIVE (code+migration; producer-adopted for owned classes) |
 | SubjectThread@v1 | LIVE BUT PARTIAL (`subject_memory` + SQL; body-derived keys) |
-| MessageArtifact@v1 | ABSENT |
+| MessageArtifact@v1 | BUILT (`message_artifact.py`, PR #871) |
 | CurationReceipt@v1 | BUILT_DARK (`curation.py`) |
-| ChannelDelivery@v1 | LIVE BUT PARTIAL (`delivery.py` + SQL; owned settles, legacy stubs orphaned) |
+| ChannelDelivery@v1 | LIVE (`delivery.py` + SQL; owned settles SENT, legacy stubs settle LEGACY_DELIVERED — F1 fixed) |
 | RetentionDecision@v1 | BUILT_DARK (`librarian.py`) |
 | AgentConsumptionReceipt@v1 | BUILT_DARK (`agent_contracts.py`) |
 
@@ -113,11 +114,24 @@ See `docs/audit/live-attest-2026-09-05.md` for quoted evidence. Summary:
 - **F4** test-suite leakage residue in prod DB (`wamid.test_1`); fixed by `edcf137f8` + `c2986912b`.
 - **F5** `retention_class` drift (`operational`, `operational_30d`, `ops_7d`, `inbound_7d`, `none`).
 
-**Remediation (this wave):** F1 and F3 are fixed in code, not yet deployed.
-- F1 → `LEGACY_DELIVERED` terminal delivery status (`delivery.py` + migration `2026_09_05_communication_delivery_legacy_status.sql`); `_best_effort_comms_publish` settles the auto-reserved stub.
-- F3 → `scripts/lib/comms/vocabulary.py` canonical vocabulary; `publish_communication` normalizes `operator_alert`/`ops_alert`/`health*` → `ops` (unknown classes pass through, never coerced).
+**Remediation status (updated 2026-09-05T13:56:00-04:00):** F1 and F3 are fixed **and deployed**.
+- F1 → `LEGACY_DELIVERED` terminal delivery status (`delivery.py` + migration
+  `2026_09_05_communication_delivery_legacy_status.sql`); `_best_effort_comms_publish`
+  settles the auto-reserved stub. **Merged in PR #871 (`47576f7fa`), migration applied to
+  prod DB, settle-failure surfaced in PR #872 (`d38003fbb`).** `LEGACY_DELIVERED` is now
+  present in the delivery-status constraint.
+- F3 → `scripts/lib/comms/vocabulary.py` canonical vocabulary; `publish_communication`
+  normalizes `operator_alert`/`ops_alert`/`health*` → `ops` (unknown classes pass through,
+  never coerced). **Merged in PR #871.**
 
-Ownership is unchanged: `COMMS_GATEWAY_ACTIVE_CLASSES` still owns `ops` only; the
+**Wave C inbound (deployed):** `scripts/lib/comms/inbound.py` (claim/commit checkpoint,
+quarantine, `build_inbound_event`) plus `communication_inbound_checkpoint` and
+`communication_inbound_quarantine` tables applied to prod; `run_telegram_callback_poller.py`
+rewired in PR #873 (`f88853e89`, the currently-served SHA).
+
+**Ownership is CANARY, not ACTIVE.** The earlier `COMMS_GATEWAY_ACTIVE_CLASSES=ops` posture
+was reverted. The live drop-in is now `COMMS_GATEWAY_MODE=CANARY`,
+`COMMS_GATEWAY_CANARY_CLASSES=ops`, `COMMS_GATEWAY_CANARY_CHATS=6993102664,8797974247`. The
 canary that folds the legacy `operator_alert` producers into gateway ownership is the
 operator-approved Wave B step (proposed, not applied).
 

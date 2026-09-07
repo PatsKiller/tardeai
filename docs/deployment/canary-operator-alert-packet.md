@@ -13,6 +13,24 @@ deployed.** It is a proposal that stops at the operator gate (§17).
 
 ---
 
+## Status update (2026-09-05T13:56:00-04:00)
+
+The context this packet was written against has moved. Current truth:
+
+| Item | Was (packet as_of) | Now |
+|---|---|---|
+| Served SHA | `faf8c05d9` | `f88853e89` (PR #873, `[VERIFIED]` `/v3/build-meta.json`) |
+| Live mode | (assumed ACTIVE `ops`) | **CANARY** `ops` (`CANARY_CHATS=6993102664,8797974247`) — ACTIVE was reverted |
+| F1 stub-settle + F3 class vocab | fixed in code, not deployed | **deployed** (PR #871 `47576f7fa`, PR #872 `d38003fbb`, F1 migration applied) |
+| Ownership-gate normalization (§2) | proposed only | **still pending** — not committed/deployed |
+
+**DONE:** F1, F3, the deployment branch (PR #871 merged), and the CANARY revert are in
+place. **STILL PENDING:** the `telegram_class_allowed` ownership-gate normalization (§2)
+and the bounded §3 rollout — the actual widening of the `operator_alert` cohort is **not
+applied**. Sign-off for that widening is still required (§17).
+
+---
+
 ## 1. The finding that changes the ladder `[VERIFIED]`
 
 The rollout plan (Stage 2) lists `operator_alert` as the *first* canary class, on

@@ -2113,6 +2113,20 @@ def _communications_subjects(query=None):
     return _cp.list_subjects(limit=int(q.get("limit") or 50))
 
 
+def _communications_agents(query=None):
+    """GET /api/v2/communications/agents?agent_id=&limit= — agent consumption (Wave E)."""
+    import sys as _s
+
+    _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    import communications_portal as _cp
+
+    q = query or {}
+    return _cp.list_agent_consumption(
+        agent_id=q.get("agent_id") or None,
+        limit=int(q.get("limit") or 200),
+    )
+
+
 def _reports_categories(query=None):
     """GET /api/v2/reports/categories — portal tabs with counts + last-activity."""
     import sys as _s
@@ -46182,6 +46196,7 @@ ROUTES = {
     "/api/v2/communications/events": _communications_events,
     "/api/v2/communications/deliveries": _communications_deliveries,
     "/api/v2/communications/subjects": _communications_subjects,
+    "/api/v2/communications/agents": _communications_agents,
     "/api/v2/reports/catalog": _reports_catalog_route,
     "/api/v2/reports/system-rollup": _reports_system_rollup,
     "/api/v2/reports/categories": _reports_categories,

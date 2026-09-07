@@ -25,6 +25,7 @@ from scripts.lib.comms.agent_contracts import (  # noqa: E402
     event_is_verified_fact,
     event_policy_eligibility,
     get_consumption_receipt,
+    list_consumption_receipts,
     register_subscription,
     reset_agent_contracts_memory,
 )
@@ -184,3 +185,41 @@ def test_self_adjudication_rejected():
             claimed_knowledge_status="TRUTH",
         )
     assert "truth_claim_rejected_without_knowledge_gate" in str(ei4.value)
+
+
+def test_list_consumption_receipts_and_filter_by_agent():
+    r1 = emit_consumption_receipt("cio", event_id="evt_a", purpose="informed_advisory")
+    r2 = emit_consumption_receipt("hermes", event_id="evt_b", purpose="research")
+    r3 = emit_consumption_receipt("cio", event_id="evt_c", purpose="decision")
+
+    all_receipts = list_consumption_receipts()
+    ids = {r["receipt_id"] for r in all_receipts}
+    assert r1.receipt_id in ids and r2.receipt_id in ids and r3.receipt_id in ids
+
+    cio_only = list_consumption_receipts("cio")
+    assert all(r["agent_id"] == "cio" for r in cio_only)
+    assert len(cio_only) == 2
+
+    # Unknown agent filter yields empty, not a blanket allow.
+    assert list_consumption_receipts("nobody") == []
+
+
+def test_portal_agent_consumption_projection():
+    from scripts.communications_portal import list_agent_consumption
+
+    emit_consumption_receipt(
+        "advisory",
+        event_id="evt_d",
+        purpose="recommendation",
+        agent_version="1.0",
+        derived_artifact_ids=["adv_1"],
+        influence_declaration="hypothesis used, not fact",
+    )
+    payload = list_agent_consumption()
+    assert payload["ok"] is True
+    assert payload["total_receipts"] >= 1
+    rec = next(r for r in payload["receipts"] if r["event_id"] == "evt_d")
+    assert rec["agent_id"] == "advisory"
+    assert rec["derived_artifact_ids"] == ["adv_1"]
+    assert rec["influence_declaration"] == "hypothesis used, not fact"
+    assert "subscriptions" in payload
