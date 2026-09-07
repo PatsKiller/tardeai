@@ -46,6 +46,7 @@ from scripts.lib.comms.agent_contracts import (
 from scripts.lib.comms.channel_adapters import (
     ADAPTER_VERSIONS,
     SUPPORTED_CHANNELS,
+    render_for_channel,
     send_via_gateway,
 )
 from scripts.lib.comms.client import PublishResult, publish_communication
@@ -59,6 +60,8 @@ from scripts.lib.comms.curation import (
     CurationReceipt,
     apply_llm_curation_result,
     curate_deterministic,
+    curate_with_subject_history,
+    curation_kind_for_mode,
     get_curation_receipt,
     preserve_protected_facts,
     select_curation_mode,
@@ -137,6 +140,7 @@ __all__ = [
     "record_chunk",
     "attach_delivery_reservation",
     "send_via_gateway",
+    "render_for_channel",
     "SUPPORTED_CHANNELS",
     "ADAPTER_VERSIONS",
     "new_event_id",
@@ -161,10 +165,13 @@ __all__ = [
     "CurationReceipt",
     "select_curation_mode",
     "curate_deterministic",
+    "curate_with_subject_history",
+    "curation_kind_for_mode",
     "preserve_protected_facts",
     "apply_llm_curation_result",
     "store_curation_receipt",
     "get_curation_receipt",
+    "render_for_channel",
     "subject_key_for",
     "upsert_subject",
     "attach_event_to_subject",
