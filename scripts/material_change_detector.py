@@ -65,6 +65,35 @@ NEWS_BURST_K = float(os.getenv("MATERIAL_CHANGE_NEWS_BURST_K", "3.0"))
 
 HOLDINGS = ROOT / "data" / "portfolios" / "state" / "holdings.json"
 
+#: PRECEDENCE — what gets looked at first when the queue is longer than the budget.
+#:
+#: Operator instruction 2026-09-06: held names rank very high, an operator request
+#: ranks highest, and watchlist / preferred / re-entry outrank an ordinary tracked
+#: name. This is not cosmetic ordering: curation and routing are both capped per run,
+#: so precedence decides what actually gets researched when more moved than we can
+#: afford to look at.
+#:
+#: Money at risk outranks money considered. A held name that moves is a position
+#: behaving unlike itself; a watchlist name that moves is an idea behaving unlike
+#: itself. Both are worth knowing, in that order.
+PRECEDENCE = {
+    "operator": 100,   # the operator asked about it directly
+    "held": 80,        # a live position
+    "reentry": 70,     # a name we exited and are watching to re-enter
+    "preferred": 60,   # core / S0 scope — the curated shortlist
+    "watchlist": 40,   # ordinary tracked idea
+    "other": 10,
+}
+
+
+def precedence_for(reasons: set[str]) -> tuple[int, str]:
+    """Highest tier a symbol qualifies for. Returns (score, label)."""
+    best, label = PRECEDENCE["other"], "other"
+    for r in reasons:
+        if PRECEDENCE.get(r, 0) > best:
+            best, label = PRECEDENCE[r], r
+    return best, label
+
 #: MaterialChange@v1 is written and nothing reads it yet. Its consumers are stages
 #: 2-4 of docs/architecture/MATERIAL_CHANGE_TO_QUESTIONS.md — the dossier assembler
 #: and the single model call that turns a change into a narrative and questions —
@@ -86,6 +115,7 @@ CREATE TABLE IF NOT EXISTS material_changes (
     symbol            TEXT NOT NULL,
     kind              TEXT NOT NULL,
     magnitude         NUMERIC,
+    precedence        INTEGER,
     baseline          NUMERIC,
     observed_value    NUMERIC,
     observed_at       TIMESTAMPTZ NOT NULL,
@@ -97,6 +127,12 @@ CREATE TABLE IF NOT EXISTS material_changes (
 );
 CREATE INDEX IF NOT EXISTS material_changes_subject_idx ON material_changes (subject_guid);
 CREATE INDEX IF NOT EXISTS material_changes_observed_idx ON material_changes (observed_at DESC);
+-- CREATE TABLE IF NOT EXISTS does NOT add columns to a table that already exists, so
+-- every column added after the first deploy needs its own ALTER. Without this the
+-- INSERT fails with UndefinedColumn on exactly the installs that already work.
+ALTER TABLE material_changes ADD COLUMN IF NOT EXISTS precedence INTEGER;
+CREATE INDEX IF NOT EXISTS material_changes_precedence_idx
+    ON material_changes (precedence DESC, magnitude DESC);
 """
 
 
@@ -125,31 +161,82 @@ def change_guid(symbol: str, kind: str, observed_at: str) -> str:
                           f"tradeai:material_change:{symbol}|{kind}|{observed_at}"))
 
 
-def universe(cur) -> dict[str, str]:
-    """Watchlist + holdings. Returns {symbol: why_it_is_tracked}."""
-    out: dict[str, str] = {}
+def universe(cur) -> dict[str, dict]:
+    """Everything tracked, with WHY it is tracked and how much it outranks.
+
+    Returns {symbol: {"reasons": {...}, "precedence": int, "tier": str}}.
+    A symbol can qualify several ways; the highest tier wins.
+    """
+    reasons: dict[str, set[str]] = {}
+
+    def add(sym: str, why: str) -> None:
+        s = str(sym or "").strip().upper()
+        if s:
+            reasons.setdefault(s, set()).add(why)
+
     cur.execute("SELECT DISTINCT symbol FROM watchlist_items "
                 "WHERE lower(coalesce(status,'')) = 'active' AND symbol IS NOT NULL")
-    for (s,) in cur.fetchall():
-        out[str(s).upper()] = "watchlist"
+    for (sym,) in cur.fetchall():
+        add(sym, "watchlist")
+
+    # Preferred = the curated shortlist: core source tier, or S0 scope.
+    cur.execute("""SELECT DISTINCT symbol FROM watchlist_items
+                    WHERE lower(coalesce(status,''))='active' AND symbol IS NOT NULL
+                      AND (lower(coalesce(source_tier,''))='core'
+                           OR upper(coalesce(scope_tier,''))='S0')""")
+    for (sym,) in cur.fetchall():
+        add(sym, "preferred")
+
+    # Optional sources, each inside a SAVEPOINT.
+    #
+    # In Postgres a failed statement aborts the WHOLE transaction, and every later
+    # statement then fails with InFailedSqlTransaction. A bare try/except around an
+    # optional probe therefore does not make it optional — it hides the failure and
+    # poisons everything after it. That is exactly what happened here: a missing
+    # column on an optional table took down the price query twenty lines later.
+    for table, why, extra in (
+        ("reentry_directive_hits_staging", "reentry", ""),
+        ("inbound_operator_questions", "operator",
+         " AND created_at > now() - interval '30 days'"),
+    ):
+        try:
+            cur.execute("SAVEPOINT opt_src")
+            cur.execute(f"SELECT to_regclass('public.{table}')")
+            if cur.fetchall()[0][0] is None:
+                cur.execute("RELEASE SAVEPOINT opt_src")
+                continue
+            cur.execute(f"SELECT DISTINCT symbol FROM {table} "
+                        f"WHERE symbol IS NOT NULL{extra}")
+            for (sym,) in cur.fetchall():
+                add(sym, why)
+            cur.execute("RELEASE SAVEPOINT opt_src")
+        except Exception as exc:  # noqa: BLE001
+            cur.execute("ROLLBACK TO SAVEPOINT opt_src")
+            print(f"  WARN optional source {table} unusable "
+                  f"({type(exc).__name__}) — precedence tier '{why}' not applied "
+                  f"this run", file=sys.stderr)
+
     if HOLDINGS.is_file():
         try:
             data = json.loads(HOLDINGS.read_text(encoding="utf-8"))
             rows = data.get("holdings") if isinstance(data, dict) else data
             for h in rows or []:
-                sym = str((h or {}).get("symbol") or "").strip().upper()
-                if sym:
-                    out[sym] = "held" if sym not in out else "watchlist+held"
+                add((h or {}).get("symbol"), "held")
         except Exception as exc:  # noqa: BLE001
             print(f"  WARN holdings unreadable ({type(exc).__name__}) — universe is "
                   f"watchlist-only this run", file=sys.stderr)
+
+    out = {}
+    for sym, why in reasons.items():
+        score, tier = precedence_for(why)
+        out[sym] = {"reasons": sorted(why), "precedence": score, "tier": tier}
     return out
 
 
 #: A move must be confirmed by a SECOND source before it is called a change.
 #:
-#: Measured 2026-09-06. portfolio_repricer wrote closes into ticker_prices that are not
-#: market moves at all:
+#: Measured 2026-09-06. The first live run produced eight excursions and SIX were
+#: corrupt prices, faithfully reported:
 #:
 #:     NOC   528.37 -> 119.32  (-77%)   watchlist_items.change_pct says  -2.44%
 #:     SCHG   35.83 ->   8.15  (-77%)                                    +0.28%
@@ -157,16 +244,15 @@ def universe(cur) -> dict[str, str]:
 #:     BND    71.92 ->  55.64  (-23%)                                    -0.57%
 #:     AOUT                     +45.4%                                  +45.44%  <- real
 #:
-#: Six of eight excursions were corrupt data faithfully reported. The real one agreed
-#: with the independent source to four decimal places; every corrupt one disagreed by
-#: an order of magnitude. So agreement between two independently-written sources is
-#: the discriminator, and it costs nothing.
+#: The real move agreed with the independent source to four decimal places; every
+#: corrupt one disagreed by an order of magnitude. Agreement between two
+#: independently-written sources is the discriminator, and it costs nothing.
 #:
-#: Tolerance is a RATIO, not a percentage-point difference: a 2pp disagreement is
-#: nothing on a 45% move and everything on a 0.5% one.
+#: Tolerance is a RATIO, not a percentage-point difference: 2pp is nothing on a 45%
+#: move and everything on a 0.5% one.
 CORROBORATION_RATIO = float(os.getenv("MATERIAL_CHANGE_CORROBORATION_RATIO", "2.0"))
-#: Below this the two sources are both saying "nothing happened" and the ratio between
-#: them is meaningless.
+#: Below this both sources are saying "nothing happened" and the ratio between them
+#: is meaningless.
 CORROBORATION_FLOOR_PCT = float(os.getenv("MATERIAL_CHANGE_CORROBORATION_FLOOR", "1.0"))
 
 
@@ -185,9 +271,9 @@ def corroborate(cur, symbols: list[str]) -> dict[str, float]:
 def agrees(observed: float, independent: float | None) -> tuple[bool, str]:
     """Do two independently-written sources tell the same story?
 
-    Returns (agrees, reason). A symbol with NO independent source is NOT corroborated
-    — reported, never alarmed on. Firing on a single source is exactly how six corrupt
-    rows became six operator alerts.
+    A symbol with NO independent source is NOT corroborated — reported, never
+    alarmed on. Firing on a single source is exactly how six corrupt rows became six
+    operator alerts.
     """
     if independent is None:
         return False, "no_independent_source"
@@ -265,7 +351,8 @@ def price_excursions(cur, syms: dict[str, str]) -> tuple[list[dict], dict]:
             "baseline": round(float(baseline), 4),
             "observed_value": round(float(latest or 0), 4),
             "observed_at": str(latest_date),
-            "universe_reason": syms[sym],
+            "universe_reason": "+".join(syms[sym]["reasons"]),
+            "precedence": syms[sym]["precedence"],
             "evidence": {"source": "ticker_prices", "observations": int(n),
                          "baseline_days": BASELINE_DAYS,
                          "independent_pct": independent.get(sym),
@@ -288,7 +375,9 @@ def new_catalysts(cur, syms: dict[str, str]) -> tuple[list[dict], dict]:
         out.append({
             "symbol": sym, "kind": "catalyst_new", "magnitude": float(n),
             "baseline": None, "observed_value": float(n),
-            "observed_at": str(latest), "universe_reason": syms.get(sym, "?"),
+            "observed_at": str(latest),
+            "universe_reason": "+".join((syms.get(sym) or {}).get("reasons", ["?"])),
+            "precedence": (syms.get(sym) or {}).get("precedence", 10),
             "evidence": {"source": "catalyst_events", "count": int(n),
                          "id_range": [int(lo), int(hi)], "window_hours": NEW_HOURS},
         })
@@ -320,7 +409,9 @@ def news_bursts(cur, syms: dict[str, str]) -> tuple[list[dict], dict]:
             "symbol": sym, "kind": "news_burst",
             "magnitude": round(float(n) / float(per_day), 2),
             "baseline": round(float(per_day), 4), "observed_value": float(n),
-            "observed_at": str(latest), "universe_reason": syms.get(sym, "?"),
+            "observed_at": str(latest),
+            "universe_reason": "+".join((syms.get(sym) or {}).get("reasons", ["?"])),
+            "precedence": (syms.get(sym) or {}).get("precedence", 10),
             "evidence": {"source": "news_articles", "articles": int(n),
                          "window_hours": NEW_HOURS, "baseline_days": BASELINE_DAYS},
         })
@@ -339,14 +430,15 @@ def persist(cur, changes: list[dict], *, apply: bool) -> int:
         cur.execute(
             """INSERT INTO material_changes
                  (change_guid, subject_guid, issuer_guid, symbol, kind, magnitude,
-                  baseline, observed_value, observed_at, universe_reason,
+                  baseline, observed_value, observed_at, universe_reason, precedence,
                   evidence_json, schema_version, authority)
-               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                ON CONFLICT (change_guid) DO NOTHING""",
             (change_guid(c["symbol"], c["kind"], c["observed_at"]),
              env.get("subject_guid"), env.get("issuer_guid"), c["symbol"], c["kind"],
              c["magnitude"], c["baseline"], c["observed_value"], c["observed_at"],
-             c["universe_reason"], json.dumps(c["evidence"]), SCHEMA, AUTHORITY))
+             c["universe_reason"], c.get("precedence", 10),
+             json.dumps(c["evidence"]), SCHEMA, AUTHORITY))
         written += cur.rowcount
     return written
 
@@ -365,7 +457,7 @@ def main() -> int:
 
     syms = universe(cur)
     print(f"{SCHEMA} — apply={args.apply} K={K} universe={len(syms)} "
-          f"(watchlist+held)")
+          f"(watchlist+preferred+reentry+held+operator)")
 
     changes: list[dict] = []
     stats: dict[str, dict] = {}
@@ -376,7 +468,7 @@ def main() -> int:
     if args.kind in (None, "news_burst"):
         c, s = news_bursts(cur, syms); changes += c; stats["news_burst"] = s
 
-    changes.sort(key=lambda x: -(x["magnitude"] or 0))
+    changes.sort(key=lambda x: (-(x.get("precedence") or 0), -(x["magnitude"] or 0)))
     for c in changes[:25]:
         print(f"  {c['symbol']:>6} {c['kind']:<16} x{c['magnitude']:<7} "
               f"observed={c['observed_value']} baseline={c['baseline']} "
