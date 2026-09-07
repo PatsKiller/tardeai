@@ -42,6 +42,7 @@ import argparse
 import json
 import math
 import os
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -298,8 +299,40 @@ CATALYST_MATERIALITY = {
     "buyback": 1.0,
     "geopolitical": 1.0,
 }
+#: PRICE TARGET CHANGES — material, and invisible to catalyst_type.
+#:
+#: The operator asked directly: "if an analyst target moved to 425, would that be in
+#: here?" It would not have been. Measured 2026-09-07: 387 catalyst headlines in 30
+#: days mention a price target, and most carry catalyst_type='other' — the
+#: unclassified bucket this detector deliberately excludes as noise.
+#:
+#:     [other]           Capital One Adjusts Price Target on Diamondback to $283 From $272
+#:     [analyst_upgrade] NVT -- Price Target Raised to $210
+#:
+#: So the taxonomy is not sufficient on its own. A target move is a concrete,
+#: checkable change in what a covering analyst thinks a name is worth, which is
+#: exactly the class of thing worth re-examining a position over. Matched on the
+#: headline, and weighted between an upgrade and an earnings beat.
+PRICE_TARGET_RE = re.compile(
+    r"(price target|\bPT\b)\s*(raised|lowered|cut|increased|reduced|adjust\w*|"
+    r"to\s*\$?\d)|(raises|lowers|cuts|boosts|trims)\s+(price\s+)?target", re.I)
+PRICE_TARGET_MATERIALITY = float(os.getenv("MATERIAL_CHANGE_PT_MATERIALITY", "1.8"))
+#: Postgres POSIX form of the same pattern, for filtering in SQL.
+PRICE_TARGET_SQL = ("(price target|\\mPT\\M).*(raise|lower|cut|increase|reduce|adjust|to *\\$?[0-9])""|(raises|lowers|cuts|boosts|trims) +(price +)?target")
+
+
 #: A catalyst must reach this to be worth the operator's attention at all.
-CATALYST_MIN_MATERIALITY = float(os.getenv("MATERIAL_CHANGE_CATALYST_MIN", "1.0"))
+#: Raised from 1.0 to 2.0 on 2026-09-07. At 1.0 the alert carried "NOC: new catalyst
+#: (x1.2 vs usual)" and "JEPI: new catalyst (x1.0)" — one analyst note and one
+#: insider buy, announced to the operator as though something had changed. The
+#: operator's verdict: "what am I supposed to do with these".
+#:
+#: A single upgrade, a buyback or an insider buy is context, not an event. At 2.0 the
+#: bar is an earnings result, guidance, M&A, an FDA decision, dilution, or a price
+#: target move — things that change what a name is worth. Two analyst downgrades on
+#: one name still clears it (1.5 x 2), which is right: a pattern is an event even when
+#: each piece is not.
+CATALYST_MIN_MATERIALITY = float(os.getenv("MATERIAL_CHANGE_CATALYST_MIN", "2.0"))
 
 
 #: SECTOR — assembled from five partial sources, because no single one is enough.
@@ -548,19 +581,25 @@ def new_catalysts(cur, syms: dict[str, dict]) -> tuple[list[dict], dict]:
     """
     cur.execute(
         """SELECT symbol, catalyst_type, count(*), max(published_at),
-                  min(id), max(id)
+                  min(id), max(id),
+                  bool_or(headline ~* %s) AS is_price_target
              FROM catalyst_events
             WHERE symbol = ANY(%s)
               AND published_at > now() - (%s || ' hours')::interval
-              AND catalyst_type = ANY(%s)
+              AND (catalyst_type = ANY(%s) OR headline ~* %s)
             GROUP BY symbol, catalyst_type""",
-        (list(syms), NEW_HOURS,
-         [k for k, v in CATALYST_MATERIALITY.items() if v >= CATALYST_MIN_MATERIALITY]))
+        (PRICE_TARGET_SQL, list(syms), NEW_HOURS,
+         [k for k, v in CATALYST_MATERIALITY.items() if v >= CATALYST_MIN_MATERIALITY],
+         PRICE_TARGET_SQL))
 
     by_symbol: dict[str, dict] = {}
     stats = {"fired": 0, "below_materiality": 0, "types_seen": {}}
-    for sym, ctype, n, latest, lo, hi in cur.fetchall():
+    for sym, ctype, n, latest, lo, hi, is_pt in cur.fetchall():
         weight = CATALYST_MATERIALITY.get(ctype, 0.0)
+        if is_pt:
+            # A price-target move is material even when the taxonomy says `other`.
+            weight = max(weight, PRICE_TARGET_MATERIALITY)
+            ctype = f"{ctype}+price_target" if ctype else "price_target"
         stats["types_seen"][ctype] = stats["types_seen"].get(ctype, 0) + int(n)
         if weight < CATALYST_MIN_MATERIALITY:
             stats["below_materiality"] += int(n)

@@ -10,6 +10,8 @@ Tiered enrichment for any symbol that surfaces as GO/WAIT:
   Tier 5: Brave Search (A+ only, max 3/day)
 """
 
+import csv as _csv
+import io as _io
 import json
 import logging
 import os
@@ -85,22 +87,46 @@ def fetch_finviz_deep(symbol: str) -> Optional[dict]:
             log.error("[enrichment] No Finviz auth (need FINVIZ_API_TOKEN or FINVIZ_COOKIE)")
             return None
 
-        # View definitions matching finviz_enrichment.py exactly
+        # FIELDS BY HEADER NAME, NOT BY COLUMN INDEX.
+        #
+        # This used a hardcoded {index: field} map per view and threw the header row
+        # away. Finviz reordered its columns, so the map silently pointed at the wrong
+        # data — verified live 2026-09-07 against view 111:
+        #
+        #     index   code expected     finviz actually returns
+        #       8     volume_base       Price
+        #       9     price             Change
+        #      10     change_pct        Volume
+        #
+        # change_pct was reading VOLUME. That is why intelligence_entities holds values
+        # like BBCP 4,419,201 and BIYA 5,048,778, with 890 of 891 rows disagreeing with
+        # every other source. View 141 was wrong the same way: rvol read
+        # "Volatility (Month)" because Relative Volume had moved to index 14.
+        #
+        # Nothing failed. Every row parsed, every type converted, every value stored. A
+        # positional parser against a remote CSV cannot detect drift — it can only
+        # mis-read it confidently. Header names can.
         views = {
-            111: {1: "ticker", 2: "company", 3: "sector", 4: "industry",
-                  5: "country", 6: "market_cap_b", 7: "pe",
-                  8: "volume_base", 9: "price", 10: "change_pct"},
-            131: {1: "ticker", 4: "float_m", 7: "inst_own_pct",
-                  9: "short_float_pct", 10: "short_ratio",
-                  11: "avg_vol_m", 12: "price"},
-            141: {1: "ticker", 10: "recom", 12: "rvol", 13: "price"},
-            171: {1: "ticker", 2: "beta", 3: "atr",
-                  4: "sma20_pct", 5: "sma50_pct", 6: "sma200_pct",
-                  7: "week52_high_pct", 8: "week52_low_pct",
-                  9: "rsi", 10: "price", 11: "change_pct",
-                  12: "change_from_open_pct", 13: "gap_pct", 14: "volume"},
-            121: {1: "ticker", 3: "pe2", 4: "forward_pe", 5: "peg",
-                  10: "eps_ttm", 18: "price2"},
+            111: {"Ticker": "ticker", "Company": "company", "Sector": "sector",
+                  "Industry": "industry", "Country": "country",
+                  "Market Cap": "market_cap_b", "P/E": "pe",
+                  "Price": "price", "Change": "change_pct", "Volume": "volume_base"},
+            131: {"Ticker": "ticker", "Shares Float": "float_m",
+                  "Institutional Ownership": "inst_own_pct",
+                  "Short Float": "short_float_pct", "Short Ratio": "short_ratio",
+                  "Average Volume": "avg_vol_m", "Price": "price"},
+            141: {"Ticker": "ticker", "Relative Volume": "rvol",
+                  "Price": "price", "Change": "change_pct"},
+            171: {"Ticker": "ticker", "Beta": "beta",
+                  "Average True Range": "atr",
+                  "20-Day Simple Moving Average": "sma20_pct",
+                  "50-Day Simple Moving Average": "sma50_pct",
+                  "200-Day Simple Moving Average": "sma200_pct",
+                  "52-Week High": "week52_high_pct",
+                  "52-Week Low": "week52_low_pct",
+                  "Relative Strength Index (14)": "rsi",
+                  "Price": "price", "Change": "change_pct",
+                  "Change from Open": "change_from_open_pct", "Gap": "gap_pct"},
         }
 
         merged = {'symbol': symbol, 'source': 'finviz_elite'}
@@ -122,15 +148,25 @@ def fetch_finviz_deep(symbol: str) -> Optional[dict]:
                 if not resp.ok:
                     continue
 
-                lines = resp.text.strip().split("\n")
-                if len(lines) < 2:
+                # csv.reader, not split(","): a company name containing a comma
+                # shifts every later column, and a naive split cannot see that.
+                rows = list(_csv.reader(_io.StringIO(resp.text.strip())))
+                if len(rows) < 2:
                     continue
+                header = [h.strip().strip('"') for h in rows[0]]
+                parts = [c.strip().strip('"') for c in rows[1]]
+                pos = {name: i for i, name in enumerate(header)}
 
-                # Parse CSV — header row + data row
-                parts = [p.strip().strip('"') for p in lines[1].split(",")]
+                # A header we expect and cannot find is DRIFT, and it is reported.
+                # Silence here is exactly what let change_pct read Volume.
+                absent = [h for h in col_map if h not in pos]
+                if absent:
+                    log.warning("[enrichment] view %s: finviz header drift, "
+                                "columns absent: %s", view, absent)
 
-                for idx, field in col_map.items():
-                    if idx >= len(parts):
+                for header_name, field in col_map.items():
+                    idx = pos.get(header_name)
+                    if idx is None or idx >= len(parts):
                         continue
                     val = parts[idx].strip()
                     if not val or val == '-':
