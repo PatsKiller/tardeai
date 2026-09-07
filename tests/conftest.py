@@ -193,3 +193,63 @@ def alarm_capture(monkeypatch):
         pass
 
     return cap
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Production-DB guard for the comms suites.
+#
+# Added 2026-09-07 after reconstructing a recurring incident. Each comms module
+# carries its OWN `_db_conn`; when a unit test asserts the in-memory ledger on a
+# box where localhost Postgres answers, the DB branch wins and the test writes to
+# the LIVE database.
+#
+# It has happened repeatedly and been mitigated one file at a time:
+#   2026-09-04 22:05  9caf75de3  test_comms_agent_contracts.py lands unguarded
+#   2026-09-05 00:17  ── 4 receipts written to production (evt_42, evt_inf,
+#                        evt_inf2, n1). Those four became the audited M1
+#                        "consumption receipts = 4" baseline. They were test
+#                        literals, not agent behaviour.
+#   2026-09-05 03:25  c2986912b  "close the remaining four production write paths"
+#                        — stubs 5 files, but does NOT remove the 4 rows.
+#   2026-09-07        test_replay_determinism_b.py becomes file 14, same defect.
+#
+# Thirteen per-file monkeypatches is a denylist that grows only after each new
+# file has already written to production. This inverts it: every comms module
+# exposing `_db_conn` is neutralised by DEFAULT, discovered dynamically so a
+# module added tomorrow is covered without anyone remembering to add a stub.
+#
+# `lambda: None` is the established safe behaviour — the modules fall back to
+# their in-memory ledger, which is what these suites assert anyway.
+#
+# Opt out ONLY for a test that genuinely needs a live connection:
+#     @pytest.mark.allow_production_db
+# ─────────────────────────────────────────────────────────────────────────────
+
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers",
+        "allow_production_db: permit a live DB connection in the comms modules "
+        "(guard is fail-closed by default; use only with a disposable database)",
+    )
+
+
+@pytest.fixture(autouse=True)
+def _block_comms_production_db(request, monkeypatch):
+    if request.node.get_closest_marker("allow_production_db"):
+        return
+
+    import importlib
+    import pkgutil
+
+    try:
+        import scripts.lib.comms as _comms_pkg
+    except Exception:
+        return
+
+    for _mod in pkgutil.iter_modules(_comms_pkg.__path__):
+        try:
+            mod = importlib.import_module(f"scripts.lib.comms.{_mod.name}")
+        except Exception:
+            continue
+        if hasattr(mod, "_db_conn"):
+            monkeypatch.setattr(mod, "_db_conn", lambda: None, raising=False)
