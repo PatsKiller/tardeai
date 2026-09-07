@@ -3,7 +3,7 @@
 **Status:** Communications Gateway program documentation (Phases 0–11).
 **Date:** 2026-09-05
 
-**As of:** 2026-09-05 (re-attest `docs/audit/live-attest-2026-09-05.md`, served `f88853e89`)  
+**As of:** 2026-09-07 (re-attest `docs/audit/live-attest-2026-09-05.md`, served `3cb740e4c69380fe9355da6b4857a94cf21e6c27` = PR #874 Wave E + docs; earlier `f88853e89` = PR #873 poller rewiring)  
 **Production activation:** **CANARY for Telegram `ops` only** (`COMMS_GATEWAY_MODE=CANARY`, `CANARY_CLASSES=ops`, `CANARY_CHATS=6993102664,8797974247`). A short-lived **ACTIVE for `ops`** posture (`COMMS_GATEWAY_ACTIVE_CLASSES=ops`, ~40 min soak) was **reverted to CANARY** — see `docs/deployment/production-activation.md` and `docs/deployment/canary-results.md`. Default remains **OFF** for every other class and channel.  
 **Worktree:** `wt/comms-gateway-phase0` (`tradeai-wt-comms-gateway-phase0`)
 

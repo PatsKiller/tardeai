@@ -3,7 +3,7 @@
 **Status:** **CANARY for message class `ops` only** (Telegram).  
 **Current production mode:** **CANARY** via systemd `32-comms-gateway-mode.conf`
 (`COMMS_GATEWAY_MODE=CANARY`, `CANARY_CLASSES=ops`, `CANARY_CHATS=6993102664,8797974247`).  
-**Served SHA:** `f88853e89e53fdd63725acccb064ca1395e0bf34` (`[VERIFIED]` via `/v3/build-meta.json`).  
+**Served SHA:** `3cb740e4c69380fe9355da6b4857a94cf21e6c27` (`[VERIFIED]` via `/v3/build-meta.json`; PR #874 Wave E + docs, merged from `d18d81208`).  
 **Signed:** 2026-09-05T04:31:30Z · operator johnclaw (agent-assisted)
 
 > **Mode correction (2026-09-05T13:56:00-04:00):** an **ACTIVE for `ops`** posture was set
@@ -74,3 +74,11 @@ All other message classes remain legacy-send + best-effort ledger unless added t
 classes requires a new canary row in `canary-results.md` and an allowlist update; moving
 back to ACTIVE requires re-checking the gates above against the then-current SHA. Repo
 defaults remain OFF.
+
+> **`CONTRADICTED` correction (2026-09-07):** "CANARY owns ops delivery" is **process-local**.
+> `COMMS_GATEWAY_MODE=CANARY` is exported only to `portfolio-server.service`; the cron/agent
+> producers that send alerts resolve `OFF` and use legacy delivery. Independent validation:
+> 200/200 events `gateway_mode_at_write=OFF`, 163/200 deliveries `delivery_owner=legacy`,
+> zero gateway-owned. The gateway ledger is live; delivery ownership is `WIRED_BUT_DARK`.
+> Closing it requires exporting the mode to the producer processes (or moving the gate into
+> the shared transport), which is an operator decision (§17), not a closed item.
