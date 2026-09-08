@@ -8,8 +8,15 @@ Fail-closed: BOTH env flags must be on, otherwise exit 0 with no side effects:
   PERSISTENT_WAKE_ENABLED
   PERSISTENT_WAKE_SCHEDULE_ENABLED
 
-Idempotent per schedule slot. Missed slots are skipped (catch_up_policy=skip_missed).
-Exit 0 for ok / disabled / nothing-due; exit 1 for hard errors.
+When ``--subject-guid`` is omitted, subjects come from
+``scripts.lib.wake_subject_selector`` (unconsumed research first, then recent
+MaterialChange@v1). An empty selection reports
+``detail: "selector returned no candidates"`` — distinguishable from a missing
+argument.
+
+Idempotent per schedule slot *per subject*. Missed slots are skipped
+(catch_up_policy=skip_missed). Exit 0 for ok / disabled / nothing-due; exit 1
+for hard errors.
 """
 from __future__ import annotations
 
@@ -35,6 +42,12 @@ from scripts.lib.persistent_wake_schedule import (  # noqa: E402
     ScheduleContract,
 )
 from scripts.lib.persistent_wake_store import JsonlStore  # noqa: E402
+from scripts.lib.wake_subject_selector import (  # noqa: E402
+    DEFAULT_LIMIT,
+    SubjectCandidate,
+    load_selection_inputs,
+    select_subjects,
+)
 
 WAKE_REASON = "scheduled_persistent_review"
 DEFAULT_STATE_ENV = "TRADEAI_PERSISTENT_WAKE_STATE_ROOT"
@@ -60,7 +73,6 @@ def both_flags_on(env: dict | None = None) -> bool:
 
 
 def _emit(line: dict[str, Any]) -> None:
-    """One structured, cron/journald-readable line."""
     print(json.dumps(line, sort_keys=True, default=str), flush=True)
 
 
@@ -68,11 +80,12 @@ def _default_state_root(env: dict) -> Path:
     raw = env.get(DEFAULT_STATE_ENV) or ""
     if raw:
         return Path(raw)
-    # Disposable-by-default under repo-local state; never the production DB.
     return _PROJECT / "data" / "persistent_wake" / "state"
 
 
-def _completed_slots(store: JsonlStore, *, agent_id: str, wake_reason: str, subject_guid: str) -> set[str]:
+def _completed_slots(
+    store: JsonlStore, *, agent_id: str, wake_reason: str, subject_guid: str,
+) -> set[str]:
     out: set[str] = set()
     for row in store.iter("wakes"):
         if row.get("agent_id") != agent_id:
@@ -81,29 +94,39 @@ def _completed_slots(store: JsonlStore, *, agent_id: str, wake_reason: str, subj
             continue
         if str(row.get("subject_guid")) != str(subject_guid):
             continue
-        if row.get("lifecycle_state") in {"SETTLED", "ABANDONED", "STALE", "MEMORY_UNAVAILABLE", "MEMORY_MALFORMED"}:
+        if row.get("lifecycle_state") in {
+            "SETTLED", "ABANDONED", "STALE", "MEMORY_UNAVAILABLE", "MEMORY_MALFORMED",
+        }:
             slot = row.get("schedule_slot_utc")
             if slot:
                 out.add(str(slot))
     return out
 
 
-def run_once(
+def _missed_slots(contract: ScheduleContract, when: datetime, completed: set[str], current: str) -> list[str]:
+    missed: list[str] = []
+    n = max(1, contract.staleness_tolerance_minutes // contract.cadence_minutes)
+    for i in range(1, n + 1):
+        past = contract.slot_for(when - timedelta(minutes=i * contract.cadence_minutes))
+        if past not in completed and past != current:
+            missed.append(past)
+    return missed
+
+
+def _process_one_subject(
     *,
     agent_id: str,
-    subject_guid: str | None,
-    dry_run: bool = False,
-    env: dict | None = None,
-    when: datetime | None = None,
-    state_root: Path | str | None = None,
-    memory_backend: Any = None,
+    subject_guid: str,
+    dry_run: bool,
+    env: dict,
+    when: datetime,
+    state_root: Path,
+    memory_backend: Any,
+    selection_source: str | None = None,
 ) -> int:
-    """Execute at most one wake for the current schedule slot. Return process exit code."""
-    env = dict(env if env is not None else os.environ)
-    when = when or _now()
+    """Run one subject for the current slot. Return process exit code."""
     contract = ScheduleContract(agent_id=agent_id, wake_reason=WAKE_REASON)
     slot = contract.slot_for(when)
-
     base = {
         "script": "run_persistent_wake",
         "agent_id": agent_id,
@@ -112,48 +135,21 @@ def run_once(
         "wake_flag": WAKE_FLAG,
         "schedule_flag": SCHEDULE_FLAG,
     }
+    if selection_source:
+        base["selection_source"] = selection_source
 
-    if not both_flags_on(env):
-        _emit({
-            **base,
-            "outcome": "disabled",
-            "wake_id": "none",
-            "detail": (
-                f"{WAKE_FLAG}={'on' if wake_feature_enabled(env) else 'off'} "
-                f"{SCHEDULE_FLAG}={'on' if schedule_enabled(env) else 'off'}; "
-                "both must be on"
-            ),
-        })
-        return 0
-
-    if not subject_guid:
-        _emit({**base, "outcome": "nothing_due", "wake_id": "none", "detail": "no --subject-guid"})
-        return 0
-
-    root = Path(state_root) if state_root is not None else _default_state_root(env)
-    if memory_backend is None:
-        mem_path = env.get(DEFAULT_MEMORY_ENV) or ""
-        memory_backend = Path(mem_path) if mem_path else None
-
-    store = JsonlStore(root)
+    store = JsonlStore(state_root)
     completed = _completed_slots(
         store, agent_id=agent_id, wake_reason=WAKE_REASON, subject_guid=subject_guid,
     )
 
-    # skip_missed: never catch up prior slots; only consider the current slot.
     if slot in completed:
-        missed = []
-        n = max(1, contract.staleness_tolerance_minutes // contract.cadence_minutes)
-        for i in range(1, n + 1):
-            past = contract.slot_for(when - timedelta(minutes=i * contract.cadence_minutes))
-            if past not in completed:
-                missed.append(past)
         _emit({
             **base,
             "outcome": "nothing_due",
             "wake_id": "none",
             "detail": "current slot already complete; missed slots skipped",
-            "missed_skipped": missed,
+            "missed_skipped": _missed_slots(contract, when, completed, slot),
         })
         return 0
 
@@ -171,7 +167,7 @@ def run_once(
             agent_id=agent_id,
             subject_guid=subject_guid,
             wake_reason=WAKE_REASON,
-            state_root=root,
+            state_root=state_root,
             memory_backend=memory_backend,
             when=when,
             contract=contract,
@@ -203,7 +199,6 @@ def run_once(
         outcome = "nothing_due"
         detail = "idempotent collision; slot already settled"
     elif state in {"MEMORY_MALFORMED", "STALE", "MEMORY_UNAVAILABLE"}:
-        # Refuse to act; exit 0 so cron does not page.
         outcome = "refused"
         detail = f"memory_state={state}"
     elif result.get("memory_empty") and state == "LOADED":
@@ -216,23 +211,129 @@ def run_once(
         outcome = "refused"
         detail = f"lifecycle_state={state}"
 
-    # Report missed slots skipped (never caught up).
-    missed = []
-    n = max(1, contract.staleness_tolerance_minutes // contract.cadence_minutes)
-    for i in range(1, n + 1):
-        past = contract.slot_for(when - timedelta(minutes=i * contract.cadence_minutes))
-        if past not in completed and past != slot:
-            missed.append(past)
-
     _emit({
         **base,
         "outcome": outcome,
         "wake_id": wake_id,
         "detail": detail,
-        "missed_skipped": missed,
+        "missed_skipped": _missed_slots(contract, when, completed, slot),
         "inserted": bool(result.get("inserted")),
     })
     return 0
+
+
+def run_once(
+    *,
+    agent_id: str,
+    subject_guid: str | None = None,
+    dry_run: bool = False,
+    env: dict | None = None,
+    when: datetime | None = None,
+    state_root: Path | str | None = None,
+    memory_backend: Any = None,
+    limit: int = DEFAULT_LIMIT,
+    select_only: bool = False,
+    research_objects: list[dict] | None = None,
+    receipts: list[dict] | None = None,
+    material_changes: list[dict] | None = None,
+) -> int:
+    """Resolve subject(s) and process the current schedule slot.
+
+    Explicit ``subject_guid`` ⇒ one named subject (unchanged behaviour).
+    Omitted ⇒ selector; empty ⇒ ``selector returned no candidates``.
+    """
+    env = dict(env if env is not None else os.environ)
+    when = when or _now()
+    contract = ScheduleContract(agent_id=agent_id, wake_reason=WAKE_REASON)
+    slot = contract.slot_for(when)
+
+    base = {
+        "script": "run_persistent_wake",
+        "agent_id": agent_id,
+        "subject_guid": subject_guid,
+        "slot": slot,
+        "wake_flag": WAKE_FLAG,
+        "schedule_flag": SCHEDULE_FLAG,
+    }
+
+    if not both_flags_on(env):
+        _emit({
+            **base,
+            "outcome": "disabled",
+            "wake_id": "none",
+            "detail": (
+                f"{WAKE_FLAG}={'on' if wake_feature_enabled(env) else 'off'} "
+                f"{SCHEDULE_FLAG}={'on' if schedule_enabled(env) else 'off'}; "
+                "both must be on"
+            ),
+        })
+        return 0
+
+    root = Path(state_root) if state_root is not None else _default_state_root(env)
+    if memory_backend is None:
+        mem_path = env.get(DEFAULT_MEMORY_ENV) or ""
+        memory_backend = Path(mem_path) if mem_path else None
+
+    # Resolve subjects
+    selection_meta: list[SubjectCandidate] = []
+    if subject_guid:
+        subjects = [(subject_guid, None)]
+    else:
+        inputs = {
+            "research_objects": research_objects,
+            "receipts": receipts,
+            "material_changes": material_changes,
+        }
+        if inputs["research_objects"] is None and inputs["receipts"] is None and inputs["material_changes"] is None:
+            loaded = load_selection_inputs(env)
+            inputs = loaded
+        selection_meta = select_subjects(
+            agent_id,
+            limit=limit,
+            now=when,
+            research_objects=inputs.get("research_objects") or [],
+            receipts=inputs.get("receipts") or [],
+            material_changes=inputs.get("material_changes") or [],
+        )
+        if not selection_meta:
+            _emit({
+                **base,
+                "outcome": "nothing_due",
+                "wake_id": "none",
+                "detail": "selector returned no candidates",
+                "limit": limit,
+            })
+            return 0
+        subjects = [(c.subject_guid, c.source) for c in selection_meta]
+
+    if select_only:
+        _emit({
+            **base,
+            "outcome": "select_only",
+            "wake_id": "none",
+            "detail": "selection only; no writes",
+            "candidates": [c.to_dict() for c in selection_meta] if selection_meta else [
+                {"subject_guid": subject_guid, "source": "explicit"}
+            ],
+            "limit": limit,
+        })
+        return 0
+
+    rc = 0
+    for sg, src in subjects:
+        subject_rc = _process_one_subject(
+            agent_id=agent_id,
+            subject_guid=sg,
+            dry_run=dry_run,
+            env=env,
+            when=when,
+            state_root=root,
+            memory_backend=memory_backend,
+            selection_source=src,
+        )
+        if subject_rc != 0:
+            rc = subject_rc
+    return rc
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -240,14 +341,22 @@ def main(argv: list[str] | None = None) -> int:
         description="Cron-callable persistent wake runner (schedule-READY; not schedule-ACTIVE)",
     )
     p.add_argument("--agent-id", required=True, help="Agent id (e.g. cio)")
-    p.add_argument("--subject-guid", default=None, help="Subject GUID to wake on")
+    p.add_argument(
+        "--subject-guid",
+        default=None,
+        help="Explicit subject GUID. If omitted, the subject selector chooses.",
+    )
     p.add_argument("--dry-run", action="store_true", help="Report what would run; write nothing")
     p.add_argument(
         "--once",
         action="store_true",
         default=True,
-        help="Process a single slot/subject and exit (default)",
+        help="Process current slot and exit (default)",
     )
+    p.add_argument("--limit", type=int, default=DEFAULT_LIMIT,
+                   help=f"Max subjects from selector when --subject-guid omitted (default {DEFAULT_LIMIT})")
+    p.add_argument("--select-only", action="store_true",
+                   help="Print selector results and exit without writing")
     p.add_argument("--state-root", default=None, help="Disposable/state JSONL root (tests/ops)")
     p.add_argument("--memory-path", default=None, help="Optional memory JSONL path")
     p.add_argument("--when-utc", default=None, help="Override clock ISO-8601 UTC (tests only)")
@@ -269,6 +378,8 @@ def main(argv: list[str] | None = None) -> int:
         when=when,
         state_root=args.state_root,
         memory_backend=mem,
+        limit=args.limit,
+        select_only=args.select_only,
     )
 
 
