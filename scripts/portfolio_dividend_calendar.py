@@ -229,5 +229,25 @@ def build_dividend_calendar(portfolio: Dict, root: Path, state_dir: Path) -> Dic
         "last_updated":      today.strftime("%Y-%m-%d %H:%M"),
     }
 
-    (state_dir/"dividend_calendar.json").write_text(json.dumps(result,indent=2,default=str))
+    _payload = json.dumps(result, indent=2, default=str)
+    # WAVE G1 dual-write. The served release symlinks data/portfolios/state at the
+    # persistent root, so a checkout-only write (the previous single-line write
+    # here) left the served dividend_calendar frozen at 2026-09-04 while this
+    # producer refreshed the dev-tree copy daily. Write both copies, exactly as
+    # portfolio_repricer already does for holdings.json.
+    _targets = [state_dir]
+    try:
+        import sys as _sys
+        _repo_root = str(root)
+        if _repo_root not in _sys.path:
+            _sys.path.insert(0, _repo_root)
+        from scripts.lib.persistent_state_root import portfolio_state_write_targets
+        _targets = portfolio_state_write_targets(root)
+    except Exception:
+        pass  # helper unavailable — keep the single checkout copy (no new failure)
+    for _t in _targets:
+        try:
+            (_t / "dividend_calendar.json").write_text(_payload)
+        except OSError:
+            pass
     return result

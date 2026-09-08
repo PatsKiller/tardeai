@@ -3,7 +3,7 @@ as_of:       2026-09-02T18:00:00Z
 run_id:      sop-1.2.0-20260902
 worktree:    /home/johnclaw/trade-ai-worktrees/agent-sop-1.2.0
 base_sha:    4bcba2cf7168f1cc9b1b7ffd18ab749b2eed44a9
-control_surface_digest=8088d03be15031607de6f0c020ce1497c32b995b03505739adaf08e39b8a34bd
+control_surface_digest=00501ea6d162ab8d3ac01d0d36045a82a78d16560469953fee807acd9ba39a26
 Authority:   local Layer-1 evidence + runtime attestation. INDEPENDENT_VERIFICATION_PENDING. No remote.
 
 # Maturity scorecard — Multi-Agent SOP 1.2.0

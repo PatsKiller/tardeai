@@ -1620,6 +1620,17 @@ accumulates the divergence this document exists to remove.
   cron-level fix leaves the next caller free to reintroduce it.
 - **Writes land on the served path.** A correct value written where nothing serves it is not a
   write. This class has been found four times.
+- **Portfolio/state/log writers resolve their target through the shared helpers, never a bare
+  checkout-relative path.** `scripts/lib/persistent_state_root.py` is the resolution layer:
+  `portfolio_state_write_targets(root)` for `data/portfolios/state`, `logs_root()` /
+  `resolve_durable_dir(rel, root)` for `logs/` and durable files. The served release symlinks
+  those trees at `GOOD_PERSISTENT_ROOT`, so a writer that resolves `root/"data"/"portfolios"/"state"`
+  (or cron `>> logs/…`) from its own checkout writes a copy the server never reads — it reports
+  success while the served number quietly freezes. `portfolio_repricer.py` is the reference
+  dual-write. *Cause 2026-09-08: `portfolio_dividend_calendar.py` was the last checkout-only
+  holdout — it refreshed `dividend_calendar.json` in the dev tree daily while the served copy sat
+  at 2026-09-04 (~100h STALE), and the Schwab journal cron's `>> logs/schwab_ingest.log` ran 281h
+  stale in the served view until repointed. Both are now dual-write.*
 
 ## 9.5 Operator surfaces and fields
 
