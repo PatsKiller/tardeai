@@ -49,6 +49,41 @@ KNOWN_AGENTS = frozenset({"cio", "hermes", "advisory", "darwin", "maria"})
 TERMINAL_WAKE = frozenset({
     "SETTLED", "ABANDONED", "STALE", "MEMORY_UNAVAILABLE", "MEMORY_MALFORMED",
 })
+# Selection provenance → receipt source_kind. `material_change` is accepted on
+# the wake path pending SFR promotion into CampaignInterfaces SOURCE_KINDS.
+_SELECTION_SOURCE_TO_KIND = {
+    "unconsumed_research": "research_object",
+    "material_change": "material_change",
+}
+_WAKE_SOURCE_KINDS = frozenset(SOURCE_KINDS) | frozenset({"material_change"})
+
+
+def _normalize_selection(selection: Any) -> dict[str, Any] | None:
+    """Return `{source, source_id, observed_at}` or None. Never mint a source_id."""
+    if selection is None:
+        return None
+    if hasattr(selection, "source") and hasattr(selection, "source_id"):
+        src = getattr(selection, "source", None)
+        sid = getattr(selection, "source_id", None)
+        observed = getattr(selection, "observed_at", None)
+    elif isinstance(selection, dict):
+        src = selection.get("source")
+        sid = selection.get("source_id")
+        observed = selection.get("observed_at")
+    else:
+        return None
+    if not src or not sid:
+        return None
+    out: dict[str, Any] = {"source": str(src), "source_id": str(sid)}
+    if observed is not None:
+        out["observed_at"] = str(observed)
+    return out
+
+
+def _selection_primary_kind(selection: dict[str, Any] | None) -> str | None:
+    if not selection:
+        return None
+    return _SELECTION_SOURCE_TO_KIND.get(str(selection.get("source") or ""))
 MEMORY_STALE_HOURS = float(os.getenv("WAKE_MEMORY_STALE_HOURS", "168"))
 
 
@@ -248,13 +283,19 @@ class WakeEngine:
         decide: Callable[[dict], dict] | None = None,
         env: dict | None = None,
         crash_after: str | None = None,
+        selection: Any = None,
     ) -> dict:
         """Execute one wake. Idempotent on (agent, reason, slot, subject).
 
         `crash_after` is a test hook: 'reserved' simulates crash after CLAIMED
         reservation and before completion.
+
+        `selection` is the SubjectCandidate (or dict) that chose this subject —
+        threaded unchanged into context so decide can consume the original
+        research_object / material_change id.
         """
         now = now or _now()
+        selection_meta = _normalize_selection(selection)
         if not feature_enabled(env):
             return {
                 "ok": False,
@@ -280,6 +321,9 @@ class WakeEngine:
             }
 
         # Reserve / claim
+        research_ids: list[str] = []
+        if selection_meta and _selection_primary_kind(selection_meta) == "research_object":
+            research_ids = [selection_meta["source_id"]]
         wake = {
             "wake_id": wake_id,
             "agent_id": agent_id,
@@ -290,7 +334,8 @@ class WakeEngine:
             "memory_fact_ids": [],
             "prior_comm_event_ids": [],
             "prior_operator_turn_ids": [],
-            "research_object_ids": [],
+            "research_object_ids": list(research_ids),
+            "selection": selection_meta,
             "commitments_created": [],
             "receipts_emitted": [],
             "authority": AUTHORITY,
@@ -306,10 +351,15 @@ class WakeEngine:
                     "producer": "test" if (env or {}).get("PROVENANCE_PRODUCER") == "test"
                     or os.environ.get("PROVENANCE_PRODUCER") == "test"
                     else "persistent_agent_wake",
-                    "inputs": [],
+                    "inputs": (
+                        [{"kind": _selection_primary_kind(selection_meta) or selection_meta["source"],
+                          "id": selection_meta["source_id"]}]
+                        if selection_meta else []
+                    ),
                     "policy_decisions": ["feature_flag_on"],
                     "llm": None,
                     "trigger": "schedule_slot",
+                    "selection": selection_meta,
                 },
             ),
         }
@@ -369,6 +419,8 @@ class WakeEngine:
             "comm_events": comm_events,
             "operator_turns": op_turns,
             "memory_empty": memory_empty,
+            # Selection provenance reaches decide unchanged (original source_id).
+            "selection": selection_meta,
         }
 
         # 3) Decide (deterministic by default)
@@ -376,6 +428,7 @@ class WakeEngine:
         decision = decide(context)
         if memory_empty and decision.get("act") and not decision.get("allow_empty_memory"):
             # Explicit no-act on empty memory unless decide opts in
+            # (research / material-change selection sets allow_empty_memory).
             decision = {
                 "act": False,
                 "effect_kind": "none",
@@ -462,16 +515,30 @@ class WakeEngine:
             c_ins, crec = self.store.append_unique("commitments", "commitment_id", crec)
             commitments.append(crec)
             wake["commitments_created"] = [crec["commitment_id"]]
-            # Effect receipt tied to commitment
+            # Effect receipt tied to commitment. Preserve decision effect_kind
+            # (e.g. changed_question from research selection); only default to
+            # changed_commitment when the decision did not name a real effect.
+            emit_effect = (
+                effect_kind if effect_kind and effect_kind != "none"
+                else ("changed_commitment" if c_ins else "none")
+            )
+            primary_kind = decision.get("primary_source_kind") or (
+                "memory_fact" if wake["memory_fact_ids"] else None
+            )
+            primary_id = decision.get("primary_source_id") or (
+                wake["memory_fact_ids"][0] if wake["memory_fact_ids"] else "none"
+            )
+            influence = list(wake["memory_fact_ids"]) + list(wake["prior_comm_event_ids"])
+            if selection_meta and selection_meta.get("source_id"):
+                influence = list(dict.fromkeys(influence + [selection_meta["source_id"]]))
             erec = self._emit_receipt(
                 agent_id=agent_id,
-                source_kind=(decision.get("primary_source_kind") or "memory_fact"),
-                source_id=(decision.get("primary_source_id")
-                           or (wake["memory_fact_ids"][0] if wake["memory_fact_ids"] else "none")),
+                source_kind=primary_kind or "memory_fact",
+                source_id=primary_id,
                 wake_id=wake_id, subject_guid=subject_guid, purpose="wake_decision",
-                effect_kind="changed_commitment" if c_ins or effect_kind == "changed_commitment" else effect_kind,
+                effect_kind=emit_effect,
                 effect_ref=cid, now=now, corr=corr,
-                influence_source_ids=list(wake["memory_fact_ids"]) + list(wake["prior_comm_event_ids"]),
+                influence_source_ids=influence,
             )
             receipts.append(erec)
         elif decision.get("act") and decision.get("view"):
@@ -573,7 +640,7 @@ class WakeEngine:
         subject_guid: str, purpose: str, effect_kind: str, effect_ref: str | None,
         now: datetime, corr: str, influence_source_ids: list[str],
     ) -> dict:
-        if source_kind not in SOURCE_KINDS:
+        if source_kind not in _WAKE_SOURCE_KINDS:
             raise WakeRejected(f"illegal source_kind {source_kind!r}")
         if effect_kind not in EFFECT_KINDS:
             raise WakeRejected(f"illegal effect_kind {effect_kind!r}")
@@ -624,25 +691,54 @@ class WakeEngine:
 
 
 def default_decide(context: dict) -> dict:
-    """Deterministic decision: if relevant memory exists, mint an observational commitment."""
+    """Deterministic decision.
+
+    Memory facts present → MEMORY_SALIENCE commitment (unchanged).
+    No memory BUT selection provenance is unconsumed_research / material_change
+    → act with changed_question, preserving the ORIGINAL selection source_id.
+    Neither → refuse no_relevant_memory.
+    """
     facts = context.get("memory_facts") or []
-    if not facts:
-        return {"act": False, "effect_kind": "none", "reason": "no_relevant_memory"}
-    # Fingerprint memory into claim so changed memory => changed commitment/output
-    digest = _content_hash([f.get("content") for f in facts])[:16]
-    claim = f"memory_digest:{digest} remains salient"
-    return {
-        "act": True,
-        "effect_kind": "changed_commitment",
-        "commitment": {
-            "commitment_kind": "MEMORY_SALIENCE",
-            "claim": claim,
-            "normalized_claim": _normalize_claim(claim),
-        },
-        "primary_source_kind": "memory_fact",
-        "primary_source_id": facts[0]["fact_id"],
-        "reason": "organic_from_memory",
-    }
+    if facts:
+        # Fingerprint memory into claim so changed memory => changed commitment/output
+        digest = _content_hash([f.get("content") for f in facts])[:16]
+        claim = f"memory_digest:{digest} remains salient"
+        return {
+            "act": True,
+            "effect_kind": "changed_commitment",
+            "commitment": {
+                "commitment_kind": "MEMORY_SALIENCE",
+                "claim": claim,
+                "normalized_claim": _normalize_claim(claim),
+            },
+            "primary_source_kind": "memory_fact",
+            "primary_source_id": facts[0]["fact_id"],
+            "reason": "organic_from_memory",
+        }
+
+    selection = context.get("selection")
+    if isinstance(selection, dict):
+        primary_kind = _selection_primary_kind(selection)
+        source_id = selection.get("source_id")
+        if primary_kind and source_id:
+            # Bounded observational commitment — same shape as MEMORY_SALIENCE.
+            # MBI_BEHAVIOR = 0: no sizing/ordering/stops/weights/broker reach.
+            claim = f"selection:{selection.get('source')}:{source_id} warrants review"
+            return {
+                "act": True,
+                "allow_empty_memory": True,
+                "effect_kind": "changed_question",
+                "commitment": {
+                    "commitment_kind": "SELECTION_OBSERVATION",
+                    "claim": claim,
+                    "normalized_claim": _normalize_claim(claim),
+                },
+                "primary_source_kind": primary_kind,
+                "primary_source_id": str(source_id),  # ORIGINAL id, never reminted
+                "reason": "organic_from_selection",
+            }
+
+    return {"act": False, "effect_kind": "none", "reason": "no_relevant_memory"}
 
 
 def run_scheduled_wake(
@@ -658,8 +754,14 @@ def run_scheduled_wake(
     env: dict | None = None,
     decide: Callable[[dict], dict] | None = None,
     crash_after: str | None = None,
+    selection: Any = None,
 ) -> dict:
-    """Stable entrypoint for a future schedule. Does not install the schedule."""
+    """Stable entrypoint for a future schedule. Does not install the schedule.
+
+    ``selection`` — SubjectCandidate or ``{source, source_id, observed_at}`` —
+    is threaded into context so decide can consume the selecting research /
+    material-change id verbatim.
+    """
     when = when or _now()
     contract = contract or ScheduleContract(agent_id=agent_id, wake_reason=wake_reason)
     slot = contract.slot_for(when)
@@ -677,6 +779,7 @@ def run_scheduled_wake(
         decide=decide,
         env=env,
         crash_after=crash_after,
+        selection=selection,
     )
 
 
