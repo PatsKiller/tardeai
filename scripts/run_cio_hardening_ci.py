@@ -62,6 +62,7 @@ GATES = [
             "tests/test_run_persistent_wake.py",
             # SFR-A-FOLLOWUP2-001: wake subject selection.
             "tests/test_wake_subject_selector.py",
+            "tests/test_wake_research_consumption.py",
         ],
     ),
     # Cash age is the age of the dollars. PP2 (the cash letter) and PP4 (provenance)

@@ -1,0 +1,43 @@
+{
+  "schema": "IndependentValidationRecomputation@v1",
+  "as_of": "2026-09-08T00:00:00Z",
+  "root_read": "/home/johnclaw/trade-ai-worktrees/m2-canary-integration-20260907",
+  "validator_head": "2c650b9686ad2f93acc68b624a38c68020dcc920",
+  "main_sha_observed_local_ref": "ad1b32a715b79b599ed78cee87f7ff49eecaccfd",
+  "served_sha": "ad1b32a715b79b599ed78cee87f7ff49eecaccfd",
+  "candidate_sha": "2c650b9686ad2f93acc68b624a38c68020dcc920",
+  "baseline_inferred_not_supplied": "87333fee5",
+  "baseline_note": "Short local ref 87333fee5 was observed; owner did not supply a baseline SHA.",
+  "remote_refresh": {"status":"FAIL","command":"git fetch origin","output":"error: cannot open .../.git/worktrees/m2-canary-integration-20260907/FETCH_HEAD: Read-only file system"},
+  "github_api": {"status":"UNRUNNABLE","output":"error connecting to api.github.com"},
+  "drive": {"status":"READ_ONLY_DISCOVERY","result":"No M2 campaign handoff/archive result; broad M2 search returned INDEX.md and historical documents; persistent wake search returned historical 2026-09-01 documents."},
+  "served_identity": {
+    "current_target":"/home/johnclaw/trade-ai-releases/portfolio-server/ad1b32a71-main-exact-phase2-20260907-235227",
+    "source_commit":"ad1b32a715b79b599ed78cee87f7ff49eecaccfd",
+    "build_sha":"ad1b32a715b79b599ed78cee87f7ff49eecaccfd",
+    "build_meta_git_sha":"ad1b32a715b79b599ed78cee87f7ff49eecaccfd",
+    "served_manifest_release_content_sha":"aa037b738bf5792b81b4ff174dda04b62c2ee2d4",
+    "served_manifest_status":"production"
+  },
+  "candidate_manifest": {
+    "release_content_sha":"2c650b9686ad2f93acc68b624a38c68020dcc920",
+    "backend_release_sha":"bcc9cd6eb7a4e24de2fcca49e66311c4a0c97e2d",
+    "deployed_release_path":"/home/johnclaw/trade-ai-releases/portfolio-server/bcc9cd6eb-main-exact-phase2-20260907-224611",
+    "rollback_sha":"bcc9cd6eb7a4e24de2fcca49e66311c4a0c97e2d"
+  },
+  "test_runs": [
+    {"command":"pytest -p no:cacheprovider -q [15 targeted wake/comms/learning/release tests]","result":"119 passed in 4.23s","scope":"disposable/fixture"},
+    {"command":"pytest -p no:cacheprovider -q [router/comms/control-plane/release tests]","result":"219 passed, 2 xfailed in 4.87s","scope":"disposable/fixture"},
+    {"command":"pytest -p no:cacheprovider -q [integrated traces/research/consumption/wake/comms/outcome tests]","result":"75 passed in 3.34s","scope":"disposable/fixture"},
+    {"command":"python3 compile() over changed Python paths","result":"compiled=5","scope":"syntax only"}
+  ],
+  "runtime_observation": {
+    "persistent_wake_cron":"not found in active crontab",
+    "matching_systemd_unit":"not found in user unit listing",
+    "matching_process":"not found in process snapshot",
+    "gateway_or_backend_listener":"not observed; curl blocked: Operation not permitted",
+    "private_key_marker_scan":"no matches"
+  },
+  "maturity": {"denominator":4,"levels":{"research":1,"communications":1,"persistent_agent":1,"command_center_truth":0},"arithmetic_mean":0.75,"weakest_link":0,"critical_path_floor":0,"unknown_as_m0_mean":0.75,"overall_level":0},
+  "verdict":"GROK_POST_SOAK_FAIL"
+}
