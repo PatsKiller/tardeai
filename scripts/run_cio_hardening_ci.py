@@ -60,6 +60,8 @@ GATES = [
             # the integration owner — this file is the central CI gate registry
             # and is never lane-leased.
             "tests/test_run_persistent_wake.py",
+            # SFR-A-FOLLOWUP2-001: wake subject selection.
+            "tests/test_wake_subject_selector.py",
         ],
     ),
     # Cash age is the age of the dollars. PP2 (the cash letter) and PP4 (provenance)
