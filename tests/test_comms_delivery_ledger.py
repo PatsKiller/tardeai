@@ -87,6 +87,24 @@ def test_reserve_settle_sent_with_provider_message_id():
     assert settled.persisted == "memory"
 
 
+def test_settle_merges_delivery_owner_into_provider_coordinates():
+    """Soak READY reads provider_coordinates.delivery_owner — must persist."""
+    _publish_outbound()
+    delivery_id = next(iter(memory_delivery_snapshot()))
+    settled = settle_delivery(
+        delivery_id,
+        status="SENT",
+        provider_message_id="tg-msg-owner",
+        # Transport ack coords historically omit delivery_owner.
+        provider_coordinates={"channel": "telegram", "adapter": "telegram@v1"},
+        delivery_owner="gateway",
+        gateway_mode="CANARY",
+    )
+    assert settled.provider_coordinates.get("delivery_owner") == "gateway"
+    assert settled.provider_coordinates.get("gateway_mode") == "CANARY"
+    assert settled.provider_coordinates.get("channel") == "telegram"
+
+
 def test_fail_closed_without_event_id():
     with pytest.raises(DeliveryGateError):
         reserve_delivery(event_id=None, channel="telegram")
