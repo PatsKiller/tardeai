@@ -71,6 +71,33 @@ def _freshness_cfg() -> dict:
         return {}
 
 
+def technical_freshness_state(symbol: str, conn=None, timeframes=("daily", "weekly")) -> str:
+    """Cheap bars-only technical freshness (no indicator/pattern work).
+
+    Mirrors the overall_freshness aggregation of analyze_technicals for the core
+    bar timeframes WITHOUT computing indicators or patterns, so the packet
+    invalidation scheduler can afford it per symbol. This is the SAME clock that
+    watch_quality_policy uses to write "technical snapshot is STALE" — distinct
+    from the enrichment cache clock (watchlist_items.last_enriched_at) that
+    packet_invalidation otherwise keys TECHNICALS_STALE on.
+    """
+    conn = conn or _conn()
+    states: list[str] = []
+    for tf in timeframes:
+        try:
+            meta = load_bars(symbol, tf, conn, allow_fetch=False).get("meta") or {}
+        except Exception:
+            meta = {}
+        states.append(str(meta.get("freshness_state") or "UNAVAILABLE"))
+    if all(s == "UNAVAILABLE" for s in states):
+        return "UNAVAILABLE"
+    if "STALE" in states:
+        return "STALE"
+    if "UNAVAILABLE" in states:
+        return "PARTIAL"
+    return "CURRENT"
+
+
 # ── bars: DB cache + governed fetch + resample; CLOSED bars only ─────────────
 def _bar_closed(ts: datetime, tf: str, now: datetime) -> bool:
     return ts + timedelta(seconds=TF_SECONDS.get(tf, 86400)) <= now
