@@ -80,6 +80,13 @@ GATES = [
             # SFR-T-003: Command Center maturity truth is computed live, with
             # explicit zeroes; a stale score file is never served as current.
             "tests/test_campaign_maturity_truth.py",
+            # A library with no caller is not a delivered edge. Lanes G and I
+            # each shipped a correct, well-tested module that nothing in the
+            # runtime ever calls; every per-lane suite was green and the
+            # integrated candidate still could not produce one settlement or
+            # inbound consumption. Unit tests prove a function is CORRECT; these
+            # prove it RUNS. Expected RED until the runtime wiring lands.
+            "tests/test_runtime_reachability.py",
         ],
     ),
     # Cash age is the age of the dollars. PP2 (the cash letter) and PP4 (provenance)
