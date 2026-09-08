@@ -34,9 +34,31 @@ def test_slot_derivation_deterministic():
     assert a == b == "2026-09-07T19:00Z"
 
 
+def _crontab_snapshot() -> str:
+    """The user's crontab, or "" where there is none.
+
+    `crontab -l` exits 1 when the user has no crontab and the binary may be
+    absent entirely, so check_output() raises on CI. Registering this file into
+    the campaign_m2_canary_lanes gate ran it under CI for the first time and it
+    failed there while passing locally — the same defect, and the same cause,
+    that tests/test_dark_contract_guard.py already records: "shelling out makes
+    the gate machine-dependent ... in CI, where no crontab exists."
+
+    The guarantee is unchanged: the snapshot is taken identically before and
+    after, so "evaluating the contract did not touch the crontab" is still
+    proven. Where no crontab exists, "" == "" is the correct answer — evaluating
+    a contract must not CREATE one either.
+    """
+    try:
+        r = subprocess.run(["crontab", "-l"], capture_output=True, text=True)
+    except (FileNotFoundError, OSError):
+        return ""
+    return r.stdout if r.returncode == 0 else ""
+
+
 def test_crontab_unchanged_by_contract_evaluation():
-    before = subprocess.check_output(["crontab", "-l"], text=True)
+    before = _crontab_snapshot()
     c = ScheduleContract("cio", "r")
     evaluate_health(c, now=NOW, completed_slots=[], never_scheduled=True)
-    after = subprocess.check_output(["crontab", "-l"], text=True)
+    after = _crontab_snapshot()
     assert before == after
