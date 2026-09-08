@@ -638,8 +638,11 @@ def build_wake_outbound_handler(
         txn = transport
         if deliver_flag and txn is None:
             # Production default: sanctioned adapter (still fail-closed without auth).
+            # CANARY/ACTIVE mode already enforced above; class/chat allowlists
+            # remain inside deliver_agent_outbound.
             txn = sanctioned_telegram_transport
 
+        # CANARY-scoped transport hand-off (mode gate already returned if OFF).
         result = deliver_agent_outbound(req, deliver=bool(deliver_flag), transport=txn)
         out = result.to_dict()
         out.setdefault("error", None)
