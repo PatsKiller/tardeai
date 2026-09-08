@@ -37,6 +37,12 @@ from scripts.lib.persistent_agent_wake import (  # noqa: E402
     feature_enabled as wake_feature_enabled,
     run_scheduled_wake,
 )
+
+# SFR-G-003. Imported as a MODULE, not `from ... import deliver_agent_outbound`,
+# so static reachability can follow run_persistent_wake -> gateway_settlement ->
+# deliver_agent_outbound. An ImportFrom of the leaf would hide the edge from the
+# very gate that exists to prove it.
+import scripts.lib.gateway_settlement as gateway_settlement  # noqa: E402
 from scripts.lib.persistent_wake_schedule import (  # noqa: E402
     FEATURE_FLAG as SCHEDULE_FLAG,
     ScheduleContract,
@@ -81,6 +87,26 @@ def _default_state_root(env: dict) -> Path:
     if raw:
         return Path(raw)
     return _PROJECT / "data" / "persistent_wake" / "state"
+
+
+def _emitted_receipts(root: Path) -> list[dict]:
+    """The agent's OWN consumption receipts from the JSONL state store it writes.
+
+    Closes the selection loop. The file-backed selector feed
+    (``TRADEAI_WAKE_RECEIPTS_PATH``) is regenerated from the database and never
+    contains receipts this runner just wrote. Observed 2026-09-08 on deployed
+    ``54639ff5a``: slots 13:00Z and 14:00Z re-selected the same three sources
+    and re-emitted the same UUIDv5 receipt ids while ten other research objects
+    were never reached.
+
+    Fail-safe: never raises into the wake path. Missing or unreadable state
+    returns ``[]`` (degrades to feed-only — the pre-existing behaviour). Does
+    not fabricate receipts.
+    """
+    try:
+        return list(JsonlStore(root).iter("receipts"))
+    except Exception:
+        return []
 
 
 def _completed_slots(
@@ -174,6 +200,19 @@ def _process_one_subject(
         })
         return 0
 
+    # SFR-G-003: construct the outbound callable ONLY when the campaign flag is
+    # on. Fail-closed at four independent points -- flag off => None; Lane G
+    # refuses without an injected transport; its ownership/allowlist gate must
+    # return delivery_owner='gateway'; and CANARY/ACTIVE scope is enforced inside
+    # build_wake_outbound_handler. Any one of them missing means nothing is sent.
+    outbound = None
+    if gateway_settlement.wake_gateway_outbound_enabled(env):
+        outbound = gateway_settlement.build_wake_outbound_handler(
+            env=env,
+            transport=gateway_settlement.sanctioned_telegram_transport,
+            deliver=True,
+        )
+
     try:
         result = run_scheduled_wake(
             agent_id=agent_id,
@@ -185,6 +224,7 @@ def _process_one_subject(
             contract=contract,
             env=env,
             selection=selection,
+            outbound=outbound,
         )
     except Exception as exc:
         _emit({
@@ -301,6 +341,10 @@ def run_once(
         if inputs["research_objects"] is None and inputs["receipts"] is None and inputs["material_changes"] is None:
             loaded = load_selection_inputs(env)
             inputs = loaded
+        # Union feed receipts with receipts this agent already emitted so a
+        # subject consumed in an earlier slot is not selected again. Without
+        # this the loop never closes — see _emitted_receipts.
+        inputs["receipts"] = list(inputs.get("receipts") or []) + _emitted_receipts(root)
         selection_meta = select_subjects(
             agent_id,
             limit=limit,

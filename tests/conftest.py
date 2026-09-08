@@ -1,6 +1,8 @@
 """Shared pytest hooks — block live side effects during unit tests."""
 from __future__ import annotations
 
+import importlib
+import os
 import sys
 from pathlib import Path
 
@@ -193,3 +195,47 @@ def alarm_capture(monkeypatch):
         pass
 
     return cap
+
+
+@pytest.fixture(autouse=True)
+def _production_receipt_write_barrier(monkeypatch):
+    """Centralized barrier at the lowest durable receipt-write boundary.
+
+    Found 2026-09-08 by the integration owner, the hard way: while iterating on
+    tests/test_inbound_poller_integration.py, feed_telegram_update() reached
+    emit_consumption_receipt() and minted real AgentConsumptionReceipt rows in
+    the live trade_ai database ('persisted': 'db'). Nothing stopped it, because
+    every guard in this file was a per-PATH denylist and SFR-I-RUNTIME-001 had
+    just created a write path no entry named. A denylist protects only the paths
+    somebody already thought of; each new writer is uncovered by default.
+
+    The barrier is placed at `_db_conn()` -- the single point every durable
+    receipt write must pass through -- rather than on any individual function.
+    A new module, wrapper or code path cannot route around it, because it does
+    not know the names of its callers.
+
+    It does NOT hard-fail: emit_consumption_receipt already degrades to its
+    in-memory path when the connection is None, so legitimate persistence tests
+    (replay collision, schema version, source linkage) keep working and simply
+    stop touching production. A first draft blocked the writer outright and took
+    down tests/test_comms_campaign_gaps_b.py, which is the failure mode
+    requirement 15 exists to prevent.
+
+    A test that genuinely needs a database must set TRADEAI_TEST_ISOLATED_DSN to
+    an isolated cluster. The production DSN is never accepted under pytest.
+    """
+    isolated = os.environ.get("TRADEAI_TEST_ISOLATED_DSN", "").strip()
+
+    def _barrier(*a, **k):
+        if not isolated:
+            return None
+        import psycopg
+        return psycopg.connect(isolated)
+
+    for mod in ("scripts.lib.comms.agent_contracts",):
+        try:
+            m = importlib.import_module(mod)
+        except Exception:
+            continue
+        if hasattr(m, "_db_conn"):
+            monkeypatch.setattr(m, "_db_conn", _barrier, raising=False)

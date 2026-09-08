@@ -76,9 +76,12 @@ CONTROL_PLANE_DOMAINS: dict[str, dict[str, Any]] = {
         "wrap_dict": False,
     },
     "maturity": {
-        "kind": "collection",
+        # Computed live truth (Lane T / campaign m2-canary). Historical
+        # data/runtime/maturity_score_latest.json remains on disk as SUPERSEDED
+        # evidence and is no longer the served collection body.
+        "kind": "computed",
         "store_ids": ("runtime.maturity",),
-        "fallbacks": ("data/runtime/maturity.json",),
+        "fallbacks": ("data/runtime/maturity.json", "data/runtime/maturity_score_latest.json"),
         "wrap_dict": True,
     },
     "audit": {
@@ -652,6 +655,95 @@ def _system() -> dict[str, Any]:
     }
 
 
+_RUNTIME_EVIDENCE_CLASSES = frozenset({
+    "attempted", "consumed", "delivered", "settled", "organic", "behavior_changing",
+})
+
+
+def _maturity_truth(query: dict[str, Any] | None = None) -> tuple[dict[str, Any], str]:
+    """Live campaign maturity truth — never the stale June-2026 score body."""
+    query = query or {}
+    try:
+        from scripts.lib.campaign_maturity_truth import build_maturity_truth
+
+        payload = build_maturity_truth(root=_state_root())
+    except Exception as exc:
+        return {
+            "schema": "CampaignMaturityTruth@v1",
+            "ok": False,
+            "generated_at": _now(),
+            "served_sha": _sha(),
+            "evidence_timestamp": _now(),
+            "source_store": "scripts.lib.campaign_maturity_truth",
+            "staleness_hours": None,
+            "overall_is_not_a_certification": True,
+            "computes_maturity": False,
+            "items": [],
+            "error": f"{type(exc).__name__}: {exc}",
+        }, "BROKEN"
+    # Preserve list/pagination shape the Maturity page expects (data.items).
+    items = list(payload.get("items") or [])
+    page = _paged(items, query)
+    page.update({
+        "schema": payload.get("schema"),
+        "ok": payload.get("ok", True),
+        "generated_at": payload.get("generated_at"),
+        "served_sha": payload.get("served_sha") or _sha(),
+        "evidence_timestamp": payload.get("evidence_timestamp"),
+        "source_store": payload.get("source_store"),
+        "staleness_hours": payload.get("staleness_hours", 0.0),
+        "overall_is_not_a_certification": True,
+        "computes_maturity": False,
+        "limiting_dimension": payload.get("limiting_dimension"),
+        "historical_body_superseded": payload.get("historical_body_superseded"),
+        "db_probe": payload.get("db_probe"),
+        "note": payload.get("note"),
+    })
+    # A computed surface must not report AVAILABLE merely because it can always
+    # produce a shaped body. build_maturity_truth() emits explicit zeroes even
+    # with an empty state root, and reporting that as AVAILABLE made the route
+    # render LIVE_GOVERNED with nothing behind it -- the exact "says LIVE while
+    # nothing answered" defect this domain exists to prevent, reintroduced by
+    # the fix for stale-data-served-as-live. Explicit zeroes are honest content
+    # but they are not live evidence: with no evidence at all, answer EMPTY.
+    if not _maturity_has_evidence(payload):
+        return page, "EMPTY"
+    return page, "AVAILABLE"
+
+
+def _maturity_has_evidence(payload: dict[str, Any]) -> bool:
+    """True iff the computed truth rests on at least one real observation.
+
+    Counts evidence, not shape. Deliberately does NOT trust
+    ``evidence_timestamp``: the builder stamps that with generation time on every
+    call, so it is populated even when every dimension is an explicit zero. The
+    only honest signal is a dimension with a non-zero count and an evidence_class
+    that is not 'absent'.
+    """
+    root = str(_state_root())
+    for item in payload.get("items") or []:
+        if not isinstance(item, dict):
+            continue
+        # Config presence is not an answer. 'configured' and 'scheduled' come
+        # from systemd drop-ins and the user crontab -- host facts that are true
+        # regardless of whether this state root holds anything.
+        if str(item.get("evidence_class") or "absent") not in _RUNTIME_EVIDENCE_CLASSES:
+            continue
+        # ...and the observation must belong to the root being reported on. On an
+        # empty root the builder still returns comms_provider_settled=3 from
+        # postgresql:communication_deliveries, which would render the surface LIVE
+        # for a state root containing nothing. Out-of-root evidence is real, but
+        # it is not evidence about THIS root.
+        if not str(item.get("source_store") or "").startswith(root):
+            continue
+        try:
+            if int(item.get("count") or 0) > 0:
+                return True
+        except (TypeError, ValueError):
+            continue
+    return False
+
+
 def _registered_store_present(root: Path) -> bool:
     """True when a canonical store file exists — not merely a data/cio directory."""
     try:
@@ -736,6 +828,12 @@ def handle(path: str, *, method: str = "GET", query: dict[str, Any] | None = Non
     if spec.get("kind") == "computed" and domain == "stores":
         data, quality = _stores(query)
         return 200, _envelope(data, quality=quality)
+    if spec.get("kind") == "computed" and domain == "maturity":
+        data, quality = _maturity_truth(query)
+        # Freshness is live evidence, not CURRENT_SMOKE fixture class.
+        env = _envelope(data, quality=quality, evidence="LIVE_RUNTIME")
+        env["freshness"] = "LIVE_RUNTIME"
+        return 200, env
     data, quality = _collection(domain, query)
     return 200, _envelope(data, quality=quality)
 

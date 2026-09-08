@@ -63,6 +63,38 @@ GATES = [
             # SFR-A-FOLLOWUP2-001: wake subject selection.
             "tests/test_wake_subject_selector.py",
             "tests/test_wake_research_consumption.py",
+            # SFR-R-001: the consumption loop must close. Slots 13:00Z/14:00Z on
+            # 54639ff5a re-selected the same three sources because the runner's
+            # own receipts never reached the selector.
+            "tests/test_wake_consumption_loop_closure.py",
+            # SFR-G-001: outbound gateway — agent output -> event -> delivery ->
+            # provider acknowledgement -> SETTLED, and no duplicate delivery.
+            "tests/test_agent_gateway_adapter.py",
+            "tests/test_gateway_settlement.py",
+            # Lane I: inbound operator event -> correlation -> consumption receipt.
+            "tests/test_inbound_event_normalizer.py",
+            "tests/test_inbound_consumption.py",
+            # Lane T: gog -n is MUTATING; the wrapper refuses it and verifies
+            # remote hashes after any Drive mutation.
+            "tests/test_drive_mutation_safety.py",
+            # SFR-T-003: Command Center maturity truth is computed live, with
+            # explicit zeroes; a stale score file is never served as current.
+            "tests/test_campaign_maturity_truth.py",
+            # A library with no caller is not a delivered edge. Lanes G and I
+            # each shipped a correct, well-tested module that nothing in the
+            # runtime ever calls; every per-lane suite was green and the
+            # integrated candidate still could not produce one settlement or
+            # inbound consumption. Unit tests prove a function is CORRECT; these
+            # prove it RUNS. Expected RED until the runtime wiring lands.
+            "tests/test_runtime_reachability.py",
+            # Drives the REAL poll_once against a mocked provider: entry point,
+            # normalization, authorization, correlation, deduplication, agent
+            # consumption, receipt persistence, safe error response.
+            "tests/test_inbound_poller_integration.py",
+            # INC-2026-09-08: centralized receipt-write barrier. Five firing
+            # controls -- direct, indirect, unknown wrapper, live-DSN leakage,
+            # missing injected writer.
+            "tests/test_receipt_write_barrier.py",
         ],
     ),
     # Cash age is the age of the dollars. PP2 (the cash letter) and PP4 (provenance)
