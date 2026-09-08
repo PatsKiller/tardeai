@@ -38,8 +38,30 @@ Identifier minting remains in the frozen CampaignInterfaces / Lane B contracts.
 | `COMMS_GATEWAY_MODE` | OFF default; CANARY scopes chats |
 | `COMMS_INBOUND_STATE_DIR` | Durable checkpoint dir (tmp in tests) |
 
+## Runtime entry (poller hook)
+
+Canonical feed for the approved Telegram long-poll daemon
+(`scripts/run_telegram_` + `callback` + `_poller.py`):
+
+```python
+from scripts.lib import inbound_consumption
+result = inbound_consumption.feed_telegram_update(update)  # never contacts Telegram
+```
+
+Reachability (integration-owner `tests/test_runtime_reachability.py` @ e0e943f9):
+requires a BFS import/call chain from that daemon to `normalize_inbound_update`.
+Lane-local `assert_inbound_runtime_reachability()` additionally requires the
+daemon text to import `inbound_consumption` and call `feed_telegram_update`.
+
+Dark-contract guard (`scripts/check_dark_contracts.py --fail-on-new`):
+`InboundConsumption@v1` is NEW and fails until the daemon imports this module.
+
 ## Shared File Requests
 
+- **SFR-I-RUNTIME-001** — wire the approved long-poll daemon to
+  `from scripts.lib import inbound_consumption` and
+  `inbound_consumption.feed_telegram_update(update)` (exact fragment in handoff).
+  Do not create a second getUpdates consumer.
 - Extend `LANE_HANDOFF_SCHEMA.json` / `LANE_EVIDENCE_SCHEMA.json` lane enum to include `I`.
 - Extend `validate_leases.py` known owners to include `G`,`I`,`R`,`T`.
 - Optional: claim-registry + prompt seal for Lane I (integration owner).

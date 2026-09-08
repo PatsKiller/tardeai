@@ -199,3 +199,10 @@ def test_persistence_failure_when_publish_raises(monkeypatch):
     r = normalize_inbound_update(_update(update_id=3003))
     assert not r.ok
     assert "persistence_failure" in r.reason
+
+
+def test_callback_query_path_normalizes():
+    r = normalize_inbound_update(_update(update_id=6001, message_id=66, callback=True, text="approve:1"))
+    assert r.ok, r.reason
+    assert r.event.event_type == "callback_query"
+    assert r.event.provider_coordinates.get("callback_query_id") == "cb1"
