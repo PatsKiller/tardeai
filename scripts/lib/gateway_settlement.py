@@ -22,6 +22,7 @@ from scripts.lib.agent_gateway_adapter import (
     GatewayAdapterError,
     OwnershipDecision,
     build_outbound_event,
+    filter_canary_chats,
 )
 from scripts.lib.comms.client import PublishResult, publish_communication
 from scripts.lib.comms.delivery import (
@@ -268,12 +269,36 @@ def deliver_agent_outbound(
             command_center_url=event.command_center_url,
         )
 
+    # Explicit CANARY chat allowlist (fail-closed when configured).
+    chat_ids, chat_err = filter_canary_chats(req.chat_ids, mode=ownership.gateway_mode)
+    if chat_err:
+        settle_delivery(
+            str(reserved.delivery_id),
+            status="FAILED",
+            error_taxonomy=chat_err,
+            delivery_owner="gateway",
+            gateway_mode=ownership.gateway_mode,
+        )
+        return SettlementResult(
+            ok=False,
+            event_id=event.event_id,
+            delivery_id=reserved.delivery_id,
+            errors=[chat_err],
+            delivery_owner="gateway",
+            gateway_mode=ownership.gateway_mode,
+            ownership_reason=ownership.reason,
+            subject_guid=event.subject_guid,
+            provider_settlement_state="FAILED",
+            transport_invoked=False,
+            command_center_url=event.command_center_url,
+        )
+
     eid = str(event.event_id)
     _TRANSPORT_COUNT_BY_EVENT[eid] = _TRANSPORT_COUNT_BY_EVENT.get(eid, 0) + 1
     try:
         ack = txn(
             body=event.sanitized_body or "",
-            chat_ids=req.chat_ids,
+            chat_ids=chat_ids,
             thread_id=event.thread_id,
             correlation_id=event.correlation_id,
             event_id=event.event_id,

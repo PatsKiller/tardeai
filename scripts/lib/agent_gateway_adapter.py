@@ -9,6 +9,7 @@ Never embeds credentials.
 """
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
@@ -23,6 +24,8 @@ from scripts.lib.comms.channel_adapters import (
 from scripts.lib.comms.event import CommunicationEvent, required_missing
 from scripts.lib.comms.mode import MODE_CANARY, MODE_OFF, MODE_SHADOW, get_gateway_mode
 from scripts.lib.comms.vocabulary import normalize_message_class
+
+ENV_CANARY_CHATS = "COMMS_GATEWAY_CANARY_CHATS"
 
 CC_BASE = f"https://{ALLOWED_HOST}"
 DEFAULT_CC_PATH = "/v3/cio"
@@ -88,6 +91,40 @@ def format_agent_body(
     if commitment_id:
         lines.append(f"commitment_id: {commitment_id}")
     return "\n".join(lines)
+
+
+def canary_chat_allowlist() -> frozenset[str]:
+    """Explicit CANARY chat allowlist from env (empty ⇒ no chat filter configured)."""
+    raw = (os.getenv(ENV_CANARY_CHATS) or "").strip()
+    if not raw:
+        return frozenset()
+    return frozenset(part.strip() for part in raw.split(",") if part.strip())
+
+
+def filter_canary_chats(
+    chat_ids: list[str] | None,
+    *,
+    mode: str | None = None,
+) -> tuple[list[str], str | None]:
+    """Fail-closed chat gate for CANARY.
+
+    Returns (filtered_ids, error). If CANARY allowlist is set and no requested
+    chat survives the filter, error is ``delivery_blocked_canary_chats``.
+    """
+    m = (mode or get_gateway_mode(refresh=True) or MODE_OFF).strip().upper()
+    ids = [str(c).strip() for c in (chat_ids or []) if str(c).strip()]
+    if m != MODE_CANARY:
+        return ids, None
+    allow = canary_chat_allowlist()
+    if not allow:
+        # No chat allowlist configured — class allowlist alone governs ownership.
+        return ids, None
+    if not ids:
+        return [], "delivery_blocked_canary_chats_missing_request"
+    kept = [c for c in ids if c in allow]
+    if not kept:
+        return [], "delivery_blocked_canary_chats"
+    return kept, None
 
 
 def decide_ownership(
@@ -255,8 +292,11 @@ __all__ = [
     "OwnershipDecision",
     "GatewayAdapterError",
     "CC_BASE",
+    "ENV_CANARY_CHATS",
     "command_center_url_for",
     "format_agent_body",
+    "canary_chat_allowlist",
+    "filter_canary_chats",
     "decide_ownership",
     "build_outbound_event",
 ]

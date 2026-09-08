@@ -198,3 +198,22 @@ def test_off_state_never_invokes_transport(monkeypatch):
     assert r.ok
     assert r.delivery_owner == "legacy"
     assert txn.calls == []
+
+
+def test_canary_chat_allowlist_blocks_outside_chats(monkeypatch):
+    """Explicit CANARY chat allowlist: off-list chats fail closed, no transport."""
+    monkeypatch.setenv("COMMS_GATEWAY_MODE", "CANARY")
+    monkeypatch.setenv("COMMS_GATEWAY_CANARY_CLASSES", "ops")
+    monkeypatch.setenv("COMMS_GATEWAY_CANARY_CHATS", "8797974247")
+    mode_mod._cache["mode"] = None
+    txn = _fake_transport_factory()
+    r = deliver_agent_outbound(
+        _req(chat_ids=["9999999999"]),
+        deliver=True,
+        transport=txn,
+    )
+    assert r.ok is False
+    assert any("delivery_blocked_canary_chats" in e for e in r.errors)
+    assert r.transport_invoked is False
+    assert txn.calls == []
+    assert r.delivery_id  # reserved before chat gate

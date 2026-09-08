@@ -34,10 +34,14 @@ Lane B `scripts/lib/comms/**`: `CommunicationEvent`, `publish_communication`,
 ## Ownership
 
 - **Gateway** only when `COMMS_GATEWAY_MODE=CANARY` (or ACTIVE) **and** the
-  message class is on the explicit allowlist.
+  message class is on the explicit allowlist (`COMMS_GATEWAY_CANARY_CLASSES`).
+- When `COMMS_GATEWAY_CANARY_CHATS` is set, requested chat ids must intersect
+  that allowlist or delivery fails closed (`delivery_blocked_canary_chats`)
+  **after** RESERVED and **before** transport.
 - Otherwise **legacy**, with a recorded reason (`canary_allowlist_empty`,
   `class_not_in_canary_allowlist`, `mode_off_not_delivery_owner`, …).
 - Unexplained legacy fallback is a defect; every legacy path carries `reason`.
+- CANARY configuration alone is never evidence of delivery ownership.
 
 ## Fail-closed
 
