@@ -40,6 +40,28 @@ FAIL_STREAK_PATH = ROOT / "data" / "runtime" / "alpaca_live_read_fail_streak.jso
 ET = ZoneInfo("America/New_York")
 
 
+def _holdings_targets() -> list[Path]:
+    """Resolve every holdings.json copy a live reader must write, served copy first.
+
+    WAVE G1 (AGENTS.md 9.4): the served release symlinks data/portfolios/state at
+    GOOD_PERSISTENT_ROOT, so a checkout-relative write lands in the dev tree the
+    server never reads. The sync refreshed the Alpaca cash row's
+    broker_position_as_of in the dev tree daily while the served copy sat frozen
+    at 2026-09-03 (~139h STALE), which drove the whole portfolio block STALE via
+    compute_data_as_of (oldest contributor). Write both copies, matching
+    portfolio_repricer, so the fresh stamp reaches the served view.
+    """
+    try:
+        import sys as _sys
+        _repo = str(ROOT)
+        if _repo not in _sys.path:
+            _sys.path.insert(0, _repo)
+        from scripts.lib.persistent_state_root import portfolio_state_write_targets
+        return [t / "holdings.json" for t in portfolio_state_write_targets(ROOT)]
+    except Exception:
+        return [HOLDINGS_PATH]
+
+
 def _observation_fields(account_key: str, now: datetime) -> dict:
     observed = now.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
     received = observed
@@ -201,9 +223,11 @@ def _merge_account_into_holdings(
     any new account key, so this account is picked up without further config. This
     matches schwab_position_sync, which likewise replaces only its own rows.
     """
-    if not HOLDINGS_PATH.exists():
+    targets = _holdings_targets()
+    primary = next((t for t in targets if t.exists()), targets[0])
+    if not primary.exists():
         return {"ok": False, "error": "holdings.json missing"}
-    data = json.loads(HOLDINGS_PATH.read_text())
+    data = json.loads(primary.read_text())
     holdings = list(data.get("holdings") or [])
     others = [h for h in holdings if (h.get("account") or "") != account_key]
     prior_acct = [h for h in holdings if (h.get("account") or "") == account_key]
@@ -230,9 +254,22 @@ def _merge_account_into_holdings(
         source="alpaca_live_read_sync",
         account_key=account_key,
         protect_basis=False,
-        target_path=str(HOLDINGS_PATH),
+        target_path=str(primary),
     )
-    return {"ok": True, "wrote": True, "n": len(new_rows), "guard": res}
+    # Mirror the reconciled payload (the guard mutates it in place) to every other
+    # copy so the served view (persistent-state) sees the same fresh rows — WAVE G1
+    # dual-write, same as portfolio_repricer. Never mirror a rejected write.
+    if res.get("wrote"):
+        _payload = json.dumps(data, indent=2, default=str)
+        for _t in targets:
+            if _t == primary:
+                continue
+            try:
+                _t.parent.mkdir(parents=True, exist_ok=True)
+                _t.write_text(_payload, encoding="utf-8")
+            except OSError:
+                pass
+    return {"ok": True, "wrote": bool(res.get("wrote")), "n": len(new_rows), "guard": res}
 
 
 def _streak_path():
@@ -311,7 +348,8 @@ def sync_one(account_key: str, *, dry_run: bool = False, force: bool = False) ->
     aggregate = None
     if merge.get("wrote") and not dry_run:
         from portfolio_repricer import recompute_and_publish_portfolio_aggregate
-        aggregate = recompute_and_publish_portfolio_aggregate(HOLDINGS_PATH.parent)
+        _agg_dir = next((t for t in _holdings_targets() if t.exists()), _holdings_targets()[0]).parent
+        aggregate = recompute_and_publish_portfolio_aggregate(_agg_dir)
 
     # Attribute fills into a lightweight runtime journal tag file (no P&L rewrite)
     try:
