@@ -39,6 +39,24 @@ AGENT = "aegis"
 RUN_ID = f"aegis-transcript-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
 BRAVE_KEY = os.getenv("BRAVE_SEARCH_API_KEY", "")
 
+def _governed_brave_web(query: str, *, count: int = 3, freshness: str = "pw"):
+    """Lane C chokepoint — no direct Brave HTTP from this module."""
+    try:
+        from scripts.lib.brave_router import search as _governed, router_enabled
+    except ImportError:
+        from lib.brave_router import search as _governed, router_enabled  # type: ignore
+    if not router_enabled():
+        return None, "ROUTER_DISABLED"
+    resp = _governed(
+        query, kind="web", count=count, freshness=freshness,
+        caller="aegis_transcript_discovery", purpose="aegis.transcript",
+        api_key=BRAVE_KEY, enabled=True,
+    )
+    if not resp.ok:
+        return None, resp.reason
+    return list(resp.results or []), "OK"
+
+
 # Portfolio themes to scan beyond individual symbols
 PORTFOLIO_THEMES = [
     {"theme": "covered-calls-income", "query": "covered call strategy income ETF 2026"},
@@ -192,17 +210,14 @@ def fetch_youtube_transcripts(symbols: list[str], max_per_symbol: int = 1) -> li
     for sym in symbols[:12]:
         if not brave_ok:
             break
-        if not _sb_guard("brave", "aegis_transcript_discovery"):
-            break
         try:
-            url = "https://api.search.brave.com/res/v1/web/search"
-            params = {"q": f"{sym} stock analysis earnings 2026 site:youtube.com", "count": 3, "freshness": "pw"}
-            resp = requests.get(url, params=params, timeout=10,
-                               headers={"X-Subscription-Token": BRAVE_KEY, "Accept": "application/json"})
-            if resp.status_code != 200:
-                print(f"  [youtube] Brave HTTP {resp.status_code} for {sym} — continuing with DB")
-                continue
-            results = resp.json().get("web", {}).get("results", [])
+            results, reason = _governed_brave_web(
+                f"{sym} stock analysis earnings 2026 site:youtube.com", count=3, freshness="pw"
+            )
+            if results is None:
+                print(f"  [youtube] governed deny ({reason}) for {sym} — continuing with DB")
+                brave_ok = False
+                break
 
             for r in results[:max_per_symbol]:
                 video_url = r.get("url", "")
@@ -284,16 +299,13 @@ def fetch_brave_discovery(symbols: list[str], themes: list[dict]) -> list[dict]:
         from lib.search_budget import guard as _sb_guard  # type: ignore
 
     for sym in symbols[:10]:
-        if not _sb_guard("brave", "aegis_transcript_discovery"):
-            break
         try:
-            url = "https://api.search.brave.com/res/v1/web/search"
-            params = {"q": f"{sym} stock earnings analysis news 2026", "count": 3, "freshness": "pw"}
-            resp = requests.get(url, params=params, timeout=10,
-                               headers={"X-Subscription-Token": BRAVE_KEY, "Accept": "application/json"})
-            if resp.status_code != 200:
-                continue
-            for r in resp.json().get("web", {}).get("results", [])[:3]:
+            results, reason = _governed_brave_web(
+                f"{sym} stock earnings analysis news 2026", count=3, freshness="pw"
+            )
+            if results is None:
+                break
+            for r in results[:3]:
                 title = r.get("title", "")[:120]
                 src_url = r.get("url", "")
                 if not title and not src_url:
@@ -316,16 +328,11 @@ def fetch_brave_discovery(symbols: list[str], themes: list[dict]) -> list[dict]:
             print(f"  [brave-disc] {sym} error: {e}")
 
     for t in themes:
-        if not _sb_guard("brave", "aegis_transcript_discovery"):
-            break
         try:
-            url = "https://api.search.brave.com/res/v1/web/search"
-            params = {"q": t["query"], "count": 3, "freshness": "pw"}
-            resp = requests.get(url, params=params, timeout=10,
-                               headers={"X-Subscription-Token": BRAVE_KEY, "Accept": "application/json"})
-            if resp.status_code != 200:
-                continue
-            for r in resp.json().get("web", {}).get("results", [])[:3]:
+            results, reason = _governed_brave_web(t["query"], count=3, freshness="pw")
+            if results is None:
+                break
+            for r in results[:3]:
                 title = r.get("title", "")[:120]
                 src_url = r.get("url", "")
                 if not title and not src_url:

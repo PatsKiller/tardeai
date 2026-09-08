@@ -192,41 +192,6 @@ def _cached(k, ttl=None):
 
 def _cache_set(k, data): _search_cache[k] = {"ts": time.time(), "data": data}
 
-def search(query, count=MAX_RESULTS, freshness=None, project_root=".", caller="default"):
-    ck = f"web:{query}:{freshness}"
-    cached = _cached(ck, _cache_ttl_web)
-    if cached is not None: return cached
-    # Reserve BEFORE the request. Every path out of here that does not make a
-    # successful call must refund, or the ledger charges for work never done.
-    if not _reserve(caller):
-        return []
-    api_key = _get_api_key(project_root)
-    if not api_key:
-        _refund(caller)
-        return []
-    params = {"q": query, "count": min(count,20), "text_decorations": "false", "search_lang": "en", "country": "US"}
-    if freshness: params["freshness"] = freshness
-    url = f"{BRAVE_API_URL}?{urllib.parse.urlencode(params)}"
-    headers = {"Accept": "application/json", "Accept-Encoding": "gzip", "X-Subscription-Token": api_key}
-    try:
-        req = urllib.request.Request(url, headers=headers, method="GET")
-        with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT) as resp:
-            _observe_capacity(resp, project_root)
-            raw = resp.read()
-            import gzip
-            try: raw = gzip.decompress(raw)
-            except Exception: pass
-            data = json.loads(raw)
-        results = [{"title": i.get("title",""), "url": i.get("url",""), "description": i.get("description",""), "age": i.get("age","")} for i in data.get("web",{}).get("results",[])]
-        # Already counted at reservation; nothing to record here.
-        _cache_set(ck, results)
-        return results
-    except Exception as e:
-        print(f"  [brave-search] Error: {e}")
-        _refund(caller)
-        return []
-
-
 # ── provider capacity observation ────────────────────────────────────────────
 # Every Brave response carries X-RateLimit-Limit / -Remaining / -Reset. This
 # module used to read only resp.read() and drop them, so the one authority that
@@ -270,38 +235,105 @@ def observed_capacity(project_root: str = ".") -> dict:
         return ProviderCapacity(provider="brave").to_dict()
 
 
-def search_news(query, count=MAX_RESULTS, freshness="pd", project_root=".", caller="default"):
-    ck = f"news:{query}:{freshness}"
-    cached = _cached(ck, _cache_ttl_news)
-    if cached is not None: return cached
-    # Reserve BEFORE the request. Every path out of here that does not make a
-    # successful call must refund, or the ledger charges for work never done.
-    if not _reserve(caller):
-        return []
-    api_key = _get_api_key(project_root)
-    if not api_key:
-        _refund(caller)
-        return []
-    params = {"q": query, "count": min(count,20), "search_lang": "en", "country": "US", "freshness": freshness}
-    url = f"{BRAVE_NEWS_URL}?{urllib.parse.urlencode(params)}"
-    headers = {"Accept": "application/json", "Accept-Encoding": "gzip", "X-Subscription-Token": api_key}
+def search(query, count=MAX_RESULTS, freshness=None, project_root=".", caller="default",
+         *, _router_root=None, _clock=None, _transport=None, _enabled=None):
+    """Governed path: delegates to scripts.lib.brave_router (Lane C chokepoint).
+
+    Provider header observation stays HERE (web call site): `_observe_capacity`
+    must run on the live response before the body is read.
+    """
     try:
+        from scripts.lib.brave_router import search as _governed
+    except ImportError:
+        from lib.brave_router import search as _governed  # type: ignore
+    # Default OFF (fail closed). Tests force _enabled=True.
+    try:
+        from scripts.lib.brave_router import router_enabled as _flag
+    except ImportError:
+        from lib.brave_router import router_enabled as _flag  # type: ignore
+    enabled = _flag() if _enabled is None else bool(_enabled)
+
+    def _web_transport(url, headers):
         req = urllib.request.Request(url, headers=headers, method="GET")
         with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT) as resp:
             _observe_capacity(resp, project_root)
             raw = resp.read()
             import gzip
-            try: raw = gzip.decompress(raw)
-            except Exception: pass
+            try:
+                raw = gzip.decompress(raw)
+            except Exception:
+                pass
             data = json.loads(raw)
-        results = [{"title": i.get("title",""), "url": i.get("url",""), "description": i.get("description",""), "age": i.get("age",""), "source": i.get("meta_url",{}).get("hostname","")} for i in data.get("results",[])]
-        # Already counted at reservation; nothing to record here.
-        _cache_set(ck, results)
-        return results
-    except Exception as e:
-        print(f"  [brave-search] News error: {e}")
-        _refund(caller)
+            hdrs = {k.lower(): v for k, v in dict(resp.headers).items()}
+            return data, hdrs
+
+    resp = _governed(
+        query,
+        kind="web",
+        count=count,
+        freshness=freshness,
+        caller=caller.split("/")[-1].replace(".py", ""),
+        purpose="brave_search.web",
+        clock=_clock,
+        root=_router_root,
+        transport=_transport if _transport is not None else _web_transport,
+        api_key=_get_api_key(project_root),
+        enabled=enabled,
+    )
+    if not resp.ok:
+        print(f"  [brave-search] governed deny: {resp.reason}")
         return []
+    return list(resp.results)
+
+
+def search_news(query, count=MAX_RESULTS, freshness="pd", project_root=".", caller="default",
+              *, _router_root=None, _clock=None, _transport=None, _enabled=None):
+    """Governed path: delegates to scripts.lib.brave_router (Lane C chokepoint).
+
+    Provider header observation stays HERE (news call site): `_observe_capacity`
+    must run on the live response before the body is read.
+    """
+    try:
+        from scripts.lib.brave_router import search as _governed
+    except ImportError:
+        from lib.brave_router import search as _governed  # type: ignore
+    try:
+        from scripts.lib.brave_router import router_enabled as _flag
+    except ImportError:
+        from lib.brave_router import router_enabled as _flag  # type: ignore
+    enabled = _flag() if _enabled is None else bool(_enabled)
+
+    def _news_transport(url, headers):
+        req = urllib.request.Request(url, headers=headers, method="GET")
+        with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT) as resp:
+            _observe_capacity(resp, project_root)
+            raw = resp.read()
+            import gzip
+            try:
+                raw = gzip.decompress(raw)
+            except Exception:
+                pass
+            data = json.loads(raw)
+            hdrs = {k.lower(): v for k, v in dict(resp.headers).items()}
+            return data, hdrs
+
+    resp = _governed(
+        query,
+        kind="news",
+        count=count,
+        freshness=freshness,
+        caller=caller.split("/")[-1].replace(".py", ""),
+        purpose="brave_search.news",
+        clock=_clock,
+        root=_router_root,
+        transport=_transport if _transport is not None else _news_transport,
+        api_key=_get_api_key(project_root),
+        enabled=enabled,
+    )
+    if not resp.ok:
+        print(f"  [brave-search] governed news deny: {resp.reason}")
+        return []
+    return list(resp.results)
 
 def search_ticker(symbol, context="news catalyst", freshness="pd", project_root="."):
     return search_news(f"{symbol} stock {context}", freshness=freshness, project_root=project_root)

@@ -19,6 +19,45 @@ REPO = Path(__file__).resolve().parents[1]
 
 # Ordered, explicit suite list (Phase 10.2)
 GATES = [
+    # Campaign m2-canary-20260907 — persistent wake, communications consumption,
+    # research transport and shadow outcomes. Registered by the integration owner
+    # at INTEGRATION_ORDER.md step 10 (SFR-A-003).
+    #
+    # These gate the edges the maturity audit found broken: a wake that loads
+    # memory before acting, a receipt that names the object it consumed, and a
+    # research item that changes a later question. They fail closed — a lane
+    # module that stops importing takes the gate red rather than silently
+    # dropping out of coverage.
+    (
+        "campaign_m2_canary_lanes",
+        [
+            "tests/test_persistent_agent_wake.py",
+            "tests/test_replay_determinism_a.py",
+            "tests/test_replay_determinism_b.py",
+            "tests/test_replay_determinism_c.py",
+            "tests/test_replay_determinism_d.py",
+            "tests/test_research_dossier_consumption.py",
+            "tests/test_comms_campaign_gaps_b.py",
+            "tests/test_comms_memory_and_self_repair.py",
+            # Every test file the campaign added must be collected by a gate —
+            # scripts/check_test_coverage.py enforces it, and an unlisted new
+            # test file is a test that CI never runs. Registered here rather
+            # than DENY-listed: all of these are collectable and fast.
+            "tests/test_belief_calibration_d.py",
+            "tests/test_outcome_lifecycle_d.py",
+            "tests/test_self_repair_d.py",
+            "tests/test_memory_wake_loading.py",
+            "tests/test_wake_schedule_contract.py",
+            "tests/test_wake_negative_mutation_controls.py",
+            "tests/test_comms_memory_gateway.py",
+            "tests/test_brave_router.py",
+            "tests/test_brave_router_governs_api_v2.py",
+            "tests/test_brave_router_shared_file_requests.py",
+            "tests/test_brave_direct_call_bypass_scan.py",
+            "tests/test_consumption_evidence_counting.py",
+            "tests/test_integrated_traces.py",
+        ],
+    ),
     # Cash age is the age of the dollars. PP2 (the cash letter) and PP4 (provenance)
     # stopped borrowing a clock; PP3 (the freshness board) is reported, not changed.
     (

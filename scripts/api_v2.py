@@ -10882,12 +10882,43 @@ def _search_sources_status():
     brave_today = _db_query(
         "SELECT count(*) as cnt FROM content_embeddings WHERE source_type='brave_cache' AND created_at > CURRENT_DATE"
     ) or [{"cnt": 0}]
+    # SFR-C-001 (campaign m2-canary-20260907): report the GOVERNED router's real
+    # state instead of a hardcoded "402 — needs $5 credit" string and a literal
+    # daily_limit of 5. The hardcoded status was a stale narrative that could not
+    # go stale-detectably: it read the same whether the provider was healthy,
+    # broke, or had never been called. Router health is regenerable and carries
+    # its own timestamp.
+    _brave_router_state = {"router_enabled": False, "health": None}
+    try:
+        from scripts.lib import brave_router as _br
+
+        _brave_router_state["router_enabled"] = bool(_br.router_enabled())
+        _brave_router_state["live_armed"] = bool(_br.live_armed())
+        try:
+            import json as _json
+
+            _hp = _br.health_path()
+            if _hp.exists():
+                _brave_router_state["health"] = _json.loads(_hp.read_text())
+        except Exception:
+            pass
+        try:
+            _brave_router_state["cost_policy"] = _br.local_cost_policy()
+        except Exception:
+            pass
+    except Exception:
+        pass
     sources["brave_search"] = {
-        "active": False,
-        "status": "402 — needs $5 credit",
+        "active": bool(_brave_router_state.get("router_enabled")),
+        "status": (
+            "governed via brave_router"
+            if _brave_router_state.get("router_enabled")
+            else "router disabled — no governed provider calls"
+        ),
         "key_present": bool(brave_key),
         "calls_today": brave_today[0].get("cnt", 0),
-        "daily_limit": 5,
+        "governed_by": "scripts.lib.brave_router",
+        "router": _brave_router_state,
     }
     # YouTube
     yt = _db_query("SELECT count(*) as cnt FROM youtube_transcripts") or [{"cnt": 0}]

@@ -92,6 +92,22 @@ class CommunicationEvent:
     observation_version: str = "1"
     channels: list[str] = field(default_factory=lambda: ["telegram"])
     payload: dict[str, Any] = field(default_factory=dict)
+    # CampaignInterfaces@v1 §5 — forward-only settlement / ownership / curation
+    provider_message_id: str | None = None
+    provider_settled_at: datetime | None = None
+    provider_settlement_state: str = "UNSETTLED"
+    delivery_owner: str | None = None  # gateway|legacy
+    gateway_mode_at_dispatch: str | None = None  # OFF|SHADOW|CANARY|ACTIVE
+    curation_kind: str | None = None  # deterministic|llm_curated
+    curation_provenance: dict[str, Any] = field(default_factory=dict)
+    subject_guid: str | None = None  # read-only from identity spine; never minted here
+    # §2 envelope extras (optional; filled by producers that emit campaign envelopes)
+    source_sha: str | None = None
+    produced_at: datetime | None = None
+    parent_id: str | None = None
+    parent_kind: str | None = None
+    lifecycle_state: str | None = None
+    provenance: dict[str, Any] = field(default_factory=dict)
 
     def mint_identity(self) -> "CommunicationEvent":
         """Assign event_id / idempotency / hashes if missing. Never overwrites event_id."""
@@ -120,6 +136,14 @@ class CommunicationEvent:
             self.thread_id = f"thr_{self.subject_key}"
         if self.correlation_id is None:
             self.correlation_id = self.thread_id
+        if not self.curation_kind:
+            from scripts.lib.campaign_interfaces_b import map_curation_mode_to_kind
+
+            self.curation_kind = map_curation_mode_to_kind(self.curation_mode)
+        # Historic/legacy rows keep UNKNOWN_LEGACY; never invent identity for them.
+        state = (self.provider_settlement_state or "").strip().upper()
+        if state not in ("UNSETTLED", "SETTLED", "FAILED", "UNKNOWN_LEGACY"):
+            self.provider_settlement_state = "UNSETTLED"
         return self
 
     def to_row(self) -> dict[str, Any]:
@@ -130,6 +154,40 @@ class CommunicationEvent:
         d.pop("observation_version", None)
         d.pop("channels", None)
         return d
+
+    def apply_provider_settlement(
+        self,
+        *,
+        provider_message_id: str | None,
+        status: str,
+        settled_at: datetime | None = None,
+        delivery_owner: str | None = None,
+        gateway_mode: str | None = None,
+        failure_reason: str | None = None,
+    ) -> "CommunicationEvent":
+        """Forward-only settlement identity on the event (defect 6)."""
+        now = settled_at or datetime.now(timezone.utc)
+        st = (status or "").strip().upper()
+        if st in ("SENT", "DELIVERED", "ACKNOWLEDGED") and provider_message_id:
+            self.provider_message_id = provider_message_id
+            self.provider_settled_at = now
+            self.provider_settlement_state = "SETTLED"
+        elif st in ("FAILED", "BOUNCED"):
+            self.provider_settled_at = now
+            self.provider_settlement_state = "FAILED"
+            if failure_reason:
+                coords = dict(self.provider_coordinates or {})
+                coords["failure_reason"] = failure_reason
+                self.provider_coordinates = coords
+        elif st == "LEGACY_DELIVERED":
+            # Legacy path: do not invent provider identity.
+            self.provider_settlement_state = "UNKNOWN_LEGACY"
+            self.provider_settled_at = now
+        if delivery_owner:
+            self.delivery_owner = delivery_owner
+        if gateway_mode:
+            self.gateway_mode_at_dispatch = gateway_mode
+        return self
 
 
 def required_missing(event: CommunicationEvent) -> list[str]:

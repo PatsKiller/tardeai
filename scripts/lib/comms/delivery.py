@@ -379,6 +379,57 @@ def _assert_transition(current: str, new_status: str) -> None:
         raise DeliveryGateError(f"status_transition_illegal:{current}->{new_status}")
 
 
+def _mirror_event_settlement(
+    event_id: str,
+    *,
+    status: str,
+    provider_message_id: str | None,
+    error_taxonomy: str | None,
+    settled_at: datetime | None,
+    delivery_owner: str | None = None,
+    gateway_mode: str | None = None,
+) -> None:
+    """Best-effort: stamp CommunicationEvent@v2 settlement fields in memory store."""
+    try:
+        from scripts.lib.comms import client as client_mod
+
+        live = getattr(client_mod, "_MEM", None)
+        live_lock = getattr(client_mod, "_lock", None)
+        if not isinstance(live, dict) or event_id not in live:
+            return
+        st = (status or "").strip().upper()
+        now = settled_at or datetime.now(timezone.utc)
+
+        def _apply(target: dict[str, Any]) -> None:
+            if st in ("SENT", "DELIVERED", "ACKNOWLEDGED") and provider_message_id:
+                target["provider_message_id"] = provider_message_id
+                target["provider_settled_at"] = now
+                target["provider_settlement_state"] = "SETTLED"
+            elif st in ("FAILED", "BOUNCED"):
+                target["provider_settled_at"] = now
+                target["provider_settlement_state"] = "FAILED"
+                if error_taxonomy:
+                    coords = dict(target.get("provider_coordinates") or {})
+                    coords["failure_reason"] = error_taxonomy
+                    target["provider_coordinates"] = coords
+            elif st == "LEGACY_DELIVERED":
+                target["provider_settlement_state"] = "UNKNOWN_LEGACY"
+                target["provider_settled_at"] = now
+            if delivery_owner:
+                target["delivery_owner"] = delivery_owner
+            if gateway_mode:
+                target["gateway_mode_at_dispatch"] = gateway_mode
+
+        if live_lock is not None:
+            with live_lock:
+                if event_id in live:
+                    _apply(live[event_id])
+        else:
+            _apply(live[event_id])
+    except Exception:
+        return
+
+
 def settle_delivery(
     delivery_id: str,
     *,
@@ -389,6 +440,8 @@ def settle_delivery(
     error_taxonomy: str | None = None,
     sent_at: datetime | None = None,
     completed_at: datetime | None = None,
+    delivery_owner: str | None = None,
+    gateway_mode: str | None = None,
 ) -> ChannelDelivery:
     """Transition a reserved/in-flight delivery to a settlement status. No provider I/O."""
     if not delivery_id or not str(delivery_id).strip():
@@ -416,7 +469,17 @@ def settle_delivery(
             mem.sent_at = sent_at
         if completed_at is not None:
             mem.completed_at = completed_at
-        return _update_memory(mem)
+        updated = _update_memory(mem)
+        _mirror_event_settlement(
+            updated.event_id,
+            status=new_status,
+            provider_message_id=provider_message_id or updated.provider_message_id,
+            error_taxonomy=error_taxonomy,
+            settled_at=updated.completed_at or updated.sent_at or now,
+            delivery_owner=delivery_owner,
+            gateway_mode=gateway_mode,
+        )
+        return updated
 
     conn = _db_conn()
     if conn is None:
@@ -484,7 +547,17 @@ def settle_delivery(
                 val = mapped.get(jsonb_key)
                 if isinstance(val, str):
                     mapped[jsonb_key] = json.loads(val)
-            return _row_to_delivery(mapped, persisted="db")
+            result = _row_to_delivery(mapped, persisted="db")
+            _mirror_event_settlement(
+                result.event_id,
+                status=new_status,
+                provider_message_id=provider_message_id or result.provider_message_id,
+                error_taxonomy=error_taxonomy,
+                settled_at=result.completed_at or result.sent_at or now,
+                delivery_owner=delivery_owner,
+                gateway_mode=gateway_mode,
+            )
+            return result
     except DeliveryGateError:
         try:
             conn.rollback()
@@ -497,6 +570,23 @@ def settle_delivery(
         except Exception:
             pass
         raise DeliveryGateError(f"settle_failed:{type(e).__name__}") from e
+
+
+def find_delivery_by_provider_message_id(
+    provider_message_id: str,
+) -> ChannelDelivery | None:
+    """Locate a settled delivery by provider message id (memory then best-effort DB)."""
+    pmid = str(provider_message_id or "").strip()
+    if not pmid:
+        return None
+    with _lock:
+        for row in _MEM.values():
+            if str(row.get("provider_message_id") or "") == pmid:
+                return _row_to_delivery(dict(row), persisted="memory")
+            coords = row.get("provider_coordinates") or {}
+            if isinstance(coords, dict) and str(coords.get("message_id") or "") == pmid:
+                return _row_to_delivery(dict(row), persisted="memory")
+    return None
 
 
 def record_chunk(

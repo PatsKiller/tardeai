@@ -3,7 +3,39 @@ import os
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts", "lib"))
+import pytest  # noqa: E402
 import watchlist_volatility as wv  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _isolate_atr20(tmp_path, monkeypatch):
+    """Keep these tests off the network and off the shared runtime cache.
+
+    Found 2026-09-07 by the m2-canary-20260907 I-2 differential.
+    `attach_atr20_batch` calls `_fetch_atr20`, which imports
+    `watchlist_entry_planner._bars` and makes a LIVE yfinance/Alpaca request, and
+    it reads/writes the shared `data/runtime/atr20_cache.json` inside the working
+    tree. So the result depended on two things that have nothing to do with the
+    behaviour under test: whether the network answered, and what earlier runs had
+    left in the cache (17KB in one worktree, 5KB in another).
+
+    That made `test_attach_atr20_prioritizes_plans` order-dependent — it passed in
+    the baseline full-suite ordering and failed alone, in BOTH trees. Adding four
+    test files to the suite was enough to flip it, which briefly looked like an
+    integration regression and was not.
+
+    The test asserts prioritisation and fetch-budget behaviour. Neither needs a
+    provider. Pin the cache to tmp_path and make the fetch deterministic.
+    """
+    monkeypatch.setattr(wv, "ATR20_CACHE_PATH", tmp_path / "atr20_cache.json")
+    calls: list[str] = []
+
+    def _stub_fetch(symbol: str):
+        calls.append(symbol.upper())
+        return 1.25
+
+    monkeypatch.setattr(wv, "_fetch_atr20", _stub_fetch)
+    yield calls
 
 
 def test_mrln_plan_stop_context():

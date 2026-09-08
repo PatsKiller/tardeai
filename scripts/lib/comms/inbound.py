@@ -140,7 +140,86 @@ def build_inbound_event(update: dict[str, Any]) -> CommunicationEvent:
         observed_at=datetime.now(timezone.utc),
     )
     event.mint_identity()
+    # Reply threading: resolve reply_to_message_id → prior CommunicationEvent.
+    if reply_to_message_id is not None:
+        _apply_reply_threading(event, str(reply_to_message_id), chat_id=chat_id)
     return event
+
+
+def _apply_reply_threading(
+    event: CommunicationEvent,
+    reply_to_message_id: str,
+    *,
+    chat_id: str | None = None,
+) -> None:
+    """Set reply_to_event_id + parent_event_id; preserve correlation_id continuity."""
+    parent = resolve_event_by_provider_message_id(
+        reply_to_message_id, chat_id=chat_id
+    )
+    if not parent:
+        return
+    parent_id = str(parent.get("event_id") or "").strip()
+    if not parent_id:
+        return
+    event.reply_to_event_id = parent_id
+    event.parent_event_id = parent_id
+    event.parent_id = parent_id
+    event.parent_kind = "comm_event"
+    # Preserve inbound correlation with the parent thread when present.
+    parent_corr = parent.get("correlation_id")
+    if parent_corr:
+        event.correlation_id = str(parent_corr)
+    parent_thread = parent.get("thread_id")
+    if parent_thread:
+        event.thread_id = str(parent_thread)
+
+
+def resolve_event_by_provider_message_id(
+    provider_message_id: str,
+    *,
+    chat_id: str | None = None,
+) -> dict[str, Any] | None:
+    """Resolve a prior CommunicationEvent via provider_message_id / coordinates."""
+    pmid = str(provider_message_id or "").strip()
+    if not pmid:
+        return None
+
+    # 1) Delivery ledger (settled outbound) → event_id
+    try:
+        from scripts.lib.comms.delivery import find_delivery_by_provider_message_id
+
+        dlv = find_delivery_by_provider_message_id(pmid)
+        if dlv and dlv.event_id:
+            from scripts.lib.comms.client import memory_store_snapshot
+
+            snap = memory_store_snapshot()
+            row = snap.get(dlv.event_id)
+            if row:
+                return dict(row)
+            return {"event_id": dlv.event_id, "provider_message_id": pmid}
+    except Exception:
+        pass
+
+    # 2) Event memory store: provider_message_id or provider_coordinates.message_id
+    try:
+        from scripts.lib.comms.client import memory_store_snapshot
+
+        snap = memory_store_snapshot()
+        for row in snap.values():
+            if str(row.get("provider_message_id") or "") == pmid:
+                if chat_id:
+                    coords = row.get("provider_coordinates") or {}
+                    if str(coords.get("chat_id") or "") not in ("", str(chat_id)):
+                        continue
+                return dict(row)
+            coords = row.get("provider_coordinates") or {}
+            if isinstance(coords, dict) and str(coords.get("message_id") or "") == pmid:
+                if chat_id and str(coords.get("chat_id") or "") not in ("", str(chat_id)):
+                    continue
+                return dict(row)
+    except Exception:
+        pass
+    return None
 
 
 def _as_str(value: Any) -> str:
