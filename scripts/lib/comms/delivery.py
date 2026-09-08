@@ -430,6 +430,27 @@ def _mirror_event_settlement(
         return
 
 
+def _merge_settlement_coordinates(
+    base: dict[str, Any] | None,
+    *,
+    delivery_owner: str | None = None,
+    gateway_mode: str | None = None,
+) -> dict[str, Any]:
+    """Persist ownership on delivery coords (soak / maturity contract).
+
+    ``delivery_owner`` / ``gateway_mode`` were previously mirrored only onto the
+    in-memory CommunicationEvent. Soak READY reads
+    ``communication_deliveries.provider_coordinates.delivery_owner`` — without
+    this merge, SENT+pmid rows never satisfy ``gateway_canary_delivery``.
+    """
+    coords = dict(base or {})
+    if delivery_owner:
+        coords["delivery_owner"] = str(delivery_owner)
+    if gateway_mode:
+        coords["gateway_mode"] = str(gateway_mode)
+    return coords
+
+
 def settle_delivery(
     delivery_id: str,
     *,
@@ -454,8 +475,23 @@ def settle_delivery(
         mem.status = new_status
         if provider_message_id is not None:
             mem.provider_message_id = provider_message_id
-        if provider_coordinates is not None:
-            mem.provider_coordinates = dict(provider_coordinates)
+        # Always merge ownership stamps when settling — even if caller only
+        # passed delivery_owner without a coords dict (common gateway path).
+        if (
+            provider_coordinates is not None
+            or delivery_owner
+            or gateway_mode
+        ):
+            base = (
+                dict(provider_coordinates)
+                if provider_coordinates is not None
+                else dict(mem.provider_coordinates or {})
+            )
+            mem.provider_coordinates = _merge_settlement_coordinates(
+                base,
+                delivery_owner=delivery_owner,
+                gateway_mode=gateway_mode,
+            )
         if response_fingerprint is not None:
             mem.response_fingerprint = response_fingerprint
         if error_taxonomy is not None:
@@ -509,10 +545,17 @@ def settle_delivery(
                 new_sent = sent_at or now
             if new_status in _TERMINAL_STATUSES:
                 new_completed = completed_at or now
-            coords = (
-                json.dumps(provider_coordinates)
+            base_coords = (
+                dict(provider_coordinates)
                 if provider_coordinates is not None
-                else json.dumps(mapped.get("provider_coordinates") or {})
+                else dict(mapped.get("provider_coordinates") or {})
+            )
+            coords = json.dumps(
+                _merge_settlement_coordinates(
+                    base_coords,
+                    delivery_owner=delivery_owner,
+                    gateway_mode=gateway_mode,
+                )
             )
             cur.execute(
                 """
