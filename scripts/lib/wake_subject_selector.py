@@ -26,6 +26,12 @@ from typing import Any, Callable, Iterable
 # Align with material_change_detector.NEW_HOURS default; overridable via arg.
 DEFAULT_RECENT_HOURS = 24
 DEFAULT_LIMIT = 3
+# MaterialChange@v1 is versioned by change_guid. A non-none receipt for that
+# exact version suppresses reselection until either (a) a newer change_guid
+# appears for the subject, or (b) MATERIAL_CHANGE_REEVAL_HOURS elapses since
+# the consumption receipt timestamp. Same version is therefore not permanently
+# consumed; it is held for a documented reevaluation interval.
+MATERIAL_CHANGE_REEVAL_HOURS = 24
 
 SOURCE_UNCONSUMED_RESEARCH = "unconsumed_research"
 SOURCE_MATERIAL_CHANGE = "material_change"
@@ -98,6 +104,55 @@ def research_is_consumed(
     return False
 
 
+def _receipt_effect_ts(receipt: dict) -> datetime | None:
+    return _parse_ts(
+        receipt.get("acknowledged_at")
+        or receipt.get("retrieved_at")
+        or receipt.get("produced_at")
+        or receipt.get("created_at")
+    )
+
+
+def material_change_is_suppressed(
+    *,
+    agent_id: str,
+    change_guid: str,
+    receipts: Iterable[dict],
+    now: datetime | None = None,
+    reeval_hours: float = MATERIAL_CHANGE_REEVAL_HOURS,
+) -> bool:
+    """True iff this exact MaterialChange version should not be reselected yet.
+
+    Policy (source-version + reevaluation interval):
+      * A non-none receipt for ``(agent, material_change, change_guid)`` suppresses
+        that version.
+      * Suppression lifts after ``reeval_hours`` from the receipt timestamp so the
+        same version is not permanently consumed while still material.
+      * A *different* ``change_guid`` (new materiality revision) is never
+        suppressed by a receipt for another version — callers select the newest
+        change per subject separately.
+      * ``effect_kind='none'`` never suppresses (§6).
+    """
+    now = now or _now()
+    latest_consume: datetime | None = None
+    for r in receipts:
+        if str(r.get("agent_id")) != str(agent_id):
+            continue
+        if str(r.get("source_kind")) != "material_change":
+            continue
+        if str(r.get("source_id")) != str(change_guid):
+            continue
+        if str(r.get("effect_kind") or "none") == "none":
+            continue
+        ts = _receipt_effect_ts(r) or datetime.min.replace(tzinfo=timezone.utc)
+        if latest_consume is None or ts > latest_consume:
+            latest_consume = ts
+    if latest_consume is None:
+        return False
+    # Permanent only within the reevaluation window.
+    return (now - latest_consume) < timedelta(hours=float(reeval_hours))
+
+
 def select_subjects(
     agent_id: str,
     *,
@@ -107,6 +162,7 @@ def select_subjects(
     receipts: Iterable[dict] | None = None,
     material_changes: Iterable[dict] | None = None,
     recent_hours: float = DEFAULT_RECENT_HOURS,
+    material_change_reeval_hours: float = MATERIAL_CHANGE_REEVAL_HOURS,
 ) -> list[SubjectCandidate]:
     """Return up to ``limit`` subject candidates for ``agent_id``.
 
@@ -169,6 +225,14 @@ def select_subjects(
         cid = str(mc.get("change_guid") or mc.get("id") or "")
         if not cid:
             continue
+        if material_change_is_suppressed(
+            agent_id=agent_id,
+            change_guid=cid,
+            receipts=receipts,
+            now=now,
+            reeval_hours=material_change_reeval_hours,
+        ):
+            continue
         # Keep the most recent change per subject (deterministic on equal timestamps
         # by change_guid).
         prev = mc_by_subject.get(sg)
@@ -218,9 +282,11 @@ __all__ = [
     "SubjectCandidate",
     "DEFAULT_LIMIT",
     "DEFAULT_RECENT_HOURS",
+    "MATERIAL_CHANGE_REEVAL_HOURS",
     "SOURCE_UNCONSUMED_RESEARCH",
     "SOURCE_MATERIAL_CHANGE",
     "research_is_consumed",
+    "material_change_is_suppressed",
     "select_subjects",
     "load_selection_inputs",
 ]
