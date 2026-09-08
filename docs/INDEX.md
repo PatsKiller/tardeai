@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `b1981933662cc2d152e0edcdf05166d0a7f284387935ad22c083db82e16f0c59`
+**Tree fingerprint:** `0dbcc76b7656a519b3c7071a0ebb4a2ed114cbb0779909120b49d3655039d4aa`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,10 +12,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2408 |
-| Markdown (excl. this INDEX) | 2007 |
-| **MISSING HEADER** | **20** |
-| Header OK | 1987 |
+| Files under `docs/` (excl. this INDEX) | 2412 |
+| Markdown (excl. this INDEX) | 2011 |
+| **MISSING HEADER** | **23** |
+| Header OK | 1988 |
 | Duplicate groups | 5 |
 
 ### By status_guess
@@ -30,7 +30,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_raw_sync | 35 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 6 |
-| review_required | 2019 |
+| review_required | 2023 |
 
 ## Markdown tree
 
@@ -702,6 +702,8 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/brokers/trading-environments.md` | Trading Environments — Taxonomy & Configuration | review_required | OK | `1a28c5ad063a` |
 | `docs/brokers/tradingview-lanes.md` | TradingView Lanes (Alpaca multi-account era) | review_required | OK | `8b2d65b3e8d2` |
 | `docs/brokers/ui-card-contracts-schwab.md` | Broker Orders — UI Card Contracts (Phase 5) | review_required | OK | `5f78a07dc929` |
+| `docs/campaigns/m2-canary-20260907/LANE_G_OUTBOUND_GATEWAY.md` | Lane G — Outbound CANARY gateway path | review_required | MISSING HEADER | `4d5ddc55f20d` |
+| `docs/campaigns/m2-canary-20260907/LANE_I_INBOUND.md` | Lane I — Inbound normalization and consumption | review_required | MISSING HEADER | `24498a9ded86` |
 | `docs/cio/ARCHITECTURE.md` | Architecture — Track A vs Track B | review_required | OK | `2dffd8834f47` |
 | `docs/cio/AUTHORITY.md` | Authority — READ_ONLY_ADVISORY | review_required | OK | `5ed5e4f198e6` |
 | `docs/cio/CATALYST_AND_HERMES.md` | Catalyst domain + Hermes research de-duplication | review_required | OK | `65dfcba21b19` |
@@ -1517,6 +1519,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/CIO_WAVE3D_HOP_2026-08-29.md` | Wave 3D — the one live hop, executed (2026-08-29) | review_required | OK | `02ef350a1efb` |
 | `docs/ops/CIO_WAVE3E_2026-08-29.md` | CIO Wave 3E — notification decisions on the Command Center (2026-08-29) | review_required | OK | `6fd2ce532756` |
 | `docs/ops/CLOSE_OPERATOR_GAPS_TO_100_2026-08-19.md` | Close remaining operator gaps to 100% | review_required | OK | `9f9aada669d7` |
+| `docs/ops/COMMAND_CENTER_MATURITY_TRUTH.md` | Command Center maturity truth (live runtime) | review_required | MISSING HEADER | `de97ccca2b56` |
 | `docs/ops/COMMS_GATEWAY_GO_LIVE_RUNBOOK.md` | Communications Gateway — Go-Live Runbook (single consolidated operator prompt) | review_required | OK | `7ded3894288a` |
 | `docs/ops/COST_CAP_EXCEEDED_2026-08-22.md` | COST_CAP_EXCEEDED 2026-08-22 — what did not run, and why 895 ≠ 312 | review_required | OK | `e11d852dddbb` |
 | `docs/ops/CURRENT_CUTOVER_AFTER_2026-08-27.md` | CURRENT cutover — execute after 2026-08-27 close | review_required | OK | `ff4d8004bf21` |
@@ -1524,6 +1527,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/DEEPSEEK_BULK_WINDOW_ET_2026-08-19.md` | DeepSeek bulk window: 10:00–21:00 US Eastern | review_required | OK | `7f5763a0c9fb` |
 | `docs/ops/DESK_GAP_FIX_CLOSEOUT_2026-08-19.md` | Desk gap-fix closeout — Advisory/CIO accuracy + daily shadow-receipt producer | review_required | OK | `950c2f95e8b8` |
 | `docs/ops/DRIVE_ARCHIVE_2026-09-01.md` | Drive archive — 2026-09-01 | review_required | OK | `3490029f050c` |
+| `docs/ops/DRIVE_MUTATION_SAFETY.md` | Drive mutation safety (gog v0.12.x) | review_required | OK | `9b701b444eb7` |
 | `docs/ops/F6_UTC_CRON_PROPOSALS.md` | F6 — UTC scheduling proposals for LLM-heavy jobs | review_required | OK | `991bedac8b13` |
 | `docs/ops/FLASH_ACTIVATION_AND_THESIS_CANARY_2026-08-20.md` | Flash activation + thesis canary — 2026-08-20 | review_required | OK | `2423165b9ce4` |
 | `docs/ops/GITHUB_ACTIONS_COST_REDUCTION_PLAN.md` | GitHub Actions cost-reduction plan | review_required | OK | `820bad46ce5f` |

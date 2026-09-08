@@ -270,6 +270,11 @@ class WakeEngine:
     comms: CommsHistoryPort
     source_sha: str = field(default_factory=source_sha)
     agent_version: str = "lane-a@v2"
+    # SFR-G-002: optional outbound gateway hand-off, called only after a SETTLED
+    # wake with a non-none effect. Default None = no delivery path exists at all.
+    # Nothing in this module constructs one; the caller must inject it, and Lane G
+    # requires an injected transport on top of that. Two independent opt-ins.
+    _outbound: Callable[..., dict] | None = None
 
     def run(
         self,
@@ -622,6 +627,19 @@ class WakeEngine:
                 "memory_fact_ids": wake["memory_fact_ids"],
             }),
         }
+        # SFR-G-002 (Lane G): outbound gateway hand-off. FAIL-CLOSED at three
+        # independent points -- the flag must be on, a transport must be injected,
+        # and Lane G's own ownership/allowlist gate must return delivery_owner
+        # 'gateway'. Missing any one of them means NOTHING is sent. This module
+        # never imports a transport and never touches the network itself; the
+        # interdiction is enforced by there being no default transport to call.
+        if decision.get("act") and effect_kind != "none" and self._outbound is not None:
+            try:
+                wake["outbound"] = self._outbound(wake=wake, receipts=receipts)
+            except Exception as exc:  # never let delivery failure corrupt the wake
+                wake["outbound"] = {"ok": False,
+                                    "error": f"{type(exc).__name__}: {exc}"}
+
         self.store.upsert_by_key(
             "wakes", "wake_id", wake, preserve_terminal=True, terminal_states=TERMINAL_WAKE,
         )
