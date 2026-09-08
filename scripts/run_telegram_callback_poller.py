@@ -134,9 +134,16 @@ def poll_once(timeout=25):
             if claim.already_processed:
                 continue
             # Persist a canonical INBOUND event before business processing (C3).
+            #
+            # SFR-I-RUNTIME-001: route through Lane I so the operator reply
+            # becomes a correlated inbound event AND an AgentConsumptionReceipt.
+            # This daemon is the single approved getUpdates consumer; feeding
+            # Lane I here adds no second consumer. Claim/commit/quarantine below
+            # are unchanged, so replay denial still governs.
             try:
-                event = inbound["build_inbound_event"](update)
-                published = inbound["publish_communication"](event)
+                from scripts.lib import inbound_consumption
+
+                published = inbound_consumption.feed_telegram_update(update)
             except Exception as e:
                 log.error(f"inbound event persist failed: {e}")
                 published = None

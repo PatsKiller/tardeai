@@ -37,6 +37,12 @@ from scripts.lib.persistent_agent_wake import (  # noqa: E402
     feature_enabled as wake_feature_enabled,
     run_scheduled_wake,
 )
+
+# SFR-G-003. Imported as a MODULE, not `from ... import deliver_agent_outbound`,
+# so static reachability can follow run_persistent_wake -> gateway_settlement ->
+# deliver_agent_outbound. An ImportFrom of the leaf would hide the edge from the
+# very gate that exists to prove it.
+import scripts.lib.gateway_settlement as gateway_settlement  # noqa: E402
 from scripts.lib.persistent_wake_schedule import (  # noqa: E402
     FEATURE_FLAG as SCHEDULE_FLAG,
     ScheduleContract,
@@ -194,6 +200,19 @@ def _process_one_subject(
         })
         return 0
 
+    # SFR-G-003: construct the outbound callable ONLY when the campaign flag is
+    # on. Fail-closed at four independent points -- flag off => None; Lane G
+    # refuses without an injected transport; its ownership/allowlist gate must
+    # return delivery_owner='gateway'; and CANARY/ACTIVE scope is enforced inside
+    # build_wake_outbound_handler. Any one of them missing means nothing is sent.
+    outbound = None
+    if gateway_settlement.wake_gateway_outbound_enabled(env):
+        outbound = gateway_settlement.build_wake_outbound_handler(
+            env=env,
+            transport=gateway_settlement.sanctioned_telegram_transport,
+            deliver=True,
+        )
+
     try:
         result = run_scheduled_wake(
             agent_id=agent_id,
@@ -205,6 +224,7 @@ def _process_one_subject(
             contract=contract,
             env=env,
             selection=selection,
+            outbound=outbound,
         )
     except Exception as exc:
         _emit({

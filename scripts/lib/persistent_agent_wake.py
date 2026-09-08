@@ -773,6 +773,7 @@ def run_scheduled_wake(
     decide: Callable[[dict], dict] | None = None,
     crash_after: str | None = None,
     selection: Any = None,
+    outbound: Callable[..., dict] | None = None,
 ) -> dict:
     """Stable entrypoint for a future schedule. Does not install the schedule.
 
@@ -787,6 +788,10 @@ def run_scheduled_wake(
         store=JsonlStore(state_root),
         memory_loader=MemoryLoader(memory_backend),
         comms=comms or NullCommsHistory(),
+        # SFR-G-003: threaded through rather than reconstructing the engine in the
+        # runner, which would duplicate slot/contract resolution. None = no
+        # delivery path exists, which stays the default for every caller.
+        _outbound=outbound,
     )
     return engine.run(
         agent_id=agent_id,
