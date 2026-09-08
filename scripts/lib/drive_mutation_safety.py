@@ -235,27 +235,38 @@ def execute_upload(
         receipt.ok = False
         return receipt
 
-    # Post-write read-back
+    # Post-write remote hash verification is mandatory — local-only "hash match"
+    # is not proof the remote object was written correctly.
     if readback is None:
-        post = {
-            "note": "default readback records local hash unchanged; inject Drive get for remote hash",
-            "local_sha256_after": sha256_file(path),
-            "gog_stdout": (proc.stdout or "")[:4000],
+        receipt.error = (
+            "REFUSED: execute requires a remote readback that returns sha256/"
+            "content_sha256 for post-write verification (no local-only fallback)"
+        )
+        receipt.ok = False
+        receipt.hash_match = None
+        receipt.post_write = {
             "captured_at_utc": utcnow(),
+            "gog_stdout": (proc.stdout or "")[:4000],
+            "remote_hash_verified": False,
         }
-        receipt.post_write = post
-        receipt.hash_match = post["local_sha256_after"] == pre_hash
-    else:
-        post = readback(plan)
-        receipt.post_write = post
-        remote_hash = post.get("sha256") or post.get("content_sha256")
-        receipt.hash_match = (remote_hash == pre_hash) if remote_hash else None
+        return receipt
 
-    receipt.ok = proc.returncode == 0 and receipt.hash_match is not False
+    post = readback(plan)
+    receipt.post_write = dict(post or {})
+    receipt.post_write.setdefault("captured_at_utc", utcnow())
+    remote_hash = receipt.post_write.get("sha256") or receipt.post_write.get("content_sha256")
+    if not remote_hash:
+        receipt.error = "post-write remote hash missing from readback"
+        receipt.hash_match = None
+        receipt.ok = False
+        receipt.post_write["remote_hash_verified"] = False
+        return receipt
+    receipt.hash_match = remote_hash == pre_hash
+    receipt.post_write["remote_hash_verified"] = bool(receipt.hash_match)
+    receipt.ok = proc.returncode == 0 and receipt.hash_match is True
     if receipt.hash_match is False:
-        receipt.error = "post-write hash comparison failed"
+        receipt.error = "post-write remote hash comparison failed"
     return receipt
-
 
 def sanitize_or_refuse(argv: Sequence[str]) -> list[str]:
     """Validate a proposed gog argv; return a copy or raise DriveSafetyError."""
