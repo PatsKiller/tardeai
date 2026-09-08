@@ -87,6 +87,14 @@ GATES = [
             # inbound consumption. Unit tests prove a function is CORRECT; these
             # prove it RUNS. Expected RED until the runtime wiring lands.
             "tests/test_runtime_reachability.py",
+            # Drives the REAL poll_once against a mocked provider: entry point,
+            # normalization, authorization, correlation, deduplication, agent
+            # consumption, receipt persistence, safe error response.
+            "tests/test_inbound_poller_integration.py",
+            # INC-2026-09-08: centralized receipt-write barrier. Five firing
+            # controls -- direct, indirect, unknown wrapper, live-DSN leakage,
+            # missing injected writer.
+            "tests/test_receipt_write_barrier.py",
         ],
     ),
     # Cash age is the age of the dollars. PP2 (the cash letter) and PP4 (provenance)
