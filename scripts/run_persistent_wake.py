@@ -122,12 +122,17 @@ def _process_one_subject(
     when: datetime,
     state_root: Path,
     memory_backend: Any,
-    selection_source: str | None = None,
+    selection: SubjectCandidate | dict | None = None,
 ) -> int:
-    """Run one subject for the current slot. Return process exit code."""
+    """Run one subject for the current slot. Return process exit code.
+
+    ``selection`` is the SubjectCandidate that chose this subject (source /
+    source_id / observed_at). It is passed into run_scheduled_wake so decide
+    can consume the ORIGINAL research / material-change id — not log-only.
+    """
     contract = ScheduleContract(agent_id=agent_id, wake_reason=WAKE_REASON)
     slot = contract.slot_for(when)
-    base = {
+    base: dict[str, Any] = {
         "script": "run_persistent_wake",
         "agent_id": agent_id,
         "subject_guid": subject_guid,
@@ -135,8 +140,15 @@ def _process_one_subject(
         "wake_flag": WAKE_FLAG,
         "schedule_flag": SCHEDULE_FLAG,
     }
-    if selection_source:
-        base["selection_source"] = selection_source
+    if selection is not None:
+        if isinstance(selection, SubjectCandidate):
+            base["selection_source"] = selection.source
+            base["selection_source_id"] = selection.source_id
+        elif isinstance(selection, dict):
+            if selection.get("source"):
+                base["selection_source"] = selection.get("source")
+            if selection.get("source_id"):
+                base["selection_source_id"] = selection.get("source_id")
 
     store = JsonlStore(state_root)
     completed = _completed_slots(
@@ -172,6 +184,7 @@ def _process_one_subject(
             when=when,
             contract=contract,
             env=env,
+            selection=selection,
         )
     except Exception as exc:
         _emit({
@@ -274,10 +287,11 @@ def run_once(
         mem_path = env.get(DEFAULT_MEMORY_ENV) or ""
         memory_backend = Path(mem_path) if mem_path else None
 
-    # Resolve subjects
+    # Resolve subjects — keep full SubjectCandidate so source_id reaches decide.
     selection_meta: list[SubjectCandidate] = []
+    work: list[tuple[str, SubjectCandidate | None]]
     if subject_guid:
-        subjects = [(subject_guid, None)]
+        work = [(subject_guid, None)]
     else:
         inputs = {
             "research_objects": research_objects,
@@ -304,7 +318,7 @@ def run_once(
                 "limit": limit,
             })
             return 0
-        subjects = [(c.subject_guid, c.source) for c in selection_meta]
+        work = [(c.subject_guid, c) for c in selection_meta]
 
     if select_only:
         _emit({
@@ -320,7 +334,7 @@ def run_once(
         return 0
 
     rc = 0
-    for sg, src in subjects:
+    for sg, cand in work:
         subject_rc = _process_one_subject(
             agent_id=agent_id,
             subject_guid=sg,
@@ -329,7 +343,7 @@ def run_once(
             when=when,
             state_root=root,
             memory_backend=memory_backend,
-            selection_source=src,
+            selection=cand,
         )
         if subject_rc != 0:
             rc = subject_rc
