@@ -63,7 +63,13 @@ SCHEDULE_SCHEMA = "PersistentWakeScheduleContract@v1"
 COMM_EVENT_SCHEMA = "CommunicationEvent@v2"
 CURATION_PROVENANCE_SCHEMA = "CurationProvenance@v1"
 
-SOURCE_KINDS = frozenset({"comm_event", "research_object", "memory_fact", "operator_turn"})
+# SFR-A-FOLLOWUP3-002: material_change added 2026-09-08. The wake selector
+# legitimately selects subjects on MaterialChange@v1, so a receipt must be able
+# to name one as its source. Extending Python ALONE would violate the DDL CHECK
+# constraint the moment a receipt reached the database — the migration and
+# INTERFACE_CONTRACTS.md §6 are extended in the same commit.
+SOURCE_KINDS = frozenset({"comm_event", "research_object", "memory_fact",
+                         "operator_turn", "material_change"})
 EFFECT_KINDS = frozenset({"none", "changed_question", "changed_priority",
                           "changed_view", "changed_commitment"})
 PARENT_KINDS = frozenset({"wake", "comm_event", "research_object", "commitment", "outcome"})

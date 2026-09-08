@@ -1,0 +1,11 @@
+claim,disposition,validated_level,evidence_class,first_broken_edge
+candidate identity and provenance,FAIL,0,missing atomic handoff; local refs only,owner handoff absent
+cross-lane interfaces are consistent,PASS,1,disposable integrated trace tests,none in fixture scope
+research reaches later agent behavior,FAIL,0,no organic runtime receipt or later output,dossier to unattended served wake
+communications gateway owns selected live delivery,UNKNOWN,0,fake-provider tests only; no gateway process,gateway to provider settlement
+provider settlement IDs are complete,FAIL,0,no live settlement archive or rows,delivery to settlement
+scheduled persistent wake executes,FAIL,0,no active crontab/systemd/process evidence,schedule to producer
+persistent learning changes later unattended behavior,FAIL,0,shadow-only fixture tests; no natural loop,wake to later behavior
+Command Center reflects backend/runtime truth,FAIL,0,no listener and stale embedded manifest,served release to runtime truth
+Drive and GitHub current documents agree,UNKNOWN,0,GitHub API unavailable and no M2 Drive handoff,external reconciliation
+broader acceleration readiness,FAIL,0,critical-path floor M0,truth baseline reproducibility

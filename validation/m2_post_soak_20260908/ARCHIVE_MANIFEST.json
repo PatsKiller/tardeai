@@ -1,0 +1,14 @@
+{
+  "schema": "ReopenedValidationEvidenceArchive@v1",
+  "as_of": "2026-09-08T00:00:00Z",
+  "root_read": "/home/johnclaw/trade-ai-worktrees/m2-canary-integration-20260907",
+  "source_commit": "2c650b9686ad2f93acc68b624a38c68020dcc920",
+  "status": "reopened_validator_records_only",
+  "no_external_writes": true,
+  "members": [
+    {"path":"validation_report.md","sha256":"44ce20f0a986b0f71df39e900d80c8c094acbc49f88dad7b00dc85aa7fc49922"},
+    {"path":"claim_disposition.csv","sha256":"a80a6c47d03d0dd49f2f295e26c714884798fe0f2b62b6b2d90a78c95b389b77"},
+    {"path":"evidence_recomputation.json","sha256":"394b169e9840d10c507860558f721a9a8eaf052568241095f6b8f036659ed88a"},
+    {"path":"validation_handoff.md","sha256":"6dec57e19cf9a258fe6452dc1ca03da692528dd9857d408ab587313a07c44029"}
+  ]
+}
