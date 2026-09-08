@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Lane I — inbound → AgentConsumptionReceipt proofs."""
+
 from __future__ import annotations
 
 import sys
@@ -95,9 +96,7 @@ def test_effect_kind_none_never_counts_as_behavioral():
 def test_non_none_requires_effect_ref():
     norm = normalize_inbound_update(_update(update_id=4010))
     assert norm.ok
-    bad = consume_inbound_event(
-        norm.event, effect_kind="changed_priority", effect_ref=None
-    )
+    bad = consume_inbound_event(norm.event, effect_kind="changed_priority", effect_ref=None)
     assert not bad.ok
     assert "effect_ref_required" in bad.reason
 
@@ -186,8 +185,50 @@ def test_restart_offset_suppresses_replay(tmp_path, monkeypatch):
     assert "duplicate" in r2.reason
 
 
-def test_reachability_gate_requires_poller_wiring():
-    """Gate fails until SFR-I-RUNTIME-001 wires the approved poller."""
+# Accepted Lane I runtime (poller still INTEGRATION-owned / unwired in that commit).
+_UNWIRED_RUNTIME_SHA = "2e66bc0a9b683f0ee72e84e3e198fd593c2cc458"
+# Integration candidate after SFR-I-RUNTIME-001 applied the poller feed.
+_INTEGRATED_CANDIDATE_SHA = "4911664395d34b6114176625887bbd271d05ac0f"
+_POLLER_REL = "scripts/run_telegram_callback_poller.py"
+_CONSUMPTION_REL = "scripts/lib/inbound_consumption.py"
+_NORMALIZER_REL = "scripts/lib/inbound_event_normalizer.py"
+
+
+def _git_show(commit: str, rel: str) -> str:
+    import subprocess
+
+    return subprocess.check_output(
+        ["git", "show", f"{commit}:{rel}"],
+        cwd=str(ROOT),
+        text=True,
+    )
+
+
+def _materialize_production_slice(
+    dest: Path,
+    *,
+    poller_text: str,
+    consumption_text: str | None = None,
+    normalizer_text: str | None = None,
+) -> Path:
+    """Build a minimal non-test production tree for reachability inspection."""
+    (dest / "scripts" / "lib").mkdir(parents=True)
+    (dest / _POLLER_REL).write_text(poller_text, encoding="utf-8")
+    (dest / _CONSUMPTION_REL).write_text(
+        consumption_text if consumption_text is not None else (ROOT / _CONSUMPTION_REL).read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    (dest / _NORMALIZER_REL).write_text(
+        normalizer_text if normalizer_text is not None else (ROOT / _NORMALIZER_REL).read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    # Reachability must never be satisfiable by a tests/ caller.
+    assert not (dest / "tests").exists()
+    return dest
+
+
+def test_reachability_gate_requires_poller_wiring(tmp_path):
+    """Gate detects an unwired poller; integrated production tree must be wired."""
     from scripts.lib.inbound_consumption import (
         InboundReachabilityError,
         assert_inbound_runtime_reachability,
@@ -197,13 +238,101 @@ def test_reachability_gate_requires_poller_wiring():
 
     callers = find_normalize_runtime_callers()
     assert any("inbound_consumption" in c for c in callers), callers
-    # Current tree: poller not yet wired (integration-owned SFR pending).
-    assert poller_wires_feed() is False
+    assert all(not c.startswith("tests/") for c in callers), callers
+
+    # Negative: intentionally unwired poller (pre-SFR production text).
+    unwired_poller = _git_show(_UNWIRED_RUNTIME_SHA, _POLLER_REL)
+    assert "feed_telegram_update" not in unwired_poller
+    unwired = _materialize_production_slice(tmp_path / "unwired", poller_text=unwired_poller)
+    assert poller_wires_feed(repo_root=unwired) is False
     try:
-        assert_inbound_runtime_reachability()
-        raise AssertionError("expected InboundReachabilityError while poller unwired")
+        assert_inbound_runtime_reachability(repo_root=unwired)
+        raise AssertionError("expected InboundReachabilityError on unwired fixture")
     except InboundReachabilityError as exc:
         assert "SFR-I-RUNTIME-001" in str(exc) or "feed_telegram_update" in str(exc)
+
+    # Positive: real integrated production tree after SFR-I-RUNTIME-001.
+    wired = _materialize_production_slice(
+        tmp_path / "integrated",
+        poller_text=_git_show(_INTEGRATED_CANDIDATE_SHA, _POLLER_REL),
+        consumption_text=_git_show(_INTEGRATED_CANDIDATE_SHA, _CONSUMPTION_REL),
+        normalizer_text=_git_show(_INTEGRATED_CANDIDATE_SHA, _NORMALIZER_REL),
+    )
+    assert poller_wires_feed(repo_root=wired) is True
+    report = assert_inbound_runtime_reachability(repo_root=wired)
+    assert report["ok"] is True
+    assert report["poller_wires_feed_telegram_update"] is True
+    assert any("inbound_consumption" in c for c in report["normalize_runtime_callers"])
+
+    # When this checkout already carries the SFR (post-integration), live must pass.
+    if poller_wires_feed():
+        live = assert_inbound_runtime_reachability()
+        assert live["ok"] is True
+        assert live["poller_wires_feed_telegram_update"] is True
+
+
+def test_reachability_gate_fails_when_poller_feed_call_removed(tmp_path):
+    """Negative control: removing the poller→feed call must turn the gate red."""
+    from scripts.lib.inbound_consumption import (
+        InboundReachabilityError,
+        assert_inbound_runtime_reachability,
+        poller_wires_feed,
+    )
+
+    wired_poller = _git_show(_INTEGRATED_CANDIDATE_SHA, _POLLER_REL)
+    assert "feed_telegram_update" in wired_poller
+    stripped = wired_poller.replace(
+        "from scripts.lib import inbound_consumption\n",
+        "",
+    ).replace(
+        "published = inbound_consumption.feed_telegram_update(update)",
+        'event = inbound["build_inbound_event"](update)\n'
+        '                published = inbound["publish_communication"](event)',
+    )
+    assert "feed_telegram_update" not in stripped
+    assert "from scripts.lib import inbound_consumption" not in stripped
+
+    broken = _materialize_production_slice(tmp_path / "stripped", poller_text=stripped)
+    assert poller_wires_feed(repo_root=broken) is False
+    try:
+        assert_inbound_runtime_reachability(repo_root=broken)
+        raise AssertionError("expected InboundReachabilityError after removing poller feed call")
+    except InboundReachabilityError as exc:
+        assert "SFR-I-RUNTIME-001" in str(exc) or "feed_telegram_update" in str(exc)
+
+
+def test_reachability_ignores_callers_inside_tests(tmp_path):
+    """A normalize caller living under tests/ must never satisfy reachability."""
+    from scripts.lib.inbound_consumption import (
+        InboundReachabilityError,
+        assert_inbound_runtime_reachability,
+        find_normalize_runtime_callers,
+        poller_wires_feed,
+    )
+
+    root = tmp_path / "tests_only"
+    (root / "scripts" / "lib").mkdir(parents=True)
+    (root / "tests").mkdir(parents=True)
+    (root / _NORMALIZER_REL).write_text(
+        "def normalize_inbound_update(update):\n    return update\n",
+        encoding="utf-8",
+    )
+    (root / "tests" / "test_fake_caller.py").write_text(
+        "from scripts.lib.inbound_event_normalizer import normalize_inbound_update\nnormalize_inbound_update({})\n",
+        encoding="utf-8",
+    )
+    (root / _POLLER_REL).write_text(
+        "from scripts.lib import inbound_consumption\ninbound_consumption.feed_telegram_update({})\n",
+        encoding="utf-8",
+    )
+    # Poller is wired, but the only normalize reference is inside tests/.
+    assert poller_wires_feed(repo_root=root) is True
+    assert find_normalize_runtime_callers(repo_root=root) == []
+    try:
+        assert_inbound_runtime_reachability(repo_root=root)
+        raise AssertionError("expected InboundReachabilityError when only tests/ call normalize")
+    except InboundReachabilityError as exc:
+        assert "no non-test runtime caller" in str(exc)
 
 
 def test_reachability_gate_passes_when_poller_text_wired(tmp_path):
