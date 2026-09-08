@@ -655,6 +655,11 @@ def _system() -> dict[str, Any]:
     }
 
 
+_RUNTIME_EVIDENCE_CLASSES = frozenset({
+    "attempted", "consumed", "delivered", "settled", "organic", "behavior_changing",
+})
+
+
 def _maturity_truth(query: dict[str, Any] | None = None) -> tuple[dict[str, Any], str]:
     """Live campaign maturity truth — never the stale June-2026 score body."""
     query = query or {}
@@ -694,7 +699,49 @@ def _maturity_truth(query: dict[str, Any] | None = None) -> tuple[dict[str, Any]
         "db_probe": payload.get("db_probe"),
         "note": payload.get("note"),
     })
+    # A computed surface must not report AVAILABLE merely because it can always
+    # produce a shaped body. build_maturity_truth() emits explicit zeroes even
+    # with an empty state root, and reporting that as AVAILABLE made the route
+    # render LIVE_GOVERNED with nothing behind it -- the exact "says LIVE while
+    # nothing answered" defect this domain exists to prevent, reintroduced by
+    # the fix for stale-data-served-as-live. Explicit zeroes are honest content
+    # but they are not live evidence: with no evidence at all, answer EMPTY.
+    if not _maturity_has_evidence(payload):
+        return page, "EMPTY"
     return page, "AVAILABLE"
+
+
+def _maturity_has_evidence(payload: dict[str, Any]) -> bool:
+    """True iff the computed truth rests on at least one real observation.
+
+    Counts evidence, not shape. Deliberately does NOT trust
+    ``evidence_timestamp``: the builder stamps that with generation time on every
+    call, so it is populated even when every dimension is an explicit zero. The
+    only honest signal is a dimension with a non-zero count and an evidence_class
+    that is not 'absent'.
+    """
+    root = str(_state_root())
+    for item in payload.get("items") or []:
+        if not isinstance(item, dict):
+            continue
+        # Config presence is not an answer. 'configured' and 'scheduled' come
+        # from systemd drop-ins and the user crontab -- host facts that are true
+        # regardless of whether this state root holds anything.
+        if str(item.get("evidence_class") or "absent") not in _RUNTIME_EVIDENCE_CLASSES:
+            continue
+        # ...and the observation must belong to the root being reported on. On an
+        # empty root the builder still returns comms_provider_settled=3 from
+        # postgresql:communication_deliveries, which would render the surface LIVE
+        # for a state root containing nothing. Out-of-root evidence is real, but
+        # it is not evidence about THIS root.
+        if not str(item.get("source_store") or "").startswith(root):
+            continue
+        try:
+            if int(item.get("count") or 0) > 0:
+                return True
+        except (TypeError, ValueError):
+            continue
+    return False
 
 
 def _registered_store_present(root: Path) -> bool:
