@@ -889,6 +889,15 @@ if __name__ == "__main__":
     if len(state_dirs) > 1:
         print(f"  [repricer] state targets: {', '.join(str(d) for d in state_dirs)}")
 
+    # Serialize with the other holdings.json writers (alpaca sync, schwab sync).
+    # Without a shared lock a slow reader (this repricer, ~60s of quote fetching
+    # between read and write) clobbers a faster writer's fresh rows. Manual
+    # enter/exit keeps this a minimal diff (a `with` block would re-indent ~30
+    # lines and trip the line-ending churn guard).
+    from scripts.lib.holdings_write_lock import holdings_write_lock
+    _holdings_lock = holdings_write_lock()
+    _holdings_lock.__enter__()
+
     portfolio = json.loads(hp.read_text(encoding="utf-8"))
     print(f"Loaded {len(portfolio.get('holdings', []))} holdings")
     print(f"Before: ${portfolio['portfolio_totals']['total_value']:,.0f} | "
@@ -919,6 +928,8 @@ if __name__ == "__main__":
     print(f"holdings.json updated ({len(_written)} copy/copies): {', '.join(_written)}")
     for _s in _skipped:
         print(f"  [repricer] WARN not updated: {_s}")
+
+    _holdings_lock.__exit__(None, None, None)
     try:
         from sync_portfolio_watchlist_membership import sync_portfolio_watchlist_membership
         _ms = sync_portfolio_watchlist_membership(portfolio)

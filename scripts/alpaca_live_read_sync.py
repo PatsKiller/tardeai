@@ -340,16 +340,22 @@ def sync_one(account_key: str, *, dry_run: bool = False, force: bool = False) ->
     pos_rows = _positions_to_holdings_rows(account_key, positions, observed_at=observation_at)
     cash_rows = _account_to_cash_row(account_key, acct, observed_at=observation_at)
     rows = pos_rows + cash_rows
-    merge = _merge_account_into_holdings(
-        account_key, rows, dry_run=dry_run,
-        # acct unreadable → don't let a transient miss delete a real cash balance
-        preserve_prior_cash=not cash_rows,
-    )
-    aggregate = None
-    if merge.get("wrote") and not dry_run:
-        from portfolio_repricer import recompute_and_publish_portfolio_aggregate
-        _agg_dir = next((t for t in _holdings_targets() if t.exists()), _holdings_targets()[0]).parent
-        aggregate = recompute_and_publish_portfolio_aggregate(_agg_dir)
+    # Serialize with portfolio_repricer (and other holdings writers) so our fresh
+    # cash-row stamp is never clobbered by a slower reader's stale copy. See
+    # scripts/lib/holdings_write_lock.py. Flat import: this script's sys.path has
+    # scripts/lib (not the repo root), so the scripts. prefix would not resolve.
+    from holdings_write_lock import holdings_write_lock
+    with holdings_write_lock():
+        merge = _merge_account_into_holdings(
+            account_key, rows, dry_run=dry_run,
+            # acct unreadable → don't let a transient miss delete a real cash balance
+            preserve_prior_cash=not cash_rows,
+        )
+        aggregate = None
+        if merge.get("wrote") and not dry_run:
+            from portfolio_repricer import recompute_and_publish_portfolio_aggregate
+            _agg_dir = next((t for t in _holdings_targets() if t.exists()), _holdings_targets()[0]).parent
+            aggregate = recompute_and_publish_portfolio_aggregate(_agg_dir)
 
     # Attribute fills into a lightweight runtime journal tag file (no P&L rewrite)
     try:
