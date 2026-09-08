@@ -57,7 +57,8 @@ TECHNICALS_STALE_HOURS_OFF = float(os.getenv("PACKET_TECHNICALS_STALE_HOURS_OFF"
 REASONS = (
     "TTL_EXPIRED", "PRICE_DRIFT", "NEW_CATALYST", "EARNINGS_CHANGED",
     "OWNERSHIP_CHANGED", "FUNDAMENTALS_CHANGED", "FUNDAMENTALS_STALE",
-    "TECHNICALS_CHANGED", "TECHNICALS_STALE", "PROPOSAL_STATE_CHANGED",
+    "TECHNICALS_CHANGED", "TECHNICALS_STALE", "TECHNICALS_RECOVERED",
+    "PROPOSAL_STATE_CHANGED",
     "OPTIONS_CHAIN_STALE", "PACKET_VERSION_CHANGED", "POLICY_VERSION_CHANGED",
     "INPUT_HASH_MISMATCH", "PACKET_ABSENT",
 )
@@ -192,6 +193,16 @@ def build_current_input_snapshot(symbol: str, conn=None, *, include_options: boo
               "technical_as_of": tech_as_of,
               "rsi": rsi, "change_pct": change_pct, "rvol": rvol,
               "technical_content_hash": tech_hash}
+    # Bars-only technical freshness — the SAME clock watch_quality_policy uses to
+    # write "technical snapshot is STALE" (via analyze_technicals), distinct from
+    # the enrichment cache clock (technical_as_of above). Carried so compare can
+    # detect a RECOVERY: a STALE admission whose bars have since refreshed. Not
+    # part of the input hash (compute_input_hash hashes technical_content_hash).
+    try:
+        import technical_intelligence as ti
+        market["technical_overall_freshness"] = ti.technical_freshness_state(sym, conn)
+    except Exception:
+        market["technical_overall_freshness"] = None
 
     # ── fundamentals (with provenance) ────────────────────────────────────────
     try:
@@ -418,6 +429,26 @@ def compare_packet_inputs(packet: dict, current: dict, *, generated_at=None,
         fund_age_d = (_now(now) - fund_as_of).total_seconds() / 86400.0
         if fund_age_d > FUNDAMENTALS_STALE_DAYS:
             reasons.append("FUNDAMENTALS_STALE")
+
+    # 8. Technical recovery — a STALE/FAILED technical admission whose bars have
+    # since refreshed must rebuild even though the enrichment clock and material
+    # bands are unchanged. Two clocks wrote the admission (analyze_technicals)
+    # vs the invalidation check (last_enriched_at); without this the "technical
+    # snapshot is STALE" admission sticks after bars recovered (2026-09-08 SMCI).
+    old_market = (pkt_snap or {}).get("market") or {}
+    old_fresh = old_market.get("technical_overall_freshness")
+    if not old_fresh:
+        # Older packets: the STALE admission is a string in quality_admission.
+        qa = packet.get("quality_admission") or {}
+        for _r in (qa.get("hard_failures") or []) + (qa.get("reasons") or []):
+            _rt = str(_r).upper()
+            if "TECHNICAL SNAPSHOT IS STALE" in _rt or "TECHNICAL SNAPSHOT IS FAILED" in _rt:
+                old_fresh = "STALE"
+                break
+    new_fresh = (current.get("market") or {}).get("technical_overall_freshness")
+    if (old_fresh in ("STALE", "FAILED", "UNAVAILABLE")
+            and new_fresh in ("CURRENT", "PARTIAL")):
+        reasons.append("TECHNICALS_RECOVERED")
 
     reasons = sorted(set(reasons))
     return {

@@ -255,3 +255,51 @@ def test_reason_codes_are_the_canonical_enum():
                  "PROPOSAL_STATE_CHANGED", "OPTIONS_CHAIN_STALE", "PACKET_VERSION_CHANGED",
                  "INPUT_HASH_MISMATCH"):
         assert code in inv.REASONS
+
+
+# ── technical recovery: a STALE admission whose bars recovered must rebuild ──
+
+def test_technical_recovery_via_snapshot_freshness_field():
+    """STALE admission (snapshot field) + now-CURRENT bars → TECHNICALS_RECOVERED."""
+    old_snap = _snapshot(market={"technical_overall_freshness": "STALE",
+                                 "technical_content_hash": "TECH0"})
+    cur = _snapshot(market={"technical_overall_freshness": "CURRENT",
+                            "technical_content_hash": "TECH0"})  # bands unchanged
+    r = inv.compare_packet_inputs(_packet(snapshot=old_snap), cur,
+                                  generated_at=GEN, now=NOW)
+    assert "TECHNICALS_RECOVERED" in r["invalidation_reasons"]
+    assert r["inputs_match"] is False
+
+
+def test_technical_recovery_via_legacy_quality_admission_string():
+    """Pre-field packets carry the STALE admission as a quality_admission string."""
+    old_snap = _snapshot(market={"technical_content_hash": "TECH0"})  # no freshness field
+    pkt = _packet(snapshot=old_snap, quality_admission={
+        "state": "QUARANTINED",
+        "hard_failures": ["technical snapshot is STALE"],
+    })
+    cur = _snapshot(market={"technical_overall_freshness": "CURRENT",
+                            "technical_content_hash": "TECH0"})
+    r = inv.compare_packet_inputs(pkt, cur, generated_at=GEN, now=NOW)
+    assert "TECHNICALS_RECOVERED" in r["invalidation_reasons"]
+
+
+def test_no_recovery_when_technical_still_stale():
+    """Still-STALE current bars must NOT fire the recovered reason."""
+    old_snap = _snapshot(market={"technical_overall_freshness": "STALE"})
+    cur = _snapshot(market={"technical_overall_freshness": "STALE",
+                            "technical_content_hash": "TECH0"})
+    r = inv.compare_packet_inputs(_packet(snapshot=old_snap), cur,
+                                  generated_at=GEN, now=NOW)
+    assert "TECHNICALS_RECOVERED" not in r["invalidation_reasons"]
+
+
+def test_no_recovery_when_was_current():
+    """A CURRENT admission that stays current does not invalidate."""
+    old_snap = _snapshot(market={"technical_overall_freshness": "CURRENT"})
+    cur = _snapshot(market={"technical_overall_freshness": "CURRENT",
+                            "technical_content_hash": "TECH0"})
+    r = inv.compare_packet_inputs(_packet(snapshot=old_snap), cur,
+                                  generated_at=GEN, now=NOW)
+    assert "TECHNICALS_RECOVERED" not in r["invalidation_reasons"]
+    assert r["inputs_match"] is True
