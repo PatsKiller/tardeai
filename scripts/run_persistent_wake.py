@@ -83,6 +83,26 @@ def _default_state_root(env: dict) -> Path:
     return _PROJECT / "data" / "persistent_wake" / "state"
 
 
+def _emitted_receipts(root: Path) -> list[dict]:
+    """The agent's OWN consumption receipts from the JSONL state store it writes.
+
+    Closes the selection loop. The file-backed selector feed
+    (``TRADEAI_WAKE_RECEIPTS_PATH``) is regenerated from the database and never
+    contains receipts this runner just wrote. Observed 2026-09-08 on deployed
+    ``54639ff5a``: slots 13:00Z and 14:00Z re-selected the same three sources
+    and re-emitted the same UUIDv5 receipt ids while ten other research objects
+    were never reached.
+
+    Fail-safe: never raises into the wake path. Missing or unreadable state
+    returns ``[]`` (degrades to feed-only — the pre-existing behaviour). Does
+    not fabricate receipts.
+    """
+    try:
+        return list(JsonlStore(root).iter("receipts"))
+    except Exception:
+        return []
+
+
 def _completed_slots(
     store: JsonlStore, *, agent_id: str, wake_reason: str, subject_guid: str,
 ) -> set[str]:
@@ -301,6 +321,10 @@ def run_once(
         if inputs["research_objects"] is None and inputs["receipts"] is None and inputs["material_changes"] is None:
             loaded = load_selection_inputs(env)
             inputs = loaded
+        # Union feed receipts with receipts this agent already emitted so a
+        # subject consumed in an earlier slot is not selected again. Without
+        # this the loop never closes — see _emitted_receipts.
+        inputs["receipts"] = list(inputs.get("receipts") or []) + _emitted_receipts(root)
         selection_meta = select_subjects(
             agent_id,
             limit=limit,
