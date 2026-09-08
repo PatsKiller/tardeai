@@ -76,9 +76,12 @@ CONTROL_PLANE_DOMAINS: dict[str, dict[str, Any]] = {
         "wrap_dict": False,
     },
     "maturity": {
-        "kind": "collection",
+        # Computed live truth (Lane T / campaign m2-canary). Historical
+        # data/runtime/maturity_score_latest.json remains on disk as SUPERSEDED
+        # evidence and is no longer the served collection body.
+        "kind": "computed",
         "store_ids": ("runtime.maturity",),
-        "fallbacks": ("data/runtime/maturity.json",),
+        "fallbacks": ("data/runtime/maturity.json", "data/runtime/maturity_score_latest.json"),
         "wrap_dict": True,
     },
     "audit": {
@@ -652,6 +655,48 @@ def _system() -> dict[str, Any]:
     }
 
 
+def _maturity_truth(query: dict[str, Any] | None = None) -> tuple[dict[str, Any], str]:
+    """Live campaign maturity truth — never the stale June-2026 score body."""
+    query = query or {}
+    try:
+        from scripts.lib.campaign_maturity_truth import build_maturity_truth
+
+        payload = build_maturity_truth(root=_state_root())
+    except Exception as exc:
+        return {
+            "schema": "CampaignMaturityTruth@v1",
+            "ok": False,
+            "generated_at": _now(),
+            "served_sha": _sha(),
+            "evidence_timestamp": _now(),
+            "source_store": "scripts.lib.campaign_maturity_truth",
+            "staleness_hours": None,
+            "overall_is_not_a_certification": True,
+            "computes_maturity": False,
+            "items": [],
+            "error": f"{type(exc).__name__}: {exc}",
+        }, "BROKEN"
+    # Preserve list/pagination shape the Maturity page expects (data.items).
+    items = list(payload.get("items") or [])
+    page = _paged(items, query)
+    page.update({
+        "schema": payload.get("schema"),
+        "ok": payload.get("ok", True),
+        "generated_at": payload.get("generated_at"),
+        "served_sha": payload.get("served_sha") or _sha(),
+        "evidence_timestamp": payload.get("evidence_timestamp"),
+        "source_store": payload.get("source_store"),
+        "staleness_hours": payload.get("staleness_hours", 0.0),
+        "overall_is_not_a_certification": True,
+        "computes_maturity": False,
+        "limiting_dimension": payload.get("limiting_dimension"),
+        "historical_body_superseded": payload.get("historical_body_superseded"),
+        "db_probe": payload.get("db_probe"),
+        "note": payload.get("note"),
+    })
+    return page, "AVAILABLE"
+
+
 def _registered_store_present(root: Path) -> bool:
     """True when a canonical store file exists — not merely a data/cio directory."""
     try:
@@ -736,6 +781,12 @@ def handle(path: str, *, method: str = "GET", query: dict[str, Any] | None = Non
     if spec.get("kind") == "computed" and domain == "stores":
         data, quality = _stores(query)
         return 200, _envelope(data, quality=quality)
+    if spec.get("kind") == "computed" and domain == "maturity":
+        data, quality = _maturity_truth(query)
+        # Freshness is live evidence, not CURRENT_SMOKE fixture class.
+        env = _envelope(data, quality=quality, evidence="LIVE_RUNTIME")
+        env["freshness"] = "LIVE_RUNTIME"
+        return 200, env
     data, quality = _collection(domain, query)
     return 200, _envelope(data, quality=quality)
 
