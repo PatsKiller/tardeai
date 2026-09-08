@@ -218,3 +218,142 @@ def process_inbound_update(
     )
     consumed.normalize = norm.to_dict()
     return consumed
+
+
+# ── Poller-facing entry (canonical hook for run_telegram_callback_poller.py) ──
+
+APPROVED_POLLER_PATH = "scripts/run_telegram_callback_poller.py"
+FEED_SYMBOLS = (
+    "feed_telegram_update",
+    "scripts.lib.inbound_consumption.feed_telegram_update",
+    "from scripts.lib.inbound_consumption import feed_telegram_update",
+    "from inbound_consumption import feed_telegram_update",
+)
+
+
+def feed_telegram_update(
+    update: dict[str, Any],
+    *,
+    agent_id: str = DEFAULT_AGENT,
+    agent_version: str = "lane-i@v1",
+    purpose: str = DEFAULT_PURPOSE,
+    effect_kind: str = "none",
+    effect_ref: str | None = None,
+    require_correlation: bool = False,
+    commitment_id: str | None = None,
+    provenance_producer: str = "runtime_poller",
+) -> ConsumeResult:
+    """Runtime entry for the approved Telegram callback poller.
+
+    Never contacts Telegram itself. Never interprets inbound text as broker
+    permission. Default ``effect_kind='none'`` (not behavioral consumption).
+    Checkpoint/offset persistence is owned by ``normalize_inbound_update`` via
+    the Wave C inbound checkpoint (advanced only after successful publish).
+    """
+    # Hard refusal of financial/broker action flags if a caller tries to smuggle them.
+    if effect_kind in BEHAVIORAL_EFFECT_KINDS and effect_ref and str(effect_ref).startswith(
+        ("order:", "broker:", "trade:")
+    ):
+        return ConsumeResult(
+            ok=False,
+            reason="refused:financial_or_broker_effect_forbidden",
+            effect_kind="none",
+        )
+    return process_inbound_update(
+        update,
+        agent_id=agent_id,
+        agent_version=agent_version,
+        purpose=purpose,
+        effect_kind=effect_kind or "none",
+        effect_ref=effect_ref,
+        publish=True,
+        require_correlation=require_correlation,
+        commitment_id=commitment_id,
+        provenance_producer=provenance_producer,
+    )
+
+
+def _iter_py_files(root: Any) -> list[Any]:
+    from pathlib import Path
+
+    root_p = Path(root)
+    out: list[Any] = []
+    for p in root_p.rglob("*.py"):
+        parts = set(p.parts)
+        if "tests" in parts or ".venv" in parts or "__pycache__" in parts:
+            continue
+        out.append(p)
+    return out
+
+
+def find_normalize_runtime_callers(repo_root: Any | None = None) -> list[str]:
+    """Non-test production files that reference ``normalize_inbound_update``."""
+    from pathlib import Path
+
+    root = Path(repo_root) if repo_root else Path(__file__).resolve().parents[2]
+    needle = "normalize_inbound_update"
+    hits: list[str] = []
+    for p in _iter_py_files(root):
+        try:
+            text = p.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        if needle not in text:
+            continue
+        # Defining site alone is not a caller.
+        rel = str(p.relative_to(root)).replace("\\", "/")
+        if rel.endswith("scripts/lib/inbound_event_normalizer.py"):
+            # Count only if something other than the def line references it — skip def module.
+            continue
+        hits.append(rel)
+    return sorted(set(hits))
+
+
+def poller_wires_feed(repo_root: Any | None = None) -> bool:
+    """True when the approved poller references ``feed_telegram_update``."""
+    from pathlib import Path
+
+    root = Path(repo_root) if repo_root else Path(__file__).resolve().parents[2]
+    poller = root / APPROVED_POLLER_PATH
+    if not poller.is_file():
+        return False
+    try:
+        text = poller.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    return any(sym in text for sym in FEED_SYMBOLS)
+
+
+class InboundReachabilityError(RuntimeError):
+    """normalize_inbound_update has no non-test runtime caller, or poller unwired."""
+
+
+def assert_inbound_runtime_reachability(repo_root: Any | None = None) -> dict[str, Any]:
+    """Fail closed when the Lane I normalizer is dark at runtime.
+
+    Checks:
+      1. At least one non-test module calls ``normalize_inbound_update``.
+      2. ``scripts/run_telegram_callback_poller.py`` feeds ``feed_telegram_update``
+         (requires SFR-I-RUNTIME-001 until applied).
+    """
+    callers = find_normalize_runtime_callers(repo_root)
+    wired = poller_wires_feed(repo_root)
+    report = {
+        "ok": bool(callers) and wired,
+        "normalize_runtime_callers": callers,
+        "poller_path": APPROVED_POLLER_PATH,
+        "poller_wires_feed_telegram_update": wired,
+        "sfr_required_if_unwired": "SFR-I-RUNTIME-001",
+    }
+    if not callers:
+        raise InboundReachabilityError(
+            "normalize_inbound_update has no non-test runtime caller; "
+            f"report={report}"
+        )
+    if not wired:
+        raise InboundReachabilityError(
+            f"{APPROVED_POLLER_PATH} does not call feed_telegram_update; "
+            "apply SFR-I-RUNTIME-001. "
+            f"report={report}"
+        )
+    return report

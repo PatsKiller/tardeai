@@ -38,8 +38,25 @@ Identifier minting remains in the frozen CampaignInterfaces / Lane B contracts.
 | `COMMS_GATEWAY_MODE` | OFF default; CANARY scopes chats |
 | `COMMS_INBOUND_STATE_DIR` | Durable checkpoint dir (tmp in tests) |
 
+## Runtime entry (poller hook)
+
+Canonical feed for the approved single-consumer poller
+`scripts/run_telegram_callback_poller.py`:
+
+```python
+from scripts.lib.inbound_consumption import feed_telegram_update
+result = feed_telegram_update(update)  # never contacts Telegram itself
+```
+
+Reachability gate: `assert_inbound_runtime_reachability()` fails unless
+(1) a non-test module calls `normalize_inbound_update`, and
+(2) the approved poller references `feed_telegram_update`.
+
 ## Shared File Requests
 
+- **SFR-I-RUNTIME-001** — wire `run_telegram_callback_poller.py` to call
+  `feed_telegram_update` instead of bare `build_inbound_event`+`publish_communication`
+  (exact fragment in handoff `shared_file_requests`).
 - Extend `LANE_HANDOFF_SCHEMA.json` / `LANE_EVIDENCE_SCHEMA.json` lane enum to include `I`.
 - Extend `validate_leases.py` known owners to include `G`,`I`,`R`,`T`.
 - Optional: claim-registry + prompt seal for Lane I (integration owner).
