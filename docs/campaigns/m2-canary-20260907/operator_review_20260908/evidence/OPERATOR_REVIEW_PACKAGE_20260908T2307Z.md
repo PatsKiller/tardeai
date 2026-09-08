@@ -68,7 +68,10 @@ Stage-2 activate: **COMPLETE**. Stage-3 seal: **NOT done**. Stage-4: **scaffold 
 /home/johnclaw/trade-ai-campaigns/m2-canary-20260907/handoffs/
 ```
 
-Email body draft: `/home/johnclaw/trade-ai-campaigns/m2-canary-20260907/evidence/OPERATOR_EMAIL_BODY_20260908T2303Z.txt` (may lag this package — prefer this index).
+Email body (send after docs live + Drive sync):  
+`/home/johnclaw/trade-ai-campaigns/m2-canary-20260907/evidence/OPERATOR_EMAIL_BODY_20260908T2315Z.txt`
+
+Docs package (git): branch `wt/m2-docs-operator-review-20260908` @ `d0819cd66` — push/merge pending `git-push` grant; Drive sync pending merge→promote + `release-write`.
 
 ---
 
@@ -78,6 +81,7 @@ Email body draft: `/home/johnclaw/trade-ai-campaigns/m2-canary-20260907/evidence
 2. Confirm soak collector ticks `gateway_canary_delivery` after pmid 51022 stamp (controlled re-proof done; organic/soak gate still Phase E).
 3. Phase F **final** after `M2_CANARY_SOAK_READY_*.tar.gz` (or honest AWAITING at deadline).
 4. Stage-4 independent adjudication — only after sealed soak package.
+5. Approve grants: `git-push` (`82a2af9d99c767ff`), `release-write` (`3f44689a240ea811`) — then push docs PR, merge, Drive sync, email.
 5. Ship or discard dry-worktree poller OK-ack (still uncommitted).
 
 ---
