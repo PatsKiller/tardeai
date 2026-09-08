@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `29e3f2d9cde49f46ad88fddadca32e2a5f85731899499bb1914fdb1bcc4177f5`
+**Tree fingerprint:** `9932b8dfe6e8663b9f20ead13e58af22e2bfe81f05f538b292c5a5f3f873abbc`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -800,7 +800,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/diligence/current/MOMENTUM_SCALP_VALIDATION_FAST_PATH.md` | Momentum Scalp Validation Fast Path | review_required | OK | `3748851b3d6f` |
 | `docs/diligence/current/MOMENTUM_SCALP_VALIDATION_OPS.md` | Momentum Scalp Validation Ops | review_required | OK | `b51f26253575` |
 | `docs/diligence/current/MOMENTUM_SCALP_VALIDATION_TRACKER.md` | Momentum Scalp Validation Tracker | review_required | OK | `ec2e5f4ac157` |
-| `docs/diligence/current/OPTIONS_RISK_BLOCK_MATRIX.md` | Options Hard-Risk Block Matrix | review_required | MISSING HEADER | `00aaa542985e` |
+| `docs/diligence/current/OPTIONS_RISK_BLOCK_MATRIX.md` | Options Hard-Risk Block Matrix | review_required | MISSING HEADER | `be6b640fbe2e` |
 | `docs/diligence/current/ORDER_LIFECYCLE.md` | Order Lifecycle | review_required | OK | `8bd7b79ca8fe` |
 | `docs/diligence/current/RELEASE_READINESS.md` | Release Readiness | review_required | OK | `356036502fea` |
 | `docs/diligence/current/RISK_GATE_MATRIX.md` | Risk Gate Matrix | review_required | OK | `ceaf05c64e9c` |
