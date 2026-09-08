@@ -190,15 +190,34 @@ def test_brave_search_source_denies_when_shared_unavailable():
 def test_every_brave_failure_path_refunds():
     """A reservation is taken BEFORE the request, so each way out that does not
     make a successful call must give the unit back — otherwise the ledger
-    charges for work that never happened."""
+    charges for work that never happened.
+
+    The property is unchanged; its OWNER moved. Campaign m2-canary-20260907
+    (lane C) made scripts/lib/brave_router.py the single governed chokepoint, and
+    brave_search.search/search_news now delegate to it. Reserve/settle/refund
+    live in the router, so asserting `_reserve(caller)` inside brave_search would
+    now be asserting a shape the code deliberately no longer has — and would pass
+    again only if someone re-introduced an ungoverned second budget path.
+
+    So this checks the same guarantee where it is actually implemented:
+      1. both brave_search entry points delegate to the governed router;
+      2. the router reserves before the call;
+      3. the router refunds on every non-success exit, not just one.
+    """
     src = (ROOT / "scripts" / "brave_search.py").read_text(encoding="utf-8")
     for fn in ("def search(", "def search_news("):
         body = src.split(fn, 1)[1].split("\ndef ", 1)[0]
-        assert "_reserve(caller)" in body, f"{fn} does not reserve"
-        # missing-key path and exception path both refund
-        assert body.count("_refund(caller)") >= 2, (
-            f"{fn} has {body.count('_refund(caller)')} refund sites; "
-            "the missing-key path and the exception path both need one")
+        assert "brave_router" in body, (
+            f"{fn} no longer routes through the governed router; an ungoverned "
+            "provider call would spend without reserving")
+
+    router = (ROOT / "scripts" / "lib" / "brave_router.py").read_text(encoding="utf-8")
+    rbody = router.split("def search(", 1)[1].split("\ndef ", 1)[0]
+    assert "reserve(" in rbody, "router search() does not reserve before calling"
+    assert rbody.count("refund_reservation(") >= 2, (
+        f"router search() has {rbody.count('refund_reservation(')} refund sites; "
+        "every non-success exit after the reservation needs one")
+    assert "settle(" in rbody, "router search() never settles a successful call"
 
 
 def test_guard_returns_false_when_over_so_callers_return_empty(tmp_path: Path, monkeypatch):

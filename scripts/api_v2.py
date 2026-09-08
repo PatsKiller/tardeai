@@ -10891,10 +10891,12 @@ def _search_sources_status():
     _brave_router_state = {"router_enabled": False, "health": None}
     try:
         from scripts.lib import brave_router as _br
+
         _brave_router_state["router_enabled"] = bool(_br.router_enabled())
         _brave_router_state["live_armed"] = bool(_br.live_armed())
         try:
             import json as _json
+
             _hp = _br.health_path()
             if _hp.exists():
                 _brave_router_state["health"] = _json.loads(_hp.read_text())
@@ -10908,9 +10910,11 @@ def _search_sources_status():
         pass
     sources["brave_search"] = {
         "active": bool(_brave_router_state.get("router_enabled")),
-        "status": ("governed via brave_router"
-                   if _brave_router_state.get("router_enabled")
-                   else "router disabled — no governed provider calls"),
+        "status": (
+            "governed via brave_router"
+            if _brave_router_state.get("router_enabled")
+            else "router disabled — no governed provider calls"
+        ),
         "key_present": bool(brave_key),
         "calls_today": brave_today[0].get("cnt", 0),
         "governed_by": "scripts.lib.brave_router",

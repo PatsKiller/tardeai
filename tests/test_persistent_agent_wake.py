@@ -332,15 +332,36 @@ def test_changed_prior_memory_changes_subsequent_output(state, tmp_path):
     assert c1 != c2
 
 
+def _crontab_snapshot() -> str:
+    """The user's crontab, or "" where there is none.
+
+    `crontab -l` exits 1 when the user has no crontab and the binary may be
+    absent entirely, so check_output() raised on CI and this test failed on
+    commits that passed locally. tests/test_dark_contract_guard.py records the
+    same defect from the same cause: "shelling out makes the gate
+    machine-dependent ... in CI, where no crontab exists."
+
+    The assertion is unchanged and undiminished: the snapshot is taken the same
+    way before and after, so "the contract did not install a cron entry" is still
+    proven. On a machine with no crontab the comparison is "" == "", which is the
+    correct answer there — defining a contract must not CREATE one either.
+    """
+    try:
+        r = subprocess.run(["crontab", "-l"], capture_output=True, text=True)
+    except (FileNotFoundError, OSError):
+        return ""
+    return r.stdout if r.returncode == 0 else ""
+
+
 def test_production_schedule_remains_unchanged():
     """Defining the contract must not install cron/systemd."""
-    before = subprocess.check_output(["crontab", "-l"], text=True, stderr=subprocess.DEVNULL)
+    before = _crontab_snapshot()
     assert_schedule_states_complete()
     contract = ScheduleContract(agent_id="cio", wake_reason="scheduled_persistent_review")
     _ = contract.slot_for(NOW)
     h = evaluate_health(contract, now=NOW, completed_slots=[], never_scheduled=True)
     assert h.state == "never_scheduled"
-    after = subprocess.check_output(["crontab", "-l"], text=True, stderr=subprocess.DEVNULL)
+    after = _crontab_snapshot()
     assert before == after
     # No timer files created by this suite under /etc or user systemd
     assert not Path("/etc/systemd/system/persistent-agent-wake.timer").exists()
