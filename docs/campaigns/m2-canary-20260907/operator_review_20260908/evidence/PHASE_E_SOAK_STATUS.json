@@ -1,0 +1,45 @@
+{
+  "schema": "M2PhaseESoakStatus@v1",
+  "campaign_id": "m2-canary-20260907",
+  "at_utc": "2026-09-08T23:05:30Z",
+  "phase": "E",
+  "research_policy": "ORGANIC_ONLY",
+  "pin": "340aaf831d0f982afb06e318876b50f05ca069cc",
+  "release_id": "340aaf831-main-exact-phase2-20260908-185931",
+  "activated_at_utc": "2026-09-08T22:35:30Z",
+  "collector_ok": true,
+  "collector": {
+    "pid": 3872903,
+    "alive": true,
+    "expected_sha": "340aaf831d0f982afb06e318876b50f05ca069cc",
+    "start_log_utc": "2026-09-08T23:02:40Z",
+    "since_utc": "2026-09-08T22:16:00Z"
+  },
+  "inventory_recheck_2305Z": {
+    "feed_22:55_release": "171709",
+    "wake_23:00": {
+      "slot": "2026-09-08T23:00Z",
+      "known_trigger": true,
+      "selection_sources": [
+        "unconsumed_research",
+        "material_change"
+      ],
+      "n_settled": 3,
+      "counts_toward_post_activate": true
+    },
+    "feed_on_340aaf831_count": 0,
+    "next_feed_utc": "2026-09-08T23:55:00Z",
+    "next_wake_utc": "2026-09-09T00:00:00Z"
+  },
+  "consecutive_known_trigger_wakes": 1,
+  "organic_non_none_seen": false,
+  "commitment_seen": false,
+  "gaps": [
+    "1/3 consecutive known-trigger wakes",
+    "no feed under 340aaf831 yet",
+    "organic non-none / commitment open",
+    "pending grants for GATEWAY cron + stamped canary"
+  ],
+  "m2_pass_claimed": false,
+  "recommendation": "WAIT \u2014 first post-activate wake OK; need 00:00+01:00; approve grants for remaining ops"
+}

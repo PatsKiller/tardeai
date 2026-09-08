@@ -1,0 +1,13 @@
+{
+  "schema": "M2CanaryGatewayReproofPost926@v1",
+  "at_utc": "2026-09-08T23:05:26Z",
+  "ok": true,
+  "served_pin": "340aaf831d0f982afb06e318876b50f05ca069cc",
+  "release_id": "340aaf831-main-exact-phase2-20260908-185931",
+  "provider_message_id": "51022",
+  "delivery_id": "dlv_01a08344-2882-7570-9668-dae2fecbd9e3",
+  "delivery_owner": "gateway",
+  "provider_settlement_state": "SETTLED",
+  "classification": "controlled_canary",
+  "purpose": "Clear soak gateway_canary_delivery after PR #926 owner-stamp promote"
+}

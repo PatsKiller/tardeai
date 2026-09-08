@@ -1,0 +1,30 @@
+{
+  "schema": "M2CanaryGatewayOutboundProof@v1",
+  "at_utc": "2026-09-08T23:04:37.192089+00:00",
+  "served_pin": "340aaf831d0f982afb06e318876b50f05ca069cc",
+  "release_id": "340aaf831-main-exact-phase2-20260908-185931",
+  "gateway_mode": "CANARY",
+  "message_class": "ops",
+  "chat_configured": true,
+  "classification": "controlled_canary",
+  "result": {
+    "ok": true,
+    "event_id": "01a08344-2848-758e-b983-bbc296f466aa",
+    "delivery_id": "dlv_01a08344-2882-7570-9668-dae2fecbd9e3",
+    "thread_id": "f35e5d01-b29c-5faa-9a40-5068c4d5adb8",
+    "correlation_id": "m2-canary-gateway-proof-20260908230437",
+    "subject_guid": "8efba76a-2d41-529b-9a18-0ac8d7b102b4",
+    "delivery_owner": "gateway",
+    "gateway_mode": "CANARY",
+    "ownership_reason": "canary_allowlist_match",
+    "provider_message_id": "51022",
+    "provider_settlement_state": "SETTLED",
+    "delivered": true,
+    "duplicate": false,
+    "transport_invoked": true,
+    "errors": [],
+    "command_center_url": "https://ms01-openclaw.tail163d14.ts.net/v3/cio"
+  },
+  "subject_guid": "8efba76a-2d41-529b-9a18-0ac8d7b102b4",
+  "ok": true
+}

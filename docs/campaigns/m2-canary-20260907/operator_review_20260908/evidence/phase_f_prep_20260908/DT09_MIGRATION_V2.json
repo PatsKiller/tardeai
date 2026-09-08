@@ -1,0 +1,53 @@
+{
+  "test_id": "DT-09_migration_v2",
+  "claim_id": "I-SCHEMA-V2",
+  "campaign": "m2-canary-20260907",
+  "started_at": "2026-09-08T22:51:41Z",
+  "production_touched": false,
+  "migration_v1": "/home/johnclaw/trade-ai-worktrees/m2-remediation-dry-20260908/migrations/2026_09_05_communication_agent_consumption.sql",
+  "migration_up": "/home/johnclaw/trade-ai-worktrees/m2-remediation-dry-20260908/migrations/2026_09_07_agent_consumption_receipt_v2.sql",
+  "migration_down": "/home/johnclaw/trade-ai-worktrees/m2-remediation-dry-20260908/migrations/2026_09_07_agent_consumption_receipt_v2.down.sql",
+  "pin_tree": "/home/johnclaw/trade-ai-worktrees/m2-remediation-dry-20260908",
+  "pin_expected": "aaa9115cbc2745b34a6d0a48cbdbd012c0ac6816",
+  "harness": "ephemeral initdb + unix-socket trust (no password)",
+  "apply_exit": 0,
+  "rollback_exit": 0,
+  "baseline_exit": 0,
+  "verdict": "PASS",
+  "cluster": {
+    "host": "127.0.0.1",
+    "port": 59667,
+    "dbname_prefix_ok": true,
+    "user_prefix_ok": true,
+    "dbname": "tradeai_test_a6ea3350",
+    "user": "tradeai_test_b7b5e7c0",
+    "bindir": "/usr/lib/postgresql/17/bin",
+    "base_dir": "/tmp/tradeai_testpg_dt09_p7macjww",
+    "auth": "local trust via unix socket; no password"
+  },
+  "probes": {
+    "after_up": {
+      "exit": 0,
+      "column_count": "4",
+      "index_count": "4",
+      "constraint_count": "2"
+    },
+    "after_down": {
+      "exit": 0,
+      "index_count": "0",
+      "constraint_count": "0",
+      "source_kind_column_retained": "1",
+      "note": "down drops indexes/constraints only; columns retained per migration comment"
+    }
+  },
+  "cleanup": {
+    "base_dir_removed": true,
+    "production_touched": false
+  },
+  "finished_at": "2026-09-08T22:51:42Z",
+  "matrix_row_updated": "evidence/independent_architect_20260908T2048Z/DRY_TEST_MATRIX.csv",
+  "grant_needed": false,
+  "grant_note": "Telegram db-write request 7f7e904a6ababae7 was filed preemptively; apply+rollback completed on ephemeral cluster without consuming a db-write grant. No further grant required for DT-09.",
+  "log": "evidence/phase_f_prep_20260908/DT09_APPLY_ROLLBACK_LOG.txt",
+  "i_schema_v2_clearable_for_phase_f": true
+}
