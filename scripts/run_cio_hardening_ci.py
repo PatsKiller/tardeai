@@ -56,6 +56,10 @@ GATES = [
             "tests/test_brave_direct_call_bypass_scan.py",
             "tests/test_consumption_evidence_counting.py",
             "tests/test_integrated_traces.py",
+            # SFR-A-FOLLOWUP-001: the cron-callable wake entrypoint. Registered by
+            # the integration owner — this file is the central CI gate registry
+            # and is never lane-leased.
+            "tests/test_run_persistent_wake.py",
         ],
     ),
     # Cash age is the age of the dollars. PP2 (the cash letter) and PP4 (provenance)
