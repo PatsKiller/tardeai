@@ -1,7 +1,9 @@
 """Lane G — gateway settlement proofs (isolated transport only)."""
 from __future__ import annotations
 
+import json
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -14,10 +16,17 @@ from scripts.lib.agent_gateway_adapter import AgentOutboundRequest  # noqa: E402
 from scripts.lib.comms.client import reset_memory_store  # noqa: E402
 from scripts.lib.comms.delivery import reset_memory_deliveries  # noqa: E402
 from scripts.lib.gateway_settlement import (  # noqa: E402
+    SettlementError,
+    assert_deliver_agent_outbound_runtime_caller,
+    build_wake_outbound_handler,
     deliver_agent_outbound,
     reset_settlement_index,
+    sanctioned_telegram_transport,
     transport_invoke_count,
+    wake_gateway_outbound_enabled,
 )
+from scripts.lib.persistent_agent_wake import FEATURE_FLAG, run_scheduled_wake  # noqa: E402
+from scripts.lib.wake_subject_selector import SubjectCandidate  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
@@ -198,3 +207,204 @@ def test_off_state_never_invokes_transport(monkeypatch):
     assert r.ok
     assert r.delivery_owner == "legacy"
     assert txn.calls == []
+
+
+def test_canary_chat_allowlist_blocks_outside_chats(monkeypatch):
+    """Explicit CANARY chat allowlist: off-list chats fail closed, no transport."""
+    monkeypatch.setenv("COMMS_GATEWAY_MODE", "CANARY")
+    monkeypatch.setenv("COMMS_GATEWAY_CANARY_CLASSES", "ops")
+    monkeypatch.setenv("COMMS_GATEWAY_CANARY_CHATS", "8797974247")
+    mode_mod._cache["mode"] = None
+    txn = _fake_transport_factory()
+    r = deliver_agent_outbound(
+        _req(chat_ids=["9999999999"]),
+        deliver=True,
+        transport=txn,
+    )
+    assert r.ok is False
+    assert any("delivery_blocked_canary_chats" in e for e in r.errors)
+    assert r.transport_invoked is False
+    assert txn.calls == []
+    assert r.delivery_id  # reserved before chat gate
+
+
+# ── Runtime factory / wake reachability ─────────────────────────────────────
+
+SG = "b60bb80f-62f5-58b7-b3aa-3ed4ca29bede"
+RID = "research:46057"
+NOW = datetime(2026, 9, 8, 16, 0, tzinfo=timezone.utc)
+WAKE_ENV = {
+    FEATURE_FLAG: "1",
+    "PROVENANCE_PRODUCER": "test",
+    "TRADEAI_SOURCE_SHA": "54639ff5aaae0e3f56e6e0a327a7c99c06c5d466",
+}
+
+
+def _mem_empty(tmp_path: Path) -> Path:
+    p = tmp_path / "mem.jsonl"
+    p.write_text("")
+    return p
+
+
+def _settled_wake(tmp_path: Path):
+    state = tmp_path / "state"
+    state.mkdir()
+    sel = SubjectCandidate(
+        subject_guid=SG,
+        source="unconsumed_research",
+        source_id=RID,
+        observed_at=NOW.isoformat().replace("+00:00", "Z"),
+    )
+    return run_scheduled_wake(
+        agent_id="cio",
+        subject_guid=SG,
+        state_root=state,
+        memory_backend=_mem_empty(tmp_path),
+        when=NOW,
+        env=WAKE_ENV,
+        selection=sel,
+    )
+
+
+def _canary_env(monkeypatch, *, outbound: str = "1", deliver: str = "1"):
+    monkeypatch.setenv("COMMS_GATEWAY_MODE", "CANARY")
+    monkeypatch.setenv("COMMS_GATEWAY_CANARY_CLASSES", "ops")
+    monkeypatch.setenv("COMMS_GATEWAY_CANARY_CHATS", "8797974247")
+    monkeypatch.setenv("PERSISTENT_WAKE_GATEWAY_OUTBOUND", outbound)
+    monkeypatch.setenv("PERSISTENT_WAKE_GATEWAY_DELIVER", deliver)
+    mode_mod._cache["mode"] = None
+
+
+def test_settled_wake_handler_invokes_gateway_and_settles(tmp_path, monkeypatch):
+    """E2E: qualifying SETTLED wake → handler → gateway-owned SETTLED delivery."""
+    _canary_env(monkeypatch)
+    wake_result = _settled_wake(tmp_path)
+    assert wake_result["ok"]
+    assert wake_result["wake"]["lifecycle_state"] == "SETTLED"
+    assert (wake_result["wake"].get("decision_summary") or {}).get("act") is True
+
+    txn = _fake_transport_factory("tg-wake-e2e-1")
+    handler = build_wake_outbound_handler(
+        env=dict(**WAKE_ENV, **{
+            "COMMS_GATEWAY_MODE": "CANARY",
+            "COMMS_GATEWAY_CANARY_CLASSES": "ops",
+            "COMMS_GATEWAY_CANARY_CHATS": "8797974247",
+            "PERSISTENT_WAKE_GATEWAY_OUTBOUND": "1",
+            "PERSISTENT_WAKE_GATEWAY_DELIVER": "1",
+        }),
+        transport=txn,
+        deliver=True,
+    )
+    # Mimic WakeEngine._outbound call site (SFR-G-002 / SFR-G-003).
+    out = handler(wake=wake_result["wake"], receipts=wake_result["receipts"])
+    assert out["ok"] is True
+    assert out["delivered"] is True
+    assert out["delivery_owner"] == "gateway"
+    assert out["provider_settlement_state"] == "SETTLED"
+    assert out["provider_message_id"] == "tg-wake-e2e-1"
+    assert out["event_id"] and out["delivery_id"]
+    assert len(txn.calls) == 1
+
+
+def test_handler_missing_transport_cannot_report_success(tmp_path, monkeypatch):
+    _canary_env(monkeypatch)
+    wake_result = _settled_wake(tmp_path)
+    # deliver=True but sanctioned transport has no TELEGRAM_BOT_TOKEN → fail closed.
+    monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
+    monkeypatch.setenv("ENABLE_TELEGRAM", "true")
+    handler = build_wake_outbound_handler(
+        env={
+            "PERSISTENT_WAKE_GATEWAY_OUTBOUND": "1",
+            "PERSISTENT_WAKE_GATEWAY_DELIVER": "1",
+            "COMMS_GATEWAY_MODE": "CANARY",
+            "COMMS_GATEWAY_CANARY_CLASSES": "ops",
+            "COMMS_GATEWAY_CANARY_CHATS": "8797974247",
+        },
+        transport=None,  # falls back to sanctioned_telegram_transport
+        deliver=True,
+    )
+    out = handler(wake=wake_result["wake"], receipts=wake_result["receipts"])
+    assert out["ok"] is False
+    assert out.get("delivered") is False
+    assert "missing_telegram_authorization" in str(out.get("error") or out.get("errors"))
+
+
+def test_handler_duplicate_invocation_no_second_provider_send(tmp_path, monkeypatch):
+    _canary_env(monkeypatch)
+    wake_result = _settled_wake(tmp_path)
+    txn = _fake_transport_factory("tg-dup-1")
+    handler = build_wake_outbound_handler(transport=txn, deliver=True, env={
+        "PERSISTENT_WAKE_GATEWAY_OUTBOUND": "1",
+        "COMMS_GATEWAY_MODE": "CANARY",
+        "COMMS_GATEWAY_CANARY_CLASSES": "ops",
+        "COMMS_GATEWAY_CANARY_CHATS": "8797974247",
+    })
+    a = handler(wake=wake_result["wake"], receipts=wake_result["receipts"])
+    b = handler(wake=wake_result["wake"], receipts=wake_result["receipts"])
+    assert a["ok"] and b["ok"]
+    assert a["provider_message_id"] == b["provider_message_id"] == "tg-dup-1"
+    assert b.get("duplicate") is True
+    assert b.get("transport_invoked") is False
+    assert len(txn.calls) == 1
+
+
+def test_handler_canary_off_produces_no_send(tmp_path, monkeypatch):
+    monkeypatch.setenv("COMMS_GATEWAY_MODE", "OFF")
+    monkeypatch.setenv("PERSISTENT_WAKE_GATEWAY_OUTBOUND", "1")
+    mode_mod._cache["mode"] = None
+    wake_result = _settled_wake(tmp_path)
+    txn = _fake_transport_factory()
+    handler = build_wake_outbound_handler(transport=txn, deliver=True, env={
+        "PERSISTENT_WAKE_GATEWAY_OUTBOUND": "1",
+        "COMMS_GATEWAY_MODE": "OFF",
+    })
+    out = handler(wake=wake_result["wake"], receipts=wake_result["receipts"])
+    assert out["ok"] is False
+    assert "gateway_mode_not_canary" in str(out.get("error"))
+    assert txn.calls == []
+
+
+def test_outbound_feature_flag_off_blocks_handler(tmp_path, monkeypatch):
+    _canary_env(monkeypatch, outbound="0")
+    assert wake_gateway_outbound_enabled({"PERSISTENT_WAKE_GATEWAY_OUTBOUND": "0"}) is False
+    wake_result = _settled_wake(tmp_path)
+    txn = _fake_transport_factory()
+    handler = build_wake_outbound_handler(transport=txn, deliver=True, env={
+        "PERSISTENT_WAKE_GATEWAY_OUTBOUND": "0",
+        "COMMS_GATEWAY_MODE": "CANARY",
+        "COMMS_GATEWAY_CANARY_CLASSES": "ops",
+    })
+    out = handler(wake=wake_result["wake"], receipts=wake_result["receipts"])
+    assert out["ok"] is False
+    assert out["error"] == "wake_gateway_outbound_disabled"
+    assert txn.calls == []
+
+
+def test_reachability_negative_control_runtime_caller_present():
+    """Fails whenever deliver_agent_outbound has no non-test runtime caller."""
+    callers = assert_deliver_agent_outbound_runtime_caller(scripts_root=str(ROOT / "scripts"))
+    assert any(c.endswith("gateway_settlement.py") for c in callers)
+
+
+def test_sanctioned_transport_reuses_raw_send_not_new_client(monkeypatch):
+    calls = []
+
+    def fake_raw(message, chat_ids=None, **kwargs):
+        calls.append({"message": message, "chat_ids": chat_ids})
+        return {"ok": True, "message_ids": ["m1"], "chat_ids": chat_ids or []}
+
+    monkeypatch.setenv("ENABLE_TELEGRAM", "true")
+    monkeypatch.setattr("scripts.telegram_alert._raw_send_telegram_result", fake_raw)
+    monkeypatch.setattr("scripts.telegram_alert._token", lambda: "authorized")
+    monkeypatch.setattr(
+        "scripts.telegram_alert._env",
+        lambda k, d="": "true" if k == "ENABLE_TELEGRAM" else d,
+    )
+
+    ack = sanctioned_telegram_transport(body="hello", chat_ids=["1"])
+    assert ack["ok"] is True
+    assert ack["provider_message_id"] == "m1"
+    assert len(calls) == 1
+    # Token must not appear in transport kwargs or ack payload.
+    assert "TOKEN" not in json.dumps(ack)
+    assert "token" not in calls[0]
