@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `1441a798af4899efb5342da067b5db37e49ec6d8c79058a824b7877940ac7374`
+**Tree fingerprint:** `9108df58a00fb2e4b455a51ac22856dc1ae9b00733c79c42a21749816442e809`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,10 +12,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2412 |
-| Markdown (excl. this INDEX) | 2011 |
-| **MISSING HEADER** | **23** |
-| Header OK | 1988 |
+| Files under `docs/` (excl. this INDEX) | 2438 |
+| Markdown (excl. this INDEX) | 2029 |
+| **MISSING HEADER** | **39** |
+| Header OK | 1990 |
 | Duplicate groups | 5 |
 
 ### By status_guess
@@ -30,7 +30,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_raw_sync | 35 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 6 |
-| review_required | 2023 |
+| review_required | 2049 |
 
 ## Markdown tree
 
@@ -704,6 +704,24 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/brokers/ui-card-contracts-schwab.md` | Broker Orders — UI Card Contracts (Phase 5) | review_required | OK | `5f78a07dc929` |
 | `docs/campaigns/m2-canary-20260907/LANE_G_OUTBOUND_GATEWAY.md` | Lane G — Outbound CANARY gateway path | review_required | MISSING HEADER | `a1bdaf30afe8` |
 | `docs/campaigns/m2-canary-20260907/LANE_I_INBOUND.md` | Lane I — Inbound normalization and consumption | review_required | MISSING HEADER | `4304fce7b064` |
+| `docs/campaigns/m2-canary-20260907/operator_review_20260908/README.md` | m2-canary-20260907 operator review (2026-09-08) | review_required | MISSING HEADER | `529055fdae3a` |
+| `docs/campaigns/m2-canary-20260907/operator_review_20260908/evidence/END_STATE_HANDOFF.md` | End-state handoff — m2-canary-20260907 | review_required | MISSING HEADER | `14d391349c4a` |
+| `docs/campaigns/m2-canary-20260907/operator_review_20260908/evidence/OPERATOR_REVIEW_PACKAGE_20260908T2307Z.md` | Operator review package — m2-canary-20260907 | review_required | MISSING HEADER | `21b8202e3161` |
+| `docs/campaigns/m2-canary-20260907/operator_review_20260908/evidence/PARALLEL_AGENTS_CLOSEOUT_20260908.md` | Parallel agents closeout — 2026-09-08 | review_required | MISSING HEADER | `26d1c07a30eb` |
+| `docs/campaigns/m2-canary-20260907/operator_review_20260908/evidence/SESSION_CLOSEOUT_20260908T2300Z.md` | Session closeout — m2-canary-20260907 — 2026-09-08T23:07Z | review_required | MISSING HEADER | `58a3c09942ef` |
+| `docs/campaigns/m2-canary-20260907/operator_review_20260908/evidence/STAGE2_STAGE3_HANDOFF.md` | M2 Canary Stage-2/3 Handoff — m2-canary-20260907 | review_required | MISSING HEADER | `7ba457731bd1` |
+| `docs/campaigns/m2-canary-20260907/operator_review_20260908/evidence/independent_architect_20260908T2048Z/INDEPENDENT_ARCHITECT_VALIDATION_REPORT.md` | INDEPENDENT ARCHITECT VALIDATION REPORT — m2-canary-20260907 | review_required | MISSING HEADER | `dd9b3e74b11e` |
+| `docs/campaigns/m2-canary-20260907/operator_review_20260908/evidence/independent_architect_20260908T2048Z/M2_REMEDIATION_PLAN.md` | M2 remediation plan — campaign `m2-canary-20260907` | review_required | MISSING HEADER | `43e605e07aad` |
+| `docs/campaigns/m2-canary-20260907/operator_review_20260908/evidence/independent_architect_20260908T2048Z/OPERATOR_DECISIONS.md` | Operator decisions — m2-canary-20260907 Stage-2/3 | review_required | MISSING HEADER | `c884298bd7f1` |
+| `docs/campaigns/m2-canary-20260907/operator_review_20260908/evidence/independent_architect_20260908T2048Z/PHASE_PROGRESS.md` | Phase progress — m2-canary-20260907 remediation | review_required | MISSING HEADER | `8f45e921aa25` |
+| `docs/campaigns/m2-canary-20260907/operator_review_20260908/evidence/phase_f_interim_20260908/VERDICT.md` | INDEPENDENT ARCHITECT VALIDATION REPORT — m2-canary-20260907 | review_required | MISSING HEADER | `59d61c9a49d6` |
+| `docs/campaigns/m2-canary-20260907/operator_review_20260908/evidence/phase_f_prep_20260908/GIT_AND_REMAINING.md` | Git / remaining — 2026-09-08T23:07Z | review_required | MISSING HEADER | `db5693639388` |
+| `docs/campaigns/m2-canary-20260907/operator_review_20260908/evidence/phase_f_prep_20260908/ORGANIC_PASS_ARCHITECTURE.md` | Organic PASS architecture — 8 Stage-3 IDs | review_required | MISSING HEADER | `39bc155d748f` |
+| `docs/campaigns/m2-canary-20260907/operator_review_20260908/evidence/phase_f_prep_20260908/PHASE_F_PASS_ARCHITECTURE.md` | Phase F PASS architecture — m2-canary-20260907 | review_required | MISSING HEADER | `63b5ce1d6f06` |
+| `docs/campaigns/m2-canary-20260907/operator_review_20260908/evidence/phase_f_prep_20260908/PHASE_F_STATUS_NOW.md` | Phase F status — honest gate check (2026-09-08T23:07Z) | review_required | MISSING HEADER | `ab2271caeee4` |
+| `docs/campaigns/m2-canary-20260907/operator_review_20260908/evidence/phase_f_prep_20260908/REVALIDATION_CHECKLIST.md` | Phase F revalidation checklist — m2-canary-20260907 | review_required | MISSING HEADER | `96be5542d0fc` |
+| `docs/campaigns/m2-canary-20260907/operator_review_20260908/evidence/proposed/AGENTS_MD_AMENDMENT_DELIVERY_OWNER_STAMP.md` | PROPOSED amendment to AGENTS.md — delivery_owner stamp on settle | review_required | OK | `b581d8e1b67f` |
+| `docs/campaigns/m2-canary-20260907/operator_review_20260908/evidence/proposed/AGENTS_MD_AMENDMENT_DRIVE_DRY_RUN_PROPOSED.md` | PROPOSED amendment to AGENTS.md — Drive / gog dry-run honesty | review_required | OK | `26d13f3c9141` |
 | `docs/cio/ARCHITECTURE.md` | Architecture — Track A vs Track B | review_required | OK | `2dffd8834f47` |
 | `docs/cio/AUTHORITY.md` | Authority — READ_ONLY_ADVISORY | review_required | OK | `5ed5e4f198e6` |
 | `docs/cio/CATALYST_AND_HERMES.md` | Catalyst domain + Hermes research de-duplication | review_required | OK | `65dfcba21b19` |
