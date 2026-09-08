@@ -1,0 +1,18 @@
+{
+  "schema": "M2CanaryPromoted@v1",
+  "campaign_id": "m2-canary-20260907",
+  "at_utc": "2026-09-08T23:03:18Z",
+  "action": "promote",
+  "served_pin": "340aaf831d0f982afb06e318876b50f05ca069cc",
+  "release_id": "340aaf831-main-exact-phase2-20260908-185931",
+  "prior_pin": "aaa9115cbc2745b34a6d0a48cbdbd012c0ac6816",
+  "prior_release_id": "aaa9115cb-main-exact-phase2-20260908-171709",
+  "includes": "PR #926 delivery_owner into provider_coordinates on settle",
+  "origin_main": "340aaf831d0f982afb06e318876b50f05ca069cc",
+  "portfolio_server": "promote restarted service; health PASS",
+  "poller_restarted": true,
+  "poller_cwd_release": "340aaf831-main-exact-phase2-20260908-185931",
+  "gateway_canary_reproof": "PENDING_TELEGRAM_GRANT",
+  "git_push": "noop \u2014 already on origin/main via merged PR #926",
+  "m2_pass_claimed": false
+}

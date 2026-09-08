@@ -1,0 +1,25 @@
+{
+  "schema": "M2InboundOkProven@v1",
+  "proven_at_utc": "2026-09-08T22:35:30Z",
+  "served_pin": "aaa9115cbc2745b34a6d0a48cbdbd012c0ac6816",
+  "release_id": "aaa9115cb-main-exact-phase2-20260908-171709",
+  "gateway_outbound_proof": {
+    "at_utc": "2026-09-08T22:28:51.660609+00:00",
+    "ok": true,
+    "pmid": "50986",
+    "settlement": "SETTLED",
+    "correlation_id": "m2-canary-gateway-proof-20260908222851",
+    "subject_guid": "916de800-e9d2-5361-a280-17562cd79b03"
+  },
+  "hits": [
+    {
+      "approx_local": "2026-09-08T18:33:26.837440-04:00",
+      "event_type": "telegram_command",
+      "message_class": "operator_command",
+      "text": "ok",
+      "note": "post-canary free-text reply observed by check_inbound_after_canary.py"
+    }
+  ],
+  "consume_apply_rc": 0,
+  "note": "Operator free-text ok after Phase D canary; agent_consume --apply persisted AgentConsumptionReceipt@v2 rows"
+}

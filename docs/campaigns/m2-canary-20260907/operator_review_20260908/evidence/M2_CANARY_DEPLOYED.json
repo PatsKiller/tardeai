@@ -1,0 +1,26 @@
+{
+  "schema": "M2CanaryDeployedSeal@v1",
+  "campaign_id": "m2-canary-20260907",
+  "sealed_at_utc": "2026-09-08T23:00:30Z",
+  "served_pin": "340aaf831d0f982afb06e318876b50f05ca069cc",
+  "origin_main_at_promote": "340aaf831d0f982afb06e318876b50f05ca069cc",
+  "release_id": "340aaf831-main-exact-phase2-20260908-185846",
+  "supersedes_prior_seal_release": "aaa9115cb-main-exact-phase2-20260908-171709",
+  "pr_campaign": 926,
+  "pr_926_merge_sha": "340aaf831d0f982afb06e318876b50f05ca069cc",
+  "note": "Promote after #926 delivery_owner stamp; includes prior #921+#924+#925 lineage",
+  "rollback_release_id": "aaa9115cb-main-exact-phase2-20260908-171709",
+  "epoch_started": true,
+  "promote_ok": true,
+  "health": "PASS promote: health ok + /v3/cio=200",
+  "delivery_owner_stamp_present": true,
+  "research_policy": "ORGANIC_ONLY",
+  "phase_d_complete": true,
+  "next": [
+    "restart poller onto 340aaf831 (service grant)",
+    "install PERSISTENT_WAKE_GATEWAY_* on wake @:00 (schedule grant)",
+    "controlled canary re-send for stamped gateway_canary_delivery",
+    "organic Stage-3 soak on new pin",
+    "Phase F independent revalidation after soak seal"
+  ]
+}

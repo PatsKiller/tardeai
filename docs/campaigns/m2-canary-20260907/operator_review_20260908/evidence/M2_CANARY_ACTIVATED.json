@@ -1,0 +1,29 @@
+{
+  "schema": "M2CanaryActivatedSeal@v1",
+  "campaign_id": "m2-canary-20260907",
+  "activated_at_utc": "2026-09-08T22:35:30Z",
+  "served_pin": "aaa9115cbc2745b34a6d0a48cbdbd012c0ac6816",
+  "release_id": "aaa9115cb-main-exact-phase2-20260908-171709",
+  "research_policy": "ORGANIC_ONLY",
+  "phase_d": {
+    "wake_feed_cron_current_resolved": true,
+    "inbound_apply_cron": true,
+    "feed_select_ok": true,
+    "feed_counts": {
+      "material_changes": 62,
+      "receipts": 47,
+      "research_objects_proxy": 12
+    },
+    "select_only_candidates": 3,
+    "canary_gateway_settled": true,
+    "inbound_ok_proven": true,
+    "drive_sync_ok": true,
+    "soak_collector_expected_sha": "aaa9115cbc2745b34a6d0a48cbdbd012c0ac6816"
+  },
+  "rollback_release_id": "54639ff5a-main-exact-phase2-20260908-084725",
+  "next": [
+    "organic soak: >=3 consecutive wakes with known trigger provenance",
+    "organic research non-none (controlled canary does not pad)",
+    "independent architect revalidation for M2 PASS"
+  ]
+}
