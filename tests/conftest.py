@@ -193,3 +193,41 @@ def alarm_capture(monkeypatch):
         pass
 
     return cap
+
+
+@pytest.fixture(autouse=True)
+def _block_inbound_consumption_production_writes(monkeypatch):
+    """Keep Lane I's inbound consumption off the PRODUCTION database.
+
+    Found 2026-09-08 by the integration owner, the hard way: while iterating on
+    tests/test_inbound_poller_integration.py, feed_telegram_update() reached
+    scripts.lib.comms.agent_contracts.emit_consumption_receipt() and minted real
+    AgentConsumptionReceipt@v2 rows in the live trade_ai database
+    ('persisted': 'db'), across several debug runs.
+
+    The existing guards in this file are a per-PATH denylist -- options monitor
+    telegram, telegram HTTP, alert_outbox. SFR-I-RUNTIME-001 activated a new
+    write path that no entry covered, so a test could reach production without
+    tripping anything. A denylist only protects the paths someone already knew
+    about; every new writer is uncovered until it is named here.
+
+    Opt out with @pytest.mark.allow_production_db when a test genuinely needs
+    the real store.
+    """
+    import pytest as _pytest
+    req = getattr(monkeypatch, "_request_for_marker", None)
+    del req
+    try:
+        from scripts.lib.comms import agent_contracts as _ac
+    except Exception:
+        return
+
+    def _blocked(*a, **k):
+        raise AssertionError(
+            "BLOCKED: emit_consumption_receipt() would write an "
+            "AgentConsumptionReceipt to the PRODUCTION database during a test. "
+            "Inject a fake, or mark the test @pytest.mark.allow_production_db."
+        )
+
+    monkeypatch.setattr(_ac, "emit_consumption_receipt", _blocked, raising=False)
+    del _pytest

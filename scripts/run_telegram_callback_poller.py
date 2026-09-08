@@ -381,7 +381,7 @@ def _handle_stop_command(msg, text, chat_id):
             response = "Usage: /stopexit SYMBOL"
         else:
             from telegram_callback_handler import _handle_stop_decision
-            result = _handle_stop_decision(sym, "EXIT", user_id, f"operator honored stop via /stopexit")
+            result = _handle_stop_decision(sym, "EXIT", user_id, "operator honored stop via /stopexit")
             if result.get("ok"):
                 response = f"STOP HONORED -- {sym} marked for exit by {user_name}"
             else:
@@ -393,7 +393,7 @@ def _handle_stop_command(msg, text, chat_id):
             response = "Usage: /stophold SYMBOL"
         else:
             from telegram_callback_handler import _handle_stop_decision
-            result = _handle_stop_decision(sym, "HOLD_OVERRIDE", user_id, f"operator override via /stophold")
+            result = _handle_stop_decision(sym, "HOLD_OVERRIDE", user_id, "operator override via /stophold")
             if result.get("ok"):
                 response = f"OVERRIDE -- {sym} held by {user_name}, watching"
             else:
@@ -864,23 +864,47 @@ def _handle_guard_approval(msg, text, chat_id):
     log.info(f"guard scope {r['scope']} granted remotely, request {r['request_id']}")
 
 
-def _send_reply(chat_id, reply_to_message_id, text):
-    """Send a reply to a specific message in the operator chat."""
+def _post_message(chat_id, text, reply_to_message_id=None):
+    """Single Telegram sendMessage transport for this daemon.
+
+    One implementation so `_send` and `_send_reply` cannot drift apart, and so
+    the failure log names the actual caller instead of always saying "schwab".
+    """
     token = _token()
     if not token:
-        log.error("No TELEGRAM_BOT_TOKEN for reply")
-        return
-    payload = urllib.parse.urlencode({
-        "chat_id": chat_id, "reply_to_message_id": reply_to_message_id,
-        "text": text, "parse_mode": "Markdown",
-    }).encode()
+        log.error("No TELEGRAM_BOT_TOKEN for outgoing message")
+        return False
+    fields = {"chat_id": chat_id, "text": text, "parse_mode": "Markdown"}
+    if reply_to_message_id is not None:
+        fields["reply_to_message_id"] = reply_to_message_id
+    payload = urllib.parse.urlencode(fields).encode()
     try:
         req = urllib.request.Request(
             f"https://api.telegram.org/bot{token}/sendMessage",
             data=payload, headers={"Content-Type": "application/x-www-form-urlencoded"})
         urllib.request.urlopen(req, timeout=10)
+        return True
     except Exception as e:
-        log.error(f"schwab reply failed: {e}")
+        log.error(f"telegram sendMessage failed (chat={chat_id}): {e}")
+        return False
+
+
+def _send(chat_id, text):
+    """Send a standalone message (no reply threading).
+
+    `_handle_llm_caps` called this at six sites and it was never defined --
+    ruff F821. Every `/cap` and `/caps` command therefore raised NameError,
+    caught by the command dispatcher's except, so the operator received NO
+    reply and the only trace was one log line. Latent since the caps handler
+    landed; it became live-path relevant when SFR-I-RUNTIME-001 made this poller
+    the production caller for normalize_inbound_update.
+    """
+    return _post_message(chat_id, text)
+
+
+def _send_reply(chat_id, reply_to_message_id, text):
+    """Send a reply to a specific message in the operator chat."""
+    return _post_message(chat_id, text, reply_to_message_id=reply_to_message_id)
 
 
 def _handle_schwab_callback(msg, text, chat_id):
