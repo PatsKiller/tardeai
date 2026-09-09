@@ -100,6 +100,10 @@ GATES = [
             "tests/test_comms_credential_resolve.py",
             "tests/test_delivery_provenance_quarantine.py",
             "tests/test_maturity_lanes_f_j.py",
+            # Holding-drawer LLM curation (feat/holding-llm-curation-cio-flash):
+            # freshness classes, CIO Flash 4.1 triple-consensus reconcile,
+            # refusal fail-closed, curation lineage GUIDs + prior-grounding.
+            "tests/test_holding_llm_curation.py",
         ],
     ),
     # Cash age is the age of the dollars. PP2 (the cash letter) and PP4 (provenance)
