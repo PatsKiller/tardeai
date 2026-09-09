@@ -62,3 +62,28 @@ def test_reconcile_majority_and_cautious():
 
 def test_reconcile_no_invented_vote_when_empty():
     assert _reconcile_cio_votes([])["consensus"] is None
+
+
+def test_curation_lineage_guid_and_grounding():
+    from lib.curation_lineage import (
+        grounding_instruction_text,
+        new_research_guid,
+        prior_grounding_context,
+    )
+
+    g1, g2 = new_research_guid(), new_research_guid()
+    assert g1 != g2
+
+    block = prior_grounding_context(None)
+    assert block is None
+
+    prior = {
+        "research_guid": g1,
+        "model": "deepseek-v4-flash",
+        "created_at": "2026-09-09T12:00:00Z",
+        "recommendation": "HOLD — prior thesis.",
+    }
+    block = prior_grounding_context(prior)
+    assert block["guid"] == g1
+    assert "do not repeat it verbatim" in grounding_instruction_text(block).lower()
+    assert "prior recommendation: HOLD" in grounding_instruction_text(block)

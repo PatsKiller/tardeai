@@ -81,11 +81,12 @@ def test_researcher_insert_sql_mentions_raw_response():
     assert "str(raw)[:16000]" in src
     assert 'parsed["recommendation"] = str(raw).strip()[:4000]' in src
     # Always-on store is on the parsed INSERT, not only the empty-rec fallback.
-    assert "lane_used, raw_response)" in src
-    # Capability-cache path may leave raw_response NULL (column omitted).
+    assert "raw_response, research_guid, prior_research_guid)" in src
+    # Capability-cache path may leave raw_response NULL (column omitted) but still records lineage.
     cache_insert = src.split("if cache_blocks_lane", 1)[1].split("return", 1)[0]
     assert "INSERT INTO hermes_external_research" in cache_insert
     assert "raw_response" not in cache_insert
+    assert "research_guid" in cache_insert
     # Prompt: recommendation IS the thesis; JSON contract still required.
     assert "recommendation field IS the living thesis" in src
     assert "JSON contract still required" in src

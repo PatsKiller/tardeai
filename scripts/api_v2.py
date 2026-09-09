@@ -36809,7 +36809,7 @@ def _hermes_intel(symbol):
     ext_rows = (
         _db_query(
             """SELECT DISTINCT ON (lane) lane, model, recommendation, evidence_json, dissent,
-                              confidence, risk_flags, created_at
+                              confidence, risk_flags, created_at, research_guid, prior_research_guid
                             FROM hermes_external_research
                             WHERE symbol=%s AND status IN ('sent','ok','complete','success')
                             ORDER BY lane, created_at DESC""",
@@ -36832,6 +36832,8 @@ def _hermes_intel(symbol):
                 "confidence": _json_clean(e.get("confidence")),
                 "risk_flags": e.get("risk_flags"),
                 "at": _json_clean(e.get("created_at")),
+                "research_guid": e.get("research_guid"),
+                "prior_research_guid": e.get("prior_research_guid"),
             }
         )
         # Hide expired theses by default; STALE kept with badge

@@ -19,6 +19,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
 from cio_agent_contract import build_external_research_json_schema, parse_external_research_result
 from llm_net import urlopen_retry  # retry transient network/DNS/5xx; surfaces 4xx (e.g. credit) immediately
 from lib.research_call_accounting import accounting_identity, append_event as append_call_event
+from lib.curation_lineage import (
+    grounding_instruction_text,
+    new_research_guid,
+    prior_grounding_context,
+)
 
 ROOT = Path(__file__).resolve().parent.parent
 ANTHROPIC_URL = "https://api.anthropic.com/v1/messages"
@@ -184,6 +189,28 @@ def reconcile_accepted_research(symbol, rid, parsed, prompt_context, args):
         root=ROOT,
         notify=True,
     )
+
+
+def fetch_prior_curation(cur, symbol, lane):
+    """Return the immediately prior successful curation for (symbol, lane), or None."""
+    if not symbol:
+        return None
+    try:
+        cur.execute(
+            """SELECT research_guid, recommendation, model, created_at
+               FROM hermes_external_research
+               WHERE upper(symbol)=%s AND lane=%s
+                 AND status IN ('sent','ok','complete','success')
+               ORDER BY created_at DESC LIMIT 1""",
+            (symbol.upper(), lane),
+        )
+        r = cur.fetchone()
+        if not r:
+            return None
+        return {"research_guid": r[0], "recommendation": r[1], "model": r[2], "created_at": r[3]}
+    except Exception:
+        # Column may not exist pre-migration; lineage is best-effort, never blocks curation
+        return None
 
 
 def _get_key(env_name):
@@ -510,13 +537,37 @@ def main():
         print("Create/refresh the deterministic market-data acquisition gap before retrying.")
         account("SKIP_GATED", reason="DATA_QUALITY_BLOCK", metadata={"reason_codes": input_quality["reason_codes"]})
         return
+
+    # ── Curation lineage: version + ground this run on the prior (symbol, lane) curation ──
+    research_guid = new_research_guid()
+    prior_research_guid = None
+    prior_block = None
+    try:
+        import psycopg2 as _psycopg2_prior
+        _pconn = _psycopg2_prior.connect(host=os.getenv("DB_HOST"), port=os.getenv("DB_PORT"),
+                                         dbname=os.getenv("DB_NAME"), user=os.getenv("DB_USER"),
+                                         password=os.getenv("DB_PASSWORD"))
+        _pcur = _pconn.cursor()
+        _prior = fetch_prior_curation(_pcur, args.symbol, args.lane)
+        prior_research_guid = (_prior or {}).get("research_guid")
+        prior_block = prior_grounding_context(_prior)
+        _pconn.close()
+    except Exception as _pe:
+        print(f"[lineage] prior fetch skipped (best-effort): {type(_pe).__name__}")
+    if prior_block:
+        ctx["prior_research"] = prior_block
+        grounding = grounding_instruction_text(prior_block)
+    else:
+        grounding = ""
+    ctx["research_guid"] = research_guid
+    ctx["prior_research_guid"] = prior_research_guid
     # .format() breaks on the appended JSON schema's literal {braces} — every call
     # since ~2026-07-02 died with KeyError before reaching any API (lanes "stalled").
     # Placeholder substitution must not interpret the schema as format fields.
     prompt_template = PROMPT
     if args.prompt_file:
         prompt_template = Path(args.prompt_file).read_text(encoding="utf-8")
-    prompt = prompt_template.replace("{question}", question).replace("{context}", json.dumps(ctx))
+    prompt = prompt_template.replace("{question}", question).replace("{context}", json.dumps(ctx)) + grounding
     max_out = args.max_output_tokens
 
     print(f"=== Hermes External Researcher — lane={args.lane} model={args.model} apply={args.apply} ===")
@@ -561,10 +612,11 @@ def main():
         c = psycopg2.connect(host=os.getenv("DB_HOST"), port=os.getenv("DB_PORT"), dbname=os.getenv("DB_NAME"),
                              user=os.getenv("DB_USER"), password=os.getenv("DB_PASSWORD")); cur = c.cursor()
         cur.execute("""INSERT INTO hermes_external_research
-            (lane, trigger_reason, priority, symbol, question, redacted_context, model, status, recommendation)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
+            (lane, trigger_reason, priority, symbol, question, redacted_context, model, status,
+             recommendation, research_guid, prior_research_guid)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
             (args.lane, args.trigger, args.priority, args.symbol, question, json.dumps(ctx), args.model,
-             status, parsed["recommendation"]))
+             status, parsed["recommendation"], research_guid, prior_research_guid))
         rid = cur.fetchone()[0]; c.commit(); c.close()
         print(f"stored hermes_external_research id={rid} status={status} (cache-gated, no external call)")
         account("SKIP_GATED", reason="CAPABILITY_CACHE", metadata={"status": status, "reason_code": reason})
@@ -634,14 +686,14 @@ def main():
     cur.execute("""INSERT INTO hermes_external_research
         (lane, trigger_reason, priority, symbol, question, redacted_context, model, status,
          recommendation, evidence_json, dissent, confidence, risk_flags, learning_candidate, operator_action,
-         trigger_source, budget_decision, lane_used, raw_response)
-        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
+         trigger_source, budget_decision, lane_used, raw_response, research_guid, prior_research_guid)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
         (args.lane, args.trigger, args.priority, args.symbol, question, json.dumps(ctx), args.model, status,
          parsed.get("recommendation"), json.dumps(parsed.get("evidence", [])), parsed.get("dissent"),
          parsed.get("confidence"), json.dumps(parsed.get("risk_flags")), parsed.get("learning_candidate"),
          parsed.get("operator_action"),
          (args.trigger or "manual").split(":")[0], getattr(args, "budget_decision", "ALLOW"), args.lane,
-         str(raw)[:16000]))
+         str(raw)[:16000], research_guid, prior_research_guid))
     rid = cur.fetchone()[0]; c.commit(); c.close()
     print(f"\nstored hermes_external_research id={rid} status={status}")
     if status == "skipped":
