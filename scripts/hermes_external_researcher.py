@@ -583,12 +583,12 @@ def main():
     prompt_template = PROMPT
     if args.prompt_file:
         prompt_template = Path(args.prompt_file).read_text(encoding="utf-8")
-    prompt = prompt_template.replace("{question}", question).replace("{context}", json.dumps(ctx)) + grounding
+    prompt = prompt_template.replace("{question}", question).replace("{context}", json.dumps(ctx, default=str)) + grounding
     max_out = args.max_output_tokens
 
     print(f"=== Hermes External Researcher — lane={args.lane} model={args.model} apply={args.apply} ===")
     print("REDACTED packet that WOULD be sent:")
-    print(json.dumps({"question": question, "context": ctx}, indent=2)[:1200])
+    print(json.dumps({"question": question, "context": ctx}, indent=2, default=str)[:1200])
     if not args.apply:
         print("\n(dry-run — nothing sent. Re-run with --apply to call the external model.)")
         account("DRY_RUN", reason="provider_not_called")
@@ -631,7 +631,7 @@ def main():
             (lane, trigger_reason, priority, symbol, question, redacted_context, model, status,
              recommendation, research_guid, prior_research_guid)
             VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
-            (args.lane, args.trigger, args.priority, args.symbol, question, json.dumps(ctx), args.model,
+            (args.lane, args.trigger, args.priority, args.symbol, question, json.dumps(ctx, default=str), args.model,
              status, parsed["recommendation"], research_guid, prior_research_guid))
         rid = cur.fetchone()[0]; c.commit(); c.close()
         print(f"stored hermes_external_research id={rid} status={status} (cache-gated, no external call)")
@@ -704,8 +704,8 @@ def main():
          recommendation, evidence_json, dissent, confidence, risk_flags, learning_candidate, operator_action,
          trigger_source, budget_decision, lane_used, raw_response, research_guid, prior_research_guid)
         VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
-        (args.lane, args.trigger, args.priority, args.symbol, question, json.dumps(ctx), args.model, status,
-         parsed.get("recommendation"), json.dumps(parsed.get("evidence", [])), parsed.get("dissent"),
+        (args.lane, args.trigger, args.priority, args.symbol, question, json.dumps(ctx, default=str), args.model, status,
+         parsed.get("recommendation"), json.dumps(parsed.get("evidence", []), default=str), parsed.get("dissent"),
          parsed.get("confidence"), json.dumps(parsed.get("risk_flags")), parsed.get("learning_candidate"),
          parsed.get("operator_action"),
          (args.trigger or "manual").split(":")[0], getattr(args, "budget_decision", "ALLOW"), args.lane,
