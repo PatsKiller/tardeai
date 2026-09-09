@@ -61,9 +61,9 @@ const LLM_META: Record<string, { label: string; color: string }> = {
   chatgpt: { label: 'ChatGPT', color: '#10a37f' },
   claude: { label: 'Claude', color: '#d97757' },
   local: { label: 'Local', color: '#2dd4bf' },
-  deepseek: { label: 'DeepSeek Flash', color: '#a855f7' },
-  'deepseek-flash': { label: 'DeepSeek Flash', color: '#a855f7' },
-  'deepseek-v4-flash': { label: 'DeepSeek Flash 4.1', color: '#a855f7' },
+  deepseek: { label: 'DeepSeek Flash', color: PURPLE },
+  'deepseek-flash': { label: 'DeepSeek Flash', color: PURPLE },
+  'deepseek-v4-flash': { label: 'DeepSeek Flash 4.1', color: PURPLE },
 }
 
 function freshnessChip(cls?: string, ageHours?: number | null) {
@@ -259,7 +259,7 @@ export default function DetailDrawer({ ctx, onClose }: Props) {
             {(intel.cio_synthesis.evidence?.length > 0 || (intel.cio_synthesis.data_i_doubt && intel.cio_synthesis.data_i_doubt !== 'none')) && (
               <EvidenceBlock evidence={intel.cio_synthesis.evidence} dataIDoubt={intel.cio_synthesis.data_i_doubt} />
             )}
-            <div style={{ fontSize: 9, color: MUTED, marginTop: 8 }}>{intel.cio_synthesis.note || 'Canonical CIO holding narrative shared via data broker.'}</div>
+            <div style={{ fontSize: 10, color: MUTED, marginTop: 8 }}>{intel.cio_synthesis.note || 'Canonical CIO holding narrative shared via data broker.'}</div>
           </Section>
         )}
         {intel?.setup && <Section title={`Hermes setup · ${intel.setup.conviction || 'unknown'} conviction`} accent={PURPLE}><div style={{ display: 'grid', gridTemplateColumns: '1.1fr 1fr', gap: 12 }}><div><div style={{ fontSize: 16, color: '#d8b4fe', fontWeight: 950 }}>{intel.setup.type}</div><div style={{ fontSize: 12, color: TEXT2, marginTop: 7, lineHeight: 1.5 }}><b style={{ color: TEXT1 }}>Entry:</b> {intel.setup.entry}</div><div style={{ fontSize: 12, color: TEXT2, lineHeight: 1.5 }}><b style={{ color: TEXT1 }}>Invalidation:</b> {intel.setup.invalidation}</div><div style={{ fontSize: 11, color: MUTED, marginTop: 5 }}>{intel.setup.why}</div></div>{intel.competition && <div style={{ ...metric }}><div style={{ fontSize: 9, color: MUTED, fontWeight: 850, textTransform: 'uppercase' }}>Competition / peer context</div><ObjBlock obj={intel.competition} /></div>}</div></Section>}
@@ -288,7 +288,7 @@ export default function DetailDrawer({ ctx, onClose }: Props) {
                     body: JSON.stringify({ symbol: drawerSymbol, lane: 'deepseek' }),
                   }).catch(() => {})
                 }}
-                style={{ marginTop: 10, fontSize: 11, fontWeight: 800, padding: '6px 10px', borderRadius: 7, cursor: 'pointer', background: 'rgba(168,85,247,.15)', color: '#e9d5ff', border: '1px solid rgba(168,85,247,.4)' }}
+                style={{ marginTop: 10, fontSize: 11, fontWeight: 800, padding: '6px 10px', borderRadius: 7, cursor: 'pointer', background: 'rgba(168,85,247,.15)', color: PURPLE, border: '1px solid rgba(168,85,247,.4)' }}
               >
                 Run DeepSeek Flash challenger for {drawerSymbol}
               </button>
