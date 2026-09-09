@@ -95,6 +95,11 @@ GATES = [
             # controls -- direct, indirect, unknown wrapper, live-DSN leakage,
             # missing injected writer.
             "tests/test_receipt_write_barrier.py",
+            # Maturity-gap-closure-20260909 lanes A/C/E/F–J hermetic controls.
+            "tests/test_poller_release_identity.py",
+            "tests/test_comms_credential_resolve.py",
+            "tests/test_delivery_provenance_quarantine.py",
+            "tests/test_maturity_lanes_f_j.py",
         ],
     ),
     # Cash age is the age of the dollars. PP2 (the cash letter) and PP4 (provenance)

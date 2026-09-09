@@ -61,8 +61,8 @@ def _token():
     try:
         from scripts.lib.comms_credential_resolve import resolve_telegram_bot_token
 
-        # Daemon runtime: interdict/pytest still wins; dotenv fallback allowed when absent.
-        return resolve_telegram_bot_token(respect_interdict=True, allow_dotenv_fallback=True).value
+        # Resolve credential only. Interdict still blocks HTTP in telegram_transport.
+        return resolve_telegram_bot_token(respect_interdict=False, allow_dotenv_fallback=True).value
     except Exception:
         return os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
 
