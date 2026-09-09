@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-"""rerun_cio_dual_consensus.py — re-run the Grok+ChatGPT dual-consensus on the watchlist's CIO verdicts and
-store per-model verdicts + agreement on watchlist_final_synthesis. Uses each name's EXISTING CIO analysis
-(committee recommendation + synthesis_narrative) as context so the cross-check is grounded, not a thin prompt.
+"""rerun_cio_dual_consensus.py — re-run CIO multi-consensus (Grok+ChatGPT+DeepSeek Flash 4.1)
+on the watchlist's CIO verdicts and store per-model verdicts + agreement on watchlist_final_synthesis.
 
-Scope: top-N active/researched real-ticker names by hermes_rank (the actionable watchlist). Free OAuth only
-(Grok + ChatGPT proxies); no metered API. Advisory — never touches trading.
+Uses each name's EXISTING CIO analysis (committee recommendation + synthesis_narrative) as context.
+Advisory — never touches trading.
 
   CIO_DUAL_CHATGPT_CAP=250 python3 scripts/rerun_cio_dual_consensus.py [N]   # default N=200
 """
@@ -38,7 +37,7 @@ def main():
                    GROUP BY s.symbol, s.recommendation, s.confidence, s.synthesis_narrative, s.action
                    ORDER BY min(w.hermes_rank) ASC NULLS LAST {limit_sql}""", params)
     rows = cur.fetchall()
-    print(f"re-running dual-consensus on {len(rows)} names "
+    print(f"re-running CIO multi-consensus (Grok+ChatGPT+Flash) on {len(rows)} names "
           f"(cap={n or 'all'}, skip_done={skip_done}, by hermes_rank)…", flush=True)
     agree = disagree = onelane = 0
     t0 = time.time()
@@ -69,13 +68,13 @@ def main():
             print(f"  …{i}/{len(rows)}  agree={agree} disagree={disagree} single-lane={onelane}  "
                   f"({(time.time()-t0)/60:.1f}m)", flush=True)
     summary = {"processed": len(rows), "agree": agree, "disagree": disagree, "single_lane": onelane,
-               "minutes": round((time.time() - t0) / 60, 1)}
+               "minutes": round((time.time() - t0) / 60, 1), "lanes": ["grok", "chatgpt", "deepseek-flash"]}
     print(json.dumps(summary), flush=True)
     try:
         sys.path.insert(0, str(Path(__file__).resolve().parent))
         from telegram_alert import send_telegram
-        send_telegram(f"✅ CIO dual-consensus re-run done: {len(rows)} names · {agree} agree · {disagree} "
-                      f"disagree · {onelane} single-lane · {summary['minutes']}m")
+        send_telegram(f"✅ CIO multi-consensus re-run done: {len(rows)} names · {agree} agree · {disagree} "
+                      f"disagree · {onelane} single-lane · {summary['minutes']}m (incl Flash)")
     except Exception:
         pass
     return 0

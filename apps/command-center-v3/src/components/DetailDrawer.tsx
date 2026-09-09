@@ -56,7 +56,24 @@ const KEY_LABELS: Record<string, string> = {
 }
 const ACRONYMS = /\b(Pnl|Rsi|Raci|Id|Url|Llm|Atr|Mfe|Mae|Vwap|Macd|Adx|Pf|Wr|Rr|Cio|Tca|Pct|Bb|Rvol)\b/gi
 const SECTION_RE = /^[—\-]{1,2}\s*(.+?)\s*[—\-]{1,2}$/
-const LLM_META: Record<string, { label: string; color: string }> = { grok: { label: 'Grok', color: '#1d9bf0' }, chatgpt: { label: 'ChatGPT', color: '#10a37f' }, claude: { label: 'Claude', color: '#d97757' }, local: { label: 'Local', color: '#2dd4bf' } }
+const LLM_META: Record<string, { label: string; color: string }> = {
+  grok: { label: 'Grok', color: '#1d9bf0' },
+  chatgpt: { label: 'ChatGPT', color: '#10a37f' },
+  claude: { label: 'Claude', color: '#d97757' },
+  local: { label: 'Local', color: '#2dd4bf' },
+  deepseek: { label: 'DeepSeek Flash', color: '#a855f7' },
+  'deepseek-flash': { label: 'DeepSeek Flash', color: '#a855f7' },
+  'deepseek-v4-flash': { label: 'DeepSeek Flash 4.1', color: '#a855f7' },
+}
+
+function freshnessChip(cls?: string, ageHours?: number | null) {
+  const c = String(cls || 'UNDATED').toUpperCase()
+  const color = c === 'CURRENT' ? GREEN : c === 'STALE' ? AMBER : c === 'EXPIRED' ? RED : DIM
+  const age = ageHours != null && Number.isFinite(ageHours)
+    ? (ageHours < 48 ? `${Math.round(ageHours)}h` : `${Math.round(ageHours / 24)}d`)
+    : ''
+  return <Chip text={age ? `${c} · ${age}` : c} color={color} />
+}
 
 function humanizeKey(k: string): string { if (KEY_LABELS[k]) return KEY_LABELS[k]; return k.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()).replace(ACRONYMS, m => ({ pnl: 'P&L', rsi: 'RSI', raci: 'RACI', id: 'ID', url: 'URL', llm: 'LLM', atr: 'ATR', mfe: 'MFE', mae: 'MAE', vwap: 'VWAP', macd: 'MACD', adx: 'ADX', pf: 'PF', wr: 'WR', rr: 'R:R', cio: 'CIO', tca: 'TCA', pct: '%', bb: 'BB', rvol: 'RVOL' }[m.toLowerCase()] || m)) }
 function parseMaybeJson(v: any): any { if (v && typeof v === 'object') return v; if (typeof v === 'string') { const t = v.trim(); if ((t.startsWith('{') && t.endsWith('}')) || (t.startsWith('[') && t.endsWith(']'))) { try { return JSON.parse(t) } catch {} } } return null }
@@ -197,14 +214,117 @@ export default function DetailDrawer({ ctx, onClose }: Props) {
             <EvidenceBlock evidence={primary.stop_curation.evidence} dataIDoubt={primary.stop_curation.data_i_doubt} />
           </Section>
         )}
-        {intel?.cio_synthesis && (intel.cio_synthesis.evidence?.length > 0 || intel.cio_synthesis.narrative_snip || (intel.cio_synthesis.data_i_doubt && intel.cio_synthesis.data_i_doubt !== 'none')) && (
-          <Section title="CIO synthesis evidence" subtitle={intel.cio_synthesis.recommendation ? `recommendation: ${intel.cio_synthesis.recommendation}` : 'watchlist committee synthesis'} accent={PURPLE}>
-            {intel.cio_synthesis.narrative_snip && <div style={{ fontSize: 11, color: TEXT2, marginBottom: 6, lineHeight: 1.45, fontStyle: 'italic' }}>{intel.cio_synthesis.narrative_snip}</div>}
-            <EvidenceBlock evidence={intel.cio_synthesis.evidence} dataIDoubt={intel.cio_synthesis.data_i_doubt} />
+        {intel?.cio_synthesis && (
+          <Section
+            title="CIO canonical synthesis"
+            subtitle={
+              [
+                intel.cio_synthesis.recommendation ? `recommendation: ${intel.cio_synthesis.recommendation}` : null,
+                intel.cio_synthesis.synthesis_status && intel.cio_synthesis.synthesis_status !== 'ok'
+                  ? `status: ${intel.cio_synthesis.synthesis_status}`
+                  : null,
+                'system of record · watchlist_final_synthesis',
+              ].filter(Boolean).join(' · ')
+            }
+            accent={PURPLE}
+          >
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+              {freshnessChip(intel.cio_synthesis.freshness_class)}
+              {(intel.cio_synthesis.participating_lanes || []).map((ln: string) => {
+                const m = LLM_META[ln] || LLM_META[ln.replace(/-flash$/, '')] || { label: ln, color: TEXT2 }
+                return <Chip key={ln} text={`voted: ${m.label}`} color={m.color} />
+              })}
+              {intel.cio_synthesis.deepseek_status && (
+                <Chip
+                  text={`Flash: ${intel.cio_synthesis.deepseek_status}${intel.cio_synthesis.deepseek?.recommendation ? ` → ${intel.cio_synthesis.deepseek.recommendation}` : ''}`}
+                  color={intel.cio_synthesis.deepseek_status === 'VOTED' || intel.cio_synthesis.deepseek_status === 'FALLBACK_SYNTH' ? PURPLE : AMBER}
+                />
+              )}
+              {intel.cio_synthesis.grok?.recommendation && <Chip text={`Grok: ${intel.cio_synthesis.grok.recommendation}`} color={LLM_META.grok.color} />}
+              {intel.cio_synthesis.chatgpt?.recommendation && <Chip text={`ChatGPT: ${intel.cio_synthesis.chatgpt.recommendation}`} color={LLM_META.chatgpt.color} />}
+              {intel.cio_synthesis.fallback_lane && <Chip text={`fallback: ${intel.cio_synthesis.fallback_lane}`} color={AMBER} />}
+            </div>
+            {intel.cio_synthesis.synthesis_status && intel.cio_synthesis.synthesis_status !== 'ok' ? (
+              <div style={{ fontSize: 11, color: AMBER, marginBottom: 6, lineHeight: 1.45 }}>
+                Synthesis not shown as curated prose ({intel.cio_synthesis.synthesis_status}).
+                {intel.cio_synthesis.error_detail ? ` ${intel.cio_synthesis.error_detail}` : ''} Prior good narrative retained in store when refusal/error was detected.
+              </div>
+            ) : (
+              (intel.cio_synthesis.narrative || intel.cio_synthesis.narrative_snip) && (
+                <div style={{ fontSize: 11, color: TEXT2, marginBottom: 6, lineHeight: 1.45 }}>
+                  {intel.cio_synthesis.narrative || intel.cio_synthesis.narrative_snip}
+                </div>
+              )
+            )}
+            {(intel.cio_synthesis.evidence?.length > 0 || (intel.cio_synthesis.data_i_doubt && intel.cio_synthesis.data_i_doubt !== 'none')) && (
+              <EvidenceBlock evidence={intel.cio_synthesis.evidence} dataIDoubt={intel.cio_synthesis.data_i_doubt} />
+            )}
+            <div style={{ fontSize: 9, color: MUTED, marginTop: 8 }}>{intel.cio_synthesis.note || 'Canonical CIO holding narrative shared via data broker.'}</div>
           </Section>
         )}
         {intel?.setup && <Section title={`Hermes setup · ${intel.setup.conviction || 'unknown'} conviction`} accent={PURPLE}><div style={{ display: 'grid', gridTemplateColumns: '1.1fr 1fr', gap: 12 }}><div><div style={{ fontSize: 16, color: '#d8b4fe', fontWeight: 950 }}>{intel.setup.type}</div><div style={{ fontSize: 12, color: TEXT2, marginTop: 7, lineHeight: 1.5 }}><b style={{ color: TEXT1 }}>Entry:</b> {intel.setup.entry}</div><div style={{ fontSize: 12, color: TEXT2, lineHeight: 1.5 }}><b style={{ color: TEXT1 }}>Invalidation:</b> {intel.setup.invalidation}</div><div style={{ fontSize: 11, color: MUTED, marginTop: 5 }}>{intel.setup.why}</div></div>{intel.competition && <div style={{ ...metric }}><div style={{ fontSize: 9, color: MUTED, fontWeight: 850, textTransform: 'uppercase' }}>Competition / peer context</div><ObjBlock obj={intel.competition} /></div>}</div></Section>}
-        {intel?.external_intel?.length > 0 && <Section title={`External LLM intelligence (${intel.external_intel.length})`} subtitle="recommendation, structured evidence, counter-view, risk flags" accent={BLUE}><div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(420px,1fr))', gap: 12 }}>{intel.external_intel.map((e: any, i: number) => { const m = LLM_META[e.lane] || { label: e.lane || 'LLM', color: TEXT2 }; const rf = fmtBlob(e.risk_flags); return <div key={i} style={{ background: 'rgba(2,6,23,.38)', border: `1px solid ${m.color}55`, borderLeft: `5px solid ${m.color}`, borderRadius: 11, padding: 12 }}><div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 7 }}><span style={{ fontSize: 13, fontWeight: 950, color: m.color }}>{m.label}<span style={{ color: MUTED, fontWeight: 500, fontSize: 10, marginLeft: 6 }}>{e.model}</span></span><span style={{ fontSize: 10, color: MUTED }}>{e.at ? new Date(e.at).toLocaleString() : ''}</span></div>{e.recommendation && <div style={{ fontSize: 12.5, color: TEXT0, fontWeight: 850, lineHeight: 1.45, marginBottom: 6 }}>{e.recommendation}</div>}<EvidenceBlock evidence={e.evidence} dataIDoubt={e.data_i_doubt} compact />{e.dissent && <div style={{ fontSize: 11, color: AMBER, marginTop: 5, lineHeight: 1.45 }}><b>Counter-view:</b> {e.dissent}</div>}{rf.length > 0 && <div style={{ fontSize: 11, color: RED, marginTop: 5, lineHeight: 1.45 }}><b>Risks:</b> {rf.join('; ')}</div>}{e.confidence != null && <div style={{ marginTop: 7 }}><Chip text={`confidence ${e.confidence}`} color={chipColor(e.confidence)} /></div>}</div> })}</div></Section>}
+        {intel?.lane_status_summary && Object.keys(intel.lane_status_summary).length > 0 && (
+          <Section title="External lane status (14d)" subtitle="why a provider may be missing — skipped/rejected/error are not silent" accent={AMBER}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))', gap: 8 }}>
+              {Object.entries(intel.lane_status_summary).map(([lane, rows]: [string, any]) => {
+                const m = LLM_META[lane] || { label: lane, color: TEXT2 }
+                return (
+                  <div key={lane} style={{ ...metric, borderLeft: `3px solid ${m.color}` }}>
+                    <div style={{ fontSize: 11, fontWeight: 900, color: m.color, marginBottom: 4 }}>{m.label}</div>
+                    {(rows || []).map((r: any, i: number) => (
+                      <div key={i} style={{ fontSize: 10, color: TEXT2 }}>{r.status} ×{r.n} · {r.freshness_class}</div>
+                    ))}
+                  </div>
+                )
+              })}
+            </div>
+            {drawerSymbol && (
+              <button
+                type="button"
+                onClick={() => {
+                  fetch('/api/v2/hermes/curate-symbol', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ symbol: drawerSymbol, lane: 'deepseek' }),
+                  }).catch(() => {})
+                }}
+                style={{ marginTop: 10, fontSize: 11, fontWeight: 800, padding: '6px 10px', borderRadius: 7, cursor: 'pointer', background: 'rgba(168,85,247,.15)', color: '#e9d5ff', border: '1px solid rgba(168,85,247,.4)' }}
+              >
+                Run DeepSeek Flash challenger for {drawerSymbol}
+              </button>
+            )}
+          </Section>
+        )}
+        {intel?.external_intel?.length > 0 && (
+          <Section
+            title={`External LLM challengers (${intel.external_intel.length})`}
+            subtitle="not system of record — recommendation, evidence, counter-view, risk flags · freshness-gated"
+            accent={BLUE}
+          >
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(420px,1fr))', gap: 12 }}>
+              {intel.external_intel.map((e: any, i: number) => {
+                const m = LLM_META[e.lane] || { label: e.lane || 'LLM', color: TEXT2 }
+                const rf = fmtBlob(e.risk_flags)
+                return (
+                  <div key={i} style={{ background: 'rgba(2,6,23,.38)', border: `1px solid ${m.color}55`, borderLeft: `5px solid ${m.color}`, borderRadius: 11, padding: 12 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 7, gap: 8, flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: 13, fontWeight: 950, color: m.color }}>{m.label}<span style={{ color: MUTED, fontWeight: 500, fontSize: 10, marginLeft: 6 }}>{e.model}</span></span>
+                      <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                        {freshnessChip(e.freshness_class, e.age_hours)}
+                        <span style={{ fontSize: 10, color: MUTED }}>{e.at ? new Date(e.at).toLocaleString() : ''}</span>
+                      </span>
+                    </div>
+                    {e.recommendation && <div style={{ fontSize: 12.5, color: TEXT0, fontWeight: 850, lineHeight: 1.45, marginBottom: 6 }}>{e.recommendation}</div>}
+                    <EvidenceBlock evidence={e.evidence} dataIDoubt={e.data_i_doubt} compact />
+                    {e.dissent && <div style={{ fontSize: 11, color: AMBER, marginTop: 5, lineHeight: 1.45 }}><b>Counter-view:</b> {e.dissent}</div>}
+                    {rf.length > 0 && <div style={{ fontSize: 11, color: RED, marginTop: 5, lineHeight: 1.45 }}><b>Risks:</b> {rf.join('; ')}</div>}
+                    {e.confidence != null && <div style={{ marginTop: 7 }}><Chip text={`confidence ${e.confidence}`} color={chipColor(e.confidence)} /></div>}
+                  </div>
+                )
+              })}
+            </div>
+          </Section>
+        )}
         {ctx.rows.length === 0 && !chainMode && !journeyMode && <Section title="No data" accent={DIM}><div style={{ color: MUTED, fontSize: 12 }}>No data rows.</div></Section>}
         {ctx.rows.map((row, i) => { const entries = Object.entries(row).filter(([k, v]) => !SUPPRESS_KEYS.has(k) && (k.match(SECTION_RE) || !isEmptyVal(v))); const hidden = Object.keys(row).length - entries.length; return <Section key={i} title={ctx.rows.length > 1 ? `Source record ${i + 1}` : 'Source record'} subtitle={hidden > 0 ? `${hidden} empty fields hidden` : undefined} accent={DIM}><div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', columnGap: 28, rowGap: 2 }}>{entries.map(([k, v]) => <Field key={k} k={k} v={v} />)}</div></Section> })}
       </div>

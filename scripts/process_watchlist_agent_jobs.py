@@ -469,10 +469,19 @@ def _synthesis_llm(prompt: str, max_tokens: int = 2000) -> str:
     return out if out else "LLM error: synthesis_failed"
 
 
-# ── CIO dual-consensus: Grok + ChatGPT (both free OAuth) cross-check the final verdict (operator 2026-06-18).
-# Disagreement → take the MORE CAUTIOUS verdict + lower confidence + flag, instead of trusting one model. ──
+# ── CIO multi-consensus: Grok + ChatGPT (free OAuth) + DeepSeek Flash 4.1 (deepseek-v4-flash).
+# Flash is a first-class voting lane (operator 2026-09-09), not fallback-only.
+# Disagreement → majority when 2+ agree; else MORE CAUTIOUS verdict + lower confidence. ──
 _DUAL_CHATGPT_CAP = int(os.getenv("CIO_DUAL_CHATGPT_CAP", "40"))  # bound ChatGPT codex latency per batch run
 _dual_chatgpt_count = 0
+_CIO_DEFAULT_LANES = ("grok", "chatgpt", "deepseek-flash")
+_CIO_LANE_ALIASES = {
+    "grok": "grok",
+    "chatgpt": "chatgpt",
+    "deepseek": "deepseek-flash",
+    "deepseek-flash": "deepseek-flash",
+    "deepseek-v4-flash": "deepseek-flash",
+}
 # conservatism rank — lower = more cautious; on disagreement the more cautious verdict wins a buy decision.
 _CONSERV = {"SELL": 0, "AVOID": 0, "IGNORE": 1, "TRIM": 2, "RESEARCH_MORE": 3, "NEUTRAL": 3,
             "HOLD": 4, "ADD_ON_PULLBACK": 5, "ADD": 6, "BUY": 7}
@@ -494,27 +503,74 @@ def _rec_from(raw):
         return "", 0.0
 
 
-def _synthesis_lanes(prompt: str, lanes=None, max_tokens: int = 2000, manual_trigger: bool = False):
-    """Declared multi-lane CIO synthesis (Gate-B.2): Grok + ChatGPT OAuth cross-check
-    with explicit reconciliation. On dual-lane failure, governed Flash is the only fallback.
-    CIO authority gated by cio_legacy_watch_gate.py — output is
-    LEGACY_CIO_REVIEW, never AUTHORITATIVE_CIO_ACTION.
+def _normalize_cio_lanes(lanes) -> tuple:
+    if not lanes:
+        return _CIO_DEFAULT_LANES
+    out = []
+    for l in lanes:
+        key = _CIO_LANE_ALIASES.get(str(l).lower().strip())
+        if key and key not in out:
+            out.append(key)
+    return tuple(out) or _CIO_DEFAULT_LANES
 
-    lanes: None → grok+chatgpt (cron default), ('grok',), ('chatgpt',), or both.
+
+def _reconcile_cio_votes(votes: list[dict]) -> dict:
+    """votes: [{lane, rec, conf, raw}]. Returns consensus fields."""
+    voted = [v for v in votes if v.get("rec")]
+    if not voted:
+        return {"agree": None, "consensus": None, "consensus_confidence": None}
+    recs = [v["rec"] for v in voted]
+    if len(set(recs)) == 1:
+        return {
+            "agree": True,
+            "consensus": recs[0],
+            "consensus_confidence": round(max(v["conf"] for v in voted), 2),
+            "majority": True,
+        }
+    # Majority when 2+ share a rec
+    from collections import Counter
+    counts = Counter(recs)
+    top_rec, top_n = counts.most_common(1)[0]
+    if top_n >= 2:
+        confs = [v["conf"] for v in voted if v["rec"] == top_rec]
+        return {
+            "agree": False,
+            "consensus": top_rec,
+            "consensus_confidence": round(max(confs) * 0.9, 2),
+            "majority": True,
+        }
+    # Full disagreement — most cautious
+    cautious = min(voted, key=lambda v: _CONSERV.get(v["rec"], 9))
+    return {
+        "agree": False,
+        "consensus": cautious["rec"],
+        "consensus_confidence": round(min(v["conf"] for v in voted) * 0.8, 2),
+        "majority": False,
+    }
+
+
+def _synthesis_lanes(prompt: str, lanes=None, max_tokens: int = 2000, manual_trigger: bool = False):
+    """Declared multi-lane CIO synthesis: Grok + ChatGPT + DeepSeek Flash 4.1 voting.
+
+    Flash (lane deepseek-flash / model deepseek-v4-flash) is a first-class participant.
+    If Flash is skipped (peak/cap/breaker/unavailable), record deepseek_status without inventing a vote.
+    When all free OAuth lanes fail but Flash is available, Flash may also act as declared fallback synthesizer.
+    Output classifies LEGACY_CIO_REVIEW — never AUTHORITATIVE_CIO_ACTION.
+
+    lanes: None → grok+chatgpt+deepseek-flash; or an explicit subset.
     manual_trigger: route via watchlist_cio_synthesis consumption gate (Manual mode safe)."""
     global _dual_chatgpt_count
     import llm_lane
     cloud_prompt = _strip_local_tokens(prompt)
-    want = tuple(l for l in (lanes or ("grok", "chatgpt")) if l in ("grok", "chatgpt"))
-    if not want:
-        want = ("grok", "chatgpt")
-    grok_raw = chatgpt_raw = None
-    grok_rec = chatgpt_rec = None
-    grok_conf = chatgpt_conf = 0.0
+    want = _normalize_cio_lanes(lanes)
     pid = "watchlist_cio_synthesis" if manual_trigger else None
+    flash_pid = "watchlist_cio_synthesis" if manual_trigger else "watchlist_cio_synthesis_cron"
     task = "CIO synthesis"
+    votes: list[dict] = []
+    raw_by_lane: dict = {}
+    deepseek_status = None
 
-    def _gen(lane: str, timeout: int):
+    def _gen_oauth(lane: str, timeout: int):
         kw = dict(lane=lane, timeout=timeout)
         if pid:
             return llm_lane.generate(
@@ -522,63 +578,157 @@ def _synthesis_lanes(prompt: str, lanes=None, max_tokens: int = 2000, manual_tri
                 manual_trigger=True, **kw)
         return llm_lane.generate(cloud_prompt, **kw)
 
+    def _gen_flash(timeout: int):
+        return llm_lane.generate(
+            cloud_prompt, lane="deepseek-flash", timeout=timeout, max_tokens=max_tokens,
+            process_id=flash_pid, task_summary=f"{task} deepseek-flash",
+            manual_trigger=manual_trigger)
+
     if "grok" in want:
         try:
             if llm_lane.available("grok"):
-                grok_raw = _gen("grok", 120)
+                grok_raw = _gen_oauth("grok", 120)
                 if _is_refusal(grok_raw):
                     grok_raw = None
                 elif grok_raw and not str(grok_raw).startswith("LLM error"):
                     grok_rec, grok_conf = _rec_from(grok_raw)
+                    if grok_rec:
+                        raw_by_lane["grok"] = grok_raw
+                        votes.append({"lane": "grok", "rec": grok_rec, "conf": grok_conf,
+                                      "model": "grok-3-mini"})
         except Exception:
             pass
+
     if "chatgpt" in want:
         try:
             cap_ok = manual_trigger or _dual_chatgpt_count < _DUAL_CHATGPT_CAP
-            if cap_ok and llm_lane.available("chatgpt"):
+            if not cap_ok:
+                pass  # ChatGPT capped this batch — no invented vote
+            elif llm_lane.available("chatgpt"):
                 if not manual_trigger:
                     _dual_chatgpt_count += 1
-                chatgpt_raw = _gen("chatgpt", 180)
+                chatgpt_raw = _gen_oauth("chatgpt", 180)
                 if _is_refusal(chatgpt_raw):
                     chatgpt_raw = None
                 elif chatgpt_raw and not str(chatgpt_raw).startswith("LLM error"):
                     chatgpt_rec, chatgpt_conf = _rec_from(chatgpt_raw)
+                    if chatgpt_rec:
+                        raw_by_lane["chatgpt"] = chatgpt_raw
+                        votes.append({"lane": "chatgpt", "rec": chatgpt_rec, "conf": chatgpt_conf,
+                                      "model": "gpt-5.4"})
         except Exception:
             pass
-    meta = {"grok": ({"recommendation": grok_rec, "confidence": grok_conf} if grok_rec else None),
-            "chatgpt": ({"recommendation": chatgpt_rec, "confidence": chatgpt_conf} if chatgpt_rec else None),
-            "declared_lanes": want}  # Gate-B.2: explicit multi-lane declaration
-    if grok_rec and chatgpt_rec:
-        if grok_rec == chatgpt_rec:
-            meta.update(agree=True, consensus=grok_rec, consensus_confidence=round(max(grok_conf, chatgpt_conf), 2))
-            _llm._last_model = "grok+chatgpt(agree)"
-            return grok_raw, meta
-        cautious = grok_rec if _CONSERV.get(grok_rec, 9) <= _CONSERV.get(chatgpt_rec, 9) else chatgpt_rec
-        meta.update(agree=False, consensus=cautious, consensus_confidence=round(min(grok_conf, chatgpt_conf) * 0.8, 2))
-        _llm._last_model = "grok+chatgpt(disagree)"
-        return (grok_raw if cautious == grok_rec else chatgpt_raw), meta
-    if grok_rec:
-        _llm._last_model = "grok-3-mini"
-        meta.update(agree=None, consensus=grok_rec, consensus_confidence=round(grok_conf, 2))
-        return grok_raw, meta
-    if chatgpt_rec:
-        _llm._last_model = "gpt-5.4"
-        meta.update(agree=None, consensus=chatgpt_rec, consensus_confidence=round(chatgpt_conf, 2))
-        return chatgpt_raw, meta
-    if manual_trigger:
-        meta.update(agree=None, consensus=None, consensus_confidence=None, error="oauth_lane_unavailable")
+
+    if "deepseek-flash" in want:
+        try:
+            if not llm_lane.available("deepseek-flash"):
+                deepseek_status = "UNAVAILABLE"
+            else:
+                ds_raw = _gen_flash(120)
+                if _is_refusal(ds_raw):
+                    deepseek_status = "REFUSED"
+                elif ds_raw and str(ds_raw).startswith("LLM error"):
+                    err = str(ds_raw).upper()
+                    if "PEAK" in err or "SKIPPED" in err:
+                        deepseek_status = "SKIPPED_PEAK"
+                    elif "CAP" in err or "BUDGET" in err or "COST" in err:
+                        deepseek_status = "CAP"
+                    elif "BREAKER" in err or "CIRCUIT" in err:
+                        deepseek_status = "BREAKER"
+                    else:
+                        deepseek_status = "ERROR"
+                elif ds_raw:
+                    ds_rec, ds_conf = _rec_from(ds_raw)
+                    if ds_rec:
+                        deepseek_status = "VOTED"
+                        raw_by_lane["deepseek-flash"] = ds_raw
+                        votes.append({"lane": "deepseek-flash", "rec": ds_rec, "conf": ds_conf,
+                                      "model": "deepseek-v4-flash"})
+                    else:
+                        deepseek_status = "NO_REC"
+                else:
+                    deepseek_status = "EMPTY"
+        except Exception as _dse:
+            err = str(_dse).upper()
+            if "PEAK" in err or "SKIPPED" in err:
+                deepseek_status = "SKIPPED_PEAK"
+            elif "CAP" in err or "BUDGET" in err or "COST" in err:
+                deepseek_status = "CAP"
+            elif "BREAKER" in err or "CIRCUIT" in err:
+                deepseek_status = "BREAKER"
+            else:
+                deepseek_status = "ERROR"
+
+    def _lane_meta(name: str):
+        v = next((x for x in votes if x["lane"] == name), None)
+        if not v:
+            return None
+        return {"recommendation": v["rec"], "confidence": v["conf"], "model": v.get("model")}
+
+    meta = {
+        "grok": _lane_meta("grok"),
+        "chatgpt": _lane_meta("chatgpt"),
+        "deepseek": _lane_meta("deepseek-flash"),
+        "deepseek_status": deepseek_status,
+        "deepseek_model": "deepseek-v4-flash",
+        "declared_lanes": want,
+        "participating_lanes": [v["lane"] for v in votes],
+        "consensus_kind": "triple" if "deepseek-flash" in want else "dual",
+    }
+    recon = _reconcile_cio_votes(votes)
+    meta.update(recon)
+
+    if votes:
+        # Prefer raw from consensus lane; else first vote
+        winner_lane = next((v["lane"] for v in votes if v["rec"] == recon.get("consensus")), votes[0]["lane"])
+        raw_out = raw_by_lane.get(winner_lane) or next(iter(raw_by_lane.values()))
+        parts = "+".join(v["lane"] for v in votes)
+        tag = "agree" if recon.get("agree") else ("majority" if recon.get("majority") else "disagree")
+        _llm._last_model = f"{parts}({tag})"
+        return raw_out, meta
+
+    # No OAuth/Flash votes — optional Flash-only fallback synthesizer when OAuth dead
+    if manual_trigger and "deepseek-flash" not in want:
+        meta.update(error="oauth_lane_unavailable")
         return "LLM error: requested OAuth lane(s) unavailable or blocked", meta
-    # Explicit governed cloud fallback. No local generative route.
+
+    # Declared fallback: governed Flash synthesizer (separate from voting role above)
+    if deepseek_status not in ("VOTED",) and llm_lane.available("deepseek-flash"):
+        try:
+            out = _gen_flash(120)
+            if out and not str(out).startswith("LLM error") and not _is_refusal(out):
+                ds_rec, ds_conf = _rec_from(out)
+                _llm._last_model = "deepseek-v4-flash"
+                meta.update(
+                    agree=None,
+                    consensus=ds_rec or None,
+                    consensus_confidence=round(ds_conf, 2) if ds_rec else None,
+                    fallback_lane="governed-deepseek-flash",
+                    declared_fallback=True,
+                    deepseek_status="FALLBACK_SYNTH",
+                    deepseek={"recommendation": ds_rec, "confidence": ds_conf, "model": "deepseek-v4-flash"}
+                    if ds_rec else meta.get("deepseek"),
+                    participating_lanes=["deepseek-flash"],
+                )
+                return out, meta
+        except Exception:
+            pass
+
+    if manual_trigger:
+        meta.update(agree=None, consensus=None, consensus_confidence=None, error="cio_lanes_unavailable")
+        return "LLM error: requested CIO lane(s) unavailable or blocked", meta
+
+    # Last resort: existing governed cloud helper (still Flash-first, no local generative)
     out = _llm(prompt, max_tokens=max_tokens, task_type="cio_synthesis", high_impact=False)
     _llm._last_model = getattr(_llm, "_last_model", NO_MODEL) or NO_MODEL
     meta.update(agree=None, consensus=None, consensus_confidence=None,
-                fallback_lane="governed-deepseek-flash", declared_fallback=True)
+                fallback_lane="governed-deepseek-flash", declared_fallback=True,
+                deepseek_status=deepseek_status or "FALLBACK_ROUTER")
     return out, meta
 
 
 def _synthesis_dual(prompt: str, max_tokens: int = 2000):
-    """Gate-B.2: Declared multi-lane CIO research — grok+chatgpt OAuth dual consensus,
-    governed Flash as declared fallback. Output classifies LEGACY_CIO_REVIEW."""
+    """CIO multi-lane research — Grok+ChatGPT+DeepSeek Flash 4.1; LEGACY_CIO_REVIEW."""
     return _synthesis_lanes(prompt, lanes=None, max_tokens=max_tokens, manual_trigger=False)
 
 
@@ -2144,32 +2294,41 @@ CRITICAL INSTRUCTIONS:
     next_review = syn.get("next_review_date")
     synthesis_narrative = syn.get("synthesis_narrative") or syn.get("full_narrative", "")
     # LLM refusals ("**I cannot fulfill this request.**...") are failure artifacts, not synthesis —
-    # normalize them to the "LLM error:" convention so the display guard + purge/requeue machinery
-    # treat them like provider failures (FATN surfaced a raw refusal as its CIO note, 2026-07-06).
-    # Prefix-only: partial refusals that continue with real evidence keep their content.
+    # normalize them and FAIL CLOSED: do not upsert / clobber prior good synthesis.
     _nlead = synthesis_narrative.lstrip("*#_ ").lower()[:60]
     if _nlead.startswith(("i cannot fulfill", "i can't fulfill", "i cannot help", "i can't help",
                           "i'm unable to", "i am unable to", "i cannot act as", "i can't act as",
                           "i cannot provide", "i can't provide")):
         synthesis_narrative = "LLM error: model refused the synthesis prompt (refusal suppressed)"
+    if isinstance(synthesis_narrative, str) and synthesis_narrative.startswith("LLM error"):
+        print(f"  [synthesis] {symbol}: refusal/error narrative — keeping prior synthesis, no upsert")
+        return {"ok": False, "error": "llm_refusal_or_error", "symbol": symbol,
+                "detail": synthesis_narrative[:200], "persisted": False,
+                "dual_consensus": dual_meta}
     dual_meta["agent_contract"] = AGENT_JSON_CONTRACT_VERSION
     dual_meta["structured_evidence"] = syn.get("evidence", [])
     dual_meta["data_i_doubt"] = syn.get("data_i_doubt", "none")
 
-    # ── DUAL-CONSENSUS reconciliation: apply the Grok+ChatGPT verdict BEFORE gating. On disagreement we
-    # already chose the more cautious recommendation + lowered confidence; surface it as a conflict. ──
+    # ── MULTI-CONSENSUS reconciliation: apply Grok+ChatGPT+Flash verdict BEFORE gating. ──
     if dual_meta.get("consensus"):
         parsed["recommendation"] = dual_meta["consensus"]
         if dual_meta.get("consensus_confidence") is not None:
             parsed["confidence"] = dual_meta["consensus_confidence"]
         if dual_meta.get("agree") is False:
+            g = (dual_meta.get("grok") or {}).get("recommendation")
+            ch = (dual_meta.get("chatgpt") or {}).get("recommendation")
+            ds = (dual_meta.get("deepseek") or {}).get("recommendation")
+            parts = [f"Grok={g}" if g else None, f"ChatGPT={ch}" if ch else None,
+                     f"Flash={ds}" if ds else None]
+            parts = [p for p in parts if p]
             conflicts.append(
-                f"MODEL DISAGREEMENT — Grok={dual_meta['grok']['recommendation']} vs "
-                f"ChatGPT={dual_meta['chatgpt']['recommendation']}; took the more cautious "
-                f"({dual_meta['consensus']}) and lowered confidence.")
-            synthesis_narrative = (f"[DUAL-CONSENSUS] Grok and ChatGPT disagreed "
-                                   f"(Grok={dual_meta['grok']['recommendation']}, "
-                                   f"ChatGPT={dual_meta['chatgpt']['recommendation']}). " + synthesis_narrative)
+                f"MODEL DISAGREEMENT — {'; '.join(parts)}; took "
+                f"{'majority' if dual_meta.get('majority') else 'more cautious'} "
+                f"({dual_meta['consensus']}) and adjusted confidence.")
+            synthesis_narrative = (
+                f"[MULTI-CONSENSUS] lanes disagreed ({', '.join(parts)}); "
+                f"settled on {dual_meta['consensus']}. " + synthesis_narrative
+            )
 
     # ── POST-LLM GATING RULES (hard overrides) ──────────────────────
     rec = parsed["recommendation"].upper()
@@ -2249,7 +2408,7 @@ CRITICAL INSTRUCTIONS:
             "dual_consensus": dual_meta,
             "model_used": actual_model,
             "raw_response": raw,
-            "lanes_run": list(lanes or ("grok", "chatgpt")),
+            "lanes_run": list(lanes or ("grok", "chatgpt", "deepseek-flash")),
             "manual_trigger": manual_trigger,
         }
     _grok_rec = (dual_meta.get("grok") or {}).get("recommendation")

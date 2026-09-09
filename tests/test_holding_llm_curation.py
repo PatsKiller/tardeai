@@ -1,0 +1,64 @@
+"""Unit tests for holding intel freshness + CIO multi-consensus reconciliation."""
+from datetime import datetime, timedelta, timezone
+
+from lib.holding_intel_freshness import (
+    annotate_external_row,
+    classify_freshness,
+    is_refusal_narrative,
+    synthesis_status_from_narrative,
+)
+from process_watchlist_agent_jobs import _normalize_cio_lanes, _reconcile_cio_votes
+
+
+def test_freshness_current_stale_expired():
+    now = datetime(2026, 9, 9, 20, 0, tzinfo=timezone.utc)
+    assert classify_freshness(now - timedelta(hours=2), now=now) == "CURRENT"
+    assert classify_freshness(now - timedelta(hours=48), now=now) == "STALE"
+    assert classify_freshness(now - timedelta(days=10), now=now) == "EXPIRED"
+    assert classify_freshness(None, now=now) == "UNDATED"
+
+
+def test_annotate_external_row():
+    now = datetime(2026, 9, 9, 20, 0, tzinfo=timezone.utc)
+    row = annotate_external_row({"lane": "deepseek", "at": now - timedelta(hours=30)}, now=now)
+    assert row["freshness_class"] == "STALE"
+    assert row["age_hours"] is not None and 29 < row["age_hours"] < 31
+
+
+def test_refusal_narrative_detection():
+    assert is_refusal_narrative("LLM error: model refused the synthesis prompt (refusal suppressed)")
+    assert is_refusal_narrative("**I cannot fulfill this request.**")
+    assert not is_refusal_narrative("HOLD — thesis intact with stop defined.")
+    assert synthesis_status_from_narrative("LLM error: boom") == "error"
+    assert synthesis_status_from_narrative("LLM error: model refused the synthesis prompt") == "refused"
+    assert synthesis_status_from_narrative("Solid HOLD narrative") == "ok"
+
+
+def test_normalize_cio_lanes_includes_flash():
+    assert _normalize_cio_lanes(None) == ("grok", "chatgpt", "deepseek-flash")
+    assert "deepseek-flash" in _normalize_cio_lanes(("grok", "deepseek"))
+
+
+def test_reconcile_majority_and_cautious():
+    votes = [
+        {"lane": "grok", "rec": "HOLD", "conf": 0.6},
+        {"lane": "chatgpt", "rec": "IGNORE", "conf": 0.5},
+        {"lane": "deepseek-flash", "rec": "HOLD", "conf": 0.7},
+    ]
+    r = _reconcile_cio_votes(votes)
+    assert r["consensus"] == "HOLD"
+    assert r["majority"] is True
+    assert r["agree"] is False
+
+    full_disagree = [
+        {"lane": "grok", "rec": "BUY", "conf": 0.8},
+        {"lane": "chatgpt", "rec": "HOLD", "conf": 0.6},
+        {"lane": "deepseek-flash", "rec": "IGNORE", "conf": 0.5},
+    ]
+    r2 = _reconcile_cio_votes(full_disagree)
+    assert r2["consensus"] == "IGNORE"  # most cautious
+    assert r2["majority"] is False
+
+
+def test_reconcile_no_invented_vote_when_empty():
+    assert _reconcile_cio_votes([])["consensus"] is None
