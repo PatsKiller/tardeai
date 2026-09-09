@@ -310,7 +310,18 @@ def test_handler_missing_transport_cannot_report_success(tmp_path, monkeypatch):
     _canary_env(monkeypatch)
     wake_result = _settled_wake(tmp_path)
     # deliver=True but sanctioned transport has no TELEGRAM_BOT_TOKEN → fail closed.
-    monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
+    #
+    # Set EMPTY, do not delete. telegram_alert._env() re-bootstraps from .env
+    # whenever a key is ABSENT from os.environ, so monkeypatch.delenv() is
+    # silently undone and the token reappears -- this test then exercised the
+    # provider-failure path (`telegram_send_failed`) instead of the
+    # authorization path it names, and failed on any host with a real .env.
+    # An empty value stays present, so no re-bootstrap occurs and _token()
+    # returns "" as intended.
+    #
+    # Worth noting beyond this test: clearing TELEGRAM_BOT_TOKEN from the
+    # environment does NOT disable Telegram for the same reason.
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "")
     monkeypatch.setenv("ENABLE_TELEGRAM", "true")
     handler = build_wake_outbound_handler(
         env={
