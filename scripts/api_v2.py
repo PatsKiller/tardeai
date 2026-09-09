@@ -42543,20 +42543,21 @@ def _hermes_curate_symbol_challenger(body=None):
     if _hermes_curate_running():
         return {"ok": True, "status": "already_running", "message": "An external curation run is already in progress."}
 
-    # Sequential loop over symbols in ONE background process (one flock hold).
-    loop = (
-        "for s in {syms}; do "
-        '{py} scripts/hermes_external_researcher.py --lane {lane} --symbol "$s" '
-        '--question "Independently evaluate $s: standing thesis, key catalysts/risks, and whether the recommendation should change." '
-        "--trigger holdings --priority P2 --apply "
-        '|| echo "CHALLENGER_FAIL $s"; done'
-    ).format(
-        syms=" ".join(_json.dumps(s) for s in syms),
-        py=sys.executable,
-        lane=lane,
-    )
+    # Sequential, symbol-inlined commands (no shell loop variable — `$s` inside a
+    # nested bash -c gets expanded to empty by the OUTER shell, silently dropping
+    # the symbol). One flock hold for the whole sequence.
+    question_tpl = "Independently evaluate {s}: standing thesis, key catalysts/risks, and whether the recommendation should change."
+    cmds = []
+    for s in syms:
+        q = question_tpl.format(s=s)
+        cmds.append(
+            f"{sys.executable} scripts/hermes_external_researcher.py --lane {lane} --symbol {s} "
+            f"--question {_json.dumps(q)} --trigger holdings --priority P2 --apply "
+            f"|| echo CHALLENGER_FAIL_{s}"
+        )
+    inner = " ; ".join(cmds)
     cmd = (
-        f"cd {PROJECT_ROOT} && flock -n /tmp/hermes_symbol_challenger.lock bash -c {_json.dumps(loop)} "
+        f"cd {PROJECT_ROOT} && flock -n /tmp/hermes_symbol_challenger.lock bash -c {_json.dumps(inner)} "
         f">> logs/hermes_symbol_challenger.log 2>&1"
     )
     subprocess.Popen(
