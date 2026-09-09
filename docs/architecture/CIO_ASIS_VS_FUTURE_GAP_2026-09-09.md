@@ -4,6 +4,7 @@ Measured at: evidence-dated (2026-09-01/02 audit + ops corpus; 2026-09-08/09 can
 Canonical repo path: docs/architecture/CIO_ASIS_VS_FUTURE_GAP_2026-09-09.md
 Authority:   gap analysis — AS-IS (2026-09-09) vs FUTURE (2026-09-09 target); not a behaviour spec
 Supersedes:  none
+Superseded-by: docs/architecture/CIO_ASIS_VS_FUTURE_GAP_2026-09-09-ceiling.md (live-ceiling delta)
 See also:    docs/architecture/CIO_ASIS_VS_SPEC_2026-09-09.md
              docs/architecture/CIO_FUTURE_STATE_FULL_MATURITY_2026-09-09.md
              AGENTS.md §13.4 §15 §19

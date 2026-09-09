@@ -108,17 +108,22 @@ def _interdicted() -> bool:
     )
 
 
+_log = logging.getLogger(__name__)
+
+
 def _interdicted_result() -> dict:
+    # Observability: silent return made interdict unprovable in prod logs.
+    # Log once per call at WARNING so soak/self-repair can see the gate fire.
+    _log.warning(
+        "telegram_interdicted",
+        extra={"event": "telegram_interdicted", "description": "INTERDICTED_TEST_OR_FLAG"},
+    )
     return {
         "ok": False,
         "status_code": 0,
         "response": {"ok": False, "description": "INTERDICTED_TEST_OR_FLAG"},
         "interdicted": True,
     }
-
-
-
-_log = logging.getLogger(__name__)
 
 
 def escape_markdown(text: str) -> str:

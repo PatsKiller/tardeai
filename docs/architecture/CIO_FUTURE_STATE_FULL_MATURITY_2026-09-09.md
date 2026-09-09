@@ -4,6 +4,7 @@ Measured at: not measured — target spec, not runtime
 Canonical repo path: docs/architecture/CIO_FUTURE_STATE_FULL_MATURITY_2026-09-09.md
 Authority:   full-maturity target (judgment, commitment, scoring, self-repair) — refreshed to today, bar unchanged
 Supersedes:  docs/architecture/CIO_FUTURE_STATE_FULL_MATURITY.md (delta + build-order status refreshed)
+Superseded-by: docs/architecture/CIO_FUTURE_STATE_FULL_MATURITY_2026-09-09-ceiling.md (live-ceiling build-order status)
 See also:    docs/architecture/CIO_ASIS_VS_SPEC_2026-09-09.md
              docs/architecture/CIO_ASIS_VS_FUTURE_GAP_2026-09-09.md
              docs/architecture/CIO_FUTURE_STATE_FULL_MATURITY.md (2026-08-30 target, historical)

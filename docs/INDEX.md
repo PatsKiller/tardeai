@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `f257dd19190c7608b94df6357044d3ca362784230868f09eba7b917dfa6d066a`
+**Tree fingerprint:** `3bb638efa7d25a14c55e2ba2492a047ebd68aa7d56bd6311984cba8de888c2e5`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -273,11 +273,11 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/ATM_BROKER_ACCOUNT_AUTOMATION_2026_06_05.md` | ATM → Broker/Account Automation Console (Phase 1) — 2026-06-05 | review_required | OK | `4cc7fdd232c2` |
 | `docs/architecture/ATM_BROKER_ACCOUNT_REFACTOR_DUE_DILIGENCE.md` | ATM Controls → Broker/Account Automation — Due Diligence (Phase 1) | review_required | OK | `34549ef247f4` |
 | `docs/architecture/ATM_EXECUTOR_AUTOMATION_MODE_WIRING_2026_06_05.md` | ATM Executor ← automation_mode Wiring (2026-06-05) | review_required | OK | `62abcc4e67d2` |
-| `docs/architecture/CIO_ASIS_VS_FUTURE_GAP_2026-09-09.md` | CIO Agent — GAP analysis: AS-IS vs FUTURE (2026-09-09) | review_required | OK | `dee82f5e4b96` |
+| `docs/architecture/CIO_ASIS_VS_FUTURE_GAP_2026-09-09.md` | CIO Agent — GAP analysis: AS-IS vs FUTURE (2026-09-09) | review_required | OK | `445daeec3f22` |
 | `docs/architecture/CIO_ASIS_VS_SPEC_2026-08-30.md` | CIO Agent — AS-IS vs SPEC | review_required | OK | `38acfb25d447` |
-| `docs/architecture/CIO_ASIS_VS_SPEC_2026-09-09.md` | CIO Agent — AS-IS vs SPEC (2026-09-09) | review_required | OK | `2c9c1b595abc` |
+| `docs/architecture/CIO_ASIS_VS_SPEC_2026-09-09.md` | CIO Agent — AS-IS vs SPEC (2026-09-09) | review_required | OK | `57bdddcf06e3` |
 | `docs/architecture/CIO_FUTURE_STATE_FULL_MATURITY.md` | CIO Agent — FULL MATURITY TARGET | review_required | OK | `23fcdb6a73f2` |
-| `docs/architecture/CIO_FUTURE_STATE_FULL_MATURITY_2026-09-09.md` | CIO Agent — FULL MATURITY TARGET (2026-09-09) | review_required | OK | `96ac28f1241b` |
+| `docs/architecture/CIO_FUTURE_STATE_FULL_MATURITY_2026-09-09.md` | CIO Agent — FULL MATURITY TARGET (2026-09-09) | review_required | OK | `999bb7b18aab` |
 | `docs/architecture/COST_BASIS_FEED_CORRECTION_2026_06_05.md` | Cost Basis Feed Correction (2026-06-05) | review_required | OK | `971080919db9` |
 | `docs/architecture/DECISION_PACKET_OPERATOR_CARD_AND_RTH_REFRESH.md` | Decision Packet Operator Card + RTH Few-Hour Refresh | review_required | OK | `3e3ba446c94f` |
 | `docs/architecture/DECISION_PROVENANCE_MATRIX.md` | Decision provenance matrix — 2026-08-28 | review_required | OK | `56592a4af733` |

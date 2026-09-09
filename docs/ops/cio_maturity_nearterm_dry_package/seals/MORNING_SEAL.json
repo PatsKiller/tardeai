@@ -1,0 +1,127 @@
+{
+  "campaign_id": "cio-maturity-nearterm-dry-20260909",
+  "claims": [
+    {
+      "claim": "PREFLIGHT_OK",
+      "evidence": "/home/johnclaw/trade-ai-campaigns/cio-maturity-nearterm-dry-20260909/evidence/20260909T034650Z/P0/pins.json",
+      "notes": "collect_rc=0",
+      "status": "PASS"
+    },
+    {
+      "claim": "P1_M5_HERMETIC_PASS",
+      "evidence": "/home/johnclaw/trade-ai-campaigns/cio-maturity-nearterm-dry-20260909/evidence/20260909T034650Z/P1/test_m5_cadence.json",
+      "notes": "",
+      "status": "PASS"
+    },
+    {
+      "claim": "P1_WRITER_STAMP_UNIT_PASS",
+      "evidence": "/home/johnclaw/trade-ai-campaigns/cio-maturity-nearterm-dry-20260909/evidence/20260909T034650Z/P1/test_wake_writer_stamp.json",
+      "notes": "",
+      "status": "PASS"
+    },
+    {
+      "claim": "M5_OBSERVED",
+      "evidence": "/home/johnclaw/trade-ai-campaigns/cio-maturity-nearterm-dry-20260909/evidence/20260909T034650Z/P1/result.json",
+      "notes": "Hermetic PASS does not grant OBSERVED; need days-earlier cadence_not_due on served pin",
+      "status": "AWAITING_OPERATOR"
+    },
+    {
+      "claim": "P2_OUTCOME_DRY_CENSUS",
+      "evidence": "/home/johnclaw/trade-ai-campaigns/cio-maturity-nearterm-dry-20260909/evidence/20260909T034650Z/P2/resolve_due_dry.json",
+      "notes": "no --apply; rc 0/1 accepted for dry census",
+      "status": "PASS"
+    },
+    {
+      "claim": "P2_COMMITMENTS_BOUND",
+      "evidence": "/home/johnclaw/trade-ai-campaigns/cio-maturity-nearterm-dry-20260909/evidence/20260909T034650Z/P2/plan_outcome_dry.json",
+      "notes": "dry bind preview only; --apply forbidden",
+      "status": "AWAITING_OPERATOR"
+    },
+    {
+      "claim": "P3_MODULES_EXERCISED_DRY",
+      "evidence": "/home/johnclaw/trade-ai-campaigns/cio-maturity-nearterm-dry-20260909/evidence/20260909T034650Z/P3",
+      "notes": "modules_ran=['wave3b', 'wave3c', 'catalyst_diagnose', 'integrity']",
+      "status": "PASS"
+    },
+    {
+      "claim": "P3_SCHEDULED",
+      "evidence": "/home/johnclaw/trade-ai-campaigns/cio-maturity-nearterm-dry-20260909/evidence/20260909T034650Z/P3/result.json",
+      "notes": "dry exercise \u2260 scheduled",
+      "status": "AWAITING_OPERATOR"
+    },
+    {
+      "claim": "P4_DUALWRITE_INVENTORY",
+      "evidence": "/home/johnclaw/trade-ai-campaigns/cio-maturity-nearterm-dry-20260909/evidence/20260909T034650Z/P4/inventory_cmd.json",
+      "notes": "",
+      "status": "PASS"
+    },
+    {
+      "claim": "P4_RESOLVED",
+      "evidence": "/home/johnclaw/trade-ai-campaigns/cio-maturity-nearterm-dry-20260909/evidence/20260909T034650Z/P4/result.json",
+      "notes": "inventory only; no legacy_read_only flip",
+      "status": "AWAITING_OPERATOR"
+    },
+    {
+      "claim": "P5_INTERDICT_UNIT_PASS",
+      "evidence": "/home/johnclaw/trade-ai-campaigns/cio-maturity-nearterm-dry-20260909/evidence/20260909T034650Z/P5/test_notification_integrity.json",
+      "notes": "",
+      "status": "PASS"
+    },
+    {
+      "claim": "SILENCE_PROOF",
+      "evidence": "/home/johnclaw/trade-ai-campaigns/cio-maturity-nearterm-dry-20260909/evidence/20260909T034650Z/P5/interdict_static_grep.json",
+      "notes": "static presence of interdict helpers; does not prove prod log line",
+      "status": "PASS"
+    },
+    {
+      "claim": "P5_INTERDICT_LOGGED_IN_PROD",
+      "evidence": "/home/johnclaw/trade-ai-campaigns/cio-maturity-nearterm-dry-20260909/evidence/20260909T034650Z/P5/result.json",
+      "notes": "needs telegram grant + positive-control under CURRENT",
+      "status": "AWAITING_OPERATOR"
+    },
+    {
+      "claim": "P6_JUDGMENT_HERMETIC_$0",
+      "evidence": "/home/johnclaw/trade-ai-campaigns/cio-maturity-nearterm-dry-20260909/evidence/20260909T034650Z/P6/test_agent_view_and_calibration.json",
+      "notes": "spend forced to 0 via env; keys cleared in subprocess env",
+      "status": "PASS"
+    },
+    {
+      "claim": "P6_JUDGMENT_LANE_LIVE",
+      "evidence": "/home/johnclaw/trade-ai-campaigns/cio-maturity-nearterm-dry-20260909/evidence/20260909T034650Z/P6/result.json",
+      "notes": "hermetic $0 \u2260 lane LIVE",
+      "status": "AWAITING_OPERATOR"
+    },
+    {
+      "claim": "P7_AMENDMENTS_PROPOSED_HASHED",
+      "evidence": "/home/johnclaw/trade-ai-campaigns/cio-maturity-nearterm-dry-20260909/evidence/20260909T034650Z/P7/proposed_amendment_hashes.json",
+      "notes": "count=1",
+      "status": "PASS"
+    },
+    {
+      "claim": "P7_AGENTS_PROMULGATED",
+      "evidence": "/home/johnclaw/trade-ai-campaigns/cio-maturity-nearterm-dry-20260909/evidence/20260909T034650Z/P7/result.json",
+      "notes": "hash only; ACTIVE AGENTS not edited",
+      "status": "AWAITING_OPERATOR"
+    }
+  ],
+  "evidence_root": "/home/johnclaw/trade-ai-campaigns/cio-maturity-nearterm-dry-20260909/evidence/20260909T034650Z",
+  "forbidden_claims_not_asserted": [
+    "M5_OBSERVED as PASS",
+    "commitments BOUND",
+    "modules SCHEDULED",
+    "judgment LIVE",
+    "AGENTS PROMULGATED"
+  ],
+  "rails": "READ_ONLY_ADVISORY / dry-hermetic; Ran\u2260healthy; Hermetic\u2260OBSERVED",
+  "schema": "MorningSeal@v1",
+  "sealed_at_utc": "2026-09-09T03:50:58Z",
+  "watchers": {
+    "ended_at_utc": "2026-09-09T03:50:58Z",
+    "hours": 0,
+    "integrity_ticks": 1,
+    "m5_ticks": 1,
+    "note": "sealed after phases + initial watcher ticks; 8h watch continues separately",
+    "sealed_mode": "phase_complete_with_initial_watch",
+    "started_at_utc": "2026-09-09T03:50:58Z"
+  }
+}
