@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `9428efe8499857d6ca3620bf85c6a0738b90301445d13b7dd4bfadfa942b4bf4`
+**Tree fingerprint:** `f0ad82ecbd50d428bea37089136e4018f0e54881d8d3c7cf4c7a78cd376bc630`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -273,13 +273,13 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/ATM_BROKER_ACCOUNT_AUTOMATION_2026_06_05.md` | ATM → Broker/Account Automation Console (Phase 1) — 2026-06-05 | review_required | OK | `4cc7fdd232c2` |
 | `docs/architecture/ATM_BROKER_ACCOUNT_REFACTOR_DUE_DILIGENCE.md` | ATM Controls → Broker/Account Automation — Due Diligence (Phase 1) | review_required | OK | `34549ef247f4` |
 | `docs/architecture/ATM_EXECUTOR_AUTOMATION_MODE_WIRING_2026_06_05.md` | ATM Executor ← automation_mode Wiring (2026-06-05) | review_required | OK | `62abcc4e67d2` |
-| `docs/architecture/CIO_ASIS_VS_FUTURE_GAP_2026-09-09-ceiling.md` | CIO Agent — GAP analysis after live ceiling (2026-09-09) | review_required | OK | `d9034f7edb3e` |
+| `docs/architecture/CIO_ASIS_VS_FUTURE_GAP_2026-09-09-ceiling.md` | CIO Agent — GAP analysis after live ceiling (2026-09-09) | review_required | OK | `0a49dfc65f40` |
 | `docs/architecture/CIO_ASIS_VS_FUTURE_GAP_2026-09-09.md` | CIO Agent — GAP analysis: AS-IS vs FUTURE (2026-09-09) | review_required | OK | `445daeec3f22` |
 | `docs/architecture/CIO_ASIS_VS_SPEC_2026-08-30.md` | CIO Agent — AS-IS vs SPEC | review_required | OK | `38acfb25d447` |
-| `docs/architecture/CIO_ASIS_VS_SPEC_2026-09-09-ceiling.md` | CIO Agent — AS-IS vs SPEC (2026-09-09 live ceiling) | review_required | OK | `fe634d3ca81e` |
+| `docs/architecture/CIO_ASIS_VS_SPEC_2026-09-09-ceiling.md` | CIO Agent — AS-IS vs SPEC (2026-09-09 live ceiling) | review_required | OK | `11646742f3fe` |
 | `docs/architecture/CIO_ASIS_VS_SPEC_2026-09-09.md` | CIO Agent — AS-IS vs SPEC (2026-09-09) | review_required | OK | `57bdddcf06e3` |
 | `docs/architecture/CIO_FUTURE_STATE_FULL_MATURITY.md` | CIO Agent — FULL MATURITY TARGET | review_required | OK | `23fcdb6a73f2` |
-| `docs/architecture/CIO_FUTURE_STATE_FULL_MATURITY_2026-09-09-ceiling.md` | CIO Agent — FULL MATURITY TARGET (2026-09-09 live ceiling) | review_required | OK | `aa2cca5edd0c` |
+| `docs/architecture/CIO_FUTURE_STATE_FULL_MATURITY_2026-09-09-ceiling.md` | CIO Agent — FULL MATURITY TARGET (2026-09-09 live ceiling) | review_required | OK | `2ffcc8e19322` |
 | `docs/architecture/CIO_FUTURE_STATE_FULL_MATURITY_2026-09-09.md` | CIO Agent — FULL MATURITY TARGET (2026-09-09) | review_required | OK | `999bb7b18aab` |
 | `docs/architecture/COST_BASIS_FEED_CORRECTION_2026_06_05.md` | Cost Basis Feed Correction (2026-06-05) | review_required | OK | `971080919db9` |
 | `docs/architecture/DECISION_PACKET_OPERATOR_CARD_AND_RTH_REFRESH.md` | Decision Packet Operator Card + RTH Few-Hour Refresh | review_required | OK | `3e3ba446c94f` |
@@ -1642,9 +1642,9 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/cio_maturity_nearterm_dry_package/closeout/DESIGNED.md` | DESIGNED — cio-maturity-nearterm-dry-20260909 | review_required | MISSING HEADER | `88b2c8d13176` |
 | `docs/ops/cio_maturity_nearterm_dry_package/closeout/EXECUTED.md` | EXECUTED — cio-maturity-nearterm-dry-20260909 | review_required | MISSING HEADER | `096901b74847` |
 | `docs/ops/cio_maturity_nearterm_dry_package/closeout/WHAT_WORKED.md` | WHAT_WORKED — cio-maturity-nearterm-dry-20260909 | review_required | MISSING HEADER | `36cb2fd1f4fe` |
-| `docs/ops/cio_maturity_nearterm_dry_package/live_ceiling/LIVE_CEILING_STATUS.md` | LIVE CEILING STATUS — 2026-09-09 | review_required | MISSING HEADER | `a1b3f097c723` |
+| `docs/ops/cio_maturity_nearterm_dry_package/live_ceiling/LIVE_CEILING_STATUS.md` | LIVE CEILING STATUS — 2026-09-09 FINAL | review_required | MISSING HEADER | `0fef781dc3b4` |
 | `docs/ops/cio_maturity_nearterm_dry_package/live_ceiling/M5_OBSERVED_ADJUDICATION.md` | M5_OBSERVED adjudication — live ceiling 2026-09-09 | review_required | MISSING HEADER | `53bdc95777bc` |
-| `docs/ops/cio_maturity_nearterm_dry_package/live_ceiling/OPERATOR_DECISION_UNSCHEDULED_MODULES.md` | OPERATOR_DECISION — unscheduled modules (schedule vs delete) | review_required | MISSING HEADER | `432c2720bd4f` |
+| `docs/ops/cio_maturity_nearterm_dry_package/live_ceiling/OPERATOR_DECISION_UNSCHEDULED_MODULES.md` | OPERATOR_DECISION — unscheduled modules (schedule vs delete) | review_required | MISSING HEADER | `672e2a8167df` |
 | `docs/ops/cio_maturity_nearterm_dry_package/seals/MORNING_SEAL.md` | MORNING_SEAL — cio-maturity-nearterm-dry-20260909 | review_required | MISSING HEADER | `69598aa61f43` |
 | `docs/ops/deepseek-v4-mainline-2026-08-03/FINAL_REPORT.md` | DeepSeek V4 Mainline Integration Report | review_required | OK | `29d541688fd1` |
 | `docs/ops/deepseek-v4-mainline-2026-08-03/ROLLBACK.md` | Rollback | review_required | OK | `e39ac9129fda` |

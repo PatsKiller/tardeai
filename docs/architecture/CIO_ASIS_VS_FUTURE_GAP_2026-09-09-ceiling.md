@@ -4,6 +4,7 @@ Measured at: dry seal + live ceiling evidence package
 Canonical repo path: docs/architecture/CIO_ASIS_VS_FUTURE_GAP_2026-09-09-ceiling.md
 Authority:   gap analysis — AS-IS (ceiling) vs FUTURE (ceiling); not a behaviour spec
 Supersedes:  docs/architecture/CIO_ASIS_VS_FUTURE_GAP_2026-09-09.md (for post-ceiling delta)
+Superseded-by: docs/architecture/CIO_ASIS_VS_FUTURE_GAP_2026-09-09-final.md
 See also:    docs/architecture/CIO_ASIS_VS_SPEC_2026-09-09-ceiling.md
              docs/architecture/CIO_FUTURE_STATE_FULL_MATURITY_2026-09-09-ceiling.md
              docs/ops/cio_maturity_nearterm_dry_package/
