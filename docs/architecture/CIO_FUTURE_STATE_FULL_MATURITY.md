@@ -4,6 +4,7 @@ Measured at: not measured — target spec, not runtime
 Canonical repo path: docs/architecture/CIO_FUTURE_STATE_FULL_MATURITY.md
 Authority:   full-maturity target (judgment, commitment, scoring, self-repair)
 Supersedes:  none
+Superseded-by: docs/architecture/CIO_FUTURE_STATE_FULL_MATURITY_2026-09-09.md (delta + build-order status refreshed; this file kept as historical)
 See also:    docs/architecture/CIO_ASIS_VS_SPEC_2026-08-30.md
              docs/architecture/PROJECT_THE_DESK_V2.md
              AGENTS.md §13.4 §15 §19
