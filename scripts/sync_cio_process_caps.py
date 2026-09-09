@@ -30,6 +30,9 @@ CAPS: dict[str, tuple[float, int]] = {
     "alex_cio_escalation": (0.15, 20),
     "reflective_critic_flash": (0.10, 100),
     "hermes_external_research": (0.30, 120),
+    # 2026-09-09: shared Flash process — 100000 soft cap was effectively-unlimited
+    # and let 4929 settled calls/day exhaust the $0.50 global budget. Bound to 600.
+    "advisory_desk_opinion": (1.25, 600),
 }
 
 
@@ -58,7 +61,8 @@ def main() -> int:
             WHERE process_id IN (
               'guardian_risk_critique','ledger_tax_critique','steph_allocation_review',
               'maria_research_critique','morgan_wealth_synthesis','alex_cio_synthesis',
-              'alex_cio_escalation','reflective_critic_flash','hermes_external_research')
+              'alex_cio_escalation','reflective_critic_flash','hermes_external_research',
+              'advisory_desk_opinion')
             ORDER BY process_id""",
         fetch="all",
     ) or []
