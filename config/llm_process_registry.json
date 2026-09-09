@@ -636,7 +636,7 @@
       "deepseek_allowed_policies": [
         "FAST"
       ],
-      "max_input_tokens": 8000,
+      "max_input_tokens": 32000,
       "max_output_tokens": 8192,
       "daily_soft_cap": 600,
       "daily_cost_cap_usd": 1.25,
@@ -647,7 +647,7 @@
       "circuit_breaker": true,
       "registered_by": "advisory-desk-p0",
       "registered_at": "2026-08-11T12:00:00Z",
-      "notes": " | 2026-08-12: raised daily_cost_cap_usd 0.05\u21920.20\u21920.30 and daily_soft_cap 80\u2192200 to cover 12 watchlist + 20 holding Flash opinions under global 0.50. Local/Ollama fallback lane removed \u2014 DeepSeek is the sole default lane. | 2026-09-09: daily_soft_cap 100000\u2192600 and max_input_tokens 32000\u21928000 — the soft cap had been set to effectively-unlimited, and this process_id is SHARED by many CIO Flash callers (advisory opinion engine, plan enrichment, prompt judge, telegram converse, operator desk loop, situation detector). 4929 settled calls on 2026-09-09 exhausted the $0.50 global daily cap ($1.07 actual). 600 bounds request volume to ~$0.12/day; 8000 input stops 50\u00d7 reservation projection inflation (32000 was a per-row ceiling applied to a compact evidence pack)."
+      "notes": " | 2026-08-12: raised daily_cost_cap_usd 0.05\u21920.20\u21920.30 and daily_soft_cap 80\u2192200 to cover 12 watchlist + 20 holding Flash opinions under global 0.50. Local/Ollama fallback lane removed \u2014 DeepSeek is the sole default lane. | 2026-09-09: daily_soft_cap 100000\u2192600. This process_id is SHARED by many CIO Flash callers (advisory opinion engine, plan enrichment, prompt judge, telegram converse, operator desk loop, situation detector); 4929 settled calls on 2026-09-09 exhausted the $0.50 global daily cap ($1.07 actual). The volume bound is the fix — max_input_tokens stays 32000 because held-name evidence packs are ~10k tokens and the 8000 trial rejected every challenger with INPUT_LIMIT_EXCEEDED."
     },
     {
       "id": "advisory_desk_synthesis",
