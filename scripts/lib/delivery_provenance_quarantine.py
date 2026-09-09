@@ -12,6 +12,14 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Iterable
 
+
+NO_CONSUMER_REASON = (
+    "maturity-gap-closure-20260909 hermetic lane helpers; serving-SHA producers/"
+    "consumers await merge+promote+operator grants (telegram/service/drive). "
+    "Zero live consumers is correct until then — not a silent dark contract "
+    "(MBI_BEHAVIOR=0; recommendation≠mutation)."
+)
+
 log = logging.getLogger("tradeai.delivery_provenance_quarantine")
 
 _ROOT = Path(__file__).resolve().parents[2]

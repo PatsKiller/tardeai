@@ -13,6 +13,14 @@ from typing import Any
 import hashlib
 import json
 
+
+NO_CONSUMER_REASON = (
+    "maturity-gap-closure-20260909 hermetic lane helpers; serving-SHA producers/"
+    "consumers await merge+promote+operator grants (telegram/service/drive). "
+    "Zero live consumers is correct until then — not a silent dark contract "
+    "(MBI_BEHAVIOR=0; recommendation≠mutation)."
+)
+
 SCHEMA = "SelfRepairLoop@v1"
 AUTHORITY = "READ_ONLY_ADVISORY"
 MAX_SCOPE = "non_financial_ops_only"

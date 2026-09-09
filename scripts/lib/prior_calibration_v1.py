@@ -6,6 +6,13 @@ from datetime import datetime, timezone
 from typing import Any
 import hashlib
 
+NO_CONSUMER_REASON = (
+    "maturity-gap-closure-20260909 hermetic lane helpers; serving-SHA producers/"
+    "consumers await merge+promote+operator grants (telegram/service/drive). "
+    "Zero live consumers is correct until then — not a silent dark contract "
+    "(MBI_BEHAVIOR=0; recommendation≠mutation)."
+)
+
 SCHEMA = "PriorCalibration@v1"
 AUTHORITY = "READ_ONLY_ADVISORY"
 MIN_SAMPLES = 5
@@ -62,3 +69,5 @@ class CalibrationStore:
 
 def gate_scoring_allowed(*, valid_evaluated_commitments: int) -> bool:
     return int(valid_evaluated_commitments) > 0
+
+

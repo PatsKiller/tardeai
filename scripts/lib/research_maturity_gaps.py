@@ -11,6 +11,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+
+NO_CONSUMER_REASON = (
+    "maturity-gap-closure-20260909 hermetic lane helpers; serving-SHA producers/"
+    "consumers await merge+promote+operator grants (telegram/service/drive). "
+    "Zero live consumers is correct until then — not a silent dark contract "
+    "(MBI_BEHAVIOR=0; recommendation≠mutation)."
+)
+
 AUTHORITY = "READ_ONLY_ADVISORY"
 SCHEMA = "ResearchSourceIndexGap@v1"
 EVIDENCE_BAR_SCHEMA = "RetentionCurationEvidenceBar@v1"

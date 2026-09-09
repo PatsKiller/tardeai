@@ -6,6 +6,13 @@ from datetime import datetime, timezone
 from typing import Any
 import hashlib
 
+NO_CONSUMER_REASON = (
+    "maturity-gap-closure-20260909 hermetic lane helpers; serving-SHA producers/"
+    "consumers await merge+promote+operator grants (telegram/service/drive). "
+    "Zero live consumers is correct until then — not a silent dark contract "
+    "(MBI_BEHAVIOR=0; recommendation≠mutation)."
+)
+
 SCHEMA = "AGENT_COMMITMENT@v1"
 OUTCOME_SCHEMA = "CommitmentOutcome@v1"
 AUTHORITY = "READ_ONLY_ADVISORY"
@@ -51,6 +58,7 @@ class AgentCommitmentV1:
 
 def validate_commitment_semantics(row: dict[str, Any]) -> tuple[bool, list[str]]:
     """Table name alone is insufficient — require semantic fields."""
+
     errs: list[str] = []
     schema = str(row.get("schema_version") or row.get("memory_type") or "")
     if SCHEMA not in schema and row.get("memory_type") != "AGENT_COMMITMENT":
