@@ -4,6 +4,7 @@ Measured at: audit programme snapshot — re-measure before quoting node status
 Canonical repo path: docs/architecture/CIO_ASIS_VS_SPEC_2026-08-30.md
 Authority:   dated reading of LIVE / PARTIAL / UNWIRED / DARK — not a behaviour spec
 Supersedes:  none
+Superseded-by: docs/architecture/CIO_ASIS_VS_SPEC_2026-09-09.md (readings of moved nodes; this file kept as historical)
 See also:    docs/architecture/CIO_FUTURE_STATE_FULL_MATURITY.md
              docs/architecture/PROJECT_THE_DESK_V2.md
              AGENTS.md §13.4 §15 §19
