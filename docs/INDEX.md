@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `4b6135e1895c1c067bd8aa90f698d610afeea37b93da2182b5f1ba8a45595c2f`
+**Tree fingerprint:** `9428efe8499857d6ca3620bf85c6a0738b90301445d13b7dd4bfadfa942b4bf4`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -1642,7 +1642,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/cio_maturity_nearterm_dry_package/closeout/DESIGNED.md` | DESIGNED — cio-maturity-nearterm-dry-20260909 | review_required | MISSING HEADER | `88b2c8d13176` |
 | `docs/ops/cio_maturity_nearterm_dry_package/closeout/EXECUTED.md` | EXECUTED — cio-maturity-nearterm-dry-20260909 | review_required | MISSING HEADER | `096901b74847` |
 | `docs/ops/cio_maturity_nearterm_dry_package/closeout/WHAT_WORKED.md` | WHAT_WORKED — cio-maturity-nearterm-dry-20260909 | review_required | MISSING HEADER | `36cb2fd1f4fe` |
-| `docs/ops/cio_maturity_nearterm_dry_package/live_ceiling/LIVE_CEILING_STATUS.md` | LIVE CEILING STATUS — 2026-09-09 | review_required | MISSING HEADER | `c0967401f314` |
+| `docs/ops/cio_maturity_nearterm_dry_package/live_ceiling/LIVE_CEILING_STATUS.md` | LIVE CEILING STATUS — 2026-09-09 | review_required | MISSING HEADER | `a1b3f097c723` |
 | `docs/ops/cio_maturity_nearterm_dry_package/live_ceiling/M5_OBSERVED_ADJUDICATION.md` | M5_OBSERVED adjudication — live ceiling 2026-09-09 | review_required | MISSING HEADER | `53bdc95777bc` |
 | `docs/ops/cio_maturity_nearterm_dry_package/live_ceiling/OPERATOR_DECISION_UNSCHEDULED_MODULES.md` | OPERATOR_DECISION — unscheduled modules (schedule vs delete) | review_required | MISSING HEADER | `432c2720bd4f` |
 | `docs/ops/cio_maturity_nearterm_dry_package/seals/MORNING_SEAL.md` | MORNING_SEAL — cio-maturity-nearterm-dry-20260909 | review_required | MISSING HEADER | `69598aa61f43` |
