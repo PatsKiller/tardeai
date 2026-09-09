@@ -36891,9 +36891,7 @@ def _hermes_intel(symbol):
         cio_synthesis = {
             "recommendation": _fs.get("recommendation") if _status == "ok" else _fs.get("recommendation"),
             "narrative": narrative_out,
-            "narrative_snip": (snip[:320] if snip else None)
-            if _status == "ok"
-            else None,
+            "narrative_snip": (snip[:320] if snip else None) if _status == "ok" else None,
             "synthesis_status": _status,
             "evidence": _cio_ep.get("evidence") or [] if _status == "ok" else [],
             "data_i_doubt": _cio_ep.get("data_i_doubt") if _status == "ok" else None,
@@ -36905,14 +36903,10 @@ def _hermes_intel(symbol):
             "deepseek_status": _dc.get("deepseek_status"),
             "deepseek_model": _dc.get("deepseek_model") or "deepseek-v4-flash",
             "deepseek": _dc.get("deepseek"),
-            "grok": _dc.get("grok") or (
-                {"recommendation": _fs.get("grok_recommendation")} if _fs.get("grok_recommendation") else None
-            ),
-            "chatgpt": _dc.get("chatgpt") or (
-                {"recommendation": _fs.get("chatgpt_recommendation")}
-                if _fs.get("chatgpt_recommendation")
-                else None
-            ),
+            "grok": _dc.get("grok")
+            or ({"recommendation": _fs.get("grok_recommendation")} if _fs.get("grok_recommendation") else None),
+            "chatgpt": _dc.get("chatgpt")
+            or ({"recommendation": _fs.get("chatgpt_recommendation")} if _fs.get("chatgpt_recommendation") else None),
             "models_agree": _fs.get("models_agree"),
             "confidence": _json_clean(_fs.get("confidence")),
             "model_used": _fs.get("model_used"),
@@ -46327,7 +46321,10 @@ ROUTES = {
     "/api/v2/sectors/monitor": _sectors_monitor,
     "/api/v2/hermes/external-intel-map": _hermes_external_intel_map,
     "/api/v2/hermes/curate-top20": _hermes_curate_top20_status,
-    "/api/v2/hermes/curate-symbol": lambda: {"ok": True, "hint": "POST {symbol, lane?} — on-demand deepseek/grok/chatgpt challenger"},
+    "/api/v2/hermes/curate-symbol": lambda: {
+        "ok": True,
+        "hint": "POST {symbol, lane?} — on-demand deepseek/grok/chatgpt challenger",
+    },
     "/api/v2/hermes/subject-intel": _hermes_subject_intel,
     "/api/v2/hermes/subject-intel-map": _hermes_subject_intel_map,
     "/api/v2/discovery/results": _discovery_results,
