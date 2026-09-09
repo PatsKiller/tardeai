@@ -42511,27 +42511,52 @@ def _hermes_curate_top20_trigger(body=None):
 
 
 def _hermes_curate_symbol_challenger(body=None):
-    """POST /api/v2/hermes/curate-symbol — on-demand external challenger for one symbol.
+    """POST /api/v2/hermes/curate-symbol — on-demand external challenger.
 
     Default lane=deepseek (paid Flash). Does NOT change the cron default (still grok,chatgpt).
-    Returns skip visibility via subsequent GET /hermes/intel/{sym} lane_status_summary.
+
+    IMPORTANT: deepseek is a PAID lane and the top-20 fan-out
+    (hermes_top20_external_intel.py) hard-blocks paid lanes via the budget guard
+    ("paid model is never an allowed research lane"). A paid challenger must call
+    hermes_external_researcher.py --lane deepseek DIRECTLY (allowed for held/#
+    high-rank T0 names). Routing deepseek through the fan-out would silently BLOCK
+    every request — the exact "inert endpoint" failure this program forbids.
+
+    Accepts {symbol: "SPCX"} or {symbols: ["SPCX","SCHD"]} or {symbol: "SPCX,SCHD"}.
     """
     import subprocess
     import sys
     import re as _re
+    import json as _json
 
     body = body or {}
-    symbol = str(body.get("symbol") or "").upper().strip()
-    if not _re.fullmatch(r"[A-Z]{1,5}", symbol):
-        return {"ok": False, "error": "symbol_required", "hint": "pass {symbol: 'SPCX'}"}
+    raw = body.get("symbol") or body.get("symbols") or ""
+    if isinstance(raw, list):
+        syms = [str(x).upper().strip() for x in raw]
+    else:
+        syms = [x.strip().upper() for x in str(raw).split(",") if x.strip()]
+    if not syms or any(not _re.fullmatch(r"[A-Z]{1,5}", s) for s in syms):
+        return {"ok": False, "error": "symbols_required", "hint": "pass {symbols: ['SPCX','SCHD']}"}
     lane = str(body.get("lane") or "deepseek").strip().lower()
     if lane not in ("deepseek", "grok", "chatgpt", "claude"):
         return {"ok": False, "error": "lane_not_allowed", "allowed": ["deepseek", "grok", "chatgpt", "claude"]}
     if _hermes_curate_running():
         return {"ok": True, "status": "already_running", "message": "An external curation run is already in progress."}
+
+    # Sequential loop over symbols in ONE background process (one flock hold).
+    loop = (
+        "for s in {syms}; do "
+        '{py} scripts/hermes_external_researcher.py --lane {lane} --symbol "$s" '
+        '--question "Independently evaluate $s: standing thesis, key catalysts/risks, and whether the recommendation should change." '
+        "--trigger holdings --priority P2 --apply "
+        '|| echo "CHALLENGER_FAIL $s"; done'
+    ).format(
+        syms=" ".join(_json.dumps(s) for s in syms),
+        py=sys.executable,
+        lane=lane,
+    )
     cmd = (
-        f"cd {PROJECT_ROOT} && flock -n /tmp/hermes_symbol_challenger.lock "
-        f"{sys.executable} scripts/hermes_top20_external_intel.py --symbols {symbol} --lanes {lane} --apply "
+        f"cd {PROJECT_ROOT} && flock -n /tmp/hermes_symbol_challenger.lock bash -c {_json.dumps(loop)} "
         f">> logs/hermes_symbol_challenger.log 2>&1"
     )
     subprocess.Popen(
@@ -42544,10 +42569,10 @@ def _hermes_curate_symbol_challenger(body=None):
     return {
         "ok": True,
         "status": "started",
-        "symbol": symbol,
+        "symbols": syms,
         "lane": lane,
         "message": (
-            f"{lane} challenger started for {symbol}. "
+            f"{lane} challenger started for {len(syms)} symbol(s). "
             "If skipped (peak/cap/DQ), lane_status_summary on /hermes/intel will show why — not silent absence."
         ),
     }
