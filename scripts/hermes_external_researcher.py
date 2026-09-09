@@ -137,6 +137,22 @@ Compare new evidence with the standing thesis and return a ResearchThesisDelta@v
 """ + build_external_research_json_schema()
 
 
+def _redact_struct(obj):
+    """Redact string values in a nested structure (dict/list), leaving numbers/bools intact.
+
+    Do NOT redact a JSON-serialized string and re-parse it: redact() corrupts
+    numeric literals (e.g. ``1267430.0`` -> ``[REDACTED_NUM].0``), which
+    json.loads then rejects. Redact values only.
+    """
+    if isinstance(obj, str):
+        return redact(obj)
+    if isinstance(obj, dict):
+        return {k: _redact_struct(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_redact_struct(v) for v in obj]
+    return obj
+
+
 def canonical_prompt_context(symbol, question):
     """Return the redacted stateful contract, retaining safe legacy context."""
     if not symbol:
@@ -149,7 +165,7 @@ def canonical_prompt_context(symbol, question):
     legacy = safe_context(symbol)
     if legacy:
         context["legacy_safe_context"] = legacy
-    return json.loads(redact(json.dumps(context)))
+    return _redact_struct(context)
 
 
 def reconcile_accepted_research(symbol, rid, parsed, prompt_context, args):
