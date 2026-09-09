@@ -36804,10 +36804,12 @@ def _hermes_intel(symbol):
     factors = [{"factor": k, **v} for k, v in comp.items() if not k.startswith("_")]
     factors.sort(key=lambda f: -(f.get("score", 0) * f.get("weight", 0)))
     # H-6: external-LLM full theses (latest per lane) for the intel-card drawer
+    from lib.holding_intel_freshness import annotate_external_row, classify_freshness, synthesis_status_from_narrative
+
     ext_rows = (
         _db_query(
             """SELECT DISTINCT ON (lane) lane, model, recommendation, evidence_json, dissent,
-                              confidence, risk_flags, created_at
+                              confidence, risk_flags, created_at, research_guid, prior_research_guid
                             FROM hermes_external_research
                             WHERE symbol=%s AND status IN ('sent','ok','complete','success')
                             ORDER BY lane, created_at DESC""",
@@ -36818,7 +36820,7 @@ def _hermes_intel(symbol):
     external_intel = []
     for e in ext_rows:
         _eep = _evidence_packet(e.get("evidence_json") or e)
-        external_intel.append(
+        row = annotate_external_row(
             {
                 "lane": e["lane"],
                 "model": e.get("model"),
@@ -36830,27 +36832,98 @@ def _hermes_intel(symbol):
                 "confidence": _json_clean(e.get("confidence")),
                 "risk_flags": e.get("risk_flags"),
                 "at": _json_clean(e.get("created_at")),
+                "research_guid": e.get("research_guid"),
+                "prior_research_guid": e.get("prior_research_guid"),
             }
         )
+        # Hide expired theses by default; STALE kept with badge
+        if row.get("freshness_class") == "EXPIRED":
+            row["hidden_expired"] = True
+            continue
+        external_intel.append(row)
+
+    # Why Deepseek (etc.) may be missing: recent non-success statuses
+    lane_status_rows = (
+        _db_query(
+            """SELECT lane, status, count(*)::int AS n, max(created_at) AS last_at
+               FROM hermes_external_research
+               WHERE symbol=%s AND created_at > now() - interval '14 days'
+               GROUP BY lane, status
+               ORDER BY lane, n DESC""",
+            (symbol,),
+        )
+        or []
+    )
+    lane_status_summary = {}
+    for r in lane_status_rows:
+        lane_status_summary.setdefault(r["lane"], []).append(
+            {
+                "status": r["status"],
+                "n": r["n"],
+                "last_at": _json_clean(r.get("last_at")),
+                "freshness_class": classify_freshness(r.get("last_at")),
+            }
+        )
+
     _fs = _db_query(
-        "SELECT dual_consensus_json, synthesis_narrative, recommendation FROM watchlist_final_synthesis WHERE symbol=%s",
+        """SELECT dual_consensus_json, synthesis_narrative, recommendation, confidence,
+                  grok_recommendation, chatgpt_recommendation, models_agree, updated_at, model_used
+           FROM watchlist_final_synthesis WHERE symbol=%s""",
         (symbol,),
         fetch="one",
     )
-    _cio_ep = _evidence_packet(_fs.get("dual_consensus_json") if _fs else {})
+    cio_synthesis = None
+    if _fs:
+        _narr = str((_fs or {}).get("synthesis_narrative") or "")
+        _status = synthesis_status_from_narrative(_narr)
+        _dc = _fs.get("dual_consensus_json") or {}
+        if isinstance(_dc, str):
+            try:
+                import json as _jdc
+
+                _dc = _jdc.loads(_dc)
+            except Exception:
+                _dc = {}
+        _cio_ep = _evidence_packet(_dc)
+        # Do not promote refusal/error narratives as curated prose
+        narrative_out = None if _status in ("refused", "error") else _narr
+        snip = (narrative_out or "")[:1200] if narrative_out else None
+        cio_synthesis = {
+            "recommendation": _fs.get("recommendation") if _status == "ok" else _fs.get("recommendation"),
+            "narrative": narrative_out,
+            "narrative_snip": (snip[:320] if snip else None) if _status == "ok" else None,
+            "synthesis_status": _status,
+            "evidence": _cio_ep.get("evidence") or [] if _status == "ok" else [],
+            "data_i_doubt": _cio_ep.get("data_i_doubt") if _status == "ok" else None,
+            "agent_contract": _cio_ep.get("agent_contract"),
+            "canonical": True,
+            "system_of_record": True,
+            "participating_lanes": _dc.get("participating_lanes") or [],
+            "declared_lanes": _dc.get("declared_lanes") or [],
+            "deepseek_status": _dc.get("deepseek_status"),
+            "deepseek_model": _dc.get("deepseek_model") or "deepseek-v4-flash",
+            "deepseek": _dc.get("deepseek"),
+            "grok": _dc.get("grok")
+            or ({"recommendation": _fs.get("grok_recommendation")} if _fs.get("grok_recommendation") else None),
+            "chatgpt": _dc.get("chatgpt")
+            or ({"recommendation": _fs.get("chatgpt_recommendation")} if _fs.get("chatgpt_recommendation") else None),
+            "models_agree": _fs.get("models_agree"),
+            "confidence": _json_clean(_fs.get("confidence")),
+            "model_used": _fs.get("model_used"),
+            "updated_at": _json_clean(_fs.get("updated_at")),
+            "freshness_class": classify_freshness(_fs.get("updated_at")),
+            "fallback_lane": _dc.get("fallback_lane"),
+            "note": "Canonical CIO holding narrative (watchlist_final_synthesis). External LLM cards below are challengers, not system of record.",
+        }
+        if _status in ("refused", "error"):
+            cio_synthesis["error_detail"] = _narr[:200]
+
     return {
         "symbol": symbol,
         "composite_score": _json_clean(wi.get("hermes_composite_score")),
         "external_intel": external_intel,
-        "cio_synthesis": {
-            "recommendation": _fs.get("recommendation") if _fs else None,
-            "narrative_snip": str((_fs or {}).get("synthesis_narrative") or "")[:320],
-            "evidence": _cio_ep.get("evidence") or [],
-            "data_i_doubt": _cio_ep.get("data_i_doubt"),
-            "agent_contract": _cio_ep.get("agent_contract"),
-        }
-        if _fs
-        else None,
+        "lane_status_summary": lane_status_summary,
+        "cio_synthesis": cio_synthesis,
         "rank": wi.get("hermes_rank"),
         "confidence": comp.get("_confidence"),
         "coverage": comp.get("_coverage"),
@@ -42414,7 +42487,9 @@ def _hermes_curate_top20_trigger(body=None):
     if _hermes_curate_running():
         return {"ok": True, "status": "already_running", "message": "A top-20 curation run is already in progress."}
     lanes = (body or {}).get("lanes", "chatgpt")
-    lanes = ",".join(x for x in str(lanes).split(",") if x.strip() in ("chatgpt", "grok", "claude")) or "chatgpt"
+    # deepseek allowed for on-demand / held challenger runs — not the default cron set
+    allowed = ("chatgpt", "grok", "claude", "deepseek")
+    lanes = ",".join(x for x in str(lanes).split(",") if x.strip() in allowed) or "chatgpt"
     cmd = (
         f"cd {PROJECT_ROOT} && flock -n /tmp/hermes_top20_manual.lock "
         f"{sys.executable} scripts/hermes_top20_external_intel.py --top 20 --lanes {lanes} --apply "
@@ -42432,6 +42507,49 @@ def _hermes_curate_top20_trigger(body=None):
         "status": "started",
         "lanes": lanes,
         "message": f"{lanes} curation started on the top 20 — badges appear as each name finishes (~20-40 min).",
+    }
+
+
+def _hermes_curate_symbol_challenger(body=None):
+    """POST /api/v2/hermes/curate-symbol — on-demand external challenger for one symbol.
+
+    Default lane=deepseek (paid Flash). Does NOT change the cron default (still grok,chatgpt).
+    Returns skip visibility via subsequent GET /hermes/intel/{sym} lane_status_summary.
+    """
+    import subprocess
+    import sys
+    import re as _re
+
+    body = body or {}
+    symbol = str(body.get("symbol") or "").upper().strip()
+    if not _re.fullmatch(r"[A-Z]{1,5}", symbol):
+        return {"ok": False, "error": "symbol_required", "hint": "pass {symbol: 'SPCX'}"}
+    lane = str(body.get("lane") or "deepseek").strip().lower()
+    if lane not in ("deepseek", "grok", "chatgpt", "claude"):
+        return {"ok": False, "error": "lane_not_allowed", "allowed": ["deepseek", "grok", "chatgpt", "claude"]}
+    if _hermes_curate_running():
+        return {"ok": True, "status": "already_running", "message": "An external curation run is already in progress."}
+    cmd = (
+        f"cd {PROJECT_ROOT} && flock -n /tmp/hermes_symbol_challenger.lock "
+        f"{sys.executable} scripts/hermes_top20_external_intel.py --symbols {symbol} --lanes {lane} --apply "
+        f">> logs/hermes_symbol_challenger.log 2>&1"
+    )
+    subprocess.Popen(
+        ["nohup", "bash", "-c", cmd],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        stdin=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    return {
+        "ok": True,
+        "status": "started",
+        "symbol": symbol,
+        "lane": lane,
+        "message": (
+            f"{lane} challenger started for {symbol}. "
+            "If skipped (peak/cap/DQ), lane_status_summary on /hermes/intel will show why — not silent absence."
+        ),
     }
 
 
@@ -46203,6 +46321,10 @@ ROUTES = {
     "/api/v2/sectors/monitor": _sectors_monitor,
     "/api/v2/hermes/external-intel-map": _hermes_external_intel_map,
     "/api/v2/hermes/curate-top20": _hermes_curate_top20_status,
+    "/api/v2/hermes/curate-symbol": lambda: {
+        "ok": True,
+        "hint": "POST {symbol, lane?} — on-demand deepseek/grok/chatgpt challenger",
+    },
     "/api/v2/hermes/subject-intel": _hermes_subject_intel,
     "/api/v2/hermes/subject-intel-map": _hermes_subject_intel_map,
     "/api/v2/discovery/results": _discovery_results,
@@ -50541,6 +50663,12 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
     if method == "POST" and base_path == "/api/v2/hermes/curate-top20":
         try:
             return 200, _hermes_curate_top20_trigger(body or {})
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+    if method == "POST" and base_path == "/api/v2/hermes/curate-symbol":
+        try:
+            out = _hermes_curate_symbol_challenger(body or {})
+            return (200 if out.get("ok") else 400), out
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
     if method == "POST" and base_path == "/api/v2/admin/validate-secret":

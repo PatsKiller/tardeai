@@ -50,7 +50,8 @@ export function AiIntelligenceBriefing({ llm }: { llm: any }) {
         </div>
       ))}
       <div style={{ fontSize: TYPE.xs, color: 'var(--text3)', marginTop: 6 }}>
-        Source: /api/v2/command → llm_intelligence (free local Ollama first · quality-gated)
+        Source: /api/v2/command → llm_intelligence (cloud free OAuth Grok→ChatGPT · quality-gated · last-good cache retained on fail)
+
       </div>
     </div>
   )
