@@ -57,7 +57,14 @@ def _inbound_api():
 
 
 def _token():
-    return os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+    """Resolve bot token under Lane C precedence (interdict > empty > env > dotenv)."""
+    try:
+        from scripts.lib.comms_credential_resolve import resolve_telegram_bot_token
+
+        # Resolve credential only. Interdict still blocks HTTP in telegram_transport.
+        return resolve_telegram_bot_token(respect_interdict=False, allow_dotenv_fallback=True).value
+    except Exception:
+        return os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
 
 
 def _get_offset():
@@ -957,6 +964,11 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument("--once", action="store_true", help="Poll once and exit")
     p.add_argument("--daemon", action="store_true", help="Run continuous loop")
+    p.add_argument(
+        "--skip-identity-check",
+        action="store_true",
+        help="Skip CURRENT cwd identity check (tests / emergency only)",
+    )
     args = p.parse_args()
 
     if args.once:
@@ -965,6 +977,19 @@ def main():
         return
 
     # Daemon mode — continuous long poll
+    # Lane A: if this process is not executing from CURRENT, clean-exit so the
+    # host launcher/cron can relaunch from the live release (flock-held stale
+    # processes otherwise pin deleted interpreters forever).
+    if not args.skip_identity_check:
+        try:
+            from scripts.lib.poller_release_identity import assert_running_from_current
+
+            assert_running_from_current(exit_on_mismatch=True)
+        except SystemExit:
+            raise
+        except Exception as exc:
+            log.warning("poller_identity_check_failed err=%s — continuing", exc)
+
     log.info("Starting Telegram callback poller (long-poll, PID %d)", os.getpid())
     sys.stdout.flush()
     consecutive_errors = 0

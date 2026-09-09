@@ -232,7 +232,30 @@ def _production_receipt_write_barrier(monkeypatch):
         import psycopg
         return psycopg.connect(isolated)
 
-    for mod in ("scripts.lib.comms.agent_contracts",):
+    # DISCOVER every connection boundary; never enumerate by name.
+    #
+    # 2026-09-09: the first version of this barrier patched ONLY
+    # scripts.lib.comms.agent_contracts and its docstring claimed _db_conn was
+    # "the single point every durable write must pass through". That was wrong.
+    # There are SEVEN _db_conn definitions -- agent_contracts, delivery, inbound,
+    # librarian, subject_memory, client, and hermes_embedding_enqueue -- and six
+    # were unguarded. tests/test_comms_channel_adapters.py reached production
+    # through delivery._db_conn and wrote a real row into
+    # communication_deliveries with the synthetic provider id "wamid.test_1"
+    # (delivery dlv_01a06fc8-1567-7034, 2026-09-05), which then contaminated
+    # SENT-with-provider_message_id counts.
+    #
+    # A name list is the same mistake as a caller denylist, one layer down.
+    # Walk the package so a module added tomorrow is covered without an edit.
+    import pkgutil
+    targets = ["scripts.hermes_embedding_enqueue"]
+    try:
+        import scripts.lib.comms as _comms
+        targets += [f"scripts.lib.comms.{m.name}"
+                    for m in pkgutil.iter_modules(_comms.__path__)]
+    except Exception:
+        pass
+    for mod in targets:
         try:
             m = importlib.import_module(mod)
         except Exception:

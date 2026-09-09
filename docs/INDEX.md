@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `acad76973f44269bcdb1b54ff10d1f3b60b782b4ad4435aee4b85edd83574a63`
+**Tree fingerprint:** `bf97de919ce48da652416cf3d2164703f0ebfc39e223e4745f24b23a95b46c99`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,9 +12,9 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2464 |
-| Markdown (excl. this INDEX) | 2047 |
-| **MISSING HEADER** | **48** |
+| Files under `docs/` (excl. this INDEX) | 2467 |
+| Markdown (excl. this INDEX) | 2050 |
+| **MISSING HEADER** | **51** |
 | Header OK | 1999 |
 | Duplicate groups | 5 |
 
@@ -30,7 +30,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_raw_sync | 36 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 6 |
-| review_required | 2074 |
+| review_required | 2077 |
 
 ## Markdown tree
 
@@ -467,6 +467,9 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/curation-and-provenance.md` | Controlled Curation and Provenance (Phase 5) | review_required | OK | `3e135a9b0d64` |
 | `docs/architecture/delivery-ledger.md` | ChannelDelivery@v1 — Delivery Ledger | review_required | OK | `c1ee03bda33f` |
 | `docs/architecture/gateway-enforcement.md` | Communications Gateway Enforcement (Phase 2) | review_required | OK | `d27d4e832ef1` |
+| `docs/architecture/maturity_gap_closure_20260909/CIO_ASIS_VS_FUTURE_GAP_2026-09-09.md` | CIO AS-IS vs FUTURE GAP — 2026-09-09 | review_required | MISSING HEADER | `c7504900b1d6` |
+| `docs/architecture/maturity_gap_closure_20260909/CIO_ASIS_VS_SPEC_2026-09-09.md` | CIO AS-IS vs SPEC — 2026-09-09 (Maturity Gap Closure) | review_required | MISSING HEADER | `dd9a228364d0` |
+| `docs/architecture/maturity_gap_closure_20260909/CIO_FUTURE_STATE_FULL_MATURITY_2026-09-09.md` | CIO FUTURE STATE — Full Maturity — 2026-09-09 | review_required | MISSING HEADER | `7b365f2ed5dc` |
 | `docs/architecture/retention.md` | Librarian Retention — RetentionDecision@v1 (Phase 6) | review_required | OK | `ca8630975a92` |
 | `docs/architecture/subject-memory.md` | Subject Memory / SubjectThread@v1 — Architecture | review_required | OK | `dc0fb229b08c` |
 | `docs/atm/PHASE180A_ATM_CURRENT_CONFIGURATION_AUDIT.md` | Phase 180A: ATM Current Configuration Audit | review_required | OK | `2d3ef26142a3` |
