@@ -87,3 +87,23 @@ def test_curation_lineage_guid_and_grounding():
     assert block["guid"] == g1
     assert "do not repeat it verbatim" in grounding_instruction_text(block).lower()
     assert "prior recommendation: HOLD" in grounding_instruction_text(block)
+
+
+def test_redact_struct_preserves_numbers():
+    """canonical_prompt_context must redact string values without corrupting numeric literals."""
+    from hermes_external_researcher import _redact_struct
+
+    d = {
+        "market_value": 1267430.0,
+        "price_str": "$1,267,430",
+        "account": "123456789",
+        "nested": [1.5, "sk-abcdefghijklmnop123456"],
+        "email": "a@b.com",
+    }
+    out = _redact_struct(d)
+    assert out["market_value"] == 1267430.0
+    assert "REDACTED" in out["price_str"]
+    assert "REDACTED" in out["account"]
+    assert out["nested"][0] == 1.5
+    assert "REDACTED" in out["nested"][1]
+    assert "REDACTED" in out["email"]
