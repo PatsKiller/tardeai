@@ -1,40 +1,22 @@
-# LIVE CEILING STATUS — 2026-09-09
+# LIVE CEILING STATUS — 2026-09-09 FINAL
 
-**Operator order:** execute full ceiling — L1 + B + all C items; email docs + new maturity.
+**Finished:** YES  
+See also: `FINAL_CLOSEOUT.md` (full narrative).
 
 ## Done
 
-| Layer / item | Result |
+| Item | Result |
 |---|---|
-| **L1** docs 09-09 AS-IS/FUTURE/GAP | **Merged** [PR #928](https://github.com/PatsKiller/tardeai/pull/928) → `aa6684a79` |
-| **L1** dry+ceiling ops package + ceiling maturity | **Merged** [PR #929](https://github.com/PatsKiller/tardeai/pull/929) → `b39cd9bdc` |
-| **B** M5 OBSERVED | **NOT_OBSERVED** — watcher `hit_count=0`; remains `M5_CANDIDATE` |
-| **C** interdict log line | **Code + unit PASS** (10 tests); live Telegram probe **skipped** (no `telegram` grant) |
-| **C** outcome `--apply` | **Ran**; `due=0`, `resolved=0`, `obtainable=0`, 6 stuck no price history |
-| **C** AGENTS delivery_owner rule | **Included in §9.1**; Policy 1.2.0 overall still **PROPOSED** (full `APPROVE_AGENTS_POLICY_1_2_0` not issued) |
-| **C** schedule-vs-delete | **Decision=SCHEDULE** for wave3b/3c/catalyst-diagnose; **NOT installed** (no `cron` grant). Notification classes stay unscheduled |
+| Dry P0–P7 | PASS (claim-capped) |
+| Docs PRs #928 #929 #930 | **Merged** to main |
+| M5 OBSERVED | **NOT** — still M5_CANDIDATE |
+| Outcome `--apply` | Ran; due=0 |
+| AGENTS §9.1 delivery_owner rule | In tree; 1.2.0 still PROPOSED |
+| Interdict log | Merged, **promoted**, positive-control **OK** on CURRENT |
+| CURRENT | `845ce5d88-main-exact-phase2-20260909-083727` / `845ce5d881…` |
+| Advisory cron wave3b/3c/catalyst | **Installed** + verified |
+| Maturity docs | `*-final.md` AS-IS / FUTURE / GAP |
 
-## Maturity after validation
+## Maturity
 
-| Build step | Status |
-|---|---|
-| 1 wake load | **M5_CANDIDATE** (unchanged) |
-| 2 outcomes | **PARTIAL** (apply path exercised; nothing due) |
-| 3 judgment | **DARK** |
-| 4 commitment | **zero instances** |
-| 5 scoring | **absent** |
-| 6 self-repair | **not FUTURE-shaped**; interdict **unit-observable** brick only |
-
-**Cortex ①–④:** still full gap.  
-**Docs truth:** on main (928) + ceiling package (929).
-
-## Blocked on new grants
-
-```bash
-bin/guard grant cron --for 30m --uses 5 --reason "Install advisory wave3b/3c/catalyst-diagnose crontab per OPERATOR_DECISION"
-bin/guard grant telegram --for 30m --uses 5 --reason "Interdict positive-control under CURRENT after promote"
-```
-
-## Git
-
-- Ceiling worktree branch `wt/cio-ceiling-live-20260909` — dirty only: unstaged `scripts/run_telegram_callback_poller.py` (intentionally not shipped)
+Nervous system more honest/observable. Cortex ①–④ still **full gap**. No M2–M5 PASS.

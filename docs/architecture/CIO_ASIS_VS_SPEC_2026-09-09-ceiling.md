@@ -4,6 +4,7 @@ Measured at: dry campaign seal 20260909T034650Z + live ceiling adjudication/appl
 Canonical repo path: docs/architecture/CIO_ASIS_VS_SPEC_2026-09-09-ceiling.md
 Authority:   dated reading of LIVE / PARTIAL / UNWIRED / DARK — not a behaviour spec
 Supersedes:  docs/architecture/CIO_ASIS_VS_SPEC_2026-09-09.md (readings that this ceiling re-measured)
+Superseded-by: docs/architecture/CIO_ASIS_VS_SPEC_2026-09-09-final.md
 See also:    docs/architecture/CIO_FUTURE_STATE_FULL_MATURITY_2026-09-09-ceiling.md
              docs/architecture/CIO_ASIS_VS_FUTURE_GAP_2026-09-09-ceiling.md
              docs/ops/cio_maturity_nearterm_dry_package/
