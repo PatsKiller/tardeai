@@ -40,6 +40,7 @@ for sub in ("", "scripts"):
 
 def test_deliver_text_is_interdictable_directly(monkeypatch):
     """The regression: the low-level sender must honour the interdict itself."""
+    import logging
     import telegram_transport as T
     monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
     monkeypatch.setenv("CIO_TELEGRAM_INTERDICT", "1")
@@ -47,10 +48,26 @@ def test_deliver_text_is_interdictable_directly(monkeypatch):
     def must_not_run(*a, **k):
         raise AssertionError("network reached while interdicted")
 
-    r = T.deliver_text(token="t", chat_id="c", text="probe", post=must_not_run)
+    with monkeypatch.context() as m:
+        # also assert the gate is observable (no longer silent)
+        records: list[logging.LogRecord] = []
+
+        class _Capture(logging.Handler):
+            def emit(self, record: logging.LogRecord) -> None:
+                records.append(record)
+
+        h = _Capture()
+        T._log.addHandler(h)
+        try:
+            r = T.deliver_text(token="t", chat_id="c", text="probe", post=must_not_run)
+        finally:
+            T._log.removeHandler(h)
+
     assert r.get("interdicted") is True
     assert r["response"]["description"] == "INTERDICTED_TEST_OR_FLAG"
-
+    assert any("telegram_interdicted" in (rec.getMessage() or "") for rec in records), (
+        "interdict must emit a log line so prod firing is observable"
+    )
 
 def test_send_message_still_interdicted(monkeypatch):
     import telegram_transport as T

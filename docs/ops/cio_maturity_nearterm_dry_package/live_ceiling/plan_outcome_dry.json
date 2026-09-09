@@ -1,0 +1,20 @@
+{
+  "schema": "PlanOutcomeCheckpointBind@v1",
+  "authority": "READ_ONLY_ADVISORY",
+  "memory_behavior_influence": 0,
+  "financial_action": false,
+  "observational_only": true,
+  "apply": false,
+  "held_n": 0,
+  "held_n_including_dust": 0,
+  "dust_excluded": [],
+  "dust_excluded_n": 0,
+  "eligible_n": 0,
+  "would_bind": 0,
+  "wrote_n": 0,
+  "skipped_bind_n": 0,
+  "skipped_reasons": {},
+  "samples": [],
+  "bindings": [],
+  "notify": false
+}

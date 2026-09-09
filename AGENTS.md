@@ -6,7 +6,7 @@ Versioning-Scheme:   Semantic Versioning 2.0.0
 Policy-Schema:       TradeAI-Agent-Operating-Standard/v1
 Status:              PROPOSED
 Effective-Date:      PENDING
-Last-Reviewed:       2026-09-03T09:30:00-04:00
+Last-Reviewed:       2026-09-09T00:00:00-04:00
 Canonical-Repo-Path: AGENTS.md
 Drive-Mirror-Path:   Trade_AI_Docs_v2/governance/agent-policy/AGENTS.md
 Supersedes:          1.1.0
@@ -1561,6 +1561,16 @@ accumulates the divergence this document exists to remove.
   failure. **A send with no receipt is not a send.** *Cause: `sent_telegram` 0 of
   864 rows and `telegram_sent_at` 0 of 932; nobody could establish which producer
   emitted 25 repeats, or whether any specific POST succeeded.*
+- **`settle_delivery` must persist ownership into delivery coordinates.** When
+  settling a gateway (or owned) delivery, merge `delivery_owner` and
+  `gateway_mode` into `communication_deliveries.provider_coordinates` (JSON), not
+  only into ephemeral settle metadata or log lines. Soak and canary collectors that
+  gate on `delivery_owner=gateway` (plus PMID / SENT|SETTLED) query
+  `provider_coordinates`; omitting the stamp causes `gateway_canary_delivery`
+  **false negatives** even when Telegram delivery succeeded. Landed in code via
+  PR #926; keep this rule so future settle paths do not regress. *Operator-approved
+  for inclusion 2026-09-09 (live ceiling); proposed text was
+  `evidence/proposed/AGENTS_MD_AMENDMENT_DELIVERY_OWNER_STAMP.md`.*
 - **An absent field never defaults to an affirmative value.** Absent renders as
   `not computed`. *Cause: `Data quality: OK` asserted under every decision in a
   document whose own verdict was `ATTENTION` with two named defects — while
@@ -2674,6 +2684,7 @@ Operator activation phrase (after review):
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
+| 1.2.0 | 2026-09-09 | PROPOSED | MINOR | Adds §9.1 rule: `settle_delivery` must stamp `delivery_owner`/`gateway_mode` into `provider_coordinates` (PR #926). Does not activate 1.2.0; does not weaken §0/§2/§17. | **INCLUDED** by operator live-ceiling execute 2026-09-09; full `APPROVE_AGENTS_POLICY_1_2_0` still PENDING |
 | 1.2.0 | 2026-09-03 | PROPOSED | MINOR | Multi-Agent SOP controls plus the operator-approval workflow for guarded remote push and live deployment. Does not weaken §0/§2/§17 or financial rails. | **PENDING** — `APPROVE_AGENTS_POLICY_1_2_0 <pr> <sha>` |
 | 1.1.0 | 2026-09-01 | ACTIVE | MINOR | Records the ratified daily provider spend cap ($0.50) in §12, with measured evidence that it binds on 6 of ~84 LLM lanes and is therefore policy rather than a universally enforced control. | **RATIFIED** by the operator, 2026-09-01 |
 | 1.0.0 | 2026-09-01 | ACTIVE | MAJOR | Formal baseline. Document-control block and version policy; §13.5 duplicate merged; §13.6 numbering collision renumbered to §13.7 and section order restored; two "Where things go" tables merged; §2B role authority profiles added. | **APPROVED** — `APPROVE_AGENTS_POLICY_1_0_0 841 0f00f928a6b3892ef838c8737cebfcb622fd53ae` |
