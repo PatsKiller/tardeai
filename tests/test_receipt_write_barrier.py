@@ -182,3 +182,14 @@ def test_every_comms_db_conn_boundary_is_barred():
 
     assert checked, "no _db_conn boundaries discovered - the walk is broken"
     assert not live, f"production connections reachable from tests: {live}"
+
+
+# --- 7. ambient production surfaces stay unreachable under pytest ------------
+
+def test_ambient_state_root_and_drive_env_do_not_open_db(monkeypatch):
+    """Lane B expand: state root / Drive / email ambient env must not defeat barrier."""
+    monkeypatch.setenv("TRADEAI_STATE_ROOT", "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/data/portfolios/state")
+    monkeypatch.setenv("GOOGLE_DRIVE_ROOT", "/tmp/should-not-matter")
+    monkeypatch.setenv("SMTP_HOST", "smtp.example.invalid")
+    monkeypatch.setenv("DATABASE_URL", "postgresql://prod/trade_ai")
+    assert _conn() is None

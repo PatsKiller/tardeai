@@ -1,0 +1,16 @@
+{
+  "schema": "DeliveryProvenanceQuarantine@v1",
+  "note": "Exclude by exact delivery_id + row_sha256 + provenance_class. NEVER channel-wide whatsapp_meta.",
+  "entries": [
+    {
+      "delivery_id": "dlv_01a06fc8-1567-7034-bdfc-ba46bf3dea8b",
+      "provider_message_id": "wamid.test_1",
+      "row_sha256": "006cc07c2a37a4ab997e32fc805dd181acedbdeee32e6dda3f7859b551945ce4",
+      "channel": "whatsapp_meta",
+      "provenance_class": "SYNTHETIC_TEST_PROVIDER_ID",
+      "incident_id": "INC-2026-09-05-WAMID-TEST-IN-PRODUCTION-DELIVERIES",
+      "action": "EXCLUDE_FROM_MATURITY_COUNTS",
+      "rewrite_or_delete": false
+    }
+  ]
+}
