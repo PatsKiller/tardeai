@@ -91,6 +91,9 @@ GATES = [
             # Phase 3 lane wiring: identity attached, fail-safe, behaviour rail,
             # and rotation tagged sector-first (it is sector-first by design).
             "tests/test_narrative_lane_wiring.py",
+            # Phase 5: the wake had the memory code all along and production
+            # plugged nothing into the ports. These pin the plugs.
+            "tests/test_wake_memory_carryforward.py",
             # SFR-R-001: the consumption loop must close. Slots 13:00Z/14:00Z on
             # 54639ff5a re-selected the same three sources because the runner's
             # own receipts never reached the selector.

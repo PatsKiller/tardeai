@@ -59,6 +59,56 @@ class NarrativeBehaviorRefused(ValueError):
     """MBI_BEHAVIOR=0. A narrative may never carry a behaviour field."""
 
 
+_PROFILE_CACHE: dict[str, tuple[str | None, str | None]] = {}
+_PROFILE_LOADED = False
+
+
+def load_symbol_profiles(cur) -> int:
+    """Load sector/industry for every symbol once, not once per row.
+
+    `symbol_profiles` is the canonical per-symbol sector/industry lookup (2,942
+    rows, 2,663 with sector). watchlist_final_synthesis has writers on four cron
+    lines firing every 5-15 minutes nearly around the clock, so a per-row SELECT
+    would add thousands of queries a day to a hot path to attach a value that
+    changes about once a day. Load it once per process instead.
+    """
+    global _PROFILE_LOADED
+    if _PROFILE_LOADED:
+        return len(_PROFILE_CACHE)
+    try:
+        cur.execute("SELECT upper(symbol), sector, industry FROM symbol_profiles")
+        for sym, sector, industry in cur.fetchall():
+            _PROFILE_CACHE[sym] = (sector, industry)
+        _PROFILE_LOADED = True
+    except Exception:
+        _PROFILE_LOADED = True  # do not retry a broken lookup on every row
+    return len(_PROFILE_CACHE)
+
+
+def subjects_for_symbol(symbol: str, *, strategy_id: str | None = None,
+                        relationship: str = "subject") -> list[dict[str, Any]]:
+    """The standard subject set for a row that is about one security.
+
+    SECURITY is the subject; sector and industry are what it BELONGS to, so they
+    are mentions rather than co-subjects. Getting that wrong in the other
+    direction is the sector_move defect.
+    """
+    sym = str(symbol or "").upper()
+    if not sym:
+        return []
+    out: list[dict[str, Any]] = [
+        {"entity_type": "SECURITY", "value": sym, "relationship": relationship}]
+    sector, industry = _PROFILE_CACHE.get(sym, (None, None))
+    if sector:
+        out.append({"entity_type": "SECTOR", "value": sector, "relationship": "mentioned"})
+    if industry:
+        out.append({"entity_type": "INDUSTRY", "value": industry, "relationship": "mentioned"})
+    if strategy_id:
+        out.append({"entity_type": "STRATEGY", "value": strategy_id,
+                    "relationship": "mentioned"})
+    return out
+
+
 def row_guid_for(source_table: str, source_id: Any, *, discriminator: str = "") -> str:
     """Deterministic row identity for a lane that has no guid of its own.
 
@@ -210,6 +260,7 @@ def remember(report: Mapping[str, Any], *, symbols: Iterable[str] | None = None)
 
 __all__ = [
     "SCHEMA", "AUTHORITY", "MBI", "BEHAVIOR_FIELDS",
+    "load_symbol_profiles", "subjects_for_symbol",
     "NarrativeBehaviorRefused", "row_guid_for", "ground",
     "write_narrative", "remember",
 ]
