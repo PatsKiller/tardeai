@@ -238,8 +238,8 @@
       "category": "Watch",
       "lane_policy": "ensemble",
       "default_mode": "automated",
-      "description": "CIO view \u2014 Grok primary + ChatGPT reconcile when both run",
-      "deepseek_default_policy": "PRO_THINK",
+      "description": "CIO view \u2014 Grok primary + ChatGPT reconcile when both run | automated organic Flash voter (soak)",
+      "deepseek_default_policy": "FAST_THINK",
       "deepseek_allowed_policies": [
         "FAST_THINK",
         "PRO_THINK",
@@ -249,7 +249,20 @@
         "PRO_MAX"
       ],
       "output_schema": "cio_synthesis.v1",
-      "notes": " | 2026-09-10: alias so organic cron Flash votes do not PROCESS_NOT_REGISTERED"
+      "notes": " | 2026-09-10: alias so organic cron Flash votes do not PROCESS_NOT_REGISTERED",
+      "allowed_lanes": [
+        "grok",
+        "chatgpt",
+        "deepseek-flash"
+      ],
+      "max_input_tokens": 16000,
+      "max_output_tokens": 4000,
+      "daily_soft_cap": 200,
+      "daily_cost_cap_usd": 0.5,
+      "tools_allowed": false,
+      "fallback_allowed": true,
+      "advisory_only": true,
+      "circuit_breaker": true
     },
     {
       "id": "watchlist_maria_priority",
