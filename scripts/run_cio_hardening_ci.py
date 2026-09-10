@@ -88,6 +88,9 @@ GATES = [
             # Grok-closure Phase 3: one coherent intake — checkpoint advances
             # only after event + operator turn + receipt are all durable.
             "tests/test_atomic_inbound.py",
+            # Grok-closure Phase 4: canonical durable commitment contract
+            # (falsifier/confidence/horizon/freeze) + scheduled outcome evaluator.
+            "tests/test_governed_commitment.py",
             # Lane T: gog -n is MUTATING; the wrapper refuses it and verifies
             # remote hashes after any Drive mutation.
             "tests/test_drive_mutation_safety.py",
