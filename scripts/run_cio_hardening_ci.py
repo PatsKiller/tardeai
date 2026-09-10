@@ -81,6 +81,11 @@ GATES = [
             # docs rsynced in by overlay_main. Exemption now asks git instead of
             # a hand-kept SKIP_PARTS list; these controls pin both halves.
             "tests/test_current_pin_gitignore_exemption.py",
+            # NarrativeSubjectLink@v1. Fifteen narrative surfaces, one tagged;
+            # sector_move stamped a SECURITY guid on a SECTOR event. These pin
+            # sector canonicalisation (two spellings -> one guid), fail-loud on
+            # an unknown type, and that an unresolvable security is a MISS.
+            "tests/test_narrative_subject_identity.py",
             # SFR-R-001: the consumption loop must close. Slots 13:00Z/14:00Z on
             # 54639ff5a re-selected the same three sources because the runner's
             # own receipts never reached the selector.

@@ -14,6 +14,13 @@ ENTITY_TYPES = (
     "PORTFOLIO", "PORTFOLIO_CASH",
     "SECTOR", "INDUSTRY", "SUBINDUSTRY", "THEME",
     "CATALYST", "CALENDAR_EVENT", "MACRO_EVENT",
+    # Added 2026-09-10 for NarrativeSubjectLink@v1. strategy_lesson_rollup and
+    # profit_protection_shadow_recommendations are keyed on a strategy and carry
+    # no symbol at all, so a strategy is a thing a narrative is ABOUT. Without
+    # this entry entity_ref() below downgrades it to "OTHER" and the link joins
+    # to nothing — caught by tests/test_narrative_subject_identity.py, which is
+    # why that control exists.
+    "STRATEGY",
 )
 
 
