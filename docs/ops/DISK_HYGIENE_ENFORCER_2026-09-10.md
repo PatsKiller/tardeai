@@ -43,3 +43,10 @@ systemctl --user start tradeai-disk-hygiene-enforcer.service   # optional first 
 .venv/bin/python scripts/disk_hygiene_enforcer.py --apply
 df -h /
 ```
+
+## Librarian retention enforce (same closeout)
+
+- CLI: `scripts/run_hermes_librarian_retention.py --dry-run|--apply`
+- Timer: `hermes-librarian-retention.timer` (daily 05:10)
+- Policy: `config/hermes_librarian_policy.yaml` — orphan purge + **max_age_days=90** for `content_embeddings`
+- Settlement migration index uses `created_at` (live schema has no `occurred_at`)

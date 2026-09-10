@@ -36,8 +36,9 @@ ALTER TABLE communication_events
     ADD CONSTRAINT communication_events_delivery_owner_ck
     CHECK (delivery_owner IS NULL OR delivery_owner IN ('gateway','legacy')) NOT VALID;
 
+-- Prefer created_at: live communication_events has created_at (not occurred_at).
 CREATE INDEX IF NOT EXISTS communication_events_settlement_idx
-    ON communication_events (provider_settlement_state, occurred_at DESC);
+    ON communication_events (provider_settlement_state, created_at DESC);
 CREATE UNIQUE INDEX IF NOT EXISTS communication_events_provider_msg_uq
     ON communication_events (provider_message_id)
  WHERE provider_message_id IS NOT NULL;
