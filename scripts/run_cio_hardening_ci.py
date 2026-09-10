@@ -124,6 +124,9 @@ GATES = [
             "tests/test_governed_commitment_shadow.py",
             # Phase 8: AgentView + scoring cortex shadow (flags default OFF).
             "tests/test_cortex_shadow_pipeline.py",
+            # Phase 8: optional wake→cortex shadow hook (flags default OFF; no
+            # GOVERNED_COMMITMENT on this path).
+            "tests/test_wake_cortex_shadow_hook.py",
             # Lane T: gog -n is MUTATING; the wrapper refuses it and verifies
             # remote hashes after any Drive mutation.
             "tests/test_drive_mutation_safety.py",

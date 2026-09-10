@@ -186,6 +186,52 @@ def _missed_slots(contract: ScheduleContract, when: datetime, completed: set[str
     return missed
 
 
+def _maybe_cortex_shadow_after_wake(
+    *,
+    state_root: Path,
+    subject_guid: str,
+    wake_id: str,
+    env: dict,
+) -> dict[str, Any] | None:
+    """Optional Phase-8 AgentView cortex shadow after a completed wake.
+
+    Default OFF (``AGENT_VIEW_V1_ENABLED`` / ``CORTEX_SHADOW_ENABLED``). When on,
+    appends ``agent_views.jsonl`` under the wake state root. Governed commitments
+    mint only when ``GOVERNED_COMMITMENT_ENABLED`` is also on (still MBI=0 /
+    advisory — never broker/order). Fail-safe: never raises into the wake path.
+    """
+    try:
+        from scripts.lib.cortex_shadow_pipeline import (
+            enabled as cortex_enabled,
+            run_cortex_shadow,
+        )
+
+        if not cortex_enabled(env):
+            return None
+        if not wake_id or wake_id == "none":
+            return None
+
+        # Honor GOVERNED_COMMITMENT_ENABLED from env (default OFF). Do not force-off.
+        shadow_env = dict(env)
+
+        summary = (
+            f"Scheduled persistent wake reviewed subject {subject_guid}; "
+            "advisory observation only."
+        )
+        result = run_cortex_shadow(
+            subject=str(subject_guid),
+            summary=summary,
+            citations=[f"wake:{wake_id}"],
+            confidence=0.6,
+            state_root=state_root,
+            dry_run=False,
+            env=shadow_env,
+        )
+        return result.to_dict()
+    except Exception:
+        return None
+
+
 def _process_one_subject(
     *,
     agent_id: str,
@@ -311,6 +357,15 @@ def _process_one_subject(
     else:
         outcome = "refused"
         detail = f"lifecycle_state={state}"
+
+    # Phase-8 optional cortex shadow (flags default OFF). Never blocks wake.
+    if wake_id != "none":
+        _maybe_cortex_shadow_after_wake(
+            state_root=state_root,
+            subject_guid=subject_guid,
+            wake_id=str(wake_id),
+            env=env,
+        )
 
     _emit({
         **base,
