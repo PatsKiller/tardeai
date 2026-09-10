@@ -29,6 +29,12 @@ MBI_BEHAVIOR = 0
 NOT_COUNTED = ["on_demand_challengers"]
 FLASH_LANE = "deepseek-flash"
 
+NO_CONSUMER_REASON = (
+    "FlashCioSoakObserve@v1 is a read-only CLI evidence emitter for campaign/operator "
+    "soak adjudication; no runtime importer yet — campaign evidence/ files are the "
+    "consumer surface (MBI_BEHAVIOR=0)."
+)
+
 
 def _parse_ts(raw: Any) -> datetime | None:
     if raw is None:

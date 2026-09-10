@@ -25,6 +25,12 @@ from scripts.lib.self_repair_loop_v1 import (  # noqa: E402
 SCHEMA = "SelfRepairLoopDry@v1"
 MBI_BEHAVIOR = 0
 
+NO_CONSUMER_REASON = (
+    "SelfRepairLoopDry@v1 is a hermetic/dry CLI harness for detect→proposal→verify_effect; "
+    "no live scheduler consumer yet — activation is operator-run only "
+    "(MBI_BEHAVIOR=0; executable=False)."
+)
+
 DEFAULT_BEFORE = {
     "matches_current": False,
     "mismatch_reason": "cwd_ne_current",
