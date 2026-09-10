@@ -51,13 +51,9 @@ def enabled(env: Mapping[str, str] | None = None) -> bool:
 
 
 def source_sha(env: Mapping[str, str] | None = None) -> str:
-    src = env if env is not None else os.environ
-    return (
-        src.get("TRADEAI_SOURCE_SHA")
-        or src.get("BUILD_SHA")
-        or src.get("SOURCE_COMMIT")
-        or "unknown"
-    )
+    from scripts.lib.runtime_identity import resolve_source_sha
+
+    return resolve_source_sha(env)
 
 
 def _append_jsonl(path: Path, row: dict[str, Any]) -> None:

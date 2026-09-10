@@ -200,12 +200,10 @@ def feature_enabled(env: dict | None = None) -> bool:
 
 
 def source_sha() -> str:
-    return (
-        os.environ.get("TRADEAI_SOURCE_SHA")
-        or os.environ.get("BUILD_SHA")
-        or os.environ.get("SOURCE_COMMIT")
-        or "unknown"
-    )
+    """Deployed source identity for durable wake stamps (env → CURRENT → git)."""
+    from scripts.lib.runtime_identity import resolve_source_sha
+
+    return resolve_source_sha()
 
 
 # ── Memory loading ──────────────────────────────────────────────────────────
