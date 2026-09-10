@@ -44,7 +44,7 @@ def run(days: int = 90, apply: bool = False) -> dict:
                        id
                 FROM hermes_score_history
                 WHERE scored_at < NOW() - INTERVAL '{int(days)} days'
-                  AND EXTRACT(hour FROM scored_at)::int %% 6 = 0
+                  AND MOD(EXTRACT(hour FROM scored_at)::int, 6) = 0
                 ORDER BY symbol, date_trunc('hour', scored_at), scored_at DESC
               )
         """)

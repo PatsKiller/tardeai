@@ -125,6 +125,11 @@ POLICIES = [
     ("scope_governor_audit",            "created_at",       30),
     ("system_health_checks",            "created_at",       30),
     ("hermes_discovery_audit",          "created_at",       30),
+
+    # VECTOR / RAG store — largest table (~10GB observed 2026-09-10). Regenerable.
+    # Librarian policy orphan_purge_days=30; age cap prevents unbounded growth when
+    # orphan detection is not yet wired into this script.
+    ("content_embeddings",             "created_at",      180),
 ]
 # Note: market_quotes already in MEDIUM tier (90d) above.
 

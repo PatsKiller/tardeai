@@ -1,0 +1,10 @@
+[Unit]
+Description=TradeAI disk hygiene enforcer — release keep-N + stale backup piles
+After=network.target
+
+[Service]
+Type=oneshot
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/bin/bash -lc 'PY=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python; for CAND in /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT /home/johnclaw/trade-ai-worktrees/disk-hygiene-20260910 /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild; do if [ -f "$CAND/scripts/disk_hygiene_enforcer.py" ]; then cd "$CAND"; exec "$PY" scripts/disk_hygiene_enforcer.py --apply; fi; done; echo "disk_hygiene_enforcer.py not found" >&2; exit 1'
+StandardOutput=append:/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/disk_hygiene_enforcer.log
+StandardError=append:/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/disk_hygiene_enforcer.log
