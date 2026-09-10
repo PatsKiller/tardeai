@@ -27,6 +27,21 @@ log = logging.getLogger(__name__)
 
 OFFSET_FILE = PROJECT_ROOT / "data" / "portfolios" / "state" / ".telegram_callback_offset"
 
+#: Phase 8 activation — when truthy, inbound goes through
+#: ``process_update_atomically`` (checkpoint only after event+turn+receipt).
+#: Default OFF preserves the legacy ``feed_telegram_update`` path.
+ATOMIC_INBOUND_FLAG = "ATOMIC_INBOUND_ENABLED"
+
+
+def _truthy(val: str | None) -> bool:
+    return str(val or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def atomic_inbound_enabled(env: dict | None = None) -> bool:
+    """Feature gate for Phase 8 atomic inbound. Default OFF."""
+    src = env if env is not None else os.environ
+    return _truthy(src.get(ATOMIC_INBOUND_FLAG))
+
 
 def _inbound_api():
     """Lazy import of the gateway inbound half (Wave C).
@@ -54,6 +69,23 @@ def _inbound_api():
         }
     except Exception:
         return None
+
+
+def _persist_inbound_update(update: dict, *, env: dict | None = None):
+    """Persist one Telegram update via atomic (flag ON) or legacy (flag OFF) path.
+
+    Returns a result object with ``.ok`` (and optionally ``.outcome`` /
+    ``.reason``). On the atomic path the checkpoint is advanced inside
+    ``process_update_atomically``; callers must not commit again.
+    On the legacy path the caller still owns ``commit_checkpoint``.
+    """
+    if atomic_inbound_enabled(env):
+        from scripts.lib.atomic_inbound import process_update_atomically
+
+        return process_update_atomically(update, env=env)
+    from scripts.lib import inbound_consumption
+
+    return inbound_consumption.feed_telegram_update(update)
 
 
 def _token():
@@ -144,19 +176,21 @@ def poll_once(timeout=25):
             #
             # SFR-I-RUNTIME-001: route through Lane I so the operator reply
             # becomes a correlated inbound event AND an AgentConsumptionReceipt.
-            # This daemon is the single approved getUpdates consumer; feeding
-            # Lane I here adds no second consumer. Claim/commit/quarantine below
-            # are unchanged, so replay denial still governs.
+            # Phase 8: when ATOMIC_INBOUND_ENABLED is on, process_update_atomically
+            # owns the checkpoint (event+turn+receipt then commit). Flag OFF
+            # keeps the legacy feed_telegram_update path; claim/commit below
+            # still govern that path.
+            used_atomic = False
             try:
-                from scripts.lib import inbound_consumption
-
-                published = inbound_consumption.feed_telegram_update(update)
+                published = _persist_inbound_update(update)
+                used_atomic = atomic_inbound_enabled()
             except Exception as e:
                 log.error(f"inbound event persist failed: {e}")
                 published = None
             if published is None or not getattr(published, "ok", False):
                 # Unresolvable update — quarantine it and do NOT advance the
                 # checkpoint, so it is re-delivered rather than silently dropped.
+                # Atomic path may already have refused without committing.
                 try:
                     inbound["quarantine_callback"](
                         "inbound_persist_failed",
@@ -168,6 +202,12 @@ def poll_once(timeout=25):
                 continue
         else:
             _save_offset(uid)
+            used_atomic = False
+
+        def _commit_if_legacy():
+            # Atomic path already committed inside process_update_atomically.
+            if inbound is not None and not used_atomic:
+                inbound["commit_checkpoint"](uid)
 
         # Handle callback queries (inline button presses)
         if "callback_query" in update:
@@ -181,21 +221,18 @@ def poll_once(timeout=25):
                     log.info(f"callback: {cb.get('data', '?')} from chat={chat_id}")
                 except Exception as e:
                     log.error(f"callback error: {e}")
-            if inbound is not None:
-                inbound["commit_checkpoint"](uid)
+            _commit_if_legacy()
             continue
 
         # Handle messages (commands)
         msg = update.get("message", {})
         if not msg:
-            if inbound is not None:
-                inbound["commit_checkpoint"](uid)
+            _commit_if_legacy()
             continue
         chat_id = str(msg.get("chat", {}).get("id", ""))
         text = (msg.get("text") or "").strip()
         if chat_id not in allowed or not text:
-            if inbound is not None:
-                inbound["commit_checkpoint"](uid)
+            _commit_if_legacy()
             continue
 
         # Route all recognized commands
@@ -259,10 +296,10 @@ def poll_once(timeout=25):
             except Exception as e:
                 log.error(f"schwab callback error: {e}")
 
-        if inbound is not None:
-            # The inbound event is persisted; advance the durable checkpoint so
-            # a crash or a replayed poll does not re-deliver the same update.
-            inbound["commit_checkpoint"](uid)
+        # Legacy path: inbound event is persisted; advance the durable
+        # checkpoint so a crash or replayed poll does not re-deliver.
+        # Atomic path already committed inside process_update_atomically.
+        _commit_if_legacy()
 
         if handled:
             processed += 1

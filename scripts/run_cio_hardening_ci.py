@@ -98,9 +98,16 @@ GATES = [
             # Grok-closure Phase 3: one coherent intake — checkpoint advances
             # only after event + operator turn + receipt are all durable.
             "tests/test_atomic_inbound.py",
+            # Phase 8: ATOMIC_INBOUND_ENABLED gate on the approved poller
+            # (default OFF → legacy feed_telegram_update).
+            "tests/test_atomic_inbound_poller_gate.py",
             # Grok-closure Phase 4: canonical durable commitment contract
             # (falsifier/confidence/horizon/freeze) + scheduled outcome evaluator.
             "tests/test_governed_commitment.py",
+            # Phase 8: GOVERNED_COMMITMENT_ENABLED shadow CLI (default OFF).
+            "tests/test_governed_commitment_shadow.py",
+            # Phase 8: AgentView + scoring cortex shadow (flags default OFF).
+            "tests/test_cortex_shadow_pipeline.py",
             # Lane T: gog -n is MUTATING; the wrapper refuses it and verifies
             # remote hashes after any Drive mutation.
             "tests/test_drive_mutation_safety.py",

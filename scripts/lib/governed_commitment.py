@@ -27,16 +27,16 @@ Authority: READ_ONLY_ADVISORY. Never sizes, orders, stops, or writes broker stat
 
 from __future__ import annotations
 
-#: Dark-contract guard: this contract is the canonical Phase 4 commitment path,
-#: but the wake engine still mints inline commitments and nothing in the runtime
-#: calls it yet. Wiring it into the wake decision path is the Phase 8 activation
-#: step (gated on the organic epoch). Zero live callers is correct until then —
-#: not a silent dark contract (MBI_BEHAVIOR=0; recommendation≠mutation).
+#: Dark-contract guard: Phase 8 shadow callers import this module, but the live
+#: path is gated on GOVERNED_COMMITMENT_ENABLED (default OFF) via
+#: ``run_governed_commitment_shadow`` / cortex shadow pipeline. Zero organic
+#: callers with the flag unset is correct (MBI_BEHAVIOR=0; recommendation≠mutation).
 NO_CONSUMER_REASON = (
     "Grok-closure Phase 4 governed-commitment contract + outcome evaluator; "
-    "runtime wiring (wake decision -> build_governed_commitment -> evaluate_outcome) "
-    "is the Phase 8 activation step gated on the organic epoch. Zero live callers "
-    "is correct until then."
+    "Phase 8 shadow callers (run_governed_commitment_shadow / cortex shadow) "
+    "import build_governed_commitment behind GOVERNED_COMMITMENT_ENABLED "
+    "(default OFF). Organic activation requires the flag; zero live callers "
+    "with flag unset is correct until then."
 )
 
 import hashlib
@@ -48,6 +48,7 @@ from typing import Any, Mapping
 SCHEMA = "GovernedCommitment@v1"
 OUTCOME_SCHEMA = "GovernedCommitmentOutcome@v1"
 AUTHORITY = "READ_ONLY_ADVISORY"
+FEATURE_FLAG = "GOVERNED_COMMITMENT_ENABLED"
 OUTCOMES = ("CONFIRMED", "REFUTED", "EXPIRED", "INSUFFICIENT_EVIDENCE")
 
 REQUIRED_FIELDS = (
@@ -286,12 +287,22 @@ def durable_outcome_ledger_append(ledger: list[dict[str, Any]], outcome: dict[st
     return ledger + [outcome]
 
 
+def feature_enabled(env: Mapping[str, str] | None = None) -> bool:
+    """GOVERNED_COMMITMENT_ENABLED gate. Default OFF."""
+    import os
+
+    src = env if env is not None else os.environ
+    return str(src.get(FEATURE_FLAG, "")).strip().lower() in {"1", "true", "yes", "on"}
+
+
 __all__ = [
     "SCHEMA",
     "OUTCOME_SCHEMA",
     "OUTCOMES",
     "REQUIRED_FIELDS",
+    "FEATURE_FLAG",
     "CommitmentError",
+    "feature_enabled",
     "build_governed_commitment",
     "evaluate_outcome",
     "assert_not_mutated",
