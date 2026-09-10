@@ -192,3 +192,65 @@ def test_inbound_does_not_require_channels():
     assert "delivery_channels" not in required_missing(ev)
     result = publish_communication(ev)
     assert result.ok is True
+
+
+def _stamped_event(**over):
+    kw = dict(
+        direction="OUTBOUND",
+        event_type="operator_message",
+        message_class="operator_alert",
+        producer="test.provenance",
+        subject_key="s:provenance",
+        retention_class="operator_30d",
+        sanitized_body="body",
+    )
+    kw.update(over)
+    return CommunicationEvent(**kw)
+
+
+def test_source_sha_is_stamped_from_runtime_identity(monkeypatch):
+    """Every durable comms row carries the served SHA.
+
+    Cause, 2026-09-10: communication_events.source_sha was NULL on every
+    post-epoch row because the dataclass defaulted it to None and no producer
+    set it. Gateway and inbound evidence could never satisfy an exact-SHA
+    acceptance epoch, while the ledger looked complete.
+    """
+    monkeypatch.setattr(
+        "scripts.lib.runtime_identity.resolve_source_sha", lambda *a, **k: "deadbeef123"
+    )
+    ev = _stamped_event().mint_identity()
+    assert ev.source_sha == "deadbeef123"
+    assert ev.to_row()["source_sha"] == "deadbeef123"
+
+
+def test_source_sha_explicit_value_is_not_overwritten(monkeypatch):
+    monkeypatch.setattr(
+        "scripts.lib.runtime_identity.resolve_source_sha", lambda *a, **k: "resolved999"
+    )
+    ev = _stamped_event(source_sha="explicit777").mint_identity()
+    assert ev.source_sha == "explicit777"
+
+
+def test_source_sha_blank_is_treated_as_absent(monkeypatch):
+    """A whitespace stamp is not a stamp — it must resolve, not persist blank."""
+    monkeypatch.setattr(
+        "scripts.lib.runtime_identity.resolve_source_sha", lambda *a, **k: "resolved999"
+    )
+    ev = _stamped_event(source_sha="   ").mint_identity()
+    assert ev.source_sha == "resolved999"
+
+
+def test_inbound_rows_are_stamped_too(monkeypatch):
+    """Inbound operator turns are M2 evidence and need the same stamp."""
+    monkeypatch.setattr(
+        "scripts.lib.runtime_identity.resolve_source_sha", lambda *a, **k: "inb0und42"
+    )
+    ev = _stamped_event(
+        direction="INBOUND",
+        event_type="telegram_command",
+        message_class="operator_command",
+        retention_class="inbound_7d",
+        channels=[],
+    ).mint_identity()
+    assert ev.source_sha == "inb0und42"

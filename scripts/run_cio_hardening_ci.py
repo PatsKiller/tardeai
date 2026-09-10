@@ -50,6 +50,10 @@ GATES = [
             # 2026-09-10 MEMORY_MALFORMED regression: durable aif_memory schema
             # (memory_id + title-only subject) must not refuse wakes or load all rows.
             "tests/test_memory_loader_schema_compat.py",
+            # 2026-09-10: #956 stopped the loader refusing durable rows;
+            # it did not make them findable. 488 of 930 rows carry no
+            # subject_guid and every wake loaded zero facts.
+            "tests/test_wake_memory_symbol_resolve.py",
             "tests/test_runtime_identity.py",
             # 2026-09-10 operator-channel presentation: navigation prose must
             # carry a tappable FQDN link, the plaintext fallback must unescape,
