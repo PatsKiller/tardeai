@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { createChart, IChartApi } from 'lightweight-charts'
+import { BB, T } from '../lib/watchTokens'
 
 // Multi-timeframe Fib chart modal: stacks a DAILY and a MONTHLY candlestick chart, each drawing the
 // levels relevant to that pane (Fib retr/ext · swing hi/lo · confluence) as horizontal price lines, with
@@ -9,6 +10,16 @@ import { createChart, IChartApi } from 'lightweight-charts'
 // near-price / visible-range gate, dedupe levels that stack at the same price, put axis labels on a
 // priority subset only (confluence + highlight + nearest above/below), pin the price scale to the recent
 // window so an old swing/outlier can't squash recent candles, and skip the time scale to the latest bars.
+
+// Semantic chart colors — single source of truth (BB/T tokens, no raw hex in components).
+const FIB_COLOR = {
+  swingHi: BB.red,
+  swingLo: BB.green,
+  retr: T.link,
+  ext: T.extIntel.hermes,
+  confluence: BB.amber,
+  text3: BB.text3,
+} as const
 
 export type FibLevel = {
   price: number
@@ -38,7 +49,7 @@ const DAILY_FOCUS = 60           // last N daily bars shown by default
 const MONTHLY_FOCUS = 36         // last N monthly bars shown by default
 
 const DARK = {
-  layout: { background: { color: 'transparent' }, textColor: '#9ca3af' },
+  layout: { background: { color: 'transparent' }, textColor: FIB_COLOR.text3 },
   grid: { vertLines: { color: 'rgba(255,255,255,.04)' }, horzLines: { color: 'rgba(255,255,255,.04)' } },
   timeScale: { borderColor: 'rgba(255,255,255,.1)', timeVisible: false },
   rightPriceScale: { borderColor: 'rgba(255,255,255,.1)' },
@@ -49,12 +60,12 @@ export function buildFibLevels(data: any, highlight?: number): FibLevel[] {
   const out: FibLevel[] = []
   for (const t of (data?.timeframes ?? []).filter((x: any) => x.available)) {
     const tag = (t.timeframe[0] || '').toUpperCase() as 'D' | 'W' | 'M'
-    out.push({ price: t.swing_high, title: `${tag} swing hi`, color: '#ef4444', tf: tag, kind: 'swing_hi' })
-    out.push({ price: t.swing_low, title: `${tag} swing lo`, color: '#22c55e', tf: tag, kind: 'swing_lo' })
-    for (const r of t.retracements) out.push({ price: r.price, title: `${tag} ${r.label}`, color: '#60a5fa', tf: tag, kind: 'fib_retr', ratio: r.ratio })
-    for (const e of t.extensions) out.push({ price: e.price, title: `${tag} ext ${e.label}`, color: '#a855f7', tf: tag, kind: 'fib_ext', ratio: e.ratio })
+    out.push({ price: t.swing_high, title: `${tag} swing hi`, color: FIB_COLOR.swingHi, tf: tag, kind: 'swing_hi' })
+    out.push({ price: t.swing_low, title: `${tag} swing lo`, color: FIB_COLOR.swingLo, tf: tag, kind: 'swing_lo' })
+    for (const r of t.retracements) out.push({ price: r.price, title: `${tag} ${r.label}`, color: FIB_COLOR.retr, tf: tag, kind: 'fib_retr', ratio: r.ratio })
+    for (const e of t.extensions) out.push({ price: e.price, title: `${tag} ext ${e.label}`, color: FIB_COLOR.ext, tf: tag, kind: 'fib_ext', ratio: e.ratio })
   }
-  for (const z of (data?.confluence_zones ?? []).slice(0, 4)) out.push({ price: z.price_mid, title: `confluence (${z.confidence})`, color: '#eab308', kind: 'confluence' })
+  for (const z of (data?.confluence_zones ?? []).slice(0, 4)) out.push({ price: z.price_mid, title: `confluence (${z.confidence})`, color: FIB_COLOR.confluence, kind: 'confluence' })
   return out.map(l => ({ ...l, bold: highlight != null && Math.abs(l.price - highlight) < 0.01 }))
 }
 
@@ -87,7 +98,7 @@ function dedupeLevels(draw: FibLevel[], lastClose: number): FibLevel[] {
   for (const l of draw) {
     const hit = out.find(o => Math.abs(o.price - l.price) <= tol)
     if (!hit) { out.push({ ...l }); continue }
-    if (l.kind === 'confluence') { hit.kind = 'confluence'; hit.color = '#eab308' }
+    if (l.kind === 'confluence') { hit.kind = 'confluence'; hit.color = FIB_COLOR.confluence }
     if (l.kind === 'confluence' || l.bold) hit.bold = true
     const parts = hit.title.split(' · ')
     if (!parts.includes(l.title)) parts.push(l.title)
@@ -162,7 +173,7 @@ export function TFChart({ label, bars, levels, paneTf, mode = 'core', focusBars 
     if (!ref.current || !bars?.length) return
     const c: IChartApi = createChart(ref.current, { ...DARK, width: ref.current.clientWidth, height: 300, autoSize: true } as any)
     const candle = c.addCandlestickSeries({
-      upColor: '#22c55e', downColor: '#ef4444', borderVisible: false, wickUpColor: '#22c55e', wickDownColor: '#ef4444',
+      upColor: BB.green, downColor: BB.red, borderVisible: false, wickUpColor: BB.green, wickDownColor: BB.red,
       // Pin price scale to the recent window so a distant swing high/outlier can't squash recent candles.
       autoscaleInfoProvider: () => {
         const from = Math.max(0, bars.length - focusBars)
@@ -226,6 +237,9 @@ function unionLevels(a: FibLevel[], b: FibLevel[]): FibLevel[] {
   return out
 }
 
+const LEGEND_LABEL = { fontSize: 10, fontWeight: 800, color: 'var(--text3)', minWidth: 68, textTransform: 'uppercase', letterSpacing: 0.3 } as const
+const LEGEND_ITEM = { fontSize: 10, display: 'flex', alignItems: 'center', gap: 4 } as const
+
 function FibLegend({ drawn, offScale, compact }: { drawn: FibLevel[]; offScale: FibLevel[]; compact?: boolean }) {
   const g = groupForLegend(drawn)
   const sections: { label: string; items: FibLevel[] }[] = [
@@ -239,9 +253,9 @@ function FibLegend({ drawn, offScale, compact }: { drawn: FibLevel[]; offScale: 
     <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
       {shown.map(s => (
         <div key={s.label} style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-          <span style={{ fontSize: 9, fontWeight: 800, color: 'var(--text3)', minWidth: 68, textTransform: 'uppercase', letterSpacing: .3 }}>{s.label}</span>
+          <span style={LEGEND_LABEL}>{s.label}</span>
           {s.items.map((l, i) => (
-            <span key={i} style={{ fontSize: 9, color: l.color, display: 'flex', alignItems: 'center', gap: 4 }}>
+            <span key={i} style={{ ...LEGEND_ITEM, color: l.color }}>
               <span style={{ width: 10, height: (l.kind === 'confluence' || l.bold) ? 2 : 1, background: l.color, display: 'inline-block' }} />{l.title} ${l.price}
             </span>
           ))}
@@ -249,11 +263,11 @@ function FibLegend({ drawn, offScale, compact }: { drawn: FibLevel[]; offScale: 
       ))}
       {offScale.length > 0 && !compact && (
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', opacity: .55 }}>
-          <span style={{ fontSize: 9, fontWeight: 800, color: 'var(--text3)', minWidth: 68, textTransform: 'uppercase', letterSpacing: .3 }}>Outside view</span>
-          {offScale.map((l, i) => <span key={i} style={{ fontSize: 9, color: l.color }}>{l.title} ${l.price}</span>)}
+          <span style={LEGEND_LABEL}>Outside view</span>
+          {offScale.map((l, i) => <span key={i} style={{ ...LEGEND_ITEM, color: l.color }}>{l.title} ${l.price}</span>)}
         </div>
       )}
-      {compact && offScale.length > 0 && <span style={{ fontSize: 9, color: 'var(--text3)' }}>+{offScale.length} more — All Fibs</span>}
+      {compact && offScale.length > 0 && <span style={{ fontSize: 10, color: 'var(--text3)' }}>+{offScale.length} more — All Fibs</span>}
     </div>
   )
 }
