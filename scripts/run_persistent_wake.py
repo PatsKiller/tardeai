@@ -94,6 +94,23 @@ def _is_release_tree(path: Path) -> bool:
     return _RELEASE_MARKER in path.parts
 
 
+def composing_decide_or_none(env: dict):
+    """The composing decide hook, or None to keep the deterministic default.
+
+    Off unless CIO_NARRATIVE_COMPOSITION_ENABLED is set, so importing this module
+    arms nothing. When on, the novelty gate inside decides whether a model is
+    called at all -- a subject with nothing new to say costs zero.
+    """
+    try:
+        from scripts.lib.cio_wake_compose import composing_decide, enabled
+
+        if not enabled(env):
+            return None
+        return lambda ctx: composing_decide(ctx, env=env)
+    except Exception:
+        return None
+
+
 def comms_history():
     """Real comms history, or None to keep the engine's null port.
 
@@ -314,6 +331,7 @@ def _process_one_subject(
             state_root=state_root,
             memory_backend=memory_backend,
             comms=comms_history(),
+            decide=composing_decide_or_none(env),
             when=when,
             contract=contract,
             env=env,

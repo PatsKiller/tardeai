@@ -11,7 +11,7 @@ Scope: lease path canonicalization, durable TTL, Ruff quality fail-closed, evide
 AGENTS.md Policy-Version remains 1.2.0 PROPOSED / PENDING.
 
 === EVIDENCE ARCHITECTURE TRANCHE ===
-control_surface_digest=e3f9553f4a2dd753c5aeaf5149dd14234c5f95d69841f838db8c69331f8541e9
+control_surface_digest=01762eed804ba82188e074bf5578e5ea8db0aad4caca5699ef71caae9a4317b7
 No production/order/scheduler/guardrail/MBI_BEHAVIOR edits.
 Layer-1 evidence binds to digest; exact HEAD is runtime attestation only.
 AGENTS.md remains 1.2.0 PROPOSED / PENDING.
@@ -23,7 +23,7 @@ Additive monitoring and error strings only (AGENTS.md 17 deferred-list exclusion
 AGENTS.md remains 1.2.0 PROPOSED / PENDING.
 
 === OBSERVATION-CONTRACT CI REGISTRATION TRANCHE ===
-control_surface_digest=e3f9553f4a2dd753c5aeaf5149dd14234c5f95d69841f838db8c69331f8541e9
+control_surface_digest=01762eed804ba82188e074bf5578e5ea8db0aad4caca5699ef71caae9a4317b7
 No production/order/scheduler/guardrail/MBI_BEHAVIOR edits.
 Scope: register tests/test_canonical_observation.py and
 tests/test_overview_observation_contract.py in the authoritative runner GATES,

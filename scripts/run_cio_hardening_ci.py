@@ -97,6 +97,12 @@ GATES = [
             # Phase 7: outbound messages carry identity. Includes the MSTR
             # regression -- "Strategy:" is a field label, not MicroStrategy.
             "tests/test_outbound_identity.py",
+            # Composition: speak only when something changed, and narrate the
+            # research when speaking. The model narrator is INJECTED, never
+            # constructed, so importing it arms nothing (§12).
+            "tests/test_narrative_composition.py",
+            "tests/test_narrative_narrator.py",
+            "tests/test_wake_composition.py",
             # SFR-R-001: the consumption loop must close. Slots 13:00Z/14:00Z on
             # 54639ff5a re-selected the same three sources because the runner's
             # own receipts never reached the selector.
