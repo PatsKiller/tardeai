@@ -23,6 +23,7 @@ import os
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Callable, Protocol
 
@@ -119,6 +120,12 @@ class MemoryLoadMetrics:
     malformed_rows: int = 0
     unmatched: int = 0
     cross_subject_prevented: int = 0
+    # Rows matched by resolving `symbols` through the registry rather than by
+    # an explicit subject_guid. Counted separately so "memory grounded this
+    # judgment" can always be told apart from "the row said so itself".
+    resolved_by_symbol: int = 0
+    # Rows naming several subjects at once. Skipped, never guessed.
+    ambiguous_prevented: int = 0
 
 
 @dataclass
@@ -160,20 +167,89 @@ def _resolve_memory_identity(row: dict) -> tuple[str | None, str | None]:
     return next(iter(unique)), None
 
 
-def _row_subject_disposition(row: dict, subject_guid: str) -> str:
+SYMBOL_RESOLVE_FLAG = "WAKE_MEMORY_SYMBOL_RESOLVE"
+
+
+def symbol_resolve_enabled(env: dict | None = None) -> bool:
+    """Default ON, with an env kill switch so rollback needs no deploy."""
+    e = env if env is not None else os.environ
+    return str(e.get(SYMBOL_RESOLVE_FLAG, "1")).strip().lower() in {"1", "true", "yes", "on"}
+
+
+@lru_cache(maxsize=4096)
+def _guid_for_symbol(symbol: str) -> str | None:
+    """Registry lookup for one ticker. Read-only; never mints.
+
+    Cached for the life of the process: a wake resolves the same tickers
+    repeatedly and the registry answer is a pure function of the symbol. This
+    is a lookup cache, not a cross-invocation guarantee, so a cold start
+    costing one extra query is correct rather than a lost promise.
+    """
+    try:
+        from scripts.lib.cio_subject_guid import lookup_subject
+
+        got = lookup_subject(symbol)
+    except Exception:
+        return None
+    if not isinstance(got, dict):
+        return None
+    guid = got.get("subject_guid")
+    return str(guid) if guid else None
+
+
+def _symbols_of(row: dict) -> list[str]:
+    raw = row.get("symbols")
+    if isinstance(raw, str):
+        raw = [raw]
+    if not isinstance(raw, (list, tuple)):
+        return []
+    out: list[str] = []
+    for item in raw:
+        text = str(item or "").strip().upper()
+        if text and text not in out:
+            out.append(text)
+    return out
+
+
+def _row_subject_disposition(row: dict, subject_guid: str, *,
+                             env: dict | None = None) -> str:
     """Classify row relevance for a wake subject.
 
-    Only an explicit subject_guid can match. A human-readable `subject` title
-    is never treated as a GUID, and a missing subject_guid must not default to
-    the wake subject (that would load every title-only durable row for every
-    wake).
+    An explicit subject_guid is authoritative. A human-readable `subject`
+    title is never treated as a GUID, and a missing subject_guid must not
+    default to the wake subject (that would load every title-only durable row
+    for every wake).
+
+    When the row carries no subject_guid, its `symbols` are resolved through
+    the identity registry — read-only, never minted. Measured 2026-09-10:
+    488 of 930 durable memory rows carried no subject_guid, 485 of those
+    carried symbols, 137 of 139 distinct symbols resolve, and 145 rows are
+    about subjects the wakes actually select. Without this the wakes loaded
+    zero facts and the memory system was structurally unable to ground a
+    judgment.
+
+    Fail closed on ambiguity. A row naming several symbols that resolve to
+    several different subjects is about all of them; attributing it to one is
+    a judgment, and a wrong attribution puts another issuer's history under
+    this subject. Such rows are skipped and counted.
     """
     raw = row.get("subject_guid")
-    if raw is None or str(raw).strip() == "":
+    if raw is not None and str(raw).strip() != "":
+        return "match" if str(raw) == str(subject_guid) else "cross"
+
+    if not symbol_resolve_enabled(env):
         return "unmatched"
-    if str(raw) == str(subject_guid):
-        return "match"
-    return "cross"
+
+    symbols = _symbols_of(row)
+    if not symbols:
+        return "unmatched"
+
+    resolved = {g for g in (_guid_for_symbol(s) for s in symbols) if g}
+    if not resolved:
+        return "unmatched"
+    if len(resolved) > 1:
+        return "ambiguous"
+    return "match_resolved" if next(iter(resolved)) == str(subject_guid) else "cross"
 
 
 def _iso(dt: datetime | None) -> str | None:
@@ -253,6 +329,11 @@ class MemoryLoader:
             if disposition == "cross":
                 metrics.cross_subject_prevented += 1
                 continue
+            if disposition == "ambiguous":
+                metrics.ambiguous_prevented += 1
+                continue
+            if disposition == "match_resolved":
+                metrics.resolved_by_symbol += 1
 
             fid, id_err = _resolve_memory_identity(row)
             if id_err or not fid:
