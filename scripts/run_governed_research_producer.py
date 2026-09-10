@@ -75,8 +75,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--limit", type=int, default=0,
                    help="cap the number of targets per pass (0 = no cap). A cap "
                         "bounds provider spend on a scheduled path.")
-    p.add_argument("--dry-run", action="store_true",
-                   help="resolve targets and report; never calls the provider")
+    p.add_argument("--dry-run", action="store_true", default=True,
+                   help="resolve targets and report; never calls the provider "
+                        "(default)")
+    p.add_argument("--execute", action="store_true",
+                   help="actually produce research (overrides --dry-run); still "
+                        "no-ops unless GOVERNED_RESEARCH_PRODUCER_ENABLED is on")
     return p
 
 
@@ -93,7 +97,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.limit and args.limit > 0:
         targets = targets[: args.limit]
 
-    if args.dry_run:
+    dry_run = not args.execute
+    if dry_run:
         # Resolution uses the identity registry only; no provider boundary is
         # crossed. This is the control that proves what a live pass WOULD do.
         resolved = grp._resolve_targets(targets, dict(os.environ))

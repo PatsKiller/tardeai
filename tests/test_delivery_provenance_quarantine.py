@@ -1,6 +1,9 @@
 """Lane E — provenance quarantine (not channel-wide)."""
 from __future__ import annotations
 
+import inspect
+
+from scripts.lib.campaign_maturity_truth import count_delivery_maturity_numerators
 from scripts.lib.delivery_provenance_quarantine import (
     detect_synthetic_provider_ids,
     exclude_quarantined,
@@ -70,3 +73,34 @@ def test_sql_predicate_is_id_based_not_channel():
     assert "whatsapp_meta" not in pred
     assert WAMID["delivery_id"] in pred
     assert "NOT IN" in pred
+
+
+def test_maturity_reader_call_site_uses_exclude_quarantined():
+    """Production maturity numerator path must drop quarantined ids via exclude_quarantined."""
+    src = inspect.getsource(count_delivery_maturity_numerators)
+    assert "exclude_quarantined" in src
+
+    other_wa = {
+        "delivery_id": "dlv_real_whatsapp_002",
+        "provider_message_id": "wamid.REAL_PROVIDER_ID_2",
+        "row_sha256": "cc" * 32,
+        "channel": "whatsapp_meta",
+        "provider_coordinates": {"delivery_owner": "gateway"},
+    }
+    quarantined_gw = {
+        **WAMID,
+        "provider_coordinates": {"delivery_owner": "gateway"},
+    }
+    legacy = {
+        "delivery_id": "dlv_legacy_001",
+        "provider_message_id": "tg-999",
+        "row_sha256": "dd" * 32,
+        "channel": "telegram",
+        "provider_coordinates": {"delivery_owner": "legacy"},
+    }
+    counts = count_delivery_maturity_numerators([quarantined_gw, other_wa, legacy])
+    # wamid.test_1 / quarantined delivery_id must not inflate maturity numerators
+    assert counts["delivery_owner_gateway"] == 1
+    assert counts["delivery_owner_legacy"] == 1
+    assert counts["deliveries_with_pmid"] == 2
+    assert counts["kept_n"] == 2

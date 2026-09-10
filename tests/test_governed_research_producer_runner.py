@@ -36,11 +36,23 @@ def test_no_target_source_produces_nothing(capsys, monkeypatch):
 def test_flag_off_is_disabled_and_has_no_side_effects(capsys, monkeypatch):
     """The feature flag is the outermost switch; OFF must reach no provider."""
     monkeypatch.delenv(runner.grp.FEATURE_FLAG, raising=False)
-    rc, out = _run(["--symbols", "NVDA"], capsys)
+    rc, out = _run(["--execute", "--symbols", "NVDA"], capsys)
     assert rc == 0, "a disabled scheduled run is a legitimate outcome, not a failure"
     assert out["outcome"] == "disabled"
     assert out["produced"] == 0
     assert "feature_flag_off" in out["errors"]
+
+
+def test_dry_run_is_default_without_execute(capsys, monkeypatch):
+    """Scheduled CLI defaults to dry-run so a bare invocation never spends."""
+    monkeypatch.setenv(runner.grp.FEATURE_FLAG, "1")
+
+    def _explode(*a, **k):  # pragma: no cover - must never run
+        raise AssertionError("default path reached produce_research()")
+
+    monkeypatch.setattr(runner.grp, "produce_research", _explode)
+    rc, out = _run(["--symbols", "NVDA"], capsys)
+    assert rc == 0 and out["mode"] == "dry_run"
 
 
 def test_dry_run_never_calls_the_provider(capsys, monkeypatch):
@@ -106,12 +118,12 @@ def test_broken_is_the_only_nonzero_exit(capsys, monkeypatch):
         outcome, ok, disabled, eligible, produced, errors = "broken", False, False, 1, 0, ["provider_unavailable"]
 
     monkeypatch.setattr(runner.grp, "produce_research", lambda **k: _R())
-    rc, out = _run(["--symbols", "NVDA"], capsys)
+    rc, out = _run(["--execute", "--symbols", "NVDA"], capsys)
     assert rc == 1 and out["outcome"] == "broken"
 
     class _O(_R):
         outcome, ok, errors = "nothing_eligible", True, []
 
     monkeypatch.setattr(runner.grp, "produce_research", lambda **k: _O())
-    rc2, _ = _run(["--symbols", "NVDA"], capsys)
+    rc2, _ = _run(["--execute", "--symbols", "NVDA"], capsys)
     assert rc2 == 0
