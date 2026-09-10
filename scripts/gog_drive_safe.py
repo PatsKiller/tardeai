@@ -30,13 +30,26 @@ from scripts.lib.drive_mutation_safety import (
 
 
 def _parse_uploaded_id(stdout: str) -> str | None:
+    """Parse Drive file id from gog upload JSON.
+
+    Observed gog v0.12 shapes:
+      {"id": "..."}
+      {"file": {"id": "...", "name": "...", ...}}
+    """
     text = (stdout or "").strip()
     if not text:
         return None
     try:
         doc = json.loads(text)
         if isinstance(doc, dict):
-            return doc.get("id") or doc.get("fileId") or doc.get("file_id")
+            nested = doc.get("file")
+            if isinstance(nested, dict):
+                nid = nested.get("id") or nested.get("fileId") or nested.get("file_id")
+                if nid:
+                    return str(nid)
+            top = doc.get("id") or doc.get("fileId") or doc.get("file_id")
+            if top:
+                return str(top)
     except json.JSONDecodeError:
         pass
     m = re.search(r'"id"\s*:\s*"([^"]+)"', text)
@@ -53,7 +66,17 @@ def _remote_sha256_via_download(
     """Read-only remote verification: download bytes and hash locally."""
     with tempfile.TemporaryDirectory(prefix="gog-drive-readback-") as td:
         dest = Path(td) / "remote.bin"
-        argv = [gog_bin, "drive", "download", file_id, str(dest), "--no-input", "--json"]
+        # gog v0.12: download <fileId> --out PATH (positional dest is rejected)
+        argv = [
+            gog_bin,
+            "drive",
+            "download",
+            file_id,
+            "--out",
+            str(dest),
+            "--no-input",
+            "--json",
+        ]
         if account:
             argv.extend(["--account", account])
         proc = runner(argv, capture_output=True, text=True, check=False)
