@@ -79,6 +79,9 @@ GATES = [
             # provider acknowledgement -> SETTLED, and no duplicate delivery.
             "tests/test_agent_gateway_adapter.py",
             "tests/test_gateway_settlement.py",
+            # Grok-closure Phase 3: settlement truth is durable on the EVENT
+            # row (re-read after ack shows SETTLED, not just the memory mirror).
+            "tests/test_durable_event_settlement.py",
             # Lane I: inbound operator event -> correlation -> consumption receipt.
             "tests/test_inbound_event_normalizer.py",
             "tests/test_inbound_consumption.py",

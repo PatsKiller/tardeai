@@ -379,7 +379,6 @@ def _assert_transition(current: str, new_status: str) -> None:
         raise DeliveryGateError(f"status_transition_illegal:{current}->{new_status}")
 
 
-
 def _persist_event_settlement_pg(
     event_id: str,
     *,
