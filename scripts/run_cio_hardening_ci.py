@@ -86,6 +86,8 @@ GATES = [
             # sector canonicalisation (two spellings -> one guid), fail-loud on
             # an unknown type, and that an unresolvable security is a MISS.
             "tests/test_narrative_subject_identity.py",
+            # Phase 2: a SECTOR event must never carry a member's SECURITY guid.
+            "tests/test_sector_move_subject.py",
             # SFR-R-001: the consumption loop must close. Slots 13:00Z/14:00Z on
             # 54639ff5a re-selected the same three sources because the runner's
             # own receipts never reached the selector.

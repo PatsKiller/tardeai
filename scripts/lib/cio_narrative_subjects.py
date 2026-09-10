@@ -46,15 +46,6 @@ AUTHORITY = "READ_ONLY_ADVISORY"
 MBI = 0
 SCHEMA = "NarrativeSubjectLink@v1"
 
-NO_CONSUMER_REASON = (
-    "Phase 1 of the narrative-identity plan builds the spine; Phase 2 gives it its "
-    "first production caller in material_change_detector.persist(), which is the "
-    "single point where a sector_move stops being stamped with a security guid. "
-    "Declared rather than silently inherited: this entry must be DELETED by the "
-    "Phase 2 commit, and a reviewer seeing it survive past Phase 2 should treat "
-    "that as the defect."
-)
-
 
 #: The six subject types an operator asked every narrative lane to carry, mapped
 #: onto the envelope's existing vocabulary. ENTITY_TYPES is a superset; this is

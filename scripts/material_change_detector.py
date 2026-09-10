@@ -448,6 +448,15 @@ def sector_moves(cur, syms: dict[str, dict], excursion_stats: list[dict]) -> tup
             "evidence": {"source": "ticker_prices+sector", "sector": sector,
                          "names": [m["symbol"] for m in members],
                          "name_k": SECTOR_NAME_K, "min_names": SECTOR_MIN_NAMES},
+            # What this change is ABOUT. `symbol` above is a representative
+            # MEMBER, carried so the row stays joinable and the notifier has a
+            # ticker to show -- it is NOT the subject. Without this declaration
+            # persist() resolved identity from that member and stamped a SECURITY
+            # guid onto a SECTOR event: 13 of 14 live sector_move rows carry one.
+            # AGENTS.md §17A: "Topics are subjects, not securities."
+            "subject": {"entity_type": "SECTOR", "value": sector},
+            "mentions": [{"entity_type": "SECURITY", "value": m["symbol"]}
+                         for m in members],
         })
     return out, stats
 
@@ -659,11 +668,25 @@ def persist(cur, changes: list[dict], *, apply: bool) -> int:
     """Idempotent on change_guid. Returns rows actually written."""
     if not apply:
         return 0
+    from scripts.lib.cio_narrative_subjects import build_links, resolve_subject
     from scripts.lib.cio_subject_guid import lookup_identity_envelope
 
     written = 0
+    links_written = 0
     for c in changes:
         env = lookup_identity_envelope(c["symbol"])
+        declared = c.get("subject")
+        if declared:
+            # A change that knows what it is about overrides the symbol lookup.
+            # Falling back on a miss is deliberate: a sector we cannot resolve is
+            # better recorded against its member than dropped, and the link rows
+            # below still say SECTOR so the mis-stamp stays visible rather than
+            # silently becoming truth.
+            ref = resolve_subject(declared["entity_type"], declared["value"])
+            if ref:
+                env = dict(env)
+                env["subject_guid"] = ref["entity_guid"]
+                env["issuer_guid"] = None  # a sector has no issuer. §7: never invent one.
         cur.execute(
             """INSERT INTO material_changes
                  (change_guid, subject_guid, issuer_guid, symbol, kind, magnitude,
@@ -677,6 +700,32 @@ def persist(cur, changes: list[dict], *, apply: bool) -> int:
              c["universe_reason"], c.get("precedence", 10),
              json.dumps(c["evidence"]), SCHEMA, AUTHORITY))
         written += cur.rowcount
+
+        cg = change_guid(c["symbol"], c["kind"], c["observed_at"])
+        subjects = []
+        if declared:
+            subjects.append({**declared, "relationship": "subject"})
+        else:
+            subjects.append({"entity_type": "SECURITY", "value": c["symbol"],
+                             "relationship": "subject"})
+        subjects += [{**m, "relationship": "mentioned"} for m in (c.get("mentions") or [])]
+        links, _misses = build_links(row_guid=cg, source_table="material_changes",
+                                     source_id=cg, subjects=subjects)
+        for link in links:
+            cur.execute(
+                """INSERT INTO narrative_subjects
+                     (link_guid, row_guid, source_table, source_id, entity_type,
+                      subject_guid, semantic_subject, relationship, confidence,
+                      author_agent_id, schema_version)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                   ON CONFLICT (link_guid) DO NOTHING""",
+                (link["link_guid"], link["row_guid"], link["source_table"],
+                 link["source_id"], link["entity_type"], link["subject_guid"],
+                 link["semantic_subject"], link["relationship"], link["confidence"],
+                 link["author_agent_id"], link["schema_version"]))
+            links_written += cur.rowcount
+    if links_written:
+        print(f"  narrative_subjects links written: {links_written}")
     return written
 
 
