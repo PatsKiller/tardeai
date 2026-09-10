@@ -72,7 +72,9 @@ def main(argv: list[str] | None = None) -> int:
     now = datetime.now(timezone.utc)
     due = now + timedelta(days=7)
     evidence = list(args.evidence_refs) or [f"shadow:{args.subject_guid}"]
-    source_sha = args.source_sha or env.get("TRADEAI_SOURCE_SHA") or env.get("BUILD_SHA") or "unknown"
+    from scripts.lib.runtime_identity import resolve_source_sha
+
+    source_sha = args.source_sha or resolve_source_sha(env)
     served_sha = args.served_sha or source_sha
 
     commitment = build_governed_commitment(

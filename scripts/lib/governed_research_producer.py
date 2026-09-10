@@ -71,9 +71,10 @@ def enabled(env: Mapping[str, str] | None = None) -> bool:
 
 
 def source_sha(env: Mapping[str, str] | None = None) -> str:
-    """Served source identity. Never a hardcoded SHA; falls back to 'unknown'."""
-    src = env if env is not None else os.environ
-    return src.get("TRADEAI_SOURCE_SHA") or src.get("BUILD_SHA") or src.get("SOURCE_COMMIT") or "unknown"
+    """Served source identity. Env → CURRENT release stamps → git → 'unknown'."""
+    from scripts.lib.runtime_identity import resolve_source_sha
+
+    return resolve_source_sha(env)
 
 
 def feed_path(env: Mapping[str, str] | None = None) -> Path | None:
