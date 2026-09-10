@@ -221,6 +221,62 @@ def sanitize_operator_message(text: str, replacement: str | None = None) -> tupl
     return sanitized, violations
 
 
+# Navigation prose → a destination. publicize_message can only rewrite a URL
+# that is already there; 62 of 678 operator messages in the 7 days to
+# 2026-09-10 told the operator where to go and gave them nothing to tap:
+#
+#     "7 events / 1 group(s) in 14d. Check System → SIEM."
+#     "⚠ unacked critical/urgent: 4 — review Command Center → alerts"
+#     "raw audit: Command Center /v3/"
+#
+# The channel is read on a phone, where an unclickable instruction is the same
+# as no instruction. Each entry maps a phrase the producers actually emit to
+# the v3 route that answers it.
+_NAV_DESTINATIONS: list[tuple[re.Pattern, str]] = [
+    (re.compile(r"System\s*(?:→|->)\s*SIEM", re.IGNORECASE), "/v3/system"),
+    (re.compile(r"Command Center\s*(?:→|->)\s*alerts?", re.IGNORECASE), "/v3/alerts"),
+    (re.compile(r"Command Center\s*(?:→|->)\s*CIO", re.IGNORECASE), "/v3/cio"),
+    (re.compile(r"Command Center\s*(?:→|->)\s*reports?", re.IGNORECASE), "/v3/reports"),
+    (re.compile(r"\bPaper Journal\b", re.IGNORECASE), "/v3/journal"),
+    (re.compile(r"\bReports portal\b", re.IGNORECASE), "/v3/reports"),
+    (re.compile(r"Command Center\s*/v3/\s*$", re.IGNORECASE | re.MULTILINE), "/v3/"),
+]
+
+
+def navigation_destination(text: str) -> str | None:
+    """The v3 path a message tells the operator to open, or None.
+
+    First match wins, in declaration order — a message naming two destinations
+    gets the more specific one, because the list is ordered that way. Returns a
+    path, never a URL: the caller builds the absolute link so there is still
+    exactly one place that knows the base.
+    """
+    if not text:
+        return None
+    for pattern, path in _NAV_DESTINATIONS:
+        if pattern.search(text):
+            return path
+    return None
+
+
+def linkify_navigation(text: str) -> str:
+    """Append a tappable Command Center link when the body only names a place.
+
+    Appends rather than rewrites in place: the prose ("Check System → SIEM")
+    carries meaning about *why* to go, and substituting a bare URL for it would
+    lose that. No-ops when the body already carries an absolute link, so a
+    producer that did the right thing is never double-linked.
+    """
+    if not text:
+        return text
+    if "://" in text:
+        return text
+    path = navigation_destination(text)
+    if not path:
+        return text
+    return f"{text.rstrip()}\n\nOpen: {build_dashboard_url(path)}"
+
+
 def telegram_url_button(text: str, url: str) -> dict:
     """Inline keyboard URL button — preferred over body Markdown links (survives parse failures)."""
     return {"text": text, "url": url}

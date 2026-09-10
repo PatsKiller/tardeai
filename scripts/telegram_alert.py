@@ -50,6 +50,30 @@ def _smart_split(text: str, limit: int) -> list[str]:
     return smart_split(text, limit)
 
 
+def operator_wire_text(message: str) -> str:
+    """The exact text the operator will receive.
+
+    One function, called once immediately before the POST and once again when
+    the ledger row is written, so the two cannot drift. They did drift: the
+    rewrite happened on the wire copy only, and `communication_events.
+    sanitized_body` stored the pre-rewrite string. Measured over the 7 days to
+    2026-09-10, 11 of 678 stored bodies differed from what was sent, and every
+    audit of that column — including the one that found this — was reading text
+    the operator never saw.
+
+    Fail-soft: if the presentation layer raises, send the original. A message
+    that arrives unadorned is better than one that does not arrive.
+    """
+    if not message:
+        return message
+    try:
+        from notification_url_builder import linkify_navigation, publicize_message
+
+        return linkify_navigation(publicize_message(message))
+    except Exception:
+        return message
+
+
 def _raw_send_telegram_result(
     message: str,
     chat_ids: list = None,
@@ -60,11 +84,7 @@ def _raw_send_telegram_result(
     """Low-level Telegram send with provider message ids. No routing."""
     # FQDN/v3 normalization at the send chokepoint: rewrite any internal IP/localhost + legacy /v2/
     # dashboard link to the public Tailscale FQDN + /v3/ so no notification can leak a wrong URL.
-    try:
-        from notification_url_builder import publicize_message
-        message = publicize_message(message)
-    except Exception:
-        pass
+    message = operator_wire_text(message)
     token = _token()
     targets = chat_ids or _chat_ids()
     if not token or not targets:
@@ -271,16 +291,20 @@ def _best_effort_comms_publish(
         except ImportError:
             return
     try:
-        subject_key = f"telegram:{message_class}:{(message or '')[:48]}"
+        # Record what the operator receives, not what the producer composed.
+        # These two were allowed to differ and the ledger silently became a
+        # record of intent rather than of delivery.
+        wire = operator_wire_text(message)
+        subject_key = f"telegram:{message_class}:{(wire or '')[:48]}"
         published = publish_communication(
             from_plain_message(
                 producer=producer,
-                body=message,
+                body=wire,
                 subject_key=subject_key,
                 message_class=message_class,
             )
         )
-        _tag_outbound(published, message)
+        _tag_outbound(published, wire)
         # Say what was observed, not what is convenient. SUPPRESSED and UNKNOWN
         # are already valid terminal statuses; using LEGACY_DELIVERED for all
         # three is what let the Communications page show a delivered alert the
