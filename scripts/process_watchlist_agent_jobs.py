@@ -564,7 +564,12 @@ def _synthesis_lanes(prompt: str, lanes=None, max_tokens: int = 2000, manual_tri
     cloud_prompt = _strip_local_tokens(prompt)
     want = _normalize_cio_lanes(lanes)
     pid = "watchlist_cio_synthesis" if manual_trigger else None
-    flash_pid = "watchlist_cio_synthesis" if manual_trigger else "watchlist_cio_synthesis_cron"
+    # Manual uses watchlist_cio_synthesis (default_mode=manual).
+    # Organic/cron uses watchlist_cio_synthesis_cron (default_mode=automated) — required or
+    # ManualRequired is swallowed as deepseek_status=ERROR and Flash never VOTED.
+    flash_pid = (
+        "watchlist_cio_synthesis" if manual_trigger else "watchlist_cio_synthesis_cron"
+    )
     task = "CIO synthesis"
     votes: list[dict] = []
     raw_by_lane: dict = {}
