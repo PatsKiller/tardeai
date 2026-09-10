@@ -81,13 +81,26 @@ def test_a_sentence_citing_evidence_not_in_the_dossier_is_dropped():
 
 # --- rotation is sector-first -------------------------------------------------
 
-def test_rotation_tags_the_SECTOR_as_subject_and_the_symbol_as_mention():
+def _stub_lookup(sym, root=None):
+    """Resolve any symbol, so the test exercises the wiring and not the registry.
+
+    identity_registry.json is RUNTIME data and is absent in CI. Three tests in
+    this wave passed locally and failed on the runner for exactly that reason —
+    they were asserting on the contents of a file that only exists on the box.
+    A unit test that depends on runtime data tests the data.
+    """
+    return {"subject_guid": f"guid-{str(sym).upper()}", "identity_status": "CONFIRMED"}
+
+
+def test_rotation_tags_the_SECTOR_as_subject_and_the_symbol_as_mention(monkeypatch):
     captured = []
 
     def ex(sql, params=None):
         captured.append(params)
         return 1
 
+    import scripts.lib.cio_subject_guid as csg
+    monkeypatch.setattr(csg, "lookup_subject", _stub_lookup, raising=False)
     twc._tag_directive("rotation",
                        {"directive_id": "d1", "directive_kind": "sector_rotation",
                         "spec": {"gics_sector": "Energy", "symbol": "XLE"}}, ex)
@@ -96,13 +109,15 @@ def test_rotation_tags_the_SECTOR_as_subject_and_the_symbol_as_mention():
     assert by_type["SECURITY"][7] == "mentioned"
 
 
-def test_defense_tags_the_SECURITY_as_subject():
+def test_defense_tags_the_SECURITY_as_subject(monkeypatch):
     captured = []
 
     def ex(sql, params=None):
         captured.append(params)
         return 1
 
+    import scripts.lib.cio_subject_guid as csg
+    monkeypatch.setattr(csg, "lookup_subject", _stub_lookup, raising=False)
     twc._tag_directive("defense",
                        {"directive_id": "d2", "directive_kind": "defensive_lean",
                         "spec": {"gics_sector": "Utilities", "symbol": "NEE"}}, ex)
