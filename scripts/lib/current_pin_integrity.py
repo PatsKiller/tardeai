@@ -54,6 +54,41 @@ def _skip(rel: str) -> bool:
     return any(p in SKIP_PARTS for p in parts) or rel.endswith(".pyc")
 
 
+def _ignored_by_git(repo: Path, rels: list[str]) -> set[str]:
+    """Paths git itself ignores are runtime/generated, and never part of the pin.
+
+    ``SKIP_PARTS`` is a hand-kept list, and a hand-kept list goes stale the
+    moment a new generated path appears. On 2026-09-10 it did: cron writes
+    ``docs/project/STATE_OF_REPO_LATEST.md``, ``docs/governance/*_latest.*``,
+    ``docs/hermes/**`` and ``docs/maturity_hardening/*_latest.*`` into the dev
+    tree; ``overlay_main`` rsyncs that tree into the release; and this check
+    then reported ``unpinned_extra:66`` and refused a promote whose TRACKED
+    content was byte-identical to the pin (``diff_count: 0``).
+
+    Every one of those 66 is already ``git check-ignore``-positive, so git
+    knows the answer. Asking it keeps the exemption correct without anyone
+    remembering to edit a list -- the same reason the receipt write barrier
+    walks the comms package instead of naming modules.
+
+    This does NOT weaken the gate: a tracked file that differs still lands in
+    ``diffs``, and an untracked file that git does NOT ignore is still an extra.
+    """
+    if not rels:
+        return set()
+    proc = subprocess.run(
+        ["git", "-C", str(repo), "check-ignore", "--stdin"],
+        input="\n".join(rels),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    # 0 = at least one ignored, 1 = none ignored. Anything else is a git
+    # failure, and a failing git must not silently exempt everything.
+    if proc.returncode not in (0, 1):
+        return set()
+    return {ln.strip() for ln in (proc.stdout or "").splitlines() if ln.strip()}
+
+
 def evaluate_pin(
     *,
     source_commit: str,
@@ -189,7 +224,7 @@ def collect_pin_report(*, now: Optional[datetime] = None) -> dict[str, Any]:
         if hashlib.sha256(data).digest() != hashlib.sha256(blob).digest():
             diffs.append(rel)
 
-    extras: list[str] = []
+    candidates: list[str] = []
     for tree_name in TREES:
         root = cur / tree_name
         if not root.is_dir():
@@ -201,7 +236,10 @@ def collect_pin_report(*, now: Optional[datetime] = None) -> dict[str, Any]:
             if _skip(rel):
                 continue
             if rel not in tracked:
-                extras.append(rel)
+                candidates.append(rel)
+
+    ignored = _ignored_by_git(repo, candidates)
+    extras = [rel for rel in candidates if rel not in ignored]
 
     row = evaluate_pin(source_commit=sha, diff_paths=diffs, extra_paths=extras)
     row["as_of"] = now.replace(microsecond=0).isoformat()

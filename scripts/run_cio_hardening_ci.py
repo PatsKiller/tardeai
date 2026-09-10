@@ -76,6 +76,11 @@ GATES = [
             # hourly pass and every wake fell through to material_change.
             # These controls pin the scheduled path fail-closed.
             "tests/test_governed_research_producer_runner.py",
+            # The CURRENT pin gate refused a promote with unpinned_extra:66 while
+            # diff_count was 0 -- all 66 were cron-written, git-ignored runtime
+            # docs rsynced in by overlay_main. Exemption now asks git instead of
+            # a hand-kept SKIP_PARTS list; these controls pin both halves.
+            "tests/test_current_pin_gitignore_exemption.py",
             # SFR-R-001: the consumption loop must close. Slots 13:00Z/14:00Z on
             # 54639ff5a re-selected the same three sources because the runner's
             # own receipts never reached the selector.
