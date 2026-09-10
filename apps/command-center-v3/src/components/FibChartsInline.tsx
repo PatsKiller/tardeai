@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { TFChart, buildFibLevels } from './FibChartModal'
+import { FibChartsView, buildFibLevels } from './FibChartModal'
 
 // Inline daily + monthly candlestick charts (with Fib levels / swing points / confluence as price lines)
 // for the detail drawer. Auto-fetches the multi-timeframe analysis for the symbol. Read-only/advisory.
@@ -25,17 +25,5 @@ export default function FibChartsInline({ symbol }: { symbol: string }) {
   if (!data?.chart_bars?.length) return <div style={{ fontSize: 11, color: 'var(--text3)' }}>no chart data</div>
 
   const levels = buildFibLevels(data)
-  return (
-    <div>
-      <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
-        <TFChart label="Daily" bars={data.chart_bars} levels={levels} />
-        {data.chart_bars_monthly?.length ? <TFChart label="Monthly" bars={data.chart_bars_monthly} levels={levels} /> : null}
-      </div>
-      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 8 }}>
-        {levels.filter(l => l.price > 0).slice(0, 24).map((l, i) => (
-          <span key={i} style={{ fontSize: 9, color: l.color, display: 'flex', alignItems: 'center', gap: 4 }}><span style={{ width: 10, height: 2, background: l.color, display: 'inline-block' }} />{l.title} ${l.price}</span>
-        ))}
-      </div>
-    </div>
-  )
+  return <FibChartsView bars={data.chart_bars} barsMonthly={data.chart_bars_monthly} levels={levels} compact />
 }

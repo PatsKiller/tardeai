@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import FibChartModal, { type FibLevel } from './FibChartModal'
+import FibChartModal, { buildFibLevels } from './FibChartModal'
 
 // Multi-timeframe swing + Fibonacci + cross-timeframe confluence for one symbol. Lazy-loaded (the
 // analysis fetches 3 yfinance charts), so it only runs when the operator expands it on a card.
@@ -16,19 +16,6 @@ export default function FibConfluencePanel({ symbol }: { symbol: string }) {
   const [err, setErr] = useState('')
   const [chart, setChart] = useState<{ highlight?: number } | null>(null)
 
-  // every analyzed level → a chart price line. Tagged by source for the legend; the clicked level is bold.
-  const allLevels = (highlight?: number): FibLevel[] => {
-    const out: FibLevel[] = []
-    for (const t of (data?.timeframes ?? []).filter((x: any) => x.available)) {
-      const tag = t.timeframe[0].toUpperCase()
-      out.push({ price: t.swing_high, title: `${tag} swing hi`, color: '#ef4444' })
-      out.push({ price: t.swing_low, title: `${tag} swing lo`, color: '#22c55e' })
-      for (const r of t.retracements) out.push({ price: r.price, title: `${tag} ${r.label}`, color: '#60a5fa' })
-      for (const e of t.extensions) out.push({ price: e.price, title: `${tag} ext ${e.label}`, color: '#a855f7' })
-    }
-    for (const z of (data?.confluence_zones ?? []).slice(0, 4)) out.push({ price: z.price_mid, title: `confluence (${z.confidence})`, color: '#eab308' })
-    return out.map(l => ({ ...l, bold: highlight != null && Math.abs(l.price - highlight) < 0.01 }))
-  }
   const openChart = (price?: number) => { if (data?.chart_bars?.length) setChart({ highlight: price }) }
   const lvlStyle = { cursor: 'pointer', textDecoration: 'underline dotted', textUnderlineOffset: 2 } as const
 
@@ -120,7 +107,7 @@ export default function FibConfluencePanel({ symbol }: { symbol: string }) {
           )}
         </div>
       )}
-      {chart && data?.chart_bars && <FibChartModal symbol={symbol} bars={data.chart_bars} barsMonthly={data.chart_bars_monthly} levels={allLevels(chart.highlight)} onClose={() => setChart(null)} />}
+      {chart && data?.chart_bars && <FibChartModal symbol={symbol} bars={data.chart_bars} barsMonthly={data.chart_bars_monthly} levels={buildFibLevels(data, chart.highlight)} onClose={() => setChart(null)} />}
     </div>
   )
 }
