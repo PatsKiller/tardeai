@@ -280,6 +280,7 @@ def _best_effort_comms_publish(
                 message_class=message_class,
             )
         )
+        _tag_outbound(published, message)
         # Say what was observed, not what is convenient. SUPPRESSED and UNKNOWN
         # are already valid terminal statuses; using LEGACY_DELIVERED for all
         # three is what let the Communications page show a delivered alert the
@@ -306,6 +307,39 @@ def _best_effort_comms_publish(
                     f"[telegram] comms settle {status} failed for "
                     f"{delivery_id}: {type(e).__name__}: {str(e)[:160]}"
                 )
+    except Exception:
+        return
+
+
+def _tag_outbound(published, message: str) -> None:
+    """Stamp an outbound event with what it is about. Never affects delivery.
+
+    AGENTS.md §7 says tagging is TWO-WAY; only the inbound half was ever built.
+    Measured 2026-09-10: 604 outbound events, ZERO with a subject_guid, while
+    every one of the 49,094 research rows behind them HAD one. The operator got
+    "AES -- worth a look" with no path back to what was found.
+
+    Runs after publish and before settle, so the event exists to be updated and
+    a tagging failure cannot strand a RESERVED delivery stub. Wrapped whole:
+    alerting is the operator's live path and identity is an enrichment on it --
+    the opposite priority to a paid provider call, deliberately.
+    """
+    try:
+        event_id = getattr(published, "event_id", None) or getattr(published, "id", None)
+        if not event_id:
+            return
+        try:
+            from scripts.lib.cio_outbound_identity import tag_outbound_event
+            from scripts.lib.comms.agent_contracts import _db_conn
+        except ImportError:
+            from lib.cio_outbound_identity import tag_outbound_event  # type: ignore
+            from lib.comms.agent_contracts import _db_conn  # type: ignore
+        conn = _db_conn()
+        if conn is None:
+            return
+        cur = conn.cursor()
+        tag_outbound_event(cur, str(event_id), message, author_agent_id="cio")
+        conn.commit()
     except Exception:
         return
 
