@@ -60,6 +60,9 @@ GATES = [
             # the integration owner — this file is the central CI gate registry
             # and is never lane-leased.
             "tests/test_run_persistent_wake.py",
+            # INC-2026-09-09-STATE-ROOT-FORK: wake evidence must not live inside
+            # a release directory, or it forks silently on every promote.
+            "tests/test_wake_state_root_stability.py",
             # SFR-A-FOLLOWUP2-001: wake subject selection.
             "tests/test_wake_subject_selector.py",
             "tests/test_wake_research_consumption.py",

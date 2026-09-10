@@ -82,10 +82,42 @@ def _emit(line: dict[str, Any]) -> None:
     print(json.dumps(line, sort_keys=True, default=str), flush=True)
 
 
+#: Release-independent home for persistent-wake evidence. Anything under a
+#: release directory is destroyed-by-replacement on the next promote.
+SHARED_STATE_ROOT = Path.home() / "trade-ai-state" / "persistent_wake" / "state"
+
+#: Marks a checkout as an immutable deployed release rather than a dev tree.
+_RELEASE_MARKER = "trade-ai-releases"
+
+
+def _is_release_tree(path: Path) -> bool:
+    return _RELEASE_MARKER in path.parts
+
+
 def _default_state_root(env: dict) -> Path:
+    """Resolve the durable wake state root.
+
+    Precedence: explicit env var, then a release-independent shared root when
+    running from a deployed release, then the project-local path for dev/tests.
+
+    Why the shared root exists. The state used to live at
+    ``<release>/data/persistent_wake/state``. ``prepare`` snapshots the current
+    release, so every wake that fired between prepare and promote was stranded
+    in the retiring release and never appeared in the new one -- the evidence
+    silently FORKED on each deploy. Observed 2026-09-09: the 23:00Z wake landed
+    in dbdf498b9 (102 rows, latest slot 23:00Z) while the release promoted at
+    23:14Z carried only 99 rows, latest slot 19:00Z. Three contiguous organic
+    cycles can never accumulate across a promote under that layout, and the loss
+    is invisible because both files look healthy in isolation.
+
+    Dev and test trees keep the project-local path so nothing outside a release
+    changes behaviour.
+    """
     raw = env.get(DEFAULT_STATE_ENV) or ""
     if raw:
         return Path(raw)
+    if _is_release_tree(_PROJECT):
+        return SHARED_STATE_ROOT
     return _PROJECT / "data" / "persistent_wake" / "state"
 
 
