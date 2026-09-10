@@ -1290,6 +1290,16 @@ GATES = [
             "tests/test_telegram_alert_rich_send.py",
         ],
     ),
+    (
+        # tip hygiene: disk/docs/librarian enforcers (2026-09-10 fill incident)
+        "tip_hygiene_enforcers",
+        [
+            "tests/test_backup_enforcer.py",
+            "tests/test_disk_hygiene_enforcer.py",
+            "tests/test_docs_tip_hygiene_enforcer.py",
+            "tests/test_hermes_librarian_retention_runner.py",
+        ],
+    ),
 ]
 
 

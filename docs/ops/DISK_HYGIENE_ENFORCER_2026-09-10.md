@@ -1,3 +1,7 @@
+**Status:** ACTIVE
+**Updated:** 2026-09-10
+**Authority:** ops tip-hygiene
+
 # Disk hygiene enforcer (2026-09-10)
 
 ## Why

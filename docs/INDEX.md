@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `7a010aeacc737a4b8b0f6dd0e65083c4695bce2dc21274dab221b748e0c758c8`
+**Tree fingerprint:** `2a5984f8ab4e4084b1a4ad5235b03ba2e064e829d6fb10983b9c59057f26f729`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -14,8 +14,8 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 |--------|------:|
 | Files under `docs/` (excl. this INDEX) | 2455 |
 | Markdown (excl. this INDEX) | 2042 |
-| **MISSING HEADER** | **52** |
-| Header OK | 1990 |
+| **MISSING HEADER** | **51** |
+| Header OK | 1991 |
 | Duplicate groups | 2 |
 
 ### By status_guess
@@ -1549,7 +1549,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/DECISION_PAYLOAD_LANDING_2026-08-21.md` | DecisionPayload landing check — 2026-08-21 19:31 ET | review_required | OK | `f3951cc5a623` |
 | `docs/ops/DEEPSEEK_BULK_WINDOW_ET_2026-08-19.md` | DeepSeek bulk window: 10:00–21:00 US Eastern | review_required | OK | `7f5763a0c9fb` |
 | `docs/ops/DESK_GAP_FIX_CLOSEOUT_2026-08-19.md` | Desk gap-fix closeout — Advisory/CIO accuracy + daily shadow-receipt producer | review_required | OK | `950c2f95e8b8` |
-| `docs/ops/DISK_HYGIENE_ENFORCER_2026-09-10.md` | Disk hygiene enforcer (2026-09-10) | review_required | MISSING HEADER | `41866bb7091b` |
+| `docs/ops/DISK_HYGIENE_ENFORCER_2026-09-10.md` | Disk hygiene enforcer (2026-09-10) | review_required | OK | `d3c4580d5c8b` |
 | `docs/ops/DRIVE_ARCHIVE_2026-09-01.md` | Drive archive — 2026-09-01 | review_required | OK | `3490029f050c` |
 | `docs/ops/DRIVE_MUTATION_SAFETY.md` | Drive mutation safety (gog v0.12.x) | review_required | OK | `9b701b444eb7` |
 | `docs/ops/F6_UTC_CRON_PROPOSALS.md` | F6 — UTC scheduling proposals for LLM-heavy jobs | review_required | OK | `991bedac8b13` |
