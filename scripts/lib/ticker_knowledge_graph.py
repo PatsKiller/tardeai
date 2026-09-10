@@ -20,7 +20,16 @@ AUTHORITY = "READ_ONLY_ADVISORY"
 PROFILE_SCHEMA = "TickerKnowledgeProfile@v1"
 ARTIFACT_SCHEMA = "TickerResearchArtifact@v1"
 GRAPH_RELATIONSHIPS = ("LINEAR", "LATERAL", "VERTICAL", "MACRO", "CALENDAR")
-ENTITY_KINDS = ("ticker", "issuer", "sector", "industry", "subindustry", "theme", "catalyst", "calendar")
+ENTITY_KINDS = (
+    "ticker", "issuer", "sector", "industry", "subindustry", "theme",
+    "catalyst", "calendar",
+    # Added 2026-09-10 for NarrativeSubjectLink@v1. A strategy and a portfolio
+    # are things a narrative is ABOUT (strategy_lesson_rollup is keyed on
+    # strategy_id with no symbol at all; risk_synthesis_results is
+    # portfolio-level). Minting them here keeps every non-security subject on
+    # one namespace instead of inventing a fifth id format.
+    "strategy", "portfolio",
+)
 
 
 def _now() -> str:

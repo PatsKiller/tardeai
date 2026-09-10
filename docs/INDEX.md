@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `5000478e39604224630474fccfcf18f7432890daaabb9773816b854ea7a262b7`
+**Tree fingerprint:** `e36d9aa038e570439ebf06e5951e7473a867c730c16b7910cbc0e22dad5c54f2`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,10 +12,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2465 |
-| Markdown (excl. this INDEX) | 2052 |
+| Files under `docs/` (excl. this INDEX) | 2467 |
+| Markdown (excl. this INDEX) | 2054 |
 | **MISSING HEADER** | **51** |
-| Header OK | 2001 |
+| Header OK | 2003 |
 | Duplicate groups | 2 |
 
 ### By status_guess
@@ -28,7 +28,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_raw_sync | 36 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 2 |
-| review_required | 2094 |
+| review_required | 2096 |
 
 ## Markdown tree
 
@@ -291,6 +291,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/DEFENSE_DESK_V9.md` | Defense Desk v9 — The Adjudication Layer (2026-07-18 evening) | review_required | OK | `cadd848574d7` |
 | `docs/architecture/DOCUMENT_MENTIONS_AND_LLM_ESCALATION.md` | Document mentions, subject vs. passing reference, and LLM escalation | review_required | OK | `a54c4035c298` |
 | `docs/architecture/EXECUTION_QUALITY.md` | Replay-Aware Execution Quality (design) | review_required | OK | `685082a5cd95` |
+| `docs/architecture/FINDING_interface_contracts_not_in_repo.md` | Finding — `INTERFACE_CONTRACTS.md` is cited everywhere and version-controlled nowhere | review_required | OK | `f9c9cfc0beea` |
 | `docs/architecture/GAIN_GUARDIAN.md` | Gain Guardian — Holdings Exit Intelligence (Live Book, Advisory-Only) | review_required | OK | `1d3bec366edc` |
 | `docs/architecture/GOOGLE_NOTES_BITEMPORAL_DDL_ARCHITECT_RECONCILIATION_2026-08-24.md` | Google Notes bitemporal DDL — architect reconciliation | review_required | OK | `8d29266fc3e6` |
 | `docs/architecture/GOVERNED_MODEL_BRIDGE.md` | The governed model bridge — caps, callers, and how it fails | review_required | OK | `7ef8f731bf1b` |
@@ -408,7 +409,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/WATCH_DESK_V2.md` | Watch Desk v2 — Truth & Directive Governance (P0 workstreams, 2026-07-16) | review_required | OK | `be5f8cd47049` |
 | `docs/architecture/WATCH_DESK_V3.md` | Watch Desk v3 — From Watching to Learning (2026-07-16 evening) | review_required | OK | `ea65c14610d0` |
 | `docs/architecture/WATCH_DESK_V4.md` | Watch Desk v4 — Terminal Grade (2026-07-16, evening) | review_required | OK | `018c8ea82d4c` |
-| `docs/architecture/agent-contracts.md` | Agent Consumption Contracts — AgentConsumptionReceipt@v1 | review_required | OK | `deec32e44f01` |
+| `docs/architecture/agent-contracts.md` | Agent Consumption Contracts — AgentConsumptionReceipt@v1 | review_required | OK | `1b18a9999a79` |
 | `docs/architecture/agent-memory-view-proposal.md` | Command Center — Agent Memory view (proposal) | review_required | OK | `7b90f4d8e3d6` |
 | `docs/architecture/channel-adapters.md` | Gateway Channel Adapters — Phase 10 | review_required | OK | `2457155850f5` |
 | `docs/architecture/cio/ADR_ALEX_AUTHORITY_MANIFEST.md` | ADR: Alex Authority Manifest | review_required | OK | `8bf7e2366689` |
@@ -475,6 +476,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/maturity_gap_closure_20260910/CIO_GAP_2026-09-10-0215.md` | CIO Agent — GAP (AS-IS vs FUTURE) — 2026-09-10-0215 | review_required | OK | `f9d45905f6f4` |
 | `docs/architecture/maturity_gap_closure_20260910/HONEST_MATURITY_ASSESSMENT_2026-09-10-0215.md` | Honest maturity assessment — 2026-09-10-0215 | review_required | OK | `fcfbcc650251` |
 | `docs/architecture/maturity_gap_closure_20260910/SESSION_DOCS_SUMMARY_2026-09-10-0215.md` | Session docs summary — 2026-09-10-0215 | review_required | OK | `4250b1f5f511` |
+| `docs/architecture/narrative-subject-identity.md` | NarrativeSubjectLink@v1 — Architecture | review_required | OK | `e6f73da9013d` |
 | `docs/architecture/retention.md` | Librarian Retention — RetentionDecision@v1 (Phase 6) | review_required | OK | `ca8630975a92` |
 | `docs/architecture/subject-memory.md` | Subject Memory / SubjectThread@v1 — Architecture | review_required | OK | `dc0fb229b08c` |
 | `docs/atm/PHASE180A_ATM_CURRENT_CONFIGURATION_AUDIT.md` | Phase 180A: ATM Current Configuration Audit | review_required | OK | `2d3ef26142a3` |
@@ -765,7 +767,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/cio/WAKE_TRACES_P5.md` | Phase P5 — Lightweight wake traces | review_required | OK | `b17c04bc59ed` |
 | `docs/consumption-monitoring.md` | LLM Consumption Monitoring (Command Center v3) | review_required | OK | `fb39d6b65c28` |
 | `docs/convergence/COMMAND_CENTER_CUTOVER_PLAN.md` | Command Center cutover plan | review_required | OK | `7d77edf9913d` |
-| `docs/convergence/CONTRACT_CHANGE_LOG.md` | Control-plane contract change log | review_required | OK | `f72f66c0716d` |
+| `docs/convergence/CONTRACT_CHANGE_LOG.md` | Control-plane contract change log | review_required | OK | `5c2362bce8d1` |
 | `docs/convergence/CONTROL_PLANE_API_V1_1.md` | CONTROL_PLANE_API_V1.1 | review_required | OK | `82a64c09a88f` |
 | `docs/convergence/CONTROL_PLANE_API_V1_BASELINE.md` | CONTROL_PLANE_API_V1_BASELINE | review_required | OK | `acb9460868cd` |
 | `docs/convergence/CONTROL_PLANE_CONTRACTS.md` | Control-Plane Contracts v1 | review_required | OK | `a4ba2e134d11` |

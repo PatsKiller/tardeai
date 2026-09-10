@@ -2440,6 +2440,25 @@ CRITICAL INSTRUCTIONS:
           [r["agent"] for r in results], actual_model, raw, SYNTHESIS_VERSION_NUM,
           _grok_rec, _cgpt_rec, dual_meta.get("agree"), json.dumps(dual_meta)))
 
+    # Identity for the synthesis narrative. watchlist_final_synthesis is declared
+    # "system of record" by the Command Center detail drawer and held 1,184
+    # narratives with no subject identity at all, so none of them could be rolled
+    # up against the security, sector or industry they concern.
+    # No DDL on this table: the link table exists so a hot writer (four cron
+    # lines, every 5-15 minutes) never has to take an ACCESS EXCLUSIVE lock.
+    try:
+        # `from lib.` not `from scripts.lib.` — this file is SCRIPTS_ONLY and runs
+        # with scripts/ on sys.path. tests/test_overnight_g2_import_normalise.py
+        # enforces the split; getting it wrong is an ImportError at 06:00.
+        from lib.cio_narrative_write import (
+            load_symbol_profiles, subjects_for_symbol, write_narrative)
+        load_symbol_profiles(cur)
+        write_narrative(cur, source_table="watchlist_final_synthesis",
+                        source_id=symbol, subjects=subjects_for_symbol(symbol),
+                        composed=False)
+    except Exception:
+        pass  # fail-safe: an untagged synthesis row beats a blank Watchlist Hub
+
     # Record decision inputs (data lineage — what influenced this synthesis)
     try:
         # Agent results that fed into this synthesis

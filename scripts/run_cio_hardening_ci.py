@@ -81,8 +81,28 @@ GATES = [
             # docs rsynced in by overlay_main. Exemption now asks git instead of
             # a hand-kept SKIP_PARTS list; these controls pin both halves.
             "tests/test_current_pin_gitignore_exemption.py",
+            # NarrativeSubjectLink@v1. Fifteen narrative surfaces, one tagged;
+            # sector_move stamped a SECURITY guid on a SECTOR event. These pin
+            # sector canonicalisation (two spellings -> one guid), fail-loud on
+            # an unknown type, and that an unresolvable security is a MISS.
+            "tests/test_narrative_subject_identity.py",
+            # Phase 2: a SECTOR event must never carry a member's SECURITY guid.
+            "tests/test_sector_move_subject.py",
+            # Phase 3 lane wiring: identity attached, fail-safe, behaviour rail,
+            # and rotation tagged sector-first (it is sector-first by design).
+            "tests/test_narrative_lane_wiring.py",
+            # Phase 5: the wake had the memory code all along and production
+            # plugged nothing into the ports. These pin the plugs.
+            "tests/test_wake_memory_carryforward.py",
+            # Phase 7: outbound messages carry identity. Includes the MSTR
+            # regression -- "Strategy:" is a field label, not MicroStrategy.
+            "tests/test_outbound_identity.py",
+            # Composition: speak only when something changed, and narrate the
+            # research when speaking. The model narrator is INJECTED, never
+            # constructed, so importing it arms nothing (§12).
             "tests/test_narrative_composition.py",
             "tests/test_narrative_narrator.py",
+            "tests/test_wake_composition.py",
             # SFR-R-001: the consumption loop must close. Slots 13:00Z/14:00Z on
             # 54639ff5a re-selected the same three sources because the runner's
             # own receipts never reached the selector.

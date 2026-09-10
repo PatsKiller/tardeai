@@ -6,6 +6,29 @@ Measured at: efcc51365 / not measured
 
 Integrator-owned. Workers must not edit this file.
 
+## 2026-09-10 — CONTRACT_CHANGE-00N register NarrativeSubjectLink@v1
+
+| Field | Value |
+|---|---|
+| old version | none — fourteen of fifteen narrative surfaces carried no subject identity at all |
+| new version | **`NarrativeSubjectLink@v1`** |
+| reason | A narrative that does not say what it is about cannot be rolled up, cited or audited. Proven by `material_changes`: 13 of 14 `sector_move` rows carried a SECURITY guid for a SECTOR event, which §17A forbids in words and nothing enforced in code. |
+| affected streams | material-change detection, defense/rotation curation, inference sizing, watchlist synthesis, agent recommendation normalisation, persistent wake |
+| compatibility impact | Additive. One new table; **no existing table altered**, so no ACCESS EXCLUSIVE lock is taken on `agent_recommendation_registry` (462,902 rows) or `watchlist_final_synthesis` (writers every 5-15 min). Tagging is fail-safe: a failure leaves the row persisted and untagged. |
+| migration requirement | `migrations/2026_09_10_narrative_subject_links.sql`. Forward-only — historical rows acquire links only where identity is derivable from data already in the row; nothing is inferred from prose. |
+
+Canonical artifacts:
+
+- `docs/architecture/narrative-subject-identity.md`
+- `migrations/2026_09_10_narrative_subject_links.sql`
+- `scripts/lib/cio_narrative_subjects.py`
+- `scripts/lib/cio_narrative_write.py`
+- `AGENTS.md` §13.4 — `### Narrative subject identity`
+
+No new id type was created. This links two ids that already exist, so the eleven
+registered id types stand unchanged, and no fifth id format was introduced
+alongside the four that already coexist.
+
 ## 2026-08-26 — CONTRACT_CHANGE-001 freeze ControlPlane@v1.0.0
 
 | Field | Value |
