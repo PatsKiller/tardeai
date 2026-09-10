@@ -20,7 +20,9 @@ import os
 import re
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
+
+from scripts.lib.delivery_provenance_quarantine import exclude_quarantined
 
 SCHEMA = "CampaignMaturityTruth@v1"
 HISTORICAL_SUPERSEDED = "data/runtime/maturity_score_latest.json"
@@ -139,6 +141,43 @@ def _jsonl_wakes(root: Path) -> list[dict[str, Any]]:
     return rows
 
 
+def _coords(row: dict[str, Any]) -> dict[str, Any]:
+    raw = row.get("provider_coordinates")
+    if isinstance(raw, dict):
+        return raw
+    if isinstance(raw, str) and raw.strip():
+        try:
+            obj = json.loads(raw)
+        except ValueError:
+            return {}
+        return obj if isinstance(obj, dict) else {}
+    return {}
+
+
+def count_delivery_maturity_numerators(
+    rows: Iterable[dict[str, Any]], *, path: str | None = None
+) -> dict[str, int]:
+    """Maturity numerators over delivery rows — quarantined ids dropped via exclude_quarantined."""
+    kept = exclude_quarantined(rows, path=path)
+    gw = 0
+    leg = 0
+    pmid = 0
+    for row in kept:
+        owner = str(_coords(row).get("delivery_owner") or "").strip()
+        if owner == "gateway":
+            gw += 1
+        elif owner == "legacy":
+            leg += 1
+        if row.get("provider_message_id"):
+            pmid += 1
+    return {
+        "delivery_owner_gateway": gw,
+        "delivery_owner_legacy": leg,
+        "deliveries_with_pmid": pmid,
+        "kept_n": len(kept),
+    }
+
+
 def _db_snapshot() -> dict[str, Any]:
     """Best-effort read-only counts. Missing DB ⇒ explicit zeroes + unavailable."""
     out: dict[str, Any] = {
@@ -186,19 +225,20 @@ def _db_snapshot() -> dict[str, Any]:
             """
         )
         out["acr_usable"] = int(cur.fetchone()[0])
+        # Fetch delivery rows and drop quarantined provider ids (e.g. wamid.test_1)
+        # via exclude_quarantined before maturity numerators.
         cur.execute(
             """
-            SELECT
-              count(*) FILTER (WHERE provider_coordinates->>'delivery_owner' = 'gateway'),
-              count(*) FILTER (WHERE provider_coordinates->>'delivery_owner' = 'legacy'),
-              count(*) FILTER (WHERE provider_message_id IS NOT NULL)
-            FROM communication_deliveries
+            SELECT delivery_id, provider_message_id, provider_coordinates, channel
+              FROM communication_deliveries
             """
         )
-        gw, leg, pmid = cur.fetchone()
-        out["delivery_owner_gateway"] = int(gw or 0)
-        out["delivery_owner_legacy"] = int(leg or 0)
-        out["deliveries_with_pmid"] = int(pmid or 0)
+        cols = [d[0] for d in cur.description]
+        delivery_rows = [dict(zip(cols, r)) for r in cur.fetchall()]
+        counts = count_delivery_maturity_numerators(delivery_rows)
+        out["delivery_owner_gateway"] = int(counts["delivery_owner_gateway"])
+        out["delivery_owner_legacy"] = int(counts["delivery_owner_legacy"])
+        out["deliveries_with_pmid"] = int(counts["deliveries_with_pmid"])
         cur.execute(
             """
             SELECT count(*) FROM communication_events e
@@ -519,4 +559,10 @@ def build_maturity_truth(*, root: Path | None = None) -> dict[str, Any]:
     }
 
 
-__all__ = ["build_maturity_truth", "SCHEMA", "EVIDENCE_CLASSES", "HISTORICAL_SUPERSEDED"]
+__all__ = [
+    "build_maturity_truth",
+    "count_delivery_maturity_numerators",
+    "SCHEMA",
+    "EVIDENCE_CLASSES",
+    "HISTORICAL_SUPERSEDED",
+]

@@ -127,6 +127,9 @@ GATES = [
             "tests/test_comms_credential_resolve.py",
             "tests/test_delivery_provenance_quarantine.py",
             "tests/test_maturity_lanes_f_j.py",
+            # Maturity-gap remaining: Flash CIO soak observer, self-repair dry harness.
+            "tests/test_observe_flash_cio_soak.py",
+            "tests/test_run_self_repair_loop_dry.py",
             # Holding-drawer LLM curation (feat/holding-llm-curation-cio-flash):
             # freshness classes, CIO Flash 4.1 triple-consensus reconcile,
             # refusal fail-closed, curation lineage GUIDs + prior-grounding.
