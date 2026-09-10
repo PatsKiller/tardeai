@@ -31,6 +31,18 @@ permission; effect_kind defaults to 'none'.
 
 from __future__ import annotations
 
+#: Dark-contract guard: this is the canonical Phase 3 inbound orchestrator, but
+#: the approved poller still calls ``inbound_consumption.feed_telegram_update``
+#: directly. Wiring the poller to ``process_update_atomically`` is the Phase 8
+#: activation step (gated on the organic epoch). Zero live callers is correct
+#: until then — not a silent dark contract (MBI_BEHAVIOR=0).
+NO_CONSUMER_REASON = (
+    "Grok-closure Phase 3 atomic-inbound orchestrator; runtime wiring (poller -> "
+    "process_update_atomically instead of feed_telegram_update) is the Phase 8 "
+    "activation step gated on the organic epoch. Zero live callers is correct "
+    "until then."
+)
+
 from dataclasses import dataclass, field
 from typing import Any, Callable
 

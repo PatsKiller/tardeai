@@ -27,6 +27,18 @@ Authority: READ_ONLY_ADVISORY. Never sizes, orders, stops, or writes broker stat
 
 from __future__ import annotations
 
+#: Dark-contract guard: this contract is the canonical Phase 4 commitment path,
+#: but the wake engine still mints inline commitments and nothing in the runtime
+#: calls it yet. Wiring it into the wake decision path is the Phase 8 activation
+#: step (gated on the organic epoch). Zero live callers is correct until then —
+#: not a silent dark contract (MBI_BEHAVIOR=0; recommendation≠mutation).
+NO_CONSUMER_REASON = (
+    "Grok-closure Phase 4 governed-commitment contract + outcome evaluator; "
+    "runtime wiring (wake decision -> build_governed_commitment -> evaluate_outcome) "
+    "is the Phase 8 activation step gated on the organic epoch. Zero live callers "
+    "is correct until then."
+)
+
 import hashlib
 import json
 from dataclasses import dataclass, field
