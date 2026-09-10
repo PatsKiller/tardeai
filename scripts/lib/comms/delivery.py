@@ -379,6 +379,72 @@ def _assert_transition(current: str, new_status: str) -> None:
         raise DeliveryGateError(f"status_transition_illegal:{current}->{new_status}")
 
 
+
+def _persist_event_settlement_pg(
+    event_id: str,
+    *,
+    status: str,
+    provider_message_id: str | None,
+    settled_at: datetime | None,
+    delivery_owner: str | None = None,
+    gateway_mode: str | None = None,
+) -> None:
+    """Best-effort durable stamp onto communication_events settlement columns."""
+    if not event_id:
+        return
+    try:
+        from db_adapter import _get_conn
+    except Exception:
+        return
+    st = (status or "").strip().upper()
+    now = settled_at or datetime.now(timezone.utc)
+    state = None
+    if st in ("SENT", "DELIVERED", "ACKNOWLEDGED") and provider_message_id:
+        state = "SETTLED"
+    elif st in ("FAILED", "BOUNCED"):
+        state = "FAILED"
+    elif st == "LEGACY_DELIVERED":
+        state = "UNKNOWN_LEGACY"
+    if state is None and not delivery_owner and not gateway_mode:
+        return
+    conn = None
+    try:
+        conn = _get_conn()
+        cur = conn.cursor()
+        cur.execute(
+            """
+            UPDATE communication_events
+               SET provider_message_id = COALESCE(%s, provider_message_id),
+                   provider_settled_at = COALESCE(%s, provider_settled_at),
+                   provider_settlement_state = COALESCE(%s, provider_settlement_state),
+                   delivery_owner = COALESCE(%s, delivery_owner),
+                   gateway_mode_at_dispatch = COALESCE(%s, gateway_mode_at_dispatch)
+             WHERE event_id = %s
+            """,
+            (
+                provider_message_id,
+                now if state else None,
+                state,
+                delivery_owner,
+                gateway_mode,
+                str(event_id),
+            ),
+        )
+        conn.commit()
+    except Exception:
+        try:
+            if conn is not None:
+                conn.rollback()
+        except Exception:
+            pass
+    finally:
+        try:
+            if conn is not None:
+                conn.close()
+        except Exception:
+            pass
+
+
 def _mirror_event_settlement(
     event_id: str,
     *,
@@ -515,6 +581,14 @@ def settle_delivery(
             delivery_owner=delivery_owner,
             gateway_mode=gateway_mode,
         )
+        _persist_event_settlement_pg(
+            updated.event_id,
+            status=new_status,
+            provider_message_id=provider_message_id or updated.provider_message_id,
+            settled_at=updated.completed_at or updated.sent_at or now,
+            delivery_owner=delivery_owner,
+            gateway_mode=gateway_mode,
+        )
         return updated
 
     conn = _db_conn()
@@ -596,6 +670,14 @@ def settle_delivery(
                 status=new_status,
                 provider_message_id=provider_message_id or result.provider_message_id,
                 error_taxonomy=error_taxonomy,
+                settled_at=result.completed_at or result.sent_at or now,
+                delivery_owner=delivery_owner,
+                gateway_mode=gateway_mode,
+            )
+            _persist_event_settlement_pg(
+                result.event_id,
+                status=new_status,
+                provider_message_id=provider_message_id or result.provider_message_id,
                 settled_at=result.completed_at or result.sent_at or now,
                 delivery_owner=delivery_owner,
                 gateway_mode=gateway_mode,
