@@ -52,7 +52,7 @@ def test_export_by_key_from_operator_csv(tmp_path):
     p = tmp_path / "keys.csv"
     p.write_text(
         "api_key_id,model,billed_cost_usd,input_tokens,output_tokens\n"
-        "ds_prod_slot,deepseek-v4-flash,1.25,1000,50\n"
+        "ds_prod_slot,deepseek-flash,1.25,1000,50\n"
     )
     r = export_by_key(start="2026-08-01", end="2026-08-02", operator_export=p)
     assert r["ok"] is True
@@ -65,21 +65,21 @@ def test_effective_dated_period_a_not_new_table():
     # 2M miss + 906429 out at historical flash = $0.5338
     old = calculate_usd(
         provider="deepseek",
-        model="deepseek-v4-flash",
+        model="deepseek-flash",
         at="2026-08-08T16:00:00+00:00",
         cache_miss_input=2_000_000,
         output=906429,
     )
     new = calculate_usd(
         provider="deepseek",
-        model="deepseek-v4-flash",
+        model="deepseek-flash",
         at="2026-08-17T12:00:00+00:00",
         cache_miss_input=2_000_000,
         output=906429,
     )
     assert abs(old["calculated_cost_usd"] - 0.5338) < 0.0001
-    assert old["price_schedule_id"] == "deepseek-v4-flat-2026-08-03"
-    assert new["price_schedule_id"] == "deepseek-v4-flash-peakoff-2026-08-16"
+    assert old["price_schedule_id"] == "deepseek-flash-flat-2026-08-03"
+    assert new["price_schedule_id"] == "deepseek-flash-peakoff-2026-08-16"
     assert abs(new["calculated_cost_usd"] - 0.5338) > 0.4
     assert new["calculated_cost_usd"] != 1.17  # not the hardcoded wrong number; just different schedule
 
@@ -107,7 +107,7 @@ def test_kchar_not_treated_as_usd():
     rows = [{
         "id": 1,
         "created_at": "2026-08-08T00:00:00+00:00",
-        "model": "deepseek-v4-flash",
+        "model": "deepseek-flash",
         "estimated_cost_usd": 8065.40,
         "cost_basis": "oauth_free_or_unset",
         "prompt_chars": 8065000,

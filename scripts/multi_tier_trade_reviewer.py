@@ -44,14 +44,14 @@ _cloud_review_count = 0
 
 TIER_CONFIG = {
     "realtime": {
-        "model": "deepseek-v4-flash",
+        "model": "deepseek-flash",
         "provider": "deepseek-flash",
         "max_tokens": 400,
         "temperature": 0.3,
         "description": "Governed advisory review on trade close",
     },
     "overnight": {
-        "model": "deepseek-v4-flash",
+        "model": "deepseek-flash",
         "provider": "deepseek-flash",
         "max_tokens": 800,
         "temperature": 0.4,

@@ -21,8 +21,8 @@ class _Resp:
         self.content = kw.get("content", "OK")
         self.requested_policy = "FAST"
         self.executed_policy = "FAST"
-        self.requested_model_id = "deepseek-v4-flash"
-        self.returned_model = "deepseek-v4-flash"
+        self.requested_model_id = "deepseek-flash"
+        self.returned_model = "deepseek-flash"
         self.thinking = "disabled"
         self.reasoning_effort = None
         self.request_id = "req-t"
@@ -191,7 +191,7 @@ def test_settled_actual_counted_when_log_fails(monkeypatch):
     }
     before = lc.ledger_paid_usd_today(pid)
     rid = lc.reserve_projected_cost(
-        pid, 0.01, model_id="deepseek-v4-flash", process_config=cfg,
+        pid, 0.01, model_id="deepseek-flash", process_config=cfg,
     )
     lc.settle_reservation(rid, 0.007, ok=True, billable_attempt=True)
     # log_call fails
@@ -224,7 +224,7 @@ def test_released_pre_provider_does_not_consume(monkeypatch):
     cfg = {"registered": True, "daily_cost_cap_usd": 1.0, "daily_soft_cap": 100}
     before = lc.ledger_paid_usd_today(pid)
     rid = lc.reserve_projected_cost(
-        pid, 0.02, model_id="deepseek-v4-flash", process_config=cfg,
+        pid, 0.02, model_id="deepseek-flash", process_config=cfg,
     )
     lc.settle_reservation(rid, None, ok=False, billable_attempt=False)
     after = lc.ledger_paid_usd_today(pid)
@@ -250,7 +250,7 @@ def test_ambiguous_timeout_settles_conservatively(monkeypatch):
     monkeypatch.setattr(lc, "get_process_config", lambda p: cfg)
     before = lc.ledger_paid_usd_today(pid)
     rid = lc.reserve_projected_cost(
-        pid, 0.03, model_id="deepseek-v4-flash", process_config=cfg,
+        pid, 0.03, model_id="deepseek-flash", process_config=cfg,
     )
     # billable attempt, no actual → projected
     lc.settle_reservation(rid, None, ok=False, billable_attempt=True, projected_fallback=0.03)
@@ -283,7 +283,7 @@ def test_concurrent_reservations_respect_cap(monkeypatch):
     def worker():
         try:
             rid = lc.reserve_projected_cost(
-                pid, 0.04, model_id="deepseek-v4-flash", process_config=cfg,
+                pid, 0.04, model_id="deepseek-flash", process_config=cfg,
             )
             with lock:
                 results.append(("ok", rid))
@@ -316,8 +316,13 @@ def test_concurrent_global_cap(monkeypatch):
     # Room for exactly one 0.6 projection; second concurrent reserve must fail.
     global_cap = float(spent_g) + 0.7
 
-    pid_a = f"test_ga_{int(time.time()*1000)}"
-    pid_b = f"test_gb_{int(time.time()*1000)}"
+    # Use non-test process ids: the 2026-08-29 ledger change EXCLUDES test_/pytest_/
+    # fixture_ process ids from the global spend sum (so test rows can't consume the
+    # operator's budget). A global-cap concurrency test therefore cannot use test_*
+    # ids — those reservations are invisible to ledger_paid_usd_today(None) and the
+    # second reserve would wrongly succeed. Non-test ids count toward the global sum.
+    pid_a = f"caprace_ga_{int(time.time()*1000)}"
+    pid_b = f"caprace_gb_{int(time.time()*1000)}"
     cfg = {
         "registered": True,
         "daily_cost_cap_usd": 10.0,
@@ -329,7 +334,7 @@ def test_concurrent_global_cap(monkeypatch):
     def worker(pid):
         try:
             rid = lc.reserve_projected_cost(
-                pid, 0.6, model_id="deepseek-v4-flash",
+                pid, 0.6, model_id="deepseek-flash",
                 process_config=cfg, global_cap=global_cap,
             )
             with lock:
@@ -364,7 +369,7 @@ def test_reserve_requires_process_config():
     if not lc.cost_persistence_available():
         pytest.skip("no DB")
     with pytest.raises(RuntimeError, match="COST_CONFIGURATION_INVALID"):
-        lc.reserve_projected_cost("x", 0.01, model_id="deepseek-v4-flash", process_config=None)
+        lc.reserve_projected_cost("x", 0.01, model_id="deepseek-flash", process_config=None)
 
 
 def test_config_error_after_lock_no_insert(monkeypatch):
@@ -386,7 +391,7 @@ def test_config_error_after_lock_no_insert(monkeypatch):
     monkeypatch.setattr(lc, "ledger_paid_usd_today", boom_paid)
     try:
         lc.reserve_projected_cost(
-            pid, 0.01, model_id="deepseek-v4-flash", process_config=cfg,
+            pid, 0.01, model_id="deepseek-flash", process_config=cfg,
         )
         assert False, "expected post-lock failure"
     except RuntimeError as e:
@@ -405,7 +410,7 @@ def test_missing_caps_rejected_before_or_at_reserve():
     before = lc.ledger_request_count_today(pid)
     with pytest.raises(RuntimeError, match="COST_CONFIGURATION_INVALID"):
         lc.reserve_projected_cost(
-            pid, 0.01, model_id="deepseek-v4-flash",
+            pid, 0.01, model_id="deepseek-flash",
             process_config={"daily_cost_cap_usd": None, "daily_soft_cap": 10},
         )
     assert lc.ledger_request_count_today(pid) == before

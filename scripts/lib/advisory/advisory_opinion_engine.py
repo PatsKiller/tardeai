@@ -154,7 +154,7 @@ def _call_bridge(
             "model": lane.get("model", "?"),
         }
 
-    model_id = lane.get("model", "deepseek-v4-flash")
+    model_id = lane.get("model", "deepseek-flash")
     bridge_cfg = config.get("routing", {}).get("bridge", {})
     default_bridge = "http://127.0.0.1:8766/v1/chat/completions"
 
@@ -905,7 +905,7 @@ def generate_desk_synthesis(
 def estimate_cost_usd(
     usage: dict[str, Any],
     *,
-    model: str = "deepseek-v4-flash",
+    model: str = "deepseek-flash",
 ) -> float:
     """Rough USD estimate from usage when registry pricing unavailable."""
     # Snapshot rates from llm_model_registry (flash cache-miss / output)

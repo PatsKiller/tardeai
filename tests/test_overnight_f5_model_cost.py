@@ -38,7 +38,7 @@ WEEKEND_IN_CLOCK = datetime(2026, 8, 29, 2, 0, tzinfo=timezone.utc)  # Sat 02:00
 def test_f5_calculate_usd_records_band_and_cache_hit():
     priced = calculate_usd(
         provider="deepseek",
-        model="deepseek-v4-flash",
+        model="deepseek-flash",
         at=OFF_WEEKDAY,
         cache_hit_input=1000,
         cache_miss_input=0,
@@ -53,7 +53,7 @@ def test_f5_calculate_usd_records_band_and_cache_hit():
 def test_f5_peak_weekday_vs_offpeak_is_double():
     kw = dict(
         provider="deepseek",
-        model="deepseek-v4-flash",
+        model="deepseek-flash",
         cache_hit_input=0,
         cache_miss_input=1_000_000,
         output=0,
@@ -68,12 +68,12 @@ def test_f5_peak_weekday_vs_offpeak_is_double():
 def test_f5_weekend_inside_clock_window_is_off_peak():
     """Sat/Sun never carry the peak surcharge (AGENTS.md §12)."""
     sched = resolve_schedule(
-        provider="deepseek", model="deepseek-v4-flash", at=WEEKEND_IN_CLOCK
+        provider="deepseek", model="deepseek-flash", at=WEEKEND_IN_CLOCK
     )
     assert is_peak(WEEKEND_IN_CLOCK, sched) is False
     priced = calculate_usd(
         provider="deepseek",
-        model="deepseek-v4-flash",
+        model="deepseek-flash",
         at=WEEKEND_IN_CLOCK,
         cache_miss_input=1_000_000,
         output=0,
@@ -83,7 +83,7 @@ def test_f5_weekend_inside_clock_window_is_off_peak():
 
 def test_f5_estimate_usd_cost_matches_schedule_and_exposes_tier_cache():
     est = estimate_usd_cost(
-        model_id="deepseek-v4-flash",
+        model_id="deepseek-flash",
         prompt_tokens=None,
         completion_tokens=10,
         cache_hit_tokens=500,
@@ -92,7 +92,7 @@ def test_f5_estimate_usd_cost_matches_schedule_and_exposes_tier_cache():
     )
     expected = calculate_usd(
         provider="deepseek",
-        model="deepseek-v4-flash",
+        model="deepseek-flash",
         at=OFF_WEEKDAY,
         cache_hit_input=500,
         cache_miss_input=500,
@@ -110,7 +110,7 @@ def test_f5_emit_persists_rate_tier_and_cache_hit(tmp_path, monkeypatch):
     dest = tmp_path / "events.jsonl"
     eid = emit_cost_event(
         provider="deepseek",
-        model="deepseek-v4-flash",
+        model="deepseek-flash",
         outcome="success",
         prompt_tokens=1000,
         completion_tokens=100,
@@ -175,7 +175,7 @@ def test_f5_rates_live_only_in_schedule_json():
     flash_off = next(
         s["off_peak"]
         for s in data["schedules"]
-        if s["schedule_id"] == "deepseek-v4-flash-peakoff-2026-08-16"
+        if s["schedule_id"] == "deepseek-flash-peakoff-2026-08-16"
     )
     assert "input_cache_miss" in flash_off
 
@@ -301,7 +301,7 @@ def test_f5_deepseek_chat_denies_before_post_when_budget_blocks(monkeypatch):
     monkeypatch.setattr(ds, "_emit_chat_event", lambda **_k: None)
 
     resp = ds.chat(
-        model_id="deepseek-v4-flash",
+        model_id="deepseek-flash",
         prompt="hello",
         source_process="production_job",
     )

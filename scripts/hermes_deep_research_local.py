@@ -104,7 +104,7 @@ def run_one(conn, sym, model, apply):
             model = "chatgpt-oauth"
             out["llm_provider"] = "chatgpt_oauth"
             print(f"  {sym}: LLM chatgpt_oauth")
-        elif model == "deepseek-v4-flash":
+        elif model == "deepseek-flash":
             from hermes_llm_failover import chat_json
             pack = chat_json(prompt, cloud_timeout_s=180)
             content = pack["content"]
@@ -198,7 +198,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--apply", action="store_true")
     ap.add_argument("--max-rows", type=int, default=3)
-    ap.add_argument("--model", default="deepseek-v4-flash")
+    ap.add_argument("--model", default="deepseek-flash")
     ap.add_argument("--allow-daytime", action="store_true", help="run outside the overnight window (manual)")
     ap.add_argument(
         "--allow-peak",
@@ -280,7 +280,7 @@ def main():
         args.apply = False
     LOCK.write_text(str(os.getpid()))
     try:
-        if not (str(args.model).startswith("chatgpt") or args.model == "deepseek-v4-flash"):
+        if not (str(args.model).startswith("chatgpt") or args.model == "deepseek-flash"):
             print(f"REFUSED_LOCAL_GENERATIVE_MODEL: {args.model}")
             return
         conn = db()

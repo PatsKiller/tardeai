@@ -58,7 +58,7 @@
       "description": "Manual-only Consumption smoke for DeepSeek V4 Flash. Advisory only. No tools. No fallback.",
       "allowed_lanes": [
         "deepseek-flash",
-        "deepseek-v4-flash",
+        "deepseek-flash",
         "fast"
       ],
       "deepseek_default_policy": "FAST",
@@ -79,10 +79,10 @@
       "category": "Watch",
       "lane_policy": "deepseek_only",
       "default_mode": "automated",
-      "description": "Governed automated Maria-style agent_narrative via exact deepseek-v4-flash (issue #283). Advisory only. No tools. No fallback.",
+      "description": "Governed automated Maria-style agent_narrative via exact deepseek-flash (issue #283). Advisory only. No tools. No fallback.",
       "allowed_lanes": [
         "deepseek-flash",
-        "deepseek-v4-flash",
+        "deepseek-flash",
         "fast"
       ],
       "deepseek_default_policy": "FAST",
@@ -105,10 +105,10 @@
       "category": "Watch",
       "lane_policy": "deepseek_only",
       "default_mode": "automated",
-      "description": "Governed sector/risk correlation narratives via exact deepseek-v4-flash (issue #283).",
+      "description": "Governed sector/risk correlation narratives via exact deepseek-flash (issue #283).",
       "allowed_lanes": [
         "deepseek-flash",
-        "deepseek-v4-flash",
+        "deepseek-flash",
         "fast"
       ],
       "deepseek_default_policy": "FAST",
@@ -129,10 +129,10 @@
       "category": "Watch",
       "lane_policy": "deepseek_only",
       "default_mode": "automated",
-      "description": "Governed cio_synthesis via exact deepseek-v4-flash FAST only \u2014 Pro/PRO_* forbidden on this path (issue #283).",
+      "description": "Governed cio_synthesis via exact deepseek-flash FAST only \u2014 Pro/PRO_* forbidden on this path (issue #283).",
       "allowed_lanes": [
         "deepseek-flash",
-        "deepseek-v4-flash",
+        "deepseek-flash",
         "fast"
       ],
       "deepseek_default_policy": "FAST",
@@ -158,7 +158,7 @@
       "description": "Governed agent_debate; FAST_THINK allowed for contradiction/reconciliation only (issue #283).",
       "allowed_lanes": [
         "deepseek-flash",
-        "deepseek-v4-flash",
+        "deepseek-flash",
         "fast",
         "fast_think"
       ],
@@ -182,10 +182,10 @@
       "category": "Watch",
       "lane_policy": "deepseek_only",
       "default_mode": "automated",
-      "description": "Governed short extraction/classification (catalyst, sentiment, summary) via deepseek-v4-flash FAST (issue #283).",
+      "description": "Governed short extraction/classification (catalyst, sentiment, summary) via deepseek-flash FAST (issue #283).",
       "allowed_lanes": [
         "deepseek-flash",
-        "deepseek-v4-flash",
+        "deepseek-flash",
         "fast"
       ],
       "deepseek_default_policy": "FAST",
@@ -265,7 +265,7 @@
       "allowed_lanes": [
         "fast",
         "deepseek-flash",
-        "deepseek-v4-flash"
+        "deepseek-flash"
       ],
       "deepseek_default_policy": "FAST",
       "deepseek_allowed_policies": [
@@ -565,7 +565,7 @@
       "description": "Alex CIO autonomous advisory synthesis \u2014 platform-wide portfolio/wealth CIO reasoning via governed DeepSeek V4 Pro",
       "allowed_lanes": [
         "pro",
-        "deepseek-v4-pro"
+        "deepseek-flash"
       ],
       "deepseek_default_policy": "PRO",
       "deepseek_allowed_policies": [
@@ -630,7 +630,7 @@
       "description": "Advisory Desk v1 per-row opinion via governed DeepSeek V4 Flash. READ_ONLY_ADVISORY. No execution. Must route through cio_governed_model_bridge (8766).",
       "allowed_lanes": [
         "fast",
-        "deepseek-v4-flash"
+        "deepseek-flash"
       ],
       "deepseek_default_policy": "FAST",
       "deepseek_allowed_policies": [
@@ -658,7 +658,7 @@
       "description": "Advisory Desk v1 one-call desk synthesis (three things today) via governed DeepSeek V4 Pro. READ_ONLY_ADVISORY. No execution. One Pro call per desk run.",
       "allowed_lanes": [
         "pro",
-        "deepseek-v4-pro"
+        "deepseek-flash"
       ],
       "deepseek_default_policy": "PRO",
       "deepseek_allowed_policies": [
@@ -687,7 +687,7 @@
       "allowed_lanes": [
         "fast",
         "deepseek-flash",
-        "deepseek-v4-flash"
+        "deepseek-flash"
       ],
       "deepseek_default_policy": "FAST",
       "deepseek_allowed_policies": [
@@ -715,7 +715,7 @@
       "description": "Guardian risk critique \u2014 deterministic-first risk analysis reading Trade AI risk data. Read-only. No risk limit changes, no stop modifications, no execution.",
       "allowed_lanes": [
         "fast",
-        "deepseek-v4-flash"
+        "deepseek-flash"
       ],
       "deepseek_default_policy": "FAST",
       "deepseek_allowed_policies": [
@@ -742,7 +742,7 @@
       "description": "Ledger tax/account-constraint critique \u2014 deterministic-first constraint validation reading Trade AI account data. Flags wash-sale proximity, IRA limits, account-type mismatches. Read-only. No execution.",
       "allowed_lanes": [
         "fast",
-        "deepseek-v4-flash"
+        "deepseek-flash"
       ],
       "deepseek_default_policy": "FAST",
       "deepseek_allowed_policies": [
@@ -770,8 +770,8 @@
       "allowed_lanes": [
         "pro",
         "fast",
-        "deepseek-v4-pro",
-        "deepseek-v4-flash"
+        "deepseek-flash",
+        "deepseek-flash"
       ],
       "deepseek_default_policy": "PRO",
       "deepseek_allowed_policies": [
@@ -799,7 +799,7 @@
       "description": "Maria research critique \u2014 deterministic-first fundamental and catalyst analysis reading Trade AI research data. Read-only advisory. No execution.",
       "allowed_lanes": [
         "fast",
-        "deepseek-v4-flash",
+        "deepseek-flash",
         "grok"
       ],
       "deepseek_default_policy": "FAST",
@@ -828,7 +828,7 @@
       "description": "Morgan wealth synthesis \u2014 deterministic-first multi-account wealth and goal-tracking analysis reading Trade AI portfolio/income/retirement data. Read-only advisory. No execution.",
       "allowed_lanes": [
         "fast",
-        "deepseek-v4-flash"
+        "deepseek-flash"
       ],
       "deepseek_default_policy": "FAST",
       "deepseek_allowed_policies": [

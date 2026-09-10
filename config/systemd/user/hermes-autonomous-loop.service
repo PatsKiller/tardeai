@@ -10,4 +10,4 @@ ExecStart=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/pyt
 TimeoutStartSec=900
 Environment=HERMES_LOOP_BUDGET_SEC=860
 Environment=HERMES_BRIDGE_URL=http://127.0.0.1:8766
-Environment=HERMES_BRIDGE_MODEL=deepseek-v4-flash
+Environment=HERMES_BRIDGE_MODEL=deepseek-flash

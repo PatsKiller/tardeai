@@ -30,7 +30,7 @@ SKIP_CODES_EXECUTED = frozenset({"RESEARCH_EXECUTED", "EXECUTED"})
 SKIP_CODES_TRIGGERED = frozenset({"RESEARCH_TRIGGERED", "TRIGGERED"})
 SKIP_CODES_FRESH = frozenset({"SKIP_FRESH", "FRESH"})
 METERED_LANES = frozenset({
-    "deepseek", "flash", "deepseek-flash", "deepseek-v4-flash",
+    "deepseek", "flash", "deepseek-flash", "deepseek-flash",
     "claude", "metered", "anthropic",
 })
 

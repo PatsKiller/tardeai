@@ -118,7 +118,7 @@ def parse_consumption_rows(rows: Iterable[dict[str, Any]], *, at_default: str) -
         if chars is None:
             chars = _int(r.get("relative_units"))
         start = _iso(r.get("created_at") or r.get("usage_start") or at_default)
-        model = r.get("model") or r.get("returned_model") or "deepseek-v4-flash"
+        model = r.get("model") or r.get("returned_model") or "deepseek-flash"
         hit = _int(r.get("cache_hit_tokens") or r.get("prompt_cache_hit_tokens")) or 0
         miss = _int(r.get("cache_miss_tokens") or r.get("prompt_cache_miss_tokens"))
         if miss is None:
@@ -193,7 +193,7 @@ def parse_openclaw_jsonl(paths: Iterable[Path]) -> list[ProviderCostEvent]:
             if eid in seen:
                 continue
             seen.add(eid)
-            priced = calculate_usd(provider="deepseek", model=str(model or "deepseek-v4-pro"), at=start, cache_miss_input=tin, output=tout)
+            priced = calculate_usd(provider="deepseek", model=str(model or "deepseek-flash"), at=start, cache_miss_input=tin, output=tout)
             events.append(
                 ProviderCostEvent(
                     event_id=eid,

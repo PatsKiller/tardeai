@@ -1852,7 +1852,7 @@ def curate_reentry_reply_with_flash(
     try:
         from scripts.lib.cio_plan_enrichment import call_governed_llm, load_llm_policy
         policy = load_llm_policy()
-        # Force Flash (deepseek-v4-flash) — not Pro — for this short polish
+        # Force Flash (deepseek-flash) — not Pro — for this short polish
         llm = call_governed_llm(
             [
                 {"role": "system", "content": system},
@@ -1891,7 +1891,7 @@ def curate_reentry_reply_with_flash(
         "ok": True,
         "text": curated,
         "source": "deepseek_flash",
-        "model": llm.get("model") or "deepseek-v4-flash",
+        "model": llm.get("model") or "deepseek-flash",
         "error": None,
     })
     return out

@@ -426,7 +426,7 @@ def _domain_hermes_research() -> dict[str, Any]:
         "latest_topics": latest_topics,
         "challenger_active": bool(hermes_status),
         "autonomous": True,  # Hermes runs autonomously via Chief Coordinator
-        "model_provider": "deepseek-v4-flash",
+        "model_provider": "deepseek-flash",
         "fallback": "free-oauth (grok/chatgpt)",
     }
 

@@ -64,5 +64,5 @@ def test_a_deepseek_model_still_matches_the_guard():
     """The default model is deepseek-v4-flash; the predicate must catch it."""
     text = SRC.read_text(encoding="utf-8")
     assert 'startswith("deepseek")' in text
-    assert '--model", default="deepseek-v4-flash"' in text.replace("'", '"'), (
+    assert '--model", default="deepseek-flash"' in text.replace("'", '"'), (
         "the default model changed; re-check that the guard predicate still matches it")

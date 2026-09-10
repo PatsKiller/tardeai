@@ -69,7 +69,7 @@ def llm_text(prompt: str, caller: str = "inference_engine", timeout: int = 180) 
     """Governed cloud default. Failure remains a hard empty result."""
     try:
         from hermes_external_researcher import call_external
-        return call_external("deepseek", "deepseek-v4-flash", prompt, max_tokens=1500) or ""
+        return call_external("deepseek", "deepseek-flash", prompt, max_tokens=1500) or ""
     except Exception as e:
         log.warning("governed cloud llm error: %s", e)
         return ""
@@ -127,7 +127,7 @@ def llm_json(prompt: str, *, caller: str = "inference_engine", timeout: int = 18
         chosen = llm_cfg.get("external_lane", "grok")
 
     lane = chosen or "deepseek"
-    model = llm_cfg.get("external_model", "grok-3-mini") if chosen else "deepseek-v4-flash"
+    model = llm_cfg.get("external_model", "grok-3-mini") if chosen else "deepseek-flash"
     raw = _external(lane, model, instruction)
 
     parsed = extract_json_object(raw) or extract_json(raw) or {}

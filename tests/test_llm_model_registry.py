@@ -35,11 +35,11 @@ def test_registry_loads_and_has_exact_models():
 
 
 def test_logical_policy_maps_to_exact_ids():
-    assert resolve_logical_policy("FAST")["model_id"] == "deepseek-v4-flash"
+    assert resolve_logical_policy("FAST")["model_id"] == "deepseek-flash"
     assert resolve_logical_policy("FAST")["thinking"] == "disabled"
     assert resolve_logical_policy("FAST_THINK")["reasoning_effort"] == "high"
-    assert resolve_logical_policy("PRO")["model_id"] == "deepseek-v4-pro"
-    assert resolve_logical_policy("PRO_THINK")["model_id"] == "deepseek-v4-pro"
+    assert resolve_logical_policy("PRO")["model_id"] == "deepseek-flash"
+    assert resolve_logical_policy("PRO_THINK")["model_id"] == "deepseek-flash"
     with pytest.raises(RegistryError):
         resolve_logical_policy("PRO_MAX", operator_confirmed=False)
     assert resolve_logical_policy("PRO_MAX", operator_confirmed=True)["reasoning_effort"] == "max"
@@ -67,14 +67,15 @@ def test_lane_aliases():
 
 def test_cost_estimate_uses_tokens_not_chars():
     est = estimate_usd_cost(
-        model_id="deepseek-v4-flash",
+        model_id="deepseek-flash",
         prompt_tokens=1_000_000,
         completion_tokens=1_000_000,
         cache_miss_tokens=1_000_000,
+        at="2026-09-01T12:00:00+00:00",  # off-peak, deterministic (not time-dependent)
     )
-    # 0.14 + 0.28 = 0.42 per snapshot
-    assert est["estimated_cost_usd"] == pytest.approx(0.42, rel=1e-6)
-    assert est["cost_basis"] == "provider_usage_x_registry_snapshot"
+    # off-peak schedule: 0.22 miss + 0.66 output = 0.88 per million tokens
+    assert est["estimated_cost_usd"] == pytest.approx(0.88, rel=1e-6)
+    assert est["cost_basis"] == "provider_usage_x_price_schedule"
 
 
 def test_available_unknown_lane_false():
@@ -106,7 +107,7 @@ def test_chat_mismatched_returned_model(monkeypatch):
 
     monkeypatch.setattr(dc, "get_deepseek_api_key", lambda: ("fake-key", "deepseek_tradeai", False))
     monkeypatch.setattr(dc.requests, "post", lambda *a, **k: FakeResp())
-    resp = dc.chat(model_id="deepseek-v4-pro", prompt="hi")
+    resp = dc.chat(model_id="deepseek-flash", prompt="hi")
     assert resp.ok is False
     assert resp.error_class == dc.MISMATCHED_RETURNED_MODEL
 
@@ -180,7 +181,7 @@ def test_json_contract_rejects_bad_type():
 def test_cost_not_relative_units_in_estimate():
     from lib.llm_model_registry import estimate_usd_cost
     # 1000 chars of text must NOT be used; only tokens
-    est = estimate_usd_cost(model_id="deepseek-v4-flash", prompt_tokens=0, completion_tokens=0)
+    est = estimate_usd_cost(model_id="deepseek-flash", prompt_tokens=0, completion_tokens=0)
     assert est["estimated_cost_usd"] == 0.0
 
 

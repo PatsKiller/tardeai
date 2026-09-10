@@ -438,7 +438,7 @@ def screen_one(conn, candidate, dry_run=False):
         verdict = result.get('verdict', 'HOLD')
         confidence = min(100, max(0, int(result.get('confidence', 50))))
 
-        model = "deepseek-v4-flash"
+        model = "deepseek-flash"
 
         # Validate
         if grade not in ('A', 'B', 'C', 'D', 'F'):

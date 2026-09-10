@@ -74,7 +74,7 @@ LANE = "residual_web"
 # live hop died with
 #   UNKNOWN_LANE: lane='residual_web' is not registered
 # because the executor name was passed straight into generate(). Registered
-# lanes are deepseek-flash / deepseek-v4-flash / deepseek-v4-pro.
+# lanes are deepseek-flash / deepseek-flash / deepseek-flash.
 MODEL_LANE = "deepseek-flash"
 
 # The gate rung this lane executes. Reused from cio_research_gate.DECISIONS —

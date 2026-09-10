@@ -175,7 +175,7 @@ def test_llm_apply_ok_when_facts_unchanged():
         curated_body=curated,
         protected_facts_after=dict(ev.protected_facts),
         provider="deepseek",
-        model="deepseek-v4-flash",
+        model="deepseek-flash",
         prompt_template_id="research_summary",
         prompt_template_version="3",
         retrieved_context_ids=["ctx-1", "ctx-2"],
@@ -189,7 +189,7 @@ def test_llm_apply_ok_when_facts_unchanged():
     assert receipt.fact_preservation_ok is True
     assert receipt.fallback_reason is None
     assert receipt.provider == "deepseek"
-    assert receipt.model == "deepseek-v4-flash"
+    assert receipt.model == "deepseek-flash"
     assert receipt.prompt_template_id == "research_summary"
     assert receipt.prompt_template_version == "3"
     assert receipt.retrieved_context_ids == ["ctx-1", "ctx-2"]

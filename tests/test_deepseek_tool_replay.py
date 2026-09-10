@@ -28,7 +28,7 @@ def test_continue_preserves_reasoning_content(monkeypatch):
         r.status_code = 200
         r.headers = {}
         body = {
-            "model": "deepseek-v4-pro",
+            "model": "deepseek-flash",
             "choices": [{"message": {"content": "final answer"}, "finish_reason": "stop"}],
             "usage": {"prompt_tokens": 20, "completion_tokens": 4},
         }
@@ -60,7 +60,7 @@ def test_continue_preserves_reasoning_content(monkeypatch):
     assert msgs[1]["tool_calls"][0]["id"] == "c1"
     assert msgs[2]["role"] == "tool"
     # multi-tool
-    assert captured["json"]["model"] == "deepseek-v4-pro"
+    assert captured["json"]["model"] == "deepseek-flash"
     assert captured["json"]["thinking"]["type"] == "enabled"
 
 
@@ -73,7 +73,7 @@ def test_multiple_tool_results(monkeypatch):
         r.status_code = 200
         r.headers = {}
         body = {
-            "model": "deepseek-v4-flash",
+            "model": "deepseek-flash",
             "choices": [{"message": {"content": "done"}, "finish_reason": "stop"}],
             "usage": {},
         }
@@ -111,7 +111,7 @@ def test_tool_loop_model_mismatch(monkeypatch):
         r.status_code = 200
         r.headers = {}
         body = {
-            "model": "deepseek-v4-flash",  # mismatch for PRO_THINK
+            "model": "deepseek-chat",  # genuinely wrong for PRO_THINK (V4.1 Flash)
             "choices": [{"message": {"content": "x"}, "finish_reason": "stop"}],
             "usage": {},
         }

@@ -68,7 +68,7 @@ def test_the_curation_chain_is_in_the_operator_order(mod):
     (free first) on purpose: curation emits a parsed contract, so consistency beats
     free, and the OAuth lanes stay as the escalation rather than the entry point."""
     assert mod.CURATION_MODEL.startswith("deepseek")
-    assert "pro" in mod.CURATION_MODEL_PRO
+    assert mod.CURATION_MODEL_PRO == "deepseek-flash"  # Pro tier retired 2026-09-14 → V4.1 Flash
     src = SCRIPT.read_text(encoding="utf-8")
     chain = src.split("res = (_curate_via_deepseek(prompt, CURATION_MODEL)", 1)[1]
     chain = chain.split("if res is None:", 1)[0]
@@ -104,7 +104,7 @@ def test_a_capped_lane_is_skipped_not_fatal(mod, monkeypatch, capsys):
     fake = type(sys)("hermes_external_researcher")
     fake.call_governed_deepseek = boom
     monkeypatch.setitem(sys.modules, "hermes_external_researcher", fake)
-    assert mod._curate_via_deepseek("p", "deepseek-v4-flash") is None
+    assert mod._curate_via_deepseek("p", "deepseek-flash") is None
     assert "unavailable" in capsys.readouterr().err
 
 

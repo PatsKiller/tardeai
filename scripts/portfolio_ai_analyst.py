@@ -78,7 +78,7 @@ STRICT RULES — READ FIRST:
 # endpoint while every other consumer had moved to llm_lane.
 _LANE_CHAIN = (
     ("grok", "grok-3-mini"),            # free OAuth proxy :8645
-    ("deepseek-flash", "deepseek-v4-flash"),  # governed paid rollover, off-peak default
+    ("deepseek-flash", "deepseek-flash"),  # governed paid rollover, off-peak default
 )
 
 

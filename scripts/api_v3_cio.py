@@ -2357,7 +2357,7 @@ def get_cio_dashboard() -> dict[str, Any]:
         "plans": plans_payload.get("plans") or [],
         "thesis": thesis_payload.get("thesis"),
         "thesis_version": thesis_payload.get("thesis_version"),
-        "model_provider": "deepseek-v4-pro",
+        "model_provider": "deepseek-flash",
         "fallback": "none — fail-closed (VISIBLE_FAILURE_NO_SILENT_FALLBACK)",
         "authority": "READ_ONLY_ADVISORY",
     }

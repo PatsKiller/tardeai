@@ -203,7 +203,7 @@ def cmd_hermes() -> str:
         "🔬 Hermes Research Intelligence",
         f"   Promoted: {hermes.get('promoted_research_count', 0)}",
         f"   Staged: {hermes.get('staged_research_count', 0)}",
-        f"   Model: {hermes.get('model_provider', 'deepseek-v4-flash')}",
+        f"   Model: {hermes.get('model_provider', 'deepseek-flash')}",
         f"   Fallback: {hermes.get('fallback', 'free-oauth')}",
         f"   Autonomous: {'✅' if hermes.get('autonomous') else '❌'}",
         "",

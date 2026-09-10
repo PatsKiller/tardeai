@@ -11,6 +11,8 @@ import threading
 import time
 from typing import Any
 
+from lib.llm_model_registry import deepseek_model_id
+
 # Free OAuth only on this endpoint (plus DeepSeek FAST for registered smoke process)
 OAUTH_LANES = frozenset({"grok", "chatgpt"})
 
@@ -41,14 +43,14 @@ LEGACY = frozenset({"deepseek-chat", "deepseek-reasoner"})
 
 LANE_TO_POLICY = {
     "deepseek-flash": "FAST",
-    "deepseek-v4-flash": "FAST",
+    "deepseek-v4-flash": "FAST",  # legacy V4 Flash lane alias
     "fast": "FAST",
     "fast_think": "FAST_THINK",
 }
 
 POLICY_TO_MODEL = {
-    "FAST": "deepseek-v4-flash",
-    "FAST_THINK": "deepseek-v4-flash",
+    "FAST": deepseek_model_id("FAST"),
+    "FAST_THINK": deepseek_model_id("FAST_THINK"),
 }
 
 SMOKE_PROCESS_ID = "deepseek_flash_operator_smoke"
@@ -360,6 +362,6 @@ def deepseek_readiness_rows() -> list[dict[str, Any]]:
         }
 
     return [
-        row("deepseek-flash", "DeepSeek V4 Flash", bool(info.get("has_v4_flash"))),
-        row("deepseek-v4-pro", "DeepSeek V4 Pro", bool(info.get("has_v4_pro"))),
+        row("deepseek-flash", "DeepSeek V4.1 Flash", bool(info.get("has_v4_flash"))),
+        row("deepseek-v4-pro", "DeepSeek V4.1 Flash (Pro tier retired)", bool(info.get("has_v4_flash"))),
     ]

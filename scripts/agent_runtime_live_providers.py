@@ -107,7 +107,7 @@ def _build_governed_flash_provider() -> Callable[[str, Mapping[str, Any]], Mappi
             ).strip()
             if not prompt:
                 return {"response": "", "provider": "deepseek",
-                        "model": "deepseek-v4-flash", "error": "empty prompt"}
+                        "model": "deepseek-flash", "error": "empty prompt"}
             max_tokens = int(request.get("max_tokens") or 512)
             text = generate(
                 prompt,
@@ -118,10 +118,10 @@ def _build_governed_flash_provider() -> Callable[[str, Mapping[str, Any]], Mappi
                 max_tokens=max_tokens,
             )
             return {"response": str(text or "").strip(),
-                    "provider": "deepseek", "model": "deepseek-v4-flash"}
+                    "provider": "deepseek", "model": "deepseek-flash"}
         except Exception as exc:
             return {"response": "", "provider": "deepseek",
-                    "model": "deepseek-v4-flash",
+                    "model": "deepseek-flash",
                     "error": f"{type(exc).__name__}: {exc}"}
     return _call
 

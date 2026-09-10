@@ -240,7 +240,7 @@ def advise(intent: dict, impact: dict, lane: str | None = None) -> dict:
             "look-through gaps this move opens, and tax/benefit constraints. Be concrete and decision-useful, "
             "8-12 sentences. End with the single highest-priority next action.")
         text = llm_lane.generate(prompt, lane=use, timeout=120)
-        return {"provider": "grok-3-mini" if use == "grok" else "deepseek-v4-flash", "advice": str(text).strip(),
+        return {"provider": "grok-3-mini" if use == "grok" else "deepseek-flash", "advice": str(text).strip(),
                 "candidates": cands}
     except Exception as e:
         return {"provider": "none", "advice": f"(advisor unavailable: {str(e)[:120]})", "candidates": cands}

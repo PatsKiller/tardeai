@@ -1,7 +1,7 @@
-"""Canonical DeepSeek V4 provider client.
+"""Canonical DeepSeek provider client.
 
-Uses only exact model IDs verified by live GET /v1/models:
-  deepseek-v4-flash, deepseek-v4-pro
+Uses only exact model IDs. 2026-09-09: provider migrated to V4.1 Flash
+(`deepseek-flash`); deepseek-v4-flash / deepseek-v4-pro are legacy/rejected.
 
 Never silently falls back to Gemma/Grok/ChatGPT/cached prose.
 Never prints API keys.
@@ -145,8 +145,8 @@ def list_models(*, timeout: float = 15.0) -> dict[str, Any]:
         # surface this to browsers — service health should stay generic.
         "auth_env_name": env_name,
         "used_compatibility_auth_env": dep,
-        "has_v4_flash": "deepseek-v4-flash" in ids,
-        "has_v4_pro": "deepseek-v4-pro" in ids,
+        "has_v4_flash": "deepseek-flash" in ids,
+        "has_v4_pro": "deepseek-flash" in ids,
         "configured": True,
         "provider": "deepseek",
     }

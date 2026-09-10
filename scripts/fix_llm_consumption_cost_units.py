@@ -15,7 +15,7 @@ Measured 2026-08-30 before any change:
       without token counts           2,853
     rows within 10x of a plausible token-derived cost:  0
 
-Not one is plausibly USD. A single `deepseek-v4-pro` call of 60,548 in / 3,429
+Not one is plausibly USD. A single `deepseek-flash` call of 60,548 in / 3,429
 out is recorded as $257.15 where the rate card gives $0.047 — off by ~5,500x.
 I tested and refuted the obvious hypothesis (that the column held latency): of
 412 such rows with a duration, 0 matched `duration_ms/1000`.

@@ -39,7 +39,7 @@ MBI = 0
 # grok + maria_research_critique was the first choice and is refused:
 # STALE AS OF 2026-08-30: this said POLICY_NOT_ALLOWED "because no research /
 # critique process lists lane=grok". It does. maria_research_critique carries
-# allowed_lanes ["fast","deepseek-v4-flash","grok"] in BOTH the file registry
+# allowed_lanes ["fast","deepseek-flash","grok"] in BOTH the file registry
 # and llm_process_config, and a live critique through the lane returned a real
 # REJECT. The comment outlived the condition it described and was quoted twice
 # as if it were current policy.
@@ -47,7 +47,7 @@ MBI = 0
 # which vendor sees artifact text — the default is the already-authorised
 # DeepSeek pairing. The grok constants stay so the swap is one argument the day
 # that lane is authorised.
-LANE = "deepseek-v4-flash"
+LANE = "deepseek-flash"
 PROCESS_ID = "hermes_external_research"
 MODEL = None                      # let the lane resolve its own model id
 

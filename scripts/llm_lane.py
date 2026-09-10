@@ -99,10 +99,10 @@ def _deepseek_model_available(model_id: str) -> bool:
     # Slow path: fall back to the cached readiness rows (may be stale)
     try:
         from lib.consumption_run_manual import deepseek_readiness_rows
-        if model_id == "deepseek-v4-flash":
+        if model_id == "deepseek-flash":
             row = next((r for r in deepseek_readiness_rows() if r["lane"] == "deepseek-flash"), None)
         else:
-            row = next((r for r in deepseek_readiness_rows() if r["lane"] == "deepseek-v4-pro"), None)
+            row = next((r for r in deepseek_readiness_rows() if r["lane"] == "deepseek-flash"), None)
         return bool(row and row.get("ready"))
     except Exception:
         return False
@@ -138,9 +138,11 @@ def available(lane):
     if lane in _AMBIGUOUS_DEEPSEEK:
         return False  # never available=True for ambiguous alias
     if lane in ("deepseek-flash", "deepseek-v4-flash", "fast", "fast_think"):
-        return _deepseek_model_available("deepseek-v4-flash")
+        from lib.llm_model_registry import deepseek_model_id
+        return _deepseek_model_available(deepseek_model_id("FAST"))
     if lane in ("deepseek-v4-pro", "pro", "pro_think", "pro_max"):
-        return _deepseek_model_available("deepseek-v4-pro")
+        from lib.llm_model_registry import deepseek_model_id
+        return _deepseek_model_available(deepseek_model_id("PRO"))
     if lane in _DEEPSEEK_LANES:
         return False
     # Unknown lane — never report available
@@ -148,14 +150,19 @@ def available(lane):
 
 
 def _resolve_deepseek_policy(lane: str, model: str | None) -> str:
-    from lib.llm_model_registry import RegistryError, resolve_lane_alias, reject_legacy_model_id
+    from lib.llm_model_registry import (
+        RegistryError,
+        deepseek_model_id,
+        resolve_lane_alias,
+        reject_legacy_model_id,
+    )
 
     if model:
         reject_legacy_model_id(model)
-        if model == "deepseek-v4-flash":
+        if model == deepseek_model_id("FAST"):
             return "FAST"
-        if model == "deepseek-v4-pro":
-            return "PRO"  # exact model without think request → PRO non-thinking
+        if model == deepseek_model_id("PRO"):
+            return "PRO"
         raise RegistryError(f"unsupported explicit model override: {model!r}")
     pol = resolve_lane_alias(lane)  # may raise AmbiguousLegacyLane
     if not pol:
@@ -272,7 +279,7 @@ def generate(
     if lane_l in _AMBIGUOUS_DEEPSEEK:
         raise RuntimeError(
             "AMBIGUOUS_LEGACY_LANE: 'deepseek-v4' is not exact. "
-            "Use FAST/FAST_THINK/PRO/PRO_THINK/PRO_MAX or deepseek-v4-flash / deepseek-v4-pro."
+            "Use FAST/FAST_THINK/PRO/PRO_THINK/PRO_MAX or deepseek-flash."
         )
 
     deepseek_requested = lane_l in _DEEPSEEK_LANES

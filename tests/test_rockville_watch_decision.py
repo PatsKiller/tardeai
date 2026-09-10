@@ -223,7 +223,7 @@ class TestCioScheduler(unittest.TestCase):
         self.assertEqual(prov.get("policy"), "NO_CALL")
         self.assertFalse(prov.get("provider_call_occurred"))
         self.assertNotEqual(prov.get("provider"), "deepseek")
-        self.assertNotEqual(prov.get("model"), "deepseek-v4-pro")
+        self.assertNotEqual(prov.get("model"), "deepseek-flash")
 
     def test_duplicate_invocation_locked(self):
         mh = "b" * 64

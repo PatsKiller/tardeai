@@ -10,8 +10,8 @@ from __future__ import annotations
 import os
 from contextlib import contextmanager
 
-FALLBACK_DEEPSEEK = os.getenv("LLM_FALLBACK_DEEPSEEK", "deepseek-v4-flash").strip()
-FALLBACK_DEEPSEEK_PRO = os.getenv("LLM_FALLBACK_DEEPSEEK_PRO", "deepseek-v4-pro").strip()
+FALLBACK_DEEPSEEK = os.getenv("LLM_FALLBACK_DEEPSEEK", "deepseek-flash").strip()
+FALLBACK_DEEPSEEK_PRO = os.getenv("LLM_FALLBACK_DEEPSEEK_PRO", "deepseek-flash").strip()
 FALLBACK_OPENAI = os.getenv("LLM_FALLBACK_OPENAI", "gpt-4o-mini").strip()
 FALLBACK_ANTHROPIC = os.getenv("LLM_FALLBACK_ANTHROPIC", "claude-sonnet-4-6").strip()
 

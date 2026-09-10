@@ -32,7 +32,7 @@ def _mock_get_process_config(process_id: str) -> dict:
             "process_name": "Alex CIO Autonomous Advisory Synthesis",
             "category": "CIO",
             "mode": "automated",
-            "allowed_lanes": ["pro", "deepseek-v4-pro"],
+            "allowed_lanes": ["pro", "deepseek-flash"],
             "deepseek_allowed_policies": ["PRO", "PRO_THINK"],
             "registered": True,
             "max_input_tokens": 32000,
@@ -157,7 +157,7 @@ class TestCIOGovernedModelBridge(unittest.TestCase):
         )
         self.assertNotIn("error", result)
         self.assertEqual(result["choices"][0]["message"]["role"], "assistant")
-        self.assertIn("deepseek-v4-pro", result["model"])
+        self.assertIn("deepseek-flash", result["model"])
         self.assertTrue(result.get("_tradeai", {}).get("governance_pass"))
         self.assertTrue(result.get("_tradeai", {}).get("mock"))
 
@@ -184,7 +184,7 @@ class TestCIOGovernedModelBridge(unittest.TestCase):
         )
         self.assertNotIn("error", result)
         # Server always uses resolved model, not client-supplied
-        self.assertIn("deepseek-v4-pro", result["model"])
+        self.assertIn("deepseek-flash", result["model"])
         self.assertNotEqual(result["model"], "gpt-5")
 
     # ── Test 4: Legacy model IDs rejected ───────────────────────────────
@@ -201,7 +201,7 @@ class TestCIOGovernedModelBridge(unittest.TestCase):
             process_id="alex_cio_synthesis",
         )
         self.assertNotIn("error", result)
-        self.assertIn("deepseek-v4-pro", result["model"])
+        self.assertIn("deepseek-flash", result["model"])
 
     # ── Test 5: Global cap exceeded returns error $0 cost ────────────────
 
@@ -226,8 +226,10 @@ class TestCIOGovernedModelBridge(unittest.TestCase):
 
     def test_reservation_failure(self) -> None:
         self._patch_reserve.stop()
+        # An UNMAPPED reservation RuntimeError falls through to RESERVATION_FAILED
+        # (mapped codes like COST_CONFIGURATION_INVALID surface their own code).
         patch("lib.llm_consumption.reserve_projected_cost",
-              side_effect=RuntimeError("COST_CONFIGURATION_INVALID")).start()
+              side_effect=RuntimeError("SOME_UNMAPPED_RESERVATION_ERROR")).start()
         from scripts.lib.cio_governed_model_bridge import execute_governed_call
         result = execute_governed_call(
             [{"role": "user", "content": "test"}],
@@ -332,7 +334,7 @@ class TestCIOGovernedModelBridge(unittest.TestCase):
         # Should be valid JSON
         parsed = json.loads(content)
         self.assertIn("analysis", parsed)
-        self.assertEqual(parsed["model"], "deepseek-v4-pro")
+        self.assertEqual(parsed["model"], "deepseek-flash")
 
     # ── Test 12: Returned model mismatch quarantined ─────────────────────
 
@@ -344,7 +346,7 @@ class TestCIOGovernedModelBridge(unittest.TestCase):
             process_id="alex_cio_synthesis",
         )
         self.assertNotIn("error", result)
-        self.assertIn("deepseek-v4-pro", result["model"])
+        self.assertIn("deepseek-flash", result["model"])
 
     # ── Test 13: Request ID provenance ───────────────────────────────────
 
@@ -392,7 +394,7 @@ class TestCIOGovernedModelBridge(unittest.TestCase):
         self.assertFalse(policy.get("requires_operator_cost_confirmation"))
         # Ordinary synthesis uses PRO
         policy = resolve_model_policy("alex_cio_synthesis")
-        self.assertEqual(policy["model_id"], "deepseek-v4-pro")
+        self.assertEqual(policy["model_id"], "deepseek-flash")
         self.assertEqual(policy["thinking"], "disabled")
 
     # ── Test 16: PRO_MAX without confirmation rejected ──────────────────
@@ -401,7 +403,7 @@ class TestCIOGovernedModelBridge(unittest.TestCase):
         from scripts.lib.cio_governed_model_bridge import resolve_model_policy
         # Alex CIO synthesis only allows PRO and PRO_THINK
         policy = resolve_model_policy("alex_cio_synthesis")
-        self.assertEqual(policy["model_id"], "deepseek-v4-pro")
+        self.assertEqual(policy["model_id"], "deepseek-flash")
         self.assertNotIn("max", policy.get("reasoning_effort") or "")
 
     # ── Test 17: Settlement failure fail-closed ─────────────────────────
@@ -437,7 +439,7 @@ class TestCIOGovernedModelBridge(unittest.TestCase):
     def test_watch_governance_not_broken(self) -> None:
         """Verify agent_flash_governance still imports and functions correctly."""
         import scripts.lib.agent_flash_governance as afg
-        self.assertEqual(afg.FLASH_MODEL, "deepseek-v4-flash")
+        self.assertEqual(afg.FLASH_MODEL, "deepseek-flash")
         self.assertEqual(afg.FLASH_POLICY, "FAST")
         self.assertIn("watchlist_maria_flash_narrative", afg.TASK_TO_PROCESS.values())
         # Process for task
@@ -447,7 +449,7 @@ class TestCIOGovernedModelBridge(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             afg.reject_legacy_model_id("deepseek-chat")
         # Default is not rejected
-        afg.reject_legacy_model_id("deepseek-v4-flash")
+        afg.reject_legacy_model_id("deepseek-flash")
 
     # ── Test 20: Resolve caller header mapping ─────────────────────────
 
@@ -477,7 +479,7 @@ class TestCIOGovernedModelBridge(unittest.TestCase):
         mock = MockProvider()
         result = mock.generate(
             [{"role": "user", "content": "Hello"}],
-            "deepseek-v4-pro",
+            "deepseek-flash",
         )
         self.assertIn("id", result)
         self.assertEqual(result["object"], "chat.completion")
@@ -497,7 +499,7 @@ class TestCIOGovernedModelBridge(unittest.TestCase):
         }]
         result = mock.generate(
             [{"role": "user", "content": "get data"}],
-            "deepseek-v4-pro",
+            "deepseek-flash",
             tools=tools,
             tool_choice="auto",
         )
@@ -513,7 +515,7 @@ class TestCIOGovernedModelBridge(unittest.TestCase):
         mock = MockProvider()
         chunks = mock.generate_stream(
             [{"role": "user", "content": "stream test"}],
-            "deepseek-v4-pro",
+            "deepseek-flash",
         )
         self.assertGreater(len(chunks), 0)
         # Last chunk should be [DONE]
@@ -530,7 +532,7 @@ class TestCIOGovernedModelBridge(unittest.TestCase):
 
         provider = MagicMock()
         provider.generate.return_value = {
-            "model": "deepseek-v4-pro",
+            "model": "deepseek-flash",
             "choices": [{"message": {"role": "assistant", "content": "bounded"}}],
             "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
             "_tradeai": {"provider_request_id": "provider-1"},

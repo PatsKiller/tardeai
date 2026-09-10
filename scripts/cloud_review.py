@@ -135,19 +135,19 @@ def _free_oauth_bottleneck_rollover_cfg() -> dict:
         import yaml  # type: ignore
         path = ROOT / "config" / "hermes_research_budget.yaml"
         if not path.exists():
-            return {"enabled": True, "lane": "deepseek-flash", "model": "deepseek-v4-flash"}
+            return {"enabled": True, "lane": "deepseek-flash", "model": "deepseek-flash"}
         pol = yaml.safe_load(path.read_text()) or {}
         cfg = ((pol.get("cloud_unavailable") or {}).get("free_oauth_bottleneck_rollover")
                or {})
         if not isinstance(cfg, dict):
-            return {"enabled": True, "lane": "deepseek-flash", "model": "deepseek-v4-flash"}
+            return {"enabled": True, "lane": "deepseek-flash", "model": "deepseek-flash"}
         return cfg
     except Exception:
-        return {"enabled": True, "lane": "deepseek-flash", "model": "deepseek-v4-flash"}
+        return {"enabled": True, "lane": "deepseek-flash", "model": "deepseek-flash"}
 
 
 def _deepseek_flash_rollover_review(task, local_output, context, timeout, *, reason: str) -> dict:
-    """Explicit paid rollover when free-OAuth bottlenecks. FAST / deepseek-v4-flash only.
+    """Explicit paid rollover when free-OAuth bottlenecks. FAST / deepseek-flash only.
 
     Uses llm_lane deepseek-flash (credential: deepseek_tradeai / Bitwarden).
     Never Pro / PRO_THINK / PRO_MAX. Failures return ok=False (advisory).
@@ -157,7 +157,7 @@ def _deepseek_flash_rollover_review(task, local_output, context, timeout, *, rea
         "available": False,
         "verdict": "UNKNOWN",
         "lane": "deepseek-flash",
-        "model": "deepseek-v4-flash",
+        "model": "deepseek-flash",
         "rollover": True,
         "rollover_reason": reason,
         "policy": "FAST",
@@ -169,9 +169,9 @@ def _deepseek_flash_rollover_review(task, local_output, context, timeout, *, rea
     if cfg.get("never_pro") is False:
         # Safety: ignore attempts to enable Pro via config
         pass
-    model = str(cfg.get("model") or "deepseek-v4-flash")
+    model = str(cfg.get("model") or "deepseek-flash")
     lane = str(cfg.get("lane") or "deepseek-flash")
-    if model != "deepseek-v4-flash" or lane not in ("deepseek-flash", "deepseek-v4-flash", "fast"):
+    if model != "deepseek-flash" or lane not in ("deepseek-flash", "deepseek-flash", "fast"):
         out["error"] = f"deepseek_rollover_forbidden_model lane={lane} model={model}"
         return out
     try:
@@ -183,7 +183,7 @@ def _deepseek_flash_rollover_review(task, local_output, context, timeout, *, rea
             _build_prompt(task, local_output, context),
             lane="deepseek-flash",
             timeout=min(int(timeout or 180), 180),
-            model="deepseek-v4-flash",
+            model="deepseek-flash",
             process_id="hermes_external_research",
             task_summary=f"free_oauth_bottleneck_rollover:{task[:60]}",
         )

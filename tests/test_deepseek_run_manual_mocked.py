@@ -18,8 +18,8 @@ class _Resp:
         self.content = kw.get("content", "OK")
         self.requested_policy = kw.get("requested_policy", "FAST")
         self.executed_policy = kw.get("executed_policy", "FAST")
-        self.requested_model_id = kw.get("requested_model_id", "deepseek-v4-flash")
-        self.returned_model = kw.get("returned_model", "deepseek-v4-flash")
+        self.requested_model_id = kw.get("requested_model_id", "deepseek-flash")
+        self.returned_model = kw.get("returned_model", "deepseek-flash")
         self.thinking = kw.get("thinking", "disabled")
         self.reasoning_effort = kw.get("reasoning_effort")
         self.request_id = kw.get("request_id", "req-test")
@@ -45,8 +45,8 @@ def test_exact_model_match_via_llm_lane(monkeypatch):
     monkeypatch.setattr("lib.deepseek_client.chat", fake_chat)
     text, usage, resp = llm_lane._deepseek_generate("Reply OK", lane="deepseek-flash", model=None, timeout=10)
     assert text == "OK"
-    assert resp.returned_model == "deepseek-v4-flash"
-    assert resp.requested_model_id == "deepseek-v4-flash"
+    assert resp.returned_model == "deepseek-flash"
+    assert resp.requested_model_id == "deepseek-flash"
     assert usage["_tradeai"]["fallback_used"] is False
 
 

@@ -72,7 +72,7 @@ def test_successful_canonical_request_emits_once(_iso):
     from lib import deepseek_client as dc
 
     payload = {
-        "model": "deepseek-v4-flash",
+        "model": "deepseek-flash",
         "choices": [{"message": {"content": "ok"}, "finish_reason": "stop"}],
         "usage": {"prompt_tokens": 10, "completion_tokens": 4},
     }
@@ -84,7 +84,7 @@ def test_successful_canonical_request_emits_once(_iso):
 
     with patch.object(dc, "get_deepseek_api_key", return_value=("sk-test-key-not-real-aaaa", "deepseek_tradeai", False)):
         with patch.object(dc.requests, "post", return_value=resp):
-            out = dc.chat(model_id="deepseek-v4-flash", prompt="hi")
+            out = dc.chat(model_id="deepseek-flash", prompt="hi")
     assert out.ok
     rows = _events(_iso)
     assert len(rows) == 1
@@ -99,7 +99,7 @@ def test_wrapper_through_canonical_emits_once(_iso):
     from lib import deepseek_client as dc
 
     payload = {
-        "model": "deepseek-v4-flash",
+        "model": "deepseek-flash",
         "choices": [{"message": {"content": "ok"}, "finish_reason": "stop"}],
         "usage": {"prompt_tokens": 8, "completion_tokens": 2},
     }
@@ -112,9 +112,9 @@ def test_wrapper_through_canonical_emits_once(_iso):
     with patch.object(dc, "get_deepseek_api_key", return_value=("sk-wrap-key-xxxxxxxxxxxx", "deepseek_tradeai", False)):
         with patch.object(dc.requests, "post", return_value=resp):
             with cost_attribution(source_service="llm_lane", source_process="reentry_llm_insight", source_lane="FAST"):
-                dc.chat(model_id="deepseek-v4-flash", prompt="hi")
+                dc.chat(model_id="deepseek-flash", prompt="hi")
                 emit_paid_call(  # must be ignored as a second logical emit if same identity — we do not call this
-                    provider="deepseek", model="deepseek-v4-flash", request_id="other"
+                    provider="deepseek", model="deepseek-flash", request_id="other"
                 )
     # chat emitted once; the extra emit_paid_call is a different event_id (different rid)
     # wrapper contract: wrappers must NOT call emit_paid_call. Prove chat-only path:
@@ -130,7 +130,7 @@ def test_direct_bypass_emits_once(_iso):
 
     _emit_bridge_cost(
         outcome="success",
-        model="deepseek-v4-flash",
+        model="deepseek-flash",
         request_id="bridge-1",
         client_request_id="c1",
         raw_key="sk-bridge-secret-yyyyyyyy",
@@ -150,7 +150,7 @@ def test_timeout_after_send_records_attempt(_iso):
 
     with patch.object(dc, "get_deepseek_api_key", return_value=("sk-to-key-zzzzzzzzzzzz", "deepseek_tradeai", False)):
         with patch.object(dc.requests, "post", side_effect=dc.requests.Timeout()):
-            out = dc.chat(model_id="deepseek-v4-flash", prompt="hi")
+            out = dc.chat(model_id="deepseek-flash", prompt="hi")
     assert out.ok is False
     assert out.possibly_billable is True
     rows = _events(_iso)
@@ -173,7 +173,7 @@ def test_http_error_records_attempt(_iso):
     resp.text = "nope"
     with patch.object(dc, "get_deepseek_api_key", return_value=("sk-http-key-wwwwwwww", "deepseek_tradeai", False)):
         with patch.object(dc.requests, "post", return_value=resp):
-            out = dc.chat(model_id="deepseek-v4-flash", prompt="hi")
+            out = dc.chat(model_id="deepseek-flash", prompt="hi")
     assert out.possibly_billable is True
     rows = _events(_iso)
     assert len(rows) == 1
@@ -186,7 +186,7 @@ def test_pre_send_auth_failure_not_billed(_iso):
     from lib import deepseek_client as dc
 
     with patch.object(dc, "get_deepseek_api_key", return_value=(None, None, False)):
-        out = dc.chat(model_id="deepseek-v4-flash", prompt="hi")
+        out = dc.chat(model_id="deepseek-flash", prompt="hi")
     assert out.error_class == dc.AUTH_MISSING
     rows = _events(_iso)
     assert len(rows) == 1
@@ -200,7 +200,7 @@ def test_pre_send_auth_failure_not_billed(_iso):
 def test_provider_usage_unknown_remains_unknown(_iso):
     eid = emit_cost_event(
         provider="deepseek",
-        model="deepseek-v4-flash",
+        model="deepseek-flash",
         outcome=OUTCOME_ATTEMPT,
         request_id="u1",
         client_request_id="c-u1",
@@ -218,7 +218,7 @@ def test_provider_usage_unknown_remains_unknown(_iso):
 def test_request_id_joining(_iso):
     emit_cost_event(
         provider="deepseek",
-        model="deepseek-v4-flash",
+        model="deepseek-flash",
         outcome=OUTCOME_SUCCESS,
         request_id="join-prov",
         client_request_id="join-client",
@@ -232,7 +232,7 @@ def test_request_id_joining(_iso):
 
 def test_key_fingerprint_not_raw(_iso):
     raw = "sk-super-secret-value-12345678"
-    emit_paid_call(provider="deepseek", model="deepseek-v4-flash", raw_key=raw, request_id="fp1")
+    emit_paid_call(provider="deepseek", model="deepseek-flash", raw_key=raw, request_id="fp1")
     row = _events(_iso)[0]
     assert row["key_fingerprint"] == fingerprint_key(raw, provider="deepseek")
     assert raw not in json.dumps(row)
@@ -249,7 +249,7 @@ def test_service_process_run_attribution(_iso):
         reservation_id="99",
         environment="test",
     ):
-        emit_paid_call(provider="deepseek", model="deepseek-v4-flash", request_id="attr1")
+        emit_paid_call(provider="deepseek", model="deepseek-flash", request_id="attr1")
     row = _events(_iso)[0]
     assert row["source_service"] == "svc"
     assert row["source_process"] == "proc"
@@ -270,7 +270,7 @@ def test_process_classification():
 def test_dedupe_same_event_id(_iso):
     kwargs = dict(
         provider="deepseek",
-        model="deepseek-v4-flash",
+        model="deepseek-flash",
         request_id="dup-1",
         client_request_id="dup-c",
         usage_start="2026-08-17T00:00:00+00:00",
@@ -299,7 +299,7 @@ def test_successful_call_not_double_emitted_with_wrapper(_iso):
     from lib import deepseek_client as dc
 
     payload = {
-        "model": "deepseek-v4-flash",
+        "model": "deepseek-flash",
         "choices": [{"message": {"content": "ok"}, "finish_reason": "stop"}],
         "usage": {"prompt_tokens": 2, "completion_tokens": 2},
     }
@@ -311,7 +311,7 @@ def test_successful_call_not_double_emitted_with_wrapper(_iso):
     with patch.object(dc, "get_deepseek_api_key", return_value=("sk-once-key-bbbbbbbb", "deepseek_tradeai", False)):
         with patch.object(dc.requests, "post", return_value=resp):
             with cost_attribution(source_service="llm_consumption.gate_and_generate", source_process="test_finops"):
-                dc.chat(model_id="deepseek-v4-flash", prompt="hi")
+                dc.chat(model_id="deepseek-flash", prompt="hi")
     rows = _events(_iso)
     assert len(rows) == 1
     assert rows[0]["classification"] == "TRADE_AI_TEST"
@@ -328,7 +328,7 @@ def test_json_invalid_after_response(_iso):
     resp.json.side_effect = ValueError("nope")
     with patch.object(dc, "get_deepseek_api_key", return_value=("sk-json-key-cccccccc", "deepseek_tradeai", False)):
         with patch.object(dc.requests, "post", return_value=resp):
-            out = dc.chat(model_id="deepseek-v4-flash", prompt="hi")
+            out = dc.chat(model_id="deepseek-flash", prompt="hi")
     assert out.error_class == dc.JSON_INVALID
     rows = _events(_iso)
     assert len(rows) == 1
@@ -350,7 +350,7 @@ def test_returned_model_mismatch_attempt(_iso):
     resp.json.return_value = payload
     with patch.object(dc, "get_deepseek_api_key", return_value=("sk-mm-key-dddddddd", "deepseek_tradeai", False)):
         with patch.object(dc.requests, "post", return_value=resp):
-            out = dc.chat(model_id="deepseek-v4-flash", prompt="hi")
+            out = dc.chat(model_id="deepseek-flash", prompt="hi")
     assert out.error_class == dc.MISMATCHED_RETURNED_MODEL
     rows = _events(_iso)
     assert rows[0]["outcome"] == OUTCOME_ATTEMPT
