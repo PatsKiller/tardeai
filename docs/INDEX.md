@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `e36d9aa038e570439ebf06e5951e7473a867c730c16b7910cbc0e22dad5c54f2`
+**Tree fingerprint:** `65ebde23cb9c3dce90addf13e90f0c9921cdd7a5c840b36966b6d08e8304eff1`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,10 +12,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2467 |
-| Markdown (excl. this INDEX) | 2054 |
+| Files under `docs/` (excl. this INDEX) | 2471 |
+| Markdown (excl. this INDEX) | 2058 |
 | **MISSING HEADER** | **51** |
-| Header OK | 2003 |
+| Header OK | 2007 |
 | Duplicate groups | 2 |
 
 ### By status_guess
@@ -28,7 +28,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_raw_sync | 36 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 2 |
-| review_required | 2096 |
+| review_required | 2100 |
 
 ## Markdown tree
 
@@ -472,9 +472,13 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/maturity_gap_closure_20260909/CIO_GAP_2026-09-09-1401.md` | CIO Agent — GAP (AS-IS vs FUTURE) — 2026-09-09-1401 | review_required | OK | `f2ef06265950` |
 | `docs/architecture/maturity_gap_closure_20260909/HONEST_MATURITY_ASSESSMENT_2026-09-09-1401.md` | Honest maturity assessment — 2026-09-09-1401 | review_required | OK | `e46f688d00a1` |
 | `docs/architecture/maturity_gap_closure_20260910/CIO_AS_IS_2026-09-10-0215.md` | CIO Agent — AS-IS (as-built) — 2026-09-10-0215 | review_required | OK | `7c4fc4699750` |
+| `docs/architecture/maturity_gap_closure_20260910/CIO_AS_IS_2026-09-10-1338.md` | CIO Agent — AS-IS (as-built) — 2026-09-10-1338 | review_required | OK | `762bad63f528` |
 | `docs/architecture/maturity_gap_closure_20260910/CIO_FUTURE_2026-09-10-0215.md` | CIO Agent — FUTURE (full maturity target) — 2026-09-10-0215 | review_required | OK | `06728f391f6e` |
+| `docs/architecture/maturity_gap_closure_20260910/CIO_FUTURE_2026-09-10-1338.md` | CIO Agent — FUTURE (full maturity target) — 2026-09-10-1338 | review_required | OK | `cb1cbe774e7b` |
 | `docs/architecture/maturity_gap_closure_20260910/CIO_GAP_2026-09-10-0215.md` | CIO Agent — GAP (AS-IS vs FUTURE) — 2026-09-10-0215 | review_required | OK | `f9d45905f6f4` |
+| `docs/architecture/maturity_gap_closure_20260910/CIO_GAP_2026-09-10-1338.md` | CIO Agent — GAP (AS-IS vs FUTURE) — 2026-09-10-1338 | review_required | OK | `df3bf6d5999c` |
 | `docs/architecture/maturity_gap_closure_20260910/HONEST_MATURITY_ASSESSMENT_2026-09-10-0215.md` | Honest maturity assessment — 2026-09-10-0215 | review_required | OK | `fcfbcc650251` |
+| `docs/architecture/maturity_gap_closure_20260910/HONEST_MATURITY_ASSESSMENT_2026-09-10-1338.md` | Honest maturity assessment — 2026-09-10-1338 | review_required | OK | `2ed4d7e059de` |
 | `docs/architecture/maturity_gap_closure_20260910/SESSION_DOCS_SUMMARY_2026-09-10-0215.md` | Session docs summary — 2026-09-10-0215 | review_required | OK | `4250b1f5f511` |
 | `docs/architecture/narrative-subject-identity.md` | NarrativeSubjectLink@v1 — Architecture | review_required | OK | `e6f73da9013d` |
 | `docs/architecture/retention.md` | Librarian Retention — RetentionDecision@v1 (Phase 6) | review_required | OK | `ca8630975a92` |
