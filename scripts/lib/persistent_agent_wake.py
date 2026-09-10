@@ -111,6 +111,17 @@ class MemoryFact:
 
 
 @dataclass
+class MemoryLoadMetrics:
+    """Per-load counters for MemoryLoader schema/adapter outcomes."""
+
+    loaded: int = 0
+    rejected: int = 0
+    malformed_rows: int = 0
+    unmatched: int = 0
+    cross_subject_prevented: int = 0
+
+
+@dataclass
 class MemorySnapshot:
     snapshot_id: str
     subject_guid: str
@@ -120,10 +131,49 @@ class MemorySnapshot:
     malformed: bool = False
     stale: bool = False
     error: str | None = None
+    metrics: MemoryLoadMetrics | None = None
 
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _resolve_memory_identity(row: dict) -> tuple[str | None, str | None]:
+    """Resolve durable identity from fact_id / id / memory_id.
+
+    Returns (identity, error). error is set when missing or conflicting.
+    Aliases are accepted only when unambiguous (single value across present keys).
+    """
+    present: list[str] = []
+    for key in ("fact_id", "id", "memory_id"):
+        raw = row.get(key)
+        if raw is None:
+            continue
+        text = str(raw).strip()
+        if text:
+            present.append(text)
+    if not present:
+        return None, "missing_id"
+    unique = set(present)
+    if len(unique) > 1:
+        return None, "conflicting_ids"
+    return next(iter(unique)), None
+
+
+def _row_subject_disposition(row: dict, subject_guid: str) -> str:
+    """Classify row relevance for a wake subject.
+
+    Only an explicit subject_guid can match. A human-readable `subject` title
+    is never treated as a GUID, and a missing subject_guid must not default to
+    the wake subject (that would load every title-only durable row for every
+    wake).
+    """
+    raw = row.get("subject_guid")
+    if raw is None or str(raw).strip() == "":
+        return "unmatched"
+    if str(raw) == str(subject_guid):
+        return "match"
+    return "cross"
 
 
 def _iso(dt: datetime | None) -> str | None:
@@ -164,6 +214,12 @@ class MemoryLoader:
     """Loads durable subject memory before any decision.
 
     `backend` may be a callable(subject_guid) -> list[dict] or a path to JSONL.
+
+    Schema adapter (2026-09-10): accept unambiguous fact_id / id / memory_id;
+    match subjects only via explicit subject_guid; never default-match title-only
+    durable rows onto the wake subject (that would load the entire store).
+    Matched rows with missing/conflicting/duplicate ids fail closed for the
+    snapshot. Unmatched and cross-subject rows are skipped with metrics.
     """
 
     def __init__(self, backend: Any = None, *, stale_hours: float = MEMORY_STALE_HOURS):
@@ -173,56 +229,82 @@ class MemoryLoader:
     def load(self, subject_guid: str, *, now: datetime | None = None) -> MemorySnapshot:
         now = now or _now()
         snap_id = mint_receipt_id("memory", "snapshot", subject_guid, "wake_load")
+        metrics = MemoryLoadMetrics()
         try:
             rows = self._fetch(subject_guid)
         except Exception as exc:  # malformed / unreadable
             return MemorySnapshot(
                 snapshot_id=snap_id, subject_guid=subject_guid, facts=[],
                 loaded_at=now, malformed=True, error=f"{type(exc).__name__}: {exc}",
+                metrics=metrics,
             )
         facts: list[MemoryFact] = []
         newest: datetime | None = None
+        seen_ids: set[str] = set()
         for row in rows:
             if not isinstance(row, dict):
                 return MemorySnapshot(
                     snapshot_id=snap_id, subject_guid=subject_guid, facts=[],
                     loaded_at=now, malformed=True, error="non-object memory row",
+                    metrics=metrics,
                 )
-            fid = str(row.get("fact_id") or row.get("id") or "")
-            if not fid:
+            disposition = _row_subject_disposition(row, subject_guid)
+            if disposition == "unmatched":
+                metrics.unmatched += 1
+                continue
+            if disposition == "cross":
+                metrics.cross_subject_prevented += 1
+                continue
+
+            fid, id_err = _resolve_memory_identity(row)
+            if id_err or not fid:
+                metrics.malformed_rows += 1
                 return MemorySnapshot(
                     snapshot_id=snap_id, subject_guid=subject_guid, facts=[],
-                    loaded_at=now, malformed=True, error="memory row missing fact_id",
+                    loaded_at=now, malformed=True,
+                    error=f"memory row {id_err or 'missing_id'}",
+                    metrics=metrics,
                 )
-            as_of_raw = row.get("as_of") or row.get("produced_at")
+            if fid in seen_ids:
+                metrics.rejected += 1
+                return MemorySnapshot(
+                    snapshot_id=snap_id, subject_guid=subject_guid, facts=[],
+                    loaded_at=now, malformed=True,
+                    error=f"duplicate memory identity {fid}",
+                    metrics=metrics,
+                )
+            seen_ids.add(fid)
+
+            as_of_raw = row.get("as_of") or row.get("produced_at") or row.get("observed_at")
             try:
                 if isinstance(as_of_raw, datetime):
                     as_of = as_of_raw if as_of_raw.tzinfo else as_of_raw.replace(tzinfo=timezone.utc)
                 else:
                     as_of = datetime.fromisoformat(str(as_of_raw).replace("Z", "+00:00"))
             except Exception:
+                metrics.malformed_rows += 1
                 return MemorySnapshot(
                     snapshot_id=snap_id, subject_guid=subject_guid, facts=[],
                     loaded_at=now, malformed=True, error=f"bad as_of on {fid}",
+                    metrics=metrics,
                 )
-            relevant = bool(row.get("relevant", True))
-            # Exclude irrelevant history
-            if row.get("subject_guid") and str(row.get("subject_guid")) != str(subject_guid):
-                relevant = False
+            if not bool(row.get("relevant", True)):
+                metrics.rejected += 1
+                continue
             facts.append(MemoryFact(
                 fact_id=fid, subject_guid=subject_guid,
-                content=row.get("content", row), as_of=as_of, relevant=relevant,
+                content=row.get("content", row), as_of=as_of, relevant=True,
             ))
+            metrics.loaded += 1
             if newest is None or as_of > newest:
                 newest = as_of
-        relevant_facts = [f for f in facts if f.relevant]
         stale = False
         if newest is not None and (now - newest) > timedelta(hours=self.stale_hours):
             stale = True
         return MemorySnapshot(
             snapshot_id=snap_id, subject_guid=subject_guid,
-            facts=relevant_facts, loaded_at=now,
-            empty=(len(relevant_facts) == 0), stale=stale,
+            facts=facts, loaded_at=now,
+            empty=(len(facts) == 0), stale=stale, metrics=metrics,
         )
 
     def _fetch(self, subject_guid: str) -> list[dict]:
@@ -242,7 +324,10 @@ class MemoryLoader:
             if not line.strip():
                 continue
             rows.append(json.loads(line))
-        return [r for r in rows if str(r.get("subject_guid", subject_guid)) == str(subject_guid)]
+        # Return the full store. Subject matching is fail-closed in load() via
+        # _row_subject_disposition — never default missing subject_guid to the
+        # wake subject.
+        return rows
 
 
 @dataclass
@@ -832,6 +917,7 @@ def recover_incomplete_wakes(store: JsonlStore) -> list[dict]:
 
 __all__ = [
     "AUTHORITY",
+    "MemoryLoadMetrics",
     "FEATURE_FLAG",
     "WakeEngine",
     "WakeRejected",
