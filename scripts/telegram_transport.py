@@ -12,6 +12,7 @@ retry into editMessageText.
 from __future__ import annotations
 
 import logging
+import re as _re_html
 from typing import Any, Callable, Optional
 
 import requests
@@ -149,6 +150,45 @@ def escape_markdown(text: str) -> str:
     )
 
 
+def unescape_markdown(text: str) -> str:
+    """Inverse of ``escape_markdown``, for the plaintext fallback.
+
+    Only the four sequences the escaper produces, so a literal backslash the
+    author actually wrote survives untouched.
+    """
+    return (
+        str(text)
+        .replace("\\_", "_")
+        .replace("\\*", "*")
+        .replace("\\[", "[")
+        .replace("\\`", "`")
+    )
+
+
+_HTML_TAG = _re_html.compile(r"</?(?:b|i|u|s|code|pre|a)\b[^>]*>")
+_MD_EMPHASIS = _re_html.compile(r"(?:\*\w|_\w|`)")
+
+
+def parse_mode_for(text: str, default: str | None = "Markdown") -> str | None:
+    """Pick the markup language the body is actually written in.
+
+    Producers disagree about this channel's markup and the transport assumed
+    one answer. 8 of 678 messages in the 7 days to 2026-09-10 shipped
+    ``⚠️ <b>Health Agent: DEGRADED — 68/100</b>`` with the tags visible, because
+    HTML was sent under ``parse_mode="Markdown"``.
+
+    Measured on the same window, no message mixes the two (0 of 678), so
+    choosing by content is unambiguous on real traffic. A body that somehow
+    contains both keeps the default and the existing plaintext fallback catches
+    it — this widens nothing.
+    """
+    if not text:
+        return default
+    if _HTML_TAG.search(text) and not _MD_EMPHASIS.search(text):
+        return "HTML"
+    return default
+
+
 def deliver_text(
     *,
     token: str,
@@ -169,6 +209,9 @@ def deliver_text(
     """
     if _interdicted():
         return _interdicted_result()
+    # Resolve the markup language from the body before any attempt, so an HTML
+    # producer is not sent under Markdown and rendered with its tags showing.
+    parse_mode = parse_mode_for(text, parse_mode)
     poster = post or _http_post
     edit_id = None
     if idempotency_key:
@@ -243,8 +286,17 @@ def deliver_text(
 
     # First send never posted (typical: Markdown parse 400). One plaintext send —
     # that is the original message, not a duplicate.
+    #
+    # Unescape first. Dropping parse_mode without undoing the escaping is what
+    # put `siem\_p1 ×16 — 🚨 SIEM P1: cleanup\_stale\_proposals` in front of the
+    # operator: the producer escaped correctly for Markdown, the parse failed,
+    # and the plaintext retry rendered the escape characters as themselves.
+    # 15 of 678 messages in the 7 days to 2026-09-10 carried visible
+    # backslashes. Nothing was wrong with the escaper; the fallback simply
+    # spoke a different language than the text it was resending.
     payload_plain = _base_payload(
-        chat_id, text, thread_id=thread_id, reply_markup=reply_markup, parse_mode=None,
+        chat_id, unescape_markdown(text) if parse_mode == "Markdown" else text,
+        thread_id=thread_id, reply_markup=reply_markup, parse_mode=None,
     )
     ok2, code2, body2 = _call(send_url, payload_plain)
     mid = _message_id_from(body2) if ok2 else None

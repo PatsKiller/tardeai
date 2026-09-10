@@ -51,6 +51,11 @@ GATES = [
             # (memory_id + title-only subject) must not refuse wakes or load all rows.
             "tests/test_memory_loader_schema_compat.py",
             "tests/test_runtime_identity.py",
+            # 2026-09-10 operator-channel presentation: navigation prose must
+            # carry a tappable FQDN link, the plaintext fallback must unescape,
+            # HTML bodies must not ship under Markdown, and the ledger must
+            # record the wire copy.
+            "tests/test_telegram_operator_presentation.py",
             "tests/test_wake_schedule_contract.py",
             "tests/test_wake_negative_mutation_controls.py",
             "tests/test_comms_memory_gateway.py",
