@@ -81,6 +81,8 @@ GATES = [
             # docs rsynced in by overlay_main. Exemption now asks git instead of
             # a hand-kept SKIP_PARTS list; these controls pin both halves.
             "tests/test_current_pin_gitignore_exemption.py",
+            "tests/test_narrative_composition.py",
+            "tests/test_narrative_narrator.py",
             # SFR-R-001: the consumption loop must close. Slots 13:00Z/14:00Z on
             # 54639ff5a re-selected the same three sources because the runner's
             # own receipts never reached the selector.
