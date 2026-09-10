@@ -66,6 +66,11 @@ GATES = [
             # SFR-A-FOLLOWUP2-001: wake subject selection.
             "tests/test_wake_subject_selector.py",
             "tests/test_wake_research_consumption.py",
+            # Grok-closure Phase 2: canonical recurring research -> wake feed
+            # producer. Governed Brave router + budget -> durable ResearchObject
+            # -> atomic wake feed -> selector. Registered by the integration
+            # owner; the producer is the ONLY writer of the research feed.
+            "tests/test_governed_research_producer.py",
             # SFR-R-001: the consumption loop must close. Slots 13:00Z/14:00Z on
             # 54639ff5a re-selected the same three sources because the runner's
             # own receipts never reached the selector.
