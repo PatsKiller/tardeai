@@ -233,6 +233,38 @@
       "output_schema": "cio_synthesis.v1"
     },
     {
+      "id": "watchlist_cio_synthesis_cron",
+      "name": "Watchlist CIO Synthesis (cron)",
+      "category": "Watch",
+      "lane_policy": "ensemble",
+      "default_mode": "automated",
+      "description": "CIO view \u2014 Grok primary + ChatGPT reconcile when both run | automated organic Flash voter (soak)",
+      "deepseek_default_policy": "FAST_THINK",
+      "deepseek_allowed_policies": [
+        "FAST_THINK",
+        "PRO_THINK",
+        "PRO_MAX"
+      ],
+      "requires_operator_cost_confirmation_for": [
+        "PRO_MAX"
+      ],
+      "output_schema": "cio_synthesis.v1",
+      "notes": " | 2026-09-10: alias so organic cron Flash votes do not PROCESS_NOT_REGISTERED",
+      "allowed_lanes": [
+        "grok",
+        "chatgpt",
+        "deepseek-flash"
+      ],
+      "max_input_tokens": 16000,
+      "max_output_tokens": 4000,
+      "daily_soft_cap": 200,
+      "daily_cost_cap_usd": 0.5,
+      "tools_allowed": false,
+      "fallback_allowed": true,
+      "advisory_only": true,
+      "circuit_breaker": true
+    },
+    {
       "id": "watchlist_maria_priority",
       "name": "Maria Priority OAuth",
       "category": "Watch",
@@ -282,7 +314,7 @@
       "circuit_breaker": true,
       "registered_by": "telegram-noise-suppression",
       "registered_at": "2026-08-13T12:00:00Z",
-      "notes": "2026-08-13: research lane migrated from free ChatGPT OAuth (gpt-5.4) to governed DeepSeek V4 Flash. Small payloads (~8000 in x ~512-1024 out, ~$0.0015/call). Holdings (T0) refresh several times/day, so a 120-call soft cap / $0.30 daily cap is ample and bounds the daily desk cross-check cost. | 2026-08-22 P1: max_output_tokens 1024->4096 so living theses survive write-path slices; dollar caps unchanged $0.30 / $0.50. daily_soft_cap stays 600. | 2026-09-09: max_input_tokens 8000->16000 — the on-demand held-name challenger path (POST /hermes/curate-symbol lane=deepseek) builds ~9.5-11k-token evidence packs (research_prompt_context + legacy safe context), which 8000 rejected with INPUT_LIMIT_EXCEEDED. 16000 gives headroom; dollar/soft caps unchanged (600 calls / $0.30 daily still bound cost)."
+      "notes": "2026-08-13: research lane migrated from free ChatGPT OAuth (gpt-5.4) to governed DeepSeek V4 Flash. Small payloads (~8000 in x ~512-1024 out, ~$0.0015/call). Holdings (T0) refresh several times/day, so a 120-call soft cap / $0.30 daily cap is ample and bounds the daily desk cross-check cost. | 2026-08-22 P1: max_output_tokens 1024->4096 so living theses survive write-path slices; dollar caps unchanged $0.30 / $0.50. daily_soft_cap stays 600. | 2026-09-09: max_input_tokens 8000->16000 \u2014 the on-demand held-name challenger path (POST /hermes/curate-symbol lane=deepseek) builds ~9.5-11k-token evidence packs (research_prompt_context + legacy safe context), which 8000 rejected with INPUT_LIMIT_EXCEEDED. 16000 gives headroom; dollar/soft caps unchanged (600 calls / $0.30 daily still bound cost)."
     },
     {
       "id": "multi_tier_trade_reviewer",
@@ -647,7 +679,7 @@
       "circuit_breaker": true,
       "registered_by": "advisory-desk-p0",
       "registered_at": "2026-08-11T12:00:00Z",
-      "notes": " | 2026-08-12: raised daily_cost_cap_usd 0.05\u21920.20\u21920.30 and daily_soft_cap 80\u2192200 to cover 12 watchlist + 20 holding Flash opinions under global 0.50. Local/Ollama fallback lane removed \u2014 DeepSeek is the sole default lane. | 2026-09-09: daily_soft_cap 100000\u2192600. This process_id is SHARED by many CIO Flash callers (advisory opinion engine, plan enrichment, prompt judge, telegram converse, operator desk loop, situation detector); 4929 settled calls on 2026-09-09 exhausted the $0.50 global daily cap ($1.07 actual). The volume bound is the fix — max_input_tokens stays 32000 because held-name evidence packs are ~10k tokens and the 8000 trial rejected every challenger with INPUT_LIMIT_EXCEEDED."
+      "notes": " | 2026-08-12: raised daily_cost_cap_usd 0.05\u21920.20\u21920.30 and daily_soft_cap 80\u2192200 to cover 12 watchlist + 20 holding Flash opinions under global 0.50. Local/Ollama fallback lane removed \u2014 DeepSeek is the sole default lane. | 2026-09-09: daily_soft_cap 100000\u2192600. This process_id is SHARED by many CIO Flash callers (advisory opinion engine, plan enrichment, prompt judge, telegram converse, operator desk loop, situation detector); 4929 settled calls on 2026-09-09 exhausted the $0.50 global daily cap ($1.07 actual). The volume bound is the fix \u2014 max_input_tokens stays 32000 because held-name evidence packs are ~10k tokens and the 8000 trial rejected every challenger with INPUT_LIMIT_EXCEEDED."
     },
     {
       "id": "advisory_desk_synthesis",

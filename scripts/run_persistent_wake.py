@@ -181,13 +181,12 @@ def _maybe_cortex_shadow_after_wake(
     """Optional Phase-8 AgentView cortex shadow after a completed wake.
 
     Default OFF (``AGENT_VIEW_V1_ENABLED`` / ``CORTEX_SHADOW_ENABLED``). When on,
-    appends ``agent_views.jsonl`` under the wake state root. GOVERNED_COMMITMENT
-    is forced off on this path — canary is MBI=0 advisory shadow only. Fail-safe:
-    never raises into the wake path.
+    appends ``agent_views.jsonl`` under the wake state root. Governed commitments
+    mint only when ``GOVERNED_COMMITMENT_ENABLED`` is also on (still MBI=0 /
+    advisory — never broker/order). Fail-safe: never raises into the wake path.
     """
     try:
         from scripts.lib.cortex_shadow_pipeline import (
-            COMMITMENT_FLAG,
             enabled as cortex_enabled,
             run_cortex_shadow,
         )
@@ -197,9 +196,8 @@ def _maybe_cortex_shadow_after_wake(
         if not wake_id or wake_id == "none":
             return None
 
-        # Never enable GOVERNED_COMMITMENT on the wake→cortex canary path.
+        # Honor GOVERNED_COMMITMENT_ENABLED from env (default OFF). Do not force-off.
         shadow_env = dict(env)
-        shadow_env[COMMITMENT_FLAG] = "0"
 
         summary = (
             f"Scheduled persistent wake reviewed subject {subject_guid}; "
