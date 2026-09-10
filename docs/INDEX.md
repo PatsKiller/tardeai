@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `7cce090c3a07b5b0b0646276bbeec8b7beb9df03787e412bc4108af2a32ae8ba`
+**Tree fingerprint:** `7a010aeacc737a4b8b0f6dd0e65083c4695bce2dc21274dab221b748e0c758c8`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,25 +12,23 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2472 |
-| Markdown (excl. this INDEX) | 2055 |
+| Files under `docs/` (excl. this INDEX) | 2455 |
+| Markdown (excl. this INDEX) | 2042 |
 | **MISSING HEADER** | **52** |
-| Header OK | 2003 |
-| Duplicate groups | 5 |
+| Header OK | 1990 |
+| Duplicate groups | 2 |
 
 ### By status_guess
 
 | Status | Count |
 |--------|------:|
 | active_keep | 8 |
-| archive_legacy_blueprint | 1 |
-| archive_session_handoff | 3 |
-| archive_superseded | 20 |
+| archive_superseded | 9 |
 | artifact_code_snapshot | 3 |
 | artifact_raw_sync | 36 |
 | current_phase_keep | 313 |
-| delete_candidate_duplicate | 6 |
-| review_required | 2082 |
+| delete_candidate_duplicate | 2 |
+| review_required | 2084 |
 
 ## Markdown tree
 
@@ -109,9 +107,6 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/RESEARCH_TOPIC_REGISTRY_2026_06_04.md` | Research Topic Registry — 2026-06-04 | review_required | OK | `f51d95275ab4` |
 | `docs/RESTORE_GUIDE.md` | Trade AI v12 — Restore Guide | active_keep | OK | `e75090b6bb16` |
 | `docs/SCHWAB_AUTO_REAUTH.md` | Schwab OAuth Reauth (manual-first) | review_required | OK | `039c557e4214` |
-| `docs/SESSION_2026_06_04_SUMMARY.md` | Session Summary — 2026-06-04 | archive_session_handoff | OK | `42c62bde2441` |
-| `docs/SESSION_2026_06_25_CHANGES.md` | Session 2026-06-25 — Changes Log | archive_session_handoff | OK | `0b26829b54f4` |
-| `docs/SESSION_2026_07_02_HERMES_MATURITY5.md` | Session 2026-07-02 — Hermes Maturity-5 Program (audit → phases 0–6, one day) | archive_session_handoff | OK | `b28e4413fcb5` |
 | `docs/STOP_METHODOLOGY.md` | Stop & Trailing-Stop Methodology (canonical) | review_required | OK | `5b9791931edc` |
 | `docs/STOP_SYSTEM_GAP_REPORT.md` | Trade AI v12 — Stop System Alignment / Gap Report | review_required | OK | `12d1dfe39ffb` |
 | `docs/STRATEGY_MONITORING_20260626.md` | Strategy & Monitoring — Audit Remediation (2026-06-26) | review_required | OK | `4655d328251e` |
@@ -162,7 +157,6 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/_findings/defense_desk_v2_diagnosis_2026-07-18.md` | Defense Desk v2 — Phase 0 Diagnosis (2026-07-18) | review_required | OK | `5dc0e9420a52` |
 | `docs/_findings/defense_desk_v7_diagnosis_2026-07-18.md` | Defense Desk v7 — Phase 0 Diagnosis + EXEC Branch Decision (2026-07-18) | review_required | OK | `4ff42d3ab9bc` |
 | `docs/_findings/defense_redesign_recon_2026-07-29.md` | Defense Desk redesign — Stage DD-S0 recon | review_required | OK | `afa1bb00bd4e` |
-| `docs/_findings/env_bak_phase0_kill_2026-07-21.md` | PHASE-0: Kill `.env` backup sprawl — handoff | archive_superseded | OK | `62be7c5b7520` |
 | `docs/_findings/fidelity_to_schwab_rollover_2026-07-16.md` | Fidelity Rollover IRA → Schwab (ACATS reflection) — 2026-07-16 | review_required | OK | `a76d4b50d05d` |
 | `docs/_findings/gain_guardian_diagnosis_2026-07-16.md` | Gain Guardian (Holdings Exit Intelligence) — Phase 0 Diagnosis — 2026-07-16 | review_required | OK | `8c72cfece06d` |
 | `docs/_findings/home_v2_diagnosis_2026-07-17.md` | Home v2 (Command Brain) — Phase 0 Diagnosis (2026-07-17) | review_required | OK | `b48f52f0250a` |
@@ -183,7 +177,6 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/_findings/scalp_engine_recon_20260727.md` | Momentum Scalp Signal Engine — M3-S0 Recon Findings (2026-07-27) | review_required | OK | `25a4ef112079` |
 | `docs/_findings/sector_leaders_recon_2026-07-29.md` | Sector Leaders Card — Stage SL-S0 Recon | review_required | OK | `078eff072fcc` |
 | `docs/_findings/sunday_audit_fixes_2026-05-25.md` | Sunday Night Audit Fixes (2026-05-25) | review_required | OK | `9fb2ba331b9b` |
-| `docs/_findings/triggered_stops_2026-05-24_pre_schwab_check.md` | 7 Triggered Stops — Pre-Schwab Verification | archive_superseded | OK | `ec26f93bbb0d` |
 | `docs/_findings/watch_desk_v2_diagnosis_2026-07-16.md` | Watch Desk v2 Phase 0 Diagnosis — 2026-07-16 | review_required | OK | `ca451db905da` |
 | `docs/_findings/watch_desk_v3_diagnosis_2026-07-16.md` | Watch Desk v3 Phase 0 — 2026-07-16 | review_required | OK | `64dadf8be679` |
 | `docs/_findings/watch_desk_v4_diagnosis_2026-07-16.md` | Watch Desk v4 — Phase 0 Diagnosis (2026-07-16, post-close) | review_required | OK | `636942cc915a` |
@@ -215,7 +208,6 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/advisory/desk-v1/PHASE6_LESSONS_BROKER_OUTCOME_2026-08-11.md` | Phase 6 Outcome — Lessons KB + Notification Broker | review_required | OK | `7b460462078b` |
 | `docs/advisory/desk-v1/PHASE7_PROMOTION_OUTCOME_2026-08-11.md` | Phase 7 Outcome — Final Promotion Gate | review_required | OK | `00fbec91119f` |
 | `docs/advisory/desk-v1/README.md` | Advisory Desk v1 — Documentation Index | review_required | OK | `eacb26431f1e` |
-| `docs/advisory/desk-v1/RUNTIME_TRUTH_2026-08-11.md` | Runtime truth — host verification (P0 ops) | delete_candidate_duplicate | OK | `b3ebf94fe56b` |
 | `docs/advisory/desk-v1/SITUATION_CATALOG_V1_FREEZE.md` | Situation Catalog v1 — FREEZE | review_required | OK | `4de970fb9ce6` |
 | `docs/advisory/desk-v1/SURFACE_REPORT_AND_ACTORS_2026-08-12.md` | Advisory Desk → Operators: Wiring, Telegram, and the MS-Style Report | review_required | OK | `86de44c270fa` |
 | `docs/agent-intelligence/ADR/001-context-envelope.md` | ADR-001 — ContextEnvelope as canonical agent context | review_required | OK | `362f315c1f27` |
@@ -481,7 +473,6 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/atm/PHASE180C_ATM_PAPER_VOLUME_RAMP_SCHEDULE.md` | Phase 180C: ATM Paper Trade Volume Ramp Schedule | review_required | OK | `1f087f81f7ed` |
 | `docs/atm/PHASE180D_ATM_PAPER_ONLY_GUARDRAILS_REPORT.md` | Phase 180D: ATM Paper-Only Guardrails Report | review_required | OK | `b62eb948087d` |
 | `docs/atm/PHASE180E_ATM_PAPER_SCALE_DASHBOARD_REPORT.md` | Phase 180E: ATM Paper Scale Dashboard Report | review_required | OK | `161391895175` |
-| `docs/atm/PHASE186A_STAGE1_PIPELINE_PRE_RUN_SAFETY.md` | Phase 186A: Stage 1 Pipeline Pre-Run Safety | archive_superseded | OK | `608d4359c303` |
 | `docs/atm/PHASE186B_STAGE1_FEED_PREFLIGHT_REPORT.md` | Phase 186B: Stage 1 Feed Preflight Report | review_required | OK | `1c47849b8495` |
 | `docs/atm/PHASE186C_STAGE1_TOMORROW_CANDIDATE_PIPELINE_REPORT.md` | Phase 186C: Stage 1 Tomorrow Candidate Pipeline Report | review_required | OK | `7163f27aeefe` |
 | `docs/atm/PHASE186D_STAGE1_PAPER_PROPOSAL_PREVIEW.md` | Phase 186D: Stage 1 Paper Proposal Preview | review_required | OK | `c4404d823cd9` |
@@ -528,7 +519,6 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/atm/atm_burnin_limited_active/day1/MONDAY_ATM_BURNIN_RUNBOOK_2026_05_26.md` | Monday ATM Burn-in Runbook — 2026-05-26 | review_required | OK | `16957da94cda` |
 | `docs/atm/atm_burnin_limited_active/day1/atm_active_config_change_plan.md` | ATM Config Change Plan — Limited Paper Active | review_required | OK | `772c3bf91871` |
 | `docs/atm/atm_burnin_limited_active/day1/atm_active_deferral_report.md` | ATM Burn-in Day 1 — Deferral Report | review_required | OK | `56b034eebafe` |
-| `docs/atm/atm_burnin_limited_active/day1/atm_active_pre_stop_reconciliation.md` | STOP-V2.1 Reconciliation Report | archive_superseded | OK | `e15222e26107` |
 | `docs/atm/atm_burnin_limited_active/day1/atm_active_preflight.md` | ATM Limited Active Burn-in — Day 1 Preflight | review_required | OK | `bcc2f7f74a23` |
 | `docs/atm/atm_burnin_limited_active/day1/atm_active_safety_audit.md` | ATM Limited Active — Day 1 Safety Audit | review_required | OK | `082ea66b05a1` |
 | `docs/atm/atm_burnin_limited_active/day1/atm_active_strategy_scope.md` | ATM Limited Active — Strategy Scope | review_required | OK | `b07ad46da297` |
@@ -665,7 +655,6 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/audits/overnight/W5_SEARCH_COST_PROOFS_2026-09-01.md` | Night Three Wave 5 — Search / cost proofs (5a–5d) | review_required | OK | `de36a3e5b06d` |
 | `docs/audits/overnight/W6_STRUCTURE_PROOFS_2026-09-01.md` | Night Three Wave 6 — Structure proofs (G1 / G4 / G3) | review_required | OK | `3c93ef8a1431` |
 | `docs/audits/overnight/WAVE_E_CATALYST_2026-08-31.md` | WAVE E — Catalyst pipeline (E1→E5) · 2026-08-31 | review_required | OK | `c700329a997a` |
-| `docs/briefs/PHASE_11_superseded.md` | Phase 11 — superseded by the validation sweep before execution | archive_superseded | OK | `a9a0963cd1ce` |
 | `docs/briefs/README.md` | Wave briefs | review_required | OK | `4050ed8f6c68` |
 | `docs/briefs/TEMPLATE.md` | WAVE <n> — <short name> | review_required | OK | `a602898a4cef` |
 | `docs/briefs/WAVE_12_CONTINUED_land_it.md` | Wave 12 continued — land it, then build | review_required | OK | `6f3787e517df` |
@@ -1416,7 +1405,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/AUTONOMOUS_ADVISORY_LOOP_CLOSURE_RESULT_2026-08-23.md` | Trade AI Autonomous Advisory Loop Closure Result | review_required | OK | `51a39935be0a` |
 | `docs/ops/AUTONOMOUS_ADVISOR_SESSION_CLOSEOUT_2026-08-20.md` | Autonomous Advisor Session Closeout — 2026-08-20 | review_required | OK | `368297046d4f` |
 | `docs/ops/AUTONOMY_OPERATOR_RUNBOOK.md` | Autonomy Operator Runbook (READ_ONLY_ADVISORY) | review_required | OK | `e30957166ceb` |
-| `docs/ops/AUTONOMY_RUNTIME_TRUTH_2026-08-11.md` | Runtime truth — host verification (P0 ops) | delete_candidate_duplicate | OK | `b3ebf94fe56b` |
+| `docs/ops/AUTONOMY_RUNTIME_TRUTH_2026-08-11.md` | Runtime truth — host verification (P0 ops) | review_required | OK | `b3ebf94fe56b` |
 | `docs/ops/CANONICAL_OBSERVATION_CONTRACT.md` | Canonical observation contract | review_required | OK | `f1efae3e4863` |
 | `docs/ops/CANON_SOURCE_ACQUISITION_QUEUE_2026-08-23.md` | Canon Source Acquisition Queue - 2026-08-23 | review_required | OK | `a49f0fc9b389` |
 | `docs/ops/CIO_ADVISORY_TRUTH_HARDENING_CLOSEOUT_2026-08-20.md` | CIO/Advisory truth + presentation hardening — closeout 2026-08-20 | review_required | OK | `1661c226ddf4` |
@@ -1631,7 +1620,6 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/TRADE_AI_R10_MEMORY_AUTONOMOUS_AGENT_CLOSEOUT_2026-08-24.md` | R10.2 closeout (in progress) | review_required | OK | `67a250882df4` |
 | `docs/ops/TRANSFERSON_UNIVERSE_CANONICAL_CLOSEOUT_2026-08-25.md` | Transferson canonical universe — local closeout | review_required | OK | `de74cfb4197d` |
 | `docs/ops/TRANSFERSON_UNIVERSE_LIVE_ACCEPTANCE_GATE_2026-08-25.md` | Transferson canonical universe — live CURRENT/DB acceptance gate | review_required | OK | `fd4a9e063ef7` |
-| `docs/ops/TRANSFERSON_UNIVERSE_PRE_MERGE_ACCEPTANCE_2026-08-25.md` | Transferson universe — two-stage acceptance (PRE_MERGE) | archive_superseded | OK | `516017293ff1` |
 | `docs/ops/WEEKLY_OVERSIGHT_CHATGPT_OAUTH.md` | Weekly oversight — ChatGPT OAuth auto, paid manual | review_required | OK | `952b623d11ae` |
 | `docs/ops/YEDAS_EYE_INSTITUTIONAL_BRAIN_MATURITY_2026-08-24.md` | Yeda's Eye — first institutional-brain audit | review_required | OK | `156812edbf91` |
 | `docs/ops/alerts/PHASE126_TELEGRAM_ENFORCEMENT_REPORT.md` | Phase 126 — Telegram Actionable-Only Enforcement Report | review_required | OK | `105a8d6bbf0d` |
@@ -1921,7 +1909,6 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/prompts/CODEX_ACTIVE_TRADER_MOOMOO_SCALP_IMPLEMENTATION_v1_0.md` | CODEX IMPLEMENTATION PROGRAM v1.0 | review_required | OK | `65d09ab1fdb0` |
 | `docs/prompts/CODEX_ACTIVE_TRADER_MOOMOO_SCALP_IMPLEMENTATION_v1_1.md` | CODEX IMPLEMENTATION PROGRAM v1.1 | review_required | OK | `ceb4364505d5` |
 | `docs/proposal_quality/phase_promote1_pre_promotion_readiness_gate/00_README.md` | PROMOTE-1 — Pre-Promotion Readiness Gate | current_phase_keep | OK | `4b2142d8b3cc` |
-| `docs/proposal_quality/phase_promote1_pre_promotion_readiness_gate/promote1_safety_audit.md` | PROMOTE-1 Safety Audit | archive_superseded | OK | `93e2768ff71c` |
 | `docs/proposal_sandbox/PHASE115B_PROPOSAL_DRAFT_SCORE_RESULTS.md` | Phase 115B — Proposal Draft Score Results | review_required | OK | `039190d4f687` |
 | `docs/reporting/REPORTING_ENGINE.md` | Reporting & Prospectus Generation Module | review_required | OK | `54cb8d78f939` |
 | `docs/risk_management/stop_management_v2_3_strategy_trailing_tiers/00_README.md` | Stop Management V2.3 — Strategy Trailing Tiers | current_phase_keep | OK | `bde4bfa05075` |
@@ -2023,11 +2010,9 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ui_audits/2026-05-23_command_center_reliability_fix/ROOT_CAUSE_MATRIX.md` | ROOT CAUSE MATRIX — Command Center Reliability Fix (2026-05-23) | review_required | OK | `586c0e1d7876` |
 | `docs/ui_audits/2026-05-24_source_verification/CODE_FIX_VERIFICATION_MATRIX.md` | Code Fix Verification Matrix (2026-05-24) | review_required | OK | `af82a4fe6da1` |
 | `docs/ui_audits/2026-05-24_source_verification/REMAINING_FLAWS.md` | Remaining Flaws — Post-Verification Assessment (2026-05-24) | review_required | OK | `0c58819c11cf` |
-| `docs/ui_audits/2026-05-24_source_verification/SOURCE_BACKUP_VERIFICATION.md` | Source Backup Verification (2026-05-24) | archive_superseded | OK | `c3a33f40c09e` |
 | `docs/ui_audits/post_8b348c3/VERIFICATION_MATRIX.md` | Post-8b348c3 Verification Matrix | review_required | OK | `91c5afa4fc76` |
 | `docs/ui_redesign/ALL_V2_ROUTE_MAP.md` | Trade AI Command Center v2 -- Full Route Map | review_required | OK | `ac90ab482bbd` |
 | `docs/ui_redesign/API_CONTRACTS_AND_PAYLOADS.md` | API Contracts and Payloads | review_required | OK | `bd1dea4ca669` |
-| `docs/ui_redesign/ARCHITECTURE_BLUEPRINT_V1.md` | Trade AI Command Center -- Architecture Blueprint v1 | archive_legacy_blueprint | OK | `e87c76716d41` |
 | `docs/ui_redesign/COMPONENT_INVENTORY.md` | Component Inventory | review_required | OK | `0c1a9aaa746f` |
 | `docs/ui_redesign/DESIGN_TOKENS_CURRENT.md` | Design Tokens -- Current State | review_required | OK | `160c246fcefe` |
 | `docs/ui_redesign/DRIVE_SYNC_INSTRUCTIONS.md` | Google Drive Sync Instructions | review_required | OK | `64f06d042a58` |

@@ -1,0 +1,35 @@
+# Docs tip hygiene — keep tip current; git history is source of truth.
+# Enforced by: scripts/docs_tip_hygiene_enforcer.py
+# Does NOT delete by atime/mtime alone. Uses inventory classification.
+
+# Statuses from report_docs_inventory.classify() that may be removed from tip.
+delete_statuses:
+  - archive_superseded
+  - archive_session_handoff
+  - archive_legacy_blueprint
+  - delete_candidate_duplicate
+
+# Never delete these statuses even if somehow listed.
+protect_statuses:
+  - active_keep
+  - current_phase_keep
+
+# Extra hard protect (paths relative to repo root).
+protect_globs:
+  - "docs/INDEX.md"
+  - "docs/DOCUMENTATION_INDEX.md"
+  - "docs/project/**"
+  - "docs/architecture/**"
+  - "docs/MASTER_SYSTEM_DOCUMENTATION.md"
+  - "docs/RESTORE_GUIDE.md"
+  - "docs/ENGINEERING_HARD_RULES.md"
+
+# Optional: dated ops/findings with an explicit SUPERSEDED banner older than N days.
+superseded_banner_max_age_days: 14
+superseded_banner_globs:
+  - "docs/ops/**/*.md"
+  - "docs/_findings/**/*.md"
+  - "docs/campaigns/**/*.md"
+
+defaults:
+  dry_run: true

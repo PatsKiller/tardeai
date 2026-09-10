@@ -50,3 +50,11 @@ df -h /
 - Timer: `hermes-librarian-retention.timer` (daily 05:10)
 - Policy: `config/hermes_librarian_policy.yaml` — orphan purge + **max_age_days=90** for `content_embeddings`
 - Settlement migration index uses `created_at` (live schema has no `occurred_at`)
+
+## Docs tip hygiene (git is source of truth)
+
+- Tool: `scripts/docs_tip_hygiene_enforcer.py` + `config/docs_tip_hygiene_policy.yaml`
+- Deletes from **tip only** (via `git rm`) files classified as superseded / session handoff /
+  legacy blueprint / non-keeper duplicates.
+- Does **not** age-delete the 2k `review_required` docs; those need explicit canon decisions.
+- History remains in git forever.
