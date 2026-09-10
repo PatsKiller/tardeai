@@ -47,7 +47,7 @@ def test_local_llm_generate_raises() -> None:
 def test_research_cio_advisory_telegram_cannot_select_local() -> None:
     scan = detect_office_situations(office(), evaluated_at=NOW)
     choice = select_model(scan)
-    assert choice["requested"] in {None, "deepseek-v4-flash", "oauth-challenger", "deepseek-v4-pro"}
+    assert choice["requested"] in {None, "deepseek-flash", "oauth-challenger"}
     assert choice.get("requested") != "local"
     quiet = detect_office_situations(office(portfolio_state=portfolio(cash_pct=10.0)), evaluated_at=NOW)
     quiet_choice = select_model(quiet)

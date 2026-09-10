@@ -73,11 +73,11 @@ def _capture_post(monkeypatch, *, status=200, payload=None, raise_exc=None, text
 @pytest.mark.parametrize(
     "policy,model,thinking_type,effort,has_temp",
     [
-        ("FAST", "deepseek-v4-flash", "disabled", None, True),
-        ("FAST_THINK", "deepseek-v4-flash", "enabled", "high", False),
-        ("PRO", "deepseek-v4-pro", "disabled", None, True),
-        ("PRO_THINK", "deepseek-v4-pro", "enabled", "high", False),
-        ("PRO_MAX", "deepseek-v4-pro", "enabled", "max", False),
+        ("FAST", "deepseek-flash", "disabled", None, True),
+        ("FAST_THINK", "deepseek-flash", "enabled", "high", False),
+        ("PRO", "deepseek-flash", "disabled", None, True),
+        ("PRO_THINK", "deepseek-flash", "enabled", "high", False),
+        ("PRO_MAX", "deepseek-flash", "enabled", "max", False),
     ],
 )
 def test_policy_request_body(monkeypatch, policy, model, thinking_type, effort, has_temp):
@@ -108,7 +108,7 @@ def test_pro_max_blocked_without_confirmation():
 
 
 def test_pro_max_allowed_with_confirmation(monkeypatch):
-    captured = _capture_post(monkeypatch, payload=_ok_payload("deepseek-v4-pro"))
+    captured = _capture_post(monkeypatch, payload=_ok_payload("deepseek-flash"))
     resp = dc.chat(policy="PRO_MAX", prompt="x", operator_confirmed=True)
     assert resp.ok
     assert captured["json"]["reasoning_effort"] == "max"
@@ -126,7 +126,8 @@ def test_legacy_model_ids_rejected():
 
 
 def test_returned_model_mismatch(monkeypatch):
-    _capture_post(monkeypatch, payload=_ok_payload("deepseek-v4-flash"))  # wrong for PRO
+    # PRO now resolves to the same V4.1 Flash id; feed a genuinely-wrong returned id.
+    _capture_post(monkeypatch, payload=_ok_payload("deepseek-chat"))
     resp = dc.chat(policy="PRO", prompt="x")
     assert resp.ok is False
     assert resp.error_class == dc.MISMATCHED_RETURNED_MODEL
@@ -184,7 +185,7 @@ def test_invalid_response_json(monkeypatch):
 
 
 def test_empty_content(monkeypatch):
-    _capture_post(monkeypatch, payload=_ok_payload("deepseek-v4-flash", content=""))
+    _capture_post(monkeypatch, payload=_ok_payload("deepseek-flash", content=""))
     resp = dc.chat(policy="FAST", prompt="x")
     assert resp.ok is False
     assert resp.error_class == dc.EMPTY_CONTENT
@@ -193,14 +194,14 @@ def test_empty_content(monkeypatch):
 def test_finish_reason_length(monkeypatch):
     _capture_post(
         monkeypatch,
-        payload=_ok_payload("deepseek-v4-flash", content="partial", finish="length"),
+        payload=_ok_payload("deepseek-flash", content="partial", finish="length"),
     )
     resp = dc.chat(policy="FAST", prompt="x")
     assert resp.error_class == dc.OUTPUT_TRUNCATED
 
 
 def test_missing_usage_still_ok_when_content(monkeypatch):
-    payload = _ok_payload("deepseek-v4-flash", content="hello")
+    payload = _ok_payload("deepseek-flash", content="hello")
     payload["usage"] = {}
     _capture_post(monkeypatch, payload=payload)
     resp = dc.chat(policy="FAST", prompt="x")
@@ -215,13 +216,13 @@ def test_auth_missing(monkeypatch):
 
 
 def test_json_mode_sets_response_format(monkeypatch):
-    captured = _capture_post(monkeypatch, payload=_ok_payload("deepseek-v4-flash", content='{"ok":true}'))
+    captured = _capture_post(monkeypatch, payload=_ok_payload("deepseek-flash", content='{"ok":true}'))
     dc.chat(policy="FAST", prompt="return json", response_json=True)
     assert captured["json"].get("response_format") == {"type": "json_object"}
 
 
 def test_non_thinking_has_no_reasoning_effort(monkeypatch):
-    captured = _capture_post(monkeypatch, payload=_ok_payload("deepseek-v4-flash"))
+    captured = _capture_post(monkeypatch, payload=_ok_payload("deepseek-flash"))
     dc.chat(policy="FAST", prompt="x")
     assert "reasoning_effort" not in captured["json"]
     assert captured["json"]["thinking"]["type"] == "disabled"

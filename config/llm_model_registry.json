@@ -14,8 +14,8 @@
       "kill_switch": false,
       "models": {
         "deepseek_flash": {
-          "model_id": "deepseek-v4-flash",
-          "display_name": "DeepSeek V4 Flash",
+          "model_id": "deepseek-flash",
+          "display_name": "DeepSeek V4.1 Flash",
           "context_window": 1000000,
           "max_output_tokens": 384000,
           "structured_output": true,
@@ -35,18 +35,18 @@
           "latency_class": "fast",
           "concurrency_limit": 2500,
           "pricing_snapshot_usd_per_million_tokens": {
-            "cache_hit_input": 0.007,
-            "cache_miss_input": 0.22,
-            "output": 0.66
+            "cache_hit_input": 0.003,
+            "cache_miss_input": 0.15,
+            "output": 0.6
           },
-          "pricing_effective_at": "2026-08-30",
+          "pricing_effective_at": "2026-09-10",
           "enabled": true,
           "last_capability_probe": "2026-08-03T13:35:59Z",
           "probe_artifact": "artifacts/deepseek-v4-audit/DEEPSEEK_CAPABILITY_PROBE.json",
           "pricing_peak_usd_per_million_tokens": {
-            "cache_hit_input": 0.014,
-            "cache_miss_input": 0.44,
-            "output": 1.32
+            "cache_hit_input": 0.006,
+            "cache_miss_input": 0.3,
+            "output": 1.2
           },
           "pricing_source": "https://api-docs.deepseek.com/quick_start/pricing/",
           "pricing_superseded": {
@@ -60,8 +60,8 @@
           }
         },
         "deepseek_pro": {
-          "model_id": "deepseek-v4-pro",
-          "display_name": "DeepSeek V4 Pro",
+          "model_id": "deepseek-flash",
+          "display_name": "DeepSeek V4.1 Flash (Pro tier retired)",
           "context_window": 1000000,
           "max_output_tokens": 384000,
           "structured_output": true,
@@ -81,11 +81,11 @@
           "latency_class": "premium",
           "concurrency_limit": 500,
           "pricing_snapshot_usd_per_million_tokens": {
-            "cache_hit_input": 0.022,
-            "cache_miss_input": 0.66,
-            "output": 1.98
+            "cache_hit_input": 0.003,
+            "cache_miss_input": 0.15,
+            "output": 0.6
           },
-          "pricing_effective_at": "2026-08-30",
+          "pricing_effective_at": "2026-09-10",
           "enabled": true,
           "operator_cost_confirmation_for": [
             "PRO_MAX"
@@ -93,9 +93,9 @@
           "last_capability_probe": "2026-08-03T13:35:59Z",
           "probe_artifact": "artifacts/deepseek-v4-audit/DEEPSEEK_CAPABILITY_PROBE.json",
           "pricing_peak_usd_per_million_tokens": {
-            "cache_hit_input": 0.044,
-            "cache_miss_input": 1.32,
-            "output": 3.96
+            "cache_hit_input": 0.006,
+            "cache_miss_input": 0.3,
+            "output": 1.2
           },
           "pricing_source": "https://api-docs.deepseek.com/quick_start/pricing/",
           "pricing_superseded": {
@@ -111,10 +111,14 @@
       },
       "legacy_model_ids_rejected": [
         "deepseek-chat",
-        "deepseek-reasoner"
+        "deepseek-reasoner",
+        "deepseek-v4-flash",
+        "deepseek-v4-pro"
       ],
       "legacy_lane_aliases": {
-        "deepseek-flash": "FAST"
+        "deepseek-flash": "FAST",
+        "deepseek-v4-flash": "FAST",
+        "deepseek-v4-pro": "PRO"
       },
       "fallback_policy": "VISIBLE_FAILURE_NO_SILENT_FALLBACK",
       "ambiguous_lanes_rejected": [

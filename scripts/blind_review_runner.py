@@ -51,7 +51,7 @@ sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 import blind_review as br             # noqa: E402
 import decision_packet as dp          # noqa: E402
 
-LANE_MODEL = {"chatgpt": "gpt-5.4", "grok": "grok-3-mini", "deepseek-flash": "deepseek-v4-flash", "local": None}
+LANE_MODEL = {"chatgpt": "gpt-5.4", "grok": "grok-3-mini", "deepseek-flash": "deepseek-flash", "local": None}
 
 # Default is the three genuinely independent cloud lanes: deepseek-flash (V4),
 # grok (xAI), and chatgpt (OpenAI). DeepSeek is always metered — never dependent

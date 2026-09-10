@@ -31,7 +31,7 @@
   "policies": {
     "WATCH_FAST": {
       "provider": "deepseek",
-      "model": "deepseek-v4-flash",
+      "model": "deepseek-flash",
       "thinking": false,
       "effort": null,
       "use": "Per-symbol company summary, routine Watch narrative, UI explanation text",
@@ -40,7 +40,7 @@
     },
     "WATCH_FAST_THINK": {
       "provider": "deepseek",
-      "model": "deepseek-v4-flash",
+      "model": "deepseek-flash",
       "thinking": true,
       "effort": "high",
       "use": "One-symbol contradiction review and structured plan-coherence critique after deterministic validation",
@@ -49,7 +49,7 @@
     },
     "CIO_DAILY_PRO": {
       "provider": "deepseek",
-      "model": "deepseek-v4-pro",
+      "model": "deepseek-flash",
       "thinking": true,
       "effort": "high",
       "use": "One daily Watchlist/CIO synthesis across changed symbols and portfolio implications",
@@ -59,7 +59,7 @@
     },
     "CIO_DEEP_REVIEW": {
       "provider": "deepseek",
-      "model": "deepseek-v4-pro",
+      "model": "deepseek-flash",
       "thinking": true,
       "effort": "max",
       "use": "Manual operator action only, with cost estimate and explicit confirmation",

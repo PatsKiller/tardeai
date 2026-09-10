@@ -33,6 +33,9 @@ if str(_PROJECT_ROOT / "scripts") not in sys.path:
 
 log = logging.getLogger("tradeai.cio_bridge")
 
+# Single source of truth for the exact DeepSeek model id (registry + env override).
+from lib.llm_model_registry import deepseek_model_id  # noqa: E402
+
 # ── Bind / port config ─────────────────────────────────────────────────
 BIND_HOST = os.environ.get("CIO_BRIDGE_HOST", "127.0.0.1")
 BIND_PORT = int(os.environ.get("CIO_BRIDGE_PORT", "8766"))
@@ -122,29 +125,29 @@ CALLER_TASK_POLICY_MAP: dict[str, dict[str, str]] = {
 POLICY_RESOLUTION: dict[str, dict[str, Any]] = {
     "PRO": {
         "provider": "deepseek",
-        "model_id": "deepseek-v4-pro",
+        "model_id": deepseek_model_id("PRO"),
         "thinking": "disabled",
-        "display_name": "DeepSeek V4 Pro (governed)",
+        "display_name": "DeepSeek V4.1 Flash (governed)",
     },
     "PRO_THINK": {
         "provider": "deepseek",
-        "model_id": "deepseek-v4-pro",
+        "model_id": deepseek_model_id("PRO_THINK"),
         "thinking": "enabled",
         "reasoning_effort": "high",
-        "display_name": "DeepSeek V4 Pro Think (governed)",
+        "display_name": "DeepSeek V4.1 Flash Think (governed)",
         "requires_deterministic_escalation_reason": True,
     },
     "FAST": {
         "provider": "deepseek",
-        "model_id": "deepseek-v4-flash",
+        "model_id": deepseek_model_id("FAST"),
         "thinking": "disabled",
-        "display_name": "DeepSeek V4 Flash (governed)",
+        "display_name": "DeepSeek V4.1 Flash (governed)",
     },
     "FAST_THINK": {
         "provider": "deepseek",
-        "model_id": "deepseek-v4-flash",
+        "model_id": deepseek_model_id("FAST_THINK"),
         "thinking": "enabled",
-        "display_name": "DeepSeek V4 Flash Think (governed)",
+        "display_name": "DeepSeek V4.1 Flash Think (governed)",
     },
 }
 
@@ -153,6 +156,8 @@ LEGACY_MODEL_IDS = frozenset({
     "deepseek-chat",
     "deepseek-reasoner",
     "deepseek-v4",
+    "deepseek-v4-flash",
+    "deepseek-v4-pro",
 })
 
 
@@ -522,8 +527,8 @@ class RealProvider:
         key, env_name, _legacy = get_deepseek_api_key()
         if not key:
             raise RuntimeError(
-                f"DeepSeek API key not configured (canonical env: deepseek_tradeai). "
-                f"RealProvider requires a configured key for live canary calls."
+                "DeepSeek API key not configured (canonical env: deepseek_tradeai). "
+                "RealProvider requires a configured key for live canary calls."
             )
 
         # ── Build request body ──────────────────────────────────────────

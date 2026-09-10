@@ -107,8 +107,8 @@ def load_runtime_llm_facts() -> dict[str, Any]:
         "authority": AUTHORITY,
         "converse_path": "call_governed_llm",
         "use_pro_default": False,
-        "model_flash": "deepseek-v4-flash",
-        "model_pro": "deepseek-v4-pro",
+        "model_flash": "deepseek-flash",
+        "model_pro": "deepseek-flash",
         "prefer_flash": True,
         "policy_path": "config/cio_llm_policy.yaml",
         "bridge_endpoint": None,
@@ -126,9 +126,9 @@ def load_runtime_llm_facts() -> dict[str, Any]:
         facts["caller_pro"] = llm.get("caller_pro")
         facts["policy_enabled"] = bool(policy.get("enabled", True))
         # Hardcoded bridge model ids from call_governed_llm (use_pro=False → flash)
-        facts["model_flash"] = "deepseek-v4-flash"
-        facts["model_pro"] = "deepseek-v4-pro"
-        facts["operator_intent_uses"] = "deepseek-v4-flash (use_pro=False)"
+        facts["model_flash"] = "deepseek-flash"
+        facts["model_pro"] = "deepseek-flash"
+        facts["operator_intent_uses"] = "deepseek-flash (use_pro=False)"
     except Exception as exc:
         facts["gaps"].append(f"policy:{type(exc).__name__}:{exc}")
     if not facts.get("bridge_endpoint"):
@@ -367,7 +367,7 @@ def analyze_operator_intent(text: str) -> dict[str, Any]:
                         ][:12]
                     out["ok"] = True
                     out["source"] = "deepseek_flash"
-                    out["model"] = llm.get("model") or "deepseek-v4-flash"
+                    out["model"] = llm.get("model") or "deepseek-flash"
                     # Final guard: meta heuristic always blocks desk needs
                     if _looks_like_meta_system(t):
                         out["intent"] = "meta_system"
@@ -680,7 +680,7 @@ def answer_freeform_with_flash(
             "ok": True,
             "text": text,
             "source": "freeform_flash",
-            "model": llm.get("model") or "deepseek-v4-flash",
+            "model": llm.get("model") or "deepseek-flash",
         }
     except Exception as exc:
         return {

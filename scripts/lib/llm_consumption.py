@@ -8,6 +8,7 @@ Manual mode blocks automatic calls and returns ManualRequired for the UI.
 from __future__ import annotations
 
 import json
+import os
 import re
 import time
 from datetime import datetime, timezone
@@ -966,7 +967,8 @@ def gate_and_generate(
         # Resolve immutable config + caps BEFORE any reservation transaction/locks
         model_id = model or POLICY_TO_MODEL.get((policy or lane).upper() if policy else "", None)
         if not model_id:
-            model_id = "deepseek-v4-pro" if "pro" in lane else "deepseek-v4-flash"
+            from lib.llm_model_registry import deepseek_model_id
+            model_id = deepseek_model_id("FAST")
 
         # Smoke path: require process caps. Non-smoke paid routes also require global cap.
         from lib.consumption_run_manual import SMOKE_PROCESS_ID

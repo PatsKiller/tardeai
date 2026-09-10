@@ -190,7 +190,7 @@ class BridgeGoldenJudge:
             or os.getenv("HERMES_BRIDGE_URL")
             or "http://127.0.0.1:8766"
         ).rstrip("/")
-        self.model = model or os.getenv("HERMES_JUDGE_MODEL", "deepseek-v4-flash")
+        self.model = model or os.getenv("HERMES_JUDGE_MODEL", "deepseek-flash")
         self.timeout_s = timeout_s
         self.max_tokens = max_tokens
         self.agent = os.getenv("HERMES_JUDGE_AGENT", "advisory_desk")

@@ -19,7 +19,7 @@ DEFAULT_BRIDGE = (
     or os.getenv("CIO_GOVERNED_BRIDGE_URL")
     or "http://127.0.0.1:8766"
 ).rstrip("/")
-DEFAULT_FLASH = os.getenv("HERMES_BRIDGE_MODEL", "deepseek-v4-flash")
+DEFAULT_FLASH = os.getenv("HERMES_BRIDGE_MODEL", "deepseek-flash")
 DEFAULT_FLASH_TIMEOUT = float(os.getenv("HERMES_CLOUD_TIMEOUT_S", "90"))
 
 

@@ -4,9 +4,9 @@
   "billing_unit": "per_million_tokens",
   "schedules": [
     {
-      "schedule_id": "deepseek-v4-flat-2026-08-03",
+      "schedule_id": "deepseek-flash-flat-2026-08-03",
       "provider": "deepseek",
-      "model": "deepseek-v4-flash",
+      "model": "deepseek-flash",
       "effective_from": "2026-08-03T00:00:00+00:00",
       "effective_to": "2026-08-16T16:00:00+00:00",
       "peak_enabled": false,
@@ -16,23 +16,11 @@
       "source_reference": "config/llm_model_registry.json pricing_effective_at 2026-08-03"
     },
     {
-      "schedule_id": "deepseek-v4-pro-flat-2026-08-03",
+      "schedule_id": "deepseek-flash-peakoff-2026-08-16",
       "provider": "deepseek",
-      "model": "deepseek-v4-pro",
-      "effective_from": "2026-08-03T00:00:00+00:00",
-      "effective_to": "2026-08-16T16:00:00+00:00",
-      "peak_enabled": false,
-      "input_cache_hit": 0.003625,
-      "input_cache_miss": 0.435,
-      "output": 0.87,
-      "source_reference": "config/llm_model_registry.json pricing_effective_at 2026-08-03"
-    },
-    {
-      "schedule_id": "deepseek-v4-flash-peakoff-2026-08-16",
-      "provider": "deepseek",
-      "model": "deepseek-v4-flash",
+      "model": "deepseek-flash",
       "effective_from": "2026-08-16T16:00:00+00:00",
-      "effective_to": null,
+      "effective_to": "2026-09-10T04:00:00+00:00",
       "peak_enabled": true,
       "peak_days": "Mon-Fri",
       "peak_windows_utc_half_open": [[60, 240], [360, 600]],
@@ -41,17 +29,17 @@
       "source_reference": "https://api-docs.deepseek.com/quick_start/pricing changelog 2026-08-13 effective 16:00 UTC 2026-08-16"
     },
     {
-      "schedule_id": "deepseek-v4-pro-peakoff-2026-08-16",
+      "schedule_id": "deepseek-flash-peakoff-2026-09-10",
       "provider": "deepseek",
-      "model": "deepseek-v4-pro",
-      "effective_from": "2026-08-16T16:00:00+00:00",
+      "model": "deepseek-flash",
+      "effective_from": "2026-09-10T04:00:00+00:00",
       "effective_to": null,
       "peak_enabled": true,
       "peak_days": "Mon-Fri",
       "peak_windows_utc_half_open": [[60, 240], [360, 600]],
-      "off_peak": {"input_cache_hit": 0.022, "input_cache_miss": 0.66, "output": 1.98},
-      "peak": {"input_cache_hit": 0.044, "input_cache_miss": 1.32, "output": 3.96},
-      "source_reference": "https://api-docs.deepseek.com/quick_start/pricing changelog 2026-08-13 effective 16:00 UTC 2026-08-16"
+      "off_peak": {"input_cache_hit": 0.003, "input_cache_miss": 0.15, "output": 0.6},
+      "peak": {"input_cache_hit": 0.006, "input_cache_miss": 0.3, "output": 1.2},
+      "source_reference": "https://api-docs.deepseek.com/quick_start/pricing — Flash series repricing effective 12:00 Beijing 2026-09-10 (04:00 UTC); V4.1 Flash replaces V4 Pro (retired 2026-09-14)"
     }
   ]
 }

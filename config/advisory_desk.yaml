@@ -11,14 +11,14 @@ routing:
     # ── Primary: DeepSeek bridge (port 8766, running 2026-08-10) ──
     - order: 1
       lane: deepseek-flash
-      model: deepseek-v4-flash
+      model: deepseek-flash
       purpose: per-row opinions
       provider: deepseek
       endpoint: "http://127.0.0.1:8766/v1/chat/completions"
       thinking: disabled
     - order: 2
       lane: deepseek-pro
-      model: deepseek-v4-pro
+      model: deepseek-flash
       purpose: desk-level synthesis, material rows
       provider: deepseek
       endpoint: "http://127.0.0.1:8766/v1/chat/completions"
@@ -31,8 +31,8 @@ routing:
     # engine falls through to the deterministic (no-LLM) fallback — fail-closed.
 
   never_escalate_to:
-    - deepseek-v4-pro-think
-    - deepseek-v4-pro-max
+    - deepseek-flash-think
+    - deepseek-flash-max
 
   cost:
     max_model_rows_per_run: 20

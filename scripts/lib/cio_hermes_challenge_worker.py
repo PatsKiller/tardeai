@@ -33,14 +33,14 @@ DEFAULT_MAX_CHALLENGES_PER_RUN = 3
 HERMES_RESEARCH_LANES: dict[str, dict[str, Any]] = {
     "deepseek_flash": {
         "provider": "deepseek",
-        "model": "deepseek-v4-flash",
+        "model": "deepseek-flash",
         "purpose": "Deterministic evidence extraction",
         "max_tokens": 4096,
         "temperature": 0.0,
     },
     "deepseek_pro": {
         "provider": "deepseek",
-        "model": "deepseek-v4-pro",
+        "model": "deepseek-flash",
         "purpose": "Complex multi-source synthesis",
         "max_tokens": 8192,
         "temperature": 0.3,

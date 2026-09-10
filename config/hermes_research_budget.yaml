@@ -150,7 +150,7 @@ cloud_unavailable:
     enabled: true
     provider: deepseek
     lane: deepseek-flash
-    model: deepseek-v4-flash
+    model: deepseek-flash
     policy: FAST
     # Credential slot (Bitwarden / .env): deepseek_tradeai
     credential_slot: deepseek_tradeai

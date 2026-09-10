@@ -28,7 +28,7 @@ from typing import Any, Optional
 SCHEMA = "AdvisoryCuration@v1"
 AUTHORITY = "READ_ONLY_ADVISORY"
 LANE = "agent_narrative"          # existing FAST lane; no new governance invented
-MODEL = "deepseek-v4-flash"
+MODEL = "deepseek-flash"
 
 # Digit runs, so 630,784.82 / 42.1pct / desk@v4 / 2026-08-30 all normalise.
 _NUM_RE = re.compile(r"\d[\d,]*(?:\.\d+)?")

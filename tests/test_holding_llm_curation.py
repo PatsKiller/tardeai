@@ -79,7 +79,7 @@ def test_curation_lineage_guid_and_grounding():
 
     prior = {
         "research_guid": g1,
-        "model": "deepseek-v4-flash",
+        "model": "deepseek-flash",
         "created_at": "2026-09-09T12:00:00Z",
         "recommendation": "HOLD — prior thesis.",
     }

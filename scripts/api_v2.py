@@ -1486,7 +1486,7 @@ def _run_reentry_insights_api(body=None):
         return {
             "ok": True,
             "advisory_only": True,
-            "provider": "deepseek-v4-flash",
+            "provider": "deepseek-flash",
             "policy": "FAST",
             "quality_calls": quality_count,
             "thesis_calls": thesis_count,
@@ -8428,7 +8428,7 @@ def ai_ask(body: dict):
         import llm_lane
 
         raw = llm_lane.generate(prompt, lane="deepseek-flash", timeout=90, process_id="api_v2_ai_ask")
-        return 200, {"ok": True, "answer": str(raw or "").strip(), "model": "deepseek-v4-flash", "question": question}
+        return 200, {"ok": True, "answer": str(raw or "").strip(), "model": "deepseek-flash", "question": question}
     except Exception as e:
         return 500, {"ok": False, "error": f"LLM unavailable: {e}"}
 
@@ -13715,7 +13715,7 @@ def _llm_oauth_lanes():
             )
             lanes.append(
                 {
-                    "lane": "deepseek-v4-pro",
+                    "lane": "deepseek-flash",
                     "label": "DeepSeek V4 Pro",
                     "kind": "metered_api",
                     "billing": "metered",
@@ -16868,9 +16868,11 @@ def _ticket_review_run(body):
     parts = [p.strip().lower() for p in lanes.split(",") if p.strip()]
     free_allowed = {"local", "grok", "chatgpt"}
     # Explicit single-lane metered Flash is allowed; Pro/policies needing confirmation are not.
-    metered_flash = {"deepseek-flash", "deepseek-v4-flash", "fast", "fast_think"}
+    metered_flash = {"deepseek-flash", "fast", "fast_think"}
     blocked_paid = {
+        "deepseek-v4-flash",
         "deepseek-v4-pro",
+        "deepseek-pro",
         "deepseek-v4",
         "pro",
         "pro_think",
@@ -24074,8 +24076,8 @@ def _llm_health():
         import llm_lane
 
         for lane, model in (
-            ("deepseek-flash", "deepseek-v4-flash"),
-            ("deepseek-v4-pro", "deepseek-v4-pro"),
+            ("deepseek-flash", "deepseek-flash"),
+            ("deepseek-flash", "deepseek-flash"),
         ):
             try:
                 up = bool(llm_lane.available(lane))
@@ -24117,7 +24119,7 @@ def _llm_health():
             "free_oauth_bottleneck_rollover": {
                 "enabled": bool(roll.get("enabled", True)),
                 "lane": roll.get("lane") or "deepseek-flash",
-                "model": roll.get("model") or "deepseek-v4-flash",
+                "model": roll.get("model") or "deepseek-flash",
                 "policy": roll.get("policy") or "FAST",
                 "never_pro": roll.get("never_pro", True),
                 "credential_slot": roll.get("credential_slot") or "deepseek_tradeai",
@@ -24140,7 +24142,7 @@ def _llm_health():
             "free_oauth_bottleneck_rollover": {
                 "enabled": True,
                 "lane": "deepseek-flash",
-                "model": "deepseek-v4-flash",
+                "model": "deepseek-flash",
                 "never_pro": True,
             },
         }
@@ -31371,7 +31373,7 @@ def _queue_control_tower():
         "hermes-autonomous-loop": {
             "cat": "hermes_advisory",
             "llm": True,
-            "model": "deepseek-v4-flash",
+            "model": "deepseek-flash",
             "writes": "hermes_research_intelligence",
             "telegram": False,
             "why": "Autonomous ticker challenger — stages research rows",
@@ -31379,7 +31381,7 @@ def _queue_control_tower():
         "hermes-advisory-cache-worker": {
             "cat": "hermes_advisory",
             "llm": True,
-            "model": "deepseek-v4-flash",
+            "model": "deepseek-flash",
             "writes": "llm_intelligence_cache",
             "telegram": False,
             "why": "Promotes advisory cache from staged research",
@@ -31411,7 +31413,7 @@ def _queue_control_tower():
         "hermes-librarian-backlog-loop": {
             "cat": "hermes_advisory",
             "llm": True,
-            "model": "deepseek-v4-flash",
+            "model": "deepseek-flash",
             "writes": "hermes_research_intelligence",
             "telegram": False,
             "why": "Librarian researches backlog items",
@@ -31419,7 +31421,7 @@ def _queue_control_tower():
         "hermes-source-discovery-dryrun": {
             "cat": "hermes_research",
             "llm": True,
-            "model": "deepseek-v4-flash",
+            "model": "deepseek-flash",
             "writes": "hermes_research_intelligence (dry-run)",
             "telegram": False,
             "why": "Discovers new research sources",
@@ -31475,7 +31477,7 @@ def _queue_control_tower():
         "aegis-overnight": {
             "cat": "overnight",
             "llm": True,
-            "model": "deepseek-v4-flash",
+            "model": "deepseek-flash",
             "writes": "agent results",
             "telegram": False,
             "why": "Overnight intelligence synthesis",
@@ -32701,7 +32703,7 @@ def _high_llm_queue():
         "by_status": by_status,
         "results_count": rc,
         "kill_switch": ks.exists(),
-        "default_model": "deepseek-v4-flash",
+        "default_model": "deepseek-flash",
     }
 
 
@@ -34332,7 +34334,7 @@ def _tradeai_fleet(query=None):
             {
                 "agent": name,
                 "role": role,
-                "runtime_model": "deepseek-v4-flash",
+                "runtime_model": "deepseek-flash",
                 "type": "advisory" if soul_agent else "algorithmic",
                 "soul_agent": soul_agent if editable else None,
                 "soul_editable": editable,
@@ -34342,7 +34344,7 @@ def _tradeai_fleet(query=None):
     return {
         "ok": True,
         "read_only_fleet": True,
-        "runtime_model": "deepseek-v4-flash",
+        "runtime_model": "deepseek-flash",
         "agents": rows,
         "note": "Advisory personas (alex/aegis/steph/maria/iris) have editable SOULs (shared with "
         "OpenClaw). Algorithmic agents (risk/tax/scalp/social) are config-driven; their "
@@ -36901,7 +36903,7 @@ def _hermes_intel(symbol):
             "participating_lanes": _dc.get("participating_lanes") or [],
             "declared_lanes": _dc.get("declared_lanes") or [],
             "deepseek_status": _dc.get("deepseek_status"),
-            "deepseek_model": _dc.get("deepseek_model") or "deepseek-v4-flash",
+            "deepseek_model": _dc.get("deepseek_model") or "deepseek-flash",
             "deepseek": _dc.get("deepseek"),
             "grok": _dc.get("grok")
             or ({"recommendation": _fs.get("grok_recommendation")} if _fs.get("grok_recommendation") else None),
@@ -39342,7 +39344,7 @@ def _broker_orders_explain(body=None):
             import llm_lane
 
             text = llm_lane.generate(prompt, lane="deepseek-flash", timeout=60, process_id="broker_orders_explain")
-            provider = "deepseek-v4-flash"
+            provider = "deepseek-flash"
     except Exception as e:
         text, provider = None, f"unavailable ({str(e)[:60]})"
     return {
@@ -43031,7 +43033,7 @@ def _hermes_researcher_matrix(query=None):
         "generated_note": "read-only researcher matrix; lane statuses from canonical snapshot (Phase 217)",
         "internal_deep_research_lane": {
             "name": "Hermes Deep Research — Governed Cloud",
-            "model": dr.get("model", "deepseek-v4-flash"),
+            "model": dr.get("model", "deepseek-flash"),
             "process": "BATCH_OVERNIGHT",
             "design_status": "designed",
             "runner_built": dr.get("runner_built", True),
@@ -46936,7 +46938,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     "ok": True,
                     "data": {
                         "choices": [{"message": {"role": "assistant", "content": content}}],
-                        "model": "deepseek-v4-flash",
+                        "model": "deepseek-flash",
                         "browsed": result.get("browsed", False),
                         "search_query": result.get("search_query"),
                     },
@@ -48129,13 +48131,13 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 # Governed advisory lane (always primary).
                 try:
                     reviews["deepseek"] = {
-                        "provider": "deepseek-v4-flash",
+                        "provider": "deepseek-flash",
                         "text": llm_lane.generate(
                             prompt, lane="deepseek-flash", timeout=120, process_id="api_v2_intelligence_feedback"
                         ),
                     }
                 except Exception as le:
-                    reviews["deepseek"] = {"provider": "deepseek-v4-flash", "error": str(le)[:160]}
+                    reviews["deepseek"] = {"provider": "deepseek-flash", "error": str(le)[:160]}
                 # Grok lane (operator option; only if proxy authenticated)
                 if use_grok:
                     try:
@@ -49639,10 +49641,10 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                         "process_id": pid,
                         "lane": lane,
                     }
-                if classified.get("policy") != "FAST" or classified.get("requested_model_id") != "deepseek-v4-flash":
+                if classified.get("policy") != "FAST" or classified.get("requested_model_id") != "deepseek-flash":
                     return 400, {
                         "ok": False,
-                        "error": "Smoke process allows FAST / deepseek-v4-flash only",
+                        "error": "Smoke process allows FAST / deepseek-flash only",
                         "reason_code": "POLICY_NOT_ALLOWED",
                         "process_id": pid,
                     }
@@ -49677,7 +49679,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                         "error": (flash_row or {}).get("hint") or "DeepSeek Flash not ready",
                         "reason_code": (flash_row or {}).get("reason_code") or "MODEL_NOT_AVAILABLE",
                         "requested_policy": "FAST",
-                        "requested_model_id": "deepseek-v4-flash",
+                        "requested_model_id": "deepseek-flash",
                         "returned_model": None,
                         "fallback_used": False,
                         "configured": (flash_row or {}).get("configured"),
@@ -49691,7 +49693,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     task_summary=task or "operator DeepSeek Flash smoke",
                     manual_trigger=True,
                     timeout=int(b.get("timeout") or 60),
-                    model="deepseek-v4-flash",
+                    model="deepseek-flash",
                     policy="FAST",
                     max_tokens=max_out,
                     return_provenance=True,
@@ -49962,7 +49964,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     "retirement": "Expand this retirement question. Under 60 words.",
                 }
                 prompt_text = PROMPTS.get(page_type, PROMPTS["approval"])
-                provider = "deepseek-v4-flash"
+                provider = "deepseek-flash"
                 rewritten = ""
                 try:
                     import llm_lane
@@ -59966,7 +59968,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 return 400, {"ok": False, "error": "agent parameter required"}
 
             # Agent identity
-            _llm_model = "deepseek-v4-flash"
+            _llm_model = "deepseek-flash"
             AGENT_IDENTITIES = {
                 "steph": {
                     "display": "Steph",

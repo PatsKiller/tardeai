@@ -29,7 +29,7 @@ def test_deepseek_flash_maps_to_fast():
     c = classify_manual_lane("deepseek-flash")
     assert c["ok"] is True
     assert c["policy"] == "FAST"
-    assert c["requested_model_id"] == "deepseek-v4-flash"
+    assert c["requested_model_id"] == "deepseek-flash"
 
 
 def test_fast_accepted():
@@ -39,7 +39,9 @@ def test_fast_accepted():
 
 
 def test_pro_never_on_generic_endpoint():
-    for lane in ("pro", "pro_think", "pro_max", "deepseek-v4-pro", "PRO", "PRO_MAX"):
+    # Pro is retired (2026-09-14): the "pro" POLICY names remain forbidden on the
+    # generic endpoint; the exact model id is now deepseek-flash (allowed FAST).
+    for lane in ("pro", "pro_think", "pro_max", "PRO", "PRO_MAX"):
         c = classify_manual_lane(lane, operator_confirmed=True)
         assert c["ok"] is False, lane
         assert c["reason_code"] == "POLICY_NOT_ALLOWED"
@@ -74,7 +76,7 @@ def test_unknown_process_rejected():
 def test_smoke_process_allows_fast_only():
     r = process_allows_policy(SMOKE_PROCESS_ID, "FAST", "deepseek-flash")
     assert r["ok"] is True
-    r2 = process_allows_policy(SMOKE_PROCESS_ID, "PRO", "deepseek-v4-pro")
+    r2 = process_allows_policy(SMOKE_PROCESS_ID, "PRO", "deepseek-flash")
     assert r2["ok"] is False
     assert r2["reason_code"] == "POLICY_NOT_ALLOWED"
 
@@ -87,13 +89,14 @@ def test_registered_process_cannot_request_outside_allowlist():
 
 
 def test_readiness_flash_pro_independent():
+    """Pro tier retired 2026-09-14: readiness rows now report a single V4.1 Flash,
+    with the retired Pro row mirroring Flash availability."""
     clear_capability_probe_cache()
     with patch("lib.consumption_run_manual._cached_list_models") as m:
         m.return_value = {
             "configured": True, "reachable": True,
             "has_v4_flash": True, "has_v4_pro": False,
         }
-        # bypass cache function by patching deepseek_readiness_rows internals
         from lib import consumption_run_manual as crm
         with patch.object(crm, "_cached_list_models", return_value={
             "configured": True, "reachable": True,
@@ -103,8 +106,9 @@ def test_readiness_flash_pro_independent():
         by = {r["lane"]: r for r in rows}
         assert by["deepseek-flash"]["ready"] is True
         assert by["deepseek-flash"]["model_available"] is True
-        assert by["deepseek-v4-pro"]["ready"] is False
-        assert by["deepseek-v4-pro"]["model_available"] is False
+        # retired Pro row mirrors Flash availability (routes to V4.1 Flash)
+        assert by["deepseek-v4-pro"]["ready"] is True
+        assert by["deepseek-v4-pro"]["model_available"] is True
 
 
 def test_configured_but_unreachable_not_ready():
@@ -139,7 +143,7 @@ def test_sanitize_errors_no_raw_text():
 
 def test_projected_cost_positive():
     usd = projected_max_cost_usd(
-        model_id="deepseek-v4-flash", max_input_tokens=64, max_output_tokens=32,
+        model_id="deepseek-flash", max_input_tokens=64, max_output_tokens=32,
     )
     assert usd > 0
 

@@ -22,7 +22,7 @@ def test_auto_queue_holdings_do_not_preempt_flash(monkeypatch):
     assert lane == pol.LANE_AUTO_QUEUE
     assert pol.requested_provider_policy(lane) == pol.POLICY_FLASH_FIRST_AUTO_QUEUE
     assert pol.oauth_may_preempt_flash(lane) is False
-    assert pol.first_provider_attempt(lane) == "deepseek-v4-flash"
+    assert pol.first_provider_attempt(lane) == "deepseek-flash"
 
 
 def test_command_center_scheduled_is_auto_not_oauth(monkeypatch):

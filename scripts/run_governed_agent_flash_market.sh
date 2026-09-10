@@ -8,7 +8,7 @@
 # Guarantees:
 #   - Canonical host containment flag remains on disk (never cleared)
 #   - Process-scoped containment override only for this process
-#   - Exactly one FAST deepseek-v4-flash request via --scheduled-canary
+#   - Exactly one FAST deepseek-flash request via --scheduled-canary
 #   - Production flock /tmp/tradeai_watchlist_agent_jobs.lock
 #   - Hard timeout <= 180s
 #   - Fail closed on missing env / cap / lock / flag
@@ -173,7 +173,7 @@ if [[ "${TRADEAI_GOVERNED_MARKET_CONTAINED_PROBE:-0}" == "1" ]]; then
 fi
 
 # --- Paid path: flock then one-call scheduled-canary ---
-log "mode=scheduled_canary process_id=watchlist_maria_flash_narrative policy=FAST model=deepseek-v4-flash max_jobs=1 max_calls=1"
+log "mode=scheduled_canary process_id=watchlist_maria_flash_narrative policy=FAST model=deepseek-flash max_jobs=1 max_calls=1"
 
 set +e
 flock -n -E 99 "$LOCK" timeout "$TIMEOUT_SEC" "$PY" scripts/process_watchlist_agent_jobs.py \

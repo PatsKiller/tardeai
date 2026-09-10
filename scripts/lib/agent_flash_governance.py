@@ -1,7 +1,7 @@
 """Governed DeepSeek Flash path for watchlist agent automation (issue #283).
 
 Replaces ungoverned llm_router process_id + agent_flash labels with registered
-process IDs, exact deepseek-v4-flash, reservation ledger, caps, and fail-closed
+process IDs, exact deepseek-flash, reservation ledger, caps, and fail-closed
 behavior. No silent provider fallback. No legacy model IDs.
 """
 from __future__ import annotations
@@ -14,8 +14,11 @@ import time
 from pathlib import Path
 from typing import Any
 
-# Exact model only
-FLASH_MODEL = "deepseek-v4-flash"
+# Exact model only — single controllable source of truth (registry + env override),
+# not a hard-coded literal. Provider renames become a one-variable change.
+from lib.llm_model_registry import deepseek_model_id  # noqa: E402
+
+FLASH_MODEL = deepseek_model_id("FAST")
 FLASH_POLICY = "FAST"
 FLASH_THINK_POLICY = "FAST_THINK"
 
@@ -75,7 +78,7 @@ def reject_legacy_model_id(model_id: str | None) -> None:
     if mid in LEGACY_MODEL_IDS or mid in {x.lower() for x in LEGACY_MODEL_IDS}:
         raise RuntimeError(
             f"LEGACY_MODEL_REJECTED: {model_id!r} is not allowed. "
-            f"Use exact {FLASH_MODEL} / policy FAST or FAST_THINK only."
+            f"Use exact {deepseek_model_id('FAST')} / policy FAST or FAST_THINK only."
         )
 
 

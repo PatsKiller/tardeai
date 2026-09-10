@@ -237,7 +237,7 @@
       },
       "paid_ds": {
         "provider": "deepseek",
-        "model": "deepseek-v4-pro",
+        "model": "deepseek-flash",
         "input_per_mtok_usd": 0.55,
         "output_per_mtok_usd": 2.19
       }

@@ -28,7 +28,7 @@ def test_process_matrix_mapping():
     assert process_for_task("agent_debate") == "watchlist_agent_debate_flash"
     assert process_for_task("cio_synthesis") == "watchlist_steph_flash_narrative"
     assert process_for_task("sector_correlation") == "watchlist_risk_flash_narrative"
-    assert FLASH_MODEL == "deepseek-v4-flash"
+    assert FLASH_MODEL == "deepseek-flash"
 
 
 def test_fast_default_think_only_on_deterministic_escalation():
@@ -140,7 +140,8 @@ def test_aggregate_per_run_request_cap_multi_process(monkeypatch):
     monkeypatch.setattr(ag, "already_completed", lambda *a, **k: False)
     monkeypatch.setattr(ag, "circuit_open", lambda: False)
     monkeypatch.setattr(
-        "lib.agent_jobs_containment.is_contained", lambda: False,
+        "lib.agent_jobs_containment.evaluate_containment_state",
+        lambda: {"status": "INACTIVE", "source": "test", "detail": "test"},
     )
     monkeypatch.setattr(
         lc, "get_process_config",
@@ -162,8 +163,8 @@ def test_aggregate_per_run_request_cap_multi_process(monkeypatch):
     def fake_gate(*a, **k):
         calls["n"] += 1
         return "OK", {
-            "returned_model": "deepseek-v4-flash",
-            "requested_model_id": "deepseek-v4-flash",
+            "returned_model": "deepseek-flash",
+            "requested_model_id": "deepseek-flash",
             "estimated_cost_usd": 0.00001,
             "fallback_used": False,
             "usage": {"prompt_tokens": 5, "completion_tokens": 1},
@@ -197,7 +198,10 @@ def test_aggregate_per_run_usd_cap(monkeypatch):
     monkeypatch.setattr(ag, "MAX_PROJECTED_USD_PER_RUN", 0.025)
     monkeypatch.setattr(ag, "already_completed", lambda *a, **k: False)
     monkeypatch.setattr(ag, "circuit_open", lambda: False)
-    monkeypatch.setattr("lib.agent_jobs_containment.is_contained", lambda: False)
+    monkeypatch.setattr(
+        "lib.agent_jobs_containment.evaluate_containment_state",
+        lambda: {"status": "INACTIVE", "source": "test", "detail": "test"},
+    )
     monkeypatch.setattr(
         lc, "get_process_config",
         lambda pid: {
@@ -218,8 +222,8 @@ def test_aggregate_per_run_usd_cap(monkeypatch):
     def fake_gate(*a, **k):
         n["c"] += 1
         return "OK", {
-            "returned_model": "deepseek-v4-flash",
-            "requested_model_id": "deepseek-v4-flash",
+            "returned_model": "deepseek-flash",
+            "requested_model_id": "deepseek-flash",
             "estimated_cost_usd": 0.001,
             "fallback_used": False,
             "usage": {},
@@ -242,7 +246,10 @@ def test_returned_model_mismatch_fails(monkeypatch):
 
     monkeypatch.setattr(ag, "already_completed", lambda *a, **k: False)
     monkeypatch.setattr(ag, "circuit_open", lambda: False)
-    monkeypatch.setattr("lib.agent_jobs_containment.is_contained", lambda: False)
+    monkeypatch.setattr(
+        "lib.agent_jobs_containment.evaluate_containment_state",
+        lambda: {"status": "INACTIVE", "source": "test", "detail": "test"},
+    )
     monkeypatch.setattr(
         lc, "get_process_config",
         lambda pid: {
@@ -262,7 +269,7 @@ def test_returned_model_mismatch_fails(monkeypatch):
         lc, "gate_and_generate",
         lambda *a, **k: ("ok", {
             "returned_model": "deepseek-chat",
-            "requested_model_id": "deepseek-v4-flash",
+            "requested_model_id": "deepseek-flash",
             "estimated_cost_usd": 0.001,
             "fallback_used": False,
             "usage": {},
@@ -280,7 +287,10 @@ def test_no_silent_fallback_flag(monkeypatch):
 
     monkeypatch.setattr(ag, "already_completed", lambda *a, **k: False)
     monkeypatch.setattr(ag, "circuit_open", lambda: False)
-    monkeypatch.setattr("lib.agent_jobs_containment.is_contained", lambda: False)
+    monkeypatch.setattr(
+        "lib.agent_jobs_containment.evaluate_containment_state",
+        lambda: {"status": "INACTIVE", "source": "test", "detail": "test"},
+    )
     monkeypatch.setattr(
         lc, "get_process_config",
         lambda pid: {
@@ -299,8 +309,8 @@ def test_no_silent_fallback_flag(monkeypatch):
     monkeypatch.setattr(
         lc, "gate_and_generate",
         lambda *a, **k: ("ok", {
-            "returned_model": "deepseek-v4-flash",
-            "requested_model_id": "deepseek-v4-flash",
+            "returned_model": "deepseek-flash",
+            "requested_model_id": "deepseek-flash",
             "estimated_cost_usd": 0.001,
             "fallback_used": True,
             "usage": {},
@@ -319,7 +329,10 @@ def test_dedupe_skips_second_call(monkeypatch, tmp_path):
     monkeypatch.setattr(ag, "_DEDUPE_PATH", tmp_path / "dedupe.json")
     monkeypatch.setattr(ag, "_DEDUPE_CACHE", {})
     monkeypatch.setattr(ag, "circuit_open", lambda: False)
-    monkeypatch.setattr("lib.agent_jobs_containment.is_contained", lambda: False)
+    monkeypatch.setattr(
+        "lib.agent_jobs_containment.evaluate_containment_state",
+        lambda: {"status": "INACTIVE", "source": "test", "detail": "test"},
+    )
     monkeypatch.setattr(
         lc, "get_process_config",
         lambda pid: {
@@ -340,8 +353,8 @@ def test_dedupe_skips_second_call(monkeypatch, tmp_path):
     def fake_gate(*a, **k):
         calls["n"] += 1
         return "OK", {
-            "returned_model": "deepseek-v4-flash",
-            "requested_model_id": "deepseek-v4-flash",
+            "returned_model": "deepseek-flash",
+            "requested_model_id": "deepseek-flash",
             "estimated_cost_usd": 0.00001,
             "fallback_used": False,
             "usage": {"prompt_tokens": 5, "completion_tokens": 1},
@@ -365,7 +378,10 @@ def test_circuit_breaker_opens(monkeypatch):
     monkeypatch.setattr(ag, "CIRCUIT_COOLDOWN_SEC", 60)
     monkeypatch.setattr(ag, "_CIRCUIT", {"errors": 0, "open_until": 0.0, "last_error": None})
     monkeypatch.setattr(ag, "already_completed", lambda *a, **k: False)
-    monkeypatch.setattr("lib.agent_jobs_containment.is_contained", lambda: False)
+    monkeypatch.setattr(
+        "lib.agent_jobs_containment.evaluate_containment_state",
+        lambda: {"status": "INACTIVE", "source": "test", "detail": "test"},
+    )
     monkeypatch.setattr(
         lc, "get_process_config",
         lambda pid: {
@@ -448,7 +464,10 @@ def test_exact_model_success_path(monkeypatch):
 
     monkeypatch.setattr(ag, "already_completed", lambda *a, **k: False)
     monkeypatch.setattr(ag, "circuit_open", lambda: False)
-    monkeypatch.setattr("lib.agent_jobs_containment.is_contained", lambda: False)
+    monkeypatch.setattr(
+        "lib.agent_jobs_containment.evaluate_containment_state",
+        lambda: {"status": "INACTIVE", "source": "test", "detail": "test"},
+    )
     monkeypatch.setattr(
         lc, "get_process_config",
         lambda pid: {
@@ -467,8 +486,8 @@ def test_exact_model_success_path(monkeypatch):
     monkeypatch.setattr(
         lc, "gate_and_generate",
         lambda *a, **k: ("OK", {
-            "returned_model": "deepseek-v4-flash",
-            "requested_model_id": "deepseek-v4-flash",
+            "returned_model": "deepseek-flash",
+            "requested_model_id": "deepseek-flash",
             "requested_policy": "FAST",
             "executed_policy": "FAST",
             "estimated_cost_usd": 1.5e-6,
@@ -480,7 +499,7 @@ def test_exact_model_success_path(monkeypatch):
     ag.reset_run_budget()
     r = ag.governed_flash_call("Reply with exactly: OK", task_type="agent_narrative", max_tokens=32)
     assert r["success"] is True
-    assert r["returned_model"] == "deepseek-v4-flash"
+    assert r["returned_model"] == "deepseek-flash"
     assert r["provider_request_id"] == "req-exact"
     assert r["tokens"]["prompt_tokens"] == 9
 
@@ -493,7 +512,7 @@ def test_no_broker_authority_in_governance_module():
 
 def test_cost_registry_matches_estimate():
     from lib.llm_model_registry import estimate_usd_cost
-    e = estimate_usd_cost(model_id="deepseek-v4-flash", prompt_tokens=1000, completion_tokens=300)
+    e = estimate_usd_cost(model_id="deepseek-flash", prompt_tokens=1000, completion_tokens=300)
     assert e.get("estimated_cost_usd") is not None
     assert e["estimated_cost_usd"] < 0.01
 

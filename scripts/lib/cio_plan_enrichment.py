@@ -1426,14 +1426,14 @@ def call_governed_llm(
         caller = llm.get("caller_pro") or "alex"
         task = llm.get("task_type_pro") or "cio_synthesis"
         process_id = "alex_cio_synthesis"
-        model = "deepseek-v4-pro"
+        model = "deepseek-flash"
         max_tokens = int(llm.get("max_tokens_pro") or llm.get("max_tokens") or 1600)
     else:
         # Prefer advisory_desk Flash — not alex PRO — for plan JSON enrichment
         caller = llm.get("caller_flash") or "advisory_desk"
         task = llm.get("task_type_flash") or "advisory_opinion"
         process_id = "advisory_desk_opinion"
-        model = "deepseek-v4-flash"
+        model = "deepseek-flash"
         # Headroom so reasoning_tokens cannot consume entire completion budget
         max_tokens = int(llm.get("max_tokens_flash") or llm.get("max_tokens") or 1200)
     payload = {

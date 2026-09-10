@@ -30,9 +30,9 @@ description it is supposed to follow from.
 CURATION LANE ORDER (operator-set 2026-09-06)
 ---------------------------------------------
 
-    1. deepseek-v4-flash   paid, ~$0.000133/call, governed by the bridge caps
+    1. deepseek-flash   paid, ~$0.000133/call, governed by the bridge caps
     2. free OAuth          grok / chatgpt
-    3. deepseek-v4-pro     paid, stronger, still under the same caps
+    3. deepseek-flash     paid, stronger, still under the same caps
     4. ASK THE OPERATOR    hard STOP before any further paid API
 
 This inverts the house default (free first) on purpose. Curation is a structured task
@@ -326,7 +326,7 @@ RULES:
 #: Curation model. Cheap, and — more importantly — consistent: this output is parsed
 #: and its citations are enforced, so a lane that answers the same way every time is
 #: worth $0.000133 a call.
-CURATION_MODEL = os.getenv("DDQ_CURATION_MODEL", "deepseek-v4-flash")
+CURATION_MODEL = os.getenv("DDQ_CURATION_MODEL", "deepseek-flash")
 
 #: Research lanes, RANKED BY MEASURED PERFORMANCE — never one hardcoded default.
 #:
@@ -390,7 +390,7 @@ def rank_research_lanes(cur) -> list[tuple[str, float, float]]:
 
 #: Step 3. Stronger and dearer than flash; still inside the bridge's four caps, so it
 #: cannot run away. Reached only when flash AND both free lanes have failed.
-CURATION_MODEL_PRO = os.getenv("DDQ_CURATION_MODEL_PRO", "deepseek-v4-pro")
+CURATION_MODEL_PRO = os.getenv("DDQ_CURATION_MODEL_PRO", "deepseek-flash")
 
 
 #: The DeepSeek cap check runs IN THIS PROCESS, not in the bridge.

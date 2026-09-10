@@ -3925,7 +3925,7 @@ def enrich_advisory_with_opinions(
                 usage.get("prompt_cache_hit_tokens") or usage.get("cached_tokens") or 0
             )
             cost_usd += estimate_cost_usd(
-                usage, model=str(synthesis_meta.get("model") or "deepseek-v4-pro")
+                usage, model=str(synthesis_meta.get("model") or "deepseek-flash")
             )
 
     total_for_hit = rows_model_called + rows_cache_hit

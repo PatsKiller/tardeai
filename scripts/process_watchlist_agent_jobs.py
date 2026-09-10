@@ -469,7 +469,7 @@ def _synthesis_llm(prompt: str, max_tokens: int = 2000) -> str:
     return out if out else "LLM error: synthesis_failed"
 
 
-# ── CIO multi-consensus: Grok + ChatGPT (free OAuth) + DeepSeek Flash 4.1 (deepseek-v4-flash).
+# ── CIO multi-consensus: Grok + ChatGPT (free OAuth) + DeepSeek Flash 4.1 (deepseek-flash).
 # Flash is a first-class voting lane (operator 2026-09-09), not fallback-only.
 # Disagreement → majority when 2+ agree; else MORE CAUTIOUS verdict + lower confidence. ──
 _DUAL_CHATGPT_CAP = int(os.getenv("CIO_DUAL_CHATGPT_CAP", "40"))  # bound ChatGPT codex latency per batch run
@@ -552,7 +552,7 @@ def _reconcile_cio_votes(votes: list[dict]) -> dict:
 def _synthesis_lanes(prompt: str, lanes=None, max_tokens: int = 2000, manual_trigger: bool = False):
     """Declared multi-lane CIO synthesis: Grok + ChatGPT + DeepSeek Flash 4.1 voting.
 
-    Flash (lane deepseek-flash / model deepseek-v4-flash) is a first-class participant.
+    Flash (lane deepseek-flash / model deepseek-flash) is a first-class participant.
     If Flash is skipped (peak/cap/breaker/unavailable), record deepseek_status without inventing a vote.
     When all free OAuth lanes fail but Flash is available, Flash may also act as declared fallback synthesizer.
     Output classifies LEGACY_CIO_REVIEW — never AUTHORITATIVE_CIO_ACTION.
@@ -643,7 +643,7 @@ def _synthesis_lanes(prompt: str, lanes=None, max_tokens: int = 2000, manual_tri
                         deepseek_status = "VOTED"
                         raw_by_lane["deepseek-flash"] = ds_raw
                         votes.append({"lane": "deepseek-flash", "rec": ds_rec, "conf": ds_conf,
-                                      "model": "deepseek-v4-flash"})
+                                      "model": "deepseek-flash"})
                     else:
                         deepseek_status = "NO_REC"
                 else:
@@ -670,7 +670,7 @@ def _synthesis_lanes(prompt: str, lanes=None, max_tokens: int = 2000, manual_tri
         "chatgpt": _lane_meta("chatgpt"),
         "deepseek": _lane_meta("deepseek-flash"),
         "deepseek_status": deepseek_status,
-        "deepseek_model": "deepseek-v4-flash",
+        "deepseek_model": "deepseek-flash",
         "declared_lanes": want,
         "participating_lanes": [v["lane"] for v in votes],
         "consensus_kind": "triple" if "deepseek-flash" in want else "dual",
@@ -698,7 +698,7 @@ def _synthesis_lanes(prompt: str, lanes=None, max_tokens: int = 2000, manual_tri
             out = _gen_flash(120)
             if out and not str(out).startswith("LLM error") and not _is_refusal(out):
                 ds_rec, ds_conf = _rec_from(out)
-                _llm._last_model = "deepseek-v4-flash"
+                _llm._last_model = "deepseek-flash"
                 meta.update(
                     agree=None,
                     consensus=ds_rec or None,
@@ -706,7 +706,7 @@ def _synthesis_lanes(prompt: str, lanes=None, max_tokens: int = 2000, manual_tri
                     fallback_lane="governed-deepseek-flash",
                     declared_fallback=True,
                     deepseek_status="FALLBACK_SYNTH",
-                    deepseek={"recommendation": ds_rec, "confidence": ds_conf, "model": "deepseek-v4-flash"}
+                    deepseek={"recommendation": ds_rec, "confidence": ds_conf, "model": "deepseek-flash"}
                     if ds_rec else meta.get("deepseek"),
                     participating_lanes=["deepseek-flash"],
                 )
@@ -3228,7 +3228,7 @@ if __name__ == "__main__":
         "--scheduled-canary",
         action="store_true",
         help=(
-            "One-call governed Flash canary: exactly one FAST deepseek-v4-flash request "
+            "One-call governed Flash canary: exactly one FAST deepseek-flash request "
             "for watchlist_maria_flash_narrative. Bypasses process_jobs and Maria two-pass."
         ),
     )

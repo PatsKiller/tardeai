@@ -87,7 +87,7 @@ def _is_terminal(message: str) -> bool:
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--apply", action="store_true")
-    ap.add_argument("--model", default="deepseek-v4-flash")
+    ap.add_argument("--model", default="deepseek-flash")
     ap.add_argument("--max-rows", type=int, default=25)
     args = ap.parse_args()
     if KILL.exists():

@@ -51,13 +51,13 @@ def select_model(
             "llm_calls": 0,
         }
     if exceptional:
-        requested = "deepseek-v4-pro"
+        requested = "deepseek-flash"
         why = "EXCEPTIONAL_HIGH_VALUE_COMPLEX_SYNTHESIS"
     elif disagreement:
         requested = "oauth-challenger"
         why = "MATERIAL_UNCERTAINTY_OR_DISAGREEMENT"
     else:
-        requested = "deepseek-v4-flash"
+        requested = "deepseek-flash"
         why = "SIMPLE_MATERIAL_SYNTHESIS"
     if any("local" in str(requested).lower() for _ in [0]):
         raise RuntimeError(LOCAL_GENERATIVE_FORBIDDEN)

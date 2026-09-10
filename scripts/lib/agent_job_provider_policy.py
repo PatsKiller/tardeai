@@ -134,4 +134,5 @@ def oauth_soft_fallback_permitted(lane: str, error: str | None) -> bool:
 def first_provider_attempt(lane: str) -> str:
     if oauth_may_preempt_flash(lane):
         return "grok-oauth"
-    return "deepseek-v4-flash"
+    from lib.llm_model_registry import deepseek_model_id
+    return deepseek_model_id("FAST")

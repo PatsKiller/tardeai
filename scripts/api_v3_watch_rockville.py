@@ -122,7 +122,7 @@ def post_cio_deep_review(body: dict | None = None) -> dict[str, Any]:
             "error": "OPERATOR_CONFIRMATION_REQUIRED",
             "estimated_cost_usd": body.get("estimated_cost_usd") or 0.15,
             "policy": "CIO_DEEP_REVIEW",
-            "model": "deepseek-v4-pro",
+            "model": "deepseek-flash",
             "thinking": True,
             "effort": "max",
             "provider_call": False,

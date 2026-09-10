@@ -176,7 +176,7 @@ def _call_grok(prompt: str, max_tokens: int = 2000) -> dict:
 
 
 _PROVIDERS = {
-    "deepseek-flash": _call_openai,  # → governed deepseek-v4-flash (issue #283)
+    "deepseek-flash": _call_openai,  # → governed deepseek-flash (issue #283)
     "deepseek-v4": _call_deepseek_v4_legacy_rejected,
     "grok": _call_grok,
     "claude": _call_anthropic,

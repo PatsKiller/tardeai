@@ -241,7 +241,7 @@ def test_material_change_gate_blocks_redundant_llm():
         current_evidence_hash=current,
         llm_curator=_curator,
         provider="deepseek",
-        model="deepseek-v4-flash",
+        model="deepseek-flash",
     )
     assert decision.proceed is False
     assert decision.reason == "no_new_evidence"
@@ -326,7 +326,7 @@ def test_governed_llm_ok_when_facts_unchanged():
         ev,
         llm_curator=_curator,
         provider="deepseek",
-        model="deepseek-v4-flash",
+        model="deepseek-flash",
     )
     assert decision.proceed is True
     assert receipt.fact_preservation_ok is True

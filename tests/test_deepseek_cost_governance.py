@@ -15,7 +15,7 @@ from lib.llm_model_registry import estimate_usd_cost  # noqa: E402
 
 def test_relative_units_not_used_as_usd():
     # Pure token math — 0 tokens → $0, not char-based
-    est = estimate_usd_cost(model_id="deepseek-v4-flash", prompt_tokens=0, completion_tokens=0)
+    est = estimate_usd_cost(model_id="deepseek-flash", prompt_tokens=0, completion_tokens=0)
     assert est["estimated_cost_usd"] == 0.0
     assert "provider_usage" in (est.get("cost_basis") or "")
 
@@ -29,14 +29,14 @@ def test_cache_hit_miss_split():
     at = datetime(2026, 8, 31, 12, 0, tzinfo=timezone.utc)  # weekday off-peak
     expected = calculate_usd(
         provider="deepseek",
-        model="deepseek-v4-flash",
+        model="deepseek-flash",
         at=at,
         cache_hit_input=1_000_000,
         cache_miss_input=0,
         output=0,
     )
     est = estimate_usd_cost(
-        model_id="deepseek-v4-flash",
+        model_id="deepseek-flash",
         prompt_tokens=None,
         completion_tokens=0,
         cache_hit_tokens=1_000_000,
@@ -59,14 +59,14 @@ def test_pro_pricing_snapshot():
     at = datetime(2026, 8, 31, 12, 0, tzinfo=timezone.utc)
     expected = calculate_usd(
         provider="deepseek",
-        model="deepseek-v4-pro",
+        model="deepseek-flash",
         at=at,
         cache_hit_input=0,
         cache_miss_input=1_000_000,
         output=1_000_000,
     )
     est = estimate_usd_cost(
-        model_id="deepseek-v4-pro",
+        model_id="deepseek-flash",
         prompt_tokens=1_000_000,
         completion_tokens=1_000_000,
         cache_miss_tokens=1_000_000,
@@ -169,8 +169,8 @@ def test_log_call_separates_relative_and_usd():
         cost_basis="provider_usage_x_registry_snapshot",
         requested_policy="FAST",
         executed_policy="FAST",
-        requested_model_id="deepseek-v4-flash",
-        returned_model="deepseek-v4-flash",
+        requested_model_id="deepseek-flash",
+        returned_model="deepseek-flash",
         tokens_in=100,
         tokens_out=20,
     )

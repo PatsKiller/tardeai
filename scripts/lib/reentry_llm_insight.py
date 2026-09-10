@@ -10,7 +10,7 @@ Two call types, both governed and advisory-only:
      - For READY TO REVIEW or NEAR ENTRY symbols
      - Produces a thesis: what changed, why re-enter, what invalidates
 
-Model: deepseek-v4-flash (FAST policy, no thinking, no fallback)
+Model: deepseek-flash (FAST policy, no thinking, no fallback)
 Daily caps: 20 stop-out quality calls + 10 thesis calls
 Cost: ~$0.007/day at max usage
 
@@ -32,7 +32,7 @@ class InsightResult:
     symbol: str
     success: bool
     provider: str = "deepseek"
-    model_used: str = "deepseek-v4-flash"
+    model_used: str = "deepseek-flash"
     requested_policy: str = "FAST"
     executed_policy: str | None = None
     cost_estimate: float = 0.0
@@ -134,7 +134,7 @@ def _call_deepseek_flash(
             "content": content,
             "parsed": parsed,
             "provider": "deepseek",
-            "model_used": resp.returned_model or "deepseek-v4-flash",
+            "model_used": resp.returned_model or "deepseek-flash",
             "requested_policy": resp.requested_policy,
             "executed_policy": resp.executed_policy,
             "cost_estimate": resp.estimated_cost_usd or 0.0,
@@ -241,7 +241,7 @@ def assess_stop_quality(
         symbol=symbol,
         success=result["success"],
         provider=result.get("provider", "deepseek"),
-        model_used=result.get("model_used", "deepseek-v4-flash"),
+        model_used=result.get("model_used", "deepseek-flash"),
         requested_policy=result.get("requested_policy", "FAST"),
         executed_policy=result.get("executed_policy"),
         cost_estimate=result.get("cost_estimate", 0.0),
@@ -348,7 +348,7 @@ def generate_reentry_thesis(
         symbol=symbol,
         success=result["success"],
         provider=result.get("provider", "deepseek"),
-        model_used=result.get("model_used", "deepseek-v4-flash"),
+        model_used=result.get("model_used", "deepseek-flash"),
         requested_policy=result.get("requested_policy", "FAST"),
         executed_policy=result.get("executed_policy"),
         cost_estimate=result.get("cost_estimate", 0.0),
@@ -499,7 +499,7 @@ def store_insights(db_execute, results: dict[str, InsightResult]) -> bool:
         "total_calls": len(results),
         "success_count": success_count,
         "total_estimated_cost_usd": round(total_cost, 6),
-        "model": "deepseek-v4-flash",
+        "model": "deepseek-flash",
         "policy": "FAST",
         "advisory_only": True,
     }

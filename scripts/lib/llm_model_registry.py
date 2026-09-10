@@ -14,10 +14,43 @@ from typing import Any
 _ROOT = Path(__file__).resolve().parents[2]
 _REGISTRY_PATH = _ROOT / "config" / "llm_model_registry.json"
 
-# Exact DeepSeek V4 IDs verified via live GET /v1/models on 2026-08-03
-EXACT_DEEPSEEK_MODELS = frozenset({"deepseek-v4-flash", "deepseek-v4-pro"})
-LEGACY_DEEPSEEK_MODELS = frozenset({"deepseek-chat", "deepseek-reasoner"})
+# Exact DeepSeek model IDs. 2026-09-09: provider migrated V4 Flash/Pro → V4.1 Flash
+# (`deepseek-flash`). deepseek-v4-flash / deepseek-v4-pro are now LEGACY and rejected.
+EXACT_DEEPSEEK_MODELS = frozenset({"deepseek-flash"})
+LEGACY_DEEPSEEK_MODELS = frozenset(
+    {"deepseek-chat", "deepseek-reasoner", "deepseek-v4-flash", "deepseek-v4-pro"}
+)
 LOGICAL_POLICIES = frozenset({"FAST", "FAST_THINK", "PRO", "PRO_THINK", "PRO_MAX"})
+
+# Operator-overridable model-id env vars. The registry is the source of truth; these
+# let an operator re-point the exact id WITHOUT a code change when the provider
+# renames a model (as happened 2026-09-09: deepseek-v4-flash → deepseek-flash).
+FLASH_MODEL_ENV = "TRADEAI_DEEPSEEK_FLASH_MODEL"
+PRO_MODEL_ENV = "TRADEAI_DEEPSEEK_PRO_MODEL"
+
+
+def deepseek_model_id(policy: str = "FAST") -> str:
+    """Canonical DeepSeek model id for a logical policy, with env override.
+
+    Precedence: explicit env override (if set and valid) → registry binding.
+    This is the single accessor every caller should use instead of a literal
+    model-id string, so a provider rename is a one-variable change.
+    """
+    pol = (policy or "FAST").upper()
+    env_key = {
+        "FAST": FLASH_MODEL_ENV,
+        "FAST_THINK": FLASH_MODEL_ENV,
+        "PRO": PRO_MODEL_ENV,
+        "PRO_THINK": PRO_MODEL_ENV,
+        "PRO_MAX": PRO_MODEL_ENV,
+    }.get(pol, FLASH_MODEL_ENV)
+    override = os.environ.get(env_key, "").strip()
+    if override:
+        reject_legacy_model_id(override)
+        if override not in EXACT_DEEPSEEK_MODELS:
+            raise RegistryError(f"env {env_key} model id not exact: {override!r}")
+        return override
+    return resolve_logical_policy(pol)["model_id"]
 
 
 class RegistryError(ValueError):
@@ -111,18 +144,18 @@ def resolve_lane_alias(lane: str) -> str | None:
         raise AmbiguousLegacyLane(
             "AMBIGUOUS_LEGACY_LANE: 'deepseek-v4' is not an exact model or logical policy. "
             "Use FAST / FAST_THINK / PRO / PRO_THINK / PRO_MAX, or exact "
-            "deepseek-v4-flash / deepseek-v4-pro."
+            "deepseek-flash."
         )
     reg = load_registry()
     aliases = ((reg.get("providers") or {}).get("deepseek") or {}).get("legacy_lane_aliases") or {}
     if lane in aliases:
         return str(aliases[lane]).upper()
     mapping = {
-        "deepseek-v4-flash": "FAST",
-        "deepseek-v4-pro": "PRO",  # exact model without think → PRO non-thinking default
         "deepseek-flash": "FAST",
-        "deepseek_flash": "FAST",
+        "deepseek_v4_flash": "FAST",
+        "deepseek-v4-flash": "FAST",  # legacy V4 Flash lane alias
         "deepseek-pro": "PRO",
+        "deepseek-v4-pro": "PRO",  # legacy V4 Pro lane alias
     }
     return mapping.get(lane)
 

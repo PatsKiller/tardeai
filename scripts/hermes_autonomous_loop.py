@@ -30,7 +30,7 @@ MAX_RUNTIME = 600  # seconds
 DAILY_ROW_CAP = 10
 DAILY_MODEL_CAP = 15
 CLOUD_TIMEOUT = int(os.environ.get("HERMES_LOOP_CLOUD_TIMEOUT", "90"))
-LOOP_MODEL = "deepseek-v4-flash"
+LOOP_MODEL = "deepseek-flash"
 
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 

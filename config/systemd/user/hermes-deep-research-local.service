@@ -10,4 +10,4 @@ TimeoutStartSec=3600
 Environment=PATH=/usr/local/bin:/usr/bin:/bin
 Environment=PYTHONUNBUFFERED=1
 Environment=HERMES_BRIDGE_URL=http://127.0.0.1:8766
-Environment=HERMES_BRIDGE_MODEL=deepseek-v4-flash
+Environment=HERMES_BRIDGE_MODEL=deepseek-flash

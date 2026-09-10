@@ -47,7 +47,7 @@ except ImportError:  # pragma: no cover
 DEFAULT_BRIDGE_URL = os.getenv("HERMES_BRIDGE_URL") or os.getenv(
     "CIO_GOVERNED_BRIDGE_URL", "http://127.0.0.1:8766"
 )
-DEFAULT_MODEL = os.getenv("HERMES_BRIDGE_MODEL", "deepseek-v4-flash")
+DEFAULT_MODEL = os.getenv("HERMES_BRIDGE_MODEL", "deepseek-flash")
 # Flash often spends budget on reasoning_tokens; keep headroom so content is non-empty
 DEFAULT_MAX_TOKENS = int(os.getenv("HERMES_BRIDGE_MAX_TOKENS", "8192"))
 DEFAULT_TIMEOUT_S = float(os.getenv("HERMES_BRIDGE_TIMEOUT_S", "180"))

@@ -13,8 +13,8 @@ from typing import Any
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 POLICY_PATH = PROJECT_ROOT / "config" / "rockville" / "ROCKVILLE_WATCH_CIO_MODEL_POLICY.json"
 
-EXACT_FLASH = "deepseek-v4-flash"
-EXACT_PRO = "deepseek-v4-pro"
+EXACT_FLASH = "deepseek-flash"
+EXACT_PRO = "deepseek-flash"  # Pro tier retired 2026-09-14 → routes to V4.1 Flash
 EXACT_MODELS = frozenset({EXACT_FLASH, EXACT_PRO})
 
 FORBIDDEN_MODELS = frozenset({
@@ -22,7 +22,8 @@ FORBIDDEN_MODELS = frozenset({
     "deepseek-chat",
     "deepseek-reasoner",
     "deepseek",
-    "deepseek-flash",
+    "deepseek-v4-flash",
+    "deepseek-v4-pro",
     "fast",
     "pro",
     "pro_think",

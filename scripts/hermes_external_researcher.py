@@ -40,7 +40,7 @@ LANE_CFG = {
     "grok":    {"kind": "xai_proxy", "url": os.environ.get("HERMES_XAI_PROXY_URL", "http://127.0.0.1:8645/v1/chat/completions"),
                 "default_model": "grok-3-mini",
                 "auth_hint": "hermes auth add xai-oauth --type oauth  then  hermes proxy start --provider xai  (free xAI OAuth, no API key)"},
-    "deepseek": {"kind": "governed_deepseek", "default_model": "deepseek-v4-flash",
+    "deepseek": {"kind": "governed_deepseek", "default_model": "deepseek-flash",
                  "auth_hint": "governed DeepSeek V4 Flash via llm_lane.py (process hermes_external_research) — no OAuth"},
 }
 DEFAULT_MODEL = "claude-sonnet-4-6"

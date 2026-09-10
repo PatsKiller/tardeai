@@ -87,7 +87,7 @@ def test_parse_malformed():
         parse_strict_json("{not json")
 
 
-def _resp(content, model="deepseek-v4-flash", ok=True, err=None, finish="stop"):
+def _resp(content, model="deepseek-flash", ok=True, err=None, finish="stop"):
     return DeepSeekResponse(
         ok=ok if content else False,
         requested_policy="FAST",
@@ -143,7 +143,7 @@ def test_finish_length_from_client(monkeypatch):
         r.status_code = 200
         r.headers = {}
         body = {
-            "model": "deepseek-v4-flash",
+            "model": "deepseek-flash",
             "choices": [{"message": {"content": "partial"}, "finish_reason": "length"}],
             "usage": {},
         }

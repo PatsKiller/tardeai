@@ -297,7 +297,7 @@ def load_active_judge(*, force_alias: Optional[str] = None) -> dict[str, Any]:
         "system": system,
         "user_template": user_template,
         "content_hash": _sha256_text(bundle),
-        "model": meta.get("model") or "deepseek-v4-flash",
+        "model": meta.get("model") or "deepseek-flash",
         "temperature": float(meta.get("temperature") if meta.get("temperature") is not None else 0.1),
         "max_tokens": int(meta.get("max_tokens") or 900),
         "source": source,
