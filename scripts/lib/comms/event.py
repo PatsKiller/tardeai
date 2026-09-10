@@ -144,6 +144,10 @@ class CommunicationEvent:
         state = (self.provider_settlement_state or "").strip().upper()
         if state not in ("UNSETTLED", "SETTLED", "FAILED", "UNKNOWN_LEGACY"):
             self.provider_settlement_state = "UNSETTLED"
+        if not (self.source_sha or "").strip():
+            from scripts.lib.runtime_identity import resolve_source_sha
+
+            self.source_sha = resolve_source_sha()
         return self
 
     def to_row(self) -> dict[str, Any]:
