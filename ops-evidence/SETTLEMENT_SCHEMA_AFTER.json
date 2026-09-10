@@ -1,0 +1,19 @@
+{
+  "artifact": "SETTLEMENT_SCHEMA_AFTER",
+  "generated_at_utc": "2026-09-10T04:51:04.361667+00:00",
+  "served_commit": "87e7325d2fbe29d9e663a0f5efd9ae52e848daa9",
+  "worktree_head": "31d14326255f26a6801fe2ec9d8dfe5ac34b63d5",
+  "settlement_columns_present": [
+    "curation_kind",
+    "curation_provenance",
+    "delivery_owner",
+    "gateway_mode_at_dispatch",
+    "provider_message_id",
+    "provider_settled_at",
+    "provider_settlement_state",
+    "subject_guid"
+  ],
+  "communication_events_rows": 712,
+  "has_source_sha": true,
+  "has_provenance": true
+}
