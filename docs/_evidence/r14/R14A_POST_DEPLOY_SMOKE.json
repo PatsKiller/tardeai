@@ -1,0 +1,14 @@
+{
+  "schema": "R14APostDeploySmoke@v1",
+  "api_health_ok": true,
+  "cio_brain_schema": "CIOBrainSnapshot@v1",
+  "memory_behavior_influence": 0,
+  "financial_action": false,
+  "policy_provenance_ok": true,
+  "cash_target_confirmed": false,
+  "CIOSituationState": true,
+  "situation_notify_bridge": true,
+  "canary": false,
+  "portfolio_server": "active",
+  "telegram_cio": "active"
+}

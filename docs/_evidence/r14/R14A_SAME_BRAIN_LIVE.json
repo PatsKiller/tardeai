@@ -1,0 +1,15 @@
+{
+  "schema": "R14ASameBrainLive@v1",
+  "consistent": true,
+  "telegram_fork": false,
+  "divergences": [],
+  "sample": [
+    "SCHD",
+    "SCHG",
+    "NOC",
+    "CSCO",
+    "ANET",
+    "NVDA"
+  ],
+  "note": "NVDA security_guid null is identity gap not a cognition fork"
+}
