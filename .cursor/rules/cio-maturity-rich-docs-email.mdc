@@ -1,0 +1,32 @@
+---
+description: Rich CIO AS-IS/FUTURE/GAP maturity email package standard
+alwaysApply: true
+---
+
+# Trade AI maturity documentation package (rich standard)
+
+When producing or emailing CIO / maturity-gap AS-IS, FUTURE, or GAP docs:
+
+## Required artifacts
+- Always produce **three** dated files (America/New_York **date+time** in filename **and** header):
+  - `CIO_AS_IS_YYYY-MM-DD-HHmm.md`
+  - `CIO_FUTURE_YYYY-MM-DD-HHmm.md`
+  - `CIO_GAP_YYYY-MM-DD-HHmm.md`
+- Optional fourth: `HONEST_MATURITY_ASSESSMENT_YYYY-MM-DD-HHmm.md` at the same richness.
+
+## Richness bar (never thin bullets-only as the primary package)
+Use the gold structural templates under `docs/architecture/` (e.g. `CIO_ASIS_VS_SPEC_2026-09-09.md`, `CIO_FUTURE_STATE_FULL_MATURITY.md`, `CIO_ASIS_VS_FUTURE_GAP_2026-09-09.md`) and ceiling/final iterations. Each of AS-IS / FUTURE / GAP must include:
+- A clear **legend** with status icons (at least: OBSERVED_LIVE / INTEGRATED / DOCKED / PARTIAL / UNWIRED / HERMETIC_ONLY / DOCUMENTATION_ONLY / ABSENT / BLOCKED)
+- **Architecture diagrams** (ASCII and/or mermaid) at maturity levels / iterations
+- **Workflows** (not only prose bullets) — e.g. wake→research→comms→inbound; judgment→commitment→scoring→self-repair
+- Honest current pin/SHA, proven vs hermetic, and blockers
+
+## Email rules
+- Subject must identify **Trade AI Maturity Gap Closure** (or maturity package) and say when it supersedes a thinner prior
+- **ATTACH** AS-IS, FUTURE, GAP (and assessment if present) — never body-only
+- Verify `attach_count >= 3` and that attached files are the rich dated ones before send
+- To: `john@jwwhiting.com` via the established gog/`email_notifier` path
+
+## Honesty
+- Hermetic PASS ≠ OBSERVED; `controlled_canary` ≠ organic SETTLED
+- Do not inflate DOCUMENTATION_ONLY or DOCKED to OBSERVED_LIVE
