@@ -166,9 +166,13 @@ def test_duplicate_result_deduped(tmp_path: Path, env: dict):
     assert len(rows) == 1
 
 
-def test_missing_source_sha_reported(tmp_path: Path, env: dict):
+def test_source_sha_without_env_resolves_via_runtime_identity(tmp_path: Path, env: dict):
+    """Cron often omits BUILD_SHA; producers must still stamp a real served SHA."""
     env.pop("TRADEAI_SOURCE_SHA", None)
-    assert source_sha(env) == "unknown"
+    env.pop("BUILD_SHA", None)
+    env.pop("SOURCE_COMMIT", None)
+    sha = source_sha(env)
+    assert sha and sha != "unknown"
     res = produce_research(
         targets=_targets(),
         env=env,
@@ -178,7 +182,7 @@ def test_missing_source_sha_reported(tmp_path: Path, env: dict):
     assert res.ok
     feed = Path(env["TRADEAI_WAKE_RESEARCH_OBJECTS_PATH"])
     row = json.loads(feed.read_text().splitlines()[0])
-    assert row["source_sha"] == "unknown"
+    assert row["source_sha"] == sha
 
 
 def test_missing_subject_guid_skipped(tmp_path: Path, env: dict, monkeypatch):
