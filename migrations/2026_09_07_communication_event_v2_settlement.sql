@@ -6,6 +6,15 @@
 -- delivery records lack complete provider settlement identity. Backfilling them
 -- with invented identity would CLOSE THE DEFECT ON PAPER while making the ledger
 -- less truthful. INTERFACE_CONTRACTS.md §5 forbids it.
+--
+-- CORRECTION 2026-09-10 (Grok-closure preflight): the settlement index below
+-- originally referenced ``occurred_at``, which is not a column on
+-- ``communication_events`` (the ledger table uses ``created_at`` / ``observed_at``).
+-- The migration had never been applied to any database (verified 2026-09-10:
+-- settlement columns absent from live schema), so the index column was corrected
+-- to ``created_at DESC`` to match the existing ledger index convention before
+-- first application. This is a documented, non-silent correction of an un-applied
+-- migration, not a rewrite of shipped history.
 
 ALTER TABLE communication_events
     ADD COLUMN IF NOT EXISTS provider_message_id       TEXT,
