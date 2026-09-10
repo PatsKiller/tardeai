@@ -47,6 +47,9 @@ GATES = [
             "tests/test_outcome_lifecycle_d.py",
             "tests/test_self_repair_d.py",
             "tests/test_memory_wake_loading.py",
+            # 2026-09-10 MEMORY_MALFORMED regression: durable aif_memory schema
+            # (memory_id + title-only subject) must not refuse wakes or load all rows.
+            "tests/test_memory_loader_schema_compat.py",
             "tests/test_wake_schedule_contract.py",
             "tests/test_wake_negative_mutation_controls.py",
             "tests/test_comms_memory_gateway.py",
