@@ -499,7 +499,55 @@ def emit_feedback(source: str, feedback: Dict[str, Any],
         return {"ok": False, "error": "db unavailable — feedback NOT staged"}
     audit(source, "staged", {"symbol": str(feedback.get("spec", {}).get("symbol") or "").upper() or None,
                              "directive_kind": feedback.get("directive_kind")}, executor=ex)
+    _tag_directive(source, feedback, ex)
     return {"ok": True, "source": source, "staged": True}
+
+
+def _tag_directive(source: str, feedback: Dict[str, Any], ex: Executor) -> None:
+    """Attach subject identity to one staged directive.
+
+    `thesis` is a narrative and carried no identity until 2026-09-10. The sector
+    was already present and simply never promoted: it sits in the spec as
+    `gics_sector` / `finviz_sector`. Rotation is sector-FIRST --
+    rotation_signal_to_feedback() returns None without a sector and sets `symbol`
+    only when an ETF proxy exists -- so the sector is the subject and the symbol,
+    when there is one, is a mention. Tagging rotation by symbol alone would have
+    reproduced the sector_move defect exactly.
+
+    Fail-safe: a tagging failure must never stop a directive being staged.
+    """
+    try:
+        from scripts.lib.cio_narrative_write import write_narrative
+
+        spec = feedback.get("spec") or {}
+        sector = spec.get("gics_sector") or spec.get("finviz_sector")
+        symbol = str(spec.get("symbol") or "").upper() or None
+        subjects: List[Dict[str, Any]] = []
+        if source == "rotation":
+            if sector:
+                subjects.append({"entity_type": "SECTOR", "value": sector})
+            if symbol:
+                subjects.append({"entity_type": "SECURITY", "value": symbol,
+                                 "relationship": "mentioned"})
+        else:
+            if symbol:
+                subjects.append({"entity_type": "SECURITY", "value": symbol})
+            if sector:
+                subjects.append({"entity_type": "SECTOR", "value": sector,
+                                 "relationship": "mentioned"})
+        kind = feedback.get("directive_kind")
+        if kind:
+            subjects.append({"entity_type": "THEME", "value": kind,
+                             "relationship": "mentioned"})
+        if not subjects:
+            return
+        write_narrative(
+            executor=lambda sql, params: ex(sql, params),
+            source_table=STAGING_TABLE[source],
+            source_id=feedback.get("directive_id") or symbol or sector,
+            subjects=subjects, composed=False)
+    except Exception:  # noqa: BLE001 - see docstring
+        return
 
 
 def emit_all(source: str, feedback_list: List[Dict[str, Any]],
