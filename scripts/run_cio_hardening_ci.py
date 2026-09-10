@@ -71,6 +71,11 @@ GATES = [
             # -> atomic wake feed -> selector. Registered by the integration
             # owner; the producer is the ONLY writer of the research feed.
             "tests/test_governed_research_producer.py",
+            # The producer above shipped as a library: no entrypoint, no cron,
+            # flag default OFF, so research_objects_proxy read 0 on every
+            # hourly pass and every wake fell through to material_change.
+            # These controls pin the scheduled path fail-closed.
+            "tests/test_governed_research_producer_runner.py",
             # SFR-R-001: the consumption loop must close. Slots 13:00Z/14:00Z on
             # 54639ff5a re-selected the same three sources because the runner's
             # own receipts never reached the selector.
