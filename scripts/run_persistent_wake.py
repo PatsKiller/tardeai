@@ -94,6 +94,21 @@ def _is_release_tree(path: Path) -> bool:
     return _RELEASE_MARKER in path.parts
 
 
+def comms_history():
+    """Real comms history, or None to keep the engine's null port.
+
+    Wired here rather than in the engine so Lane A keeps no compile-time
+    dependency on Lane B — the engine takes a port, and the runner decides what
+    to plug into it.
+    """
+    try:
+        from scripts.lib.wake_comms_history import DbCommsHistory
+
+        return DbCommsHistory()
+    except Exception:
+        return None
+
+
 def _default_state_root(env: dict) -> Path:
     """Resolve the durable wake state root.
 
@@ -298,6 +313,7 @@ def _process_one_subject(
             wake_reason=WAKE_REASON,
             state_root=state_root,
             memory_backend=memory_backend,
+            comms=comms_history(),
             when=when,
             contract=contract,
             env=env,
@@ -412,7 +428,23 @@ def run_once(
     root = Path(state_root) if state_root is not None else _default_state_root(env)
     if memory_backend is None:
         mem_path = env.get(DEFAULT_MEMORY_ENV) or ""
-        memory_backend = Path(mem_path) if mem_path else None
+        if mem_path:
+            memory_backend = Path(mem_path)
+        else:
+            # Default to the durable memory store rather than to nothing.
+            # WakeEngine has always loaded memory before deciding, but the env
+            # var was never set in cron, so memory_backend was None,
+            # MemoryLoader(None) loaded nothing, and `memory_fact_ids` was empty
+            # on all 24 organic wakes. agent_durable_memory is the only memory
+            # path already on the subject_guid spine; an explicit env var still
+            # wins.
+            try:
+                from scripts.lib.agent_durable_memory import default_store_path
+
+                candidate = default_store_path()
+                memory_backend = candidate if candidate.exists() else None
+            except Exception:
+                memory_backend = None
 
     # Resolve subjects — keep full SubjectCandidate so source_id reaches decide.
     selection_meta: list[SubjectCandidate] = []

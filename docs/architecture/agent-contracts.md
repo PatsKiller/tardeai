@@ -1,5 +1,17 @@
 # Agent Consumption Contracts — AgentConsumptionReceipt@v1
 
+**Status: SUPERSEDED for the receipt contract.** `[VERIFIED]` 2026-09-10.
+This page documents `AgentConsumptionReceipt@v1` as current. It is not:
+`scripts/lib/campaign_interfaces.py` declares
+`RECEIPT_SCHEMA = "AgentConsumptionReceipt@v2"`, and the campaign
+`INTERFACE_CONTRACTS.md` §6 names `@v2` as the single frozen receipt
+contract superseding `@v1`. Read `@v2` as authoritative; the `@v1` shape
+below is retained for historical rows only.
+
+Filed under §20 (a contradicting finding opens an amendment in the same
+wave) during the narrative-identity work — see
+`docs/architecture/narrative-subject-identity.md`.
+
 **Status:** Phase 8 implemented (subscriptions + receipts + influence lineage).  
 **Schema version:** `AgentConsumptionReceipt@v1`  
 **Code:** `scripts/lib/comms/agent_contracts.py`  

@@ -164,7 +164,7 @@ def persist_recommendation(run_id: Optional[int], rec: dict) -> bool:
         from db_adapter import _execute, USE_DB
         if not USE_DB:
             return False
-        return bool(_execute(
+        ok = bool(_execute(
             """INSERT INTO inference_sizing_recommendations
                (run_id, proposal_id, symbol, strategy_id, account, base_shares,
                 recommended_shares, tilt, regime, confidence, risk_gate_result,
@@ -176,6 +176,44 @@ def persist_recommendation(run_id: Optional[int], rec: dict) -> bool:
              rec.get("risk_gate_result"), json.dumps(rec.get("risk_flags", [])),
              rec.get("rationale", "")[:2000], json.dumps(rec.get("sizing_basis", {}), default=str)),
             fetch=None))
+        if ok:
+            _tag_recommendation(rec)
+        return ok
     except Exception as e:
         log.warning("sizing persist failed: %s", e)
         return False
+
+
+def _tag_recommendation(rec: dict) -> dict | None:
+    """Attach subject identity to one sizing rationale.
+
+    `rationale` is a narrative and carried no identity until 2026-09-10, so it
+    could not be rolled up against the security, sector or strategy it concerns.
+    The sector was already in hand and simply dropped: the proposal this rec is
+    derived from comes from `paper_trade_proposals`, which carries sector and
+    industry. Nothing new is looked up here.
+
+    Fail-safe by construction -- a tagging failure must never lose a sizing
+    recommendation the desk is waiting on.
+    """
+    try:
+        from db_adapter import _execute
+
+        from scripts.lib.cio_narrative_write import write_narrative
+
+        subjects = [{"entity_type": "SECURITY", "value": rec.get("symbol")}]
+        if rec.get("strategy_id"):
+            subjects.append({"entity_type": "STRATEGY", "value": rec.get("strategy_id")})
+        basis = rec.get("sizing_basis") or {}
+        if basis.get("sector"):
+            subjects.append({"entity_type": "SECTOR", "value": basis.get("sector")})
+        if basis.get("industry"):
+            subjects.append({"entity_type": "INDUSTRY", "value": basis.get("industry")})
+        return write_narrative(
+            executor=lambda sql, params: _execute(sql, params, fetch=None),
+            source_table="inference_sizing_recommendations",
+            source_id=rec.get("proposal_id") or rec.get("symbol"),
+            subjects=subjects, composed=False)
+    except Exception as e:  # noqa: BLE001 - see docstring
+        log.warning("sizing identity tag failed (rec still persisted): %s", e)
+        return None

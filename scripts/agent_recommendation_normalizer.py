@@ -188,9 +188,41 @@ def save_recommendations(conn, recs, dry_run=True):
               r["recommendation_type"], r["recommendation_action"],
               r.get("confidence"), r.get("confidence_bucket"),
               r.get("time_horizon"), r.get("recommendation_time")])
-        inserted += cur.rowcount
+        wrote = cur.rowcount
+        inserted += wrote
+        if wrote:
+            _tag_recommendation(cur, r)
     conn.commit()
     return inserted
+
+
+def _tag_recommendation(cur, r: dict) -> None:
+    """Attach subject identity to one normalized recommendation.
+
+    462,902 rows carried no subject identity, so "what has this agent said about
+    this sector" and "which strategy produced this call" were both unanswerable
+    despite every input being present in the row.
+
+    Tagged only when the INSERT actually wrote. The statement is
+    ON CONFLICT DO NOTHING over a table that is re-scanned daily, so tagging
+    unconditionally would re-resolve identity for hundreds of thousands of
+    already-tagged rows on every run for no gain.
+
+    No DDL on this table -- 462,902 rows with a live reader path; the link table
+    exists so tagging never takes an ACCESS EXCLUSIVE lock here.
+    Fail-safe: a tagging failure must never lose a recommendation.
+    """
+    try:
+        from scripts.lib.cio_narrative_write import (
+            load_symbol_profiles, subjects_for_symbol, write_narrative)
+        load_symbol_profiles(cur)
+        write_narrative(cur, source_table="agent_recommendation_registry",
+                        source_id=r["recommendation_id"],
+                        subjects=subjects_for_symbol(
+                            r.get("symbol"), strategy_id=r.get("strategy_id")),
+                        author_agent_id="cio", composed=False)
+    except Exception:
+        return
 
 
 def main():
