@@ -112,16 +112,35 @@ def test_wake_with_no_memory(state, tmp_path):
     assert "no_relevant_memory" in r["wake"]["provenance"]["policy_decisions"]
 
 
-def test_stale_memory_refuses(state, tmp_path):
+def test_stale_memory_degrades_and_does_not_refuse(state, tmp_path):
+    """Superseded assertion, 2026-09-10.
+
+    This test previously pinned `state == "STALE"` and `ok is False`. That
+    behaviour had never once executed in production: `stale` is derived from
+    the newest loaded fact, and every wake loaded zero facts, so `newest` was
+    always None and `stale` always False. When memory became findable the
+    branch fired for the first time and aborted a real wake.
+
+    Refusing is the wrong response. Before memory was loadable these subjects
+    proceeded with no facts; after, one old fact ended the decision entirely,
+    so the desk did strictly less the more memory it could find. Measured then:
+    65 of 71 subjects with loadable memory were past the 168h window.
+
+    The intent is preserved — the wake never reasons from stale facts — but it
+    proceeds without them instead of stopping. The literals are changed here
+    because the policy is corrected, not to make a red test green.
+    """
     mem = _mem_file(tmp_path, [_fact("f1", "old", hours_ago=24 * 30)])
     r = run_scheduled_wake(
         agent_id="cio", subject_guid=SG, state_root=state,
         memory_backend=mem, when=NOW, env=ENV_ON,
         # MemoryLoader default stale 168h; 30d is stale
     )
-    assert r["ok"] is False
-    assert r["state"] == "STALE"
-    assert JsonlStore(state).count("commitments") == 0
+    assert r["ok"] is True
+    assert r.get("state") != "STALE"
+    assert r["wake"]["lifecycle_state"] != "STALE"
+    assert r["wake"]["memory_fact_ids"] == [], "must not reason from stale facts"
+    assert "stale_memory_degraded_to_empty" in r["wake"]["provenance"]["policy_decisions"]
 
 
 def test_malformed_memory_refuses(state, tmp_path):

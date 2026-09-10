@@ -21,7 +21,7 @@ import hashlib
 import json
 import os
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 from functools import lru_cache
 from pathlib import Path
@@ -556,11 +556,30 @@ class WakeEngine:
             return {"ok": False, "wake": wake, "state": "MEMORY_MALFORMED", "inserted": inserted}
 
         if snap.stale:
-            wake["lifecycle_state"] = "STALE"
-            wake["provenance"]["policy_decisions"].append("refuse_stale_memory")
-            self.store.upsert_by_key("wakes", "wake_id", wake, preserve_terminal=True,
-                                     terminal_states=TERMINAL_WAKE)
-            return {"ok": False, "wake": wake, "state": "STALE", "inserted": inserted}
+            # Stale memory DEGRADES to empty; it does not abort the wake.
+            #
+            # This branch had never executed. `stale` is computed from the
+            # newest loaded fact, and until 2026-09-10 every wake loaded zero
+            # facts, so `newest` was always None and `stale` always False.
+            # Making memory findable armed a control that had been dead since
+            # it was written, and the first thing it did was refuse a wake.
+            #
+            # Refusing is the wrong shape. Before memory was loadable these
+            # subjects proceeded with no facts; after, one 18-day-old fact
+            # aborted the decision entirely. That makes the desk do strictly
+            # LESS the more memory it can find, and a refused wake produces no
+            # decision at all — the same terminal slot loss as the
+            # MEMORY_MALFORMED regression earlier the same day.
+            #
+            # Measured at the time of this change: 65 of 71 subjects with
+            # loadable memory were past the 168h window (median age 432h).
+            #
+            # The intent behind the refusal is kept: the wake still never
+            # reasons from stale facts. It simply proceeds without them, which
+            # is exactly the position it was in yesterday.
+            snap = replace(snap, facts=[], empty=True)
+            wake["memory_fact_ids"] = []
+            wake["provenance"]["policy_decisions"].append("stale_memory_degraded_to_empty")
 
         # Empty memory is LOADED-with-empty — not a crash, not a silent act.
         memory_empty = snap.empty

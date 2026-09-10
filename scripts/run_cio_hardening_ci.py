@@ -54,6 +54,9 @@ GATES = [
             # it did not make them findable. 488 of 930 rows carry no
             # subject_guid and every wake loaded zero facts.
             "tests/test_wake_memory_symbol_resolve.py",
+            # 2026-09-10: making memory findable armed refuse_stale_memory,
+            # a branch that had never executed. It aborted real wakes.
+            "tests/test_wake_stale_memory_degrades.py",
             "tests/test_runtime_identity.py",
             # 2026-09-10 operator-channel presentation: navigation prose must
             # carry a tappable FQDN link, the plaintext fallback must unescape,
