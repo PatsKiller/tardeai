@@ -31,5 +31,9 @@ health:
   auto_remediate_dump_findings: false
   dump_stale_warn_hours: 30
   dump_stale_critical_hours: 54
-  disk_warn_free_pct: 20
-  disk_critical_free_pct: 10
+  disk_warn_free_pct: 15
+  disk_critical_free_pct: 8
+
+# Historical/manual piles outside ~/db_backups — enforced by disk_hygiene_enforcer.py
+# (backup_enforcer remains the hard-cap for trade_ai_*.sql.gz only).
+# See config/disk_hygiene_policy.yaml stale_backup_piles.

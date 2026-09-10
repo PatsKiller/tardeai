@@ -1,0 +1,36 @@
+# Disk hygiene — keep host from filling again (2026-09-10 incident: 98% / 11G free).
+# Enforced by: scripts/disk_hygiene_enforcer.py (+ optional user timer).
+# Does NOT delete CURRENT, live process cwd releases, or the capped ~/db_backups dump.
+
+releases:
+  root: "~/trade-ai-releases/portfolio-server"
+  glob: "*-main-exact-*"
+  keep_n: 10                    # newest by directory mtime, plus always-protected
+  protect_symlinks:
+    - "CURRENT"
+    - "EXPECTED_RELEASE"
+  # Never delete a release whose path is cwd of a live process (auto-detected).
+
+stale_backup_piles:
+  # Extra piles outside backup_enforcer's ~/db_backups hard-cap.
+  - path: "~/backups"
+    max_age_days: 45            # delete files older than this (not dirs with mixed ages: files only)
+    protect_globs: []
+  - path: "~/ops-backups"
+    max_age_days: 45
+    protect_globs: []
+  - path: "~"
+    glob: "doc_hygiene_backup_*.tgz"
+    max_age_days: 60
+  - path: "~"
+    glob: "master_rewrite_backup_*.tgz"
+    max_age_days: 60
+
+disk:
+  warn_free_pct: 15
+  critical_free_pct: 8
+  target_path: "/"
+
+# Timer should run with --apply in production after first successful dry-run review.
+defaults:
+  dry_run: true

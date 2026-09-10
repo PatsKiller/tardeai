@@ -15,6 +15,7 @@ hermes_discovery_candidates:
 
 content_embeddings:
   orphan_purge_days: 30    # purge embeddings whose source row is gone
+  max_age_days: 90         # also purge any embedding older than 90d (disk rail; regenerable)
 
 hermes_embedding_queue:
   failed_purge_days: 14    # purge failed queue entries after 14d

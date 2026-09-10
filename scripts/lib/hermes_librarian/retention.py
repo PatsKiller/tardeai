@@ -27,6 +27,7 @@ DEFAULT_RETENTION = {
     },
     "content_embeddings": {
         "orphan_purge_days": 30,  # purge embeddings whose source row is gone
+        "max_age_days": 90,       # age rail — regenerable vectors
     },
     "hermes_embedding_queue": {
         "failed_purge_days": 14,
@@ -153,6 +154,34 @@ def apply_retention(conn, *, dry_run: bool = False) -> dict:
         conn.commit()
     actions.append({"table": "content_embeddings", "action": "purge_hermes_research_orphans",
                     "count": hermes_orphans, "threshold_days": orphan_cfg})
+
+    # 6. Age purge for content_embeddings (largest disk consumer when orphans=0)
+    age_cfg = int(policy.get("content_embeddings", {}).get("max_age_days", 90) or 90)
+    cur.execute(
+        """
+        SELECT COUNT(*) FROM content_embeddings
+        WHERE created_at < CURRENT_DATE - %s::int
+        """,
+        (age_cfg,),
+    )
+    aged = cur.fetchone()[0]
+    if aged > 0 and not dry_run:
+        cur.execute(
+            """
+            DELETE FROM content_embeddings
+            WHERE created_at < CURRENT_DATE - %s::int
+            """,
+            (age_cfg,),
+        )
+        conn.commit()
+    actions.append(
+        {
+            "table": "content_embeddings",
+            "action": "purge_by_age",
+            "count": aged,
+            "threshold_days": age_cfg,
+        }
+    )
 
     cur.close()
     return {

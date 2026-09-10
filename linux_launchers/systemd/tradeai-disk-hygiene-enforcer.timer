@@ -1,0 +1,10 @@
+[Unit]
+Description=TradeAI disk hygiene enforcer daily — prevent release/backup pile-up
+
+[Timer]
+OnCalendar=*-*-* 04:15:00
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

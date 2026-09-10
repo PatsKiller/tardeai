@@ -1,0 +1,11 @@
+[Unit]
+Description=Hermes Librarian retention enforce — archive/purge orphans per policy
+After=network-online.target
+
+[Service]
+Type=oneshot
+Environment=PYTHONUNBUFFERED=1
+TimeoutStartSec=1800
+ExecStart=/bin/bash -lc 'PY=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python; for CAND in /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT /home/johnclaw/trade-ai-worktrees/disk-hygiene-20260910 /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild; do if [ -f "$CAND/scripts/run_hermes_librarian_retention.py" ]; then cd "$CAND"; exec "$PY" scripts/run_hermes_librarian_retention.py --apply; fi; done; echo "run_hermes_librarian_retention.py not found" >&2; exit 1'
+StandardOutput=append:/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/hermes_librarian_retention.log
+StandardError=append:/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/hermes_librarian_retention.log

@@ -1,0 +1,10 @@
+[Unit]
+Description=Hermes Librarian retention enforce daily — purge orphans / archived research
+
+[Timer]
+OnCalendar=*-*-* 05:10:00
+Persistent=true
+RandomizedDelaySec=180
+
+[Install]
+WantedBy=timers.target
