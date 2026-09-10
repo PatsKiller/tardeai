@@ -1888,6 +1888,85 @@ lesson_id       operator_turn_id                instrument_record_id
 
 All under `GOOD_PERSISTENT_ROOT`. **A new id type requires justification against these eleven.**
 
+### Narrative subject identity — `NarrativeSubjectLink@v1`  `[VERIFIED]` 2026-09-10
+
+**The cause.** Fifteen surfaces hold a narrative, thesis, rationale or summary.
+On 2026-09-10 exactly one — `subject_state_narratives` — carried any identity.
+Every defense thesis (515 rows), rotation thesis (109), sizing rationale (269)
+and all 462,902 rows of `agent_recommendation_registry` carried none, so none of
+it could be rolled up, cited, or shown against what it was about. The sharpest
+instance: `material_changes` fired `sector_move` under a representative *member*
+symbol, so 13 of 14 sector events carried a SECURITY guid — the thing §17A
+already forbade in words and nothing enforced.
+
+**This adds no new id type.** It is a link between two ids that already exist, so
+the eleven above stand unchanged. It reuses `entity_guid()` from
+`ticker_knowledge_graph.py` (`tradeai:entity:{kind}:{casefold}`) and
+`subject_guid` from the registry. Four id formats already coexist in this repo;
+a fifth was not created.
+
+**Tags, not records.** Read with the subject-key namespace below: `SECTOR:name`
+and `THEME:slug` name an `InstrumentRecord@v1` — something that can be *woken*,
+hold a thesis, carry operator turns and have a cadence. A narrative subject link
+is a **tag**: it says what a piece of text is *about*. Minting a link never mints
+a record and never gives a sector a cadence. The `INDUSTRY:` / `THEME:` prefixes
+remain "SPECIFIED, no producer yet" as records.
+
+| subject type | guid namespace | resolved by | minted? |
+|---|---|---|---|
+| `SECURITY` | registry `subject_guid` | `cio_subject_guid.lookup_subject` | **never** — lookup only |
+| `SECTOR` | `tradeai:entity:sector:*` | `entity_guid` after `normalize_sector` | yes |
+| `INDUSTRY` | `tradeai:entity:industry:*` | `entity_guid` | yes |
+| `THEME` | `tradeai:entity:theme:*` | `entity_guid` | yes |
+| `PORTFOLIO` | `tradeai:entity:portfolio:*` | `entity_guid` | yes |
+| `STRATEGY` | `tradeai:entity:strategy:*` | `entity_guid` | yes |
+
+**Rules that must hold.**
+
+1. **A security guid is never minted from a name.** The registry is the only
+   authority; memory and narrative are not. No registry answer = no security
+   link, not an invented one.
+2. **Canonicalise before minting.** `entity_guid` casefolds but does not
+   canonicalise. Without `research_identity.normalize_sector`, "Consumer
+   Cyclical" and "Consumer Discretionary" mint two guids for one sector and every
+   rollup silently splits.
+3. **A sector has no issuer.** `issuer_guid` is NULL on a non-security subject.
+   Same rule as macro data (§7): inventing one corrupts the security spine.
+4. **Many-to-many, always.** A thesis is about a theme *and* a sector *and*
+   several securities. Rotation is sector-FIRST — its writer returns `None`
+   without a sector — so tagging by symbol reproduces the `sector_move` defect.
+5. **`author_agent_id` is not `issuer_guid`.** `issuer_guid` is the *company*.
+   The authoring agent is a separate field drawn from `KNOWN_AGENTS`.
+6. **Fail-safe here, not fail-closed.** If identity resolution throws the
+   narrative still persists, untagged, and the miss is reported. An untagged row
+   is degraded; a lost one is a blank operator surface. This is the one place the
+   trade-off runs opposite to the rest of the standard, and it is deliberate.
+
+**What each lane must stamp.** Any agent writing to one of these carries the
+subject types named here.
+
+| lane | subject | mentions |
+|---|---|---|
+| `material_changes` (`sector_move`) | SECTOR | member SECURITYs |
+| `material_changes` (other kinds) | SECURITY | — |
+| `subject_state_narratives` | SECURITY | SECTOR |
+| `defense_directive_hits_staging` | SECURITY | SECTOR, THEME |
+| `rotation_directive_hits_staging` | **SECTOR** | SECURITY (ETF proxy only), THEME |
+| `inference_sizing_recommendations` | SECURITY | STRATEGY, SECTOR, INDUSTRY |
+| `watchlist_final_synthesis` | SECURITY | SECTOR, INDUSTRY |
+| `agent_recommendation_registry` | SECURITY | STRATEGY, SECTOR, INDUSTRY |
+| `rec_rotation_links`, `aegis_rotation_candidates` | SECURITY `from` + `to` | SECTOR both legs |
+| `strategy_lesson_rollup`, `profit_protection_shadow_recommendations` | STRATEGY | — |
+| `risk_synthesis_results` | PORTFOLIO | SECURITYs from `top_risks` |
+| `run_summary`, `system_rollup_daily`, `closed_trade_digest_log` | PORTFOLIO | — |
+| `learning_recommendations` | THEME (domain) | — |
+| outbound `communication_events` | whatever the message is about | — |
+
+Owner: `scripts/lib/cio_narrative_subjects.py` (resolve) and
+`scripts/lib/cio_narrative_write.py` (persist). Store: `narrative_subjects`.
+Contract: `docs/architecture/narrative-subject-identity.md`.
+
+
 ### Subject-key namespace
 
 ```
