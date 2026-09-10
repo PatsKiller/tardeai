@@ -163,7 +163,10 @@ def _persist_db(conn, event: CommunicationEvent, channels: list[str]) -> Publish
                 short_summary, raw_body_ref, provider_coordinates, delivery_policy,
                 knowledge_eligibility, knowledge_status, build_sha, release_id,
                 run_id, source_system, source_agent, source_job, observed_at,
-                created_at, payload, gateway_mode_at_write
+                created_at, payload, gateway_mode_at_write,
+                provider_message_id, provider_settled_at, provider_settlement_state,
+                delivery_owner, gateway_mode_at_dispatch, curation_kind,
+                curation_provenance, subject_guid, source_sha, provenance
             ) VALUES (
                 %(event_id)s, %(schema_version)s, %(direction)s, %(event_type)s, %(message_class)s,
                 %(severity)s, %(audience)s, %(producer)s, %(producer_version)s, %(producer_event_id)s,
@@ -176,7 +179,10 @@ def _persist_db(conn, event: CommunicationEvent, channels: list[str]) -> Publish
                 %(short_summary)s, %(raw_body_ref)s, %(provider_coordinates)s, %(delivery_policy)s,
                 %(knowledge_eligibility)s, %(knowledge_status)s, %(build_sha)s, %(release_id)s,
                 %(run_id)s, %(source_system)s, %(source_agent)s, %(source_job)s, %(observed_at)s,
-                %(created_at)s, %(payload)s, %(gateway_mode_at_write)s
+                %(created_at)s, %(payload)s, %(gateway_mode_at_write)s,
+                %(provider_message_id)s, %(provider_settled_at)s, %(provider_settlement_state)s,
+                %(delivery_owner)s, %(gateway_mode_at_dispatch)s, %(curation_kind)s,
+                %(curation_provenance)s, %(subject_guid)s, %(source_sha)s, %(provenance)s
             )
             ON CONFLICT (idempotency_key) DO NOTHING
             RETURNING event_id
@@ -190,6 +196,8 @@ def _persist_db(conn, event: CommunicationEvent, channels: list[str]) -> Publish
                 "provider_coordinates": json.dumps(row.get("provider_coordinates") or {}),
                 "delivery_policy": json.dumps(row.get("delivery_policy") or {}),
                 "payload": json.dumps(row.get("payload") or {}),
+                "curation_provenance": json.dumps(row.get("curation_provenance") or {}),
+                "provenance": json.dumps(row.get("provenance") or {}),
                 "gateway_mode_at_write": mode,
             },
         )

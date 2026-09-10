@@ -1,0 +1,31 @@
+{
+  "generated_at_utc": "2026-09-10T04:17:26.230846+00:00",
+  "members": [
+    {
+      "path": "migrations/2026_09_07_communication_event_v2_settlement.sql",
+      "sha256": "feb7f35784ee9808036829a7a5dc73544d7276177cbdb3e05d4102200284d381",
+      "bytes": 2866
+    },
+    {
+      "path": "migrations/2026_09_07_communication_event_v2_settlement.down.sql",
+      "sha256": "a14476fdbe6f0f248d453863d3aa17e80bd2a693caae4386ed4403e9601cef63",
+      "bytes": 472
+    },
+    {
+      "path": "ops-evidence/SETTLEMENT_SCHEMA_BEFORE.json",
+      "sha256": "17c7a9b53554ac5480913aa95acbf6881d2227775dd3199f43254b62a7bcf794",
+      "bytes": 24081
+    },
+    {
+      "path": "ops-evidence/SETTLEMENT_MIGRATION_PLAN.md",
+      "sha256": "ddb82d654e440d01b626f46be529dc1d359011c97dc808b0ab1f75b72b109715",
+      "bytes": 10342
+    },
+    {
+      "path": "ops-evidence/SETTLEMENT_MIGRATION_ROLLBACK.sql",
+      "sha256": "4a1ff0848a3a21ee5b2e3fad4e036c31a371831373b5cac93899d7d2273585f2",
+      "bytes": 2265
+    }
+  ],
+  "combined_sha256": "0e97073e441d9d24e74ec16cf4e65e1c1644f46e8a05a9d9c93271dadad2c79f"
+}

@@ -60,9 +60,17 @@ GATES = [
             # the integration owner — this file is the central CI gate registry
             # and is never lane-leased.
             "tests/test_run_persistent_wake.py",
+            # INC-2026-09-09-STATE-ROOT-FORK: wake evidence must not live inside
+            # a release directory, or it forks silently on every promote.
+            "tests/test_wake_state_root_stability.py",
             # SFR-A-FOLLOWUP2-001: wake subject selection.
             "tests/test_wake_subject_selector.py",
             "tests/test_wake_research_consumption.py",
+            # Grok-closure Phase 2: canonical recurring research -> wake feed
+            # producer. Governed Brave router + budget -> durable ResearchObject
+            # -> atomic wake feed -> selector. Registered by the integration
+            # owner; the producer is the ONLY writer of the research feed.
+            "tests/test_governed_research_producer.py",
             # SFR-R-001: the consumption loop must close. Slots 13:00Z/14:00Z on
             # 54639ff5a re-selected the same three sources because the runner's
             # own receipts never reached the selector.
@@ -71,9 +79,18 @@ GATES = [
             # provider acknowledgement -> SETTLED, and no duplicate delivery.
             "tests/test_agent_gateway_adapter.py",
             "tests/test_gateway_settlement.py",
+            # Grok-closure Phase 3: settlement truth is durable on the EVENT
+            # row (re-read after ack shows SETTLED, not just the memory mirror).
+            "tests/test_durable_event_settlement.py",
             # Lane I: inbound operator event -> correlation -> consumption receipt.
             "tests/test_inbound_event_normalizer.py",
             "tests/test_inbound_consumption.py",
+            # Grok-closure Phase 3: one coherent intake — checkpoint advances
+            # only after event + operator turn + receipt are all durable.
+            "tests/test_atomic_inbound.py",
+            # Grok-closure Phase 4: canonical durable commitment contract
+            # (falsifier/confidence/horizon/freeze) + scheduled outcome evaluator.
+            "tests/test_governed_commitment.py",
             # Lane T: gog -n is MUTATING; the wrapper refuses it and verifies
             # remote hashes after any Drive mutation.
             "tests/test_drive_mutation_safety.py",
