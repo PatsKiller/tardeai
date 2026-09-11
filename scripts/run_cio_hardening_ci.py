@@ -68,6 +68,11 @@ GATES = [
             # provider separation, returned-model verification, and that a test
             # suite can never reach a paid provider.
             "tests/test_wake_l3_call_site.py",
+            # 2026-09-11 node 2: identity_status was written into the
+            # link-confidence column. The two enums overlap only on CONFIRMED,
+            # so every unresolved identity raised CheckViolation and the
+            # material-change detector died on every run for ~15h.
+            "tests/test_narrative_subject_confidence.py",
             "tests/test_l3_judgment_pipeline.py",
             "tests/test_l3_judgment_cache.py",
             "tests/test_l3_critic.py",
