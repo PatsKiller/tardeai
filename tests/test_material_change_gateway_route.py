@@ -152,3 +152,78 @@ def test_rows_are_not_consumed_when_delivery_fails():
     guard_pos = src.rfind("if accepted:", 0, update_pos)
     assert guard_pos != -1 and update_pos != -1
     assert guard_pos < update_pos, "notified_at must be stamped only under `if accepted`"
+
+
+def _producer_message_class() -> str:
+    """The class this producer actually hands the gateway, read from source.
+
+    Parsed rather than hardcoded so the test tracks the call site instead of
+    restating it.
+    """
+    import ast
+
+    src = (ROOT / "scripts" / "notify_material_change.py").read_text()
+    for node in ast.walk(ast.parse(src)):
+        if not isinstance(node, ast.Call):
+            continue
+        if getattr(node.func, "id", None) != "send_via_gateway":
+            continue
+        for kw in node.keywords:
+            if kw.arg == "message_class" and isinstance(kw.value, ast.Constant):
+                return str(kw.value.value)
+    raise AssertionError("could not find message_class passed to send_via_gateway")
+
+
+def test_the_class_this_producer_sends_actually_passes_the_real_allowlist(monkeypatch):
+    """THE GAP THIS FILE HAD. Every other gateway test here mocks
+    `send_via_gateway`, so all of them passed while this producer could not
+    deliver a single message.
+
+    `telegram_class_allowed` normalizes the *message's* class through the
+    vocabulary but compares it against the allowlist *verbatim*. One side
+    normalized, the other not — so `operator_alert` became `ops` and was tested
+    against `{"operator_alert"}`, which can never match. Result:
+    `delivery_blocked_allowlist:CANARY:operator_alert` on every send, before any
+    provider I/O, with no legacy fallback. Indistinguishable from having no
+    producer at all, and no counter anywhere showed it.
+
+    This asserts against the REAL gate and the REAL vocabulary. No mocks.
+    """
+    from scripts.lib.comms.channel_adapters import telegram_class_allowed
+    from scripts.lib.comms.vocabulary import is_canonical
+
+    mc = _producer_message_class()
+    assert is_canonical(mc), (
+        f"producer sends {mc!r}, which is an alias. The allowlist is compared "
+        f"verbatim, so an alias fails closed forever. Send the canonical class."
+    )
+    # Allowlist the class as an operator would write it, then ask the real gate.
+    for mode, env in (("CANARY", "COMMS_GATEWAY_CANARY_CLASSES"),
+                      ("ACTIVE", "COMMS_GATEWAY_ACTIVE_CLASSES")):
+        monkeypatch.setenv(env, mc)
+        assert telegram_class_allowed(mode, mc), (
+            f"class {mc!r} is not deliverable under {mode} when allowlisted as "
+            f"itself — the producer would fail closed on every send"
+        )
+        # And the alias an operator might reasonably write instead must NOT
+        # silently work, because that is the trap: it looks configured and
+        # delivers nothing.
+        monkeypatch.setenv(env, "operator_alert")
+        assert not telegram_class_allowed(mode, "operator_alert"), (
+            "an aliased allowlist entry appears configured but blocks every send"
+        )
+
+
+def test_the_alias_that_broke_it_still_demonstrates_the_asymmetry():
+    """Pins the actual defect so a 'fix' that only edits this producer, and
+    leaves the next caller to rediscover it, is visible in the record.
+
+    Not asserting the asymmetry is *correct* — it is a live P1. Asserting that it
+    is still there, so removing it breaks this test on purpose and forces the
+    blast radius (every `send_telegram` default caller becomes gateway-owned,
+    on a path with no legacy fallback) to be considered deliberately.
+    """
+    from scripts.lib.comms.vocabulary import normalize_message_class
+
+    assert normalize_message_class("operator_alert") == "ops"
+    assert normalize_message_class("ops") == "ops"
