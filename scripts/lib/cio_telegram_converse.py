@@ -1415,6 +1415,17 @@ def _best_effort_capture_turn(text: str, *, role: str, chat_id: str,
         )
         root = thread_root(conn, chat_id=chat_id, message_id=message_id,
                            reply_to_message_id=reply_to_message_id)
+        # Position names a subject too. "ok" in reply to a WMT alert is about
+        # WMT, but tag_inbound reads text only and leaves the turn unbound —
+        # and an unbound turn is invisible to prior_operator_turns(). Only
+        # applies when the text resolved nothing; a typed ticker always wins.
+        if not (tag.get("resolved") or []):
+            from scripts.lib.inbound_identity_tagger import resolve_via_reply
+
+            inferred = resolve_via_reply(
+                conn, chat_id=chat_id, reply_to_message_id=reply_to_message_id)
+            if inferred:
+                tag = {**tag, "resolved": inferred}
         persist_turn(tag, conn=conn, text=text, role=role,
                      chat_id=chat_id, message_id=message_id,
                      thread_id=root, reply_to_message_id=reply_to_message_id,

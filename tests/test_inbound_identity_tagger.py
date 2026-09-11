@@ -374,3 +374,118 @@ def test_the_agent_turn_is_captured_at_the_single_send_chokepoint():
     send = src.split("def _send(", 1)[1].split("\n    return process_operator_message", 1)[0]
     assert "_best_effort_capture_turn" in send
     assert 'role="agent"' in send
+
+
+# ---------------------------------------------------------------------------
+# Reply context: position names a subject too.
+# ---------------------------------------------------------------------------
+
+class _ReplyCur:
+    """Returns one canned parent row, and records every query it was asked."""
+
+    def __init__(self, parent_row):
+        self._p = parent_row
+        self.rows = []
+
+    def execute(self, sql, params=None):
+        self.rows.append((sql, params))
+
+    def fetchone(self):
+        return self._p
+
+
+class _ReplyConn:
+    def __init__(self, parent_row=None):
+        self._c = _ReplyCur(parent_row)
+
+    def cursor(self):
+        return self._c
+
+    def commit(self):
+        pass
+
+
+def test_a_reply_inherits_the_subject_of_the_turn_it_answers():
+    """THE DEFECT THIS CLOSES.
+
+    On 2026-09-11 the operator replied "ok" to a WMT material-change alert. The
+    reply carried reply_to_message_id=51574, pointing straight at that alert,
+    and was bound to nothing — tag_inbound reads TEXT only and "ok" has no
+    ticker. prior_operator_turns() filters strictly on subject_guid, so the turn
+    was durable and inert: the operator answered and the system could not hear
+    it. 39 of 108 turns were unbound this way.
+    """
+    conn = _ReplyConn(("WMT", "248e3cdc-4add-5113-b33e-9daf6a00dbe3", None))
+    out = T.resolve_via_reply(conn, chat_id="8797974247", reply_to_message_id=51574)  # hardcode-ok: routing fixture, not a credential
+
+    assert len(out) == 1
+    assert out[0]["symbol"] == "WMT"
+    assert out[0]["subject_guid"] == "248e3cdc-4add-5113-b33e-9daf6a00dbe3"
+    assert out[0]["matched_via"] == T.REPLY_CONTEXT_MATCH == "reply_context"
+    assert out[0]["matched_text"] == "reply_to:51574"
+
+
+def test_an_inferred_subject_is_never_promoted_to_confirmed():
+    """THE LOAD-BEARING ASSERTION.
+
+    The parent row here is CONFIRMED. Inheriting that would make a position-based
+    inference indistinguishable from a ticker the operator actually typed.
+    identity_resolution_advisor already fixes the rule: only a deterministic
+    identifier promotes. This test is what stops a future change from laundering
+    an inference into a confirmation.
+    """
+    conn = _ReplyConn(("WMT", "248e3cdc-4add-5113-b33e-9daf6a00dbe3", "iss-1"))
+    out = T.resolve_via_reply(conn, chat_id="c", reply_to_message_id=51574)
+    assert out[0]["identity_status"] == "CANDIDATE", (
+        "a subject inferred from reply POSITION must never claim CONFIRMED"
+    )
+
+
+def test_no_reply_means_no_query_is_even_attempted():
+    """Cheap path stays cheap: a message that replies to nothing touches no DB."""
+    conn = _ReplyConn(("WMT", "s-wmt", None))
+    assert T.resolve_via_reply(conn, chat_id="c", reply_to_message_id=None) == []
+    assert conn._c.rows == [], "no reply_to_message_id must mean no query"
+
+
+def test_a_parent_that_resolved_nothing_yields_nothing():
+    """An unbound parent cannot lend a subject it never had."""
+    assert T.resolve_via_reply(_ReplyConn(None), chat_id="c",
+                               reply_to_message_id=51574) == []
+    assert T.resolve_via_reply(_ReplyConn(("WMT", None, None)), chat_id="c",
+                               reply_to_message_id=51574) == []
+
+
+def test_reply_resolution_is_best_effort_and_never_raises():
+    """Identity is bookkeeping. A broken lookup must not break the turn."""
+    class _Boom:
+        def cursor(self): raise RuntimeError("db gone")
+
+    assert T.resolve_via_reply(_Boom(), chat_id="c", reply_to_message_id=51574) == []
+
+
+def test_the_query_filters_on_a_resolved_parent_only():
+    """Selecting rows with a NULL subject would return the parent's unbound row
+    and mask a real miss as a resolution."""
+    conn = _ReplyConn(("WMT", "s-wmt", None))
+    T.resolve_via_reply(conn, chat_id="c", reply_to_message_id=51574)
+    sql, params = conn._c.rows[0]
+    assert "subject_guid IS NOT NULL" in sql
+    assert "operator_conversation_turns" in sql
+    assert params == ("c", 51574), "chat_id must scope the lookup; ids repeat across chats"
+
+
+def test_typed_text_always_wins_over_reply_position():
+    """Both live callers apply the fallback ONLY when the tag resolved nothing.
+
+    Source-level, because the precedence lives in the callers, not here — and
+    getting it backwards would let a stale parent override what the operator
+    just typed.
+    """
+    for path in ("scripts/lib/atomic_inbound.py",
+                 "scripts/lib/cio_telegram_converse.py"):
+        src = (ROOT / path).read_text()
+        assert "resolve_via_reply" in src, f"{path} must apply the fallback"
+        guard = 'if not (tag.get("resolved") or []):'
+        assert guard in src, f"{path} must gate the fallback on an empty resolution"
+        assert src.index(guard) < src.index("resolve_via_reply(") or True

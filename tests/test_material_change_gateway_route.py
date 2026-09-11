@@ -227,3 +227,113 @@ def test_the_alias_that_broke_it_still_demonstrates_the_asymmetry():
 
     assert normalize_message_class("operator_alert") == "ops"
     assert normalize_message_class("ops") == "ops"
+
+
+# ---------------------------------------------------------------------------
+# An alert must be findable as the parent of a reply.
+# ---------------------------------------------------------------------------
+
+class _TurnCur:
+    def __init__(self): self.rows = []
+    def execute(self, sql, params=None): self.rows.append((sql, params))
+    def fetchone(self): return None
+
+
+class _TurnConn:
+    def __init__(self): self._c = _TurnCur()
+    def cursor(self): return self._c
+    def commit(self): pass
+
+
+GW_TWO_CHATS = {
+    "delivered": True,
+    "provider_message_id": "51573,51574",
+    "provider_coordinates": {"channel": "telegram",
+                             "message_ids": ["51573", "51574"],
+                             "chat_ids": ["6993102664", "8797974247"]},  # hardcode-ok: routing fixture, not a credential
+}
+ROWS_TWO = [
+    {"symbol": "WMT", "subject_guid": "248e3cdc-4add-5113-b33e-9daf6a00dbe3"},
+    {"symbol": "ADBE", "subject_guid": "0bc81168-8536-51ef-9bc8-44cb160bcc60"},
+]
+
+
+def _params(conn):
+    return [p for _sql, p in conn._c.rows]
+
+
+def test_an_alert_is_recorded_once_per_delivered_message_id():
+    """THE MISSING PARENT.
+
+    A reply resolves against a row saying "message 51574 was about WMT". No such
+    row was ever written: material-change notices go out through the gateway, and
+    only the conversational path recorded an agent turn. Measured 2026-09-11 —
+    2 agent turns existed in total, none for any alert.
+
+    A delivery to two chats yields one message id PER CHAT. Recording only the
+    first would leave a reply in the second chat unresolvable.
+    """
+    conn = _TurnConn()
+    n = nmc.capture_agent_turns(conn, message="WMT — unusual news volume",
+                                rows=ROWS_TWO, gw=GW_TWO_CHATS)
+    assert n == 4, "2 message ids x 2 subjects — persist_turn's documented grain"
+    mids = {p[3] for p in _params(conn)}
+    assert mids == {51573, 51574}
+    assert all(p[0] == "agent" for p in _params(conn)), "role must be agent"
+
+
+def test_each_message_id_keeps_the_chat_it_was_sent_to():
+    """message_ids[i] belongs to chat_ids[i].
+
+    Message ids repeat across chats, so the reply lookup is scoped by chat. Pair
+    them wrongly and a reply in one chat resolves against another chat's alert.
+    """
+    conn = _TurnConn()
+    nmc.capture_agent_turns(conn, message="m", rows=ROWS_TWO, gw=GW_TWO_CHATS)
+    pairs = {(p[2], p[3]) for p in _params(conn)}
+    assert ("6993102664", 51573) in pairs  # hardcode-ok: routing fixture, not a credential
+    assert ("8797974247", 51574) in pairs  # hardcode-ok: routing fixture, not a credential
+    assert ("6993102664", 51574) not in pairs, "ids must not be cross-paired"  # hardcode-ok: routing fixture, not a credential
+
+
+def test_it_falls_back_to_splitting_the_joined_string():
+    """Producer-side splitting is safe — the value was built by a stable join.
+
+    That is NOT true on the lookup side, which never splits it at all; this
+    fallback exists only so an older gateway result still records parents.
+    """
+    conn = _TurnConn()
+    n = nmc.capture_agent_turns(
+        conn, message="m", rows=ROWS_TWO[:1],
+        gw={"delivered": True, "provider_message_id": "51573,51574"})
+    assert n == 2
+    assert {p[3] for p in _params(conn)} == {51573, 51574}
+
+
+def test_a_change_with_no_subject_is_not_invented_into_one():
+    """An unresolved change cannot lend a subject it never had."""
+    conn = _TurnConn()
+    n = nmc.capture_agent_turns(conn, message="m",
+                                rows=[{"symbol": "ZZZZ", "subject_guid": None}],
+                                gw=GW_TWO_CHATS)
+    assert n == 0 and _params(conn) == []
+
+
+def test_no_message_ids_means_nothing_is_written():
+    conn = _TurnConn()
+    assert nmc.capture_agent_turns(conn, message="m", rows=ROWS_TWO,
+                                   gw={"delivered": True}) == 0
+    assert _params(conn) == []
+
+
+def test_bookkeeping_failure_never_fails_the_alert():
+    """The alert is already delivered and the rows already consumed when this
+    runs. A raise here would turn a successful send into a crashed run — which
+    is exactly how the 15:30Z deadlock left an advisory queued to re-send."""
+    src = (ROOT / "scripts" / "notify_material_change.py").read_text()
+    body = src.split("result[\"rows_produced\"] = cur.rowcount", 1)[1][:800]
+    assert "capture_agent_turns" in body
+    assert "except Exception" in body and "[outbound-tag]" in body
+    assert body.index("conn.commit()") < body.index("capture_agent_turns"), (
+        "turns must be captured only AFTER the consume is committed"
+    )

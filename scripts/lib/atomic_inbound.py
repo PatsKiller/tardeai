@@ -267,6 +267,20 @@ def _persist_turn_for_update(update: dict[str, Any], tag: dict[str, Any], text: 
     conn = _db_conn()
     if conn is None:
         return 0
+
+    # A reply to a specific alert names its subject by POSITION. `tag_inbound`
+    # reads text only, so "ok" resolves nothing and the turn lands unbound —
+    # invisible to prior_operator_turns(), which filters strictly on
+    # subject_guid. Fall back to the parent turn's subject, but ONLY when the
+    # text resolved nothing: a ticker the operator actually typed always wins.
+    if not (tag.get("resolved") or []):
+        from scripts.lib.inbound_identity_tagger import resolve_via_reply
+
+        inferred = resolve_via_reply(
+            conn, chat_id=chat_id, reply_to_message_id=reply_to)
+        if inferred:
+            tag = {**tag, "resolved": inferred}
+
     return persist_turn(
         tag,
         conn=conn,

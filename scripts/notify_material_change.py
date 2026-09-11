@@ -297,6 +297,74 @@ def route_check(message: str) -> str:
     return "WILL_SEND" if should_send_telegram(message) else "WOULD_SUPPRESS"
 
 
+def capture_agent_turns(conn, *, message: str, rows: list[dict], gw: dict) -> int:
+    """Record what this alert was about, per delivered message id.
+
+    WHY THIS EXISTS
+    ---------------
+    An operator replying to an alert names its subject by position. Resolving
+    that reply needs a row saying "telegram message 51574 was about WMT" — and
+    no such row was ever written. Material-change notices go out through
+    `deliver_notice` -> gateway; only the conversational path
+    (`cio_telegram_converse._send`) ever recorded an agent turn, so alerts were
+    invisible as reply parents. Measured 2026-09-11: 2 agent turns existed in
+    total, none for any alert, while 39 of 108 operator turns sat unbound.
+
+    The comms ledger cannot answer this. `provider_message_id` is stored as the
+    comma-joined string "51573,51574", and both
+    `find_delivery_by_provider_message_id` and
+    `resolve_event_by_provider_message_id` compare it whole and read
+    `provider_coordinates["message_id"]` (singular) while the adapters write
+    `message_ids` (plural). Nothing splits it. `operator_conversation_turns`
+    already keys on a single `message_id`, so it is the reverse map that works.
+
+    GRAIN: one row per (message id, subject) — `persist_turn`'s documented grain,
+    reached by handing it one `resolved` entry per change. A four-name digest
+    delivered to two chats writes eight rows, and a reply to either chat's copy
+    resolves.
+
+    Best-effort by construction: the alert has already been delivered and the
+    rows already consumed by the time this runs. An alert must never fail
+    because bookkeeping did.
+    """
+    coords = gw.get("provider_coordinates") or {}
+    mids = [str(m).strip() for m in (coords.get("message_ids") or []) if str(m).strip()]
+    chats = [str(c).strip() for c in (coords.get("chat_ids") or []) if str(c).strip()]
+    if not mids:
+        # Fall back to the joined string. Safe HERE because this is the producer
+        # side, where the value was built by a stable ",".join — unlike the
+        # lookup side, which never splits it at all.
+        mids = [m.strip() for m in str(gw.get("provider_message_id") or "").split(",") if m.strip()]
+    if not mids:
+        return 0
+
+    resolved = [
+        {"symbol": r.get("symbol"),
+         "subject_guid": str(r["subject_guid"]) if r.get("subject_guid") else None,
+         "issuer_guid": None,
+         # The subject is carried by the alert itself, not inferred from prose.
+         "identity_status": "CONFIRMED" if r.get("subject_guid") else None,
+         "matched_via": "material_change",
+         "matched_text": r.get("symbol")}
+        for r in rows if r.get("subject_guid")
+    ]
+    if not resolved:
+        return 0
+
+    from scripts.lib.inbound_identity_tagger import persist_turn
+
+    written = 0
+    for i, mid in enumerate(mids):
+        # message_ids[i] is the id in chat_ids[i]; a reply arrives with the chat
+        # it was sent from, so the pairing has to survive or the lookup misses.
+        chat = chats[i] if i < len(chats) else (chats[0] if chats else None)
+        written += persist_turn(
+            {"resolved": resolved, "topics": [], "unresolved_mentions": []},
+            conn=conn, text=message, role="agent",
+            chat_id=chat, message_id=mid, thread_id=mid, channel="telegram")
+    return written
+
+
 def deliver_notice(message: str, *, subject_key: str) -> tuple[bool, dict]:
     """Send one operator notice. Returns (accepted, gateway_report).
 
@@ -453,6 +521,16 @@ def main() -> int:
                     ("SENT", [str(r["change_guid"]) for r in rows]))
         result["rows_produced"] = cur.rowcount
         conn.commit()
+        # Record what this alert was about, so a reply to it can find its
+        # subject. Strictly after the send and the consume — an alert must never
+        # fail because bookkeeping did.
+        try:
+            result["agent_turns"] = capture_agent_turns(
+                conn, message=message, rows=rows, gw=gw_result)
+        except Exception as exc:  # noqa: BLE001
+            result["agent_turns"] = 0
+            print(f"[outbound-tag] {type(exc).__name__}: {str(exc)[:160]}",
+                  file=sys.stderr)
     else:
         result["rows_produced"] = 0
         print("send not accepted — changes left pending for the next run",
