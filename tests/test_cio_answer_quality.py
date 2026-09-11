@@ -106,15 +106,27 @@ def test_subject_research_degrades_to_empty_never_raises(monkeypatch):
     The failure is INJECTED rather than produced by pointing at an unroutable
     host -- a real TCP connect would make this test hang for the OS timeout,
     which is how a test suite quietly becomes something nobody runs.
+
+    The driver is injected as a FAKE MODULE rather than imported. The first
+    version of this test did `import psycopg2` to reach its connect(), which
+    passed locally and failed in CI with ModuleNotFoundError: CI is source-only
+    and has no database driver installed. A test asserting that a broken
+    database read degrades to empty must not itself require the database
+    driver to import -- the environment it most needs to protect is the one
+    without it.
     """
-    import psycopg2
+    import types
+
+    fake = types.ModuleType("psycopg2")
+
+    def boom(*a, **k):
+        raise RuntimeError("connection refused")
+
+    fake.connect = boom  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "psycopg2", fake)
 
     import scripts.lib.cio_operator_desk_loop as D
 
-    def boom(*a, **k):
-        raise psycopg2.OperationalError("connection refused")
-
-    monkeypatch.setattr(psycopg2, "connect", boom)
     assert D.subject_research(["WMT"]) == []
 
 
@@ -174,3 +186,15 @@ def test_authority_footer_survives_plain_text():
                               parse_mode=None)
     assert "parse_mode" not in payload
     assert "READ_ONLY_ADVISORY" in payload["text"]
+
+
+def test_suite_does_not_require_a_database_driver():
+    """CI is source-only. A test file that imports psycopg2 at module or test
+    scope passes locally and fails in CI -- which is what happened here."""
+    tree = ast.parse(Path(__file__).read_text())
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for a in node.names:
+                assert not a.name.startswith("psycopg2"), a.name
+        elif isinstance(node, ast.ImportFrom):
+            assert not (node.module or "").startswith("psycopg2"), node.module
