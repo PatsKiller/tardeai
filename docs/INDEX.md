@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `44abcfe24eddffd8a93c86a98a826ae86ec3af57becb604502eeffd597684a56`
+**Tree fingerprint:** `9a5bccc5fa28b946f1931ec3eb3483dad6582286bc6d9e7150e398ccbf8a7390`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,10 +12,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2474 |
-| Markdown (excl. this INDEX) | 2061 |
+| Files under `docs/` (excl. this INDEX) | 2476 |
+| Markdown (excl. this INDEX) | 2063 |
 | **MISSING HEADER** | **51** |
-| Header OK | 2010 |
+| Header OK | 2012 |
 | Duplicate groups | 2 |
 
 ### By status_guess
@@ -28,7 +28,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_raw_sync | 36 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 2 |
-| review_required | 2103 |
+| review_required | 2105 |
 
 ## Markdown tree
 
@@ -272,8 +272,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/CIO_ASIS_VS_SPEC_2026-09-09-ceiling.md` | CIO Agent — AS-IS vs SPEC (2026-09-09 live ceiling) | review_required | OK | `11646742f3fe` |
 | `docs/architecture/CIO_ASIS_VS_SPEC_2026-09-09-final.md` | CIO Agent — AS-IS vs SPEC (2026-09-09 final) | review_required | OK | `dd2922037c1f` |
 | `docs/architecture/CIO_ASIS_VS_SPEC_2026-09-09.md` | CIO Agent — AS-IS vs SPEC (2026-09-09) | review_required | OK | `57bdddcf06e3` |
-| `docs/architecture/CIO_AS_IS_2026-09-10-2105.md` | CIO AS-IS — what actually runs, measured tonight | review_required | OK | `47a40944f78d` |
-| `docs/architecture/CIO_FUTURE_2026-09-10-2105.md` | CIO FUTURE — the desk at full maturity | review_required | OK | `dc35b88478b1` |
+| `docs/architecture/CIO_AS_IS_2026-09-10-2105.md` | CIO AS-IS — what actually runs, measured tonight | review_required | OK | `c64ca9d59049` |
+| `docs/architecture/CIO_AS_IS_2026-09-10-2215.md` | CIO AS-IS — every step, every lateral, measured | review_required | OK | `4149fc96391a` |
+| `docs/architecture/CIO_FUTURE_2026-09-10-2105.md` | CIO FUTURE — the desk at full maturity | review_required | OK | `d618b5a3a612` |
+| `docs/architecture/CIO_FUTURE_2026-09-10-2215.md` | CIO FUTURE — the mature desk, every step, every lateral | review_required | OK | `af8a97f6de5e` |
 | `docs/architecture/CIO_FUTURE_STATE_FULL_MATURITY.md` | CIO Agent — FULL MATURITY TARGET | review_required | OK | `23fcdb6a73f2` |
 | `docs/architecture/CIO_FUTURE_STATE_FULL_MATURITY_2026-09-09-ceiling.md` | CIO Agent — FULL MATURITY TARGET (2026-09-09 live ceiling) | review_required | OK | `2ffcc8e19322` |
 | `docs/architecture/CIO_FUTURE_STATE_FULL_MATURITY_2026-09-09-final.md` | CIO Agent — FULL MATURITY TARGET (2026-09-09 final) | review_required | OK | `5b412d2266d6` |
