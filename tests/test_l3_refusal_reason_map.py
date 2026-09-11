@@ -24,3 +24,13 @@ def test_provider_outage_maps_cleanly():
 def test_schema_invalid_still_schema_invalid():
     out = build_refusal_output(grounded={}, gate_state=SCHEMA_INVALID, reasons=["non_json"])
     assert out["refusal_reason"] == "schema_invalid"
+
+
+def test_unrecognized_gate_state_not_silent_schema_invalid():
+    from scripts.lib.judgment_schema import UNRECOGNIZED_REFUSAL, build_refusal_output
+
+    out = build_refusal_output(grounded={}, gate_state="TOTALLY_NEW_STATE", reasons=[])
+    assert out["refusal_state"] == UNRECOGNIZED_REFUSAL
+    assert out["refusal_reason"] != "schema_invalid" or "unrecognized_refusal_state:TOTALLY_NEW_STATE" in out["refusal_reasons"]
+    assert any("unrecognized_refusal_state:TOTALLY_NEW_STATE" == x or x.startswith("unrecognized_refusal_state:") for x in out["refusal_reasons"])
+    assert out["refusal_reason"] == "provider_refusal"

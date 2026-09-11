@@ -41,6 +41,7 @@ MODEL_MISMATCH = "MODEL_MISMATCH"
 PROVIDER_OUTAGE = "PROVIDER_OUTAGE"
 CRITIC_PROVIDER_COLLISION = "CRITIC_PROVIDER_COLLISION"
 QUARANTINED = "QUARANTINED"
+UNRECOGNIZED_REFUSAL = "UNRECOGNIZED_REFUSAL"
 
 DURABLE_REFUSAL_STATES = frozenset(
     {
@@ -57,6 +58,7 @@ DURABLE_REFUSAL_STATES = frozenset(
         PROVIDER_OUTAGE,
         CRITIC_PROVIDER_COLLISION,
         QUARANTINED,
+        UNRECOGNIZED_REFUSAL,
     }
 )
 
@@ -406,8 +408,16 @@ def build_refusal_output(
 ) -> dict[str, Any]:
     """Durable refusal/defer — never a template promoted to L3 judgment."""
     g = dict(grounded or {})
-    state = gate_state if gate_state in DURABLE_REFUSAL_STATES else SCHEMA_INVALID
-    refusal_reason = REFUSAL_REASON_MAP.get(state, "schema_invalid")
+    reasons = list(reasons or [])
+    if gate_state in DURABLE_REFUSAL_STATES:
+        state = gate_state
+    else:
+        # Latent defect noted 2026-09-11: silently relabelling unknown states as
+        # SCHEMA_INVALID asserts "model answered off-contract" about a state the
+        # system simply does not recognize. Keep an explicit durable state.
+        state = UNRECOGNIZED_REFUSAL
+        reasons.append(f"unrecognized_refusal_state:{gate_state}")
+    refusal_reason = REFUSAL_REASON_MAP.get(state, "provider_refusal")
     return {
         "schema": SCHEMA_OUTPUT,
         "correlation_id": correlation_id or g.get("correlation_id") or "",
@@ -417,7 +427,7 @@ def build_refusal_output(
         "status": "REFUSED",
         "refusal_reason": refusal_reason,
         "refusal_state": state,
-        "refusal_reasons": list(reasons or []),
+        "refusal_reasons": list(reasons),
         "provider_calls": int(provider_calls),
         "author": None,
         "critic": None,
