@@ -56,7 +56,12 @@ GATES = [
             "tests/test_wake_memory_symbol_resolve.py",
             # 2026-09-10: making memory findable armed refuse_stale_memory,
             # a branch that had never executed. It aborted real wakes.
+            # 2026-09-11: degrading to empty was still a cliff — it kept the
+            # decision and discarded every fact. Age is now a continuous decay
+            # weight; these files pin "old is OLD, not absent".
             "tests/test_wake_stale_memory_degrades.py",
+            "tests/test_memory_decay.py",
+            "tests/test_memory_grounding_l2.py",
             # 2026-09-10: a promote updates the served release and not the
             # hub tree the cron producers run from. A fix can be live and
             # inert at the same time, and nothing compared the two.

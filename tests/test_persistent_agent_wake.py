@@ -112,8 +112,8 @@ def test_wake_with_no_memory(state, tmp_path):
     assert "no_relevant_memory" in r["wake"]["provenance"]["policy_decisions"]
 
 
-def test_stale_memory_degrades_and_does_not_refuse(state, tmp_path):
-    """Superseded assertion, 2026-09-10.
+def test_stale_memory_decays_and_does_not_refuse(state, tmp_path):
+    """Superseded assertion, twice: 2026-09-10 and again 2026-09-11.
 
     This test previously pinned `state == "STALE"` and `ok is False`. That
     behaviour had never once executed in production: `stale` is derived from
@@ -126,9 +126,11 @@ def test_stale_memory_degrades_and_does_not_refuse(state, tmp_path):
     so the desk did strictly less the more memory it could find. Measured then:
     65 of 71 subjects with loadable memory were past the 168h window.
 
-    The intent is preserved — the wake never reasons from stale facts — but it
-    proceeds without them instead of stopping. The literals are changed here
-    because the policy is corrected, not to make a red test green.
+    2026-09-11 supersedes the fix as well as the original. "Degrade to empty"
+    kept the decision but still discarded every fact, so one old observation
+    erased the whole subject. Age is now a continuous weight: the wake proceeds
+    AND still sees the fact, discounted. The literals change here because the
+    policy is corrected, not to make a red test green.
     """
     mem = _mem_file(tmp_path, [_fact("f1", "old", hours_ago=24 * 30)])
     r = run_scheduled_wake(
@@ -139,8 +141,12 @@ def test_stale_memory_degrades_and_does_not_refuse(state, tmp_path):
     assert r["ok"] is True
     assert r.get("state") != "STALE"
     assert r["wake"]["lifecycle_state"] != "STALE"
-    assert r["wake"]["memory_fact_ids"] == [], "must not reason from stale facts"
-    assert "stale_memory_degraded_to_empty" in r["wake"]["provenance"]["policy_decisions"]
+    assert r["wake"]["memory_fact_ids"] == ["f1"], "a 30d fact is old, not absent"
+    decisions = r["wake"]["provenance"]["policy_decisions"]
+    assert "stale_memory_retained_with_decay" in decisions
+    assert "stale_memory_degraded_to_empty" not in decisions
+    (weight,) = r["wake"]["provenance"]["memory_retrieval"]["decay_weights"]
+    assert 0.0 < weight < 1.0
 
 
 def test_malformed_memory_refuses(state, tmp_path):
