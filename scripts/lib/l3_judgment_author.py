@@ -54,6 +54,25 @@ def _mint_judgment_id(subject_guid: str, question: str, input_digest: str) -> st
     return f"jdg_{digest[:24]}"
 
 
+#: The subset of L3AuthorJudgment@v1 the MODEL must supply. The remaining
+#: required fields (judgment_id, provider, requested_model, returned_model,
+#: prompt_template_version, input_digest, ...) are envelope fields the caller
+#: fills after the response returns — asking the model for them would invite it
+#: to invent its own provenance.
+MODEL_SUPPLIED_FIELDS = (
+    "stance",
+    "claim",
+    "confidence",
+    "assumptions",
+    "uncertainties",
+    "falsifier",
+    "horizon",
+    "next_research_question",
+    "memory_fact_ids",
+    "evidence_source_ids",
+    "research_object_ids",
+)
+
 def build_author_prompt(
     *,
     grounded: Mapping[str, Any],
@@ -147,24 +166,6 @@ def build_author_prompt(
     return prompt, digest_obj(digest_payload)
 
 
-#: The subset of L3AuthorJudgment@v1 the MODEL must supply. The remaining
-#: required fields (judgment_id, provider, requested_model, returned_model,
-#: prompt_template_version, input_digest, ...) are envelope fields the caller
-#: fills after the response returns — asking the model for them would invite it
-#: to invent its own provenance.
-MODEL_SUPPLIED_FIELDS = (
-    "stance",
-    "claim",
-    "confidence",
-    "assumptions",
-    "uncertainties",
-    "falsifier",
-    "horizon",
-    "next_research_question",
-    "memory_fact_ids",
-    "evidence_source_ids",
-    "research_object_ids",
-)
 
 
 def _default_deepseek_call(**kwargs: Any) -> Any:
