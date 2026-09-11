@@ -135,6 +135,13 @@ class RejectionCounts:
     duplicate_content: int = 0
     ambiguous_subject: int = 0
     below_min_influence: int = 0
+    #: Facts dropped by the max_facts ceiling, NOT by the weight floor. Kept
+    #: separate because the two mean opposite things to a reader: "too weak to
+    #: use" versus "usable, but more than we carry". Measured 2026-09-11 on XLI
+    #: (4fa28fcf…), 57 facts all weighted 0.31–0.51 with ZERO under the floor —
+    #: folding the 25 surplus into below_min_influence reported every one of
+    #: them as too weak, which was simply false.
+    truncated_by_max_facts: int = 0
     future_timestamp: int = 0
     malformed_timestamp: int = 0
     mixed_schema: int = 0
@@ -174,6 +181,7 @@ class SelectionResult:
         return (
             len(self.selected)
             + self.rejected.below_min_influence
+            + self.rejected.truncated_by_max_facts
             + self.rejected.expired_by_policy
             + len(self.contradiction_visible)
         )
@@ -531,9 +539,12 @@ class SubjectGroundedMemorySelector:
 
         selected.sort(key=_stable_sort_key)
         if len(selected) > self.max_facts:
-            # Surplus counted as below floor for metrics transparency.
+            # Truncation is NOT a floor rejection. These facts passed every
+            # eligibility test and were dropped only because the ceiling is
+            # max_facts; counting them as below_min_influence told the reader
+            # they were too weak to use.
             overflow = selected[self.max_facts :]
-            rejected.below_min_influence += len(overflow)
+            rejected.truncated_by_max_facts += len(overflow)
             selected = selected[: self.max_facts]
 
         # Deterministic ordering already applied.
@@ -644,6 +655,7 @@ def build_grounded_judgment_input(
             "returned": len(selection.selected),
             "filtered_wrong_subject": selection.rejected.wrong_subject,
             "filtered_below_floor": selection.rejected.below_min_influence,
+            "truncated_by_max_facts": selection.rejected.truncated_by_max_facts,
             "decay_weight_min": min(weights) if weights else 0.0,
             "decay_weight_max": max(weights) if weights else 0.0,
             "decay_weight_median": _median(weights),
