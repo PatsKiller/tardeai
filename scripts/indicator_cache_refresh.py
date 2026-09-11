@@ -167,6 +167,11 @@ try:
                     len(outcome.get("suppressed") or []),
                 )
         except Exception as e:
+            # ALARM-DELIVERY-DECLARED: confluence-flip alerting is best-effort and
+            # must never fail the pre-market cache refresh. notify_confluence_flips
+            # already records each flip's dedupe state to alert_condition_state (a
+            # durable store) before sending, so a failure here degrades alerting,
+            # never the cache — the primary job still completes.
             logger.warning("confluence flip alerting skipped: %s", e)
 
     conn.close()
