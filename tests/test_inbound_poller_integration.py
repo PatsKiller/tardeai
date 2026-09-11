@@ -36,7 +36,7 @@ sys.path[:0] = [str(ROOT), str(ROOT / "scripts")]
 poller = importlib.import_module("scripts.run_telegram_callback_poller")
 from scripts.lib import inbound_consumption  # noqa: E402
 
-CHAT = "6993102664"
+CHAT = "6993102664"  # hardcode-ok: routing fixture, not a credential
 # Lane I dedups on update_id in a PERSISTENT store, so fixed ids collide across
 # runs and come back duplicate:update_already_processed. Unique per session.
 _UID_BASE = int(time.time()) % 1_000_000 * 100

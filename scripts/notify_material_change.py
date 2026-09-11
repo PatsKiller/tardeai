@@ -306,12 +306,19 @@ def deliver_notice(message: str, *, subject_key: str) -> tuple[bool, dict]:
 
     Delivery owner: legacy by default, gateway when explicitly enabled.
 
-    Every gateway-SETTLED row that has ever existed (3, all-time) is a staged
-    proof message asking the operator to reply "OK". Those are controlled
-    evidence and are excluded from acceptance, so the gateway has never carried
-    an organic producer. This is that producer, and it is a real one: the notice
-    is assembled from material_changes the detector actually found, not from an
-    event invented to move a counter.
+    An earlier version of this docstring claimed the gateway had never carried an
+    organic producer, and that every SENT row all-time was a staged proof. The
+    delivery census disproves it: `agent:cio` has delivered 8 organic
+    `agent_outbound` notices with real provider message ids between 2026-09-08 and
+    2026-09-10. The gateway was never dead. What was dead was *this* producer, and
+    for a reason no counter showed: it passed the `operator_alert` alias into a
+    class allowlist that only ever matches canonical names, so every send failed
+    closed before any provider I/O. Fixed by passing `ops`, the canonical class
+    `agent:cio` already uses.
+
+    This is still a real organic producer: the notice is assembled from
+    material_changes the detector actually found, not from an event invented to
+    move a counter.
     """
     if not gateway_notice_enabled():
         from telegram_alert import send_telegram
@@ -326,7 +333,16 @@ def deliver_notice(message: str, *, subject_key: str) -> tuple[bool, dict]:
         producer="notify_material_change",
         subject_key=subject_key,
         event_type="material_change_notice",
-        message_class="operator_alert",
+        # CANONICAL class, not the `operator_alert` alias. `telegram_class_allowed`
+        # normalizes the *message* before the allowlist test but leaves the
+        # *allowlist* verbatim, so an aliased class can never match a canonical
+        # entry and can never match its own alias either once the ledger stores
+        # the canonical form. Passing `operator_alert` here failed closed on every
+        # send with `delivery_blocked_allowlist:CANARY:operator_alert` and no
+        # legacy fallback, which is indistinguishable from having no producer.
+        # `agent:cio` has delivered through this same gateway since 2026-09-08
+        # precisely because it passes the canonical class. Match it.
+        message_class="ops",
         retention_class="operational_30d",
         deliver=True,
         severity="info",
@@ -366,7 +382,10 @@ def main() -> int:
     # idempotent (ADD COLUMN IF NOT EXISTS), and a dry run that cannot read the same
     # shape the apply path writes is not a rehearsal of anything. Gating this behind
     # --apply made the dry run fail with UndefinedColumn on a clean install.
-    cur.execute(DDL)
+    # ddl_guard: skip ADD COLUMN statements already satisfied, so a scheduled run
+    # takes no AccessExclusiveLock on material_changes just to assert a no-op.
+    from scripts.lib.ddl_guard import apply_ddl
+    apply_ddl(cur, DDL)
     conn.commit()
 
     open_now = args.ignore_window or in_window()

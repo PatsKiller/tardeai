@@ -7,6 +7,23 @@ or the whole tree with --tree — contains an API-key pattern, a secret FILE, or
 
   python3 scripts/check_no_secrets.py            # scan staged changes (pre-commit)
   python3 scripts/check_no_secrets.py --tree     # scan all tracked files
+
+WHAT IS AND IS NOT EXEMPTIBLE
+-----------------------------
+Credentials are NEVER exemptible. API keys, private keys, secret files, env backups
+and any literal value of a *_KEY / *_TOKEN / *_SECRET / *_PASSWORD from .env are
+blocked everywhere, in every file, with no opt-out. That is the hard rule and it
+does not move.
+
+The `# hardcode-ok` marker covers the separate "config comes from a source" rule —
+chat IDs and broker fallbacks. A Telegram chat ID is a routing identifier, not a
+credential: knowing it grants nothing without the bot token, which IS a credential
+and IS unconditionally blocked. A test that asserts "this message goes to that
+chat" has to name the chat, and forbidding that outright blocked every push to
+this repository on three pre-existing test fixtures nobody could lawfully change.
+
+So the marker is opt-IN, per-LINE, and visible in review. It is not a directory
+exemption: `tests/` is scanned exactly as strictly as `scripts/`.
 """
 from __future__ import annotations
 import re, subprocess, sys
@@ -121,10 +138,20 @@ def main():
                 secrets.append((f, f"value of {k} from .env"))
         # no-hardcoded-values (chat IDs + broker fallbacks) — .py only, line-aware, '# hardcode-ok' opt-out
         if f.endswith(".py") and "tg_chat_ids.py" not in f:
-            for cv in chat_vals:
-                if cv in txt:
-                    hardcodes.append((f, f"hardcoded chat ID {cv} — use tg_chat_ids.chat_ids()"))
             for i, line in enumerate(txt.splitlines(), 1):
+                # The chat-ID rule is LINE-aware and honours the same '# hardcode-ok'
+                # marker the broker rule has always had. It used to be a whole-file
+                # `cv in txt` test with no opt-out at all, which meant a test
+                # asserting routing behaviour had no way to declare intent — and
+                # three such tests blocked EVERY push to this repository.
+                #
+                # Deliberately NARROWER than the broker rule: a bare comment line is
+                # NOT skipped here, so a chat ID sitting in a comment is still
+                # reported. Only an explicit '# hardcode-ok' suppresses it.
+                if "# hardcode-ok" not in line:
+                    for cv in chat_vals:
+                        if cv in line:
+                            hardcodes.append((f, f"hardcoded chat ID {cv} (line {i}) — use tg_chat_ids.chat_ids(), or add '# hardcode-ok' if this is a fixture asserting routing behaviour"))
                 if "# hardcode-ok" in line or line.lstrip().startswith("#"):
                     continue
                 if BROKER_FALLBACK_RE.search(line):

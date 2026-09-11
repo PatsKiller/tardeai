@@ -482,3 +482,144 @@ def test_negative_control_removing_idempotency_would_duplicate(state, tmp_path):
 def test_feature_flag_default_off():
     assert feature_enabled({}) is False
     assert feature_enabled({FEATURE_FLAG: "1"}) is True
+
+
+# ---------------------------------------------------------------------------
+# A judgment that is not durable is not a judgment.
+# ---------------------------------------------------------------------------
+
+def _stub_judgment(view_id="view_test0000000000000000", judgment_id="jdg_test", critique_id="crt_test"):
+    """The shape scripts.lib.l3_agent_view_synthesis actually returns."""
+    return {
+        "output": {"status": "JUDGED", "refusal_reason": None},
+        "agent_view": {
+            "view_id": view_id,
+            "subject": SG,
+            "stance": "ABSTAIN",
+            "judgment_stance": "INSUFFICIENT",
+            "confidence": 0.7,
+            "cost_class": "model",
+            "provenance_class": "A",
+            "judgment_id": judgment_id,
+            "critique_id": critique_id,
+            "falsifier": "consumption of the research object yields primary evidence",
+            "citations": ["mem_x"],
+            "provenance": {
+                "producer": "l3_agent_view_synthesis",
+                "llm": {"author_provider": "deepseek", "critic_provider": "grok"},
+                "policy_decisions": ["critic_verdict=accept", "critic_provider=grok"],
+            },
+        },
+        "commitment": None,
+        "durable_rows": [],
+    }
+
+
+def test_the_judgments_own_view_is_persisted(state, tmp_path, monkeypatch):
+    """THE DEFECT THIS CATCHES.
+
+    On slot 2026-09-11T15:00Z the author returned INSUFFICIENT at 0.55 from
+    deepseek-flash over two paid provider calls, and the durable AgentView said
+    RECOMMEND at 0.6 with cost_class "zero" and llm null. Every one of the 75
+    agent_views ever written carried judgment_id null, because `default_decide`
+    never reads context["agent_view"] and the only view persist site builds its
+    own record with provenance llm hardcoded to None.
+
+    A reader of durable state therefore saw the OPPOSITE of what the system had
+    concluded, and the commitment it would later settle against was unrelated to
+    the judgment it had paid for.
+    """
+    import scripts.lib.persistent_agent_wake as PW
+
+    mem = _mem_file(tmp_path, [_fact("mem_x", "prior position on this subject")])
+    monkeypatch.setattr(PW.WakeEngine, "_maybe_judge",
+                        lambda self, *a, **k: _stub_judgment(), raising=True)
+
+    r = run_scheduled_wake(
+        agent_id="cio", subject_guid=SG, state_root=state,
+        memory_backend=str(mem), when=NOW, env=dict(ENV_ON),
+    )
+    wake = r.get("wake") or r
+    assert "l3_view_persisted" in wake["provenance"]["policy_decisions"]
+    assert wake["views_created"] == ["view_test0000000000000000"]
+
+    views = [json.loads(l) for l in (Path(state) / "views.jsonl").read_text().splitlines() if l.strip()]
+    persisted = [v for v in views if v["view_id"] == "view_test0000000000000000"]
+    assert len(persisted) == 1, "the judgment's own view must be durable"
+    v = persisted[0]
+
+    # The three fields whose absence made the old record contradict the judgment.
+    assert v["judgment_id"] == "jdg_test", "view must point at the judgment it came from"
+    assert v["critique_id"] == "crt_test", "view must point at the critique"
+    assert v["cost_class"] == "model", "a paid judgment must not be recorded as zero-cost"
+
+    # And the stance must be the model's, not a deterministic default.
+    assert v["stance"] == "ABSTAIN" and v["judgment_stance"] == "INSUFFICIENT"
+    assert v["provenance"]["llm"]["author_provider"] == "deepseek"
+    assert v["provenance"]["llm"]["critic_provider"] == "grok", (
+        "provider separation must be visible in DURABLE state, not only in a cache file"
+    )
+
+
+def test_views_created_is_always_declared(state, tmp_path):
+    """Absent-vs-empty must not be the reader's problem.
+
+    A key that materialises only on judged slots is unreadable: a consumer cannot
+    distinguish "no view" from "field not written by this version".
+    """
+    mem = _mem_file(tmp_path, [_fact("mem_x", "anything")])
+    r = run_scheduled_wake(
+        agent_id="cio", subject_guid=SG, state_root=state,
+        memory_backend=str(mem), when=NOW, env=dict(ENV_ON),
+    )
+    wake = r.get("wake") or r
+    assert "views_created" in wake, "views_created must be declared on every wake"
+    assert wake["views_created"] == [], "unjudged slot creates no view"
+
+
+def test_a_view_claiming_model_provenance_must_name_its_judgment(state, tmp_path, monkeypatch):
+    """Fail closed rather than persist the conflation in a new shape.
+
+    A view carrying cost_class "model" but no judgment_id is the same defect
+    wearing different clothes, so the wake refuses it outright.
+    """
+    import scripts.lib.persistent_agent_wake as PW
+
+    bad = _stub_judgment()
+    bad["agent_view"]["judgment_id"] = None
+    mem = _mem_file(tmp_path, [_fact("mem_x", "prior position")])
+    monkeypatch.setattr(PW.WakeEngine, "_maybe_judge",
+                        lambda self, *a, **k: bad, raising=True)
+
+    with pytest.raises(WakeRejected, match="judgment_id"):
+        run_scheduled_wake(
+            agent_id="cio", subject_guid=SG, state_root=state,
+            memory_backend=str(mem), when=NOW, env=dict(ENV_ON),
+        )
+
+
+def test_a_judged_slots_commitment_does_not_claim_no_model_ran(state, tmp_path, monkeypatch):
+    """`llm: None` was hardcoded on every commitment.
+
+    That is the truth for a deterministic decision and a lie for a slot that made
+    two paid provider calls.
+    """
+    import scripts.lib.persistent_agent_wake as PW
+
+    def _judge(self, wake, *a, **k):
+        wake["provenance"]["llm"] = {"provider": "deepseek", "judgment_id": "jdg_test"}
+        return _stub_judgment()
+
+    mem = _mem_file(tmp_path, [_fact("mem_x", "prior position")])
+    monkeypatch.setattr(PW.WakeEngine, "_maybe_judge", _judge, raising=True)
+
+    run_scheduled_wake(
+        agent_id="cio", subject_guid=SG, state_root=state,
+        memory_backend=str(mem), when=NOW, env=dict(ENV_ON),
+    )
+    rows = [json.loads(l) for l in (Path(state) / "commitments.jsonl").read_text().splitlines() if l.strip()]
+    assert rows, "expected a commitment"
+    llm = (rows[-1].get("provenance") or {}).get("llm")
+    assert llm and llm.get("judgment_id") == "jdg_test", (
+        "a judged slot's commitment must not record llm None"
+    )

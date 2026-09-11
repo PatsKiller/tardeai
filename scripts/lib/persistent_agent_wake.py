@@ -605,6 +605,11 @@ class WakeEngine:
             "research_object_ids": list(research_ids),
             "selection": selection_meta,
             "commitments_created": [],
+            # Declared alongside commitments_created rather than appearing only
+            # when a judgment happens to produce one. An undeclared key that
+            # materialises on some slots and not others is unreadable to any
+            # consumer trying to tell "no view" from "field absent".
+            "views_created": [],
             "receipts_emitted": [],
             "authority": AUTHORITY,
             "interface_version": INTERFACE_VERSION,
@@ -833,7 +838,15 @@ class WakeEngine:
                         "producer": wake["provenance"]["producer"],
                         "inputs": [{"kind": "wake", "id": wake_id}],
                         "policy_decisions": ["organic_from_wake_decision"],
-                        "llm": None,
+                        # `llm: None` is the truth for a deterministic decision and
+                        # a lie for a slot that made two paid provider calls. It
+                        # was hardcoded, so a judged slot's commitment claimed no
+                        # model had been involved. Carry the wake's own llm stamp,
+                        # which is None on unjudged slots and populated on judged
+                        # ones. Note this records what the SLOT spent, not that the
+                        # judgment authored this claim — the judgment's own view is
+                        # persisted separately.
+                        "llm": (wake["provenance"].get("llm") or None),
                         "influence_source_ids": list(wake["memory_fact_ids"]),
                     },
                 ),
@@ -925,6 +938,62 @@ class WakeEngine:
                     influence_source_ids=list(wake["memory_fact_ids"]),
                 )
                 receipts.append(erec)
+
+        # 5c) A judgment that is not durable is not a judgment.
+        #
+        # The L3 pipeline already synthesises a complete AgentView — judgment_id,
+        # critique_id, both providers, both digests, cost_class "model",
+        # provenance_class "A". Until now the wake computed it, put it in
+        # `context`, and dropped it: `default_decide` never reads
+        # context["agent_view"], and the only view persist site is the `elif`
+        # branch above, which builds its own view with provenance llm hardcoded
+        # to None.
+        #
+        # The result was the worst kind of disagreement. On slot 2026-09-11T15:00Z
+        # the author returned INSUFFICIENT at confidence 0.55 from deepseek-flash
+        # over two paid provider calls, and the durable record said RECOMMEND at
+        # 0.6 with cost_class "zero" and llm null. A reader of durable state saw
+        # the opposite of what the system had concluded, and every one of the 75
+        # agent_views ever written carried judgment_id null.
+        #
+        # So persist the judgment's own view. It is emitted IN ADDITION to any
+        # deterministic view rather than replacing it, because the two answer
+        # different questions ("what did the scheduler observe" vs "what did the
+        # model conclude") and collapsing them is how the meanings got confused
+        # in the first place.
+        judged_view = (judgment or {}).get("agent_view") if judgment else None
+        if judged_view:
+            jv = dict(judged_view)
+            jv.setdefault("wake_id", wake_id)
+            jv.setdefault("agent_id", agent_id)
+            jv.setdefault("subject_guid", subject_guid)
+            jv["authority"] = AUTHORITY
+            if not jv.get("view_id"):
+                raise WakeRejected("judgment agent_view has no view_id")
+            if not jv.get("judgment_id"):
+                # A view claiming model provenance with no judgment to point at
+                # is exactly the conflation this block exists to end.
+                raise WakeRejected("judgment agent_view has no judgment_id")
+            _jv_ins, jv = self.store.append_unique("views", "view_id", jv)
+            wake["views_created"] = sorted(
+                {*(wake.get("views_created") or []), jv["view_id"]}
+            )
+            wake["provenance"]["policy_decisions"].append("l3_view_persisted")
+            erec = self._emit_receipt(
+                agent_id=agent_id,
+                source_kind=(
+                    "memory_fact" if wake["memory_fact_ids"]
+                    else (_selection_primary_kind(selection_meta) or "memory_fact")
+                ),
+                source_id=(
+                    wake["memory_fact_ids"][0] if wake["memory_fact_ids"]
+                    else str((selection_meta or {}).get("source_id") or "none")
+                ),
+                wake_id=wake_id, subject_guid=subject_guid, purpose="wake_judgment",
+                effect_kind="changed_view", effect_ref=jv["view_id"], now=now, corr=corr,
+                influence_source_ids=list(wake["memory_fact_ids"]),
+            )
+            receipts.append(erec)
 
         wake["receipts_emitted"] = [r["receipt_id"] for r in receipts]
         wake["lifecycle_state"] = "ACTED" if decision.get("act") else (
