@@ -65,6 +65,17 @@ MARKET_CLOSE = time(16, 0)
 #: Never announce a change older than this. A stale alert is noise, and after a
 #: weekend or an outage the backlog would otherwise arrive as a wall of text.
 MAX_AGE_HOURS = int(os.getenv("MATERIAL_CHANGE_MAX_AGE_HOURS", "72"))
+
+#: Route this notice through the comms gateway instead of the legacy chokepoint.
+#: OFF by default. The gateway additionally requires COMMS_GATEWAY_MODE=CANARY
+#: (or ACTIVE) and the message class to be in COMMS_GATEWAY_CANARY_CLASSES, so
+#: three independent switches must agree before a single message changes path.
+GATEWAY_NOTICE_FLAG = "MATERIAL_CHANGE_GATEWAY_NOTICE"
+
+
+def gateway_notice_enabled(env: dict | None = None) -> bool:
+    e = env if env is not None else os.environ
+    return str(e.get(GATEWAY_NOTICE_FLAG, "")).strip().lower() in {"1", "true", "yes", "on"}
 #: Ceiling per run, so one thrashing name cannot dominate the channel.
 MAX_PER_RUN = int(os.getenv("MATERIAL_CHANGE_MAX_PER_RUN", "8"))
 
@@ -345,9 +356,58 @@ def main() -> int:
         print("RESULT: " + json.dumps(result))
         return 0
 
-    from telegram_alert import send_telegram
+    # Delivery owner: legacy by default, gateway when explicitly enabled.
+    #
+    # Every gateway-SETTLED row that has ever existed (3, all-time) is a staged
+    # proof message asking the operator to reply "OK". Those are controlled
+    # evidence and are excluded from acceptance, so the gateway has never carried
+    # an organic producer. This is that producer — and it is a real one: the
+    # notice below is assembled from material_changes the detector actually
+    # found, not from an event invented to move a counter.
+    #
+    # The flag defaults OFF and rollback needs no deploy: unset it and the very
+    # next 15-minute run goes back down the legacy path.
+    accepted = False
+    gw = None
+    if gateway_notice_enabled():
+        from scripts.lib.comms.channel_adapters import send_via_gateway
 
-    accepted = bool(send_telegram(message, message_class="operator_alert"))
+        gw = send_via_gateway(
+            "telegram",
+            body=message,
+            producer="notify_material_change",
+            subject_key=str(rows[0].get("subject_guid") or rows[0]["change_guid"]),
+            event_type="material_change_notice",
+            message_class="operator_alert",
+            retention_class="operational_30d",
+            deliver=True,
+            severity="info",
+        )
+        # SENT IS NOT SETTLED. `delivered` means the gateway owned the send and
+        # the provider acknowledged it; anything else leaves the rows pending.
+        accepted = bool(gw.get("delivered"))
+        result["gateway"] = {
+            "attempted": True,
+            "delivered": accepted,
+            "delivery_owned": bool(gw.get("delivery_owned")),
+            "gateway_mode": gw.get("gateway_mode"),
+            "event_id": gw.get("event_id"),
+            "delivery_id": gw.get("delivery_id"),
+            "errors": gw.get("errors") or ([gw["error"]] if gw.get("error") else []),
+        }
+        if not accepted:
+            # Do NOT silently fall back to legacy. A gateway failure that quietly
+            # succeeds as legacy would leave the ledger claiming an owner it never
+            # had, and would hide the failure from exactly the counter that is
+            # meant to reveal it.
+            print(f"gateway did not deliver ({result['gateway']['errors']}) — "
+                  "changes left pending, no legacy fallback", file=sys.stderr)
+    else:
+        from telegram_alert import send_telegram
+
+        accepted = bool(send_telegram(message, message_class="operator_alert"))
+        result["gateway"] = {"attempted": False}
+
     result["outcome"] = "SENT" if accepted else "NOT_ACCEPTED"
     if accepted:
         cur.execute("""UPDATE material_changes
