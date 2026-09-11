@@ -73,7 +73,7 @@ REFUSAL_REASON_MAP: dict[str, str] = {
     PROVIDER_OUTAGE: "provider_outage",
     SCHEMA_INVALID: "schema_invalid",
     QUARANTINED: "schema_invalid",
-    CRITIC_PROVIDER_COLLISION: "schema_invalid",
+    CRITIC_PROVIDER_COLLISION: "provider_refusal",  # independence fail — not a schema parse error
     # 2026-09-11 (Lane A, SFR_L3_TO_INTEGRATION): the contract enum was extended
     # rather than reusing provider_refusal. A deferral and a refusal are not the
     # same event: the provider was never asked, nothing was denied, and the work
