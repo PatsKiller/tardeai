@@ -59,7 +59,7 @@ def _req(**kwargs) -> AgentOutboundRequest:
         commitment_id="commit-settlement-001",
         authoritative_sources=[{"kind": "research_object", "id": "research:46057"}],
         command_center_path="/v3/cio",
-        chat_ids=["8797974247"],
+        chat_ids=["8797974247"],  # hardcode-ok: routing fixture, not a credential
         source_sha="54639ff5aaae0e3f56e6e0a327a7c99c06c5d466",
     )
     base.update(kwargs)
@@ -103,7 +103,7 @@ def test_reserve_before_transport_when_not_delivering(monkeypatch):
 def test_canary_deliver_settles_with_provider_id(monkeypatch):
     monkeypatch.setenv("COMMS_GATEWAY_MODE", "CANARY")
     monkeypatch.setenv("COMMS_GATEWAY_CANARY_CLASSES", "ops")
-    monkeypatch.setenv("COMMS_GATEWAY_CANARY_CHATS", "8797974247")
+    monkeypatch.setenv("COMMS_GATEWAY_CANARY_CHATS", "8797974247")  # hardcode-ok: routing fixture, not a credential
     mode_mod._cache["mode"] = None
     txn = _fake_transport_factory("tg-ack-99")
     r = deliver_agent_outbound(_req(), deliver=True, transport=txn)
@@ -213,7 +213,7 @@ def test_canary_chat_allowlist_blocks_outside_chats(monkeypatch):
     """Explicit CANARY chat allowlist: off-list chats fail closed, no transport."""
     monkeypatch.setenv("COMMS_GATEWAY_MODE", "CANARY")
     monkeypatch.setenv("COMMS_GATEWAY_CANARY_CLASSES", "ops")
-    monkeypatch.setenv("COMMS_GATEWAY_CANARY_CHATS", "8797974247")
+    monkeypatch.setenv("COMMS_GATEWAY_CANARY_CHATS", "8797974247")  # hardcode-ok: routing fixture, not a credential
     mode_mod._cache["mode"] = None
     txn = _fake_transport_factory()
     r = deliver_agent_outbound(
@@ -269,7 +269,7 @@ def _settled_wake(tmp_path: Path):
 def _canary_env(monkeypatch, *, outbound: str = "1", deliver: str = "1"):
     monkeypatch.setenv("COMMS_GATEWAY_MODE", "CANARY")
     monkeypatch.setenv("COMMS_GATEWAY_CANARY_CLASSES", "ops")
-    monkeypatch.setenv("COMMS_GATEWAY_CANARY_CHATS", "8797974247")
+    monkeypatch.setenv("COMMS_GATEWAY_CANARY_CHATS", "8797974247")  # hardcode-ok: routing fixture, not a credential
     monkeypatch.setenv("PERSISTENT_WAKE_GATEWAY_OUTBOUND", outbound)
     monkeypatch.setenv("PERSISTENT_WAKE_GATEWAY_DELIVER", deliver)
     mode_mod._cache["mode"] = None
@@ -288,7 +288,7 @@ def test_settled_wake_handler_invokes_gateway_and_settles(tmp_path, monkeypatch)
         env=dict(**WAKE_ENV, **{
             "COMMS_GATEWAY_MODE": "CANARY",
             "COMMS_GATEWAY_CANARY_CLASSES": "ops",
-            "COMMS_GATEWAY_CANARY_CHATS": "8797974247",
+            "COMMS_GATEWAY_CANARY_CHATS": "8797974247",  # hardcode-ok: routing fixture, not a credential
             "PERSISTENT_WAKE_GATEWAY_OUTBOUND": "1",
             "PERSISTENT_WAKE_GATEWAY_DELIVER": "1",
         }),
@@ -329,7 +329,7 @@ def test_handler_missing_transport_cannot_report_success(tmp_path, monkeypatch):
             "PERSISTENT_WAKE_GATEWAY_DELIVER": "1",
             "COMMS_GATEWAY_MODE": "CANARY",
             "COMMS_GATEWAY_CANARY_CLASSES": "ops",
-            "COMMS_GATEWAY_CANARY_CHATS": "8797974247",
+            "COMMS_GATEWAY_CANARY_CHATS": "8797974247",  # hardcode-ok: routing fixture, not a credential
         },
         transport=None,  # falls back to sanctioned_telegram_transport
         deliver=True,
@@ -348,7 +348,7 @@ def test_handler_duplicate_invocation_no_second_provider_send(tmp_path, monkeypa
         "PERSISTENT_WAKE_GATEWAY_OUTBOUND": "1",
         "COMMS_GATEWAY_MODE": "CANARY",
         "COMMS_GATEWAY_CANARY_CLASSES": "ops",
-        "COMMS_GATEWAY_CANARY_CHATS": "8797974247",
+        "COMMS_GATEWAY_CANARY_CHATS": "8797974247",  # hardcode-ok: routing fixture, not a credential
     })
     a = handler(wake=wake_result["wake"], receipts=wake_result["receipts"])
     b = handler(wake=wake_result["wake"], receipts=wake_result["receipts"])

@@ -56,7 +56,7 @@ def test_indirect_through_consumption_path_does_not_persist_to_db():
         "update_id": 77000001,
         "message": {
             "message_id": 77000001,
-            "chat": {"id": 6993102664},
+            "chat": {"id": 6993102664},  # hardcode-ok: routing fixture, not a credential
             "from": {"id": 4242},
             "date": 1788870000,
             "text": "barrier control",
