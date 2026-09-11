@@ -166,7 +166,12 @@ def test_process_free_text_dry_run_creates_path(paths, monkeypatch, tmp_path):
         rate_path=paths["rate"], dry_run=True,
     )
     assert r["handled"] is True
-    assert r["kind"] == "converse"
+    # "converse" was retired when the Flash operator-desk loop replaced the
+    # converse-plan path; `grep '"kind":'` in cio_converse_core shows the live
+    # set is slash/ack/attention/reentry_facts/decision_thread/operator_desk and
+    # nothing emits "converse" anywhere in the tree. The test was pinning a name
+    # the code had stopped using, so it failed on every free-text message.
+    assert r["kind"] == "operator_desk"
     assert r.get("reply_preview")
 
 

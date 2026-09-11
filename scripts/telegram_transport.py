@@ -72,6 +72,7 @@ def _base_payload(
     reply_markup: dict | None,
     parse_mode: str | None,
     message_id: Any = None,
+    reply_to_message_id: Any = None,
 ) -> dict:
     payload: dict[str, Any] = {"chat_id": chat_id, "text": text}
     if parse_mode:
@@ -82,6 +83,12 @@ def _base_payload(
         payload["reply_markup"] = reply_markup
     if message_id is not None:
         payload["message_id"] = message_id
+    if reply_to_message_id is not None:
+        # An answer that does not hang under its question is a different message
+        # in the same room. It also costs the inbound side its reply context: a
+        # later "ok" replying to THIS answer resolves its subject by pointing at
+        # the parent, and the parent has to be reachable for that to work.
+        payload["reply_to_message_id"] = int(reply_to_message_id)
     return payload
 
 
@@ -198,6 +205,7 @@ def deliver_text(
     reply_markup: dict | None = None,
     parse_mode: str | None = "Markdown",
     idempotency_key: str | None = None,
+    reply_to_message_id: Any = None,
     post: Optional[Callable] = None,
 ) -> dict:
     """Send or edit one Telegram message.
@@ -276,7 +284,7 @@ def deliver_text(
 
     payload = _base_payload(
         chat_id, text, thread_id=thread_id, reply_markup=reply_markup,
-        parse_mode=parse_mode,
+        parse_mode=parse_mode, reply_to_message_id=reply_to_message_id,
     )
     ok, code, body = _call(send_url, payload)
     if ok:
@@ -297,6 +305,7 @@ def deliver_text(
     payload_plain = _base_payload(
         chat_id, unescape_markdown(text) if parse_mode == "Markdown" else text,
         thread_id=thread_id, reply_markup=reply_markup, parse_mode=None,
+        reply_to_message_id=reply_to_message_id,
     )
     ok2, code2, body2 = _call(send_url, payload_plain)
     mid = _message_id_from(body2) if ok2 else None
@@ -339,6 +348,7 @@ def send_message(
     reply_markup: dict | None = None,
     parse_mode: str | None = "Markdown",
     idempotency_key: str | None = None,
+    reply_to_message_id: Any = None,
 ) -> dict:
     # C4: the interdict now lives in deliver_text, the lowest common layer, so it
     # cannot be bypassed by calling that directly. Kept here as an early return
@@ -353,6 +363,7 @@ def send_message(
         reply_markup=reply_markup,
         parse_mode=parse_mode,
         idempotency_key=idempotency_key,
+        reply_to_message_id=reply_to_message_id,
     )
 
 

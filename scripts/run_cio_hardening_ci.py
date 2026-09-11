@@ -190,6 +190,11 @@ GATES = [
             # Phase 8: ATOMIC_INBOUND_ENABLED gate on the approved poller
             # (default OFF → legacy feed_telegram_update).
             "tests/test_atomic_inbound_poller_gate.py",
+            # The operator asked twice and got silence: free text was persisted,
+            # bound and receipted, then fell off the end of the poll loop. The
+            # answer must go out on the bot that RECEIVED the question --
+            # send_cio_message fans out to a different token entirely.
+            "tests/test_cio_poller_reply.py",
             # Grok-closure Phase 4: canonical durable commitment contract
             # (falsifier/confidence/horizon/freeze) + scheduled outcome evaluator.
             "tests/test_governed_commitment.py",
