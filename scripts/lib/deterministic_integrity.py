@@ -153,6 +153,84 @@ def is_scheduled(script: str, cron: Optional[str] = None,
     return script.replace(".py", "") in timers
 
 
+def check_hub_behind_served_release(
+    hub_head: Optional[str] = None,
+    served_sha: Optional[str] = None,
+) -> list[dict[str, Any]]:
+    """The pipeline runs from the hub; a promote only moves the release.
+
+    AGENTS.md §17A names four trees and this is the failure mode they produce
+    together. Cron producers `cd` to the hub tree; the served release is a
+    separate directory that `CURRENT` points at. **Promoting updates the
+    second and not the first**, so a fix can be live and inert at the same
+    time, and every check that reads the release calls it deployed.
+
+    Cause, 2026-09-10: the Telegram presentation fix (#959) merged and
+    promoted at 22:48Z. Messages sent afterwards were unchanged — the
+    producers were still running code three merges old. The wake path, which
+    runs from CURRENT, had the fix immediately. Nothing reported a problem
+    because nothing compared the two.
+
+    Reports, never repairs. Advancing the hub can change ~190 scheduled jobs
+    at once and is not a machine's decision.
+    """
+    if hub_head is None:
+        hub_head = _git_head(ROOT)
+    if served_sha is None:
+        served_sha = _served_sha()
+
+    if not hub_head or not served_sha:
+        return [_finding(
+            "hub_release_drift_unknown", P2,
+            f"hub={hub_head or 'UNKNOWN'} served={served_sha or 'UNKNOWN'}",
+            "could not resolve one side of the comparison",
+            "check CURRENT resolves and the hub is a git tree; an unknown is "
+            "not a pass")]
+
+    if hub_head == served_sha:
+        return []
+
+    return [_finding(
+        "hub_behind_served_release", P1,
+        f"hub={hub_head[:9]} served={served_sha[:9]}",
+        "scheduled producers run from the hub tree, which is not at the served "
+        "SHA; a fix present in the release is absent from every cron job",
+        "advance the hub to the served commit after verifying it is clean and "
+        "has no unpushed commits, then confirm the producers pick it up")]
+
+
+def _git_head(tree: Path) -> Optional[str]:
+    try:
+        r = subprocess.run(["git", "rev-parse", "HEAD"], cwd=str(tree),
+                           capture_output=True, text=True, timeout=20)
+        return (r.stdout or "").strip() or None
+    except Exception:
+        return None
+
+
+def _served_sha() -> Optional[str]:
+    """Read the SHA stamp out of whatever CURRENT resolves to right now.
+
+    CURRENT rotates — it has moved three times in fifteen minutes — so it is
+    resolved at call time and never cached.
+    """
+    current = Path.home() / "trade-ai-releases" / "portfolio-server" / "CURRENT"
+    try:
+        real = Path(os.path.realpath(current))
+    except Exception:
+        return None
+    for name in ("SOURCE_COMMIT", "BUILD_SHA"):
+        p = real / name
+        try:
+            if p.is_file():
+                text = p.read_text(encoding="utf-8").strip()
+                if text and text.lower() != "unknown":
+                    return text
+        except Exception:
+            continue
+    return None
+
+
 def check_unscheduled_producers(producers: Iterable[str]) -> list[dict[str, Any]]:
     cron, timers = _crontab(), _timers()
     out = []
@@ -427,6 +505,7 @@ def run_all(*, conn=None, producers: Iterable[str] = (),
     findings += check_commented_out_crons(watch_crons)
     findings += check_unbounded_dedup(_py_files())
     findings += check_zero_default_metrics(_py_files())
+    findings += check_hub_behind_served_release()
     if conn is not None:
         findings += check_empty_join_inputs(conn, join_pairs)
         findings += check_stale_stores(conn)
