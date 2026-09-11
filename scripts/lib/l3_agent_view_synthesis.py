@@ -283,3 +283,116 @@ def synthesize_commitment(
         }
     )
     return gc
+
+
+def package_durable_l3_view(
+    *,
+    agent_view: Mapping[str, Any],
+    author: Mapping[str, Any],
+    critique: Mapping[str, Any],
+    wake_id: str,
+    source_sha: str,
+    produced_at: str | None = None,
+) -> dict[str, Any]:
+    """Package L3 synthesis output for wake durable stores.
+
+    Lane A wake wiring should prefer this row over template decide() views when
+    judgment status is JUDGED. Refuses to emit class-T / llm-null masquerades.
+    """
+    if not isinstance(agent_view, Mapping):
+        raise JudgmentSchemaError("durable_view_missing")
+    if agent_view.get("provenance_class") != "A":
+        raise JudgmentSchemaError("durable_view_requires_class_A")
+    llm = (agent_view.get("provenance") or {}).get("llm")
+    if not isinstance(llm, Mapping) or not llm:
+        # Fall back to author/critique provenance if synthesis nested differently.
+        llm = {
+            "author_provider": author.get("provider"),
+            "author_model": author.get("returned_model") or author.get("model_returned"),
+            "critic_provider": critique.get("provider"),
+            "critic_model": critique.get("model_returned"),
+            "author_input_digest": author.get("input_digest"),
+            "author_output_digest": author.get("output_digest"),
+            "judgment_id": author.get("judgment_id"),
+            "critique_id": critique.get("critique_id"),
+        }
+    if not llm.get("author_model") and not llm.get("author_provider"):
+        raise JudgmentSchemaError("durable_view_missing_llm_provenance")
+    cost_class = str(agent_view.get("cost_class") or "")
+    if cost_class in {"", "zero", "T"}:
+        raise JudgmentSchemaError("durable_view_cost_class_cannot_be_zero")
+    judgment_id = agent_view.get("judgment_id") or author.get("judgment_id")
+    critique_id = agent_view.get("critique_id") or critique.get("critique_id")
+    if not judgment_id:
+        raise JudgmentSchemaError("durable_view_missing_judgment_id")
+    if not str(agent_view.get("falsifier") or "").strip():
+        raise JudgmentSchemaError("durable_view_missing_falsifier")
+
+    produced = produced_at or _iso(_now())
+    row = dict(agent_view)
+    row.update(
+        {
+            "wake_id": wake_id,
+            "judgment_id": judgment_id,
+            "critique_id": critique_id,
+            "cost_class": cost_class,
+            "provenance_class": "A",
+            "produced_at": produced,
+            "source_sha": source_sha or agent_view.get("source_sha") or "",
+            "authority": AUTHORITY,
+            "mbi_behavior": MBI_BEHAVIOR,
+            "sizes_or_executes_trades": False,
+            "provenance": {
+                "producer": "l3_agent_view_synthesis.package_durable_l3_view",
+                "llm": dict(llm),
+                "inputs": [{"kind": "wake", "id": wake_id}],
+                "policy_decisions": list(
+                    ((agent_view.get("provenance") or {}).get("policy_decisions")) or ["l3_judged"]
+                ),
+            },
+        }
+    )
+    return row
+
+
+def package_durable_l3_commitment(
+    *,
+    commitment: Mapping[str, Any] | None,
+    author: Mapping[str, Any],
+    critique: Mapping[str, Any],
+    wake_id: str,
+    source_sha: str,
+) -> dict[str, Any] | None:
+    """Return commitment only when falsifier-bearing; attach wake + llm provenance."""
+    if not commitment:
+        return None
+    falsifier = str(commitment.get("falsifier") or "").strip()
+    if not falsifier:
+        return None
+    if str(critique.get("verdict") or "").lower() in {"reject", "abstain"}:
+        return None
+    row = dict(commitment)
+    row.update(
+        {
+            "wake_id": wake_id,
+            "judgment_id": author.get("judgment_id") or commitment.get("judgment_id"),
+            "critique_id": critique.get("critique_id") or commitment.get("critique_id"),
+            "source_sha": source_sha or commitment.get("source_sha") or "",
+            "authority": AUTHORITY,
+            "mbi_behavior": MBI_BEHAVIOR,
+            "provenance": {
+                "producer": "l3_agent_view_synthesis.package_durable_l3_commitment",
+                "llm": {
+                    "author_provider": author.get("provider"),
+                    "author_model": author.get("returned_model"),
+                    "critic_provider": critique.get("provider"),
+                    "critic_model": critique.get("model_returned"),
+                    "judgment_id": author.get("judgment_id"),
+                    "critique_id": critique.get("critique_id"),
+                },
+                "inputs": [{"kind": "wake", "id": wake_id}],
+                "policy_decisions": ["organic_from_l3_judgment"],
+            },
+        }
+    )
+    return row
