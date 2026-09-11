@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `1ff8fcb5f9ddf7a208060889a0242dfb74555c3ae8a88c580f564b498d0a613a`
+**Tree fingerprint:** `9a5bccc5fa28b946f1931ec3eb3483dad6582286bc6d9e7150e398ccbf8a7390`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,10 +12,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2471 |
-| Markdown (excl. this INDEX) | 2058 |
+| Files under `docs/` (excl. this INDEX) | 2476 |
+| Markdown (excl. this INDEX) | 2063 |
 | **MISSING HEADER** | **51** |
-| Header OK | 2007 |
+| Header OK | 2012 |
 | Duplicate groups | 2 |
 
 ### By status_guess
@@ -28,7 +28,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_raw_sync | 36 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 2 |
-| review_required | 2100 |
+| review_required | 2105 |
 
 ## Markdown tree
 
@@ -272,10 +272,15 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/CIO_ASIS_VS_SPEC_2026-09-09-ceiling.md` | CIO Agent — AS-IS vs SPEC (2026-09-09 live ceiling) | review_required | OK | `11646742f3fe` |
 | `docs/architecture/CIO_ASIS_VS_SPEC_2026-09-09-final.md` | CIO Agent — AS-IS vs SPEC (2026-09-09 final) | review_required | OK | `dd2922037c1f` |
 | `docs/architecture/CIO_ASIS_VS_SPEC_2026-09-09.md` | CIO Agent — AS-IS vs SPEC (2026-09-09) | review_required | OK | `57bdddcf06e3` |
+| `docs/architecture/CIO_AS_IS_2026-09-10-2105.md` | CIO AS-IS — what actually runs, measured tonight | review_required | OK | `c64ca9d59049` |
+| `docs/architecture/CIO_AS_IS_2026-09-10-2215.md` | CIO AS-IS — every step, every lateral, measured | review_required | OK | `4149fc96391a` |
+| `docs/architecture/CIO_FUTURE_2026-09-10-2105.md` | CIO FUTURE — the desk at full maturity | review_required | OK | `d618b5a3a612` |
+| `docs/architecture/CIO_FUTURE_2026-09-10-2215.md` | CIO FUTURE — the mature desk, every step, every lateral | review_required | OK | `af8a97f6de5e` |
 | `docs/architecture/CIO_FUTURE_STATE_FULL_MATURITY.md` | CIO Agent — FULL MATURITY TARGET | review_required | OK | `23fcdb6a73f2` |
 | `docs/architecture/CIO_FUTURE_STATE_FULL_MATURITY_2026-09-09-ceiling.md` | CIO Agent — FULL MATURITY TARGET (2026-09-09 live ceiling) | review_required | OK | `2ffcc8e19322` |
 | `docs/architecture/CIO_FUTURE_STATE_FULL_MATURITY_2026-09-09-final.md` | CIO Agent — FULL MATURITY TARGET (2026-09-09 final) | review_required | OK | `5b412d2266d6` |
 | `docs/architecture/CIO_FUTURE_STATE_FULL_MATURITY_2026-09-09.md` | CIO Agent — FULL MATURITY TARGET (2026-09-09) | review_required | OK | `999bb7b18aab` |
+| `docs/architecture/CIO_GAP_2026-09-10-2105.md` | CIO GAP — what stands between tonight and maturity | review_required | OK | `ca4498de4679` |
 | `docs/architecture/COST_BASIS_FEED_CORRECTION_2026_06_05.md` | Cost Basis Feed Correction (2026-06-05) | review_required | OK | `971080919db9` |
 | `docs/architecture/DECISION_PACKET_OPERATOR_CARD_AND_RTH_REFRESH.md` | Decision Packet Operator Card + RTH Few-Hour Refresh | review_required | OK | `3e3ba446c94f` |
 | `docs/architecture/DECISION_PROVENANCE_MATRIX.md` | Decision provenance matrix — 2026-08-28 | review_required | OK | `56592a4af733` |
