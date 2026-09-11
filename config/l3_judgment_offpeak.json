@@ -1,0 +1,52 @@
+{
+  "schema": "L3OffPeakPolicy@v1",
+  "timezone": "America/New_York",
+  "bulk_window_et": {
+    "start_hour": 10,
+    "end_hour_exclusive": 21
+  },
+  "deepseek_official_peak_utc_weekdays": [
+    [
+      "01:00",
+      "04:00"
+    ],
+    [
+      "06:00",
+      "10:00"
+    ]
+  ],
+  "weekend_official_peak": false,
+  "urgent_exception": {
+    "requires_trigger": "urgent",
+    "deterministic_rules": [
+      "material_residual_present",
+      "resolution_confidence_gte_0.8",
+      "selected_memory_facts_gte_1",
+      "free_first_exhausted",
+      "materiality_basis_in_allowlist"
+    ],
+    "materiality_basis_allowlist": [
+      "price_move_gt_threshold",
+      "earnings_within_horizon",
+      "operator_escalation_flag",
+      "commitment_falsifier_imminent"
+    ],
+    "note": "Caller prose alone is never sufficient for urgent exception."
+  },
+  "author": {
+    "provider": "deepseek",
+    "logical_policy": "FAST",
+    "exact_model_id": "deepseek-flash",
+    "local_substitute_forbidden": true
+  },
+  "critic": {
+    "preferred_providers": [
+      "grok",
+      "chatgpt",
+      "anthropic"
+    ],
+    "forbidden_same_as_author": true,
+    "default_provider": "grok",
+    "default_model": "grok-3-mini"
+  }
+}
