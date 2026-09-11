@@ -29,6 +29,11 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 import notify_material_change as nmc  # noqa: E402
 
+#: This test FIRES the send, so it covers the file's alarm call site.
+#: A declaration without a firing test would be the thing the C1 gate exists to
+#: prevent: an alarm nobody has ever seen fire is indistinguishable from no alarm.
+COVERS = ["scripts/notify_material_change.py"]
+
 
 def test_gateway_route_is_off_by_default():
     """Rollback needs no deploy: unset the flag and the next run is legacy again."""
@@ -40,6 +45,57 @@ def test_gateway_route_is_off_by_default():
 def test_gateway_route_opt_in_is_explicit():
     for on in ("1", "true", "TRUE", "yes", "on"):
         assert nmc.gateway_notice_enabled({"MATERIAL_CHANGE_GATEWAY_NOTICE": on}) is True
+
+
+def test_the_legacy_alarm_actually_reaches_the_transport(alarm_capture, monkeypatch):
+    """FIRING TEST — the C1 gate requires the condition injected, not asserted about.
+
+    With the gateway flag OFF this notice must reach the real Telegram transport.
+    """
+    monkeypatch.delenv("MATERIAL_CHANGE_GATEWAY_NOTICE", raising=False)
+    accepted, report = nmc.deliver_notice(
+        "MATERIAL CHANGE — AAPL news_burst x3.2 (advisory only)",
+        subject_key="test-subject")
+    assert report == {"attempted": False}, "gateway must not be attempted when the flag is off"
+    alarm_capture.assert_fired(contains="MATERIAL CHANGE")
+    assert accepted is True
+
+
+def test_gateway_path_does_not_touch_the_legacy_transport(alarm_capture, monkeypatch):
+    """With the gateway ON, nothing may reach the legacy sender.
+
+    A gateway send that also fired legacy would double-deliver to the operator
+    and make delivery_owner meaningless.
+    """
+    monkeypatch.setenv("MATERIAL_CHANGE_GATEWAY_NOTICE", "1")
+    calls = []
+    import scripts.lib.comms.channel_adapters as CA
+    monkeypatch.setattr(CA, "send_via_gateway",
+                        lambda *a, **k: (calls.append(k) or
+                                         {"delivered": True, "delivery_owned": True,
+                                          "gateway_mode": "CANARY", "event_id": "evt-1",
+                                          "delivery_id": "dlv-1"}),
+                        raising=True)
+    accepted, report = nmc.deliver_notice("MATERIAL CHANGE — gateway path",
+                                          subject_key="test-subject")
+    assert accepted is True
+    assert report["delivered"] is True and report["delivery_owned"] is True
+    assert not alarm_capture.transport, "legacy transport must not be touched on the gateway path"
+    assert calls and calls[0]["deliver"] is True
+
+
+def test_a_gateway_that_only_published_is_not_accepted(monkeypatch):
+    """ok=True with delivered=False is a RESERVATION, not a delivery."""
+    monkeypatch.setenv("MATERIAL_CHANGE_GATEWAY_NOTICE", "1")
+    import scripts.lib.comms.channel_adapters as CA
+    monkeypatch.setattr(CA, "send_via_gateway",
+                        lambda *a, **k: {"ok": True, "delivered": False,
+                                         "delivery_owned": False, "gateway_mode": "SHADOW",
+                                         "error": "delivery_blocked_mode"},
+                        raising=True)
+    accepted, report = nmc.deliver_notice("x", subject_key="s")
+    assert accepted is False, "SENT/ok is not SETTLED"
+    assert "delivery_blocked_mode" in report["errors"]
 
 
 def test_sent_is_not_settled__only_delivered_counts():
@@ -73,8 +129,10 @@ def test_a_gateway_failure_does_not_silently_become_a_legacy_success():
     stay pending.
     """
     src = (ROOT / "scripts" / "notify_material_change.py").read_text()
-    # The legacy import must live in the else-branch only.
-    gw_branch = src.split("if gateway_notice_enabled():", 1)[1].split("else:", 1)[0]
+    # deliver_notice returns early for the legacy path; everything after that
+    # early return is the gateway path and must never reach the legacy sender.
+    body = src.split("def deliver_notice(", 1)[1].split("\ndef ", 1)[0]
+    gw_branch = body.split("send_via_gateway", 1)[1]
     assert "send_telegram" not in gw_branch, (
         "the gateway branch must never fall back to the legacy sender"
     )
@@ -90,8 +148,7 @@ def test_rows_are_not_consumed_when_delivery_fails():
     is the worst outcome available here.
     """
     src = (ROOT / "scripts" / "notify_material_change.py").read_text()
-    body = src.split("result[\"outcome\"] = \"SENT\"", 1)[1]
-    update_pos = body.find("SET notified_at = now()")
-    guard_pos = body.find("if accepted:")
+    update_pos = src.find("SET notified_at = now()")
+    guard_pos = src.rfind("if accepted:", 0, update_pos)
     assert guard_pos != -1 and update_pos != -1
     assert guard_pos < update_pos, "notified_at must be stamped only under `if accepted`"

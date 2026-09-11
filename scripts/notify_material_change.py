@@ -297,6 +297,62 @@ def route_check(message: str) -> str:
     return "WILL_SEND" if should_send_telegram(message) else "WOULD_SUPPRESS"
 
 
+def deliver_notice(message: str, *, subject_key: str) -> tuple[bool, dict]:
+    """Send one operator notice. Returns (accepted, gateway_report).
+
+    Extracted from main() so the alarm can be FIRED by a test. An alarm that has
+    never been observed firing is indistinguishable from no alarm, and this
+    file's send had no firing test at all.
+
+    Delivery owner: legacy by default, gateway when explicitly enabled.
+
+    Every gateway-SETTLED row that has ever existed (3, all-time) is a staged
+    proof message asking the operator to reply "OK". Those are controlled
+    evidence and are excluded from acceptance, so the gateway has never carried
+    an organic producer. This is that producer, and it is a real one: the notice
+    is assembled from material_changes the detector actually found, not from an
+    event invented to move a counter.
+    """
+    if not gateway_notice_enabled():
+        from telegram_alert import send_telegram
+
+        return bool(send_telegram(message, message_class="operator_alert")), {"attempted": False}
+
+    from scripts.lib.comms.channel_adapters import send_via_gateway
+
+    gw = send_via_gateway(
+        "telegram",
+        body=message,
+        producer="notify_material_change",
+        subject_key=subject_key,
+        event_type="material_change_notice",
+        message_class="operator_alert",
+        retention_class="operational_30d",
+        deliver=True,
+        severity="info",
+    )
+    # SENT IS NOT SETTLED. `delivered` means the gateway owned the send and the
+    # provider acknowledged it; `ok` can be true for a publish merely recorded,
+    # and a reservation is not a delivery.
+    accepted = bool(gw.get("delivered"))
+    report = {
+        "attempted": True,
+        "delivered": accepted,
+        "delivery_owned": bool(gw.get("delivery_owned")),
+        "gateway_mode": gw.get("gateway_mode"),
+        "event_id": gw.get("event_id"),
+        "delivery_id": gw.get("delivery_id"),
+        "errors": gw.get("errors") or ([gw["error"]] if gw.get("error") else []),
+    }
+    if not accepted:
+        # Do NOT silently fall back to legacy. A gateway failure that quietly
+        # succeeded as legacy would report SENT, consume the rows, and leave the
+        # gateway counter at zero with nothing to explain why.
+        print(f"gateway did not deliver ({report['errors']}) — "
+              "changes left pending, no legacy fallback", file=sys.stderr)
+    return accepted, report
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--apply", action="store_true")
@@ -367,47 +423,9 @@ def main() -> int:
     #
     # The flag defaults OFF and rollback needs no deploy: unset it and the very
     # next 15-minute run goes back down the legacy path.
-    accepted = False
-    gw = None
-    if gateway_notice_enabled():
-        from scripts.lib.comms.channel_adapters import send_via_gateway
-
-        gw = send_via_gateway(
-            "telegram",
-            body=message,
-            producer="notify_material_change",
-            subject_key=str(rows[0].get("subject_guid") or rows[0]["change_guid"]),
-            event_type="material_change_notice",
-            message_class="operator_alert",
-            retention_class="operational_30d",
-            deliver=True,
-            severity="info",
-        )
-        # SENT IS NOT SETTLED. `delivered` means the gateway owned the send and
-        # the provider acknowledged it; anything else leaves the rows pending.
-        accepted = bool(gw.get("delivered"))
-        result["gateway"] = {
-            "attempted": True,
-            "delivered": accepted,
-            "delivery_owned": bool(gw.get("delivery_owned")),
-            "gateway_mode": gw.get("gateway_mode"),
-            "event_id": gw.get("event_id"),
-            "delivery_id": gw.get("delivery_id"),
-            "errors": gw.get("errors") or ([gw["error"]] if gw.get("error") else []),
-        }
-        if not accepted:
-            # Do NOT silently fall back to legacy. A gateway failure that quietly
-            # succeeds as legacy would leave the ledger claiming an owner it never
-            # had, and would hide the failure from exactly the counter that is
-            # meant to reveal it.
-            print(f"gateway did not deliver ({result['gateway']['errors']}) — "
-                  "changes left pending, no legacy fallback", file=sys.stderr)
-    else:
-        from telegram_alert import send_telegram
-
-        accepted = bool(send_telegram(message, message_class="operator_alert"))
-        result["gateway"] = {"attempted": False}
-
+    accepted, gw_result = deliver_notice(message, subject_key=str(
+        rows[0].get("subject_guid") or rows[0]["change_guid"]))
+    result["gateway"] = gw_result
     result["outcome"] = "SENT" if accepted else "NOT_ACCEPTED"
     if accepted:
         cur.execute("""UPDATE material_changes
