@@ -113,6 +113,16 @@ def make_send_fn(*, token: str, reply_to_message_id: Any = None,
             token=token,
             chat_id=str(chat_id),
             text=body,
+            # PLAIN TEXT, deliberately. The transport defaults to
+            # parse_mode="Markdown", under which Telegram eats the underscores
+            # in any identifier with an even count -- the first live reply came
+            # back reading "READONLYADVISORY" instead of READ_ONLY_ADVISORY,
+            # which is the authority rail on the message. cio_telegram_transport
+            # reached the same conclusion and says so in its own comment
+            # ("Markdown parse_mode eats underscores in dec_... / ACT_NOW"), so
+            # this matches the house convention rather than adding another.
+            # Losing *bold* costs nothing; mangling an identifier costs meaning.
+            parse_mode=None,
             reply_to_message_id=target_reply,
         )
         # The AGENT half of the conversation. Captured here because this is the
