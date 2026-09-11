@@ -44,11 +44,61 @@ def test_prior_comm_events_returns_what_the_desk_already_said():
     assert "OUTBOUND" in conn.sql[0][0]
 
 
-def test_operator_turns_are_inbound_only():
-    conn = _Conn([])
+class _TurnConn(_Conn):
+    """The REAL column shape of the operator-turn query."""
+
+    @property
+    def description(self):
+        return [("id",), ("role",), ("sanitized_body",), ("symbol",),
+                ("subject_guid",), ("created_at",)]
+
+
+def test_operator_turns_read_the_store_that_is_actually_written():
+    """THE DEFECT THIS REPLACES.
+
+    This test used to assert the SQL contained "INBOUND" and "event_type = ANY"
+    — pinning a query against communication_events.subject_guid, which is NULL
+    on every inbound row that has ever existed (measured 2026-09-11: 146 rows,
+    zero subjects). The predicate was not unproductive, it was UNSATISFIABLE, and
+    the test pinned it in place.
+
+    It showed at 19:00Z: the operator asked "ADBE — what did Q3 actually show on
+    user growth?", the turn bound to that exact subject with identity_status
+    CONFIRMED, and the wake for that subject in that hour loaded nothing.
+    """
+    conn = _TurnConn([])
     DbCommsHistory(conn_factory=lambda: conn).prior_operator_turns("guid-1")
     sql = conn.sql[0][0]
-    assert "INBOUND" in sql and "event_type = ANY" in sql
+    assert "operator_conversation_turns" in sql
+    assert "communication_events" not in sql
+    assert "subject_guid = %s" in sql
+
+
+def test_the_agent_does_not_read_its_own_alerts_back_as_operator_input():
+    """operator_conversation_turns holds BOTH halves, and the notifier now writes
+    role='agent' rows for every alert. Without this filter the desk would treat
+    what it said as what it was told, and pin those names at the highest
+    precedence the detector has."""
+    conn = _TurnConn([])
+    DbCommsHistory(conn_factory=lambda: conn).prior_operator_turns("guid-1")
+    assert "role = 'operator'" in conn.sql[0][0]
+
+
+def test_an_operator_turn_carries_an_id():
+    """THE TRAP BEHIND THE PLUG.
+
+    The caller derives the source id as
+    `str(turn.get("turn_id") or turn.get("id"))`. Return neither key and it
+    becomes the string "None" — and because receipt ids are a deterministic uuid5
+    over (agent_id, source_kind, source_id, purpose), every turn mints the SAME
+    receipt id and append_unique keeps one. N turns would collapse into a single
+    receipt naming a source that does not exist, with no error anywhere.
+    """
+    conn = _TurnConn([(115, "operator", "ADBE — what did Q3 show?", "ADBE",
+                       "guid-1", "t0")])
+    got = DbCommsHistory(conn_factory=lambda: conn).prior_operator_turns("guid-1")
+    assert got and got[0]["id"] == 115
+    assert str(got[0].get("turn_id") or got[0].get("id")) != "None"
 
 
 def test_history_filters_by_subject_guid_not_by_symbol():

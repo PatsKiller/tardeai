@@ -153,6 +153,12 @@ def composing_decide(context: dict, *, env: Mapping[str, str] | None = None,
     # The claim BECOMES the finding. Same commitment shape, same source id, same
     # rails -- only the text changes from an id-and-a-template to what was found.
     commitment = dict(base.get("commitment") or {})
+    if commitment.get("commitment_kind") == "OPERATOR_QUESTION":
+        # The narration is the desk's finding; it must not erase what was asked.
+        # Overwriting `claim` here would leave a record that the operator's
+        # question produced a commitment about something else, with the question
+        # itself nowhere in it.
+        commitment["operator_asked"] = commitment.get("claim")
     commitment["claim"] = text[:2000]
     commitment["normalized_claim"] = _normalize_claim(text[:2000])
     commitment["cited_ids"] = cites

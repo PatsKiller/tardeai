@@ -623,3 +623,113 @@ def test_a_judged_slots_commitment_does_not_claim_no_model_ran(state, tmp_path, 
     assert llm and llm.get("judgment_id") == "jdg_test", (
         "a judged slot's commitment must not record llm None"
     )
+
+
+# ---------------------------------------------------------------------------
+# An operator question that changes nothing is intake, not consumption.
+# ---------------------------------------------------------------------------
+
+def _turn(tid, text, subject=SG):
+    """The shape DbCommsHistory actually returns — id, not turn_id."""
+    return {"id": tid, "role": "operator", "sanitized_body": text,
+            "symbol": "ADBE", "subject_guid": subject, "created_at": "t0"}
+
+
+def test_an_operator_question_changes_the_next_question(state, tmp_path):
+    """THE CLAUSE THIS CLOSES.
+
+    At 19:00Z the operator asked "ADBE — what did Q3 actually show on user
+    growth?". The turn was durable, bound to that exact subject, CONFIRMED, and
+    receipted. The wake for that subject in that hour loaded nothing, and even
+    when loading was fixed the receipt hardcoded effect_kind "none" — which never
+    counts as behavioural consumption. The operator could ask and the record
+    would show the question arriving and changing nothing.
+    """
+    mem = _mem_file(tmp_path, [])
+    comms = NullCommsHistory(turns=[_turn(115, "ADBE — what did Q3 show?")])
+    r = run_scheduled_wake(
+        agent_id="cio", subject_guid=SG, state_root=state,
+        memory_backend=str(mem), comms=comms, when=NOW, env=dict(ENV_ON),
+    )
+    wake = r.get("wake") or r
+    assert wake["prior_operator_turn_ids"] == ["115"]
+
+    commits = [json.loads(l) for l in (Path(state) / "commitments.jsonl").read_text().splitlines() if l.strip()]
+    assert commits, "an operator question must produce a commitment"
+    c = commits[-1]
+    assert c["commitment_kind"] == "OPERATOR_QUESTION"
+    assert "what did Q3 show" in c["claim"]
+
+    recs = [json.loads(l) for l in (Path(state) / "receipts.jsonl").read_text().splitlines() if l.strip()]
+    decision = [x for x in recs if x.get("purpose") == "wake_decision"]
+    assert decision and decision[-1]["effect_kind"] == "changed_question"
+    assert decision[-1]["source_kind"] == "operator_turn"
+    assert decision[-1]["source_id"] == "115"
+
+
+def test_the_operator_outranks_the_scheduler(state, tmp_path):
+    """A person asking beats anything the selection feed surfaced on its own."""
+    mem = _mem_file(tmp_path, [])
+    comms = NullCommsHistory(turns=[_turn(115, "ADBE — what did Q3 show?")])
+    r = run_scheduled_wake(
+        agent_id="cio", subject_guid=SG, state_root=state,
+        memory_backend=str(mem), comms=comms, when=NOW, env=dict(ENV_ON),
+        selection={"source": "unconsumed_research", "source_id": "res-1",
+                   "observed_at": "2026-09-11T05:45:03Z"},
+    )
+    wake = r.get("wake") or r
+    commits = [json.loads(l) for l in (Path(state) / "commitments.jsonl").read_text().splitlines() if l.strip()]
+    assert commits[-1]["commitment_kind"] == "OPERATOR_QUESTION", (
+        "SELECTION_OBSERVATION must not win over a question the operator asked"
+    )
+    assert wake["prior_operator_turn_ids"] == ["115"]
+
+
+def test_no_operator_turn_still_records_none(state, tmp_path):
+    """The negative control. 'Read it' and 'it changed something' must stay
+    distinguishable — collapsing them is how this system keeps producing
+    counters nobody can trust."""
+    mem = _mem_file(tmp_path, [])
+    r = run_scheduled_wake(
+        agent_id="cio", subject_guid=SG, state_root=state,
+        memory_backend=str(mem), comms=NullCommsHistory(), when=NOW,
+        env=dict(ENV_ON),
+    )
+    wake = r.get("wake") or r
+    assert wake["prior_operator_turn_ids"] == []
+    rp = Path(state) / "receipts.jsonl"
+    # No memory, no turns, no selection -> nothing to receipt at all. The file
+    # may not exist, and that is the honest zero.
+    recs = ([json.loads(l) for l in rp.read_text().splitlines() if l.strip()]
+            if rp.exists() else [])
+    assert all(x["effect_kind"] == "none" for x in recs)
+    assert not [x for x in recs if x.get("source_kind") == "operator_turn"]
+
+
+def test_loading_a_turn_is_recorded_separately_from_acting_on_it(state, tmp_path):
+    """Two records, two meanings. The load receipt says the turn was READ; the
+    decision receipt says whether it changed anything."""
+    mem = _mem_file(tmp_path, [])
+    comms = NullCommsHistory(turns=[_turn(115, "ADBE — what did Q3 show?")])
+    run_scheduled_wake(agent_id="cio", subject_guid=SG, state_root=state,
+                       memory_backend=str(mem), comms=comms, when=NOW,
+                       env=dict(ENV_ON))
+    recs = [json.loads(l) for l in (Path(state) / "receipts.jsonl").read_text().splitlines() if l.strip()]
+    load = [x for x in recs if x.get("purpose") == "wake_operator_load"]
+    assert load and load[0]["effect_kind"] == "none", "a load is not an influence"
+    decision = [x for x in recs if x.get("purpose") == "wake_decision"]
+    assert decision and decision[-1]["effect_kind"] == "changed_question"
+
+
+def test_a_turn_with_no_id_is_refused_not_averaged(state, tmp_path):
+    """Receipt ids are a deterministic uuid5 over the source id. A turn with no
+    id yields "None", every such turn mints the SAME receipt, and append_unique
+    keeps one — N turns collapsing into a single receipt naming a source that
+    does not exist. Refuse instead: a load this broken must be visible."""
+    mem = _mem_file(tmp_path, [])
+    bad = NullCommsHistory(turns=[{"role": "operator", "sanitized_body": "hi",
+                                   "subject_guid": SG}])
+    with pytest.raises(WakeRejected, match="turn_id/id"):
+        run_scheduled_wake(agent_id="cio", subject_guid=SG, state_root=state,
+                           memory_backend=str(mem), comms=bad, when=NOW,
+                           env=dict(ENV_ON))

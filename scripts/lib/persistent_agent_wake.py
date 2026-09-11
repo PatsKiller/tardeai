@@ -795,9 +795,23 @@ class WakeEngine:
             influence_ids.append(rec["receipt_id"])
         for turn in op_turns:
             sid = str(turn.get("turn_id") or turn.get("id"))
+            if sid == "None":
+                # The loader returned a row with neither key. Receipt ids are a
+                # deterministic uuid5 over (agent, source_kind, source_id,
+                # purpose), so every such turn mints the SAME id and
+                # append_unique silently keeps one — N turns collapsing into a
+                # single receipt that names a source which does not exist. Refuse
+                # instead: a load this broken should be visible, not averaged.
+                raise WakeRejected(
+                    "operator turn has no turn_id/id — the loader must return an "
+                    "identifier, or receipts collapse onto a nonexistent source")
             rec = self._emit_receipt(
                 agent_id=agent_id, source_kind="operator_turn", source_id=sid,
                 wake_id=wake_id, subject_guid=subject_guid, purpose="wake_operator_load",
+                # LOAD is not influence. This receipt says the turn was read; the
+                # decision receipt below says whether it changed anything. Two
+                # records, two meanings — collapsing them is how this system
+                # keeps producing counters that cannot be trusted.
                 effect_kind="none", effect_ref=None, now=now, corr=corr,
                 influence_source_ids=[],
             )
@@ -1276,11 +1290,45 @@ def _judgment_state_root(store) -> Path | None:
 def default_decide(context: dict) -> dict:
     """Deterministic decision.
 
+    Operator asked directly → OPERATOR_QUESTION, changed_question. Outranks
+    everything: a person asking beats anything the scheduler picked for itself.
     Memory facts present → MEMORY_SALIENCE commitment (unchanged).
     No memory BUT selection provenance is unconsumed_research / material_change
     → act with changed_question, preserving the ORIGINAL selection source_id.
     Neither → refuse no_relevant_memory.
     """
+    # An operator question that leaves cognition unchanged is intake, not
+    # consumption. `context["operator_turns"]` has been built on every wake since
+    # the port was wired and read by NOTHING — the turns were loaded, receipted
+    # with a hardcoded effect_kind of "none", and discarded. `none` never counts
+    # as behavioural consumption (inbound_consumption.BEHAVIORAL_EFFECT_KINDS),
+    # so the operator could ask and the record would show the question arriving
+    # and changing nothing.
+    #
+    # First, because the operator outranks the scheduler. If they asked about
+    # this subject, that is the question worth answering, not the one the
+    # selection feed happened to surface.
+    turns = context.get("operator_turns") or []
+    if turns:
+        newest = turns[0]
+        tid = str(newest.get("turn_id") or newest.get("id") or "")
+        asked = str(newest.get("sanitized_body") or newest.get("text") or "").strip()
+        if tid and tid != "None" and asked:
+            claim = f"operator asked: {asked}"
+            return {
+                "act": True,
+                "allow_empty_memory": True,
+                "effect_kind": "changed_question",
+                "commitment": {
+                    "commitment_kind": "OPERATOR_QUESTION",
+                    "claim": claim,
+                    "normalized_claim": _normalize_claim(claim),
+                },
+                "primary_source_kind": "operator_turn",
+                "primary_source_id": tid,
+                "reason": "organic_from_operator_turn",
+            }
+
     facts = context.get("memory_facts") or []
     if facts:
         # Fingerprint memory into claim so changed memory => changed commitment/output
