@@ -400,6 +400,23 @@ def ingest_reddit_with_discovery(subreddits: list = None) -> dict:
     return result
 
 
+def rows_from_results(results) -> int | None:
+    """Sum the `inserted` counts an ingest run actually reported.
+
+    Returns None when NOTHING reported a count, which pipeline_registry writes
+    as JSON null meaning NOT MEASURED. Zero is reserved for "ran and genuinely
+    inserted nothing". Those two states must stay distinguishable: collapsing
+    them is what made pipeline_zero_rows fire on this healthy pipeline for
+    months while it was writing hundreds of rows a day.
+    """
+    counts = [
+        int(r.get("inserted") or 0)
+        for r in results
+        if isinstance(r, dict) and "inserted" in r
+    ]
+    return sum(counts) if counts else None
+
+
 if __name__ == "__main__":
     source = "stocktwits"
     symbols = []
@@ -424,42 +441,68 @@ if __name__ == "__main__":
     except Exception:
         pass
 
+    # Rows are COUNTED, not assumed.
+    #
+    # This block used to end in `run_complete(_run_id, rows_processed=0)` with a
+    # hardcoded literal, while every ingest function below already returned an
+    # "inserted" count that was simply thrown away. The pipeline therefore
+    # reported rows_produced=0 on every successful run no matter what it wrote,
+    # and pipeline_zero_rows alerted on it as a dead producer — measured
+    # 2026-09-11, social_posts had gained 761 real rows in the preceding 36h.
+    #
+    # The 2026-09-06 sweep that fixed sixteen other scripts missed this one
+    # because those relied on the DEFAULT rows_processed=0; this passed 0
+    # explicitly, so it looked deliberate.
+    #
+    # None still means NOT MEASURED (see pipeline_registry.run_complete). It is
+    # used only where nothing ran at all, so "no input" stays distinguishable
+    # from "produced nothing".
+    # A list, not a closure variable: this block runs at module scope under
+    # `if __name__ == "__main__"`, where `nonlocal` has no enclosing function.
+    _results: list = []
+
+    def _count(result) -> None:
+        _results.append(result)
+
     try:
         if source == "stocktwits":
             if "--discover" in sys.argv:
                 print("[stocktwits] Running discovery mode (trending + strategy exploration)...")
-                ingest_stocktwits_discovery()
+                _count(ingest_stocktwits_discovery())
             else:
                 if not symbols:
                     symbols = _get_holdings_symbols()[:15]
                 if not symbols:
                     symbols = ["SCHD", "V", "TDG", "LHX", "LMT", "NOC", "RTX"]
                 print(f"[stocktwits] Ingesting for {len(symbols)} symbols: {', '.join(symbols[:10])}...")
-                ingest_stocktwits(symbols)
+                _count(ingest_stocktwits(symbols))
 
         elif source == "reddit":
             if "--discover" in sys.argv:
                 print("[reddit] Running discovery mode (hot + ticker extraction)...")
-                ingest_reddit_with_discovery()
+                _count(ingest_reddit_with_discovery())
             else:
                 print("[reddit] Ingesting new posts from retirement/dividend subs...")
-                ingest_reddit()
+                _count(ingest_reddit())
 
         elif source == "all":
             print("=== FULL SOCIAL INGEST ===")
             print("\n[1/3] StockTwits: portfolio holdings...")
-            ingest_stocktwits(_get_holdings_symbols()[:15])
+            _count(ingest_stocktwits(_get_holdings_symbols()[:15]))
             print("\n[2/3] StockTwits: discovery (trending + strategies)...")
-            ingest_stocktwits_discovery()
+            _count(ingest_stocktwits_discovery())
             print("\n[3/3] Reddit: discovery mode (hot + ticker extraction)...")
-            ingest_reddit_with_discovery()
+            _count(ingest_reddit_with_discovery())
             print("\n=== DONE ===")
 
         else:
             print(f"Unknown source: {source}. Use --source stocktwits|reddit|all [--discover] [--holdings]")
 
+        rows_measured = rows_from_results(_results)
+        label = "NOT_MEASURED" if rows_measured is None else rows_measured
+        print(f"[social_ingest] rows_produced={label}")
         try:
-            if _run_id: run_complete(_run_id, rows_processed=0)
+            if _run_id: run_complete(_run_id, rows_processed=rows_measured)
         except Exception:
             pass
     except Exception as _e:
