@@ -57,6 +57,10 @@ GATES = [
             # 2026-09-10: making memory findable armed refuse_stale_memory,
             # a branch that had never executed. It aborted real wakes.
             "tests/test_wake_stale_memory_degrades.py",
+            # 2026-09-10: a promote updates the served release and not the
+            # hub tree the cron producers run from. A fix can be live and
+            # inert at the same time, and nothing compared the two.
+            "tests/test_hub_release_drift.py",
             "tests/test_runtime_identity.py",
             # 2026-09-10 operator-channel presentation: navigation prose must
             # carry a tappable FQDN link, the plaintext fallback must unescape,
