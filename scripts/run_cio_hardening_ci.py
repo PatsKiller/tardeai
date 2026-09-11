@@ -117,6 +117,7 @@ GATES = [
             "tests/test_oscillator_registry.py",
             "tests/test_oscillator_alerts.py",
             "tests/test_confluence_flip_routing.py",
+            "tests/test_oscillator_board_reads.py",
             # 2026-09-10 operator-channel presentation: navigation prose must
             # carry a tappable FQDN link, the plaintext fallback must unescape,
             # HTML bodies must not ship under Markdown, and the ledger must
