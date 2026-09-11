@@ -2189,6 +2189,55 @@ def _load_analyst_context(holdings_symbols: set[str]) -> dict[str, dict[str, Any
         return {}
 
 
+_SYMBOL_OSCILLATOR_NAMES = {
+    "rsi": "RSI",
+    "macd_signal": "MACD",
+    "obv_signal": "OBV",
+}
+
+
+def _symbol_oscillator_affiliation(ind: dict[str, Any]) -> dict[str, Any]:
+    """Name the symbol-scope oscillators present in the snapshot.
+
+    Individual oscillators never alert on their own (operator decision:
+    confluence-only), but for EVIDENCE they are named, so an Advisory verdict
+    can say "RSI oversold" rather than "technical indicator".
+    """
+    present = [
+        {"oscillator_id": f"symbol_{key}", "display_name": name,
+         "reading_name": name, "reading": ind.get(key)}
+        for key, name in _SYMBOL_OSCILLATOR_NAMES.items()
+        if ind.get(key) is not None
+    ]
+    return {"scope": "symbol", "oscillators": present} if present else {}
+
+
+def _append_oscillator_evidence(
+    items: list[dict[str, Any]],
+    oscillator_id: str,
+    *,
+    subject: str,
+    reading: Any = None,
+    state: str | None = None,
+    as_of: str = "",
+) -> None:
+    """Append a named oscillator evidence item, fail-soft.
+
+    The registry supplies the display name and scope; if the registry is
+    unreachable the item is skipped rather than the bundle failing — evidence
+    is additive, and a missing registry must not empty an Advisory bundle.
+    """
+    try:
+        from scripts.lib.oscillator_registry import evidence_item_for
+
+        item = evidence_item_for(
+            oscillator_id, subject=subject, reading=reading, state=state, as_of=as_of,
+        )
+        items.append(item)
+    except Exception:
+        return
+
+
 def _build_evidence_bundle(
     symbol: str,
     row_class: str,
@@ -2272,6 +2321,7 @@ def _build_evidence_bundle(
             "macd_signal": ind.get("macd_signal", ""),
             "atr": ind.get("atr"),
             "obv_signal": ind.get("obv_signal", ""),
+            "oscillator_affiliation": _symbol_oscillator_affiliation(ind),
         })
     else:
         # Phase 2A: derive a thin technicals proxy from price_action so the gap
@@ -2322,6 +2372,17 @@ def _build_evidence_bundle(
         "aggregate": True,  # portfolio-level, not symbol-specific
     })
 
+    # ── 6b. Oscillator affiliation (market: small-cap rotation) ──
+    # Same reading as the `rotation` item, but named so a verdict can cite
+    # WHICH oscillator spoke rather than an anonymous "rotation" field.
+    if rotation_data.get("signal") in ("small_cap_outperform", "neutral"):
+        _append_oscillator_evidence(
+            items, "small_cap_rotation", subject="PORTFOLIO",
+            reading=rotation_data.get("strength"),
+            state=rotation_data.get("signal") or "neutral",
+            as_of=str(rotation_data.get("as_of", ""))[:19],
+        )
+
     # ── 7. Sector context ──
     if sector_data.get("state") == "AVAILABLE" and sector_data.get("sectors"):
         items.append({
@@ -2333,6 +2394,14 @@ def _build_evidence_bundle(
             "sector_ranking": [{"name": s["name"], "rs_score": s["rs_score"]} for s in sector_data.get("sectors", [])[:3]],
             "aggregate": True,  # portfolio-level, not symbol-specific
         })
+        # ── 7b. Oscillator affiliation (sector: RS ladder) ──
+        _top = sector_data.get("sectors", [])[0] if sector_data.get("sectors") else None
+        if _top and _top.get("rs_score") is not None:
+            _append_oscillator_evidence(
+                items, "rotation_ladders_rs", subject=str(_top.get("name") or ""),
+                reading=_top.get("rs_score"),
+                as_of=str(sector_data.get("as_of", ""))[:19],
+            )
 
     # ── 8. IPS policy (aggregate) ──
     if ips_data.get("state") == "AVAILABLE":

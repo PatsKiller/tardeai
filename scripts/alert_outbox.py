@@ -53,6 +53,7 @@ DEFAULT_PREFERENCES = {
     "scanner_candidate": ("OFF", "OFF", True, "TRADING", 14400, 3600, None, False),
     "stop_warning": ("DIGEST", "OFF", True, "RISK", 86400, 3600, None, False),
     "siem_without_trading_impact": ("DIGEST", "OFF", True, "OPS", 86400, 3600, None, False),
+    "confluence_flip": ("DIGEST", "OFF", True, "OPS", 86400, 3600, None, False),
     "job_telemetry": ("OFF", "OFF", True, "OPS", 604800, 3600, None, False),
     "debug_or_success": ("OFF", "OFF", False, "OPS", 604800, 3600, None, False),
 }

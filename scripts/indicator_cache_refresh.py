@@ -10,6 +10,7 @@ import logging
 from datetime import datetime, timezone, timedelta
 
 sys.path.insert(0, os.path.dirname(__file__))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'lib'))
 os.chdir(os.path.join(os.path.dirname(__file__), '..'))
 
 # Load .env
@@ -61,10 +62,35 @@ try:
     logger.info(f"Refreshing {len(symbols)} symbols ({len(existing)} watchlist + {len(added)} screener/incubator)...")
 
     success = 0
+    confluence_flips: list[dict] = []
     for s in symbols:
         try:
             r = analyze_confluence(s, 'swing')
             if r.get('ok'):
+                # Confluence-flip detection: read the prior persisted state
+                # before overwriting it, so a NEUTRAL->BULLISH_STRONG entry is
+                # observable as a transition rather than silently overwritten.
+                try:
+                    cur.execute(
+                        "SELECT full_result FROM indicator_confluence_cache "
+                        "WHERE symbol=%s AND profile='swing'",
+                        (s,),
+                    )
+                    prior_row = cur.fetchone()
+                    prior_state = None
+                    if prior_row and prior_row[0]:
+                        prior = json.loads(prior_row[0]) if isinstance(prior_row[0], str) else prior_row[0]
+                        prior_state = (prior.get("confluence_v2") or {}).get("state")
+                except Exception:
+                    prior_state = None
+                new_state = (r.get("confluence_v2") or {}).get("state")
+                aff = (r.get("confluence_v2") or {}).get("oscillator_affiliation")
+                if prior_state is not None and new_state:
+                    confluence_flips.append({
+                        "symbol": s, "prior_state": prior_state,
+                        "new_state": new_state, "affiliation": aff,
+                    })
+
                 cur.execute(
                     """INSERT INTO indicator_confluence_cache
                        (symbol, profile, confluence_score, confluence_tier,
@@ -121,6 +147,27 @@ try:
         except Exception as e:
             logger.warning(f"  {s}: FAILED {e}")
             conn.rollback()
+
+    # Confluence-flip alerting: bounded, deduped, DIGEST only. A failure here
+    # must never fail the cache refresh, so it is fully best-effort.
+    if confluence_flips:
+        try:
+            from oscillator_alerts import detect_confluence_flips, notify_confluence_flips
+            from telegram_alert import send_telegram
+
+            flips = detect_confluence_flips(confluence_flips)
+            if flips:
+                outcome = notify_confluence_flips(
+                    flips, send_fn=send_telegram,
+                    session=datetime.now(timezone.utc).date().isoformat(),
+                )
+                logger.info(
+                    "confluence flips: %d sent, %d suppressed",
+                    len(outcome.get("sent") or []),
+                    len(outcome.get("suppressed") or []),
+                )
+        except Exception as e:
+            logger.warning("confluence flip alerting skipped: %s", e)
 
     conn.close()
     logger.info(f"Refresh complete: {success}/{len(symbols)} symbols updated")

@@ -109,6 +109,14 @@ GATES = [
             # inert at the same time, and nothing compared the two.
             "tests/test_hub_release_drift.py",
             "tests/test_runtime_identity.py",
+            # 2026-09-11 oscillator affiliations: the one canonical registry
+            # names every oscillator, so a reading is traceable to which
+            # oscillator and scope produced it. Fail-closed on unknown ids and
+            # invalid states. Confluence flips are bounded (STRONG entry only),
+            # deduped, and routed DIGEST never IMMEDIATE.
+            "tests/test_oscillator_registry.py",
+            "tests/test_oscillator_alerts.py",
+            "tests/test_confluence_flip_routing.py",
             # 2026-09-10 operator-channel presentation: navigation prose must
             # carry a tappable FQDN link, the plaintext fallback must unescape,
             # HTML bodies must not ship under Markdown, and the ledger must

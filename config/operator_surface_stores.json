@@ -195,6 +195,30 @@
         "where": "strategy_id = 'momentum_scalp'"
       },
       "note": "SCOPED DELIBERATELY. The unscoped row above reads LIVE because other strategies keep writing the table, while momentum_scalp proposals stopped 2026-06-30 (Grok). A whole-table cadence check cannot see a per-strategy cliff -- the aggregate hides it. This is the same shape as an audit that reads OK because zero input makes its condition false."
+    },
+    {
+      "lane_id": "store:oscillator_board",
+      "owner": "defense",
+      "surface": "Defense Desk / Oscillator Affiliations board",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "sector_momentum_engine.py",
+        "match": "sector_momentum_engine.py"
+      },
+      "expected_cadence_hours": 24,
+      "active_days": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/sector_momentum_latest.json"
+      },
+      "note": "Projection over config/oscillator_registry.json + the declared momentum snapshots. The anchor reading is the sector RS snapshot; the other oscillators (industry, rotation, confluence) are each declared in lane_registry.json. No new store exists to monitor - the board is a read-model, not a producer."
     }
   ]
 }

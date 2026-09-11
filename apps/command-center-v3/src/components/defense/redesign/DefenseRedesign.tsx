@@ -11,7 +11,7 @@
  * Read-only. Nothing here places, stages, or approves an order.
  */
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { S, panel, ph, mono, chip, th, thL, td, tdL, tdProse, btn } from '../../../lib/defenseRedesign'
+import { S, panel, ph, mono, chip, th, thL, td, tdL, tdProse, btn, type ChipTone } from '../../../lib/defenseRedesign'
 import { Val, Unk, isNum, pct, signColor, compact, money } from './Val'
 import { transitionRead, isStyleRow } from './transitionRead'
 import SectorLeadersCard from '../SectorLeadersCard'
@@ -155,7 +155,7 @@ function whereToAct(sectors: any[], leaders: Record<string, any>, engineGaps?: {
     push({
       rank: worst.rank, name: worst.name, etf: worst.etf, weight: worst.book_weight_pct, tone: 'r',
       headline: `Worst-ranked sector, ${cmp}`, hcolor: S.red,
-      sub: `rank ${worst.rank} of ${worst.rank_total} · RS20 ${isNum(worst.rs20) ? pct(worst.rs20) : 'unknown'}`,
+      sub: `rank ${worst.rank} of ${worst.rank_total} · Sector Rotation RS20 ${isNum(worst.rs20) ? pct(worst.rs20) : 'unknown'}`,
     })
   }
   const largest = [...secs].sort((a, b) => (b.book_weight_pct ?? -1) - (a.book_weight_pct ?? -1))[0]
@@ -163,7 +163,7 @@ function whereToAct(sectors: any[], leaders: Record<string, any>, engineGaps?: {
     push({
       rank: largest.rank, name: largest.name, etf: largest.etf, weight: largest.book_weight_pct, tone: 'g',
       headline: 'Leading, but your largest single exposure', hcolor: S.amber,
-      sub: `rank ${largest.rank} of ${largest.rank_total} · ${(largest.state || '').toLowerCase()}`,
+      sub: `rank ${largest.rank} of ${largest.rank_total} · Sector Rotation ${(largest.state || '').toLowerCase() || 'unknown'}`,
     })
   }
   // The STALEST, not merely the first stale one — 16 days beats 6.
@@ -556,6 +556,77 @@ function Oversight({ oversight }: { oversight: any }) {
   )
 }
 
+/* ═══════════════════════════ OSCILLATOR BOARD ══════════════════════════════ */
+
+type OscillatorRow = {
+  oscillator_id: string
+  display_name: string
+  scope: string
+  reading_name?: string | null
+  state?: string | null
+  reading?: number | null
+  as_of?: string | null
+  producer?: string
+  store?: string
+  cadence?: string
+  alerts: boolean
+}
+
+const SCOPE_TONE: Record<string, ChipTone> = {
+  market: 'a', style: 'a', sector: 'g', industry: 'n', symbol: 'r',
+}
+
+function OscillatorBoard({ oscillators }: { oscillators?: OscillatorRow[] | null }) {
+  if (!oscillators || !oscillators.length) {
+    return (
+      <section style={{ ...panel, marginTop: 14 }}>
+        <div style={{ ...ph }}>
+          <h2 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: S.t0 }}>Oscillator Affiliations</h2>
+          <span style={{ color: S.t2, fontSize: 12 }}>registry unavailable</span>
+        </div>
+      </section>
+    )
+  }
+  return (
+    <section style={{ ...panel, marginTop: 14 }}>
+      <div style={{ ...ph }}>
+        <h2 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: S.t0 }}>Oscillator Affiliations</h2>
+        <span style={{ color: S.t2, fontSize: 12 }}>which oscillator each reading on this desk came from</span>
+      </div>
+      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <thead>
+          <tr>
+            <th style={thL}>Oscillator</th>
+            <th style={th}>Scope</th>
+            <th style={th}>Reading</th>
+            <th style={th}>State</th>
+            <th style={th}>Age</th>
+            <th style={th}>Alerts</th>
+          </tr>
+        </thead>
+        <tbody>
+          {oscillators.map(o => (
+            <tr key={o.oscillator_id} title={`${o.producer || ''} · ${o.store || ''} · ${o.cadence || ''}`}>
+              <td style={tdL}>{o.display_name}</td>
+              <td style={td}><span style={chip(SCOPE_TONE[o.scope] || 'n')}>{o.scope}</span></td>
+              <td style={td}>
+                <span style={mono}>
+                  {isNum(o.reading)
+                    ? `${o.reading}${o.reading_name === 'breadth_pct' || o.reading_name === 'rs_score' ? '%' : ''}`
+                    : <Unk reason="no reading" />}
+                </span>
+              </td>
+              <td style={td}>{o.state || <Unk reason="no state" />}</td>
+              <td style={td}>{ageShort(o.as_of)}</td>
+              <td style={td}>{o.alerts ? 'yes' : '—'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </section>
+  )
+}
+
 /* ═══════════════════════════ COMPOSITION ══════════════════════════════ */
 export default function DefenseRedesign({ posture, recsData, tradeAi, regime, industriesCapturedAt, onRefresh, refreshing, onDeepSeek, deepSeekRefreshing, quadrant, preserved }: {
   posture: any; recsData: any; tradeAi: any; regime: any; industriesCapturedAt?: string | null
@@ -679,6 +750,12 @@ export default function DefenseRedesign({ posture, recsData, tradeAi, regime, in
       </div>
 
       <Oversight oversight={recsData?.oversight} />
+
+      {/* Oscillator Affiliations — the one board that names which oscillator
+          every reading on this desk came from. Generated server-side from the
+          canonical registry, so a dark oscillator shows up here rather than
+          being silently absent. */}
+      <OscillatorBoard oscillators={posture?.oscillators} />
 
       {/* Contract §2b — live components absent from the mockup are PRESERVED
           unmodified, below section 9, in their existing order. */}

@@ -43,6 +43,17 @@ AUDIT_PATH = PROJECT_ROOT / "data" / "runtime" / "rotation_autopilot_latest.json
 
 MIN_BRIDGE_INTERVAL_MIN = 30
 STRENGTH_DELTA_TRIGGER = 0.12
+
+
+def _affiliation(oscillator_id: str, **kw):
+    """Fail-soft stamp. Labelling must never break the rotation tick."""
+    try:
+        from oscillator_registry import try_affiliation_for
+        return try_affiliation_for(oscillator_id, **kw)
+    except Exception:
+        return None
+
+
 def _now() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -215,6 +226,11 @@ def run_autopilot_tick(
         "rs_20d": rotation.get("rs_20d"),
         "explain": rotation.get("explain"),
         "last_check_at": _now().isoformat(),
+        "oscillator_affiliation": _affiliation(
+            "small_cap_rotation",
+            reading=rotation.get("strength"),
+            state=rotation.get("signal"),
+        ),
     }
     if transition.get("activated"):
         new_state["activated_at"] = _now().isoformat()
