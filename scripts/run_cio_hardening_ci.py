@@ -195,6 +195,10 @@ GATES = [
             # answer must go out on the bot that RECEIVED the question --
             # send_cio_message fans out to a different token entirely.
             "tests/test_cio_poller_reply.py",
+            # The first live reply was "Hermes: promoted=2502 staged=342
+            # topics=[]" to a question about Walmart, which had 3 rows. An
+            # answer must be about the subject, not about the pipeline.
+            "tests/test_cio_answer_quality.py",
             # Grok-closure Phase 4: canonical durable commitment contract
             # (falsifier/confidence/horizon/freeze) + scheduled outcome evaluator.
             "tests/test_governed_commitment.py",
