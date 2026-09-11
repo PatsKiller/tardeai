@@ -108,6 +108,25 @@ def build_author_prompt(
             "no_trade_instructions": True,
             "mbi_behavior": 0,
             "output_schema": SCHEMA_AUTHOR,
+            # The model cannot see SCHEMA_AUTHOR — it is only a version STRING.
+            # Measured 2026-09-11: naming the schema without listing its fields
+            # produced a well-formed JSON object that omitted claim, assumptions,
+            # uncertainties, horizon and next_research_question, so every organic
+            # attempt quarantined as schema_invalid. Ask for the fields by name.
+            "required_fields": list(MODEL_SUPPLIED_FIELDS),
+            "field_notes": {
+                "stance": "one of stance_enum",
+                "claim": "one sentence, falsifiable, no numbers you were not given",
+                "confidence": "float 0.0-1.0",
+                "assumptions": "list of strings; [] if none",
+                "uncertainties": "list of strings; [] if none",
+                "falsifier": "the concrete observation that would prove this claim wrong",
+                "horizon": "e.g. 14d",
+                "next_research_question": "the question to ask next",
+                "memory_fact_ids": "cite ONLY ids present in memory_facts above",
+                "evidence_source_ids": "ids you actually used",
+                "research_object_ids": "echo the ids given above",
+            },
         },
     }
     prompt = (
@@ -126,6 +145,26 @@ def build_author_prompt(
         "prompt_template_version": policy.prompt_template_version or PROMPT_TEMPLATE_VERSION,
     }
     return prompt, digest_obj(digest_payload)
+
+
+#: The subset of L3AuthorJudgment@v1 the MODEL must supply. The remaining
+#: required fields (judgment_id, provider, requested_model, returned_model,
+#: prompt_template_version, input_digest, ...) are envelope fields the caller
+#: fills after the response returns — asking the model for them would invite it
+#: to invent its own provenance.
+MODEL_SUPPLIED_FIELDS = (
+    "stance",
+    "claim",
+    "confidence",
+    "assumptions",
+    "uncertainties",
+    "falsifier",
+    "horizon",
+    "next_research_question",
+    "memory_fact_ids",
+    "evidence_source_ids",
+    "research_object_ids",
+)
 
 
 def _default_deepseek_call(**kwargs: Any) -> Any:
