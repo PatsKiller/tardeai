@@ -57,6 +57,15 @@ def classify(rs20, slope):
     return "IMPROVING" if slope >= 0 else "LAGGING"
 
 
+def _affiliation(oscillator_id: str, **kw):
+    """Fail-soft stamp. Labelling must never break the momentum computation."""
+    try:
+        from oscillator_registry import try_affiliation_for
+        return try_affiliation_for(oscillator_id, **kw)
+    except Exception:
+        return None
+
+
 def compute_states(cur, as_of_idx_offset=0):
     """One day's full sector table. offset 0 = latest close, 1 = prior close, ...
     Series are DATE-ALIGNED with SPY (held ETFs get extra repricer rows; XLI/XLB had 112
@@ -350,6 +359,10 @@ def main() -> int:
         if len(prior) >= CFG["debounce_days"] and prior[0] == st["state"] and prior[-1] != st["state"]:
             alerts.append({"sector": st["pair"], "etf": key, "from": prior[-1], "to": st["state"],
                            "severity": "warning",
+                           "oscillator_id": "style_spread",
+                           "oscillator_affiliation": _affiliation(
+                               "style_spread", reading=st["s5"], state=st["state"],
+                               prior_state=prior[-1], confirm_days=CFG["debounce_days"]),
                            "line": f"⚠ Style {st['pair']}: {prior[-1]}→{st['state']} (day {CFG['debounce_days']} confirm) · spread {st['s5']:+.1f}% (5d)"})
     for row in rows:
         if not row.get("state"):
@@ -399,6 +412,10 @@ def main() -> int:
             alerts.append({
                 "sector": name, "etf": row["etf"], "from": prior[-1], "to": row["state"],
                 "severity": sev,
+                "oscillator_id": "sector_momentum_rs",
+                "oscillator_affiliation": _affiliation(
+                    "sector_momentum_rs", reading=row["rs20"], state=row["state"],
+                    prior_state=prior[-1], confirm_days=CFG["debounce_days"]),
                 "line": (f"⚠ {name}: {prior[-1]}→{row['state']} (day {CFG['debounce_days']} confirm) · "
                          f"RS {row['rs5']:+.1f}% (5d) · breadth {b_pct if b_pct is not None else '—'}% above 20DMA · "
                          f"your exposure {w.get('pct', 0)}% (${(w.get('dollars') or 0):,})"),

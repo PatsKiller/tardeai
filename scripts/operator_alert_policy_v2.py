@@ -171,6 +171,14 @@ def route_event(event: AlertEvent) -> RoutingDecision:
         return RoutingDecision(ROUTE_IMMEDIATE, CRITICAL_OPERATIONS, None, 24 * 3600, 3600, None)
     if atype in {"siem_without_trading_impact", "system_health", "job_telemetry"}:
         return RoutingDecision(ROUTE_DIGEST, None, "OPS", DEFAULT_TTLS.get(atype, 7 * 86400), 3600, None)
+    if atype == "confluence_flip":
+        # A symbol's indicator confluence crossed a directional boundary
+        # (NEUTRAL->BULLISH_STRONG etc., which requires >=3 independent families).
+        # Advisory context, never capital at risk: DIGEST, never IMMEDIATE, and
+        # deliberately NOT in CRITICAL_IMMEDIATE_TYPES for the same reason
+        # material_change is not — diluting the critical set is how a critical
+        # channel stops being read.
+        return RoutingDecision(ROUTE_DIGEST, None, "OPS", 24 * 3600, 3600, None)
     if atype in {"debug_or_success"}:
         return RoutingDecision(ROUTE_LOG, None, None, DEFAULT_TTLS[atype], 3600, None)
     if atype in PAPER_OR_CANDIDATE_TYPES:

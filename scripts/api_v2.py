@@ -15817,6 +15817,10 @@ def _defense_posture(query=None):
     out["llm_timeline"] = _build_llm_timeline()
     # Data Rhythm — schedule + freshness of every data producer the desk consumes
     out["data_rhythm"] = _build_data_rhythm()
+    # Oscillator Affiliations — one row per registered oscillator, from the
+    # canonical registry, with the latest reading/snapshot attached. Generated
+    # from the registry so it cannot drift from what actually exists.
+    out["oscillators"] = _build_oscillator_board()
     return out
 
 
@@ -15986,6 +15990,111 @@ def _build_data_rhythm():
         }
     )
     return rhythm
+
+
+def _build_oscillator_board() -> list[dict]:
+    """Oscillator Affiliations board for the Defense Desk.
+
+    Generated from the canonical registry (config/oscillator_registry.json), so
+    the board shows exactly the oscillators that exist — a DARK oscillator shows
+    up here with an honest "no reading" rather than being silently absent. Each
+    row carries scope, current state/reading where a snapshot exists, producer,
+    store, cadence, and whether it alerts. Fail-soft: a registry failure returns
+    an empty list rather than taking the posture endpoint down.
+    """
+    board: list[dict] = []
+    try:
+        from oscillator_registry import all_entries
+    except Exception:
+        return board
+
+    # Snapshot readers: one per registered store, all cheap disk reads, all
+    # optional — a missing snapshot is "no reading", not an error.
+    def _read_sector_momentum():
+        s = _load_json(PROJECT_ROOT / "data" / "runtime" / "sector_momentum_latest.json") or {}
+        return s
+
+    def _read_industry_momentum():
+        s = _load_json(PROJECT_ROOT / "data" / "runtime" / "industry_momentum_latest.json") or {}
+        return s
+
+    def _read_rotation_autopilot():
+        s = _load_json(PROJECT_ROOT / "data" / "runtime" / "rotation_autopilot_state.json") or {}
+        return s
+
+    def _read_rotation_ladders():
+        s = _load_json(PROJECT_ROOT / "state" / "data_broker" / "rotation_ladders.json") or {}
+        return s
+
+    snapshots = {
+        "sector_momentum_rs": _read_sector_momentum,
+        "style_spread": _read_sector_momentum,
+        "sector_breadth_20dma": _read_sector_momentum,
+        "sector_comovement": _read_sector_momentum,
+        "industry_momentum_quadrant": _read_industry_momentum,
+        "small_cap_rotation": _read_rotation_autopilot,
+        "rotation_ladders_rs": _read_rotation_ladders,
+    }
+
+    for entry in all_entries():
+        oid = entry["oscillator_id"]
+        row = {
+            "oscillator_id": oid,
+            "display_name": entry["display_name"],
+            "scope": entry["scope"],
+            "reading_name": entry.get("reading_name"),
+            "producer": entry.get("producer"),
+            "store": entry.get("store"),
+            "cadence": entry.get("cadence"),
+            "alerts": bool((entry.get("alert_policy") or {}).get("enabled")),
+            "state": None,
+            "reading": None,
+            "as_of": None,
+        }
+        reader = snapshots.get(oid)
+        if reader is not None:
+            try:
+                snap = reader()
+                _attach_oscillator_reading(row, oid, snap)
+            except Exception:
+                pass
+        board.append(row)
+    return board
+
+
+def _attach_oscillator_reading(row: dict, oid: str, snap: dict) -> None:
+    """Best-effort: pull the latest reading for one oscillator from its snapshot.
+
+    This is deliberately shallow — it reads the first representative row rather
+    than re-deriving a statistic, because the board is a "which oscillator is
+    this and is it alive" panel, not a second source of the numbers the desk
+    already shows in detail elsewhere.
+    """
+    if oid in ("sector_momentum_rs", "style_spread", "sector_breadth_20dma"):
+        rows = snap.get("rows") or []
+        if rows:
+            r = rows[0]
+            row["state"] = r.get("state")
+            row["reading"] = r.get("rs20")
+            row["as_of"] = snap.get("generated_at") or r.get("as_of")
+    elif oid == "sector_comovement":
+        row["as_of"] = snap.get("generated_at")
+    elif oid == "industry_momentum_quadrant":
+        inds = snap.get("industries") or []
+        if inds:
+            r = inds[0]
+            row["state"] = r.get("state")
+            row["reading"] = r.get("rel1m")
+            row["as_of"] = snap.get("generated_at")
+    elif oid == "small_cap_rotation":
+        row["state"] = snap.get("signal")
+        row["reading"] = snap.get("strength")
+        row["as_of"] = snap.get("last_check_at") or snap.get("last_checked")
+    elif oid == "rotation_ladders_rs":
+        sectors = snap.get("sectors") or []
+        if sectors:
+            row["reading"] = sectors[0].get("rs_score")
+            row["as_of"] = snap.get("computed_at")
 
 
 def _defense_industries(query=None):

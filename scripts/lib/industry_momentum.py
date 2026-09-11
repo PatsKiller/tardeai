@@ -13,6 +13,15 @@ from typing import Any, Callable, Iterable
 from alert_condition_state import observe
 
 
+def _affiliation(oscillator_id: str, **kw):
+    """Fail-soft stamp. Labelling must never break the notification path."""
+    try:
+        from oscillator_registry import try_affiliation_for
+        return try_affiliation_for(oscillator_id, **kw)
+    except Exception:
+        return None
+
+
 def semantic_uid(industry: str, from_state: str, to_state: str, session: str) -> str:
     return f"industry_momentum:{industry}:{from_state}:{to_state}:{session}"
 
@@ -45,6 +54,10 @@ def build_alerts(
         rel_s = f"{rel:+.1f}" if rel is not None else "?"
         alerts.append({
             **c,
+            "oscillator_id": "industry_momentum_quadrant",
+            "oscillator_affiliation": _affiliation(
+                "industry_momentum_quadrant", reading=rel, state=c.get("to"),
+                prior_state=c.get("from")),
             "line": (
                 f"⚠ {c['industry']} ({c.get('sector')}) {c.get('from')}→{c.get('to')} "
                 f"— rel1w {rel_s} · {who}"
@@ -90,8 +103,24 @@ def emit_telegram(
     *,
     title: str = "INDUSTRY MOMENTUM",
 ) -> int:
-    """Route through the canonical sender. Never bypass_router."""
-    lines = [a["line"] for a in decided.get("send") or [] if a.get("line")]
+    """Route through the canonical sender. Never bypass_router.
+
+    Each line is prefixed with its oscillator's operator-facing display name
+    (from the registry) so the operator can tell WHICH oscillator spoke — a
+    sector RS transition and a style spread and an industry quadrant all flow
+    through here, and before the affiliation they were indistinguishable.
+    """
+    lines = []
+    for a in decided.get("send") or []:
+        line = a.get("line")
+        if not line:
+            continue
+        aff = a.get("oscillator_affiliation") or {}
+        name = aff.get("display_name")
+        if name:
+            lines.append(f"{name.upper()}: {line}")
+        else:
+            lines.append(line)
     if not lines or send_fn is None:
         return 0
     send_fn(title + "\n" + "\n".join(lines))

@@ -54,6 +54,16 @@ sys.path.insert(0, str(ROOT / "scripts"))
 SCHEMA = "MaterialChange@v1"
 AUTHORITY = "READ_ONLY_ADVISORY"
 
+
+def _affiliation(oscillator_id: str, **kw):
+    """Fail-soft oscillator stamp. Labelling must never break detection."""
+    try:
+        from oscillator_registry import try_affiliation_for
+        return try_affiliation_for(oscillator_id, **kw)
+    except Exception:
+        return None
+
+
 #: Operator-set 2026-09-06, tunable without a deploy.
 K = float(os.getenv("MATERIAL_CHANGE_K", "3.0"))
 #: Fewer observations than this and the baseline is not a baseline.
@@ -475,7 +485,12 @@ def sector_moves(cur, syms: dict[str, dict], excursion_stats: list[dict]) -> tup
                               for m in members),
             "evidence": {"source": "ticker_prices+sector", "sector": sector,
                          "names": [m["symbol"] for m in members],
-                         "name_k": SECTOR_NAME_K, "min_names": SECTOR_MIN_NAMES},
+                         "name_k": SECTOR_NAME_K, "min_names": SECTOR_MIN_NAMES,
+                         "oscillator_id": "sector_comovement",
+                         "oscillator_affiliation": _affiliation(
+                             "sector_comovement",
+                             reading=round(sum(m["ratio"] for m in members) / len(members), 2),
+                             state=str(len(members)) + "_names")},
             # What this change is ABOUT. `symbol` above is a representative
             # MEMBER, carried so the row stays joinable and the notifier has a
             # ticker to show -- it is NOT the subject. Without this declaration

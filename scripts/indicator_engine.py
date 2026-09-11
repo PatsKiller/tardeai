@@ -949,6 +949,29 @@ FAMILY_CAP = 2.0          # max weighted contribution per family per direction
 STRONG_MIN_FAMILIES = 3   # no single family may create STRONG confluence alone
 
 
+def _confluence_affiliation(net, state, contributors, detractors):
+    """Fail-soft affiliation naming the confluence and its momentum oscillators.
+
+    The affiliation records WHICH oscillators actually contributed, so a
+    BULLISH_STRONG reading is traceable to the specific RSI/stochastic/MACD/
+    Williams %R votes behind it rather than appearing as an anonymous score.
+    """
+    try:
+        from oscillator_registry import try_affiliation_for
+        tag = try_affiliation_for(
+            "confluence_v2",
+            reading=net,
+            state=state,
+        )
+        if tag is not None:
+            momentum = [n for n in (contributors + detractors)
+                        if n in EVIDENCE_FAMILIES.get('MOMENTUM', ())]
+            tag["contributing_oscillators"] = sorted(set(momentum))
+        return tag
+    except Exception:
+        return None
+
+
 def analyze_confluence_v2(signals: dict, strategy_cfgs: dict | None = None) -> dict:
     """Pure: signals {name: {signal, value, details}} -> family-capped weighted
     confluence. UNAVAILABLE/FAILED/STALE signals are excluded from scoring and
@@ -1004,6 +1027,8 @@ def analyze_confluence_v2(signals: dict, strategy_cfgs: dict | None = None) -> d
             'conflicts': conflicts, 'contributors': contributors,
             'detractors': detractors, 'neutral': neutral,
             'unavailable': unavailable,
+            'oscillator_affiliation': _confluence_affiliation(
+                net, state, contributors, detractors),
             'weights_applied': True, 'family_cap': FAMILY_CAP,
             'strong_min_families': STRONG_MIN_FAMILIES}
 
