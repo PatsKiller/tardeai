@@ -504,3 +504,86 @@ def test_disposition_helpers_explicit_guid_wins():
     row = {"subject_guid": SG_A, "symbols": ["NVDA"]}
     assert row_subject_disposition(row, SG_A, lookup=_lookup({"NVDA": SG_B})) == "match"
     assert row_subject_disposition(row, SG_B, lookup=_lookup({"NVDA": SG_B})) == "cross"
+
+
+# ── truncation is not a floor rejection ─────────────────────────────────────
+
+def test_truncated_facts_are_not_reported_as_too_weak():
+    """Two different reasons to drop a fact must not share one counter.
+
+    Found on live data 2026-09-11. Subject XLI (4fa28fcf-8ec2-5cb7-850e-802b990f1d55)
+    carries 57 facts, ages 326h–560h, weights 0.3148–0.5103. NOT ONE of them is
+    below the 0.05 influence floor. With max_facts=32 the surplus 25 were counted
+    into `below_min_influence`, so `GroundedJudgmentInput@v1.retrieval` reported
+
+        filtered_below_floor: 25
+
+    to Lane C and to any auditor — stating that 25 usable facts were too weak to
+    use. They were not weak. They were over the ceiling.
+
+    "Too weak to use" and "usable, but more than we carry" are opposite claims
+    about the evidence, and a reader cannot recover the difference once they are
+    summed. Same failure family as `rows_produced=0` meaning both "produced
+    nothing" and "nobody told me".
+    """
+    from datetime import datetime, timedelta, timezone
+
+    from scripts.lib.memory_decay import load_decay_policy
+    from scripts.lib.memory_grounding import SubjectGroundedMemorySelector
+
+    subject = "4fa28fcf-8ec2-5cb7-850e-802b990f1d55"
+    now = datetime(2026, 9, 11, 6, 0, tzinfo=timezone.utc)
+    # 40 facts, all comfortably above the floor, all the same age.
+    rows = [
+        {"memory_id": f"m{i}", "subject_guid": subject, "content": f"observation {i}",
+         "as_of": (now - timedelta(hours=300)).isoformat().replace("+00:00", "Z")}
+        for i in range(40)
+    ]
+    sel = SubjectGroundedMemorySelector(
+        lambda: rows, policy=load_decay_policy(), max_facts=32
+    ).select(subject, now=now)
+
+    assert len(sel.selected) == 32
+    assert sel.rejected.truncated_by_max_facts == 8, "the surplus must be counted as truncation"
+    assert sel.rejected.below_min_influence == 0, (
+        "no fact here is below the floor — reporting one would be false"
+    )
+    # every surviving fact is far above the floor, which is the whole point
+    policy = load_decay_policy()
+    assert all(f.decay_weight > policy.min_influence for f in sel.selected)
+
+
+def test_truncation_and_floor_are_both_visible_to_lane_c():
+    """The L3 contract must carry both numbers, not their sum."""
+    from datetime import datetime, timedelta, timezone
+
+    from scripts.lib.memory_decay import load_decay_policy
+    from scripts.lib.memory_grounding import (
+        SubjectGroundedMemorySelector,
+        build_grounded_judgment_input,
+    )
+
+    subject = "4fa28fcf-8ec2-5cb7-850e-802b990f1d55"
+    now = datetime(2026, 9, 11, 6, 0, tzinfo=timezone.utc)
+    fresh = [
+        {"memory_id": f"f{i}", "subject_guid": subject, "content": f"recent {i}",
+         "as_of": (now - timedelta(hours=100)).isoformat().replace("+00:00", "Z")}
+        for i in range(35)
+    ]
+    ancient = [
+        {"memory_id": "ancient", "subject_guid": subject, "content": "very old",
+         "as_of": (now - timedelta(hours=5000)).isoformat().replace("+00:00", "Z")}
+    ]
+    sel = SubjectGroundedMemorySelector(
+        lambda: fresh + ancient, policy=load_decay_policy(), max_facts=32
+    ).select(subject, now=now)
+    gin = build_grounded_judgment_input(
+        sel, source_sha="x", epoch_id="e", schedule_slot="s", correlation_id="c",
+        material_residual_question={"present": True, "question_text": "q",
+                                    "why_unresolved_by_research": "r",
+                                    "materiality_basis": "m"})
+    r = gin["retrieval"]
+    assert r["returned"] == 32
+    assert r["filtered_below_floor"] == 1, "the 5000h fact is genuinely under the floor"
+    assert r["truncated_by_max_facts"] == 3, "the surplus fresh facts are truncation"
+    assert r["filtered_below_floor"] != r["truncated_by_max_facts"]

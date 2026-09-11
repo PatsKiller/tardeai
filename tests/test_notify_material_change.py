@@ -75,13 +75,46 @@ def test_only_unnotified_changes_are_selected(mod):
 
 def test_a_suppressed_send_leaves_the_change_pending(mod):
     """Marking a suppressed alert as notified consumes it silently, which is how
-    the operator stops hearing about the thing the alert exists for."""
+    the operator stops hearing about the thing the alert exists for.
+
+    Re-anchored 2026-09-11: the send moved out of main() into the module-level
+    `deliver_notice` wrapper so the alarm could be FIRED by a test (the C1 gate
+    requires an injected condition, not an assertion about one). The property
+    under test is unchanged and is now checked on the AST rather than on text
+    shape, so the next refactor cannot silently un-anchor it again.
+    """
+    import ast
+
     src = SCRIPT.read_text(encoding="utf-8")
-    body = src.split("accepted = bool(send_telegram", 1)[1]
-    marked = body.split("if accepted:", 1)[1].split("else:", 1)[0]
-    assert "notified_at = now()" in marked, "the mark must be inside the accepted branch"
-    unaccepted = body.split("else:", 1)[1]
-    assert "notified_at" not in unaccepted
+    tree = ast.parse(src)
+
+    def _marks_notified(node) -> bool:
+        return any(
+            isinstance(n, ast.Constant) and isinstance(n.value, str)
+            and "notified_at = now()" in n.value
+            for n in ast.walk(node)
+        )
+
+    guards = [n for n in ast.walk(tree)
+              if isinstance(n, ast.If)
+              and isinstance(n.test, ast.Name) and n.test.id == "accepted"]
+    assert guards, "the notified_at mark must sit under an `if accepted:` guard"
+
+    marking = [g for g in guards if any(_marks_notified(b) for b in g.body)]
+    assert marking, "the mark must be inside the accepted branch"
+
+    for g in marking:
+        for orelse in g.orelse:
+            assert not _marks_notified(orelse), (
+                "a not-accepted send must never stamp notified_at"
+            )
+
+    # And nothing outside an `if accepted:` guard may stamp it either.
+    inside = {id(n) for g in marking for b in g.body for n in ast.walk(b)}
+    for node in ast.walk(tree):
+        if (isinstance(node, ast.Constant) and isinstance(node.value, str)
+                and "notified_at = now()" in node.value):
+            assert id(node) in inside, "notified_at stamped outside the accepted guard"
 
 
 # ── held is not dropped ─────────────────────────────────────────────────────

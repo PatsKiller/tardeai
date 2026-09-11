@@ -73,6 +73,18 @@ GATES = [
             # so every unresolved identity raised CheckViolation and the
             # material-change detector died on every run for ~15h.
             "tests/test_narrative_subject_confidence.py",
+
+            # 2026-09-11 A2: the first ORGANIC producer routed through the comms
+            # gateway. All 3 gateway-SETTLED rows that have ever existed are
+            # staged proof messages. SENT is not SETTLED, and a gateway failure
+            # must never silently succeed as legacy.
+            "tests/test_material_change_gateway_route.py",
+
+            # 2026-09-11: social_ingest reported rows_processed=0 as a hardcoded
+            # literal while writing 761 real rows in 36h. None means NOT
+            # MEASURED; 0 means measured and empty. Two states cannot express
+            # "no input".
+            "tests/test_social_ingest_rows_measured.py",
             "tests/test_l3_judgment_pipeline.py",
             "tests/test_l3_judgment_cache.py",
             "tests/test_l3_critic.py",
