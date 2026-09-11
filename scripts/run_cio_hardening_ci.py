@@ -75,10 +75,20 @@ GATES = [
             "tests/test_narrative_subject_confidence.py",
 
             # 2026-09-11 A2: the first ORGANIC producer routed through the comms
-            # gateway. All 3 gateway-SETTLED rows that have ever existed are
-            # staged proof messages. SENT is not SETTLED, and a gateway failure
-            # must never silently succeed as legacy.
+            # gateway. SENT is not SETTLED, and a gateway failure must never
+            # silently succeed as legacy. The producer had ALSO been passing the
+            # alias `operator_alert` into an allowlist compared verbatim, so every
+            # send failed closed before any provider I/O — covered here by a test
+            # that exercises the REAL gate rather than a mock.
             "tests/test_material_change_gateway_route.py",
+
+            # 2026-09-11: `ALTER TABLE t ADD COLUMN IF NOT EXISTS c` takes an
+            # AccessExclusiveLock even when `c` exists — IF NOT EXISTS suppresses
+            # the error, not the lock. Three scripts ran it against
+            # material_changes on colliding schedules and deadlocked the notifier
+            # AFTER it had already delivered to the operator, leaving the row
+            # unconsumed and queued to re-send every 15 minutes.
+            "tests/test_ddl_guard.py",
 
             # 2026-09-11: social_ingest reported rows_processed=0 as a hardcoded
             # literal while writing 761 real rows in 36h. None means NOT
