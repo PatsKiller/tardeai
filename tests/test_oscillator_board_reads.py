@@ -86,3 +86,22 @@ def test_negative_control_style_and_sector_never_share_a_reading():
         "sector and style readings are identical — the board is showing one "
         "oscillator's value for another"
     )
+
+
+def test_industry_reads_captured_at_not_generated_at():
+    """The industry snapshot stamps `captured_at`, not `generated_at`.
+
+    Reading the wrong field made the live board show "Age: never" for a
+    snapshot that is perfectly fresh, which reads as a dead producer.
+    """
+    snap = {
+        "captured_at": "2026-09-11T12:00:00Z",
+        "generated_at": None,
+        "industries": [{"state": "IMPROVING", "rel1m": -19.59}],
+    }
+    row = _row("industry_momentum_quadrant")
+    api_v2._attach_oscillator_reading(row, "industry_momentum_quadrant", snap)
+    assert row["as_of"] == "2026-09-11T12:00:00Z"
+    assert row["state"] == "IMPROVING"
+    assert row["reading"] == -19.59
+

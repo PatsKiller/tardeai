@@ -16098,7 +16098,7 @@ def _attach_oscillator_reading(row: dict, oid: str, snap: dict) -> None:
             r = inds[0]
             row["state"] = r.get("state")
             row["reading"] = r.get("rel1m")
-            row["as_of"] = snap.get("generated_at")
+            row["as_of"] = snap.get("captured_at") or snap.get("generated_at")
     elif oid == "small_cap_rotation":
         row["state"] = snap.get("signal")
         row["reading"] = snap.get("strength")

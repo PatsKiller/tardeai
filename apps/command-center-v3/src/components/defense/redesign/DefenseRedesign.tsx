@@ -612,7 +612,7 @@ function OscillatorBoard({ oscillators }: { oscillators?: OscillatorRow[] | null
               <td style={td}>
                 <span style={mono}>
                   {isNum(o.reading)
-                    ? `${o.reading}${o.reading_name === 'breadth_pct' || o.reading_name === 'rs_score' ? '%' : ''}`
+                    ? `${o.reading}${o.reading_name === 'breadth_pct' ? '%' : ''}`
                     : <Unk reason="no reading" />}
                 </span>
               </td>
