@@ -272,7 +272,10 @@ def run_author(
 
             state = CAP_REFUSED
         elif "AUTH" in err.upper():
-            state = MODEL_UNAVAILABLE
+            # Auth failures are provider outages for L3, not schema errors.
+            # Measured 2026-09-11: mis-mapping here made organic wakes look like
+            # schema_invalid when the real issue was environment/credentials.
+            state = PROVIDER_OUTAGE
         return {
             "ok": False,
             "refusal_state": state,
