@@ -41,6 +41,7 @@ from scripts.lib.persistent_wake_interfaces import (
     mint_view_id,
     mint_wake_id,
 )
+from scripts.lib.memory_subject_resolver import ResolverFailure as _ResolverFailure
 from scripts.lib.persistent_wake_schedule import ScheduleContract, evaluate_health
 from scripts.lib.persistent_wake_store import JsonlStore
 
@@ -109,6 +110,13 @@ class MemoryFact:
     content: Any
     as_of: datetime
     relevant: bool = True
+    # L2 (2026-09-11): age is carried as a continuous weight, never as a
+    # deletion gate. `decay_weight` is in (0, 1]; it never reaches 0 from age
+    # alone, so an old fact is OLD, not absent.
+    age_seconds: float = 0.0
+    decay_weight: float = 1.0
+    freshness_class: str = "fresh"
+    decay_model: str | None = None
 
 
 @dataclass
@@ -126,6 +134,14 @@ class MemoryLoadMetrics:
     resolved_by_symbol: int = 0
     # Rows naming several subjects at once. Skipped, never guessed.
     ambiguous_prevented: int = 0
+    # Rows whose SYMBOL resolution hit a registry outage. Explicit-guid rows in
+    # the same load are unaffected; the count exists so a degraded load can
+    # never look like a clean empty one.
+    resolver_failures: int = 0
+    # Rows dropped because their decay weight fell under the influence floor.
+    # This is a per-fact floor, NOT the old all-or-nothing staleness cliff, and
+    # it is reported separately so "weak" is never confused with "absent".
+    below_min_influence: int = 0
 
 
 @dataclass
@@ -139,6 +155,10 @@ class MemorySnapshot:
     stale: bool = False
     error: str | None = None
     metrics: MemoryLoadMetrics | None = None
+    # Set when the identity registry itself failed. Distinct from "this subject
+    # has no memory": a lookup outage must never present as an empty subject.
+    resolver_failure: str | None = None
+    decay_model: str | None = None
 
 
 def _now() -> datetime:
@@ -169,6 +189,36 @@ def _resolve_memory_identity(row: dict) -> tuple[str | None, str | None]:
 
 SYMBOL_RESOLVE_FLAG = "WAKE_MEMORY_SYMBOL_RESOLVE"
 
+# L3 judgment call site. Default OFF so a rollback needs no deploy: clearing the
+# env var returns the wake to the deterministic path byte-for-byte. Node 6 has
+# never had a caller — `provenance.llm` was a literal None at four sites — so
+# this flag is the entire difference between "a model was asked" and the
+# template that ran before it.
+L3_JUDGMENT_FLAG = "WAKE_L3_JUDGMENT"
+
+# Reaching a PAID provider requires its own explicit opt-in, separate from the
+# judgment flag. Found the hard way on 2026-09-11: the first wiring passed no
+# author_call_fn, so `_default_deepseek_call` fell through to the live
+# deepseek_client inside a hermetic pytest run. It recorded provider_calls=1 and
+# refused with provider_outage — meaning a test suite could bill the account
+# whenever a machine happened to have working credentials. Tests must not be
+# able to spend, so the default here is OFF and the scheduler turns it on.
+L3_ALLOW_LIVE_PROVIDER_FLAG = "WAKE_L3_ALLOW_LIVE_PROVIDER"
+
+
+class LiveProviderNotPermitted(RuntimeError):
+    """Raised instead of calling a paid provider when live calls are not enabled."""
+
+
+def l3_judgment_enabled(env: dict | None = None) -> bool:
+    e = env if env is not None else os.environ
+    return str(e.get(L3_JUDGMENT_FLAG, "0")).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def l3_live_provider_enabled(env: dict | None = None) -> bool:
+    e = env if env is not None else os.environ
+    return str(e.get(L3_ALLOW_LIVE_PROVIDER_FLAG, "0")).strip().lower() in {"1", "true", "yes", "on"}
+
 
 def symbol_resolve_enabled(env: dict | None = None) -> bool:
     """Default ON, with an env kill switch so rollback needs no deploy."""
@@ -184,17 +234,20 @@ def _guid_for_symbol(symbol: str) -> str | None:
     repeatedly and the registry answer is a pure function of the symbol. This
     is a lookup cache, not a cross-invocation guarantee, so a cold start
     costing one extra query is correct rather than a lost promise.
-    """
-    try:
-        from scripts.lib.cio_subject_guid import lookup_subject
 
-        got = lookup_subject(symbol)
-    except Exception:
-        return None
-    if not isinstance(got, dict):
-        return None
-    guid = got.get("subject_guid")
-    return str(guid) if guid else None
+    2026-09-11 (L1 self-reporting integrity). This function used to end in a
+    bare ``except Exception: return None``, which made an infrastructure
+    failure indistinguishable from "this ticker is not in the registry".
+    Because the answer is ``lru_cache``d for the life of the process, a single
+    transient registry outage pinned EVERY symbol to None until restart, and
+    the wake then settled reporting zero facts and no error — the same
+    false-success shape as a pipeline reporting rows_produced=0 while it is
+    actually writing rows. A registry outage now raises ResolverFailure and is
+    recorded as MEMORY_UNAVAILABLE; a genuine miss still returns None.
+    """
+    from scripts.lib.memory_subject_resolver import resolve_symbol_guid
+
+    return resolve_symbol_guid(symbol)
 
 
 def _symbols_of(row: dict) -> list[str]:
@@ -315,6 +368,10 @@ class MemoryLoader:
         facts: list[MemoryFact] = []
         newest: datetime | None = None
         seen_ids: set[str] = set()
+        return self._build(rows, subject_guid, snap_id, now, metrics, facts, seen_ids, newest)
+
+    def _build(self, rows, subject_guid, snap_id, now, metrics, facts, seen_ids, newest):
+        resolver_error: str | None = None
         for row in rows:
             if not isinstance(row, dict):
                 return MemorySnapshot(
@@ -322,7 +379,17 @@ class MemoryLoader:
                     loaded_at=now, malformed=True, error="non-object memory row",
                     metrics=metrics,
                 )
-            disposition = _row_subject_disposition(row, subject_guid)
+            try:
+                disposition = _row_subject_disposition(row, subject_guid)
+            except _ResolverFailure as exc:
+                # The registry is down. Symbol-resolved rows cannot be judged, so
+                # this row is skipped — but the outage is COUNTED and surfaced.
+                # A row that names its subject_guid explicitly needs no registry
+                # and still loads, so one outage no longer erases a whole subject.
+                metrics.resolver_failures += 1
+                if resolver_error is None:
+                    resolver_error = f"{type(exc).__name__}: {exc}"
+                continue
             if disposition == "unmatched":
                 metrics.unmatched += 1
                 continue
@@ -377,6 +444,37 @@ class MemoryLoader:
             metrics.loaded += 1
             if newest is None or as_of > newest:
                 newest = as_of
+        # L2 (2026-09-11): age becomes a continuous per-fact weight.
+        #
+        # `stale` is retained ONLY as a label for provenance. It is no longer a
+        # deletion gate: the caller used to replace the whole fact list with []
+        # whenever the NEWEST fact crossed 168h, so one 18-day-old observation
+        # erased every other fact for that subject and the desk did strictly
+        # LESS the more memory it could find. Weight replaces the cliff.
+        from scripts.lib.memory_decay import (
+            decay_weight as _decay_weight,
+            freshness_class as _freshness_class,
+            load_decay_policy as _load_decay_policy,
+        )
+
+        policy = _load_decay_policy()
+        weighted: list[MemoryFact] = []
+        for f in facts:
+            age = max(0.0, (now - f.as_of).total_seconds())
+            w = _decay_weight(age, policy=policy)
+            if w < policy.min_influence:
+                # Individually negligible — recorded as a floor rejection, never
+                # as an absent subject, and never as a reason to drop siblings.
+                metrics.below_min_influence += 1
+                continue
+            weighted.append(replace(
+                f, age_seconds=age, decay_weight=w,
+                freshness_class=_freshness_class(age, policy),
+                decay_model=policy.decay_model,
+            ))
+        facts = weighted
+        metrics.loaded = len(facts)
+
         stale = False
         if newest is not None and (now - newest) > timedelta(hours=self.stale_hours):
             stale = True
@@ -384,6 +482,7 @@ class MemoryLoader:
             snapshot_id=snap_id, subject_guid=subject_guid,
             facts=facts, loaded_at=now,
             empty=(len(facts) == 0), stale=stale, metrics=metrics,
+            decay_model=policy.decay_model, resolver_failure=resolver_error,
         )
 
     def _fetch(self, subject_guid: str) -> list[dict]:
@@ -547,6 +646,23 @@ class WakeEngine:
         wake["provenance"]["inputs"] = list(wake["provenance"].get("inputs") or []) + [
             {"kind": "memory_snapshot", "id": snap.snapshot_id}
         ]
+        _m = snap.metrics
+        wake["provenance"]["memory_retrieval"] = {
+            "returned": len(snap.facts),
+            "loaded": getattr(_m, "loaded", 0),
+            "filtered_wrong_subject": getattr(_m, "cross_subject_prevented", 0),
+            "filtered_unmatched": getattr(_m, "unmatched", 0),
+            "filtered_ambiguous": getattr(_m, "ambiguous_prevented", 0),
+            "filtered_below_floor": getattr(_m, "below_min_influence", 0),
+            "resolved_by_symbol": getattr(_m, "resolved_by_symbol", 0),
+            "resolver_failures": getattr(_m, "resolver_failures", 0),
+            "decay_model": snap.decay_model,
+            "cliff_applied": False,
+            "decay_weights": [round(f.decay_weight, 6) for f in snap.facts],
+            "oldest_returned_age_hours": (
+                round(max((f.age_seconds for f in snap.facts), default=0.0) / 3600.0, 3)
+            ),
+        }
 
         if snap.malformed:
             wake["lifecycle_state"] = "MEMORY_MALFORMED"
@@ -555,31 +671,38 @@ class WakeEngine:
                                      terminal_states=TERMINAL_WAKE)
             return {"ok": False, "wake": wake, "state": "MEMORY_MALFORMED", "inserted": inserted}
 
+        if snap.resolver_failure:
+            wake["provenance"]["memory_resolver_failure"] = snap.resolver_failure
+            if not snap.facts:
+                # The registry failed AND nothing loaded. Settling here would
+                # publish a zero we did not actually measure — the exact shape
+                # the old silent `except: return None` produced. Refuse instead:
+                # "we could not look" must stay distinguishable from "there was
+                # nothing to find".
+                wake["lifecycle_state"] = "MEMORY_UNAVAILABLE"
+                wake["provenance"]["policy_decisions"].append("refuse_memory_resolver_failure")
+                self.store.upsert_by_key("wakes", "wake_id", wake, preserve_terminal=True,
+                                         terminal_states=TERMINAL_WAKE)
+                return {"ok": False, "wake": wake, "state": "MEMORY_UNAVAILABLE", "inserted": inserted}
+            # Some facts did load (explicit subject_guid rows need no registry).
+            # Proceed, but never silently: the degradation is on the record.
+            wake["provenance"]["policy_decisions"].append("memory_resolver_degraded")
+
         if snap.stale:
-            # Stale memory DEGRADES to empty; it does not abort the wake.
+            # Stale memory is now RETAINED WITH A DECAY WEIGHT.
             #
-            # This branch had never executed. `stale` is computed from the
-            # newest loaded fact, and until 2026-09-10 every wake loaded zero
-            # facts, so `newest` was always None and `stale` always False.
-            # Making memory findable armed a control that had been dead since
-            # it was written, and the first thing it did was refuse a wake.
+            # Until 2026-09-11 this branch ran `replace(snap, facts=[], empty=True)`:
+            # if the NEWEST fact for a subject crossed 168h, every fact for that
+            # subject was discarded and the wake settled reporting zero. Measured
+            # on the live store, 65 of 71 subjects with loadable memory were past
+            # that window (median age 432h), so the control that was meant to stop
+            # the desk reasoning from stale facts instead stopped it reasoning from
+            # ANY facts. Raising 168h to 720h would only move the cliff.
             #
-            # Refusing is the wrong shape. Before memory was loadable these
-            # subjects proceeded with no facts; after, one 18-day-old fact
-            # aborted the decision entirely. That makes the desk do strictly
-            # LESS the more memory it can find, and a refused wake produces no
-            # decision at all — the same terminal slot loss as the
-            # MEMORY_MALFORMED regression earlier the same day.
-            #
-            # Measured at the time of this change: 65 of 71 subjects with
-            # loadable memory were past the 168h window (median age 432h).
-            #
-            # The intent behind the refusal is kept: the wake still never
-            # reasons from stale facts. It simply proceeds without them, which
-            # is exactly the position it was in yesterday.
-            snap = replace(snap, facts=[], empty=True)
-            wake["memory_fact_ids"] = []
-            wake["provenance"]["policy_decisions"].append("stale_memory_degraded_to_empty")
+            # Facts now carry a continuous weight in (0, 1] that never reaches zero
+            # from age alone. Old is OLD, not absent, and the judgment downstream
+            # can discount rather than hallucinate into a vacuum.
+            wake["provenance"]["policy_decisions"].append("stale_memory_retained_with_decay")
 
         # Empty memory is LOADED-with-empty — not a crash, not a silent act.
         memory_empty = snap.empty
@@ -601,7 +724,9 @@ class WakeEngine:
             "agent_id": agent_id,
             "subject_guid": subject_guid,
             "memory_facts": [
-                {"fact_id": f.fact_id, "content": f.content, "as_of": _iso(f.as_of)}
+                {"fact_id": f.fact_id, "content": f.content, "as_of": _iso(f.as_of),
+                 "age_seconds": f.age_seconds, "decay_weight": f.decay_weight,
+                 "freshness_class": f.freshness_class, "decay_model": f.decay_model}
                 for f in snap.facts
             ],
             "comm_events": comm_events,
@@ -610,6 +735,19 @@ class WakeEngine:
             # Selection provenance reaches decide unchanged (original source_id).
             "selection": selection_meta,
         }
+
+        # 3a) L3 judgment — the first caller node 6 has ever had.
+        #
+        # Ordering is a hard rail: L2 before L3. A model asked over an empty
+        # context writes fluent text about nothing, which is worse than the
+        # template it replaces because the template does not sound like it knows
+        # something. The pipeline therefore refuses before it spends whenever the
+        # input is ungrounded, carries no material residual question, or has not
+        # exhausted free-first research. Refusals are recorded, never hidden.
+        judgment = self._maybe_judge(wake, snap, selection_meta, context, now, env)
+        if judgment is not None:
+            context["judgment"] = judgment.get("output")
+            context["agent_view"] = judgment.get("agent_view")
 
         # 3) Decide (deterministic by default)
         decide = decide or default_decide
@@ -836,6 +974,147 @@ class WakeEngine:
             "memory_empty": memory_empty,
         }
 
+    def _maybe_judge(self, wake, snap, selection_meta, context, now, env=None):
+        """Run the L3 judgment pipeline, or decline and say why.
+
+        Returns None when the flag is off or the subject is not eligible. Never
+        raises into the wake: a judgment is advisory, so a failure here degrades
+        to the deterministic path rather than costing the slot.
+
+        MBI_BEHAVIOR stays 0 throughout. Nothing this returns can reach sizing,
+        ordering, stops, weights or the broker: it may only change the next
+        question, eligibility, notification priority and narrative.
+        """
+        if not l3_judgment_enabled(env):
+            return None
+        if not snap.facts:
+            # No grounding -> no model, and no spend. Recorded so the absence of
+            # a judgment is never mistaken for a judgment that said nothing.
+            wake["provenance"]["policy_decisions"].append("l3_skipped_ungrounded")
+            return None
+
+        question = None
+        if isinstance(selection_meta, dict):
+            kind = _selection_primary_kind(selection_meta)
+            sid = selection_meta.get("source_id")
+            if kind == "research_object" and sid:
+                question = {
+                    "present": True,
+                    "question_text": (
+                        f"Does the prior position on this subject still hold given "
+                        f"{selection_meta.get('source')} {sid}?"
+                    ),
+                    "why_unresolved_by_research": "research selected this subject as unconsumed",
+                    "materiality_basis": str(selection_meta.get("source") or "unconsumed_research"),
+                }
+        if question is None:
+            wake["provenance"]["policy_decisions"].append("l3_skipped_no_material_question")
+            return None
+
+        try:
+            from scripts.lib.l3_judgment_cache import JudgmentCache
+            from scripts.lib.l3_judgment_pipeline import run_l3_judgment_pipeline
+            from scripts.lib.memory_decay import load_decay_policy
+            from scripts.lib.memory_grounding import (
+                SubjectGroundedMemorySelector,
+                build_grounded_judgment_input,
+            )
+
+            backend = self.memory_loader.backend
+            if callable(backend):
+                _sg = wake["subject_guid"]
+                sel_backend = lambda: list(backend(_sg) or [])  # noqa: E731
+            else:
+                sel_backend = backend
+            selector = SubjectGroundedMemorySelector(
+                sel_backend, policy=load_decay_policy(), include_fact_text=True
+            )
+            selection = selector.select(wake["subject_guid"], now=now)
+            gin = build_grounded_judgment_input(
+                selection,
+                research_object_ids=list(wake.get("research_object_ids") or []),
+                free_first_exhausted=True,
+                effect_kind="changed_question",
+                material_residual_question=question,
+                source_sha=str(wake.get("source_sha") or ""),
+                epoch_id=str(wake["provenance"].get("epoch_id") or resolve_epoch_id(env)),
+                schedule_slot=str(wake.get("schedule_slot_utc") or ""),
+                trigger="scheduled",
+                correlation_id=str(wake.get("correlation_id") or wake["wake_id"]),
+                include_fact_text=True,
+            )
+            if l3_live_provider_enabled(env):
+                author_fn = None  # pipeline default -> governed deepseek_client
+                critic_fn = None
+            else:
+                def _refuse_live(*_a, **_k):
+                    raise LiveProviderNotPermitted(
+                        f"{L3_ALLOW_LIVE_PROVIDER_FLAG} is not enabled"
+                    )
+
+                author_fn = _refuse_live
+                critic_fn = _refuse_live
+
+            root = _judgment_state_root(self.store)
+            cache = JudgmentCache(root / "l3_judgment_cache.jsonl") if root else None
+            rows: list[dict] = []
+            result = run_l3_judgment_pipeline(
+                gin, cache=cache, now=now,
+                author_call_fn=author_fn, critic_call_fn=critic_fn,
+                source_sha=str(wake.get("source_sha") or ""),
+                served_sha=str(wake.get("source_sha") or ""),
+                release=str(wake["provenance"].get("release") or ""),
+                persist_rows=rows,
+            )
+        except Exception as exc:
+            # Advisory path: never cost the slot. Recorded, never swallowed.
+            wake["provenance"]["policy_decisions"].append("l3_error_degraded")
+            wake["provenance"]["l3_error"] = f"{type(exc).__name__}: {exc}"
+            return None
+
+        out = result.output or {}
+        live_allowed = l3_live_provider_enabled(env)
+        wake["provenance"]["l3"] = {
+            "status": out.get("status"),
+            "refusal_reason": out.get("refusal_reason"),
+            # Attempts, not dollars. A blocked or failed attempt increments this
+            # and spends nothing; only a JUDGED row with a cost carries spend.
+            "provider_call_attempts": result.provider_calls,
+            "live_provider_allowed": live_allowed,
+            "gate_state": (result.gate or {}).get("state"),
+        }
+        if not live_allowed and out.get("status") != "JUDGED":
+            # Policy blocked the call before the network. This is NOT an outage
+            # and must not be counted as one: nothing was wrong with the
+            # provider, we simply were not permitted to ask it.
+            wake["provenance"]["l3"]["blocked_by"] = L3_ALLOW_LIVE_PROVIDER_FLAG
+            wake["provenance"]["policy_decisions"].append("l3_live_provider_blocked")
+        if out.get("status") == "JUDGED" and result.author:
+            a = result.author
+            wake["provenance"]["llm"] = {
+                "provider": a.get("provider"),
+                "model_requested": a.get("model_requested") or a.get("requested_model"),
+                "model_returned": a.get("model_returned") or a.get("returned_model"),
+                "prompt_digest": a.get("prompt_digest"),
+                "input_digest": a.get("input_digest"),
+                "output_digest": a.get("output_digest"),
+                "cost_usd": a.get("cost_usd"),
+                "latency_ms": a.get("latency_ms"),
+                "off_peak": a.get("off_peak"),
+                "cache_hit": a.get("cache_hit"),
+                "judgment_id": a.get("judgment_id"),
+            }
+            wake["provenance"]["policy_decisions"].append("l3_judged")
+        else:
+            wake["provenance"]["policy_decisions"].append(
+                f"l3_refused:{out.get('refusal_reason') or 'unknown'}"
+            )
+        return {
+            "output": out, "author": result.author, "critique": result.critique,
+            "agent_view": result.agent_view, "commitment": result.commitment,
+            "durable_rows": rows,
+        }
+
     def _emit_receipt(
         self, *, agent_id: str, source_kind: str, source_id: str, wake_id: str,
         subject_guid: str, purpose: str, effect_kind: str, effect_ref: str | None,
@@ -889,6 +1168,40 @@ class WakeEngine:
         }
         _, rec = self.store.append_unique("receipts", "receipt_id", rec)
         return rec
+
+
+def resolve_epoch_id(env: dict | None = None) -> str:
+    """Identity of the evidence epoch this wake belongs to.
+
+    An epoch is closed by any code, config, schema or release change, so the
+    served release name IS the epoch: evidence produced under one release must
+    never be spliced onto another. Explicit env wins (a campaign may name its
+    own epoch); otherwise the release directory that CURRENT resolves to; and
+    failing that the source SHA, which is the weakest identity that is still
+    exact. Never returns a bare "unknown" silently — the caller sees the SHA.
+    """
+    e = env if env is not None else os.environ
+    explicit = str(e.get("TRADEAI_EPOCH_ID") or "").strip()
+    if explicit:
+        return explicit
+    try:
+        target = Path(
+            "/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT"
+        ).resolve()
+        name = target.name
+        if name and name != "CURRENT":
+            return name
+    except Exception:
+        pass
+    return source_sha()
+
+
+def _judgment_state_root(store) -> Path | None:
+    root = getattr(store, "root", None) or getattr(store, "path", None)
+    try:
+        return Path(root) if root else None
+    except Exception:
+        return None
 
 
 def default_decide(context: dict) -> dict:

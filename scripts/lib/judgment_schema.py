@@ -74,7 +74,13 @@ REFUSAL_REASON_MAP: dict[str, str] = {
     SCHEMA_INVALID: "schema_invalid",
     QUARANTINED: "schema_invalid",
     CRITIC_PROVIDER_COLLISION: "schema_invalid",
-    OFFPEAK_DEFERRED: "provider_refusal",  # contract enum lacks offpeak; Lane A SFR to extend
+    # 2026-09-11 (Lane A, SFR_L3_TO_INTEGRATION): the contract enum was extended
+    # rather than reusing provider_refusal. A deferral and a refusal are not the
+    # same event: the provider was never asked, nothing was denied, and the work
+    # is still due. Filing deferrals as refusals would have made the refusal
+    # counters unreadable — every out-of-window slot would have looked like a
+    # provider problem.
+    OFFPEAK_DEFERRED: "offpeak_deferred",
 }
 
 # Author stance must permit disagreement / abstention / dispute.
