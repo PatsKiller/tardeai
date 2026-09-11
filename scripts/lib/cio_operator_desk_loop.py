@@ -509,13 +509,21 @@ def gather_freeform_context(intent: dict[str, Any]) -> dict[str, Any]:
                 "reason": f"{sym} thesis attach failed", "gap_type": "research",
             })
 
-    hermes = _domain_payload(snap, "hermes_research")
-    if hermes and hermes.get("state") not in (None, "DATA_UNAVAILABLE"):
-        facts["hermes"] = {
-            "promoted_research_count": hermes.get("promoted_research_count"),
-            "staged_research_count": hermes.get("staged_research_count"),
-            "latest_topics": hermes.get("latest_topics"),
-        }
+    # The freeform path had the SAME defect as the reentry composer: it put the
+    # global pipeline counters into TRADE_AI_FACTS, so the model was handed
+    # "2502 rows exist somewhere" as a fact about whatever was asked. Fixing
+    # only the composer would have left this one feeding the other answer path.
+    research_items = subject_research(symbols) if symbols else []
+    if research_items:
+        facts["research_on_subject"] = research_items
+    elif symbols:
+        soft_gaps.append({
+            "domain": "hermes_research",
+            "symbol": symbols[0],
+            "field": "research",
+            "reason": f"no promoted research for {', '.join(symbols)}",
+            "gap_type": "research",
+        })
 
     available["freeform_context"] = facts
     available["soft_gaps"] = soft_gaps
@@ -885,20 +893,28 @@ def gather_tradeai_evidence(intent: dict[str, Any]) -> dict[str, Any]:
             })
 
     if "research" in needs:
-        hermes = _domain_payload(snap, "hermes_research")
-        if hermes and hermes.get("state") not in (None, "DATA_UNAVAILABLE"):
+        # Subject first. The pipeline counters that used to live here are
+        # identical for every question and describe the machine, not the
+        # company -- see subject_research() for what shipping them cost.
+        items = subject_research(symbols)
+        if items:
             available["hermes_research"] = {
-                "promoted_research_count": hermes.get("promoted_research_count"),
-                "staged_research_count": hermes.get("staged_research_count"),
-                "latest_topics": hermes.get("latest_topics"),
-                "model_provider": hermes.get("model_provider"),
+                "items": items,
+                "symbols": sorted({i["symbol"] for i in items if i.get("symbol")}),
+                "model_provider": (_domain_payload(snap, "hermes_research") or {}).get(
+                    "model_provider"),
             }
         else:
+            # No research about THIS subject is a gap even when the pipeline is
+            # busy. "2502 rows exist" was never evidence about Walmart.
             gaps.append({
                 "domain": "hermes_research",
                 "symbol": symbols[0] if symbols else None,
                 "field": "research",
-                "reason": "hermes_research unavailable or empty",
+                "reason": (
+                    f"no promoted research for {', '.join(symbols)}"
+                    if symbols else "no subject named to research"
+                ),
                 "gap_type": "missing_research",
             })
 
@@ -958,6 +974,78 @@ def _register_gaps(gaps: list[dict[str, Any]], *, chat_id: str, pending_id: str)
         },
     )
     return {"registered": registered}
+
+
+def subject_research(symbols: list[str], *, limit: int = 6) -> list[dict[str, Any]]:
+    """The research rows that are ABOUT these symbols, with their content.
+
+    WHY THIS EXISTS. The `hermes_research` evidence domain carried four values:
+    promoted_research_count, staged_research_count, latest_topics and
+    model_provider. Not one of them is about any particular company. The counts
+    are `SELECT COUNT(*) FROM hermes_research_intelligence` with no symbol
+    filter, so they are identical for every question ever asked.
+
+    On 2026-09-11 the operator asked "What are the latest analyst predictions on
+    Walmart" and was answered, in full:
+
+        Hermes: promoted=2502 staged=342 topics=[]
+
+    2502 is every research row in the system. WMT had 3. The desk had reported
+    on its own pipeline instead of reading the research -- telemetry about the
+    machine standing in for knowledge about the subject. No gate in front of
+    those counters could have fixed that, because a count of rows is not a
+    weaker answer than the rows, it is not an answer at all.
+
+    So the domain now carries ROWS. If there are none for the subject, the
+    caller gets nothing and the honest "no vetted facts / queued a pull" path
+    runs, which is what should have happened in the first place.
+
+    Read-only. Degrades to empty, never raises: absent research is a legitimate
+    state and must not be confused with a broken read.
+    """
+    syms = [str(x).upper().strip() for x in (symbols or []) if str(x).strip()]
+    if not syms:
+        return []
+    conn = None
+    try:
+        import psycopg2  # noqa: PLC0415
+
+        conn = psycopg2.connect(
+            host=os.environ.get("DB_HOST", "localhost"),
+            dbname=os.environ.get("DB_NAME", "trade_ai"),
+            user=os.environ.get("DB_USER", "trade_ai"),
+            password=os.environ.get("DB_PASSWORD") or os.environ.get("POSTGRES_PASSWORD"),
+        )
+        cur = conn.cursor()
+        cur.execute(
+            """SELECT symbol, research_type, topic,
+                      COALESCE(summary, thesis, ''), confidence_score,
+                      created_at
+                 FROM hermes_research_intelligence
+                WHERE upper(symbol) = ANY(%s) AND status = 'promoted'
+                ORDER BY created_at DESC
+                LIMIT %s""",
+            (syms, int(limit)),
+        )
+        out: list[dict[str, Any]] = []
+        for sym, rtype, topic, body, conf, created in cur.fetchall():
+            out.append({
+                "symbol": sym,
+                "research_type": rtype,
+                "topic": topic,
+                "summary": (body or "")[:400],
+                "confidence": float(conf) if conf is not None else None,
+                "as_of": created.strftime("%Y-%m-%d") if created else None,
+            })
+        return out
+    except Exception:
+        return []
+    finally:
+        try:
+            if conn is not None:
+                conn.close()
+        except Exception:
+            pass
 
 
 def _enqueue_hermes_research(
@@ -1071,11 +1159,19 @@ def _curate_from_evidence(operator_text: str, evidence: dict[str, Any]) -> dict[
                 )
             })
         )
-    if hermes:
+    if hermes and hermes.get("items"):
+        # What the research SAYS. Never how many rows there are.
+        lines = []
+        for it in hermes["items"][:4]:
+            head = " ".join(x for x in (it.get("symbol"), it.get("as_of")) if x)
+            topic = it.get("topic") or it.get("research_type") or "research"
+            body = (it.get("summary") or "").strip()
+            lines.append(f"- {head} {topic}: {body}"[:400])
+        kinds = sorted({str(i.get("research_type") or "") for i in hermes["items"] if i.get("research_type")})
         extras.append(
-            f"Hermes: promoted={hermes.get('promoted_research_count')} "
-            f"staged={hermes.get('staged_research_count')} "
-            f"topics={hermes.get('latest_topics')}"
+            "Research on file ("
+            + ", ".join(kinds or ["research"])
+            + "):\n" + "\n".join(lines)
         )
     if extras:
         facts = "\n".join(extras) + ("\n\n" + card if card else "")

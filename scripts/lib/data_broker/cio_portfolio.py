@@ -409,10 +409,16 @@ def _domain_hermes_research() -> dict[str, Any]:
         promoted_count = (cur.fetchone() or [0])[0]
         cur.execute("SELECT COUNT(*) FROM hermes_research_intelligence WHERE status='staged'")
         staged_count = (cur.fetchone() or [0])[0]
+        # Column is `topic`. `research_topic` has never existed on this table,
+        # so this statement raised every time it ran and the bare `except` two
+        # frames down swallowed it -- leaving latest_topics permanently [] while
+        # the counts above it succeeded and made the domain look AVAILABLE. The
+        # operator saw the result of that on 2026-09-11: "topics=[]" shipped as
+        # part of an answer, from a query that had never once returned a row.
         cur.execute(
-            "SELECT DISTINCT research_topic FROM hermes_research_intelligence "
-            "WHERE research_topic IS NOT NULL AND status='promoted' "
-            "ORDER BY updated_at DESC LIMIT 10"
+            "SELECT DISTINCT topic FROM hermes_research_intelligence "
+            "WHERE topic IS NOT NULL AND status='promoted' "
+            "ORDER BY topic LIMIT 10"
         )
         latest_topics = [r[0] for r in cur.fetchall() if r[0]]
         conn.close()
