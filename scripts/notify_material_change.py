@@ -382,7 +382,10 @@ def main() -> int:
     # idempotent (ADD COLUMN IF NOT EXISTS), and a dry run that cannot read the same
     # shape the apply path writes is not a rehearsal of anything. Gating this behind
     # --apply made the dry run fail with UndefinedColumn on a clean install.
-    cur.execute(DDL)
+    # ddl_guard: skip ADD COLUMN statements already satisfied, so a scheduled run
+    # takes no AccessExclusiveLock on material_changes just to assert a no-op.
+    from scripts.lib.ddl_guard import apply_ddl
+    apply_ddl(cur, DDL)
     conn.commit()
 
     open_now = args.ignore_window or in_window()

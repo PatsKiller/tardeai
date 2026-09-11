@@ -641,7 +641,9 @@ def main() -> int:
 
     conn = _db()
     cur = conn.cursor()
-    cur.execute(DDL)
+    # ddl_guard: see scripts/lib/ddl_guard.py — third contender for the same lock.
+    from scripts.lib.ddl_guard import apply_ddl
+    apply_ddl(cur, DDL)
     conn.commit()
 
     warn = cap_env_warning()
