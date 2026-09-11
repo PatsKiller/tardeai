@@ -514,6 +514,14 @@ def process_operator_message(
         "wake_job_id": wake_id,
         "event_id": event_id,
         "plan_id": plan_id,
+        # One concept, one key, on EVERY branch. The decision-thread branch
+        # above reports the resolved plan as `attached_plan_id` and sets
+        # `plan_id` to None; this branch reported it as `plan_id` and omitted
+        # `attached_plan_id` entirely. A caller asking "which plan was this
+        # message attached to?" therefore had to already know which branch
+        # answered in order to know which key to read -- and reading the wrong
+        # one returns None, which is indistinguishable from "no plan".
+        "attached_plan_id": plan_id,
         "reply_preview": reply[:500],
         "outbound_message_id": sent.get("message_id"),
         "telegram_out_message_id": sent.get("message_id") if channel == "telegram" else None,

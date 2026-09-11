@@ -301,6 +301,29 @@ def poll_once(timeout=25):
         # Atomic path already committed inside process_update_atomically.
         _commit_if_legacy()
 
+        # Free text nobody routed. Until now this fell off the end of the loop:
+        # the message was persisted, bound to a subject and receipted, and the
+        # operator got silence. Placed AFTER the checkpoint commit on purpose --
+        # the atomic path committed inside process_update_atomically and the
+        # legacy path commits just above, so an answer that fails to compose can
+        # neither lose the message nor cause it to be redelivered.
+        if not handled:
+            try:
+                from scripts.lib import cio_poller_reply
+
+                ans = cio_poller_reply.maybe_answer(
+                    msg, text=text, chat_id=chat_id, token=token,
+                    allowlist=allowed,
+                )
+                if ans.get("answered"):
+                    processed += 1
+                    log.info(f"replied: {text[:40]} from chat={chat_id}")
+                elif ans.get("reason") not in ("flag_off", "not_allowlisted"):
+                    log.info(f"reply skipped ({ans.get('reason')}): {text[:40]}")
+            except Exception as e:
+                # A responder fault must never stall the poll loop.
+                log.error(f"cio reply error: {e}")
+
         if handled:
             processed += 1
             log.info(f"command: {text[:40]} from chat={chat_id}")
