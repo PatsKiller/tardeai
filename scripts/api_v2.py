@@ -16065,17 +16065,30 @@ def _build_oscillator_board() -> list[dict]:
 def _attach_oscillator_reading(row: dict, oid: str, snap: dict) -> None:
     """Best-effort: pull the latest reading for one oscillator from its snapshot.
 
-    This is deliberately shallow — it reads the first representative row rather
-    than re-deriving a statistic, because the board is a "which oscillator is
-    this and is it alive" panel, not a second source of the numbers the desk
-    already shows in detail elsewhere.
+    Each oscillator reads from its OWN location in the snapshot, never a
+    neighbour's — a Style Rotation row showing a sector's RS20 would be the
+    exact "which oscillator is this" confusion the board exists to remove.
     """
-    if oid in ("sector_momentum_rs", "style_spread", "sector_breadth_20dma"):
+    if oid == "sector_momentum_rs":
         rows = snap.get("rows") or []
         if rows:
             r = rows[0]
             row["state"] = r.get("state")
             row["reading"] = r.get("rs20")
+            row["as_of"] = snap.get("generated_at") or r.get("as_of")
+    elif oid == "style_spread":
+        styles = snap.get("market", {}).get("styles") or []
+        if styles:
+            s = styles[0]
+            row["state"] = s.get("state")
+            row["reading"] = s.get("s20")
+            row["as_of"] = snap.get("generated_at")
+    elif oid == "sector_breadth_20dma":
+        rows = snap.get("rows") or []
+        if rows:
+            r = rows[0]
+            row["state"] = r.get("state")
+            row["reading"] = r.get("breadth_pct")
             row["as_of"] = snap.get("generated_at") or r.get("as_of")
     elif oid == "sector_comovement":
         row["as_of"] = snap.get("generated_at")
