@@ -189,6 +189,36 @@ def _resolve_memory_identity(row: dict) -> tuple[str | None, str | None]:
 
 SYMBOL_RESOLVE_FLAG = "WAKE_MEMORY_SYMBOL_RESOLVE"
 
+# L3 judgment call site. Default OFF so a rollback needs no deploy: clearing the
+# env var returns the wake to the deterministic path byte-for-byte. Node 6 has
+# never had a caller — `provenance.llm` was a literal None at four sites — so
+# this flag is the entire difference between "a model was asked" and the
+# template that ran before it.
+L3_JUDGMENT_FLAG = "WAKE_L3_JUDGMENT"
+
+# Reaching a PAID provider requires its own explicit opt-in, separate from the
+# judgment flag. Found the hard way on 2026-09-11: the first wiring passed no
+# author_call_fn, so `_default_deepseek_call` fell through to the live
+# deepseek_client inside a hermetic pytest run. It recorded provider_calls=1 and
+# refused with provider_outage — meaning a test suite could bill the account
+# whenever a machine happened to have working credentials. Tests must not be
+# able to spend, so the default here is OFF and the scheduler turns it on.
+L3_ALLOW_LIVE_PROVIDER_FLAG = "WAKE_L3_ALLOW_LIVE_PROVIDER"
+
+
+class LiveProviderNotPermitted(RuntimeError):
+    """Raised instead of calling a paid provider when live calls are not enabled."""
+
+
+def l3_judgment_enabled(env: dict | None = None) -> bool:
+    e = env if env is not None else os.environ
+    return str(e.get(L3_JUDGMENT_FLAG, "0")).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def l3_live_provider_enabled(env: dict | None = None) -> bool:
+    e = env if env is not None else os.environ
+    return str(e.get(L3_ALLOW_LIVE_PROVIDER_FLAG, "0")).strip().lower() in {"1", "true", "yes", "on"}
+
 
 def symbol_resolve_enabled(env: dict | None = None) -> bool:
     """Default ON, with an env kill switch so rollback needs no deploy."""
@@ -706,6 +736,19 @@ class WakeEngine:
             "selection": selection_meta,
         }
 
+        # 3a) L3 judgment — the first caller node 6 has ever had.
+        #
+        # Ordering is a hard rail: L2 before L3. A model asked over an empty
+        # context writes fluent text about nothing, which is worse than the
+        # template it replaces because the template does not sound like it knows
+        # something. The pipeline therefore refuses before it spends whenever the
+        # input is ungrounded, carries no material residual question, or has not
+        # exhausted free-first research. Refusals are recorded, never hidden.
+        judgment = self._maybe_judge(wake, snap, selection_meta, context, now, env)
+        if judgment is not None:
+            context["judgment"] = judgment.get("output")
+            context["agent_view"] = judgment.get("agent_view")
+
         # 3) Decide (deterministic by default)
         decide = decide or default_decide
         decision = decide(context)
@@ -931,6 +974,147 @@ class WakeEngine:
             "memory_empty": memory_empty,
         }
 
+    def _maybe_judge(self, wake, snap, selection_meta, context, now, env=None):
+        """Run the L3 judgment pipeline, or decline and say why.
+
+        Returns None when the flag is off or the subject is not eligible. Never
+        raises into the wake: a judgment is advisory, so a failure here degrades
+        to the deterministic path rather than costing the slot.
+
+        MBI_BEHAVIOR stays 0 throughout. Nothing this returns can reach sizing,
+        ordering, stops, weights or the broker: it may only change the next
+        question, eligibility, notification priority and narrative.
+        """
+        if not l3_judgment_enabled(env):
+            return None
+        if not snap.facts:
+            # No grounding -> no model, and no spend. Recorded so the absence of
+            # a judgment is never mistaken for a judgment that said nothing.
+            wake["provenance"]["policy_decisions"].append("l3_skipped_ungrounded")
+            return None
+
+        question = None
+        if isinstance(selection_meta, dict):
+            kind = _selection_primary_kind(selection_meta)
+            sid = selection_meta.get("source_id")
+            if kind == "research_object" and sid:
+                question = {
+                    "present": True,
+                    "question_text": (
+                        f"Does the prior position on this subject still hold given "
+                        f"{selection_meta.get('source')} {sid}?"
+                    ),
+                    "why_unresolved_by_research": "research selected this subject as unconsumed",
+                    "materiality_basis": str(selection_meta.get("source") or "unconsumed_research"),
+                }
+        if question is None:
+            wake["provenance"]["policy_decisions"].append("l3_skipped_no_material_question")
+            return None
+
+        try:
+            from scripts.lib.l3_judgment_cache import JudgmentCache
+            from scripts.lib.l3_judgment_pipeline import run_l3_judgment_pipeline
+            from scripts.lib.memory_decay import load_decay_policy
+            from scripts.lib.memory_grounding import (
+                SubjectGroundedMemorySelector,
+                build_grounded_judgment_input,
+            )
+
+            backend = self.memory_loader.backend
+            if callable(backend):
+                _sg = wake["subject_guid"]
+                sel_backend = lambda: list(backend(_sg) or [])  # noqa: E731
+            else:
+                sel_backend = backend
+            selector = SubjectGroundedMemorySelector(
+                sel_backend, policy=load_decay_policy(), include_fact_text=True
+            )
+            selection = selector.select(wake["subject_guid"], now=now)
+            gin = build_grounded_judgment_input(
+                selection,
+                research_object_ids=list(wake.get("research_object_ids") or []),
+                free_first_exhausted=True,
+                effect_kind="changed_question",
+                material_residual_question=question,
+                source_sha=str(wake.get("source_sha") or ""),
+                epoch_id=str(wake["provenance"].get("epoch_id") or resolve_epoch_id(env)),
+                schedule_slot=str(wake.get("schedule_slot_utc") or ""),
+                trigger="scheduled",
+                correlation_id=str(wake.get("correlation_id") or wake["wake_id"]),
+                include_fact_text=True,
+            )
+            if l3_live_provider_enabled(env):
+                author_fn = None  # pipeline default -> governed deepseek_client
+                critic_fn = None
+            else:
+                def _refuse_live(*_a, **_k):
+                    raise LiveProviderNotPermitted(
+                        f"{L3_ALLOW_LIVE_PROVIDER_FLAG} is not enabled"
+                    )
+
+                author_fn = _refuse_live
+                critic_fn = _refuse_live
+
+            root = _judgment_state_root(self.store)
+            cache = JudgmentCache(root / "l3_judgment_cache.jsonl") if root else None
+            rows: list[dict] = []
+            result = run_l3_judgment_pipeline(
+                gin, cache=cache, now=now,
+                author_call_fn=author_fn, critic_call_fn=critic_fn,
+                source_sha=str(wake.get("source_sha") or ""),
+                served_sha=str(wake.get("source_sha") or ""),
+                release=str(wake["provenance"].get("release") or ""),
+                persist_rows=rows,
+            )
+        except Exception as exc:
+            # Advisory path: never cost the slot. Recorded, never swallowed.
+            wake["provenance"]["policy_decisions"].append("l3_error_degraded")
+            wake["provenance"]["l3_error"] = f"{type(exc).__name__}: {exc}"
+            return None
+
+        out = result.output or {}
+        live_allowed = l3_live_provider_enabled(env)
+        wake["provenance"]["l3"] = {
+            "status": out.get("status"),
+            "refusal_reason": out.get("refusal_reason"),
+            # Attempts, not dollars. A blocked or failed attempt increments this
+            # and spends nothing; only a JUDGED row with a cost carries spend.
+            "provider_call_attempts": result.provider_calls,
+            "live_provider_allowed": live_allowed,
+            "gate_state": (result.gate or {}).get("state"),
+        }
+        if not live_allowed and out.get("status") != "JUDGED":
+            # Policy blocked the call before the network. This is NOT an outage
+            # and must not be counted as one: nothing was wrong with the
+            # provider, we simply were not permitted to ask it.
+            wake["provenance"]["l3"]["blocked_by"] = L3_ALLOW_LIVE_PROVIDER_FLAG
+            wake["provenance"]["policy_decisions"].append("l3_live_provider_blocked")
+        if out.get("status") == "JUDGED" and result.author:
+            a = result.author
+            wake["provenance"]["llm"] = {
+                "provider": a.get("provider"),
+                "model_requested": a.get("model_requested") or a.get("requested_model"),
+                "model_returned": a.get("model_returned") or a.get("returned_model"),
+                "prompt_digest": a.get("prompt_digest"),
+                "input_digest": a.get("input_digest"),
+                "output_digest": a.get("output_digest"),
+                "cost_usd": a.get("cost_usd"),
+                "latency_ms": a.get("latency_ms"),
+                "off_peak": a.get("off_peak"),
+                "cache_hit": a.get("cache_hit"),
+                "judgment_id": a.get("judgment_id"),
+            }
+            wake["provenance"]["policy_decisions"].append("l3_judged")
+        else:
+            wake["provenance"]["policy_decisions"].append(
+                f"l3_refused:{out.get('refusal_reason') or 'unknown'}"
+            )
+        return {
+            "output": out, "author": result.author, "critique": result.critique,
+            "agent_view": result.agent_view, "commitment": result.commitment,
+            "durable_rows": rows,
+        }
+
     def _emit_receipt(
         self, *, agent_id: str, source_kind: str, source_id: str, wake_id: str,
         subject_guid: str, purpose: str, effect_kind: str, effect_ref: str | None,
@@ -984,6 +1168,40 @@ class WakeEngine:
         }
         _, rec = self.store.append_unique("receipts", "receipt_id", rec)
         return rec
+
+
+def resolve_epoch_id(env: dict | None = None) -> str:
+    """Identity of the evidence epoch this wake belongs to.
+
+    An epoch is closed by any code, config, schema or release change, so the
+    served release name IS the epoch: evidence produced under one release must
+    never be spliced onto another. Explicit env wins (a campaign may name its
+    own epoch); otherwise the release directory that CURRENT resolves to; and
+    failing that the source SHA, which is the weakest identity that is still
+    exact. Never returns a bare "unknown" silently — the caller sees the SHA.
+    """
+    e = env if env is not None else os.environ
+    explicit = str(e.get("TRADEAI_EPOCH_ID") or "").strip()
+    if explicit:
+        return explicit
+    try:
+        target = Path(
+            "/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT"
+        ).resolve()
+        name = target.name
+        if name and name != "CURRENT":
+            return name
+    except Exception:
+        pass
+    return source_sha()
+
+
+def _judgment_state_root(store) -> Path | None:
+    root = getattr(store, "root", None) or getattr(store, "path", None)
+    try:
+        return Path(root) if root else None
+    except Exception:
+        return None
 
 
 def default_decide(context: dict) -> dict:

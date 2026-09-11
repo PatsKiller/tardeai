@@ -62,6 +62,21 @@ GATES = [
             "tests/test_wake_stale_memory_degrades.py",
             "tests/test_memory_decay.py",
             "tests/test_memory_grounding_l2.py",
+            # 2026-09-11 L3: node 6 had no caller at all — provenance.llm was a
+            # literal None at four sites and null on 51 of 51 wakes. These pin
+            # the ordering rail (L2 before L3), the refuse-before-spend gates,
+            # provider separation, returned-model verification, and that a test
+            # suite can never reach a paid provider.
+            "tests/test_wake_l3_call_site.py",
+            "tests/test_l3_judgment_pipeline.py",
+            "tests/test_l3_judgment_cache.py",
+            "tests/test_l3_critic.py",
+            "tests/test_l3_commitment.py",
+            "tests/test_model_policy.py",
+            "tests/test_material_residual_gate.py",
+            "tests/test_judgment_schema.py",
+            "tests/test_agent_view_v1_l3.py",
+            "tests/test_deepseek_offpeak_l3.py",
             # 2026-09-10: a promote updates the served release and not the
             # hub tree the cron producers run from. A fix can be live and
             # inert at the same time, and nothing compared the two.
