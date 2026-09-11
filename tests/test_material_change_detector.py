@@ -576,3 +576,61 @@ def test_a_sector_move_inherits_the_highest_precedence_of_its_members(mod):
 def test_sector_sources_are_savepoint_isolated(mod):
     src = SCRIPT.read_text(encoding="utf-8")
     assert "SAVEPOINT sec_src" in src and "ROLLBACK TO SAVEPOINT sec_src" in src
+
+
+# ---------------------------------------------------------------------------
+# The operator tier must read the table that is actually being written.
+# ---------------------------------------------------------------------------
+
+def _detector_source():
+    from pathlib import Path
+    return (Path(__file__).resolve().parent.parent
+            / "scripts" / "material_change_detector.py").read_text()
+
+
+def test_the_operator_tier_reads_the_superseding_table():
+    """THE THIRD TIME THIS TIER SILENTLY DID NOTHING.
+
+    sql/operator_conversation_turns.sql states that it supersedes
+    inbound_operator_questions and backfills it forward. The detector kept
+    reading the superseded one. Measured 2026-09-11: inbound_operator_questions
+    held 5 rows, nothing newer than 2026-09-06, while operator_conversation_turns
+    held 107 operator turns. "you asked about this" — the highest-precedence
+    tier in this file — was driven by a table that had stopped being written.
+
+    The file's own comment already records this tier failing once before, for a
+    different reason (a guessed time column). A tier that fails silently twice
+    deserves a test.
+    """
+    src = _detector_source()
+    assert '("operator_conversation_turns", "operator", "occurred_at")' in src
+    # The old source STAYS. It holds real history and costs one cheap query;
+    # dropping a source to add one is how a tier loses rows nobody notices.
+    assert '("inbound_operator_questions", "operator", "received_at")' in src
+
+
+def test_the_operator_tier_counts_only_resolved_operator_turns():
+    """An agent turn is the system talking to itself, and an unresolved turn
+    names no symbol. Either would inflate the highest-precedence tier."""
+    src = _detector_source()
+    assert "role = 'operator'" in src
+    assert "subject_guid IS NOT NULL" in src
+
+
+def test_the_time_column_is_named_not_guessed():
+    """The original failure of this tier was a guessed column: the code said
+    created_at, the table calls it received_at, the SAVEPOINT swallowed the
+    error and the tier quietly never applied. operator_conversation_turns calls
+    it occurred_at — name it."""
+    src = _detector_source()
+    assert '"occurred_at"' in src
+    assert "created_at > now()" not in src
+
+
+def test_optional_sources_still_run_under_a_savepoint():
+    """One unusable optional table must not poison the queries after it."""
+    src = _detector_source()
+    block = src.split("for table, why, tcol in (", 1)[1][:1400]
+    assert "SAVEPOINT opt_src" in block
+    assert "ROLLBACK TO SAVEPOINT opt_src" in block
+    assert "to_regclass" in block, "a missing table must be skipped, not raised"

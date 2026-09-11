@@ -514,6 +514,14 @@ def send_via_gateway(
     base["delivered"] = True
     base["delivery_owner"] = "gateway"
     base["gateway_mode_at_dispatch"] = mode
+    # Expose the STRUCTURAL coordinates, not just the comma-joined string.
+    # `provider_message_id` is `",".join(mids)` — one id per chat — and a caller
+    # that wants to map a delivered message back to the chat it landed in cannot
+    # re-pair them from the joined string. Callers that record an outbound turn
+    # per message id need message_ids[i] to line up with chat_ids[i]. Additive:
+    # nothing existing reads this key.
+    if provider_coordinates:
+        base["provider_coordinates"] = dict(provider_coordinates)
     if provider_message_id:
         base["provider_message_id"] = provider_message_id
     return base

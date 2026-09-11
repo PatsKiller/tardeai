@@ -299,6 +299,68 @@ def persist_turn(tag: dict[str, Any], *, conn, text: str, role: str,
     return written
 
 
+#: The subject of a reply is inferred from POSITION, never typed by the operator.
+#: It must never be mistaken for a deterministic match, so it gets its own
+#: matched_via and is pinned to CANDIDATE regardless of what the parent carried.
+REPLY_CONTEXT_MATCH = "reply_context"
+
+
+def resolve_via_reply(conn, *, chat_id: Any, reply_to_message_id: Any) -> list[dict]:
+    """Subject of the turn this message replies to, as a `resolved`-shaped list.
+
+    WHY THIS EXISTS
+    ---------------
+    Replying "ok" to a specific alert IS naming a subject — by position. On
+    2026-09-11 the operator replied "ok" to a WMT material-change alert. The
+    reply was stored with `reply_to_message_id = 51574`, which pointed straight
+    at that alert, and was bound to nothing: the tagger reads message TEXT only,
+    and "ok" contains no ticker. `prior_operator_turns()` filters strictly on
+    subject_guid, so the turn was durable and inert — the operator answered and
+    the system could not hear it. 39 of 108 turns were unbound this way.
+
+    The data was never missing. Both `communication_events.provider_coordinates`
+    and `operator_conversation_turns` already record the parent message id. No
+    code read it.
+
+    NEVER PROMOTES
+    --------------
+    The returned row is stamped `identity_status = "CANDIDATE"` even when the
+    parent is CONFIRMED. A position-based inference that inherited CONFIRMED
+    would be indistinguishable from a ticker the operator actually typed, and
+    `identity_resolution_advisor` already fixes the rule: only a deterministic
+    identifier promotes. Laundering an inference into a confirmation is the
+    exact conflation this module's docstring warns about.
+
+    Returns [] when there is no reply, no parent row, or the parent itself
+    resolved nothing — a caller that gets [] is no worse off than before.
+    """
+    if reply_to_message_id is None:
+        return []
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """SELECT symbol, subject_guid, issuer_guid
+                 FROM operator_conversation_turns
+                WHERE chat_id = %s AND message_id = %s AND subject_guid IS NOT NULL
+                LIMIT 1""",
+            (str(chat_id) if chat_id is not None else None,
+             int(reply_to_message_id)))
+        row = cur.fetchone()
+    except Exception:
+        # Same posture as thread_root: identity is best-effort, never fatal.
+        return []
+    if not row or not row[1]:
+        return []
+    return [{
+        "symbol": row[0],
+        "subject_guid": row[1],
+        "issuer_guid": row[2],
+        "identity_status": "CANDIDATE",
+        "matched_via": REPLY_CONTEXT_MATCH,
+        "matched_text": f"reply_to:{int(reply_to_message_id)}",
+    }]
+
+
 def thread_root(conn, *, chat_id: Any, message_id: Any,
                 reply_to_message_id: Any) -> str:
     """The message_id every turn in this exchange shares.

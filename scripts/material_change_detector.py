@@ -77,6 +77,20 @@ HOLDINGS = ROOT / "data" / "portfolios" / "state" / "holdings.json"
 #: Money at risk outranks money considered. A held name that moves is a position
 #: behaving unlike itself; a watchlist name that moves is an idea behaving unlike
 #: itself. Both are worth knowing, in that order.
+#: Extra WHERE for an optional source that needs more than a time window.
+#:
+#: operator_conversation_turns holds BOTH halves of the conversation. Without
+#: `role = 'operator'` the agent's own alerts would count as operator interest:
+#: the system alerts about WMT, reads its own words back, and pins WMT at the
+#: highest precedence there is. That is a self-reinforcing loop, and this one
+#: predicate is what cuts it.
+#:
+#: `subject_guid IS NOT NULL` keeps unresolved chatter out of a tier that
+#: outranks held positions.
+OPTIONAL_SOURCE_PREDICATE = {
+    "operator_conversation_turns": " AND role = 'operator' AND subject_guid IS NOT NULL",
+}
+
 PRECEDENCE = {
     "operator": 100,   # the operator asked about it directly
     "held": 80,        # a live position
@@ -199,11 +213,25 @@ def universe(cur) -> dict[str, dict]:
     # the operator tier — the highest one — silently never applied: this used
     # created_at, and inbound_operator_questions calls it received_at. The savepoint
     # caught the error and warned, so nothing broke; it just quietly did nothing.
+    # The operator tier now ALSO reads operator_conversation_turns, which
+    # sql/operator_conversation_turns.sql declares supersedes
+    # inbound_operator_questions (and backfilled it forward). The numbers say
+    # why: measured 2026-09-11, the old table held 5 rows with nothing newer
+    # than 2026-09-06, while the new one held 107 operator turns. The
+    # highest-precedence tier in this function was driven by a table that had
+    # effectively stopped being written — the second time this tier has quietly
+    # applied to almost nothing.
+    #
+    # The old source stays in the list. It holds real history the new table's
+    # backfill already carries, it costs one cheap query, and dropping a source
+    # to add one is how a tier loses rows nobody notices.
     for table, why, tcol in (
         ("reentry_directive_hits_staging", "reentry", None),
         ("inbound_operator_questions", "operator", "received_at"),
+        ("operator_conversation_turns", "operator", "occurred_at"),
     ):
         extra = f" AND {tcol} > now() - interval '30 days'" if tcol else ""
+        extra += OPTIONAL_SOURCE_PREDICATE.get(table, "")
         try:
             cur.execute("SAVEPOINT opt_src")
             cur.execute(f"SELECT to_regclass('public.{table}')")
