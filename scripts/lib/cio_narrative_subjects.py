@@ -70,6 +70,33 @@ CONFIDENCE_CANDIDATE = "CANDIDATE"
 CONFIDENCE_LEGACY = "UNKNOWN_LEGACY"
 
 
+def _confidence_from_identity_status(status: Any) -> str:
+    """Map the IDENTITY vocabulary onto the LINK-CONFIDENCE vocabulary.
+
+    These are two different enums and they were being conflated. The registry
+    reports identity_status in {CONFIRMED, UNRESOLVED_WITH_REASON, ...}; this
+    column accepts confidence in {CONFIRMED, CANDIDATE, UNKNOWN_LEGACY}. They
+    overlap on exactly one value, CONFIRMED, which is why the bug stayed hidden:
+    every confirmed identity wrote successfully and only unresolved ones failed.
+
+    Measured 2026-09-11: material_change_detector crashed on every 30-minute run
+    for ~15 hours with CheckViolation on narrative_subjects_confidence_ck, after
+    writing UNRESOLVED_WITH_REASON into this column. Node 2 (materiality)
+    produced nothing in that window.
+
+    An unresolved identity is a CANDIDATE link, not a confirmed one and not a
+    legacy one: we do hold a subject_guid, we simply have not confirmed it.
+    """
+    text = str(status or "").strip().upper()
+    if text == CONFIDENCE_CONFIRMED:
+        return CONFIDENCE_CONFIRMED
+    if text == CONFIDENCE_LEGACY:
+        return CONFIDENCE_LEGACY
+    # UNRESOLVED_WITH_REASON, UNKNOWN, empty, or any future identity status:
+    # the link exists but is not confirmed.
+    return CONFIDENCE_CANDIDATE
+
+
 class SubjectTypeRejected(ValueError):
     """An entity_type outside NARRATIVE_SUBJECT_TYPES.
 
@@ -150,7 +177,9 @@ def resolve_subject(
             return None
         ref = entity_ref(entity_type="SECURITY", guid=guid,
                          semantic_subject=name, relationship=relationship)
-        ref["confidence"] = (found or {}).get("identity_status") or CONFIDENCE_CANDIDATE
+        ref["confidence"] = _confidence_from_identity_status(
+            (found or {}).get("identity_status")
+        )
         return ref
 
     guid = entity_guid(_MINT_KIND[et], name)
