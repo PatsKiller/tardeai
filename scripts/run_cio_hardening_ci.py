@@ -510,6 +510,12 @@ GATES = [
             "tests/test_detector_heartbeat_20260912.py",
             # The health predicate reads the served SHA itself.
             "tests/test_health_derives_sha_20260912.py",
+            # An unrendered secret is not a Postgres auth failure: a missing
+            # DB_PASSWORD must refuse, not fall back to a stale ~/.pgpass.
+            "tests/test_db_password_no_pgpass_fallback_20260912.py",
+            # list_wakes() reads the event store once, and returns the same
+            # answer as the algorithm it replaced.
+            "tests/test_wake_jobs_single_pass_20260912.py",
         ],
     ),
     (
