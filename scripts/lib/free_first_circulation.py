@@ -457,13 +457,11 @@ def circulate_universe(
     started_monotonic = time.monotonic()
     rows = []
     skipped = 0
-    for offset, profile in enumerate(ordered):
+    for profile in ordered:
         if deadline_seconds is not None and (time.monotonic() - started_monotonic) >= deadline_seconds:
             skipped = planned - len(rows)
             break
         rows.append(circulate_symbol(root, profile, allow_searx=allow_searx, embed_fn=embed_fn))
-    else:
-        offset = len(ordered)
     elapsed = time.monotonic() - started_monotonic
     completion = "PARTIAL_DEADLINE" if skipped else "COMPLETE"
     if cursor_path is not None and planned:
