@@ -513,6 +513,13 @@ GATES = [
             # list_wakes() reads the event store once, and returns the same
             # answer as the algorithm it replaced.
             "tests/test_wake_jobs_single_pass_20260912.py",
+            # The health boundary implements the interface its callers use.
+            # Tests the REAL class: the defect survived because the only
+            # coverage used fakes that defined the missing method.
+            "tests/test_health_boundary_advisory_state_20260912.py",
+            # A health check that did not produce a decision must not leave a
+            # receipt claiming one was made.
+            "tests/test_run_worker_health_receipt_20260912.py",
         ],
     ),
     (
