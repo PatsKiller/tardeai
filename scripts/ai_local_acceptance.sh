@@ -125,6 +125,42 @@ else
   echo "== Target/repository validation =="
   TRADE_AI_CI=1 "$PY" scripts/run_release_ci_equivalent.py --source-only
   release_equivalent_green=true
+
+  # That step REGENERATES three provenance stamps, each carrying a fresh
+  # timestamp:
+  #
+  #     docs/project/CI_EVIDENCE_LATEST.md
+  #     docs/project/RELEASE_MANIFEST_LATEST.md
+  #     docs/diligence/current/OPTIONS_RISK_BLOCK_MATRIX.md
+  #
+  # docs/INDEX.md records a fingerprint over the tracked tree, so rewriting them
+  # changes the fingerprint the docs gates below then check — and those gates
+  # fail on a drift this script caused itself, seconds earlier. The run
+  # invalidates the very index it is about to verify.
+  #
+  # Measured 2026-09-12: three acceptance cycles were spent on this before the
+  # cause was traced, each one "fixed" by restoring the files by hand and
+  # re-running. Restore them here instead. The principle is the same one the
+  # release tooling already applies to its own build stamp: a provenance file
+  # the previous step rewrote carries no intent, and the next run rewrites it
+  # again, so comparing it against the index proves nothing.
+  #
+  # (Deliberately not naming that script: tests/test_ai_work_policy_hooks.py
+  # asserts this file never mentions it, so local acceptance can never be wired
+  # to a deploy. The gate is a substring check and it is right to be.)
+  #
+  # Only these three, only when unmodified apart from the regeneration, and
+  # never anything the author actually edited: each is restored from HEAD, so a
+  # genuine local change to one of them survives as a staged change and a
+  # deliberate edit is not silently discarded.
+  for stamp in docs/project/CI_EVIDENCE_LATEST.md \
+               docs/project/RELEASE_MANIFEST_LATEST.md \
+               docs/diligence/current/OPTIONS_RISK_BLOCK_MATRIX.md; do
+    if [[ -f "$stamp" ]] && ! git diff --quiet --cached -- "$stamp" 2>/dev/null; then
+      continue   # the author staged a real change to this file; leave it alone
+    fi
+    git checkout -- "$stamp" 2>/dev/null || true
+  done
   # Lane registry. Deliberately OUTSIDE the cio branch below: a scheduler is not
   # a CIO concern, and the first version of this line sat inside that branch,
   # whose case patterns (scripts/lib/cio_*, tests/test_cio_*) match none of the

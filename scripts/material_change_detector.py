@@ -707,14 +707,41 @@ def news_bursts(cur, syms: dict[str, str]) -> tuple[list[dict], dict]:
     return out, {"fired": len(out)}
 
 
-def persist(cur, changes: list[dict], *, apply: bool) -> int:
-    """Idempotent on change_guid. Returns rows actually written."""
+def classify_write_disposition(*, attempted: int, written: int, already: int) -> str:
+    """Name what happened, so a zero is never ambiguous.
+
+    `rows_produced: 0` had four possible meanings and said none of them. The
+    02:30Z run on 2026-09-12 found 25 changes and wrote 0 because every one was
+    already recorded that day -- a correct idempotent no-op -- and the record
+    looked identical to a run whose writes had all failed.
+    """
+    if attempted == 0:
+        return "NOTHING_DETECTED"
+    if written == attempted:
+        return "ALL_WRITTEN"
+    if written == 0 and already == attempted:
+        return "ALL_ALREADY_PRESENT"
+    if written == 0:
+        # Rows were attempted, none landed, and dedup does not account for it.
+        return "WROTE_NOTHING_UNEXPLAINED"
+    return "PARTIAL_NEW"
+
+
+def persist(cur, changes: list[dict], *, apply: bool) -> dict:
+    """Idempotent on change_guid.
+
+    Returns a disposition dict rather than a bare count. The count alone could
+    not distinguish "nothing was new" from "nothing worked", which is the
+    silent-success shape this system has been bitten by before.
+    """
     if not apply:
-        return 0
+        return {"attempted": len(changes), "written": 0, "already_present": 0,
+                "disposition": "NOT_APPLIED"}
     from scripts.lib.cio_narrative_subjects import build_links, resolve_subject
     from scripts.lib.cio_subject_guid import lookup_identity_envelope
 
     written = 0
+    already_present = 0
     links_written = 0
     for c in changes:
         env = lookup_identity_envelope(c["symbol"])
@@ -742,7 +769,12 @@ def persist(cur, changes: list[dict], *, apply: bool) -> int:
              c["magnitude"], c["baseline"], c["observed_value"], c["observed_at"],
              c["universe_reason"], c.get("precedence", 10),
              json.dumps(c["evidence"]), SCHEMA, AUTHORITY))
-        written += cur.rowcount
+        # rowcount is 0 when ON CONFLICT DO NOTHING suppressed the insert,
+        # which is the dedup case and the whole reason for counting it.
+        if cur.rowcount:
+            written += cur.rowcount
+        else:
+            already_present += 1
 
         cg = change_guid(c["symbol"], c["kind"], c["observed_at"])
         subjects = []
@@ -769,7 +801,13 @@ def persist(cur, changes: list[dict], *, apply: bool) -> int:
             links_written += cur.rowcount
     if links_written:
         print(f"  narrative_subjects links written: {links_written}")
-    return written
+    return {
+        "attempted": len(changes),
+        "written": written,
+        "already_present": already_present,
+        "disposition": classify_write_disposition(
+            attempted=len(changes), written=written, already=already_present),
+    }
 
 
 def main() -> int:
@@ -811,7 +849,7 @@ def main() -> int:
               f"observed={c['observed_value']} baseline={c['baseline']} "
               f"({c['universe_reason']}) {c['observed_at'][:19]}")
 
-    written = persist(cur, changes, apply=args.apply)
+    write = persist(cur, changes, apply=args.apply)
     if args.apply:
         conn.commit()
     conn.close()
@@ -821,7 +859,12 @@ def main() -> int:
         "universe": len(syms), "K": K,
         "changes_found": len(changes),
         # None when nothing was measured; 0 is a measured zero.
-        "rows_produced": written if args.apply else None,
+        "rows_produced": write["written"] if args.apply else None,
+        # A zero on its own said nothing. These three say which zero it is:
+        # every change already recorded (healthy), or attempted and none
+        # landed with dedup not accounting for it (not healthy).
+        "already_present": write["already_present"] if args.apply else None,
+        "write_disposition": write["disposition"],
         "by_kind": stats,
         "not_evaluable": stats.get("price_excursion", {}).get("not_evaluable", 0),
     }, default=str))

@@ -100,6 +100,37 @@ class CortexShadowResult:
         }
 
 
+#: Falsifiers that name no observable. A claim paired with one of these cannot
+#: be contradicted by any later evidence, so a commitment carrying it is a
+#: prediction in shape only.
+#:
+#: Measured 2026-09-12: ALL 99 governed commitments in the live store carried
+#: the first of these, because the wake call site passes no falsifier and this
+#: module's default parameter supplied it. The L3 judgment that ran seconds
+#: earlier in the same wake produced real falsifiers -- "Retrieval of an
+#: approved primary or news source that directly addresses this subject..." --
+#: and they were discarded. 0 of 99 predictions were scoreable, and the L4
+#: sweep would have scored none of the 102 due on 2026-09-20.
+VACUOUS_FALSIFIERS = frozenset({
+    "observation contradicts claim within horizon",
+})
+
+
+def refuse_vacuous_falsifier(falsifier: str | None) -> str:
+    """Return the falsifier, or raise if it names nothing observable.
+
+    Fail-closed on purpose. Silently substituting a placeholder is how the
+    store filled with 99 unscoreable predictions; a caller that has no real
+    falsifier should not be minting a prediction at all.
+    """
+    text = (falsifier or "").strip()
+    if not text:
+        raise ValueError("vacuous_falsifier: empty")
+    if text.lower() in VACUOUS_FALSIFIERS:
+        raise ValueError(f"vacuous_falsifier: {text!r} names no observable")
+    return text
+
+
 def run_cortex_shadow(
     *,
     subject: str,
