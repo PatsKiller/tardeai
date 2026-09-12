@@ -1186,6 +1186,228 @@
         "column": "computed_at"
       },
       "note": "Symbol confluence oscillator + confluence_flip alert source (Oscillator Affiliations). Declared so its freshness is monitored."
+    },
+    {
+      "lane_id": "persistent-wake-hourly",
+      "owner": "cio",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "0 * * * * .../run_persistent_wake.py --agent-id cio",
+        "match": "scripts/run_persistent_wake.py --agent-id cio"
+      },
+      "expected_cadence_hours": 1.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "/home/johnclaw/trade-ai-state/persistent_wake/state/wakes.jsonl"
+      },
+      "note": "The L1/L2/L3 wake spine. Every maturity claim about grounded cognition rests on this lane, and it was undeclared: nothing would have reported it silent. The signal is the durable wake store, not the cron log \u2014 a wake that refuses still appends a row, so the file advancing proves the lane ran even on a slot that produced no judgment."
+    },
+    {
+      "lane_id": "governed-research-producer",
+      "owner": "cio",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "45 * * * * .../run_governed_research_producer.py --limit 5 --execute",
+        "match": "scripts/run_governed_research_producer.py"
+      },
+      "expected_cadence_hours": 1.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "/home/johnclaw/trade-ai-state/persistent_wake/research_producer_health.json",
+        "key": "as_of"
+      },
+      "note": "L2's recurring organic research producer. Keyed on the health file's as_of rather than research_objects.jsonl mtime on purpose: the producer legitimately produces nothing when every target is budget-refused, and that run is still a run. outcome/produced in the same file say which."
+    },
+    {
+      "lane_id": "wake-selection-feed",
+      "owner": "cio",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "55 * * * * .../wake_selection_feed.py --hours 48",
+        "match": "ops/wake_selection_feed.py"
+      },
+      "expected_cadence_hours": 1.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/data/persistent_wake/selection_feed/material_changes.jsonl"
+      },
+      "note": "Feeds the hourly wake its candidate subjects. Runs at :55 so the :00 wake reads a fresh feed; if this goes silent the wake keeps running and quietly re-selects stale subjects, which is why it needs its own row."
+    },
+    {
+      "lane_id": "identity-sweep-stage0",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "*/30 * * * * .../backfill_subject_identity.py --all --apply",
+        "match": "scripts/backfill_subject_identity.py --all --apply"
+      },
+      "expected_cadence_hours": 0.5,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "db_max",
+        "table": "hermes_external_research",
+        "column": "identity_tagged_at"
+      },
+      "note": "Stage 0 of material-change intelligence: resolves research rows to subject identities. identity_tagged_at advances only when the sweep actually tagged something, so it cannot be satisfied by a no-op run."
+    },
+    {
+      "lane_id": "material-change-detector-stage1",
+      "owner": "cio",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "*/30 * * * * .../material_change_detector.py --apply",
+        "match": "scripts/material_change_detector.py --apply"
+      },
+      "expected_cadence_hours": 0.5,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "db_max",
+        "table": "material_changes",
+        "column": "created_at"
+      },
+      "note": "Stage 1 detector. This lane sat at 178 rows while cron ran it 30 more times over ~15h on 2026-09-10 because an unapplied migration made every run raise; nothing reported it. A db_max on the table it exists to write is the signal that would have caught that."
+    },
+    {
+      "lane_id": "material-change-notifier-stage2",
+      "owner": "cio",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "7-59/15 * * * * .../notify_material_change.py --apply",
+        "match": "scripts/notify_material_change.py --apply"
+      },
+      "expected_cadence_hours": 0.25,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "db_max",
+        "table": "material_changes",
+        "column": "notified_at"
+      },
+      "note": "Stage 2 notifier, gateway CANARY mode. Keyed on notified_at rather than communication_events so the signal proves THIS lane advanced a row, not that some other producer wrote an event."
+    },
+    {
+      "lane_id": "due-diligence-questions",
+      "owner": "cio",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "*/20 * * * * .../due_diligence_questions.py --apply --route",
+        "match": "scripts/due_diligence_questions.py --apply --route"
+      },
+      "expected_cadence_hours": 0.333,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "db_max",
+        "table": "due_diligence_questions",
+        "column": "created_at"
+      },
+      "note": "Stages 3-5 curation and routing."
+    },
+    {
+      "lane_id": "document-mentions-backfill",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "25 * * * * .../backfill_document_mentions.py --all --limit 4000 --apply",
+        "match": "scripts/backfill_document_mentions.py --all"
+      },
+      "expected_cadence_hours": 1.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "db_max",
+        "table": "document_mentions",
+        "column": "observed_at"
+      },
+      "note": "Links documents to subjects; feeds the identity spine."
+    },
+    {
+      "lane_id": "document-mentions-prune",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "40 4 * * * .../prune_document_mentions.py --apply",
+        "match": "scripts/prune_document_mentions.py --apply"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "none"
+      },
+      "note": "DECLARED WITHOUT A SIGNAL, deliberately and visibly. A prune only DELETEs from document_mentions, so no max() advances when it succeeds \u2014 the table's newest row is written by the backfill lane, and keying on it would let this lane die while showing someone else's freshness. It needs a run receipt of its own (rows_deleted + as_of); until it has one its liveness is UNVERIFIABLE and says so rather than borrowing a green tick."
+    },
+    {
+      "lane_id": "db-retention",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "10 4 * * * .../db_retention.py",
+        "match": "scripts/db_retention.py"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "none"
+      },
+      "note": "Same shape as document-mentions-prune: a retention pass whose only effect is deletion writes no durable artifact. Needs a run receipt."
+    },
+    {
+      "lane_id": "hermes-top20-external-intel",
+      "owner": "hermes",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "5 */2 * * * .../hermes_top20_external_intel.py --top 20 --lanes grok,chatgpt --apply",
+        "match": "scripts/hermes_top20_external_intel.py --top 20"
+      },
+      "expected_cadence_hours": 2.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "none"
+      },
+      "note": "Top-20 external LLM curation over the free OAuth lanes. Emits its report to stdout and the log only. UNVERIFIABLE until it writes a receipt."
+    },
+    {
+      "lane_id": "hermes-usefulness-backfill",
+      "owner": "hermes",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "15 * * * * .../hermes_external_feedback_loop.py --apply --max-rows 2000",
+        "match": "scripts/hermes_external_feedback_loop.py --apply"
+      },
+      "expected_cadence_hours": 1.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "none"
+      },
+      "note": "Scores hermes_external_research.usefulness_score. The column it writes carries no companion timestamp, so there is nothing to take a max() of; a scored_at column or a run receipt would make this verifiable."
+    },
+    {
+      "lane_id": "hermes-librarian-retention",
+      "owner": "hermes",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "hermes-librarian-retention.timer"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "none"
+      },
+      "note": "Retention timer; deletion-only effect, no durable artifact. Needs a run receipt to become verifiable."
+    },
+    {
+      "lane_id": "disk-hygiene-enforcer",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-disk-hygiene-enforcer.timer"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "none"
+      },
+      "note": "Disk hygiene enforcement; deletion-only effect, no durable artifact."
     }
   ],
   "undeclared_baseline": [
