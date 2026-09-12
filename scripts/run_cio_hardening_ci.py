@@ -506,6 +506,10 @@ GATES = [
             "tests/test_commitment_uses_judgment_falsifier_20260912.py",
             # A producer that writes zero rows says WHICH zero it is.
             "tests/test_detector_explains_its_zero_20260912.py",
+            # A lane proves it RAN, not only that it produced.
+            "tests/test_detector_heartbeat_20260912.py",
+            # The health predicate reads the served SHA itself.
+            "tests/test_health_derives_sha_20260912.py",
         ],
     ),
     (

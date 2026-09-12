@@ -1264,11 +1264,11 @@
       "expected_cadence_hours": 0.5,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "db_max",
-        "table": "material_changes",
-        "column": "created_at"
+        "kind": "json_key",
+        "path": "/home/johnclaw/trade-ai-state/material_change_detector_health.json",
+        "key": "as_of"
       },
-      "note": "Stage 1 detector. This lane sat at 178 rows while cron ran it 30 more times over ~15h on 2026-09-10 because an unapplied migration made every run raise; nothing reported it. A db_max on the table it exists to write is the signal that would have caught that."
+      "note": "Stage 1 detector. CORRECTED 2026-09-12: this lane was declared with db_max(material_changes.created_at) earlier the same night, on the reasoning that keying on the table it exists to write would have caught it sitting at 178 rows while cron ran it 30 more times. That was right about the failure it was chosen to catch and wrong about one it creates: persist() dedupes on ON CONFLICT DO NOTHING, so a run that correctly finds only already-recorded changes never advances that column. Measured at 02:45Z the newest row was 00:30Z with four correct runs in between, and the lane read SLOW on its way to SILENT while running perfectly. The heartbeat advances on every successful run and carries write_disposition, so ALL_ALREADY_PRESENT stays distinguishable from a lane that stopped. It proves the lane RAN rather than that it PRODUCED - the weaker claim, deliberately, because the disposition field carries the stronger one and a max() over rows the producer declined to write carries neither."
     },
     {
       "lane_id": "material-change-notifier-stage2",
