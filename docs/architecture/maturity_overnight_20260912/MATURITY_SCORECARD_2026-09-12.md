@@ -109,12 +109,16 @@ Measured on the served epoch (`eb648174a`, opened 2026-09-11T22:06Z):
 
 | clause | bar | measured |
 |---|---|---|
-| contiguous scheduled organic cycles | ≥3 | **2** (00:00Z, 01:00Z) |
+| contiguous scheduled organic cycles | ≥3 | **3** — 00:00Z, 01:00Z, 02:00Z, **MET** |
 | research consumptions with source progression | >0 | 5 distinct source ids |
 | gateway-owned provider-ack SETTLED | >0 | **1** SETTLED, 9 UNSETTLED, 1 UNKNOWN_LEGACY |
 | durable inbound operator consumption | >0 | **0 inbound events** |
 | distinct commitments frozen before outcome windows | >0 | 6 governed, all `frozen_at < due_at` |
 | consumption receipts | >0 | 4, all `effect_kind=changed_question` |
+
+The cycle clause was met at 02:00Z, after three unattended cron wakes on the
+served SHA — recorded in `M2_CYCLE_CLAUSE_MET_2026-09-12T0200Z.json` before any
+promote could reset the count. M2 now fails on exactly one clause.
 
 The inbound clause needs a genuine operator reply. No agent may manufacture one,
 and this campaign did not.
