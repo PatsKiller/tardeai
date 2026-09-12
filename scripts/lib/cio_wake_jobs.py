@@ -811,8 +811,27 @@ class CIOWakeJobStore:
         priority: Optional[str] = None,
         limit: int = 50,
     ) -> list[dict[str, Any]]:
-        """List wake jobs, optionally filtered by status and/or priority."""
-        stream_ids: set[str] = set()
+        """List wake jobs, optionally filtered by status and/or priority.
+
+        Reads the event store ONCE. The previous implementation made one pass to
+        collect stream ids and then called get_wake_job() per stream, and each of
+        those re-read and re-parsed the whole file to find one stream -- so the
+        cost was (1 + number_of_streams) full passes.
+
+        Measured 2026-09-12 against the live store: 16,306 events across 5,145
+        streams, one pass 0.16s, so list_wakes() needed 83.9 million json.loads
+        and 14.1 minutes against a 900s timeout. That is why
+        cio_wake_dispatch_entrypoint and the tradeai-agent-runtime@ units spun a
+        full core and were killed at 15 minutes, only occasionally squeaking
+        through. It degrades as the append-only store grows: every new stream
+        adds another whole pass.
+
+        Grouping preserves per-stream insertion order, which is what
+        _replay_state folds over, so the result is identical -- the control in
+        tests/test_wake_jobs_single_pass_20260912.py asserts equality against
+        the old algorithm on the live store.
+        """
+        events_by_stream: dict[str, list[dict[str, Any]]] = {}
         if self.event_store_path.exists():
             with open(self.event_store_path, "r") as f:
                 for line in f:
@@ -822,11 +841,13 @@ class CIOWakeJobStore:
                     event = json.loads(stripped)
                     sid = event["stream_id"]
                     if sid != "wake-store-genesis":
-                        stream_ids.add(sid)
+                        events_by_stream.setdefault(sid, []).append(event)
 
         wakes: list[dict[str, Any]] = []
-        for sid in stream_ids:
-            wake = self.get_wake_job(sid)
+        for sid, stream_events in events_by_stream.items():
+            if not stream_events:
+                continue
+            wake = self._replay_state(stream_events)
             if wake is None:
                 continue
             if status is not None and wake.get("current_status") != status:
