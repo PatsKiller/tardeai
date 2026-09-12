@@ -168,6 +168,7 @@ class CIOHealthBoundary:
     def __init__(self, health_snapshot: Optional[HealthSnapshot] = None):
         self.health_snapshot = health_snapshot
         self._domain_mapping = DOMAIN_HEALTH_MAPPING
+        self._last_decision: Optional[AdvisoryDecision] = None
 
     def load_snapshot(self, snapshot: HealthSnapshot):
         self.health_snapshot = snapshot
@@ -310,6 +311,51 @@ class CIOHealthBoundary:
         )
 
         return decision
+
+    def current_advisory_state(
+        self,
+        task_type: str = "cio_run",
+        required_domains: Optional[List[str]] = None,
+    ) -> str:
+        """Return the current advisory state as one of ADVISORY_STATE.
+
+        This method did not exist until 2026-09-12, yet two call sites used it:
+        cio_run_worker._check_health() called it unguarded, and
+        cio_financial_snapshot guarded with hasattr(). So on the run path every
+        call raised AttributeError, was swallowed by an except, and logged
+        "Health boundary check failed" -- leaving blocked=False. The boundary
+        had therefore never gated a single run.
+
+        It went unnoticed because the only tests covering that path supply
+        their own fake boundaries that DO define this method
+        (tests/test_p26_shadow_autonomy.py). The suite was green against a
+        duck-type the real class never implemented.
+
+        The state is DERIVED from evaluate() rather than stored, so it reflects
+        real health evidence and cannot drift from the decision that produced
+        it. The decision is retained so latest_decision_id() names the exact
+        evaluation this state came from.
+
+        required_domains defaults to EMPTY, not to all of CIO_DOMAINS. Empty
+        means "no domain requirement declared", which evaluate() resolves to
+        READY when a snapshot exists and UNKNOWN when none does. Defaulting to
+        every domain would silently convert one unavailable data source into a
+        global block on all CIO runs -- a policy change, not a bug fix. Callers
+        that know what they need pass it; cio_run_worker passes the run's own
+        required_domains.
+        """
+        decision = self.evaluate(task_type, list(required_domains or []))
+        self._last_decision = decision
+        return decision.state
+
+    def latest_decision_id(self) -> Optional[str]:
+        """decision_id of the most recent evaluation, or None if never evaluated.
+
+        None is the honest answer before any evaluation. The run worker used to
+        substitute a freshly minted health-<uuid> here, which wrote a
+        health_checked receipt naming a decision that was never made.
+        """
+        return self._last_decision.decision_id if self._last_decision else None
 
     def _score_to_severity(self, score: float) -> int:
         """Convert 0-100 health score to 1-5 severity."""

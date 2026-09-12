@@ -287,7 +287,10 @@ class CIORunWorker:
             # Step 1: Health check (fresh runs only)
             if current_status == "QUEUED":
                 self.run_store.start(run_id, actor="cio_run_worker")
-                health_result = self._check_health(force_health_state)
+                health_result = self._check_health(
+                    force_health_state,
+                    required_domains=run.get("required_domains") or [],
+                )
                 if health_result["blocked"]:
                     result["status"] = "BLOCKED_BY_HEALTH"
                     result["blocked_by"] = "HEALTH_BOUNDARY"
@@ -571,11 +574,16 @@ class CIORunWorker:
 
     # ── Step: Health Check ──────────────────────────────────────────────────
 
-    def _check_health(self, force_state: Optional[str] = None) -> dict[str, Any]:
+    def _check_health(
+        self,
+        force_state: Optional[str] = None,
+        required_domains: Optional[list[str]] = None,
+    ) -> dict[str, Any]:
         result: dict[str, Any] = {
             "state": "UNKNOWN",
             "blocked": False,
             "decision_id": None,
+            "check_failed": False,
         }
 
         if force_state is not None:
@@ -597,14 +605,35 @@ class CIORunWorker:
             return result
 
         try:
-            advisory_state = self.health_boundary.current_advisory_state()
+            advisory_state = self.health_boundary.current_advisory_state(
+                required_domains=list(required_domains or [])
+            )
             result["state"] = advisory_state
             result["blocked"] = advisory_state in ("BLOCKED",)
             result["decision_id"] = getattr(self.health_boundary, "latest_decision_id", lambda: None)()
-        except Exception as e:
+        except TypeError:
+            # A boundary that predates the required_domains parameter, including
+            # the fakes in tests/test_p26_shadow_autonomy.py. Fall back to the
+            # no-argument form rather than treating an older duck-type as a
+            # health failure.
+            try:
+                advisory_state = self.health_boundary.current_advisory_state()
+                result["state"] = advisory_state
+                result["blocked"] = advisory_state in ("BLOCKED",)
+                result["decision_id"] = getattr(self.health_boundary, "latest_decision_id", lambda: None)()
+            except Exception as e:  # noqa: BLE001
+                result["check_failed"] = True
+                log.warning("Health boundary check failed: %s", e)
+        except Exception as e:  # noqa: BLE001
+            result["check_failed"] = True
             log.warning("Health boundary check failed: %s", e)
 
-        if self.run_store and self._run_id:
+        # Only claim a health check happened if one actually produced a
+        # decision. This previously wrote a health_checked receipt with a
+        # freshly minted health-<uuid> even when the boundary had raised, so the
+        # run store recorded a decision that was never made -- for every run,
+        # because current_advisory_state() did not exist on CIOHealthBoundary.
+        if self.run_store and self._run_id and not result["check_failed"]:
             try:
                 self.run_store.health_checked(
                     self._run_id,
