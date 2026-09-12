@@ -28,8 +28,42 @@ def _norm_ids(ids: list[Any] | None) -> list[str]:
     return sorted({str(x) for x in (ids or []) if str(x).strip()})
 
 
+#: Decimal places kept when folding decay_weight into the evidence revision.
+#:
+#: decay_weight is a CONTINUOUS function of elapsed time, so embedding it raw
+#: made the revision — and therefore the cache key — change on every hourly
+#: wake even when the evidence had not moved at all. Measured on 2026-09-11:
+#: five consecutive organic wakes on one subject produced five different cache
+#: keys and five paid provider calls with ZERO cache hits, while input_digest
+#: (which excludes decay_weight) was byte-identical across all five. The cache
+#: was pure write amplification, and the spend it failed to avoid is what
+#: exhausted the global daily budget and left the lane refusing `budget_cap`
+#: from 20:00Z onward.
+#:
+#: Two decimals is the smallest quantum that survives an hourly schedule while
+#: still invalidating on genuine decay: under the halflife_exp:336h model a
+#: weight near 0.40 drifts about 0.0008/hour, so a bucket boundary is crossed
+#: roughly every twelve hours rather than every single wake. A materially
+#: decayed fact (0.81 -> 0.32) still changes the token, and any change to a
+#: fact_digest or contradiction state invalidates regardless of weight.
+DECAY_WEIGHT_REVISION_DECIMALS = 2
+
+
+def _quantize_decay_weight(value: Any) -> str:
+    """Bucket a decay weight so continuous time drift is not a content change."""
+    try:
+        return f"{round(float(value), DECAY_WEIGHT_REVISION_DECIMALS):.{DECAY_WEIGHT_REVISION_DECIMALS}f}"
+    except (TypeError, ValueError):
+        # Unparseable weight is itself a distinguishing signal; never collapse
+        # it to a number that a real weight could also produce.
+        return f"unparseable:{value!r}"
+
+
 def evidence_revision_token(grounded: Mapping[str, Any], memory_fact_ids: list[str]) -> str:
-    """Digest of selected fact digests + research object ids (order-independent)."""
+    """Digest of selected fact digests + research object ids (order-independent).
+
+    decay_weight participates QUANTIZED — see DECAY_WEIGHT_REVISION_DECIMALS.
+    """
     wanted = set(memory_fact_ids)
     parts: list[str] = []
     for fact in grounded.get("memory_facts") or []:
@@ -39,7 +73,7 @@ def evidence_revision_token(grounded: Mapping[str, Any], memory_fact_ids: list[s
         if mid not in wanted:
             continue
         parts.append(
-            f"{mid}:{fact.get('fact_digest') or ''}:{fact.get('decay_weight')}:"
+            f"{mid}:{fact.get('fact_digest') or ''}:{_quantize_decay_weight(fact.get('decay_weight'))}:"
             f"{(fact.get('contradiction') or {}).get('state') if isinstance(fact.get('contradiction'), Mapping) else ''}"
         )
     research = grounded.get("research") or {}

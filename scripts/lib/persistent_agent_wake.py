@@ -632,6 +632,14 @@ class WakeEngine:
                     "policy_decisions": ["feature_flag_on"],
                     "llm": None,
                     "trigger": "schedule_slot",
+                    # Both, and not one standing in for the other. epoch_id may
+                    # be overridden by TRADEAI_EPOCH_ID so a campaign can name
+                    # its own evidence epoch; release is always the release the
+                    # code actually ran from. Neither was recorded before, so
+                    # every organic judgment carried release='' and the wake
+                    # provenance carried no epoch at all.
+                    "epoch_id": resolve_epoch_id(env),
+                    "release": resolve_release_id(),
                     "selection": selection_meta,
                 },
             ),
@@ -1277,6 +1285,24 @@ def resolve_epoch_id(env: dict | None = None) -> str:
     except Exception:
         pass
     return source_sha()
+
+
+def resolve_release_id() -> str:
+    """The release directory CURRENT resolves to, with no env override.
+
+    Distinct from resolve_epoch_id: an epoch is a campaign-nameable evidence
+    boundary, a release is a fact about which directory the code ran from. When
+    TRADEAI_EPOCH_ID is set they diverge, and an audit that cannot tell them
+    apart cannot reconcile main == served == CURRENT.
+    """
+    try:
+        target = Path("/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT").resolve()
+        name = target.name
+        if name and name != "CURRENT":
+            return name
+    except Exception:
+        pass
+    return ""
 
 
 def _judgment_state_root(store) -> Path | None:

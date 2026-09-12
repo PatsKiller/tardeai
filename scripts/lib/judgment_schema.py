@@ -237,6 +237,10 @@ def author_judgment_required_fields() -> tuple[str, ...]:
         "returned_model",
         "prompt_template_version",
         "input_digest",
+        # The digest of the bytes actually sent, distinct from input_digest
+        # (the evidence identity). Required so a record cannot regress to
+        # carrying only one of the two.
+        "prompt_digest",
         "output_digest",
         "cache_key",
         "cache_hit",

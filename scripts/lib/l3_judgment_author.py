@@ -49,8 +49,22 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
-def _mint_judgment_id(subject_guid: str, question: str, input_digest: str) -> str:
-    digest = hashlib.sha256(f"{subject_guid}|{question}|{input_digest}".encode()).hexdigest()
+def _mint_judgment_id(
+    subject_guid: str, question: str, input_digest: str, output_digest: str = ""
+) -> str:
+    """Identify one judgment, not one question.
+
+    `input_digest` deliberately excludes decay_weight and fact_text, so it is
+    stable hour over hour on unchanged evidence. Minting the id from inputs
+    alone therefore gave FIVE organic judgments with five different
+    output_digests a single shared id on 2026-09-11, and two persisted views an
+    hour apart carry that id with different confidence and different falsifiers.
+    Any consumer joining a view or an outcome back to its judgment by
+    judgment_id gets an ambiguous N-row match. Bind the answer into the id.
+    """
+    digest = hashlib.sha256(
+        f"{subject_guid}|{question}|{input_digest}|{output_digest}".encode()
+    ).hexdigest()
     return f"jdg_{digest[:24]}"
 
 
@@ -184,11 +198,27 @@ def _extract_response(resp: Any) -> dict[str, Any]:
             "error_class": getattr(resp, "error_class", None),
             "error_message": getattr(resp, "error_message", None),
             "latency_ms": getattr(resp, "latency_ms", None),
-            "cost_usd": getattr(resp, "cost_usd", None),
+            # DeepSeekResponse defines `estimated_cost_usd`, never `cost_usd`.
+            # Reading the absent name recorded $0.00 for every paid organic
+            # judgment on 2026-09-11 and made the L3 lane invisible to every
+            # cost report and budget decision. Prefer the real field; accept
+            # `cost_usd` only for mapping/mock callers that supply it.
+            "cost_usd": (
+                getattr(resp, "estimated_cost_usd", None)
+                if getattr(resp, "estimated_cost_usd", None) is not None
+                else getattr(resp, "cost_usd", None)
+            ),
+            "cost_basis": getattr(resp, "cost_basis", None),
+            "pricing_tier": getattr(resp, "pricing_tier", None),
+            "provider_cache_hit": getattr(resp, "cache_hit", None),
+            "provider_request_id": getattr(resp, "request_id", None),
             "usage": getattr(resp, "usage", None),
         }
     if isinstance(resp, Mapping):
-        return dict(resp)
+        d = dict(resp)
+        if d.get("cost_usd") is None and d.get("estimated_cost_usd") is not None:
+            d["cost_usd"] = d["estimated_cost_usd"]
+        return d
     raise JudgmentSchemaError("author_response_unrecognized")
 
 
@@ -216,6 +246,7 @@ def run_author(
     mem_ids = [str(x) for x in (gate.get("selected_memory_fact_ids") or [])]
 
     prompt, input_digest = build_author_prompt(grounded=grounded, gate=gate, policy=policy)
+    prompt_digest = digest_text(prompt)
     cache_key = build_cache_key(
         subject_guid=subject_guid,
         material_question=question,
@@ -321,8 +352,8 @@ def run_author(
         }
 
     research = grounded.get("research") or {}
-    judgment_id = _mint_judgment_id(subject_guid, question, input_digest)
     output_digest = digest_text(content if isinstance(content, str) else json.dumps(content, sort_keys=True))
+    judgment_id = _mint_judgment_id(subject_guid, question, input_digest, output_digest)
     # Do not silently replace empty evidence lists — empty means schema failure.
     if "memory_fact_ids" in parsed:
         memory_fact_ids = parsed.get("memory_fact_ids")
@@ -338,7 +369,11 @@ def run_author(
         evidence_source_ids = list(mem_ids)
     envelope = {
         **parsed,
-        "judgment_id": parsed.get("judgment_id") or judgment_id,
+        # Caller-minted only. MODEL_SUPPLIED_FIELDS documents that envelope
+        # provenance is filled after the response returns precisely so the
+        # model cannot invent it; honouring parsed["judgment_id"] reopened
+        # exactly that hole.
+        "judgment_id": judgment_id,
         "subject_guid": subject_guid,
         "question": question,
         "provider": binding["provider"],
@@ -346,10 +381,16 @@ def run_author(
         "returned_model": str(returned),
         "prompt_template_version": policy.prompt_template_version or PROMPT_TEMPLATE_VERSION,
         "input_digest": input_digest,
+        # input_digest is the EVIDENCE identity (no decay_weight, no fact_text).
+        # prompt_digest binds the bytes actually sent to the provider, which do
+        # include both. Two distinct commitments; the record needs both.
+        "prompt_digest": prompt_digest,
         "output_digest": output_digest,
         "cache_key": cache_key,
         "cache_hit": False,
         "cost_usd": float(resp.get("cost_usd") or 0.0),
+        "cost_basis": resp.get("cost_basis"),
+        "pricing_tier": resp.get("pricing_tier"),
         "latency_ms": int(resp.get("latency_ms") or latency_ms),
         "source_sha": source_sha or grounded.get("source_sha") or "",
         "release": release or "",

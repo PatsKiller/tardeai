@@ -525,6 +525,25 @@ def reserved_usd_open(process_id: str | None = None) -> float:
         raise RuntimeError(f"BUDGET_UNAVAILABLE: reserved_usd_open failed: {type(exc).__name__}") from exc
 
 
+def _unregistered_lane_observed(process_id: str) -> None:
+    """Record that a lane spent without a declared budget.
+
+    Deliberately not an exception: denying every unregistered caller would take
+    working production lanes offline the moment this shipped. It is a visible
+    signal so the omission is fixable, rather than an invisible exemption.
+    """
+    try:
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "llm_lane_unregistered process_id=%s has no daily_cost_cap_usd; "
+            "process cap not enforced for this lane",
+            process_id,
+        )
+    except Exception:  # noqa: BLE001 — observability must never break a cap check
+        pass
+
+
 def check_cost_cap(
     process_id: str,
     *,
@@ -546,14 +565,62 @@ def check_cost_cap(
                     break
         proc_cap = cfg.get("daily_cost_cap_usd")
         spent = ledger_paid_usd_today(process_id, cur=cur)
+        # An unregistered lane has daily_cost_cap_usd=None, which skipped the
+        # process check entirely -- so the lane with NO declared budget was the
+        # least constrained thing on the host. `l3_judgment_author` was exactly
+        # that on 2026-09-11: it made five paid organic calls while carrying no
+        # row in llm_process_config at all. Report the omission instead of
+        # rewarding it; the global cap still applies either way.
+        if proc_cap is None:
+            _unregistered_lane_observed(process_id)
         if proc_cap is not None and (spent + float(projected_usd or 0)) > float(proc_cap):
             return {"allow": False, "reason": "COST_CAP_EXCEEDED", "scope": "process",
                     "spent_usd": spent, "cap_usd": float(proc_cap), "fail_open": False}
         if global_cap is not None:
             g = ledger_paid_usd_today(None, cur=cur)
-            if (g + float(projected_usd or 0)) > float(global_cap):
-                return {"allow": False, "reason": "COST_CAP_EXCEEDED", "scope": "global",
-                        "spent_usd": g, "cap_usd": float(global_cap), "fail_open": False}
+            # Per-lane floors. With no floors configured `available` is exactly
+            # `global_cap - spent`, so this is byte-for-byte the old decision.
+            from scripts.lib.llm_lane_reservation import (
+                available_under_global_cap,
+                explain as _explain_floors,
+                load_lane_floors,
+            )
+
+            floors = load_lane_floors()
+            _spent_by_lane = lambda lane: ledger_paid_usd_today(lane, cur=cur)  # noqa: E731
+            available = available_under_global_cap(
+                process_id=process_id,
+                global_cap=float(global_cap),
+                spent_globally=g,
+                floors=floors,
+                spent_by_lane=_spent_by_lane,
+            )
+            if float(projected_usd or 0) > available:
+                detail = (
+                    _explain_floors(
+                        process_id=process_id,
+                        global_cap=float(global_cap),
+                        spent_globally=g,
+                        floors=floors,
+                        spent_by_lane=_spent_by_lane,
+                    )
+                    if floors
+                    else {}
+                )
+                # "The pool is empty" and "another lane's protected floor is
+                # holding budget you may not have" call for opposite operator
+                # responses, so they must not share one opaque reason string.
+                withheld = float(detail.get("withheld_by_other_lane_floors_usd") or 0.0)
+                return {
+                    "allow": False,
+                    "reason": "COST_CAP_EXCEEDED",
+                    "scope": "lane_floor" if withheld > 0 else "global",
+                    "spent_usd": g,
+                    "cap_usd": float(global_cap),
+                    "available_usd": available,
+                    "lane_floors": detail or None,
+                    "fail_open": False,
+                }
         return {"allow": True, "spent_process_usd": spent, "fail_open": False}
     except Exception as exc:  # noqa: BLE001
         return {
@@ -744,7 +811,39 @@ def reserve_projected_cost(
             if gcap <= 0:
                 raise RuntimeError("COST_CONFIGURATION_INVALID: global cap malformed")
             spent_g = ledger_paid_usd_today(None, cur=cur)
-            if (spent_g + proj) > gcap:
+            # Per-lane floors: budget other lanes may not consume. With no
+            # floors configured this is exactly the old check.
+            from scripts.lib.llm_lane_reservation import (
+                available_under_global_cap,
+                explain as _explain_floors,
+                load_lane_floors,
+            )
+
+            floors = load_lane_floors()
+            available = available_under_global_cap(
+                process_id=str(process_id),
+                global_cap=gcap,
+                spent_globally=spent_g,
+                floors=floors,
+                spent_by_lane=lambda lane: ledger_paid_usd_today(lane, cur=cur),
+            )
+            if proj > available:
+                if floors:
+                    detail = _explain_floors(
+                        process_id=str(process_id),
+                        global_cap=gcap,
+                        spent_globally=spent_g,
+                        floors=floors,
+                        spent_by_lane=lambda lane: ledger_paid_usd_today(lane, cur=cur),
+                    )
+                    # Distinguish "the pool is empty" from "another lane's
+                    # protected floor is holding budget you cannot have": the
+                    # operator responses are opposite.
+                    if detail["withheld_by_other_lane_floors_usd"] > 0:
+                        raise RuntimeError(
+                            "COST_CAP_EXCEEDED: global cap (lane floors withheld "
+                            f"${detail['withheld_by_other_lane_floors_usd']:.4f})"
+                        )
                 raise RuntimeError("COST_CAP_EXCEEDED: global cap")
 
         nreq = ledger_request_count_today(process_id, cur=cur)

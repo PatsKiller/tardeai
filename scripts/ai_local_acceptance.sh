@@ -73,7 +73,19 @@ if [[ ! -x .githooks/pre-push ]]; then
   echo "ERROR: .githooks/pre-push missing" >&2
   exit 1
 fi
-if TRADEAI_REMOTE_PUSH_AUTHORIZED=0 .githooks/pre-push >/dev/null 2>&1; then
+# Probe the HOOK, not the ambient authority state. The hook treats a live
+# operator git-push grant as authorization (see .githooks/pre-push: "Operator
+# scope grant covers the push-budget override for this window"), so with a
+# grant active this self-test used to fail -- and because this script is
+# `set -e`, IT TOOK EVERY LATER GATE WITH IT. Acceptance was therefore weakest
+# in exactly the situation where authority was highest: any campaign holding a
+# push grant ran no release-equivalent, no lane registry, no CIO hardening.
+# Point the guard ledger at an empty directory for the probe only; the real
+# ledger at $HOME/.cursor/approvals is never read or written here.
+probe_dir="$(mktemp -d)"
+trap 'rm -rf "$probe_dir"' EXIT
+if GUARD_APPROVALS_DIR="$probe_dir" TRADEAI_REMOTE_PUSH_AUTHORIZED=0 \
+   .githooks/pre-push >/dev/null 2>&1; then
   echo "ERROR: pre-push allowed unauthorized push" >&2
   exit 1
 fi
