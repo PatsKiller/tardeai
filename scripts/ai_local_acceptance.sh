@@ -53,8 +53,24 @@ while IFS= read -r p; do
     # skip tests/test_telegram_notification_normalization.py while independent
     # QA ran it as the full notification suite.
     scripts/check_telegram_chokepoint.py|scripts/check_provider_chokepoint.py|scripts/check_comms_gateway_enforcement.py|scripts/evaluate_telegram*|config/telegram_chokepoint_baseline.json|config/provider_chokepoint_baseline.json|tests/test_telegram*|tests/test_provider_chokepoint*|tests/test_comms_*|tests/fixtures/telegram*|scripts/lib/autonomy_watchdog/telegram*|scripts/lib/comms/*|scripts/telegram_transport.py|scripts/telegram_alert.py|scripts/alert_outbox.py) cio=1; policy_only=0 ;;
+    # Maturity-ladder libraries are CIO concerns even though they do not carry
+    # a cio_ prefix. Without these patterns a change to the wake, the L3
+    # judgment path, the LLM cost gate or the free-first circulation lane ran
+    # NO CIO hardening locally, and the first thing to notice was GitHub: the
+    # 2026-09-12 tranche reached CI and failed ci_self_guards on six new test
+    # files that local acceptance never looked at.
+    scripts/lib/l3_*|scripts/lib/judgment_schema.py|scripts/lib/model_policy.py) cio=1; policy_only=0 ;;
+    scripts/lib/persistent_agent_wake.py|scripts/lib/memory_*|scripts/lib/governed_commitment.py) cio=1; policy_only=0 ;;
+    scripts/lib/commitment_outcome_sweep.py|scripts/sweep_commitment_outcomes.py) cio=1; policy_only=0 ;;
+    scripts/lib/llm_*|scripts/lib/provider_cost/*|scripts/lib/deepseek_client.py) cio=1; policy_only=0 ;;
+    scripts/lib/free_first_*|scripts/free_first_refresh.py|scripts/run_free_first_circulation.sh) cio=1; policy_only=0 ;;
+    scripts/lib/lane_registry.py|config/lane_registry.json|scripts/check_lane_registry.py) cio=1; policy_only=0 ;;
+    scripts/lib/persistent_overlay.py|scripts/check_state_root_split.py) cio=1; policy_only=0 ;;
     apps/command-center-v3/*) frontend=1; policy_only=0 ;;
-    tests/*) tests=1; policy_only=0 ;;
+    # tests/ LAST among these: a new test file must reach the CIO branch so the
+    # coverage gate that registers it actually runs. Matching tests/* first
+    # would set tests=1 and skip it.
+    tests/*) cio=1; tests=1; policy_only=0 ;;
     *) policy_only=0 ;;
   esac
 done <<< "$PATHS"
@@ -73,7 +89,19 @@ if [[ ! -x .githooks/pre-push ]]; then
   echo "ERROR: .githooks/pre-push missing" >&2
   exit 1
 fi
-if TRADEAI_REMOTE_PUSH_AUTHORIZED=0 .githooks/pre-push >/dev/null 2>&1; then
+# Probe the HOOK, not the ambient authority state. The hook treats a live
+# operator git-push grant as authorization (see .githooks/pre-push: "Operator
+# scope grant covers the push-budget override for this window"), so with a
+# grant active this self-test used to fail -- and because this script is
+# `set -e`, IT TOOK EVERY LATER GATE WITH IT. Acceptance was therefore weakest
+# in exactly the situation where authority was highest: any campaign holding a
+# push grant ran no release-equivalent, no lane registry, no CIO hardening.
+# Point the guard ledger at an empty directory for the probe only; the real
+# ledger at $HOME/.cursor/approvals is never read or written here.
+probe_dir="$(mktemp -d)"
+trap 'rm -rf "$probe_dir"' EXIT
+if GUARD_APPROVALS_DIR="$probe_dir" TRADEAI_REMOTE_PUSH_AUTHORIZED=0 \
+   .githooks/pre-push >/dev/null 2>&1; then
   echo "ERROR: pre-push allowed unauthorized push" >&2
   exit 1
 fi
@@ -107,15 +135,29 @@ else
   echo "== Lane registry =="
   "$PY" scripts/check_lane_registry.py --fail-on-new
   if [[ "$cio" == "1" ]]; then
-    "$PY" scripts/run_cio_hardening_ci.py
-    "$PY" scripts/run_cio_adversarial_suite.py
+    # Run every CIO gate and report ALL of them, rather than stopping at the
+    # first. Under `set -e` a run_cio_hardening_ci.py failure skipped the four
+    # gates below it, so an author fixed one thing, re-ran, and met the next
+    # failure only on the following cycle. Worse, the skipped gates are the ones
+    # GitHub runs as SEPARATE steps: on 2026-09-12 a hardening failure hid a
+    # dark-contract violation locally, and CI found it after the push. Same
+    # shape as the pre-push probe at the top of this file — one early failure
+    # silently cancelling later coverage.
+    cio_failed=()
+    "$PY" scripts/run_cio_hardening_ci.py       || cio_failed+=("cio_hardening")
+    "$PY" scripts/run_cio_adversarial_suite.py  || cio_failed+=("cio_adversarial")
     # The cio-hardening CI job runs these as separate steps, so local acceptance
     # could pass while CI failed on something provable locally in seconds. That
     # happened twice: PR #624 on a new uncalled versioned contract, and PR #631
     # on line-ending churn (a write_text() on a CRLF file, 1010 churn lines for
     # a 16-line edit). Mirror both steps here.
-    "$PY" scripts/check_dark_contracts.py --fail-on-new
-    "$PY" scripts/check_line_endings.py
+    "$PY" scripts/check_dark_contracts.py --fail-on-new || cio_failed+=("dark_contracts")
+    "$PY" scripts/check_line_endings.py                   || cio_failed+=("line_endings")
+    if (( ${#cio_failed[@]} )); then
+      echo
+      echo "CIO GATES FAILED: ${cio_failed[*]}" >&2
+      exit 1
+    fi
     authority_green=true
   fi
   if [[ "$frontend" == "1" && -f apps/command-center-v3/package.json ]]; then

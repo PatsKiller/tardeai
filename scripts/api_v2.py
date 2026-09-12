@@ -16087,18 +16087,30 @@ def _attach_oscillator_reading(row: dict, oid: str, snap: dict) -> None:
         rows = snap.get("rows") or []
         if rows:
             r = rows[0]
-            row["state"] = r.get("state")
+            # The row carries ONE `state`, computed for RS. Reading it here made
+            # breadth and RS display an identical state on every render, which is
+            # the precise confusion this board exists to remove. Breadth gets a
+            # state only when the producer emits one of its own; absent stays
+            # absent rather than borrowing a neighbour's.
+            row["state"] = r.get("breadth_state")
             row["reading"] = r.get("breadth_pct")
             row["as_of"] = snap.get("generated_at") or r.get("as_of")
     elif oid == "sector_comovement":
-        row["as_of"] = snap.get("generated_at")
+        # No reading is extracted for this oscillator, so publishing a foreign
+        # producer's generated_at gave the UI a concrete age for a reading that
+        # does not exist. An absent reading has no age.
+        pass
     elif oid == "industry_momentum_quadrant":
         inds = snap.get("industries") or []
         if inds:
             r = inds[0]
             row["state"] = r.get("state")
             row["reading"] = r.get("rel1m")
-            row["as_of"] = snap.get("generated_at")
+            # The industry producer stamps `captured_at`; it emits no
+            # `generated_at` at all. Reading the absent key returned None, and
+            # ageShort(null) renders the literal string "never" beside a live
+            # reading. PR #974 reported this and was closed unmerged.
+            row["as_of"] = snap.get("captured_at") or snap.get("generated_at")
     elif oid == "small_cap_rotation":
         row["state"] = snap.get("signal")
         row["reading"] = snap.get("strength")

@@ -1,0 +1,84 @@
+{
+  "schema": "M2CycleClauseObservation@v1",
+  "observed_utc": "2026-09-12T02:03:10.618856Z",
+  "epoch": {
+    "served_sha": "eb648174aebc75d0e34eb105b8ff54925efccc7b",
+    "release": "eb648174a-main-exact-phase2-20260911-180637",
+    "opened_utc": "2026-09-11T22:06Z"
+  },
+  "clause_contiguous_scheduled_organic_cycles": {
+    "bar": 3,
+    "measured": 3,
+    "slots": [
+      "2026-09-12T00:00Z",
+      "2026-09-12T01:00Z",
+      "2026-09-12T02:00Z"
+    ],
+    "MET": true,
+    "note": "scheduled cron wakes, unattended, all carrying the served source_sha. Not a replay, backfill, fixture or hand-invocation."
+  },
+  "wakes_per_slot": {
+    "2026-09-12T00:00Z": 3,
+    "2026-09-12T01:00Z": 3,
+    "2026-09-12T02:00Z": 3
+  },
+  "l3_per_slot": [
+    {
+      "slot": "2026-09-12T00:00Z",
+      "outcomes": [
+        [
+          "REFUSED",
+          "budget_cap",
+          1
+        ]
+      ]
+    },
+    {
+      "slot": "2026-09-12T01:00Z",
+      "outcomes": [
+        [
+          "REFUSED",
+          "offpeak_deferred",
+          0
+        ]
+      ]
+    },
+    {
+      "slot": "2026-09-12T02:00Z",
+      "outcomes": [
+        [
+          "REFUSED",
+          "offpeak_deferred",
+          0
+        ]
+      ]
+    }
+  ],
+  "clause_research_consumption_with_source_progression": {
+    "distinct_selection_source_ids": 7,
+    "MET": true
+  },
+  "clause_commitments_frozen_before_outcome_window": {
+    "commitments": 18,
+    "frozen_before_due": 9,
+    "MET": true
+  },
+  "clause_gateway_provider_ack_settled": {
+    "events": 11,
+    "settled": 1,
+    "MET": true
+  },
+  "clause_durable_inbound_operator_consumption": {
+    "inbound": 0,
+    "MET": false,
+    "note": "requires a genuine operator message. No agent may synthesize one, and none was."
+  },
+  "receipts": {
+    "count": 6,
+    "effect_kinds": {
+      "changed_question": 6
+    }
+  },
+  "M2_VERDICT": "NOT_ACCEPTED",
+  "why": "The cycle clause is now MET on this epoch (3 contiguous organic hourly slots). M2 still fails on durable inbound operator consumption, which is zero and is the one clause no agent may close."
+}

@@ -1,0 +1,76 @@
+{
+  "schema": "L4ForwardLook@v1",
+  "question": "When the real commitments come due, what will the L4 sweep be able to score?",
+  "method": "the REAL live commitment store, with only the clock moved; no synthetic rows",
+  "answer": "Nothing, at any horizon, until the upstream producer writes a falsifier that names an observable.",
+  "by_date": {
+    "2026-09-12 (today)": {
+      "schema": "CommitmentOutcomeSweep@v1",
+      "authority": "READ_ONLY_ADVISORY",
+      "mbi_behavior": 0,
+      "scanned": 230,
+      "due": 0,
+      "already_settled": 0,
+      "scored": 0,
+      "unfalsifiable": 0,
+      "by_outcome": {},
+      "lessons_proposed": 0,
+      "financial_action": false,
+      "reasons": {}
+    },
+    "2026-09-18": {
+      "schema": "CommitmentOutcomeSweep@v1",
+      "authority": "READ_ONLY_ADVISORY",
+      "mbi_behavior": 0,
+      "scanned": 230,
+      "due": 24,
+      "already_settled": 0,
+      "scored": 0,
+      "unfalsifiable": 24,
+      "by_outcome": {
+        "INSUFFICIENT_EVIDENCE": 24
+      },
+      "lessons_proposed": 0,
+      "financial_action": false,
+      "reasons": {
+        "claim_not_falsifiable:claim_asserts_only_that_a_review_occurred": 24
+      }
+    },
+    "2026-09-20": {
+      "schema": "CommitmentOutcomeSweep@v1",
+      "authority": "READ_ONLY_ADVISORY",
+      "mbi_behavior": 0,
+      "scanned": 230,
+      "due": 102,
+      "already_settled": 0,
+      "scored": 0,
+      "unfalsifiable": 102,
+      "by_outcome": {
+        "INSUFFICIENT_EVIDENCE": 102
+      },
+      "lessons_proposed": 0,
+      "financial_action": false,
+      "reasons": {
+        "claim_not_falsifiable:claim_asserts_only_that_a_review_occurred": 102
+      }
+    },
+    "2026-10-01": {
+      "schema": "CommitmentOutcomeSweep@v1",
+      "authority": "READ_ONLY_ADVISORY",
+      "mbi_behavior": 0,
+      "scanned": 230,
+      "due": 102,
+      "already_settled": 0,
+      "scored": 0,
+      "unfalsifiable": 102,
+      "by_outcome": {
+        "INSUFFICIENT_EVIDENCE": 102
+      },
+      "lessons_proposed": 0,
+      "financial_action": false,
+      "reasons": {
+        "claim_not_falsifiable:claim_asserts_only_that_a_review_occurred": 102
+      }
+    }
+  }
+}

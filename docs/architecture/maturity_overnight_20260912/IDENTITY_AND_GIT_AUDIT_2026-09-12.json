@@ -1,0 +1,63 @@
+{
+  "schema": "CampaignIdentityGitAudit@v1",
+  "campaign": "trade-ai-maturity-overnight-20260912",
+  "captured_utc": "2026-09-12T01:41:55Z",
+  "git": {
+    "remote": "https://github.com/PatsKiller/tardeai",
+    "origin_main_at_start": "eb648174aebc75d0e34eb105b8ff54925efccc7b",
+    "audit_cutoff_sha": "eb648174aebc75d0e34eb105b8ff54925efccc7b",
+    "commits_between_cutoff_and_main": 0,
+    "campaign_branch": "feat/l3-record-integrity-20260912",
+    "campaign_commits": 5,
+    "campaign_head": "81274a714da3c340ddb3c8c318d0928a8c23a928",
+    "pr": 975,
+    "force_pushes": 0,
+    "history_rewrites_on_pushed_commits": 0
+  },
+  "served_identity_at_start": {
+    "release_dir": "eb648174a-main-exact-phase2-20260911-180637",
+    "release_dir_mtime_local": "2026-09-11 18:07:45",
+    "epoch_opened_utc": "2026-09-11T22:06Z",
+    "SOURCE_COMMIT": "eb648174aebc75d0e34eb105b8ff54925efccc7b",
+    "BUILD_SHA": "eb648174aebc75d0e34eb105b8ff54925efccc7b",
+    "api_pid": 6952,
+    "api_cwd": "/home/johnclaw/trade-ai-releases/portfolio-server/eb648174a-main-exact-phase2-20260911-180637",
+    "poller_pid": 8953,
+    "poller_cwd": "/home/johnclaw/trade-ai-releases/portfolio-server/eb648174a-main-exact-phase2-20260911-180637",
+    "pollers_for_bot_token": 1,
+    "ACTIVE_RELEASE_marker": "890e3aef feature/advisory-desk-v1 20260811-094957 (STALE - disagrees with CURRENT and EXPECTED_RELEASE; GR-013)",
+    "EXPECTED_RELEASE_marker": "eb648174a-main-exact-phase2-20260911-180637 (agrees)"
+  },
+  "batch_plane": {
+    "canonical_tree": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild",
+    "head": "b8ddeea89a07c73e0cc3358e1dab93139db21d9a",
+    "behind_main_by": 2,
+    "behind_commits": ["eb648174a (#973)", "67bb9ce57 (#972)"],
+    "active_cron_lines": 456,
+    "cron_lines_executing_canonical_tree_code": 106,
+    "cron_lines_materially_affected_by_lag": 1,
+    "spine_lanes_resolve_CURRENT": true,
+    "fast_forward_blocked_by": "guard scope 'maintree' not granted to this campaign"
+  },
+  "identity_verdict": "SPLIT - the API plane is internally consistent on eb648174a; the batch plane runs b8ddeea89. No single epoch covers both. The maturity spine is unaffected because every lane this campaign touched resolves CURRENT.",
+  "grants": {
+    "ledger": "/home/johnclaw/.cursor/approvals/grants.json via bin/guard",
+    "verified_scoped_to_this_campaign": true,
+    "held": ["db-write:30", "cron:30", "git-push:100", "service:60", "release-write:30", "telegram:10", "config-write:60"],
+    "not_held": ["llm", "maintree", "state-write", "deps", "sudo", "openclaw", "file-delete", "destructive"],
+    "consumed": [
+      {"scope": "git-push", "uses": 1, "at_utc": "2026-09-12T01:13Z", "target": "origin feat/l3-record-integrity-20260912", "force": false}
+    ],
+    "refused_for_want_of_scope": [
+      {"action": "fast-forward the canonical tree", "needs": "maintree"},
+      {"action": "reconcile data/portfolios/state", "needs": "state-write"}
+    ]
+  },
+  "safety_invariants_verified": {
+    "MBI_BEHAVIOR": 0,
+    "broker_order_execution_paths_touched": 0,
+    "credential_or_account_mutation": "none",
+    "financial_guardrail_mutation": "none",
+    "secrets_scan": "clean, 8252 files scanned at push time"
+  }
+}

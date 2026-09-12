@@ -1,0 +1,60 @@
+{
+  "schema": "CampaignValidationHandoff@v1",
+  "campaign": "trade-ai-maturity-overnight-20260912",
+  "lane": "claude-implementation-and-integration",
+  "purpose": "What an independent auditor should recompute, and the exact commands to do it. Nothing here asks the auditor to trust a self-verdict.",
+  "recompute_identity": [
+    "git -C /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild fetch origin && git rev-parse origin/main",
+    "readlink -f /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT",
+    "cat $(readlink -f .../CURRENT)/SOURCE_COMMIT $(readlink -f .../CURRENT)/BUILD_SHA",
+    "for p in $(pgrep -f 'portfolio_server.py|run_telegram_callback_poller'); do readlink /proc/$p/cwd; done",
+    "git -C /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild rev-parse HEAD   # expect it BEHIND main; needs guard scope maintree to fix"
+  ],
+  "recompute_each_claim": {
+    "state_root_split": "python3 scripts/check_state_root_split.py            # expect exit 1 until reconciled",
+    "lane_declarations": "python3 scripts/check_lane_registry.py --fail-on-new  # expect exit 0, undeclared NEW = 0",
+    "L4_input_supply": "python3 scripts/sweep_commitment_outcomes.py           # dry run, expect due=0 and 0 falsifiable of 99",
+    "L3_records": "python3 -m pytest tests/test_l3_record_integrity_20260912.py -q",
+    "budget_floors": "python3 -m pytest tests/test_llm_lane_reservation_20260912.py -q",
+    "circulation_bound": "python3 -m pytest tests/test_free_first_deadline_20260912.py -q",
+    "health_can_go_false": "python3 -m pytest tests/test_free_first_scheduler_health_20260912.py -q",
+    "oscillator_board": "python3 -m pytest tests/test_oscillator_board_truth_20260912.py tests/test_oscillator_board_reads.py -q",
+    "full_local_acceptance": "bash scripts/ai_local_acceptance.sh"
+  },
+  "claims_this_lane_makes": [
+    "L1 PARTIAL - the maturity spine is declared and observable; the read plane does not serve what the batch plane produces",
+    "L2 BLOCKED - the circulation lane had 0 successful runs in 4 days; the fix is built and tested, not yet deployed",
+    "L3 PARTIAL - 5 judgments exist on PRIOR epochs only; the record-integrity defects are fixed",
+    "L4 ABSENT - the scheduled evaluator now exists; 0 of 99 predictions are falsifiable",
+    "L5 ABSENT - the health predicate can now go false; the unattended loop is unobserved",
+    "M2 NOT_ACCEPTED - 2 of 3 contiguous cycles, 0 inbound operator events",
+    "MVL NOT_ACCEPTED - Sentinel retrieval 0 of 140 against a 95% bar"
+  ],
+  "claims_this_lane_explicitly_does_NOT_make": [
+    "No maturity level is awarded by this campaign",
+    "L5 is not claimed from this campaign having repaired defects - that is not the unattended loop",
+    "The 2.9% Sentinel fail rate is NOT a false-positive rate; no adjudication path exists",
+    "MVL counters were measured on the PRODUCER plane and are therefore NOT the served-plane numbers",
+    "No organic L3 authoring was observed on the served epoch; the off-peak window opens after the deadline"
+  ],
+  "validator_findings_dispositioned": {
+    "GR-002 / GG-011 state root split": "ACCEPTED AND EXTENDED - reproduced independently (two inodes); found larger than reported (164-172 files across 5 trees, not 74 in one) and BIDIRECTIONAL (19 data/runtime files newer on the served side). Detector shipped; reconciliation left to an operator because a newer-wins merge destroys data in either direction and data/portfolios/state is behind a scope this campaign did not hold.",
+    "GR-014 / GR-016 / GG-014 circulation dead": "ACCEPTED - root cause confirmed as unbounded workload, not a hang. Bound, cursor and failure receipt shipped.",
+    "GR-015 / GG-015 health lies": "ACCEPTED - reproduced live (healthy=true while systemd showed failed(timeout) 17 minutes earlier). Rewritten so it can go false.",
+    "GR-019 cache key poisoned by decay_weight": "ACCEPTED - found independently before reading the finding; quantized.",
+    "GR-020 vs GG-018 judgment_id": "VALIDATORS DISAGREE. GR-020 CONFIRMED and marked FIXED_RETEST_PASS; GG-018 REJECTED it as content-addressing. GG-018 FALSIFIED with exact evidence: views.jsonl holds two views, 18:00:36Z and 19:00:33Z, confidence 0.72 vs 0.60, different falsifiers, different critique_ids, one shared judgment_id. A content address that two contradictory records both claim is not an identifier. Fix retained.",
+    "GR-026 / GG-019 L4 structurally absent": "PARTIALLY FALSIFIED. The schema, vocabulary, self-evaluation prohibition and append-only ledger all exist. What was missing is the scheduled re-evaluation: evaluate_outcome's one caller ran it at freeze time, and 0 cron + 0 systemd revisit a due commitment. Built. L4 still ABSENT, for a different and now precise reason.",
+    "GR-001 magnitude of the devtree lag": "MY CLAIM CORRECTED - I reported 235 cron lines; 235 was path-MENTIONS. 106 execute dev-tree code, 1 materially affected.",
+    "GR-004 / GR-005 / GR-006 / GR-007 board defects": "ACCEPTED, all four fixed. GR-007 EXTENDED: the registry declares sector_comovement's store as material_changes while the board reads sector_momentum, so the timestamp was foreign in a stronger sense than reported.",
+    "GR-021 / GR-022 L3 prior-epoch and input-invariant": "ACCEPTED. Re-proof blocked by the off-peak window opening at 14:00Z, after the 12:31:44Z deadline. The cache fix also addresses GR-021: identical evidence will now hit the cache rather than producing a different answer each hour.",
+    "GR-024 cost / prompt_digest / epoch+release": "ACCEPTED with GR-024's refinements (prompt_digest ABSENT not null; epoch_id was populated and only release empty). All fixed.",
+    "GR-013 stale ACTIVE_RELEASE marker": "CONFIRMED, not fixed - out of this tranche's scope; recorded in the identity audit."
+  },
+  "what_would_change_these_verdicts": {
+    "L3": "one organic wake inside 14:00Z-01:00Z recording l3_judged with non-zero cost_usd, a prompt_digest, a release and a unique judgment_id",
+    "M2": "one genuine inbound operator message, plus 3 contiguous cycles after any promote",
+    "L4": "a producer that refuses a vacuous falsifier, then one commitment past its horizon with a durable outcome",
+    "L1": "scripts/check_state_root_split.py exiting 0",
+    "MVL": "Sentinel reviews carrying retrieval, and an adjudication path for the FAIL verdicts"
+  }
+}

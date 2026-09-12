@@ -1,0 +1,6 @@
+{
+  "schema": "LlmLaneFloors@v1",
+  "authority": "READ_ONLY_ADVISORY budget policy. Floors withhold budget from other lanes; they never raise the global cap, never raise a process cap, and never authorize spend.",
+  "note": "Ships EMPTY on purpose. An empty floors object is byte-for-byte the pre-existing first-come-first-served behaviour, so merging this file changes nothing until an operator sets a floor. Rollback is emptying it again. Total of all floors must not exceed LLM_GLOBAL_DAILY_USD_CAP or every reservation is refused loudly rather than silently rescaled.",
+  "floors": {}
+}

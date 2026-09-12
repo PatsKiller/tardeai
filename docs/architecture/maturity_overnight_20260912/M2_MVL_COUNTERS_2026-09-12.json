@@ -1,0 +1,74 @@
+{
+  "schema": "CampaignM2MvlCounters@v1",
+  "campaign": "trade-ai-maturity-overnight-20260912",
+  "captured_utc": "2026-09-12T01:44:01.449186Z",
+  "epoch": {
+    "served_sha": "eb648174aebc75d0e34eb105b8ff54925efccc7b",
+    "release": "eb648174a-main-exact-phase2-20260911-180637",
+    "opened_utc": "2026-09-11T22:06:37Z"
+  },
+  "M2": {
+    "bar_contiguous_cycles": 3,
+    "contiguous_hourly_slots_on_epoch": 2,
+    "slots": [
+      "2026-09-12T00:00Z",
+      "2026-09-12T01:00Z"
+    ],
+    "wakes_on_epoch": 6,
+    "distinct_research_selection_source_ids": 5,
+    "receipts_on_epoch": 4,
+    "receipt_effect_kinds": {
+      "changed_question": 4
+    },
+    "commitments_on_epoch": 12,
+    "commitments_frozen_before_due": 6,
+    "communication_events_on_epoch": 11,
+    "provider_ack_SETTLED": 1,
+    "inbound_events": 0,
+    "gateway_owned": 1,
+    "consumption_receipts_since_epoch_open": 0,
+    "verdict": "NOT_ACCEPTED",
+    "why": "contiguous cycles below bar, and inbound operator consumption is zero. The inbound clause needs a genuine human reply; no agent may manufacture one."
+  },
+  "MVL": {
+    "sentinel_reviews": 140,
+    "sentinel_distinct_artifacts": 136,
+    "sentinel_FAIL": 4,
+    "sentinel_fail_rate": 0.0286,
+    "sentinel_false_positive_rate": "NOT_MEASURABLE - no adjudication path for the FAIL verdicts",
+    "sentinel_reviews_with_retrieval": 0,
+    "sentinel_retrieval_pct": 0.0,
+    "sentinel_retrieval_bar_pct": 95,
+    "darwin_scorecards": 223,
+    "darwin_distinct_artifacts": 136,
+    "darwin_coverage_of_sentinel_pct": 100.0,
+    "darwin_coverage_bar_pct": 95,
+    "darwin_model_calls": 0,
+    "darwin_cost_usd": 0.0,
+    "reflection_records": 14,
+    "reflection_newest": "2026-08-26T01:50:00.656493+00:00",
+    "reflection_auto_promotions": 0,
+    "reflection_mutates_production": [
+      "False"
+    ],
+    "watch_artifact_corpus": "NOT MET - the 136 reviewed artifacts are agent advisory artifacts (mandates such as capital_deployment_idle_cash), not Watch artifacts",
+    "known_bad_regression_fixtures": "UNVERIFIED - not located",
+    "measured_on": "PRODUCER plane; the served plane is 16 days behind it (sentinel 140 vs 104), see the state-root split",
+    "verdict": "NOT_ACCEPTED"
+  },
+  "L4": {
+    "durable_records": 224,
+    "predictions": 99,
+    "observations_not_predictions": 125,
+    "predictions_past_due": 0,
+    "earliest_due_at": "2026-09-17T16:00:02.001813Z",
+    "falsifiability": {
+      "claim_asserts_only_that_a_review_occurred": 99
+    },
+    "scheduled_evaluators_before_this_campaign": {
+      "cron": 0,
+      "systemd": 0
+    },
+    "verdict": "ABSENT"
+  }
+}
