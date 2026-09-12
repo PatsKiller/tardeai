@@ -502,6 +502,10 @@ GATES = [
             "tests/test_commitment_outcome_sweep_20260912.py",
             # The live board reads each oscillator from its own store.
             "tests/test_oscillator_board_truth_20260912.py",
+            # A commitment inherits the judgment's falsifier, not a template.
+            "tests/test_commitment_uses_judgment_falsifier_20260912.py",
+            # A producer that writes zero rows says WHICH zero it is.
+            "tests/test_detector_explains_its_zero_20260912.py",
         ],
     ),
     (

@@ -205,10 +205,30 @@ def test_not_evaluable_reaches_the_result(mod):
 
 
 def test_a_dry_run_reports_unmeasured_not_zero(mod):
-    """rows_produced=0 means 'measured, wrote nothing'. A dry run measured nothing."""
-    assert mod.persist(Cur([]), [{"symbol": "X"}], apply=False) == 0
+    """rows_produced=0 means 'measured, wrote nothing'. A dry run measured nothing.
+
+    Updated 2026-09-12: persist() now returns a disposition dict instead of a
+    bare int, because the int could not distinguish "nothing was new" from
+    "nothing worked" -- the 02:30Z run found 25 changes, wrote 0 because all 25
+    were already recorded, and looked identical to a run whose writes failed.
+    The property this test guards is unchanged and now stated more directly:
+    a dry run reports NOT_APPLIED, and main() still emits rows_produced=None.
+    """
+    out = mod.persist(Cur([]), [{"symbol": "X"}], apply=False)
+    assert out["disposition"] == "NOT_APPLIED"
+    assert out["written"] == 0
     src = SCRIPT.read_text(encoding="utf-8")
-    assert '"rows_produced": written if args.apply else None' in src
+    assert '"rows_produced": write["written"] if args.apply else None' in src
+
+
+def test_an_applied_run_distinguishes_its_zeros(mod):
+    """The reason the return shape changed: 0 written is not one outcome."""
+    assert mod.classify_write_disposition(attempted=25, written=0, already=25) == "ALL_ALREADY_PRESENT"
+    assert mod.classify_write_disposition(attempted=25, written=0, already=0) == "WROTE_NOTHING_UNEXPLAINED"
+    src = SCRIPT.read_text(encoding="utf-8")
+    result_block = src.split("RESULT:", 1)[1]
+    assert '"already_present"' in result_block
+    assert '"write_disposition"' in result_block
 
 
 # ── universe ───────────────────────────────────────────────────────────────

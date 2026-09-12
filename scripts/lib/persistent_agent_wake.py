@@ -1063,6 +1063,12 @@ class WakeEngine:
             "commitments": commitments,
             "view": view_rec,
             "memory_empty": memory_empty,
+            # The L3 result was put into `context` and dropped here, so the
+            # caller that mints the governed commitment could not reach the
+            # claim and falsifier the judgment had just produced. It built a
+            # template instead, which is why all 99 governed commitments in
+            # the store are unscoreable.
+            "judgment": judgment,
         }
 
     def _maybe_judge(self, wake, snap, selection_meta, context, now, env=None):

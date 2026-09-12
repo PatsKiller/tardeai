@@ -208,6 +208,7 @@ def _maybe_cortex_shadow_after_wake(
     state_root: Path,
     subject_guid: str,
     wake_id: str,
+    judgment: dict | None = None,
     env: dict,
 ) -> dict[str, Any] | None:
     """Optional Phase-8 AgentView cortex shadow after a completed wake.
@@ -219,6 +220,7 @@ def _maybe_cortex_shadow_after_wake(
     """
     try:
         from scripts.lib.cortex_shadow_pipeline import (
+            refuse_vacuous_falsifier,
             enabled as cortex_enabled,
             run_cortex_shadow,
         )
@@ -231,18 +233,51 @@ def _maybe_cortex_shadow_after_wake(
         # Honor GOVERNED_COMMITMENT_ENABLED from env (default OFF). Do not force-off.
         shadow_env = dict(env)
 
-        summary = (
-            f"Scheduled persistent wake reviewed subject {subject_guid}; "
-            "advisory observation only."
-        )
+        # Prefer the judgment this same wake just produced. Without this the
+        # commitment was built from a hardcoded summary and the module's
+        # default falsifier, while the L3 author's real claim and falsifier --
+        # produced seconds earlier, in this slot, for this subject -- were
+        # discarded. Every one of the 99 governed commitments in the store is
+        # unscoreable for exactly that reason.
+        author = ((judgment or {}).get("author")) or {}
+        claim = str(author.get("claim") or "").strip()
+        falsifier = str(author.get("falsifier") or "").strip()
+
+        if claim and falsifier:
+            # Fail-closed on the judgment path. If a future change routes the
+            # template back through here, this raises instead of quietly
+            # minting another unscoreable prediction -- which is exactly how
+            # the store accumulated 99 of them. The legacy no-judgment path
+            # below is deliberately NOT guarded: it writes an observation, not
+            # a prediction, and breaking the wake over it would trade one
+            # honest record for no record at all.
+            kwargs = {
+                "summary": claim,
+                "falsifier": refuse_vacuous_falsifier(falsifier),
+                "confidence": float(author.get("confidence") or 0.6),
+                "horizon": str(author.get("horizon") or "7d"),
+                "stance": author.get("stance"),
+            }
+        else:
+            # No judgment in this slot. Say what this record is rather than
+            # dressing an observation up as a prediction: the summary already
+            # says "advisory observation only", and the sweep classifies it as
+            # not-a-prediction on the absence of a real falsifier.
+            kwargs = {
+                "summary": (
+                    f"Scheduled persistent wake reviewed subject {subject_guid}; "
+                    "advisory observation only."
+                ),
+                "confidence": 0.6,
+            }
+
         result = run_cortex_shadow(
             subject=str(subject_guid),
-            summary=summary,
             citations=[f"wake:{wake_id}"],
-            confidence=0.6,
             state_root=state_root,
             dry_run=False,
             env=shadow_env,
+            **kwargs,
         )
         return result.to_dict()
     except Exception:
@@ -382,6 +417,7 @@ def _process_one_subject(
             state_root=state_root,
             subject_guid=subject_guid,
             wake_id=str(wake_id),
+            judgment=result.get("judgment"),
             env=env,
         )
 
