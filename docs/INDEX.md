@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `7402e84a27d6388f46cfe1cfc0d42f2d2c8d2944391e4778f4f2e9856a758821`
+**Tree fingerprint:** `f69756ffe98b93a31626e384082c3c7c4186758c3e5358c018dba65a92344dcd`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,10 +12,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2471 |
-| Markdown (excl. this INDEX) | 2058 |
-| **MISSING HEADER** | **51** |
-| Header OK | 2007 |
+| Files under `docs/` (excl. this INDEX) | 2485 |
+| Markdown (excl. this INDEX) | 2068 |
+| **MISSING HEADER** | **60** |
+| Header OK | 2008 |
 | Duplicate groups | 2 |
 
 ### By status_guess
@@ -28,7 +28,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_raw_sync | 36 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 2 |
-| review_required | 2100 |
+| review_required | 2114 |
 
 ## Markdown tree
 
@@ -480,6 +480,16 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/maturity_gap_closure_20260910/HONEST_MATURITY_ASSESSMENT_2026-09-10-0215.md` | Honest maturity assessment — 2026-09-10-0215 | review_required | OK | `fcfbcc650251` |
 | `docs/architecture/maturity_gap_closure_20260910/HONEST_MATURITY_ASSESSMENT_2026-09-10-1338.md` | Honest maturity assessment — 2026-09-10-1338 | review_required | OK | `2ed4d7e059de` |
 | `docs/architecture/maturity_gap_closure_20260910/SESSION_DOCS_SUMMARY_2026-09-10-0215.md` | Session docs summary — 2026-09-10-0215 | review_required | OK | `4250b1f5f511` |
+| `docs/architecture/maturity_overnight_20260912/CIO_AS_IS_2026-09-12.md` | AS-IS — what this system actually does, 2026-09-12 | review_required | MISSING HEADER | `0ee3c1ba0cc8` |
+| `docs/architecture/maturity_overnight_20260912/CIO_FUTURE_2026-09-12.md` | FUTURE — the next moves, in the order they unblock each other | review_required | MISSING HEADER | `c3ed88bc4954` |
+| `docs/architecture/maturity_overnight_20260912/CIO_GAP_2026-09-12.md` | GAP — what stands between this system and the next level, 2026-09-12 | review_required | MISSING HEADER | `2ff399945bc4` |
+| `docs/architecture/maturity_overnight_20260912/DRIVE_AND_GITHUB_RECONCILIATION.md` | GitHub and Drive memorialization — status, 2026-09-12 | review_required | MISSING HEADER | `07120381d6fd` |
+| `docs/architecture/maturity_overnight_20260912/GIT_AUDIT_COMMITS_2026-09-12.md` | Git audit — every commit this campaign produced | review_required | MISSING HEADER | `70d58e27410e` |
+| `docs/architecture/maturity_overnight_20260912/LIVE_TRACE_MATRIX_2026-09-12.md` | Live trace matrix — clause → the exact artifact consulted | review_required | MISSING HEADER | `abcd1500e45c` |
+| `docs/architecture/maturity_overnight_20260912/MANIFEST_SIDECAR.md` | Manifest sidecar — how to check this package is what it says it is | review_required | MISSING HEADER | `0bf6facefbf4` |
+| `docs/architecture/maturity_overnight_20260912/MATURITY_SCORECARD_2026-09-12.md` | Maturity scorecard — 2026-09-12, overnight campaign | review_required | MISSING HEADER | `1588aaabb0e4` |
+| `docs/architecture/maturity_overnight_20260912/README.md` | Overnight maturity campaign — package, 2026-09-12 | review_required | MISSING HEADER | `a41175e94659` |
+| `docs/architecture/maturity_overnight_20260912/STATE_ROOT_RECONCILIATION_RUNBOOK.md` | State-root reconciliation — operator adjudication required | review_required | OK | `e7194d7cddec` |
 | `docs/architecture/narrative-subject-identity.md` | NarrativeSubjectLink@v1 — Architecture | review_required | OK | `e6f73da9013d` |
 | `docs/architecture/retention.md` | Librarian Retention — RetentionDecision@v1 (Phase 6) | review_required | OK | `ca8630975a92` |
 | `docs/architecture/subject-memory.md` | Subject Memory / SubjectThread@v1 — Architecture | review_required | OK | `dc0fb229b08c` |

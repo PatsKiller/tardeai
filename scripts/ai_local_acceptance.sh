@@ -135,15 +135,29 @@ else
   echo "== Lane registry =="
   "$PY" scripts/check_lane_registry.py --fail-on-new
   if [[ "$cio" == "1" ]]; then
-    "$PY" scripts/run_cio_hardening_ci.py
-    "$PY" scripts/run_cio_adversarial_suite.py
+    # Run every CIO gate and report ALL of them, rather than stopping at the
+    # first. Under `set -e` a run_cio_hardening_ci.py failure skipped the four
+    # gates below it, so an author fixed one thing, re-ran, and met the next
+    # failure only on the following cycle. Worse, the skipped gates are the ones
+    # GitHub runs as SEPARATE steps: on 2026-09-12 a hardening failure hid a
+    # dark-contract violation locally, and CI found it after the push. Same
+    # shape as the pre-push probe at the top of this file — one early failure
+    # silently cancelling later coverage.
+    cio_failed=()
+    "$PY" scripts/run_cio_hardening_ci.py       || cio_failed+=("cio_hardening")
+    "$PY" scripts/run_cio_adversarial_suite.py  || cio_failed+=("cio_adversarial")
     # The cio-hardening CI job runs these as separate steps, so local acceptance
     # could pass while CI failed on something provable locally in seconds. That
     # happened twice: PR #624 on a new uncalled versioned contract, and PR #631
     # on line-ending churn (a write_text() on a CRLF file, 1010 churn lines for
     # a 16-line edit). Mirror both steps here.
-    "$PY" scripts/check_dark_contracts.py --fail-on-new
-    "$PY" scripts/check_line_endings.py
+    "$PY" scripts/check_dark_contracts.py --fail-on-new || cio_failed+=("dark_contracts")
+    "$PY" scripts/check_line_endings.py                   || cio_failed+=("line_endings")
+    if (( ${#cio_failed[@]} )); then
+      echo
+      echo "CIO GATES FAILED: ${cio_failed[*]}" >&2
+      exit 1
+    fi
     authority_green=true
   fi
   if [[ "$frontend" == "1" && -f apps/command-center-v3/package.json ]]; then

@@ -29,6 +29,29 @@ Exit codes
 
 from __future__ import annotations
 
+#: Dark-contract guard: StateRootSplitCheck@v1 has no in-repo caller on purpose.
+#:
+#: The obvious consumer is cio_phase2_exact_main_deploy.sh, gating promote on a
+#: clean census. Wiring that now would block EVERY deploy on a pre-existing
+#: condition: 164 served files are currently behind their producers across five
+#: overlay trees, and the reconciliation is not a change an agent may make
+#: unattended -- the fork is bidirectional (19 files in data/runtime are newer on
+#: the SERVED side, by up to 31.9 days), so a newer-wins merge destroys real data
+#: in whichever direction it runs, and data/portfolios/state holds live holdings.
+#:
+#: So this ships as an operator-run detector first. The gate wiring belongs in
+#: the same change that reconciles the existing divergence, which needs a human
+#: decision per file. Procedure and the per-file direction census:
+#: trade-ai-campaigns/trade-ai-maturity-overnight-20260912/final/
+#: STATE_ROOT_RECONCILIATION_RUNBOOK.md
+NO_CONSUMER_REASON = (
+    "Operator-run detector for the producer/served state-root fork. The consumer "
+    "is the promote gate in cio_phase2_exact_main_deploy.sh, which cannot be "
+    "wired until the existing 164-file divergence is reconciled -- gating promote "
+    "on a pre-existing condition would block every deploy. The reconciliation is "
+    "bidirectional and needs operator adjudication per file."
+)
+
 import argparse
 import json
 import os
