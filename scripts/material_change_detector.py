@@ -707,6 +707,79 @@ def news_bursts(cur, syms: dict[str, str]) -> tuple[list[dict], dict]:
     return out, {"fired": len(out)}
 
 
+#: Where the run heartbeat lives. Deliberately OUTSIDE both trees.
+#:
+#: This detector runs from the canonical source tree, whose data/runtime is on
+#: the PRODUCER side of the state-root fork (165 served files behind their
+#: producers, measured 2026-09-12). A heartbeat written there would be invisible
+#: to the served plane, so a lane keyed on it would read SILENT forever — the
+#: same class of defect the heartbeat exists to fix. An absolute path outside
+#: both trees is the same file whichever tree the producer ran from, which is
+#: how run_governed_research_producer already does it.
+DEFAULT_HEALTH_PATH = "/home/johnclaw/trade-ai-state/material_change_detector_health.json"
+HEALTH_SCHEMA = "MaterialChangeDetectorHealth@v1"
+
+
+def health_path(env=None):
+    """Heartbeat location; TRADEAI_MATERIAL_CHANGE_HEALTH_PATH overrides."""
+    import os
+    from pathlib import Path as _P
+    src = env if env is not None else os.environ
+    return _P(str(src.get("TRADEAI_MATERIAL_CHANGE_HEALTH_PATH") or DEFAULT_HEALTH_PATH))
+
+
+def build_health_record(*, universe: int, changes_found: int, write: dict,
+                        source_sha: str, now: str) -> dict:
+    """A run receipt that advances whether or not rows were written.
+
+    The lane signal declared for this detector keys on
+    db_max(material_changes.created_at). persist() dedupes on ON CONFLICT DO
+    NOTHING, so a run that correctly finds only already-recorded changes never
+    advances that column: measured 2026-09-12T02:45Z, newest row 00:30Z with
+    four correct runs in between, the lane reading SLOW on its way to SILENT.
+
+    This advances on every successful run and carries the disposition, so
+    "nothing was new" stays distinguishable from "stopped" — which a max() over
+    rows the producer correctly declined to write can never do.
+
+    last_success_at is NOT stamped on an unexplained zero. Stamping it there
+    would make the heartbeat tell the same kind of lie the old scheduler health
+    predicate told: a liveness signal that cannot go negative.
+    """
+    disposition = str(write.get("disposition") or "")
+    succeeded = disposition in ("ALL_WRITTEN", "PARTIAL_NEW",
+                                "ALL_ALREADY_PRESENT", "NOTHING_DETECTED")
+    return {
+        "schema": HEALTH_SCHEMA,
+        "authority": AUTHORITY,
+        "as_of": now,
+        "last_success_at": now if succeeded else None,
+        "source_sha": source_sha,
+        "universe": universe,
+        "changes_found": changes_found,
+        "attempted": write.get("attempted"),
+        "written": write.get("written"),
+        "already_present": write.get("already_present"),
+        "outcome": disposition,
+        "model_calls": 0,
+        "financial_action": False,
+    }
+
+
+def write_health_record(record: dict, env=None) -> None:
+    """Best-effort. A heartbeat that breaks the producer is worse than none."""
+    import json as _j, os as _os
+    from pathlib import Path as _P
+    try:
+        p = health_path(env)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        tmp = p.with_suffix(p.suffix + ".tmp")
+        tmp.write_text(_j.dumps(record, indent=2, sort_keys=True), encoding="utf-8")
+        _os.replace(tmp, p)
+    except OSError:
+        pass
+
+
 def classify_write_disposition(*, attempted: int, written: int, already: int) -> str:
     """Name what happened, so a zero is never ambiguous.
 
@@ -853,6 +926,11 @@ def main() -> int:
     if args.apply:
         conn.commit()
     conn.close()
+
+    write_health_record(build_health_record(
+        universe=len(syms), changes_found=len(changes), write=write,
+        source_sha=_source_sha() if "_source_sha" in globals() else "",
+        now=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")))
 
     print("RESULT: " + json.dumps({
         "schema": SCHEMA, "authority": AUTHORITY, "model_calls": 0,

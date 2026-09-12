@@ -1,6 +1,6 @@
 === CONTROL7 LOCAL EQUIVALENT (reproducible; Layer 1) ===
 schema=SopControl7LocalEquivalent@v1
-control_surface_digest=85511b153bc343bbfe6bdc066072b999fb7b0aec4b33ced0df05e60aac67d7ff
+control_surface_digest=622001ed9373a87e7d2db94a38b5e17a46198d863fbb898791661b7eaa6653b3
 note=Command specification with expected successful exits. Does not embed containing commit SHA.
 historical_failure_artifact=SUPERSEDED — prior ModuleNotFoundError/EXIT_quality=1 capture is non-authoritative.
 
@@ -30,7 +30,7 @@ expected_count_drive=6
 
 command_policy=python3 -m pytest tests/test_ai_work_policy_hooks.py tests/test_agents_policy_v1.py -q
 expected_EXIT_policy=0
-expected_count_policy=58
+expected_count_policy=59
 
 command_evidence_tests=python3 -m pytest tests/test_sop_evidence_integrity.py -q
 expected_EXIT_evidence_tests=0

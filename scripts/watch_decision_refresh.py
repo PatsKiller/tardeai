@@ -72,17 +72,38 @@ def _conn():
     closes the shared connection when it finishes (proven: 'connection already
     closed' at the rebuild stage). Job bookkeeping must survive that."""
     import psycopg2
+    bootstrap_error = None
     try:  # ensure DB_* env is loaded the same way db_adapter does
         from env_bootstrap import load_env
         load_env()
-    except Exception:
-        pass
+    except Exception as exc:  # noqa: BLE001 - reported below, never swallowed
+        bootstrap_error = f"{type(exc).__name__}: {exc}"
+
+    password = os.getenv("DB_PASSWORD", "")
+    if not password:
+        # Do NOT hand libpq an empty password. It silently falls back to
+        # ~/.pgpass, and a stale entry there answers with
+        # "password authentication failed for user trade_ai" -- an error that
+        # blames Postgres for what is actually an unrendered secret. Measured
+        # 2026-09-12: this unit lost a 14s boot race against
+        # tradeai-sm-render.service and reported exactly that wrong cause.
+        raise RuntimeError(
+            "DB_PASSWORD is not set, so watch_decision_refresh refuses to "
+            "connect. This is a secret-rendering failure, NOT a Postgres "
+            "credential failure; connecting anyway would fall back to "
+            "~/.pgpass and misreport the cause. Check that "
+            "tradeai-sm-render.service has completed and that "
+            "$XDG_RUNTIME_DIR/tradeai/env exists."
+            + (f" env_bootstrap unavailable: {bootstrap_error}"
+               if bootstrap_error else "")
+        )
+
     return psycopg2.connect(
         host=os.getenv("DB_HOST", "localhost"),
         port=int(os.getenv("DB_PORT", "5432")),
         dbname=os.getenv("DB_NAME", "trade_ai"),
         user=os.getenv("DB_USER", "trade_ai"),
-        password=os.getenv("DB_PASSWORD", ""),
+        password=password,
         connect_timeout=10,
         application_name="watch_decision_refresh")
 

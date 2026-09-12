@@ -90,6 +90,23 @@ def load_failure_receipt(root: Path | str) -> dict[str, Any] | None:
         return None
 
 
+def derive_served_sha(root: Path | str) -> str | None:
+    """Read the served SHA from the release the caller pointed us at.
+
+    `served_sha` began as a caller argument, so a caller who did not pass it got
+    epoch_agreement=UNPROVEN even when the answer was sitting in
+    CURRENT/SOURCE_COMMIT. The optionality was deliberate — UNPROVEN is the
+    honest answer when the SHA is genuinely unknowable, and a test pins that —
+    but when it IS knowable the predicate should not depend on the caller
+    remembering to look.
+    """
+    try:
+        text = (Path(root) / "SOURCE_COMMIT").read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    return text or None
+
+
 def timer_health(
     root: Path | str,
     *,
@@ -98,6 +115,10 @@ def timer_health(
     served_sha: str | None = None,
     now: datetime | None = None,
 ) -> dict[str, Any]:
+    # An explicit argument still wins: a caller who knows better than the
+    # filesystem must be able to say so.
+    if served_sha is None:
+        served_sha = derive_served_sha(root)
     rec = load_receipt(root) or {}
     when = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
     reasons: list[str] = []
