@@ -14,4 +14,21 @@ echo "[free-first $START] run_id=$RUN_ID mode=FREE_FIRST_ONLY source_sha=${SOURC
 # --circulate is the production Hermes→RAG→structured path. Not the paid CIO drain.
 export MEMORY_BEHAVIOR_INFLUENCE="${MEMORY_BEHAVIOR_INFLUENCE:-0}"
 export FREE_FIRST_RUN_ID="$RUN_ID"
-exec "$PY" scripts/free_first_refresh.py --root "$ROOT" --circulate --json --max-searx 1
+# The unit sets TimeoutStartSec=900. Circulation wall time grew with the
+# universe -- 2m42s on 2026-08-23, 14m40s on 2026-09-07 -- and from 2026-09-08
+# every run was SIGTERM'd at 900s. 93 consecutive kills, and because the receipt
+# is written only after the work returns, not one of them left a durable record:
+# the newest receipt stayed at 2026-09-07 and the health predicate read it as
+# current. Stop under our own control, with margin, so the run always reports.
+#
+# Margin covers process start, profile load and receipt write. Keep
+# DEADLINE + MARGIN < TimeoutStartSec, and raise TimeoutStartSec first if this
+# ever needs to grow.
+UNIT_TIMEOUT_S="${TRADEAI_FREE_FIRST_UNIT_TIMEOUT_S:-900}"
+DEADLINE_MARGIN_S="${TRADEAI_FREE_FIRST_MARGIN_S:-120}"
+DEADLINE_S="${TRADEAI_FREE_FIRST_DEADLINE_S:-$((UNIT_TIMEOUT_S - DEADLINE_MARGIN_S))}"
+# A bounded run that always starts at the head of the list never reaches the
+# tail; the cursor makes successive partial runs sweep the whole universe.
+CURSOR="${TRADEAI_FREE_FIRST_CURSOR:-$ROOT/data/cio/free_first_cursor.json}"
+exec "$PY" scripts/free_first_refresh.py --root "$ROOT" --circulate --json --max-searx 1 \
+  --deadline-seconds "$DEADLINE_S" --cursor-path "$CURSOR"

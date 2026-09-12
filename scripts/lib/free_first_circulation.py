@@ -386,19 +386,89 @@ def circulate_symbol(
     }
 
 
+def _read_cursor(cursor_path: Path | None) -> tuple[int, str | None]:
+    """Return (next_index, reset_reason). An unusable cursor starts at 0."""
+    if cursor_path is None:
+        return 0, None
+    path = Path(cursor_path)
+    if not path.is_file():
+        return 0, "absent"
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return int(data["next_index"]), None
+    except (OSError, ValueError, KeyError, TypeError):
+        # A broken cursor must not stop the lane; it must restart it visibly.
+        return 0, "unreadable"
+
+
+def _write_cursor(cursor_path: Path | None, next_index: int) -> None:
+    if cursor_path is None:
+        return
+    path = Path(cursor_path)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(path.suffix + ".tmp")
+        tmp.write_text(json.dumps({"next_index": int(next_index), "as_of": _now()}), encoding="utf-8")
+        tmp.replace(path)
+    except OSError:
+        # Losing the cursor costs coverage progress, never the run.
+        pass
+
+
 def circulate_universe(
     root: Path | str,
     *,
     symbols: list[str] | None = None,
     allow_searx: bool = True,
     embed_fn: Callable | None = None,
+    deadline_seconds: float | None = None,
+    cursor_path: Path | str | None = None,
 ) -> dict[str, Any]:
+    """Circulate the free-first universe, optionally bounded by a deadline.
+
+    The unbounded form is why this lane died. Wall time grew from 2m42s on
+    2026-08-23 to 14m40s on 2026-09-07 as the universe grew, then every run
+    from 2026-09-08 was SIGTERM'd at the unit's TimeoutStartSec=900 -- 93
+    consecutive failures, four days with zero successful runs. Because the
+    receipt is written only after this function returns, not one of those
+    failures left a durable record: the newest receipt on disk stayed at
+    2026-09-07 and the health predicate kept reading it as current.
+
+    With `deadline_seconds` the run stops on its own, returns, and the caller
+    writes a receipt that says PARTIAL_DEADLINE and how far it got. With
+    `cursor_path` the next run resumes where this one stopped, so bounded runs
+    sweep the universe instead of re-grinding its head forever.
+    """
+    import time
+
     from scripts.lib.free_first_refresh import load_profiles as lp
     profiles = lp(root)
     if symbols:
         want = {normalize_symbol(s) for s in symbols}
         profiles = [p for p in profiles if normalize_symbol(p.get("symbol")) in want]
-    rows = [circulate_symbol(root, p, allow_searx=allow_searx, embed_fn=embed_fn) for p in profiles]
+
+    planned = len(profiles)
+    start_index, cursor_reset_reason = _read_cursor(Path(cursor_path) if cursor_path else None)
+    if planned and start_index >= planned:
+        # Wrapped: the previous sweep reached the end.
+        start_index, cursor_reset_reason = 0, cursor_reset_reason or "wrapped"
+    ordered = profiles[start_index:] + profiles[:start_index] if planned else []
+
+    started_monotonic = time.monotonic()
+    rows = []
+    skipped = 0
+    for offset, profile in enumerate(ordered):
+        if deadline_seconds is not None and (time.monotonic() - started_monotonic) >= deadline_seconds:
+            skipped = planned - len(rows)
+            break
+        rows.append(circulate_symbol(root, profile, allow_searx=allow_searx, embed_fn=embed_fn))
+    else:
+        offset = len(ordered)
+    elapsed = time.monotonic() - started_monotonic
+    completion = "PARTIAL_DEADLINE" if skipped else "COMPLETE"
+    if cursor_path is not None and planned:
+        _write_cursor(Path(cursor_path), (start_index + len(rows)) % planned)
+
     buckets: dict[str, list[str]] = {}
     for r in rows:
         buckets.setdefault(r["bucket"], []).append(r["symbol"])
@@ -434,6 +504,17 @@ def circulate_universe(
         "searx_queries": sum(r["searx_queries"] for r in rows),
         "librarian_assessments": sum(r["librarian_assessments"] for r in rows),
         "buckets": {k: sorted(v) for k, v in buckets.items()},
+        # Completeness is reported separately from the row count. `total_symbols`
+        # counts rows produced, so a truncated run used to read as a complete
+        # run over a smaller universe.
+        "completion": completion,
+        "symbols_planned": planned,
+        "symbols_circulated": len(rows),
+        "symbols_skipped_deadline": skipped,
+        "deadline_seconds": deadline_seconds,
+        "elapsed_seconds": round(elapsed, 3),
+        "resume_from_index": start_index,
+        "cursor_reset_reason": cursor_reset_reason,
         "rows": rows,
         "financial_action": False,
         "memory_behavior_influence": int(os.getenv("MEMORY_BEHAVIOR_INFLUENCE", "0") or 0),

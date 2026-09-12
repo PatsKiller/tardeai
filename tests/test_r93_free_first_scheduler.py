@@ -72,22 +72,49 @@ def test_lock_contention_returns_overlap(tmp_path, monkeypatch):
     release_lock(fd)
 
 
-def test_health_receipt_no_llm_required(tmp_path):
+def _free_first_receipt(tmp_path, finished_at: str, *, source_sha: str = "abc"):
     rec = {
         "mode": "FREE_FIRST_ONLY",
-        "source_sha": "abc",
+        "source_sha": source_sha,
         "run_id": "r1",
-        "finished_at": "2026-08-24T01:00:00+00:00",
+        "finished_at": finished_at,
         "paid_dispatch_entered": 0,
         "fresh_no_change": 120,
     }
     path = tmp_path / "data/cio/free_first_last_run.json"
-    path.parent.mkdir(parents=True)
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(rec), encoding="utf-8")
+    return path
+
+
+def test_health_receipt_no_llm_required(tmp_path):
+    """A FRESH_NO_CHANGE run that made no paid call is healthy.
+
+    The timestamp is now generated relative to the run instead of being the
+    fixed 2026-08-24 literal this test used to carry. That literal was the
+    reason the test kept passing while the lane was dead: timer_health had no
+    freshness condition, so a receipt could age indefinitely and still score
+    healthy. The scenario under test -- no LLM required is not unhealthy --
+    is unchanged; only its staleness is.
+    """
+    from datetime import datetime, timedelta, timezone
+
+    fresh = (datetime.now(timezone.utc) - timedelta(minutes=10)).isoformat()
+    _free_first_receipt(tmp_path, fresh)
     h = timer_health(tmp_path)
     assert h["healthy"] is True
+    assert h["unhealthy_reasons"] == []
     assert h["paid_dispatch_count"] == 0
     assert "LLM" not in (h.get("note") or "") or "not" in h["note"].lower()
+
+
+def test_health_receipt_that_stopped_being_written_is_not_healthy(tmp_path):
+    """The same receipt, left to age, must flip. Without this the suite cannot
+    tell a working lane from one that stopped on 2026-09-07."""
+    _free_first_receipt(tmp_path, "2026-08-24T01:00:00+00:00")
+    h = timer_health(tmp_path)
+    assert h["healthy"] is False
+    assert "receipt_stale" in h["unhealthy_reasons"]
 
 
 def test_wrapper_does_not_invent_paid_flags():

@@ -32,6 +32,9 @@ LOCK_PATH = "/tmp/tradeai_free_first_circulation.lock"
 OVERLAP_EXIT = 75
 RECEIPT = "data/cio/free_first_last_run.json"
 BASELINE_RECEIPT = "data/cio/baseline_curation_last_run.json"
+#: Deliberately a SEPARATE file. Overwriting RECEIPT on failure would destroy
+#: the last known-good run, which is the record freshness is measured against.
+FAILURE_RECEIPT = "data/cio/free_first_last_failure.json"
 PAID_PROVIDER_DISPATCH_ALLOWED = False
 
 
@@ -105,6 +108,21 @@ def main() -> int:
         help="write BASELINE_PROJECTION curation snapshots from existing graph/state; no research, no paid",
     )
     ap.add_argument("--symbols", default="", help="comma-separated canary list")
+    ap.add_argument(
+        "--deadline-seconds",
+        type=float,
+        default=None,
+        help=(
+            "stop circulating after this many seconds and report PARTIAL_DEADLINE. "
+            "Set it BELOW the unit's TimeoutStartSec so the run writes a receipt "
+            "instead of being SIGTERM'd with nothing durable."
+        ),
+    )
+    ap.add_argument(
+        "--cursor-path",
+        default="",
+        help="resume file so successive bounded runs sweep the universe",
+    )
     args = ap.parse_args()
     root = Path(args.root)
     started = _now()
@@ -125,7 +143,13 @@ def main() -> int:
             report = project_baseline_universe(str(root), symbols=syms)
         elif args.circulate:
             syms = [s.strip() for s in args.symbols.split(",") if s.strip()] or None
-            report = circulate_universe(str(root), symbols=syms, allow_searx=int(args.max_searx) > 0)
+            report = circulate_universe(
+                str(root),
+                symbols=syms,
+                allow_searx=int(args.max_searx) > 0,
+                deadline_seconds=args.deadline_seconds,
+                cursor_path=(args.cursor_path or None),
+            )
             report.pop("rows", None)
         else:
             report = run_free_first(str(root), max_searx=int(args.max_searx))
@@ -145,6 +169,33 @@ def main() -> int:
         )
         print(f"Flash_symbols={list(report.get('Flash_symbols') or [])[:20]}")
         return 0
+    except BaseException as exc:  # noqa: BLE001 — includes SystemExit/KeyboardInterrupt
+        # The receipt was only ever written on success, so every one of the 93
+        # timeout kills between 2026-09-08 and 2026-09-12 left the 2026-09-07
+        # receipt in place and the lane looked alive. Record the failure where
+        # the health predicate already looks.
+        failure = _stamp(
+            {
+                "schema": "FreeFirstCirculationFailure@v1",
+                "authority": AUTHORITY,
+                "mode": "FREE_FIRST_ONLY",
+                "outcome": "FAILED",
+                "completion": "FAILED",
+                "error_class": type(exc).__name__,
+                "error_message": str(exc)[:500],
+                "total_symbols": 0,
+                "symbols_circulated": 0,
+                "paid_dispatch_entered": 0,
+                "financial_action": False,
+            },
+            root=root,
+            started=started,
+        )
+        try:
+            _write_receipt(root, failure, path=FAILURE_RECEIPT)
+        except Exception:  # noqa: BLE001 — never mask the original failure
+            pass
+        raise
     finally:
         release_lock(fd)
 
