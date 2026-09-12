@@ -53,8 +53,24 @@ while IFS= read -r p; do
     # skip tests/test_telegram_notification_normalization.py while independent
     # QA ran it as the full notification suite.
     scripts/check_telegram_chokepoint.py|scripts/check_provider_chokepoint.py|scripts/check_comms_gateway_enforcement.py|scripts/evaluate_telegram*|config/telegram_chokepoint_baseline.json|config/provider_chokepoint_baseline.json|tests/test_telegram*|tests/test_provider_chokepoint*|tests/test_comms_*|tests/fixtures/telegram*|scripts/lib/autonomy_watchdog/telegram*|scripts/lib/comms/*|scripts/telegram_transport.py|scripts/telegram_alert.py|scripts/alert_outbox.py) cio=1; policy_only=0 ;;
+    # Maturity-ladder libraries are CIO concerns even though they do not carry
+    # a cio_ prefix. Without these patterns a change to the wake, the L3
+    # judgment path, the LLM cost gate or the free-first circulation lane ran
+    # NO CIO hardening locally, and the first thing to notice was GitHub: the
+    # 2026-09-12 tranche reached CI and failed ci_self_guards on six new test
+    # files that local acceptance never looked at.
+    scripts/lib/l3_*|scripts/lib/judgment_schema.py|scripts/lib/model_policy.py) cio=1; policy_only=0 ;;
+    scripts/lib/persistent_agent_wake.py|scripts/lib/memory_*|scripts/lib/governed_commitment.py) cio=1; policy_only=0 ;;
+    scripts/lib/commitment_outcome_sweep.py|scripts/sweep_commitment_outcomes.py) cio=1; policy_only=0 ;;
+    scripts/lib/llm_*|scripts/lib/provider_cost/*|scripts/lib/deepseek_client.py) cio=1; policy_only=0 ;;
+    scripts/lib/free_first_*|scripts/free_first_refresh.py|scripts/run_free_first_circulation.sh) cio=1; policy_only=0 ;;
+    scripts/lib/lane_registry.py|config/lane_registry.json|scripts/check_lane_registry.py) cio=1; policy_only=0 ;;
+    scripts/lib/persistent_overlay.py|scripts/check_state_root_split.py) cio=1; policy_only=0 ;;
     apps/command-center-v3/*) frontend=1; policy_only=0 ;;
-    tests/*) tests=1; policy_only=0 ;;
+    # tests/ LAST among these: a new test file must reach the CIO branch so the
+    # coverage gate that registers it actually runs. Matching tests/* first
+    # would set tests=1 and skip it.
+    tests/*) cio=1; tests=1; policy_only=0 ;;
     *) policy_only=0 ;;
   esac
 done <<< "$PATHS"

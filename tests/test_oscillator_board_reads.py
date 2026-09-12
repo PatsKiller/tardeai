@@ -69,11 +69,31 @@ def test_sector_breadth_reads_breadth_not_rs20():
     # for a representative context, never a fabricated oscillator state.
 
 
-def test_sector_comovement_reads_nothing_but_marks_freshness():
+def test_sector_comovement_publishes_no_age_for_a_reading_it_does_not_have():
+    """Corrected 2026-09-12. This test previously asserted the row publishes
+    SNAP's generated_at and was named "...but marks freshness", on the premise
+    that the timestamp described this oscillator's own producer.
+
+    config/oscillator_registry.json says otherwise:
+
+        "oscillator_id": "sector_comovement"
+        "producer": "scripts/material_change_detector.py (sector_moves)"
+        "store":    "material_changes (kind=sector_move)"
+
+    while the board wires it to `_read_sector_momentum`. So the timestamp was a
+    DIFFERENT engine's clock, published beside state=None and reading=None —
+    a concrete age for a reading that does not exist, which the UI renders as
+    though the oscillator were current. This oscillator has no reader for its
+    registered store; saying so is the honest output.
+    """
     row = _row("sector_comovement")
     api_v2._attach_oscillator_reading(row, "sector_comovement", SNAP)
-    assert row["as_of"] == "2026-09-11T21:00:00Z"
     assert row["reading"] is None  # co-movement is a count, not a level
+    assert row["state"] is None
+    assert row["as_of"] is None, (
+        "published sector_momentum's generated_at for an oscillator whose "
+        "registered store is material_changes"
+    )
 
 
 def test_negative_control_style_and_sector_never_share_a_reading():

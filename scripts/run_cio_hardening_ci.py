@@ -480,6 +480,30 @@ GATES = [
             "tests/test_cio_maturity_closure_v2.py",
         ],
     ),
+    # Overnight maturity campaign 2026-09-12. Each file reproduces a defect
+    # observed in live evidence before it was fixed, so each must keep running:
+    # an unregistered test is a test that never runs, which is what the
+    # ci_self_guards coverage gate exists to prevent.
+    (
+        "maturity_overnight_20260912",
+        [
+            # L3 durable judgment records: cost from the real client field,
+            # prompt digest, release, and an id that identifies one judgment.
+            "tests/test_l3_record_integrity_20260912.py",
+            # Per-lane floors inside the shared daily LLM cap.
+            "tests/test_llm_lane_reservation_20260912.py",
+            # L1 producer-to-consumer reachability across the two state roots.
+            "tests/test_state_root_split_20260912.py",
+            # L2 circulation finishes inside its unit timeout and reports.
+            "tests/test_free_first_deadline_20260912.py",
+            # L5 health that can actually go false.
+            "tests/test_free_first_scheduler_health_20260912.py",
+            # L4 commitments revisited after their horizon.
+            "tests/test_commitment_outcome_sweep_20260912.py",
+            # The live board reads each oscillator from its own store.
+            "tests/test_oscillator_board_truth_20260912.py",
+        ],
+    ),
     (
         "r11_operator_value_tier0",
         [

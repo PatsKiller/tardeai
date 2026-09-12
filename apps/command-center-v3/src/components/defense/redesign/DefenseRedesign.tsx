@@ -13,6 +13,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { S, panel, ph, mono, chip, th, thL, td, tdL, tdProse, btn, type ChipTone } from '../../../lib/defenseRedesign'
 import { Val, Unk, isNum, pct, signColor, compact, money } from './Val'
+import { ageLabel, formatReading } from '../../../lib/oscillatorDisplay'
 import { transitionRead, isStyleRow } from './transitionRead'
 import SectorLeadersCard from '../SectorLeadersCard'
 import CashAlternatives from './CashAlternatives'
@@ -612,12 +613,14 @@ function OscillatorBoard({ oscillators }: { oscillators?: OscillatorRow[] | null
               <td style={td}>
                 <span style={mono}>
                   {isNum(o.reading)
-                    ? `${o.reading}${o.reading_name === 'breadth_pct' || o.reading_name === 'rs_score' ? '%' : ''}`
+                    ? formatReading(o.reading, o.reading_name)
                     : <Unk reason="no reading" />}
                 </span>
               </td>
               <td style={td}>{o.state || <Unk reason="no state" />}</td>
-              <td style={td}>{ageShort(o.as_of)}</td>
+              <td style={td}>
+                {ageLabel(o.as_of) ?? <Unk reason="this oscillator publishes no timestamp of its own" />}
+              </td>
               <td style={td}>{o.alerts ? 'yes' : '—'}</td>
             </tr>
           ))}
