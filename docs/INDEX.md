@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `f69756ffe98b93a31626e384082c3c7c4186758c3e5358c018dba65a92344dcd`
+**Tree fingerprint:** `d29b18ee6b1032a464c0bdb71ead375393fca4171fb1929ab3cf5dc94f5d1972`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,7 +12,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2485 |
+| Files under `docs/` (excl. this INDEX) | 2486 |
 | Markdown (excl. this INDEX) | 2068 |
 | **MISSING HEADER** | **60** |
 | Header OK | 2008 |
@@ -28,7 +28,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_raw_sync | 36 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 2 |
-| review_required | 2114 |
+| review_required | 2115 |
 
 ## Markdown tree
 
@@ -482,7 +482,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/maturity_gap_closure_20260910/SESSION_DOCS_SUMMARY_2026-09-10-0215.md` | Session docs summary — 2026-09-10-0215 | review_required | OK | `4250b1f5f511` |
 | `docs/architecture/maturity_overnight_20260912/CIO_AS_IS_2026-09-12.md` | AS-IS — what this system actually does, 2026-09-12 | review_required | MISSING HEADER | `0ee3c1ba0cc8` |
 | `docs/architecture/maturity_overnight_20260912/CIO_FUTURE_2026-09-12.md` | FUTURE — the next moves, in the order they unblock each other | review_required | MISSING HEADER | `c3ed88bc4954` |
-| `docs/architecture/maturity_overnight_20260912/CIO_GAP_2026-09-12.md` | GAP — what stands between this system and the next level, 2026-09-12 | review_required | MISSING HEADER | `2ff399945bc4` |
+| `docs/architecture/maturity_overnight_20260912/CIO_GAP_2026-09-12.md` | GAP — what stands between this system and the next level, 2026-09-12 | review_required | MISSING HEADER | `69f35eff39a3` |
 | `docs/architecture/maturity_overnight_20260912/DRIVE_AND_GITHUB_RECONCILIATION.md` | GitHub and Drive memorialization — status, 2026-09-12 | review_required | MISSING HEADER | `07120381d6fd` |
 | `docs/architecture/maturity_overnight_20260912/GIT_AUDIT_COMMITS_2026-09-12.md` | Git audit — every commit this campaign produced | review_required | MISSING HEADER | `70d58e27410e` |
 | `docs/architecture/maturity_overnight_20260912/LIVE_TRACE_MATRIX_2026-09-12.md` | Live trace matrix — clause → the exact artifact consulted | review_required | MISSING HEADER | `abcd1500e45c` |
