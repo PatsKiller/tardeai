@@ -46,15 +46,62 @@ AGENT_REPLY = (
 )
 
 
+_FAKE_REGISTRY: dict = {"_fake": True}
+
+
+def _fake_resolve(doc, token):
+    """Registry stand-in: only WMT is a known ticker/alias.
+
+    The real registry and the broker name index live on the host. On a CI
+    runner both are absent, so tag_inbound resolved nothing and the assertion
+    `'WMT' in set()` failed for a reason unrelated to the defect under test.
+    The fakes make the two paths explicit: WMT resolves as a TICKER, and
+    "Research" would resolve as a COMPANY NAME to REFR -- which is exactly the
+    substitution the guard must refuse.
+    """
+    if str(token).upper() == "WMT":
+        return {"symbol": "WMT", "subject_guid": "guid-wmt", "issuer_guid": "iss-wmt", "identity_status": "CONFIRMED"}
+    if str(token).upper() == "REFR":
+        return {
+            "symbol": "REFR",
+            "subject_guid": "guid-refr",
+            "issuer_guid": "iss-refr",
+            "identity_status": "CONFIRMED",
+        }
+    return None
+
+
+def _fake_resolve_name(name):
+    """Broker name index stand-in: the real index maps 'Research' -> REFR and 'Walmart' -> WMT."""
+    hits = {"research": {"symbol": "REFR"}, "walmart": {"symbol": "WMT"}}
+    return hits.get(str(name).strip().casefold())
+
+
+@pytest.fixture
+def resolvers(monkeypatch):
+    import lib.research_identity as RI
+
+    monkeypatch.setattr(RI, "resolve", _fake_resolve)
+    monkeypatch.setattr(RI, "load_registry", lambda: _FAKE_REGISTRY)
+    fake_idx = type(sys)("lib.company_name_index")
+    fake_idx.resolve_name = _fake_resolve_name
+    monkeypatch.setitem(sys.modules, "lib.company_name_index", fake_idx)
+
+
 def _symbols(text: str) -> set[str]:
-    return {r["symbol"] for r in (tag_inbound(text).get("resolved") or [])}
+    return {r["symbol"] for r in (tag_inbound(text, registry=_FAKE_REGISTRY).get("resolved") or [])}
 
 
 # ── 1. the false binding ─────────────────────────────────────────────────────
 
 
-def test_the_agent_reply_no_longer_binds_research_frontiers():
-    """The exact text that produced the REFR row."""
+def test_the_agent_reply_no_longer_binds_research_frontiers(resolvers):
+    """The exact text that produced the REFR row.
+
+    With the fakes, 'Research' WOULD resolve to REFR through the company-name
+    path if nothing stopped it. The guard must stop it; the WMT ticker must
+    still come through.
+    """
     syms = _symbols(AGENT_REPLY)
     assert "REFR" not in syms, (
         "the word 'Research' must not bind Research Frontiers Inc; it is prose, "
@@ -63,8 +110,18 @@ def test_the_agent_reply_no_longer_binds_research_frontiers():
     assert "WMT" in syms, "the real subject must still resolve"
 
 
-def test_the_subject_still_resolves_from_the_operators_question():
+def test_the_subject_still_resolves_from_the_operators_question(resolvers):
     assert "WMT" in _symbols("What a analyst saying about Walmart right now is it a buy and what's the target")
+
+
+def test_negative_control_without_the_guard_research_would_bind_refr(resolvers, monkeypatch):
+    """Prove the fakes reproduce the defect: disable the guard and REFR appears."""
+    import lib.inbound_identity_tagger as tagger
+
+    monkeypatch.setattr(tagger, "_is_generic_term", lambda name: False)
+    assert "REFR" in _symbols(AGENT_REPLY), (
+        "with the guard off, 'Research' must bind REFR -- else this test proves nothing"
+    )
 
 
 @pytest.mark.parametrize("name", ["Research", "Technology", "Holdings", "Capital", "Global"])
