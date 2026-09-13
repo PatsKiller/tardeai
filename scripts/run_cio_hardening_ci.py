@@ -552,6 +552,10 @@ GATES = [
             # column's scale existed only in a docstring, where nothing could
             # check it.
             "tests/test_data_plausibility_contracts_20260913.py",
+            # The alarm is watched firing. An alarm nobody has seen fire is
+            # indistinguishable from no alarm -- and a real send returned True
+            # while meaning "suppressed into the 4-hourly digest".
+            "tests/test_data_plausibility_alarm_fires_20260913.py",
             # Off UNLISTED_BASELINE at last. The ONLY coverage of
             # cio_run_worker._check_health, and its fakes are what hid CL-61.
             "tests/test_p26_shadow_autonomy.py",

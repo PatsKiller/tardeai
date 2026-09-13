@@ -1,0 +1,159 @@
+"""C1 firing test — the plausibility alarm actually fires, and says something useful.
+
+An alarm nobody has watched fire is indistinguishable from no alarm. This injects
+the condition and asserts on the message body, the escalation, and the silence.
+
+The escalation assertions are the important ones. `telegram_alert_router` routes
+on the literal word CRITICAL, so that word is the difference between an interrupt
+and a message that sits in a 4-hourly digest. Measured during this campaign:
+send_telegram returned True for a real alert and True meant "suppressed into the
+P1 digest" -- accepted by the platform is not received by the operator. So a NEW
+violation must carry the word and a known-open one must not, or the alarm is
+either useless or wallpaper.
+"""
+
+from __future__ import annotations
+
+import json
+import sys
+from pathlib import Path
+
+import pytest
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "scripts"))
+
+import data_plausibility_monitor as dpm  # noqa: E402
+
+# Declares to the C1 gate that this file's send_telegram sites have a firing test.
+COVERS = ["scripts/data_plausibility_monitor.py"]
+
+
+class _Captured:
+    """Stands in for telegram_alert, recording what would have been sent."""
+
+    def __init__(self, accept=True):
+        self.sent = []
+        self.accept = accept
+
+    def send_telegram(self, message, **kwargs):
+        self.sent.append({"message": message, "kwargs": kwargs})
+        return self.accept
+
+
+@pytest.fixture
+def wired(monkeypatch, tmp_path):
+    """Redirect state to tmp and capture egress. Never touches the real bot."""
+    cap = _Captured()
+    module = type(sys)("telegram_alert")
+    module.send_telegram = cap.send_telegram
+    monkeypatch.setitem(sys.modules, "telegram_alert", module)
+    monkeypatch.setattr(dpm, "STATE_PATH", tmp_path / "state.json")
+    return cap
+
+
+def _violation(table, column, violations=5, total=100, detail="rule=range"):
+    return {
+        "table": table,
+        "column": column,
+        "severity": "BLOCK",
+        "status": "VIOLATION",
+        "violations": violations,
+        "total": total,
+        "detail": detail,
+        "samples": ["-99.7"],
+    }
+
+
+def test_alarm_fires_and_names_the_column_and_the_counts(wired):
+    bad = _violation("analyst_consensus_history", "recom_score", 130155, 132894)
+    dpm._alert([bad], [bad])
+
+    assert len(wired.sent) == 1, "a BLOCK violation must reach the operator"
+    body = wired.sent[0]["message"]
+    assert "analyst_consensus_history.recom_score" in body
+    assert "130,155" in body and "132,894" in body
+    assert "97.9%" in body
+
+
+def test_a_new_violation_escalates_to_an_interrupt(wired):
+    """A column that starts violating must carry the router's escalation word."""
+    bad = _violation("indicator_confluence_cache", "stop_price", 17, 1817)
+    dpm._alert([bad], [bad])
+
+    body = wired.sent[0]["message"]
+    assert "CRITICAL" in body, (
+        "telegram_alert_router routes on CRITICAL. Without it a brand-new "
+        "integrity breach lands in a 4-hourly digest instead of interrupting."
+    )
+    assert "NEW since the last run" in body
+
+
+def test_a_known_open_violation_does_not_escalate(wired, tmp_path):
+    """Already-reported debt must not interrupt, or the alarm becomes wallpaper."""
+    bad = _violation("trade_ai_scans", "catalyst_confidence", 915, 5311)
+    # It was already reported, at a different count.
+    dpm.STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    dpm.STATE_PATH.write_text(json.dumps({"fingerprint": {"trade_ai_scans.catalyst_confidence": 900}}))
+
+    dpm._alert([bad], [bad])
+
+    body = wired.sent[0]["message"]
+    assert "CRITICAL" not in body, "a known-open violation must not interrupt"
+    assert "trade_ai_scans.catalyst_confidence" in body
+
+
+def test_an_unchanged_picture_stays_silent(wired):
+    """Same columns, same counts: say nothing rather than train the reader to ignore."""
+    bad = _violation("symbol_profiles", "ytd_return_pct", 266, 2945)
+    dpm.STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    dpm.STATE_PATH.write_text(json.dumps({"fingerprint": {"symbol_profiles.ytd_return_pct": 266}}))
+
+    dpm._alert([bad], [bad])
+
+    assert wired.sent == [], "an identical run must not re-alert"
+
+
+def test_recovery_is_reported_once(wired):
+    """Going clean is news exactly once."""
+    dpm.STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    dpm.STATE_PATH.write_text(json.dumps({"fingerprint": {"symbol_profiles.ytd_return_pct": 266}}))
+
+    dpm._alert([], [])
+
+    assert len(wired.sent) == 1
+    assert "✅" in wired.sent[0]["message"]
+
+    # And the next clean run is silent.
+    dpm._alert([], [])
+    assert len(wired.sent) == 1
+
+
+def test_state_is_recorded_so_the_next_run_can_compare(wired):
+    bad = _violation("proposal_agent_reviews", "confidence", 12, 4479)
+    dpm._alert([bad], [bad])
+
+    recorded = json.loads(dpm.STATE_PATH.read_text())["fingerprint"]
+    assert recorded == {"proposal_agent_reviews.confidence": 12}
+
+
+def test_a_send_failure_never_masks_the_finding(monkeypatch, tmp_path, capsys):
+    """An alerting fault must not swallow what it was carrying."""
+    module = type(sys)("telegram_alert")
+
+    def _boom(message, **kwargs):
+        raise RuntimeError("telegram unreachable")
+
+    module.send_telegram = _boom
+    monkeypatch.setitem(sys.modules, "telegram_alert", module)
+    monkeypatch.setattr(dpm, "STATE_PATH", tmp_path / "state.json")
+
+    bad = _violation("proposal_execution_readiness", "spread_pct", 9, 17205)
+    dpm._alert([bad], [bad])  # must not raise
+
+    err = capsys.readouterr().err
+    assert "FAILED to send" in err
+    assert "still stand" in err
+    # State must NOT advance on a failed send, or the finding is lost silently.
+    assert not dpm.STATE_PATH.exists()
