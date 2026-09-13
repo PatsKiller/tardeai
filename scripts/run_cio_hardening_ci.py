@@ -529,6 +529,11 @@ GATES = [
             # Freshness in market time for sources that only move in market
             # time. Most of it pins what must STILL go stale.
             "tests/test_market_aware_freshness_20260913.py",
+            # The data_broker snapshot path is redirectable per call, so tests
+            # cannot write into the repo tree -- via an env var, because the
+            # package has two import identities and patching a constant reaches
+            # only one of them.
+            "tests/test_data_broker_state_override_20260913.py",
         ],
     ),
     (

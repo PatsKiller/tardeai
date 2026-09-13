@@ -29,6 +29,7 @@ Usage:
 from __future__ import annotations
 
 import json
+import os
 import sys
 import time
 from datetime import datetime, timezone
@@ -41,6 +42,50 @@ SNAPSHOT_VERSION = "portfolio-snapshot-v1"
 SNAPSHOT_DIR = PROJECT_ROOT / "state" / "data_broker"
 SNAPSHOT_PATH = SNAPSHOT_DIR / "portfolio_snapshot.json"
 DEFAULT_MAX_AGE_S = 45
+
+#: Overrides the default when set. Read at CALL time, never at import.
+STATE_DIR_ENV = "TRADEAI_DATA_BROKER_STATE_DIR"
+
+#: The import-time default, kept so an explicit patch of SNAPSHOT_PATH is
+#: distinguishable from the untouched default.
+_DEFAULT_SNAPSHOT_PATH = SNAPSHOT_PATH
+
+
+def _snapshot_path() -> Path:
+    """Where the snapshot lives, resolved per call.
+
+    SNAPSHOT_PATH was computed from PROJECT_ROOT at import, which made this
+    module unredirectable once loaded. Not theoretical: a test suite reaching
+    this writer created state/data_broker/ inside the repository, and on a fresh
+    CI clone the next gate then read a state root that existed only because a
+    test put it there (test_whole_site_truth, 2026-09-13).
+
+    Precedence, and the order matters:
+
+      1. SNAPSHOT_PATH, if a caller has rebound it. Existing tests monkeypatch
+         that constant and expect the writer to follow -- a supported patch point
+         that must keep working.
+      2. TRADEAI_DATA_BROKER_STATE_DIR, if set.
+      3. The import-time default.
+
+    Rule 2 is an ENVIRONMENT VARIABLE rather than another constant on purpose.
+    This package is importable as both `lib.data_broker.x` and
+    `scripts.lib.data_broker.x` -- distinct module objects with distinct copies
+    of every constant, which the repo enforces in test_scripts_lib_bootstrap.
+    Patching a constant reaches one and silently misses the other; the
+    environment is process-global and has no such ambiguity. Rule 1 still works
+    because it is read from whichever module object is actually executing.
+    """
+    if SNAPSHOT_PATH != _DEFAULT_SNAPSHOT_PATH:
+        return SNAPSHOT_PATH
+    override = os.environ.get(STATE_DIR_ENV, "").strip()
+    if override:
+        return Path(override) / "portfolio_snapshot.json"
+    return SNAPSHOT_PATH
+
+
+def _snapshot_dir() -> Path:
+    return _snapshot_path().parent
 
 
 def _load_json(path: Path) -> dict[str, Any]:
@@ -197,18 +242,21 @@ def write_portfolio_snapshot(snapshot: dict[str, Any] | None = None) -> Path:
     try:
         from lib.data_broker.atomic_json import atomic_write_json
 
-        atomic_write_json(SNAPSHOT_PATH, snap)
+        atomic_write_json(_snapshot_path(), snap)
     except Exception:
-        SNAPSHOT_DIR.mkdir(parents=True, exist_ok=True)
-        SNAPSHOT_PATH.write_text(json.dumps(snap, indent=2, default=str), encoding="utf-8")
-    return SNAPSHOT_PATH
+        _snapshot_dir().mkdir(parents=True, exist_ok=True)
+        _snapshot_path().write_text(
+            json.dumps(snap, indent=2, default=str), encoding="utf-8"
+        )
+    return _snapshot_path()
 
 
 def read_portfolio_snapshot() -> dict[str, Any] | None:
-    if not SNAPSHOT_PATH.exists():
+    path = _snapshot_path()
+    if not path.exists():
         return None
     try:
-        return json.loads(SNAPSHOT_PATH.read_text(encoding="utf-8"))
+        return json.loads(path.read_text(encoding="utf-8"))
     except Exception:
         return None
 

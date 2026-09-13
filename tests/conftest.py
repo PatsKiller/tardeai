@@ -150,6 +150,34 @@ def _block_cio_wake_trace_production_writes(monkeypatch, tmp_path_factory):
     monkeypatch.setattr(cio_wake_traces, "DEFAULT_TRACE_PATH", isolated)
 
 
+@pytest.fixture(autouse=True)
+def _block_data_broker_snapshot_production_writes(monkeypatch, tmp_path_factory):
+    """Keep data_broker snapshot caches out of the repository tree.
+
+    Same discovery as _block_cio_wake_trace_production_writes: with the p26 suite
+    running, a pass left ``state/data_broker/portfolio_snapshot.json`` behind in
+    the repo. `state/` is gitignored, so it never showed in `git status` and left
+    no local trace -- but on a fresh CI clone the suite CREATES that tree, and a
+    later gate reads a store that exists only because a test put it there.
+
+    This sets an ENVIRONMENT VARIABLE rather than monkeypatching a module
+    constant, and that choice is the whole point. The package is importable as
+    both `lib.data_broker.x` and `scripts.lib.data_broker.x`, which are distinct
+    module objects with distinct copies of every constant; the repo enforces one
+    spelling in test_scripts_lib_bootstrap. An earlier version of this fixture
+    patched both spellings to reach the real writer and tripped that guard --
+    correct diagnosis, forbidden remedy. The environment is process-global, so it
+    redirects the writer whichever spelling loaded it, and breaks no invariant.
+
+    Requires the module to resolve its path per call, which is why
+    portfolio_snapshot grew _snapshot_path().
+    """
+    monkeypatch.setenv(
+        "TRADEAI_DATA_BROKER_STATE_DIR",
+        str(tmp_path_factory.mktemp("data_broker_state")),
+    )
+
+
 # ── C1 alarm-firing capture ──────────────────────────────────────────────────
 # An alarm that has never been observed firing is indistinguishable from no alarm.
 # Capture happens at the REAL transport boundary, telegram_transport.send_message,
