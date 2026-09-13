@@ -117,11 +117,17 @@ def test_enforcement_absent_config_is_off():
 
 
 def test_shipped_config_is_valid_and_measured():
-    """The real config must parse, and must be OFF: enabling it is an operator
-    decision, and the implementing agent measured but did not flip it."""
+    """The real config must parse, and the mapping choices that make
+    enforcement survivable must hold.
+
+    `enforce` is deliberately NOT asserted either way: it is an operator switch
+    and a test that pins it would fight the operator. What IS pinned is the pair
+    of mapping decisions that were measured -- because with enforcement ON, a
+    regression in either one stops being a wrong answer and becomes an outage.
+    """
     cfg = load_feed_config()
     assert cfg, "config/cio_health_snapshot_feed.json must be readable"
-    assert cfg["enforce"] is False
+    assert isinstance(cfg["enforce"], bool), "must be a real bool, not truthy"
     assert cfg["severity_map"]["critical"] == 3, (
         "critical=4 was measured to block all 15 domains; see _severity_why"
     )
@@ -129,3 +135,15 @@ def test_shipped_config_is_valid_and_measured():
         "execution_health->broker was measured to block portfolio/holdings/risk "
         "on workflow evidence that does not support it; see _category_map_why"
     )
+    assert cfg.get("max_age_minutes"), (
+        "with enforcement on, an unbounded-age snapshot could block runs on a "
+        "stale bill of health"
+    )
+
+
+def test_enforcement_requires_a_bounded_snapshot_age():
+    """A gate that can block must not act on evidence of unknown age."""
+    cfg = load_feed_config()
+    if cfg.get("enforce") is True:
+        assert isinstance(cfg["max_age_minutes"], (int, float))
+        assert 0 < cfg["max_age_minutes"] <= 1440
