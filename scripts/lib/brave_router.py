@@ -368,6 +368,25 @@ def refund_reservation(
         return Reservation(**{k: row.get(k) for k in fields})
 
 
+def _report_provider_health(ok: bool, *, rows: Optional[int] = None, error: Optional[str] = None) -> None:
+    """Record the outcome of a REAL provider call in data_source_health ('brave_search').
+
+    Wired 2026-09-13: Brave made 163 governed calls in a month while its health row
+    read 'unknown' forever, because nothing called report_source() for it. Only a
+    live network call is evidence about the provider -- cache hits, budget refusals,
+    a disabled router and injected test transports say nothing about Brave and are
+    not reported. Never raises; never touches the caller's transaction.
+    """
+    try:
+        try:
+            from scripts.lib.data_source_report import report_source
+        except ImportError:
+            from lib.data_source_report import report_source  # type: ignore
+        report_source("brave_search", ok, rows=rows, error=error)
+    except Exception:
+        pass
+
+
 def _default_transport(url: str, headers: dict[str, str]) -> tuple[dict[str, Any], dict[str, str]]:
     if not live_armed():
         raise RuntimeError(
@@ -541,6 +560,9 @@ def search(
         "X-Subscription-Token": key or "fixture",
     }
     xport = transport or _default_transport
+    # A real provider call happened only when no test transport was injected AND
+    # the live arm is set (otherwise _default_transport refuses before the wire).
+    real_call = transport is None and live_armed()
     try:
         data, resp_headers = xport(url, headers)
     except Exception as exc:
@@ -548,6 +570,8 @@ def search(
             refund_reservation(res.reservation_id, clock=clock, root=root)
         except Exception:
             pass
+        if real_call:
+            _report_provider_health(False, error=f"PROVIDER_ERROR:{exc}")
         health = write_health(clock=clock, root=root, last={"event": "provider_error", "error": str(exc)})
         return RouterResponse(
             ok=False, reason=f"PROVIDER_ERROR:{exc}",
@@ -585,6 +609,9 @@ def search(
         settle(res.reservation_id, clock=clock, root=root)
     except DoubleSettlement:
         pass
+
+    if real_call:
+        _report_provider_health(True, rows=len(results))
 
     _write_cache(root, ck, results, now=clock())
     health = write_health(

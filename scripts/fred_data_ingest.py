@@ -73,9 +73,18 @@ def ingest_history(days: int = 90) -> dict:
             print(f"  {series_id} ({name}): {count} observations")
         except Exception as e:
             print(f"  {series_id}: ERROR — {e}")
+            last_exc = str(e)[:160]
 
     conn.commit()
     conn.close()
+    # Liveness (2026-09-13): same provider as ingest_fred(), same key. --history is
+    # operator-invoked (not scheduled); it reports when it runs.
+    try:
+        from lib.data_source_report import report_source
+        report_source("fred", total > 0, rows=total,
+                      error=None if total else (locals().get("last_exc") or "0 observations fetched"))
+    except Exception:
+        pass
     return {"source": "fred_history", "fetched": total}
 
 

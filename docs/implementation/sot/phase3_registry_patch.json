@@ -1,0 +1,80 @@
+{
+  "schema": "SotPhase3RegistryPatch@v1",
+  "authority": "PROPOSAL_ONLY",
+  "as_of": "2026-09-13",
+  "_why": "Phase 3 (health ledger that cannot lie) was built in a worktree while other agents edited config/data_source_authority.json and scripts/run_cio_hardening_ci.py. Nothing below was applied; the coordinator registers it. Each entry says which file and what to add.",
+  "data_source_authority": {
+    "file": "config/data_source_authority.json",
+    "provider_status_updates": {
+      "fred": {
+        "from": "active_unwired_health",
+        "to": "active",
+        "_why": "report_source('fred') now called from external_market_data_ingest.ingest_fred (cron 15 6 * * * via fred_data_ingest.py --ingest), fred_data_ingest.ingest_history (--history, operator), and lib/financial_senses/macro_provider.FredClient._get (live fetches only)."
+      },
+      "alpha_vantage": {
+        "from": "active_unwired_health",
+        "to": "active",
+        "_why": "report_source('alpha_vantage') now called from external_market_data_ingest.ingest_alpha_vantage (cron 0 8 * * 1 --fundamentals), ingest_av_news_sentiment (--news-sentiment/--all, unscheduled) and catalyst_enrichment._fetch_alpha_vantage (flag-gated ENABLE_ALPHA_VANTAGE_CATALYST, on demand)."
+      }
+    },
+    "domains_to_add": [
+      {
+        "domain": "macro",
+        "class": "ingested",
+        "store": {"table": "fred_economic_series"},
+        "writer": "scripts/external_market_data_ingest.py",
+        "cadence": "06:15 daily (fred_data_ingest.py --ingest)",
+        "stale_after_hours": 48,
+        "projection": null,
+        "required_fields": ["series_id", "value", "observation_date"],
+        "primary_provider": "fred",
+        "backup": [],
+        "retired": [],
+        "no_coverage": "say_so",
+        "_why": "Without a domain whose primary_provider is fred, lib/data_source_health_view gives the fred row the 24h default window. The lane runs daily at 06:15; 48h tolerates one missed run before decaying to unknown.",
+        "_writer_note": "fred_data_ingest.py imports ingest_fred from external_market_data_ingest.py; both write fred_economic_series. Writer-count baseline for this store is 2 today."
+      },
+      {
+        "domain": "fundamentals",
+        "class": "ingested",
+        "store": {"table": "fundamental_data"},
+        "writer": "scripts/external_market_data_ingest.py",
+        "cadence": "08:00 Mon (--fundamentals)",
+        "stale_after_hours": 192,
+        "projection": null,
+        "required_fields": ["symbol", "metric_name", "metric_value"],
+        "primary_provider": "alpha_vantage",
+        "backup": ["yfinance"],
+        "retired": ["fmp"],
+        "no_coverage": "say_so",
+        "_why": "The lane is WEEKLY. With the 24h default window alpha_vantage decays to unknown six days out of seven and the hourly audit would alert every Monday and Tuesday. 192h = 8 days: one missed Monday decays it."
+      }
+    ],
+    "domain_field_updates": [
+      {
+        "domain": "web_search",
+        "field": "stale_after_hours",
+        "from": null,
+        "to": 72,
+        "_why": "brave_search is on-demand (aegis_transcript_discovery 09:00 Mon-Fri, aegis_social_sentiment 11:00/15:00 Mon-Fri call brave_router). null falls through to the 24h default and decays every weekend. 72h covers Friday 15:00 to Monday 09:00. OPTIONAL: leave null if weekend decay is wanted."
+      }
+    ]
+  },
+  "run_cio_hardening_ci": {
+    "file": "scripts/run_cio_hardening_ci.py",
+    "tests_to_register": [
+      "tests/test_data_source_health_decay_20260913.py",
+      "tests/test_data_plausibility_required_fields_20260913.py"
+    ],
+    "_where": "the explicit allowlist next to tests/test_expected_services_20260913.py (line ~562 on feat/one-source-of-truth)"
+  },
+  "alarm_firing_baseline": {
+    "file": "config/alarm_firing_baseline.txt",
+    "_note": "No change needed: tests/test_data_source_health_decay_20260913.py declares COVERS = ['scripts/check_data_source_health.py'], so the new send_telegram site is covered on day one."
+  },
+  "operator_actions_not_taken_by_the_agent": [
+    "systemctl --user enable --now tradeai-data-source-health.timer (unit files are in config/systemd/user; the agent installs nothing)",
+    "config/expected_services.json: add tradeai-data-source-health.timer once enabled, so a disabled audit is itself reported",
+    "config/data_source_authority_baseline.json: if the writer-count gate counts fred_economic_series / fundamental_data after the domains above are added, seed their baselines (2 and 1)"
+  ]
+}

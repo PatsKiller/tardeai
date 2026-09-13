@@ -64,6 +64,9 @@ class FredClient:
         self.api_key = api_key
         self.base = base.rstrip("/")
         self._fetcher = fetcher or self._default_fetcher
+        # Only a real network fetch is evidence about FRED; an injected fetcher
+        # (tests, dry replay) must not touch data_source_health.
+        self._live_fetch = fetcher is None
 
     @staticmethod
     def _default_fetcher(url: str) -> dict:
@@ -79,7 +82,27 @@ class FredClient:
         q["file_type"] = "json"
         # URL-encode all parameters (do not hand-concatenate).
         qs = urlencode({k: v for k, v in q.items() if v is not None})
-        return self._fetcher(f"{self.base}/{path}?{qs}") or {}
+        try:
+            doc = self._fetcher(f"{self.base}/{path}?{qs}") or {}
+        except Exception as exc:
+            self._report_health(False, error=f"{type(exc).__name__}: {str(exc)[:140]}")
+            raise
+        self._report_health(True, rows=len(doc.get("observations") or doc.get("vintage_dates") or []))
+        return doc
+
+    def _report_health(self, ok: bool, rows=None, error=None) -> None:
+        """Liveness for the 'fred' health row (2026-09-13). Library path, unscheduled:
+        reports whenever a live FredClient call runs. Never raises."""
+        if not getattr(self, "_live_fetch", False):
+            return
+        try:
+            try:
+                from scripts.lib.data_source_report import report_source
+            except ImportError:
+                from lib.data_source_report import report_source  # type: ignore
+            report_source("fred", ok, rows=rows, error=error)
+        except Exception:
+            pass
 
     def observations(
         self,
