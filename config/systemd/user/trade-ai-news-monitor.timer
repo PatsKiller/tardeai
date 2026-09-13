@@ -1,0 +1,25 @@
+[Unit]
+Description=Trade AI News Monitor — 30min market hours Mon-Fri
+Requires=trade-ai-news-monitor.service
+
+[Timer]
+OnCalendar=Mon..Fri 09:00:00
+OnCalendar=Mon..Fri 09:30:00
+OnCalendar=Mon..Fri 10:00:00
+OnCalendar=Mon..Fri 10:30:00
+OnCalendar=Mon..Fri 11:00:00
+OnCalendar=Mon..Fri 11:30:00
+OnCalendar=Mon..Fri 12:00:00
+OnCalendar=Mon..Fri 12:30:00
+OnCalendar=Mon..Fri 13:00:00
+OnCalendar=Mon..Fri 13:30:00
+OnCalendar=Mon..Fri 14:00:00
+OnCalendar=Mon..Fri 14:30:00
+OnCalendar=Mon..Fri 15:00:00
+OnCalendar=Mon..Fri 15:30:00
+OnCalendar=Mon..Fri 16:00:00
+OnCalendar=Mon..Fri 16:30:00
+Persistent=false
+
+[Install]
+WantedBy=timers.target

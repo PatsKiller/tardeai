@@ -1,0 +1,49 @@
+[Unit]
+Description=Trade AI moomoo OpenD data plane (read-only; no order path)
+Documentation=file:///home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/moomoo/opend_launch.sh
+After=network-online.target
+Wants=network-online.target
+# Give up after 3 failures in 5 min instead of hammering moomoo's login endpoint —
+# the account locks after repeated bad-credential attempts. These keys belong in
+# [Unit]; the previous placeholder put StartLimitIntervalSec in [Service], where
+# systemd ignored it.
+StartLimitIntervalSec=300
+StartLimitBurst=3
+
+[Service]
+Type=simple
+ExecStart=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/moomoo/opend_launch.sh
+WorkingDirectory=/home/johnclaw/.local/opt/trade-ai-lab/moomoo/opend/current
+Environment=ACTIVE_TRADER_ENV=SHADOW
+
+Restart=on-failure
+RestartSec=30
+# The launcher renders a 0600 credential config onto tmpfs (never argv, never disk);
+# drop it when the unit stops so no rendered secret outlives the process.
+ExecStopPost=/bin/rm -f %t/tradeai/opend.rendered.xml
+# 78 = EX_CONFIG: launcher found no Bitwarden credentials. Retrying cannot fix that
+# and would burn login attempts, so fail and stay failed until an operator acts.
+RestartPreventExitStatus=78
+
+# Hardening. NOTE: OpenD must reach moomoo's servers to authenticate, so there is no
+# IPAddress allow/deny list here — the placeholder's IPAddressDeny=any would have
+# blocked login outright even with a real binary behind ExecStart.
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectControlGroups=yes
+ProtectKernelTunables=yes
+RestrictSUIDSGID=yes
+ProtectHome=read-only
+# OpenD writes its security DB, remembered-login store and logs under
+# ~/.com.moomoo.OpenD, plus self-update state under its install dir.
+ReadWritePaths=/home/johnclaw/.com.moomoo.OpenD
+ReadWritePaths=/home/johnclaw/.local/opt/trade-ai-lab/moomoo
+ReadWritePaths=/home/johnclaw/.local/share/trade-ai-lab/moomoo
+ReadWritePaths=/home/johnclaw/.local/state/trade-ai-lab/moomoo
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+[Install]
+# Present so `systemctl --user enable` works. Linger is already on for this user,
+# so the data plane comes back after a reboot without an interactive login.
+WantedBy=default.target
