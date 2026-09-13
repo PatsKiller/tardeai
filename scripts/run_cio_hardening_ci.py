@@ -556,6 +556,10 @@ GATES = [
             # indistinguishable from no alarm -- and a real send returned True
             # while meaning "suppressed into the 4-hourly digest".
             "tests/test_data_plausibility_alarm_fires_20260913.py",
+            # A DISABLED unit is not a FAILED unit, so systemctl --failed --
+            # which is what health_agent uses -- is structurally incapable of
+            # seeing it. cio-telegram sat disabled five days.
+            "tests/test_expected_services_20260913.py",
             # Off UNLISTED_BASELINE at last. The ONLY coverage of
             # cio_run_worker._check_health, and its fakes are what hid CL-61.
             "tests/test_p26_shadow_autonomy.py",

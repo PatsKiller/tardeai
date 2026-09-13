@@ -1,0 +1,29 @@
+[Unit]
+# Reports declared services and feature flags that are OFF.
+#
+# systemctl --failed -- what health_agent.py uses -- reports units that FAILED.
+# A unit that was stopped or disabled has not failed; it is absent, and absence
+# is invisible to every "what is running" view. tradeai-cio-telegram.service sat
+# disabled for five days and nothing could see it.
+#
+# Read-only: it inspects systemd and reads two env files. It never starts,
+# stops, enables or disables anything -- deciding a unit should be running is an
+# operator judgement, and a monitor that silently restarts things hides the very
+# outages it exists to report.
+Description=Trade AI expected services — report anything declared that is OFF
+Documentation=file:///home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/config/expected_services.json
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild
+ExecStart=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python \
+    scripts/check_expected_services.py --alert
+
+# Exit 1 means "something declared is off" -- a finding, not a unit failure.
+# Treating it as a failure would bury the report and make is-failed useless for
+# spotting a monitor that genuinely broke.
+SuccessExitStatus=0 1
+TimeoutStartSec=300
+
+[Install]
+WantedBy=default.target

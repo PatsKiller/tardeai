@@ -1,0 +1,198 @@
+{
+  "schema": "ExpectedServices@v1",
+  "_why": "systemctl --failed only reports units that FAILED. A unit that was stopped or disabled is not failed -- it is absent, and absence is invisible to every 'what is running' view. tradeai-cio-telegram.service sat disabled for five days and no check anywhere could see it, because a disabled unit drops out of the very lists a monitor would enumerate. The only way to detect a missing thing is to have written down that it should be there.",
+  "_captured": "2026-09-13, from the live enabled set on ms01-openclaw.",
+  "_how_to_change": "Deliberately retiring a unit? Remove it here in the same change that disables it. A diff in this file is the audit trail for 'we meant to turn that off'.",
+  "units": [
+    {
+      "unit": "trade-ai-lab-moomoo-opend.service"
+    },
+    {
+      "unit": "trade-ai-news-monitor.timer"
+    },
+    {
+      "unit": "tradeai-active-trader-motion.service"
+    },
+    {
+      "unit": "tradeai-advisory-lessons-reflect.timer"
+    },
+    {
+      "unit": "tradeai-advisory-notif-broker.timer"
+    },
+    {
+      "unit": "tradeai-advisory-outcome-scorer.timer"
+    },
+    {
+      "unit": "tradeai-advisory-shadow-seed.timer"
+    },
+    {
+      "unit": "tradeai-advisory-shadow-session.timer"
+    },
+    {
+      "unit": "tradeai-agent-runtime-health.timer"
+    },
+    {
+      "unit": "tradeai-agent-runtime-producer.timer"
+    },
+    {
+      "unit": "tradeai-agent-runtime@aegis.timer"
+    },
+    {
+      "unit": "tradeai-agent-runtime@alex.timer"
+    },
+    {
+      "unit": "tradeai-agent-runtime@argus.timer"
+    },
+    {
+      "unit": "tradeai-agent-runtime@atlas.timer"
+    },
+    {
+      "unit": "tradeai-agent-runtime@concierge.timer"
+    },
+    {
+      "unit": "tradeai-agent-runtime@darwin.timer"
+    },
+    {
+      "unit": "tradeai-agent-runtime@hermes.timer"
+    },
+    {
+      "unit": "tradeai-agent-runtime@iris.timer"
+    },
+    {
+      "unit": "tradeai-agent-runtime@maria.timer"
+    },
+    {
+      "unit": "tradeai-agent-runtime@morgan.timer"
+    },
+    {
+      "unit": "tradeai-agent-runtime@pulse.timer"
+    },
+    {
+      "unit": "tradeai-agent-runtime@reflection.timer"
+    },
+    {
+      "unit": "tradeai-agent-runtime@risk_agent.timer"
+    },
+    {
+      "unit": "tradeai-agent-runtime@sentinel.timer"
+    },
+    {
+      "unit": "tradeai-agent-runtime@steph.timer"
+    },
+    {
+      "unit": "tradeai-agent-runtime@tax_agent.timer"
+    },
+    {
+      "unit": "tradeai-agent-runtime@vega.timer"
+    },
+    {
+      "unit": "tradeai-autonomy-watchdog.timer"
+    },
+    {
+      "unit": "tradeai-backup-enforcer.timer"
+    },
+    {
+      "unit": "tradeai-cio-defer-revisit.timer"
+    },
+    {
+      "unit": "tradeai-cio-delivery.timer"
+    },
+    {
+      "unit": "tradeai-cio-desk-memo-regen.timer"
+    },
+    {
+      "unit": "tradeai-cio-material-scan.timer"
+    },
+    {
+      "unit": "tradeai-cio-memory-shadow-measure.timer"
+    },
+    {
+      "unit": "tradeai-cio-nightly-reflection.timer"
+    },
+    {
+      "unit": "tradeai-cio-reactive.timer"
+    },
+    {
+      "unit": "tradeai-cio-telegram.service",
+      "_why": "Polls the CIO bot (8751620457). It was disabled on 2026-09-08 and nobody noticed for five days; every reply the operator sent to a CIO alert landed in a room with no listener. This unit is the reason this manifest exists."
+    },
+    {
+      "unit": "tradeai-disk-hygiene-enforcer.timer"
+    },
+    {
+      "unit": "tradeai-due-checkpoints.timer"
+    },
+    {
+      "unit": "tradeai-free-first-circulation.timer"
+    },
+    {
+      "unit": "tradeai-governance-pipeline.timer"
+    },
+    {
+      "unit": "tradeai-health-agent.service",
+      "_why": "The health agent itself. If it stops, every other health signal stops with it and the silence looks like good news."
+    },
+    {
+      "unit": "tradeai-hermes-cio-worker.path",
+      "_why": "Wake path for the CIO worker. Died on inotify exhaustion 2026-09-12 and stayed failed for 14 hours."
+    },
+    {
+      "unit": "tradeai-hermes-cio-worker.timer"
+    },
+    {
+      "unit": "tradeai-holdings-agent-enqueue.timer"
+    },
+    {
+      "unit": "tradeai-iris-taxonomy.timer"
+    },
+    {
+      "unit": "tradeai-lab-postgres.service"
+    },
+    {
+      "unit": "tradeai-maturity-feeds.timer"
+    },
+    {
+      "unit": "tradeai-ops-agent.service"
+    },
+    {
+      "unit": "tradeai-portfolio-backup-cadence.timer"
+    },
+    {
+      "unit": "tradeai-portfolio-daily-cadence.timer"
+    },
+    {
+      "unit": "tradeai-portfolio-lookthrough-cadence.timer"
+    },
+    {
+      "unit": "tradeai-provider-cost-reconcile.timer"
+    },
+    {
+      "unit": "tradeai-research-lane-health.timer"
+    },
+    {
+      "unit": "tradeai-sm-render.timer",
+      "_why": "Renders the tmpfs env every service reads. If it stops, secrets go stale and consumers fail in ways that do not name the cause."
+    },
+    {
+      "unit": "tradeai-tax-lots-rebuild.timer"
+    },
+    {
+      "unit": "tradeai-watch-decision-scheduler.timer",
+      "_why": "The decision lane. Silent failure here means no decisions, which is indistinguishable from no signals."
+    }
+  ],
+  "flags": [
+    {
+      "name": "CIO_REPLY_ENABLED",
+      "expected": "1",
+      "source": "~/.config/tradeai/phase8-safe-canary.env",
+      "_why": "Enables the poller hook that answers free-text operator questions. It sat at 0 for two days while the comment beside it recorded an operator instruction to enable it. A flag whose value contradicts its own comment is exactly what nothing was checking."
+    },
+    {
+      "name": "CIO_TELEGRAM_CONVERSE",
+      "expected": "1",
+      "source": "~/.config/tradeai/cio-telegram.env",
+      "_why": "Lets the CIO bot answer rather than only broadcast."
+    }
+  ]
+}
