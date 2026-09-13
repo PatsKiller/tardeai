@@ -11,9 +11,11 @@ later field right by three. Index 10 was labelled "recom"; it actually carried
 ANTI-correlated with reality: a stock down -100% over ten years was published as
 "Strong Buy".
 
-Measured 2026-09-13: 131,050 of 132,894 rows (98.6%) are affected, spanning
-2026-04 to 2026-09-10. Fixed forward by PR #988 (refuse off-scale values) and by
-the header-name column map. Neither repairs rows already written.
+Measured 2026-09-13: 130,155 of 132,894 rows carry an off-scale recom_score
+(97.9%), spanning 2026-04-20 to 2026-09-10. A further 2,739 rows are either
+already NULL or coincidentally landed inside 1-5, so only 1,844 rows (1.4%) are
+trustworthy. Fixed forward by PR #988 (refuse off-scale values) and by the
+header-name column map. Neither repairs rows already written.
 
 WHAT THIS DOES
 --------------
@@ -117,7 +119,7 @@ def main() -> int:
     print(f"  snapshot_date range    : {lo_d} .. {hi_d}")
     print(f"  recom_score range      : {lo_s} .. {hi_s}")
     print(f"  quarantine table       : {QUARANTINE_TABLE}")
-    print(f"  columns nulled in live : recom_score, analyst_rating (recom_raw kept)")
+    print("  columns nulled in live : recom_score, analyst_rating (recom_raw kept)")
 
     if not args.apply:
         print("\nDRY RUN — nothing written. Re-run with --apply to execute.")
