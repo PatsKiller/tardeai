@@ -675,6 +675,32 @@ def _recalc_totals(portfolio: Dict) -> None:
         mv = h.get("market_value") or 0
         h["portfolio_pct"] = round((mv / gt * 100) if gt > 0 else 0, 4)
 
+    # ── per-account STATE (SoT Phase 6) — preserve and refresh, never shell ──
+    # The loader stamps state/state_reason/state_as_of; this pass runs every 15
+    # minutes and would otherwise let a LIVE label outlive its window. It
+    # re-reads the same receipts and row clocks with allow_shell=False (no
+    # systemctl from here) and keeps the previous block if anything fails.
+    _refresh_account_states(portfolio)
+
+
+def _refresh_account_states(portfolio: Dict) -> None:
+    account_summaries = portfolio.get("account_summaries")
+    if not isinstance(account_summaries, dict) or not account_summaries:
+        return
+    try:
+        root = Path(__file__).resolve().parent.parent
+        if str(root / "scripts") not in sys.path:
+            sys.path.insert(0, str(root / "scripts"))
+        from lib.account_state import annotate_account_states
+        from portfolio_loader import load_accounts_config
+        accounts_cfg = (load_accounts_config(root) or {}).get("accounts", {})
+        annotate_account_states(
+            account_summaries, portfolio.get("holdings") or [], accounts_cfg,
+            project_root=root, allow_shell=False,
+        )
+    except Exception as e:  # noqa: BLE001 — labels are advisory; totals already written
+        print(f"  [repricer] WARNING: account state refresh failed: {e}")
+
 
 # ── Main entry point ───────────────────────────────────────────────────────────
 def reprice_portfolio(portfolio: Dict[str, Any], state_dir: Path) -> Dict[str, Any]:

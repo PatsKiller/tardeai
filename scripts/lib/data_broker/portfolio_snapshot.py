@@ -191,6 +191,23 @@ def build_portfolio_snapshot() -> dict[str, Any]:
         d["pct"] = round(d["change"] / base * 100, 2) if base > 0 else None
         d["value"] = round(d["value"], 2)
 
+    # ── SoT Phase 6: per-account state, read from what the producer wrote ─────
+    # A non-LIVE account renders its last known value with its date and a state
+    # label; the total says by name what it left out. No shell, no invention.
+    try:
+        from lib.account_state import project_account_states
+
+        account_states = project_account_states(h)
+    except Exception as e:  # noqa: BLE001
+        errors.append(f"account_states: {e}")
+        account_states = {"accounts": {}, "excluded_accounts": [], "stale_accounts": [],
+                          "unclassified_accounts": sorted((h.get("account_summaries") or {}).keys())}
+    for a, d in today_by_account.items():
+        st = (account_states.get("accounts") or {}).get(a) or {}
+        d["state"] = st.get("state", "UNCLASSIFIED")
+        d["display_value"] = st.get("display_value", d.get("value"))
+        d["display_value_as_of"] = st.get("display_value_as_of")
+
     now = datetime.now(timezone.utc)
     holdings_mtime = None
     try:
@@ -225,6 +242,7 @@ def build_portfolio_snapshot() -> dict[str, Any]:
             for p in movers
         ],
         "by_account": today_by_account,
+        "account_states": account_states,
         "risk": {
             "portfolio_heat_pct": risk.get("portfolio_heat_pct", 0),
             "source_present": bool(risk),
