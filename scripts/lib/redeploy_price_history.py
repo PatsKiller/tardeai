@@ -389,18 +389,16 @@ def backfill_symbol_history(symbols: list[str], *, period: str = "5y",
             if hist is None or len(hist) == 0:
                 failed.append(sym)
                 continue
-            n_px = 0
+            # One write path per store (Phase 9): DO NOTHING + 4-decimal rounding as before.
+            from lib.writers.ticker_prices_writer import write_ticker_prices
+            px_rows = []
             for idx, row in hist.iterrows():
                 px = float(row.get("Close") or 0)
                 if px <= 0:
                     continue
-                cur.execute(
-                    """INSERT INTO ticker_prices (symbol, price_date, close_price, source)
-                       VALUES (%s,%s,%s,'yfinance')
-                       ON CONFLICT (symbol, price_date) DO NOTHING""",
-                    (sym, idx.date(), round(px, 4)),
-                )
-                n_px += cur.rowcount
+                px_rows.append({"symbol": sym, "price_date": idx.date(), "close_price": px})
+            n_px = write_ticker_prices(cur, px_rows, source="yfinance", on_conflict="nothing",
+                                       round_to=4).rows_written
             n_dv = 0
             try:
                 for idx, amt in t.dividends.items():

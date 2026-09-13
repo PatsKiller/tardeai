@@ -32,6 +32,17 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 import sys
 
+# One write path per store (One Source of Truth, Phase 9). This module is the registry's
+# writer_target for technicals (ticker_prices); the SQL itself lives in
+# lib/writers/ticker_prices_writer.py and is re-exported here so producers may import it
+# from either name.
+try:
+    from lib.writers.ticker_prices_writer import write_ticker_prices  # noqa: F401
+except ImportError:  # imported from a cwd where scripts/ is not yet on sys.path
+    if str(Path(__file__).resolve().parents[1] / "scripts") not in sys.path:
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+    from lib.writers.ticker_prices_writer import write_ticker_prices  # noqa: F401
+
 
 # ── Change thresholds for delta writes ────────────────────────────────────────
 PRICE_CHANGE_THRESHOLD  = 0.001   # $0.001 — update price if changed by this much
@@ -856,11 +867,20 @@ def recompute_and_publish_portfolio_aggregate(state_dir: Path) -> dict[str, Any]
 
 
 def _sync_ticker_prices(portfolio, root):
-    """Write each held symbol's repriced close into ticker_prices for today (update today's row, else insert)
-    so surfaces reading ticker_prices match holdings.json. Best-effort; never breaks repricing."""
+    """Write each held symbol's repriced close into ticker_prices for today (today's row is replaced
+    if present, else created) so surfaces reading ticker_prices match holdings.json. Best-effort;
+    never breaks repricing.
+
+    One write path per store (Phase 9): this module is the registry's writer_target for
+    ``technicals``; the SQL lives in lib/writers/ticker_prices_writer.py (re-exported below as
+    ``write_ticker_prices``). The legacy contract is preserved by explicit parameters --
+    ``on_conflict="overwrite"`` is the old UPDATE-then-INSERT under the (symbol, price_date) unique
+    index, ``price_date=None`` is CURRENT_DATE, ``stamp_created_at`` is created_at=now(), and
+    ``round_to=None`` writes the holdings price as given.
+    """
     import psycopg2
     _load_env(root)
-    seen, n = set(), 0
+    seen, rows = set(), []
     c = psycopg2.connect(host=os.getenv("DB_HOST", "localhost"), port=os.getenv("DB_PORT", "5432"),
                          dbname=os.getenv("DB_NAME", "trade_ai"), user=os.getenv("DB_USER", "trade_ai"),
                          password=os.getenv("DB_PASSWORD"))
@@ -870,12 +890,15 @@ def _sync_ticker_prices(portfolio, root):
         if not sym or sym in seen or h.get("is_cash") or not px or px <= 0:
             continue
         seen.add(sym)
-        cur.execute("UPDATE ticker_prices SET close_price=%s, source='portfolio_repricer' WHERE symbol=%s AND price_date=CURRENT_DATE", (px, sym))
-        if cur.rowcount == 0:
-            cur.execute("INSERT INTO ticker_prices (symbol, price_date, close_price, source, created_at) VALUES (%s, CURRENT_DATE, %s, 'portfolio_repricer', now())", (sym, px))
-        n += 1
+        rows.append({"symbol": sym, "price_date": None, "close_price": px})
+    rc = write_ticker_prices(cur, rows, source="portfolio_repricer", on_conflict="overwrite",
+                             round_to=None, stamp_created_at=True)
+    n = rc.rows_accepted
     c.commit(); c.close()
     print(f"  [repricer] ticker_prices synced for {n} held symbols (unified with portfolio view)")
+    if rc.rows_rejected:
+        print(f"  [repricer] ticker_prices REJECTED {len(rc.rows_rejected)} row(s): "
+              + "; ".join(f"{r['row'].get('symbol')}: {r['reason']}" for r in rc.rows_rejected[:10]))
 
 
 # ── Standalone ─────────────────────────────────────────────────────────────────
