@@ -102,6 +102,53 @@ def test_naive_and_iso_string_timestamps_are_read_as_utc():
     assert dsv.effective_status({"last_success_at": "garbage"}, NOW, 24 * H) == "unknown"
 
 
+# ── the clock stops over the weekend for weekday-only sources ────────────────
+# Phase 8 measurement, Sunday 2026-09-13 17:20 ET: seven sources last touched on
+# Friday read `unknown` under plain elapsed time, and the hourly audit would have
+# interrupted eight times before Monday's first cron. Nothing was ever going to
+# run on Saturday or Sunday; the age must not count hours nobody scheduled.
+
+FRI_17 = datetime(2026, 9, 11, 21, 0, tzinfo=timezone.utc)   # Fri 17:00 ET
+SUN_20 = datetime(2026, 9, 14, 0, 0, tzinfo=timezone.utc)      # Sun 20:00 ET == Mon 00:00 UTC
+MON_09 = datetime(2026, 9, 14, 13, 0, tzinfo=timezone.utc)   # Mon 09:00 ET
+
+
+def test_weekday_minutes_skip_saturday_and_sunday():
+    # Fri 21:00Z -> Sat 00:00Z = 3h counted; Saturday and Sunday contribute nothing
+    assert dsv.weekday_minutes_between(FRI_17, SUN_20) == pytest.approx(3 * 60)
+    # ... and Monday resumes: + 13h on Monday
+    assert dsv.weekday_minutes_between(FRI_17, MON_09) == pytest.approx(3 * 60 + 13 * 60)
+    assert dsv.weekday_minutes_between(MON_09, FRI_17) == 0.0
+
+
+def test_a_friday_success_survives_the_weekend_for_a_weekday_only_source():
+    row = {"source_key": "finviz", "status": "healthy", "last_success_at": FRI_17, "last_failure_at": None}
+    assert dsv.effective_status(row, SUN_20, 12 * 60, weekday_only=True) == "healthy"
+    # negative control: the plain clock says the same row is stale
+    assert dsv.effective_status(row, SUN_20, 12 * 60, weekday_only=False) == "unknown"
+
+
+def test_the_weekday_clock_still_decays_once_monday_passes_the_window():
+    row = {"source_key": "finviz", "status": "healthy", "last_success_at": FRI_17, "last_failure_at": None}
+    # 3h Friday + 13h Monday = 16h > 12h window
+    assert dsv.effective_status(row, MON_09, 12 * 60, weekday_only=True) == "unknown"
+    assert dsv.effective_status(row, MON_09, 24 * 60, weekday_only=True) == "healthy"
+
+
+def test_weekday_only_comes_from_the_caller_schedule():
+    assert dsv.weekday_only_for("finviz") is True          # 25 6-18/3 * * 1-5
+    assert dsv.weekday_only_for("fred") is False           # 15 6 * * *  (daily)
+    assert dsv.weekday_only_for("alpha_vantage") is False  # 0 8 * * 1   (Mondays, not the trading week)
+    assert dsv.weekday_only_for("something_nobody_scheduled") is False, "no caller -> plain clock, decays sooner"
+
+
+def test_view_row_uses_the_weekday_clock_and_says_so():
+    row = {"source_key": "finviz", "status": "healthy", "last_success_at": FRI_17, "last_failure_at": None}
+    v = dsv.view_row(row, SUN_20, REGISTRY)
+    assert v["weekday_clock"] is True
+    assert v["status"] == "healthy" and v["decayed"] is False
+
+
 # ── the window comes from the registry ───────────────────────────────────────
 
 

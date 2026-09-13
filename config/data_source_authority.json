@@ -525,7 +525,7 @@
       },
       "writer": null,
       "cadence": "00:30 · 12:30",
-      "stale_after_hours": 12,
+      "stale_after_hours": 18,
       "projection": "catalyst_record",
       "required_fields": [
         "headline",
@@ -593,7 +593,8 @@
           "max_per_day": 1,
           "expected_seconds": 7200
         }
-      ]
+      ],
+      "_stale_note": "Runs 00:30 and 12:30 (12h gap). A window equal to the gap decays on any delay; 18h = 1.5x the gap. Phase 8, 2026-09-13."
     },
     {
       "domain": "technicals",
