@@ -2,7 +2,7 @@
 """Phase 0 regression tests: earnings event-gate integrity + registry reconciliation.
 
 The defect these lock down (found 2026-07-20): FMP's v3 earning_calendar began
-returning HTTP 403 for non-legacy keys. `_get_earnings_dates` swallowed it
+returning HTTP 403 for non-legacy keys. The old `_get_earnings_dates` swallowed it
 (`if not resp.ok: return {}` + bare except), so `earnings_blackout_check` saw
 "" for every symbol and returned in_blackout=False — the event gate failed OPEN
 for covered_call, cash_secured_put, credit_spread and long_call.
@@ -21,52 +21,47 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 
 # ── provider-error contract ────────────────────────────────────────────────
+# 2026-09-13 (One Source of Truth, Phase 2): the FMP path `_get_earnings_dates`
+# was REMOVED — FMP is retired in config/data_source_authority.json and the
+# earnings store of record is symbol_profiles.next_earnings_date via
+# earnings_provider. The contract these tests protect is unchanged: a provider
+# that cannot answer must never read as "no earnings". It now lives in
+# earnings_provider's three-state model — UNKNOWN is a distinct state that the
+# event gate treats as in-blackout.
 
-def test_missing_key_raises_not_silent_empty():
-    """No API key must RAISE, never return {} (which reads as 'no earnings')."""
+def test_the_fmp_earnings_path_is_gone_on_purpose():
+    import json
     import portfolio_options as po
-    import os
-    old = os.environ.get("FMP_API_KEY")
-    os.environ["FMP_API_KEY"] = ""
-    try:
-        with pytest.raises(po.EarningsProviderError):
-            po._get_earnings_dates(["AAPL"], ROOT)
-    finally:
-        if old is not None:
-            os.environ["FMP_API_KEY"] = old
+    assert not hasattr(po, "_get_earnings_dates"), "FMP path must not come back"
+    reg = json.loads((ROOT / "config" / "data_source_authority.json").read_text())
+    earnings = next(d for d in reg["domains"] if d["domain"] == "earnings_date")
+    assert "fmp" in earnings["retired"]
+    assert reg["providers"]["fmp"]["status"] == "retired"
 
 
-def test_http_403_raises(monkeypatch):
-    """A 403 (the live FMP legacy-endpoint failure) must raise, not return {}."""
-    import portfolio_options as po
-
-    class Resp:
-        ok = False
-        status_code = 403
-        text = '{"Error Message": "Legacy Endpoint : ... prior August 31, 2025"}'
-
-    monkeypatch.setenv("FMP_API_KEY", "x" * 32)
-    monkeypatch.setattr(po.requests, "get", lambda *a, **k: Resp())
-    with pytest.raises(po.EarningsProviderError) as e:
-        po._get_earnings_dates(["AAPL"], ROOT)
-    assert "403" in str(e.value)
+def test_provider_down_is_unknown_not_none_scheduled(monkeypatch):
+    """Store has no trustworthy row AND the on-demand lookup fails -> UNKNOWN with a
+    reason, never NONE_SCHEDULED (which would open the event gate)."""
+    import earnings_provider as ep
+    monkeypatch.setattr(ep, "_from_profiles",
+                        lambda syms: {s: ep.EarningsInfo(s, ep.UNKNOWN, source="symbol_profiles", reason="no row") for s in syms})
+    monkeypatch.setattr(ep, "_from_yfinance",
+                        lambda s: ep.EarningsInfo(s, ep.UNKNOWN, source="yfinance_ondemand", reason="yfinance lookup failed: 403"))
+    info = ep.get_one("AAPL")
+    assert info.state == ep.UNKNOWN
+    assert info.known is False
+    assert "403" in info.reason and "no row" in info.reason
 
 
-def test_successful_empty_response_is_not_an_error(monkeypatch):
-    """Provider answered but nobody reports in 90d -> {} is legitimate."""
-    import portfolio_options as po
-
-    class Resp:
-        ok = True
-        status_code = 200
-        text = "[]"
-
-        def json(self):
-            return []
-
-    monkeypatch.setenv("FMP_API_KEY", "x" * 32)
-    monkeypatch.setattr(po.requests, "get", lambda *a, **k: Resp())
-    assert po._get_earnings_dates(["AAPL"], ROOT) == {}
+def test_provider_answered_none_scheduled_is_a_legitimate_answer(monkeypatch):
+    """The provider answered and nothing is on the calendar -> NONE_SCHEDULED, known."""
+    import earnings_provider as ep
+    monkeypatch.setattr(ep, "_from_profiles",
+                        lambda syms: {s: ep.EarningsInfo(s, ep.UNKNOWN, source="symbol_profiles", reason="stale") for s in syms})
+    monkeypatch.setattr(ep, "_from_yfinance",
+                        lambda s: ep.EarningsInfo(s, ep.NONE_SCHEDULED, source="yfinance_ondemand"))
+    info = ep.get_one("AAPL")
+    assert info.state == ep.NONE_SCHEDULED and info.known is True and info.days_until() is None
 
 
 # ── event gate fails CLOSED ────────────────────────────────────────────────
