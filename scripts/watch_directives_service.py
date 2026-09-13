@@ -23,6 +23,7 @@ for ln in (ROOT / ".env").read_text().splitlines():
 import psycopg2
 import psycopg2.extras
 sys.path.insert(0, str(ROOT / "scripts"))
+from lib.writers import watch_directives_writer as _wd  # noqa: E402  (the store's single write module)
 import directive_promotion as dp  # the real evaluation engine (governor → classify Bucket 2/3 → watchpool)
 from research_critique_pipeline import is_removal_flagged, load_critique_snapshot
 
@@ -120,11 +121,12 @@ def pause_cold_trends(c, cur, dry, report):
         new_hits = cur.fetchone()["n"]
         if new_hits > 0:
             if not dry:
-                cur.execute("UPDATE watch_directives SET last_confirmed_at=now(), cold_since=NULL, updated_at=now() WHERE id=%s", (did,))
+                _wd.update_watch_directive(cur, did, source="watch_directives_service",
+                                           last_confirmed_at=_wd.NOW, cold_since=None)
             continue
         if d.get("cold_since") is None:
             if not dry:
-                cur.execute("UPDATE watch_directives SET cold_since=now(), updated_at=now() WHERE id=%s", (did,))
+                _wd.update_watch_directive(cur, did, source="watch_directives_service", cold_since=_wd.NOW)
             report.setdefault("cold_started", 0)
             report["cold_started"] += 1
             continue
@@ -132,7 +134,7 @@ def pause_cold_trends(c, cur, dry, report):
         cold_days = (cur.fetchone() or {}).get("days") or 0
         if cold_days >= COLD_PAUSE_DAYS:
             if not dry:
-                cur.execute("UPDATE watch_directives SET status='paused', updated_at=now() WHERE id=%s", (did,))
+                _wd.set_watch_directive_status(cur, did, "paused", source="watch_directives_service")
                 _notify(f"⏸ Watch directive auto-PAUSED (cold): '{d['label']}' — no credible new hits in {int(cold_days)}d. "
                         f"Advisory only; the mandate is preserved. Operator un-pause when ready.")
             report.setdefault("paused_cold", 0)
@@ -307,7 +309,7 @@ def main():
                     report["detail"].append({"directive": d["label"], "symbol": sym, "surfaced_by": "hermes"})
                 report["hermes_drained"] += 1
         if not dry:
-            cur.execute("UPDATE watch_directives SET last_serviced_at=now(), updated_at=now() WHERE id=%s", (did,))
+            _wd.touch_watch_directive_serviced(cur, did, source="watch_directives_service")
     # ── Two-way curation drain (CIO/advisory/defense → watchlist, forward edge) ──
     _drain_curation_sources(c, cur, dry, report, evaluate, _resolve)
     # Trend cold-detector (advisory): reconfirm / start-clock / auto-pause-on-cold

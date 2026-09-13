@@ -289,9 +289,8 @@ def _mark_needs_review(conn, symbol, directive_id, why):
 
 
 def _touch_directive_serviced(conn, directive_id):
-    cur = conn.cursor()
-    cur.execute("UPDATE watch_directives SET last_serviced_at=NOW(), updated_at=NOW() WHERE id=%s",
-                (directive_id,))
+    from lib.writers.watch_directives_writer import touch_watch_directive_serviced
+    touch_watch_directive_serviced(conn.cursor(), directive_id, source="directive_promotion")
 
 
 # ── the centerpiece ──────────────────────────────────────────────────────────────

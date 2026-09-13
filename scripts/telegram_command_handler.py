@@ -838,10 +838,17 @@ def _handle_watch(args: str) -> str:
             except Exception:
                 pass
         conn = _get_conn(); cur = conn.cursor()
-        cur.execute("""INSERT INTO watch_directives (kind, label, spec, rationale, created_by)
-                       VALUES (%s, %s, %s::jsonb, %s, 'operator') RETURNING id""",
-                    (kind, label, _j.dumps(spec), rationale))
-        did = cur.fetchone()[0]; conn.commit()
+        from lib.writers.watch_directives_writer import write_watch_directives
+        _rc = write_watch_directives(cur, [{"kind": kind, "label": label, "spec": spec,
+                                            "rationale": rationale, "created_by": "operator"}],
+                                     source="telegram_operator")
+        did = _rc.directive_id
+        if did is None:
+            conn.rollback()
+            return "watch error: " + "; ".join(r["reason"] for r in _rc.rows_rejected)
+        conn.commit()
+        if _rc.reused:
+            _dup_warn += f"\n(existing {kind} directive #{did} reused — no duplicate created)"
         msg = (f"✓ Watch directive #{did}: {kind} — {label}" + _dup_warn
                + (f"\nthesis: {rationale}" if rationale else "")
                + "\nTrade AI + Hermes will honor it (Hermes proposes via staging only).")

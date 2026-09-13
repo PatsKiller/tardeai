@@ -12,7 +12,7 @@ into a real registry:
                               reads; same column conventions as the app path)
   promote_watch_directive(id) TREND/TICKER → watch_directives via the EXISTING
                               app-role creation path (api_v2._watch_directive_create)
-                              — never a direct INSERT into watch_directives
+                              — never its own insert against that table
   promote_ticker(id)          staged TICKER → Trade AI's governed evaluation brain
                               via directive_promotion.promote_directive_lead(
                               source_system='hermes_discovery') — the tier +

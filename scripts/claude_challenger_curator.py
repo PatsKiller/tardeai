@@ -225,14 +225,17 @@ def infuse_trends(trends: list[dict], apply: bool) -> int:
         label = f"trend {t['trend']}"
         if not apply:
             continue
-        dup = _execute("SELECT id FROM watch_directives WHERE kind='trend' AND label=%s", (label,), fetch="one")
-        spec = json.dumps({"keywords": t["keywords"], "sectors": t["sectors"],
-                           "example_tickers": t["tickers"], "conviction": t["conviction"],
-                           "evidence": "claude_challenger"})
+        from lib.writers.watch_directives_writer import (
+            NOW, find_existing_directive, update_watch_directive, write_watch_directives)
+        spec = {"keywords": t["keywords"], "sectors": t["sectors"],
+                "example_tickers": t["tickers"], "conviction": t["conviction"],
+                "evidence": "claude_challenger"}
+        # Exact / normalised-label dup (non-archived): refresh it in place. The
+        # family fold is the gate's call below (it may alias instead).
+        dup = find_existing_directive(_execute, "trend", label, spec, include_family=False)
         if dup:
-            _execute("""UPDATE watch_directives SET spec=%s::jsonb, rationale=%s, status='active',
-                        last_confirmed_at=NOW(), updated_at=NOW() WHERE id=%s""",
-                     (spec, t["thesis"], dict(dup)["id"]), fetch=None)
+            update_watch_directive(_execute, dup["id"], source="claude_challenger", spec=spec,
+                                   rationale=t["thesis"], status="active", last_confirmed_at=NOW)
         else:
             # Watch Desk v2 (B1): family gate — same-family survivor absorbs this
             # theme as an alias instead of a near-dup row (07-01 regrowth fence)
@@ -243,10 +246,11 @@ def infuse_trends(trends: list[dict], apply: bool) -> int:
                              keywords=t.get("keywords"), created_by="claude_challenger")
                 continue
             _status = "proposed" if g.get("propose") else "active"
-            _execute("""INSERT INTO watch_directives (kind, label, spec, rationale, created_by, ttl_days,
-                          priority, status, trade_ai_enabled, hermes_enabled, created_at, updated_at)
-                        VALUES ('trend',%s,%s::jsonb,%s,'claude_challenger',45,'normal',%s,true,true,NOW(),NOW())""",
-                     (label, spec, t["thesis"], _status), fetch=None)
+            write_watch_directives(_execute, [{
+                "kind": "trend", "label": label, "spec": spec, "rationale": t["thesis"],
+                "created_by": "claude_challenger", "ttl_days": 45, "priority": "normal",
+                "status": _status, "trade_ai_enabled": True, "hermes_enabled": True,
+            }], source="claude_challenger", on_duplicate="insert")
         n += 1
     return n
 

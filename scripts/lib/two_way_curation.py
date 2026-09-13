@@ -29,6 +29,22 @@ from __future__ import annotations
 import json
 from typing import Any, Callable, Dict, List, Optional
 
+# The watch_directives store has ONE write module (One Source of Truth phase 9,
+# AGENTS.md §7A). This module re-exports it: producers may import the writer
+# from here or from lib.writers.watch_directives_writer — same SQL either way.
+try:
+    from .writers.watch_directives_writer import (  # type: ignore
+        NOW as WD_NOW, WriteReceipt as WatchDirectiveWriteReceipt,
+        find_existing_directive, update_watch_directive, write_watch_directives,
+        touch_watch_directive_serviced, set_watch_directive_status,
+    )
+except ImportError:  # imported as a plain module with scripts/ on sys.path
+    from lib.writers.watch_directives_writer import (  # type: ignore
+        NOW as WD_NOW, WriteReceipt as WatchDirectiveWriteReceipt,
+        find_existing_directive, update_watch_directive, write_watch_directives,
+        touch_watch_directive_serviced, set_watch_directive_status,
+    )
+
 # Executor signature matches db_adapter._execute(sql, params=None, fetch=None)
 Executor = Callable[..., Any]
 
@@ -669,22 +685,19 @@ def drain_curation_sources(cur, dry: bool, report: Dict[str, Any],
                 continue
             did = h.get("directive_id")
             if not did:
-                cur.execute("SELECT id FROM watch_directives WHERE kind=%s AND label=%s LIMIT 1",
-                            (kind, label))
-                r = cur.fetchone()
-                if r:
-                    did = r["id"] if isinstance(r, dict) else r[0]
+                # ONE dedup rule + ONE insert path: lib.writers.watch_directives_writer
+                found = find_existing_directive(cur, kind, label, spec)
+                if found:
+                    did = found["id"]
                 elif not dry:
-                    cur.execute("""INSERT INTO watch_directives
-                        (kind,label,spec,rationale,created_by,status,priority,
-                         trade_ai_enabled,hermes_enabled,ttl_days)
-                        VALUES (%s,%s,%s::jsonb,%s,%s,'active','normal',true,true,%s)
-                        RETURNING id""",
-                        (kind, label, json.dumps(spec, default=str),
-                         str(detail.get("rationale") or "")[:500] or None, source,
-                         DESK_DIRECTIVE_TTL_DAYS))
-                    row = cur.fetchone()
-                    did = row["id"] if isinstance(row, dict) else row[0]
+                    rc = write_watch_directives(cur, [{
+                        "kind": kind, "label": label, "spec": spec,
+                        "rationale": str(detail.get("rationale") or "")[:500] or None,
+                        "created_by": source, "status": "active", "priority": "normal",
+                        "trade_ai_enabled": True, "hermes_enabled": True,
+                        "ttl_days": DESK_DIRECTIVE_TTL_DAYS,
+                    }], source=source, on_duplicate="insert")
+                    did = rc.directive_id
             if not dry and not did:
                 # directive could not be resolved or minted — leave undrained for retry,
                 # do NOT silently drop the lead.
@@ -913,7 +926,8 @@ def ensure_directive(source: str, feedback: Dict[str, Any],
     """Upsert a watch_directives row from a feedback record and return its id.
 
     The forward edge is what makes curation *self-thinking*: a CIO/advisory/defense
-    signal can mint its own standing directive (deduped by kind+label) rather than
+    signal can mint its own standing directive (deduped by the store's ONE rule in
+    lib.writers.watch_directives_writer.find_existing_directive) rather than
     requiring the operator to hand-create one. created_by records the source so
     provenance is never lost. Returns None if the record has no directive_kind.
     """
@@ -924,24 +938,15 @@ def ensure_directive(source: str, feedback: Dict[str, Any],
     spec = feedback.get("spec") or {}
     rationale = str(feedback.get("rationale") or "")[:500] or None
     ex = executor or _default_executor()
-    res = ex(
-        """SELECT id FROM watch_directives WHERE kind = %s AND label = %s LIMIT 1""",
-        (kind, label), fetch="one",
-    )
-    row = res[0] if res and not isinstance(res, bool) else None
-    if row is not None:
-        return int(row)
-    ins = ex(
-        """INSERT INTO watch_directives
-             (kind, label, spec, rationale, created_by, status, priority,
-              trade_ai_enabled, hermes_enabled, ttl_days)
-           VALUES (%s, %s, %s::jsonb, %s, %s, 'active', 'normal', true, true, %s)
-           RETURNING id""",
-        (kind, label, _json(spec), rationale, source, DESK_DIRECTIVE_TTL_DAYS),
-    )
-    if not ins:
-        return None
-    return int(ins[0])
+    found = find_existing_directive(ex, kind, label, spec)
+    if found:
+        return int(found["id"])
+    rc = write_watch_directives(ex, [{
+        "kind": kind, "label": label, "spec": spec, "rationale": rationale,
+        "created_by": source, "status": "active", "priority": "normal",
+        "trade_ai_enabled": True, "hermes_enabled": True, "ttl_days": DESK_DIRECTIVE_TTL_DAYS,
+    }], source=source, on_duplicate="insert")
+    return rc.directive_id
 
 
 def audit(source: str, event: str, payload: Optional[Dict[str, Any]] = None,
