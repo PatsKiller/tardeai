@@ -578,6 +578,10 @@ GATES = [
             # yahoo_analyst_targets_history. Freshness travels with the answer.
             "tests/test_analyst_view_domain_20260913.py",
             "tests/test_pending_expiry_unanswerable_20260913.py",
+            # 2026-09-13: the state tree existed twice for 18 days (dev tree vs
+            # persistent-state). Identity of the directory is the check, not the
+            # age of a file -- an age check on one copy is exactly what missed it.
+            "tests/test_served_copy_split_20260913.py",
             # Off UNLISTED_BASELINE at last. The ONLY coverage of
             # cio_run_worker._check_health, and its fakes are what hid CL-61.
             "tests/test_p26_shadow_autonomy.py",
