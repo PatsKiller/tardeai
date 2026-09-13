@@ -33,6 +33,20 @@ DB_DSN = os.getenv("TRADE_AI_DSN", f"host=localhost port=5432 dbname=trade_ai us
 
 def _connect():
     import psycopg2
+
+    # An empty password is NOT a valid credential -- libpq quietly falls back to
+    # ~/.pgpass, and the resulting failure blames "password authentication failed"
+    # while naming a file nobody meant to use. Same defect as the one fixed in
+    # watch_decision_refresh.py. Refuse, and say which source was empty, so a
+    # retention run that cannot connect is never mistaken for one with nothing
+    # to prune.
+    if not _os.getenv("DB_PASSWORD") and "password=" in DB_DSN and "password= " not in DB_DSN:
+        if DB_DSN.split("password=", 1)[1].strip() == "":
+            raise SystemExit(
+                "ERROR: DB_PASSWORD is empty. Set it, or run from a tree whose .env "
+                "resolves (the render is at /run/user/$UID/tradeai/env). Refusing to "
+                "let libpq fall back to ~/.pgpass."
+            )
     return psycopg2.connect(DB_DSN)
 
 # ── Retention policies ───────────────────────────────────────────
@@ -44,6 +58,22 @@ POLICIES = [
     ("ticker_prices",                   "price_date",      365),
 
     # LONG tier — 180 days
+    # Archive of the 130,155 rows the Finviz column shift fabricated: index 10 of
+    # view 141 was labelled "recom" and actually carried Performance (10 Years),
+    # so a stock down -100% published as "Strong Buy". Quarantined 2026-09-13;
+    # the live columns were nulled and this holds the originals.
+    #
+    # Keyed on quarantined_at, NOT created_at. The archived rows carry their
+    # ORIGINAL created_at (2026-04-20 onward), so a created_at window would have
+    # started deleting the evidence about 34 days from now rather than 180. The
+    # window that matters is time since quarantine, which is what
+    # quarantined_at (added with DEFAULT now()) measures. Purges 2027-03-12.
+    #
+    # Until then this is the reversal path -- the UPDATE in
+    # scripts/quarantine_fabricated_analyst_ratings.py restores every value from
+    # here. Six months is deliberately longer than any window in which the
+    # diagnosis might be found wrong.
+    ("analyst_consensus_history_quarantine_20260913", "quarantined_at", 180),
     ("trade_transactions",              "created_at",      180),
     ("trade_closed",                    "created_at",      180),
     ("performance_daily",               "created_at",      180),
@@ -138,6 +168,7 @@ def run(dry_run: bool = False):
     conn = _connect()
     cur = conn.cursor()
     total_deleted = 0
+    failures: list[str] = []
 
     print(f"{'DRY RUN — ' if dry_run else ''}DB Retention Policy — {datetime.now().strftime('%Y-%m-%d %H:%M')}")
     print(f"{'Table':<45} {'Column':<18} {'Days':>5}  {'Deleted':>8}")
@@ -169,6 +200,7 @@ def run(dry_run: bool = False):
                 print(f"  {table:<43} {col:<18} {days:>5}  {count:>8}")
         except Exception as e:
             conn.rollback()
+            failures.append(table)
             print(f"  ERROR: {table}: {e}")
 
     print("-" * 82)
@@ -205,9 +237,20 @@ def run(dry_run: bool = False):
     print("-" * 98)
     print(f"  Total {'would prune' if dry_run else 'pruned'}: {total_pruned:,} files")
 
+    # A table that errors is a policy that is NOT being enforced. This used to
+    # print ERROR and still exit 0, so aegis_steph_escalations and
+    # watchlist_agent_jobs had been failing their foreign-key deletes on EVERY
+    # run, unpruned and unreported, while systemd logged a clean success. Exit
+    # code 0 is not evidence of work -- AGENTS.md rule 8.
+    if failures:
+        print("")
+        print(f"  RETENTION NOT ENFORCED on {len(failures)} table(s): {', '.join(sorted(failures))}")
+        print("  These policies did not run. Exiting non-zero so the failure is visible.")
+    return 1 if failures else 0
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Enforce DB retention policies")
     parser.add_argument("--dry-run", action="store_true", help="Show what would be deleted without deleting")
     args = parser.parse_args()
-    run(dry_run=args.dry_run)
+    raise SystemExit(run(dry_run=args.dry_run))

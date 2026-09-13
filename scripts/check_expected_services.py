@@ -256,9 +256,16 @@ def _alert(off: list[dict]) -> None:
 
     newly = [k for k in fingerprint if k not in previous]
     if not fingerprint:
-        body = "✅ Services: everything declared in expected_services.json is on."
+        body = "[PLATFORM_AVAILABILITY] ✅ Services: everything declared in expected_services.json is on."
     else:
-        head = "🚨 CRITICAL — a service that should be running is OFF" if newly else "🚨 Services off"
+        # The sentinel is what operator_alert_policy_v2 routes on -- prose is
+        # not load-bearing, this token is. Without it the alert classifies as
+        # job_telemetry and waits in the 4-hourly digest.
+        head = (
+            "[PLATFORM_AVAILABILITY] 🚨 A service that should be running is OFF"
+            if newly
+            else "[PLATFORM_AVAILABILITY] 🚨 Services off"
+        )
         lines = [head, ""]
         for r in sorted(off, key=lambda x: x["name"]):
             lines.append(f"• [{r['status']}] {r['name']}")

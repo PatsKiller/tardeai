@@ -3,6 +3,7 @@
 
 Pure functions only: no broker calls, no order writes, no 2FA, no secrets.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -130,7 +131,9 @@ def incident_id_for(event: AlertEvent) -> str:
 def route_event(event: AlertEvent) -> RoutingDecision:
     atype = event.alert_type
     if atype in APPROVAL_ALLOWLIST:
-        if not event.operator_action_required or not (event.authorization_or_order_id or event.session_ref or event.order_ref):
+        if not event.operator_action_required or not (
+            event.authorization_or_order_id or event.session_ref or event.order_ref
+        ):
             return RoutingDecision(
                 route_mode=ROUTE_COMMAND_CENTER,
                 logical_destination=None,
@@ -141,6 +144,21 @@ def route_event(event: AlertEvent) -> RoutingDecision:
                 suppression_reason="approval_channel_requires_explicit_live_authorization",
             )
         return RoutingDecision(ROUTE_IMMEDIATE, APPROVALS_ONLY, None, 900, 300, 600)
+
+    # Platform availability / data integrity — IMMEDIATE, deduped hourly.
+    #
+    # Deliberately NOT added to CRITICAL_IMMEDIATE_TYPES. That set is capital at
+    # risk right now -- orphaned stops, protection failures, broker auth -- and
+    # diluting it is how a critical channel stops being read. A disabled service
+    # is not capital at risk. But DIGEST made these arrive up to four hours
+    # later, and "a service has been off since some point in the last four
+    # hours" is close to useless: tradeai-cio-telegram.service was disabled for
+    # five days, and the Finviz column shift published inverted analyst ratings
+    # for five months. Same shape as the price-move case below -- immediate,
+    # general channel, deduped on the hour so a persistent outage says it once
+    # per hour rather than every run.
+    if atype in {"platform_availability", "data_integrity"}:
+        return RoutingDecision(ROUTE_IMMEDIATE, CRITICAL_OPERATIONS, None, 24 * 3600, 3600, None)
 
     if atype in CRITICAL_IMMEDIATE_TYPES:
         if atype in {"position_unprotected", "protection_failure", "protection_uncertain", "orphaned_stop"}:
@@ -204,7 +222,9 @@ def classify_legacy_message(message: str, *, source_producer: str = "legacy_send
     text = message or ""
     low = text.lower()
     symbol = None
-    m = re.search(r"\b(?:symbol[:\s]+|new go\s*[—-]\s*|proposal #\d+:\s*|stop(?:_triggered)?\s*[—-]\s*)([A-Z]{1,6})\b", text, re.I)
+    m = re.search(
+        r"\b(?:symbol[:\s]+|new go\s*[—-]\s*|proposal #\d+:\s*|stop(?:_triggered)?\s*[—-]\s*)([A-Z]{1,6})\b", text, re.I
+    )
     if m:
         symbol = m.group(1).upper()
 
@@ -217,7 +237,9 @@ def classify_legacy_message(message: str, *, source_producer: str = "legacy_send
         if acct_m:
             account_id = acct_m.group(1).lower()
         auth = None
-        auth_m = re.search(r"\b(?:intent|authorization|session|order)(?:[ _-]?id)?[:=#\s]+([A-Za-z0-9_.:-]+)", text, re.I)
+        auth_m = re.search(
+            r"\b(?:intent|authorization|session|order)(?:[ _-]?id)?[:=#\s]+([A-Za-z0-9_.:-]+)", text, re.I
+        )
         if auth_m:
             auth = auth_m.group(1)
         return AlertEvent(
@@ -240,14 +262,22 @@ def classify_legacy_message(message: str, *, source_producer: str = "legacy_send
         return ev("live_session_2fa_required", "critical", True, "LIVE_SESSION_2FA")
     if re.search(r"stop approved by|approved by", text, re.I):
         return ev("job_telemetry", "info")
-    if re.search(r"protective|trailing stop", text, re.I) and re.search(r"approval required|operator approval|2fa|2nd factor|live stop enabled", text, re.I) and "paper" not in low:
+    if (
+        re.search(r"protective|trailing stop", text, re.I)
+        and re.search(r"approval required|operator approval|2fa|2nd factor|live stop enabled", text, re.I)
+        and "paper" not in low
+    ):
         return ev("protective_order_approval_required", "critical", True, "PROTECTIVE_ORDER_APPROVAL")
     if re.search(r"material.*authorization.*amendment|amend.*live.*authorization", text, re.I):
         return ev("material_live_authorization_amendment_required", "critical", True, "LIVE_AUTH_AMENDMENT")
 
     if "paper proposal" in low or re.search(r"trade proposal #\d+", low):
         return ev("paper_proposal", "info")
-    if re.search(r"proposal.*(?:blocked|rebuild|watch|expired|stale|revalidated|cancelled|canceled|rejected|deferred)", text, re.I):
+    if re.search(
+        r"proposal.*(?:blocked|rebuild|watch|expired|stale|revalidated|cancelled|canceled|rejected|deferred)",
+        text,
+        re.I,
+    ):
         return ev("proposal_blocked_or_rebuild", "info")
     # MaterialChangeNotice@v1 renders this exact header. Matched BEFORE the
     # research_update branches, which route to DIGEST and swallowed the first live
@@ -262,7 +292,9 @@ def classify_legacy_message(message: str, *, source_producer: str = "legacy_send
         return ev("research_update", "info")
     if re.search(r"\bthesis\b.*\b(?:updated|version|published|changed)\b|\bdesk@v\d+\b", text, re.I):
         return ev("thesis_update", "info")
-    if re.search(r"\b(?:new go|wait|avoid|entry alert|entry candidate|scanner|social scalp setup|trade ai live)\b", text, re.I):
+    if re.search(
+        r"\b(?:new go|wait|avoid|entry alert|entry candidate|scanner|social scalp setup|trade ai live)\b", text, re.I
+    ):
         return ev("scanner_candidate", "info")
     if re.search(r"orphan(?:ed|s)|naked .*position|position.*unprotected|unprotected live position", text, re.I):
         return ev("orphaned_stop" if "orphan" in low else "position_unprotected", "critical", True, "PROTECTION_REPAIR")
@@ -274,10 +306,14 @@ def classify_legacy_message(message: str, *, source_producer: str = "legacy_send
         return ev("partial_fill_protection_uncertain", "critical", True, "PROTECTION_REPAIR")
     if re.search(r"flatten.*(?:failed|uncertain)", text, re.I):
         return ev("flatten_failed_or_uncertain", "critical", True, "FLATTEN_REVIEW")
-    if not re.search(r"health agent|system health", text, re.I) and re.search(r"kill.?switch|emergency kill|revoke", text, re.I):
+    if not re.search(r"health agent|system health", text, re.I) and re.search(
+        r"kill.?switch|emergency kill|revoke", text, re.I
+    ):
         return ev("emergency_kill_or_revoke", "critical", True, "KILL_REVIEW")
     if re.search(r"siem\s+p[01]", text, re.I):
-        if "paper_execution" not in low and re.search(r"live position|live session|protection|trading impact", text, re.I):
+        if "paper_execution" not in low and re.search(
+            r"live position|live session|protection|trading impact", text, re.I
+        ):
             return ev("trading_impact_outage", "critical", True, "OUTAGE_REVIEW")
         return ev("siem_without_trading_impact", "warning")
     if re.search(r"health agent:\s*degraded", text, re.I):
@@ -286,6 +322,21 @@ def classify_legacy_message(message: str, *, source_producer: str = "legacy_send
         return ev("stop_warning", "warning")
     if re.search(r"debug|cron success|sync success|uploaded unchanged", text, re.I):
         return ev("debug_or_success", "info")
+    # Platform availability and data integrity. Matched on an explicit machine
+    # sentinel the producers emit, NOT on prose: routing that depends on wording
+    # breaks the moment someone rephrases an alert, and this class of alert is
+    # exactly the one that must not quietly fall back to a digest.
+    #
+    # These reached the operator hours late as job_telemetry. That is how
+    # tradeai-cio-telegram.service stayed disabled for five days and how a
+    # ten-year return column was published as a 1-5 analyst rating for five
+    # months. Both are "the platform is lying or absent right now", which is
+    # only actionable while it is still true.
+    if "[PLATFORM_AVAILABILITY]" in text:
+        return ev("platform_availability", "critical", True, "AVAILABILITY_REVIEW")
+    if "[DATA_INTEGRITY]" in text:
+        return ev("data_integrity", "critical", True, "DATA_REVIEW")
+
     if re.search(r"health|pipeline|reaper|job|output_invalid|retry_exhausted|locktimeout", text, re.I):
         return ev("job_telemetry", "warning")
     return ev("job_telemetry", "info")
