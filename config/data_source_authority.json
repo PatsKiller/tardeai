@@ -1140,7 +1140,7 @@
       "store": {
         "table": "hermes_research_intelligence"
       },
-      "writer": null,
+      "writer": "scripts/lib/writers/hermes_research_writer.py",
       "cadence": "8 scheduled lanes",
       "stale_after_hours": 168,
       "projection": "research_card",
@@ -1156,9 +1156,7 @@
       "retired": [],
       "no_coverage": "say_so_queue_only_if_producer_exists",
       "_note": "14 writer modules today; consolidation target is this one module. Writer-count baseline in the gate can only fall.",
-      "writer_status": "UNCONSOLIDATED",
-      "writer_target": "scripts/lib/hermes_librarian/librarian.py",
-      "_writer_note": "32 modules write this store today (2026-09-13). The gate's writer-count ceiling can only fall; scripts/lib/hermes_librarian/librarian.py is the module the others must call.",
+      "_writer_note": "Phase 9 (2026-09-13): one write module; all 32 producers migrated; subject_guid/issuer_guid populated registry-first (0 of 32 legacy writers set them); off-rail rows receipted + logged instead of aborting a lane. Writers 32 -> 1. The facade re-exports the write function and carries no SQL.",
       "projection_secondary": [
         "subject_research"
       ],
@@ -1199,7 +1197,8 @@
           "max_per_day": 1,
           "expected_seconds": 7200
         }
-      ]
+      ],
+      "writer_facade": "scripts/lib/hermes_librarian/librarian.py"
     },
     {
       "domain": "watch_directives",
@@ -1213,7 +1212,7 @@
       "store": {
         "table": "watch_directives"
       },
-      "writer": null,
+      "writer": "scripts/lib/writers/watch_directives_writer.py",
       "cadence": "3 scheduled",
       "stale_after_hours": 48,
       "projection": "watch_intelligence",
@@ -1227,9 +1226,7 @@
       "retired": [],
       "no_coverage": "say_so",
       "_note": "8 writer modules today; see writer-count baseline.",
-      "writer_status": "UNCONSOLIDATED",
-      "writer_target": "scripts/lib/two_way_curation.py",
-      "_writer_note": "18 modules write this store today (2026-09-13). The gate's writer-count ceiling can only fall; scripts/lib/two_way_curation.py is the module the others must call.",
+      "_writer_note": "Phase 9 (2026-09-13): one write module; ONE dedup rule (ticker: symbol among active; sector/trend: label -> subject key -> family); archived rows never resurrected; api_v2 create returns 400 with reasons instead of a silent null id. Writers 18 -> 1. The facade re-exports the write function and carries no SQL.",
       "on_gap": [
         {
           "vector": "refresh_producer",
@@ -1243,7 +1240,8 @@
           "max_per_day": 1,
           "expected_seconds": 7200
         }
-      ]
+      ],
+      "writer_facade": "scripts/lib/two_way_curation.py"
     },
     {
       "domain": "watch_discovery",

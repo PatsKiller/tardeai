@@ -61,8 +61,8 @@ Both the release (CURRENT) and the dev tree the 344 cron producers run from must
 | **earnings_date** | ingested | `symbol_profiles` | `scripts/earnings_enrich.py` | 06:35 daily | 168h | `symbol_profile` | yfinance | — | fmp | `UNKNOWN_blocks_options_gate` | operator 2026-09-13 |
 | **holdings_accounts** | ingested | `portfolios/state/holdings.json` | `scripts/portfolio_loader.py` | broker sync + */15 repricer | 24h | `portfolio_snapshot` | schwab | alpaca | — | `per_account_state_never_zero` | operator 2026-09-13 |
 | **options_iv** | live_external | `options_iv_history` | `scripts/lib/strategy_research/iv_history.py` | unscheduled | 4h | `option_chain` | schwab | — | — | `call_out_at_read_time` | operator 2026-09-13 |
-| **research_thesis** | native | `hermes_research_intelligence` | UNCONSOLIDATED → `scripts/lib/hermes_librarian/librarian.py` (32 writers today; ceiling may only fall) | 8 scheduled lanes | 168h | `research_card` | internal | research_insights, governed_pull:brave>searxng | — | `say_so_queue_only_if_producer_exists` | operator 2026-09-13 |
-| **watch_directives** | native | `watch_directives` | UNCONSOLIDATED → `scripts/lib/two_way_curation.py` (18 writers today; ceiling may only fall) | 3 scheduled | 48h | `watch_intelligence` | internal | — | — | `say_so` | operator 2026-09-13 |
+| **research_thesis** | native | `hermes_research_intelligence` | `scripts/lib/writers/hermes_research_writer.py` | 8 scheduled lanes | 168h | `research_card` | internal | research_insights, governed_pull:brave>searxng | — | `say_so_queue_only_if_producer_exists` | operator 2026-09-13 |
+| **watch_directives** | native | `watch_directives` | `scripts/lib/writers/watch_directives_writer.py` | 3 scheduled | 48h | `watch_intelligence` | internal | — | — | `say_so` | operator 2026-09-13 |
 | **watch_discovery** | dead_feed | `watch_candidate_events` | **none — dead feed** | — | 48h | `watch_discovery` | internal | — | — | `declared_gap_no_producer` | operator 2026-09-13 |
 | **web_search** | live_external | `runtime/search_budget.json` | `scripts/lib/brave_router.py` | on demand | 72h | — | brave | searxng, tavily | — | `declared_gap` | operator 2026-09-13 |
 | **private_company** | manual | `private_company_proxies` | operator (manual entry) | — | — | — | none | — | — | `refuse_up_front` | operator 2026-09-13 |
@@ -84,8 +84,6 @@ module every other writer must call.
 
 | Domain | Store | Writers today (ceiling) | Consolidation target | Hub direct reads (ceiling) |
 |---|---|---|---|---|
-| **research_thesis** | `hermes_research_intelligence` | 32 | `scripts/lib/hermes_librarian/librarian.py` | 31 |
-| **watch_directives** | `watch_directives` | 18 | `scripts/lib/two_way_curation.py` | 11 |
 | **macro** | `fred_economic_series` | 2 | `scripts/external_market_data_ingest.py` | — |
 
 ## Providers

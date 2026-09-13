@@ -36728,22 +36728,27 @@ def _watch_directive_create(body):
 
         _rc = _wd_write(
             _db_query,
-            [{
-                "kind": kind,
-                "label": label,
-                "spec": spec,
-                "rationale": body.get("rationale"),
-                "created_by": body.get("created_by", "operator"),
-                "ttl_days": body.get("ttl_days"),
-                "priority": body.get("priority", "normal"),
-                "trade_ai_enabled": bool(body.get("trade_ai_enabled", True)),
-                "hermes_enabled": bool(body.get("hermes_enabled", True)),
-            }],
+            [
+                {
+                    "kind": kind,
+                    "label": label,
+                    "spec": spec,
+                    "rationale": body.get("rationale"),
+                    "created_by": body.get("created_by", "operator"),
+                    "ttl_days": body.get("ttl_days"),
+                    "priority": body.get("priority", "normal"),
+                    "trade_ai_enabled": bool(body.get("trade_ai_enabled", True)),
+                    "hermes_enabled": bool(body.get("hermes_enabled", True)),
+                }
+            ],
             source="operator_api",
             on_duplicate="insert" if body.get("force") else "reuse",
         )
         if _rc.rows_rejected:
-            return 400, {"ok": False, "error": "directive rejected: " + "; ".join(r["reason"] for r in _rc.rows_rejected)}
+            return 400, {
+                "ok": False,
+                "error": "directive rejected: " + "; ".join(r["reason"] for r in _rc.rows_rejected),
+            }
         did = _rc.directive_id
         if _rc.reused:
             reused = True
@@ -49492,11 +49497,20 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
 
                         _rc = _wd_write(
                             cur,
-                            [{
-                                "kind": kind, "label": label, "spec": spec, "rationale": rationale,
-                                "created_by": "rotation_advisor", "ttl_days": 30, "priority": "normal",
-                                "status": "active", "trade_ai_enabled": True, "hermes_enabled": True,
-                            }],
+                            [
+                                {
+                                    "kind": kind,
+                                    "label": label,
+                                    "spec": spec,
+                                    "rationale": rationale,
+                                    "created_by": "rotation_advisor",
+                                    "ttl_days": 30,
+                                    "priority": "normal",
+                                    "status": "active",
+                                    "trade_ai_enabled": True,
+                                    "hermes_enabled": True,
+                                }
+                            ],
                             source="rotation_advisor",
                         )
                         if _rc.reused or _rc.directive_id is None:
@@ -49731,13 +49745,24 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     # One write module per store (SoT Phase 9): SQL lives in
                     # lib.writers.hermes_research_writer.
                     from lib.writers.hermes_research_writer import write_research_rows
-                    rc = write_research_rows(cur, [{
-                        "source": "hermes", "hermes_agent_name": "operator",
-                        "research_type": "operator_knowledge", "symbol": (b.get("symbol") or None),
-                        "topic": (topic or "operator note")[:200], "summary": content[:4000],
-                        "thesis": (b.get("thesis") or content)[:4000],
-                        "model_used": "operator_telegram", "status": "staged",
-                    }], producer="operator")
+
+                    rc = write_research_rows(
+                        cur,
+                        [
+                            {
+                                "source": "hermes",
+                                "hermes_agent_name": "operator",
+                                "research_type": "operator_knowledge",
+                                "symbol": (b.get("symbol") or None),
+                                "topic": (topic or "operator note")[:200],
+                                "summary": content[:4000],
+                                "thesis": (b.get("thesis") or content)[:4000],
+                                "model_used": "operator_telegram",
+                                "status": "staged",
+                            }
+                        ],
+                        producer="operator",
+                    )
                     if not rc.ids:
                         raise ValueError(f"rejected: {rc.rows_rejected}")
                     kid = rc.ids[0]
