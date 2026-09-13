@@ -89,6 +89,9 @@ def _to_holdings_rows(snap: dict) -> list[dict]:
             "cost_basis": (cost * qty) if cost else None, "avg_cost": cost or None,
             "source": "moomoo_live_read",
             "as_of": now.date().isoformat(), "updated_at": now.isoformat(),
+            # the sync clock (SoT Phase 6): as_of/updated_at are restamped by
+            # every reprice; this is what portfolio_loader reads for LIVE/STALE
+            "broker_position_as_of": now.date().isoformat(),
         })
 
     cash = snap.get("cash")
@@ -102,6 +105,7 @@ def _to_holdings_rows(snap: dict) -> list[dict]:
             "day_change": 0, "day_change_pct": 0,
             "source": "moomoo_live_read",
             "as_of": now.date().isoformat(), "updated_at": now.isoformat(),
+            "broker_position_as_of": now.date().isoformat(),
         })
     return rows
 
@@ -149,13 +153,29 @@ def _touch_broker_account(ok: bool) -> None:
         log.warning("broker_accounts touch failed: %s", str(e)[:120])
 
 
+def _write_receipt(ok: bool, error: str = "", **extra) -> None:
+    """The sync's own last-run receipt (SoT Phase 6). portfolio_loader reads
+    data/runtime/sync_receipts/<account>.json to tell SERVICE_DOWN from STALE
+    without shelling to systemctl. Best effort; never blocks the sync."""
+    try:
+        from lib.account_state import write_sync_receipt
+        write_sync_receipt(ROOT, ACCOUNT_KEY, ok=ok, error=error, extra=extra or None)
+    except Exception as e:  # noqa: BLE001
+        log.warning("sync receipt write failed: %s", str(e)[:120])
+
+
 def run(*, dry_run: bool = False) -> dict:
     try:
         snap = _live_account()
     except Exception as e:
         _touch_broker_account(False)
-        return {"ok": False, "error": f"{type(e).__name__}: {str(e)[:200]}"}
+        err = f"{type(e).__name__}: {str(e)[:200]}"
+        if not dry_run:
+            _write_receipt(False, err)
+        return {"ok": False, "error": err}
     if snap is None:
+        if not dry_run:
+            _write_receipt(False, "no REAL account visible (only SIMULATE) — OpenD not logged in?")
         return {"ok": True, "skipped": True, "reason": "no REAL account"}
 
     rows = _to_holdings_rows(snap)
@@ -163,6 +183,7 @@ def run(*, dry_run: bool = False) -> dict:
                    preserve_prior_cash=not any(r.get("is_cash") for r in rows))
     if not dry_run:
         _touch_broker_account(True)
+        _write_receipt(True, n_rows=len(rows), wrote=bool(merge.get("wrote")))
     return {
         "ok": True, "account": ACCOUNT_KEY, "acc_id": snap["acc_id"],
         "cash": snap.get("cash"), "total_assets": snap.get("total_assets"),

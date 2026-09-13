@@ -1,0 +1,54 @@
+{
+  "schema": "DataSourceAuthorityPatchProposal",
+  "phase": "5 — declared backups and budgets",
+  "as_of": "2026-09-13",
+  "target": "config/data_source_authority.json",
+  "_why": "Phase 5 code (scripts/lib/data_source_authority.py, brave_router spill, search_budget registry caps, catalyst search backup) reads the registry as it stands today and needs none of these edits to run. They are proposed so the registry says, in one place, what the code now enforces: which supply tags count as a domain's question (so resolve_backup can refuse a cross-domain substitution — AGENTS.md §7A rule 5), that Tavily is declared but has no client, and the caps that still live only in scripts/lib/search_budget.py. The registry file is owned by a parallel agent this phase; apply with that agent, then re-run tests/test_data_source_authority_resolve_backup.py::test_with_the_proposed_phase5_patch_the_live_chains_still_resolve, which applies this file to a copy of the live registry.",
+  "ops": [
+    {
+      "op": "set_domain_field", "domain": "web_search", "field": "answers", "value": ["web_search"],
+      "_why": "The supply tags that answer this domain's question. searxng and tavily both supply web_search; resolve_backup keeps them. Anything else in the backup list would raise CrossDomainSubstitution."
+    },
+    {
+      "op": "set_domain_field", "domain": "catalyst_news", "field": "answers", "value": ["news", "news_feed", "web_search"],
+      "_why": "yahoo supplies news_feed, finviz supplies news, brave/searxng supply web_search (a governed headline pull, labelled source=search:<provider>). Declares that a headline search IS an acceptable same-question backup for catalyst news, which is what scripts/catalyst_news_sources.py now does when both live slots are empty."
+    },
+    {
+      "op": "set_domain_field", "domain": "analyst_opinion", "field": "answers", "value": ["analyst_targets"],
+      "_why": "The §7A rule-5 example. With this declared, a future backup entry of finviz (supplies screeners/enrichment/industry_groups/sector_perf/news — no analyst tag) raises instead of resolving. yfinance_on_demand is not a declared provider key so it passes through as a chain label; declaring it as a provider with supplies=[analyst_targets] would close that gap."
+    },
+    {
+      "op": "set_domain_field", "domain": "catalyst_news", "field": "search_backup",
+      "value": {"via": "scripts/lib/brave_router.py", "kind": "news", "caller": "catalyst_intelligence", "one_pull_per_ticker": true, "only_when": "every live slot returned zero fresh articles", "label": "source=search:<provider>", "no_spill": false},
+      "_why": "The decision that existed only in code: one governed pull, never when a live slot answered, budget-checked under caller catalyst_intelligence (10/day), spilling brave→searxng."
+    },
+    {
+      "op": "set_provider_field", "provider": "tavily", "field": "_note",
+      "value": "Declared, budget 20/day, status configured_unused: NO client exists in this tree and scripts/lib/brave_router.SPILL_ADAPTERS has no tavily entry. Spill receipts record it as NO_ADAPTER. Wire a client (one shared module, like searxng_client.py) and add the adapter before changing status to active.",
+      "_why": "Say so in the registry, not only in a receipt."
+    },
+    {
+      "op": "set_provider_field", "provider": "brave", "field": "budget",
+      "value": {"daily": 120, "monthly": 1500, "monthly_reserve_for_on_demand": 200, "ledger": "data/runtime/search_budget.json", "receipts": "denial_receipts in the same ledger; overflow -> data/runtime/search_budget_receipts_archive.jsonl"},
+      "_why": "monthly_reserve (search_budget.MONTHLY_RESERVE) and the receipt location are still declared only in code. Adding keys is additive; search_budget reads only daily/monthly from budget."
+    },
+    {
+      "op": "set_provider_field", "provider": "searxng", "field": "budget", "value": {"daily": 10000, "monthly": 300000},
+      "_why": "search_budget.DEFAULT_LIMITS carries a 300,000 monthly for searxng that the registry is silent about; the fallback applies today. Declare it so the registry is the complete statement."
+    },
+    {
+      "op": "set_provider_field", "provider": "tavily", "field": "budget", "value": {"daily": 20, "monthly": 500},
+      "_why": "Same: the 500 monthly exists only in DEFAULT_LIMITS."
+    }
+  ],
+  "open_decision_for_operator": {
+    "question": "Should CALLER_DAILY_CAP be added to web_search.spill_on?",
+    "evidence_2026-09-13T19:45Z_live_ledger_read_only": "providers.brave.denied[2026-09-13]=48 while providers.brave.daily[2026-09-13]=25 of 120 — the day was NOT exhausted, so today's denials are per-caller caps (CALLER_DAILY_CAPS default 25; catalyst_intelligence/portfolio_news 10; topic_ingestion/web_news_fetcher 5) or MONTHLY_RESERVE_ONLY. brave_router_health.json last={event: budget_refused, reason: CALLER_DAILY_CAP}. caller_daily[2026-09-13]={governed_research_producer: 25} — exactly CALLER_DAILY_CAPS['default']=25; the same caller also stopped at 25 on 09-11 (22 denied). monthly[2026-09]=163 of 1500 (governed_research_producer 88, web_research 75). providers.searxng has never been counted (absent from the ledger). The denied counter records no reason; from this commit every denial writes a receipt row with the reason, so the split is measurable tomorrow.",
+    "phase5_behaviour": "CALLER_DAILY_CAP does NOT spill (registry spill_on does not list it). Rationale: a per-caller cap is an anti-runaway breaker; a spill would move a loop bug onto SearXNG. If the operator decides a capped caller should still get an answer from the free lane, add \"CALLER_DAILY_CAP\" to web_search.spill_on — no code change needed, brave_router reads spill_on from the registry.",
+    "not_decided_here": true
+  },
+  "not_proposed": [
+    "Changing web_search.spill_on — MONTHLY_RESERVE_ONLY and CALLER_DAILY_CAP deliberately do NOT spill (a per-caller cap is an anti-runaway breaker; spilling it would move a loop bug onto SearXNG). Test: tests/test_brave_router_spill.py::test_a_reason_the_registry_does_not_list_does_not_spill.",
+    "Moving CALLER_DAILY_CAPS into the registry — a per-caller policy, not a per-provider budget; separate decision."
+  ]
+}

@@ -99,7 +99,79 @@ def _violation_predicate(contract: dict) -> str:
     if rule == "single_scale":
         # Cannot be expressed per-row: it is a property of the population.
         return ""
+    if rule == "required_fields":
+        # A threshold over a window, not a per-row verdict: see _check_required_fields.
+        return ""
     raise ValueError(f"unknown rule {rule!r}")
+
+
+def _empty_payload_predicate(contract: dict) -> str:
+    """SQL that is TRUE for a row whose JSON payload says nothing.
+
+    `{}`, `null`, `[]` and SQL NULL are all "nothing" here -- and unlike the
+    numeric rules, NULL IS a violation for this rule, because the point of a
+    payload column is to carry the fields; a row that exists with an empty
+    payload is a row that LOOKS fresh (its as_of advanced) and carries no data.
+    That is exactly how analyst_data_history accumulated 18,772 `{}` rows from
+    2026-08-01 that every freshness check read as current.
+
+    With `fields` declared, a payload missing any of them (or holding null for
+    it) also counts. The cast to jsonb makes this work for json and jsonb alike.
+    """
+    col = f'"{contract["column"]}"'
+    parts = [
+        f"{col} IS NULL",
+        f"({col})::jsonb = 'null'::jsonb",
+        f"({col})::jsonb = '{{}}'::jsonb",
+        f"({col})::jsonb = '[]'::jsonb",
+    ]
+    for f in contract.get("fields") or []:
+        safe = str(f).replace("'", "''")
+        parts.append(f"(({col})::jsonb ->> '{safe}') IS NULL")
+    return "(" + " OR ".join(parts) + ")"
+
+
+def _required_fields_sql(contract: dict) -> str:
+    """The one query _check_required_fields runs. Separated so it can be asserted
+    without a database."""
+    table = contract["table"]
+    win_col = f'"{contract.get("window_column") or "created_at"}"'
+    days = int(contract.get("window_days") or 30)
+    pred = _empty_payload_predicate(contract)
+    return (
+        f"SELECT count(*) FILTER (WHERE {pred}), count(*)"
+        f"  FROM {table}"
+        f" WHERE {win_col} > now() - interval '{days} days'"
+    )
+
+
+def _check_required_fields(cur, contract: dict) -> dict:
+    """A JSON payload column must carry its declared fields. Violation when more
+    than `max_empty_pct` of the rows in the window are empty or missing a field.
+
+    Population-level, like single_scale: one empty payload is a fetch that
+    found nothing; a majority of them is a producer writing rows without data.
+    The window matters because the table's history may legitimately predate the
+    fields -- the contract is about what is being written NOW.
+    """
+    cur.execute(_required_fields_sql(contract))
+    empty, total = cur.fetchone()
+    empty = int(empty or 0)
+    total = int(total or 0)
+    max_pct = float(contract.get("max_empty_pct", 0.0))
+    pct = (100.0 * empty / total) if total else 0.0
+    violating = empty if (total and pct > max_pct) else 0
+    days = int(contract.get("window_days") or 30)
+    return {
+        "violations": violating,
+        "total": total,
+        "detail": (
+            f"{empty:,} of {total:,} rows in the last {days}d have an empty payload"
+            f" ({pct:.1f}%; contract allows {max_pct:g}%)"
+            + (f"; required fields {contract['fields']}" if contract.get("fields") else "")
+        ),
+        "samples": [],
+    }
 
 
 def _check_single_scale(cur, contract: dict) -> dict:
@@ -143,6 +215,8 @@ def _check(cur, contract: dict) -> dict | None:
 
     if contract["rule"] == "single_scale":
         result = _check_single_scale(cur, contract)
+    elif contract["rule"] == "required_fields":
+        result = _check_required_fields(cur, contract)
     else:
         pred = _violation_predicate(contract)
         cur.execute(f"SELECT count(*) FROM {table} WHERE {pred}")

@@ -8,6 +8,14 @@ tax_method: FIFO
 # NOTE: No positions_file or transactions_file keys anywhere in this file.
 # All data entry is via Command Center → Import Data modal.
 # holdings.json is the single source of truth for share counts.
+#
+# Phase 6 (One Source of Truth, 2026-09-13) — per-account STATE is data-driven from here:
+#   sync_kind:         api | manual   (manual = no retail API; value is a statement entry)
+#   service_unit:      systemd --user unit the read sync depends on (detected, never repaired here)
+#   service_receipt:   health-probe JSON for that unit, relative to the project root
+#   sync_window_hours: LIVE if the last sync landed inside this window, else STALE
+#   manual_as_of:      last manual statement / entry date (manual accounts only)
+# scripts/lib/account_state.py reads these; no account id is named in code.
 
 accounts:
 
@@ -19,6 +27,8 @@ accounts:
     taxable: false
     read_only: true
     closed: true
+    sync_kind: manual
+    manual_as_of: "2026-07-16"        # last statement-derived entry (pre-ACATS snapshot)
     active: false
     rolled_to: schwab_rollover_ira
     closed_at: "2026-07-16"
@@ -33,6 +43,8 @@ accounts:
     broker: schwab
     type: rollover_ira
     account_id: "...258"
+    sync_kind: api
+    sync_window_hours: 24
     taxable: false
     drip_enabled: true
     notes: "Previously rolled from prior employer 401k. As of 2026-07-16 ALSO holds all former Fidelity Rollover IRA (#***199) assets after ACATS — SSOT is Schwab API sync. Contains worthless/revoked securities — see revoked_securities. V (Visa) concentration risk. DGRO target still pending."
@@ -57,6 +69,8 @@ accounts:
     broker: schwab
     type: roth_ira
     account_id: "...415"
+    sync_kind: api
+    sync_window_hours: 24
     taxable: false
     drip_enabled: true
     notes: "Roth conversion destination. Keep DRIP ON — dividends compound tax-free forever. Target: SCHG 30% / SCHD 60% / BND 10%."
@@ -70,6 +84,8 @@ accounts:
     broker: schwab
     type: taxable
     account_id: "...469"
+    sync_kind: api
+    sync_window_hours: 24
     taxable: true
     drip_enabled: false
     drip_note: "DRIP OFF recommended — dividends taxable when paid regardless. Take as cash for cost basis cleanliness and quarterly tax payment funding."
@@ -89,6 +105,8 @@ accounts:
     broker: alpaca
     type: taxable
     account_id: "scaffold"
+    sync_kind: api
+    sync_window_hours: 24
     taxable: true
     read_only: true
     active: false
@@ -101,6 +119,8 @@ accounts:
     broker: alpaca
     type: traditional_ira
     account_id: "scaffold"
+    sync_kind: api
+    sync_window_hours: 24
     taxable: false
     read_only: true
     active: false
@@ -113,10 +133,33 @@ accounts:
     broker: alpaca
     type: paper
     account_id: "paper"
+    sync_kind: api
+    sync_window_hours: 24
     taxable: false
     read_only: false
     active: true
     notes: "Path A paper training account — existing alpaca_paper_adapter pipeline. Canonical D1 key."
+    target_allocation: {}
+
+  # ── Moomoo live (READ-ONLY DATA · execution not built) ────────────────────
+  # Was absent from this registry entirely (same defect account_capabilities.json
+  # closed 2026-07-29). Positions merge via moomoo_live_read_sync (*/15 in session),
+  # which depends on the OpenD user unit. When that unit is failed the account is
+  # SERVICE_DOWN — never $0 (config/data_source_authority.json: holdings_accounts).
+  moomoo_taxable_live:
+    display_name: "Moomoo Taxable (Live · read-only data)"
+    broker: moomoo
+    type: taxable
+    account_id: "moomoo_taxable_live"
+    sync_kind: api
+    sync_window_hours: 24
+    service_unit: trade-ai-lab-moomoo-opend.service
+    service_receipt: data/runtime/moomoo_opend_health.json   # scripts/moomoo/opend_health.py, */5 in session
+    taxable: true
+    read_only: true
+    active: true
+    execution_built: false
+    notes: "broker_accounts: environment=live, api_read_enabled=true, api_write_enabled=false — read-only data, never routable. Launcher scripts/moomoo/opend_launch.sh."
     target_allocation: {}
 
 # ── Portfolio-wide Targets ────────────────────────────────────────────────────

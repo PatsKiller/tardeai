@@ -1,0 +1,31 @@
+[Unit]
+# Reports data sources whose EFFECTIVE health is not healthy while a job is
+# scheduled to feed them.
+#
+# The data_source_health table's status column is written once by
+# report_source() and never aged. On 2026-09-13 yahoo_finance read "healthy" on
+# a success twenty days old; brave_search, fred and alpha_vantage read "unknown"
+# since the day they were seeded; finnhub read "error" for seven weeks. The
+# health agent and the API read that column and scored the platform 75.
+#
+# Read-only: it SELECTs one table in a read-only session and reads the
+# authority registry. It never writes the ledger, never restarts a producer --
+# deciding a source should be fed is an operator judgement, and a monitor that
+# silently retries things hides the very outages it exists to report.
+Description=Trade AI data source health — report effective (decayed) status of scheduled sources
+Documentation=file:///home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/lib/data_source_health_view.py
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild
+ExecStart=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python \
+    scripts/check_data_source_health.py --alert
+
+# Exit 1 means "a scheduled source is not healthy" -- a finding, not a unit
+# failure. Treating it as a failure would bury the report and make is-failed
+# useless for spotting a monitor that genuinely broke.
+SuccessExitStatus=0 1
+TimeoutStartSec=300
+
+[Install]
+WantedBy=default.target

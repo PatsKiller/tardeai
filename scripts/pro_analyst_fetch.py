@@ -82,10 +82,28 @@ def main():
                             "recommendation_mean": info.get("recommendationMean"),
                             "recommendation_key": info.get("recommendationKey"),
                             "number_of_analyst_opinions": nop})
-        except Exception:
-            no_cov.append(s)
+        except Exception as e:
+            no_cov.append(s); errors += 1; last_exc = str(e)[:160]
     if payload:
         save_yahoo_analyst_targets_history(date_str, payload)
+    # Liveness (2026-09-13): this is the declared writer of analyst_opinion
+    # (config/data_source_authority.json) and the only scheduled daily yfinance
+    # call (cron `10 6 * * *`), yet the yahoo_finance health row was never touched
+    # by it -- it read "healthy" on a 20-day-old success. Success == rows actually
+    # persisted; every symbol erroring is a failure, not silence.
+    try:
+        from lib.data_source_report import report_source
+        attempted = len(syms[:mx])
+        if payload:
+            report_source("yahoo_finance", True, rows=len(payload))
+        elif attempted and errors >= attempted:
+            report_source("yahoo_finance", False, rows=0,
+                          error=f"{errors}/{attempted} symbols errored: {locals().get('last_exc', '')}")
+        elif attempted:
+            report_source("yahoo_finance", False, rows=0,
+                          error=f"0/{attempted} symbols returned analyst coverage ({errors} errors)")
+    except Exception:
+        pass
     print(json.dumps({"fetched_with_coverage": len(payload), "no_analyst_coverage": len(no_cov),
                       "no_coverage_sample": no_cov[:10]}, indent=2))
 

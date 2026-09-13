@@ -340,6 +340,16 @@ def load_all_portfolios(project_root_str: str) -> Dict:
             account_summaries[acct_key]["display_name"] = acct_cfg.get(
                 "display_name", acct_key)
 
+    # ── Step 4b: per-account STATE — absent is not zero (SoT Phase 6) ────────
+    # LIVE · STALE · SERVICE_DOWN · NO_API_MANUAL, from the account registry
+    # (sync_kind / service_unit / manual_as_of in portfolio_accounts.yaml) and
+    # the syncs' own receipts. Labels only: total_value, holdings_count and the
+    # position rows are untouched. This is the PRODUCER, so it alone may fall
+    # back to `systemctl --user is-failed <unit>` when no receipt can say.
+    # Covers every account_summaries entry, including the ones with no rows
+    # (a failed sync or a manual custodian has no rows — that is the point).
+    _annotate_account_states(account_summaries, repriced, accounts_cfg, project_root)
+
     portfolio_total = round(
         sum(v.get("total_value", 0) for v in account_summaries.values()), 2)
     portfolio_day_change = round(
@@ -417,11 +427,40 @@ def load_all_portfolios(project_root_str: str) -> Dict:
         total = account_summaries.get(acct_key, {}).get("total_value", 0)
         count = len([h for h in holdings_by_acct[acct_key]
                      if not h.get("is_loan")])
-        print(f"  [loader]   {display}: {count} holdings | ${total:,.2f}")
+        _st = account_summaries.get(acct_key, {}).get("state") or "UNCLASSIFIED"
+        print(f"  [loader]   {display}: {count} holdings | ${total:,.2f} | {_st}")
+    for acct_key in sorted(set(account_summaries) - set(holdings_by_acct)):
+        _s = account_summaries.get(acct_key, {})
+        _blk = _s.get("account_state") or {}
+        print(f"  [loader]   {_s.get('display_name', acct_key)}: 0 holdings | "
+              f"{_s.get('state') or 'UNCLASSIFIED'} — {_s.get('state_reason')} | "
+              f"last known ${(_blk.get('last_known_value') or 0):,.2f} as of {_blk.get('last_known_value_as_of')}")
 
     print(f"  [loader] TOTAL PORTFOLIO: ${portfolio_total:,.2f} "
           f"across {len(holdings_by_acct)} accounts")
     return updated
+
+
+def _annotate_account_states(account_summaries: Dict, holdings: List[Dict],
+                             accounts_cfg: Dict, project_root: Path) -> Dict:
+    """Producer-side account state stamp. Never raises — a labelling failure must
+    not stop a reprice; it is printed and the previous labels stand."""
+    try:
+        try:
+            from lib.account_state import annotate_account_states
+        except ImportError:
+            import sys as _sys
+            _here = str(Path(__file__).resolve().parent)
+            if _here not in _sys.path:
+                _sys.path.insert(0, _here)
+            from lib.account_state import annotate_account_states
+        return annotate_account_states(
+            account_summaries, holdings, accounts_cfg,
+            project_root=project_root, allow_shell=True,
+        )
+    except Exception as e:  # noqa: BLE001
+        print(f"  [loader] WARNING: account state classification failed: {e}")
+        return {}
 
 
 def save_state(portfolio: Dict, project_root_str: str) -> None:

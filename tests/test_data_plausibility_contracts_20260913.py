@@ -26,7 +26,11 @@ import data_plausibility_monitor as dpm  # noqa: E402
 
 CONTRACTS = json.loads((ROOT / "config" / "data_plausibility_contracts.json").read_text())["contracts"]
 
-VALID_RULES = {"range", "min", "max", "finite", "single_scale"}
+VALID_RULES = {"range", "min", "max", "finite", "single_scale", "required_fields"}
+# Rules that are a property of the population, not of any one row: they have no
+# per-row predicate. single_scale since 09-13 a.m.; required_fields since 09-13
+# p.m. (analyst_data_history: 18,772 `{}` payloads that looked fresh).
+POPULATION_RULES = {"single_scale", "required_fields"}
 VALID_SEVERITIES = {"BLOCK", "WARN"}
 
 
@@ -44,6 +48,10 @@ def test_contract_is_well_formed(c):
     )
     if c["rule"] == "range":
         assert c["min"] < c["max"]
+    if c["rule"] == "required_fields":
+        assert c.get("window_column"), "required_fields is measured inside a window; name the timestamp column"
+        assert 0 <= float(c.get("max_empty_pct", -1)) < 100, "max_empty_pct is a share of rows, 0..100"
+        assert int(c.get("window_days", 0)) > 0
 
 
 def test_every_contract_has_a_distinct_target():
@@ -96,7 +104,10 @@ def test_unknown_rule_raises_rather_than_matching_nothing():
 
 def test_column_names_are_quoted_so_a_reserved_word_cannot_break_the_sql():
     for c in CONTRACTS:
-        if c["rule"] == "single_scale":
+        if c["rule"] in POPULATION_RULES:
+            # no per-row predicate; the population query quotes the column itself
+            if c["rule"] == "required_fields":
+                assert f'"{c["column"]}"' in dpm._required_fields_sql(c)
             continue
         assert f'"{c["column"]}"' in dpm._violation_predicate(c)
 

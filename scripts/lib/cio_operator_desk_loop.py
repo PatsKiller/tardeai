@@ -1366,6 +1366,147 @@ def _emit_telegram_desk_payload(intent: dict[str, Any], result: dict[str, Any]) 
         pass
 
 
+#: Phase 7 gap resolver switch. ON by default; "0" restores the pre-Phase-7
+#: path (open a pending, enqueue Hermes when research blocks) for the negative
+#: control and for rollback.
+def _gap_resolver_enabled() -> bool:
+    return _env("CIO_GAP_RESOLVER", "1").lower() not in ("0", "false", "off", "no")
+
+
+def _resolve_blocking_gaps(
+    blocking: list[dict[str, Any]],
+    *,
+    intent: dict[str, Any],
+    text: str,
+    chat_id: str,
+    pending_id: str,
+) -> dict[str, Any]:
+    """Run the gap resolver over each distinct blocking gap. Never raises.
+
+    Returns the three exits the desk needs -- answered / queued / denied -- plus
+    a compact receipt for the pending row and the result payload.
+    """
+    try:
+        from scripts.lib.gap_resolver import Context, DataGap, resolve
+    except ImportError:  # pragma: no cover -- hub import path
+        from lib.gap_resolver import Context, DataGap, resolve  # type: ignore
+
+    symbols = [str(s).upper() for s in (intent.get("symbols") or []) if str(s).strip()]
+
+    def _recheck() -> Any:
+        ev = gather_tradeai_evidence(intent)
+        return ev.get("available") if ev.get("complete") else None
+
+    ctx = Context(chat_id=chat_id, pending_id=pending_id, operator_text=text, recheck=_recheck,
+                  hermes_enqueue=_enqueue_hermes_research)
+    answered: list[dict[str, Any]] = []
+    queued: list[dict[str, Any]] = []
+    denied: list[dict[str, Any]] = []
+    errors: list[str] = []
+    seen: set[tuple[str, str]] = set()
+    for g in blocking[:6]:
+        domain = str(g.get("domain") or g.get("field") or "unknown")
+        subject = str(g.get("symbol") or (symbols[0] if symbols else "BOOK")).upper()
+        if (domain, subject) in seen:
+            continue
+        seen.add((domain, subject))
+        reason = str(g.get("reason") or g.get("gap_type") or "")
+        why = "stale_hours" if "stale" in reason.lower() else "no_coverage"
+        gap = DataGap(
+            domain=domain,
+            subject=subject,
+            question=(text or f"{domain} for {subject}")[:300],
+            why=why,
+            requester=f"operator:{chat_id}" if chat_id else "desk",
+            symbols=symbols,
+        )
+        try:
+            res = resolve(gap, ctx=ctx)
+        except Exception as exc:  # noqa: BLE001 -- the desk must still reply
+            errors.append(f"{domain}:{type(exc).__name__}")
+            continue
+        row = res.to_dict()
+        row["desk_domain"] = domain
+        if res.answered or (res.outcome == "partial" and res.answer is not None):
+            answered.append(row)
+        elif res.eta_seconds is not None:
+            queued.append(row)
+        else:
+            denied.append(row)
+
+    etas = [int(r["eta_seconds"]) for r in queued if r.get("eta_seconds") is not None]
+    eta_seconds = max(etas) if etas else None
+    eta_text = None
+    if eta_seconds is not None:
+        eta_text = f"≈ {max(1, int(round(eta_seconds / 60.0)))} min"
+    receipt = {
+        "answered": [f"{r['domain']}:{r['subject']}:{r.get('vector')}" for r in answered],
+        "queued": [f"{r['domain']}:{r['subject']}:{r.get('vector')}" for r in queued],
+        "denied": [f"{r['domain']}:{r['subject']}" for r in denied],
+        "attempts": sum(len(r.get("attempts") or []) for r in answered + queued + denied),
+        "errors": errors,
+        "eta_seconds": eta_seconds,
+    }
+    return {
+        "answered": answered,
+        "queued": queued,
+        "denied": denied,
+        "errors": errors,
+        "eta_seconds": eta_seconds,
+        "eta_text": eta_text,
+        "receipt": receipt,
+    }
+
+
+def _format_resolved_answer(summary: dict[str, Any], *, intent: dict[str, Any]) -> str:
+    """A vector answered. Say what, from where, and how old -- never as 'now'."""
+    lines = ["🧠 *Alex · found it through a declared source*"]
+    for r in summary.get("answered") or []:
+        src = r.get("source") or r.get("vector") or "unknown"
+        age = r.get("age_hours")
+        age_txt = f", {age:g}h old" if isinstance(age, (int, float)) else ""
+        head = f"• *{r.get('subject')}* {str(r.get('domain') or '').replace('_', ' ')} — via `{src}`"
+        if r.get("as_of"):
+            head += f" · as of {str(r.get('as_of'))[:16]}{age_txt}"
+        lines.append(head)
+        ans = r.get("answer")
+        if isinstance(ans, dict):
+            if ans.get("source") == "llm_curation":
+                lines.append(f"  _curated by {ans.get('model')} from gathered evidence — not a fact source_")
+                lines.append("  " + str(ans.get("text") or "")[:700])
+            else:
+                bits = [
+                    f"{k}={v}" for k, v in ans.items()
+                    if k not in ("as_of", "source", "symbol", "provider", "note") and v is not None
+                ]
+                lines.append("  " + ", ".join(bits)[:600])
+        elif ans is not None:
+            lines.append("  " + str(ans)[:700])
+    if summary.get("queued"):
+        lines.append(f"_Also queued: {', '.join(summary['receipt']['queued'])} — {summary.get('eta_text')}_")
+    lines.append(f"No orders/stops · {AUTHORITY}")
+    return "\n".join(lines)
+
+
+def _format_no_coverage(summary: dict[str, Any], *, intent: dict[str, Any]) -> str:
+    """Every vector denied or empty. Say so; open nothing."""
+    lines = ["📭 *Alex · no coverage through any declared source*"]
+    for r in summary.get("denied") or []:
+        tried = ", ".join(
+            f"{a.get('vector')}={a.get('outcome')}" for a in (r.get("attempts") or [])
+        ) or "no vectors declared"
+        beh = r.get("no_coverage_behaviour") or "say_so"
+        lines.append(
+            f"• *{r.get('subject')}* {str(r.get('domain') or '').replace('_', ' ')} — tried {tried}; "
+            f"declared behaviour `{beh}`"
+        )
+    if summary.get("errors"):
+        lines.append(f"_Resolver errors: {', '.join(summary['errors'])}_")
+    lines.append("No pending opened — nothing declared can answer this today. Ask again tomorrow or name a source.")
+    lines.append(f"No orders/stops · {AUTHORITY}")
+    return "\n".join(lines)
+
+
 def handle_operator_desk_question(
     text: str,
     *,
@@ -1432,46 +1573,117 @@ def handle_operator_desk_question(
             })
             return result
 
-        if any(g.get("domain") == "hermes_research" for g in blocking):
-            _enqueue_hermes_research(
-                symbols=[str(s).upper() for s in (intent.get("symbols") or [])],
-                chat_id=str(chat_id),
-                pending_id=pending_id,
-                operator_text=text or "",
+        # ── Phase 7: go find out, through declared vectors, before promising ──
+        # The gap resolver walks the domain's on_gap chain (refresh_producer →
+        # backup_provider → governed_search → hermes_research → llm_curation →
+        # operator_ask), free before metered before paid, one receipt per
+        # attempt. Three exits: a fast vector answered → answer now; only a slow
+        # vector was queued → open the pending WITH its ETA; every vector
+        # denied or exhausted → say no_coverage, and open nothing. Before this
+        # the desk opened a pending and hoped.
+        eta_seconds: Optional[int] = None
+        eta_text: Optional[str] = None
+        resolver_summary: Optional[dict[str, Any]] = None
+        if _gap_resolver_enabled():
+            resolver_summary = _resolve_blocking_gaps(
+                blocking, intent=intent, text=text or "", chat_id=str(chat_id), pending_id=pending_id,
             )
-        gap_bits = []
-        for g in blocking[:6]:
-            sym = g.get("symbol") or "book"
-            gap_bits.append(f"{sym}:{g.get('field') or g.get('reason')}")
-        _append_jsonl(PENDING_PATH, {
-            "pending_id": pending_id,
-            "status": "open",
-            "ts": _now(),
-            "chat_id": str(chat_id),
-            "message_id": str(message_id),
-            "channel": channel,
-            "operator_text": (text or "")[:1000],
-            "intent": intent,
-            "blocking_gaps": blocking,
-            "authority": AUTHORITY,
-        })
-        result.update({
-            "kind": "deferred",
-            "pending_id": pending_id,
-            "text": (
-                "🧠 *Alex · Trade-AI pull queued*\n"
-                f"I analyzed your ask (`{intent.get('intent')}`). "
-                "Required facts are not fully in Trade-AI yet:\n"
-                + "\n".join(f"• `{b}`" for b in gap_bits)
-                + "\n\nQueued into the controlled gap pipeline. "
-                f"I'll reply here when it lands.\n"
-                f"Pending: `{pending_id}`\n"
-                "No orders/stops · READ_ONLY_ADVISORY"
-            ),
-            "reply_source": "deferred_gap",
-        })
-        _emit_telegram_desk_payload(intent, result)
-        return result
+            result["gap_resolution"] = resolver_summary.get("receipt")
+            if resolver_summary.get("answered"):
+                # Did the store itself now answer? Then the normal curated path
+                # runs on real evidence. Otherwise answer from the vector's
+                # payload, labelled with where it came from and how old it is.
+                evidence2 = gather_tradeai_evidence(intent)
+                if evidence2.get("complete"):
+                    evidence = evidence2
+                    result.update({
+                        "evidence_complete": True,
+                        "gaps": evidence.get("gaps") or [],
+                        "blocking_gaps": [],
+                        "sources": evidence.get("sources") or [],
+                    })
+                    blocking = []
+                else:
+                    result.update({
+                        "kind": "answered",
+                        "pending_id": None,
+                        "text": _format_resolved_answer(resolver_summary, intent=intent),
+                        "reply_source": "gap_resolver:" + str(resolver_summary["answered"][0].get("vector")),
+                        "model": resolver_summary["answered"][0].get("model"),
+                    })
+                    _emit_telegram_desk_payload(intent, result)
+                    return result
+            elif resolver_summary.get("queued"):
+                eta_seconds = resolver_summary.get("eta_seconds")
+                eta_text = resolver_summary.get("eta_text")
+            elif resolver_summary.get("errors") and not resolver_summary.get("denied"):
+                # The resolver itself broke on every gap. That is a defect in
+                # the resolver, not a fact about coverage: fall back to the
+                # pre-Phase-7 path (pending + Hermes) rather than tell the
+                # operator "no coverage" on the strength of a traceback.
+                resolver_summary = None
+            else:
+                # Every declared vector was denied, exhausted or empty. A
+                # pending here would be the silent promise this exists to end.
+                result.update({
+                    "kind": "no_coverage",
+                    "pending_id": None,
+                    "text": _format_no_coverage(resolver_summary, intent=intent),
+                    "reply_source": "gap_resolver:no_coverage",
+                })
+                _emit_telegram_desk_payload(intent, result)
+                return result
+
+        if blocking:
+            if resolver_summary is None and any(g.get("domain") == "hermes_research" for g in blocking):
+                # Pre-Phase-7 path (resolver disabled): Hermes when research blocks.
+                _enqueue_hermes_research(
+                    symbols=[str(s).upper() for s in (intent.get("symbols") or [])],
+                    chat_id=str(chat_id),
+                    pending_id=pending_id,
+                    operator_text=text or "",
+                )
+            gap_bits = []
+            for g in blocking[:6]:
+                sym = g.get("symbol") or "book"
+                gap_bits.append(f"{sym}:{g.get('field') or g.get('reason')}")
+            _append_jsonl(PENDING_PATH, {
+                "pending_id": pending_id,
+                "status": "open",
+                "ts": _now(),
+                "chat_id": str(chat_id),
+                "message_id": str(message_id),
+                "channel": channel,
+                "operator_text": (text or "")[:1000],
+                "intent": intent,
+                "blocking_gaps": blocking,
+                "authority": AUTHORITY,
+                **({"eta_seconds": eta_seconds, "resolver": resolver_summary.get("receipt")}
+                   if resolver_summary is not None else {}),
+            })
+            queued_line = (
+                f"Queued into the controlled gap pipeline — {eta_text} until it lands. "
+                if eta_text else
+                "Queued into the controlled gap pipeline. "
+            )
+            result.update({
+                "kind": "deferred",
+                "pending_id": pending_id,
+                "eta_seconds": eta_seconds,
+                "text": (
+                    "🧠 *Alex · Trade-AI pull queued*\n"
+                    f"I analyzed your ask (`{intent.get('intent')}`). "
+                    "Required facts are not fully in Trade-AI yet:\n"
+                    + "\n".join(f"• `{b}`" for b in gap_bits)
+                    + "\n\n" + queued_line
+                    + "I'll reply here when it lands.\n"
+                    f"Pending: `{pending_id}`\n"
+                    "No orders/stops · READ_ONLY_ADVISORY"
+                ),
+                "reply_source": "deferred_gap",
+            })
+            _emit_telegram_desk_payload(intent, result)
+            return result
 
     curated = _curate_from_evidence(text, evidence)
     soft = [g for g in (evidence.get("gaps") or []) if g not in blocking]

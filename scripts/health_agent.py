@@ -2769,25 +2769,65 @@ def collect_data_source_health() -> list[dict]:
         return []
     out: list[dict] = []
     weekend_factor = float(cfg.get("weekend_stale_factor", 3.0))
-    rows = _db("""SELECT source_key, status, last_success_at, max_stale_minutes, last_error
-                  FROM data_source_health WHERE last_success_at IS NOT NULL""", fetch="all") or []
-    for r in rows:
-        try:
-            last = r.get("last_success_at")
-            max_stale_m = float(r.get("max_stale_minutes") or 1440)
-            age_m = (datetime.now(timezone.utc) - last).total_seconds() / 60.0
-        except Exception:
-            continue
-        allowed_m = max_stale_m * (weekend_factor if _IS_WEEKEND else 1.0)
-        if age_m <= allowed_m:
+    # DECAY (2026-09-13, AGENTS.md §7A rule 6): the raw `status` column is what
+    # report_source() last wrote, however long ago. yahoo_finance read "healthy"
+    # on a 20-day-old success and brave_search/fred/alpha_vantage read "unknown"
+    # forever, and this collector scored the platform 75 while that was true.
+    # Every row now passes through data_source_health_view: healthy only inside
+    # the registry window, else unknown/error. Rows with NO success are included
+    # so a source that was never wired is reported when something is scheduled
+    # to feed it.
+    from lib.data_source_health_view import (
+        HEALTHY, ERROR, load_registry, view_rows, has_scheduled_caller,
+    )
+    registry = load_registry()
+    now_utc = datetime.now(timezone.utc)
+    rows = _db("""SELECT source_key, status, last_success_at, last_failure_at,
+                         max_stale_minutes, last_error, failure_count
+                  FROM data_source_health""", fetch="all") or []
+    for r in view_rows(rows, now_utc, registry):
+        eff = r.get("status")
+        if eff == HEALTHY:
             continue
         src = r.get("source_key")
+        age_m = r.get("age_minutes")
+        win_m = float(r.get("window_minutes") or 1440)
+        last_err = (r.get("last_error") or "")[:200]
+        if age_m is None:
+            # Never succeeded. A finding only if something is scheduled to feed it;
+            # an idle key with no caller is not an outage, it is an empty row.
+            if not has_scheduled_caller(src):
+                continue
+            if eff == ERROR:
+                # fall through to the auth/stale classification below with age=∞
+                age_m = float("inf")
+            else:
+                out.append(_f("data_quality", "data_source_never_reported", "warning",
+                              f"data source '{src}' has a scheduled caller but has never "
+                              f"reported a success (effective status unknown)",
+                              source=src, effective_status=eff, decayed=False))
+                continue
+        # Weekend grace is applied to the WINDOW, never to the verdict: a source
+        # inside window*factor on a weekend is info, not silent.
+        allowed_m = win_m * (weekend_factor if _IS_WEEKEND else 1.0)
+        if eff != ERROR and age_m <= allowed_m:
+            # decayed by the registry window but inside the weekend grace
+            out.append(_f("data_quality", "data_source_stale", "info",
+                          f"data source '{src}' stale: last success {age_m / 60:.1f}h ago "
+                          f"(window {win_m / 60:.1f}h) [weekend]",
+                          source=src, last_error=last_err[:120], decayed=bool(r.get("decayed")),
+                          age_minutes=age_m, effective_status=eff))
+            continue
         # Weekday-only ingestion lanes legitimately go stale over the weekend — house
         # convention (see collect_data_quality): visible as info + [weekend], escalates Monday.
         sev = "info" if _IS_WEEKEND else ("critical" if age_m > allowed_m * 3 else "warning")
-        msg = (f"data source '{src}' stale: last success {age_m / 60:.1f}h ago "
-               f"(max {max_stale_m / 60:.1f}h)" + (" [weekend]" if _IS_WEEKEND else ""))
-        last_err = (r.get("last_error") or "")[:200]
+        if age_m == float("inf"):
+            msg = f"data source '{src}' failing and has never succeeded"
+        else:
+            msg = (f"data source '{src}' {'failing' if eff == ERROR else 'stale'}: last success "
+                   f"{age_m / 60:.1f}h ago (window {win_m / 60:.1f}h)"
+                   + (" [weekend]" if _IS_WEEKEND else "")
+                   + (" [table still said healthy]" if r.get("decayed") else ""))
         if src == "finviz":
             # Prefer last_error cookie/zero-row signals (no live HTTP) before the probe.
             try:
@@ -2830,8 +2870,14 @@ def collect_data_source_health() -> list[dict]:
                           reauth_cmd=(f".venv/bin/python scripts/secrets/render_env.py --now && "
                                       f".venv/bin/python scripts/secret_validators.py {src.upper()}_API_KEY")))
             continue
-        out.append(_f("data_quality", "data_source_stale", sev, msg,
-                      source=src, last_error=last_err))
+        # Type stays `data_source_stale` for BOTH stale and failing so the policy's
+        # remediation_map / operator_action lists keep applying; `effective_status`
+        # carries the distinction.
+        out.append(_f("data_quality", "data_source_stale",
+                      sev, msg, source=src, last_error=last_err,
+                      decayed=bool(r.get("decayed")),
+                      age_minutes=None if age_m == float("inf") else age_m,
+                      effective_status=eff))
     return out
 
 

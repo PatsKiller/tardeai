@@ -31,6 +31,7 @@ import {
   type PortfolioSignalTab,
 } from '../lib/portfolioDeepLink'
 import { downloadHoldingsCsv } from '../lib/exportHoldingsCsv'
+import { BB, T, DASH } from '../lib/watchTokens'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 const TABS = ['Holdings', 'Allocation', 'Look-through', 'Returns', 'Dividends', 'Forecast', 'Tax', 'Redeploy', 'Stop Management'] as const
@@ -295,6 +296,20 @@ export default function PortfolioHub({ onDrill }: Props) {
   }
   const accounts = Object.entries(acctMap).sort((a, b) => b[1].value - a[1].value)
   const acctColor = (a: string) => ACCT_COLORS[Math.max(0, accounts.findIndex(([k]) => k === a)) % ACCT_COLORS.length]
+  // SoT Phase 6 — per-account STATE from /api/v2/overview portfolio_aggregate.accounts[].
+  // A non-LIVE account shows its label and its last known value with a date; the total
+  // names what it left out (excluded_accounts). Absent is not zero.
+  const aggAccounts: any[] = Array.isArray((overview as any)?.portfolio_aggregate?.accounts)
+    ? (overview as any).portfolio_aggregate.accounts : []
+  const acctState = (a: string): { state?: string; reason?: string; lastValue?: number | null; asOf?: string | null } => {
+    const row = aggAccounts.find(r => r?.account === a)
+    return row ? { state: row.state, reason: row.state_reason, lastValue: row.last_known_value, asOf: row.last_known_value_as_of ?? row.state_as_of } : {}
+  }
+  const excludedAccounts: any[] = Array.isArray((overview as any)?.portfolio_aggregate?.excluded_accounts)
+    ? (overview as any).portfolio_aggregate.excluded_accounts : []
+  // Account-state rail: favorable / attention / breach from the house tokens; the manual
+  // (no-API) state borrows the muted external-intel tint, badges only. No raw hex here.
+  const STATE_COLOR: Record<string, string> = { LIVE: BB.green, STALE: BB.amber, SERVICE_DOWN: BB.red, NO_API_MANUAL: T.extIntel.hermes, UNCLASSIFIED: BB.text3 }
   const acctFiltered = acctFilter ? allHoldings.filter((h: any) => (h.account ?? 'unknown') === acctFilter) : allHoldings
   // signal sub-tab filter + per-bucket counts
   const sigCount = (sigs: string[]) => sigs.length === 0 ? acctFiltered.length
@@ -565,8 +580,18 @@ export default function PortfolioHub({ onDrill }: Props) {
             }}>
               <span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', background: acctColor(a), marginRight: 5 }} />
               {accountFullName(a)} ({info.n})
+              {(() => { const st = acctState(a); return st.state && st.state !== 'LIVE' ? (
+                <span title={st.reason ?? st.state} style={{ marginLeft: 5, padding: '0 5px', borderRadius: 8, fontSize: DASH.chip, fontWeight: 700, letterSpacing: .3, border: `1px solid ${STATE_COLOR[st.state] ?? BB.border}`, color: STATE_COLOR[st.state] ?? BB.text3 }}>
+                  {st.state.replace('_', ' ')}{st.lastValue != null ? ` · last ${fmt$(st.lastValue)}${st.asOf ? ` @ ${String(st.asOf).slice(0, 10)}` : ''}` : ''}
+                </span>
+              ) : null })()}
             </button>
           ))}
+          {excludedAccounts.length > 0 && (
+            <span title={excludedAccounts.map(e => `${e.account}: ${e.state} — ${e.reason ?? ''}`).join('\n')} style={{ fontSize: 10, color: 'var(--text3)', marginLeft: 4 }}>
+              · total leaves out {excludedAccounts.map(e => `${accountFullName(e.account)} (${String(e.state).replace('_', ' ')}${e.last_value != null ? `, last ${fmt$(e.last_value)}${e.as_of ? ` @ ${String(e.as_of).slice(0, 10)}` : ''}` : ''})`).join(', ')}
+            </span>
+          )}
         </div>
       )}
 

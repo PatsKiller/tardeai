@@ -10,7 +10,8 @@
     "A backup answers the SAME question from a different provider. Cross-domain substitution is not a backup.",
     "A retired provider has zero call sites outside scripts/lib/retired_providers.py and the secret-hygiene scanners.",
     "A provider that stops reporting decays to unknown in data_source_health; healthy means succeeded within its window.",
-    "Adding a source: add it here first (domain, store, writer, projection, backup, retired) and to AGENTS.md section 7B in the same PR. The gate fails on an undeclared provider host or SDK import."
+    "Adding a source: add it here first (domain, store, writer, projection, backup, retired) and to AGENTS.md section 7B in the same PR. The gate fails on an undeclared provider host or SDK import.",
+    "Every domain declares on_gap: the ordered, budgeted vectors the gap resolver may run when the store is stale or empty. Free before metered before paid; operator_ask last; retired providers never."
   ],
   "served_from": {
     "root": "/home/johnclaw/trade-ai-releases/persistent-state/data",
@@ -125,7 +126,7 @@
         "api.stlouisfed.org",
         "FRED_API"
       ],
-      "status": "active_unwired_health",
+      "status": "active",
       "supplies": [
         "macro"
       ]
@@ -137,7 +138,7 @@
         "alphavantage.co",
         "ALPHA_VANTAGE"
       ],
-      "status": "active_unwired_health",
+      "status": "active",
       "supplies": [
         "fundamentals"
       ]
@@ -154,7 +155,9 @@
       "budget": {
         "daily": 120,
         "monthly": 1500,
-        "ledger": "data/runtime/search_budget.json"
+        "monthly_reserve_for_on_demand": 200,
+        "ledger": "data/runtime/search_budget.json",
+        "receipts": "denial_receipts in the same ledger; overflow -> data/runtime/search_budget_receipts_archive.jsonl"
       },
       "supplies": [
         "web_search"
@@ -169,7 +172,8 @@
       ],
       "status": "active",
       "budget": {
-        "daily": 10000
+        "daily": 10000,
+        "monthly": 300000
       },
       "supplies": [
         "web_search"
@@ -184,11 +188,13 @@
       ],
       "status": "configured_unused",
       "budget": {
-        "daily": 20
+        "daily": 20,
+        "monthly": 500
       },
       "supplies": [
         "web_search"
-      ]
+      ],
+      "_note": "Declared, budget 20/day, status configured_unused: NO client exists in this tree and scripts/lib/brave_router.SPILL_ADAPTERS has no tavily entry. Spill receipts record it as NO_ADAPTER. Wire a client (one shared module, like searxng_client.py) and add the adapter before changing status to active."
     },
     "finnhub": {
       "class": "live_external",
@@ -306,7 +312,13 @@
       "supplies": [
         "positions"
       ],
-      "_note": "trade-ai-lab-moomoo-opend.service failed; account renders SERVICE_DOWN, never $0."
+      "_note": "trade-ai-lab-moomoo-opend.service failed; account renders SERVICE_DOWN, never $0.",
+      "service_unit": "trade-ai-lab-moomoo-opend.service",
+      "service_launcher": "scripts/moomoo/opend_launch.sh",
+      "health_receipt": "data/runtime/moomoo_opend_health.json",
+      "sync_module": "scripts/moomoo_live_read_sync.py",
+      "sync_receipt": "data/runtime/sync_receipts/moomoo_taxable_live.json",
+      "_measured_2026-09-13": "unit failed at start, exit 78 / EX_CONFIG: MOOMOO_OPEND_LOGIN_ACCOUNT not in the Bitwarden render (/run/user/1000/tradeai/env). Operator repair; Phase 6 only detects it."
     },
     "fidelity": {
       "class": "manual",
@@ -318,7 +330,9 @@
       "status": "no_api_manual",
       "supplies": [
         "positions"
-      ]
+      ],
+      "manual_as_of_source": "assets/portfolio_accounts.yaml accounts.<key>.manual_as_of",
+      "_note": "fidelity_rollover_ira is declared sync_kind=manual, manual_as_of=2026-07-16. The YAML also records closed=true, rolled_to=schwab_rollover_ira (ACATS 2026-07-16); the state block carries registry_closed / registry_rolled_to so a reader can label the last known $566,439.39 as a pre-transfer snapshot, not a missing half-million and not a $0."
     }
   },
   "domains": [
@@ -351,7 +365,27 @@
       "no_coverage": "last_price_with_age_and_source",
       "writer_status": "UNCONSOLIDATED",
       "writer_target": "scripts/external_market_data_ingest.py",
-      "_writer_note": "3 modules write this store today (2026-09-13). The gate's writer-count ceiling can only fall; scripts/external_market_data_ingest.py is the module the others must call."
+      "_writer_note": "3 modules write this store today (2026-09-13). The gate's writer-count ceiling can only fall; scripts/external_market_data_ingest.py is the module the others must call.",
+      "on_gap": [
+        {
+          "vector": "refresh_producer",
+          "cost_class": "free",
+          "max_per_day": 24,
+          "expected_seconds": 120
+        },
+        {
+          "vector": "backup_provider",
+          "cost_class": "free",
+          "max_per_day": 24,
+          "expected_seconds": 30
+        },
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 7200
+        }
+      ]
     },
     {
       "domain": "symbol_identity",
@@ -378,7 +412,39 @@
       "no_coverage": "say_so",
       "writer_status": "UNCONSOLIDATED",
       "writer_target": "scripts/build_symbol_profiles.py",
-      "_writer_note": "8 modules write this store today (2026-09-13). The gate's writer-count ceiling can only fall; scripts/build_symbol_profiles.py is the module the others must call."
+      "_writer_note": "8 modules write this store today (2026-09-13). The gate's writer-count ceiling can only fall; scripts/build_symbol_profiles.py is the module the others must call.",
+      "on_gap": [
+        {
+          "vector": "refresh_producer",
+          "cost_class": "free",
+          "max_per_day": 6,
+          "expected_seconds": 120
+        },
+        {
+          "vector": "backup_provider",
+          "cost_class": "free",
+          "max_per_day": 12,
+          "expected_seconds": 30
+        },
+        {
+          "vector": "governed_search",
+          "cost_class": "metered",
+          "max_per_day": 4,
+          "expected_seconds": 20
+        },
+        {
+          "vector": "llm_curation",
+          "cost_class": "metered",
+          "max_per_day": 2,
+          "expected_seconds": 60
+        },
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 7200
+        }
+      ]
     },
     {
       "domain": "analyst_opinion",
@@ -414,7 +480,42 @@
         "finnhub"
       ],
       "no_coverage": "say_so",
-      "_writer_note": "INSERT lives in db_adapter.save_yahoo_analyst_targets_history; pro_analyst_fetch.py (06:10 daily) is the scheduled caller. analyst_coverage.py and etf_analyst_enrich.py also call it — same helper, same store, same scale."
+      "_writer_note": "INSERT lives in db_adapter.save_yahoo_analyst_targets_history; pro_analyst_fetch.py (06:10 daily) is the scheduled caller. analyst_coverage.py and etf_analyst_enrich.py also call it — same helper, same store, same scale.",
+      "answers": [
+        "analyst_targets"
+      ],
+      "on_gap": [
+        {
+          "vector": "refresh_producer",
+          "cost_class": "free",
+          "max_per_day": 6,
+          "expected_seconds": 120
+        },
+        {
+          "vector": "backup_provider",
+          "cost_class": "free",
+          "max_per_day": 12,
+          "expected_seconds": 30
+        },
+        {
+          "vector": "governed_search",
+          "cost_class": "metered",
+          "max_per_day": 6,
+          "expected_seconds": 20
+        },
+        {
+          "vector": "llm_curation",
+          "cost_class": "metered",
+          "max_per_day": 4,
+          "expected_seconds": 60
+        },
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 7200
+        }
+      ]
     },
     {
       "domain": "catalyst_news",
@@ -446,7 +547,53 @@
       "no_coverage": "say_so",
       "writer_status": "UNCONSOLIDATED",
       "writer_target": "scripts/news_ingestion.py",
-      "_writer_note": "16 modules write this store today (2026-09-13). The gate's writer-count ceiling can only fall; scripts/news_ingestion.py is the module the others must call."
+      "_writer_note": "16 modules write this store today (2026-09-13). The gate's writer-count ceiling can only fall; scripts/news_ingestion.py is the module the others must call.",
+      "answers": [
+        "news",
+        "news_feed",
+        "web_search"
+      ],
+      "search_backup": {
+        "via": "scripts/lib/brave_router.py",
+        "kind": "news",
+        "caller": "catalyst_intelligence",
+        "one_pull_per_ticker": true,
+        "only_when": "every live slot returned zero fresh articles",
+        "label": "source=search:<provider>",
+        "no_spill": false
+      },
+      "on_gap": [
+        {
+          "vector": "refresh_producer",
+          "cost_class": "free",
+          "max_per_day": 6,
+          "expected_seconds": 120
+        },
+        {
+          "vector": "backup_provider",
+          "cost_class": "free",
+          "max_per_day": 12,
+          "expected_seconds": 30
+        },
+        {
+          "vector": "governed_search",
+          "cost_class": "metered",
+          "max_per_day": 20,
+          "expected_seconds": 20
+        },
+        {
+          "vector": "llm_curation",
+          "cost_class": "metered",
+          "max_per_day": 6,
+          "expected_seconds": 60
+        },
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 7200
+        }
+      ]
     },
     {
       "domain": "technicals",
@@ -472,7 +619,30 @@
       "no_coverage": "say_so",
       "writer_status": "UNCONSOLIDATED",
       "writer_target": "scripts/portfolio_repricer.py",
-      "_writer_note": "4 modules write this store today (2026-09-13). The gate's writer-count ceiling can only fall; scripts/portfolio_repricer.py is the module the others must call."
+      "_writer_note": "4 modules write this store today (2026-09-13). The gate's writer-count ceiling can only fall; scripts/portfolio_repricer.py is the module the others must call.",
+      "projection_secondary": [
+        "daily_bars"
+      ],
+      "on_gap": [
+        {
+          "vector": "refresh_producer",
+          "cost_class": "free",
+          "max_per_day": 12,
+          "expected_seconds": 120
+        },
+        {
+          "vector": "backup_provider",
+          "cost_class": "free",
+          "max_per_day": 12,
+          "expected_seconds": 30
+        },
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 7200
+        }
+      ]
     },
     {
       "domain": "sector_momentum",
@@ -494,7 +664,27 @@
         "finviz_sector_view"
       ],
       "retired": [],
-      "no_coverage": "say_so"
+      "no_coverage": "say_so",
+      "on_gap": [
+        {
+          "vector": "refresh_producer",
+          "cost_class": "free",
+          "max_per_day": 6,
+          "expected_seconds": 120
+        },
+        {
+          "vector": "backup_provider",
+          "cost_class": "free",
+          "max_per_day": 12,
+          "expected_seconds": 30
+        },
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 7200
+        }
+      ]
     },
     {
       "domain": "industry_momentum",
@@ -513,7 +703,21 @@
       "primary_provider": "finviz",
       "backup": [],
       "retired": [],
-      "no_coverage": "show_sector_with_industry_unavailable"
+      "no_coverage": "show_sector_with_industry_unavailable",
+      "on_gap": [
+        {
+          "vector": "refresh_producer",
+          "cost_class": "free",
+          "max_per_day": 6,
+          "expected_seconds": 120
+        },
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 7200
+        }
+      ]
     },
     {
       "domain": "market_regime",
@@ -524,7 +728,7 @@
       "writer": "scripts/market_regime_classifier.py",
       "cadence": "06:35 · 16:05 Mon-Fri (collector 06:30 feeds it)",
       "stale_after_hours": 26,
-      "projection": "risk_snapshot",
+      "projection": "market_regime",
       "required_fields": [
         "regime",
         "vix",
@@ -535,7 +739,27 @@
         "internal:trade_ai_scans"
       ],
       "retired": [],
-      "no_coverage": "carry_last_regime_with_date_never_neutral"
+      "no_coverage": "carry_last_regime_with_date_never_neutral",
+      "on_gap": [
+        {
+          "vector": "refresh_producer",
+          "cost_class": "free",
+          "max_per_day": 6,
+          "expected_seconds": 120
+        },
+        {
+          "vector": "backup_provider",
+          "cost_class": "free",
+          "max_per_day": 12,
+          "expected_seconds": 30
+        },
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 7200
+        }
+      ]
     },
     {
       "domain": "earnings_date",
@@ -560,7 +784,33 @@
       "retired": [
         "fmp"
       ],
-      "no_coverage": "UNKNOWN_blocks_options_gate"
+      "no_coverage": "UNKNOWN_blocks_options_gate",
+      "on_gap": [
+        {
+          "vector": "refresh_producer",
+          "cost_class": "free",
+          "max_per_day": 6,
+          "expected_seconds": 120
+        },
+        {
+          "vector": "governed_search",
+          "cost_class": "metered",
+          "max_per_day": 4,
+          "expected_seconds": 20
+        },
+        {
+          "vector": "llm_curation",
+          "cost_class": "metered",
+          "max_per_day": 2,
+          "expected_seconds": 60
+        },
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 7200
+        }
+      ]
     },
     {
       "domain": "holdings_accounts",
@@ -573,7 +823,9 @@
       "stale_after_hours": 24,
       "projection": "portfolio_snapshot",
       "required_fields": [
-        "accounts[].state"
+        "accounts[].state",
+        "accounts[].state_reason",
+        "accounts[].state_as_of"
       ],
       "account_states": [
         "LIVE",
@@ -586,7 +838,65 @@
         "alpaca"
       ],
       "retired": [],
-      "no_coverage": "per_account_state_never_zero"
+      "no_coverage": "per_account_state_never_zero",
+      "account_state_contract": "AccountState@v1",
+      "account_state_module": "scripts/lib/account_state.py",
+      "account_registry": {
+        "file": "assets/portfolio_accounts.yaml",
+        "per_account_keys": {
+          "sync_kind": "api | manual",
+          "service_unit": "systemd --user unit the read sync depends on (optional)",
+          "service_receipt": "health-probe JSON for that unit, relative to project root (optional)",
+          "sync_window_hours": "LIVE window; default = stale_after_hours (24)",
+          "manual_as_of": "last manual statement / entry date (manual accounts)"
+        }
+      },
+      "state_evidence": {
+        "sync_receipt": "data/runtime/sync_receipts/<account_key>.json - written by the account's read sync at the end of each run ({ok, at, error})",
+        "service_receipt": "per account registry service_receipt (moomoo: data/runtime/moomoo_opend_health.json, scripts/moomoo/opend_health.py every 5 min in session)",
+        "systemctl_fallback": "`systemctl --user is-failed <service_unit>` - PRODUCER (scripts/portfolio_loader.py) ONLY, only when both receipts are absent or older than 2h; the repricer and every API handler pass allow_shell=False"
+      },
+      "read_path_fields": {
+        "portfolio_aggregate.accounts[]": [
+          "state",
+          "state_reason",
+          "state_as_of",
+          "display_value",
+          "display_value_as_of",
+          "display_basis",
+          "last_known_value",
+          "last_known_value_as_of",
+          "counted_in_total"
+        ],
+        "portfolio_aggregate": [
+          "excluded_accounts[{account,state,last_value,as_of,counted_in_total,reason}]",
+          "stale_accounts[]",
+          "unclassified_accounts[]",
+          "excluded_last_value_total",
+          "account_states_present"
+        ],
+        "portfolio_snapshot.account_states": "same projection (lib.account_state.project_account_states)"
+      },
+      "on_gap": [
+        {
+          "vector": "refresh_producer",
+          "cost_class": "free",
+          "max_per_day": 12,
+          "expected_seconds": 120
+        },
+        {
+          "vector": "backup_provider",
+          "cost_class": "free",
+          "max_per_day": 12,
+          "expected_seconds": 30
+        },
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 7200
+        }
+      ]
     },
     {
       "domain": "options_iv",
@@ -597,7 +907,7 @@
       "writer": "scripts/lib/strategy_research/iv_history.py",
       "cadence": "unscheduled",
       "stale_after_hours": 4,
-      "projection": null,
+      "projection": "option_chain",
       "required_fields": [
         "iv",
         "as_of"
@@ -606,7 +916,21 @@
       "backup": [],
       "retired": [],
       "no_coverage": "call_out_at_read_time",
-      "_projection_note": "No option_chain projection exists yet — Phase 4 adds it. Until then the domain is read-at-source and this field is null on purpose."
+      "_projection_note": "Phase 4 added lib.data_broker.option_chain: store-only read of options_iv_history with age; declares live_external at Schwab and never calls it.",
+      "on_gap": [
+        {
+          "vector": "refresh_producer",
+          "cost_class": "free",
+          "max_per_day": 6,
+          "expected_seconds": 120
+        },
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 7200
+        }
+      ]
     },
     {
       "domain": "research_thesis",
@@ -632,7 +956,48 @@
       "_note": "14 writer modules today; consolidation target is this one module. Writer-count baseline in the gate can only fall.",
       "writer_status": "UNCONSOLIDATED",
       "writer_target": "scripts/lib/hermes_librarian/librarian.py",
-      "_writer_note": "32 modules write this store today (2026-09-13). The gate's writer-count ceiling can only fall; scripts/lib/hermes_librarian/librarian.py is the module the others must call."
+      "_writer_note": "32 modules write this store today (2026-09-13). The gate's writer-count ceiling can only fall; scripts/lib/hermes_librarian/librarian.py is the module the others must call.",
+      "projection_secondary": [
+        "subject_research"
+      ],
+      "on_gap": [
+        {
+          "vector": "refresh_producer",
+          "cost_class": "free",
+          "max_per_day": 6,
+          "expected_seconds": 120
+        },
+        {
+          "vector": "backup_provider",
+          "cost_class": "free",
+          "max_per_day": 12,
+          "expected_seconds": 30
+        },
+        {
+          "vector": "governed_search",
+          "cost_class": "metered",
+          "max_per_day": 8,
+          "expected_seconds": 20
+        },
+        {
+          "vector": "hermes_research",
+          "cost_class": "metered",
+          "max_per_day": 6,
+          "expected_seconds": 1800
+        },
+        {
+          "vector": "llm_curation",
+          "cost_class": "metered",
+          "max_per_day": 6,
+          "expected_seconds": 60
+        },
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 7200
+        }
+      ]
     },
     {
       "domain": "watch_directives",
@@ -656,7 +1021,21 @@
       "_note": "8 writer modules today; see writer-count baseline.",
       "writer_status": "UNCONSOLIDATED",
       "writer_target": "scripts/lib/two_way_curation.py",
-      "_writer_note": "18 modules write this store today (2026-09-13). The gate's writer-count ceiling can only fall; scripts/lib/two_way_curation.py is the module the others must call."
+      "_writer_note": "18 modules write this store today (2026-09-13). The gate's writer-count ceiling can only fall; scripts/lib/two_way_curation.py is the module the others must call.",
+      "on_gap": [
+        {
+          "vector": "refresh_producer",
+          "cost_class": "free",
+          "max_per_day": 6,
+          "expected_seconds": 120
+        },
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 7200
+        }
+      ]
     },
     {
       "domain": "watch_discovery",
@@ -667,12 +1046,21 @@
       "writer": null,
       "cadence": null,
       "stale_after_hours": 48,
-      "projection": "watch_intelligence",
+      "projection": "watch_discovery",
       "primary_provider": "internal",
       "backup": [],
       "retired": [],
       "no_coverage": "declared_gap_no_producer",
-      "_note": "No INSERT anywhere in the repo since 2026-07-16. Panel renders 'no producer' until one is registered here."
+      "_note": "No INSERT anywhere in the repo since 2026-07-16. Panel renders 'no producer' until one is registered here.",
+      "dead_after_hours": 720,
+      "on_gap": [
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 7200
+        }
+      ]
     },
     {
       "domain": "web_search",
@@ -682,7 +1070,7 @@
       },
       "writer": "scripts/lib/brave_router.py",
       "cadence": "on demand",
-      "stale_after_hours": null,
+      "stale_after_hours": 72,
       "projection": null,
       "primary_provider": "brave",
       "backup": [
@@ -695,7 +1083,24 @@
         "HTTP_429"
       ],
       "retired": [],
-      "no_coverage": "declared_gap"
+      "no_coverage": "declared_gap",
+      "answers": [
+        "web_search"
+      ],
+      "on_gap": [
+        {
+          "vector": "governed_search",
+          "cost_class": "metered",
+          "max_per_day": 120,
+          "expected_seconds": 20
+        },
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 7200
+        }
+      ]
     },
     {
       "domain": "private_company",
@@ -710,7 +1115,8 @@
       "primary_provider": "none",
       "backup": [],
       "retired": [],
-      "no_coverage": "refuse_up_front"
+      "no_coverage": "refuse_up_front",
+      "on_gap": []
     },
     {
       "domain": "dividends",
@@ -732,7 +1138,262 @@
         "fmp"
       ],
       "no_coverage": "say_so",
-      "_note": "Rewritten 2026-09-13 from FMP to yfinance; portfolio_alerts and portfolio_dividend_calendar read this table instead of calling a provider."
+      "_note": "Rewritten 2026-09-13 from FMP to yfinance; portfolio_alerts and portfolio_dividend_calendar read this table instead of calling a provider.",
+      "on_gap": [
+        {
+          "vector": "refresh_producer",
+          "cost_class": "free",
+          "max_per_day": 6,
+          "expected_seconds": 120
+        },
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 7200
+        }
+      ]
+    },
+    {
+      "domain": "macro",
+      "class": "ingested",
+      "store": {
+        "table": "fred_economic_series"
+      },
+      "writer": null,
+      "cadence": "06:15 daily (fred_data_ingest.py --ingest)",
+      "stale_after_hours": 48,
+      "projection": null,
+      "required_fields": [
+        "series_id",
+        "value",
+        "observation_date"
+      ],
+      "primary_provider": "fred",
+      "backup": [],
+      "retired": [],
+      "no_coverage": "say_so",
+      "_why": "Without a domain whose primary_provider is fred, lib/data_source_health_view gives the fred row the 24h default window. The lane runs daily at 06:15; 48h tolerates one missed run before decaying to unknown.",
+      "_writer_note": "fred_data_ingest.py + external_market_data_ingest.py both write; ceiling 2, target the ingest module.",
+      "writer_status": "UNCONSOLIDATED",
+      "writer_target": "scripts/external_market_data_ingest.py",
+      "on_gap": [
+        {
+          "vector": "refresh_producer",
+          "max_per_day": 24,
+          "cost_class": "free",
+          "expected_seconds": 120
+        },
+        {
+          "vector": "operator_ask",
+          "max_per_day": 4,
+          "cost_class": "free",
+          "expected_seconds": 60
+        }
+      ]
+    },
+    {
+      "domain": "fundamentals",
+      "class": "ingested",
+      "store": {
+        "table": "fundamental_data"
+      },
+      "writer": "scripts/external_market_data_ingest.py",
+      "cadence": "08:00 Mon (--fundamentals)",
+      "stale_after_hours": 192,
+      "projection": null,
+      "required_fields": [
+        "symbol",
+        "metric_name",
+        "metric_value"
+      ],
+      "primary_provider": "alpha_vantage",
+      "backup": [
+        "yfinance"
+      ],
+      "retired": [
+        "fmp"
+      ],
+      "no_coverage": "say_so",
+      "_why": "The lane is WEEKLY. With the 24h default window alpha_vantage decays to unknown six days out of seven and the hourly audit would alert every Monday and Tuesday. 192h = 8 days: one missed Monday decays it.",
+      "on_gap": [
+        {
+          "vector": "refresh_producer",
+          "max_per_day": 24,
+          "cost_class": "free",
+          "expected_seconds": 120
+        },
+        {
+          "vector": "operator_ask",
+          "max_per_day": 4,
+          "cost_class": "free",
+          "expected_seconds": 60
+        }
+      ]
+    },
+    {
+      "domain": "agent_opinion",
+      "class": "native",
+      "store": {
+        "table": "watchlist_agent_results"
+      },
+      "writer": "scripts/process_watchlist_agent_jobs.py",
+      "cadence": "on watch events",
+      "stale_after_hours": 48,
+      "dead_after_hours": 720,
+      "projection": "agent_opinion",
+      "required_fields": [
+        "agent",
+        "recommendation",
+        "created_at"
+      ],
+      "primary_provider": "internal",
+      "backup": [],
+      "retired": [],
+      "no_coverage": "say_so",
+      "_note": "Alive at measurement (917 rows, newest 2026-09-12).",
+      "_writer_note": "Single INSERT site verified 2026-09-13 by grep: process_watchlist_agent_jobs.py.",
+      "on_gap": [
+        {
+          "vector": "refresh_producer",
+          "max_per_day": 24,
+          "cost_class": "free",
+          "expected_seconds": 120
+        },
+        {
+          "vector": "operator_ask",
+          "max_per_day": 4,
+          "cost_class": "free",
+          "expected_seconds": 60
+        }
+      ]
+    },
+    {
+      "domain": "agent_debate",
+      "class": "dead_feed",
+      "store": {
+        "table": "agent_debate_log"
+      },
+      "writer": null,
+      "cadence": null,
+      "stale_after_hours": 168,
+      "dead_after_hours": 720,
+      "projection": "agent_opinion",
+      "primary_provider": "internal",
+      "backup": [],
+      "retired": [],
+      "no_coverage": "declared_gap_no_producer",
+      "_note": "9 rows, newest 2026-05-05 (131d). /api/v2/agents/summary now renders feeds.agent_debate_log.gap.kind=no_producer.",
+      "on_gap": [
+        {
+          "vector": "refresh_producer",
+          "max_per_day": 24,
+          "cost_class": "free",
+          "expected_seconds": 120
+        },
+        {
+          "vector": "operator_ask",
+          "max_per_day": 4,
+          "cost_class": "free",
+          "expected_seconds": 60
+        }
+      ]
+    },
+    {
+      "domain": "ai_reports",
+      "class": "dead_feed",
+      "store": {
+        "table": "ai_reports"
+      },
+      "writer": null,
+      "cadence": null,
+      "stale_after_hours": 168,
+      "dead_after_hours": 720,
+      "projection": "desk_feeds",
+      "primary_provider": "internal",
+      "backup": [],
+      "retired": [],
+      "no_coverage": "declared_gap_no_producer",
+      "_note": "46 rows, newest 2026-08-02 (42d). Reports desk payloads (categories, portal-summary, catalog) carry feeds.ai_reports. Requires catalog id 'desk_feeds' (see uncatalogued_helper_module) before this row is applied, or PROJECTION_MISSING fires.",
+      "on_gap": [
+        {
+          "vector": "refresh_producer",
+          "max_per_day": 24,
+          "cost_class": "free",
+          "expected_seconds": 120
+        },
+        {
+          "vector": "operator_ask",
+          "max_per_day": 4,
+          "cost_class": "free",
+          "expected_seconds": 60
+        }
+      ]
+    },
+    {
+      "domain": "redeploy_analytics",
+      "class": "dead_feed",
+      "store": {
+        "file": "portfolios/state/redeploy_analytics_cache.json"
+      },
+      "writer": "scripts/api_v2.py",
+      "cadence": "on demand (30-min TTL cache)",
+      "stale_after_hours": 24,
+      "dead_after_hours": 720,
+      "projection": "desk_feeds",
+      "primary_provider": "internal",
+      "backup": [],
+      "retired": [],
+      "no_coverage": "declared_gap_no_producer",
+      "_note": "Newest _cached_at 52d at measurement; every entry expired. Redeploy book/candidates/pro-forma/performance carry feeds.redeploy_analytics_cache. Same catalog precondition as ai_reports.",
+      "on_gap": [
+        {
+          "vector": "refresh_producer",
+          "max_per_day": 24,
+          "cost_class": "free",
+          "expected_seconds": 120
+        },
+        {
+          "vector": "operator_ask",
+          "max_per_day": 4,
+          "cost_class": "free",
+          "expected_seconds": 60
+        }
+      ]
+    },
+    {
+      "domain": "inverse_stoplights",
+      "class": "derived",
+      "store": {
+        "file": "runtime/inverse_stoplights_latest.json"
+      },
+      "writer": "scripts/defense_inverse_stoplights.py",
+      "cadence": "10:15 · 17:55 Mon-Fri",
+      "stale_after_hours": 26,
+      "projection": null,
+      "required_fields": [
+        "candidates",
+        "generated_at"
+      ],
+      "primary_provider": "internal",
+      "backup": [],
+      "retired": [],
+      "no_coverage": "say_so",
+      "_note": "_inverse_stoplights_get now wraps the file with envelope('inverse_stoplights', stale_after_hours=26); the explicit window can be dropped once this row lands.",
+      "on_gap": [
+        {
+          "vector": "refresh_producer",
+          "max_per_day": 24,
+          "cost_class": "free",
+          "expected_seconds": 120
+        },
+        {
+          "vector": "operator_ask",
+          "max_per_day": 4,
+          "cost_class": "free",
+          "expected_seconds": 60
+        }
+      ]
     }
   ]
 }

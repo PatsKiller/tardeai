@@ -1,0 +1,19 @@
+[Unit]
+Description=Trade AI data source health — hourly effective-status audit
+Documentation=file:///home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/lib/data_source_health_view.py
+
+[Timer]
+# Hourly. The finviz window is 12h and quote_price is 15 minutes; a daily audit
+# would report a dead source a day late. Twenty-seven minutes past so it does
+# not land on the crowded top of the hour, nor on :12 (expected-services) or
+# :05 (hermes worker pool).
+OnCalendar=*-*-* *:27:00
+AccuracySec=1min
+
+# This host loses power hard. Without Persistent a cut spanning the boundary
+# skips the audit silently, which is the failure mode being guarded against.
+Persistent=true
+RandomizedDelaySec=60
+
+[Install]
+WantedBy=timers.target

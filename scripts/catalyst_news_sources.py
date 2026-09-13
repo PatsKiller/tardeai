@@ -10,13 +10,21 @@ Finnhub, NewsAPI, Polygon and FMP were retired 2026-09-13 — see
 config/data_source_authority.json. Backups beyond these two are the governed
 search chain (Brave → SearXNG), declared there, not here.
 
+Search backup (Phase 5, 2026-09-13): when EVERY live slot returns zero fresh
+articles, fetch_catalyst_news performs ONE governed headline pull through
+scripts/lib/brave_router.search (kind="news", caller="catalyst_intelligence",
+no_spill=False — so a Brave denial spills to SearXNG under its own budget).
+Those rows carry source="search:<provider>" and is_fresh computed as usual from
+the result's age. The receipt (pass ``receipt={}``) names which slot answered.
+Never a search call when a live slot answered; the answer is then finviz/yahoo.
+
 Usage in catalyst_enrichment.py — replace your existing news fetch call with:
 
     from scripts.catalyst_news_sources import fetch_catalyst_news
     articles = fetch_catalyst_news(ticker, lookback_hours=72)
 
 fetch_catalyst_news() returns the first source that yields ≥1 fresh article,
-then stops (same logic as before, now with 2 extra fallbacks).
+then stops; only when both live slots are empty does the search backup run.
 
 For bulk enrichment use fetch_catalyst_news_bulk() which respects max_tickers.
 """
@@ -25,6 +33,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import time
 from datetime import datetime, timezone
 from typing import Callable, Optional
@@ -87,7 +96,7 @@ def _standardize(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Source 1: Finnhub
+# Source 1: Finviz News
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _fetch_finviz_news(ticker: str, lookback_hours: int) -> list[dict]:
@@ -102,7 +111,7 @@ def _fetch_finviz_news(ticker: str, lookback_hours: int) -> list[dict]:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Source 6: Yahoo Finance (NEW)
+# Source 2: Yahoo Finance
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _fetch_yahoo(ticker: str, lookback_hours: int) -> list[dict]:
@@ -126,9 +135,96 @@ def _fetch_yahoo(ticker: str, lookback_hours: int) -> list[dict]:
 # scheduled caller fell through them. config/data_source_authority.json is the
 # authority; scripts/check_data_source_authority.py fails if one comes back.
 _SOURCES: list[tuple[str, Callable]] = [
-    ("finviz_news",  _fetch_finviz_news),   # NEW — slot 5
-    ("yahoo",        _fetch_yahoo),         # NEW — slot 6
+    ("finviz_news",  _fetch_finviz_news),   # slot 1
+    ("yahoo",        _fetch_yahoo),         # slot 2
 ]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Backup: ONE governed headline pull through the search chain
+# ─────────────────────────────────────────────────────────────────────────────
+
+#: Budget caller key — search_budget.CALLER_DAILY_CAPS["catalyst_intelligence"] = 10/day.
+SEARCH_CALLER = "catalyst_intelligence"
+SEARCH_PURPOSE = "catalyst_backup"
+SEARCH_RESULT_COUNT = 10
+
+_AGE_RE = re.compile(
+    r"^(\d+)\s*(minutes?|mins?|months?|mo|m|hours?|hrs?|h|days?|d|weeks?|wks?|w|years?|yrs?|y)\b"
+)
+_AGE_UNIT_SECONDS = {"mo": 2_592_000, "m": 60, "h": 3600, "d": 86400, "w": 604800, "y": 31_536_000}
+
+
+def _age_to_ts(age, now_ts: Optional[int] = None) -> int:
+    """A search result's age ("2 hours ago", "1d", ISO date) → epoch seconds.
+
+    0 means unknown, and unknown is NOT fresh: ``_is_fresh(0, …)`` is False, so
+    a headline whose date the engine did not report is carried but never counted
+    as a fresh catalyst. SearXNG rarely reports one; Brave usually does.
+    """
+    s = str(age or "").strip().lower()
+    if not s:
+        return 0
+    now_ts = now_ts if now_ts is not None else _now_ts()
+    if s.startswith("just") or s in {"now", "today"}:
+        return now_ts
+    if s == "yesterday":
+        return now_ts - 86400
+    m = _AGE_RE.match(s)
+    if m:
+        unit = m.group(2)
+        key = "mo" if unit.startswith("mo") else unit[0]
+        return now_ts - int(m.group(1)) * _AGE_UNIT_SECONDS[key]
+    try:
+        dt = datetime.fromisoformat(str(age).strip().replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return int(dt.timestamp())
+    except Exception:
+        return 0
+
+
+def _governed_search(query: str, count: int = SEARCH_RESULT_COUNT):
+    """The ONLY network path for the backup: brave_router.search, budget-checked,
+    spilling to the registry's backup chain on a Brave denial (no_spill=False)."""
+    try:
+        from scripts.lib import brave_router
+    except ImportError:
+        from lib import brave_router  # type: ignore
+    return brave_router.search(
+        query, kind="news", count=count, caller=SEARCH_CALLER,
+        purpose=SEARCH_PURPOSE, no_spill=False,
+    )
+
+
+def _search_backup(ticker: str, lookback_hours: int) -> tuple[list[dict], dict]:
+    """One governed pull. Returns (rows, info); info.answered_by is "search:<provider>" or None."""
+    query = f"{ticker} stock news"
+    info: dict = {"query": query, "answered_by": None, "reason": None, "receipt": None}
+    try:
+        resp = _governed_search(query)
+    except Exception as exc:
+        info["reason"] = f"SEARCH_ERROR:{type(exc).__name__}:{exc}"
+        return [], info
+    info["reason"] = str(getattr(resp, "reason", "") or "")
+    info["receipt"] = getattr(resp, "receipt", None)
+    if not getattr(resp, "ok", False):
+        return [], info
+    default_provider = str(getattr(resp, "provider", "") or "brave")
+    rows: list[dict] = []
+    answered: Optional[str] = None
+    for r in getattr(resp, "results", None) or []:
+        if not isinstance(r, dict):
+            continue
+        headline, url = str(r.get("title") or "").strip(), str(r.get("url") or "").strip()
+        if not headline or not url:
+            continue
+        provider = str(r.get("provider") or default_provider)
+        answered = answered or f"search:{provider}"
+        rows.append(_standardize(headline, url, _age_to_ts(r.get("age")),
+                                 f"search:{provider}", ticker, lookback_hours))
+    info["answered_by"] = answered or f"search:{default_provider}"
+    return rows, info
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -139,17 +235,25 @@ def fetch_catalyst_news(
     ticker: str,
     lookback_hours: int = DEFAULT_LOOKBACK_HOURS,
     require_fresh: bool = True,
+    receipt: Optional[dict] = None,
 ) -> list[dict]:
     """
     Fetch catalyst news for `ticker` using the live-source round-robin.
 
     Tries each source in priority order and returns the first that yields
-    ≥1 article (or ≥1 fresh article if require_fresh=True).
+    ≥1 article (or ≥1 fresh article if require_fresh=True). Only when every
+    live slot yields nothing usable does ONE governed search pull run
+    (brave→searxng via brave_router); those rows are source="search:<provider>".
 
-    Returns [] only if ALL sources fail / return nothing.
+    ``receipt`` (a dict, filled in place) records per-slot counts and which slot
+    answered — "finviz_news", "yahoo", "search:brave", "search:searxng" or None.
+
+    Returns [] only if ALL sources, including the search backup, yield nothing.
     """
     ticker = ticker.upper().strip()
     source_results: dict[str, int] = {}
+    if receipt is not None:
+        receipt.update({"ticker": ticker, "live": source_results, "answered_by": None, "search": None})
 
     for source_name, fetch_fn in _SOURCES:
         try:
@@ -171,16 +275,36 @@ def fetch_catalyst_news(
                 "[catalyst] %s — source: %-12s | %d articles | %d fresh",
                 ticker, source_name, len(articles), len(fresh),
             )
+            if receipt is not None:
+                receipt["answered_by"] = source_name
             return used
 
         except Exception as exc:
             log.warning("[catalyst] %s/%s error: %s", ticker, source_name, exc)
             source_results[source_name] = 0
 
+    # Every live slot came back empty (or stale). ONE governed pull through the
+    # search chain — never reached when a live slot answered above.
+    rows, info = _search_backup(ticker, lookback_hours)
+    if receipt is not None:
+        receipt["search"] = info
+    fresh = [a for a in rows if a.get("is_fresh")]
+    used = fresh if (require_fresh and fresh) else ([] if require_fresh else rows)
+    if used:
+        if receipt is not None:
+            receipt["answered_by"] = info.get("answered_by")
+        log.info(
+            "[catalyst] %s — source: %-12s | %d articles | %d fresh (live slots: %s)",
+            ticker, info.get("answered_by"), len(rows), len(fresh),
+            " | ".join(f"{k}:{v}" for k, v in source_results.items()),
+        )
+        return used
+
     log.warning(
-        "[catalyst] %s — ALL sources exhausted. Results: %s",
+        "[catalyst] %s — ALL sources exhausted. Live: %s | search: %s",
         ticker,
         " | ".join(f"{k}:{v}" for k, v in source_results.items()),
+        info.get("reason"),
     )
     return []
 
