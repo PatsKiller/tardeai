@@ -102,11 +102,92 @@ def test_naive_and_iso_string_timestamps_are_read_as_utc():
     assert dsv.effective_status({"last_success_at": "garbage"}, NOW, 24 * H) == "unknown"
 
 
+# ── the clock stops over the weekend for weekday-only sources ────────────────
+# Phase 8 measurement, Sunday 2026-09-13 17:20 ET: seven sources last touched on
+# Friday read `unknown` under plain elapsed time, and the hourly audit would have
+# interrupted eight times before Monday's first cron. Nothing was ever going to
+# run on Saturday or Sunday; the age must not count hours nobody scheduled.
+
+FRI_17 = datetime(2026, 9, 11, 21, 0, tzinfo=timezone.utc)   # Fri 17:00 ET
+SUN_20 = datetime(2026, 9, 14, 0, 0, tzinfo=timezone.utc)      # Sun 20:00 ET == Mon 00:00 UTC
+MON_09 = datetime(2026, 9, 14, 13, 0, tzinfo=timezone.utc)   # Mon 09:00 ET
+
+
+def test_weekday_minutes_skip_saturday_and_sunday():
+    # Fri 21:00Z -> Sat 00:00Z = 3h counted; Saturday and Sunday contribute nothing
+    assert dsv.weekday_minutes_between(FRI_17, SUN_20) == pytest.approx(3 * 60)
+    # ... and Monday resumes: + 13h on Monday
+    assert dsv.weekday_minutes_between(FRI_17, MON_09) == pytest.approx(3 * 60 + 13 * 60)
+    assert dsv.weekday_minutes_between(MON_09, FRI_17) == 0.0
+
+
+def test_a_friday_success_survives_the_weekend_for_a_weekday_only_source():
+    row = {"source_key": "finviz", "status": "healthy", "last_success_at": FRI_17, "last_failure_at": None}
+    assert dsv.effective_status(row, SUN_20, 12 * 60, weekday_only=True) == "healthy"
+    # negative control: the plain clock says the same row is stale
+    assert dsv.effective_status(row, SUN_20, 12 * 60, weekday_only=False) == "unknown"
+
+
+def test_the_weekday_clock_still_decays_once_monday_passes_the_window():
+    row = {"source_key": "finviz", "status": "healthy", "last_success_at": FRI_17, "last_failure_at": None}
+    # 3h Friday + 13h Monday = 16h > 12h window
+    assert dsv.effective_status(row, MON_09, 12 * 60, weekday_only=True) == "unknown"
+    assert dsv.effective_status(row, MON_09, 24 * 60, weekday_only=True) == "healthy"
+
+
+def test_weekday_only_comes_from_the_caller_schedule():
+    assert dsv.weekday_only_for("finviz") is True          # 25 6-18/3 * * 1-5
+    assert dsv.weekday_only_for("fred") is False           # 15 6 * * *  (daily)
+    assert dsv.weekday_only_for("alpha_vantage") is False  # 0 8 * * 1   (Mondays, not the trading week)
+    assert dsv.weekday_only_for("something_nobody_scheduled") is False, "no caller -> plain clock, decays sooner"
+
+
+def test_view_row_uses_the_weekday_clock_and_says_so():
+    row = {"source_key": "finviz", "status": "healthy", "last_success_at": FRI_17, "last_failure_at": None}
+    v = dsv.view_row(row, SUN_20, REGISTRY)
+    assert v["weekday_clock"] is True
+    assert v["status"] == "healthy" and v["decayed"] is False
+
+
+# ── the closed-market window ─────────────────────────────────────────────────
+
+
+def test_the_quote_window_is_15_minutes_open_and_72_hours_closed():
+    assert dsv.window_minutes_for("alpaca", REGISTRY, market_closed=False) == 15
+    # closed: quote_price widens to 72h, but technicals (also alpaca-primary, 26h, no
+    # closed window) is now the strictest alpaca domain — the min over domains holds.
+    assert dsv.window_minutes_for("alpaca", REGISTRY, market_closed=True) == 26 * H
+    # a domain with no closed window keeps its one window either way
+    assert dsv.window_minutes_for("yahoo_finance", REGISTRY, market_closed=True) == 168 * H
+
+
+def test_a_friday_close_quote_is_healthy_on_sunday_when_the_market_is_closed(monkeypatch):
+    monkeypatch.setattr(dsv, "market_is_closed", lambda now=None: True)
+    # alpaca has no row in data_source_health today, so it has no caller entry; give it the
+    # quote refresher's real schedule so the weekday clock applies as it would for the quote row.
+    monkeypatch.setitem(dsv.SCHEDULED_CALLERS, "alpaca",
+                        [{"script": "scripts/portfolio_repricer.py", "cron": "*/15 9-16 * * 1-5"}])
+    row = {"source_key": "alpaca", "status": "healthy", "last_success_at": FRI_17, "last_failure_at": None}
+    v = dsv.view_row(row, SUN_20, REGISTRY)
+    assert v["market_closed"] is True and v["window_minutes"] == 26 * H
+    assert v["status"] == "healthy"
+    # negative control: with the market open the 15-minute window applies and the row has decayed
+    monkeypatch.setattr(dsv, "market_is_closed", lambda now=None: False)
+    v2 = dsv.view_row(row, SUN_20, REGISTRY)
+    assert v2["window_minutes"] == 15 and v2["status"] == "unknown" and v2["decayed"] is True
+
+
+def test_when_the_session_helper_cannot_say_the_stricter_open_window_applies(monkeypatch):
+    monkeypatch.setattr(dsv, "market_is_closed", lambda now=None: None)
+    row = {"source_key": "alpaca", "status": "healthy", "last_success_at": FRI_17, "last_failure_at": None}
+    assert dsv.view_row(row, SUN_20, REGISTRY)["window_minutes"] == 15
+
+
 # ── the window comes from the registry ───────────────────────────────────────
 
 
 def test_windows_are_read_from_the_authority_registry():
-    assert dsv.window_minutes_for("finviz", REGISTRY) == 12 * H, "catalyst_news 12h is the strictest finviz domain"
+    assert dsv.window_minutes_for("finviz", REGISTRY) == 18 * H, "catalyst_news 18h (1.5x its 12h cadence gap) is the strictest finviz domain"
     assert dsv.window_minutes_for("alpaca", REGISTRY) == 15, "quote_price 0.25h"
     assert dsv.window_minutes_for("yahoo_finance", REGISTRY) == 168 * H
 
@@ -161,7 +242,7 @@ def test_the_alert_set_is_not_healthy_AND_scheduled():
         _row("yahoo_finance", "healthy", success=datetime(2026, 8, 24, tzinfo=timezone.utc)),  # decayed, scheduled
         _row("fred", "unknown"),                                                                   # never, scheduled
         _row("finviz", "healthy", success=NOW - timedelta(hours=1)),                              # healthy
-        _row("incubator", "unknown"),                                                              # never, NOT scheduled
+        _row("newsapi", "unknown"),                                                              # never, NOT scheduled
     ]
     viewed = dsv.view_rows(rows, NOW, REGISTRY)
     off = {r["source_key"] for r in dsv.not_healthy_with_scheduled_caller(viewed)}
@@ -189,7 +270,7 @@ def test_the_health_agent_collector_uses_the_view(monkeypatch):
         _row("yahoo_finance", "healthy", success=datetime(2026, 8, 24, 12, 0, tzinfo=timezone.utc)),
         _row("finviz", "healthy", success=datetime.now(timezone.utc) - timedelta(hours=1)),
         _row("fred", "unknown"),
-        _row("incubator", "unknown"),
+        _row("newsapi", "unknown"),
     ]
     monkeypatch.setattr(ha, "_db", lambda sql, params=None, fetch="one": rows if fetch == "all" else None)
     monkeypatch.setattr(ha, "_IS_WEEKEND", False)
@@ -206,7 +287,7 @@ def test_the_health_agent_collector_uses_the_view(monkeypatch):
     assert by_src["yahoo_finance"]["age_minutes"] > 168 * 60
     assert "fred" in by_src and by_src["fred"]["type"] == "data_source_never_reported"
     assert "finviz" not in by_src, "a fresh success is not a finding"
-    assert "incubator" not in by_src, "never reported with no scheduled caller is idle, not a finding"
+    assert "newsapi" not in by_src, "never reported with no scheduled caller is idle, not a finding"
 
 
 # ── the alarm itself ─────────────────────────────────────────────────────────
@@ -287,7 +368,7 @@ def test_a_send_failure_does_not_advance_state(monkeypatch, tmp_path, capsys):
 
 
 def test_classify_is_pure_and_separates_idle_from_off():
-    rows = [_off_yahoo(), _row("incubator", "unknown")]
+    rows = [_off_yahoo(), _row("newsapi", "unknown")]
     viewed, off = cdh.classify(rows, NOW, REGISTRY)
     assert len(viewed) == 2
     assert [r["source_key"] for r in off] == ["yahoo_finance"]

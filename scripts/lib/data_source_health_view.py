@@ -67,7 +67,7 @@ scripts/check_data_source_health.py.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Any, Optional
 
@@ -112,6 +112,27 @@ SCHEDULED_CALLERS: dict[str, list[dict[str, str]]] = {
     "finviz": [
         {"script": "scripts/finviz_health_check.py", "cron": "25 6-18/3 * * 1-5"},
     ],
+    # Phase 8 (2026-09-13): the discovery and social sources were missing from this
+    # table, so they had no weekday clock and read `unknown` every weekend while
+    # nothing was scheduled to run. Schedules read from the live crontab.
+    "incubator": [
+        {"script": "scripts/candidate_discovery_orchestrator.py --apply", "cron": "15 6 * * 1-5"},
+    ],
+    "news_catalyst": [
+        {"script": "scripts/candidate_discovery_orchestrator.py --apply", "cron": "15 6 * * 1-5"},
+    ],
+    "social_scalp": [
+        {"script": "scripts/candidate_discovery_orchestrator.py --apply", "cron": "15 6 * * 1-5"},
+    ],
+    "yahoo_movers": [
+        {"script": "scripts/candidate_discovery_orchestrator.py --apply", "cron": "15 6 * * 1-5"},
+    ],
+    "hermes_social": [
+        {"script": "scripts/hermes_social_sentiment.py --apply", "cron": "15 11,15 * * 1-5"},
+    ],
+    "social": [
+        {"script": "scripts/sync_social_to_intelligence.py --apply", "cron": "30 11,15 * * 1-5"},
+    ],
     "sec_edgar": [
         {"script": "scripts/symbol_enrichment.py --limit 50", "cron": "30 7 * * 1-5"},
     ],
@@ -123,6 +144,47 @@ SCHEDULED_CALLERS: dict[str, list[dict[str, str]]] = {
 
 def has_scheduled_caller(source_key: str) -> bool:
     return bool(SCHEDULED_CALLERS.get(str(source_key or "")))
+
+
+def _cron_dow_is_weekdays_only(cron: str) -> bool:
+    """True when the day-of-week field is exactly the trading week (1-5)."""
+    parts = str(cron or "").split()
+    if len(parts) < 5:
+        return False
+    dow = parts[4]
+    return dow in ("1-5", "1,2,3,4,5", "MON-FRI", "mon-fri")
+
+
+def weekday_only_for(source_key: str) -> bool:
+    """A source is weekday-only when it has scheduled callers and every one of
+    them runs Mon-Fri. Its clock then stops over the weekend: a Friday-evening
+    success is not "stale" on Sunday night, because nothing was ever going to run.
+
+    Phase 8 measurement (Sunday 2026-09-13 17:20 ET): with plain elapsed time,
+    finviz, hermes_social, incubator, news_catalyst, social, social_scalp and
+    yahoo_movers -- all last touched Friday -- read `unknown`, and the hourly
+    audit would have interrupted the operator eight times before Monday's first
+    cron. A source with no scheduled caller, or any 7-day caller, keeps the plain
+    clock: decaying sooner is the safer error.
+    """
+    callers = SCHEDULED_CALLERS.get(str(source_key or "")) or []
+    return bool(callers) and all(_cron_dow_is_weekdays_only(c.get("cron", "")) for c in callers)
+
+
+def weekday_minutes_between(start: datetime, end: datetime) -> float:
+    """Minutes between two instants counting Monday-Friday only (UTC calendar).
+    Saturday and Sunday contribute nothing. `end <= start` yields 0."""
+    if end <= start:
+        return 0.0
+    total = 0.0
+    cur = start
+    while cur < end:
+        day_end = (cur + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+        seg_end = min(day_end, end)
+        if cur.weekday() < 5:
+            total += (seg_end - cur).total_seconds() / 60.0
+        cur = seg_end
+    return total
 
 
 # ── the registry-derived window ─────────────────────────────────────────────
@@ -144,15 +206,37 @@ def provider_for(source_key: str) -> str:
     return SOURCE_KEY_ALIASES.get(key, key)
 
 
-def window_minutes_for(source_key: str, registry: Optional[dict[str, Any]]) -> int:
-    """Smallest stale_after_hours over domains whose primary_provider is this
-    source's provider, in minutes; DEFAULT_WINDOW_MINUTES when none declares one."""
+def market_is_closed(now: Optional[datetime] = None) -> Optional[bool]:
+    """True/False from the shared market-session helper; None when it cannot say
+    (then the stricter open-market window applies)."""
+    try:
+        from market_session import is_market_open  # scripts/market_session.py
+    except Exception:  # noqa: BLE001
+        return None
+    try:
+        return not bool(is_market_open(now))
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def window_minutes_for(source_key: str, registry: Optional[dict[str, Any]], *,
+                       market_closed: Optional[bool] = None) -> int:
+    """Smallest stale window over domains whose primary_provider is this source's
+    provider, in minutes; DEFAULT_WINDOW_MINUTES when none declares one.
+
+    When the market is closed and a domain declares ``stale_after_hours_closed``
+    (quote_price: 0.25h open, 72h closed), the closed window is used for that
+    domain. Phase 8, 2026-09-13: a 15-minute quote window measured on a Sunday
+    evening is not staleness, it is the weekend.
+    """
     provider = provider_for(source_key)
     hours: list[float] = []
     for d in (registry or {}).get("domains") or []:
         if str(d.get("primary_provider") or "") != provider:
             continue
         h = d.get("stale_after_hours")
+        if market_closed and d.get("stale_after_hours_closed") is not None:
+            h = d.get("stale_after_hours_closed")
         if h is None:
             continue
         try:
@@ -195,7 +279,8 @@ def age_minutes(row: dict[str, Any], now: datetime) -> Optional[float]:
     return max(0.0, (now - last).total_seconds() / 60.0)
 
 
-def effective_status(row: dict[str, Any], now: datetime, window_minutes: int) -> str:
+def effective_status(row: dict[str, Any], now: datetime, window_minutes: int, *,
+                     weekday_only: bool = False) -> str:
     """What the row is allowed to claim right now.
 
         healthy  last_success_at is within `window_minutes` of `now` and no
@@ -204,6 +289,9 @@ def effective_status(row: dict[str, Any], now: datetime, window_minutes: int) ->
                  success and there has been a failure)
         unknown  anything else: never reported, or the last success has aged
                  out of its window with nothing newer either way
+
+    `weekday_only` (set by view_row from the caller schedule) measures the age in
+    Monday-Friday minutes, so a Friday-evening success survives the weekend.
 
     The raw `status` column is deliberately NOT consulted. It is what report_source
     last wrote, however long ago; trusting it is the defect.
@@ -216,7 +304,11 @@ def effective_status(row: dict[str, Any], now: datetime, window_minutes: int) ->
         return ERROR
     if success is None:
         return UNKNOWN
-    if (now - success).total_seconds() <= float(window_minutes) * 60.0:
+    elapsed_min = (
+        weekday_minutes_between(success, now) if weekday_only
+        else (now - success).total_seconds() / 60.0
+    )
+    if elapsed_min <= float(window_minutes):
         return HEALTHY
     return UNKNOWN
 
@@ -227,8 +319,10 @@ def view_row(row: dict[str, Any], now: datetime, registry: Optional[dict[str, An
     REPLACED by the effective status, plus `raw_status`, `decayed`, `age_minutes`,
     `window_minutes`, `scheduled_caller`."""
     key = str(row.get("source_key") or "")
-    win = int(window_minutes) if window_minutes is not None else window_minutes_for(key, registry)
-    eff = effective_status(row, now, win)
+    closed = market_is_closed(now)
+    win = int(window_minutes) if window_minutes is not None else window_minutes_for(key, registry, market_closed=closed)
+    wk = weekday_only_for(key)
+    eff = effective_status(row, now, win, weekday_only=wk)
     raw = str(row.get("status") or UNKNOWN)
     age = age_minutes(row, now)
     out = dict(row)
@@ -241,6 +335,8 @@ def view_row(row: dict[str, Any], now: datetime, registry: Optional[dict[str, An
             "decayed": raw == HEALTHY and eff != HEALTHY,
             "age_minutes": None if age is None else round(age, 1),
             "window_minutes": win,
+            "weekday_clock": wk,
+            "market_closed": closed,
             "scheduled_caller": has_scheduled_caller(key),
         }
     )
