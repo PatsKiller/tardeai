@@ -104,10 +104,10 @@ def run(as_json: bool = False):
         text = f"{title} {summary or ''}"
         label, score, confidence, pos, neg, risk_kw, opp_kw = _score_text(text)
 
-        # Update the news_article itself
-        cur.execute("""
-            UPDATE news_articles SET sentiment = %s, sentiment_score = %s WHERE id = %s
-        """, (label, score, nid))
+        # Update the news_article itself — through the store's single write module (Phase 9)
+        sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        from lib.writers.news_articles_writer import set_sentiment
+        set_sentiment(cur, nid, label, score)
 
         # Insert into sentiment_observations
         cur.execute("""

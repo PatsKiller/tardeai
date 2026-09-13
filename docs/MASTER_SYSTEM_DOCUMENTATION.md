@@ -2,7 +2,7 @@
 
 **Owner:** John W. Whiting
 **Server:** ms01-openclaw (Linux, Ubuntu)
-**Document version:** 2026-06-22 (A1A consolidation — scale figures via `docs/LIVE_SYSTEM_FACTS.md`; regenerate with `scripts/generate_system_facts.py`. Prior: 2026-06-02 audit)
+**Document version:** 2026-09-13 (§5.7 Data Authority, Broker Read Path and Gap Resolution added; §24 changelog. Prior: 2026-06-22 A1A consolidation — scale figures via `docs/LIVE_SYSTEM_FACTS.md`; regenerate with `scripts/generate_system_facts.py`)
 **Status:** Paper trading validation -- 6-month window before live consideration
 
 
@@ -712,6 +712,94 @@ Replaces ~50 Telegram messages/day with ~12 actionable messages. Every Telegram 
 |------|--------|---------|
 | 8:00 AM ET M-F | send_alert_digest.py morning | Morning consolidated brief |
 | 4:00 PM ET M-F | send_alert_digest.py evening | Evening consolidated brief |
+
+---
+
+## 5.7 Data Authority, Broker Read Path and Gap Resolution (One Source of Truth, 2026-09-13)
+
+**Source of record:** `config/data_source_authority.json` (`DataSourceAuthority@v2`) · rendered view
+`docs/SOURCE_OF_TRUTH.md` · governing rule `AGENTS.md` §7A · gap resolution `docs/GAP_RESOLUTION.md`.
+This section is a map; the registry is the truth. Do not restate numbers from it here — they change.
+
+**Why it exists.** Three incidents in the week of 2026-09-13, each possible because nothing a program
+could read said which store, writer or provider was authoritative: a Finviz column shift stored
+`Performance (10 Years)` as a 1–5 analyst rating for five months (97.9% of rows); the served state tree
+and the tree the 344 cron producers write to were two directories for 18 days (294 files diverged, 79
+append-only ledgers grew on both sides); a six-slot catalyst-news chain ran with four dead slots for seven
+weeks.
+
+### What the registry declares, per domain
+
+| Field | Meaning | Enforced by |
+|---|---|---|
+| `store` (table / file) + `served_from` | the one store of record and the one physical directory it is served from | `check_served_copy_split.py` — LINKED is the only OK; identical copies in two directories are still a split |
+| `writer` (or `writer_status: UNCONSOLIDATED` + `writer_target`) | **who owns the store** — exactly one writer module, or the operator for manual stores; unconsolidated stores say so and carry a writer-count ceiling in `config/data_source_authority_baseline.json` that may only fall | `WRITER_COUNT_ROSE`, `WRITER_UNDECLARED`, `WRITER_MISSING` |
+| `cadence`, `stale_after_hours` (+ `stale_after_hours_closed`) | **how it is written** and how old a value may be before it renders as stale | broker envelope `stale` verdict; health decay view |
+| `projection` | **the one read path** — hubs read through `scripts/lib/data_broker/` (23 projections in `catalog.py`, measured `e8a173e7d`), never `FROM <table>`; every response carries `as_of`, `age_hours`, `source`, `stale`, and `gap` for dead feeds | `DIRECT_READ_ROSE`, `PROJECTION_MISSING`, `tests/test_data_broker_envelope_20260913.py` |
+| `primary_provider`, `backup`, `retired` | **the secondary/backup resource** — a backup answers the *same question* from another provider; retired providers have zero call sites | `RETIRED_CALL_SITE`, `scripts/lib/retired_providers.py`, `resolve_backup()` raises `CrossDomainSubstitution` |
+| `no_coverage` | what to say when the chain is exhausted (`say_so`, `refuse_up_front`, `carry_last_with_date`, `per_account_state_never_zero`) — never a silent zero | account state module, desk loop |
+| `on_gap` | the ordered, budgeted vectors the gap resolver may run when the store is stale or empty (free → metered → paid; `operator_ask` last; retired never) | `scripts/lib/gap_resolver.py`, `check_gap_resolution.py` (`RETIRED_RAN` must be 0) |
+| `approval` | **the operator's grant**: `approved_by`, `approved_on`, `reference`, `scope` (retired: `retired_by`, `retired_on`, `reference`) | `UNAPPROVED_SOURCE` — a row without it fails the build |
+
+**The grant (operator rule, 2026-09-13).** Adding, replacing or retiring a data source — or a writer of
+an authoritative store — is **operator-only** (`AGENTS.md` §17). An agent proposes the registry row in a
+PR; the operator grants it; the grant is recorded in `approval`; only then may a call site exist.
+`check_data_source_authority.py` fails an ungranted row (`UNAPPROVED_SOURCE`) and tells an agent that
+adds an unknown host what to do (`UNDECLARED_PROVIDER`: *propose a registry row with an operator approval
+record; do not add the host*).
+
+### Providers and retirements
+
+22 providers are declared with the markers the gate recognises. **Retired 2026-09-13 (Phase 2):**
+`finnhub` (HTTP 401 since 07-27), `polygon` and `fmp` (paid-only), `newsapi` (never ran). Their modules
+were archived, not deleted (`archive/retired_providers_20260913/`, manifest row in
+`archive/ARCHIVE_MANIFEST.json`), and `RETIRED_CALL_SITE` proves zero call sites outside the
+secret-hygiene allowlist. **Brave** is live and paid (caps 120/day, 1,500/month read from the registry);
+denials (`DAILY_EXHAUSTED`, `MONTHLY_EXHAUSTED`, `HTTP_429`) spill to the registry's `web_search.backup`
+chain (SearXNG, then Tavily) through `scripts/lib/brave_router.py` — Phase 5.
+
+### Accounts: absent is not zero (Phase 6)
+
+`scripts/lib/account_state.py` classifies every account in `assets/portfolio_accounts.yaml` as
+`LIVE` · `STALE` · `SERVICE_DOWN` · `NO_API_MANUAL` from the registry keys `sync_kind`, `service_unit`,
+`service_receipt`, `sync_window_hours`, `manual_as_of`. A failed sync service (moomoo OpenD, exit 78) and a
+no-API manual account (Fidelity rollover, statement entry) no longer both render as `$0`; the display
+carries the last known value with its date. Labelling only — no share count, value, order or stop is
+edited (`MBI_BEHAVIOR = 0`).
+
+### Gap resolution (Phase 7)
+
+When a projection or the operator desk meets a stale or missing answer, `gap_resolver.resolve()` walks
+the domain's `on_gap` chain — `refresh_producer` → `backup_provider` → `governed_search` →
+`hermes_research` → `llm_curation` → `operator_ask` — free before metered before paid, one receipt per
+attempt in `data/cio/gap_resolution_receipts.jsonl`, a fast answer stops the chain, a slow vector returns
+an ETA, and exhaustion returns the declared `no_coverage` behaviour. **Distinct from §5.5:**
+`scripts/data_gap_resolver.py` (2026-06) closes LLM-detected *knowledge* gaps in `data_gap_registry`;
+`scripts/lib/gap_resolver.py` (2026-09) closes *store freshness* gaps against the registry. Details:
+`docs/GAP_RESOLUTION.md`.
+
+### Monitors (declared, operator installs)
+
+| Lane | Timer | Cadence | Receipt |
+|---|---|---|---|
+| `served-copy-split-audit` | `tradeai-served-copy-split.timer` | hourly (:42) | `data/runtime/served_copy_split_last_run.json` |
+| `expected-services-audit` | `tradeai-expected-services.timer` | hourly (:12) | `data/runtime/expected_services_last_run.json` |
+| `data-plausibility-audit` | `tradeai-data-plausibility.timer` | 06:20 daily | `data/runtime/data_plausibility_last_run.json` |
+| `data-source-health-audit` | `tradeai-data-source-health.timer` | hourly (:27) | `data/runtime/data_source_health_last_run.json` |
+| `gap-resolution-audit` | `tradeai-gap-resolution.timer` | every 30 min (:07/:37) | `data/runtime/gap_resolution_last_run.json` |
+
+Each is declared in `config/lane_registry.json` (with a receipt `output_signal`), `config/systemd/user/`
+and `config/expected_services.json`, so a monitor that is OFF is itself a finding. Whether a timer is
+installed is measured on the host by `check_expected_services.py`; this document does not assert it.
+
+### Gates that bind (local acceptance and CI)
+
+`check_data_source_authority.py` · `render_source_of_truth.py --check` · the test files registered in
+`scripts/run_cio_hardening_ci.py` under the 2026-09-13 One Source of Truth block
+(`test_data_source_authority_20260913`, `test_served_copy_split_20260913`,
+`test_data_source_health_decay_20260913`, `test_data_broker_envelope_20260913`, `test_brave_router_spill`,
+`test_data_source_authority_resolve_backup`, `test_account_state_classifier`, `test_account_state_read_path`,
+`test_gap_resolver_20260913`, `test_gap_resolution_monitor_20260913`).
 
 ---
 
@@ -2513,6 +2601,27 @@ actionable inferences. Advisory-only — no execution path. Full design:
   Intelligence-hub `InferenceLayersPanel`.
 
 ## 24. Session Changelog
+
+### Session — 2026-09-13 (One Source of Truth, Phases 0–8 — PRs #992 #993 #994, `e8a173e7d`)
+
+Registry: `config/data_source_authority.json` · rendered: `docs/SOURCE_OF_TRUTH.md` · rule: `AGENTS.md` §7A ·
+gap resolution: `docs/GAP_RESOLUTION.md` · documentation audit: `docs/implementation/sot/DOCS_AUDIT_20260913.md`
+
+- **One declaration per domain** (§5.7): store, single writer, cadence, projection, backup chain, retired
+  providers, `no_coverage`, `on_gap`, and — new — the operator's `approval` grant on every provider and
+  domain (`DataSourceAuthority@v2`). `check_data_source_authority.py` fails an ungranted source.
+- **Operator-only widened** (`AGENTS.md` §17): adding, replacing or retiring a data source or a writer of
+  an authoritative store. Propose the row; the operator grants it; only then a call site.
+- **Served-copy split** measured and reconciled under an operator-approved rule (Phase 1); hourly monitor
+  plus archive tripwire. **Retired** finnhub / polygon / fmp / newsapi (Phase 2). **Health decays** to
+  unknown (Phase 3). **Broker envelope** on every projection; dead desks declare `gap.no_producer`
+  (Phase 4). **Brave spill** to SearXNG/Tavily from the registry (Phase 5). **Account state** LIVE /
+  STALE / SERVICE_DOWN / NO_API_MANUAL (Phase 6). **Gap resolver** with receipted, budgeted vectors
+  (Phase 7). Documentation and governance audit (Phase 8, this entry).
+- **Known remaining gaps:** seven stores are still `UNCONSOLIDATED` (writer ceilings in
+  `config/data_source_authority_baseline.json` may only fall); the five monitor timers are declared but
+  installation is operator-only and unmeasured here; `AGENTS.md` 1.2.0 remains PROPOSED pending
+  `APPROVE_AGENTS_POLICY_1_2_0`.
 
 ### Session — 2026-08-27 (CIO Platform Audit Remediation — 19 PRs, `2ccee09a` → `b4b6ced7`)
 

@@ -228,25 +228,16 @@ def main():
         if time.time() - start > MAX_RUNTIME:
             print(f"Runtime limit {MAX_RUNTIME}s reached. Stopping.")
             break
-        cur.execute("""
-            INSERT INTO hermes_research_intelligence (
-                source, hermes_agent_name, research_type, symbol, topic, summary, thesis, thesis_type,
-                evidence_json, confidence_score, freshness_date, source_urls_json, model_used,
-                context_type_used, status, quality_score, tags
-            ) VALUES (
-                'hermes', 'autonomous_librarian_loop', 'research_backlog', NULL,
-                %s, %s,
-                'Autonomous Librarian finding — operator review required.',
-                'neutral',
-                %s::jsonb,
-                0.30, %s, '[]'::jsonb,
-                'librarian_loop', 'autonomous_librarian', 'staged', 0.30,
-                ARRAY['research_backlog','autonomous_librarian','phase_49']
-            ) RETURNING id
-        """, (
-            (f"{f['type']}:{f['strategy']}: {f['detail']}" if f.get("strategy") else f"{f['type']}: {f['detail']}")[:200],
-            f"Autonomous Librarian detected: {f['detail']}. Requires operator review.",
-            json.dumps([{"type":"autonomous_librarian_finding","finding_type":f["type"],"priority":f["priority"],
+        # One write module per store (SoT Phase 9): SQL lives in lib.writers.hermes_research_writer.
+        from lib.writers.hermes_research_writer import write_research_rows
+        rc = write_research_rows(cur, [{
+            "source": "hermes", "hermes_agent_name": "autonomous_librarian_loop", "research_type": "research_backlog",
+            "symbol": None,
+            "topic": (f"{f['type']}:{f['strategy']}: {f['detail']}" if f.get("strategy") else f"{f['type']}: {f['detail']}")[:200],
+            "summary": f"Autonomous Librarian detected: {f['detail']}. Requires operator review.",
+            "thesis": "Autonomous Librarian finding — operator review required.",
+            "thesis_type": "neutral",
+            "evidence_json": json.dumps([{"type":"autonomous_librarian_finding","finding_type":f["type"],"priority":f["priority"],
                         "owner_agent":OWNER_BY_FINDING.get(f["type"], "research_triage_agent"),
                         "backlog_type":BACKLOG_TYPE_BY_FINDING.get(f["type"], "research_triage"),
                         "research_questions":[QUESTION_BY_FINDING.get(
@@ -255,9 +246,15 @@ def main():
                         "source_surface":SURFACE_BY_FINDING.get(f["type"], "librarian_loop"),
                         "advisory_only":True,"not_execution":True,"operator_review_required":True,
                         "source_phase":"49","detail":f["detail"]}]),
-            datetime.now(timezone.utc).strftime("%Y-%m-%d"),
-        ))
-        rid = cur.fetchone()[0]
+            "confidence_score": 0.30, "freshness_date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+            "source_urls_json": [], "model_used": "librarian_loop", "context_type_used": "autonomous_librarian",
+            "status": "staged", "quality_score": 0.30,
+            "tags": ["research_backlog", "autonomous_librarian", "phase_49"],
+        }], producer="autonomous_librarian_loop")
+        if not rc.ids:
+            print(f"  rejected (not written): {rc.rows_rejected}")
+            continue
+        rid = rc.ids[0]
         # Enqueue advisory event
         cur.execute("""
             INSERT INTO hermes_advisory_events (event_type, source_table, source_id, priority, advisory_only, not_execution)

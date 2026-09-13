@@ -27,6 +27,8 @@ from collections import defaultdict
 sys.path.insert(0, "scripts")
 from db_adapter import _execute  # noqa: E402
 from watch_directive_canonical import canonical_family, norm_label  # noqa: E402
+from lib.writers.watch_directives_writer import (  # noqa: E402  (the store's single write module)
+    set_watch_directive_status, update_watch_directive)
 
 # ── malformed-label handling (operator decision 2026-07-01: relabel/merge, don't lose hits) ──
 # High-hit bare/garbage labels are NOT archived — they carry real active surfacing. Instead:
@@ -172,10 +174,8 @@ def apply_plan(actions):
     """Execute in ONE transaction. Reassign hits (conflict-safe), relabel, then archive dups."""
     to_archive = [r["id"] for r in actions["dead"]]
     stmts = []
-    # Tier 1a — relabel (stays active)
-    for r in actions["relabel"]:
-        stmts.append(("UPDATE watch_directives SET label=%s, updated_at=NOW() WHERE id=%s",
-                      (r["new_label"], r["id"])))
+    # Tier 1a — relabel (stays active) — issued through the write module on the same cursor
+    relabels = [(r["id"], r["new_label"]) for r in actions["relabel"]]
     # Tier 1b — bare-dup merge into canonical
     for r in actions["malformed_merge"]:
         _reassign_and_archive(stmts, r["id"], r["target_id"])
@@ -186,14 +186,6 @@ def apply_plan(actions):
         for d in m["dups"]:
             _reassign_and_archive(stmts, d["id"], surv)
             to_archive.append(d["id"])
-    if to_archive:
-        stmts.append((
-            """UPDATE watch_directives
-               SET status='archived', updated_at=NOW(),
-                   rationale=COALESCE(rationale,'')||' [archived by watch_directive_dedup]'
-               WHERE id = ANY(%s)""",
-            (to_archive,),
-        ))
     # db_adapter runs each _execute in its own commit; wrap explicitly for atomicity
     from db_adapter import _get_conn
     conn = _get_conn()
@@ -201,6 +193,11 @@ def apply_plan(actions):
     try:
         for sql, params in stmts:
             cur.execute(sql, params)
+        for did, new_label in relabels:
+            update_watch_directive(cur, did, source="watch_directive_dedup", label=new_label)
+        if to_archive:
+            set_watch_directive_status(cur, to_archive, "archived", source="watch_directive_dedup",
+                                       rationale_append=" [archived by watch_directive_dedup]")
         conn.commit()
     except Exception:
         conn.rollback()

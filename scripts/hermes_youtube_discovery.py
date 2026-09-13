@@ -126,14 +126,15 @@ def main():
             if urls:
                 summary = (f"Hermes YouTube discovery for {sym}: {len(urls)} videos found via SearXNG, "
                            f"{len(got)} transcripts available. Feeds RAG via curation.")
-                cur.execute(
-                    """INSERT INTO hermes_research_intelligence
-                       (research_type, symbol, topic, summary, confidence_score, status, source,
-                        source_urls_json, hermes_agent_name, model_used, freshness_date, created_at)
-                       VALUES ('youtube_discovery', %s, %s, %s, %s, 'staged', 'hermes',
-                               %s, 'hermes_youtube_discovery', 'gemma3:4b', CURRENT_DATE, NOW())""",
-                    (sym, f"youtube_discovery: {sym}", summary, 0.6, json.dumps(urls)))
-                conn.commit(); staged += 1
+                # One write module per store (SoT Phase 9): SQL lives in lib.writers.hermes_research_writer.
+                from lib.writers.hermes_research_writer import write_research_rows
+                rc = write_research_rows(cur, [{
+                    "research_type": "youtube_discovery", "symbol": sym, "topic": f"youtube_discovery: {sym}",
+                    "summary": summary, "confidence_score": 0.6, "status": "staged", "source": "hermes",
+                    "source_urls_json": urls, "hermes_agent_name": "hermes_youtube_discovery",
+                    "model_used": "gemma3:4b",
+                }], producer="hermes_youtube_discovery")
+                conn.commit(); staged += rc.rows_written
         log.info("  %s: %d videos%s", sym, len(urls), f", {len(got)} transcripts" if args.apply else "")
         time.sleep(1)
 

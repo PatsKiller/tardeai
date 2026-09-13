@@ -1779,13 +1779,28 @@ def _protective_stop_refresh_quote(body=None):
     age = quote_age_seconds(raw_ts) if raw_ts is not None else None
     fresh = is_fresh(raw_ts) if raw_ts is not None else False
     # persist the refreshed quote (advisory record; never touches a broker order)
+    # One write path per store (Phase 9): the row goes through the market_quotes write
+    # module with the quote's own event time as fetched_at, exactly as before.
     if quote and parsed:
         try:
-            _db_query(
-                "INSERT INTO market_quotes (symbol, source, price, fetched_at) VALUES (%s,%s,%s,%s)",
-                (sym, f"refresh:{source}", quote["price"], parsed.astimezone(_dt.timezone.utc)),
-                fetch=None,
-            )
+            import sys as _mq_sys
+
+            _mq_sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            from db_adapter import _get_conn as _mq_get_conn, USE_DB as _mq_use_db
+            from lib.writers.market_quotes_writer import write_market_quotes as _write_market_quotes
+
+            if _mq_use_db:
+                _mq_conn = _mq_get_conn()
+                try:
+                    _write_market_quotes(
+                        _mq_conn,
+                        [{"symbol": sym, "price": quote["price"], "fetched_at": parsed.astimezone(_dt.timezone.utc)}],
+                        source=f"refresh:{source}",
+                    )
+                    _mq_conn.commit()
+                except Exception:
+                    _mq_conn.rollback()
+                    raise
         except Exception:
             pass
     blockers = []
@@ -35121,12 +35136,17 @@ def _watch_directive_update(body=None):
     row = _db_query("SELECT id, kind, label, status FROM watch_directives WHERE id=%s", (did,), fetch="one")
     if not row:
         return {"ok": False, "error": f"directive {did} not found"}
+    import sys as _s0
+
+    _s0.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    from lib.writers.watch_directives_writer import set_watch_directive_status as _wd_status
+
     if action == "pause" and row["status"] == "active":
-        _db_query("UPDATE watch_directives SET status='paused', updated_at=NOW() WHERE id=%s", (did,), fetch=None)
+        _wd_status(_db_query, did, "paused", source="operator_api")
     elif action == "resume" and row["status"] in ("paused", "proposed", "expired"):
-        _db_query("UPDATE watch_directives SET status='active', updated_at=NOW() WHERE id=%s", (did,), fetch=None)
+        _wd_status(_db_query, did, "active", source="operator_api")
     elif action == "archive" and row["status"] != "archived":
-        _db_query("UPDATE watch_directives SET status='archived', updated_at=NOW() WHERE id=%s", (did,), fetch=None)
+        _wd_status(_db_query, did, "archived", source="operator_api")
     elif action == "merge_into":
         try:
             tid = int(b.get("target_id") or 0)
@@ -35142,7 +35162,7 @@ def _watch_directive_update(body=None):
 
         attach_alias(tid, row["label"], rationale=f"operator merge of #{did}", created_by="operator_merge")
         _db_query("""UPDATE watch_directive_hits SET directive_id=%s WHERE directive_id=%s""", (tid, did), fetch=None)
-        _db_query("UPDATE watch_directives SET status='archived', updated_at=NOW() WHERE id=%s", (did,), fetch=None)
+        _wd_status(_db_query, did, "archived", source="operator_merge")
         return {"ok": True, "id": did, "merged_into": tid, "hits_reassigned": True}
     else:
         return {"ok": False, "error": f"invalid transition {row['status']} → {action}"}
@@ -36701,24 +36721,37 @@ def _watch_directive_create(body):
         except Exception:
             pass
     if did is None:
-        row = _db_query(
-            """INSERT INTO watch_directives (kind, label, spec, rationale, created_by, ttl_days, priority,
-                              trade_ai_enabled, hermes_enabled)
-                           VALUES (%s, %s, %s::jsonb, %s, %s, %s, %s, %s, %s) RETURNING id""",
-            (
-                kind,
-                label,
-                _j.dumps(spec),
-                body.get("rationale"),
-                body.get("created_by", "operator"),
-                body.get("ttl_days"),
-                body.get("priority", "normal"),
-                bool(body.get("trade_ai_enabled", True)),
-                bool(body.get("hermes_enabled", True)),
-            ),
-            fetch="one",
+        import sys as _s1
+
+        _s1.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        from lib.writers.watch_directives_writer import write_watch_directives as _wd_write
+
+        _rc = _wd_write(
+            _db_query,
+            [
+                {
+                    "kind": kind,
+                    "label": label,
+                    "spec": spec,
+                    "rationale": body.get("rationale"),
+                    "created_by": body.get("created_by", "operator"),
+                    "ttl_days": body.get("ttl_days"),
+                    "priority": body.get("priority", "normal"),
+                    "trade_ai_enabled": bool(body.get("trade_ai_enabled", True)),
+                    "hermes_enabled": bool(body.get("hermes_enabled", True)),
+                }
+            ],
+            source="operator_api",
+            on_duplicate="insert" if body.get("force") else "reuse",
         )
-        did = (row or {}).get("id")
+        if _rc.rows_rejected:
+            return 400, {
+                "ok": False,
+                "error": "directive rejected: " + "; ".join(r["reason"] for r in _rc.rows_rejected),
+            }
+        did = _rc.directive_id
+        if _rc.reused:
+            reused = True
     # ── SERVICE-AT-CREATION (operator caught 2026-06-12: CIFR added 22:47, servicer cron is
     # market-hours-only → ticker sat invisible until 09:00). Ticker directives now run through the
     # SAME real evaluation engine (directive_promotion.promote_directive_lead) synchronously, so the
@@ -36737,9 +36770,9 @@ def _watch_directive_create(body):
                 (spec.get("symbol") or "").upper(), did, f"directive:{label}", "operator", auto=True
             )
             serviced = {"status": res.get("status"), "detail": str(res)[:200]}
-            _db_query(
-                "UPDATE watch_directives SET last_serviced_at=now(), updated_at=now() WHERE id=%s", (did,), fetch="none"
-            )
+            from lib.writers.watch_directives_writer import touch_watch_directive_serviced as _wd_touch
+
+            _wd_touch(_db_query, did, source="operator_api")
         except Exception as e:
             serviced = {"status": "DEFERRED_TO_CRON", "detail": str(e)[:140]}
     # ── ROUTE TO BOTH (operator 2026-06-20: "make all route properly to trends and research both"): a
@@ -48711,9 +48744,17 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 _db_write(
                     "UPDATE qualified_intelligence SET strategy_focus='investment_general' WHERE strategy_focus='defense_thesis'"
                 )
-                _db_write(
-                    "UPDATE news_articles SET strategy_type='investment_general' WHERE strategy_type='defense_thesis'"
-                )
+                # news_articles is written only through its write module (Phase 9).
+                try:
+                    from db_adapter import _get_conn as _na_conn, USE_DB as _na_use_db
+                    from lib.writers.news_articles_writer import reassign_strategy_type as _na_reassign
+
+                    if _na_use_db:
+                        _na_c = _na_conn()
+                        _na_reassign(_na_c.cursor(), "defense_thesis", "investment_general")
+                        _na_c.commit()
+                except Exception as _na_e:
+                    print(f"  [api_v2] news_articles strategy retag error: {_na_e}")
                 return 200, {"ok": True, "updated": updated}
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)}
@@ -49449,13 +49490,33 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                         _ex = cur.fetchone()
                         if _ex:
                             return None  # already seeded — don't pile up
-                        cur.execute(
-                            """INSERT INTO watch_directives
-                            (kind, label, spec, rationale, created_by, ttl_days, priority, status, trade_ai_enabled, hermes_enabled)
-                            VALUES (%s,%s,%s::jsonb,%s,'rotation_advisor',30,'normal','active',true,true) RETURNING id""",
-                            (kind, label, _j.dumps(spec), rationale),
+                        import sys as _s2
+
+                        _s2.path.insert(0, str(PROJECT_ROOT / "scripts"))
+                        from lib.writers.watch_directives_writer import write_watch_directives as _wd_write
+
+                        _rc = _wd_write(
+                            cur,
+                            [
+                                {
+                                    "kind": kind,
+                                    "label": label,
+                                    "spec": spec,
+                                    "rationale": rationale,
+                                    "created_by": "rotation_advisor",
+                                    "ttl_days": 30,
+                                    "priority": "normal",
+                                    "status": "active",
+                                    "trade_ai_enabled": True,
+                                    "hermes_enabled": True,
+                                }
+                            ],
+                            source="rotation_advisor",
                         )
-                        _rid = cur.fetchone()[0]
+                        if _rc.reused or _rc.directive_id is None:
+                            conn.rollback()
+                            return None  # already covered by an active directive, or rejected
+                        _rid = _rc.directive_id
                         conn.commit()
                         return _rid
                     except Exception:
@@ -49681,20 +49742,30 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 try:
                     # source is CHECK-constrained to 'hermes'; operator origin is marked via
                     # hermes_agent_name + research_type='operator_knowledge'.
-                    cur.execute(
-                        """INSERT INTO hermes_research_intelligence
-                        (created_at, source, hermes_agent_name, research_type, symbol, topic, summary, thesis,
-                         freshness_date, model_used, status)
-                        VALUES (now(), 'hermes', 'operator', 'operator_knowledge', %s, %s, %s, %s,
-                                now()::date, 'operator_telegram', 'staged') RETURNING id""",
-                        (
-                            (b.get("symbol") or None),
-                            (topic or "operator note")[:200],
-                            content[:4000],
-                            (b.get("thesis") or content)[:4000],
-                        ),
+                    # One write module per store (SoT Phase 9): SQL lives in
+                    # lib.writers.hermes_research_writer.
+                    from lib.writers.hermes_research_writer import write_research_rows
+
+                    rc = write_research_rows(
+                        cur,
+                        [
+                            {
+                                "source": "hermes",
+                                "hermes_agent_name": "operator",
+                                "research_type": "operator_knowledge",
+                                "symbol": (b.get("symbol") or None),
+                                "topic": (topic or "operator note")[:200],
+                                "summary": content[:4000],
+                                "thesis": (b.get("thesis") or content)[:4000],
+                                "model_used": "operator_telegram",
+                                "status": "staged",
+                            }
+                        ],
+                        producer="operator",
                     )
-                    kid = cur.fetchone()[0]
+                    if not rc.ids:
+                        raise ValueError(f"rejected: {rc.rows_rejected}")
+                    kid = rc.ids[0]
                     conn.commit()
                 except Exception:
                     conn.rollback()

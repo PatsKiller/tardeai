@@ -106,8 +106,8 @@ def backfill(apply: bool = False, force: bool = False) -> list:
             if enh["seed_symbols"]:
                 sp["seed_symbols"] = enh["seed_symbols"]
             sp["keywords_source"] = f"llm:{enh['lane']}"
-            cur.execute("UPDATE watch_directives SET spec=%s::jsonb, updated_at=now() WHERE id=%s",
-                        (json.dumps(sp), did))
+            from lib.writers.watch_directives_writer import update_watch_directive
+            update_watch_directive(cur, did, source="directive_keyword_enhancer", spec=sp)
     if apply:
         conn.commit()
     return results

@@ -58,6 +58,15 @@ RETENTION_FINDING_DAYS = 30
 ARCHIVE_AGENT = "librarian_auto"
 
 
+def _wd_writer():
+    """The watch_directives store's single write module (phase 9)."""
+    try:
+        from lib.writers import watch_directives_writer as w
+    except ImportError:  # imported without scripts/ on sys.path
+        from scripts.lib.writers import watch_directives_writer as w  # type: ignore
+    return w
+
+
 def _clamp(v: float, lo: float = 0, hi: float = 100) -> float:
     return max(lo, min(hi, v))
 
@@ -436,12 +445,7 @@ def auto_archive_stale(
         merged["archived_by"] = ARCHIVE_AGENT
         merged["archive_reason"] = merged.get("stale_reasons") or [f"composite_{merged.get('composite_verdict', 'reject')}"]
         if apply:
-            cur.execute(
-                """UPDATE watch_directives
-                   SET status='archived', spec=%s::jsonb, updated_at=NOW()
-                   WHERE id=%s""",
-                (json.dumps(merged), did),
-            )
+            _wd_writer().set_watch_directive_status(cur, did, "archived", source=ARCHIVE_AGENT, spec=merged)
             _resolve_stale_findings(cur, affected_table="watch_directives", affected_id=did, apply=True)
             cur.execute(
                 """UPDATE hermes_directive_hits_staging
@@ -494,12 +498,9 @@ def auto_archive_stale(
     )
     for rid, topic, symbol, status in cur.fetchall():
         if apply:
-            cur.execute(
-                """UPDATE hermes_research_intelligence
-                   SET status='archived', updated_at=NOW()
-                   WHERE id=%s""",
-                (rid,),
-            )
+            # One write module per store (SoT Phase 9): SQL lives in lib.writers.hermes_research_writer.
+            from lib.writers.hermes_research_writer import set_status
+            set_status(cur, ids=[rid], status="archived", touch_updated_at=True, producer="research_critique_pipeline")
             _resolve_stale_findings(cur, affected_table="hermes_research_intelligence", affected_id=rid, apply=True)
         archived["research"] += 1
         detail.append({"table": "hermes_research_intelligence", "id": rid, "topic": (topic or "")[:50], "symbol": symbol})
@@ -645,10 +646,8 @@ def critique_directives(conn, *, apply: bool, batch_size: int = 15) -> dict:
             new_priority = "normal"
 
         if apply:
-            cur.execute(
-                "UPDATE watch_directives SET spec=%s::jsonb, priority=%s, updated_at=NOW() WHERE id=%s",
-                (json.dumps(merged), new_priority, did),
-            )
+            _wd_writer().update_watch_directive(cur, did, source="research_critique_pipeline",
+                                                spec=merged, priority=new_priority)
             if comp["composite_verdict"] in ("review", "reject"):
                 ftype = "weak_evidence" if comp["composite_verdict"] == "reject" else "unsupported_thesis"
                 if tax.get("taxonomy_verdict") == "reject":
@@ -759,13 +758,12 @@ def critique_research_rows(conn, *, apply: bool, limit: int = 8) -> dict:
         if (conf or 0) < 0.35:
             q -= 15
         if apply:
-            cur.execute(
-                """UPDATE hermes_research_intelligence
-                   SET category_content=%s, category_sector=%s, category_lifecycle=%s,
-                       quality_score=%s
-                   WHERE id=%s""",
-                (tags.get("content"), tags.get("sector"), tags.get("lifecycle"), q / 100.0, rid),
-            )
+            # One write module per store (SoT Phase 9): SQL lives in lib.writers.hermes_research_writer.
+            from lib.writers.hermes_research_writer import set_fields_by_id
+            set_fields_by_id(cur, ids=[rid], fields={
+                "category_content": tags.get("content"), "category_sector": tags.get("sector"),
+                "category_lifecycle": tags.get("lifecycle"), "quality_score": q / 100.0,
+            }, producer="research_critique_pipeline")
         tagged += 1
     if apply and tagged:
         conn.commit()
@@ -826,10 +824,7 @@ def flag_stale_for_removal(
             merged["librarian_stale_flag"] = True
             merged["stale_reasons"] = reasons
             merged["removal_recommended_at"] = now.isoformat()
-            cur.execute(
-                "UPDATE watch_directives SET spec=%s::jsonb, updated_at=NOW() WHERE id=%s",
-                (json.dumps(merged), did),
-            )
+            _wd_writer().update_watch_directive(cur, did, source="research_critique_pipeline", spec=merged)
             _write_finding(
                 cur,
                 affected_table="watch_directives",

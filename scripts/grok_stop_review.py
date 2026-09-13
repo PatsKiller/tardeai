@@ -76,13 +76,15 @@ def _hermes_finding(cur, stop: dict, parsed: dict) -> None:
     """Surface Grok's curated take in the Hermes stream → 'reviewed by GROK' on the card + Hermes hub."""
     try:
         line = f"Grok stop curation [{parsed.get('grade')}]: {parsed.get('recommendation')} — {parsed.get('rr_assessment')}"
-        cur.execute("""INSERT INTO hermes_research_intelligence
-            (source, hermes_agent_name, research_type, symbol, topic, summary, thesis, thesis_type,
-             evidence_json, confidence_score, model_used, status, category_lifecycle, freshness_date, created_at)
-            VALUES ('hermes','Grok','stop_curation',%s,'Grok stop R:R review',%s,%s,'neutral',%s::jsonb,%s,
-                    'grok','staged','stop', CURRENT_DATE, NOW())""",
-            (stop.get("symbol"), line[:480], (parsed.get("suggested_action") or "")[:480],
-             json.dumps(parsed), float(parsed.get("confidence") or 0.7)))
+        # One write module per store (SoT Phase 9): SQL lives in lib.writers.hermes_research_writer.
+        from lib.writers.hermes_research_writer import write_research_rows
+        write_research_rows(cur, [{
+            "source": "hermes", "hermes_agent_name": "Grok", "research_type": "stop_curation",
+            "symbol": stop.get("symbol"), "topic": "Grok stop R:R review", "summary": line[:480],
+            "thesis": (parsed.get("suggested_action") or "")[:480], "thesis_type": "neutral",
+            "evidence_json": json.dumps(parsed), "confidence_score": float(parsed.get("confidence") or 0.7),
+            "model_used": "grok", "status": "staged", "category_lifecycle": "stop",
+        }], producer="Grok")
     except Exception:
         pass
 

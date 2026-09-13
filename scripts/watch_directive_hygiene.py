@@ -33,11 +33,11 @@ def _expire_ttl() -> str:
     deleted; operator resume un-expires). Returns a one-line summary for the Telegram plan."""
     try:
         from db_adapter import _execute
-        rows = _execute("""UPDATE watch_directives
-                           SET status='expired', updated_at=now()
-                           WHERE status='active' AND ttl_days IS NOT NULL
-                             AND created_at < now() - (ttl_days || ' days')::interval
-                           RETURNING id, label""", fetch="all") or []
+        from lib.writers.watch_directives_writer import expire_watch_directives_past_ttl
+        rc = expire_watch_directives_past_ttl(_execute, source="watch_directive_hygiene")
+        if rc.rows_rejected:
+            return f"TTL expiry: FAILED ({rc.rows_rejected[0]['reason'][:80]})"
+        rows = rc.details
         if not rows:
             return "TTL expiry: none due"
         return ("TTL expiry: " + str(len(rows)) + " directive(s) → expired: "

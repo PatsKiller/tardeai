@@ -21,6 +21,8 @@ PROJ = Path(HERE).parent
 if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
+from lib.writers.symbol_profiles_writer import upsert_profile  # noqa: E402
+
 
 def _conn():
     from db_adapter import _get_conn
@@ -104,11 +106,12 @@ def run(symbols=None, apply=True):
                "ttm_distribution_amount": ttm}
         out.append(rec)
         if apply:
-            cur.execute("""UPDATE symbol_profiles SET last_distribution_date=%s, last_distribution_amount=%s,
-                             distribution_cadence=%s, next_distribution_est=%s, ttm_distribution_amount=%s,
-                             distributions_updated_at=NOW() WHERE upper(symbol)=%s""",
-                        (last_date, last_amt, cad, next_est, ttm, s))
-            done += cur.rowcount
+            rcpt = upsert_profile(cur, s, {"last_distribution_date": last_date, "last_distribution_amount": last_amt,
+                                           "distribution_cadence": cad, "next_distribution_est": next_est,
+                                           "ttm_distribution_amount": ttm}, source="distributions_enrich")
+            done += rcpt.rows_written
+            if rcpt.rejected:
+                rec["rejected"] = rcpt.rejected[0]["reason"]
         _t.sleep(0.5)
     if apply:
         conn.commit()

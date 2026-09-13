@@ -201,12 +201,12 @@ def run(apply=False, max_rows=20, reground=False, ids=None):
                     res["confidence"] = min(res["confidence"], 0.5)
             except Exception as _e:
                 print(f"  [universe-guard] skipped: {_e}")
-            cur.execute("""UPDATE hermes_research_intelligence
-                           SET summary=%s, thesis=%s, confidence_score=%s,
-                               model_used=%s, evidence_json=%s, updated_at=now()
-                           WHERE id=%s""",
-                        (res["summary"], res["thesis"], res["confidence"],
-                         f"synth:{res['lane']}", json.dumps(ev), rid))
+            # One write module per store (SoT Phase 9): SQL lives in lib.writers.hermes_research_writer.
+            from lib.writers.hermes_research_writer import set_fields_by_id
+            set_fields_by_id(cur, ids=[rid], fields={
+                "summary": res["summary"], "thesis": res["thesis"], "confidence_score": res["confidence"],
+                "model_used": f"synth:{res['lane']}", "evidence_json": ev,
+            }, touch_updated_at=True, producer="topic_research_synthesizer")
     if apply:
         conn.commit()
     print(json.dumps({"mode": "APPLIED" if apply else "DRY-RUN", "candidates": len(rows),

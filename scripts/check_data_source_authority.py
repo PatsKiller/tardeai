@@ -14,7 +14,15 @@ CHECKS
 ------
     RETIRED_CALL_SITE     a retired provider is referenced outside the allowlist
     UNDECLARED_PROVIDER   a provider host / SDK marker appears in scripts/ but not
-                          in the registry (baseline can only shrink)
+                          in the registry (baseline can only shrink). The finding
+                          tells the agent what to do: propose a registry row WITH
+                          an operator approval record; do not add the host.
+    UNAPPROVED_SOURCE     a provider or domain row has no complete `approval`
+                          record. Adding, replacing or retiring a source is an
+                          operator-only decision (AGENTS.md §17); the grant is the
+                          row's approval {approved_by, approved_on, reference,
+                          scope} — retired rows carry {retired_by, retired_on,
+                          reference}. An ungranted source fails the build.
     WRITER_MISSING        a domain's declared writer file does not exist
     WRITER_UNDECLARED     a domain has no writer and does not declare UNCONSOLIDATED + a target
     PROJECTION_MISSING    a domain's declared projection is not in the broker catalog
@@ -46,7 +54,18 @@ AUTHORITY = PROJECT_ROOT / "config" / "data_source_authority.json"
 BASELINE = PROJECT_ROOT / "config" / "data_source_authority_baseline.json"
 
 SCHEMA = "DataSourceAuthorityReport@v1"
+AUTHORITY_SCHEMA = "DataSourceAuthority@v2"
 NO_CONSUMER_REASON = "this IS a CI gate; ai_local_acceptance and the PR workflow invoke it and read the exit code."
+
+#: What an agent must do when the gate names a host it does not know. The grant
+#: is the operator's (AGENTS.md §17); the agent's part is the proposal.
+UNDECLARED_ACTION = ("propose a registry row in config/data_source_authority.json WITH an operator "
+                     "approval record {approved_by, approved_on, reference, scope}; do not add the host "
+                     "until the operator has granted it (AGENTS.md §7A, §17)")
+
+#: A complete grant. Active rows are approved; retired rows record who retired them.
+APPROVAL_KEYS_ACTIVE = ("approved_by", "approved_on", "reference", "scope")
+APPROVAL_KEYS_RETIRED = ("retired_by", "retired_on", "reference")
 
 #: Files that legitimately mention retired providers: secret-hygiene scanners
 #: (they must keep recognising a leaked key), the registry itself, this gate,
@@ -120,7 +139,38 @@ def scan_undeclared(auth: dict, files: list[Path]) -> list[dict]:
             if any(mk in host or host in mk for mk in declared_markers):
                 continue
             seen.setdefault(host, _rel(p))
-    return [{"check": "UNDECLARED_PROVIDER", "host": h, "first_seen": f} for h, f in sorted(seen.items())]
+    return [{"check": "UNDECLARED_PROVIDER", "host": h, "first_seen": f, "action": UNDECLARED_ACTION}
+            for h, f in sorted(seen.items())]
+
+
+def _approval_missing(row: dict, required: tuple[str, ...]) -> list[str]:
+    """Names of the required approval fields that are absent or blank."""
+    appr = row.get("approval")
+    if not isinstance(appr, dict):
+        return list(required)
+    return [k for k in required if not str(appr.get(k) or "").strip()]
+
+
+def check_approvals(auth: dict) -> list[dict]:
+    """Every provider and every domain carries the operator's grant.
+
+    A source is not a source because a call site exists; it is a source because
+    the operator granted it and the grant is written where a program can read it.
+    A row with no complete approval is UNAPPROVED_SOURCE and fails the build.
+    """
+    findings = []
+    for name, p in auth.get("providers", {}).items():
+        required = APPROVAL_KEYS_RETIRED if p.get("status") == "retired" else APPROVAL_KEYS_ACTIVE
+        missing = _approval_missing(p, required)
+        if missing:
+            findings.append({"check": "UNAPPROVED_SOURCE", "kind": "provider", "name": name, "missing": missing,
+                             "action": "operator-only (AGENTS.md §17): propose the approval record in a PR; do not use the source until granted"})
+    for d in auth.get("domains", []):
+        missing = _approval_missing(d, APPROVAL_KEYS_ACTIVE)
+        if missing:
+            findings.append({"check": "UNAPPROVED_SOURCE", "kind": "domain", "name": d.get("domain"), "missing": missing,
+                             "action": "operator-only (AGENTS.md §17): propose the approval record in a PR; do not use the source until granted"})
+    return findings
 
 
 def check_domains(auth: dict) -> list[dict]:
@@ -200,8 +250,8 @@ def main() -> int:
         print(f"ERROR: {AUTHORITY} missing", file=sys.stderr)
         return 2
     auth = json.loads(AUTHORITY.read_text(encoding="utf-8"))
-    if auth.get("schema") != "DataSourceAuthority@v1":
-        print("ERROR: unexpected authority schema", file=sys.stderr)
+    if auth.get("schema") != AUTHORITY_SCHEMA:
+        print(f"ERROR: unexpected authority schema {auth.get('schema')!r}; expected {AUTHORITY_SCHEMA}", file=sys.stderr)
         return 2
     files = _files()
 
@@ -212,8 +262,11 @@ def main() -> int:
         # Undeclared hosts seen today are inherited debt: URLs in research seeds, library
         # references and regulator pages, not data providers. They are recorded so the
         # gate is green on day one and any NEW host fails — the lane-registry precedent.
+        prior = json.loads(BASELINE.read_text()) if BASELINE.exists() else {}
         BASELINE.write_text(json.dumps({
             "schema": "DataSourceAuthorityBaseline@v1",
+            # measured history survives a regeneration; the ceiling is what is enforced
+            **({"history": prior["history"]} if isinstance(prior.get("history"), dict) else {}),
             "_why": "Ceilings, not targets. Each number may only fall and each list may only shrink. Regenerate deliberately with --write-baseline after a reduction.",
             "writers": writers, "direct_reads": reads,
             "undeclared_hosts": sorted(u["host"] for u in undeclared),
@@ -225,12 +278,18 @@ def main() -> int:
     findings += scan_retired(auth, files)
     undeclared_baseline = set(baseline.get("undeclared_hosts", []))
     findings += [u for u in undeclared if u["host"] not in undeclared_baseline]
+    findings += check_approvals(auth)
     findings += check_domains(auth)
     findings += compare_baseline("WRITER_COUNT_ROSE", writers, baseline.get("writers", {}))
     findings += compare_baseline("DIRECT_READ_ROSE", reads, baseline.get("direct_reads", {}))
 
-    report = {"schema": SCHEMA, "domains": len(auth["domains"]), "providers": len(auth["providers"]),
+    unapproved = [f for f in findings if f["check"] == "UNAPPROVED_SOURCE"]
+    approved = {"providers": len(auth["providers"]) - sum(1 for f in unapproved if f["kind"] == "provider"),
+                "domains": len(auth["domains"]) - sum(1 for f in unapproved if f["kind"] == "domain")}
+    report = {"schema": SCHEMA, "authority_schema": auth.get("schema"),
+              "domains": len(auth["domains"]), "providers": len(auth["providers"]),
               "retired": sorted(k for k, v in auth["providers"].items() if v.get("status") == "retired"),
+              "approved": approved,
               "writers": writers, "direct_reads": reads, "undeclared_hosts_seen": [u["host"] for u in undeclared],
               "findings": findings}
     if args.json:
@@ -239,6 +298,8 @@ def main() -> int:
         print("Data source authority — one source of truth per domain")
         print("=" * 74)
         print(f"  domains={report['domains']}  providers={report['providers']}  retired={','.join(report['retired'])}")
+        print(f"  operator grants     : providers={approved['providers']}/{report['providers']}  "
+              f"domains={approved['domains']}/{report['domains']}  (schema {report['authority_schema']})")
         print(f"  writers per store   : {json.dumps(writers)}")
         print(f"  hub direct reads    : {json.dumps(reads)}")
         for f in findings:

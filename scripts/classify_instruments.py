@@ -17,6 +17,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 ROOT = Path(__file__).resolve().parent.parent
 from db_adapter import _get_conn
+from lib.writers.symbol_profiles_writer import upsert_profile
 
 UNIVERSE = ROOT / "config" / "etf_fund_universe.json"
 OUT = ROOT / "data" / "runtime" / "instrument_types_latest.json"
@@ -123,13 +124,14 @@ def main():
             print("  yfinance enrichment skipped (non-fatal):", str(e)[:80])
 
     # persist instrument_type + expense ratio + quote_type back to symbol_profiles
-    upd = 0
+    upd = rejected = 0
     for sym, info in cls.items():
-        cur.execute("""UPDATE symbol_profiles SET instrument_type=%s, direction_hint=%s,
-                         expense_ratio=COALESCE(%s, expense_ratio), quote_type=COALESCE(%s, quote_type)
-                       WHERE upper(symbol)=%s""",
-                    (info["type"], info["direction"], exp.get(sym), qt.get(sym), sym))
-        upd += cur.rowcount
+        # expense_ratio / quote_type: a None keeps the stored value (COALESCE) — same as before.
+        rcpt = upsert_profile(cur, sym, {"instrument_type": info["type"], "direction_hint": info["direction"],
+                                         "expense_ratio": exp.get(sym), "quote_type": qt.get(sym)},
+                              source="classify_instruments", keep_existing_if_null=("expense_ratio", "quote_type"))
+        upd += rcpt.rows_written
+        rejected += rcpt.rows_rejected
     conn.commit()
 
     counts = {}
@@ -137,7 +139,8 @@ def main():
         counts[info["type"]] = counts.get(info["type"], 0) + 1
     OUT.write_text(json.dumps({"types": {s: i["type"] for s, i in cls.items()},
                                "detail": cls, "counts": counts}, indent=2))
-    print(json.dumps({"ok": True, "classified": len(cls), "profile_rows_updated": upd, "counts": counts}, indent=2))
+    print(json.dumps({"ok": True, "classified": len(cls), "profile_rows_updated": upd, "profile_rows_rejected": rejected,
+                      "counts": counts}, indent=2))
     return 0
 
 

@@ -292,13 +292,16 @@ def approve(intent: dict, impact: dict, advice: dict, directives: list | None = 
                                  rationale=d.get("rationale"), created_by="strategy_planner")
                     dir_ids.append(_g["survivor_id"])
                     continue
-            cur.execute("""INSERT INTO watch_directives
-                (kind, label, spec, rationale, created_by, ttl_days, priority, status, trade_ai_enabled, hermes_enabled)
-                VALUES (%s,%s,%s::jsonb,%s,'strategy_planner',%s,'normal','active',true,true) RETURNING id""",
-                        (kind, label, _j.dumps(spec),
-                         d.get("rationale") or f"Redeploy target from strategy plan: {it.get('note') or it['action']}",
-                         int(d.get("ttl_days") or 30)))
-            dir_ids.append(cur.fetchone()[0]); conn.commit()
+            from lib.writers.watch_directives_writer import write_watch_directives
+            rc = write_watch_directives(cur, [{
+                "kind": kind, "label": label, "spec": spec,
+                "rationale": d.get("rationale") or f"Redeploy target from strategy plan: {it.get('note') or it['action']}",
+                "created_by": "strategy_planner", "ttl_days": int(d.get("ttl_days") or 30),
+                "priority": "normal", "status": "active", "trade_ai_enabled": True, "hermes_enabled": True,
+            }], source="strategy_planner")
+            if rc.directive_id is None:
+                raise RuntimeError(f"watch_directives write rejected: {rc.rows_rejected}")
+            dir_ids.append(rc.directive_id); conn.commit()
         except Exception:
             conn.rollback()   # schema/dup → skip this directive, keep the plan
     # 2) learning: one observation so the approved direction trains the models

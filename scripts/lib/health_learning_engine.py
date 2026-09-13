@@ -107,40 +107,26 @@ class HealthLearningEngine:
         if existing:
             cur.close()
             return None
-        cur.execute(
-            """
-            INSERT INTO hermes_research_intelligence
-                (source, hermes_agent_name, research_type, topic, summary, thesis,
-                 confidence_score, status, tags, threshold_adjusted,
-                 freshness_date, model_used, pattern_signature, evidence_json,
-                 created_at, updated_at)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, false,
-                    CURRENT_DATE, %s, %s, %s::jsonb, NOW(), NOW())
-        """,
-            (
-                "hermes",
-                "hermes_health_inspector",
-                "threshold_tuning",
-                "threshold_tuning",
-                summary,
-                summary,
-                confidence,
-                "staged",
-                '{"health_inspection","threshold_tuning","P3"}',
-                "learning_engine",
-                pattern_signature,
-                json.dumps({
-                    "schema": "HealthThresholdProposal@v1",
-                    "producer": producer_name,
-                    "current_threshold_h": float(old_threshold_h),
-                    "proposed_threshold_h": rounded_new,
-                    "confidence": float(confidence),
-                    "proposal_only": True,
-                    "config_mutated": False,
-                    "authority": "OPERATIONS_REVIEW_REQUIRED",
-                }),
-            ),
-        )
+        # One write module per store (SoT Phase 9): SQL lives in lib.writers.hermes_research_writer.
+        from lib.writers.hermes_research_writer import SQL_NOW, write_research_rows
+        write_research_rows(cur, [{
+            "source": "hermes", "hermes_agent_name": "hermes_health_inspector",
+            "research_type": "threshold_tuning", "topic": "threshold_tuning",
+            "summary": summary, "thesis": summary, "confidence_score": confidence, "status": "staged",
+            "tags": '{"health_inspection","threshold_tuning","P3"}', "threshold_adjusted": False,
+            "model_used": "learning_engine", "pattern_signature": pattern_signature,
+            "evidence_json": json.dumps({
+                "schema": "HealthThresholdProposal@v1",
+                "producer": producer_name,
+                "current_threshold_h": float(old_threshold_h),
+                "proposed_threshold_h": rounded_new,
+                "confidence": float(confidence),
+                "proposal_only": True,
+                "config_mutated": False,
+                "authority": "OPERATIONS_REVIEW_REQUIRED",
+            }),
+            "updated_at": SQL_NOW,
+        }], producer="hermes_health_inspector")
         self.conn.commit()
         cur.close()
         return rounded_new
@@ -288,28 +274,15 @@ Respond in JSON:
         )
         sev = pattern.get("severity", "P3")
         conf = pattern.get("confidence", 0.5)
-        cur.execute(
-            """
-            INSERT INTO hermes_research_intelligence
-                (source, hermes_agent_name, research_type, topic, summary, thesis,
-                 confidence_score, status, tags, new_pattern_discovered,
-                 pattern_signature, freshness_date, model_used, created_at, updated_at)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, true, %s, CURRENT_DATE, %s, NOW(), NOW())
-        """,
-            (
-                "hermes",
-                "hermes_health_inspector",
-                "pattern_discovery",
-                "pattern_discovery",
-                hypothesis[:200],
-                hypothesis[:500],
-                conf,
-                "staged",
-                '{"health_inspection","pattern_discovery","' + sev + '"}',
-                name,
-                "learning_engine",
-            ),
-        )
+        # One write module per store (SoT Phase 9): SQL lives in lib.writers.hermes_research_writer.
+        from lib.writers.hermes_research_writer import SQL_NOW, write_research_rows
+        write_research_rows(cur, [{
+            "source": "hermes", "hermes_agent_name": "hermes_health_inspector",
+            "research_type": "pattern_discovery", "topic": "pattern_discovery",
+            "summary": hypothesis[:200], "thesis": hypothesis[:500], "confidence_score": conf, "status": "staged",
+            "tags": '{"health_inspection","pattern_discovery","' + sev + '"}', "new_pattern_discovered": True,
+            "pattern_signature": name, "model_used": "learning_engine", "updated_at": SQL_NOW,
+        }], producer="hermes_health_inspector")
         self.conn.commit()
         cur.close()
 
@@ -382,14 +355,9 @@ Respond in JSON:
 
         # Update learning cycle counter for rows in this cycle
         cur = self.conn.cursor()
-        cur.execute(
-            """
-            UPDATE hermes_research_intelligence
-            SET learning_cycle = %s
-            WHERE learning_cycle = 0 AND created_at > now() - interval '1 hour'
-        """,
-            (cycle_number,),
-        )
+        # One write module per store (SoT Phase 9): SQL lives in lib.writers.hermes_research_writer.
+        from lib.writers.hermes_research_writer import stamp_learning_cycle
+        stamp_learning_cycle(cur, cycle_number=cycle_number, within="1 hour", producer="hermes_health_inspector")
         self.conn.commit()
         cur.close()
 

@@ -110,9 +110,12 @@ def auto_promote(conn):
     rows = cur.fetchall()
     promoted = 0
     enqueued = 0
+    # One write module per store (SoT Phase 9): the status UPDATE and its rollback
+    # statement both come from lib.writers.hermes_research_writer.
+    from lib.writers.hermes_research_writer import rollback_sql_for_status, set_status
     for rid, sym, rtype, conf in rows:
-        rollback = f"UPDATE hermes_research_intelligence SET status='staged' WHERE id={rid};"
-        cur.execute("UPDATE hermes_research_intelligence SET status='promoted' WHERE id=%s", (rid,))
+        rollback = rollback_sql_for_status(rid, "staged")
+        set_status(cur, ids=[rid], status="promoted", producer="chief_hermes_coordinator")
         cur.execute("""INSERT INTO hermes_promotion_audit
                        (promoted_at, source_table, source_id, target_table, target_id, promotion_type,
                         dry_run, approved_by, approved_at, rollback_sql, notes)

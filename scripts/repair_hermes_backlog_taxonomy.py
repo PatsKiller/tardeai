@@ -82,14 +82,13 @@ def main() -> int:
             candidates.append((row_id, repaired))
 
     if args.apply:
+        # One write module per store (SoT Phase 9): SQL lives in lib.writers.hermes_research_writer.
+        from lib.writers.hermes_research_writer import set_fields_by_id
         for row_id, repaired in candidates:
-            cur.execute(
-                """UPDATE hermes_research_intelligence
-                   SET evidence_json=%s::jsonb, updated_at=NOW()
-                   WHERE id=%s AND research_type='research_backlog'
-                     AND hermes_agent_name='autonomous_librarian_loop'""",
-                (json.dumps(repaired), row_id),
-            )
+            set_fields_by_id(
+                cur, ids=[row_id], fields={"evidence_json": repaired}, touch_updated_at=True,
+                extra_where="research_type='research_backlog' AND hermes_agent_name='autonomous_librarian_loop'",
+                producer="repair_hermes_backlog_taxonomy")
         conn.commit()
     else:
         conn.rollback()

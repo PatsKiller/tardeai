@@ -281,17 +281,18 @@ def drain_backlog(*, apply: bool, max_rows: int) -> list[dict]:
 
         cur = conn.cursor()
         try:
-            sql, vals = build_insert("hermes_research_intelligence", output)
-            cur.execute(sql, vals)
-            new_id = cur.fetchone()[0]
-            cur.execute(
-                """UPDATE hermes_research_intelligence
-                   SET status = CASE WHEN status='staged' THEN 'archived' ELSE status END,
-                       tags = CASE WHEN 'drained' = ANY(tags) THEN tags
-                                   ELSE array_append(tags, 'drained') END
-                   WHERE id=%s""",
-                (bid,),
-            )
+            # One write module per store (SoT Phase 9): both the staging INSERT (formerly
+            # hermes_staging_ingest.build_insert) and the drained-transition UPDATE live in
+            # lib.writers.hermes_research_writer. drop_unknown mirrors build_insert's
+            # KNOWN_COLUMNS filter on the LLM's free-form output.
+            from lib.writers.hermes_research_writer import transition_if_status, write_research_rows
+            rc = write_research_rows(cur, [output], producer="backlog_drain_agent", source="hermes",
+                                     run_id=run_id, drop_unknown=True)
+            if not rc.ids:
+                raise RuntimeError(f"rejected: {rc.rows_rejected}")
+            new_id = rc.ids[0]
+            transition_if_status(cur, ids=[bid], from_status="staged", to_status="archived",
+                                 add_tag_if_absent="drained", producer="backlog_drain_agent", run_id=run_id)
             cur.execute(
                 """INSERT INTO hermes_memory_events
                    (created_at, source, hermes_agent_name, event_type, topic, content,

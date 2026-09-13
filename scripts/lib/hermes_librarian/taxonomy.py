@@ -28,6 +28,20 @@ TAXONOMY_MODEL = os.environ.get("HERMES_TAXONOMY_MODEL", "gemma3:4b")
 ROOT = Path(__file__).resolve().parents[3]
 TAXONOMY_AXIS = "content_subject"
 
+
+def _writer():
+    """lib.writers.hermes_research_writer — the one write module for hermes_research_intelligence.
+
+    Guarded import: this package is loaded as lib.hermes_librarian.* in production
+    and by file path in tests, so the scripts/ dir may not be on sys.path yet.
+    """
+    try:
+        from lib.writers import hermes_research_writer as W
+    except ImportError:
+        sys.path.insert(0, str(ROOT / "scripts"))
+        from lib.writers import hermes_research_writer as W
+    return W
+
 # Canonical subject tags — loaded from config or default
 DEFAULT_CONTENT_TAGS = [
     "earnings", "mergers_acquisitions", "product_launch", "regulatory",
@@ -157,11 +171,9 @@ def backfill_content_tags(conn, *, batch: int = 200, dry_run: bool = False) -> d
         try:
             tags = classify_content(text, symbol=symbol)
             if tags and not dry_run:
-                cur.execute("""
-                    UPDATE hermes_research_intelligence
-                    SET content_tags = %s
-                    WHERE id = %s
-                """, (tags, row_id))
+                # One write module per store (SoT Phase 9): SQL lives in lib.writers.hermes_research_writer.
+                _writer().set_fields_by_id(cur, ids=[row_id], fields={"content_tags": tags},
+                                           producer="librarian_v2:taxonomy")
             tagged += 1
         except Exception as e:
             errors += 1

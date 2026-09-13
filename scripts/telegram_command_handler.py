@@ -698,6 +698,7 @@ def _handle_add_article(args: str) -> str:
 
     sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
     from content_scoring import score_content, tag_content
+    from lib.writers.news_articles_writer import SQL_NOW, is_duplicate, write_news_articles
 
     conn = _get_conn()
     cur = conn.cursor()
@@ -707,9 +708,8 @@ def _handle_add_article(args: str) -> str:
 
     for url in urls:
         try:
-            # Check if already ingested
-            cur.execute("SELECT 1 FROM news_articles WHERE source_url = %s LIMIT 1", (url[:500],))
-            if cur.fetchone():
+            # Check if already ingested (the write module's dedupe rule; manual adds share one symbol)
+            if is_duplicate(cur, "manual_add", url[:500]):
                 skipped += 1
                 lines.append(f"Already exists: `{url[:60]}`")
                 continue
@@ -741,25 +741,26 @@ def _handle_add_article(args: str) -> str:
             scores = score_content(title=title, text=text[:5000], source="telegram_article")
             tags = tag_content(text=text[:5000], title=title)
 
-            # Save
+            # Save (through the store's single write module)
             cur.execute("SAVEPOINT article_save")
-            cur.execute("""
-                INSERT INTO news_articles
-                    (symbol, strategy_type, title, summary, source, source_url,
-                     published_at, relevance_score, strategy_tags, agent_tags)
-                VALUES (%s, %s, %s, %s, %s, %s, NOW(), %s, %s, %s)
-            """, (
-                "manual_add",
-                "manual_add",
-                title[:500],
-                text[:1000],
-                "telegram_article",
-                url[:500],
-                scores.get("relevance_score", 0.5),
-                json.dumps(tags.get("strategy_tags", [])),
-                json.dumps(tags.get("agent_tags", [])),
-            ))
+            receipt = write_news_articles(cur, [{
+                "symbol": "manual_add",
+                "strategy_type": "manual_add",
+                "title": title[:500],
+                "summary": text[:1000],
+                "source": "telegram_article",
+                "source_url": url[:500],
+                "published_at": SQL_NOW,
+                "relevance_score": scores.get("relevance_score", 0.5),
+                "strategy_tags": json.dumps(tags.get("strategy_tags", [])),
+                "agent_tags": json.dumps(tags.get("agent_tags", [])),
+            }], source="telegram_article")
             conn.commit()
+            if not receipt.rows_written:
+                skipped += 1
+                lines.append(f"Not written: `{url[:40]}` — "
+                             f"{receipt.rejected[0]['reason'] if receipt.rejected else 'duplicate'}")
+                continue
             ingested += 1
             q = scores.get("quality_score", 0)
             r = scores.get("relevance_score", 0)
@@ -837,10 +838,17 @@ def _handle_watch(args: str) -> str:
             except Exception:
                 pass
         conn = _get_conn(); cur = conn.cursor()
-        cur.execute("""INSERT INTO watch_directives (kind, label, spec, rationale, created_by)
-                       VALUES (%s, %s, %s::jsonb, %s, 'operator') RETURNING id""",
-                    (kind, label, _j.dumps(spec), rationale))
-        did = cur.fetchone()[0]; conn.commit()
+        from lib.writers.watch_directives_writer import write_watch_directives
+        _rc = write_watch_directives(cur, [{"kind": kind, "label": label, "spec": spec,
+                                            "rationale": rationale, "created_by": "operator"}],
+                                     source="telegram_operator")
+        did = _rc.directive_id
+        if did is None:
+            conn.rollback()
+            return "watch error: " + "; ".join(r["reason"] for r in _rc.rows_rejected)
+        conn.commit()
+        if _rc.reused:
+            _dup_warn += f"\n(existing {kind} directive #{did} reused — no duplicate created)"
         msg = (f"✓ Watch directive #{did}: {kind} — {label}" + _dup_warn
                + (f"\nthesis: {rationale}" if rationale else "")
                + "\nTrade AI + Hermes will honor it (Hermes proposes via staging only).")

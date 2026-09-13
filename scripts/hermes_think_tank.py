@@ -31,7 +31,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
-from watch_directive_canonical import canonical_family  # noqa: E402  (scripts/ on path above)
 AUDIT = ROOT / "data" / "runtime" / "think_tank_latest.json"
 PY = str(ROOT / ".venv" / "bin" / "python")
 
@@ -175,41 +174,14 @@ def _merge_themes(*theme_lists: list[dict]) -> list[dict]:
 
 
 def _find_existing(cur, theme: dict) -> int | None:
-    kind = theme["kind"]
-    norm = _norm_label(theme["label"])
-    cur.execute(
-        """SELECT id, label FROM watch_directives
-           WHERE kind=%s AND status='active'""",
-        (kind,),
-    )
-    rows = cur.fetchall()
-    for did, lbl in rows:
-        if _norm_label(lbl) == norm:
-            return did
     # Canonical-family guard (2026-07-01): exact-label dedup alone let dozens of near-dup trend
     # themes ("M&A surge" / "M&A and consolidation" / "event-driven M&A…") each spawn a separate
-    # directive. If this new theme maps to a known broad family and an active trend directive
-    # already covers it, treat that one as the existing directive (its keywords/seeds get merged)
-    # instead of creating another near-dup. Operator ticker/sector directives are unaffected.
-    if kind == "trend":
-        fam = canonical_family(theme["label"])
-        if fam:
-            for did, lbl in rows:
-                if canonical_family(lbl) == fam:
-                    return did
-    if kind == "sector":
-        sec = (theme.get("spec") or {}).get("finviz_sector")
-        if sec:
-            cur.execute(
-                """SELECT id FROM watch_directives
-                   WHERE kind='sector' AND status='active'
-                     AND (spec->>'finviz_sector'=%s OR spec->>'gics_sector'=%s)
-                   LIMIT 1""",
-                (sec, sec),
-            )
-            row = cur.fetchone()
-            if row:
-                return row[0]
+    # directive. Since phase 9 the rule (normalised label, then canonical family with the
+    # most-hits survivor) lives in the store's ONE write module and is applied here through it.
+    from lib.writers.watch_directives_writer import find_existing_directive
+    found = find_existing_directive(cur, theme["kind"], theme["label"], theme.get("spec"))
+    if found:
+        return found["id"]
     return None
 
 
@@ -245,20 +217,18 @@ def upsert_themes(conn, themes: list[dict], *, apply: bool, max_themes: int) -> 
                     else:
                         merged[k] = v
                 merged["think_tank_refreshed_at"] = datetime.now(timezone.utc).isoformat()
-                cur.execute(
-                    "UPDATE watch_directives SET spec=%s::jsonb, rationale=%s, updated_at=NOW() WHERE id=%s",
-                    (json.dumps(merged), theme.get("rationale"), existing),
-                )
+                from lib.writers.watch_directives_writer import update_watch_directive
+                update_watch_directive(cur, existing, source="think_tank",
+                                       spec=merged, rationale=theme.get("rationale"))
             else:
-                cur.execute(
-                    """INSERT INTO watch_directives
-                       (kind, label, spec, rationale, created_by, status, priority,
-                        trade_ai_enabled, hermes_enabled, ttl_days)
-                       VALUES (%s,%s,%s::jsonb,%s,'think_tank','active','normal',true,true,90)
-                       RETURNING id""",
-                    (theme["kind"], theme["label"][:120], json.dumps(spec), theme.get("rationale")),
-                )
-                did = cur.fetchone()[0]
+                from lib.writers.watch_directives_writer import write_watch_directives
+                rc = write_watch_directives(cur, [{
+                    "kind": theme["kind"], "label": theme["label"][:120], "spec": spec,
+                    "rationale": theme.get("rationale"), "created_by": "think_tank",
+                    "status": "active", "priority": "normal",
+                    "trade_ai_enabled": True, "hermes_enabled": True, "ttl_days": 90,
+                }], source="think_tank", on_duplicate="insert")
+                did = rc.directive_id
                 action = "created"
         results.append({"action": action, "id": did, "kind": theme["kind"], "label": theme["label"]})
     if apply:

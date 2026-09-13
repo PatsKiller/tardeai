@@ -120,13 +120,15 @@ def _hermes_finding(symbol: str, condition: str, line: str, payload: dict) -> No
         conn = _get_conn(); cur = conn.cursor()
         # research_type='stop_health' is the identity; thesis_type/status must satisfy the table's CHECKs
         # (thesis_type ∈ bullish/bearish/neutral/mixed → 'neutral'; status ∈ staged/.. → 'staged').
-        cur.execute("""INSERT INTO hermes_research_intelligence
-            (source, hermes_agent_name, research_type, symbol, topic, summary, thesis, thesis_type,
-             evidence_json, confidence_score, model_used, status, category_lifecycle, freshness_date, created_at)
-            VALUES (%s,%s,'stop_health',%s,%s,%s,%s,'neutral',%s::jsonb,%s,'stop_lifecycle_monitor',
-                    'staged','stop', CURRENT_DATE, NOW())""",
-            ("hermes", "StopHealthMonitor", symbol, f"Stop health: {condition}",
-             f"{condition} — {line}", line, json.dumps(payload), 0.95))
+        # One write module per store (SoT Phase 9): SQL lives in lib.writers.hermes_research_writer.
+        from lib.writers.hermes_research_writer import write_research_rows
+        write_research_rows(cur, [{
+            "source": "hermes", "hermes_agent_name": "StopHealthMonitor", "research_type": "stop_health",
+            "symbol": symbol, "topic": f"Stop health: {condition}", "summary": f"{condition} — {line}",
+            "thesis": line, "thesis_type": "neutral", "evidence_json": json.dumps(payload),
+            "confidence_score": 0.95, "model_used": "stop_lifecycle_monitor", "status": "staged",
+            "category_lifecycle": "stop",
+        }], producer="StopHealthMonitor")
         conn.commit()
     except Exception:
         if conn is not None:

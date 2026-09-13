@@ -95,18 +95,21 @@ def generate_backlog(max_items=5, dry_run=True):
             if cur.fetchone():
                 print(f"  Skipped duplicate (14d): {c['topic'][:60]}")
                 continue
-            cur.execute("""
-                INSERT INTO hermes_research_intelligence
-                (symbol, research_type, hermes_agent_name, topic, summary, confidence_score,
-                 source_urls_json, evidence_json, status, source, freshness_date, model_used)
-                VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, 'staged', 'hermes', CURRENT_DATE, 'siem_normalizer')
-                RETURNING id
-            """, [c["symbol"], c["research_type"], c["hermes_agent_name"],
-                  c["topic"], c["summary"], c["confidence_score"], c["source_urls_json"],
-                  json.dumps([{"type": "siem_backlog_finding", "source_surface": "siem",
-                               "priority": "high" if c["confidence_score"] >= 0.5 else "medium",
-                               "dedupe_key": dk, "advisory_only": True, "not_execution": True}])])
-            rid = cur.fetchone()[0]
+            # One write module per store (SoT Phase 9): SQL lives in lib.writers.hermes_research_writer.
+            from lib.writers.hermes_research_writer import write_research_rows
+            rc = write_research_rows(cur, [{
+                "symbol": c["symbol"], "research_type": c["research_type"],
+                "hermes_agent_name": c["hermes_agent_name"], "topic": c["topic"], "summary": c["summary"],
+                "confidence_score": c["confidence_score"], "source_urls_json": c["source_urls_json"],
+                "evidence_json": json.dumps([{"type": "siem_backlog_finding", "source_surface": "siem",
+                                              "priority": "high" if c["confidence_score"] >= 0.5 else "medium",
+                                              "dedupe_key": dk, "advisory_only": True, "not_execution": True}]),
+                "status": "staged", "source": "hermes", "model_used": "siem_normalizer",
+            }], producer=c["hermes_agent_name"])
+            if not rc.ids:
+                print(f"  Rejected (not written): {rc.rows_rejected}")
+                continue
+            rid = rc.ids[0]
             inserted += 1
             print(f"  Inserted backlog id={rid}: {c['topic'][:60]}")
         conn.commit()

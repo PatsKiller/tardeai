@@ -271,12 +271,13 @@ def grade_research_actions(cur, cfg) -> dict:
                graded_at = COALESCE(l.graded_at, NOW())
         FROM j WHERE l.id = j.lid""", (win, win, win, win))
     n = cur.rowcount
-    cur.execute("""UPDATE hermes_research_intelligence hri
-                   SET downstream_outcome = l.actioned
-                   FROM hermes_outcome_ledger l
-                   WHERE l.subject_type='research_row' AND l.subject_id = hri.id
-                     AND l.actioned IS NOT NULL AND hri.downstream_outcome IS NULL""")
-    return {"research_actioned": n, "downstream_outcome_filled": cur.rowcount}
+    # One write module per store (SoT Phase 9): SQL lives in lib.writers.hermes_research_writer.
+    from lib.writers.hermes_research_writer import link_from_join
+    rc = link_from_join(cur, set_raw={"downstream_outcome": "l.actioned"}, from_clause="hermes_outcome_ledger l",
+                        where=("l.subject_type='research_row' AND l.subject_id = hri.id "
+                               "AND l.actioned IS NOT NULL AND hri.downstream_outcome IS NULL"),
+                        alias="hri", producer="hermes_outcome_grader")
+    return {"research_actioned": n, "downstream_outcome_filled": rc.rows_written}
 
 
 def grade_trades(cur) -> dict:

@@ -17,6 +17,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 ROOT = Path(__file__).resolve().parent.parent
 from db_adapter import _get_conn
+from lib.writers.symbol_profiles_writer import upsert_profile
 
 
 def _holding_upsides(cur, symbols):
@@ -108,8 +109,8 @@ def main():
         final = direct_up.get(sym) if direct_up.get(sym) is not None else lt
         basis = ("direct analyst target" if sym in direct_up else
                  (f"holdings look-through ({len([h for h in holds if h in ups])} constituents)" if lt is not None else None))
-        cur.execute("UPDATE symbol_profiles SET analyst_look_through_pct=%s, analyst_basis=%s WHERE upper(symbol)=%s",
-                    (final, basis, sym))
+        upsert_profile(cur, sym, {"analyst_look_through_pct": final, "analyst_basis": basis},
+                       source="etf_analyst_enrich")
         if final is not None:
             done += 1
     conn.commit()

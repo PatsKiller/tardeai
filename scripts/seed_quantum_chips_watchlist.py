@@ -19,6 +19,9 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
+from lib.writers.watch_directives_writer import (  # noqa: E402  (the store's single write module)
+    touch_watch_directive_serviced, update_watch_directive, write_watch_directives)
+
 LIST_LABEL = "White House Quantum Computing"
 RATIONALE = (
     "US CHIPS Act quantum LOI (Commerce/NIST, May 21 2026): minority federal equity stake. "
@@ -52,20 +55,17 @@ def _upsert_directive(cur, symbol: str) -> tuple[int, bool]:
         did, label = row[0], row[1] or ""
         if LIST_LABEL not in label:
             new_label = LIST_LABEL if (not label or label.upper() == symbol) else f"{label} · {LIST_LABEL}"
-            cur.execute(
-                "UPDATE watch_directives SET label=%s, rationale=%s, updated_at=NOW() WHERE id=%s",
-                (new_label, RATIONALE, did),
-            )
+            update_watch_directive(cur, did, source="seed_quantum_chips_watchlist",
+                                   label=new_label, rationale=RATIONALE)
         return did, False
     spec = {"symbol": symbol, "company": CHIPS_PUBLIC.get(symbol, symbol)}
-    cur.execute(
-        """INSERT INTO watch_directives
-               (kind, label, spec, rationale, created_by, priority, trade_ai_enabled, hermes_enabled)
-           VALUES ('ticker', %s, %s::jsonb, %s, 'operator', 'high', true, true)
-           RETURNING id""",
-        (LIST_LABEL, json.dumps(spec), RATIONALE),
-    )
-    return cur.fetchone()[0], True
+    rc = write_watch_directives(cur, [{
+        "kind": "ticker", "label": LIST_LABEL, "spec": spec, "rationale": RATIONALE,
+        "created_by": "operator", "priority": "high", "trade_ai_enabled": True, "hermes_enabled": True,
+    }], source="seed_quantum_chips_watchlist")
+    if rc.directive_id is None:
+        raise RuntimeError(f"watch_directives write rejected: {rc.rows_rejected}")
+    return rc.directive_id, bool(rc.ids)
 
 
 def run(apply: bool = False) -> dict:
@@ -87,10 +87,7 @@ def run(apply: bool = False) -> dict:
                         symbol, did, f"seed:{LIST_LABEL}", "operator", conn=conn, auto=True
                     )
                     entry["promotion"] = res.get("status")
-                    cur.execute(
-                        "UPDATE watch_directives SET last_serviced_at=NOW(), updated_at=NOW() WHERE id=%s",
-                        (did,),
-                    )
+                    touch_watch_directive_serviced(cur, did, source="seed_quantum_chips_watchlist")
                     conn.commit()
                 except Exception as e:
                     entry["promotion"] = f"ERROR:{e}"
