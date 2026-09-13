@@ -1,6 +1,6 @@
 === RUFF + SHELLCHECK (reproducible; Layer 1) ===
 schema=SopRuffShellcheckEvidence@v1
-control_surface_digest=b861b86684e2aa17f8090546ea23dbee386dc18d97edf051b5153a1bb5d88694
+control_surface_digest=e839a6422ed92667ee6ef527730eff5d3acb9aad29f0644538b6cc4e27d4222f
 note=Does not embed containing commit SHA.
 
 # Changed-file scope for the quality gate (governance Python on the control surface)

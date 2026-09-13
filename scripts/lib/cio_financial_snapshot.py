@@ -104,6 +104,7 @@ LEGACY_STALENESS_THRESHOLDS: dict[str, int] = {
 # Compatibility alias
 STALENESS_THRESHOLDS = LEGACY_STALENESS_THRESHOLDS
 
+from scripts.lib.cio_market_aware_freshness import is_stale as market_aware_is_stale
 
 def canonicalize_payload(payload: dict[str, Any]) -> str:
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
@@ -724,9 +725,24 @@ def build_canonical_snapshot(
                         as_of_dt = datetime.fromisoformat(evidence.as_of)
                         if as_of_dt.tzinfo is None:
                             as_of_dt = as_of_dt.replace(tzinfo=timezone.utc)
-                        age_s = (now - as_of_dt).total_seconds()
                         threshold = capability.freshness_threshold_seconds
-                        if age_s > threshold:
+                        # Wall-clock age is the wrong unit for a domain whose
+                        # source only moves while the exchange is open. Measured
+                        # on a Saturday: portfolio carried Friday's 16:45 ET
+                        # post-close reprice -- the freshest state that can
+                        # exist -- and read STALE at 28.2h against a 12h
+                        # threshold, which blocked every CIO run at the evidence
+                        # gate. Domains not marked market_hours_only are
+                        # unaffected: is_stale() falls through to the same
+                        # wall-clock comparison it replaces.
+                        if market_aware_is_stale(
+                            as_of_dt,
+                            now,
+                            threshold,
+                            market_hours_only=getattr(
+                                capability, "freshness_market_hours_only", False
+                            ),
+                        ):
                             quality_state = "STALE"
                             stale_since = evidence.as_of
                     except (ValueError, TypeError):

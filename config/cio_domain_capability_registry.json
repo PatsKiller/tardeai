@@ -66,7 +66,9 @@
         "sync_status": "sync metadata status",
         "reconciliation_status": "reconciliation result",
         "projection_version": "holdings.json version"
-      }
+      },
+      "freshness_market_hours_only": true,
+      "_freshness_market_hours_only_why": "Source only moves while the exchange is open. Measured 2026-09-13 (a Saturday): generated_at was Friday's 16:45 ET post-close reprice -- the freshest state that can exist -- and read STALE at 28.2h against the 12h wall-clock threshold, which blocked every CIO run at the evidence gate. Market-aware freshness stops counting hours in which the source could not have changed; it does NOT widen the threshold, and a genuinely missed session reprice still goes stale."
     },
     "holdings_detail": {
       "semantic_definition": "Detailed per-position holdings: symbol, quantity, cost basis, market value, unrealized gains per position. Subset of portfolio domain at position granularity.",
