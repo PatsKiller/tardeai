@@ -569,6 +569,14 @@ GATES = [
             # db_retention printed ERROR and exited 0, so two tables had been
             # failing their FK deletes on every run, unpruned and unreported.
             "tests/test_db_retention_reports_failures_20260913.py",
+            # A generic word must not bind an issuer: "Research on file" filed
+            # the Walmart answer against Research Frontiers (REFR) as CONFIRMED.
+            # And a delivery must never be retried on TypeError.
+            "tests/test_operator_turn_integrity_20260913.py",
+            # "is it a buy / what's the target" is an analyst question. It was
+            # answered from stop-curation research because nothing read
+            # yahoo_analyst_targets_history. Freshness travels with the answer.
+            "tests/test_analyst_view_domain_20260913.py",
             # Off UNLISTED_BASELINE at last. The ONLY coverage of
             # cio_run_worker._check_health, and its fakes are what hid CL-61.
             "tests/test_p26_shadow_autonomy.py",
