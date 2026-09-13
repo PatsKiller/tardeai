@@ -31,6 +31,7 @@ import {
   type PortfolioSignalTab,
 } from '../lib/portfolioDeepLink'
 import { downloadHoldingsCsv } from '../lib/exportHoldingsCsv'
+import { BB, T, DASH } from '../lib/watchTokens'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 const TABS = ['Holdings', 'Allocation', 'Look-through', 'Returns', 'Dividends', 'Forecast', 'Tax', 'Redeploy', 'Stop Management'] as const
@@ -306,7 +307,9 @@ export default function PortfolioHub({ onDrill }: Props) {
   }
   const excludedAccounts: any[] = Array.isArray((overview as any)?.portfolio_aggregate?.excluded_accounts)
     ? (overview as any).portfolio_aggregate.excluded_accounts : []
-  const STATE_COLOR: Record<string, string> = { LIVE: '#22c55e', STALE: '#f59e0b', SERVICE_DOWN: '#ef4444', NO_API_MANUAL: '#a855f7', UNCLASSIFIED: 'var(--text3)' }
+  // Account-state rail: favorable / attention / breach from the house tokens; the manual
+  // (no-API) state borrows the muted external-intel tint, badges only. No raw hex here.
+  const STATE_COLOR: Record<string, string> = { LIVE: BB.green, STALE: BB.amber, SERVICE_DOWN: BB.red, NO_API_MANUAL: T.extIntel.hermes, UNCLASSIFIED: BB.text3 }
   const acctFiltered = acctFilter ? allHoldings.filter((h: any) => (h.account ?? 'unknown') === acctFilter) : allHoldings
   // signal sub-tab filter + per-bucket counts
   const sigCount = (sigs: string[]) => sigs.length === 0 ? acctFiltered.length
@@ -578,7 +581,7 @@ export default function PortfolioHub({ onDrill }: Props) {
               <span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', background: acctColor(a), marginRight: 5 }} />
               {accountFullName(a)} ({info.n})
               {(() => { const st = acctState(a); return st.state && st.state !== 'LIVE' ? (
-                <span title={st.reason ?? st.state} style={{ marginLeft: 5, padding: '0 5px', borderRadius: 8, fontSize: 9, fontWeight: 700, letterSpacing: .3, border: `1px solid ${STATE_COLOR[st.state] ?? 'var(--border)'}`, color: STATE_COLOR[st.state] ?? 'var(--text3)' }}>
+                <span title={st.reason ?? st.state} style={{ marginLeft: 5, padding: '0 5px', borderRadius: 8, fontSize: DASH.chip, fontWeight: 700, letterSpacing: .3, border: `1px solid ${STATE_COLOR[st.state] ?? BB.border}`, color: STATE_COLOR[st.state] ?? BB.text3 }}>
                   {st.state.replace('_', ' ')}{st.lastValue != null ? ` · last ${fmt$(st.lastValue)}${st.asOf ? ` @ ${String(st.asOf).slice(0, 10)}` : ''}` : ''}
                 </span>
               ) : null })()}
