@@ -1,0 +1,54 @@
+{
+  "schema": "SotRegistryPatchProposal@v1",
+  "phase": "6 - accounts: absent is not zero",
+  "proposed_on": "2026-09-13",
+  "target": "config/data_source_authority.json",
+  "_why": "Phase 6 implements the holdings_accounts domain's no_coverage=per_account_state_never_zero. The registry already names the four states; this patch records WHERE the per-account facts live (the account registry) and WHICH receipts the producer reads, so the gate can check them. Not applied here: config/data_source_authority.json and scripts/check_data_source_authority.py are owned by parallel agents.",
+  "_apply_with": "json-merge into the named domain / providers; every key is additive. Nothing here changes a store, a writer, a cadence or a state name.",
+  "domains": {
+    "holdings_accounts": {
+      "required_fields": [
+        "accounts[].state",
+        "accounts[].state_reason",
+        "accounts[].state_as_of"
+      ],
+      "account_state_contract": "AccountState@v1",
+      "account_state_module": "scripts/lib/account_state.py",
+      "account_registry": {
+        "file": "assets/portfolio_accounts.yaml",
+        "per_account_keys": {
+          "sync_kind": "api | manual",
+          "service_unit": "systemd --user unit the read sync depends on (optional)",
+          "service_receipt": "health-probe JSON for that unit, relative to project root (optional)",
+          "sync_window_hours": "LIVE window; default = stale_after_hours (24)",
+          "manual_as_of": "last manual statement / entry date (manual accounts)"
+        }
+      },
+      "state_evidence": {
+        "sync_receipt": "data/runtime/sync_receipts/<account_key>.json - written by the account's read sync at the end of each run ({ok, at, error})",
+        "service_receipt": "per account registry service_receipt (moomoo: data/runtime/moomoo_opend_health.json, scripts/moomoo/opend_health.py every 5 min in session)",
+        "systemctl_fallback": "`systemctl --user is-failed <service_unit>` - PRODUCER (scripts/portfolio_loader.py) ONLY, only when both receipts are absent or older than 2h; the repricer and every API handler pass allow_shell=False"
+      },
+      "read_path_fields": {
+        "portfolio_aggregate.accounts[]": ["state", "state_reason", "state_as_of", "display_value", "display_value_as_of", "display_basis", "last_known_value", "last_known_value_as_of", "counted_in_total"],
+        "portfolio_aggregate": ["excluded_accounts[{account,state,last_value,as_of,counted_in_total,reason}]", "stale_accounts[]", "unclassified_accounts[]", "excluded_last_value_total", "account_states_present"],
+        "portfolio_snapshot.account_states": "same projection (lib.account_state.project_account_states)"
+      },
+      "_gate_suggestion": "check_data_source_authority.py: for the holdings_accounts domain, assert every account in the store's account_summaries has state in account_states (UNCLASSIFIED is a finding, ACCOUNT_UNCLASSIFIED), and that assets/portfolio_accounts.yaml declares sync_kind for every account that appears in the store (ACCOUNT_UNREGISTERED)."
+    }
+  },
+  "providers": {
+    "moomoo": {
+      "service_unit": "trade-ai-lab-moomoo-opend.service",
+      "service_launcher": "scripts/moomoo/opend_launch.sh",
+      "health_receipt": "data/runtime/moomoo_opend_health.json",
+      "sync_module": "scripts/moomoo_live_read_sync.py",
+      "sync_receipt": "data/runtime/sync_receipts/moomoo_taxable_live.json",
+      "_measured_2026-09-13": "unit failed at start, exit 78 / EX_CONFIG: MOOMOO_OPEND_LOGIN_ACCOUNT not in the Bitwarden render (/run/user/1000/tradeai/env). Operator repair; Phase 6 only detects it."
+    },
+    "fidelity": {
+      "manual_as_of_source": "assets/portfolio_accounts.yaml accounts.<key>.manual_as_of",
+      "_note": "fidelity_rollover_ira is declared sync_kind=manual, manual_as_of=2026-07-16. The YAML also records closed=true, rolled_to=schwab_rollover_ira (ACATS 2026-07-16); the state block carries registry_closed / registry_rolled_to so a reader can label the last known $566,439.39 as a pre-transfer snapshot, not a missing half-million and not a $0."
+    }
+  }
+}

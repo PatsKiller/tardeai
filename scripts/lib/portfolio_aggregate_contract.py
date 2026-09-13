@@ -247,9 +247,78 @@ def build_account_observations(
                 # v1 alias -- same value, honest name above.
                 "observation_time": obs or "",
                 "freshness": "UNKNOWN",
+                # -- SoT Phase 6: the account's STATE, as the producer wrote it --
+                # LIVE / STALE / SERVICE_DOWN / NO_API_MANUAL, or UNCLASSIFIED
+                # when holdings.json predates the label. display_value carries
+                # the last known value with its date for a non-LIVE account --
+                # a reader must never print a bare $0 for one (registry
+                # no_coverage: per_account_state_never_zero).
+                **_account_state_fields(row),
             }
         )
     return out
+
+
+def _account_state_fields(row: dict[str, Any]) -> dict[str, Any]:
+    try:
+        from lib.account_state import project_account_state
+    except ImportError:  # pragma: no cover -- scripts/ not on path
+        import sys as _sys
+        from pathlib import Path as _P
+        _sys.path.insert(0, str(_P(__file__).resolve().parent.parent))
+        from lib.account_state import project_account_state
+    p = project_account_state(row)
+    return {
+        "state": p["state"],
+        "state_reason": p["state_reason"],
+        "state_as_of": p["state_as_of"],
+        "sync_kind": p["sync_kind"],
+        "service_unit": p["service_unit"],
+        "manual_as_of": p["manual_as_of"],
+        "last_known_value": p["last_known_value"],
+        "last_known_value_as_of": p["last_known_value_as_of"],
+        "display_value": p["display_value"],
+        "display_value_as_of": p["display_value_as_of"],
+        "display_basis": p["display_basis"],
+        "counted_in_total": p["counted_in_total"],
+    }
+
+
+def account_state_lists(accounts: list[dict[str, Any]]) -> dict[str, Any]:
+    """excluded / stale / unclassified account lists for the aggregate header.
+
+    excluded_accounts -- SERVICE_DOWN and NO_API_MANUAL: the total does not carry
+    a live value for them. Each entry says what the total DID count for it and
+    the last known value with its date, so the header is explicit about what it
+    left out instead of silently including or excluding a $0.
+    """
+    excluded: list[dict[str, Any]] = []
+    stale: list[dict[str, Any]] = []
+    unclassified: list[str] = []
+    for a in accounts:
+        st = a.get("state")
+        entry = {
+            "account": a.get("account"),
+            "state": st,
+            "last_value": a.get("last_known_value"),
+            "as_of": a.get("last_known_value_as_of") or a.get("state_as_of"),
+            "counted_in_total": a.get("counted_in_total"),
+            "reason": a.get("state_reason"),
+        }
+        if st in ("SERVICE_DOWN", "NO_API_MANUAL"):
+            excluded.append(entry)
+        elif st == "STALE":
+            stale.append(entry)
+        elif st != "LIVE":
+            unclassified.append(str(a.get("account")))
+    return {
+        "excluded_accounts": excluded,
+        "stale_accounts": stale,
+        "unclassified_accounts": unclassified,
+        "excluded_last_value_total": round(
+            sum(float(e["last_value"] or 0) for e in excluded), 2),
+        "account_states_present": bool(accounts) and not unclassified,
+    }
 
 
 def derive_observation_bounds(
@@ -468,6 +537,8 @@ def build_portfolio_aggregate(
         "freshness_state": agg_state,
         "freshness_reason": agg_reason,
         "accounts": accounts,
+        # -- SoT Phase 6: what the total left out, by name, with last value ----
+        **account_state_lists(accounts),
         "read_only": True,
         # v1 aliases -- identical values, position-clock semantics.
         "oldest_observation_time": oldest_obs,
