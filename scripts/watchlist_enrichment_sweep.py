@@ -55,9 +55,11 @@ def _price(conn, symbol):
         if px:
             chg = round((px - prev) / prev * 100, 2) if prev else None
             try:
-                cur = conn.cursor()
-                cur.execute("INSERT INTO market_quotes (symbol, price, day_change_pct, source, fetched_at) "
-                            "VALUES (%s,%s,%s,'yfinance',NOW())", (symbol, px, chg))
+                # One write path per store (Phase 9): fetched_at is the DB default (now()),
+                # which is what the NOW() literal here used to say.
+                from lib.writers.market_quotes_writer import write_market_quotes
+                write_market_quotes(conn, [{"symbol": symbol, "price": px, "day_change_pct": chg}],
+                                    source="yfinance")
                 conn.commit()
             except Exception:
                 conn.rollback()

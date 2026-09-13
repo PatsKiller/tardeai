@@ -143,13 +143,12 @@ def apply_quarantine(conn, hits: dict[str, list], *, actor: str) -> int:
 
 
 def restore(conn, symbol: str) -> int:
+    # One write path per store (Phase 9): the copy-back INSERT lives in the
+    # ticker_prices write module, SQL unchanged (ON CONFLICT DO NOTHING). Deleting
+    # the quarantine copy stays here -- same transaction, same order as before.
+    from lib.writers.ticker_prices_writer import restore_ticker_prices_from_quarantine
     cur = conn.cursor()
-    cur.execute(
-        """INSERT INTO ticker_prices (symbol, price_date, close_price, source, created_at)
-           SELECT symbol, price_date, close_price, source, created_at
-             FROM ticker_prices_quarantine WHERE symbol = %s
-           ON CONFLICT DO NOTHING""", (symbol,))
-    n = cur.rowcount
+    n = restore_ticker_prices_from_quarantine(cur, symbol).rows_written
     cur.execute("DELETE FROM ticker_prices_quarantine WHERE symbol = %s", (symbol,))
     conn.commit()
     return n

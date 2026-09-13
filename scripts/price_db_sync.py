@@ -19,6 +19,17 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 STATE_DIR = PROJECT_ROOT / "data" / "portfolios" / "state"
+if str(PROJECT_ROOT / "scripts") not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+
+# One write path per store (One Source of Truth, Phase 9): every ticker_prices statement in this
+# file goes through lib/writers/ticker_prices_writer.py. The conflict rule each caller relied on
+# is now a named parameter (finviz: overwrite; holdings + yfinance: nothing; the quotes->closes
+# sync keeps its bounded INSERT..SELECT there verbatim).
+from lib.writers.ticker_prices_writer import (  # noqa: E402
+    sync_ticker_prices_from_market_quotes,
+    write_ticker_prices,
+)
 
 # Outlier guard (Stage A, 2026-08-27; audit finding C3): the only prior check
 # on a price write anywhere in this file was `price > 0`. The 2026-07-24-era
@@ -246,12 +257,10 @@ def sync_daily_prices():
                         reason=reason, source="finviz", price_date=today,
                     )
                     continue
-                cur.execute("""
-                    INSERT INTO ticker_prices (symbol, price_date, close_price, source)
-                    VALUES (%s, %s, %s, 'finviz')
-                    ON CONFLICT (symbol, price_date) DO UPDATE SET close_price = EXCLUDED.close_price, source = 'finviz'
-                """, (sym, today, round(float(price), 4)))
-                written += 1
+                written += write_ticker_prices(
+                    cur, [{"symbol": sym, "price_date": today, "close_price": price}],
+                    source="finviz", on_conflict="overwrite", round_to=4,
+                ).rows_accepted
 
     # 2. Holdings (catches Fidelity + any symbols missed by Finviz)
     h_path = STATE_DIR / "holdings.json"
@@ -269,12 +278,10 @@ def sync_daily_prices():
                         reason=reason, source="holdings", price_date=today,
                     )
                     continue
-                cur.execute("""
-                    INSERT INTO ticker_prices (symbol, price_date, close_price, source)
-                    VALUES (%s, %s, %s, 'holdings')
-                    ON CONFLICT (symbol, price_date) DO NOTHING
-                """, (sym, today, round(float(price), 4)))
-                written += 1
+                written += write_ticker_prices(
+                    cur, [{"symbol": sym, "price_date": today, "close_price": price}],
+                    source="holdings", on_conflict="nothing", round_to=4,
+                ).rows_accepted
 
     conn.commit()
     cur.close()
@@ -417,39 +424,10 @@ def sync_quotes_to_ticker_prices(symbols: list[str] | None = None) -> int:
     cur = conn.cursor()
     syms = [str(s).upper() for s in (symbols or []) if s]
     symbol_filter = "AND UPPER(symbol) = ANY(%(syms)s)" if syms else ""
-    cur.execute(
-        f"""WITH candidates AS (
-               SELECT DISTINCT ON (UPPER(symbol), fetched_at::date)
-                      UPPER(symbol) AS symbol, fetched_at::date AS price_date, price
-               FROM market_quotes
-               WHERE price IS NOT NULL AND price > 0
-                 {symbol_filter}
-               ORDER BY UPPER(symbol), fetched_at::date, fetched_at DESC
-           ),
-           bounded AS (
-               SELECT c.symbol, c.price_date, c.price, prior.close_price AS prior_price
-               FROM candidates c
-               LEFT JOIN LATERAL (
-                   SELECT tp.close_price FROM ticker_prices tp
-                   WHERE tp.symbol = c.symbol AND tp.price_date < c.price_date
-                   ORDER BY tp.price_date DESC LIMIT 1
-               ) prior ON true
-           )
-           INSERT INTO ticker_prices (symbol, price_date, close_price, source)
-           SELECT symbol, price_date, price, 'market_quotes'
-           FROM bounded
-           WHERE prior_price IS NULL
-              OR price BETWEEN prior_price * %(min_ratio)s AND prior_price * %(max_ratio)s
-           ON CONFLICT (symbol, price_date) DO UPDATE SET
-             close_price = EXCLUDED.close_price,
-             source = CASE
-               WHEN ticker_prices.source IN ('finviz', 'holdings', 'portfolio_repricer')
-               THEN ticker_prices.source
-               ELSE EXCLUDED.source
-             END""",
-        {"syms": syms, "min_ratio": PRICE_OUTLIER_MIN_RATIO, "max_ratio": PRICE_OUTLIER_MAX_RATIO},
-    )
-    n = cur.rowcount
+    # The bounded INSERT..SELECT lives in the ticker_prices write module, verbatim.
+    n = sync_ticker_prices_from_market_quotes(
+        cur, syms, min_ratio=PRICE_OUTLIER_MIN_RATIO, max_ratio=PRICE_OUTLIER_MAX_RATIO,
+    ).rows_written
     # Quarantine the rows the INSERT skipped. Do not DELETE ticker_prices.
     cur.execute(
         f"""WITH candidates AS (
@@ -516,19 +494,15 @@ def backfill_yfinance_history(
             if hist is None or len(hist) == 0:
                 failed.append(sym)
                 continue
-            rows = 0
+            px_rows = []
             for idx, row in hist.iterrows():
                 px = float(row.get("Close") or 0)
                 if px <= 0:
                     continue
                 d = idx.date() if hasattr(idx, "date") else idx
-                cur.execute(
-                    """INSERT INTO ticker_prices (symbol, price_date, close_price, source)
-                       VALUES (%s, %s, %s, 'yfinance')
-                       ON CONFLICT (symbol, price_date) DO NOTHING""",
-                    (sym, d, round(px, 4)),
-                )
-                rows += cur.rowcount
+                px_rows.append({"symbol": sym, "price_date": d, "close_price": px})
+            rows = write_ticker_prices(cur, px_rows, source="yfinance", on_conflict="nothing",
+                                       round_to=4).rows_written
             conn.commit()
             if rows:
                 filled.append(sym)

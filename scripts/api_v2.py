@@ -1779,13 +1779,27 @@ def _protective_stop_refresh_quote(body=None):
     age = quote_age_seconds(raw_ts) if raw_ts is not None else None
     fresh = is_fresh(raw_ts) if raw_ts is not None else False
     # persist the refreshed quote (advisory record; never touches a broker order)
+    # One write path per store (Phase 9): the row goes through the market_quotes write
+    # module with the quote's own event time as fetched_at, exactly as before.
     if quote and parsed:
         try:
-            _db_query(
-                "INSERT INTO market_quotes (symbol, source, price, fetched_at) VALUES (%s,%s,%s,%s)",
-                (sym, f"refresh:{source}", quote["price"], parsed.astimezone(_dt.timezone.utc)),
-                fetch=None,
-            )
+            import sys as _mq_sys
+            _mq_sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            from db_adapter import _get_conn as _mq_get_conn, USE_DB as _mq_use_db
+            from lib.writers.market_quotes_writer import write_market_quotes as _write_market_quotes
+            if _mq_use_db:
+                _mq_conn = _mq_get_conn()
+                try:
+                    _write_market_quotes(
+                        _mq_conn,
+                        [{"symbol": sym, "price": quote["price"],
+                          "fetched_at": parsed.astimezone(_dt.timezone.utc)}],
+                        source=f"refresh:{source}",
+                    )
+                    _mq_conn.commit()
+                except Exception:
+                    _mq_conn.rollback()
+                    raise
         except Exception:
             pass
     blockers = []

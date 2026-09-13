@@ -21,6 +21,11 @@ from finviz_http import finviz_get, finviz_probe  # global Finviz throttle (2026
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
+# One write path per store (One Source of Truth, Phase 9). This module is the registry's
+# writer_target for quote_price; the SQL itself lives in lib/writers/market_quotes_writer.py
+# and is re-exported here so producers may import it from either name.
+from lib.writers.market_quotes_writer import write_market_quotes  # noqa: E402,F401
+
 
 def _get_conn():
     import psycopg2
@@ -87,23 +92,20 @@ def ingest_yfinance_quotes(symbols: list = None) -> dict:
                     if not price:
                         continue
 
-                    cur.execute("""
-                        INSERT INTO market_quotes (symbol, source, price, prev_close, day_change_pct,
-                            volume, avg_volume, market_cap, pe_ratio, forward_pe,
-                            dividend_yield, fifty_two_week_high, fifty_two_week_low)
-                        VALUES (%s, 'yfinance', %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    """, (sym, price,
-                          info.get("previousClose"),
-                          info.get("regularMarketChangePercent"),
-                          info.get("volume"),
-                          info.get("averageVolume"),
-                          info.get("marketCap"),
-                          info.get("trailingPE"),
-                          info.get("forwardPE"),
-                          info.get("dividendYield"),
-                          info.get("fiftyTwoWeekHigh"),
-                          info.get("fiftyTwoWeekLow")))
-                    fetched += 1
+                    rc = write_market_quotes(cur, [{
+                        "symbol": sym, "price": price,
+                        "prev_close": info.get("previousClose"),
+                        "day_change_pct": info.get("regularMarketChangePercent"),
+                        "volume": info.get("volume"),
+                        "avg_volume": info.get("averageVolume"),
+                        "market_cap": info.get("marketCap"),
+                        "pe_ratio": info.get("trailingPE"),
+                        "forward_pe": info.get("forwardPE"),
+                        "dividend_yield": info.get("dividendYield"),
+                        "fifty_two_week_high": info.get("fiftyTwoWeekHigh"),
+                        "fifty_two_week_low": info.get("fiftyTwoWeekLow"),
+                    }], source="yfinance")
+                    fetched += rc.rows_accepted
                 except Exception:
                     pass
         except Exception as e:
@@ -159,9 +161,10 @@ def ingest_alpaca_quotes(symbols: list = None) -> dict:
                 prev = (s.get("prevDailyBar") or {}).get("c")
                 vol = (s.get("dailyBar") or {}).get("v")
                 chg_pct = round((price - prev) / prev * 100, 4) if prev else None
-                cur.execute("""INSERT INTO market_quotes (symbol, source, price, prev_close, day_change_pct, volume)
-                               VALUES (%s, 'alpaca', %s, %s, %s, %s)""", (sym, price, prev, chg_pct, vol))
-                fetched += 1; got.add(sym)
+                rc = write_market_quotes(cur, [{"symbol": sym, "price": price, "prev_close": prev,
+                                                "day_change_pct": chg_pct, "volume": vol}], source="alpaca")
+                if rc.rows_accepted:
+                    fetched += 1; got.add(sym)
         except Exception as e:
             print(f"  [alpaca] batch {i} error: {e}")
     conn.commit(); conn.close()
@@ -208,9 +211,10 @@ def ingest_finviz_quotes(symbols: list = None) -> dict:
             price = float(q["price"]); prev = float(q["prev"]) if q.get("prev") else None
             chg = round((price - prev) / prev * 100, 4) if prev else None
             vol = int(float(q["volume"])) if q.get("volume") else None
-            cur.execute("""INSERT INTO market_quotes (symbol, source, price, prev_close, day_change_pct, volume)
-                           VALUES (%s, 'finviz', %s, %s, %s, %s)""", (sym, price, prev, chg, vol))
-            fetched += 1; got.add(sym)
+            rc = write_market_quotes(cur, [{"symbol": sym, "price": price, "prev_close": prev,
+                                            "day_change_pct": chg, "volume": vol}], source="finviz")
+            if rc.rows_accepted:
+                fetched += 1; got.add(sym)
             time.sleep(0.3)  # politeness — finviz is per-symbol
         except Exception:
             pass
