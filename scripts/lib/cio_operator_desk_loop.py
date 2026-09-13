@@ -39,6 +39,10 @@ _DESK_NEEDS = frozenset({
     "portfolio",
     "risk",
     "research",
+    # "is it a buy / what's the target" is an ANALYST question, and answering it
+    # from research rows gave the operator three stop-curation reviews on
+    # 2026-09-13. The data was already on file and nothing read it.
+    "analyst_view",
 })
 _RUNTIME_NEEDS = frozenset({"runtime_llm", "runtime_status"})
 _META_HEURISTIC = re.compile(
@@ -251,6 +255,18 @@ def analyze_operator_intent(text: str) -> dict[str, Any]:
             needs.append("research")
             if out["intent"] in ("unclear", "freeform"):
                 out["intent"] = "research"
+        # Analyst opinion and price targets. Deliberately BEFORE the freeform
+        # check so "is it a buy and what's the target" reaches the analyst
+        # domain rather than falling through to whatever research happens to
+        # exist for the symbol.
+        if re.search(
+            r"(?is)\b(analyst|analysts|price\s+target|target\s+price|\bpt\b|"
+            r"is\s+it\s+a\s+buy|upgrade|downgrade|consensus|rating)\b",
+            t,
+        ):
+            needs.append("analyst_view")
+            if out["intent"] in ("unclear", "freeform"):
+                out["intent"] = "analyst_view"
 
         # Explainer/comparison language → freeform (soft desk hints OK, no reentry)
         if _looks_like_freeform(t) and out["intent"] not in ("reentry", "meta_system"):
@@ -918,6 +934,21 @@ def gather_tradeai_evidence(intent: dict[str, Any]) -> dict[str, Any]:
                 "gap_type": "missing_research",
             })
 
+    if "analyst_view" in needs and symbols:
+        view = subject_analyst_view(symbols)
+        if view:
+            available["analyst_view"] = {"items": view,
+                                         "symbols": [v["symbol"] for v in view]}
+        else:
+            # No coverage is a gap, not a reason to answer with something else.
+            gaps.append({
+                "domain": "analyst_view",
+                "symbol": symbols[0],
+                "field": "analyst_view",
+                "reason": f"no analyst coverage on file for {', '.join(symbols)}",
+                "gap_type": "missing_analyst_coverage",
+            })
+
     # Blocking gaps
     blocking: list[dict[str, Any]] = []
     if want_reentry and not available.get("reentry_card"):
@@ -1036,6 +1067,101 @@ def subject_research(symbols: list[str], *, limit: int = 6) -> list[dict[str, An
                 "summary": (body or "")[:400],
                 "confidence": float(conf) if conf is not None else None,
                 "as_of": created.strftime("%Y-%m-%d") if created else None,
+            })
+        return out
+    except Exception:
+        return []
+    finally:
+        try:
+            if conn is not None:
+                conn.close()
+        except Exception:
+            pass
+
+
+#: Beyond this, a price target is a historical fact, not a current view. Yahoo
+#: refreshes covered names daily, so a month-old row means coverage lapsed --
+#: which the operator must be told, not shielded from.
+ANALYST_STALE_DAYS = 7
+
+
+def subject_analyst_view(symbols: list[str], *, stale_days: int = ANALYST_STALE_DAYS) -> list[dict[str, Any]]:
+    """Analyst rating and price targets for these symbols, with their as-of date.
+
+    WHY THIS EXISTS. On 2026-09-13 the operator asked "what are analysts saying
+    about Walmart right now, is it a buy and what's the target" and was answered
+    with three stop-curation reviews. Honest -- the reply said "Research on file
+    (stop_curation)" -- but it answered a question about analyst opinion with
+    risk-management notes, because research rows were the only subject-scoped
+    domain the desk could read.
+
+    The data already existed. `yahoo_analyst_targets_history` carries
+    recommendation_key, recommendation_mean (a real 1-5 scale, 99.8% on-scale
+    across 8,128 rows), and low/mean/high price targets with an analyst count.
+    Nothing read it.
+
+    FRESHNESS IS PART OF THE ANSWER, not a filter in front of it. WMT's newest
+    row is 2026-08-11: 682 of 1,328 covered symbols are more than 30 days old,
+    because a symbol drops out of the refresh set when it leaves the watched
+    universe. A month-old target presented as "right now" would be the same
+    class of defect as the Finviz column shift -- confidently wrong. So the row
+    is returned WITH its age and a `stale` flag, and the caller says so.
+
+    Read-only. Degrades to empty, never raises.
+    """
+    syms = [str(x).upper().strip() for x in (symbols or []) if str(x).strip()]
+    if not syms:
+        return []
+    conn = None
+    try:
+        import psycopg2  # noqa: PLC0415
+
+        conn = psycopg2.connect(
+            host=os.environ.get("DB_HOST", "localhost"),
+            dbname=os.environ.get("DB_NAME", "trade_ai"),
+            user=os.environ.get("DB_USER", "trade_ai"),
+            password=os.environ.get("DB_PASSWORD") or os.environ.get("POSTGRES_PASSWORD"),
+        )
+        cur = conn.cursor()
+        out: list[dict[str, Any]] = []
+        for sym in syms:
+            cur.execute(
+                "SELECT snapshot_date, current_price, recommendation_key,"
+                "       recommendation_mean, target_low_price, target_mean_price,"
+                "       target_high_price, number_of_analyst_opinions, source"
+                "  FROM yahoo_analyst_targets_history"
+                " WHERE symbol = %s AND recommendation_key IS NOT NULL"
+                " ORDER BY snapshot_date DESC LIMIT 1",
+                (sym,),
+            )
+            row = cur.fetchone()
+            if not row:
+                continue
+            as_of = row[0]
+            age = None
+            try:
+                age = (datetime.now(timezone.utc).date() - as_of).days
+            except Exception:
+                pass
+            mean = row[3]
+            # The same 1-5 plausibility rail the Finviz parser now enforces: a
+            # rating off its declared scale is not a weak rating, it is not a
+            # rating. 20 of 8,128 rows carry 0.000, which is "no coverage".
+            if mean is not None and not (1 <= float(mean) <= 5):
+                mean = None
+            out.append({
+                "symbol": sym,
+                "as_of": str(as_of),
+                "age_days": age,
+                "stale": (age is not None and age > stale_days),
+                "rating": row[2],
+                "rating_mean": float(mean) if mean is not None else None,
+                "price_at_snapshot": float(row[1]) if row[1] is not None else None,
+                "target_low": float(row[4]) if row[4] is not None else None,
+                "target_mean": float(row[5]) if row[5] is not None else None,
+                "target_high": float(row[6]) if row[6] is not None else None,
+                "analysts": row[7],
+                "source": row[8],
             })
         return out
     except Exception:

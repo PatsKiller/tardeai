@@ -172,6 +172,29 @@ def extract_candidates(text: str) -> list[str]:
     return out
 
 
+#: Ordinary English words that are also issuer names. A company_name match on
+#: one of these alone is refused: the word is far likelier to be prose than a
+#: mention. Exact, case-insensitive, whole-string -- "Research" is refused,
+#: "Research Frontiers" is not.
+GENERIC_NAME_TERMS = frozenset({
+    "research", "technology", "technologies", "systems", "solutions", "group",
+    "holdings", "industries", "partners", "capital", "global", "national",
+    "international", "general", "american", "united", "pacific", "atlantic",
+    "summit", "pioneer", "frontier", "frontiers", "vision", "insight",
+    "momentum", "catalyst", "signal", "target", "sector", "market", "markets",
+    "growth", "value", "income", "core", "select", "premier", "advantage",
+    "alliance", "enterprise", "venture", "ventures", "trust", "fund", "energy",
+    "health", "medical", "digital", "data", "cloud", "network", "networks",
+    "power", "materials", "resources", "services", "products", "brands",
+    "open", "on", "file", "stop", "review", "concern", "buy", "sell", "hold",
+})
+
+
+def _is_generic_term(name: str) -> bool:
+    """True when a name is an ordinary word that must not bind an issuer alone."""
+    return (name or "").strip().casefold() in GENERIC_NAME_TERMS
+
+
 def tag_inbound(text: str, *, registry: Optional[dict[str, Any]] = None,
                 now: Optional[datetime] = None) -> dict[str, Any]:
     """Resolve an inbound message to identity tags. Writes nothing.
@@ -209,6 +232,20 @@ def tag_inbound(text: str, *, registry: Optional[dict[str, Any]] = None,
     # record that supplies the CUSIP. Nothing here invents a mapping: if Schwab
     # does not carry the name, neither do we, and the mention is recorded as a
     # measured gap rather than guessed at.
+    #
+    # But the broker feed carries issuers whose names are ordinary English. On
+    # 2026-09-13 the desk answered a question about Walmart with a reply opening
+    # "Research on file (stop_curation):", and the word "Research" resolved to
+    # Research Frontiers Inc (REFR) with identity_status=CONFIRMED. The turn was
+    # then filed against REFR's subject as well as WMT's -- a confident binding
+    # to a company nobody mentioned, which pollutes every subject-scoped read of
+    # REFR thereafter.
+    #
+    # A single ordinary word is not evidence that an issuer was named. Multi-word
+    # names ("Norfolk Southern") and distinctive single words ("Walmart", "Visa")
+    # are unaffected: only exact, case-insensitive matches against this list are
+    # refused, and only for the company_name path. A ticker match is untouched --
+    # "V" resolving to Visa is a different claim with different evidence.
     try:
         from lib.company_name_index import resolve_name  # noqa: PLC0415
     except Exception:
@@ -217,7 +254,7 @@ def tag_inbound(text: str, *, registry: Optional[dict[str, Any]] = None,
     for name in extract_name_mentions(text):
         tag = RI.resolve(doc, name)          # a name that is also a ticker alias
         via = "ticker_alias"
-        if tag is None and resolve_name is not None:
+        if tag is None and resolve_name is not None and not _is_generic_term(name):
             hit = resolve_name(name)
             if hit:
                 tag = RI.resolve(doc, hit["symbol"])

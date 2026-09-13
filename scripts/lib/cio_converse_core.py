@@ -8,6 +8,7 @@ No broker/order/stop/2FA authority.
 from __future__ import annotations
 
 import hashlib
+import inspect as _inspect
 import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -287,14 +288,29 @@ def process_operator_message(
     if not dry_run:
         mark_message_seen(dedup_key, chat_id, path=dedup_path)
 
+    # Whether send_fn takes reply_to is a property of the function, decided ONCE
+    # here. It used to be discovered by calling with reply_to and catching
+    # TypeError -- but a TypeError raised INSIDE the send is indistinguishable
+    # from a signature mismatch, so the except branch re-called a function that
+    # had already delivered. On 2026-09-13 the reply to the operator's Walmart
+    # question was recorded twice (operator_conversation_turns id 133 and 134,
+    # same chat, same message_id 51667). Never wrap a side-effecting call in a
+    # retry that cannot tell "you called me wrong" from "I failed midway".
+    try:
+        _send_takes_reply_to = "reply_to" in _inspect.signature(send_fn).parameters
+    except (TypeError, ValueError):
+        _send_takes_reply_to = True  # unintrospectable: prefer the richer call
+
     def _send(body: str, reply_to: Optional[str] = None) -> dict[str, Any]:
         if dry_run or send_fn is None:
             return {"ok": True, "message_id": None, "dry_run": True}
         try:
-            return send_fn(chat_id, body, reply_to=reply_to)  # type: ignore[call-arg]
-        except TypeError:
+            if _send_takes_reply_to:
+                return send_fn(chat_id, body, reply_to=reply_to)  # type: ignore[call-arg]
             return send_fn(chat_id, body)  # type: ignore[misc]
         except Exception as exc:
+            # Including TypeError. A failure is reported, never retried: the
+            # message may already be on its way to the operator.
             return {"ok": False, "error": f"{type(exc).__name__}:{exc}"}
 
     # Deterministic commands (slash or plain)
