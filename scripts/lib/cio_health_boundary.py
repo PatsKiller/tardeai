@@ -215,6 +215,15 @@ class CIOHealthBoundary:
             cat = f.get("category", "unknown")
             findings_by_category.setdefault(cat, []).append(f)
 
+        # Which health categories does this snapshot actually carry evidence
+        # for? A category absent from BOTH category_scores and findings has
+        # told us nothing. See the unevidenced_domains block below for why
+        # that is not the same as telling us everything is fine.
+        evidenced_categories = set(snapshot.category_scores or {})
+        evidenced_categories |= {
+            f.get("category") for f in (snapshot.findings or []) if f.get("category")
+        }
+
         # Evaluate each health category's impact on required domains
         for health_cat, (affected_domains, block_threshold, degrade_threshold) in self._domain_mapping.items():
             # Which of our required domains does this category affect?
@@ -266,11 +275,43 @@ class CIOHealthBoundary:
         degraded_domains.discard("")
         degraded_domains -= blocked_domains
 
-        # Determine overall state
-        if not blocked_domains and not degraded_domains:
-            state = "READY"
-        elif blocked_domains:
+        # A required domain that NO evidenced category covers has not been
+        # assessed. Saying READY about it would be a fabricated all-clear.
+        #
+        # This is not hypothetical. Measured 2026-09-12 against the live
+        # health_agent_status.json: that producer emits categories
+        # data_quality / execution_health / infra / intelligence_quality /
+        # pipeline_freshness / retirement_planning / risk_protection, and
+        # this boundary maps market_data / broker / database / backup /
+        # agent_jobs / indicators / shadow_batch / llm / api /
+        # file_integrity / watchlist. The two vocabularies do not overlap at
+        # all, so every category fell through `category_scores.get(cat, 100)`
+        # to a perfect score and EVERY domain evaluated READY -- while the
+        # same snapshot said status=unhealthy, overall_score=64, with 9
+        # critical findings. Absence of evidence was being read as evidence
+        # of health, which is strictly worse than the UNKNOWN it replaced.
+        unevidenced_domains = set()
+        for domain in required_domains:
+            covering = {
+                cat
+                for cat, (affected, _b, _d) in self._domain_mapping.items()
+                if domain in affected
+            }
+            if covering and not (covering & evidenced_categories):
+                unevidenced_domains.add(domain)
+        unevidenced_domains -= blocked_domains
+        unevidenced_domains -= degraded_domains
+        if unevidenced_domains:
+            all_reason_codes.add("HEALTH_EVIDENCE_UNAVAILABLE")
+
+        # Determine overall state. BLOCKED outranks UNKNOWN: a domain we
+        # positively know is unusable is more actionable than one we have
+        # not assessed. UNKNOWN outranks DEGRADED and READY so that missing
+        # evidence can never present as a clean or merely-degraded bill.
+        if blocked_domains:
             state = "BLOCKED"
+        elif unevidenced_domains:
+            state = "UNKNOWN"
         elif degraded_domains:
             state = "DEGRADED"
         else:

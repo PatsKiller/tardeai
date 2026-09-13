@@ -1,0 +1,24 @@
+{
+  "schema": "CioHealthSnapshotFeed@v1",
+  "_why": "The CIO health boundary speaks a different vocabulary than the health agent that produces the evidence. This file IS that translation, and because the translation decides what can block CIO advisory output, it lives in config where it can be reviewed rather than buried in code.",
+  "source_path": "data/portfolios/state/health_agent_status.json",
+  "max_age_minutes": 120,
+  "_max_age_why": "The health agent runs on a cron cadence. A snapshot older than this is not evidence about now; the loader returns None and the boundary reports UNKNOWN rather than acting on a stale bill of health.",
+
+  "enforce": false,
+  "_enforce_why": "OBSERVE-ONLY. When false the boundary is fed, evaluates real evidence, and its decision is recorded -- but the run worker is not permitted to block on it. This is an OPERATOR decision and is deliberately left off by the implementing agent. Measured 2026-09-12 against the live snapshot (overall_score 64, status unhealthy, 9 critical findings) with the mapping below: 15 DEGRADED, 0 BLOCKED, 0 UNKNOWN -- so flipping this to true would change no run's outcome today, and the gate would only bite if health genuinely degrades to a blocking level, which is its purpose. Measured with the FIRST draft mapping (critical=4, execution_health->broker) it was 15 BLOCKED, which would have repeated the PR #557 outage where 54 of 55 runs were blocked at HEALTH_CHECK for 17 days. That is why the mapping was measured before anything was enabled. ROLLBACK is this same field: set it back to false. The dispatcher reads this per run, so no restart is needed either way.",
+
+  "severity_map": {"critical": 3, "warning": 2, "info": 1},
+  "_severity_why": "The health agent emits string severities; the boundary compares integers, and mixing them raises TypeError inside evaluate(). More importantly the two scales mean different things: the health agent's severities are ALERT PRIORITIES, while boundary severity 4 means DATA_UNAVAILABLE and 5 means the source is gone. A health-agent 'critical' such as '3 proposals stuck in paper lane' asserts neither, so critical maps to 3 -- significant degradation, the strongest claim the evidence actually supports. An earlier draft used critical=4 and was MEASURED to block all 15 domains; see _enforce_why.",
+
+  "category_map": {
+    "data_quality":         ["database", "indicators"],
+    "pipeline_freshness":   ["market_data", "agent_jobs"],
+    "execution_health":     ["api"],
+    "intelligence_quality": ["llm"],
+    "risk_protection":      ["shadow_batch"],
+    "infra":                ["api"],
+    "retirement_planning":  []
+  },
+  "_category_map_why": "Deliberately conservative about what it claims to know. execution_health maps to api and NOT to broker: its findings are workflow problems (contained agent-jobs pipeline, an open execution escalation, stuck paper proposals) which say nothing about broker data availability -- and broker blocks at severity 3, so mapping onto it was MEASURED to block portfolio, holdings, risk and broker_reconciliation on evidence that did not support it. broker, file_integrity, backup and watchlist are left UNMAPPED: the health agent produces no evidence about them, and an unmapped boundary category must carry no evidence rather than a default-healthy score. retirement_planning maps to nothing because the boundary has no category for it. Uncovered domains yield UNKNOWN, never READY -- enforced in cio_health_boundary.evaluate() and tested in tests/test_health_evidence_coverage_20260912.py."
+}

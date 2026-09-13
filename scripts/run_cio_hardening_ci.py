@@ -520,6 +520,12 @@ GATES = [
             # A health check that did not produce a decision must not leave a
             # receipt claiming one was made.
             "tests/test_run_worker_health_receipt_20260912.py",
+            # Absence of health evidence is not evidence of health: an
+            # unassessed domain reports UNKNOWN, never READY.
+            "tests/test_health_evidence_coverage_20260912.py",
+            # The health-agent -> boundary translation, and the enforcement
+            # gate that keeps "fed" separate from "allowed to block".
+            "tests/test_health_snapshot_feed_20260912.py",
         ],
     ),
     (
