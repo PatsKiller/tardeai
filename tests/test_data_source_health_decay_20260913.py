@@ -242,7 +242,7 @@ def test_the_alert_set_is_not_healthy_AND_scheduled():
         _row("yahoo_finance", "healthy", success=datetime(2026, 8, 24, tzinfo=timezone.utc)),  # decayed, scheduled
         _row("fred", "unknown"),                                                                   # never, scheduled
         _row("finviz", "healthy", success=NOW - timedelta(hours=1)),                              # healthy
-        _row("incubator", "unknown"),                                                              # never, NOT scheduled
+        _row("newsapi", "unknown"),                                                              # never, NOT scheduled
     ]
     viewed = dsv.view_rows(rows, NOW, REGISTRY)
     off = {r["source_key"] for r in dsv.not_healthy_with_scheduled_caller(viewed)}
@@ -270,7 +270,7 @@ def test_the_health_agent_collector_uses_the_view(monkeypatch):
         _row("yahoo_finance", "healthy", success=datetime(2026, 8, 24, 12, 0, tzinfo=timezone.utc)),
         _row("finviz", "healthy", success=datetime.now(timezone.utc) - timedelta(hours=1)),
         _row("fred", "unknown"),
-        _row("incubator", "unknown"),
+        _row("newsapi", "unknown"),
     ]
     monkeypatch.setattr(ha, "_db", lambda sql, params=None, fetch="one": rows if fetch == "all" else None)
     monkeypatch.setattr(ha, "_IS_WEEKEND", False)
@@ -287,7 +287,7 @@ def test_the_health_agent_collector_uses_the_view(monkeypatch):
     assert by_src["yahoo_finance"]["age_minutes"] > 168 * 60
     assert "fred" in by_src and by_src["fred"]["type"] == "data_source_never_reported"
     assert "finviz" not in by_src, "a fresh success is not a finding"
-    assert "incubator" not in by_src, "never reported with no scheduled caller is idle, not a finding"
+    assert "newsapi" not in by_src, "never reported with no scheduled caller is idle, not a finding"
 
 
 # ── the alarm itself ─────────────────────────────────────────────────────────
@@ -368,7 +368,7 @@ def test_a_send_failure_does_not_advance_state(monkeypatch, tmp_path, capsys):
 
 
 def test_classify_is_pure_and_separates_idle_from_off():
-    rows = [_off_yahoo(), _row("incubator", "unknown")]
+    rows = [_off_yahoo(), _row("newsapi", "unknown")]
     viewed, off = cdh.classify(rows, NOW, REGISTRY)
     assert len(viewed) == 2
     assert [r["source_key"] for r in off] == ["yahoo_finance"]

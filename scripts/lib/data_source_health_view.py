@@ -112,6 +112,27 @@ SCHEDULED_CALLERS: dict[str, list[dict[str, str]]] = {
     "finviz": [
         {"script": "scripts/finviz_health_check.py", "cron": "25 6-18/3 * * 1-5"},
     ],
+    # Phase 8 (2026-09-13): the discovery and social sources were missing from this
+    # table, so they had no weekday clock and read `unknown` every weekend while
+    # nothing was scheduled to run. Schedules read from the live crontab.
+    "incubator": [
+        {"script": "scripts/candidate_discovery_orchestrator.py --apply", "cron": "15 6 * * 1-5"},
+    ],
+    "news_catalyst": [
+        {"script": "scripts/candidate_discovery_orchestrator.py --apply", "cron": "15 6 * * 1-5"},
+    ],
+    "social_scalp": [
+        {"script": "scripts/candidate_discovery_orchestrator.py --apply", "cron": "15 6 * * 1-5"},
+    ],
+    "yahoo_movers": [
+        {"script": "scripts/candidate_discovery_orchestrator.py --apply", "cron": "15 6 * * 1-5"},
+    ],
+    "hermes_social": [
+        {"script": "scripts/hermes_social_sentiment.py --apply", "cron": "15 11,15 * * 1-5"},
+    ],
+    "social": [
+        {"script": "scripts/sync_social_to_intelligence.py --apply", "cron": "30 11,15 * * 1-5"},
+    ],
     "sec_edgar": [
         {"script": "scripts/symbol_enrichment.py --limit 50", "cron": "30 7 * * 1-5"},
     ],
