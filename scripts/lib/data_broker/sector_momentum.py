@@ -106,3 +106,90 @@ def get_sector_momentum(db_query=None, max_age_s: float = DEFAULT_MAX_AGE_S) -> 
             pass
     fresh["_cache"] = {"hit": False, "age_seconds": 0}
     return fresh
+
+
+# ── One Source of Truth, Phase 4 (2026-09-13) ────────────────────────────────
+# The Sectors and Defense hubs json.load'ed runtime/sector_momentum_latest.json and
+# runtime/industry_momentum_latest.json directly and served them 436–454h old as
+# current. These readers are the only path now; each carries the read envelope
+# (as_of, age_hours, source, stale, gap) from the registry's stale windows
+# (sector_momentum 26h · industry_momentum 26h). sector_rs_daily is the domain's
+# table; its 95-day RS history read moved here from api_v2 verbatim.
+
+RUNTIME_DIR = PROJECT_ROOT / "data" / "runtime"
+SECTOR_SNAPSHOT_FILE = "runtime/sector_momentum_latest.json"
+INDUSTRY_SNAPSHOT_FILE = "runtime/industry_momentum_latest.json"
+
+RS_HISTORY_SQL = """SELECT symbol, rs_date, rs FROM sector_rs_daily
+                            WHERE rs_date > CURRENT_DATE - %s AND rs IS NOT NULL
+                            ORDER BY symbol, rs_date"""
+
+
+def _read_runtime_json(rel: str, runtime_dir: Path | None = None):
+    p = (runtime_dir or RUNTIME_DIR) / Path(rel).name
+    try:
+        return json.loads(p.read_text(encoding="utf-8")) if p.exists() else None
+    except Exception:
+        return None
+
+
+def _snapshot_as_of(snap) -> Any:
+    if not isinstance(snap, dict):
+        return None
+    return snap.get("generated_at") or snap.get("captured_at") or snap.get("computed_at") or snap.get("as_of")
+
+
+def get_sector_momentum_snapshot(*, runtime_dir: Path | None = None, now=None, registry=None) -> dict[str, Any]:
+    """The sector_momentum_engine's disk snapshot (rows/states/transitions) + envelope.
+
+    Returns {ok, snapshot: dict|None, <envelope>}. ``snapshot`` is the file's
+    content untouched (the Defense desk renders it as-is); when the file is absent
+    or has no rows, ``snapshot`` is None and the envelope says no_coverage.
+    """
+    from lib.data_broker.envelope import envelope
+
+    snap = _read_runtime_json(SECTOR_SNAPSHOT_FILE, runtime_dir)
+    has_rows = isinstance(snap, dict) and bool(snap.get("rows"))
+    env = envelope("sector_momentum", _snapshot_as_of(snap) if has_rows else None, now=now, registry=registry,
+                   source={"file": SECTOR_SNAPSHOT_FILE})
+    out = {"ok": True, "snapshot": snap if has_rows else None, "provider_calls": 0}
+    out.update(env)
+    return out
+
+
+def get_industry_momentum_snapshot(*, runtime_dir: Path | None = None, now=None, registry=None) -> dict[str, Any]:
+    """finviz_industry_groups' disk snapshot (144 industry groups) + envelope.
+
+    Returns {ok, snapshot: dict|None, <envelope>}."""
+    from lib.data_broker.envelope import envelope
+
+    snap = _read_runtime_json(INDUSTRY_SNAPSHOT_FILE, runtime_dir)
+    has = isinstance(snap, dict) and bool(snap.get("industries"))
+    env = envelope("industry_momentum", _snapshot_as_of(snap) if has else None, now=now, registry=registry,
+                   source={"file": INDUSTRY_SNAPSHOT_FILE})
+    out = {"ok": True, "snapshot": snap if has else None, "provider_calls": 0}
+    out.update(env)
+    return out
+
+
+def get_sector_rs_history(db_query, *, days: int = 95, now=None, registry=None) -> dict[str, Any]:
+    """{ok, series: {ETF: [rs, ...]}, <envelope>} from sector_rs_daily (writer sector_rs_daily.py)."""
+    from lib.data_broker.envelope import envelope
+
+    series: dict[str, list[float]] = {}
+    last_date = None
+    error = None
+    try:
+        for r in db_query(RS_HISTORY_SQL, (int(days),)) or []:
+            series.setdefault(r["symbol"], []).append(float(r["rs"]))
+            d = r.get("rs_date")
+            if d is not None and (last_date is None or d > last_date):
+                last_date = d
+    except Exception as e:  # noqa: BLE001
+        error = str(e)[:200]
+    env = envelope("sector_momentum", last_date, now=now, registry=registry, source={"table": "sector_rs_daily"})
+    out = {"ok": error is None, "series": series, "provider_calls": 0}
+    if error:
+        out["error"] = error
+    out.update(env)
+    return out

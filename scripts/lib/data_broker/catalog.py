@@ -249,6 +249,108 @@ PROJECTIONS: list[dict[str, Any]] = [
             "Command Center /v3/cio",
         ],
     },
+    # 2026-09-13 One Source of Truth, Phase 4 — "the broker is the only read path".
+    # Every projection below returns the shared read envelope from
+    # lib.data_broker.envelope (as_of, age_hours, source, stale, gap) with the stale
+    # window read from config/data_source_authority.json. Hub handlers in
+    # scripts/api_v2.py that used to `FROM <table>` these stores now call here.
+    {
+        "id": "market_regime",
+        "module": "lib.data_broker.market_regime",
+        "entrypoints": ["get_market_regime", "regime_line"],
+        "http": [],
+        "domain": "risk",
+        "authority_domain": "market_regime",
+        "description": "Latest + history from market_regime_snapshots (writer market_regime_classifier.py); envelope-wrapped",
+        "read_only": True,
+        "provider_calls": 0,
+        "envelope": "BrokerReadEnvelope@v1",
+        "consumers": ["Defense", "Sectors", "Reports", "risk_snapshot (may compose)"],
+    },
+    {
+        "id": "daily_bars",
+        "module": "lib.data_broker.daily_bars",
+        "entrypoints": ["get_last_close", "get_daily_bars"],
+        "http": [],
+        "domain": "technicals",
+        "authority_domain": "technicals",
+        "description": "Daily closes from ticker_prices (last close / close series); envelope-wrapped",
+        "read_only": True,
+        "provider_calls": 0,
+        "envelope": "BrokerReadEnvelope@v1",
+        "consumers": ["Defense hedge_state"],
+    },
+    {
+        "id": "subject_research",
+        "module": "lib.data_broker.subject_research",
+        "entrypoints": ["get_subject_research"],
+        "http": [],
+        "domain": "research",
+        "authority_domain": "research_thesis",
+        "description": "hermes_research_intelligence rows keyed by symbol / subject_guid / sector; READ ONLY, never queues",
+        "read_only": True,
+        "provider_calls": 0,
+        "envelope": "BrokerReadEnvelope@v1",
+        "consumers": ["Sectors subject-intel", "Intelligence"],
+    },
+    {
+        "id": "agent_opinion",
+        "module": "lib.data_broker.agent_opinion",
+        "entrypoints": ["get_agent_opinion", "get_agent_roster", "get_debate_summary"],
+        "http": [],
+        "domain": "agents",
+        "authority_domain": "agent_opinion",
+        "description": (
+            "Per-agent roster from watchlist_agent_results (alive) + debate summary from "
+            "agent_debate_log (dead since 2026-05-05 — declared as gap.no_producer); composes agent_results"
+        ),
+        "read_only": True,
+        "provider_calls": 0,
+        "envelope": "BrokerReadEnvelope@v1",
+        "composes": ["agent_results"],
+        "consumers": ["Agents"],
+    },
+    {
+        "id": "option_chain",
+        "module": "lib.data_broker.option_chain",
+        "entrypoints": ["get_option_chain"],
+        "http": [],
+        "domain": "options",
+        "authority_domain": "options_iv",
+        "description": (
+            "options_iv_history store read (IV, ATM strike, underlying) with age. "
+            "live_external at Schwab: NO provider call from the projection — states the age instead"
+        ),
+        "read_only": True,
+        "provider_calls": 0,
+        "live_external": "schwab (declared, never called here)",
+        "envelope": "BrokerReadEnvelope@v1",
+        "consumers": ["Options", "Defense hedging radar"],
+    },
+    {
+        "id": "watch_discovery",
+        "module": "lib.data_broker.watch_discovery",
+        "entrypoints": [
+            "feed_envelope",
+            "quality_gate_rows",
+            "wide_finds_rows",
+            "track_record_row",
+            "directive_alpha_events",
+            "directive_score_meta",
+        ],
+        "http": [],
+        "domain": "watch",
+        "authority_domain": "watch_discovery",
+        "description": (
+            "watch_candidate_events (DEAD feed: 13,093 rows, last 2026-07-16, no INSERT in repo). "
+            "Every read carries gap.kind=no_producer with the last as_of"
+        ),
+        "read_only": True,
+        "provider_calls": 0,
+        "envelope": "BrokerReadEnvelope@v1",
+        "status": "dead_feed",
+        "consumers": ["Watch Discovery / Screener Finds", "Watch directives"],
+    },
 ]
 
 

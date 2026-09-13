@@ -1,0 +1,130 @@
+{
+  "schema": "DataSourceAuthorityPatch@v1",
+  "proposed": "2026-09-13",
+  "phase": "4 — the broker is the only read path",
+  "target": "config/data_source_authority.json",
+  "_why": "Written by the Phase 4 agent instead of editing the registry directly (parallel agents edit that file). Each change below is a JSON-merge on domains[] keyed by domain. Apply with operator review; afterwards `python3 scripts/check_data_source_authority.py` must stay green — PROJECTION_MISSING checks that every projection id named here exists in scripts/lib/data_broker/catalog.py, and they all do on branch feat/sot-phase4-broker-reads.",
+  "amend_domains": [
+    {
+      "domain": "market_regime",
+      "set": {"projection": "market_regime"},
+      "_why": "risk_snapshot composes book risk from JSON state and never reads market_regime_snapshots; lib.data_broker.market_regime is the table read. /api/v2/risk-regime/latest and /history now go through it."
+    },
+    {
+      "domain": "technicals",
+      "set": {"projection_secondary": ["daily_bars"]},
+      "_why": "indicator_snapshot stays the derived-indicator projection; daily_bars is the raw ticker_prices close read (Defense hedge_state uses it; api_v2 direct reads of ticker_prices 1 -> 0)."
+    },
+    {
+      "domain": "research_thesis",
+      "set": {"projection_secondary": ["subject_research"]},
+      "_why": "research_card is the curated card; subject_research is the read-only row read keyed by symbol / subject_guid / sector. Not yet consumed by a hub handler on this branch (hermes_research_intelligence direct reads still 31)."
+    },
+    {
+      "domain": "options_iv",
+      "set": {
+        "projection": "option_chain",
+        "_projection_note": "Phase 4 added lib.data_broker.option_chain: store-only read of options_iv_history with age; declares live_external at Schwab and never calls it."
+      }
+    },
+    {
+      "domain": "watch_discovery",
+      "set": {"projection": "watch_discovery", "dead_after_hours": 720},
+      "_why": "Dedicated dead-feed projection; five api_v2 SQL reads of watch_candidate_events moved into it and every response carries gap.kind=no_producer with last_as_of 2026-07-16."
+    }
+  ],
+  "add_domains": [
+    {
+      "domain": "agent_opinion",
+      "class": "native",
+      "store": {"table": "watchlist_agent_results"},
+      "writer": null,
+      "writer_status": "UNCONSOLIDATED",
+      "writer_target": "VERIFY — grep 'INSERT INTO watchlist_agent_results' before merging; not confirmed by the Phase 4 agent",
+      "cadence": "on watch events",
+      "stale_after_hours": 48,
+      "dead_after_hours": 720,
+      "projection": "agent_opinion",
+      "required_fields": ["agent", "recommendation", "created_at"],
+      "primary_provider": "internal",
+      "backup": [],
+      "retired": [],
+      "no_coverage": "say_so",
+      "_note": "Alive at measurement (917 rows, newest 2026-09-12)."
+    },
+    {
+      "domain": "agent_debate",
+      "class": "dead_feed",
+      "store": {"table": "agent_debate_log"},
+      "writer": null,
+      "cadence": null,
+      "stale_after_hours": 168,
+      "dead_after_hours": 720,
+      "projection": "agent_opinion",
+      "primary_provider": "internal",
+      "backup": [],
+      "retired": [],
+      "no_coverage": "declared_gap_no_producer",
+      "_note": "9 rows, newest 2026-05-05 (131d). /api/v2/agents/summary now renders feeds.agent_debate_log.gap.kind=no_producer."
+    },
+    {
+      "domain": "ai_reports",
+      "class": "dead_feed",
+      "store": {"table": "ai_reports"},
+      "writer": null,
+      "cadence": null,
+      "stale_after_hours": 168,
+      "dead_after_hours": 720,
+      "projection": "desk_feeds",
+      "primary_provider": "internal",
+      "backup": [],
+      "retired": [],
+      "no_coverage": "declared_gap_no_producer",
+      "_note": "46 rows, newest 2026-08-02 (42d). Reports desk payloads (categories, portal-summary, catalog) carry feeds.ai_reports. Requires catalog id 'desk_feeds' (see uncatalogued_helper_module) before this row is applied, or PROJECTION_MISSING fires."
+    },
+    {
+      "domain": "redeploy_analytics",
+      "class": "dead_feed",
+      "store": {"file": "portfolios/state/redeploy_analytics_cache.json"},
+      "writer": "scripts/api_v2.py",
+      "cadence": "on demand (30-min TTL cache)",
+      "stale_after_hours": 24,
+      "dead_after_hours": 720,
+      "projection": "desk_feeds",
+      "primary_provider": "internal",
+      "backup": [],
+      "retired": [],
+      "no_coverage": "declared_gap_no_producer",
+      "_note": "Newest _cached_at 52d at measurement; every entry expired. Redeploy book/candidates/pro-forma/performance carry feeds.redeploy_analytics_cache. Same catalog precondition as ai_reports."
+    },
+    {
+      "domain": "inverse_stoplights",
+      "class": "derived",
+      "store": {"file": "runtime/inverse_stoplights_latest.json"},
+      "writer": "scripts/defense_inverse_stoplights.py",
+      "cadence": "10:15 · 17:55 Mon-Fri",
+      "stale_after_hours": 26,
+      "projection": null,
+      "required_fields": ["candidates", "generated_at"],
+      "primary_provider": "internal",
+      "backup": [],
+      "retired": [],
+      "no_coverage": "say_so",
+      "_note": "_inverse_stoplights_get now wraps the file with envelope('inverse_stoplights', stale_after_hours=26); the explicit window can be dropped once this row lands."
+    }
+  ],
+  "new_projection_ids_in_catalog": ["market_regime", "daily_bars", "subject_research", "agent_opinion", "option_chain", "watch_discovery"],
+  "uncatalogued_helper_module": {
+    "module": "lib.data_broker.desk_feeds",
+    "entrypoints": ["get_report_feed", "get_redeploy_cache_feed"],
+    "_note": "Deliberately not added to PROJECTIONS on this branch (catalog kept to the five briefed projections + watch_discovery). Add as id 'desk_feeds' in the same PR that applies the ai_reports / redeploy_analytics rows above."
+  },
+  "envelope": {
+    "module": "lib.data_broker.envelope",
+    "schema": "BrokerReadEnvelope@v1",
+    "fields": ["as_of", "age_hours", "source{domain,table,file,writer,projection,provider,registry}", "stale", "stale_after_hours", "gap{kind,last_as_of,dead_after_hours?,declared_behaviour?}"],
+    "gap_rule": "no_producer when registry class==dead_feed, producer_status=='none', or age_hours > dead_after_hours (default 720h = 30d); no_coverage when as_of is None. A feed that resumes clears the gap on its own."
+  },
+  "new_test_files": ["tests/test_data_broker_envelope_20260913.py"],
+  "register_in": ["scripts/run_cio_hardening_ci.py — NOT edited on this branch (parallel agent); please register the test file there"]
+}

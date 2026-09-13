@@ -2134,7 +2134,29 @@ def _reports_categories(query=None):
     _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
     import reports_portal as _rp
 
-    return _rp.categories()
+    return _with_report_feed(_rp.categories())
+
+
+def _with_report_feed(payload):
+    """Phase 4 (2026-09-13): attach the ai_reports read envelope to a Reports-desk payload.
+
+    ai_reports (LLM monthly/weekly reports) has had no producer since 2026-08-02 (42d at
+    measurement). The portal aggregates four stores; this names the dead one with its last
+    as_of (feeds.ai_reports.gap.kind == "no_producer") instead of listing its rows as current.
+    Fail-soft: a broker error never takes the Reports desk down."""
+    if not isinstance(payload, dict):
+        return payload
+    try:
+        from lib.data_broker.desk_feeds import get_report_feed as _brk_reports
+
+        rf = _brk_reports(_db_query)
+        feeds = dict(payload.get("feeds") or {})
+        feeds["ai_reports"] = {k: rf.get(k) for k in ("as_of", "age_hours", "source", "stale", "stale_after_hours", "gap", "total", "by_type") if k in rf}
+        payload["feeds"] = feeds
+        payload.setdefault("schema", rf.get("schema"))
+    except Exception:
+        pass
+    return payload
 
 
 def _v3_alerts_active(query=None):
@@ -2223,7 +2245,7 @@ def _reports_portal_summary(query=None):
     import reports_portal as _rp
 
     q = query or {}
-    return _rp.portal_summary(days=int(q.get("days", 7) or 7))
+    return _with_report_feed(_rp.portal_summary(days=int(q.get("days", 7) or 7)))
 
 
 def _reports_action_items(query=None):
@@ -8522,8 +8544,18 @@ def _screener_finds_candidates(query=None):
         items_out = wl.get("items") or []
         sym_order = {s: i for i, s in enumerate(syms)}
         items_out.sort(key=lambda x: sym_order.get(x.get("symbol"), 999))
+    # Phase 4: the discovery feed behind wide_finds/track_record has NO producer (registry class
+    # dead_feed). The response carries the envelope so the panel renders the gap and the last as_of.
+    try:
+        from lib.data_broker.watch_discovery import feed_envelope as _brk_wd_env
+
+        _wd_env = _brk_wd_env(_db_query)
+    except Exception:
+        _wd_env = {}
     return _json_clean(
         {
+            **_wd_env,
+            "feeds": {"watch_candidate_events": {k: v for k, v in _wd_env.items() if k != "schema"}},
             "ok": True,
             "count": len(pins),
             "candidates": pins,
@@ -8543,7 +8575,8 @@ _WQG_CACHE = {"ts": 0.0, "cfg": None, "low": None, "per_source": None}
 
 
 def _watch_quality_gate():
-    """Watch Desk v4 (WS-D): per-source rolling efficacy from watch_candidate_events.
+    """Watch Desk v4 (WS-D): per-source rolling efficacy over watch_candidate_events (read via the
+    watch_discovery projection — a dead feed since 2026-07-16; the response envelope says so).
     Returns (low_efficacy_sources: set, per_source: list). Cached 1h — the underlying
     ledger only moves on the Sunday reconciler. Visibility throttle only, no blocking;
     the label lifts automatically when the rolling median α recovers above the floor.
@@ -8568,23 +8601,11 @@ def _watch_quality_gate():
         pass
     per_source, low = [], set()
     try:
-        rows = (
-            _db_query(
-                """SELECT source_type,
-                                   count(*) AS emitted,
-                                   count(*) FILTER (WHERE alpha_21d IS NOT NULL) AS n,
-                                   round((percentile_cont(0.5) WITHIN GROUP (ORDER BY alpha_21d)
-                                     FILTER (WHERE alpha_21d IS NOT NULL))::numeric, 2) AS alpha_21d_median,
-                                   round((percentile_cont(0.5) WITHIN GROUP (ORDER BY alpha_21d)
-                                     FILTER (WHERE alpha_21d IS NOT NULL AND proposed))::numeric, 2) AS converted_alpha_21d,
-                                   count(*) FILTER (WHERE proposed) AS converted
-                            FROM watch_candidate_events
-                            WHERE emitted_on > CURRENT_DATE - %s
-                            GROUP BY source_type ORDER BY source_type""",
-                (int(cfg["window_days"]),),
-            )
-            or []
-        )
+        # Phase 4: watch_candidate_events is a DEAD feed (no INSERT since 2026-07-16); every read
+        # goes through the watch_discovery projection so the desk can declare the gap.
+        from lib.data_broker.watch_discovery import quality_gate_rows as _brk_wd_gate
+
+        rows = _brk_wd_gate(_db_query, int(cfg["window_days"]))
         for r in rows:
             rec = {k: _json_clean(v) for k, v in r.items()}
             rec["low_efficacy"] = bool(
@@ -8608,14 +8629,9 @@ def _wide_finds_payload():
     the UI folds them into a collapsed band; nothing is blocked or deleted."""
     try:
         low, _ = _watch_quality_gate()
-        rows = (
-            _db_query("""SELECT source_type, symbol, emitted_on, anchor_price, alpha_21d, verdict, proposed
-                            FROM watch_candidate_events
-                            WHERE source_type IN ('screener_find','ai_discovered')
-                              AND emitted_on > CURRENT_DATE - 90
-                            ORDER BY emitted_on DESC LIMIT 120""")
-            or []
-        )
+        from lib.data_broker.watch_discovery import wide_finds_rows as _brk_wd_wide
+
+        rows = _brk_wd_wide(_db_query)
         return [
             {**{k: _json_clean(v) for k, v in r.items()}, "low_efficacy_source": r.get("source_type") in low}
             for r in rows
@@ -8629,24 +8645,13 @@ def _finds_track_record():
     'converted-to-proposal α' vs per-source α with n — the number that decides how
     damning the headline −4.82% actually is (funnel-top noise vs converted underperformance)."""
     try:
-        r = (
-            _db_query(
-                """SELECT count(*) AS n,
-                                count(*) FILTER (WHERE alpha_21d IS NOT NULL) AS scored,
-                                round((percentile_cont(0.5) WITHIN GROUP (ORDER BY alpha_21d)
-                                  FILTER (WHERE alpha_21d IS NOT NULL))::numeric, 2) AS median_alpha_21d,
-                                round((percentile_cont(0.5) WITHIN GROUP (ORDER BY alpha_21d)
-                                  FILTER (WHERE alpha_21d IS NOT NULL AND proposed))::numeric, 2) AS converted_alpha_21d,
-                                count(*) FILTER (WHERE proposed AND alpha_21d IS NOT NULL) AS converted_scored,
-                                count(*) FILTER (WHERE proposed) AS converted
-                         FROM watch_candidate_events
-                         WHERE source_type IN ('screener_find','ai_discovered')
-                           AND emitted_on > CURRENT_DATE - 90""",
-                fetch="one",
-            )
-            or {}
-        )
+        from lib.data_broker.watch_discovery import feed_envelope as _brk_wd_env, track_record_row as _brk_wd_tr
+
+        r = _brk_wd_tr(_db_query)
         out = {k: _json_clean(v) for k, v in r.items()}
+        # Phase 4: the track record is a dead feed — say so with the last as_of, never render
+        # a 2026-07-16 α table as this week's. Envelope keys (as_of, age_hours, source, stale, gap).
+        out.update({k: v for k, v in _brk_wd_env(_db_query).items() if k != "schema"})
         low, per_source = _watch_quality_gate()
         out["per_source"] = per_source
         out["low_efficacy_sources"] = sorted(low)
@@ -10253,27 +10258,15 @@ def _agents_summary():
     # iris_run_log), which is why this roster shows far larger numbers than the Home widget's
     # "Agent Health" card (that card counts watchlist_agent_results only). `total_30d`/`actions_30d`
     # are additive recent-window fields; `count_source` names the table the count came from.
-    agent_counts = (
-        _db_query("""
-        SELECT agent, count(*) as total,
-               count(*) FILTER (WHERE created_at > NOW() - INTERVAL '30 days') as total_30d,
-               count(CASE WHEN recommendation IN ('BUY','ADD','STRONG_BUY') THEN 1 END) as buy_count,
-               count(CASE WHEN recommendation IN ('SELL','TRIM','REDUCE') THEN 1 END) as sell_count,
-               count(CASE WHEN recommendation IN ('HOLD','NEUTRAL') THEN 1 END) as hold_count,
-               avg(
-                 CASE
-                   WHEN confidence IS NULL THEN NULL
-                   WHEN confidence > 100 THEN NULL
-                   WHEN confidence > 1 THEN LEAST(1.0, confidence / 100.0)
-                   ELSE LEAST(1.0, GREATEST(0.0, confidence))
-                 END
-               ) as avg_confidence,
-               max(created_at) as latest
-        FROM watchlist_agent_results
-        GROUP BY agent ORDER BY total DESC
-    """)
-        or []
-    )
+    # Phase 4 (2026-09-13): roster + debates via the agent_opinion projection. watchlist_agent_results
+    # is alive; agent_debate_log has had no producer since 2026-05-05 (131d) and the response now
+    # says so (feeds.agent_debate_log.gap.kind == "no_producer") instead of rendering 0 debates as news.
+    from lib.data_broker.agent_opinion import get_agent_roster as _brk_roster, get_debate_summary as _brk_debates
+
+    _roster = _brk_roster(_db_query)
+    agent_counts = _roster.get("agents") or []
+    _debates = _brk_debates(_db_query)
+    _env_keys = ("as_of", "age_hours", "source", "stale", "stale_after_hours", "gap")
     handoff_counts = (
         _db_query("""
         SELECT from_agent, to_agent, count(*) as cnt
@@ -10474,6 +10467,17 @@ def _agents_summary():
             agents_out.append(ea)
 
     return {
+        # Phase 4 read envelope: top-level = the live store (watchlist_agent_results); per-feed below,
+        # where agent_debate_log declares gap.kind == "no_producer" with its last as_of.
+        **{k: _roster.get(k) for k in ("schema",) + _env_keys if k in _roster},
+        "feeds": {
+            "watchlist_agent_results": {k: _roster.get(k) for k in _env_keys if k in _roster},
+            "agent_debate_log": {k: _debates.get(k) for k in _env_keys if k in _debates},
+        },
+        "debates_7d": {
+            "count": _debates.get("count", 0) or 0,
+            "avg_consensus": _json_clean(_debates.get("avg_consensus")),
+        },
         "agents": agents_out,
         "handoffs": [{k: _json_clean(v) for k, v in r.items()} for r in handoff_counts],
     }
@@ -10767,13 +10771,14 @@ def _autonomy_progress():
         or []
     )
 
-    # Debates this week
-    debates = _db_query("""
-        SELECT count(*) as cnt,
-               AVG(consensus_score) as avg_consensus
-        FROM agent_debate_log
-        WHERE created_at > NOW() - INTERVAL '7 days'
-    """) or [{"cnt": 0, "avg_consensus": None}]
+    # Debates this week — Phase 4 (2026-09-13): via the agent_opinion projection. agent_debate_log has
+    # had no producer since 2026-05-05 (131d); the payload now says so (feeds.agent_debate_log.gap)
+    # instead of rendering "0 debates this week" as if the desk were alive.
+    from lib.data_broker.agent_opinion import get_debate_summary as _brk_debates
+
+    _debates = _brk_debates(_db_query)
+    _env_keys = ("as_of", "age_hours", "source", "stale", "stale_after_hours", "gap")
+    debates = [{"cnt": _debates.get("count", 0) or 0, "avg_consensus": _debates.get("avg_consensus")}]
 
     # Latest lessons text
     lessons = (
@@ -10798,7 +10803,10 @@ def _autonomy_progress():
         "debates_7d": {
             "count": debates[0].get("cnt", 0),
             "avg_consensus": _json_clean(debates[0].get("avg_consensus")),
+            **{k: _debates.get(k) for k in _env_keys if k in _debates},
         },
+        "schema": _debates.get("schema"),
+        "feeds": {"agent_debate_log": {k: _debates.get(k) for k in _env_keys if k in _debates}},
         "latest_lessons": lesson_text,
         "content_embeddings": embeddings[0].get("cnt", 0),
         "maturity_score": _compute_maturity(
@@ -15653,8 +15661,19 @@ def _defense_posture(query=None):
     confirmed transitions + would-have-fired (hypothetical, labeled). Disk snapshots
     written by sector_momentum_engine (nightly 17:25); cheap reads."""
     out = {"ok": True}
-    snap = _load_json(PROJECT_ROOT / "data" / "runtime" / "sector_momentum_latest.json")
-    if not snap or not (snap.get("rows") if isinstance(snap, dict) else False):
+    # One Source of Truth Phase 4 (2026-09-13): the engine snapshot is read through the
+    # sector_momentum projection, which carries as_of/age_hours/stale against the registry's
+    # 26h window. On 2026-09-13 this file was served 436–454h old as current; now it renders
+    # with its age and the desk can say so.
+    from lib.data_broker.sector_momentum import get_sector_momentum_snapshot as _brk_sm_snap
+
+    _sm = _brk_sm_snap()
+    snap = _sm.get("snapshot")
+    _sm_env = {k: _sm.get(k) for k in ("as_of", "age_hours", "source", "stale", "stale_after_hours", "gap") if k in _sm}
+    out.update(_sm_env)
+    out["schema"] = _sm.get("schema")
+    out["feeds"] = {"sector_momentum": _sm_env}
+    if not snap:
         # --- Data Broker: sector_momentum as fallback (Phase D wiring) ---
         # When the sector_momentum_engine snapshot is missing (first run, disk error),
         # compute sector-relative-strength live from market_quotes via the broker module.
@@ -15680,6 +15699,21 @@ def _defense_posture(query=None):
                 "source": "data_broker.sector_momentum",
                 "note": "Broker fallback; snapshot file absent/empty. Sector states are fresh momentum labels only.",
             }
+            # The served momentum now comes from the live recompute, so the top-level envelope
+            # describes THAT read (market_quotes-derived, its own as_of); the file's no_coverage
+            # envelope stays visible under feeds.sector_momentum.
+            from lib.data_broker.envelope import envelope as _brk_envelope
+
+            _fb_env = _brk_envelope(
+                "sector_momentum",
+                bm.get("computed_at") or None,
+                source={"file": None, "table": "market_quotes", "fallback": "data_broker.sector_momentum live recompute"},
+            )
+            out.update({k: _fb_env.get(k) for k in ("as_of", "age_hours", "source", "stale", "stale_after_hours") if k in _fb_env})
+            out.pop("gap", None)
+            if "gap" in _fb_env:
+                out["gap"] = _fb_env["gap"]
+            out["feeds"]["sector_momentum_fallback"] = {k: _fb_env.get(k) for k in ("as_of", "age_hours", "source", "stale", "gap") if k in _fb_env}
         except Exception:
             snap = {"rows": [], "note": "engine has not run yet"}
     out["momentum"] = snap
@@ -15728,16 +15762,17 @@ def _defense_posture(query=None):
                 "line": f"HEDGE: stand-down signaled — Technology recovered to {_tech.get('state')}",
             }
         elif _hint and _hint[0] == "filled":
-            _hc.execute(
-                """SELECT close_price FROM ticker_prices WHERE symbol=%s
-                           ORDER BY price_date DESC LIMIT 1""",
-                (_hint[2],),
-            )
-            _px = _hc.fetchone()
-            _pl = round((float(_px[0]) - float(_hint[1])) / float(_hint[1]) * 100, 1) if _px and _hint[1] else None
+            # Phase 4: last close via the daily_bars projection (ticker_prices), with its age.
+            from lib.data_broker.daily_bars import get_last_close as _brk_last_close
+
+            _lc = _brk_last_close(_db_query, _hint[2])
+            _px = _lc.get("close")
+            _pl = round((float(_px) - float(_hint[1])) / float(_hint[1]) * 100, 1) if _px is not None and _hint[1] else None
             hs = {
                 "state": "in_play",
                 "line": f"HEDGE: {_hint[2]} in play" + (f" {_pl:+.1f}%" if _pl is not None else ""),
+                "close_as_of": _lc.get("as_of"),
+                "close_stale": _lc.get("stale"),
             }
         elif _bounce and _bounce[2] and str(_bounce[2])[:10] == datetime.now(timezone.utc).date().isoformat():
             hs = {
@@ -16128,8 +16163,15 @@ def _defense_industries(query=None):
     (12:30 refresh + 16:18 close); NOT folded into /defense/posture — the Home strip
     polls posture and doesn't need this ~50KB."""
     try:
-        snap = _load_json(PROJECT_ROOT / "data" / "runtime" / "industry_momentum_latest.json")
-        return {"ok": True, **(snap or {"industries": [], "note": "industry engine has not run yet"})}
+        # Phase 4: read through the sector_momentum projection (industry_momentum domain, 26h window)
+        # so the response carries as_of/age_hours/stale instead of a bare file dump.
+        from lib.data_broker.envelope import wrap as _brk_wrap
+        from lib.data_broker.sector_momentum import get_industry_momentum_snapshot as _brk_ind
+
+        _im = _brk_ind()
+        snap = _im.get("snapshot")
+        _env = {k: _im[k] for k in ("schema", "as_of", "age_hours", "source", "stale", "stale_after_hours", "gap") if k in _im}
+        return _brk_wrap({"ok": True, **(snap or {"industries": [], "note": "industry engine has not run yet"})}, _env)
     except Exception as e:
         import traceback
 
@@ -28196,7 +28238,7 @@ def _reports_brief_regenerate(body=None):
 def _reports_catalog_route(query=None):
     """GET /api/v2/reports/catalog — WS-A typed report catalog only (light: disk-cache read,
     no DB) so the Library tab never pays for the full hub aggregate."""
-    return {"ok": True, "catalog": _report_catalog_cached()}
+    return _with_report_feed({"ok": True, "catalog": _report_catalog_cached()})
 
 
 _SYSTEM_ROLLUP_MEMO = {"ts": 0.0, "window": None, "data": None}
@@ -34959,16 +35001,9 @@ def _watch_directive_detail(query=None):
         )
         or []
     )
-    alpha_events = (
-        _db_query(
-            """SELECT symbol, emitted_on, alpha_21d, alpha_63d, verdict, staged, proposed
-                                FROM watch_candidate_events
-                                WHERE source_type='directive_hit' AND source_id=%s
-                                ORDER BY emitted_on DESC LIMIT 60""",
-            (str(did),),
-        )
-        or []
-    )
+    from lib.data_broker.watch_discovery import directive_alpha_events as _brk_wd_alpha
+
+    alpha_events = _brk_wd_alpha(_db_query, did)  # Phase 4: dead feed read via projection
     children = (
         _db_query(
             """SELECT symbol, strategy_id, bucket, current_status, origin_system
@@ -35670,19 +35705,9 @@ def _watch_directives(query=None):
     # the input the 150-cap and Sunday hygiene were missing (cull by evidence)
     _score_meta = {}
     try:
-        for r in (
-            _db_query("""SELECT source_id::bigint AS did,
-                                      count(*) AS events,
-                                      count(*) FILTER (WHERE alpha_21d IS NOT NULL) AS scored,
-                                      round((percentile_cont(0.5) WITHIN GROUP (ORDER BY alpha_21d)
-                                        FILTER (WHERE alpha_21d IS NOT NULL))::numeric, 2) AS alpha_21d_median,
-                                      count(*) FILTER (WHERE proposed) AS proposed_n
-                               FROM watch_candidate_events
-                               WHERE source_type='directive_hit' AND source_id ~ '^[0-9]+$'
-                               GROUP BY 1""")
-            or []
-        ):
-            _score_meta[r["did"]] = r
+        from lib.data_broker.watch_discovery import directive_score_meta as _brk_wd_score
+
+        _score_meta = _brk_wd_score(_db_query)  # Phase 4: dead feed read via projection
     except Exception:
         _score_meta = {}
     _hit_sym_map = {r["directive_id"]: (r["syms"] or []) for r in _hs}
@@ -41451,10 +41476,23 @@ def _inverse_stoplights_get(query=None):
     candidate (runtime snapshot; refreshed by the defense nightly + refresh)."""
     import json as _json
 
+    from lib.data_broker.envelope import envelope as _brk_envelope, wrap as _brk_wrap
+
     p = PROJECT_ROOT / "data" / "runtime" / "inverse_stoplights_latest.json"
-    if p.exists():
-        return _json.loads(p.read_text())
-    return {"candidates": [], "note": "no stoplight evaluation yet"}
+    payload = _json.loads(p.read_text()) if p.exists() else {"candidates": [], "note": "no stoplight evaluation yet"}
+    if not isinstance(payload, dict):
+        return payload
+    # Phase 4: carries as_of/age_hours/stale. 26h window = proposed registry domain
+    # inverse_stoplights (docs/implementation/sot/phase4_registry_patch.json).
+    return _brk_wrap(
+        payload,
+        _brk_envelope(
+            "inverse_stoplights",
+            payload.get("generated_at") or payload.get("captured_at"),
+            stale_after_hours=26,
+            source={"file": "runtime/inverse_stoplights_latest.json", "writer": "scripts/defense_inverse_stoplights.py"},
+        ),
+    )
 
 
 def _olc():
@@ -42779,13 +42817,17 @@ def _sectors_monitor(query=None):
     Advisory; no fabrication (unknown when no ETF data). Watched sectors sort to top."""
     import json as _j
 
-    spy = (
-        _db_query(
-            "SELECT day_change_pct FROM market_quotes WHERE symbol='SPY' ORDER BY fetched_at DESC LIMIT 1", fetch="one"
-        )
-        or {}
-    )
-    spy_chg = float(spy.get("day_change_pct") or 0)
+    # One Source of Truth Phase 4 (2026-09-13): quotes come from the market_quote projection in ONE
+    # batch (skip_live — a bulk page never blocks on the provider waterfall) and the RS history from
+    # the sector_momentum projection. This hub no longer SELECTs market_quotes / sector_rs_daily itself;
+    # the response carries the read envelope (as_of, age_hours, source, stale) for both feeds.
+    from lib.data_broker.envelope import envelope as _brk_envelope, newest as _brk_newest
+    from lib.data_broker.market_quote import get_price_batch as _brk_prices
+    from lib.data_broker.sector_momentum import get_sector_rs_history as _brk_rs_hist
+
+    _etfs = list(dict.fromkeys(["SPY"] + list(_SECTOR_ETF_MAP.values())))
+    _quotes = _brk_prices(_db_query, _etfs, max_age_hours=168, skip_live=True)
+    spy_chg = float((_quotes.get("SPY") or {}).get("chg_pct") or 0)
     watched = {}
     for d in _db_query("SELECT id, label, spec FROM watch_directives WHERE kind='sector' AND status='active'") or []:
         spec = d["spec"] if isinstance(d["spec"], dict) else _j.loads(d["spec"])
@@ -42794,15 +42836,9 @@ def _sectors_monitor(query=None):
             # A4: normalize 'Financial' vs 'Financials' so the watching chip
             # matches regardless of which variant the directive stored
             watched[key.strip().lower().rstrip("s")] = {"id": d["id"], "label": d["label"]}
-    # v4 (E1): RS history — one grouped read of sector_rs_daily for all ETFs
-    _rs_hist: dict = {}
-    for _r in (
-        _db_query("""SELECT symbol, rs_date, rs FROM sector_rs_daily
-                            WHERE rs_date > CURRENT_DATE - 95 AND rs IS NOT NULL
-                            ORDER BY symbol, rs_date""")
-        or []
-    ):
-        _rs_hist.setdefault(_r["symbol"], []).append(float(_r["rs"]))
+    # v4 (E1): RS history — one grouped read of sector_rs_daily for all ETFs (via the projection)
+    _rs_hist_env = _brk_rs_hist(_db_query, days=95)
+    _rs_hist: dict = _rs_hist_env.get("series") or {}
 
     def _rs_block(etf: str):
         ser = _rs_hist.get(etf) or []
@@ -42845,15 +42881,8 @@ def _sectors_monitor(query=None):
 
     out = []
     for sec, etf in _SECTOR_ETF_MAP.items():
-        q = (
-            _db_query(
-                "SELECT day_change_pct FROM market_quotes WHERE symbol=%s ORDER BY fetched_at DESC LIMIT 1",
-                (etf,),
-                fetch="one",
-            )
-            or {}
-        )
-        etf_chg = q.get("day_change_pct")
+        q = _quotes.get(etf) or {}
+        etf_chg = q.get("chg_pct")
         if etf_chg is None:
             # Watch Desk v2 (A4): honest empty state — the calc didn't fail
             # mysteriously, the ETF quote row is missing (XLRE class)
@@ -42898,6 +42927,7 @@ def _sectors_monitor(query=None):
                 "sector": sec,
                 "etf": etf,
                 "etf_change_pct": _json_clean(etf_chg),
+                "quote_as_of": q.get("as_of"),
                 "spy_change_pct": spy_chg,
                 "rel_strength": rel,
                 "momentum": momentum,
@@ -42961,7 +42991,21 @@ def _sectors_monitor(query=None):
         }
     except Exception as _e:
         quality_block = {"error": f"quality block unavailable: {str(_e)[:120]}"}
+    # quote_price has two registry windows: 0.25h in RTH, 72h when the market is closed
+    # (weekend/holiday/after-hours). Ask the session calendar which one applies.
+    try:
+        from market_session import is_market_open as _brk_mkt_open
+
+        _mkt_closed = not _brk_mkt_open()
+    except Exception:
+        _mkt_closed = None
+    _q_env = _brk_envelope(
+        "quote_price", _brk_newest([v.get("as_of") for v in _quotes.values()]), market_closed=_mkt_closed
+    )
+    _rs_env = {k: _rs_hist_env.get(k) for k in ("as_of", "age_hours", "source", "stale", "stale_after_hours", "gap") if k in _rs_hist_env}
     return {
+        **_q_env,
+        "feeds": {"market_quotes": {k: v for k, v in _q_env.items() if k != "schema"}, "sector_rs_daily": _rs_env},
         "spy_change_pct": spy_chg,
         "sectors": out,
         "data_quality": quality_block,
@@ -43876,7 +43920,7 @@ def _redeploy_book(query=None):
             include_dismissed=str(q.get("include_dismissed") or "1") not in ("0", "false"),
         )
         conn.commit()  # idempotent ensure-tables DDL must not linger uncommitted
-        return res
+        return _with_redeploy_feed(res)
     except Exception as e:
         return {"ok": False, "error": str(e)[:200]}
 
@@ -43948,7 +43992,7 @@ def _redeploy_analytics_cache(key: str, builder):
     if hit and (_time.time() - float(hit.get("_cached_at", 0))) < _REDEPLOY_ANALYTICS_CACHE_TTL_SEC:
         out = dict(hit["payload"])
         out["_cache"] = {"hit": True, "cached_at": hit["_cached_at"]}
-        return out
+        return _with_redeploy_feed(out)
     payload = builder()
     if payload.get("ok"):
         cache[key] = {"_cached_at": _time.time(), "payload": payload}
@@ -43959,6 +44003,29 @@ def _redeploy_analytics_cache(key: str, builder):
             tmp.replace(cache_path)
         except Exception:
             pass
+    return _with_redeploy_feed(payload)
+
+
+def _with_redeploy_feed(payload):
+    """Phase 4 (2026-09-13): attach the redeploy analytics-cache read envelope.
+
+    data/portfolios/state/redeploy_analytics_cache.json — a 30-minute TTL cache — had a newest
+    entry 52 days old at measurement: nothing has refreshed the desk's analytics. The payload
+    now names that (feeds.redeploy_analytics_cache.gap.kind == "no_producer", last as_of) rather
+    than presenting the desk as current. Attached AFTER caching so the envelope is never persisted.
+    Fail-soft."""
+    if not isinstance(payload, dict):
+        return payload
+    try:
+        from lib.data_broker.desk_feeds import get_redeploy_cache_feed as _brk_redeploy
+
+        rf = _brk_redeploy()
+        feeds = dict(payload.get("feeds") or {})
+        feeds["redeploy_analytics_cache"] = {k: rf.get(k) for k in ("as_of", "age_hours", "source", "stale", "stale_after_hours", "gap", "entries") if k in rf}
+        payload["feeds"] = feeds
+        payload.setdefault("schema", rf.get("schema"))
+    except Exception:
+        pass
     return payload
 
 
@@ -64932,13 +64999,16 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
     # ── Session 33: Risk Regime + Strategy Rotation ───────────────────────
     if base_path in ("/api/v2/risk-regime/status", "/api/v2/risk-regime/latest"):
         try:
-            row = _db_query(
-                "SELECT snapshot_id, regime_label, confidence, stale_data, volatility_state, trend_state, breadth_state, summary, generated_at FROM market_regime_snapshots ORDER BY created_at DESC LIMIT 1",
-                fetch="one",
-            )
+            # Phase 4: market_regime projection — same row, now with as_of/age_hours/stale (26h)
+            # and the registry's no_coverage rule (carry last regime with date, never neutral).
+            from lib.data_broker.market_regime import get_market_regime as _brk_regime
+
+            _mr = _brk_regime(_db_query, history=1)
+            _env = {k: _mr.get(k) for k in ("schema", "as_of", "age_hours", "source", "stale", "stale_after_hours", "gap") if k in _mr}
+            row = _mr.get("regime")
             if not row:
-                return 200, {"ok": True, "data": None, "message": "No regime snapshots yet"}
-            return 200, {"ok": True, "data": {k: _json_clean(v) for k, v in row.items()}}
+                return 200, {"ok": True, "data": None, "message": "No regime snapshots yet", **_env}
+            return 200, {"ok": True, "data": {k: _json_clean(v) for k, v in row.items()}, "regime_line": _mr.get("regime_line"), **_env}
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
 
@@ -64956,13 +65026,12 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
 
     if base_path == "/api/v2/risk-regime/history":
         try:
-            rows = (
-                _db_query(
-                    "SELECT snapshot_id, regime_label, confidence, stale_data, generated_at FROM market_regime_snapshots ORDER BY created_at DESC LIMIT 20"
-                )
-                or []
-            )
-            return 200, {"ok": True, "data": [{k: _json_clean(v) for k, v in r.items()} for r in rows]}
+            from lib.data_broker.market_regime import get_market_regime as _brk_regime
+
+            _mr = _brk_regime(_db_query, history=20)
+            _env = {k: _mr.get(k) for k in ("schema", "as_of", "age_hours", "source", "stale", "stale_after_hours", "gap") if k in _mr}
+            rows = _mr.get("history") or []
+            return 200, {"ok": True, "data": [{k: _json_clean(v) for k, v in r.items()} for r in rows], **_env}
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
 

@@ -17,16 +17,16 @@
     "ticker_dividend_data": 1
   },
   "direct_reads": {
-    "market_quotes": 15,
+    "market_quotes": 13,
     "symbol_profiles": 11,
     "yahoo_analyst_targets_history": 5,
     "news_articles": 45,
-    "ticker_prices": 1,
-    "sector_rs_daily": 1,
-    "market_regime_snapshots": 5,
+    "ticker_prices": 0,
+    "sector_rs_daily": 0,
+    "market_regime_snapshots": 3,
     "hermes_research_intelligence": 31,
     "watch_directives": 11,
-    "watch_candidate_events": 6
+    "watch_candidate_events": 0
   },
   "undeclared_hosts": [
     "2captcha.com",
