@@ -534,6 +534,12 @@ GATES = [
             # package has two import identities and patching a constant reaches
             # only one of them.
             "tests/test_data_broker_state_override_20260913.py",
+            # A pinned TRADEAI_STATE_ROOT actually isolates: control-plane
+            # fallbacks no longer reach back into the checkout.
+            "tests/test_state_root_is_honoured_20260913.py",
+            # Off UNLISTED_BASELINE at last. The ONLY coverage of
+            # cio_run_worker._check_health, and its fakes are what hid CL-61.
+            "tests/test_p26_shadow_autonomy.py",
         ],
     ),
     (
