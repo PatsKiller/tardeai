@@ -1408,6 +1408,36 @@
         "kind": "none"
       },
       "note": "Disk hygiene enforcement; deletion-only effect, no durable artifact."
+    },
+    {
+      "lane_id": "expected-services-audit",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-expected-services.timer"
+      },
+      "expected_cadence_hours": 1.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/expected_services_last_run.json"
+      },
+      "note": "Reports declared units and feature flags that are OFF. systemctl --failed only sees FAILED; a disabled unit is absent, not failed, and drops out of every list a monitor would enumerate. tradeai-cio-telegram.service sat disabled five days. The receipt is written every run, findings or not, so a stopped timer does not look like a clean result."
+    },
+    {
+      "lane_id": "data-plausibility-audit",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-data-plausibility.timer"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/data_plausibility_last_run.json"
+      },
+      "note": "Measures declared numeric columns against their declared scale. Exists because Performance (10 Years) was stored as a 1-5 analyst rating for five months and nothing could check it: the scale lived only in a docstring."
     }
   ],
   "undeclared_baseline": [

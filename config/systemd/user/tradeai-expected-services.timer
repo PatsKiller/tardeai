@@ -1,0 +1,18 @@
+[Unit]
+Description=Trade AI expected services — hourly availability audit
+Documentation=file:///home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/config/expected_services.json
+
+[Timer]
+# Hourly, not daily. A service being off for an hour is recoverable; the case
+# this exists for went five days unseen. Twelve minutes past so it does not
+# land on the crowded top of the hour.
+OnCalendar=*-*-* *:12:00
+AccuracySec=1min
+
+# This host loses power hard. Without Persistent a cut spanning the boundary
+# skips the audit silently, which is the failure mode being guarded against.
+Persistent=true
+RandomizedDelaySec=60
+
+[Install]
+WantedBy=timers.target

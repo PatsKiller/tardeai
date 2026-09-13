@@ -542,6 +542,24 @@ GATES = [
             # A 1-5 rating scale refuses values that are not on it, instead of
             # stripping the "%" and laundering a percentage into a rating.
             "tests/test_finviz_recom_plausibility_20260913.py",
+            # Column maps keyed by header name, never by position. Finviz
+            # inserted three columns into v=141 and shifted every later field;
+            # "Performance (10 Years)" was stored as a 1-5 analyst rating for
+            # five months, inverted (a -100% stock read "Strong Buy").
+            "tests/test_finviz_column_map_20260913.py",
+            # Numeric scales are declared in config and measured against the
+            # live database. The Finviz shift survived 130,155 rows because a
+            # column's scale existed only in a docstring, where nothing could
+            # check it.
+            "tests/test_data_plausibility_contracts_20260913.py",
+            # The alarm is watched firing. An alarm nobody has seen fire is
+            # indistinguishable from no alarm -- and a real send returned True
+            # while meaning "suppressed into the 4-hourly digest".
+            "tests/test_data_plausibility_alarm_fires_20260913.py",
+            # A DISABLED unit is not a FAILED unit, so systemctl --failed --
+            # which is what health_agent uses -- is structurally incapable of
+            # seeing it. cio-telegram sat disabled five days.
+            "tests/test_expected_services_20260913.py",
             # Off UNLISTED_BASELINE at last. The ONLY coverage of
             # cio_run_worker._check_health, and its fakes are what hid CL-61.
             "tests/test_p26_shadow_autonomy.py",
