@@ -1468,6 +1468,21 @@
         "path": "data/runtime/data_source_health_last_run.json"
       },
       "note": "Reports data sources whose EFFECTIVE status (lib/data_source_health_view: healthy only inside the registry window, else unknown/error) is not healthy while a cron job is scheduled to feed them. The raw data_source_health.status column does not decay: 2026-09-13 it said healthy for yahoo_finance on a 20-day-old success and unknown-forever for brave_search/fred/alpha_vantage, and the health agent scored 75 on it. Alerts only on change ([PLATFORM_AVAILABILITY]). Receipt written every run. Unit files in config/systemd/user; NOT yet installed -- operator enables."
+    },
+    {
+      "lane_id": "gap-resolution-audit",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-gap-resolution.timer"
+      },
+      "expected_cadence_hours": 0.5,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/gap_resolution_last_run.json"
+      },
+      "note": "Reports gaps open >2h with no resolver attempt, vectors with >=3 errors today, and any receipt where a RETIRED provider ran (must be 0). Phase 7 of One Source of Truth made stale/missing a declared, budgeted, receipted sequence of vectors (scripts/lib/gap_resolver.py); a declared sequence that never runs is the recurring defect here, so the receipts are measured against the gaps. Receipt written every run, findings or not. Unit files proposed in config/systemd/user; NOT installed -- operator-only (AGENTS 9.3)."
     }
   ],
   "undeclared_baseline": [

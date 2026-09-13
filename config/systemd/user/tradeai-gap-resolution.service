@@ -1,0 +1,29 @@
+[Unit]
+# Reports gaps nobody is trying to close, vectors that keep failing, and any
+# vector that ran a RETIRED provider.
+#
+# Phase 7 of One Source of Truth made "stale or missing" a declared, budgeted,
+# receipted sequence of attempts (scripts/lib/gap_resolver.py). A declared
+# sequence that never runs is indistinguishable from no sequence -- the
+# recurring defect in this repository -- so this measures the receipts against
+# the gaps every half hour.
+#
+# Read-only: it reads three JSONL ledgers and the authority registry. It never
+# resolves a gap, never calls a provider, never runs a producer.
+Description=Trade AI gap resolution — report unattended gaps, failing vectors, retired providers that ran
+Documentation=file:///home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/docs/GAP_RESOLUTION.md
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild
+ExecStart=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python \
+    scripts/check_gap_resolution.py --alert
+
+# Exit 1 means "there is a finding" -- a report, not a unit failure. Treating it
+# as a failure would bury the report and make is-failed useless for spotting a
+# monitor that genuinely broke.
+SuccessExitStatus=0 1
+TimeoutStartSec=300
+
+[Install]
+WantedBy=default.target
