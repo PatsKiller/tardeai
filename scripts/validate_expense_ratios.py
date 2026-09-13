@@ -27,7 +27,9 @@ PROJ = Path(HERE).parent
 if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
-SANITY_MAX = 0.025   # 2.5% — above this for an ETF/fund is almost certainly mis-scaled/bad data
+from lib.writers.symbol_profiles_writer import EXPENSE_RATIO_MAX, upsert_profile  # noqa: E402
+
+SANITY_MAX = EXPENSE_RATIO_MAX   # 2.5% — above this for an ETF/fund is almost certainly mis-scaled/bad data
 
 
 def _conn():
@@ -93,7 +95,9 @@ def run(symbols=None, apply=False):
             if changed:
                 changes.append(rec)
                 if apply:
-                    cur.execute("UPDATE symbol_profiles SET expense_ratio=%s WHERE upper(symbol)=%s", (round(er, 6), s))
+                    rcpt = upsert_profile(cur, s, {"expense_ratio": round(er, 6)}, source="validate_expense_ratios")
+                    if rcpt.rejected:
+                        flags.append({**rec, "issue": f"write module refused: {rcpt.rejected[0]['reason']}"})
             if conf == "low":
                 flags.append({**rec, "issue": "two yfinance fields DISAGREE — verify"})
         _t.sleep(0.5)

@@ -19,6 +19,7 @@ if not __import__("os").getenv("DB_PASSWORD"):
     except Exception:
         pass
 from db_adapter import _get_conn
+from lib.writers.symbol_profiles_writer import upsert_profile
 
 
 def _flag(name, default=None):
@@ -54,7 +55,7 @@ def main():
         return 0
 
     import yfinance as yf, time as _t
-    done = 0
+    done = rejected = 0
     for s in syms[:300]:
         _t.sleep(0.8)
         try:
@@ -75,15 +76,15 @@ def main():
             dy = _norm_yield(info.get("yield") or info.get("dividendYield") or info.get("trailingAnnualDividendYield"))
             div = info.get("trailingAnnualDividendRate")
             div = round(float(div), 4) if isinstance(div, (int, float)) and div > 0 else None
-            cur.execute("""UPDATE symbol_profiles SET ytd_return_pct=%s, dividend_yield_pct=%s,
-                             ttm_dividend=%s, perf_updated_at=now() WHERE upper(symbol)=%s""",
-                        (ytd, dy, div, s))
-            done += cur.rowcount
+            rcpt = upsert_profile(cur, s, {"ytd_return_pct": ytd, "dividend_yield_pct": dy, "ttm_dividend": div},
+                                  source="etf_performance_enrich")
+            done += rcpt.rows_written
+            rejected += rcpt.rows_rejected
         except Exception:
             continue
     conn.commit()
     import json
-    print(json.dumps({"ok": True, "symbols": len(syms), "updated": done}))
+    print(json.dumps({"ok": True, "symbols": len(syms), "updated": done, "rejected": rejected}))
     return 0
 
 

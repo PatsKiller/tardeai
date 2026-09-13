@@ -21,6 +21,8 @@ PROJ = Path(HERE).parent
 if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
+from lib.writers.symbol_profiles_writer import EARNINGS_UNKNOWN, earnings_state_for, write_earnings  # noqa: E402
+
 
 def _conn():
     from db_adapter import _get_conn
@@ -136,19 +138,22 @@ def run(symbols=None, apply=True, watchlist_top=200, stale_days=3):
         except Exception as e:
             out.append({"symbol": s, "error": str(e)[:60]}); continue
         if ed is None or len(ed) == 0:
-            out.append({"symbol": s, "error": "no earnings_dates"}); continue
+            # Provider did not answer: UNKNOWN. Nothing is written (the write module refuses UNKNOWN),
+            # so the row stays stale/never-enriched and earnings_provider reads it as UNKNOWN -> gates fail closed.
+            out.append({"symbol": s, "error": "no earnings_dates", "earnings_state": EARNINGS_UNKNOWN}); continue
         nd, ld, est, act, sur = _extract(ed)
-        rec = {"symbol": s, "next_earnings_date": str(nd) if nd else None,
+        state = earnings_state_for(nd, provider_answered=True)   # SCHEDULED if a date, else NONE_SCHEDULED
+        rec = {"symbol": s, "earnings_state": state, "next_earnings_date": str(nd) if nd else None,
                "last_earnings_date": str(ld) if ld else None, "last_eps_estimate": est,
                "last_eps_actual": act, "last_eps_surprise_pct": sur,
                "beat": (None if sur is None else sur >= 0)}
         out.append(rec)
         if apply:
-            cur.execute("""UPDATE symbol_profiles SET next_earnings_date=%s, last_earnings_date=%s,
-                             last_eps_estimate=%s, last_eps_actual=%s, last_eps_surprise_pct=%s,
-                             earnings_updated_at=NOW() WHERE upper(symbol)=%s""",
-                        (nd, ld, est, act, sur, s))
-            done += cur.rowcount
+            rcpt = write_earnings(cur, s, state=state, next_earnings_date=nd, last_earnings_date=ld,
+                                  last_eps_estimate=est, last_eps_actual=act, last_eps_surprise_pct=sur)
+            done += rcpt.rows_written
+            if rcpt.rejected:
+                rec["rejected"] = rcpt.rejected[0]["reason"]
         _t.sleep(0.5)
     if apply:
         conn.commit()
