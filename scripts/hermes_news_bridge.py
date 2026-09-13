@@ -20,6 +20,8 @@ import os, sys, json
 from datetime import datetime, timezone
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(ROOT, "scripts"))
+from lib.writers.news_articles_writer import write_news_articles  # noqa: E402  (the store's one write path)
 # Ticker-level Hermes research worth treating as catalyst news. research_backlog is
 # topic-level (no symbol) and excluded; thesis_challenge/youtube can be added later.
 BRIDGE_TYPES = ("momentum_catalyst",)
@@ -96,13 +98,8 @@ def run(limit=200, lookback_hours=48, as_json=False):
     bridged, skipped_dup = [], 0
     for hid, symbol, topic, summary, urls, conf, fresh, created, rtype, stags in rows:
         title = str(topic)[:500]
-        # Also skip if an identical hermes article (symbol,title) is already present.
-        cur.execute("""SELECT 1 FROM news_articles
-                       WHERE source='hermes' AND symbol=%s AND title=%s LIMIT 1""",
-                    (symbol, title))
-        if cur.fetchone():
-            skipped_dup += 1
-            continue
+        # Dedupe is the write module's rule (same symbol + same source_url or title);
+        # a duplicate writes nothing and is counted from the receipt below.
         # Rating alignment (2026-06-04): score Hermes-ingested articles with the SAME framework
         # TradeAI's news_ingestion uses (content_scoring.score_content) so all news_articles share
         # one relevance/quality scale, regardless of which engine ingested them. Hermes's own
@@ -120,18 +117,17 @@ def run(limit=200, lookback_hours=48, as_json=False):
                    "quality_score": scored.get("quality_score"),
                    "validation_status": scored.get("validation_status")}
         try:
-            cur.execute("""
-                INSERT INTO news_articles
-                    (symbol, strategy_type, title, summary, source, source_url,
-                     published_at, relevance_score, raw_payload, created_at)
-                VALUES (%s, %s, %s, %s, 'hermes', %s, %s, %s, %s, now())
-                RETURNING id
-            """, (symbol, _strategy_type(stags), title,
-                  (str(summary)[:1000] if summary else None),
-                  _first_url(urls), (fresh or created),
-                  round(float(scored.get("relevance_score") or 0.0), 3),
-                  json.dumps(payload)))
-            new_id = cur.fetchone()[0]
+            receipt = write_news_articles(cur, [{
+                "symbol": symbol, "strategy_type": _strategy_type(stags), "title": title,
+                "summary": (str(summary)[:1000] if summary else None), "source": "hermes",
+                "source_url": _first_url(urls), "published_at": (fresh or created),
+                "relevance_score": round(float(scored.get("relevance_score") or 0.0), 3),
+                "raw_payload": json.dumps(payload),
+            }], source="hermes")
+            if not receipt.rows_written:
+                skipped_dup += 1
+                continue
+            new_id = receipt.ids[0]
             bridged.append({"news_id": new_id, "hermes_id": hid, "symbol": symbol,
                             "title": title[:50], "type": rtype})
         except Exception as e:

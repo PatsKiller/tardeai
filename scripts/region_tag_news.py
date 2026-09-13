@@ -18,6 +18,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from dotenv import load_dotenv
 load_dotenv(str(ROOT / ".env"))
 from db_adapter import _get_conn
+from lib.writers.news_articles_writer import set_region  # the store's one write path (Phase 9)
 
 
 def run(hours=96, max_rows=4000, dry_run=False):
@@ -35,9 +36,7 @@ def run(hours=96, max_rows=4000, dry_run=False):
         region, hits = classify_region(title or "", summary or "")
         tally[region] = tally.get(region, 0) + 1
         if not dry_run:
-            cur.execute("""UPDATE news_articles
-                           SET region=%s, geo_keywords=%s, region_tagged_at=now()
-                           WHERE id=%s""", (region, json.dumps(hits[:8]), nid))
+            set_region(cur, nid, region, hits[:8])
     if not dry_run:
         conn.commit()
     print(json.dumps({"mode": "DRY" if dry_run else "APPLIED", "candidates": len(rows),
