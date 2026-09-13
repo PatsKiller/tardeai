@@ -6,7 +6,7 @@ Versioning-Scheme:   Semantic Versioning 2.0.0
 Policy-Schema:       TradeAI-Agent-Operating-Standard/v1
 Status:              PROPOSED
 Effective-Date:      PENDING
-Last-Reviewed:       2026-09-09T00:00:00-04:00
+Last-Reviewed:       2026-09-13T00:00:00-04:00
 Canonical-Repo-Path: AGENTS.md
 Drive-Mirror-Path:   Trade_AI_Docs_v2/governance/agent-policy/AGENTS.md
 Supersedes:          1.1.0
@@ -1212,52 +1212,98 @@ program could read:
    never a value from the wrong place, never a silent zero.
 6. **Health decays.** A `data_source_health` row is *healthy* only if it succeeded inside its
    window; a row nobody touches decays to *unknown*. `healthy` on a 20-day-old success is a defect.
+7. **Every source carries the operator's grant.** Every `providers[]` and `domains[]` row carries an
+   `approval` record (`DataSourceAuthority@v2`). A row without one fails the build with
+   `UNAPPROVED_SOURCE`. See "Ownership and the grant" below.
+
+### Ownership and the grant
+
+The operator's instruction, verbatim (2026-09-13): *"audit to make sure that all of this is
+documented and that the AGENTS.md file is updated with what owns the authoritative sources of data,
+how they are written, if there's a secondary/backup resource, and if any agent needs to write a new
+source they need to get a grant from the operator for approval and it needs to meet the methodology
+that you just developed."* This subsection is that rule.
+
+- **The registry names the owner.** For every authoritative store, `config/data_source_authority.json`
+  names the **single writer** (a module path, or `operator` for a manual store) and **how it is
+  written**: `cadence`, the writer module, and the broker `projection` it is read through. A store
+  that still has several writers says so (`writer_status: UNCONSOLIDATED`, `writer_target`) and its
+  writer count is a ceiling in `config/data_source_authority_baseline.json` that may only fall.
+- **Backups are declared per domain, and answer the same question only.** `backup` lists the
+  providers that may stand in for the primary *for that domain*; when the chain is exhausted the
+  declared `no_coverage` behaviour applies. A provider from another domain is never a backup (rule 5).
+- **Adding, replacing or retiring a data source — or a writer of an authoritative store — is an
+  operator-only decision (§17).** The sequence is fixed: an agent **proposes** the registry row in a
+  PR; the **operator grants** it; the grant is recorded in that row's `approval`
+  (`approved_by`, `approved_on`, `reference` — PR, session, Telegram or archive-manifest row — and a
+  one-line `scope` of what the source may supply; retired rows carry `retired_by`, `retired_on`,
+  `reference`); **only then** may a call site exist. No approval, no source.
+- **The gate makes an ungranted source fail the build.** `check_data_source_authority.py` reports
+  `UNAPPROVED_SOURCE` for any provider or domain without a complete approval, and its
+  `UNDECLARED_PROVIDER` finding tells the agent what to do — *propose a registry row with an operator
+  approval record; do not add the host.* `render_source_of_truth.py --check` fails when the rendered
+  table below or `docs/SOURCE_OF_TRUTH.md` no longer matches the registry.
+- **The methodology is the registry's.** A proposed row must meet every rule above: one writer, one
+  served copy, one read path through a projection, a same-question backup chain, a declared
+  `no_coverage`, a declared `on_gap` chain, decaying health. A source that cannot fill those fields
+  is not ready to be proposed.
+
+Why this is a rule and not a preference (§20): the four dead chain slots, the positional Finviz
+parsers and the unlinked dev tree were all sources or writers that *appeared* without anyone
+deciding they should exist. Each was found by measurement months later.
 
 ### Adding or changing a source — the only procedure
 
 Any new provider host, SDK import, table, or state file that feeds a hub:
 
-1. Add or amend the domain / provider in `config/data_source_authority.json` **first**: store,
-   single writer, cadence, `stale_after_hours`, projection, `required_fields`, backup chain,
-   `no_coverage`.
-2. Add the broker projection if the domain has none (`scripts/lib/data_broker/catalog.py`).
-3. Add the provider's markers to `providers[].match` so `UNDECLARED_PROVIDER` recognises it.
-4. Add a row to the table in this section (below) in the same PR.
-5. Retiring: set `status: "retired"` with `retired_on` and `_why`; remove every call site; the
+1. **Propose and stop.** Open a PR that adds or amends the domain / provider in
+   `config/data_source_authority.json` **first**: store, single writer, cadence,
+   `stale_after_hours`, projection, `required_fields`, backup chain, `no_coverage`, `on_gap`, and an
+   `approval` block naming where the operator's grant will be recorded. Nothing else in the PR calls
+   the source.
+2. **The operator grants it** (§17). The grant is written into `approval` (`approved_by: operator`,
+   `approved_on`, `reference`, `scope`). Until then the gate fails with `UNAPPROVED_SOURCE`.
+3. Add the broker projection if the domain has none (`scripts/lib/data_broker/catalog.py`).
+4. Add the provider's markers to `providers[].match` so `UNDECLARED_PROVIDER` recognises it.
+5. Re-render the table in this section and `docs/SOURCE_OF_TRUTH.md` with
+   `scripts/render_source_of_truth.py` in the same PR — never by hand.
+6. Retiring is the same decision in reverse: operator-only. Set `status: "retired"` with
+   `retired_on`, `_why` and `approval.retired_by/retired_on/reference`; remove every call site; the
    gate proves it. Never delete the module — archive it with a manifest row (§7, "never delete").
 
 A PR that adds a provider host without touching the registry fails
-`check_data_source_authority.py` with `UNDECLARED_PROVIDER`. That is the point.
+`check_data_source_authority.py` with `UNDECLARED_PROVIDER`. A row without the operator's grant fails
+it with `UNAPPROVED_SOURCE`. That is the point.
 
 ### Domains of record (rendered from the registry — do not edit by hand)
 
 <!-- SOURCE_OF_TRUTH_TABLE_START -->
-| Domain | Class | Store of record | Single writer | Cadence | Stale after | Read path | Primary | Backup (same question) | Retired | No coverage |
-|---|---|---|---|---|---|---|---|---|---|---|
-| **quote_price** | ingested | `market_quotes` | **none — dead feed** | */15 09:30-16:00 Mon-Fri | 0.25h | `market_quote` | alpaca | yfinance, schwab_stream | polygon, finnhub, fmp | `last_price_with_age_and_source` |
-| **symbol_identity** | ingested | `symbol_profiles` | `scripts/build_symbol_profiles.py` | 06:35 daily | 168h | `symbol_profile` | yfinance | finviz | fmp | `say_so` |
-| **analyst_opinion** | ingested | `yahoo_analyst_targets_history` | `scripts/pro_analyst_fetch.py` | daily | 168h | `analyst_detail` | yahoo | yfinance_on_demand | fmp, finnhub | `say_so` |
-| **catalyst_news** | ingested | `news_articles` | **none — dead feed** | 00:30 · 12:30 | 18h | `catalyst_record` | finviz | yahoo, brave, searxng | finnhub, newsapi, polygon, fmp | `say_so` |
-| **technicals** | derived | `ticker_prices` · `portfolios/state/technical_snapshot.json` | **none — dead feed** | hourly | 26h | `indicator_snapshot` | alpaca | yfinance | — | `say_so` |
-| **sector_momentum** | derived | `sector_rs_daily` · `runtime/sector_momentum_latest.json` | `scripts/sector_rs_daily.py` | 17:20 Mon-Fri | 26h | `sector_momentum` | internal:market_quotes | finviz_sector_view | — | `say_so` |
-| **industry_momentum** | ingested | `runtime/industry_momentum_latest.json` | `scripts/finviz_industry_groups.py` | 12:30 · 16:18 | 26h | `sector_momentum` | finviz | — | — | `show_sector_with_industry_unavailable` |
-| **market_regime** | derived | `market_regime_snapshots` | `scripts/market_regime_classifier.py` | 06:35 · 16:05 Mon-Fri (collector 06:30 feeds it) | 26h | `market_regime` | yahoo | internal:trade_ai_scans | — | `carry_last_regime_with_date_never_neutral` |
-| **earnings_date** | ingested | `symbol_profiles` | `scripts/earnings_enrich.py` | 06:35 daily | 168h | `symbol_profile` | yfinance | — | fmp | `UNKNOWN_blocks_options_gate` |
-| **holdings_accounts** | ingested | `portfolios/state/holdings.json` | `scripts/portfolio_loader.py` | broker sync + */15 repricer | 24h | `portfolio_snapshot` | schwab | alpaca | — | `per_account_state_never_zero` |
-| **options_iv** | live_external | `options_iv_history` | `scripts/lib/strategy_research/iv_history.py` | unscheduled | 4h | `option_chain` | schwab | — | — | `call_out_at_read_time` |
-| **research_thesis** | native | `hermes_research_intelligence` | **none — dead feed** | 8 scheduled lanes | 168h | `research_card` | internal | research_insights, governed_pull:brave>searxng | — | `say_so_queue_only_if_producer_exists` |
-| **watch_directives** | native | `watch_directives` | **none — dead feed** | 3 scheduled | 48h | `watch_intelligence` | internal | — | — | `say_so` |
-| **watch_discovery** | dead_feed | `watch_candidate_events` | **none — dead feed** | — | 48h | `watch_discovery` | internal | — | — | `declared_gap_no_producer` |
-| **web_search** | live_external | `runtime/search_budget.json` | `scripts/lib/brave_router.py` | on demand | 72h | — | brave | searxng, tavily | — | `declared_gap` |
-| **private_company** | manual | `private_company_proxies` | operator | — | — | — | none | — | — | `refuse_up_front` |
-| **dividends** | ingested | `ticker_dividend_data` | `scripts/sync_dividend_data.py` | 07:05 Mon-Fri | 168h | — | yfinance | — | fmp | `say_so` |
-| **macro** | ingested | `fred_economic_series` | **none — dead feed** | 06:15 daily (fred_data_ingest.py --ingest) | 48h | — | fred | — | — | `say_so` |
-| **fundamentals** | ingested | `fundamental_data` | `scripts/external_market_data_ingest.py` | 08:00 Mon (--fundamentals) | 192h | — | alpha_vantage | yfinance | fmp | `say_so` |
-| **agent_opinion** | native | `watchlist_agent_results` | `scripts/process_watchlist_agent_jobs.py` | on watch events | 48h | `agent_opinion` | internal | — | — | `say_so` |
-| **agent_debate** | dead_feed | `agent_debate_log` | **none — dead feed** | — | 168h | `agent_opinion` | internal | — | — | `declared_gap_no_producer` |
-| **ai_reports** | dead_feed | `ai_reports` | **none — dead feed** | — | 168h | `desk_feeds` | internal | — | — | `declared_gap_no_producer` |
-| **redeploy_analytics** | dead_feed | `portfolios/state/redeploy_analytics_cache.json` | `scripts/api_v2.py` | on demand (30-min TTL cache) | 24h | `desk_feeds` | internal | — | — | `declared_gap_no_producer` |
-| **inverse_stoplights** | derived | `runtime/inverse_stoplights_latest.json` | `scripts/defense_inverse_stoplights.py` | 10:15 · 17:55 Mon-Fri | 26h | — | internal | — | — | `say_so` |
+| Domain | Class | Store of record | Single writer (how it is written) | Cadence | Stale after | Read path | Primary | Backup (same question) | Retired | No coverage | Approval |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| **quote_price** | ingested | `market_quotes` | UNCONSOLIDATED → `scripts/external_market_data_ingest.py` (3 writers today; ceiling may only fall) | */15 09:30-16:00 Mon-Fri | 0.25h | `market_quote` | alpaca | yfinance, schwab_stream | polygon, finnhub, fmp | `last_price_with_age_and_source` | operator 2026-09-13 |
+| **symbol_identity** | ingested | `symbol_profiles` | `scripts/build_symbol_profiles.py` | 06:35 daily | 168h | `symbol_profile` | yfinance | finviz | fmp | `say_so` | operator 2026-09-13 |
+| **analyst_opinion** | ingested | `yahoo_analyst_targets_history` | `scripts/pro_analyst_fetch.py` | daily | 168h | `analyst_detail` | yahoo | yfinance_on_demand | fmp, finnhub | `say_so` | operator 2026-09-13 |
+| **catalyst_news** | ingested | `news_articles` | UNCONSOLIDATED → `scripts/news_ingestion.py` (16 writers today; ceiling may only fall) | 00:30 · 12:30 | 18h | `catalyst_record` | finviz | yahoo, brave, searxng | finnhub, newsapi, polygon, fmp | `say_so` | operator 2026-09-13 |
+| **technicals** | derived | `ticker_prices` · `portfolios/state/technical_snapshot.json` | UNCONSOLIDATED → `scripts/portfolio_repricer.py` (4 writers today; ceiling may only fall) | hourly | 26h | `indicator_snapshot` | alpaca | yfinance | — | `say_so` | operator 2026-09-13 |
+| **sector_momentum** | derived | `sector_rs_daily` · `runtime/sector_momentum_latest.json` | `scripts/sector_rs_daily.py` | 17:20 Mon-Fri | 26h | `sector_momentum` | internal:market_quotes | finviz_sector_view | — | `say_so` | operator 2026-09-13 |
+| **industry_momentum** | ingested | `runtime/industry_momentum_latest.json` | `scripts/finviz_industry_groups.py` | 12:30 · 16:18 | 26h | `sector_momentum` | finviz | — | — | `show_sector_with_industry_unavailable` | operator 2026-09-13 |
+| **market_regime** | derived | `market_regime_snapshots` | `scripts/market_regime_classifier.py` | 06:35 · 16:05 Mon-Fri (collector 06:30 feeds it) | 26h | `market_regime` | yahoo | internal:trade_ai_scans | — | `carry_last_regime_with_date_never_neutral` | operator 2026-09-13 |
+| **earnings_date** | ingested | `symbol_profiles` | `scripts/earnings_enrich.py` | 06:35 daily | 168h | `symbol_profile` | yfinance | — | fmp | `UNKNOWN_blocks_options_gate` | operator 2026-09-13 |
+| **holdings_accounts** | ingested | `portfolios/state/holdings.json` | `scripts/portfolio_loader.py` | broker sync + */15 repricer | 24h | `portfolio_snapshot` | schwab | alpaca | — | `per_account_state_never_zero` | operator 2026-09-13 |
+| **options_iv** | live_external | `options_iv_history` | `scripts/lib/strategy_research/iv_history.py` | unscheduled | 4h | `option_chain` | schwab | — | — | `call_out_at_read_time` | operator 2026-09-13 |
+| **research_thesis** | native | `hermes_research_intelligence` | UNCONSOLIDATED → `scripts/lib/hermes_librarian/librarian.py` (32 writers today; ceiling may only fall) | 8 scheduled lanes | 168h | `research_card` | internal | research_insights, governed_pull:brave>searxng | — | `say_so_queue_only_if_producer_exists` | operator 2026-09-13 |
+| **watch_directives** | native | `watch_directives` | UNCONSOLIDATED → `scripts/lib/two_way_curation.py` (18 writers today; ceiling may only fall) | 3 scheduled | 48h | `watch_intelligence` | internal | — | — | `say_so` | operator 2026-09-13 |
+| **watch_discovery** | dead_feed | `watch_candidate_events` | **none — dead feed** | — | 48h | `watch_discovery` | internal | — | — | `declared_gap_no_producer` | operator 2026-09-13 |
+| **web_search** | live_external | `runtime/search_budget.json` | `scripts/lib/brave_router.py` | on demand | 72h | — | brave | searxng, tavily | — | `declared_gap` | operator 2026-09-13 |
+| **private_company** | manual | `private_company_proxies` | operator (manual entry) | — | — | — | none | — | — | `refuse_up_front` | operator 2026-09-13 |
+| **dividends** | ingested | `ticker_dividend_data` | `scripts/sync_dividend_data.py` | 07:05 Mon-Fri | 168h | — | yfinance | — | fmp | `say_so` | operator 2026-09-13 |
+| **macro** | ingested | `fred_economic_series` | UNCONSOLIDATED → `scripts/external_market_data_ingest.py` (2 writers today; ceiling may only fall) | 06:15 daily (fred_data_ingest.py --ingest) | 48h | — | fred | — | — | `say_so` | operator 2026-09-13 |
+| **fundamentals** | ingested | `fundamental_data` | `scripts/external_market_data_ingest.py` | 08:00 Mon (--fundamentals) | 192h | — | alpha_vantage | yfinance | fmp | `say_so` | operator 2026-09-13 |
+| **agent_opinion** | native | `watchlist_agent_results` | `scripts/process_watchlist_agent_jobs.py` | on watch events | 48h | `agent_opinion` | internal | — | — | `say_so` | operator 2026-09-13 |
+| **agent_debate** | dead_feed | `agent_debate_log` | **none — dead feed** | — | 168h | `agent_opinion` | internal | — | — | `declared_gap_no_producer` | operator 2026-09-13 |
+| **ai_reports** | dead_feed | `ai_reports` | **none — dead feed** | — | 168h | `desk_feeds` | internal | — | — | `declared_gap_no_producer` | operator 2026-09-13 |
+| **redeploy_analytics** | dead_feed | `portfolios/state/redeploy_analytics_cache.json` | `scripts/api_v2.py` | on demand (30-min TTL cache) | 24h | `desk_feeds` | internal | — | — | `declared_gap_no_producer` | operator 2026-09-13 |
+| **inverse_stoplights** | derived | `runtime/inverse_stoplights_latest.json` | `scripts/defense_inverse_stoplights.py` | 10:15 · 17:55 Mon-Fri | 26h | — | internal | — | — | `say_so` | operator 2026-09-13 |
 <!-- SOURCE_OF_TRUTH_TABLE_END -->
 
 §0 rule 5 still governs the one case the gate cannot decide: **two divergent copies of an
@@ -2479,9 +2525,11 @@ provider** (§2A) · **whether to fund off-box backup of `persistent-state`** (�
 `BEHAVIOR_FIELDS`, altering or conditionalising the unconditional raise at
 `scripts/lib/cio_instrument_record.py:390`, or routing a cognition write around it; there is no
 variable to raise, the control surface is the code · re-enabling the retired
-overnight LLM window · merging divergent copies of any authoritative store · branch-protection or
-required-context changes · provisioning or funding any model or data plan · deleting anything ·
-anything in the broker subsystem, credentials, or 2FA.
+overnight LLM window · merging divergent copies of any authoritative store · **adding, replacing or
+retiring a data source, or a writer of an authoritative store** (§7A — an agent proposes the
+registry row; the operator's grant is recorded in its `approval`; the gate fails an ungranted
+source) · branch-protection or required-context changes · provisioning or funding any model or data
+plan · deleting anything · anything in the broker subsystem, credentials, or 2FA.
 
 **The deferred list should shrink each wave.** The escalate-never-resolve rule exists for cases
 where a machine choosing between two candidate truths can destroy one. It does **not** cover
@@ -2867,6 +2915,7 @@ Operator activation phrase (after review):
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
+| 1.2.0 | 2026-09-13 | PROPOSED | MAJOR | §7A gains "Ownership and the grant" and rule 7; §17 gains **adding, replacing or retiring a data source or a writer of an authoritative store**. Registry schema `DataSourceAuthority@v2` requires an `approval` record on every provider and domain; `check_data_source_authority.py` fails an ungranted source (`UNAPPROVED_SOURCE`). Classified MAJOR because it widens §17 (version policy) — it adds a restriction and weakens nothing. Version number left at the unreleased 1.2.0 PROPOSED; whether the widening makes the release 2.0.0 is the operator's call at ratification. | **Operator-directed** 2026-09-13 (instruction quoted verbatim in §7A; One Source of Truth PRs #992 #993 #994). Ratification of the §17 text rides `APPROVE_AGENTS_POLICY_1_2_0` — PENDING |
 | 1.2.0 | 2026-09-09 | PROPOSED | MINOR | Adds §9.1 rule: `settle_delivery` must stamp `delivery_owner`/`gateway_mode` into `provider_coordinates` (PR #926). Does not activate 1.2.0; does not weaken §0/§2/§17. | **INCLUDED** by operator live-ceiling execute 2026-09-09; full `APPROVE_AGENTS_POLICY_1_2_0` still PENDING |
 | 1.2.0 | 2026-09-03 | PROPOSED | MINOR | Multi-Agent SOP controls plus the operator-approval workflow for guarded remote push and live deployment. Does not weaken §0/§2/§17 or financial rails. | **PENDING** — `APPROVE_AGENTS_POLICY_1_2_0 <pr> <sha>` |
 | 1.1.0 | 2026-09-01 | ACTIVE | MINOR | Records the ratified daily provider spend cap ($0.50) in §12, with measured evidence that it binds on 6 of ~84 LLM lanes and is therefore policy rather than a universally enforced control. | **RATIFIED** by the operator, 2026-09-01 |

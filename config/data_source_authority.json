@@ -1,5 +1,5 @@
 {
-  "schema": "DataSourceAuthority@v1",
+  "schema": "DataSourceAuthority@v2",
   "authority": "READ_ONLY_ADVISORY",
   "as_of": "2026-09-13",
   "_why": "One source of truth per domain. For five months Performance (10 Years) was stored as a 1-5 analyst rating because two files mapped Finviz columns by position and nothing declared which store was the analyst source. For eighteen days the site served one copy of the state tree while the producers wrote another, because nothing declared where each store is served from. This file is that declaration. The data broker reads it; scripts/check_data_source_authority.py enforces it; docs/SOURCE_OF_TRUTH.md is rendered from it.",
@@ -10,8 +10,9 @@
     "A backup answers the SAME question from a different provider. Cross-domain substitution is not a backup.",
     "A retired provider has zero call sites outside scripts/lib/retired_providers.py and the secret-hygiene scanners.",
     "A provider that stops reporting decays to unknown in data_source_health; healthy means succeeded within its window.",
-    "Adding a source: add it here first (domain, store, writer, projection, backup, retired) and to AGENTS.md section 7B in the same PR. The gate fails on an undeclared provider host or SDK import.",
-    "Every domain declares on_gap: the ordered, budgeted vectors the gap resolver may run when the store is stale or empty. Free before metered before paid; operator_ask last; retired providers never."
+    "Adding a source: add it here first (domain, store, writer, projection, backup, retired, approval) and re-render AGENTS.md §7A and docs/SOURCE_OF_TRUTH.md with scripts/render_source_of_truth.py in the same PR. The gate fails on an undeclared provider host or SDK import.",
+    "Every domain declares on_gap: the ordered, budgeted vectors the gap resolver may run when the store is stale or empty. Free before metered before paid; operator_ask last; retired providers never.",
+    "Adding, replacing or retiring a data source — or a writer of an authoritative store — is an operator-only decision (AGENTS.md §17). An agent proposes the registry row in a PR; the operator grants it; the grant is recorded in that row's `approval` {approved_by, approved_on, reference, scope} (retired rows: retired_by, retired_on, reference). Only then may a call site exist. A provider or domain without a complete approval fails check_data_source_authority.py with UNAPPROVED_SOURCE."
   ],
   "served_from": {
     "root": "/home/johnclaw/trade-ai-releases/persistent-state/data",
@@ -35,6 +36,12 @@
         "data.alpaca.markets"
       ],
       "status": "active",
+      "approval": {
+        "approved_by": "operator",
+        "approved_on": "2026-09-13",
+        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
+        "scope": "may supply: quotes, bars, paper_execution"
+      },
       "supplies": [
         "quotes",
         "bars",
@@ -50,6 +57,12 @@
         "api.schwabapi.com"
       ],
       "status": "active",
+      "approval": {
+        "approved_by": "operator",
+        "approved_on": "2026-09-13",
+        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
+        "scope": "may supply: positions, option_chain, stream_quotes, instruments"
+      },
       "supplies": [
         "positions",
         "option_chain",
@@ -65,6 +78,12 @@
         "yfinance as yf"
       ],
       "status": "active",
+      "approval": {
+        "approved_by": "operator",
+        "approved_on": "2026-09-13",
+        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
+        "scope": "may supply: profiles, quote_backup, prices, technicals, earnings, analyst_on_demand"
+      },
       "supplies": [
         "profiles",
         "quote_backup",
@@ -83,6 +102,12 @@
         "finance.yahoo.com"
       ],
       "status": "active",
+      "approval": {
+        "approved_by": "operator",
+        "approved_on": "2026-09-13",
+        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
+        "scope": "may supply: analyst_targets, vix, news_feed"
+      },
       "supplies": [
         "analyst_targets",
         "vix",
@@ -97,6 +122,12 @@
         "elite.finviz.com"
       ],
       "status": "active",
+      "approval": {
+        "approved_by": "operator",
+        "approved_on": "2026-09-13",
+        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
+        "scope": "may supply: screeners, enrichment, industry_groups, sector_perf, news"
+      },
       "supplies": [
         "screeners",
         "enrichment",
@@ -114,6 +145,12 @@
         "efts.sec.gov"
       ],
       "status": "active",
+      "approval": {
+        "approved_by": "operator",
+        "approved_on": "2026-09-13",
+        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
+        "scope": "may supply: form4, filings"
+      },
       "supplies": [
         "form4",
         "filings"
@@ -127,6 +164,12 @@
         "FRED_API"
       ],
       "status": "active",
+      "approval": {
+        "approved_by": "operator",
+        "approved_on": "2026-09-13",
+        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
+        "scope": "may supply: macro"
+      },
       "supplies": [
         "macro"
       ]
@@ -139,6 +182,12 @@
         "ALPHA_VANTAGE"
       ],
       "status": "active",
+      "approval": {
+        "approved_by": "operator",
+        "approved_on": "2026-09-13",
+        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
+        "scope": "may supply: fundamentals"
+      },
       "supplies": [
         "fundamentals"
       ]
@@ -152,6 +201,12 @@
         "BRAVE_API"
       ],
       "status": "active_paid",
+      "approval": {
+        "approved_by": "operator",
+        "approved_on": "2026-09-13",
+        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
+        "scope": "may supply: web_search"
+      },
       "budget": {
         "daily": 120,
         "monthly": 1500,
@@ -171,6 +226,12 @@
         "SEARXNG_URL"
       ],
       "status": "active",
+      "approval": {
+        "approved_by": "operator",
+        "approved_on": "2026-09-13",
+        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
+        "scope": "may supply: web_search"
+      },
       "budget": {
         "daily": 10000,
         "monthly": 300000
@@ -187,6 +248,12 @@
         "TAVILY_API"
       ],
       "status": "configured_unused",
+      "approval": {
+        "approved_by": "operator",
+        "approved_on": "2026-09-13",
+        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
+        "scope": "may supply: web_search"
+      },
       "budget": {
         "daily": 20,
         "monthly": 500
@@ -204,6 +271,12 @@
         "FINNHUB_API"
       ],
       "status": "retired",
+      "approval": {
+        "retired_by": "operator",
+        "retired_on": "2026-09-13",
+        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep; retirement = Phase 2, archive/ARCHIVE_MANIFEST.json (polygon_source.py row) and zero call sites proven by RETIRED_CALL_SITE",
+        "scope": "none — retired; no code path may call it"
+      },
       "retired_on": "2026-09-13",
       "_why": "HTTP 401 since 2026-07-27; sat at slot 1 of the catalyst chain for seven weeks while four scheduled callers fell through it every run. Operator decision 2026-09-13: retire; finviz_news leads."
     },
@@ -216,6 +289,12 @@
         "POLYGON_API"
       ],
       "status": "retired",
+      "approval": {
+        "retired_by": "operator",
+        "retired_on": "2026-09-13",
+        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep; retirement = Phase 2, archive/ARCHIVE_MANIFEST.json (polygon_source.py row) and zero call sites proven by RETIRED_CALL_SITE",
+        "scope": "none — retired; no code path may call it"
+      },
       "retired_on": "2026-09-13",
       "_why": "Paid-only plan; never ran on schedule; 0 candidates in data_source_health."
     },
@@ -227,6 +306,12 @@
         "FMP_API"
       ],
       "status": "retired",
+      "approval": {
+        "retired_by": "operator",
+        "retired_on": "2026-09-13",
+        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep; retirement = Phase 2, archive/ARCHIVE_MANIFEST.json (polygon_source.py row) and zero call sites proven by RETIRED_CALL_SITE",
+        "scope": "none — retired; no code path may call it"
+      },
       "retired_on": "2026-09-13",
       "_why": "Paid-only; HTTP 403/429 since July 2026."
     },
@@ -239,6 +324,12 @@
         "NEWSAPI_API"
       ],
       "status": "retired",
+      "approval": {
+        "retired_by": "operator",
+        "retired_on": "2026-09-13",
+        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep; retirement = Phase 2, archive/ARCHIVE_MANIFEST.json (polygon_source.py row) and zero call sites proven by RETIRED_CALL_SITE",
+        "scope": "none — retired; no code path may call it"
+      },
       "retired_on": "2026-09-13",
       "_why": "Never ran; health row never touched."
     },
@@ -250,6 +341,12 @@
         "ollama"
       ],
       "status": "active",
+      "approval": {
+        "approved_by": "operator",
+        "approved_on": "2026-09-13",
+        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
+        "scope": "may supply: inference"
+      },
       "supplies": [
         "inference"
       ]
@@ -262,6 +359,12 @@
         "DEEPSEEK_API"
       ],
       "status": "active_metered",
+      "approval": {
+        "approved_by": "operator",
+        "approved_on": "2026-09-13",
+        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
+        "scope": "may supply: inference"
+      },
       "supplies": [
         "inference"
       ]
@@ -273,6 +376,12 @@
         "stocktwits.com"
       ],
       "status": "active",
+      "approval": {
+        "approved_by": "operator",
+        "approved_on": "2026-09-13",
+        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
+        "scope": "may supply: sentiment"
+      },
       "supplies": [
         "sentiment"
       ]
@@ -285,6 +394,12 @@
         "oauth.reddit.com"
       ],
       "status": "active",
+      "approval": {
+        "approved_by": "operator",
+        "approved_on": "2026-09-13",
+        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
+        "scope": "may supply: sentiment"
+      },
       "supplies": [
         "sentiment"
       ]
@@ -296,6 +411,12 @@
         "news.google.com"
       ],
       "status": "active",
+      "approval": {
+        "approved_by": "operator",
+        "approved_on": "2026-09-13",
+        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
+        "scope": "may supply: news_feed"
+      },
       "supplies": [
         "news_feed"
       ]
@@ -309,6 +430,12 @@
         "OpenD"
       ],
       "status": "service_down",
+      "approval": {
+        "approved_by": "operator",
+        "approved_on": "2026-09-13",
+        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
+        "scope": "may supply: positions"
+      },
       "supplies": [
         "positions"
       ],
@@ -328,6 +455,12 @@
         "snaptrade"
       ],
       "status": "no_api_manual",
+      "approval": {
+        "approved_by": "operator",
+        "approved_on": "2026-09-13",
+        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
+        "scope": "may supply: positions"
+      },
       "supplies": [
         "positions"
       ],
@@ -339,6 +472,12 @@
     {
       "domain": "quote_price",
       "class": "ingested",
+      "approval": {
+        "approved_by": "operator",
+        "approved_on": "2026-09-13",
+        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
+        "scope": "authoritative answer for quote_price: store market_quotes via projection market_quote; primary provider alpaca"
+      },
       "store": {
         "table": "market_quotes"
       },
@@ -390,6 +529,12 @@
     {
       "domain": "symbol_identity",
       "class": "ingested",
+      "approval": {
+        "approved_by": "operator",
+        "approved_on": "2026-09-13",
+        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
+        "scope": "authoritative answer for symbol_identity: store symbol_profiles via projection symbol_profile; primary provider yfinance"
+      },
       "store": {
         "table": "symbol_profiles"
       },
@@ -447,6 +592,12 @@
     {
       "domain": "analyst_opinion",
       "class": "ingested",
+      "approval": {
+        "approved_by": "operator",
+        "approved_on": "2026-09-13",
+        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
+        "scope": "authoritative answer for analyst_opinion: store yahoo_analyst_targets_history via projection analyst_detail; primary provider yahoo"
+      },
       "store": {
         "table": "yahoo_analyst_targets_history"
       },
@@ -518,6 +669,12 @@
     {
       "domain": "catalyst_news",
       "class": "ingested",
+      "approval": {
+        "approved_by": "operator",
+        "approved_on": "2026-09-13",
+        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
+        "scope": "authoritative answer for catalyst_news: store news_articles via projection catalyst_record; primary provider finviz"
+      },
       "store": {
         "table": "news_articles"
       },
@@ -597,6 +754,12 @@
     {
       "domain": "technicals",
       "class": "derived",
+      "approval": {
+        "approved_by": "operator",
+        "approved_on": "2026-09-13",
+        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
+        "scope": "authoritative answer for technicals: store ticker_prices via projection indicator_snapshot; primary provider alpaca"
+      },
       "store": {
         "table": "ticker_prices",
         "file": "portfolios/state/technical_snapshot.json"
@@ -646,6 +809,12 @@
     {
       "domain": "sector_momentum",
       "class": "derived",
+      "approval": {
+        "approved_by": "operator",
+        "approved_on": "2026-09-13",
+        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
+        "scope": "authoritative answer for sector_momentum: store sector_rs_daily via projection sector_momentum; primary provider internal:market_quotes"
+      },
       "store": {
         "table": "sector_rs_daily",
         "file": "runtime/sector_momentum_latest.json"
@@ -688,6 +857,12 @@
     {
       "domain": "industry_momentum",
       "class": "ingested",
+      "approval": {
+        "approved_by": "operator",
+        "approved_on": "2026-09-13",
+        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
+        "scope": "authoritative answer for industry_momentum: store runtime/industry_momentum_latest.json via projection sector_momentum; primary provider finviz"
+      },
       "store": {
         "file": "runtime/industry_momentum_latest.json"
       },
@@ -721,6 +896,12 @@
     {
       "domain": "market_regime",
       "class": "derived",
+      "approval": {
+        "approved_by": "operator",
+        "approved_on": "2026-09-13",
+        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
+        "scope": "authoritative answer for market_regime: store market_regime_snapshots via projection market_regime; primary provider yahoo"
+      },
       "store": {
         "table": "market_regime_snapshots"
       },
@@ -763,6 +944,12 @@
     {
       "domain": "earnings_date",
       "class": "ingested",
+      "approval": {
+        "approved_by": "operator",
+        "approved_on": "2026-09-13",
+        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
+        "scope": "authoritative answer for earnings_date: store symbol_profiles via projection symbol_profile; primary provider yfinance"
+      },
       "store": {
         "table": "symbol_profiles"
       },
@@ -814,6 +1001,12 @@
     {
       "domain": "holdings_accounts",
       "class": "ingested",
+      "approval": {
+        "approved_by": "operator",
+        "approved_on": "2026-09-13",
+        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
+        "scope": "authoritative answer for holdings_accounts: store portfolios/state/holdings.json via projection portfolio_snapshot; primary provider schwab"
+      },
       "store": {
         "file": "portfolios/state/holdings.json"
       },
@@ -900,6 +1093,12 @@
     {
       "domain": "options_iv",
       "class": "live_external",
+      "approval": {
+        "approved_by": "operator",
+        "approved_on": "2026-09-13",
+        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
+        "scope": "authoritative answer for options_iv: store options_iv_history via projection option_chain; primary provider schwab"
+      },
       "store": {
         "table": "options_iv_history"
       },
@@ -934,6 +1133,12 @@
     {
       "domain": "research_thesis",
       "class": "native",
+      "approval": {
+        "approved_by": "operator",
+        "approved_on": "2026-09-13",
+        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
+        "scope": "authoritative answer for research_thesis: store hermes_research_intelligence via projection research_card; primary provider internal"
+      },
       "store": {
         "table": "hermes_research_intelligence"
       },
@@ -1001,6 +1206,12 @@
     {
       "domain": "watch_directives",
       "class": "native",
+      "approval": {
+        "approved_by": "operator",
+        "approved_on": "2026-09-13",
+        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
+        "scope": "authoritative answer for watch_directives: store watch_directives via projection watch_intelligence; primary provider internal"
+      },
       "store": {
         "table": "watch_directives"
       },
@@ -1039,6 +1250,12 @@
     {
       "domain": "watch_discovery",
       "class": "dead_feed",
+      "approval": {
+        "approved_by": "operator",
+        "approved_on": "2026-09-13",
+        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
+        "scope": "authoritative answer for watch_discovery: store watch_candidate_events via projection watch_discovery; primary provider internal"
+      },
       "store": {
         "table": "watch_candidate_events"
       },
@@ -1064,6 +1281,12 @@
     {
       "domain": "web_search",
       "class": "live_external",
+      "approval": {
+        "approved_by": "operator",
+        "approved_on": "2026-09-13",
+        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
+        "scope": "authoritative answer for web_search: store runtime/search_budget.json; primary provider brave"
+      },
       "store": {
         "file": "runtime/search_budget.json"
       },
@@ -1104,6 +1327,12 @@
     {
       "domain": "private_company",
       "class": "manual",
+      "approval": {
+        "approved_by": "operator",
+        "approved_on": "2026-09-13",
+        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
+        "scope": "authoritative answer for private_company: store private_company_proxies; primary provider none"
+      },
       "store": {
         "table": "private_company_proxies"
       },
@@ -1120,6 +1349,12 @@
     {
       "domain": "dividends",
       "class": "ingested",
+      "approval": {
+        "approved_by": "operator",
+        "approved_on": "2026-09-13",
+        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
+        "scope": "authoritative answer for dividends: store ticker_dividend_data; primary provider yfinance"
+      },
       "store": {
         "table": "ticker_dividend_data"
       },
@@ -1156,6 +1391,12 @@
     {
       "domain": "macro",
       "class": "ingested",
+      "approval": {
+        "approved_by": "operator",
+        "approved_on": "2026-09-13",
+        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
+        "scope": "authoritative answer for macro: store fred_economic_series; primary provider fred"
+      },
       "store": {
         "table": "fred_economic_series"
       },
@@ -1194,6 +1435,12 @@
     {
       "domain": "fundamentals",
       "class": "ingested",
+      "approval": {
+        "approved_by": "operator",
+        "approved_on": "2026-09-13",
+        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
+        "scope": "authoritative answer for fundamentals: store fundamental_data; primary provider alpha_vantage"
+      },
       "store": {
         "table": "fundamental_data"
       },
@@ -1233,6 +1480,12 @@
     {
       "domain": "agent_opinion",
       "class": "native",
+      "approval": {
+        "approved_by": "operator",
+        "approved_on": "2026-09-13",
+        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
+        "scope": "authoritative answer for agent_opinion: store watchlist_agent_results via projection agent_opinion; primary provider internal"
+      },
       "store": {
         "table": "watchlist_agent_results"
       },
@@ -1270,6 +1523,12 @@
     {
       "domain": "agent_debate",
       "class": "dead_feed",
+      "approval": {
+        "approved_by": "operator",
+        "approved_on": "2026-09-13",
+        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
+        "scope": "authoritative answer for agent_debate: store agent_debate_log via projection agent_opinion; primary provider internal"
+      },
       "store": {
         "table": "agent_debate_log"
       },
@@ -1301,6 +1560,12 @@
     {
       "domain": "ai_reports",
       "class": "dead_feed",
+      "approval": {
+        "approved_by": "operator",
+        "approved_on": "2026-09-13",
+        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
+        "scope": "authoritative answer for ai_reports: store ai_reports via projection desk_feeds; primary provider internal"
+      },
       "store": {
         "table": "ai_reports"
       },
@@ -1332,6 +1597,12 @@
     {
       "domain": "redeploy_analytics",
       "class": "dead_feed",
+      "approval": {
+        "approved_by": "operator",
+        "approved_on": "2026-09-13",
+        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
+        "scope": "authoritative answer for redeploy_analytics: store portfolios/state/redeploy_analytics_cache.json via projection desk_feeds; primary provider internal"
+      },
       "store": {
         "file": "portfolios/state/redeploy_analytics_cache.json"
       },
@@ -1363,6 +1634,12 @@
     {
       "domain": "inverse_stoplights",
       "class": "derived",
+      "approval": {
+        "approved_by": "operator",
+        "approved_on": "2026-09-13",
+        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
+        "scope": "authoritative answer for inverse_stoplights: store runtime/inverse_stoplights_latest.json; primary provider internal"
+      },
       "store": {
         "file": "runtime/inverse_stoplights_latest.json"
       },

@@ -21,7 +21,7 @@ from scripts.lib import retired_providers as rp  # noqa: E402
 
 
 def _reg(domains: list[dict], providers: dict) -> dict:
-    return {"schema": "DataSourceAuthority@v1", "domains": domains, "providers": providers}
+    return {"schema": "DataSourceAuthority@v2", "domains": domains, "providers": providers}
 
 
 # ── the live registry ────────────────────────────────────────────────────────
