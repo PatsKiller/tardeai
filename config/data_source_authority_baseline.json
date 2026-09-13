@@ -1,5 +1,18 @@
 {
   "schema": "DataSourceAuthorityBaseline@v1",
+  "history": {
+    "2026-09-13_pre_phase9": {
+      "_why": "Writer counts measured before Phase 9 consolidated each store to one write module. Kept so the reduction stays provable; the ceiling above is what the gate enforces.",
+      "writers": {
+        "market_quotes": 3,
+        "ticker_prices": 4,
+        "news_articles": 16,
+        "symbol_profiles": 8,
+        "watch_directives": 18,
+        "hermes_research_intelligence": 32
+      }
+    }
+  },
   "_why": "Ceilings, not targets. Each number may only fall and each list may only shrink. Regenerate deliberately with --write-baseline after a reduction.",
   "writers": {
     "market_quotes": 1,

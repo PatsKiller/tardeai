@@ -154,7 +154,8 @@ def expect_row(**kw) -> dict:
 
 # ── the reduction itself (negative control) ──────────────────────────────────
 def test_writer_count_was_18_and_is_now_1():
-    assert BASELINE["writers"]["watch_directives"] == 18 > 1
+    assert BASELINE["history"]["2026-09-13_pre_phase9"]["writers"]["watch_directives"] == 18 > 1
+    assert BASELINE["writers"]["watch_directives"] == 1
     now = gate.count_writers(AUTH, gate._files())["watch_directives"]
     assert now == 1, now
 

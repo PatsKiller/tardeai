@@ -576,7 +576,8 @@ def test_registry_read_failure_is_reported_not_stamped(monkeypatch):
 
 
 def test_negative_control_baseline_was_plural_and_now_exactly_one_writer():
-    assert BASELINE["writers"]["news_articles"] > 1          # 16 on 2026-09-13
+    assert BASELINE["history"]["2026-09-13_pre_phase9"]["writers"]["news_articles"] == 16          # measured 2026-09-13, pre-Phase-9
+    assert BASELINE["writers"]["news_articles"] == 1  # the enforced ceiling now
     writers = gate.count_writers(AUTH, gate._files())
     assert writers["news_articles"] == 1, writers
 

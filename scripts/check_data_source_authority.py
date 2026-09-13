@@ -262,8 +262,11 @@ def main() -> int:
         # Undeclared hosts seen today are inherited debt: URLs in research seeds, library
         # references and regulator pages, not data providers. They are recorded so the
         # gate is green on day one and any NEW host fails — the lane-registry precedent.
+        prior = json.loads(BASELINE.read_text()) if BASELINE.exists() else {}
         BASELINE.write_text(json.dumps({
             "schema": "DataSourceAuthorityBaseline@v1",
+            # measured history survives a regeneration; the ceiling is what is enforced
+            **({"history": prior["history"]} if isinstance(prior.get("history"), dict) else {}),
             "_why": "Ceilings, not targets. Each number may only fall and each list may only shrink. Regenerate deliberately with --write-baseline after a reduction.",
             "writers": writers, "direct_reads": reads,
             "undeclared_hosts": sorted(u["host"] for u in undeclared),

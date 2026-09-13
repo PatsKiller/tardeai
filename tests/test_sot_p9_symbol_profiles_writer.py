@@ -452,8 +452,9 @@ def test_table_has_no_guid_column_and_the_module_does_not_add_one():
 
 # ── the reduction, documented ────────────────────────────────────────────────
 def test_negative_control_baseline_had_many_writers_and_now_there_is_one():
-    assert BASELINE["writers"]["symbol_profiles"] > 1, "baseline must record the pre-consolidation ceiling"
-    assert BASELINE["writers"]["symbol_profiles"] == 8
+    assert BASELINE["history"]["2026-09-13_pre_phase9"]["writers"]["symbol_profiles"] > 1, "history must record the pre-consolidation count"
+    assert BASELINE["history"]["2026-09-13_pre_phase9"]["writers"]["symbol_profiles"] == 8
+    assert BASELINE["writers"]["symbol_profiles"] == 1, "the enforced ceiling is now one"
     now = gate.count_writers(AUTH, gate._files())["symbol_profiles"]
     assert now == 1, f"symbol_profiles writer files: {now}"
 

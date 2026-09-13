@@ -855,7 +855,7 @@ def test_negative_control_writer_count_fell_from_baseline_to_one():
     import check_data_source_authority as gate
     auth = json.loads((ROOT / "config" / "data_source_authority.json").read_text())
     base = json.loads((ROOT / "config" / "data_source_authority_baseline.json").read_text())
-    before = base["writers"]["hermes_research_intelligence"]
+    before = base["history"]["2026-09-13_pre_phase9"]["writers"]["hermes_research_intelligence"]
     assert before > 1, "baseline must record the pre-consolidation plurality"
     now = gate.count_writers(auth, gate._files())["hermes_research_intelligence"]
     assert now == 1, f"exactly one file may write the store; found {now}"

@@ -588,7 +588,8 @@ def _writer_files(table: str) -> set[str]:
     ("ticker_prices", "scripts/lib/writers/ticker_prices_writer.py"),
 ])
 def test_negative_control_writer_count_fell_from_baseline_to_one(table, module):
-    assert BASELINE["writers"][table] > 1, "the baseline records the pre-Phase-9 plurality"
+    assert BASELINE["history"]["2026-09-13_pre_phase9"]["writers"][table] > 1, "history records the pre-Phase-9 plurality"
+    assert BASELINE["writers"][table] == 1, "the enforced ceiling is now one"
     now = gate.count_writers(AUTH, gate._files())[table]
     assert now == 1, f"{table}: {now} writer files"
     assert _writer_files(table) == {module}
