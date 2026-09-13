@@ -165,17 +165,18 @@ def publish_run(*, results: list[dict[str, Any]], cfg: dict, db_execute) -> dict
             "stage_prefill": _stage_prefill(r, tax),
             "generator": "holdings_gain_guardian",
         }
-        db_execute(
-            """INSERT INTO hermes_research_intelligence
-               (topic, summary, symbol, research_type, source, status, confidence_score,
-                evidence_json, created_at, freshness_date)
-               VALUES (%s,%s,%s,'exit_intelligence','gain_guardian','staged',%s,%s::jsonb,NOW(),NOW())""",
-            (f"Exit intelligence: {r['symbol']} {r.get('advisory')} ({today})",
-             summary, r["symbol"], min(0.95, (r.get("parabolic_score") or 0) / 100.0),
-             json.dumps(evidence, default=str)),
-            fetch="none",
-        )
-        published += 1
+        # One write module per store (SoT Phase 9): SQL lives in lib.writers.hermes_research_writer.
+        # The legacy INSERT omitted hermes_agent_name (NOT NULL in the DDL); the module fills it from
+        # `producer`. freshness_date NOW() → the module's CURRENT_DATE default (same date value).
+        from lib.writers.hermes_research_writer import write_research_rows
+        rc = write_research_rows(db_execute, [{
+            "topic": f"Exit intelligence: {r['symbol']} {r.get('advisory')} ({today})",
+            "summary": summary, "symbol": r["symbol"], "research_type": "exit_intelligence",
+            "source": "gain_guardian", "status": "staged",
+            "confidence_score": min(0.95, (r.get("parabolic_score") or 0) / 100.0),
+            "evidence_json": json.dumps(evidence, default=str),
+        }], producer="gain_guardian", source="gain_guardian")
+        published += rc.rows_written
 
     sent = False
     if published:
