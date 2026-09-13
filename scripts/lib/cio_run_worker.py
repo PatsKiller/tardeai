@@ -183,6 +183,7 @@ class CIORunWorker:
         *,
         run_store: Any = None,
         health_boundary: Any = None,
+        health_enforce: bool = False,
         action_ledger: Any = None,
         notification_outbox: Any = None,
         handoff_queue: Any = None,
@@ -195,6 +196,11 @@ class CIORunWorker:
     ):
         self.run_store = run_store
         self.health_boundary = health_boundary
+        # Being FED is not the same as being allowed to GATE. When False the
+        # boundary still evaluates and its decision is recorded; it just may
+        # not block. Defaults False so a caller that does not opt in cannot
+        # start blocking runs by accident.
+        self.health_enforce = bool(health_enforce)
         self.action_ledger = action_ledger
         self.notification_outbox = notification_outbox
         self.handoff_queue = handoff_queue
@@ -584,6 +590,7 @@ class CIORunWorker:
             "blocked": False,
             "decision_id": None,
             "check_failed": False,
+            "would_block": False,
         }
 
         if force_state is not None:
@@ -609,7 +616,10 @@ class CIORunWorker:
                 required_domains=list(required_domains or [])
             )
             result["state"] = advisory_state
-            result["blocked"] = advisory_state in ("BLOCKED",)
+            result["blocked"] = (
+                advisory_state in ("BLOCKED",) and self.health_enforce
+            )
+            result["would_block"] = advisory_state in ("BLOCKED",)
             result["decision_id"] = getattr(self.health_boundary, "latest_decision_id", lambda: None)()
         except TypeError:
             # A boundary that predates the required_domains parameter, including
@@ -619,7 +629,10 @@ class CIORunWorker:
             try:
                 advisory_state = self.health_boundary.current_advisory_state()
                 result["state"] = advisory_state
-                result["blocked"] = advisory_state in ("BLOCKED",)
+                result["blocked"] = (
+                    advisory_state in ("BLOCKED",) and self.health_enforce
+                )
+                result["would_block"] = advisory_state in ("BLOCKED",)
                 result["decision_id"] = getattr(self.health_boundary, "latest_decision_id", lambda: None)()
             except Exception as e:  # noqa: BLE001
                 result["check_failed"] = True
@@ -627,6 +640,13 @@ class CIORunWorker:
         except Exception as e:  # noqa: BLE001
             result["check_failed"] = True
             log.warning("Health boundary check failed: %s", e)
+
+        if result["would_block"] and not result["blocked"]:
+            log.warning(
+                "health boundary says BLOCKED (%s) but enforcement is off; "
+                "run proceeds. decision_id=%s",
+                result["state"], result["decision_id"],
+            )
 
         # Only claim a health check happened if one actually produced a
         # decision. This previously wrote a health_checked receipt with a

@@ -26,11 +26,12 @@ class _RecordingRunStore:
         self.receipts.append({"run_id": run_id, "decision_id": decision_id, "actor": actor})
 
 
-def _worker(boundary, store):
+def _worker(boundary, store, health_enforce=False):
     w = CIORunWorker.__new__(CIORunWorker)   # bypass __init__; only these are used
     w.health_boundary = boundary
     w.run_store = store
     w._run_id = "run-test-001"
+    w.health_enforce = health_enforce
     return w
 
 
@@ -77,7 +78,11 @@ def test_successful_check_writes_the_real_decision_id():
 
 
 def test_blocked_state_blocks():
-    out = _worker(_WorkingBoundary("BLOCKED"), _RecordingRunStore())._check_health()
+    """With enforcement on, a BLOCKED verdict gates the run. Enforcement is an
+    explicit opt-in (CL-63); see the observe-mode test below."""
+    out = _worker(
+        _WorkingBoundary("BLOCKED"), _RecordingRunStore(), health_enforce=True
+    )._check_health()
     assert out["blocked"] is True
 
 
@@ -109,3 +114,54 @@ def test_legacy_boundary_without_the_parameter_still_works():
     assert out["check_failed"] is False
     assert out["state"] == "DEGRADED"
     assert store.receipts[0]["decision_id"] == "legacy-001"
+
+
+# ── CL-63: being fed is not the same as being allowed to gate ──────────────
+
+
+class _BlockingBoundary:
+    def current_advisory_state(self, required_domains=None):
+        return "BLOCKED"
+
+    def latest_decision_id(self):
+        return "health-decision-blocked"
+
+
+def test_blocked_does_not_block_when_enforcement_is_off():
+    """Observe mode: the decision is evaluated and recorded, but the run
+    proceeds. This is what let the feed land without repeating the PR #557
+    outage, where 54 of 55 runs were blocked at HEALTH_CHECK for 17 days."""
+    w = _worker(_BlockingBoundary(), _RecordingRunStore())
+    w.health_enforce = False
+    out = w._check_health()
+    assert out["state"] == "BLOCKED"
+    assert out["would_block"] is True, "the real verdict must still be recorded"
+    assert out["blocked"] is False, "but it must not gate the run"
+
+
+def test_blocked_blocks_when_enforcement_is_on():
+    w = _worker(_BlockingBoundary(), _RecordingRunStore())
+    w.health_enforce = True
+    out = w._check_health()
+    assert out["blocked"] is True
+    assert out["would_block"] is True
+
+
+def test_enforcement_defaults_off_on_the_real_constructor():
+    """A caller that does not opt in must not start blocking by accident."""
+    import inspect
+
+    from scripts.lib.cio_run_worker import CIORunWorker
+
+    assert inspect.signature(CIORunWorker.__init__).parameters[
+        "health_enforce"
+    ].default is False
+
+
+def test_non_blocked_states_are_unaffected_by_enforcement():
+    for enforce in (True, False):
+        w = _worker(_WorkingBoundary("DEGRADED"), _RecordingRunStore())
+        w.health_enforce = enforce
+        out = w._check_health()
+        assert out["blocked"] is False
+        assert out["would_block"] is False

@@ -254,8 +254,26 @@ def main(argv: list[str] | None = None):
     # 2026-08-10. The gate was right; it was being asked about stores nobody
     # gave it. Fail-soft: a store that cannot be built leaves its domain
     # unavailable, which is the pre-existing behaviour, never a fabricated one.
+    # CL-63: the boundary used to be constructed with NO snapshot and nothing
+    # ever called load_snapshot(), so it evaluated with no evidence on every
+    # run. Feed it the health agent's output, translated by
+    # config/cio_health_snapshot_feed.json. A None snapshot is still safe:
+    # the boundary reports UNKNOWN, which does not block.
+    health_enforce = False
     try:
-        health_boundary = CIOHealthBoundary()
+        from scripts.lib.cio_health_snapshot_feed import (
+            enforcement_enabled,
+            load_health_snapshot,
+        )
+
+        health_snapshot = load_health_snapshot()
+        health_enforce = enforcement_enabled()
+        health_boundary = CIOHealthBoundary(health_snapshot)
+        log.info(
+            "health boundary fed: snapshot=%s enforce=%s",
+            getattr(health_snapshot, "health_snapshot_id", None),
+            health_enforce,
+        )
     except Exception:
         log.exception("health boundary unavailable (fail-soft)")
         health_boundary = None
@@ -270,6 +288,7 @@ def main(argv: list[str] | None = None):
         action_ledger=CIOActionLedger(),
         notification_outbox=NotificationOutbox(),
         health_boundary=health_boundary,
+        health_enforce=health_enforce,
         operator_profile=operator_profile,
         mode="shadow",
         synthesis_fn=build_investment_product_synthesis_fn(),
