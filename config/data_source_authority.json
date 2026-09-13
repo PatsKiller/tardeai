@@ -393,7 +393,7 @@
       "store": {
         "table": "symbol_profiles"
       },
-      "writer": null,
+      "writer": "scripts/build_symbol_profiles.py",
       "cadence": "06:35 daily",
       "stale_after_hours": 168,
       "projection": "symbol_profile",
@@ -410,9 +410,7 @@
         "fmp"
       ],
       "no_coverage": "say_so",
-      "writer_status": "UNCONSOLIDATED",
-      "writer_target": "scripts/build_symbol_profiles.py",
-      "_writer_note": "8 modules write this store today (2026-09-13). The gate's writer-count ceiling can only fall; scripts/build_symbol_profiles.py is the module the others must call.",
+      "_writer_note": "Phase 9 (2026-09-13): one write module scripts/lib/writers/symbol_profiles_writer.py, re-exported by build_symbol_profiles.py; 8 producers call it with a per-lane column allow-list. Writers 8 -> 1.",
       "on_gap": [
         {
           "vector": "refresh_producer",

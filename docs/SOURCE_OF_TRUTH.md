@@ -34,7 +34,7 @@ Both the release (CURRENT) and the dev tree the 344 cron producers run from must
 | Domain | Class | Store of record | Single writer | Cadence | Stale after | Read path | Primary | Backup (same question) | Retired | No coverage |
 |---|---|---|---|---|---|---|---|---|---|---|
 | **quote_price** | ingested | `market_quotes` | **none — dead feed** | */15 09:30-16:00 Mon-Fri | 0.25h | `market_quote` | alpaca | yfinance, schwab_stream | polygon, finnhub, fmp | `last_price_with_age_and_source` |
-| **symbol_identity** | ingested | `symbol_profiles` | **none — dead feed** | 06:35 daily | 168h | `symbol_profile` | yfinance | finviz | fmp | `say_so` |
+| **symbol_identity** | ingested | `symbol_profiles` | `scripts/build_symbol_profiles.py` | 06:35 daily | 168h | `symbol_profile` | yfinance | finviz | fmp | `say_so` |
 | **analyst_opinion** | ingested | `yahoo_analyst_targets_history` | `scripts/pro_analyst_fetch.py` | daily | 168h | `analyst_detail` | yahoo | yfinance_on_demand | fmp, finnhub | `say_so` |
 | **catalyst_news** | ingested | `news_articles` | **none — dead feed** | 00:30 · 12:30 | 18h | `catalyst_record` | finviz | yahoo, brave, searxng | finnhub, newsapi, polygon, fmp | `say_so` |
 | **technicals** | derived | `ticker_prices` · `portfolios/state/technical_snapshot.json` | **none — dead feed** | hourly | 26h | `indicator_snapshot` | alpaca | yfinance | — | `say_so` |

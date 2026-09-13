@@ -603,6 +603,9 @@ GATES = [
             # paid, receipted, with an ETA or an honest "no coverage".
             "tests/test_gap_resolver_20260913.py",
             "tests/test_gap_resolution_monitor_20260913.py",
+            # Phase 9: one write module per store; golden tests prove row shape and
+            # subject GUID are identical to every legacy writer.
+            "tests/test_sot_p9_symbol_profiles_writer.py",
             # Off UNLISTED_BASELINE at last. The ONLY coverage of
             # cio_run_worker._check_health, and its fakes are what hid CL-61.
             "tests/test_p26_shadow_autonomy.py",
