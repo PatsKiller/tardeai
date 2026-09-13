@@ -49,22 +49,17 @@ def family_gate(label: str, kind: str = "trend") -> dict[str, Any]:
         return out
     try:
         from db_adapter import _execute
-        from watch_directive_canonical import canonical_family
-        fam = canonical_family(label)
-        if fam:
-            rows = _execute(
-                """SELECT wd.id, wd.label,
-                          (SELECT count(*) FROM watch_directive_hits h WHERE h.directive_id = wd.id) AS hits
-                   FROM watch_directives wd
-                   WHERE wd.kind = 'trend' AND wd.status = 'active'""",
-                fetch="all",
-            ) or []
-            candidates = [r for r in rows if canonical_family(r["label"]) == fam]
-            if candidates:
-                surv = max(candidates, key=lambda r: r.get("hits") or 0)
-                out.update(allow=False, survivor_id=surv["id"], survivor_label=surv["label"],
-                           reason=f"family '{fam}' already active as #{surv['id']} '{surv['label']}'")
-                return out
+        from lib.writers.watch_directives_writer import find_existing_directive
+        # The store's ONE dedup rule (exact label, normalised label, canonical
+        # family with most-hits survivor) lives in the write module; the gate
+        # adds only the active-trend cap below.
+        found = find_existing_directive(_execute, "trend", label, None, include_family=True)
+        if found:
+            out.update(allow=False, survivor_id=found["id"], survivor_label=found["label"],
+                       reason=(f"family '{found.get('family')}' already active as #{found['id']} '{found['label']}'"
+                               if found.get("match") == "family"
+                               else f"label already present as #{found['id']} '{found['label']}' ({found.get('match')})"))
+            return out
         cap = int(cfg.get("active_trend_cap") or 0)
         if cap:
             n = _execute("SELECT count(*) AS n FROM watch_directives WHERE kind='trend' AND status='active'",
@@ -101,10 +96,9 @@ def attach_alias(survivor_id: int, label: str, *, rationale: str | None = None,
             notes.append({"from": created_by or "unknown", "alias": label,
                           "rationale": str(rationale)[:300]})
         spec["alias_notes"] = notes[-20:]
-        _execute("""UPDATE watch_directives
-                    SET spec=%s::jsonb, last_confirmed_at=NOW(), updated_at=NOW()
-                    WHERE id=%s""",
-                 (json.dumps(spec, default=str), survivor_id), fetch=None)
-        return True
+        from lib.writers.watch_directives_writer import NOW, update_watch_directive
+        rc = update_watch_directive(_execute, survivor_id, source=created_by or "watch_directive_gate",
+                                    spec=spec, last_confirmed_at=NOW)
+        return rc.ok
     except Exception:
         return False

@@ -58,6 +58,15 @@ RETENTION_FINDING_DAYS = 30
 ARCHIVE_AGENT = "librarian_auto"
 
 
+def _wd_writer():
+    """The watch_directives store's single write module (phase 9)."""
+    try:
+        from lib.writers import watch_directives_writer as w
+    except ImportError:  # imported without scripts/ on sys.path
+        from scripts.lib.writers import watch_directives_writer as w  # type: ignore
+    return w
+
+
 def _clamp(v: float, lo: float = 0, hi: float = 100) -> float:
     return max(lo, min(hi, v))
 
@@ -436,12 +445,7 @@ def auto_archive_stale(
         merged["archived_by"] = ARCHIVE_AGENT
         merged["archive_reason"] = merged.get("stale_reasons") or [f"composite_{merged.get('composite_verdict', 'reject')}"]
         if apply:
-            cur.execute(
-                """UPDATE watch_directives
-                   SET status='archived', spec=%s::jsonb, updated_at=NOW()
-                   WHERE id=%s""",
-                (json.dumps(merged), did),
-            )
+            _wd_writer().set_watch_directive_status(cur, did, "archived", source=ARCHIVE_AGENT, spec=merged)
             _resolve_stale_findings(cur, affected_table="watch_directives", affected_id=did, apply=True)
             cur.execute(
                 """UPDATE hermes_directive_hits_staging
@@ -645,10 +649,8 @@ def critique_directives(conn, *, apply: bool, batch_size: int = 15) -> dict:
             new_priority = "normal"
 
         if apply:
-            cur.execute(
-                "UPDATE watch_directives SET spec=%s::jsonb, priority=%s, updated_at=NOW() WHERE id=%s",
-                (json.dumps(merged), new_priority, did),
-            )
+            _wd_writer().update_watch_directive(cur, did, source="research_critique_pipeline",
+                                                spec=merged, priority=new_priority)
             if comp["composite_verdict"] in ("review", "reject"):
                 ftype = "weak_evidence" if comp["composite_verdict"] == "reject" else "unsupported_thesis"
                 if tax.get("taxonomy_verdict") == "reject":
@@ -826,10 +828,7 @@ def flag_stale_for_removal(
             merged["librarian_stale_flag"] = True
             merged["stale_reasons"] = reasons
             merged["removal_recommended_at"] = now.isoformat()
-            cur.execute(
-                "UPDATE watch_directives SET spec=%s::jsonb, updated_at=NOW() WHERE id=%s",
-                (json.dumps(merged), did),
-            )
+            _wd_writer().update_watch_directive(cur, did, source="research_critique_pipeline", spec=merged)
             _write_finding(
                 cur,
                 affected_table="watch_directives",

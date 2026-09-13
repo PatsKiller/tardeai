@@ -122,30 +122,17 @@ def _save_state(state: dict):
 
 
 def _find_directive(cur, theme: dict) -> int | None:
-    spec = theme.get("spec") or {}
-    if theme["kind"] == "sector":
-        sec = spec.get("finviz_sector")
-        if not sec:
-            return None
-        cur.execute(
-            """SELECT id FROM watch_directives
-               WHERE kind='sector' AND status='active'
-                 AND (spec->>'finviz_sector'=%s OR spec->>'gics_sector'=%s)
-               LIMIT 1""",
-            (sec, sec),
-        )
-    else:
-        ind = spec.get("finviz_industry")
-        if not ind:
-            return None
-        cur.execute(
-            """SELECT id FROM watch_directives
-               WHERE kind='trend' AND status='active' AND spec->>'finviz_industry'=%s
-               LIMIT 1""",
-            (ind,),
-        )
-    row = cur.fetchone()
-    return row[0] if row else None
+    # Phase 9: the sector-name / finviz_industry subject match is part of the store's
+    # ONE dedup rule in the write module (plus exact / normalised label).
+    try:
+        from lib.writers.watch_directives_writer import find_existing_directive
+    except ImportError:  # imported without scripts/ on sys.path
+        from scripts.lib.writers.watch_directives_writer import find_existing_directive  # type: ignore
+    found = find_existing_directive(cur, theme["kind"], theme["label"], theme.get("spec") or {},
+                                    include_family=False)
+    if found:
+        return found["id"]
+    return None
 
 
 def sync_universe_batch(
@@ -192,10 +179,9 @@ def sync_universe_batch(
                     else:
                         merged[k] = v
                 merged["sector_universe_refreshed_at"] = datetime.now(timezone.utc).isoformat()
-                cur.execute(
-                    "UPDATE watch_directives SET spec=%s::jsonb, rationale=%s, updated_at=NOW() WHERE id=%s",
-                    (json.dumps(merged), theme.get("rationale"), existing),
-                )
+                from lib.writers.watch_directives_writer import update_watch_directive
+                update_watch_directive(cur, existing, source="sector_universe",
+                                       spec=merged, rationale=theme.get("rationale"))
             else:
                 # Watch Desk v2 (B1): family gate for trend-kind themes
                 if theme["kind"] == "trend":
@@ -207,15 +193,14 @@ def sync_universe_batch(
                         existing = _g["survivor_id"]
                         action = "aliased"
                         continue
-                cur.execute(
-                    """INSERT INTO watch_directives
-                       (kind, label, spec, rationale, created_by, status, priority,
-                        trade_ai_enabled, hermes_enabled, ttl_days)
-                       VALUES (%s,%s,%s::jsonb,%s,'sector_universe','active','normal',true,true,180)
-                       RETURNING id""",
-                    (theme["kind"], theme["label"][:120], json.dumps(spec), theme.get("rationale")),
-                )
-                existing = cur.fetchone()[0]
+                from lib.writers.watch_directives_writer import write_watch_directives
+                rc = write_watch_directives(cur, [{
+                    "kind": theme["kind"], "label": theme["label"][:120], "spec": spec,
+                    "rationale": theme.get("rationale"), "created_by": "sector_universe",
+                    "status": "active", "priority": "normal",
+                    "trade_ai_enabled": True, "hermes_enabled": True, "ttl_days": 180,
+                }], source="sector_universe", on_duplicate="insert")
+                existing = rc.directive_id
             if action == "created":
                 created += 1
             else:

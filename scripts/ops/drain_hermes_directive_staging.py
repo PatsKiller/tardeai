@@ -19,6 +19,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
+from lib.writers import watch_directives_writer as _wd  # noqa: E402  (the store's single write module)
 os.chdir(ROOT)
 
 
@@ -195,10 +196,7 @@ def main() -> int:
             "UPDATE hermes_directive_hits_staging SET drained=true, drained_at=now() WHERE id=%s",
             (h["id"],),
         )
-        cur.execute(
-            "UPDATE watch_directives SET last_serviced_at=now(), updated_at=now() WHERE id=%s",
-            (did,),
-        )
+        _wd.touch_watch_directive_serviced(cur, did, source="drain_hermes_directive_staging")
         report["drained"] += 1
         report["directives_touched"].add(did)
 
@@ -209,18 +207,8 @@ def main() -> int:
     if args.apply and args.touch_quiet:
         # Active directives with zero undrained hermes staging → mark serviced
         # so monitor stale count reflects real backlog only.
-        cur.execute(
-            """UPDATE watch_directives d
-               SET last_serviced_at = now(), updated_at = now()
-               WHERE d.status = 'active'
-                 AND (d.last_serviced_at IS NULL
-                      OR d.last_serviced_at < now() - interval '24 hours')
-                 AND NOT EXISTS (
-                   SELECT 1 FROM hermes_directive_hits_staging h
-                   WHERE h.directive_id = d.id AND NOT h.drained
-                 )"""
-        )
-        quiet_touched = cur.rowcount
+        quiet_touched = _wd.touch_quiet_watch_directives_serviced(
+            cur, source="drain_hermes_directive_staging", stale_hours=24).rows_written
 
     if args.apply:
         conn.commit()

@@ -90,7 +90,8 @@ def run(apply=False):
                                ON CONFLICT (topic_id) DO NOTHING""",
                             (t["tid"], t["theme"][:80], json.dumps(t["kws"] or [t["theme"]]), CTX))
                 mirrored += 1
-            cur.execute("UPDATE watch_directives SET status='archived', updated_at=now() WHERE id=%s", (t["id"],))
+            from lib.writers.watch_directives_writer import set_watch_directive_status
+            set_watch_directive_status(cur, t["id"], "archived", source="reclassify_knowledge_directives")
             archived += 1
         except Exception as e:
             print(f"  ! d{t['id']} failed: {str(e)[:120]}")
