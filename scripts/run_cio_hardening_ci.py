@@ -526,6 +526,9 @@ GATES = [
             # The health-agent -> boundary translation, and the enforcement
             # gate that keeps "fed" separate from "allowed to block".
             "tests/test_health_snapshot_feed_20260912.py",
+            # Freshness in market time for sources that only move in market
+            # time. Most of it pins what must STILL go stale.
+            "tests/test_market_aware_freshness_20260913.py",
         ],
     ),
     (
