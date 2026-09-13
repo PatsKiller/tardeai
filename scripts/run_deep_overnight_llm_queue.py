@@ -620,14 +620,9 @@ def _apply_curation_verdict(cur, job, parsed):
         return
     new_rag = "approved" if verdict in ("APPROVE_BOOST", "APPROVE_STANDARD") else None
     if source_table == "news_articles":
-        sql = "UPDATE news_articles SET deep_curation_verdict=%s, deep_curation_at=NOW(), deep_curation_weight=%s"
-        params = [verdict, weight]
-        if new_rag:
-            sql += ", rag_status=%s"
-            params.append(new_rag)
-        sql += " WHERE id=%s"
-        params.append(source_id)
-        cur.execute(sql, params)
+        # news_articles is written only through its write module (Phase 9, 2026-09-13).
+        from lib.writers.news_articles_writer import set_deep_curation
+        set_deep_curation(cur, source_id, verdict, weight, rag_status=new_rag)
     elif source_table == "youtube_transcripts":
         sql = "UPDATE youtube_transcripts SET deep_curation_verdict=%s, deep_curation_at=NOW(), deep_curation_weight=%s"
         params = [verdict, weight]

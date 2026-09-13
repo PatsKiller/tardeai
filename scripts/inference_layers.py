@@ -52,6 +52,27 @@ def _db_exec(sql, params=None):
         return False
 
 
+def _tag_news_region(article_id, region, geo_keywords) -> bool:
+    """news_articles is written only through its write module (Phase 9, 2026-09-13)."""
+    try:
+        from db_adapter import ensure_conn, USE_DB
+        from lib.writers.news_articles_writer import set_region
+        if not USE_DB:
+            return False
+        conn = ensure_conn()
+        if conn is None:
+            return False
+        try:
+            set_region(conn.cursor(), article_id, region, geo_keywords)
+            conn.commit()
+            return True
+        except Exception:
+            conn.rollback()
+            return False
+    except Exception:
+        return False
+
+
 def _holdings() -> list:
     try:
         h = json.loads((STATE_DIR / "holdings.json").read_text())
@@ -87,10 +108,7 @@ class IngestionLayer:
                 region, kws = hq.classify_region(n.get("title", ""), n.get("summary", ""))
                 n["region"] = region
                 if not ctx.dry_run:
-                    if _db_exec(
-                        """UPDATE news_articles SET region=%s, geo_keywords=%s,
-                           region_tagged_at=now() WHERE id=%s""",
-                        (region, json.dumps(kws), n["id"])):
+                    if _tag_news_region(n["id"], region, kws):
                         tagged += 1
 
         topics = _db_all(

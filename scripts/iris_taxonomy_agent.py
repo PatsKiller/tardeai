@@ -1147,8 +1147,8 @@ def run_weekly_hygiene(dry_run=False):
         )
         if result["action"] in ("demote", "archive") and not dry_run:
             try:
-                cur.execute("UPDATE news_articles SET hygiene_status='archived', demoted_at=NOW(), demoted_reason=%s WHERE id=%s",
-                            (result["reason"], article["id"]))
+                from lib.writers.news_articles_writer import archive_article
+                archive_article(cur, article["id"], result["reason"])
                 news_demoted += 1
             except Exception:
                 conn.rollback()
@@ -1563,19 +1563,8 @@ def run_library_audit(dry_run=False):
         print("\n  [3g] Flagging clear duplicates...")
         try:
             conn3, cur3 = _get_conn_dict()
-            cur3.execute("""
-                UPDATE news_articles SET is_duplicate = TRUE
-                WHERE id IN (
-                    SELECT id FROM (
-                        SELECT id, ROW_NUMBER() OVER (
-                            PARTITION BY LEFT(LOWER(TRIM(title)), 60)
-                            ORDER BY relevance_score DESC NULLS LAST, created_at ASC
-                        ) as rn
-                        FROM news_articles WHERE created_at > NOW() - INTERVAL '90 days'
-                    ) sq WHERE rn > 1
-                ) AND NOT COALESCE(is_duplicate, FALSE)
-            """)
-            flagged_dupes = cur3.rowcount
+            from lib.writers.news_articles_writer import flag_title_duplicates
+            flagged_dupes = flag_title_duplicates(cur3, days=90)
             conn3.commit()
             conn3.close()
             report["dupes_flagged"] = flagged_dupes

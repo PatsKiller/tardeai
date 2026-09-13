@@ -270,20 +270,19 @@ def _report_source(key: str, ok: bool, rows=None, error=None) -> None:
 
 
 def _insert_news_article(cur, title: str, url: str, symbol: str, source: str, quality: int) -> bool:
-    """Insert into news_articles using the canonical schema (source_url/relevance_score).
+    """Write one article through the store's single write module (Phase 9, 2026-09-13).
 
-    Dedup matches news_ingestion.py: skip when source_url already exists.
-    Returns True when a row was written.
+    Dedupe (same symbol + same source_url or title), rails and identity live in
+    scripts/lib/writers/news_articles_writer.py. Returns True when a row was written.
     """
     if not url or not title:
         return False
-    cur.execute("SELECT 1 FROM news_articles WHERE source_url=%s LIMIT 1", (url[:500],))
-    if cur.fetchone():
-        return False
-    cur.execute("""INSERT INTO news_articles (symbol, title, source, source_url, relevance_score, published_at)
-                   VALUES (%s, %s, %s, %s, %s, NOW())""",
-                (symbol, title[:300], source, url[:500], quality))
-    return True
+    from lib.writers.news_articles_writer import SQL_NOW, write_news_articles
+    receipt = write_news_articles(cur, [{
+        "symbol": symbol, "title": title[:300], "source": source, "source_url": url[:500],
+        "relevance_score": quality, "published_at": SQL_NOW,
+    }], source=source)
+    return receipt.rows_written > 0
 
 
 def pull_sec_edgar(symbol: str, conn) -> int:

@@ -950,12 +950,10 @@ def _save_article(conn, topic: dict, item: dict, normalized: dict) -> bool:
     """Save a normalized news article to news_articles table."""
     cur = conn.cursor()
     try:
-        # Dedup by source_url
-        cur.execute(
-            "SELECT 1 FROM news_articles WHERE source_url = %s LIMIT 1",
-            (item["url"][:500],)
-        )
-        if cur.fetchone():
+        # Dedup: the write module's rule (same symbol + same source_url or title);
+        # pre-checked here so a duplicate costs no scoring.
+        from lib.writers.news_articles_writer import is_duplicate, write_news_articles
+        if is_duplicate(cur, topic["topic_id"], item["url"][:500], item["title"][:500]):
             return False
 
         scores = score_content(item["title"], normalized.get("summary", ""),
@@ -973,25 +971,22 @@ def _save_article(conn, topic: dict, item: dict, normalized: dict) -> bool:
         ))
 
         cur.execute("SAVEPOINT article_save")
-        cur.execute("""
-            INSERT INTO news_articles
-                (symbol, strategy_type, title, summary, source, source_url,
-                 published_at, relevance_score, strategy_tags, agent_tags)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        """, (
-            topic["topic_id"],           # symbol field = topic_id for topic-based
-            topic["topic_id"],           # strategy_type = topic_id
-            item["title"][:500],
-            normalized.get("summary", item.get("description", ""))[:1000],
-            f"topic_{item['source']}",   # source = topic_google_news_rss, etc.
-            item["url"][:500],
-            item.get("published") or None,
-            scores.get("relevance_score", 0.5),
-            json.dumps(strategy_tags),
-            json.dumps(agent_tags),
-        ))
+        # subject_kind="topic": the symbol is a topic_monitor.topic_id, so the row
+        # takes the deterministic topic GUID (backfill_subject_identity.topic_guid).
+        receipt = write_news_articles(cur, [{
+            "symbol": topic["topic_id"],           # symbol field = topic_id for topic-based
+            "strategy_type": topic["topic_id"],    # strategy_type = topic_id
+            "title": item["title"][:500],
+            "summary": normalized.get("summary", item.get("description", ""))[:1000],
+            "source": f"topic_{item['source']}",   # source = topic_google_news_rss, etc.
+            "source_url": item["url"][:500],
+            "published_at": item.get("published") or None,
+            "relevance_score": scores.get("relevance_score", 0.5),
+            "strategy_tags": json.dumps(strategy_tags),
+            "agent_tags": json.dumps(agent_tags),
+        }], source=f"topic_{item['source']}", subject_kind="topic")
         conn.commit()
-        return True
+        return receipt.rows_written > 0
     except Exception as e:
         try:
             cur.execute("ROLLBACK TO SAVEPOINT article_save")

@@ -21,6 +21,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from dotenv import load_dotenv
 load_dotenv(str(ROOT / ".env"))
 from db_adapter import _get_conn
+from lib.writers.news_articles_writer import is_duplicate, write_news_articles
 
 
 def _universe(cur, max_n):
@@ -65,8 +66,7 @@ def run(max_n=150, lookback_hours=72, dry_run=False):
             continue
         hits = [t for t in it.get("tickers", []) if t in universe]
         for sym in hits:
-            cur.execute("SELECT 1 FROM news_articles WHERE source_url=%s AND symbol=%s LIMIT 1", (url, sym))
-            if cur.fetchone():
+            if is_duplicate(cur, sym, url, head):
                 skipped += 1; continue
             covered.add(sym)
             if dry_run:
@@ -80,12 +80,16 @@ def run(max_n=150, lookback_hours=72, dry_run=False):
                 sc = score_content(title=head, text="", source="finviz_news", symbols=[sym])
                 tg = tag_content(text="", title=head)
                 pub = datetime.fromtimestamp(int(it["datetime"]), tz=timezone.utc) if it.get("datetime") else None
-                cur.execute("""INSERT INTO news_articles
-                    (symbol, strategy_type, title, summary, source, source_url, published_at,
-                     relevance_score, strategy_tags, agent_tags)
-                    VALUES (%s,%s,%s,%s,'finviz_news',%s,%s,%s,%s,%s)""",
-                    (sym, sym, head, "", url, pub, sc.get("relevance_score", 0.5),
-                     json.dumps(tg.get("strategy_tags", [])), json.dumps(tg.get("agent_tags", []))))
+                receipt = write_news_articles(cur, [{
+                    "symbol": sym, "strategy_type": sym, "title": head, "summary": "",
+                    "source": "finviz_news", "source_url": url, "published_at": pub,
+                    "relevance_score": sc.get("relevance_score", 0.5),
+                    "strategy_tags": json.dumps(tg.get("strategy_tags", [])),
+                    "agent_tags": json.dumps(tg.get("agent_tags", [])),
+                }], source="finviz_news")
+                if not receipt.rows_written:
+                    skipped += 1
+                    continue
                 saved += 1
             except Exception as e:
                 conn.rollback(); print(f"  {sym}: save error {str(e)[:50]}"); continue

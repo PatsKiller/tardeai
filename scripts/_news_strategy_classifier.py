@@ -88,11 +88,11 @@ def classify_and_update_all() -> int:
 
     updated = 0
     wcur = conn.cursor()
+    from lib.writers.news_articles_writer import set_strategy_classification
     for r in rows:
         strat, relevance = classify_strategy(r["title"])
         if r["strategy_type"] != strat or (r.get("retirement_relevance") or "low") != relevance:
-            wcur.execute("UPDATE news_articles SET strategy_type = %s, retirement_relevance = %s WHERE id = %s",
-                         (strat, relevance, r["id"]))
+            set_strategy_classification(wcur, r["id"], strat, relevance)
             updated += 1
 
     conn.commit()
@@ -116,10 +116,10 @@ def classify_and_update_batch(article_ids: list) -> int:
     rows = cur.fetchall()
 
     wcur = conn.cursor()
+    from lib.writers.news_articles_writer import set_strategy_classification
     for r in rows:
         strat, relevance = classify_strategy(r["title"])
-        wcur.execute("UPDATE news_articles SET strategy_type = %s, retirement_relevance = %s WHERE id = %s",
-                     (strat, relevance, r["id"]))
+        set_strategy_classification(wcur, r["id"], strat, relevance)
 
     conn.commit()
     conn.close()
@@ -142,10 +142,10 @@ def classify_recent_untagged() -> int:
 
     wcur = conn.cursor()
     updated = 0
+    from lib.writers.news_articles_writer import set_strategy_classification
     for r in rows:
         strat, relevance = classify_strategy(r["title"])
-        wcur.execute("UPDATE news_articles SET strategy_type = %s, retirement_relevance = %s WHERE id = %s",
-                     (strat, relevance, r["id"]))
+        set_strategy_classification(wcur, r["id"], strat, relevance)
         updated += 1
 
     conn.commit()

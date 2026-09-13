@@ -7,8 +7,12 @@ Sources:
   - Benzinga RSS (free, always active — benzinga.com/feed)
   - Benzinga API (if BENZINGA_API_KEY exists — richer data, analyst ratings)
 
-All sources dedup by symbol + title. Scored + tagged via content_scoring.
-Feeds into: news_articles, catalyst_events, sentiment_observations.
+Scored + tagged via content_scoring. Rows land through the ONE write path for the
+store, scripts/lib/writers/news_articles_writer.py (re-exported below: this file is
+the writer_target declared in config/data_source_authority.json, Phase 9 2026-09-13).
+That module owns dedupe (same symbol + same source_url or title), rails, retired-
+provider refusal and the identity GUID. Feeds into: news_articles, catalyst_events,
+sentiment_observations.
 
 Modes:
   --priority    Weekday cadence: holdings/proposals/CIO-rated (all tiers)/active/directives (NEWS_INGEST_MAX, default 60)
@@ -40,6 +44,24 @@ HEARTBEAT_NEEDLE = "[news] heartbeat ok"
 
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 sys.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
+
+# The store's single write module, re-exported so `news_ingestion` is the name a
+# producer imports the writer from (registry writer_target). No SQL lives here.
+from lib.writers.news_articles_writer import (  # noqa: E402,F401
+    SQL_NOW,
+    WriteReceipt,
+    approve_pending_by_relevance,
+    archive_article,
+    flag_title_duplicates,
+    is_duplicate,
+    reassign_strategy_type,
+    set_deep_curation,
+    set_rag_status,
+    set_region,
+    set_sentiment,
+    set_strategy_classification,
+    write_news_articles,
+)
 
 
 def _get_conn():
@@ -398,32 +420,25 @@ def _scan_symbols(conn, cur, symbols: list[tuple[str, str]], finnhub_key: str, b
             is_google = src.startswith("google_news:") or src in (
                 "seeking_alpha", "motley_fool", "morningstar", "barrons", "marketwatch", "benzinga_rss"
             )
-            if is_google:
-                if not a.get("source_url"):
-                    continue
-                cur.execute("SELECT id FROM news_articles WHERE source_url=%s LIMIT 1", (a["source_url"][:500],))
-                if cur.fetchone():
-                    continue
-            else:
-                cur.execute(
-                    "SELECT id FROM news_articles WHERE symbol=%s AND title=%s LIMIT 1",
-                    (sym, a["title"][:500]),
-                )
-                if cur.fetchone():
-                    continue
+            if is_google and not a.get("source_url"):
+                continue
 
             from content_scoring import score_content, tag_content
             _scores = score_content(title=a["title"], text=a.get("summary", ""), source=a["source"], symbols=[sym])
             _tags = tag_content(text=a.get("summary", ""), title=a["title"])
 
-            cur.execute("""
-                INSERT INTO news_articles (symbol, strategy_type, title, summary, source, source_url, published_at,
-                    relevance_score, strategy_tags, agent_tags)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """, (sym, strategy_type, a["title"][:500], a.get("summary", "")[:1000],
-                  a["source"], a.get("source_url", "")[:500],
-                  a.get("published_at"), _scores["relevance_score"],
-                  json.dumps(_tags["strategy_tags"]), json.dumps(_tags["agent_tags"])))
+            # Dedupe (same symbol + same source_url or title), rails and identity
+            # live in the write module; a duplicate or rejected row writes nothing.
+            receipt = write_news_articles(cur, [{
+                "symbol": sym, "strategy_type": strategy_type,
+                "title": a["title"][:500], "summary": a.get("summary", "")[:1000],
+                "source": a["source"], "source_url": a.get("source_url", "")[:500],
+                "published_at": a.get("published_at"), "relevance_score": _scores["relevance_score"],
+                "strategy_tags": json.dumps(_tags["strategy_tags"]),
+                "agent_tags": json.dumps(_tags["agent_tags"]),
+            }], source=a["source"])
+            if not receipt.rows_written:
+                continue
             _feed_downstream(conn, sym, strategy_type, a, _scores, _tags)
             source_counts[a["source"]] = source_counts.get(a["source"], 0) + 1
             total_new += 1

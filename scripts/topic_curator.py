@@ -72,9 +72,9 @@ def rate_pending_content(conn, topic_id=None, limit=200):
     cur = conn.cursor(cursor_factory=__import__('psycopg2.extras', fromlist=['RealDictCursor']).RealDictCursor)
 
     # Auto-approve high-relevance articles (score >= 0.4) without LLM — already quality-gated at ingest
-    cur.execute("""UPDATE news_articles SET rag_status='approved', rag_reason='auto: relevance >= 0.4'
-                   WHERE rag_status='pending' AND source LIKE 'topic_%%' AND relevance_score >= 0.4""")
-    auto_approved = cur.rowcount
+    from lib.writers.news_articles_writer import approve_pending_by_relevance, set_rag_status
+    auto_approved = approve_pending_by_relevance(cur, source_prefix="topic_", min_relevance=0.4,
+                                                 reason="auto: relevance >= 0.4")
     if auto_approved:
         conn.commit()
         print(f"  [curator] Auto-approved {auto_approved} high-relevance articles")
@@ -136,8 +136,7 @@ def rate_pending_content(conn, topic_id=None, limit=200):
                             if status not in ("approved", "low_quality", "blocked"):
                                 status = "pending"
                             reason = r.get("reason", "")[:200]
-                            cur.execute("UPDATE news_articles SET rag_status=%s, rag_reason=%s WHERE id=%s",
-                                        (status, reason, batch[idx]['id']))
+                            set_rag_status(cur, batch[idx]['id'], status, reason)
                             if status == "approved": approved += 1
                             if status == "blocked": blocked += 1
             except Exception:
@@ -560,9 +559,10 @@ def ensemble_rescue(conn, topic_id=None, limit=None):
                                 task="content_quality_and_relevance_for_research")
         if (res.get("final_decision") == "approve" and res.get("consensus_reached")
                 and res.get("final_score", 0) >= 6.5):
-            cur.execute("UPDATE news_articles SET rag_status='approved', rag_reason=%s WHERE id=%s",
-                        (f"ensemble rescue ({','.join(res.get('lanes_used', []))}): "
-                         f"{res.get('reasoning_summary', '')}"[:200], rid))
+            from lib.writers.news_articles_writer import set_rag_status
+            set_rag_status(cur, rid, "approved",
+                           (f"ensemble rescue ({','.join(res.get('lanes_used', []))}): "
+                            f"{res.get('reasoning_summary', '')}"[:200]))
             upgraded += 1
     conn.commit()
     print(f"  [curator] ensemble rescue: {upgraded}/{len(rows)} low_quality → approved (free-lane consensus)")

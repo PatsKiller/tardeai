@@ -48711,9 +48711,16 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 _db_write(
                     "UPDATE qualified_intelligence SET strategy_focus='investment_general' WHERE strategy_focus='defense_thesis'"
                 )
-                _db_write(
-                    "UPDATE news_articles SET strategy_type='investment_general' WHERE strategy_type='defense_thesis'"
-                )
+                # news_articles is written only through its write module (Phase 9).
+                try:
+                    from db_adapter import _get_conn as _na_conn, USE_DB as _na_use_db
+                    from lib.writers.news_articles_writer import reassign_strategy_type as _na_reassign
+                    if _na_use_db:
+                        _na_c = _na_conn()
+                        _na_reassign(_na_c.cursor(), "defense_thesis", "investment_general")
+                        _na_c.commit()
+                except Exception as _na_e:
+                    print(f"  [api_v2] news_articles strategy retag error: {_na_e}")
                 return 200, {"ok": True, "updated": updated}
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)}

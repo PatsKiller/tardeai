@@ -399,17 +399,15 @@ def ingest_av_news_sentiment(symbols: list = None, limit: int = 10) -> dict:
                         pass
 
                 try:
-                    cur.execute("""
-                        INSERT INTO news_articles (symbol, title, summary, source, source_url,
-                                                   published_at, relevance_score, sentiment,
-                                                   sentiment_score, strategy_tags)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
-                        ON CONFLICT DO NOTHING
-                    """, (sym, title, summary, f"av:{source}", url_link,
-                          pub_date, round(relevance * 100), overall_label.lower(),
-                          round(ticker_sentiment, 3),
-                          json.dumps([f"av_sentiment_{overall_label.lower()}"])))
-                    articles_stored += 1
+                    from lib.writers.news_articles_writer import write_news_articles
+                    receipt = write_news_articles(cur, [{
+                        "symbol": sym, "title": title, "summary": summary, "source": f"av:{source}",
+                        "source_url": url_link, "published_at": pub_date,
+                        "relevance_score": round(relevance * 100),
+                        "sentiment": overall_label.lower(), "sentiment_score": round(ticker_sentiment, 3),
+                        "strategy_tags": json.dumps([f"av_sentiment_{overall_label.lower()}"]),
+                    }], source=f"av:{source}")
+                    articles_stored += receipt.rows_written
                 except Exception:
                     conn.rollback()
 
