@@ -57,6 +57,7 @@ MANIFEST_PATH = PROJECT_ROOT / "config" / "expected_services.json"
 STATE_PATH = Path.home() / ".local/state/tradeai/expected_services_last_alert.json"
 
 SCHEMA = "ExpectedServicesReport@v1"
+RECEIPT_NAME = "expected_services_last_run.json"
 
 NO_CONSUMER_REASON = (
     "this IS an availability gate; an operator or a scheduled run invokes it and reads "
@@ -140,6 +141,36 @@ def _flag_value(name: str, source: str) -> str | None:
     return None
 
 
+def _write_run_receipt(checked: int, off: int, detail: dict) -> None:
+    """Prove this ran, every run, whether or not it found anything.
+
+    The alert state file only changes when findings change, so a quiet run
+    leaves no trace -- and a timer that silently stopped would look exactly like
+    a clean result. config/lane_registry.json requires an output_signal that is
+    a durable artifact, "not its exit code, not its log file existing", and this
+    is that artifact.
+    """
+    path = PROJECT_ROOT / "data" / "runtime" / RECEIPT_NAME
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(
+                {
+                    "schema": SCHEMA,
+                    "ran_at": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
+                    "checked": checked,
+                    "off": off,
+                    **detail,
+                },
+                indent=2,
+                default=str,
+            )
+            + "\n"
+        )
+    except OSError as exc:
+        print(f"  receipt: could not write {path} ({exc})", file=sys.stderr)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--json", action="store_true")
@@ -201,6 +232,8 @@ def main() -> int:
         if any(r["status"] == "DISABLED" for r in off):
             print("\n  A DISABLED unit is the silent one: it never appears in")
             print("  `systemctl --failed`, so nothing else would ever report it.")
+
+    _write_run_receipt(len(results), len(off), {"off_items": [f"{r['status']}:{r['name']}" for r in off]})
 
     if args.alert:
         _alert(off)

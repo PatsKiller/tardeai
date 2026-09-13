@@ -51,6 +51,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 CONTRACTS_PATH = PROJECT_ROOT / "config" / "data_plausibility_contracts.json"
 
 SCHEMA = "DataPlausibilityReport@v1"
+RECEIPT_NAME = "data_plausibility_last_run.json"
 
 NO_CONSUMER_REASON = (
     "this IS a data-integrity gate; an operator or a scheduled run invokes it and "
@@ -252,6 +253,36 @@ def _alert(results: list[dict], blocking: list[dict]) -> None:
         print(f"  alert: could not record state ({exc}); next run may repeat.", file=sys.stderr)
 
 
+def _write_run_receipt(checked: int, off: int, detail: dict) -> None:
+    """Prove this ran, every run, whether or not it found anything.
+
+    The alert state file only changes when findings change, so a quiet run
+    leaves no trace -- and a timer that silently stopped would look exactly like
+    a clean result. config/lane_registry.json requires an output_signal that is
+    a durable artifact, "not its exit code, not its log file existing", and this
+    is that artifact.
+    """
+    path = PROJECT_ROOT / "data" / "runtime" / RECEIPT_NAME
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(
+                {
+                    "schema": SCHEMA,
+                    "ran_at": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
+                    "checked": checked,
+                    "off": off,
+                    **detail,
+                },
+                indent=2,
+                default=str,
+            )
+            + "\n"
+        )
+    except OSError as exc:
+        print(f"  receipt: could not write {path} ({exc})", file=sys.stderr)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--json", action="store_true", help="emit JSON")
@@ -271,8 +302,7 @@ def main() -> int:
     try:
         import psycopg2  # noqa: PLC0415 — see the note beside the imports
     except ImportError:
-        print("ERROR: psycopg2 is not installed; cannot measure the database.",
-              file=sys.stderr)
+        print("ERROR: psycopg2 is not installed; cannot measure the database.", file=sys.stderr)
         return 2
 
     conn = psycopg2.connect(
@@ -346,6 +376,10 @@ def main() -> int:
         print("\n  A BLOCK violation means the value cannot be valid on its declared")
         print("  scale. Either the data is wrong or the contract is wrong; both are")
         print("  worth a look, and neither is visible without this check.")
+
+    _write_run_receipt(
+        len(results), len(blocking), {"blocking_items": [f"{r['table']}.{r['column']}" for r in blocking]}
+    )
 
     if args.alert:
         _alert(results, blocking)
