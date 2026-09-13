@@ -472,7 +472,9 @@ def test_registry_writer_target_re_exports_the_module():
     import build_symbol_profiles as target
     assert target.upsert_profile is w.upsert_profile and target.write_earnings is w.write_earnings
     domain = next(d for d in AUTH["domains"] if d["domain"] == "symbol_identity")
-    assert domain["writer_target"] == "scripts/build_symbol_profiles.py"
+    # At integration the registry promoted the target to the single declared writer.
+    assert domain.get("writer") == "scripts/build_symbol_profiles.py"
+    assert domain.get("writer_status") != "UNCONSOLIDATED"
 
 
 def test_lazy_db_producers_import_without_a_database():
