@@ -117,6 +117,39 @@ def _block_alert_outbox_production_writes(monkeypatch):
     monkeypatch.setattr(alert_outbox, "_db", lambda: None)
 
 
+@pytest.fixture(autouse=True)
+def _block_cio_wake_trace_production_writes(monkeypatch, tmp_path_factory):
+    """Keep CIO wake traces out of the repository's own data/ tree.
+
+    Found 2026-09-13 by putting tests/test_p26_shadow_autonomy.py back into CI
+    after it had sat in UNLISTED_BASELINE. It passed locally and failed on CI at
+    a completely different gate:
+
+        test_whole_site_truth.py::test_an_empty_state_root_is_never_reported_live
+        /v3/control-plane/workflows claimed LIVE with an empty root
+
+    scripts/lib/cio_wake_traces writes to a module-level DEFAULT_TRACE_PATH of
+    PROJECT_ROOT/data/cio/cio_wake_traces.jsonl with no override, so any test
+    reaching that path appends to the repo. Locally data/cio/ is already full of
+    real state and nothing looked wrong. On a fresh CI clone the p26 suite CREATED
+    that root, and the next gate found a state root that existed and was empty --
+    which is exactly the condition test_whole_site_truth exists to catch.
+
+    So the site-truth test was right, and the pollution was real. It had simply
+    been invisible for as long as the suite that caused it did not run.
+
+    Redirecting the module default keeps every test off the repo tree. Tests that
+    pass an explicit path are unaffected -- every writer in that module takes
+    `path` and only falls back to this default.
+    """
+    try:
+        from scripts.lib import cio_wake_traces
+    except Exception:
+        return
+    isolated = tmp_path_factory.mktemp("cio_traces") / "cio_wake_traces.jsonl"
+    monkeypatch.setattr(cio_wake_traces, "DEFAULT_TRACE_PATH", isolated)
+
+
 # ── C1 alarm-firing capture ──────────────────────────────────────────────────
 # An alarm that has never been observed firing is indistinguishable from no alarm.
 # Capture happens at the REAL transport boundary, telegram_transport.send_message,
