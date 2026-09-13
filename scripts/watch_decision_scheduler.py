@@ -14,8 +14,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import glob
 import os
+import signal
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -280,7 +283,68 @@ def _force_exit(rc: int) -> None:
             stream.flush()
         except Exception:  # noqa: BLE001 - see docstring
             pass
+    _reap_own_children()
     os._exit(rc)
+
+
+def _own_children() -> list[int]:
+    """PIDs this process has forked, from /proc/self/task/*/children."""
+    pids: set[int] = set()
+    for path in glob.glob("/proc/self/task/*/children"):
+        try:
+            with open(path, encoding="ascii") as fh:
+                pids.update(int(tok) for tok in fh.read().split())
+        except (OSError, ValueError):
+            continue
+    return sorted(pids)
+
+
+def _reap_own_children(grace_seconds: float = 2.0) -> None:
+    """Kill and reap our own children before exiting.
+
+    os._exit() ends THIS process and nothing else, so anything forked underneath
+    is inherited by systemd. Measured 2026-09-13: this script reaches its exit
+    with exactly two children, both forked copies of itself.
+
+    That is what produced the unit's standing lie. main() exits 0, systemd tears
+    down the cgroup, and those two block in uninterruptible I/O long enough to
+    outlast TimeoutStopSec -- so a batch that SUCCEEDED is reported
+    Result=timeout. Over 30 days: 72 successes against 33 such failures.
+
+    Two alternatives were tried at the unit level first and both measured worse.
+    KillMode=process stops the cgroup kill and the children then never exit at
+    all -- still alive and sleeping at 195 seconds, ~357M each, on a timer-driven
+    unit, which is a process leak rather than a fix. Raising TimeoutStopSec to
+    45s was simply unreliable: one clean run, then two failures at exactly 45s.
+
+    Doing it here is the honest place. The batch is already complete and printed
+    by the time this runs, systemd would kill these same processes moments later
+    anyway, and reaping them ourselves means the cgroup is empty when systemd
+    looks -- so the unit's verdict finally matches its exit status.
+
+    Everything is best-effort: a failure to reap must never turn a completed
+    batch into a non-zero exit.
+    """
+    try:
+        children = _own_children()
+    except Exception:  # noqa: BLE001
+        return
+    for pid in children:
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except OSError:
+            pass
+    deadline = time.monotonic() + grace_seconds
+    for pid in children:
+        while time.monotonic() < deadline:
+            try:
+                if os.waitpid(pid, os.WNOHANG) != (0, 0):
+                    break
+            except ChildProcessError:
+                break
+            except OSError:
+                break
+            time.sleep(0.02)
 
 
 if __name__ == "__main__":
