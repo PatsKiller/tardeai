@@ -542,6 +542,11 @@ GATES = [
             # A 1-5 rating scale refuses values that are not on it, instead of
             # stripping the "%" and laundering a percentage into a rating.
             "tests/test_finviz_recom_plausibility_20260913.py",
+            # Column maps keyed by header name, never by position. Finviz
+            # inserted three columns into v=141 and shifted every later field;
+            # "Performance (10 Years)" was stored as a 1-5 analyst rating for
+            # five months, inverted (a -100% stock read "Strong Buy").
+            "tests/test_finviz_column_map_20260913.py",
             # Off UNLISTED_BASELINE at last. The ONLY coverage of
             # cio_run_worker._check_health, and its fakes are what hid CL-61.
             "tests/test_p26_shadow_autonomy.py",

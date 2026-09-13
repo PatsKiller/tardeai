@@ -45,6 +45,8 @@ USAGE:
 """
 from __future__ import annotations
 
+import csv
+import io
 import json
 import os
 import time
@@ -61,54 +63,96 @@ BATCH_SIZE = 20              # Finviz max tickers per export request
 REQUEST_DELAY = 0.5          # seconds between requests
 FINVIZ_EXPORT = "https://elite.finviz.com/export"
 
-# Views to pull and their column mappings
-# Format: {view: {col_index: field_name}}
+# Views to pull and their column mappings.
+#
+# Format: {view: {finviz_header_name: field_name}}
+#
+# KEYED BY HEADER NAME, NEVER BY POSITION. The previous map was positional, and
+# Finviz silently inserted three columns into v=141 -- "Performance (3 Years)",
+# "(5 Years)" and "(10 Years)" at indices 8-10 -- which shifted every later field
+# right by three without any error. Index 10 had been labelled "recom"; it was in
+# fact "Performance (10 Years)", so a stock down -100% over ten years was scored
+# -100 on a 1-5 analyst scale and rendered "Strong Buy", while a +95,699% winner
+# rendered "Strong Sell". 131,050 of 132,894 rows (98.6%) were wrong, for five
+# months, and the ratings were ANTI-correlated with reality. Index 12 had been
+# labelled "rvol" and was really "Volatility (Month)", so RVOL was wrong too.
+#
+# A positional map cannot detect this: every shifted value still parses as a
+# float. A name-keyed map fails loudly instead -- an absent column is reported
+# and left None, never filled from whichever neighbour happens to sit there.
+#
+# Header names below were captured live from elite.finviz.com/export on
+# 2026-09-13 and are pinned in tests/test_finviz_column_map_20260913.py.
 VIEWS = {
     111: {  # Base — Price, Change, Volume, Sector, Company
-        # Actual layout: No[0],Ticker[1],Company[2],Sector[3],Industry[4],Country[5],MCap[6],PE[7],Volume[8],Price[9],Change[10]
-        1: "ticker", 2: "company", 3: "sector", 4: "industry",
-        5: "country", 6: "market_cap_b", 7: "pe",
-        8: "volume_base", 9: "price", 10: "change_pct",
+        "Ticker": "ticker", "Company": "company", "Sector": "sector",
+        "Industry": "industry", "Country": "country",
+        "Market Cap": "market_cap_b", "P/E": "pe",
+        "Price": "price", "Change": "change_pct", "Volume": "volume",
     },
     131: {  # Ownership — Float, Short, Institutional
-        1: "ticker", 2: "market_cap_b", 3: "shares_outstanding_m",
-        4: "float_m", 5: "insider_own_pct", 6: "insider_trans_pct",
-        7: "inst_own_pct", 8: "inst_trans_pct",
-        9: "short_float_pct", 10: "short_ratio",
-        11: "avg_vol_m", 12: "price", 13: "change_pct", 14: "volume",
+        "Ticker": "ticker", "Market Cap": "market_cap_b",
+        "Shares Outstanding": "shares_outstanding_m", "Shares Float": "float_m",
+        "Insider Ownership": "insider_own_pct",
+        "Insider Transactions": "insider_trans_pct",
+        "Institutional Ownership": "inst_own_pct",
+        "Institutional Transactions": "inst_trans_pct",
+        "Short Float": "short_float_pct", "Short Ratio": "short_ratio",
+        "Average Volume": "avg_vol_m",
+        "Price": "price", "Change": "change_pct", "Volume": "volume",
     },
-    141: {  # Performance + RVOL
-        1: "ticker", 2: "perf_week_pct", 3: "perf_month_pct",
-        4: "perf_quarter_pct", 5: "perf_halfyr_pct",
-        6: "perf_ytd_pct", 7: "perf_year_pct",
-        8: "volatility_w_pct", 9: "volatility_m_pct",
-        10: "recom", 11: "avg_vol_m2", 12: "rvol",
-        13: "price", 14: "change_pct", 15: "volume",
+    141: {  # Performance + RVOL — NOTE: this view carries NO "Recom" column.
+        "Ticker": "ticker",
+        "Performance (Week)": "perf_week_pct",
+        "Performance (Month)": "perf_month_pct",
+        "Performance (Quarter)": "perf_quarter_pct",
+        "Performance (Half Year)": "perf_halfyr_pct",
+        "Performance (YTD)": "perf_ytd_pct",
+        "Performance (Year)": "perf_year_pct",
+        "Performance (3 Years)": "perf_3y_pct",
+        "Performance (5 Years)": "perf_5y_pct",
+        "Performance (10 Years)": "perf_10y_pct",
+        "Volatility (Week)": "volatility_w_pct",
+        "Volatility (Month)": "volatility_m_pct",
+        "Average Volume": "avg_vol_m2",
+        "Relative Volume": "rvol",
+        "Price": "price", "Change": "change_pct", "Volume": "volume",
     },
     161: {  # Fundamentals
-        1: "ticker", 2: "market_cap_b2", 3: "div_yield_pct",
-        4: "roa_pct", 5: "roe_pct", 6: "roic_pct",
-        7: "current_ratio", 8: "quick_ratio",
-        9: "lt_debt_equity", 10: "total_debt_equity",
-        11: "gross_margin_pct", 12: "oper_margin_pct",
-        13: "profit_margin_pct", 14: "earnings_date2",
-        15: "price", 16: "change_pct", 17: "volume",
+        "Ticker": "ticker", "Market Cap": "market_cap_b2",
+        "Dividend Yield": "div_yield_pct",
+        "Return on Assets": "roa_pct", "Return on Equity": "roe_pct",
+        "Return on Invested Capital": "roic_pct",
+        "Current Ratio": "current_ratio", "Quick Ratio": "quick_ratio",
+        "LT Debt/Equity": "lt_debt_equity",
+        "Total Debt/Equity": "total_debt_equity",
+        "Gross Margin": "gross_margin_pct",
+        "Operating Margin": "oper_margin_pct",
+        "Profit Margin": "profit_margin_pct",
+        "Earnings Date": "earnings_date2",
+        "Price": "price", "Change": "change_pct", "Volume": "volume",
     },
-    121: {  # Valuation — EPS, Forward PE, Target Price
-        1: "ticker", 2: "market_cap_b3",
-        3: "pe2", 4: "forward_pe", 5: "peg",
-        6: "ps", 7: "pb", 8: "pc", 9: "pfcf",
-        10: "eps_ttm", 11: "eps_next_q", 12: "eps_next_y",
-        13: "eps_next_5y", 14: "eps_past_5y",
-        15: "sales_past_5y", 16: "eps_qoq", 17: "sales_qoq",
-        18: "price2", 19: "change_pct2", 20: "volume2",
+    121: {  # Valuation — EPS growth, Forward PE
+        "Ticker": "ticker", "Market Cap": "market_cap_b3",
+        "P/E": "pe2", "Forward P/E": "forward_pe", "PEG": "peg",
+        "P/S": "ps", "P/B": "pb", "P/Cash": "pc", "P/Free Cash Flow": "pfcf",
+        "EPS Growth This Year": "eps_growth_this_y_pct",
+        "EPS Growth Next Year": "eps_growth_next_y_pct",
+        "EPS Growth Past 5 Years": "eps_growth_past_5y_pct",
+        "EPS Growth Next 5 Years": "eps_growth_next_5y_pct",
+        "Sales Growth Past 5 Years": "sales_growth_past_5y_pct",
+        "Price": "price2", "Change": "change_pct2", "Volume": "volume2",
     },
     171: {  # Technical — RSI, SMA, ATR, Beta (NO COOKIE NEEDED)
-        1: "ticker", 2: "beta", 3: "atr",
-        4: "sma20_pct", 5: "sma50_pct", 6: "sma200_pct",
-        7: "week52_high_pct", 8: "week52_low_pct",
-        9: "rsi", 10: "price", 11: "change_pct",
-        12: "change_from_open_pct", 13: "gap_pct", 14: "volume",
+        "Ticker": "ticker", "Beta": "beta", "Average True Range": "atr",
+        "20-Day Simple Moving Average": "sma20_pct",
+        "50-Day Simple Moving Average": "sma50_pct",
+        "200-Day Simple Moving Average": "sma200_pct",
+        "52-Week High": "week52_high_pct", "52-Week Low": "week52_low_pct",
+        "Relative Strength Index (14)": "rsi",
+        "Price": "price", "Change": "change_pct",
+        "Change from Open": "change_from_open_pct", "Gap": "gap_pct",
+        "Volume": "volume",
     },
 }
 
@@ -121,6 +165,13 @@ PCT_FIELDS = {
     "roe_pct", "roic_pct", "gross_margin_pct", "oper_margin_pct",
     "profit_margin_pct", "sma20_pct", "sma50_pct", "sma200_pct",
     "week52_high_pct", "week52_low_pct", "change_from_open_pct", "gap_pct",
+    # Long-horizon performance: these are the columns Finviz inserted into v=141
+    # and are the reason the positional map rotted. They are percentages.
+    "perf_3y_pct", "perf_5y_pct", "perf_10y_pct",
+    # v=121 carries EPS/sales GROWTH percentages, not EPS dollar amounts. The
+    # positional map read "EPS Growth This Year" into a field named eps_ttm.
+    "eps_growth_this_y_pct", "eps_growth_next_y_pct", "eps_growth_past_5y_pct",
+    "eps_growth_next_5y_pct", "sales_growth_past_5y_pct",
 }
 
 # Skip these duplicate fields from secondary views
@@ -324,28 +375,52 @@ def _fetch_view(tickers: List[str], view: int, root: Path) -> Dict[str, Dict]:
                 print(f"  [finviz-enrich] v={view} HTTP {resp.status_code}")
                 continue
 
-            lines = resp.text.strip().split("\n")
-            for line in lines[1:]:  # skip header
-                parts = [p.strip().strip('"') for p in line.split(",")]
-                if len(parts) < 2:
+            # The header is the authority on column order, so parse it instead of
+            # discarding it. csv.reader (not str.split(",")) because a quoted
+            # field may legitimately contain a comma -- "Alphabet, Inc." would
+            # otherwise split into two and shift every column after it.
+            rows = list(csv.reader(io.StringIO(resp.text)))
+            if not rows:
+                print(f"  [finviz-enrich] v={view} empty response")
+                continue
+            header = [h.strip().strip('"') for h in rows[0]]
+            index_of = {name: i for i, name in enumerate(header)}
+
+            # An expected column that is absent is reported once, loudly, and
+            # then left unset. It is never back-filled from a neighbouring
+            # position: that is precisely how "Performance (10 Years)" came to
+            # be stored as an analyst recommendation for five months.
+            missing = [c for c in col_map if c not in index_of]
+            if missing:
+                print(f"  [finviz-enrich] v={view} SCHEMA DRIFT — columns absent "
+                      f"from the Finviz header, fields left unset: {missing}")
+            if "Ticker" not in index_of:
+                print(f"  [finviz-enrich] v={view} has no Ticker column — skipping view")
+                continue
+            tkr_i = index_of["Ticker"]
+
+            for parts in rows[1:]:
+                if len(parts) < 2 or tkr_i >= len(parts):
                     continue
-                sym = parts[1].upper() if len(parts) > 1 else ""
+                sym = parts[tkr_i].strip().strip('"').upper()
                 if not sym:
                     continue
                 record: Dict[str, Any] = {}
-                for idx, field in col_map.items():
+                for col_name, field in col_map.items():
                     if field in SKIP_DUPLICATES:
                         continue
-                    if idx < len(parts):
-                        raw = parts[idx].strip().strip('"')
-                        if field in PCT_FIELDS:
-                            record[field] = _parse_float(raw)
-                        elif field in ("ticker", "company", "sector", "industry",
-                                       "country", "earnings_date", "earnings_time",
-                                       "earnings_date2", "recom"):
-                            record[field] = raw if raw and raw != "-" else None
-                        else:
-                            record[field] = _parse_float(raw)
+                    idx = index_of.get(col_name)
+                    if idx is None or idx >= len(parts):
+                        continue
+                    raw = parts[idx].strip().strip('"')
+                    if field in PCT_FIELDS:
+                        record[field] = _parse_float(raw)
+                    elif field in ("ticker", "company", "sector", "industry",
+                                   "country", "earnings_date", "earnings_time",
+                                   "earnings_date2", "recom"):
+                        record[field] = raw if raw and raw != "-" else None
+                    else:
+                        record[field] = _parse_float(raw)
                 results[sym] = record
 
         except Exception as e:
