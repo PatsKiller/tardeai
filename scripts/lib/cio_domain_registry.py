@@ -77,6 +77,11 @@ class DomainCapability:
     event_types: list[str]
     required_by_run_types: list[str]
     provenance_contract: dict[str, str] = field(default_factory=dict)
+    # When true, freshness is measured in market time rather than wall clock:
+    # evidence stamped at or after the most recent session close is not stale
+    # while the exchange is shut. See cio_market_aware_freshness. Defaults
+    # False so every domain keeps its existing wall-clock behaviour.
+    freshness_market_hours_only: bool = False
 
     @property
     def is_supported(self) -> bool:
@@ -143,6 +148,9 @@ class CIODomainRegistry:
                 source_lineage=d.get("source_lineage", []),
                 freshness_timestamp_field=d.get("freshness_timestamp_field"),
                 freshness_threshold_seconds=d.get("freshness_threshold_seconds", 86400),
+                freshness_market_hours_only=bool(
+                    d.get("freshness_market_hours_only", False)
+                ),
                 materiality_policy=d.get("materiality_policy", {}),
                 quality_policy=d.get("quality_policy", {}),
                 fallback_policy=d.get("fallback_policy", {}),
