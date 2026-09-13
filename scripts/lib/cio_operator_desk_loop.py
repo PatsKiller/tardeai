@@ -174,6 +174,96 @@ def format_unclear_reply(text: str) -> str:
     )
 
 
+# ── symbol extraction ────────────────────────────────────────────────────────
+# 2026-09-13 18:50: "Is now a good time to get back into schg" resolved NO symbol
+# because only UPPER-CASE tokens were tickers, so the desk answered with the
+# book-wide re-entry dump instead of SCHG's own row. A token is a symbol when it
+# is one we KNOW -- held, on the re-entry desk, or in the identity registry --
+# whatever its case. Unknown tokens keep the upper-case rule.
+_SYMBOL_STOP = frozenset({
+    "I", "A", "THE", "AND", "OR", "TO", "FOR", "ON", "IN", "OF", "IS", "IT", "AN", "AT", "BY", "BE",
+    "WHAT", "CAN", "NOW", "ETC", "DAY", "SMA", "RSI", "CIO", "READ", "ONLY", "USD", "READY", "NEAR",
+    "ZONE", "STOP", "ALEX", "LLM", "YOU", "HOW", "WHICH", "USING", "MODEL", "FLASH", "PRO", "AI", "WHY",
+    "GOOD", "TIME", "GET", "BACK", "INTO", "BUY", "SELL", "HOLD", "MY", "ME", "WE", "US", "DO", "DOES",
+    "ARE", "WAS", "ALL", "ANY", "NOT", "NO", "YES", "OK", "SO", "IF", "AS", "UP", "OUT", "NEW", "OLD",
+})
+_KNOWN_SYMBOLS_CACHE: dict[str, Any] = {"at": 0.0, "syms": frozenset()}
+
+
+def _known_symbols(ttl_s: float = 120.0) -> frozenset[str]:
+    """Symbols Trade-AI knows about: holdings + re-entry desk (+ identity registry when readable)."""
+    import time as _time
+    if _time.monotonic() - float(_KNOWN_SYMBOLS_CACHE["at"]) < ttl_s and _KNOWN_SYMBOLS_CACHE["syms"]:
+        return _KNOWN_SYMBOLS_CACHE["syms"]
+    syms: set[str] = set()
+    try:
+        for p in _held_positions_map().keys():
+            syms.add(p)
+    except Exception:
+        pass
+    try:
+        from scripts.lib.cio_telegram_converse import load_reentry_desk_rows
+        rows, _a, _p = load_reentry_desk_rows()
+        for r in rows or []:
+            if isinstance(r, dict) and r.get("symbol"):
+                syms.add(str(r["symbol"]).upper())
+    except Exception:
+        pass
+    try:
+        from scripts.lib import identity_registry as _ir
+        reg = _ir.load_cached()
+        ents = reg.get("entities") if isinstance(reg, dict) else None
+        for e in (ents.values() if isinstance(ents, dict) else (ents or [])):
+            if isinstance(e, dict):
+                for key in ("symbol", "ticker"):
+                    if e.get(key):
+                        syms.add(str(e[key]).upper())
+    except Exception:
+        pass
+    out = frozenset(s for s in syms if s and s.isalpha() and 1 <= len(s) <= 5)
+    if out:
+        _KNOWN_SYMBOLS_CACHE.update({"at": _time.monotonic(), "syms": out})
+    return out
+
+
+def _extract_symbols(text: str) -> list[str]:
+    """Upper-case tokens (old rule) plus any-case tokens that name a known symbol."""
+    t = text or ""
+    found: list[str] = []
+    for tok in re.findall(r"\b([A-Z]{1,5})\b", t):
+        if tok not in _SYMBOL_STOP and tok not in found:
+            found.append(tok)
+    known = _known_symbols()
+    if known:
+        for tok in re.findall(r"\b([A-Za-z]{2,5})\b", t):
+            up = tok.upper()
+            if up in known and up not in _SYMBOL_STOP and up not in found:
+                found.append(up)
+    return found[:12]
+
+
+def _held_positions_map() -> dict[str, dict[str, Any]]:
+    """symbol -> {shares, market_value, account} from holdings.json (store of record)."""
+    path = PROJECT_ROOT / "data" / "portfolios" / "state" / "holdings.json"
+    out: dict[str, dict[str, Any]] = {}
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return out
+    rows = doc.get("holdings") or doc.get("positions") or []
+    for r in rows if isinstance(rows, list) else []:
+        if not isinstance(r, dict) or not r.get("symbol"):
+            continue
+        sym = str(r["symbol"]).upper()
+        out[sym] = {
+            "shares": r.get("shares", r.get("quantity")),
+            "market_value": r.get("market_value"),
+            "account": r.get("account") or r.get("account_id"),
+            "as_of": r.get("as_of") or r.get("updated_at"),
+        }
+    return out
+
+
 def analyze_operator_intent(text: str) -> dict[str, Any]:
     """DeepSeek Flash → structured intent. Numbers never come from this step."""
     out: dict[str, Any] = {
@@ -205,14 +295,7 @@ def analyze_operator_intent(text: str) -> dict[str, Any]:
         out["needs"] = ["portfolio", "cash"]
         out["ok"] = True
         out["source"] = "heuristic"
-        syms = sorted(set(re.findall(r"\b([A-Z]{1,5})\b", t)))
-        stop = {
-            "I", "A", "THE", "AND", "OR", "TO", "FOR", "ON", "IN", "OF", "IS", "IT",
-            "WHAT", "CAN", "NOW", "ETC", "DAY", "SMA", "RSI", "CIO", "READ", "ONLY",
-            "USD", "READY", "NEAR", "ZONE", "STOP", "ALEX", "LLM", "YOU", "HOW",
-            "WHICH", "USING", "MODEL", "FLASH", "PRO", "AI", "WHY",
-        }
-        out["symbols"] = [s for s in syms if s not in stop][:12]
+        out["symbols"] = _extract_symbols(t)
         return out
 
     # P0: meta_system BEFORE desk defaults — never fall through to re-entry dump
@@ -224,7 +307,8 @@ def analyze_operator_intent(text: str) -> dict[str, Any]:
         out["needs"] = list(dict.fromkeys(needs))
     else:
         if re.search(
-            r"(?is)\bre[\s\-]?(?:entr|enter)|rentr|ready\s+to\s+(?:buy|purchase|review)|buy\s+back",
+            r"(?is)\bre[\s\-]?(?:entr|enter)|rentr|ready\s+to\s+(?:buy|purchase|review)|buy\s+back|"
+            r"get\s+back\s+in(?:to)?\b|\bback\s+in(?:to)?\s+[A-Za-z]{1,5}\b|re-?buy|add\s+back|good\s+time\s+to\s+(?:get\s+)?(?:back\s+)?in(?:to)?\b",
             t,
         ):
             needs.append("reentry_ready")
@@ -289,6 +373,9 @@ def analyze_operator_intent(text: str) -> dict[str, Any]:
         "WHICH", "USING", "MODEL", "FLASH", "PRO", "AI",
     }
     out["symbols"] = [s for s in syms if s not in stop][:12]
+
+    if not out["symbols"]:
+        out["symbols"] = _extract_symbols(t)
 
     # Flash refine (intent only) — may not override clear heuristic meta_system
     heuristic_intent = out["intent"]
@@ -384,6 +471,8 @@ def analyze_operator_intent(text: str) -> dict[str, Any]:
                         ][:12]
                     out["ok"] = True
                     out["source"] = "deepseek_flash"
+                    # Flash may drop a lower-case ticker; the known-symbol rule keeps it.
+                    out["symbols"] = list(dict.fromkeys([*out.get("symbols", []), *_extract_symbols(t)]))[:12]
                     out["model"] = llm.get("model") or "deepseek-flash"
                     # Final guard: meta heuristic always blocks desk needs
                     if _looks_like_meta_system(t):
@@ -406,6 +495,25 @@ def _domain_payload(snap: dict[str, Any], name: str) -> dict[str, Any]:
     if isinstance(d, dict) and "data" in d and d.get("data") is not None:
         return d.get("data") if isinstance(d.get("data"), dict) else {"value": d.get("data")}
     return d if isinstance(d, dict) else {}
+
+
+def _thematic_research_status(question: str) -> str:
+    """One operator-facing line: is research queued (ETA) or only noted?"""
+    live = os.getenv("GAP_RESOLVER_LIVE") == "1"
+    try:
+        from scripts.lib.gap_resolver import DataGap, resolve
+        gap = DataGap(domain="research_thesis", subject="TOPIC", question=(question or "")[:300],
+                      why="no_coverage", requester="desk_freeform")
+        res = resolve(gap)
+        if getattr(res, "outcome", "") == "queued" and getattr(res, "eta_seconds", None):
+            return (f"Trade-AI holds no research on this topic yet; research queued via {res.vector} — "
+                    f"≈ {max(1, int(res.eta_seconds) // 60)} min, I will follow up.")
+        if getattr(res, "outcome", "") == "answered" and getattr(res, "source", None):
+            return f"Trade-AI research found via {res.source}."
+    except Exception:
+        pass
+    return ("Trade-AI holds no research on this topic yet."
+            + ("" if live else " (Gap resolver is in dry-run — nothing was queued; say 'research this' and I will run it.)"))
 
 
 def gather_freeform_context(intent: dict[str, Any]) -> dict[str, Any]:
@@ -456,12 +564,33 @@ def gather_freeform_context(intent: dict[str, Any]) -> dict[str, Any]:
         })
 
     cash = _domain_payload(snap, "cash_buying_power")
-    if cash:
-        nested = cash.get("data") if isinstance(cash.get("data"), dict) else {}
+    nested = cash.get("data") if isinstance(cash.get("data"), dict) else {}
+    # 2026-09-13 18:56: the model told the operator "cash_pct, buying_power ... are all
+    # empty" while the snapshot carried total_cash $710,933. The payload keys are
+    # data.total_cash / data.total_buying_power_estimate; cash_pct is derived here.
+    # _domain_payload already unwraps the envelope's `data`; keep the nested fallback
+    # for a raw envelope handed in by a test or an older collector.
+    total_cash = cash.get("total_cash", nested.get("total_cash", cash.get("cash")))
+    buying_power = cash.get("total_buying_power_estimate",
+                            nested.get("total_buying_power_estimate", nested.get("buying_power", cash.get("buying_power"))))
+    cash_positions = cash.get("cash_positions") or nested.get("cash_positions") or []
+    tv = (facts.get("portfolio") or {}).get("total_value")
+    if cash and (total_cash is not None or buying_power is not None):
+        try:
+            cash_pct = round(float(total_cash) / float(tv) * 100.0, 1) if total_cash is not None and tv else cash.get("cash_pct", nested.get("cash_pct"))
+        except (TypeError, ValueError, ZeroDivisionError):
+            cash_pct = None
         facts["cash"] = {
-            "cash_pct": cash.get("cash_pct", nested.get("cash_pct")),
-            "buying_power": cash.get("buying_power") or cash.get("cash") or nested.get("buying_power"),
+            "total_cash": total_cash,
+            "cash_pct": cash_pct,
+            "buying_power": buying_power,
+            "by_account": [
+                {"account": cp.get("account"), "cash": cp.get("market_value")}
+                for cp in cash_positions if isinstance(cp, dict)
+            ][:8],
             "quality_state": cash.get("quality_state") or cash.get("state"),
+            "source": cash.get("source") or nested.get("source"),
+            "as_of": cash.get("as_of") or nested.get("as_of"),
         }
     else:
         soft_gaps.append({
@@ -478,6 +607,32 @@ def gather_freeform_context(intent: dict[str, Any]) -> dict[str, Any]:
             "stops_active": risk.get("stops_active"),
         }
 
+    # Sector exposure and the investment policy are house facts a "what should I
+    # concentrate on" question cannot be answered without. They were never passed.
+    sec = _domain_payload(snap, "sectors")
+    sec_rows = sec.get("sectors") if isinstance(sec, dict) else None
+    if isinstance(sec_rows, list) and sec_rows:
+        facts["sector_exposure"] = [
+            {
+                "sector": r.get("sector"), "weight_pct": r.get("weight_pct"),
+                "value": r.get("value"), "symbols": list(dict.fromkeys(r.get("symbols") or []))[:6],
+            }
+            for r in sorted((x for x in sec_rows if isinstance(x, dict)), key=lambda x: -(x.get("weight_pct") or 0))[:8]
+        ]
+        facts["sector_exposure_total_value"] = sec.get("total_value")
+    else:
+        soft_gaps.append({
+            "domain": "sectors", "symbol": None, "field": "exposure",
+            "reason": "sector exposure DATA_UNAVAILABLE", "gap_type": "soft",
+        })
+    pol = _domain_payload(snap, "investment_policy")
+    if pol and (pol.get("primary_objective") or pol.get("risk_level")):
+        facts["investment_policy"] = {
+            k: pol.get(k) for k in (
+                "primary_objective", "risk_level", "max_single_position_pct", "max_drawdown_pct",
+                "target_return_pct", "status", "next_review",
+            ) if pol.get(k) is not None
+        }
     hold = _domain_payload(snap, "holdings_detail")
     positions = hold.get("positions") if isinstance(hold, dict) else None
     if isinstance(positions, list) and symbols:
@@ -533,6 +688,16 @@ def gather_freeform_context(intent: dict[str, Any]) -> dict[str, Any]:
     research_items = subject_research(symbols) if symbols else []
     if research_items:
         facts["research_on_subject"] = research_items
+    elif not symbols:
+        # Thematic / macro question with no subject: Trade-AI holds no research to
+        # cite, so say so and consult the Phase 7 resolver instead of letting the
+        # model's general knowledge stand in for house research.
+        facts["research_status"] = _thematic_research_status(str(intent.get("text") or intent.get("operator_text") or ""))
+        soft_gaps.append({
+            "domain": "hermes_research", "symbol": None, "field": "topic",
+            "reason": "no Trade-AI research on this topic; general market history is model knowledge",
+            "gap_type": "research",
+        })
     elif symbols:
         soft_gaps.append({
             "domain": "hermes_research",
@@ -581,6 +746,14 @@ def _format_freeform_failsoft(context: dict[str, Any], soft_gaps: list[dict[str,
             f"• Held `{h.get('symbol')}`: qty={h.get('quantity')} mv={h.get('market_value')} "
             f"wt%={h.get('weight_pct')}"
         )
+    sec = context.get("sector_exposure") or []
+    if sec:
+        lines.append("• Sectors: " + " · ".join(f"{x.get('sector')} {x.get('weight_pct')}%" for x in sec[:6]))
+    pol = context.get("investment_policy") or {}
+    if pol:
+        lines.append(f"• Policy: {pol.get('risk_level')} · max single {pol.get('max_single_position_pct')}% · {str(pol.get('primary_objective') or '')[:90]}")
+    if context.get("research_status"):
+        lines.append(f"• {context['research_status']}")
     for sym, th in (context.get("theses") or {}).items():
         summary = th.get("thesis_summary") or th.get("why_owned_or_watched") or th.get("thesis_state")
         lines.append(f"• Thesis `{sym}`: {summary}")
@@ -634,8 +807,13 @@ def answer_freeform_with_flash(
             "no orders/stops. Answer the operator in a helpful free-form style.\n"
             "Rules:\n"
             "1) You MAY reason generally (strategy, comparisons, explainers).\n"
-            "2) Prices, weights, READY/NEAR lists, R:R, cash, heat, quantities — "
-            "ONLY from TRADE_AI_FACTS. If missing, say DATA_UNAVAILABLE.\n"
+            "2) Prices, weights, READY/NEAR lists, R:R, cash, sector exposure, heat, quantities — "
+            "ONLY from TRADE_AI_FACTS. If missing, say DATA_UNAVAILABLE. Never say a field is "
+            "empty when TRADE_AI_FACTS carries it.\n"
+            "2b) Anything from general market history or theory (seasonality, election cycles, "
+            "sector rotation lore) must be prefixed 'General market history (model knowledge, not "
+            "Trade-AI data):' and kept to one short paragraph.\n"
+            "2c) If TRADE_AI_FACTS.research_status is present, repeat it verbatim as its own line.\n"
             "3) Never invent holdings or re-entry candidate dumps.\n"
             "4) Mention SOFT_GAPS briefly when relevant.\n"
             "5) Keep reply under ~900 chars; Telegram markdown ok (*bold*, `code`).\n"
@@ -759,6 +937,7 @@ def gather_tradeai_evidence(intent: dict[str, Any]) -> dict[str, Any]:
     if want_reentry:
         from scripts.lib.cio_telegram_converse import (
             format_reentry_purchase_reply,
+            format_reentry_symbol_reply,
             load_reentry_desk_rows,
             _row_levels,
         )
@@ -787,6 +966,17 @@ def gather_tradeai_evidence(intent: dict[str, Any]) -> dict[str, Any]:
                 for r in rows
                 if isinstance(r, dict) and r.get("symbol")
             }
+            # A question that NAMES a symbol is answered about that symbol -- its
+            # own row, gates, levels and held status -- never with the book dump.
+            if symbols:
+                held_map = _held_positions_map()
+                cards: dict[str, str] = {}
+                for sym in symbols[:6]:
+                    row = by_sym.get(sym)
+                    if row:
+                        cards[sym] = format_reentry_symbol_reply(row, holding=held_map.get(sym), computed_at=as_of)
+                if cards:
+                    available["reentry_symbol_cards"] = cards
             check_syms = symbols or [
                 str(r.get("symbol") or "").upper()
                 for r in rows
@@ -1237,6 +1427,66 @@ def _enqueue_hermes_research(
     return out
 
 
+
+def _with_sources_footer(text: str, evidence: dict[str, Any], curated: dict[str, Any]) -> str:
+    """Append one line naming what the answer drew on. Operator instruction
+    2026-09-13 18:58: "it needs to quote the source ... whatever elements it
+    returns it needs to give the elements" -- a reply must say whether a number
+    came from the Command Center's stores or from the model's general knowledge.
+    """
+    if not (text or "").strip():
+        return text
+    avail = evidence.get("available") or {}
+    labels: list[str] = []
+    seen: set[str] = set()
+
+    def add(label: str) -> None:
+        if label and label not in seen:
+            seen.add(label)
+            labels.append(label)
+
+    for src in evidence.get("sources") or []:
+        src_s = str(src)
+        if "reentry_decision_desk" in src_s:
+            as_of = str(avail.get("reentry_as_of") or "")[:16].replace("T", " ")
+            add(f"re-entry desk{(' · computed ' + as_of) if as_of else ''}")
+        elif src_s == "get_cio_snapshot":
+            parts = [k for k in ("cash", "sector_exposure", "risk", "investment_policy", "portfolio")
+                     if (avail.get("freeform_context") or {}).get(k)]
+            add("CIO snapshot" + (f" ({', '.join(parts)})" if parts else ""))
+        elif src_s.endswith("holdings.json"):
+            add("holdings.json")
+        elif "yahoo_analyst" in src_s:
+            add("yahoo_analyst_targets_history")
+        elif src_s.startswith("/") and src_s.endswith(".json"):
+            add(src_s.rsplit("/", 1)[-1])
+        else:
+            add(src_s)
+    if avail.get("reentry_symbol_cards") or avail.get("reentry_card"):
+        add("re-entry desk")
+    if avail.get("analyst_view"):
+        add("yahoo_analyst_targets_history")
+    if avail.get("hermes_research"):
+        add("hermes_research_intelligence")
+    csrc = str(curated.get("source") or "")
+    model = curated.get("model")
+    if csrc == "deepseek_flash" and (avail.get("freeform_context") is not None):
+        add(f"{model or 'DeepSeek Flash'} — general knowledge where labelled; numbers from the stores above")
+    elif csrc == "deepseek_flash":
+        add(f"{model or 'DeepSeek Flash'} — wording only; every number from the stores above")
+    elif csrc.startswith("gap_resolver"):
+        add(csrc)
+    if not labels:
+        return text
+    footer = "Sources: " + " · ".join(labels[:6])
+    body = text.rstrip()
+    if body.endswith("READ_ONLY_ADVISORY"):
+        head = body[: -len("READ_ONLY_ADVISORY")].rstrip()
+        tail_line = body[body.rfind("\n") + 1:] if "\n" in body else "READ_ONLY_ADVISORY"
+        return f"{head}\n{footer}\n{tail_line}"
+    return f"{body}\n{footer}"
+
+
 def _curate_from_evidence(operator_text: str, evidence: dict[str, Any]) -> dict[str, Any]:
     """Flash rewrites vetted facts only — fail-soft to raw card."""
     avail = evidence.get("available") or {}
@@ -1269,6 +1519,10 @@ def _curate_from_evidence(operator_text: str, evidence: dict[str, Any]) -> dict[
     )
 
     card = avail.get("reentry_card") or ""
+    sym_cards = avail.get("reentry_symbol_cards") or {}
+    if sym_cards:
+        # The operator named the symbol(s): answer about them, not the whole desk.
+        card = "\n\n".join(sym_cards[k] for k in sym_cards)
     book = avail.get("book") or ""
     risk = avail.get("risk")
     hermes = avail.get("hermes_research")
@@ -1317,7 +1571,7 @@ def _curate_from_evidence(operator_text: str, evidence: dict[str, Any]) -> dict[
     ready = re.findall(r"\*([A-Z]{1,5})\*", card) if card else []
     near = re.findall(r"`([A-Z]{1,5})`", card) if card else []
 
-    if card and _reentry_flash_enabled():
+    if card and not sym_cards and _reentry_flash_enabled():
         flash = curate_reentry_reply_with_flash(
             operator_text=operator_text,
             deterministic_reply=facts,
@@ -1533,6 +1787,7 @@ def handle_operator_desk_question(
             "model": None,
             "same_brain": True,
         }
+    intent.setdefault("text", text)
     evidence = gather_tradeai_evidence(intent)
     pending_id = f"opr_{uuid.uuid4().hex[:12]}"
 
@@ -1687,7 +1942,7 @@ def handle_operator_desk_question(
 
     curated = _curate_from_evidence(text, evidence)
     soft = [g for g in (evidence.get("gaps") or []) if g not in blocking]
-    text_out = curated.get("text") or ""
+    text_out = _with_sources_footer(curated.get("text") or "", evidence, curated)
     intent_name = str(intent.get("intent") or "")
 
     # Freeform: answer now; optionally soft-queue research gaps for named symbols

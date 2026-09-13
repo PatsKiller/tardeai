@@ -603,6 +603,9 @@ GATES = [
             # paid, receipted, with an ETA or an honest "no coverage".
             "tests/test_gap_resolver_20260913.py",
             "tests/test_gap_resolution_monitor_20260913.py",
+            # 2026-09-13 litmus tests: answers are symbol-scoped, drawn from house facts
+            # (cash/sectors/policy read from the snapshot), and carry a Sources line.
+            "tests/test_operator_answers_use_house_facts_20260913.py",
             # Phase 9: one write module per store; golden tests prove row shape and
             # subject GUID are identical to every legacy writer.
             "tests/test_sot_p9_symbol_profiles_writer.py",

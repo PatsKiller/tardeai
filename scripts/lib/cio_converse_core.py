@@ -384,7 +384,15 @@ def process_operator_message(
         return out
 
     # Desk facts + optional DeepSeek Flash polish (skip S0 template wall)
-    if looks_like_reentry_purchase_query(text):
+    # A question that names a symbol is the desk loop's to answer (its own row,
+    # gates, levels); the book-wide interceptor only serves "what's ready to buy".
+    _named = []
+    try:
+        from scripts.lib.cio_operator_desk_loop import _extract_symbols
+        _named = _extract_symbols(text)
+    except Exception:
+        _named = []
+    if looks_like_reentry_purchase_query(text) and not _named:
         ans = answer_reentry_purchase_query(text, use_flash=True)
         reply = ans.get("text") or format_reentry_purchase_reply()
         if channel == "whatsapp":
