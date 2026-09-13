@@ -20,8 +20,6 @@ PILLS = ROOT / "data" / "runtime" / "pro_analyst_pills_latest.json"
 for ln in (ROOT / ".env").read_text().splitlines():
     if "=" in ln and not ln.strip().startswith("#"):
         k, _, v = ln.partition("="); os.environ.setdefault(k.strip(), v.strip().strip("'\""))
-import psycopg2
-import psycopg2.extras
 sys.path.insert(0, str(ROOT / "scripts"))
 from lib.writers import watch_directives_writer as _wd  # noqa: E402  (the store's single write module)
 import directive_promotion as dp  # the real evaluation engine (governor → classify Bucket 2/3 → watchpool)
@@ -29,6 +27,10 @@ from research_critique_pipeline import is_removal_flagged, load_critique_snapsho
 
 
 def _db():
+    # Lazy: the source-only CI runner has no psycopg2, and the golden tests import
+    # this module with a fake cursor. Same pattern as data_plausibility_monitor.
+    import psycopg2
+    import psycopg2.extras
     return psycopg2.connect(host=os.getenv("DB_HOST", "localhost"), port=os.getenv("DB_PORT", "5432"),
                             dbname=os.getenv("DB_NAME", "trade_ai"), user=os.getenv("DB_USER", "trade_ai"),
                             password=os.getenv("DB_PASSWORD"), cursor_factory=psycopg2.extras.RealDictCursor)
