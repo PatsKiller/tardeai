@@ -38,14 +38,21 @@ def test_g4_schema_declares_required_manifest_fields():
     assert "ORPHANED" in doc["allowed_verdicts"]
 
 
-def test_g4_committed_manifest_is_empty_and_valid():
-    """WAVE G4: build mechanism; archive nothing."""
+def test_g4_committed_manifest_is_valid_and_every_archived_file_has_a_row():
+    """WAVE G4 built the mechanism and archived nothing; the first batch was
+    operator-only. That batch landed 2026-09-13 (One Source of Truth, Phase 2,
+    operator-approved): polygon_source.py, retired with a manifest row. The
+    invariant now is not "empty" but "every file under archive/ is declared,
+    every row validates, and nothing live reads any of it".
+    """
     data = mech.load_manifest(ROOT / "archive" / "ARCHIVE_MANIFEST.json")
     assert data["schema"] == "ArchiveManifest@v1"
-    assert data["items"] == []
     assert mech.validate_manifest(data) == []
-    assert mech.archived_paths_on_disk(ROOT / "archive") == []
-    assert mech.effective_archived_paths(data, root=ROOT) == []
+    on_disk = set(mech.archived_paths_on_disk(ROOT / "archive"))
+    declared = set(mech.archived_paths_from_manifest(data))
+    assert on_disk == declared, f"undeclared or missing archived files: {on_disk ^ declared}"
+    assert "archive/retired_providers_20260913/discovery_sources/polygon_source.py" in declared
+    assert set(mech.effective_archived_paths(data, root=ROOT)) == declared
 
 
 def test_g4_tripwire_quiet_when_nothing_archived():
@@ -157,11 +164,11 @@ def test_g4_tripwire_raises_on_read_of_archived_path(tmp_path: Path):
     assert any(h.kind in {"read", "path_literal"} for h in hits)
 
 
-def test_g4_report_marks_archived_nothing_on_empty_tree():
+def test_g4_report_is_quiet_with_the_first_operator_approved_batch():
     report = mech.build_report(root=ROOT)
-    assert report["item_count"] == 0
+    assert report["item_count"] == 1
     assert report["trip_count"] == 0
-    assert report["archived_nothing"] is True
+    assert report["archived_nothing"] is False
     assert report["validation_errors"] == []
 
 
