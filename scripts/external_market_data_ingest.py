@@ -244,17 +244,15 @@ def ingest_quotes(symbols: list = None) -> dict:
     total = a.get("fetched", 0) + fv.get("fetched", 0) + yf.get("fetched", 0)
     print(f"[quotes] {total}/{len(symbols)} (alpaca {a.get('fetched', 0)} + finviz {fv.get('fetched', 0)} + yf {yf.get('fetched', 0)})")
 
-    # yahoo_finance is a LAST-RESORT fallback. When Alpaca (+ Finviz) price the whole
-    # universe, yfinance never runs, so its data_source_health marker never updates and
-    # the health agent reports it stale (183h) — a monitoring false-positive, not an
-    # outage. Mark it healthy/covered here so liveness reflects reality. When yfinance
-    # DID run, ingest_yfinance_quotes() already reported its own ok/error state.
-    if not miss2:
-        try:
-            from lib.data_source_report import report_source
-            report_source("yahoo_finance", True, rows=None, error=None)
-        except Exception:
-            pass
+    # 2026-09-13 (Phase 3, "a health ledger that cannot lie"): this used to write
+    # report_source("yahoo_finance", True) when yfinance had NOT run, so that Alpaca
+    # covering the universe would not read as a yahoo_finance stall. That is a
+    # success recorded for a call that never happened -- exactly the kind of entry
+    # the ledger may not hold. The stall it papered over is now handled on the read
+    # side: the decay view gives yahoo_finance a 168h window (yfinance domains in
+    # config/data_source_authority.json) and pro_analyst_fetch.py (06:10 daily)
+    # reports the real daily yfinance call. When yfinance DID run above,
+    # ingest_yfinance_quotes() reported its own ok/error state.
 
     return {"alpaca": a.get("fetched", 0), "finviz": fv.get("fetched", 0), "yfinance": yf.get("fetched", 0),
             "fetched": total, "total": len(symbols)}
@@ -321,9 +319,18 @@ def ingest_alpha_vantage(symbols: list = None, limit: int = 5) -> dict:
             print(f"  [av] {sym}: {len([v for v in metrics.values() if v and v != 'None'])} metrics")
         except Exception as e:
             print(f"  [av] {sym}: {e}")
+            last_exc = str(e)[:160]
 
     conn.commit()
     conn.close()
+    # Liveness (2026-09-13): the alpha_vantage health row read 'unknown' forever
+    # because this lane never reported. Scheduled: cron `0 8 * * 1` (--fundamentals).
+    try:
+        from lib.data_source_report import report_source
+        report_source("alpha_vantage", fetched > 0, rows=fetched,
+                      error=None if fetched else (locals().get("last_exc") or f"0/{len(symbols[:limit])} symbols fetched"))
+    except Exception:
+        pass
     return {"source": "alpha_vantage", "fetched": fetched}
 
 
@@ -415,9 +422,18 @@ def ingest_av_news_sentiment(symbols: list = None, limit: int = 10) -> dict:
 
         except Exception as e:
             print(f"  [av-news] {sym}: {e}")
+            last_exc = str(e)[:160]
 
     conn.commit()
     conn.close()
+    # Liveness (2026-09-13): same provider, same key ('alpha_vantage'). Not on a
+    # schedule today (--news-sentiment / --all only); reports when it runs.
+    try:
+        from lib.data_source_report import report_source
+        report_source("alpha_vantage", fetched > 0, rows=articles_stored,
+                      error=None if fetched else (locals().get("last_exc") or "0 symbols fetched"))
+    except Exception:
+        pass
     return {"source": "av_news_sentiment", "symbols": fetched, "articles": articles_stored}
 
 
@@ -469,9 +485,19 @@ def ingest_fred() -> dict:
                     print(f"  [fred] {series_id}: {val} ({obs_date})")
         except Exception as e:
             print(f"  [fred] {series_id}: {e}")
+            last_exc = str(e)[:160]
 
     conn.commit()
     conn.close()
+    # Liveness (2026-09-13): the fred health row read 'unknown' forever because
+    # this lane never reported. Scheduled: cron `15 6 * * *` via
+    # scripts/fred_data_ingest.py --ingest, which calls this function.
+    try:
+        from lib.data_source_report import report_source
+        report_source("fred", fetched > 0, rows=fetched,
+                      error=None if fetched else (locals().get("last_exc") or f"0/{len(FRED_SERIES)} series fetched"))
+    except Exception:
+        pass
     return {"source": "fred", "fetched": fetched}
 
 

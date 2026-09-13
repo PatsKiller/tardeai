@@ -71,6 +71,16 @@
     },
 
     {
+      "table": "analyst_data_history",
+      "column": "payload",
+      "rule": "required_fields",
+      "window_column": "as_of",
+      "window_days": 30,
+      "max_empty_pct": 50.0,
+      "severity": "BLOCK",
+      "_why": "EMPTY PAYLOADS THAT LOOK FRESH: 18,772 rows since 2026-08-01 carry payload = {}. Every row has a current as_of, so every freshness check read the table as live while it held nothing. A range rule cannot see this -- there is no value to be off-scale -- so this rule counts payloads that say nothing ({} / null / []) inside the window and fails when they are the majority. 50% is deliberately loose: a symbol with no analyst coverage legitimately yields an empty fetch, but not most of them, every day, for six weeks. analyst_data_history is a RETIRED store in config/data_source_authority.json (analyst_opinion.retired_stores); the contract is here so the rows it is still accumulating are measured, not assumed."
+    },
+    {
       "table": "incubator_universe",
       "column": "llm_screen_confidence",
       "rule": "range",

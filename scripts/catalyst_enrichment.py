@@ -162,6 +162,18 @@ def _recency_multiplier(tier: str) -> float:
 
 # ── Per-API fetchers ─────────────────────────────────────────────────────────
 
+def _report_alpha_vantage(ok: bool, rows=None, error=None) -> None:
+    """Liveness for the 'alpha_vantage' health row (2026-09-13). Only reached after a
+    real HTTP call -- the budget/flag/key early-returns above say nothing about the
+    provider. This fetcher is flag-gated (ENABLE_ALPHA_VANTAGE_CATALYST) and on-demand,
+    not scheduled. Never raises."""
+    try:
+        from lib.data_source_report import report_source
+        report_source("alpha_vantage", ok, rows=rows, error=error)
+    except Exception:
+        pass
+
+
 def _fetch_alpha_vantage(symbol: str) -> List[Dict]:
     try:
         from api_budget import spend as _ab_spend
@@ -186,8 +198,13 @@ def _fetch_alpha_vantage(symbol: str) -> List[Dict]:
             "apikey": key,
         }
         resp = requests.get(url, params=params, timeout=(5, 8))
-        resp.raise_for_status()
+        try:
+            resp.raise_for_status()
+        except Exception as http_exc:
+            _report_alpha_vantage(False, error=f"HTTP {resp.status_code}: {str(http_exc)[:120]}")
+            raise
         items = resp.json().get("feed", [])
+        _report_alpha_vantage(True, rows=len(items))
         results = []
         for item in items:
             raw_time = item.get("time_published", "")

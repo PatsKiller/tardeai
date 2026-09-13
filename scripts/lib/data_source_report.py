@@ -38,8 +38,14 @@ def _own_conn():
 
 def report_source(source_key: str, ok: bool, rows: int | None = None,
                   error: str | None = None) -> None:
-    """Record one source run. Never raises; never touches the caller's transaction."""
+    """Record one source run. Never raises; never touches the caller's transaction.
+
+    DATA_SOURCE_REPORT_DISABLED=1 makes this a no-op -- for dry runs and for any
+    process that must not write the ledger (a CI runner, a worktree test).
+    """
     global _conn
+    if os.getenv("DATA_SOURCE_REPORT_DISABLED", "") == "1":
+        return
     try:
         now = time.time()
         if ok and now - _last_ok.get(source_key, 0.0) < OK_MIN_INTERVAL_S:

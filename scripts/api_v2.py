@@ -36044,7 +36044,48 @@ def _data_source_health(query=None):
         "SELECT max(updated_at), count(*) FROM symbol_profiles WHERE updated_at > now() - interval '48 hours'",
         48,
     )
-    order = {"dead": 0, "error": 1, "stale": 2, "slow": 3, "live": 4}
+    # The data_source_health LEDGER (what report_source() writes), through the
+    # DECAY view (2026-09-13, AGENTS.md §7A rule 6). The raw status column said
+    # "healthy" for yahoo_finance on a 20-day-old success; nothing downstream
+    # may see that. Each ledger row carries the effective status plus
+    # decayed/age_minutes/window_minutes so the reader can see the raw claim
+    # and why it was overruled.
+    ledger = []
+    try:
+        from lib.data_source_health_view import load_registry as _dsv_registry, view_rows as _dsv_rows
+
+        _ledger_raw = (
+            _db_query(
+                "SELECT source_key, status, last_success_at, last_failure_at, last_row_count, "
+                "failure_count, last_error, degraded, max_stale_minutes, updated_at "
+                "FROM data_source_health ORDER BY source_key"
+            )
+            or []
+        )
+        for lr in _dsv_rows(_ledger_raw, datetime.now(timezone.utc), _dsv_registry()):
+            row = {k: _json_clean(v) for k, v in lr.items()}
+            ledger.append(row)
+            out.append(
+                {
+                    "source": f"ledger:{row['source_key']}",
+                    "category": "ingest_ledger",
+                    "last_update": row.get("last_success_at"),
+                    "age_hours": (round(row["age_minutes"] / 60.0, 1) if row.get("age_minutes") is not None else None),
+                    "recent_count": row.get("last_row_count"),
+                    "expected_fresh_h": round(float(row.get("window_minutes") or 0) / 60.0, 2),
+                    # effective vocabulary: healthy | error | unknown (never the raw column)
+                    "status": row["status"],
+                    "raw_status": row.get("raw_status"),
+                    "decayed": bool(row.get("decayed")),
+                    "age_minutes": row.get("age_minutes"),
+                    "scheduled_caller": bool(row.get("scheduled_caller")),
+                    "last_error": (row.get("last_error") or "")[:120] or None,
+                }
+            )
+    except Exception as e:
+        out.append({"source": "ledger:data_source_health", "category": "ingest_ledger", "status": "error", "error": str(e)[:80]})
+
+    order = {"dead": 0, "error": 1, "stale": 2, "unknown": 2, "slow": 3, "live": 4, "healthy": 4}
     out.sort(key=lambda x: order.get(x.get("status"), 9))
     counts = {}
     for o in out:
@@ -36053,6 +36094,8 @@ def _data_source_health(query=None):
         "ok": True,
         "as_of": now_iso.isoformat(),
         "sources": out,
+        "ledger": ledger,
+        "ledger_view": "DataSourceHealthView@v1",
         "summary": counts,
         "total": len(out),
         "note": "Per-source freshness vs expected cadence. status: live=within cadence, slow=1-2x late, "
@@ -58440,7 +58483,13 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             """)
                 or []
             )
-            return 200, {"ok": True, "data": [{k: _json_clean(v) for k, v in r.items()} for r in rows]}
+            # DECAY view (2026-09-13): `status` is the EFFECTIVE status; the raw
+            # column is returned as `raw_status`. See lib/data_source_health_view.
+            from lib.data_source_health_view import load_registry as _dsv_registry, view_rows as _dsv_rows
+
+            rows = _dsv_rows(rows, datetime.now(timezone.utc), _dsv_registry())
+            return 200, {"ok": True, "view": "DataSourceHealthView@v1",
+                         "data": [{k: _json_clean(v) for k, v in r.items()} for r in rows]}
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
 
