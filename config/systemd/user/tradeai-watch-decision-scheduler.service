@@ -1,0 +1,16 @@
+[Unit]
+Description=Trade AI watch decision scheduler (LOCAL_QUANT tickets + free critics)
+After=network-online.target
+
+[Service]
+Type=oneshot
+# Live timers run from v12-rebuild (same tree as health_agent cron)
+WorkingDirectory=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild
+Environment=PATH=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin:/usr/bin:/bin
+Environment=PYTHONPATH=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts
+ExecStart=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/watch_decision_scheduler.py --run
+TimeoutStartSec=180
+Nice=10
+
+[Install]
+WantedBy=default.target
