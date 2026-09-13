@@ -195,10 +195,10 @@ def _alert(results: list[dict], blocking: list[dict]) -> None:
 
     if not fingerprint:
         body = (
-            "✅ Data plausibility: all declared columns now satisfy their "
+            "[DATA_INTEGRITY] ✅ Data plausibility: all declared columns now satisfy their "
             "contracts.\n\nPreviously violating: " + ", ".join(previous)
             if previous
-            else "✅ Data plausibility: all declared columns satisfy their contracts."
+            else "[DATA_INTEGRITY] ✅ Data plausibility: all declared columns satisfy their contracts."
         )
     else:
         # A column that starts violating is a live integrity breach and earns an
@@ -208,10 +208,12 @@ def _alert(results: list[dict], blocking: list[dict]) -> None:
         # NEWLY violating column gets it.
         newly = [k for k in fingerprint if k not in previous]
         lines = [
+            # See the note in check_expected_services._alert: the sentinel, not
+            # the wording, is what routes this immediately.
             (
-                "🚨 CRITICAL — data plausibility: a new column is off its declared scale"
+                "[DATA_INTEGRITY] 🚨 A new column is off its declared scale"
                 if newly
-                else "🚨 Data plausibility — declared scale violated"
+                else "[DATA_INTEGRITY] 🚨 Data plausibility — declared scale violated"
             ),
             "",
             "A value off its declared scale is not a rounding problem. The Finviz",

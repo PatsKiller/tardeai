@@ -560,6 +560,15 @@ GATES = [
             # which is what health_agent uses -- is structurally incapable of
             # seeing it. cio-telegram sat disabled five days.
             "tests/test_expected_services_20260913.py",
+            # "CRITICAL" in the body was decorative: telegram_alert_router
+            # consults operator_alert_policy_v2 FIRST and returns on its
+            # verdict, so _P0_PATTERNS never ran. Availability and integrity
+            # alerts now interrupt, keyed on a sentinel rather than prose.
+            "tests/test_immediate_availability_alerts_20260913.py",
+            # A retention policy that errors is a policy NOT being enforced.
+            # db_retention printed ERROR and exited 0, so two tables had been
+            # failing their FK deletes on every run, unpruned and unreported.
+            "tests/test_db_retention_reports_failures_20260913.py",
             # Off UNLISTED_BASELINE at last. The ONLY coverage of
             # cio_run_worker._check_health, and its fakes are what hid CL-61.
             "tests/test_p26_shadow_autonomy.py",
