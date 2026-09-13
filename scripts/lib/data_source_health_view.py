@@ -185,15 +185,37 @@ def provider_for(source_key: str) -> str:
     return SOURCE_KEY_ALIASES.get(key, key)
 
 
-def window_minutes_for(source_key: str, registry: Optional[dict[str, Any]]) -> int:
-    """Smallest stale_after_hours over domains whose primary_provider is this
-    source's provider, in minutes; DEFAULT_WINDOW_MINUTES when none declares one."""
+def market_is_closed(now: Optional[datetime] = None) -> Optional[bool]:
+    """True/False from the shared market-session helper; None when it cannot say
+    (then the stricter open-market window applies)."""
+    try:
+        from market_session import is_market_open  # scripts/market_session.py
+    except Exception:  # noqa: BLE001
+        return None
+    try:
+        return not bool(is_market_open(now))
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def window_minutes_for(source_key: str, registry: Optional[dict[str, Any]], *,
+                       market_closed: Optional[bool] = None) -> int:
+    """Smallest stale window over domains whose primary_provider is this source's
+    provider, in minutes; DEFAULT_WINDOW_MINUTES when none declares one.
+
+    When the market is closed and a domain declares ``stale_after_hours_closed``
+    (quote_price: 0.25h open, 72h closed), the closed window is used for that
+    domain. Phase 8, 2026-09-13: a 15-minute quote window measured on a Sunday
+    evening is not staleness, it is the weekend.
+    """
     provider = provider_for(source_key)
     hours: list[float] = []
     for d in (registry or {}).get("domains") or []:
         if str(d.get("primary_provider") or "") != provider:
             continue
         h = d.get("stale_after_hours")
+        if market_closed and d.get("stale_after_hours_closed") is not None:
+            h = d.get("stale_after_hours_closed")
         if h is None:
             continue
         try:
@@ -276,7 +298,8 @@ def view_row(row: dict[str, Any], now: datetime, registry: Optional[dict[str, An
     REPLACED by the effective status, plus `raw_status`, `decayed`, `age_minutes`,
     `window_minutes`, `scheduled_caller`."""
     key = str(row.get("source_key") or "")
-    win = int(window_minutes) if window_minutes is not None else window_minutes_for(key, registry)
+    closed = market_is_closed(now)
+    win = int(window_minutes) if window_minutes is not None else window_minutes_for(key, registry, market_closed=closed)
     wk = weekday_only_for(key)
     eff = effective_status(row, now, win, weekday_only=wk)
     raw = str(row.get("status") or UNKNOWN)
@@ -292,6 +315,7 @@ def view_row(row: dict[str, Any], now: datetime, registry: Optional[dict[str, An
             "age_minutes": None if age is None else round(age, 1),
             "window_minutes": win,
             "weekday_clock": wk,
+            "market_closed": closed,
             "scheduled_caller": has_scheduled_caller(key),
         }
     )

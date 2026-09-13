@@ -149,11 +149,39 @@ def test_view_row_uses_the_weekday_clock_and_says_so():
     assert v["status"] == "healthy" and v["decayed"] is False
 
 
+# ── the closed-market window ─────────────────────────────────────────────────
+
+
+def test_the_quote_window_is_15_minutes_open_and_72_hours_closed():
+    assert dsv.window_minutes_for("alpaca", REGISTRY, market_closed=False) == 15
+    assert dsv.window_minutes_for("alpaca", REGISTRY, market_closed=True) == 72 * H
+    # a domain with no closed window keeps its one window either way
+    assert dsv.window_minutes_for("yahoo_finance", REGISTRY, market_closed=True) == 168 * H
+
+
+def test_a_friday_close_quote_is_healthy_on_sunday_when_the_market_is_closed(monkeypatch):
+    monkeypatch.setattr(dsv, "market_is_closed", lambda now=None: True)
+    row = {"source_key": "alpaca", "status": "healthy", "last_success_at": FRI_17, "last_failure_at": None}
+    v = dsv.view_row(row, SUN_20, REGISTRY)
+    assert v["market_closed"] is True and v["window_minutes"] == 72 * H
+    assert v["status"] == "healthy"
+    # negative control: with the market open the 15-minute window applies and the row has decayed
+    monkeypatch.setattr(dsv, "market_is_closed", lambda now=None: False)
+    v2 = dsv.view_row(row, SUN_20, REGISTRY)
+    assert v2["window_minutes"] == 15 and v2["status"] == "unknown" and v2["decayed"] is True
+
+
+def test_when_the_session_helper_cannot_say_the_stricter_open_window_applies(monkeypatch):
+    monkeypatch.setattr(dsv, "market_is_closed", lambda now=None: None)
+    row = {"source_key": "alpaca", "status": "healthy", "last_success_at": FRI_17, "last_failure_at": None}
+    assert dsv.view_row(row, SUN_20, REGISTRY)["window_minutes"] == 15
+
+
 # ── the window comes from the registry ───────────────────────────────────────
 
 
 def test_windows_are_read_from_the_authority_registry():
-    assert dsv.window_minutes_for("finviz", REGISTRY) == 12 * H, "catalyst_news 12h is the strictest finviz domain"
+    assert dsv.window_minutes_for("finviz", REGISTRY) == 18 * H, "catalyst_news 18h (1.5x its 12h cadence gap) is the strictest finviz domain"
     assert dsv.window_minutes_for("alpaca", REGISTRY) == 15, "quote_price 0.25h"
     assert dsv.window_minutes_for("yahoo_finance", REGISTRY) == 168 * H
 
