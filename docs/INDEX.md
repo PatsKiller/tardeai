@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `a8f3526c31c6f7ff5e648c15bd6b0e31bda6a6d91afb978a67e0da4e39edcf63`
+**Tree fingerprint:** `01245bb0110eca726f53151f6623bf7108837bf88f815658de2a45a83a6427a0`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,10 +12,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2492 |
-| Markdown (excl. this INDEX) | 2069 |
+| Files under `docs/` (excl. this INDEX) | 2494 |
+| Markdown (excl. this INDEX) | 2070 |
 | **MISSING HEADER** | **61** |
-| Header OK | 2008 |
+| Header OK | 2009 |
 | Duplicate groups | 2 |
 
 ### By status_guess
@@ -28,7 +28,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_raw_sync | 36 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 2 |
-| review_required | 2121 |
+| review_required | 2123 |
 
 ## Markdown tree
 
@@ -66,6 +66,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/FINANCIAL_RECONCILIATION.md` | Financial reconciliation and record-level migration | review_required | MISSING HEADER | `67a3455d1e52` |
 | `docs/FINVIZ_INTEGRATION_AND_DATA_SOURCE_MONITORING.md` | Finviz Integration + Data-Source Health Monitoring | review_required | OK | `d2c64a1e13d9` |
 | `docs/FINVIZ_SOURCE_AUTHORITY.md` | Finviz Source Authority & Phase 0 Reconciliation | review_required | OK | `93533d98e174` |
+| `docs/GAP_RESOLUTION.md` | Gap Resolution — when the answer is stale or missing, go find out | review_required | OK | `81e848563058` |
 | `docs/GIT_HYGIENE.md` | Git Hygiene — protect the live primary tree (2026-07-01) | review_required | OK | `bb52d4d23b64` |
 | `docs/GPU_OLLAMA_SETUP.md` | Intel Arc B50: Trade AI Runtime Status | review_required | OK | `8c1dff864802` |
 | `docs/HEALTH_AGENT.md` | Health Agent + Multi-Coder Auto-Fix | review_required | OK | `f148baa2203c` |
@@ -107,7 +108,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/RESEARCH_TOPIC_REGISTRY_2026_06_04.md` | Research Topic Registry — 2026-06-04 | review_required | OK | `f51d95275ab4` |
 | `docs/RESTORE_GUIDE.md` | Trade AI v12 — Restore Guide | active_keep | OK | `e75090b6bb16` |
 | `docs/SCHWAB_AUTO_REAUTH.md` | Schwab OAuth Reauth (manual-first) | review_required | OK | `039c557e4214` |
-| `docs/SOURCE_OF_TRUTH.md` | Source of Truth — one declaration per domain | review_required | MISSING HEADER | `872c289dc464` |
+| `docs/SOURCE_OF_TRUTH.md` | Source of Truth — one declaration per domain | review_required | MISSING HEADER | `bb961ca10f0a` |
 | `docs/STOP_METHODOLOGY.md` | Stop & Trailing-Stop Methodology (canonical) | review_required | OK | `5b9791931edc` |
 | `docs/STOP_SYSTEM_GAP_REPORT.md` | Trade AI v12 — Stop System Alignment / Gap Report | review_required | OK | `12d1dfe39ffb` |
 | `docs/STRATEGY_MONITORING_20260626.md` | Strategy & Monitoring — Audit Remediation (2026-06-26) | review_required | OK | `4655d328251e` |

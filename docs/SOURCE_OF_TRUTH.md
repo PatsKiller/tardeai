@@ -14,6 +14,7 @@ One source of truth per domain. For five months Performance (10 Years) was store
 5. A retired provider has zero call sites outside scripts/lib/retired_providers.py and the secret-hygiene scanners.
 6. A provider that stops reporting decays to unknown in data_source_health; healthy means succeeded within its window.
 7. Adding a source: add it here first (domain, store, writer, projection, backup, retired) and to AGENTS.md section 7B in the same PR. The gate fails on an undeclared provider host or SDK import.
+8. Every domain declares on_gap: the ordered, budgeted vectors the gap resolver may run when the store is stale or empty. Free before metered before paid; operator_ask last; retired providers never.
 
 ## Where every served store lives
 

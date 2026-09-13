@@ -599,6 +599,10 @@ GATES = [
             "tests/test_catalyst_news_search_backup.py",
             "tests/test_account_state_classifier.py",
             "tests/test_account_state_read_path.py",
+            # Phase 7: a stale or missing answer walks declared vectors, free before
+            # paid, receipted, with an ETA or an honest "no coverage".
+            "tests/test_gap_resolver_20260913.py",
+            "tests/test_gap_resolution_monitor_20260913.py",
             # Off UNLISTED_BASELINE at last. The ONLY coverage of
             # cio_run_worker._check_health, and its fakes are what hid CL-61.
             "tests/test_p26_shadow_autonomy.py",

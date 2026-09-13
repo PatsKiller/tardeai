@@ -73,6 +73,24 @@ def _all_fakes(**overrides) -> dict[str, _Fake]:
     return fakes
 
 
+@pytest.fixture(autouse=True)
+def _default_chain_unless_a_test_declares_one(monkeypatch):
+    """These tests prove the resolver's semantics against DEFAULT_ON_GAP. Since
+    integration the live registry declares a chain per domain (e.g.
+    analyst_opinion has no hermes_research slot), so a test that reads the live
+    file would be testing the operator's chain, not the resolver. A test that
+    passes its own ``authority=`` still gets exactly what it declared."""
+    real = gr.registry_domain
+
+    def patched(domain, *, authority=None):
+        row = dict(real(domain, authority=authority) or {})
+        if authority is None:
+            row.pop("on_gap", None)
+        return row
+
+    monkeypatch.setattr(gr, "registry_domain", patched)
+
+
 @pytest.fixture
 def ctx(tmp_path):
     return gr.Context(now=lambda: NOW, receipts_path=tmp_path / "receipts.jsonl", live=False)
@@ -147,12 +165,18 @@ def test_load_on_gap_reads_the_registry_key_and_falls_back_to_the_default():
     assert [c["vector"] for c in fallback] == [c["vector"] for c in gr.DEFAULT_ON_GAP]
 
 
-def test_the_proposed_registry_patch_covers_every_domain_and_only_declared_vectors():
+def test_the_registry_declares_a_valid_on_gap_chain_for_every_domain():
+    """The Phase 7 patch was applied at integration (2026-09-13); the registry is
+    now the source. Every domain carries on_gap; every step names a declared
+    vector and cost class; operator_ask is last; the chain is already in rail
+    order. The patch file must still be a subset of what the registry says."""
     patch = json.loads((ROOT / "docs/implementation/sot/phase7_registry_patch.json").read_text())
     auth = json.loads((ROOT / "config/data_source_authority.json").read_text())
-    assert set(patch["domains_on_gap"]) == {d["domain"] for d in auth["domains"]}
-    for dom, spec in patch["domains_on_gap"].items():
-        chain = spec["on_gap"]
+    domains = {d["domain"]: d for d in auth["domains"]}
+    assert set(patch["domains_on_gap"]) <= set(domains)
+    for dom, row in domains.items():
+        assert "on_gap" in row, f"{dom}: no on_gap declared"
+        chain = row["on_gap"]
         for c in chain:
             assert c["vector"] in gr.VECTORS, (dom, c)
             assert c["cost_class"] in gr.COST_CLASSES, (dom, c)

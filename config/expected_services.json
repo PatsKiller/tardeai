@@ -195,6 +195,10 @@
     {
       "unit": "tradeai-data-source-health.timer",
       "_why": "One Source of Truth monitor (2026-09-13). A monitor that is off is the silent failure this file exists to catch."
+    },
+    {
+      "unit": "tradeai-gap-resolution.timer",
+      "_why": "One Source of Truth Phase 7 monitor (2026-09-13): gaps open >2h with no attempt, vectors failing, any vector that ran a retired provider."
     }
   ],
   "flags": [
