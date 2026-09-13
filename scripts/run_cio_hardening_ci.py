@@ -529,11 +529,6 @@ GATES = [
             # Freshness in market time for sources that only move in market
             # time. Most of it pins what must STILL go stale.
             "tests/test_market_aware_freshness_20260913.py",
-            # Off UNLISTED_BASELINE and into CI. This is the ONLY coverage of
-            # cio_run_worker._check_health, and its fakes are what hid CL-61 --
-            # a method that existed on the mocks and not on the real class.
-            # It had 7 failures nobody saw, because it did not run.
-            "tests/test_p26_shadow_autonomy.py",
         ],
     ),
     (

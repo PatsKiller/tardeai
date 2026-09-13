@@ -150,69 +150,6 @@ def _block_cio_wake_trace_production_writes(monkeypatch, tmp_path_factory):
     monkeypatch.setattr(cio_wake_traces, "DEFAULT_TRACE_PATH", isolated)
 
 
-@pytest.fixture(autouse=True)
-def _block_data_broker_snapshot_production_writes(monkeypatch, tmp_path_factory):
-    """Keep data_broker snapshot caches out of the repository tree.
-
-    Same discovery as _block_cio_wake_trace_production_writes: with the p26 suite
-    back in CI, a run left ``state/data_broker/portfolio_snapshot.json`` behind in
-    the repo. `state/` is gitignored, so the write is invisible to `git status`
-    and leaves no trace locally -- but on a fresh CI clone the suite CREATES that
-    tree, and a later gate reads a store that only exists because a test put it
-    there.
-
-    The modules resolve SNAPSHOT_DIR at import time from PROJECT_ROOT with no
-    override, so this rebinds the attribute on each of them. Missing modules are
-    skipped rather than asserted: this is a containment fixture, and it must not
-    turn an unrelated import problem into a failure in every test.
-    """
-    isolated = tmp_path_factory.mktemp("data_broker_state")
-    for mod_name in (
-        "cio_portfolio",
-        "portfolio_snapshot",
-        "risk_snapshot",
-        "indicator_snapshot",
-        "indicator_refresh",
-        "sector_momentum",
-        "rotation_ladders",
-        "strategy_desk",
-    ):
-        # BOTH import identities must be patched. scripts/ is on sys.path, so
-        # `scripts.lib.data_broker.x` and `lib.data_broker.x` are two DISTINCT
-        # module objects (verified: `a is b` -> False) with their own copies of
-        # these constants. Production code reaches the `lib.` one; patching only
-        # the `scripts.` one leaves the real writer pointed at the repo, which is
-        # why the first two versions of this fixture looked correct and changed
-        # nothing.
-        mods = []
-        for prefix in ("scripts.lib.data_broker", "lib.data_broker"):
-            try:
-                mods.append(
-                    __import__(f"{prefix}.{mod_name}", fromlist=["SNAPSHOT_DIR"])
-                )
-            except Exception:  # noqa: BLE001 - containment, never a new failure
-                continue
-        for mod in mods:
-            _isolate_snapshot_paths(mod, isolated, monkeypatch)
-
-
-def _isolate_snapshot_paths(mod, isolated, monkeypatch):
-    """Rebind a data_broker module's snapshot constants into a tmp dir.
-
-    Both the directory AND any precomputed file path must be rebound. Several
-    modules resolve a full path at import time -- portfolio_snapshot.py line 42
-    is `SNAPSHOT_PATH = SNAPSHOT_DIR / "portfolio_snapshot.json"` -- so moving
-    the directory alone leaves the already-resolved path aimed at the repo,
-    which is what the first version of this fixture missed.
-    """
-    if hasattr(mod, "SNAPSHOT_DIR"):
-        monkeypatch.setattr(mod, "SNAPSHOT_DIR", isolated)
-    for attr in ("SNAPSHOT_PATH", "ROTATION_LADDERS_CACHE"):
-        current = getattr(mod, attr, None)
-        if current is not None:
-            monkeypatch.setattr(mod, attr, isolated / Path(current).name)
-
-
 # ── C1 alarm-firing capture ──────────────────────────────────────────────────
 # An alarm that has never been observed firing is indistinguishable from no alarm.
 # Capture happens at the REAL transport boundary, telegram_transport.send_message,
