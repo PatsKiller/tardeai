@@ -46,10 +46,11 @@ from __future__ import annotations
 
 import argparse
 import json
+from typing import Optional
 import os
 import re
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -60,6 +61,7 @@ from lib.data_source_health_view import (  # noqa: E402
     SCHEDULED_CALLERS,
     load_registry,
     not_healthy_with_scheduled_caller,
+    provider_for,
     view_rows,
 )
 
@@ -245,6 +247,166 @@ def main() -> int:
     return 1 if off else 0
 
 
+# ── operator-facing copy ──────────────────────────────────────────────────────
+# The first version of this alert printed cron strings and script paths. The
+# operator's reply (2026-09-13 18:32): "what does this mean to me ... what
+# actions do I need to take, who do I need to escalate it to". An alert that
+# needs a translator is not an alert. Every source now gets: what it feeds, what
+# is wrong in one sentence, whether it heals itself and when, and an Action line.
+# The machine detail survives in a trailing "Details" block for the engineer.
+
+_SUPPLY_WORDS = {
+    "quotes": "live quotes", "bars": "price bars", "paper_execution": "paper trading",
+    "positions": "account positions", "option_chain": "option chains", "stream_quotes": "streaming quotes",
+    "instruments": "instrument master", "profiles": "symbol profiles", "quote_backup": "backup quotes",
+    "prices": "daily prices", "technicals": "technicals", "earnings": "earnings dates",
+    "analyst_on_demand": "on-demand analyst pulls", "analyst_targets": "analyst targets and consensus",
+    "vix": "VIX / market regime", "news_feed": "news headlines", "screeners": "Finviz screens",
+    "enrichment": "symbol enrichment", "industry_groups": "industry momentum", "sector_perf": "sector performance",
+    "news": "catalyst news", "form4": "insider filings (Form 4)", "filings": "SEC filings",
+    "macro": "macro series (rates, CPI, jobs)", "fundamentals": "company fundamentals",
+    "web_search": "governed web research", "inference": "model inference", "sentiment": "social sentiment",
+}
+_SOURCE_WORDS = {
+    "youtube_api": "YouTube transcript discovery", "sec_edgar": "SEC filings and insider activity",
+    "social": "social sentiment sync", "hermes_social": "Hermes social sentiment", "social_scalp": "scalp social signals",
+    "incubator": "screener incubator", "news_catalyst": "catalyst news discovery", "yahoo_movers": "market movers",
+    "research_discovery": "research candidate discovery", "finviz": "Finviz screens and enrichment",
+    "brave_search": "governed web research (Brave)", "yahoo_finance": "analyst targets, VIX and Yahoo feeds",
+    "fred": "macro series (rates, CPI, jobs)", "alpha_vantage": "company fundamentals (weekly)",
+}
+
+
+def what_it_feeds(source_key: str, registry: Optional[dict] = None) -> str:
+    """One plain phrase for what the operator loses if this source is down."""
+    key = str(source_key or "")
+    if key in _SOURCE_WORDS:
+        return _SOURCE_WORDS[key]
+    reg = registry if registry is not None else load_registry()
+    prov = (reg.get("providers") or {}).get(provider_for(key)) or {}
+    words = [_SUPPLY_WORDS.get(w, w.replace("_", " ")) for w in (prov.get("supplies") or [])]
+    return ", ".join(words[:3]) if words else key
+
+
+def _cron_field_matches(field: str, value: int, lo: int, hi: int) -> bool:
+    for part in field.split(","):
+        step = 1
+        if "/" in part:
+            part, st = part.split("/", 1)
+            step = max(1, int(st))
+        if part == "*":
+            rng = range(lo, hi + 1)
+        elif "-" in part:
+            a, b = part.split("-", 1)
+            rng = range(int(a), int(b) + 1)
+        else:
+            rng = range(int(part), int(part) + 1)
+        if value in rng and (value - rng.start) % step == 0:
+            return True
+    return False
+
+
+def next_cron_run(cron: str, now: datetime, *, horizon_days: int = 8) -> Optional[datetime]:
+    """Next fire time of a 5-field cron, in the tz of `now`. None if unparseable or
+    not within the horizon. Minute-resolution scan; crons here fire at most a
+    few times a day, so the scan is cheap and has no external dependency."""
+    parts = str(cron or "").split()
+    if len(parts) < 5:
+        return None
+    mi, ho, dom, mon, dow = parts[:5]
+    t = (now + timedelta(minutes=1)).replace(second=0, microsecond=0)
+    end = now + timedelta(days=horizon_days)
+    try:
+        while t <= end:
+            if (_cron_field_matches(mi, t.minute, 0, 59) and _cron_field_matches(ho, t.hour, 0, 23)
+                    and _cron_field_matches(dom, t.day, 1, 31) and _cron_field_matches(mon, t.month, 1, 12)
+                    and _cron_field_matches(dow, t.isoweekday() % 7, 0, 6)):
+                return t
+            t += timedelta(minutes=1)
+    except ValueError:
+        return None
+    return None
+
+
+def _next_run_text(source_key: str, now: datetime) -> str:
+    try:
+        from zoneinfo import ZoneInfo
+        local = now.astimezone(ZoneInfo("America/New_York"))
+    except Exception:  # noqa: BLE001
+        local = now
+    best = None
+    for c in SCHEDULED_CALLERS.get(source_key, []):
+        n = next_cron_run(c.get("cron", ""), local)
+        if n and (best is None or n < best):
+            best = n
+    if not best:
+        return "no scheduled run found"
+    day = "today" if best.date() == local.date() else ("tomorrow" if (best.date() - local.date()).days == 1 else best.strftime("%a"))
+    return f"{day} {best.strftime('%H:%M')} ET"
+
+
+def plain_row(r: dict, now: datetime, registry: Optional[dict] = None) -> tuple[str, str]:
+    """(group, operator text) for one not-healthy source."""
+    key = r.get("source_key") or "?"
+    feeds = what_it_feeds(key, registry)
+    age = r.get("age_minutes")
+    win_h = float(r.get("window_minutes") or 0) / 60.0
+    nxt = _next_run_text(key, now)
+    err = str(r.get("last_error") or "")[:80]
+    if r.get("status") == "error":
+        when = "never" if age is None else f"{age / 60.0:.1f}h ago"
+        inside = age is not None and age <= float(r.get("window_minutes") or 0)
+        text = (f"▫ {key} — {feeds}.\n    Last run failed: {err or 'error'}"
+                + (f"; the previous success ({when}) is still inside its window." if inside else f"; last success {when}.")
+                + f"\n    Next run: {nxt}. Action: none now — if it fails again on the next two runs, tell me and I will chase the cause.")
+        return "erroring", text
+    if age is None:
+        text = (f"▫ {key} — {feeds}.\n    Has never reported to the health ledger (recorder wired 2026-09-13)."
+                f"\n    Next run: {nxt}. Action: none — it should clear after that run; if it is still listed afterwards, tell me.")
+        return "waiting", text
+    days = age / 1440.0
+    text = (f"▫ {key} — {feeds}.\n    Health row last updated {days:.1f} days ago (allowed {win_h / 24.0:.0f} days)"
+            + ("; the table still says healthy — that is the defect this monitor exists for." if r.get("decayed") else ".")
+            + f"\n    Next run: {nxt}. Action: none unless it is still listed after that run.")
+    return "stale", text
+
+
+def build_alert_body(off: list[dict], previous: dict, now: Optional[datetime] = None,
+                     registry: Optional[dict] = None) -> str:
+    """Operator-facing body. Pure; tested. The sentinel token is load-bearing."""
+    now = now or datetime.now(timezone.utc)
+    fingerprint = {r["source_key"]: r["status"] for r in off}
+    newly = [k for k in fingerprint if k not in previous]
+    recovered = [k for k in previous if k not in fingerprint]
+    if not fingerprint:
+        return ("[PLATFORM_AVAILABILITY] ✅ Data sources: every source with a scheduled caller "
+                "succeeded inside its window." + (f" Recovered: {', '.join(recovered)}." if recovered else ""))
+    groups: dict[str, list[str]] = {"erroring": [], "stale": [], "waiting": []}
+    for r in sorted(off, key=lambda x: x["source_key"]):
+        g, t = plain_row(r, now, registry)
+        groups[g].append(t)
+    heal = len(groups["waiting"]) + len(groups["stale"])
+    head = (f"[PLATFORM_AVAILABILITY] 🚨 Data sources: {len(off)} not healthy"
+            + (f" ({heal} expected to self-heal on their next run)" if heal else ""))
+    lines = [head, ""]
+    titles = {"erroring": "Failing", "stale": "Stale health row", "waiting": "Waiting on first report"}
+    for g in ("erroring", "stale", "waiting"):
+        if groups[g]:
+            lines.append(f"{titles[g]}:")
+            lines += groups[g]
+            lines.append("")
+    if newly:
+        lines.append("New since the last run: " + ", ".join(newly))
+    if recovered:
+        lines.append("Recovered: " + ", ".join(recovered))
+    lines += ["", "You will hear about this again only when the list changes; a ✅ follows when it clears. "
+                  "Escalation: none — this is the system reporting to its operator.",
+              "", "Details (for the engineer):"]
+    for r in sorted(off, key=lambda x: x["source_key"]):
+        lines.append(f"  {r['source_key']}: {_describe(r)}")
+    return "\n".join(lines)
+
+
 def _alert(off: list[dict]) -> None:
     """Notify only when the not-healthy set changes. Never raises."""
     fingerprint = {r["source_key"]: r["status"] for r in off}
@@ -258,34 +420,7 @@ def _alert(off: list[dict]) -> None:
         print("\n  alert: suppressed -- unchanged since the last run.")
         return
 
-    newly = [k for k in fingerprint if k not in previous]
-    if not fingerprint:
-        body = ("[PLATFORM_AVAILABILITY] ✅ Data sources: every source with a scheduled caller "
-                "succeeded inside its window.")
-    else:
-        # The sentinel is what operator_alert_policy_v2 routes on -- prose is
-        # not load-bearing, this token is. Without it the alert classifies as
-        # job_telemetry and waits in the 4-hourly digest.
-        head = (
-            "[PLATFORM_AVAILABILITY] 🚨 A scheduled data source stopped reporting"
-            if newly
-            else "[PLATFORM_AVAILABILITY] 🚨 Data sources not healthy"
-        )
-        lines = [head, ""]
-        for r in sorted(off, key=lambda x: x["source_key"]):
-            lines.append(f"• [{r['status']}] {r['source_key']}")
-            lines.append(f"    {_describe(r)}")
-        if newly:
-            lines += ["", "NEW since the last run: " + ", ".join(newly)]
-        recovered = [k for k in previous if k not in fingerprint]
-        if recovered:
-            lines += ["", "Recovered: " + ", ".join(recovered)]
-        lines += [
-            "",
-            "healthy means succeeded inside its window; the raw table column does not decay.",
-            "config/data_source_authority.json declares the windows.",
-        ]
-        body = "\n".join(lines)
+    body = build_alert_body(off, previous)
 
     try:
         sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
