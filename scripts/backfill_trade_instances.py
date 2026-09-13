@@ -73,9 +73,13 @@ def main():
                 WHERE ti.source_table='paper_trades' AND ti.source_trade_id = t.{col}::text
                   AND t.{col} IS NOT NULL AND t.trade_instance_id IS NULL""")
         # hermes via related_trade_id (paper_trades.id)
-        cur.execute("""UPDATE hermes_research_intelligence h SET trade_instance_id = ti.id FROM trade_instances ti
-            WHERE ti.source_table='paper_trades' AND ti.source_trade_id = h.related_trade_id::text
-              AND h.related_trade_id IS NOT NULL AND h.trade_instance_id IS NULL""")
+        # One write module per store (SoT Phase 9): SQL lives in lib.writers.hermes_research_writer.
+        sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__))))
+        from lib.writers.hermes_research_writer import link_from_join
+        link_from_join(cur, set_raw={"trade_instance_id": "ti.id"}, from_clause="trade_instances ti",
+                       where=("ti.source_table='paper_trades' AND ti.source_trade_id = h.related_trade_id::text "
+                              "AND h.related_trade_id IS NOT NULL AND h.trade_instance_id IS NULL"),
+                       alias="h", producer="backfill_trade_instances")
         # backtest + journal schwab rows via trade_key → schwab instances (exact)
         cur.execute("""UPDATE trade_backtest_results b SET trade_instance_id = ti.id FROM trade_instances ti
             WHERE ti.trade_key = b.trade_key AND ti.source_table='trades'

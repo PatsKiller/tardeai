@@ -35,6 +35,21 @@ DEFAULT_RETENTION = {
 }
 
 
+def _writer():
+    """lib.writers.hermes_research_writer — the one write module for hermes_research_intelligence.
+
+    Guarded import: this package is loaded as lib.hermes_librarian.* in production
+    and by file path in tests, so the scripts/ dir may not be on sys.path yet.
+    """
+    try:
+        from lib.writers import hermes_research_writer as W
+    except ImportError:
+        import sys
+        sys.path.insert(0, str(ROOT / "scripts"))
+        from lib.writers import hermes_research_writer as W
+    return W
+
+
 def load_policy():
     if POLICY_PATH.exists():
         return yaml.safe_load(POLICY_PATH.read_text())
@@ -55,12 +70,10 @@ def apply_retention(conn, *, dry_run: bool = False) -> dict:
     """, (staged_cfg,))
     staged_count = cur.fetchone()[0]
     if staged_count > 0 and not dry_run:
-        cur.execute("""
-            UPDATE hermes_research_intelligence
-            SET status = 'archived',
-                tags = array_append(coalesce(tags, ARRAY[]::text[]), 'auto_archived')
-            WHERE status = 'staged' AND created_at < CURRENT_DATE - %s::int
-        """, (staged_cfg,))
+        # One write module per store (SoT Phase 9): SQL lives in lib.writers.hermes_research_writer.
+        _writer().archive_rows_where(
+            cur, where="status = 'staged' AND created_at < CURRENT_DATE - %s::int", where_params=[staged_cfg],
+            add_tag="auto_archived", producer="librarian_v2:retention")
         conn.commit()
     actions.append({"table": "hermes_research_intelligence", "action": "archive_staged",
                     "count": staged_count, "threshold_days": staged_cfg})

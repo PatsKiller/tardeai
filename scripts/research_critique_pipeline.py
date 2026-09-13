@@ -494,12 +494,9 @@ def auto_archive_stale(
     )
     for rid, topic, symbol, status in cur.fetchall():
         if apply:
-            cur.execute(
-                """UPDATE hermes_research_intelligence
-                   SET status='archived', updated_at=NOW()
-                   WHERE id=%s""",
-                (rid,),
-            )
+            # One write module per store (SoT Phase 9): SQL lives in lib.writers.hermes_research_writer.
+            from lib.writers.hermes_research_writer import set_status
+            set_status(cur, ids=[rid], status="archived", touch_updated_at=True, producer="research_critique_pipeline")
             _resolve_stale_findings(cur, affected_table="hermes_research_intelligence", affected_id=rid, apply=True)
         archived["research"] += 1
         detail.append({"table": "hermes_research_intelligence", "id": rid, "topic": (topic or "")[:50], "symbol": symbol})
@@ -759,13 +756,12 @@ def critique_research_rows(conn, *, apply: bool, limit: int = 8) -> dict:
         if (conf or 0) < 0.35:
             q -= 15
         if apply:
-            cur.execute(
-                """UPDATE hermes_research_intelligence
-                   SET category_content=%s, category_sector=%s, category_lifecycle=%s,
-                       quality_score=%s
-                   WHERE id=%s""",
-                (tags.get("content"), tags.get("sector"), tags.get("lifecycle"), q / 100.0, rid),
-            )
+            # One write module per store (SoT Phase 9): SQL lives in lib.writers.hermes_research_writer.
+            from lib.writers.hermes_research_writer import set_fields_by_id
+            set_fields_by_id(cur, ids=[rid], fields={
+                "category_content": tags.get("content"), "category_sector": tags.get("sector"),
+                "category_lifecycle": tags.get("lifecycle"), "quality_score": q / 100.0,
+            }, producer="research_critique_pipeline")
         tagged += 1
     if apply and tagged:
         conn.commit()

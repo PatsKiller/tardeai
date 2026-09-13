@@ -58,11 +58,11 @@ def run(apply: bool = False, limit: int = 5000) -> dict:
     for rid, topic, summary, thesis, rtype, existing in rows:
         stags = _infer_tags(f"{topic} {summary} {thesis}", rtype)
         if apply:
-            cur.execute(
-                "UPDATE hermes_research_intelligence SET strategy_tags=%s WHERE id=%s",
-                (stags, rid),
-            )
-            updated += cur.rowcount
+            # One write module per store (SoT Phase 9): SQL lives in lib.writers.hermes_research_writer.
+            from lib.writers.hermes_research_writer import set_fields_by_id
+            rc = set_fields_by_id(cur, ids=[rid], fields={"strategy_tags": stags},
+                                  producer="backfill_hermes_strategy_tags")
+            updated += rc.rows_written
         if len(samples) < 8:
             samples.append({"id": rid, "strategy_tags": stags, "topic": (topic or "")[:60]})
     if apply:
