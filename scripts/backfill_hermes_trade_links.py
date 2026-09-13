@@ -43,10 +43,11 @@ def main():
                 nomatch += 1
             continue
         if apply:
-            cur.execute("""update hermes_research_intelligence
-                           set related_trade_id=COALESCE(related_trade_id,%s),
-                               related_proposal_id=COALESCE(related_proposal_id,%s), updated_at=now()
-                           where id=%s""", (rtid, rpid, r["id"]))
+            # One write module per store (SoT Phase 9): SQL lives in lib.writers.hermes_research_writer.
+            sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__))))
+            from lib.writers.hermes_research_writer import fill_if_null
+            fill_if_null(cur, ids=[r["id"]], fields={"related_trade_id": rtid, "related_proposal_id": rpid},
+                         touch_updated_at=True, producer="backfill_hermes_trade_links")
         if rtid is not None:
             set_t += 1
         if rpid is not None:

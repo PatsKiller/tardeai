@@ -135,9 +135,10 @@ def retag(cfg, apply):
 
     conn = _conn(); cur = conn.cursor()
     if apply:
+        # One write module per store (SoT Phase 9): SQL lives in lib.writers.hermes_research_writer.
+        from lib.writers.hermes_research_writer import set_fields_by_id
         for rid, tags in results:
-            cur.execute("UPDATE hermes_research_intelligence SET strategy_tags=%s WHERE id=%s",
-                        (tags, rid))
+            set_fields_by_id(cur, ids=[rid], fields={"strategy_tags": tags}, producer="hermes_tag_engine")
         conn.commit()
     # fallback share across recent rows (the <15% target metric)
     cur.execute("""SELECT count(*) FILTER (WHERE strategy_tags = %s::text[]) fb, count(*) tot
@@ -164,12 +165,12 @@ def quality_v2(cur, cfg, apply):
     be, bo = float(q["blend_existing"]), float(q["blend_outcome_prior"])
     updated = 0
     if apply:
+        # One write module per store (SoT Phase 9): SQL lives in lib.writers.hermes_research_writer.
+        from lib.writers.hermes_research_writer import blend_quality_score
         for rt, prior in priors.items():
-            cur.execute("""UPDATE hermes_research_intelligence
-                           SET quality_score = ROUND((%s * COALESCE(quality_score, %s) + %s * %s)::numeric, 3)
-                           WHERE COALESCE(research_type,'unknown') = %s""",
-                        (be, neutral, bo, prior, rt))
-            updated += cur.rowcount
+            rc = blend_quality_score(cur, research_type=rt, blend_existing=be, neutral=neutral,
+                                     blend_outcome_prior=bo, prior=prior, producer="hermes_tag_engine")
+            updated += rc.rows_written
     # distribution health (the two-point-mass detector)
     cur.execute("""SELECT round(stddev(quality_score)::numeric,4), count(DISTINCT quality_score)
                    FROM hermes_research_intelligence WHERE quality_score IS NOT NULL""")

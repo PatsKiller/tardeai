@@ -12,6 +12,21 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3]
 
 
+def _writer():
+    """lib.writers.hermes_research_writer — the one write module for hermes_research_intelligence.
+
+    Guarded import: this package is loaded as lib.hermes_librarian.* in production
+    and by file path in tests, so the scripts/ dir may not be on sys.path yet.
+    """
+    try:
+        from lib.writers import hermes_research_writer as W
+    except ImportError:
+        import sys
+        sys.path.insert(0, str(ROOT / "scripts"))
+        from lib.writers import hermes_research_writer as W
+    return W
+
+
 def freshness_report(conn) -> dict:
     """Per-source freshness summary from state_freshness_history.
 
@@ -64,14 +79,11 @@ def flag_stale(conn, *, dry_run: bool = False) -> dict:
 
     flagged = 0
     if stale > 0 and not dry_run:
-        cur.execute("""
-            UPDATE hermes_research_intelligence
-            SET status = 'archived',
-                tags = array_append(coalesce(tags, ARRAY[]::text[]), 'stale_freshness')
-            WHERE freshness_date < CURRENT_DATE - INTERVAL '30 days'
-              AND status NOT IN ('archived', 'rejected')
-        """)
-        flagged = cur.rowcount
+        # One write module per store (SoT Phase 9): SQL lives in lib.writers.hermes_research_writer.
+        rc = _writer().archive_rows_where(
+            cur, where="freshness_date < CURRENT_DATE - INTERVAL '30 days' AND status NOT IN ('archived', 'rejected')",
+            add_tag="stale_freshness", producer="librarian_v2:freshness")
+        flagged = rc.rows_written
         conn.commit()
 
     cur.close()

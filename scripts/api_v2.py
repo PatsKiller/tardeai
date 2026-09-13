@@ -49728,20 +49728,19 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 try:
                     # source is CHECK-constrained to 'hermes'; operator origin is marked via
                     # hermes_agent_name + research_type='operator_knowledge'.
-                    cur.execute(
-                        """INSERT INTO hermes_research_intelligence
-                        (created_at, source, hermes_agent_name, research_type, symbol, topic, summary, thesis,
-                         freshness_date, model_used, status)
-                        VALUES (now(), 'hermes', 'operator', 'operator_knowledge', %s, %s, %s, %s,
-                                now()::date, 'operator_telegram', 'staged') RETURNING id""",
-                        (
-                            (b.get("symbol") or None),
-                            (topic or "operator note")[:200],
-                            content[:4000],
-                            (b.get("thesis") or content)[:4000],
-                        ),
-                    )
-                    kid = cur.fetchone()[0]
+                    # One write module per store (SoT Phase 9): SQL lives in
+                    # lib.writers.hermes_research_writer.
+                    from lib.writers.hermes_research_writer import write_research_rows
+                    rc = write_research_rows(cur, [{
+                        "source": "hermes", "hermes_agent_name": "operator",
+                        "research_type": "operator_knowledge", "symbol": (b.get("symbol") or None),
+                        "topic": (topic or "operator note")[:200], "summary": content[:4000],
+                        "thesis": (b.get("thesis") or content)[:4000],
+                        "model_used": "operator_telegram", "status": "staged",
+                    }], producer="operator")
+                    if not rc.ids:
+                        raise ValueError(f"rejected: {rc.rows_rejected}")
+                    kid = rc.ids[0]
                     conn.commit()
                 except Exception:
                     conn.rollback()

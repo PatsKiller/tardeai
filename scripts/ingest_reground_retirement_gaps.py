@@ -54,9 +54,10 @@ def main():
         except Exception as e:
             print(f"    ERROR: {e}", flush=True)
         # reset grounded_count so the reground path re-processes this row
-        _execute("UPDATE hermes_research_intelligence SET evidence_json = "
-                 "jsonb_set(COALESCE(evidence_json,'{}'::jsonb),'{grounded_count}','0') WHERE id=%s",
-                 (rid,), fetch=None)
+        # One write module per store (SoT Phase 9): SQL lives in lib.writers.hermes_research_writer.
+        from lib.writers.hermes_research_writer import patch_evidence_json_path
+        patch_evidence_json_path(_execute, ids=[rid], path=["grounded_count"], value=0,
+                                 producer="ingest_reground_retirement_gaps")
 
     print("[remediation] regrounding ...", flush=True)
     cp = subprocess.run([PY, "scripts/topic_research_synthesizer.py", "--apply", "--reground", "--max", "30"],

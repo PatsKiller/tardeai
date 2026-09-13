@@ -108,17 +108,18 @@ def run(apply=False, max_rows=5, lookback_days=7, as_json=False):
             enqueued.append({"topic_id": t["topic_id"], "owner": t["owner"], "dry_run": True})
             continue
         try:
-            cur.execute("""
-                INSERT INTO hermes_research_intelligence
-                    (source, hermes_agent_name, research_type, symbol, topic, summary, thesis,
-                     thesis_type, evidence_json, confidence_score, freshness_date, model_used, status)
-                VALUES ('hermes','topic_monitor_bridge','topic_research', NULL, %s, %s, %s,
-                        'neutral', %s::jsonb, 0.5, %s, 'topic_monitor_bridge', 'staged')
-                RETURNING id
-            """, (t["display_name"], summary,
-                  f"Investigate '{t['display_name']}' for trading-relevant developments.",
-                  json.dumps(evidence), date.today().isoformat()))
-            hid = cur.fetchone()[0]
+            # One write module per store (SoT Phase 9): SQL lives in lib.writers.hermes_research_writer.
+            from lib.writers.hermes_research_writer import write_research_rows
+            rc = write_research_rows(cur, [{
+                "source": "hermes", "hermes_agent_name": "topic_monitor_bridge", "research_type": "topic_research",
+                "symbol": None, "topic": t["display_name"], "summary": summary,
+                "thesis": f"Investigate '{t['display_name']}' for trading-relevant developments.",
+                "thesis_type": "neutral", "evidence_json": evidence, "confidence_score": 0.5,
+                "freshness_date": date.today().isoformat(), "model_used": "topic_monitor_bridge", "status": "staged",
+            }], producer="topic_monitor_bridge")
+            if not rc.ids:
+                raise RuntimeError(f"rejected: {rc.rows_rejected}")
+            hid = rc.ids[0]
             # No last_searched stamp here — completion (step 1 reconcile) drives last_searched.
             enqueued.append({"topic_id": t["topic_id"], "owner": t["owner"], "hermes_id": hid})
         except Exception as e:

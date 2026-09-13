@@ -7,10 +7,20 @@ Runs the full librarian suite:
   - retention: apply retention policies
   - rag_health: embedding coverage, orphans, retrieval QA
   - backlog: legacy backlog-finding logic (from autonomous_librarian_backlog_loop)
+
+One Source of Truth, Phase 9 (2026-09-13): this module is the registry's
+``writer_target`` for the ``research_thesis`` domain (store
+``hermes_research_intelligence``). The INSERT/UPDATE SQL itself lives in
+``scripts/lib/writers/hermes_research_writer.py`` — a leaf module with no
+librarian dependencies, so the eight scheduled producers can import it without
+pulling in taxonomy/graph/rag_health — and is re-exported here so
+``from lib.hermes_librarian.librarian import write_research_rows`` is the
+documented entry point. Every producer calls the module; none carries SQL.
 """
 from __future__ import annotations
 
 import json
+import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -19,6 +29,23 @@ from typing import Any
 from . import taxonomy, graph, freshness, retention, rag_health
 
 ROOT = Path(__file__).resolve().parents[3]
+
+try:
+    from lib.writers.hermes_research_writer import (  # noqa: F401  (re-export)
+        WriteReceipt, ResearchWriteError, archive_rows_where, archive_with_tags_union, blend_quality_score,
+        fill_if_null, link_from_join, patch_evidence_json_path, record_remediation_outcome,
+        resolve_subject_identity, rollback_sql_for_status, set_fields_by_id, set_status,
+        stamp_learning_cycle, transition_if_status, update_research_rows, write_research_rows,
+    )
+except ImportError:  # loaded as scripts.lib.hermes_librarian.librarian with only ROOT on sys.path
+    if str(ROOT / "scripts") not in sys.path:
+        sys.path.insert(0, str(ROOT / "scripts"))
+    from lib.writers.hermes_research_writer import (  # noqa: F401  (re-export)
+        WriteReceipt, ResearchWriteError, archive_rows_where, archive_with_tags_union, blend_quality_score,
+        fill_if_null, link_from_join, patch_evidence_json_path, record_remediation_outcome,
+        resolve_subject_identity, rollback_sql_for_status, set_fields_by_id, set_status,
+        stamp_learning_cycle, transition_if_status, update_research_rows, write_research_rows,
+    )
 KILL_HERMES = ROOT / "data" / "runtime" / "HERMES_DISABLED"
 KILL_LIBRARIAN = ROOT / "data" / "runtime" / "LIBRARIAN_DISABLED"
 
@@ -196,27 +223,20 @@ def _run_backlog_scope(conn, cur, *, apply: bool, max_rows: int = 10) -> dict:
     except Exception:
         pass
 
+    written = 0
     if apply and findings:
-        for f in findings[:max_rows]:
-            cur.execute("""
-                INSERT INTO hermes_research_intelligence (
-                    source, hermes_agent_name, research_type, symbol, topic, summary, thesis, thesis_type,
-                    evidence_json, confidence_score, freshness_date, source_urls_json, model_used,
-                    context_type_used, status, quality_score, tags
-                ) VALUES (
-                    'hermes', 'librarian_v2', 'research_backlog', NULL,
-                    %s, %s, 'Librarian v2 finding — operator review required.', 'neutral',
-                    %s::jsonb, 0.30, %s, '[]'::jsonb, 'librarian_v2',
-                    'librarian_v2', 'staged', 0.30,
-                    ARRAY['research_backlog','librarian_v2']
-                )
-            """, (
-                f"{f['type']}: {f['detail']}"[:200],
-                f"Librarian v2 detected: {f['detail']}",
-                json.dumps([{"type": "librarian_v2_finding", "finding_type": f["type"],
-                            "priority": f["priority"], "detail": f["detail"]}]),
-                datetime.now(timezone.utc).strftime("%Y-%m-%d"),
-            ))
+        rows = [{
+            "source": "hermes", "hermes_agent_name": "librarian_v2", "research_type": "research_backlog",
+            "symbol": None, "topic": f"{f['type']}: {f['detail']}"[:200],
+            "summary": f"Librarian v2 detected: {f['detail']}",
+            "thesis": "Librarian v2 finding — operator review required.", "thesis_type": "neutral",
+            "evidence_json": [{"type": "librarian_v2_finding", "finding_type": f["type"],
+                               "priority": f["priority"], "detail": f["detail"]}],
+            "confidence_score": 0.30, "freshness_date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+            "source_urls_json": [], "model_used": "librarian_v2", "context_type_used": "librarian_v2",
+            "status": "staged", "quality_score": 0.30, "tags": ["research_backlog", "librarian_v2"],
+        } for f in findings[:max_rows]]
+        written = write_research_rows(cur, rows, producer="librarian_v2").rows_written
 
-    return {"findings": len(findings), "written": len(findings) if apply else 0,
+    return {"findings": len(findings), "written": written,
             "types": [f["type"] for f in findings]}

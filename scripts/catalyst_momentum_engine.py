@@ -133,11 +133,16 @@ def main():
         summary = f"{band['kind']} momentum catalyst ({ctype}) for {sym}: RVOL {c.get('rvol')}, gap {c.get('gap_pct')}%, {len(sources)} sources"
         # FEED #1 — advisory: stage into hermes_research_intelligence (→ promote→cache/RAG)
         if args.apply:
-            cur.execute("""INSERT INTO hermes_research_intelligence
-                           (research_type, symbol, topic, summary, confidence_score, status, source, source_urls_json, hermes_agent_name, model_used, freshness_date, created_at)
-                           VALUES ('momentum_catalyst', %s, %s, %s, %s, 'staged', 'hermes', %s, 'catalyst_momentum_engine', 'gemma3:4b', CURRENT_DATE, NOW())""",
-                        (sym, f"{ctype}: {sym}", summary, conf, json.dumps(urls)))
-            staged += 1
+            # One write module per store (SoT Phase 9): the INSERT lives in
+            # lib.writers.hermes_research_writer; a rejected row is logged, not counted.
+            from lib.writers.hermes_research_writer import write_research_rows
+            rc = write_research_rows(cur, [{
+                "research_type": "momentum_catalyst", "symbol": sym, "topic": f"{ctype}: {sym}",
+                "summary": summary, "confidence_score": conf, "status": "staged", "source": "hermes",
+                "source_urls_json": urls, "hermes_agent_name": "catalyst_momentum_engine",
+                "model_used": "gemma3:4b",
+            }], producer="catalyst_momentum_engine")
+            staged += rc.rows_written
         # collect catalyst-confirmed high-conviction for feed #2
         if conf >= 0.6 and float(c.get("rvol") or 0) >= band["min_rvol"]:
             gated.append((sym, conf, ctype))

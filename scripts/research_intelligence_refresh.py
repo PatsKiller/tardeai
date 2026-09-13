@@ -66,17 +66,10 @@ def _archive_stale_hermes(*, apply: bool, days: int, dry_limit: int = 200) -> di
     if apply and candidates:
         ids = [c["id"] for c in candidates]
         # batch update
-        _execute(
-            """
-            UPDATE hermes_research_intelligence
-            SET status = 'archived',
-                updated_at = NOW()
-            WHERE id = ANY(%s)
-              AND status IN ('staged', 'reviewed', 'promoted')
-            """,
-            (ids,),
-            fetch=None,
-        )
+        # One write module per store (SoT Phase 9): SQL lives in lib.writers.hermes_research_writer.
+        from lib.writers.hermes_research_writer import set_status
+        set_status(_execute, ids=ids, status="archived", only_from=["staged", "reviewed", "promoted"],
+                   touch_updated_at=True, producer="research_intelligence_refresh")
         archived_ids = ids
 
     return {

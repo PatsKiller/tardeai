@@ -279,15 +279,10 @@ def main() -> int:
             ev["narrative_enriched_at"] = __import__("datetime").datetime.now(
                 __import__("datetime").timezone.utc
             ).isoformat()
-            _execute(
-                """
-                UPDATE hermes_research_intelligence
-                SET evidence_json = %s::jsonb, updated_at = NOW()
-                WHERE id = %s
-                """,
-                (json.dumps(ev), r["id"]),
-                fetch=None,
-            )
+            # One write module per store (SoT Phase 9): SQL lives in lib.writers.hermes_research_writer.
+            from lib.writers.hermes_research_writer import set_fields_by_id
+            set_fields_by_id(_execute, ids=[r["id"]], fields={"evidence_json": ev}, touch_updated_at=True,
+                             producer="research_intelligence_narrative_enrich")
             print(f"  ✓ hermes:{r['id']} narrative via {used_lane}")
             ok += 1
         except Exception as e:

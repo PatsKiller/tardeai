@@ -183,11 +183,11 @@ def tune_promotion(cur, cfg, apply):
                              sample_n=EXCLUDED.sample_n, reason=EXCLUDED.reason, updated_at=NOW()""",
                         (rtype, decision[0], round(hits / n, 4) if n else None, n, decision[1]))
     if apply:
-        cur.execute("""UPDATE hermes_research_intelligence SET status='archived'
-                       WHERE status='staged'
-                         AND created_at < NOW() - make_interval(days => %s)""",
-                    (p["stale_staged_archive_days"],))
-        out["stale_staged_archived"] = cur.rowcount
+        # One write module per store (SoT Phase 9): SQL lives in lib.writers.hermes_research_writer.
+        from lib.writers.hermes_research_writer import archive_rows_where
+        rc = archive_rows_where(cur, where="status = 'staged' AND created_at < NOW() - make_interval(days => %s)",
+                                where_params=[p["stale_staged_archive_days"]], producer="hermes_outcome_learning")
+        out["stale_staged_archived"] = rc.rows_written
     return out
 
 

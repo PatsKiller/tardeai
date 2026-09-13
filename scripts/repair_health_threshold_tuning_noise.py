@@ -31,19 +31,14 @@ def main() -> int:
     count, oldest, newest, summaries, signatures = cur.fetchone()
     updated = 0
     if args.apply and count:
-        cur.execute(
-            """UPDATE hermes_research_intelligence
-               SET status='archived',
-                   tags=(SELECT ARRAY(SELECT DISTINCT x FROM unnest(
-                       COALESCE(tags, ARRAY[]::text[]) || ARRAY['duplicate_collapsed','proposal_only']
-                   ) AS x)),
-                   threshold_adjusted=false,
-                   updated_at=NOW()
-               WHERE hermes_agent_name='hermes_health_inspector'
-                 AND research_type='threshold_tuning'
-                 AND status='staged'"""
-        )
-        updated = cur.rowcount
+        # One write module per store (SoT Phase 9): SQL lives in lib.writers.hermes_research_writer.
+        from lib.writers.hermes_research_writer import archive_with_tags_union
+        rc = archive_with_tags_union(
+            cur,
+            where="hermes_agent_name='hermes_health_inspector' AND research_type='threshold_tuning' AND status='staged'",
+            tags=["duplicate_collapsed", "proposal_only"], extra_set={"threshold_adjusted": False},
+            touch_updated_at=True, producer="repair_health_threshold_tuning_noise")
+        updated = rc.rows_written
         conn.commit()
     else:
         conn.rollback()

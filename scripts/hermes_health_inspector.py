@@ -270,29 +270,19 @@ def _stage_finding(source, summary, severity='P2', confidence_score=0.5, metadat
         linked = meta.get("linked_producers", [])
         producer_str = ",".join(linked[:5]) if linked else "unknown"
         pattern_sig = f"agent_liveness::{pri}::{meta.get('agent_id', 'unknown')}"[:200]
-        cur.execute(
-            """INSERT INTO hermes_research_intelligence
-               (source, hermes_agent_name, research_type, topic, summary, thesis, evidence_json,
-                confidence_score, status, tags, pattern_signature, freshness_date, model_used,
-                created_at, updated_at)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_DATE, %s, NOW(), NOW())
-               RETURNING id""",
-            (
-                source or "hermes",
-                "hermes_health_inspector",
-                "agent_liveness",
-                f"agent_liveness_{pri}",
-                f"Agent Liveness: {summary[:200]}",
-                summary[:500],
-                json.dumps(meta),
-                float(confidence_score),
-                "staged",
-                "{" + ",".join(['"agent_liveness"', f'"{sev}"', f'"{pri}"']) + "}",
-                pattern_sig,
-                "watchdog",
-            ),
-        )
-        row_id = cur.fetchone()[0]
+        # One write module per store (SoT Phase 9): SQL lives in lib.writers.hermes_research_writer.
+        from lib.writers.hermes_research_writer import SQL_NOW, write_research_rows
+        rc = write_research_rows(cur, [{
+            "source": source or "hermes", "hermes_agent_name": "hermes_health_inspector",
+            "research_type": "agent_liveness", "topic": f"agent_liveness_{pri}",
+            "summary": f"Agent Liveness: {summary[:200]}", "thesis": summary[:500],
+            "evidence_json": json.dumps(meta), "confidence_score": float(confidence_score), "status": "staged",
+            "tags": "{" + ",".join(['"agent_liveness"', f'"{sev}"', f'"{pri}"']) + "}",
+            "pattern_signature": pattern_sig, "model_used": "watchdog", "updated_at": SQL_NOW,
+        }], producer="hermes_health_inspector")
+        if not rc.ids:
+            raise RuntimeError(f"rejected: {rc.rows_rejected}")
+        row_id = rc.ids[0]
         conn.commit()
         cur.close()
         _log(f"Staged agent liveness finding id={row_id} for {meta.get('agent_id', 'unknown')}")
@@ -318,32 +308,26 @@ def _stage_findings(conn, findings: list[dict]) -> tuple[int, list[dict]]:
             linked = f.get("linked_producers", [])
             producer_str = ",".join(linked[:5]) if linked else "unknown"
             pattern_sig = f"stale::{pri}::{[p[:30] for p in linked[:3]]}"[:200]
-            cur.execute(
-                """INSERT INTO hermes_research_intelligence
-                   (source, hermes_agent_name, research_type, topic, summary, thesis, evidence_json,
-                    confidence_score, status, tags, pattern_signature, freshness_date, model_used,
-                    created_at, updated_at)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_DATE, %s, NOW(), NOW())
-                   RETURNING id""",
-                (
-                    "hermes",
-                    f.get("source_agent", "hermes_health_inspector"),
-                    "health_inspection",
-                    f"{sev}_{pri}",
-                    f"Hermes Health Inspection: {sev.upper()} — {root_cause}",
-                    f.get("root_cause", "")[:500],
-                    json.dumps({"evidence": f.get("evidence", ""), "stale_count": f.get("stale_count", 0),
-                                "priority": pri, "recommendation": f.get("recommendation", ""),
-                                "linked_producers": linked}),
-                    float(0.80 if pri == "P0" else 0.65 if pri == "P1" else 0.50 if pri == "P2" else 0.35),
-                    "staged",
-                    "{" + ",".join(['"health_inspection"', f'"{sev}"', f'"{pri}"'] + 
-                                   [f'"{p}"' for p in linked[:5]]) + "}",
-                    pattern_sig,
-                    "deterministic_health_rules_v1",
-                ),
-            )
-            row_id = cur.fetchone()[0]
+            # One write module per store (SoT Phase 9): SQL lives in lib.writers.hermes_research_writer.
+            from lib.writers.hermes_research_writer import SQL_NOW, write_research_rows
+            rc = write_research_rows(cur, [{
+                "source": "hermes", "hermes_agent_name": f.get("source_agent", "hermes_health_inspector"),
+                "research_type": "health_inspection", "topic": f"{sev}_{pri}",
+                "summary": f"Hermes Health Inspection: {sev.upper()} — {root_cause}",
+                "thesis": f.get("root_cause", "")[:500],
+                "evidence_json": json.dumps({"evidence": f.get("evidence", ""), "stale_count": f.get("stale_count", 0),
+                                             "priority": pri, "recommendation": f.get("recommendation", ""),
+                                             "linked_producers": linked}),
+                "confidence_score": float(0.80 if pri == "P0" else 0.65 if pri == "P1" else 0.50 if pri == "P2" else 0.35),
+                "status": "staged",
+                "tags": "{" + ",".join(['"health_inspection"', f'"{sev}"', f'"{pri}"'] +
+                                       [f'"{p}"' for p in linked[:5]]) + "}",
+                "pattern_signature": pattern_sig, "model_used": "deterministic_health_rules_v1",
+                "updated_at": SQL_NOW,
+            }], producer="hermes_health_inspector")
+            if not rc.ids:
+                raise RuntimeError(f"rejected: {rc.rows_rejected}")
+            row_id = rc.ids[0]
             conn.commit()
             staged += 1
             staged_records.append({
@@ -365,14 +349,10 @@ def _record_remediation_outcome(conn, finding_id, success, duration_ms, pattern_
         return
     try:
         cur = conn.cursor()
-        cur.execute(
-            """UPDATE hermes_research_intelligence
-               SET remediation_success = %s,
-                   remediation_duration_ms = %s,
-                   pattern_signature = COALESCE(pattern_signature, %s)
-               WHERE id = %s""",
-            (success, duration_ms, pattern_signature, finding_id),
-        )
+        # One write module per store (SoT Phase 9): SQL lives in lib.writers.hermes_research_writer.
+        from lib.writers.hermes_research_writer import record_remediation_outcome
+        record_remediation_outcome(cur, finding_id=finding_id, success=success, duration_ms=duration_ms,
+                                   pattern_signature=pattern_signature, producer="hermes_health_inspector")
         conn.commit()
         cur.close()
     except Exception as e:

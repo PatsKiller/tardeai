@@ -100,23 +100,16 @@ def stage_hermes_research(summary: dict, *, apply: bool = False, symbol: str = "
             "strategy_slots": summary.get("strategy_slots"),
             "raw_pool": summary.get("raw_pool"),
         }
-        cur.execute(
-            """INSERT INTO hermes_research_intelligence
-               (source, hermes_agent_name, research_type, symbol, topic, summary, thesis,
-                thesis_type, evidence_json, confidence_score, freshness_date, model_used, status)
-               VALUES ('hermes','options_research_bridge','options_desk', %s, %s, %s, %s,
-                       'neutral', %s::jsonb, %s, %s, 'options_engine', 'staged')""",
-            (
-                sym,
-                row["topic"],
-                row["summary"][:500],
-                row["thesis"][:500],
-                json.dumps(evidence),
-                min(0.95, 0.5 + _f(best_edge(summary, sym)) / 100.0) if sym else 0.7,
-                date.today().isoformat(),
-            ),
-        )
-        staged += 1
+        # One write module per store (SoT Phase 9): SQL lives in lib.writers.hermes_research_writer.
+        from lib.writers.hermes_research_writer import write_research_rows
+        rc = write_research_rows(cur, [{
+            "source": "hermes", "hermes_agent_name": "options_research_bridge", "research_type": "options_desk",
+            "symbol": sym, "topic": row["topic"], "summary": row["summary"][:500], "thesis": row["thesis"][:500],
+            "thesis_type": "neutral", "evidence_json": evidence,
+            "confidence_score": min(0.95, 0.5 + _f(best_edge(summary, sym)) / 100.0) if sym else 0.7,
+            "freshness_date": date.today().isoformat(), "model_used": "options_engine", "status": "staged",
+        }], producer="options_research_bridge")
+        staged += rc.rows_written
     if apply:
         conn.commit()
     return {"ok": True, "staged": staged, "skipped": skipped, "dry_run": not apply}

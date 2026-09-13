@@ -471,29 +471,29 @@ def run(lane="grok", symbols=None, limit=12, manual_trigger=False, batch=False):
             pass
         sanity = _sanity_check(rec, t, fb)   # validate vs real structure + family bounds
         model = "grok-3-mini" if used_lane == "grok" else "gpt-5.4"
-        cur.execute("""INSERT INTO hermes_research_intelligence
-                         (source, hermes_agent_name, research_type, symbol, topic, summary, thesis,
-                          thesis_type, evidence_json, confidence_score, model_used, prompt_hash,
-                          freshness_date)
-                       VALUES ('hermes','protection_advisor','protection_advisory',%s,
-                          'stop/trailing-stop recommendation', %s, %s, 'neutral', %s, %s, %s, %s,
-                          CURRENT_DATE)""",
-                    (sym, rec.get("rationale", "")[:400],
-                     f"stop ${rec.get('stop_price')} ({rec.get('stop_pct_below')}% below)"
-                     + ((f" · trail {rec.get('trail_offset')}%" if rec.get('trail_type') == 'PERCENT'
-                         else f" · trail ${rec.get('trail_offset')}")   # $ BEFORE the value, never a suffix
-                        if rec.get("trail_recommended") else " · no trail yet"),
-                     json.dumps({"prompt_version": PROMPT_VERSION, "inputs": {**t, "basis_ps": basis_ps,
-                                 "pnl_pct": pnl_pct}, "recommendation": rec, "lane": used_lane, "sanity": sanity,
-                                 "family": family, "family_source": fam_source, "family_bounds": fb,
-                                 "volatility_tier": (hf.volatility_tier(sym) or {}).get("tier"),
-                                 "regime": hf.current_regime(),
-                                 # explicit floor-clamp marker so the monthly Claude meta-review sanity-checks
-                                 # widenings (rec._floored_from_pct = original too-tight %, now at the floor).
-                                 "floored": ({"from_pct": rec.get("_floored_from_pct"),
-                                              "to_floor_pct": fb.get("stop_min_pct")}
-                                             if rec.get("_floored_from_pct") is not None else False)}),
-                     rec.get("confidence"), model, PROMPT_VERSION))
+        # One write module per store (SoT Phase 9): SQL lives in lib.writers.hermes_research_writer.
+        from lib.writers.hermes_research_writer import write_research_rows
+        write_research_rows(cur, [{
+            "source": "hermes", "hermes_agent_name": "protection_advisor", "research_type": "protection_advisory",
+            "symbol": sym, "topic": "stop/trailing-stop recommendation",
+            "summary": rec.get("rationale", "")[:400],
+            "thesis": (f"stop ${rec.get('stop_price')} ({rec.get('stop_pct_below')}% below)"
+                       + ((f" · trail {rec.get('trail_offset')}%" if rec.get('trail_type') == 'PERCENT'
+                           else f" · trail ${rec.get('trail_offset')}")   # $ BEFORE the value, never a suffix
+                          if rec.get("trail_recommended") else " · no trail yet")),
+            "thesis_type": "neutral",
+            "evidence_json": json.dumps({"prompt_version": PROMPT_VERSION, "inputs": {**t, "basis_ps": basis_ps,
+                                         "pnl_pct": pnl_pct}, "recommendation": rec, "lane": used_lane, "sanity": sanity,
+                                         "family": family, "family_source": fam_source, "family_bounds": fb,
+                                         "volatility_tier": (hf.volatility_tier(sym) or {}).get("tier"),
+                                         "regime": hf.current_regime(),
+                                         # explicit floor-clamp marker so the monthly Claude meta-review sanity-checks
+                                         # widenings (rec._floored_from_pct = original too-tight %, now at the floor).
+                                         "floored": ({"from_pct": rec.get("_floored_from_pct"),
+                                                      "to_floor_pct": fb.get("stop_min_pct")}
+                                                     if rec.get("_floored_from_pct") is not None else False)}),
+            "confidence_score": rec.get("confidence"), "model_used": model, "prompt_hash": PROMPT_VERSION,
+        }], producer="protection_advisor")
         conn.commit()
         sflag = '' if sanity['verdict'] == 'ok' else f" · ⚠{sanity['verdict'].upper()}: {'; '.join(sanity['issues'])[:70]}"
         print(f"  {sym}: [{family}] stop ${rec.get('stop_price')} ({rec.get('stop_pct_below')}% below) · "
