@@ -1,0 +1,103 @@
+{
+  "schema": "DataPlausibilityContracts@v1",
+  "_why": "A column's scale was never written down anywhere. Database-wide there are only five CHECK constraints mentioning confidence, and they use three different scales (1-5, 0-1, and a text enum); every other numeric column is undeclared. Nothing stopped a 0-1 producer and a 0-100 producer writing the same column, and nothing stopped a ten-year return percentage being stored as a 1-5 analyst rating for five months. This file is that missing declaration. It is deliberately data, not code, so a scale can be reviewed and corrected without a deploy.",
+
+  "_how_to_use": "scripts/data_plausibility_monitor.py reads this, measures every declared column against its contract, and reports violations. It never writes to the tables it checks. A violation is not automatically a defect -- it may mean the contract is wrong -- but an undeclared, unmeasured column is how the Finviz shift survived 131,050 rows.",
+
+  "_severity": "BLOCK means the value cannot be valid on its declared scale and a consumer acting on it is acting on fiction. WARN means implausible but conceivable, and wants a human look.",
+
+  "contracts": [
+    {
+      "table": "analyst_consensus_history",
+      "column": "recom_score",
+      "rule": "range",
+      "min": 1.0,
+      "max": 5.0,
+      "severity": "BLOCK",
+      "_why": "Finviz 'Recom' is a 1-5 analyst scale. Anything off it is not a recommendation. This is the contract that would have caught the column shift on day one: 97.9% of rows violated it."
+    },
+    {
+      "table": "indicator_confluence_cache",
+      "column": "stop_price",
+      "rule": "min",
+      "min": 0.0,
+      "severity": "BLOCK",
+      "_why": "A stop price below zero is never valid at any price, for any instrument. 17 rows held negative stops, the newest 2026-09-06."
+    },
+    {
+      "table": "proposal_execution_readiness",
+      "column": "spread_pct",
+      "rule": "range",
+      "min": 0.0,
+      "max": 1000.0,
+      "severity": "BLOCK",
+      "_why": "Six rows held 2,147,479,900 -- within rounding of int32 max. That is a sentinel or an overflow leaking into a percentage, not a spread."
+    },
+    {
+      "table": "symbol_profiles",
+      "column": "ytd_return_pct",
+      "rule": "finite",
+      "severity": "BLOCK",
+      "_why": "266 rows store NaN in a numeric column. NaN propagates silently through every aggregate that touches it, so one bad row poisons a whole average without raising anything."
+    },
+    {
+      "table": "trade_ai_scans",
+      "column": "vs_sector_pct",
+      "rule": "finite",
+      "severity": "BLOCK",
+      "_why": "28 rows store nan. Same failure mode as symbol_profiles.ytd_return_pct."
+    },
+
+    {
+      "table": "trade_ai_scans",
+      "column": "catalyst_confidence",
+      "rule": "single_scale",
+      "severity": "BLOCK",
+      "_why": "MIXED SCALES IN ONE COLUMN: 2,305 rows in (0,1] and 915 rows above 1. Some producer writes 0.85 and another writes 85, into the same column, with no declared scale to arbitrate. Any consumer thresholding this is wrong for one population. The contract asserts only that a column must pick ONE scale -- it deliberately does not guess which, because guessing is what produced the defect."
+    },
+    {
+      "table": "agent_recommendation_registry",
+      "column": "confidence",
+      "rule": "single_scale",
+      "severity": "BLOCK",
+      "_why": "464,089 rows in (0,1] and 18 above 1. The 18 are the anomaly here, not the 464,089."
+    },
+    {
+      "table": "proposal_agent_reviews",
+      "column": "confidence",
+      "rule": "single_scale",
+      "severity": "BLOCK",
+      "_why": "4,462 rows above 1 and 12 in (0,1]. Here the minority is the 0-1 population -- the opposite of agent_recommendation_registry, which is exactly why a single global rule would be wrong."
+    },
+
+    {
+      "table": "incubator_universe",
+      "column": "llm_screen_confidence",
+      "rule": "range",
+      "min": 0.0,
+      "max": 100.0,
+      "severity": "WARN",
+      "_why": "Uniformly 0-100 across all 680 rows. Internally consistent, so declared as 0-100 rather than 'fixed'. Recorded here so the scale stops being implicit."
+    },
+    {
+      "table": "watchlist_items",
+      "column": "holdings_llm_confidence",
+      "rule": "range",
+      "min": 0.0,
+      "max": 100.0,
+      "severity": "WARN",
+      "_why": "Uniformly 0-100 across 41 rows. Same reasoning as incubator_universe."
+    },
+    {
+      "table": "deploy_plans",
+      "column": "confidence",
+      "rule": "range",
+      "min": 0.0,
+      "max": 100.0,
+      "severity": "WARN",
+      "_why": "Range 32.1-77.4 across 3,066 rows: 0-100. An earlier sweep flagged this as '100% implausible' by assuming 0-1. The sweep's rule was wrong, not the data -- recorded so that mistake is not repeated."
+    }
+  ],
+
+  "_not_declared_yet": "market_quotes.day_change_pct, schwab_basis_divergence.divergence_pct, strategy_backtest_results.max_drawdown_pct and market_quote_snapshots.spread_pct all carry extreme outliers (13,105%, 12,818%, 15,026%, 384,043%). They are NOT declared here because a penny stock or a thin spread can legitimately produce large percentages, and declaring a bound that has not been verified would manufacture false violations. They need a judgement call before they get a contract."
+}
