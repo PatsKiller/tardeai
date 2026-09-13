@@ -539,6 +539,9 @@ GATES = [
             "tests/test_state_root_is_honoured_20260913.py",
             # A forced exit must not discard the run's own report.
             "tests/test_scheduler_flush_before_force_exit_20260913.py",
+            # A 1-5 rating scale refuses values that are not on it, instead of
+            # stripping the "%" and laundering a percentage into a rating.
+            "tests/test_finviz_recom_plausibility_20260913.py",
             # Off UNLISTED_BASELINE at last. The ONLY coverage of
             # cio_run_worker._check_health, and its fakes are what hid CL-61.
             "tests/test_p26_shadow_autonomy.py",
