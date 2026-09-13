@@ -163,9 +163,94 @@ def _check(cur, contract: dict) -> dict | None:
     }
 
 
+STATE_PATH = Path.home() / ".local/state/tradeai/data_plausibility_last_alert.json"
+
+
+def _alert(results: list[dict], blocking: list[dict]) -> None:
+    """Tell the operator, but only when the picture actually changed.
+
+    An alert that fires every run for a known-open violation trains the reader to
+    ignore it, and an ignored alert is worse than none -- it looks like coverage
+    while providing none. So the fingerprint is the set of violating columns and
+    their counts: a new violation, a resolved one, or a materially changed count
+    speaks; a steady state stays quiet.
+    """
+    fingerprint = {f"{r['table']}.{r['column']}": r["violations"] for r in blocking}
+
+    previous = {}
+    try:
+        previous = json.loads(STATE_PATH.read_text()).get("fingerprint", {})
+    except (OSError, ValueError):
+        pass
+
+    if fingerprint == previous:
+        print("\n  alert: suppressed — identical to the last run (same columns, same counts).")
+        return
+
+    if not fingerprint:
+        body = (
+            "✅ Data plausibility: all declared columns now satisfy their "
+            "contracts.\n\nPreviously violating: " + ", ".join(previous)
+            if previous
+            else "✅ Data plausibility: all declared columns satisfy their contracts."
+        )
+    else:
+        # A column that starts violating is a live integrity breach and earns an
+        # interrupt; a known-open one already reported does not, or the alarm
+        # becomes wallpaper. telegram_alert_router routes on "CRITICAL", so the
+        # word is load-bearing -- it is the escalation, not decoration. Only a
+        # NEWLY violating column gets it.
+        newly = [k for k in fingerprint if k not in previous]
+        lines = [
+            (
+                "🚨 CRITICAL — data plausibility: a new column is off its declared scale"
+                if newly
+                else "🚨 Data plausibility — declared scale violated"
+            ),
+            "",
+            "A value off its declared scale is not a rounding problem. The Finviz",
+            'column shift published stocks down -100% as "Strong Buy" for five',
+            "months because nothing measured this.",
+            "",
+        ]
+        for r in sorted(blocking, key=lambda x: -x["violations"]):
+            pct = (100.0 * r["violations"] / r["total"]) if r["total"] else 0.0
+            lines.append(f"• {r['table']}.{r['column']}")
+            lines.append(f"    {r['violations']:,} of {r['total']:,} rows ({pct:.1f}%) — {r['detail']}")
+        if newly:
+            lines += ["", "NEW since the last run: " + ", ".join(newly)]
+        resolved = [k for k in previous if k not in fingerprint]
+        if resolved:
+            lines += ["", "Resolved since last run: " + ", ".join(resolved)]
+        lines += [
+            "",
+            "Either the data is wrong or the contract is wrong.",
+            "config/data_plausibility_contracts.json carries the reasoning.",
+        ]
+        body = "\n".join(lines)
+
+    try:
+        sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        from telegram_alert import send_telegram
+
+        ok = send_telegram(body, message_class="operator_alert")
+        print(f"\n  alert: {'accepted' if ok else 'NOT accepted'} by the platform")
+    except Exception as exc:
+        # An alerting failure must never mask the finding it was carrying.
+        print(f"\n  alert: FAILED to send ({exc}). The findings above still stand.", file=sys.stderr)
+        return
+
+    try:
+        STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        STATE_PATH.write_text(json.dumps({"fingerprint": fingerprint}, indent=2))
+    except OSError as exc:
+        print(f"  alert: could not record state ({exc}); next run may repeat.", file=sys.stderr)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--json", action="store_true", help="emit JSON")
+    ap.add_argument("--alert", action="store_true", help="notify the operator when the violation set changes")
     args = ap.parse_args()
 
     if not CONTRACTS_PATH.exists():
@@ -224,6 +309,8 @@ def main() -> int:
                 default=str,
             )
         )
+        if args.alert:
+            _alert(results, blocking)
         return 1 if blocking else 0
 
     print("Data plausibility — declared columns measured against declared scale")
@@ -247,6 +334,10 @@ def main() -> int:
         print("\n  A BLOCK violation means the value cannot be valid on its declared")
         print("  scale. Either the data is wrong or the contract is wrong; both are")
         print("  worth a look, and neither is visible without this check.")
+
+    if args.alert:
+        _alert(results, blocking)
+
     return 1 if blocking else 0
 
 

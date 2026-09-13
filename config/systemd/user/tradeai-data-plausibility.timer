@@ -1,0 +1,21 @@
+[Unit]
+Description=Trade AI data plausibility — daily scale audit
+Documentation=file:///home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/config/data_plausibility_contracts.json
+
+[Timer]
+# 06:20 ET, before the 10:00 Finviz screener and the 13:00 enrichment run, so a
+# scale that broke overnight is known before the day's pipelines consume it.
+OnCalendar=*-*-* 06:20:00
+AccuracySec=1min
+
+# The host has a history of hard power cuts (see the DC-supply incident). Without
+# Persistent, a cut spanning 06:20 silently skips the day's audit and the gap is
+# invisible -- which is the same failure mode the monitor exists to catch.
+Persistent=true
+
+# Nothing else fires at 06:20, but a fixed instant across a growing timer set is
+# how thundering herds start.
+RandomizedDelaySec=120
+
+[Install]
+WantedBy=timers.target

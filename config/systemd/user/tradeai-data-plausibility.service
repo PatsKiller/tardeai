@@ -1,0 +1,34 @@
+[Unit]
+# Measures every declared numeric column against its declared scale and alerts
+# the operator when the violation set changes.
+#
+# This unit exists because the Finviz column shift published stocks down -100%
+# as "Strong Buy" for five months and nothing noticed. Every value parsed, every
+# type converted, every row stored. The scale lived only in a docstring, where
+# no gate could read it.
+#
+# Read-only: the monitor opens its database session with readonly=True. It can
+# report a problem; it can never cause one.
+Description=Trade AI data plausibility — declared numeric scales, measured
+Documentation=file:///home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/config/data_plausibility_contracts.json
+After=network-online.target
+
+[Service]
+Type=oneshot
+
+# Runs from the DEV tree, which is what executes batch work here (cron = batch,
+# systemd = services; this is batch wearing a timer). Pointing it at the release
+# would measure the same database but from a tree that may lag main.
+WorkingDirectory=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild
+ExecStart=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python \
+    scripts/data_plausibility_monitor.py --alert
+
+# Exit 1 means "BLOCK violations are present", which is a finding, not a unit
+# failure. Treating it as a failure would bury the alert under a systemd error
+# and make `is-failed` useless for spotting a monitor that genuinely broke.
+SuccessExitStatus=0 1
+
+TimeoutStartSec=600
+
+[Install]
+WantedBy=default.target
