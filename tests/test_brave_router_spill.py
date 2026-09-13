@@ -317,8 +317,9 @@ def test_the_live_registry_declares_the_measured_caps(monkeypatch):
         monkeypatch.delenv(f"SEARCH_BUDGET_{k}_DAILY", raising=False)
         monkeypatch.delenv(f"SEARCH_BUDGET_{k}_MONTHLY", raising=False)
     assert dsa.provider_budget("brave") == {"daily": 120, "monthly": 1500}
-    assert dsa.provider_budget("searxng") == {"daily": 10000}
-    assert dsa.provider_budget("tavily") == {"daily": 20}
+    # monthly caps for searxng/tavily were declared by the Phase 5 registry patch at integration
+    assert dsa.provider_budget("searxng") == {"daily": 10000, "monthly": 300000}
+    assert dsa.provider_budget("tavily") == {"daily": 20, "monthly": 500}
     assert sb.limits("brave") == {"daily": 120, "monthly": 1500}
     assert sb.limits("searxng")["daily"] == 10000
     assert sb.limits("tavily")["daily"] == 20

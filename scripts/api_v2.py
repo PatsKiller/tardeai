@@ -2151,7 +2151,11 @@ def _with_report_feed(payload):
 
         rf = _brk_reports(_db_query)
         feeds = dict(payload.get("feeds") or {})
-        feeds["ai_reports"] = {k: rf.get(k) for k in ("as_of", "age_hours", "source", "stale", "stale_after_hours", "gap", "total", "by_type") if k in rf}
+        feeds["ai_reports"] = {
+            k: rf.get(k)
+            for k in ("as_of", "age_hours", "source", "stale", "stale_after_hours", "gap", "total", "by_type")
+            if k in rf
+        }
         payload["feeds"] = feeds
         payload.setdefault("schema", rf.get("schema"))
     except Exception:
@@ -15707,13 +15711,25 @@ def _defense_posture(query=None):
             _fb_env = _brk_envelope(
                 "sector_momentum",
                 bm.get("computed_at") or None,
-                source={"file": None, "table": "market_quotes", "fallback": "data_broker.sector_momentum live recompute"},
+                source={
+                    "file": None,
+                    "table": "market_quotes",
+                    "fallback": "data_broker.sector_momentum live recompute",
+                },
             )
-            out.update({k: _fb_env.get(k) for k in ("as_of", "age_hours", "source", "stale", "stale_after_hours") if k in _fb_env})
+            out.update(
+                {
+                    k: _fb_env.get(k)
+                    for k in ("as_of", "age_hours", "source", "stale", "stale_after_hours")
+                    if k in _fb_env
+                }
+            )
             out.pop("gap", None)
             if "gap" in _fb_env:
                 out["gap"] = _fb_env["gap"]
-            out["feeds"]["sector_momentum_fallback"] = {k: _fb_env.get(k) for k in ("as_of", "age_hours", "source", "stale", "gap") if k in _fb_env}
+            out["feeds"]["sector_momentum_fallback"] = {
+                k: _fb_env.get(k) for k in ("as_of", "age_hours", "source", "stale", "gap") if k in _fb_env
+            }
         except Exception:
             snap = {"rows": [], "note": "engine has not run yet"}
     out["momentum"] = snap
@@ -15767,7 +15783,11 @@ def _defense_posture(query=None):
 
             _lc = _brk_last_close(_db_query, _hint[2])
             _px = _lc.get("close")
-            _pl = round((float(_px) - float(_hint[1])) / float(_hint[1]) * 100, 1) if _px is not None and _hint[1] else None
+            _pl = (
+                round((float(_px) - float(_hint[1])) / float(_hint[1]) * 100, 1)
+                if _px is not None and _hint[1]
+                else None
+            )
             hs = {
                 "state": "in_play",
                 "line": f"HEDGE: {_hint[2]} in play" + (f" {_pl:+.1f}%" if _pl is not None else ""),
@@ -16170,7 +16190,11 @@ def _defense_industries(query=None):
 
         _im = _brk_ind()
         snap = _im.get("snapshot")
-        _env = {k: _im[k] for k in ("schema", "as_of", "age_hours", "source", "stale", "stale_after_hours", "gap") if k in _im}
+        _env = {
+            k: _im[k]
+            for k in ("schema", "as_of", "age_hours", "source", "stale", "stale_after_hours", "gap")
+            if k in _im
+        }
         return _brk_wrap({"ok": True, **(snap or {"industries": [], "note": "industry engine has not run yet"})}, _env)
     except Exception as e:
         import traceback
@@ -36108,7 +36132,14 @@ def _data_source_health(query=None):
                 }
             )
     except Exception as e:
-        out.append({"source": "ledger:data_source_health", "category": "ingest_ledger", "status": "error", "error": str(e)[:80]})
+        out.append(
+            {
+                "source": "ledger:data_source_health",
+                "category": "ingest_ledger",
+                "status": "error",
+                "error": str(e)[:80],
+            }
+        )
 
     order = {"dead": 0, "error": 1, "stale": 2, "unknown": 2, "slow": 3, "live": 4, "healthy": 4}
     out.sort(key=lambda x: order.get(x.get("status"), 9))
@@ -41490,7 +41521,10 @@ def _inverse_stoplights_get(query=None):
             "inverse_stoplights",
             payload.get("generated_at") or payload.get("captured_at"),
             stale_after_hours=26,
-            source={"file": "runtime/inverse_stoplights_latest.json", "writer": "scripts/defense_inverse_stoplights.py"},
+            source={
+                "file": "runtime/inverse_stoplights_latest.json",
+                "writer": "scripts/defense_inverse_stoplights.py",
+            },
         ),
     )
 
@@ -43002,7 +43036,11 @@ def _sectors_monitor(query=None):
     _q_env = _brk_envelope(
         "quote_price", _brk_newest([v.get("as_of") for v in _quotes.values()]), market_closed=_mkt_closed
     )
-    _rs_env = {k: _rs_hist_env.get(k) for k in ("as_of", "age_hours", "source", "stale", "stale_after_hours", "gap") if k in _rs_hist_env}
+    _rs_env = {
+        k: _rs_hist_env.get(k)
+        for k in ("as_of", "age_hours", "source", "stale", "stale_after_hours", "gap")
+        if k in _rs_hist_env
+    }
     return {
         **_q_env,
         "feeds": {"market_quotes": {k: v for k, v in _q_env.items() if k != "schema"}, "sector_rs_daily": _rs_env},
@@ -44021,7 +44059,11 @@ def _with_redeploy_feed(payload):
 
         rf = _brk_redeploy()
         feeds = dict(payload.get("feeds") or {})
-        feeds["redeploy_analytics_cache"] = {k: rf.get(k) for k in ("as_of", "age_hours", "source", "stale", "stale_after_hours", "gap", "entries") if k in rf}
+        feeds["redeploy_analytics_cache"] = {
+            k: rf.get(k)
+            for k in ("as_of", "age_hours", "source", "stale", "stale_after_hours", "gap", "entries")
+            if k in rf
+        }
         payload["feeds"] = feeds
         payload.setdefault("schema", rf.get("schema"))
     except Exception:
@@ -58555,8 +58597,11 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             from lib.data_source_health_view import load_registry as _dsv_registry, view_rows as _dsv_rows
 
             rows = _dsv_rows(rows, datetime.now(timezone.utc), _dsv_registry())
-            return 200, {"ok": True, "view": "DataSourceHealthView@v1",
-                         "data": [{k: _json_clean(v) for k, v in r.items()} for r in rows]}
+            return 200, {
+                "ok": True,
+                "view": "DataSourceHealthView@v1",
+                "data": [{k: _json_clean(v) for k, v in r.items()} for r in rows],
+            }
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
 
@@ -65004,11 +65049,20 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             from lib.data_broker.market_regime import get_market_regime as _brk_regime
 
             _mr = _brk_regime(_db_query, history=1)
-            _env = {k: _mr.get(k) for k in ("schema", "as_of", "age_hours", "source", "stale", "stale_after_hours", "gap") if k in _mr}
+            _env = {
+                k: _mr.get(k)
+                for k in ("schema", "as_of", "age_hours", "source", "stale", "stale_after_hours", "gap")
+                if k in _mr
+            }
             row = _mr.get("regime")
             if not row:
                 return 200, {"ok": True, "data": None, "message": "No regime snapshots yet", **_env}
-            return 200, {"ok": True, "data": {k: _json_clean(v) for k, v in row.items()}, "regime_line": _mr.get("regime_line"), **_env}
+            return 200, {
+                "ok": True,
+                "data": {k: _json_clean(v) for k, v in row.items()},
+                "regime_line": _mr.get("regime_line"),
+                **_env,
+            }
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
 
@@ -65029,7 +65083,11 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             from lib.data_broker.market_regime import get_market_regime as _brk_regime
 
             _mr = _brk_regime(_db_query, history=20)
-            _env = {k: _mr.get(k) for k in ("schema", "as_of", "age_hours", "source", "stale", "stale_after_hours", "gap") if k in _mr}
+            _env = {
+                k: _mr.get(k)
+                for k in ("schema", "as_of", "age_hours", "source", "stale", "stale_after_hours", "gap")
+                if k in _mr
+            }
             rows = _mr.get("history") or []
             return 200, {"ok": True, "data": [{k: _json_clean(v) for k, v in r.items()} for r in rows], **_env}
         except Exception as e:
