@@ -70,3 +70,21 @@ def test_read_follows_the_same_redirect(monkeypatch, tmp_path):
 def test_read_returns_none_when_the_redirected_path_is_empty(monkeypatch, tmp_path):
     monkeypatch.setenv(ps.STATE_DIR_ENV, str(tmp_path / "nothing-here"))
     assert ps.read_portfolio_snapshot() is None
+
+
+def test_an_explicit_constant_patch_outranks_the_env(monkeypatch, tmp_path):
+    """Existing callers monkeypatch SNAPSHOT_PATH and expect the writer to
+    follow. That is a supported patch point and the env default must not
+    silently override it -- tests/test_overview_observation_contract.py relies
+    on exactly this, and an earlier version of this change broke it.
+    """
+    explicit = tmp_path / "explicit" / "portfolio_snapshot.json"
+    monkeypatch.setenv(ps.STATE_DIR_ENV, str(tmp_path / "from_env"))
+    monkeypatch.setattr(ps, "SNAPSHOT_PATH", explicit)
+    assert ps._snapshot_path() == explicit
+
+
+def test_env_applies_only_while_the_constant_is_untouched(monkeypatch, tmp_path):
+    monkeypatch.setattr(ps, "SNAPSHOT_PATH", ps._DEFAULT_SNAPSHOT_PATH)
+    monkeypatch.setenv(ps.STATE_DIR_ENV, str(tmp_path))
+    assert ps._snapshot_path() == tmp_path / "portfolio_snapshot.json"

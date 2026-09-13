@@ -43,33 +43,49 @@ SNAPSHOT_DIR = PROJECT_ROOT / "state" / "data_broker"
 SNAPSHOT_PATH = SNAPSHOT_DIR / "portfolio_snapshot.json"
 DEFAULT_MAX_AGE_S = 45
 
-#: Overrides SNAPSHOT_DIR when set. Read at CALL time, never at import.
+#: Overrides the default when set. Read at CALL time, never at import.
 STATE_DIR_ENV = "TRADEAI_DATA_BROKER_STATE_DIR"
 
-
-def _snapshot_dir() -> Path:
-    """Where the snapshot lives, resolved per call.
-
-    SNAPSHOT_DIR is computed from PROJECT_ROOT at import, which made this module
-    unredirectable once loaded. That is not a theoretical problem: a test suite
-    reaching this writer created state/data_broker/ inside the repository, and on
-    a fresh CI clone the next gate then read a state root that existed only
-    because a test had put it there (test_whole_site_truth, 2026-09-13).
-
-    An environment variable rather than a module constant, deliberately. This
-    package is importable as BOTH `lib.data_broker.x` and
-    `scripts.lib.data_broker.x`, which are distinct module objects with distinct
-    copies of every constant -- the repo enforces that in
-    test_scripts_lib_bootstrap and asks for one spelling. Monkeypatching a
-    constant therefore reaches only one of the two and silently misses the
-    writer. The environment is process-global, so it has no such ambiguity.
-    """
-    override = os.environ.get(STATE_DIR_ENV, "").strip()
-    return Path(override) if override else SNAPSHOT_DIR
+#: The import-time default, kept so an explicit patch of SNAPSHOT_PATH is
+#: distinguishable from the untouched default.
+_DEFAULT_SNAPSHOT_PATH = SNAPSHOT_PATH
 
 
 def _snapshot_path() -> Path:
-    return _snapshot_dir() / "portfolio_snapshot.json"
+    """Where the snapshot lives, resolved per call.
+
+    SNAPSHOT_PATH was computed from PROJECT_ROOT at import, which made this
+    module unredirectable once loaded. Not theoretical: a test suite reaching
+    this writer created state/data_broker/ inside the repository, and on a fresh
+    CI clone the next gate then read a state root that existed only because a
+    test put it there (test_whole_site_truth, 2026-09-13).
+
+    Precedence, and the order matters:
+
+      1. SNAPSHOT_PATH, if a caller has rebound it. Existing tests monkeypatch
+         that constant and expect the writer to follow -- a supported patch point
+         that must keep working.
+      2. TRADEAI_DATA_BROKER_STATE_DIR, if set.
+      3. The import-time default.
+
+    Rule 2 is an ENVIRONMENT VARIABLE rather than another constant on purpose.
+    This package is importable as both `lib.data_broker.x` and
+    `scripts.lib.data_broker.x` -- distinct module objects with distinct copies
+    of every constant, which the repo enforces in test_scripts_lib_bootstrap.
+    Patching a constant reaches one and silently misses the other; the
+    environment is process-global and has no such ambiguity. Rule 1 still works
+    because it is read from whichever module object is actually executing.
+    """
+    if SNAPSHOT_PATH != _DEFAULT_SNAPSHOT_PATH:
+        return SNAPSHOT_PATH
+    override = os.environ.get(STATE_DIR_ENV, "").strip()
+    if override:
+        return Path(override) / "portfolio_snapshot.json"
+    return SNAPSHOT_PATH
+
+
+def _snapshot_dir() -> Path:
+    return _snapshot_path().parent
 
 
 def _load_json(path: Path) -> dict[str, Any]:
