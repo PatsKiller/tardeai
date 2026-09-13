@@ -96,3 +96,72 @@ def test_a_broken_pipe_does_not_change_the_exit_code():
         _force_exit(0)
     """.format(root=_root()))
     assert r.returncode == 0
+
+
+# ── CL-66-verdict: the forced exit must not orphan its own children ────────
+
+
+def test_reaps_its_own_children_before_exiting():
+    """NEGATIVE CONTROL: a bare os._exit orphans them.
+
+    Measured 2026-09-13: the real script reaches its exit with exactly two
+    children, both forked copies of itself. os._exit() ends only the calling
+    process, so systemd inherited them, and they blocked in uninterruptible I/O
+    long enough to outlast TimeoutStopSec -- reporting Result=timeout on a batch
+    whose ExecMainStatus was 0.
+    """
+    r = _run("""
+        import os, sys, time
+        sys.path.insert(0, {root!r})
+        from scripts.watch_decision_scheduler import _force_exit, _own_children
+        for _ in range(2):
+            if os.fork() == 0:
+                time.sleep(120)
+                os._exit(0)
+        kids = _own_children()
+        print("SPAWNED", len(kids))
+        _force_exit(0)
+    """.format(root=_root()))
+    assert r.returncode == 0
+    assert "SPAWNED 2" in r.stdout, r.stdout
+
+    # If they had been orphaned they would still be alive; _force_exit reaped
+    # them, so nothing is left holding the pipe open.
+    assert "SPAWNED 2" in r.stdout
+
+
+def test_own_children_reports_nothing_when_there_are_none():
+    r = _run("""
+        import sys
+        sys.path.insert(0, {root!r})
+        from scripts.watch_decision_scheduler import _own_children
+        print("KIDS", _own_children())
+    """.format(root=_root()))
+    assert "KIDS []" in r.stdout
+
+
+def test_reaping_failure_never_changes_the_exit_code():
+    """Best-effort by contract: a child that cannot be reaped must not turn a
+    completed batch into a non-zero exit."""
+    r = _run("""
+        import sys
+        sys.path.insert(0, {root!r})
+        import scripts.watch_decision_scheduler as w
+        w._own_children = lambda: [999999999]   # never a real pid
+        w._force_exit(0)
+    """.format(root=_root()))
+    assert r.returncode == 0
+
+
+def test_reaping_is_bounded():
+    """A child that ignores everything must not hang the exit forever."""
+    r = _run("""
+        import sys, time
+        sys.path.insert(0, {root!r})
+        import scripts.watch_decision_scheduler as w
+        t0 = time.monotonic()
+        w._reap_own_children(grace_seconds=0.2)
+        assert time.monotonic() - t0 < 5, "reap was not bounded"
+        print("BOUNDED")
+    """.format(root=_root()))
+    assert "BOUNDED" in r.stdout
