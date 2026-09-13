@@ -3,7 +3,7 @@
 
 Sources:
   - Yahoo RSS (free, always active)
-  - Finnhub (if FINNHUB_API_KEY exists)
+  - (Finnhub retired 2026-09-13 — config/data_source_authority.json)
   - Benzinga RSS (free, always active — benzinga.com/feed)
   - Benzinga API (if BENZINGA_API_KEY exists — richer data, analyst ratings)
 
@@ -235,28 +235,6 @@ def _fetch_yahoo_rss(symbol: str) -> list:
     return articles
 
 
-def _fetch_finnhub(symbol: str, api_key: str) -> list:
-    articles = []
-    try:
-        from_date = datetime.now().strftime("%Y-%m-%d")
-        url = f"https://finnhub.io/api/v1/company-news?symbol={symbol}&from={from_date}&to={from_date}&token={api_key}"
-        req = urllib.request.Request(url, headers={"User-Agent": "TradeAI/1.0"})
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            data = json.loads(resp.read())
-            for item in data[:5]:
-                articles.append({
-                    "title": item.get("headline", ""),
-                    "summary": (item.get("summary", "") or "")[:500],
-                    "source": "finnhub",
-                    "source_url": item.get("url", ""),
-                    "published_at": datetime.fromtimestamp(item.get("datetime", 0), tz=timezone.utc).isoformat()
-                    if item.get("datetime") else None,
-                })
-    except Exception:
-        pass
-    return articles
-
-
 def _fetch_google_news_rss(symbol: str) -> list:
     articles = []
     try:
@@ -393,8 +371,6 @@ def _scan_symbols(conn, cur, symbols: list[tuple[str, str]], finnhub_key: str, b
     for sym, strategy_type in symbols:
         company_desc = _company_description(cur, sym)
         articles = _fetch_yahoo_rss(sym)
-        if finnhub_key:
-            articles.extend(_fetch_finnhub(sym, finnhub_key))
         articles.extend(_fetch_google_news_rss(sym))
         if benzinga_key:
             articles.extend(_fetch_benzinga_api(sym, benzinga_key))
@@ -514,11 +490,9 @@ def ingest(mode: str = "priority", *, single_symbol: str | None = None) -> dict:
         symbol_pairs = symbol_pairs[:cap]
         mode = "full"
 
-    finnhub_key = os.environ.get("FINNHUB_API_KEY", "")
+    finnhub_key = ""  # retired 2026-09-13 (HTTP 401 since 07-27) — kept only as a positional arg
     benzinga_key = os.environ.get("BENZINGA_API_KEY", "")
     for line in (PROJECT_ROOT / ".env").read_text().splitlines():
-        if not finnhub_key and line.startswith("FINNHUB_API_KEY="):
-            finnhub_key = line.split("=", 1)[1].strip()
         if not benzinga_key and line.startswith("BENZINGA_API_KEY="):
             benzinga_key = line.split("=", 1)[1].strip()
 

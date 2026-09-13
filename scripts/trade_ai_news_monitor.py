@@ -36,7 +36,7 @@ for line in (PROJECT_ROOT / ".env").read_text().splitlines():
 import requests
 from db_adapter import _execute, _get_conn
 
-FINNHUB_KEY = os.getenv('FINNHUB_API_KEY', '')
+# Finnhub retired 2026-09-13 (HTTP 401 since 07-27) — config/data_source_authority.json
 
 
 def is_market_hours() -> bool:
@@ -77,30 +77,9 @@ def get_active_go_tickers() -> list:
 
 
 def check_significant_news(symbol: str, since_minutes: int = 35) -> list:
-    """Check for significant news via Finnhub + Yahoo RSS."""
+    """Check for significant news via Yahoo RSS (Finnhub retired 2026-09-13)."""
     significant = []
     cutoff = datetime.utcnow() - timedelta(minutes=since_minutes)
-
-    if FINNHUB_KEY:
-        try:
-            from_d = cutoff.strftime('%Y-%m-%d')
-            to_d = datetime.utcnow().strftime('%Y-%m-%d')
-            r = requests.get(
-                f"https://finnhub.io/api/v1/company-news?symbol={symbol}&from={from_d}&to={to_d}&token={FINNHUB_KEY}",
-                timeout=5)
-            if r.status_code == 200:
-                for a in r.json():
-                    ts = datetime.utcfromtimestamp(a.get('datetime', 0))
-                    if ts >= cutoff:
-                        hl = a.get('headline', '')
-                        sig_kw = ['earnings', 'revenue', 'guidance', 'fda', 'approval',
-                                  'merger', 'acquisition', 'delisting', 'investigation',
-                                  'ceo', 'resign', 'contract', 'recall', 'lawsuit',
-                                  'dividend', 'bankrupt', 'tariff', 'suspend', symbol.lower()]
-                        if any(kw in hl.lower() for kw in sig_kw):
-                            significant.append({'headline': hl, 'source': 'finnhub'})
-        except Exception as e:
-            log.debug(f"{symbol} Finnhub: {e}")
 
     try:
         import feedparser

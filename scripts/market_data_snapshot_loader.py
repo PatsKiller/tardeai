@@ -83,46 +83,9 @@ def fetch_yfinance_bars(symbol: str, timeframe: str, days: int) -> list:
 
 
 def fetch_polygon_bars(symbol: str, timeframe: str, days: int) -> list:
-    """Fetch OHLCV bars via Polygon (supports extended hours)."""
-    api_key = os.getenv("POLYGON_API_KEY", "")
-    if not api_key:
-        return []
-
-    try:
-        import requests
-        multiplier = {"1m": 1, "5m": 5, "15m": 15, "daily": 1}.get(timeframe, 1)
-        span = "day" if timeframe == "daily" else "minute"
-        end_date = datetime.now().strftime("%Y-%m-%d")
-        start_date = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
-
-        url = (f"https://api.polygon.io/v2/aggs/ticker/{symbol}/range/"
-               f"{multiplier}/{span}/{start_date}/{end_date}"
-               f"?adjusted=true&sort=asc&limit=5000&apiKey={api_key}")
-
-        resp = requests.get(url, timeout=15)
-        if resp.status_code != 200:
-            return []
-
-        data = resp.json()
-        results = data.get("results", [])
-        bars = []
-        for r in results:
-            bar_time = datetime.fromtimestamp(r["t"] / 1000, tz=timezone.utc)
-            bars.append({
-                "symbol": symbol,
-                "timeframe": timeframe,
-                "bar_time": bar_time,
-                "open": float(r.get("o", 0)),
-                "high": float(r.get("h", 0)),
-                "low": float(r.get("l", 0)),
-                "close": float(r.get("c", 0)),
-                "volume": float(r.get("v", 0)),
-                "source": "polygon",
-            })
-        return bars
-    except Exception as e:
-        log.warning(f"Polygon fetch failed for {symbol} {timeframe}: {e}")
-        return []
+    """Polygon retired 2026-09-13 (config/data_source_authority.json). Bars come from the
+    declared quote/price domain (Alpaca, yfinance backup); this loader reports source 'none'."""
+    return []
 
 
 def store_bars(conn, bars: list) -> int:

@@ -4,14 +4,13 @@
 Provider hierarchy:
     1. Alpaca paper market data (real-time bid/ask if configured)
     2. Schwab Trader API batch quotes (real-time; extended-hours when linked)
-    3. Polygon latest quote/trade (real-time with paid plan)
-    4. Finnhub quote
-    5. FMP quote
-    6. yfinance delayed quote (display only, not execution eligible)
-    7. Finviz cache (display only, never execution eligible)
+    3. yfinance delayed quote (display only, not execution eligible)
+    4. Finviz cache (display only, never execution eligible)
+
+Polygon, Finnhub and FMP were retired 2026-09-13 (config/data_source_authority.json).
 
 After-hours / swing: check_fresh_quote() relaxes to 24h outside regular session
-but requires a real-time broker quote (schwab/alpaca/polygon) — not delayed caches.
+but requires a real-time broker quote (schwab/alpaca) — not delayed caches.
 
 Usage:
     .venv/bin/python scripts/market_quote_provider.py --symbol EVC --dry-run
@@ -40,7 +39,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(message
 FINVIZ_CACHE_PATH = PROJECT_ROOT / "data" / "portfolios" / "state" / "finviz_quote_cache.json"
 
 # Real-time providers acceptable for after-hours proposal validation
-REALTIME_PROVIDERS = frozenset({"schwab", "alpaca", "polygon"})
+REALTIME_PROVIDERS = frozenset({"schwab", "alpaca"})  # polygon retired 2026-09-13
 INTRADAY_MAX_AGE_MINUTES = 15.0
 SWING_EXTENDED_MAX_AGE_MINUTES = 1440.0  # 24h — matches proposal_execution_readiness
 
@@ -285,110 +284,6 @@ def fetch_schwab_quote(symbol: str) -> dict:
 
 # ── Provider 3: Polygon ────────────────────────────────────────────────────
 
-def fetch_polygon_quote(symbol: str) -> dict:
-    api_key = os.getenv("POLYGON_API_KEY", "")
-    if not api_key:
-        return None
-    try:
-        import requests
-        resp = requests.get(
-            f"https://api.polygon.io/v2/snapshot/locale/us/markets/stocks/tickers/{symbol}",
-            params={"apiKey": api_key}, timeout=10)
-        if resp.status_code != 200:
-            return None
-        data = resp.json()
-        ticker = data.get("ticker", {})
-        if not ticker:
-            return None
-        lq = ticker.get("lastQuote", {})
-        lt = ticker.get("lastTrade", {})
-        day = ticker.get("day", {})
-        ts = lq.get("t") or lt.get("t")
-        qt = None
-        if ts:
-            # Polygon timestamps are nanoseconds
-            try:
-                qt = datetime.fromtimestamp(ts / 1e9, tz=timezone.utc)
-            except Exception:
-                pass
-
-        return _make_result(
-            provider="polygon", priority=2,
-            last_price=float(lt["p"]) if lt.get("p") else float(day.get("c", 0)) or None,
-            bid=float(lq["p"]) if lq.get("p") else None,
-            ask=float(lq.get("P")) if lq.get("P") else None,
-            bid_size=int(lq.get("s", 0)) if lq.get("s") else None,
-            ask_size=int(lq.get("S", 0)) if lq.get("S") else None,
-            day_volume=int(day.get("v", 0)) if day.get("v") else None,
-            vwap=float(day.get("vw")) if day.get("vw") else None,
-            quote_timestamp=qt.isoformat() if qt else None,
-            raw_payload=ticker,
-        )
-    except Exception as e:
-        log.debug(f"Polygon quote {symbol} failed: {e}")
-        return None
-
-
-# ── Provider 4: Finnhub ────────────────────────────────────────────────────
-
-def fetch_finnhub_quote(symbol: str) -> dict:
-    api_key = os.getenv("FINNHUB_API_KEY", "")
-    if not api_key:
-        return None
-    try:
-        import requests
-        resp = requests.get(
-            "https://finnhub.io/api/v1/quote",
-            params={"symbol": symbol, "token": api_key}, timeout=10)
-        if resp.status_code != 200:
-            return None
-        data = resp.json()
-        if not data.get("c"):
-            return None
-        ts = data.get("t")
-        qt = datetime.fromtimestamp(ts, tz=timezone.utc) if ts else None
-        return _make_result(
-            provider="finnhub", priority=3,
-            last_price=float(data["c"]),
-            day_volume=None,  # Finnhub quote doesn't include volume
-            quote_timestamp=qt.isoformat() if qt else None,
-            is_delayed=True,  # Finnhub free tier is 15-min delayed
-            raw_payload=data,
-        )
-    except Exception as e:
-        log.debug(f"Finnhub quote {symbol} failed: {e}")
-        return None
-
-
-# ── Provider 5: FMP ────────────────────────────────────────────────────────
-
-def fetch_fmp_quote(symbol: str) -> dict:
-    api_key = os.getenv("FMP_API_KEY", "")
-    if not api_key:
-        return None
-    try:
-        import requests
-        resp = requests.get(
-            f"https://financialmodelingprep.com/api/v3/quote-short/{symbol}",
-            params={"apikey": api_key}, timeout=10)
-        if resp.status_code != 200:
-            return None
-        data = resp.json()
-        if not data or not isinstance(data, list) or not data[0].get("price"):
-            return None
-        q = data[0]
-        return _make_result(
-            provider="fmp", priority=4,
-            last_price=float(q["price"]),
-            day_volume=int(q.get("volume", 0)) if q.get("volume") else None,
-            is_delayed=True,
-            raw_payload=q,
-        )
-    except Exception as e:
-        log.debug(f"FMP quote {symbol} failed: {e}")
-        return None
-
-
 # ── Provider 6: yfinance ───────────────────────────────────────────────────
 
 def fetch_yfinance_quote(symbol: str) -> dict:
@@ -440,9 +335,6 @@ def fetch_finviz_cache(symbol: str) -> dict:
 PROVIDER_CHAIN = [
     ("alpaca", fetch_alpaca_snapshot),
     ("schwab", fetch_schwab_quote),
-    ("polygon", fetch_polygon_quote),
-    ("finnhub", fetch_finnhub_quote),
-    ("fmp", fetch_fmp_quote),
     ("yfinance", fetch_yfinance_quote),
     ("finviz_cache", fetch_finviz_cache),
 ]

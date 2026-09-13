@@ -5,7 +5,7 @@ Rewired (2026-08-19 watchlist audit, Gap D): the previous version only wrote
 candidate_discovery_events in DEGRADED mode (Finviz failure), so the feed was
 permanently empty while Finviz was healthy, and it never reported liveness. This
 version polls the discovery_sources package (finviz, social_scalp, news_catalyst,
-incubator, yahoo_movers, polygon), ALWAYS writes candidate_discovery_events on
+incubator, yahoo_movers), ALWAYS writes candidate_discovery_events on
 --apply, and reports each source's liveness via report_source() so the health
 agent can see it go stale.
 
@@ -33,14 +33,12 @@ def _all_sources():
     from discovery_sources.news_catalyst_source import NewsCatalystSource
     from discovery_sources.incubator_source import IncubatorSource
     from discovery_sources.yahoo_source import YahooSource
-    from discovery_sources.polygon_source import PolygonSource
     return [
         FinvizSource(),
         SocialSource(),
         NewsCatalystSource(),
         IncubatorSource(),
         YahooSource(),
-        PolygonSource(),
     ]
 
 
@@ -114,15 +112,13 @@ def main():
         print(f"  [discovery] DRY-RUN — would record {len(unique)} events")
 
     # Report liveness per source (apply only — dry-run must not mark sources healthy).
-    # finviz is owned by finviz_health_check.py (its only reporter per crontab); polygon is
-    # optional (no POLYGON_API_KEY) and must not be flagged as a failure when unconfigured.
+    # finviz is owned by finviz_health_check.py (its only reporter per crontab).
+    # polygon was retired 2026-09-13 (config/data_source_authority.json).
     if args.apply:
         try:
             from lib.data_source_report import report_source
             for key, n in counts.items():
                 if key == "finviz":
-                    continue
-                if key == "polygon" and not os.getenv("POLYGON_API_KEY"):
                     continue
                 report_source(key, n > 0, rows=n,
                               error=None if n > 0 else f"0 candidates from {key}")

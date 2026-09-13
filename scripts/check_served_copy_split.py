@@ -26,6 +26,7 @@ STATES
     LINKED      dev and served resolve to one physical directory  (the only OK)
     SPLIT       two directories; N files differ, M exist on one side only
     MISSING     one side does not exist at all
+    TRIPPED     something live references the Phase 1 reconcile archive
 
 USAGE
 -----
@@ -65,7 +66,12 @@ NO_CONSUMER_REASON = (
 #: directory whichever tree a process happens to run from. Add a directory here
 #: when a new served store is introduced; remove one in the same change that
 #: retires it.
-SPLIT_DIRS = ("portfolios/state", "runtime", "cio")
+SPLIT_DIRS = ("audit", "cio", "health", "paper_trading", "portfolios/state", "runtime", "state")
+
+#: Where Phase 1 of the One Source of Truth plan parked the dev tree's former data
+#: directories and the overwritten served copies. Nothing may read from here. Any
+#: reference from live code, the crontab or a unit file is a defect — the tripwire.
+ARCHIVE_ROOT = "/home/johnclaw/trade-ai-releases/archive/served_copy_split_20260913"
 
 #: mtimes closer than this are the same write (filesystems round differently).
 MTIME_TOLERANCE_S = 2.0
@@ -138,6 +144,50 @@ def check_dir(sub: str, dev_root: Path, served_root: Path, *, count: bool = True
     return row
 
 
+def archive_tripwire(archive_root: str = ARCHIVE_ROOT, *, repo: Path | None = None,
+                     crontab_text: str | None = None, unit_dir: Path | None = None) -> list[dict]:
+    """Every live place that names the archive path. Empty list is the only OK.
+
+    Scans the repo's scripts/ and config/, the user crontab, and the user systemd
+    unit files. The archive itself and this file are excluded.
+    """
+    repo = repo or PROJECT_ROOT
+    hits: list[dict] = []
+    needle = archive_root.rstrip("/")
+    for sub in ("scripts", "config", "linux_launchers"):
+        base = repo / sub
+        if not base.is_dir():
+            continue
+        for p in base.rglob("*"):
+            if not p.is_file() or p.suffix not in (".py", ".sh", ".json", ".yaml", ".yml", ".env", ".service", ".timer") or "__pycache__" in p.parts:
+                continue
+            if p.resolve() == Path(__file__).resolve():
+                continue
+            try:
+                if needle in p.read_text(encoding="utf-8", errors="replace"):
+                    hits.append({"where": "repo", "ref": str(p.relative_to(repo))})
+            except OSError:
+                continue
+    if crontab_text is None:
+        try:
+            import subprocess
+            crontab_text = subprocess.run(["crontab", "-l"], capture_output=True, text=True, timeout=10).stdout
+        except Exception:  # noqa: BLE001
+            crontab_text = ""
+    for i, line in enumerate(crontab_text.splitlines(), 1):
+        if needle in line:
+            hits.append({"where": "crontab", "ref": f"line {i}"})
+    unit_dir = unit_dir or (Path.home() / ".config/systemd/user")
+    if unit_dir.is_dir():
+        for u in unit_dir.glob("*.service"):
+            try:
+                if needle in u.read_text(encoding="utf-8", errors="replace"):
+                    hits.append({"where": "systemd", "ref": u.name})
+            except OSError:
+                continue
+    return hits
+
+
 def _write_run_receipt(findings: list[dict]) -> None:
     """Prove this ran, every run, findings or not (lane_registry output_signal)."""
     path = PROJECT_ROOT / "data" / "runtime" / RECEIPT_NAME
@@ -179,8 +229,12 @@ def _alert(findings: list[dict]) -> None:
         )
     else:
         lines = ["[PLATFORM_AVAILABILITY] 🚨 STATE TREE SPLIT — the site serves one copy, the producers write another"]
+        if all(f["status"] == "TRIPPED" for f in bad):
+            lines = ["[PLATFORM_AVAILABILITY] 🚨 ARCHIVE TRIPWIRE — something live references the served-copy reconcile archive"]
         for f in bad:
-            lines.append(f"• data/{f['dir']}: {f['status']}" + (f" — {f['detail']}" if f.get("detail") else ""))
+            lines.append((f"• {f['dir']}: {f['status']}" if f["dir"] == "archive_tripwire" else f"• data/{f['dir']}: {f['status']}") + (f" — {f['detail']}" if f.get("detail") else ""))
+            for t in (f.get("trips") or [])[:5]:
+                lines.append(f"    {t['where']}: {t['ref']}")
             for w in (f.get("worst") or [])[:3]:
                 lines.append(f"    {w['gap_hours']}h apart  {w['file']}")
         lines.append("")
@@ -224,6 +278,10 @@ def main() -> int:
         return 2
 
     findings = [check_dir(sub, dev_root, served_root, count=not args.no_count) for sub in SPLIT_DIRS]
+    trips = archive_tripwire()
+    if trips:
+        findings.append({"dir": "archive_tripwire", "status": "TRIPPED",
+                         "detail": f"{len(trips)} live reference(s) to the reconcile archive", "trips": trips})
     bad = [f for f in findings if f["status"] != "LINKED"]
 
     if args.json:
@@ -233,6 +291,10 @@ def main() -> int:
         print("=" * 74)
         for f in findings:
             print(f"  [{f['status']:<7}] data/{f['dir']}")
+            if f["status"] == "TRIPPED":
+                for t in f["trips"]:
+                    print(f"            {t['where']}: {t['ref']}")
+                continue
             if f["status"] != "LINKED":
                 print(f"            dev    → {f['dev']}")
                 print(f"            served → {f['served']}")

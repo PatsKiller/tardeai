@@ -1,0 +1,738 @@
+{
+  "schema": "DataSourceAuthority@v1",
+  "authority": "READ_ONLY_ADVISORY",
+  "as_of": "2026-09-13",
+  "_why": "One source of truth per domain. For five months Performance (10 Years) was stored as a 1-5 analyst rating because two files mapped Finviz columns by position and nothing declared which store was the analyst source. For eighteen days the site served one copy of the state tree while the producers wrote another, because nothing declared where each store is served from. This file is that declaration. The data broker reads it; scripts/check_data_source_authority.py enforces it; docs/SOURCE_OF_TRUTH.md is rendered from it.",
+  "_rules": [
+    "Every domain has exactly one writer. Anything else that writes the store is a defect.",
+    "Every domain is read through its broker projection. A hub handler that reads the store directly is a defect (the direct-read baseline can only shrink).",
+    "Every value carries as_of and age. A value older than stale_after_hours renders with its age, never as current.",
+    "A backup answers the SAME question from a different provider. Cross-domain substitution is not a backup.",
+    "A retired provider has zero call sites outside scripts/lib/retired_providers.py and the secret-hygiene scanners.",
+    "A provider that stops reporting decays to unknown in data_source_health; healthy means succeeded within its window.",
+    "Adding a source: add it here first (domain, store, writer, projection, backup, retired) and to AGENTS.md section 7B in the same PR. The gate fails on an undeclared provider host or SDK import."
+  ],
+  "served_from": {
+    "root": "/home/johnclaw/trade-ai-releases/persistent-state/data",
+    "linked_dirs": [
+      "audit",
+      "cio",
+      "health",
+      "paper_trading",
+      "portfolios/state",
+      "runtime",
+      "state"
+    ],
+    "_why": "Both the release (CURRENT) and the dev tree the 344 cron producers run from must resolve each of these to this root. check_served_copy_split.py alerts when they do not."
+  },
+  "providers": {
+    "alpaca": {
+      "class": "live_external",
+      "kind": "sdk+http",
+      "match": [
+        "alpaca",
+        "data.alpaca.markets"
+      ],
+      "status": "active",
+      "supplies": [
+        "quotes",
+        "bars",
+        "paper_execution"
+      ]
+    },
+    "schwab": {
+      "class": "live_external",
+      "kind": "sdk",
+      "match": [
+        "schwab_transport",
+        "schwab_api",
+        "api.schwabapi.com"
+      ],
+      "status": "active",
+      "supplies": [
+        "positions",
+        "option_chain",
+        "stream_quotes",
+        "instruments"
+      ]
+    },
+    "yfinance": {
+      "class": "live_external",
+      "kind": "sdk",
+      "match": [
+        "import yfinance",
+        "yfinance as yf"
+      ],
+      "status": "active",
+      "supplies": [
+        "profiles",
+        "quote_backup",
+        "prices",
+        "technicals",
+        "earnings",
+        "analyst_on_demand"
+      ]
+    },
+    "yahoo": {
+      "class": "live_external",
+      "kind": "http",
+      "match": [
+        "query1.finance.yahoo.com",
+        "query2.finance.yahoo.com",
+        "finance.yahoo.com"
+      ],
+      "status": "active",
+      "supplies": [
+        "analyst_targets",
+        "vix",
+        "news_feed"
+      ]
+    },
+    "finviz": {
+      "class": "live_external",
+      "kind": "http",
+      "match": [
+        "finviz.com",
+        "elite.finviz.com"
+      ],
+      "status": "active",
+      "supplies": [
+        "screeners",
+        "enrichment",
+        "industry_groups",
+        "sector_perf",
+        "news"
+      ],
+      "_note": "Column maps are name-keyed as of PR #989. There is NO Recom column in any pulled view; Finviz is not an analyst source."
+    },
+    "sec_edgar": {
+      "class": "live_external",
+      "kind": "http",
+      "match": [
+        "sec.gov",
+        "efts.sec.gov"
+      ],
+      "status": "active",
+      "supplies": [
+        "form4",
+        "filings"
+      ]
+    },
+    "fred": {
+      "class": "live_external",
+      "kind": "http",
+      "match": [
+        "api.stlouisfed.org",
+        "FRED_API"
+      ],
+      "status": "active_unwired_health",
+      "supplies": [
+        "macro"
+      ]
+    },
+    "alpha_vantage": {
+      "class": "live_external",
+      "kind": "http",
+      "match": [
+        "alphavantage.co",
+        "ALPHA_VANTAGE"
+      ],
+      "status": "active_unwired_health",
+      "supplies": [
+        "fundamentals"
+      ]
+    },
+    "brave": {
+      "class": "live_external",
+      "kind": "http",
+      "match": [
+        "api.search.brave.com",
+        "brave_router",
+        "BRAVE_API"
+      ],
+      "status": "active_paid",
+      "budget": {
+        "daily": 120,
+        "monthly": 1500,
+        "ledger": "data/runtime/search_budget.json"
+      },
+      "supplies": [
+        "web_search"
+      ]
+    },
+    "searxng": {
+      "class": "self_hosted",
+      "kind": "http",
+      "match": [
+        "searxng",
+        "SEARXNG_URL"
+      ],
+      "status": "active",
+      "budget": {
+        "daily": 10000
+      },
+      "supplies": [
+        "web_search"
+      ]
+    },
+    "tavily": {
+      "class": "live_external",
+      "kind": "http",
+      "match": [
+        "api.tavily.com",
+        "TAVILY_API"
+      ],
+      "status": "configured_unused",
+      "budget": {
+        "daily": 20
+      },
+      "supplies": [
+        "web_search"
+      ]
+    },
+    "finnhub": {
+      "class": "live_external",
+      "kind": "http",
+      "match": [
+        "finnhub.io",
+        "FINNHUB_API"
+      ],
+      "status": "retired",
+      "retired_on": "2026-09-13",
+      "_why": "HTTP 401 since 2026-07-27; sat at slot 1 of the catalyst chain for seven weeks while four scheduled callers fell through it every run. Operator decision 2026-09-13: retire; finviz_news leads."
+    },
+    "polygon": {
+      "class": "live_external",
+      "kind": "http",
+      "match": [
+        "api.polygon.io",
+        "polygon_api",
+        "POLYGON_API"
+      ],
+      "status": "retired",
+      "retired_on": "2026-09-13",
+      "_why": "Paid-only plan; never ran on schedule; 0 candidates in data_source_health."
+    },
+    "fmp": {
+      "class": "live_external",
+      "kind": "http",
+      "match": [
+        "financialmodelingprep.com",
+        "FMP_API"
+      ],
+      "status": "retired",
+      "retired_on": "2026-09-13",
+      "_why": "Paid-only; HTTP 403/429 since July 2026."
+    },
+    "newsapi": {
+      "class": "live_external",
+      "kind": "http",
+      "match": [
+        "newsapi.org",
+        "NEWSAPI_KEY",
+        "NEWSAPI_API"
+      ],
+      "status": "retired",
+      "retired_on": "2026-09-13",
+      "_why": "Never ran; health row never touched."
+    },
+    "ollama": {
+      "class": "local_model",
+      "kind": "http",
+      "match": [
+        "11434",
+        "ollama"
+      ],
+      "status": "active",
+      "supplies": [
+        "inference"
+      ]
+    },
+    "deepseek": {
+      "class": "external_model",
+      "kind": "http",
+      "match": [
+        "api.deepseek.com",
+        "DEEPSEEK_API"
+      ],
+      "status": "active_metered",
+      "supplies": [
+        "inference"
+      ]
+    },
+    "stocktwits": {
+      "class": "live_external",
+      "kind": "http",
+      "match": [
+        "stocktwits.com"
+      ],
+      "status": "active",
+      "supplies": [
+        "sentiment"
+      ]
+    },
+    "reddit": {
+      "class": "live_external",
+      "kind": "http",
+      "match": [
+        "reddit.com",
+        "oauth.reddit.com"
+      ],
+      "status": "active",
+      "supplies": [
+        "sentiment"
+      ]
+    },
+    "google_news": {
+      "class": "live_external",
+      "kind": "http",
+      "match": [
+        "news.google.com"
+      ],
+      "status": "active",
+      "supplies": [
+        "news_feed"
+      ]
+    },
+    "moomoo": {
+      "class": "live_external",
+      "kind": "sdk",
+      "match": [
+        "moomoo",
+        "futu",
+        "OpenD"
+      ],
+      "status": "service_down",
+      "supplies": [
+        "positions"
+      ],
+      "_note": "trade-ai-lab-moomoo-opend.service failed; account renders SERVICE_DOWN, never $0."
+    },
+    "fidelity": {
+      "class": "manual",
+      "kind": "none",
+      "match": [
+        "fidelity",
+        "snaptrade"
+      ],
+      "status": "no_api_manual",
+      "supplies": [
+        "positions"
+      ]
+    }
+  },
+  "domains": [
+    {
+      "domain": "quote_price",
+      "class": "ingested",
+      "store": {
+        "table": "market_quotes"
+      },
+      "writer": null,
+      "cadence": "*/15 09:30-16:00 Mon-Fri",
+      "stale_after_hours": 0.25,
+      "stale_after_hours_closed": 72,
+      "projection": "market_quote",
+      "required_fields": [
+        "price",
+        "as_of",
+        "provider"
+      ],
+      "primary_provider": "alpaca",
+      "backup": [
+        "yfinance",
+        "schwab_stream"
+      ],
+      "retired": [
+        "polygon",
+        "finnhub",
+        "fmp"
+      ],
+      "no_coverage": "last_price_with_age_and_source",
+      "writer_status": "UNCONSOLIDATED",
+      "writer_target": "scripts/external_market_data_ingest.py",
+      "_writer_note": "3 modules write this store today (2026-09-13). The gate's writer-count ceiling can only fall; scripts/external_market_data_ingest.py is the module the others must call."
+    },
+    {
+      "domain": "symbol_identity",
+      "class": "ingested",
+      "store": {
+        "table": "symbol_profiles"
+      },
+      "writer": null,
+      "cadence": "06:35 daily",
+      "stale_after_hours": 168,
+      "projection": "symbol_profile",
+      "required_fields": [
+        "sector",
+        "industry",
+        "instrument_type"
+      ],
+      "primary_provider": "yfinance",
+      "backup": [
+        "finviz"
+      ],
+      "retired": [
+        "fmp"
+      ],
+      "no_coverage": "say_so",
+      "writer_status": "UNCONSOLIDATED",
+      "writer_target": "scripts/build_symbol_profiles.py",
+      "_writer_note": "8 modules write this store today (2026-09-13). The gate's writer-count ceiling can only fall; scripts/build_symbol_profiles.py is the module the others must call."
+    },
+    {
+      "domain": "analyst_opinion",
+      "class": "ingested",
+      "store": {
+        "table": "yahoo_analyst_targets_history"
+      },
+      "writer": "scripts/pro_analyst_fetch.py",
+      "cadence": "daily",
+      "stale_after_hours": 168,
+      "projection": "analyst_detail",
+      "required_fields": [
+        "recommendation_mean",
+        "target_mean",
+        "as_of"
+      ],
+      "scale": {
+        "recommendation_mean": [
+          1,
+          5
+        ]
+      },
+      "primary_provider": "yahoo",
+      "backup": [
+        "yfinance_on_demand"
+      ],
+      "retired_stores": [
+        "analyst_consensus_history",
+        "analyst_data_history"
+      ],
+      "retired": [
+        "fmp",
+        "finnhub"
+      ],
+      "no_coverage": "say_so",
+      "_writer_note": "INSERT lives in db_adapter.save_yahoo_analyst_targets_history; pro_analyst_fetch.py (06:10 daily) is the scheduled caller. analyst_coverage.py and etf_analyst_enrich.py also call it — same helper, same store, same scale."
+    },
+    {
+      "domain": "catalyst_news",
+      "class": "ingested",
+      "store": {
+        "table": "news_articles"
+      },
+      "writer": null,
+      "cadence": "00:30 · 12:30",
+      "stale_after_hours": 12,
+      "projection": "catalyst_record",
+      "required_fields": [
+        "headline",
+        "published_at",
+        "source"
+      ],
+      "primary_provider": "finviz",
+      "backup": [
+        "yahoo",
+        "brave",
+        "searxng"
+      ],
+      "retired": [
+        "finnhub",
+        "newsapi",
+        "polygon",
+        "fmp"
+      ],
+      "no_coverage": "say_so",
+      "writer_status": "UNCONSOLIDATED",
+      "writer_target": "scripts/news_ingestion.py",
+      "_writer_note": "16 modules write this store today (2026-09-13). The gate's writer-count ceiling can only fall; scripts/news_ingestion.py is the module the others must call."
+    },
+    {
+      "domain": "technicals",
+      "class": "derived",
+      "store": {
+        "table": "ticker_prices",
+        "file": "portfolios/state/technical_snapshot.json"
+      },
+      "writer": null,
+      "cadence": "hourly",
+      "stale_after_hours": 26,
+      "projection": "indicator_snapshot",
+      "required_fields": [
+        "rsi14",
+        "atr20",
+        "as_of"
+      ],
+      "primary_provider": "alpaca",
+      "backup": [
+        "yfinance"
+      ],
+      "retired": [],
+      "no_coverage": "say_so",
+      "writer_status": "UNCONSOLIDATED",
+      "writer_target": "scripts/portfolio_repricer.py",
+      "_writer_note": "4 modules write this store today (2026-09-13). The gate's writer-count ceiling can only fall; scripts/portfolio_repricer.py is the module the others must call."
+    },
+    {
+      "domain": "sector_momentum",
+      "class": "derived",
+      "store": {
+        "table": "sector_rs_daily",
+        "file": "runtime/sector_momentum_latest.json"
+      },
+      "writer": "scripts/sector_rs_daily.py",
+      "cadence": "17:20 Mon-Fri",
+      "stale_after_hours": 26,
+      "projection": "sector_momentum",
+      "required_fields": [
+        "rs_20",
+        "rs_60"
+      ],
+      "primary_provider": "internal:market_quotes",
+      "backup": [
+        "finviz_sector_view"
+      ],
+      "retired": [],
+      "no_coverage": "say_so"
+    },
+    {
+      "domain": "industry_momentum",
+      "class": "ingested",
+      "store": {
+        "file": "runtime/industry_momentum_latest.json"
+      },
+      "writer": "scripts/finviz_industry_groups.py",
+      "cadence": "12:30 · 16:18",
+      "stale_after_hours": 26,
+      "projection": "sector_momentum",
+      "required_fields": [
+        "industry",
+        "perf_1w"
+      ],
+      "primary_provider": "finviz",
+      "backup": [],
+      "retired": [],
+      "no_coverage": "show_sector_with_industry_unavailable"
+    },
+    {
+      "domain": "market_regime",
+      "class": "derived",
+      "store": {
+        "table": "market_regime_snapshots"
+      },
+      "writer": "scripts/market_regime_classifier.py",
+      "cadence": "06:35 · 16:05 Mon-Fri (collector 06:30 feeds it)",
+      "stale_after_hours": 26,
+      "projection": "risk_snapshot",
+      "required_fields": [
+        "regime",
+        "vix",
+        "as_of"
+      ],
+      "primary_provider": "yahoo",
+      "backup": [
+        "internal:trade_ai_scans"
+      ],
+      "retired": [],
+      "no_coverage": "carry_last_regime_with_date_never_neutral"
+    },
+    {
+      "domain": "earnings_date",
+      "class": "ingested",
+      "store": {
+        "table": "symbol_profiles"
+      },
+      "writer": "scripts/earnings_enrich.py",
+      "cadence": "06:35 daily",
+      "stale_after_hours": 168,
+      "projection": "symbol_profile",
+      "required_fields": [
+        "earnings_state"
+      ],
+      "states": [
+        "SCHEDULED",
+        "NONE",
+        "UNKNOWN"
+      ],
+      "primary_provider": "yfinance",
+      "backup": [],
+      "retired": [
+        "fmp"
+      ],
+      "no_coverage": "UNKNOWN_blocks_options_gate"
+    },
+    {
+      "domain": "holdings_accounts",
+      "class": "ingested",
+      "store": {
+        "file": "portfolios/state/holdings.json"
+      },
+      "writer": "scripts/portfolio_loader.py",
+      "cadence": "broker sync + */15 repricer",
+      "stale_after_hours": 24,
+      "projection": "portfolio_snapshot",
+      "required_fields": [
+        "accounts[].state"
+      ],
+      "account_states": [
+        "LIVE",
+        "STALE",
+        "SERVICE_DOWN",
+        "NO_API_MANUAL"
+      ],
+      "primary_provider": "schwab",
+      "backup": [
+        "alpaca"
+      ],
+      "retired": [],
+      "no_coverage": "per_account_state_never_zero"
+    },
+    {
+      "domain": "options_iv",
+      "class": "live_external",
+      "store": {
+        "table": "options_iv_history"
+      },
+      "writer": "scripts/lib/strategy_research/iv_history.py",
+      "cadence": "unscheduled",
+      "stale_after_hours": 4,
+      "projection": null,
+      "required_fields": [
+        "iv",
+        "as_of"
+      ],
+      "primary_provider": "schwab",
+      "backup": [],
+      "retired": [],
+      "no_coverage": "call_out_at_read_time",
+      "_projection_note": "No option_chain projection exists yet — Phase 4 adds it. Until then the domain is read-at-source and this field is null on purpose."
+    },
+    {
+      "domain": "research_thesis",
+      "class": "native",
+      "store": {
+        "table": "hermes_research_intelligence"
+      },
+      "writer": null,
+      "cadence": "8 scheduled lanes",
+      "stale_after_hours": 168,
+      "projection": "research_card",
+      "required_fields": [
+        "subject_guid",
+        "as_of"
+      ],
+      "primary_provider": "internal",
+      "backup": [
+        "research_insights",
+        "governed_pull:brave>searxng"
+      ],
+      "retired": [],
+      "no_coverage": "say_so_queue_only_if_producer_exists",
+      "_note": "14 writer modules today; consolidation target is this one module. Writer-count baseline in the gate can only fall.",
+      "writer_status": "UNCONSOLIDATED",
+      "writer_target": "scripts/lib/hermes_librarian/librarian.py",
+      "_writer_note": "32 modules write this store today (2026-09-13). The gate's writer-count ceiling can only fall; scripts/lib/hermes_librarian/librarian.py is the module the others must call."
+    },
+    {
+      "domain": "watch_directives",
+      "class": "native",
+      "store": {
+        "table": "watch_directives"
+      },
+      "writer": null,
+      "cadence": "3 scheduled",
+      "stale_after_hours": 48,
+      "projection": "watch_intelligence",
+      "required_fields": [
+        "symbol",
+        "directive",
+        "as_of"
+      ],
+      "primary_provider": "internal",
+      "backup": [],
+      "retired": [],
+      "no_coverage": "say_so",
+      "_note": "8 writer modules today; see writer-count baseline.",
+      "writer_status": "UNCONSOLIDATED",
+      "writer_target": "scripts/lib/two_way_curation.py",
+      "_writer_note": "18 modules write this store today (2026-09-13). The gate's writer-count ceiling can only fall; scripts/lib/two_way_curation.py is the module the others must call."
+    },
+    {
+      "domain": "watch_discovery",
+      "class": "dead_feed",
+      "store": {
+        "table": "watch_candidate_events"
+      },
+      "writer": null,
+      "cadence": null,
+      "stale_after_hours": 48,
+      "projection": "watch_intelligence",
+      "primary_provider": "internal",
+      "backup": [],
+      "retired": [],
+      "no_coverage": "declared_gap_no_producer",
+      "_note": "No INSERT anywhere in the repo since 2026-07-16. Panel renders 'no producer' until one is registered here."
+    },
+    {
+      "domain": "web_search",
+      "class": "live_external",
+      "store": {
+        "file": "runtime/search_budget.json"
+      },
+      "writer": "scripts/lib/brave_router.py",
+      "cadence": "on demand",
+      "stale_after_hours": null,
+      "projection": null,
+      "primary_provider": "brave",
+      "backup": [
+        "searxng",
+        "tavily"
+      ],
+      "spill_on": [
+        "DAILY_EXHAUSTED",
+        "MONTHLY_EXHAUSTED",
+        "HTTP_429"
+      ],
+      "retired": [],
+      "no_coverage": "declared_gap"
+    },
+    {
+      "domain": "private_company",
+      "class": "manual",
+      "store": {
+        "table": "private_company_proxies"
+      },
+      "writer": "operator",
+      "cadence": null,
+      "stale_after_hours": null,
+      "projection": null,
+      "primary_provider": "none",
+      "backup": [],
+      "retired": [],
+      "no_coverage": "refuse_up_front"
+    },
+    {
+      "domain": "dividends",
+      "class": "ingested",
+      "store": {
+        "table": "ticker_dividend_data"
+      },
+      "writer": "scripts/sync_dividend_data.py",
+      "cadence": "07:05 Mon-Fri",
+      "stale_after_hours": 168,
+      "projection": null,
+      "required_fields": [
+        "annual_dividend_per_share",
+        "ex_div_date"
+      ],
+      "primary_provider": "yfinance",
+      "backup": [],
+      "retired": [
+        "fmp"
+      ],
+      "no_coverage": "say_so",
+      "_note": "Rewritten 2026-09-13 from FMP to yfinance; portfolio_alerts and portfolio_dividend_calendar read this table instead of calling a provider."
+    }
+  ]
+}

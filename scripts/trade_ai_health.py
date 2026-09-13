@@ -53,17 +53,10 @@ def _find_reports(root: Path, date_str: str) -> List[Dict]:
 def _check_api_health(root: Path) -> Dict:
     """
     Check API health by scanning recent log files and run summaries.
-    Known issues as of April 2026:
-      - Polygon: 404 (discontinued endpoint)
-      - FMP: 403 (legacy endpoint discontinued post-Aug 2025)
-      - Finnhub: 422 (missing date params)
+    Polygon, FMP, Finnhub and NewsAPI were retired 2026-09-13 and are not tracked here.
     """
     apis = {
         "finviz_token": {"status": "unknown", "note": "Primary screener — API token"},
-        "finnhub":      {"status": "unknown", "note": "Catalyst news source 1"},
-        "newsapi":      {"status": "unknown", "note": "Catalyst news source 2"},
-        "polygon":      {"status": "unknown", "note": "Market context + halt detection"},
-        "fmp":          {"status": "unknown", "note": "Economic calendar"},
         "anthropic":    {"status": "unknown", "note": "Haiku scoring + Sonnet trade plans"},
         "telegram":     {"status": "unknown", "note": "Alert delivery"},
     }
@@ -77,10 +70,6 @@ def _check_api_health(root: Path) -> Dict:
         env_content = env_file.read_text(encoding="utf-8", errors="replace")
         key_checks = {
             "finviz_token": "FINVIZ_API_TOKEN",
-            "finnhub":      "FINNHUB_API_KEY",
-            "newsapi":      "NEWSAPI_KEY",
-            "polygon":      "POLYGON_API_KEY",
-            "fmp":          "FMP_API_KEY",
             "anthropic":    "ANTHROPIC_API_KEY",
             "telegram":     "TELEGRAM_BOT_TOKEN",
         }
@@ -99,31 +88,19 @@ def _check_api_health(root: Path) -> Dict:
                 errors = json.loads(log_file.read_text(encoding="utf-8"))
                 for err in (errors if isinstance(errors, list) else [errors]):
                     msg = str(err).lower()
-                    if "polygon" in msg and ("404" in msg or "403" in msg):
-                        apis["polygon"]["status"] = "error"
-                        apis["polygon"]["last_error"] = "HTTP 404/403"
-                    # FMP /api/v3/ endpoints replaced with /stable/ — no longer flag 403
-                    # if "fmp" in msg and ("403" in msg or "discontinued" in msg):
-                    #     apis["fmp"]["status"] = "error"
-                    if "finnhub" in msg and "422" in msg:
-                        apis["finnhub"]["status"] = "error"
-                        apis["finnhub"]["last_error"] = "HTTP 422 — missing date params"
+                    pass  # retired providers (polygon/fmp/finnhub) no longer tracked here — 2026-09-13
             except Exception:
                 pass
 
     # Apply known-broken status from documentation
-    known_broken = {
-        "polygon": "HTTP 404 — endpoint discontinued (post-Aug 2025)",
-        "fmp":     "HTTP 403 — legacy endpoint discontinued (post-Aug 2025)",
-        "finnhub": "HTTP 422 — missing date params (needs fix in catalyst_enrichment.py)",
-    }
+    known_broken: dict = {}  # polygon/fmp/finnhub retired 2026-09-13 — config/data_source_authority.json
     for api, note in known_broken.items():
         if apis[api]["status"] == "unknown" and apis[api].get("key_present", True):
             apis[api]["status"] = "degraded"
             apis[api]["known_issue"] = note
 
     # Mark working APIs
-    for api in ["finviz_token", "newsapi", "anthropic", "telegram"]:
+    for api in ["finviz_token", "anthropic", "telegram"]:
         if apis[api]["status"] == "unknown" and apis[api].get("key_present", True):
             apis[api]["status"] = "ok"
 

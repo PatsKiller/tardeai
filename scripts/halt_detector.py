@@ -66,22 +66,9 @@ def _fetch_nasdaq_halts() -> List[Dict]:
 # ── Polygon snapshot check ────────────────────────────────────────────────────
 
 def _check_polygon_status(symbols: List[str]) -> Dict[str, bool]:
-    """Check if tickers have day.volume == 0 (possible halt proxy) via Polygon."""
-    key = _env("POLYGON_API_KEY")
-    if not key or not symbols:
-        return {}
-    try:
-        url  = "https://api.polygon.io/v2/snapshot/locale/us/markets/stocks/tickers"
-        resp = requests.get(url, params={"tickers": ",".join(symbols[:50]), "apiKey": key}, timeout=10)
-        resp.raise_for_status()
-        result = {}
-        for item in resp.json().get("tickers", []):
-            sym = item.get("ticker", "")
-            day_vol = item.get("day", {}).get("v", -1)
-            result[sym] = (day_vol == 0)   # True if possibly halted
-        return result
-    except Exception:
-        return {}
+    """Polygon retired 2026-09-13 (config/data_source_authority.json). No halt proxy is
+    declared for this question; return the empty, honest answer rather than a dead call."""
+    return {}
 
 
 # ── Catalyst news scan ────────────────────────────────────────────────────────

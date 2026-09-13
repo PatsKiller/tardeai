@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """trade_execution_analyzer.py — MFE/MAE + trailing optimization + entry quality.
 
-Broker-agnostic: fetches bars from yfinance (default), polygon, or any
+Broker-agnostic: fetches bars from yfinance (default), Alpaca, or any
 configured data provider. Never hardcodes to a specific broker.
 
 Three analysis modes:
@@ -43,9 +43,6 @@ def fetch_bars(symbol: str, start_date: str, end_date: str, timeframe: str = "1D
     bars = _fetch_yfinance(symbol, start_date, end_date)
     if bars:
         return bars
-    bars = _fetch_polygon(symbol, start_date, end_date)
-    if bars:
-        return bars
     bars = _fetch_alpaca_data_api(symbol, start_date, end_date, timeframe)
     if bars:
         return bars
@@ -67,25 +64,6 @@ def _fetch_yfinance(symbol, start, end):
         log.debug(f"yfinance failed for {symbol}: {e}")
         return []
 
-
-def _fetch_polygon(symbol, start, end):
-    api_key = os.environ.get("POLYGON_API_KEY", "")
-    if not api_key:
-        return []
-    try:
-        import requests
-        resp = requests.get(
-            f"https://api.polygon.io/v2/aggs/ticker/{symbol}/range/1/day/{start}/{end}",
-            params={"apiKey": api_key, "adjusted": "true", "sort": "asc", "limit": 120},
-            timeout=15)
-        if resp.ok:
-            results = resp.json().get("results", [])
-            return [{"timestamp": str(datetime.fromtimestamp(r["t"] / 1000)), "open": r["o"],
-                     "high": r["h"], "low": r["l"], "close": r["c"], "volume": r.get("v", 0)}
-                    for r in results]
-    except Exception as e:
-        log.debug(f"polygon failed for {symbol}: {e}")
-    return []
 
 
 def _fetch_alpaca_data_api(symbol, start, end, timeframe="1Day"):

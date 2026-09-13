@@ -181,6 +181,39 @@ PROJECTIONS: list[dict[str, Any]] = [
         "read_only": True,
         "status": "legacy",
     },
+    # 2026-09-13 One Source of Truth: three modules that existed in this package but
+    # were never catalogued, so config/data_source_authority.json could not name them
+    # as a domain's read path. Declared here, unchanged in behaviour.
+    {
+        "id": "sector_momentum",
+        "module": "lib.data_broker.sector_momentum",
+        "entrypoints": ["get_sector_momentum"],
+        "http": [],
+        "domain": "sectors",
+        "description": "Sector relative-strength momentum from sector_rs_daily / sector_momentum_latest",
+        "read_only": True,
+        "provider_calls": 0,
+    },
+    {
+        "id": "risk_snapshot",
+        "module": "lib.data_broker.risk_snapshot",
+        "entrypoints": ["get_risk_snapshot"],
+        "http": [],
+        "domain": "risk",
+        "description": "Regime, VIX and book-risk snapshot (market_regime_snapshots + risk state)",
+        "read_only": True,
+        "provider_calls": 0,
+    },
+    {
+        "id": "research_card",
+        "module": "lib.data_broker.research_card",
+        "entrypoints": ["get_research_cards"],
+        "http": [],
+        "domain": "research",
+        "description": "Per-symbol research cards from watchlist_research_cards",
+        "read_only": True,
+        "provider_calls": 0,
+    },
     {
         "id": "cio_portfolio",
         "module": "lib.data_broker.cio_portfolio",

@@ -582,6 +582,11 @@ GATES = [
             # persistent-state). Identity of the directory is the check, not the
             # age of a file -- an age check on one copy is exactly what missed it.
             "tests/test_served_copy_split_20260913.py",
+            # 2026-09-13 One Source of Truth: config/data_source_authority.json is the one
+            # declaration of store, writer, provider and read path per domain; the gate
+            # fails on a retired call site, an undeclared host, or a writer/direct-read
+            # count that rose above its ceiling.
+            "tests/test_data_source_authority_20260913.py",
             # Off UNLISTED_BASELINE at last. The ONLY coverage of
             # cio_run_worker._check_health, and its fakes are what hid CL-61.
             "tests/test_p26_shadow_autonomy.py",

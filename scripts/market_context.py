@@ -218,102 +218,6 @@ def _fetch_yahoo(symbols: List[str]) -> Dict[str, Dict]:
     return results
 
 
-def _fetch_fmp(symbols: List[str]) -> Dict[str, Dict]:
-    """
-    FMP real-time quotes — secondary source.
-    Includes pre-market prices when market is closed.
-    Supports ^VIX via FMP_SYMBOL_MAP.
-    """
-    key = _env("FMP_API_KEY")
-    if not key:
-        return {}
-    try:
-        # Map symbols (e.g. VIX → ^VIX) before sending to FMP
-        mapped = [FMP_SYMBOL_MAP.get(s, s) for s in symbols]
-        tickers_param = ",".join(mapped)
-        url = "https://financialmodelingprep.com/stable/quote"
-        resp = requests.get(
-            url, params={"symbol": tickers_param, "apikey": key}, timeout=10
-        )
-        resp.raise_for_status()
-        results = {}
-        for item in resp.json() or []:
-            fmp_sym = item.get("symbol", "")
-            # Reverse-map FMP symbol back to internal symbol
-            reverse_map = {v: k for k, v in FMP_SYMBOL_MAP.items()}
-            internal_sym = reverse_map.get(fmp_sym, fmp_sym)
-            if internal_sym not in symbols:
-                continue
-            results[internal_sym] = {
-                "symbol":         internal_sym,
-                "price":          item.get("price", 0),
-                "change_percent": item.get("changesPercentage", 0),
-                "volume":         item.get("volume", 0),
-                "prev_close":     item.get("previousClose", 0),
-                "source":         "fmp",
-            }
-        return results
-    except Exception:
-        return {}
-
-
-def _fetch_polygon(symbols: List[str]) -> Dict[str, Dict]:
-    """
-    Polygon stock snapshot — tertiary source.
-    NOTE: Polygon stock endpoint does NOT support index symbols (VIX).
-    Index symbols are automatically excluded from the request.
-    """
-    key = _env("POLYGON_API_KEY")
-    if not key:
-        return {}
-
-    # Exclude index symbols — Polygon stock snapshot doesn't carry them
-    stock_symbols = [s for s in symbols if s not in INDEX_SYMBOLS]
-    if not stock_symbols:
-        return {}
-
-    try:
-        url = "https://api.polygon.io/v2/snapshot/locale/us/markets/stocks/tickers"
-        resp = requests.get(
-            url,
-            params={"tickers": ",".join(stock_symbols), "apiKey": key},
-            timeout=10,
-        )
-        resp.raise_for_status()
-        results = {}
-        for item in resp.json().get("tickers", []):
-            sym = item.get("ticker", "")
-            day       = item.get("day", {})
-            prev      = item.get("prevDay", {})
-            last      = item.get("lastTrade", {})
-            change_pct = item.get("todaysChangePerc", 0) or 0
-
-            day_close  = day.get("c", 0) or 0
-            prev_close = prev.get("c", 0) or 0
-            last_price = last.get("p", 0) or 0
-
-            # Pre-market: day hasn't opened yet so day.c = 0
-            # Use last trade price + compute change vs prev_close
-            price = day_close or last_price or prev_close
-            if last_price and prev_close and not day_close:
-                change_pct = round((last_price - prev_close) / prev_close * 100, 2)
-
-            if not price:
-                continue
-
-            results[sym] = {
-                "symbol":         sym,
-                "price":          round(price, 2),
-                "change_percent": round(change_pct, 2),
-                "volume":         day.get("v", 0),
-                "prev_close":     round(prev_close, 2),
-                "source":         "polygon",
-            }
-        return results
-    except Exception:
-        return {}
-
-
 def _fetch_finviz_quotes(symbols: List[str]) -> Dict[str, Dict]:
     """
     Finviz quote export — fallback for ETFs.
@@ -384,14 +288,13 @@ def _round_robin_fetch(symbols: List[str]) -> Dict[str, Dict]:
 
     Priority:
       1. Yahoo Finance  — primary, 24/7, pre/post-market, handles VIX
-      2. FMP            — real-time, handles VIX via ^VIX
-      3. Polygon        — intraday stocks only (no VIX)
-      4. Finviz         — ETF fallback (no VIX)
+      2. Finviz         — ETF fallback (no VIX)
+    FMP and Polygon retired 2026-09-13 (config/data_source_authority.json).
     """
     fetched: Dict[str, Dict] = {}
     remaining = list(symbols)
 
-    for fetcher in [_fetch_yahoo, _fetch_fmp, _fetch_polygon, _fetch_finviz_quotes]:
+    for fetcher in [_fetch_yahoo, _fetch_finviz_quotes]:  # fmp/polygon retired 2026-09-13
         if not remaining:
             break
         batch = fetcher(remaining)

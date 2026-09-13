@@ -203,46 +203,6 @@ def check_brave() -> dict:
         return {"name": "Brave Search", "status": "error", "error": str(e)}
 
 
-def check_finnhub() -> dict:
-    """Check Finnhub API key."""
-    key = _env("FINNHUB_API_KEY")
-    if not key:
-        return {"name": "Finnhub", "status": "missing", "error": "FINNHUB_API_KEY not set"}
-    try:
-        url = f"https://finnhub.io/api/v1/quote?symbol=AAPL&token={key}"
-        with urllib.request.urlopen(url, timeout=10) as resp:
-            data = json.loads(resp.read())
-            if data.get("c", 0) > 0:
-                return {"name": "Finnhub", "status": "ok", "detail": f"AAPL=${data['c']}"}
-        return {"name": "Finnhub", "status": "error", "error": "No quote data"}
-    except urllib.error.HTTPError as e:
-        if e.code == 401:
-            return {"name": "Finnhub", "status": "expired", "error": "401 — API key invalid or expired"}
-        return {"name": "Finnhub", "status": "error", "error": f"HTTP {e.code}"}
-    except Exception as e:
-        return {"name": "Finnhub", "status": "error", "error": str(e)}
-
-
-def check_fmp() -> dict:
-    """Check FMP API key."""
-    key = _env("FMP_API_KEY")
-    if not key:
-        return {"name": "FMP", "status": "missing", "error": "FMP_API_KEY not set"}
-    try:
-        url = f"https://financialmodelingprep.com/api/v3/quote-short/AAPL?apikey={key}"
-        with urllib.request.urlopen(url, timeout=10) as resp:
-            data = json.loads(resp.read())
-            if isinstance(data, list) and len(data) > 0:
-                return {"name": "FMP", "status": "ok", "detail": f"AAPL=${data[0].get('price',0)}"}
-        return {"name": "FMP", "status": "error", "error": "Empty response"}
-    except urllib.error.HTTPError as e:
-        if e.code in (401, 403):
-            return {"name": "FMP", "status": "expired", "error": f"HTTP {e.code} — key invalid"}
-        return {"name": "FMP", "status": "error", "error": f"HTTP {e.code}"}
-    except Exception as e:
-        return {"name": "FMP", "status": "error", "error": str(e)}
-
-
 def check_alpha_vantage() -> dict:
     """Check Alpha Vantage API key."""
     key = _env("ALPHA_VANTAGE_API_KEY")
@@ -289,7 +249,7 @@ def check_ollama() -> dict:
 
 ALL_CHECKS = [
     check_finviz, check_youtube_cookie, check_youtube_api,
-    check_fred, check_brave, check_finnhub, check_fmp,
+    check_fred, check_brave,
     check_alpha_vantage, check_db, check_ollama,
 ]
 
@@ -298,8 +258,6 @@ ENV_KEY_MAP = {
     "YouTube API": "YOUTUBE_API_KEY",
     "FRED": "FRED_API_KEY",
     "Brave Search": "BRAVE_SEARCH_API_KEY",
-    "Finnhub": "FINNHUB_API_KEY",
-    "FMP": "FMP_API_KEY",
     "Alpha Vantage": "ALPHA_VANTAGE_API_KEY",
 }
 

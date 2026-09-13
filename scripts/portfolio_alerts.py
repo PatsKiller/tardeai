@@ -6,7 +6,8 @@ Sends Telegram alerts for:
   - Strategic portfolio alerts (price drops, concentration, rebalancing)
   - Monthly Roth conversion reminder
 
-Uses FMP + Finnhub APIs (already in .env).
+Reads the stores of record (symbol_profiles, ticker_dividend_data,
+yahoo_analyst_targets_history). FMP and Finnhub retired 2026-09-13.
 Integrates with existing Trade AI v12 Telegram bot.
 """
 from __future__ import annotations
@@ -86,144 +87,127 @@ def _get_stock_tickers(portfolio: Dict) -> List[str]:
 
 # ── Earnings Calendar ─────────────────────────────────────────────────────────
 
+def _rows(sql: str, params: tuple) -> List[Dict]:
+    """Read from the trade_ai stores of record. Empty list on any failure (alerts fail quiet, not loud)."""
+    try:
+        import sys
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from session13_db import get_conn  # type: ignore
+        import psycopg2.extras
+        with get_conn() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                cur.execute(sql, params)
+                return [dict(r) for r in cur.fetchall()]
+    except Exception as e:
+        print(f"  [alerts] store read error: {e}")
+        return []
+
+
 def fetch_earnings_alerts(tickers: List[str], project_root: Path,
                           days_ahead: int = 7) -> List[Dict]:
-    """Get upcoming earnings dates for portfolio holdings via FMP."""
-    _load_env_from_file(project_root)
-    fmp_key = _env("FMP_API_KEY") or _env("FINANCIAL_MODELING_PREP_KEY")
-    if not fmp_key:
+    """Upcoming earnings for holdings, from symbol_profiles.next_earnings_date.
+
+    FMP retired 2026-09-13 (config/data_source_authority.json). symbol_profiles is the
+    earnings store of record, written daily by earnings_enrich.py from yfinance.
+    """
+    if not tickers:
         return []
-
-    today     = datetime.now()
-    end_date  = today + timedelta(days=days_ahead)
-    from_str  = today.strftime("%Y-%m-%d")
-    to_str    = end_date.strftime("%Y-%m-%d")
-
-    try:
-        url = (f"https://financialmodelingprep.com/api/v3/earning_calendar"
-               f"?from={from_str}&to={to_str}&apikey={fmp_key}")
-        data = requests.get(url, timeout=15).json()
-        if not isinstance(data, list):
-            return []
-
-        ticker_set = set(tickers)
-        results = []
-        for item in data:
-            sym = item.get("symbol","").upper()
-            if sym in ticker_set:
-                eps_est  = item.get("epsEstimated")
-                rev_est  = item.get("revenueEstimated")
-                date_str = item.get("date","")
-                time_str = item.get("time","")
-                results.append({
-                    "symbol":        sym,
-                    "date":          date_str,
-                    "time":          time_str,  # "amc" = after market close, "bmo" = before open
-                    "eps_estimate":  eps_est,
-                    "rev_estimate":  rev_est,
-                    "days_away":     (datetime.strptime(date_str, "%Y-%m-%d") - today).days
-                                     if date_str else 99,
-                })
-        results.sort(key=lambda x: x.get("days_away", 99))
-        return results
-
-    except Exception as e:
-        print(f"  [alerts] Earnings fetch error: {e}")
-        return []
+    today = datetime.now()
+    rows = _rows(
+        """SELECT symbol, next_earnings_date::text AS date, last_eps_estimate
+             FROM symbol_profiles
+            WHERE symbol = ANY(%s)
+              AND next_earnings_date BETWEEN CURRENT_DATE AND CURRENT_DATE + %s::int
+            ORDER BY next_earnings_date""",
+        ([t.upper() for t in tickers], days_ahead),
+    )
+    results = []
+    for r in rows:
+        date_str = r.get("date") or ""
+        results.append({
+            "symbol": r["symbol"], "date": date_str, "time": "",
+            "eps_estimate": r.get("last_eps_estimate"), "rev_estimate": None,
+            "days_away": (datetime.strptime(date_str, "%Y-%m-%d") - today).days if date_str else 99,
+            "source": "symbol_profiles",
+        })
+    results.sort(key=lambda x: x.get("days_away", 99))
+    return results
 
 
 # ── Dividend Calendar ─────────────────────────────────────────────────────────
 
 def fetch_dividend_alerts(tickers: List[str], project_root: Path,
                           days_ahead: int = 14) -> List[Dict]:
-    """Get upcoming ex-dividend dates for portfolio holdings via FMP."""
-    _load_env_from_file(project_root)
-    fmp_key = _env("FMP_API_KEY") or _env("FINANCIAL_MODELING_PREP_KEY")
-    if not fmp_key:
+    """Upcoming ex-dividend dates for holdings, from ticker_dividend_data.
+
+    FMP retired 2026-09-13. ticker_dividend_data is the dividend store of record,
+    written by sync_dividend_data.py (yfinance).
+    """
+    if not tickers:
         return []
-
-    today    = datetime.now()
-    end_date = today + timedelta(days=days_ahead)
-    from_str = today.strftime("%Y-%m-%d")
-    to_str   = end_date.strftime("%Y-%m-%d")
-
-    try:
-        url = (f"https://financialmodelingprep.com/api/v3/stock_dividend_calendar"
-               f"?from={from_str}&to={to_str}&apikey={fmp_key}")
-        data = requests.get(url, timeout=15).json()
-        if not isinstance(data, list):
-            return []
-
-        ticker_set = set(tickers)
-        results = []
-        for item in data:
-            sym = item.get("symbol","").upper()
-            if sym in ticker_set:
-                ex_date  = item.get("date","")
-                pay_date = item.get("paymentDate","")
-                dividend = item.get("dividend", 0)
-                results.append({
-                    "symbol":       sym,
-                    "ex_date":      ex_date,
-                    "pay_date":     pay_date,
-                    "dividend":     dividend,
-                    "days_to_exdiv": (datetime.strptime(ex_date, "%Y-%m-%d") - today).days
-                                      if ex_date else 99,
-                })
-        results.sort(key=lambda x: x.get("days_to_exdiv", 99))
-        return results
-
-    except Exception as e:
-        print(f"  [alerts] Dividend fetch error: {e}")
-        return []
+    today = datetime.now()
+    rows = _rows(
+        """SELECT symbol, ex_div_date::text AS ex_date, pay_date::text AS pay_date,
+                  annual_dividend_per_share, frequency
+             FROM ticker_dividend_data
+            WHERE symbol = ANY(%s)
+              AND ex_div_date BETWEEN CURRENT_DATE AND CURRENT_DATE + %s::int
+            ORDER BY ex_div_date""",
+        ([t.upper() for t in tickers], days_ahead),
+    )
+    results = []
+    for r in rows:
+        ex_date = r.get("ex_date") or ""
+        annual = float(r.get("annual_dividend_per_share") or 0)
+        per = {"monthly": 12, "quarterly": 4, "semi-annual": 2, "annual": 1}.get(str(r.get("frequency") or "quarterly"), 4)
+        results.append({
+            "symbol": r["symbol"], "ex_date": ex_date, "pay_date": r.get("pay_date") or "",
+            "dividend": round(annual / per, 4) if annual else 0,
+            "days_to_exdiv": (datetime.strptime(ex_date, "%Y-%m-%d") - today).days if ex_date else 99,
+            "source": "ticker_dividend_data",
+        })
+    results.sort(key=lambda x: x.get("days_to_exdiv", 99))
+    return results
 
 
 # ── Analyst Upgrades/Downgrades ───────────────────────────────────────────────
 
 def fetch_analyst_alerts(tickers: List[str], project_root: Path,
                          days_back: int = 3) -> List[Dict]:
-    """Get recent analyst upgrades/downgrades via Finnhub."""
-    _load_env_from_file(project_root)
-    finnhub_key = _env("FINNHUB_API_KEY")
-    if not finnhub_key:
+    """Recent consensus changes for holdings, from yahoo_analyst_targets_history.
+
+    Finnhub retired 2026-09-13 (HTTP 401 since 07-27). The analyst store of record is
+    yahoo_analyst_targets_history (recommendation_key / recommendation_mean on the 1-5
+    rail). A change is the newest row's recommendation_key differing from the row before
+    it, with the newest row inside the window.
+    """
+    if not tickers:
         return []
-
-    today    = datetime.now()
-    from_str = (today - timedelta(days=days_back)).strftime("%Y-%m-%d")
-    to_str   = today.strftime("%Y-%m-%d")
-
+    rows = _rows(
+        """WITH ranked AS (
+               SELECT symbol, snapshot_date, recommendation_key, recommendation_mean,
+                      number_of_analyst_opinions,
+                      LAG(recommendation_key) OVER (PARTITION BY symbol ORDER BY snapshot_date) AS prev_key,
+                      ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY snapshot_date DESC) AS rn
+                 FROM yahoo_analyst_targets_history
+                WHERE symbol = ANY(%s) AND recommendation_key IS NOT NULL
+           )
+           SELECT * FROM ranked
+            WHERE rn = 1 AND prev_key IS NOT NULL AND prev_key <> recommendation_key
+              AND snapshot_date >= CURRENT_DATE - %s::int
+            ORDER BY snapshot_date DESC""",
+        ([t.upper() for t in tickers], days_back),
+    )
     results = []
-    # Check top holdings only (avoid rate limits)
-    priority = ["V","FCNTX","LMT","NOC","AVAV","KTOS","RKLB","CSWC","PFLT",
-                "PFE","RTX","SCHG","SCHD","BND","ARKG","ARKQ"]
-    check_tickers = [t for t in priority if t in tickers] + \
-                    [t for t in tickers if t not in priority][:10]
-
-    for sym in check_tickers[:15]:  # cap at 15 to avoid rate limits
-        try:
-            url = (f"https://finnhub.io/api/v1/stock/recommendation"
-                   f"?symbol={sym}&token={finnhub_key}")
-            data = requests.get(url, timeout=10).json()
-            if not isinstance(data, list) or not data:
-                continue
-
-            # Most recent recommendation
-            latest = data[0]
-            rec_date = latest.get("period","")
-            if rec_date >= from_str:
-                results.append({
-                    "symbol":       sym,
-                    "date":         rec_date,
-                    "strong_buy":   latest.get("strongBuy", 0),
-                    "buy":          latest.get("buy", 0),
-                    "hold":         latest.get("hold", 0),
-                    "sell":         latest.get("sell", 0),
-                    "strong_sell":  latest.get("strongSell", 0),
-                    "consensus":    _consensus(latest),
-                })
-        except Exception:
-            continue
-
+    for r in rows:
+        results.append({
+            "symbol": r["symbol"], "date": str(r["snapshot_date"]),
+            "from": r.get("prev_key"), "to": r.get("recommendation_key"),
+            "recommendation_mean": float(r["recommendation_mean"]) if r.get("recommendation_mean") is not None else None,
+            "analysts": r.get("number_of_analyst_opinions"),
+            "consensus": str(r.get("recommendation_key") or "").replace("_", " ").title(),
+            "source": "yahoo_analyst_targets_history",
+        })
     return results
 
 

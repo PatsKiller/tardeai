@@ -1,6 +1,6 @@
 """think_tank_signal_miner.py — Multi-source trend signal mining for the think tank.
 
-Sources: Hermes research DB, RSS/news_articles, catalyst_events, Finnhub/API feeds,
+Sources: Hermes research DB, RSS/news_articles, catalyst_events, API feeds,
 SearXNG web probe, RS/RSI leaders (enrichment + snapshots), new-site discovery,
 and LLM synthesis over the combined bundle.
 """
@@ -55,7 +55,7 @@ GENERIC_RESEARCH_PREFIXES = frozenset({
 })
 
 SITE_BLOCKLIST = frozenset({
-    "google.com", "news.google.com", "finance.yahoo.com", "yahoo.com", "finnhub.io",
+    "google.com", "news.google.com", "finance.yahoo.com", "yahoo.com",
     "reddit.com", "twitter.com", "x.com", "youtube.com", "wikipedia.org", "bing.com",
     "microsoft.com", "linkedin.com", "facebook.com", "instagram.com", "tiktok.com",
     "marketwatch.com", "cnbc.com", "bloomberg.com", "reuters.com", "apnews.com",
