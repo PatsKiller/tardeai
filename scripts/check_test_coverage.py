@@ -654,6 +654,7 @@ UNLISTED_BASELINE: frozenset = frozenset([
     "tests/test_p19_hermes_challenge_queue.py",
     "tests/test_p210_production.py",
     "tests/test_p211_restart.py",
+    "tests/test_p26_shadow_autonomy.py",
     "tests/test_p27_operator_communication.py",
     "tests/test_p28_followup_learning.py",
     "tests/test_p29_observability.py",

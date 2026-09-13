@@ -534,10 +534,6 @@ GATES = [
             # package has two import identities and patching a constant reaches
             # only one of them.
             "tests/test_data_broker_state_override_20260913.py",
-            # Back off UNLISTED_BASELINE. This is the ONLY coverage of
-            # cio_run_worker._check_health, and its fakes are what hid CL-61.
-            # It had 7 failures nobody saw, because it did not run.
-            "tests/test_p26_shadow_autonomy.py",
         ],
     ),
     (
