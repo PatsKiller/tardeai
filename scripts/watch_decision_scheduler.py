@@ -257,9 +257,33 @@ def main():
     print(json.dumps(out, indent=2, default=str))
 
 
+def _force_exit(rc: int) -> None:
+    """Exit now, but never before the run's own report has reached the pipe.
+
+    os._exit() skips interpreter shutdown -- which is the point, since systemd
+    Type=oneshot otherwise waits on leftover non-daemon threads from the DB
+    adapters. It ALSO skips flushing stdio. Under systemd stdout is a pipe, so it
+    is block-buffered, and the batch summary this script prints as its only
+    record of what it did was discarded on every single scheduled run.
+
+    Measured 2026-09-13 on the live release: with the force-exit active the run
+    exits 0 and produces ZERO lines; with WATCH_SCHEDULER_NO_FORCE_EXIT=1 the
+    same run prints 27 lines of real JSON (population 1496, in_flight 160,
+    quality_deferred 929). The work was always fine. The evidence of it was
+    being thrown away.
+
+    Flush failures are swallowed deliberately: a broken pipe on the way out must
+    not turn a completed batch into a non-zero exit.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.flush()
+        except Exception:  # noqa: BLE001 - see docstring
+            pass
+    os._exit(rc)
+
+
 if __name__ == "__main__":
-    # systemd Type=oneshot waits for leftover non-daemon threads (DB adapters).
-    # Force a clean process exit after the scheduled batch is printed.
     try:
         main()
         rc = 0
@@ -267,4 +291,4 @@ if __name__ == "__main__":
         rc = 1
         raise
     if os.environ.get("WATCH_SCHEDULER_NO_FORCE_EXIT") != "1":
-        os._exit(rc)
+        _force_exit(rc)
