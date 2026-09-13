@@ -332,7 +332,9 @@ def upsert_profile(cur: Any, symbol: Any, fields: Mapping[str, Any], *, source: 
         placeholders = ["%s"] * (len(cols) - 1) + ["now()"]
         set_parts = [f"{c}=EXCLUDED.{c}" for c in BASE_COLUMNS if c in values]
         set_parts += ["source=EXCLUDED.source", f"{lane.stamp}=now()"]
-        sql = (f"INSERT INTO {TABLE} ({', '.join(cols)}) VALUES ({', '.join(placeholders)}) "
+        # The table name is spelled out (not interpolated) so the authority gate's writer census
+        # (check_data_source_authority.count_writers) sees exactly one file writing this store.
+        sql = (f"INSERT INTO symbol_profiles ({', '.join(cols)}) VALUES ({', '.join(placeholders)}) "
                f"ON CONFLICT (symbol) DO UPDATE SET {', '.join(set_parts)}")
         params = (sym, *[values.get(c) for c in BASE_COLUMNS], source)
     else:
@@ -344,7 +346,7 @@ def upsert_profile(cur: Any, symbol: Any, fields: Mapping[str, Any], *, source: 
             params_list.append(values[col])
         if lane.stamp:
             set_parts.append(f"{lane.stamp}=NOW()")
-        sql = f"UPDATE {TABLE} SET {', '.join(set_parts)} WHERE upper(symbol)=%s"
+        sql = f"UPDATE symbol_profiles SET {', '.join(set_parts)} WHERE upper(symbol)=%s"
         params = (*params_list, sym)
 
     cur.execute(sql, params)

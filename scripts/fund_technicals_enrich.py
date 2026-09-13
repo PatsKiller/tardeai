@@ -20,6 +20,8 @@ PROJ = Path(HERE).parent
 if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
+from lib.writers.symbol_profiles_writer import upsert_profile  # noqa: E402
+
 
 def _conn():
     from db_adapter import _get_conn
@@ -104,10 +106,13 @@ def run(symbols=None, apply=True):
                "perf_ytd_pct": ytd, "sma50_pct": sma50_pct}
         out.append(rec)
         if apply:
-            cur.execute("""UPDATE symbol_profiles SET rsi14=%s, perf_week_pct=%s, perf_month_pct=%s,
-                             ytd_return_pct=COALESCE(%s, ytd_return_pct), sma50_pct=%s, technicals_updated_at=NOW()
-                           WHERE upper(symbol)=%s""", (rsi, pw, pm, ytd, sma50_pct, s))
-            done += cur.rowcount
+            # ytd_return_pct: a None keeps the value etf_performance_enrich wrote (COALESCE) — same as before.
+            rcpt = upsert_profile(cur, s, {"rsi14": rsi, "perf_week_pct": pw, "perf_month_pct": pm,
+                                           "ytd_return_pct": ytd, "sma50_pct": sma50_pct},
+                                  source="fund_technicals_enrich", keep_existing_if_null=("ytd_return_pct",))
+            done += rcpt.rows_written
+            if rcpt.rejected:
+                rec["rejected"] = rcpt.rejected[0]["reason"]
         _t.sleep(0.5)
     if apply:
         conn.commit()

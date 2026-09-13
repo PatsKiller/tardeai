@@ -19,6 +19,14 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
+# ONE write module per store (AGENTS.md §7A). This file is the registry's writer_target for
+# symbol_identity; the SQL itself lives in lib/writers/symbol_profiles_writer.py and is
+# re-exported here so every producer can `from build_symbol_profiles import upsert_profile`.
+from lib.writers.symbol_profiles_writer import (  # noqa: E402,F401  (re-export)
+    EARNINGS_NONE, EARNINGS_SCHEDULED, EARNINGS_UNKNOWN, LANES, WriteReceipt,
+    earnings_state_for, resolve_subject_guid, upsert_profile, write_earnings, write_symbol_profiles,
+)
+
 
 # ETFs have no sector in yfinance .info — give the card a real sector so it shows sector + vs-sector.
 # Mirrors open_trades_intelligence._ETF_SECTOR (reference data, kept in sync).
@@ -90,16 +98,15 @@ def run(symbols=None, force=False, watchlist_top=0):
         return
     import yfinance as yf
     fvz = _finviz_map(uni)                      # batch Finviz once (sector/industry/company)
-    updated = missed = fvz_used = 0
+    updated = missed = fvz_used = rejected = 0
     for sym in uni:
         if sym in HOLDING_PROXY_MAP and not re.fullmatch(r"[A-Z]{1,5}", sym):
             etf, label = HOLDING_PROXY_MAP[sym]
-            cur.execute("""INSERT INTO symbol_profiles (symbol, description_1s, sector, industry, source, updated_at)
-                           VALUES (%s,%s,%s,%s,'proxy_label',now())
-                           ON CONFLICT (symbol) DO UPDATE SET description_1s=EXCLUDED.description_1s,
-                             sector=EXCLUDED.sector, source='proxy_label', updated_at=now()""",
-                        (sym, f"Retirement-plan fund — {label} (tracked via {etf} proxy).", label, None))
-            updated += 1
+            # proxy_label owns description + sector only; an existing industry is left alone.
+            rcpt = upsert_profile(cur, sym, {"description_1s": f"Retirement-plan fund — {label} (tracked via {etf} proxy).",
+                                             "sector": label}, source="proxy_label")
+            updated += rcpt.rows_written
+            rejected += rcpt.rows_rejected
             continue
         try:
             info = yf.Ticker(sym).info or {}
@@ -125,14 +132,12 @@ def run(symbols=None, force=False, watchlist_top=0):
         if not (desc or sector):
             missed += 1
             continue
-        cur.execute("""INSERT INTO symbol_profiles (symbol, description_1s, sector, industry, source, updated_at)
-                       VALUES (%s,%s,%s,%s,%s,now())
-                       ON CONFLICT (symbol) DO UPDATE SET description_1s=EXCLUDED.description_1s,
-                         sector=EXCLUDED.sector, industry=EXCLUDED.industry, source=EXCLUDED.source, updated_at=now()""",
-                    (sym, desc, sector, industry, source))
-        updated += 1
+        rcpt = upsert_profile(cur, sym, {"description_1s": desc, "sector": sector, "industry": industry}, source=source)
+        updated += rcpt.rows_written
+        rejected += rcpt.rows_rejected
     conn.commit()
-    print(json.dumps({"checked": len(uni), "updated": updated, "finviz_fallback": fvz_used, "no_profile": missed}))
+    print(json.dumps({"checked": len(uni), "updated": updated, "finviz_fallback": fvz_used, "no_profile": missed,
+                      "rejected": rejected}))
 
 
 if __name__ == "__main__":
