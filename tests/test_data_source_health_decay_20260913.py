@@ -154,16 +154,22 @@ def test_view_row_uses_the_weekday_clock_and_says_so():
 
 def test_the_quote_window_is_15_minutes_open_and_72_hours_closed():
     assert dsv.window_minutes_for("alpaca", REGISTRY, market_closed=False) == 15
-    assert dsv.window_minutes_for("alpaca", REGISTRY, market_closed=True) == 72 * H
+    # closed: quote_price widens to 72h, but technicals (also alpaca-primary, 26h, no
+    # closed window) is now the strictest alpaca domain — the min over domains holds.
+    assert dsv.window_minutes_for("alpaca", REGISTRY, market_closed=True) == 26 * H
     # a domain with no closed window keeps its one window either way
     assert dsv.window_minutes_for("yahoo_finance", REGISTRY, market_closed=True) == 168 * H
 
 
 def test_a_friday_close_quote_is_healthy_on_sunday_when_the_market_is_closed(monkeypatch):
     monkeypatch.setattr(dsv, "market_is_closed", lambda now=None: True)
+    # alpaca has no row in data_source_health today, so it has no caller entry; give it the
+    # quote refresher's real schedule so the weekday clock applies as it would for the quote row.
+    monkeypatch.setitem(dsv.SCHEDULED_CALLERS, "alpaca",
+                        [{"script": "scripts/portfolio_repricer.py", "cron": "*/15 9-16 * * 1-5"}])
     row = {"source_key": "alpaca", "status": "healthy", "last_success_at": FRI_17, "last_failure_at": None}
     v = dsv.view_row(row, SUN_20, REGISTRY)
-    assert v["market_closed"] is True and v["window_minutes"] == 72 * H
+    assert v["market_closed"] is True and v["window_minutes"] == 26 * H
     assert v["status"] == "healthy"
     # negative control: with the market open the 15-minute window applies and the row has decayed
     monkeypatch.setattr(dsv, "market_is_closed", lambda now=None: False)
