@@ -40,7 +40,12 @@ import re
 import sys
 from pathlib import Path
 
-import psycopg2
+# psycopg2 is imported lazily inside main(), NOT here. The rules in this module
+# -- _violation_predicate, _check_single_scale, _alert -- are pure and are tested
+# without a database. A module-level driver import made those tests uncollectable
+# anywhere psycopg2 is absent, which is every CI runner: the file errored at
+# import and the gate went red without running a single assertion. Locally it
+# passed, because the venv has the driver.
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 CONTRACTS_PATH = PROJECT_ROOT / "config" / "data_plausibility_contracts.json"
@@ -261,6 +266,13 @@ def main() -> int:
     env = _db_env()
     if not env.get("DB_NAME"):
         print("ERROR: database settings unavailable", file=sys.stderr)
+        return 2
+
+    try:
+        import psycopg2  # noqa: PLC0415 — see the note beside the imports
+    except ImportError:
+        print("ERROR: psycopg2 is not installed; cannot measure the database.",
+              file=sys.stderr)
         return 2
 
     conn = psycopg2.connect(

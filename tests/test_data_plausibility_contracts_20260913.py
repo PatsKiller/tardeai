@@ -99,3 +99,29 @@ def test_column_names_are_quoted_so_a_reserved_word_cannot_break_the_sql():
         if c["rule"] == "single_scale":
             continue
         assert f'"{c["column"]}"' in dpm._violation_predicate(c)
+
+
+def test_the_module_imports_without_a_database_driver():
+    """No top-level `import psycopg2`, or CI cannot even collect these tests.
+
+    The rules here are pure and testable without a database. A module-level
+    driver import made every test in this file uncollectable on any runner
+    without psycopg2 -- the file errored at import and cio-hardening went red
+    without running a single assertion, while passing locally because the venv
+    has the driver.
+    """
+    import ast
+
+    src = (ROOT / "scripts" / "data_plausibility_monitor.py").read_text()
+    top_level = []
+    for node in ast.parse(src).body:
+        if isinstance(node, ast.Import):
+            top_level += [a.name.split(".")[0] for a in node.names]
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            top_level.append(node.module.split(".")[0])
+
+    for driver in ("psycopg2", "psycopg", "sqlalchemy"):
+        assert driver not in top_level, (
+            f"{driver} is imported at module level; import it inside the function "
+            "that connects, so the pure rules stay testable without a database."
+        )
