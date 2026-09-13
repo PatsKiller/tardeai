@@ -1,0 +1,30 @@
+[Unit]
+# Reports when the tree the site SERVES and the tree the producers WRITE are
+# two different directories.
+#
+# 2026-08-27: CURRENT/data/{portfolios/state,runtime} were linked to
+# persistent-state; the dev tree the 344 cron producers run from was not.
+# Eighteen days later 294 files differed, 40 API-read state files were served
+# stale beside a fresh copy, and 79 append-only ledgers had grown on both
+# sides. The health agent read one copy's age and scored 75.
+#
+# Read-only: it resolves paths and stats files. It never links, moves, merges
+# or deletes -- reconciling two copies of an authoritative store is an operator
+# decision (AGENTS.md §0 rule 5).
+Description=Trade AI served-copy split — report a state directory that exists twice
+Documentation=file:///home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/check_served_copy_split.py
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild
+ExecStart=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python \
+    scripts/check_served_copy_split.py --alert
+
+# Exit 1 means "a directory is split" -- a finding, not a unit failure.
+SuccessExitStatus=0 1
+TimeoutStartSec=600
+Nice=10
+IOSchedulingClass=idle
+
+[Install]
+WantedBy=default.target

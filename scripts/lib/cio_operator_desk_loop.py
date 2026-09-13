@@ -260,8 +260,9 @@ def analyze_operator_intent(text: str) -> dict[str, Any]:
         # domain rather than falling through to whatever research happens to
         # exist for the symbol.
         if re.search(
-            r"(?is)\b(analyst|analysts|price\s+target|target\s+price|\bpt\b|"
-            r"is\s+it\s+a\s+buy|upgrade|downgrade|consensus|rating)\b",
+            r"(?is)\b(analysts?|price\s+target|target\s+price|\bpt\b|"
+            r"\ba\s+buy\b|\bbuy\s+or\s+sell\b|upgrade|downgrade|consensus|"
+            r"rating|\btargets?\b)\b",
             t,
         ):
             needs.append("analyst_view")
@@ -1412,6 +1413,25 @@ def handle_operator_desk_question(
     if blocking:
         _register_gaps(blocking, chat_id=str(chat_id), pending_id=pending_id)
         # Hermes when research is the blocker
+        # Do not promise a reply about something that can never be answered.
+        # "What's the outlook for SpaceX, what are options closing, what are
+        # analysts expecting" got a queue ticket and 72 minutes of silence
+        # because SpaceX is private: no symbol resolved, so the research gap
+        # could not close and the pending could not complete. Say so now.
+        _answerable, _why = is_answerable(intent)
+        if not _answerable:
+            result.update({
+                "kind": "unanswerable",
+                "pending_id": None,
+                "reply_preview": (
+                    f"I can't answer that from Trade-AI: {_why}.\n\n"
+                    "If it is a private company, there is no market data, options "
+                    "chain or analyst coverage for it here.\n"
+                    f"{AUTHORITY}"
+                ),
+            })
+            return result
+
         if any(g.get("domain") == "hermes_research" for g in blocking):
             _enqueue_hermes_research(
                 symbols=[str(s).upper() for s in (intent.get("symbols") or [])],
@@ -1525,6 +1545,48 @@ def handle_operator_desk_question(
     return result
 
 
+#: How long an unfulfilled promise may stay open before it is retracted.
+#: `try_fulfill_pending_replies` skips an incomplete pending with a bare
+#: `continue`, so a question whose evidence can NEVER arrive was re-checked
+#: silently forever. opr_5bc20393b457 ("outlook for SpaceX") sat open 72 minutes
+#: with the operator waiting, and would have sat open indefinitely: SpaceX is
+#: private, so no symbol resolved, so the research gap could not close.
+PENDING_EXPIRY_HOURS = 2.0
+
+
+def _pending_age_hours(row: dict[str, Any]) -> Optional[float]:
+    """Hours since a pending was opened, or None when its timestamp is unusable."""
+    try:
+        ts = datetime.fromisoformat(str(row.get("ts")).replace("Z", "+00:00"))
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+        return (datetime.now(timezone.utc) - ts).total_seconds() / 3600.0
+    except Exception:
+        return None
+
+
+def is_answerable(intent: dict[str, Any]) -> tuple[bool, str]:
+    """Can this ask ever be answered from Trade-AI, or is the promise empty?
+
+    A market question about something with no resolvable instrument cannot be
+    answered by waiting: no quote, no chain, no analyst coverage and no research
+    row will ever arrive for it. Promising "I'll reply when it lands" is then a
+    promise about data that cannot land -- which is what happened to the SpaceX
+    ask. SpaceX is private; that was knowable at the moment of asking.
+
+    Returns (answerable, reason). The reason is operator-facing.
+    """
+    needs = set(intent.get("needs") or [])
+    symbols = [s for s in (intent.get("symbols") or []) if str(s).strip()]
+    market_needs = needs & {"analyst_view", "reentry_ready", "reentry_levels", "risk"}
+    if market_needs and not symbols:
+        return False, (
+            "no tradable instrument resolved from that question, so there is no "
+            "quote, options chain, analyst coverage or research to wait for"
+        )
+    return True, ""
+
+
 def try_fulfill_pending_replies(
     send_fn: SendFn,
     *,
@@ -1540,11 +1602,43 @@ def try_fulfill_pending_replies(
     open_rows = [r for r in latest.values() if r.get("status") == "open"][-limit:]
     fulfilled = 0
     failed = 0
+    expired = 0
     for row in open_rows:
         try:
             intent = row.get("intent") or analyze_operator_intent(row.get("operator_text") or "")
             evidence = gather_tradeai_evidence(intent)
             if not evidence.get("complete"):
+                # A promise that cannot be kept must be RETRACTED, not abandoned.
+                # This used to be a bare `continue`: an unanswerable pending was
+                # re-checked silently forever while the operator waited.
+                age_h = _pending_age_hours(row)
+                answerable, why = is_answerable(intent)
+                if answerable and (age_h is None or age_h < PENDING_EXPIRY_HOURS):
+                    continue
+                reason = why or (
+                    f"the required Trade-AI data did not arrive within "
+                    f"{PENDING_EXPIRY_HOURS:g}h"
+                )
+                chat_id = str(row.get("chat_id") or "")
+                if chat_id:
+                    send_fn(
+                        chat_id,
+                        f"📭 *Closing* `{row.get('pending_id')}` — I could not answer this.\n\n"
+                        f"{reason}.\n\nAsk again if you want me to retry.\n"
+                        f"{AUTHORITY}",
+                        row.get("message_id"),
+                    )
+                _append_jsonl(PENDING_PATH, {
+                    **{k: row.get(k) for k in (
+                        "pending_id", "chat_id", "message_id", "channel", "operator_text",
+                    )},
+                    "status": "expired",
+                    "expired_ts": _now(),
+                    "expiry_reason": reason,
+                    "age_hours": round(age_h, 2) if age_h is not None else None,
+                    "authority": AUTHORITY,
+                })
+                expired += 1
                 continue
             curated = _curate_from_evidence(str(row.get("operator_text") or ""), evidence)
             body = (
@@ -1573,6 +1667,7 @@ def try_fulfill_pending_replies(
         "ok": True,
         "checked": len(open_rows),
         "fulfilled": fulfilled,
+        "expired": expired,
         "failed": failed,
         "authority": AUTHORITY,
     }

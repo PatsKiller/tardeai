@@ -1,0 +1,17 @@
+[Unit]
+Description=Trade AI served-copy split — hourly one-directory audit
+Documentation=file:///home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/check_served_copy_split.py
+
+[Timer]
+# Hourly. The case this exists for went eighteen days unseen. Forty-two past
+# the hour: off the top-of-hour crowd and away from expected-services at :12.
+OnCalendar=*-*-* *:42:00
+AccuracySec=1min
+
+# This host loses power hard. Without Persistent a cut spanning the boundary
+# skips the audit silently, which is the failure mode being guarded against.
+Persistent=true
+RandomizedDelaySec=60
+
+[Install]
+WantedBy=timers.target

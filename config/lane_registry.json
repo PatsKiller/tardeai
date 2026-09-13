@@ -1438,6 +1438,21 @@
         "path": "data/runtime/data_plausibility_last_run.json"
       },
       "note": "Measures declared numeric columns against their declared scale. Exists because Performance (10 Years) was stored as a 1-5 analyst rating for five months and nothing could check it: the scale lived only in a docstring."
+    },
+    {
+      "lane_id": "served-copy-split-audit",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-served-copy-split.timer"
+      },
+      "expected_cadence_hours": 1.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/served_copy_split_last_run.json"
+      },
+      "note": "Reports a served state directory that exists as two physical copies (dev tree vs persistent-state). The 08-27 fix linked CURRENT but not the tree the 344 cron producers write from; 18 days later 294 files differed and 79 append-only ledgers had grown on both sides. Identity of the directory is the check, not the age of a file -- an age check on one copy is exactly what missed it. Receipt written every run."
     }
   ],
   "undeclared_baseline": [
