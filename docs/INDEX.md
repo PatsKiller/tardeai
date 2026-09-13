@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `b7d06bd31cba91cfe91d1e4e1df32d5d52aa36e72ffba79d6725b59a13f5b33a`
+**Tree fingerprint:** `8f6e39d31c7c4991be800be0cb5d289f7c9d7e01b10c0032d578f64026cdea9a`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,10 +12,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2488 |
-| Markdown (excl. this INDEX) | 2069 |
+| Files under `docs/` (excl. this INDEX) | 2490 |
+| Markdown (excl. this INDEX) | 2070 |
 | **MISSING HEADER** | **61** |
-| Header OK | 2008 |
+| Header OK | 2009 |
 | Duplicate groups | 2 |
 
 ### By status_guess
@@ -28,7 +28,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_raw_sync | 36 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 2 |
-| review_required | 2117 |
+| review_required | 2119 |
 
 ## Markdown tree
 
@@ -66,6 +66,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/FINANCIAL_RECONCILIATION.md` | Financial reconciliation and record-level migration | review_required | MISSING HEADER | `67a3455d1e52` |
 | `docs/FINVIZ_INTEGRATION_AND_DATA_SOURCE_MONITORING.md` | Finviz Integration + Data-Source Health Monitoring | review_required | OK | `d2c64a1e13d9` |
 | `docs/FINVIZ_SOURCE_AUTHORITY.md` | Finviz Source Authority & Phase 0 Reconciliation | review_required | OK | `93533d98e174` |
+| `docs/GAP_RESOLUTION.md` | Gap Resolution — when the answer is stale or missing, go find out | review_required | OK | `81e848563058` |
 | `docs/GIT_HYGIENE.md` | Git Hygiene — protect the live primary tree (2026-07-01) | review_required | OK | `bb52d4d23b64` |
 | `docs/GPU_OLLAMA_SETUP.md` | Intel Arc B50: Trade AI Runtime Status | review_required | OK | `8c1dff864802` |
 | `docs/HEALTH_AGENT.md` | Health Agent + Multi-Coder Auto-Fix | review_required | OK | `f148baa2203c` |

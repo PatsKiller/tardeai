@@ -1,0 +1,411 @@
+{
+  "schema": "DataSourceAuthorityPatch@v1",
+  "authority": "READ_ONLY_ADVISORY",
+  "as_of": "2026-09-13",
+  "target": "config/data_source_authority.json",
+  "phase": "One Source of Truth - Phase 7 (gap resolver)",
+  "_why": "The operator asked: when the information is stale or does not meet the need, how does the system find out through multiple vectors (Hermes research, DeepSeek curation, ...). Each domain now declares ITS ordered vector chain under on_gap. scripts/lib/gap_resolver.load_on_gap reads this key and falls back to gap_resolver.DEFAULT_ON_GAP when a domain has none, so the resolver works before this patch merges and obeys the registry after.",
+  "_rules": [
+    "Vectors: refresh_producer | backup_provider | governed_search | hermes_research | llm_curation | operator_ask.",
+    "cost_class free before metered before paid; the resolver re-sorts any chain that disagrees (normalise_chain) and forces operator_ask last.",
+    "max_per_day is per vector per UTC day, counted from data/cio/gap_resolution_receipts.jsonl; budget_denied is a receipt, not silence.",
+    "A retired provider is never a vector: retired_providers.is_retired refuses it up front with a retired_skipped receipt.",
+    "refresh_producer re-runs the domain's declared writer only. backup_provider walks the domain's backup list only (same question). governed_search goes through brave_router. hermes_research calls cio_operator_desk_loop._enqueue_hermes_research. llm_curation curates gathered evidence only and labels its output source=llm_curation with the model id. operator_ask is one question with an ETA.",
+    "A paid cost_class additionally requires GAP_RESOLVER_PAID_AUTHORIZED=1 (operator grant) or free_first_refresh.reject_paid_transition refuses it.",
+    "An empty on_gap means: no vector may run; the domain's no_coverage behaviour is the whole answer."
+  ],
+  "_apply": "For each entry in domains_on_gap, set domains[].on_gap on the domain of the same name. Add _registry_rule_addition to the registry's _rules. Regenerate docs/SOURCE_OF_TRUTH.md. Do not edit any other key.",
+  "_registry_rule_addition": "Every domain declares on_gap: the ordered, budgeted vectors the gap resolver may run when the store is stale or empty. Free before metered before paid; operator_ask last; retired providers never.",
+  "domains_on_gap": {
+    "quote_price": {
+      "on_gap": [
+        {
+          "vector": "refresh_producer",
+          "cost_class": "free",
+          "max_per_day": 24,
+          "expected_seconds": 120
+        },
+        {
+          "vector": "backup_provider",
+          "cost_class": "free",
+          "max_per_day": 24,
+          "expected_seconds": 30
+        },
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 7200
+        }
+      ],
+      "_why": "A price is answered by a price provider or not at all. No search, no Hermes, no curation: none of them produce a quote. no_coverage=last_price_with_age_and_source already says what to render."
+    },
+    "symbol_identity": {
+      "on_gap": [
+        {
+          "vector": "refresh_producer",
+          "cost_class": "free",
+          "max_per_day": 6,
+          "expected_seconds": 120
+        },
+        {
+          "vector": "backup_provider",
+          "cost_class": "free",
+          "max_per_day": 12,
+          "expected_seconds": 30
+        },
+        {
+          "vector": "governed_search",
+          "cost_class": "metered",
+          "max_per_day": 4,
+          "expected_seconds": 20
+        },
+        {
+          "vector": "llm_curation",
+          "cost_class": "metered",
+          "max_per_day": 2,
+          "expected_seconds": 60
+        },
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 7200
+        }
+      ],
+      "_why": "Sector/industry/type can be corroborated from governed search and curated; Hermes is not a profile source."
+    },
+    "analyst_opinion": {
+      "on_gap": [
+        {
+          "vector": "refresh_producer",
+          "cost_class": "free",
+          "max_per_day": 6,
+          "expected_seconds": 120
+        },
+        {
+          "vector": "backup_provider",
+          "cost_class": "free",
+          "max_per_day": 12,
+          "expected_seconds": 30
+        },
+        {
+          "vector": "governed_search",
+          "cost_class": "metered",
+          "max_per_day": 6,
+          "expected_seconds": 20
+        },
+        {
+          "vector": "llm_curation",
+          "cost_class": "metered",
+          "max_per_day": 4,
+          "expected_seconds": 60
+        },
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 7200
+        }
+      ],
+      "_why": "yfinance_on_demand answers the same question; search+curation may summarise published targets but is labelled llm_curation, never stored as a rating."
+    },
+    "catalyst_news": {
+      "on_gap": [
+        {
+          "vector": "refresh_producer",
+          "cost_class": "free",
+          "max_per_day": 6,
+          "expected_seconds": 120
+        },
+        {
+          "vector": "backup_provider",
+          "cost_class": "free",
+          "max_per_day": 12,
+          "expected_seconds": 30
+        },
+        {
+          "vector": "governed_search",
+          "cost_class": "metered",
+          "max_per_day": 20,
+          "expected_seconds": 20
+        },
+        {
+          "vector": "llm_curation",
+          "cost_class": "metered",
+          "max_per_day": 6,
+          "expected_seconds": 60
+        },
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 7200
+        }
+      ],
+      "_why": "News is the one domain where governed_search IS a same-question backup (registry backup already lists brave, searxng). Highest search budget."
+    },
+    "technicals": {
+      "on_gap": [
+        {
+          "vector": "refresh_producer",
+          "cost_class": "free",
+          "max_per_day": 12,
+          "expected_seconds": 120
+        },
+        {
+          "vector": "backup_provider",
+          "cost_class": "free",
+          "max_per_day": 12,
+          "expected_seconds": 30
+        },
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 7200
+        }
+      ],
+      "_why": "Indicators are computed from bars; there is nothing to search for or research."
+    },
+    "sector_momentum": {
+      "on_gap": [
+        {
+          "vector": "refresh_producer",
+          "cost_class": "free",
+          "max_per_day": 6,
+          "expected_seconds": 120
+        },
+        {
+          "vector": "backup_provider",
+          "cost_class": "free",
+          "max_per_day": 12,
+          "expected_seconds": 30
+        },
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 7200
+        }
+      ],
+      "_why": "Derived from market_quotes; finviz_sector_view is the declared same-question backup."
+    },
+    "industry_momentum": {
+      "on_gap": [
+        {
+          "vector": "refresh_producer",
+          "cost_class": "free",
+          "max_per_day": 6,
+          "expected_seconds": 120
+        },
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 7200
+        }
+      ],
+      "_why": "No backup declared; no_coverage=show_sector_with_industry_unavailable."
+    },
+    "market_regime": {
+      "on_gap": [
+        {
+          "vector": "refresh_producer",
+          "cost_class": "free",
+          "max_per_day": 6,
+          "expected_seconds": 120
+        },
+        {
+          "vector": "backup_provider",
+          "cost_class": "free",
+          "max_per_day": 12,
+          "expected_seconds": 30
+        },
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 7200
+        }
+      ],
+      "_why": "Regime is carried with its date (never neutral); the internal scan backup is declared."
+    },
+    "earnings_date": {
+      "on_gap": [
+        {
+          "vector": "refresh_producer",
+          "cost_class": "free",
+          "max_per_day": 6,
+          "expected_seconds": 120
+        },
+        {
+          "vector": "governed_search",
+          "cost_class": "metered",
+          "max_per_day": 4,
+          "expected_seconds": 20
+        },
+        {
+          "vector": "llm_curation",
+          "cost_class": "metered",
+          "max_per_day": 2,
+          "expected_seconds": 60
+        },
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 7200
+        }
+      ],
+      "_why": "Search may find a published date; curation labels it; UNKNOWN still blocks the options gate until the store carries it."
+    },
+    "holdings_accounts": {
+      "on_gap": [
+        {
+          "vector": "refresh_producer",
+          "cost_class": "free",
+          "max_per_day": 12,
+          "expected_seconds": 120
+        },
+        {
+          "vector": "backup_provider",
+          "cost_class": "free",
+          "max_per_day": 12,
+          "expected_seconds": 30
+        },
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 7200
+        }
+      ],
+      "_why": "Per-account state, never zero. Broker sync or the alpaca backup; nothing else may invent a position."
+    },
+    "options_iv": {
+      "on_gap": [
+        {
+          "vector": "refresh_producer",
+          "cost_class": "free",
+          "max_per_day": 6,
+          "expected_seconds": 120
+        },
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 7200
+        }
+      ],
+      "_why": "Schwab only; call_out_at_read_time."
+    },
+    "research_thesis": {
+      "on_gap": [
+        {
+          "vector": "refresh_producer",
+          "cost_class": "free",
+          "max_per_day": 6,
+          "expected_seconds": 120
+        },
+        {
+          "vector": "backup_provider",
+          "cost_class": "free",
+          "max_per_day": 12,
+          "expected_seconds": 30
+        },
+        {
+          "vector": "governed_search",
+          "cost_class": "metered",
+          "max_per_day": 8,
+          "expected_seconds": 20
+        },
+        {
+          "vector": "hermes_research",
+          "cost_class": "metered",
+          "max_per_day": 6,
+          "expected_seconds": 1800
+        },
+        {
+          "vector": "llm_curation",
+          "cost_class": "metered",
+          "max_per_day": 6,
+          "expected_seconds": 60
+        },
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 7200
+        }
+      ],
+      "_why": "The Hermes lane. governed_pull:brave>searxng is the declared backup; Hermes is slow and returns an ETA; curation summarises what search found while Hermes runs."
+    },
+    "watch_directives": {
+      "on_gap": [
+        {
+          "vector": "refresh_producer",
+          "cost_class": "free",
+          "max_per_day": 6,
+          "expected_seconds": 120
+        },
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 7200
+        }
+      ],
+      "_why": "Native; nothing external produces a directive."
+    },
+    "watch_discovery": {
+      "on_gap": [
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 7200
+        }
+      ],
+      "_why": "dead_feed: no producer. Only the operator can be asked; declared_gap_no_producer stands."
+    },
+    "web_search": {
+      "on_gap": [
+        {
+          "vector": "governed_search",
+          "cost_class": "metered",
+          "max_per_day": 120,
+          "expected_seconds": 20
+        },
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 7200
+        }
+      ],
+      "_why": "web_search IS the governed_search vector; budget mirrors the brave daily cap and the router spills to searxng."
+    },
+    "private_company": {
+      "on_gap": [],
+      "_why": "refuse_up_front. No vector may run for a private company; is_answerable refuses before the resolver is reached."
+    },
+    "dividends": {
+      "on_gap": [
+        {
+          "vector": "refresh_producer",
+          "cost_class": "free",
+          "max_per_day": 6,
+          "expected_seconds": 120
+        },
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 7200
+        }
+      ],
+      "_why": "yfinance writer; no backup declared."
+    }
+  }
+}

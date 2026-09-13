@@ -151,6 +151,27 @@ def _block_cio_wake_trace_production_writes(monkeypatch, tmp_path_factory):
 
 
 @pytest.fixture(autouse=True)
+def _block_gap_resolver_production_writes(monkeypatch, tmp_path_factory):
+    """Keep gap-resolution receipts out of data/cio.
+
+    The operator desk runs the Phase 7 gap resolver on every blocking gap, so a
+    desk test that does not know about the resolver (test_pending_expiry_* was
+    written before it) would append dry-run receipts to the real append-only
+    ledger on every run. Patch the ONE spelling production code imports
+    (scripts.lib.gap_resolver) -- the resolver reads the constant at call time.
+    The projection gap queue (data_broker/gap_hook) is not touched here: that
+    package is spelled lib.data_broker by its own __init__, and importing it as
+    scripts.lib.data_broker would trip the dual-import identity guard.
+    """
+    try:
+        from scripts.lib import gap_resolver
+    except Exception:
+        return
+    isolated = tmp_path_factory.mktemp("gap_resolution")
+    monkeypatch.setattr(gap_resolver, "RECEIPTS_PATH", isolated / "gap_resolution_receipts.jsonl")
+
+
+@pytest.fixture(autouse=True)
 def _block_data_broker_snapshot_production_writes(monkeypatch, tmp_path_factory):
     """Keep data_broker snapshot caches out of the repository tree.
 

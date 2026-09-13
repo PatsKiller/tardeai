@@ -1,0 +1,19 @@
+[Unit]
+Description=Trade AI gap resolution — half-hourly receipt audit
+Documentation=file:///home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/docs/GAP_RESOLUTION.md
+
+[Timer]
+# Every 30 minutes, at :07 and :37 so it does not land on the crowded top and
+# half of the hour. Half-hourly because the pending machinery retracts an
+# unanswered promise at 2h; a gap unattended for two hours must be seen inside
+# that window, not after it.
+OnCalendar=*-*-* *:07,37:00
+AccuracySec=1min
+
+# This host loses power hard. Without Persistent a cut spanning the boundary
+# skips the audit silently, which is the failure mode being guarded against.
+Persistent=true
+RandomizedDelaySec=60
+
+[Install]
+WantedBy=timers.target
