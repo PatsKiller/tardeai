@@ -12,6 +12,17 @@ Properties:
   * Provider-reported limits (headers) kept separate from local cost policy.
   * Historical provider-header evidence labelled historical, never current proof.
   * No paid call unless a transport is injected (tests) or live is explicitly armed.
+  * Spill (Phase 5, 2026-09-13): a Brave denial for DAILY_EXHAUSTED /
+    MONTHLY_EXHAUSTED / HTTP 429 resolves the next provider from
+    config/data_source_authority.json (``domains[web_search].backup`` =
+    searxng, tavily; ``spill_on`` decides which reasons) and asks it the same
+    question, budget-checked under the backup's own cap. Every denial writes a
+    receipt row (provider, reason, spilled_to, ts) into the budget ledger next
+    to the counters. Callers that must have Brave-quality results pass
+    ``no_spill=True``; the default spills. Measured before the fix: 38
+    DAILY_EXHAUSTED denials on 09-13, 22 on 09-11, every one of them lost while
+    the self-hosted SearXNG sat idle. Tavily has no client in this tree and is
+    recorded in the receipt as a declared-but-unwired slot.
 """
 from __future__ import annotations
 
@@ -180,15 +191,23 @@ class RouterResponse:
     provider_capacity: Optional[dict[str, Any]] = None
     local_cost_policy: Optional[dict[str, Any]] = None
     health: Optional[dict[str, Any]] = None
+    #: Which provider actually answered — ``brave`` or the backup that took the spill.
+    provider: str = PROVIDER
+    #: Denial receipt (provider, reason, spilled_to, ts) when Brave refused; else None.
+    receipt: Optional[dict[str, Any]] = None
 
 
 def local_cost_policy() -> dict[str, Any]:
-    """Local spend policy — NOT a provider limit. Independently overridable."""
+    """Local spend policy — NOT a provider limit. Independently overridable.
+
+    Caps come from ``search_budget.limits`` which reads the registry's
+    ``providers[brave].budget`` over the module constants (Phase 5).
+    """
     try:
-        from scripts.lib.search_budget import DEFAULT_LIMITS, CALLER_DAILY_CAPS
+        from scripts.lib.search_budget import limits, CALLER_DAILY_CAPS
     except ImportError:
-        from lib.search_budget import DEFAULT_LIMITS, CALLER_DAILY_CAPS  # type: ignore
-    brave = dict(DEFAULT_LIMITS.get("brave", {"daily": 120, "monthly": 1500}))
+        from lib.search_budget import limits, CALLER_DAILY_CAPS  # type: ignore
+    brave = dict(limits(PROVIDER))
     return {
         "kind": "local_cost_policy",
         "provider": PROVIDER,
@@ -197,7 +216,222 @@ def local_cost_policy() -> dict[str, Any]:
         "caller_daily_caps": dict(CALLER_DAILY_CAPS),
         "note": "operator-owned cost bound; not a Brave plan ceiling",
         "invented_provider_monthly_ceiling": False,
+        "source": "config/data_source_authority.json providers[].budget, DEFAULT_LIMITS fallback, env override",
     }
+
+
+# ── Spill to the registry's backup chain ─────────────────────────────────────
+
+SPILL_DOMAIN = "web_search"
+#: Fallback when the registry cannot be read. The registry wins when it can.
+DEFAULT_SPILL_ON = frozenset({"DAILY_EXHAUSTED", "MONTHLY_EXHAUSTED", "HTTP_429"})
+
+#: A backup transport answers ``(query, kind, count) -> list[result dict]``.
+SpillTransport = Callable[[str, str, int], list[dict[str, Any]]]
+
+
+def _resolve_spill_chain() -> list[str]:
+    """``domains[web_search].backup`` minus retired — from the registry, never a constant.
+
+    Tests disable spilling (the pre-fix behaviour) by monkeypatching this to
+    return ``[]``. An unreadable registry also yields ``[]``: the question is
+    then lost exactly as before, but the receipt says so.
+    """
+    try:
+        try:
+            from scripts.lib.data_source_authority import resolve_backup
+        except ImportError:
+            from lib.data_source_authority import resolve_backup  # type: ignore
+        return list(resolve_backup(SPILL_DOMAIN))
+    except Exception:
+        return []
+
+
+def _spill_reasons() -> frozenset[str]:
+    try:
+        try:
+            from scripts.lib.data_source_authority import spill_on
+        except ImportError:
+            from lib.data_source_authority import spill_on  # type: ignore
+        reasons = spill_on(SPILL_DOMAIN)
+        return reasons or DEFAULT_SPILL_ON
+    except Exception:
+        return DEFAULT_SPILL_ON
+
+
+def _is_http_429(exc: BaseException) -> bool:
+    for attr in ("code", "status", "status_code"):
+        try:
+            if int(getattr(exc, attr, None) or 0) == 429:
+                return True
+        except (TypeError, ValueError):
+            pass
+    return " 429" in f" {exc}" or "HTTP_429" in str(exc) or "Too Many Requests" in str(exc)
+
+
+def _searxng_transport(query: str, kind: str, count: int) -> list[dict[str, Any]]:
+    """Live SearXNG hop through the ONE shared client (scripts/lib/searxng_client).
+
+    Self-hosted and free, but still a network socket: like Brave it refuses to
+    leave the host unless ``BRAVE_ROUTER_LIVE`` is armed. Tests inject a
+    ``spill_transport``. Error rows from the client are raised so the caller
+    refunds the backup's budget unit and moves to the next slot.
+    """
+    if not live_armed():
+        raise RuntimeError("BRAVE_ROUTER_LIVE is not set — refusing network SearXNG call; inject spill_transport")
+    try:
+        from scripts.lib.searxng_client import searx_search
+    except ImportError:
+        from lib.searxng_client import searx_search  # type: ignore
+    hits = searx_search(query, categories="news" if kind == "news" else "general", limit=int(count))
+    errors = [h for h in hits if isinstance(h, dict) and h.get("error") and not h.get("url")]
+    if errors and len(errors) == len(hits):
+        raise RuntimeError(f"searxng: {errors[0].get('error')}")
+    return [h for h in hits if isinstance(h, dict) and h.get("url")]
+
+
+#: Backup slots this router can actually call. Tavily is declared in the registry
+#: (providers.tavily, status configured_unused, 20/day) but no client exists in
+#: this tree; it stays a declared-but-unwired slot and the receipt says so.
+SPILL_ADAPTERS: dict[str, SpillTransport] = {
+    "searxng": _searxng_transport,
+}
+
+
+def _normalize_spill_results(provider: str, hits: list[dict[str, Any]], kind: str) -> list[dict[str, Any]]:
+    out = []
+    for h in hits:
+        row = {
+            "title": str(h.get("title") or ""),
+            "url": str(h.get("url") or ""),
+            "description": str(h.get("description") or h.get("snippet") or h.get("content") or ""),
+            "age": str(h.get("age") or h.get("publishedDate") or ""),
+            "provider": provider,
+        }
+        if kind == "news":
+            row["source"] = str(h.get("source") or h.get("domain") or "")
+        out.append(row)
+    return out
+
+
+def _spill(
+    query: str,
+    *,
+    kind: str,
+    count: int,
+    reason: str,
+    caller: str,
+    clock: Clock,
+    root: Optional[Path],
+    spill_transport: Optional[SpillTransport],
+) -> tuple[Optional[str], list[dict[str, Any]], dict[str, Any]]:
+    """Ask the backup chain the same question. Returns (provider|None, results, detail).
+
+    Each slot is budget-checked under ITS OWN cap (searxng 10,000/day in the
+    registry) via ``try_consume``; a refused or failed slot is refunded where
+    a unit was spent and the chain moves on. ``detail`` names every slot tried
+    and why it did not answer, so a receipt with ``spilled_to: null`` is never
+    silent about which lanes were exhausted.
+    """
+    try:
+        from scripts.lib.search_budget import try_consume, refund
+    except ImportError:
+        from lib.search_budget import try_consume, refund  # type: ignore
+
+    detail: dict[str, Any] = {"denial_reason": reason, "chain": [], "tried": {}}
+    chain = _resolve_spill_chain()
+    detail["chain"] = list(chain)
+    if not chain:
+        detail["tried"]["_"] = "NO_BACKUP_CHAIN"
+        return None, [], detail
+    for prov in chain:
+        adapter = spill_transport if (spill_transport is not None and prov == chain[0]) else SPILL_ADAPTERS.get(prov)
+        if adapter is None:
+            detail["tried"][prov] = "NO_ADAPTER (declared in registry, not wired)"
+            continue
+        verdict = try_consume(prov, caller=caller, now=clock(), root=root)
+        if not verdict.get("allowed"):
+            detail["tried"][prov] = f"BUDGET_REFUSED:{verdict.get('reason')}"
+            continue
+        try:
+            hits = adapter(query, kind, count)
+        except Exception as exc:
+            try:
+                refund(prov, caller=caller, now=clock(), root=root)
+            except Exception:
+                pass
+            detail["tried"][prov] = f"PROVIDER_ERROR:{type(exc).__name__}:{exc}"
+            continue
+        results = _normalize_spill_results(prov, list(hits or []), kind)
+        detail["tried"][prov] = f"OK:{len(results)}"
+        return prov, results, detail
+    return None, [], detail
+
+
+def _write_receipt(reason: str, *, spilled_to: Optional[str], caller: str, kind: str,
+                   detail: dict[str, Any], clock: Clock, root: Optional[Path]) -> Optional[dict[str, Any]]:
+    try:
+        from scripts.lib.search_budget import write_denial_receipt
+    except ImportError:
+        from lib.search_budget import write_denial_receipt  # type: ignore
+    try:
+        return write_denial_receipt(PROVIDER, reason, spilled_to=spilled_to, caller=caller,
+                                    kind=kind, detail=detail, now=clock(), root=root)
+    except Exception:
+        return None
+
+
+def _deny_or_spill(
+    query: str,
+    *,
+    reason: str,
+    kind: str,
+    count: int,
+    caller: str,
+    clock: Clock,
+    root: Optional[Path],
+    no_spill: bool,
+    spill_transport: Optional[SpillTransport],
+    policy: dict[str, Any],
+    reservation_id: Optional[str] = None,
+    ck: Optional[str] = None,
+) -> RouterResponse:
+    """The one place a Brave denial is turned into a response — with a receipt."""
+    spilled_to: Optional[str] = None
+    results: list[dict[str, Any]] = []
+    detail: dict[str, Any] = {"denial_reason": reason}
+    if no_spill:
+        detail["no_spill"] = True
+    elif reason not in _spill_reasons():
+        detail["not_a_spill_reason"] = sorted(_spill_reasons())
+    else:
+        spilled_to, results, detail = _spill(
+            query, kind=kind, count=count, reason=reason, caller=caller,
+            clock=clock, root=root, spill_transport=spill_transport,
+        )
+    receipt = _write_receipt(reason, spilled_to=spilled_to, caller=caller, kind=kind,
+                             detail=detail, clock=clock, root=root)
+    if spilled_to:
+        if ck:
+            try:
+                _write_cache(root, ck, results, now=clock())
+            except Exception:
+                pass
+        health = write_health(clock=clock, root=root, last={
+            "event": "spilled", "reason": reason, "spilled_to": spilled_to, "n": len(results)})
+        return RouterResponse(
+            ok=True, reason=f"SPILLED:{spilled_to}", results=results,
+            reservation_id=reservation_id, budget_allocated=False,
+            local_cost_policy=policy, health=health, provider=spilled_to, receipt=receipt,
+        )
+    event = "provider_error" if reason == "HTTP_429" else "budget_refused"
+    health = write_health(clock=clock, root=root, last={"event": event, "reason": reason, "spilled_to": None})
+    prefix = "PROVIDER_ERROR:HTTP 429" if reason == "HTTP_429" else f"BUDGET_REFUSED:{reason}"
+    return RouterResponse(
+        ok=False, reason=prefix, reservation_id=reservation_id,
+        budget_allocated=reservation_id is not None,
+        local_cost_policy=policy, health=health, receipt=receipt,
+    )
 
 
 def _cache_key(kind: str, query: str, freshness: Optional[str], count: int) -> str:
@@ -456,8 +690,17 @@ def search(
     api_key: Optional[str] = None,
     enabled: Optional[bool] = None,
     cache_ttl_s: Optional[int] = None,
+    no_spill: bool = False,
+    spill_transport: Optional[SpillTransport] = None,
 ) -> RouterResponse:
-    """Governed search. Cache hit → no allocation. Miss → reserve → call → settle|refund."""
+    """Governed search. Cache hit → no allocation. Miss → reserve → call → settle|refund.
+
+    A Brave denial for a reason in the registry's ``web_search.spill_on``
+    (DAILY_EXHAUSTED, MONTHLY_EXHAUSTED, HTTP 429) spills to the registry's
+    backup chain unless ``no_spill=True``; ``response.provider`` names who
+    answered and ``response.receipt`` is the denial row written to the ledger.
+    ``spill_transport`` is the test seam for the first backup slot.
+    """
     clock = clock or _utc_now
     now = clock()
     policy = local_cost_policy()
@@ -497,10 +740,10 @@ def search(
             clock=clock, root=root,
         )
     except BudgetRefused as exc:
-        health = write_health(clock=clock, root=root, last={"event": "budget_refused", "reason": str(exc)})
-        return RouterResponse(
-            ok=False, reason=f"BUDGET_REFUSED:{exc}",
-            local_cost_policy=policy, health=health,
+        return _deny_or_spill(
+            query, reason=str(exc), kind=kind, count=count, caller=caller,
+            clock=clock, root=root, no_spill=no_spill, spill_transport=spill_transport,
+            policy=policy, ck=ck,
         )
     except QuotaCorrupt as exc:
         health = write_health(clock=clock, root=root, last={"event": "quota_corrupt", "reason": str(exc)})
@@ -548,6 +791,14 @@ def search(
             refund_reservation(res.reservation_id, clock=clock, root=root)
         except Exception:
             pass
+        if _is_http_429(exc):
+            # The provider refused, not us — same shape as a budget denial for the
+            # question's purposes, and the registry lists HTTP_429 in spill_on.
+            return _deny_or_spill(
+                query, reason="HTTP_429", kind=kind, count=count, caller=caller,
+                clock=clock, root=root, no_spill=no_spill, spill_transport=spill_transport,
+                policy=policy, reservation_id=res.reservation_id, ck=ck,
+            )
         health = write_health(clock=clock, root=root, last={"event": "provider_error", "error": str(exc)})
         return RouterResponse(
             ok=False, reason=f"PROVIDER_ERROR:{exc}",

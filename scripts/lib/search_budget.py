@@ -61,8 +61,11 @@ SCHEMA = "SearchBudget@v1"
 #
 #   daily    an anti-runaway circuit breaker. Its job is to bound a LOOP BUG,
 #            not spend. It should sit well above a heavy legitimate day, because
-#            a denial here is not a downgrade — brave_search.py returns False and
-#            the research is simply lost; there is no fallback lane wired.
+#            a denial here is not a downgrade for legacy brave_search.py callers
+#            (they return False and the research is lost). Through brave_router
+#            a DAILY/MONTHLY denial SPILLS to the registry's backup chain
+#            (searxng, then tavily) and writes a denial receipt — Phase 5,
+#            2026-09-13, after 38 denials in one day went nowhere.
 #   monthly  the cost bound. This is the number that maps to money.
 #
 # Sizing, 2026-09-05, from measured demand and observed provider capacity:
@@ -187,8 +190,9 @@ def caller_daily_cap(caller: str) -> int:
 #: The original brave_search.py comment — "Reserve 150 for P0/manual searches
 #: out of 1000" — had the right instinct and a false premise: there was no 1000,
 #: and no reserve was ever implemented. The instinct is kept here and made real.
-#: A denied on-demand call is a question nobody answers, because there is no
-#: fallback provider wired behind a refusal.
+#: A denied on-demand call is a question nobody answers unless the router
+#: spills it (DAILY/MONTHLY_EXHAUSTED and HTTP 429 spill; MONTHLY_RESERVE_ONLY
+#: does not — config/data_source_authority.json web_search.spill_on decides).
 MONTHLY_RESERVE: dict[str, int] = {
     "brave": 200,
 }
@@ -234,8 +238,29 @@ def reserve_for(provider: str, monthly_limit: int) -> int:
     return min(want, max(0, monthly_limit // RESERVE_MAX_SHARE))
 
 
+def _registry_budget(provider: str) -> dict[str, int]:
+    """``providers[provider].budget`` from config/data_source_authority.json.
+
+    The registry is the one place the caps are declared (AGENTS.md §7A). The
+    constants above are the FALLBACK for a registry that is missing, unreadable
+    or silent about a provider — never the other way round. Any failure here
+    returns ``{}`` so the fallback applies; a budget reader that raised would
+    turn a typo in the registry into an outage of every governed search.
+    """
+    try:
+        try:
+            from scripts.lib.data_source_authority import provider_budget
+        except ImportError:
+            from lib.data_source_authority import provider_budget  # type: ignore
+        return dict(provider_budget(provider))
+    except Exception:
+        return {}
+
+
 def _limits(provider: str) -> dict[str, int]:
+    """Effective caps: DEFAULT_LIMITS < registry providers[].budget < env override."""
     lim = dict(DEFAULT_LIMITS.get(provider, {"daily": 10, "monthly": 200}))
+    lim.update(_registry_budget(provider))
     for scope in ("daily", "monthly"):
         env = os.getenv(f"SEARCH_BUDGET_{provider.upper()}_{scope.upper()}")
         if env:
@@ -244,6 +269,86 @@ def _limits(provider: str) -> dict[str, int]:
             except ValueError:
                 pass                       # a bad override keeps the safe default
     return lim
+
+
+def limits(provider: str) -> dict[str, int]:
+    """Public read of the effective caps for ``provider`` (see ``_limits``)."""
+    return _limits(provider)
+
+
+#: Denial receipts kept inline in the ledger before the oldest are rolled to the
+#: sidecar archive. 38 denials/day would otherwise grow the file every check reads.
+RECEIPTS_INLINE_MAX = 1000
+RECEIPT_SCHEMA = "SearchDenialReceipt@v1"
+
+
+def receipts_archive_path(root: Optional[Path] = None) -> Path:
+    p = budget_path(root)
+    return p.with_name("search_budget_receipts_archive.jsonl")
+
+
+def write_denial_receipt(provider: str, reason: str, *, spilled_to: Optional[str],
+                         caller: str = "default", kind: str = "web",
+                         detail: Optional[dict[str, Any]] = None,
+                         now: Optional[datetime] = None,
+                         root: Optional[Path] = None) -> Optional[dict[str, Any]]:
+    """One row per denial: who was refused, why, and where the question went.
+
+    Measured 2026-09-13: 38 DAILY_EXHAUSTED denials, every one of them recorded
+    only as ``denied[day] += 1``. A counter says HOW MANY questions were lost;
+    it cannot say WHICH lane answered instead, or that none did. The row lives
+    in the same ledger as the counters (``denial_receipts``) so the two can
+    never disagree about a day. Oldest rows roll to a .jsonl sidecar — archived,
+    never deleted (§0 rule 6). Never raises; a corrupt ledger is left alone.
+    """
+    now = now or datetime.now(timezone.utc)
+    path = budget_path(root)
+    row: dict[str, Any] = {
+        "schema": RECEIPT_SCHEMA,
+        "provider": provider,
+        "reason": str(reason),
+        "spilled_to": spilled_to,
+        "ts": now.replace(microsecond=0).isoformat(),
+        "caller": caller,
+        "kind": kind,
+    }
+    if detail:
+        row["detail"] = detail
+    try:
+        with _exclusive(path):
+            try:
+                doc = _load(path)
+            except BudgetUnavailable:
+                return None                  # never rebuild a corrupt ledger
+            receipts = doc.setdefault("denial_receipts", [])
+            if not isinstance(receipts, list):
+                receipts = doc["denial_receipts"] = []
+            receipts.append(row)
+            if len(receipts) > RECEIPTS_INLINE_MAX:
+                overflow, doc["denial_receipts"] = receipts[:-RECEIPTS_INLINE_MAX], receipts[-RECEIPTS_INLINE_MAX:]
+                try:
+                    with open(receipts_archive_path(root), "a", encoding="utf-8") as fh:
+                        for r in overflow:
+                            fh.write(json.dumps(r, sort_keys=True) + "\n")
+                except Exception:
+                    doc["denial_receipts"] = overflow + doc["denial_receipts"]   # could not archive → keep
+            try:
+                _save(path, doc)
+            except Exception:
+                return None
+            return row
+    except Exception:
+        return None
+
+
+def denial_receipts(*, root: Optional[Path] = None) -> list[dict[str, Any]]:
+    """Inline receipt rows, oldest first. Empty on a missing or unreadable ledger."""
+    try:
+        doc = _load(budget_path(root))
+    except Exception:
+        return []
+    rows = doc.get("denial_receipts") or []
+    return [r for r in rows if isinstance(r, dict)]
 
 
 def _keys(now: datetime) -> tuple[str, str]:
